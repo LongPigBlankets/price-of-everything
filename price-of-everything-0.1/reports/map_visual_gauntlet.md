@@ -1794,3 +1794,154 @@ marks `b_004` as existing infrastructure that may be bought but never built, so 
 inland port. The generic `Catalog.is_building_allowed_on_tile_type()` helper has no port-specific coastal rule;
 that is a latent requirement only if player-built ports are authorized later. L1 deliberately does not add or
 change such a gameplay eligibility rule.
+
+## M1. Per-tile density audit — the measurement instrument — 2026-08-14
+
+### Scope
+
+`docs/map-density-and-port-addendum.md` §6 requires a new deterministic audit that emits, per tile: tile id,
+nickname, class, small count, large count, park count, park area, buildable dry area, and pass/fail against the
+§2 table, failing the run on any undocumented miss. M1 builds that instrument and measures the current baseline
+with it. **No visual mechanism was attempted and no rendered geometry changed** — this pass is measurement only,
+so that the four density/park/coastal/port streams are all judged by the same numbers.
+
+### What was built
+
+- `scripts/density_audit.gd` — a `RefCounted` holding the pure, side-effect-free gate logic: class assignment,
+  the frozen small/large threshold, what counts as a building and as a green space, and the §2 evaluation.
+  Everything a future change is likely to get subtly wrong lives here and is unit-tested without a scene tree.
+- `scripts/urban_fabric_visuals.gd` — two read-only seams. Every block and park entry now carries the `kind`
+  that produced it (`ordinary`/`core`/`industry_support`; `park`/`green`/`accommodation_park`/`courtyard`), the
+  sanitized render arrays are retained, and `density_audit_snapshot()` returns them. `tile_dry_buildable_areas()`
+  measures per-tile dry buildable land with the fabric's own exclusion vocabulary. Both are draw-only reads.
+- `tools/density_audit.gd` / `.tscn` — the headless audit harness. Writes `/tmp/poe_density_audit.json` and
+  `/tmp/poe_density_audit.txt`. Exit 0 = compliant, 2 = ran and the map does not comply, 1 = could not run.
+  Runtime is roughly 3.5 minutes headless.
+- 27 new asserts in the unit suite pinning classification precedence, the threshold and the §2 rows.
+
+### Decision 1 — the small/large threshold
+
+`DensityAudit.LARGE_MASS_AREA = 1600.0` square units. One absolute value, applied map-wide, frozen.
+
+Derivation: reconstructing the global mass-area histogram from every settlement's 125u size buckets in the
+frozen v0 metrics (961 ordinary masses) gives median ~1030, p75 ~1640, p90 ~2500. Measured directly over all
+**2,037** rendered masses in this run: p25 = 351, median = 752, p75 = **1532**, p90 = 2417. 1600 is that p75
+rounded to a round number, and two independent checks agree with the cut:
+
+- The addendum's own urban row (>= 10 small, >= 3 large) implies a large share of 3/13 = **23%**. At 1600 the
+  measured large share is **23.0%** — the cut reproduces the owner's own ratio exactly.
+- 1600 sits just above `MORPH_FACE_MIN_AREA` (1500), the smallest area the face subdivider leaves undivided. A
+  mass at or above the cut therefore occupies a whole un-subdivided street face and reads as block-scale;
+  anything below is a parcel inside a subdivided face.
+
+The constant must NOT be re-derived from a candidate run. A stream that adds hundreds of small masses would
+slide a recomputed p75 downwards and silently relabel the same buildings.
+
+### Decision 2 — class assignment
+
+Derived only from authoritative data, never invented and never mutated. Precedence, in order: `sea`/`deep_sea`
+are water and are not audited; the 92 tiles in `data/visual_settlement_profiles.json` are **urban** (verified:
+the profiled set and the urban-terrain set coincide exactly, zero mismatches either way); terrain class
+`mountain` is **mountain**, so the cap wins over the sparse floor even on the 32 mountain tiles that carry a
+road; any other land tile with >= 1 BUILT `RoadNetwork` edge is **sparse**; the rest are **remote**.
+
+### Decision 3 — what counts
+
+A building is a decorative mass that SURVIVED both sanitisation guards, of kind `ordinary`, `core` or
+`industry_support`, with area >= 120u^2 (21 sub-floor fragments excluded). Gameplay buildings are drawn by
+`BuildingVisuals`, are frozen, and are never counted. A green space is a merged connected component of the
+rendered park layer of kind `park`, `green` or `accommodation_park`, area >= 200u^2; **inner courtyards are
+counted separately and never satisfy the park floor**, or a stream could pass §2 by stamping courtyards.
+Polygons are assigned to the tile they share the most area with, not by centroid, per the G1.02 idiom.
+
+### Baseline — the map is 27.8% compliant
+
+| class | tiles | compliant | failing | dominant failures |
+|---|---|---|---|---|
+| urban | 92 | **19 (20.7%)** | 73 | 57 green below floor, 38 large below floor, 35 small below floor |
+| sparse | 204 | **45 (22.1%)** | 159 | 154 small below floor (134 of them at zero), 6 large above cap, 2 small above cap |
+| mountain | 45 | **45 (100%)** | 0 | — |
+| remote | 54 | **1 (1.9%)** | 53 | 53 small below floor (all at zero) |
+| **total** | **395** | **110 (27.8%)** | **285** | all 285 undocumented |
+
+Mountain passes trivially: it is a cap and every mountain tile renders zero decorative masses. The remote class
+is the worst in the map — 53 of 54 tiles are empty, because the fabric only grows rural masses on tiles that
+carry a BUILT road, and remote is by definition roadless. 73 of 92 urban tiles miss; the largest single defect
+is parks (57 tiles under two green spaces, **37 of them with no public green at all**), then large buildings
+(38 tiles, **24 with none**), then small buildings (35 tiles). The median urban tile has 11 small, 3 large and
+**1** park.
+
+### Every miss is actionable — no tile is physically prevented
+
+`dry_buildable_area` is measured per tile with the fabric's own exclusions. **Zero of the 285 failing tiles is
+physically constrained.** The tightest failing urban tile (Patran City Docks) has 146,705u^2 of dry buildable
+land against a 38,400u^2 requirement — 3.8x headroom; the tightest failing sparse tile has 38,039u^2 against
+7,200u^2. The conclusion is not sensitive to the packing allowance: at 3x, 5x and 8x nothing could plead
+constraint, and even at 12x (buildings occupying 8% of a tile) only two tiles could. There are consequently
+**zero documented physical shortfalls and 285 silent misses**, which is the addendum's gate failure condition.
+
+### Two findings worth recording
+
+1. **Relief shoulders are annuli, and clipping by them erases the plateaus they enclose.** A first version of
+   the dry-area probe applied `HillVisuals` shoulders directly and reported **147 tiles with zero buildable
+   area**, including tiles that visibly carry buildings. The fabric already guards against this with
+   `MORPH_MIN_RELIEF_AREA_RETENTION` (0.72), abandoning relief whenever it retains too little; the probe now
+   mirrors that rule exactly and **249 of 395 tiles hit the fallback**. Any stream that reaches for relief
+   geometry as an area constraint must apply the same retention rule or it will measure phantom constraints.
+2. **`get_land_relief_geometry` must be called per tile, not batched.** It only reports shoulders when the
+   extent it is given spans three or more material bands, so one call over all 395 hexes activates relief on
+   tiles that individually have none and over-clips them. A batched variant was written, measured against the
+   per-tile result, found to differ, and reverted.
+
+### Verification
+
+- Unit suite: **2,287 passed, 0 failed** (v0 baseline 2,260 + the 27 new asserts). Established Godot shutdown
+  RID/resource warnings remain.
+- Two consecutive density-audit runs are byte-identical in both the JSON and the text artifact.
+- Morphology harness: the metrics JSON is **exactly equal to the frozen v0 record** — every settlement, every
+  district-field counter (92/0/0/87/7/0/13/55), all seven W1.01 water counters zero on both plans, all four
+  relief counters zero, `dry_land_guard.water_overlap_count` zero, 2,135 blocks and 361 parks unchanged. Two
+  full morphology runs are byte-identical across all 36 artifacts. The harness exits 1 on the unresolved
+  G1.02 gradient gate, as designed.
+- Road-frontage audit frozen on all eight counters: 177 road tiles, 413 buildings, 79 failing tiles, 177 over
+  15u, 137 off-road-by-design, 1 service-lane save, 165 block-mode failures without streets, 146.6u `tile_10_3`
+  furnace worst case.
+- All-style harness: within a run, `legacy_before == legacy_roundtrip == ink` and
+  `midcentury_wide == midcentury_repeat`, both exactly.
+- `git diff --check` clean.
+
+### ⚠ The frozen absolute PNG hashes no longer reproduce on this machine
+
+Every one of the 43 all-style PNGs differs from the v0 archive, **including classic, ink and plate, which no
+commit on this branch touches.** Cause: the captures are now **2360x1328** instead of the archived **1920x1080**
+— `project.godot` declares `window_width_override=2360`, and the display attached to this machine now honours
+it. This was proved not to be a source change: a clean detached worktree at the same base commit
+(`2345b9cf`, no M1 changes) was captured and its 43 PNGs are **byte-identical to the M1 branch's 43 PNGs**.
+
+To reproduce that control:
+
+```bash
+git worktree add --detach /tmp/poe_control <base-commit>
+cp -c -R <owner-checkout>/.godot /tmp/poe_control/price-of-everything-0.1/.godot
+cd /tmp/poe_control/price-of-everything-0.1
+<godot> --headless --path . --import
+<godot> --path . res://tools/map_style_shot.tscn --quit-after 12000   # holding the capture lock
+```
+
+Consequence for the four downstream streams: **do not compare against the frozen v0 hashes on this machine.**
+Byte-identity must be established against a same-machine, same-session control capture, and the semantic
+invariants (legacy round-trip identity, midcentury repeat identity, and the morphology metrics JSON, which IS
+still exactly equal to v0) carry the actual guarantee.
+
+### How downstream runs the audit
+
+```bash
+cd price-of-everything-0.1
+<godot> --headless --path . res://tools/density_audit.tscn --quit-after 40000
+#   → /tmp/poe_density_audit.json  (full per-tile record)
+#   → /tmp/poe_density_audit.txt   (table + failure list)
+#   exit 0 compliant · 2 ran and non-compliant · 1 could not run
+```
+
+The frozen baseline output is committed at `docs/map-density-audit-baseline.txt`. Compare against it; do not
+regenerate it as a way of moving the goalposts.

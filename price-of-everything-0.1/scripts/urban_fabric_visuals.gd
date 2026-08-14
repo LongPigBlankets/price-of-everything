@@ -6282,25 +6282,42 @@ func tile_dry_buildable_areas(coords: Array) -> Dictionary:
 		var footprints: Array = []
 		if _buildings != null and _buildings.has_method("footprint_rects_on_tile"):
 			footprints = _buildings.footprint_rects_on_tile(coord)
+		var occupancy_exclusions: Array = []
+		occupancy_exclusions.append_array(_hero_forest_exclusions(forest_discs))
+		occupancy_exclusions.append_array(_hero_footprint_exclusions(footprints))
+		var open_pieces := _hero_clip_polys(dry_pieces, occupancy_exclusions, 1.0)
+		var open_area := 0.0
+		for piece_value in open_pieces:
+			open_area += _poly_area(piece_value)
+		# Relief shoulders are offset RINGS around contours. Clipping a whole hex
+		# by them can erase the plateaus they enclose, which is why the fabric
+		# itself abandons relief whenever it retains less than
+		# MORPH_MIN_RELIEF_AREA_RETENTION of the pre-relief area. The probe has to
+		# apply the same fallback or it reports tiles that visibly carry buildings
+		# as having zero buildable land.
 		var relief := _relief_geometry_for_extents([hex])
 		var shoulders: Array = relief.get("shoulders", [])
-		var buildable_exclusions: Array = []
-		buildable_exclusions.append_array(_hero_forest_exclusions(forest_discs))
-		buildable_exclusions.append_array(shoulders)
-		buildable_exclusions.append_array(_hero_footprint_exclusions(footprints))
-		var buildable_pieces := _hero_clip_polys(dry_pieces,
-			buildable_exclusions, 1.0)
-		var buildable_area := 0.0
-		for piece_value in buildable_pieces:
-			buildable_area += _poly_area(piece_value)
+		var buildable_area := open_area
+		var relief_fallback := false
+		if bool(relief.get("active", false)) and not shoulders.is_empty():
+			var relief_pieces := _hero_clip_polys(open_pieces, shoulders, 1.0)
+			var relief_area := 0.0
+			for piece_value in relief_pieces:
+				relief_area += _poly_area(piece_value)
+			if relief_area / maxf(1.0, open_area) < MORPH_MIN_RELIEF_AREA_RETENTION:
+				relief_fallback = true
+			else:
+				buildable_area = relief_area
 		out[coord] = {
 			"hex_area": hex_area,
 			"dry_land_area": dry_land_area,
+			"open_land_area": open_area,
 			"dry_buildable_area": buildable_area,
 			"water_margin_area": hex_area - dry_land_area,
 			"forest_disc_count": forest_discs.size(),
 			"gameplay_footprint_count": footprints.size(),
 			"relief_shoulder_count": shoulders.size(),
+			"relief_retention_fallback": relief_fallback,
 		}
 	return out
 

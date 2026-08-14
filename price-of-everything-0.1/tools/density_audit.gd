@@ -233,6 +233,9 @@ func _audit() -> Dictionary:
 			"mass_kind_counts": record.mass_kind_counts,
 			"hex_area": float(geometry.get("hex_area", 0.0)),
 			"dry_land_area": float(geometry.get("dry_land_area", 0.0)),
+			"open_land_area": float(geometry.get("open_land_area", 0.0)),
+			"relief_retention_fallback": bool(geometry.get(
+				"relief_retention_fallback", false)),
 			"dry_buildable_area": float(geometry.get("dry_buildable_area", 0.0)),
 			"water_margin_area": float(geometry.get("water_margin_area", 0.0)),
 			"forest_disc_count": int(geometry.get("forest_disc_count", 0)),

@@ -1,0 +1,714 @@
+=== PER-TILE DECORATIVE DENSITY AUDIT ===
+addendum section 2 table, measured on the rendered mid-century fabric
+
+SMALL/LARGE THRESHOLD (frozen, absolute, map-wide)
+  large_mass_area          1600.0 u^2
+  counted mass floor       120.0 u^2
+  counted green floor      200.0 u^2
+  measured this run: n=2037  p25=351  median=752  p75=1532  p90=2417
+  masses at or above the threshold: 23.0%
+
+CLASSIFICATION
+  profiled urban tiles     92
+  profiled but not urban   []
+  urban but not profiled   []
+
+COMPLIANCE BY CLASS
+  class        tiles  compliant   failing  constrained
+  mountain        45         45         0            0
+  remote          54          1        53            0
+  sparse         204         45       159            0
+  urban           92         19        73            0
+
+  audited tiles                395
+  failing tiles                285
+  UNDOCUMENTED misses (gate)   285
+  documented shortfalls        0
+  rendered masses / greens     2037 / 412
+  mass fragments below floor   21
+  masses/greens off every tile 0 / 0
+
+FULL TILE TABLE
+  tile         nickname                   class     small large  park  park_area   dry_area  verdict
+  tile_2_4     Klade Estuary              urban        36     0     3       2346     185504  FAIL ["large_below_floor"]
+  tile_2_12    Sandy Shore                urban        32     3     1       4700     191060  FAIL ["green_below_floor"]
+  tile_2_13    Sandy Shore Coast          sparse        8     1     0          0     135346  PASS
+  tile_2_15    Blackfarm                  urban         9     6     2      13854     189547  FAIL ["small_below_floor"]
+  tile_2_16    Blackfarm Docks            urban        13     0     1       6960     196897  FAIL ["large_below_floor", "green_below_floor"]
+  tile_3_2     The Reach                  mountain      0     0     0          0     181338  PASS
+  tile_3_3     Klade Estuary Docks        urban         7     1     0          0     210152  FAIL ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_3_4     Klade Estuary Coast        sparse        5     0     0          0     121063  PASS
+  tile_3_5     Klade Estuary Beach        sparse        0     0     0          0     211004  FAIL ["small_below_floor"]
+  tile_3_6                                remote        0     0     0          0     216044  FAIL ["small_below_floor"]
+  tile_3_8     Crying Shore               urban         8     0     0          0     181699  FAIL ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_3_12    Sandy Shore Docks          urban         6     1     1       8396     193330  FAIL ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_3_13    Sandy Shore Beach          sparse        1     2     0          0     227031  FAIL ["small_below_floor"]
+  tile_3_14                               sparse        5     0     0          0     190738  PASS
+  tile_3_15    Blackfarm Old Quarter      urban        17     9     1       2560     204022  FAIL ["green_below_floor"]
+  tile_3_17    Blackfarm Coast            sparse        8     1     0          0     162762  PASS
+  tile_3_18    Holyfinger Shore - West    sparse        0     0     0          0     142411  FAIL ["small_below_floor"]
+  tile_3_19    Holyfinger Shore - Southwe sparse        4     0     0          0     137025  PASS
+  tile_4_2     Shoulderland Beach         sparse        0     0     0          0     217705  FAIL ["small_below_floor"]
+  tile_4_3     Pepper Valley Meadows      sparse        6     0     0          0     201236  PASS
+  tile_4_4     Prado's Valley             sparse        3     0     1       3959     143015  PASS
+  tile_4_5     Amber River Valley         sparse        0     0     0          0     209146  FAIL ["small_below_floor"]
+  tile_4_6                                remote        0     0     0          0     219568  FAIL ["small_below_floor"]
+  tile_4_8     Crying Shore Coast         sparse        6     0     0          0     224317  PASS
+  tile_4_9     Stoneshore                 urban        16     4     4      11283     218748  PASS
+  tile_4_10    Stoneshore Old Quarter     urban         9     7     5      15471     187491  FAIL ["small_below_floor"]
+  tile_4_13                               sparse        4     0     0          0     194400  PASS
+  tile_4_14                               remote        0     0     0          0     194031  FAIL ["small_below_floor"]
+  tile_4_15    Blackfarm Beach            sparse        3     1     0          0     150023  PASS
+  tile_4_17    Holyfinger Coast           sparse        0     0     0          0     229045  FAIL ["small_below_floor"]
+  tile_4_18    Holyfinger Beach           sparse        5     0     0          0     197300  PASS
+  tile_5_2     Shoulderland Coast         mountain      0     0     0          0     183572  PASS
+  tile_5_3     Shoulderland Hills - South sparse        0     0     0          0     229091  FAIL ["small_below_floor"]
+  tile_5_4     Pepper Valley              urban        54     0     1       3492     201048  FAIL ["large_below_floor", "green_below_floor"]
+  tile_5_5     Seasalt Flats              sparse        2     0     0          0     174382  FAIL ["small_below_floor"]
+  tile_5_6     Pepper Valley Fields       sparse        0     0     0          0     215412  FAIL ["small_below_floor"]
+  tile_5_7                                remote        0     0     0          0     192929  FAIL ["small_below_floor"]
+  tile_5_8     Crying Shore Beach         sparse        0     0     0          0     169611  FAIL ["small_below_floor"]
+  tile_5_9     Stoneshore Fields          sparse        0     0     0          0     184634  FAIL ["small_below_floor"]
+  tile_5_10    Stoneshore Docks           urban        10     8     3       9972     203096  PASS
+  tile_5_13                               sparse        2     2     1       4471     193630  FAIL ["small_below_floor"]
+  tile_5_14    Fort Silversworth Docks    urban        14     3     2      14657     217527  PASS
+  tile_5_16                               sparse        0     0     0          0     193992  FAIL ["small_below_floor"]
+  tile_5_17    Holyfinger Shore - Northea sparse        4     0     0          0     200866  PASS
+  tile_5_18    Holyfinger Shore - East    sparse        3     0     0          0     226428  PASS
+  tile_6_1     Shoulderland Shore - North mountain      0     0     0          0     192208  PASS
+  tile_6_2     Shoulderland Heights       sparse        0     0     0          0     253714  FAIL ["small_below_floor"]
+  tile_6_3     Shoulderland Hills - South sparse        0     0     0          0     229091  FAIL ["small_below_floor"]
+  tile_6_4     Pepper Valley Farmlands    sparse        2     1     0          0     215412  FAIL ["small_below_floor"]
+  tile_6_5     Pepper Valley Docks        urban         3     3     3      17611     188829  FAIL ["small_below_floor"]
+  tile_6_6                                remote        0     0     0          0     215412  FAIL ["small_below_floor"]
+  tile_6_7                                sparse        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_6_8                                sparse        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_6_9     Stoneshore Coast           sparse        0     2     0          0     139393  FAIL ["small_below_floor"]
+  tile_6_12    Fort Silversworth Works    urban         8     5     1       2462     202940  FAIL ["small_below_floor", "green_below_floor"]
+  tile_6_13    Fort Silversworth          urban        11     7     3      21516     207830  PASS
+  tile_6_14    Fort Silversworth Old Quar urban        16     1     2       5836     216452  FAIL ["large_below_floor"]
+  tile_6_15    Peatsfield Shore - Northwe sparse        0     0     0          0     215058  FAIL ["small_below_floor"]
+  tile_6_16    Peatsfield Heights         sparse        0     0     0          0     229090  FAIL ["small_below_floor"]
+  tile_6_17    Holyfinger Shore - Centre  sparse        0     0     0          0     179800  FAIL ["small_below_floor"]
+  tile_6_19                               urban         5     0     0          0     183872  FAIL ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_7_1                                mountain      0     0     0          0     194400  PASS
+  tile_7_2     Slate Mountain Arc         mountain      0     0     0          0     194400  PASS
+  tile_7_3     Klades Bourne Heights      sparse        0     0     0          0     263765  FAIL ["small_below_floor"]
+  tile_7_4                                sparse        1     0     0          0     229091  FAIL ["small_below_floor"]
+  tile_7_5                                remote        0     0     0          0     215412  FAIL ["small_below_floor"]
+  tile_7_6                                sparse        4     0     0          0     202866  PASS
+  tile_7_7                                urban         4     0     0          0     194400  FAIL ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_7_8                                sparse        4     0     0          0     178383  PASS
+  tile_7_9                                sparse        1     0     0          0     178521  FAIL ["small_below_floor"]
+  tile_7_10    Snare Harbour Coast        sparse        0     0     0          0     187123  FAIL ["small_below_floor"]
+  tile_7_11    Snare Harbour              urban         8     0     0          0     192380  FAIL ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_7_12    Snare Harbour Beach        sparse        2     2     0          0     127437  FAIL ["small_below_floor"]
+  tile_7_13                               remote        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_7_14                               remote        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_7_15    Peatsfield Fields          sparse        3     0     0          0     259223  PASS
+  tile_7_16    Peatsfield Coast           sparse        0     0     0          0     256528  FAIL ["small_below_floor"]
+  tile_7_17    Peatsfield Beach           sparse        0     0     0          0     242080  FAIL ["small_below_floor"]
+  tile_7_19                               remote        0     0     0          0     189453  FAIL ["small_below_floor"]
+  tile_8_1     Klades Bourne Coast        mountain      0     0     0          0     193999  PASS
+  tile_8_2     Slate Mountain Summit      mountain      0     0     0          0     224424  PASS
+  tile_8_3     Klades Bourne Hills - Sout sparse        0     0     0          0     145497  FAIL ["small_below_floor"]
+  tile_8_4                                remote        0     0     0          0     141792  FAIL ["small_below_floor"]
+  tile_8_5                                urban        10     0     0          0     179049  FAIL ["large_below_floor", "green_below_floor"]
+  tile_8_6                                sparse        0     0     0          0     215412  FAIL ["small_below_floor"]
+  tile_8_7     Chainsholme Valley         sparse       14     6     0          0     181080  FAIL ["small_above_cap", "large_above_cap"]
+  tile_8_8     Silkstown Fields           sparse        6     0     0          0     225578  PASS
+  tile_8_9                                sparse        0     0     0          0     178167  FAIL ["small_below_floor"]
+  tile_8_10    Reed River Ford            sparse        4     0     0          0     176256  PASS
+  tile_8_11    Bramble River Valley       sparse        4     0     0          0     158147  PASS
+  tile_8_12                               remote        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_8_13                               remote        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_8_14    Arin Hold Heights          sparse        0     0     0          0     230985  FAIL ["small_below_floor"]
+  tile_8_15    Arin Hold Coast            sparse        0     0     0          0     216454  FAIL ["small_below_floor"]
+  tile_9_2     Klades Bourne Beach        mountain      0     0     0          0     194400  PASS
+  tile_9_3     Slate Mountain - Southeast mountain      0     0     0          0     194400  PASS
+  tile_9_4                                mountain      0     0     0          0     194400  PASS
+  tile_9_5                                sparse        0     0     0          0     229090  FAIL ["small_below_floor"]
+  tile_9_6                                sparse        0     0     0          0     160813  FAIL ["small_below_floor"]
+  tile_9_7     Chainsholme                sparse        2     0     0          0     122049  FAIL ["small_below_floor"]
+  tile_9_8     Silkstown                  urban        19     6     0          0     181866  FAIL ["green_below_floor"]
+  tile_9_9     Silkstown Docks            urban        10     0     4      21333     181738  FAIL ["large_below_floor"]
+  tile_9_10    Pebble Ridge Heights       sparse        0     0     0          0     226593  FAIL ["small_below_floor"]
+  tile_9_11    Green Flats Commons        sparse        0     0     0          0     223264  FAIL ["small_below_floor"]
+  tile_9_12    Green Flats Fields         remote        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_9_13    Green Flats Farmlands      remote        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_9_14    Mire River Valley          remote        0     0     0          0     178383  FAIL ["small_below_floor"]
+  tile_9_15    Larch River Valley         sparse        2     0     0          0      38039  FAIL ["small_below_floor"]
+  tile_9_16    Arin City Highgate         urban        14    18     3      17257     201846  PASS
+  tile_9_18    Arin City Millgate         urban        10    12     4      31231     186883  PASS
+  tile_10_1                               mountain      0     0     0          0     194046  PASS
+  tile_10_2                               remote        0     0     0          0     229090  FAIL ["small_below_floor"]
+  tile_10_3    Lightning Bourne           urban        10     0     0          0     189873  FAIL ["large_below_floor", "green_below_floor"]
+  tile_10_4                               mountain      0     0     0          0     159840  PASS
+  tile_10_5                               remote        0     0     0          0     150424  FAIL ["small_below_floor"]
+  tile_10_6    Ember Mountain - West      mountain      0     0     0          0     194400  PASS
+  tile_10_7    Silkstown Heights          sparse        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_10_8    Pale Mountain Summit       mountain      0     0     0          0     183361  PASS
+  tile_10_9    Pale Mountain Arc          mountain      0     0     0          0     194400  PASS
+  tile_10_10                              sparse        0     0     0          0     178599  FAIL ["small_below_floor"]
+  tile_10_11   Reed River Bend            sparse        1     0     0          0     132411  FAIL ["small_below_floor"]
+  tile_10_12   Reed River Valley          sparse        5     0     0          0     175680  PASS
+  tile_10_13   Bramble River Bend         remote        0     0     0          0     178305  FAIL ["small_below_floor"]
+  tile_10_14                              remote        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_10_15                              sparse        0     0     0          0     181368  FAIL ["small_below_floor"]
+  tile_10_16   Arin City Old Quarter      urban        24    24     1       4278     201300  FAIL ["green_below_floor"]
+  tile_10_17   Arin City Docks            urban        16    14     1       3115     194204  FAIL ["green_below_floor"]
+  tile_10_18   Arin City The Wharf        urban         4    15     4      55012     187198  FAIL ["small_below_floor"]
+  tile_11_1                               mountain      0     0     0          0     194400  PASS
+  tile_11_2                               remote        0     0     0          0     241653  FAIL ["small_below_floor"]
+  tile_11_3                               sparse        0     0     0          0     163630  FAIL ["small_below_floor"]
+  tile_11_4    Storm Mountain Summit      mountain      0     0     0          0     166843  PASS
+  tile_11_5    Ember Mountain Summit      mountain      0     0     0          0     194400  PASS
+  tile_11_6    Kindling Mountains Heights sparse        0     0     0          0     160779  FAIL ["small_below_floor"]
+  tile_11_7    Kindling Mountains Hills - sparse        0     0     0          0     148740  FAIL ["small_below_floor"]
+  tile_11_8    Pebble Valley Fields       sparse        0     0     0          0     273404  FAIL ["small_below_floor"]
+  tile_11_9                               sparse        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_11_10   Otter River Bend           sparse        2     0     0          0     138275  FAIL ["small_below_floor"]
+  tile_11_11   Green Flats Pastures       sparse        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_11_12   Green Flats                urban         8     0     0          0     209653  FAIL ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_11_13   Green Flats Meadows        sparse        5     0     0          0     194400  PASS
+  tile_11_14                              remote        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_11_15                              remote        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_11_16   Arin City Industrial Zone  urban        28    13     2       5087     165314  PASS
+  tile_11_17   Arin City                  urban        10     5     6      31907     195143  PASS
+  tile_12_1    Extra Test                 mountain      0     0     0          0     192133  PASS
+  tile_12_2    Miney McMineface           sparse        1     0     1       7228     162060  FAIL ["small_below_floor"]
+  tile_12_3    Thistle River Valley       sparse        4     0     0          0     171052  PASS
+  tile_12_4    Lightning Bourne Heights   remote        0     0     0          0     229781  FAIL ["small_below_floor"]
+  tile_12_5    Ember Mountain Lake        mountain      0     0     0          0     216849  PASS
+  tile_12_6    Ember Mountain - Southeast mountain      0     0     0          0     194400  PASS
+  tile_12_7                               sparse        0     0     0          0     182286  FAIL ["small_below_floor"]
+  tile_12_8    Copperstown Old Quarter    urban        10     5     2       6009     211498  PASS
+  tile_12_9    Copperstown Docks          urban         6     1     1       3969     173682  FAIL ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_12_10                              sparse        0     0     0          0     178929  FAIL ["small_below_floor"]
+  tile_12_11                              remote        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_12_12                              sparse        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_12_13                              sparse        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_12_14   Tomash Heights             sparse        0     0     0          0     183361  FAIL ["small_below_floor"]
+  tile_12_15   Tomash Coast               sparse        0     0     0          0     194031  FAIL ["small_below_floor"]
+  tile_12_16   Arin City Foundry          urban        29    15     3       9777     197669  PASS
+  tile_12_17   Arin City Market Row       urban         7    12     6      56512     188742  FAIL ["small_below_floor"]
+  tile_13_2    Port Lightning Old Quarter urban        15     1     0          0     227819  FAIL ["large_below_floor", "green_below_floor"]
+  tile_13_3                               sparse        0     1     0          0     230035  FAIL ["small_below_floor"]
+  tile_13_4    Sable River Reach          sparse        2     0     1       3630     124074  FAIL ["small_below_floor"]
+  tile_13_5    Lightning Bourne Hills - S remote        0     0     0          0     215412  FAIL ["small_below_floor"]
+  tile_13_6                               sparse        0     0     0          0     230035  FAIL ["small_below_floor"]
+  tile_13_7                               sparse        0     0     0          0     182808  FAIL ["small_below_floor"]
+  tile_13_8                               remote        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_13_9    Copperstown                urban        17     6     2       4408     184362  PASS
+  tile_13_10                              sparse        0     1     1       5957     194400  FAIL ["small_below_floor"]
+  tile_13_11                              remote        0     0     0          0     178047  FAIL ["small_below_floor"]
+  tile_13_12                              remote        0     0     0          0     175824  FAIL ["small_below_floor"]
+  tile_13_13                              remote        0     0     0          0     178857  FAIL ["small_below_floor"]
+  tile_13_14   Tomash Hills - Northeast   sparse        0     0     0          0     183361  FAIL ["small_below_floor"]
+  tile_13_15   Tomash                     urban         7     0     0          0     208381  FAIL ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_14_2    Port Lightning             urban         8     4     2      13701     176408  FAIL ["small_below_floor"]
+  tile_14_3    Port Lightning Docks       urban         9     4     2      10287     210075  FAIL ["small_below_floor"]
+  tile_14_4                               sparse        0     0     0          0     203442  FAIL ["small_below_floor"]
+  tile_14_5    Arinnal Commons            sparse        0     0     0          0     234296  FAIL ["small_below_floor"]
+  tile_14_6    Arinnal                    urban         5     0     0          0     167872  FAIL ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_14_7                               remote        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_14_8                               remote        2     0     0          0     181368  PASS
+  tile_14_9    Copperstown Works          urban         7     3     1       1997     210662  FAIL ["small_below_floor", "green_below_floor"]
+  tile_14_10   Grey Peaks Heights         sparse        1     0     0          0     226593  FAIL ["small_below_floor"]
+  tile_14_11   Grey Mountain - Southwest  mountain      0     0     0          0     194400  PASS
+  tile_14_12                              sparse        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_14_13   Sable River Mouth          sparse        4     0     0          0     160583  PASS
+  tile_14_14   New Tegan Shore - West     sparse        0     0     0          0     191630  FAIL ["small_below_floor"]
+  tile_14_17   Lighthaven                 urban        11     4     1       3291     215990  FAIL ["green_below_floor"]
+  tile_14_18   Lighthaven Docks           urban        14     4     0          0     197821  FAIL ["green_below_floor"]
+  tile_15_2    Port Lightning Industrial  urban        11     4     2       8049     199946  PASS
+  tile_15_3                               sparse        0     1     1       7362     215412  FAIL ["small_below_floor"]
+  tile_15_4                               sparse        0     0     0          0     150289  FAIL ["small_below_floor"]
+  tile_15_5    Arinnal Fields             sparse        4     0     0          0     216126  PASS
+  tile_15_6    Thistle River Bend         sparse        0     0     0          0     217839  FAIL ["small_below_floor"]
+  tile_15_7                               remote        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_15_8                               remote        0     0     0          0     181224  FAIL ["small_below_floor"]
+  tile_15_9    Grey Mountain Arc          mountain      0     0     0          0     194400  PASS
+  tile_15_10   Grey Mountain Summit       mountain      0     0     0          0     194400  PASS
+  tile_15_11   Tegan Valley Meadows       sparse        0     0     0          0     219702  FAIL ["small_below_floor"]
+  tile_15_12   Tegan Valley Farmlands     sparse        0     0     0          0     237405  FAIL ["small_below_floor"]
+  tile_15_13   Tegan Valley Commons       sparse        4     0     0          0     184469  PASS
+  tile_15_14   New Tegan                  urban         6     0     0          0     171278  FAIL ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_15_16   Lighthaven Beach           sparse        0     0     0          0     188708  FAIL ["small_below_floor"]
+  tile_15_17   Lighthaven Coast           sparse        0     0     0          0     193125  FAIL ["small_below_floor"]
+  tile_15_18   Lighthaven Shore - Southea sparse        0     0     0          0     196162  FAIL ["small_below_floor"]
+  tile_16_1                               remote        0     0     0          0     227575  FAIL ["small_below_floor"]
+  tile_16_2                               sparse        0     0     0          0     226593  FAIL ["small_below_floor"]
+  tile_16_3    Bright Valley              sparse        0     0     0          0     145256  FAIL ["small_below_floor"]
+  tile_16_4    Arinnal Meadows            sparse        0     0     0          0     230035  FAIL ["small_below_floor"]
+  tile_16_5    Arinnal Heights            remote        0     0     0          0     215412  FAIL ["small_below_floor"]
+  tile_16_6    Sable River Valley         remote        0     0     0          0     148114  FAIL ["small_below_floor"]
+  tile_16_7                               remote        0     0     0          0     197442  FAIL ["small_below_floor"]
+  tile_16_8    Snowhaven                  mountain      0     0     0          0     168135  PASS
+  tile_16_9    Cloudcut                   mountain      0     0     0          0     194400  PASS
+  tile_16_10   Hardmound                  sparse        0     0     0          0     213768  FAIL ["small_below_floor"]
+  tile_16_11   Tegan Valley Fields        sparse        0     0     0          0     211310  FAIL ["small_below_floor"]
+  tile_16_12                              remote        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_16_13                              remote        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_16_14   New Tegan Coast            sparse        0     0     0          0     126479  FAIL ["small_below_floor"]
+  tile_16_15   New Tegan Beach            sparse        2     0     0          0     177599  FAIL ["small_below_floor"]
+  tile_16_16                              remote        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_16_17                              sparse        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_16_18                              sparse        0     0     0          0     189225  FAIL ["small_below_floor"]
+  tile_16_19                              urban        15     0     0          0     184512  FAIL ["large_below_floor", "green_below_floor"]
+  tile_17_1    Bald Mountain              mountain      0     0     0          0     223264  PASS
+  tile_17_2    Queens Blood Fields        sparse        0     0     0          0     216542  FAIL ["small_below_floor"]
+  tile_17_3    Kitt Valley                sparse        0     0     0          0     217576  FAIL ["small_below_floor"]
+  tile_17_4    Deepdean                   sparse        2     0     0          0     125528  FAIL ["small_below_floor"]
+  tile_17_5    Goat Valley                sparse        5     0     0          0     130049  PASS
+  tile_17_6    Arinnal Farmlands          sparse        0     0     0          0     230035  FAIL ["small_below_floor"]
+  tile_17_7    Sable River Bend           sparse        2     3     0          0     153476  FAIL ["small_below_floor", "large_above_cap"]
+  tile_17_8    Patran City Docks          urban         9     2     0          0     146705  FAIL ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_17_9    Stonestream                sparse        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_17_10   Patransland Heights        sparse        0     0     0          0     233043  FAIL ["small_below_floor"]
+  tile_17_11   Spruce Hills               sparse        0     0     0          0     210227  FAIL ["small_below_floor"]
+  tile_17_12   Tegan Valley Pastures      sparse        0     0     0          0     230963  FAIL ["small_below_floor"]
+  tile_17_13                              remote        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_17_14                              remote        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_17_15                              sparse        6     0     0          0     181998  PASS
+  tile_17_16                              remote        0     0     0          0     180936  FAIL ["small_below_floor"]
+  tile_17_17   Ashmouth Fields            sparse        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_17_18   Ashmouth Beach             sparse        4     0     0          0     195877  PASS
+  tile_18_1    Red Mountain Arc           mountain      0     0     0          0     194400  PASS
+  tile_18_2    Leathertown Hills - West   sparse        0     0     0          0     215412  FAIL ["small_below_floor"]
+  tile_18_3    Leathertown                urban         5     0     0          0     199356  FAIL ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_18_4    Jagged Peaks               mountain      0     0     0          0     168375  PASS
+  tile_18_5    Sable River Ford           sparse        0     0     0          0     126394  FAIL ["small_below_floor"]
+  tile_18_6                               mountain      0     0     0          0     194400  PASS
+  tile_18_7    Patran City Old Quarter    urban        12     4     3       9465     140269  PASS
+  tile_18_8    Patran City                urban        16     7     5      22254     200639  PASS
+  tile_18_9    Patran City Works          urban        17     2     1       7436     198173  FAIL ["large_below_floor", "green_below_floor"]
+  tile_18_10   Green Peaks                sparse        0     0     0          0     229075  FAIL ["small_below_floor"]
+  tile_18_11   Teganfort Hills - Northwes sparse        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_18_12   Teganfort Heights          sparse        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_18_13   Teganfort Hills - Southwes sparse        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_18_14   Teganfort Industrial Zone  urban        12     2     0          0     175735  FAIL ["large_below_floor", "green_below_floor"]
+  tile_18_15                              sparse        4     0     0          0     194400  PASS
+  tile_18_16   Ashmouth                   urban         5     0     0          0     168372  FAIL ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_18_17   Reed River Reach           sparse        4     0     0          0     148740  PASS
+  tile_18_18   Ashmouth Coast             sparse        2     0     0          0     104959  FAIL ["small_below_floor"]
+  tile_19_1    Silver Mountain            mountain      0     0     0          0     194400  PASS
+  tile_19_2    Leathertown Heights        sparse        0     0     0          0     230035  FAIL ["small_below_floor"]
+  tile_19_3    Leathertown Hills - Centre sparse        0     0     0          0     226593  FAIL ["small_below_floor"]
+  tile_19_4    Red Mountain Summit        mountain      0     0     0          0     194400  PASS
+  tile_19_5    Coldstone Peak             mountain      0     0     0          0     194400  PASS
+  tile_19_6                               sparse        0     0     0          0     203010  FAIL ["small_below_floor"]
+  tile_19_7                               remote        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_19_8    Patran City Heights        sparse        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_19_9    Patran City Hills - Southe sparse        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_19_10   The Mound                  sparse        0     0     0          0     156652  FAIL ["small_below_floor"]
+  tile_19_11   Teganfort Hills - North    sparse        0     0     0          0     179001  FAIL ["small_below_floor"]
+  tile_19_12   Teganfort Docks            urban        12     9     1       6402     201152  FAIL ["green_below_floor"]
+  tile_19_13   Teganfort                  urban        21     8     1        590     195831  FAIL ["green_below_floor"]
+  tile_19_14   Teganfort Old Quarter      urban        14     1     2       5519     229911  FAIL ["large_below_floor"]
+  tile_19_15                              remote        0     0     0          0     193114  FAIL ["small_below_floor"]
+  tile_19_16                              remote        0     0     0          0     194017  FAIL ["small_below_floor"]
+  tile_19_17   Ashmouth Farmlands         sparse        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_19_18   Ashmouth Shore - Southeast sparse        0     0     0          0     182665  FAIL ["small_below_floor"]
+  tile_20_1    Bloodied Mountains Shore - mountain      0     0     0          0     193999  PASS
+  tile_20_2    Leathertown Fields         sparse        0     0     0          0     146761  FAIL ["small_below_floor"]
+  tile_20_3    Bloodied Mountains Shore - mountain      0     0     0          0     194031  PASS
+  tile_20_4    Long Valley Shore - West   sparse        0     0     0          0     226192  FAIL ["small_below_floor"]
+  tile_20_5    Long Valley Shore - Southw sparse        0     0     0          0     157524  FAIL ["small_below_floor"]
+  tile_20_6    Kingstown Old Quarter      urban        11     3     1       2563     205401  FAIL ["green_below_floor"]
+  tile_20_7    Kingstown                  urban        15     5     1       4982     224473  FAIL ["green_below_floor"]
+  tile_20_8    Kingstown Works            urban         6     3     0          0     203879  FAIL ["small_below_floor", "green_below_floor"]
+  tile_20_9    Blue Mountain Summit       mountain      0     0     0          0     197442  PASS
+  tile_20_10                              remote        0     0     0          0     194031  FAIL ["small_below_floor"]
+  tile_20_11   Teganfort The Wharf        urban        16     0     0          0     180836  FAIL ["large_below_floor", "green_below_floor"]
+  tile_20_12   Knot Valley Shore - West   sparse        5     1     1       5660     210694  PASS
+  tile_20_16                              remote        0     0     0          0     193431  FAIL ["small_below_floor"]
+  tile_20_17                              sparse        0     0     0          0     196594  FAIL ["small_below_floor"]
+  tile_21_2    Bloodied Mountains Coast   mountain      0     0     0          0     193946  PASS
+  tile_21_3    Bloodied Mountains Beach   mountain      0     0     0          0     193463  PASS
+  tile_21_5    Long Valley                urban        18     4     3       6092     170836  PASS
+  tile_21_7    Kingstown Docks            urban        16     5     4      12551     190566  PASS
+  tile_21_8    Kingstown Heights          sparse        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_21_9    Black Hills                sparse        0     1     0          0     226593  FAIL ["small_below_floor"]
+  tile_21_10   Blue Mountains Shore - Wes mountain      0     0     0          0     164323  PASS
+  tile_21_12   Knot Valley Shore - North  sparse        5     0     0          0     114894  PASS
+  tile_21_13   Knot Valley Coast          sparse        0     0     0          0     188508  FAIL ["small_below_floor"]
+  tile_21_14   Knot Valley Shore - South  sparse        0     0     0          0     212065  FAIL ["small_below_floor"]
+  tile_21_17   Vandel Port Docks          urban        12     3     1       6487     216742  FAIL ["green_below_floor"]
+  tile_21_18   Vandel Port Old Quarter    urban         7     5     2       8572     184740  FAIL ["small_below_floor"]
+  tile_22_1                               mountain      0     0     0          0     193509  PASS
+  tile_22_3    Long Valley Beach          sparse        0     0     0          0     225272  FAIL ["small_below_floor"]
+  tile_22_4    Long Valley Docks          urban         7     1     4      22641     170902  FAIL ["small_below_floor", "large_below_floor"]
+  tile_22_5    Long Valley Coast          sparse        7     0     1       2122     249570  PASS
+  tile_22_6                               sparse        0     0     0          0     196609  FAIL ["small_below_floor"]
+  tile_22_7                               sparse       11     7     1       4941     193231  FAIL ["small_above_cap", "large_above_cap"]
+  tile_22_8                               sparse       10    11     0          0     194400  FAIL ["large_above_cap"]
+  tile_22_9    Amber Hills                sparse        0     0     0          0     165322  FAIL ["small_below_floor"]
+  tile_22_10   Blue Mountains Coast       mountain      0     0     0          0     193998  PASS
+  tile_22_11   Blue Mountains Shore - Sou mountain      0     0     0          0     193661  PASS
+  tile_22_12   Knot Valley Beach          sparse        0     0     0          0     159222  FAIL ["small_below_floor"]
+  tile_22_13   Knot Valley Shore - Southe sparse        0     0     0          0     214409  FAIL ["small_below_floor"]
+  tile_22_15                              sparse        0     1     1       7234     192531  FAIL ["small_below_floor"]
+  tile_22_16   Vandel Port                urban         7     5     0          0     211774  FAIL ["small_below_floor", "green_below_floor"]
+  tile_23_1    North Aspland Shore - Nort sparse        0     0     0          0     228649  FAIL ["small_below_floor"]
+  tile_23_2    North Aspland              urban         7     0     0          0     170328  FAIL ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_23_4    Long Valley Shore - Northe sparse        3     0     0          0     124338  PASS
+  tile_23_5    Long Valley Fields         sparse        4     0     1       1682     218821  PASS
+  tile_23_6                               sparse        0     0     0          0     209302  FAIL ["small_below_floor"]
+  tile_23_8    Capital Port Market Row    urban        61    18     0          0     222062  FAIL ["green_below_floor"]
+  tile_23_9                               sparse       10    24     0          0     176865  FAIL ["large_above_cap"]
+  tile_23_10   Blue Mountains Heights     sparse        0     0     0          0     161497  FAIL ["small_below_floor"]
+  tile_23_11   Blue Mountains Beach       mountain      0     0     0          0     178459  PASS
+  tile_23_14   Tallow River Valley Beach  sparse        5     0     0          0     165032  PASS
+  tile_23_15   Tallow River Valley Shore  sparse        8     0     0          0     182884  PASS
+  tile_23_16   Vandel Port Works          urban        21     4     0          0     182291  FAIL ["green_below_floor"]
+  tile_23_18   Vandel Island              urban         8     0     0          0     226246  FAIL ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_24_2    North Aspland Beach        sparse        0     0     0          0     214777  FAIL ["small_below_floor"]
+  tile_24_3                               urban         8     0     0          0     182467  FAIL ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_24_4    Long Valley Farmlands      remote        0     0     0          0     230035  FAIL ["small_below_floor"]
+  tile_24_5    Gold Arm Shore - West      sparse        0     0     1        463     190694  FAIL ["small_below_floor"]
+  tile_24_7    Capital Port The Wharf     urban        13     1     0          0     153534  FAIL ["large_below_floor", "green_below_floor"]
+  tile_24_8    Capital Port Docks         urban        29     6     1      13282     207709  FAIL ["green_below_floor"]
+  tile_24_9    Capital Port Old Quarter   urban        24    12     2      20567     187599  PASS
+  tile_24_10   Hell's Teeth               sparse        0     0     0          0     182286  FAIL ["small_below_floor"]
+  tile_24_11   Blue Mountains Shore - Sou mountain      0     0     0          0     180837  PASS
+  tile_24_12   Tallow River Valley Shore  sparse        0     0     0          0     162143  FAIL ["small_below_floor"]
+  tile_24_13   Tallow River Valley Coast  sparse        0     0     0          0     136673  FAIL ["small_below_floor"]
+  tile_24_14                              mountain      0     0     0          0     194031  PASS
+  tile_24_15                              remote        0     0     0          0     193601  FAIL ["small_below_floor"]
+  tile_24_17                              urban         4     0     0          0     186954  FAIL ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_25_2    North Aspland Coast        sparse        0     0     0          0     242520  FAIL ["small_below_floor"]
+  tile_25_3    Wren River Bend            sparse        0     0     0          0     152303  FAIL ["small_below_floor"]
+  tile_25_4                               remote        0     0     0          0     215412  FAIL ["small_below_floor"]
+  tile_25_5    Gold Arm Fields            sparse        0     0     1       3017     184409  FAIL ["small_below_floor"]
+  tile_25_6    Gold Arm Old Quarter       urban        12     4     2       1112     234135  PASS
+  tile_25_9    Capital Port               urban        17     0     7      31625     183807  FAIL ["large_below_floor"]
+  tile_25_10                              sparse        0     0     0          0     182808  FAIL ["small_below_floor"]
+  tile_25_11   Hills of the Dawn          sparse        0     0     0          0     194400  FAIL ["small_below_floor"]
+  tile_25_12   Heron River Valley         sparse        2     0     0          0     151772  FAIL ["small_below_floor"]
+  tile_25_13   Tallow River Valley Fields sparse        0     0     0          0     182202  FAIL ["small_below_floor"]
+  tile_25_14   Tallow River Valley Shore  sparse        0     0     0          0     160588  FAIL ["small_below_floor"]
+  tile_25_16                              remote        0     0     0          0     191070  FAIL ["small_below_floor"]
+  tile_26_2    North Aspland Shore - East sparse        6     0     0          0     155543  PASS
+  tile_26_3    Asp City Fields            sparse        2     0     1       3713     111010  FAIL ["small_below_floor"]
+  tile_26_4                               sparse        0     0     0          0     211698  FAIL ["small_below_floor"]
+  tile_26_5    Gold Arm Coast             sparse        0     0     0          0     228174  FAIL ["small_below_floor"]
+  tile_26_6    Gold Arm                   urban        20    10     1       4190     198207  FAIL ["green_below_floor"]
+  tile_26_8    Capital Port Industrial Zo urban        28     1     1      13139     220075  FAIL ["large_below_floor", "green_below_floor"]
+  tile_26_9                               sparse        4     3     0          0     180944  FAIL ["large_above_cap"]
+  tile_26_10                              sparse        3     2     1       1344     192604  PASS
+  tile_26_11   Hollow Ring                urban        11     6     5      15761     174884  PASS
+  tile_26_12   Hollow Ring Shore - Southw sparse        4     0     1       1896     219046  PASS
+  tile_26_13   Southlake Hills Beach      sparse        0     0     0          0     217498  FAIL ["small_below_floor"]
+  tile_26_14   Southlake                  urban        10     1     2       2643     196727  FAIL ["large_below_floor"]
+  tile_26_15   Southlake Docks            urban         7     3     0          0     201127  FAIL ["small_below_floor", "green_below_floor"]
+  tile_27_2    North Aspland Shore - Cent sparse        5     0     0          0     260131  PASS
+  tile_27_3    Asp City                   urban        12     5     0          0     173700  FAIL ["green_below_floor"]
+  tile_27_4    Asp City Docks             urban        17     3     0          0     201494  FAIL ["green_below_floor"]
+  tile_27_7    Gold Arm Docks             urban         7     5     0          0     206224  FAIL ["small_below_floor", "green_below_floor"]
+  tile_27_9    Capital Port Foundry       urban        31     7     0          0     167482  FAIL ["green_below_floor"]
+  tile_27_12   Hollow Ring Docks          urban         8     6     0          0     191773  FAIL ["small_below_floor", "green_below_floor"]
+  tile_27_14   Southlake Hills Coast      sparse        0     0     0          0     226324  FAIL ["small_below_floor"]
+  tile_27_15   Southlake Hills Heights    sparse        0     0     0          0     145764  FAIL ["small_below_floor"]
+  tile_27_16                              remote        0     0     0          0     171886  FAIL ["small_below_floor"]
+  tile_27_17   Farpoint Coast             remote        0     0     0          0     193429  FAIL ["small_below_floor"]
+  tile_27_18   Farpoint Shore - Southwest sparse        0     0     0          0     228464  FAIL ["small_below_floor"]
+  tile_28_3    Asp City Old Quarter       urban         6     4     4      23511     181890  FAIL ["small_below_floor"]
+  tile_28_6    Gold Arm Beach             sparse        4     0     0          0     226868  PASS
+  tile_28_7    Gold Arm Industrial Zone   urban        11     1     0          0     198816  FAIL ["large_below_floor", "green_below_floor"]
+  tile_28_11   Hollow Ring Beach          sparse        5     0     0          0     177981  PASS
+  tile_28_12   Hollow Ring Coast          sparse        4     1     0          0     178401  PASS
+  tile_28_14   Southlake Hills Shore - Ea sparse        0     0     0          0     155668  FAIL ["small_below_floor"]
+  tile_28_15                              sparse        0     0     0          0     191399  FAIL ["small_below_floor"]
+  tile_28_16   Farpoint Shore - North     sparse        0     0     0          0     191296  FAIL ["small_below_floor"]
+  tile_28_17   Farpoint Beach             sparse        0     0     0          0     223367  FAIL ["small_below_floor"]
+  tile_29_8    Gold Arm Shore - Southeast sparse        4     0     0          0     210350  PASS
+  tile_29_12                              sparse        0     0     0          0     188863  FAIL ["small_below_floor"]
+  tile_29_17   Farpoint                   urban        16     0     0          0     197639  FAIL ["large_below_floor", "green_below_floor"]
+
+FAILURES (285)
+  tile_10_13   remote    Bramble River Bend       small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=178305/2400  ["small_below_floor"]
+  tile_10_14   remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194400/2400  ["small_below_floor"]
+  tile_10_2    remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=229090/2400  ["small_below_floor"]
+  tile_10_5    remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=150424/2400  ["small_below_floor"]
+  tile_11_14   remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194400/2400  ["small_below_floor"]
+  tile_11_15   remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194400/2400  ["small_below_floor"]
+  tile_11_2    remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=241653/2400  ["small_below_floor"]
+  tile_12_11   remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194400/2400  ["small_below_floor"]
+  tile_12_4    remote    Lightning Bourne Heights small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=229781/2400  ["small_below_floor"]
+  tile_13_11   remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=178047/2400  ["small_below_floor"]
+  tile_13_12   remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=175824/2400  ["small_below_floor"]
+  tile_13_13   remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=178857/2400  ["small_below_floor"]
+  tile_13_5    remote    Lightning Bourne Hills - small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=215412/2400  ["small_below_floor"]
+  tile_13_8    remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194400/2400  ["small_below_floor"]
+  tile_14_7    remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194400/2400  ["small_below_floor"]
+  tile_15_7    remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194400/2400  ["small_below_floor"]
+  tile_15_8    remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=181224/2400  ["small_below_floor"]
+  tile_16_1    remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=227575/2400  ["small_below_floor"]
+  tile_16_12   remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194400/2400  ["small_below_floor"]
+  tile_16_13   remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194400/2400  ["small_below_floor"]
+  tile_16_16   remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194400/2400  ["small_below_floor"]
+  tile_16_5    remote    Arinnal Heights          small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=215412/2400  ["small_below_floor"]
+  tile_16_6    remote    Sable River Valley       small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=148114/2400  ["small_below_floor"]
+  tile_16_7    remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=197442/2400  ["small_below_floor"]
+  tile_17_13   remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194400/2400  ["small_below_floor"]
+  tile_17_14   remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194400/2400  ["small_below_floor"]
+  tile_17_16   remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=180936/2400  ["small_below_floor"]
+  tile_19_15   remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=193114/2400  ["small_below_floor"]
+  tile_19_16   remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194017/2400  ["small_below_floor"]
+  tile_19_7    remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194400/2400  ["small_below_floor"]
+  tile_20_10   remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194031/2400  ["small_below_floor"]
+  tile_20_16   remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=193431/2400  ["small_below_floor"]
+  tile_24_15   remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=193601/2400  ["small_below_floor"]
+  tile_24_4    remote    Long Valley Farmlands    small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=230035/2400  ["small_below_floor"]
+  tile_25_16   remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=191070/2400  ["small_below_floor"]
+  tile_25_4    remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=215412/2400  ["small_below_floor"]
+  tile_27_16   remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=171886/2400  ["small_below_floor"]
+  tile_27_17   remote    Farpoint Coast           small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=193429/2400  ["small_below_floor"]
+  tile_3_6     remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=216044/2400  ["small_below_floor"]
+  tile_4_14    remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194031/2400  ["small_below_floor"]
+  tile_4_6     remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=219568/2400  ["small_below_floor"]
+  tile_5_7     remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=192929/2400  ["small_below_floor"]
+  tile_6_6     remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=215412/2400  ["small_below_floor"]
+  tile_7_13    remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194400/2400  ["small_below_floor"]
+  tile_7_14    remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194400/2400  ["small_below_floor"]
+  tile_7_19    remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=189453/2400  ["small_below_floor"]
+  tile_7_5     remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=215412/2400  ["small_below_floor"]
+  tile_8_12    remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194400/2400  ["small_below_floor"]
+  tile_8_13    remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194400/2400  ["small_below_floor"]
+  tile_8_4     remote                             small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=141792/2400  ["small_below_floor"]
+  tile_9_12    remote    Green Flats Fields       small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194400/2400  ["small_below_floor"]
+  tile_9_13    remote    Green Flats Farmlands    small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=194400/2400  ["small_below_floor"]
+  tile_9_14    remote    Mire River Valley        small=0 (min 1, max 4)  large=0 (min 0, max 0)  park=0 (min -1)  dry=178383/2400  ["small_below_floor"]
+  tile_10_10   sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=178599/7200  ["small_below_floor"]
+  tile_10_11   sparse    Reed River Bend          small=1 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=132411/7200  ["small_below_floor"]
+  tile_10_15   sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=181368/7200  ["small_below_floor"]
+  tile_10_7    sparse    Silkstown Heights        small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=194400/7200  ["small_below_floor"]
+  tile_11_10   sparse    Otter River Bend         small=2 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=138275/7200  ["small_below_floor"]
+  tile_11_11   sparse    Green Flats Pastures     small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=194400/7200  ["small_below_floor"]
+  tile_11_3    sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=163630/7200  ["small_below_floor"]
+  tile_11_6    sparse    Kindling Mountains Heigh small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=160779/7200  ["small_below_floor"]
+  tile_11_7    sparse    Kindling Mountains Hills small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=148740/7200  ["small_below_floor"]
+  tile_11_8    sparse    Pebble Valley Fields     small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=273404/7200  ["small_below_floor"]
+  tile_11_9    sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=194400/7200  ["small_below_floor"]
+  tile_12_10   sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=178929/7200  ["small_below_floor"]
+  tile_12_12   sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=194400/7200  ["small_below_floor"]
+  tile_12_13   sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=194400/7200  ["small_below_floor"]
+  tile_12_14   sparse    Tomash Heights           small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=183361/7200  ["small_below_floor"]
+  tile_12_15   sparse    Tomash Coast             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=194031/7200  ["small_below_floor"]
+  tile_12_2    sparse    Miney McMineface         small=1 (min 3, max 10)  large=0 (min 0, max 2)  park=1 (min -1)  dry=162060/7200  ["small_below_floor"]
+  tile_12_7    sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=182286/7200  ["small_below_floor"]
+  tile_13_10   sparse                             small=0 (min 3, max 10)  large=1 (min 0, max 2)  park=1 (min -1)  dry=194400/7200  ["small_below_floor"]
+  tile_13_14   sparse    Tomash Hills - Northeast small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=183361/7200  ["small_below_floor"]
+  tile_13_3    sparse                             small=0 (min 3, max 10)  large=1 (min 0, max 2)  park=0 (min -1)  dry=230035/7200  ["small_below_floor"]
+  tile_13_4    sparse    Sable River Reach        small=2 (min 3, max 10)  large=0 (min 0, max 2)  park=1 (min -1)  dry=124074/7200  ["small_below_floor"]
+  tile_13_6    sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=230035/7200  ["small_below_floor"]
+  tile_13_7    sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=182808/7200  ["small_below_floor"]
+  tile_14_10   sparse    Grey Peaks Heights       small=1 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=226593/7200  ["small_below_floor"]
+  tile_14_12   sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=194400/7200  ["small_below_floor"]
+  tile_14_14   sparse    New Tegan Shore - West   small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=191630/7200  ["small_below_floor"]
+  tile_14_4    sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=203442/7200  ["small_below_floor"]
+  tile_14_5    sparse    Arinnal Commons          small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=234296/7200  ["small_below_floor"]
+  tile_15_11   sparse    Tegan Valley Meadows     small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=219702/7200  ["small_below_floor"]
+  tile_15_12   sparse    Tegan Valley Farmlands   small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=237405/7200  ["small_below_floor"]
+  tile_15_16   sparse    Lighthaven Beach         small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=188708/7200  ["small_below_floor"]
+  tile_15_17   sparse    Lighthaven Coast         small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=193125/7200  ["small_below_floor"]
+  tile_15_18   sparse    Lighthaven Shore - South small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=196162/7200  ["small_below_floor"]
+  tile_15_3    sparse                             small=0 (min 3, max 10)  large=1 (min 0, max 2)  park=1 (min -1)  dry=215412/7200  ["small_below_floor"]
+  tile_15_4    sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=150289/7200  ["small_below_floor"]
+  tile_15_6    sparse    Thistle River Bend       small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=217839/7200  ["small_below_floor"]
+  tile_16_10   sparse    Hardmound                small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=213768/7200  ["small_below_floor"]
+  tile_16_11   sparse    Tegan Valley Fields      small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=211310/7200  ["small_below_floor"]
+  tile_16_14   sparse    New Tegan Coast          small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=126479/7200  ["small_below_floor"]
+  tile_16_15   sparse    New Tegan Beach          small=2 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=177599/7200  ["small_below_floor"]
+  tile_16_17   sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=194400/7200  ["small_below_floor"]
+  tile_16_18   sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=189225/7200  ["small_below_floor"]
+  tile_16_2    sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=226593/7200  ["small_below_floor"]
+  tile_16_3    sparse    Bright Valley            small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=145256/7200  ["small_below_floor"]
+  tile_16_4    sparse    Arinnal Meadows          small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=230035/7200  ["small_below_floor"]
+  tile_17_10   sparse    Patransland Heights      small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=233043/7200  ["small_below_floor"]
+  tile_17_11   sparse    Spruce Hills             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=210227/7200  ["small_below_floor"]
+  tile_17_12   sparse    Tegan Valley Pastures    small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=230963/7200  ["small_below_floor"]
+  tile_17_17   sparse    Ashmouth Fields          small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=194400/7200  ["small_below_floor"]
+  tile_17_2    sparse    Queens Blood Fields      small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=216542/7200  ["small_below_floor"]
+  tile_17_3    sparse    Kitt Valley              small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=217576/7200  ["small_below_floor"]
+  tile_17_4    sparse    Deepdean                 small=2 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=125528/7200  ["small_below_floor"]
+  tile_17_6    sparse    Arinnal Farmlands        small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=230035/7200  ["small_below_floor"]
+  tile_17_7    sparse    Sable River Bend         small=2 (min 3, max 10)  large=3 (min 0, max 2)  park=0 (min -1)  dry=153476/7200  ["small_below_floor", "large_above_cap"]
+  tile_17_9    sparse    Stonestream              small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=194400/7200  ["small_below_floor"]
+  tile_18_10   sparse    Green Peaks              small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=229075/7200  ["small_below_floor"]
+  tile_18_11   sparse    Teganfort Hills - Northw small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=194400/7200  ["small_below_floor"]
+  tile_18_12   sparse    Teganfort Heights        small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=194400/7200  ["small_below_floor"]
+  tile_18_13   sparse    Teganfort Hills - Southw small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=194400/7200  ["small_below_floor"]
+  tile_18_18   sparse    Ashmouth Coast           small=2 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=104959/7200  ["small_below_floor"]
+  tile_18_2    sparse    Leathertown Hills - West small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=215412/7200  ["small_below_floor"]
+  tile_18_5    sparse    Sable River Ford         small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=126394/7200  ["small_below_floor"]
+  tile_19_10   sparse    The Mound                small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=156652/7200  ["small_below_floor"]
+  tile_19_11   sparse    Teganfort Hills - North  small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=179001/7200  ["small_below_floor"]
+  tile_19_17   sparse    Ashmouth Farmlands       small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=194400/7200  ["small_below_floor"]
+  tile_19_18   sparse    Ashmouth Shore - Southea small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=182665/7200  ["small_below_floor"]
+  tile_19_2    sparse    Leathertown Heights      small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=230035/7200  ["small_below_floor"]
+  tile_19_3    sparse    Leathertown Hills - Cent small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=226593/7200  ["small_below_floor"]
+  tile_19_6    sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=203010/7200  ["small_below_floor"]
+  tile_19_8    sparse    Patran City Heights      small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=194400/7200  ["small_below_floor"]
+  tile_19_9    sparse    Patran City Hills - Sout small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=194400/7200  ["small_below_floor"]
+  tile_20_17   sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=196594/7200  ["small_below_floor"]
+  tile_20_2    sparse    Leathertown Fields       small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=146761/7200  ["small_below_floor"]
+  tile_20_4    sparse    Long Valley Shore - West small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=226192/7200  ["small_below_floor"]
+  tile_20_5    sparse    Long Valley Shore - Sout small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=157524/7200  ["small_below_floor"]
+  tile_21_13   sparse    Knot Valley Coast        small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=188508/7200  ["small_below_floor"]
+  tile_21_14   sparse    Knot Valley Shore - Sout small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=212065/7200  ["small_below_floor"]
+  tile_21_8    sparse    Kingstown Heights        small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=194400/7200  ["small_below_floor"]
+  tile_21_9    sparse    Black Hills              small=0 (min 3, max 10)  large=1 (min 0, max 2)  park=0 (min -1)  dry=226593/7200  ["small_below_floor"]
+  tile_22_12   sparse    Knot Valley Beach        small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=159222/7200  ["small_below_floor"]
+  tile_22_13   sparse    Knot Valley Shore - Sout small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=214409/7200  ["small_below_floor"]
+  tile_22_15   sparse                             small=0 (min 3, max 10)  large=1 (min 0, max 2)  park=1 (min -1)  dry=192531/7200  ["small_below_floor"]
+  tile_22_3    sparse    Long Valley Beach        small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=225272/7200  ["small_below_floor"]
+  tile_22_6    sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=196609/7200  ["small_below_floor"]
+  tile_22_7    sparse                             small=11 (min 3, max 10)  large=7 (min 0, max 2)  park=1 (min -1)  dry=193231/7200  ["small_above_cap", "large_above_cap"]
+  tile_22_8    sparse                             small=10 (min 3, max 10)  large=11 (min 0, max 2)  park=0 (min -1)  dry=194400/7200  ["large_above_cap"]
+  tile_22_9    sparse    Amber Hills              small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=165322/7200  ["small_below_floor"]
+  tile_23_1    sparse    North Aspland Shore - No small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=228649/7200  ["small_below_floor"]
+  tile_23_10   sparse    Blue Mountains Heights   small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=161497/7200  ["small_below_floor"]
+  tile_23_6    sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=209302/7200  ["small_below_floor"]
+  tile_23_9    sparse                             small=10 (min 3, max 10)  large=24 (min 0, max 2)  park=0 (min -1)  dry=176865/7200  ["large_above_cap"]
+  tile_24_10   sparse    Hell's Teeth             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=182286/7200  ["small_below_floor"]
+  tile_24_12   sparse    Tallow River Valley Shor small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=162143/7200  ["small_below_floor"]
+  tile_24_13   sparse    Tallow River Valley Coas small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=136673/7200  ["small_below_floor"]
+  tile_24_2    sparse    North Aspland Beach      small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=214777/7200  ["small_below_floor"]
+  tile_24_5    sparse    Gold Arm Shore - West    small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=1 (min -1)  dry=190694/7200  ["small_below_floor"]
+  tile_25_10   sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=182808/7200  ["small_below_floor"]
+  tile_25_11   sparse    Hills of the Dawn        small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=194400/7200  ["small_below_floor"]
+  tile_25_12   sparse    Heron River Valley       small=2 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=151772/7200  ["small_below_floor"]
+  tile_25_13   sparse    Tallow River Valley Fiel small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=182202/7200  ["small_below_floor"]
+  tile_25_14   sparse    Tallow River Valley Shor small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=160588/7200  ["small_below_floor"]
+  tile_25_2    sparse    North Aspland Coast      small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=242520/7200  ["small_below_floor"]
+  tile_25_3    sparse    Wren River Bend          small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=152303/7200  ["small_below_floor"]
+  tile_25_5    sparse    Gold Arm Fields          small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=1 (min -1)  dry=184409/7200  ["small_below_floor"]
+  tile_26_13   sparse    Southlake Hills Beach    small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=217498/7200  ["small_below_floor"]
+  tile_26_3    sparse    Asp City Fields          small=2 (min 3, max 10)  large=0 (min 0, max 2)  park=1 (min -1)  dry=111010/7200  ["small_below_floor"]
+  tile_26_4    sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=211698/7200  ["small_below_floor"]
+  tile_26_5    sparse    Gold Arm Coast           small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=228174/7200  ["small_below_floor"]
+  tile_26_9    sparse                             small=4 (min 3, max 10)  large=3 (min 0, max 2)  park=0 (min -1)  dry=180944/7200  ["large_above_cap"]
+  tile_27_14   sparse    Southlake Hills Coast    small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=226324/7200  ["small_below_floor"]
+  tile_27_15   sparse    Southlake Hills Heights  small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=145764/7200  ["small_below_floor"]
+  tile_27_18   sparse    Farpoint Shore - Southwe small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=228464/7200  ["small_below_floor"]
+  tile_28_14   sparse    Southlake Hills Shore -  small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=155668/7200  ["small_below_floor"]
+  tile_28_15   sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=191399/7200  ["small_below_floor"]
+  tile_28_16   sparse    Farpoint Shore - North   small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=191296/7200  ["small_below_floor"]
+  tile_28_17   sparse    Farpoint Beach           small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=223367/7200  ["small_below_floor"]
+  tile_29_12   sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=188863/7200  ["small_below_floor"]
+  tile_3_13    sparse    Sandy Shore Beach        small=1 (min 3, max 10)  large=2 (min 0, max 2)  park=0 (min -1)  dry=227031/7200  ["small_below_floor"]
+  tile_3_18    sparse    Holyfinger Shore - West  small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=142411/7200  ["small_below_floor"]
+  tile_3_5     sparse    Klade Estuary Beach      small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=211004/7200  ["small_below_floor"]
+  tile_4_17    sparse    Holyfinger Coast         small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=229045/7200  ["small_below_floor"]
+  tile_4_2     sparse    Shoulderland Beach       small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=217705/7200  ["small_below_floor"]
+  tile_4_5     sparse    Amber River Valley       small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=209146/7200  ["small_below_floor"]
+  tile_5_13    sparse                             small=2 (min 3, max 10)  large=2 (min 0, max 2)  park=1 (min -1)  dry=193630/7200  ["small_below_floor"]
+  tile_5_16    sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=193992/7200  ["small_below_floor"]
+  tile_5_3     sparse    Shoulderland Hills - Sou small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=229091/7200  ["small_below_floor"]
+  tile_5_5     sparse    Seasalt Flats            small=2 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=174382/7200  ["small_below_floor"]
+  tile_5_6     sparse    Pepper Valley Fields     small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=215412/7200  ["small_below_floor"]
+  tile_5_8     sparse    Crying Shore Beach       small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=169611/7200  ["small_below_floor"]
+  tile_5_9     sparse    Stoneshore Fields        small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=184634/7200  ["small_below_floor"]
+  tile_6_15    sparse    Peatsfield Shore - North small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=215058/7200  ["small_below_floor"]
+  tile_6_16    sparse    Peatsfield Heights       small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=229090/7200  ["small_below_floor"]
+  tile_6_17    sparse    Holyfinger Shore - Centr small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=179800/7200  ["small_below_floor"]
+  tile_6_2     sparse    Shoulderland Heights     small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=253714/7200  ["small_below_floor"]
+  tile_6_3     sparse    Shoulderland Hills - Sou small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=229091/7200  ["small_below_floor"]
+  tile_6_4     sparse    Pepper Valley Farmlands  small=2 (min 3, max 10)  large=1 (min 0, max 2)  park=0 (min -1)  dry=215412/7200  ["small_below_floor"]
+  tile_6_7     sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=194400/7200  ["small_below_floor"]
+  tile_6_8     sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=194400/7200  ["small_below_floor"]
+  tile_6_9     sparse    Stoneshore Coast         small=0 (min 3, max 10)  large=2 (min 0, max 2)  park=0 (min -1)  dry=139393/7200  ["small_below_floor"]
+  tile_7_10    sparse    Snare Harbour Coast      small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=187123/7200  ["small_below_floor"]
+  tile_7_12    sparse    Snare Harbour Beach      small=2 (min 3, max 10)  large=2 (min 0, max 2)  park=0 (min -1)  dry=127437/7200  ["small_below_floor"]
+  tile_7_16    sparse    Peatsfield Coast         small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=256528/7200  ["small_below_floor"]
+  tile_7_17    sparse    Peatsfield Beach         small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=242080/7200  ["small_below_floor"]
+  tile_7_3     sparse    Klades Bourne Heights    small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=263765/7200  ["small_below_floor"]
+  tile_7_4     sparse                             small=1 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=229091/7200  ["small_below_floor"]
+  tile_7_9     sparse                             small=1 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=178521/7200  ["small_below_floor"]
+  tile_8_14    sparse    Arin Hold Heights        small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=230985/7200  ["small_below_floor"]
+  tile_8_15    sparse    Arin Hold Coast          small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=216454/7200  ["small_below_floor"]
+  tile_8_3     sparse    Klades Bourne Hills - So small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=145497/7200  ["small_below_floor"]
+  tile_8_6     sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=215412/7200  ["small_below_floor"]
+  tile_8_7     sparse    Chainsholme Valley       small=14 (min 3, max 10)  large=6 (min 0, max 2)  park=0 (min -1)  dry=181080/7200  ["small_above_cap", "large_above_cap"]
+  tile_8_9     sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=178167/7200  ["small_below_floor"]
+  tile_9_10    sparse    Pebble Ridge Heights     small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=226593/7200  ["small_below_floor"]
+  tile_9_11    sparse    Green Flats Commons      small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=223264/7200  ["small_below_floor"]
+  tile_9_15    sparse    Larch River Valley       small=2 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=38039/7200  ["small_below_floor"]
+  tile_9_5     sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=229090/7200  ["small_below_floor"]
+  tile_9_6     sparse                             small=0 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=160813/7200  ["small_below_floor"]
+  tile_9_7     sparse    Chainsholme              small=2 (min 3, max 10)  large=0 (min 0, max 2)  park=0 (min -1)  dry=122049/7200  ["small_below_floor"]
+  tile_10_16   urban     Arin City Old Quarter    small=24 (min 10, max -1)  large=24 (min 3, max -1)  park=1 (min 2)  dry=201300/38400  ["green_below_floor"]
+  tile_10_17   urban     Arin City Docks          small=16 (min 10, max -1)  large=14 (min 3, max -1)  park=1 (min 2)  dry=194204/38400  ["green_below_floor"]
+  tile_10_18   urban     Arin City The Wharf      small=4 (min 10, max -1)  large=15 (min 3, max -1)  park=4 (min 2)  dry=187198/38400  ["small_below_floor"]
+  tile_10_3    urban     Lightning Bourne         small=10 (min 10, max -1)  large=0 (min 3, max -1)  park=0 (min 2)  dry=189873/38400  ["large_below_floor", "green_below_floor"]
+  tile_11_12   urban     Green Flats              small=8 (min 10, max -1)  large=0 (min 3, max -1)  park=0 (min 2)  dry=209653/38400  ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_12_17   urban     Arin City Market Row     small=7 (min 10, max -1)  large=12 (min 3, max -1)  park=6 (min 2)  dry=188742/38400  ["small_below_floor"]
+  tile_12_9    urban     Copperstown Docks        small=6 (min 10, max -1)  large=1 (min 3, max -1)  park=1 (min 2)  dry=173682/38400  ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_13_15   urban     Tomash                   small=7 (min 10, max -1)  large=0 (min 3, max -1)  park=0 (min 2)  dry=208381/38400  ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_13_2    urban     Port Lightning Old Quart small=15 (min 10, max -1)  large=1 (min 3, max -1)  park=0 (min 2)  dry=227819/38400  ["large_below_floor", "green_below_floor"]
+  tile_14_17   urban     Lighthaven               small=11 (min 10, max -1)  large=4 (min 3, max -1)  park=1 (min 2)  dry=215990/38400  ["green_below_floor"]
+  tile_14_18   urban     Lighthaven Docks         small=14 (min 10, max -1)  large=4 (min 3, max -1)  park=0 (min 2)  dry=197821/38400  ["green_below_floor"]
+  tile_14_2    urban     Port Lightning           small=8 (min 10, max -1)  large=4 (min 3, max -1)  park=2 (min 2)  dry=176408/38400  ["small_below_floor"]
+  tile_14_3    urban     Port Lightning Docks     small=9 (min 10, max -1)  large=4 (min 3, max -1)  park=2 (min 2)  dry=210075/38400  ["small_below_floor"]
+  tile_14_6    urban     Arinnal                  small=5 (min 10, max -1)  large=0 (min 3, max -1)  park=0 (min 2)  dry=167872/38400  ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_14_9    urban     Copperstown Works        small=7 (min 10, max -1)  large=3 (min 3, max -1)  park=1 (min 2)  dry=210662/38400  ["small_below_floor", "green_below_floor"]
+  tile_15_14   urban     New Tegan                small=6 (min 10, max -1)  large=0 (min 3, max -1)  park=0 (min 2)  dry=171278/38400  ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_16_19   urban                              small=15 (min 10, max -1)  large=0 (min 3, max -1)  park=0 (min 2)  dry=184512/38400  ["large_below_floor", "green_below_floor"]
+  tile_17_8    urban     Patran City Docks        small=9 (min 10, max -1)  large=2 (min 3, max -1)  park=0 (min 2)  dry=146705/38400  ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_18_14   urban     Teganfort Industrial Zon small=12 (min 10, max -1)  large=2 (min 3, max -1)  park=0 (min 2)  dry=175735/38400  ["large_below_floor", "green_below_floor"]
+  tile_18_16   urban     Ashmouth                 small=5 (min 10, max -1)  large=0 (min 3, max -1)  park=0 (min 2)  dry=168372/38400  ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_18_3    urban     Leathertown              small=5 (min 10, max -1)  large=0 (min 3, max -1)  park=0 (min 2)  dry=199356/38400  ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_18_9    urban     Patran City Works        small=17 (min 10, max -1)  large=2 (min 3, max -1)  park=1 (min 2)  dry=198173/38400  ["large_below_floor", "green_below_floor"]
+  tile_19_12   urban     Teganfort Docks          small=12 (min 10, max -1)  large=9 (min 3, max -1)  park=1 (min 2)  dry=201152/38400  ["green_below_floor"]
+  tile_19_13   urban     Teganfort                small=21 (min 10, max -1)  large=8 (min 3, max -1)  park=1 (min 2)  dry=195831/38400  ["green_below_floor"]
+  tile_19_14   urban     Teganfort Old Quarter    small=14 (min 10, max -1)  large=1 (min 3, max -1)  park=2 (min 2)  dry=229911/38400  ["large_below_floor"]
+  tile_20_11   urban     Teganfort The Wharf      small=16 (min 10, max -1)  large=0 (min 3, max -1)  park=0 (min 2)  dry=180836/38400  ["large_below_floor", "green_below_floor"]
+  tile_20_6    urban     Kingstown Old Quarter    small=11 (min 10, max -1)  large=3 (min 3, max -1)  park=1 (min 2)  dry=205401/38400  ["green_below_floor"]
+  tile_20_7    urban     Kingstown                small=15 (min 10, max -1)  large=5 (min 3, max -1)  park=1 (min 2)  dry=224473/38400  ["green_below_floor"]
+  tile_20_8    urban     Kingstown Works          small=6 (min 10, max -1)  large=3 (min 3, max -1)  park=0 (min 2)  dry=203879/38400  ["small_below_floor", "green_below_floor"]
+  tile_21_17   urban     Vandel Port Docks        small=12 (min 10, max -1)  large=3 (min 3, max -1)  park=1 (min 2)  dry=216742/38400  ["green_below_floor"]
+  tile_21_18   urban     Vandel Port Old Quarter  small=7 (min 10, max -1)  large=5 (min 3, max -1)  park=2 (min 2)  dry=184740/38400  ["small_below_floor"]
+  tile_22_16   urban     Vandel Port              small=7 (min 10, max -1)  large=5 (min 3, max -1)  park=0 (min 2)  dry=211774/38400  ["small_below_floor", "green_below_floor"]
+  tile_22_4    urban     Long Valley Docks        small=7 (min 10, max -1)  large=1 (min 3, max -1)  park=4 (min 2)  dry=170902/38400  ["small_below_floor", "large_below_floor"]
+  tile_23_16   urban     Vandel Port Works        small=21 (min 10, max -1)  large=4 (min 3, max -1)  park=0 (min 2)  dry=182291/38400  ["green_below_floor"]
+  tile_23_18   urban     Vandel Island            small=8 (min 10, max -1)  large=0 (min 3, max -1)  park=0 (min 2)  dry=226246/38400  ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_23_2    urban     North Aspland            small=7 (min 10, max -1)  large=0 (min 3, max -1)  park=0 (min 2)  dry=170328/38400  ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_23_8    urban     Capital Port Market Row  small=61 (min 10, max -1)  large=18 (min 3, max -1)  park=0 (min 2)  dry=222062/38400  ["green_below_floor"]
+  tile_24_17   urban                              small=4 (min 10, max -1)  large=0 (min 3, max -1)  park=0 (min 2)  dry=186954/38400  ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_24_3    urban                              small=8 (min 10, max -1)  large=0 (min 3, max -1)  park=0 (min 2)  dry=182467/38400  ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_24_7    urban     Capital Port The Wharf   small=13 (min 10, max -1)  large=1 (min 3, max -1)  park=0 (min 2)  dry=153534/38400  ["large_below_floor", "green_below_floor"]
+  tile_24_8    urban     Capital Port Docks       small=29 (min 10, max -1)  large=6 (min 3, max -1)  park=1 (min 2)  dry=207709/38400  ["green_below_floor"]
+  tile_25_9    urban     Capital Port             small=17 (min 10, max -1)  large=0 (min 3, max -1)  park=7 (min 2)  dry=183807/38400  ["large_below_floor"]
+  tile_26_14   urban     Southlake                small=10 (min 10, max -1)  large=1 (min 3, max -1)  park=2 (min 2)  dry=196727/38400  ["large_below_floor"]
+  tile_26_15   urban     Southlake Docks          small=7 (min 10, max -1)  large=3 (min 3, max -1)  park=0 (min 2)  dry=201127/38400  ["small_below_floor", "green_below_floor"]
+  tile_26_6    urban     Gold Arm                 small=20 (min 10, max -1)  large=10 (min 3, max -1)  park=1 (min 2)  dry=198207/38400  ["green_below_floor"]
+  tile_26_8    urban     Capital Port Industrial  small=28 (min 10, max -1)  large=1 (min 3, max -1)  park=1 (min 2)  dry=220075/38400  ["large_below_floor", "green_below_floor"]
+  tile_27_12   urban     Hollow Ring Docks        small=8 (min 10, max -1)  large=6 (min 3, max -1)  park=0 (min 2)  dry=191773/38400  ["small_below_floor", "green_below_floor"]
+  tile_27_3    urban     Asp City                 small=12 (min 10, max -1)  large=5 (min 3, max -1)  park=0 (min 2)  dry=173700/38400  ["green_below_floor"]
+  tile_27_4    urban     Asp City Docks           small=17 (min 10, max -1)  large=3 (min 3, max -1)  park=0 (min 2)  dry=201494/38400  ["green_below_floor"]
+  tile_27_7    urban     Gold Arm Docks           small=7 (min 10, max -1)  large=5 (min 3, max -1)  park=0 (min 2)  dry=206224/38400  ["small_below_floor", "green_below_floor"]
+  tile_27_9    urban     Capital Port Foundry     small=31 (min 10, max -1)  large=7 (min 3, max -1)  park=0 (min 2)  dry=167482/38400  ["green_below_floor"]
+  tile_28_3    urban     Asp City Old Quarter     small=6 (min 10, max -1)  large=4 (min 3, max -1)  park=4 (min 2)  dry=181890/38400  ["small_below_floor"]
+  tile_28_7    urban     Gold Arm Industrial Zone small=11 (min 10, max -1)  large=1 (min 3, max -1)  park=0 (min 2)  dry=198816/38400  ["large_below_floor", "green_below_floor"]
+  tile_29_17   urban     Farpoint                 small=16 (min 10, max -1)  large=0 (min 3, max -1)  park=0 (min 2)  dry=197639/38400  ["large_below_floor", "green_below_floor"]
+  tile_2_12    urban     Sandy Shore              small=32 (min 10, max -1)  large=3 (min 3, max -1)  park=1 (min 2)  dry=191060/38400  ["green_below_floor"]
+  tile_2_15    urban     Blackfarm                small=9 (min 10, max -1)  large=6 (min 3, max -1)  park=2 (min 2)  dry=189547/38400  ["small_below_floor"]
+  tile_2_16    urban     Blackfarm Docks          small=13 (min 10, max -1)  large=0 (min 3, max -1)  park=1 (min 2)  dry=196897/38400  ["large_below_floor", "green_below_floor"]
+  tile_2_4     urban     Klade Estuary            small=36 (min 10, max -1)  large=0 (min 3, max -1)  park=3 (min 2)  dry=185504/38400  ["large_below_floor"]
+  tile_3_12    urban     Sandy Shore Docks        small=6 (min 10, max -1)  large=1 (min 3, max -1)  park=1 (min 2)  dry=193330/38400  ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_3_15    urban     Blackfarm Old Quarter    small=17 (min 10, max -1)  large=9 (min 3, max -1)  park=1 (min 2)  dry=204022/38400  ["green_below_floor"]
+  tile_3_3     urban     Klade Estuary Docks      small=7 (min 10, max -1)  large=1 (min 3, max -1)  park=0 (min 2)  dry=210152/38400  ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_3_8     urban     Crying Shore             small=8 (min 10, max -1)  large=0 (min 3, max -1)  park=0 (min 2)  dry=181699/38400  ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_4_10    urban     Stoneshore Old Quarter   small=9 (min 10, max -1)  large=7 (min 3, max -1)  park=5 (min 2)  dry=187491/38400  ["small_below_floor"]
+  tile_5_4     urban     Pepper Valley            small=54 (min 10, max -1)  large=0 (min 3, max -1)  park=1 (min 2)  dry=201048/38400  ["large_below_floor", "green_below_floor"]
+  tile_6_12    urban     Fort Silversworth Works  small=8 (min 10, max -1)  large=5 (min 3, max -1)  park=1 (min 2)  dry=202940/38400  ["small_below_floor", "green_below_floor"]
+  tile_6_14    urban     Fort Silversworth Old Qu small=16 (min 10, max -1)  large=1 (min 3, max -1)  park=2 (min 2)  dry=216452/38400  ["large_below_floor"]
+  tile_6_19    urban                              small=5 (min 10, max -1)  large=0 (min 3, max -1)  park=0 (min 2)  dry=183872/38400  ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_6_5     urban     Pepper Valley Docks      small=3 (min 10, max -1)  large=3 (min 3, max -1)  park=3 (min 2)  dry=188829/38400  ["small_below_floor"]
+  tile_7_11    urban     Snare Harbour            small=8 (min 10, max -1)  large=0 (min 3, max -1)  park=0 (min 2)  dry=192380/38400  ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_7_7     urban                              small=4 (min 10, max -1)  large=0 (min 3, max -1)  park=0 (min 2)  dry=194400/38400  ["small_below_floor", "large_below_floor", "green_below_floor"]
+  tile_8_5     urban                              small=10 (min 10, max -1)  large=0 (min 3, max -1)  park=0 (min 2)  dry=179049/38400  ["large_below_floor", "green_below_floor"]
+  tile_9_8     urban     Silkstown                small=19 (min 10, max -1)  large=6 (min 3, max -1)  park=0 (min 2)  dry=181866/38400  ["green_below_floor"]
+  tile_9_9     urban     Silkstown Docks          small=10 (min 10, max -1)  large=0 (min 3, max -1)  park=4 (min 2)  dry=181738/38400  ["large_below_floor"]
