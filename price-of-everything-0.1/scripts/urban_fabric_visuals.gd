@@ -53,6 +53,8 @@ const MORPH_COAST_EDGE_SAMPLES := 7
 const MORPH_COAST_MIN_GAP := 26.0
 const MORPH_COAST_OVERSHOOT := 24.0
 const MORPH_COAST_FRONT_INSET := 12.0
+const MORPH_COAST_FRONT_SPAN := 0.52
+const MORPH_COAST_FRONT_DEPTH := 38.0
 const MORPH_COAST_SPUR_START := 0.30
 ## The extent and the growth-intensity field are two faces of the same district
 ## field.  Growing the extent alone hands the new waterfront to the low-intensity
@@ -1465,7 +1467,7 @@ func _morph_district_field(specs: Array, road_segments: Array,
 			var shore := _morph_open_water_distance(core_position, direction)
 			if shore < 0.0:
 				continue
-			var frontage_half := clampf(core_radius * 0.80, 68.0, 126.0)
+			var frontage_half := clampf(core_radius * MORPH_COAST_FRONT_SPAN, 56.0, 92.0)
 			var reach := shore
 			if reach <= core_radius + MORPH_COAST_MIN_GAP:
 				continue
@@ -1480,7 +1482,7 @@ func _morph_district_field(specs: Array, road_segments: Array,
 			var shore_normal := Vector2(-direction.y, direction.x)
 			cells.append(_morph_organic_field_cell(
 				core_position + direction * maxf(0.0, reach - MORPH_COAST_FRONT_INSET),
-				shore_normal, frontage_half, 44.0,
+				shore_normal, frontage_half, MORPH_COAST_FRONT_DEPTH,
 				"%s|%s|coast-front|%d" % [component_key, str(spec.id), edge_index]))
 			tile_coastal_bearings.append({
 				"direction": direction,
