@@ -96,6 +96,13 @@ var _dry_land_rejections: Dictionary = {}
 var _footprint_signal_source: Node = null
 var _explicit_profiles: Dictionary = {}
 var _far_plate_active := false
+## Read-only record of the SANITIZED decorative geometry the mid-century style
+## actually renders. Filled at the end of every rebuild, AFTER the dry-land and
+## gameplay-collision guards have removed entries, so the density audit measures
+## what is drawn rather than what was requested. Draw-only: never read by the
+## simulation, occupancy, placement legality, click testing or save data.
+var _render_mass_entries: Array = []
+var _render_park_entries: Array = []
 
 var _metrics := {
 	"tiles": 0, "parcels": 0, "blocks": 0, "parks": 0, "open_lots": 0,
@@ -200,6 +207,8 @@ func _rebuild() -> void:
 	_active_relief_roofs = []
 	_accommodation_sites = []
 	_decorative_mass_records = []
+	_render_mass_entries = []
+	_render_park_entries = []
 	_urban_audit_components = []
 	_dry_land_rejections = {"block": 0, "shadow": 0, "accommodation": 0}
 	_rural_growth_records = {}
@@ -284,6 +293,11 @@ func _rebuild() -> void:
 		"roof_shadow": roof_shadow_entries,
 		"roof_top": roof_top_entries,
 	})
+
+	# The sanitized arrays are the render truth: everything below draws from
+	# them, and so does the per-tile density audit.
+	_render_mass_entries = block_entries
+	_render_park_entries = park_entries
 
 	_parcel_mesh = _fill_mesh(parcel_entries)
 	_yard_mesh = _fill_mesh(yard_entries)
@@ -1094,7 +1108,8 @@ func _add_industry_support_mass(poly: PackedVector2Array, tangent: Vector2,
 	})
 	var top := MapMidcenturyStyle.gameplay_block_top(family).lerp(
 		MapMidcenturyStyle.URBAN_EDGE[0], 0.42)
-	block_entries.append({"poly": poly, "color": top})
+	block_entries.append({"poly": poly, "color": top,
+		"kind": "industry_support"})
 	_append_ring(_block_edges, poly)
 	var center := _poly_center(poly)
 	var axis := tangent.normalized()
@@ -1574,7 +1589,7 @@ func _add_dense_core_block(poly: PackedVector2Array, tangent: Vector2,
 	var top := MapMidcenturyStyle.urban_block(key, density)
 	if color_cluster != "":
 		top = MapMidcenturyStyle.urban_block_cluster(color_cluster, key, density)
-	block_entries.append({"poly": poly, "color": top})
+	block_entries.append({"poly": poly, "color": top, "kind": "core"})
 	_append_ring(_block_edges, poly)
 	_metrics.blocks = int(_metrics.blocks) + 1
 	var center := _poly_center(poly)
@@ -3707,7 +3722,8 @@ func _draw_accommodation_sites(sites: Array, parcel_entries: Array,
 		var key := str(site.key)
 		if use == "releasable_park":
 			park_entries.append({"poly": poly,
-				"color": MapMidcenturyStyle.park(key)})
+				"color": MapMidcenturyStyle.park(key),
+				"kind": "accommodation_park"})
 			_append_ring(_block_edges, poly)
 			_hero_add_park_mark(poly)
 		elif use in ["releasable_yard", "industrial_growth"]:
@@ -3929,7 +3945,8 @@ func _morph_add_face(record: Dictionary, footprint_exclusions: Array,
 		for park_value in park_sources:
 			for piece_value in _hero_clip_polys([park_value], footprint_exclusions, 120.0):
 				var piece: PackedVector2Array = piece_value
-				park_entries.append({"poly": piece, "color": MapMidcenturyStyle.park(key)})
+				park_entries.append({"poly": piece,
+					"color": MapMidcenturyStyle.park(key), "kind": "green"})
 				_active_relief_fills.append({"key": "%s|park" % key,
 					"poly": piece.duplicate(), "role": "park"})
 				_append_ring(_block_edges, piece)
@@ -4049,7 +4066,8 @@ func _morph_add_small_town_micro(face: PackedVector2Array, key: String,
 					continue
 				if pocket:
 					park_entries.append({"poly": piece,
-						"color": MapMidcenturyStyle.park(child_key)})
+						"color": MapMidcenturyStyle.park(child_key),
+						"kind": "green"})
 					_append_ring(_block_edges, piece)
 					_hero_add_park_mark(piece)
 					green_area += _poly_area(piece)
@@ -5134,7 +5152,8 @@ func _hero_add_face(face: PackedVector2Array, key: String, color_cluster: String
 		for park_value in _hero_inset_polys(face, _rr("%s|park-inset" % key, 2.8, 5.2)):
 			for piece_value in _hero_clip_polys([park_value], footprint_exclusions, 140.0):
 				var piece: PackedVector2Array = piece_value
-				park_entries.append({"poly": piece, "color": MapMidcenturyStyle.park(key)})
+				park_entries.append({"poly": piece,
+					"color": MapMidcenturyStyle.park(key), "kind": "green"})
 				_append_ring(_block_edges, piece)
 				green_area += _poly_area(piece)
 				_hero_add_park_mark(piece)
@@ -5287,7 +5306,9 @@ func _hero_add_street_walls(face: PackedVector2Array, key: String, color_cluster
 		if RoadHash.pick("%s|court-green|%d" % [key, i], 100) < green_cut:
 			for piece_value in _hero_clip_polys([court], footprint_exclusions, 140.0):
 				var piece: PackedVector2Array = piece_value
-				park_entries.append({"poly": piece, "color": MapMidcenturyStyle.park("%s|court" % key)})
+				park_entries.append({"poly": piece,
+					"color": MapMidcenturyStyle.park("%s|court" % key),
+					"kind": "courtyard"})
 				_append_ring(_block_edges, piece)
 				green_area += _poly_area(piece)
 				_hero_add_park_mark(piece)
@@ -5612,7 +5633,9 @@ func _add_enclosed_corner(center: Vector2, tangent: Vector2, length: float, dept
 	var court_depth := maxf(11.0, depth - wing * 2.0 - 3.0)
 	var court := _irregular_lot(center, t, court_length, court_depth, "%s|inner" % key)
 	if RoadHash.pick("mc-court-green|%s" % key, 100) < 28:
-		park_entries.append({"poly": court, "color": MapMidcenturyStyle.park("%s|inner" % key)})
+		park_entries.append({"poly": court,
+			"color": MapMidcenturyStyle.park("%s|inner" % key),
+			"kind": "courtyard"})
 		_metrics.parks = int(_metrics.parks) + 1
 		var bend := center + n * court_depth * 0.18
 		_append_line(_park_marks, center - t * court_length * 0.30, bend)
@@ -5651,7 +5674,7 @@ func _add_block(poly: PackedVector2Array, tangent: Vector2, density: float, key:
 	var top := MapMidcenturyStyle.urban_block(key, density)
 	if color_cluster != "":
 		top = MapMidcenturyStyle.urban_block_cluster(color_cluster, key, density)
-	block_entries.append({"poly": poly, "color": top})
+	block_entries.append({"poly": poly, "color": top, "kind": "ordinary"})
 	if _active_plan != null:
 		_active_plan.masses.append({
 			"key": key,
@@ -5751,7 +5774,8 @@ func _add_park(center: Vector2, tangent: Vector2, length: float, depth: float,
 		key: String, park_entries: Array) -> void:
 	var park_poly := _irregular_lot(center, tangent, maxf(18.0, length - 5.0),
 		maxf(16.0, depth - 5.0), "%s|park" % key)
-	park_entries.append({"poly": park_poly, "color": MapMidcenturyStyle.park(key)})
+	park_entries.append({"poly": park_poly,
+		"color": MapMidcenturyStyle.park(key), "kind": "park"})
 	_append_ring(_block_edges, park_poly)
 	var n := Vector2(-tangent.y, tangent.x)
 	var u := minf(length * 0.25, 16.0)
@@ -6188,6 +6212,81 @@ func accommodation_planning_snapshot() -> Dictionary:
 	return {
 		"sites": _accommodation_sites.duplicate(true),
 		"decorative_masses": _decorative_mass_records.duplicate(true),
+	}
+
+## Read-only seam for the per-tile density audit (docs/map-density-and-port-
+## addendum.md section 6). Returns every decorative mass and green polygon that
+## SURVIVED both sanitisation guards, tagged with the kind that produced it.
+## Gameplay buildings are not here — they are drawn by BuildingVisuals and are
+## frozen — so nothing in this snapshot is countable gameplay geometry.
+func density_audit_snapshot() -> Dictionary:
+	var masses: Array = []
+	for entry_value in _render_mass_entries:
+		var entry: Dictionary = entry_value
+		var poly: PackedVector2Array = entry.get("poly", PackedVector2Array())
+		if poly.size() < 3:
+			continue
+		masses.append({
+			"kind": str(entry.get("kind", "ordinary")),
+			"poly": poly.duplicate(),
+			"area": _poly_area(poly),
+			"center": _poly_center(poly),
+		})
+	var greens: Array = []
+	for entry_value in _render_park_entries:
+		var entry: Dictionary = entry_value
+		var poly: PackedVector2Array = entry.get("poly", PackedVector2Array())
+		if poly.size() < 3:
+			continue
+		greens.append({
+			"kind": str(entry.get("kind", "green")),
+			"poly": poly.duplicate(),
+			"area": _poly_area(poly),
+			"center": _poly_center(poly),
+		})
+	return {"masses": masses, "greens": greens,
+		"large_mass_area_threshold": DensityAudit.LARGE_MASS_AREA}
+
+## Dry BUILDABLE area of one tile, using the exact exclusion vocabulary the
+## fabric itself builds against: the shared water margin, forest discs, relief
+## shoulders and gameplay footprints. Read-only; changes nothing.
+func tile_dry_buildable_area(coord: Vector2i) -> Dictionary:
+	if _terrain == null or not _terrain.tiles.has(coord):
+		return {}
+	var center := _terrain.map_to_local(_terrain.map_coord_for_tile_coord(coord))
+	var hex := PackedVector2Array()
+	for vertex in HEX_VERTS:
+		hex.append(center + vertex)
+	var hex_area := _poly_area(hex)
+	var water_exclusions := _hero_water_exclusions(_bbox(hex))
+	var dry_pieces := _hero_clip_polys([hex], water_exclusions, 1.0)
+	var dry_land_area := 0.0
+	for piece_value in dry_pieces:
+		dry_land_area += _poly_area(piece_value)
+	var forest_discs: Array = []
+	if _forests != null and _forests.has_method("discs_on_tile"):
+		forest_discs = _forests.discs_on_tile(coord)
+	var footprints: Array = []
+	if _buildings != null and _buildings.has_method("footprint_rects_on_tile"):
+		footprints = _buildings.footprint_rects_on_tile(coord)
+	var relief := _relief_geometry_for_extents([hex])
+	var shoulders: Array = relief.get("shoulders", [])
+	var buildable_exclusions: Array = []
+	buildable_exclusions.append_array(_hero_forest_exclusions(forest_discs))
+	buildable_exclusions.append_array(shoulders)
+	buildable_exclusions.append_array(_hero_footprint_exclusions(footprints))
+	var buildable_pieces := _hero_clip_polys(dry_pieces, buildable_exclusions, 1.0)
+	var buildable_area := 0.0
+	for piece_value in buildable_pieces:
+		buildable_area += _poly_area(piece_value)
+	return {
+		"hex_area": hex_area,
+		"dry_land_area": dry_land_area,
+		"dry_buildable_area": buildable_area,
+		"water_margin_area": hex_area - dry_land_area,
+		"forest_disc_count": forest_discs.size(),
+		"gameplay_footprint_count": footprints.size(),
+		"relief_shoulder_count": shoulders.size(),
 	}
 
 func settlement_plan(plan_key: String) -> SettlementPlan:
