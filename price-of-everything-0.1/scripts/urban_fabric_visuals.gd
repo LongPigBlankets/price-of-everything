@@ -6247,47 +6247,75 @@ func density_audit_snapshot() -> Dictionary:
 	return {"masses": masses, "greens": greens,
 		"large_mass_area_threshold": DensityAudit.LARGE_MASS_AREA}
 
-## Dry BUILDABLE area of one tile, using the exact exclusion vocabulary the
-## fabric itself builds against: the shared water margin, forest discs, relief
+## Dry BUILDABLE area per tile, using the exact exclusion vocabulary the fabric
+## itself builds against: the shared water margin, forest discs, relief
 ## shoulders and gameplay footprints. Read-only; changes nothing.
-func tile_dry_buildable_area(coord: Vector2i) -> Dictionary:
-	if _terrain == null or not _terrain.tiles.has(coord):
-		return {}
-	var center := _terrain.map_to_local(_terrain.map_coord_for_tile_coord(coord))
-	var hex := PackedVector2Array()
-	for vertex in HEX_VERTS:
-		hex.append(center + vertex)
-	var hex_area := _poly_area(hex)
-	var water_exclusions := _hero_water_exclusions(_bbox(hex))
-	var dry_pieces := _hero_clip_polys([hex], water_exclusions, 1.0)
-	var dry_land_area := 0.0
-	for piece_value in dry_pieces:
-		dry_land_area += _poly_area(piece_value)
-	var forest_discs: Array = []
-	if _forests != null and _forests.has_method("discs_on_tile"):
-		forest_discs = _forests.discs_on_tile(coord)
-	var footprints: Array = []
-	if _buildings != null and _buildings.has_method("footprint_rects_on_tile"):
-		footprints = _buildings.footprint_rects_on_tile(coord)
-	var relief := _relief_geometry_for_extents([hex])
-	var shoulders: Array = relief.get("shoulders", [])
-	var buildable_exclusions: Array = []
-	buildable_exclusions.append_array(_hero_forest_exclusions(forest_discs))
-	buildable_exclusions.append_array(shoulders)
-	buildable_exclusions.append_array(_hero_footprint_exclusions(footprints))
-	var buildable_pieces := _hero_clip_polys(dry_pieces, buildable_exclusions, 1.0)
-	var buildable_area := 0.0
-	for piece_value in buildable_pieces:
-		buildable_area += _poly_area(piece_value)
-	return {
-		"hex_area": hex_area,
-		"dry_land_area": dry_land_area,
-		"dry_buildable_area": buildable_area,
-		"water_margin_area": hex_area - dry_land_area,
-		"forest_disc_count": forest_discs.size(),
-		"gameplay_footprint_count": footprints.size(),
-		"relief_shoulder_count": shoulders.size(),
-	}
+##
+## Batched on purpose. `HillVisuals.get_land_relief_geometry` rescans every
+## relief polygon on the map per call, so asking it 395 times (once per land
+## tile) dominated the audit's runtime. One call over all requested hexes gives
+## the identical shoulder set, because the per-tile clip happens below anyway.
+func tile_dry_buildable_areas(coords: Array) -> Dictionary:
+	var out: Dictionary = {}
+	if _terrain == null:
+		return out
+	var hexes: Dictionary = {}
+	var extents: Array = []
+	for coord_value in coords:
+		var coord: Vector2i = coord_value
+		if not _terrain.tiles.has(coord):
+			continue
+		var center := _terrain.map_to_local(
+			_terrain.map_coord_for_tile_coord(coord))
+		var hex := PackedVector2Array()
+		for vertex in HEX_VERTS:
+			hex.append(center + vertex)
+		hexes[coord] = hex
+		extents.append(hex)
+	if extents.is_empty():
+		return out
+	var relief := _relief_geometry_for_extents(extents)
+	var all_shoulders: Array = relief.get("shoulders", [])
+	for coord_value in hexes:
+		var coord: Vector2i = coord_value
+		var hex: PackedVector2Array = hexes[coord]
+		var hex_bb := _bbox(hex)
+		var hex_area := _poly_area(hex)
+		var water_exclusions := _hero_water_exclusions(hex_bb)
+		var dry_pieces := _hero_clip_polys([hex], water_exclusions, 1.0)
+		var dry_land_area := 0.0
+		for piece_value in dry_pieces:
+			dry_land_area += _poly_area(piece_value)
+		var forest_discs: Array = []
+		if _forests != null and _forests.has_method("discs_on_tile"):
+			forest_discs = _forests.discs_on_tile(coord)
+		var footprints: Array = []
+		if _buildings != null and _buildings.has_method("footprint_rects_on_tile"):
+			footprints = _buildings.footprint_rects_on_tile(coord)
+		var shoulders: Array = []
+		for shoulder_value in all_shoulders:
+			var shoulder: Dictionary = shoulder_value
+			if hex_bb.intersects(shoulder.bb):
+				shoulders.append(shoulder)
+		var buildable_exclusions: Array = []
+		buildable_exclusions.append_array(_hero_forest_exclusions(forest_discs))
+		buildable_exclusions.append_array(shoulders)
+		buildable_exclusions.append_array(_hero_footprint_exclusions(footprints))
+		var buildable_pieces := _hero_clip_polys(dry_pieces,
+			buildable_exclusions, 1.0)
+		var buildable_area := 0.0
+		for piece_value in buildable_pieces:
+			buildable_area += _poly_area(piece_value)
+		out[coord] = {
+			"hex_area": hex_area,
+			"dry_land_area": dry_land_area,
+			"dry_buildable_area": buildable_area,
+			"water_margin_area": hex_area - dry_land_area,
+			"forest_disc_count": forest_discs.size(),
+			"gameplay_footprint_count": footprints.size(),
+			"relief_shoulder_count": shoulders.size(),
+		}
+	return out
 
 func settlement_plan(plan_key: String) -> SettlementPlan:
 	return _settlement_plans.get(plan_key) as SettlementPlan

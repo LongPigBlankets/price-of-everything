@@ -31,6 +31,8 @@ func _ready() -> void:
 	_test_map_style_plate()
 	_test_midcentury_road_layout_fixture()
 	_test_accommodation_site_yield()
+	_test_density_audit_classification()
+	_test_density_audit_gate()
 	_test_coal_prohibition()
 	_test_scheduled_coal_prohibition()
 	_test_widgets_instantiate()
@@ -12459,6 +12461,117 @@ func _test_midcentury_road_layout_fixture() -> void:
 		new_snapshot.core_position) > 40.0,
 		"midcentury road fixture: density leaves the removed road and follows the replacement")
 	fabric.free()
+
+## Pins the class assignment of the per-tile density audit (addendum section 2).
+## The precedence rules are the part a future change is most likely to get
+## subtly wrong, so each rule is asserted on its own.
+func _test_density_audit_classification() -> void:
+	_check(DensityAudit.classify("urban", true, 4) == DensityAudit.CLASS_URBAN,
+		"density audit: a profiled urban tile is urban")
+	_check(DensityAudit.classify("urban", false, 4) == DensityAudit.CLASS_SPARSE,
+		"density audit: an unprofiled urban-terrain tile is not silently urban")
+	_check(DensityAudit.classify("mountain", false, 3) == DensityAudit.CLASS_MOUNTAIN,
+		"density audit: a mountain tile with roads stays mountain (cap beats sparse floor)")
+	_check(DensityAudit.classify("mountain", false, 0) == DensityAudit.CLASS_MOUNTAIN,
+		"density audit: a roadless mountain tile is mountain, not remote")
+	_check(DensityAudit.classify("rural", false, 1) == DensityAudit.CLASS_SPARSE,
+		"density audit: one authoritative road makes a non-urban tile sparse")
+	_check(DensityAudit.classify("hill", false, 0) == DensityAudit.CLASS_REMOTE,
+		"density audit: a roadless non-urban tile is remote")
+	_check(DensityAudit.classify("sea", false, 0) == DensityAudit.CLASS_WATER
+		and DensityAudit.classify("deep_sea", false, 0) == DensityAudit.CLASS_WATER,
+		"density audit: water tiles are excluded from the audit")
+
+	# One absolute map-wide area threshold, never a per-tile relative one.
+	_check(DensityAudit.is_large(DensityAudit.LARGE_MASS_AREA)
+		and not DensityAudit.is_large(DensityAudit.LARGE_MASS_AREA - 0.5),
+		"density audit: the small/large split is inclusive at the frozen threshold")
+	_check(DensityAudit.LARGE_MASS_AREA > UrbanFabricVisuals.MORPH_FACE_MIN_AREA,
+		"density audit: a large mass is at least a whole un-subdivided street face")
+
+	# What counts as a building, and what counts as a green space.
+	_check(DensityAudit.counts_as_building("ordinary", 900.0)
+		and DensityAudit.counts_as_building("core", 900.0)
+		and DensityAudit.counts_as_building("industry_support", 900.0),
+		"density audit: rendered decorative masses count as buildings")
+	_check(not DensityAudit.counts_as_building("park", 900.0)
+		and not DensityAudit.counts_as_building("courtyard", 900.0),
+		"density audit: greens and courts are never counted as buildings")
+	_check(not DensityAudit.counts_as_building("ordinary",
+		DensityAudit.MIN_COUNTED_MASS_AREA - 1.0),
+		"density audit: a sub-floor fragment is not a building")
+	_check(DensityAudit.counts_as_green("park", 400.0)
+		and DensityAudit.counts_as_green("green", 400.0)
+		and DensityAudit.counts_as_green("accommodation_park", 400.0),
+		"density audit: public greens count toward the urban park floor")
+	_check(not DensityAudit.counts_as_green("courtyard", 4000.0),
+		"density audit: an inner courtyard is not a public green space")
+
+## Pins the section-2 table itself, including the two precedence carve-outs and
+## the documented-shortfall rule (a documented miss is acceptable, a silent one
+## is a gate failure).
+func _test_density_audit_gate() -> void:
+	var plenty := 1.0e9
+	var urban_ok := DensityAudit.evaluate(DensityAudit.CLASS_URBAN,
+		10, 3, 2, plenty, false)
+	_check(bool(urban_ok.passes) and not bool(urban_ok.gate_failure),
+		"density audit: urban 10 small / 3 large / 2 parks is exactly compliant")
+	var urban_short := DensityAudit.evaluate(DensityAudit.CLASS_URBAN,
+		9, 2, 1, plenty, false)
+	_check((urban_short.failures as Array).has("small_below_floor")
+		and (urban_short.failures as Array).has("large_below_floor")
+		and (urban_short.failures as Array).has("green_below_floor")
+		and bool(urban_short.gate_failure),
+		"density audit: an urban tile under every floor reports all three failures")
+	_check(not bool(urban_short.physically_constrained),
+		"density audit: a miss on ample dry land is a real defect, not a constraint")
+
+	var constrained := DensityAudit.evaluate(DensityAudit.CLASS_URBAN,
+		0, 0, 0, 10.0, false)
+	_check(bool(constrained.physically_constrained)
+		and bool(constrained.gate_failure),
+		"density audit: a physically impossible tile still fails until documented")
+	var documented := DensityAudit.evaluate(DensityAudit.CLASS_URBAN,
+		0, 0, 0, 10.0, true)
+	_check(not bool(documented.passes) and not bool(documented.gate_failure),
+		"density audit: a documented physical shortfall is acceptable")
+
+	var sparse_ok := DensityAudit.evaluate(DensityAudit.CLASS_SPARSE,
+		3, 0, 0, plenty, false)
+	_check(bool(sparse_ok.passes),
+		"density audit: sparse needs no parks and no large buildings")
+	_check((DensityAudit.evaluate(DensityAudit.CLASS_SPARSE, 11, 0, 0, plenty,
+		false).failures as Array).has("small_above_cap"),
+		"density audit: sparse is capped at 10 small buildings")
+	_check((DensityAudit.evaluate(DensityAudit.CLASS_SPARSE, 5, 3, 0, plenty,
+		false).failures as Array).has("large_above_cap"),
+		"density audit: sparse is capped at 2 large buildings")
+	_check((DensityAudit.evaluate(DensityAudit.CLASS_SPARSE, 2, 0, 0, plenty,
+		false).failures as Array).has("small_below_floor"),
+		"density audit: sparse has a floor of 3 small buildings")
+
+	# The mountain cap wins over the sparse floor: zero buildings is compliant.
+	var mountain_empty := DensityAudit.evaluate(DensityAudit.CLASS_MOUNTAIN,
+		0, 0, 0, plenty, false)
+	_check(bool(mountain_empty.passes),
+		"density audit: an empty mountain tile complies (cap, not floor)")
+	_check((DensityAudit.evaluate(DensityAudit.CLASS_MOUNTAIN, 3, 0, 0, plenty,
+		false).failures as Array).has("small_above_cap")
+		and (DensityAudit.evaluate(DensityAudit.CLASS_MOUNTAIN, 1, 1, 0, plenty,
+		false).failures as Array).has("large_above_cap"),
+		"density audit: mountain is capped at 2 small and 0 large")
+
+	# Remote tiles are exempt from the sparse floor but have their own band.
+	_check(bool(DensityAudit.evaluate(DensityAudit.CLASS_REMOTE, 1, 0, 0, plenty,
+		false).passes)
+		and bool(DensityAudit.evaluate(DensityAudit.CLASS_REMOTE, 4, 0, 0, plenty,
+		false).passes),
+		"density audit: remote tiles comply anywhere in the 1-4 band")
+	_check((DensityAudit.evaluate(DensityAudit.CLASS_REMOTE, 0, 0, 0, plenty,
+		false).failures as Array).has("small_below_floor")
+		and (DensityAudit.evaluate(DensityAudit.CLASS_REMOTE, 5, 0, 0, plenty,
+		false).failures as Array).has("small_above_cap"),
+		"density audit: remote tiles are bounded on both sides")
 
 func _test_accommodation_site_yield() -> void:
 	var site_a := {"key": "park", "poly": PackedVector2Array([
