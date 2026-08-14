@@ -2047,3 +2047,34 @@ candidates nothing else rejected. An exact branch-and-bound prune on the score w
 **useless** (`pruned=0` at every port — the incumbent is found late and the bound is loose); it is left in
 because it is free and correct. The remaining lever, not taken here, is to build the plan lazily on the first
 switch into mid-century instead of during every map build in every style.
+
+### N1 verification — what was run, and what it returned
+
+- **Unit suite: 2,298 passed / 0 failed**, with a real summary line (v0 baseline 2,287 plus exactly the 11
+  new port-geometry asserts). A fresh worktree exits 0 with no summary at all, so the line was checked.
+- **Two byte-identical capture runs.** All nine port artifacts (4 normal, 4 diagnostic, 1 context) share
+  SHA-256s across two independent runs; plan hashes reproduce across five separate processes (both gauntlet
+  runs, the density audit, the morphology harness and the all-style harness):
+  `f3242f47` Stoneshore, `4aae1d4d` Arin, `d88be546` Capital, `aa2ff032` Vandel.
+- **All-style harness exit 0**, which is the harness asserting, in-memory: legacy→mid-century→legacy is
+  full-PNG identical, the masked map-layer round trip is pixel exact, and mid-century wide equals
+  mid-century repeat. Run without the capture lock because of concurrent-stream contention, so the PNGs on
+  disk may have been overwritten by another stream — the verdicts are this process's own image comparisons
+  and are unaffected.
+- **Road-frontage audit byte-identical to the v0 archive**, all eight counters: 177 road tiles, 413
+  buildings, 79 failing tiles, 177 over 15u, 137 off-road-by-design, 1 service-lane save, 165 block-mode
+  failures without streets, 146.6u worst furnace on `tile_10_3`. This is also the evidence that no gameplay
+  building moved, despite the marine reservation changing shape.
+- **Morphology harness: all seven W1.01 water counters ZERO and all relief counters ZERO** on both plans;
+  `dry_land_guard.water_overlap_count` zero; `rural_growth` and `suburban` relief overlap zero. Exit 1, as
+  designed, on the unresolved G1.02 road-gradient gate. Against the frozen v0 metrics record, **10 of 26,171
+  leaf metrics differ**, and all ten are the port envelope changing shape:
+  `gameplay_collision_guard` removes 623 decorative polygons instead of 635, `far_zoom_plate.mass_count`
+  2,037 → 2,042, and 8 `tile_22_16` accommodation candidates move between the `extra` and `gameplay`
+  rejection reasons. Every settlement-plan, water, relief and district-field counter is unchanged.
+- **Density audit: zero verdict changes.** The class compliance table is identical (mountain 45/45, remote
+  1/54, sparse 45/204, urban 19/92) and every per-tile PASS/FAIL verdict and reason list is unchanged.
+  Four counts moved, all on port tiles and all in the fabric's favour: `tile_24_7` small 13→17 and large
+  1→2, `tile_12_17` large 12→13, `tile_22_16` large 5→4. `docs/map-density-audit-baseline.txt` is therefore
+  stale by four numbers on three tiles; the compliance conclusion it supports is not.
+- `git diff --check` clean; working tree clean.
