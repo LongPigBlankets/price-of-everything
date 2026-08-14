@@ -178,6 +178,19 @@ func _write_metrics(path: String, dynamic_manifest: Dictionary = {}) -> String:
 			"accommodation_overlap_count", "mountain_mass_count"]:
 		assert(int(suburban.get(key, -1)) == 0,
 			"Suburban hard gate failed: %s" % key)
+	# Coastal reach ships with its own minimum-retention gate, measured in the
+	# same run: the reach extent is a superset of the core-only extent before
+	# clipping, so no tile may end with less usable envelope than it had without
+	# the reach cells.
+	var coastal_reach: Dictionary = record.fabric.get("coastal_reach", {})
+	assert(int(coastal_reach.get("bearing_count", 0)) > 0,
+		"Coastal reach must find at least one wet bearing on the district field")
+	assert(int(coastal_reach.get("retention_failure_count", -1)) == 0,
+		"Coastal reach removed usable envelope from a tile (minimum-retention gate)")
+	assert(float(coastal_reach.get("minimum_retention", 0.0)) >= 0.999,
+		"Coastal reach minimum per-tile retention fell below one")
+	assert(float(coastal_reach.get("reach_area_gain", 0.0)) > 0.0,
+		"Coastal reach produced no additional usable envelope")
 	var district_field: Dictionary = record.fabric.get("district_field", {})
 	var field_failure := ""
 	assert(int(district_field.get("universal_tile_count", 0)) == 92,
