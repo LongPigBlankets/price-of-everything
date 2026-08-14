@@ -63,6 +63,13 @@ const MORPH_COAST_SPUR_START := 0.30
 ## core grain and reads as dense frontage rather than lawn.  The floor applies
 ## inside the wedge the frontage cell occupies and fades out past the shoreline.
 ##
+## Two rejected variants are recorded so they are not retried.  Narrowing the
+## frontage cell to 0.52 core radii and 38u depth did recover the structural
+## counters (new hex-coincident tiles 16 -> 11, road-gradient failures 8 -> 6,
+## median road-frontage occupancy 84.3 -> 91.9) but thinned the owner's named
+## Vandel Port Works tile from 22.7% to 10.2% built coverage and reads visibly
+## emptier than the v0 baseline at original resolution, so it was reverted.
+##
 ## A rejected alternative is recorded here so it is not retried: bounding the
 ## reach by how far an authoritative road already leads seaward.  It is the
 ## honest structural objection — roads are frozen and are the only source of
