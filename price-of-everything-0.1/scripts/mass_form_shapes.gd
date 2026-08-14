@@ -129,11 +129,15 @@ const PARAM_RANGES := {
 		"wall_frac": [0.30, 0.62]},
 	"half_octagon": {"base": [0.80, 1.0], "depth": [0.78, 1.0], "chamfer": [0.18, 0.40],
 		"shoulder": [0.54, 0.84]},
-	"h": {"arm": [0.17, 0.30], "cross": [0.15, 0.32], "pos": [0.30, 0.62]},
-	"h_small": {"arm": [0.28, 0.40], "cross": [0.28, 0.46], "pos": [0.26, 0.60]},
+	"h": {"arm": [0.17, 0.30], "cross": [0.15, 0.32], "pos": [0.30, 0.62],
+		"wfill": [0.80, 1.0], "hfill": [0.76, 1.0], "shift": [-1.0, 1.0]},
+	"h_small": {"arm": [0.28, 0.40], "cross": [0.28, 0.46], "pos": [0.26, 0.60],
+		"wfill": [0.80, 1.0], "hfill": [0.76, 1.0], "shift": [-1.0, 1.0]},
 	"cross": {"barw": [0.22, 0.40], "bart": [0.22, 0.40], "ushift": [-0.10, 0.10],
-		"vpos": [0.36, 0.64]},
-	"shallow_e": {"w0": [0.30, 0.52], "w1": [0.30, 0.52], "w2": [0.30, 0.52],
+		"vpos": [0.36, 0.64],
+		"wfill": [0.80, 1.0], "hfill": [0.76, 1.0], "shift": [-1.0, 1.0]},
+	"shallow_e": {"wfill": [0.82, 1.0], "hfill": [0.76, 1.0], "shift": [-1.0, 1.0],
+		"w0": [0.30, 0.52], "w1": [0.30, 0.52], "w2": [0.30, 0.52],
 		"d0": [0.16, 0.35], "d1": [0.16, 0.35], "d2": [0.16, 0.35],
 		"j0": [-0.14, 0.14], "j1": [-0.14, 0.14], "j2": [-0.14, 0.14],
 		"front": [0.0, 1.0]},
@@ -251,8 +255,11 @@ static func build_form(form: String, parcel: PackedVector2Array, frontage_index:
 	var steps := 0
 	while steps < MAX_FALLBACK_STEPS:
 		if current == "solid" or not bool(frame.get("ok", false)):
+			var solid := ensure_positive(parcel)
+			var mended := repair(solid)
 			return {"form": "solid", "requested": form, "steps": steps,
-				"polys": [ensure_positive(parcel)], "meta": {"fallback": true}}
+				"polys": [solid if mended.is_empty() else mended],
+				"meta": {"fallback": true}}
 		var built := construct(current, float(frame.width), float(frame.depth),
 			params(current, key))
 		var local: Array = built.get("polys", [])
@@ -260,8 +267,8 @@ static func build_form(form: String, parcel: PackedVector2Array, frontage_index:
 			var placed: Array = []
 			var all_safe := true
 			for poly_value in local:
-				var placed_poly := place(poly_value as PackedVector2Array, frame)
-				if not is_safe(placed_poly):
+				var placed_poly := repair(place(poly_value as PackedVector2Array, frame))
+				if placed_poly.is_empty():
 					all_safe = false
 					break
 				placed.append(placed_poly)
@@ -414,6 +421,14 @@ static func min_interior_angle_deg(poly: PackedVector2Array) -> float:
 	return worst
 
 ## The single gate every emitted polygon must clear before it is allowed out.
+##
+## The last clause is not paranoia. `UrbanFabricVisuals._fill_mesh` does
+## `if triangles.is_empty(): continue` — a polygon Godot's ear clipper refuses is
+## SILENTLY DROPPED at draw time, so an untriangulable mass is indistinguishable from a
+## missing one. Measured on this engine (4.6.2): a perfectly simple, right-angled 12-gon
+## H failed `triangulate_polygon` at 84 of 3600 orientations, and a sub-pixel translation
+## of the same polygon succeeded — it is floating-point fragility in the clipper, not a
+## defect in the shape. [method repair] handles it; this gate is the backstop.
 static func is_safe(poly: PackedVector2Array) -> bool:
 	if poly.size() < 3:
 		return false
@@ -423,7 +438,33 @@ static func is_safe(poly: PackedVector2Array) -> bool:
 		return false
 	if min_interior_angle_deg(poly) < MIN_INTERIOR_DEG:
 		return false
+	if Geometry2D.triangulate_polygon(poly).is_empty():
+		return false
 	return true
+
+## Grids the repair pass tries, in order. All are far below one screen pixel at any
+## sane zoom, so a repaired mass is visually identical to the one that was asked for.
+const REPAIR_GRIDS: Array[float] = [0.001, 0.01, 0.05]
+
+## Deterministic rescue for a polygon that is geometrically fine but trips the engine's
+## ear clipper. Snapping the vertices to a sub-pixel grid perturbs the arithmetic enough
+## to let the clipper through; the snapped result is re-screened, so a repair can never
+## smuggle an unsafe mass past the gate. Returns an EMPTY array when nothing works,
+## which sends `build_form` down the fallback ladder.
+static func repair(poly: PackedVector2Array) -> PackedVector2Array:
+	if is_safe(poly):
+		return poly
+	if poly.size() < 3 or area(poly) < MIN_POLY_AREA:
+		return PackedVector2Array()
+	if not is_simple(poly) or min_interior_angle_deg(poly) < MIN_INTERIOR_DEG:
+		return PackedVector2Array()  # a real defect, not a clipper accident
+	for grid in REPAIR_GRIDS:
+		var snapped := PackedVector2Array()
+		for point in poly:
+			snapped.append(Vector2(snappedf(point.x, grid), snappedf(point.y, grid)))
+		if is_safe(snapped):
+			return snapped
+	return PackedVector2Array()
 
 ## Reflex-vertex count — the structural limb signature the tests pin.
 static func reflex_count(poly: PackedVector2Array) -> int:
@@ -440,6 +481,25 @@ static func reflex_count(poly: PackedVector2Array) -> int:
 		if cross < 0.0:
 			count += 1
 	return count
+
+## The per-instance sub-box a box-filling form actually occupies. Without this an H,
+## a cross or an E would always take the parcel's full bounding box and its OUTLINE
+## aspect would be the parcel's, not the instance's — which is exactly the "stamped at
+## fixed proportions" defect section 4 forbids. `shift` slides the mass laterally in
+## whatever slack is left. Depth is always anchored on the frontage (v == 0).
+static func _sub_box(w: float, h: float, p: Dictionary) -> Dictionary:
+	var mw := w * clampf(float(p.get("wfill", 1.0)), 0.50, 1.0)
+	var mh := h * clampf(float(p.get("hfill", 1.0)), 0.50, 1.0)
+	var uo := (w - mw) * 0.5 * clampf(float(p.get("shift", 0.0)), -1.0, 1.0)
+	return {"w": mw, "h": mh, "offset": uo}
+
+static func _shift_u(poly: PackedVector2Array, offset: float) -> PackedVector2Array:
+	if is_zero_approx(offset):
+		return poly
+	var out := PackedVector2Array()
+	for point in poly:
+		out.append(Vector2(point.x + offset, point.y))
+	return out
 
 static func _point_segment_distance(point: Vector2, a: Vector2, b: Vector2) -> float:
 	var ab := b - a
@@ -623,8 +683,13 @@ static func _half_octagon(w: float, h: float, p: Dictionary) -> Dictionary:
 ## Forms 6 (large) and small-form 5 — H: two bars perpendicular to the frontage joined
 ## by a central crossbar. Identical constructor, different parameter bands; the small H
 ## is coarser-limbed (arm 28-40% vs 17-30% of the frontage), not a shrunk copy.
-static func _h_bar(w: float, h: float, p: Dictionary) -> Dictionary:
+static func _h_bar(w_box: float, h_box: float, p: Dictionary) -> Dictionary:
 	var empty := {"polys": [], "meta": {}}
+	if w_box < MIN_SPAN * 1.5 or h_box < MIN_SPAN * 1.5:
+		return empty
+	var sub := _sub_box(w_box, h_box, p)
+	var w: float = sub.w
+	var h: float = sub.h
 	if w < MIN_SPAN * 1.5 or h < MIN_SPAN * 1.5:
 		return empty
 	var arm := w * clampf(float(p.get("arm", 0.24)), 0.10, 0.45)
@@ -652,15 +717,21 @@ static func _h_bar(w: float, h: float, p: Dictionary) -> Dictionary:
 		Vector2(ar, 0.0), Vector2(hw, 0.0), Vector2(hw, h), Vector2(ar, h),
 		Vector2(ar, vt), Vector2(al, vt), Vector2(al, h), Vector2(-hw, h),
 	])
-	return {"polys": [poly], "meta": {
+	return {"polys": [_shift_u(poly, float(sub.offset))], "meta": {
 		"arm_width": arm, "crossbar_thickness": cross_t, "crossbar_v0": v0,
 		"gap": gap, "limbs": 3, "arm_frac": arm / w, "cross_frac": cross_t / h,
+		"width": w, "depth": h, "offset_u": float(sub.offset),
 	}}
 
 ## Form 7 — cross: two bars crossing at the centre, four arms. The bar down the depth
 ## axis reaches both the frontage and the back; the transverse bar reaches both sides.
-static func _cross(w: float, h: float, p: Dictionary) -> Dictionary:
+static func _cross(w_box: float, h_box: float, p: Dictionary) -> Dictionary:
 	var empty := {"polys": [], "meta": {}}
+	if w_box < MIN_SPAN * 2.0 or h_box < MIN_SPAN * 2.0:
+		return empty
+	var sub := _sub_box(w_box, h_box, p)
+	var w: float = sub.w
+	var h: float = sub.h
 	if w < MIN_SPAN * 2.0 or h < MIN_SPAN * 2.0:
 		return empty
 	var bar_u := w * clampf(float(p.get("barw", 0.30)), 0.12, 0.48)
@@ -683,8 +754,9 @@ static func _cross(w: float, h: float, p: Dictionary) -> Dictionary:
 		Vector2(hw, vt), Vector2(ur, vt), Vector2(ur, h), Vector2(ul, h),
 		Vector2(ul, vt), Vector2(-hw, vt), Vector2(-hw, vb), Vector2(ul, vb),
 	])
-	return {"polys": [poly], "meta": {
+	return {"polys": [_shift_u(poly, float(sub.offset))], "meta": {
 		"bar_u": bar_u, "bar_v": bar_v, "centre_u": uc, "centre_v": vc,
+		"width": w, "depth": h, "offset_u": float(sub.offset),
 		"arms": 4, "arm_left": ul + hw, "arm_right": hw - ur,
 		"arm_front": vb, "arm_back": h - vt,
 	}}
@@ -697,8 +769,13 @@ static func _cross(w: float, h: float, p: Dictionary) -> Dictionary:
 ## Notch i is confined to its own third of the usable frontage (half-width <= 0.26 of a
 ## cell, jitter <= 0.14 of a cell => reach 0.40 < 0.50), which guarantees the piers
 ## between notches without any clipping.
-static func _shallow_e(w: float, h: float, p: Dictionary) -> Dictionary:
+static func _shallow_e(w_box: float, h_box: float, p: Dictionary) -> Dictionary:
 	var empty := {"polys": [], "meta": {}}
+	if w_box < MIN_SPAN * 4.0 or h_box < MIN_SPAN * 1.2:
+		return empty
+	var sub := _sub_box(w_box, h_box, p)
+	var w: float = sub.w
+	var h: float = sub.h
 	if w < MIN_SPAN * 4.0 or h < MIN_SPAN * 1.2:
 		return empty
 	var margin := maxf(0.07 * w, 5.0)
@@ -748,7 +825,8 @@ static func _shallow_e(w: float, h: float, p: Dictionary) -> Dictionary:
 			mirrored.append(Vector2(point.x, h - point.y))
 		mirrored.reverse()  # reflection reverses winding; restore it
 		poly = mirrored
-	return {"polys": [poly], "meta": {
+	return {"polys": [_shift_u(poly, float(sub.offset))], "meta": {
+		"offset_u": float(sub.offset),
 		"notches": 3, "notch_depths": notch_d, "notch_halfwidths": notch_hw,
 		"notch_centres": notch_u, "max_notch_depth_frac": (
 			maxf(maxf(notch_d[0], notch_d[1]), notch_d[2]) / h),

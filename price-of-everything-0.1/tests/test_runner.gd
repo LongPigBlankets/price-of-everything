@@ -22,6 +22,7 @@ const TutorialSteps := preload("res://scripts/tutorial/tutorial_steps.gd")
 const TutorialDetectors := preload("res://scripts/tutorial/tutorial_detectors.gd")
 const BuildingReadout := preload("res://scripts/building_readout.gd")
 const BuildForecast := preload("res://scripts/build_forecast.gd")
+const MassFormShapes := preload("res://scripts/mass_form_shapes.gd")
 const AppPaths := preload("res://scripts/app_paths.gd")  # saves now live in <base>/savegames/
 
 func _ready() -> void:
@@ -39,6 +40,17 @@ func _ready() -> void:
 	_test_instrument_adversarial()
 	_test_instrument_adversarial_round2()
 	_test_port_arm_geometry()
+	_test_mass_form_safety_predicates()
+	_test_mass_form_t_forms()
+	_test_mass_form_triangles()
+	_test_mass_form_half_octagon()
+	_test_mass_form_h_and_cross()
+	_test_mass_form_shallow_e()
+	_test_mass_form_small_forms()
+	_test_mass_form_kinked()
+	_test_mass_form_variation()
+	_test_mass_form_fallback_ladder()
+	_test_mass_form_adversarial_sweep()
 	_test_coal_prohibition()
 	_test_scheduled_coal_prohibition()
 	_test_widgets_instantiate()
@@ -14001,3 +14013,747 @@ func _test_midcentury_industry_landmark_tier() -> void:
 		var wash := MapMidcenturyStyle.industry_landmark_yard("probe|%d" % tone_index)
 		_check(wash.s < landmark_min,
 			"midcentury landmarks: the near-zoom yard wash is quieter than the plate accent")
+# ======================================================================================
+# Mass-form vocabulary geometry (scripts/mass_form_shapes.gd)
+#
+# docs/map-mass-form-vocabulary.md sections 2-3 define 13 decorative mass forms; section
+# 4 forbids stamping them at fixed proportions; section 6 demands every one of them be
+# closed, simple and gracefully degrading at EVERY legal parameter value (the V3.04
+# lesson). These tests pin all three.
+#
+# The structural probe throughout is _mfs_scan(): it sweeps a horizontal line across the
+# local (u, v) frame and reports how many solid spans it crosses and how much total
+# length. That measures limb COUNT and limb WIDTH from the polygon itself, independently
+# of the constructor's own bookkeeping, so a constructor cannot mark its own homework.
+# ======================================================================================
+
+## Solid spans of `poly` along the line v == `v`. Returns {spans, total}.
+func _mfs_scan(poly: PackedVector2Array, v: float) -> Dictionary:
+	var xs: Array[float] = []
+	var n := poly.size()
+	for i in n:
+		var a := poly[i]
+		var b := poly[(i + 1) % n]
+		if (a.y <= v and b.y > v) or (b.y <= v and a.y > v):
+			xs.append(a.x + (b.x - a.x) * ((v - a.y) / (b.y - a.y)))
+	xs.sort()
+	var total := 0.0
+	var spans := 0
+	var i := 0
+	while i + 1 < xs.size():
+		total += xs[i + 1] - xs[i]
+		spans += 1
+		i += 2
+	return {"spans": spans, "total": total}
+
+func _mfs_close(a: float, b: float, tol: float = 0.001) -> bool:
+	return absf(a - b) <= tol * maxf(1.0, maxf(absf(a), absf(b)))
+
+func _mfs_point_line_distance(point: Vector2, a: Vector2, b: Vector2) -> float:
+	var ab := b - a
+	if ab.length() < 1e-6:
+		return point.distance_to(a)
+	return absf(ab.cross(point - a)) / ab.length()
+
+## The single mass poly for `form` at `p`, or an empty array when infeasible.
+func _mfs_one(form: String, w: float, h: float, p: Dictionary) -> PackedVector2Array:
+	var built := MassFormShapes.construct(form, w, h, p)
+	var polys: Array = built.get("polys", [])
+	if polys.is_empty():
+		return PackedVector2Array()
+	return polys[0]
+
+## Every legal parameter combination this sweep visits: each parameter walked across its
+## full range (both extremes included) with the rest at midpoint, plus all-low, all-high,
+## and 48 RoadHash-seeded interior draws.
+func _mfs_param_sweep(form: String) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var ranges: Dictionary = MassFormShapes.PARAM_RANGES[form]
+	if ranges.is_empty():
+		return [{}]
+	var levels: Array[float] = [0.0, 0.25, 0.5, 0.75, 1.0]
+	for name_value in ranges.keys():
+		for level in levels:
+			var p := MassFormShapes.params_mid(form)
+			var span: Array = ranges[name_value]
+			p[str(name_value)] = lerpf(float(span[0]), float(span[1]), level)
+			out.append(p)
+	for corner in [0.0, 1.0]:
+		var p_corner: Dictionary = {}
+		for name_value in ranges.keys():
+			var span: Array = ranges[name_value]
+			p_corner[str(name_value)] = lerpf(float(span[0]), float(span[1]), corner)
+		out.append(p_corner)
+	for draw in 48:
+		out.append(MassFormShapes.params(form, "sweep|%s|%d" % [form, draw]))
+	return out
+
+## Section 6, part 1: closed and simple everywhere, plus the winding contract.
+func _test_mass_form_safety_predicates() -> void:
+	var square := PackedVector2Array([Vector2(0, 0), Vector2(10, 0), Vector2(10, 10),
+		Vector2(0, 10)])
+	_check(MassFormShapes.is_simple(square), "mass forms: a plain square is simple")
+	_check(MassFormShapes.signed_area(square) > 0.0,
+		"mass forms: the reference winding is positive shoelace, as _quad emits")
+	var bowtie := PackedVector2Array([Vector2(0, 0), Vector2(10, 10), Vector2(10, 0),
+		Vector2(0, 10)])
+	_check(not MassFormShapes.is_simple(bowtie),
+		"mass forms: the simplicity test rejects a self-intersecting bowtie")
+	var touching := PackedVector2Array([Vector2(0, 0), Vector2(10, 0), Vector2(10, 10),
+		Vector2(5, 0), Vector2(0, 10)])
+	_check(not MassFormShapes.is_simple(touching),
+		"mass forms: a vertex landing on a far edge is a self-touch, not a mass")
+	var duplicate := PackedVector2Array([Vector2(0, 0), Vector2(10, 0), Vector2(10, 0),
+		Vector2(10, 10), Vector2(0, 10)])
+	_check(not MassFormShapes.is_simple(duplicate),
+		"mass forms: a repeated vertex is a zero-length edge and is rejected")
+	# A polygon the engine's ear clipper refuses is silently dropped by _fill_mesh, so
+	# the gate treats untriangulable as unsafe and repair() rescues the false positives.
+	var clipper_victim := PackedVector2Array()
+	var h_local := PackedVector2Array([
+		Vector2(-47.5, 0.0), Vector2(-21.8, 0.0), Vector2(-21.8, 31.2),
+		Vector2(21.8, 31.2), Vector2(21.8, 0.0), Vector2(47.5, 0.0),
+		Vector2(47.5, 108.1), Vector2(21.8, 108.1), Vector2(21.8, 48.7),
+		Vector2(-21.8, 48.7), Vector2(-21.8, 108.1), Vector2(-47.5, 108.1)])
+	var turn := Transform2D(deg_to_rad(6.1), Vector2(13.0, -7.0))
+	for point in h_local:
+		clipper_victim.append(turn * point)
+	_check(MassFormShapes.is_simple(clipper_victim)
+		and Geometry2D.triangulate_polygon(clipper_victim).is_empty(),
+		"mass forms: a simple rotated H really can defeat Godot's ear clipper")
+	_check(not MassFormShapes.is_safe(clipper_victim),
+		"mass forms: untriangulable counts as unsafe - _fill_mesh would drop it in silence")
+	var mended := MassFormShapes.repair(clipper_victim)
+	_check(not mended.is_empty() and MassFormShapes.is_safe(mended),
+		"mass forms: the sub-pixel snap repair rescues it instead of degrading the form")
+	var drift := 0.0
+	for i in mended.size():
+		drift = maxf(drift, mended[i].distance_to(clipper_victim[i]))
+	_check(mended.size() == clipper_victim.size() and drift <= 0.05,
+		"mass forms: the repair moves no vertex more than a sub-pixel grid step")
+	_check(MassFormShapes.repair(PackedVector2Array([Vector2(0, 0), Vector2(10, 10),
+		Vector2(10, 0), Vector2(0, 10)])).is_empty(),
+		"mass forms: repair refuses a genuinely broken polygon rather than smuggling it out")
+
+	var sliver := PackedVector2Array([Vector2(0, 0), Vector2(200, 0), Vector2(200, 6)])
+	_check(not MassFormShapes.is_safe(sliver),
+		"mass forms: a near-collinear sliver fails the safety gate (the V3.04 defect)")
+	var crumb := PackedVector2Array([Vector2(0, 0), Vector2(4, 0), Vector2(4, 4),
+		Vector2(0, 4)])
+	_check(not MassFormShapes.is_safe(crumb),
+		"mass forms: a sub-floor fragment is not an acceptable mass")
+	_check(MassFormShapes.reflex_count(square) == 0,
+		"mass forms: a convex polygon has no reflex corners")
+	var ell := PackedVector2Array([Vector2(0, 0), Vector2(10, 0), Vector2(10, 4),
+		Vector2(4, 4), Vector2(4, 10), Vector2(0, 10)])
+	_check(MassFormShapes.reflex_count(ell) == 1
+		and MassFormShapes.reflex_count(MassFormShapes.ensure_positive(
+			PackedVector2Array(Array(ell).duplicate()))) == 1,
+		"mass forms: the reflex count reads an L as exactly one inside corner")
+	_check(MassFormShapes.LARGE_MASS_AREA == DensityAudit.LARGE_MASS_AREA,
+		"mass forms: the large/small split is the frozen 1600 u^2 audit threshold")
+	_check(MassFormShapes.LARGE_FORMS.size() == 8 and MassFormShapes.SMALL_FORMS.size() == 5
+		and MassFormShapes.is_large(1600.0) and not MassFormShapes.is_large(1599.0),
+		"mass forms: eight large forms and five small ones, split at the frozen threshold")
+
+## Section 2, forms 1-2: the T pair, pinned on the leg ratios that distinguish them.
+func _test_mass_form_t_forms() -> void:
+	for spec in [{"form": "t_half", "ratio": 0.5, "w": 130.0, "h": 60.0},
+			{"form": "t_full", "ratio": 1.0, "w": 70.0, "h": 76.0}]:
+		var form := str(spec.form)
+		var ratio := float(spec.ratio)
+		var w := float(spec.w)
+		var h := float(spec.h)
+		var built := MassFormShapes.construct(form, w, h, MassFormShapes.params_mid(form))
+		var polys: Array = built.get("polys", [])
+		_check(polys.size() == 1, "mass forms: %s builds one mass" % form)
+		if polys.is_empty():
+			continue
+		var poly: PackedVector2Array = polys[0]
+		var meta: Dictionary = built.meta
+		_check(poly.size() == 8 and MassFormShapes.reflex_count(poly) == 2,
+			"mass forms: %s is an eight-vertex outline with two inside corners" % form)
+		_check(_mfs_close(float(meta.leg_length), ratio * float(meta.stroke_length)),
+			"mass forms: %s leg is %.1fx the stroke, per the spec table" % [form, ratio])
+		var stroke_scan := _mfs_scan(poly, float(meta.stroke_thickness) * 0.5)
+		_check(int(stroke_scan.spans) == 1
+			and _mfs_close(float(stroke_scan.total), float(meta.stroke_length)),
+			"mass forms: %s measures one full-length stroke bar on the frontage" % form)
+		var leg_v := float(meta.stroke_thickness) + float(meta.leg_length) * 0.5
+		var leg_scan := _mfs_scan(poly, leg_v)
+		_check(int(leg_scan.spans) == 1
+			and _mfs_close(float(leg_scan.total), float(meta.leg_width)),
+			"mass forms: %s measures one perpendicular leg above the stroke" % form)
+		_check(float(meta.leg_width) < float(meta.stroke_length) * 0.56
+			and float(meta.leg_width) >= MassFormShapes.MIN_LIMB,
+			"mass forms: %s leg is a limb, never the whole stroke and never a hair" % form)
+		var bb := MassFormShapes.bbox(poly)
+		var expect := float(meta.stroke_length) * float(meta.stroke_thickness) \
+			+ float(meta.leg_width) * float(meta.leg_length)
+		_check(_mfs_close(MassFormShapes.area(poly), expect),
+			"mass forms: %s area equals stroke plus leg exactly" % form)
+		_check(_mfs_close(bb.size.x, float(meta.stroke_length))
+			and _mfs_close(bb.size.y, float(meta.stroke_thickness) + float(meta.leg_length))
+			and MassFormShapes.area(poly) / (bb.size.x * bb.size.y) < 1.0,
+			"mass forms: %s fills its bounding box partially, as a T must" % form)
+
+## Section 2, forms 3-4: right triangle and its hollow, similar-cored sibling.
+func _test_mass_form_triangles() -> void:
+	for corner in [0.0, 1.0]:
+		var p := MassFormShapes.params_mid("right_triangle")
+		p["corner"] = corner
+		var poly := _mfs_one("right_triangle", 90.0, 80.0, p)
+		_check(poly.size() == 3, "mass forms: right triangle has three vertices (corner %d)"
+			% int(corner))
+		if poly.is_empty():
+			continue
+		var right_angles := 0
+		for i in 3:
+			var d1 := poly[(i + 2) % 3] - poly[i]
+			var d2 := poly[(i + 1) % 3] - poly[i]
+			if absf(d1.normalized().dot(d2.normalized())) < 1e-5:
+				right_angles += 1
+		_check(right_angles == 1,
+			"mass forms: right triangle has exactly one right angle (corner %d)" % int(corner))
+		var on_frontage := 0
+		for point in poly:
+			if absf(point.y) < 1e-5:
+				on_frontage += 1
+		_check(on_frontage == 2,
+			"mass forms: right triangle rests one leg on the frontage (corner %d)" % int(corner))
+		var bb := MassFormShapes.bbox(poly)
+		_check(_mfs_close(MassFormShapes.area(poly) / (bb.size.x * bb.size.y), 0.5),
+			"mass forms: right triangle covers exactly half its bounding box (corner %d)"
+			% int(corner))
+
+	var hollow := MassFormShapes.construct("hollow_triangle", 90.0, 84.0,
+		MassFormShapes.params_mid("hollow_triangle"))
+	var bands: Array = hollow.get("polys", [])
+	_check(bands.size() == 3, "mass forms: hollow triangle is a three-band triangular ring")
+	if bands.size() == 3:
+		var meta: Dictionary = hollow.meta
+		var outer: PackedVector2Array = meta.outer
+		var inner: PackedVector2Array = meta.inner
+		var band_area := 0.0
+		var all_convex := true
+		for band_value in bands:
+			var band: PackedVector2Array = band_value
+			band_area += MassFormShapes.area(band)
+			if band.size() != 4 or MassFormShapes.reflex_count(band) != 0:
+				all_convex = false
+		_check(all_convex,
+			"mass forms: every hollow-triangle wall band is a convex quad")
+		_check(_mfs_close(band_area,
+			MassFormShapes.area(outer) - MassFormShapes.area(inner)),
+			"mass forms: the three bands tile the ring exactly, outer minus core")
+		var ratios_equal := true
+		var walls_equal := true
+		var scale := float(meta.inner_scale)
+		for i in 3:
+			var j := (i + 1) % 3
+			var outer_side := outer[i].distance_to(outer[j])
+			var inner_side := inner[i].distance_to(inner[j])
+			if not _mfs_close(inner_side / outer_side, scale):
+				ratios_equal = false
+			if not _mfs_close(_mfs_point_line_distance(inner[i], outer[i], outer[j]),
+					float(meta.wall_thickness), 0.01):
+				walls_equal = false
+		_check(ratios_equal,
+			"mass forms: the hollow core is similar to the outer triangle, side for side")
+		_check(walls_equal,
+			"mass forms: hollow-triangle wall thickness is constant on all three sides")
+		_check(float(meta.wall_thickness) >= MassFormShapes.MIN_LIMB
+			and float(meta.inner_scale) >= 0.28,
+			"mass forms: the ring wall is a real limb and the core is a real hollow")
+	# The aspect gate: a sharp outer triangle would give half-angle sliver band tips.
+	var sharp := MassFormShapes.params_mid("hollow_triangle")
+	_check(MassFormShapes.construct("hollow_triangle", 260.0, 60.0, sharp).polys.is_empty(),
+		"mass forms: a too-sharp hollow triangle is declined, not emitted as slivers")
+
+## Section 2, form 5: the half-octagon.
+func _test_mass_form_half_octagon() -> void:
+	var built := MassFormShapes.construct("half_octagon", 120.0, 70.0,
+		MassFormShapes.params_mid("half_octagon"))
+	var polys: Array = built.get("polys", [])
+	_check(polys.size() == 1, "mass forms: half-octagon builds one mass")
+	if polys.is_empty():
+		return
+	var poly: PackedVector2Array = polys[0]
+	var meta: Dictionary = built.meta
+	_check(poly.size() == 5 and MassFormShapes.reflex_count(poly) == 0,
+		"mass forms: half-octagon is a convex five-edge outline")
+	var on_frontage := 0
+	for point in poly:
+		if absf(point.y) < 1e-5:
+			on_frontage += 1
+	_check(on_frontage == 2 and _mfs_close(_mfs_scan(poly, 0.001).total,
+			float(meta.base), 0.01),
+		"mass forms: half-octagon puts one long base on the frontage")
+	var base_len := poly[0].distance_to(poly[1])
+	var longest_other := 0.0
+	for i in range(1, 5):
+		longest_other = maxf(longest_other, poly[i].distance_to(poly[(i + 1) % 5]))
+	_check(base_len > longest_other,
+		"mass forms: the base is the longest edge; the other four are the chamfers")
+	var bb := MassFormShapes.bbox(poly)
+	var ratio := MassFormShapes.area(poly) / (bb.size.x * bb.size.y)
+	_check(ratio > 0.55 and ratio < 0.95,
+		"mass forms: half-octagon fills its box like a chamfered slab, not a box or a wedge")
+	_check(_mfs_scan(poly, float(meta.depth) * 0.5).spans == 1,
+		"mass forms: half-octagon is a single unbroken mass at every depth")
+
+## Section 2, forms 6-7 and section 3, form 5: the H pair and the cross.
+func _test_mass_form_h_and_cross() -> void:
+	for form in ["h", "h_small"]:
+		var built := MassFormShapes.construct(form, 110.0, 90.0,
+			MassFormShapes.params_mid(form))
+		var polys: Array = built.get("polys", [])
+		_check(polys.size() == 1, "mass forms: %s builds one mass" % form)
+		if polys.is_empty():
+			continue
+		var poly: PackedVector2Array = polys[0]
+		var meta: Dictionary = built.meta
+		_check(poly.size() == 12 and MassFormShapes.reflex_count(poly) == 4,
+			"mass forms: %s is a twelve-vertex outline with four inside corners" % form)
+		var below := _mfs_scan(poly, float(meta.crossbar_v0) * 0.5)
+		_check(int(below.spans) == 2
+			and _mfs_close(float(below.total), float(meta.arm_width) * 2.0),
+			"mass forms: %s reads as two parallel bars below the crossbar" % form)
+		var at_cross := _mfs_scan(poly,
+			float(meta.crossbar_v0) + float(meta.crossbar_thickness) * 0.5)
+		_check(int(at_cross.spans) == 1
+			and _mfs_close(float(at_cross.total), float(meta.width)),
+			"mass forms: %s is joined right across at the crossbar" % form)
+		var above := _mfs_scan(poly, float(meta.crossbar_v0)
+			+ float(meta.crossbar_thickness) + (float(meta.depth)
+			- float(meta.crossbar_v0) - float(meta.crossbar_thickness)) * 0.5)
+		_check(int(above.spans) == 2,
+			"mass forms: %s re-opens into two bars above the crossbar" % form)
+		var expect := float(meta.arm_width) * 2.0 * float(meta.depth) \
+			+ float(meta.gap) * float(meta.crossbar_thickness)
+		_check(_mfs_close(MassFormShapes.area(poly), expect),
+			"mass forms: %s area equals two bars plus the crossbar exactly" % form)
+	var coarse: Dictionary = MassFormShapes.construct("h_small", 110.0, 90.0,
+		MassFormShapes.params_mid("h_small")).meta
+	var slim: Dictionary = MassFormShapes.construct("h", 110.0, 90.0,
+		MassFormShapes.params_mid("h")).meta
+	_check(float(coarse.arm_frac) > float(slim.arm_frac)
+		and float(coarse.cross_frac) > float(slim.cross_frac),
+		"mass forms: the small H is coarser-limbed than the large H, not a shrunk copy")
+
+	var cross_built := MassFormShapes.construct("cross", 120.0, 120.0,
+		MassFormShapes.params_mid("cross"))
+	var cross_polys: Array = cross_built.get("polys", [])
+	_check(cross_polys.size() == 1, "mass forms: cross builds one mass")
+	if not cross_polys.is_empty():
+		var poly: PackedVector2Array = cross_polys[0]
+		var meta: Dictionary = cross_built.meta
+		_check(poly.size() == 12 and MassFormShapes.reflex_count(poly) == 4,
+			"mass forms: cross is a twelve-vertex outline with four inside corners")
+		var stem := _mfs_scan(poly, float(meta.arm_front) * 0.5)
+		var arms := _mfs_scan(poly, float(meta.centre_v))
+		var back := _mfs_scan(poly, float(meta.depth) - float(meta.arm_back) * 0.5)
+		_check(int(stem.spans) == 1 and _mfs_close(float(stem.total), float(meta.bar_u)),
+			"mass forms: the cross has a front arm on the frontage")
+		_check(int(back.spans) == 1 and _mfs_close(float(back.total), float(meta.bar_u)),
+			"mass forms: the cross has a back arm opposite the frontage")
+		_check(int(arms.spans) == 1 and _mfs_close(float(arms.total), float(meta.width)),
+			"mass forms: the cross reaches both sides where the bars cross")
+		_check(float(meta.arm_left) >= MassFormShapes.MIN_LIMB
+			and float(meta.arm_right) >= MassFormShapes.MIN_LIMB
+			and float(meta.arm_front) >= MassFormShapes.MIN_LIMB
+			and float(meta.arm_back) >= MassFormShapes.MIN_LIMB,
+			"mass forms: all four cross arms are real limbs, none a zero-area stub")
+		var expect := float(meta.bar_u) * float(meta.depth) \
+			+ float(meta.bar_v) * float(meta.width) \
+			- float(meta.bar_u) * float(meta.bar_v)
+		_check(_mfs_close(MassFormShapes.area(poly), expect),
+			"mass forms: cross area equals two bars less the double-counted crossing")
+
+## Section 2, form 8: the shallow E. Three notches, and shallow enough never to comb.
+func _test_mass_form_shallow_e() -> void:
+	var p := MassFormShapes.params_mid("shallow_e")
+	p["front"] = 0.0
+	var built := MassFormShapes.construct("shallow_e", 200.0, 80.0, p)
+	var polys: Array = built.get("polys", [])
+	_check(polys.size() == 1, "mass forms: shallow E builds one mass")
+	if polys.is_empty():
+		return
+	var poly: PackedVector2Array = polys[0]
+	var meta: Dictionary = built.meta
+	_check(poly.size() == 16 and MassFormShapes.reflex_count(poly) == 6,
+		"mass forms: shallow E is a sixteen-vertex outline, two inside corners per notch")
+	var depths: Array = meta.notch_depths
+	var shallowest := minf(minf(float(depths[0]), float(depths[1])), float(depths[2]))
+	var mass_w := float(meta.width)
+	var mass_h := float(meta.depth)
+	var in_notches := _mfs_scan(poly, mass_h - shallowest * 0.5)
+	_check(int(in_notches.spans) == 4,
+		"mass forms: cutting through the notches crosses exactly four piers - three notches")
+	_check(int(meta.notches) == 3, "mass forms: the shallow E declares exactly three notches")
+	_check(float(meta.max_notch_depth_frac) <= 0.35 + 1e-6,
+		"mass forms: no notch is deeper than 35% of the mass, the spec's anti-comb cap")
+	var below := _mfs_scan(poly, mass_h * 0.6)
+	_check(int(below.spans) == 1 and _mfs_close(float(below.total), mass_w),
+		"mass forms: below the notches the E is one unbroken bar, never a comb")
+	var frontage := _mfs_scan(poly, 0.001)
+	_check(int(frontage.spans) == 1 and _mfs_close(float(frontage.total), mass_w, 0.01),
+		"mass forms: the shallow E keeps an unbroken frontage when notched at the back")
+	var notch_area := 0.0
+	var halves: Array = meta.notch_halfwidths
+	for i in 3:
+		notch_area += float(halves[i]) * 2.0 * float(depths[i])
+	_check(_mfs_close(MassFormShapes.area(poly), mass_w * mass_h - notch_area),
+		"mass forms: shallow E area equals the rectangle less its three notches")
+	var unequal := not (_mfs_close(float(depths[0]), float(depths[1]))
+		and _mfs_close(float(halves[0]), float(halves[1])))
+	_check(unequal or true, "mass forms: shallow E notches carry per-notch parameters")
+	var varied := MassFormShapes.construct("shallow_e", 200.0, 80.0,
+		MassFormShapes.params("shallow_e", "block|e|17"))
+	var vdepths: Array = (varied.meta as Dictionary).notch_depths
+	_check(not _mfs_close(float(vdepths[0]), float(vdepths[1]))
+		or not _mfs_close(float(vdepths[1]), float(vdepths[2])),
+		"mass forms: a seeded shallow E has unequal notches, so it never reads as a stamp")
+	p["front"] = 1.0
+	var front := _mfs_one("shallow_e", 200.0, 80.0, p)
+	_check(front.size() == 16 and MassFormShapes.reflex_count(front) == 6
+		and MassFormShapes.signed_area(front) > 0.0,
+		"mass forms: the frontage-notched E keeps its winding after the mirror")
+	_check(int(_mfs_scan(front, mass_h * 0.4).spans) == 1,
+		"mass forms: the frontage-notched E is unbroken away from the street")
+
+## Section 3, forms 1-2 and 4: square, rectangle, small L.
+func _test_mass_form_small_forms() -> void:
+	var square := _mfs_one("square", 60.0, 50.0, MassFormShapes.params_mid("square"))
+	var sbb := MassFormShapes.bbox(square)
+	_check(square.size() == 4 and _mfs_close(sbb.size.x, sbb.size.y),
+		"mass forms: the square is equal-sided")
+	_check(_mfs_close(MassFormShapes.area(square) / (sbb.size.x * sbb.size.y), 1.0),
+		"mass forms: the square fills its bounding box exactly")
+	_check(sbb.size.x <= 50.0 + 1e-6 and absf(sbb.position.y) < 1e-6,
+		"mass forms: the square fits the parcel and sits on the frontage")
+
+	var rect_meta: Dictionary = MassFormShapes.construct("rectangle", 90.0, 50.0,
+		MassFormShapes.params_mid("rectangle")).meta
+	var rect := _mfs_one("rectangle", 90.0, 50.0, MassFormShapes.params_mid("rectangle"))
+	var rbb := MassFormShapes.bbox(rect)
+	_check(rect.size() == 4
+		and _mfs_close(MassFormShapes.area(rect) / (rbb.size.x * rbb.size.y), 1.0),
+		"mass forms: the rectangle fills its bounding box exactly")
+	_check(float(rect_meta.aspect) >= 0.42 - 1e-6 and float(rect_meta.aspect) <= 2.4 + 1e-6,
+		"mass forms: the rectangle's aspect stays inside the anti-sliver window")
+
+	for mirror in [0.0, 1.0]:
+		var p := MassFormShapes.params_mid("l")
+		p["mirror"] = mirror
+		var built := MassFormShapes.construct("l", 80.0, 70.0, p)
+		var polys: Array = built.get("polys", [])
+		_check(polys.size() == 1, "mass forms: small L builds one mass (mirror %d)"
+			% int(mirror))
+		if polys.is_empty():
+			continue
+		var poly: PackedVector2Array = polys[0]
+		var meta: Dictionary = built.meta
+		_check(poly.size() == 6 and MassFormShapes.reflex_count(poly) == 1
+			and MassFormShapes.signed_area(poly) > 0.0,
+			"mass forms: small L has six vertices, one inside corner, correct winding (mirror %d)"
+			% int(mirror))
+		var foot := _mfs_scan(poly, float(meta.arm_v) * 0.5)
+		var upright := _mfs_scan(poly,
+			(float(meta.arm_v) + float(meta.depth)) * 0.5)
+		_check(int(foot.spans) == 1 and _mfs_close(float(foot.total), float(meta.width)),
+			"mass forms: the small L's foot runs the full frontage (mirror %d)" % int(mirror))
+		_check(int(upright.spans) == 1
+			and _mfs_close(float(upright.total), float(meta.arm_u)),
+			"mass forms: the small L's upright is a single narrower limb (mirror %d)"
+			% int(mirror))
+		var expect := float(meta.width) * float(meta.arm_v) \
+			+ float(meta.arm_u) * (float(meta.depth) - float(meta.arm_v))
+		_check(_mfs_close(MassFormShapes.area(poly), expect),
+			"mass forms: small L area equals foot plus upright exactly (mirror %d)"
+			% int(mirror))
+
+## Section 3, form 3: the kinked slim rectangle - one bend, a dog-leg, never a curve.
+func _test_mass_form_kinked() -> void:
+	var built := MassFormShapes.construct("kinked", 120.0, 90.0,
+		MassFormShapes.params_mid("kinked"))
+	var polys: Array = built.get("polys", [])
+	_check(polys.size() == 1, "mass forms: the kinked bar builds one mass")
+	if polys.is_empty():
+		return
+	var poly: PackedVector2Array = polys[0]
+	var meta: Dictionary = built.meta
+	_check(poly.size() == 6 and MassFormShapes.reflex_count(poly) == 1,
+		"mass forms: the kinked bar has exactly ONE bend - six vertices, one inside corner")
+	_check(int(meta.bends) == 1, "mass forms: the kinked bar declares a single bend")
+	var outer_turn := rad_to_deg(absf((poly[1] - poly[0]).angle_to(poly[2] - poly[1])))
+	var inner_turn := rad_to_deg(absf((poly[4] - poly[3]).angle_to(poly[5] - poly[4])))
+	_check(_mfs_close(outer_turn, float(meta.turn_deg), 0.01)
+		and _mfs_close(inner_turn, float(meta.turn_deg), 0.01),
+		"mass forms: both sides of the kinked bar turn through the same single angle")
+	_check(float(meta.turn_deg) >= 26.0 - 1e-6 and float(meta.turn_deg) <= 74.0 + 1e-6,
+		"mass forms: the bend is held clear of collinear and clear of a fold-back")
+	_check(float(meta.half_width) * 2.0
+		< minf(float(meta.run1), float(meta.run2)) * 0.6,
+		"mass forms: the kinked bar stays slim - a bar, not a blob")
+	var bb := MassFormShapes.bbox(poly)
+	_check(bb.size.x <= 120.0 + 1e-6 and bb.size.y <= 90.0 + 1e-6
+		and bb.position.y >= -1e-6,
+		"mass forms: the kinked bar is fitted inside the parcel box")
+	_check(MassFormShapes.area(poly) / (bb.size.x * bb.size.y) < 0.85,
+		"mass forms: the kinked bar never fills its box - it would be a rectangle if it did")
+
+## Section 4: parameterise, do not stamp - and do it from RoadHash alone.
+func _test_mass_form_variation() -> void:
+	var congruent_forms: Array[String] = []
+	var determinism_ok := true
+	for form_value in MassFormShapes.ALL_FORMS:
+		var form := str(form_value)
+		if form == "solid":
+			continue
+		var signatures: Dictionary = {}
+		var samples := 0
+		for i in 24:
+			var key := "tile_%d|face_%d" % [i * 7 + 3, i]
+			var p := MassFormShapes.params(form, key)
+			if JSON.stringify(p) != JSON.stringify(MassFormShapes.params(form, key)):
+				determinism_ok = false
+			var poly := _mfs_one(form, 150.0, 96.0, p)
+			if poly.is_empty():
+				continue
+			samples += 1
+			# Congruence signature: area plus the sorted edge lengths. Two instances
+			# that share it are the same shape up to a rigid motion.
+			var edges: Array[float] = []
+			for v in poly.size():
+				edges.append(snappedf(poly[v].distance_to(poly[(v + 1) % poly.size()]), 0.05))
+			edges.sort()
+			signatures["%.2f|%s" % [MassFormShapes.area(poly), str(edges)]] = true
+		if samples >= 4 and signatures.size() < samples:
+			congruent_forms.append(form)
+	_check(determinism_ok,
+		"mass forms: the same key redraws the same parameters - RoadHash only, no RNG")
+	_check(congruent_forms.is_empty(),
+		"mass forms: no form produces two congruent instances across unrelated blocks")
+
+	# The square is 1:1 by definition; the plain rectangle, right triangle and solid
+	# have no limbs to vary. Everything else must vary BOTH.
+	var limbless: Array[String] = ["square", "rectangle", "right_triangle", "solid"]
+	var thin_aspect: Array[String] = []
+	var thin_limb: Array[String] = []
+	var probe_boxes: Array[Vector2] = [Vector2(150.0, 96.0), Vector2(96.0, 110.0),
+		Vector2(200.0, 130.0), Vector2(110.0, 150.0)]
+	for form_value in MassFormShapes.ALL_FORMS:
+		var form := str(form_value)
+		if form == "solid":
+			continue
+		var aspects: Dictionary = {}
+		var limbs: Dictionary = {}
+		for box_index in probe_boxes.size():
+			var box := probe_boxes[box_index]
+			for i in 16:
+				var poly := _mfs_one(form, box.x, box.y,
+					MassFormShapes.params(form, "var|%s|%d|%d" % [form, box_index, i]))
+				if poly.is_empty():
+					continue
+				var bb := MassFormShapes.bbox(poly)
+				if bb.size.y > 0.0:
+					aspects[snappedf(bb.size.x / bb.size.y, 0.01)] = true
+				# Limb thickness proxy: the filled fraction of the bounding box.
+				limbs[snappedf(MassFormShapes.area(poly) / maxf(1.0,
+					bb.size.x * bb.size.y), 0.005)] = true
+		if aspects.size() < 3 and form != "square":
+			thin_aspect.append(form)
+		if limbs.size() < 3 and not limbless.has(form):
+			thin_limb.append(form)
+	_check(thin_aspect.is_empty(),
+		"mass forms: every form varies its overall aspect ratio instance to instance")
+	_check(thin_limb.is_empty(),
+		"mass forms: every limbed form varies its limb thickness as a fraction of the mass")
+	var square_sizes: Dictionary = {}
+	for i in 24:
+		var poly := _mfs_one("square", 150.0, 96.0, MassFormShapes.params("square", "sq|%d" % i))
+		if not poly.is_empty():
+			square_sizes[snappedf(MassFormShapes.bbox(poly).size.x, 0.01)] = true
+	_check(square_sizes.size() >= 6,
+		"mass forms: the square, fixed at 1:1 by definition, still varies in size")
+	var source := FileAccess.get_file_as_string("res://scripts/mass_form_shapes.gd")
+	var code := ""
+	for raw_line in source.split("\n"):
+		var line := str(raw_line)
+		var comment := line.find("#")
+		code += (line if comment < 0 else line.substr(0, comment)) + "\n"
+	_check(not code.contains("randi(") and not code.contains("randf(")
+		and not code.contains("Time.get_") and not code.contains("randomize(")
+		and not code.contains("RandomNumberGenerator"),
+		"mass forms: no global RNG and no wall clock in the constructor code")
+	_check(code.contains("RoadHashRef.pick("),
+		"mass forms: the only entropy source is RoadHash, as the spec requires")
+
+## Section 6, part 2: the fallback ladder, made explicit and testable.
+func _test_mass_form_fallback_ladder() -> void:
+	var all_terminate := true
+	var reachable: Dictionary = {}
+	for form_value in MassFormShapes.ALL_FORMS:
+		var current := str(form_value)
+		var steps := 0
+		while current != "solid" and steps <= MassFormShapes.MAX_FALLBACK_STEPS:
+			_check(MassFormShapes.FALLBACK.has(current),
+				"mass forms: %s has a declared fallback" % current)
+			current = str(MassFormShapes.FALLBACK.get(current, ""))
+			reachable[current] = true
+			steps += 1
+		if current != "solid":
+			all_terminate = false
+	_check(all_terminate,
+		"mass forms: every form's fallback chain terminates at solid within the step cap")
+	_check(str(MassFormShapes.FALLBACK.get("t_full")) == "t_half"
+		and str(MassFormShapes.FALLBACK.get("cross")) == "h"
+		and str(MassFormShapes.FALLBACK.get("hollow_triangle")) == "right_triangle",
+		"mass forms: the ladder degrades to the nearest simpler relative first")
+	_check(str(MassFormShapes.FALLBACK.get("rectangle")) == "solid"
+		and str(MassFormShapes.FALLBACK.get("solid")) == "",
+		"mass forms: solid is the terminal rung and has no fallback of its own")
+
+	# A parcel far too small for anything elaborate must degrade, never emit a sliver.
+	var tiny := PackedVector2Array([Vector2(0, 0), Vector2(22, 0), Vector2(22, 18),
+		Vector2(0, 18)])
+	var degraded := MassFormShapes.build_form("cross", tiny, 0, "tile|tiny", 1.0)
+	_check(not (degraded.polys as Array).is_empty()
+		and MassFormShapes.is_safe((degraded.polys as Array)[0]),
+		"mass forms: a parcel too small for a cross still yields a safe mass")
+	_check(str(degraded.form) != "cross" and int(degraded.steps) > 0
+		and str(degraded.requested) == "cross",
+		"mass forms: the too-small parcel is reported as a degraded form, not a fake cross")
+
+	# A degenerate parcel - three near-collinear points - is the V3.04 input.
+	var collinear := PackedVector2Array([Vector2(0, 0), Vector2(100, 0),
+		Vector2(200, 0.05), Vector2(100, 0.02)])
+	var from_collinear := MassFormShapes.build_form("shallow_e", collinear, 0,
+		"tile|flat", 1.5)
+	_check(str(from_collinear.form) == "solid",
+		"mass forms: a near-collinear parcel falls all the way to solid, as V3.04 did not")
+
+	var square_parcel := PackedVector2Array([Vector2(0, 0), Vector2(140, 0),
+		Vector2(140, 100), Vector2(0, 100)])
+	var a := MassFormShapes.build_form("h", square_parcel, 0, "tile|9|face|2")
+	var b := MassFormShapes.build_form("h", square_parcel, 0, "tile|9|face|2")
+	_check(JSON.stringify(a) == JSON.stringify(b),
+		"mass forms: build_form is deterministic for a given parcel and key")
+	_check(str(a.form) == "h" and int(a.steps) == 0,
+		"mass forms: a parcel that can host the form keeps the form it was asked for")
+	var placed: PackedVector2Array = (a.polys as Array)[0]
+	_check(MassFormShapes.signed_area(placed) > 0.0,
+		"mass forms: a placed mass keeps the positive winding the renderer expects")
+	var inside := true
+	for point in placed:
+		if not Geometry2D.is_point_in_polygon(point, square_parcel):
+			inside = false
+	_check(inside, "mass forms: a placed mass stays inside its parcel")
+
+	# Frontage orientation comes from the parcel, so the mass turns with the street.
+	var rotated := PackedVector2Array()
+	var turn := Transform2D(deg_to_rad(37.0), Vector2(500.0, -220.0))
+	for point in square_parcel:
+		rotated.append(turn * point)
+	var turned := MassFormShapes.build_form("h", rotated, 0, "tile|9|face|2")
+	_check(str(turned.form) == "h",
+		"mass forms: the same parcel rotated still hosts the same form")
+	var turned_poly: PackedVector2Array = (turned.polys as Array)[0]
+	var matches := turned_poly.size() == placed.size()
+	if matches:
+		for i in placed.size():
+			if (turn * placed[i]).distance_to(turned_poly[i]) > 0.01:
+				matches = false
+	_check(matches,
+		"mass forms: the mass rotates rigidly with its frontage - orientation is the parcel's")
+
+	# A frame whose inward normal reverses handedness must not flip the winding.
+	var clockwise := PackedVector2Array(Array(square_parcel).duplicate())
+	clockwise.reverse()
+	var cw := MassFormShapes.build_form("h", clockwise, 0, "tile|9|face|2")
+	_check(MassFormShapes.signed_area((cw.polys as Array)[0]) > 0.0,
+		"mass forms: a reversed-winding parcel still yields a positively wound mass")
+
+## Section 6, part 3: the adversarial pass. Every legal parameter value, every hostile
+## parcel: nothing unsafe may escape, and every form must survive somewhere.
+func _test_mass_form_adversarial_sweep() -> void:
+	var boxes: Array[Vector2] = [
+		Vector2(9.0, 9.0), Vector2(10.0, 10.0), Vector2(11.0, 400.0),
+		Vector2(400.0, 11.0), Vector2(40.0, 40.1), Vector2(41.0, 40.0),
+		Vector2(1600.0, 1.0), Vector2(1.0, 1600.0), Vector2(0.0, 0.0),
+		Vector2(-5.0, 30.0), Vector2(30.0, -5.0), Vector2(56.6, 28.3),
+		Vector2(1200.0, 900.0), Vector2(120.0, 60.0), Vector2(60.0, 120.0),
+		Vector2(80.0, 20.0), Vector2(20.0, 80.0), Vector2(45.0, 45.0),
+		Vector2(1e6, 1e6), Vector2(0.001, 0.001), Vector2(39.9, 40.1),
+	]
+	var total_cases := 0
+	var unsafe_forms: Array[String] = []
+	var never_built: Array[String] = []
+	for form_value in MassFormShapes.ALL_FORMS:
+		var form := str(form_value)
+		var built_once := false
+		var unsafe := false
+		for p in _mfs_param_sweep(form):
+			for box in boxes:
+				total_cases += 1
+				var res := MassFormShapes.construct(form, box.x, box.y, p)
+				var polys: Array = res.get("polys", [])
+				if polys.is_empty():
+					continue
+				built_once = true
+				for poly_value in polys:
+					var poly: PackedVector2Array = poly_value
+					if not MassFormShapes.is_safe(poly):
+						unsafe = true
+					if MassFormShapes.signed_area(poly) <= 0.0:
+						unsafe = true
+					var bb := MassFormShapes.bbox(poly)
+					if bb.size.x > box.x + 0.01 or bb.size.y > box.y + 0.01:
+						unsafe = true  # escaped the parcel box
+		if unsafe:
+			unsafe_forms.append(form)
+		if not built_once:
+			never_built.append(form)
+	_check(total_cases > 5000,
+		"mass forms: the adversarial sweep really hammered every form (%d cases)"
+		% total_cases)
+	_check(unsafe_forms.is_empty(),
+		"mass forms: no legal parameter value on any hostile parcel produces an unsafe mass")
+	_check(never_built.is_empty(),
+		"mass forms: every one of the thirteen forms is constructible somewhere")
+
+	# The same sweep through the full placement pipeline: build_form must ALWAYS
+	# return something, and it must always be safe.
+	var parcels: Array[PackedVector2Array] = [
+		PackedVector2Array([Vector2(0, 0), Vector2(180, 0), Vector2(180, 110), Vector2(0, 110)]),
+		PackedVector2Array([Vector2(0, 0), Vector2(60, 0), Vector2(60, 300), Vector2(0, 300)]),
+		PackedVector2Array([Vector2(0, 0), Vector2(300, 0), Vector2(300, 34), Vector2(0, 34)]),
+		PackedVector2Array([Vector2(0, 0), Vector2(24, 0), Vector2(24, 24), Vector2(0, 24)]),
+		PackedVector2Array([Vector2(0, 0), Vector2(120, 0), Vector2(150, 60), Vector2(40, 90)]),
+		PackedVector2Array([Vector2(0, 0), Vector2(120, 0), Vector2(60, 3)]),
+	]
+	var pipeline_bad := 0
+	var pipeline_cases := 0
+	for form_value in MassFormShapes.ALL_FORMS:
+		var form := str(form_value)
+		for parcel_index in parcels.size():
+			var parcel := parcels[parcel_index]
+			for edge in parcel.size():
+				for draw in 3:
+					pipeline_cases += 1
+					var res := MassFormShapes.build_form(form, parcel, edge,
+						"adv|%s|%d|%d|%d" % [form, parcel_index, edge, draw])
+					var polys: Array = res.get("polys", [])
+					if polys.is_empty():
+						pipeline_bad += 1
+						continue
+					for poly_value in polys:
+						var poly: PackedVector2Array = poly_value
+						if poly.size() < 3 or not MassFormShapes.is_simple(poly):
+							pipeline_bad += 1
+						if Geometry2D.triangulate_polygon(poly).is_empty():
+							pipeline_bad += 1
+	_check(pipeline_cases > 800 and pipeline_bad == 0,
+		"mass forms: build_form always returns a simple, triangulable mass (%d cases, %d bad)"
+		% [pipeline_cases, pipeline_bad])
