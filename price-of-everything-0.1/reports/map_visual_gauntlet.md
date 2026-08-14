@@ -1945,3 +1945,105 @@ cd price-of-everything-0.1
 
 The frozen baseline output is committed at `docs/map-density-audit-baseline.txt`. Compare against it; do not
 regenerate it as a way of moving the goalposts.
+
+
+## N1. Straight port arms and real water between them — 2026-08-14
+
+Addendum section 5, on branch `gauntlet3/ports` (worktree `/tmp/poe_g3_wt/ports`), based on
+`gauntlet3/density-audit`. Only the mid-century port plan, its rendering/diagnostic seam and its focused
+audit changed. Settlement density, parks, coastal reach, relief, roads, rivers and the legacy renderers were
+not reopened.
+
+### The diagnosis — the gate was measuring the wrong region
+
+L1 recorded **100% sampled basin water** and **0 opaque basin overlap** for all four ports, and both numbers
+reproduce exactly on this branch: `basin_sea_water_coverage = 1.0000` everywhere. The owner is nevertheless
+right. The reason is neither a rendering divergence nor a stale metric — it is that **`basin_polygon` is not
+the region a viewer reads as "between the arms."**
+
+L1 built the basin as a trapezoid rooted 10u *seaward* of a sampled shore point and then required it to be
+sea. It is water by construction. The arms, however, were rooted on `head_front`, which sits 8–17u *landward*
+of that same shore point, and they splayed outward around the basin. The U that the eye sees is therefore
+bounded by the arms, is strictly larger than the basin, and its landward strip — the harbour throat — was
+never sampled by anything.
+
+The three candidate explanations in the addendum resolve as: **(a) yes, (b) yes, (c) no.**
+
+- **(c) is refuted by measurement.** `tools/port_land_probe.gd` samples every NavGrid cell within 60u of the
+  water boundary — 789,496 cells — and compares the NavGrid water class against containment in the baked
+  band-5 "land base" polygon whose boundary `hill_visuals` strokes as the coastline. **Agreement 99.470%**,
+  and the 0.53% disagreement is a half-cell quantisation band skewed 20:1 toward NavGrid-sea/render-land.
+  The audit and the picture are looking at the same world.
+- **(a) and (b) are both true and are the same defect seen from two sides.** The apron/head fill stops at
+  `head_front`, so the throat is bare terrain; and because the arms start there, they run over that terrain
+  before reaching water — L1's own 29.53% sea-deck figure for Arin's right arm was the visible symptom.
+
+Made testable: `MidcenturyPortPlan` now emits `interarm_open_area`, `interarm_sea_area`,
+`interarm_sea_coverage` and `max_arm_bend_deg`. The enclosure is the closed ring through both arm centrelines
+with every opaque port element subtracted, sampled on a 4u lattice; the diagnostic overlay draws that ring in
+green. Measured on the L1 geometry, plan hashes unchanged (`3679035c`, `15f74d8b`, `47c0d8df`, `aa0b424d`):
+
+| Port | basin sea | **enclosure sea** | **land inside the U** | **max arm bend** |
+|---|---:|---:|---:|---:|
+| Stoneshore `tile_5_10` | 100.00% | 90.36% | 1,072u² | 19.57° |
+| Arin `tile_11_17` | 100.00% | 84.94% | 1,296u² | 21.93° |
+| Capital `tile_24_7` | 100.00% | 82.92% | 1,536u² | 18.66° |
+| Vandel `tile_22_16` | 100.00% | 83.28% | 864u² | 27.24° |
+
+**A gate that passed while the defect was visible is the finding.** L1 proved a property of a polygon it had
+constructed to have that property. Nothing checked the geometry the viewer actually sees.
+
+### N1.01 — rejected: straight quay face at the waterline
+
+Attempt 1 collapsed the throat to zero by putting `head_front` on the sampled shore and rooting the basin
+there, so the head's straight front edge and the basin's root edge were one shared line. Arms became single
+straight segments lying on the basin's two edges.
+
+**0 of 4 ports.** Of 1,944 candidates per port, the basin gate passed 21–39% and then the dry-land head gate
+rejected every survivor. A straight quay face requires 100–135u of straight coastline with sea on one side
+and land on the other at 12u lattice resolution; no site on this map offers it. Recorded as a dead end: a
+straight head front cannot both reach the water and stay dry.
+
+### N1.02 — accepted: coast-clipped apron, straight quays, gated enclosure
+
+The head stops being a rectangle placed near the shore and becomes a block **overshooting the quay face by
+10–34u and clipped back to the rendered coastline**, so its seaward edge *is* the shore and the apron covers
+every scrap of land in the throat. The clip is then eroded along `HEAD_INSET_LADDER` until the **unchanged**
+NavGrid dry-land gate reads 100%; the ladder pays for the 0.53% classification disagreement and no more.
+
+Arms are single straight runs. Each lies on one edge of an **asymmetric** basin trapezoid (independent left
+and right flare, 0.80–1.20× the mouth half-width), so the two arms leave the quay face at different angles,
+with independent length and width. Each arm then marches backwards **along its own axis** until it bites into
+the apron, which attaches it without introducing a vertex. `max_arm_bend_deg` is 0.00 by construction, and
+the K1 fixed rectangle-and-shore-normal primitive stays retired — the search is still over real local
+coastline samples and every port ends up a different shape.
+
+| Port | enclosure sea | land inside the U | arm bend | L/R arm sea-deck | L/R arm length |
+|---|---:|---:|---:|---:|---:|
+| Stoneshore | 90.36% → **96.57%** | 1,072 → **416u²** | 19.57° → **0.00°** | 87→86% / 89→88% | 122 / 151 |
+| Arin | 84.94% → **95.33%** | 1,296 → **624u²** | 21.93° → **0.00°** | 100→90% / **30→73%** | 187 / 126 |
+| Capital | 82.92% → **95.08%** | 1,536 → **672u²** | 18.66° → **0.00°** | 71→92% / 78→88% | 178 / 139 |
+| Vandel | 83.28% → **95.34%** | 864 → **640u²** | 27.24° → **0.00°** | 91→87% / 74→68% | 202 / 141 |
+
+Mean enclosure water 85.38% → 95.58%; total visible land inside the four Us 4,768u² → 2,352u² (−51%);
+every arm dead straight; Arin's land-rooted right quay more than doubles its sea-deck fraction.
+
+**The residual is honest and understood.** The remaining 3.4–4.9% is a 6–10u strip of foreshore between the
+apron and the water: the erosion the NavGrid dry-land gate demands. Drawing the apron out to the coastline
+would close it, at the price of putting the drawn geometry outside the instrument that certifies it dry. The
+gate was kept; the strip is the cost. `interarm_sea_coverage` is gated at **0.94**, below the measured floor
+of 0.9508, with that reasoning written at the gate.
+
+Retained and re-verified: 4/4 valid plans, exactly two cranes per port one per arm, valid authoritative-road
+access at every site, 12–19 cargo groups, zero river/channel obstruction, zero gameplay overlap, zero
+decorative/park overlap, zero opaque basin overlap, 100% dry landward head, and eight marine reservations.
+
+### Cost
+
+Planner time rose from L1's 88–238ms per port to 804–2,564ms (0.61s → 4.86s for all four), because the
+enclosure requirement needs a wider search (864 candidates, up from 432) and the apron clip is polygon work
+against the coastline. Road access was moved to the end of the candidate pipeline, where it only runs on
+candidates nothing else rejected. An exact branch-and-bound prune on the score was implemented and measured
+**useless** (`pruned=0` at every port — the incumbent is found late and the bound is loose); it is left in
+because it is free and correct. The remaining lever, not taken here, is to build the plan lazily on the first
+switch into mid-century instead of during every map build in every style.
