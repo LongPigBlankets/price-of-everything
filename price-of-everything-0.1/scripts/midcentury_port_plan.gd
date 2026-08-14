@@ -305,9 +305,12 @@ static func _candidate(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 		right_length)
 	var access_length := _polyline_length(road_access)
 	var compactness := shore.distance_to(tile_center)
+	# The apron inset is the width of the terrain sliver left between the quay and
+	# the water, so it is exactly the residual the owner would still see inside
+	# the U. Score against it, or the search happily buys basin area with land.
 	var score := _poly_area(basin) * 0.012 + mouth_run * 0.42 - \
 		access_length * 0.30 - compactness * 0.035 + \
-		clampf(asymmetry, 0.06, 0.22) * 120.0
+		clampf(asymmetry, 0.06, 0.22) * 120.0 - head_inset * 8.0
 	return {
 		"basin_valid": true, "land_valid": true, "river_valid": true,
 		"collision_valid": true, "access_valid": true, "score": score,
@@ -746,20 +749,18 @@ static func _fit_head(block: PackedVector2Array) -> Dictionary:
 				clipped = piece
 	if clipped.size() < 3 or clipped_area < block_area * MIN_HEAD_AREA_FRACTION:
 		return {"reason": "area"}
+	# The dry-land gate is effectively "no sea cell inside", and eroding only ever
+	# removes cells, so if the DEEPEST inset still swallows one, no shallower one
+	# can pass. One offset instead of the whole ladder on the common reject path.
+	var deepest := _largest_inset_piece(clipped,
+		float(HEAD_INSET_LADDER[HEAD_INSET_LADDER.size() - 1]))
+	if deepest.size() < 3 or _poly_area(deepest) < block_area * MIN_HEAD_AREA_FRACTION \
+			or _class_coverage(deepest, NavGrid.WATER_LAND) < 0.999:
+		return {"reason": "cover"}
 	var last_reason := "cover"
 	for inset in HEAD_INSET_LADDER:
-		var best := PackedVector2Array()
-		var best_area := 0.0
-		for inset_value in Geometry2D.offset_polygon(clipped, -float(inset),
-				Geometry2D.JOIN_MITER):
-			var candidate: PackedVector2Array = inset_value
-			if candidate.size() < 3 or Geometry2D.is_polygon_clockwise(candidate):
-				continue
-			var area := _poly_area(candidate)
-			if area > best_area:
-				best_area = area
-				best = candidate
-		if best.size() < 3 or best_area < block_area * MIN_HEAD_AREA_FRACTION:
+		var best := _largest_inset_piece(clipped, float(inset))
+		if best.size() < 3 or _poly_area(best) < block_area * MIN_HEAD_AREA_FRACTION:
 			return {"reason": last_reason}
 		var land := _class_coverage(best, NavGrid.WATER_LAND)
 		if land < 0.999:
@@ -783,6 +784,21 @@ static func _attach_to_head(root: Vector2, back_direction: Vector2,
 			return root + back_direction * (distance + ARM_HEAD_BITE)
 		distance += 3.0
 	return Vector2.INF
+
+static func _largest_inset_piece(poly: PackedVector2Array,
+		inset: float) -> PackedVector2Array:
+	var best := PackedVector2Array()
+	var best_area := 0.0
+	for piece_value in Geometry2D.offset_polygon(poly, -inset,
+			Geometry2D.JOIN_MITER):
+		var piece: PackedVector2Array = piece_value
+		if piece.size() < 3 or Geometry2D.is_polygon_clockwise(piece):
+			continue
+		var area := _poly_area(piece)
+		if area > best_area:
+			best_area = area
+			best = piece
+	return best
 
 ## Closed ring through both arm CENTRELINES: left root -> left tip -> right tip
 ## -> right root. Using centrelines (not offset inner edges) keeps the ring valid

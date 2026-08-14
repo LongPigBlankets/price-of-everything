@@ -33,6 +33,7 @@ func _ready() -> void:
 	_test_accommodation_site_yield()
 	_test_density_audit_classification()
 	_test_density_audit_gate()
+	_test_port_arm_geometry()
 	_test_coal_prohibition()
 	_test_scheduled_coal_prohibition()
 	_test_widgets_instantiate()
@@ -12720,3 +12721,51 @@ func _test_goods_graph_reopen_clears_focus() -> void:
 	_check((world.get("_fpos") as Dictionary).is_empty(), "goods graph: reopening drops the stale focus positions")
 	_check(str(world.get("_selected_id")) == "", "goods graph: reopening clears the selection")
 	world.queue_free()
+
+## Port arm geometry (addendum section 5). These are the pure helpers behind the
+## two owner-visible properties: arms are straight runs, and the space between
+## them is measured as the space between them.
+func _test_port_arm_geometry() -> void:
+	var straight := PackedVector2Array([Vector2(0.0, 0.0), Vector2(0.0, 100.0)])
+	_check(is_zero_approx(MidcenturyPortPlan._max_bend_deg(straight)),
+		"port arms: a two-point run reports zero bend")
+	var kinked := PackedVector2Array([Vector2(0.0, 0.0), Vector2(0.0, 50.0),
+		Vector2(50.0, 100.0)])
+	_check(absf(MidcenturyPortPlan._max_bend_deg(kinked) - 45.0) < 0.01,
+		"port arms: a 45 degree kink is reported as 45 degrees")
+	var collinear := PackedVector2Array([Vector2(0.0, 0.0), Vector2(0.0, 40.0),
+		Vector2(0.0, 90.0)])
+	_check(is_zero_approx(MidcenturyPortPlan._max_bend_deg(collinear)),
+		"port arms: a collinear three-point run still reports zero bend")
+
+	var left := PackedVector2Array([Vector2(-30.0, 0.0), Vector2(-40.0, 90.0)])
+	var right := PackedVector2Array([Vector2(30.0, 0.0), Vector2(45.0, 90.0)])
+	var ring := MidcenturyPortPlan._interarm_ring(left, right)
+	_check(ring.size() == 4, "port enclosure: the ring uses both arm centrelines")
+	_check(ring[0] == left[0] and ring[1] == left[1],
+		"port enclosure: the ring runs out along the left arm first")
+	_check(ring[2] == right[1] and ring[3] == right[0],
+		"port enclosure: the ring returns along the right arm, tip first")
+
+	var cover := PackedVector2Array([Vector2(-200.0, -200.0),
+		Vector2(200.0, -200.0), Vector2(200.0, 200.0), Vector2(-200.0, 200.0)])
+	var covered: Dictionary = MidcenturyPortPlan._enclosure_stats(ring, [cover])
+	_check(is_zero_approx(float(covered.open_area)),
+		"port enclosure: geometry the port itself covers is not counted as open")
+	var degenerate: Dictionary = MidcenturyPortPlan._enclosure_stats(
+		PackedVector2Array([Vector2.ZERO, Vector2.ONE]), [])
+	_check(is_zero_approx(float(degenerate.open_area)) and \
+		is_zero_approx(float(degenerate.sea_coverage)),
+		"port enclosure: a degenerate ring measures nothing rather than dividing by zero")
+
+	var head := PackedVector2Array([Vector2(-60.0, -60.0), Vector2(60.0, -60.0),
+		Vector2(60.0, 0.0), Vector2(-60.0, 0.0)])
+	var attached := MidcenturyPortPlan._attach_to_head(Vector2(0.0, 20.0),
+		Vector2.UP, head)
+	_check(attached != Vector2.INF and attached.y < 0.0,
+		"port arms: an arm root reaches back into the apron")
+	_check(absf(attached.y - (-MidcenturyPortPlan.ARM_HEAD_BITE)) < 3.01,
+		"port arms: the arm bites into the apron rather than stopping at its edge")
+	_check(MidcenturyPortPlan._attach_to_head(Vector2(0.0, 500.0), Vector2.UP,
+		head) == Vector2.INF,
+		"port arms: an arm that cannot reach the apron is rejected, not floated")
