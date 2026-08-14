@@ -12769,31 +12769,3 @@ func _test_port_arm_geometry() -> void:
 	_check(MidcenturyPortPlan._attach_to_head(Vector2(0.0, 500.0), Vector2.UP,
 		head) == Vector2.INF,
 		"port arms: an arm that cannot reach the apron is rejected, not floated")
-
-	# Addendum 5a: the port moves seaward, and the body it leaves behind must
-	# still be rooted on the shore. These are the pure helpers behind both.
-	var wharf := PackedVector2Array([Vector2(-70.0, 0.0), Vector2(70.0, 0.0),
-		Vector2(70.0, 40.0), Vector2(-70.0, 40.0)])
-	_check(MidcenturyPortPlan._attach_to_body(Vector2(0.0, 60.0), Vector2.UP,
-		[head, wharf]) != Vector2.INF,
-		"port arms: an arm reaches the wharf even when the apron is far behind")
-	_check(MidcenturyPortPlan._attach_to_body(Vector2(0.0, 500.0), Vector2.UP,
-		[head, wharf]) == Vector2.INF,
-		"port arms: reach is measured against the real body, not assumed")
-	_check(MidcenturyPortPlan._point_in_any(Vector2(0.0, 20.0), [head, wharf]),
-		"port body: a point on the wharf is inside the body")
-	_check(not MidcenturyPortPlan._point_in_any(Vector2(0.0, 200.0),
-		[head, wharf]), "port body: a point out in the basin is not the body")
-
-	# The enclosure gate and the reported coverage must be the same instrument.
-	_check(not MidcenturyPortPlan._ring_has_uncovered_land(ring, [cover]),
-		"port enclosure: fully covered geometry reports no uncovered land")
-	_check(MidcenturyPortPlan._ring_has_uncovered_land(
-		PackedVector2Array([Vector2.ZERO, Vector2.ONE]), []),
-		"port enclosure: a degenerate ring fails the gate rather than passing it")
-	var uncovered: Dictionary = MidcenturyPortPlan._enclosure_stats(ring, [])
-	_check(float(uncovered.open_area) > 0.0,
-		"port enclosure: an uncovered ring reports open area")
-	_check(MidcenturyPortPlan._ring_has_uncovered_land(ring, []) ==
-		(float(uncovered.sea_coverage) < 1.0),
-		"port enclosure: the gate and the reported coverage agree on one ring")

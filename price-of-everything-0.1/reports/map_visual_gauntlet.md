@@ -3054,6 +3054,12 @@ end of §M2, §M3, §M4 and §N1 respectively and are not repeated here.
 
 ## N2. Seaward port reposition — only sea between the arms — 2026-08-15
 
+> **OUTCOME: REJECTED AND REVERTED — see N2.02 at the end of this section.** N2.01 met the numeric
+> gate (100% at all four ports) and lost the blind comparison to the base tree, 2.67 vs 3.58. The
+> source is reverted to `dab04e87`; the N1.02 geometry stands. Everything between here and N2.02 is
+> the implementing agent's measurement record, retained because it is accurate and because the
+> postmortem depends on it — **not** because the mechanism was accepted.
+
 Addendum **section 5a**, on branch `gauntlet5/port` (worktree `/tmp/poe_g5_wt/port`), based on
 `dab04e87` (INT-G3, the merged coast+ports tree). Only the mid-century port plan, its rendering
 seam, its focused audit and its unit asserts changed. Settlement density, parks, coastal reach,
@@ -3184,3 +3190,103 @@ at baseline anyway, so it is not worth risking a 4/4 run.
 - `git diff --check` clean.
 - **Blind pair staged** at `/tmp/poe_g5_blind/PORT/{stoneshore,arin,capital,vandel}/`, one framing
   per subdirectory, same slot assignment throughout.
+
+### N2.02 — REJECTED: the gate was met and the map got worse
+
+Closed by the reviewing agent in the same worktree. Nothing below is inherited from the implementing
+agent's report; the blind key was re-derived from the artifacts before it was trusted.
+
+**Blind chain of custody, re-derived by hash.** The blind pair is 960x540, and so are the harness
+captures, so the slots resolve by SHA-256 with no resampling. In all four subdirectories
+`image_2.png` is byte-identical to the base-commit control capture (`base_ports/`), whose plan
+hashes are exactly N1's recorded `f3242f47` / `4aae1d4d` / `d88be546` / `aa2ff032` — so image 2 is
+provably the accepted N1.02 geometry. `image_1.png` is byte-identical to the final candidate capture
+(plan hashes `4e71ef49` / `150be3dc` / `09f87238` / `19c034e1`, `valid=4/4 failures=[]`), and that
+capture is itself byte-identical to an independent later re-run of the same tree — so image 1 is
+provably the candidate, and the geometry the critic scored is the geometry that was in the tree.
+The implementer's note and the orchestrator's slot assignment agree with the hashes. *(Three earlier
+`cand_ports_r1..r3` snapshots in the scratchpad are intermediate development states, not the
+candidate: they report `valid=3` with `tile_22_16 has no valid plan`. They are not evidence for or
+against N2.01 and were not used.)*
+
+**The verdict.** The critic, rendered blind, chose **image_2 — the base tree** — averaging
+**3.58/5 against the candidate's 2.67/5** across the twelve whole-map categories. The candidate was
+below the 4/5 floor in eleven of twelve; it did not win a single category, and it tied only on
+top-down discipline (4/4). Its worst losses were reference-family resemblance (2 vs 4),
+decorative/gameplay hierarchy (2 vs 4) and absence of procedural repetition (2 vs 4).
+
+**Why it lost — the metric was satisfied by paving, not by clearing.** `interarm_sea_coverage`
+counts a lattice point covered by the port's own drawing as "not open". The implementing agent
+recorded this honestly as a caveat; the blind result says it is fatal, not cosmetic. Pushing the
+compound seaward and carrying a wharf out over the foreshore drives the number to 100% by putting
+the port's own deck on top of the land inside the U. Nothing was cleared. The critic, with no
+access to the numbers, described the result at every site as a "quay-tan polygon" in the bay with
+the shoreline "visibly running BEHIND it", called it reclaimed land rather than a structure on a
+shore, and at Arin saw a green terrain seam showing through beneath the slab. **A 100% score and a
+basin full of port are the same picture.** The gate as written cannot tell them apart.
+
+Three further defects, all consequences of the same move:
+
+1. **The silhouette collapsed to one stamp.** Fitting the compound to a measured, 58u-smoothed
+   shore normal instead of the raw coastline made all four ports converge on the same fat pentagon
+   with two stubby legs, carrying an identical grid of red/yellow/white cargo pips (Arin repeats a
+   five-pip ladder verbatim). The base tree's four harbours are genuinely different — a splayed
+   pair at Vandel, a near-right-angle at Capital, a V at Stoneshore, one long arm plus a short one
+   at Arin — because each is fitted to its own raw coast. Smoothing the normal is what bought the
+   ±10° window; it also bought the repetition. That trade was not visible in any number.
+2. **The port outgrew its town** at Capital, Vandel and Stoneshore — the seaward push plus the
+   wharf makes the compound read louder and larger than the settlement it serves.
+3. **The coastline stopped being continuous.** The apron's lower edge became the waterline, and at
+   Capital the polygon threw two spurious pointed triangular flaps across the beach.
+
+**The shore-contact half of the gate never bound.** Recorded here so it is not mistaken for
+evidence: the 75% shore-contact test returns exactly 1.00 at every port by construction, because
+the apron is independently required to be 100% dry land across that same edge. It measures the
+right thing and can only ever answer yes as the plan is currently built. It constrains a future
+change, not this one.
+
+**The revert, verified.** `midcentury_port_plan.gd`, `port_visuals.gd`, `test_runner.gd` and
+`midcentury_port_gauntlet.gd` were restored to `dab04e87`; `git diff dab04e87` over `scripts/`,
+`tests/` and `tools/` is empty. Re-measured on the reverted tree:
+
+- **Unit suite `==== 2298 passed, 0 failed ====`** with a real summary line — exactly the base
+  count, so all 8 of N2.01's added port asserts are gone with the mechanism.
+- **Port gauntlet `valid=4/4 failures=[]`, `hard_gate_passes` true**, plan hashes back to
+  `f3242f47` / `4aae1d4d` / `d88be546` / `aa2ff032` and `interarm_sea_coverage` back to
+  96.57 / 95.33 / 95.08 / 95.34%.
+- **All nine windowed artifacts byte-identical** to the same-session base control — four port
+  framings, four diagnostics and the context frame. `poe_port_metrics.json` differs only in
+  `planner_msec`. The tree is pixel-for-pixel the accepted N1.02 map.
+- `git diff --check` clean. Only the report is committed.
+
+**What the blind pass says about the tree we kept.** The critic, scoring the base tree without
+knowing it was the incumbent, still put five categories below the 4/5 floor and flagged two defects
+in it that are now the standing state and are worth logging: at Stoneshore an L-shaped band of dark
+decorative blocks between the town and the shore is missing, leaving bare green with hollow
+unfilled parcel outlines and a road that drops to a hairline — it reads as an unfinished plate; and
+at Vandel and Capital the red port buildings are truncated into wedges by the harbour polygon edge,
+shadows sliced with them. The first is the same `tile_5_10` fabric weakness that INT-G3 classified
+as non-blocking and that N2.01 separately proved is **not** sensitive to where the quay line sits
+(park count and park area were byte-identical before and after a 24u seaward push).
+
+**Cost.** One WIP mechanism (390 lines in the plan script), one verification pass, one blind
+comparison, one revert. Addendum §5a is **not delivered**; §5's arm-straightness half remains
+satisfied at 0.00° and its "only sea between the arms" half remains open at 2,352u².
+
+### Next lever
+
+**Fix the instrument before attempting the geometry again.** `interarm_sea_coverage` must be
+re-defined to score the *underlying terrain* inside the U, treating a point as open only if the
+terrain beneath it is sea, so that drawing the port over the defect scores zero credit. As written,
+the metric rewards exactly the move that lost the blind pass, and any future attempt optimising
+against it will rediscover the same pentagon.
+
+With a terrain-truth metric in place, the promising attack is **selection, not translation**: keep
+the N1.02 compound on the shore, at its raw per-port coast angle — which is what the critic likes
+about the base tree, and what the smoothed normal destroyed — and search the coastline for a
+*sample whose throat is already clear*, scoring candidates on how much sea their U would enclose,
+instead of pushing a fixed sample out until the land is under the deck. That preserves the four
+distinct silhouettes and the continuous coastline, and it fails honestly at a site where no such
+stretch exists rather than paving one. Explicitly rejected as levers: pushing the compound seaward
+(this pass), and relaxing the NavGrid dry-land gate (untouched here, and it is what keeps the apron
+buildable).
