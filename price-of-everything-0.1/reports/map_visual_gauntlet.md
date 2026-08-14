@@ -3051,3 +3051,136 @@ the only visible difference in that region is the port quays. 46 urban tiles are
 
 Attempt budget: §2 and §3 have each used **1 of 2** attempts. The next levers are recorded at the
 end of §M2, §M3, §M4 and §N1 respectively and are not repeated here.
+
+## N2. Seaward port reposition — only sea between the arms — 2026-08-15
+
+Addendum **section 5a**, on branch `gauntlet5/port` (worktree `/tmp/poe_g5_wt/port`), based on
+`dab04e87` (INT-G3, the merged coast+ports tree). Only the mid-century port plan, its rendering
+seam, its focused audit and its unit asserts changed. Settlement density, parks, coastal reach,
+relief, roads, rivers and the legacy renderers were not reopened.
+
+N1 delivered straight arms (0.00°) but left **2,352u² of land inside the four Us** (95.08–96.57%
+sea) and gated the coverage at 0.94 rather than draw the apron outside the NavGrid instrument that
+certifies it dry. The owner ruled: *"close it by moving the port further out if needed. Port is
+allowed to sit on up to +10/-10 degrees from perfect orientation on the shore as long as the main
+body touches the shore at least 75% on the shore-side and there is only sea between the arms."*
+
+### N2.01 — accepted: measured shore normal, measured seaward push, quay deck
+
+Three changes, all inside the existing bounded coastline search. The K1 fixed
+rectangle-and-shore-normal primitive stays retired; every port is still fitted to its own coast.
+
+1. **"Perfect orientation" is measured before the tolerance is applied to it.** A single NavGrid
+   cell's 8-neighbour landward gradient on a 12u lattice quantises into roughly 22° buckets, so
+   L1/N1's ±22° window was mostly paying for lattice noise. Each coastline sample's normal is now
+   the mean seaward direction of every coastal cell within 58u of it, and the search offsets that
+   smoothed normal by **±10° only** (`APPROACH_ANGLES_DEG = [-10, -3.4, 3.4, 10]`). Narrowing the
+   window *without* the smoothed normal loses Vandel outright.
+2. **The quay line is placed past the last land in the throat, measured.** `_land_clearance` marches
+   13 transverse rays (spacing below one NavGrid step) seaward from the shore sample until no cell
+   in the throat is non-sea, and the quay line goes one full NavGrid step beyond that, plus one of
+   three small extras. The basin and both arm roots start there. Measured push: **24 / 18 / 24 / 56u**
+   at Stoneshore / Arin / Capital / Vandel. The score subtracts `1.35 × quay_shift`, so the search
+   prefers the least push that clears the throat — "further out **if needed**".
+3. **A wharf carries the compound from the dry apron out to that line.** It is a marine quay deck in
+   the same family as the arm decks (drawn in the same deck colour, under the apron), tapering from
+   the full apron width at the land to just enough at the quay line to carry both arm roots, and
+   **clipped back around any authoritative river or channel** it would otherwise reach across.
+
+**The NavGrid dry-land gate is untouched.** `_fit_head` still clips to the rendered coastline, still
+erodes along `HEAD_INSET_LADDER`, and still requires `_class_coverage(head, WATER_LAND) >= 0.999`.
+The diff contains no change to any dry-land threshold. The apron's minimum-area gate was in fact
+made *stricter*: it is now judged against the landward reference block rooted on the shore, so
+pushing the quay line further out cannot make that gate progressively easier to pass.
+
+The enclosure gate moved **inside** the candidate loop (`_ring_has_uncovered_land`, early-exit on the
+first uncovered lattice point) and shares its lattice and water lookup with the reported
+`interarm_sea_coverage`, so the gate and the number cannot disagree.
+
+### The four-port audit — `valid=4/4 failures=[]`
+
+| Port / tile | interarm sea | land in the U | arm bend | shore contact | orientation off | quay push | wharf over sea | valid |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Stoneshore `tile_5_10` | **100.00%** | **0u²** | 0.00° | 100.0% | 3.4° | 24.0u | 46.5% | yes |
+| Arin `tile_11_17` | **100.00%** | **0u²** | 0.00° | 100.0% | 10.0° | 18.0u | 62.5% | yes |
+| Capital `tile_24_7` | **100.00%** | **0u²** | 0.00° | 100.0% | 3.4° | 24.0u | 50.0% | yes |
+| Vandel `tile_22_16` | **100.00%** | **0u²** | 0.00° | 100.0% | 10.0° | 56.0u | 64.3% | yes |
+
+Same-session control captured from the base commit reproduces N1 exactly — 96.57 / 95.33 / 95.08 /
+95.34% and 416 / 624 / 672 / 640u², total **2,352u² → 0u²**. Retained and re-verified on the
+candidate: 100% sea basins, 100% open-water corridors, 100% dry landward aprons, zero river/channel
+overlap, zero opaque basin overlap, zero gameplay overlap, zero decorative/park overlap, exactly two
+cranes per port one per arm, valid authoritative-road access at all four, 21–25 cargo groups, and
+eight marine reservations. Arin's land-rooted right quay, the weakest transition in L1 (29.53% sea
+deck) and N1 (73%), now reads **88%**; the other seven arm decks are 100%.
+
+The gate is at **1.0** with no threshold left to tune, and it fails the run on land *or* on a body
+that has floated off the shore (`shore_contact_coverage < 0.75`) *or* on an orientation past ±10°.
+
+### Two things to be honest about
+
+**The shore-contact gate cannot bind as the plan is currently built.** It measures the right thing —
+48 rays landward across exactly the body's shore-side edge width, counting a ray when the body
+stands on dry land along it — but the apron is already required to be 100% dry land across that full
+width, so the answer is 1.00 at every port by construction. It is a guard against a future change,
+not an active constraint, and it is reported as 100% because it is 100%, not because it was tuned.
+
+**`interarm_sea_coverage` counts port-covered lattice points as not open** — that semantic is
+inherited unchanged from N1, where it was introduced. So "zero land inside the U" means *zero bare
+land visible inside the U*: the foreshore strip the NavGrid erosion leaves is now under the port's
+own quay deck rather than exposed. The wharf is 46.5–64.3% over sea; the rest of it is the 16u
+landward bite that overlaps the dry apron, plus that foreshore. This is what "move the port out" is
+made of — a quay wall standing out over the foreshore into the water — and it is the reading under
+which the arms leave from water and the basin is water from the quay line outward. A reader who
+wanted "the whole U is over deep water" should know the metric does not assert that.
+
+### The Stoneshore green — checked, NOT freed
+
+INT-G3 recorded that the ports stream's apron displaced a green at `tile_5_10` that the coastal
+stream had just lifted to exactly the `>=2` floor, flipping the tile to `green_below_floor`. Moving
+the port seaward **does not free it**:
+
+```
+tile_5_10  base dab04e87  13 / 9 / 1  park_area 1961  FAIL ["green_below_floor"]
+tile_5_10  candidate      13 / 11 / 1  park_area 1961  FAIL ["green_below_floor"]
+```
+
+Park count and park area are *identical*, not merely still-failing: the same single green survives
+at the same area on both trees. The green is therefore not sensitive to where the quay line sits,
+and the seaward move is not the lever that would recover it. (It could not be: the apron's dry depth
+is now measured from the shoreline rather than from the quay line, so the landward footprint grew by
+the push rather than shrinking — and even so the greens did not move.) Reducing that landward depth
+is the untried lever; it was not taken, because the four hard gates are green and §2 fails map-wide
+at baseline anyway, so it is not worth risking a 4/4 run.
+
+### N2 verification — what was run, and what it returned
+
+- **Unit suite: 2,306 passed / 0 failed**, with a real `==== N passed, M failed ====` summary line.
+  Base is 2,298; the delta is exactly the 8 new port asserts. All 19 port-geometry asserts pass.
+- **Port gauntlet `valid=4/4 failures=[]`, `hard_gate_passes: true`**, headless and windowed.
+- **Two byte-identical windowed capture runs**: all nine artifacts (4 normal, 4 diagnostic, 1
+  context) SHA-256 identical, and the two metrics JSONs identical field-for-field once `planner_msec`
+  is excluded.
+- **Determinism across five processes** — headless gauntlet, density audit, two windowed gauntlets
+  and the morphology harness — identical plan hashes `4e71ef49` Stoneshore, `150be3dc` Arin,
+  `09f87238` Capital, `19c034e1` Vandel.
+- **Density audit: zero verdict changes.** Class compliance identical (mountain 45/45, remote 1/54,
+  sparse 45/204, urban 32/92; 395 audited, 272 failing). Five of 395 rows differ, every one a port
+  tile: `tile_5_10` large 9→11, `tile_11_17` small 10→11, `tile_12_17` large 13→12, `tile_22_16`
+  small 11→12 and park_area 12,637→18,970, `tile_24_7` small 17→16. Rendered masses/greens
+  2,216/454 → 2,218/455.
+- **Road-frontage audit byte-identical** to the durable base record on every counter and every
+  worst-offender line: 177 road tiles, 413 buildings, 79 failing tiles, 177 over 15u, 137
+  off-road-by-design, 1 service-lane save, 165 block-mode failures without streets, 146.6u worst
+  furnace on `tile_10_3`. No gameplay building moved.
+- **All-style harness exit 0 on both trees**, and compared frame by frame against a same-session
+  base-commit control: **35 of 43 frames byte-identical**, including all 10 classic, all 10 ink and
+  all 10 plate frames, `wide_legacy_before`, `wide_legacy_roundtrip`, and the three mid-century
+  framings with no port in view. The 8 that differ are all mid-century framings containing a port.
+  In-process: `legacy_before == legacy_roundtrip == wide_ink` and `midcentury == midcentury_repeat`,
+  full-PNG.
+- **Morphology harness: 154 water-overlap leaves, 150 `water_overlap_count` leaves and 41
+  relief-overlap leaves all ZERO.** Exit 1, as designed, on the unresolved G1.02 dense-core gate.
+- `git diff --check` clean.
+- **Blind pair staged** at `/tmp/poe_g5_blind/PORT/{stoneshore,arin,capital,vandel}/`, one framing
+  per subdirectory, same slot assignment throughout.
