@@ -88,6 +88,42 @@ const VACANT_LOTS: Array[Color] = [
 ## family and slightly translucent so terrain/geography retain first read.
 const FAR_URBAN_PLATE := Color("65625c", 0.86)
 
+## ── Rare industrial landmark tier ───────────────────────────────────────────
+## The ORDINARY gameplay-industry tier above keeps its halved chroma (V4.08b);
+## that discipline is unchanged. A single-digit deterministic subset of the
+## largest real works is promoted to this landmark tier instead, so a handful of
+## oxide/rust industrial anchors survive world scale the way the reference plans'
+## rare strong landmarks do.
+##
+## The bound is explicit. Saturation sits ABOVE the ordinary mid-century industry
+## tier and strictly BELOW the full category colour that failed as saturated
+## close-zoom colour fields (V4.08a): the tones below are ~0.55 saturation, the
+## ordinary tier is ~0.42 and the full plate category colours reach 0.65–0.77.
+## Only these few compounds ever use them, and their near-zoom form is a paper
+## wash — never a filled roof.
+const INDUSTRY_LANDMARK_TONES: Array[Color] = [
+	Color("a8674c"),  # oxide red
+	Color("9c6a4a"),  # rust
+	Color("b17a58"),  # salmon brick
+]
+
+## Deterministic per-compound tone. Seeded through RoadHash like every other
+## mid-century colour decision; never wall-clock, never global RNG.
+static func industry_landmark_tone(key: String) -> Color:
+	return INDUSTRY_LANDMARK_TONES[RoadHash.pick(
+		"mc-industry-landmark|%s" % key, INDUSTRY_LANDMARK_TONES.size())]
+
+## World-scale plate accent. Drawn only inside the existing far-zoom plate LOD,
+## replacing the quiet grey for this compound's works footprint alone.
+static func industry_landmark_plate(key: String) -> Color:
+	return Color(industry_landmark_tone(key), 0.93)
+
+## Near-zoom works yard/apron wash for a landmark compound. Warmer and slightly
+## stronger than INDUSTRIAL_YARDS, still a printed wash well under the category
+## colour, so the landmark keeps one identity across zoom levels.
+static func industry_landmark_yard(key: String) -> Color:
+	return industry_landmark_tone(key).lerp(PAPER, 0.38)
+
 static func gameplay_block_top(family: String) -> Color:
 	return GAMEPLAY_BLOCK_TOPS.get(family, GAMEPLAY_BLOCK_TOPS["orange"])
 
