@@ -154,6 +154,10 @@ var _far_plate_active := false
 ## simulation, occupancy, placement legality, click testing or save data.
 var _render_mass_entries: Array = []
 var _render_park_entries: Array = []
+## Sanitised parcel layer, retained for the articulation / park-vs-hole audit
+## ONLY. Nothing draws from it (the parcel mesh is built from the same array),
+## so retaining the reference cannot change a pixel.
+var _render_parcel_entries: Array = []
 
 var _metrics := {
 	"tiles": 0, "parcels": 0, "blocks": 0, "parks": 0, "open_lots": 0,
@@ -260,6 +264,7 @@ func _rebuild() -> void:
 	_decorative_mass_records = []
 	_render_mass_entries = []
 	_render_park_entries = []
+	_render_parcel_entries = []
 	_urban_audit_components = []
 	_dry_land_rejections = {"block": 0, "shadow": 0, "accommodation": 0}
 	_rural_growth_records = {}
@@ -349,6 +354,7 @@ func _rebuild() -> void:
 	# them, and so does the per-tile density audit.
 	_render_mass_entries = block_entries
 	_render_park_entries = park_entries
+	_render_parcel_entries = parcel_entries
 
 	_parcel_mesh = _fill_mesh(parcel_entries)
 	_yard_mesh = _fill_mesh(yard_entries)
@@ -1757,7 +1763,7 @@ func _ensure_universal_dense_cores(parcel_entries: Array,
 				var mass: PackedVector2Array = layout.poly
 				var lot: PackedVector2Array = layout.get("lot", mass)
 				parcel_entries.append({"poly": lot,
-					"color": MapMidcenturyStyle.PAPER})
+					"color": MapMidcenturyStyle.PAPER, "role": "core_lot"})
 				(component.parcel_polys as Array).append(lot.duplicate())
 				_metrics.parcels = int(_metrics.parcels) + 1
 				var before := _decorative_mass_records.size()
@@ -1803,7 +1809,7 @@ func _dense_core_terrace_refine(component: Dictionary, spec: Dictionary,
 		for piece_index in pieces.size():
 			var poly: PackedVector2Array = pieces[piece_index]
 			parcel_entries.append({"poly": poly,
-				"color": MapMidcenturyStyle.PAPER})
+				"color": MapMidcenturyStyle.PAPER, "role": "terrace_lot"})
 			(component.parcel_polys as Array).append(poly.duplicate())
 			_metrics.parcels = int(_metrics.parcels) + 1
 			var edge := _hero_longest_edge(poly)
@@ -1928,7 +1934,7 @@ func _dense_core_refine_existing(component: Dictionary, spec: Dictionary,
 			for piece_index in pieces.size():
 				var poly: PackedVector2Array = pieces[piece_index]
 				parcel_entries.append({"poly": poly,
-					"color": MapMidcenturyStyle.PAPER})
+					"color": MapMidcenturyStyle.PAPER, "role": "core_refine_lot"})
 				(component.parcel_polys as Array).append(poly.duplicate())
 				_metrics.parcels = int(_metrics.parcels) + 1
 				var edge := _hero_longest_edge(poly)
@@ -2124,7 +2130,7 @@ func _ensure_universal_road_gradients(parcel_entries: Array,
 						_audit_poly_overlaps_exclusions(shadow, component.masses):
 					continue
 				parcel_entries.append({"poly": poly,
-					"color": MapMidcenturyStyle.PAPER})
+					"color": MapMidcenturyStyle.PAPER, "role": "gradient_lot"})
 				(component.parcel_polys as Array).append(poly.duplicate())
 				_metrics.parcels = int(_metrics.parcels) + 1
 				var before := _decorative_mass_records.size()
@@ -3969,7 +3975,8 @@ func _draw_accommodation_sites(sites: Array, parcel_entries: Array,
 		if use == "releasable_park":
 			park_entries.append({"poly": poly,
 				"color": MapMidcenturyStyle.park(key),
-				"kind": "accommodation_park"})
+				"kind": "accommodation_park",
+				"role": "accommodation_release"})
 			_append_ring(_block_edges, poly)
 			_hero_add_park_mark(poly)
 		elif use in ["releasable_yard", "industrial_growth"]:
@@ -3979,7 +3986,8 @@ func _draw_accommodation_sites(sites: Array, parcel_entries: Array,
 			_add_accommodation_yard_marks(site)
 		else:
 			parcel_entries.append({"poly": poly,
-				"color": MapMidcenturyStyle.vacant_lot(key)})
+				"color": MapMidcenturyStyle.vacant_lot(key),
+				"role": "accommodation_lot"})
 			_append_ring(_parcel_edges, poly)
 			_add_accommodation_lot_marks(site)
 
@@ -4181,7 +4189,8 @@ func _morph_add_face(record: Dictionary, footprint_exclusions: Array,
 		parcel_color = MapMidcenturyStyle.industrial_yard(key)
 	elif role == "open":
 		parcel_color = MapMidcenturyStyle.vacant_lot(key)
-	parcel_entries.append({"poly": face, "color": parcel_color})
+	parcel_entries.append({"poly": face, "color": parcel_color,
+		"role": "face_%s" % role})
 	_active_relief_fills.append({"key": key, "poly": face.duplicate(),
 		"role": "parcel-%s" % role})
 	_metrics.parcels = int(_metrics.parcels) + 1
@@ -4192,7 +4201,8 @@ func _morph_add_face(record: Dictionary, footprint_exclusions: Array,
 			for piece_value in _hero_clip_polys([park_value], footprint_exclusions, 120.0):
 				var piece: PackedVector2Array = piece_value
 				park_entries.append({"poly": piece,
-					"color": MapMidcenturyStyle.park(key), "kind": "green"})
+					"color": MapMidcenturyStyle.park(key), "kind": "green",
+					"role": "face_park"})
 				_active_relief_fills.append({"key": "%s|park" % key,
 					"poly": piece.duplicate(), "role": "park"})
 				_append_ring(_block_edges, piece)
@@ -4313,7 +4323,7 @@ func _morph_add_small_town_micro(face: PackedVector2Array, key: String,
 				if pocket:
 					park_entries.append({"poly": piece,
 						"color": MapMidcenturyStyle.park(child_key),
-						"kind": "green"})
+						"kind": "green", "role": "row_pocket"})
 					_append_ring(_block_edges, piece)
 					_hero_add_park_mark(piece)
 					green_area += _poly_area(piece)
@@ -4399,7 +4409,8 @@ func _morph_add_village_cluster(face: PackedVector2Array, key: String,
 			for lot_value in Geometry2D.intersect_polygons(lot, face):
 				var lot_piece: PackedVector2Array = lot_value
 				if _poly_area(lot_piece) >= 110.0:
-					parcel_entries.append({"poly": lot_piece, "color": MapMidcenturyStyle.PAPER})
+					parcel_entries.append({"poly": lot_piece,
+						"color": MapMidcenturyStyle.PAPER, "role": "hamlet_lot"})
 			_add_block(piece, tangent, 0.38, "%s|hamlet|%d" % [key, piece_index],
 				shadow_entries, block_entries, "", MORPH_PROFILE_VILLAGE)
 			built_area += _poly_area(piece)
@@ -4430,7 +4441,7 @@ func _morph_add_village_cluster(face: PackedVector2Array, key: String,
 			var fallback_tangent := (fallback[(fallback_edge + 1) % fallback.size()] -
 				fallback[fallback_edge]).normalized()
 			parcel_entries.append({"poly": fallback,
-				"color": MapMidcenturyStyle.PAPER})
+				"color": MapMidcenturyStyle.PAPER, "role": "forced_core_lot"})
 			_add_block(fallback, fallback_tangent, 0.38, "%s|forced-core" % key,
 				shadow_entries, block_entries, "", MORPH_PROFILE_VILLAGE)
 			built_area += _poly_area(fallback)
@@ -4823,7 +4834,8 @@ func _rural_add_candidate(record: Dictionary, role: String,
 	var lot_color := MapMidcenturyStyle.vacant_lot("%s|garden" % str(record.key))
 	if role == "back-row" or RoadHash.pick("rural-garden|%s" % str(record.key), 100) < 36:
 		lot_color = MapMidcenturyStyle.park("%s|garden" % str(record.key))
-	parcel_entries.append({"poly": record.lot_poly, "color": lot_color})
+	parcel_entries.append({"poly": record.lot_poly, "color": lot_color,
+		"role": "rural_garden"})
 	_append_ring(_parcel_edges, record.lot_poly)
 	_add_block(record.poly, record.tangent, 0.28, str(record.key),
 		shadow_entries, block_entries, "", MORPH_PROFILE_VILLAGE)
@@ -5390,7 +5402,8 @@ func _hero_add_face(face: PackedVector2Array, key: String, color_cluster: String
 	var area := _poly_area(face)
 	if area < HERO_FACE_MIN_AREA:
 		return {"built_area": 0.0, "green_area": 0.0}
-	parcel_entries.append({"poly": face, "color": MapMidcenturyStyle.PAPER})
+	parcel_entries.append({"poly": face, "color": MapMidcenturyStyle.PAPER,
+		"role": "hero_face"})
 	_metrics.parcels = int(_metrics.parcels) + 1
 	var roll := RoadHash.pick("%s|role" % key, 100)
 	if roll < 18:
@@ -5399,7 +5412,8 @@ func _hero_add_face(face: PackedVector2Array, key: String, color_cluster: String
 			for piece_value in _hero_clip_polys([park_value], footprint_exclusions, 140.0):
 				var piece: PackedVector2Array = piece_value
 				park_entries.append({"poly": piece,
-					"color": MapMidcenturyStyle.park(key), "kind": "green"})
+					"color": MapMidcenturyStyle.park(key), "kind": "green",
+					"role": "face_park"})
 				_append_ring(_block_edges, piece)
 				green_area += _poly_area(piece)
 				_hero_add_park_mark(piece)
@@ -5554,7 +5568,7 @@ func _hero_add_street_walls(face: PackedVector2Array, key: String, color_cluster
 				var piece: PackedVector2Array = piece_value
 				park_entries.append({"poly": piece,
 					"color": MapMidcenturyStyle.park("%s|court" % key),
-					"kind": "courtyard"})
+					"kind": "courtyard", "role": "courtyard"})
 				_append_ring(_block_edges, piece)
 				green_area += _poly_area(piece)
 				_hero_add_park_mark(piece)
@@ -5847,7 +5861,8 @@ func _add_courtyard(center: Vector2, tangent: Vector2, length: float, depth: flo
 	var court_half := minf(length, depth) * 0.12
 	var court := _irregular_lot(center - normal * 1.0, tangent, court_half * 2.4,
 		maxf(10.0, (depth - wing * 2.0) * 0.74), "%s|court" % key)
-	parcel_entries.append({"poly": court, "color": Color("d8cba8")})
+	parcel_entries.append({"poly": court, "color": Color("d8cba8"),
+		"role": "inner_court"})
 	_append_line(_open_lot_marks, center - tangent * court_half, center + tangent * court_half)
 
 func _add_enclosed_corner(center: Vector2, tangent: Vector2, length: float, depth: float,
@@ -5881,13 +5896,14 @@ func _add_enclosed_corner(center: Vector2, tangent: Vector2, length: float, dept
 	if RoadHash.pick("mc-court-green|%s" % key, 100) < 28:
 		park_entries.append({"poly": court,
 			"color": MapMidcenturyStyle.park("%s|inner" % key),
-			"kind": "courtyard"})
+			"kind": "courtyard", "role": "courtyard"})
 		_metrics.parks = int(_metrics.parks) + 1
 		var bend := center + n * court_depth * 0.18
 		_append_line(_park_marks, center - t * court_length * 0.30, bend)
 		_append_line(_park_marks, bend, center + t * court_length * 0.30)
 	else:
-		parcel_entries.append({"poly": court, "color": Color("d8cba8")})
+		parcel_entries.append({"poly": court, "color": Color("d8cba8"),
+			"role": "enclosed_court"})
 		_append_line(_open_lot_marks, center - t * court_length * 0.24, center + t * court_length * 0.24)
 	# The short gap in the split return is an alley, not a second road.
 	var alley_outer := center + t * length * 0.5
@@ -6021,7 +6037,8 @@ func _add_park(center: Vector2, tangent: Vector2, length: float, depth: float,
 	var park_poly := _irregular_lot(center, tangent, maxf(18.0, length - 5.0),
 		maxf(16.0, depth - 5.0), "%s|park" % key)
 	park_entries.append({"poly": park_poly,
-		"color": MapMidcenturyStyle.park(key), "kind": "park"})
+		"color": MapMidcenturyStyle.park(key), "kind": "park",
+		"role": "street_park"})
 	_append_ring(_block_edges, park_poly)
 	var n := Vector2(-tangent.y, tangent.x)
 	var u := minf(length * 0.25, 16.0)
@@ -6036,7 +6053,8 @@ func _add_open_lot(center: Vector2, tangent: Vector2, length: float, depth: floa
 	var n := Vector2(-tangent.y, tangent.x)
 	var lot := _irregular_lot(center, tangent, maxf(17.0, length - 5.0),
 		maxf(15.0, depth - 5.0), "%s|open" % key)
-	parcel_entries.append({"poly": lot, "color": Color("b8ad82")})
+	parcel_entries.append({"poly": lot, "color": Color("b8ad82"),
+		"role": "open_lot"})
 	_append_ring(_parcel_edges, lot)
 	for i in 3:
 		var d := (float(i) - 1.0) * 7.0
@@ -6486,11 +6504,34 @@ func density_audit_snapshot() -> Dictionary:
 			continue
 		greens.append({
 			"kind": str(entry.get("kind", "green")),
+			# The PLAN's own role assignment, stamped where the role was decided.
+			# A green that reaches the render arrays without one has no owning
+			# role record and is a HOLE, not a park (instrument 2).
+			"role": str(entry.get("role", "")),
 			"poly": poly.duplicate(),
 			"area": _poly_area(poly),
 			"center": _poly_center(poly),
 		})
-	return {"masses": masses, "greens": greens,
+	var parcels: Array = []
+	for entry_value in _render_parcel_entries:
+		var entry: Dictionary = entry_value
+		var poly: PackedVector2Array = entry.get("poly", PackedVector2Array())
+		if poly.size() < 3:
+			continue
+		parcels.append({
+			"role": str(entry.get("role", "")),
+			"poly": poly.duplicate(),
+			"area": _poly_area(poly),
+			"center": _poly_center(poly),
+		})
+	# Every inked outline the fabric draws, as flat a->b pairs. A deliberate
+	# court is enclosed by ink on (nearly) its whole outline; a dropout is not.
+	var ink := PackedVector2Array()
+	ink.append_array(_block_edges)
+	ink.append_array(_parcel_edges)
+	ink.append_array(_roof_edges)
+	return {"masses": masses, "greens": greens, "parcels": parcels,
+		"ink_segments": ink,
 		"large_mass_area_threshold": DensityAudit.LARGE_MASS_AREA}
 
 ## Dry BUILDABLE area per tile, using the exact exclusion vocabulary the fabric
