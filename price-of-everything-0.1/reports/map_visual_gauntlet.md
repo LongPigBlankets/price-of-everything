@@ -3682,3 +3682,344 @@ stop being counted at all.
 Two separate audit processes on this branch produce byte-identical summaries, and both match
 the `gauntlet6/instruments` run exactly. `visible_pieces()` is order-stable under input
 reversal. No determinism defect found.
+
+---
+
+## G7. Instrument repair — both instruments rebuilt against the gauntlet6 attacks — 2026-08-15
+
+| field | value |
+|---|---|
+| **Iteration** | G7 (gauntlet 7, measurement only) |
+| **Branch / base** | `gauntlet7/repair` from `gauntlet6/gameit` (`ac825d92`) |
+| **Layer changed** | none. `git diff gauntlet6/gameit --stat` is five files, all instrument code |
+| **Status** | **ELEVEN OF ELEVEN DOCUMENTED BREAKS ADDRESSED — nine closed outright, two partly closed with the residue named** |
+| **Evidence** | 600/600 audited tiles identical on 23 rendered-geometry fields (one intended instrument difference); unit suite 2336 → 2369 passed, 0 failed; both audits re-run end to end |
+
+The gauntlet6 adversarial stage found both instruments breakable and one of them
+tautological. This stream repaired them. **Every headline number got worse,
+which is the point** — the old ones flattered the map.
+
+### THE HEADLINE: what the repaired instruments say about the same, unchanged map
+
+```
+                                       gauntlet6      REPAIRED
+  ARTICULATION
+    drawn masses counted                    2191          2191
+    VISIBLE PIECES                          1259          1032     <-- 18% were never there
+    masses per visible piece               1.740         2.123
+    fused pieces (>= 2 masses)               453           416
+    masses inside a fused piece            63.2%         71.9%
+    largest single silhouette             64 mass       74 mass
+    median visible piece area              846 u2       1317 u2   <-- was a SUM OF INK
+    silhouette perimeter ratio             1.183         2.269
+    excess masses (not nettable)               -          1159     <-- new, monotone
+    pieces holding >=3 / >=5 / >=10            -   210 / 72 / 20   <-- new, monotone
+    fusion fragility (0.5x -> 2.0x)            -         1.255     <-- new, graded
+    tiles whose piece count disagrees
+      with their own mass count               57             0
+
+  PARKS vs HOLES
+    DELIBERATE public parks                  181            69
+    INNER COURTS (deliberate, private)         -            34
+    UNDRAWN HOLES                              0           334
+    urban tiles meeting the >= 2 floor    46 / 46       14 / 65
+    EMPTY parcels, any role                    -           291  (1,379,872 u2)
+    UNCOVERED parcel area                      -     2,703,475 u2 of 4,637,025
+
+  COMPLIANCE (same section-2 table)
+    failing tiles                            272           320
+    urban compliant                      32 / 92        2 / 92
+    sparse compliant                    45 / 204      27 / 204
+    new named failures                         -   fabric_fused 51, fabric_confetti 42
+```
+
+`gauntlet6` column re-measured on `gauntlet6/gameit` in this session, not quoted
+from the earlier write-up; it reproduces the documented baseline exactly
+(1259 / 2191 / 1.740 / 846 / 1.183 / 181 / 0 / 7).
+
+### INSTRUMENT 2 — the tautology, closed
+
+**The break.** `enclosure_fraction()` walked a green's perimeter against an ink
+set containing that green's own ring, because every park site in
+`urban_fabric_visuals.gd` appends the green and then `_append_ring`s the same
+polygon. All 181 samples scored 1.000 by construction; `role_share` scored 1.000
+for the same reason; `park_hole_count == 0` was a structural identity. The
+shipped negative control landed on *more* foreign ink (median 0.103) than the
+real greens did (median 0.000).
+
+**The repair.** `DensityAudit.mass_band_enclosure()` walks the green's outline,
+steps OUTWARD along the local normal at three depths, and asks whether a DRAWN
+MASS is there. The outward direction is resolved by probing (the normal that
+lands outside the polygon), which is correct on concave outlines where a
+centroid rule is not. A polygon cannot cover ground outside its own outline, so
+a green can never be its own enclosure — pinned as a test.
+
+**The band is a derivation, and the first derivation was wrong.** The first
+attempt used one accepted alley (3.8u) and the measurement was dead on arrival:
+the fabric insets every mass by `PARCEL_MARGIN` (4.5u) inside its parcel, so a
+*legally placed* neighbour cannot reach within 3.8u. The median real green
+scored 0.000 against a control at 0.018 — a test that could barely fire. The
+band is now `PARCEL_SETBACK + 2 x FUSION_DILATION = 8.3u`: the closest a
+neighbouring building is allowed to be, plus the narrowest gap this map calls
+visible. Both terms are frozen constants of the drawing, pinned equal to the
+fabric's own by unit test.
+
+**THE ACCEPTANCE CRITERION — the two distributions, both reported every run.**
+The control had to be rebuilt too. Displacing a green by one fixed vector often
+drops it *inside a building*, and an outline inside a building is trivially
+surrounded by it, which proves nothing — that is why the gauntlet6 control
+scored *higher* than the real greens. The control now walks a fixed
+deterministic spiral and takes the first placement that overlaps no drawn mass:
+the same shape, on unbuilt ground elsewhere.
+
+```
+  band   real_med  real_mean   ctl_med  ctl_mean   pass real / control
+   4.2      0.000      0.144     0.000     0.020      35 /   0
+   8.3      0.019      0.249     0.000     0.041     103 /   0   <-- the verdict band
+  16.6      0.201      0.304     0.000     0.082     119 /   5
+  33.2      0.334      0.397     0.092     0.154     145 /  19
+
+  control placed on clear ground 434 of 437, unplaceable 3
+  at the 0.50 public floor:  real 103 of 437,  control 0 of 434   (control max 0.493)
+```
+
+The real greens stand clear of the control at every band, by 6x in the mean and
+by 103-to-0 at the floor. **The instrument discriminates, and it discriminates on
+ink the green did not draw.** The gauntlet6 numbers are still printed beside it
+so the tautology stays on the record: own-ink enclosure min 1.000 median 1.000,
+foreign ink median 0.031.
+
+**And the verdict on this map is bad.** 334 of 437 drawn greens have no bounding
+fabric; only 69 are public greens and 34 are inner courts. Urban tiles meeting
+the two-park floor fall 46 → 14. That is the critic's *"you cannot tell a park
+from a hole"* answered with a number, and the answer is that most of them are
+holes.
+
+### INSTRUMENT 2 — self-declaration and floor games
+
+- **`kind == "courtyard"` no longer exists as a code path.** It was `continue`d
+  before any verdict and 155 of 454 rendered greens took that exit. Every drawn
+  green over the area floor is now judged, and `green_verdict()` takes **one
+  argument, a measurement**. There is no parameter a rename could reach. A
+  courtyard is now a green the fabric *wraps* (>= 0.90), measured — still
+  excluded from the public floor, but counted and reported (34 of them).
+- **Merge laundering (P3) is closed.** Each entry is judged on its own outline
+  BEFORE anything is merged, and a merged space carries only `public_area` — the
+  area of the entries that passed alone. The 20,000 u^2 hero park grazing
+  nineteen 1,000 u^2 pockets now yields one park of 20,000 u^2 and nineteen
+  holes, not one park and nothing else. Pinned with the tool's own
+  `_merge_green_spaces`, including a run with every entry relabelled.
+- **Bare parcels.** The coverage field is now DRAWN MASSES ONLY, so stamping a
+  green of any kind over an empty plot no longer cures it. Three numbers ship,
+  deliberately overlapping: `bare_parcels` (role-gated, 7, unchanged — kept for
+  continuity), `empty_parcels` (**every** parcel over the floor whatever it calls
+  itself, 291) and `uncovered_parcel_area` (area-weighted over every drawn parcel
+  with **no counting floor at all**, 2,703,475 u^2 of 4,637,025). A `face_built`
+  → `face_open` rename moves a parcel between the first two and leaves the third
+  exactly where it was; splitting a 2,995 u^2 plot into five 599 u^2 slivers
+  drops out of both counts and leaves the third unchanged.
+
+### INSTRUMENT 1 — the shadow layer, shown
+
+`density_audit_snapshot()` now hands over `shadows`: the fabric's own sanitised
+`shadow_entries` array, not a model reconstructed by offsetting. The audit
+clusters them as non-counting **BRIDGE** shapes — they fuse what they touch and
+count as no building. Sub-floor masses under `MIN_COUNTED_MASS_AREA` are bridges
+for the same reason, which closes the crumb-chain attack (P5): a 108 u^2 crumb
+laid between two masses 20u apart now makes them one piece and is itself counted
+as nothing.
+
+```
+  clustered ink: 2191 counted masses + 25 sub-floor + 2201 shadow fills
+  VISIBLE PIECES 1259 -> 1032        (the adversarial estimate was 1031)
+  m / piece      1.740 -> 2.123      (the adversarial estimate was 2.125)
+  largest        64 -> 74 masses     (the adversarial estimate was 74)
+```
+
+### INSTRUMENT 1 — netting, closed by an absolute number
+
+Every gauntlet6 headline was a ratio and every ratio could be paid for
+elsewhere: 22 crumbs anywhere bought one ten-mass amoeba.
+`excess_mass_count = mass_count - visible_piece_count` cannot be.
+
+* adding a well-separated building adds one mass **and** one piece: **0**
+* adding a crumb that fuses to something adds one mass and no piece: **+1**
+* fusing g masses into one silhouette: **+(g-1)**
+
+There is no arrangement of new geometry that lowers it. On the A2 fixture it
+goes 20 → 29 while all five old numbers improve, and forty well-separated
+companions added to the control move it 20 → 20. `pieces_holding_3/5/10_or_more`
+and `largest_piece_mass_count` are monotone in the same sense. Map-wide the
+number is **1159** — 1,159 of 2,191 drawn masses are not separately visible.
+
+### INSTRUMENT 1 — the step function, graded
+
+The fusion test answered one question at one dilation, so a plate on 3.81u gaps
+scored perfectly and the same plate at 3.79u collapsed to one piece.
+`fusion_curve()` now clusters the same ink at half an accepted alley, one, and
+two, and reports the curve. `fusion_fragility` is the rise in masses-per-piece
+across it — a continuous number with no threshold in it.
+
+```
+  the paved 3.81u plate      x0.5: 144 pieces   x1.0: 144   x2.0: 1     fragility 143.000
+  the same 144 on 20u streets                                            fragility   0.000
+  THE REAL MAP              x0.5: 1303 pieces  x1.0: 1032  x2.0: 746    fragility   1.255
+```
+
+### INSTRUMENT 1 — the confetti direction, actually gated
+
+`DensityAudit.evaluate()` read **no articulation number at all**. It now reads
+three, and names two new failures:
+
+* `fabric_fused` — masses per visible piece >= 2.0 on a tile with >= 5 masses.
+  The bar is a statement, not a tuning: *more mass hidden than shown*. **51 tiles.**
+* `fabric_confetti` — median visible piece area below `drawn_piece_floor_area()`
+  (1196 u^2), derived from three frozen numbers: the v0 median small mass
+  (800 u^2) as a square, drawn with its shadow, dilated on each side. A plate
+  whose median visible piece is smaller than one baseline small building drawn
+  the way the plate draws it is confetti. **42 tiles.**
+
+On the A1 fixture the whole plate reports a median silhouette of 1916 u^2 and no
+confetti failure; the shattered plate reports 473 u^2 and fails.
+
+### INSTRUMENT 1 — piece area is an area now
+
+`mean/median_visible_piece_area` is the area of the **union**, outer rings minus
+holes. The gauntlet6 number — the sum of member ink areas, which double-counts
+every overlap — survives as `mean/median_piece_ink_area`, and their ratio ships
+as `ink_to_silhouette_ratio` so the overlap the old field hid is named. Four
+coincident masses now report a 1916 u^2 piece with `ink_to_silhouette 3.340`,
+where the old field reported "6400 u^2".
+
+### INSTRUMENT 1 — the per-tile denominator (the tile_20_11 shape), closed
+
+Pieces were clustered map-wide and charged **whole** to one tile while masses
+were assigned individually. A tile is now charged exactly the pieces ITS OWN
+masses fall into, from the same `_owning_tile` assignment that produced its
+small/large counts. A piece holding masses from two tiles is counted by both,
+flagged as SHARED, and the reconciliation is printed.
+
+```
+  tiles whose piece_mass_count disagrees with their own mass count:  57 -> 0
+
+  tile_22_8   base: 21 masses, charged 0 pieces, m/piece 0.000 - "no problem"
+              G7:   21 masses,         1 piece,  m/piece 21.000,
+                    shared with 1 neighbour, largest shared silhouette 74 masses
+  tile_23_9   base: 34 masses, charged 90 piece-masses (a 2.6x overcharge)
+              G7:   34 masses, 34 piece-masses, 3 pieces, largest shared 74
+
+  map-wide:   per-tile mass sum 2191 = map 2191
+              per-tile piece sum 1098 vs map 1032, difference = 66 tile
+              memberships across 56 cross-tile silhouettes  (printed, not silent)
+```
+
+The worst silhouette is now named by every tile inside it —
+`tile_22_7+tile_22_8+tile_23_8+tile_23_9+tile_24_8, 74 masses, 116,165 u^2 of
+ink in a 193,808 u^2 silhouette` — instead of being charged to one owner.
+
+### PROOF THAT NOTHING VISUAL CHANGED
+
+This stream changed no geometry. Two proofs, neither of which needed a windowed
+capture (a geometry stream held the capture lock for most of this session).
+
+1. **Diff footprint.** `git diff gauntlet6/gameit --stat` is **five files**:
+   `scripts/density_audit.gd`, `scripts/urban_fabric_visuals.gd`,
+   `tests/test_runner.gd`, `tools/density_audit.gd`,
+   `tools/instrument_attack.gd`. The incidental `reports/balance/*.translation`
+   and `*.import` rebuilds the `--import` run picked up were reverted — the same
+   trap the V5 and I1 passes recorded.
+
+2. **The fabric edit is draw-neutral by construction.** The entire change to
+   `urban_fabric_visuals.gd` is: one new member `_render_shadow_entries`, one
+   assignment of the ALREADY-EXISTING `shadow_entries` array reference (the same
+   array `_shadow_mesh` is built from — retaining a reference cannot change a
+   pixel), one reset to `[]`, and a read-only `shadows` key on
+   `density_audit_snapshot()`. No constant, no threshold and no polygon was
+   touched.
+
+3. **Density audit, identical on every rendered-geometry field.** Both audits
+   were run end to end in this session. Across all **600 tile records** and 23
+   fields computed from the rendered polygons — `terrain_type`, `class`,
+   `urban_profile`, `built_road_edge_count`, `small_count`, `large_count`,
+   `small_area`, `large_area`, `courtyard_count`, `courtyard_area`,
+   `mass_kind_counts`, `hex_area`, `dry_land_area`, `open_land_area`,
+   `dry_buildable_area`, `water_margin_area`, `forest_disc_count`,
+   `gameplay_footprint_count`, `relief_shoulder_count`,
+   `relief_retention_fallback`, `bare_parcel_count`, `bare_parcel_area`,
+   `bare_parcels` — there is **exactly one difference in 13,800 comparisons**,
+   and it is an intended instrument change, not a geometry change:
+   `tile_22_15`'s single bare parcel reports `covered_fraction` 0.0778 → 0.0726
+   because the coverage field no longer counts greens as cover. Its area is
+   byte-identical (9650.10031890869) and it is still bare. `threshold`,
+   `classification`, `rendered_masses` (2216), `rendered_greens` (454),
+   `uncounted_mass_fragments` (25), `unassigned_masses/greens` (0/0) and
+   `judged_built_parcels` (606) are identical objects.
+
+Also run: **unit suite `==== 2369 passed, 0 failed ====`** with a real summary
+line (2336 gauntlet6 + 33 net new asserts), and the adversarial probe end to
+end.
+
+### THE ATTACKS ARE PINNED, NOT DESCRIBED
+
+`tests/test_runner.gd::_test_instrument_adversarial` keeps **every gauntlet6
+construction verbatim** and inverts the assertion to the repaired verdict, so a
+candidate that reopens one fails in the unit suite before it reaches a critic.
+Each block asserts the fixture still reproduces the attack AND that the repaired
+instrument now catches it:
+
+```
+  A1 CLOSED   shattering into crumbs FAILS the gate as confetti
+  A2 CLOSED   excess_mass_count rises by exactly the nine hidden masses;
+              forty companions elsewhere buy exactly nothing
+  A3 CLOSED   the paved plate collapses across the graded curve (fragility > 100)
+              while the same masses on 20u streets sit at 0.000
+  A4 CLOSED   with the shadow layer shown, two masses 4.0u apart are ONE piece
+  A5 CLOSED   the reported piece AREA is the silhouette; the overlap is named
+  P1 CLOSED   a green alone on blank paper is a HOLE however it rings itself
+  P3 CLOSED   a merged space carries only the area of entries that passed alone;
+              relabelling every entry changes nothing
+  P4 CLOSED   the rename escape no longer clears the label-free count
+  P5 CLOSED   a 108 u^2 crumb chain fuses two masses and counts as no building
+  PER-TILE    each tile is charged the pieces its own masses fall into; a tile
+      CLOSED  inside a neighbour's silhouette is told so, not charged zero
+```
+
+`tools/instrument_attack.gd` is now a before/after ledger rather than a list of
+open wounds: every construction is re-run and prints the number that closes it.
+
+### WHAT IS *NOT* CLOSED — stated, not hidden
+
+- **The 10% bare-parcel cover band survives.** A single 15x15 shed on a 2,000
+  u^2 plot is 11.3% cover and clears both the role-gated and the label-free
+  count. The area-weighted `uncovered_parcel_area` absorbs the other 89%, but the
+  COUNT does not. A defect that leaves one token building per plot is still
+  under-reported by two of the three numbers.
+- **Greens under `MIN_COUNTED_GREEN_AREA` (200 u^2) are still not judged.** A
+  defect shattered into sub-floor GREENS is invisible to instrument 2. Masses
+  below their floor no longer escape (they are bridges now), but greens do. The
+  only number that sees that ground is `uncovered_parcel_area`, and only where
+  the ground is a drawn parcel.
+- **`ink_to_silhouette_ratio` is weaker map-wide than per piece.** With the
+  shadow layer and the dilation included, the map-wide ratio is 0.702 and no
+  longer flags overlap on its own; the per-piece number still does (the A5
+  fixture reports 3.340). A candidate that stacked duplicates across the whole
+  map would show up in `largest_pieces[]`, not in the map-wide ratio.
+- **A degenerate outline is still its own visible piece.** `dilate_outline()`
+  returns an empty array for a sub-triangle polygon and the union-find still
+  emits a singleton, so a mass that draws nothing is counted as one visible
+  piece. Pre-existing; unchanged here.
+- **`fabric_fused` and `fabric_confetti` are near-saturated on this tree** (51
+  and 42 tiles). A gate that fires on a large share of the map is a weak
+  regression detector even when it is correctly derived. They are honest
+  measurements of a fused map, but the next stream should expect them to move
+  slowly.
+- **`tile_20_11` remains unexplained.** The SettlementPlan core planner still
+  records 38.5% core coverage where the audit measures 12.01%. Neither repair
+  here touches it — and note the per-tile denominator fix did NOT move that tile
+  (9 masses, 7 pieces, both before and after), so the two disagreements are
+  separate defects.
+- **No windowed pixel comparison was run.** A geometry stream held the capture
+  lock. The byte-identity claim in section I1 rested on a windowed capture; this
+  section's claim rests on the 600-tile / 23-field identity above plus the
+  draw-neutrality argument, which is weaker evidence about pixels and is stated
+  as such.
