@@ -2,7 +2,11 @@
 
 > **BINDING for every per-settlement hero loop.** Agreed so the loops run
 > autonomously through the queue without further owner instruction:
-> **Capital → Arin → Stoneshore → Vandel**, then stop and report.
+> **Capital → Arin → Stoneshore**, then stop and report.
+>
+> **VANDEL IS DEFERRED (owner ruling, 2026-08-15)** — it is the settlement most
+> vulnerable to a road-layout change, so it is accepted as it stands today and
+> reviewed after any roads pass, rather than authored twice.
 
 ## The rule: critic-gated ratchet
 
@@ -61,7 +65,8 @@ Every iteration must hold, vs the settlement's control:
    Docks `green_below_floor` (the ports apron displaced a green — a known
    combination regression), and the K1 caveat that the central open field
    weakens figure/ground.
-4. **Vandel**: fabric is thin — envelope grew +59% while built share FELL
+4. **Vandel — DEFERRED, do not run this loop.** Accepted as-is pending a roads
+   review. Recorded for when it resumes: fabric is thin — envelope grew +59% while built share FELL
    26.4% → 21.9%; the island reads as parallel bars on green. Roads are frozen,
    so the family is thickening/extending existing fabric along existing
    frontage. No new small marks (M3/V5 precedent).
@@ -73,3 +78,29 @@ WIP-commit after every step (session limits have killed two runs — commits are
 the only survivable state); HERO_NOTES.md in the worktree is the loop's memory;
 each settlement ends with a durable before/after pair under
 `reports/map_visual_gauntlet/hero_<settlement>/` and a report section.
+
+
+## Robustness to a later roads change (owner requirement, 2026-08-15)
+
+A roads redesign is now known to be **gameplay-neutral if per-tile flags/levels are
+preserved** (see the architecture-contract skill), so one is plausible later. The three
+settlement systems built here must survive it.
+
+**The rule: authored work is expressed as RULES OVER ROAD-DERIVED GEOMETRY, never as fixed
+positions.**
+
+- No hard-coded world coordinates, and no tile identity derived from arithmetic on ids.
+  (Precedent: a Silkstown oracle hard-coded `(9, 8)`, which resolves to `tile_10_9`, not
+  Silkstown — it measured the wrong tiles for days. Always resolve through `id_to_coord`.)
+- Anchor authored guides to **road-caused features** — street faces, junctions, frontage
+  runs — not to absolute points. If a road moves, the guide must move with it.
+- Prefer selecting from what the road graph produces (nearest still-built parcel, the face a
+  junction bounds) over placing at a chosen location.
+
+**The test each settlement must ship:** a road-perturbation fixture, modelled on the K1
+road-layout fixture that already exists. K1's proved that identical roads reproduce the exact
+core polygon, that replacing a horizontal road with a vertical one moves growth from
+horizontal to vertical, and that the core moves >40u away from a removed road. Each
+settlement's loop must add the equivalent for its own authored work: perturb a road serving
+that settlement, assert the authored fabric follows rather than staying put or vanishing.
+A settlement whose fabric does not move when its road moves is hard-coded, and fails.
