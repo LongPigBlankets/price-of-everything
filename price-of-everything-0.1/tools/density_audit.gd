@@ -29,9 +29,6 @@ const TEXT_PATH := "/tmp/poe_density_audit.txt"
 const NEIGHBOUR_RADIUS := 640.0
 ## Fixed, non-lattice displacement for the enclosure negative control below.
 const CONTROL_DISPLACEMENT := Vector2(37.0, 29.0)
-## The offset the fabric draws every block SHADOW at, for the adversarial
-## drawn-silhouette control below. Mirrors UrbanFabricVisuals.BLOCK_SHADOW_OFFSET.
-const SHADOW_OFFSET := Vector2(2.2, 2.8)
 
 var _terrain: TileMapLayer = null
 var _fabric: Node = null
@@ -107,7 +104,7 @@ func _audit() -> Dictionary:
 			"courtyard_count": 0, "courtyard_area": 0.0,
 			"mass_kind_counts": {},
 			"green_entries": [],
-			"pieces": [],
+			"mass_indices": PackedInt32Array(),
 			"bare_parcels": [],
 		})
 
@@ -124,11 +121,29 @@ func _audit() -> Dictionary:
 			urban_not_profiled.append(str(record.tile_id))
 
 	# --- assign every rendered mass and green to one tile ----------------
+	#
+	# G7 REPAIR (breaks A4, P5). `shapes` is EVERYTHING THE PLATE FILLS in the
+	# block layer, in three bands:
+	#   [0, counted_mass_count)   the counted buildings. Index i here IS mass i,
+	#                             and `mass_tile[i]` is the tile it was charged
+	#                             to, so per-tile articulation can be derived
+	#                             from the same assignment the mass counts use.
+	#   next band                 sub-floor and non-building masses. Drawn ink,
+	#                             not buildings: they may FUSE two pieces but
+	#                             never count as one. Without them a chain of
+	#                             119 u^2 crumbs bridges two masses the
+	#                             instrument still calls two pieces.
+	#   last band                 THE SHADOW FILLS, taken from the fabric's own
+	#                             sanitised array. Withholding this layer is why
+	#                             gauntlet6 reported 1259 pieces on a plate that
+	#                             draws 1031.
 	var areas: Array[float] = []
 	var unassigned_masses := 0
 	var unassigned_greens := 0
 	var uncounted_masses := 0
-	var counted_masses: Array = []
+	var shapes: Array = []
+	var mass_tile: PackedInt32Array = PackedInt32Array()
+	var bridge_shapes: Array = []
 	for mass_value in snapshot.get("masses", []):
 		var mass: Dictionary = mass_value
 		var area := float(mass.area)
@@ -136,13 +151,18 @@ func _audit() -> Dictionary:
 		var kind := str(mass.kind)
 		if not DensityAudit.counts_as_building(kind, area):
 			uncounted_masses += 1
+			bridge_shapes.append({"poly": mass.poly, "area": area,
+				"kind": kind, "counts": false})
 			continue
-		counted_masses.append({"poly": mass.poly, "area": area, "kind": kind})
 		var owner_index := _owning_tile(tile_records, mass.poly, mass.center)
+		shapes.append({"poly": mass.poly, "area": area, "kind": kind,
+			"counts": true})
+		mass_tile.append(owner_index)
 		if owner_index < 0:
 			unassigned_masses += 1
 			continue
 		var record: Dictionary = tile_records[owner_index]
+		(record.mass_indices as PackedInt32Array).append(shapes.size() - 1)
 		(record.mass_kind_counts as Dictionary)[kind] = int(
 			(record.mass_kind_counts as Dictionary).get(kind, 0)) + 1
 		if DensityAudit.is_large(area):
@@ -151,6 +171,22 @@ func _audit() -> Dictionary:
 		else:
 			record.small_count = int(record.small_count) + 1
 			record.small_area = float(record.small_area) + area
+	var counted_mass_count := shapes.size()
+	var sub_floor_bridge_count := bridge_shapes.size()
+	shapes.append_array(bridge_shapes)
+	var shadow_bridge_count := 0
+	for shadow_value in snapshot.get("shadows", []):
+		var shadow: Dictionary = shadow_value
+		shapes.append({"poly": shadow.poly, "area": float(shadow.area),
+			"kind": "shadow", "counts": false})
+		shadow_bridge_count += 1
+
+	# G7 REPAIR (break P2 - SELF-DECLARATION). Every drawn green is kept and
+	# judged. `kind == "courtyard"` used to `continue` BEFORE any verdict, and
+	# 155 of 454 rendered greens (264,873 u^2, 27% of the reported park area)
+	# already took that exit: relabelling a residual pocket `courtyard` deleted
+	# it from both the park and the hole count. No label is read here now; the
+	# verdict is taken from the drawing in the per-tile loop below.
 	for green_value in snapshot.get("greens", []):
 		var green: Dictionary = green_value
 		var kind := str(green.kind)
@@ -163,85 +199,113 @@ func _audit() -> Dictionary:
 		if kind == "courtyard":
 			record.courtyard_count = int(record.courtyard_count) + 1
 			record.courtyard_area = float(record.courtyard_area) + area
-			continue
-		if not DensityAudit.counts_as_green(kind, area):
+		if area < DensityAudit.MIN_COUNTED_GREEN_AREA:
 			continue
 		(record.green_entries as Array).append({"poly": green.poly,
-			"role": str(green.get("role", "")), "area": area})
+			"role": str(green.get("role", "")), "kind": kind, "area": area})
 
 	# --- INSTRUMENT 1: visible pieces, map-wide, then assigned to tiles ---
 	# The clustering is done ONCE over the whole map so a silhouette that
-	# straddles a hex side stays one piece; the piece is then charged to the
-	# tile its silhouette shares the most area with, the same rule G1.02 fixed
-	# for masses.
-	var pieces: Array = DensityAudit.visible_pieces(counted_masses)
+	# straddles a hex side stays one piece.
+	var pieces: Array = DensityAudit.visible_pieces(shapes)
+	# THE GRADED FUSION RESPONSE (break A3). The same shapes clustered at half
+	# an accepted alley, one alley and two. A plate whose articulation only
+	# exists because its gaps are a hair over the limit collapses across this
+	# curve; a plate separated by real streets does not move.
+	var fusion: Dictionary = DensityAudit.fusion_curve(shapes)
 
-	# ADVERSARIAL CONTROL (branch gauntlet6/gameit). `counted_masses` is
-	# `block_entries` ONLY. The fabric also fills a SHADOW for every block,
-	# offset by UrbanFabricVisuals.BLOCK_SHADOW_OFFSET, and that fill is never
-	# handed to the instrument - so the shape the instrument clusters is
-	# strictly smaller than the shape the plate draws. Re-cluster the DRAWN
-	# silhouette (mass UNION its own shadow) under the identical 1.9u rule and
-	# report the difference: every piece that disappears here is a pair the
-	# instrument calls articulated and the eye sees as touching.
-	var drawn_masses: Array = []
-	for mass_value in counted_masses:
-		var mass: Dictionary = mass_value
-		var poly: PackedVector2Array = mass.poly
-		var shadow := PackedVector2Array()
-		for point in poly:
-			shadow.append(point + SHADOW_OFFSET)
-		var merged: Array = Geometry2D.merge_polygons(poly, shadow)
-		var best := poly
-		var best_area := -1.0
-		for merged_value in merged:
-			var candidate_poly: PackedVector2Array = merged_value
-			if candidate_poly.size() < 3 or Geometry2D.is_polygon_clockwise(
-					candidate_poly):
+	# G7 REPAIR - PER-TILE DENOMINATOR (the tile_20_11 shape, live).
+	# gauntlet6 clustered pieces map-wide and then charged each piece WHOLE to
+	# one tile while assigning masses individually. 57 of 600 tiles disagreed:
+	# tile_23_9 owned 34 masses and was charged 90, and tile_22_8 owned 21
+	# masses and was charged ZERO pieces, so it read as having no articulation
+	# problem while its entire fabric sat inside a neighbour's amoeba.
+	#
+	# A tile is now charged exactly the pieces ITS OWN masses fall into, so its
+	# numerator and denominator come from one assignment. A piece holding masses
+	# from two tiles is counted by BOTH and reported as SHARED, and the
+	# reconciliation between the per-tile sum and the map total is printed
+	# rather than left to be discovered.
+	var mass_piece: PackedInt32Array = PackedInt32Array()
+	mass_piece.resize(counted_mass_count)
+	for i in counted_mass_count:
+		mass_piece[i] = -1
+	var piece_tiles: Array = []
+	for _i in pieces.size():
+		piece_tiles.append({})
+	for piece_index in pieces.size():
+		var piece: Dictionary = pieces[piece_index]
+		for member_value in (piece.members as PackedInt32Array):
+			var member := int(member_value)
+			if member >= counted_mass_count:
 				continue
-			var candidate_area := absf(_poly_area(candidate_poly))
-			if candidate_area > best_area:
-				best_area = candidate_area
-				best = candidate_poly
-		drawn_masses.append({"poly": best, "area": float(mass.area)})
-	var drawn_articulation: Dictionary = DensityAudit.articulation_summary(
-		DensityAudit.visible_pieces(drawn_masses))
-
+			mass_piece[member] = piece_index
+			var owner := mass_tile[member]
+			if owner >= 0:
+				(piece_tiles[piece_index] as Dictionary)[owner] = true
 	var unassigned_pieces := 0
-	for piece_value in pieces:
-		var piece: Dictionary = piece_value
-		var owner_index := _owning_tile(tile_records, piece.silhouette,
-			piece.silhouette_center)
-		if owner_index < 0:
-			unassigned_pieces += 1
+	var cross_tile_pieces := 0
+	for piece_index in pieces.size():
+		if int(pieces[piece_index].mass_count) <= 0:
 			continue
-		((tile_records[owner_index] as Dictionary).pieces as Array).append(piece)
+		var owners: Dictionary = piece_tiles[piece_index]
+		if owners.is_empty():
+			unassigned_pieces += 1
+		elif owners.size() > 1:
+			cross_tile_pieces += 1
 
-	# --- INSTRUMENT 2: bare built-role parcels ---------------------------
-	# Everything the fabric actually inked in, as a coverage field. A parcel the
-	# plan assigned a BUILT role that this field barely touches is an undrawn
-	# hole with an outline round it.
+	# --- INSTRUMENT 2: bare parcels --------------------------------------
+	#
+	# G7 REPAIR (break P4). The coverage field is now THE DRAWN MASSES ONLY.
+	# gauntlet6 counted greens of every kind as cover, so stamping a
+	# courtyard-kind green over an empty plot removed the bare parcel AND was
+	# skipped by the green verdict - the hole left no trace in either
+	# instrument. A green is not a building; an empty plot with a green on it is
+	# still an empty plot.
+	#
+	# Three numbers are produced, deliberately overlapping:
+	#   bare_parcels        role-gated, as before. Beatable by renaming
+	#                       `face_built` to `face_open`; kept for continuity.
+	#   empty_parcels       EVERY parcel over the floor, whatever it calls
+	#                       itself, with under 10% mass cover. A rename moves a
+	#                       parcel between the two buckets above and leaves this
+	#                       one exactly where it was.
+	#   uncovered_parcel_area   area-weighted over EVERY drawn parcel with no
+	#                       floor at all. Splitting one 2,995 u^2 plot into five
+	#                       599 u^2 slivers drops out of both counts above and
+	#                       leaves this number unchanged.
 	var cover_polys: Array = []
 	for mass_value in snapshot.get("masses", []):
 		cover_polys.append((mass_value as Dictionary).poly)
-	for green_value in snapshot.get("greens", []):
-		cover_polys.append((green_value as Dictionary).poly)
 	var cover_grid := _build_poly_grid(cover_polys)
 	var ink_grid: Dictionary = DensityAudit.build_ink_grid(
 		snapshot.get("ink_segments", PackedVector2Array()))
 	var unassigned_bare := 0
 	var judged_parcels := 0
+	var empty_parcel_count := 0
+	var empty_parcel_area := 0.0
+	var empty_parcel_roles: Dictionary = {}
+	var uncovered_parcel_area := 0.0
+	var total_parcel_area := 0.0
 	for parcel_value in snapshot.get("parcels", []):
 		var parcel: Dictionary = parcel_value
 		var role := str(parcel.get("role", ""))
 		var area := float(parcel.area)
+		if area <= 0.0:
+			continue
+		var covered := _covered_fraction(parcel.poly, area, cover_polys,
+			cover_grid)
+		total_parcel_area += area
+		uncovered_parcel_area += area * maxf(0.0, 1.0 - covered)
+		if DensityAudit.parcel_is_empty(area, covered):
+			empty_parcel_count += 1
+			empty_parcel_area += area
+			empty_parcel_roles[role] = int(empty_parcel_roles.get(role, 0)) + 1
 		if not DensityAudit.is_built_parcel_role(role):
 			continue
 		if area < DensityAudit.MIN_COUNTED_PARCEL_AREA:
 			continue
 		judged_parcels += 1
-		var covered := _covered_fraction(parcel.poly, area, cover_polys,
-			cover_grid)
 		if not DensityAudit.parcel_is_bare(role, area, covered):
 			continue
 		var owner_index := _owning_tile(tile_records, parcel.poly,
@@ -251,6 +315,10 @@ func _audit() -> Dictionary:
 			continue
 		((tile_records[owner_index] as Dictionary).bare_parcels as Array).append({
 			"role": role, "area": area, "covered_fraction": covered})
+
+	# The fabric grid the repaired enclosure test probes against: every drawn
+	# mass, sub-floor ones included, because a human sees them.
+	var fabric_grid: Dictionary = DensityAudit.build_mass_grid(cover_polys)
 
 	# --- evaluate ---------------------------------------------------------
 	var shortfall_records: Dictionary = fabric_metrics.get(
@@ -267,10 +335,15 @@ func _audit() -> Dictionary:
 		land_coords.append(Vector2i(int(record.coord[0]), int(record.coord[1])))
 	var geometry_by_coord: Dictionary = _fabric.call(
 		"tile_dry_buildable_areas", land_coords)
+	# THE REPAIRED MEASUREMENT and its controls, all reported every run.
+	var fabric_enclosure_samples: Array[float] = []
+	var fabric_control_samples: Array[float] = []
+	# The gauntlet6 numbers, kept so the tautology stays visible in the record.
 	var enclosure_samples: Array[float] = []
 	var control_enclosure_samples: Array[float] = []
 	var foreign_enclosure_samples: Array[float] = []
 	var role_share_samples: Array[float] = []
+	var green_shape_counts: Dictionary = {}
 	var class_counts: Dictionary = {}
 	var class_compliant: Dictionary = {}
 	var class_constrained: Dictionary = {}
@@ -282,62 +355,82 @@ func _audit() -> Dictionary:
 		var record: Dictionary = record_value
 		var tile_class := str(record["class"])
 		var tile_id := str(record.tile_id)
-		var green_spaces := _merge_green_spaces(record.green_entries)
+		# --- INSTRUMENT 2, REPAIRED ------------------------------------
+		# Every green is judged ON ITS OWN OUTLINE first, from geometry only.
+		# gauntlet6 judged the MERGED outline and gated on an AREA share of
+		# park-role entries, so one 20,000 u^2 hero park that merely grazed
+		# nineteen 1,000 u^2 pockets laundered all nineteen into itself and they
+		# stopped being counted at all. A pocket now has to stand on its own
+		# perimeter, whatever it is touching and whatever it is called.
+		var judged_entries: Array = []
+		var hole_count := 0
+		var hole_area := 0.0
+		var court_count := 0
+		var court_area := 0.0
+		var hole_reasons: Dictionary = {}
+		for entry_value in (record.green_entries as Array):
+			var entry: Dictionary = entry_value
+			var fabric_enclosure := DensityAudit.mass_band_enclosure(
+				entry.poly, fabric_grid)
+			var verdict: Dictionary = DensityAudit.green_verdict(
+				fabric_enclosure)
+			var shape := str(verdict.shape)
+			green_shape_counts[shape] = int(
+				green_shape_counts.get(shape, 0)) + 1
+			fabric_enclosure_samples.append(fabric_enclosure)
+			# NEGATIVE CONTROL, under the repaired measurement: the same outline
+			# displaced onto neighbouring ground by a fixed non-lattice vector.
+			# If displaced greens scored as enclosed as real ones, the fabric
+			# would simply be everywhere and the test would be vacuous - the
+			# failure that let `interarm_sea_coverage` score 100% on a paved
+			# basin. The separation between these two distributions is the
+			# acceptance criterion for this instrument.
+			var displaced := PackedVector2Array()
+			for point in (entry.poly as PackedVector2Array):
+				displaced.append(point + CONTROL_DISPLACEMENT)
+			fabric_control_samples.append(DensityAudit.mass_band_enclosure(
+				displaced, fabric_grid))
+			# The gauntlet6 measurements, retained as diagnostics so the
+			# tautology they suffered from stays in the record: `own_ink` is the
+			# shipped test (it cannot fall below 1.000 because the fabric rings
+			# every green it emits), `foreign` removes exactly the green's own
+			# ring, and `role_share` is the self-declared label.
+			enclosure_samples.append(DensityAudit.enclosure_fraction(entry.poly,
+				ink_grid))
+			foreign_enclosure_samples.append(_foreign_enclosure(entry.poly,
+				ink_grid))
+			role_share_samples.append(1.0 if DensityAudit.is_park_role(
+				str(entry.get("role", ""))) else 0.0)
+			var entry_area := float(entry.area)
+			if shape == "hole":
+				hole_count += 1
+				hole_area += entry_area
+				var reason := str(verdict.reason)
+				hole_reasons[reason] = int(hole_reasons.get(reason, 0)) + 1
+			elif shape == "inner_court":
+				court_count += 1
+				court_area += entry_area
+			judged_entries.append({"poly": entry.poly, "area": entry_area,
+				"public": bool(verdict.public),
+				"fabric_enclosure": fabric_enclosure})
+		# Touching greens are ONE green space for the >= 2 urban floor, but a
+		# space only earns park credit for the area of the entries that passed
+		# on their own.
+		var green_spaces := _merge_green_spaces(judged_entries)
 		var green_area := 0.0
 		var deliberate_count := 0
 		var deliberate_area := 0.0
-		var hole_count := 0
-		var hole_area := 0.0
-		var hole_reasons: Dictionary = {}
 		for space_value in green_spaces:
 			var space: Dictionary = space_value
-			var space_area := absf(_poly_area(space.poly))
-			green_area += space_area
-			var role_share := float(space.role_area) / maxf(1.0,
-				float(space.area))
-			var enclosure := DensityAudit.enclosure_fraction(space.poly,
-				ink_grid)
-			enclosure_samples.append(enclosure)
-			# ADVERSARIAL SECOND CONTROL (branch gauntlet6/gameit).
-			# `enclosure` above is measured against an ink set that CONTAINS the
-			# green's own ring: every park-creation site in the fabric does
-			# `park_entries.append(poly)` and then `_append_ring(..., poly)` on
-			# THE SAME polygon, and `snapshot.ink_segments` is that ring layer.
-			# So the test measures a green against itself, which is why the
-			# baseline reports min = p05 = median = 1.000 across all 181 greens.
-			# The FOREIGN measurement below removes exactly the green's own ring
-			# and asks the question the instrument claims to be asking: is there
-			# ink drawn by SOMETHING ELSE around this green?
-			foreign_enclosure_samples.append(
-				_foreign_enclosure(space.poly, ink_grid))
-			role_share_samples.append(role_share)
-			# NEGATIVE CONTROL. The same outline, displaced onto neighbouring
-			# ground, measured against the same ink. If a displaced green also
-			# scored enclosed, the ink would simply be everywhere and the
-			# enclosure test would be vacuous - the exact failure mode that
-			# made `interarm_sea_coverage` score 100% on a paved basin. The
-			# offset is a fixed, non-lattice vector so the control is
-			# deterministic and lands on plausible neighbouring fabric.
-			var displaced := PackedVector2Array()
-			for point in (space.poly as PackedVector2Array):
-				displaced.append(point + CONTROL_DISPLACEMENT)
-			control_enclosure_samples.append(
-				DensityAudit.enclosure_fraction(displaced, ink_grid))
-			var verdict: Dictionary = DensityAudit.green_verdict(role_share,
-				enclosure)
-			if bool(verdict.deliberate):
+			green_area += absf(_poly_area(space.poly))
+			if float(space.public_area) >= DensityAudit.MIN_COUNTED_GREEN_AREA:
 				deliberate_count += 1
-				deliberate_area += space_area
-			else:
-				hole_count += 1
-				hole_area += space_area
-				var reason := str(verdict.reason)
-				hole_reasons[reason] = int(hole_reasons.get(reason, 0)) + 1
+				deliberate_area += float(space.public_area)
 		var bare_area := 0.0
 		for bare_value in record.bare_parcels:
 			bare_area += float((bare_value as Dictionary).area)
-		var articulation: Dictionary = DensityAudit.articulation_summary(
-			record.pieces)
+		var articulation: Dictionary = _tile_articulation(
+			record.mass_indices, mass_piece, pieces, piece_tiles)
 		var geometry: Dictionary = {}
 		var evaluation: Dictionary = {}
 		if tile_class != DensityAudit.CLASS_WATER:
@@ -345,11 +438,18 @@ func _audit() -> Dictionary:
 				int(record.coord[1])), {})
 			# THE CORRECTION: only DELIBERATE parks satisfy the >= 2 urban
 			# floor. An undrawn hole is bare ground, not a civic green.
+			# G7 REPAIR: and the articulation numbers are now READ by the gate.
+			# In gauntlet6 `evaluate()` read no articulation number at all, so
+			# shattering every building into four crumbs scored a perfect
+			# articulation report AND passed.
 			evaluation = DensityAudit.evaluate(tile_class,
 				int(record.small_count), int(record.large_count),
 				deliberate_count,
 				float(geometry.get("dry_buildable_area", 0.0)),
-				shortfall_records.has(tile_id))
+				shortfall_records.has(tile_id),
+				float(articulation.masses_per_visible_piece),
+				float(articulation.median_visible_piece_area),
+				int(articulation.piece_mass_count))
 			audited += 1
 			class_counts[tile_class] = int(class_counts.get(tile_class, 0)) + 1
 			if bool(evaluation.passes):
@@ -385,24 +485,11 @@ func _audit() -> Dictionary:
 			"park_hole_count": hole_count,
 			"park_hole_area": hole_area,
 			"park_hole_reasons": hole_reasons,
+			"inner_court_count": court_count,
+			"inner_court_area": court_area,
 			"bare_parcel_count": (record.bare_parcels as Array).size(),
 			"bare_parcel_area": bare_area,
 			"bare_parcels": record.bare_parcels,
-			# --- INSTRUMENT 1 ---
-			"visible_piece_count": int(articulation.visible_piece_count),
-			"piece_mass_count": int(articulation.mass_count),
-			"masses_per_visible_piece": float(
-				articulation.masses_per_visible_piece),
-			"fused_piece_count": int(articulation.fused_piece_count),
-			"fused_mass_share_pct": float(articulation.fused_mass_share_pct),
-			"largest_piece_mass_count": int(
-				articulation.largest_piece_mass_count),
-			"mean_visible_piece_area": float(
-				articulation.mean_visible_piece_area),
-			"median_visible_piece_area": float(
-				articulation.median_visible_piece_area),
-			"silhouette_perimeter_ratio": float(
-				articulation.silhouette_perimeter_ratio),
 			"courtyard_count": int(record.courtyard_count),
 			"courtyard_area": float(record.courtyard_area),
 			"mass_kind_counts": record.mass_kind_counts,
@@ -419,6 +506,8 @@ func _audit() -> Dictionary:
 			"relief_shoulder_count": int(geometry.get("relief_shoulder_count", 0)),
 			"rejected_candidates": rejected,
 		}
+		# --- INSTRUMENT 1, per tile, on a CONSISTENT denominator ---------
+		out.merge(articulation)
 		out.merge(evaluation)
 		out_tiles.append(out)
 		if tile_class != DensityAudit.CLASS_WATER and not bool(out.get("passes", true)):
@@ -449,7 +538,6 @@ func _audit() -> Dictionary:
 	for key_value in component_keys:
 		var key := str(key_value)
 		var members: Array = component_tiles[key]
-		var member_pieces: Array = []
 		var ids: Array = []
 		var small := 0
 		var large := 0
@@ -466,11 +554,17 @@ func _audit() -> Dictionary:
 			holes += int(tile.park_hole_count)
 			bare += int(tile.bare_parcel_count)
 			built_area += float(tile.small_area) + float(tile.large_area)
+		# Component articulation uses the SAME per-tile assignment as the tile
+		# rows: the masses this component owns, and the distinct pieces they
+		# fall into. A piece shared with a tile outside the component is
+		# counted once and flagged, never charged whole.
+		var component_masses: PackedInt32Array = PackedInt32Array()
 		for record_value in tile_records:
 			var record: Dictionary = record_value
 			if ids.has(str(record.tile_id)):
-				member_pieces.append_array(record.pieces)
-		var component_articulation: Dictionary = 			DensityAudit.articulation_summary(member_pieces)
+				component_masses.append_array(record.mass_indices)
+		var component_articulation: Dictionary = _tile_articulation(
+			component_masses, mass_piece, pieces, piece_tiles)
 		var out_component := {
 			"component": key,
 			"tile_count": members.size(),
@@ -488,30 +582,58 @@ func _audit() -> Dictionary:
 	var map_articulation: Dictionary = DensityAudit.articulation_summary(pieces)
 	# The worst silhouettes, named, so the next stage has targets rather than
 	# an average. `tile` is the tile the silhouette is charged to.
+	# A silhouette is named by EVERY tile whose masses are inside it, not by
+	# one owner, because a cross-tile amoeba is a problem for all of them.
 	var piece_owner: Dictionary = {}
-	for record_value in tile_records:
-		var record: Dictionary = record_value
-		for piece_value in record.pieces:
-			piece_owner[(piece_value as Dictionary).silhouette_center] = \
-				str(record.tile_id)
+	for piece_index in pieces.size():
+		var names: Array = []
+		for tile_index_value in (piece_tiles[piece_index] as Dictionary):
+			names.append(str((tile_records[int(tile_index_value)] as \
+				Dictionary).tile_id))
+		names.sort()
+		piece_owner[piece_index] = "+".join(names) if not names.is_empty() \
+			else "(none)"
+	var ranked_indices: Array = []
+	for piece_index in pieces.size():
+		ranked_indices.append(piece_index)
 	var ranked_pieces: Array = pieces.duplicate()
 	ranked_pieces.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		if int(a.mass_count) != int(b.mass_count):
 			return int(a.mass_count) > int(b.mass_count)
 		return float(a.area) > float(b.area))
+	ranked_indices.sort_custom(func(a: int, b: int) -> bool:
+		var pa: Dictionary = pieces[a]
+		var pb: Dictionary = pieces[b]
+		if int(pa.mass_count) != int(pb.mass_count):
+			return int(pa.mass_count) > int(pb.mass_count)
+		return float(pa.silhouette_area) > float(pb.silhouette_area))
 	var largest_pieces: Array = []
-	for i in mini(15, ranked_pieces.size()):
-		var piece: Dictionary = ranked_pieces[i]
+	for i in mini(15, ranked_indices.size()):
+		var piece_index := int(ranked_indices[i])
+		var piece: Dictionary = pieces[piece_index]
 		largest_pieces.append({
-			"tile": str(piece_owner.get(piece.silhouette_center, "(none)")),
+			"tile": str(piece_owner.get(piece_index, "(none)")),
 			"mass_count": int(piece.mass_count),
+			"member_count": int(piece.member_count),
 			"ink_area": float(piece.area),
 			"silhouette_area": float(piece.silhouette_area),
 			"center": [piece.silhouette_center.x, piece.silhouette_center.y],
 		})
+	# Per-tile / map-wide reconciliation. The per-tile piece sum EXCEEDS the map
+	# total by exactly the number of tile memberships of cross-tile pieces; that
+	# is stated here rather than left as a silent disagreement, which is what
+	# 57 of 600 tiles were in gauntlet6.
+	var per_tile_piece_sum := 0
+	var per_tile_mass_sum := 0
+	for tile_value in out_tiles:
+		var tile: Dictionary = tile_value
+		per_tile_piece_sum += int(tile.visible_piece_count)
+		per_tile_mass_sum += int(tile.piece_mass_count)
+
 	var park_totals := {"deliberate_park_count": 0, "deliberate_park_area": 0.0,
 		"park_hole_count": 0, "park_hole_area": 0.0, "bare_parcel_count": 0,
 		"bare_parcel_area": 0.0, "hole_reasons": {},
+		"inner_court_count": 0, "inner_court_area": 0.0,
 		"urban_tiles_meeting_park_floor": 0,
 		"urban_tiles_meeting_park_floor_uncorrected": 0}
 	for tile_value in out_tiles:
@@ -526,6 +648,8 @@ func _audit() -> Dictionary:
 		park_totals.park_hole_area = float(park_totals.park_hole_area) + 			float(tile.park_hole_area)
 		park_totals.bare_parcel_count = int(park_totals.bare_parcel_count) + 			int(tile.bare_parcel_count)
 		park_totals.bare_parcel_area = float(park_totals.bare_parcel_area) + 			float(tile.bare_parcel_area)
+		park_totals.inner_court_count = int(park_totals.inner_court_count) + 			int(tile.inner_court_count)
+		park_totals.inner_court_area = float(park_totals.inner_court_area) + 			float(tile.inner_court_area)
 		for reason_value in (tile.park_hole_reasons as Dictionary):
 			var reason := str(reason_value)
 			(park_totals.hole_reasons as Dictionary)[reason] = int(
@@ -581,39 +705,78 @@ func _audit() -> Dictionary:
 		},
 		"articulation": {
 			"definition": "a visible piece is a connected component of the "
-				+ "drawn masses under 'outlines dilated by %.1fu overlap'; "
+				+ "DRAWN ink under 'outlines dilated by %.1fu overlap'; "
 				% DensityAudit.FUSION_DILATION
 				+ "the dilation is half UrbanFabricVisuals."
 				+ "HERO_ALLEY_HALF_WIDTH, so any gap narrower than an accepted "
-				+ "3.8u alley reads as one silhouette",
+				+ "3.8u alley reads as one silhouette. The clustered ink is "
+				+ "every counted mass PLUS the sub-floor masses and the block "
+				+ "SHADOW fills as non-counting bridges, so the shape measured "
+				+ "is the shape the plate draws.",
 			"fusion_dilation": DensityAudit.FUSION_DILATION,
+			"counted_masses": counted_mass_count,
+			"sub_floor_bridges": sub_floor_bridge_count,
+			"shadow_bridges": shadow_bridge_count,
 			"map": map_articulation,
-			# ADVERSARIAL: the same masses clustered as they are DRAWN
-			# (mass UNION its own shadow fill), under the identical 1.9u rule.
-			"map_drawn_with_shadow": drawn_articulation,
+			# THE GRADED RESPONSE. A perfect score at 1.0x that collapses at
+			# 2.0x is a plate paved to the metric's limit, not an articulated
+			# one, and `fusion_fragility` is exactly that collapse.
+			"fusion_curve": fusion,
 			"unassigned_pieces": unassigned_pieces,
+			# PER-TILE RECONCILIATION, printed rather than left to be found.
+			"cross_tile_piece_count": cross_tile_pieces,
+			"per_tile_visible_piece_sum": per_tile_piece_sum,
+			"per_tile_mass_sum": per_tile_mass_sum,
 			"largest_pieces": largest_pieces,
 		},
 		"parks": {
-			"definition": "a DELIBERATE park carries a plan role record AND "
-				+ "has at least %.0f%% of its outline inked; anything else is "
-				% (100.0 * DensityAudit.PARK_ENCLOSURE_MIN)
-				+ "an UNDRAWN HOLE and does not satisfy the urban park floor",
-			"enclosure_min": DensityAudit.PARK_ENCLOSURE_MIN,
+			"definition": "a green is judged FROM GEOMETRY ALONE: "
+				+ "`mass_band_enclosure` is the fraction of its own perimeter "
+				+ "with a drawn mass within %.1fu outside it. " % \
+					DensityAudit.PARK_FABRIC_BAND
+				+ ">= %.2f is a PUBLIC GREEN and satisfies the urban floor; " % \
+					DensityAudit.PARK_FABRIC_ENCLOSURE_MIN
+				+ ">= %.2f is an INNER COURT (deliberate, private, does not " % \
+					DensityAudit.COURT_FABRIC_ENCLOSURE_MIN
+				+ "satisfy it); anything else is an UNDRAWN HOLE. No "
+				+ "self-declared kind or role reaches the verdict.",
+			"fabric_band": DensityAudit.PARK_FABRIC_BAND,
+			"public_green_min": DensityAudit.PARK_FABRIC_ENCLOSURE_MIN,
+			"inner_court_min": DensityAudit.COURT_FABRIC_ENCLOSURE_MIN,
 			"bare_parcel_max_cover": DensityAudit.BARE_PARCEL_MAX_COVER,
 			"totals": park_totals,
+			"green_shape_counts": green_shape_counts,
 			"judged_built_parcels": judged_parcels,
 			"unassigned_bare_parcels": unassigned_bare,
-			# Evidence that the enclosure test DISCRIMINATES rather than
-			# passing everything: the real greens against the same greens
-			# displaced onto neighbouring ground.
-			"enclosure_distribution": _distribution(enclosure_samples),
+			# LABEL-FREE parcel numbers: a role rename moves a parcel between
+			# the bare buckets and leaves these untouched, and an area-weighted
+			# total cannot be shattered below a counting floor.
+			"empty_parcel_count": empty_parcel_count,
+			"empty_parcel_area": empty_parcel_area,
+			"empty_parcel_roles": empty_parcel_roles,
+			"uncovered_parcel_area": uncovered_parcel_area,
+			"total_parcel_area": total_parcel_area,
+			# THE REPAIRED MEASUREMENT and its negative control. The separation
+			# between these two distributions is this instrument's acceptance
+			# criterion: real greens must stand clear of the same outlines
+			# dropped on arbitrary neighbouring ground.
+			"fabric_enclosure_distribution": _distribution(
+				fabric_enclosure_samples),
+			"fabric_enclosure_negative_control": _distribution(
+				fabric_control_samples),
+			"fabric_at_or_above_public_floor": _count_at_or_above(
+				_sorted(fabric_enclosure_samples),
+				DensityAudit.PARK_FABRIC_ENCLOSURE_MIN),
+			"fabric_control_at_or_above_public_floor": _count_at_or_above(
+				_sorted(fabric_control_samples),
+				DensityAudit.PARK_FABRIC_ENCLOSURE_MIN),
+			# THE gauntlet6 NUMBERS, kept so the tautology stays on the record.
+			# `enclosure_own_ink` is the shipped test and cannot fall below
+			# 1.000 because the fabric rings every green it emits;
+			# `enclosure_foreign_ink` removes exactly that ring.
+			"enclosure_own_ink": _distribution(enclosure_samples),
 			"enclosure_negative_control": _distribution(
 				control_enclosure_samples),
-			# ADVERSARIAL: the same greens measured against ink drawn by
-			# SOMETHING OTHER THAN THEMSELVES. If this collapses while
-			# `enclosure_distribution` sits at 1.000, the shipped test is
-			# measuring each green against its own ring.
 			"enclosure_foreign_ink": _distribution(foreign_enclosure_samples),
 			"enclosure_foreign_at_or_above_floor": _count_at_or_above(
 				_sorted(foreign_enclosure_samples),
@@ -676,22 +839,97 @@ func _owning_tile(records: Array, poly: PackedVector2Array,
 	return best_index
 
 
-## Two green polygons that merge into one outline are ONE green space. Fragments
-## under the counting floor are dropped, so a park sliced by a footprint does not
-## inflate the count into two spaces unless the halves really are separate.
+## PER-TILE ARTICULATION, on a denominator that matches the numerator.
 ##
-## Each entry carries the PLAN ROLE that produced it, and the merged space keeps
-## the area contributed by park-role entries (`role_area`) alongside its total,
-## so instrument 2 can ask what share of a merged green the plan actually meant
-## to be green. Merging a genuine park with an adjacent residual pocket must not
-## launder the pocket into a park, and a role share below one half will not.
+## `mass_indices` are the counted masses THIS tile owns, from exactly the same
+## `_owning_tile` assignment that produced its small/large counts. The tile's
+## visible pieces are the distinct pieces those masses fall into - no more, no
+## fewer. A piece holding masses from two tiles is counted by both and reported
+## as SHARED, and `largest_shared_silhouette_mass_count` names the full size of
+## the worst silhouette this tile is part of, so a tile whose whole fabric sits
+## inside a neighbour's amoeba can no longer read as having no problem.
+func _tile_articulation(mass_indices: PackedInt32Array,
+		mass_piece: PackedInt32Array, pieces: Array,
+		piece_tiles: Array) -> Dictionary:
+	var local_counts: Dictionary = {}
+	for index_value in mass_indices:
+		var piece_index := mass_piece[int(index_value)]
+		if piece_index < 0:
+			continue
+		local_counts[piece_index] = int(local_counts.get(piece_index, 0)) + 1
+	var piece_count := local_counts.size()
+	var mass_count := 0
+	var fused_pieces := 0
+	var fused_masses := 0
+	var shared_pieces := 0
+	var largest_local := 0
+	var largest_shared := 0
+	var outline_sum := 0.0
+	var silhouette_sum := 0.0
+	var ink_total := 0.0
+	var silhouette_total := 0.0
+	var areas: Array[float] = []
+	var ink_areas: Array[float] = []
+	var keys: Array = local_counts.keys()
+	keys.sort()
+	for key_value in keys:
+		var piece_index := int(key_value)
+		var local := int(local_counts[piece_index])
+		var piece: Dictionary = pieces[piece_index]
+		mass_count += local
+		if local >= 2:
+			fused_pieces += 1
+			fused_masses += local
+		largest_local = maxi(largest_local, local)
+		largest_shared = maxi(largest_shared, int(piece.mass_count))
+		if (piece_tiles[piece_index] as Dictionary).size() > 1:
+			shared_pieces += 1
+		outline_sum += float(piece.outline_perimeter_sum)
+		silhouette_sum += float(piece.silhouette_perimeter)
+		ink_total += float(piece.area)
+		silhouette_total += float(piece.silhouette_area)
+		areas.append(float(piece.silhouette_area))
+		ink_areas.append(float(piece.area))
+	areas.sort()
+	ink_areas.sort()
+	return {
+		"visible_piece_count": piece_count,
+		"piece_mass_count": mass_count,
+		"masses_per_visible_piece": float(mass_count) / maxf(1.0,
+			float(piece_count)),
+		"excess_mass_count": maxi(0, mass_count - piece_count),
+		"fused_piece_count": fused_pieces,
+		"fused_mass_share_pct": 100.0 * float(fused_masses) / maxf(1.0,
+			float(mass_count)),
+		"largest_piece_mass_count": largest_local,
+		"largest_shared_silhouette_mass_count": largest_shared,
+		"shared_piece_count": shared_pieces,
+		"mean_visible_piece_area": DensityAudit._mean_of(areas),
+		"median_visible_piece_area": DensityAudit._median_of(areas),
+		"mean_piece_ink_area": DensityAudit._mean_of(ink_areas),
+		"median_piece_ink_area": DensityAudit._median_of(ink_areas),
+		"ink_to_silhouette_ratio": ink_total / maxf(0.001, silhouette_total),
+		"silhouette_perimeter_ratio": outline_sum / maxf(0.001, silhouette_sum),
+	}
+
+
+## Two green polygons that merge into one outline are ONE green space.
+##
+## G7 REPAIR (break P3 - MERGE LAUNDERING). gauntlet6 kept the area contributed
+## by PARK-ROLE entries and passed the merged space when that share reached one
+## half, so a single 20,000 u^2 hero park absorbed nineteen 1,000 u^2 residual
+## pockets and they stopped being counted at all - not merely reclassified,
+## deleted from both the park and the hole count. Each entry is now judged on
+## its own outline BEFORE it is merged, and a merged space carries only
+## `public_area`: the area of the entries that passed by themselves. A pocket
+## that grazes a park contributes nothing to it and is still its own hole.
 func _merge_green_spaces(entries: Array) -> Array:
 	var merged: Array = []
 	for entry_value in entries:
 		var entry: Dictionary = entry_value
 		var pending: PackedVector2Array = entry.poly
-		var role_area := float(entry.area) if DensityAudit.is_park_role(
-			str(entry.role)) else 0.0
+		var public_area := float(entry.area) if bool(entry.get("public",
+			false)) else 0.0
 		var total_area := float(entry.area)
 		var i := 0
 		while i < merged.size():
@@ -699,13 +937,13 @@ func _merge_green_spaces(entries: Array) -> Array:
 			var unions := Geometry2D.merge_polygons(candidate.poly, pending)
 			if unions.size() == 1:
 				pending = unions[0]
-				role_area += float(candidate.role_area)
+				public_area += float(candidate.public_area)
 				total_area += float(candidate.area)
 				merged.remove_at(i)
 				i = 0
 			else:
 				i += 1
-		merged.append({"poly": pending, "role_area": role_area,
+		merged.append({"poly": pending, "public_area": public_area,
 			"area": total_area})
 	var out: Array = []
 	for merged_value in merged:
@@ -979,57 +1217,95 @@ func _render_text(report: Dictionary) -> String:
 		map_articulation.median_visible_piece_area))
 	lines.append("  silhouette perimeter ratio  %.3f   (1.000 = no shared boundary)" % float(
 		map_articulation.silhouette_perimeter_ratio))
+	lines.append("  excess masses (NOT nettable) %d  (masses that are not separately visible)" % int(
+		map_articulation.excess_mass_count))
+	lines.append("  pieces holding >=3 / >=5 / >=10 masses   %d / %d / %d" % [
+		int(map_articulation.pieces_holding_3_or_more),
+		int(map_articulation.pieces_holding_5_or_more),
+		int(map_articulation.pieces_holding_10_or_more)])
+	lines.append("  ink / silhouette area ratio %.3f   (>1.000 = masses drawn on top of each other)" % float(
+		map_articulation.ink_to_silhouette_ratio))
+	lines.append("  median piece INK area       %.0f u^2  (the gauntlet6 number: a SUM, double-counts overlap)" % float(
+		map_articulation.median_piece_ink_area))
+	lines.append("  bridge-only groups          %d   (shadow / sub-floor ink holding no counted mass)" % int(
+		map_articulation.bridge_only_piece_count))
+	lines.append("  clustered ink: %d counted masses + %d sub-floor + %d shadow fills" % [
+		int(articulation.counted_masses), int(articulation.sub_floor_bridges),
+		int(articulation.shadow_bridges)])
 	lines.append("  pieces off every tile       %d" % int(articulation.unassigned_pieces))
-	var drawn: Dictionary = articulation.map_drawn_with_shadow
-	lines.append("  ADVERSARIAL: the SAME masses clustered as DRAWN (mass + its own")
-	lines.append("  shadow fill, which the instrument is never shown), same 1.9u rule:")
-	lines.append("    VISIBLE PIECES            %d  (instrument reports %d)" % [
-		int(drawn.visible_piece_count), int(map_articulation.visible_piece_count)])
-	lines.append("    masses per visible piece  %.3f  (instrument reports %.3f)" % [
-		float(drawn.masses_per_visible_piece),
-		float(map_articulation.masses_per_visible_piece)])
-	lines.append("    largest silhouette        %d masses  (instrument reports %d)" % [
-		int(drawn.largest_piece_mass_count),
-		int(map_articulation.largest_piece_mass_count)])
+	lines.append("  cross-tile silhouettes      %d   (counted by every tile inside them)" % int(
+		articulation.cross_tile_piece_count))
+	lines.append("  per-tile sums: masses %d (map %d)   pieces %d (map %d, + one per extra tile membership)" % [
+		int(articulation.per_tile_mass_sum), int(map_articulation.mass_count),
+		int(articulation.per_tile_visible_piece_sum),
+		int(map_articulation.visible_piece_count)])
+	var fusion: Dictionary = articulation.fusion_curve
+	lines.append("  GRADED FUSION RESPONSE (the same ink asked at three dilations)")
+	lines.append("    %-8s %-10s %10s %10s" % ["scale", "dilation", "pieces", "m/piece"])
+	for point_value in (fusion.points as Array):
+		var point: Dictionary = point_value
+		lines.append("    %-8.2f %-10.2f %10d %10.3f" % [float(point.scale),
+			float(point.dilation), int(point.visible_piece_count),
+			float(point.masses_per_visible_piece)])
+	lines.append("    fusion fragility          %.3f   (rise in m/piece from 0.5x to 2.0x;" % float(
+		fusion.fusion_fragility))
+	lines.append("                                       near 0 = separated by real streets,")
+	lines.append("                                       large  = paved to the metric's limit)")
 	lines.append("")
 	lines.append("PARKS vs HOLES (instrument 2)")
 	var parks: Dictionary = report.parks
 	var park_totals: Dictionary = parks.totals
 	lines.append("  %s" % str(parks.definition))
-	lines.append("  DELIBERATE parks            %d  (%.0f u^2)" % [
+	lines.append("  DELIBERATE public parks     %d  (%.0f u^2)" % [
 		int(park_totals.deliberate_park_count), float(park_totals.deliberate_park_area)])
+	lines.append("  INNER COURTS (deliberate)   %d  (%.0f u^2)  private, do not satisfy the floor" % [
+		int(park_totals.inner_court_count), float(park_totals.inner_court_area)])
 	lines.append("  UNDRAWN holes (greens)      %d  (%.0f u^2)  %s" % [
 		int(park_totals.park_hole_count), float(park_totals.park_hole_area),
 		str(park_totals.hole_reasons)])
-	lines.append("  BARE built-role parcels     %d  (%.0f u^2) of %d judged" % [
+	lines.append("  greens by measured shape    %s" % str(parks.green_shape_counts))
+	lines.append("  BARE built-role parcels     %d  (%.0f u^2) of %d judged   [role-gated]" % [
 		int(park_totals.bare_parcel_count), float(park_totals.bare_parcel_area),
 		int(parks.judged_built_parcels)])
+	lines.append("  EMPTY parcels, any role     %d  (%.0f u^2)   [label-free: a rename cannot move this]" % [
+		int(parks.empty_parcel_count), float(parks.empty_parcel_area)])
+	lines.append("    by declared role          %s" % str(parks.empty_parcel_roles))
+	lines.append("  UNCOVERED parcel area       %.0f u^2 of %.0f  [area-weighted, no counting floor]" % [
+		float(parks.uncovered_parcel_area), float(parks.total_parcel_area)])
 	lines.append("  urban tiles >= 2 parks      %d corrected / %d uncorrected" % [
 		int(park_totals.urban_tiles_meeting_park_floor),
 		int(park_totals.urban_tiles_meeting_park_floor_uncorrected)])
 	lines.append("  bare parcels off every tile %d" % int(parks.unassigned_bare_parcels))
-	var enclosure_dist: Dictionary = parks.enclosure_distribution
-	var control_dist: Dictionary = parks.enclosure_negative_control
-	var role_dist: Dictionary = parks.role_share_distribution
-	lines.append("  enclosure   n=%d  min=%.3f p05=%.3f median=%.3f mean=%.3f" % [
-		int(enclosure_dist.n), float(enclosure_dist.min), float(enclosure_dist.p05),
-		float(enclosure_dist.median), float(enclosure_dist.mean)])
-	lines.append("  NEGATIVE CONTROL (same greens displaced by %s, same ink)" % str(
+	var fabric_dist: Dictionary = parks.fabric_enclosure_distribution
+	var fabric_control: Dictionary = parks.fabric_enclosure_negative_control
+	lines.append("  THE MEASUREMENT: fraction of a green's own perimeter with a DRAWN MASS")
+	lines.append("  within %.1fu outside it. The green contributes nothing to its own score." % float(
+		parks.fabric_band))
+	lines.append("    fabric enclosure  n=%d  min=%.3f p05=%.3f median=%.3f mean=%.3f max=%.3f" % [
+		int(fabric_dist.n), float(fabric_dist.min), float(fabric_dist.p05),
+		float(fabric_dist.median), float(fabric_dist.mean), float(fabric_dist.max)])
+	lines.append("    NEGATIVE CONTROL  n=%d  min=%.3f p05=%.3f median=%.3f mean=%.3f max=%.3f" % [
+		int(fabric_control.n), float(fabric_control.min), float(fabric_control.p05),
+		float(fabric_control.median), float(fabric_control.mean),
+		float(fabric_control.max)])
+	lines.append("      (the same outlines displaced by %s onto neighbouring ground)" % str(
 		CONTROL_DISPLACEMENT))
-	lines.append("              n=%d  min=%.3f p05=%.3f median=%.3f mean=%.3f  max=%.3f" % [
-		int(control_dist.n), float(control_dist.min), float(control_dist.p05),
-		float(control_dist.median), float(control_dist.mean), float(control_dist.max)])
+	lines.append("    at or above the %.2f public floor:  real %d of %d   control %d of %d" % [
+		float(parks.public_green_min),
+		int(parks.fabric_at_or_above_public_floor), int(fabric_dist.n),
+		int(parks.fabric_control_at_or_above_public_floor), int(fabric_control.n)])
+	var own_dist: Dictionary = parks.enclosure_own_ink
 	var foreign_dist: Dictionary = parks.enclosure_foreign_ink
-	lines.append("  FOREIGN-INK CONTROL (same greens, own ring removed from the ink)")
-	lines.append("              n=%d  min=%.3f p05=%.3f median=%.3f mean=%.3f  max=%.3f" % [
-		int(foreign_dist.n), float(foreign_dist.min), float(foreign_dist.p05),
-		float(foreign_dist.median), float(foreign_dist.mean),
+	var role_dist: Dictionary = parks.role_share_distribution
+	lines.append("  THE gauntlet6 NUMBERS, kept so the tautology stays on the record:")
+	lines.append("    own-ink enclosure n=%d  min=%.3f median=%.3f  <- cannot fall: the fabric" % [
+		int(own_dist.n), float(own_dist.min), float(own_dist.median)])
+	lines.append("                                                    rings every green it emits")
+	lines.append("    foreign ink       n=%d  min=%.3f median=%.3f max=%.3f  (own ring removed)" % [
+		int(foreign_dist.n), float(foreign_dist.min), float(foreign_dist.median),
 		float(foreign_dist.max)])
-	lines.append("              greens still at or above the 0.75 floor: %d of %d" % [
-		int(parks.enclosure_foreign_at_or_above_floor), int(foreign_dist.n)])
-	lines.append("  role share  n=%d  min=%.3f p05=%.3f median=%.3f" % [
-		int(role_dist.n), float(role_dist.min), float(role_dist.p05),
-		float(role_dist.median)])
+	lines.append("    self-declared park role  n=%d  mean=%.3f" % [
+		int(role_dist.n), float(role_dist.mean)])
 	lines.append("")
 	lines.append("WORST SILHOUETTES (most masses inside one visible piece)")
 	lines.append("  %-12s %7s %12s %14s" % ["tile", "masses", "ink_area", "silhouette"])
@@ -1047,7 +1323,7 @@ func _render_text(report: Dictionary) -> String:
 		var component: Dictionary = component_value
 		lines.append("  %-34s %5d %6d %6d %7.3f %7.0f %9.3f %6d %6d" % [
 			str(component.component).substr(0, 34), int(component.tile_count),
-			int(component.mass_count), int(component.visible_piece_count),
+			int(component.piece_mass_count), int(component.visible_piece_count),
 			float(component.masses_per_visible_piece),
 			float(component.median_visible_piece_area),
 			float(component.silhouette_perimeter_ratio),

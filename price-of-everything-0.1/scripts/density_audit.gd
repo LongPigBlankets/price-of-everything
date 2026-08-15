@@ -406,7 +406,8 @@ static func _uf_find(parent: PackedInt32Array, node: int) -> int:
 ## lost to fusion, so their ratio is a second, independent fusion signal that
 ## does not depend on the piece count at all.
 static func visible_pieces(shapes: Array,
-		dilation: float = FUSION_DILATION) -> Array:
+		dilation: float = FUSION_DILATION,
+		with_silhouette: bool = true) -> Array:
 	var count := shapes.size()
 	var dilated: Array = []
 	var boxes: Array[Rect2] = []
@@ -490,7 +491,8 @@ static func visible_pieces(shapes: Array,
 				area += float(shape.get("area", 0.0))
 			var grown: PackedVector2Array = dilated[index]
 			outline_sum += poly_perimeter(grown)
-			union = _merge_into(union, grown)
+			if with_silhouette:
+				union = _merge_into(union, grown)
 		var silhouette := PackedVector2Array()
 		var largest_ring := -1.0
 		# G7 REPAIR (break A5): the silhouette AREA is the area of the union —
@@ -686,8 +688,11 @@ static func fusion_curve(shapes: Array) -> Dictionary:
 	var wide := 0.0
 	for i in FUSION_SCALES.size():
 		var scale := FUSION_SCALES[i]
+		# `with_silhouette` off: the curve reads counts only, and unioning
+		# whole settlements at 2x dilation would cost minutes for numbers this
+		# function never looks at.
 		var summary := articulation_summary(visible_pieces(shapes,
-			FUSION_DILATION * scale))
+			FUSION_DILATION * scale, false))
 		var ratio := float(summary.masses_per_visible_piece)
 		points.append({
 			"scale": scale,
