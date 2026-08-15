@@ -827,11 +827,28 @@ static func is_built_parcel_role(role: String) -> bool:
 ## own geometry contributes nothing to the answer, so the measurement can fail —
 ## and on the real map it does.
 ##
-## The band is a derivation, not a tuning: `2 x FUSION_DILATION` is one accepted
-## alley (3.8u), the narrowest separation this map treats as a visible gap. Ink
-## within one alley of a green's edge is fabric that bounds it; anything further
-## is across a street.
-const PARK_FABRIC_BAND := 2.0 * FUSION_DILATION
+## The setback the fabric GUARANTEES between a parcel boundary and the mass
+## inside it. Declared here rather than imported so this file states the number
+## it measures against; pinned equal to `UrbanFabricVisuals.PARCEL_MARGIN` by a
+## unit test.
+const PARCEL_SETBACK := 4.5
+
+## THE BAND, and it is a derivation from the fabric's own constants.
+##
+## The first attempt used `2 x FUSION_DILATION` (3.8u, one accepted alley) and
+## THE MEASUREMENT WAS DEAD ON ARRIVAL: the fabric insets every mass by
+## `PARCEL_MARGIN` (4.5u) inside its parcel, so a neighbouring building CANNOT
+## legally sit within 3.8u of a green's edge and the median green scored 0.000
+## against a control at 0.018 — a test that could barely fire. A band narrower
+## than the drawing's own guaranteed setback measures nothing.
+##
+## The band is therefore the closest a neighbouring building is ALLOWED to be,
+## plus the narrowest gap this map calls visible:
+##     PARCEL_SETBACK (4.5) + 2 x FUSION_DILATION (3.8) = 8.3u
+## Both terms are frozen constants of the drawing. The whole curve either side
+## of it is reported every run (`fabric_band_curve`) so the choice of band is
+## auditable rather than asserted.
+const PARK_FABRIC_BAND := PARCEL_SETBACK + 2.0 * FUSION_DILATION
 
 ## The three depths probed within that band, as fractions of it. A single depth
 ## would be a step function of exactly the kind break A3 punished on instrument
@@ -1052,7 +1069,7 @@ static func mass_band_enclosure(poly: PackedVector2Array, masses: Dictionary,
 ## curve, and a candidate could sit just outside it. The verdict is taken at the
 ## first band, and the whole curve is reported beside it so that choice is
 ## visible rather than hidden.
-const PARK_BAND_SCALES: Array[float] = [1.0, 2.0, 4.0, 8.0]
+const PARK_BAND_SCALES: Array[float] = [0.5, 1.0, 2.0, 4.0]
 
 
 ## True when `poly` overlaps no drawn mass at all - the ground it stands on is

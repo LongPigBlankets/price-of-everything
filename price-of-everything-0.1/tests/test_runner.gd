@@ -12835,10 +12835,19 @@ func _test_density_audit_park_vs_hole() -> void:
 		and str(DensityAudit.green_verdict(
 			DensityAudit.COURT_FABRIC_ENCLOSURE_MIN).shape) == "inner_court",
 		"park/hole: the court boundary is inclusive at its constant")
-	# The band is a derivation, not a tuning: one accepted alley.
+	# THE BAND IS A DERIVATION FROM THE DRAWING'S OWN CONSTANTS, not a tuning:
+	# the closest a neighbouring building is allowed to sit (the fabric insets
+	# every mass by PARCEL_MARGIN inside its parcel) plus the narrowest gap this
+	# map treats as visible. A band under the guaranteed setback measures
+	# nothing at all - the first attempt at 3.8u scored the median real green
+	# 0.000 because no legal neighbour can reach that close.
+	_check(is_equal_approx(DensityAudit.PARCEL_SETBACK,
+		UrbanFabricVisuals.PARCEL_MARGIN),
+		"park/hole: the audit's parcel setback is the fabric's own, by derivation")
 	_check(is_equal_approx(DensityAudit.PARK_FABRIC_BAND,
-		2.0 * DensityAudit.FUSION_DILATION),
-		"park/hole: the fabric band is one accepted alley, by derivation")
+			DensityAudit.PARCEL_SETBACK + 2.0 * DensityAudit.FUSION_DILATION)
+		and DensityAudit.PARK_FABRIC_BAND > UrbanFabricVisuals.PARCEL_MARGIN,
+		"park/hole: the fabric band reaches past the guaranteed parcel setback")
 
 	# G7 REPAIR (break P2): NO SELF-DECLARED LABEL REACHES THE VERDICT. In
 	# gauntlet6, `kind == \"courtyard\"` was `continue`d before any verdict (155
