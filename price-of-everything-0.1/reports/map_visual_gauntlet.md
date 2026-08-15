@@ -4267,7 +4267,8 @@ than none:
 ### DETERMINISM
 
 Two audit processes on this branch produce **byte-identical** `.json` and
-`.txt`. The unit suite is 2,415 passed / 0 failed and contains no wall-clock or
+`.txt` — md5 `b5ef40778ba8e030599f55becf90bb1b` and
+`a363c880ca53e6d826d57d932ffef222` from both runs. The unit suite is 2,415 passed / 0 failed and contains no wall-clock or
 global RNG.
 
 ### PROOF THAT NOTHING VISUAL CHANGED
