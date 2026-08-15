@@ -106,6 +106,7 @@ func _audit() -> Dictionary:
 			"green_entries": [],
 			"mass_indices": PackedInt32Array(),
 			"bare_parcels": [],
+			"subfloor_greens": [],
 		})
 
 	# --- profile / classification consistency ----------------------------
@@ -205,6 +206,12 @@ func _audit() -> Dictionary:
 			record.courtyard_count = int(record.courtyard_count) + 1
 			record.courtyard_area = float(record.courtyard_area) + area
 		if area < DensityAudit.MIN_COUNTED_GREEN_AREA:
+			# G7b REPAIR (break F7). gauntlet7 shattered a 1,000 u² hole into
+			# six 168 u² shards and it vanished before any verdict. Sub-floor
+			# greens are now kept and merged among themselves below; a shattered
+			# hole reassembles into one shape and is judged.
+			(record.subfloor_greens as Array).append({"poly": green.poly,
+				"area": area})
 			continue
 		(record.green_entries as Array).append({"poly": green.poly,
 			"role": str(green.get("role", "")), "kind": kind, "area": area})
@@ -321,9 +328,28 @@ func _audit() -> Dictionary:
 		((tile_records[owner_index] as Dictionary).bare_parcels as Array).append({
 			"role": role, "area": area, "covered_fraction": covered})
 
-	# The fabric grid the repaired enclosure test probes against: every drawn
-	# mass, sub-floor ones included, because a human sees them.
-	var fabric_grid: Dictionary = DensityAudit.build_mass_grid(cover_polys)
+	# THE FABRIC GRID THE ENCLOSURE TEST PROBES AGAINST.
+	#
+	# G7b REPAIR (break F2) — IT IS THE COUNTED BUILDINGS, AND NOTHING ELSE.
+	# The first repair probed against `cover_polys`, which is EVERY mass in the
+	# snapshot including the sub-floor ones. A mass under
+	# `MIN_COUNTED_MASS_AREA` is not a building — it adds no mass, no visible
+	# piece and no obligation — and it answered the outward probe, so an undrawn
+	# hole could buy a verdict with dots: gauntlet7 measured 12 dots of 100 u²
+	# turning a bare 60x60 hole into a certified PUBLIC GREEN and 24 dots
+	# turning it into an inner court, at 5.0 u² of dots per unit of hole
+	# perimeter — 8.06% of the map's drawn parcel area would have converted all
+	# 334 holes and bought zero buildings. That is the L1 shape again: the
+	# fabric drawing its own certificate.
+	#
+	# Probing against counted buildings only means the only ink that can certify
+	# a green is ink that is itself charged on every count row of section 2. A
+	# dot ring is now invisible to this test.
+	var counted_mass_polys: Array = []
+	for i in counted_mass_count:
+		counted_mass_polys.append((shapes[i] as Dictionary).poly)
+	var fabric_grid: Dictionary = DensityAudit.build_mass_grid(
+		counted_mass_polys)
 
 	# --- evaluate ---------------------------------------------------------
 	var shortfall_records: Dictionary = fabric_metrics.get(
@@ -384,7 +410,18 @@ func _audit() -> Dictionary:
 		var court_count := 0
 		var court_area := 0.0
 		var hole_reasons: Dictionary = {}
-		for entry_value in (record.green_entries as Array):
+		# G7b REPAIR (break F7). The sub-floor greens this tile owns, merged
+		# among themselves first: a hole shattered into shards reassembles into
+		# one shape and is judged like any other green. `subfloor_green_count`
+		# reports how many entries that recovered.
+		var recovered: Array = DensityAudit.cluster_subfloor_greens(
+			record.subfloor_greens as Array)
+		var green_entries: Array = (record.green_entries as Array).duplicate()
+		for recovered_value in recovered:
+			var recovered_entry: Dictionary = recovered_value
+			green_entries.append({"poly": recovered_entry.poly, "role": "",
+				"kind": "", "area": float(recovered_entry.area)})
+		for entry_value in green_entries:
 			var entry: Dictionary = entry_value
 			var fabric_enclosure := DensityAudit.mass_band_enclosure(
 				entry.poly, fabric_grid)
@@ -437,14 +474,24 @@ func _audit() -> Dictionary:
 			role_share_samples.append(1.0 if DensityAudit.is_park_role(
 				str(entry.get("role", ""))) else 0.0)
 			var entry_area := float(entry.area)
+			# G7b REPAIR (break F3). A wrapped green is charged. In the first
+			# repair it was `inner_court`: DELIBERATE, excluded from the park
+			# count AND from the hole count, so deleting a building inside a
+			# 3x3 block raised the park count and lowered the hole count at
+			# once — the same free exit `kind == "courtyard"` used to give,
+			# bought with geometry instead of a string. It is now reported in
+			# `unverified_green_count` beside the holes, so no edit to the
+			# drawing can move a green into a bucket that costs nothing.
 			if shape == "hole":
 				hole_count += 1
 				hole_area += entry_area
 				var reason := str(verdict.reason)
 				hole_reasons[reason] = int(hole_reasons.get(reason, 0)) + 1
-			elif shape == "inner_court":
+			elif shape == "wrapped_green":
 				court_count += 1
 				court_area += entry_area
+				hole_reasons["wrapped_by_fabric"] = int(hole_reasons.get(
+					"wrapped_by_fabric", 0)) + 1
 			judged_entries.append({"poly": entry.poly, "area": entry_area,
 				"public": bool(verdict.public),
 				"fabric_enclosure": fabric_enclosure})
@@ -468,6 +515,7 @@ func _audit() -> Dictionary:
 			record.mass_indices, mass_piece, pieces, piece_tiles)
 		var geometry: Dictionary = {}
 		var evaluation: Dictionary = {}
+		var out_built_ink_share := -1.0
 		if tile_class != DensityAudit.CLASS_WATER:
 			geometry = geometry_by_coord.get(Vector2i(int(record.coord[0]),
 				int(record.coord[1])), {})
@@ -477,6 +525,18 @@ func _audit() -> Dictionary:
 			# In gauntlet6 `evaluate()` read no articulation number at all, so
 			# shattering every building into four crumbs scored a perfect
 			# articulation report AND passed.
+			# G7b REPAIR (break F8). The built-ink share is the one density
+			# number in this report whose DENOMINATOR the decorative fabric
+			# does not author: `dry_buildable_area` comes from terrain, relief
+			# and water. Every parcel-derived number is a sum over records the
+			# audited code emits, and gauntlet7 moved the uncovered fraction
+			# from 64% to 10% by not emitting the empty parcels and to 45.7% by
+			# emitting the covered ones twice, on the same drawing. This one
+			# cannot be moved that way, and it is what sees paving (break A3).
+			var built_ink_share := (float(record.small_area) + float(
+				record.large_area)) / maxf(1.0, float(geometry.get(
+					"dry_buildable_area", 0.0)))
+			out_built_ink_share = built_ink_share
 			evaluation = DensityAudit.evaluate(tile_class,
 				int(record.small_count), int(record.large_count),
 				deliberate_count,
@@ -484,7 +544,9 @@ func _audit() -> Dictionary:
 				shortfall_records.has(tile_id),
 				float(articulation.masses_per_visible_piece),
 				float(articulation.median_visible_piece_area),
-				int(articulation.piece_mass_count))
+				int(articulation.piece_mass_count),
+				float(articulation.largest_visible_piece_area),
+				built_ink_share)
 			audited += 1
 			class_counts[tile_class] = int(class_counts.get(tile_class, 0)) + 1
 			if bool(evaluation.passes):
@@ -517,11 +579,16 @@ func _audit() -> Dictionary:
 			# --- INSTRUMENT 2 ---
 			"deliberate_park_count": deliberate_count,
 			"deliberate_park_area": deliberate_area,
+			"subfloor_green_count": recovered.size(),
+			# EVERY green that is not a verified public green, holes and
+			# wrapped greens alike. There is no third bucket to escape into.
+			"unverified_green_count": hole_count + court_count,
+			"unverified_green_area": hole_area + court_area,
 			"park_hole_count": hole_count,
 			"park_hole_area": hole_area,
 			"park_hole_reasons": hole_reasons,
-			"inner_court_count": court_count,
-			"inner_court_area": court_area,
+			"wrapped_green_count": court_count,
+			"wrapped_green_area": court_area,
 			"bare_parcel_count": (record.bare_parcels as Array).size(),
 			"bare_parcel_area": bare_area,
 			"bare_parcels": record.bare_parcels,
@@ -540,6 +607,7 @@ func _audit() -> Dictionary:
 				"gameplay_footprint_count", 0)),
 			"relief_shoulder_count": int(geometry.get("relief_shoulder_count", 0)),
 			"rejected_candidates": rejected,
+			"built_ink_share": out_built_ink_share,
 		}
 		# --- INSTRUMENT 1, per tile, on a CONSISTENT denominator ---------
 		out.merge(articulation)
@@ -668,7 +736,9 @@ func _audit() -> Dictionary:
 	var park_totals := {"deliberate_park_count": 0, "deliberate_park_area": 0.0,
 		"park_hole_count": 0, "park_hole_area": 0.0, "bare_parcel_count": 0,
 		"bare_parcel_area": 0.0, "hole_reasons": {},
-		"inner_court_count": 0, "inner_court_area": 0.0,
+		"wrapped_green_count": 0, "wrapped_green_area": 0.0,
+		"unverified_green_count": 0, "unverified_green_area": 0.0,
+		"subfloor_green_count": 0,
 		"urban_tiles_meeting_park_floor": 0,
 		"urban_tiles_meeting_park_floor_uncorrected": 0}
 	for tile_value in out_tiles:
@@ -683,8 +753,18 @@ func _audit() -> Dictionary:
 		park_totals.park_hole_area = float(park_totals.park_hole_area) + 			float(tile.park_hole_area)
 		park_totals.bare_parcel_count = int(park_totals.bare_parcel_count) + 			int(tile.bare_parcel_count)
 		park_totals.bare_parcel_area = float(park_totals.bare_parcel_area) + 			float(tile.bare_parcel_area)
-		park_totals.inner_court_count = int(park_totals.inner_court_count) + 			int(tile.inner_court_count)
-		park_totals.inner_court_area = float(park_totals.inner_court_area) + 			float(tile.inner_court_area)
+		park_totals.wrapped_green_count = int(
+			park_totals.wrapped_green_count) + int(tile.wrapped_green_count)
+		park_totals.wrapped_green_area = float(
+			park_totals.wrapped_green_area) + float(tile.wrapped_green_area)
+		park_totals.unverified_green_count = int(
+			park_totals.unverified_green_count) + int(
+			tile.unverified_green_count)
+		park_totals.unverified_green_area = float(
+			park_totals.unverified_green_area) + float(
+			tile.unverified_green_area)
+		park_totals.subfloor_green_count = int(
+			park_totals.subfloor_green_count) + int(tile.subfloor_green_count)
 		for reason_value in (tile.park_hole_reasons as Dictionary):
 			var reason := str(reason_value)
 			(park_totals.hole_reasons as Dictionary)[reason] = int(
@@ -748,6 +828,21 @@ func _audit() -> Dictionary:
 				+ "every counted mass PLUS the sub-floor masses and the block "
 				+ "SHADOW fills as non-counting bridges, so the shape measured "
 				+ "is the shape the plate draws.",
+			"gated_numbers": "the gate reads AREAS OF DRAWN SILHOUETTES only "
+				+ "- largest_visible_piece_area against the %.1f u2 ceiling " % \
+					DensityAudit.drawn_piece_ceiling_area()
+				+ "(two block-scale masses drawn side by side with one accepted "
+				+ "alley between them), median_visible_piece_area against the "
+				+ "%.1f u2 floor, and built ink over dry buildable ground " % \
+					DensityAudit.drawn_piece_floor_area()
+				+ "against %.3f. NONE of them reads mass_count, so re-cutting " % \
+					DensityAudit.PAVED_INK_SHARE_MAX
+				+ "the same ink into a different number of entries moves the "
+				+ "verdict by zero (break F1). masses_per_visible_piece and "
+				+ "every count built on it are REPORTED and no longer gate.",
+			"drawn_piece_ceiling_area": DensityAudit.drawn_piece_ceiling_area(),
+			"drawn_piece_floor_area": DensityAudit.drawn_piece_floor_area(),
+			"paved_ink_share_max": DensityAudit.PAVED_INK_SHARE_MAX,
 			"fusion_dilation": DensityAudit.FUSION_DILATION,
 			"counted_masses": counted_mass_count,
 			"sub_floor_bridges": sub_floor_bridge_count,
@@ -771,13 +866,19 @@ func _audit() -> Dictionary:
 					DensityAudit.PARK_FABRIC_BAND
 				+ ">= %.2f is a PUBLIC GREEN and satisfies the urban floor; " % \
 					DensityAudit.PARK_FABRIC_ENCLOSURE_MIN
-				+ ">= %.2f is an INNER COURT (deliberate, private, does not " % \
+				+ ">= %.2f is a WRAPPED GREEN and anything else is an " % \
 					DensityAudit.COURT_FABRIC_ENCLOSURE_MIN
-				+ "satisfy it); anything else is an UNDRAWN HOLE. No "
-				+ "self-declared kind or role reaches the verdict.",
+				+ "UNDRAWN HOLE; both are UNVERIFIED and both cost, so no edit "
+				+ "moves a green into a bucket that is free (break F3). The "
+				+ "probe answers only to COUNTED BUILDINGS - sub-floor ink "
+				+ "cannot certify a green (break F2). No self-declared kind or "
+				+ "role reaches the verdict. This measures SURROUNDEDNESS, "
+				+ "which is not deliberateness: a real courtyard reads as "
+				+ "unverified and a street-facing civic green reads as a hole. "
+				+ "Both errors cost the candidate.",
 			"fabric_band": DensityAudit.PARK_FABRIC_BAND,
 			"public_green_min": DensityAudit.PARK_FABRIC_ENCLOSURE_MIN,
-			"inner_court_min": DensityAudit.COURT_FABRIC_ENCLOSURE_MIN,
+			"wrapped_green_min": DensityAudit.COURT_FABRIC_ENCLOSURE_MIN,
 			"bare_parcel_max_cover": DensityAudit.BARE_PARCEL_MAX_COVER,
 			"totals": park_totals,
 			"green_shape_counts": green_shape_counts,
@@ -929,12 +1030,27 @@ func _tile_articulation(mass_indices: PackedInt32Array,
 	var silhouette_total := 0.0
 	var areas: Array[float] = []
 	var ink_areas: Array[float] = []
+	# G7b REPAIR (break F1). The label-free family, per tile: functions of the
+	# silhouettes this tile's ink falls into and of nothing else. Re-cutting the
+	# same ink into a different number of entries moves none of them.
+	var ceiling := DensityAudit.drawn_piece_ceiling_area()
+	var largest_piece_area := 0.0
+	var slab_pieces := 0
+	var slab_area := 0.0
+	var single_mass_slabs := 0
 	var keys: Array = local_counts.keys()
 	keys.sort()
 	for key_value in keys:
 		var piece_index := int(key_value)
 		var local := int(local_counts[piece_index])
 		var piece: Dictionary = pieces[piece_index]
+		var drawn_area := float(piece.silhouette_area)
+		largest_piece_area = maxf(largest_piece_area, drawn_area)
+		if drawn_area >= ceiling:
+			slab_pieces += 1
+			slab_area += drawn_area
+			if int(piece.mass_count) == 1:
+				single_mass_slabs += 1
 		mass_count += local
 		if local >= 2:
 			fused_pieces += 1
@@ -969,6 +1085,15 @@ func _tile_articulation(mass_indices: PackedInt32Array,
 		"median_piece_ink_area": DensityAudit._median_of(ink_areas),
 		"ink_to_silhouette_ratio": ink_total / maxf(0.001, silhouette_total),
 		"silhouette_perimeter_ratio": outline_sum / maxf(0.001, silhouette_sum),
+		# --- THE GATED NUMBERS (break F1) -------------------------------
+		"largest_visible_piece_area": largest_piece_area,
+		"slab_piece_count": slab_pieces,
+		"slab_silhouette_area": slab_area,
+		"slab_area_share_pct": 100.0 * slab_area / maxf(0.001,
+			silhouette_total),
+		"single_mass_slab_piece_count": single_mass_slabs,
+		"pieces_per_10k_silhouette": 10000.0 * float(piece_count) / maxf(0.001,
+			silhouette_total),
 	}
 
 
@@ -1284,6 +1409,28 @@ func _render_text(report: Dictionary) -> String:
 	var articulation: Dictionary = report.articulation
 	var map_articulation: Dictionary = articulation.map
 	lines.append("  %s" % str(articulation.definition))
+	lines.append("")
+	lines.append("  WHAT THE GATE READS (and it never reads mass_count):")
+	lines.append("  %s" % str(articulation.gated_numbers))
+	lines.append("    slab ceiling                %.1f u^2  (two block-scale masses + one alley)" % float(
+		articulation.drawn_piece_ceiling_area))
+	lines.append("    confetti floor              %.1f u^2  (one baseline small mass, drawn)" % float(
+		articulation.drawn_piece_floor_area))
+	lines.append("    largest drawn silhouette    %.0f u^2" % float(
+		map_articulation.largest_visible_piece_area))
+	lines.append("    SLAB pieces (>= ceiling)    %d   holding %.0f u^2 = %.1f%% of all drawn shape" % [
+		int(map_articulation.slab_piece_count),
+		float(map_articulation.slab_silhouette_area),
+		float(map_articulation.slab_area_share_pct)])
+	lines.append("    of those, holding ONE mass  %d   [the measured cost of not reading the partition:" % int(
+		map_articulation.single_mass_slab_piece_count))
+	lines.append("                                     a drawing cannot tell one big building from two")
+	lines.append("                                     fused ordinary ones, so this gate charges both]")
+	lines.append("    of those, bridge ink only   %d" % int(
+		map_articulation.bridge_only_slab_piece_count))
+	lines.append("    objects per 10,000 u^2 ink  %.3f   (slabs push it down, confetti up)" % float(
+		map_articulation.pieces_per_10k_silhouette))
+	lines.append("")
 	lines.append("  drawn masses counted        %d" % int(map_articulation.mass_count))
 	lines.append("  VISIBLE PIECES              %d" % int(map_articulation.visible_piece_count))
 	lines.append("  masses per visible piece    %.3f   (1.000 = nothing fuses)" % float(
@@ -1333,17 +1480,47 @@ func _render_text(report: Dictionary) -> String:
 	lines.append("                                       near 0 = separated by real streets,")
 	lines.append("                                       large  = paved to the metric's limit)")
 	lines.append("")
+	lines.append("BUILT INK OVER GROUND THE FABRIC DOES NOT AUTHOR (breaks A3, F8)")
+	lines.append("  Counted building ink over dry buildable area. The denominator is measured")
+	lines.append("  from terrain, relief and water - not from any record the decorative fabric")
+	lines.append("  emits - so suppressing or duplicating parcel records cannot move it, and a")
+	lines.append("  plate paved to just outside the fusion limit shows up here as density.")
+	var shares: Array[float] = []
+	var paved_tiles: Array = []
+	for tile_value in (report.tiles as Array):
+		var tile: Dictionary = tile_value
+		var share := float(tile.get("built_ink_share", -1.0))
+		if share < 0.0:
+			continue
+		shares.append(share)
+		if share >= DensityAudit.PAVED_INK_SHARE_MAX:
+			paved_tiles.append("%s %.1f%%" % [str(tile.tile_id), 100.0 * share])
+	var share_dist := _distribution(shares)
+	lines.append("    n=%d  min=%.3f p05=%.3f median=%.3f mean=%.3f max=%.3f   cap %.3f" % [
+		int(share_dist.n), float(share_dist.min), float(share_dist.p05),
+		float(share_dist.median), float(share_dist.mean), float(share_dist.max),
+		DensityAudit.PAVED_INK_SHARE_MAX])
+	lines.append("    tiles at or over the cap  %d   %s" % [paved_tiles.size(),
+		str(paved_tiles)])
+	lines.append("")
 	lines.append("PARKS vs HOLES (instrument 2)")
 	var parks: Dictionary = report.parks
 	var park_totals: Dictionary = parks.totals
 	lines.append("  %s" % str(parks.definition))
-	lines.append("  DELIBERATE public parks     %d  (%.0f u^2)" % [
+	lines.append("  VERIFIED public greens      %d  (%.0f u^2)" % [
 		int(park_totals.deliberate_park_count), float(park_totals.deliberate_park_area)])
-	lines.append("  INNER COURTS (deliberate)   %d  (%.0f u^2)  private, do not satisfy the floor" % [
-		int(park_totals.inner_court_count), float(park_totals.inner_court_area)])
-	lines.append("  UNDRAWN holes (greens)      %d  (%.0f u^2)  %s" % [
+	lines.append("  UNVERIFIED greens           %d  (%.0f u^2)  = holes + wrapped; there is no free bucket" % [
+		int(park_totals.unverified_green_count),
+		float(park_totals.unverified_green_area)])
+	lines.append("    of those, UNDRAWN holes   %d  (%.0f u^2)  %s" % [
 		int(park_totals.park_hole_count), float(park_totals.park_hole_area),
 		str(park_totals.hole_reasons)])
+	lines.append("    of those, WRAPPED greens  %d  (%.0f u^2)  closed in by fabric; NOT public ground," % [
+		int(park_totals.wrapped_green_count),
+		float(park_totals.wrapped_green_area)])
+	lines.append("                                             and no longer exempt from the count")
+	lines.append("  sub-floor greens recovered  %d  (shards merged back into judgeable shapes)" % int(
+		park_totals.subfloor_green_count))
 	lines.append("  greens by measured shape    %s" % str(parks.green_shape_counts))
 	lines.append("  BARE built-role parcels     %d  (%.0f u^2) of %d judged   [role-gated]" % [
 		int(park_totals.bare_parcel_count), float(park_totals.bare_parcel_area),

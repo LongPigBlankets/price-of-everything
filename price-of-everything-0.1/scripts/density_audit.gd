@@ -164,13 +164,89 @@ static func required_dry_area(tile_class: String) -> float:
 ## the "silent miss" the addendum forbids.
 ## G7 REPAIR (break A1). `masses_per_visible_piece` at or above this means at
 ## least half the drawn masses on this tile are NOT separately visible — one
-## silhouette per two buildings. That is a statement, not a tuned number: the
-## bar is exactly "more mass hidden than shown".
+## silhouette per two buildings.
+##
+## G7b REPAIR (break F1) — THIS NUMBER NO LONGER GATES ANYTHING. `mass_count`
+## is the number of entries the audited code CHOSE TO EMIT, so every ratio
+## built on it is a self-declaration: the gauntlet7 adversary re-cut eight
+## fused 40x40 masses as ONE entry drawing the identical outer shape (14,792.5
+## u² against 14,793.2 u², a delta of 0.6 u²) and the tile went
+## `["fabric_fused"] -> []`. Map-wide the same re-cut takes 2191 masses to 1032
+## with every silhouette untouched: 51 `fabric_fused` tiles to zero and nine
+## tiles FAIL -> PASS, scoring the slab HIGHER than the articulated fabric that
+## draws the same picture. `excess_mass_count` is monotone under ADDING
+## geometry — which is what the first repair proved — and not under RE-CUTTING
+## it, and re-cutting is free.
+##
+## The ratio is retained as a REPORTED diagnostic because it is the honest
+## description of the fabric's own partition. It is no longer evidence.
 const FUSED_TILE_MAX := 2.0
 
-## Below this many drawn masses a tile's articulation ratio is noise (one fused
-## pair on a two-mass tile reads 2.000), so the articulation gates do not fire.
+## G7b REPAIR (break F9). The articulation gates used to be silent below this
+## many drawn masses, which excused 279 of the 395 audited tiles (71%) and
+## excused two whole terrain classes BY CONSTRUCTION. The gated numbers below
+## are areas of drawn silhouettes, and an area is meaningful at n = 1, so the
+## sample floor is gone. The constant is kept only to state that it is no
+## longer read by `evaluate()`; a unit test pins that.
 const ARTICULATION_MIN_SAMPLE := 5
+
+
+## =========================================================================
+## G7b REPAIR (break F1) — THE GATED ARTICULATION NUMBERS ARE NOW AREAS OF
+## DRAWN SILHOUETTES, AND NOTHING THE GATE READS COUNTS ENTRIES
+## =========================================================================
+##
+## The requirement the adversary set: "a slab and eight fused masses score
+## alike because they draw alike". Both numbers below are functions of the
+## SILHOUETTE SET only — the connected components of the drawn ink and their
+## areas — so re-cutting one entry into eight, or eight into one, moves them by
+## exactly zero. The clustering that produces them takes the shadow layer and
+## the sub-floor crumbs as bridges, so it is the shape the plate fills.
+##
+## THE COST, STATED. Without the partition a drawing cannot distinguish ONE
+## very large building from TWO fused ordinary ones: they are the same ink in
+## the same place. So this gate charges both. `single_mass_slab_piece_count` is
+## reported every run — the number of oversize silhouettes that hold exactly
+## one declared mass — so the false-positive rate of that decision is a
+## measured number and not an assumption.
+##
+## THE CEILING is the area of TWO block-scale masses drawn side by side with
+## one accepted alley between them, drawn the way the plate draws them (shadow
+## offset, plus the fusion dilation the silhouette carries on each side). A
+## silhouette at or above it draws at least as much shape as two separate
+## block-scale buildings would; whatever the fabric calls it, the eye is
+## reading one object where an articulated fabric shows two. Every term is a
+## frozen constant of the drawing: `LARGE_MASS_AREA` (the block-scale cut),
+## `FUSION_DILATION` (half the map's narrowest accepted alley) and
+## `BLOCK_SHADOW_OFFSET` (the fabric's own shadow).
+static func drawn_piece_ceiling_area() -> float:
+	var side := sqrt(LARGE_MASS_AREA)
+	var alley := 2.0 * FUSION_DILATION
+	var width := side + alley + side + BLOCK_SHADOW_OFFSET.x + \
+		2.0 * FUSION_DILATION
+	var height := side + BLOCK_SHADOW_OFFSET.y + 2.0 * FUSION_DILATION
+	return width * height
+
+
+## G7b REPAIR (breaks A3, F8) — A GROUND-TRUTH DENOMINATOR.
+##
+## Every parcel number instrument 2 reports is a sum over records the audited
+## code emits (break F8: suppressing the empty parcels takes a 64% uncovered
+## fraction to 10%, duplicating the covered ones takes it to 45.7%, same
+## drawing). `dry_buildable_area` is not one of those records — it is measured
+## from terrain, relief and water, none of which the decorative fabric authors.
+##
+## The share of a tile's dry buildable ground covered by counted building ink
+## is therefore a number the fabric cannot manufacture by editing its own
+## bookkeeping, and it is what catches PAVING (break A3): a plate laid on
+## 3.81u gaps — one hundredth of a unit over the accepted alley — reports a
+## perfect fusion ratio while covering 84.6% of its own ground.
+##
+## The cap is `1 / PACKING_ALLOWANCE`. That is not a new number: this file
+## already asserts, in `required_dry_area`, that a complying settlement spends
+## about three units of land per unit of building footprint. A tile denser than
+## its own audit's model of a settlement is paved.
+const PAVED_INK_SHARE_MAX := 1.0 / PACKING_ALLOWANCE
 
 
 ## The smallest area a VISIBLE PIECE may have and still read as a building
@@ -188,24 +264,46 @@ static func drawn_piece_floor_area() -> float:
 		(side + BLOCK_SHADOW_OFFSET.y + 2.0 * FUSION_DILATION)
 
 
+## G7b REPAIR (breaks F1, F6, F9, F10). THE ARTICULATION GATE READS THE DRAWING.
+##
+## `masses_per_visible_piece` and `piece_mass_count` are still accepted so the
+## reported series is continuous, and NEITHER IS READ. What the gate reads:
+##
+##   largest_visible_piece_area  the area of the biggest silhouette any of this
+##                               tile's own masses is part of. Invariant under
+##                               re-cutting (F1). Not payable elsewhere: adding
+##                               separated buildings cannot shrink it (F6).
+##                               Charged wherever the silhouette sits, so
+##                               welding a tile's fabric into its neighbours'
+##                               amoebas is charged to it too (F10).
+##   median_visible_piece_area   the confetti direction, also an area.
+##   built_ink_share             counted ink over dry buildable ground — a
+##                               denominator the fabric does not author (F8),
+##                               and the number that sees minimum-alley paving
+##                               (A3).
 static func evaluate(tile_class: String, small_count: int, large_count: int,
 		green_count: int, dry_buildable_area: float,
 		documented_shortfall: bool,
 		masses_per_visible_piece: float = 1.0,
 		median_visible_piece_area: float = -1.0,
-		piece_mass_count: int = 0) -> Dictionary:
+		piece_mass_count: int = 0,
+		largest_visible_piece_area: float = -1.0,
+		built_ink_share: float = -1.0) -> Dictionary:
 	var req := requirements(tile_class)
 	var failures: Array[String] = []
 	# G7 REPAIR: the gauntlet6 confetti "guard" was mean/median piece area
 	# reported BESIDE the count — and `evaluate()` read no articulation number
 	# at all, so shattering a plate into four crumbs per building scored a
 	# perfect report and passed the gate. Both directions are now gated.
-	if piece_mass_count >= ARTICULATION_MIN_SAMPLE:
-		if masses_per_visible_piece >= FUSED_TILE_MAX:
-			failures.append("fabric_fused")
-		if median_visible_piece_area >= 0.0 and \
-				median_visible_piece_area < drawn_piece_floor_area():
-			failures.append("fabric_confetti")
+	# G7b REPAIR: and both gated numbers are now areas of drawn silhouettes,
+	# with no sample floor in front of them.
+	if largest_visible_piece_area >= drawn_piece_ceiling_area():
+		failures.append("fabric_slab")
+	if median_visible_piece_area >= 0.0 and \
+			median_visible_piece_area < drawn_piece_floor_area():
+		failures.append("fabric_confetti")
+	if built_ink_share >= PAVED_INK_SHARE_MAX:
+		failures.append("fabric_paved")
 	if int(req.small_min) >= 0 and small_count < int(req.small_min):
 		failures.append("small_below_floor")
 	if int(req.small_max) >= 0 and small_count > int(req.small_max):
@@ -590,9 +688,36 @@ static func articulation_summary(pieces: Array) -> Dictionary:
 	var silhouette_total := 0.0
 	var areas: Array[float] = []
 	var ink_areas: Array[float] = []
+	# G7b REPAIR (break F1) — THE LABEL-FREE FAMILY. Every number in this block
+	# is a function of the silhouette set alone. None of them reads
+	# `mass_count`, so re-cutting one entry into eight (or eight into one)
+	# moves them by exactly zero.
+	var ceiling := drawn_piece_ceiling_area()
+	var largest_piece_area := 0.0
+	var slab_pieces := 0
+	var slab_area := 0.0
+	var single_mass_slabs := 0
+	var bridge_only_slabs := 0
+	var all_silhouette_total := 0.0
+	var all_piece_count := 0
 	for piece_value in pieces:
 		var piece: Dictionary = piece_value
 		var members := int(piece.mass_count)
+		var drawn_area := float(piece.get("silhouette_area", 0.0))
+		# The slab family is taken over EVERY drawn silhouette, bridge-only
+		# groups included: a slab made entirely of sub-floor ink is still a slab
+		# on the plate, and excluding it would let a candidate hide one by
+		# declaring its parts too small to count.
+		all_piece_count += 1
+		all_silhouette_total += drawn_area
+		largest_piece_area = maxf(largest_piece_area, drawn_area)
+		if drawn_area >= ceiling:
+			slab_pieces += 1
+			slab_area += drawn_area
+			if members == 1:
+				single_mass_slabs += 1
+			elif members <= 0:
+				bridge_only_slabs += 1
 		# A group that holds no COUNTED mass is bridge ink (a shadow fill, a
 		# sub-floor crumb chain). It is not a building the eye can count, and
 		# admitting it would let a candidate manufacture "visible pieces" out of
@@ -649,6 +774,30 @@ static func articulation_summary(pieces: Array) -> Dictionary:
 		"total_silhouette_area": silhouette_total,
 		"total_ink_area": ink_total,
 		"silhouette_perimeter_ratio": outline_sum / maxf(0.001, silhouette_sum),
+		# --- THE LABEL-FREE FAMILY (break F1) ---------------------------
+		# THE GATED NUMBER. The biggest single object the plate draws.
+		"largest_visible_piece_area": largest_piece_area,
+		"drawn_piece_ceiling_area": ceiling,
+		# Absolute and monotone: a silhouette can only grow when geometry is
+		# added, and two silhouettes that merge give a bigger one, so no amount
+		# of building elsewhere lowers it.
+		"slab_piece_count": slab_pieces,
+		"slab_silhouette_area": slab_area,
+		"slab_area_share_pct": 100.0 * slab_area / maxf(0.001,
+			all_silhouette_total),
+		# THE MEASURED FALSE-POSITIVE RATE of refusing to read the partition:
+		# oversize silhouettes that hold exactly one declared mass. A drawing
+		# cannot tell one big building from two fused ordinary ones, so this
+		# gate charges both; this number says how often that costs.
+		"single_mass_slab_piece_count": single_mass_slabs,
+		"bridge_only_slab_piece_count": bridge_only_slabs,
+		# Objects drawn per 10,000 u² of drawn shape. Slabs push it down,
+		# confetti pushes it up, and neither direction can be reached by
+		# re-labelling.
+		"pieces_per_10k_silhouette": 10000.0 * float(all_piece_count) / maxf(
+			0.001, all_silhouette_total),
+		"all_silhouette_area": all_silhouette_total,
+		"all_piece_count": all_piece_count,
 	}
 
 
@@ -796,6 +945,44 @@ const BARE_PARCEL_MAX_COVER := 0.10
 const MIN_COUNTED_PARCEL_AREA := 600.0
 
 
+## G7b REPAIR (break F7) — SUB-FLOOR GREENS ARE NOT INVISIBLE.
+##
+## `MIN_COUNTED_GREEN_AREA` dropped every green under 200 u² BEFORE any verdict,
+## so a 1,000 u² hole shattered into six 168 u² shards left no trace in either
+## instrument — the same crumb trick the first repair closed for MASSES (a
+## sub-floor mass became a bridge) and left open for GREENS.
+##
+## This merges the sub-floor greens AMONG THEMSELVES — undilated, so the
+## returned outline is ground that is actually green — and returns every merged
+## shape whose own area reaches the floor. Those outlines are then judged like
+## any other green, against the same outward probe.
+##
+## Undilated on purpose: a dilated union would push the probe start 1.9u
+## outward and make shards measure MORE enclosed than they are, which is the
+## wrong direction of error for a test that exists to catch dropouts.
+##
+## It cannot launder (break P3): only sub-floor entries are merged, and merging
+## them can only ADD entries to be judged. Nothing is ever removed by it.
+static func cluster_subfloor_greens(entries: Array) -> Array:
+	var union: Array = []
+	for entry_value in entries:
+		var entry: Dictionary = entry_value
+		var poly: PackedVector2Array = entry.get("poly", PackedVector2Array())
+		if poly.size() < 3:
+			continue
+		union = _merge_into(union, poly)
+	var out: Array = []
+	for poly_value in union:
+		var poly: PackedVector2Array = poly_value
+		if poly.size() < 3 or Geometry2D.is_polygon_clockwise(poly):
+			continue
+		var area := absf(signed_area(poly))
+		if area < MIN_COUNTED_GREEN_AREA:
+			continue
+		out.append({"poly": poly, "area": area})
+	return out
+
+
 static func is_park_role(role: String) -> bool:
 	return PARK_ROLES.has(role)
 
@@ -862,37 +1049,59 @@ const PARK_FABRIC_PROBE_DEPTHS: Array[float] = [0.35, 0.7, 1.0]
 ## edges", scores about 0.40 and fails.
 const PARK_FABRIC_ENCLOSURE_MIN := 0.5
 
-## A green with fabric on essentially ALL of its edge is an INNER COURT: the
-## building wraps it. Courts are deliberate — they are not holes — but they are
-## private ground and do not satisfy the public-green floor. This replaces
-## `kind == "courtyard"`, a string written by the code being audited, with a
-## property of the drawing. Relabelling now changes nothing.
+## A green with fabric on essentially ALL of its edge is WRAPPED: the buildings
+## close round it. It is not public ground, so it never satisfies the
+## public-green floor.
 const COURT_FABRIC_ENCLOSURE_MIN := 0.9
 
 
 ## The verdict on ONE drawn green, from geometry alone.
 ##
-## `fabric_enclosure` is `mass_band_enclosure()` — the fraction of this green's
-## own perimeter with a drawn mass within one accepted alley outside it. NO
-## SELF-DECLARED LABEL REACHES THIS FUNCTION. `kind` and `role` are strings
-## written by the very code being audited; in gauntlet6 renaming a residual
-## pocket `courtyard` deleted it from both the park and the hole count (155 of
-## 454 rendered greens already took that exit, 27% of the reported park area),
-## and renaming it `face_park` promoted it to a deliberate park. Neither rename
-## can move this verdict.
+## WHAT THIS MEASURES, AND WHAT IT DOES NOT (G7b, break F3)
+## -------------------------------------------------------
+## `fabric_enclosure` is SURROUNDEDNESS: the fraction of this green's own
+## perimeter with a COUNTED BUILDING within one accepted alley outside it.
+## Surroundedness is not deliberateness, and the gauntlet7 adversary showed the
+## two point opposite ways on this map — deleting a building inside a 3x3 block
+## measures 1.000, and a civic green with buildings on one side and streets on
+## three measures 0.289. The first repair paid a "deliberate" verdict for the
+## first shape and excluded it from the hole count as well as the park count,
+## which is the same free exit `kind == "courtyard"` used to give, bought with
+## geometry instead of a string: a candidate could raise its park count AND
+## lower its hole count by DELETING block interiors.
 ##
-## Returns {"deliberate", "public", "shape", "reason"}:
-##   shape "inner_court"  wrapped by fabric — deliberate, NOT public green
-##   shape "public_green" bounded by fabric on most of its edge — counts
-##   shape "hole"         bounded by nothing — an undrawn dropout
+## So this function no longer claims to see intent. It answers one geometric
+## question and sorts greens into three buckets, of which exactly ONE is
+## evidence of a civic green and the other two are both charged:
+##
+##   shape "public_green"   bounded by buildings on most of its edge and open
+##                          on the rest — counts toward the section-2 floor
+##   shape "wrapped_green"  closed in by buildings on essentially all of it —
+##                          not public ground, and NOT exempt: it counts as an
+##                          UNVERIFIED green exactly as a hole does, so
+##                          deleting a block interior cannot improve any number
+##   shape "hole"           bounded by nothing — an undrawn dropout
+##
+## The consequence is stated rather than hidden: a REAL courtyard is now
+## reported as unverified green, and a real civic park facing streets on three
+## sides is reported as a hole. Both are false in the direction that COSTS a
+## candidate. That is the correct direction of error for an instrument whose
+## project has already shipped five metrics that certified a visible defect.
+##
+## NO SELF-DECLARED LABEL REACHES THIS FUNCTION. `kind` and `role` are strings
+## written by the very code being audited; in gauntlet6 renaming a residual
+## pocket `courtyard` deleted it from both counts and renaming it `face_park`
+## promoted it to a park. Neither rename can move this verdict.
+##
+## Returns {"public", "unverified", "shape", "reason"}.
 static func green_verdict(fabric_enclosure: float) -> Dictionary:
 	if fabric_enclosure >= COURT_FABRIC_ENCLOSURE_MIN:
-		return {"deliberate": true, "public": false, "shape": "inner_court",
-			"reason": ""}
+		return {"public": false, "unverified": true, "shape": "wrapped_green",
+			"reason": "wrapped_by_fabric"}
 	if fabric_enclosure >= PARK_FABRIC_ENCLOSURE_MIN:
-		return {"deliberate": true, "public": true, "shape": "public_green",
+		return {"public": true, "unverified": false, "shape": "public_green",
 			"reason": ""}
-	return {"deliberate": false, "public": false, "shape": "hole",
+	return {"public": false, "unverified": true, "shape": "hole",
 		"reason": "no_bounding_fabric"}
 
 

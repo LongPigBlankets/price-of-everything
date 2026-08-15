@@ -12813,17 +12813,20 @@ func _test_density_audit_park_vs_hole() -> void:
 	var pentagon_fabric := DensityAudit.mass_band_enclosure(pentagon,
 		DensityAudit.build_mass_grid([]))
 	_check(is_zero_approx(pentagon_fabric)
-		and not bool(DensityAudit.green_verdict(pentagon_fabric).deliberate)
+		and bool(DensityAudit.green_verdict(pentagon_fabric).unverified)
 		and str(DensityAudit.green_verdict(pentagon_fabric).shape) == "hole",
 		"park/hole: the SAME pentagon is a HOLE under the repaired measurement")
 
-	# The three-way verdict, and its two boundaries.
-	_check(str(DensityAudit.green_verdict(0.95).shape) == "inner_court"
-		and bool(DensityAudit.green_verdict(0.95).deliberate)
+	# The three-way verdict, and its two boundaries. G7b (break F3): the
+	# wrapped bucket is UNVERIFIED, not "deliberate" - it costs exactly what a
+	# hole costs, so deleting a block interior cannot improve any number.
+	_check(str(DensityAudit.green_verdict(0.95).shape) == "wrapped_green"
+		and bool(DensityAudit.green_verdict(0.95).unverified)
 		and not bool(DensityAudit.green_verdict(0.95).public),
-		"park/hole: a green wrapped by fabric is a deliberate INNER COURT, not public green")
+		"park/hole: a green wrapped by fabric is UNVERIFIED, never public green")
 	_check(str(DensityAudit.green_verdict(0.75).shape) == "public_green"
-		and bool(DensityAudit.green_verdict(0.75).public),
+		and bool(DensityAudit.green_verdict(0.75).public)
+		and not bool(DensityAudit.green_verdict(0.75).unverified),
 		"park/hole: a green bounded on most of its edge is a PUBLIC GREEN")
 	_check(str(DensityAudit.green_verdict(0.49).shape) == "hole"
 		and str(DensityAudit.green_verdict(
@@ -12833,8 +12836,8 @@ func _test_density_audit_park_vs_hole() -> void:
 			DensityAudit.COURT_FABRIC_ENCLOSURE_MIN - 0.001).shape)
 			== "public_green"
 		and str(DensityAudit.green_verdict(
-			DensityAudit.COURT_FABRIC_ENCLOSURE_MIN).shape) == "inner_court",
-		"park/hole: the court boundary is inclusive at its constant")
+			DensityAudit.COURT_FABRIC_ENCLOSURE_MIN).shape) == "wrapped_green",
+		"park/hole: the wrapped boundary is inclusive at its constant")
 	# THE BAND IS A DERIVATION FROM THE DRAWING'S OWN CONSTANTS, not a tuning:
 	# the closest a neighbouring building is allowed to sit (the fabric insets
 	# every mass by PARCEL_MARGIN inside its parcel) plus the narrowest gap this
