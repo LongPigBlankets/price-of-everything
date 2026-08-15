@@ -33,6 +33,8 @@ func _ready() -> void:
 	_test_accommodation_site_yield()
 	_test_density_audit_classification()
 	_test_density_audit_gate()
+	_test_density_audit_articulation()
+	_test_density_audit_park_vs_hole()
 	_test_port_arm_geometry()
 	_test_coal_prohibition()
 	_test_scheduled_coal_prohibition()
@@ -12573,6 +12575,185 @@ func _test_density_audit_gate() -> void:
 		and (DensityAudit.evaluate(DensityAudit.CLASS_REMOTE, 5, 0, 0, plenty,
 		false).failures as Array).has("small_above_cap"),
 		"density audit: remote tiles are bounded on both sides")
+
+## INSTRUMENT 1 - articulation. Pins the property that motivated it: a naive
+## polygon count cannot see visual fusion, and this metric can. Every fixture
+## here is hand-laid geometry with no scene tree, so the assertions are exact.
+func _test_density_audit_articulation() -> void:
+	# The dilation is not a tuned number: it is HALF the map's own narrowest
+	# accepted alley, so a gap narrower than one alley closes and a gap of one
+	# alley or wider does not. Freeze that derivation.
+	_check(is_equal_approx(DensityAudit.FUSION_DILATION,
+		UrbanFabricVisuals.HERO_ALLEY_HALF_WIDTH),
+		"articulation: fusion dilation is half an accepted alley, by derivation")
+
+	# Three 40x40 masses in a row. THE FUSION CASE: 1.0u of bare ground between
+	# them, far under the 3.8u the fabric itself accepts as a visible alley.
+	# A polygon counter says three buildings; the eye sees one bar.
+	var fused: Array = []
+	for i in 3:
+		var x := float(i) * 41.0
+		fused.append({"poly": PackedVector2Array([
+			Vector2(x, 0), Vector2(x + 40.0, 0),
+			Vector2(x + 40.0, 40.0), Vector2(x, 40.0)]), "area": 1600.0})
+	var fused_pieces := DensityAudit.visible_pieces(fused)
+	var fused_summary := DensityAudit.articulation_summary(fused_pieces)
+	_check(fused.size() == 3 and int(fused_summary.visible_piece_count) == 1,
+		"articulation: three masses one unit apart are ONE visible piece")
+	_check(int(fused_summary.largest_piece_mass_count) == 3
+		and is_equal_approx(float(fused_summary.fused_mass_share_pct), 100.0),
+		"articulation: the fused piece reports all three masses inside it")
+	_check(float(fused_summary.silhouette_perimeter_ratio) > 1.3,
+		"articulation: fusion shows up independently as lost silhouette perimeter")
+
+	# The same three masses separated by a real street. Nothing fuses.
+	var apart: Array = []
+	for i in 3:
+		var x := float(i) * 80.0
+		apart.append({"poly": PackedVector2Array([
+			Vector2(x, 0), Vector2(x + 40.0, 0),
+			Vector2(x + 40.0, 40.0), Vector2(x, 40.0)]), "area": 1600.0})
+	var apart_summary := DensityAudit.articulation_summary(
+		DensityAudit.visible_pieces(apart))
+	_check(int(apart_summary.visible_piece_count) == 3
+		and is_equal_approx(float(apart_summary.masses_per_visible_piece), 1.0),
+		"articulation: masses across a real street stay three visible pieces")
+	_check(float(apart_summary.silhouette_perimeter_ratio) < 1.001,
+		"articulation: separated masses lose no silhouette perimeter")
+	_check(is_equal_approx(float(apart_summary.mean_visible_piece_area), 1600.0)
+		and is_equal_approx(float(apart_summary.median_visible_piece_area),
+			1600.0),
+		"articulation: mean and median piece area report the drawn ink area")
+
+	# Exactly a 3.8u gap - one accepted alley - must NOT fuse. This is the
+	# boundary the whole metric hangs on, so it is asserted on its own.
+	var alley: Array = [
+		{"poly": PackedVector2Array([Vector2(0, 0), Vector2(40, 0),
+			Vector2(40, 40), Vector2(0, 40)]), "area": 1600.0},
+		{"poly": PackedVector2Array([Vector2(44.2, 0), Vector2(84.2, 0),
+			Vector2(84.2, 40), Vector2(44.2, 40)]), "area": 1600.0}]
+	_check(DensityAudit.visible_pieces(alley).size() == 2,
+		"articulation: a full 3.8u alley is a visible gap and does not fuse")
+
+	# THE MOTIVATING DEFECT, reproduced. The V5 vocabulary candidate raised
+	# built area 2.1% map-wide while the plate LOST parcels, and the mass count
+	# concealed it exactly. Control and candidate below have the SAME mass count
+	# and the candidate has MORE built area - yet it is visibly one slab plus a
+	# shed where the control is three buildings. Built area says "better",
+	# visible pieces say "worse".
+	var control: Array = [
+		{"poly": PackedVector2Array([Vector2(0, 0), Vector2(40, 0),
+			Vector2(40, 40), Vector2(0, 40)]), "area": 1600.0},
+		{"poly": PackedVector2Array([Vector2(80, 0), Vector2(120, 0),
+			Vector2(120, 40), Vector2(80, 40)]), "area": 1600.0},
+		{"poly": PackedVector2Array([Vector2(160, 0), Vector2(200, 0),
+			Vector2(200, 40), Vector2(160, 40)]), "area": 1600.0}]
+	var candidate: Array = [
+		{"poly": PackedVector2Array([Vector2(0, 0), Vector2(60, 0),
+			Vector2(60, 40), Vector2(0, 40)]), "area": 2400.0},
+		{"poly": PackedVector2Array([Vector2(61, 0), Vector2(121, 0),
+			Vector2(121, 40), Vector2(61, 40)]), "area": 2400.0},
+		{"poly": PackedVector2Array([Vector2(160, 0), Vector2(200, 0),
+			Vector2(200, 40), Vector2(160, 40)]), "area": 1600.0}]
+	var control_summary := DensityAudit.articulation_summary(
+		DensityAudit.visible_pieces(control))
+	var candidate_summary := DensityAudit.articulation_summary(
+		DensityAudit.visible_pieces(candidate))
+	var control_area := 1600.0 * 3.0
+	var candidate_area := 2400.0 + 2400.0 + 1600.0
+	_check(candidate_area > control_area
+		and int(candidate_summary.mass_count) == int(control_summary.mass_count),
+		"articulation: the fixture reproduces V5 - more built area, same mass count")
+	_check(int(candidate_summary.visible_piece_count)
+		< int(control_summary.visible_piece_count),
+		"articulation: visible pieces FALL where built area and mass count rise")
+	_check(float(candidate_summary.median_visible_piece_area)
+		> float(control_summary.median_visible_piece_area),
+		"articulation: median piece area rises - denser in ink, sparser in city")
+
+	_check(DensityAudit.articulation_summary([]).visible_piece_count == 0
+		and DensityAudit.visible_pieces([]).is_empty(),
+		"articulation: an empty tile reports zero pieces without dividing by zero")
+
+
+## INSTRUMENT 2 - a deliberate court against an undrawn hole. The old park
+## counter scored them identically; the blind critic's verdict on that was
+## literally "You cannot tell a park from a hole."
+func _test_density_audit_park_vs_hole() -> void:
+	_check(bool(DensityAudit.green_verdict(1.0, 1.0).deliberate),
+		"park/hole: a fully inked green with a plan role is a deliberate court")
+
+	# THE MOTIVATING DEFECT. The critic found "an unfilled green pentagon inked
+	# on only two of its five edges" where a civic block used to be, and the
+	# park COUNT went up while green-space integration scored down. Claiming a
+	# park role is no longer enough; the outline has to be drawn as a court.
+	var unenclosed := DensityAudit.green_verdict(1.0, 0.4)
+	_check(not bool(unenclosed.deliberate)
+		and str(unenclosed.reason) == "unenclosed",
+		"park/hole: a green inked on two of five edges is a HOLE, not a park")
+	var roleless := DensityAudit.green_verdict(0.0, 1.0)
+	_check(not bool(roleless.deliberate) and str(roleless.reason) == "no_role",
+		"park/hole: green with no owning role record is a HOLE")
+	_check(str(DensityAudit.green_verdict(0.0, 0.1).reason)
+		== "no_role_and_unenclosed",
+		"park/hole: both failures are reported together, not collapsed")
+	# A residual pocket merged onto a genuine park must not launder itself into
+	# one: the park role has to own at least half the merged area.
+	_check(not bool(DensityAudit.green_verdict(0.49, 1.0).deliberate)
+		and bool(DensityAudit.green_verdict(0.51, 1.0).deliberate),
+		"park/hole: the role must own at least half a merged green")
+
+	# The enclosure measurement itself, on hand-laid ink. A 40x40 court whose
+	# ring is inked scores 1.00; the same court with ink on two sides only
+	# scores about a half and falls under the floor.
+	var court := PackedVector2Array([Vector2(0, 0), Vector2(40, 0),
+		Vector2(40, 40), Vector2(0, 40)])
+	var full_ink := PackedVector2Array([
+		Vector2(0, 0), Vector2(40, 0), Vector2(40, 0), Vector2(40, 40),
+		Vector2(40, 40), Vector2(0, 40), Vector2(0, 40), Vector2(0, 0)])
+	var two_sides := PackedVector2Array([
+		Vector2(0, 0), Vector2(40, 0), Vector2(40, 0), Vector2(40, 40)])
+	var full_fraction := DensityAudit.enclosure_fraction(court,
+		DensityAudit.build_ink_grid(full_ink))
+	var partial_fraction := DensityAudit.enclosure_fraction(court,
+		DensityAudit.build_ink_grid(two_sides))
+	_check(full_fraction > 0.999,
+		"park/hole: a court drawn with its own ring measures fully enclosed")
+	_check(partial_fraction > 0.45 and partial_fraction < 0.55
+		and partial_fraction < DensityAudit.PARK_ENCLOSURE_MIN,
+		"park/hole: a half-inked outline measures half enclosed and fails")
+	_check(DensityAudit.enclosure_fraction(court,
+		DensityAudit.build_ink_grid(PackedVector2Array())) == 0.0,
+		"park/hole: ground with no ink at all measures zero enclosure")
+
+	# A parcel the plan meant to build on, with nothing drawn on it, is a hole.
+	# A vacant lot with nothing drawn on it is the drawing WORKING.
+	_check(DensityAudit.parcel_is_bare("core_lot", 2000.0, 0.02),
+		"park/hole: a built-role parcel with nothing on it is a bare parcel")
+	_check(not DensityAudit.parcel_is_bare("open_lot", 2000.0, 0.0)
+		and not DensityAudit.parcel_is_bare("inner_court", 2000.0, 0.0)
+		and not DensityAudit.parcel_is_bare("face_yard", 2000.0, 0.0),
+		"park/hole: a deliberately vacant parcel is never a bare parcel")
+	_check(not DensityAudit.parcel_is_bare("core_lot", 2000.0, 0.6),
+		"park/hole: a parcel with a mass on it is not bare")
+	_check(not DensityAudit.parcel_is_bare("core_lot",
+		DensityAudit.MIN_COUNTED_PARCEL_AREA - 1.0, 0.0),
+		"park/hole: a clipped remnant below the parcel floor is not judged")
+	_check(DensityAudit.is_park_role("face_park")
+		and DensityAudit.is_park_role("street_park")
+		and not DensityAudit.is_park_role("courtyard")
+		and not DensityAudit.is_park_role(""),
+		"park/hole: the park-role vocabulary excludes courts and blanks")
+
+	# The correction, end to end: an urban tile with two greens of which one is
+	# a hole no longer satisfies the section-2 floor of two parks.
+	var plenty := 1.0e9
+	_check(bool(DensityAudit.evaluate(DensityAudit.CLASS_URBAN, 10, 3, 2,
+		plenty, false).passes),
+		"park/hole: two DELIBERATE parks still satisfy the urban floor")
+	_check((DensityAudit.evaluate(DensityAudit.CLASS_URBAN, 10, 3, 1, plenty,
+		false).failures as Array).has("green_below_floor"),
+		"park/hole: one park plus one hole does NOT satisfy the urban floor")
 
 func _test_accommodation_site_yield() -> void:
 	var site_a := {"key": "park", "poly": PackedVector2Array([
