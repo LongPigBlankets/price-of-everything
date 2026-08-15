@@ -5402,10 +5402,14 @@ func _hero_add_face(face: PackedVector2Array, key: String, color_cluster: String
 	var area := _poly_area(face)
 	if area < HERO_FACE_MIN_AREA:
 		return {"built_area": 0.0, "green_area": 0.0}
-	parcel_entries.append({"poly": face, "color": MapMidcenturyStyle.PAPER,
-		"role": "hero_face"})
-	_metrics.parcels = int(_metrics.parcels) + 1
+	# The role roll is read one statement earlier than it used to be so the
+	# parcel record can carry the role the plan actually assigned. RoadHash.pick
+	# is a pure FNV-1a of its key, so moving the read changes no value anywhere.
 	var roll := RoadHash.pick("%s|role" % key, 100)
+	parcel_entries.append({"poly": face, "color": MapMidcenturyStyle.PAPER,
+		"role": "hero_park" if roll < 18 else (
+			"hero_open" if roll < 23 else "hero_built")})
+	_metrics.parcels = int(_metrics.parcels) + 1
 	if roll < 18:
 		var green_area := 0.0
 		for park_value in _hero_inset_polys(face, _rr("%s|park-inset" % key, 2.8, 5.2)):
