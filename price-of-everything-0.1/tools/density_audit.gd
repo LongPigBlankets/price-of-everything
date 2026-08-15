@@ -29,6 +29,9 @@ const TEXT_PATH := "/tmp/poe_density_audit.txt"
 const NEIGHBOUR_RADIUS := 640.0
 ## Fixed, non-lattice displacement for the enclosure negative control below.
 const CONTROL_DISPLACEMENT := Vector2(37.0, 29.0)
+## The offset the fabric draws every block SHADOW at, for the adversarial
+## drawn-silhouette control below. Mirrors UrbanFabricVisuals.BLOCK_SHADOW_OFFSET.
+const SHADOW_OFFSET := Vector2(2.2, 2.8)
 
 var _terrain: TileMapLayer = null
 var _fabric: Node = null
@@ -172,6 +175,38 @@ func _audit() -> Dictionary:
 	# tile its silhouette shares the most area with, the same rule G1.02 fixed
 	# for masses.
 	var pieces: Array = DensityAudit.visible_pieces(counted_masses)
+
+	# ADVERSARIAL CONTROL (branch gauntlet6/gameit). `counted_masses` is
+	# `block_entries` ONLY. The fabric also fills a SHADOW for every block,
+	# offset by UrbanFabricVisuals.BLOCK_SHADOW_OFFSET, and that fill is never
+	# handed to the instrument - so the shape the instrument clusters is
+	# strictly smaller than the shape the plate draws. Re-cluster the DRAWN
+	# silhouette (mass UNION its own shadow) under the identical 1.9u rule and
+	# report the difference: every piece that disappears here is a pair the
+	# instrument calls articulated and the eye sees as touching.
+	var drawn_masses: Array = []
+	for mass_value in counted_masses:
+		var mass: Dictionary = mass_value
+		var poly: PackedVector2Array = mass.poly
+		var shadow := PackedVector2Array()
+		for point in poly:
+			shadow.append(point + SHADOW_OFFSET)
+		var merged: Array = Geometry2D.merge_polygons(poly, shadow)
+		var best := poly
+		var best_area := -1.0
+		for merged_value in merged:
+			var candidate_poly: PackedVector2Array = merged_value
+			if candidate_poly.size() < 3 or Geometry2D.is_polygon_clockwise(
+					candidate_poly):
+				continue
+			var candidate_area := absf(_poly_area(candidate_poly))
+			if candidate_area > best_area:
+				best_area = candidate_area
+				best = candidate_poly
+		drawn_masses.append({"poly": best, "area": float(mass.area)})
+	var drawn_articulation: Dictionary = DensityAudit.articulation_summary(
+		DensityAudit.visible_pieces(drawn_masses))
+
 	var unassigned_pieces := 0
 	for piece_value in pieces:
 		var piece: Dictionary = piece_value
@@ -553,6 +588,9 @@ func _audit() -> Dictionary:
 				+ "3.8u alley reads as one silhouette",
 			"fusion_dilation": DensityAudit.FUSION_DILATION,
 			"map": map_articulation,
+			# ADVERSARIAL: the same masses clustered as they are DRAWN
+			# (mass UNION its own shadow fill), under the identical 1.9u rule.
+			"map_drawn_with_shadow": drawn_articulation,
 			"unassigned_pieces": unassigned_pieces,
 			"largest_pieces": largest_pieces,
 		},
@@ -942,6 +980,17 @@ func _render_text(report: Dictionary) -> String:
 	lines.append("  silhouette perimeter ratio  %.3f   (1.000 = no shared boundary)" % float(
 		map_articulation.silhouette_perimeter_ratio))
 	lines.append("  pieces off every tile       %d" % int(articulation.unassigned_pieces))
+	var drawn: Dictionary = articulation.map_drawn_with_shadow
+	lines.append("  ADVERSARIAL: the SAME masses clustered as DRAWN (mass + its own")
+	lines.append("  shadow fill, which the instrument is never shown), same 1.9u rule:")
+	lines.append("    VISIBLE PIECES            %d  (instrument reports %d)" % [
+		int(drawn.visible_piece_count), int(map_articulation.visible_piece_count)])
+	lines.append("    masses per visible piece  %.3f  (instrument reports %.3f)" % [
+		float(drawn.masses_per_visible_piece),
+		float(map_articulation.masses_per_visible_piece)])
+	lines.append("    largest silhouette        %d masses  (instrument reports %d)" % [
+		int(drawn.largest_piece_mass_count),
+		int(map_articulation.largest_piece_mass_count)])
 	lines.append("")
 	lines.append("PARKS vs HOLES (instrument 2)")
 	var parks: Dictionary = report.parks
