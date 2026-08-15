@@ -27,6 +27,8 @@ const TEXT_PATH := "/tmp/poe_density_audit.txt"
 ## Tile centres are 405u apart in x and 480u in y; anything further than this
 ## cannot share area with the mass being assigned.
 const NEIGHBOUR_RADIUS := 640.0
+## Fixed, non-lattice displacement for the enclosure negative control below.
+const CONTROL_DISPLACEMENT := Vector2(37.0, 29.0)
 
 var _terrain: TileMapLayer = null
 var _fabric: Node = null
@@ -230,6 +232,9 @@ func _audit() -> Dictionary:
 		land_coords.append(Vector2i(int(record.coord[0]), int(record.coord[1])))
 	var geometry_by_coord: Dictionary = _fabric.call(
 		"tile_dry_buildable_areas", land_coords)
+	var enclosure_samples: Array[float] = []
+	var control_enclosure_samples: Array[float] = []
+	var role_share_samples: Array[float] = []
 	var class_counts: Dictionary = {}
 	var class_compliant: Dictionary = {}
 	var class_constrained: Dictionary = {}
@@ -256,6 +261,20 @@ func _audit() -> Dictionary:
 				float(space.area))
 			var enclosure := DensityAudit.enclosure_fraction(space.poly,
 				ink_grid)
+			enclosure_samples.append(enclosure)
+			role_share_samples.append(role_share)
+			# NEGATIVE CONTROL. The same outline, displaced onto neighbouring
+			# ground, measured against the same ink. If a displaced green also
+			# scored enclosed, the ink would simply be everywhere and the
+			# enclosure test would be vacuous - the exact failure mode that
+			# made `interarm_sea_coverage` score 100% on a paved basin. The
+			# offset is a fixed, non-lattice vector so the control is
+			# deterministic and lands on plausible neighbouring fabric.
+			var displaced := PackedVector2Array()
+			for point in (space.poly as PackedVector2Array):
+				displaced.append(point + CONTROL_DISPLACEMENT)
+			control_enclosure_samples.append(
+				DensityAudit.enclosure_fraction(displaced, ink_grid))
 			var verdict: Dictionary = DensityAudit.green_verdict(role_share,
 				enclosure)
 			if bool(verdict.deliberate):
@@ -419,6 +438,29 @@ func _audit() -> Dictionary:
 		component_records.append(out_component)
 
 	var map_articulation: Dictionary = DensityAudit.articulation_summary(pieces)
+	# The worst silhouettes, named, so the next stage has targets rather than
+	# an average. `tile` is the tile the silhouette is charged to.
+	var piece_owner: Dictionary = {}
+	for record_value in tile_records:
+		var record: Dictionary = record_value
+		for piece_value in record.pieces:
+			piece_owner[(piece_value as Dictionary).silhouette_center] = \
+				str(record.tile_id)
+	var ranked_pieces: Array = pieces.duplicate()
+	ranked_pieces.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if int(a.mass_count) != int(b.mass_count):
+			return int(a.mass_count) > int(b.mass_count)
+		return float(a.area) > float(b.area))
+	var largest_pieces: Array = []
+	for i in mini(15, ranked_pieces.size()):
+		var piece: Dictionary = ranked_pieces[i]
+		largest_pieces.append({
+			"tile": str(piece_owner.get(piece.silhouette_center, "(none)")),
+			"mass_count": int(piece.mass_count),
+			"ink_area": float(piece.area),
+			"silhouette_area": float(piece.silhouette_area),
+			"center": [piece.silhouette_center.x, piece.silhouette_center.y],
+		})
 	var park_totals := {"deliberate_park_count": 0, "deliberate_park_area": 0.0,
 		"park_hole_count": 0, "park_hole_area": 0.0, "bare_parcel_count": 0,
 		"bare_parcel_area": 0.0, "hole_reasons": {},
@@ -499,6 +541,7 @@ func _audit() -> Dictionary:
 			"fusion_dilation": DensityAudit.FUSION_DILATION,
 			"map": map_articulation,
 			"unassigned_pieces": unassigned_pieces,
+			"largest_pieces": largest_pieces,
 		},
 		"parks": {
 			"definition": "a DELIBERATE park carries a plan role record AND "
@@ -510,6 +553,13 @@ func _audit() -> Dictionary:
 			"totals": park_totals,
 			"judged_built_parcels": judged_parcels,
 			"unassigned_bare_parcels": unassigned_bare,
+			# Evidence that the enclosure test DISCRIMINATES rather than
+			# passing everything: the real greens against the same greens
+			# displaced onto neighbouring ground.
+			"enclosure_distribution": _distribution(enclosure_samples),
+			"enclosure_negative_control": _distribution(
+				control_enclosure_samples),
+			"role_share_distribution": _distribution(role_share_samples),
 		},
 		"components": component_records,
 		"tiles": out_tiles,
@@ -665,6 +715,25 @@ func _covered_fraction(poly: PackedVector2Array, area: float, polys: Array,
 	return minf(1.0, covered / area)
 
 
+## Percentile summary of a sample, for reporting a distribution rather than a
+## single number the reader has to take on trust.
+func _distribution(values: Array[float]) -> Dictionary:
+	var sorted_values := values.duplicate()
+	sorted_values.sort()
+	var mean := 0.0
+	for value in sorted_values:
+		mean += value
+	mean = mean / maxf(1.0, float(sorted_values.size()))
+	return {
+		"n": sorted_values.size(),
+		"min": _percentile(sorted_values, 0.0),
+		"p05": _percentile(sorted_values, 0.05),
+		"median": _percentile(sorted_values, 0.5),
+		"mean": mean,
+		"max": _percentile(sorted_values, 1.0),
+	}
+
+
 func _percentile(sorted_values: Array[float], percentile: float) -> float:
 	if sorted_values.is_empty():
 		return 0.0
@@ -792,6 +861,28 @@ func _render_text(report: Dictionary) -> String:
 		int(park_totals.urban_tiles_meeting_park_floor),
 		int(park_totals.urban_tiles_meeting_park_floor_uncorrected)])
 	lines.append("  bare parcels off every tile %d" % int(parks.unassigned_bare_parcels))
+	var enclosure_dist: Dictionary = parks.enclosure_distribution
+	var control_dist: Dictionary = parks.enclosure_negative_control
+	var role_dist: Dictionary = parks.role_share_distribution
+	lines.append("  enclosure   n=%d  min=%.3f p05=%.3f median=%.3f mean=%.3f" % [
+		int(enclosure_dist.n), float(enclosure_dist.min), float(enclosure_dist.p05),
+		float(enclosure_dist.median), float(enclosure_dist.mean)])
+	lines.append("  NEGATIVE CONTROL (same greens displaced by %s, same ink)" % str(
+		CONTROL_DISPLACEMENT))
+	lines.append("              n=%d  min=%.3f p05=%.3f median=%.3f mean=%.3f  max=%.3f" % [
+		int(control_dist.n), float(control_dist.min), float(control_dist.p05),
+		float(control_dist.median), float(control_dist.mean), float(control_dist.max)])
+	lines.append("  role share  n=%d  min=%.3f p05=%.3f median=%.3f" % [
+		int(role_dist.n), float(role_dist.min), float(role_dist.p05),
+		float(role_dist.median)])
+	lines.append("")
+	lines.append("WORST SILHOUETTES (most masses inside one visible piece)")
+	lines.append("  %-12s %7s %12s %14s" % ["tile", "masses", "ink_area", "silhouette"])
+	for piece_value in (report.articulation as Dictionary).largest_pieces:
+		var piece: Dictionary = piece_value
+		lines.append("  %-12s %7d %12.0f %14.0f" % [str(piece.tile),
+			int(piece.mass_count), float(piece.ink_area),
+			float(piece.silhouette_area)])
 	lines.append("")
 	lines.append("PER SETTLEMENT COMPONENT")
 	lines.append("  %-34s %5s %6s %6s %7s %7s %9s %6s %6s" % [
