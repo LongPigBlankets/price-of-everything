@@ -3573,3 +3573,112 @@ polygon was touched.
 - **`tile_20_11` remains unexplained.** The SettlementPlan core planner still records
   38.5% core coverage where the audit measures 12.01% on identical geometry with the same
   denominator. Neither instrument here touches that disagreement; it is still open.
+
+---
+
+## gauntlet6 ADVERSARIAL STAGE — branch `gauntlet6/gameit`
+
+Task: break the two gauntlet6 instruments by satisfying them while the map looks worse.
+**Both are breakable. One is worse than breakable: its enclosure test is tautological and
+has never measured anything.** Every claim below is a run, not an argument — probe at
+`tools/instrument_attack.gd`, eleven pins in `tests/test_runner.gd::_test_instrument_adversarial`
+(2325 → 2336 passed, 0 failed), two full audit runs on this branch reproducing the claimed
+baseline byte-for-byte (1259 pieces / 2191 masses / 1.740 / 846 u² / 1.183 / 181 parks /
+0 holes / 7 bare) across separate processes.
+
+### INSTRUMENT 2 IS NOT MEASURING ENCLOSURE — it measures each green against its own ring
+
+Every one of the six park-creation sites in `scripts/urban_fabric_visuals.gd` (lines 4204,
+4326, 5419, 5575, 5903, 6044) does `park_entries.append({poly: P, ...})` and then
+`_append_ring(_block_edges, P)` — **the same polygon**. `snapshot.ink_segments` is
+`_block_edges + _parcel_edges + _roof_edges`. So `enclosure_fraction()` walks a green's
+perimeter against an ink set that *contains that green's own outline*, and cannot return
+anything but 1.000 regardless of what surrounds it.
+
+A FOREIGN-INK CONTROL was added to the audit (removes exactly the green's own ring, keeps
+everything else) and run on the real map:
+
+```
+  enclosure           n=181  min=1.000 p05=1.000 median=1.000 mean=1.000
+  NEGATIVE CONTROL    n=181  min=0.000 p05=0.000 median=0.103 mean=0.117  max=0.470
+  FOREIGN-INK CONTROL n=181  min=0.000 p05=0.000 median=0.000 mean=0.074  max=0.563
+                      greens still at or above the 0.75 floor: 0 of 181
+```
+
+**Zero of 181 greens on this map are enclosed by ink drawn by anything other than
+themselves.** The shipped displacement control does not detect this — it moves the polygon
+off its own ring, so it fails for the same tautological reason the test passes; it lands on
+*more* foreign ink (median 0.103) than the green's true location does (median 0.000). It is
+the L1 failure verbatim: 100% of a polygon constructed to score 100%.
+
+Consequence: `park_hole_count == 0` is a **structural identity**, not a measurement.
+`role_share` is likewise 1.000 for all 181 samples because the role is stamped at the same
+site. Both tests sit at their ceiling for every sample. The instrument cannot see the
+critic's pentagon, because the fabric can never emit a green without its own complete ring.
+
+REQUIRED FIX: measure enclosure against ink the green did not contribute — the block edges
+of *neighbouring masses* — or better, the fraction of the perimeter with a drawn mass
+within a short band outside it. Keep the foreign-ink control as the acceptance criterion.
+
+### INSTRUMENT 1: the netting claim is false, and shattering scores a perfect report
+
+- **A2 NETTING.** The claim "fusing three masses into one silhouette CANNOT be netted back
+  by companions placed elsewhere" is false on *all five* headline numbers simultaneously.
+  Control 20 abutting pairs + 20 singletons; candidate collapses ten singletons into one
+  ten-mass amoeba and adds 28 ordinary buildings elsewhere: pieces 40→59, m/piece
+  1.500→1.492, fused mass 66.7%→56.8%, perimeter ratio 1.2121→1.1775, median piece area
+  2400→3200. Built area also rises. Only `largest_piece_mass_count` fires (2→10).
+  Map-wide the offset needed is `K > M(g-1)/(M-P)` = **22 crumbs anywhere buy one ten-mass
+  amoeba** at the real baseline (M=2191, P=1259).
+- **A1/A3 SHATTERING and MINIMUM-ALLEY PAVING.** Cutting every building into four crumbs
+  at 4.0u gaps gives pieces 36→144, m/piece 1.000, 0 fused, ratio 1.000 — a *perfect*
+  report on the same ink; and a 144-mass plate covering **84.6%** of its own bounding box
+  on 3.81u gaps scores identically perfect. The fusion test is a step function at 3.8u:
+  drop the same plate to 3.79u and it collapses to 1 piece / 144.000 m per piece. The
+  claimed confetti guard (mean/median piece area) is not a gate — **`DensityAudit.evaluate()`
+  reads no articulation number at all** — and is defeated outright by crumbs at or above
+  the median.
+- **A4 THE SHADOW LAYER IS WITHHELD.** `masses` is `block_entries` only; the fabric also
+  fills a SHADOW for every block at `BLOCK_SHADOW_OFFSET (2.2, 2.8)`. Re-clustering the
+  same masses AS DRAWN (mass ∪ its own shadow, identical 1.9u rule) on the real map:
+
+```
+    VISIBLE PIECES            1031  (instrument reports 1259)
+    masses per visible piece  2.125  (instrument reports 1.740)
+    largest silhouette          74  (instrument reports 64)
+```
+
+  **18% of the reported pieces exist only because the instrument is not shown the shadow
+  layer.** A candidate that widens its street pitch from 3.7u to 4.0u buys articulation
+  credit the plate leaves as 1.2u of paper.
+- **A5 `mean/median_visible_piece_area` is not an area.** It is the SUM of member ink
+  areas; overlaps count repeatedly. Four coincident masses report a 6400 u² "piece area"
+  inside a 1916 u² silhouette. The baseline already shows this: tile_23_9, 103,003 u² of
+  ink inside a 64,323 u² silhouette. `silhouette_area` is computed and thrown away
+  map-wide.
+- **PER-TILE DENOMINATOR DISAGREEMENT (the tile_20_11 shape, live).** Pieces are clustered
+  map-wide and charged whole to one tile, while masses are assigned individually.
+  **57 of 600 tiles** disagree: tile_23_9 owns 34 masses and is charged 90; **tile_22_8
+  owns 21 masses and is charged 0 pieces and 0 piece mass**, so it reads as having no
+  articulation problem while its entire fabric sits inside a neighbour's amoeba. Map-wide
+  totals reconcile (2191 = 2191); the per-tile columns do not.
+
+### Self-declaration and floor games (both instruments)
+
+`kind` and `role` are strings written by the very code being audited. `kind == "courtyard"`
+is `continue`d **before** any verdict — **155 of 454 rendered greens (264,873 u², 27% of the
+reported park area) already take that exit.** Relabelling a residual pocket `courtyard`
+deletes it from both the park and hole counts; relabelling it `face_park` converts it into a
+*deliberate park* (P1 guarantees the enclosure half). A bare parcel is cured by 11% cover of
+anything, by a courtyard-kind green stamped over it, by renaming `face_built` → `face_open`,
+or by splitting it into 599 u² slivers. Greens under 200 u² and masses under 120 u² are
+invisible, so a chain of sub-floor crumbs bridges two masses the instrument still calls two
+pieces. `role_share ≥ 0.5` is an *area* bar over a merged outline: one 20,000 u² hero park
+that merely grazes nineteen 1,000 u² pockets launders all nineteen into itself, and they
+stop being counted at all.
+
+### Determinism
+
+Two separate audit processes on this branch produce byte-identical summaries, and both match
+the `gauntlet6/instruments` run exactly. `visible_pieces()` is order-stable under input
+reversal. No determinism defect found.
