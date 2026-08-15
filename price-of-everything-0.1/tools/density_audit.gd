@@ -234,6 +234,7 @@ func _audit() -> Dictionary:
 		"tile_dry_buildable_areas", land_coords)
 	var enclosure_samples: Array[float] = []
 	var control_enclosure_samples: Array[float] = []
+	var foreign_enclosure_samples: Array[float] = []
 	var role_share_samples: Array[float] = []
 	var class_counts: Dictionary = {}
 	var class_compliant: Dictionary = {}
@@ -262,6 +263,18 @@ func _audit() -> Dictionary:
 			var enclosure := DensityAudit.enclosure_fraction(space.poly,
 				ink_grid)
 			enclosure_samples.append(enclosure)
+			# ADVERSARIAL SECOND CONTROL (branch gauntlet6/gameit).
+			# `enclosure` above is measured against an ink set that CONTAINS the
+			# green's own ring: every park-creation site in the fabric does
+			# `park_entries.append(poly)` and then `_append_ring(..., poly)` on
+			# THE SAME polygon, and `snapshot.ink_segments` is that ring layer.
+			# So the test measures a green against itself, which is why the
+			# baseline reports min = p05 = median = 1.000 across all 181 greens.
+			# The FOREIGN measurement below removes exactly the green's own ring
+			# and asks the question the instrument claims to be asking: is there
+			# ink drawn by SOMETHING ELSE around this green?
+			foreign_enclosure_samples.append(
+				_foreign_enclosure(space.poly, ink_grid))
 			role_share_samples.append(role_share)
 			# NEGATIVE CONTROL. The same outline, displaced onto neighbouring
 			# ground, measured against the same ink. If a displaced green also
@@ -559,6 +572,14 @@ func _audit() -> Dictionary:
 			"enclosure_distribution": _distribution(enclosure_samples),
 			"enclosure_negative_control": _distribution(
 				control_enclosure_samples),
+			# ADVERSARIAL: the same greens measured against ink drawn by
+			# SOMETHING OTHER THAN THEMSELVES. If this collapses while
+			# `enclosure_distribution` sits at 1.000, the shipped test is
+			# measuring each green against its own ring.
+			"enclosure_foreign_ink": _distribution(foreign_enclosure_samples),
+			"enclosure_foreign_at_or_above_floor": _count_at_or_above(
+				_sorted(foreign_enclosure_samples),
+				DensityAudit.PARK_ENCLOSURE_MIN),
 			"role_share_distribution": _distribution(role_share_samples),
 		},
 		"components": component_records,
@@ -658,6 +679,77 @@ func _merge_green_spaces(entries: Array) -> Array:
 	return out
 
 
+## ADVERSARIAL: enclosure measured against FOREIGN ink only.
+##
+## Identical to `DensityAudit.enclosure_fraction`, except that any inked segment
+## which IS one of `poly`'s own edges (either orientation, matched on quantised
+## endpoints) is skipped. The fabric emits a green and its ring from the same
+## polygon, so those are the segments that make the shipped measurement
+## tautological. What is left is the ink that OTHER geometry drew - the ink a
+## human means when they say a court is enclosed.
+func _foreign_enclosure(poly: PackedVector2Array, ink: Dictionary,
+		tolerance: float = DensityAudit.INK_TOLERANCE,
+		step: float = DensityAudit.OUTLINE_SAMPLE_STEP) -> float:
+	if poly.size() < 3:
+		return 0.0
+	var own: Dictionary = {}
+	for i in poly.size():
+		var a := poly[i]
+		var b := poly[(i + 1) % poly.size()]
+		own[_segment_key(a, b)] = true
+		own[_segment_key(b, a)] = true
+	var grid: Dictionary = ink.get("grid", {})
+	var cell := float(ink.get("cell", 32.0))
+	var segments: PackedVector2Array = ink.get("segments", PackedVector2Array())
+	var total := 0.0
+	var covered := 0.0
+	for i in poly.size():
+		var a := poly[i]
+		var b := poly[(i + 1) % poly.size()]
+		var length := a.distance_to(b)
+		if length <= 0.0001:
+			continue
+		var samples := maxi(1, ceili(length / step))
+		var weight := length / float(samples)
+		for s in samples:
+			var point := a.lerp(b, (float(s) + 0.5) / float(samples))
+			total += weight
+			if _point_on_foreign_ink(point, grid, cell, segments, tolerance,
+					own):
+				covered += weight
+	if total <= 0.0:
+		return 0.0
+	return covered / total
+
+
+func _segment_key(a: Vector2, b: Vector2) -> String:
+	return "%.2f,%.2f|%.2f,%.2f" % [a.x, a.y, b.x, b.y]
+
+
+func _point_on_foreign_ink(point: Vector2, grid: Dictionary, cell: float,
+		segments: PackedVector2Array, tolerance: float,
+		own: Dictionary) -> bool:
+	var cx := floori(point.x / cell)
+	var cy := floori(point.y / cell)
+	var reach := maxi(1, ceili(tolerance / cell))
+	for dx in range(-reach, reach + 1):
+		for dy in range(-reach, reach + 1):
+			var bucket_value: Variant = grid.get(Vector2i(cx + dx, cy + dy))
+			if bucket_value == null:
+				continue
+			var bucket: PackedInt32Array = bucket_value
+			for index in bucket:
+				var a := segments[index * 2]
+				var b := segments[index * 2 + 1]
+				if own.has(_segment_key(a, b)):
+					continue
+				if point.distance_to(
+						Geometry2D.get_closest_point_to_segment(point, a, b)) \
+						<= tolerance:
+					return true
+	return false
+
+
 ## Uniform bucket grid over a polygon array, for the parcel-coverage test.
 func _build_poly_grid(polys: Array, cell: float = 128.0) -> Dictionary:
 	var grid: Dictionary = {}
@@ -732,6 +824,12 @@ func _distribution(values: Array[float]) -> Dictionary:
 		"mean": mean,
 		"max": _percentile(sorted_values, 1.0),
 	}
+
+
+func _sorted(values: Array[float]) -> Array[float]:
+	var out := values.duplicate()
+	out.sort()
+	return out
 
 
 func _percentile(sorted_values: Array[float], percentile: float) -> float:
@@ -872,6 +970,14 @@ func _render_text(report: Dictionary) -> String:
 	lines.append("              n=%d  min=%.3f p05=%.3f median=%.3f mean=%.3f  max=%.3f" % [
 		int(control_dist.n), float(control_dist.min), float(control_dist.p05),
 		float(control_dist.median), float(control_dist.mean), float(control_dist.max)])
+	var foreign_dist: Dictionary = parks.enclosure_foreign_ink
+	lines.append("  FOREIGN-INK CONTROL (same greens, own ring removed from the ink)")
+	lines.append("              n=%d  min=%.3f p05=%.3f median=%.3f mean=%.3f  max=%.3f" % [
+		int(foreign_dist.n), float(foreign_dist.min), float(foreign_dist.p05),
+		float(foreign_dist.median), float(foreign_dist.mean),
+		float(foreign_dist.max)])
+	lines.append("              greens still at or above the 0.75 floor: %d of %d" % [
+		int(parks.enclosure_foreign_at_or_above_floor), int(foreign_dist.n)])
 	lines.append("  role share  n=%d  min=%.3f p05=%.3f median=%.3f" % [
 		int(role_dist.n), float(role_dist.min), float(role_dist.p05),
 		float(role_dist.median)])
