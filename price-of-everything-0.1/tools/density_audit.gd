@@ -536,8 +536,13 @@ func _audit() -> Dictionary:
 				record.large_area)) / maxf(1.0, float(geometry.get(
 					"dry_buildable_area", 0.0)))
 			out_built_ink_share = built_ink_share
+			# THE COUNT ROWS READ DRAWN OBJECTS, not emitted entries (break
+			# F1, second half). `small_count` / `large_count` below stay in the
+			# record as the fabric's own declaration, beside the drawn numbers,
+			# so the disagreement between them is visible on every tile row.
 			evaluation = DensityAudit.evaluate(tile_class,
-				int(record.small_count), int(record.large_count),
+				int(articulation.drawn_small_count),
+				int(articulation.drawn_large_count),
 				deliberate_count,
 				float(geometry.get("dry_buildable_area", 0.0)),
 				shortfall_records.has(tile_id),
@@ -732,6 +737,21 @@ func _audit() -> Dictionary:
 		per_tile_piece_sum += int(tile.visible_piece_count)
 		per_tile_mass_sum += int(tile.piece_mass_count)
 
+	var declared_building_total := 0
+	var drawn_building_total := 0
+	var tiles_declared_above_drawn := 0
+	for tile_value in out_tiles:
+		var tile: Dictionary = tile_value
+		if str(tile["class"]) == DensityAudit.CLASS_WATER:
+			continue
+		var declared := int(tile.small_count) + int(tile.large_count)
+		var drawn := int(tile.get("drawn_small_count", 0)) + int(
+			tile.get("drawn_large_count", 0))
+		declared_building_total += declared
+		drawn_building_total += drawn
+		if declared > drawn:
+			tiles_declared_above_drawn += 1
+
 	var park_totals := {"deliberate_park_count": 0, "deliberate_park_area": 0.0,
 		"park_hole_count": 0, "park_hole_area": 0.0, "bare_parcel_count": 0,
 		"bare_parcel_area": 0.0, "hole_reasons": {},
@@ -778,6 +798,17 @@ func _audit() -> Dictionary:
 			park_totals.urban_tiles_meeting_park_floor_uncorrected = int(
 				park_totals.urban_tiles_meeting_park_floor_uncorrected) + 1
 
+	# Ground totals for the F8 cross-check: measured from terrain, relief and
+	# water, and from the drawn masses. No parcel record contributes to either.
+	var total_dry_land := 0.0
+	var total_counted_ink := 0.0
+	for tile_value in out_tiles:
+		var tile: Dictionary = tile_value
+		if str(tile["class"]) == DensityAudit.CLASS_WATER:
+			continue
+		total_dry_land += float(tile.dry_buildable_area)
+		total_counted_ink += float(tile.small_area) + float(tile.large_area)
+
 	areas.sort()
 	failures.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		if str(a["class"]) != str(b["class"]):
@@ -816,6 +847,10 @@ func _audit() -> Dictionary:
 			"uncounted_mass_fragments": uncounted_masses,
 			"rendered_masses": int(snapshot.get("masses", []).size()),
 			"rendered_greens": int(snapshot.get("greens", []).size()),
+			# THE SECTION-2 COUNTS, DECLARED AND DRAWN (break F1).
+			"declared_buildings": declared_building_total,
+			"drawn_building_objects": drawn_building_total,
+			"tiles_declaring_more_than_they_draw": tiles_declared_above_drawn,
 		},
 		"articulation": {
 			"definition": "a visible piece is a connected component of the "
@@ -891,6 +926,21 @@ func _audit() -> Dictionary:
 			"empty_parcel_roles": empty_parcel_roles,
 			"uncovered_parcel_area": uncovered_parcel_area,
 			"total_parcel_area": total_parcel_area,
+			# G7b REPAIR (break F8) — A CROSS-CHECK AGAINST GROUND.
+			# Every number above is a sum over records the audited code emits.
+			# gauntlet7 took the uncovered fraction from 64% to 10% by not
+			# emitting the empty parcels and to 45.7% by emitting the covered
+			# ones twice, on the same drawing. Nothing cross-checked the parcel
+			# set against anything. These two do: the denominators are dry
+			# buildable ground and drawn building ink, neither of which is a
+			# parcel record, so a parcel set that is edited without the drawing
+			# changing moves this ratio and not the ink share.
+			"parcel_area_over_dry_land": total_parcel_area / maxf(1.0,
+				total_dry_land),
+			"counted_ink_over_dry_land": total_counted_ink / maxf(1.0,
+				total_dry_land),
+			"total_dry_buildable_area": total_dry_land,
+			"total_counted_ink_area": total_counted_ink,
 			# THE REPAIRED MEASUREMENT and its negative control. The separation
 			# between these two distributions is this instrument's acceptance
 			# criterion: real greens must stand clear of the same outlines
@@ -1037,6 +1087,10 @@ func _tile_articulation(mass_indices: PackedInt32Array,
 	var slab_pieces := 0
 	var slab_area := 0.0
 	var single_mass_slabs := 0
+	# THE COUNT ROWS, ON DRAWN OBJECTS (break F1, second half).
+	var drawn_small := 0
+	var drawn_large := 0
+	var drawn_crumbs := 0
 	var keys: Array = local_counts.keys()
 	keys.sort()
 	for key_value in keys:
@@ -1045,6 +1099,13 @@ func _tile_articulation(mass_indices: PackedInt32Array,
 		var piece: Dictionary = pieces[piece_index]
 		var drawn_area := float(piece.silhouette_area)
 		largest_piece_area = maxf(largest_piece_area, drawn_area)
+		match DensityAudit.drawn_piece_class(drawn_area):
+			"large":
+				drawn_large += 1
+			"small":
+				drawn_small += 1
+			_:
+				drawn_crumbs += 1
 		if drawn_area >= ceiling:
 			slab_pieces += 1
 			slab_area += drawn_area
@@ -1093,6 +1154,10 @@ func _tile_articulation(mass_indices: PackedInt32Array,
 		"single_mass_slab_piece_count": single_mass_slabs,
 		"pieces_per_10k_silhouette": 10000.0 * float(piece_count) / maxf(0.001,
 			silhouette_total),
+		# THE SECTION-2 COUNTS, MEASURED ON THE DRAWING.
+		"drawn_small_count": drawn_small,
+		"drawn_large_count": drawn_large,
+		"drawn_crumb_count": drawn_crumbs,
 	}
 
 
@@ -1401,6 +1466,11 @@ func _render_text(report: Dictionary) -> String:
 	lines.append("  rendered masses / greens     %d / %d" % [
 		int(summary.rendered_masses), int(summary.rendered_greens)])
 	lines.append("  mass fragments below floor   %d" % int(summary.uncounted_mass_fragments))
+	lines.append("  DECLARED buildings           %d" % int(summary.declared_buildings))
+	lines.append("  DRAWN building objects       %d   <- what the section-2 count rows are judged on" % int(
+		summary.drawn_building_objects))
+	lines.append("  tiles declaring more than they draw   %d" % int(
+		summary.tiles_declaring_more_than_they_draw))
 	lines.append("  masses/greens off every tile %d / %d" % [
 		int(summary.unassigned_masses), int(summary.unassigned_greens)])
 	lines.append("")
@@ -1529,6 +1599,12 @@ func _render_text(report: Dictionary) -> String:
 	lines.append("    by declared role          %s" % str(parks.empty_parcel_roles))
 	lines.append("  UNCOVERED parcel area       %.0f u^2 of %.0f  [area-weighted, no counting floor]" % [
 		float(parks.uncovered_parcel_area), float(parks.total_parcel_area)])
+	lines.append("  CROSS-CHECK AGAINST GROUND  parcel area / dry land %.4f   ink / dry land %.4f" % [
+		float(parks.parcel_area_over_dry_land),
+		float(parks.counted_ink_over_dry_land)])
+	lines.append("    (every parcel number above is a sum over records the audited code emits;")
+	lines.append("     these two have denominators it does not author, so a parcel set edited")
+	lines.append("     without the drawing changing moves the first and not the second)")
 	lines.append("  urban tiles >= 2 parks      %d corrected / %d uncorrected" % [
 		int(park_totals.urban_tiles_meeting_park_floor),
 		int(park_totals.urban_tiles_meeting_park_floor_uncorrected)])
@@ -1605,8 +1681,10 @@ func _render_text(report: Dictionary) -> String:
 	lines.append("FULL TILE TABLE")
 	lines.append("  dpark = deliberate parks (the number the section-2 floor is judged on)")
 	lines.append("  hole  = greens that are undrawn holes; bare = built-role parcels with nothing on them")
-	lines.append("  %-12s %-26s %-9s %5s %5s %5s %5s %5s %6s %7s %10s  %s" % [
-		"tile", "nickname", "class", "small", "large", "dpark",
+	lines.append("  small/large are DRAWN OBJECTS classified by silhouette area; (decl) is what")
+	lines.append("  the fabric declared - a gap between them is fusion the count row used to hide")
+	lines.append("  %-12s %-26s %-9s %5s %5s %11s %5s %5s %5s %6s %7s %10s  %s" % [
+		"tile", "nickname", "class", "small", "large", "(decl s/l)", "dpark",
 		"hole", "bare", "pieces", "m/piece", "dry_area", "verdict"])
 	for tile_value in report.tiles:
 		var tile: Dictionary = tile_value
@@ -1617,10 +1695,13 @@ func _render_text(report: Dictionary) -> String:
 			verdict = "FAIL %s" % str(tile.failures)
 			if bool(tile.get("physically_constrained", false)):
 				verdict += " [physically constrained]"
-		lines.append("  %-12s %-26s %-9s %5d %5d %5d %5d %5d %6d %7.3f %10.0f  %s" % [
+		lines.append("  %-12s %-26s %-9s %5d %5d %11s %5d %5d %5d %6d %7.3f %10.0f  %s" % [
 			str(tile.tile_id), str(tile.nickname).substr(0, 26), str(tile["class"]),
-			int(tile.small_count), int(tile.large_count),
-			int(tile.deliberate_park_count), int(tile.park_hole_count),
+			int(tile.get("drawn_small_count", 0)),
+			int(tile.get("drawn_large_count", 0)),
+			"%d/%d" % [int(tile.small_count), int(tile.large_count)],
+			int(tile.deliberate_park_count),
+			int(tile.unverified_green_count),
 			int(tile.bare_parcel_count), int(tile.visible_piece_count),
 			float(tile.masses_per_visible_piece),
 			float(tile.dry_buildable_area), verdict])
@@ -1631,8 +1712,10 @@ func _render_text(report: Dictionary) -> String:
 		var req: Dictionary = tile.requirements
 		lines.append("  %-12s %-9s %-24s small=%d (min %d, max %d)  large=%d (min %d, max %d)  park=%d (min %d)  dry=%.0f/%.0f  %s%s" % [
 			str(tile.tile_id), str(tile["class"]), str(tile.nickname).substr(0, 24),
-			int(tile.small_count), int(req.small_min), int(req.small_max),
-			int(tile.large_count), int(req.large_min), int(req.large_max),
+			int(tile.get("drawn_small_count", 0)), int(req.small_min),
+			int(req.small_max),
+			int(tile.get("drawn_large_count", 0)), int(req.large_min),
+			int(req.large_max),
 			int(tile.deliberate_park_count), int(req.park_min),
 			float(tile.dry_buildable_area), float(tile.required_dry_area),
 			str(tile.failures),

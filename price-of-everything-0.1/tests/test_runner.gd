@@ -13485,6 +13485,62 @@ func _test_instrument_adversarial_round2() -> void:
 			> DensityAudit.drawn_piece_floor_area(),
 		"F1: the slab ceiling is derived from LARGE_MASS_AREA and the accepted alley")
 
+	# ---- BREAK F1, SECOND HALF. `small_count` and `large_count` are counts of
+	# ENTRIES too, so removing the fused ratio from the gate would have left
+	# nothing tying a declared count to the drawing: ten masses drawn as three
+	# objects would still have satisfied a floor of ten. The count rows are now
+	# evaluated on DRAWN OBJECTS classified by their own silhouette area.
+	_check(is_equal_approx(DensityAudit.drawn_large_piece_area(),
+			(side + DensityAudit.BLOCK_SHADOW_OFFSET.x
+				+ 2.0 * DensityAudit.FUSION_DILATION)
+			* (side + DensityAudit.BLOCK_SHADOW_OFFSET.y
+				+ 2.0 * DensityAudit.FUSION_DILATION))
+		and DensityAudit.drawn_large_piece_area()
+			< DensityAudit.drawn_piece_ceiling_area(),
+		"F1: a drawn object is block-scale at one LARGE_MASS_AREA mass, drawn")
+	_check(DensityAudit.drawn_piece_class(
+			DensityAudit.drawn_large_piece_area()) == "large"
+		and DensityAudit.drawn_piece_class(
+			DensityAudit.drawn_piece_floor_area()) == "small"
+		and DensityAudit.drawn_piece_class(
+			DensityAudit.drawn_piece_floor_area() - 1.0) == "crumb",
+		"F1: an object under one baseline small mass drawn is a CRUMB, not a building")
+	# Ten masses that draw as ONE object satisfy no floor of ten any more.
+	var ten_declared: Array = []
+	for i in 10:
+		var x := float(i) * 20.0
+		ten_declared.append({"poly": PackedVector2Array([Vector2(x, 0.0),
+			Vector2(x + 40.0, 0.0), Vector2(x + 40.0, 40.0),
+			Vector2(x, 40.0)]), "area": 1600.0})
+	var declared_tool: Node = preload("res://tools/density_audit.gd").new()
+	var ten_pieces := DensityAudit.visible_pieces(ten_declared)
+	var ten_mass_piece := PackedInt32Array()
+	ten_mass_piece.resize(10)
+	var ten_owned := PackedInt32Array()
+	var ten_tiles: Array = []
+	for _i in ten_pieces.size():
+		ten_tiles.append({0: true})
+	for piece_index in ten_pieces.size():
+		for member_value in ((ten_pieces[piece_index] as Dictionary
+				).members as PackedInt32Array):
+			ten_mass_piece[int(member_value)] = piece_index
+	for i in 10:
+		ten_owned.append(i)
+	var ten_articulation: Dictionary = declared_tool.call("_tile_articulation",
+		ten_owned, ten_mass_piece, ten_pieces, ten_tiles)
+	declared_tool.free()
+	_check(int(ten_articulation.piece_mass_count) == 10
+		and int(ten_articulation.visible_piece_count) == 1,
+		"F1 fixture: ten declared masses drawing exactly one object")
+	_check(int(ten_articulation.drawn_small_count)
+			+ int(ten_articulation.drawn_large_count) == 1,
+		"F1 CLOSED: the count row sees ONE building, whatever the fabric declared")
+	_check((DensityAudit.evaluate(DensityAudit.CLASS_URBAN,
+			int(ten_articulation.drawn_small_count),
+			int(ten_articulation.drawn_large_count), 2, plenty, false
+			).failures as Array).has("small_below_floor"),
+		"F1 CLOSED: declaring ten entries no longer satisfies a floor of ten")
+
 	# ---- BREAK F6. Six masses in one amoeba failed the old ratio gate at
 	# 6.000, and FIVE separated sheds cleared it at 1.833 with the amoeba
 	# untouched. The gated number must not be payable elsewhere.

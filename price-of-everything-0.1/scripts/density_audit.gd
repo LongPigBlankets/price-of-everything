@@ -246,6 +246,39 @@ static func drawn_piece_ceiling_area() -> float:
 	return width * height
 
 
+## The area of ONE block-scale mass drawn the way the plate draws it: the
+## small/large cut, plus the fabric's shadow, plus the dilation a silhouette
+## carries. A DRAWN OBJECT at or above this reads as a block-scale building.
+##
+## G7b REPAIR (break F1, second half). `small_count` and `large_count` are
+## counts of ENTRIES THE AUDITED CODE EMITTED, exactly like `mass_count`, so
+## the section-2 floors could be satisfied by declaring ten masses that draw as
+## three objects — and removing the fused ratio from the gate would have left
+## nothing at all tying a declared count to the drawing. The count rows are
+## therefore evaluated on VISIBLE PIECES classified by their own silhouette
+## area: a tile complies when the plate DRAWS ten small objects and three
+## block-scale ones, not when the fabric says it did. Declaring more entries
+## buys nothing, and declaring fewer costs nothing.
+static func drawn_large_piece_area() -> float:
+	var side := sqrt(LARGE_MASS_AREA)
+	return (side + BLOCK_SHADOW_OFFSET.x + 2.0 * FUSION_DILATION) * \
+		(side + BLOCK_SHADOW_OFFSET.y + 2.0 * FUSION_DILATION)
+
+
+## Classify one DRAWN OBJECT by the area of the shape it draws.
+##   "large"  at or above one block-scale mass drawn
+##   "small"  a readable building under that
+##   "crumb"  under one baseline small mass drawn — not a building at all, and
+##            counted toward neither floor. This is what stops three dots
+##            satisfying a floor of three buildings.
+static func drawn_piece_class(silhouette_area: float) -> String:
+	if silhouette_area >= drawn_large_piece_area():
+		return "large"
+	if silhouette_area >= drawn_piece_floor_area():
+		return "small"
+	return "crumb"
+
+
 ## G7b REPAIR (breaks A3, F8) — A GROUND-TRUTH DENOMINATOR.
 ##
 ## Every parcel number instrument 2 reports is a sum over records the audited
@@ -299,6 +332,9 @@ static func drawn_piece_floor_area() -> float:
 ##                               denominator the fabric does not author (F8),
 ##                               and the number that sees minimum-alley paving
 ##                               (A3).
+## `small_count` and `large_count` MUST be counts of DRAWN OBJECTS
+## (`drawn_piece_class` over this tile's visible pieces), not of emitted mass
+## entries — see `drawn_large_piece_area()` for why.
 static func evaluate(tile_class: String, small_count: int, large_count: int,
 		green_count: int, dry_buildable_area: float,
 		documented_shortfall: bool,
