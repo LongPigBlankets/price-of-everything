@@ -379,8 +379,8 @@ func _attack_p1_enclosure_tautology() -> void:
 	_log("    gauntlet6 ink enclosure = %.4f   <- cannot fall below 1.0" % isolated)
 	var repaired := DA.mass_band_enclosure(pentagon, DA.build_mass_grid([]))
 	var verdict: Dictionary = DA.green_verdict(repaired)
-	_log("    REPAIRED fabric enclosure = %.4f   shape '%s'  deliberate %s" % [
-		repaired, str(verdict.shape), str(verdict.deliberate)])
+	_log("    REPAIRED fabric enclosure = %.4f   shape '%s'  unverified %s" % [
+		repaired, str(verdict.shape), str(verdict.unverified)])
 	_log("  The repaired measurement steps OUTWARD from the perimeter and asks")
 	_log("  whether a drawn mass is there. The green contributes nothing to its")
 	_log("  own score, so an isolated green is a HOLE.")
@@ -410,8 +410,9 @@ func _attack_p2_courtyard_relabel() -> void:
 		str(pocket.shape), str(public_green.shape), str(public_green.public),
 		str(wrapped.shape), str(wrapped.public)])
 	_log("  There is no parameter a rename could reach. A courtyard is now a")
-	_log("  green the fabric WRAPS, measured; it is still excluded from the")
-	_log("  public floor, and it is still counted and reported.")
+	_log("  green the fabric WRAPS, measured; it is excluded from the public")
+	_log("  floor AND counted as unverified, so deleting a block interior to")
+	_log("  manufacture one improves no number (gauntlet7 break F3).")
 
 
 ## P3. MERGE LAUNDERING. role_share is an AREA share over a MERGED outline and
