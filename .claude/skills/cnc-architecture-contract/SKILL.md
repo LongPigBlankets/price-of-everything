@@ -100,6 +100,35 @@ ships** — tuning is expected — but every change routes through
 `cnc-balance-change-control` with harness evidence. No exceptions, including "obvious"
 fixes.
 
+## The gameplay / aesthetic line on the map (owner ruling, 2026-08-15)
+
+This question keeps re-opening and has cost several investigations. The line is:
+
+**GAMEPLAY — the per-tile infrastructure flag/level, and nothing else about the map.**
+Whether a tile carries road/rail/pipe and at what level is what the sim reads: it sets haul
+cost, capacity and mode share. Verified: `scripts/transport_service.gd` costs routes from
+modes and levels and contains **zero** references to `RoadNetwork`; the only non-visual
+consumers of `RoadNetwork` are the density audit (counting built edges) and a debug-terminal
+cheat.
+
+**AESTHETIC — everything else about how the map looks.** Road *geometry* (where a carriageway
+runs, junction shapes, the drawn network graph), settlement fabric, parcels, parks, and
+**building visual placement within a tile**. A building's *tile membership* is gameplay; its
+*position inside that tile* is not. None of it changes how long a unit of coal takes to
+deliver.
+
+Consequences, because agents get these wrong by default:
+
+- The **road-frontage audit is an AESTHETIC quality bar**, not a gameplay invariant. Its
+  frozen totals are an art regression tripwire, nothing more.
+- A **road-geometry rebake is gameplay-neutral so long as per-tile flags/levels are
+  preserved** — so a roads redesign is far cheaper to trial than its apparent blast radius.
+  Preserve the flags, and prove it.
+- Overlapping buildings and ugly blocks are real defects; they are *art* defects.
+- Still frozen for other reasons: save schema, determinism, occupancy and placement legality
+  (they gate what the player may build), click testing and selection.
+
+
 ## Known-weak points (OPEN as of 2026-07-05 — do not "discover" these again)
 
 Full detail with criticality ratings lives in
