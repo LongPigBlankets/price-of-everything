@@ -1369,10 +1369,11 @@ func _render_text(report: Dictionary) -> String:
 		int(fabric_control.n), float(fabric_control.min), float(fabric_control.p05),
 		float(fabric_control.median), float(fabric_control.mean),
 		float(fabric_control.max)])
-	lines.append("      (the same outlines displaced by %s onto neighbouring ground)" % str(
-		CONTROL_DISPLACEMENT))
-	lines.append("  GRADED BAND CURVE - the same question at one, two, four and eight")
-	lines.append("  accepted alleys, real greens against the fair control:")
+	lines.append("      (the same outlines walked out on a fixed spiral to the nearest")
+	lines.append("       UNBUILT ground - an outline dropped inside a building would be")
+	lines.append("       trivially surrounded by it and would prove nothing)")
+	lines.append("  GRADED BAND CURVE - the same question at half, one, two and four")
+	lines.append("  times the derived band, real greens against the fair control:")
 	lines.append("    %-8s %-8s %9s %9s %9s %9s %14s" % ["scale", "band",
 		"real_med", "real_mean", "ctl_med", "ctl_mean", "pass real/ctl"])
 	for band_value in (parks.fabric_band_curve as Array):
