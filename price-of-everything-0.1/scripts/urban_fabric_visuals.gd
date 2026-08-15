@@ -163,6 +163,11 @@ var _render_parcel_entries: Array = []
 ## cannot change a pixel. The gauntlet6 instrument was never shown this layer
 ## and therefore clustered a shape strictly smaller than the plate draws.
 var _render_shadow_entries: Array = []
+## Rare industrial landmark tier: instance id -> landmark compound key, plus the
+## selected compounds themselves. Draw-only accent bookkeeping; it reserves no
+## land and never enters placement, occupancy or selection.
+var _industry_landmark_ids: Dictionary = {}
+var _industry_landmark_compounds: Array = []
 
 var _metrics := {
 	"tiles": 0, "parcels": 0, "blocks": 0, "parks": 0, "open_lots": 0,
@@ -323,6 +328,7 @@ func _rebuild() -> void:
 			hero_coords.append(coord)
 			continue
 		morphology_coords.append(coord)
+	_select_industry_landmarks()
 	for component_value in _urban_components(morphology_coords):
 		var component: Array[Vector2i] = component_value
 		_build_morph_component(component, parcel_entries, yard_entries, shadow_entries,
@@ -380,13 +386,15 @@ func _rebuild() -> void:
 		far_plate_entries.append({"poly": poly,
 			"color": MapMidcenturyStyle.far_urban_plate()})
 		far_plate_area += _poly_area(poly)
+	var landmark_plate := _append_industry_landmark_plate(far_plate_entries)
 	_far_plate_mesh = _fill_mesh(far_plate_entries)
 	_metrics["far_zoom_plate"] = {
 		"source": "sanitized_decorative_masses",
 		"switch_zoom": FAR_PLATE_ZOOM,
-		"mass_count": far_plate_entries.size(),
+		"mass_count": far_plate_entries.size() - int(landmark_plate.drawn_count),
 		"area": far_plate_area,
 		"uses_tile_envelopes": false,
+		"industry_landmarks": landmark_plate,
 	}
 	queue_redraw()
 	print("[MIDCENTURY] fabric: %d urban tiles, %d parcels, %d blocks, %d parks, %d open lots" % [
@@ -404,6 +412,82 @@ func _rebuild() -> void:
 		print("[MIDCENTURY] Arin masses: %d solid, %d U, %d L, %d courtyard rings" % [
 			int(forms.solid), int(forms.u), int(forms.l), int(forms.ring),
 		])
+
+## ── Rare industrial landmark tier ───────────────────────────────────────────
+## The references carry a handful of strong oxide/rust works that survive world
+## scale while every other industry stays a quiet half-chroma print. This picks
+## that single-digit subset once per rebuild from the authoritative gameplay
+## footprints, so the accent is identical in every capture of the same map.
+func _select_industry_landmarks() -> void:
+	_industry_landmark_ids = {}
+	_industry_landmark_compounds = []
+	if _buildings == null or not _buildings.has_method("midcentury_industry_sites_on_tile"):
+		return
+	var sites: Array = []
+	for coord_value in _terrain.tiles:
+		sites.append_array(_buildings.midcentury_industry_sites_on_tile(
+			coord_value as Vector2i))
+	var selection := MidcenturyIndustryCompound.select_landmarks(sites)
+	_industry_landmark_ids = selection.instance_ids
+	_industry_landmark_compounds = selection.compounds
+	_metrics["industry_landmarks"] = selection.diagnostics
+	var diagnostics: Dictionary = selection.diagnostics
+	print("[MIDCENTURY] industry landmarks: %d of %d sites (%d candidates): %s" % [
+		int(diagnostics.landmark_count), int(diagnostics.site_count),
+		int(diagnostics.candidate_count), str(diagnostics.landmark_keys),
+	])
+
+## True when this real industry belongs to a selected landmark compound.
+## Compound apron wash: the ordinary half-chroma family, or the rare landmark
+## oxide for the selected few.
+func _industry_apron_color(instance_id: String, family: String) -> Color:
+	if _is_industry_landmark(instance_id):
+		return MapMidcenturyStyle.industry_landmark_yard(
+			_industry_landmark_key(instance_id))
+	return MapMidcenturyStyle.industrial_apron(family)
+
+func _is_industry_landmark(instance_id: String) -> bool:
+	return _industry_landmark_ids.has(instance_id)
+
+func _industry_landmark_key(instance_id: String) -> String:
+	return str(_industry_landmark_ids.get(instance_id, instance_id))
+
+## World-scale accent masses, appended after the quiet settlement plate so the
+## few landmarks read on top of it. Each patch shrinks its halo until it sits
+## wholly on dry land, exactly like every other decorative fill.
+func _append_industry_landmark_plate(far_plate_entries: Array) -> Dictionary:
+	var drawn := 0
+	var area := 0.0
+	var shrunk := 0
+	var dropped := 0
+	for compound_value in _industry_landmark_compounds:
+		var compound: Dictionary = compound_value
+		var key := str(compound.key)
+		var patch := PackedVector2Array()
+		var halo_index := 0
+		for halo in MidcenturyIndustryCompound.LANDMARK_HALOS:
+			var candidate := MidcenturyIndustryCompound.landmark_patch(
+				compound.bounds as Rect2, halo, key)
+			if candidate.size() >= 3 and _poly_on_dry_land(candidate):
+				patch = candidate
+				break
+			halo_index += 1
+		if patch.size() < 3:
+			dropped += 1
+			continue
+		if halo_index > 0:
+			shrunk += 1
+		far_plate_entries.append({"poly": patch,
+			"color": MapMidcenturyStyle.industry_landmark_plate(key)})
+		drawn += 1
+		area += _poly_area(patch)
+	return {
+		"selected_count": _industry_landmark_compounds.size(),
+		"drawn_count": drawn,
+		"shrunk_count": shrunk,
+		"dropped_count": dropped,
+		"area": area,
+	}
 
 func _urban_components(coords: Array[Vector2i]) -> Array:
 	var ordered := coords.duplicate()
@@ -910,7 +994,8 @@ func _add_plan_industry_aprons(plan: SettlementPlan,
 			var draw_poly: PackedVector2Array = draw_value
 			yard_entries.append({
 				"poly": draw_poly,
-				"color": MapMidcenturyStyle.industrial_apron(str(reservation.family)),
+				"color": _industry_apron_color(str(reservation.get("instance_id", "")),
+					str(reservation.family)),
 			})
 			_active_relief_fills.append({"key": str(reservation.key),
 				"poly": draw_poly.duplicate(), "role": "industry-apron"})
@@ -1088,7 +1173,8 @@ func _add_silkstown_industry_compounds(plan: SettlementPlan,
 			var draw_poly: PackedVector2Array = draw_value
 			yard_entries.append({
 				"poly": draw_poly,
-				"color": MapMidcenturyStyle.industrial_apron(family),
+				"color": _industry_apron_color(
+					str(reservation.get("instance_id", "")), family),
 			})
 			_active_relief_fills.append({"key": key, "poly": draw_poly.duplicate(),
 				"role": "industry-apron"})
@@ -4145,7 +4231,8 @@ func _morph_industry_exclusions(industry_sites: Array, component_key: String) ->
 			Vector2(rect.position.x, rect.end.y - chamfer),
 			Vector2(rect.position.x, rect.position.y + chamfer),
 		])
-		out.append({"poly": poly, "bb": rect, "key": site_key})
+		out.append({"poly": poly, "bb": rect, "key": site_key,
+			"instance_id": str(site.get("instance_id", ""))})
 	return out
 
 func _morph_add_industry_yards(industry_exclusions: Array, street_faces: Array,
@@ -4165,9 +4252,14 @@ func _morph_add_industry_yards(industry_exclusions: Array, street_faces: Array,
 					if piece.size() < 3 or _poly_area(piece) < 120.0:
 						continue
 					var yard_key := "%s|yard|%d|%d" % [component_key, i, piece_index]
+					var yard_instance := str(exclusion.get("instance_id", ""))
+					var yard_color := MapMidcenturyStyle.industrial_yard(yard_key)
+					if _is_industry_landmark(yard_instance):
+						yard_color = MapMidcenturyStyle.industry_landmark_yard(
+							_industry_landmark_key(yard_instance))
 					yard_entries.append({
 						"poly": piece,
-						"color": MapMidcenturyStyle.industrial_yard(yard_key),
+						"color": yard_color,
 					})
 					_active_relief_fills.append({"key": yard_key,
 						"poly": piece.duplicate(), "role": "yard"})

@@ -30,6 +30,7 @@ func _ready() -> void:
 	_test_goods_graph_reopen_clears_focus()
 	_test_map_style_plate()
 	_test_midcentury_road_layout_fixture()
+	_test_midcentury_industry_landmark_tier()
 	_test_accommodation_site_yield()
 	_test_density_audit_classification()
 	_test_density_audit_gate()
@@ -13933,3 +13934,70 @@ func _test_port_arm_geometry() -> void:
 	_check(MidcenturyPortPlan._attach_to_head(Vector2(0.0, 500.0), Vector2.UP,
 		head) == Vector2.INF,
 		"port arms: an arm that cannot reach the apron is rejected, not floated")
+## Gate E3 — the rare industrial landmark tier is a deterministic SELECTION
+## contract, not a look-and-see palette tweak: it must stay single-digit
+## map-wide, must not depend on the order sites arrive in, and its accent must
+## stay strictly between the accepted half-chroma ordinary industry tier
+## (V4.08b) and the full category colour that failed as saturated fields
+## (V4.08a). Pure geometry/colour — no scene, no renderer, no RNG.
+func _test_midcentury_industry_landmark_tier() -> void:
+	var compound := preload("res://scripts/midcentury_industry_compound.gd")
+	var sites: Array = []
+	for cluster in 12:
+		var base := Vector2(float(cluster) * 2000.0, 0.0)
+		for member in 3:
+			var at := base + Vector2(50.0 * float(member % 2), 50.0 * float(member / 2))
+			sites.append({
+				"poly": PackedVector2Array([
+					at + Vector2(-20.0, -20.0), at + Vector2(20.0, -20.0),
+					at + Vector2(20.0, 20.0), at + Vector2(-20.0, 20.0)]),
+				"instance_id": "site_%02d_%d" % [cluster, member],
+			})
+	var selection: Dictionary = compound.select_landmarks(sites)
+	var diagnostics: Dictionary = selection.diagnostics
+	_check(int(diagnostics.landmark_count) == compound.LANDMARK_MAX,
+		"midcentury landmarks: a crowded map still caps at the landmark maximum")
+	_check(int(diagnostics.landmark_count) < 10,
+		"midcentury landmarks: the tier stays single-digit map-wide")
+	var keys: Array = diagnostics.landmark_keys
+	var reversed_sites: Array = []
+	for i in range(sites.size() - 1, -1, -1):
+		reversed_sites.append(sites[i])
+	var reversed_keys: Array = (compound.select_landmarks(
+		reversed_sites).diagnostics as Dictionary).landmark_keys
+	keys.sort()
+	reversed_keys.sort()
+	_check(keys == reversed_keys,
+		"midcentury landmarks: selection does not depend on site iteration order")
+	_check(compound.select_landmarks(sites).diagnostics.landmark_keys
+		== diagnostics.landmark_keys,
+		"midcentury landmarks: repeated selection is identical")
+	# Every accepted landmark must be separated from the others.
+	var centers: Array = []
+	for chosen_value in selection.compounds:
+		centers.append((chosen_value as Dictionary).center as Vector2)
+	var separated := true
+	for i in centers.size():
+		for j in range(i + 1, centers.size()):
+			if (centers[i] as Vector2).distance_to(centers[j]) < compound.LANDMARK_MIN_SEPARATION:
+				separated = false
+	_check(separated, "midcentury landmarks: accepted compounds stay far apart")
+	# The chroma bound, measured rather than asserted in a comment.
+	var ordinary_max := 0.0
+	for family in MapMidcenturyStyle.GAMEPLAY_BLOCK_TOPS:
+		ordinary_max = maxf(ordinary_max,
+			(MapMidcenturyStyle.GAMEPLAY_BLOCK_TOPS[family] as Color).s)
+	var landmark_min := 1.0
+	var landmark_max := 0.0
+	for tone in MapMidcenturyStyle.INDUSTRY_LANDMARK_TONES:
+		landmark_min = minf(landmark_min, (tone as Color).s)
+		landmark_max = maxf(landmark_max, (tone as Color).s)
+	_check(landmark_min > ordinary_max,
+		"midcentury landmarks: the accent sits above the halved ordinary industry chroma")
+	_check(landmark_max < Color("b3743f").s and landmark_max < Color("c1922c").s,
+		"midcentury landmarks: the accent stays below the rejected full category colour")
+	# Near zoom the landmark is a paper wash, never a saturated filled roof.
+	for tone_index in MapMidcenturyStyle.INDUSTRY_LANDMARK_TONES.size():
+		var wash := MapMidcenturyStyle.industry_landmark_yard("probe|%d" % tone_index)
+		_check(wash.s < landmark_min,
+			"midcentury landmarks: the near-zoom yard wash is quieter than the plate accent")

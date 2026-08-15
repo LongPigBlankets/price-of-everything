@@ -1797,6 +1797,149 @@ inland port. The generic `Catalog.is_building_allowed_on_tile_type()` helper has
 that is a latent requirement only if player-built ports are authorized later. L1 deliberately does not add or
 change such a gameplay eligibility rule.
 
+## E3. Rare industrial landmark accent tier (gauntlet II, gate E lever 3) — 2026-08-14
+
+| Iteration | Gate / lever | Change | Status | Evidence / next bottleneck |
+|---|---|---|---|---|
+| E3.01 | Gate E / industrial landmark hierarchy at wide zoom | Promoted a single-digit deterministic subset of the largest real works compounds to an oxide/rust/salmon landmark tier: a far-zoom plate accent plus a matching near-zoom yard wash. Ordinary industry keeps the V4.08b halved chroma untouched. | **Accepted; gate E remains open** | Blind critic preferred the candidate 3.17 vs 2.92. Bought decorative/gameplay hierarchy 2 → 4 and multiscale readability 3 → 4, but cost industrial colour discipline 4 → 3 and repetition resistance 3 → 2. Next bottleneck is the apron's geometry, not its colour: it is drawn as the sprite group's axis-aligned bounding box. |
+
+### What the mechanism does
+
+`MidcenturyIndustryCompound.select_landmarks()` clusters the 270 mid-century industry sites into 153
+candidate groups, filters to groups of at least 2 members and 2,200u² of footprint area, sorts
+deterministically, and takes at most `LANDMARK_MAX = 7` under a 900u minimum separation so the accents stay
+rare and spread. Tone is picked per compound through `RoadHash.pick`, never global RNG and never wall-clock.
+`MapMidcenturyStyle` owns the three tones; the legacy `MapStyle` palette is untouched.
+
+Selected keys: `start_b_012_tile_25_6_1`, `start_b_009_tile_14_17`, `start_b_003_tile_23_18_1`,
+`start_b_002_tile_23_8`, `start_b_008_tile_20_7_1`, `start_b_007_tile_27_3`, `start_b_002_tile_4_9_1`.
+
+### The chroma bound, verified from source
+
+Gate E requires the landmark tier to sit above the accepted half-chroma ordinary tier (V4.08b) and strictly
+below the full category colour that failed as saturated fields (V4.08a). Measured directly off the constants:
+
+| Tier | Saturation |
+|---|---|
+| Landmark far-plate tones (`a8674c`, `9c6a4a`, `b17a58`) | **0.503 – 0.548** |
+| Landmark near-zoom yard wash | 0.362 – 0.382 |
+| Ordinary V4.08b apron / yard | 0.089 – 0.286 / 0.244 – 0.288 |
+| Ordinary V4.08b block-top base, maximum | 0.448 |
+| V4.08a full category band that failed (orange, red_mass, yellow, mustard) | 0.648 – 0.772 |
+
+The tier is therefore strictly inside the mandated window on both sides. The independent critic, measuring the
+rendered pixels rather than the constants, put the apron fill at S 0.52 against the map's own 99th-percentile
+saturation of 0.531 in **both** images — the accent sits at the existing chroma ceiling and adds none of its
+own (global mean saturation 0.4000 vs 0.3997).
+
+### Independent blind critic
+
+Two framings, candidate and current best in the same unlabelled slot in each, judged at original resolution
+against the supplied dense reference. Verdict: **candidate preferred**, on the whole-map 12-category rubric.
+
+| Category | Candidate | V0 best |
+|---|---:|---:|
+| Inhabited impression | 3 | 3 |
+| Reference-family resemblance | 3 | 2 |
+| Continuous figure/ground | 3 | 3 |
+| Organic parcel structure | 3 | 3 |
+| Streets as negative space | 3 | 3 |
+| Green-space integration | 3 | 3 |
+| Decorative/gameplay hierarchy | **4** | 2 |
+| Industrial colour discipline | **3** | **4** |
+| Top-down discipline | 4 | 4 |
+| Historically accumulated character | 3 | 2 |
+| Multiscale readability | **4** | 3 |
+| Absence of procedural repetition | **2** | **3** |
+| **Average** | **3.17** | **2.92** |
+
+The decisive finding was legibility, not colour: on the current best the critic could not locate a single
+gameplay industry anywhere on the plate, because town fabric, decorative massing and real works all sit at one
+grey value; on the candidate two works groups were found unaided before any diff was run. Six landmarks at
+0.19% of world-scale pixels, against 4.76% warm industrial pixels in the reference's close hero crop.
+
+### Two recorded regressions — not softened
+
+This candidate was accepted with a real cost, and gate E's bar is every category at 4 or better.
+
+1. **Industrial colour discipline 4 → 3.** A category that was *passing* gate E's bar now fails it. The chroma
+   is right; the application is not. The accent is a flat, untextured paint-bucket fill with no ink boundary,
+   no inset and no grain, drawn as the sprite group's axis-aligned bounding box rather than a drawn yard. It
+   cuts across a 45° street grid at two sites, leaves a third to a half dead margin at two more, and at one
+   site overprints the beach/shoreline transition — the one boundary a hard saturated edge must never cross.
+2. **Absence of procedural repetition 3 → 2.** Six instances of one upright rounded-rectangle primitive, added
+   to a base that already repeats bracket blocks, tree clumps and lozenge field plots. Aspect (23×22, 10×27,
+   19×28, 22×18, 26×22, 25×16) and tone do vary with the group, so it is a mild new artifact rather than a
+   trade of one artifact for another — but it is the artifact.
+
+Net movement toward gate E's definition of done: categories at 4 or better went from 2 to 3. That is why this
+is recorded as accepted rather than reverted, and why gate E is explicitly **not** closed.
+
+### Known defect: the seventh landmark
+
+`_append_industry_landmark_plate` walks `LANDMARK_HALOS` down to 0.0 and, if even the ungrown footprint bounds
+fail `_poly_on_dry_land`, drops the landmark rather than shrinking it. The far-plate metrics record
+`selected_count` 7, `drawn_count` 6, `shrunk_count` 0, `dropped_count` 1 — so six accents reach the plate, not
+seven. The harness does not name the dropped compound; the only coastal works in the selected set is
+`start_b_002_tile_4_9_1`. The in-source comment promising that "a coastal works shrinks instead of vanishing"
+therefore overpromises: at halo 0 the patch is the raw bounds, which a quay-side works can still fail. Six is
+still single digits and still inside the gate's letter, but the fix is to clip the patch to dry land rather
+than reject it.
+
+### Determinism, compatibility and tests
+
+- All-style harness run twice: **43/43 byte-identical between runs**. Against V0, **41 of 43 PNGs are
+  byte-identical**; only the two mid-century wide frames change, to
+  `9e0cf7bf0d4fcd1d69db0c3167fc696f8593e7df246900debe2f90895a40877a` (wide and wide_repeat full-PNG identical
+  to each other). All ten classic, all ten ink, all ten plate and all nine close/regional mid-century framings
+  are unchanged.
+- Frozen legacy wide hashes hold exactly: classic `c263cf65…`, ink `95ba0e42…`, plate `3a98e939…`. Ink before
+  and after legacy → mid-century → legacy is **full-PNG identical** at the frozen ink hash.
+- Morphology harness run twice: **24/24 byte-identical between runs**; exits 1 at the unresolved road-gradient
+  gate exactly as at V0. Against V0, 22 of 24 artifacts are byte-identical; only `poe_morph_wide.png`
+  (`754a32b7…`) and the metrics JSON change.
+- The metrics diff is **purely additive**: 16 keys added, 0 removed, **0 existing values altered**. Every gate A
+  gradient field, every gate B hex-coincidence field, every gate C whole-body verdict, `far_zoom_plate`
+  `mass_count`/`area` and all water/relief counters are bit-for-bit V0.
+- Hero Arin Old is untouched and the H2.11 contract reproduces exactly: 25 street faces, 151 parcels,
+  38.2880881497716% built / 17.5217736435889% green / 44.1901382066394% negative, forms 44 solid / 27 U /
+  21 L / 26 courtyard-ring. No landmark key falls on an Arin tile.
+- Road-frontage audit is exactly frozen on all eight counters: 177 tiles with roads, 413 buildings measured,
+  79 failing tiles, 177 buildings over 15u, 137 off-road by design, 1 saved by a service lane, 165 block-mode
+  failures, worst offender `tile_10_3` furnace 146.6u. The audit log diffs against V0 with no differences
+  other than planner timings and the log path.
+- E2E balance sim at 100 turns: **748 passed, 0 failed**, `assertions_failed` 0.
+- Deterministic suite: **2,268 passed, 2 failed**. The two failures are pre-existing and not caused by this
+  work — they are the goods-graph focus-reset tests, this branch touches no goods-graph file, and the 2,260/0
+  V0 figure was captured in the owner's main checkout which carries an uncommitted 12-line fix to
+  `scripts/goods_graph_world.gd` that exists in no git worktree.
+- `git diff --check` clean. Established Godot shutdown RID/resource-leak warnings remain, so the console is not
+  described as clean. All captures must be run with `--resolution 1920x1080`: `project.godot` sets a
+  2360×1328 window override, so a bare windowed launch changes every hash including classic.
+- Captures run windowed under the shared capture lock; evidence preserved at `/tmp/poe_g2_wt/e3_scratch/`
+  (`mapA`, `mapB`, `morphA`, `morphB`, `hero`), blind pair at `/tmp/poe_g2_blind/E3/`.
+
+### Files and preservation
+
+`scripts/map_midcentury_style.gd` (+36, purely additive), `scripts/midcentury_industry_compound.gd` (+137,
+purely additive), `scripts/urban_fabric_visuals.gd` (+102/−5, confined to industry apron/yard colouring, the
+far-plate block and new functions), `tests/test_runner.gd` (+69, one focused deterministic test).
+
+Draw-only. No change to road or river topology, bridges, terrain classification, forest occupancy, gameplay
+footprints, occupancy, placement legality, click testing, selection, ownership, transport connectivity,
+building counts or capacities, economy, tile classification, save schema or any balance constant. No
+per-building nodes: the accent is one additional batched entry per landmark in the existing far-plate mesh,
+and `mass_count` is decremented by the drawn landmark count so the recorded plate figure is unperturbed.
+
+### Next bottleneck
+
+The colour question is settled — the tier is measurably inside its mandated window and below the reference's
+own industrial red. What is unsettled is the accent's **geometry**, and that is the whole of both regressions.
+The next lever (attempt 2 of this gate's two, still unused) is to stop drawing the sprite-group AABB and draw a
+yard instead: clip the patch to the street/parcel polygon, rotate it to the local street bearing, inset it from
+the placement polygon, give it a thin warm-ink boundary and a faint grain, and forbid it from crossing the
+land/water and land/sand boundaries — which also fixes the dropped seventh landmark. Until that lands,
+industrial colour discipline and repetition resistance sit below gate E's bar and gate E cannot close.
 ## M1. Per-tile density audit — the measurement instrument — 2026-08-14
 
 ### Scope
