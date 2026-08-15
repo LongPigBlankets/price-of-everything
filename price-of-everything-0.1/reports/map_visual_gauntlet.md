@@ -4023,3 +4023,277 @@ open wounds: every construction is re-run and prints the number that closes it.
   section's claim rests on the 600-tile / 23-field identity above plus the
   draw-neutrality argument, which is weaker evidence about pixels and is stated
   as such.
+
+## G7b. Instrument repair, round two — the gate stops reading the fabric's own bookkeeping — 2026-08-15
+
+Branch `gauntlet7/repair2`, from `gauntlet7/repair`. Task: close the ten
+attacks that survived the first repair, pin them, re-measure, and prove no
+geometry moved.
+
+**Eight of the ten are closed, two are declared not closed with the reason.**
+One further break of the same class as F1 was found while closing F1 and is
+closed here as well: the section-2 COUNT ROWS were counting emitted entries
+too.
+
+What was run:
+
+```
+  <godot> --headless --path . res://tools/density_audit.tscn --quit-after 4000
+    -> /tmp/poe_density_audit.{json,txt}          (three full runs)
+  python3 tools/run_tests.py                      -> 2415 passed, 0 failed
+```
+
+### THE ONE SENTENCE
+
+`mass_count`, `small_count` and `large_count` are all counts of entries the
+audited code chose to emit, and every gated number was a function of one of
+them; the gate now reads **areas of drawn silhouettes and counts of drawn
+objects**, so re-cutting the same ink into a different number of entries moves
+the verdict by exactly zero — and on this unchanged map the fabric declares
+**2,191 buildings and draws 608 objects**.
+
+### THE BASELINE, RE-MEASURED
+
+Same map, same geometry, same commit of `scripts/urban_fabric_visuals.gd`.
+
+| | gauntlet7/repair | gauntlet7/repair2 |
+| --- | --- | --- |
+| failing tiles | 320 / 395 | **350 / 395** |
+| compliant by class | urban 2, sparse 27, mountain 45, remote 1 | **urban 0, sparse 0, mountain 45, remote 0** |
+| declared buildings | 2191 | 2191 (unchanged — it is the same drawing) |
+| DRAWN building objects | not measured | **608** |
+| tiles declaring more than they draw | not measured | **163** |
+| largest drawn silhouette | 193,808 u² (reported) | 193,808 u² (**gated**) |
+| slab pieces ≥ 4,184.7 u² | not measured | **218**, holding **69.7%** of all drawn shape |
+| of those, holding ONE declared mass | — | **9** (4.1% — the measured false-positive rate) |
+| objects per 10,000 u² of drawn ink | not measured | 2.872 |
+| verified public greens | 69 | 69 |
+| UNVERIFIED greens (holes + wrapped) | 334 holes, 34 courts exempt | **368** = 334 holes + 34 wrapped |
+| urban tiles meeting the ≥2 park floor | 14 | 14 |
+| built ink / dry buildable ground | not measured | median 0.000, mean 0.034, max **0.446** |
+| tiles at or over the paving cap (0.333) | not measured | **5** |
+| unit tests | 2369 passed | **2415 passed, 0 failed** |
+
+Gate failures by name, over the 395 audited tiles:
+
+```
+  small_below_floor 350   fabric_slab 92   green_below_floor 78
+  fabric_confetti    77   large_below_floor 23   fabric_paved 5   large_above_cap 2
+```
+
+The gate is **not saturated**: 70 of 92 urban tiles fire `fabric_slab` and 22
+do not, and per-tile slab share runs min 0.0 / p25 0.0 / median 38.5 / p75 82.3
+/ max 100.0 over the 170 tiles that draw anything, with 78 of them at zero.
+There is a gradient to steer by.
+
+### F1 — CLOSED. THE GATE NO LONGER READS A SELF-DECLARED COUNT
+
+The adversary's construction, run through the repaired gate:
+
+```
+  eight 40x40 masses on 2u gaps   m/piece 8.000   largest silhouette 14792.5 u2
+  THE SAME OUTER SHAPE, 1 entry   m/piece 1.000   largest silhouette 14793.2 u2
+  gate:  ["fabric_slab"]   vs   ["fabric_slab"]        <- identical
+  slab area, slab count, objects per 10k ink:          <- identical to 1 u2
+```
+
+`evaluate()` now reads three numbers and none of them counts entries:
+
+* `largest_visible_piece_area` against a **ceiling of 4,184.7 u²** — the area of
+  two block-scale masses drawn side by side with one accepted alley between
+  them, every term frozen (`LARGE_MASS_AREA`, `FUSION_DILATION`,
+  `BLOCK_SHADOW_OFFSET`). Invariant under re-cutting; not payable elsewhere
+  (F6); charged wherever the silhouette is drawn (F10).
+* `median_visible_piece_area` against the 1,196.0 u² confetti floor.
+* `built_ink_share` against 1/`PACKING_ALLOWANCE` (A3, F8).
+
+`masses_per_visible_piece`, `excess_mass_count`, `largest_piece_mass_count`,
+`pieces_holding_*` and `fusion_fragility` are still reported and are now
+honestly labelled as descriptions of the fabric's own partition rather than
+evidence.
+
+**THE COST, MEASURED NOT ASSUMED.** A drawing cannot distinguish one very large
+building from two fused ordinary ones — they are the same ink in the same
+place — so this gate charges both. `single_mass_slab_piece_count` says how
+often that costs: **9 of the 218 slab pieces on this map, 4.1%.**
+
+### F1, SECOND HALF — CLOSED. THE COUNT ROWS READ DRAWN OBJECTS
+
+Found while closing F1 and it is the same defect: `small_count` and
+`large_count` are counts of emitted entries, so removing the fused ratio from
+the gate would have left **nothing at all** tying a declared count to the
+drawing — ten masses drawn as three objects would still have satisfied a floor
+of ten.
+
+A tile's section-2 counts are now its visible pieces classified by their own
+silhouette area: **large** at or above one block-scale mass drawn (2,143.6 u²),
+**small** above one baseline small mass drawn (1,196.0 u²), **crumb** below it
+and counted toward no floor at all — so three dots can no longer satisfy a
+floor of three buildings.
+
+```
+  declared buildings 2191   ->   drawn building objects 608
+  tiles declaring more than they draw: 163
+  worst: tile_23_8 declares 79 and draws 7; tile_2_4 declares 78 and draws 14
+```
+
+That single change is most of the baseline move: sparse compliance 27 -> 0 and
+remote 1 -> 0, all on `small_below_floor`, now measured on the drawing.
+
+### F2 — CLOSED. ONLY A COUNTED BUILDING MAY CERTIFY A GREEN
+
+The enclosure grid was `cover_polys`, every mass in the snapshot, sub-floor ones
+included — so 12 dots of 100 u² made a bare 60x60 hole a public green and 24
+made it an inner court, at 5.0 u² of dots per unit of hole perimeter, buying
+zero buildings. The probe is now built by `DensityAudit.counted_mass_polys()`,
+which is exactly the `counts_as_building` predicate the count rows use. A dot
+ring is invisible to it; anything that CAN certify a green is charged on every
+count row of section 2.
+
+Measured on the real map: the change moved **no verdict** (69 public / 334
+holes before and after), i.e. no green on this map was being certified by
+sub-floor ink. The separation from the negative control is intact —
+`fabric_at_or_above_public_floor` 103, control 0 of 434 placed.
+
+### F3 — CLOSED IN THE DIRECTION THAT COSTS, AND DECLARED IN THE OTHER
+
+`inner_court` (≥0.90) was "deliberate": excluded from the park count AND from
+the hole count, so deleting a building inside a 3x3 block improved both numbers
+at once. There is now no free bucket:
+
+```
+  wrapped (>= 0.90)  -> shape "wrapped_green"  public false  UNVERIFIED true
+  hole    (<  0.50)  -> shape "hole"           public false  UNVERIFIED true
+  UNVERIFIED greens on this map: 368 = 334 holes + 34 wrapped   (was 334 + 34 exempt)
+```
+
+**DECLARED, not hidden:** surroundedness is not deliberateness, and this
+measurement cannot see intent. A real courtyard now reads as unverified, and a
+civic green with buildings on one side and streets on three measures 0.289 and
+reads as a hole. Both errors are false in the direction that costs a candidate,
+which is the correct direction of error for an instrument whose project has
+already shipped five metrics that certified a visible defect. Both are pinned
+as tests so neither can be quietly "fixed" into an exit.
+
+### F6, F9, F10 — CLOSED BY THE SAME NUMBER
+
+* **F6.** Five separated sheds beside a six-mass amoeba: `largest_visible_piece_area`
+  and `slab_silhouette_area` are **identical with and without them**. The tile
+  still fails.
+* **F9.** `ARTICULATION_MIN_SAMPLE` is gone from `evaluate()` — an area is
+  meaningful at n = 1. A four-mass amoeba, under the old floor, now fails.
+  (One correction the first run of this gate forced and which is now pinned: a
+  tile that draws NOTHING has no median piece and must not be called confetti —
+  it failed all 45 mountain and 53 remote tiles on an empty median of 0.0.)
+* **F10.** A silhouette is charged where it is drawn. Six masses each welded
+  into a different neighbouring amoeba still report m/piece 1.000 — and every
+  one of those six pieces is over the ceiling, so the tile fails.
+
+### A3, F8 — CLOSED WITH A DENOMINATOR THE FABRIC DOES NOT AUTHOR
+
+`built_ink_share` = counted building ink / dry buildable area. The denominator
+comes from terrain, relief and water; no fabric record contributes to it, so
+suppressing or duplicating parcel entries cannot move it. Cap =
+1/`PACKING_ALLOWANCE` = 0.333, which is not a new number — `required_dry_area()`
+already asserts three units of land per unit of footprint.
+
+```
+  minimum-alley paving (144 masses on 3.81u gaps, over its own box)  0.720 -> fabric_paved
+  the same 144 masses on real streets                                0.230 -> silent
+  real map: median 0.000  mean 0.034  max 0.446   5 tiles at or over the cap
+    tile_10_16 44.6%  tile_10_17 38.8%  tile_23_9 36.6%  tile_9_18 36.5%  tile_23_8 36.1%
+```
+
+Two cross-check ratios are reported beside the parcel numbers —
+`parcel_area_over_dry_land` 0.0611 and `counted_ink_over_dry_land` 0.0336 — so
+a parcel set edited without the drawing changing moves the first and not the
+second.
+
+### F7 — CLOSED. SUB-FLOOR GREENS ARE MERGED AND JUDGED
+
+A 1,000 u² hole shattered into six 168 u² shards was skipped before any verdict.
+`cluster_subfloor_greens()` merges sub-floor greens among themselves —
+undilated, so the outline is ground that is actually green — and any merged
+shape that reaches the floor is judged like any other green. It cannot launder:
+only sub-floor entries are merged and the operation can only ADD entries.
+On the real map it recovers **0** — there are no sub-floor greens today — so it
+is a guard against a candidate, not a change to this baseline.
+
+### F4, F5 — NOT CLOSED, AND HERE IS WHY
+
+* **F4.** The confetti floor is one baseline small mass drawn. A 900 u²
+  building is a legitimate small building, so re-cutting 36 buildings of 3,600
+  u² into 144 of 900 u² clears the floor — correctly. What catches that re-cut
+  is the **section-2 large count**, which the re-cut takes to zero
+  (`large_below_floor`), and that is now measured on drawn objects. The
+  articulation family does not and should not answer it. Pinned as such.
+* **F5.** Four 100 u² dots round a 484 u² crumb lift its silhouette 785 ->
+  1,373 u². The instrument is not being fooled: the drawn object really is
+  bigger, and a human sees a 1,373 u² blob. The lever that would answer the
+  underlying complaint — that a 484 u² crumb counts as a building at all — is
+  `MIN_COUNTED_MASS_AREA` on the COUNT row, which is a threshold in the
+  addendum, not a defect in this instrument. Stated rather than patched.
+
+### WHAT THIS DESIGN STILL CANNOT ANSWER
+
+Stated plainly, because a sixth instrument that hides its failure mode is worse
+than none:
+
+1. **Deliberateness.** Instrument 2 measures whether ground is surrounded by
+   buildings. A civic park and a dropout can be the same drawing, and on this
+   map they point opposite ways. Nothing in the render arrays distinguishes
+   them. **A correct instrument would need a signal the decorative fabric does
+   not author** — the obvious candidate is the STREET layer: a civic green is
+   bounded by carriageway on the sides that have no building, a dropout is
+   bounded by nothing. This map has no such layer at settlement scale
+   (`RoadNetwork` edges are tile-to-tile gameplay links, and the mid-century
+   streets are the negative space between parcels, not drawn geometry), so the
+   question is currently unanswerable and the instrument reports both
+   classifications with the conservative one gating.
+2. **Below the ceiling, fusion is invisible.** Two 800 u² masses fused into one
+   2,600 u² silhouette read as one legitimate building, and no label-free number
+   can say otherwise. The count rows charge it (the tile draws one object, not
+   two); the articulation family does not see it.
+3. **Cross-tile double counting.** A piece holding masses from two tiles is
+   counted by both — 56 such pieces of 1,032. That is generous on a floor and
+   strict on a cap, and it is reported (`cross_tile_piece_count`,
+   `per_tile_visible_piece_sum` 1,098 against a map total of 1,032).
+4. **Variety.** Nothing here measures repetition. A map of uniformly medium
+   objects passes every number in this report.
+5. **The ink numerator.** `built_ink_share` sums entry areas, which double-count
+   overlap, so a candidate could lower it by declaring overlapping entries;
+   `ink_to_silhouette_ratio` (0.702 here) is the number that would show it.
+
+### DETERMINISM
+
+Two audit processes on this branch produce **byte-identical** `.json` and
+`.txt`. The unit suite is 2,415 passed / 0 failed and contains no wall-clock or
+global RNG.
+
+### PROOF THAT NOTHING VISUAL CHANGED
+
+The branch's whole diff against `gauntlet7/repair` is three files:
+
+```
+  scripts/density_audit.gd   +329/-31   pure measurement class (RefCounted)
+  tools/density_audit.gd     +313       headless audit
+  tools/instrument_attack.gd    +4/-4   narrative wording
+  tests/test_runner.gd       +504       pins
+```
+
+Nothing under `scripts/` that draws was touched. The only reference to
+`DensityAudit` from any rendering path is
+`scripts/urban_fabric_visuals.gd:6565`, which reads `LARGE_MASS_AREA` — a
+constant this branch does not modify (the diff removes no `const` line at all).
+The rendered output is therefore unchanged **by construction**, which is a
+stronger statement than a pixel comparison: there is no code path from anything
+this branch edits to anything that draws. No windowed capture was run; a
+geometry stream held the capture lock throughout and this work was headless.
+
+### THE ATTACKS ARE PINNED
+
+`_test_instrument_adversarial_round2()` in `tests/test_runner.gd` carries the
+gauntlet7 constructions verbatim: F1 (both halves), F2, F3, F6, F7, F9, F10 and
+A3 with the repaired verdict, F4 and F5 with what is actually true. A candidate
+that reopens one fails there before it reaches a blind critic. The runnable
+narrative in `tools/instrument_attack.gd` follows the same verdicts.
