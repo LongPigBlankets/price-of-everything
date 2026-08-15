@@ -35,6 +35,7 @@ func _ready() -> void:
 	_test_density_audit_gate()
 	_test_density_audit_articulation()
 	_test_density_audit_park_vs_hole()
+	_test_instrument_adversarial()
 	_test_port_arm_geometry()
 	_test_coal_prohibition()
 	_test_scheduled_coal_prohibition()
@@ -12902,6 +12903,201 @@ func _test_goods_graph_reopen_clears_focus() -> void:
 	_check((world.get("_fpos") as Dictionary).is_empty(), "goods graph: reopening drops the stale focus positions")
 	_check(str(world.get("_selected_id")) == "", "goods graph: reopening clears the selection")
 	world.queue_free()
+
+## ============================================================================
+## ADVERSARIAL PINS - branch gauntlet6/gameit
+## ============================================================================
+## THESE TESTS ASSERT DEFECTS, NOT DESIRED BEHAVIOUR. Each one pins a concrete
+## construction that satisfies a gauntlet6 instrument while the drawn plate gets
+## worse, or that the instrument is structurally unable to see. When an
+## instrument is repaired the matching assertion here MUST BE INVERTED, not
+## deleted and not "fixed" - the failure is the point. Full write-up and the
+## runnable probe: tools/instrument_attack.gd.
+func _test_instrument_adversarial() -> void:
+	# ---- BREAK A1. Shattering scores a PERFECT articulation report. Same ink,
+	# same footprint, four crumbs per building at 4.0u - one hair over the 3.8u
+	# alley. The critic called this failure "confetti" at wide zoom in Capital.
+	var whole: Array = []
+	var shattered: Array = []
+	for gx in 6:
+		for gy in 6:
+			var x := float(gx) * 80.0
+			var y := float(gy) * 80.0
+			whole.append({"poly": PackedVector2Array([Vector2(x, y),
+				Vector2(x + 40.0, y), Vector2(x + 40.0, y + 40.0),
+				Vector2(x, y + 40.0)]), "area": 1600.0})
+			for qx in 2:
+				for qy in 2:
+					var cx := x + float(qx) * 22.0
+					var cy := y + float(qy) * 22.0
+					shattered.append({"poly": PackedVector2Array([
+						Vector2(cx, cy), Vector2(cx + 18.0, cy),
+						Vector2(cx + 18.0, cy + 18.0), Vector2(cx, cy + 18.0)]),
+						"area": 324.0})
+	var whole_summary := DensityAudit.articulation_summary(
+		DensityAudit.visible_pieces(whole))
+	var shattered_summary := DensityAudit.articulation_summary(
+		DensityAudit.visible_pieces(shattered))
+	_check(int(shattered_summary.visible_piece_count) == 144
+		and int(whole_summary.visible_piece_count) == 36
+		and is_equal_approx(float(shattered_summary.masses_per_visible_piece), 1.0)
+		and int(shattered_summary.fused_piece_count) == 0
+		and float(shattered_summary.silhouette_perimeter_ratio) < 1.001,
+		"ADVERSARIAL A1: shattering a plate into crumbs scores a PERFECT articulation report")
+
+	# ---- BREAK A2. The author's central claim is that fusing masses "CANNOT be
+	# netted back by companions placed elsewhere". It can, on every headline
+	# number at once. Control: 20 abutting pairs + 20 singletons. Candidate:
+	# ten singletons collapse into ONE ten-mass amoeba and 28 ordinary buildings
+	# appear on the far side of the map.
+	var control: Array = []
+	var candidate: Array = []
+	for i in 20:
+		var x := float(i) * 200.0
+		for pair in 2:
+			var px := x + float(pair) * 41.0
+			var block := {"poly": PackedVector2Array([Vector2(px, 0.0),
+				Vector2(px + 40.0, 0.0), Vector2(px + 40.0, 40.0),
+				Vector2(px, 40.0)]), "area": 1600.0}
+			control.append(block)
+			candidate.append(block)
+	for i in 20:
+		var x := float(i) * 200.0
+		control.append({"poly": PackedVector2Array([Vector2(x, 300.0),
+			Vector2(x + 40.0, 300.0), Vector2(x + 40.0, 340.0),
+			Vector2(x, 340.0)]), "area": 1600.0})
+	for i in 10:
+		var x := float(i) * 200.0
+		candidate.append({"poly": PackedVector2Array([Vector2(x, 300.0),
+			Vector2(x + 40.0, 300.0), Vector2(x + 40.0, 340.0),
+			Vector2(x, 340.0)]), "area": 1600.0})
+	for i in 10:
+		var x := 2000.0 + float(i) * 41.0
+		candidate.append({"poly": PackedVector2Array([Vector2(x, 300.0),
+			Vector2(x + 40.0, 300.0), Vector2(x + 40.0, 340.0),
+			Vector2(x, 340.0)]), "area": 1600.0})
+	for i in 28:
+		var x := float(i) * 200.0
+		candidate.append({"poly": PackedVector2Array([Vector2(x, 800.0),
+			Vector2(x + 40.0, 800.0), Vector2(x + 40.0, 880.0),
+			Vector2(x, 880.0)]), "area": 3200.0})
+	var control_summary := DensityAudit.articulation_summary(
+		DensityAudit.visible_pieces(control))
+	var candidate_summary := DensityAudit.articulation_summary(
+		DensityAudit.visible_pieces(candidate))
+	_check(int(candidate_summary.largest_piece_mass_count) == 10
+		and int(control_summary.largest_piece_mass_count) == 2,
+		"ADVERSARIAL A2: the candidate really does create a ten-mass amoeba")
+	_check(int(candidate_summary.visible_piece_count)
+			> int(control_summary.visible_piece_count)
+		and float(candidate_summary.masses_per_visible_piece)
+			< float(control_summary.masses_per_visible_piece)
+		and float(candidate_summary.fused_mass_share_pct)
+			< float(control_summary.fused_mass_share_pct)
+		and float(candidate_summary.silhouette_perimeter_ratio)
+			< float(control_summary.silhouette_perimeter_ratio)
+		and float(candidate_summary.median_visible_piece_area)
+			> float(control_summary.median_visible_piece_area),
+		"ADVERSARIAL A2: ALL FIVE headline numbers improve while an amoeba forms - netting works")
+
+	# ---- BREAK A3. The fusion test is a step function at 3.8u, so a plate laid
+	# entirely on the minimum accepted gap scores perfectly. This is the N2
+	# move: satisfy the metric by paving to just inside its limit.
+	var paved: Array = []
+	for gx in 12:
+		for gy in 12:
+			var x := float(gx) * 43.81
+			var y := float(gy) * 43.81
+			paved.append({"poly": PackedVector2Array([Vector2(x, y),
+				Vector2(x + 40.0, y), Vector2(x + 40.0, y + 40.0),
+				Vector2(x, y + 40.0)]), "area": 1600.0})
+	var paved_summary := DensityAudit.articulation_summary(
+		DensityAudit.visible_pieces(paved))
+	_check(int(paved_summary.visible_piece_count) == 144
+		and int(paved_summary.fused_piece_count) == 0
+		and float(paved_summary.silhouette_perimeter_ratio) < 1.001,
+		"ADVERSARIAL A3: a plate 85% covered in ink on 3.81u gaps scores a perfect report")
+
+	# ---- BREAK A4. `masses` is block_entries only. The fabric ALSO fills a
+	# shadow for every block at BLOCK_SHADOW_OFFSET, and never shows it to the
+	# instrument, so two masses 4.0u apart are articulated to the metric and
+	# touching on the plate. Measured map-wide by the audit: 1259 reported
+	# pieces against 1031 as drawn.
+	var lower := PackedVector2Array([Vector2(0.0, 0.0), Vector2(40.0, 0.0),
+		Vector2(40.0, 40.0), Vector2(0.0, 40.0)])
+	var upper := PackedVector2Array([Vector2(0.0, 44.0), Vector2(40.0, 44.0),
+		Vector2(40.0, 84.0), Vector2(0.0, 84.0)])
+	_check(DensityAudit.visible_pieces([{"poly": lower, "area": 1600.0},
+		{"poly": upper, "area": 1600.0}]).size() == 2,
+		"ADVERSARIAL A4: masses 4.0u apart are TWO visible pieces to the instrument")
+	var drawn: Array = []
+	for poly_value in [lower, upper]:
+		var poly: PackedVector2Array = poly_value
+		var shadow := PackedVector2Array()
+		for point in poly:
+			shadow.append(point + UrbanFabricVisuals.BLOCK_SHADOW_OFFSET)
+		for merged_value in Geometry2D.merge_polygons(poly, shadow):
+			var merged: PackedVector2Array = merged_value
+			if merged.size() >= 3 and not Geometry2D.is_polygon_clockwise(merged):
+				drawn.append({"poly": merged, "area": 1600.0})
+	_check(drawn.size() == 2 and DensityAudit.visible_pieces(drawn).size() == 1,
+		"ADVERSARIAL A4: the same two masses AS DRAWN (with their shadows) are ONE piece")
+
+	# ---- BREAK A5. mean/median_visible_piece_area is the SUM of member ink
+	# areas, so overlapping masses are counted repeatedly. It is not the area of
+	# anything visible, and the confetti guard rests on it.
+	var stacked: Array = []
+	for i in 4:
+		stacked.append({"poly": PackedVector2Array([Vector2(0.0, 0.0),
+			Vector2(40.0, 0.0), Vector2(40.0, 40.0), Vector2(0.0, 40.0)]),
+			"area": 1600.0})
+	var stacked_pieces := DensityAudit.visible_pieces(stacked)
+	var stacked_summary := DensityAudit.articulation_summary(stacked_pieces)
+	_check(is_equal_approx(float(stacked_summary.mean_visible_piece_area), 6400.0)
+		and float((stacked_pieces[0] as Dictionary).silhouette_area) < 2000.0,
+		"ADVERSARIAL A5: four coincident masses report a 6400 u^2 'piece area' inside a <2000 u^2 silhouette")
+
+	# ---- BREAK P1. THE ENCLOSURE TEST IS TAUTOLOGICAL. Every park-creation site
+	# in urban_fabric_visuals.gd does park_entries.append(poly) and then
+	# _append_ring(_block_edges, poly) on THE SAME polygon, and ink_segments is
+	# that ring layer. So a green is measured against its own outline and cannot
+	# score below 1.000 whatever surrounds it. The audit's FOREIGN-INK control
+	# confirms it on the real map: 0 of 181 greens reach the 0.75 floor once
+	# their own ring is removed, median 0.000.
+	var pentagon := PackedVector2Array([Vector2(0.0, 0.0), Vector2(60.0, 8.0),
+		Vector2(72.0, 60.0), Vector2(30.0, 88.0), Vector2(-8.0, 52.0)])
+	var own_ring := PackedVector2Array()
+	for i in pentagon.size():
+		own_ring.append(pentagon[i])
+		own_ring.append(pentagon[(i + 1) % pentagon.size()])
+	var isolated := DensityAudit.enclosure_fraction(pentagon,
+		DensityAudit.build_ink_grid(own_ring))
+	_check(isolated > 0.999
+		and bool(DensityAudit.green_verdict(1.0, isolated).deliberate),
+		"ADVERSARIAL P1: a green alone on blank paper, carrying only its OWN ring, measures fully enclosed")
+
+	# ---- BREAK P3. role_share is an AREA share with a 0.5 bar, so one large
+	# park launders an unlimited number of pockets that merely graze it.
+	_check(bool(DensityAudit.green_verdict(20000.0 / (20000.0 + 19.0 * 1000.0),
+		1.0).deliberate),
+		"ADVERSARIAL P3: one 20k park absorbs nineteen 1k pockets and they stop existing")
+
+	# ---- BREAK P4. A bare parcel is cured by 11% of anything, by a green of
+	# ANY kind (courtyards are skipped before the verdict), or by renaming the
+	# plan role at its creation site.
+	_check(not DensityAudit.parcel_is_bare("face_built", 2000.0, 0.11)
+		and not DensityAudit.parcel_is_bare("face_open", 2000.0, 0.0)
+		and not DensityAudit.parcel_is_bare("core_lot", 599.0, 0.0),
+		"ADVERSARIAL P4: 11% cover, a role rename, or a 599 u^2 split all cure a bare parcel")
+
+	# ---- BREAK P5. Both instruments have counting floors a defect can be
+	# shattered below: greens under 200 u^2 and masses under 120 u^2 vanish, so
+	# a chain of sub-floor crumbs can visually bridge two masses the instrument
+	# still calls two separate pieces.
+	_check(not DensityAudit.counts_as_green("green", 199.0)
+		and not DensityAudit.counts_as_building("ordinary", 119.0),
+		"ADVERSARIAL P5: a defect shattered below the counting floors is not measured at all")
+
 
 ## Port arm geometry (addendum section 5). These are the pure helpers behind the
 ## two owner-visible properties: arms are straight runs, and the space between
