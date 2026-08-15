@@ -345,11 +345,10 @@ func _audit() -> Dictionary:
 	# Probing against counted buildings only means the only ink that can certify
 	# a green is ink that is itself charged on every count row of section 2. A
 	# dot ring is now invisible to this test.
-	var counted_mass_polys: Array = []
-	for i in counted_mass_count:
-		counted_mass_polys.append((shapes[i] as Dictionary).poly)
+	var certifying_polys: Array = DensityAudit.counted_mass_polys(
+		snapshot.get("masses", []))
 	var fabric_grid: Dictionary = DensityAudit.build_mass_grid(
-		counted_mass_polys)
+		certifying_polys)
 
 	# --- evaluate ---------------------------------------------------------
 	var shortfall_records: Dictionary = fabric_metrics.get(

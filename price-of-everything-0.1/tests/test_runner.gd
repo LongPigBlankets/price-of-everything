@@ -36,6 +36,7 @@ func _ready() -> void:
 	_test_density_audit_articulation()
 	_test_density_audit_park_vs_hole()
 	_test_instrument_adversarial()
+	_test_instrument_adversarial_round2()
 	_test_port_arm_geometry()
 	_test_coal_prohibition()
 	_test_scheduled_coal_prohibition()
@@ -13399,6 +13400,425 @@ func _test_instrument_adversarial() -> void:
 		"P5 CLOSED: a 108 u^2 crumb chain fuses them and is counted as no building")
 	_check(not DensityAudit.counts_as_building("ordinary", 119.0),
 		"P5: a sub-floor crumb is still never counted as a building")
+
+
+## ============================================================================
+## ADVERSARIAL PINS, ROUND 2 - gauntlet7/attack1 constructions
+## ============================================================================
+## The first repair closed eleven of twelve gauntlet6 breaks and the adversary
+## then broke the repair: ten attacks succeeded, four of them new. Each block
+## below is one of those constructions, kept as the adversary measured it, with
+## the assertion set to the repaired verdict - or, where the design genuinely
+## cannot answer, with the assertion set to WHAT IS ACTUALLY TRUE so the
+## limitation is pinned instead of hidden.
+func _test_instrument_adversarial_round2() -> void:
+	var plenty := 1.0e9
+
+	# ---- BREAK F1. THE WORST ONE. Every articulation number the gate read was
+	# a function of `mass_count` - the number of entries the audited code chose
+	# to emit - so identical ink scored whatever its author wanted. Eight 40x40
+	# masses on 2u gaps, and THE SAME OUTER SHAPE emitted as one entry: the
+	# adversary measured 14,792.5 u^2 against 14,793.2 u^2 of drawn silhouette
+	# and the tile went ["fabric_fused"] -> [].
+	var eight: Array = []
+	for i in 8:
+		var x := float(i) * 42.0
+		eight.append({"poly": PackedVector2Array([Vector2(x, 0.0),
+			Vector2(x + 40.0, 0.0), Vector2(x + 40.0, 40.0),
+			Vector2(x, 40.0)]), "area": 1600.0})
+	var slab: Array = [{"poly": PackedVector2Array([Vector2(0.0, 0.0),
+		Vector2(334.0, 0.0), Vector2(334.0, 40.0), Vector2(0.0, 40.0)]),
+		"area": 13360.0}]
+	var eight_summary := DensityAudit.articulation_summary(
+		DensityAudit.visible_pieces(eight))
+	var slab_summary := DensityAudit.articulation_summary(
+		DensityAudit.visible_pieces(slab))
+	_check(int(eight_summary.mass_count) == 8
+		and int(slab_summary.mass_count) == 1
+		and is_equal_approx(float(eight_summary.masses_per_visible_piece), 8.0)
+		and is_equal_approx(float(slab_summary.masses_per_visible_piece), 1.0),
+		"F1 fixture: the self-declared ratio still swings 8.000 -> 1.000 on the same ink")
+	_check(absf(float(eight_summary.largest_visible_piece_area)
+			- float(slab_summary.largest_visible_piece_area)) < 1.0,
+		"F1 fixture: and the DRAWN silhouette is the same shape either way")
+	# THE REPAIR: the gate reads the silhouette, so the re-cut moves nothing.
+	var eight_gate := DensityAudit.evaluate(DensityAudit.CLASS_URBAN,
+		0, 8, 2, plenty, false,
+		float(eight_summary.masses_per_visible_piece),
+		float(eight_summary.median_visible_piece_area),
+		int(eight_summary.mass_count),
+		float(eight_summary.largest_visible_piece_area))
+	var slab_gate := DensityAudit.evaluate(DensityAudit.CLASS_URBAN,
+		0, 8, 2, plenty, false,
+		float(slab_summary.masses_per_visible_piece),
+		float(slab_summary.median_visible_piece_area),
+		int(slab_summary.mass_count),
+		float(slab_summary.largest_visible_piece_area))
+	_check((eight_gate.failures as Array).has("fabric_slab")
+		and (slab_gate.failures as Array).has("fabric_slab")
+		and str(eight_gate.failures) == str(slab_gate.failures),
+		"F1 CLOSED: the slab and the eight fused masses draw alike and now SCORE ALIKE")
+	_check(not (eight_gate.failures as Array).has("fabric_fused")
+		and not (slab_gate.failures as Array).has("fabric_fused"),
+		"F1 CLOSED: no gate failure is named after the fabric's own partition any more")
+	# ...and the whole family the gate reads is invariant under re-cutting.
+	_check(absf(float(eight_summary.slab_silhouette_area)
+			- float(slab_summary.slab_silhouette_area)) < 1.0
+		and int(eight_summary.slab_piece_count)
+			== int(slab_summary.slab_piece_count)
+		and absf(float(eight_summary.pieces_per_10k_silhouette)
+			- float(slab_summary.pieces_per_10k_silhouette)) < 0.001,
+		"F1 CLOSED: the whole label-free family is identical under the re-cut")
+	# The ceiling is a derivation from the drawing's own frozen constants, not
+	# a tuned number: two block-scale masses side by side with one accepted
+	# alley between them, drawn with the fabric's shadow and the silhouette's
+	# own dilation.
+	var side := sqrt(DensityAudit.LARGE_MASS_AREA)
+	var expected_ceiling := (side + 2.0 * DensityAudit.FUSION_DILATION + side
+		+ DensityAudit.BLOCK_SHADOW_OFFSET.x
+		+ 2.0 * DensityAudit.FUSION_DILATION) * (side
+		+ DensityAudit.BLOCK_SHADOW_OFFSET.y
+		+ 2.0 * DensityAudit.FUSION_DILATION)
+	_check(is_equal_approx(DensityAudit.drawn_piece_ceiling_area(),
+			expected_ceiling)
+		and DensityAudit.drawn_piece_ceiling_area()
+			> DensityAudit.drawn_piece_floor_area(),
+		"F1: the slab ceiling is derived from LARGE_MASS_AREA and the accepted alley")
+
+	# ---- BREAK F6. Six masses in one amoeba failed the old ratio gate at
+	# 6.000, and FIVE separated sheds cleared it at 1.833 with the amoeba
+	# untouched. The gated number must not be payable elsewhere.
+	var amoeba: Array = []
+	for i in 6:
+		var x := float(i) * 41.0
+		amoeba.append({"poly": PackedVector2Array([Vector2(x, 0.0),
+			Vector2(x + 40.0, 0.0), Vector2(x + 40.0, 40.0),
+			Vector2(x, 40.0)]), "area": 1600.0})
+	var bought: Array = amoeba.duplicate()
+	for i in 5:
+		var x := 2000.0 + float(i) * 200.0
+		bought.append({"poly": PackedVector2Array([Vector2(x, 0.0),
+			Vector2(x + 40.0, 0.0), Vector2(x + 40.0, 40.0),
+			Vector2(x, 40.0)]), "area": 1600.0})
+	var amoeba_summary := DensityAudit.articulation_summary(
+		DensityAudit.visible_pieces(amoeba))
+	var bought_summary := DensityAudit.articulation_summary(
+		DensityAudit.visible_pieces(bought))
+	_check(float(amoeba_summary.masses_per_visible_piece) > 5.9
+		and float(bought_summary.masses_per_visible_piece) < 2.0,
+		"F6 fixture: five separated sheds really do clear the old ratio")
+	_check(is_equal_approx(float(amoeba_summary.largest_visible_piece_area),
+			float(bought_summary.largest_visible_piece_area))
+		and is_equal_approx(float(amoeba_summary.slab_silhouette_area),
+			float(bought_summary.slab_silhouette_area)),
+		"F6 CLOSED: buying five sheds elsewhere does not shrink the amoeba by one unit")
+	_check((DensityAudit.evaluate(DensityAudit.CLASS_URBAN, 11, 0, 2, plenty,
+			false, float(bought_summary.masses_per_visible_piece),
+			float(bought_summary.median_visible_piece_area),
+			int(bought_summary.mass_count),
+			float(bought_summary.largest_visible_piece_area)
+			).failures as Array).has("fabric_slab"),
+		"F6 CLOSED: the tile still fails with every companion bought")
+
+	# ---- BREAK F9. Both articulation gates were silent below five drawn
+	# masses, which excused 279 of 395 audited tiles and two whole terrain
+	# classes by construction. A four-mass amoeba passed at 4.000.
+	var four: Array = []
+	for i in 4:
+		var x := float(i) * 41.0
+		four.append({"poly": PackedVector2Array([Vector2(x, 0.0),
+			Vector2(x + 40.0, 0.0), Vector2(x + 40.0, 40.0),
+			Vector2(x, 40.0)]), "area": 1600.0})
+	var four_summary := DensityAudit.articulation_summary(
+		DensityAudit.visible_pieces(four))
+	_check(int(four_summary.mass_count) < DensityAudit.ARTICULATION_MIN_SAMPLE,
+		"F9 fixture: the four-mass amoeba is under the old sample floor")
+	_check((DensityAudit.evaluate(DensityAudit.CLASS_SPARSE, 4, 0, 0, plenty,
+			false, float(four_summary.masses_per_visible_piece),
+			float(four_summary.median_visible_piece_area),
+			int(four_summary.mass_count),
+			float(four_summary.largest_visible_piece_area)
+			).failures as Array).has("fabric_slab"),
+		"F9 CLOSED: an area is meaningful at n=1, so the sample floor is gone")
+
+	# ---- BREAK F10, introduced BY the per-tile repair. A tile was charged its
+	# own masses over the pieces they fall into, so it paid nothing for fusing
+	# into its NEIGHBOURS: weld each of six masses into a different neighbouring
+	# amoeba and it reads 6 masses / 6 pieces / 1.000 with the gate silent.
+	var tool: Node = preload("res://tools/density_audit.gd").new()
+	var welded: Array = []
+	var owned: PackedInt32Array = PackedInt32Array()
+	for i in 6:
+		var ox := float(i) * 800.0
+		owned.append(welded.size())
+		welded.append({"poly": PackedVector2Array([Vector2(ox, 0.0),
+			Vector2(ox + 40.0, 0.0), Vector2(ox + 40.0, 40.0),
+			Vector2(ox, 40.0)]), "area": 1600.0})
+		for j in 4:
+			var nx := ox + 41.0 + float(j) * 41.0
+			welded.append({"poly": PackedVector2Array([Vector2(nx, 0.0),
+				Vector2(nx + 40.0, 0.0), Vector2(nx + 40.0, 40.0),
+				Vector2(nx, 40.0)]), "area": 1600.0})
+	var welded_pieces := DensityAudit.visible_pieces(welded)
+	var welded_mass_piece := PackedInt32Array()
+	welded_mass_piece.resize(welded.size())
+	var welded_piece_tiles: Array = []
+	for _i in welded_pieces.size():
+		welded_piece_tiles.append({})
+	for piece_index in welded_pieces.size():
+		for member_value in ((welded_pieces[piece_index] as Dictionary
+				).members as PackedInt32Array):
+			welded_mass_piece[int(member_value)] = piece_index
+			(welded_piece_tiles[piece_index] as Dictionary)[1] = true
+	for index in owned:
+		(welded_piece_tiles[welded_mass_piece[int(index)]] as Dictionary)[0] = true
+	var hider: Dictionary = tool.call("_tile_articulation", owned,
+		welded_mass_piece, welded_pieces, welded_piece_tiles)
+	_check(int(hider.piece_mass_count) == 6
+		and int(hider.visible_piece_count) == 6
+		and is_equal_approx(float(hider.masses_per_visible_piece), 1.0),
+		"F10 fixture: the hiding tile still reports a perfect 1.000 ratio")
+	_check(float(hider.largest_visible_piece_area)
+			>= DensityAudit.drawn_piece_ceiling_area()
+		and int(hider.slab_piece_count) == 6,
+		"F10 CLOSED: a silhouette is charged where it is drawn, not where it is owned")
+	_check((DensityAudit.evaluate(DensityAudit.CLASS_URBAN, 6, 0, 2, plenty,
+			false, float(hider.masses_per_visible_piece),
+			float(hider.median_visible_piece_area),
+			int(hider.piece_mass_count),
+			float(hider.largest_visible_piece_area)
+			).failures as Array).has("fabric_slab"),
+		"F10 CLOSED: the tile whose fabric is invisible inside its neighbours now fails")
+
+	# ---- BREAK F2. THE L1 SHAPE AGAIN. The enclosure grid was `cover_polys` -
+	# EVERY mass in the snapshot, sub-floor ones included - so a bare hole
+	# bought a verdict with dots: 12 dots of 100 u^2 made a 60x60 hole a PUBLIC
+	# GREEN and 24 made it an inner court, at 5.0 u^2 of dots per unit of hole
+	# perimeter, and instrument 1 read the ring as nothing at all.
+	var hole := PackedVector2Array([Vector2(0.0, 0.0), Vector2(60.0, 0.0),
+		Vector2(60.0, 60.0), Vector2(0.0, 60.0)])
+	var dots: Array = []
+	for i in 24:
+		var t := float(i) / 24.0 * 4.0
+		var edge := int(t)
+		var f := (t - float(edge)) * 60.0
+		var at := Vector2(f, -7.0)
+		if edge == 1:
+			at = Vector2(67.0, f)
+		elif edge == 2:
+			at = Vector2(60.0 - f, 67.0)
+		elif edge == 3:
+			at = Vector2(-7.0, 60.0 - f)
+		dots.append({"kind": "ordinary", "area": 100.0,
+			"poly": PackedVector2Array([at + Vector2(-5.0, -5.0),
+				at + Vector2(5.0, -5.0), at + Vector2(5.0, 5.0),
+				at + Vector2(-5.0, 5.0)])})
+	var dot_polys: Array = []
+	for dot_value in dots:
+		dot_polys.append((dot_value as Dictionary).poly)
+	var bought_enclosure := DensityAudit.mass_band_enclosure(hole,
+		DensityAudit.build_mass_grid(dot_polys))
+	_check(bought_enclosure >= DensityAudit.PARK_FABRIC_ENCLOSURE_MIN,
+		"F2 fixture: 24 sub-floor dots really do answer the outward probe")
+	# THE REPAIR: only ink that is itself a COUNTED BUILDING may certify a
+	# green, and a 100 u^2 dot is not one. Anything that CAN certify is charged
+	# on every count row of section 2.
+	var certifying := DensityAudit.counted_mass_polys(dots)
+	_check(certifying.is_empty(),
+		"F2 CLOSED: sub-floor dots are not admitted to the certifying set")
+	var honest := DensityAudit.mass_band_enclosure(hole,
+		DensityAudit.build_mass_grid(certifying))
+	_check(is_zero_approx(honest)
+		and str(DensityAudit.green_verdict(honest).shape) == "hole",
+		"F2 CLOSED: the dot ring buys nothing and the hole stays a hole")
+	# ...and the filter is the SAME predicate the count rows use, so a dot big
+	# enough to certify is a dot big enough to be counted and capped.
+	var real_dots: Array = []
+	for dot_value in dots:
+		var dot: Dictionary = (dot_value as Dictionary).duplicate()
+		dot["area"] = DensityAudit.MIN_COUNTED_MASS_AREA
+		real_dots.append(dot)
+	_check(DensityAudit.counted_mass_polys(real_dots).size() == 24,
+		"F2: the certifying set is exactly what counts_as_building admits")
+
+	# ---- BREAK F3. THE PARK TEST WAS INVERTED. Surroundedness is not
+	# deliberateness: a DELETED building inside a 3x3 block measured 1.000 and
+	# was filed `inner_court` - deliberate, excluded from the park count AND
+	# from the hole count - so a candidate improved both numbers by deleting
+	# block interiors.
+	var court := PackedVector2Array([Vector2(0.0, 0.0), Vector2(40.0, 0.0),
+		Vector2(40.0, 40.0), Vector2(0.0, 40.0)])
+	var ring: Array = [
+		PackedVector2Array([Vector2(-10.0, -22.0), Vector2(50.0, -22.0),
+			Vector2(50.0, -2.0), Vector2(-10.0, -2.0)]),
+		PackedVector2Array([Vector2(-10.0, 42.0), Vector2(50.0, 42.0),
+			Vector2(50.0, 62.0), Vector2(-10.0, 62.0)]),
+		PackedVector2Array([Vector2(-22.0, -10.0), Vector2(-2.0, -10.0),
+			Vector2(-2.0, 50.0), Vector2(-22.0, 50.0)]),
+		PackedVector2Array([Vector2(42.0, -10.0), Vector2(62.0, -10.0),
+			Vector2(62.0, 50.0), Vector2(42.0, 50.0)])]
+	var deleted_interior := DensityAudit.mass_band_enclosure(court,
+		DensityAudit.build_mass_grid(ring))
+	_check(deleted_interior >= DensityAudit.COURT_FABRIC_ENCLOSURE_MIN,
+		"F3 fixture: a deleted block interior still measures fully surrounded")
+	var wrapped_verdict := DensityAudit.green_verdict(deleted_interior)
+	var hole_verdict := DensityAudit.green_verdict(0.0)
+	_check(str(wrapped_verdict.shape) == "wrapped_green"
+		and not bool(wrapped_verdict.public)
+		and bool(wrapped_verdict.unverified)
+		and bool(wrapped_verdict.unverified) == bool(hole_verdict.unverified),
+		"F3 CLOSED: a wrapped green is charged exactly what a hole is charged")
+	_check(not bool(wrapped_verdict.public) and not bool(hole_verdict.public),
+		"F3 CLOSED: neither shape can satisfy the section-2 park floor")
+	# The honest half, pinned rather than hidden: this measurement CANNOT see
+	# intent, and a real civic green open to streets on three sides reads as a
+	# hole. The error is in the direction that costs the candidate.
+	var street_facing := DensityAudit.mass_band_enclosure(court,
+		DensityAudit.build_mass_grid([ring[0]]))
+	_check(street_facing < DensityAudit.PARK_FABRIC_ENCLOSURE_MIN
+		and str(DensityAudit.green_verdict(street_facing).shape) == "hole",
+		"F3 DECLARED: a street-facing civic green also reads as a hole - a false negative")
+
+	# ---- BREAK F7. Sub-floor MASSES became bridges in the first repair;
+	# sub-floor GREENS did not. A 1,000 u^2 hole shattered into six 168 u^2
+	# shards was skipped before any verdict.
+	var shards: Array = []
+	for i in 6:
+		var x := float(i) * 14.0
+		shards.append({"poly": PackedVector2Array([Vector2(x, 0.0),
+			Vector2(x + 14.0, 0.0), Vector2(x + 14.0, 12.0),
+			Vector2(x, 12.0)]), "area": 168.0})
+	for shard_value in shards:
+		_check(float((shard_value as Dictionary).area)
+			< DensityAudit.MIN_COUNTED_GREEN_AREA,
+			"F7 fixture: every shard is under the green floor on its own")
+	var recovered := DensityAudit.cluster_subfloor_greens(shards)
+	_check(recovered.size() == 1
+		and float((recovered[0] as Dictionary).area)
+			>= DensityAudit.MIN_COUNTED_GREEN_AREA,
+		"F7 CLOSED: the shards merge back into one judgeable shape")
+	_check(str(DensityAudit.green_verdict(DensityAudit.mass_band_enclosure(
+			(recovered[0] as Dictionary).poly,
+			DensityAudit.build_mass_grid([]))).shape) == "hole",
+		"F7 CLOSED: and the reassembled shape is judged - it is a hole")
+	# It cannot launder: only sub-floor entries are merged, so the operation
+	# can only ADD entries to be judged.
+	_check(DensityAudit.cluster_subfloor_greens([]).is_empty()
+		and DensityAudit.cluster_subfloor_greens([{"poly":
+			PackedVector2Array([Vector2(0, 0), Vector2(5, 0), Vector2(5, 5),
+			Vector2(0, 5)]), "area": 25.0}]).is_empty(),
+		"F7: a lone shard that reaches nothing is still under the floor")
+
+	# ---- BREAKS A3 and F8. `evaluate()` never read a number whose denominator
+	# the fabric does not author. Built ink over DRY BUILDABLE GROUND is such a
+	# number: terrain, relief and water are not fabric records, so suppressing
+	# or duplicating parcel entries cannot move it - and it is what sees a plate
+	# paved to one hundredth of a unit outside the fusion limit.
+	_check(is_equal_approx(DensityAudit.PAVED_INK_SHARE_MAX,
+		1.0 / DensityAudit.PACKING_ALLOWANCE),
+		"A3/F8: the paving cap is the audit's own packing allowance, inverted")
+	var paved: Array = []
+	for gx in 12:
+		for gy in 12:
+			var x := float(gx) * 43.81
+			var y := float(gy) * 43.81
+			paved.append({"poly": PackedVector2Array([Vector2(x, y),
+				Vector2(x + 40.0, y), Vector2(x + 40.0, y + 40.0),
+				Vector2(x, y + 40.0)]), "area": 1600.0})
+	var paved_summary := DensityAudit.articulation_summary(
+		DensityAudit.visible_pieces(paved))
+	_check(int(paved_summary.visible_piece_count) == 144
+		and int(paved_summary.excess_mass_count) == 0,
+		"A3 fixture: the paved plate still scores perfectly on every count")
+	var paved_span := 11.0 * 43.81 + 40.0
+	var paved_share := 144.0 * 1600.0 / (paved_span * paved_span)
+	var street_span := 11.0 * 80.0 + 40.0
+	var street_share := 144.0 * 1600.0 / (street_span * street_span)
+	_check((DensityAudit.evaluate(DensityAudit.CLASS_URBAN, 0, 144, 2, plenty,
+			false, float(paved_summary.masses_per_visible_piece),
+			float(paved_summary.median_visible_piece_area),
+			int(paved_summary.mass_count),
+			float(paved_summary.largest_visible_piece_area),
+			paved_share).failures as Array).has("fabric_paved"),
+		"A3 CLOSED: the paved plate fails on ground the fabric does not author")
+	_check(not (DensityAudit.evaluate(DensityAudit.CLASS_URBAN, 0, 144, 2,
+			plenty, false, float(paved_summary.masses_per_visible_piece),
+			float(paved_summary.median_visible_piece_area),
+			int(paved_summary.mass_count),
+			float(paved_summary.largest_visible_piece_area),
+			street_share).failures as Array).has("fabric_paved"),
+		"A3 CLOSED: the same 144 masses on real streets do not")
+	# The graded curve still separates them, and is still reported beside the
+	# verdict rather than instead of it.
+	_check(float(DensityAudit.fusion_curve(paved).fusion_fragility) > 100.0,
+		"A3: the graded fusion curve still collapses on the paved plate")
+
+	# ---- BREAK F4, DECLARED NOT CLOSED. The confetti floor is one baseline
+	# small mass drawn, and a 900 u^2 building is a legitimate small building,
+	# so the same ink re-cut from 36 buildings of 3,600 u^2 into 144 of 900 u^2
+	# clears it. What catches that re-cut is the SECTION-2 LARGE COUNT, not the
+	# articulation family, and this pins which number does the work.
+	var big: Array = []
+	var cut: Array = []
+	for gx in 6:
+		for gy in 6:
+			var x := float(gx) * 120.0
+			var y := float(gy) * 120.0
+			big.append({"poly": PackedVector2Array([Vector2(x, y),
+				Vector2(x + 60.0, y), Vector2(x + 60.0, y + 60.0),
+				Vector2(x, y + 60.0)]), "area": 3600.0})
+			for qx in 2:
+				for qy in 2:
+					var cx := x + float(qx) * 40.0
+					var cy := y + float(qy) * 40.0
+					var quarter := PackedVector2Array([Vector2(cx, cy),
+						Vector2(cx + 30.0, cy), Vector2(cx + 30.0, cy + 30.0),
+						Vector2(cx, cy + 30.0)])
+					cut.append({"poly": quarter, "area": 900.0})
+					# drawn the way the plate draws it: mass plus its shadow
+					var shadow := PackedVector2Array()
+					for point in quarter:
+						shadow.append(point + DensityAudit.BLOCK_SHADOW_OFFSET)
+					cut.append({"poly": shadow, "area": 900.0,
+						"counts": false})
+	var cut_summary := DensityAudit.articulation_summary(
+		DensityAudit.visible_pieces(cut))
+	_check(int(cut_summary.visible_piece_count) == 144
+		and float(cut_summary.median_visible_piece_area)
+			> DensityAudit.drawn_piece_floor_area(),
+		"F4 fixture: 144 pieces of 900 u^2 clear the confetti floor - they are small BUILDINGS")
+	_check((DensityAudit.evaluate(DensityAudit.CLASS_URBAN, 144, 0, 2, plenty,
+			false, float(cut_summary.masses_per_visible_piece),
+			float(cut_summary.median_visible_piece_area),
+			int(cut_summary.mass_count),
+			float(cut_summary.largest_visible_piece_area)
+			).failures as Array).has("large_below_floor"),
+		"F4 DECLARED: the count row catches the re-cut, the articulation family does not")
+
+	# ---- BREAK F5, MEASURED AND DECLARED. Four 100 u^2 dots round a 484 u^2
+	# crumb lift its median silhouette 785 -> 1373 u^2 and clear the confetti
+	# floor "with no new building". They also make the drawn object bigger,
+	# which is what the number says: this is the instrument reading the plate,
+	# not being fooled by it. The lever that would answer it is
+	# MIN_COUNTED_MASS_AREA on the COUNT row, and that is stated, not patched.
+	var crumb := [{"poly": PackedVector2Array([Vector2(0.0, 0.0),
+		Vector2(22.0, 0.0), Vector2(22.0, 22.0), Vector2(0.0, 22.0)]),
+		"area": 484.0}]
+	var inflated: Array = crumb.duplicate()
+	for corner in [Vector2(-9.0, -9.0), Vector2(22.0, -9.0),
+			Vector2(22.0, 22.0), Vector2(-9.0, 22.0)]:
+		inflated.append({"poly": PackedVector2Array([corner,
+			corner + Vector2(9.0, 0.0), corner + Vector2(9.0, 9.0),
+			corner + Vector2(0.0, 9.0)]), "area": 81.0, "counts": false})
+	var crumb_area := float(DensityAudit.articulation_summary(
+		DensityAudit.visible_pieces(crumb)).median_visible_piece_area)
+	var inflated_area := float(DensityAudit.articulation_summary(
+		DensityAudit.visible_pieces(inflated)).median_visible_piece_area)
+	_check(inflated_area > crumb_area,
+		"F5 DECLARED: bridge ink really does enlarge the silhouette it fuses to")
+	_check(crumb_area < DensityAudit.drawn_piece_floor_area(),
+		"F5: the bare crumb is under the confetti floor, as it should be")
+	tool.free()
 
 
 ## Port arm geometry (addendum section 5). These are the pure helpers behind the

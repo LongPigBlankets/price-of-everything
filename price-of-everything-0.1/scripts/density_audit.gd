@@ -133,6 +133,24 @@ static func counts_as_green(kind: String, area: float) -> bool:
 	return GREEN_KINDS.has(kind) and area >= MIN_COUNTED_GREEN_AREA
 
 
+## G7b REPAIR (break F2) — WHAT MAY CERTIFY A GREEN.
+##
+## The outward enclosure probe answers only to ink that is itself a COUNTED
+## BUILDING. `masses` is the snapshot's mass array (`kind` + `area` + `poly`);
+## the returned polygons are exactly the entries `counts_as_building` admits.
+## A ring of sub-floor dots is not among them, so it cannot buy a verdict, and
+## anything that CAN buy one is charged on every count row of section 2.
+static func counted_mass_polys(masses: Array) -> Array:
+	var out: Array = []
+	for mass_value in masses:
+		var mass: Dictionary = mass_value
+		if not counts_as_building(str(mass.get("kind", "")),
+				float(mass.get("area", 0.0))):
+			continue
+		out.append(mass.get("poly", PackedVector2Array()))
+	return out
+
+
 static func is_large(area: float) -> bool:
 	return area >= LARGE_MASS_AREA
 
