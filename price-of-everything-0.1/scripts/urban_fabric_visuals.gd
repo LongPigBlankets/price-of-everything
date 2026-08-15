@@ -158,6 +158,11 @@ var _render_park_entries: Array = []
 ## ONLY. Nothing draws from it (the parcel mesh is built from the same array),
 ## so retaining the reference cannot change a pixel.
 var _render_parcel_entries: Array = []
+## Sanitised BLOCK SHADOW layer, retained for the articulation audit ONLY.
+## `_shadow_mesh` is built from this same array, so retaining the reference
+## cannot change a pixel. The gauntlet6 instrument was never shown this layer
+## and therefore clustered a shape strictly smaller than the plate draws.
+var _render_shadow_entries: Array = []
 
 var _metrics := {
 	"tiles": 0, "parcels": 0, "blocks": 0, "parks": 0, "open_lots": 0,
@@ -265,6 +270,7 @@ func _rebuild() -> void:
 	_render_mass_entries = []
 	_render_park_entries = []
 	_render_parcel_entries = []
+	_render_shadow_entries = []
 	_urban_audit_components = []
 	_dry_land_rejections = {"block": 0, "shadow": 0, "accommodation": 0}
 	_rural_growth_records = {}
@@ -355,6 +361,7 @@ func _rebuild() -> void:
 	_render_mass_entries = block_entries
 	_render_park_entries = park_entries
 	_render_parcel_entries = parcel_entries
+	_render_shadow_entries = shadow_entries
 
 	_parcel_mesh = _fill_mesh(parcel_entries)
 	_yard_mesh = _fill_mesh(yard_entries)
@@ -6528,13 +6535,32 @@ func density_audit_snapshot() -> Dictionary:
 			"area": _poly_area(poly),
 			"center": _poly_center(poly),
 		})
-	# Every inked outline the fabric draws, as flat a->b pairs. A deliberate
-	# court is enclosed by ink on (nearly) its whole outline; a dropout is not.
+	# THE SHADOW LAYER. `_shadow_mesh` fills one of these under every block at
+	# BLOCK_SHADOW_OFFSET, so the shape the plate draws for a mass is the mass
+	# UNION its shadow - strictly larger than the mass. Withholding this layer
+	# is what let the gauntlet6 articulation instrument report 1259 visible
+	# pieces where the plate draws 1031. It is handed over as its own array, not
+	# reconstructed by offsetting, so the audit measures the polygons that were
+	# actually filled (after both sanitisers) rather than a model of them.
+	var shadows: Array = []
+	for entry_value in _render_shadow_entries:
+		var entry: Dictionary = entry_value
+		var poly: PackedVector2Array = entry.get("poly", PackedVector2Array())
+		if poly.size() < 3:
+			continue
+		shadows.append({"poly": poly.duplicate(), "area": _poly_area(poly),
+			"center": _poly_center(poly)})
+	# Every inked outline the fabric draws, as flat a->b pairs. Retained as a
+	# DIAGNOSTIC only: because every park site appends a green and then rings
+	# THE SAME polygon into this layer, an enclosure test against it is
+	# tautological (gauntlet6 break P1). Enclosure is now measured against the
+	# drawn masses, not against this.
 	var ink := PackedVector2Array()
 	ink.append_array(_block_edges)
 	ink.append_array(_parcel_edges)
 	ink.append_array(_roof_edges)
 	return {"masses": masses, "greens": greens, "parcels": parcels,
+		"shadows": shadows,
 		"ink_segments": ink,
 		"large_mass_area_threshold": DensityAudit.LARGE_MASS_AREA}
 
