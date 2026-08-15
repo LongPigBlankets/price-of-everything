@@ -13541,6 +13541,15 @@ func _test_instrument_adversarial_round2() -> void:
 			).failures as Array).has("small_below_floor"),
 		"F1 CLOSED: declaring ten entries no longer satisfies a floor of ten")
 
+	# A tile that draws NOTHING has no median piece and must not be called
+	# confetti: the first run of the repaired gate failed all 45 mountain tiles
+	# and 53 remote ones on an empty median of 0.0. Pinned so it cannot return.
+	var empty_gate := DensityAudit.evaluate(DensityAudit.CLASS_MOUNTAIN,
+		0, 0, 0, plenty, false, 1.0, 0.0, 0, 0.0, 0.0)
+	_check(bool(empty_gate.passes)
+		and not (empty_gate.failures as Array).has("fabric_confetti"),
+		"F1: an empty mountain tile draws no piece and is not confetti")
+
 	# ---- BREAK F6. Six masses in one amoeba failed the old ratio gate at
 	# 6.000, and FIVE separated sheds cleared it at 1.833 with the amoeba
 	# untouched. The gated number must not be payable elsewhere.

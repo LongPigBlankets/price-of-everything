@@ -353,7 +353,11 @@ static func evaluate(tile_class: String, small_count: int, large_count: int,
 	# with no sample floor in front of them.
 	if largest_visible_piece_area >= drawn_piece_ceiling_area():
 		failures.append("fabric_slab")
-	if median_visible_piece_area >= 0.0 and \
+	# `> 0.0`, not `>= 0.0`: a tile that draws NOTHING has no median, and the
+	# first run of this gate failed all 45 mountain tiles and 53 remote ones on
+	# an empty median of 0.0. A tile with no fabric is judged by its count row,
+	# which is where the addendum puts it.
+	if median_visible_piece_area > 0.0 and \
 			median_visible_piece_area < drawn_piece_floor_area():
 		failures.append("fabric_confetti")
 	if built_ink_share >= PAVED_INK_SHARE_MAX:
