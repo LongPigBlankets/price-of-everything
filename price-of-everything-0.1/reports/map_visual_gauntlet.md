@@ -3290,3 +3290,286 @@ distinct silhouettes and the continuous coastline, and it fails honestly at a si
 stretch exists rather than paving one. Explicitly rejected as levers: pushing the compound seaward
 (this pass), and relaxing the NavGrid dry-land gate (untouched here, and it is what keeps the apron
 buildable).
+
+## I1. Instrument repair — articulation, and park vs hole — 2026-08-15
+
+| field | value |
+|---|---|
+| **Iteration** | I1 (gauntlet 6, measurement only) |
+| **Branch / base** | `gauntlet6/instruments` from `gauntlet5/port` (`bc0fb129`) |
+| **Layer changed** | none. `git diff bc0fb129 --stat` is four files, all instrument code |
+| **Status** | **BOTH INSTRUMENTS LANDED. Rendered output proven byte-identical to a same-session control.** |
+| **Evidence** | 24/24 morphology artifacts identical; 600/600 audited tiles identical on every legacy field; unit suite 2298 → 2325 passed, 0 failed |
+
+This stream changed **no geometry**. It exists because three separate instruments in
+this project have now certified a defect a human could plainly see, and the pass
+immediately before it added a fourth: **built area is the wrong proxy for perceived
+density.** The V5 vocabulary candidate raised coverage 2.1% map-wide while the plate
+lost roughly half its parcels in places, and the density audit called that an
+improvement. Both instruments below were written to the standing rule — *before
+optimising any metric, ask what a candidate that MAXIMISES it while LOOKING WORSE
+would look like* — and each is shipped with the answer.
+
+### Instrument 1 — articulation / visible piece count
+
+**Invocation** (headless, ~3.5 min, unchanged from the existing audit):
+
+```
+<godot> --headless --path . res://tools/density_audit.tscn --quit-after 4000
+#   → /tmp/poe_density_audit.json   full per-tile record
+#   → /tmp/poe_density_audit.txt    table, ARTICULATION block, WORST SILHOUETTES
+```
+
+**Definition.** Two drawn masses are **visually fused** when their outlines, each
+dilated by `DensityAudit.FUSION_DILATION`, overlap — i.e. when the bare ground
+between them is narrower than `2 × 1.9u = 3.8u`. A **visible piece** is a connected
+component of the masses under that relation, and its **silhouette** is the union of
+those dilated outlines. The count of visible pieces, not of polygons, is what the eye
+reads.
+
+**Why this catches the blob, where a polygon count does not.** The V5 implementing
+agent measured the Vandel blob as *"several adjacent masses rather than one polygon"*
+whose outlines abut *"with only their outlines between them and read as one
+silhouette"*. A naive polygon counter reports that blob as N healthy masses. Dilating
+before clustering asks the question the eye asks — *is there ink-free ground between
+these two, wide enough to see?* — and answers no, so the blob is one piece.
+
+**The dilation is not tuned.** It is exactly half `UrbanFabricVisuals.HERO_ALLEY_HALF_WIDTH`
+(1.9u), the constant that makes every alley the fabric itself accepts as a visible gap
+3.8u wide. Anything narrower than an accepted alley is not a gap the plate shows. The
+constant is FROZEN for the same reason `LARGE_MASS_AREA` is: a candidate that fuses its
+fabric must not be able to redefine "fused". A unit test pins the derivation, and a
+second pins the boundary — a gap of exactly 3.8u does **not** fuse.
+
+**JSON fields.** Per tile (`tiles[]`) and per settlement component (`components[]`):
+
+```
+visible_piece_count          how many separate masses the eye can count
+piece_mass_count             drawn masses charged to this tile / component
+masses_per_visible_piece     1.000 = perfectly articulated; rises as fabric fuses
+fused_piece_count            pieces holding >= 2 masses
+fused_mass_share_pct         % of drawn masses that hide inside a shared silhouette
+largest_piece_mass_count     the worst single silhouette here
+mean_visible_piece_area      \  "denser in ink, sparser in city" is these two
+median_visible_piece_area    /  rising while the piece count falls
+silhouette_perimeter_ratio   sum(dilated outline perimeters) / union perimeter;
+                             1.000 = no shared boundary. An INDEPENDENT fusion
+                             signal that does not use the piece count at all.
+```
+
+Map-wide the same block sits at `articulation.map`, with `articulation.largest_pieces`
+naming the fifteen worst silhouettes by tile.
+
+**How it would have caught its motivating defect.** V5 reported `masses 2037 → 2044`
+and built area `+2.1%`, and the critic simultaneously found a fringe hamlet fused into
+*"ONE continuous charcoal amoeba"* and a river quarter *"one enormous unarticulated
+olive polygon"*. Under this instrument, fusing three masses into one silhouette drops
+`visible_piece_count` by 2 and cannot be netted back by adding four companions
+elsewhere — `masses_per_visible_piece` rises, `median_visible_piece_area` rises, and
+`silhouette_perimeter_ratio` rises, all three in the same direction, while built area
+also rises. The disagreement between the two families of number is the alarm. A unit
+test reproduces exactly that fixture: **same mass count, more built area, fewer visible
+pieces, larger median piece.**
+
+**The adversarial question.** A candidate that maximises `visible_piece_count` while
+looking worse is confetti — a thousand tiny well-separated crumbs. That is why the
+median and mean piece area ship *beside* the count and not behind it, and why the
+existing `small_below_floor` / `large_below_floor` gates and `LARGE_MASS_AREA` remain
+untouched: piece count alone is not a gate, it is one of four numbers that have to move
+together.
+
+### Instrument 2 — deliberate court vs undrawn hole
+
+**Same invocation.** The `PARKS vs HOLES` block of `/tmp/poe_density_audit.txt`.
+
+**Definition — two independent tests, both required.** A green is a **deliberate park**
+only if:
+
+1. **ROLE.** The plan assigned this ground a park/green role, recorded at the moment the
+   role was decided (`role` stamped on the render entry by
+   `urban_fabric_visuals.gd`) — not inferred afterwards from its colour. Where two greens
+   merge into one outline, the park role must own at least half the merged area, so a
+   residual pocket cannot launder itself by touching a real park.
+2. **ENCLOSURE.** At least `PARK_ENCLOSURE_MIN` (75%) of the green's own outline sits on
+   ink. A court drawn as a court puts its ring into the block-edge layer; a residual
+   pocket left where a mass under-filled or was rejected is bounded by whatever happened
+   to survive.
+
+A green failing **either** test is an **UNDRAWN HOLE**, is reported separately with its
+area and reason, and **does not count toward the ≥ 2 parks-per-urban-tile floor** of
+`docs/map-density-and-port-addendum.md` §2. `DensityAudit.evaluate()` is now fed
+`deliberate_park_count`.
+
+A third hole shape carries no green at all: a parcel the plan assigned a **built** role
+whose mass never reached the render arrays. Those are `bare_parcel`s — an inked but
+empty plot, the critic's *"hollow unfilled parcel outlines"*.
+
+**JSON fields.** Per tile:
+
+```
+deliberate_park_count / deliberate_park_area    what the section-2 floor is judged on
+park_hole_count / park_hole_area                greens that are not parks
+park_hole_reasons                               {no_role | unenclosed | no_role_and_unenclosed}
+bare_parcel_count / bare_parcel_area            built-role plots with nothing drawn
+bare_parcels[]                                  each with role, area, covered_fraction
+park_count / park_area                          unchanged, kept for continuity
+```
+
+Map-wide at `parks.totals`, plus `parks.enclosure_distribution`,
+`parks.enclosure_negative_control` and `parks.role_share_distribution`.
+
+**How it would have caught its motivating defect.** The V5 critic's verdict was
+literally *"You cannot tell a park from a hole."* Its park counter rose 361 → 373 while
+green-space integration scored **down**, and it found *"an unfilled green pentagon inked
+on only two of its five edges"* where a civic block used to be. That pentagon measures
+`enclosure ≈ 0.40` here — it is a HOLE, it is excluded from `deliberate_park_count`, and
+the tile's park floor is judged without it, so the count would have moved **down**, not
+up. A unit test asserts precisely that verdict at 0.40, and the enclosure measurement is
+pinned on hand-laid ink: a fully ringed 40×40 court measures 1.000, the same court with
+ink on two sides measures 0.50 and fails.
+
+**The adversarial question, and its answer — the negative control.** A metric satisfied
+by *paving* rather than by clearing is exactly how the N2 port pass scored 100% on a
+basin full of port. The equivalent failure here is ink being so dense everywhere that
+every green measures enclosed and the test is vacuous. That is measured, not assumed:
+each green is re-measured **displaced by a fixed (37, 29)u onto neighbouring ground,
+against the same ink**.
+
+```
+enclosure         n=181  min=1.000  p05=1.000  median=1.000  mean=1.000
+NEGATIVE CONTROL  n=181  min=0.000  p05=0.000  median=0.103  mean=0.117  max=0.470
+```
+
+Every real green scores 1.000; no displaced green reaches even 0.47, let alone the 0.75
+floor. The test discriminates by a wide margin. **The zero-hole baseline below is a
+measurement, not a vacuous pass.**
+
+### THE BASELINE — the number the next stage is judged against
+
+Measured on `gauntlet6/instruments` (geometry identical to `gauntlet5/port`), one run,
+`/tmp/poe_density_audit.txt`:
+
+```
+ARTICULATION (map-wide)
+  drawn masses counted        2191
+  VISIBLE PIECES              1259
+  masses per visible piece    1.740      <-- 43% of drawn masses are not separately visible
+  fused pieces (>=2 masses)    453
+  masses inside a fused piece 63.2%
+  largest single silhouette     64 masses
+  mean visible piece area     2025 u^2
+  median visible piece area    846 u^2
+  silhouette perimeter ratio  1.183
+  pieces off every tile          0
+
+  by class          tiles  masses  pieces  m/piece  median piece area
+  urban                92    1820    1004    1.813             1155 u^2
+  sparse              204     368     254    1.449              357 u^2
+  mountain             45       0       0        —                  —
+  remote               54       3       1    3.000             2749 u^2
+
+  by component (worst)          tiles masses pieces m/piece med_area perim_ratio
+  settlement-plan|silkstown         2     55     15   3.667     1277       1.267
+  settlement-plan|capital-port       7    235     86   2.733      499       1.298
+  hero|arin-old                      9    271    141   1.922     2705       1.211
+
+  worst silhouettes    tile_23_9  64 masses (ink 103,003 u^2 in a 64,323 u^2 silhouette)
+                       tile_23_8  50 masses
+                       tile_9_8   29 masses
+
+PARKS vs HOLES (map-wide)
+  DELIBERATE parks             181   (982,109 u^2)
+  UNDRAWN holes (greens)         0   (0 u^2)
+  BARE built-role parcels        7   (22,922 u^2) of 606 judged
+  urban tiles with >= 2 parks   46 corrected / 46 uncorrected
+```
+
+Three things in that baseline are worth naming now, because they are findings, not
+noise.
+
+1. **`tile_23_9` already carries a 64-mass amoeba** — 103,003 u² of ink inside a
+   64,323 u² silhouette, meaning the masses there overlap each other heavily. It is a
+   *sparse* tile. This is the defect class the V5 critic described, present and
+   unmeasured in the accepted tree.
+2. **The two settlement plans are the least articulated fabric on the map.** Silkstown
+   runs 3.667 masses per visible piece and Capital Port 2.733, against 1.449 for ordinary
+   sparse fabric. Whatever the next geometry stage does, these are its targets.
+3. **The park correction changes no verdict on this tree.** 0 holes means
+   `deliberate_park_count == park_count` on every tile, so `46 corrected / 46 uncorrected`
+   urban tiles meet the floor and the compliance table is unmoved. The instrument is
+   installed *before* it is needed — which is the point. Any hole the next stage
+   introduces now costs it a park instead of earning it one.
+
+The 7 bare parcels are all `face_built` morph street faces with `covered_fraction` of
+0.000–0.078 — nothing at all was drawn on them: `tile_9_8` Silkstown ×3, `tile_21_7`
+Kingstown Docks, `tile_26_8` Capital Port Industrial Zone, `tile_3_4`, `tile_22_15`.
+
+### PROOF THAT NOTHING VISUAL CHANGED
+
+Two independent proofs, both against a **same-session control captured from the base
+commit on this machine** (the archived v0 pixels are dead as a baseline here — TRAP 3).
+
+1. **Windowed capture, byte-identical.** The morphology harness was run windowed under
+   the capture lock on `gauntlet6/instruments`, then on `gauntlet5/port` (`bc0fb129`) in
+   its own worktree, back to back in one session. `diff -rq` over the two output
+   directories is **clean across all 24 artifacts — 22 PNGs and both JSON files**,
+   including `poe_morph_metrics.json` itself. That is stronger than the V5 revert proof,
+   which had to exclude per-run planner timings. `poe_morph_wide.png` hashes
+   `d405fd21…` on both trees; `poe_morph_arinold.png` hashes `9c37546667…` on both.
+   The seven W1.01 water counters, the relief counters and the district-field counters
+   are carried inside that byte-identical metrics JSON.
+2. **Density audit, identical on every legacy field.** The audit was run on both trees.
+   Across all **600 tile records** and all 22 pre-existing fields — `small_count`,
+   `large_count`, `small_area`, `large_area`, `park_count`, `park_area`,
+   `courtyard_count`, `courtyard_area`, `mass_kind_counts`, `hex_area`, `dry_land_area`,
+   `open_land_area`, `dry_buildable_area`, `forest_disc_count`,
+   `gameplay_footprint_count`, `relief_shoulder_count`, `failures`, `passes`,
+   `gate_failure`, `physically_constrained` — there are **zero differences**. `threshold`,
+   `classification`, `summary` and the ordered failure list are identical objects. Those
+   fields are computed from the rendered polygons, so their identity is a direct
+   statement that the geometry did not move.
+
+Also run: **unit suite `==== 2325 passed, 0 failed ====`** with a real summary line
+(2298 v0 + 27 new asserts), and `git diff --check` clean. `git diff bc0fb129 --stat` is
+four files: `scripts/density_audit.gd`, `scripts/urban_fabric_visuals.gd`,
+`tests/test_runner.gd`, `tools/density_audit.gd`. Four incidental
+`reports/balance/*.translation` import rebuilds and one stray `.uid` that the `--import`
+run picked up were reverted — the same trap the V5 pass recorded.
+
+**Why the fabric edit is draw-neutral by construction, not just by measurement.** The
+only changes to `urban_fabric_visuals.gd` are: a `"role"` key added to parcel and park
+entry dictionaries; one retained reference to the already-sanitised parcel array; three
+new read-only keys on `density_audit_snapshot()`; and one `RoadHash.pick` moved one
+statement earlier so the hero parcel record can carry the role its own roll assigned.
+`_fill_mesh` reads only `poly` and `color`. Both sanitisers remove whole entries without
+rebuilding them, so extra keys survive untouched. `RoadHash.pick` is a pure FNV-1a of its
+key, so reading it earlier changes no value anywhere. No constant, no threshold and no
+polygon was touched.
+
+### Not run, and why
+
+- **e2e balance harness.** No simulation surface was touched; the four changed files are
+  the audit tool, the audit logic, the test runner and a measurement seam.
+- **Road-frontage audit and the port gauntlet.** Both are carried by the byte-identity
+  above: the frontage audit reads the same planner geometry the density audit proved
+  unchanged, and the port plan scripts are untouched. This is a statement of what was and
+  was not run, not a claim about what they would return.
+
+### Known limits of these instruments — stated, not hidden
+
+- **The bare-parcel test reaches 606 of 1,829 drawn parcels.** The rest either carry a
+  deliberately-vacant or park role, or fall under `MIN_COUNTED_PARCEL_AREA` (600 u²).
+  Small per-mass lots below that floor are not judged; by construction those lots are
+  appended alongside their mass, so a dropout there is rarer, but it is not impossible
+  and this instrument would miss it.
+- **Coverage is measured by summed intersection, clamped at 1.0.** Two overlapping
+  covering polygons are counted twice. That can only make a parcel look *more* covered,
+  so it cannot manufacture a bare parcel — but it can hide one whose only "cover" is a
+  double-counted sliver. The 0.10 threshold is far below where that matters.
+- **Role tags are declared by the drawing code.** A future mechanism could stamp
+  `"street_park"` on a residual pocket and pass test 1. Test 2 (enclosure) is the
+  independent check that would still catch it, which is exactly why both are required
+  and why the negative control is reported every run.
+- **`tile_20_11` remains unexplained.** The SettlementPlan core planner still records
+  38.5% core coverage where the audit measures 12.01% on identical geometry with the same
+  denominator. Neither instrument here touches that disagreement; it is still open.
