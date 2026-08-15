@@ -1046,6 +1046,48 @@ static func mass_band_enclosure(poly: PackedVector2Array, masses: Dictionary,
 	return covered / total
 
 
+## Bands the enclosure curve is reported at, as multiples of PARK_FABRIC_BAND:
+## one accepted alley, two, four, eight. Instrument 1's step-function failure
+## (break A3) applies here too - a single band would be a single point on a
+## curve, and a candidate could sit just outside it. The verdict is taken at the
+## first band, and the whole curve is reported beside it so that choice is
+## visible rather than hidden.
+const PARK_BAND_SCALES: Array[float] = [1.0, 2.0, 4.0, 8.0]
+
+
+## True when `poly` overlaps no drawn mass at all - the ground it stands on is
+## unbuilt. Used to place a FAIR negative control: a displaced outline that
+## lands inside a building is trivially "surrounded" by that building, which
+## says nothing about whether clear ground is bounded by fabric.
+static func poly_is_on_clear_ground(poly: PackedVector2Array,
+		masses: Dictionary) -> bool:
+	if poly.size() < 3:
+		return false
+	var grid: Dictionary = masses.get("grid", {})
+	var cell := float(masses.get("cell", 64.0))
+	var polys: Array = masses.get("polys", [])
+	var box := _bounds(poly)
+	var seen: Dictionary = {}
+	var x0 := floori(box.position.x / cell)
+	var x1 := floori((box.position.x + box.size.x) / cell)
+	var y0 := floori(box.position.y / cell)
+	var y1 := floori((box.position.y + box.size.y) / cell)
+	for cx in range(x0, x1 + 1):
+		for cy in range(y0, y1 + 1):
+			var bucket_value: Variant = grid.get(Vector2i(cx, cy))
+			if bucket_value == null:
+				continue
+			var bucket: PackedInt32Array = bucket_value
+			for index in bucket:
+				if seen.has(index):
+					continue
+				seen[index] = true
+				if not Geometry2D.intersect_polygons(poly,
+						polys[index]).is_empty():
+					return false
+	return true
+
+
 static func _point_in_any_poly(point: Vector2, grid: Dictionary, cell: float,
 		polys: Array) -> bool:
 	var bucket_value: Variant = grid.get(Vector2i(floori(point.x / cell),

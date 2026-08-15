@@ -162,7 +162,12 @@ func _audit() -> Dictionary:
 			unassigned_masses += 1
 			continue
 		var record: Dictionary = tile_records[owner_index]
-		(record.mass_indices as PackedInt32Array).append(shapes.size() - 1)
+		# PackedInt32Array is a VALUE type: `(record.x as PackedInt32Array)
+		# .append(...)` appends to a copy and throws it away. Read, append,
+		# write back.
+		var owned: PackedInt32Array = record.mass_indices
+		owned.append(shapes.size() - 1)
+		record.mass_indices = owned
 		(record.mass_kind_counts as Dictionary)[kind] = int(
 			(record.mass_kind_counts as Dictionary).get(kind, 0)) + 1
 		if DensityAudit.is_large(area):
@@ -338,6 +343,17 @@ func _audit() -> Dictionary:
 	# THE REPAIRED MEASUREMENT and its controls, all reported every run.
 	var fabric_enclosure_samples: Array[float] = []
 	var fabric_control_samples: Array[float] = []
+	# The graded band curve, and the FAIR control at every band. Index i is
+	# DensityAudit.PARK_BAND_SCALES[i].
+	var band_samples: Array = []
+	var band_control_samples: Array = []
+	for _i in DensityAudit.PARK_BAND_SCALES.size():
+		var real_bucket: Array[float] = []
+		var control_bucket: Array[float] = []
+		band_samples.append(real_bucket)
+		band_control_samples.append(control_bucket)
+	var control_placed := 0
+	var control_unplaceable := 0
 	# The gauntlet6 numbers, kept so the tautology stays visible in the record.
 	var enclosure_samples: Array[float] = []
 	var control_enclosure_samples: Array[float] = []
@@ -378,18 +394,37 @@ func _audit() -> Dictionary:
 			green_shape_counts[shape] = int(
 				green_shape_counts.get(shape, 0)) + 1
 			fabric_enclosure_samples.append(fabric_enclosure)
-			# NEGATIVE CONTROL, under the repaired measurement: the same outline
-			# displaced onto neighbouring ground by a fixed non-lattice vector.
-			# If displaced greens scored as enclosed as real ones, the fabric
-			# would simply be everywhere and the test would be vacuous - the
-			# failure that let `interarm_sea_coverage` score 100% on a paved
-			# basin. The separation between these two distributions is the
-			# acceptance criterion for this instrument.
-			var displaced := PackedVector2Array()
-			for point in (entry.poly as PackedVector2Array):
-				displaced.append(point + CONTROL_DISPLACEMENT)
-			fabric_control_samples.append(DensityAudit.mass_band_enclosure(
-				displaced, fabric_grid))
+			# THE NEGATIVE CONTROL, and it has to be a FAIR one. Displacing a
+			# green by one fixed vector often drops it ON TOP of a building,
+			# and an outline inside a building is trivially surrounded by that
+			# building - which says nothing about whether CLEAR GROUND reads as
+			# enclosed. The control therefore walks a fixed, deterministic
+			# spiral of displacements and takes the first placement that
+			# overlaps no drawn mass: the same shape, on unbuilt ground
+			# elsewhere. If that scores as enclosed as the real green, the
+			# fabric is simply everywhere and the test is vacuous - the failure
+			# that let `interarm_sea_coverage` score 100% on a paved basin.
+			var control_poly := _clear_ground_control(entry.poly, fabric_grid)
+			if control_poly.is_empty():
+				control_unplaceable += 1
+			else:
+				control_placed += 1
+				fabric_control_samples.append(
+					DensityAudit.mass_band_enclosure(control_poly, fabric_grid))
+			# THE GRADED BAND CURVE. One band is one point on a curve, and a
+			# candidate could sit just outside it - the same step-function
+			# failure that broke instrument 1 (break A3). Every band is
+			# reported, for the real greens and for the control.
+			for band_index in DensityAudit.PARK_BAND_SCALES.size():
+				var band := DensityAudit.PARK_FABRIC_BAND * \
+					DensityAudit.PARK_BAND_SCALES[band_index]
+				(band_samples[band_index] as Array[float]).append(
+					DensityAudit.mass_band_enclosure(entry.poly, fabric_grid,
+						band))
+				if not control_poly.is_empty():
+					(band_control_samples[band_index] as Array[float]).append(
+						DensityAudit.mass_band_enclosure(control_poly,
+							fabric_grid, band))
 			# The gauntlet6 measurements, retained as diagnostics so the
 			# tautology they suffered from stays in the record: `own_ink` is the
 			# shipped test (it cannot fall below 1.000 because the fabric rings
@@ -764,6 +799,9 @@ func _audit() -> Dictionary:
 				fabric_enclosure_samples),
 			"fabric_enclosure_negative_control": _distribution(
 				fabric_control_samples),
+			"fabric_band_curve": _band_curve(band_samples, band_control_samples),
+			"control_placed": control_placed,
+			"control_unplaceable": control_unplaceable,
 			"fabric_at_or_above_public_floor": _count_at_or_above(
 				_sorted(fabric_enclosure_samples),
 				DensityAudit.PARK_FABRIC_ENCLOSURE_MIN),
@@ -837,6 +875,27 @@ func _owning_tile(records: Array, poly: PackedVector2Array,
 			best_index = i
 			best_id = tile_id
 	return best_index
+
+
+## A FAIR NEGATIVE-CONTROL PLACEMENT: the same outline, translated onto the
+## nearest UNBUILT ground on a fixed deterministic spiral. Returns an empty
+## array when no placement within reach is clear, which is itself reported.
+##
+## The spiral is a constant of this file, not a random draw, so two runs produce
+## the same control and the number can be compared between candidates.
+func _clear_ground_control(poly: PackedVector2Array,
+		fabric_grid: Dictionary) -> PackedVector2Array:
+	for ring in 4:
+		var radius := CONTROL_DISPLACEMENT.length() * float(ring + 1)
+		for step in 8:
+			var angle := TAU * float(step) / 8.0
+			var offset := Vector2(cos(angle), sin(angle)) * radius
+			var moved := PackedVector2Array()
+			for point in poly:
+				moved.append(point + offset)
+			if DensityAudit.poly_is_on_clear_ground(moved, fabric_grid):
+				return moved
+	return PackedVector2Array()
 
 
 ## PER-TILE ARTICULATION, on a denominator that matches the numerator.
@@ -1083,6 +1142,28 @@ func _covered_fraction(poly: PackedVector2Array, area: float, polys: Array,
 	return minf(1.0, covered / area)
 
 
+## The graded band curve: at each band, the real distribution, the fair-control
+## distribution, and how many of each clear the public floor.
+func _band_curve(real_bands: Array, control_bands: Array) -> Array:
+	var out: Array = []
+	for i in DensityAudit.PARK_BAND_SCALES.size():
+		var scale := DensityAudit.PARK_BAND_SCALES[i]
+		var real_values: Array[float] = real_bands[i]
+		var control_values: Array[float] = control_bands[i]
+		out.append({
+			"scale": scale,
+			"band": DensityAudit.PARK_FABRIC_BAND * scale,
+			"real": _distribution(real_values),
+			"control": _distribution(control_values),
+			"real_at_or_above_floor": _count_at_or_above(_sorted(real_values),
+				DensityAudit.PARK_FABRIC_ENCLOSURE_MIN),
+			"control_at_or_above_floor": _count_at_or_above(
+				_sorted(control_values),
+				DensityAudit.PARK_FABRIC_ENCLOSURE_MIN),
+		})
+	return out
+
+
 ## Percentile summary of a sample, for reporting a distribution rather than a
 ## single number the reader has to take on trust.
 func _distribution(values: Array[float]) -> Dictionary:
@@ -1290,6 +1371,21 @@ func _render_text(report: Dictionary) -> String:
 		float(fabric_control.max)])
 	lines.append("      (the same outlines displaced by %s onto neighbouring ground)" % str(
 		CONTROL_DISPLACEMENT))
+	lines.append("  GRADED BAND CURVE - the same question at one, two, four and eight")
+	lines.append("  accepted alleys, real greens against the fair control:")
+	lines.append("    %-8s %-8s %9s %9s %9s %9s %14s" % ["scale", "band",
+		"real_med", "real_mean", "ctl_med", "ctl_mean", "pass real/ctl"])
+	for band_value in (parks.fabric_band_curve as Array):
+		var band: Dictionary = band_value
+		var real_d: Dictionary = band.real
+		var ctl_d: Dictionary = band.control
+		lines.append("    %-8.1f %-8.1f %9.3f %9.3f %9.3f %9.3f %7d /%6d" % [
+			float(band.scale), float(band.band), float(real_d.median),
+			float(real_d.mean), float(ctl_d.median), float(ctl_d.mean),
+			int(band.real_at_or_above_floor),
+			int(band.control_at_or_above_floor)])
+	lines.append("    control placed on clear ground %d, unplaceable %d" % [
+		int(parks.control_placed), int(parks.control_unplaceable)])
 	lines.append("    at or above the %.2f public floor:  real %d of %d   control %d of %d" % [
 		float(parks.public_green_min),
 		int(parks.fabric_at_or_above_public_floor), int(fabric_dist.n),
