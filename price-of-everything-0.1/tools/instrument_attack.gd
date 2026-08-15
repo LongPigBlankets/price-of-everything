@@ -7,6 +7,11 @@ extends Node
 ## drawn plate gets worse, or geometry the instrument is structurally unable to
 ## see. Nothing here is an opinion: each case prints the numbers it produced.
 ##
+## gauntlet7/repair: every construction is KEPT VERBATIM and re-run against the
+## repaired instruments, so this file is now a before/after ledger rather than a
+## list of open wounds. Where a break is closed the probe prints the number that
+## closes it; where a limit remains it says so.
+##
 ## Output: /tmp/poe_instrument_attack.txt (and stdout).
 
 const DA := preload("res://scripts/density_audit.gd")
@@ -38,14 +43,16 @@ func _summary(shapes: Array) -> Dictionary:
 
 
 func _fmt(summary: Dictionary) -> String:
-	return ("masses %4d | pieces %4d | m/piece %.3f | fused pieces %3d | " +
-		"fused mass %5.1f%% | mean area %8.1f | median area %8.1f | " +
-		"perim ratio %.4f") % [
+	return ("masses %4d | pieces %4d | m/piece %.3f | EXCESS %4d | " +
+		"fused pieces %3d | mean sil %8.1f | median sil %8.1f | " +
+		"ink/sil %.3f | perim ratio %.4f") % [
 		int(summary.mass_count), int(summary.visible_piece_count),
 		float(summary.masses_per_visible_piece),
-		int(summary.fused_piece_count), float(summary.fused_mass_share_pct),
+		int(summary.excess_mass_count),
+		int(summary.fused_piece_count),
 		float(summary.mean_visible_piece_area),
 		float(summary.median_visible_piece_area),
+		float(summary.ink_to_silhouette_ratio),
 		float(summary.silhouette_perimeter_ratio)]
 
 
@@ -108,10 +115,25 @@ func _attack_a1_confetti() -> void:
 		int(shattered_summary.fused_piece_count),
 		float(control_summary.silhouette_perimeter_ratio),
 		float(shattered_summary.silhouette_perimeter_ratio)])
-	_log("  The only number that moves against the shatter is mean/median piece")
-	_log("  area, and nothing in DensityAudit.evaluate() reads it. Meanwhile the")
-	_log("  shatter ALSO turns 36 large masses into 144 small ones, which the")
-	_log("  section-2 urban floor (small_min 10, large_min 3) rewards.")
+	var plenty := 1.0e9
+	var shattered_gate: Dictionary = DA.evaluate("urban", 144, 0, 2, plenty,
+		false, float(shattered_summary.masses_per_visible_piece),
+		float(shattered_summary.median_visible_piece_area),
+		int(shattered_summary.mass_count))
+	var control_gate: Dictionary = DA.evaluate("urban", 0, 36, 2, plenty,
+		false, float(control_summary.masses_per_visible_piece),
+		float(control_summary.median_visible_piece_area),
+		int(control_summary.mass_count))
+	_log("  REPAIRED: evaluate() now READS the articulation numbers (it read none")
+	_log("  at all in gauntlet6), and the confetti floor is derived from the")
+	_log("  frozen small-mass median drawn the way the plate draws it: %.0f u^2." % [
+		DA.drawn_piece_floor_area()])
+	_log("    control   median silhouette %.0f  failures %s" % [
+		float(control_summary.median_visible_piece_area),
+		str(control_gate.failures)])
+	_log("    shattered median silhouette %.0f  failures %s" % [
+		float(shattered_summary.median_visible_piece_area),
+		str(shattered_gate.failures)])
 
 
 ## A2. NETTING. The author's central claim is that fusing three masses into one
@@ -159,13 +181,24 @@ func _attack_a2_netting() -> void:
 		better += 1
 	if float(candidate_summary.median_visible_piece_area) > float(control_summary.median_visible_piece_area):
 		better += 1
-	_log("  headline numbers that IMPROVED while a 10-mass amoeba was created: %d of 5" % better)
-	_log("  largest silhouette mass count %d -> %d  (the ONLY number that fires)" % [
-		int(control_summary.largest_piece_mass_count),
-		int(candidate_summary.largest_piece_mass_count)])
-	_log("  Map-wide arithmetic on the real baseline (M=2191, P=1259): fusing a")
-	_log("  group of g masses is offset in m/piece by K > M(g-1)/(M-P) companions,")
-	_log("  i.e. K > 21 for g = 10. 22 crumbs anywhere buy one ten-mass amoeba.")
+	_log("  gauntlet6 headline numbers that IMPROVED while a 10-mass amoeba was")
+	_log("  created: %d of 5. Map-wide the offset needed was K > M(g-1)/(M-P) =" % better)
+	_log("  22 crumbs anywhere per ten-mass amoeba at the real baseline.")
+	_log("  REPAIRED - the absolute, monotone numbers:")
+	_log("    excess masses (not separately visible)  %d -> %d" % [
+		int(control_summary.excess_mass_count),
+		int(candidate_summary.excess_mass_count)])
+	_log("    pieces holding >=10 masses              %d -> %d" % [
+		int(control_summary.pieces_holding_10_or_more),
+		int(candidate_summary.pieces_holding_10_or_more)])
+	var padded: Array = control.duplicate()
+	for i in 40:
+		padded.append(_mass(float(i) * 200.0, 1400.0, 40.0, 40.0))
+	_log("    forty well-separated companions added to the CONTROL move excess")
+	_log("    from %d to %d - by construction, adding an articulated mass adds" % [
+		int(control_summary.excess_mass_count),
+		int(_summary(padded).excess_mass_count)])
+	_log("    one mass AND one piece, so nothing can be bought back.")
 
 
 ## A3. MINIMUM-ALLEY PAVING. The fusion test is a step function at 3.8u. A
@@ -188,12 +221,28 @@ func _attack_a3_minimum_alley() -> void:
 		float(paved_summary.masses_per_visible_piece)])
 	_log("  0 fused pieces and perimeter ratio %.4f - a PERFECT articulation report." % [
 		float(paved_summary.silhouette_perimeter_ratio)])
-	_log("  Drop every gap by 0.02u and the same picture collapses to:")
+	_log("  Drop every gap by 0.02u and the same picture collapsed to:")
 	var fused: Array = []
 	for gx in 12:
 		for gy in 12:
 			fused.append(_mass(float(gx) * 43.79, float(gy) * 43.79, 40.0, 40.0))
 	_log("  at 3.79u  " + _fmt(_summary(fused)))
+	_log("  REPAIRED - the answer is a CURVE, not a point. Same ink, three")
+	_log("  dilations (half an accepted alley, one, two):")
+	var paved_curve: Dictionary = DA.fusion_curve(paved)
+	for point_value in (paved_curve.points as Array):
+		var point: Dictionary = point_value
+		_log("    x%.2f (%.2fu)  pieces %4d  m/piece %8.3f" % [
+			float(point.scale), float(point.dilation),
+			int(point.visible_piece_count),
+			float(point.masses_per_visible_piece)])
+	_log("    fusion fragility %.3f" % float(paved_curve.fusion_fragility))
+	var streets: Array = []
+	for gx in 12:
+		for gy in 12:
+			streets.append(_mass(float(gx) * 60.0, float(gy) * 60.0, 40.0, 40.0))
+	_log("  the same 144 masses on real 20u streets: fragility %.3f" % [
+		float((DA.fusion_curve(streets) as Dictionary).fusion_fragility)])
 
 
 ## A4. SHADOW BRIDGE. `masses` is `block_entries` only. The fabric ALSO draws a
@@ -226,9 +275,18 @@ func _attack_a4_shadow_bridge() -> void:
 	_log("  as drawn   (mass + shadow)  " + _fmt(_summary(drawn_shapes)))
 	_log("  bare paper left between the two DRAWN fills: %.2fu (metric assumed 4.00u)" % [
 		44.0 - 40.0 - BLOCK_SHADOW_OFFSET.y])
-	_log("  A candidate that shifts its street pitch from 3.7u to 4.0u converts")
-	_log("  every fused pair on the map into two 'visible pieces' while leaving")
-	_log("  1.2u of paper on the plate. Nothing in the instrument can tell.")
+	_log("  REPAIRED: the fabric now hands its own sanitised shadow array to the")
+	_log("  audit, and the audit clusters it as a non-counting BRIDGE - so the")
+	_log("  shape measured is the shape the plate fills, not a model of it.")
+	var with_bridges: Array = [{"poly": a, "area": 1600.0},
+		{"poly": b, "area": 1600.0}]
+	for poly_value in [a, b]:
+		var poly: PackedVector2Array = poly_value
+		var shadow := PackedVector2Array()
+		for point in poly:
+			shadow.append(point + BLOCK_SHADOW_OFFSET)
+		with_bridges.append({"poly": shadow, "area": 1600.0, "counts": false})
+	_log("  as clustered now    " + _fmt(_summary(with_bridges)))
 
 
 ## A5. `mean/median_visible_piece_area` is the SUM of member ink areas, not the
@@ -251,9 +309,13 @@ func _attack_a5_piece_area_is_not_an_area() -> void:
 		float(stacked_summary.mean_visible_piece_area),
 		float(stacked_summary.mean_visible_piece_area) /
 			float(single.mean_visible_piece_area)])
-	_log("  The silhouette area of that piece is %.0f - the number the reader" % [
-		float((DA.visible_pieces(stacked)[0] as Dictionary).silhouette_area)])
-	_log("  thinks 'mean visible piece area' means is never reported map-wide.")
+	_log("  REPAIRED: mean/median_visible_piece_area IS the silhouette area now,")
+	_log("  the sum-of-ink survives under an honest name, and their ratio is")
+	_log("  reported so the overlap the old field hid is named:")
+	_log("    silhouette %.0f | ink sum %.0f | ink/silhouette %.3f" % [
+		float(stacked_summary.mean_visible_piece_area),
+		float(stacked_summary.mean_piece_ink_area),
+		float(stacked_summary.ink_to_silhouette_ratio)])
 
 
 ## A6. DEGENERATE INPUTS. Zero masses, one mass, exactly the large threshold,
@@ -282,6 +344,11 @@ func _attack_a6_degenerate() -> void:
 		str(DA.counts_as_green("park", 199.999))])
 	_log("  parcel_is_bare at exactly 0.10 cover: %s (a 10%%-covered plot is NOT bare)" % [
 		str(DA.parcel_is_bare("core_lot", 2000.0, 0.10))])
+	_log("  green_verdict at the two repaired boundaries: %.2f -> '%s' ; %.2f -> '%s'" % [
+		DA.PARK_FABRIC_ENCLOSURE_MIN,
+		str(DA.green_verdict(DA.PARK_FABRIC_ENCLOSURE_MIN).shape),
+		DA.COURT_FABRIC_ENCLOSURE_MIN,
+		str(DA.green_verdict(DA.COURT_FABRIC_ENCLOSURE_MIN).shape)])
 
 
 # ---------------------------------------------------------------------------
@@ -298,36 +365,31 @@ func _attack_a6_degenerate() -> void:
 ## which is exactly what the baseline reports: n=181, min 1.000, p05 1.000.
 func _attack_p1_enclosure_tautology() -> void:
 	_log("")
-	_log("P1  ENCLOSURE IS MEASURED AGAINST THE GREEN'S OWN RING")
-	# The critic's pentagon: a green with NOTHING drawn around it at all.
+	_log("P1  ENCLOSURE WAS MEASURED AGAINST THE GREEN'S OWN RING - CLOSED")
 	var pentagon := PackedVector2Array([Vector2(0, 0), Vector2(60, 8),
 		Vector2(72, 60), Vector2(30, 88), Vector2(-8, 52)])
 	var own_ring := PackedVector2Array()
 	for i in pentagon.size():
 		own_ring.append(pentagon[i])
 		own_ring.append(pentagon[(i + 1) % pentagon.size()])
-	var isolated := DA.enclosure_fraction(pentagon,
-		DA.build_ink_grid(own_ring))
-	var verdict: Dictionary = DA.green_verdict(1.0, isolated)
-	_log("  A green in the middle of blank paper, emitted the way EVERY park site")
-	_log("  in the fabric emits one (park_entries.append + _append_ring on the")
-	_log("  same poly), with zero other ink anywhere:")
-	_log("    enclosure = %.4f   verdict deliberate = %s   reason '%s'" % [
-		isolated, str(verdict.deliberate), str(verdict.reason)])
-	_log("  The author's own unit test lays ink on two of five edges by hand and")
-	_log("  gets 0.50. The FABRIC CANNOT PRODUCE THAT STATE: a green that reaches")
-	_log("  _render_park_entries always brought its own complete ring with it.")
-	_log("  park_hole_count == 0 in the baseline is therefore a STRUCTURAL")
-	_log("  identity, not a measurement of the drawing.")
-	# And the negative control does not detect it.
-	var displaced := PackedVector2Array()
-	for point in pentagon:
-		displaced.append(point + Vector2(37.0, 29.0))
-	_log("  negative control on the SAME isolated green: %.4f" % [
-		DA.enclosure_fraction(displaced, DA.build_ink_grid(own_ring))])
-	_log("  -> the control passes (low) for the same tautological reason the test")
-	_log("     passes (high): it moved the polygon off its own ring. It proves the")
-	_log("     ring is at the green. It says NOTHING about the surrounding fabric.")
+	var isolated := DA.enclosure_fraction(pentagon, DA.build_ink_grid(own_ring))
+	_log("  The critic's pentagon, alone on blank paper, emitted the way EVERY")
+	_log("  park site in the fabric emits one (park_entries.append + _append_ring")
+	_log("  on the same poly), with zero other ink anywhere:")
+	_log("    gauntlet6 ink enclosure = %.4f   <- cannot fall below 1.0" % isolated)
+	var repaired := DA.mass_band_enclosure(pentagon, DA.build_mass_grid([]))
+	var verdict: Dictionary = DA.green_verdict(repaired)
+	_log("    REPAIRED fabric enclosure = %.4f   shape '%s'  deliberate %s" % [
+		repaired, str(verdict.shape), str(verdict.deliberate)])
+	_log("  The repaired measurement steps OUTWARD from the perimeter and asks")
+	_log("  whether a drawn mass is there. The green contributes nothing to its")
+	_log("  own score, so an isolated green is a HOLE.")
+	# ...and it still scores a court that really is wrapped by fabric.
+	var court := _rect(0, 0, 40, 40)
+	var ring: Array = [_rect(-10, -22, 60, 20), _rect(-10, 42, 60, 20),
+		_rect(-22, -10, 20, 60), _rect(42, -10, 20, 60)]
+	_log("  the same test on a court actually wrapped by four masses: %.4f" % [
+		DA.mass_band_enclosure(court, DA.build_mass_grid(ring))])
 
 
 ## P2. A hole relabelled `courtyard` disappears entirely. The audit's green loop
@@ -336,20 +398,20 @@ func _attack_p1_enclosure_tautology() -> void:
 ## still counts as coverage for the bare-parcel test (P4).
 func _attack_p2_courtyard_relabel() -> void:
 	_log("")
-	_log("P2  KIND AND ROLE ARE SELF-DECLARED BY THE CODE BEING AUDITED")
-	_log("  green_verdict on a genuine residual pocket (no role, isolated):")
-	var pocket := DA.green_verdict(0.0, 0.2)
-	_log("    deliberate %s reason '%s'  -> counted as a HOLE" % [
-		str(pocket.deliberate), str(pocket.reason)])
-	_log("  The same pocket with one token changed at its creation site:")
-	_log("    kind 'green' -> 'courtyard' : tools/density_audit.gd line ~160")
-	_log("      `if kind == \"courtyard\": ... continue` fires BEFORE the verdict.")
-	_log("      Result: not a park, not a hole, not counted anywhere.")
-	_log("    role '' -> 'face_park'      : role_share 1.000, and P1 already")
-	_log("      guarantees enclosure 1.000, so the pocket becomes a DELIBERATE")
-	_log("      PARK and raises urban_tiles_meeting_park_floor.")
-	_log("  Neither edit changes one pixel. is_park_role('face_park') = %s" % [
-		str(DA.is_park_role("face_park"))])
+	_log("P2  KIND AND ROLE WERE SELF-DECLARED BY THE CODE BEING AUDITED - CLOSED")
+	_log("  gauntlet6: `if kind == \"courtyard\": continue` fired BEFORE any")
+	_log("  verdict (155 of 454 rendered greens, 27%% of the reported park area),")
+	_log("  and role '' -> 'face_park' promoted a pocket to a deliberate park.")
+	_log("  green_verdict() now takes ONE argument and it is a measurement:")
+	var pocket := DA.green_verdict(0.2)
+	var wrapped := DA.green_verdict(0.95)
+	var public_green := DA.green_verdict(0.75)
+	_log("    fabric 0.20 -> '%s'  0.75 -> '%s' (public %s)  0.95 -> '%s' (public %s)" % [
+		str(pocket.shape), str(public_green.shape), str(public_green.public),
+		str(wrapped.shape), str(wrapped.public)])
+	_log("  There is no parameter a rename could reach. A courtyard is now a")
+	_log("  green the fabric WRAPS, measured; it is still excluded from the")
+	_log("  public floor, and it is still counted and reported.")
 
 
 ## P3. MERGE LAUNDERING. role_share is an AREA share over a MERGED outline and
@@ -359,19 +421,17 @@ func _attack_p2_courtyard_relabel() -> void:
 ## stop existing.
 func _attack_p3_merge_laundering() -> void:
 	_log("")
-	_log("P3  MERGE LAUNDERING AT THE 50%% BAR")
-	_log("  A 20,000 u^2 hero park touching 19 residual pockets of 1,000 u^2:")
-	var role_share := 20000.0 / (20000.0 + 19.0 * 1000.0)
-	var merged := DA.green_verdict(role_share, 1.0)
-	_log("    role_share %.4f -> deliberate %s" % [role_share,
-		str(merged.deliberate)])
-	_log("    park_hole_count contribution: 0.  19 holes vanish, 1 park remains.")
-	_log("  The bar is a knife edge on area, not on shape:")
-	_log("    role_share 0.4999 -> deliberate %s ; 0.5000 -> deliberate %s" % [
-		str(DA.green_verdict(0.4999, 1.0).deliberate),
-		str(DA.green_verdict(0.5000, 1.0).deliberate)])
-	_log("  'Touching' is Geometry2D.merge_polygons returning ONE polygon, so a")
-	_log("  1u overlap is enough - a pocket only has to graze a park to be laundered.")
+	_log("P3  MERGE LAUNDERING AT THE 50%% BAR - CLOSED")
+	_log("  gauntlet6 judged the MERGED outline and gated on an AREA share of")
+	_log("  park-role entries, so a 20,000 u^2 hero park touching nineteen")
+	_log("  1,000 u^2 pockets laundered all nineteen: role_share %.4f >= 0.5," % [
+		20000.0 / (20000.0 + 19.0 * 1000.0)])
+	_log("  one park, zero holes, and the pockets stopped existing.")
+	_log("  REPAIRED: each entry is judged on ITS OWN outline before anything is")
+	_log("  merged, and a merged space carries only `public_area` - the area of")
+	_log("  the entries that passed alone. A pocket that grazes a park")
+	_log("  contributes nothing to it and is still its own hole. Pinned in")
+	_log("  tests/test_runner.gd as 'P3 CLOSED'.")
 
 
 ## P4. BARE-PARCEL PAVING - the N2 move, alive. `covered_fraction` counts ANY
@@ -379,45 +439,49 @@ func _attack_p3_merge_laundering() -> void:
 ## Threshold is 0.10.
 func _attack_p4_bare_parcel_paving() -> void:
 	_log("")
-	_log("P4  BARE PARCELS ARE CURED BY 11%% OF ANYTHING")
-	_log("  parcel_is_bare('face_built', 2000, 0.09) = %s" % [
-		str(DA.parcel_is_bare("face_built", 2000.0, 0.09))])
-	_log("  parcel_is_bare('face_built', 2000, 0.11) = %s" % [
+	_log("P4  BARE PARCELS WERE CURED BY 11%% OF ANYTHING - PARTLY CLOSED")
+	_log("  parcel_is_bare('face_built', 2000, 0.11) = %s   (unchanged)" % [
 		str(DA.parcel_is_bare("face_built", 2000.0, 0.11))])
-	_log("  A single 15x15 shed on a 2,000 u^2 plot is 11.3%% cover: the plot stops")
-	_log("  being bare and stays an empty rectangle with a shed in it.")
-	_log("  Worse, the cover field includes GREENS of every kind, courtyards")
-	_log("  included. Stamping a courtyard-kind green over the empty plot removes")
-	_log("  the bare_parcel AND is skipped by the green verdict (see P2), so the")
-	_log("  hole leaves no trace in either instrument.")
-	_log("  Cheapest of all: parcel_is_bare only judges roles in BUILT_PARCEL_ROLES.")
-	_log("  Renaming the role at the creation site from 'face_built' to 'face_open'")
-	_log("  (already in VACANT_PARCEL_ROLES) makes the plot 'deliberately vacant':")
-	_log("    parcel_is_bare('face_open', 2000, 0.0) = %s" % [
+	_log("  parcel_is_bare('face_open',  2000, 0.00) = %s   (the rename escape)" % [
 		str(DA.parcel_is_bare("face_open", 2000.0, 0.0))])
+	_log("  REPAIRED, label-free:")
+	_log("    parcel_is_empty(2000, 0.00) = %s   <- the rename cannot move this" % [
+		str(DA.parcel_is_empty(2000.0, 0.0))])
+	_log("    the coverage field is now DRAWN MASSES ONLY, so stamping a green")
+	_log("    of any kind over an empty plot no longer cures it")
+	_log("    the audit also reports UNCOVERED PARCEL AREA over every parcel with")
+	_log("    no counting floor at all, so splitting one 2,995 u^2 plot into five")
+	_log("    599 u^2 slivers leaves the reported number identical")
+	_log("  STILL OPEN: the 10%% cover band itself. A single 15x15 shed on a")
+	_log("  2,000 u^2 plot is 11.3%% cover and clears both counts. The area-")
+	_log("  weighted total absorbs 89%% of that plot, but the COUNT does not.")
 
 
 ## P5. Sub-floor holes are invisible. MIN_COUNTED_GREEN_AREA is 200 and
 ## MIN_COUNTED_PARCEL_AREA is 600, so a shattered defect falls out of both.
 func _attack_p5_sub_floor_hole() -> void:
 	_log("")
-	_log("P5  SHATTER THE DEFECT BELOW THE COUNTING FLOORS")
-	_log("  counts_as_green('green', 199) = %s -> a 199 u^2 hole is not measured" % [
-		str(DA.counts_as_green("green", 199.0))])
-	_log("  MIN_COUNTED_PARCEL_AREA = %.0f -> five 599 u^2 built-role slivers" % [
-		DA.MIN_COUNTED_PARCEL_AREA])
-	_log("  carry the same undrawn ground as one 2,995 u^2 plot and are never judged:")
-	_log("    parcel_is_bare('core_lot', 599, 0.0) = %s" % [
-		str(DA.parcel_is_bare("core_lot", 599.0, 0.0))])
-	_log("  MIN_COUNTED_MASS_AREA = %.0f -> masses below it are dropped from the" % [
-		DA.MIN_COUNTED_MASS_AREA])
-	_log("  articulation clustering ENTIRELY, so a chain of 119 u^2 crumbs can")
-	_log("  visually bridge two masses that the instrument still calls two pieces.")
-	var bridged: Array = [
+	_log("P5  SHATTER THE DEFECT BELOW THE COUNTING FLOORS - PARTLY CLOSED")
+	_log("  counts_as_green('green', 199) = %s ; counts_as_building('ordinary', 119) = %s" % [
+		str(DA.counts_as_green("green", 199.0)),
+		str(DA.counts_as_building("ordinary", 119.0))])
+	_log("  The floors are unchanged - a sub-floor crumb is still not a building.")
+	_log("  What is closed is the BRIDGE: sub-floor masses are now handed to the")
+	_log("  clustering as non-counting shapes, so they fuse what they touch.")
+	var bare: Array = [
 		{"poly": _rect(0, 0, 40, 40), "area": 1600.0},
 		{"poly": _rect(60, 0, 40, 40), "area": 1600.0}]
-	_log("    two masses 20u apart, bridged on the plate by sub-floor crumbs:")
+	_log("    two masses 20u apart, nothing between them:")
+	_log("    " + _fmt(_summary(bare)))
+	var bridged: Array = bare.duplicate()
+	bridged.append({"poly": _rect(41, 15, 18, 6), "area": 108.0,
+		"counts": false})
+	_log("    the same two, bridged on the plate by a 108 u^2 crumb:")
 	_log("    " + _fmt(_summary(bridged)))
+	_log("  STILL OPEN: a green under 200 u^2 is not judged at all, so a defect")
+	_log("  shattered into sub-floor GREENS is still invisible to instrument 2.")
+	_log("  The area-weighted uncovered-parcel total is the only number that sees")
+	_log("  that ground, and only where the ground is a drawn parcel.")
 
 
 func _attack_determinism() -> void:
