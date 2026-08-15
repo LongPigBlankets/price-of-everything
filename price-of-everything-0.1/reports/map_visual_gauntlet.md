@@ -4272,7 +4272,8 @@ global RNG.
 
 ### PROOF THAT NOTHING VISUAL CHANGED
 
-The branch's whole diff against `gauntlet7/repair` is three files:
+The branch's whole diff against `gauntlet7/repair` is four files, none of
+which draws:
 
 ```
   scripts/density_audit.gd   +329/-31   pure measurement class (RefCounted)
