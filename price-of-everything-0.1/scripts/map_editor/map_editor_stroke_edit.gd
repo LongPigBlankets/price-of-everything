@@ -20,6 +20,26 @@ const HIT_TOLERANCE := 1.8
 ## Floor for the above in world units, so a minor road stays clickable when zoomed out.
 const HIT_MIN := 9.0
 
+## The class ladder, narrowest first. Matches the ordering of `AuthoredMap.ROAD_WIDTHS`;
+## declared explicitly rather than derived from the widths so that re-tuning a width during
+## the curation pass cannot silently reorder what "upgrade" means.
+const CLASS_LADDER := ["minor", "mid", "major"]
+
+
+## Step a stroke's class one rung. Upgrading stops at `major` and downgrading at `minor`
+## rather than wrapping: a wrap turns a mis-click on the top rung into the biggest possible
+## change, from the widest road to the narrowest. Returns the new class, or "" if it could
+## not move.
+static func step_class(stroke: Dictionary, up: bool) -> String:
+	var current := CLASS_LADDER.find(str(stroke.get("class", "mid")))
+	if current < 0:
+		current = 1
+	var next := current + (1 if up else -1)
+	if next < 0 or next >= CLASS_LADDER.size():
+		return ""
+	stroke["class"] = CLASS_LADDER[next]
+	return str(stroke["class"])
+
 
 ## The stroke under `world`, as `{settlement, stroke, index}` — or an empty dictionary.
 ## Searches every settlement; ties go to the NARROWEST stroke, because a minor road drawn

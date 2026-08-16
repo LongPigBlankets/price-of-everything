@@ -25,6 +25,8 @@ const MapEditorRoadTool := preload("res://scripts/map_editor/map_editor_road_too
 const MapEditorLayers := preload("res://scripts/map_editor/map_editor_layers.gd")
 const MapEditorStrokeEdit := preload("res://scripts/map_editor/map_editor_stroke_edit.gd")
 const MapEditorTraceTool := preload("res://scripts/map_editor/map_editor_trace_tool.gd")
+const MapEditorSelection := preload("res://scripts/map_editor/map_editor_selection.gd")
+const MapEditorConfirm := preload("res://scripts/map_editor/map_editor_confirm.gd")
 const MapEditorPanel := preload("res://scripts/map_editor/map_editor_panel.gd")
 
 ## Tools. NAVIGATE is the default and does nothing but move the view: an editor whose idle
@@ -37,6 +39,10 @@ const TOOL_ANCHOR := "anchor"
 const TOOL_TRACE := "trace"
 ## Click to drop dots, then click two of them to join with a straight run.
 const TOOL_DOTS := "dots"
+## Click a road to step it up a class; Shift-click steps it back down.
+const TOOL_UPGRADE := "upgrade"
+## Drag a box over content, then delete it behind a confirmation.
+const TOOL_SELECT := "select"
 
 ## Which settlement new content joins. P1 authors into one at a time; the settlement picker
 ## arrives with the tools that need to move content between them.
@@ -78,6 +84,11 @@ var _trace_tool: MapEditorTraceTool
 var _layers: MapEditorLayers
 ## While the anchor tool has a point picked up: `{settlement, stroke, index}`.
 var _anchor_grab: Dictionary = {}
+var _confirm: MapEditorConfirm
+## Marquee in world units while dragging, and the records it caught.
+var _marquee_from := Vector2.INF
+var _marquee_to := Vector2.INF
+var _selection: Array = []
 var _panel: MapEditorPanel
 var _tool := TOOL_PAN
 var _world: Node
@@ -199,6 +210,14 @@ func _build_chrome() -> void:
 	_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(_overlay)
 
+	_confirm = MapEditorConfirm.new()
+	_confirm.set_anchors_preset(Control.PRESET_CENTER)
+	_confirm.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_confirm.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_confirm.confirmed.connect(_delete_selection)
+	_confirm.cancelled.connect(func() -> void: _set_status("Deletion cancelled."))
+	layer.add_child(_confirm)
+
 	_panel = MapEditorPanel.new()
 	_panel.anchor_top = 0.0
 	_panel.anchor_bottom = 1.0
@@ -259,6 +278,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif _tool == TOOL_TRACE and _trace_tool.is_tracing():
 			_trace_tool.extend_trace(_world_at(motion.position))
 			_overlay.queue_redraw()
+		elif _tool == TOOL_SELECT and _marquee_from != Vector2.INF:
+			_marquee_to = _world_at(motion.position)
+			_overlay.queue_redraw()
 		elif _tool == TOOL_ANCHOR and not _anchor_grab.is_empty():
 			# Live reshaping: the curve follows the pointer, so the bend is judged against
 			# the map rather than guessed and corrected.
@@ -300,6 +322,15 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 				TOOL_DOTS:
 					if event.pressed:
 						_dot_press(world)
+				TOOL_UPGRADE:
+					if event.pressed:
+						_upgrade_press(world, not event.shift_pressed)
+				TOOL_SELECT:
+					if event.pressed:
+						_marquee_from = world
+						_marquee_to = world
+					else:
+						_finish_marquee(world)
 			_overlay.queue_redraw()
 		MOUSE_BUTTON_MIDDLE, MOUSE_BUTTON_RIGHT:
 			# Always available, whatever the tool: panning mid-stroke is normal when a road
@@ -314,6 +345,17 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 
 
 func _handle_key(event: InputEventKey) -> void:
+	# The confirmation is modal — while it is up, Enter and Escape belong to it and nothing
+	# else may act. Anything less makes Escape ambiguous at exactly the wrong moment.
+	if _confirm != null and _confirm.is_open():
+		if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
+			_confirm.close()
+			_delete_selection()
+		elif event.keycode == KEY_ESCAPE:
+			_confirm.close()
+			_set_status("Deletion cancelled.")
+		_refresh_status()
+		return
 	match event.keycode:
 		KEY_F5:
 			_save()
@@ -329,6 +371,12 @@ func _handle_key(event: InputEventKey) -> void:
 			set_tool(TOOL_TRACE)
 		KEY_C:
 			set_tool(TOOL_DOTS)
+		KEY_U:
+			set_tool(TOOL_UPGRADE)
+		KEY_X:
+			set_tool(TOOL_SELECT)
+		KEY_DELETE:
+			_ask_delete()
 		KEY_G:
 			toggle_grid()
 		KEY_E:
@@ -352,6 +400,12 @@ func _handle_key(event: InputEventKey) -> void:
 		KEY_ESCAPE:
 			# Escape abandons work in progress first; only an idle Escape leaves. Dots count
 			# as work in progress: clearing them is what "cancel" means for that tool.
+			if not _selection.is_empty():
+				_selection = []
+				_overlay.queue_redraw()
+				_set_status("Selection cleared.")
+				_refresh_status()
+				return
 			if _road_tool.is_drawing() or _trace_tool.is_tracing() \
 					or not _trace_tool.dots().is_empty():
 				_road_tool.abandon()
@@ -457,6 +511,67 @@ func _anchor_press(world: Vector2) -> void:
 	_set_status("Drag to curve both segments%s." % ("" if existing < 0 else " (existing point)"))
 
 
+## UPGRADE. One click steps the road under the cursor up a class; Shift-click steps it back.
+func _upgrade_press(world: Vector2, up: bool) -> void:
+	var found := MapEditorStrokeEdit.stroke_at(_document.data(), world)
+	if found.is_empty():
+		_set_status("No road under the cursor.")
+		return
+	var stroke: Dictionary = found["stroke"]
+	var was := str(stroke.get("class", "mid"))
+	_document.begin_edit("change road class")
+	var now := MapEditorStrokeEdit.step_class(stroke, up)
+	if now == "":
+		_set_status("Already %s — %s." % [was, "the widest class" if up else "the narrowest class"])
+		return
+	# The stroke's drawn geometry is unchanged, but its width is not, so the runtime cache
+	# keyed by id would otherwise keep the old look.
+	_set_status("%s → %s" % [was, now])
+
+
+## SELECT. Close the marquee and record what it caught.
+func _finish_marquee(world: Vector2) -> void:
+	if _marquee_from == Vector2.INF:
+		return
+	_marquee_to = world
+	var rect := Rect2(_marquee_from, Vector2.ZERO).expand(_marquee_to)
+	var dragged := rect.size.length() * (_camera.zoom.x if _camera != null else 1.0)
+	_marquee_from = Vector2.INF
+	_marquee_to = Vector2.INF
+	if dragged < MapEditorSelection.MIN_DRAG:
+		# A click, not a box: clear rather than select nothing, so clicking empty ground is
+		# the natural way to drop a selection.
+		_selection = []
+		_set_status("Selection cleared.")
+		_overlay.queue_redraw()
+		return
+	_selection = MapEditorSelection.in_rect(_document.data(), rect)
+	_set_status("%d selected — Delete to remove." % _selection.size() if not _selection.is_empty()
+		else "Nothing in the box.")
+	_overlay.queue_redraw()
+
+
+## Ask before removing. Deletion is the one action here that destroys authored work, and the
+## marquee makes it easy to catch more than intended.
+func _ask_delete() -> void:
+	if _selection.is_empty():
+		_set_status("Nothing selected.")
+		return
+	_confirm.ask("Delete %d selected item%s?" % [_selection.size(),
+		"" if _selection.size() == 1 else "s"])
+	_panel.refresh()
+
+
+func _delete_selection() -> void:
+	if _selection.is_empty():
+		return
+	_document.begin_edit("delete selection")
+	var removed := MapEditorSelection.delete(_document.data(), _selection)
+	_selection = []
+	_overlay.queue_redraw()
+	_set_status("Deleted %d item%s." % [removed, "" if removed == 1 else "s"])
+
+
 ## CONNECT THE DOTS. Dots live outside the document until two are joined; the join is what
 ## produces a stroke.
 func _dot_press(world: Vector2) -> void:
@@ -546,6 +661,25 @@ func trace_tool() -> MapEditorTraceTool:
 	return _trace_tool
 
 
+## The live marquee in world units, or an empty Rect2 when not dragging.
+func marquee_rect() -> Rect2:
+	if _marquee_from == Vector2.INF or _marquee_to == Vector2.INF:
+		return Rect2()
+	return Rect2(_marquee_from, Vector2.ZERO).expand(_marquee_to)
+
+
+## Ids of the selected records, for the overlay's highlight.
+func selected_ids() -> Dictionary:
+	var out: Dictionary = {}
+	for entry_value in _selection:
+		out[str((entry_value as Dictionary).get("id", ""))] = true
+	return out
+
+
+func selection_size() -> int:
+	return _selection.size()
+
+
 # ── Public API (the tool panel and the keyboard share it) ───────────────────────
 #
 # Every control the panel offers routes through these, so a button and its shortcut cannot
@@ -564,6 +698,8 @@ func set_tool(value: String) -> void:
 		_road_tool.abandon()
 	_trace_tool.cancel_trace()
 	_anchor_grab = {}
+	_marquee_from = Vector2.INF
+	_marquee_to = Vector2.INF
 	_overlay.queue_redraw()
 	_tool = value
 	_panning = false
@@ -602,6 +738,8 @@ func run_action(action: String) -> void:
 			_reload()
 		"leave":
 			_leave()
+		"delete":
+			_ask_delete()
 
 
 # ── Document ────────────────────────────────────────────────────────────────────

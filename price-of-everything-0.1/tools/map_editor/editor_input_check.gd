@@ -157,6 +157,72 @@ func _ready() -> void:
 	_check("dragging the anchor moved it off the straight line",
 		middle.size() >= 2 and absf(float(middle[1]) - 630.0) > 1.0)
 
+	# ── Upgrade ─────────────────────────────────────────────────────────────────
+	# The click point is derived from the stroke's OWN geometry. Guessing screen coordinates
+	# made two of these checks pass while the clicks were missing the road entirely and the
+	# class never changed — a test that passes when the feature does nothing is worse than no
+	# test at all.
+	_editor.call("set_tool", "upgrade")
+	var target := _last_stroke(doc)
+	var on_road := _screen_of(_midpoint(target), camera)
+	_check("the upgrade target starts below major",
+		str(target.get("class", "")) != "major")
+	# Walk the whole ladder down to minor first, so the climb exercises every rung —
+	# the owner's requirement is one click each from minor to mid to major.
+	for _i in 3:
+		await _shift_click(on_road)
+	_check("Shift-click narrows down to minor and stops there (%s)"
+		% str(_last_stroke(doc).get("class", "")),
+		str(_last_stroke(doc).get("class", "")) == "minor")
+	var seen: Array = [str(_last_stroke(doc).get("class", ""))]
+	for _i in 3:
+		await _click(on_road)
+		# The stroke does not move when its class changes, but re-reading keeps this honest
+		# if that ever stops being true.
+		seen.append(str(_last_stroke(doc).get("class", "")))
+	_check("one click per rung: minor to mid to major, then it stops (%s)" % ", ".join(seen),
+		seen == ["minor", "mid", "major", "major"])
+
+	# ── Select and delete ───────────────────────────────────────────────────────
+	_editor.call("set_tool", "select")
+	var total_before := _road_count()
+	await _drag(Vector2(300, 560), Vector2(1050, 780))
+	var picked := int(_editor.call("selection_size"))
+	_check("a marquee selects the roads it covers (%d)" % picked, picked > 0)
+	_check("the marquee does not delete on its own", _road_count() == total_before)
+
+	# Deletion must ask first — it is the only action here that destroys authored work.
+	_send_key(KEY_DELETE)
+	await get_tree().process_frame
+	_check("Delete asks for confirmation", _road_count() == total_before)
+	_send_key(KEY_ESCAPE)
+	await get_tree().process_frame
+	_check("cancelling the prompt keeps everything", _road_count() == total_before)
+	_check("cancelling keeps the selection", int(_editor.call("selection_size")) == picked)
+
+	_send_key(KEY_DELETE)
+	await get_tree().process_frame
+	_send_key(KEY_ENTER)
+	await get_tree().process_frame
+	_check("confirming removes the selected roads",
+		_road_count() == total_before - picked)
+
+	# The tile list is the suppression key: a tile left listed with nothing drawn on it is a
+	# hole in the map — procedural content stood down, authored content deleted.
+	var data: Dictionary = doc.call("data")
+	var settlements: Dictionary = data.get("settlements", {})
+	var stale := false
+	for key in settlements.keys():
+		var settlement: Dictionary = settlements[key]
+		var covered: Dictionary = {}
+		for road_value in (settlement.get("roads", []) as Array):
+			for tile_id in ((road_value as Dictionary).get("tiles", []) as Array):
+				covered[str(tile_id)] = true
+		for tile_id in (settlement.get("tiles", []) as Array):
+			if not covered.has(str(tile_id)):
+				stale = true
+	_check("deletion rebuilds the settlement's tile coverage", not stale)
+
 	if _failures.is_empty():
 		print("[INPUT] ALL CHECKS PASSED")
 		get_tree().quit(0)
@@ -202,6 +268,39 @@ func _click(at: Vector2) -> void:
 	up.button_index = MOUSE_BUTTON_LEFT
 	up.pressed = false
 	up.position = at
+	Input.parse_input_event(up)
+	await get_tree().process_frame
+
+
+## The midpoint of a stroke's first segment — a point guaranteed to lie on the line.
+func _midpoint(stroke: Dictionary) -> Vector2:
+	var points: Array = stroke.get("points", []) as Array
+	if points.size() < 2:
+		return Vector2.ZERO
+	var a: Array = points[0]
+	var b: Array = points[1]
+	return Vector2(float(a[0]), float(a[1])).lerp(Vector2(float(b[0]), float(b[1])), 0.5)
+
+
+## World to screen — the inverse of the editor's own `_world_at`.
+func _screen_of(world: Vector2, camera: Camera2D) -> Vector2:
+	var viewport_size := get_viewport().get_visible_rect().size
+	return (world - camera.get_screen_center_position()) * camera.zoom.x + viewport_size * 0.5
+
+
+func _shift_click(at: Vector2) -> void:
+	var down := InputEventMouseButton.new()
+	down.button_index = MOUSE_BUTTON_LEFT
+	down.pressed = true
+	down.position = at
+	down.shift_pressed = true
+	Input.parse_input_event(down)
+	await get_tree().process_frame
+	var up := InputEventMouseButton.new()
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.pressed = false
+	up.position = at
+	up.shift_pressed = true
 	Input.parse_input_event(up)
 	await get_tree().process_frame
 

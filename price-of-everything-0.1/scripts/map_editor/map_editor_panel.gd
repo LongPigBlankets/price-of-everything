@@ -27,6 +27,8 @@ const TOOLS := [
 	["anchor", "Add anchor", "T"],
 	["trace", "Freehand", "F"],
 	["dots", "Connect dots", "C"],
+	["upgrade", "Upgrade class", "U"],
+	["select", "Select / delete", "X"],
 ]
 
 const ROAD_CLASSES := [
@@ -92,7 +94,8 @@ func build(editor: Node, layers: MapEditorLayers) -> void:
 	column.add_child(grid)
 
 	column.add_child(_heading("Document"))
-	for entry in [["Save   (F5)", "save"], ["Reload   (F6)", "reload"], ["Back to menu   (Esc)", "leave"]]:
+	for entry in [["Delete selected   (Del)", "delete"], ["Save   (F5)", "save"],
+			["Reload   (F6)", "reload"], ["Back to menu   (Esc)", "leave"]]:
 		var button := Button.new()
 		button.text = str(entry[0])
 		button.custom_minimum_size = Vector2(0, 28)
@@ -133,6 +136,10 @@ func refresh() -> void:
 			_hint.text = "Press and drag to trace a line · it is simplified on release"
 		"dots":
 			_hint.text = "Click to drop a dot · click two dots to join them · Bksp undo"
+		"upgrade":
+			_hint.text = "Click a road to widen it · Shift-click to narrow it"
+		"select":
+			_hint.text = "Drag a box over roads · Delete removes them · Esc clears"
 	# The class applies to every drawing tool, not only the pen.
 	var drawing := tool_name in ["road", "trace", "dots"]
 	for key in _class_buttons:

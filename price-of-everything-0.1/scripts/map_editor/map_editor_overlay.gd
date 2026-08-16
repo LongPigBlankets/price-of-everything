@@ -45,6 +45,11 @@ const DOT_EDGE := Color(0.10, 0.12, 0.16, 0.9)
 ## The dot waiting for its partner, so a half-made link is never invisible.
 const DOT_ARMED := Color(1.0, 0.72, 0.20, 1.0)
 const TRACE_COLOR := Color(1.0, 0.55, 0.85, 0.95)
+const MARQUEE_FILL := Color(0.45, 0.8, 1.0, 0.13)
+const MARQUEE_EDGE := Color(0.55, 0.9, 1.0, 0.85)
+## Selected strokes are overlined rather than recoloured, so their class is still readable
+## while they are picked — you often select in order to change what they are.
+const SELECTED_COLOR := Color(1.0, 0.45, 0.35, 0.95)
 
 ## Set by `map_editor.gd` after construction (an editor tool, not a shipped node, so a
 ## plain assignment beats a signal here). Untyped to avoid a preload cycle with the editor
@@ -79,6 +84,7 @@ func _draw() -> void:
 	_draw_pen(camera)
 	_draw_trace(camera)
 	_draw_dots(camera)
+	_draw_marquee(camera)
 
 
 ## Authored roads, at their true world widths so what the designer sees is what the game
@@ -91,6 +97,7 @@ func _draw_authored_roads(camera: Camera2D) -> void:
 	if typeof(settlements_value) != TYPE_DICTIONARY:
 		return
 	var settlements: Dictionary = settlements_value
+	var selected: Dictionary = editor.call("selected_ids")
 	for key in settlements.keys():
 		var settlement_value: Variant = settlements[key]
 		if typeof(settlement_value) != TYPE_DICTIONARY:
@@ -112,6 +119,8 @@ func _draw_authored_roads(camera: Camera2D) -> void:
 				AuthoredRoadStyle.bed_width(stroke_class) * camera.zoom.x, true)
 			if bool(stroke.get("unlockable", false)):
 				draw_polyline(screen, UNLOCKABLE_COLOR, 1.6, true)
+			if selected.has(str(stroke.get("id", ""))):
+				draw_polyline(screen, SELECTED_COLOR, 3.0, true)
 
 
 ## The stroke in progress: the line so far, its points, and the handles of any curve point.
@@ -165,6 +174,16 @@ func _draw_dots(camera: Camera2D) -> void:
 		var centre := _to_screen(dots[i], camera)
 		draw_circle(centre, DOT_RADIUS + 1.5, DOT_EDGE)
 		draw_circle(centre, DOT_RADIUS, DOT_ARMED if i == armed else DOT_COLOR)
+
+
+## The selection box while it is being dragged.
+func _draw_marquee(camera: Camera2D) -> void:
+	var rect: Rect2 = editor.call("marquee_rect")
+	if rect.size == Vector2.ZERO:
+		return
+	var screen := Rect2(_to_screen(rect.position, camera), rect.size * camera.zoom.x)
+	draw_rect(screen, MARQUEE_FILL, true)
+	draw_rect(screen, MARQUEE_EDGE, false, 1.5)
 
 
 func _project(points: PackedVector2Array, camera: Camera2D) -> PackedVector2Array:

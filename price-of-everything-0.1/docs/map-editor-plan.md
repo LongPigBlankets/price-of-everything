@@ -483,6 +483,11 @@ feature is opt-in, like midcentury itself), plus the phase's own gates.
   **freehand** (F — press-drag-release, simplified on release), and **connect the dots**
   (C — click to drop white dots, click two to join them straight; dots persist as reusable
   junctions).
+  Plus **upgrade class** (U — one click per rung minor→mid→major, Shift-click back down,
+  stopping at each end rather than wrapping) and **select** (X — drag a box over content,
+  Delete removes it behind a confirmation). Deletion rebuilds each settlement's tile
+  coverage, because a tile left in that list with nothing drawn on it is a hole: procedural
+  content suppressed, authored content gone.
   **The editor opens on a bare map by design**: relief, sea and land, rivers and paper.
   Roads, buildings, fabric, ports and woodland are hidden, because those are exactly what
   the authored document replaces — all one click away for tracing.
