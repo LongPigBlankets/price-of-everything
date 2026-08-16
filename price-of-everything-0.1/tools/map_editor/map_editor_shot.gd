@@ -70,6 +70,12 @@ func _ready() -> void:
 		print("[EDITOR-SHOT] saved as '%s'" % save_as)
 	if OS.get_environment("POE_EDITOR_SHOT_WATER") == "1":
 		editor.call("toggle_water_mask")
+	# Open named accordions before capturing, so a shot can show a folded section.
+	var open_folds := OS.get_environment("POE_EDITOR_SHOT_FOLDS")
+	if open_folds != "":
+		for title in open_folds.split(",", false):
+			editor.call("open_panel_section", str(title))
+		await get_tree().process_frame
 	var at := OS.get_environment("POE_EDITOR_SHOT_AT")
 	if at != "":
 		var xy := at.split(",", false)

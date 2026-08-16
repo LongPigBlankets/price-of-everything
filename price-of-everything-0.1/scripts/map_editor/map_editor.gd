@@ -799,6 +799,22 @@ func shape_tool() -> MapEditorShapeTool:
 	return _shape_tool
 
 
+## Choosing a shape selects the stamp tool with it — picking a form is a statement of intent
+## to place one, and making the designer then find the tool is a step for nothing.
+func open_panel_section(title: String) -> void:
+	if _panel != null:
+		_panel.open_section(title)
+
+
+func pick_form(value: String) -> void:
+	_shape_tool.set_form(value)
+	if _tool != TOOL_STAMP:
+		set_tool(TOOL_STAMP)
+	else:
+		_refresh_status()
+	_set_status("Form: %s" % value)
+
+
 func cycle_form(step: int) -> void:
 	_set_status("Form: %s" % _shape_tool.cycle_form(step))
 	_overlay.queue_redraw()

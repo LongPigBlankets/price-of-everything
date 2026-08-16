@@ -15,6 +15,8 @@ extends PanelContainer
 ## pressing R and clicking "Road pen" run the same line.
 
 const MapEditorLayers := preload("res://scripts/map_editor/map_editor_layers.gd")
+const MapEditorFormButton := preload("res://scripts/map_editor/map_editor_form_button.gd")
+const MassFormShapes := preload("res://scripts/mass_form_shapes.gd")
 
 const WIDTH := 244.0
 const BG := Color(0.05, 0.07, 0.10, 0.93)
@@ -44,15 +46,19 @@ const ROAD_CLASSES := [
 
 ## Sections that start folded. Visibility is long and consulted occasionally; session
 ## commands are rare.
-const FOLDED := {"Visibility": true, "Session": true}
+const FOLDED := {"Visibility": true, "Session": true, "Buildings": true, "Farms & Forests": true}
+
+## Picker tiles per row. Three 50 px tiles plus their separation fit the column with room to
+## spare; the grid is fixed rather than measured because the panel has a fixed width.
+const PICKER_COLUMNS := 3
 
 var _editor: Node
 var _layers: MapEditorLayers
 var _tool_buttons: Dictionary = {}
 var _class_buttons: Dictionary = {}
 var _layer_buttons: Dictionary = {}
-var _kind_buttons: Dictionary = {}
-var _form_label: Label
+var _form_tiles: Dictionary = {}
+var _kind_tiles: Dictionary = {}
 var _folds: Dictionary = {}
 var _status: Label
 var _hint: Label
@@ -101,29 +107,45 @@ func build(editor: Node, layers: MapEditorLayers) -> void:
 		_class_buttons[key] = button
 		column.add_child(button)
 
-	# Ground kinds and the form picker — only meaningful for the two fabric tools, so they
-	# are disabled rather than hidden: a control that vanishes is harder to find again than
-	# one that greys out.
-	column.add_child(_heading("Ground"))
+	# ── Buildings, a grid of shapes ──────────────────────────────────────────────
+	# The whole vocabulary as silhouettes. Selecting one also selects the stamp tool: picking
+	# a shape is a statement of intent to place it.
+	var buildings := _fold(column, "Buildings")
+	var building_grid := GridContainer.new()
+	building_grid.columns = PICKER_COLUMNS
+	building_grid.add_theme_constant_override("h_separation", 6)
+	building_grid.add_theme_constant_override("v_separation", 6)
+	buildings.add_child(building_grid)
+	for form_value in MassFormShapes.ALL_FORMS:
+		var form := str(form_value)
+		var tile := MapEditorFormButton.new()
+		tile.kind = "form"
+		tile.key = form
+		tile.tooltip_text = form
+		tile.picked.connect(func(picked_key: String) -> void:
+			_editor.call("pick_form", picked_key))
+		_form_tiles[form] = tile
+		building_grid.add_child(tile)
+
+	# ── Farms & forests, the polygon tools ──────────────────────────────────────
+	# Parks live here too: they are the same outline tool, and leaving them out of the panel
+	# would hide a working tool rather than simplify anything.
+	var ground := _fold(column, "Farms & Forests")
+	var ground_grid := GridContainer.new()
+	ground_grid.columns = PICKER_COLUMNS
+	ground_grid.add_theme_constant_override("h_separation", 6)
+	ground_grid.add_theme_constant_override("v_separation", 6)
+	ground.add_child(ground_grid)
 	for entry in [["farms", "Farm"], ["forests", "Wood"], ["parks", "Park"]]:
-		var key := str(entry[0])
-		var button := _toggle_button(str(entry[1]))
-		button.pressed.connect(func() -> void: _editor.call("set_area_kind", key))
-		_kind_buttons[key] = button
-		column.add_child(button)
-	_form_label = _caption("")
-	column.add_child(_form_label)
-	var forms := HBoxContainer.new()
-	forms.add_theme_constant_override("separation", 6)
-	column.add_child(forms)
-	for entry in [["\u25c0  [", -1], ["]  \u25b6", 1]]:
-		var step := int(entry[1])
-		var button := Button.new()
-		button.text = str(entry[0])
-		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.custom_minimum_size = Vector2(0, 26)
-		button.pressed.connect(func() -> void: _editor.call("cycle_form", step))
-		forms.add_child(button)
+		var area_key := str(entry[0])
+		var tile := MapEditorFormButton.new()
+		tile.kind = "area"
+		tile.key = area_key
+		tile.tooltip_text = str(entry[1])
+		tile.picked.connect(func(picked_key: String) -> void:
+			_editor.call("set_area_kind", picked_key))
+		_kind_tiles[area_key] = tile
+		ground_grid.add_child(tile)
 
 	# ── Visibility, folded ──────────────────────────────────────────────────────
 	var visibility := _fold(column, "Visibility")
@@ -223,11 +245,18 @@ func refresh() -> void:
 			_mark(_layer_buttons[key], bool(_editor.call("water_mask_shown")))
 		else:
 			_mark(_layer_buttons[key], _layers.is_on(str(key)))
+	# The pickers show what is selected whichever tool is live, so a glance at the panel says
+	# what the next stamp or outline will be.
+	var current_form := str(_editor.call("current_form"))
+	for key in _form_tiles:
+		var tile: Control = _form_tiles[key]
+		tile.selected = str(key) == current_form and tool_name == "stamp"
+		tile.queue_redraw()
 	var area_kind := str(_editor.call("current_area_kind"))
-	for key in _kind_buttons:
-		_mark(_kind_buttons[key], str(key) == area_kind)
-		(_kind_buttons[key] as Button).disabled = tool_name != "area"
-	_form_label.text = "Form:  %s   ( [ / ] )" % str(_editor.call("current_form"))
+	for key in _kind_tiles:
+		var tile: Control = _kind_tiles[key]
+		tile.selected = str(key) == area_kind and tool_name == "area"
+		tile.queue_redraw()
 	match tool_name:
 		"pan":
 			_hint.text = "WASD or drag to pan · wheel or Q/E to zoom"
@@ -247,6 +276,16 @@ func refresh() -> void:
 			_hint.text = "Drag to size a mass · the drag direction is its facing · [ ] picks the form"
 		"area":
 			_hint.text = "Click corners (max 8) · Enter closes · Bksp undoes a corner"
+
+
+## Open a named section. For capture harnesses, and for anything that later wants to reveal
+## the section a command belongs to.
+func open_section(title: String) -> void:
+	var entry: Dictionary = _folds.get(title, {})
+	if entry.is_empty():
+		return
+	(entry["body"] as Control).visible = true
+	_paint_fold(title)
 
 
 func set_status(text: String) -> void:
