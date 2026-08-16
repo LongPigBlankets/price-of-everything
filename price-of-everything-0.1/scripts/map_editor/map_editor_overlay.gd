@@ -45,6 +45,8 @@ const DOT_COLOR := Color(1.0, 1.0, 1.0, 0.95)
 const DOT_EDGE := Color(0.10, 0.12, 0.16, 0.9)
 ## The dot waiting for its partner, so a half-made link is never invisible.
 const DOT_ARMED := Color(1.0, 0.72, 0.20, 1.0)
+const CORNER_COLOR := Color(0.55, 0.90, 1.0, 1.0)
+const CORNER_RADIUS := 5.0
 const TRACE_COLOR := Color(1.0, 0.55, 0.85, 0.95)
 const MARQUEE_FILL := Color(0.45, 0.8, 1.0, 0.13)
 const MARQUEE_EDGE := Color(0.55, 0.9, 1.0, 0.85)
@@ -166,6 +168,8 @@ func _draw_authored_fabric(camera: Camera2D) -> void:
 			AuthoredFabricPainter.draw_park(self, park)
 		for mass in _entries(settlement, "decor"):
 			AuthoredFabricPainter.draw_mass(self, mass)
+		for special in _entries(settlement, "specials"):
+			AuthoredFabricPainter.draw_special(self, special)
 		for area in _entries(settlement, "forests"):
 			AuthoredFabricPainter.draw_forest(self, area)
 	# The stamp being dragged, previewed as the real thing.
@@ -175,6 +179,7 @@ func _draw_authored_fabric(camera: Camera2D) -> void:
 		if not preview.is_empty():
 			AuthoredFabricPainter.draw_mass(self, preview)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	_draw_corner_handles(camera)
 
 	# The outline being clicked out stays in screen space: it is scaffolding, not content.
 	if shape != null and bool(shape.call("is_drawing")):
@@ -280,6 +285,19 @@ func _draw_water_mask(camera: Camera2D) -> void:
 				if nav.water(ix + offset.x, iy + offset.y) == NavGrid.WATER_LAND:
 					draw_rect(Rect2(top_left, size), WATER_MASK_EDGE, false, 1.0)
 					break
+
+
+## Corner handles of the shape being edited. Screen-space and generous: a handle is a click
+## target, and at working zooms a world-sized dot is a test of aim.
+func _draw_corner_handles(camera: Camera2D) -> void:
+	var corners: PackedVector2Array = editor.call("editable_corners")
+	if corners.is_empty():
+		return
+	var held := int(editor.call("held_corner"))
+	for i in corners.size():
+		var centre := _to_screen(corners[i], camera)
+		draw_circle(centre, CORNER_RADIUS + 1.5, DOT_EDGE)
+		draw_circle(centre, CORNER_RADIUS, DOT_ARMED if i == held else CORNER_COLOR)
 
 
 ## The selection box while it is being dragged.

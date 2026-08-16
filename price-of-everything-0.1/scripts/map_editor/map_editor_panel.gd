@@ -17,6 +17,7 @@ extends PanelContainer
 const MapEditorLayers := preload("res://scripts/map_editor/map_editor_layers.gd")
 const MapEditorFormButton := preload("res://scripts/map_editor/map_editor_form_button.gd")
 const MassFormShapes := preload("res://scripts/mass_form_shapes.gd")
+const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
 
 const WIDTH := 244.0
 const BG := Color(0.05, 0.07, 0.10, 0.93)
@@ -36,6 +37,7 @@ const TOOLS := [
 	["select", "Select / delete", "X"],
 	["stamp", "Stamp mass", "B"],
 	["area", "Farm / wood / park", "N"],
+	["special", "Special primitive", "M"],
 ]
 
 const ROAD_CLASSES := [
@@ -46,7 +48,8 @@ const ROAD_CLASSES := [
 
 ## Sections that start folded. Visibility is long and consulted occasionally; session
 ## commands are rare.
-const FOLDED := {"Visibility": true, "Session": true, "Buildings": true, "Farms & Forests": true}
+const FOLDED := {"Visibility": true, "Session": true, "Buildings": true, "Farms & Forests": true,
+	"Special Buildings": true}
 
 ## Picker tiles per row. Three 50 px tiles plus their separation fit the column with room to
 ## spare; the grid is fixed rather than measured because the panel has a fixed width.
@@ -59,6 +62,8 @@ var _class_buttons: Dictionary = {}
 var _layer_buttons: Dictionary = {}
 var _form_tiles: Dictionary = {}
 var _kind_tiles: Dictionary = {}
+var _special_tiles: Dictionary = {}
+var _special_rows: VBoxContainer
 var _folds: Dictionary = {}
 var _status: Label
 var _hint: Label
@@ -126,6 +131,30 @@ func build(editor: Node, layers: MapEditorLayers) -> void:
 			_editor.call("pick_form", picked_key))
 		_form_tiles[form] = tile
 		building_grid.add_child(tile)
+
+	# ── Special buildings: parametric primitives ────────────────────────────────
+	# Laid at their side lengths rather than dragged to size, and reshaped afterwards by
+	# dragging their corners. The parameter rows below the grid act on whichever primitive is
+	# selected.
+	var specials := _fold(column, "Special Buildings")
+	var special_grid := GridContainer.new()
+	special_grid.columns = PICKER_COLUMNS
+	special_grid.add_theme_constant_override("h_separation", 6)
+	special_grid.add_theme_constant_override("v_separation", 6)
+	specials.add_child(special_grid)
+	for kind_value in AuthoredSpecialShapes.kinds():
+		var special_kind := str(kind_value)
+		var tile := MapEditorFormButton.new()
+		tile.kind = "special"
+		tile.key = special_kind
+		tile.tooltip_text = special_kind.to_upper()
+		tile.picked.connect(func(picked_key: String) -> void:
+			_editor.call("pick_special", picked_key))
+		_special_tiles[special_kind] = tile
+		special_grid.add_child(tile)
+	_special_rows = VBoxContainer.new()
+	_special_rows.add_theme_constant_override("separation", 3)
+	specials.add_child(_special_rows)
 
 	# ── Farms & forests, the polygon tools ──────────────────────────────────────
 	# Parks live here too: they are the same outline tool, and leaving them out of the panel
@@ -252,6 +281,12 @@ func refresh() -> void:
 		var tile: Control = _form_tiles[key]
 		tile.selected = str(key) == current_form and tool_name == "stamp"
 		tile.queue_redraw()
+	var special_kind := str(_editor.call("current_special_kind"))
+	for key in _special_tiles:
+		var tile: Control = _special_tiles[key]
+		tile.selected = str(key) == special_kind and tool_name == "special"
+		tile.queue_redraw()
+	_rebuild_special_rows()
 	var area_kind := str(_editor.call("current_area_kind"))
 	for key in _kind_tiles:
 		var tile: Control = _kind_tiles[key]
@@ -276,6 +311,46 @@ func refresh() -> void:
 			_hint.text = "Drag to size a mass · the drag direction is its facing · [ ] picks the form"
 		"area":
 			_hint.text = "Click corners (max 8) · Enter closes · Bksp undoes a corner"
+		"special":
+			_hint.text = "Click to lay the primitive · then Select (X) and drag its corners"
+
+
+## One row per side length of the selected primitive: a name, its value, and a pair of
+## nudges. Steppers rather than sliders — a side length is a number the designer has in mind,
+## and a slider in a 240 px column cannot hit one.
+func _rebuild_special_rows() -> void:
+	if _special_rows == null:
+		return
+	var names: Array = _editor.call("special_parameter_names")
+	var sides: Array = _editor.call("special_sides")
+	# Rebuilt only when the shape of the controls changes; otherwise values are updated in
+	# place, so a held nudge does not rebuild the button under the cursor.
+	if _special_rows.get_child_count() != names.size():
+		for child in _special_rows.get_children():
+			child.queue_free()
+		for i in names.size():
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 4)
+			var label := Label.new()
+			label.add_theme_font_size_override("font_size", 11)
+			label.add_theme_color_override("font_color", MUTED)
+			label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row.add_child(label)
+			for step_value in [-10.0, 10.0]:
+				var step: float = step_value
+				var button := Button.new()
+				button.text = "−" if step < 0.0 else "+"
+				button.custom_minimum_size = Vector2(26, 22)
+				var index := i
+				var delta: float = step
+				button.pressed.connect(func() -> void:
+					_editor.call("adjust_special_side", index, delta))
+				row.add_child(button)
+			_special_rows.add_child(row)
+	for i in mini(names.size(), _special_rows.get_child_count()):
+		var row: Control = _special_rows.get_child(i)
+		var label: Label = row.get_child(0)
+		label.text = "%s  %d" % [str(names[i]), int(float(sides[i])) if i < sides.size() else 0]
 
 
 ## Open a named section. For capture harnesses, and for anything that later wants to reveal

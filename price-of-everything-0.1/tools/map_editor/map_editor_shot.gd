@@ -57,6 +57,8 @@ func _ready() -> void:
 	# shows what they produce rather than an empty map.
 	if OS.get_environment("POE_EDITOR_SHOT_DEMO") == "1":
 		await _demo(editor)
+	if OS.get_environment("POE_EDITOR_SHOT_SPECIAL") == "1":
+		await _demo_special(editor)
 	if OS.get_environment("POE_EDITOR_SHOT_FABRIC") == "1":
 		editor.call("focus_tile", _tile, _zoom)
 		await get_tree().process_frame
@@ -212,6 +214,52 @@ func _demo_fabric(editor: Node) -> void:
 		if x > 980.0:
 			x = 300.0
 			y += 120.0
+
+
+## Lay the three primitives, resize one, and drag a corner of another — so a capture shows
+## what the parameters and the handles actually do.
+func _demo_special(editor: Node) -> void:
+	editor.call("focus_tile", _tile, _zoom)
+	await get_tree().process_frame
+	var at := {"u": Vector2(360, 300), "ring": Vector2(620, 300), "l": Vector2(880, 300)}
+	for kind in ["u", "ring", "l"]:
+		editor.call("pick_special", kind)
+		await _click(at[kind])
+	# Grow the L's long arm, proving the parameter rebuild.
+	for _i in 4:
+		editor.call("adjust_special_side", 0, 20.0)
+	await get_tree().process_frame
+	# Select the ring and drag one of its corners, proving the handles.
+	editor.call("set_tool", "select")
+	await _drag_box(Vector2(520, 200), Vector2(730, 420))
+	var corners: PackedVector2Array = editor.call("editable_corners")
+	if corners.size() > 0:
+		var camera: Camera2D = editor.call("camera")
+		var viewport_size := get_viewport().get_visible_rect().size
+		var screen: Vector2 = (corners[0] - camera.get_screen_center_position()) \
+			* camera.zoom.x + viewport_size * 0.5
+		await _drag_box(screen, screen + Vector2(-40, -46))
+	print("[EDITOR-SHOT] specials: %d corners on show" % corners.size())
+
+
+func _drag_box(from: Vector2, to: Vector2) -> void:
+	var down := InputEventMouseButton.new()
+	down.button_index = MOUSE_BUTTON_LEFT
+	down.pressed = true
+	down.position = from
+	Input.parse_input_event(down)
+	await get_tree().process_frame
+	var motion := InputEventMouseMotion.new()
+	motion.position = to
+	motion.relative = to - from
+	Input.parse_input_event(motion)
+	await get_tree().process_frame
+	var up := InputEventMouseButton.new()
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.pressed = false
+	up.position = to
+	Input.parse_input_event(up)
+	await get_tree().process_frame
 
 
 func _drag_stamp(from: Vector2, to: Vector2) -> void:

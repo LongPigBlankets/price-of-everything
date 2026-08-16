@@ -15,6 +15,7 @@ signal picked(key: String)
 
 const MassFormShapes := preload("res://scripts/mass_form_shapes.gd")
 const TreeShapesRef := preload("res://scripts/tree_shapes.gd")
+const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
 
 const TILE := 50.0
 ## Inset from the plate edge to the shape's bounding box, so nothing touches the corner
@@ -58,10 +59,13 @@ func _draw() -> void:
 	_plate.bg_color = PLATE_HOVER if _hovered else PLATE
 	draw_style_box(_plate, Rect2(Vector2.ZERO, size))
 	var ink := SHAPE_HOVER if _hovered else SHAPE
-	if kind == "form":
-		_draw_form(ink)
-	else:
-		_draw_area(ink)
+	match kind:
+		"form":
+			_draw_form(ink)
+		"special":
+			_draw_special(ink)
+		_:
+			_draw_area(ink)
 	if selected:
 		# Drawn inside the plate so a selected tile does not overlap its neighbours.
 		var inset := OUTLINE_WIDTH * 0.5
@@ -104,6 +108,26 @@ func _draw_form(ink: Color) -> void:
 			screen.append(point * scale + offset)
 		if screen.size() >= 3:
 			draw_colored_polygon(screen, ink)
+
+
+## A parametric primitive at its default proportions — the shape you get by clicking, so the
+## tile is a promise rather than a decoration.
+func _draw_special(ink: Color) -> void:
+	var outline := AuthoredSpecialShapes.build(key, AuthoredSpecialShapes.defaults_for(key))
+	if outline.size() < 3:
+		return
+	var bounds := Rect2(outline[0], Vector2.ZERO)
+	for point in outline:
+		bounds = bounds.expand(point)
+	if bounds.size.x <= 0.0 or bounds.size.y <= 0.0:
+		return
+	var span := TILE - PAD * 2.0
+	var scale := minf(span / bounds.size.x, span / bounds.size.y)
+	var offset := Vector2(TILE, TILE) * 0.5 - bounds.get_center() * scale
+	var screen := PackedVector2Array()
+	for point in outline:
+		screen.append(point * scale + offset)
+	draw_colored_polygon(screen, ink)
 
 
 ## Farmland, woodland and parks get a miniature of what they actually draw: strips for a

@@ -1,4 +1,6 @@
 extends Node
+
+const AuthoredSpecialShapesScript := preload("res://scripts/authored_special_shapes.gd")
 ## Regression check for the editor's INPUT behaviour — the three things that were broken
 ## when the panel landed, each of which is invisible to a screenshot:
 ##
@@ -223,6 +225,54 @@ func _ready() -> void:
 				stale = true
 	_check("deletion rebuilds the settlement's tile coverage", not stale)
 
+	# ── Parametric primitives, and dragging their corners ───────────────────────
+	_editor.call("pick_special", "ring")
+	_check("picking a primitive selects its tool", str(_editor.call("current_tool")) == "special")
+	await _click(Vector2(520, 300))
+	var ring := _last_of(doc, "specials")
+	_check("clicking lays the primitive", not ring.is_empty())
+	_check("it carries its side lengths (%d)" % (ring.get("sides", []) as Array).size(),
+		(ring.get("sides", []) as Array).size() == 4)
+	# The ring stores its FOUR outer corners; the courtyard band is derived at draw time. The
+	# band carries a seam, and its duplicate points made corner dragging grab the wrong
+	# vertex — which is why the editable shape and the drawn shape are deliberately not the
+	# same polygon.
+	var corners_before: int = (ring.get("outline", []) as Array).size()
+	_check("a ring is stored as four editable corners (%d)" % corners_before,
+		corners_before == 4)
+	var drawn: PackedVector2Array = AuthoredSpecialShapesScript.render_polygon(ring)
+	_check("a ring DRAWS as a band with a courtyard (%d points)" % drawn.size(),
+		drawn.size() >= 8)
+
+	# Parameters rebuild the outline. Grow one side and the shape must get wider.
+	var width_before := _outline_width(ring)
+	_editor.call("adjust_special_side", 0, 40.0)
+	var width_after := _outline_width(_last_of(doc, "specials"))
+	_check("a side length rebuilds the shape (%.0f -> %.0f)" % [width_before, width_after],
+		width_after > width_before + 10.0)
+
+	# Selecting it shows its corners; dragging one moves that corner and nothing else.
+	_editor.call("set_tool", "select")
+	var centre := _outline_centre(_last_of(doc, "specials"))
+	await _drag(_screen_of(centre - Vector2(160, 130), camera),
+		_screen_of(centre + Vector2(160, 130), camera))
+	var handles: PackedVector2Array = _editor.call("editable_corners")
+	_check("selecting one shape shows its corners (%d)" % handles.size(), handles.size() == 4)
+	if handles.size() == 4:
+		var moved_from := handles[0]
+		var others_before := _outline_points(_last_of(doc, "specials"))
+		await _drag(_screen_of(moved_from, camera),
+			_screen_of(moved_from + Vector2(-45.0, -38.0), camera))
+		var after := _outline_points(_last_of(doc, "specials"))
+		_check("dragging a corner moves it (%.0f u)" % moved_from.distance_to(after[0]),
+			moved_from.distance_to(after[0]) > 20.0)
+		var others_moved := 0
+		for i in range(1, mini(others_before.size(), after.size())):
+			if others_before[i].distance_to(after[i]) > 0.01:
+				others_moved += 1
+		_check("dragging a corner leaves the others alone (%d moved)" % others_moved,
+			others_moved == 0)
+
 	if _failures.is_empty():
 		print("[INPUT] ALL CHECKS PASSED")
 		get_tree().quit(0)
@@ -326,6 +376,46 @@ func _drag(from: Vector2, to: Vector2) -> void:
 
 
 ## The most recently added stroke of the first settlement — the one a tool just committed.
+## The most recently added record of a kind, in the first settlement that has one.
+func _last_of(document: RefCounted, kind: String) -> Dictionary:
+	var data: Dictionary = document.call("data")
+	var settlements: Dictionary = data.get("settlements", {})
+	for key in settlements.keys():
+		var items: Array = (settlements[key] as Dictionary).get(kind, []) as Array
+		if not items.is_empty():
+			return items[items.size() - 1]
+	return {}
+
+
+func _outline_points(record: Dictionary) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for entry in (record.get("outline", []) as Array):
+		var values: Array = entry as Array
+		if values != null and values.size() >= 2:
+			out.append(Vector2(float(values[0]), float(values[1])))
+	return out
+
+
+func _outline_width(record: Dictionary) -> float:
+	var points := _outline_points(record)
+	if points.is_empty():
+		return 0.0
+	var bounds := Rect2(points[0], Vector2.ZERO)
+	for point in points:
+		bounds = bounds.expand(point)
+	return bounds.size.x
+
+
+func _outline_centre(record: Dictionary) -> Vector2:
+	var points := _outline_points(record)
+	if points.is_empty():
+		return Vector2.ZERO
+	var bounds := Rect2(points[0], Vector2.ZERO)
+	for point in points:
+		bounds = bounds.expand(point)
+	return bounds.get_center()
+
+
 func _last_stroke(document: RefCounted) -> Dictionary:
 	var data: Dictionary = document.call("data")
 	var settlements: Dictionary = data.get("settlements", {})

@@ -19,7 +19,11 @@ const AuthoredRoadGeometry := preload("res://scripts/authored_road_geometry.gd")
 
 ## Content kinds a marquee can pick up, and where they live in a settlement. Extending this
 ## is how P2's masses and parks become selectable.
-const SELECTABLE := ["roads"]
+const SELECTABLE := ["roads", "decor", "specials", "farms", "forests", "parks"]
+
+## Kinds whose geometry is an explicit outline, and which can therefore have their corners
+## dragged. A road is a centreline and a mass is generated from a form, so neither qualifies.
+const OUTLINE_KINDS := ["specials", "farms", "forests", "parks"]
 
 ## A drag shorter than this on screen is a click, not a marquee — without it, every stray
 ## click would clear the selection by "selecting" a zero-area box.
@@ -54,7 +58,42 @@ static func in_rect(document: Dictionary, rect: Rect2) -> Array:
 ## Does a stroke's centreline touch the rect? Endpoint containment alone is not enough: a
 ## straight road is stored as two corners, so a run crossing a small box has NO point inside
 ## it and would be missed entirely. Every segment is tested against the box's edges too.
+## The single outline-shaped record in a selection, or {} when the answer is ambiguous.
+static func single_outline(document: Dictionary, selection: Array) -> Dictionary:
+	var found := {}
+	for entry_value in selection:
+		var entry: Dictionary = entry_value
+		if not OUTLINE_KINDS.has(str(entry.get("kind", ""))):
+			continue
+		if not found.is_empty():
+			return {}   # more than one: no unambiguous subject to reshape
+		var settlements: Dictionary = document.get("settlements", {})
+		var settlement: Dictionary = settlements.get(str(entry["settlement"]), {})
+		var items: Array = settlement.get(str(entry["kind"]), []) as Array
+		var index := int(entry["index"])
+		if index >= 0 and index < items.size():
+			found = items[index]
+	return found
+
+
 static func _meets_rect(item: Dictionary, rect: Rect2) -> bool:
+	# An outline-shaped thing is tested by its own polygon; a road by its centreline.
+	if item.has("outline"):
+		var outline := PackedVector2Array()
+		for entry in (item.get("outline", []) as Array):
+			var values: Array = entry as Array
+			if values != null and values.size() >= 2:
+				outline.append(Vector2(float(values[0]), float(values[1])))
+		for point in outline:
+			if rect.has_point(point):
+				return true
+		return outline.size() >= 3 and Geometry2D.is_point_in_polygon(rect.get_center(), outline)
+	if item.has("form"):
+		# A stamped mass: its box is enough, and cheaper than rebuilding the form.
+		var pos: Array = item.get("pos", [0, 0]) as Array
+		if pos.size() >= 2:
+			return rect.has_point(Vector2(float(pos[0]), float(pos[1])))
+		return false
 	var points := AuthoredRoadGeometry.sample(item)
 	if points.is_empty():
 		return false

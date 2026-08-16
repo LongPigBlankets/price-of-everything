@@ -15,6 +15,7 @@ extends RefCounted
 const MidcenturyStyle := preload("res://scripts/map_midcentury_style.gd")
 const MassFormShapes := preload("res://scripts/mass_form_shapes.gd")
 const TreeShapesRef := preload("res://scripts/tree_shapes.gd")
+const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
 
 ## Nominal spacing between trees, world units — a JITTERED GRID rather than random points.
 ##
@@ -104,6 +105,23 @@ static func woodland_points(area: Dictionary) -> PackedVector2Array:
 			if _inside_by(outline, point, reach):
 				out.append(point)
 	return out
+
+
+## A parametric primitive. Drawn like a mass — same wash, same SE micro-shadow, same ink —
+## because it IS one; only how its shape is arrived at differs.
+static func draw_special(canvas: CanvasItem, special: Dictionary) -> void:
+	# The DRAWN polygon, which for a ring is a band around the four corners the designer
+	# edits — see AuthoredSpecialShapes.render_polygon.
+	var outline := AuthoredSpecialShapes.render_polygon(special)
+	if outline.size() < 3:
+		return
+	var colour := MidcenturyStyle.urban_block(str(special.get("id", "")), 0.6)
+	var shadow := PackedVector2Array()
+	for point in outline:
+		shadow.append(point + SHADOW_OFFSET)
+	canvas.draw_colored_polygon(shadow, MidcenturyStyle.SHADOW)
+	canvas.draw_colored_polygon(outline, colour)
+	canvas.draw_polyline(_closed(outline), MidcenturyStyle.INK, 1.0, true)
 
 
 static func draw_park(canvas: CanvasItem, park: Dictionary) -> void:

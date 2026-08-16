@@ -53,6 +53,9 @@ func _draw() -> void:
 		for mass in _list(settlement, "decor"):
 			if not _sacrificed.has(str(mass.get("id", ""))):
 				AuthoredFabricPainter.draw_mass(self, mass)
+		for special in _list(settlement, "specials"):
+			if not _sacrificed.has(str(special.get("id", ""))):
+				AuthoredFabricPainter.draw_special(self, special)
 		for area in _list(settlement, "forests"):
 			AuthoredFabricPainter.draw_forest(self, area)
 

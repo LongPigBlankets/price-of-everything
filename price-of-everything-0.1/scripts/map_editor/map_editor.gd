@@ -31,6 +31,7 @@ const MapEditorNameDialog := preload("res://scripts/map_editor/map_editor_name_d
 const MapEditorLoadDialog := preload("res://scripts/map_editor/map_editor_load_dialog.gd")
 const MapEditorShapeTool := preload("res://scripts/map_editor/map_editor_shape_tool.gd")
 const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
+const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
 const MapEditorPanel := preload("res://scripts/map_editor/map_editor_panel.gd")
 
 ## Tools. NAVIGATE is the default and does nothing but move the view: an editor whose idle
@@ -51,6 +52,11 @@ const TOOL_SELECT := "select"
 const TOOL_AREA := "area"
 ## Press and drag to stamp a decorative mass from the form vocabulary.
 const TOOL_STAMP := "stamp"
+## Click to lay a parametric primitive (U, ring or L) at its current side lengths.
+const TOOL_SPECIAL := "special"
+
+## How close a click must land to a corner to pick it up, in world units.
+const CORNER_GRAB := 16.0
 
 ## Which settlement new content joins. P1 authors into one at a time; the settlement picker
 ## arrives with the tools that need to move content between them.
@@ -100,6 +106,11 @@ var _load_dialog: MapEditorLoadDialog
 var _marquee_from := Vector2.INF
 var _marquee_to := Vector2.INF
 var _selection: Array = []
+## The record whose corners are on show, and which one is held. Corner editing works on any
+## outline — a primitive, a farm, a wood, a park — because they are all polygons.
+var _corner_target: Dictionary = {}
+var _held_corner := -1
+var _special_kind := "u"
 var _panel: MapEditorPanel
 var _tool := TOOL_PAN
 var _world: Node
@@ -306,6 +317,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif _tool == TOOL_TRACE and _trace_tool.is_tracing():
 			_trace_tool.extend_trace(_world_at(motion.position))
 			_overlay.queue_redraw()
+		elif _tool == TOOL_SELECT and _held_corner >= 0:
+			_move_corner(_world_at(motion.position))
 		elif _tool == TOOL_STAMP and _shape_tool.is_stamping():
 			_shape_tool.drag_stamp(_world_at(motion.position))
 			_overlay.queue_redraw()
@@ -366,11 +379,24 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 						_shape_tool.begin_stamp(world)
 					else:
 						_finish_stamp()
+				TOOL_SPECIAL:
+					if event.pressed:
+						_place_special(world)
 				TOOL_SELECT:
 					if event.pressed:
+						# A click on a corner of the shape being edited grabs it; the
+						# marquee only starts when the click is not on a handle.
+						_held_corner = _corner_at(world)
+						if _held_corner >= 0:
+							_document.begin_edit("move corner")
+							return
 						_marquee_from = world
 						_marquee_to = world
 					else:
+						if _held_corner >= 0:
+							_held_corner = -1
+							_overlay.queue_redraw()
+							return
 						_finish_marquee(world)
 			_overlay.queue_redraw()
 		MOUSE_BUTTON_MIDDLE, MOUSE_BUTTON_RIGHT:
@@ -434,6 +460,8 @@ func _handle_key(event: InputEventKey) -> void:
 			set_tool(TOOL_STAMP)
 		KEY_N:
 			set_tool(TOOL_AREA)
+		KEY_M:
+			set_tool(TOOL_SPECIAL)
 		KEY_BRACKETLEFT:
 			_set_status("Form: %s" % _shape_tool.cycle_form(-1))
 			_overlay.queue_redraw()
@@ -618,7 +646,12 @@ func _finish_marquee(world: Vector2) -> void:
 		_overlay.queue_redraw()
 		return
 	_selection = MapEditorSelection.in_rect(_document.data(), rect)
-	_set_status("%d selected — Delete to remove." % _selection.size() if not _selection.is_empty()
+	# Exactly one outline-shaped thing selected: show its corners, since that is the only
+	# case where "drag a corner" has an unambiguous subject.
+	var single := MapEditorSelection.single_outline(_document.data(), _selection)
+	_set_corner_target(single)
+	_set_status("%d selected%s — Delete to remove." % [_selection.size(),
+		" · drag its corners" if not single.is_empty() else ""] if not _selection.is_empty()
 		else "Nothing in the box.")
 	_overlay.queue_redraw()
 
@@ -793,6 +826,126 @@ func _cover_tiles_of(settlement: Dictionary, points: Array) -> void:
 			tiles.append(tile_id)
 	tiles.sort()
 	settlement["tiles"] = tiles
+
+
+# ── Parametric primitives and corner editing ───────────────────────────────────
+
+## Lay a primitive at its current side lengths.
+func _place_special(world: Vector2) -> void:
+	var settlement := _ensure_settlement()
+	var next_id := int(settlement.get("next_id", 1))
+	var record := AuthoredSpecialShapes.record(
+		"s:%s:%d" % [_settlement, next_id], _special_kind, world, _special_sides())
+	if record.is_empty():
+		_set_status("Could not build that primitive.")
+		return
+	_document.begin_edit("place %s" % _special_kind)
+	settlement = _ensure_settlement()
+	settlement["next_id"] = next_id + 1
+	var items: Array = settlement.get("specials", []) as Array
+	items.append(record)
+	settlement["specials"] = items
+	_cover_tiles_of(settlement, record.get("outline", []) as Array)
+	# Laying one selects it, so its parameters and corners are immediately to hand.
+	_corner_target = record
+	_overlay.queue_redraw()
+	_set_status("Placed %s — switch to Select (X) to drag its corners." % _special_kind)
+
+
+## The corners currently on show, in world units.
+func editable_corners() -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for entry in (_corner_target.get("outline", []) as Array):
+		var values: Array = entry as Array
+		if values != null and values.size() >= 2:
+			out.append(Vector2(float(values[0]), float(values[1])))
+	return out
+
+
+func held_corner() -> int:
+	return _held_corner
+
+
+func _corner_at(world: Vector2) -> int:
+	var corners := editable_corners()
+	var best := -1
+	var best_distance := CORNER_GRAB
+	for i in corners.size():
+		var distance := corners[i].distance_to(world)
+		# Strictly closer, so if two corners ever coincide the earlier one wins rather than
+		# the later shadowing it — the defect that made ring corners undraggable.
+		if distance < best_distance:
+			best_distance = distance
+			best = i
+	return best
+
+
+## Move the held corner. The outline is the truth once a corner has been dragged, so this
+## edits it directly rather than trying to solve back to side lengths — a shape reshaped by
+## hand and a shape defined by three numbers cannot both be true at once.
+func _move_corner(world: Vector2) -> void:
+	var outline: Array = _corner_target.get("outline", []) as Array
+	if _held_corner < 0 or _held_corner >= outline.size():
+		return
+	outline[_held_corner] = [world.x, world.y]
+	_corner_target["outline"] = outline
+	_overlay.queue_redraw()
+
+
+## Show a record's corners. Called when a selection resolves to exactly one outline-shaped
+## thing; more than one and there is no single shape to edit.
+func _set_corner_target(record: Dictionary) -> void:
+	_corner_target = record
+	_held_corner = -1
+	_overlay.queue_redraw()
+
+
+func current_special_kind() -> String:
+	return _special_kind
+
+
+func pick_special(kind: String) -> void:
+	_special_kind = kind
+	if _tool != TOOL_SPECIAL:
+		set_tool(TOOL_SPECIAL)
+	_set_status("Primitive: %s — click to place." % kind)
+	_refresh_status()
+
+
+## The side lengths shown in the panel: the selected primitive's own, or the defaults for the
+## kind about to be placed.
+func special_sides() -> Array:
+	if _corner_target.has("sides"):
+		return _corner_target.get("sides", []) as Array
+	return AuthoredSpecialShapes.defaults_for(_special_kind)
+
+
+func special_parameter_names() -> Array:
+	var kind := str(_corner_target.get("kind", _special_kind))
+	return AuthoredSpecialShapes.parameters_for(kind)
+
+
+func _special_sides() -> Array:
+	return AuthoredSpecialShapes.defaults_for(_special_kind)
+
+
+## Nudge one side length. On a placed primitive this REBUILDS its outline from the numbers,
+## discarding corner edits — said plainly in the status line rather than left to surprise.
+func adjust_special_side(index: int, delta: float) -> void:
+	if not _corner_target.has("sides"):
+		_set_status("Select a primitive first (X, then click it).")
+		return
+	var sides: Array = _corner_target.get("sides", []) as Array
+	if index < 0 or index >= sides.size():
+		return
+	_document.begin_edit("resize primitive")
+	sides[index] = AuthoredSpecialShapes.clamp_side(float(sides[index]) + delta)
+	_corner_target["sides"] = sides
+	AuthoredSpecialShapes.rebuild(_corner_target)
+	_overlay.queue_redraw()
+	_set_status("%s = %d  (rebuilt from parameters — corner edits cleared)"
+		% [str(special_parameter_names()[index]), int(sides[index])])
+	_refresh_status()
 
 
 func shape_tool() -> MapEditorShapeTool:
