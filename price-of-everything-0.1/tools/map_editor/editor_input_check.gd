@@ -273,6 +273,41 @@ func _ready() -> void:
 		_check("dragging a corner leaves the others alone (%d moved)" % others_moved,
 			others_moved == 0)
 
+	# ── Select: drag moves, click selects ───────────────────────────────────────
+	# The same button does three things depending on what is under it, so each is checked
+	# against the other two: a move must not select, a click must not move.
+	_editor.call("set_tool", "select")
+	var special := _last_of(doc, "specials")
+	var before_centre := _outline_centre(special)
+
+	# 1. Drag ON the shape: it moves, and nothing is left selected by the gesture.
+	await _drag(_screen_of(before_centre, camera),
+		_screen_of(before_centre + Vector2(90.0, 60.0), camera))
+	var after_centre := _outline_centre(_last_of(doc, "specials"))
+	var shift := after_centre - before_centre
+	_check("dragging a shape moves it (%.0f, %.0f)" % [shift.x, shift.y],
+		shift.distance_to(Vector2(90.0, 60.0)) < 12.0)
+	_check("the shape keeps its size while moving",
+		absf(_outline_width(_last_of(doc, "specials")) - _outline_width(special)) < 0.01)
+
+	# 2. Click ON the shape (press and release, no travel): it selects, and does not move.
+	var settled := _outline_centre(_last_of(doc, "specials"))
+	await _click(_screen_of(settled, camera))
+	_check("clicking a shape selects it", int(_editor.call("selection_size")) == 1)
+	_check("clicking does not move it",
+		_outline_centre(_last_of(doc, "specials")).distance_to(settled) < 0.01)
+	_check("clicking a primitive opens its corners",
+		(_editor.call("editable_corners") as PackedVector2Array).size() == 4)
+	_check("clicking a primitive opens its side lengths",
+		(_editor.call("special_sides") as Array).size() == 4)
+
+	# 3. Drag on EMPTY ground still box-selects rather than moving anything.
+	var empty := settled + Vector2(900.0, 900.0)
+	await _drag(_screen_of(empty, camera), _screen_of(empty + Vector2(120.0, 90.0), camera))
+	_check("dragging empty ground box-selects instead of moving",
+		int(_editor.call("selection_size")) == 0
+			and _outline_centre(_last_of(doc, "specials")).distance_to(settled) < 0.01)
+
 	if _failures.is_empty():
 		print("[INPUT] ALL CHECKS PASSED")
 		get_tree().quit(0)

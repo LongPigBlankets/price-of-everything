@@ -58,6 +58,11 @@ const TOOL_SPECIAL := "special"
 ## How close a click must land to a corner to pick it up, in world units.
 const CORNER_GRAB := 16.0
 
+## Screen pixels of movement before a press on a shape becomes a MOVE rather than a click.
+## In pixels rather than world units so the gesture feels the same at every zoom — the hand
+## does not know what a world unit is.
+const MOVE_THRESHOLD := 4.0
+
 ## Which settlement new content joins. P1 authors into one at a time; the settlement picker
 ## arrives with the tools that need to move content between them.
 const DEFAULT_SETTLEMENT := "untitled"
@@ -110,6 +115,13 @@ var _selection: Array = []
 ## outline — a primitive, a farm, a wood, a park — because they are all polygons.
 var _corner_target: Dictionary = {}
 var _held_corner := -1
+## The press-to-move-or-select gesture: what is under the cursor, where it started, and
+## whether the pointer has travelled far enough to call it a drag.
+var _grabbed: Array = []
+var _grab_world := Vector2.INF
+var _grab_screen := Vector2.INF
+var _grab_moved := false
+var _pending_hit: Dictionary = {}
 var _special_kind := "u"
 var _panel: MapEditorPanel
 var _tool := TOOL_PAN
@@ -319,6 +331,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_overlay.queue_redraw()
 		elif _tool == TOOL_SELECT and _held_corner >= 0:
 			_move_corner(_world_at(motion.position))
+		elif _tool == TOOL_SELECT and not _grabbed.is_empty():
+			_drag_grabbed(motion.position)
 		elif _tool == TOOL_STAMP and _shape_tool.is_stamping():
 			_shape_tool.drag_stamp(_world_at(motion.position))
 			_overlay.queue_redraw()
@@ -384,21 +398,9 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 						_place_special(world)
 				TOOL_SELECT:
 					if event.pressed:
-						# A click on a corner of the shape being edited grabs it; the
-						# marquee only starts when the click is not on a handle.
-						_held_corner = _corner_at(world)
-						if _held_corner >= 0:
-							_document.begin_edit("move corner")
-							return
-						_marquee_from = world
-						_marquee_to = world
+						_select_press(world, event.position)
 					else:
-						if _held_corner >= 0:
-							_held_corner = -1
-							_overlay.queue_redraw()
-							return
-						_finish_marquee(world)
-			_overlay.queue_redraw()
+						_select_release(world)
 		MOUSE_BUTTON_MIDDLE, MOUSE_BUTTON_RIGHT:
 			# Always available, whatever the tool: panning mid-stroke is normal when a road
 			# runs off the edge of the view.
@@ -852,6 +854,105 @@ func _place_special(world: Vector2) -> void:
 	_set_status("Placed %s — switch to Select (X) to drag its corners." % _special_kind)
 
 
+# ── Select: drag to move, click to select ──────────────────────────────────────
+#
+# One press does three different things depending on what is under it, in this order: a
+# corner handle of the shape already being edited, a shape (which then moves or selects), or
+# empty ground (which starts a marquee). Ordered so the most specific target wins — a corner
+# handle sits on top of its own shape, and grabbing the shape instead would make handles
+# unusable.
+
+func _select_press(world: Vector2, screen: Vector2) -> void:
+	_held_corner = _corner_at(world)
+	if _held_corner >= 0:
+		_document.begin_edit("move corner")
+		return
+	var hit := MapEditorSelection.at_point(_document.data(), world)
+	if hit.is_empty():
+		_marquee_from = world
+		_marquee_to = world
+		return
+	# Dragging something already in the selection moves the WHOLE selection; dragging
+	# something outside it moves just that thing. Anything else makes multi-select useless
+	# for arranging, which is most of what it is for.
+	var in_selection := false
+	for entry_value in _selection:
+		if str((entry_value as Dictionary).get("id", "")) == str(hit.get("id", "")):
+			in_selection = true
+	_grabbed = _records_of(_selection) if in_selection else [hit["record"]]
+	_grab_world = world
+	_grab_screen = screen
+	_grab_moved = false
+	# Recorded whether or not it was already selected: a click that never becomes a drag
+	# selects exactly what was under it, collapsing a multi-selection to that one thing.
+	# Only remembering it for unselected shapes meant clicking a member of a selection did
+	# nothing at all, which reads as the click having missed.
+	_pending_hit = hit
+
+
+func _drag_grabbed(screen: Vector2) -> void:
+	if _grab_screen.distance_to(screen) < MOVE_THRESHOLD and not _grab_moved:
+		return
+	if not _grab_moved:
+		# Snapshot once, at the moment it becomes a move — so undo steps back to before the
+		# drag rather than through every frame of it.
+		_document.begin_edit("move")
+		_grab_moved = true
+	var world := _world_at(screen)
+	var delta := world - _grab_world
+	_grab_world = world
+	for record in _grabbed:
+		MapEditorSelection.translate(record as Dictionary, delta)
+	_overlay.queue_redraw()
+
+
+func _select_release(world: Vector2) -> void:
+	if _held_corner >= 0:
+		_held_corner = -1
+		_overlay.queue_redraw()
+		return
+	if not _grabbed.is_empty():
+		var moved := _grab_moved
+		var hit := _pending_hit
+		_grabbed = []
+		_pending_hit = {}
+		_grab_world = Vector2.INF
+		_grab_screen = Vector2.INF
+		_grab_moved = false
+		if moved:
+			_set_status("Moved %d item%s." % [_selection.size() if _selection.size() > 1 else 1,
+				"" if _selection.size() <= 1 else "s"])
+			_refresh_status()
+			return
+		# A press that never travelled is a CLICK: select what was under it, and open its
+		# editable properties if it has any.
+		if not hit.is_empty():
+			_selection = [{"kind": hit["kind"], "settlement": hit["settlement"],
+				"index": hit["index"], "id": hit["id"]}]
+			var record: Dictionary = hit["record"]
+			_set_corner_target(record if record.has("outline") else {})
+			_set_status("Selected %s%s." % [str(hit["kind"]).trim_suffix("s"),
+				" — drag its corners, or adjust its sides" if record.has("sides")
+				else (" — drag its corners" if record.has("outline") else "")])
+			_refresh_status()
+		return
+	_finish_marquee(world)
+
+
+## The live records behind a selection, so a move can mutate them in place.
+func _records_of(selection: Array) -> Array:
+	var out: Array = []
+	var settlements: Dictionary = _document.data().get("settlements", {})
+	for entry_value in selection:
+		var entry: Dictionary = entry_value
+		var settlement: Dictionary = settlements.get(str(entry.get("settlement", "")), {})
+		var items: Array = settlement.get(str(entry.get("kind", "")), []) as Array
+		var index := int(entry.get("index", -1))
+		if index >= 0 and index < items.size():
+			out.append(items[index])
+	return out
+
+
 ## The corners currently on show, in world units.
 func editable_corners() -> PackedVector2Array:
 	var out := PackedVector2Array()
@@ -1036,6 +1137,8 @@ func set_tool(value: String) -> void:
 	_trace_tool.cancel_trace()
 	_shape_tool.abandon()
 	_anchor_grab = {}
+	_grabbed = []
+	_pending_hit = {}
 	_marquee_from = Vector2.INF
 	_marquee_to = Vector2.INF
 	_overlay.queue_redraw()
