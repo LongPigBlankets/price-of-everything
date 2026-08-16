@@ -18,8 +18,14 @@ extends Node
 ## and the suite untouched.
 
 const AuthoredMap := preload("res://scripts/authored_map.gd")
+const AuthoredRoadGeometry := preload("res://scripts/authored_road_geometry.gd")
 const MapEditorDocument := preload("res://scripts/map_editor/map_editor_document.gd")
 const MapEditorOverlay := preload("res://scripts/map_editor/map_editor_overlay.gd")
+const MapEditorRoadTool := preload("res://scripts/map_editor/map_editor_road_tool.gd")
+
+## Which settlement new content joins. P1 authors into one at a time; the settlement picker
+## arrives with the tools that need to move content between them.
+const DEFAULT_SETTLEMENT := "untitled"
 
 ## Frames to let the world settle before framing the camera. The shot tools use 150 and
 ## the world build is ~20-30 s of coroutine work on this branch; the readout reports when
@@ -37,15 +43,18 @@ const ZOOM_STEP := 1.12
 # return Variant, and `:=` inference then fails at parse time.
 var _document: MapEditorDocument
 var _overlay: MapEditorOverlay
+var _road_tool: MapEditorRoadTool
 var _world: Node
 var _camera: Camera2D
 var _status: Label
 var _ready_to_edit := false
 var _panning := false
+var _settlement := DEFAULT_SETTLEMENT
 
 
 func _ready() -> void:
 	_document = MapEditorDocument.new()
+	_road_tool = MapEditorRoadTool.new()
 	_build_chrome()
 	_boot_world()
 
@@ -145,10 +154,11 @@ func _set_status(text: String) -> void:
 
 func _refresh_status() -> void:
 	var counts := _document.counts()
-	_set_status("%s   |   %d settlements, %d roads, %d masses   |   %s   |   %s"
+	_set_status("%s   |   %d settlements, %d roads, %d masses   |   pen: %s (1/2/3)   |   %s   |   %s"
 		% [_document.display_name(), counts.settlements, counts.roads, counts.masses,
+			_road_tool.stroke_class().to_upper(),
 			"unsaved" if _document.is_dirty() else "saved",
-			"F5 save · F6 reload · Ctrl+Z undo · Ctrl+Shift+Z redo · Esc menu"])
+			"drag=curve · Enter end · Bksp back · F5 save · Esc menu"])
 
 
 # ── Input ───────────────────────────────────────────────────────────────────────
@@ -169,6 +179,17 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	match event.button_index:
+		MOUSE_BUTTON_LEFT:
+			if event.double_click and _road_tool.is_drawing():
+				_finish_stroke()
+			elif event.pressed:
+				# Alt places a raw point, bypassing the junction snap.
+				_road_tool.press(_world_at(event.position),
+					MapEditorRoadTool.snap_targets(_document.data()), not event.alt_pressed)
+				_overlay.queue_redraw()
+			else:
+				_road_tool.release(_world_at(event.position))
+				_overlay.queue_redraw()
 		MOUSE_BUTTON_MIDDLE, MOUSE_BUTTON_RIGHT:
 			_panning = event.pressed
 		MOUSE_BUTTON_WHEEL_UP:
@@ -185,7 +206,27 @@ func _handle_key(event: InputEventKey) -> void:
 			_save()
 		KEY_F6:
 			_reload()
+		KEY_1:
+			_road_tool.set_stroke_class("major")
+			_refresh_status()
+		KEY_2:
+			_road_tool.set_stroke_class("mid")
+			_refresh_status()
+		KEY_3:
+			_road_tool.set_stroke_class("minor")
+			_refresh_status()
+		KEY_ENTER, KEY_KP_ENTER:
+			_finish_stroke()
+		KEY_BACKSPACE:
+			_road_tool.undo_point()
+			_overlay.queue_redraw()
 		KEY_ESCAPE:
+			# Escape abandons an in-progress stroke first; only an idle Escape leaves.
+			if _road_tool.is_drawing():
+				_road_tool.abandon()
+				_overlay.queue_redraw()
+				_refresh_status()
+				return
 			_leave()
 		KEY_Z:
 			if event.ctrl_pressed or event.meta_pressed:
@@ -202,6 +243,85 @@ func _zoom_by(factor: float) -> void:
 	_camera.zoom = Vector2(z, z)
 	if "_target_zoom" in _camera:
 		_camera.set("_target_zoom", _camera.zoom)
+
+
+# ── Authoring ───────────────────────────────────────────────────────────────────
+
+## World position under a screen point. The inverse of the overlay's projection, and the
+## reason the editor drives the camera directly rather than letting the controller lerp:
+## a moving camera would put the click somewhere the designer did not aim.
+func _world_at(screen: Vector2) -> Vector2:
+	if _camera == null:
+		return screen
+	var viewport_size := get_viewport().get_visible_rect().size
+	return _camera.get_screen_center_position() + (screen - viewport_size * 0.5) / _camera.zoom.x
+
+
+## Commit the stroke being drawn into the document, under the current settlement.
+func _finish_stroke() -> void:
+	if not _road_tool.is_drawing():
+		return
+	var terrain := get_tree().get_first_node_in_group("hex_map")
+	var settlement := _ensure_settlement()
+	var next_id := int(settlement.get("next_id", 1))
+	var stroke := _road_tool.finish(_settlement, next_id, terrain)
+	if stroke.is_empty():
+		_set_status("Stroke discarded — too short to keep.")
+		_overlay.queue_redraw()
+		return
+	# begin_edit snapshots first, so this is undoable like every other mutation.
+	_document.begin_edit("draw road")
+	settlement = _ensure_settlement()
+	settlement["next_id"] = next_id + 1
+	var roads: Array = settlement.get("roads", []) as Array
+	roads.append(stroke)
+	settlement["roads"] = roads
+	# The settlement's tile list is the suppression key: a tile only stands its procedural
+	# systems down once something authored actually sits on it.
+	var tiles: Array = settlement.get("tiles", []) as Array
+	for tile_id in (stroke.get("tiles", []) as Array):
+		if not tiles.has(tile_id):
+			tiles.append(tile_id)
+	tiles.sort()
+	settlement["tiles"] = tiles
+	_overlay.queue_redraw()
+	_report_stroke(stroke)
+
+
+func _report_stroke(stroke: Dictionary) -> void:
+	var wet := _wet_length(stroke)
+	var note := "%s road, %d tiles%s" % [
+		str(stroke.get("class", "")),
+		(stroke.get("tiles", []) as Array).size(),
+		", UNLOCKABLE" if bool(stroke.get("unlockable", false)) else "",
+	]
+	if not (stroke.get("bridges", []) as Array).is_empty():
+		note += ", %d bridge(s)" % (stroke.get("bridges", []) as Array).size()
+	if wet > 0.0:
+		# The lint that matters most: a road drawn over sea or lake. Reported rather than
+		# refused — the designer may be mid-stroke on a causeway — but never silent.
+		note += "   ⚠ %d sample(s) OVER WATER" % int(wet)
+	_set_status(note)
+
+
+func _wet_length(stroke: Dictionary) -> float:
+	var centreline := AuthoredRoadGeometry.sample(stroke)
+	return float(AuthoredRoadGeometry.wet_samples(centreline, NavGrid.instance()).size())
+
+
+## The settlement new content joins, created on first use.
+func _ensure_settlement() -> Dictionary:
+	var doc := _document.data()
+	var settlements_value: Variant = doc.get("settlements", {})
+	var settlements: Dictionary = settlements_value if typeof(settlements_value) == TYPE_DICTIONARY else {}
+	if not settlements.has(_settlement):
+		settlements[_settlement] = {"tiles": [], "next_id": 1, "roads": []}
+	doc["settlements"] = settlements
+	return settlements[_settlement]
+
+
+func road_tool() -> MapEditorRoadTool:
+	return _road_tool
 
 
 # ── Document ────────────────────────────────────────────────────────────────────

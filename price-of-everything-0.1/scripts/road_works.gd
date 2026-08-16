@@ -18,6 +18,9 @@ extends Node
 ## that must detour to a bridge gate via the coarse pass) finish in a few
 ## seconds rather than ~10 — the work is small (~0.5 s CPU) but the conservative
 ## old 4 ms budget only ran ~1 search unit per frame.
+## Hand-authored tiles draw their own roads and suppress procedural geometry jobs.
+const AuthoredMap := preload("res://scripts/authored_map.gd")
+
 const PLAN_BUDGET_MS := 6.0
 ## Mass-build burst: with a deep queue (e.g. 100 completions in one PROCESS)
 ## the budget rises toward the 8 ms frame ceiling so the backlog clears fast.
@@ -102,6 +105,14 @@ func _on_construction_completed(instance_id: String, tile_id: String) -> void:
 	var building_id := str(MatchState.get_building(instance_id).get("building_id", ""))
 	var internal := str(Catalog.get_building(building_id).get("internal_name", ""))
 	if internal == "roads":
+		# A hand-authored tile already has its roads drawn, including the connectors that
+		# reveal the moment this flag lands. Planning a connect job and densify spurs here
+		# would grow procedural stubs alongside the authored linework — the same "inventing
+		# roads to suit something else is backwards" defect that got block service streets
+		# removed. Only the GEOMETRY is skipped: the infrastructure flag, the transport
+		# cost and everything else the simulation reads are set by the caller regardless.
+		if AuthoredMap.covers(tile_id):
+			return
 		enqueue_for_tile(tile_id)
 		_enqueue_densify(tile_id)
 

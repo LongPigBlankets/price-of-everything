@@ -9,6 +9,7 @@
 [ext_resource type="Script" path="res://scripts/urban_fabric_visuals.gd" id="3_urbanfabric"]
 [ext_resource type="Script" path="res://scripts/hex_grid_overlay.gd" id="3_hexgrid"]
 [ext_resource type="Script" path="res://scripts/road_network_visuals.gd" id="3_roadsv2"]
+[ext_resource type="Script" path="res://scripts/authored_road_visuals.gd" id="3_authroads"]
 [ext_resource type="Script" uid="uid://dpj2cadgfaauj" path="res://scenes/building_visuals.gd" id="4_choun"]
 [ext_resource type="Script" uid="uid://bt2kwldefvxx1" path="res://scripts/camera_controller.gd" id="5_tbgi4"]
 [ext_resource type="Script" uid="uid://dvo2xw2gwx3y4" path="res://scripts/map_overlay.gd" id="6_eb6dy"]
@@ -173,6 +174,9 @@ script = ExtResource("4_choun")
 
 [node name="RoadNetworkVisuals" type="Node2D" parent="." unique_id=1474032119]
 script = ExtResource("3_roadsv2")
+
+[node name="AuthoredRoadVisuals" type="Node2D" parent="."]
+script = ExtResource("3_authroads")
 
 [node name="HexGridOverlay" type="Node2D" parent="." unique_id=1474032118]
 script = ExtResource("3_hexgrid")

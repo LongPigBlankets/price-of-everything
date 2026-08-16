@@ -16,6 +16,9 @@ extends Node2D
 # Junctions are kept to at most 5 roads upstream (RoadWorks degree cap) — there
 # is no special junction glyph; roads simply meet and merge.
 
+## Hand-authored tiles draw their own roads; this layer stands down on them.
+const AuthoredMap := preload("res://scripts/authored_map.gd")
+
 var _drawn_edges := -1
 var _drawn_previews := -1
 var _drawn_fp_version := -1   # terminus glyphs depend on building footprints
@@ -507,14 +510,26 @@ func _near_building(bv: Node, pos: Vector2) -> bool:
 			return true
 	return false
 
-## Set of tile coords whose infrastructure carries "roads" (built or seeded).
+## Set of tile coords whose infrastructure carries "roads" (built or seeded) AND whose
+## roads this layer is responsible for drawing.
+##
+## HAND-AUTHORED TILES ARE EXCLUDED. This set is a pure RENDERING input — it decides which
+## baked geometry gets drawn, never what the simulation reads — so dropping an authored tile
+## from it removes the baked network's linework there and leaves `AuthoredRoadVisuals` to
+## draw the hand-drawn roads instead. The tile keeps its infrastructure flag, its transport
+## cost and its capacity; only the picture changes.
 func _flagged_tiles(terrain: HexMap) -> Dictionary:
 	var out: Dictionary = {}
 	if terrain == null:
 		return out
+	var authored := AuthoredMap.is_active()
 	for coord in terrain.tiles:
-		if (terrain.tiles[coord].get("infrastructure_present", []) as Array).has("roads"):
-			out[coord] = true
+		var tile: Dictionary = terrain.tiles[coord]
+		if not (tile.get("infrastructure_present", []) as Array).has("roads"):
+			continue
+		if authored and AuthoredMap.covers(str(tile.get("id", ""))):
+			continue
+		out[coord] = true
 	return out
 
 func _point_built(terrain: HexMap, flagged: Dictionary, p: Vector2) -> bool:

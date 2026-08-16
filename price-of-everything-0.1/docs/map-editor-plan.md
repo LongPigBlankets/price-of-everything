@@ -460,14 +460,17 @@ feature is opt-in, like midcentury itself), plus the phase's own gates.
   main-menu → editor launch path; export exclusions + the shipped-code reference guard.
   *Gate: editor opens from the menu after `debug CandC`, draws nothing, suite green, and
   no shipped script references the excluded paths.*
-- **P1 — Roads.** Pen tool, 3 classes at 18/12.6/6.3 u, curves/straights, wobble, snapping,
-  unlockable tagging (touched-tile sets), auto bridge decks at wet chords, water lint, and
-  the **per-class curation pass** (§10.1) with the owner on real tiles. `AuthoredRoadLayer`
-  (vector path only at this phase), suppression in `RoadNetworkVisuals` + `RoadWorks`, the
-  `tile_infrastructure_changed` signal. *Gate: draw a test settlement's streets; buy roads
-  on its tile in a real game → the tile's streets AND the connector from its roaded
-  neighbour appear together, no stub beforehand; water audit zero; classic style
-  byte-identical.*
+- **P1 — Roads. ✅ BUILT.** Pen tool (click = corner, drag = curve handles), 3 classes at
+  18/12.6/6.3 u, per-class curated style table (`authored_road_style.gd` — the values the
+  owner rules on), seeded wobble, junction snapping, unlockable tagging from touched-tile
+  sets, auto bridge decks at river crossings, water lint. `AuthoredRoadVisuals` (vector),
+  suppression in `RoadNetworkVisuals` + `RoadWorks`, the `tile_infrastructure_changed`
+  signal. *Gate MET, measured by `tools/map_editor/authored_unlock_check.tscn`: before the
+  purchase only the always-on stroke draws and the connector is absent entirely (no stub);
+  after it, the street and the connector appear together — verified as stroke-id lists AND
+  as a 466-pixel change in the rendered frame. Suite 2671/0, e2e 748/0 with no document.*
+  **Still owed: the per-class curation pass with the owner on real tiles (§10.1) — the
+  table ships with defended defaults, not a ruling.**
 - **P2 — Fabric & ground.** Stamp tool (17 forms + params + reroll), parks, **farm/forest
   polygon tool** (≤8 vertices, generated fills, building-overlap lints), shared mass
   painter, fabric + forest suppression, audit exemption, **import-existing command**

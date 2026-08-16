@@ -15,6 +15,8 @@ extends Control
 ## tile centre are the map's geometry, and a private copy here would drift the day tile size
 ## changes.
 const HexGridOverlayRef := preload("res://scripts/hex_grid_overlay.gd")
+const AuthoredRoadGeometry := preload("res://scripts/authored_road_geometry.gd")
+const AuthoredRoadStyle := preload("res://scripts/authored_road_style.gd")
 
 ## Tile ids stop being readable below this zoom, and drawing ~600 of them wastes the frame.
 const LABEL_MIN_ZOOM := 0.45
@@ -25,6 +27,14 @@ const GRID_COLOR := Color(0.45, 0.85, 0.6, 0.30)
 const GRID_WIDTH := 1.0
 const LABEL_COLOR := Color(0.60, 0.95, 0.75, 0.55)
 const LABEL_SIZE := 11
+
+## The stroke being drawn, and the handles/points of finished ones. Editor scaffolding, so
+## these are screen-constant and deliberately unlike anything in the map's own palette.
+const PEN_COLOR := Color(1.0, 0.85, 0.25, 0.95)
+const PEN_POINT_COLOR := Color(1.0, 0.95, 0.6, 1.0)
+const HANDLE_COLOR := Color(0.55, 0.85, 1.0, 0.9)
+const UNLOCKABLE_COLOR := Color(0.45, 0.8, 1.0, 0.85)
+const POINT_RADIUS := 3.0
 
 ## Set by `map_editor.gd` after construction (an editor tool, not a shipped node, so a
 ## plain assignment beats a signal here). Untyped to avoid a preload cycle with the editor
@@ -49,10 +59,83 @@ func _process(_delta: float) -> void:
 
 
 func _draw() -> void:
-	if editor == null or not show_grid:
+	if editor == null:
 		return
 	var camera: Camera2D = editor.call("camera")
 	if camera == null:
+		return
+	_draw_grid(camera)
+	_draw_authored_roads(camera)
+	_draw_pen(camera)
+
+
+## Authored roads, at their true world widths so what the designer sees is what the game
+## will draw. Unlockable strokes carry a dashed blue overline — they are the ones whose
+## visibility depends on play, and a designer needs to see at a glance which parts of a
+## settlement will be missing at turn one.
+func _draw_authored_roads(camera: Camera2D) -> void:
+	var document: Dictionary = editor.call("document").call("data")
+	var settlements_value: Variant = document.get("settlements", {})
+	if typeof(settlements_value) != TYPE_DICTIONARY:
+		return
+	var settlements: Dictionary = settlements_value
+	for key in settlements.keys():
+		var settlement_value: Variant = settlements[key]
+		if typeof(settlement_value) != TYPE_DICTIONARY:
+			continue
+		for stroke_value in ((settlement_value as Dictionary).get("roads", []) as Array):
+			if typeof(stroke_value) != TYPE_DICTIONARY:
+				continue
+			var stroke: Dictionary = stroke_value
+			var world_points := AuthoredRoadGeometry.polyline(stroke)
+			if world_points.size() < 2:
+				continue
+			var stroke_class := str(stroke.get("class", "mid"))
+			var screen := _project(world_points, camera)
+			# World width scaled by zoom: the stroke is zoom-invariant world geometry, so
+			# its on-screen thickness must track the camera exactly as the game's will.
+			draw_polyline(screen, AuthoredRoadStyle.casing_color(stroke_class),
+				AuthoredRoadStyle.casing_width(stroke_class) * camera.zoom.x, true)
+			draw_polyline(screen, AuthoredRoadStyle.bed_color(stroke_class),
+				AuthoredRoadStyle.bed_width(stroke_class) * camera.zoom.x, true)
+			if bool(stroke.get("unlockable", false)):
+				draw_polyline(screen, UNLOCKABLE_COLOR, 1.6, true)
+
+
+## The stroke in progress: the line so far, its points, and the handles of any curve point.
+func _draw_pen(camera: Camera2D) -> void:
+	var tool_ref: RefCounted = editor.call("road_tool")
+	if tool_ref == null or not bool(tool_ref.call("is_drawing")):
+		return
+	var points: Array = tool_ref.call("preview_points")
+	var stroke := {"id": "__preview__", "class": str(tool_ref.call("stroke_class")), "points": points}
+	var world_points := AuthoredRoadGeometry.sample(stroke)
+	if world_points.size() >= 2:
+		draw_polyline(_project(world_points, camera), PEN_COLOR, 2.0, true)
+	for entry_value in points:
+		var entry: Array = entry_value as Array
+		if entry == null or entry.size() < 2:
+			continue
+		var anchor := Vector2(float(entry[0]), float(entry[1]))
+		var screen_anchor := _to_screen(anchor, camera)
+		draw_circle(screen_anchor, POINT_RADIUS, PEN_POINT_COLOR)
+		if entry.size() >= 6:
+			for handle in [Vector2(float(entry[2]), float(entry[3])),
+					Vector2(float(entry[4]), float(entry[5]))]:
+				var screen_handle := _to_screen(anchor + handle, camera)
+				draw_line(screen_anchor, screen_handle, HANDLE_COLOR, 1.0, true)
+				draw_circle(screen_handle, POINT_RADIUS * 0.7, HANDLE_COLOR)
+
+
+func _project(points: PackedVector2Array, camera: Camera2D) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for point in points:
+		out.append(_to_screen(point, camera))
+	return out
+
+
+func _draw_grid(camera: Camera2D) -> void:
+	if not show_grid:
 		return
 	var zoom := camera.zoom.x
 	if zoom < GRID_MIN_ZOOM:

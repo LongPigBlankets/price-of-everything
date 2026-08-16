@@ -24,6 +24,10 @@ const BuildingReadout := preload("res://scripts/building_readout.gd")
 const BuildForecast := preload("res://scripts/build_forecast.gd")
 const MassFormShapes := preload("res://scripts/mass_form_shapes.gd")
 const AuthoredMap := preload("res://scripts/authored_map.gd")
+const AuthoredRoadGeometry := preload("res://scripts/authored_road_geometry.gd")
+const AuthoredRoadStyle := preload("res://scripts/authored_road_style.gd")
+const WorldMapScript := preload("res://scripts/world_map.gd")
+const AuthoredRoadVisualsScript := preload("res://scripts/authored_road_visuals.gd")
 const AppPaths := preload("res://scripts/app_paths.gd")  # saves now live in <base>/savegames/
 
 func _ready() -> void:
@@ -58,6 +62,12 @@ func _ready() -> void:
 	_test_authored_map_slot_classes()
 	_test_authored_map_round_trip()
 	_test_shipped_code_avoids_editor_only_paths()
+	_test_authored_road_geometry()
+	_test_authored_road_touched_tiles()
+	_test_authored_road_style_hierarchy()
+	_test_authored_road_water_and_bridges()
+	_test_authored_road_visibility_document()
+	_test_authored_road_signal_arity()
 	_test_coal_prohibition()
 	_test_scheduled_coal_prohibition()
 	_test_widgets_instantiate()
@@ -15013,3 +15023,206 @@ func _gd_files_in(directory: String) -> PackedStringArray:
 		entry = dir.get_next()
 	dir.list_dir_end()
 	return out
+
+
+# ======================================================================================
+# Authored roads (scripts/authored_road_{geometry,style,visuals}.gd)
+#
+# Three properties decide whether a hand-drawn road behaves: its geometry is deterministic
+# and keeps the endpoints the designer placed; the touched-tile set is COMPLETE, because
+# the unlock rule reads it; and the three width classes stay a real hierarchy.
+# ======================================================================================
+
+## Minimal stand-in for HexMap: a square 100 u grid, so a test can assert which tiles a
+## stroke crosses without building the world. The property under test is the SAMPLING —
+## whether a long segment can slip past a tile between two vertices — and that is
+## independent of the real hex geometry.
+class _StubTerrain extends Node:
+	var tiles := {}
+
+	func _init() -> void:
+		for x in 12:
+			for y in 4:
+				tiles[Vector2i(x, y)] = {"id": "stub_%d_%d" % [x, y], "infrastructure_present": []}
+
+	func local_to_map(p: Vector2) -> Vector2i:
+		return Vector2i(int(floor(p.x / 100.0)), int(floor(p.y / 100.0)))
+
+	func tile_coord_for_map_coord(c: Vector2i) -> Vector2i:
+		return c
+
+	func id_to_coord(id: String) -> Vector2i:
+		var parts := id.split("_")
+		if parts.size() < 3:
+			return Vector2i(-1, -1)
+		return Vector2i(int(parts[1]), int(parts[2]))
+
+
+func _test_authored_road_geometry() -> void:
+	# A stroke of plain corners must stay exactly those corners: resampling a straight run
+	# would multiply its vertices for nothing and move the wobble's phase.
+	var straight := {"id": "r:s", "class": "mid", "points": [[0, 0], [100, 0], [100, 80]]}
+	var sampled := AuthoredRoadGeometry.sample(straight)
+	_check(sampled.size() == 3, "authored roads: an all-corner stroke keeps its corners")
+	_check(sampled[0] == Vector2(0, 0) and sampled[2] == Vector2(100, 80),
+		"authored roads: corner positions are preserved exactly")
+
+	# A point with handles becomes a curve, which must be denser than its control points
+	# and must still start and end where the designer put it.
+	var curved := {"id": "r:c", "class": "mid",
+		"points": [[0, 0], [100, 0, -40, -40, 40, 40], [200, 0]]}
+	var curve_points := AuthoredRoadGeometry.sample(curved)
+	_check(curve_points.size() > 3, "authored roads: handles produce a sampled curve")
+	_check(curve_points[0].distance_to(Vector2(0, 0)) < 0.01
+		and curve_points[curve_points.size() - 1].distance_to(Vector2(200, 0)) < 0.01,
+		"authored roads: a curve still begins and ends on its authored endpoints")
+
+	# Determinism, and endpoint exactness through the wobble: a stroke must look the same on
+	# every load, and must still meet whatever it was drawn to meet.
+	var drawn_a := AuthoredRoadGeometry.polyline(straight)
+	var drawn_b := AuthoredRoadGeometry.polyline(straight)
+	_check(drawn_a == drawn_b, "authored roads: the drawn line is deterministic")
+	_check(drawn_a[0] == Vector2(0, 0)
+		and drawn_a[drawn_a.size() - 1] == Vector2(100, 80),
+		"authored roads: the wobble leaves both endpoints exact")
+	_check(drawn_a.size() > sampled.size(),
+		"authored roads: the wobble subdivides the line it is applied to")
+
+	# Two strokes with IDENTICAL geometry must not be congruent — the same rule the mass
+	# vocabulary lives by, applied to linework.
+	var twin := {"id": "r:s2", "class": "mid", "points": [[0, 0], [100, 0], [100, 80]]}
+	_check(AuthoredRoadGeometry.polyline(twin) != drawn_a,
+		"authored roads: two identical strokes wobble differently (seeded by id)")
+
+	var length := AuthoredRoadGeometry.length_of(sampled)
+	_check(absf(length - 180.0) < 0.01, "authored roads: length_of measures the polyline")
+
+
+func _test_authored_road_touched_tiles() -> void:
+	# THE UNLOCK RULE READS THIS SET, so a missed tile would let a stroke appear across land
+	# the player has not connected. A 1000 u straight run crosses eleven stub tiles with
+	# only two vertices — per-vertex testing would report two, and a sampling step coarser
+	# than the tile would skip whole tiles in the middle (which it did, at the first attempt).
+	var terrain := _StubTerrain.new()
+	var stroke := {"id": "r:t", "class": "mid", "points": [[50, 50], [1050, 50]]}
+	var tiles := AuthoredRoadGeometry.touched_tiles(AuthoredRoadGeometry.sample(stroke), terrain)
+	_check(tiles.size() == 11,
+		"authored roads: a long segment reports every tile it crosses (%d)" % tiles.size())
+	for column in 11:
+		_check(tiles.has("stub_%d_0" % column),
+			"authored roads: no tile is skipped mid-run (stub_%d_0)" % column)
+	_check(tiles.has("stub_0_0") and tiles.has("stub_10_0"),
+		"authored roads: both ends of the run are in the touched set")
+	var sorted_copy := tiles.duplicate()
+	sorted_copy.sort()
+	_check(tiles == sorted_copy, "authored roads: the touched-tile set is sorted (stable in git)")
+	terrain.free()
+
+
+func _test_authored_road_style_hierarchy() -> void:
+	# The three classes must read as a hierarchy at every level of the treatment, not just
+	# in width — this is what lets a designer tell them apart on a busy plate.
+	var classes := ["major", "mid", "minor"]
+	for index in range(classes.size() - 1):
+		var bigger: String = classes[index]
+		var smaller: String = classes[index + 1]
+		_check(AuthoredRoadStyle.bed_width(bigger) > AuthoredRoadStyle.bed_width(smaller),
+			"authored roads: %s is wider than %s" % [bigger, smaller])
+		_check(AuthoredRoadStyle.casing_color(bigger).a > AuthoredRoadStyle.casing_color(smaller).a,
+			"authored roads: %s carries the firmer ink edge" % bigger)
+		# Smaller roads wobble more — the curated departure from one map-wide setting.
+		_check(float(AuthoredRoadStyle.wobble(bigger)[1]) < float(AuthoredRoadStyle.wobble(smaller)[1]),
+			"authored roads: %s runs straighter than %s" % [bigger, smaller])
+	for stroke_class in classes:
+		_check(AuthoredRoadStyle.casing_width(stroke_class) > AuthoredRoadStyle.bed_width(stroke_class),
+			"authored roads: the %s casing stands proud of its bed" % stroke_class)
+	# Authored strokes are never RDP-simplified: that would flatten the drawn curves.
+	_check(is_zero_approx(AuthoredRoadStyle.SIMPLIFY_EPS),
+		"authored roads: authored curves are not simplified away")
+
+
+func _test_authored_road_water_and_bridges() -> void:
+	# Water detection runs against the real NavGrid, sampled at 4 u — the resolution the
+	# road-water audit needed to catch a chord crossing a bay between two dry vertices.
+	var nav := NavGrid.instance()
+	if nav == null or not nav.is_ready():
+		_check(true, "authored roads: NavGrid unavailable, water lint skipped")
+		return
+	var sea_point := Vector2.ZERO
+	var found := false
+	# Walk the grid for a sea cell rather than hard-coding a coordinate, which would rot
+	# the moment the terrain is re-baked.
+	for ix in range(0, 1200, 17):
+		for iy in range(0, 1000, 17):
+			if nav.water(ix, iy) == NavGrid.WATER_SEA:
+				sea_point = nav.world_of(ix, iy)
+				found = true
+				break
+		if found:
+			break
+	_check(found, "authored roads: the terrain has sea to test against")
+	if not found:
+		return
+	var wet_stroke := {"id": "r:w", "class": "mid",
+		"points": [[sea_point.x - 30.0, sea_point.y], [sea_point.x + 30.0, sea_point.y]]}
+	var wet := AuthoredRoadGeometry.wet_samples(AuthoredRoadGeometry.sample(wet_stroke), nav)
+	_check(not wet.is_empty(), "authored roads: a stroke over the sea is reported wet")
+	_check(int(wet[0][1]) == NavGrid.WATER_SEA,
+		"authored roads: the wet report names the water it found")
+
+	# Rivers are deliberately NOT wet: roads bridge them, and the stroke carries the deck.
+	var crossings := AuthoredRoadGeometry.river_crossings(
+		AuthoredRoadGeometry.sample(wet_stroke), nav)
+	_check(crossings.is_empty() or (crossings[0][1] as Vector2).length() > 0.9,
+		"authored roads: a reported crossing carries a unit tangent for its deck")
+
+
+func _test_authored_road_visibility_document() -> void:
+	# The end-to-end unlock behaviour over a whole document: an always-on stroke, a street
+	# inside one roadless tile, and a connector from an already-roaded neighbour.
+	var strokes := [
+		{"id": "r:always", "class": "major", "tiles": ["tile_1_1"]},
+		{"id": "r:street", "class": "minor", "unlockable": true, "tiles": ["tile_1_2"]},
+		{"id": "r:link", "class": "mid", "unlockable": true, "tiles": ["tile_1_1", "tile_1_2"]},
+	]
+	var before := {"tile_1_1": true}
+	var visible_before: Array = []
+	for stroke in strokes:
+		if AuthoredMap.road_visible(stroke, before):
+			visible_before.append(str(stroke.id))
+	_check(visible_before == ["r:always"],
+		"authored roads: before the purchase only the always-on stroke draws")
+
+	var after := {"tile_1_1": true, "tile_1_2": true}
+	var visible_after: Array = []
+	for stroke in strokes:
+		if AuthoredMap.road_visible(stroke, after):
+			visible_after.append(str(stroke.id))
+	_check(visible_after.size() == 3,
+		"authored roads: buying roads reveals the tile's street AND its connector together")
+
+
+func _test_authored_road_signal_arity() -> void:
+	# A handler with FEWER parameters than its signal still connects, and fails only when
+	# the signal fires — the error goes to the log while the feature just silently stops
+	# updating. That exact mismatch (a 1-argument handler on a 2-argument signal) made the
+	# unlock reveal a no-op while every unit test passed, and only a windowed pixel diff
+	# caught it. This pins the arity so the next edit to either side breaks a test instead.
+	# Held as Script resources: calling these through the preloaded constant reads as a call
+	# on the class itself, which GDScript rejects.
+	var world_script: Script = WorldMapScript
+	var visuals_script: Script = AuthoredRoadVisualsScript
+	var signal_args := -1
+	for entry in world_script.get_script_signal_list():
+		if str(entry.get("name", "")) == "tile_infrastructure_changed":
+			signal_args = (entry.get("args", []) as Array).size()
+	_check(signal_args == 2,
+		"authored roads: tile_infrastructure_changed carries (tile_id, infra_type)")
+
+	var handler_args := -1
+	for entry in visuals_script.get_script_method_list():
+		if str(entry.get("name", "")) == "_on_tile_infrastructure_changed":
+			handler_args = (entry.get("args", []) as Array).size()
+	_check(handler_args == signal_args,
+		"authored roads: the reveal handler takes exactly the signal's arguments (%d vs %d)"
+		% [handler_args, signal_args])
