@@ -268,7 +268,6 @@ var _service_world: Dictionary = {}   # the same lanes in world space, for _draw
 var _tile_rivers: Dictionary = {}     # tile_id -> Array of [a, b] river-arm segments (rel to centre)
 var _tile_block_mode: Dictionary = {}      # tile_id -> bool (seeded once, urban-only)
 var _tile_block_templates: Dictionary = {} # tile_id -> {angle, lots:Array[Vector2], claimed:Array[bool]} ({} = no block)
-var _block_streets: Dictionary = {}        # tile_id -> [[world a, world b]] side roads (earned by a 2nd-row build)
 var _grew_this_claim := false              # re-entry guard for the grow-and-retry in _claim_slot
 
 # Ancillary tanks/annexes (second pass, re-derived; never persisted). Each: {tile_id, verts (world), color, bb}.
@@ -1130,10 +1129,6 @@ func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: St
 			continue
 		claimed[i] = true
 		_grow_block_rows(tmpl, tile_id, coord)   # keep spare lots ahead of demand
-		# Occupying a lot behind the frontage row is what earns the block its
-		# side roads — they are access to something, not decoration.
-		if int((tmpl.get("rows", []) as Array)[i] if i < (tmpl.get("rows", []) as Array).size() else 0) >= 1:
-			_ensure_block_side_roads(tmpl, tile_id, coord)
 		return _finalize(coord, ctr, rv, half)
 	# Every lot is spoken for — but lots are also consumed when they turn out to
 	# be blocked, and that path never reaches the growth call above. Grow now and
@@ -1211,40 +1206,6 @@ func _append_block_lots(tmpl: Dictionary, tile_id: String, coord: Vector2i, cols
 			(tmpl.rows as Array).append(r)
 			added += 1
 	return added
-
-## Side roads for a block whose second row has started to fill: they run out of
-## the fronting road along the block's two sides, as far back as the occupied
-## rows reach. Built once per tile, and each side is dropped if it would cross
-## water — unvalidated street geometry drew over the sea last time.
-func _ensure_block_side_roads(tmpl: Dictionary, tile_id: String, coord: Vector2i) -> void:
-	if _block_streets.has(tile_id) or not tmpl.has("origin"):
-		return
-	var origin: Vector2 = tmpl.origin
-	var tangent: Vector2 = tmpl.tangent
-	var normal: Vector2 = tmpl.normal
-	var cols: int = int(tmpl.get("cols", 2))
-	var frontage: float = float(tmpl.get("frontage", 0.0))
-	var depth := float(BLOCK_ROWS - 1) * BLOCK_LOT + BLOCK_LOT * 0.6
-	var world_origin := _tile_center_world_pos(coord)
-	var nav := NavGrid.instance()
-	var out: Array = []
-	for side in [-0.6, float(cols - 1) + 0.6]:
-		var base: Vector2 = origin + tangent * (side * BLOCK_LOT)
-		var a: Vector2 = base - normal * frontage          # at the fronting road
-		var b: Vector2 = base + normal * depth             # back past the last row
-		var dry := true
-		if nav != null and nav.is_ready():
-			for t in 6:
-				var p: Vector2 = world_origin + a.lerp(b, float(t) / 5.0)
-				var c := nav.cell_of(p)
-				if nav.water(c.x, c.y) != 0:
-					dry = false
-					break
-		if dry:
-			out.append([world_origin + a, world_origin + b])
-	if not out.is_empty():
-		_block_streets[tile_id] = out
-		queue_redraw()
 
 ## Re-run every placement (one-shot) now that the road network exists, so seeds laid
 ## out before bootstrap snap to frontage — and so any seed laid out before NavGrid was
@@ -4279,11 +4240,6 @@ func _draw() -> void:
 				draw_circle(_poly_centroid(verts), 2.4, MapStyle.ink_color())
 			elif verts.size() == 4:
 				_draw_roof_motifs(str(placement.cat), str(placement.instance_id), verts, bool(placement.is_npc), top)
-	# Block side roads — only exist once a second-row lot was actually built on.
-	for tid_s in _block_streets:
-		for s in (_block_streets[tid_s] as Array):
-			draw_line(s[0], s[1], MapStyle.road_casing(), 11.0, true)
-			draw_line(s[0], s[1], MapStyle.road_local(), 7.0, true)
 	# Service lanes: SERVICE_WIDTH of carriageway and a hairline casing. Deliberately
 	# far thinner than a local road — the eye should read them as access, not route,
 	# and the thinness is the visual promise that they cost almost no land.
