@@ -8,6 +8,11 @@ extends Node2D
 ## roads, water and forest discs are avoidance inputs only.
 
 const TILE_CENTER := Vector2(270.0, 240.0)
+## How far beyond a tile's own box a NEIGHBOUR's gameplay footprint can still
+## reach into it. Generous on purpose: the cost of over-including a footprint is
+## one extra polygon test, the cost of under-including is a reserved plot drawn
+## underneath a building that already exists.
+const ACCOMMODATION_FOOTPRINT_REACH := 160.0
 static var HEX_VERTS := PackedVector2Array([
 	Vector2(-135.0, -240.0), Vector2(135.0, -240.0), Vector2(270.0, 0.0),
 	Vector2(135.0, 240.0), Vector2(-135.0, 240.0), Vector2(-270.0, 0.0),
@@ -3988,10 +3993,27 @@ func _plan_accommodation_sites(specs: Array, roads: Array,
 				continue
 			allowed.append(record.poly)
 			allowed_roles[allowed.size() - 1] = role
+		# A gameplay footprint can SPILL across a tile boundary, so selecting it by
+		# tile_id alone hides a neighbour's building from this tile's planner — and,
+		# because validate_sites() is handed this same list, from its validator too.
+		# That is why existing_footprint_overlap_count read zero while sites were
+		# visibly reserved underneath existing buildings. Select by GEOMETRY instead:
+		# any footprint whose bounds reach this tile's box, whichever tile owns it.
+		# (Same defect the K1-A pass fixed for decorative masses — "source-tile-only
+		# footprint discovery" — which the accommodation planner never inherited.)
+		var tile_box := Rect2(spec.center - TILE_CENTER, TILE_CENTER * 2.0).grow(
+			ACCOMMODATION_FOOTPRINT_REACH)
 		var tile_gameplay: Array = []
 		for gameplay_value in gameplay_sites:
 			var gameplay: Dictionary = gameplay_value
-			if str(gameplay.get("tile_id", "")) == str(spec.id):
+			var bb: Rect2 = gameplay.get("rect", Rect2())
+			if bb.size.x <= 0.0 or bb.size.y <= 0.0:
+				# No bounds recorded — fall back to the old ownership test rather
+				# than silently dropping the footprint.
+				if str(gameplay.get("tile_id", "")) == str(spec.id):
+					tile_gameplay.append(gameplay)
+				continue
+			if tile_box.intersects(bb):
 				tile_gameplay.append(gameplay)
 		var service_lanes: Array = []
 		if _buildings != null and _buildings.has_method(
