@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://tools/map_editor/menu_gate_check.gd" id="1"]
+
+[node name="MenuGateCheck" type="Node"]
+script = ExtResource("1")
