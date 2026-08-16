@@ -6,6 +6,13 @@ extends Control
 ## "CARBON AND CAPITAL" title. Only New Game is wired up so far.
 
 const MAP_SCENE := "res://scenes/main.tscn"
+## The map editor, revealed by `debug CandC` in the terminal below. Referenced BY PATH and
+## never preloaded: `tools/` and `scripts/map_editor/` are excluded from exported builds
+## (`export_presets.cfg`), and a `preload` resolves at parse time — it would break the
+## exported game outright. The runtime `ResourceLoader.exists` probe means the entry simply
+## never appears where the scene was not shipped. Pinned by
+## `_test_shipped_code_avoids_editor_only_paths`.
+const MAP_EDITOR_SCENE := "res://tools/map_editor/map_editor.tscn"
 const NAVY := Color(0, 0.07, 0.14)            # established theme background navy
 const OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
 const TITLE_PLATE: Texture2D = preload("res://assets/ui/title_plate.png")
@@ -38,6 +45,7 @@ var _tutorial_panel: Control
 var _hall_of_records_panel: Control
 var _tutorial_prompt: Control
 var _goods_grid: Control
+var _map_editor_button: Button
 
 
 func _ready() -> void:
@@ -51,6 +59,7 @@ func _ready() -> void:
 	# before the first New Game (the in-match terminal is added by world_map).
 	var term: CanvasLayer = load("res://scripts/debug_terminal.gd").new()
 	term.menu_mode = true
+	term.cheats_unlocked.connect(_on_cheats_unlocked)
 	add_child(term)
 	Audio.play_music()   # looping main-menu theme (placeholder track)
 	# Warm the map scene off-thread while the player is on the menu: this pulls main.tscn and
@@ -109,6 +118,31 @@ func _on_start_requested(start_path: String, overrides: Dictionary) -> void:
 	SaveLoad.prepare_new_game(start_path, overrides)
 	var screen := LoadingScreen.show_global(get_tree())
 	screen.begin_load(SaveLoad.MAIN_SCENE)
+
+
+# ── Map editor (cheat-gated) ─────────────────────────────────────────────────────
+
+## Two conditions, deliberately independent: the cheat must be unlocked this app run, AND
+## the editor scene must actually be present. The second is what keeps an exported build
+## clean even if someone unlocks the terminal there — the files are excluded, the probe
+## fails, and the entry stays hidden.
+func _map_editor_available() -> bool:
+	var terminal_script := load("res://scripts/debug_terminal.gd")
+	if terminal_script == null or not terminal_script.cheats_are_unlocked():
+		return false
+	return ResourceLoader.exists(MAP_EDITOR_SCENE)
+
+
+func _on_cheats_unlocked() -> void:
+	if _map_editor_button != null:
+		_map_editor_button.visible = _map_editor_available()
+
+
+func _on_map_editor_pressed() -> void:
+	if not _map_editor_available():
+		return
+	# By path, never by preload — see MAP_EDITOR_SCENE.
+	get_tree().change_scene_to_file(MAP_EDITOR_SCENE)
 
 
 func _on_back_requested() -> void:
@@ -333,6 +367,14 @@ func _build_menu() -> void:
 		elif label == "Encyclopedia":
 			_make_coming_soon(b, "Coming soon. In the meantime check out the encyclopedia in the top bar in the game.")
 		vbox.add_child(b)
+	# Cheat-gated: hidden until `debug CandC` is entered in the terminal ( ` ), and absent
+	# entirely from a build that did not ship the editor scene.
+	_map_editor_button = _make_button("Map Editor", false)
+	_map_editor_button.tooltip_text = "Hand-author the map's roads, fabric and building slots."
+	_map_editor_button.pressed.connect(_on_map_editor_pressed)
+	_map_editor_button.visible = _map_editor_available()
+	vbox.add_child(_map_editor_button)
+
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vbox.add_child(spacer)

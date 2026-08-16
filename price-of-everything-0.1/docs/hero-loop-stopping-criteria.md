@@ -82,6 +82,20 @@ each settlement ends with a durable before/after pair under
 
 ## Robustness to a later roads change (owner requirement, 2026-08-15)
 
+> **AMENDED 2026-08-16 — this section does not apply to authored tiles.** The rule below
+> exists because road layout was generated separately from the fabric, so a later roads
+> redesign could move the ground beneath authored work. On tiles authored in the map editor
+> (`docs/map-editor-plan.md`), **the roads and the fabric are the same document**: the
+> designer draws both, they are exported together, and a road cannot move without its
+> settlement moving with it — the first time in this project that the two have been in
+> sync. Fixed coordinates are therefore **legal and expected** in
+> `data/map_authored.json`, and the road-perturbation fixture is **not required** for an
+> authored settlement (there is no independent road layout left to perturb).
+>
+> The rule stands unchanged for every **procedurally generated** tile, and both prohibitions
+> below on *tile identity* survive everywhere — ids are still resolved through
+> `id_to_coord`, never by arithmetic on digits.
+
 A roads redesign is now known to be **gameplay-neutral if per-tile flags/levels are
 preserved** (see the architecture-contract skill), so one is plausible later. The three
 settlement systems built here must survive it.

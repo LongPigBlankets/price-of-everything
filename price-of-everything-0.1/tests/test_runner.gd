@@ -23,6 +23,7 @@ const TutorialDetectors := preload("res://scripts/tutorial/tutorial_detectors.gd
 const BuildingReadout := preload("res://scripts/building_readout.gd")
 const BuildForecast := preload("res://scripts/build_forecast.gd")
 const MassFormShapes := preload("res://scripts/mass_form_shapes.gd")
+const AuthoredMap := preload("res://scripts/authored_map.gd")
 const AppPaths := preload("res://scripts/app_paths.gd")  # saves now live in <base>/savegames/
 
 func _ready() -> void:
@@ -51,6 +52,12 @@ func _ready() -> void:
 	_test_mass_form_variation()
 	_test_mass_form_fallback_ladder()
 	_test_mass_form_adversarial_sweep()
+	_test_authored_map_empty_is_inert()
+	_test_authored_map_schema()
+	_test_authored_map_road_rules()
+	_test_authored_map_slot_classes()
+	_test_authored_map_round_trip()
+	_test_shipped_code_avoids_editor_only_paths()
 	_test_coal_prohibition()
 	_test_scheduled_coal_prohibition()
 	_test_widgets_instantiate()
@@ -14757,3 +14764,252 @@ func _test_mass_form_adversarial_sweep() -> void:
 	_check(pipeline_cases > 800 and pipeline_bad == 0,
 		"mass forms: build_form always returns a simple, triangulable mass (%d cases, %d bad)"
 		% [pipeline_cases, pipeline_bad])
+
+
+# ======================================================================================
+# Authored map document (scripts/authored_map.gd) + the editor's export isolation
+#
+# The map editor writes data/map_authored.json; the game reads it. Two things must hold
+# forever: an ABSENT document leaves the game exactly as it is today (the feature is
+# opt-in, like the midcentury style), and NO SHIPPED SCRIPT may reference the editor,
+# which is excluded from exported builds.
+# ======================================================================================
+
+func _test_authored_map_empty_is_inert() -> void:
+	AuthoredMap.reset_for_tests()
+	# The repository ships no authored document yet; when one exists this still holds,
+	# because the assertions below are about the EMPTY document's behaviour.
+	var empty: Dictionary = AuthoredMap.empty_document()
+	_check(AuthoredMap.validate(empty).is_empty(),
+		"authored map: the empty document is a valid document")
+	_check(int(empty.get("version", 0)) == AuthoredMap.SCHEMA_VERSION,
+		"authored map: a new document carries the current schema version")
+	_check((empty.get("settlements", {}) as Dictionary).is_empty(),
+		"authored map: a new document authors no settlements")
+
+	# The suppression key must be false for every tile of an empty document — this is what
+	# keeps the procedural fabric, forest discs and road jobs on today's code paths.
+	var doc_settlements: Dictionary = AuthoredMap.settlements()
+	if doc_settlements.is_empty():
+		_check(not AuthoredMap.is_active(),
+			"authored map: with no document the feature reports inactive")
+		_check(not AuthoredMap.covers("tile_23_8") and not AuthoredMap.covers("tile_10_16"),
+			"authored map: with no document no tile is authored")
+		var slots: Dictionary = AuthoredMap.slots_for_tile("tile_23_8")
+		_check((slots.pins as Array).is_empty() and (slots.frames as Array).is_empty()
+			and (slots.large as Array).is_empty(),
+			"authored map: slots_for_tile always answers with all three lists")
+
+
+func _test_authored_map_schema() -> void:
+	# Version guard: a document from a newer build must be refused, not half-read.
+	var future: Dictionary = AuthoredMap.empty_document()
+	future["version"] = AuthoredMap.SCHEMA_VERSION + 1
+	_check(not AuthoredMap.validate(future).is_empty(),
+		"authored map: a newer schema version is rejected")
+
+	var doc: Dictionary = AuthoredMap.empty_document()
+	doc["settlements"] = {"capital": {
+		"tiles": ["tile_23_8"],
+		"roads": [{"id": "r:1", "class": "major", "points": [[0, 0], [10, 0]]}],
+	}}
+	_check(AuthoredMap.validate(doc).is_empty(),
+		"authored map: a minimal settlement validates")
+
+	# Each of these is a defect that would render wrongly rather than crash, which is why
+	# the validator has to catch them: a bad class picks a silent default width, a
+	# one-point road draws nothing, and a tile-less settlement suppresses nothing.
+	var bad_class: Dictionary = doc.duplicate(true)
+	bad_class["settlements"]["capital"]["roads"][0]["class"] = "motorway"
+	_check(not AuthoredMap.validate(bad_class).is_empty(),
+		"authored map: an unknown road class is rejected")
+
+	var short_road: Dictionary = doc.duplicate(true)
+	short_road["settlements"]["capital"]["roads"][0]["points"] = [[0, 0]]
+	_check(not AuthoredMap.validate(short_road).is_empty(),
+		"authored map: a road with one point is rejected")
+
+	var no_tiles: Dictionary = doc.duplicate(true)
+	no_tiles["settlements"]["capital"]["tiles"] = []
+	_check(not AuthoredMap.validate(no_tiles).is_empty(),
+		"authored map: a settlement naming no tiles is rejected")
+
+	# An unlockable stroke without its touched-tile set could never satisfy the connection
+	# rule, so it would either never appear or appear unconditionally.
+	var unlockable: Dictionary = doc.duplicate(true)
+	unlockable["settlements"]["capital"]["roads"][0]["unlockable"] = true
+	_check(not AuthoredMap.validate(unlockable).is_empty(),
+		"authored map: an unlockable road with no tiles is rejected")
+	unlockable["settlements"]["capital"]["roads"][0]["tiles"] = ["tile_23_8"]
+	_check(AuthoredMap.validate(unlockable).is_empty(),
+		"authored map: an unlockable road with its tile set validates")
+
+	# Farm and forest outlines: at least a triangle, at most the authored 8-gon.
+	var area_doc: Dictionary = doc.duplicate(true)
+	area_doc["settlements"]["capital"]["forests"] = [{"id": "fo:1", "outline": [[0, 0], [1, 0]]}]
+	_check(not AuthoredMap.validate(area_doc).is_empty(),
+		"authored map: a two-vertex forest outline is rejected")
+	var nine := []
+	for i in 9:
+		nine.append([float(i), 0.0])
+	area_doc["settlements"]["capital"]["forests"] = [{"id": "fo:1", "outline": nine}]
+	_check(not AuthoredMap.validate(area_doc).is_empty(),
+		"authored map: a nine-vertex forest outline exceeds the authored maximum")
+
+
+func _test_authored_map_road_rules() -> void:
+	# THE CONNECTION RULE. A stroke is visible only when EVERY tile it touches carries the
+	# road flag: an internal street appears when its own tile gains roads, and a connector
+	# appears exactly when the new tile can join the neighbour it runs to — whole, never as
+	# a stub at the seam.
+	var connector := {"unlockable": true, "tiles": ["tile_1_1", "tile_1_2"]}
+	_check(not AuthoredMap.road_visible(connector, {}),
+		"authored map: an unlockable connector is hidden while both tiles are roadless")
+	_check(not AuthoredMap.road_visible(connector, {"tile_1_1": true}),
+		"authored map: a connector stays hidden until BOTH its tiles are flagged")
+	_check(AuthoredMap.road_visible(connector, {"tile_1_1": true, "tile_1_2": true}),
+		"authored map: a connector appears when the new tile joins its roaded neighbour")
+	_check(AuthoredMap.road_visible({"tiles": ["tile_9_9"]}, {}),
+		"authored map: a stroke that is not unlockable always draws")
+
+	# Widths are world units and never vary with zoom (roads are zoom-invariant), so the
+	# ordering and the values are both load-bearing.
+	_check(AuthoredMap.road_width("major") > AuthoredMap.road_width("mid")
+		and AuthoredMap.road_width("mid") > AuthoredMap.road_width("minor"),
+		"authored map: the three road classes are strictly ordered by width")
+	_check(is_equal_approx(AuthoredMap.road_width("major"), 18.0),
+		"authored map: the major class is 18 world units (20 px at full zoom)")
+
+
+func _test_authored_map_slot_classes() -> void:
+	# Classification is by the LARGEST extent a building's art ever reaches, because a
+	# building already reserves its L3 frame at L1 — a mass that grows past the threshold
+	# at L2 needs the bigger slot from the day it is built, not from the day it upgrades.
+	_check(AuthoredMap.slot_class_for(30.0, false) == "small",
+		"authored map: art that stays under the threshold is a small slot")
+	_check(AuthoredMap.slot_class_for(AuthoredMap.SLOT_MEDIUM_MIN_EXTENT, false) == "medium",
+		"authored map: reaching the threshold at any level requires a medium slot")
+	_check(AuthoredMap.slot_class_for(90.0, false) == "medium",
+		"authored map: the largest art (a mine) is a medium slot")
+	_check(AuthoredMap.slot_class_for(12.0, true) == "large",
+		"authored map: farms and forests take the large polygon slots regardless of extent")
+
+
+func _test_authored_map_round_trip() -> void:
+	# A document that saves must load back identically — the editor's save path and the
+	# game's read path share this validator, so "it saved" has to mean "the game will
+	# load it".
+	var doc: Dictionary = AuthoredMap.empty_document()
+	doc["settlements"] = {"capital": {
+		"tiles": ["tile_23_8", "tile_24_7"],
+		"roads": [{"id": "r:1", "class": "mid", "points": [[10.5, 20.25], [40, 60]],
+			"unlockable": true, "tiles": ["tile_23_8"]}],
+		"decor": [{"id": "d:1", "form": "ring", "pos": [5, 6], "rot": 0.5,
+			"size": [30, 20], "sacrificial": true}],
+		"forests": [{"id": "fo:1", "outline": [[0, 0], [10, 0], [10, 10]]}],
+	}}
+	var path := "user://test_authored_map_round_trip.json"
+	var absolute := ProjectSettings.globalize_path(path)
+	var problem: String = AuthoredMap.save_to(doc, absolute)
+	_check(problem == "", "authored map: a valid document saves (%s)" % problem)
+
+	var file := FileAccess.open(absolute, FileAccess.READ)
+	_check(file != null, "authored map: the saved document exists on disk")
+	if file != null:
+		var parsed: Variant = JSON.parse_string(file.get_as_text())
+		file.close()
+		_check(typeof(parsed) == TYPE_DICTIONARY, "authored map: the saved document re-parses")
+		if typeof(parsed) == TYPE_DICTIONARY:
+			var back: Dictionary = parsed
+			_check(AuthoredMap.validate(back).is_empty(),
+				"authored map: the round-tripped document still validates")
+			# Godot's JSON reader returns every number as a float, so in-memory equality is
+			# not achievable — the property that matters for a git-committed file is that
+			# saving is IDEMPOTENT: save, load, save again, identical bytes. Without the
+			# canonical form a document would churn purely by edit history.
+			_check(AuthoredMap.to_text(back) == AuthoredMap.to_text(doc),
+				"authored map: save is idempotent — a reloaded document rewrites identically")
+			var settlement: Dictionary = (back.get("settlements", {}) as Dictionary).get("capital", {})
+			var road: Dictionary = (settlement.get("roads", []) as Array)[0]
+			_check(str(road.get("id", "")) == "r:1" and str(road.get("class", "")) == "mid",
+				"authored map: a road survives the round trip with its id and class")
+			_check(is_equal_approx(float((road.get("points", []) as Array)[0][0]), 10.5),
+				"authored map: authored coordinates survive the round trip")
+			var mass: Dictionary = (settlement.get("decor", []) as Array)[0]
+			_check(bool(mass.get("sacrificial", false)),
+				"authored map: the sacrificial mark survives the round trip")
+		DirAccess.remove_absolute(absolute)
+
+	# The writer refuses to emit something the loader would reject, so a corrupt document
+	# cannot reach disk through the editor.
+	var broken: Dictionary = AuthoredMap.empty_document()
+	broken["settlements"] = {"capital": {"tiles": []}}
+	var refused: String = AuthoredMap.save_to(broken,
+		ProjectSettings.globalize_path("user://test_authored_map_should_not_exist.json"))
+	_check(refused != "", "authored map: saving an invalid document is refused")
+	_check(not FileAccess.file_exists(
+		ProjectSettings.globalize_path("user://test_authored_map_should_not_exist.json")),
+		"authored map: a refused save writes no file")
+
+
+func _test_shipped_code_avoids_editor_only_paths() -> void:
+	# The map editor lives in the game project but is EXCLUDED from exported builds
+	# (export_presets.cfg). A shipped script that preloads an excluded path resolves it at
+	# parse time and breaks the exported game — so shipped code may only reach the editor
+	# by a path STRING guarded with ResourceLoader.exists, as main_menu.gd does.
+	var excluded := ["res://scripts/map_editor/", "res://tools/", "res://tests/"]
+	var offenders := PackedStringArray()
+	var scanned := 0
+	for directory in ["res://scripts", "res://scenes"]:
+		for file_path in _gd_files_in(directory):
+			if file_path.begins_with("res://scripts/map_editor/"):
+				continue   # the editor may reference itself
+			var file := FileAccess.open(file_path, FileAccess.READ)
+			if file == null:
+				continue
+			var text := file.get_as_text()
+			file.close()
+			scanned += 1
+			for line in text.split("\n"):
+				var trimmed := line.strip_edges()
+				if not (trimmed.begins_with("const ") or trimmed.begins_with("var ")
+					or trimmed.begins_with("@onready")) or not trimmed.contains("preload("):
+					continue
+				for path in excluded:
+					if trimmed.contains(path):
+						offenders.append("%s: %s" % [file_path.get_file(), trimmed])
+	_check(scanned > 50,
+		"export isolation: the shipped-script scan actually read the scripts (%d files)" % scanned)
+	_check(offenders.is_empty(),
+		"export isolation: no shipped script preloads an export-excluded path (%s)"
+		% ", ".join(offenders))
+
+	# The launch path itself: the menu must hold the editor as a string and probe for it.
+	var menu := FileAccess.open("res://scripts/main_menu.gd", FileAccess.READ)
+	_check(menu != null, "export isolation: main_menu.gd is readable")
+	if menu != null:
+		var menu_text := menu.get_as_text()
+		menu.close()
+		_check(menu_text.contains("ResourceLoader.exists(MAP_EDITOR_SCENE)"),
+			"export isolation: the menu probes for the editor scene before offering it")
+		_check(not menu_text.contains("preload(\"res://tools/"),
+			"export isolation: the menu never preloads the editor")
+
+
+func _gd_files_in(directory: String) -> PackedStringArray:
+	var out := PackedStringArray()
+	var dir := DirAccess.open(directory)
+	if dir == null:
+		return out
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		var full := "%s/%s" % [directory, entry]
+		if dir.current_is_dir():
+			if not entry.begins_with("."):
+				out.append_array(_gd_files_in(full))
+		elif entry.ends_with(".gd"):
+			out.append(full)
+		entry = dir.get_next()
+	dir.list_dir_end()
+	return out
