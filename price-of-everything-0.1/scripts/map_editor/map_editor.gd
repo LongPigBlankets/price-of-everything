@@ -22,6 +22,13 @@ const AuthoredRoadGeometry := preload("res://scripts/authored_road_geometry.gd")
 const MapEditorDocument := preload("res://scripts/map_editor/map_editor_document.gd")
 const MapEditorOverlay := preload("res://scripts/map_editor/map_editor_overlay.gd")
 const MapEditorRoadTool := preload("res://scripts/map_editor/map_editor_road_tool.gd")
+const MapEditorLayers := preload("res://scripts/map_editor/map_editor_layers.gd")
+const MapEditorPanel := preload("res://scripts/map_editor/map_editor_panel.gd")
+
+## Tools. NAVIGATE is the default and does nothing but move the view: an editor whose idle
+## state authors geometry cannot be explored, and every stray click becomes a road.
+const TOOL_PAN := "pan"
+const TOOL_ROAD := "road"
 
 ## Which settlement new content joins. P1 authors into one at a time; the settlement picker
 ## arrives with the tools that need to move content between them.
@@ -44,6 +51,9 @@ const ZOOM_STEP := 1.12
 var _document: MapEditorDocument
 var _overlay: MapEditorOverlay
 var _road_tool: MapEditorRoadTool
+var _layers: MapEditorLayers
+var _panel: MapEditorPanel
+var _tool := TOOL_PAN
 var _world: Node
 var _camera: Camera2D
 var _status: Label
@@ -55,6 +65,7 @@ var _settlement := DEFAULT_SETTLEMENT
 func _ready() -> void:
 	_document = MapEditorDocument.new()
 	_road_tool = MapEditorRoadTool.new()
+	_layers = MapEditorLayers.new()
 	_build_chrome()
 	_boot_world()
 
@@ -79,9 +90,28 @@ func _boot_world() -> void:
 	for _i in SETTLE_FRAMES:
 		await get_tree().process_frame
 	_hide_game_ui()
+	_silence_world_input(_world)
 	_take_camera()
+	_layers.bind(_world)
+	_panel.build(self, _layers)
 	_ready_to_edit = true
 	_refresh_status()
+
+
+## Stop the GAME from consuming input while the editor is up.
+##
+## `camera_controller`, `hex_map` and `world_map` all run `_input`/`_unhandled_input`, and
+## the world is a CHILD of this node, so they see every event first. That is why Escape
+## never reached the editor and why dragging fought the pen: the game was still panning,
+## picking tiles and claiming keys underneath. Disabling their processing is far more
+## honest than trying to out-order them, and it leaves this node the single owner of input.
+func _silence_world_input(node: Node) -> void:
+	node.set_process_input(false)
+	node.set_process_unhandled_input(false)
+	node.set_process_unhandled_key_input(false)
+	node.set_process_shortcut_input(false)
+	for child in node.get_children():
+		_silence_world_input(child)
 
 
 ## Hide the HUD and the hover grid, leaving the map itself. `main.tscn`'s ROOT node is
@@ -126,6 +156,14 @@ func _build_chrome() -> void:
 	_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(_overlay)
 
+	_panel = MapEditorPanel.new()
+	_panel.anchor_top = 0.0
+	_panel.anchor_bottom = 1.0
+	_panel.offset_left = 8.0
+	_panel.offset_top = 44.0
+	_panel.offset_bottom = -8.0
+	layer.add_child(_panel)
+
 	var bar := PanelContainer.new()
 	bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -150,15 +188,17 @@ func _build_chrome() -> void:
 func _set_status(text: String) -> void:
 	if _status != null:
 		_status.text = "MAP EDITOR   %s" % text
+	if _panel != null:
+		_panel.set_status(text)
 
 
 func _refresh_status() -> void:
 	var counts := _document.counts()
-	_set_status("%s   |   %d settlements, %d roads, %d masses   |   pen: %s (1/2/3)   |   %s   |   %s"
+	_set_status("%s   |   %d settlements · %d roads · %d masses   |   %s"
 		% [_document.display_name(), counts.settlements, counts.roads, counts.masses,
-			_road_tool.stroke_class().to_upper(),
-			"unsaved" if _document.is_dirty() else "saved",
-			"drag=curve · Enter end · Bksp back · F5 save · Esc menu"])
+			"UNSAVED" if _document.is_dirty() else "saved"])
+	if _panel != null:
+		_panel.refresh()
 
 
 # ── Input ───────────────────────────────────────────────────────────────────────
@@ -180,6 +220,11 @@ func _unhandled_input(event: InputEvent) -> void:
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	match event.button_index:
 		MOUSE_BUTTON_LEFT:
+			# In NAVIGATE the left button drags the view. Only the road tool authors, so an
+			# idle click can never leave geometry behind.
+			if _tool == TOOL_PAN:
+				_panning = event.pressed
+				return
 			if event.double_click and _road_tool.is_drawing():
 				_finish_stroke()
 			elif event.pressed:
@@ -191,6 +236,8 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 				_road_tool.release(_world_at(event.position))
 				_overlay.queue_redraw()
 		MOUSE_BUTTON_MIDDLE, MOUSE_BUTTON_RIGHT:
+			# Always available, whatever the tool: panning mid-stroke is normal when a road
+			# runs off the edge of the view.
 			_panning = event.pressed
 		MOUSE_BUTTON_WHEEL_UP:
 			if event.pressed:
@@ -206,15 +253,18 @@ func _handle_key(event: InputEventKey) -> void:
 			_save()
 		KEY_F6:
 			_reload()
+		KEY_V:
+			set_tool(TOOL_PAN)
+		KEY_R:
+			set_tool(TOOL_ROAD)
+		KEY_G:
+			toggle_grid()
 		KEY_1:
-			_road_tool.set_stroke_class("major")
-			_refresh_status()
+			set_road_class("major")
 		KEY_2:
-			_road_tool.set_stroke_class("mid")
-			_refresh_status()
+			set_road_class("mid")
 		KEY_3:
-			_road_tool.set_stroke_class("minor")
-			_refresh_status()
+			set_road_class("minor")
 		KEY_ENTER, KEY_KP_ENTER:
 			_finish_stroke()
 		KEY_BACKSPACE:
@@ -322,6 +372,62 @@ func _ensure_settlement() -> Dictionary:
 
 func road_tool() -> MapEditorRoadTool:
 	return _road_tool
+
+
+# ── Public API (the tool panel and the keyboard share it) ───────────────────────
+#
+# Every control the panel offers routes through these, so a button and its shortcut cannot
+# drift apart — they are the same call.
+
+func current_tool() -> String:
+	return _tool
+
+
+func set_tool(value: String) -> void:
+	if value == _tool:
+		return
+	# Leaving the pen mid-stroke would otherwise strand a half-drawn road that no longer has
+	# a tool to finish it.
+	if _road_tool.is_drawing():
+		_road_tool.abandon()
+		_overlay.queue_redraw()
+	_tool = value
+	_panning = false
+	_refresh_status()
+
+
+func current_road_class() -> String:
+	return _road_tool.stroke_class()
+
+
+func set_road_class(value: String) -> void:
+	_road_tool.set_stroke_class(value)
+	# Picking a class is a statement of intent to draw, so it selects the pen too.
+	if _tool != TOOL_ROAD:
+		set_tool(TOOL_ROAD)
+	else:
+		_refresh_status()
+
+
+func grid_shown() -> bool:
+	return _overlay != null and _overlay.show_grid
+
+
+func toggle_grid() -> void:
+	if _overlay != null:
+		_overlay.show_grid = not _overlay.show_grid
+		_overlay.queue_redraw()
+	_refresh_status()
+
+
+func run_action(action: String) -> void:
+	match action:
+		"save":
+			_save()
+		"reload":
+			_reload()
+		"leave":
+			_leave()
 
 
 # ── Document ────────────────────────────────────────────────────────────────────

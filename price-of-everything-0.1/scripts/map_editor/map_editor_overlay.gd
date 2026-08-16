@@ -104,6 +104,8 @@ func _draw_authored_roads(camera: Camera2D) -> void:
 
 ## The stroke in progress: the line so far, its points, and the handles of any curve point.
 func _draw_pen(camera: Camera2D) -> void:
+	if str(editor.call("current_tool")) != "road":
+		return
 	var tool_ref: RefCounted = editor.call("road_tool")
 	if tool_ref == null or not bool(tool_ref.call("is_drawing")):
 		return

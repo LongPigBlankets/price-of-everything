@@ -471,6 +471,16 @@ feature is opt-in, like midcentury itself), plus the phase's own gates.
   as a 466-pixel change in the rendered frame. Suite 2671/0, e2e 748/0 with no document.*
   **Still owed: the per-class curation pass with the owner on real tiles (§10.1) — the
   table ships with defended defaults, not a ruling.**
+- **P1.5 — Editor UX. ✅ BUILT** (added after the first real session with the tool; the
+  phase list had no UX pass in it, which was a gap). A tool panel (tool, road class, layer
+  visibility, document actions), NAVIGATE as the default tool so an idle click cannot
+  author, and the editor taking sole ownership of input. *Gate: `tools/map_editor/
+  editor_input_check.tscn` drives real events through the input pipeline — Escape reaches
+  the editor, dragging pans without authoring, the pen still commits.*
+  **The editor opens on a bare map by design**: relief, sea and land, rivers and paper.
+  Roads, buildings, fabric, ports and woodland are hidden, because those are exactly what
+  the authored document replaces — all one click away for tracing.
+
 - **P2 — Fabric & ground.** Stamp tool (17 forms + params + reroll), parks, **farm/forest
   polygon tool** (≤8 vertices, generated fills, building-overlap lints), shared mass
   painter, fabric + forest suppression, audit exemption, **import-existing command**
