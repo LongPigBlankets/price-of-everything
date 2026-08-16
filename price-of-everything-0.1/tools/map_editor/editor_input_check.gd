@@ -42,9 +42,23 @@ func _ready() -> void:
 	_check("dragging in Navigate pans the view", camera.position != before_pos)
 	_check("dragging in Navigate authors nothing", _road_count() == roads_before)
 
+	# WASD pans, and keeps panning while the pen is the active tool — navigating mid-stroke
+	# is normal when a road runs off the edge of the view.
+	for entry in [["W", KEY_W, Vector2(0, -1)], ["S", KEY_S, Vector2(0, 1)],
+			["A", KEY_A, Vector2(-1, 0)], ["D", KEY_D, Vector2(1, 0)]]:
+		var from := camera.position
+		await _hold_key(entry[1] as Key, 6)
+		var moved: Vector2 = camera.position - from
+		var want: Vector2 = entry[2]
+		_check("%s pans the view the right way" % entry[0],
+			moved.length() > 0.5 and moved.normalized().dot(want) > 0.99)
+
 	# 3. The pen draws when selected.
 	_editor.call("set_tool", "road")
 	_check("the pen can be selected", str(_editor.call("current_tool")) == "road")
+	var pen_from := camera.position
+	await _hold_key(KEY_D, 6)
+	_check("WASD still pans while the pen is active", camera.position != pen_from)
 	await _click(Vector2(600, 400))
 	await _click(Vector2(800, 500))
 	_send_key(KEY_ENTER)
@@ -128,6 +142,24 @@ func _drag(from: Vector2, to: Vector2) -> void:
 	up.button_index = MOUSE_BUTTON_LEFT
 	up.pressed = false
 	up.position = to
+	Input.parse_input_event(up)
+	await get_tree().process_frame
+
+
+## Hold a key down for a few frames, then release. Panning is polled in `_process`, not
+## driven by key events, so a single parsed event would move the camera by nothing.
+func _hold_key(code: Key, frames: int) -> void:
+	var down := InputEventKey.new()
+	down.physical_keycode = code
+	down.keycode = code
+	down.pressed = true
+	Input.parse_input_event(down)
+	for _i in frames:
+		await get_tree().process_frame
+	var up := InputEventKey.new()
+	up.physical_keycode = code
+	up.keycode = code
+	up.pressed = false
 	Input.parse_input_event(up)
 	await get_tree().process_frame
 

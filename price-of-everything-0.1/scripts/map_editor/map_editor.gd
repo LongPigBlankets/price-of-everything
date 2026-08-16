@@ -46,6 +46,21 @@ const ZOOM_MIN := 0.12
 const ZOOM_MAX := 2.5
 const ZOOM_STEP := 1.12
 
+## WASD pan speed in SCREEN pixels per second. Divided by zoom before it moves the camera,
+## so the map slides past at the same apparent rate whether you are looking at one tile or
+## the whole coast — a world-unit speed would crawl when zoomed in and bolt when zoomed out.
+const PAN_SPEED := 900.0
+## Held Shift multiplier, for crossing the map rather than nudging along a street.
+const PAN_FAST := 3.0
+## Physical scancodes, so the keys stay under the same fingers on a non-QWERTY layout —
+## WASD is a position on the keyboard, not four letters.
+const PAN_KEYS := {
+	KEY_W: Vector2(0.0, -1.0),
+	KEY_S: Vector2(0.0, 1.0),
+	KEY_A: Vector2(-1.0, 0.0),
+	KEY_D: Vector2(1.0, 0.0),
+}
+
 # Typed through the const preloads above: an untyped `RefCounted` here makes every call
 # return Variant, and `:=` inference then fails at parse time.
 var _document: MapEditorDocument
@@ -68,6 +83,22 @@ func _ready() -> void:
 	_layers = MapEditorLayers.new()
 	_build_chrome()
 	_boot_world()
+
+
+## Continuous panning has to be polled rather than driven by key events: an editor that
+## moved one step per repeat would inherit the OS's repeat delay and rate, which is a typing
+## setting, not a camera one.
+func _process(delta: float) -> void:
+	if not _ready_to_edit or _camera == null:
+		return
+	var direction := Vector2.ZERO
+	for key in PAN_KEYS:
+		if Input.is_physical_key_pressed(key):
+			direction += PAN_KEYS[key] as Vector2
+	if direction == Vector2.ZERO:
+		return
+	var speed := PAN_SPEED * (PAN_FAST if Input.is_key_pressed(KEY_SHIFT) else 1.0)
+	_camera.position += direction.normalized() * speed * delta / _camera.zoom.x
 
 
 # ── Boot ────────────────────────────────────────────────────────────────────────
