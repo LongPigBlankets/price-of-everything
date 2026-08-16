@@ -20,7 +20,16 @@ const APPROACH_ANGLES_DEG := [-22.0, -8.0, 8.0, 22.0]
 ## between the dry head and the harbour water — is pushed. The head is a
 ## seaward-overshooting block clipped back to the real coastline, so the apron
 ## covers every scrap of land inside the harbour throat.
-const QUAY_SHIFTS := [10.0, 22.0, 34.0]
+## Squaring the basin (parallel arms, 90 degrees to the head) makes the seating
+## fussier on a curved shore: the rectangle's root corners must both be wet. Two
+## further shifts let the existing search find a wetter seat rather than us
+## hand-tuning one port. Every candidate still passes the SAME unchanged dry-head
+## and basin gates, so this widens the search, it does not relax it.
+const QUAY_SHIFTS := [10.0, 22.0, 34.0, 46.0, 58.0]
+## Rungs the harbour width may step down through to find a seat where BOTH root
+## corners are wet. The arms are parallel at every rung — only the gap between
+## them narrows — so the owner's ruling holds whichever one is taken.
+const BASIN_WIDTH_LADDER := [1.0, 0.88, 0.76, 0.64]
 ## Rendered coastline = the boundary of the baked band-5 "land base" polygon.
 ## Probed against NavGrid over 789,496 coastal-band cells: 99.470% agreement.
 const LAND_BASE_BAND := 5
@@ -165,36 +174,50 @@ static func _candidate(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 	var head_front := shore + seaward * quay_shift
 	# Three-point early-out before any polygon work: the harbour throat has to be
 	# open water or this whole candidate is dead.
+	var throat_half := root_half
 	var throat_probe := head_front + seaward * 7.0
 	if _water_at(throat_probe) != NavGrid.WATER_SEA or \
-			_water_at(throat_probe + tangent * root_half * 0.85) != NavGrid.WATER_SEA or \
-			_water_at(throat_probe - tangent * root_half * 0.85) != NavGrid.WATER_SEA:
+			_water_at(throat_probe + tangent * throat_half * 0.85) != NavGrid.WATER_SEA or \
+			_water_at(throat_probe - tangent * throat_half * 0.85) != NavGrid.WATER_SEA:
 		return {"basin_valid": false}
-	# Independent per-arm splay: the basin is an ASYMMETRIC trapezoid, so its two
-	# straight edges — which the arms lie on — leave the quay face at different
-	# angles. Arms differ in angle, length and width; none of them bends.
-	var left_flare := mouth_half * _rr(key + "|left-flare", 0.80, 1.20)
-	var right_flare := mouth_half * _rr(key + "|right-flare", 0.80, 1.20)
+	# RECTANGULAR basin (owner ruling): the two edges the arms lie on run exactly
+	# seaward, so the arms are PARALLEL to each other and meet the landside head
+	# at 90 degrees. The earlier asymmetric trapezoid splayed them by construction.
+	# Per-site variation now comes from the coastline sample, orientation, head
+	# size, arm length and arm width — not from bending the harbour.
+	# Width = the quay-face half-width that already validated at 100% face water.
+	# A wider rectangle pushes the root corners onto a curved shore and puts land
+	# back inside the U (measured: 93.0% and 91.6% sea at two ports).
+	# The rectangle is fussier on a curved shore than the old flare was: BOTH root
+	# corners must be wet. Narrow the harbour until it is, rather than bending it
+	# — the arms stay parallel at every rung, which is the property that matters.
 	var basin_root := head_front
 	var basin_mouth_center := basin_root + seaward * basin_depth
-	var basin := PackedVector2Array([
-		basin_root + tangent * root_half,
-		basin_root - tangent * root_half,
-		basin_mouth_center - tangent * right_flare,
-		basin_mouth_center + tangent * left_flare,
-	])
+	var basin_half := root_half
+	var basin := PackedVector2Array()
+	var basin_water := 0.0
+	for width_scale in BASIN_WIDTH_LADDER:
+		basin_half = root_half * float(width_scale)
+		basin = PackedVector2Array([
+			basin_root + tangent * basin_half,
+			basin_root - tangent * basin_half,
+			basin_mouth_center - tangent * basin_half,
+			basin_mouth_center + tangent * basin_half,
+		])
+		basin_water = _class_coverage(basin, NavGrid.WATER_SEA)
+		if basin_water >= 0.999:
+			break
 	var corridor_start := basin_root + seaward * basin_depth * 0.38
 	var corridor_end := basin_mouth_center + seaward * 62.0
 	var corridor := _trapezoid(corridor_start, corridor_end, tangent,
-		root_half * 0.52, mouth_half * 0.58)
-	var basin_water := _class_coverage(basin, NavGrid.WATER_SEA)
+		basin_half * 0.52, mouth_half * 0.58)
 	var corridor_water := _class_coverage(corridor, NavGrid.WATER_SEA)
 	var mouth_run := _open_sea_run(basin_mouth_center, seaward, 190.0)
 	# The quay face itself must be the waterline: sampled along its whole width,
 	# the strip just seaward of it is sea.
 	var face_water := _edge_class_coverage(PackedVector2Array([
-		basin_root + tangent * root_half + seaward * 4.0,
-		basin_root - tangent * root_half + seaward * 4.0,
+		basin_root + tangent * basin_half + seaward * 4.0,
+		basin_root - tangent * basin_half + seaward * 4.0,
 	]), NavGrid.WATER_SEA, 5.0)
 	var basin_valid := basin_water >= 0.999 and corridor_water >= 0.999 and \
 		mouth_run >= 150.0 and face_water >= 0.999
@@ -246,19 +269,17 @@ static func _candidate(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 	# are independent per arm; the shape is not a symmetric stamped U.
 	var left_width := arm_width * _rr(key + "|left-width", 0.86, 1.14)
 	var right_width := arm_width * _rr(key + "|right-width", 0.86, 1.14)
-	var left_axis := ((basin_mouth_center + tangent * left_flare) -
-		(basin_root + tangent * root_half)).normalized()
-	var right_axis := ((basin_mouth_center - tangent * right_flare) -
-		(basin_root - tangent * root_half)).normalized()
-	var left_length_run := basin_depth / maxf(0.35, left_axis.dot(seaward)) + \
-		_rr(key + "|left-extra", -14.0, 22.0)
-	var right_length_run := basin_depth / maxf(0.35, right_axis.dot(seaward)) + \
-		_rr(key + "|right-extra", -14.0, 22.0)
+	# Both axes ARE the seaward normal, so the arms are parallel and square to the
+	# quay face. Only their length and width still differ between the two.
+	var left_axis := seaward
+	var right_axis := seaward
+	var left_length_run := basin_depth + _rr(key + "|left-extra", -14.0, 22.0)
+	var right_length_run := basin_depth + _rr(key + "|right-extra", -14.0, 22.0)
 	# Roots sit half an arm width OUTBOARD of the basin edge, so the deck flanks
 	# the harbour water instead of eating into it.
-	var left_root := basin_root + tangent * root_half + \
+	var left_root := basin_root + tangent * basin_half + \
 		Vector2(-left_axis.y, left_axis.x) * left_width * 0.5
-	var right_root := basin_root - tangent * root_half + \
+	var right_root := basin_root - tangent * basin_half + \
 		Vector2(right_axis.y, -right_axis.x) * right_width * 0.5
 	# Each arm runs landward along its OWN axis until it bites into the apron, so
 	# the compound reads as one connected quay instead of two floating decks.

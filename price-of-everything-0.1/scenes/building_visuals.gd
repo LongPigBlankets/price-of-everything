@@ -2818,6 +2818,11 @@ func _ensure_service_lane(tile_id: String, coord: Vector2i, building_count: int)
 	# side of them, so a building validated 4u clear could be 1.5u from the road you can
 	# actually see. One line, one geometry.
 	var wobbled := ServiceLanes.wobble(line, tile_id)
+	# The routed path honours the water-blocked mask cell by cell, but (exactly as
+	# with the building gate below) RDP can cut a corner and the wobble can lean
+	# further — out over the shoreline. Owner rule 2026-08-16: no road on sea or
+	# lake. Pull any wet vertex back onto land before anything measures off it.
+	wobbled = _declamp_lane_water(wobbled, center)
 	var out: Array = []
 	for i in range(1, wobbled.size()):
 		out.append([wobbled[i - 1], wobbled[i]])
@@ -2833,6 +2838,50 @@ func _ensure_service_lane(tile_id: String, coord: Vector2i, building_count: int)
 	_service_world[tile_id] = world
 	_carve_service_lane(tile_id, out)
 	queue_redraw()
+
+## Pulls every vertex of a tile-relative lane off sea/lake, and splits the step
+## where a chord between two dry vertices still crosses water. Rivers stay
+## crossable (lanes bridge them); only sea and lake are walls.
+func _declamp_lane_water(pts: PackedVector2Array, center: Vector2) -> PackedVector2Array:
+	var nav := NavGrid.instance()
+	if nav == null or not nav.is_ready() or pts.size() < 2:
+		return pts
+	var out := PackedVector2Array()
+	for p in pts:
+		out.append(_nearest_dry_rel(nav, p, center))
+	# A chord between two dry vertices can still clip a headland; insert the
+	# midpoint (declamped) wherever it does, rather than trusting vertices alone.
+	var fixed := PackedVector2Array()
+	for i in range(out.size() - 1):
+		fixed.append(out[i])
+		var mid := (out[i] + out[i + 1]) * 0.5
+		if _is_wet_rel(nav, mid, center):
+			fixed.append(_nearest_dry_rel(nav, mid, center))
+	fixed.append(out[out.size() - 1])
+	return fixed
+
+func _is_wet_rel(nav: NavGrid, rel: Vector2, center: Vector2) -> bool:
+	var c := nav.cell_of(center + rel)
+	var k := nav.water(c.x, c.y)
+	return k == NavGrid.WATER_SEA or k == NavGrid.WATER_LAKE
+
+## Nearest dry point to `rel`, spiralling out in NavGrid steps. Returns `rel`
+## unchanged when it is already dry or nothing dry is close.
+func _nearest_dry_rel(nav: NavGrid, rel: Vector2, center: Vector2) -> Vector2:
+	if not _is_wet_rel(nav, rel, center):
+		return rel
+	var step := 6.0
+	for ring in range(1, 7):
+		var best := Vector2.INF
+		for k in 16:
+			var a := TAU * float(k) / 16.0
+			var cand := rel + Vector2(cos(a), sin(a)) * (step * float(ring))
+			if not _is_wet_rel(nav, cand, center):
+				best = cand
+				break
+		if best != Vector2.INF:
+			return best
+	return rel
 
 ## True if `segs` (a candidate lane, tile-relative) keeps SERVICE_CLEAR off every
 ## footprint already placed on the tile. Buildings sited AFTER a lane are handled the

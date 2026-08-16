@@ -367,6 +367,15 @@ func _rebuild() -> void:
 		"roof_top": roof_top_entries,
 	})
 
+	# CLEANUP PASS — an outline round ground nobody built on reads as a surveyed
+	# plot that was never developed, and a field of them is the "unfinished plate"
+	# the critic keeps naming. Drop the RING of any parcel that ends up with no
+	# drawn mass in it; keep its fill, because uncovered parcel area is most of the
+	# settlement's paper ground and deleting it would leave buildings on bare
+	# terrain. Park/yard/open roles are content in their own right and are exempt.
+	_metrics["empty_parcel_cleanup"] = _suppress_empty_parcel_outlines(
+		parcel_entries, block_entries)
+
 	# The sanitized arrays are the render truth: everything below draws from
 	# them, and so does the per-tile density audit.
 	_render_mass_entries = block_entries
@@ -807,7 +816,7 @@ func _build_silkstown_plan(plan: SettlementPlan, coords: Array[Vector2i],
 		var street: Dictionary = street_value
 		var points: PackedVector2Array = street.points
 		for i in range(points.size() - 1):
-			_append_line(_settlement_streets, points[i], points[i + 1])
+			_append_dry_line(_settlement_streets, points[i], points[i + 1])
 	var footprint_exclusions := _hero_footprint_exclusions(footprints)
 	footprint_exclusions.append_array(plan.water_exclusions)
 	var forbidden_tiles := _forbidden_settlement_tile_exclusions(
@@ -1215,7 +1224,7 @@ func _add_silkstown_industry_compounds(plan: SettlementPlan,
 		var pipe_start := center - normal * side * normal_half
 		if tank_added and not _segment_overlaps_water(pipe_start, tank_center,
 				_active_plan_water_exclusions):
-			_append_line(_service_lines, pipe_start, tank_center)
+			_append_dry_line(_service_lines, pipe_start, tank_center)
 		if tank_added:
 			_append_safe_roof_mark(tank_center - Vector2(4.3, 0.0),
 				tank_center + Vector2(4.3, 0.0), "%s|tank" % key)
@@ -4457,7 +4466,7 @@ func _morph_add_small_town_micro(face: PackedVector2Array, key: String,
 			if child < row_count - 1:
 				var alley_center := (a + b) * 0.5 + tangent * (
 					-usable_frontage * 0.5 + slot * float(child + 1))
-				_append_line(_hero_alleys, alley_center + inward * 1.0,
+				_append_dry_line(_hero_alleys, alley_center + inward * 1.0,
 					alley_center + inward * (row_inset + row_depth * 0.5))
 	return {"built_area": built_area, "green_area": green_area,
 		"micro_mass_count": local_index}
@@ -4602,7 +4611,7 @@ func _build_suburban_fringe() -> void:
 			var access := PackedVector2Array([record.road_point,
 				record.center - record.normal * float(record.side) *
 					(float(record.depth) * 0.5)])
-			_append_line(_settlement_streets, access[0], access[1])
+			_append_dry_line(_settlement_streets, access[0], access[1])
 			accesses.append(access)
 		if accesses.is_empty():
 			_suburban_metrics.road_connection_failure_count = int(
@@ -4751,7 +4760,7 @@ func _build_rural_growth(parcel_entries: Array, shadow_entries: Array,
 					parcel_entries, shadow_entries, park_entries, block_entries):
 				back_count = 1
 				back_record = record
-				_append_line(_service_lines, source.road_point,
+				_append_dry_line(_service_lines, source.road_point,
 					record.center - record.normal * float(record.side) *
 					(float(record.depth) * 0.5))
 		var front_count := frontage_records.size()
@@ -5515,7 +5524,7 @@ func _hero_record_alley(face: PackedVector2Array, corridor: PackedVector2Array,
 				high = projection
 				high_point = point
 		if low_point.distance_to(high_point) >= 7.0:
-			_append_line(_hero_alleys, low_point, high_point)
+			_append_dry_line(_hero_alleys, low_point, high_point)
 
 func _hero_add_face(face: PackedVector2Array, key: String, color_cluster: String,
 		footprint_exclusions: Array, parcel_entries: Array, shadow_entries: Array, park_entries: Array,
@@ -5660,7 +5669,7 @@ func _hero_add_street_walls(face: PackedVector2Array, key: String, color_cluster
 		var entry := _segment_quad(entry_center - entry_inward * 2.0,
 			entry_center + entry_inward * (average_depth + 8.0), 2.4)
 		local_exclusions.append({"poly": entry, "bb": _bbox(entry)})
-		_append_line(_hero_alleys, entry_center, entry_center + entry_inward * (average_depth + 5.0))
+		_append_dry_line(_hero_alleys, entry_center, entry_center + entry_inward * (average_depth + 5.0))
 
 	var built_area := 0.0
 	var piece_index := 0
@@ -5937,7 +5946,7 @@ func _append_service_plan(center: Vector2, tile_id: String, anchors: Array, road
 	var a1 := center + offset - t1 * 172.0
 	var b1 := center + offset + t1 * 172.0
 	road_segments.append([a1, b1])
-	_append_line(_service_lines, a1, b1)
+	_append_dry_line(_service_lines, a1, b1)
 	for i in range(-2, 3):
 		var p := center + offset + t1 * (float(i) * 67.0 + _rr("mc-aj|%s|%d" % [tile_id, i], -8.0, 8.0))
 		anchors.append({"p": p, "t": t1, "key": "service-a|%d" % i, "actual": false})
@@ -5948,7 +5957,7 @@ func _append_service_plan(center: Vector2, tile_id: String, anchors: Array, road
 	var a2 := cross_center - t2 * 128.0
 	var b2 := cross_center + t2 * 128.0
 	road_segments.append([a2, b2])
-	_append_line(_service_lines, a2, b2)
+	_append_dry_line(_service_lines, a2, b2)
 	for i in range(-1, 2):
 		var p2 := cross_center + t2 * float(i) * 64.0
 		if not _near_anchor(p2, anchors, 42.0):
@@ -6489,6 +6498,147 @@ func _offset(poly: PackedVector2Array, amount: Vector2) -> PackedVector2Array:
 func _append_line(into: PackedVector2Array, a: Vector2, b: Vector2) -> void:
 	into.append(a)
 	into.append(b)
+
+## Owner rule (2026-08-16): no road-coloured line may cross sea or lake.
+## Alleys and streets are laid out in PARCEL space and never consulted NavGrid,
+## so a hero alley struck inward from a coastal face ran straight out over the
+## bay — 1437u of it map-wide, runs up to 163u (tools/road_water_audit.tscn).
+## Emits only the DRY sub-spans of [a,b], so a lane that meets the shore stops
+## AT the shore instead of disappearing. Rivers are land here: roads cross them
+## on bridges, and only sea/lake are the owner's rule (matching
+## _morph_edge_touches_open_water).
+const DRY_LINE_STEP := 6.0
+const DRY_LINE_MIN := 4.0     # shorter than this is a stub, not a lane
+
+func _append_dry_line(into: PackedVector2Array, a: Vector2, b: Vector2) -> void:
+	var nav := NavGrid.instance()
+	var span := a.distance_to(b)
+	if span <= 0.001:
+		return
+	if nav == null or not nav.is_ready():
+		_append_line(into, a, b)
+		return
+	var n := maxi(1, int(ceil(span / DRY_LINE_STEP)))
+	var run_start := Vector2.INF
+	var prev := Vector2.INF
+	for i in range(n + 1):
+		var p := a.lerp(b, float(i) / float(n))
+		var cell := nav.cell_of(p)
+		var kind := nav.water(cell.x, cell.y)
+		if kind == NavGrid.WATER_SEA or kind == NavGrid.WATER_LAKE:
+			if run_start != Vector2.INF:
+				if run_start.distance_to(prev) >= DRY_LINE_MIN:
+					_append_line(into, run_start, prev)
+				run_start = Vector2.INF
+		else:
+			if run_start == Vector2.INF:
+				run_start = p
+			prev = p
+	if run_start != Vector2.INF and run_start.distance_to(prev) >= DRY_LINE_MIN:
+		_append_line(into, run_start, prev)
+
+## Roles that ARE content without a building: a park, a yard or a deliberate open
+## lot is meant to read as ground, so its outline stays.
+const EMPTY_PARCEL_EXEMPT_ROLES := {
+	"face_park": true, "street_park": true, "row_pocket": true,
+	"accommodation_release": true, "hero_park": true, "hero_open": true,
+	"face_open": true, "face_yard": true,
+}
+## A parcel covered by less than this fraction of drawn mass counts as unbuilt.
+const EMPTY_PARCEL_COVER_MIN := 0.06
+## Spatial-hash cell for the coverage test (world units).
+const EMPTY_PARCEL_CELL := 128.0
+
+## Suppress the outline of every parcel no mass was drawn in. Returns metrics.
+## The fill is deliberately kept — see the call site.
+func _suppress_empty_parcel_outlines(parcel_entries: Array,
+		block_entries: Array) -> Dictionary:
+	var out := {"checked": 0, "suppressed": 0, "suppressed_area": 0.0,
+		"exempt": 0, "kept_built": 0}
+	if _parcel_edges.is_empty() or parcel_entries.is_empty():
+		return out
+	# Bucket the masses so a parcel only tests its own neighbourhood.
+	var grid: Dictionary = {}
+	for i in block_entries.size():
+		var bpoly: PackedVector2Array = (block_entries[i] as Dictionary).get(
+			"poly", PackedVector2Array())
+		if bpoly.size() < 3:
+			continue
+		var bb := _bbox(bpoly)
+		var x0 := int(floor(bb.position.x / EMPTY_PARCEL_CELL))
+		var x1 := int(floor(bb.end.x / EMPTY_PARCEL_CELL))
+		var y0 := int(floor(bb.position.y / EMPTY_PARCEL_CELL))
+		var y1 := int(floor(bb.end.y / EMPTY_PARCEL_CELL))
+		for cx in range(x0, x1 + 1):
+			for cy in range(y0, y1 + 1):
+				var ck := "%d:%d" % [cx, cy]
+				if not grid.has(ck):
+					grid[ck] = PackedInt32Array()
+				var bucket: PackedInt32Array = grid[ck]
+				bucket.append(i)
+				grid[ck] = bucket
+	var drop: Dictionary = {}
+	for entry_value in parcel_entries:
+		var entry: Dictionary = entry_value
+		var poly: PackedVector2Array = entry.get("poly", PackedVector2Array())
+		if poly.size() < 3:
+			continue
+		if EMPTY_PARCEL_EXEMPT_ROLES.has(str(entry.get("role", ""))):
+			out.exempt = int(out.exempt) + 1
+			continue
+		out.checked = int(out.checked) + 1
+		var area := _poly_area(poly)
+		if area <= 0.0:
+			continue
+		var bb := _bbox(poly)
+		var seen: Dictionary = {}
+		var covered := 0.0
+		var x0 := int(floor(bb.position.x / EMPTY_PARCEL_CELL))
+		var x1 := int(floor(bb.end.x / EMPTY_PARCEL_CELL))
+		var y0 := int(floor(bb.position.y / EMPTY_PARCEL_CELL))
+		var y1 := int(floor(bb.end.y / EMPTY_PARCEL_CELL))
+		for cx in range(x0, x1 + 1):
+			for cy in range(y0, y1 + 1):
+				var bucket: PackedInt32Array = grid.get("%d:%d" % [cx, cy],
+					PackedInt32Array())
+				for bi in bucket:
+					if seen.has(bi):
+						continue
+					seen[bi] = true
+					var bpoly: PackedVector2Array = (block_entries[bi] as Dictionary).get(
+						"poly", PackedVector2Array())
+					if bpoly.size() < 3:
+						continue
+					for piece_value in Geometry2D.intersect_polygons(poly, bpoly):
+						covered += _poly_area(piece_value as PackedVector2Array)
+				if covered >= area * EMPTY_PARCEL_COVER_MIN:
+					break
+		if covered >= area * EMPTY_PARCEL_COVER_MIN:
+			out.kept_built = int(out.kept_built) + 1
+			continue
+		out.suppressed = int(out.suppressed) + 1
+		out.suppressed_area = float(out.suppressed_area) + area
+		for i in poly.size():
+			drop[_edge_key(poly[i], poly[(i + 1) % poly.size()])] = true
+	if drop.is_empty():
+		return out
+	var kept := PackedVector2Array()
+	var seg := 0
+	while seg + 1 < _parcel_edges.size():
+		var a := _parcel_edges[seg]
+		var b := _parcel_edges[seg + 1]
+		if not drop.has(_edge_key(a, b)):
+			kept.append(a)
+			kept.append(b)
+		seg += 2
+	_parcel_edges = kept
+	return out
+
+## Order-independent identity for a drawn ring segment.
+func _edge_key(a: Vector2, b: Vector2) -> String:
+	if a.x < b.x or (a.x == b.x and a.y <= b.y):
+		return "%.3f,%.3f|%.3f,%.3f" % [a.x, a.y, b.x, b.y]
+	return "%.3f,%.3f|%.3f,%.3f" % [b.x, b.y, a.x, a.y]
 
 func _append_ring(into: PackedVector2Array, poly: PackedVector2Array) -> void:
 	for i in poly.size():
