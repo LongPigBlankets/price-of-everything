@@ -14786,9 +14786,11 @@ func _test_mass_form_adversarial_sweep() -> void:
 # ======================================================================================
 
 func _test_authored_map_empty_is_inert() -> void:
-	AuthoredMap.reset_for_tests()
-	# The repository ships no authored document yet; when one exists this still holds,
-	# because the assertions below are about the EMPTY document's behaviour.
+	# FORCE the empty state rather than assuming the repository has no authored map. These
+	# assertions used to sit behind `if settlements().is_empty()`, so the day a map was saved
+	# they stopped running — silently, since a skipped check is not a failed one. The suite
+	# total dropping by three was the only visible symptom.
+	AuthoredMap.set_override("__does_not_exist__")
 	var empty: Dictionary = AuthoredMap.empty_document()
 	_check(AuthoredMap.validate(empty).is_empty(),
 		"authored map: the empty document is a valid document")
@@ -14799,16 +14801,15 @@ func _test_authored_map_empty_is_inert() -> void:
 
 	# The suppression key must be false for every tile of an empty document — this is what
 	# keeps the procedural fabric, forest discs and road jobs on today's code paths.
-	var doc_settlements: Dictionary = AuthoredMap.settlements()
-	if doc_settlements.is_empty():
-		_check(not AuthoredMap.is_active(),
-			"authored map: with no document the feature reports inactive")
-		_check(not AuthoredMap.covers("tile_23_8") and not AuthoredMap.covers("tile_10_16"),
-			"authored map: with no document no tile is authored")
-		var slots: Dictionary = AuthoredMap.slots_for_tile("tile_23_8")
-		_check((slots.pins as Array).is_empty() and (slots.frames as Array).is_empty()
-			and (slots.large as Array).is_empty(),
-			"authored map: slots_for_tile always answers with all three lists")
+	_check(not AuthoredMap.is_active(),
+		"authored map: with no document the feature reports inactive")
+	_check(not AuthoredMap.covers("tile_23_8") and not AuthoredMap.covers("tile_10_16"),
+		"authored map: with no document no tile is authored")
+	var slots: Dictionary = AuthoredMap.slots_for_tile("tile_23_8")
+	_check((slots.pins as Array).is_empty() and (slots.frames as Array).is_empty()
+		and (slots.large as Array).is_empty(),
+		"authored map: slots_for_tile always answers with all three lists")
+	AuthoredMap.reset_for_tests()
 
 
 func _test_authored_map_schema() -> void:
