@@ -24,10 +24,23 @@ extends RefCounted
 ## `scripts/map_editor/` and is excluded from exported builds — this loader is not, and
 ## must never reference it.
 
-## Where the document lives. `res://` because it is authored content committed with the
+## Where documents live. `res://` because these are authored content committed with the
 ## project (the `data/*.json` convention: hills, roads, start buildings, settlement
 ## profiles), not player data.
-const DOC_PATH := "res://data/map_authored.json"
+##
+## THERE ARE MANY DOCUMENTS AND ONE ACTIVE ONE. The editor saves under a name so variants
+## can be tried side by side and compared; the game reads whichever is named in
+## [constant ACTIVE_PATH]. Picking a different one is a one-line change to that file, by
+## hand or from the editor — no copying, and nothing about the losing variants is lost.
+const DOC_DIR := "res://data/map_authored"
+## A single line naming the active document, without the `.json`. A plain text pointer
+## rather than a key inside one of the documents: whichever document is chosen, the choice
+## is not part of any of them.
+const ACTIVE_PATH := "res://data/map_authored/active.txt"
+
+## Filename characters allowed in a document name. Everything else is rejected rather than
+## sanitised, so a name in the editor is always the name on disk.
+const NAME_PATTERN := "^[A-Za-z0-9 _-]{1,48}$"
 
 ## Bumped when the document's shape changes in a way older files cannot satisfy.
 ## [method validate] rejects a future version; a past version is a migration decision.
@@ -61,6 +74,8 @@ const AREA_MAX_VERTICES := 8
 
 static var _cache: Dictionary = {}
 static var _loaded := false
+## Set by the tools to read a specific document regardless of the active pointer.
+static var _override_name := ""
 ## tile_id -> settlement key, built lazily from the settlements' `tiles` lists.
 static var _tile_index: Dictionary = {}
 static var _tile_index_built := false
@@ -72,23 +87,24 @@ static func data() -> Dictionary:
 	if _loaded:
 		return _cache
 	_loaded = true
-	if not FileAccess.file_exists(DOC_PATH):
+	var path := active_path()
+	if path == "" or not FileAccess.file_exists(path):
 		return _cache   # opt-in feature: no document is not an error
-	var file := FileAccess.open(DOC_PATH, FileAccess.READ)
+	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
-		push_warning("AuthoredMap: %s exists but could not be opened." % DOC_PATH)
+		push_warning("AuthoredMap: %s exists but could not be opened." % path)
 		return _cache
 	var parsed: Variant = JSON.parse_string(file.get_as_text())
 	file.close()
 	if typeof(parsed) != TYPE_DICTIONARY:
-		push_warning("AuthoredMap: %s did not parse as a document." % DOC_PATH)
+		push_warning("AuthoredMap: %s did not parse as a document." % path)
 		return _cache
 	var doc: Dictionary = parsed
 	var errors := validate(doc)
 	if not errors.is_empty():
 		# Refuse a malformed document rather than half-drawing it: a partially applied
 		# authored map would suppress procedural fabric it cannot replace.
-		push_warning("AuthoredMap: %s rejected — %s" % [DOC_PATH, ", ".join(errors)])
+		push_warning("AuthoredMap: %s rejected — %s" % [path, ", ".join(errors)])
 		return _cache
 	if str(doc.get("hills_hash", "")) != HillBaked.source_hash():
 		push_warning("AuthoredMap: authored map is STALE vs the terrain bake — "
@@ -287,7 +303,7 @@ static func to_text(doc: Dictionary) -> String:
 	return JSON.stringify(canonical(doc), "  ", true)
 
 
-## Write a document to an ABSOLUTE path (the editor globalizes `DOC_PATH` first —
+## Write a document to an ABSOLUTE path (the editor globalizes the document path first —
 ## `FileAccess` writes to `res://` do not persist in a running build; see
 ## `tools/strip_icon_bg.gd`). Refuses to write a document that would not load.
 ## Returns an empty string on success, else the reason.
@@ -303,11 +319,83 @@ static func save_to(doc: Dictionary, absolute_path: String) -> String:
 	return ""
 
 
+## The full path of a named document.
+static func path_for(name: String) -> String:
+	return "%s/%s.json" % [DOC_DIR, name]
+
+
+static func is_valid_name(name: String) -> bool:
+	var regex := RegEx.new()
+	regex.compile(NAME_PATTERN)
+	return regex.search(name) != null
+
+
+## The name of the document the game reads, or "" when none is set.
+static func active_name() -> String:
+	if _override_name != "":
+		return _override_name
+	if not FileAccess.file_exists(ACTIVE_PATH):
+		return ""
+	var file := FileAccess.open(ACTIVE_PATH, FileAccess.READ)
+	if file == null:
+		return ""
+	var name := file.get_as_text().strip_edges()
+	file.close()
+	return name
+
+
+static func active_path() -> String:
+	var name := active_name()
+	return path_for(name) if name != "" else ""
+
+
+## Read a specific document for this process, whatever the pointer says. For tools that
+## validate a named variant without disturbing which one the game would load.
+static func set_override(name: String) -> void:
+	_override_name = name
+	_cache = {}
+	_loaded = false
+	_tile_index = {}
+	_tile_index_built = false
+
+
+## Every document name on disk, sorted.
+static func list_documents() -> PackedStringArray:
+	var out := PackedStringArray()
+	var dir := DirAccess.open(DOC_DIR)
+	if dir == null:
+		return out
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		if not dir.current_is_dir() and entry.ends_with(".json"):
+			out.append(entry.get_basename())
+		entry = dir.get_next()
+	dir.list_dir_end()
+	out.sort()
+	return out
+
+
+## Point the game at a document. `absolute_dir` is the globalized `DOC_DIR` — writes to
+## `res://` from a running build do not persist, so the caller supplies the real path.
+static func write_active(name: String, absolute_dir: String) -> String:
+	if not is_valid_name(name):
+		return "'%s' is not a usable document name" % name
+	DirAccess.make_dir_recursive_absolute(absolute_dir)
+	var file := FileAccess.open("%s/active.txt" % absolute_dir, FileAccess.WRITE)
+	if file == null:
+		return "could not write the active pointer (error %d)" % FileAccess.get_open_error()
+	file.store_string(name)
+	file.close()
+	return ""
+
+
 ## Drop the cache so the next read re-parses. Used by the suite and by the editor after a
 ## save, so the running game picks up what was just written.
 static func reset_for_tests() -> void:
 	_cache = {}
 	_loaded = false
+	_override_name = ""
 	_tile_index = {}
 	_tile_index_built = false
 

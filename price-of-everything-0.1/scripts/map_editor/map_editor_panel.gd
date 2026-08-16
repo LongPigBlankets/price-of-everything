@@ -94,7 +94,7 @@ func build(editor: Node, layers: MapEditorLayers) -> void:
 	column.add_child(grid)
 
 	column.add_child(_heading("Document"))
-	for entry in [["Delete selected   (Del)", "delete"], ["Save   (F5)", "save"],
+	for entry in [["Delete selected   (Del)", "delete"], ["Save   (F5)", "save"], ["Save as\u2026", "save_as"],
 			["Reload   (F6)", "reload"], ["Back to menu   (Esc)", "leave"]]:
 		var button := Button.new()
 		button.text = str(entry[0])

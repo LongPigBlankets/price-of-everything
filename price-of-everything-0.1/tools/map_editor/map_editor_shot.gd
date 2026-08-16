@@ -57,6 +57,13 @@ func _ready() -> void:
 	# shows what they produce rather than an empty map.
 	if OS.get_environment("POE_EDITOR_SHOT_DEMO") == "1":
 		await _demo(editor)
+	# POE_EDITOR_SHOT_SAVE=<name> also saves the result under that name, exercising the real
+	# save path (named file + active pointer) rather than only the drawing tools.
+	var save_as := OS.get_environment("POE_EDITOR_SHOT_SAVE")
+	if save_as != "":
+		editor.call("_save_as", save_as)
+		await get_tree().process_frame
+		print("[EDITOR-SHOT] saved as '%s'" % save_as)
 	if not bool(editor.call("focus_tile", _tile, _zoom)):
 		push_error("[EDITOR-SHOT] unknown tile '%s'" % _tile)
 		get_tree().quit(1)

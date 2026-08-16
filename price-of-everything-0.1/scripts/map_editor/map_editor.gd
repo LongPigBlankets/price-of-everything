@@ -27,6 +27,7 @@ const MapEditorStrokeEdit := preload("res://scripts/map_editor/map_editor_stroke
 const MapEditorTraceTool := preload("res://scripts/map_editor/map_editor_trace_tool.gd")
 const MapEditorSelection := preload("res://scripts/map_editor/map_editor_selection.gd")
 const MapEditorConfirm := preload("res://scripts/map_editor/map_editor_confirm.gd")
+const MapEditorNameDialog := preload("res://scripts/map_editor/map_editor_name_dialog.gd")
 const MapEditorPanel := preload("res://scripts/map_editor/map_editor_panel.gd")
 
 ## Tools. NAVIGATE is the default and does nothing but move the view: an editor whose idle
@@ -85,6 +86,7 @@ var _layers: MapEditorLayers
 ## While the anchor tool has a point picked up: `{settlement, stroke, index}`.
 var _anchor_grab: Dictionary = {}
 var _confirm: MapEditorConfirm
+var _name_dialog: MapEditorNameDialog
 ## Marquee in world units while dragging, and the records it caught.
 var _marquee_from := Vector2.INF
 var _marquee_to := Vector2.INF
@@ -218,6 +220,14 @@ func _build_chrome() -> void:
 	_confirm.cancelled.connect(func() -> void: _set_status("Deletion cancelled."))
 	layer.add_child(_confirm)
 
+	_name_dialog = MapEditorNameDialog.new()
+	_name_dialog.set_anchors_preset(Control.PRESET_CENTER)
+	_name_dialog.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_name_dialog.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_name_dialog.accepted.connect(_save_as)
+	_name_dialog.cancelled.connect(func() -> void: _set_status("Save cancelled."))
+	layer.add_child(_name_dialog)
+
 	_panel = MapEditorPanel.new()
 	_panel.anchor_top = 0.0
 	_panel.anchor_bottom = 1.0
@@ -347,6 +357,14 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 func _handle_key(event: InputEventKey) -> void:
 	# The confirmation is modal — while it is up, Enter and Escape belong to it and nothing
 	# else may act. Anything less makes Escape ambiguous at exactly the wrong moment.
+	if _name_dialog != null and _name_dialog.is_open():
+		# The field owns typing while it is open; only Escape is taken from it here, and
+		# Enter is handled by the field's own submit.
+		if event.keycode == KEY_ESCAPE:
+			_name_dialog.close()
+			_set_status("Save cancelled.")
+			_refresh_status()
+		return
 	if _confirm != null and _confirm.is_open():
 		if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
 			_confirm.close()
@@ -740,20 +758,43 @@ func run_action(action: String) -> void:
 			_leave()
 		"delete":
 			_ask_delete()
+		"save_as":
+			_ask_name()
 
 
 # ── Document ────────────────────────────────────────────────────────────────────
 
+## F5 saves under the document's current name, and asks for one the first time.
 func _save() -> void:
-	var absolute := ProjectSettings.globalize_path(AuthoredMap.DOC_PATH)
+	if _document.name_of() == "":
+		_ask_name()
+		return
+	_save_as(_document.name_of())
+
+
+func _ask_name() -> void:
+	_name_dialog.open(_document.name_of())
+	_panel.refresh()
+
+
+## Write the document under `name` and point the game at it. Saving and activating are one
+## step deliberately: a save that did not become the map you then look at would be a trap,
+## and every other variant stays on disk to switch back to.
+func _save_as(name: String) -> void:
+	var directory := ProjectSettings.globalize_path(AuthoredMap.DOC_DIR)
+	DirAccess.make_dir_recursive_absolute(directory)
+	var absolute := "%s/%s.json" % [directory, name]
 	var problem := _document.save_to(absolute)
-	if problem == "":
-		# Drop the game-side cache so a reload in this session sees what was just written.
-		AuthoredMap.reset_for_tests()
-		_set_status("Saved %s" % absolute)
-	else:
+	if problem != "":
 		_set_status("SAVE FAILED — %s" % problem)
-	await get_tree().process_frame
+		_refresh_status()
+		return
+	var pointed := AuthoredMap.write_active(name, directory)
+	_document.set_name(name)
+	# Drop the game-side cache so anything reading it now sees what was just written.
+	AuthoredMap.reset_for_tests()
+	_set_status("Saved '%s'%s" % [name,
+		"" if pointed == "" else "  (but the active pointer failed: %s)" % pointed])
 	_refresh_status()
 
 

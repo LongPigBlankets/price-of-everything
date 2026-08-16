@@ -25,6 +25,7 @@ var _redo_stack: Array[Dictionary] = []
 var _dirty := false
 var _discard_armed := false
 var _last_label := "edit"
+var _name := ""
 
 
 func _init() -> void:
@@ -34,6 +35,7 @@ func _init() -> void:
 ## Load from disk, discarding any working state. An absent file yields the empty document,
 ## which is the normal starting point: authoring begins on a blank sheet over the real map.
 func reload() -> void:
+	_name = AuthoredMap.active_name()
 	AuthoredMap.reset_for_tests()
 	var loaded := AuthoredMap.data()
 	_doc = _copy(loaded) if not loaded.is_empty() else AuthoredMap.empty_document()
@@ -104,8 +106,17 @@ func save_to(absolute_path: String) -> String:
 	return problem
 
 
+## The document's name, or a placeholder until it has been saved under one.
 func display_name() -> String:
-	return AuthoredMap.DOC_PATH.get_file()
+	return _name if _name != "" else "(unnamed)"
+
+
+func name_of() -> String:
+	return _name
+
+
+func set_name(value: String) -> void:
+	_name = value
 
 
 ## Headline counts for the status bar.

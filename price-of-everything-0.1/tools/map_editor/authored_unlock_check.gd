@@ -36,10 +36,17 @@ const ZOOM := 0.62
 var _doc_path := ""
 var _backup := ""
 var _had_backup := false
+var _previous_active := ""
 
 
 func _ready() -> void:
-	_doc_path = ProjectSettings.globalize_path(AuthoredMap.DOC_PATH)
+	# Writes a throwaway NAMED document and points the game at it, restoring whatever was
+	# active afterwards.
+	var directory := ProjectSettings.globalize_path(AuthoredMap.DOC_DIR)
+	DirAccess.make_dir_recursive_absolute(directory)
+	_doc_path = "%s/_unlock_check.json" % directory
+	_previous_active = AuthoredMap.active_name()
+	AuthoredMap.write_active("_unlock_check", directory)
 	_stash_existing()
 	if not _write_document():
 		_restore()
@@ -258,6 +265,11 @@ func _stash_existing() -> void:
 
 
 func _restore() -> void:
+	var directory := ProjectSettings.globalize_path(AuthoredMap.DOC_DIR)
+	if _previous_active != "":
+		AuthoredMap.write_active(_previous_active, directory)
+	else:
+		DirAccess.remove_absolute("%s/active.txt" % directory)
 	if _had_backup:
 		var file := FileAccess.open(_doc_path, FileAccess.WRITE)
 		if file != null:
