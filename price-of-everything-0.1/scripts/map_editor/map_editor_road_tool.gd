@@ -98,14 +98,25 @@ func finish(settlement_key: String, next_id: int, terrain: Node) -> Dictionary:
 	if _points.size() < 2:
 		abandon()
 		return {}
+	var stroke := build_stroke(_points.duplicate(true), settlement_key, next_id, terrain)
+	abandon()
+	return stroke
+
+
+## Wrap a bare point list in everything a stroke needs: its id, class, touched tiles, the
+## unlockable default and any bridge decks. Shared with the trace and dot tools so all three
+## record identical metadata — a stroke drawn one way must behave exactly like a stroke
+## drawn another.
+func build_stroke(points: Array, settlement_key: String, next_id: int, terrain: Node) -> Dictionary:
+	if points.size() < 2:
+		return {}
 	var stroke := {
 		"id": "r:%s:%d" % [settlement_key, next_id],
 		"class": _stroke_class,
-		"points": _points.duplicate(true),
+		"points": points,
 	}
 	var centreline := AuthoredRoadGeometry.sample(stroke)
 	if AuthoredRoadGeometry.length_of(centreline) < AuthoredRoadGeometry.MIN_STROKE_LENGTH:
-		abandon()
 		return {}
 	var tiles := AuthoredRoadGeometry.touched_tiles(centreline, terrain)
 	stroke["tiles"] = _to_array(tiles)
@@ -119,7 +130,6 @@ func finish(settlement_key: String, next_id: int, terrain: Node) -> Dictionary:
 			var tangent: Vector2 = crossing[1]
 			bridges.append([centre.x, centre.y, tangent.x, tangent.y])
 		stroke["bridges"] = bridges
-	abandon()
 	return stroke
 
 

@@ -112,6 +112,51 @@ func _ready() -> void:
 	_check("Escape reaches the editor (arms the unsaved-work guard)",
 		bool(document.call("discard_armed")))
 
+	# ── The three added draw modes ──────────────────────────────────────────────
+	var doc: RefCounted = _editor.call("document")
+
+	# FREEHAND: press, drag along a path, release -> one simplified stroke.
+	_editor.call("set_tool", "trace")
+	var before_trace := _road_count()
+	await _trace_path([Vector2(400, 300), Vector2(500, 330), Vector2(600, 300),
+		Vector2(700, 340), Vector2(820, 300)])
+	_check("freehand commits a stroke", _road_count() == before_trace + 1)
+	var traced := _last_stroke(doc)
+	var traced_points: int = (traced.get("points", []) as Array).size()
+	# The gesture above sent 5 waypoints plus interpolated motion; a stroke that kept every
+	# sample would be unusable as an object. It must also keep more than a bare line.
+	_check("freehand simplifies the path (%d points)" % traced_points,
+		traced_points >= 2 and traced_points <= 8)
+
+	# CONNECT THE DOTS: two dots, then a link between them.
+	_editor.call("set_tool", "dots")
+	var before_dots := _road_count()
+	await _click(Vector2(500, 600))
+	await _click(Vector2(760, 660))
+	_check("dots are not roads until joined", _road_count() == before_dots)
+	_check("two dots exist", (_editor.call("trace_tool").call("dots") as PackedVector2Array).size() == 2)
+	await _click(Vector2(500, 600))
+	await _click(Vector2(760, 660))
+	_check("joining two dots makes a stroke", _road_count() == before_dots + 1)
+	var joined := _last_stroke(doc)
+	_check("a joined stroke is a straight run",
+		(joined.get("points", []) as Array).size() == 2)
+
+	# ADD ANCHOR: click that straight run, drag, and both segments should bow.
+	_editor.call("set_tool", "anchor")
+	var mid := Vector2(630, 630)
+	var before_points: int = (joined.get("points", []) as Array).size()
+	await _drag(mid, mid + Vector2(0, 70))
+	var shaped := _last_stroke(doc)
+	var shaped_points: Array = shaped.get("points", []) as Array
+	_check("the anchor tool inserts a point (%d -> %d)" % [before_points, shaped_points.size()],
+		shaped_points.size() == before_points + 1)
+	var middle: Array = shaped_points[1] if shaped_points.size() > 2 else []
+	_check("the inserted point carries curve handles",
+		middle.size() >= 6 and (Vector2(float(middle[4]), float(middle[5]))).length() > 0.5)
+	_check("dragging the anchor moved it off the straight line",
+		middle.size() >= 2 and absf(float(middle[1]) - 630.0) > 1.0)
+
 	if _failures.is_empty():
 		print("[INPUT] ALL CHECKS PASSED")
 		get_tree().quit(0)
@@ -177,6 +222,39 @@ func _drag(from: Vector2, to: Vector2) -> void:
 	up.button_index = MOUSE_BUTTON_LEFT
 	up.pressed = false
 	up.position = to
+	Input.parse_input_event(up)
+	await get_tree().process_frame
+
+
+## The most recently added stroke of the first settlement — the one a tool just committed.
+func _last_stroke(document: RefCounted) -> Dictionary:
+	var data: Dictionary = document.call("data")
+	var settlements: Dictionary = data.get("settlements", {})
+	for key in settlements.keys():
+		var roads: Array = (settlements[key] as Dictionary).get("roads", []) as Array
+		if not roads.is_empty():
+			return roads[roads.size() - 1]
+	return {}
+
+
+## Press, move through every waypoint, release — a freehand gesture.
+func _trace_path(waypoints: Array) -> void:
+	var down := InputEventMouseButton.new()
+	down.button_index = MOUSE_BUTTON_LEFT
+	down.pressed = true
+	down.position = waypoints[0]
+	Input.parse_input_event(down)
+	await get_tree().process_frame
+	for i in range(1, waypoints.size()):
+		var motion := InputEventMouseMotion.new()
+		motion.position = waypoints[i]
+		motion.relative = (waypoints[i] as Vector2) - (waypoints[i - 1] as Vector2)
+		Input.parse_input_event(motion)
+		await get_tree().process_frame
+	var up := InputEventMouseButton.new()
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.pressed = false
+	up.position = waypoints[waypoints.size() - 1]
 	Input.parse_input_event(up)
 	await get_tree().process_frame
 

@@ -23,12 +23,20 @@ const MapEditorDocument := preload("res://scripts/map_editor/map_editor_document
 const MapEditorOverlay := preload("res://scripts/map_editor/map_editor_overlay.gd")
 const MapEditorRoadTool := preload("res://scripts/map_editor/map_editor_road_tool.gd")
 const MapEditorLayers := preload("res://scripts/map_editor/map_editor_layers.gd")
+const MapEditorStrokeEdit := preload("res://scripts/map_editor/map_editor_stroke_edit.gd")
+const MapEditorTraceTool := preload("res://scripts/map_editor/map_editor_trace_tool.gd")
 const MapEditorPanel := preload("res://scripts/map_editor/map_editor_panel.gd")
 
 ## Tools. NAVIGATE is the default and does nothing but move the view: an editor whose idle
 ## state authors geometry cannot be explored, and every stray click becomes a road.
 const TOOL_PAN := "pan"
 const TOOL_ROAD := "road"
+## Click an existing road to insert a point, then drag it to bow BOTH adjacent segments.
+const TOOL_ANCHOR := "anchor"
+## Press and drag to trace a line; the path is simplified into an editable stroke.
+const TOOL_TRACE := "trace"
+## Click to drop dots, then click two of them to join with a straight run.
+const TOOL_DOTS := "dots"
 
 ## Which settlement new content joins. P1 authors into one at a time; the settlement picker
 ## arrives with the tools that need to move content between them.
@@ -66,7 +74,10 @@ const PAN_KEYS := {
 var _document: MapEditorDocument
 var _overlay: MapEditorOverlay
 var _road_tool: MapEditorRoadTool
+var _trace_tool: MapEditorTraceTool
 var _layers: MapEditorLayers
+## While the anchor tool has a point picked up: `{settlement, stroke, index}`.
+var _anchor_grab: Dictionary = {}
 var _panel: MapEditorPanel
 var _tool := TOOL_PAN
 var _world: Node
@@ -80,6 +91,7 @@ var _settlement := DEFAULT_SETTLEMENT
 func _ready() -> void:
 	_document = MapEditorDocument.new()
 	_road_tool = MapEditorRoadTool.new()
+	_trace_tool = MapEditorTraceTool.new()
 	_layers = MapEditorLayers.new()
 	_build_chrome()
 	_boot_world()
@@ -239,11 +251,20 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton:
 		_handle_mouse_button(event as InputEventMouseButton)
-	elif event is InputEventMouseMotion and _panning:
+	elif event is InputEventMouseMotion:
 		var motion := event as InputEventMouseMotion
-		if _camera != null:
+		if _panning and _camera != null:
 			# Drag the world under the cursor: screen delta / zoom is the world delta.
 			_camera.position -= motion.relative / _camera.zoom.x
+		elif _tool == TOOL_TRACE and _trace_tool.is_tracing():
+			_trace_tool.extend_trace(_world_at(motion.position))
+			_overlay.queue_redraw()
+		elif _tool == TOOL_ANCHOR and not _anchor_grab.is_empty():
+			# Live reshaping: the curve follows the pointer, so the bend is judged against
+			# the map rather than guessed and corrected.
+			MapEditorStrokeEdit.shape_anchor(_anchor_grab["stroke"] as Dictionary,
+				int(_anchor_grab["index"]), _world_at(motion.position))
+			_overlay.queue_redraw()
 	elif event is InputEventKey and event.pressed and not event.echo:
 		_handle_key(event as InputEventKey)
 
@@ -251,21 +272,35 @@ func _unhandled_input(event: InputEvent) -> void:
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	match event.button_index:
 		MOUSE_BUTTON_LEFT:
-			# In NAVIGATE the left button drags the view. Only the road tool authors, so an
-			# idle click can never leave geometry behind.
-			if _tool == TOOL_PAN:
-				_panning = event.pressed
-				return
-			if event.double_click and _road_tool.is_drawing():
-				_finish_stroke()
-			elif event.pressed:
-				# Alt places a raw point, bypassing the junction snap.
-				_road_tool.press(_world_at(event.position),
-					MapEditorRoadTool.snap_targets(_document.data()), not event.alt_pressed)
-				_overlay.queue_redraw()
-			else:
-				_road_tool.release(_world_at(event.position))
-				_overlay.queue_redraw()
+			var world := _world_at(event.position)
+			match _tool:
+				# In NAVIGATE the left button drags the view. Only the drawing tools author,
+				# so an idle click can never leave geometry behind.
+				TOOL_PAN:
+					_panning = event.pressed
+				TOOL_ROAD:
+					if event.double_click and _road_tool.is_drawing():
+						_finish_stroke()
+					elif event.pressed:
+						# Alt places a raw point, bypassing the junction snap.
+						_road_tool.press(world,
+							MapEditorRoadTool.snap_targets(_document.data()), not event.alt_pressed)
+					else:
+						_road_tool.release(world)
+				TOOL_ANCHOR:
+					if event.pressed:
+						_anchor_press(world)
+					else:
+						_anchor_grab = {}
+				TOOL_TRACE:
+					if event.pressed:
+						_trace_tool.begin_trace(world)
+					else:
+						_finish_trace()
+				TOOL_DOTS:
+					if event.pressed:
+						_dot_press(world)
+			_overlay.queue_redraw()
 		MOUSE_BUTTON_MIDDLE, MOUSE_BUTTON_RIGHT:
 			# Always available, whatever the tool: panning mid-stroke is normal when a road
 			# runs off the edge of the view.
@@ -288,6 +323,12 @@ func _handle_key(event: InputEventKey) -> void:
 			set_tool(TOOL_PAN)
 		KEY_R:
 			set_tool(TOOL_ROAD)
+		KEY_T:
+			set_tool(TOOL_ANCHOR)
+		KEY_F:
+			set_tool(TOOL_TRACE)
+		KEY_C:
+			set_tool(TOOL_DOTS)
 		KEY_G:
 			toggle_grid()
 		KEY_E:
@@ -303,12 +344,19 @@ func _handle_key(event: InputEventKey) -> void:
 		KEY_ENTER, KEY_KP_ENTER:
 			_finish_stroke()
 		KEY_BACKSPACE:
-			_road_tool.undo_point()
+			if _tool == TOOL_DOTS:
+				_trace_tool.undo_dot()
+			else:
+				_road_tool.undo_point()
 			_overlay.queue_redraw()
 		KEY_ESCAPE:
-			# Escape abandons an in-progress stroke first; only an idle Escape leaves.
-			if _road_tool.is_drawing():
+			# Escape abandons work in progress first; only an idle Escape leaves. Dots count
+			# as work in progress: clearing them is what "cancel" means for that tool.
+			if _road_tool.is_drawing() or _trace_tool.is_tracing() \
+					or not _trace_tool.dots().is_empty():
 				_road_tool.abandon()
+				_trace_tool.cancel_trace()
+				_trace_tool.clear_dots()
 				_overlay.queue_redraw()
 				_refresh_status()
 				return
@@ -384,6 +432,80 @@ func _finish_stroke() -> void:
 	_report_stroke(stroke)
 
 
+## ADD ANCHOR. A press either picks up an existing point of the stroke under the cursor, or
+## inserts a new one there. Inserting alone never changes the road's shape — the new point is
+## a plain corner sitting exactly on the line it was inserted into — so the curve is entirely
+## the product of the drag that follows, which is what makes the gesture predictable.
+func _anchor_press(world: Vector2) -> void:
+	var found := MapEditorStrokeEdit.stroke_at(_document.data(), world)
+	if found.is_empty():
+		_set_status("No road under the cursor.")
+		return
+	var stroke: Dictionary = found["stroke"]
+	# One snapshot for the whole grab: the drag that follows mutates in place, so undo steps
+	# back to before the anchor appeared rather than through every frame of the drag.
+	_document.begin_edit("shape road")
+	var existing := MapEditorStrokeEdit.point_at(stroke, world, MapEditorStrokeEdit.HIT_MIN)
+	var index := existing
+	if index < 0:
+		index = MapEditorStrokeEdit.insert_anchor(stroke,
+			MapEditorStrokeEdit.anchor_slot(stroke, world))
+	if index < 0:
+		_set_status("Could not place an anchor there.")
+		return
+	_anchor_grab = {"stroke": stroke, "index": index}
+	_set_status("Drag to curve both segments%s." % ("" if existing < 0 else " (existing point)"))
+
+
+## CONNECT THE DOTS. Dots live outside the document until two are joined; the join is what
+## produces a stroke.
+func _dot_press(world: Vector2) -> void:
+	var link := _trace_tool.click_dot(world)
+	if link.is_empty():
+		var pending := _trace_tool.pending_dot()
+		_set_status("Dot armed — click another to join." if pending >= 0
+			else "Dot placed (%d)." % _trace_tool.dots().size())
+		return
+	_commit_points(link, "connect dots")
+
+
+## FREEHAND. The traced path is simplified before it becomes a stroke — see the tool's
+## header for why a recording of the gesture would be useless as an object.
+func _finish_trace() -> void:
+	var points := _trace_tool.end_trace()
+	if points.is_empty():
+		_set_status("Trace too short to keep.")
+		return
+	_commit_points(points, "trace road")
+
+
+## Turn a bare point list into a stroke and put it in the document, with the same
+## tile-touch, unlockable and bridge treatment a penned stroke gets. Shared so the three
+## drawing tools cannot drift apart in what they record.
+func _commit_points(points: Array, label: String) -> void:
+	var terrain := get_tree().get_first_node_in_group("hex_map")
+	var settlement := _ensure_settlement()
+	var next_id := int(settlement.get("next_id", 1))
+	var stroke := _road_tool.build_stroke(points, _settlement, next_id, terrain)
+	if stroke.is_empty():
+		_set_status("Stroke discarded — too short to keep.")
+		return
+	_document.begin_edit(label)
+	settlement = _ensure_settlement()
+	settlement["next_id"] = next_id + 1
+	var roads: Array = settlement.get("roads", []) as Array
+	roads.append(stroke)
+	settlement["roads"] = roads
+	var tiles: Array = settlement.get("tiles", []) as Array
+	for tile_id in (stroke.get("tiles", []) as Array):
+		if not tiles.has(tile_id):
+			tiles.append(tile_id)
+	tiles.sort()
+	settlement["tiles"] = tiles
+	_overlay.queue_redraw()
+	_report_stroke(stroke)
+
+
 func _report_stroke(stroke: Dictionary) -> void:
 	var wet := _wet_length(stroke)
 	var note := "%s road, %d tiles%s" % [
@@ -420,6 +542,10 @@ func road_tool() -> MapEditorRoadTool:
 	return _road_tool
 
 
+func trace_tool() -> MapEditorTraceTool:
+	return _trace_tool
+
+
 # ── Public API (the tool panel and the keyboard share it) ───────────────────────
 #
 # Every control the panel offers routes through these, so a button and its shortcut cannot
@@ -436,7 +562,9 @@ func set_tool(value: String) -> void:
 	# a tool to finish it.
 	if _road_tool.is_drawing():
 		_road_tool.abandon()
-		_overlay.queue_redraw()
+	_trace_tool.cancel_trace()
+	_anchor_grab = {}
+	_overlay.queue_redraw()
 	_tool = value
 	_panning = false
 	_refresh_status()

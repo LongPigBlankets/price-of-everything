@@ -36,6 +36,16 @@ const HANDLE_COLOR := Color(0.55, 0.85, 1.0, 0.9)
 const UNLOCKABLE_COLOR := Color(0.45, 0.8, 1.0, 0.85)
 const POINT_RADIUS := 3.0
 
+## Connect-the-dots markers. The owner asked for BIG WHITE DOTS, and big is the point: they
+## are click targets before they are anything else, and a 3px dot at a working zoom is a
+## test of aim rather than of judgement.
+const DOT_RADIUS := 7.0
+const DOT_COLOR := Color(1.0, 1.0, 1.0, 0.95)
+const DOT_EDGE := Color(0.10, 0.12, 0.16, 0.9)
+## The dot waiting for its partner, so a half-made link is never invisible.
+const DOT_ARMED := Color(1.0, 0.72, 0.20, 1.0)
+const TRACE_COLOR := Color(1.0, 0.55, 0.85, 0.95)
+
 ## Set by `map_editor.gd` after construction (an editor tool, not a shipped node, so a
 ## plain assignment beats a signal here). Untyped to avoid a preload cycle with the editor
 ## script, which preloads this one.
@@ -67,6 +77,8 @@ func _draw() -> void:
 	_draw_grid(camera)
 	_draw_authored_roads(camera)
 	_draw_pen(camera)
+	_draw_trace(camera)
+	_draw_dots(camera)
 
 
 ## Authored roads, at their true world widths so what the designer sees is what the game
@@ -127,6 +139,32 @@ func _draw_pen(camera: Camera2D) -> void:
 				var screen_handle := _to_screen(anchor + handle, camera)
 				draw_line(screen_anchor, screen_handle, HANDLE_COLOR, 1.0, true)
 				draw_circle(screen_handle, POINT_RADIUS * 0.7, HANDLE_COLOR)
+
+
+## The freehand path as it is being traced. Drawn raw — the simplification happens on
+## release, and showing the simplified version live would make the line jump under the hand.
+func _draw_trace(camera: Camera2D) -> void:
+	var tool_ref: RefCounted = editor.call("trace_tool")
+	if tool_ref == null or not bool(tool_ref.call("is_tracing")):
+		return
+	var points: PackedVector2Array = tool_ref.call("trace_points")
+	if points.size() >= 2:
+		draw_polyline(_project(points, camera), TRACE_COLOR, 2.0, true)
+
+
+## Free-standing dots and the armed one. Shown for every tool, not just the dot tool: a dot
+## laid down earlier is a junction the designer intends to use, and hiding it while the pen
+## is out would make it useless as an anchor.
+func _draw_dots(camera: Camera2D) -> void:
+	var tool_ref: RefCounted = editor.call("trace_tool")
+	if tool_ref == null:
+		return
+	var dots: PackedVector2Array = tool_ref.call("dots")
+	var armed := int(tool_ref.call("pending_dot"))
+	for i in dots.size():
+		var centre := _to_screen(dots[i], camera)
+		draw_circle(centre, DOT_RADIUS + 1.5, DOT_EDGE)
+		draw_circle(centre, DOT_RADIUS, DOT_ARMED if i == armed else DOT_COLOR)
 
 
 func _project(points: PackedVector2Array, camera: Camera2D) -> PackedVector2Array:

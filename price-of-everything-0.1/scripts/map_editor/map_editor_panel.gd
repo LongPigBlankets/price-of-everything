@@ -24,6 +24,9 @@ const MUTED := Color(0.72, 0.78, 0.82)
 const TOOLS := [
 	["pan", "Navigate", "V"],
 	["road", "Road pen", "R"],
+	["anchor", "Add anchor", "T"],
+	["trace", "Freehand", "F"],
+	["dots", "Connect dots", "C"],
 ]
 
 const ROAD_CLASSES := [
@@ -114,14 +117,26 @@ func refresh() -> void:
 	var road_class := str(_editor.call("current_road_class"))
 	for key in _class_buttons:
 		_mark(_class_buttons[key], str(key) == road_class)
-		(_class_buttons[key] as Button).disabled = tool_name != "road"
 	for key in _layer_buttons:
 		if str(key) == "__grid":
 			_mark(_layer_buttons[key], bool(_editor.call("grid_shown")))
 		else:
 			_mark(_layer_buttons[key], _layers.is_on(str(key)))
-	_hint.text = ("WASD or drag to pan · wheel or Q/E to zoom" if tool_name == "pan"
-		else "Click a corner · drag for a curve · Enter ends · WASD still pans")
+	match tool_name:
+		"pan":
+			_hint.text = "WASD or drag to pan · wheel or Q/E to zoom"
+		"road":
+			_hint.text = "Click a corner · drag for a curve · Enter ends · Bksp back"
+		"anchor":
+			_hint.text = "Click a road to add a point · drag it to curve both sides"
+		"trace":
+			_hint.text = "Press and drag to trace a line · it is simplified on release"
+		"dots":
+			_hint.text = "Click to drop a dot · click two dots to join them · Bksp undo"
+	# The class applies to every drawing tool, not only the pen.
+	var drawing := tool_name in ["road", "trace", "dots"]
+	for key in _class_buttons:
+		(_class_buttons[key] as Button).disabled = not drawing
 
 
 func set_status(text: String) -> void:

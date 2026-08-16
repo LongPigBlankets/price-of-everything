@@ -53,6 +53,10 @@ func _ready() -> void:
 		return
 	print("[EDITOR-SHOT] editor ready after %d frames" % waited)
 
+	# POE_EDITOR_SHOT_DEMO=1 exercises the drawing tools before the capture, so the shot
+	# shows what they produce rather than an empty map.
+	if OS.get_environment("POE_EDITOR_SHOT_DEMO") == "1":
+		await _demo(editor)
 	if not bool(editor.call("focus_tile", _tile, _zoom)):
 		push_error("[EDITOR-SHOT] unknown tile '%s'" % _tile)
 		get_tree().quit(1)
@@ -71,6 +75,95 @@ func _ready() -> void:
 		return
 	print("[EDITOR-SHOT] wrote %s  (%dx%d)" % [path, image.get_width(), image.get_height()])
 	get_tree().quit(0)
+
+
+## Draw one stroke with each tool, so a capture shows the pen, the freehand trace, the
+## joined dots and a curved anchor side by side.
+func _demo(editor: Node) -> void:
+	editor.call("focus_tile", _tile, _zoom)
+	await get_tree().process_frame
+	editor.call("set_road_class", "major")
+	editor.call("set_tool", "road")
+	await _click(Vector2(420, 250))
+	await _click(Vector2(1000, 300))
+	_key(KEY_ENTER)
+	await get_tree().process_frame
+
+	editor.call("set_road_class", "mid")
+	editor.call("set_tool", "trace")
+	var path := [Vector2(380, 430), Vector2(520, 470), Vector2(660, 430),
+		Vector2(800, 480), Vector2(980, 440)]
+	var down := InputEventMouseButton.new()
+	down.button_index = MOUSE_BUTTON_LEFT
+	down.pressed = true
+	down.position = path[0]
+	Input.parse_input_event(down)
+	await get_tree().process_frame
+	for i in range(1, path.size()):
+		var motion := InputEventMouseMotion.new()
+		motion.position = path[i]
+		motion.relative = (path[i] as Vector2) - (path[i - 1] as Vector2)
+		Input.parse_input_event(motion)
+		await get_tree().process_frame
+	var up := InputEventMouseButton.new()
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.pressed = false
+	up.position = path[path.size() - 1]
+	Input.parse_input_event(up)
+	await get_tree().process_frame
+
+	editor.call("set_road_class", "minor")
+	editor.call("set_tool", "dots")
+	for at in [Vector2(400, 640), Vector2(700, 700), Vector2(980, 620)]:
+		await _click(at)
+	await _click(Vector2(400, 640))
+	await _click(Vector2(700, 700))
+	await _click(Vector2(700, 700))
+	await _click(Vector2(980, 620))
+
+	editor.call("set_tool", "anchor")
+	var mid := Vector2(550, 670)
+	var grab_down := InputEventMouseButton.new()
+	grab_down.button_index = MOUSE_BUTTON_LEFT
+	grab_down.pressed = true
+	grab_down.position = mid
+	Input.parse_input_event(grab_down)
+	await get_tree().process_frame
+	var grab_move := InputEventMouseMotion.new()
+	grab_move.position = mid + Vector2(0, 90)
+	grab_move.relative = Vector2(0, 90)
+	Input.parse_input_event(grab_move)
+	await get_tree().process_frame
+	var grab_up := InputEventMouseButton.new()
+	grab_up.button_index = MOUSE_BUTTON_LEFT
+	grab_up.pressed = false
+	grab_up.position = mid + Vector2(0, 90)
+	Input.parse_input_event(grab_up)
+	await get_tree().process_frame
+	editor.call("set_tool", "dots")
+
+
+func _click(at: Vector2) -> void:
+	var down := InputEventMouseButton.new()
+	down.button_index = MOUSE_BUTTON_LEFT
+	down.pressed = true
+	down.position = at
+	Input.parse_input_event(down)
+	await get_tree().process_frame
+	var up := InputEventMouseButton.new()
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.pressed = false
+	up.position = at
+	Input.parse_input_event(up)
+	await get_tree().process_frame
+
+
+func _key(code: Key) -> void:
+	var event := InputEventKey.new()
+	event.keycode = code
+	event.physical_keycode = code
+	event.pressed = true
+	Input.parse_input_event(event)
 
 
 func _parse_options() -> void:

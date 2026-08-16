@@ -477,6 +477,12 @@ feature is opt-in, like midcentury itself), plus the phase's own gates.
   author, and the editor taking sole ownership of input. *Gate: `tools/map_editor/
   editor_input_check.tscn` drives real events through the input pipeline — Escape reaches
   the editor, dragging pans without authoring, the pen still commits.*
+  **Four road tools** (owner, 2026-08-16), all recording identical stroke metadata through
+  one shared `build_stroke`: the **pen** (R — click a corner, drag for a curve), **add
+  anchor** (T — click a road to insert a point, drag to bow both adjacent segments),
+  **freehand** (F — press-drag-release, simplified on release), and **connect the dots**
+  (C — click to drop white dots, click two to join them straight; dots persist as reusable
+  junctions).
   **The editor opens on a bare map by design**: relief, sea and land, rivers and paper.
   Roads, buildings, fabric, ports and woodland are hidden, because those are exactly what
   the authored document replaces — all one click away for tracing.
