@@ -17,6 +17,7 @@ extends Control
 const HexGridOverlayRef := preload("res://scripts/hex_grid_overlay.gd")
 const AuthoredRoadGeometry := preload("res://scripts/authored_road_geometry.gd")
 const AuthoredRoadStyle := preload("res://scripts/authored_road_style.gd")
+const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
 
 ## Tile ids stop being readable below this zoom, and drawing ~600 of them wastes the frame.
 const LABEL_MIN_ZOOM := 0.45
@@ -95,6 +96,7 @@ func _draw() -> void:
 		return
 	_draw_grid(camera)
 	_draw_water_mask(camera)
+	_draw_authored_fabric(camera)
 	_draw_authored_roads(camera)
 	_draw_pen(camera)
 	_draw_trace(camera)
@@ -136,6 +138,66 @@ func _draw_authored_roads(camera: Camera2D) -> void:
 				draw_polyline(screen, UNLOCKABLE_COLOR, 1.6, true)
 			if selected.has(str(stroke.get("id", ""))):
 				draw_polyline(screen, SELECTED_COLOR, 3.0, true)
+
+
+## Ground and fabric, drawn with the SAME painter the game uses, through a transform rather
+## than a re-implementation — so the preview cannot drift from what will be rendered.
+## Roads draw after, matching the game's layering.
+func _draw_authored_fabric(camera: Camera2D) -> void:
+	var document: Dictionary = editor.call("document").call("data")
+	var settlements_value: Variant = document.get("settlements", {})
+	if typeof(settlements_value) != TYPE_DICTIONARY:
+		return
+	# The painter works in world units; this Control draws in screen space. Rather than
+	# teach the painter about cameras, the canvas is transformed for the duration.
+	draw_set_transform(size * 0.5 - camera.get_screen_center_position() * camera.zoom.x,
+		0.0, Vector2(camera.zoom.x, camera.zoom.x))
+	var settlements: Dictionary = settlements_value
+	var keys := settlements.keys()
+	keys.sort()
+	for key in keys:
+		var settlement_value: Variant = settlements[key]
+		if typeof(settlement_value) != TYPE_DICTIONARY:
+			continue
+		var settlement: Dictionary = settlement_value
+		for area in _entries(settlement, "farms"):
+			AuthoredFabricPainter.draw_farm(self, area)
+		for park in _entries(settlement, "parks"):
+			AuthoredFabricPainter.draw_park(self, park)
+		for mass in _entries(settlement, "decor"):
+			AuthoredFabricPainter.draw_mass(self, mass)
+		for area in _entries(settlement, "forests"):
+			AuthoredFabricPainter.draw_forest(self, area)
+	# The stamp being dragged, previewed as the real thing.
+	var shape: RefCounted = editor.call("shape_tool")
+	if shape != null and bool(shape.call("is_stamping")):
+		var preview: Dictionary = shape.call("stamp_preview", "__preview__")
+		if not preview.is_empty():
+			AuthoredFabricPainter.draw_mass(self, preview)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+	# The outline being clicked out stays in screen space: it is scaffolding, not content.
+	if shape != null and bool(shape.call("is_drawing")):
+		var points: Array = shape.call("polygon_points")
+		var screen := PackedVector2Array()
+		for entry_value in points:
+			var entry: Array = entry_value as Array
+			if entry != null and entry.size() >= 2:
+				screen.append(_to_screen(Vector2(float(entry[0]), float(entry[1])), camera))
+		for point in screen:
+			draw_circle(point, POINT_RADIUS + 1.0, PEN_POINT_COLOR)
+		if screen.size() >= 2:
+			var closed := screen.duplicate()
+			closed.append(screen[0])
+			draw_polyline(closed, PEN_COLOR, 2.0, true)
+
+
+func _entries(settlement: Dictionary, key: String) -> Array:
+	var out: Array = []
+	for value in (settlement.get(key, []) as Array):
+		if typeof(value) == TYPE_DICTIONARY:
+			out.append(value)
+	return out
 
 
 ## The stroke in progress: the line so far, its points, and the handles of any curve point.

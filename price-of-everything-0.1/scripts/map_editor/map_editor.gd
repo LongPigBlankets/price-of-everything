@@ -29,6 +29,8 @@ const MapEditorSelection := preload("res://scripts/map_editor/map_editor_selecti
 const MapEditorConfirm := preload("res://scripts/map_editor/map_editor_confirm.gd")
 const MapEditorNameDialog := preload("res://scripts/map_editor/map_editor_name_dialog.gd")
 const MapEditorLoadDialog := preload("res://scripts/map_editor/map_editor_load_dialog.gd")
+const MapEditorShapeTool := preload("res://scripts/map_editor/map_editor_shape_tool.gd")
+const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
 const MapEditorPanel := preload("res://scripts/map_editor/map_editor_panel.gd")
 
 ## Tools. NAVIGATE is the default and does nothing but move the view: an editor whose idle
@@ -45,6 +47,10 @@ const TOOL_DOTS := "dots"
 const TOOL_UPGRADE := "upgrade"
 ## Drag a box over content, then delete it behind a confirmation.
 const TOOL_SELECT := "select"
+## Click corners to outline a farm, wood or park; Enter closes it.
+const TOOL_AREA := "area"
+## Press and drag to stamp a decorative mass from the form vocabulary.
+const TOOL_STAMP := "stamp"
 
 ## Which settlement new content joins. P1 authors into one at a time; the settlement picker
 ## arrives with the tools that need to move content between them.
@@ -83,6 +89,7 @@ var _document: MapEditorDocument
 var _overlay: MapEditorOverlay
 var _road_tool: MapEditorRoadTool
 var _trace_tool: MapEditorTraceTool
+var _shape_tool: MapEditorShapeTool
 var _layers: MapEditorLayers
 ## While the anchor tool has a point picked up: `{settlement, stroke, index}`.
 var _anchor_grab: Dictionary = {}
@@ -107,6 +114,7 @@ func _ready() -> void:
 	_document = MapEditorDocument.new()
 	_road_tool = MapEditorRoadTool.new()
 	_trace_tool = MapEditorTraceTool.new()
+	_shape_tool = MapEditorShapeTool.new()
 	_layers = MapEditorLayers.new()
 	_build_chrome()
 	_boot_world()
@@ -298,6 +306,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif _tool == TOOL_TRACE and _trace_tool.is_tracing():
 			_trace_tool.extend_trace(_world_at(motion.position))
 			_overlay.queue_redraw()
+		elif _tool == TOOL_STAMP and _shape_tool.is_stamping():
+			_shape_tool.drag_stamp(_world_at(motion.position))
+			_overlay.queue_redraw()
 		elif _tool == TOOL_SELECT and _marquee_from != Vector2.INF:
 			_marquee_to = _world_at(motion.position)
 			_overlay.queue_redraw()
@@ -345,6 +356,16 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 				TOOL_UPGRADE:
 					if event.pressed:
 						_upgrade_press(world, not event.shift_pressed)
+				TOOL_AREA:
+					if event.pressed:
+						var refused := _shape_tool.add_point(world)
+						if refused != "":
+							_set_status(refused)
+				TOOL_STAMP:
+					if event.pressed:
+						_shape_tool.begin_stamp(world)
+					else:
+						_finish_stamp()
 				TOOL_SELECT:
 					if event.pressed:
 						_marquee_from = world
@@ -409,6 +430,16 @@ func _handle_key(event: InputEventKey) -> void:
 			set_tool(TOOL_UPGRADE)
 		KEY_X:
 			set_tool(TOOL_SELECT)
+		KEY_B:
+			set_tool(TOOL_STAMP)
+		KEY_N:
+			set_tool(TOOL_AREA)
+		KEY_BRACKETLEFT:
+			_set_status("Form: %s" % _shape_tool.cycle_form(-1))
+			_overlay.queue_redraw()
+		KEY_BRACKETRIGHT:
+			_set_status("Form: %s" % _shape_tool.cycle_form(1))
+			_overlay.queue_redraw()
 		KEY_DELETE:
 			_ask_delete()
 		KEY_G:
@@ -426,9 +457,14 @@ func _handle_key(event: InputEventKey) -> void:
 		KEY_3:
 			set_road_class("minor")
 		KEY_ENTER, KEY_KP_ENTER:
-			_finish_stroke()
+			if _tool == TOOL_AREA:
+				_finish_area()
+			else:
+				_finish_stroke()
 		KEY_BACKSPACE:
-			if _tool == TOOL_DOTS:
+			if _tool == TOOL_AREA:
+				_shape_tool.undo_point()
+			elif _tool == TOOL_DOTS:
 				_trace_tool.undo_dot()
 			else:
 				_road_tool.undo_point()
@@ -689,6 +725,102 @@ func _ensure_settlement() -> Dictionary:
 	return settlements[_settlement]
 
 
+## Close the outline being drawn into a farm, wood or park.
+func _finish_area() -> void:
+	if not _shape_tool.is_drawing():
+		return
+	var settlement := _ensure_settlement()
+	var kind := _shape_tool.kind()
+	var next_id := int(settlement.get("next_id", 1))
+	var record := _shape_tool.finish_polygon(_settlement, next_id)
+	if record.is_empty():
+		_set_status("Needs at least three corners.")
+		_overlay.queue_redraw()
+		return
+	_document.begin_edit("draw %s" % kind)
+	settlement = _ensure_settlement()
+	settlement["next_id"] = next_id + 1
+	var items: Array = settlement.get(kind, []) as Array
+	items.append(record)
+	settlement[kind] = items
+	_cover_tiles_of(settlement, record.get("outline", []) as Array)
+	_overlay.queue_redraw()
+	_set_status("%s placed (%d corners)." % [kind.trim_suffix("s").capitalize(),
+		(record.get("outline", []) as Array).size()])
+
+
+## Commit the mass being dragged.
+func _finish_stamp() -> void:
+	var settlement := _ensure_settlement()
+	var next_id := int(settlement.get("next_id", 1))
+	var record := _shape_tool.finish_stamp(_settlement, next_id)
+	_overlay.queue_redraw()
+	if record.is_empty():
+		_set_status("Too small to stamp.")
+		return
+	_document.begin_edit("stamp mass")
+	settlement = _ensure_settlement()
+	settlement["next_id"] = next_id + 1
+	var items: Array = settlement.get("decor", []) as Array
+	items.append(record)
+	settlement["decor"] = items
+	_cover_tiles_of(settlement, [record.get("pos", [0, 0])])
+	_overlay.queue_redraw()
+	_set_status("Stamped %s." % str(record.get("form", "")))
+
+
+## Add the tiles a set of world points falls on to the settlement's coverage. Ground and
+## fabric suppress procedural content the same way roads do, so they have to declare their
+## tiles too — a mass drawn on an unlisted tile would sit on top of the procedural fabric
+## rather than replacing it.
+func _cover_tiles_of(settlement: Dictionary, points: Array) -> void:
+	var terrain := get_tree().get_first_node_in_group("hex_map")
+	if terrain == null:
+		return
+	var tiles: Array = settlement.get("tiles", []) as Array
+	var all_tiles: Dictionary = terrain.get("tiles")
+	for entry in points:
+		var values: Array = entry as Array
+		if values == null or values.size() < 2:
+			continue
+		var world := Vector2(float(values[0]), float(values[1]))
+		var coord: Vector2i = terrain.call("tile_coord_for_map_coord",
+			terrain.call("local_to_map", world))
+		if not all_tiles.has(coord):
+			continue
+		var tile_id := str((all_tiles[coord] as Dictionary).get("id", ""))
+		if tile_id != "" and not tiles.has(tile_id):
+			tiles.append(tile_id)
+	tiles.sort()
+	settlement["tiles"] = tiles
+
+
+func shape_tool() -> MapEditorShapeTool:
+	return _shape_tool
+
+
+func cycle_form(step: int) -> void:
+	_set_status("Form: %s" % _shape_tool.cycle_form(step))
+	_overlay.queue_redraw()
+	_refresh_status()
+
+
+func current_form() -> String:
+	return _shape_tool.form()
+
+
+func current_area_kind() -> String:
+	return _shape_tool.kind()
+
+
+func set_area_kind(value: String) -> void:
+	_shape_tool.set_kind(value)
+	if _tool != TOOL_AREA:
+		set_tool(TOOL_AREA)
+	else:
+		_refresh_status()
+
+
 func road_tool() -> MapEditorRoadTool:
 	return _road_tool
 
@@ -733,6 +865,7 @@ func set_tool(value: String) -> void:
 	if _road_tool.is_drawing():
 		_road_tool.abandon()
 	_trace_tool.cancel_trace()
+	_shape_tool.abandon()
 	_anchor_grab = {}
 	_marquee_from = Vector2.INF
 	_marquee_to = Vector2.INF

@@ -57,6 +57,10 @@ func _ready() -> void:
 	# shows what they produce rather than an empty map.
 	if OS.get_environment("POE_EDITOR_SHOT_DEMO") == "1":
 		await _demo(editor)
+	if OS.get_environment("POE_EDITOR_SHOT_FABRIC") == "1":
+		editor.call("focus_tile", _tile, _zoom)
+		await get_tree().process_frame
+		await _demo_fabric(editor)
 	# POE_EDITOR_SHOT_SAVE=<name> also saves the result under that name, exercising the real
 	# save path (named file + active pointer) rather than only the drawing tools.
 	var save_as := OS.get_environment("POE_EDITOR_SHOT_SAVE")
@@ -167,6 +171,61 @@ func _demo(editor: Node) -> void:
 	Input.parse_input_event(grab_up)
 	await get_tree().process_frame
 	editor.call("set_tool", "dots")
+
+
+## Ground and fabric, for a capture that shows P2's tools rather than only the roads.
+func _demo_fabric(editor: Node) -> void:
+	# A wood, a farm and a park, each an outlined polygon.
+	editor.call("set_area_kind", "forests")
+	for at in [Vector2(300, 200), Vector2(430, 170), Vector2(470, 280), Vector2(330, 300)]:
+		await _click(at)
+	_key(KEY_ENTER)
+	await get_tree().process_frame
+
+	editor.call("set_area_kind", "farms")
+	for at in [Vector2(560, 180), Vector2(760, 200), Vector2(780, 330), Vector2(570, 320)]:
+		await _click(at)
+	_key(KEY_ENTER)
+	await get_tree().process_frame
+
+	editor.call("set_area_kind", "parks")
+	for at in [Vector2(860, 210), Vector2(960, 220), Vector2(940, 300), Vector2(850, 290)]:
+		await _click(at)
+	_key(KEY_ENTER)
+	await get_tree().process_frame
+
+	# A row of stamped masses, one per form, so the whole vocabulary is in the frame.
+	editor.call("set_tool", "stamp")
+	var forms: Array = editor.call("shape_tool").call("forms")
+	var x := 300.0
+	var y := 430.0
+	for form_value in forms:
+		editor.call("shape_tool").call("set_form", str(form_value))
+		await _drag_stamp(Vector2(x, y), Vector2(x + 74.0, y + 6.0))
+		x += 96.0
+		if x > 980.0:
+			x = 300.0
+			y += 120.0
+
+
+func _drag_stamp(from: Vector2, to: Vector2) -> void:
+	var down := InputEventMouseButton.new()
+	down.button_index = MOUSE_BUTTON_LEFT
+	down.pressed = true
+	down.position = from
+	Input.parse_input_event(down)
+	await get_tree().process_frame
+	var motion := InputEventMouseMotion.new()
+	motion.position = to
+	motion.relative = to - from
+	Input.parse_input_event(motion)
+	await get_tree().process_frame
+	var up := InputEventMouseButton.new()
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.pressed = false
+	up.position = to
+	Input.parse_input_event(up)
+	await get_tree().process_frame
 
 
 func _click(at: Vector2) -> void:

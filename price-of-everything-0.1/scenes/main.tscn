@@ -10,6 +10,7 @@
 [ext_resource type="Script" path="res://scripts/hex_grid_overlay.gd" id="3_hexgrid"]
 [ext_resource type="Script" path="res://scripts/road_network_visuals.gd" id="3_roadsv2"]
 [ext_resource type="Script" path="res://scripts/authored_road_visuals.gd" id="3_authroads"]
+[ext_resource type="Script" path="res://scripts/authored_fabric_visuals.gd" id="3_authfabric"]
 [ext_resource type="Script" uid="uid://dpj2cadgfaauj" path="res://scenes/building_visuals.gd" id="4_choun"]
 [ext_resource type="Script" uid="uid://bt2kwldefvxx1" path="res://scripts/camera_controller.gd" id="5_tbgi4"]
 [ext_resource type="Script" uid="uid://dvo2xw2gwx3y4" path="res://scripts/map_overlay.gd" id="6_eb6dy"]
@@ -159,6 +160,9 @@ script = ExtResource("3_forest")
 
 [node name="UrbanFabricVisuals" type="Node2D" parent="."]
 script = ExtResource("3_urbanfabric")
+
+[node name="AuthoredFabricVisuals" type="Node2D" parent="."]
+script = ExtResource("3_authfabric")
 
 [node name="RiverLayer" type="TileMapLayer" parent="." unique_id=102520984]
 position = Vector2(0, -5)

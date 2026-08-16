@@ -492,7 +492,7 @@ feature is opt-in, like midcentury itself), plus the phase's own gates.
   Roads, buildings, fabric, ports and woodland are hidden, because those are exactly what
   the authored document replaces — all one click away for tracing.
 
-- **P2 — Fabric & ground.** Stamp tool (17 forms + params + reroll), parks, **farm/forest
+- **P2 — Fabric & ground. ✅ BUILT** (was:) Stamp tool (17 forms + params + reroll), parks, **farm/forest
   polygon tool** (≤8 vertices, generated fills, building-overlap lints), shared mass
   painter, fabric + forest suppression, audit exemption, **import-existing command**
   (procedural masses/parks/farm+forest layout of a chosen settlement → editable

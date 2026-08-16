@@ -26,6 +26,8 @@ const MassFormShapes := preload("res://scripts/mass_form_shapes.gd")
 const AuthoredMap := preload("res://scripts/authored_map.gd")
 const AuthoredRoadGeometry := preload("res://scripts/authored_road_geometry.gd")
 const AuthoredRoadStyle := preload("res://scripts/authored_road_style.gd")
+const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
+const MapEditorShapeToolScript := preload("res://scripts/map_editor/map_editor_shape_tool.gd")
 const WorldMapScript := preload("res://scripts/world_map.gd")
 const AuthoredRoadVisualsScript := preload("res://scripts/authored_road_visuals.gd")
 const AppPaths := preload("res://scripts/app_paths.gd")  # saves now live in <base>/savegames/
@@ -68,6 +70,9 @@ func _ready() -> void:
 	_test_authored_road_water_and_bridges()
 	_test_authored_road_visibility_document()
 	_test_authored_road_signal_arity()
+	_test_authored_mass_geometry()
+	_test_authored_woodland_scatter()
+	_test_authored_shape_tool()
 	_test_coal_prohibition()
 	_test_scheduled_coal_prohibition()
 	_test_widgets_instantiate()
@@ -15227,3 +15232,116 @@ func _test_authored_road_signal_arity() -> void:
 	_check(handler_args == signal_args,
 		"authored roads: the reveal handler takes exactly the signal's arguments (%d vs %d)"
 		% [handler_args, signal_args])
+
+
+# ======================================================================================
+# Authored ground and fabric (scripts/authored_fabric_painter.gd + the shape tool)
+# ======================================================================================
+
+func _test_authored_mass_geometry() -> void:
+	# Every form in the vocabulary must produce a simple, triangulable mass from a stamp, and
+	# must stay inside the box the designer dragged — a mass that overflows its own footprint
+	# would collide with things the editor believes it clears.
+	var bad := PackedStringArray()
+	for form_value in MassFormShapes.ALL_FORMS:
+		var form := str(form_value)
+		var mass := {"id": "d:test:%s" % form, "form": form, "pos": [1000.0, 1000.0],
+			"rot": 0.6, "size": [90.0, 58.0]}
+		var parcel: PackedVector2Array = AuthoredFabricPainter.mass_parcel(mass)
+		var polys: Array = AuthoredFabricPainter.mass_polygons(mass)
+		if polys.is_empty():
+			bad.append("%s: nothing built" % form)
+			continue
+		for poly_value in polys:
+			var poly: PackedVector2Array = poly_value
+			if poly.size() < 3 or Geometry2D.triangulate_polygon(poly).is_empty():
+				bad.append("%s: not triangulable" % form)
+				break
+			for point in poly:
+				# Generous tolerance: the constructors inset, they never inflate.
+				if not Geometry2D.is_point_in_polygon(point, _grow_quad(parcel, 2.0)):
+					bad.append("%s: escapes its stamp box" % form)
+					break
+	_check(bad.is_empty(), "authored fabric: every form stamps a sound mass (%s)" % ", ".join(bad))
+
+	# A box too small to be a building yields nothing rather than a sliver.
+	var tiny := {"id": "d:test:tiny", "form": "cross", "pos": [0.0, 0.0], "rot": 0.0,
+		"size": [0.4, 0.4]}
+	_check(AuthoredFabricPainter.mass_polygons(tiny).is_empty(),
+		"authored fabric: a degenerate stamp builds nothing")
+
+
+func _grow_quad(quad: PackedVector2Array, by: float) -> PackedVector2Array:
+	var grown := Geometry2D.offset_polygon(quad, by)
+	return grown[0] if not grown.is_empty() else quad
+
+
+func _test_authored_woodland_scatter() -> void:
+	# THE REGRESSION THIS PINS: the scatter used RoadHash.pick on sequential keys, whose low
+	# bits repeat, so consecutive samples landed within a unit of each other on a three-step
+	# cycle and a wood rendered as two thin diagonal lines. Only a screenshot caught it. The
+	# test now measures the spread directly.
+	var outline := PackedVector2Array([Vector2(0, 0), Vector2(340, -60), Vector2(400, 200),
+		Vector2(60, 240)])
+	var points := AuthoredFabricPainter.woodland_points({"id": "fo:test:1", "outline":
+		[[0, 0], [340, -60], [400, 200], [60, 240]]})
+	_check(points.size() > 40,
+		"authored fabric: a wood is filled, not sprinkled (%d trees)" % points.size())
+
+	# Occupancy across a coarse grid: a line through the polygon touches few buckets, a fill
+	# touches most of them.
+	var buckets := {}
+	for point in points:
+		buckets[Vector2i(int(point.x / 40.0), int(point.y / 40.0))] = true
+	_check(buckets.size() >= 24,
+		"authored fabric: trees spread across the outline (%d buckets)" % buckets.size())
+
+	# No two trees on top of each other — the symptom of the cycle was near-duplicates.
+	var duplicates := 0
+	for i in points.size():
+		for j in range(i + 1, points.size()):
+			if points[i].distance_to(points[j]) < 2.0:
+				duplicates += 1
+	_check(duplicates == 0, "authored fabric: no two trees share a spot (%d)" % duplicates)
+
+	# Determinism, and containment: a canopy may not overhang the outline it was drawn in.
+	var again := AuthoredFabricPainter.woodland_points({"id": "fo:test:1", "outline":
+		[[0, 0], [340, -60], [400, 200], [60, 240]]})
+	_check(points == again, "authored fabric: the same wood scatters identically every time")
+	var outside := 0
+	for point in points:
+		if not Geometry2D.is_point_in_polygon(point, outline):
+			outside += 1
+	_check(outside == 0, "authored fabric: no tree is planted outside its polygon (%d)" % outside)
+
+
+func _test_authored_shape_tool() -> void:
+	var tool_ref: RefCounted = MapEditorShapeToolScript.new()
+	tool_ref.set_kind("forests")
+	for i in AuthoredMap.AREA_MAX_VERTICES:
+		_check(str(tool_ref.add_point(Vector2(float(i) * 30.0, 0.0))) == "",
+			"authored fabric: corner %d is accepted" % i)
+	# The cap is enforced while clicking, with a message — not by rejecting the finished
+	# shape at save time, when the work is already done.
+	_check(str(tool_ref.add_point(Vector2(999.0, 999.0))) != "",
+		"authored fabric: the ninth corner is refused with a reason")
+	var record: Dictionary = tool_ref.finish_polygon("test", 7)
+	_check(str(record.get("id", "")) == "fo:test:7",
+		"authored fabric: a wood takes the fo: prefix and the supplied id")
+	_check((record.get("outline", []) as Array).size() == AuthoredMap.AREA_MAX_VERTICES,
+		"authored fabric: the outline keeps every accepted corner")
+	_check(AuthoredMap.validate(_document_with("forests", record)).is_empty(),
+		"authored fabric: a finished wood validates against the schema")
+
+	# Two corners is not a shape.
+	tool_ref.abandon()
+	tool_ref.add_point(Vector2.ZERO)
+	tool_ref.add_point(Vector2(10.0, 0.0))
+	_check((tool_ref.finish_polygon("test", 8) as Dictionary).is_empty(),
+		"authored fabric: two corners build nothing")
+
+
+func _document_with(kind: String, record: Dictionary) -> Dictionary:
+	var doc: Dictionary = AuthoredMap.empty_document()
+	doc["settlements"] = {"test": {"tiles": ["tile_1_1"], kind: [record]}}
+	return doc

@@ -32,6 +32,8 @@ const TOOLS := [
 	["dots", "Connect dots", "C"],
 	["upgrade", "Upgrade class", "U"],
 	["select", "Select / delete", "X"],
+	["stamp", "Stamp mass", "B"],
+	["area", "Farm / wood / park", "N"],
 ]
 
 const ROAD_CLASSES := [
@@ -49,6 +51,8 @@ var _layers: MapEditorLayers
 var _tool_buttons: Dictionary = {}
 var _class_buttons: Dictionary = {}
 var _layer_buttons: Dictionary = {}
+var _kind_buttons: Dictionary = {}
+var _form_label: Label
 var _folds: Dictionary = {}
 var _status: Label
 var _hint: Label
@@ -96,6 +100,30 @@ func build(editor: Node, layers: MapEditorLayers) -> void:
 		button.pressed.connect(func() -> void: _editor.call("set_road_class", key))
 		_class_buttons[key] = button
 		column.add_child(button)
+
+	# Ground kinds and the form picker — only meaningful for the two fabric tools, so they
+	# are disabled rather than hidden: a control that vanishes is harder to find again than
+	# one that greys out.
+	column.add_child(_heading("Ground"))
+	for entry in [["farms", "Farm"], ["forests", "Wood"], ["parks", "Park"]]:
+		var key := str(entry[0])
+		var button := _toggle_button(str(entry[1]))
+		button.pressed.connect(func() -> void: _editor.call("set_area_kind", key))
+		_kind_buttons[key] = button
+		column.add_child(button)
+	_form_label = _caption("")
+	column.add_child(_form_label)
+	var forms := HBoxContainer.new()
+	forms.add_theme_constant_override("separation", 6)
+	column.add_child(forms)
+	for entry in [["\u25c0  [", -1], ["]  \u25b6", 1]]:
+		var step := int(entry[1])
+		var button := Button.new()
+		button.text = str(entry[0])
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.custom_minimum_size = Vector2(0, 26)
+		button.pressed.connect(func() -> void: _editor.call("cycle_form", step))
+		forms.add_child(button)
 
 	# ── Visibility, folded ──────────────────────────────────────────────────────
 	var visibility := _fold(column, "Visibility")
@@ -195,6 +223,11 @@ func refresh() -> void:
 			_mark(_layer_buttons[key], bool(_editor.call("water_mask_shown")))
 		else:
 			_mark(_layer_buttons[key], _layers.is_on(str(key)))
+	var area_kind := str(_editor.call("current_area_kind"))
+	for key in _kind_buttons:
+		_mark(_kind_buttons[key], str(key) == area_kind)
+		(_kind_buttons[key] as Button).disabled = tool_name != "area"
+	_form_label.text = "Form:  %s   ( [ / ] )" % str(_editor.call("current_form"))
 	match tool_name:
 		"pan":
 			_hint.text = "WASD or drag to pan · wheel or Q/E to zoom"
@@ -210,6 +243,10 @@ func refresh() -> void:
 			_hint.text = "Click a road to widen it · Shift-click to narrow it"
 		"select":
 			_hint.text = "Drag a box over roads · Delete removes them · Esc clears"
+		"stamp":
+			_hint.text = "Drag to size a mass · the drag direction is its facing · [ ] picks the form"
+		"area":
+			_hint.text = "Click corners (max 8) · Enter closes · Bksp undoes a corner"
 
 
 func set_status(text: String) -> void:
