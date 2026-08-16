@@ -166,6 +166,17 @@ static func mass_polygons(mass: Dictionary) -> Array:
 ## The oriented box a stamp occupies — its footprint for hit-testing and selection, and the
 ## parcel the form is fitted into.
 static func mass_parcel(mass: Dictionary) -> PackedVector2Array:
+	# An explicit parcel wins: once a corner has been dragged the box is no longer a
+	# rectangle, and centre/rotation/size cannot describe it. Same rule as the primitives —
+	# a shape reshaped by hand stops being defined by its numbers.
+	if mass.has("parcel"):
+		var explicit := PackedVector2Array()
+		for entry in (mass.get("parcel", []) as Array):
+			var values: Array = entry as Array
+			if values != null and values.size() >= 2:
+				explicit.append(Vector2(float(values[0]), float(values[1])))
+		if explicit.size() >= 3:
+			return explicit
 	var size := _vector_of(mass.get("size", [40.0, 30.0]))
 	if size.x < 1.0 or size.y < 1.0:
 		return PackedVector2Array()

@@ -22,6 +22,10 @@ var _failures: PackedStringArray = []
 
 
 func _ready() -> void:
+	# The editor drives itself from synthetic input here, and a computed click can land on
+	# the tool panel and press a button. Scratch mode makes that harmless: the editor opens
+	# an empty document and cannot write to a real one.
+	OS.set_environment("POE_EDITOR_SCRATCH", "1")
 	_editor = (load("res://tools/map_editor/map_editor.tscn") as PackedScene).instantiate()
 	add_child(_editor)
 	var waited := 0
@@ -362,6 +366,40 @@ func _ready() -> void:
 	await get_tree().process_frame
 	_check("- shrinks it back (%.0f)" % _mass_width(_last_of(doc, "decor")),
 		absf(_mass_width(_last_of(doc, "decor")) - pre_resize) < 0.5)
+
+	# ── Rotation, and corners on a rectangular mass ─────────────────────────────
+	var turn_target := _last_of(doc, "decor")
+	var corner_before: PackedVector2Array = _editor.call("editable_corners")
+	_check("a stamped mass offers its box corners (%d)" % corner_before.size(),
+		corner_before.size() == 4)
+	var before_angle := float(turn_target.get("rot", 0.0))
+	_send_key(KEY_Z)
+	await get_tree().process_frame
+	var after_z := float(_last_of(doc, "decor").get("rot", 0.0))
+	_check("Z turns it 5 degrees clockwise (%.1f deg)" % rad_to_deg(after_z - before_angle),
+		absf(rad_to_deg(after_z - before_angle) - 5.0) < 0.01)
+	_send_key(KEY_Y)
+	await get_tree().process_frame
+	_check("Y turns it back", absf(float(_last_of(doc, "decor").get("rot", 0.0))
+		- before_angle) < 0.001)
+
+	# Dragging a corner of a rectangular mass makes it an irregular quad, and the form is
+	# re-fitted into it rather than staying a rectangle.
+	var box: PackedVector2Array = _editor.call("editable_corners")
+	if box.size() == 4:
+		var grabbed := box[0]
+		await _drag(_screen_of(grabbed, camera), _screen_of(grabbed + Vector2(-40.0, -34.0), camera))
+		var reshaped := _last_of(doc, "decor")
+		_check("a mass keeps an explicit parcel once a corner is dragged",
+			reshaped.has("parcel"))
+		var moved: PackedVector2Array = _editor.call("editable_corners")
+		_check("the dragged corner moved (%.0f u)" % grabbed.distance_to(moved[0]),
+			moved.size() == 4 and grabbed.distance_to(moved[0]) > 20.0)
+		var others := 0
+		for i in range(1, 4):
+			if box[i].distance_to(moved[i]) > 0.01:
+				others += 1
+		_check("the other three corners stayed put (%d moved)" % others, others == 0)
 
 	if _failures.is_empty():
 		print("[INPUT] ALL CHECKS PASSED")

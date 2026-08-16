@@ -68,6 +68,10 @@ const MOVE_THRESHOLD := 4.0
 ## enough that a press is visibly worth making.
 const RESIZE_STEP := 1.1
 
+## Rotation step for the Z / Y keys. Five degrees is fine enough to line a building up with
+## something and coarse enough to get there in a few presses.
+const ROTATE_STEP := deg_to_rad(5.0)
+
 ## Which settlement new content joins. P1 authors into one at a time; the settlement picker
 ## arrives with the tools that need to move content between them.
 const DEFAULT_SETTLEMENT := "untitled"
@@ -142,7 +146,22 @@ var _panning := false
 var _settlement := DEFAULT_SETTLEMENT
 
 
+## SCRATCH MODE, for capture and input harnesses. They drive the editor with synthetic
+## clicks at computed positions, and a position that lands over the panel presses whatever
+## button is there — which is how a harness silently saved its demo content into a real map
+## and grew it by 49 records. In scratch mode the editor starts empty and can only ever
+## write to a throwaway name, so a stray click cannot reach anyone's work.
+const SCRATCH_NAME := "__scratch__"
+
+
+func _is_scratch() -> bool:
+	return OS.get_environment("POE_EDITOR_SCRATCH") == "1"
+
+
 func _ready() -> void:
+	if _is_scratch():
+		# Point the loader at a name that does not exist, so nothing real is opened.
+		AuthoredMap.set_override(SCRATCH_NAME)
 	_document = MapEditorDocument.new()
 	_road_tool = MapEditorRoadTool.new()
 	_trace_tool = MapEditorTraceTool.new()
@@ -475,6 +494,10 @@ func _handle_key(event: InputEventKey) -> void:
 			set_tool(TOOL_AREA)
 		KEY_M:
 			set_tool(TOOL_SPECIAL)
+		KEY_Z:
+			_rotate_selection(ROTATE_STEP)
+		KEY_Y:
+			_rotate_selection(-ROTATE_STEP)
 		KEY_EQUAL, KEY_KP_ADD:
 			_resize_selection(RESIZE_STEP)
 		KEY_MINUS, KEY_KP_SUBTRACT:
@@ -951,7 +974,9 @@ func _select_release(world: Vector2) -> void:
 			_selection = [{"kind": hit["kind"], "settlement": hit["settlement"],
 				"index": hit["index"], "id": hit["id"]}]
 			var record: Dictionary = hit["record"]
-			_set_corner_target(record if record.has("outline") else {})
+			# Masses expose their parcel corners too, so a rectangle can be pulled into an
+			# irregular quad and the form re-fitted into it.
+			_set_corner_target(record if MapEditorSelection.corner_field(record) != "" else {})
 			_set_status("Selected %s%s." % [str(hit["kind"]).trim_suffix("s"),
 				" — drag its corners, or adjust its sides" if record.has("sides")
 				else (" — drag its corners" if record.has("outline") else "")])
@@ -982,6 +1007,23 @@ func _snap_moved_to_roads() -> int:
 	_moved_records = []
 	_overlay.queue_redraw()
 	return snapped
+
+
+## Turn the selection about each shape's own centre. Clockwise on screen is a POSITIVE
+## angle here, because Y runs down.
+func _rotate_selection(angle: float) -> void:
+	var records := _records_of(_selection)
+	if records.is_empty():
+		_set_status("Nothing selected — click a shape first.")
+		return
+	_document.begin_edit("rotate")
+	for record_value in records:
+		var record: Dictionary = record_value
+		MapEditorSelection.rotate_about(record, MapEditorSelection.centre_of(record), angle)
+	_overlay.queue_redraw()
+	_set_status("Rotated %d item%s %s 5°." % [records.size(), "" if records.size() == 1 else "s",
+		"clockwise" if angle > 0.0 else "anticlockwise"])
+	_refresh_status()
 
 
 ## Grow or shrink the selection about each shape's own centre.
@@ -1018,8 +1060,15 @@ func _records_of(selection: Array) -> Array:
 
 ## The corners currently on show, in world units.
 func editable_corners() -> PackedVector2Array:
+	var field := MapEditorSelection.corner_field(_corner_target)
+	if field == "":
+		return PackedVector2Array()
+	# A stamped mass has no stored corners until one is dragged; show the box its form sits
+	# in so there is something to grab.
+	if field == "parcel" and not _corner_target.has("parcel"):
+		return AuthoredFabricPainter.mass_parcel(_corner_target)
 	var out := PackedVector2Array()
-	for entry in (_corner_target.get("outline", []) as Array):
+	for entry in (_corner_target.get(field, []) as Array):
 		var values: Array = entry as Array
 		if values != null and values.size() >= 2:
 			out.append(Vector2(float(values[0]), float(values[1])))
@@ -1048,11 +1097,15 @@ func _corner_at(world: Vector2) -> int:
 ## edits it directly rather than trying to solve back to side lengths — a shape reshaped by
 ## hand and a shape defined by three numbers cannot both be true at once.
 func _move_corner(world: Vector2) -> void:
-	var outline: Array = _corner_target.get("outline", []) as Array
-	if _held_corner < 0 or _held_corner >= outline.size():
+	var field := MapEditorSelection.corner_field(_corner_target)
+	if field == "":
 		return
-	outline[_held_corner] = [world.x, world.y]
-	_corner_target["outline"] = outline
+	MapEditorSelection.ensure_corners(_corner_target)
+	var corners: Array = _corner_target.get(field, []) as Array
+	if _held_corner < 0 or _held_corner >= corners.size():
+		return
+	corners[_held_corner] = [world.x, world.y]
+	_corner_target[field] = corners
 	_overlay.queue_redraw()
 
 
@@ -1271,6 +1324,10 @@ func run_action(action: String) -> void:
 
 ## F5 saves under the document's current name, and asks for one the first time.
 func _save() -> void:
+	if _is_scratch():
+		# Belt and braces: even a direct Save in a harness goes to the throwaway name.
+		_save_as(SCRATCH_NAME)
+		return
 	if _document.name_of() == "":
 		_ask_name()
 		return
@@ -1312,6 +1369,9 @@ func _ask_name() -> void:
 ## step deliberately: a save that did not become the map you then look at would be a trap,
 ## and every other variant stays on disk to switch back to.
 func _save_as(name: String) -> void:
+	if _is_scratch() and name != SCRATCH_NAME:
+		_set_status("Scratch mode — refusing to write '%s'." % name)
+		return
 	var directory := ProjectSettings.globalize_path(AuthoredMap.DOC_DIR)
 	DirAccess.make_dir_recursive_absolute(directory)
 	var absolute := "%s/%s.json" % [directory, name]

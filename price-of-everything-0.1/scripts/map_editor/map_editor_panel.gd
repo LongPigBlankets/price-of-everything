@@ -27,17 +27,22 @@ const ACCENT := Color(0.98, 0.80, 0.45)
 
 ## `[key, label, shortcut]` — the shortcut text is shown, not bound here; the editor owns the
 ## keys so there is one source of truth for what a key does.
+## Tools that are not about roads. The road ones live in their own section.
 const TOOLS := [
 	["pan", "Navigate", "V"],
-	["road", "Road pen", "R"],
-	["anchor", "Add anchor", "T"],
-	["trace", "Freehand", "F"],
-	["dots", "Connect dots", "C"],
-	["upgrade", "Upgrade class", "U"],
-	["select", "Select / delete", "X"],
+	["select", "Select / move", "X"],
 	["stamp", "Stamp mass", "B"],
 	["area", "Farm / wood / park", "N"],
 	["special", "Special primitive", "M"],
+]
+
+## Everything to do with making and editing roads, in one place.
+const ROAD_TOOLS := [
+	["road", "Road pen", "R"],
+	["trace", "Freehand", "F"],
+	["dots", "Connect dots", "C"],
+	["anchor", "Add anchor", "T"],
+	["upgrade", "Upgrade class", "U"],
 ]
 
 const ROAD_CLASSES := [
@@ -49,7 +54,7 @@ const ROAD_CLASSES := [
 ## Sections that start folded. Visibility is long and consulted occasionally; session
 ## commands are rare.
 const FOLDED := {"Visibility": true, "Session": true, "Buildings": true, "Farms & Forests": true,
-	"Special Buildings": true}
+	"Special Buildings": true, "Create roads": true}
 
 ## Picker tiles per row. Three 50 px tiles plus their separation fit the column with room to
 ## spare; the grid is fixed rather than measured because the panel has a fixed width.
@@ -104,13 +109,21 @@ func build(editor: Node, layers: MapEditorLayers) -> void:
 		_tool_buttons[key] = button
 		column.add_child(button)
 
-	column.add_child(_heading("Road class"))
+	# ── Create roads: the ways of drawing one, and how thick it is ──────────────
+	var roads := _fold(column, "Create roads")
+	for entry in ROAD_TOOLS:
+		var key := str(entry[0])
+		var button := _toggle_button("%s   (%s)" % [entry[1], entry[2]])
+		button.pressed.connect(func() -> void: _editor.call("set_tool", key))
+		_tool_buttons[key] = button
+		roads.add_child(button)
+	roads.add_child(_heading("Thickness"))
 	for entry in ROAD_CLASSES:
 		var key := str(entry[0])
 		var button := _toggle_button("%s   (%s)" % [entry[1], entry[2]])
 		button.pressed.connect(func() -> void: _editor.call("set_road_class", key))
 		_class_buttons[key] = button
-		column.add_child(button)
+		roads.add_child(button)
 
 	# ── Buildings, a grid of shapes ──────────────────────────────────────────────
 	# The whole vocabulary as silhouettes. Selecting one also selects the stamp tool: picking

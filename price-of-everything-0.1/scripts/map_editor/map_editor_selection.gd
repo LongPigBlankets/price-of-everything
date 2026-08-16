@@ -100,6 +100,7 @@ static func translate(item: Dictionary, delta: Vector2) -> void:
 		var pos: Array = item.get("pos", [0, 0]) as Array
 		if pos.size() >= 2:
 			item["pos"] = [float(pos[0]) + delta.x, float(pos[1]) + delta.y]
+		_shift_points(item, "parcel", delta)
 		return
 	# A road: every control point AND its handles' anchors move together. Handles are stored
 	# relative to their point, so they need no adjustment.
@@ -143,6 +144,7 @@ static func rotate_about(item: Dictionary, pivot: Vector2, angle: float) -> void
 			var turned := (Vector2(float(pos[0]), float(pos[1])) - pivot).rotated(angle) + pivot
 			item["pos"] = [turned.x, turned.y]
 		item["rot"] = float(item.get("rot", 0.0)) + angle
+		_turn_points(item, "parcel", pivot, angle)
 
 
 ## Scale a record about its own centre. Roads are excluded: a road has a width class, not a
@@ -168,6 +170,7 @@ static func scale_record(item: Dictionary, factor: float) -> bool:
 		var size: Array = item.get("size", [40, 30]) as Array
 		if size.size() >= 2:
 			item["size"] = [float(size[0]) * factor, float(size[1]) * factor]
+		_scale_points(item, "parcel", centre_of(item), factor)
 		return true
 	return false
 
@@ -209,6 +212,62 @@ static func half_extent_along(item: Dictionary, axis: Vector2) -> float:
 	for point in points:
 		reach = maxf(reach, absf((point - centre).dot(axis)))
 	return reach
+
+
+## THE CORNERS A RECORD EXPOSES FOR DRAGGING. Outlines offer their own vertices; a stamped
+## mass offers the four corners of the box its form is fitted into, materialised on first
+## use so a rectangle can become an irregular quad. Roads have a centreline, not corners.
+static func corner_field(item: Dictionary) -> String:
+	if item.has("outline"):
+		return "outline"
+	if item.has("form"):
+		return "parcel"
+	return ""
+
+
+## Ensure the field exists before a corner is dragged into it.
+static func ensure_corners(item: Dictionary) -> void:
+	if not item.has("form") or item.has("parcel"):
+		return
+	var parcel: Array = []
+	for point in AuthoredFabricPainter.mass_parcel(item):
+		parcel.append([point.x, point.y])
+	item["parcel"] = parcel
+
+
+static func _shift_points(item: Dictionary, field: String, delta: Vector2) -> void:
+	if not item.has(field):
+		return
+	var moved: Array = []
+	for entry in (item.get(field, []) as Array):
+		var values: Array = entry as Array
+		if values != null and values.size() >= 2:
+			moved.append([float(values[0]) + delta.x, float(values[1]) + delta.y])
+	item[field] = moved
+
+
+static func _turn_points(item: Dictionary, field: String, pivot: Vector2, angle: float) -> void:
+	if not item.has(field):
+		return
+	var moved: Array = []
+	for entry in (item.get(field, []) as Array):
+		var values: Array = entry as Array
+		if values != null and values.size() >= 2:
+			var turned := (Vector2(float(values[0]), float(values[1])) - pivot).rotated(angle) + pivot
+			moved.append([turned.x, turned.y])
+	item[field] = moved
+
+
+static func _scale_points(item: Dictionary, field: String, centre: Vector2, factor: float) -> void:
+	if not item.has(field):
+		return
+	var moved: Array = []
+	for entry in (item.get(field, []) as Array):
+		var values: Array = entry as Array
+		if values != null and values.size() >= 2:
+			var point := (Vector2(float(values[0]), float(values[1])) - centre) * factor + centre
+			moved.append([point.x, point.y])
+	item[field] = moved
 
 
 static func _outline_of(item: Dictionary) -> PackedVector2Array:

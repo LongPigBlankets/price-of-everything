@@ -18,6 +18,7 @@ const HexGridOverlayRef := preload("res://scripts/hex_grid_overlay.gd")
 const AuthoredRoadGeometry := preload("res://scripts/authored_road_geometry.gd")
 const AuthoredRoadStyle := preload("res://scripts/authored_road_style.gd")
 const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
+const AuthoredSpecialShapesRef := preload("res://scripts/authored_special_shapes.gd")
 
 ## Tile ids stop being readable below this zoom, and drawing ~600 of them wastes the frame.
 const LABEL_MIN_ZOOM := 0.45
@@ -47,6 +48,13 @@ const DOT_EDGE := Color(0.10, 0.12, 0.16, 0.9)
 const DOT_ARMED := Color(1.0, 0.72, 0.20, 1.0)
 const CORNER_COLOR := Color(0.55, 0.90, 1.0, 1.0)
 const CORNER_RADIUS := 5.0
+
+## Selected shapes are hatched rather than tinted: a tint changes the colour you are judging
+## the composition by, and the whole point of the map's palette is that its greys and washes
+## read against each other. Diagonal lines say "selected" without touching the fill.
+const HATCH_COLOR := Color(0.99, 0.97, 0.90, 0.75)
+const HATCH_SPACING := 7.0
+const HATCH_WIDTH := 1.6
 const TRACE_COLOR := Color(1.0, 0.55, 0.85, 0.95)
 const MARQUEE_FILL := Color(0.45, 0.8, 1.0, 0.13)
 const MARQUEE_EDGE := Color(0.55, 0.9, 1.0, 0.85)
@@ -155,6 +163,7 @@ func _draw_authored_fabric(camera: Camera2D) -> void:
 	draw_set_transform(size * 0.5 - camera.get_screen_center_position() * camera.zoom.x,
 		0.0, Vector2(camera.zoom.x, camera.zoom.x))
 	var settlements: Dictionary = settlements_value
+	var selected: Dictionary = editor.call("selected_ids")
 	var keys := settlements.keys()
 	keys.sort()
 	for key in keys:
@@ -164,12 +173,20 @@ func _draw_authored_fabric(camera: Camera2D) -> void:
 		var settlement: Dictionary = settlement_value
 		for area in _entries(settlement, "farms"):
 			AuthoredFabricPainter.draw_farm(self, area)
+			if selected.has(str(area.get("id", ""))):
+				_hatch([_polygon_of(area)], camera)
 		for park in _entries(settlement, "parks"):
 			AuthoredFabricPainter.draw_park(self, park)
+			if selected.has(str(park.get("id", ""))):
+				_hatch([_polygon_of(park)], camera)
 		for mass in _entries(settlement, "decor"):
 			AuthoredFabricPainter.draw_mass(self, mass)
+			if selected.has(str(mass.get("id", ""))):
+				_hatch(AuthoredFabricPainter.mass_polygons(mass), camera)
 		for special in _entries(settlement, "specials"):
 			AuthoredFabricPainter.draw_special(self, special)
+			if selected.has(str(special.get("id", ""))):
+				_hatch([AuthoredSpecialShapesRef.render_polygon(special)], camera)
 		for area in _entries(settlement, "forests"):
 			AuthoredFabricPainter.draw_forest(self, area)
 	# The stamp being dragged, previewed as the real thing.
@@ -195,6 +212,39 @@ func _draw_authored_fabric(camera: Camera2D) -> void:
 			var closed := screen.duplicate()
 			closed.append(screen[0])
 			draw_polyline(closed, PEN_COLOR, 2.0, true)
+
+
+## Diagonal hatching clipped to a set of polygons. Drawn in WORLD space (the canvas is
+## already transformed here) but stepped in world units so the density is stable as the
+## shape moves; at very low zoom it thins out rather than turning into a solid block.
+func _hatch(polygons: Array, camera: Camera2D) -> void:
+	var spacing := HATCH_SPACING / maxf(camera.zoom.x, 0.05)
+	for polygon_value in polygons:
+		var polygon: PackedVector2Array = polygon_value
+		if polygon.size() < 3:
+			continue
+		var bounds := Rect2(polygon[0], Vector2.ZERO)
+		for point in polygon:
+			bounds = bounds.expand(point)
+		# 45° lines across the box, clipped to the shape by Godot's own clipper so the
+		# hatching stops exactly at the outline rather than at its bounding box.
+		var reach := bounds.size.x + bounds.size.y
+		var steps := int(reach / spacing) + 1
+		for i in steps:
+			var offset := bounds.position + Vector2(float(i) * spacing - bounds.size.y, 0.0)
+			var line := PackedVector2Array([offset, offset + Vector2(bounds.size.y, bounds.size.y)])
+			for piece in Geometry2D.intersect_polyline_with_polygon(line, polygon):
+				if (piece as PackedVector2Array).size() >= 2:
+					draw_polyline(piece, HATCH_COLOR, HATCH_WIDTH / maxf(camera.zoom.x, 0.05), true)
+
+
+func _polygon_of(record: Dictionary) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for entry in (record.get("outline", []) as Array):
+		var values: Array = entry as Array
+		if values != null and values.size() >= 2:
+			out.append(Vector2(float(values[0]), float(values[1])))
+	return out
 
 
 func _entries(settlement: Dictionary, key: String) -> Array:

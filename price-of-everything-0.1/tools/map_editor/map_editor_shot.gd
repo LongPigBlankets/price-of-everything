@@ -33,6 +33,10 @@ var _out := DEFAULT_OUT
 
 
 func _ready() -> void:
+	# The editor drives itself from synthetic input here, and a computed click can land on
+	# the tool panel and press a button. Scratch mode makes that harmless: the editor opens
+	# an empty document and cannot write to a real one.
+	OS.set_environment("POE_EDITOR_SCRATCH", "1")
 	_parse_options()
 	get_window().size = _size
 	var packed := load("res://tools/map_editor/map_editor.tscn") as PackedScene
@@ -57,6 +61,8 @@ func _ready() -> void:
 	# shows what they produce rather than an empty map.
 	if OS.get_environment("POE_EDITOR_SHOT_DEMO") == "1":
 		await _demo(editor)
+	if OS.get_environment("POE_EDITOR_SHOT_HATCH") == "1":
+		await _demo_hatch(editor)
 	if OS.get_environment("POE_EDITOR_SHOT_SPECIAL") == "1":
 		await _demo_special(editor)
 	if OS.get_environment("POE_EDITOR_SHOT_FABRIC") == "1":
@@ -240,6 +246,24 @@ func _demo_special(editor: Node) -> void:
 			* camera.zoom.x + viewport_size * 0.5
 		await _drag_box(screen, screen + Vector2(-40, -46))
 	print("[EDITOR-SHOT] specials: %d corners on show" % corners.size())
+
+
+## Stamp a few masses and select two, so a capture shows the hatched selection.
+func _demo_hatch(editor: Node) -> void:
+	editor.call("focus_tile", _tile, _zoom)
+	await get_tree().process_frame
+	editor.call("set_tool", "stamp")
+	var forms := ["square", "cross", "h", "shallow_e"]
+	var x := 420.0
+	for form in forms:
+		editor.call("shape_tool").call("set_form", form)
+		await _drag_stamp(Vector2(x, 380), Vector2(x + 80.0, 396.0))
+		x += 130.0
+	editor.call("pick_special", "ring")
+	await _click(Vector2(560, 560))
+	# Box-select the middle of the row, leaving the outer ones plain for contrast.
+	editor.call("set_tool", "select")
+	await _drag_box(Vector2(520, 330), Vector2(800, 430))
 
 
 func _drag_box(from: Vector2, to: Vector2) -> void:
