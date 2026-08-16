@@ -123,6 +123,94 @@ static func translate(item: Dictionary, delta: Vector2) -> void:
 		item["bridges"] = bridges
 
 
+## Rotate a record about a point. Outlines rotate their vertices; a mass carries a rotation
+## and only needs its centre swung and its angle added to.
+static func rotate_about(item: Dictionary, pivot: Vector2, angle: float) -> void:
+	if is_zero_approx(angle):
+		return
+	if item.has("outline"):
+		var moved: Array = []
+		for entry in (item.get("outline", []) as Array):
+			var values: Array = entry as Array
+			if values != null and values.size() >= 2:
+				var turned := (Vector2(float(values[0]), float(values[1])) - pivot).rotated(angle) + pivot
+				moved.append([turned.x, turned.y])
+		item["outline"] = moved
+		return
+	if item.has("form"):
+		var pos: Array = item.get("pos", [0, 0]) as Array
+		if pos.size() >= 2:
+			var turned := (Vector2(float(pos[0]), float(pos[1])) - pivot).rotated(angle) + pivot
+			item["pos"] = [turned.x, turned.y]
+		item["rot"] = float(item.get("rot", 0.0)) + angle
+
+
+## Scale a record about its own centre. Roads are excluded: a road has a width class, not a
+## size, and scaling its centreline would move it rather than resize it.
+static func scale_record(item: Dictionary, factor: float) -> bool:
+	if item.has("outline"):
+		var centre := centre_of(item)
+		var moved: Array = []
+		for entry in (item.get("outline", []) as Array):
+			var values: Array = entry as Array
+			if values != null and values.size() >= 2:
+				var point := (Vector2(float(values[0]), float(values[1])) - centre) * factor + centre
+				moved.append([point.x, point.y])
+		item["outline"] = moved
+		# Side lengths follow the shape, so the steppers keep telling the truth about it.
+		if item.has("sides"):
+			var sides: Array = []
+			for value in (item.get("sides", []) as Array):
+				sides.append(float(value) * factor)
+			item["sides"] = sides
+		return true
+	if item.has("form"):
+		var size: Array = item.get("size", [40, 30]) as Array
+		if size.size() >= 2:
+			item["size"] = [float(size[0]) * factor, float(size[1]) * factor]
+		return true
+	return false
+
+
+## A record's centre, whatever kind it is.
+static func centre_of(item: Dictionary) -> Vector2:
+	if item.has("outline"):
+		var outline := _outline_of(item)
+		if outline.is_empty():
+			return Vector2.ZERO
+		var sum := Vector2.ZERO
+		for point in outline:
+			sum += point
+		return sum / float(outline.size())
+	if item.has("form"):
+		var pos: Array = item.get("pos", [0, 0]) as Array
+		return Vector2(float(pos[0]), float(pos[1])) if pos.size() >= 2 else Vector2.ZERO
+	var points := AuthoredRoadGeometry.sample(item)
+	if points.is_empty():
+		return Vector2.ZERO
+	var total := Vector2.ZERO
+	for point in points:
+		total += point
+	return total / float(points.size())
+
+
+## Half the record's extent across `axis` — how far its edge stands from its centre in that
+## direction. Used to seat a building against a kerb rather than through it.
+static func half_extent_along(item: Dictionary, axis: Vector2) -> float:
+	var points := PackedVector2Array()
+	if item.has("outline"):
+		points = _outline_of(item)
+	elif item.has("form"):
+		points = AuthoredFabricPainter.mass_parcel(item)
+	if points.is_empty():
+		return 0.0
+	var centre := centre_of(item)
+	var reach := 0.0
+	for point in points:
+		reach = maxf(reach, absf((point - centre).dot(axis)))
+	return reach
+
+
 static func _outline_of(item: Dictionary) -> PackedVector2Array:
 	var out := PackedVector2Array()
 	for entry in (item.get("outline", []) as Array):

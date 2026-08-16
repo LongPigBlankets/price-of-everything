@@ -306,7 +306,7 @@ func refresh() -> void:
 		"upgrade":
 			_hint.text = "Click a road to widen it · Shift-click to narrow it"
 		"select":
-			_hint.text = "Drag a shape to move it · click to select · drag empty ground to box-select"
+			_hint.text = "Drag to move (snaps to roads, Ctrl/Cmd to free) · click to select · +/- resize"
 		"stamp":
 			_hint.text = "Drag to size a mass · the drag direction is its facing · [ ] picks the form"
 		"area":

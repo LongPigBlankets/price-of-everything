@@ -1,6 +1,7 @@
 extends Node
 
 const AuthoredSpecialShapesScript := preload("res://scripts/authored_special_shapes.gd")
+const AuthoredRoadGeometryScript := preload("res://scripts/authored_road_geometry.gd")
 ## Regression check for the editor's INPUT behaviour — the three things that were broken
 ## when the panel landed, each of which is invisible to a screenshot:
 ##
@@ -308,6 +309,60 @@ func _ready() -> void:
 		int(_editor.call("selection_size")) == 0
 			and _outline_centre(_last_of(doc, "specials")).distance_to(settled) < 0.01)
 
+	# ── Snapping, the Ctrl override, and +/- resize ─────────────────────────────
+	# Draw a straight road, then drop a primitive near it and drag it closer.
+	_editor.call("set_road_class", "mid")
+	_editor.call("set_tool", "road")
+	var road_a := Vector2(400, 250)
+	var road_b := Vector2(1000, 250)
+	await _click(road_a)
+	await _click(road_b)
+	_send_key(KEY_ENTER)
+	await get_tree().process_frame
+
+	# A stamped square, not a primitive: an L's centre sits in its notch — outside the shape
+	# and near its inner corner — so a grab there picks up a corner handle instead, which is
+	# correct behaviour and a terrible thing to test a move with.
+	_editor.call("pick_form", "square")
+	await _drag_stamp_at(Vector2(700, 430), Vector2(760, 470))
+	var block := _last_of(doc, "decor")
+	_check("a mass was stamped to move", not block.is_empty())
+	_editor.call("set_tool", "select")
+
+	# Drag it toward the road; it should seat itself at a kerb rather than where the pointer
+	# stopped. Measured against the NEAREST road, since the document has many.
+	var from := _mass_centre(block)
+	await _drag(_screen_of(from, camera), Vector2(700, 330))
+	var seated := _mass_centre(_last_of(doc, "decor"))
+	var gap := _nearest_road_distance(doc, seated)
+	_check("a dragged building seats itself at a kerb (%.0f u from the nearest road)" % gap,
+		gap > 4.0 and gap < 80.0)
+	var released_at := _world_at(Vector2(700, 330))
+	_check("snapping overrides where the pointer stopped",
+		seated.distance_to(released_at) > 1.0)
+
+	# Ctrl suppresses it: the shape stays where it was let go.
+	var free_from := _mass_centre(_last_of(doc, "decor"))
+	await _drag_modified(_screen_of(free_from, camera), Vector2(660, 560), true)
+	var free_at := _mass_centre(_last_of(doc, "decor"))
+	var wanted := _world_at(Vector2(660, 560))
+	_check("holding Ctrl places it exactly where dropped (%.0f u off)"
+		% free_at.distance_to(wanted), free_at.distance_to(wanted) < 8.0)
+
+	# +/- resize the selection in 10% steps.
+	await _click(_screen_of(free_at, camera))
+	_check("clicking the mass selects it", int(_editor.call("selection_size")) == 1)
+	var pre_resize := _mass_width(_last_of(doc, "decor"))
+	_send_key(KEY_EQUAL)
+	await get_tree().process_frame
+	var grown := _mass_width(_last_of(doc, "decor"))
+	_check("+ grows the selection 10%% (%.0f -> %.0f)" % [pre_resize, grown],
+		absf(grown - pre_resize * 1.1) < 0.5)
+	_send_key(KEY_MINUS)
+	await get_tree().process_frame
+	_check("- shrinks it back (%.0f)" % _mass_width(_last_of(doc, "decor")),
+		absf(_mass_width(_last_of(doc, "decor")) - pre_resize) < 0.5)
+
 	if _failures.is_empty():
 		print("[INPUT] ALL CHECKS PASSED")
 		get_tree().quit(0)
@@ -368,6 +423,39 @@ func _midpoint(stroke: Dictionary) -> Vector2:
 
 
 ## World to screen — the inverse of the editor's own `_world_at`.
+func _mass_centre(record: Dictionary) -> Vector2:
+	var pos: Array = record.get("pos", [0, 0]) as Array
+	return Vector2(float(pos[0]), float(pos[1])) if pos.size() >= 2 else Vector2.ZERO
+
+
+func _mass_width(record: Dictionary) -> float:
+	var size: Array = record.get("size", [0, 0]) as Array
+	return float(size[0]) if size.size() >= 1 else 0.0
+
+
+## Distance from a point to the nearest authored road, so a snap can be asserted without
+## assuming which road it chose — the loaded document has plenty.
+func _nearest_road_distance(document: RefCounted, world: Vector2) -> float:
+	var best := INF
+	var data: Dictionary = document.call("data")
+	for key in (data.get("settlements", {}) as Dictionary).keys():
+		var settlement: Dictionary = (data["settlements"] as Dictionary)[key]
+		for stroke_value in (settlement.get("roads", []) as Array):
+			var points := AuthoredRoadGeometryScript.sample(stroke_value as Dictionary)
+			for i in range(1, points.size()):
+				best = minf(best, world.distance_to(Geometry2D.get_closest_point_to_segment(
+					world, points[i - 1], points[i])))
+	return best
+
+
+func _drag_stamp_at(from: Vector2, to: Vector2) -> void:
+	await _drag(from, to)
+
+
+func _world_at(screen: Vector2) -> Vector2:
+	return _editor.call("_world_at", screen)
+
+
 func _screen_of(world: Vector2, camera: Camera2D) -> Vector2:
 	var viewport_size := get_viewport().get_visible_rect().size
 	return (world - camera.get_screen_center_position()) * camera.zoom.x + viewport_size * 0.5
@@ -386,6 +474,30 @@ func _shift_click(at: Vector2) -> void:
 	up.pressed = false
 	up.position = at
 	up.shift_pressed = true
+	Input.parse_input_event(up)
+	await get_tree().process_frame
+
+
+## A drag with Ctrl held, for the snap override.
+func _drag_modified(from: Vector2, to: Vector2, ctrl: bool) -> void:
+	var down := InputEventMouseButton.new()
+	down.button_index = MOUSE_BUTTON_LEFT
+	down.pressed = true
+	down.position = from
+	down.ctrl_pressed = ctrl
+	Input.parse_input_event(down)
+	await get_tree().process_frame
+	var motion := InputEventMouseMotion.new()
+	motion.position = to
+	motion.relative = to - from
+	motion.ctrl_pressed = ctrl
+	Input.parse_input_event(motion)
+	await get_tree().process_frame
+	var up := InputEventMouseButton.new()
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.pressed = false
+	up.position = to
+	up.ctrl_pressed = ctrl
 	Input.parse_input_event(up)
 	await get_tree().process_frame
 

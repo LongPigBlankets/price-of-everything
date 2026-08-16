@@ -32,6 +32,7 @@ const MapEditorLoadDialog := preload("res://scripts/map_editor/map_editor_load_d
 const MapEditorShapeTool := preload("res://scripts/map_editor/map_editor_shape_tool.gd")
 const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
 const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
+const MapEditorRoadSnap := preload("res://scripts/map_editor/map_editor_road_snap.gd")
 const MapEditorPanel := preload("res://scripts/map_editor/map_editor_panel.gd")
 
 ## Tools. NAVIGATE is the default and does nothing but move the view: an editor whose idle
@@ -62,6 +63,10 @@ const CORNER_GRAB := 16.0
 ## In pixels rather than world units so the gesture feels the same at every zoom — the hand
 ## does not know what a world unit is.
 const MOVE_THRESHOLD := 4.0
+
+## Resize step for the +/- keys. Ten percent is small enough to converge on a size and large
+## enough that a press is visibly worth making.
+const RESIZE_STEP := 1.1
 
 ## Which settlement new content joins. P1 authors into one at a time; the settlement picker
 ## arrives with the tools that need to move content between them.
@@ -122,6 +127,10 @@ var _grab_world := Vector2.INF
 var _grab_screen := Vector2.INF
 var _grab_moved := false
 var _pending_hit: Dictionary = {}
+## Set while a drag is held with Ctrl/Cmd down, which places exactly where the pointer is.
+var _snap_suppressed := false
+## The records last moved, so the snap can act on them after the drag ends.
+var _moved_records: Array = []
 var _special_kind := "u"
 var _panel: MapEditorPanel
 var _tool := TOOL_PAN
@@ -332,6 +341,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif _tool == TOOL_SELECT and _held_corner >= 0:
 			_move_corner(_world_at(motion.position))
 		elif _tool == TOOL_SELECT and not _grabbed.is_empty():
+			# Ctrl, or Cmd on macOS, places exactly where the pointer is.
+			_snap_suppressed = motion.ctrl_pressed or motion.meta_pressed
 			_drag_grabbed(motion.position)
 		elif _tool == TOOL_STAMP and _shape_tool.is_stamping():
 			_shape_tool.drag_stamp(_world_at(motion.position))
@@ -464,6 +475,10 @@ func _handle_key(event: InputEventKey) -> void:
 			set_tool(TOOL_AREA)
 		KEY_M:
 			set_tool(TOOL_SPECIAL)
+		KEY_EQUAL, KEY_KP_ADD:
+			_resize_selection(RESIZE_STEP)
+		KEY_MINUS, KEY_KP_SUBTRACT:
+			_resize_selection(1.0 / RESIZE_STEP)
 		KEY_BRACKETLEFT:
 			_set_status("Form: %s" % _shape_tool.cycle_form(-1))
 			_overlay.queue_redraw()
@@ -898,6 +913,7 @@ func _drag_grabbed(screen: Vector2) -> void:
 		# drag rather than through every frame of it.
 		_document.begin_edit("move")
 		_grab_moved = true
+		_moved_records = _grabbed.duplicate()
 	var world := _world_at(screen)
 	var delta := world - _grab_world
 	_grab_world = world
@@ -920,8 +936,13 @@ func _select_release(world: Vector2) -> void:
 		_grab_screen = Vector2.INF
 		_grab_moved = false
 		if moved:
-			_set_status("Moved %d item%s." % [_selection.size() if _selection.size() > 1 else 1,
-				"" if _selection.size() <= 1 else "s"])
+			var snapped := 0
+			if not _snap_suppressed:
+				snapped = _snap_moved_to_roads()
+			_set_status("Moved %d item%s%s." % [
+				_selection.size() if _selection.size() > 1 else 1,
+				"" if _selection.size() <= 1 else "s",
+				"" if snapped == 0 else " — %d snapped to a road" % snapped])
 			_refresh_status()
 			return
 		# A press that never travelled is a CLICK: select what was under it, and open its
@@ -937,6 +958,48 @@ func _select_release(world: Vector2) -> void:
 			_refresh_status()
 		return
 	_finish_marquee(world)
+
+
+## Seat everything just moved against a nearby road. Applied on RELEASE rather than during
+## the drag: a shape that snapped every frame would jump out from under the pointer and
+## fight the hand. Roads themselves are skipped — a road does not stand beside a road.
+func _snap_moved_to_roads() -> int:
+	var snapped := 0
+	for record_value in _moved_records:
+		var record: Dictionary = record_value
+		if not (record.has("outline") or record.has("form")):
+			continue
+		var seat := MapEditorRoadSnap.seat_for(_document.data(), record)
+		if seat.is_empty():
+			continue
+		var centre := MapEditorSelection.centre_of(record)
+		MapEditorSelection.rotate_about(record, centre, float(seat["angle"]))
+		# Re-measured after the turn: rotating changes how deep the shape is across the road.
+		var reseat := MapEditorRoadSnap.seat_for(_document.data(), record)
+		var target: Vector2 = reseat.get("position", seat["position"])
+		MapEditorSelection.translate(record, target - MapEditorSelection.centre_of(record))
+		snapped += 1
+	_moved_records = []
+	_overlay.queue_redraw()
+	return snapped
+
+
+## Grow or shrink the selection about each shape's own centre.
+func _resize_selection(factor: float) -> void:
+	var records := _records_of(_selection)
+	if records.is_empty():
+		_set_status("Nothing selected — click a shape first.")
+		return
+	_document.begin_edit("resize")
+	var changed := 0
+	for record_value in records:
+		if MapEditorSelection.scale_record(record_value as Dictionary, factor):
+			changed += 1
+	_overlay.queue_redraw()
+	_set_status("Resized %d item%s to %d%%%s." % [changed, "" if changed == 1 else "s",
+		int(round(factor * 100.0)),
+		"" if changed == records.size() else " (roads have a class, not a size)"])
+	_refresh_status()
 
 
 ## The live records behind a selection, so a move can mutate them in place.
