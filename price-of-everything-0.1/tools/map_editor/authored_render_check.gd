@@ -16,6 +16,7 @@ extends Node
 ## modified. WINDOWED ONLY — `--headless` renders nothing.
 
 const AuthoredMap := preload("res://scripts/authored_map.gd")
+const AuthoredRoadGeometry := preload("res://scripts/authored_road_geometry.gd")
 
 const DEFAULT_ZOOM := 0.75
 const DEFAULT_SIZE := Vector2i(1200, 760)
@@ -27,6 +28,10 @@ var _doc_name := ""
 var _zoom := DEFAULT_ZOOM
 var _size := DEFAULT_SIZE
 var _out := DEFAULT_OUT
+var _reveal := false
+## Frame one world point instead of the per-tile sweep — for looking straight at a defect
+## the audit has just named.
+var _at := Vector2.INF
 
 
 func _ready() -> void:
@@ -77,6 +82,22 @@ func _ready() -> void:
 		camera.set("edge_pan_enabled", false)
 	var terrain := get_tree().get_first_node_in_group("hex_map")
 
+	# `--reveal` flags every authored tile before measuring, showing the layout as it will be
+	# once the player has built out — which is the state most defects hide in, since an
+	# unlockable stroke drawn across water is invisible until the day it is not.
+	if _reveal:
+		var revealed := 0
+		for settlement_key in settlements.keys():
+			for tile_value in ((settlements[settlement_key] as Dictionary).get("tiles", []) as Array):
+				var tile_id := str(tile_value)
+				if _flagged(terrain, tile_id):
+					continue
+				world.call("_apply_built_infrastructure",
+					terrain.call("id_to_coord", tile_id), tile_id, "roads")
+				revealed += 1
+		await get_tree().process_frame
+		print("[RENDER] --reveal: flagged %d tile(s) so every stroke draws" % revealed)
+
 	# What the renderer says is on screen right now, by stroke id.
 	var visible_ids: Dictionary = {}
 	for id in (layer.call("visible_stroke_ids") as PackedStringArray):
@@ -111,6 +132,20 @@ func _ready() -> void:
 			if int(row["visible"]) == 0:
 				hidden_total += 1
 			rows.append({"tile": str(tile_id), "row": row, "flagged": flagged})
+
+	if _at != Vector2.INF:
+		camera.position = _at
+		camera.zoom = Vector2(_zoom, _zoom)
+		if "_target_zoom" in camera:
+			camera.set("_target_zoom", camera.zoom)
+		for _i in PAINT_FRAMES:
+			await get_tree().process_frame
+		RenderingServer.force_draw()
+		var at_path := "%s_at.png" % _out
+		get_viewport().get_texture().get_image().save_png(at_path)
+		print("[RENDER] wrote %s (centred on %.0f, %.0f)" % [at_path, _at.x, _at.y])
+		get_tree().quit(0)
+		return
 
 	# One frame per authored tile, so every claim above has a picture behind it.
 	for entry_value in rows:
@@ -149,6 +184,29 @@ func _ready() -> void:
 					blocking.append(str(tile_value))
 			print("[RENDER] hidden %s (%s, spans %d tiles) — waiting on: %s"
 				% [id, str(stroke.get("class", "")), spans, ", ".join(blocking)])
+	# WATER. The defect class the whole last release fought: a road drawn over open sea or a
+	# lake. The editor lints a stroke as it is finished, but a document is edited over a long
+	# session and geometry moves, so the saved result is audited as a whole. Rivers are not
+	# counted — roads bridge them, and the stroke carries the deck.
+	var nav := NavGrid.instance()
+	var wet_strokes := 0
+	var wet_samples_total := 0
+	for settlement_key in settlements.keys():
+		var settlement: Dictionary = settlements[settlement_key]
+		for stroke_value in (settlement.get("roads", []) as Array):
+			var stroke: Dictionary = stroke_value
+			var wet := AuthoredRoadGeometry.wet_samples(
+				AuthoredRoadGeometry.sample(stroke), nav)
+			if wet.is_empty():
+				continue
+			wet_strokes += 1
+			wet_samples_total += wet.size()
+			var first: Vector2 = wet[0][0]
+			print("[RENDER] WET %s (%s) — %d sample(s) over water, first at (%.0f, %.0f)"
+				% [str(stroke.get("id", "")), str(stroke.get("class", "")), wet.size(),
+					first.x, first.y])
+	print("[RENDER] water audit: %d stroke(s) over sea or lake, %d sample(s) — %s"
+		% [wet_strokes, wet_samples_total, "CLEAN" if wet_strokes == 0 else "NEEDS ATTENTION"])
 	print("[RENDER] %d tile(s) authored, %d drawing nothing yet (unlockable, tile still roadless)"
 		% [rows.size(), hidden_total])
 	get_tree().quit(0)
@@ -171,6 +229,12 @@ func _parse_options() -> void:
 			_zoom = float(text.substr(7))
 		elif text.begins_with("--out="):
 			_out = text.substr(6)
+		elif text.begins_with("--at="):
+			var xy := text.substr(5).split(",", false)
+			if xy.size() == 2:
+				_at = Vector2(float(xy[0]), float(xy[1]))
+		elif text == "--reveal":
+			_reveal = true
 		elif text.begins_with("--size="):
 			var parts := text.substr(7).split("x", false)
 			if parts.size() == 2 and parts[0].is_valid_int() and parts[1].is_valid_int():

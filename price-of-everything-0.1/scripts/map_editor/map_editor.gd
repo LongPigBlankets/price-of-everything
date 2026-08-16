@@ -28,6 +28,7 @@ const MapEditorTraceTool := preload("res://scripts/map_editor/map_editor_trace_t
 const MapEditorSelection := preload("res://scripts/map_editor/map_editor_selection.gd")
 const MapEditorConfirm := preload("res://scripts/map_editor/map_editor_confirm.gd")
 const MapEditorNameDialog := preload("res://scripts/map_editor/map_editor_name_dialog.gd")
+const MapEditorLoadDialog := preload("res://scripts/map_editor/map_editor_load_dialog.gd")
 const MapEditorPanel := preload("res://scripts/map_editor/map_editor_panel.gd")
 
 ## Tools. NAVIGATE is the default and does nothing but move the view: an editor whose idle
@@ -87,6 +88,7 @@ var _layers: MapEditorLayers
 var _anchor_grab: Dictionary = {}
 var _confirm: MapEditorConfirm
 var _name_dialog: MapEditorNameDialog
+var _load_dialog: MapEditorLoadDialog
 ## Marquee in world units while dragging, and the records it caught.
 var _marquee_from := Vector2.INF
 var _marquee_to := Vector2.INF
@@ -228,6 +230,14 @@ func _build_chrome() -> void:
 	_name_dialog.cancelled.connect(func() -> void: _set_status("Save cancelled."))
 	layer.add_child(_name_dialog)
 
+	_load_dialog = MapEditorLoadDialog.new()
+	_load_dialog.set_anchors_preset(Control.PRESET_CENTER)
+	_load_dialog.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_load_dialog.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_load_dialog.chosen.connect(_load_named)
+	_load_dialog.cancelled.connect(func() -> void: _set_status("Load cancelled."))
+	layer.add_child(_load_dialog)
+
 	_panel = MapEditorPanel.new()
 	_panel.anchor_top = 0.0
 	_panel.anchor_bottom = 1.0
@@ -357,6 +367,12 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 func _handle_key(event: InputEventKey) -> void:
 	# The confirmation is modal — while it is up, Enter and Escape belong to it and nothing
 	# else may act. Anything less makes Escape ambiguous at exactly the wrong moment.
+	if _load_dialog != null and _load_dialog.is_open():
+		if event.keycode == KEY_ESCAPE:
+			_load_dialog.close()
+			_set_status("Load cancelled.")
+			_refresh_status()
+		return
 	if _name_dialog != null and _name_dialog.is_open():
 		# The field owns typing while it is open; only Escape is taken from it here, and
 		# Enter is handled by the field's own submit.
@@ -760,6 +776,14 @@ func run_action(action: String) -> void:
 			_ask_delete()
 		"save_as":
 			_ask_name()
+		"load":
+			_ask_load()
+		"undo":
+			_set_status(_document.undo())
+			_overlay.queue_redraw()
+		"redo":
+			_set_status(_document.redo())
+			_overlay.queue_redraw()
 
 
 # ── Document ────────────────────────────────────────────────────────────────────
@@ -770,6 +794,32 @@ func _save() -> void:
 		_ask_name()
 		return
 	_save_as(_document.name_of())
+
+
+func _ask_load() -> void:
+	_load_dialog.open(_document.name_of(), _document.is_dirty())
+	_panel.refresh()
+
+
+## Open a saved map, and point the game at it — see the load dialog's header for why the two
+## go together.
+func _load_named(name: String) -> void:
+	var directory := ProjectSettings.globalize_path(AuthoredMap.DOC_DIR)
+	var pointed := AuthoredMap.write_active(name, directory)
+	if pointed != "":
+		_set_status("LOAD FAILED — %s" % pointed)
+		return
+	AuthoredMap.reset_for_tests()
+	_document.reload()
+	_selection = []
+	_road_tool.abandon()
+	_trace_tool.cancel_trace()
+	_trace_tool.clear_dots()
+	_overlay.queue_redraw()
+	var counts := _document.counts()
+	_set_status("Opened '%s' — %d roads across %d settlement(s)."
+		% [name, counts.roads, counts.settlements])
+	_refresh_status()
 
 
 func _ask_name() -> void:
