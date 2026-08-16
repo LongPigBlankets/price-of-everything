@@ -1,8 +1,8 @@
 extends Node2D
 ## A/B harness for the map ink & wash restyle (docs/map_ink_wash_restyle_spec.md
-## P0): boots the match scene, then captures the same three framings in classic
-## and in ink mode — wide (whole landmass), coast (first port area), inland
-## (farm belt) — and finishes with a toggle round-trip back to classic.
+## P0): boots the match scene, captures every fixed framing in all frozen legacy
+## modes plus midcentury, and finishes with a masked pixel-exact midcentury
+## round-trip check against the selected legacy style.
 ## Writes /tmp/poe_mapstyle_<framing>_<mode>.png.
 ## Windowed only (the hill texture LOD and vector meshes need a GPU):
 ##   <godot> --path . res://tools/map_style_shot.tscn --quit-after 1600
@@ -57,23 +57,39 @@ func _ready() -> void:
 	_cam.set_physics_process(false)
 	if "edge_pan_enabled" in _cam:
 		_cam.set("edge_pan_enabled", false)
+	MapStyle.set_midcentury(false)
+	MapStyle.set_plate(false)
+	MapStyle.set_ink(false)
 	await _capture_set("classic")
 	MapStyle.set_ink(true)
 	await _capture_set("ink")
 	MapStyle.set_plate(true)
 	await _capture_set("plate")
-	MapStyle.set_ink(false)   # round-trip: the game must land back in classic
-	for _i in 5:
-		await get_tree().process_frame
-	# Leaving ink must also drop the plate sub-variant, or classic would render
-	# with plate values still latched.
-	if MapStyle.plate or MapStyle.is_plate():
-		push_error("map_style_shot: plate survived set_ink(false)")
-	print("[SHOT] toggle round-trip ok (back to classic)")
+	MapStyle.set_plate(false)
+	var legacy_before: Image = await _shot(_wide_center, _wide_zoom, "wide", "legacy_before", 20)
+	MapStyle.set_midcentury(true)
+	var midcentury_first: Image = await _capture_set("midcentury")
+	var midcentury_repeat: Image = await _shot(_wide_center, _wide_zoom, "wide", "midcentury_repeat", 20)
+	if not _masked_map_equal(midcentury_first, midcentury_repeat):
+		push_error("map_style_shot: midcentury map layer changed across identical wide captures")
+		get_tree().quit(1)
+		return
+	print("[SHOT] midcentury seeded map layer pixel exact across repeated wide capture")
+	MapStyle.set_midcentury(false)
+	var legacy_after: Image = await _shot(_wide_center, _wide_zoom, "wide", "legacy_roundtrip", 20)
+	if not _masked_map_equal(legacy_before, legacy_after):
+		push_error("map_style_shot: legacy map layer changed after midcentury round-trip")
+		get_tree().quit(1)
+		return
+	if MapStyle.is_midcentury() or not MapStyle.ink or MapStyle.plate:
+		push_error("map_style_shot: style state changed after midcentury round-trip")
+		get_tree().quit(1)
+		return
+	print("[SHOT] midcentury round-trip pixel exact in masked map region (back to ink)")
 	get_tree().quit(0)
 
-func _capture_set(mode: String) -> void:
-	await _shot(_wide_center, _wide_zoom, "wide", mode, 30)
+func _capture_set(mode: String) -> Image:
+	var wide: Image = await _shot(_wide_center, _wide_zoom, "wide", mode, 30)
 	await _shot(_tile_pos(COAST_TILE), 0.55, "coast", mode, 12)
 	await _shot(_tile_pos(INLAND_TILE), 0.45, "inland", mode, 12)
 	await _shot(_farm_pos(), 1.5, "farmclose", mode, 12)
@@ -83,6 +99,7 @@ func _capture_set(mode: String) -> void:
 	await _shot(_player_pos(), 1.6, "playerclose", mode, 12)
 	await _shot(_dense_pos(), 0.9, "denseclose", mode, 12)
 	await _shot(_dense_pos(), 3.0, "blockclose", mode, 12)
+	return wide
 
 ## Centroid of the first farm field placement — so the close framing always
 ## lands on an actual farm regardless of the seeded layout.
@@ -189,7 +206,7 @@ func _tile_pos(tile_id: String) -> Vector2:
 		return _wide_center
 	return _terrain.map_to_local(_terrain.map_coord_for_tile_coord(coord))
 
-func _shot(pos: Vector2, zoom: float, framing: String, mode: String, settle: int) -> void:
+func _shot(pos: Vector2, zoom: float, framing: String, mode: String, settle: int) -> Image:
 	# Snap the controller's own targets too, or its smoothing lerps the view
 	# back toward the intro framing between shots.
 	_cam.position = pos
@@ -199,6 +216,30 @@ func _shot(pos: Vector2, zoom: float, framing: String, mode: String, settle: int
 	print("[SHOT] framing %s/%s begin" % [framing, mode])
 	for _i in settle:   # give redraws (and the lazy hill re-bake) time to land
 		await get_tree().process_frame
+	# Style changes invalidate HillVisuals' asynchronous far-zoom texture. A
+	# fixed frame count can otherwise capture its temporary vector fallback on
+	# the first wide shot and the completed texture on a later identical shot.
+	# Wait on the renderer's actual state instead of guessing a machine-specific
+	# bake duration; this seam is read-only and used only by capture tooling.
+	var hills := _wm.find_child("HillVisuals", true, false)
+	if hills != null and hills.has_method("is_capture_ready_for_current_view"):
+		var ready_frames := 0
+		var ready_started := Time.get_ticks_msec()
+		while not bool(hills.is_capture_ready_for_current_view()) and \
+				Time.get_ticks_msec() - ready_started < 45000:
+			# An occluded window may stop normal presentation. The relief bake's
+			# UPDATE_ONCE SubViewport needs a rendered frame before its async
+			# frame_post_draw continuation can publish the texture.
+			RenderingServer.force_draw()
+			await get_tree().process_frame
+			ready_frames += 1
+		if not bool(hills.is_capture_ready_for_current_view()):
+			push_error("map_style_shot: relief LOD did not settle for %s/%s" % [framing, mode])
+			get_tree().quit(1)
+			return Image.create(1, 1, false, Image.FORMAT_RGBA8)
+		else:
+			print("[SHOT] relief LOD ready after %d frames / %d ms" % [
+				ready_frames, Time.get_ticks_msec() - ready_started])
 	# get_texture().get_image() returns whatever the GPU last PRESENTED — without
 	# this the capture is a stale frame from an earlier framing (three different
 	# shots came out byte-identical). Same guard the hill texture bake uses.
@@ -208,5 +249,17 @@ func _shot(pos: Vector2, zoom: float, framing: String, mode: String, settle: int
 	# so the capture below is this framing regardless of window state.
 	RenderingServer.force_draw()
 	var path := "/tmp/poe_mapstyle_%s_%s.png" % [framing, mode]
-	get_viewport().get_texture().get_image().save_png(path)
+	var image := get_viewport().get_texture().get_image()
+	image.save_png(path)
 	print("[SHOT] %s" % path)
+	return image
+
+func _masked_map_equal(a: Image, b: Image) -> bool:
+	if a == null or b == null or a.get_size() != b.get_size():
+		return false
+	# UI is intentionally excluded: top status bar, bottom dock, and the right
+	# inspector rail. The remaining rectangle is the stable map-layer capture.
+	var width := mini(a.get_width(), 1600)
+	var height := maxi(1, a.get_height() - 230)
+	var rect := Rect2i(0, 105, width, height)
+	return a.get_region(rect).get_data() == b.get_region(rect).get_data()

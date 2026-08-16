@@ -1,0 +1,4 @@
+[gd_scene format=3 uid="uid://cq7adv3rs4attack"]
+[ext_resource type="Script" path="res://tools/instrument_attack.gd" id="1"]
+[node name="InstrumentAttack" type="Node"]
+script = ExtResource("1")

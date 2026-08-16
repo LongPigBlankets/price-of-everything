@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tools/settlement_plan_shot.gd" id="1"]
+
+[node name="SettlementPlanZoningShot" type="Node2D"]
+script = ExtResource("1")
+capture_phase = "s1"

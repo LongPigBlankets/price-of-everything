@@ -45,7 +45,7 @@ func _draw() -> void:
 	if terrain_layer == null:
 		return
 
-	var passes: Array = [0, 1] if MapStyle.ink else [1]
+	var passes: Array = [0, 1] if MapStyle.uses_ink_linework() else [1]
 	for p in passes:
 		_pass = p
 		for coord in terrain_layer.tiles:
@@ -75,36 +75,221 @@ func get_river_polylines() -> Array:
 			continue
 		var river_data: Dictionary = river_properties[river_type]
 		var center: Vector2 = terrain_layer.map_to_local(terrain_layer.map_coord_for_tile_coord(coord))
-		for path in _river_paths_for_tile(coord, center, river_data):
-			out.append({"coord": coord, "points": path})
+		for record_value in _river_path_records_for_tile(coord, center, river_data):
+			var record: Dictionary = record_value
+			out.append({
+				"coord": coord,
+				"points": (record.points as PackedVector2Array).duplicate(),
+				"start_width": float(record.start_width),
+				"end_width": float(record.end_width),
+			})
 	return out
+
+## Continuous draw-only water mask for SettlementPlan. It is built from the
+## exact sampled paths and renderer widths above, not NavGrid cells. Round
+## joins/caps are unioned across every path whose buffered geometry intersects
+## the authored settlement extent, so adjacent non-urban river tiles and
+## branches cannot leave cracks at their shared endpoints.
+func get_water_exclusion_geometry(extent_polygons: Array,
+		building_bank_clearance: float = 4.0) -> Dictionary:
+	var raw_polys: Array = []
+	var selected_paths: Array = []
+	var selected_lakes: Array = []
+	var casing_extra := MapStyle.river_casing_extra()
+	for path_value in get_river_polylines():
+		var path: Dictionary = path_value
+		var points: PackedVector2Array = path.points
+		if points.size() < 2:
+			continue
+		var rendered_width := maxf(float(path.start_width), float(path.end_width))
+		var half_width := (rendered_width + casing_extra) * 0.5 + building_bank_clearance
+		var buffered := Geometry2D.offset_polyline(points, half_width,
+			Geometry2D.JOIN_ROUND, Geometry2D.END_ROUND)
+		var intersects := false
+		for poly_value in buffered:
+			var poly: PackedVector2Array = poly_value
+			if _water_poly_intersects_extents(poly, extent_polygons):
+				intersects = true
+				raw_polys.append(poly)
+		if intersects:
+			selected_paths.append({
+				"coord": path.coord,
+				"points": points.duplicate(),
+				"rendered_width": rendered_width,
+				"exclusion_half_width": half_width,
+			})
+
+	# Source lakes are procedurally drawn by this renderer; use the same bean
+	# vertices and add shore/clearance outside their visible edge.
+	if terrain_layer != null:
+		for coord in terrain_layer.tiles:
+			var tile_data: Dictionary = terrain_layer.tiles[coord]
+			if not tile_data.get("has_river", false):
+				continue
+			var river_type := str(tile_data.get("river_type", ""))
+			if not river_properties.has(river_type):
+				continue
+			var river_data: Dictionary = river_properties[river_type]
+			if str(river_data.get("kind", "")) != "source":
+				continue
+			var center: Vector2 = terrain_layer.map_to_local(
+				terrain_layer.map_coord_for_tile_coord(coord))
+			var lake_center := _river_point(center, str(river_data.get("lake_point", "C0")))
+			var lake_width := _float_or_default(str(river_data.get("lake_width", "")),
+				DEFAULT_LAKE_WIDTH)
+			var lake_height := _float_or_default(str(river_data.get("lake_height", "")),
+				DEFAULT_LAKE_HEIGHT)
+			var lake := _bean_lake_points(lake_center, lake_width, lake_height, river_type)
+			_append_plan_lake(lake, "river-source|%s" % river_type,
+				building_bank_clearance, extent_polygons, raw_polys, selected_lakes)
+
+	# Baked inland lakes share HillVisuals' exact visible polygons. They are
+	# independent of river-tile ownership and therefore catch water entering an
+	# authored plan from a non-urban source.
+	var baked_lakes: Array = HillBaked.lakes()
+	for i in baked_lakes.size():
+		_append_plan_lake(baked_lakes[i] as PackedVector2Array,
+			"baked-lake|%d" % i, building_bank_clearance,
+			extent_polygons, raw_polys, selected_lakes)
+
+	var merged := _merge_water_polys(raw_polys)
+	var exclusions: Array = []
+	for i in merged.size():
+		var poly: PackedVector2Array = merged[i]
+		exclusions.append({"key": "water-exclusion|%d" % i,
+			"poly": poly, "bb": _water_bbox(poly)})
+	var uncovered_joins := _uncovered_river_joins(selected_paths, exclusions)
+	return {
+		"polygons": exclusions,
+		"paths": selected_paths,
+		"lakes": selected_lakes,
+		"building_bank_clearance": building_bank_clearance,
+		"river_casing_extra": casing_extra,
+		"uncovered_river_join_count": uncovered_joins,
+	}
+
+func _append_plan_lake(lake: PackedVector2Array, key: String, clearance: float,
+		extents: Array, raw_polys: Array, selected_lakes: Array) -> void:
+	if lake.size() < 3:
+		return
+	var ccw := lake.duplicate()
+	if Geometry2D.is_polygon_clockwise(ccw):
+		ccw.reverse()
+	var expanded := Geometry2D.offset_polygon(ccw,
+		MapStyle.lake_shore_width() * 0.5 + clearance, Geometry2D.JOIN_ROUND)
+	for poly_value in expanded:
+		var poly: PackedVector2Array = poly_value
+		if not _water_poly_intersects_extents(poly, extents):
+			continue
+		raw_polys.append(poly)
+		selected_lakes.append({"key": key, "poly": lake.duplicate(),
+			"exclusion_poly": poly.duplicate()})
+
+func _water_poly_intersects_extents(poly: PackedVector2Array, extents: Array) -> bool:
+	var bb := _water_bbox(poly)
+	for extent_value in extents:
+		var extent: PackedVector2Array = extent_value
+		if extent.size() < 3 or not bb.intersects(_water_bbox(extent)):
+			continue
+		if not Geometry2D.intersect_polygons(poly, extent).is_empty():
+			return true
+		if Geometry2D.is_point_in_polygon(poly[0], extent):
+			return true
+		if Geometry2D.is_point_in_polygon(extent[0], poly):
+			return true
+	return false
+
+func _merge_water_polys(polys: Array) -> Array:
+	var merged: Array = []
+	for poly_value in polys:
+		var pending: PackedVector2Array = poly_value
+		var i := 0
+		while i < merged.size():
+			var unions := Geometry2D.merge_polygons(merged[i], pending)
+			if unions.size() == 1:
+				pending = unions[0]
+				merged.remove_at(i)
+				i = 0
+			else:
+				i += 1
+		merged.append(pending)
+	return merged
+
+func _uncovered_river_joins(paths: Array, exclusions: Array) -> int:
+	var joins: Array = []
+	for path_value in paths:
+		var points: PackedVector2Array = (path_value as Dictionary).points
+		if points.size() >= 2:
+			joins.append(points[0])
+			joins.append(points[points.size() - 1])
+	var uncovered := 0
+	for i in joins.size():
+		var shared := false
+		for j in joins.size():
+			if i != j and (joins[i] as Vector2).distance_to(joins[j]) <= 0.25:
+				shared = true
+				break
+		if shared and not _point_in_water_exclusions(joins[i], exclusions):
+			uncovered += 1
+	return uncovered
+
+func _point_in_water_exclusions(point: Vector2, exclusions: Array) -> bool:
+	for exclusion_value in exclusions:
+		var exclusion: Dictionary = exclusion_value
+		if exclusion.bb.has_point(point) and Geometry2D.is_point_in_polygon(point,
+				exclusion.poly):
+			return true
+	return false
+
+func _water_bbox(poly: PackedVector2Array) -> Rect2:
+	var lo := poly[0]
+	var hi := poly[0]
+	for point in poly:
+		lo = lo.min(point)
+		hi = hi.max(point)
+	return Rect2(lo, hi - lo)
 
 # The list of point-id sequences (with mouth flags) the river follows on a tile,
 # mirroring the _draw_* dispatch, returned as sampled world-space polylines.
 func _river_paths_for_tile(tile_coord: Vector2i, center: Vector2, river_data: Dictionary) -> Array:
 	var paths: Array = []
+	for record_value in _river_path_records_for_tile(tile_coord, center, river_data):
+		paths.append((record_value as Dictionary).points)
+	return paths
+
+func _river_path_records_for_tile(tile_coord: Vector2i, center: Vector2,
+		river_data: Dictionary) -> Array:
+	var paths: Array = []
 	var kind: String = str(river_data.get("kind", "single"))
 	match kind:
 		"joint":
-			paths.append(_sampled_ids(center, [str(river_data["entry_hsm"]), str(river_data["entry_square_point"]), str(river_data["center_point"])], false))
-			paths.append(_sampled_ids(center, [str(river_data["center_point"]), str(river_data["exit_square_point"]), str(river_data["exit_hsm"])], _exit_meets_sea(tile_coord, str(river_data["exit_hsm"]))))
+			paths.append(_sampled_record(center, [str(river_data["entry_hsm"]), str(river_data["entry_square_point"]), str(river_data["center_point"])], false))
+			paths.append(_sampled_record(center, [str(river_data["center_point"]), str(river_data["exit_square_point"]), str(river_data["exit_hsm"])], _exit_meets_sea(tile_coord, str(river_data["exit_hsm"]))))
 			var jx2: String = str(river_data.get("exit_hsm_2", ""))
 			if jx2 != "":
-				paths.append(_sampled_ids(center, [str(river_data["center_point"]), str(river_data["exit_square_point_2"]), jx2], _exit_meets_sea(tile_coord, jx2)))
+				paths.append(_sampled_record(center, [str(river_data["center_point"]), str(river_data["exit_square_point_2"]), jx2], _exit_meets_sea(tile_coord, jx2)))
 		"source":
 			var lake_id: String = str(river_data.get("lake_point", "C0"))
-			paths.append(_sampled_ids(center, [lake_id, str(river_data["exit_square_point"]), str(river_data["exit_hsm"])], _exit_meets_sea(tile_coord, str(river_data["exit_hsm"]))))
+			paths.append(_sampled_record(center, [lake_id, str(river_data["exit_square_point"]), str(river_data["exit_hsm"])], _exit_meets_sea(tile_coord, str(river_data["exit_hsm"]))))
 			var sx2: String = str(river_data.get("exit_hsm_2", ""))
 			if sx2 != "":
-				paths.append(_sampled_ids(center, [lake_id, str(river_data["exit_square_point_2"]), sx2], _exit_meets_sea(tile_coord, sx2)))
+				paths.append(_sampled_record(center, [lake_id, str(river_data["exit_square_point_2"]), sx2], _exit_meets_sea(tile_coord, sx2)))
 		"merge":
-			paths.append(_sampled_ids(center, [str(river_data["entry_hsm"]), str(river_data["entry_square_point"]), str(river_data["center_point"])], false))
+			paths.append(_sampled_record(center, [str(river_data["entry_hsm"]), str(river_data["entry_square_point"]), str(river_data["center_point"])], false))
 			var mx2: String = str(river_data.get("exit_hsm_2", ""))
 			if mx2 != "":
-				paths.append(_sampled_ids(center, [mx2, str(river_data["exit_square_point_2"]), str(river_data["center_point"])], false))
+				paths.append(_sampled_record(center, [mx2, str(river_data["exit_square_point_2"]), str(river_data["center_point"])], false))
 		_:
-			paths.append(_sampled_ids(center, [str(river_data["entry_hsm"]), str(river_data["entry_square_point"]), str(river_data["center_point"]), str(river_data["exit_square_point"]), str(river_data["exit_hsm"])], _exit_meets_sea(tile_coord, str(river_data["exit_hsm"]))))
+			paths.append(_sampled_record(center, [str(river_data["entry_hsm"]), str(river_data["entry_square_point"]), str(river_data["center_point"]), str(river_data["exit_square_point"]), str(river_data["exit_hsm"])], _exit_meets_sea(tile_coord, str(river_data["exit_hsm"]))))
 	return paths
+
+func _sampled_record(center: Vector2, point_ids: Array,
+		has_river_mouth: bool) -> Dictionary:
+	return {
+		"points": _sampled_ids(center, point_ids, has_river_mouth),
+		"start_width": RIVER_WIDTH,
+		"end_width": RIVER_MOUTH_WIDTH if has_river_mouth else RIVER_WIDTH,
+	}
 
 func _sampled_ids(center: Vector2, point_ids: Array, has_river_mouth: bool) -> PackedVector2Array:
 	var ids: Array[String] = []
@@ -278,6 +463,15 @@ func _path_tangents(points: PackedVector2Array, point_ids: Array[String]) -> Arr
 func _draw_bean_lake(center: Vector2, width: float, height: float, seed_text: String) -> void:
 	if _pass == 0:
 		return   # lakes draw fill + shore in the water pass (no casing needed)
+	var points := _bean_lake_points(center, width, height, seed_text)
+	draw_colored_polygon(points, MapStyle.river_color())
+	if MapStyle.uses_ink_linework():
+		var shore := points.duplicate()
+		shore.append(shore[0])
+		draw_polyline(shore, MapStyle.lake_shore_color(MapStyle.river_color()), MapStyle.lake_shore_width(), true)
+
+func _bean_lake_points(center: Vector2, width: float, height: float,
+		seed_text: String) -> PackedVector2Array:
 	var points := PackedVector2Array()
 	var phase: float = float(abs(hash(seed_text)) % 628) / 100.0
 	for step in range(LAKE_SHAPE_STEPS):
@@ -285,11 +479,7 @@ func _draw_bean_lake(center: Vector2, width: float, height: float, seed_text: St
 		var radius_x: float = width * 0.5 * (1.0 + 0.08 * sin(angle * 3.0 + phase))
 		var radius_y: float = height * 0.5 * (1.0 + 0.10 * cos(angle * 2.0 + phase))
 		points.append(center + Vector2(cos(angle) * radius_x, sin(angle) * radius_y))
-	draw_colored_polygon(points, MapStyle.river_color())
-	if MapStyle.ink:
-		var shore := points.duplicate()
-		shore.append(shore[0])
-		draw_polyline(shore, MapStyle.lake_shore_color(MapStyle.river_color()), MapStyle.lake_shore_width(), true)
+	return points
 
 func _draw_cubic_segment(
 	start: Vector2,
@@ -314,7 +504,7 @@ func _draw_cubic_segment(
 			draw_line(previous, point, MapStyle.river_casing(), width + MapStyle.river_casing_extra(), true)
 		else:
 			draw_line(previous, point, MapStyle.river_color(), width, true)
-			if MapStyle.ink and step == CURVE_STEPS / 2:
+			if MapStyle.uses_ink_linework() and step == CURVE_STEPS / 2:
 				_draw_flow_squiggle(previous, point, width)
 		previous = point
 

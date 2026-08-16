@@ -395,6 +395,7 @@ func _run() -> void:
 	await _run_to_target_turn(_target_turn)
 	await _take_second_loan_if_capacity_allows()
 	_check_economy_end_state()
+	_check_coal_prohibition_if_reached()
 	_check_benchmark_baseline()
 
 
@@ -3255,3 +3256,38 @@ func _declared_route(logical_id: String, good_internal: String) -> String:
 				and str((e as Dictionary).get("good", "")) == good_internal:
 			return str((e as Dictionary).get("dest", ""))
 	return ""
+
+
+## The coal prohibition (policy phase 2). This scenario is coal-fired by construction —
+## 4 coal mines feeding smelting and power — so a run driven past the ban turn is the
+## harness's only end-to-end check that the prohibition actually bites AND that the
+## economy is still standing afterwards. Below the ban turn this is a no-op, so the
+## default 100-turn run is unaffected.
+func _check_coal_prohibition_if_reached() -> void:
+	var ban_turn: int = -1
+	for e in PolicyState.Schedule.SCHEDULE:
+		var bans: Dictionary = e.get("bans", {})
+		if (bans.get("produce", []) as Array).has("coal"):
+			ban_turn = int(e.effective_turn)
+			break
+	if ban_turn <= 0 or _target_turn < ban_turn:
+		return
+	var turn: int = TurnManager.current_turn
+	_check(PolicyState.produce_banned("coal", turn), "prohibition: coal production is banned at turn %d" % turn)
+	_check(PolicyState.import_banned("coal", turn), "prohibition: coal imports are banned at turn %d" % turn)
+	# No standing order may survive that would re-issue an illegal purchase.
+	var illegal_orders: int = 0
+	for order in MatchState.recurring_buys:
+		if PolicyState.import_banned(str((order as Dictionary).get("good", "")), turn):
+			illegal_orders += 1
+	_check(illegal_orders == 0, "prohibition: no standing market order survives for a banned good")
+	# Every coal-producing building must be halted, not quietly still running.
+	var running_coal: int = 0
+	for iid in MatchState.buildings:
+		var b: Dictionary = MatchState.buildings[iid]
+		var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
+		if not recipe.is_empty() and Catalog.is_recipe_prohibited(recipe):
+			running_coal += 1
+	print("[E2E] prohibition: %d building(s) hold a now-illegal recipe at turn %d" % [running_coal, turn])
+	# Survival: the ban must not have wiped the company out outright.
+	_check(not SolvencyState.is_bankrupt(), "prohibition: the company survives the coal ban")

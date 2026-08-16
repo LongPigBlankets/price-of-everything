@@ -107,7 +107,7 @@ func _draw() -> void:
 			runs_by_edge[edge_id] = [edge.geometry]
 		else:
 			runs_by_edge[edge_id] = _clip_to_built(edge.geometry, terrain, flagged)
-	if MapStyle.ink:
+	if MapStyle.uses_ink_linework():
 		_draw_runs_ink(self, runs_by_edge, network)
 	else:
 		for pass_i in 2:   # casing under colour
@@ -130,29 +130,60 @@ func _draw() -> void:
 			continue
 		_draw_bridge_glyph(self, pb.point, pb.tangent)
 
+## The deck used to be a FIXED 42u bar (point +/- tangent * 21). A bridge over a
+## narrow river therefore ran on well past both banks, and a crossing near a
+## coast put a tan plank out in open water — the "roads on the sea" the owner
+## spotted. Probe outward for the far bank instead: the deck reaches land, or it
+## is not a crossing and is not drawn. Roads never appear on lakes or sea.
+const BRIDGE_HALF_MAX := 21.0
+const BRIDGE_HALF_MIN := 6.0
+const BRIDGE_PROBE_STEP := 2.0
+
+## Half-length the deck may run along `dir` before it reaches dry ground, or -1.0
+## when there is no landfall within BRIDGE_HALF_MAX (so this end is open water).
+static func _bridge_landfall(point: Vector2, dir: Vector2) -> float:
+	var nav := NavGrid.instance()
+	if nav == null or not nav.is_ready():
+		return BRIDGE_HALF_MAX   # no world knowledge — keep the legacy deck
+	var travelled := BRIDGE_PROBE_STEP
+	while travelled <= BRIDGE_HALF_MAX:
+		var c := nav.cell_of(point + dir * travelled)
+		if nav.water(c.x, c.y) == 0:
+			return maxf(travelled, BRIDGE_HALF_MIN)
+		travelled += BRIDGE_PROBE_STEP
+	return -1.0
+
 ## Classic: one thick brown deck stroke. Ink: a tan deck plank with two thin
 ## ink rails along its long sides (the mockup's little bridge symbol).
 func _draw_bridge_glyph(canvas: CanvasItem, point: Vector2, tangent: Vector2) -> void:
-	if not MapStyle.ink:
-		canvas.draw_line(point - tangent * 21.0, point + tangent * 21.0, MapStyle.road_bridge(), 10.0, true)
+	var fwd := _bridge_landfall(point, tangent)
+	var back := _bridge_landfall(point, -tangent)
+	if fwd < 0.0 or back < 0.0:
+		return   # no bank on one side: this is open water, not a crossing
+	_draw_bridge_deck(canvas, point, tangent, fwd, back)
+
+func _draw_bridge_deck(canvas: CanvasItem, point: Vector2, tangent: Vector2,
+		fwd: float, back: float) -> void:
+	if not MapStyle.uses_ink_linework():
+		canvas.draw_line(point - tangent * back, point + tangent * fwd, MapStyle.road_bridge(), 10.0, true)
 		return
 	var n := Vector2(-tangent.y, tangent.x)
-	if MapStyle.is_plate():
+	if MapStyle.has_cartographic_depth():
 		# The deck is a low prism on the shared light model: side face offset SE
 		# under the deck, rails carrying the linework (MILD masses take no outline).
 		var off := MapStyle.extrude_offset(MapStyle.Extrude.MILD)
-		var a := point - tangent * 21.0
-		var b := point + tangent * 21.0
+		var a := point - tangent * back
+		var b := point + tangent * fwd
 		canvas.draw_line(a + off, b + off, MapStyle.extrude_side(MapStyle.road_trunk(), MapStyle.Extrude.MILD), 9.0, true)
 		canvas.draw_line(a, b, MapStyle.road_trunk(), 9.0, true)
 		for ps in [-1.0, 1.0]:
 			var rail: Vector2 = n * (5.4 * float(ps))
 			canvas.draw_line(a + rail, b + rail, MapStyle.road_casing_trunk(), 1.4, true)
 		return
-	canvas.draw_line(point - tangent * 21.0, point + tangent * 21.0, MapStyle.road_local(), 9.0, true)
+	canvas.draw_line(point - tangent * back, point + tangent * fwd, MapStyle.road_local(), 9.0, true)
 	for s in [-1.0, 1.0]:
 		var off: Vector2 = n * (5.4 * float(s))
-		canvas.draw_line(point - tangent * 21.0 + off, point + tangent * 21.0 + off, MapStyle.road_casing(), 1.6, true)
+		canvas.draw_line(point - tangent * back + off, point + tangent * fwd + off, MapStyle.road_casing(), 1.6, true)
 
 ## Ink-mode run renderer: dashes for every run are accumulated per tier and
 ## submitted as ONE draw_multiline each; the solid near-parchment beds go on
@@ -320,7 +351,7 @@ func _draw_active() -> void:
 		if revealed.size() < 2:
 			continue
 		var runs: Array = _clip_to_built(revealed, terrain, flagged)
-		if MapStyle.ink:
+		if MapStyle.uses_ink_linework():
 			var single: Dictionary = {}
 			single[edge_id] = runs
 			_draw_runs_ink(_active_layer, single, network)

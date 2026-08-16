@@ -58,6 +58,10 @@ var _neighbour_dirty: bool = true
 var _disc_mesh: Mesh = null
 var _canopy_mm: MultiMesh = null
 var _arc_pts: PackedVector2Array = PackedVector2Array()
+var _base_indices: PackedInt32Array = PackedInt32Array()
+var _base_colors: Array[Color] = []
+var _base_alpha := -1.0
+var _crown_alpha := -1.0
 var _mm_dirty: bool = true
 var _bulk := false   # begin_bulk()/end_bulk() window (match-start placement)
 var _white_tex: Texture2D = null
@@ -76,8 +80,31 @@ func _ready() -> void:
 ## colours, so a style flip has to drop both.
 func _on_style_changed() -> void:
 	_draw_cache.clear()
+	_base_indices = PackedInt32Array()
+	_base_colors.clear()
+	_base_alpha = -1.0
+	_crown_alpha = -1.0
 	_mm_dirty = true
 	queue_redraw()
+
+func _process(_delta: float) -> void:
+	if not MapStyle.is_midcentury() or _canopy_mm == null:
+		return
+	var redraw := false
+	var base_alpha := _canopy_base_alpha()
+	if not is_equal_approx(base_alpha, _base_alpha):
+		_base_alpha = base_alpha
+		for i in _base_indices.size():
+			var color := _base_colors[i]
+			color.a *= base_alpha
+			_canopy_mm.set_instance_color(_base_indices[i], color)
+		redraw = true
+	var crown_alpha := _canopy_crown_alpha()
+	if not is_equal_approx(crown_alpha, _crown_alpha):
+		_crown_alpha = crown_alpha
+		redraw = true
+	if redraw:
+		queue_redraw()
 
 func on_building_placed(tile_id: String, building_id: String, _recipe_id: String, instance_id: String, coord: Vector2i) -> void:
 	if not FOREST_BUILDING_IDS.has(building_id):
@@ -142,8 +169,10 @@ func _draw() -> void:
 	if _canopy_mm != null and _canopy_mm.instance_count > 0:
 		draw_multimesh(_canopy_mm, _white_texture())   # all shadows + canopy lobes, one draw call
 	var arc := MapStyle.forest_arc()
+	if MapStyle.is_midcentury():
+		arc.a *= maxf(0.0, _crown_alpha)
 	if not _arc_pts.is_empty() and arc.a > 0.0:
-		draw_multiline(_arc_pts, arc, 3.0)   # all highlight arcs, one draw call
+		draw_multiline(_arc_pts, arc, 1.15 if MapStyle.is_midcentury() else 3.0)
 
 ## Build the canopy MultiMesh and batched arc lines from every forest's clipped
 ## draw data. Rebuilt only when forests change (rare); the GPU then redraws the
@@ -152,14 +181,16 @@ func _ensure_canopy() -> void:
 	if not _mm_dirty:
 		return
 	_mm_dirty = false
-	var shadows: Array = []   # [pos, r]
-	var lobes: Array = []     # [pos, r, color]
+	var shadows: Array = []   # [pos, r, aspect, rotation]
+	var bases: Array = []     # [pos, r, color, aspect, rotation]
+	var lobes: Array = []     # [pos, r, color, aspect, rotation]
 	_arc_pts = PackedVector2Array()
 	# City plate: the canopy is a low park block on the shared light model. One
 	# opaque shadow disc PER LOBE, offset SE — their union IS the offset canopy
 	# silhouette for any footprint shape, where the single centre disc below
 	# under-covers oblong woods (its radius is the MEAN half-extent).
-	var plate := MapStyle.is_plate()
+	var plate := MapStyle.has_cartographic_depth()
+	var organic_lobes := MapStyle.is_midcentury()
 	var lobe_off := MapStyle.extrude_offset(MapStyle.Extrude.MILD)
 	var lobe_side := MapStyle.extrude_side(MapStyle.forest_base(), MapStyle.Extrude.MILD)
 	for instance_key in _forests.keys():
@@ -174,12 +205,24 @@ func _ensure_canopy() -> void:
 			continue
 		if plate:
 			for circle in circles:
-				shadows.append([circle.pos + lobe_off, float(circle.r)])
+				shadows.append([circle.pos + lobe_off, float(circle.r),
+					float(circle.aspect) if organic_lobes else 1.0,
+					float(circle.rot) if organic_lobes else 0.0])
 		else:
-			shadows.append([data.center + Vector2(0, 3.0), float(data.shadow_r)])
+			shadows.append([data.center + Vector2(0, 3.0), float(data.shadow_r), 1.0, 0.0])
+		if organic_lobes:
+			for base_lobe in data.base_lobes:
+				if _circle_drawable(base_lobe.pos, float(base_lobe.r), coord):
+					bases.append([base_lobe.pos, float(base_lobe.r), base_lobe.color,
+						float(base_lobe.aspect), float(base_lobe.rot)])
 		for circle in circles:
-			lobes.append([circle.pos, float(circle.r), circle.color])
-		_append_arc_segments(data.center, float(data.mean_half), instance_id, coord)
+			lobes.append([circle.pos, float(circle.r), circle.color,
+				float(circle.aspect) if organic_lobes else 1.0,
+				float(circle.rot) if organic_lobes else 0.0])
+		if organic_lobes:
+			_append_crown_marks(circles, instance_id, coord)
+		else:
+			_append_arc_segments(data.center, float(data.mean_half), instance_id, coord)
 
 	if _disc_mesh == null:
 		_disc_mesh = _build_disc_mesh(16)
@@ -188,20 +231,100 @@ func _ensure_canopy() -> void:
 		_canopy_mm.transform_format = MultiMesh.TRANSFORM_2D
 		_canopy_mm.use_colors = true
 		_canopy_mm.mesh = _disc_mesh
-	# Shadows first (drawn behind), then lobes — instances render in index order.
-	_canopy_mm.instance_count = shadows.size() + lobes.size()
+	# Shadows first, then the zoom-faded under-mass, then edge/detail lobes.
+	# Instances render in index order; the three arrays remain one draw call.
+	_canopy_mm.instance_count = shadows.size() + bases.size() + lobes.size()
 	var idx := 0
 	for s in shadows:
-		_canopy_mm.set_instance_transform_2d(idx, _disc_xform(s[0], float(s[1])))
+		_canopy_mm.set_instance_transform_2d(idx, _lobe_xform(s[0], float(s[1]), float(s[2]), float(s[3])))
 		_canopy_mm.set_instance_color(idx, lobe_side if plate else FOREST_SHADOW)
 		idx += 1
+	_base_indices = PackedInt32Array()
+	_base_colors.clear()
+	_base_alpha = _canopy_base_alpha()
+	_crown_alpha = _canopy_crown_alpha()
+	for b in bases:
+		_canopy_mm.set_instance_transform_2d(idx, _lobe_xform(b[0], float(b[1]), float(b[3]), float(b[4])))
+		var base_color: Color = b[2]
+		_base_colors.append(base_color)
+		_base_indices.append(idx)
+		base_color.a *= _base_alpha
+		_canopy_mm.set_instance_color(idx, base_color)
+		idx += 1
 	for l in lobes:
-		_canopy_mm.set_instance_transform_2d(idx, _disc_xform(l[0], float(l[1])))
+		_canopy_mm.set_instance_transform_2d(idx, _lobe_xform(l[0], float(l[1]), float(l[3]), float(l[4])))
 		_canopy_mm.set_instance_color(idx, l[2])
 		idx += 1
 
 func _disc_xform(pos: Vector2, r: float) -> Transform2D:
 	return Transform2D(Vector2(r, 0.0), Vector2(0.0, r), pos)
+
+func _lobe_xform(pos: Vector2, r: float, aspect: float, rotation: float) -> Transform2D:
+	# aspect == 1 and rotation == 0 is the exact legacy disc transform. The
+	# mid-century renderer alone supplies narrower, rotated lobes whose major
+	# radius never exceeds the existing occupancy/clearance disc.
+	if is_equal_approx(aspect, 1.0) and is_zero_approx(rotation):
+		return _disc_xform(pos, r)
+	var axis := Vector2.from_angle(rotation)
+	var cross := Vector2(-axis.y, axis.x)
+	return Transform2D(axis * r, cross * r * aspect, pos)
+
+func _canopy_base_alpha() -> float:
+	var cam := get_viewport().get_camera_2d()
+	if cam == null:
+		return 0.0
+	var zoom := cam.zoom.x
+	var alpha: float
+	if zoom <= 0.22:
+		alpha = 0.62
+	elif zoom >= 1.05:
+		alpha = 0.0
+	else:
+		var t := smoothstep(0.22, 1.05, zoom)
+		alpha = lerpf(0.62, 0.0, t)
+	# Quantising prevents hundreds of MultiMesh colour uploads during a smooth
+	# wheel gesture while retaining an imperceptible fade between detail bands.
+	return roundf(alpha * 16.0) / 16.0
+
+func _canopy_crown_alpha() -> float:
+	var cam := get_viewport().get_camera_2d()
+	if cam == null:
+		return 0.0
+	var zoom := cam.zoom.x
+	var alpha: float
+	if zoom <= 0.55:
+		alpha = 0.0
+	elif zoom >= 1.2:
+		alpha = 1.0
+	else:
+		alpha = smoothstep(0.55, 1.2, zoom)
+	return roundf(alpha * 12.0) / 12.0
+
+func _append_crown_marks(circles: Array, instance_id: String, coord: Vector2i) -> void:
+	# Sparse short arcs add cartographic crown structure without reintroducing a
+	# repeated whole-cluster ring. Geometry follows each accepted ellipse and is
+	# invisible at wide zoom through _canopy_crown_alpha().
+	for i in circles.size():
+		if _seed("%s|crown|%d" % [instance_id, i]) % 100 >= 19:
+			continue
+		var circle: Dictionary = circles[i]
+		var center: Vector2 = circle.pos
+		var radius := float(circle.r) * 0.54
+		if not _circle_drawable(center, radius, coord):
+			continue
+		var aspect := float(circle.aspect)
+		var rot := float(circle.rot)
+		var axis := Vector2.from_angle(rot)
+		var cross := Vector2(-axis.y, axis.x)
+		var start := 3.35 + float(_seed("%s|crown-start|%d" % [instance_id, i]) % 101) / 100.0
+		var steps := 4
+		var prev := center + axis * cos(start) * radius + cross * sin(start) * radius * aspect
+		for step in range(1, steps + 1):
+			var angle := start + 0.82 * float(step) / float(steps)
+			var point := center + axis * cos(angle) * radius + cross * sin(angle) * radius * aspect
+			_arc_pts.append(prev)
+			_arc_pts.append(point)
+			prev = point
 
 func _build_disc_mesh(seg: int) -> ArrayMesh:
 	var verts := PackedVector3Array()
@@ -245,18 +368,26 @@ func _forest_draw_data(instance_id: String, tile_id: String, coord: Vector2i) ->
 	var center: Vector2 = _forest_center(instance_id, tile_id, coord)
 	var shape: Dictionary = ForestFootprint.shape_for(instance_id, tile_id, center)
 	var mean_half: float = (float(shape.hw) + float(shape.hh)) * 0.5
+	var base_lobes := _forest_base_lobes(instance_id, center, shape)
 	var visible_circles: Array = []
 	for circle in _forest_circles(instance_id, center, shape):
 		if _circle_drawable(circle.pos, float(circle.r), coord):
 			visible_circles.append(circle)
 	if visible_circles.is_empty() and _circle_drawable(center, 18.0, coord):
-		visible_circles.append({"pos": center, "r": 18.0, "color": MapStyle.forest_base()})
+		visible_circles.append({
+			"pos": center,
+			"r": 18.0,
+			"aspect": 1.0,
+			"rot": 0.0,
+			"color": MapStyle.forest_base(),
+		})
 	visible_circles.sort_custom(_sort_circle_radius_desc)
 	var data := {
 		"circles": visible_circles,
 		"shadow_r": mean_half * 0.92,
 		"mean_half": mean_half,
 		"center": center,
+		"base_lobes": base_lobes,
 	}
 	_draw_cache[instance_id] = data
 	return data
@@ -319,9 +450,41 @@ func _forest_circles(instance_id: String, center: Vector2, shape: Dictionary) ->
 		circles.append({
 			"pos": center + (lobe.off as Vector2).rotated(rot),
 			"r": float(lobe.r),
+			"aspect": float(lobe.aspect),
+			"rot": float(lobe.rot) + rot,
 			"color": base.lerp(dark, float(lobe.shade)),
 		})
 	return circles
+
+func _forest_base_lobes(instance_id: String, center: Vector2, shape: Dictionary) -> Array:
+	# Three overlapping, differently oriented ellipses form a low-frequency
+	# irregular union. They are a wide/regional grouping device, never a second
+	# occupancy shape, and fade out before close zoom.
+	var hw := float(shape.hw)
+	var hh := float(shape.hh)
+	var rot := float(shape.get("rot", 0.0))
+	var base := MapStyle.forest_base().lerp(MapStyle.forest_lobe_dark(), 0.06)
+	var specs := [
+		[-0.13, 0.04, 0.52, 0.70, -0.22],
+		[0.17, -0.10, 0.46, 0.76, 0.28],
+		[0.04, 0.18, 0.40, 0.68, 0.62],
+	]
+	var major := maxf(hw, hh)
+	var minor := minf(hw, hh)
+	var long_rot := rot + (PI * 0.5 if hh > hw else 0.0)
+	var out: Array = []
+	for i in specs.size():
+		var spec: Array = specs[i]
+		var local_off := Vector2(hw * float(spec[0]), hh * float(spec[1])).rotated(rot)
+		var jitter := float(_seed("%s|base-rot|%d" % [instance_id, i]) % 181 - 90) / 900.0
+		out.append({
+			"pos": center + local_off,
+			"r": major * float(spec[2]),
+			"aspect": clampf((minor / maxf(major, 0.001)) * float(spec[3]), 0.42, 0.86),
+			"rot": long_rot + float(spec[4]) + jitter,
+			"color": base,
+		})
+	return out
 
 func _canopy_pattern(kind: String, variant: int, hw: float, hh: float) -> Array:
 	var key := "%s:%d" % [kind, variant]
@@ -340,6 +503,11 @@ func _canopy_pattern(kind: String, variant: int, hw: float, hh: float) -> Array:
 				pattern.append({
 					"off": Vector2(lx, ly),
 					"r": FOREST_LOBE * rng.randf_range(0.85, 1.18),
+					# These values are ignored by every frozen legacy style. In
+					# mid-century they break the repeated circular flower glyph while
+					# remaining inside the same conservative lobe radius.
+					"aspect": rng.randf_range(0.66, 0.91),
+					"rot": rng.randf_range(-PI, PI),
 					"shade": rng.randf_range(0.0, 0.28),
 				})
 			x += FOREST_FILL_STEP

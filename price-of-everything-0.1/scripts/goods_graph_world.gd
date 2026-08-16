@@ -212,6 +212,18 @@ func set_graph(graph: Dictionary) -> void:
 	_upstream.clear()
 	_feeds.clear()
 	_mode = _Mode.WEB
+	# The focus reorg is an ANIMATED state (_focus_t) that is separate from _mode, so
+	# resetting _mode alone is not enough. Reopening the view after closing it while
+	# focused used to leave _focus_t at 1: every card drew at its focus position while
+	# _reset_view framed the camera on the WEB bbox, so the graph appeared far off to
+	# one side and nothing was clickable. _focus_target was stale too, so _process saw
+	# no delta to animate and never ran its _fpos cleanup — it stayed stuck until a
+	# search re-entered focus and re-synced the two.
+	_focus_t = 0.0
+	_focus_target = 0.0
+	_fpos.clear()
+	_focus_edges.clear()
+	_focus_bbox = Rect2()
 	_grid_islands.clear()
 	_tray_buttons.clear()
 	if _back_btn != null:

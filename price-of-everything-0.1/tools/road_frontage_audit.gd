@@ -9,6 +9,12 @@ extends Node
 ## counted separately rather than silently excluded — they are not failures.
 
 const MAX_GAP := 15.0
+## Half the widest drawn road casing (trunk 8.2u carriageway + 4.0u casing).
+## A footprint closer than this to a centreline is drawn UNDER the road.
+const UNDER_ROAD_HALF_CASING := 6.1
+## Per-tile tolerance: an occasional building under a road reads as an overpass.
+## More than this on one tile is a placement defect, not a flourish.
+const UNDER_ROAD_TILE_TOLERANCE := 2
 const EDGE_SAMPLE := 3.0   # perimeter sampling step (u) for polygon->segment distance
 ## Off-road by design (mirrors BuildingVisuals.OFF_ROAD_NAMES): pits and
 ## renewable farms belong on open ground, so they are reported separately
@@ -40,6 +46,14 @@ func _ready() -> void:
 	var lanes: Dictionary = bv.get("_service_segs")
 	var lane_only := 0
 
+	# UNDER-ROAD: a footprint whose perimeter comes within half the drawn road
+	# casing of a centreline is sitting ON the carriageway, not beside it. Widest
+	# mid-century casing is trunk 8.2u + 4.0u = 12.2u, so half is 6.1u. One or two
+	# per region read diegetically as an overpass; a systemic rise does not, which
+	# is why this is counted per tile rather than only map-wide.
+	var under_road: Array = []            # [tile_id, name, gap]
+	var under_by_tile: Dictionary = {}    # tile_id -> count
+
 	var by_tile: Dictionary = {}          # tile_id -> [worst_gap, worst_name]
 	var fails: Array = []                 # [tile_id, iname, cat, gap]
 	var by_design: Array = []             # same, for edge-placed/farm categories
@@ -59,6 +73,9 @@ func _ready() -> void:
 		var gap := minf(road_gap, lane_gap)
 		if road_gap > MAX_GAP and lane_gap <= MAX_GAP:
 			lane_only += 1
+		if road_gap < UNDER_ROAD_HALF_CASING:
+			under_road.append([tile_id, str(p.get("iname", p.get("cat", "?"))), road_gap])
+			under_by_tile[tile_id] = int(under_by_tile.get(tile_id, 0)) + 1
 		measured += 1
 		var cat := str(p.get("cat", ""))
 		var iname := str(p.get("iname", ""))
@@ -141,6 +158,22 @@ func _ready() -> void:
 	print("frontage candidates rejected (failing bldgs): %s" % str(rej))
 
 	fails.sort_custom(func(a, b) -> bool: return float(a[3]) > float(b[3]))
+	# Buildings drawn under a road.
+	var hot: Array = []
+	for t in under_by_tile:
+		if int(under_by_tile[t]) > UNDER_ROAD_TILE_TOLERANCE:
+			hot.append([t, int(under_by_tile[t])])
+	hot.sort_custom(func(a, b): return a[1] > b[1])
+	print("\nUNDER-ROAD (footprint within %.1fu of a centreline — drawn on the carriageway):" % UNDER_ROAD_HALF_CASING)
+	print("  buildings under a road:  %d of %d measured" % [under_road.size(), measured])
+	print("  tiles carrying any:      %d" % under_by_tile.size())
+	print("  tiles OVER tolerance:    %d  (more than %d on one tile)" % [hot.size(), UNDER_ROAD_TILE_TOLERANCE])
+	for i in mini(hot.size(), 8):
+		print("    %-12s %d buildings" % [hot[i][0], hot[i][1]])
+	under_road.sort_custom(func(a, b): return a[2] < b[2])
+	for i in mini(under_road.size(), 5):
+		print("    deepest: %-12s %-22s %.1fu from centreline" % [under_road[i][0], under_road[i][1], under_road[i][2]])
+
 	print("\nworst offenders:")
 	for i in mini(15, fails.size()):
 		print("  %-12s %-22s %6.1fu  via=%-9s ext=%.0fu" % [

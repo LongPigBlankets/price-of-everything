@@ -326,7 +326,10 @@ func _run_command(text: String) -> String:
 			if parts.size() >= 2 and parts[1].to_lower() == "plate":
 				MapStyle.set_plate(not MapStyle.plate)
 				return "map style → %s" % _style_name()
-			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate"
+			if parts.size() >= 2 and parts[1].to_lower() == "midcentury":
+				MapStyle.set_midcentury(not MapStyle.is_midcentury())
+				return "map style → %s" % _style_name()
+			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate | midcentury"
 		"anim":
 			# Cheat: cycle the Empire-view hex-field animation (1->2->3->4->1), or set it with `anim <n>`.
 			var bg := get_tree().get_first_node_in_group("empire_hex_bg")
@@ -362,8 +365,20 @@ func _run_command(text: String) -> String:
 			if parts.size() < 2:
 				return "usage: win <greenest|logistics|richest|autarkic|widest|all>"
 			return _cheat_win_track(parts[1].to_lower())
+		"ban":
+			# Engage the coal prohibition from THIS turn, exactly as a scheduled ban
+			# would: coal mining halts (running mines included) and coal cannot be
+			# bought by any route. 'ban coal off' lifts it.
+			if parts.size() < 2 or parts[1].to_lower() != "coal":
+				return "usage: ban coal  |  ban coal off"
+			var ban_turn: int = TurnManager.current_turn
+			if parts.size() >= 3 and parts[2].to_lower() == "off":
+				PolicyState.cheat_set_coal_ban(false, ban_turn)
+				return "Coal prohibition LIFTED — mining and imports are legal again."
+			PolicyState.cheat_set_coal_ban(true, ban_turn)
+			return "Coal BANNED from turn %d: mining halts, imports refused on every route. 'ban coal off' to lift." % ban_turn
 		"help":
-			return "commands:  cash <int>   |   unlock <title>|all|hidden_buildings   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   unlock <title>|all|hidden_buildings   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink|plate|midcentury   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   ban coal [off]   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 
@@ -450,6 +465,8 @@ func _toggle_debug_logs() -> String:
 	return "verbose turn logs → %s" % ("on" if enabled else "off")
 
 func _style_name() -> String:
+	if MapStyle.is_midcentury():
+		return "inhabited mid-century"
 	if MapStyle.is_plate():
 		return "city plate"
 	return "ink & wash" if MapStyle.ink else "classic"

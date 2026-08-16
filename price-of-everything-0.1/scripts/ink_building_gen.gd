@@ -41,7 +41,7 @@ const SHADOW_OFF := Vector2(1.7, 2.2)   # world units per shadow-scale k
 ## own slightly darker sepia for ink & wash, so the swap has to be plate-gated
 ## rather than a plain MapStyle read (which would change ink-mode pixels).
 static func _ink() -> Color:
-	return MapStyle.ink_color() if MapStyle.is_plate() else INK
+	return MapStyle.ink_color() if MapStyle.has_cartographic_depth() else INK
 
 static var _cache: Dictionary = {}   # "iname|lvl" -> {prims: Array, size: Vector2}
 ## Category wash for the building masses, supplied per draw by the caller so
@@ -82,7 +82,7 @@ static func draw(c: CanvasItem, iname: String, lvl: int, ctr: Vector2, ang: floa
 	# City plate: this same pass becomes the extrusion — one flat SE offset for
 	# the whole compound (not the per-height stagger) filled opaque with the
 	# derived side-face tone, so the building reads as a raised block.
-	var plate := MapStyle.is_plate()
+	var plate := MapStyle.has_cartographic_depth()
 	var sil_off := MapStyle.extrude_offset(MapStyle.Extrude.FULL)
 	var sil_col := SHADOW
 	if plate:

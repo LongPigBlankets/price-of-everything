@@ -1,5 +1,10 @@
 extends Node2D
 
+## Emitted only after the authoritative visual-placement cache has mutated.
+## Draw-only consumers must listen here rather than to MatchState/Construction,
+## whose lifecycle signals may precede placement, removal, or road relayout.
+signal footprints_changed(version: int, affected_tile_ids: Array)
+
 # Polygon building footprints (polygon-buildings plan, phases 1-3 + phase-2 road snap).
 # Each non-forest, non-road building is a coloured SHAPE (square/rect/L×2/squared-C)
 # whose AREA is a FIXED amount per tile_size_used point (SIZE_UNIT_AREA) — the same
@@ -263,7 +268,6 @@ var _service_world: Dictionary = {}   # the same lanes in world space, for _draw
 var _tile_rivers: Dictionary = {}     # tile_id -> Array of [a, b] river-arm segments (rel to centre)
 var _tile_block_mode: Dictionary = {}      # tile_id -> bool (seeded once, urban-only)
 var _tile_block_templates: Dictionary = {} # tile_id -> {angle, lots:Array[Vector2], claimed:Array[bool]} ({} = no block)
-var _block_streets: Dictionary = {}        # tile_id -> [[world a, world b]] side roads (earned by a 2nd-row build)
 var _grew_this_claim := false              # re-entry guard for the grow-and-retry in _claim_slot
 
 # Ancillary tanks/annexes (second pass, re-derived; never persisted). Each: {tile_id, verts (world), color, bb}.
@@ -290,6 +294,8 @@ var _warned_no_nav := false
 var footprint_version: int = 0
 var _bulk := false                       # begin_bulk()/end_bulk() window (match-start placement)
 var _bulk_dirty_tiles: Dictionary = {}   # tile_id -> true; subcomp marks deferred to end_bulk
+var _footprint_change_tiles: Dictionary = {}
+var _footprint_change_queued := false
 var farm_lanes_version: int = 0   # bumps when farm tracks change, so the realizer re-caches the corridor
 
 # Tiles whose road settled this frame and whose buildings must re-pack onto the
@@ -317,7 +323,7 @@ func _ready() -> void:
 		RoadWorks.farm_roads_promoted.connect(_on_farm_roads_promoted)
 	# 'toggle ink' map restyle: farm field/hatch colors come from MapStyle.
 	MapStyle.style_changed.connect(queue_redraw)
-	_ensure_farm_underlay()
+	_ensure_farm_underlay.call_deferred()
 
 ## Farms draw on their own sibling canvas slotted just before ForestVisuals, so a field
 ## can run under a wood and the canopy covers it. Everything in the world tree is z=0,
@@ -428,7 +434,32 @@ func end_bulk() -> void:
 	for tid in _bulk_dirty_tiles:
 		_mark_subcomp_dirty(str(tid))
 	_bulk_dirty_tiles.clear()
+	_queue_footprint_change_notification()
 	queue_redraw()
+
+
+func _record_footprint_change(tile_id: String) -> void:
+	if tile_id != "":
+		_footprint_change_tiles[tile_id] = true
+	if not _bulk:
+		_queue_footprint_change_notification()
+
+
+func _queue_footprint_change_notification() -> void:
+	if _bulk or _footprint_change_queued or _footprint_change_tiles.is_empty():
+		return
+	_footprint_change_queued = true
+	_flush_footprint_change_notification.call_deferred()
+
+
+func _flush_footprint_change_notification() -> void:
+	_footprint_change_queued = false
+	if _bulk or _footprint_change_tiles.is_empty():
+		return
+	var affected: Array = _footprint_change_tiles.keys()
+	affected.sort()
+	_footprint_change_tiles.clear()
+	footprints_changed.emit(footprint_version, affected)
 
 ## True once this instance has a drawn footprint — lets the start-building pass skip
 ## NPC buildings other passes already laid out (ports/ruins/companies).
@@ -546,6 +577,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		_placement_index[instance_id] = _placements.size()
 	_placements.append(placement)
 	footprint_version += 1
+	_record_footprint_change(tile_id)
 
 ## True if this (urban) tile uses the slot-grid block mode. Seeded once per tile_id, cached.
 func _use_block_mode(tile_id: String, _coord: Vector2i) -> bool:
@@ -1097,10 +1129,6 @@ func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: St
 			continue
 		claimed[i] = true
 		_grow_block_rows(tmpl, tile_id, coord)   # keep spare lots ahead of demand
-		# Occupying a lot behind the frontage row is what earns the block its
-		# side roads — they are access to something, not decoration.
-		if int((tmpl.get("rows", []) as Array)[i] if i < (tmpl.get("rows", []) as Array).size() else 0) >= 1:
-			_ensure_block_side_roads(tmpl, tile_id, coord)
 		return _finalize(coord, ctr, rv, half)
 	# Every lot is spoken for — but lots are also consumed when they turn out to
 	# be blocked, and that path never reaches the growth call above. Grow now and
@@ -1179,40 +1207,6 @@ func _append_block_lots(tmpl: Dictionary, tile_id: String, coord: Vector2i, cols
 			added += 1
 	return added
 
-## Side roads for a block whose second row has started to fill: they run out of
-## the fronting road along the block's two sides, as far back as the occupied
-## rows reach. Built once per tile, and each side is dropped if it would cross
-## water — unvalidated street geometry drew over the sea last time.
-func _ensure_block_side_roads(tmpl: Dictionary, tile_id: String, coord: Vector2i) -> void:
-	if _block_streets.has(tile_id) or not tmpl.has("origin"):
-		return
-	var origin: Vector2 = tmpl.origin
-	var tangent: Vector2 = tmpl.tangent
-	var normal: Vector2 = tmpl.normal
-	var cols: int = int(tmpl.get("cols", 2))
-	var frontage: float = float(tmpl.get("frontage", 0.0))
-	var depth := float(BLOCK_ROWS - 1) * BLOCK_LOT + BLOCK_LOT * 0.6
-	var world_origin := _tile_center_world_pos(coord)
-	var nav := NavGrid.instance()
-	var out: Array = []
-	for side in [-0.6, float(cols - 1) + 0.6]:
-		var base: Vector2 = origin + tangent * (side * BLOCK_LOT)
-		var a: Vector2 = base - normal * frontage          # at the fronting road
-		var b: Vector2 = base + normal * depth             # back past the last row
-		var dry := true
-		if nav != null and nav.is_ready():
-			for t in 6:
-				var p: Vector2 = world_origin + a.lerp(b, float(t) / 5.0)
-				var c := nav.cell_of(p)
-				if nav.water(c.x, c.y) != 0:
-					dry = false
-					break
-		if dry:
-			out.append([world_origin + a, world_origin + b])
-	if not out.is_empty():
-		_block_streets[tile_id] = out
-		queue_redraw()
-
 ## Re-run every placement (one-shot) now that the road network exists, so seeds laid
 ## out before bootstrap snap to frontage — and so any seed laid out before NavGrid was
 ## ready gets re-masked. Replays in _placements (emit) order with the same per-instance
@@ -1231,6 +1225,7 @@ func relayout() -> void:
 		_place_building(str(s.iid), str(s.bid), str(s.tid), s.coord as Vector2i)
 	for p in _placements:
 		_mark_subcomp_dirty(str(p.tile_id))   # re-derive ancillaries once mains are replayed
+	_queue_footprint_change_notification()
 	queue_redraw()
 
 ## True if `segs` (centre-relative road segments) OVERLAP this placement's footprint — the road comes within
@@ -1270,6 +1265,7 @@ func relayout_tile(tile_id: String) -> void:
 			_service_world.erase(tile_id)
 			_tile_rivers.erase(tile_id)
 			_mark_subcomp_dirty(tile_id)   # re-derive farm lanes against the new road; buildings stay put
+			_record_footprint_change(tile_id)
 			queue_redraw()
 			return
 	var src: Array = []
@@ -1300,6 +1296,7 @@ func relayout_tile(tile_id: String) -> void:
 		_service_world.erase(tile_id)
 		_tile_rivers.erase(tile_id)
 		_mark_subcomp_dirty(tile_id)
+		_record_footprint_change(tile_id)
 		queue_redraw()
 		return
 	_placements = kept
@@ -1329,6 +1326,7 @@ func relayout_tile(tile_id: String) -> void:
 	for s in src:
 		_place_building(str(s.iid), str(s.bid), str(s.tid), s.coord as Vector2i)
 	_mark_subcomp_dirty(tile_id)   # re-derive ancillaries against the now-settled road
+	_record_footprint_change(tile_id)
 	queue_redraw()
 
 func _on_road_settled(order_id: int) -> void:
@@ -2820,6 +2818,11 @@ func _ensure_service_lane(tile_id: String, coord: Vector2i, building_count: int)
 	# side of them, so a building validated 4u clear could be 1.5u from the road you can
 	# actually see. One line, one geometry.
 	var wobbled := ServiceLanes.wobble(line, tile_id)
+	# The routed path honours the water-blocked mask cell by cell, but (exactly as
+	# with the building gate below) RDP can cut a corner and the wobble can lean
+	# further — out over the shoreline. Owner rule 2026-08-16: no road on sea or
+	# lake. Pull any wet vertex back onto land before anything measures off it.
+	wobbled = _declamp_lane_water(wobbled, center)
 	var out: Array = []
 	for i in range(1, wobbled.size()):
 		out.append([wobbled[i - 1], wobbled[i]])
@@ -2835,6 +2838,50 @@ func _ensure_service_lane(tile_id: String, coord: Vector2i, building_count: int)
 	_service_world[tile_id] = world
 	_carve_service_lane(tile_id, out)
 	queue_redraw()
+
+## Pulls every vertex of a tile-relative lane off sea/lake, and splits the step
+## where a chord between two dry vertices still crosses water. Rivers stay
+## crossable (lanes bridge them); only sea and lake are walls.
+func _declamp_lane_water(pts: PackedVector2Array, center: Vector2) -> PackedVector2Array:
+	var nav := NavGrid.instance()
+	if nav == null or not nav.is_ready() or pts.size() < 2:
+		return pts
+	var out := PackedVector2Array()
+	for p in pts:
+		out.append(_nearest_dry_rel(nav, p, center))
+	# A chord between two dry vertices can still clip a headland; insert the
+	# midpoint (declamped) wherever it does, rather than trusting vertices alone.
+	var fixed := PackedVector2Array()
+	for i in range(out.size() - 1):
+		fixed.append(out[i])
+		var mid := (out[i] + out[i + 1]) * 0.5
+		if _is_wet_rel(nav, mid, center):
+			fixed.append(_nearest_dry_rel(nav, mid, center))
+	fixed.append(out[out.size() - 1])
+	return fixed
+
+func _is_wet_rel(nav: NavGrid, rel: Vector2, center: Vector2) -> bool:
+	var c := nav.cell_of(center + rel)
+	var k := nav.water(c.x, c.y)
+	return k == NavGrid.WATER_SEA or k == NavGrid.WATER_LAKE
+
+## Nearest dry point to `rel`, spiralling out in NavGrid steps. Returns `rel`
+## unchanged when it is already dry or nothing dry is close.
+func _nearest_dry_rel(nav: NavGrid, rel: Vector2, center: Vector2) -> Vector2:
+	if not _is_wet_rel(nav, rel, center):
+		return rel
+	var step := 6.0
+	for ring in range(1, 7):
+		var best := Vector2.INF
+		for k in 16:
+			var a := TAU * float(k) / 16.0
+			var cand := rel + Vector2(cos(a), sin(a)) * (step * float(ring))
+			if not _is_wet_rel(nav, cand, center):
+				best = cand
+				break
+		if best != Vector2.INF:
+			return best
+	return rel
 
 ## True if `segs` (a candidate lane, tile-relative) keeps SERVICE_CLEAR off every
 ## footprint already placed on the tile. Buildings sited AFTER a lane are handled the
@@ -2916,6 +2963,7 @@ func _place_offshore(coord: Vector2i, area: float, placed_here: Array) -> Dictio
 	var side := sqrt(maxf(area, BUILDABLE_MIN_AREA))
 	var verts: PackedVector2Array = BuildingShapes.make_rect(side * 1.25, side * 0.8).verts
 	var half := _aabb_half(verts)
+	var port_reservations := _midcentury_port_marine_reservations()
 	var best := Vector2.INF
 	var best_score := -INF
 	for row in GRID_ROWS:
@@ -2926,6 +2974,11 @@ func _place_offshore(coord: Vector2i, area: float, placed_here: Array) -> Dictio
 			var c := nav.cell_of(center + rel)
 			if nav.water(c.x, c.y) == 0:
 				continue   # land — offshore structures sit on water
+			var world_poly := PackedVector2Array()
+			for vertex in verts:
+				world_poly.append(center + rel + vertex)
+			if _poly_overlaps_records(world_poly, port_reservations):
+				continue
 			if _overlaps(rel, half, placed_here, verts):
 				continue
 			var score := minf(_nearest_building_dist(rel, placed_here), OFFSHORE_MIN_SEP * 2.0) - rel.length() * 0.05
@@ -2937,6 +2990,34 @@ func _place_offshore(coord: Vector2i, area: float, placed_here: Array) -> Dictio
 	var p := _finalize(coord, best, verts, half)
 	p["offshore"] = true
 	return p
+
+func _midcentury_port_marine_reservations() -> Array:
+	var out: Array = []
+	if terrain_layer == null:
+		return out
+	for port_value in Catalog.all_ports():
+		var port: Dictionary = port_value
+		var plan := MidcenturyPortPlan.build(terrain_layer,
+			str(port.get("tile_id", "")), str(port.get("id", "")))
+		if plan.is_empty():
+			continue
+		var marine: Dictionary = plan.marine_reservation
+		for poly_value in marine.get("polygons", [marine.get("poly",
+				PackedVector2Array())]):
+			var poly: PackedVector2Array = poly_value
+			if poly.size() >= 3:
+				out.append({"poly": poly, "bb": _verts_bb(poly)})
+	return out
+
+func _poly_overlaps_records(poly: PackedVector2Array, records: Array) -> bool:
+	var bb := _verts_bb(poly)
+	for value in records:
+		var record: Dictionary = value
+		if not bb.intersects(record.bb):
+			continue
+		if not Geometry2D.intersect_polygons(poly, record.poly).is_empty():
+			return true
+	return false
 
 ## Tight row along a road frontage: orient the long axis along the road, snap flush to the
 ## carriageway clearance, and take the first free slot (which abuts the prior building with
@@ -3325,6 +3406,12 @@ const INK_ART_KEY := {
 	"solar_farm": "solar_farm",
 	"onshore_wind_farm": "wind_farm", "offshore_wind_farm": "wind_farm",
 	"pipes": "pipes", "reinf_pipes": "pipes", "cables": "cables",
+}
+const MIDCENTURY_COMPOUND_ART := {
+	"furnace": true, "eaf": true, "industrial_factory": true,
+	"consumer_factory": true, "assembly_plant": true, "high_tech_manufactory": true,
+	"petro_refinery": true, "chem_plant": true, "poly_plant": true,
+	"electrolyser": true, "power_plant": true, "water_pump": true, "mine": true,
 }
 ## Lot side scales with tile_size_used from the smallest class to 3x for the
 ## biggest (owner's 10:30 ratio); levels never rescale the art — the L3 frame
@@ -3900,6 +3987,119 @@ func footprint_rects_on_tile(coord: Vector2i) -> Array:
 			out.append(_verts_bb(p.verts))
 	return out
 
+## Exact read-only placement polygons for draw-only planning layers. Unlike
+## footprint_rects_on_tile(), this retains the authoritative visual footprint's
+## orientation and irregular outline. It does not expose or mutate occupancy.
+func midcentury_footprint_sites_on_tile(coord: Vector2i) -> Array:
+	var out: Array = []
+	for p in _placements:
+		if p.coord != coord:
+			continue
+		var verts: PackedVector2Array = p.verts
+		var site := {
+			"rect": _verts_bb(verts),
+			"poly": verts.duplicate(),
+			"coord": coord,
+			"tile_id": str(p.get("tile_id", "")),
+			"instance_id": str(p.get("instance_id", "")),
+			"building_id": str(p.get("building_id", "")),
+			"category": str(p.get("cat", "default")),
+		}
+		if str(p.get("building_id", "")) == "b_004":
+			var port_plan := MidcenturyPortPlan.build(terrain_layer,
+				str(p.get("tile_id", "")), str(p.get("instance_id", "")))
+			if not port_plan.is_empty():
+				site["midcentury_port_plan"] = port_plan
+				site["poly"] = port_plan.total_compound_envelope
+				site["rect"] = _verts_bb(port_plan.total_compound_envelope)
+		out.append(site)
+	return out
+
+## Complete exact oriented footprint set for a settlement/spill envelope.  The
+## caller may filter by its own bounds; querying globally prevents rural spill
+## destinations from being omitted merely because they are not source urban tiles.
+func midcentury_all_footprint_sites() -> Array:
+	var out: Array = []
+	for p in _placements:
+		var verts: PackedVector2Array = p.verts
+		var site := {
+			"rect": _verts_bb(verts),
+			"poly": verts.duplicate(),
+			"coord": p.coord,
+			"tile_id": str(p.get("tile_id", "")),
+			"instance_id": str(p.get("instance_id", "")),
+			"building_id": str(p.get("building_id", "")),
+			"category": str(p.get("cat", "default")),
+		}
+		if str(p.get("building_id", "")) == "b_004":
+			var port_plan := MidcenturyPortPlan.build(terrain_layer,
+				str(p.get("tile_id", "")), str(p.get("instance_id", "")))
+			if not port_plan.is_empty():
+				site["midcentury_port_plan"] = port_plan
+				site["poly"] = port_plan.total_compound_envelope
+				site["rect"] = _verts_bb(port_plan.total_compound_envelope)
+		out.append(site)
+	return out
+
+## Raw non-port gameplay obstacles for the shared port planner. This deliberately
+## avoids calling MidcenturyPortPlan, so the planner can query authoritative
+## footprints without recursing through its own expanded port envelope.
+func midcentury_port_obstacles(exclude_instance_id: String = "") -> Array:
+	var out: Array = []
+	for p in _placements:
+		if str(p.get("instance_id", "")) == exclude_instance_id or \
+				str(p.get("building_id", "")) == "b_004":
+			continue
+		var poly: PackedVector2Array = p.verts
+		out.append({"poly": poly.duplicate(), "bb": _verts_bb(poly),
+			"instance_id": str(p.get("instance_id", "")),
+			"tile_id": str(p.get("tile_id", ""))})
+	return out
+
+## Authoritative b_004 instances for PortVisuals. Catalog ports and future
+## player ports therefore use the same placement record and plan seam.
+func midcentury_port_instances() -> Array:
+	var out: Array = []
+	for p in _placements:
+		if str(p.get("building_id", "")) != "b_004":
+			continue
+		out.append({"tile_id": str(p.get("tile_id", "")),
+			"instance_id": str(p.get("instance_id", "")),
+			"coord": p.coord})
+	return out
+
+## Read-only service-lane geometry for draw-only accommodation planning. These
+## are the same lanes used by placement avoidance; callers cannot mutate the
+## authoritative cache.
+func midcentury_service_lanes_on_tile(coord: Vector2i) -> Array:
+	var tile_id := str((terrain_layer.tiles.get(coord, {}) as Dictionary).get(
+		"id", "%d_%d" % [coord.x, coord.y]))
+	var world: PackedVector2Array = _service_world.get(tile_id,
+		PackedVector2Array())
+	return [world.duplicate()] if world.size() >= 2 else []
+
+## Read-only draw metadata for the optional mid-century fabric layer. These
+## records do not reserve land or replace the placement footprint; they only
+## let that renderer leave a larger printed works yard around real industries.
+func midcentury_industry_sites_on_tile(coord: Vector2i) -> Array:
+	var out: Array = []
+	for p in _placements:
+		if p.coord != coord:
+			continue
+		var art_key := str(INK_ART_KEY.get(str(p.get("iname", "")), ""))
+		if not MIDCENTURY_COMPOUND_ART.has(art_key):
+			continue
+		var verts: PackedVector2Array = p.verts
+		out.append({
+			"rect": _verts_bb(verts),
+			"poly": verts.duplicate(),
+			"coord": coord,
+			"tile_id": str(p.get("tile_id", "")),
+			"instance_id": str(p.get("instance_id", "")),
+			"family": _wash_family(str(p.get("cat", "default"))),
+		})
+	return out
+
 # Block-box size band (road frame: U = along the road, V = perpendicular) — sizes the
 # chunk template's coarse cells (_chunk_template). Named for the retired enclosure ring
 # that first used them; the chunk grid still fills the same city-block box.
@@ -3973,6 +4173,8 @@ func footprint_discs() -> Array:
 
 func clear_all() -> void:
 	# A loaded save rebuilds visuals (world_map._rebuild_after_load).
+	for placement_value in _placements:
+		_record_footprint_change(str((placement_value as Dictionary).get("tile_id", "")))
 	_placements.clear()
 	_placement_index.clear()
 	_clear_tile_caches()
@@ -3986,6 +4188,7 @@ func clear_all() -> void:
 	_farm_promote.clear()
 	_farm_cluster_rings.clear()
 	footprint_version += 1
+	_queue_footprint_change_notification()
 	queue_redraw()
 
 func remove_instance(instance_id: String) -> void:
@@ -4002,6 +4205,7 @@ func remove_instance(instance_id: String) -> void:
 		if _placement_index[iid] > idx:
 			_placement_index[iid] -= 1
 	footprint_version += 1
+	_record_footprint_change(tile_id)
 	# On a block tile, re-pack so the freed lot opens and the survivors keep deterministic
 	# lots (matches the post-reload re-derivation; otherwise the cached slot grid leaks).
 	if _tile_block_templates.has(tile_id):
@@ -4061,6 +4265,8 @@ func _draw() -> void:
 		# Members of a courtyard mass skip their fill — the mass carries it —
 		# and their outline thins into a party-wall division.
 		var in_mass: bool = (_massed_by_tile.get(str(placement.tile_id), {}) as Dictionary).has(str(placement.instance_id))
+		if not in_mass:
+			_draw_midcentury_compound_apron(placement, verts)
 		if not in_mass and _draw_ink_art(placement, verts):
 			pass   # shape-language art replaces wash/outline/motifs (both styles)
 		else:
@@ -4083,11 +4289,6 @@ func _draw() -> void:
 				draw_circle(_poly_centroid(verts), 2.4, MapStyle.ink_color())
 			elif verts.size() == 4:
 				_draw_roof_motifs(str(placement.cat), str(placement.instance_id), verts, bool(placement.is_npc), top)
-	# Block side roads — only exist once a second-row lot was actually built on.
-	for tid_s in _block_streets:
-		for s in (_block_streets[tid_s] as Array):
-			draw_line(s[0], s[1], MapStyle.road_casing(), 11.0, true)
-			draw_line(s[0], s[1], MapStyle.road_local(), 7.0, true)
 	# Service lanes: SERVICE_WIDTH of carriageway and a hairline casing. Deliberately
 	# far thinner than a local road — the eye should read them as access, not route,
 	# and the thinness is the visual promise that they cost almost no land.
@@ -4122,7 +4323,7 @@ func draw_farm_layer(c: CanvasItem) -> void:
 			parcel_src = (_farm_render[fid] as Dictionary).get("parcels", {})
 		if verts.size() < 3:
 			continue
-		if MapStyle.ink:
+		if MapStyle.uses_ink_linework():
 			# P3b parcel fabric: the path-tan base shows through the parcel
 			# insets as the little farm roads; NO outer outline (the parcel
 			# edges carry the boundary — kills the chunky-blob read).
@@ -4176,7 +4377,7 @@ func draw_farm_layer(c: CanvasItem) -> void:
 	# Ink mode draws NO grey lane web (owner ruling 2026-07-23): the mockup's
 	# farms are parcel blocks sitting beside the roads, not lane-connected
 	# blobs. Classic keeps the dirt tracks + their river bridge decks.
-	if not MapStyle.ink:
+	if not MapStyle.uses_ink_linework():
 		var joint_r := FARM_LANE_W * 0.5
 		for tid in _farm_lanes:
 			for seg in (_farm_lanes[tid] as Array):
@@ -4210,7 +4411,7 @@ func _draw_subcomponent(sc: Dictionary, canvas: CanvasItem = null) -> void:
 	var c: CanvasItem = canvas if canvas != null else self   # farm outbuildings draw on the underlay
 	var sv: PackedVector2Array = sc.verts
 	var kind := str(sc.kind)
-	if MapStyle.ink and (kind == "farm_barn" or kind == "farm_silo"):
+	if MapStyle.uses_ink_linework() and (kind == "farm_barn" or kind == "farm_silo"):
 		return   # ink farms draw their own parcel-snapped outbuildings (P3b)
 	if _ink_art_iid.get(str(sc.get("iid", "")), false):
 		return   # the shape-language art carries the whole compound (both styles)
@@ -4253,12 +4454,12 @@ func _draw_subcomponent(sc: Dictionary, canvas: CanvasItem = null) -> void:
 	# Farm barn/silo fall through to here. Ink: brick barn / mustard silo + ink
 	# outline; classic keeps the brown + white/grey look.
 	var fb_fill: Color = sc.color
-	if MapStyle.ink:
+	if MapStyle.uses_ink_linework():
 		fb_fill = MapStyle.farm_silo_color() if kind == "farm_silo" else MapStyle.farm_barn_color()
 	_draw_prism_on(c, sv, fb_fill, ext, edge, edge_w)
 	var sl := sv.duplicate()
 	sl.append(sv[0])
-	if MapStyle.ink:
+	if MapStyle.uses_ink_linework():
 		c.draw_polyline(sl, edge if ext != Vector2.ZERO else dink, edge_w if ext != Vector2.ZERO else 1.0, true)
 	elif bool(sc.is_npc):
 		c.draw_polyline(sl, Color.WHITE, NPC_OUTLINE_W, true)
@@ -4267,6 +4468,29 @@ func _draw_subcomponent(sc: Dictionary, canvas: CanvasItem = null) -> void:
 
 # ── Ink & wash helpers (phase I1) ──────────────────────────────────────────────
 
+## Mid-century gameplay industries occupy a coherent printed compound inside
+## their existing logical footprint. The apron is draw-only: click testing,
+## occupancy, land use and road avoidance continue to use `placement.verts`.
+func _draw_midcentury_compound_apron(placement: Dictionary,
+		verts: PackedVector2Array) -> void:
+	if not MapStyle.is_midcentury():
+		return
+	var art_key := str(INK_ART_KEY.get(str(placement.get("iname", "")), ""))
+	if not MIDCENTURY_COMPOUND_ART.has(art_key):
+		return
+	var ccw := verts.duplicate()
+	if Geometry2D.is_polygon_clockwise(ccw):
+		ccw.reverse()
+	var family := _wash_family(str(placement.get("cat", "default")))
+	var fill := MapMidcenturyStyle.industrial_apron(family)
+	var outline := Color(MapMidcenturyStyle.INK, 0.78)
+	for apron_value in Geometry2D.offset_polygon(ccw, -1.8, Geometry2D.JOIN_MITER):
+		var apron: PackedVector2Array = apron_value
+		if apron.size() < 3:
+			continue
+		draw_colored_polygon(apron, fill)
+		draw_polyline(_closed(apron), outline, 0.9, true)
+
 ## Procedural industrial art (ink mode): InkBuildingGen draws the shape-language
 ## compound centered on the footprint, rotated to its first edge, long side
 ## scaled to INK_ART_SCALE x the footprint extent. The generator computes facet
@@ -4274,6 +4498,17 @@ func _draw_subcomponent(sc: Dictionary, canvas: CanvasItem = null) -> void:
 ## world NW — so rotation keeps the light source top-left (owner requirement).
 ## Returns false when no recipe applies — caller falls back to the plate look.
 func _draw_ink_art(placement: Dictionary, verts: PackedVector2Array) -> bool:
+	# Mid-century ports are drawn once by PortVisuals from the shared b_004
+	# compound plan. Suppress the generic footprint art so the same gameplay
+	# building cannot appear as a second competing port representation.
+	if MapStyle.is_midcentury() and str(placement.get("building_id", "")) == "b_004":
+		# A rejected coastal compound must not make its authoritative gameplay
+		# building vanish.  PortVisuals draws a valid shared plan exactly once;
+		# otherwise this one footprint remains as the honest bounded fallback.
+		var port_plan := MidcenturyPortPlan.build(terrain_layer,
+			str(placement.get("tile_id", "")), str(placement.get("instance_id", "")))
+		if not port_plan.is_empty():
+			return true
 	var art_key: String = INK_ART_KEY.get(str(placement.get("iname", "")), "")
 	if art_key == "" or verts.size() < 3:
 		return false
@@ -4424,9 +4659,9 @@ func _mass_wash(m: Dictionary) -> Color:
 		return m.color
 	var key := str(m.key)
 	var npc := bool(m.get("npc", false))
-	if MapStyle.is_plate() and not npc and _wash_family(major) == "red":
+	if MapStyle.has_cartographic_depth() and not npc and _wash_family(major) == "red":
 		var jitter := (float(RoadHash.pick("ink|%s|val" % key, 100)) / 100.0 - 0.5) * 2.0 * MapStyle.plate_wash_jitter()
-		var accent := MapStyle.plate_block_top("red_mass")
+		var accent := MapStyle.block_top("red_mass")
 		return Color.from_hsv(accent.h, accent.s, clampf(accent.v * (1.0 + jitter), 0.0, 1.0))
 	return _wash_for(major, key, npc)
 
@@ -4488,11 +4723,13 @@ func _wash_family(cat: String) -> String:
 func _wash_for(cat: String, iid: String, is_npc: bool) -> Color:
 	var fam := _wash_family(cat)
 	var jitter := (float(RoadHash.pick("ink|%s|val" % iid, 100)) / 100.0 - 0.5) * 2.0 * MapStyle.plate_wash_jitter()
-	if MapStyle.is_plate():
+	if MapStyle.has_cartographic_depth():
 		# Block tops. Ruins first: an NPC-owned ruin must stay brown, matching the
 		# `is_npc and fam != "ruins"` carve-out below — decay, not ownership.
-		var key := fam if fam == "ruins" else ("npc" if is_npc else fam)
-		var top := MapStyle.plate_block_top(key)
+		# Midcentury identifies real gameplay industries by restrained category
+		# colour regardless of owner. Plate keeps its frozen NPC-grey convention.
+		var key := fam if fam == "ruins" or not is_npc or MapStyle.is_midcentury() else "npc"
+		var top := MapStyle.block_top(key)
 		return Color.from_hsv(top.h, top.s, clampf(top.v * (1.0 + jitter), 0.0, 1.0))
 	if is_npc and fam != "ruins":
 		var wv := NPC_WHITE.v * (1.0 + jitter * 0.6)

@@ -22,6 +22,10 @@ signal style_changed
 var ink := true
 ## "City plate" sub-variant; only active while `ink` is true. Never saved.
 var plate := false
+## Optional inhabited mid-century renderer. It is orthogonal to the three
+## legacy modes: enabling it masks (but never mutates) the current legacy
+## choice, and disabling it reveals that exact choice again.
+var midcentury := false
 
 func set_ink(on: bool) -> void:
 	if ink == on:
@@ -38,6 +42,23 @@ func set_plate(on: bool) -> void:
 	if on and not ink:
 		ink = true   # plate implies ink; one emit covers both
 	style_changed.emit()
+
+func set_midcentury(on: bool) -> void:
+	if midcentury == on:
+		return
+	midcentury = on
+	style_changed.emit()
+
+func is_midcentury() -> bool:
+	return midcentury
+
+func uses_ink_linework() -> bool:
+	return ink or is_midcentury()
+
+## Shared shape-language predicate for solid cartographic masses. Legacy plate
+## and midcentury choose their own offsets/palettes through the getters below.
+func has_cartographic_depth() -> bool:
+	return is_plate() or is_midcentury()
 
 ## THE public plate predicate — the only spelling. Layers branch on this.
 func is_plate() -> bool:
@@ -112,9 +133,13 @@ const _WATER_INK := Color("5b86b5")
 const _WATER_PLATE := Color("3f7cc4")
 
 func band_colors() -> Array[Color]:
+	if is_midcentury():
+		return MapMidcenturyStyle.BAND_COLORS
 	return _BAND_INK if ink else _BAND_CLASSIC
 
 func sea_colors() -> Array[Color]:
+	if is_midcentury():
+		return MapMidcenturyStyle.SEA_COLORS
 	match _sid():
 		Style.PLATE:
 			return _SEA_PLATE
@@ -125,6 +150,8 @@ func sea_colors() -> Array[Color]:
 
 ## Lakes + the coastal shelf; same hue as rivers so all water reads as one.
 func water_color() -> Color:
+	if is_midcentury():
+		return MapMidcenturyStyle.WATER
 	return _c3(_WATER_CLASSIC, _WATER_INK, _WATER_PLATE)
 
 func river_color() -> Color:
@@ -142,12 +169,18 @@ func river_color() -> Color:
 ## ink edge is counted. Trunk and local share the bed — width and edge weight
 ## carry the hierarchy, exactly as they do on a printed plate.
 func road_local() -> Color:
+	if is_midcentury():
+		return MapMidcenturyStyle.ROAD_LOCAL
 	return _c3(Color("e8c84a"), Color("dfd0a2"), Color("f4efdd"))
 
 func road_trunk() -> Color:
+	if is_midcentury():
+		return MapMidcenturyStyle.ROAD_TRUNK
 	return _c3(Color("d97b29"), Color("d4bd8a"), Color("f4efdd"))
 
 func road_casing() -> Color:
+	if is_midcentury():
+		return MapMidcenturyStyle.ROAD_CASING
 	if is_plate():
 		return _ink_alpha(0.68)
 	return Color(0.227, 0.173, 0.094, 0.95) if ink else Color(0.24, 0.16, 0.05, 0.9)
@@ -155,25 +188,37 @@ func road_casing() -> Color:
 ## Trunk roads carry a heavier edge — in the plate idiom that line IS the block
 ## frontage. Ink/classic have no separate trunk casing.
 func road_casing_trunk() -> Color:
+	if is_midcentury():
+		return MapMidcenturyStyle.ROAD_CASING_TRUNK
 	return _ink_alpha(0.85) if is_plate() else road_casing()
 
 func road_bridge() -> Color:
+	if is_midcentury():
+		return MapMidcenturyStyle.BRIDGE
 	return Color("4a3826") if ink else Color(0.32, 0.2, 0.08)
 
 ## ── Ports (port_visuals) ────────────────────────────────────────────────────
 
 func port_dockhouse() -> Color:
+	if is_midcentury():
+		return Color("d6c9a8")
 	return Color("efe9db") if ink else Color(0.96, 0.97, 0.98)
 
 func port_outline() -> Color:
+	if is_midcentury():
+		return MapMidcenturyStyle.INK
 	return Color("3a2c18") if ink else Color(0.55, 0.62, 0.69)
 
 func port_pier() -> Color:
+	if is_midcentury():
+		return Color("baa77f")
 	return Color("cbb489") if ink else Color(0.90, 0.92, 0.94)
 
 ## Plate: the generated port compound is washed logistics tan. Transparent
 ## elsewhere = "no override", the generator keeps its own wash.
 func port_art_wash() -> Color:
+	if is_midcentury():
+		return Color("b9a778")
 	return Color("c9b88a") if is_plate() else Color(0.0, 0.0, 0.0, 0.0)
 
 ## ── Farms (building_visuals farm branch) ────────────────────────────────────
@@ -192,25 +237,35 @@ func _farm_variants() -> Array[Color]:
 ## The seed key is unchanged across styles on purpose — a parcel keeps its index
 ## through a style flip, so the patchwork pattern never reshuffles.
 func farm_field_variant(seed_key: String) -> Color:
+	if is_midcentury():
+		return MapMidcenturyStyle.FARM_VARIANTS[RoadHash.pick("ffield|%s" % seed_key, MapMidcenturyStyle.FARM_VARIANTS.size())]
 	if not ink:
 		return Color("a8d98a")
 	var table := _farm_variants()
 	return table[RoadHash.pick("ffield|%s" % seed_key, table.size())]
 
 func farm_hatch() -> Color:
+	if is_midcentury():
+		return Color(0.25, 0.23, 0.16, 0.5)
 	if is_plate():
 		return Color(0.30, 0.27, 0.16, 0.5)
 	return Color(0.30, 0.27, 0.16, 0.7) if ink else Color(0.18, 0.38, 0.18, 0.85)
 
 func farm_hatch_width() -> float:
+	if is_midcentury():
+		return 1.0
 	return 1.1 if ink else 3.0
 
 func farm_outline_color(is_npc: bool) -> Color:
+	if is_midcentury():
+		return Color(MapMidcenturyStyle.INK, 0.52)
 	if not ink:
 		return Color.WHITE if is_npc else Color(0.5, 0.5, 0.5)
 	return _ink_alpha(0.6)
 
 func farm_outline_width(is_npc: bool) -> float:
+	if is_midcentury():
+		return 1.0
 	if not ink:
 		return 2.0 if is_npc else 1.0
 	return 1.1
@@ -221,32 +276,44 @@ func farm_outline_width(is_npc: bool) -> float:
 ## The tracks between parcels are paper like the roads, held well back — they are
 ## dirt lanes, and must not out-read a real road.
 func farm_path_color() -> Color:
+	if is_midcentury():
+		return Color("d8caa3")
 	return Color("ddd3ae") if is_plate() else Color("d6c99e")
 
 func farm_parcel_tint(i: int) -> Color:
+	if is_midcentury():
+		return MapMidcenturyStyle.FARM_VARIANTS[absi(i) % MapMidcenturyStyle.FARM_VARIANTS.size()]
 	var table := _farm_variants()
 	return table[absi(i) % table.size()]
 
 func farm_parcel_outline() -> Color:
+	if is_midcentury():
+		return Color(MapMidcenturyStyle.INK, 0.38)
 	return _ink_alpha(0.45 if is_plate() else 0.35)
 
 ## Farm outbuildings: classic brown; ink = brick barn / mustard silo + ink.
 ## The barn red is the ONE brick red on the map — see the plate red budget.
 func farm_barn_color() -> Color:
+	if is_midcentury():
+		return Color("a85645")
 	return Color("b0483a") if ink else Color(0.50, 0.33, 0.16)
 
 func farm_silo_color() -> Color:
+	if is_midcentury():
+		return Color("b88e36")
 	return Color("c9992e") if ink else Color(0.50, 0.33, 0.16)
 
 ## ── P3 building micro-shadow (ink only; transparent = skip) ─────────────────
 ## Plate replaces the micro-shadow with the extrusion prism — never both.
 
 func building_shadow_color() -> Color:
-	if is_plate():
+	if has_cartographic_depth():
 		return Color(0.0, 0.0, 0.0, 0.0)
 	return Color(INK.r, INK.g, INK.b, 0.13) if ink else Color(0.0, 0.0, 0.0, 0.0)
 
 func building_shadow_offset() -> Vector2:
+	if is_midcentury():
+		return Vector2(1.25, 1.75)
 	return Vector2(1.5, 2.5)
 
 ## ── City plate: buildings as extruded blocks ────────────────────────────────
@@ -282,24 +349,39 @@ const _PLATE_BLOCK_TOPS := {
 func plate_block_top(fam: String) -> Color:
 	return _PLATE_BLOCK_TOPS.get(fam, _PLATE_BLOCK_TOPS["orange"])
 
+## Gameplay-building palette for the active solid-mass renderer. The legacy
+## plate accessor remains unchanged for compatibility tests and old callers.
+func block_top(fam: String) -> Color:
+	if is_midcentury():
+		return MapMidcenturyStyle.gameplay_block_top(fam)
+	return plate_block_top(fam)
+
 ## Roof linework has to survive on a dark top face, so it flips to a light
 ## paper tone there; light tops keep the ink.
 func roof_motif_color(top: Color) -> Color:
-	if is_plate() and top.v < 0.55:
+	if has_cartographic_depth() and top.v < 0.55:
+		if is_midcentury():
+			return Color(MapMidcenturyStyle.PAPER_LIGHT, 0.58)
 		return Color(0.894, 0.863, 0.776, 0.55)
 	return ink_color()
 
 func courtyard_fill() -> Color:
+	if is_midcentury():
+		return Color("d7caa5")
 	return Color("e3d7b6") if is_plate() else Color("cfc3a2")
 
 ## Decorative buildings: the village fabric that belongs to nobody. Cream in
 ## every style — in ink it reads as the same uncoloured paper as an NPC lot,
 ## which is correct there; the plate separates them by moving NPC to grey.
 func decor_fill() -> Color:
+	if is_midcentury():
+		return MapMidcenturyStyle.gameplay_block_top("decor")
 	return Color("efe9db") if ink else Color(0.93, 0.92, 0.89)
 
 ## Per-instance value jitter, tightened in plate so a block run stays a family.
 func plate_wash_jitter() -> float:
+	if is_midcentury():
+		return 0.035
 	return 0.04 if is_plate() else 0.05
 
 ## ── Parchment grain (parchment_overlay) ─────────────────────────────────────
@@ -308,9 +390,13 @@ func plate_wash_jitter() -> float:
 ## is quieter and — more importantly — UNEVEN: see parchment_offsets().
 
 func parchment_darkest() -> Color:
+	if is_midcentury():
+		return Color("ded3b9")
 	return Color(0.82, 0.77, 0.67) if ink else Color(0.86, 0.81, 0.72)
 
 func parchment_lightest() -> Color:
+	if is_midcentury():
+		return Color("fffaf0")
 	return Color(1.0, 0.99, 0.96)
 
 ## Plate keeps a much gentler floor — ~10% darkening at its deepest against ink's
@@ -326,11 +412,17 @@ const _PARCHMENT_PLATE_FAINT := Color(0.945, 0.925, 0.885)
 ## patches, which is how a printed plate actually ages. Costs nothing: same one
 ## texture, same single multiply, just more gradient stops.
 func parchment_offsets() -> PackedFloat32Array:
+	if is_midcentury():
+		return PackedFloat32Array([0.0, 0.32, 0.73, 1.0])
 	if is_plate():
 		return PackedFloat32Array([0.0, 0.38, 0.70, 1.0])
 	return PackedFloat32Array([0.0, 1.0])
 
 func parchment_colors() -> PackedColorArray:
+	if is_midcentury():
+		return PackedColorArray([
+			Color("e7ddc7"), parchment_lightest(), parchment_lightest(), Color("f1e9d8"),
+		])
 	if is_plate():
 		return PackedColorArray([
 			_PARCHMENT_PLATE_DEEP, parchment_lightest(),
@@ -342,12 +434,18 @@ func parchment_colors() -> PackedColorArray:
 ## blotches instead of fine speckle; the repeat period doubles too, so the
 ## tiling is harder to spot.
 func parchment_noise_frequency() -> float:
+	if is_midcentury():
+		return 0.011
 	return 0.014 if is_plate() else 0.035
 
 func parchment_noise_octaves() -> int:
+	if is_midcentury():
+		return 3
 	return 3 if is_plate() else 4
 
 func parchment_tile_px() -> int:
+	if is_midcentury():
+		return 512
 	return 512 if is_plate() else 256
 
 ## ── P1 ink structure: contours, coast, water lining, river banks ────────────
@@ -361,6 +459,8 @@ const _INK_PLATE := Color("4a4136")
 ## THE plate ink accessor. All plate linework routes through it; the `INK` const
 ## stays sepia for ink mode.
 func ink_color() -> Color:
+	if is_midcentury():
+		return MapMidcenturyStyle.INK
 	return _INK_PLATE if is_plate() else INK
 
 ## Current linework ink at `a` alpha — the one constructor for tinted hairlines.
@@ -372,6 +472,8 @@ func _ink_alpha(a: float) -> Color:
 ## sepia contour hairlines with every 2nd band emphasized (engraved read).
 ## Plate lightens them so street edges out-weigh contours in the hierarchy.
 func contour_color(band: int, fill: Color) -> Color:
+	if is_midcentury():
+		return _ink_alpha(0.34 if band % 2 == 0 else 0.19)
 	if not ink:
 		return fill.darkened(0.22)
 	if is_plate():
@@ -379,6 +481,8 @@ func contour_color(band: int, fill: Color) -> Color:
 	return _ink_alpha(0.55 if band % 2 == 0 else 0.35)
 
 func contour_width(band: int) -> float:
+	if is_midcentury():
+		return 1.35 if band % 2 == 0 else 0.8
 	if not ink:
 		return 1.5
 	if is_plate():
@@ -388,14 +492,20 @@ func contour_width(band: int) -> float:
 ## Coastline stroke where the landmass meets the sea (owner: keep it bold).
 ## Transparent in classic = skip drawing.
 func coast_color() -> Color:
+	if is_midcentury():
+		return _ink_alpha(0.78)
 	return _ink_alpha(0.9) if ink else Color(0.0, 0.0, 0.0, 0.0)
 
 func coast_width() -> float:
+	if is_midcentury():
+		return 3.2
 	return 4.2
 
 ## Engraved water lining: hairlines offset seaward from the coast, fading out.
 ## Entries are [offset_u, alpha, width]; empty in classic.
 func water_lining() -> Array:
+	if is_midcentury():
+		return [[13.0, 0.23, 1.1], [28.0, 0.12, 0.9]]
 	if not ink:
 		return []
 	if is_plate():
@@ -403,22 +513,32 @@ func water_lining() -> Array:
 	return [[14.0, 0.38, 1.3], [30.0, 0.22, 1.1]]
 
 func lake_shore_color(fill: Color) -> Color:
+	if is_midcentury():
+		return _ink_alpha(0.67)
 	if not ink:
 		return fill.darkened(0.25)
 	return _ink_alpha(0.75 if is_plate() else 0.7)
 
 func lake_shore_width() -> float:
+	if is_midcentury():
+		return 1.8
 	return 2.2 if ink else 2.0
 
 ## River bank casing (ink only): drawn under the water pass, wider by _extra.
 func river_casing() -> Color:
+	if is_midcentury():
+		return _ink_alpha(0.7)
 	return _ink_alpha(0.85 if is_plate() else 0.8)
 
 func river_casing_extra() -> float:
+	if is_midcentury():
+		return 2.7
 	return 3.0 if is_plate() else 4.0
 
 ## Flow squiggles inside the river (ink only): short darker-blue dashes.
 func river_squiggle() -> Color:
+	if is_midcentury():
+		return Color("4f7287", 0.42)
 	if is_plate():
 		return Color("2c62ae", 0.5)   # a depth band of the sea ramp, like classic's
 	return Color(0.247, 0.435, 0.639, 0.5)
@@ -431,12 +551,18 @@ func river_squiggle() -> Color:
 ## within a hair of the ground it stands on and the woods disappeared. Plate
 ## keeps ink's bottle green and expresses itself through the MILD prism instead.
 func forest_base() -> Color:
+	if is_midcentury():
+		return Color("486747")
 	return Color("0d512b")
 
 func forest_lobe_dark() -> Color:
+	if is_midcentury():
+		return Color("38573d")
 	return Color("083b22")
 
 func forest_arc() -> Color:
+	if is_midcentury():
+		return Color(MapMidcenturyStyle.INK, 0.42)
 	## Transparent = skip: the plate canopy is a flat mass, no highlight arcs.
 	return Color(0.0, 0.0, 0.0, 0.0) if is_plate() else Color("2d7d3a")
 
@@ -446,14 +572,20 @@ func forest_arc() -> Color:
 ## bunch do not stack into a black mass.
 
 func tree_fill(is_fir: bool) -> Color:
+	if is_midcentury():
+		return Color("3f5c42") if is_fir else Color("5c7651")
 	if is_fir:
 		return Color("2f6a3c") if ink else Color("1f5b2c")
 	return Color("3f7f45") if ink else Color("2f7a38")
 
 func tree_outline() -> Color:
+	if is_midcentury():
+		return _ink_alpha(0.48)
 	return _ink_alpha(0.55 if is_plate() else 0.45)
 
 func tree_shadow() -> Color:
+	if is_midcentury():
+		return Color("40382f", 0.19)
 	if is_plate():
 		return _ink_alpha(0.24)
 	return Color(0.05, 0.16, 0.08, 0.22)
@@ -470,8 +602,16 @@ enum Extrude { NONE = 0, MILD = 1, FULL = 2 }
 ## World units, fixed — the prism scales with zoom like the rest of the map.
 ## ZERO outside plate, which is what makes every extrusion site self-skip.
 func extrude_offset(tier: int) -> Vector2:
-	if not is_plate():
+	if not has_cartographic_depth():
 		return Vector2.ZERO
+	if is_midcentury():
+		match tier:
+			Extrude.FULL:
+				return Vector2(2.4, 3.0)
+			Extrude.MILD:
+				return Vector2(1.2, 1.5)
+			_:
+				return Vector2.ZERO
 	match tier:
 		Extrude.FULL:
 			return Vector2(3.0, 4.0)
@@ -484,7 +624,7 @@ func extrude_offset(tier: int) -> Vector2:
 ## `deep` is the NPC treatment: a heavier side face so a grey NPC block sits
 ## visibly lower than the cream decor around it (owner 2026-08-11).
 func extrude_side(fill: Color, tier: int, deep: bool = false) -> Color:
-	var f := 0.32 if tier == Extrude.FULL else 0.20
+	var f := (0.27 if tier == Extrude.FULL else 0.17) if is_midcentury() else (0.32 if tier == Extrude.FULL else 0.20)
 	if deep:
 		f = 0.52
 	var c := fill.darkened(f)
@@ -496,11 +636,15 @@ func extrude_outline() -> Color:
 	return _ink_alpha(1.0)
 
 func extrude_outline_width() -> float:
+	if is_midcentury():
+		return 1.2
 	return 1.5
 
 ## ── P2 road stroke: geometry post-pass + dashed symbology ───────────────────
 
 func road_width(trunk: bool) -> float:
+	if is_midcentury():
+		return 8.2 if trunk else 5.0
 	if is_plate():
 		return 9.5 if trunk else 5.5
 	if not ink:
@@ -508,6 +652,10 @@ func road_width(trunk: bool) -> float:
 	return 6.75 if trunk else 4.5
 
 func road_casing_width(trunk: bool) -> float:
+	if is_midcentury():
+		# The arterial hierarchy belongs to the printed street boundary, not a
+		# modern centre stripe. Local edges retain their quiet hairline.
+		return road_width(trunk) + (4.0 if trunk else 2.2)
 	if is_plate():
 		return road_width(trunk) + 3.0   # ~1.5u of street edge each side
 	return road_width(trunk) + (3.2 if ink else 2.5)
@@ -516,33 +664,49 @@ func road_casing_width(trunk: bool) -> float:
 ## A*-grid meander, then a seeded hand wobble goes back on top. The LOGIC
 ## geometry, tiles, bridges and gameplay flags are never touched.
 func road_simplify_eps() -> float:
+	if is_midcentury():
+		return 8.0
 	return 10.0 if ink else 0.0
 
 ## [subdivide step u, perpendicular amplitude u]; empty = no wobble (classic).
 func road_wobble() -> Array:
+	if is_midcentury():
+		return [22.0, 1.1]
 	return [20.0, 1.5] if ink else []
 
 ## Casing dash pattern [dash u, gap u] (ink only; classic casing is solid).
 func road_dash() -> Array:
+	if is_midcentury():
+		return [16.0, 10.0]
 	return [14.0, 8.0]
 
 ## False = the casing is drawn solid instead of dashed. Plate bounds its streets
 ## with the same solid block-edge line the rest of the idiom uses.
 func road_casing_dashed() -> bool:
+	if is_midcentury():
+		return false
 	return not is_plate()
 
 ## Pier plank tick hairlines (ink only).
 func pier_plank_color() -> Color:
+	if is_midcentury():
+		return _ink_alpha(0.4)
 	return _ink_alpha(0.45)
 
 ## Trunk roads are the CROSS-CONTINENT ARTERIES (the bake's long-haul spine
 ## tier) — in ink mode they carry a dashed centre line on top of the bed.
 ## Empty in plate: the heavier trunk casing already carries the hierarchy.
 func trunk_center_dash() -> Array:
+	if is_midcentury():
+		return []
 	return [] if is_plate() else [11.0, 9.0]
 
 func trunk_center_color() -> Color:
+	if is_midcentury():
+		return _ink_alpha(0.38)
 	return _ink_alpha(0.55)
 
 func trunk_center_width() -> float:
+	if is_midcentury():
+		return 1.0
 	return 1.2

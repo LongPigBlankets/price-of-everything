@@ -2085,6 +2085,17 @@ func _can_run_recipe(building: Dictionary, recipe: Dictionary) -> Dictionary:
 				"have": have,
 			})
 
+	# A government prohibition stops the building dead, exactly like a mined-out deposit:
+	# no inputs consumed, no power drawn, no output. Maintenance and labour are still
+	# charged — an idled mine you refuse to demolish keeps costing you.
+	if Catalog.is_recipe_prohibited(recipe):
+		missing.append({
+			"good_id": "prohibited",
+			"internal_name": "prohibited",
+			"need": 1,
+			"have": 0,
+		})
+
 	# A mined-out deposit stops the building entirely — no inputs consumed, no power
 	# drawn, no output. (Maintenance + labour are charged separately, regardless.)
 	var dep_token: String = _recipe_deposit_token(recipe)
@@ -2134,6 +2145,10 @@ func run_warning_for_building(building: Dictionary, recipe: Dictionary) -> Dicti
 func _blocked_reason_for(building: Dictionary, recipe: Dictionary, missing: Array) -> Dictionary:
 	var instance_id := str(building.get("instance_id", ""))
 	var tile_id := str(building.get("tile_id", ""))
+	# Checked first: a prohibition overrides every other explanation. Nothing the
+	# player buys or builds will restart this recipe.
+	if Catalog.is_recipe_prohibited(recipe):
+		return _run_warning("prohibited", "Banned by government policy. This recipe can no longer be run — switch recipe or demolish.")
 	if _has_waiting_overflow_input(tile_id, missing):
 		return _run_warning("shipment_overflow", "Shipments did not reach building. Tile stockpile full.")
 	var market_needed := _market_input_cash_needed(building, missing)

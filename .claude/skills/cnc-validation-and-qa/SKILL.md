@@ -87,6 +87,53 @@ func _settle(n: int) -> void:
 Traps already hit: panning before frame ~140 gets overridden by the post-load camera
 configure; edge-pan cancels tweens; panels may need `position` set to be on-screen.
 
+## Map screenshots: use the parameterised tool, do not write another shot scene
+
+`res://tools/tile_shot.tscn` takes tile ids and shoots one comparable frame each.
+Reach for it before authoring a bespoke `*_shot.tscn` — most of this project's
+one-off shot scenes exist only because this did not.
+
+```bash
+# one tile
+<godot> --path . res://tools/tile_shot.tscn --quit-after 6000 -- --tiles=tile_23_8
+
+# a settlement, all frames at identical camera and zoom so they compare
+<godot> --path . res://tools/tile_shot.tscn --quit-after 6000 -- \
+    --tiles=tile_23_8,tile_24_7,tile_24_8,tile_24_9,tile_25_9,tile_26_8,tile_27_9 \
+    --zoom=1.15 --out=/tmp/poe_capital
+
+# the water north of a town (offset is world units; -Y is north)
+<godot> --path . res://tools/tile_shot.tscn --quit-after 6000 -- \
+    --tiles=tile_24_7 --zoom=0.62 --offset=0,-900 --out=/tmp/poe_sea
+```
+
+Options (each also settable as `POE_SHOT_TILES`, `POE_SHOT_ZOOM`, `POE_SHOT_SIZE`,
+`POE_SHOT_OUT`, `POE_SHOT_STYLE`, `POE_SHOT_OFFSET`; the command line wins):
+`--tiles=` (required, comma list) · `--zoom=` (1.35 ≈ one tile, 0.6 ≈ a region) ·
+`--size=960x720` · `--out=` prefix → `<prefix>_<tile_id>.png` ·
+`--style=midcentury|ink|classic|plate` · `--offset=x,y`.
+
+It hides UI/HUD/hex grid, forces the style, resolves ids through `id_to_coord`,
+and prints its resolved settings first so a set of frames is self-describing.
+
+**Rules that have each cost real time here:**
+
+- **Captures must run WINDOWED.** `--headless` renders nothing and silently
+  writes a blank or stale file.
+- **A shot tool only exists on the branch that added it.** Running a scene that
+  isn't on your branch fails, and if `/tmp` holds output from an earlier run you
+  will compare *stale pixels* and conclude "no change". Delete the target files
+  first, and check the log for the tool's own `[TILE SHOT]` lines.
+- **Serialise Godot runs.** Two captures racing for the same `/tmp/poe_*` path
+  overwrite each other. Take the capture lock, copy outputs to your own scratch
+  directory immediately, then release.
+- **Compare against a same-session control**, captured from your base commit in
+  the same run. Absolute PNG hashes are not portable across machines or
+  displays: window size varies, and the morphology harness centre-crops rather
+  than downsamples, so same-sized frames can still cover a different world
+  extent.
+
+
 ## Adding a unit test
 
 1. Open `tests/test_runner.gd`; write `func _test_my_thing() -> void:` using the
