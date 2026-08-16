@@ -64,6 +64,25 @@ func _ready() -> void:
 		editor.call("_save_as", save_as)
 		await get_tree().process_frame
 		print("[EDITOR-SHOT] saved as '%s'" % save_as)
+	if OS.get_environment("POE_EDITOR_SHOT_WATER") == "1":
+		editor.call("toggle_water_mask")
+	var at := OS.get_environment("POE_EDITOR_SHOT_AT")
+	if at != "":
+		var xy := at.split(",", false)
+		if xy.size() == 2:
+			var camera: Camera2D = editor.call("camera")
+			camera.position = Vector2(float(xy[0]), float(xy[1]))
+			camera.zoom = Vector2(_zoom, _zoom)
+			if "_target_zoom" in camera:
+				camera.set("_target_zoom", camera.zoom)
+			for _i in PAINT_FRAMES:
+				await get_tree().process_frame
+			RenderingServer.force_draw()
+			var at_path := "%s_at.png" % _out
+			get_viewport().get_texture().get_image().save_png(at_path)
+			print("[EDITOR-SHOT] wrote %s" % at_path)
+			get_tree().quit(0)
+			return
 	if not bool(editor.call("focus_tile", _tile, _zoom)):
 		push_error("[EDITOR-SHOT] unknown tile '%s'" % _tile)
 		get_tree().quit(1)

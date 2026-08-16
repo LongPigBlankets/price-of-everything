@@ -413,6 +413,8 @@ func _handle_key(event: InputEventKey) -> void:
 			_ask_delete()
 		KEY_G:
 			toggle_grid()
+		KEY_H:
+			toggle_water_mask()
 		KEY_E:
 			_zoom_by(ZOOM_STEP)
 		KEY_Q:
@@ -755,6 +757,17 @@ func set_road_class(value: String) -> void:
 
 func grid_shown() -> bool:
 	return _overlay != null and _overlay.show_grid
+
+
+func water_mask_shown() -> bool:
+	return _overlay != null and _overlay.show_water_mask
+
+
+func toggle_water_mask() -> void:
+	if _overlay != null:
+		_overlay.show_water_mask = not _overlay.show_water_mask
+		_overlay.queue_redraw()
+	_refresh_status()
 
 
 func toggle_grid() -> void:

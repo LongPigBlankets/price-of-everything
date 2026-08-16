@@ -111,6 +111,10 @@ func build(editor: Node, layers: MapEditorLayers) -> void:
 	grid.pressed.connect(func() -> void: _editor.call("toggle_grid"))
 	_layer_buttons["__grid"] = grid
 	visibility.add_child(grid)
+	var water := _toggle_button("Water mask   (H)")
+	water.pressed.connect(func() -> void: _editor.call("toggle_water_mask"))
+	_layer_buttons["__water"] = water
+	visibility.add_child(water)
 
 	# ── Session, folded ─────────────────────────────────────────────────────────
 	var session := _fold(column, "Session")
@@ -187,6 +191,8 @@ func refresh() -> void:
 	for key in _layer_buttons:
 		if str(key) == "__grid":
 			_mark(_layer_buttons[key], bool(_editor.call("grid_shown")))
+		elif str(key) == "__water":
+			_mark(_layer_buttons[key], bool(_editor.call("water_mask_shown")))
 		else:
 			_mark(_layer_buttons[key], _layers.is_on(str(key)))
 	match tool_name:

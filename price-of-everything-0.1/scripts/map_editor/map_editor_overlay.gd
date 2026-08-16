@@ -51,6 +51,18 @@ const MARQUEE_EDGE := Color(0.55, 0.9, 1.0, 0.85)
 ## while they are picked — you often select in order to change what they are.
 const SELECTED_COLOR := Color(1.0, 0.45, 0.35, 0.95)
 
+## THE WATER MASK. The relief paints a generous sand band that reaches well past where
+## NavGrid stops calling the ground land — so a road drawn on what looks like solid beach can
+## sit over "sea" as far as every audit is concerned. That is not hypothetical: it put a
+## hand-drawn coast road 14.9 world units into water-classified cells, invisibly, because the
+## stroke was unlockable and would only have appeared over the sea much later. This draws the
+## boundary NavGrid actually uses, so the real coast is something you can see.
+const WATER_MASK_COLOR := Color(0.30, 0.65, 1.0, 0.26)
+const WATER_MASK_EDGE := Color(0.45, 0.80, 1.0, 0.75)
+## Below this zoom a per-cell mask is a wash of blue over the whole sea and tells you
+## nothing; the boundary is what matters and it needs the resolution.
+const WATER_MASK_MIN_ZOOM := 0.30
+
 ## Set by `map_editor.gd` after construction (an editor tool, not a shipped node, so a
 ## plain assignment beats a signal here). Untyped to avoid a preload cycle with the editor
 ## script, which preloads this one.
@@ -58,6 +70,8 @@ var editor: Node = null
 
 var show_grid := true
 var show_labels := true
+## Off by default — it is a check you turn on while drawing a coastline, not scenery.
+var show_water_mask := false
 
 var _font: Font
 
@@ -80,6 +94,7 @@ func _draw() -> void:
 	if camera == null:
 		return
 	_draw_grid(camera)
+	_draw_water_mask(camera)
 	_draw_authored_roads(camera)
 	_draw_pen(camera)
 	_draw_trace(camera)
@@ -174,6 +189,35 @@ func _draw_dots(camera: Camera2D) -> void:
 		var centre := _to_screen(dots[i], camera)
 		draw_circle(centre, DOT_RADIUS + 1.5, DOT_EDGE)
 		draw_circle(centre, DOT_RADIUS, DOT_ARMED if i == armed else DOT_COLOR)
+
+
+## NavGrid's water cells, as the editor's own overlay. Only the cells on the BOUNDARY are
+## outlined; filling every wet cell to the horizon would drown the map in blue and hide the
+## one line that matters.
+func _draw_water_mask(camera: Camera2D) -> void:
+	if not show_water_mask or camera.zoom.x < WATER_MASK_MIN_ZOOM:
+		return
+	var nav := NavGrid.instance()
+	if nav == null or not nav.is_ready():
+		return
+	var view := _visible_world_rect(camera)
+	var step: float = nav.step
+	var first := nav.cell_of(view.position)
+	var last := nav.cell_of(view.position + view.size)
+	var size := Vector2(step, step) * camera.zoom.x
+	for ix in range(first.x, last.x + 1):
+		for iy in range(first.y, last.y + 1):
+			if nav.water(ix, iy) == NavGrid.WATER_LAND:
+				continue
+			var centre: Vector2 = nav.world_of(ix, iy)
+			var top_left := _to_screen(centre - Vector2(step, step) * 0.5, camera)
+			draw_rect(Rect2(top_left, size), WATER_MASK_COLOR, true)
+			# A cell with a dry neighbour is on the shoreline: stroke it so the boundary
+			# reads as a line rather than as the edge of a wash.
+			for offset in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				if nav.water(ix + offset.x, iy + offset.y) == NavGrid.WATER_LAND:
+					draw_rect(Rect2(top_left, size), WATER_MASK_EDGE, false, 1.0)
+					break
 
 
 ## The selection box while it is being dragged.
