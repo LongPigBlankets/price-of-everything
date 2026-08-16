@@ -120,7 +120,7 @@ func refresh() -> void:
 			_mark(_layer_buttons[key], bool(_editor.call("grid_shown")))
 		else:
 			_mark(_layer_buttons[key], _layers.is_on(str(key)))
-	_hint.text = ("WASD or drag to pan · wheel to zoom" if tool_name == "pan"
+	_hint.text = ("WASD or drag to pan · wheel or Q/E to zoom" if tool_name == "pan"
 		else "Click a corner · drag for a curve · Enter ends · WASD still pans")
 
 

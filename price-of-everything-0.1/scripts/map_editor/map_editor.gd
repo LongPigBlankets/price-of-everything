@@ -272,10 +272,10 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 			_panning = event.pressed
 		MOUSE_BUTTON_WHEEL_UP:
 			if event.pressed:
-				_zoom_by(ZOOM_STEP)
+				_zoom_by(ZOOM_STEP, event.position)
 		MOUSE_BUTTON_WHEEL_DOWN:
 			if event.pressed:
-				_zoom_by(1.0 / ZOOM_STEP)
+				_zoom_by(1.0 / ZOOM_STEP, event.position)
 
 
 func _handle_key(event: InputEventKey) -> void:
@@ -290,6 +290,10 @@ func _handle_key(event: InputEventKey) -> void:
 			set_tool(TOOL_ROAD)
 		KEY_G:
 			toggle_grid()
+		KEY_E:
+			_zoom_by(ZOOM_STEP)
+		KEY_Q:
+			_zoom_by(1.0 / ZOOM_STEP)
 		KEY_1:
 			set_road_class("major")
 		KEY_2:
@@ -317,13 +321,24 @@ func _handle_key(event: InputEventKey) -> void:
 				_refresh_status()
 
 
-func _zoom_by(factor: float) -> void:
+## Zoom about the CURSOR, not the screen centre: in an editor you zoom in on the junction
+## you are about to draw, and a centre-anchored zoom slides it out of view exactly when you
+## are trying to get closer to it. The world point under the pointer is pinned by moving the
+## camera to compensate — the same thing the game's own controller does for the player.
+## `anchor` is a screen position; the keyboard path passes the viewport centre, which makes
+## it behave like a plain zoom.
+func _zoom_by(factor: float, anchor: Vector2 = Vector2.INF) -> void:
 	if _camera == null:
 		return
+	var screen_anchor := anchor
+	if screen_anchor == Vector2.INF:
+		screen_anchor = get_viewport().get_visible_rect().size * 0.5
+	var before := _world_at(screen_anchor)
 	var z := clampf(_camera.zoom.x * factor, ZOOM_MIN, ZOOM_MAX)
 	_camera.zoom = Vector2(z, z)
 	if "_target_zoom" in _camera:
 		_camera.set("_target_zoom", _camera.zoom)
+	_camera.position += before - _world_at(screen_anchor)
 
 
 # ── Authoring ───────────────────────────────────────────────────────────────────

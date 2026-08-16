@@ -53,6 +53,41 @@ func _ready() -> void:
 		_check("%s pans the view the right way" % entry[0],
 			moved.length() > 0.5 and moved.normalized().dot(want) > 0.99)
 
+	# Zoom: the wheel must move it both ways and stop at the editor's own limits.
+	var zoom_start := camera.zoom.x
+	await _wheel(MOUSE_BUTTON_WHEEL_UP, Vector2(700, 400), 1)
+	var zoomed_in := camera.zoom.x
+	_check("wheel up zooms in", zoomed_in > zoom_start)
+	await _wheel(MOUSE_BUTTON_WHEEL_DOWN, Vector2(700, 400), 2)
+	_check("wheel down zooms out", camera.zoom.x < zoomed_in)
+	await _wheel(MOUSE_BUTTON_WHEEL_UP, Vector2(700, 400), 60)
+	_check("zoom stops at the near limit", camera.zoom.x <= 2.5 + 0.001)
+	await _wheel(MOUSE_BUTTON_WHEEL_DOWN, Vector2(700, 400), 120)
+	_check("zoom stops at the far limit", camera.zoom.x >= 0.12 - 0.001)
+	_check("the whole map fits at the far limit",
+		1920.0 / camera.zoom.x >= 13905.0)
+
+	# Cursor anchoring: the world point under the pointer must stay under it, so zooming in
+	# on a junction gets you closer to that junction instead of sliding it off screen.
+	await _wheel(MOUSE_BUTTON_WHEEL_UP, Vector2(700, 400), 20)
+	var probe := Vector2(1100, 620)
+	var world_before: Vector2 = _editor.call("_world_at", probe)
+	await _wheel(MOUSE_BUTTON_WHEEL_UP, probe, 3)
+	var world_after: Vector2 = _editor.call("_world_at", probe)
+	_check("zoom stays anchored on the cursor (%.1f u drift)" % world_before.distance_to(world_after),
+		world_before.distance_to(world_after) < 1.0)
+
+	# Q/E complete keyboard-only navigation alongside WASD.
+	var key_zoom_from := camera.zoom.x
+	_send_key(KEY_E)
+	await get_tree().process_frame
+	_check("E zooms in", camera.zoom.x > key_zoom_from)
+	_send_key(KEY_Q)
+	await get_tree().process_frame
+	_send_key(KEY_Q)
+	await get_tree().process_frame
+	_check("Q zooms out", camera.zoom.x < key_zoom_from)
+
 	# 3. The pen draws when selected.
 	_editor.call("set_tool", "road")
 	_check("the pen can be selected", str(_editor.call("current_tool")) == "road")
@@ -144,6 +179,16 @@ func _drag(from: Vector2, to: Vector2) -> void:
 	up.position = to
 	Input.parse_input_event(up)
 	await get_tree().process_frame
+
+
+func _wheel(button: MouseButton, at: Vector2, times: int) -> void:
+	for _i in times:
+		var event := InputEventMouseButton.new()
+		event.button_index = button
+		event.pressed = true
+		event.position = at
+		Input.parse_input_event(event)
+		await get_tree().process_frame
 
 
 ## Hold a key down for a few frames, then release. Panning is polled in `_process`, not
