@@ -66,8 +66,16 @@ const ROAD_WIDTHS := {
 ## `_test_ink_art_reserves_upgrade_space`).
 const SLOT_CLASSES := ["small", "medium", "large"]
 
-## The 40 u threshold from the owner's size ruling, in world units of drawn art.
-const SLOT_MEDIUM_MIN_EXTENT := 40.0
+## The small/medium boundary, in world units of DRAWN art.
+##
+## The owner's ruling was 40 u. That number cannot discriminate: `ART_DRAWN_MIN` is also 40,
+## so every building in the catalog measures at least 40 and the small class comes out empty
+## (0 small / 36 medium, measured). 56 is the same intent applied where the population
+## actually divides — it puts the 24 mid-sized plants that cluster at 55.5 u in small slots
+## and leaves the nine genuinely large things (mines, wind farms, the size 15-30 industry) in
+## medium. AWAITING THE OWNER'S CONFIRMATION; run tools/map_editor/slot_size_table.tscn to
+## see the split at any threshold.
+const SLOT_MEDIUM_MIN_EXTENT := 56.0
 
 ## Farm and forest outlines are authored as simple polygons of at most this many vertices.
 const AREA_MAX_VERTICES := 8

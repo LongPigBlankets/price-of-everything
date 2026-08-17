@@ -24,6 +24,7 @@ signal footprints_changed(version: int, affected_tile_ids: Array)
 # relayout() once roads exist to re-snap them to frontage. On load roads are already
 # present at re-emit, so relayout() is idempotent there.
 
+const AuthoredMap := preload("res://scripts/authored_map.gd")
 const TileViewData := preload("res://scripts/tile_view_data.gd")
 
 # Network infrastructure drawn by its own layer, NOT as a building footprint:
@@ -513,7 +514,13 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	var offshore := str(bd.get("internal_name", "")).to_lower().begins_with("offshore")
 	if offshore:
 		placed = _place_offshore(coord, area, placed_here)
-	elif not is_edge and cat != "farm" and _use_block_mode(tile_id, coord):
+	# Extraction normally seeks a tile edge and farms own a field, so both skip the block
+	# grid. An AUTHORED SLOT outranks that: the designer said where this building goes, and
+	# a mine that ignored its slot to go and sit in a corner would make the tool a
+	# suggestion. Farms still opt out — their footprint is an authored POLYGON, which is a
+	# different mechanism (not yet built).
+	elif (not is_edge or _has_authored_slots(tile_id)) and cat != "farm" \
+			and _use_block_mode(tile_id, coord):
 		var tmpl := _ensure_block_template(tile_id, coord)
 		if not tmpl.is_empty():
 			placed = _claim_slot(tmpl, size_units, coord, tile_id, placed_here)
@@ -581,6 +588,13 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 
 ## True if this (urban) tile uses the slot-grid block mode. Seeded once per tile_id, cached.
 func _use_block_mode(tile_id: String, _coord: Vector2i) -> bool:
+	# AUTHORED TILES ALWAYS TAKE THIS PATH. The block route is what reaches
+	# _ensure_block_template, and therefore the designer's slots; leaving it behind a
+	# probability roll would mean a hand-placed slot was honoured on some tiles and silently
+	# ignored on others. The farm rule below does not apply either — a designer who put a
+	# slot among fields meant it.
+	if _has_authored_slots(tile_id):
+		return true
 	# Any tile (seeded). A block only actually FORMS where there's a straight road run + room
 	# (_build_block_template returns {} otherwise), so this self-limits to developed/connected
 	# tiles regardless of urban/rural. Tune BLOCK_PROB for how many eligible tiles block.
@@ -608,6 +622,15 @@ func _tile_farm_count(tile_id: String) -> int:
 func _ensure_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	if _tile_block_templates.has(tile_id):
 		return _tile_block_templates[tile_id]
+	# AUTHORED SLOTS WIN. A designer who placed slots on this tile has said where buildings
+	# go; the procedural block grid is the fallback for tiles nobody has authored. Synthesised
+	# into the same template shape the grid produces, so _claim_slot and the re-pack path work
+	# unchanged — including consuming a lot that fails validation and freeing them all when the
+	# tile is re-laid.
+	var authored := _authored_block_template(tile_id)
+	if not authored.is_empty():
+		_tile_block_templates[tile_id] = authored
+		return authored
 	var tmpl := _build_block_template(tile_id, coord)
 	# Cache only a REAL block. An empty result (no road yet / no room) is NOT cached, so the
 	# next building — or the road-settle re-pack — retries. Otherwise a tile built up BEFORE
@@ -615,6 +638,60 @@ func _ensure_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	if not tmpl.is_empty():
 		_tile_block_templates[tile_id] = tmpl
 	return tmpl
+
+## The tile's authored slots as a block template, or {} when none were authored.
+##
+## Lots are stored tile-centre-relative in the document and used here in the same frame the
+## procedural grid works in. `lot_cells` carries each slot's box so a building FILLS its slot
+## rather than being sized by the generic fill rule — the mechanism chunk tiles already use,
+## extended to one size per lot. `lot_classes` lets a building be refused a slot too small
+## for it.
+func _authored_block_template(tile_id: String) -> Dictionary:
+	if not AuthoredMap.is_active() or not AuthoredMap.covers(tile_id):
+		return {}
+	var slots := AuthoredMap.slots_for_tile(tile_id)
+	var pins: Array = slots.get("pins", []) as Array
+	if pins.is_empty():
+		return {}
+	var lots: Array = []
+	var claimed: Array = []
+	var lot_angles: Array = []
+	var lot_cells: Array = []
+	var lot_classes: Array = []
+	for pin_value in pins:
+		if typeof(pin_value) != TYPE_DICTIONARY:
+			continue
+		var pin: Dictionary = pin_value
+		var pos: Array = pin.get("pos", []) as Array
+		if pos.size() < 2:
+			continue
+		# Document coordinates are relative to the tile CENTRE; the mask and the validators
+		# work from the tile's top-left corner.
+		lots.append(TILE_CENTER + Vector2(float(pos[0]), float(pos[1])))
+		claimed.append(false)
+		lot_angles.append(float(pin.get("angle", 0.0)))
+		var slot_class := str(pin.get("size", "small"))
+		lot_classes.append(slot_class)
+		lot_cells.append(AUTHORED_SLOT_BOXES.get(slot_class, AUTHORED_SLOT_BOXES["small"]))
+	if lots.is_empty():
+		return {}
+	return {"angle": float(lot_angles[0]), "lots": lots, "claimed": claimed,
+		"lot_angles": lot_angles, "lot_cells": lot_cells, "lot_classes": lot_classes,
+		"segs": _tile_segs.get(tile_id, []), "rows": [], "authored": true}
+
+
+## Does this tile carry hand-placed slots?
+func _has_authored_slots(tile_id: String) -> bool:
+	if not AuthoredMap.is_active() or not AuthoredMap.covers(tile_id):
+		return false
+	return not (AuthoredMap.slots_for_tile(tile_id).get("pins", []) as Array).is_empty()
+
+
+## Whether a building of `wanted` may occupy a slot of `offered`. Equal or larger only.
+func _slot_fits(wanted: String, offered: String) -> bool:
+	var order := AuthoredMap.SLOT_CLASSES
+	return order.find(offered) >= order.find(wanted)
+
 
 ## Public: build/cache this tile's block template if a road run + room exist; true when a real grid formed.
 ## Ensures the tile's land mask first so the template can validate lots. (Used by tests; gameplay builds
@@ -1099,10 +1176,22 @@ func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: St
 	var rivers: Array = _tile_rivers.get(tile_id, [])
 	var land: PackedByteArray = _tile_land.get(tile_id, PackedByteArray())
 	var cell: Vector2 = tmpl.get("cell", Vector2.ZERO)   # chunk tiles: the building FILLS the cell
+	# Authored tiles size each slot individually, so the cell is per-lot there.
+	var lot_cells: Array = tmpl.get("lot_cells", [])
+	var lot_classes: Array = tmpl.get("lot_classes", [])
+	var wanted_class := AuthoredMap.slot_class_for(_art_size_for(size_units, ""), false) \
+		if not lot_classes.is_empty() else ""
 	var fill: float = BLOCK_LOT * clampf(BLOCK_FILL_MIN + 0.04 * float(size_units), BLOCK_FILL_MIN, BLOCK_FILL_MAX)
 	for i in lots.size():
 		if bool(claimed[i]):
 			continue
+		# A building may take a slot of its own class or larger, never a smaller one: a
+		# medium building in a small slot would overhang its neighbours.
+		if not lot_classes.is_empty() and i < lot_classes.size() \
+				and not _slot_fits(wanted_class, str(lot_classes[i])):
+			continue
+		if i < lot_cells.size():
+			cell = lot_cells[i]
 		var ctr: Vector2 = lots[i]
 		var rv: PackedVector2Array
 		if cell != Vector2.ZERO:
@@ -3430,6 +3519,10 @@ static var DIAG := false
 ## sized the lot — block-template lots ignore the art lot area entirely.
 ## Scaled by tile_size_used, whose real range in the buildings CSV is 1..30
 ## (1-2 = tiny infra, 10 = the bulk, 30 = mine, the largest).
+## Boxes an authored slot reserves per class, world units. Sized from the drawn art each
+## class must hold, with room for its shadow.
+const AUTHORED_SLOT_BOXES := {"small": Vector2(62.0, 62.0), "medium": Vector2(96.0, 96.0)}
+
 const ART_DRAWN_MIN := 40.0
 const ART_DRAWN_MAX := 90.0
 const ART_SIZE_UNITS_MAX := 30.0

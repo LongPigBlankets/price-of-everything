@@ -33,6 +33,7 @@ const MapEditorShapeTool := preload("res://scripts/map_editor/map_editor_shape_t
 const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
 const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
 const MapEditorRoadSnap := preload("res://scripts/map_editor/map_editor_road_snap.gd")
+const AuthoredSlotSizes := preload("res://scripts/authored_slot_sizes.gd")
 const MapEditorPanel := preload("res://scripts/map_editor/map_editor_panel.gd")
 
 ## Tools. NAVIGATE is the default and does nothing but move the view: an editor whose idle
@@ -55,6 +56,13 @@ const TOOL_AREA := "area"
 const TOOL_STAMP := "stamp"
 ## Click to lay a parametric primitive (U, ring or L) at its current side lengths.
 const TOOL_SPECIAL := "special"
+## Click to place an empty slot a gameplay building will later occupy.
+const TOOL_SLOT := "slot"
+
+## The box a slot of each class reserves, world units. Sized from the drawn art it must hold
+## with room for its shadow and a little air, so a building dropped into one is not touching
+## its neighbour.
+const SLOT_BOXES := {"small": Vector2(62.0, 62.0), "medium": Vector2(96.0, 96.0)}
 
 ## How close a click must land to a corner to pick it up, in world units.
 const CORNER_GRAB := 16.0
@@ -136,6 +144,7 @@ var _snap_suppressed := false
 ## The records last moved, so the snap can act on them after the drag ends.
 var _moved_records: Array = []
 var _special_kind := "u"
+var _slot_class := "small"
 var _panel: MapEditorPanel
 var _tool := TOOL_PAN
 var _world: Node
@@ -426,6 +435,9 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 				TOOL_SPECIAL:
 					if event.pressed:
 						_place_special(world)
+				TOOL_SLOT:
+					if event.pressed:
+						_place_slot(world)
 				TOOL_SELECT:
 					if event.pressed:
 						_select_press(world, event.position)
@@ -494,6 +506,8 @@ func _handle_key(event: InputEventKey) -> void:
 			set_tool(TOOL_AREA)
 		KEY_M:
 			set_tool(TOOL_SPECIAL)
+		KEY_K:
+			set_tool(TOOL_SLOT)
 		KEY_Z:
 			_rotate_selection(ROTATE_STEP)
 		KEY_Y:
@@ -1115,6 +1129,142 @@ func _set_corner_target(record: Dictionary) -> void:
 	_corner_target = record
 	_held_corner = -1
 	_overlay.queue_redraw()
+
+
+# ── Gameplay building slots ────────────────────────────────────────────────────
+
+## Place an empty slot. It holds NOTHING until a building arrives — at game start, from an
+## NPC, or from the player — and every one of those routes lands through the same placement
+## call, so one seam serves all three.
+##
+## Slots are stored TILE-CENTRE-RELATIVE, because that is the frame the placement pipeline
+## works in (`center_rel`, `TILE_CENTER`). Storing world coordinates would mean converting on
+## every read and drifting the day a tile's origin moves.
+func _place_slot(world: Vector2) -> void:
+	var terrain := get_tree().get_first_node_in_group("hex_map")
+	if terrain == null:
+		return
+	var coord: Vector2i = terrain.call("tile_coord_for_map_coord", terrain.call("local_to_map", world))
+	var tiles: Dictionary = terrain.get("tiles")
+	if not tiles.has(coord):
+		_set_status("Not on a tile.")
+		return
+	var tile_id := str((tiles[coord] as Dictionary).get("id", ""))
+	var centre: Vector2 = terrain.call("map_to_local", terrain.call("map_coord_for_tile_coord", coord))
+	var settlement := _ensure_settlement()
+	_document.begin_edit("place slot")
+	settlement = _ensure_settlement()
+	var slots_value: Variant = settlement.get("slots", {})
+	var slots: Dictionary = slots_value if typeof(slots_value) == TYPE_DICTIONARY else {}
+	var tile_value: Variant = slots.get(tile_id, {})
+	var tile_slots: Dictionary = tile_value if typeof(tile_value) == TYPE_DICTIONARY else {}
+	var pins: Array = tile_slots.get("pins", []) as Array
+	# Angle from the nearest authored road, so a slot faces its street without a second step.
+	var angle := _slot_angle_at(world)
+	pins.append({"pos": [world.x - centre.x, world.y - centre.y], "angle": angle,
+		"size": _slot_class})
+	tile_slots["pins"] = pins
+	slots[tile_id] = tile_slots
+	settlement["slots"] = slots
+	var tile_list: Array = settlement.get("tiles", []) as Array
+	if not tile_list.has(tile_id):
+		tile_list.append(tile_id)
+		tile_list.sort()
+		settlement["tiles"] = tile_list
+	_overlay.queue_redraw()
+	_set_status("%s slot on %s (%d there)." % [_slot_class.capitalize(), tile_id, pins.size()])
+
+
+## The facing for a slot: along the nearest authored road, or zero when there is none near.
+func _slot_angle_at(world: Vector2) -> float:
+	var probe := {"outline": [[world.x - 20.0, world.y - 20.0], [world.x + 20.0, world.y - 20.0],
+		[world.x + 20.0, world.y + 20.0], [world.x - 20.0, world.y + 20.0]]}
+	var seat := MapEditorRoadSnap.seat_for(_document.data(), probe)
+	return float(seat.get("angle", 0.0)) if not seat.is_empty() else 0.0
+
+
+func current_slot_class() -> String:
+	return _slot_class
+
+
+func pick_slot_class(value: String) -> void:
+	_slot_class = value
+	if _tool != TOOL_SLOT:
+		set_tool(TOOL_SLOT)
+	else:
+		_refresh_status()
+
+
+## Every slot in the document as world-space boxes, for the overlay.
+func slot_boxes() -> Array:
+	var out: Array = []
+	var terrain := get_tree().get_first_node_in_group("hex_map")
+	if terrain == null:
+		return out
+	for key in AuthoredMap.settlements().keys():
+		var settlement: Dictionary = AuthoredMap.settlements()[key]
+		var slots_value: Variant = settlement.get("slots", {})
+		if typeof(slots_value) != TYPE_DICTIONARY:
+			continue
+		for tile_id in (slots_value as Dictionary).keys():
+			var coord: Vector2i = terrain.call("id_to_coord", str(tile_id))
+			if not (terrain.get("tiles") as Dictionary).has(coord):
+				continue
+			var centre: Vector2 = terrain.call("map_to_local",
+				terrain.call("map_coord_for_tile_coord", coord))
+			var tile_slots: Dictionary = (slots_value as Dictionary)[tile_id]
+			for pin_value in (tile_slots.get("pins", []) as Array):
+				var pin: Dictionary = pin_value
+				var pos: Array = pin.get("pos", [0, 0]) as Array
+				if pos.size() < 2:
+					continue
+				out.append({
+					"centre": centre + Vector2(float(pos[0]), float(pos[1])),
+					"angle": float(pin.get("angle", 0.0)),
+					"size": SLOT_BOXES.get(str(pin.get("size", "small")), SLOT_BOXES["small"]),
+					"class": str(pin.get("size", "small")),
+				})
+	return out
+
+
+## The editor's own document may hold slots the loader has not seen; read from it directly.
+func document_slot_boxes() -> Array:
+	var saved := AuthoredMap.settlements()
+	var live: Dictionary = _document.data().get("settlements", {})
+	if live.is_empty() or saved == live:
+		return slot_boxes()
+	return _boxes_from(live)
+
+
+func _boxes_from(settlements: Dictionary) -> Array:
+	var out: Array = []
+	var terrain := get_tree().get_first_node_in_group("hex_map")
+	if terrain == null:
+		return out
+	for key in settlements.keys():
+		var settlement: Dictionary = settlements[key]
+		var slots_value: Variant = settlement.get("slots", {})
+		if typeof(slots_value) != TYPE_DICTIONARY:
+			continue
+		for tile_id in (slots_value as Dictionary).keys():
+			var coord: Vector2i = terrain.call("id_to_coord", str(tile_id))
+			if not (terrain.get("tiles") as Dictionary).has(coord):
+				continue
+			var centre: Vector2 = terrain.call("map_to_local",
+				terrain.call("map_coord_for_tile_coord", coord))
+			for pin_value in (((slots_value as Dictionary)[tile_id] as Dictionary)
+					.get("pins", []) as Array):
+				var pin: Dictionary = pin_value
+				var pos: Array = pin.get("pos", [0, 0]) as Array
+				if pos.size() < 2:
+					continue
+				out.append({
+					"centre": centre + Vector2(float(pos[0]), float(pos[1])),
+					"angle": float(pin.get("angle", 0.0)),
+					"size": SLOT_BOXES.get(str(pin.get("size", "small")), SLOT_BOXES["small"]),
+					"class": str(pin.get("size", "small")),
+				})
+	return out
 
 
 func current_special_kind() -> String:
