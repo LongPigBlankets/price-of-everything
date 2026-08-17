@@ -126,9 +126,14 @@ func _ready() -> void:
 			continue
 		var needs := AuthoredSlotSizes.class_for_building(str(building.get("id", "")))
 		var units := int(building.get("tile_size_used", 1))
-		var claims: String = AuthoredMapRef.slot_class_for(
-			lerpf(BuildingVisualsRef.ART_DRAWN_MIN, BuildingVisualsRef.ART_DRAWN_MAX,
-				clampf((float(units) - 1.0) / 29.0, 0.0, 1.0)), false)
+		# Mirrors the claim site in `_claim_slot`, ART KEY INCLUDED. It used to pass an empty
+		# key, which is the defect this section was written to find.
+		var art_key := str(BuildingVisualsRef.INK_ART_KEY.get(internal, ""))
+		var extent: float = float(BuildingVisualsRef.ART_SIZE_OVERRIDE[art_key]) \
+			if BuildingVisualsRef.ART_SIZE_OVERRIDE.has(art_key) \
+			else lerpf(BuildingVisualsRef.ART_DRAWN_MIN, BuildingVisualsRef.ART_DRAWN_MAX,
+				clampf((float(units) - 1.0) / 29.0, 0.0, 1.0))
+		var claims: String = AuthoredMapRef.slot_class_for(extent, false)
 		if needs != claims:
 			mismatched += 1
 			print("[FOOT]   %-24s claims '%s', art needs '%s'" % [internal, claims, needs])

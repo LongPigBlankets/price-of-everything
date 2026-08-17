@@ -75,7 +75,10 @@ const SLOT_CLASSES := ["small", "medium", "large"]
 ## and leaves the nine genuinely large things (mines, wind farms, the size 15-30 industry) in
 ## medium. AWAITING THE OWNER'S CONFIRMATION; run tools/map_editor/slot_size_table.tscn to
 ## see the split at any threshold.
-const SLOT_MEDIUM_MIN_EXTENT := 56.0
+## Moved from 56.0 with the 0.75 art rescale (2026-08-17), keeping the same FRACTION of the
+## ART_DRAWN_MIN..MAX band so exactly the same buildings sit in each class. Retune it with the
+## art, not on its own.
+const SLOT_MEDIUM_MIN_EXTENT := 42.0
 
 ## Farm and forest outlines are authored as simple polygons of at most this many vertices.
 const AREA_MAX_VERTICES := 8

@@ -3525,13 +3525,38 @@ static var DIAG := false
 ## sized the lot — block-template lots ignore the art lot area entirely.
 ## Scaled by tile_size_used, whose real range in the buildings CSV is 1..30
 ## (1-2 = tiny infra, 10 = the bulk, 30 = mine, the largest).
-## Boxes an authored slot reserves per class, world units. Sized from the drawn art each
-## class must hold, with room for its shadow.
-const AUTHORED_SLOT_BOXES := {"small": Vector2(62.0, 62.0), "medium": Vector2(96.0, 96.0)}
-
-const ART_DRAWN_MIN := 40.0
-const ART_DRAWN_MAX := 90.0
+## ART SIZE — BALANCE/ART CONSTANTS (owner ruling, 2026-08-17).
+##
+## Were 40 / 90. Scaled by 0.75 because the ground an authored slot reserves is derived from
+## these, and the slots read as too large on a 540x480 tile. Everything else about the split
+## is unchanged: SLOT_MEDIUM_MIN_EXTENT moved by the same factor, so exactly the same
+## buildings land in each class.
+##
+## Knock-on worth knowing before retuning: smaller gameplay art frees ground, and the
+## decorative packer fills it — so lowering these makes towns DENSER, not just smaller. Below
+## about 0.7 the gameplay buildings start getting lost in their own fabric. Compare with
+##   <godot> --path . res://tools/tile_shot.tscn --quit-after 6000 -- --tiles=tile_23_8 --zoom=1.15
+const ART_DRAWN_MIN := 30.0
+const ART_DRAWN_MAX := 68.0
 const ART_SIZE_UNITS_MAX := 30.0
+## Boxes an authored slot reserves per class, world units. DERIVED, never typed in: these were
+## hand-written as 62/96 and were wrong in both directions — they applied ART_BLOCK_MARGIN once
+## per AXIS where the game blocks it once per SIDE, so 13 of the 20 buildings with ink art were
+## silently drawn 10-14% small to fit. A slot must hold its class's largest member exactly as
+## _crop_to_sprite will size it: the art extent, plus the margin on both sides.
+##
+## Square, not rectangular, and that is not laziness: a class holds both wide-and-shallow art
+## (industrial_factory 67.5 x 37.5 at the old scale) and tall-and-narrow (offshore_wind_farm
+## 46.5 x 102), and a slot is authored before anyone knows which building will take it.
+##
+## CHUNK_GAP is in the sum because `_claim_slot` builds its rect as (cell - CHUNK_GAP) and the
+## sprite is fitted inside THAT, not inside the cell. Leave it out and every slot is 4 u short
+## of what it advertises — which is a shrink nobody sees, only measures.
+const AUTHORED_SLOT_BOXES := {
+	"small": Vector2.ONE * (AuthoredMap.SLOT_MEDIUM_MIN_EXTENT
+		+ ART_BLOCK_MARGIN * 2.0 + CHUNK_GAP),
+	"medium": Vector2.ONE * (ART_DRAWN_MAX + ART_BLOCK_MARGIN * 2.0 + CHUNK_GAP),
+}
 ## Per-recipe drawn-size overrides. Wind sites sprawl — at the size-10 default
 ## they read as a cramped cluster rather than machines spread over open ground
 ## (owner). Visual only: it moves the lot too, so reservation stays honest.

@@ -72,6 +72,7 @@ func _ready() -> void:
 	_test_authored_slot_boxes_contract()
 	_test_authored_slot_validation()
 	_test_authored_slot_class_agrees_with_art()
+	_test_authored_slot_box_holds_its_class()
 	_test_shipped_code_avoids_editor_only_paths()
 	_test_authored_road_geometry()
 	_test_authored_road_touched_tiles()
@@ -15014,6 +15015,52 @@ func _test_authored_slot_boxes_contract() -> void:
 ## NEEDS are computed in two places, and they had drifted: the claim site passed an empty art
 ## key, so ART_SIZE_OVERRIDE never applied and both wind farms asked for a small slot while
 ## needing a medium one. Nothing downstream re-checks, so the building simply overhangs.
+## A slot must hold its class's largest member at full size. This was wrong twice: the margin
+## was applied once per AXIS where the game blocks it once per SIDE, and CHUNK_GAP — which
+## `_claim_slot` subtracts before the sprite is fitted — was left out entirely. Neither failed
+## anything; `_crop_to_sprite` just scaled the art down, so the only symptom was buildings
+## quietly drawn 10-14% small. Measured here rather than trusted.
+func _test_authored_slot_box_holds_its_class() -> void:
+	var visuals := preload("res://scenes/building_visuals.gd")
+	var ink := preload("res://scripts/ink_building_gen.gd")
+	var too_small := PackedStringArray()
+	var measured := 0
+	var tightest := 999.0
+	for building_value in Catalog.all_buildings():
+		var building: Dictionary = building_value
+		var internal := str(building.get("internal_name", ""))
+		if internal == "" or AuthoredSlotSizes.AREA_BUILDINGS.has(internal):
+			continue
+		var art_key := str(visuals.INK_ART_KEY.get(internal, internal))
+		var frame: Vector2 = ink.level_frame(art_key, 3)
+		if frame.x <= 0.0 or frame.y <= 0.0:
+			continue   # drawn by another path; nothing to measure
+		var slot_class := AuthoredSlotSizes.class_for_building(str(building.get("id", "")))
+		var reserved: Vector2 = visuals.AUTHORED_SLOT_BOXES.get(slot_class, Vector2.ZERO)
+		if reserved == Vector2.ZERO:
+			continue
+		measured += 1
+		# Exactly what _claim_slot then _crop_to_sprite do: the rect is the box less
+		# CHUNK_GAP, and the sprite is scaled so its LONGER side hits the drawn target,
+		# then margined on both sides.
+		var target := AuthoredSlotSizes.max_extent_for(internal, building)
+		var scale := target / maxf(frame.x, frame.y)
+		var blocked := Vector2(frame.x * scale, frame.y * scale) \
+			+ Vector2.ONE * (visuals.ART_BLOCK_MARGIN * 2.0)
+		var room := reserved.x - visuals.CHUNK_GAP
+		tightest = minf(tightest, room - maxf(blocked.x, blocked.y))
+		if maxf(blocked.x, blocked.y) > room + 0.01:
+			too_small.append("%s needs %.1f, %s slot offers %.1f"
+				% [internal, maxf(blocked.x, blocked.y), slot_class, room])
+	_check(measured > 10, "slot box: measured %d buildings with ink art" % measured)
+	_check(too_small.is_empty(), "slot box: every slot holds its class at full size (%s)"
+		% ("all fit" if too_small.is_empty() else ", ".join(too_small)))
+	# And not wastefully oversized either — the tightest fit should be near zero slack, or
+	# the boxes have drifted above what the art needs.
+	_check(tightest < 6.0, "slot box: the tightest fit has %.1f u of slack, not a wide margin"
+		% tightest)
+
+
 func _test_authored_slot_class_agrees_with_art() -> void:
 	var visuals := preload("res://scenes/building_visuals.gd")
 	var mismatched := PackedStringArray()

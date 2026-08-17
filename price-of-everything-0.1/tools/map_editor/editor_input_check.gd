@@ -3,6 +3,7 @@ extends Node
 const AuthoredSpecialShapesScript := preload("res://scripts/authored_special_shapes.gd")
 const AuthoredRoadGeometryScript := preload("res://scripts/authored_road_geometry.gd")
 const AuthoredRoadStyleScript := preload("res://scripts/authored_road_style.gd")
+const MapEditorSlotBoxes := preload("res://scripts/map_editor/map_editor_slot_boxes.gd")
 ## Regression check for the editor's INPUT behaviour — the three things that were broken
 ## when the panel landed, each of which is invisible to a screenshot:
 ##
@@ -467,8 +468,14 @@ func _ready() -> void:
 				break
 		_check("the overlay gets a box for it (%d box(es))" % boxes.size(), not slot_box.is_empty())
 		if not slot_box.is_empty():
-			_check("the box is the small size, not the medium one",
-				(slot_box["size"] as Vector2).is_equal_approx(Vector2(62.0, 62.0)))
+			# Read the shipped table, never a literal. The boxes are DERIVED from the art
+			# constants now, and a hardcoded 62 here is the same drift this whole area has
+			# already produced twice.
+			var sizes: Dictionary = MapEditorSlotBoxes.sizes()
+			_check("the box is the small size, not the medium one (%.0f)"
+				% (slot_box["size"] as Vector2).x,
+				(slot_box["size"] as Vector2).is_equal_approx(sizes["small"])
+				and sizes["small"] != sizes["medium"])
 			# Picking it: the click has to land on the slot even though there is drawn fabric
 			# under it — a slot sits ON the ground it reserves, so it is tested first.
 			_editor.call("set_tool", "select")
