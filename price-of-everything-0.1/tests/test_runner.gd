@@ -74,6 +74,7 @@ func _ready() -> void:
 	_test_authored_slot_class_agrees_with_art()
 	_test_authored_slot_box_holds_its_class()
 	_test_authored_area_buildings_exist()
+	_test_authored_map_write_barrier()
 	_test_shipped_code_avoids_editor_only_paths()
 	_test_authored_road_geometry()
 	_test_authored_road_touched_tiles()
@@ -15032,6 +15033,30 @@ func _test_authored_slot_boxes_contract() -> void:
 ## of its four entries named buildings this game does not have, while both real forests were
 ## missing and were being sized into boxes. A name that matches nothing fails silently — it
 ## just never classifies anything — so the list has to be checked against the catalog.
+## The write barrier. A harness has reached a real document twice now — once pressing the
+## panel's Save button, once moving slot pins and deleting a road — and both times the tool
+## believed it was in scratch mode. This asserts the WRITER refuses, so the guarantee does not
+## depend on every tool remembering to be careful.
+func _test_authored_map_write_barrier() -> void:
+	var was_scratch := OS.get_environment("POE_EDITOR_SCRATCH")
+	OS.set_environment("POE_EDITOR_SCRATCH", "1")
+	_check(AuthoredMap.is_scratch_process(), "write barrier: scratch mode is detected")
+	_check(AuthoredMap.writable(AuthoredMap.path_for("stoneshore-procedural")) != "",
+		"write barrier: a harness cannot write a real document")
+	_check(AuthoredMap.writable(AuthoredMap.path_for("__scratch__")) == "",
+		"write barrier: a harness can still write its own scratch document")
+	# And the refusal is enforced by save_to, not merely reported by the predicate.
+	var doc := AuthoredMap.empty_document()
+	var problem: String = AuthoredMap.save_to(doc, AuthoredMap.path_for("stoneshore-procedural"))
+	_check(problem != "", "write barrier: save_to refuses (%s)" % problem)
+
+	OS.set_environment("POE_EDITOR_SCRATCH", "")
+	_check(not AuthoredMap.is_scratch_process(), "write barrier: a real session is not scratch")
+	_check(AuthoredMap.writable(AuthoredMap.path_for("stoneshore-procedural")) == "",
+		"write barrier: a real session may save normally")
+	OS.set_environment("POE_EDITOR_SCRATCH", was_scratch)
+
+
 func _test_authored_area_buildings_exist() -> void:
 	var known: Dictionary = {}
 	for building_value in Catalog.all_buildings():

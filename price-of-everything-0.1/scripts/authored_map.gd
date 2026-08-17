@@ -382,7 +382,39 @@ static func to_text(doc: Dictionary) -> String:
 ## `FileAccess` writes to `res://` do not persist in a running build; see
 ## `tools/strip_icon_bg.gd`). Refuses to write a document that would not load.
 ## Returns an empty string on success, else the reason.
+## Names a harness may write. Anything running under POE_EDITOR_SCRATCH is a TOOL, and a
+## tool has no business writing a document a person drew.
+const SCRATCH_ONLY_NAMES := ["__scratch__", "_unlock_check", "_slot_check", "_probe"]
+
+
+## Is this process a harness rather than a person editing? Scratch mode is set by every tool
+## that drives the editor from synthetic input.
+static func is_scratch_process() -> bool:
+	return OS.get_environment("POE_EDITOR_SCRATCH") == "1"
+
+
+## THE WRITE BARRIER.
+##
+## A harness clicked a real document twice in this project's life: once it pressed the panel's
+## Save button and grew stoneshore-alpha from 35 records to 84, and once it moved five slot
+## pins and deleted a road from stoneshore-procedural. Both times the tool believed it was in
+## scratch mode. Convention is clearly not enough, so this is a rule the writer enforces
+## rather than a promise the caller makes: under POE_EDITOR_SCRATCH, only a scratch name can
+## be written, whatever the caller passes and however the override got lost.
+static func writable(absolute_path: String) -> String:
+	if not is_scratch_process():
+		return ""
+	var name := absolute_path.get_file().get_basename()
+	if SCRATCH_ONLY_NAMES.has(name):
+		return ""
+	return "refusing to write '%s': this process is a harness (POE_EDITOR_SCRATCH)" % name
+
+
 static func save_to(doc: Dictionary, absolute_path: String) -> String:
+	var barred := writable(absolute_path)
+	if barred != "":
+		push_error("[AuthoredMap] %s" % barred)
+		return barred
 	var errors := validate(doc)
 	if not errors.is_empty():
 		return "refusing to save an invalid document: " + ", ".join(errors)
