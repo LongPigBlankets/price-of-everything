@@ -80,6 +80,19 @@ const RESIZE_STEP := 1.1
 ## something and coarse enough to get there in a few presses.
 const ROTATE_STEP := deg_to_rad(5.0)
 
+## Arrow-key nudging: world units per second, polled like the WASD pan so a held key glides
+## instead of inheriting the OS key-repeat delay. Deliberately slow — arrows are for the last
+## few units after a drag has got you close, which is exactly when key-repeat stutter is most
+## annoying. Shift multiplies for crossing a whole lot.
+const NUDGE_SPEED := 34.0
+const NUDGE_FAST := 4.0
+const NUDGE_KEYS := {
+	KEY_UP: Vector2(0.0, -1.0),
+	KEY_DOWN: Vector2(0.0, 1.0),
+	KEY_LEFT: Vector2(-1.0, 0.0),
+	KEY_RIGHT: Vector2(1.0, 0.0),
+}
+
 ## Which settlement new content joins. P1 authors into one at a time; the settlement picker
 ## arrives with the tools that need to move content between them.
 const DEFAULT_SETTLEMENT := "untitled"
@@ -150,6 +163,11 @@ var _special_kind := "u"
 var _slot_class := "small"
 ## Corners of the free polygon being clicked out.
 var _poly_points: Array = []
+## True while an arrow key is held, so one snapshot covers the whole press.
+var _nudging := false
+## The slot pin currently picked, as `{tile_id, index}` — slots live in a per-tile dictionary
+## rather than a settlement list, so they are selected separately from shapes.
+var _slot_pick: Dictionary = {}
 var _panel: MapEditorPanel
 var _tool := TOOL_PAN
 var _world: Node
@@ -191,6 +209,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if not _ready_to_edit or _camera == null:
 		return
+	_nudge_selection(delta)
 	var direction := Vector2.ZERO
 	for key in PAN_KEYS:
 		if Input.is_physical_key_pressed(key):
@@ -199,6 +218,35 @@ func _process(delta: float) -> void:
 		return
 	var speed := PAN_SPEED * (PAN_FAST if Input.is_key_pressed(KEY_SHIFT) else 1.0)
 	_camera.position += direction.normalized() * speed * delta / _camera.zoom.x
+
+
+## Arrows nudge whatever is selected, continuously. Polled for the same reason the pan is:
+## a key-repeat nudge moves once, pauses, then bursts, which is useless for lining something
+## up. One undo snapshot covers a whole press rather than one per frame.
+func _nudge_selection(delta: float) -> void:
+	var direction := Vector2.ZERO
+	for key in NUDGE_KEYS:
+		if Input.is_physical_key_pressed(key):
+			direction += NUDGE_KEYS[key] as Vector2
+	if direction == Vector2.ZERO:
+		_nudging = false
+		return
+	var records := _records_of(_selection)
+	var slot := _selected_slot()
+	if records.is_empty() and slot.is_empty():
+		return
+	if not _nudging:
+		_document.begin_edit("nudge")
+		_nudging = true
+	var step := direction.normalized() * NUDGE_SPEED * delta \
+		* (NUDGE_FAST if Input.is_key_pressed(KEY_SHIFT) else 1.0)
+	for record in records:
+		MapEditorSelection.translate(record as Dictionary, step)
+	if not slot.is_empty():
+		var pos: Array = slot.get("pos", [0, 0]) as Array
+		if pos.size() >= 2:
+			slot["pos"] = [float(pos[0]) + step.x, float(pos[1]) + step.y]
+	_overlay.queue_redraw()
 
 
 # ── Boot ────────────────────────────────────────────────────────────────────────
@@ -560,7 +608,9 @@ func _handle_key(event: InputEventKey) -> void:
 		KEY_BACKSPACE:
 			# In SELECT, Backspace removes what is selected. In the drawing tools it still
 			# steps back a point, which is what a half-drawn shape needs it for.
-			if _tool == TOOL_SELECT:
+			if _tool == TOOL_SELECT and not _slot_pick.is_empty():
+				_delete_slot()
+			elif _tool == TOOL_SELECT:
 				_ask_delete()
 			elif _tool == TOOL_SPECIAL and not _poly_points.is_empty():
 				_poly_points.remove_at(_poly_points.size() - 1)
@@ -593,6 +643,7 @@ func _handle_key(event: InputEventKey) -> void:
 		KEY_Z:
 			if event.ctrl_pressed or event.meta_pressed:
 				var outcome := _document.redo() if event.shift_pressed else _document.undo()
+				_rebind_after_history()
 				_set_status(outcome)
 				await get_tree().process_frame
 				_refresh_status()
@@ -729,6 +780,28 @@ func _finish_marquee(world: Vector2) -> void:
 		" · drag its corners" if not single.is_empty() else ""] if not _selection.is_empty()
 		else "Nothing in the box.")
 	_overlay.queue_redraw()
+
+
+## Remove the picked slot. No confirmation: a slot holds nothing, so deleting one costs a
+## click to replace rather than any authored work.
+func _delete_slot() -> void:
+	var settlements: Dictionary = _document.data().get("settlements", {})
+	for key in settlements.keys():
+		var slots: Dictionary = (settlements[key] as Dictionary).get("slots", {})
+		var tile_id := str(_slot_pick.get("tile_id", ""))
+		if not slots.has(tile_id):
+			continue
+		var pins: Array = (slots[tile_id] as Dictionary).get("pins", []) as Array
+		var index := int(_slot_pick.get("index", -1))
+		if index < 0 or index >= pins.size():
+			continue
+		_document.begin_edit("delete slot")
+		pins.remove_at(index)
+		_slot_pick = {}
+		_overlay.queue_redraw()
+		_set_status("Slot removed.")
+		_refresh_status()
+		return
 
 
 ## Ask before removing. Deletion is the one action here that destroys authored work, and the
@@ -951,6 +1024,19 @@ func _select_press(world: Vector2, screen: Vector2) -> void:
 	if _held_corner >= 0:
 		_document.begin_edit("move corner")
 		return
+	# Slots are checked first: one sits on the ground it reserves, and a shape underneath
+	# would otherwise always win the click.
+	var slot_hit := _slot_at(world)
+	if not slot_hit.is_empty():
+		_slot_pick = slot_hit
+		_selection = []
+		_set_corner_target({})
+		_overlay.queue_redraw()
+		_set_status("%s slot selected — arrows move, [ ] rotate, Bksp deletes."
+			% str(_selected_slot().get("size", "small")).capitalize())
+		_refresh_status()
+		return
+	_slot_pick = {}
 	var hit := MapEditorSelection.at_point(_document.data(), world)
 	if hit.is_empty():
 		_marquee_from = world
@@ -1061,9 +1147,17 @@ func _snap_moved_to_roads() -> int:
 ## Turn the selection about each shape's own centre. Clockwise on screen is a POSITIVE
 ## angle here, because Y runs down.
 func _rotate_selection(angle: float) -> void:
+	var slot := _selected_slot()
+	if not slot.is_empty():
+		_document.begin_edit("rotate slot")
+		slot["angle"] = float(slot.get("angle", 0.0)) + angle
+		_overlay.queue_redraw()
+		_set_status("Slot turned to %d°" % int(round(rad_to_deg(float(slot["angle"])))))
+		_refresh_status()
+		return
 	var records := _records_of(_selection)
 	if records.is_empty():
-		_set_status("Nothing selected — click a shape first.")
+		_set_status("Nothing selected — click a shape or a slot first.")
 		return
 	_document.begin_edit("rotate")
 	for record_value in records:
@@ -1107,7 +1201,38 @@ func _records_of(selection: Array) -> Array:
 	return out
 
 
-## The corners currently on show, in world units.
+## The picked slot's record, or {}.
+func _selected_slot() -> Dictionary:
+	if _slot_pick.is_empty():
+		return {}
+	var settlements: Dictionary = _document.data().get("settlements", {})
+	for key in settlements.keys():
+		var slots: Dictionary = (settlements[key] as Dictionary).get("slots", {})
+		var tile_slots: Dictionary = slots.get(str(_slot_pick.get("tile_id", "")), {})
+		var pins: Array = tile_slots.get("pins", []) as Array
+		var index := int(_slot_pick.get("index", -1))
+		if index >= 0 and index < pins.size():
+			return pins[index]
+	return {}
+
+
+## The slot under a world point, as `{tile_id, index}`.
+func _slot_at(world: Vector2) -> Dictionary:
+	for box_value in document_slot_boxes():
+		var box: Dictionary = box_value
+		var centre: Vector2 = box["centre"]
+		var size: Vector2 = box["size"]
+		var local := (world - centre).rotated(-float(box["angle"]))
+		if absf(local.x) <= size.x * 0.5 and absf(local.y) <= size.y * 0.5:
+			return {"tile_id": str(box["tile_id"]), "index": int(box["index"])}
+	return {}
+
+
+## The picked slot, for the overlay's highlight.
+func picked_slot() -> Dictionary:
+	return _slot_pick
+
+
 func editable_corners() -> PackedVector2Array:
 	var field := MapEditorSelection.corner_field(_corner_target)
 	if field == "":
@@ -1156,6 +1281,32 @@ func _move_corner(world: Vector2) -> void:
 	corners[_held_corner] = [world.x, world.y]
 	_corner_target[field] = corners
 	_overlay.queue_redraw()
+
+
+## Undo and redo REPLACE the document dictionary rather than editing it in place, so any
+## record the editor is holding on to points into an orphaned copy the moment history moves.
+## The selection survives on its own — it stores addresses (settlement, kind, index) and
+## re-resolves them every time. The corner target is the exception: it is the record itself,
+## and after an undo it silently became a shape nobody can see. Dragging its handles then
+## edited nothing, which reads as the corner tool being broken rather than as history having
+## moved underneath it. Re-point it by id, and drop it if history removed the shape.
+func _rebind_after_history() -> void:
+	if _corner_target.is_empty():
+		return
+	var wanted := str(_corner_target.get("id", ""))
+	if wanted == "":
+		_set_corner_target({})
+		return
+	var settlements: Dictionary = _document.data().get("settlements", {})
+	for key in settlements.keys():
+		var settlement: Dictionary = settlements[key]
+		for kind in ["decor", "specials", "farms", "forests", "parks", "plazas"]:
+			for record_value in (settlement.get(kind, []) as Array):
+				var record: Dictionary = record_value
+				if str(record.get("id", "")) == wanted:
+					_set_corner_target(record)
+					return
+	_set_corner_target({})
 
 
 ## Show a record's corners. Called when a selection resolves to exactly one outline-shaped
@@ -1332,9 +1483,9 @@ func _boxes_from(settlements: Dictionary) -> Array:
 				continue
 			var centre: Vector2 = terrain.call("map_to_local",
 				terrain.call("map_coord_for_tile_coord", coord))
-			for pin_value in (((slots_value as Dictionary)[tile_id] as Dictionary)
-					.get("pins", []) as Array):
-				var pin: Dictionary = pin_value
+			var pins: Array = ((slots_value as Dictionary)[tile_id] as Dictionary).get("pins", []) as Array
+			for index in pins.size():
+				var pin: Dictionary = pins[index]
 				var pos: Array = pin.get("pos", [0, 0]) as Array
 				if pos.size() < 2:
 					continue
@@ -1343,6 +1494,7 @@ func _boxes_from(settlements: Dictionary) -> Array:
 					"angle": float(pin.get("angle", 0.0)),
 					"size": SLOT_BOXES.get(str(pin.get("size", "small")), SLOT_BOXES["small"]),
 					"class": str(pin.get("size", "small")),
+					"tile_id": str(tile_id), "index": index,
 				})
 	return out
 
@@ -1545,9 +1697,11 @@ func run_action(action: String) -> void:
 			_ask_load()
 		"undo":
 			_set_status(_document.undo())
+			_rebind_after_history()
 			_overlay.queue_redraw()
 		"redo":
 			_set_status(_document.redo())
+			_rebind_after_history()
 			_overlay.queue_redraw()
 
 

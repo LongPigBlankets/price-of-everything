@@ -405,6 +405,14 @@ func _ready() -> void:
 	_check("Ctrl+Shift+Z redoes it",
 		absf(float(_last_of(doc, "decor").get("rot", 0.0)) - turned) < 0.01)
 
+	# Arrows move the selected SHAPE too, not only slots — same polled nudge, so a shape that
+	# did not move would mean the selection never reached it.
+	var nudge_from := _mass_centre(_last_of(doc, "decor"))
+	await _hold_key(KEY_DOWN, 14)
+	var nudge_to := _mass_centre(_last_of(doc, "decor"))
+	_check("holding Down nudges the selected mass south (%.1f u)" % (nudge_to.y - nudge_from.y),
+		nudge_to.y - nudge_from.y > 0.5 and absf(nudge_to.x - nudge_from.x) < 0.01)
+
 	# Dragging a corner of a rectangular mass makes it an irregular quad, and the form is
 	# re-fitted into it rather than staying a rectangle.
 	var box: PackedVector2Array = _editor.call("editable_corners")
@@ -439,6 +447,74 @@ func _ready() -> void:
 		(shape.get("outline", []) as Array).size() == 4)
 	_check("it has no side parameters", (shape.get("sides", []) as Array).is_empty())
 
+	# ── Gameplay slots ──────────────────────────────────────────────────────────
+	# A slot is reserved ground, not a drawn thing, so everything about handling it has to be
+	# proven rather than seen: that a click finds it at all, that it is the SMALL/MEDIUM class
+	# the panel asked for, and that arrows and brackets move the record and not just a
+	# highlight. The overlay draws small red and medium blue; colour is not testable here, but
+	# the box it draws from is exactly the one these checks pick against.
+	_editor.call("pick_slot_class", "small")
+	await _click(Vector2(660, 420))
+	var slot := _first_slot(doc)
+	_check("a small slot lands on the tile", not slot.is_empty()
+		and str(slot.get("size", "")) == "small")
+	if not slot.is_empty():
+		var boxes: Array = _editor.call("document_slot_boxes")
+		var slot_box: Dictionary = {}
+		for candidate in boxes:
+			if str((candidate as Dictionary).get("class", "")) == "small":
+				slot_box = candidate
+				break
+		_check("the overlay gets a box for it (%d box(es))" % boxes.size(), not slot_box.is_empty())
+		if not slot_box.is_empty():
+			_check("the box is the small size, not the medium one",
+				(slot_box["size"] as Vector2).is_equal_approx(Vector2(62.0, 62.0)))
+			# Picking it: the click has to land on the slot even though there is drawn fabric
+			# under it — a slot sits ON the ground it reserves, so it is tested first.
+			_editor.call("set_tool", "select")
+			await _click(_screen_of(slot_box["centre"] as Vector2, camera))
+			_check("clicking it picks it up",
+				not (_editor.call("picked_slot") as Dictionary).is_empty())
+
+			var slot_from: Array = (_first_slot(doc).get("pos", [0, 0]) as Array).duplicate()
+			await _hold_key(KEY_RIGHT, 14)
+			var slot_to: Array = _first_slot(doc).get("pos", [0, 0]) as Array
+			var slot_dx := float(slot_to[0]) - float(slot_from[0])
+			_check("holding Right nudges it east (%.1f u)" % slot_dx, slot_dx > 0.5)
+			_check("and leaves its northing alone (%.2f u)"
+				% (float(slot_to[1]) - float(slot_from[1])),
+				absf(float(slot_to[1]) - float(slot_from[1])) < 0.01)
+			# Continuous, not one step per repeat: a longer press must travel further.
+			var press_from: Array = (_first_slot(doc).get("pos", [0, 0]) as Array).duplicate()
+			await _hold_key(KEY_RIGHT, 42)
+			var press_dx := float((_first_slot(doc).get("pos", [0, 0]) as Array)[0]) \
+				- float(press_from[0])
+			_check("a longer press travels further (%.1f u vs %.1f u)" % [press_dx, slot_dx],
+				press_dx > slot_dx * 1.5)
+			# One snapshot per press, so undo returns the slot to where the press started
+			# rather than unwinding it one frame at a time.
+			_send_key_mod(KEY_Z, true, false)
+			await get_tree().process_frame
+			_check("Ctrl+Z undoes the whole press",
+				absf(float((_first_slot(doc).get("pos", [0, 0]) as Array)[0])
+					- float(press_from[0])) < 0.01)
+
+			var before_slot_angle := float(_first_slot(doc).get("angle", 0.0))
+			_send_key(KEY_BRACKETRIGHT)
+			await get_tree().process_frame
+			_check("] turns the slot 5 degrees",
+				absf(rad_to_deg(float(_first_slot(doc).get("angle", 0.0))
+					- before_slot_angle) - 5.0) < 0.01)
+
+			_send_key(KEY_BACKSPACE)
+			await get_tree().process_frame
+			_check("Backspace removes it", _first_slot(doc).is_empty())
+
+	_editor.call("pick_slot_class", "medium")
+	await _click(Vector2(700, 460))
+	var medium := _first_slot(doc)
+	_check("a medium slot reserves the bigger box", not medium.is_empty()
+		and str(medium.get("size", "")) == "medium")
 
 	if _failures.is_empty():
 		print("[INPUT] ALL CHECKS PASSED")
@@ -447,6 +523,19 @@ func _ready() -> void:
 		for failure in _failures:
 			print("[INPUT] FAILED: %s" % failure)
 		get_tree().quit(1)
+
+
+## The first slot pin in the document, whichever tile it landed on. The checks place one at
+## a time, so "first" and "the one just placed" are the same record.
+func _first_slot(document: RefCounted) -> Dictionary:
+	var settlements: Dictionary = document.call("data").get("settlements", {})
+	for key in settlements.keys():
+		var slots: Dictionary = (settlements[key] as Dictionary).get("slots", {})
+		for tile_id in slots.keys():
+			var pins: Array = (slots[tile_id] as Dictionary).get("pins", []) as Array
+			if not pins.is_empty():
+				return pins[0] as Dictionary
+	return {}
 
 
 func _world_of() -> Node:

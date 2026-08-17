@@ -194,14 +194,15 @@ func build(editor: Node, layers: MapEditorLayers) -> void:
 	# Empty ground reserved for a gameplay building — placed at a size class, facing the
 	# nearest road, and rotatable afterwards with Z / Y like anything else.
 	var slots := _fold(column, "Building Slots")
-	for entry in [["small", "Small slot"], ["medium", "Medium slot"]]:
+	slots.add_child(_caption("Small is red, medium is blue. Click one to select it."))
+	for entry in [["small", "Small slot  (red)"], ["medium", "Medium slot  (blue)"]]:
 		var slot_class := str(entry[0])
 		var button := _toggle_button("%s   (K)" % str(entry[1]))
 		button.pressed.connect(func() -> void: _editor.call("pick_slot_class", slot_class))
 		_slot_buttons[slot_class] = button
 		slots.add_child(button)
 	slots.add_child(_caption("Large is a farm or wood polygon, drawn above."))
-	slots.add_child(_caption("Placed facing the nearest road · [ and ] rotate."))
+	slots.add_child(_caption("Arrows nudge · [ ] rotate · Bksp removes."))
 
 	# ── Visibility, folded ──────────────────────────────────────────────────────
 	var visibility := _fold(column, "Visibility")
@@ -336,7 +337,7 @@ func refresh() -> void:
 		"upgrade":
 			_hint.text = "Click a road to widen it · Shift-click to narrow it"
 		"select":
-			_hint.text = "Drag to move (Ctrl/Cmd snaps) · click to select · +/- size · [ ] rotate · Bksp deletes"
+			_hint.text = "Drag to move (Ctrl/Cmd snaps) · arrows nudge · [ ] rotate · +/- size · Bksp deletes"
 		"stamp":
 			_hint.text = "Drag to size a mass · the drag direction is its facing · , and . pick the form"
 		"area":

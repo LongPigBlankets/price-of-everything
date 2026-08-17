@@ -65,6 +65,10 @@ func _ready() -> void:
 		await _demo_hatch(editor)
 	if OS.get_environment("POE_EDITOR_SHOT_SPECIAL") == "1":
 		await _demo_special(editor)
+	if OS.get_environment("POE_EDITOR_SHOT_SLOTS") == "1":
+		editor.call("focus_tile", _tile, _zoom)
+		await get_tree().process_frame
+		await _demo_slots(editor)
 	if OS.get_environment("POE_EDITOR_SHOT_FABRIC") == "1":
 		editor.call("focus_tile", _tile, _zoom)
 		await get_tree().process_frame
@@ -220,6 +224,21 @@ func _demo_fabric(editor: Node) -> void:
 		if x > 980.0:
 			x = 300.0
 			y += 120.0
+
+
+## A row of each slot class, with one picked. Slots have no drawn art of their own — they
+## reserve ground — so the only way to check they read as small-red and medium-blue, and that
+## the picked one stands out, is to look at a frame with both classes in it.
+func _demo_slots(editor: Node) -> void:
+	editor.call("pick_slot_class", "small")
+	for at in [Vector2(340, 300), Vector2(460, 300), Vector2(580, 300)]:
+		await _click(at)
+	editor.call("pick_slot_class", "medium")
+	for at in [Vector2(740, 300), Vector2(900, 300)]:
+		await _click(at)
+	# Pick one, so the frame shows the heavier outline a selected slot gets.
+	editor.call("set_tool", "select")
+	await _click(Vector2(460, 300))
 
 
 ## Lay the three primitives, resize one, and drag a corner of another — so a capture shows

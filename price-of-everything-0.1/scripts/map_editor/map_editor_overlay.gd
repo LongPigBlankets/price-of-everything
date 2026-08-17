@@ -74,6 +74,17 @@ const WATER_MASK_EDGE := Color(0.45, 0.80, 1.0, 0.75)
 ## nothing; the boundary is what matters and it needs the resolution.
 const WATER_MASK_MIN_ZOOM := 0.30
 
+## Slots by class, so which kind of building a piece of ground is reserved for is readable
+## without clicking it. Outlined rather than filled: a slot is EMPTY ground, and a solid box
+## would read as something already standing there.
+const SLOT_COLORS := {
+	"small": Color(0.95, 0.32, 0.30, 0.95),
+	"medium": Color(0.35, 0.62, 1.00, 0.95),
+}
+const SLOT_FILL_ALPHA := 0.16
+const SLOT_WIDTH := 2.0
+const SLOT_PICKED_WIDTH := 4.0
+
 ## Set by `map_editor.gd` after construction (an editor tool, not a shipped node, so a
 ## plain assignment beats a signal here). Untyped to avoid a preload cycle with the editor
 ## script, which preloads this one.
@@ -111,6 +122,7 @@ func _draw() -> void:
 	_draw_pen(camera)
 	_draw_trace(camera)
 	_draw_dots(camera)
+	_draw_slots(camera)
 	_draw_marquee(camera)
 
 
@@ -365,6 +377,35 @@ func _draw_corner_handles(camera: Camera2D) -> void:
 		var centre := _to_screen(corners[i], camera)
 		draw_circle(centre, CORNER_RADIUS + 1.5, DOT_EDGE)
 		draw_circle(centre, CORNER_RADIUS, DOT_ARMED if i == held else CORNER_COLOR)
+
+
+## Reserved ground for gameplay buildings. Drawn as an oriented outline with a faint fill and
+## a facing tick, so the direction a building will front is visible before anything is built.
+func _draw_slots(camera: Camera2D) -> void:
+	var boxes: Array = editor.call("document_slot_boxes")
+	if boxes.is_empty():
+		return
+	var picked: Dictionary = editor.call("picked_slot")
+	for box_value in boxes:
+		var box: Dictionary = box_value
+		var colour: Color = SLOT_COLORS.get(str(box["class"]), SLOT_COLORS["small"])
+		var centre: Vector2 = box["centre"]
+		var size: Vector2 = box["size"]
+		var angle := float(box["angle"])
+		var corners := PackedVector2Array()
+		for corner in [Vector2(-0.5, -0.5), Vector2(0.5, -0.5), Vector2(0.5, 0.5), Vector2(-0.5, 0.5)]:
+			corners.append(_to_screen(centre + (corner * size).rotated(angle), camera))
+		var fill := colour
+		fill.a = SLOT_FILL_ALPHA
+		draw_colored_polygon(corners, fill)
+		var ring := corners.duplicate()
+		ring.append(corners[0])
+		var is_picked: bool = str(picked.get("tile_id", "")) == str(box["tile_id"]) \
+			and int(picked.get("index", -1)) == int(box["index"])
+		draw_polyline(ring, colour, SLOT_PICKED_WIDTH if is_picked else SLOT_WIDTH, true)
+		# A tick on the fronting edge: a slot carries a facing, and a plain box hides it.
+		var front := _to_screen(centre + Vector2(0.0, -size.y * 0.5).rotated(angle), camera)
+		draw_line(_to_screen(centre, camera), front, colour, SLOT_WIDTH, true)
 
 
 ## The selection box while it is being dragged.
