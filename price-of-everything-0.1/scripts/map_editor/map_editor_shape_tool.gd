@@ -39,7 +39,7 @@ func kind() -> String:
 
 
 func set_kind(value: String) -> void:
-	if value in ["farms", "forests", "parks"]:
+	if value in ["farms", "forests", "parks", "plazas"]:
 		_kind = value
 		_points = []
 
@@ -94,7 +94,8 @@ func finish_polygon(settlement_key: String, next_id: int) -> Dictionary:
 	if _points.size() < 3:
 		abandon()
 		return {}
-	var prefix: String = str({"farms": "fa", "forests": "fo", "parks": "p"}.get(_kind, "x"))
+	var prefix: String = str({"farms": "fa", "forests": "fo", "parks": "p",
+		"plazas": "pz"}.get(_kind, "x"))
 	var record := {
 		"id": "%s:%s:%d" % [prefix, settlement_key, next_id],
 		"outline": _points.duplicate(true),

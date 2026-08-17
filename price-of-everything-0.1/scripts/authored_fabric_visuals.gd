@@ -48,6 +48,9 @@ func _draw() -> void:
 		var settlement: Dictionary = settlement_value
 		for area in _list(settlement, "farms"):
 			AuthoredFabricPainter.draw_farm(self, area)
+		# Plazas before parks and masses: paving is ground, and everything else stands on it.
+		for plaza in _list(settlement, "plazas"):
+			AuthoredFabricPainter.draw_plaza(self, plaza)
 		for park in _list(settlement, "parks"):
 			AuthoredFabricPainter.draw_park(self, park)
 		for mass in _list(settlement, "decor"):

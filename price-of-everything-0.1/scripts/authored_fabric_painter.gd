@@ -124,6 +124,16 @@ static func draw_special(canvas: CanvasItem, special: Dictionary) -> void:
 	canvas.draw_polyline(_closed(outline), MidcenturyStyle.INK, 1.0, true)
 
 
+## A plaza: paved cream ground. The same paper the streets are drawn in, so a square reads as
+## an opening in the fabric rather than as another kind of green.
+static func draw_plaza(canvas: CanvasItem, plaza: Dictionary) -> void:
+	var outline := _outline_of(plaza)
+	if outline.size() < 3:
+		return
+	canvas.draw_colored_polygon(outline, MidcenturyStyle.PAPER)
+	canvas.draw_polyline(_closed(outline), MidcenturyStyle.INK, 1.0, true)
+
+
 static func draw_park(canvas: CanvasItem, park: Dictionary) -> void:
 	var outline := _outline_of(park)
 	if outline.size() < 3:

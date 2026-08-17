@@ -21,11 +21,11 @@ const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd
 
 ## Content kinds a marquee can pick up, and where they live in a settlement. Extending this
 ## is how P2's masses and parks become selectable.
-const SELECTABLE := ["roads", "decor", "specials", "farms", "forests", "parks"]
+const SELECTABLE := ["roads", "decor", "specials", "farms", "forests", "parks", "plazas"]
 
 ## Kinds whose geometry is an explicit outline, and which can therefore have their corners
 ## dragged. A road is a centreline and a mass is generated from a form, so neither qualifies.
-const OUTLINE_KINDS := ["specials", "farms", "forests", "parks"]
+const OUTLINE_KINDS := ["specials", "farms", "forests", "parks", "plazas"]
 
 ## A drag shorter than this on screen is a click, not a marquee — without it, every stray
 ## click would clear the selection by "selecting" a zero-area box.
@@ -51,7 +51,7 @@ static func at_point(document: Dictionary, world: Vector2) -> Dictionary:
 		var settlement: Dictionary = settlement_value
 		# Reverse of the painter's order: specials and masses sit above ground, ground above
 		# roads only in the sense that a road is a line you must click precisely.
-		for kind in ["specials", "decor", "parks", "forests", "farms", "roads"]:
+		for kind in ["specials", "decor", "parks", "plazas", "forests", "farms", "roads"]:
 			var items: Array = settlement.get(kind, []) as Array
 			for index in range(items.size() - 1, -1, -1):
 				var item_value: Variant = items[index]

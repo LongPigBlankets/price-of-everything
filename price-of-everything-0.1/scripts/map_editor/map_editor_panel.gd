@@ -54,7 +54,7 @@ const ROAD_CLASSES := [
 ## Sections that start folded. Visibility is long and consulted occasionally; session
 ## commands are rare.
 const FOLDED := {"Visibility": true, "Session": true, "Buildings": true, "Farms & Forests": true,
-	"Special Buildings": true, "Create roads": true}
+	"Special Buildings": true, "Create roads": true, "Building Slots": true}
 
 ## Picker tiles per row. Three 50 px tiles plus their separation fit the column with room to
 ## spare; the grid is fixed rather than measured because the panel has a fixed width.
@@ -68,6 +68,7 @@ var _layer_buttons: Dictionary = {}
 var _form_tiles: Dictionary = {}
 var _kind_tiles: Dictionary = {}
 var _special_tiles: Dictionary = {}
+var _slot_buttons: Dictionary = {}
 var _special_rows: VBoxContainer
 var _folds: Dictionary = {}
 var _status: Label
@@ -178,7 +179,7 @@ func build(editor: Node, layers: MapEditorLayers) -> void:
 	ground_grid.add_theme_constant_override("h_separation", 6)
 	ground_grid.add_theme_constant_override("v_separation", 6)
 	ground.add_child(ground_grid)
-	for entry in [["farms", "Farm"], ["forests", "Wood"], ["parks", "Park"]]:
+	for entry in [["farms", "Farm"], ["forests", "Wood"], ["parks", "Park"], ["plazas", "Plaza"]]:
 		var area_key := str(entry[0])
 		var tile := MapEditorFormButton.new()
 		tile.kind = "area"
@@ -188,6 +189,19 @@ func build(editor: Node, layers: MapEditorLayers) -> void:
 			_editor.call("set_area_kind", picked_key))
 		_kind_tiles[area_key] = tile
 		ground_grid.add_child(tile)
+
+	# ── Building slots ──────────────────────────────────────────────────────────
+	# Empty ground reserved for a gameplay building — placed at a size class, facing the
+	# nearest road, and rotatable afterwards with Z / Y like anything else.
+	var slots := _fold(column, "Building Slots")
+	for entry in [["small", "Small slot"], ["medium", "Medium slot"]]:
+		var slot_class := str(entry[0])
+		var button := _toggle_button("%s   (K)" % str(entry[1]))
+		button.pressed.connect(func() -> void: _editor.call("pick_slot_class", slot_class))
+		_slot_buttons[slot_class] = button
+		slots.add_child(button)
+	slots.add_child(_caption("Large is a farm or wood polygon, drawn above."))
+	slots.add_child(_caption("Placed facing the nearest road · Z / Y rotate."))
 
 	# ── Visibility, folded ──────────────────────────────────────────────────────
 	var visibility := _fold(column, "Visibility")
@@ -294,6 +308,9 @@ func refresh() -> void:
 		var tile: Control = _form_tiles[key]
 		tile.selected = str(key) == current_form and tool_name == "stamp"
 		tile.queue_redraw()
+	var slot_class := str(_editor.call("current_slot_class"))
+	for key in _slot_buttons:
+		_mark(_slot_buttons[key], str(key) == slot_class and tool_name == "slot")
 	var special_kind := str(_editor.call("current_special_kind"))
 	for key in _special_tiles:
 		var tile: Control = _special_tiles[key]
@@ -324,6 +341,8 @@ func refresh() -> void:
 			_hint.text = "Drag to size a mass · the drag direction is its facing · [ ] picks the form"
 		"area":
 			_hint.text = "Click corners (max 8) · Enter closes · Bksp undoes a corner"
+		"slot":
+			_hint.text = "Click to reserve ground for a gameplay building · Z / Y rotate"
 		"special":
 			_hint.text = ("Click up to 6 corners · Enter closes · Bksp steps back"
 				if str(_editor.call("current_special_kind")) == "poly"

@@ -175,6 +175,10 @@ func _draw_authored_fabric(camera: Camera2D) -> void:
 			AuthoredFabricPainter.draw_farm(self, area)
 			if selected.has(str(area.get("id", ""))):
 				_hatch([_polygon_of(area)], camera)
+		for plaza in _entries(settlement, "plazas"):
+			AuthoredFabricPainter.draw_plaza(self, plaza)
+			if selected.has(str(plaza.get("id", ""))):
+				_hatch([_polygon_of(plaza)], camera)
 		for park in _entries(settlement, "parks"):
 			AuthoredFabricPainter.draw_park(self, park)
 			if selected.has(str(park.get("id", ""))):

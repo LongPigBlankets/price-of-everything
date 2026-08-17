@@ -151,6 +151,13 @@ func _draw_area(ink: Color) -> void:
 				draw_circle(centre, box.size.x * 0.19, ink.darkened(0.18))
 				draw_circle(centre - Vector2(0.0, box.size.x * 0.06),
 					box.size.x * 0.15, ink.lightened(0.10))
+		"plazas":
+			# Paving: a plain slab with a seam, distinct from the park's inset green.
+			draw_rect(box, ink.lightened(0.34), true)
+			draw_line(box.position + Vector2(0.0, box.size.y * 0.5),
+				box.position + Vector2(box.size.x, box.size.y * 0.5), ink.darkened(0.1), 1.5)
+			draw_line(box.position + Vector2(box.size.x * 0.5, 0.0),
+				box.position + Vector2(box.size.x * 0.5, box.size.y), ink.darkened(0.1), 1.5)
 		_:
 			# A park: an inset green with a rounded feel, distinct from the field's strips.
 			draw_rect(box, ink.lightened(0.18), true)
