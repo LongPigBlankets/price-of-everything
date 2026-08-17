@@ -14,7 +14,11 @@
     },
     {
       "tile": "tile_21_10",
-      "amount": 7
+      "amount": 8
+    },
+    {
+      "tile": "tile_20_10",
+      "amount": 12
     }
   ],
   "coal_runway": {
@@ -87,12 +91,16 @@
         "tile_25_6"
       ],
       [
-        "tile_21_10",
-        "tile_25_6"
-      ],
-      [
         "tile_25_6",
         "tile_24_7"
+      ],
+      [
+        "tile_21_10",
+        "tile_20_10"
+      ],
+      [
+        "tile_20_10",
+        "tile_25_6"
       ]
     ],
     "roads": [
@@ -101,7 +109,8 @@
       "tile_26_5",
       "tile_21_10",
       "tile_25_6",
-      "tile_24_7"
+      "tile_24_7",
+      "tile_20_10"
     ],
     "rails": "corridors",
     "pipes": "corridors",
@@ -182,42 +191,42 @@
       "id": "copper_ingots_a",
       "internal_name": "furnace",
       "recipe_key": "copper_ingots",
-      "tile": "tile_21_10",
+      "tile": "tile_20_10",
       "allow_market_materials": true
     },
     {
       "id": "copper_ingots_b",
       "internal_name": "furnace",
       "recipe_key": "copper_ingots",
-      "tile": "tile_21_10",
+      "tile": "tile_20_10",
       "allow_market_materials": true
     },
     {
       "id": "copper_ingots_c",
       "internal_name": "furnace",
       "recipe_key": "copper_ingots",
-      "tile": "tile_21_10",
+      "tile": "tile_20_10",
       "allow_market_materials": true
     },
     {
       "id": "copper_wiring_a",
       "internal_name": "industrial_factory",
       "recipe_key": "copper_wiring",
-      "tile": "tile_21_10",
+      "tile": "tile_20_10",
       "allow_market_materials": true
     },
     {
       "id": "copper_wiring_b",
       "internal_name": "industrial_factory",
       "recipe_key": "copper_wiring",
-      "tile": "tile_21_10",
+      "tile": "tile_20_10",
       "allow_market_materials": true
     },
     {
       "id": "copper_wiring_c",
       "internal_name": "industrial_factory",
       "recipe_key": "copper_wiring",
-      "tile": "tile_21_10",
+      "tile": "tile_20_10",
       "allow_market_materials": true
     },
     {
@@ -343,27 +352,27 @@
     {
       "id": "copper_mine_a",
       "good": "copper_ore",
-      "dest": "tile_21_10"
+      "dest": "tile_20_10"
     },
     {
       "id": "copper_mine_b",
       "good": "copper_ore",
-      "dest": "tile_21_10"
+      "dest": "tile_20_10"
     },
     {
       "id": "copper_mine_c",
       "good": "copper_ore",
-      "dest": "tile_21_10"
+      "dest": "tile_20_10"
     },
     {
       "id": "copper_ingots_a",
       "good": "copper_ingots",
-      "dest": "tile_21_10"
+      "dest": "tile_20_10"
     },
     {
       "id": "copper_ingots_b",
       "good": "copper_ingots",
-      "dest": "tile_21_10"
+      "dest": "tile_20_10"
     },
     {
       "id": "iron_mine_a",
@@ -393,7 +402,7 @@
     {
       "id": "copper_ingots_c",
       "good": "copper_ingots",
-      "dest": "tile_21_10"
+      "dest": "tile_20_10"
     },
     {
       "id": "copper_wiring_c",

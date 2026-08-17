@@ -373,7 +373,7 @@ func _run() -> void:
 	_check(int(after_route.get("turns", 999)) <= int(before_route.get("turns", 999)),
 		"optimized rail corridor does not worsen coal-to-iron routing")
 	_check(int(after_route.get("turns", 999)) < (1 << 30), "coal-to-iron rail route is reachable")
-	_check(int(TransportService.route("tile_21_10", "tile_25_6", _goods.copper_wiring).get("turns", 999)) < (1 << 30),
+	_check(int(TransportService.route("tile_20_10", "tile_25_6", _goods.copper_wiring).get("turns", 999)) < (1 << 30),
 		"copper-to-motor rail route is reachable")
 
 	_apply_scenario_unlocks()
@@ -1819,13 +1819,14 @@ func _survey_deposits_via_ui() -> void:
 	_check(MatchState.is_tile_surveyed("tile_23_4"), "northern coal approach tile surveyed")
 	await _survey_tile_via_ui("tile_20_9")
 	await _survey_tile_via_ui("tile_21_10")
+	await _survey_tile_via_ui("tile_20_10")
 	await _survey_tile_via_ui("tile_22_3")
 	await _advance_turns(2, "complete optimized resource survey")
 	_check(MatchState.is_tile_surveyed("tile_22_3"), "primary coal tile surveyed")
 	_check(MatchState.is_tile_surveyed("tile_20_9"), "power water tile surveyed")
 	_check(MatchState.is_tile_surveyed("tile_21_10"), "primary copper tile surveyed")
 	for tile_id in ["tile_23_9", "tile_25_6", "tile_24_5", "tile_22_9",
-			"tile_26_5", "tile_23_4", "tile_22_3", "tile_20_9", "tile_21_10"]:
+			"tile_26_5", "tile_23_4", "tile_22_3", "tile_20_9", "tile_21_10", "tile_20_10"]:
 		_check(MatchState.is_tile_surveyed(tile_id), "%s surveyed through UI flow" % tile_id)
 	MapMode.clear_all()
 
@@ -2726,8 +2727,11 @@ func _check_economy_end_state() -> void:
 	_check(LoanState.total_per_turn_payment() >= 0.0, "loan payment state remains queryable")
 	_check(MatchState.deposit_remaining_for("tile_22_3", "coal") == -1, "coal deposit is unbounded for turn-100 run")
 	_check(MatchState.deposit_remaining_for("tile_26_5", "iron_ore") == -1, "iron deposit is unbounded for turn-100 run")
-	_check(TransportService.route("tile_21_10", "tile_25_6", _goods.copper_wiring).get("turns", 0) >= 1,
+	_check(TransportService.route("tile_20_10", "tile_25_6", _goods.copper_wiring).get("turns", 0) >= 1,
 		"wiring route between industrial tiles resolves")
+	# The ore leg the split created: the mine is on the mountain deposit, the smelter next door.
+	_check(TransportService.route("tile_21_10", "tile_20_10", _goods.copper_ore).get("turns", 0) >= 1,
+		"copper ore route from the mine tile to the smelter tile resolves")
 	_check(TransportService.route_to_nearest_port("tile_25_6", _goods.motor).get("port", "") == "tile_24_7",
 		"motor market route uses Capital")
 	# Output-route destinations resolved on representative chain links.
@@ -3183,7 +3187,7 @@ func _dump_chain_diagnostics() -> void:
 	rows.sort()
 	for r in rows:
 		print(r)
-	for t in ["tile_20_9", "tile_22_3", "tile_21_10", "tile_26_5", "tile_25_6"]:
+	for t in ["tile_20_9", "tile_22_3", "tile_21_10", "tile_20_10", "tile_26_5", "tile_25_6"]:
 		var tot: Dictionary = Stockpile.get_tile_totals(t)
 		var n := 0
 		for g in tot:
