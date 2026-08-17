@@ -34,6 +34,7 @@ const AuthoredRoadVisualsScript := preload("res://scripts/authored_road_visuals.
 ## editor's slot geometry had no headless coverage at all, which is how it shipped a builder
 ## that crashed on any document the editor had not just created.
 const MapEditorSlotBoxes := preload("res://scripts/map_editor/map_editor_slot_boxes.gd")
+const AuthoredSlotSizes := preload("res://scripts/authored_slot_sizes.gd")
 const AppPaths := preload("res://scripts/app_paths.gd")  # saves now live in <base>/savegames/
 
 func _ready() -> void:
@@ -70,6 +71,7 @@ func _ready() -> void:
 	_test_authored_documents_on_disk_load()
 	_test_authored_slot_boxes_contract()
 	_test_authored_slot_validation()
+	_test_authored_slot_class_agrees_with_art()
 	_test_shipped_code_avoids_editor_only_paths()
 	_test_authored_road_geometry()
 	_test_authored_road_touched_tiles()
@@ -15008,6 +15010,59 @@ func _test_authored_slot_boxes_contract() -> void:
 ## The validator had nothing to say about slots at all, so a malformed slot block saved and
 ## loaded quietly and only failed when a building tried to stand in it. These are the shapes
 ## the readers used to coerce away.
+## The class a building CLAIMS at placement time and the class the size table says its art
+## NEEDS are computed in two places, and they had drifted: the claim site passed an empty art
+## key, so ART_SIZE_OVERRIDE never applied and both wind farms asked for a small slot while
+## needing a medium one. Nothing downstream re-checks, so the building simply overhangs.
+func _test_authored_slot_class_agrees_with_art() -> void:
+	var visuals := preload("res://scenes/building_visuals.gd")
+	var mismatched := PackedStringArray()
+	for building_value in Catalog.all_buildings():
+		var building: Dictionary = building_value
+		var internal := str(building.get("internal_name", ""))
+		if internal == "" or AuthoredSlotSizes.AREA_BUILDINGS.has(internal):
+			continue
+		var needs := AuthoredSlotSizes.class_for_building(str(building.get("id", "")))
+		# Mirrors the claim site in `_claim_slot`, art key included.
+		var art_key := str(visuals.INK_ART_KEY.get(internal, ""))
+		var extent: float = float(visuals.ART_SIZE_OVERRIDE[art_key]) \
+			if visuals.ART_SIZE_OVERRIDE.has(art_key) \
+			else lerpf(visuals.ART_DRAWN_MIN, visuals.ART_DRAWN_MAX,
+				clampf((float(building.get("tile_size_used", 1)) - 1.0) / 29.0, 0.0, 1.0))
+		var claims: String = AuthoredMap.slot_class_for(extent, false)
+		if claims != needs:
+			mismatched.append("%s claims %s needs %s" % [internal, claims, needs])
+	_check(mismatched.is_empty(), "slot class: claim matches the art's need (%s)"
+		% ("all agree" if mismatched.is_empty() else ", ".join(mismatched)))
+
+	# The above only proves the two RULES agree; it would still pass if the claim site went
+	# back to dropping the art key, because it re-implements the rule rather than calling it.
+	# So: prove the argument is load-bearing, and pin the call site the way the export
+	# isolation test pins its own.
+	var override_key := ""
+	for key in visuals.ART_SIZE_OVERRIDE.keys():
+		override_key = str(key)
+		break
+	_check(override_key != "", "slot class: there is an art-size override to test with")
+	if override_key != "":
+		var with_key: float = float(visuals.ART_SIZE_OVERRIDE[override_key])
+		var without_key := lerpf(visuals.ART_DRAWN_MIN, visuals.ART_DRAWN_MAX, 0.0)
+		_check(AuthoredMap.slot_class_for(with_key, false)
+			!= AuthoredMap.slot_class_for(without_key, false),
+			"slot class: dropping the art key changes the answer for '%s' (%.0f vs %.0f)"
+			% [override_key, with_key, without_key])
+
+	var source := FileAccess.open("res://scenes/building_visuals.gd", FileAccess.READ)
+	_check(source != null, "slot class: building_visuals.gd is readable")
+	if source != null:
+		var text := source.get_as_text()
+		source.close()
+		_check(not text.contains("_art_size_for(size_units, \"\")"),
+			"slot class: the claim site no longer drops the art key")
+		_check(text.contains("_art_size_for(size_units, str(INK_ART_KEY.get(iname, \"\")))"),
+			"slot class: the claim site passes the building's art key")
+
+
 func _test_authored_slot_validation() -> void:
 	var base := {"version": AuthoredMap.SCHEMA_VERSION, "settlements":
 		{"s": {"tiles": ["tile_1_1"], "slots": {}}}}

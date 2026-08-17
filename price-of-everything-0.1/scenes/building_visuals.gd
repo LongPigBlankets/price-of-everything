@@ -523,7 +523,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 			and _use_block_mode(tile_id, coord):
 		var tmpl := _ensure_block_template(tile_id, coord)
 		if not tmpl.is_empty():
-			placed = _claim_slot(tmpl, size_units, coord, tile_id, placed_here)
+			placed = _claim_slot(tmpl, size_units, coord, tile_id, placed_here, iname_lot)
 	if placed.is_empty() and not offshore:
 		# Art buildings front the road tightly (edge ~1u off the carriageway).
 		var rc := ART_ROAD_PAD if has_art else ROAD_CLEAR
@@ -1168,7 +1168,7 @@ func _cell_near_road(center: Vector2, segs: Array) -> bool:
 
 ## Claim the next free lot (emit order) for one building. Returns {verts, center_rel, half}
 ## or {} when the block is full or the lot is now blocked (caller falls back to _search).
-func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: String, placed_here: Array) -> Dictionary:
+func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: String, placed_here: Array, iname: String = "") -> Dictionary:
 	var lots: Array = tmpl.lots
 	var claimed: Array = tmpl.claimed
 	var angle: float = tmpl.angle
@@ -1179,7 +1179,13 @@ func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: St
 	# Authored tiles size each slot individually, so the cell is per-lot there.
 	var lot_cells: Array = tmpl.get("lot_cells", [])
 	var lot_classes: Array = tmpl.get("lot_classes", [])
-	var wanted_class := AuthoredMap.slot_class_for(_art_size_for(size_units, ""), false) \
+	# The ART KEY matters here. `_art_size_for` applies ART_SIZE_OVERRIDE, and passing an empty
+	# key skipped it — so both wind farms, whose art is pinned to ART_DRAWN_MAX, asked for a
+	# SMALL slot while their art needs a medium one. The building then either overhangs its
+	# neighbours or is crushed to fit by _crop_to_sprite. Same rule as `authored_slot_sizes.gd`,
+	# which cannot be preloaded from here without forming a cycle.
+	var wanted_class := AuthoredMap.slot_class_for(
+		_art_size_for(size_units, str(INK_ART_KEY.get(iname, ""))), false) \
 		if not lot_classes.is_empty() else ""
 	var fill: float = BLOCK_LOT * clampf(BLOCK_FILL_MIN + 0.04 * float(size_units), BLOCK_FILL_MIN, BLOCK_FILL_MAX)
 	for i in lots.size():
@@ -1226,7 +1232,7 @@ func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: St
 	if not _grew_this_claim:
 		_grew_this_claim = true
 		_grow_block_rows(tmpl, tile_id, coord)
-		var out := _claim_slot(tmpl, size_units, coord, tile_id, placed_here)
+		var out := _claim_slot(tmpl, size_units, coord, tile_id, placed_here, iname)
 		_grew_this_claim = false
 		return out
 	return {}
