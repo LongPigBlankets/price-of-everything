@@ -58,27 +58,37 @@ const ROAD_WIDTHS := {
 	"minor": 6.3,
 }
 
-## Slot size classes. `large` hosts farms and forests (an authored polygon becomes the
-## building's footprint); `medium` hosts mines and anything whose drawn art reaches
-## [constant SLOT_MEDIUM_MIN_EXTENT] at ANY level; `small` hosts buildings that stay under
-## it through L3. Classification is by MAXIMUM-level extent, which matches the engine:
-## a building already reserves its L3 frame at L1 (pinned by
-## `_test_ink_art_reserves_upgrade_space`).
-const SLOT_CLASSES := ["small", "medium", "large"]
-
-## The small/medium boundary, in world units of DRAWN art.
+## Slot size classes, as a LADDER of boxes plus one that is not a box at all.
 ##
-## The owner's ruling was 40 u. That number cannot discriminate: `ART_DRAWN_MIN` is also 40,
-## so every building in the catalog measures at least 40 and the small class comes out empty
-## (0 small / 36 medium, measured). 56 is the same intent applied where the population
-## actually divides — it puts the 24 mid-sized plants that cluster at 55.5 u in small slots
-## and leaves the nine genuinely large things (mines, wind farms, the size 15-30 industry) in
-## medium. AWAITING THE OWNER'S CONFIRMATION; run tools/map_editor/slot_size_table.tscn to
-## see the split at any threshold.
-## Moved from 56.0 with the 0.75 art rescale (2026-08-17), keeping the same FRACTION of the
-## ART_DRAWN_MIN..MAX band so exactly the same buildings sit in each class. Retune it with the
-## art, not on its own.
-const SLOT_MEDIUM_MIN_EXTENT := 42.0
+## `area` hosts farms and forests: an authored polygon becomes the building's footprint, so
+## it has no box and does not belong on the ladder — a building may not take an `area` slot
+## just because it is "bigger". It was called `large` until the four-way split, when `large`
+## became the name of the biggest actual box; no document ever contained a `large` slot, so
+## the rename cost nothing.
+##
+## Classification is by MAXIMUM-level extent, which matches the engine: a building already
+## reserves its L3 frame at L1 (pinned by `_test_ink_art_reserves_upgrade_space`).
+const SLOT_BOX_CLASSES := ["very_small", "small", "medium", "large"]
+const SLOT_AREA_CLASS := "area"
+const SLOT_CLASSES := ["very_small", "small", "medium", "large", "area"]
+
+## The DRAWN-ART extent each box class tops out at, world units. A class holds everything up
+## to its ceiling; `building_visuals.AUTHORED_SLOT_BOXES` turns each ceiling into the ground
+## it must reserve.
+##
+## These sit just above where the catalog's art actually clusters, at the current 30..68 art
+## band: 30.0-31.3 (pipes, reinforced pipes, cables), 41.8 (the eleven mid plants and the
+## solar farm), 48.3-54.9 (port, power plant, chem plant, furnace), 68.0 (mine and both wind
+## farms). Tight by design — a class ceiling far above its largest member is ground reserved
+## for nobody, which is the defect the split exists to fix. RETUNE WITH THE ART, never alone:
+## `_test_authored_slot_box_holds_its_class` fails the moment a building outgrows its class,
+## and `tools/map_editor/slot_footprint_audit.tscn` shows the clusters.
+const SLOT_CLASS_CEILINGS := {
+	"very_small": 32.0,
+	"small": 42.0,
+	"medium": 55.0,
+	"large": 68.0,
+}
 
 ## Farm and forest outlines are authored as simple polygons of at most this many vertices.
 const AREA_MAX_VERTICES := 8
@@ -176,8 +186,9 @@ static func roads_for_settlement(key: String) -> Array:
 	return _array(value if typeof(value) == TYPE_DICTIONARY else {}, "roads")
 
 
-## Slots authored for one tile: `{pins: Array, frames: Array, large: Array}`. Always
-## returns all three keys so callers need no defaults.
+## Slots authored for one tile: `{pins, frames, large, area}`. Always returns every key so
+## callers need no defaults. `large` is the legacy name of the polygon list and is kept so
+## older documents still read; `area` is the same list under the name the classes now use.
 static func slots_for_tile(tile_id: String) -> Dictionary:
 	var settlement := settlement_for_tile(tile_id)
 	var slots_value: Variant = settlement.get("slots", {})
@@ -188,6 +199,7 @@ static func slots_for_tile(tile_id: String) -> Dictionary:
 		"pins": _array(tile_slots, "pins"),
 		"frames": _array(tile_slots, "frames"),
 		"large": _array(tile_slots, "large"),
+		"area": _array(tile_slots, "area"),
 	}
 
 
@@ -215,8 +227,23 @@ static func road_width(stroke_class: String) -> float:
 ## `is_area` marks farms and forests, which take an authored polygon as their footprint.
 static func slot_class_for(max_extent: float, is_area: bool) -> String:
 	if is_area:
-		return "large"
-	return "medium" if max_extent >= SLOT_MEDIUM_MIN_EXTENT else "small"
+		return SLOT_AREA_CLASS
+	for slot_class in SLOT_BOX_CLASSES:
+		if max_extent < float(SLOT_CLASS_CEILINGS[slot_class]):
+			return slot_class
+	# Above every ceiling: the biggest box is still the honest answer, and the box test is
+	# what catches art that has outgrown it.
+	return SLOT_BOX_CLASSES[SLOT_BOX_CLASSES.size() - 1]
+
+
+## May a building of class `wanted` stand in a slot of class `offered`? Equal or larger only,
+## and never in an `area` slot — that is a farm polygon, not a bigger box.
+static func slot_fits(wanted: String, offered: String) -> bool:
+	if offered == SLOT_AREA_CLASS or wanted == SLOT_AREA_CLASS:
+		return wanted == offered
+	var wanted_rank := SLOT_BOX_CLASSES.find(wanted)
+	var offered_rank := SLOT_BOX_CLASSES.find(offered)
+	return wanted_rank >= 0 and offered_rank >= wanted_rank
 
 
 ## An empty, valid document — what the editor starts from and what the game falls back to.

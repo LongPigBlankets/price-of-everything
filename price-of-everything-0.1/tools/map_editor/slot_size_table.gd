@@ -12,14 +12,20 @@ const AuthoredMap := preload("res://scripts/authored_map.gd")
 
 func _ready() -> void:
 	var rows := AuthoredSlotSizes.table()
-	var counts := {"small": 0, "medium": 0, "large": 0}
-	print("[SLOTS] threshold: medium at >= %.0f world units of drawn art"
-		% AuthoredMap.SLOT_MEDIUM_MIN_EXTENT)
+	var counts: Dictionary = {}
+	for slot_class in AuthoredMap.SLOT_CLASSES:
+		counts[slot_class] = 0
+	var ceilings := PackedStringArray()
+	for slot_class in AuthoredMap.SLOT_BOX_CLASSES:
+		ceilings.append("%s < %.0f" % [slot_class, float(AuthoredMap.SLOT_CLASS_CEILINGS[slot_class])])
+	print("[SLOTS] ceilings, in world units of drawn art: %s" % ", ".join(ceilings))
 	print("[SLOTS] %-26s %6s %8s  %s" % ["building", "size", "extent", "class"])
 	for row in rows:
 		counts[str(row["class"])] = int(counts.get(str(row["class"]), 0)) + 1
 		print("[SLOTS] %-26s %6.0f %8.1f  %s"
 			% [row["internal"], row["size_units"], row["extent"], row["class"]])
-	print("[SLOTS] %d buildings — %d small, %d medium, %d large"
-		% [rows.size(), counts["small"], counts["medium"], counts["large"]])
+	var tally := PackedStringArray()
+	for slot_class in AuthoredMap.SLOT_CLASSES:
+		tally.append("%d %s" % [int(counts[slot_class]), slot_class])
+	print("[SLOTS] %d buildings — %s" % [rows.size(), ", ".join(tally)])
 	get_tree().quit(0)

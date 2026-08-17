@@ -567,7 +567,12 @@ func _handle_key(event: InputEventKey) -> void:
 		KEY_M:
 			set_tool(TOOL_SPECIAL)
 		KEY_K:
-			set_tool(TOOL_SLOT)
+			# First press picks the tool; each one after cycles the class, so laying a row of
+			# mixed sizes never needs the pointer to leave the map.
+			if _tool == TOOL_SLOT:
+				_cycle_slot_class()
+			else:
+				set_tool(TOOL_SLOT)
 
 		KEY_EQUAL, KEY_KP_ADD:
 			_resize_selection(RESIZE_STEP)
@@ -1404,7 +1409,8 @@ func _place_slot(world: Vector2) -> void:
 		tile_list.sort()
 		settlement["tiles"] = tile_list
 	_overlay.queue_redraw()
-	_set_status("%s slot on %s (%d there)." % [_slot_class.capitalize(), tile_id, pins.size()])
+	_set_status("%s slot on %s (%d there)."
+		% [_slot_class.replace("_", " ").capitalize(), tile_id, pins.size()])
 
 
 ## The facing for a slot: along the nearest authored road, or zero when there is none near.
@@ -1417,6 +1423,14 @@ func _slot_angle_at(world: Vector2) -> float:
 
 func current_slot_class() -> String:
 	return _slot_class
+
+
+## Step to the next box class, wrapping. Driven off the shipped ladder so a class added
+## there is reachable here without a second list to keep in step.
+func _cycle_slot_class() -> void:
+	var ladder: Array = AuthoredMap.SLOT_BOX_CLASSES
+	var at := ladder.find(_slot_class)
+	pick_slot_class(str(ladder[(at + 1) % ladder.size()]) if at >= 0 else str(ladder[0]))
 
 
 func pick_slot_class(value: String) -> void:

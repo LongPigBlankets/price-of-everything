@@ -4,6 +4,7 @@ const AuthoredSpecialShapesScript := preload("res://scripts/authored_special_sha
 const AuthoredRoadGeometryScript := preload("res://scripts/authored_road_geometry.gd")
 const AuthoredRoadStyleScript := preload("res://scripts/authored_road_style.gd")
 const MapEditorSlotBoxes := preload("res://scripts/map_editor/map_editor_slot_boxes.gd")
+const AuthoredMapRef := preload("res://scripts/authored_map.gd")
 ## Regression check for the editor's INPUT behaviour — the three things that were broken
 ## when the panel landed, each of which is invisible to a screenshot:
 ##
@@ -517,11 +518,47 @@ func _ready() -> void:
 			await get_tree().process_frame
 			_check("Backspace removes it", _first_slot(doc).is_empty())
 
-	_editor.call("pick_slot_class", "medium")
-	await _click(Vector2(700, 460))
-	var medium := _first_slot(doc)
-	_check("a medium slot reserves the bigger box", not medium.is_empty()
-		and str(medium.get("size", "")) == "medium")
+	# Every class on the ladder must be placeable and must reserve a bigger box than the one
+	# below it. Driven off the shipped list so a new class cannot be added without the editor
+	# being able to lay it.
+	var ladder: Array = AuthoredMapRef.SLOT_BOX_CLASSES
+	_check("there is more than one slot class (%d)" % ladder.size(), ladder.size() >= 2)
+	var last_box := 0.0
+	var spot := Vector2(620, 470)
+	for slot_class_value in ladder:
+		var slot_class := str(slot_class_value)
+		_editor.call("pick_slot_class", slot_class)
+		await _click(spot)
+		var laid := _first_slot(doc)
+		_check("a %s slot can be placed" % slot_class,
+			not laid.is_empty() and str(laid.get("size", "")) == slot_class)
+		var reserved: float = (MapEditorSlotBoxes.size_for(slot_class) as Vector2).x
+		_check("the %s box (%.0fu) is bigger than the class below it" % [slot_class, reserved],
+			reserved > last_box)
+		last_box = reserved
+		if not laid.is_empty():
+			_editor.call("set_tool", "select")
+			await _click(_screen_of(_slot_centre(doc), camera))
+			_send_key(KEY_BACKSPACE)
+			await get_tree().process_frame
+		spot.x += 8.0
+
+	# K picks the tool, then cycles the class, so a row of mixed sizes needs no pointer trip.
+	_editor.call("set_tool", "select")
+	_send_key(KEY_K)
+	await get_tree().process_frame
+	_check("K selects the slot tool", str(_editor.call("current_tool")) == "slot")
+	var first_class := str(_editor.call("current_slot_class"))
+	_send_key(KEY_K)
+	await get_tree().process_frame
+	var next_class := str(_editor.call("current_slot_class"))
+	_check("K again cycles the class (%s -> %s)" % [first_class, next_class],
+		next_class != first_class and ladder.has(next_class))
+	for _i in ladder.size():
+		_send_key(KEY_K)
+		await get_tree().process_frame
+	_check("cycling wraps back around (%s)" % str(_editor.call("current_slot_class")),
+		str(_editor.call("current_slot_class")) == next_class)
 
 	if _failures.is_empty():
 		print("[INPUT] ALL CHECKS PASSED")
@@ -530,6 +567,12 @@ func _ready() -> void:
 		for failure in _failures:
 			print("[INPUT] FAILED: %s" % failure)
 		get_tree().quit(1)
+
+
+## Where the first slot sits in world units, for clicking it back.
+func _slot_centre(document: RefCounted) -> Vector2:
+	var boxes: Array = _editor.call("document_slot_boxes")
+	return (boxes[0] as Dictionary)["centre"] if not boxes.is_empty() else Vector2.ZERO
 
 
 ## The first slot pin in the document, whichever tile it landed on. The checks place one at

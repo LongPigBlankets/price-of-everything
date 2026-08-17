@@ -77,9 +77,19 @@ const WATER_MASK_MIN_ZOOM := 0.30
 ## Slots by class, so which kind of building a piece of ground is reserved for is readable
 ## without clicking it. Outlined rather than filled: a slot is EMPTY ground, and a solid box
 ## would read as something already standing there.
+## One colour per box class, and a word for each so the panel can say which is which without
+## the reader having to match a swatch from memory. Ordered light-to-heavy with size.
 const SLOT_COLORS := {
+	"very_small": Color(1.00, 0.78, 0.25, 0.95),
 	"small": Color(0.95, 0.32, 0.30, 0.95),
 	"medium": Color(0.35, 0.62, 1.00, 0.95),
+	"large": Color(0.72, 0.45, 1.00, 0.95),
+}
+const SLOT_SWATCH := {
+	"very_small": "amber",
+	"small": "red",
+	"medium": "blue",
+	"large": "violet",
 }
 const SLOT_FILL_ALPHA := 0.16
 const SLOT_WIDTH := 2.0

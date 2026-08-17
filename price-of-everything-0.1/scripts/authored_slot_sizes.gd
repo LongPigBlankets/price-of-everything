@@ -1,9 +1,11 @@
 extends RefCounted
 ## Which slot size each building needs.
 ##
-## THE RULE (owner, 2026-08-16): `large` is farms and forests, whose authored polygon becomes
-## the footprint; `medium` is mines and anything whose drawn art reaches 40 world units or
-## more; `small` is everything that stays under 40 through L3.
+## THE RULE (owner, 2026-08-16, split four ways 2026-08-17): `area` is farms and forests,
+## whose authored polygon becomes the footprint. Everything else lands in the smallest BOX
+## class whose ceiling its art fits under — see `AuthoredMap.SLOT_CLASS_CEILINGS`. The split
+## exists because one wide class reserves ground for nobody: before it, the average medium
+## building covered 48% of its slot.
 ##
 ## CLASSIFIED BY MAXIMUM-LEVEL EXTENT, never by the level a building happens to be at. That
 ## is not a choice — it is what the engine already does: every level shares the L3 frame and
@@ -27,7 +29,13 @@ const OVERRIDES := {}
 
 ## Internal names that take an authored POLYGON rather than a slot: their footprint is the
 ## shape the designer drew, not a box the art is fitted into.
-const AREA_BUILDINGS := ["farm", "forest", "forestry", "tree_farm"]
+##
+## These are CATALOG internal names, checked against the catalog by
+## `_test_authored_area_buildings_exist`. The list used to read
+## ["farm", "forest", "forestry", "tree_farm"] — three of which are not buildings in this
+## game at all, while the two that are (`new_forest`, `old_forest`) were missing. Both
+## forests were therefore being sized into a box like any factory.
+const AREA_BUILDINGS := ["farm", "new_forest", "old_forest"]
 
 
 ## The class a building needs, from its catalog entry.
@@ -37,7 +45,7 @@ static func class_for_building(building_id: String) -> String:
 	if OVERRIDES.has(internal):
 		return str(OVERRIDES[internal])
 	if AREA_BUILDINGS.has(internal):
-		return "large"
+		return AuthoredMap.SLOT_AREA_CLASS
 	return AuthoredMap.slot_class_for(max_extent_for(internal, building), false)
 
 

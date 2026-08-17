@@ -44,7 +44,7 @@ func _ready() -> void:
 	print("[FOOT] margin=%.1f per side, so blocked = drawn + %.1f on each axis"
 		% [BuildingVisualsRef.ART_BLOCK_MARGIN, BuildingVisualsRef.ART_BLOCK_MARGIN * 2.0])
 	print("")
-	for slot_class in ["small", "medium"]:
+	for slot_class in AuthoredMapRef.SLOT_BOX_CLASSES:
 		var reserved: Vector2 = BuildingVisualsRef.AUTHORED_SLOT_BOXES.get(slot_class, Vector2.ZERO)
 		var need := Vector2.ZERO
 		var widest := ""
@@ -122,7 +122,10 @@ func _ready() -> void:
 	for building_value in Catalog.all_buildings():
 		var building: Dictionary = building_value
 		var internal := str(building.get("internal_name", ""))
-		if internal == "":
+		# Farms and forests never take a box slot (the claim path excludes cat == "farm"),
+		# so comparing their box class to their area class reports a difference that has no
+		# consequence.
+		if internal == "" or AuthoredSlotSizes.AREA_BUILDINGS.has(internal):
 			continue
 		var needs := AuthoredSlotSizes.class_for_building(str(building.get("id", "")))
 		var units := int(building.get("tile_size_used", 1))

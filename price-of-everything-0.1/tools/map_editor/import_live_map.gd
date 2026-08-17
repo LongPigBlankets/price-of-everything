@@ -19,6 +19,7 @@ extends Node
 ## layout it no longer has.
 
 const AuthoredMap := preload("res://scripts/authored_map.gd")
+const BuildingVisualsRef := preload("res://scenes/building_visuals.gd")
 const AuthoredRoadStyle := preload("res://scripts/authored_road_style.gd")
 
 ## Above this, an outline is simplified. The free polygon's own cap is six, so five leaves a
@@ -171,8 +172,11 @@ func _import_slots(terrain: Node, visuals: Node) -> Dictionary:
 		if verts.size() >= 2:
 			angle = (verts[1] - verts[0]).angle()
 		var half: Vector2 = placement.get("half", Vector2(30, 30))
-		var slot_class := "medium" if maxf(half.x, half.y) * 2.0 >= AuthoredMap.SLOT_MEDIUM_MIN_EXTENT \
-			else "small"
+		# A placement's `half` is the CROPPED box, which already carries ART_BLOCK_MARGIN on
+		# each side; the class ceilings are drawn-art extents. Comparing the two directly
+		# over-states every building by 12 u and pushes it a class too big.
+		var drawn := maxf(half.x, half.y) * 2.0 - BuildingVisualsRef.ART_BLOCK_MARGIN * 2.0
+		var slot_class := AuthoredMap.slot_class_for(drawn, false)
 		if not out.has(tile_id):
 			out[tile_id] = {"pins": []}
 		var centre_rel: Vector2 = placement.get("center_rel", Vector2.ZERO)

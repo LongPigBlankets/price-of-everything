@@ -18,6 +18,9 @@ const MapEditorLayers := preload("res://scripts/map_editor/map_editor_layers.gd"
 const MapEditorFormButton := preload("res://scripts/map_editor/map_editor_form_button.gd")
 const MassFormShapes := preload("res://scripts/mass_form_shapes.gd")
 const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
+const AuthoredMapRef := preload("res://scripts/authored_map.gd")
+const MapEditorSlotBoxes := preload("res://scripts/map_editor/map_editor_slot_boxes.gd")
+const MapEditorOverlayRef := preload("res://scripts/map_editor/map_editor_overlay.gd")
 
 const WIDTH := 244.0
 const BG := Color(0.05, 0.07, 0.10, 0.93)
@@ -194,14 +197,19 @@ func build(editor: Node, layers: MapEditorLayers) -> void:
 	# Empty ground reserved for a gameplay building — placed at a size class, facing the
 	# nearest road, and rotatable afterwards with Z / Y like anything else.
 	var slots := _fold(column, "Building Slots")
-	slots.add_child(_caption("Small is red, medium is blue. Click one to select it."))
-	for entry in [["small", "Small slot  (red)"], ["medium", "Medium slot  (blue)"]]:
-		var slot_class := str(entry[0])
-		var button := _toggle_button("%s   (K)" % str(entry[1]))
+	slots.add_child(_caption("The smallest box that holds the building. Click one to select."))
+	# Driven off the shipped ladder rather than a hand-written list, so a new class shows up
+	# here the moment it exists instead of being silently unreachable in the editor.
+	for slot_class_value in AuthoredMapRef.SLOT_BOX_CLASSES:
+		var slot_class := str(slot_class_value)
+		var box: Vector2 = MapEditorSlotBoxes.size_for(slot_class)
+		var button := _toggle_button("%s   %s  (%.0fu)"
+			% [_slot_label(slot_class), MapEditorOverlayRef.SLOT_SWATCH.get(slot_class, ""),
+				box.x])
 		button.pressed.connect(func() -> void: _editor.call("pick_slot_class", slot_class))
 		_slot_buttons[slot_class] = button
 		slots.add_child(button)
-	slots.add_child(_caption("Large is a farm or wood polygon, drawn above."))
+	slots.add_child(_caption("K cycles them. Farms and woods are polygons, drawn above."))
 	slots.add_child(_caption("Arrows nudge · [ ] rotate · Bksp removes."))
 
 	# ── Visibility, folded ──────────────────────────────────────────────────────
@@ -442,3 +450,9 @@ func _caption(text: String) -> Label:
 	label.add_theme_color_override("font_color", MUTED)
 	label.add_theme_font_size_override("font_size", 11)
 	return label
+
+
+## "very_small" -> "Very small". The ids are the storage names; this is the only place they
+## become English, so a new class needs no second table to be readable in the panel.
+func _slot_label(slot_class: String) -> String:
+	return slot_class.replace("_", " ").capitalize()

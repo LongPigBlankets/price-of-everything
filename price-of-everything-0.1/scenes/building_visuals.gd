@@ -689,8 +689,7 @@ func _has_authored_slots(tile_id: String) -> bool:
 
 ## Whether a building of `wanted` may occupy a slot of `offered`. Equal or larger only.
 func _slot_fits(wanted: String, offered: String) -> bool:
-	var order := AuthoredMap.SLOT_CLASSES
-	return order.find(offered) >= order.find(wanted)
+	return AuthoredMap.slot_fits(wanted, offered)
 
 
 ## Public: build/cache this tile's block template if a road run + room exist; true when a real grid formed.
@@ -3529,8 +3528,8 @@ static var DIAG := false
 ##
 ## Were 40 / 90. Scaled by 0.75 because the ground an authored slot reserves is derived from
 ## these, and the slots read as too large on a 540x480 tile. Everything else about the split
-## is unchanged: SLOT_MEDIUM_MIN_EXTENT moved by the same factor, so exactly the same
-## buildings land in each class.
+## is unchanged: the class ceilings moved by the same factor, so exactly the same buildings
+## land in each class.
 ##
 ## Knock-on worth knowing before retuning: smaller gameplay art frees ground, and the
 ## decorative packer fills it — so lowering these makes towns DENSER, not just smaller. Below
@@ -3553,9 +3552,14 @@ const ART_SIZE_UNITS_MAX := 30.0
 ## sprite is fitted inside THAT, not inside the cell. Leave it out and every slot is 4 u short
 ## of what it advertises — which is a shrink nobody sees, only measures.
 const AUTHORED_SLOT_BOXES := {
-	"small": Vector2.ONE * (AuthoredMap.SLOT_MEDIUM_MIN_EXTENT
+	"very_small": Vector2.ONE * (AuthoredMap.SLOT_CLASS_CEILINGS["very_small"]
 		+ ART_BLOCK_MARGIN * 2.0 + CHUNK_GAP),
-	"medium": Vector2.ONE * (ART_DRAWN_MAX + ART_BLOCK_MARGIN * 2.0 + CHUNK_GAP),
+	"small": Vector2.ONE * (AuthoredMap.SLOT_CLASS_CEILINGS["small"]
+		+ ART_BLOCK_MARGIN * 2.0 + CHUNK_GAP),
+	"medium": Vector2.ONE * (AuthoredMap.SLOT_CLASS_CEILINGS["medium"]
+		+ ART_BLOCK_MARGIN * 2.0 + CHUNK_GAP),
+	"large": Vector2.ONE * (AuthoredMap.SLOT_CLASS_CEILINGS["large"]
+		+ ART_BLOCK_MARGIN * 2.0 + CHUNK_GAP),
 }
 ## Per-recipe drawn-size overrides. Wind sites sprawl — at the size-10 default
 ## they read as a cramped cluster rather than machines spread over open ground

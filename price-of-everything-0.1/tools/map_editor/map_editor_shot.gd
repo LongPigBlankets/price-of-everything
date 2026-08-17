@@ -15,6 +15,8 @@ extends Node
 ## Delete the target PNG before running: a failed capture otherwise leaves the previous
 ## run's file in place and gets compared silently (the trap recorded in the QA skill).
 
+const AuthoredMapRef := preload("res://scripts/authored_map.gd")
+
 const DEFAULT_TILE := "tile_23_8"
 const DEFAULT_ZOOM := 0.9
 const DEFAULT_SIZE := Vector2i(1280, 800)
@@ -230,15 +232,19 @@ func _demo_fabric(editor: Node) -> void:
 ## reserve ground — so the only way to check they read as small-red and medium-blue, and that
 ## the picked one stands out, is to look at a frame with both classes in it.
 func _demo_slots(editor: Node) -> void:
-	editor.call("pick_slot_class", "small")
-	for at in [Vector2(340, 300), Vector2(460, 300), Vector2(580, 300)]:
+	# One of every class, left to right in ladder order, so a capture shows the whole set of
+	# sizes and colours together rather than one at a time.
+	var at := Vector2(340, 300)
+	var picked := Vector2.ZERO
+	for slot_class_value in AuthoredMapRef.SLOT_BOX_CLASSES:
+		editor.call("pick_slot_class", str(slot_class_value))
 		await _click(at)
-	editor.call("pick_slot_class", "medium")
-	for at in [Vector2(740, 300), Vector2(900, 300)]:
-		await _click(at)
+		if str(slot_class_value) == "medium":
+			picked = at
+		at.x += 160.0
 	# Pick one, so the frame shows the heavier outline a selected slot gets.
 	editor.call("set_tool", "select")
-	await _click(Vector2(460, 300))
+	await _click(picked)
 
 
 ## Lay the three primitives, resize one, and drag a corner of another — so a capture shows

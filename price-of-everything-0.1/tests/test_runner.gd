@@ -73,6 +73,7 @@ func _ready() -> void:
 	_test_authored_slot_validation()
 	_test_authored_slot_class_agrees_with_art()
 	_test_authored_slot_box_holds_its_class()
+	_test_authored_area_buildings_exist()
 	_test_shipped_code_avoids_editor_only_paths()
 	_test_authored_road_geometry()
 	_test_authored_road_touched_tiles()
@@ -15020,6 +15021,44 @@ func _test_authored_slot_boxes_contract() -> void:
 ## `_claim_slot` subtracts before the sprite is fitted — was left out entirely. Neither failed
 ## anything; `_crop_to_sprite` just scaled the art down, so the only symptom was buildings
 ## quietly drawn 10-14% small. Measured here rather than trusted.
+## AREA_BUILDINGS is a list of catalog internal names typed by hand, and it was wrong: three
+## of its four entries named buildings this game does not have, while both real forests were
+## missing and were being sized into boxes. A name that matches nothing fails silently — it
+## just never classifies anything — so the list has to be checked against the catalog.
+func _test_authored_area_buildings_exist() -> void:
+	var known: Dictionary = {}
+	for building_value in Catalog.all_buildings():
+		known[str((building_value as Dictionary).get("internal_name", ""))] = true
+	var missing := PackedStringArray()
+	for name_value in AuthoredSlotSizes.AREA_BUILDINGS:
+		if not known.has(str(name_value)):
+			missing.append(str(name_value))
+	_check(missing.is_empty(), "area buildings: every name is a real building (%s)"
+		% ("all found" if missing.is_empty() else "unknown: " + ", ".join(missing)))
+	# And the reverse: anything the catalog calls a farm or a forest must be in the list, or
+	# it silently gets a box slot instead of the polygon the designer drew.
+	var uncovered := PackedStringArray()
+	for name_value in known.keys():
+		var internal := str(name_value)
+		if (internal == "farm" or internal.ends_with("_forest")) \
+				and not AuthoredSlotSizes.AREA_BUILDINGS.has(internal):
+			uncovered.append(internal)
+	_check(uncovered.is_empty(), "area buildings: no farm or forest is missing from it (%s)"
+		% ("none missing" if uncovered.is_empty() else ", ".join(uncovered)))
+	for name_value in AuthoredSlotSizes.AREA_BUILDINGS:
+		_check(AuthoredSlotSizes.class_for_building(_building_id_for(str(name_value)))
+			== AuthoredMap.SLOT_AREA_CLASS,
+			"area buildings: %s classifies as an area, not a box" % str(name_value))
+
+
+func _building_id_for(internal_name: String) -> String:
+	for building_value in Catalog.all_buildings():
+		var building: Dictionary = building_value
+		if str(building.get("internal_name", "")) == internal_name:
+			return str(building.get("id", ""))
+	return ""
+
+
 func _test_authored_slot_box_holds_its_class() -> void:
 	var visuals := preload("res://scenes/building_visuals.gd")
 	var ink := preload("res://scripts/ink_building_gen.gd")
@@ -15178,14 +15217,41 @@ func _test_authored_map_slot_classes() -> void:
 	# Classification is by the LARGEST extent a building's art ever reaches, because a
 	# building already reserves its L3 frame at L1 — a mass that grows past the threshold
 	# at L2 needs the bigger slot from the day it is built, not from the day it upgrades.
-	_check(AuthoredMap.slot_class_for(30.0, false) == "small",
-		"authored map: art that stays under the threshold is a small slot")
-	_check(AuthoredMap.slot_class_for(AuthoredMap.SLOT_MEDIUM_MIN_EXTENT, false) == "medium",
-		"authored map: reaching the threshold at any level requires a medium slot")
-	_check(AuthoredMap.slot_class_for(90.0, false) == "medium",
-		"authored map: the largest art (a mine) is a medium slot")
-	_check(AuthoredMap.slot_class_for(12.0, true) == "large",
-		"authored map: farms and forests take the large polygon slots regardless of extent")
+	_check(AuthoredMap.slot_class_for(30.0, false) == "very_small",
+		"authored map: the smallest art (pipes) is a very small slot")
+	_check(AuthoredMap.slot_class_for(
+		float(AuthoredMap.SLOT_CLASS_CEILINGS["small"]), false) == "medium",
+		"authored map: reaching a class ceiling at any level moves it up a class")
+	# The ladder: every box class must accept its own and everything smaller, and refuse
+	# anything bigger. `area` is a farm polygon and sits outside the ladder entirely.
+	for i in AuthoredMap.SLOT_BOX_CLASSES.size():
+		var offered := str(AuthoredMap.SLOT_BOX_CLASSES[i])
+		for j in AuthoredMap.SLOT_BOX_CLASSES.size():
+			var wanted := str(AuthoredMap.SLOT_BOX_CLASSES[j])
+			_check(AuthoredMap.slot_fits(wanted, offered) == (j <= i),
+				"authored map: a %s building in a %s slot -> %s"
+				% [wanted, offered, "fits" if j <= i else "refused"])
+	_check(not AuthoredMap.slot_fits("large", AuthoredMap.SLOT_AREA_CLASS),
+		"authored map: an area slot is a farm polygon, not a bigger box")
+	_check(AuthoredMap.slot_fits(AuthoredMap.SLOT_AREA_CLASS, AuthoredMap.SLOT_AREA_CLASS),
+		"authored map: an area building takes an area slot")
+	_check(not AuthoredMap.slot_fits(AuthoredMap.SLOT_AREA_CLASS, "large"),
+		"authored map: a farm cannot take a box slot")
+	_check(AuthoredMap.slot_class_for(90.0, false) == "large",
+		"authored map: art above every ceiling still lands in the biggest box")
+	_check(AuthoredMap.slot_class_for(12.0, true) == AuthoredMap.SLOT_AREA_CLASS,
+		"authored map: farms and forests take an area polygon regardless of extent")
+	# Each ceiling is exclusive: a building exactly at it belongs to the class above, which
+	# is what keeps the box big enough for everything the class actually holds.
+	for i in AuthoredMap.SLOT_BOX_CLASSES.size() - 1:
+		var below := str(AuthoredMap.SLOT_BOX_CLASSES[i])
+		var ceiling := float(AuthoredMap.SLOT_CLASS_CEILINGS[below])
+		_check(AuthoredMap.slot_class_for(ceiling - 0.01, false) == below,
+			"authored map: just under the %s ceiling is still %s" % [below, below])
+		_check(AuthoredMap.slot_class_for(ceiling, false)
+			== str(AuthoredMap.SLOT_BOX_CLASSES[i + 1]),
+			"authored map: exactly at the %s ceiling moves up to %s"
+			% [below, str(AuthoredMap.SLOT_BOX_CLASSES[i + 1])])
 
 
 func _test_authored_map_round_trip() -> void:
