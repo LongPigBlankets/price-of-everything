@@ -80,16 +80,12 @@ const WATER_MASK_MIN_ZOOM := 0.30
 ## One colour per box class, and a word for each so the panel can say which is which without
 ## the reader having to match a swatch from memory. Ordered light-to-heavy with size.
 const SLOT_COLORS := {
-	"very_small": Color(1.00, 0.78, 0.25, 0.95),
-	"small": Color(0.95, 0.32, 0.30, 0.95),
-	"medium": Color(0.35, 0.62, 1.00, 0.95),
-	"large": Color(0.72, 0.45, 1.00, 0.95),
+	"infra": Color(1.00, 0.78, 0.25, 0.95),
+	"standard": Color(0.35, 0.62, 1.00, 0.95),
 }
 const SLOT_SWATCH := {
-	"very_small": "amber",
-	"small": "red",
-	"medium": "blue",
-	"large": "violet",
+	"infra": "amber",
+	"standard": "blue",
 }
 const SLOT_FILL_ALPHA := 0.16
 const SLOT_WIDTH := 2.0
@@ -398,7 +394,7 @@ func _draw_slots(camera: Camera2D) -> void:
 	var picked: Dictionary = editor.call("picked_slot")
 	for box_value in boxes:
 		var box: Dictionary = box_value
-		var colour: Color = SLOT_COLORS.get(str(box["class"]), SLOT_COLORS["small"])
+		var colour: Color = SLOT_COLORS.get(str(box["class"]), SLOT_COLORS["standard"])
 		var centre: Vector2 = box["centre"]
 		var size: Vector2 = box["size"]
 		var angle := float(box["angle"])

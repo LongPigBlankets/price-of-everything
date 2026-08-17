@@ -161,7 +161,7 @@ var _snap_requested := false
 ## The records last moved, so the snap can act on them after the drag ends.
 var _moved_records: Array = []
 var _special_kind := "u"
-var _slot_class := "small"
+var _slot_class := "standard"
 ## Corners of the free polygon being clicked out.
 var _poly_points: Array = []
 ## True while an arrow key is held, so one snapshot covers the whole press.

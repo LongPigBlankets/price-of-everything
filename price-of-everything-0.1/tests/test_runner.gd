@@ -15187,7 +15187,7 @@ func _test_authored_slot_validation() -> void:
 
 	var good := base.duplicate(true)
 	good["settlements"]["s"]["slots"] = {"tile_1_1":
-		{"pins": [{"pos": [10.0, 4.0], "angle": 0.0, "size": "small"}]}}
+		{"pins": [{"pos": [10.0, 4.0], "angle": 0.0, "size": "standard"}]}}
 	_check(AuthoredMap.validate(good).is_empty(), "slot validation: a well-formed slot passes")
 
 	var bad_class := base.duplicate(true)
@@ -15197,13 +15197,13 @@ func _test_authored_slot_validation() -> void:
 		"slot validation: an unknown size class is rejected")
 
 	var no_pos := base.duplicate(true)
-	no_pos["settlements"]["s"]["slots"] = {"tile_1_1": {"pins": [{"size": "small"}]}}
+	no_pos["settlements"]["s"]["slots"] = {"tile_1_1": {"pins": [{"size": "standard"}]}}
 	_check(not AuthoredMap.validate(no_pos).is_empty(),
 		"slot validation: a slot with no position is rejected")
 
 	var short_pos := base.duplicate(true)
 	short_pos["settlements"]["s"]["slots"] = {"tile_1_1":
-		{"pins": [{"pos": [3.0], "angle": 0.0, "size": "small"}]}}
+		{"pins": [{"pos": [3.0], "angle": 0.0, "size": "standard"}]}}
 	_check(not AuthoredMap.validate(short_pos).is_empty(),
 		"slot validation: a one-number position is rejected")
 
@@ -15249,10 +15249,10 @@ func _test_authored_map_slot_classes() -> void:
 	# Classification is by the LARGEST extent a building's art ever reaches, because a
 	# building already reserves its L3 frame at L1 — a mass that grows past the threshold
 	# at L2 needs the bigger slot from the day it is built, not from the day it upgrades.
-	_check(AuthoredMap.slot_class_for(30.0, false) == "very_small",
-		"authored map: the smallest art (pipes) is a very small slot")
+	_check(AuthoredMap.slot_class_for(30.0, false) == "infra",
+		"authored map: the smallest art measures into the infra box")
 	_check(AuthoredMap.slot_class_for(
-		float(AuthoredMap.SLOT_CLASS_CEILINGS["small"]), false) == "medium",
+		float(AuthoredMap.SLOT_CLASS_CEILINGS["infra"]), false) == "standard",
 		"authored map: reaching a class ceiling at any level moves it up a class")
 	# The ladder: every box class must accept its own and everything smaller, and refuse
 	# anything bigger. `area` is a farm polygon and sits outside the ladder entirely.
@@ -15263,13 +15263,13 @@ func _test_authored_map_slot_classes() -> void:
 			_check(AuthoredMap.slot_fits(wanted, offered) == (j <= i),
 				"authored map: a %s building in a %s slot -> %s"
 				% [wanted, offered, "fits" if j <= i else "refused"])
-	_check(not AuthoredMap.slot_fits("large", AuthoredMap.SLOT_AREA_CLASS),
+	_check(not AuthoredMap.slot_fits("standard", AuthoredMap.SLOT_AREA_CLASS),
 		"authored map: an area slot is a farm polygon, not a bigger box")
 	_check(AuthoredMap.slot_fits(AuthoredMap.SLOT_AREA_CLASS, AuthoredMap.SLOT_AREA_CLASS),
 		"authored map: an area building takes an area slot")
-	_check(not AuthoredMap.slot_fits(AuthoredMap.SLOT_AREA_CLASS, "large"),
+	_check(not AuthoredMap.slot_fits(AuthoredMap.SLOT_AREA_CLASS, "standard"),
 		"authored map: a farm cannot take a box slot")
-	_check(AuthoredMap.slot_class_for(90.0, false) == "large",
+	_check(AuthoredMap.slot_class_for(90.0, false) == "standard",
 		"authored map: art above every ceiling still lands in the biggest box")
 	_check(AuthoredMap.slot_class_for(12.0, true) == AuthoredMap.SLOT_AREA_CLASS,
 		"authored map: farms and forests take an area polygon regardless of extent")

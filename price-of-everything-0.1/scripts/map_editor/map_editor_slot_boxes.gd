@@ -18,6 +18,7 @@ extends RefCounted
 ## restated here: `building_visuals.gd` is what actually seats a building in a slot, and an
 ## editor drawing a box of its own size would be drawing a promise the game does not keep.
 const BuildingVisualsRef := preload("res://scenes/building_visuals.gd")
+const AuthoredMapRef := preload("res://scripts/authored_map.gd")
 
 ## Every key a box carries. The overlay and the click test both read all of these, so this is
 ## the contract the unit suite pins.
@@ -30,7 +31,7 @@ static func sizes() -> Dictionary:
 
 static func size_for(slot_class: String) -> Vector2:
 	var table := sizes()
-	return table.get(slot_class, table["small"])
+	return table.get(AuthoredMapRef.canonical_slot_class(slot_class), table["standard"])
 
 
 ## `centres` maps tile id to that tile's centre in world units. A slot on a tile absent from
@@ -65,7 +66,8 @@ static func build(settlements: Dictionary, centres: Dictionary) -> Array:
 				if typeof(pos_value) != TYPE_ARRAY or (pos_value as Array).size() < 2:
 					continue
 				var pos: Array = pos_value
-				var slot_class := str(pin.get("size", "small"))
+				var slot_class := AuthoredMapRef.canonical_slot_class(
+					str(pin.get("size", "standard")))
 				out.append({
 					"centre": centre + Vector2(float(pos[0]), float(pos[1])),
 					"size": size_for(slot_class),

@@ -58,36 +58,51 @@ const ROAD_WIDTHS := {
 	"minor": 6.3,
 }
 
-## Slot size classes, as a LADDER of boxes plus one that is not a box at all.
+## Slot size classes. ONE box for every non-infrastructure building (owner, 2026-08-17).
 ##
-## `area` hosts farms and forests: an authored polygon becomes the building's footprint, so
-## it has no box and does not belong on the ladder — a building may not take an `area` slot
-## just because it is "bigger". It was called `large` until the four-way split, when `large`
-## became the name of the biggest actual box; no document ever contained a `large` slot, so
-## the rename cost nothing.
+## The four-way split it replaces was tighter per building but wrong in practice: a slot is
+## authored before anyone knows what will stand in it, and the player picks by economics, not
+## by the mix a designer guessed. A tile over good ore fills with mines while its small slots
+## sit empty. One box dissolves that — every slot takes any non-infra building — at the cost
+## of reserving for the largest member everywhere.
+##
+## `infra` is separate because pipes, cables, rails and the airport draw at a third the size
+## and giving them a standard box would waste most of a tile. It is decided by MEASURED ART,
+## not by `category == "infrastructure"` — that category also holds the PORT, a full 60 u
+## building that would have been seated in a 44 u box. The art separates them cleanly on its
+## own: those five draw at 30-31.3 and the smallest of everything else is 41.8.
+##
+## `area` is not a box at all: farms take an authored polygon as their footprint, so a
+## building may not have an `area` slot for being "bigger". Forests are `area` by
+## classification but never reach a slot — ForestVisuals draws them.
 ##
 ## Classification is by MAXIMUM-level extent, which matches the engine: a building already
 ## reserves its L3 frame at L1 (pinned by `_test_ink_art_reserves_upgrade_space`).
-const SLOT_BOX_CLASSES := ["very_small", "small", "medium", "large"]
+const SLOT_BOX_CLASSES := ["infra", "standard"]
 const SLOT_AREA_CLASS := "area"
-const SLOT_CLASSES := ["very_small", "small", "medium", "large", "area"]
+const SLOT_CLASSES := ["infra", "standard", "area"]
 
-## The DRAWN-ART extent each box class tops out at, world units. A class holds everything up
-## to its ceiling; `building_visuals.AUTHORED_SLOT_BOXES` turns each ceiling into the ground
-## it must reserve.
+## Legacy class names, mapped to what they mean now. Documents authored before the unified
+## box carry these, and a document that fails validation never loads — so they are migrated
+## on read rather than rejected. Every old BOX class becomes `standard`: the unified box is
+## at least as large as any of them, so the reservation a designer made still holds.
+const LEGACY_SLOT_CLASSES := {
+	"very_small": "infra",
+	"small": "standard",
+	"medium": "standard",
+	"large": "standard",
+}
+
+## The DRAWN-ART extent each box class tops out at, world units, turned into reserved ground
+## by `building_visuals.AUTHORED_SLOT_BOXES`.
 ##
-## These sit just above where the catalog's art actually clusters, at the current 30..68 art
-## band: 30.0-31.3 (pipes, reinforced pipes, cables), 41.8 (the eleven mid plants and the
-## solar farm), 48.3-54.9 (port, power plant, chem plant, furnace), 68.0 (mine and both wind
-## farms). Tight by design — a class ceiling far above its largest member is ground reserved
-## for nobody, which is the defect the split exists to fix. RETUNE WITH THE ART, never alone:
-## `_test_authored_slot_box_holds_its_class` fails the moment a building outgrows its class,
-## and `tools/map_editor/slot_footprint_audit.tscn` shows the clusters.
+## `standard` is ART_DRAWN_MAX because the largest drawn thing must fit: today that is the
+## wind farms, pinned there by ART_SIZE_OVERRIDE. Drop that override and the largest becomes
+## 61.4 (mine, solar farm) and the box could come down from 84 to 77 — worth knowing, since
+## one override is currently costing every slot on the map 7 u.
 const SLOT_CLASS_CEILINGS := {
-	"very_small": 32.0,
-	"small": 42.0,
-	"medium": 55.0,
-	"large": 68.0,
+	"infra": 32.0,
+	"standard": 68.0,
 }
 
 ## Farm and forest outlines are authored as simple polygons of at most this many vertices.
@@ -225,6 +240,13 @@ static func road_width(stroke_class: String) -> float:
 
 ## The slot class a building belongs in, from the largest extent its art ever reaches.
 ## `is_area` marks farms and forests, which take an authored polygon as their footprint.
+## A stored class name as this build understands it, migrating legacy names.
+static func canonical_slot_class(value: String) -> String:
+	if SLOT_CLASSES.has(value):
+		return value
+	return str(LEGACY_SLOT_CLASSES.get(value, SLOT_BOX_CLASSES[SLOT_BOX_CLASSES.size() - 1]))
+
+
 static func slot_class_for(max_extent: float, is_area: bool) -> String:
 	if is_area:
 		return SLOT_AREA_CLASS
@@ -321,7 +343,7 @@ static func _validate_slots(key: String, settlement: Dictionary) -> PackedString
 				continue
 			var pin: Dictionary = pins[index]
 			var slot_class := str(pin.get("size", ""))
-			if not SLOT_CLASSES.has(slot_class):
+			if not SLOT_CLASSES.has(slot_class) and not LEGACY_SLOT_CLASSES.has(slot_class):
 				errors.append("slot %d on '%s' has unknown size '%s'"
 					% [index, tile_id, slot_class])
 			var pos_value: Variant = pin.get("pos", null)

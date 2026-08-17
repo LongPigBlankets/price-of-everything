@@ -451,20 +451,21 @@ func _ready() -> void:
 
 	# ── Gameplay slots ──────────────────────────────────────────────────────────
 	# A slot is reserved ground, not a drawn thing, so everything about handling it has to be
-	# proven rather than seen: that a click finds it at all, that it is the SMALL/MEDIUM class
-	# the panel asked for, and that arrows and brackets move the record and not just a
-	# highlight. The overlay draws small red and medium blue; colour is not testable here, but
-	# the box it draws from is exactly the one these checks pick against.
-	_editor.call("pick_slot_class", "small")
+	# proven rather than seen: that a click finds it at all, that it carries the class the
+	# panel asked for, and that arrows and brackets move the record and not just a highlight.
+	# Class names come from the shipped ladder — they have been renamed twice, and a literal
+	# here fails as a broken editor rather than as an out-of-date check.
+	var first_slot_class := str(AuthoredMapRef.SLOT_BOX_CLASSES[0])
+	_editor.call("pick_slot_class", first_slot_class)
 	await _click(Vector2(660, 420))
 	var slot := _first_slot(doc)
-	_check("a small slot lands on the tile", not slot.is_empty()
-		and str(slot.get("size", "")) == "small")
+	_check("a %s slot lands on the tile" % first_slot_class, not slot.is_empty()
+		and str(slot.get("size", "")) == first_slot_class)
 	if not slot.is_empty():
 		var boxes: Array = _editor.call("document_slot_boxes")
 		var slot_box: Dictionary = {}
 		for candidate in boxes:
-			if str((candidate as Dictionary).get("class", "")) == "small":
+			if str((candidate as Dictionary).get("class", "")) == first_slot_class:
 				slot_box = candidate
 				break
 		_check("the overlay gets a box for it (%d box(es))" % boxes.size(), not slot_box.is_empty())
@@ -473,10 +474,12 @@ func _ready() -> void:
 			# constants now, and a hardcoded 62 here is the same drift this whole area has
 			# already produced twice.
 			var sizes: Dictionary = MapEditorSlotBoxes.sizes()
-			_check("the box is the small size, not the medium one (%.0f)"
-				% (slot_box["size"] as Vector2).x,
-				(slot_box["size"] as Vector2).is_equal_approx(sizes["small"])
-				and sizes["small"] != sizes["medium"])
+			var biggest := str(AuthoredMapRef.SLOT_BOX_CLASSES[
+				AuthoredMapRef.SLOT_BOX_CLASSES.size() - 1])
+			_check("the box is the %s size, not the %s one (%.0f)"
+				% [first_slot_class, biggest, (slot_box["size"] as Vector2).x],
+				(slot_box["size"] as Vector2).is_equal_approx(sizes[first_slot_class])
+				and sizes[first_slot_class] != sizes[biggest])
 			# Picking it: the click has to land on the slot even though there is drawn fabric
 			# under it — a slot sits ON the ground it reserves, so it is tested first.
 			_editor.call("set_tool", "select")
@@ -523,6 +526,12 @@ func _ready() -> void:
 	# being able to lay it.
 	var ladder: Array = AuthoredMapRef.SLOT_BOX_CLASSES
 	_check("there is more than one slot class (%d)" % ladder.size(), ladder.size() >= 2)
+	# Clear anything the block above left, so `_first_slot` describes the slot just placed.
+	while not _first_slot(doc).is_empty():
+		_editor.call("set_tool", "select")
+		await _click(_screen_of(_slot_centre(doc), camera))
+		_send_key(KEY_BACKSPACE)
+		await get_tree().process_frame
 	var last_box := 0.0
 	var spot := Vector2(620, 470)
 	for slot_class_value in ladder:

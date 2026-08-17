@@ -46,6 +46,10 @@ static func class_for_building(building_id: String) -> String:
 		return str(OVERRIDES[internal])
 	if AREA_BUILDINGS.has(internal):
 		return AuthoredMap.SLOT_AREA_CLASS
+	# Measured, not categorised. The obvious rule — category == "infrastructure" — also
+	# catches the PORT, which is a full drawn building needing 60 u, and would have seated it
+	# in a 44 u box. The art separates them on its own: pipes, rails, cables, reinforced
+	# pipes and the airport all draw at 30-31.3, and the smallest of everything else is 41.8.
 	return AuthoredMap.slot_class_for(max_extent_for(internal, building), false)
 
 

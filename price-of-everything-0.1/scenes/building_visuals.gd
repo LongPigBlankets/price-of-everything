@@ -670,9 +670,9 @@ func _authored_block_template(tile_id: String) -> Dictionary:
 		lots.append(TILE_CENTER + Vector2(float(pos[0]), float(pos[1])))
 		claimed.append(false)
 		lot_angles.append(float(pin.get("angle", 0.0)))
-		var slot_class := str(pin.get("size", "small"))
+		var slot_class := AuthoredMap.canonical_slot_class(str(pin.get("size", "standard")))
 		lot_classes.append(slot_class)
-		lot_cells.append(AUTHORED_SLOT_BOXES.get(slot_class, AUTHORED_SLOT_BOXES["small"]))
+		lot_cells.append(AUTHORED_SLOT_BOXES.get(slot_class, AUTHORED_SLOT_BOXES["standard"]))
 	if lots.is_empty():
 		return {}
 	return {"angle": float(lot_angles[0]), "lots": lots, "claimed": claimed,
@@ -688,6 +688,14 @@ func _has_authored_slots(tile_id: String) -> bool:
 
 
 ## Whether a building of `wanted` may occupy a slot of `offered`. Equal or larger only.
+## The slot class a building asks for. Infrastructure by category — the same rule
+## `authored_slot_sizes.gd` applies, restated because that file preloads this one and the
+## pair would cycle. `_test_authored_slot_class_agrees_with_art` holds the two together.
+func _authored_class_for(iname: String, size_units: int) -> String:
+	return AuthoredMap.slot_class_for(
+		_art_size_for(size_units, str(INK_ART_KEY.get(iname, ""))), false)
+
+
 func _slot_fits(wanted: String, offered: String) -> bool:
 	return AuthoredMap.slot_fits(wanted, offered)
 
@@ -1183,9 +1191,7 @@ func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: St
 	# SMALL slot while their art needs a medium one. The building then either overhangs its
 	# neighbours or is crushed to fit by _crop_to_sprite. Same rule as `authored_slot_sizes.gd`,
 	# which cannot be preloaded from here without forming a cycle.
-	var wanted_class := AuthoredMap.slot_class_for(
-		_art_size_for(size_units, str(INK_ART_KEY.get(iname, ""))), false) \
-		if not lot_classes.is_empty() else ""
+	var wanted_class := _authored_class_for(iname, size_units) if not lot_classes.is_empty() else ""
 	var fill: float = BLOCK_LOT * clampf(BLOCK_FILL_MIN + 0.04 * float(size_units), BLOCK_FILL_MIN, BLOCK_FILL_MAX)
 	for i in lots.size():
 		if bool(claimed[i]):
@@ -3552,13 +3558,9 @@ const ART_SIZE_UNITS_MAX := 30.0
 ## sprite is fitted inside THAT, not inside the cell. Leave it out and every slot is 4 u short
 ## of what it advertises — which is a shrink nobody sees, only measures.
 const AUTHORED_SLOT_BOXES := {
-	"very_small": Vector2.ONE * (AuthoredMap.SLOT_CLASS_CEILINGS["very_small"]
+	"infra": Vector2.ONE * (AuthoredMap.SLOT_CLASS_CEILINGS["infra"]
 		+ ART_BLOCK_MARGIN * 2.0 + CHUNK_GAP),
-	"small": Vector2.ONE * (AuthoredMap.SLOT_CLASS_CEILINGS["small"]
-		+ ART_BLOCK_MARGIN * 2.0 + CHUNK_GAP),
-	"medium": Vector2.ONE * (AuthoredMap.SLOT_CLASS_CEILINGS["medium"]
-		+ ART_BLOCK_MARGIN * 2.0 + CHUNK_GAP),
-	"large": Vector2.ONE * (AuthoredMap.SLOT_CLASS_CEILINGS["large"]
+	"standard": Vector2.ONE * (AuthoredMap.SLOT_CLASS_CEILINGS["standard"]
 		+ ART_BLOCK_MARGIN * 2.0 + CHUNK_GAP),
 }
 ## Per-recipe drawn-size overrides. Wind sites sprawl — at the size-10 default
