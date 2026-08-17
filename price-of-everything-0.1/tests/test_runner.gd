@@ -2373,7 +2373,13 @@ func _test_farm_ring_continuity() -> void:
 	var coord: Vector2i = terrain.id_to_coord(tile_id)
 	if not terrain.tiles.has(coord):
 		bv.queue_free(); terrain.queue_free(); return
-	for i in 8:
+	# SEVEN, not eight. tile_9_10 is a hill, so its land cap is 160 and eight farms at
+	# tile_size_used 20 come to exactly 160 — the land model says eight fit. The ART only
+	# clusters seven: at the eighth the cluster stops being contiguous and its boundary is
+	# legitimately an open chain, not a ring that failed to close (measured: 6 and 7 close at
+	# 0.0u, 8 leaves 284.7u). What this pins is closure for a contiguous cluster, so the
+	# fixture has to build one. Retune with `tile_size_used` for the farm.
+	for i in 7:
 		var iid: String = MatchState.add_building("b_014", "", tile_id, "npc", "frc_%d" % i)
 		bv.on_building_placed(tile_id, "b_014", "", iid, coord)
 	bv._rebuild_subcomponents(tile_id)
@@ -10752,7 +10758,8 @@ func _test_catalog_loaded() -> void:
 	var has_all_biomass: bool = farm_recipe_ids.has("r_209") \
 		and farm_recipe_ids.has("r_211") and farm_recipe_ids.has("r_212")
 	_check(has_all_biomass, "farm has its base biomass recipes (buildable, not recipe-less): %s" % str(farm_recipe_ids))
-	_check(int(Catalog.get_building_by_internal_name("farm").get("tile_size_used", 0)) == 15, "farm building is tile_size_used 15")
+	_check(int(Catalog.get_building_by_internal_name("farm").get("tile_size_used", 0)) == 20,
+		"farm building is tile_size_used 20")
 
 	# The three acid recipes (r_114/115/116) were moved to the Chemical Plant
 	# (owner request 2026-07-13); they used to sit on the Industrial Factory via the

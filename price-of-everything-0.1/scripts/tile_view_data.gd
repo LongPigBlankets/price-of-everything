@@ -367,21 +367,19 @@ static func _category_color(bd: Dictionary) -> Color:
 		"infrastructure": return CAT_INFRA
 		_: return CAT_DEFAULT
 
-# Max tile space capacity, including the tile-type modifier (rural +50, hill +25,
-# mountain −25, urban 0). Mirrors the classic tile-size chart.
+# Max tile space capacity for a tile, by terrain. The table itself lives in MatchState,
+# because the BUILD GATE reads it — this used to be a private copy here expressed as bonuses
+# on a base of 200, which the clamp to MAX_TILE_LAND then erased for every terrain but
+# mountain, and which nothing outside the panel ever consulted.
 const BASE_TILE_CAPACITY := 200
 static func _tile_max_capacity(tile_data: Dictionary) -> int:
-	# Clamped to MAX_TILE_LAND: every purchase/placement rule caps there, so a
-	# bigger displayed capacity would promise land the game never sells (the old
-	# rural 250 made built|buyable|max drift once the player bought land).
-	var impact := 0
-	match str(tile_data.get("type", "")).strip_edges().to_lower():
-		"rural", "grass": impact = 50
-		"hill": impact = 25
-		"mountain": impact = -25
-		"urban": impact = 0
-		_: impact = 0
-	return clampi(BASE_TILE_CAPACITY + impact, 1, MatchState.MAX_TILE_LAND)
+	var tile_id := str(tile_data.get("id", ""))
+	if tile_id != "":
+		return MatchState.max_tile_land(tile_id)
+	# No id (a preview row): fall back to the terrain string the row carries.
+	var terrain := str(tile_data.get("type", "")).strip_edges().to_lower()
+	return clampi(int(MatchState.TILE_LAND_BY_TERRAIN.get(terrain, MatchState.MAX_TILE_LAND)),
+		1, MatchState.MAX_TILE_LAND)
 
 ## Public wrapper so panels can hand the terrain-adjusted cap to MatchState land calls.
 static func tile_max_capacity(tile_data: Dictionary) -> int:

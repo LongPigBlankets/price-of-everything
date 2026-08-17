@@ -1319,7 +1319,13 @@ static func _land_lesson_shortfall() -> int:
 
 # Must match data/starts/tutorial.json "land" for the factory tile (JSON can't
 # compute; keep the two in sync — the unit test cross-checks them).
-const TUTORIAL_SEED_LAND := 20
+#
+# 20 until the 2026-08-17 building resize. The buy_land lesson only teaches anything if the
+# seed CANNOT cover the cable run plus the furnace, and those became 2 + 18 = exactly 20 —
+# the wall vanished by one unit, silently, with the tutorial still "passing" its own steps.
+# 15 is the factory's own footprint: you start with room for exactly what you were given.
+# RETUNE WITH tile_size_used; the unit test asserts both halves of the wall.
+const TUTORIAL_SEED_LAND := 15
 
 
 ## DEEPER INTEGRATION — deferred. Mining your own coal + pumping your own water to feed

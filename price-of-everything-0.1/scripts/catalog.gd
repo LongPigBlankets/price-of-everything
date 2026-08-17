@@ -59,6 +59,7 @@ var _tile_infra: Dictionary = {}   # tile_id -> ["roads","rail",...] (normalised
 # tree. MatchState.set_tile_infra_level and SaveLoad mirror every write here.
 var _tile_infra_levels: Dictionary = {}
 var _tile_land: Dictionary = {}    # tile_id -> bool (false for sea/deep_sea)
+var _tile_types: Dictionary = {}   # tile_id -> "urban" | "rural" | "hill" | "mountain" | ...
 
 # Routing caches. route() pathfinding and nearest_port_tile() are recomputed per
 # building, per input good, EVERY turn by the production loop — and the results
@@ -226,6 +227,10 @@ func _load_tile_names() -> void:
 		if type_i >= 0 and type_i < line.size():
 			ttype = line[type_i].strip_edges().to_lower()
 		_tile_land[tid] = ttype != "sea" and ttype != "deep_sea"
+		# The terrain itself, not only land-or-sea: the buildable cap is per terrain, and
+		# the sim needs to resolve it headlessly from the same CSV the map is built from.
+		if ttype != "":
+			_tile_types[tid] = ttype
 		if infra_i >= 0 and infra_i < line.size():
 			var infra_list: Array = []
 			for part in str(line[infra_i]).split("|", false):
@@ -250,6 +255,12 @@ func _normalise_infra_id(value: String) -> String:
 
 func tile_name(tile_id: String) -> String:
 	return _tile_names.get(tile_id, "")
+
+
+## Terrain type from tile_properties.csv ("urban", "rural", "hill", "mountain", "sea",
+## "deep_sea"), lowercased. Empty for a tile this map does not have.
+func tile_type(tile_id: String) -> String:
+	return str(_tile_types.get(tile_id, ""))
 
 func tile_has_infrastructure(tile_id: String, infra_type: String) -> bool:
 	return _tile_infra.get(tile_id, []).has(_normalise_infra_id(infra_type.strip_edges().to_lower()))
