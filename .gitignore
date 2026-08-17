@@ -235,3 +235,10 @@ Carbon and Capital*/
 *.zip
 # Godot import sidecars generated from tools/tutorial_strings.csv
 price-of-everything-0.1/tools/*.translation
+
+# Authored map documents (data/map_authored/) are SOURCE and are tracked — they are hand-drawn
+# work with no other copy. Two exceptions:
+#   procedural.json — the whole-map import, 2 MB, one command to rebuild (see the README there).
+#   _*.json         — scratch documents the editor checks write and normally clean up.
+price-of-everything-0.1/data/map_authored/procedural.json
+price-of-everything-0.1/data/map_authored/_*.json
