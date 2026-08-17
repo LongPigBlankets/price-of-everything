@@ -377,15 +377,33 @@ func _ready() -> void:
 	_check("a stamped mass offers its box corners (%d)" % corner_before.size(),
 		corner_before.size() == 4)
 	var before_angle := float(turn_target.get("rot", 0.0))
-	_send_key(KEY_Z)
+	_send_key(KEY_BRACKETRIGHT)
 	await get_tree().process_frame
 	var after_z := float(_last_of(doc, "decor").get("rot", 0.0))
-	_check("Z turns it 5 degrees clockwise (%.1f deg)" % rad_to_deg(after_z - before_angle),
+	_check("] turns it 5 degrees clockwise (%.1f deg)" % rad_to_deg(after_z - before_angle),
 		absf(rad_to_deg(after_z - before_angle) - 5.0) < 0.01)
-	_send_key(KEY_Y)
+	_send_key(KEY_BRACKETLEFT)
 	await get_tree().process_frame
-	_check("Y turns it back", absf(float(_last_of(doc, "decor").get("rot", 0.0))
+	_check("[ turns it back", absf(float(_last_of(doc, "decor").get("rot", 0.0))
 		- before_angle) < 0.001)
+
+	# Z is undo again. It was shadowed by a duplicate match arm, so Ctrl+Z did nothing at all
+	# — the kind of thing that only shows up when someone reaches for it.
+	# Undo must actually change something. The rotation just applied is the thing to undo,
+	# so this asserts the angle returns — the earlier version compared road counts with an
+	# `or n >= 0` fallback, which is true whatever happens and tested nothing.
+	_send_key(KEY_BRACKETRIGHT)
+	await get_tree().process_frame
+	var turned := float(_last_of(doc, "decor").get("rot", 0.0))
+	_send_key_mod(KEY_Z, true, false)
+	await get_tree().process_frame
+	var undone := float(_last_of(doc, "decor").get("rot", 0.0))
+	_check("Ctrl+Z undoes the rotation (%.1f -> %.1f deg)"
+		% [rad_to_deg(turned), rad_to_deg(undone)], absf(undone - turned) > 0.01)
+	_send_key_mod(KEY_Z, true, true)
+	await get_tree().process_frame
+	_check("Ctrl+Shift+Z redoes it",
+		absf(float(_last_of(doc, "decor").get("rot", 0.0)) - turned) < 0.01)
 
 	# Dragging a corner of a rectangular mass makes it an irregular quad, and the form is
 	# re-fitted into it rather than staying a rectangle.
@@ -680,6 +698,16 @@ func _hold_key(code: Key, frames: int) -> void:
 	up.pressed = false
 	Input.parse_input_event(up)
 	await get_tree().process_frame
+
+
+func _send_key_mod(code: Key, ctrl: bool, shift: bool) -> void:
+	var event := InputEventKey.new()
+	event.keycode = code
+	event.physical_keycode = code
+	event.pressed = true
+	event.ctrl_pressed = ctrl
+	event.shift_pressed = shift
+	Input.parse_input_event(event)
 
 
 func _send_key(code: Key) -> void:

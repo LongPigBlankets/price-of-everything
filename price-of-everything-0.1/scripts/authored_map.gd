@@ -398,11 +398,20 @@ static func write_active(name: String, absolute_dir: String) -> String:
 	return ""
 
 
-## Drop the cache so the next read re-parses. Used by the suite and by the editor after a
-## save, so the running game picks up what was just written.
-static func reset_for_tests() -> void:
+## Drop the cache so the next read re-parses, KEEPING any override in place. Used by the
+## editor after a save and by tools that have deliberately pointed themselves at one
+## document: clearing the override here sent a harness back to whatever the active pointer
+## named, which is how scratch mode leaked and a check ran against a real 220-road map.
+static func reset_cache() -> void:
 	_cache = {}
 	_loaded = false
+	_tile_index = {}
+	_tile_index_built = false
+
+
+## Full reset, including the override. For the suite, between cases.
+static func reset_for_tests() -> void:
+	reset_cache()
 	_override_name = ""
 	_tile_index = {}
 	_tile_index_built = false

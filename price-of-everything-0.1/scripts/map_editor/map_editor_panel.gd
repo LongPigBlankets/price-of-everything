@@ -201,7 +201,7 @@ func build(editor: Node, layers: MapEditorLayers) -> void:
 		_slot_buttons[slot_class] = button
 		slots.add_child(button)
 	slots.add_child(_caption("Large is a farm or wood polygon, drawn above."))
-	slots.add_child(_caption("Placed facing the nearest road · Z / Y rotate."))
+	slots.add_child(_caption("Placed facing the nearest road · [ and ] rotate."))
 
 	# ── Visibility, folded ──────────────────────────────────────────────────────
 	var visibility := _fold(column, "Visibility")
@@ -336,13 +336,13 @@ func refresh() -> void:
 		"upgrade":
 			_hint.text = "Click a road to widen it · Shift-click to narrow it"
 		"select":
-			_hint.text = "Drag to move (hold Ctrl/Cmd to snap to a road) · click to select · +/- resize · Bksp deletes"
+			_hint.text = "Drag to move (Ctrl/Cmd snaps) · click to select · +/- size · [ ] rotate · Bksp deletes"
 		"stamp":
-			_hint.text = "Drag to size a mass · the drag direction is its facing · [ ] picks the form"
+			_hint.text = "Drag to size a mass · the drag direction is its facing · , and . pick the form"
 		"area":
 			_hint.text = "Click corners (max 8) · Enter closes · Bksp undoes a corner"
 		"slot":
-			_hint.text = "Click to reserve ground for a gameplay building · Z / Y rotate"
+			_hint.text = "Click to reserve ground for a gameplay building · [ and ] rotate"
 		"special":
 			_hint.text = ("Click up to 6 corners · Enter closes · Bksp steps back"
 				if str(_editor.call("current_special_kind")) == "poly"

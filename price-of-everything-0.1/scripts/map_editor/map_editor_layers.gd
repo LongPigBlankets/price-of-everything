@@ -29,6 +29,9 @@ const LAYERS := [
 	{"key": "fabric", "node": "UrbanFabricVisuals", "label": "Settlement fabric", "on": false},
 	{"key": "ports", "node": "", "label": "Ports", "on": false},
 	{"key": "authored", "node": "AuthoredRoadVisuals", "label": "Authored roads (saved)", "on": false},
+	# The editor previews the WORKING document itself; this layer draws the SAVED one, so
+	# leaving it on shows both at once — which reads as an opened map heaped on the old one.
+	{"key": "authored_fabric", "node": "AuthoredFabricVisuals", "label": "Authored fabric (saved)", "on": false},
 ]
 
 var _world: Node = null

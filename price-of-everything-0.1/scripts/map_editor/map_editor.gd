@@ -76,7 +76,7 @@ const MOVE_THRESHOLD := 4.0
 ## enough that a press is visibly worth making.
 const RESIZE_STEP := 1.1
 
-## Rotation step for the Z / Y keys. Five degrees is fine enough to line a building up with
+## Rotation step for the [ and ] keys. Five degrees is fine enough to line a building up with
 ## something and coarse enough to get there in a few presses.
 const ROTATE_STEP := deg_to_rad(5.0)
 
@@ -519,18 +519,19 @@ func _handle_key(event: InputEventKey) -> void:
 			set_tool(TOOL_SPECIAL)
 		KEY_K:
 			set_tool(TOOL_SLOT)
-		KEY_Z:
-			_rotate_selection(ROTATE_STEP)
-		KEY_Y:
-			_rotate_selection(-ROTATE_STEP)
+
 		KEY_EQUAL, KEY_KP_ADD:
 			_resize_selection(RESIZE_STEP)
 		KEY_MINUS, KEY_KP_SUBTRACT:
 			_resize_selection(1.0 / RESIZE_STEP)
 		KEY_BRACKETLEFT:
+			_rotate_selection(-ROTATE_STEP)
+		KEY_BRACKETRIGHT:
+			_rotate_selection(ROTATE_STEP)
+		KEY_COMMA:
 			_set_status("Form: %s" % _shape_tool.cycle_form(-1))
 			_overlay.queue_redraw()
-		KEY_BRACKETRIGHT:
+		KEY_PERIOD:
 			_set_status("Form: %s" % _shape_tool.cycle_form(1))
 			_overlay.queue_redraw()
 		KEY_DELETE:
@@ -1577,8 +1578,9 @@ func _load_named(name: String) -> void:
 	if pointed != "":
 		_set_status("LOAD FAILED — %s" % pointed)
 		return
-	AuthoredMap.reset_for_tests()
+	AuthoredMap.reset_cache()
 	_document.reload()
+	_refresh_world_layers()
 	_selection = []
 	_road_tool.abandon()
 	_trace_tool.cancel_trace()
@@ -1588,6 +1590,18 @@ func _load_named(name: String) -> void:
 	_set_status("Opened '%s' — %d roads across %d settlement(s)."
 		% [name, counts.roads, counts.settlements])
 	_refresh_status()
+
+
+## Repaint the game's own authored layers after the active document changes. They render
+## from AuthoredMap, not from the editor's working copy, so without this an opened map is
+## drawn on top of the one it replaced.
+func _refresh_world_layers() -> void:
+	if _world == null:
+		return
+	for node_name in ["AuthoredRoadVisuals", "AuthoredFabricVisuals"]:
+		var node := _world.get_node_or_null(NodePath(node_name))
+		if node != null and node is CanvasItem:
+			(node as CanvasItem).queue_redraw()
 
 
 func _ask_name() -> void:
@@ -1613,14 +1627,14 @@ func _save_as(name: String) -> void:
 	var pointed := AuthoredMap.write_active(name, directory)
 	_document.set_name(name)
 	# Drop the game-side cache so anything reading it now sees what was just written.
-	AuthoredMap.reset_for_tests()
+	AuthoredMap.reset_cache()
 	_set_status("Saved '%s'%s" % [name,
 		"" if pointed == "" else "  (but the active pointer failed: %s)" % pointed])
 	_refresh_status()
 
 
 func _reload() -> void:
-	AuthoredMap.reset_for_tests()
+	AuthoredMap.reset_cache()
 	_document.reload()
 	_refresh_status()
 

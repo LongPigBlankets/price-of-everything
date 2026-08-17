@@ -36,7 +36,8 @@ func _init() -> void:
 ## which is the normal starting point: authoring begins on a blank sheet over the real map.
 func reload() -> void:
 	_name = AuthoredMap.active_name()
-	AuthoredMap.reset_for_tests()
+	# Cache only — an override set by a tool (scratch mode) must survive a reload.
+	AuthoredMap.reset_cache()
 	var loaded := AuthoredMap.data()
 	_doc = _copy(loaded) if not loaded.is_empty() else AuthoredMap.empty_document()
 	_undo_stack.clear()
