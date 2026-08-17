@@ -260,6 +260,43 @@ static func validate(doc: Dictionary) -> PackedStringArray:
 					errors.append("settlement '%s' has a malformed %s entry" % [key, field])
 					continue
 				errors.append_array(_validate_area(key, field, area_value))
+		errors.append_array(_validate_slots(key, settlement))
+	return errors
+
+
+## Slots reserve the ground a gameplay building will stand on, so a malformed one is not a
+## drawing defect — it is a building with nowhere legal to go, discovered at build time. The
+## readers all coerce defensively, which means a bad slot block loads quietly and fails much
+## later; validating here turns that into a refused save.
+static func _validate_slots(key: String, settlement: Dictionary) -> PackedStringArray:
+	var errors := PackedStringArray()
+	var slots_value: Variant = settlement.get("slots", {})
+	if typeof(slots_value) != TYPE_DICTIONARY:
+		errors.append("settlement '%s' has a malformed 'slots' block" % key)
+		return errors
+	var slots: Dictionary = slots_value
+	for tile_value in slots.keys():
+		var tile_id := str(tile_value)
+		if typeof(slots[tile_value]) != TYPE_DICTIONARY:
+			errors.append("slots for '%s' are not a dictionary" % tile_id)
+			continue
+		var pins_value: Variant = (slots[tile_value] as Dictionary).get("pins", [])
+		if typeof(pins_value) != TYPE_ARRAY:
+			errors.append("slot pins for '%s' are not a list" % tile_id)
+			continue
+		var pins: Array = pins_value
+		for index in pins.size():
+			if typeof(pins[index]) != TYPE_DICTIONARY:
+				errors.append("slot %d on '%s' is not a dictionary" % [index, tile_id])
+				continue
+			var pin: Dictionary = pins[index]
+			var slot_class := str(pin.get("size", ""))
+			if not SLOT_CLASSES.has(slot_class):
+				errors.append("slot %d on '%s' has unknown size '%s'"
+					% [index, tile_id, slot_class])
+			var pos_value: Variant = pin.get("pos", null)
+			if typeof(pos_value) != TYPE_ARRAY or (pos_value as Array).size() < 2:
+				errors.append("slot %d on '%s' needs a two-number 'pos'" % [index, tile_id])
 	return errors
 
 

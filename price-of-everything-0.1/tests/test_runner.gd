@@ -30,6 +30,10 @@ const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd
 const MapEditorShapeToolScript := preload("res://scripts/map_editor/map_editor_shape_tool.gd")
 const WorldMapScript := preload("res://scripts/world_map.gd")
 const AuthoredRoadVisualsScript := preload("res://scripts/authored_road_visuals.gd")
+## Editor-only, and excluded from exported builds alongside this suite. Held here because the
+## editor's slot geometry had no headless coverage at all, which is how it shipped a builder
+## that crashed on any document the editor had not just created.
+const MapEditorSlotBoxes := preload("res://scripts/map_editor/map_editor_slot_boxes.gd")
 const AppPaths := preload("res://scripts/app_paths.gd")  # saves now live in <base>/savegames/
 
 func _ready() -> void:
@@ -63,6 +67,9 @@ func _ready() -> void:
 	_test_authored_map_road_rules()
 	_test_authored_map_slot_classes()
 	_test_authored_map_round_trip()
+	_test_authored_documents_on_disk_load()
+	_test_authored_slot_boxes_contract()
+	_test_authored_slot_validation()
 	_test_shipped_code_avoids_editor_only_paths()
 	_test_authored_road_geometry()
 	_test_authored_road_touched_tiles()
@@ -14895,6 +14902,174 @@ func _test_authored_map_road_rules() -> void:
 		"authored map: the three road classes are strictly ordered by width")
 	_check(is_equal_approx(AuthoredMap.road_width("major"), 18.0),
 		"authored map: the major class is 18 world units (20 px at full zoom)")
+
+
+## THE REAL DOCUMENTS ON DISK — not a fixture.
+##
+## Every other authored test builds its own document, and every editor check runs in scratch
+## mode. So nothing opened the files the game actually ships with, and the first real defect
+## in one would have surfaced as a blank map in a build. These files are hand-drawn source
+## with no other copy; they deserve a test that reads them.
+func _test_authored_documents_on_disk_load() -> void:
+	var names: Array = AuthoredMap.list_documents()
+	_check(not names.is_empty(), "authored docs: there are documents on disk to check")
+	for name_value in names:
+		var name := str(name_value)
+		var file := FileAccess.open(AuthoredMap.path_for(name), FileAccess.READ)
+		if file == null:
+			_check(false, "authored docs: '%s' can be opened" % name)
+			continue
+		var parsed: Variant = JSON.parse_string(file.get_as_text())
+		file.close()
+		if typeof(parsed) != TYPE_DICTIONARY:
+			_check(false, "authored docs: '%s' is a JSON object" % name)
+			continue
+		var problems: PackedStringArray = AuthoredMap.validate(parsed as Dictionary)
+		_check(problems.is_empty(), "authored docs: '%s' validates (%s)"
+			% [name, "clean" if problems.is_empty() else ", ".join(problems)])
+
+	# The pointer has to name something that is there. A check that dies mid-run leaves it
+	# aimed at its own fixture, and the symptom of that is a game with no authored map at all.
+	var active := AuthoredMap.active_name()
+	_check(active == "" or names.has(active),
+		"authored docs: active.txt names a document on disk ('%s')" % active)
+
+	# Every tile a document names must be a tile this map has. A typo here is silent: the
+	# settlement simply never draws, on the one tile nobody thought to look at.
+	var real_tiles := _tile_ids_from_csv()
+	_check(real_tiles.size() > 100, "authored docs: read %d tile ids from the CSV" % real_tiles.size())
+	for name_value in names:
+		var document := _load_document(str(name_value))
+		var unknown := PackedStringArray()
+		for settlement_value in (document.get("settlements", {}) as Dictionary).values():
+			for tile_value in (settlement_value as Dictionary).get("tiles", []) as Array:
+				if not real_tiles.has(str(tile_value)) and not unknown.has(str(tile_value)):
+					unknown.append(str(tile_value))
+		_check(unknown.is_empty(), "authored docs: '%s' names only real tiles (%s)"
+			% [str(name_value), "all known" if unknown.is_empty() else ", ".join(unknown)])
+
+
+## The slot-box contract, against the REAL active document.
+##
+## The editor grew a second slot-box builder for the document being edited, which carried the
+## `tile_id` and `index` a click needs to find the record behind a box. The original, used
+## whenever the editor had not modified anything, did not. Scratch mode always takes the first
+## branch, so every check passed while opening any real map crashed on the missing key.
+## Pinning the key SET, on real data, is what makes that a test failure instead of a bug report.
+func _test_authored_slot_boxes_contract() -> void:
+	var document := _load_document(AuthoredMap.active_name())
+	var settlements: Dictionary = document.get("settlements", {})
+	var tiles := MapEditorSlotBoxes.tile_ids(settlements)
+	# Guard against a vacuous pass: a document with no slots would satisfy every assertion
+	# below by having nothing to satisfy them with.
+	_check(tiles.size() > 0, "slot boxes: the active document reserves slots (%d tile(s))"
+		% tiles.size())
+
+	# Centres stand in for the map's geometry, which needs a live scene. What is under test is
+	# the SHAPE of what comes back, and that does not depend on where the tiles are.
+	var centres: Dictionary = {}
+	var spread := 0
+	for tile_id in tiles:
+		centres[tile_id] = Vector2(float(spread) * 1000.0, 0.0)
+		spread += 1
+	var boxes: Array = MapEditorSlotBoxes.build(settlements, centres)
+	_check(boxes.size() > 0, "slot boxes: the builder returns boxes (%d)" % boxes.size())
+
+	var missing := PackedStringArray()
+	var bad_class := 0
+	for box_value in boxes:
+		var box: Dictionary = box_value
+		for required in MapEditorSlotBoxes.KEYS:
+			if not box.has(required) and not missing.has(str(required)):
+				missing.append(str(required))
+		if not MapEditorSlotBoxes.sizes().has(str(box.get("class", ""))):
+			bad_class += 1
+	_check(missing.is_empty(), "slot boxes: every box carries the full key set (%s)"
+		% ("complete" if missing.is_empty() else "missing " + ", ".join(missing)))
+	_check(bad_class == 0, "slot boxes: every box has a drawable class (%d bad)" % bad_class)
+
+	# The box must be the size the SHIPPED side reserves, or the editor draws a promise the
+	# game does not keep.
+	var shipped: Dictionary = preload("res://scenes/building_visuals.gd").AUTHORED_SLOT_BOXES
+	var wrong := 0
+	for box_value in boxes:
+		var box: Dictionary = box_value
+		if (box["size"] as Vector2) != (shipped.get(str(box["class"]), Vector2.ZERO) as Vector2):
+			wrong += 1
+	_check(wrong == 0, "slot boxes: sizes match the shipped reservation table (%d wrong)" % wrong)
+
+	# A slot on a tile this map does not have is dropped, not drawn at the world origin.
+	var orphan := {"orphans": {"tiles": ["tile_1_1"], "slots":
+		{"tile_no_such": {"pins": [{"pos": [0, 0], "angle": 0.0, "size": "small"}]}}}}
+	_check(MapEditorSlotBoxes.build(orphan, {}).is_empty(),
+		"slot boxes: a slot on an unknown tile is skipped")
+
+
+## The validator had nothing to say about slots at all, so a malformed slot block saved and
+## loaded quietly and only failed when a building tried to stand in it. These are the shapes
+## the readers used to coerce away.
+func _test_authored_slot_validation() -> void:
+	var base := {"version": AuthoredMap.SCHEMA_VERSION, "settlements":
+		{"s": {"tiles": ["tile_1_1"], "slots": {}}}}
+
+	var good := base.duplicate(true)
+	good["settlements"]["s"]["slots"] = {"tile_1_1":
+		{"pins": [{"pos": [10.0, 4.0], "angle": 0.0, "size": "small"}]}}
+	_check(AuthoredMap.validate(good).is_empty(), "slot validation: a well-formed slot passes")
+
+	var bad_class := base.duplicate(true)
+	bad_class["settlements"]["s"]["slots"] = {"tile_1_1":
+		{"pins": [{"pos": [0, 0], "angle": 0.0, "size": "enormous"}]}}
+	_check(not AuthoredMap.validate(bad_class).is_empty(),
+		"slot validation: an unknown size class is rejected")
+
+	var no_pos := base.duplicate(true)
+	no_pos["settlements"]["s"]["slots"] = {"tile_1_1": {"pins": [{"size": "small"}]}}
+	_check(not AuthoredMap.validate(no_pos).is_empty(),
+		"slot validation: a slot with no position is rejected")
+
+	var short_pos := base.duplicate(true)
+	short_pos["settlements"]["s"]["slots"] = {"tile_1_1":
+		{"pins": [{"pos": [3.0], "angle": 0.0, "size": "small"}]}}
+	_check(not AuthoredMap.validate(short_pos).is_empty(),
+		"slot validation: a one-number position is rejected")
+
+	var not_a_list := base.duplicate(true)
+	not_a_list["settlements"]["s"]["slots"] = {"tile_1_1": {"pins": {"nope": true}}}
+	_check(not AuthoredMap.validate(not_a_list).is_empty(),
+		"slot validation: pins that are not a list are rejected")
+
+	var not_a_block := base.duplicate(true)
+	not_a_block["settlements"]["s"]["slots"] = []
+	_check(not AuthoredMap.validate(not_a_block).is_empty(),
+		"slot validation: a slots block that is not a dictionary is rejected")
+
+
+func _load_document(name: String) -> Dictionary:
+	if name == "":
+		return {}
+	var file := FileAccess.open(AuthoredMap.path_for(name), FileAccess.READ)
+	if file == null:
+		return {}
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	file.close()
+	return parsed if typeof(parsed) == TYPE_DICTIONARY else {}
+
+
+## Tile ids straight from the CSV the map is built from — the same source `hex_map.gd` reads,
+## so this is the real set and not a second list that can drift from it.
+func _tile_ids_from_csv() -> PackedStringArray:
+	var out := PackedStringArray()
+	var file := FileAccess.open("res://data/tile_properties.csv", FileAccess.READ)
+	if file == null:
+		return out
+	file.get_csv_line()
+	while not file.eof_reached():
+		var row := file.get_csv_line()
+		if row.size() > 0 and str(row[0]).strip_edges() != "":
+			out.append(str(row[0]).strip_edges())
+	file.close()
+	return out
 
 
 func _test_authored_map_slot_classes() -> void:

@@ -34,6 +34,7 @@ const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd
 const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
 const MapEditorRoadSnap := preload("res://scripts/map_editor/map_editor_road_snap.gd")
 const AuthoredSlotSizes := preload("res://scripts/authored_slot_sizes.gd")
+const MapEditorSlotBoxes := preload("res://scripts/map_editor/map_editor_slot_boxes.gd")
 const MapEditorPanel := preload("res://scripts/map_editor/map_editor_panel.gd")
 
 ## Tools. NAVIGATE is the default and does nothing but move the view: an editor whose idle
@@ -59,10 +60,10 @@ const TOOL_SPECIAL := "special"
 ## Click to place an empty slot a gameplay building will later occupy.
 const TOOL_SLOT := "slot"
 
-## The box a slot of each class reserves, world units. Sized from the drawn art it must hold
-## with room for its shadow and a little air, so a building dropped into one is not touching
-## its neighbour.
-const SLOT_BOXES := {"small": Vector2(62.0, 62.0), "medium": Vector2(96.0, 96.0)}
+## The box a slot of each class reserves comes from `MapEditorSlotBoxes`, which reads the
+## SHIPPED table in `building_visuals.gd`. The editor had its own copy of those numbers; two
+## copies of "how much ground a slot reserves" is one drift away from the editor drawing a
+## box the game will not honour.
 
 ## How close a click must land to a corner to pick it up, in world units.
 const CORNER_GRAB := 16.0
@@ -1426,76 +1427,31 @@ func pick_slot_class(value: String) -> void:
 		_refresh_status()
 
 
-## Every slot in the document as world-space boxes, for the overlay.
-func slot_boxes() -> Array:
-	var out: Array = []
-	var terrain := get_tree().get_first_node_in_group("hex_map")
-	if terrain == null:
-		return out
-	for key in AuthoredMap.settlements().keys():
-		var settlement: Dictionary = AuthoredMap.settlements()[key]
-		var slots_value: Variant = settlement.get("slots", {})
-		if typeof(slots_value) != TYPE_DICTIONARY:
-			continue
-		for tile_id in (slots_value as Dictionary).keys():
-			var coord: Vector2i = terrain.call("id_to_coord", str(tile_id))
-			if not (terrain.get("tiles") as Dictionary).has(coord):
-				continue
-			var centre: Vector2 = terrain.call("map_to_local",
-				terrain.call("map_coord_for_tile_coord", coord))
-			var tile_slots: Dictionary = (slots_value as Dictionary)[tile_id]
-			for pin_value in (tile_slots.get("pins", []) as Array):
-				var pin: Dictionary = pin_value
-				var pos: Array = pin.get("pos", [0, 0]) as Array
-				if pos.size() < 2:
-					continue
-				out.append({
-					"centre": centre + Vector2(float(pos[0]), float(pos[1])),
-					"angle": float(pin.get("angle", 0.0)),
-					"size": SLOT_BOXES.get(str(pin.get("size", "small")), SLOT_BOXES["small"]),
-					"class": str(pin.get("size", "small")),
-				})
-	return out
-
-
-## The editor's own document may hold slots the loader has not seen; read from it directly.
+## Every slot as a world-space box, for the overlay and for the click test.
+##
+## Reads the document being EDITED, falling back to the saved one only while the editor holds
+## nothing — which is the state on a fresh boot with no document. There used to be a second
+## builder for the saved case; see the header of `map_editor_slot_boxes.gd` for what that
+## cost.
 func document_slot_boxes() -> Array:
-	var saved := AuthoredMap.settlements()
 	var live: Dictionary = _document.data().get("settlements", {})
-	if live.is_empty() or saved == live:
-		return slot_boxes()
-	return _boxes_from(live)
+	var source: Dictionary = live if not live.is_empty() else AuthoredMap.settlements()
+	return MapEditorSlotBoxes.build(source, _tile_centres(source))
 
 
-func _boxes_from(settlements: Dictionary) -> Array:
-	var out: Array = []
+## Tile centres in world units, for the tiles a document puts slots on. Absent tiles are left
+## out, so the builder can skip slots this map has nowhere to put.
+func _tile_centres(settlements: Dictionary) -> Dictionary:
+	var out: Dictionary = {}
 	var terrain := get_tree().get_first_node_in_group("hex_map")
 	if terrain == null:
 		return out
-	for key in settlements.keys():
-		var settlement: Dictionary = settlements[key]
-		var slots_value: Variant = settlement.get("slots", {})
-		if typeof(slots_value) != TYPE_DICTIONARY:
-			continue
-		for tile_id in (slots_value as Dictionary).keys():
-			var coord: Vector2i = terrain.call("id_to_coord", str(tile_id))
-			if not (terrain.get("tiles") as Dictionary).has(coord):
-				continue
-			var centre: Vector2 = terrain.call("map_to_local",
+	var tiles: Dictionary = terrain.get("tiles")
+	for tile_id in MapEditorSlotBoxes.tile_ids(settlements):
+		var coord: Vector2i = terrain.call("id_to_coord", tile_id)
+		if tiles.has(coord):
+			out[tile_id] = terrain.call("map_to_local",
 				terrain.call("map_coord_for_tile_coord", coord))
-			var pins: Array = ((slots_value as Dictionary)[tile_id] as Dictionary).get("pins", []) as Array
-			for index in pins.size():
-				var pin: Dictionary = pins[index]
-				var pos: Array = pin.get("pos", [0, 0]) as Array
-				if pos.size() < 2:
-					continue
-				out.append({
-					"centre": centre + Vector2(float(pos[0]), float(pos[1])),
-					"angle": float(pin.get("angle", 0.0)),
-					"size": SLOT_BOXES.get(str(pin.get("size", "small")), SLOT_BOXES["small"]),
-					"class": str(pin.get("size", "small")),
-					"tile_id": str(tile_id), "index": index,
-				})
 	return out
 
 
