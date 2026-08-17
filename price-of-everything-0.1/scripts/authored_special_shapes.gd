@@ -20,6 +20,10 @@ const PARAMETERS := {
 	"u": ["left arm", "back", "right arm"],
 	"ring": ["top", "right", "bottom", "left"],
 	"l": ["long arm", "short arm"],
+	# A free polygon has no side lengths: it is defined entirely by where its corners are,
+	# which is the whole point of it. Its steppers are therefore empty, and dragging a corner
+	# cannot be undone by a parameter rebuild the way it can on the other three.
+	"poly": [],
 }
 
 ## Sensible starting lengths, world units.
@@ -27,6 +31,7 @@ const DEFAULTS := {
 	"u": [70.0, 90.0, 70.0],
 	"ring": [110.0, 90.0, 110.0, 90.0],
 	"l": [100.0, 70.0],
+	"poly": [],
 }
 
 ## Wall thickness. One number rather than a parameter per limb: the owner asked for side
@@ -40,8 +45,13 @@ const MIN_SIDE := 30.0
 const MAX_SIDE := 400.0
 
 
+## Corners a free polygon may have. Six is the owner's number: enough for an irregular
+## footprint, few enough that every corner stays individually grabbable.
+const POLY_MAX_POINTS := 6
+
+
 static func kinds() -> Array:
-	return ["u", "ring", "l"]
+	return ["u", "ring", "l", "poly"]
 
 
 static func parameters_for(kind: String) -> Array:
@@ -64,6 +74,10 @@ static func build(kind: String, sides: Array) -> PackedVector2Array:
 	for value in sides:
 		values.append(clamp_side(float(value)))
 	match kind:
+		"poly":
+			# Only ever built from its own corners, so there is no parametric form. The
+			# picker tile shows a stand-in hexagon.
+			return _preview_poly()
 		"u":
 			return _build_u(values)
 		"ring":
@@ -139,6 +153,15 @@ static func _build_l(sides: Array) -> PackedVector2Array:
 		Vector2(x + t, y + short_arm),
 		Vector2(x, y + short_arm),
 	])
+
+
+## A stand-in shape for the palette tile only — a free polygon has no default form.
+static func _preview_poly() -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for i in 6:
+		var angle := TAU * float(i) / 6.0 - PI * 0.5
+		out.append(Vector2(cos(angle), sin(angle)) * 55.0)
+	return out
 
 
 ## Uniform inward offset. Returns empty when the shape would collapse.

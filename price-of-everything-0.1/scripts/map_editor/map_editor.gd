@@ -139,12 +139,17 @@ var _grab_world := Vector2.INF
 var _grab_screen := Vector2.INF
 var _grab_moved := false
 var _pending_hit: Dictionary = {}
-## Set while a drag is held with Ctrl/Cmd down, which places exactly where the pointer is.
-var _snap_suppressed := false
+## Which question the confirmation is currently asking.
+var _confirm_action := ""
+## Set while a drag is held with Ctrl/Cmd down. Snapping is OPT-IN (owner, 2026-08-16): a
+## drag places exactly where the pointer is unless the modifier asks for a kerb.
+var _snap_requested := false
 ## The records last moved, so the snap can act on them after the drag ends.
 var _moved_records: Array = []
 var _special_kind := "u"
 var _slot_class := "small"
+## Corners of the free polygon being clicked out.
+var _poly_points: Array = []
 var _panel: MapEditorPanel
 var _tool := TOOL_PAN
 var _world: Node
@@ -286,8 +291,8 @@ func _build_chrome() -> void:
 	_confirm.set_anchors_preset(Control.PRESET_CENTER)
 	_confirm.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_confirm.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_confirm.confirmed.connect(_delete_selection)
-	_confirm.cancelled.connect(func() -> void: _set_status("Deletion cancelled."))
+	_confirm.confirmed.connect(_on_confirmed)
+	_confirm.cancelled.connect(func() -> void: _set_status("Cancelled."))
 	layer.add_child(_confirm)
 
 	_name_dialog = MapEditorNameDialog.new()
@@ -369,8 +374,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif _tool == TOOL_SELECT and _held_corner >= 0:
 			_move_corner(_world_at(motion.position))
 		elif _tool == TOOL_SELECT and not _grabbed.is_empty():
-			# Ctrl, or Cmd on macOS, places exactly where the pointer is.
-			_snap_suppressed = motion.ctrl_pressed or motion.meta_pressed
+			# Ctrl, or Cmd on macOS, asks for the kerb; without it the drop is literal.
+			_snap_requested = motion.ctrl_pressed or motion.meta_pressed
 			_drag_grabbed(motion.position)
 		elif _tool == TOOL_STAMP and _shape_tool.is_stamping():
 			_shape_tool.drag_stamp(_world_at(motion.position))
@@ -434,7 +439,12 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 						_finish_stamp()
 				TOOL_SPECIAL:
 					if event.pressed:
-						_place_special(world)
+						# A free polygon is CLICKED OUT corner by corner; the parametric
+						# three are placed whole with one click.
+						if _special_kind == "poly":
+							_add_poly_point(world)
+						else:
+							_place_special(world)
 				TOOL_SLOT:
 					if event.pressed:
 						_place_slot(world)
@@ -475,10 +485,11 @@ func _handle_key(event: InputEventKey) -> void:
 	if _confirm != null and _confirm.is_open():
 		if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
 			_confirm.close()
-			_delete_selection()
+			_on_confirmed()
 		elif event.keycode == KEY_ESCAPE:
 			_confirm.close()
-			_set_status("Deletion cancelled.")
+			_confirm_action = ""
+			_set_status("Cancelled.")
 		_refresh_status()
 		return
 	match event.keycode:
@@ -539,12 +550,21 @@ func _handle_key(event: InputEventKey) -> void:
 		KEY_3:
 			set_road_class("minor")
 		KEY_ENTER, KEY_KP_ENTER:
-			if _tool == TOOL_AREA:
+			if _tool == TOOL_SPECIAL and _special_kind == "poly":
+				_finish_poly()
+			elif _tool == TOOL_AREA:
 				_finish_area()
 			else:
 				_finish_stroke()
 		KEY_BACKSPACE:
-			if _tool == TOOL_AREA:
+			# In SELECT, Backspace removes what is selected. In the drawing tools it still
+			# steps back a point, which is what a half-drawn shape needs it for.
+			if _tool == TOOL_SELECT:
+				_ask_delete()
+			elif _tool == TOOL_SPECIAL and not _poly_points.is_empty():
+				_poly_points.remove_at(_poly_points.size() - 1)
+				_overlay.queue_redraw()
+			elif _tool == TOOL_AREA:
 				_shape_tool.undo_point()
 			elif _tool == TOOL_DOTS:
 				_trace_tool.undo_dot()
@@ -712,10 +732,21 @@ func _finish_marquee(world: Vector2) -> void:
 
 ## Ask before removing. Deletion is the one action here that destroys authored work, and the
 ## marquee makes it easy to catch more than intended.
+## Route the confirmation to whatever asked for it.
+func _on_confirmed() -> void:
+	match _confirm_action:
+		"delete":
+			_delete_selection()
+		"leave":
+			_do_leave()
+	_confirm_action = ""
+
+
 func _ask_delete() -> void:
 	if _selection.is_empty():
 		_set_status("Nothing selected.")
 		return
+	_confirm_action = "delete"
 	_confirm.ask("Delete %d selected item%s?" % [_selection.size(),
 		"" if _selection.size() == 1 else "s"])
 	_panel.refresh()
@@ -935,6 +966,9 @@ func _select_press(world: Vector2, screen: Vector2) -> void:
 	_grab_world = world
 	_grab_screen = screen
 	_grab_moved = false
+	# Cleared per grab: the modifier is read from the motion events of THIS drag, and a value
+	# left over from a previous one would silently snap a drag the hand did not ask to snap.
+	_snap_requested = false
 	# Recorded whether or not it was already selected: a click that never becomes a drag
 	# selects exactly what was under it, collapsing a multi-selection to that one thing.
 	# Only remembering it for unselected shapes meant clicking a member of a selection did
@@ -974,7 +1008,7 @@ func _select_release(world: Vector2) -> void:
 		_grab_moved = false
 		if moved:
 			var snapped := 0
-			if not _snap_suppressed:
+			if _snap_requested:
 				snapped = _snap_moved_to_roads()
 			_set_status("Moved %d item%s%s." % [
 				_selection.size() if _selection.size() > 1 else 1,
@@ -1129,6 +1163,51 @@ func _set_corner_target(record: Dictionary) -> void:
 	_corner_target = record
 	_held_corner = -1
 	_overlay.queue_redraw()
+
+
+## Free polygon: up to six corners, then Enter to close it. Kept separate from the farm and
+## park outlines because this is a BUILDING — it takes the mass wash, the ink edge and the SE
+## shadow, and it can be evicted; a park cannot.
+func _add_poly_point(world: Vector2) -> void:
+	if _poly_points.size() >= AuthoredSpecialShapes.POLY_MAX_POINTS:
+		_set_status("%d corners maximum — press Enter to close."
+			% AuthoredSpecialShapes.POLY_MAX_POINTS)
+		return
+	_poly_points.append([world.x, world.y])
+	_overlay.queue_redraw()
+	_set_status("%d/%d corners — Enter closes, Bksp steps back."
+		% [_poly_points.size(), AuthoredSpecialShapes.POLY_MAX_POINTS])
+
+
+func _finish_poly() -> void:
+	if _poly_points.size() < 3:
+		_set_status("A shape needs at least three corners.")
+		return
+	var settlement := _ensure_settlement()
+	var next_id := int(settlement.get("next_id", 1))
+	_document.begin_edit("draw shape")
+	settlement = _ensure_settlement()
+	settlement["next_id"] = next_id + 1
+	var items: Array = settlement.get("specials", []) as Array
+	items.append({"id": "s:%s:%d" % [_settlement, next_id], "kind": "poly",
+		"sides": [], "outline": _poly_points.duplicate(true)})
+	settlement["specials"] = items
+	_cover_tiles_of(settlement, _poly_points)
+	var placed: Dictionary = items[items.size() - 1]
+	_poly_points = []
+	_set_corner_target(placed)
+	_overlay.queue_redraw()
+	_set_status("Shape placed — drag its corners to reshape.")
+
+
+## Whether the confirmation is up — for the harness, and for anything that needs to know the
+## editor is waiting on an answer.
+func confirm_open() -> bool:
+	return _confirm != null and _confirm.is_open()
+
+
+func poly_points() -> Array:
+	return _poly_points
 
 
 # ── Gameplay building slots ────────────────────────────────────────────────────
@@ -1402,6 +1481,7 @@ func set_tool(value: String) -> void:
 		_road_tool.abandon()
 	_trace_tool.cancel_trace()
 	_shape_tool.abandon()
+	_poly_points = []
 	_anchor_grab = {}
 	_grabbed = []
 	_pending_hit = {}
@@ -1545,13 +1625,17 @@ func _reload() -> void:
 	_refresh_status()
 
 
+## Leaving ALWAYS asks (owner, 2026-08-16). Escape is the same key that cancels a stroke and
+## clears a selection, so it gets pressed often and by reflex; a confirmation is the only
+## thing standing between that reflex and losing a session.
 func _leave() -> void:
-	if _document.is_dirty() and not _document.discard_armed():
-		# One press arms, the second leaves: an editor that discards an hour's work on a
-		# stray Escape is worse than one that asks twice.
-		_document.arm_discard()
-		_set_status("UNSAVED CHANGES — press Esc again to discard, or F5 to save.")
-		return
+	_confirm_action = "leave"
+	_confirm.ask("Return to the main menu?%s" % ("\n\nUNSAVED CHANGES WILL BE LOST."
+		if _document.is_dirty() else ""))
+	_panel.refresh()
+
+
+func _do_leave() -> void:
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
 
 

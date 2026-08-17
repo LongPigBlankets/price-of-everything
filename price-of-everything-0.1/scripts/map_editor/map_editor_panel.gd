@@ -319,13 +319,15 @@ func refresh() -> void:
 		"upgrade":
 			_hint.text = "Click a road to widen it · Shift-click to narrow it"
 		"select":
-			_hint.text = "Drag to move (snaps to roads, Ctrl/Cmd to free) · click to select · +/- resize"
+			_hint.text = "Drag to move (hold Ctrl/Cmd to snap to a road) · click to select · +/- resize · Bksp deletes"
 		"stamp":
 			_hint.text = "Drag to size a mass · the drag direction is its facing · [ ] picks the form"
 		"area":
 			_hint.text = "Click corners (max 8) · Enter closes · Bksp undoes a corner"
 		"special":
-			_hint.text = "Click to lay the primitive · then Select (X) and drag its corners"
+			_hint.text = ("Click up to 6 corners · Enter closes · Bksp steps back"
+				if str(_editor.call("current_special_kind")) == "poly"
+				else "Click to lay the primitive · then Select (X) and drag its corners")
 
 
 ## One row per side length of the selected primitive: a name, its value, and a pair of

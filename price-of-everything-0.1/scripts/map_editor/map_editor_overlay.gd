@@ -199,6 +199,19 @@ func _draw_authored_fabric(camera: Camera2D) -> void:
 	_draw_corner_handles(camera)
 
 	# The outline being clicked out stays in screen space: it is scaffolding, not content.
+	var pending: Array = editor.call("poly_points")
+	if not pending.is_empty():
+		var poly_screen := PackedVector2Array()
+		for entry_value in pending:
+			var entry: Array = entry_value as Array
+			if entry != null and entry.size() >= 2:
+				poly_screen.append(_to_screen(Vector2(float(entry[0]), float(entry[1])), camera))
+		for point in poly_screen:
+			draw_circle(point, POINT_RADIUS + 1.0, PEN_POINT_COLOR)
+		if poly_screen.size() >= 2:
+			var closed_poly := poly_screen.duplicate()
+			closed_poly.append(poly_screen[0])
+			draw_polyline(closed_poly, PEN_COLOR, 2.0, true)
 	if shape != null and bool(shape.call("is_drawing")):
 		var points: Array = shape.call("polygon_points")
 		var screen := PackedVector2Array()

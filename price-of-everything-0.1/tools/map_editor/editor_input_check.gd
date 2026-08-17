@@ -2,6 +2,7 @@ extends Node
 
 const AuthoredSpecialShapesScript := preload("res://scripts/authored_special_shapes.gd")
 const AuthoredRoadGeometryScript := preload("res://scripts/authored_road_geometry.gd")
+const AuthoredRoadStyleScript := preload("res://scripts/authored_road_style.gd")
 ## Regression check for the editor's INPUT behaviour — the three things that were broken
 ## when the panel landed, each of which is invisible to a screenshot:
 ##
@@ -112,12 +113,13 @@ func _ready() -> void:
 	# child), so the run would die mid-await and report nothing. The document is dirty from
 	# the stroke above, so the first press arms the discard — and arming at all is precisely
 	# what was impossible while the game was eating the key.
-	var document: RefCounted = _editor.call("document")
-	_check("Escape is not armed before the key", not bool(document.call("discard_armed")))
 	_send_key(KEY_ESCAPE)
 	await get_tree().process_frame
-	_check("Escape reaches the editor (arms the unsaved-work guard)",
-		bool(document.call("discard_armed")))
+	_check("Escape asks before leaving, rather than leaving",
+		bool(_editor.call("confirm_open")))
+	_send_key(KEY_ESCAPE)
+	await get_tree().process_frame
+	_check("a second Escape dismisses the question", not bool(_editor.call("confirm_open")))
 
 	# ── The three added draw modes ──────────────────────────────────────────────
 	var doc: RefCounted = _editor.call("document")
@@ -199,15 +201,15 @@ func _ready() -> void:
 	_check("the marquee does not delete on its own", _road_count() == total_before)
 
 	# Deletion must ask first — it is the only action here that destroys authored work.
-	_send_key(KEY_DELETE)
+	_send_key(KEY_BACKSPACE)
 	await get_tree().process_frame
-	_check("Delete asks for confirmation", _road_count() == total_before)
+	_check("Backspace asks for confirmation", _road_count() == total_before)
 	_send_key(KEY_ESCAPE)
 	await get_tree().process_frame
 	_check("cancelling the prompt keeps everything", _road_count() == total_before)
 	_check("cancelling keeps the selection", int(_editor.call("selection_size")) == picked)
 
-	_send_key(KEY_DELETE)
+	_send_key(KEY_BACKSPACE)
 	await get_tree().process_frame
 	_send_key(KEY_ENTER)
 	await get_tree().process_frame
@@ -328,7 +330,7 @@ func _ready() -> void:
 	# and near its inner corner — so a grab there picks up a corner handle instead, which is
 	# correct behaviour and a terrible thing to test a move with.
 	_editor.call("pick_form", "square")
-	await _drag_stamp_at(Vector2(700, 430), Vector2(760, 470))
+	await _drag_stamp_at(Vector2(1020, 620), Vector2(1080, 660))
 	var block := _last_of(doc, "decor")
 	_check("a mass was stamped to move", not block.is_empty())
 	_editor.call("set_tool", "select")
@@ -336,22 +338,24 @@ func _ready() -> void:
 	# Drag it toward the road; it should seat itself at a kerb rather than where the pointer
 	# stopped. Measured against the NEAREST road, since the document has many.
 	var from := _mass_centre(block)
-	await _drag(_screen_of(from, camera), Vector2(700, 330))
-	var seated := _mass_centre(_last_of(doc, "decor"))
-	var gap := _nearest_road_distance(doc, seated)
-	_check("a dragged building seats itself at a kerb (%.0f u from the nearest road)" % gap,
-		gap > 4.0 and gap < 80.0)
-	var released_at := _world_at(Vector2(700, 330))
-	_check("snapping overrides where the pointer stopped",
-		seated.distance_to(released_at) > 1.0)
+	# A PLAIN drag is literal — snapping is opt-in (owner, 2026-08-16).
+	await _drag(_screen_of(from, camera), Vector2(1020, 520))
+	var dropped := _mass_centre(_last_of(doc, "decor"))
+	var literal := _world_at(Vector2(1020, 520))
+	_check("a plain drag drops it exactly where the pointer stopped (%.0f u off)"
+		% dropped.distance_to(literal), dropped.distance_to(literal) < 8.0)
 
-	# Ctrl suppresses it: the shape stays where it was let go.
-	var free_from := _mass_centre(_last_of(doc, "decor"))
-	await _drag_modified(_screen_of(free_from, camera), Vector2(660, 560), true)
+	# Holding Ctrl asks for the kerb.
+	await _drag_modified(_screen_of(dropped, camera), Vector2(1020, 470), true)
 	var free_at := _mass_centre(_last_of(doc, "decor"))
-	var wanted := _world_at(Vector2(660, 560))
-	_check("holding Ctrl places it exactly where dropped (%.0f u off)"
-		% free_at.distance_to(wanted), free_at.distance_to(wanted) < 8.0)
+	var gap := _nearest_road_distance(doc, free_at)
+	_check("holding Ctrl seats it at a kerb (%.0f u from the nearest road)" % gap,
+		gap > 4.0 and gap < 80.0)
+	# Deliberately NOT asserting that the snap moved the shape: whether it does depends on
+	# where the pointer happened to stop relative to the kerb, so a drop that already lands
+	# on the kerb would fail a check the feature passed. Sitting at a kerb is the contract.
+	_check("the snapped gap matches a kerb offset rather than a coincidence",
+		gap > AuthoredRoadStyleScript.bed_width("mid") * 0.5)
 
 	# +/- resize the selection in 10% steps.
 	await _click(_screen_of(free_at, camera))
@@ -400,6 +404,23 @@ func _ready() -> void:
 			if box[i].distance_to(moved[i]) > 0.01:
 				others += 1
 		_check("the other three corners stayed put (%d moved)" % others, others == 0)
+
+	# The free polygon: up to six corners, then Enter.
+	_editor.call("pick_special", "poly")
+	for at in [Vector2(400, 300), Vector2(520, 280), Vector2(560, 380), Vector2(430, 400)]:
+		await _click(at)
+	_check("corners accumulate (%d)" % (_editor.call("poly_points") as Array).size(),
+		(_editor.call("poly_points") as Array).size() == 4)
+	var poly_doc: RefCounted = _editor.call("document")
+	var specials_before := str((_last_of(poly_doc, "specials") as Dictionary).get("id", ""))
+	_send_key(KEY_ENTER)
+	await get_tree().process_frame
+	var shape := _last_of(poly_doc, "specials")
+	_check("Enter closes the free polygon", str(shape.get("id", "")) != str(specials_before))
+	_check("it keeps every corner (%d)" % (shape.get("outline", []) as Array).size(),
+		(shape.get("outline", []) as Array).size() == 4)
+	_check("it has no side parameters", (shape.get("sides", []) as Array).is_empty())
+
 
 	if _failures.is_empty():
 		print("[INPUT] ALL CHECKS PASSED")
