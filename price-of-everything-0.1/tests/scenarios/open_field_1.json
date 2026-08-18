@@ -6,11 +6,11 @@
   "land_purchases": [
     {
       "tile": "tile_22_3",
-      "amount": 6
+      "amount": 11
     },
     {
       "tile": "tile_26_5",
-      "amount": 11
+      "amount": 9
     },
     {
       "tile": "tile_21_10",
@@ -19,6 +19,14 @@
     {
       "tile": "tile_20_10",
       "amount": 12
+    },
+    {
+      "tile": "tile_22_4",
+      "amount": 9
+    },
+    {
+      "tile": "tile_25_5",
+      "amount": 11
     }
   ],
   "coal_runway": {
@@ -80,10 +88,6 @@
     "corridors": [
       [
         "tile_22_3",
-        "tile_26_5"
-      ],
-      [
-        "tile_22_3",
         "tile_20_9"
       ],
       [
@@ -101,6 +105,22 @@
       [
         "tile_20_10",
         "tile_25_6"
+      ],
+      [
+        "tile_22_3",
+        "tile_22_4"
+      ],
+      [
+        "tile_26_5",
+        "tile_25_5"
+      ],
+      [
+        "tile_22_4",
+        "tile_25_5"
+      ],
+      [
+        "tile_25_5",
+        "tile_25_6"
       ]
     ],
     "roads": [
@@ -110,7 +130,9 @@
       "tile_21_10",
       "tile_25_6",
       "tile_24_7",
-      "tile_20_10"
+      "tile_20_10",
+      "tile_22_4",
+      "tile_25_5"
     ],
     "rails": "corridors",
     "pipes": "corridors",
@@ -163,28 +185,28 @@
       "id": "pig_iron_a",
       "internal_name": "furnace",
       "recipe_key": "pig_iron",
-      "tile": "tile_26_5",
+      "tile": "tile_25_5",
       "allow_market_materials": true
     },
     {
       "id": "pig_iron_b",
       "internal_name": "furnace",
       "recipe_key": "pig_iron",
-      "tile": "tile_26_5",
+      "tile": "tile_25_5",
       "allow_market_materials": true
     },
     {
       "id": "steel_a",
       "internal_name": "furnace",
       "recipe_key": "steel",
-      "tile": "tile_26_5",
+      "tile": "tile_25_5",
       "allow_market_materials": true
     },
     {
       "id": "steel_b",
       "internal_name": "furnace",
       "recipe_key": "steel",
-      "tile": "tile_26_5",
+      "tile": "tile_25_5",
       "allow_market_materials": true
     },
     {
@@ -282,14 +304,14 @@
       "id": "power_c",
       "internal_name": "power_plant",
       "recipe_key": "power",
-      "tile": "tile_22_3",
+      "tile": "tile_22_4",
       "allow_market_materials": true
     },
     {
       "id": "power_d",
       "internal_name": "power_plant",
       "recipe_key": "power",
-      "tile": "tile_22_3",
+      "tile": "tile_22_4",
       "allow_market_materials": true
     }
   ],
@@ -312,7 +334,7 @@
     {
       "id": "coal_mine_d",
       "good": "coal",
-      "dest": "tile_22_3"
+      "dest": "tile_22_4"
     },
     {
       "id": "steel_a",
@@ -377,27 +399,27 @@
     {
       "id": "iron_mine_a",
       "good": "iron_ore",
-      "dest": "tile_26_5"
+      "dest": "tile_25_5"
     },
     {
       "id": "iron_mine_b",
       "good": "iron_ore",
-      "dest": "tile_26_5"
+      "dest": "tile_25_5"
     },
     {
       "id": "iron_mine_c",
       "good": "iron_ore",
-      "dest": "tile_26_5"
+      "dest": "tile_25_5"
     },
     {
       "id": "pig_iron_a",
       "good": "iron_ingots",
-      "dest": "tile_26_5"
+      "dest": "tile_25_5"
     },
     {
       "id": "pig_iron_b",
       "good": "iron_ingots",
-      "dest": "tile_26_5"
+      "dest": "tile_25_5"
     },
     {
       "id": "copper_ingots_c",

@@ -76,6 +76,8 @@ func _ready() -> void:
 	_test_authored_area_buildings_exist()
 	await _test_authored_slot_claim_order()
 	_test_authored_zones()
+	await _test_zone_placement()
+	await _test_zone_priority()
 	_test_tile_deposits_exclude_water()
 	_test_authored_map_write_barrier()
 	_test_shipped_code_avoids_editor_only_paths()
@@ -15202,6 +15204,177 @@ func _test_tile_deposits_exclude_water() -> void:
 		% [non_water, water_only])
 	_check(non_water < with_any,
 		"deposits: excluding water actually excludes something (%d of %d)" % [non_water, with_any])
+
+
+## ZONES ACTUALLY CONSTRAIN PLACEMENT. Both halves are asserted: a building lands inside the
+## polygon, AND lands somewhere else once the zone is gone. Without the second half this passes
+## on a build where zones do nothing at all, which is the exact shape of test that let the
+## slot-box drift ship earlier today.
+func _test_zone_placement() -> void:
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		bv.queue_free(); terrain.queue_free(); return
+	var centre: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+
+	# A zone in ONE corner of the tile, well away from the middle, so "inside" is a real
+	# constraint rather than something a centred placement satisfies by accident.
+	var corner := centre + Vector2(-150.0, -120.0)
+	var outline: Array = []
+	for offset in [Vector2(-90, -80), Vector2(90, -80), Vector2(90, 80), Vector2(-90, 80)]:
+		outline.append([corner.x + offset.x, corner.y + offset.y])
+	var doc := {"version": AuthoredMap.SCHEMA_VERSION, "settlements": {"s": {
+		"tiles": [tile_id],
+		"zones": [{"id": "z1", "kind": "industrial", "tiles": [tile_id], "outline": outline}],
+	}}}
+	_check(AuthoredMap.validate(doc).is_empty(), "zone placement: the fixture is valid")
+	AuthoredMap.set_document_for_tests(doc)
+	bv.ensure_block_template_for(tile_id, coord)
+
+	var poly := PackedVector2Array()
+	for entry in outline:
+		poly.append(Vector2(float((entry as Array)[0]), float((entry as Array)[1])))
+
+	var mask: PackedByteArray = bv._zone_mask(tile_id, coord, "industrial")
+	_check(not mask.is_empty(), "zone placement: the zone rasterises to a mask")
+	var inside := 0
+	for i in mask.size():
+		if mask[i] != 0:
+			inside += 1
+	_check(inside > 0, "zone placement: the mask has buildable cells in it (%d)" % inside)
+	var land: PackedByteArray = bv._tile_land.get(tile_id, PackedByteArray())
+	var outside_land := 0
+	for i in mask.size():
+		if mask[i] != 0 and (i >= land.size() or land[i] == 0):
+			outside_land += 1
+	_check(outside_land == 0,
+		"zone placement: the mask never adds a cell the land mask refused (%d)" % outside_land)
+	_check(inside < land.count(1),
+		"zone placement: the zone is a RESTRICTION, not the whole tile (%d of %d cells)"
+		% [inside, land.count(1)])
+
+	# An extraction zone is a different mask, and this tile has none.
+	_check(bv._zone_mask(tile_id, coord, "extraction").is_empty(),
+		"zone placement: a kind the tile has no zone of yields no mask")
+
+	# The gate, on the rule rather than through a placement: a pump is industrial.
+	_check(bv._zone_preference("mine")[0] == "extraction",
+		"zone placement: a mine prefers the extraction zone")
+	_check(not bv._zone_preference("water_pump").has("extraction"),
+		"zone placement: a WATER PUMP is not an extraction building")
+	_check(not bv._zone_preference("furnace").has("extraction"),
+		"zone placement: a furnace is not either")
+	_check(bv._zone_preference("mine").has("industrial"),
+		"zone placement: a mine still falls back to industrial when there is no pit zone")
+
+	# THE HALF THAT MATTERS: a real building, through the real placement path, lands inside
+	# the polygon — and lands somewhere else once the zone is gone. The mask checks above
+	# would all pass on a build where _search ignored the mask entirely.
+	var zoned_iid: String = MatchState.add_building("b_007", "", tile_id, "npc", "zone_in")
+	bv.on_building_placed(tile_id, "b_007", "", zoned_iid, coord)
+	var zoned_at: Vector2 = bv.footprint_center_for(zoned_iid, coord)
+	_check(Geometry2D.is_point_in_polygon(zoned_at, poly),
+		"zone placement: a building lands INSIDE the zone (%s)" % str(zoned_at.round()))
+
+	# Same tile, same building, no zone. It must move — if it lands in the same place the
+	# zone was never doing anything.
+	bv.remove_instance(zoned_iid)
+	MatchState.remove_building(zoned_iid)
+	AuthoredMap.set_document_for_tests({})
+	bv._drop_zone_masks(tile_id)
+	var free_iid: String = MatchState.add_building("b_007", "", tile_id, "npc", "zone_out")
+	bv.on_building_placed(tile_id, "b_007", "", free_iid, coord)
+	var free_at: Vector2 = bv.footprint_center_for(free_iid, coord)
+	_check(not Geometry2D.is_point_in_polygon(free_at, poly),
+		"zone placement: without the zone it lands ELSEWHERE (%s)" % str(free_at.round()))
+	_check(zoned_at.distance_to(free_at) > 20.0,
+		"zone placement: the two placements are genuinely different (%.0f u apart)"
+		% zoned_at.distance_to(free_at))
+	bv.remove_instance(free_iid)
+	MatchState.remove_building(free_iid)
+
+	AuthoredMap.set_document_for_tests({})
+	AuthoredMap.reset_for_tests()
+	bv.queue_free()
+	terrain.queue_free()
+	await get_tree().process_frame
+
+
+## P1's actual behaviour: with an extraction zone AND an industrial zone on one tile, a mine
+## goes to the pit and a factory does not. Tested by placing both and looking at where they
+## landed — the preference list alone would pass even if _search never consulted it.
+func _test_zone_priority() -> void:
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		bv.queue_free(); terrain.queue_free(); return
+	var centre: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+
+	# Two zones in opposite corners, so which one a building chose is unambiguous.
+	var pit_at := centre + Vector2(-150.0, -120.0)
+	var works_at := centre + Vector2(150.0, 120.0)
+	var pit: Array = []
+	var works: Array = []
+	for offset in [Vector2(-80, -70), Vector2(80, -70), Vector2(80, 70), Vector2(-80, 70)]:
+		pit.append([pit_at.x + offset.x, pit_at.y + offset.y])
+		works.append([works_at.x + offset.x, works_at.y + offset.y])
+	AuthoredMap.set_document_for_tests({"version": AuthoredMap.SCHEMA_VERSION,
+		"settlements": {"s": {"tiles": [tile_id], "zones": [
+			{"id": "zp", "kind": "extraction", "tiles": [tile_id], "outline": pit},
+			{"id": "zw", "kind": "industrial", "tiles": [tile_id], "outline": works},
+		]}}})
+	bv.ensure_block_template_for(tile_id, coord)
+
+	var pit_poly := PackedVector2Array()
+	var works_poly := PackedVector2Array()
+	for i in 4:
+		pit_poly.append(Vector2(float(pit[i][0]), float(pit[i][1])))
+		works_poly.append(Vector2(float(works[i][0]), float(works[i][1])))
+
+	# b_001 is the mine, b_007 the industrial factory.
+	var mine_iid: String = MatchState.add_building("b_001", "", tile_id, "npc", "zp_mine")
+	bv.on_building_placed(tile_id, "b_001", "", mine_iid, coord)
+	var mine_at: Vector2 = bv.footprint_center_for(mine_iid, coord)
+	_check(Geometry2D.is_point_in_polygon(mine_at, pit_poly),
+		"zone priority: the mine went to the EXTRACTION zone (%s)" % str(mine_at.round()))
+	_check(not Geometry2D.is_point_in_polygon(mine_at, works_poly),
+		"zone priority: and not to the industrial one")
+
+	var works_iid: String = MatchState.add_building("b_007", "", tile_id, "npc", "zw_plant")
+	bv.on_building_placed(tile_id, "b_007", "", works_iid, coord)
+	var works_pos: Vector2 = bv.footprint_center_for(works_iid, coord)
+	_check(Geometry2D.is_point_in_polygon(works_pos, works_poly),
+		"zone priority: the factory went to the INDUSTRIAL zone (%s)" % str(works_pos.round()))
+	_check(not Geometry2D.is_point_in_polygon(works_pos, pit_poly),
+		"zone priority: a factory may not take the pit")
+
+	bv.remove_instance(mine_iid); MatchState.remove_building(mine_iid)
+	bv.remove_instance(works_iid); MatchState.remove_building(works_iid)
+	AuthoredMap.set_document_for_tests({})
+	AuthoredMap.reset_for_tests()
+	bv.queue_free()
+	terrain.queue_free()
+	await get_tree().process_frame
 
 
 func _test_authored_map_write_barrier() -> void:

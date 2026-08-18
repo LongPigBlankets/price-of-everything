@@ -286,6 +286,10 @@ var _block_masses: Dictionary = {}     # tile_id -> Array[{poly, holes, color, b
 var _massed_by_tile: Dictionary = {}   # tile_id -> {instance_id: true} — members drawn as ink divisions
 var _subcomp_dirty: Dictionary = {}   # tile_id -> true, tiles needing a subcomponent rebuild
 var _subcomp_queued := false
+## "tile_id|kind" -> the land mask restricted to that kind's zones. Built lazily, on the first
+## placement that needs one and only for tiles that carry a zone: _ensure_tile is a hot path
+## that has been optimised from 60s to 11s and must not grow three rasterisations per tile.
+var _zone_masks: Dictionary = {}
 # Farm layout (re-derived with subcomponents; never persisted). A field's render shape depends on its
 # neighbours (it Voronoi-snaps to the lanes between them), so it is computed per tile, not at placement.
 var _farm_render: Dictionary = {}     # instance_id -> {verts (world, cell-clipped), hatch}
@@ -538,7 +542,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		var rc := ART_ROAD_PAD if has_art else ROAD_CLEAR
 		var akey := str(INK_ART_KEY.get(iname_lot, ""))
 		placed = _search(tile_id, coord, kind, area, seed_v, cat, is_edge, placed_here, rc,
-			_sprite_lot_verts(size_units, akey))
+			_sprite_lot_verts(size_units, akey), iname_lot)
 		# Dense tiles (Stoneshore Docks runs 100+ buildings): rather than
 		# silently vanishing, art buildings retry with smaller lots — the
 		# city packs tighter and the art just draws smaller (strokes stay
@@ -549,7 +553,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 			# 0.6 still reads; 0.3 is the last resort before going undrawn.
 			for shrink in [0.6, 0.3]:
 				placed = _search(tile_id, coord, kind, area * float(shrink), seed_v, cat, is_edge, placed_here, rc,
-					_sprite_lot_verts(size_units, akey, sqrt(float(shrink))))
+					_sprite_lot_verts(size_units, akey, sqrt(float(shrink))), iname_lot)
 				if not placed.is_empty():
 					placed["shrink"] = shrink
 					break
@@ -811,6 +815,88 @@ func _evict_masses_under(tmpl: Dictionary, index: int) -> void:
 ## The slot class a building asks for. Infrastructure by category — the same rule
 ## `authored_slot_sizes.gd` applies, restated because that file preloads this one and the
 ## pair would cycle. `_test_authored_slot_class_agrees_with_art` holds the two together.
+# ── Industrial zones ────────────────────────────────────────────────────────────
+#
+# A zone is the region a gameplay building may be placed IN — no size, no rotation, so
+# nothing to mismatch when the player builds six mines where the designer imagined a mix.
+# See docs/industrial-zones-plan.md.
+#
+# The whole placement-side implementation is a MASK. `_ensure_tile` already rasterises the
+# tile into a PackedByteArray of buildable cells, and already builds a second one (`_farm_land`)
+# for a different kind of building. A zone is a third of exactly the same shape, so every
+# placer, validator and overlap test downstream behaves identically — they only ever saw a mask.
+
+
+## Buildings an `extraction` zone is for. WATER PUMPS ARE NOT ON THIS LIST (owner,
+## 2026-08-17): a pump is an industrial building whatever its recipe reads like, and the name
+## invites the opposite assumption every time.
+const EXTRACTION_NAMES := {
+	"mine": true, "oil_well": true, "fracking_oil_well": true,
+	"offshore_oil_platform": true,
+}
+
+## The zone kinds a building may be placed in, best first. Extraction buildings prefer their
+## own zone and then fall back like anything else — a mine on a tile with no extraction zone
+## is not a mine that cannot be built.
+func _zone_preference(iname: String) -> Array:
+	if EXTRACTION_NAMES.has(iname):
+		return ["extraction", "industrial", "industrial_reserve"]
+	return ["industrial", "industrial_reserve"]
+
+
+## The land mask restricted to zones of one kind, or an EMPTY array when this tile has no
+## zone of that kind — which the caller reads as "skip this kind", not as "nowhere to build".
+func _zone_mask(tile_id: String, coord: Vector2i, kind: String) -> PackedByteArray:
+	var cache_key := "%s|%s" % [tile_id, kind]
+	if _zone_masks.has(cache_key):
+		return _zone_masks[cache_key]
+	var mask := PackedByteArray()
+	var zones := AuthoredMap.zones_for_tile(tile_id, kind)
+	if not zones.is_empty() and _tile_land.has(tile_id):
+		var outlines: Array = []
+		for zone_value in zones:
+			var poly := PackedVector2Array()
+			for entry in ((zone_value as Dictionary).get("outline", []) as Array):
+				var values: Array = entry as Array
+				if values != null and values.size() >= 2:
+					poly.append(Vector2(float(values[0]), float(values[1])))
+			if poly.size() >= 3:
+				outlines.append(poly)
+		if not outlines.is_empty():
+			var land: PackedByteArray = _tile_land[tile_id]
+			mask.resize(land.size())
+			var origin := _tile_center_world_pos(coord) - TILE_CENTER
+			# Only LAND cells are tested: a zone drawn over water still cannot be built on,
+			# and this keeps the cost proportional to the tile's usable ground rather than to
+			# the whole 108x96 grid.
+			for key in (_tile_landkeys.get(tile_id, PackedInt32Array()) as PackedInt32Array):
+				var world := origin + Vector2(
+					(float(key % GRID_COLS) + 0.5) * CELL,
+					(float(key / GRID_COLS) + 0.5) * CELL)
+				for poly in outlines:
+					if Geometry2D.is_point_in_polygon(world, poly):
+						mask[key] = 1
+						break
+	_zone_masks[cache_key] = mask
+	return mask
+
+
+## Does a mask have anything in it? An all-zero mask means the zone exists but covers no
+## buildable cell on this tile, which must not be mistaken for "no zone".
+## Forget a tile's zone masks — the tile is being re-laid, and its zones may have moved.
+func _drop_zone_masks(tile_id: String) -> void:
+	for key in _zone_masks.keys():
+		if str(key).begins_with("%s|" % tile_id):
+			_zone_masks.erase(key)
+
+
+func _mask_has_room(mask: PackedByteArray) -> bool:
+	for i in mask.size():
+		if mask[i] != 0:
+			return true
+	return false
+
+
 func _authored_class_for(iname: String, size_units: int) -> String:
 	return AuthoredMap.slot_class_for(
 		_art_size_for(size_units, str(INK_ART_KEY.get(iname, ""))), false)
@@ -1487,6 +1573,7 @@ func relayout_tile(tile_id: String) -> void:
 				break
 		if not conflict:
 			_tile_land.erase(tile_id)
+			_drop_zone_masks(tile_id)
 			_tile_landkeys.erase(tile_id)
 			_farm_land.erase(tile_id)
 			_farm_landkeys.erase(tile_id)
@@ -1536,6 +1623,7 @@ func relayout_tile(tile_id: String) -> void:
 	# Drop just this tile's cached mask/frontage so _ensure_tile rebuilds it with
 	# the road that just appeared, then replay the tile's placements in emit order.
 	_tile_land.erase(tile_id)
+	_drop_zone_masks(tile_id)
 	_tile_landkeys.erase(tile_id)
 	_farm_land.erase(tile_id)
 	_farm_landkeys.erase(tile_id)
@@ -3158,7 +3246,7 @@ func _carve_service_lane(tile_id: String, segs: Array) -> void:
 		_farm_landkeys[tile_id] = fkeys
 
 ## Place one building. Returns {verts (world), center_rel, half}; {} if nothing fits.
-func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v: int, cat: String, is_edge: bool, placed_here: Array, road_clear: float = ROAD_CLEAR, override_verts: PackedVector2Array = PackedVector2Array()) -> Dictionary:
+func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v: int, cat: String, is_edge: bool, placed_here: Array, road_clear: float = ROAD_CLEAR, override_verts: PackedVector2Array = PackedVector2Array(), iname: String = "") -> Dictionary:
 	if not _tile_land.has(tile_id):
 		return {}   # caller must _ensure_tile first; never KeyError-crash on a miss
 	var land: PackedByteArray = _tile_land[tile_id]
@@ -3177,6 +3265,18 @@ func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v
 	# Shape-language buildings supply their own lot (the sprite's box); everyone
 	# else gets the seeded plate shape sized from `area`.
 	var base_verts: PackedVector2Array = override_verts if not override_verts.is_empty() else BuildingShapes.make(kind, area, seed_v).verts
+	# ZONES. Each kind is tried in turn as a narrower land mask; the last attempt is the
+	# unzoned tile, which is both the fallback and the entire behaviour of any tile nobody has
+	# zoned. That is what keeps this additive.
+	for zone_kind in _zone_preference(iname):
+		var mask := _zone_mask(tile_id, coord, zone_kind)
+		if mask.is_empty() or not _mask_has_room(mask):
+			continue
+		var zoned := _place_edge(tile_id, coord, base_verts, placed_here, mask, road_clear) \
+			if is_edge \
+			else _place_frontage(tile_id, coord, base_verts, cat, placed_here, mask, road_clear)
+		if not zoned.is_empty():
+			return zoned
 	if is_edge:
 		return _place_edge(tile_id, coord, base_verts, placed_here, land, road_clear)
 	return _place_frontage(tile_id, coord, base_verts, cat, placed_here, land, road_clear)
@@ -4232,6 +4332,7 @@ func _clear_tile_caches() -> void:
 	_tile_rivers.clear()
 	_tile_block_mode.clear()
 	_tile_block_templates.clear()
+	_zone_masks.clear()
 	_farm_render.clear()   # neighbour-dependent farm render + lanes are rebuilt per tile after a relayout
 	_farm_lanes.clear()
 	_farm_bridges.clear()

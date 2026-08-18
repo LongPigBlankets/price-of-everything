@@ -1,8 +1,8 @@
 # Industrial zones — plan
 
-**Status:** P0 authoring BUILT 2026-08-17 — the three kinds are drawable, validated, stored
-and visible in the editor. Placement still ignores them; that is the next step (see
-[Phases](#phases)).
+**Status:** P0, P0b and P1 BUILT 2026-08-17 — zones are drawable, validated, and they
+constrain placement, with extraction gated to mines and wells. P2 (fabric-aware cell scoring)
+and P3 (authoring readout, slot→zone conversion) remain.
 **Replaces (partly):** authored slots as the primary placement mechanism. Slots stay; see
 [What happens to slots](#what-happens-to-slots).
 
@@ -146,18 +146,25 @@ Also built: the **Extraction resources** visibility toggle, marking the 98 tiles
 deposit other than water — water is on 104 tiles by itself and would bury what the overlay
 exists to find.
 
-### P0b — placement, NOT built
-Rasterise a zone to a mask and have `_search` prefer it, falling back to tile land. This is
-the half that makes zones do anything; see [The insight](#the-insight-that-makes-this-cheap)
-for why it is small. Needs a headless test that a building lands inside the polygon **and
-outside it when the zone is removed** — the second half matters, or it passes on a build
-where zones do nothing.
+### P0b — placement ✅ BUILT
+`_zone_mask` rasterises a tile's zones of one kind onto the land grid and `AND`s them with it;
+`_search` tries each kind as a narrower mask before falling back to unzoned land. Masks are
+built lazily and only for tiles that carry a zone, and are dropped whenever the land mask is —
+`_ensure_tile` has been optimised from 60s to 11s and must not grow three rasterisations.
 
-### P1 — the three kinds and priority
-`industrial_reserve` and `extraction`; the ordered fallback; the extraction gate on mines and
-wells. Editor colours and panel entries driven off the kind list, not a hand-written trio —
-these names have been renamed twice already in the slot work, and each time the hardcoded
-copies failed as a broken editor rather than as an out-of-date check.
+Proven end to end, both halves: a building lands **inside** the polygon (4228, 5463) and
+**elsewhere** once the zone is removed (4318, 5518), 105 u apart. The mask-shape checks alone
+would have passed on a build where `_search` ignored the mask entirely.
+
+### P1 — priority and the extraction gate ✅ BUILT
+Ordered attempts: extraction (mines and wells only) → industrial → reserve → unzoned land.
+Proven by placing a mine and a factory on a tile carrying BOTH zones in opposite corners and
+looking at where each landed — the preference list alone would pass even if `_search` never
+consulted it. `EXTRACTION_NAMES` is mine, oil well, fracking well and offshore platform;
+**water pumps are deliberately absent** and a test asserts it.
+
+The editor half of this phase landed early with P0: all three kinds are drawable and the
+panel and overlay read `ZONE_KINDS` rather than a hand-written trio.
 
 ### P2 — fabric-aware cell scoring
 Port the least-destructive ordering from slots: score cells inside a zone by the decorative
