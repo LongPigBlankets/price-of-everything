@@ -286,10 +286,15 @@ func _demo_zones(editor: Node) -> void:
 			await _click(at)
 		_key(KEY_ENTER)
 		await get_tree().process_frame
-	# Select the last one, so a capture shows the hatch a selected zone gets.
+	# Select the last one, so a capture shows the hatch a selected zone gets. SHAPEMODE
+	# right-clicks instead, showing the side-to-side hatch and the corner dots.
 	if OS.get_environment("POE_EDITOR_SHOT_ZONE_PICK") == "1":
 		editor.call("set_tool", "select")
-		await _click(Vector2(340 + 160 * (AuthoredMapRef.ZONE_KINDS.size() - 1), 300))
+		var pick_at := Vector2(340 + 160 * (AuthoredMapRef.ZONE_KINDS.size() - 1), 300)
+		if OS.get_environment("POE_EDITOR_SHOT_SHAPEMODE") == "1":
+			await _right_click(pick_at)
+		else:
+			await _click(pick_at)
 	else:
 		editor.call("toggle_deposit_marks")
 	await get_tree().process_frame
@@ -377,6 +382,16 @@ func _drag_stamp(from: Vector2, to: Vector2) -> void:
 	up.position = to
 	Input.parse_input_event(up)
 	await get_tree().process_frame
+
+
+func _right_click(at: Vector2) -> void:
+	for pressed in [true, false]:
+		var event := InputEventMouseButton.new()
+		event.button_index = MOUSE_BUTTON_RIGHT
+		event.pressed = pressed
+		event.position = at
+		Input.parse_input_event(event)
+		await get_tree().process_frame
 
 
 func _click(at: Vector2) -> void:

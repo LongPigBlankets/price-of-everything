@@ -105,7 +105,7 @@ func _entries(settlement: Dictionary, key: String) -> Array:
 
 func _mark(selected: Dictionary, record: Dictionary, polygons: Array) -> void:
 	if selected.has(str(record.get("id", ""))):
-		_hatch(polygons)
+		_hatch(polygons, bool(editor.call("is_shape_mode")))
 
 
 func _outline_of(record: Dictionary) -> PackedVector2Array:
@@ -119,7 +119,7 @@ func _outline_of(record: Dictionary) -> PackedVector2Array:
 
 ## Diagonal hatching clipped to a set of polygons, in world units — this node draws in world
 ## space, so no camera transform is needed and the density is stable by construction.
-func _hatch(polygons: Array) -> void:
+func _hatch(polygons: Array, horizontal: bool = false) -> void:
 	for polygon_value in polygons:
 		var polygon: PackedVector2Array = polygon_value
 		if polygon.size() < 3:
@@ -130,8 +130,16 @@ func _hatch(polygons: Array) -> void:
 		var reach := bounds.size.x + bounds.size.y
 		var steps := int(reach / HATCH_SPACING) + 1
 		for i in steps:
-			var offset := bounds.position + Vector2(float(i) * HATCH_SPACING - bounds.size.y, 0.0)
-			var line := PackedVector2Array([offset, offset + Vector2(bounds.size.y, bounds.size.y)])
+			# Side-to-side while reshaping, 45 degrees otherwise — the hatch is what says
+			# which mode you are in.
+			var offset: Vector2
+			var line: PackedVector2Array
+			if horizontal:
+				offset = bounds.position + Vector2(0.0, float(i) * HATCH_SPACING)
+				line = PackedVector2Array([offset, offset + Vector2(bounds.size.x, 0.0)])
+			else:
+				offset = bounds.position + Vector2(float(i) * HATCH_SPACING - bounds.size.y, 0.0)
+				line = PackedVector2Array([offset, offset + Vector2(bounds.size.y, bounds.size.y)])
 			for piece in Geometry2D.intersect_polyline_with_polygon(line, polygon):
 				if (piece as PackedVector2Array).size() >= 2:
 					draw_polyline(piece, HATCH_COLOR, HATCH_WIDTH, true)

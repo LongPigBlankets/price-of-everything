@@ -153,6 +153,7 @@ func _draw() -> void:
 	_draw_authored_roads(camera)
 	_draw_pen(camera)
 	_draw_area_polygon(camera)
+	_draw_free_polygon(camera)
 	_draw_trace(camera)
 	_draw_dots(camera)
 	_draw_deposit_marks(camera)
@@ -221,10 +222,28 @@ func _draw_area_polygon(camera: Camera2D) -> void:
 		draw_circle(point, POINT_RADIUS + 1.0, PEN_POINT_COLOR)
 
 
+## The FREE POLYGON being drawn — the building primitive, which is a different path from the
+## farm/park/zone tool above and had no preview of its own at all. Same treatment, because a
+## polygon tool with no visible corners is a tool you are using blind.
+func _draw_free_polygon(camera: Camera2D) -> void:
+	var points: Array = editor.call("poly_points")
+	if points.is_empty():
+		return
+	var screen := PackedVector2Array()
+	for entry_value in points:
+		var entry: Array = entry_value as Array
+		if entry != null and entry.size() >= 2:
+			screen.append(_to_screen(Vector2(float(entry[0]), float(entry[1])), camera))
+	if screen.size() >= 2:
+		draw_polyline(screen, PEN_COLOR, 2.0, true)
+	for point in screen:
+		draw_circle(point, POINT_RADIUS + 1.0, PEN_POINT_COLOR)
+
+
 ## Diagonal hatching clipped to a set of polygons. Drawn in WORLD space (the canvas is
 ## already transformed here) but stepped in world units so the density is stable as the
 ## shape moves; at very low zoom it thins out rather than turning into a solid block.
-func _hatch(polygons: Array, camera: Camera2D) -> void:
+func _hatch(polygons: Array, camera: Camera2D, horizontal: bool = false) -> void:
 	var spacing := HATCH_SPACING / maxf(camera.zoom.x, 0.05)
 	for polygon_value in polygons:
 		var polygon: PackedVector2Array = polygon_value
@@ -238,8 +257,16 @@ func _hatch(polygons: Array, camera: Camera2D) -> void:
 		var reach := bounds.size.x + bounds.size.y
 		var steps := int(reach / spacing) + 1
 		for i in steps:
-			var offset := bounds.position + Vector2(float(i) * spacing - bounds.size.y, 0.0)
-			var line := PackedVector2Array([offset, offset + Vector2(bounds.size.y, bounds.size.y)])
+			# Side-to-side while reshaping, 45 degrees otherwise: the hatch is what tells you
+			# which mode you are in, so the two must not be confusable at a glance.
+			var offset: Vector2
+			var line: PackedVector2Array
+			if horizontal:
+				offset = bounds.position + Vector2(0.0, float(i) * spacing)
+				line = PackedVector2Array([offset, offset + Vector2(bounds.size.x, 0.0)])
+			else:
+				offset = bounds.position + Vector2(float(i) * spacing - bounds.size.y, 0.0)
+				line = PackedVector2Array([offset, offset + Vector2(bounds.size.y, bounds.size.y)])
 			for piece in Geometry2D.intersect_polyline_with_polygon(line, polygon):
 				if (piece as PackedVector2Array).size() >= 2:
 					draw_polyline(piece, HATCH_COLOR, HATCH_WIDTH / maxf(camera.zoom.x, 0.05), true)
@@ -395,7 +422,7 @@ func _draw_zones(camera: Camera2D) -> void:
 				# layer's transform for the hatch alone, then hand the canvas back.
 				draw_set_transform(size * 0.5 - camera.get_screen_center_position()
 					* camera.zoom.x, 0.0, Vector2(camera.zoom.x, camera.zoom.x))
-				_hatch([world], camera)
+				_hatch([world], camera, bool(editor.call("is_shape_mode")))
 				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 

@@ -271,11 +271,11 @@ func _ready() -> void:
 	_check("a side length rebuilds the shape (%.0f -> %.0f)" % [width_before, width_after],
 		width_after > width_before + 10.0)
 
-	# Selecting it shows its corners; dragging one moves that corner and nothing else.
+	# Reshaping is the RIGHT button's job now: a right click on the shape opens shape mode
+	# and shows its corners; dragging one moves that corner and nothing else.
 	_editor.call("set_tool", "select")
 	var centre := _outline_centre(_last_of(doc, "specials"))
-	await _drag(_screen_of(centre - Vector2(160, 130), camera),
-		_screen_of(centre + Vector2(160, 130), camera))
+	await _right_click(_screen_of(centre, camera))
 	var handles: PackedVector2Array = _editor.call("editable_corners")
 	_check("selecting one shape shows its corners (%d)" % handles.size(), handles.size() == 4)
 	if handles.size() == 4:
@@ -316,10 +316,15 @@ func _ready() -> void:
 	_check("clicking a shape selects it", int(_editor.call("selection_size")) == 1)
 	_check("clicking does not move it",
 		_outline_centre(_last_of(doc, "specials")).distance_to(settled) < 0.01)
-	_check("clicking a primitive opens its corners",
-		(_editor.call("editable_corners") as PackedVector2Array).size() == 4)
+	# A LEFT click no longer opens corners — that is the separation under test elsewhere.
+	_check("a left click on a primitive does NOT open its corners",
+		(_editor.call("editable_corners") as PackedVector2Array).is_empty())
 	_check("clicking a primitive opens its side lengths",
 		(_editor.call("special_sides") as Array).size() == 4)
+	await _right_click(_screen_of(settled, camera))
+	_check("a right click on the primitive opens its corners",
+		(_editor.call("editable_corners") as PackedVector2Array).size() == 4)
+	await _click(_screen_of(settled + Vector2(900.0, 900.0), camera))
 
 	# 3. Drag on EMPTY ground still box-selects rather than moving anything.
 	var empty := settled + Vector2(900.0, 900.0)
@@ -358,8 +363,16 @@ func _ready() -> void:
 	_check("a plain drag drops it exactly where the pointer stopped (%.0f u off)"
 		% dropped.distance_to(literal), dropped.distance_to(literal) < 8.0)
 
-	# Holding Ctrl asks for the kerb.
-	await _drag_modified(_screen_of(dropped, camera), Vector2(1020, 470), true)
+	# Holding Ctrl asks for the kerb. The target is computed FROM the nearest road rather
+	# than dragged to a fixed screen point: the camera's exact position drifts a little from
+	# run to run (the WASD pan checks move it by real frame deltas), and a hardcoded target
+	# sat right at the edge of the snap's search radius — so the check flipped with harness
+	# timing rather than with the feature. ~60 u off the road is inside the radius from any
+	# camera the harness can end up with.
+	var near_road := _nearest_road_point(doc, _mass_centre(_last_of(doc, "decor")))
+	var snap_target := near_road + Vector2(60.0, 0.0)
+	await _drag_modified(_screen_of(_mass_centre(_last_of(doc, "decor")), camera),
+		_screen_of(snap_target, camera), true)
 	var free_at := _mass_centre(_last_of(doc, "decor"))
 	var gap := _nearest_road_distance(doc, free_at)
 	_check("holding Ctrl seats it at a kerb (%.0f u from the nearest road)" % gap,
@@ -386,6 +399,7 @@ func _ready() -> void:
 
 	# ── Rotation, and corners on a rectangular mass ─────────────────────────────
 	var turn_target := _last_of(doc, "decor")
+	await _right_click(_screen_of(_mass_centre(turn_target), camera))
 	var corner_before: PackedVector2Array = _editor.call("editable_corners")
 	_check("a stamped mass offers its box corners (%d)" % corner_before.size(),
 		corner_before.size() == 4)
@@ -745,6 +759,8 @@ func _ready() -> void:
 		_check("clicking inside a zone selects it (wanted %s, got %s)"
 			% [zone_id, "nothing" if got.is_empty() else ", ".join(PackedStringArray(got.keys()))],
 			got.has(zone_id))
+		# Corners are the right button's job now.
+		await _right_click(zone_at)
 		var zone_handles: PackedVector2Array = _editor.call("editable_corners")
 		_check("it offers its corners for dragging (%d)" % zone_handles.size(),
 			zone_handles.size() == 4)
@@ -770,6 +786,8 @@ func _ready() -> void:
 		zone_from /= 4.0
 		await _drag(_screen_of(zone_from, camera),
 			_screen_of(zone_from + Vector2(60.0, 40.0), camera))
+		# The left drag was a MOVE and left shape mode; reopen it to read the corners back.
+		await _right_click(_screen_of(zone_from + Vector2(60.0, 40.0), camera))
 		var zone_to := Vector2.ZERO
 		for entry in (_editor.call("editable_corners") as PackedVector2Array):
 			zone_to += entry
@@ -845,6 +863,95 @@ func _ready() -> void:
 	_send_key(KEY_ENTER)
 	await get_tree().process_frame
 
+	# ── Position (left) and shape (right) are separate gestures ────────────────
+	# The bug: the corner test ran FIRST on left-press, so clicking a small shape near one of
+	# its corners dragged that corner instead of selecting the shape — which is most clicks on
+	# a small shape.
+	_editor.call("set_area_kind", "parks")
+	var box_at := Vector2(520, 520)
+	for offset in [Vector2(-60, -50), Vector2(60, -50), Vector2(60, 50), Vector2(-60, 50)]:
+		await _click(box_at + offset)
+	_send_key(KEY_ENTER)
+	await get_tree().process_frame
+	_editor.call("set_tool", "select")
+
+	# LEFT press right on a corner must select and MOVE, never reshape.
+	var doc2: RefCounted = _editor.call("document")
+	var park := _last_of(doc2, "parks")
+	_check("a park to test the gestures on", not park.is_empty())
+	if not park.is_empty():
+		var corners_world := PackedVector2Array()
+		for entry in (park.get("outline", []) as Array):
+			var values: Array = entry as Array
+			if values != null and values.size() >= 2:
+				corners_world.append(Vector2(float(values[0]), float(values[1])))
+		_check("it has corners to grab at (%d)" % corners_world.size(),
+			corners_world.size() == 4)
+		var grab_at := corners_world[0]
+		await _click(_screen_of(grab_at, camera))
+		_check("a left click shows NO corners (shape mode is off)",
+			(_editor.call("editable_corners") as PackedVector2Array).is_empty())
+		_check("and it is not in shape mode", not bool(_editor.call("is_shape_mode")))
+
+		# Dragging from that same corner must move the WHOLE shape, not the corner.
+		var park_before := PackedVector2Array(corners_world)
+		await _drag(_screen_of(grab_at, camera),
+			_screen_of(grab_at + Vector2(50.0, 35.0), camera))
+		var park_after := PackedVector2Array()
+		for entry in (_last_of(doc2, "parks").get("outline", []) as Array):
+			var values: Array = entry as Array
+			if values != null and values.size() >= 2:
+				park_after.append(Vector2(float(values[0]), float(values[1])))
+		var park_uniform := park_after.size() == park_before.size()
+		var park_delta := park_after[0] - park_before[0] if park_uniform else Vector2.ZERO
+		for i in park_after.size():
+			if not (park_after[i] - park_before[i]).is_equal_approx(park_delta):
+				park_uniform = false
+		_check("dragging from a corner moves the WHOLE shape (%s)" % str(park_delta.round()),
+			park_uniform and park_delta.length() > 20.0)
+
+		# RIGHT press opens shape mode: corners appear and one can be dragged alone.
+		var park_mid := Vector2.ZERO
+		for point in park_after:
+			park_mid += point
+		park_mid /= float(park_after.size())
+		await _right_click(_screen_of(park_mid, camera))
+		_check("a right click opens shape mode", bool(_editor.call("is_shape_mode")))
+		var park_dots: PackedVector2Array = _editor.call("editable_corners")
+		_check("and shows the corners (%d)" % park_dots.size(), park_dots.size() == 4)
+		if park_dots.size() == 4:
+			var one_dot := park_dots[0]
+			await _drag(_screen_of(one_dot, camera), _screen_of(one_dot + Vector2(-40.0, -30.0), camera))
+			var park_reshaped: PackedVector2Array = _editor.call("editable_corners")
+			_check("dragging a dot moves that corner alone (%.0f u)"
+				% one_dot.distance_to(park_reshaped[0]), one_dot.distance_to(park_reshaped[0]) > 20.0)
+			var park_others := 0
+			for i in range(1, 4):
+				if park_dots[i].distance_to(park_reshaped[i]) > 0.01:
+					park_others += 1
+			_check("the other corners held still (%d moved)" % park_others, park_others == 0)
+
+		# Dismissal: a left click on empty ground, and picking a tool.
+		await _click(Vector2(1180, 700))
+		_check("a left click elsewhere leaves shape mode",
+			not bool(_editor.call("is_shape_mode")))
+		await _right_click(_screen_of(park_mid, camera))
+		_editor.call("set_tool", "road")
+		_check("picking a tool leaves shape mode too",
+			not bool(_editor.call("is_shape_mode")))
+		_editor.call("set_tool", "select")
+
+	# The FREE POLYGON (the building primitive) is a different path from the area tool and
+	# had no corner preview at all.
+	_editor.call("pick_special", "poly")
+	for at in [Vector2(880, 300), Vector2(980, 290), Vector2(970, 380)]:
+		await _click(at)
+	_check("the building polygon keeps its points for the overlay to draw (%d)"
+		% (_editor.call("poly_points") as Array).size(),
+		(_editor.call("poly_points") as Array).size() == 3)
+	_send_key(KEY_ENTER)
+	await get_tree().process_frame
+
 	if _failures.is_empty():
 		print("[INPUT] ALL CHECKS PASSED")
 		get_tree().quit(0)
@@ -907,6 +1014,21 @@ func _road_count() -> int:
 	return int(counts.get("roads", 0))
 
 
+func _right_click(at: Vector2) -> void:
+	var down := InputEventMouseButton.new()
+	down.button_index = MOUSE_BUTTON_RIGHT
+	down.pressed = true
+	down.position = at
+	Input.parse_input_event(down)
+	await get_tree().process_frame
+	var up := InputEventMouseButton.new()
+	up.button_index = MOUSE_BUTTON_RIGHT
+	up.pressed = false
+	up.position = at
+	Input.parse_input_event(up)
+	await get_tree().process_frame
+
+
 func _click(at: Vector2) -> void:
 	var down := InputEventMouseButton.new()
 	down.button_index = MOUSE_BUTTON_LEFT
@@ -945,6 +1067,22 @@ func _mass_width(record: Dictionary) -> float:
 
 ## Distance from a point to the nearest authored road, so a snap can be asserted without
 ## assuming which road it chose — the loaded document has plenty.
+## The closest point on any document road to `world` — the anchor for a snap test that has
+## to hold whatever the camera is doing.
+func _nearest_road_point(document: RefCounted, world: Vector2) -> Vector2:
+	var best := world
+	var best_distance := 1.0e12
+	for settlement_value in (document.call("data").get("settlements", {}) as Dictionary).values():
+		for stroke_value in ((settlement_value as Dictionary).get("roads", []) as Array):
+			var points := AuthoredRoadGeometryScript.sample(stroke_value as Dictionary)
+			for i in range(1, points.size()):
+				var at := Geometry2D.get_closest_point_to_segment(world, points[i - 1], points[i])
+				if world.distance_to(at) < best_distance:
+					best_distance = world.distance_to(at)
+					best = at
+	return best
+
+
 func _nearest_road_distance(document: RefCounted, world: Vector2) -> float:
 	var best := INF
 	var data: Dictionary = document.call("data")

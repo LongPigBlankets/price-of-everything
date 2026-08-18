@@ -133,6 +133,7 @@ var _document: MapEditorDocument
 var _overlay: MapEditorOverlay
 var _road_tool: MapEditorRoadTool
 var _trace_tool: MapEditorTraceTool
+var _shape_mode := false
 var _shape_tool: MapEditorShapeTool
 var _layers: MapEditorLayers
 ## While the anchor tool has a point picked up: `{settlement, stroke, index}`.
@@ -547,9 +548,16 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 						_select_press(world, event.position)
 					else:
 						_select_release(world)
-		MOUSE_BUTTON_MIDDLE, MOUSE_BUTTON_RIGHT:
-			# Always available, whatever the tool: panning mid-stroke is normal when a road
-			# runs off the edge of the view.
+		MOUSE_BUTTON_RIGHT:
+			# In SELECT, the right button opens SHAPE MODE on whatever is under it: corners
+			# appear as dots and can be dragged. Everywhere else it still pans, because
+			# panning mid-stroke is normal when a road runs off the edge of the view.
+			if _tool == TOOL_SELECT:
+				if event.pressed:
+					_shape_press(_world_at(event.position))
+			else:
+				_panning = event.pressed
+		MOUSE_BUTTON_MIDDLE:
 			_panning = event.pressed
 		MOUSE_BUTTON_WHEEL_UP:
 			if event.pressed:
@@ -1108,11 +1116,48 @@ func _place_special(world: Vector2) -> void:
 # handle sits on top of its own shape, and grabbing the shape instead would make handles
 # unusable.
 
-func _select_press(world: Vector2, screen: Vector2) -> void:
-	_held_corner = _corner_at(world)
-	if _held_corner >= 0:
-		_document.begin_edit("move corner")
+## RIGHT-PRESS: open shape mode on the shape under the pointer, or close it on empty ground.
+##
+## Position and shape are separate gestures now (owner, 2026-08-17). They used to share the
+## left button, with the corner test running FIRST — so selecting a shape whose corner
+## happened to be near the pointer dragged that corner instead of the shape, which is most
+## selections on a small shape.
+func _shape_press(world: Vector2) -> void:
+	var hit := MapEditorSelection.at_point(_document.data(), world)
+	if hit.is_empty() or MapEditorSelection.corner_field(hit["record"] as Dictionary) == "":
+		_leave_shape_mode()
+		_set_status("Nothing here to reshape.")
+		_refresh_status()
 		return
+	_shape_mode = true
+	_set_corner_target(hit["record"] as Dictionary)
+	_selection = [{"kind": str(hit["kind"]), "settlement": str(hit["settlement"]),
+		"index": int(hit["index"]), "id": str(hit["id"])}]
+	_overlay.queue_redraw()
+	_set_status("Shape mode: drag the dots to reshape. Left-click away or pick a tool to leave.")
+	_refresh_status()
+
+
+func _leave_shape_mode() -> void:
+	_shape_mode = false
+	_held_corner = -1
+	_set_corner_target({})
+
+
+func is_shape_mode() -> bool:
+	return _shape_mode
+
+
+func _select_press(world: Vector2, screen: Vector2) -> void:
+	# Corners are ONLY grabbable in shape mode, which the right button opens. The left button
+	# is position: select, drag, and everything that follows from having a thing selected.
+	if _shape_mode:
+		_held_corner = _corner_at(world)
+		if _held_corner >= 0:
+			_document.begin_edit("move corner")
+			return
+		# A left click anywhere else leaves shape mode and behaves normally from here.
+		_leave_shape_mode()
 	# Slots are checked first: one sits on the ground it reserves, and a shape underneath
 	# would otherwise always win the click.
 	var slot_hit := _slot_at(world)
@@ -1323,6 +1368,12 @@ func picked_slot() -> Dictionary:
 
 
 func editable_corners() -> PackedVector2Array:
+	# ONE choke point for the whole rule: corners are visible and grabbable only in shape
+	# mode. Several paths still set `_corner_target` as a side effect of selecting — gating
+	# here rather than at each of them means a new one cannot reintroduce corner-grabbing on
+	# a plain left click, which is the bug this separation exists to kill.
+	if not _shape_mode:
+		return PackedVector2Array()
 	var field := MapEditorSelection.corner_field(_corner_target)
 	if field == "":
 		return PackedVector2Array()
@@ -1697,6 +1748,10 @@ func current_tool() -> String:
 
 
 func set_tool(value: String) -> void:
+	# Picking any tool leaves shape mode — the owner's dismissal rule alongside a left click
+	# on empty ground.
+	if value != _tool:
+		_leave_shape_mode()
 	if value == _tool:
 		return
 	# Leaving the pen mid-stroke would otherwise strand a half-drawn road that no longer has
