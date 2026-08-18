@@ -72,7 +72,7 @@ func _ready() -> void:
 	if OS.get_environment("POE_EDITOR_SHOT_LAYERS") == "1":
 		editor.call("focus_tile", _tile, _zoom)
 		await get_tree().process_frame
-		for key in ["buildings", "roads"]:
+		for key in ["buildings", "roads", "fabric"]:
 			if not bool(editor.call("layers").call("is_on", key)):
 				editor.call("layers").call("toggle", key)
 		editor.call("layers").call("apply")
@@ -81,6 +81,11 @@ func _ready() -> void:
 		for at in [Vector2(430, 250), Vector2(720, 240), Vector2(760, 470), Vector2(420, 480)]:
 			await _click(at)
 		_key(KEY_ENTER)
+		await get_tree().process_frame
+		# And a second one left half-drawn, so the capture also shows the in-progress corners.
+		editor.call("set_area_kind", "plazas")
+		for at in [Vector2(850, 520), Vector2(1050, 500), Vector2(1010, 660)]:
+			await _click(at)
 		await get_tree().process_frame
 	if OS.get_environment("POE_EDITOR_SHOT_ZONES") == "1":
 		editor.call("focus_tile", _tile, _zoom)

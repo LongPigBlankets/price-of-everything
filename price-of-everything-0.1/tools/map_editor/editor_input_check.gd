@@ -805,6 +805,46 @@ func _ready() -> void:
 			% [kind, (_editor.call("shape_tool").call("polygon_points") as Array).size()],
 			(_editor.call("shape_tool").call("polygon_points") as Array).is_empty())
 
+	# ── Layering: sibling order IS the layering in this world ──────────────────
+	# Asserted structurally rather than by screenshot, because the visual case only appears on
+	# a tile where the PROCEDURAL fabric still draws — and an authored tile suppresses it, so
+	# the very tiles you author on cannot show the bug. The order below is the guarantee.
+	var world := _world_of()
+	_check("the world was found for the layer check", world != null)
+	if world != null:
+		var order: Dictionary = {}
+		for want in ["MapEditorFabricGround", "UrbanFabricVisuals", "AuthoredFabricVisuals",
+				"MapEditorFabric", "BuildingVisuals", "RoadNetworkVisuals"]:
+			var node := world.get_node_or_null(want)
+			order[want] = node.get_index() if node != null else -1
+		for want in order.keys():
+			_check("%s is mounted (%d)" % [want, int(order[want])], int(order[want]) >= 0)
+		# Ground BELOW the procedural fabric: parks and plazas must sit under the decorative
+		# buildings the generator draws, which was the reported bug.
+		_check("edited GROUND draws below the procedural fabric (%d < %d)"
+			% [int(order["MapEditorFabricGround"]), int(order["UrbanFabricVisuals"])],
+			int(order["MapEditorFabricGround"]) < int(order["UrbanFabricVisuals"]))
+		# Standing fabric with the shipped authored node, and both below the buildings.
+		_check("edited STANDING fabric sits with the authored node (%d > %d)"
+			% [int(order["MapEditorFabric"]), int(order["AuthoredFabricVisuals"])],
+			int(order["MapEditorFabric"]) > int(order["AuthoredFabricVisuals"]))
+		_check("all edited fabric draws below the buildings (%d < %d)"
+			% [int(order["MapEditorFabric"]), int(order["BuildingVisuals"])],
+			int(order["MapEditorFabric"]) < int(order["BuildingVisuals"]))
+
+	# The in-progress polygon must show its corners. It went missing when the fabric moved out
+	# of the overlay, and a polygon tool with no visible corners is one you use blind.
+	_editor.call("set_area_kind", "parks")
+	for at in [Vector2(500, 300), Vector2(600, 290), Vector2(590, 380)]:
+		await _click(at)
+	_check("the half-drawn polygon keeps its corners (%d)"
+		% (_editor.call("shape_tool").call("polygon_points") as Array).size(),
+		(_editor.call("shape_tool").call("polygon_points") as Array).size() == 3)
+	_check("and the tool is still mid-draw, so the overlay has something to paint",
+		bool(_editor.call("shape_tool").call("is_drawing")))
+	_send_key(KEY_ENTER)
+	await get_tree().process_frame
+
 	if _failures.is_empty():
 		print("[INPUT] ALL CHECKS PASSED")
 		get_tree().quit(0)

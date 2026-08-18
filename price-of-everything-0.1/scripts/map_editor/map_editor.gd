@@ -176,6 +176,7 @@ var _deposit_cache: Array = []
 var _report_tile := ""
 ## The working document's fabric, drawn in the world (see `_mount_fabric_layer`).
 var _fabric: Node2D = null
+var _fabric_ground: Node2D = null
 var _panel: MapEditorPanel
 var _tool := TOOL_PAN
 var _world: Node
@@ -296,8 +297,24 @@ func _mount_fabric_layer() -> void:
 	var shipped := _world.get_node_or_null("AuthoredFabricVisuals")
 	if shipped == null:
 		return
+	# TWO nodes, because the editor shows the procedural fabric while you draw over it.
+	# Plazas, parks and worked land are GROUND and must sit under the decorative buildings the
+	# generator draws — which live in UrbanFabricVisuals, BEFORE the authored node. Mounting
+	# everything after the authored node put parks on top of them, which is the bug this
+	# splits to fix. In the game the two never meet: an authored tile suppresses the
+	# procedural fabric outright.
+	var procedural := _world.get_node_or_null("UrbanFabricVisuals")
+	_fabric_ground = MapEditorFabric.new()
+	_fabric_ground.editor = self
+	_fabric_ground.half = MapEditorFabric.Half.GROUND
+	_fabric_ground.name = "MapEditorFabricGround"
+	_world.add_child(_fabric_ground)
+	_world.move_child(_fabric_ground,
+		procedural.get_index() if procedural != null else shipped.get_index())
+
 	_fabric = MapEditorFabric.new()
 	_fabric.editor = self
+	_fabric.half = MapEditorFabric.Half.STANDING
 	_fabric.name = "MapEditorFabric"
 	_world.add_child(_fabric)
 	# Directly after the shipped node: same depth, and it draws over the saved document so an

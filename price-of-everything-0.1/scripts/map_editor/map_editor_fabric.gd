@@ -26,7 +26,17 @@ const HATCH_COLOR := Color(0.99, 0.97, 0.90, 0.75)
 const HATCH_SPACING := 7.0
 const HATCH_WIDTH := 1.6
 
+## Which half of the fabric this node paints. GROUND (plazas, parks, worked land) is mounted
+## BELOW the procedural fabric so it sits under the decorative buildings the generator draws;
+## STANDING (masses, specials, woodland) is mounted above, with the shipped authored node.
+##
+## The split exists because the editor shows procedural fabric while you draw authored content
+## over it. In the GAME the two never meet — authored tiles suppress the procedural fabric
+## entirely — so this is the editor telling the truth about a situation only the editor has.
+enum Half { GROUND, STANDING }
+
 var editor: Node = null
+var half: int = Half.STANDING
 
 
 func _ready() -> void:
@@ -54,18 +64,18 @@ func _draw() -> void:
 			continue
 		var settlement: Dictionary = settlement_value
 		# GROUND LOWEST, and plazas lowest of all (owner, 2026-08-17): plaza, then park, then
-		# worked land, then everything that stands on it. Identical to
-		# `authored_fabric_visuals.gd` — an editor that stacks them differently is showing a
-		# composition nobody will ever see.
-		for plaza in _entries(settlement, "plazas"):
-			AuthoredFabricPainter.draw_plaza(self, plaza)
-			_mark(selected, plaza, [_outline_of(plaza)])
-		for park in _entries(settlement, "parks"):
-			AuthoredFabricPainter.draw_park(self, park)
-			_mark(selected, park, [_outline_of(park)])
-		for area in _entries(settlement, "farms"):
-			AuthoredFabricPainter.draw_farm(self, area)
-			_mark(selected, area, [_outline_of(area)])
+		# worked land, then everything that stands on it.
+		if half == Half.GROUND:
+			for plaza in _entries(settlement, "plazas"):
+				AuthoredFabricPainter.draw_plaza(self, plaza)
+				_mark(selected, plaza, [_outline_of(plaza)])
+			for park in _entries(settlement, "parks"):
+				AuthoredFabricPainter.draw_park(self, park)
+				_mark(selected, park, [_outline_of(park)])
+			for area in _entries(settlement, "farms"):
+				AuthoredFabricPainter.draw_farm(self, area)
+				_mark(selected, area, [_outline_of(area)])
+			continue
 		for mass in _entries(settlement, "decor"):
 			AuthoredFabricPainter.draw_mass(self, mass)
 			_mark(selected, mass, AuthoredFabricPainter.mass_polygons(mass))
@@ -75,6 +85,8 @@ func _draw() -> void:
 		for area in _entries(settlement, "forests"):
 			AuthoredFabricPainter.draw_forest(self, area)
 
+	if half == Half.GROUND:
+		return
 	# The stamp being dragged, previewed as the real thing.
 	var shape: RefCounted = editor.call("shape_tool")
 	if shape != null and bool(shape.call("is_stamping")):

@@ -152,6 +152,7 @@ func _draw() -> void:
 	_draw_water_mask(camera)
 	_draw_authored_roads(camera)
 	_draw_pen(camera)
+	_draw_area_polygon(camera)
 	_draw_trace(camera)
 	_draw_dots(camera)
 	_draw_deposit_marks(camera)
@@ -197,6 +198,27 @@ func _draw_authored_roads(camera: Camera2D) -> void:
 				draw_polyline(screen, UNLOCKABLE_COLOR, 1.6, true)
 			if selected.has(str(stroke.get("id", ""))):
 				draw_polyline(screen, SELECTED_COLOR, 3.0, true)
+
+
+## The farm/wood/park/plaza/zone polygon being drawn: its corners and the ring so far. This
+## is scaffolding — it belongs above everything, which is why it lives here and not with the
+## fabric in the world. It was lost when the fabric moved out of this file, and a polygon tool
+## with no visible corners is a tool you are using blind.
+func _draw_area_polygon(camera: Camera2D) -> void:
+	var shape: RefCounted = editor.call("shape_tool")
+	if shape == null or not bool(shape.call("is_drawing")):
+		return
+	var screen := PackedVector2Array()
+	for entry_value in (shape.call("polygon_points") as Array):
+		var entry: Array = entry_value as Array
+		if entry != null and entry.size() >= 2:
+			screen.append(_to_screen(Vector2(float(entry[0]), float(entry[1])), camera))
+	if screen.size() >= 2:
+		var closed := screen.duplicate()
+		closed.append(screen[0])
+		draw_polyline(closed, PEN_COLOR, 2.0, true)
+	for point in screen:
+		draw_circle(point, POINT_RADIUS + 1.0, PEN_POINT_COLOR)
 
 
 ## Diagonal hatching clipped to a set of polygons. Drawn in WORLD space (the canvas is
