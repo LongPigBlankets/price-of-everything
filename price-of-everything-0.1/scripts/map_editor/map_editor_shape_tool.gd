@@ -28,6 +28,10 @@ const MIN_STAMP := 10.0
 const CLICK_STAMP := Vector2(46.0, 32.0)
 
 var _points: Array = []
+## A zone kind is stored as "zone:<kind>" while drawing: the tool's kind names the settlement
+## list it writes into, and every zone goes into one `zones` list with its kind on the record.
+const ZONE_PREFIX := "zone:"
+
 var _kind := "forests"
 var _form := "solid"
 var _drag_origin := Vector2.INF
@@ -39,7 +43,12 @@ func kind() -> String:
 
 
 func set_kind(value: String) -> void:
-	if value in ["farms", "forests", "parks", "plazas"]:
+	# Ground kinds name the settlement list they write into; a zone carries the ZONE_PREFIX
+	# and is sorted into the single `zones` list on commit. The whitelist is what stopped
+	# zones being selectable at all when it only knew the four ground kinds.
+	if value in ["farms", "forests", "parks", "plazas"] \
+			or (value.begins_with(ZONE_PREFIX)
+				and AuthoredMap.ZONE_KINDS.has(value.trim_prefix(ZONE_PREFIX))):
 		_kind = value
 		_points = []
 
@@ -71,9 +80,16 @@ func polygon_points() -> Array:
 
 
 ## Add a corner. Returns a message when the cap stops it, else "".
+## The corner cap for the kind being drawn. Zones are drawn around a tile's usable ground
+## rather than around a building, so they get more corners than a farm field.
+func max_corners() -> int:
+	return AuthoredMap.ZONE_MAX_VERTICES if _kind.begins_with(ZONE_PREFIX) \
+		else AuthoredMap.AREA_MAX_VERTICES
+
+
 func add_point(world: Vector2) -> String:
-	if _points.size() >= AuthoredMap.AREA_MAX_VERTICES:
-		return "%s corners maximum — press Enter to close." % AuthoredMap.AREA_MAX_VERTICES
+	if _points.size() >= max_corners():
+		return "%d corners maximum — press Enter to close." % max_corners()
 	_points.append([world.x, world.y])
 	return ""
 

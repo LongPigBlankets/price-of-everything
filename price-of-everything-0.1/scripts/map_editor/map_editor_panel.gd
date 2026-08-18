@@ -21,6 +21,7 @@ const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd
 const AuthoredMapRef := preload("res://scripts/authored_map.gd")
 const MapEditorSlotBoxes := preload("res://scripts/map_editor/map_editor_slot_boxes.gd")
 const MapEditorOverlayRef := preload("res://scripts/map_editor/map_editor_overlay.gd")
+const MapEditorShapeToolRef := preload("res://scripts/map_editor/map_editor_shape_tool.gd")
 
 const WIDTH := 244.0
 const BG := Color(0.05, 0.07, 0.10, 0.93)
@@ -72,6 +73,8 @@ var _form_tiles: Dictionary = {}
 var _kind_tiles: Dictionary = {}
 var _special_tiles: Dictionary = {}
 var _slot_buttons: Dictionary = {}
+var _zone_buttons: Dictionary = {}
+var _deposit_button: Button = null
 var _special_rows: VBoxContainer
 var _folds: Dictionary = {}
 var _status: Label
@@ -193,6 +196,23 @@ func build(editor: Node, layers: MapEditorLayers) -> void:
 		_kind_tiles[area_key] = tile
 		ground_grid.add_child(tile)
 
+	# ── Industrial zones ────────────────────────────────────────────────────────
+	# A zone is the region a gameplay building may be placed IN. No size, no rotation: the
+	# packer fits whatever the player builds into the ground that is left, which is what a
+	# fixed slot could never do.
+	var zones := _fold(column, "Industrial Zones")
+	zones.add_child(_caption("Draw a region buildings may be placed in. Up to %d corners, Enter closes."
+		% AuthoredMapRef.ZONE_MAX_VERTICES))
+	for zone_kind_value in AuthoredMapRef.ZONE_KINDS:
+		var zone_kind := str(zone_kind_value)
+		var button := _toggle_button("%s   %s" % [_zone_label(zone_kind),
+			MapEditorOverlayRef.ZONE_SWATCH.get(zone_kind, "")])
+		button.pressed.connect(func() -> void:
+			_editor.call("set_area_kind", MapEditorShapeToolRef.ZONE_PREFIX + zone_kind))
+		_zone_buttons[zone_kind] = button
+		zones.add_child(button)
+	zones.add_child(_caption("Default fills first, then reserve. Extraction is mines and wells only — water pumps use the industrial zones."))
+
 	# ── Building slots ──────────────────────────────────────────────────────────
 	# Empty ground reserved for a gameplay building — placed at a size class, facing the
 	# nearest road, and rotatable afterwards with Z / Y like anything else.
@@ -228,6 +248,10 @@ func build(editor: Node, layers: MapEditorLayers) -> void:
 	visibility.add_child(grid)
 	var water := _toggle_button("Water mask   (H)")
 	water.pressed.connect(func() -> void: _editor.call("toggle_water_mask"))
+	var deposits := _toggle_button("Extraction resources")
+	deposits.pressed.connect(func() -> void: _editor.call("toggle_deposit_marks"))
+	_deposit_button = deposits
+	visibility.add_child(deposits)
 	_layer_buttons["__water"] = water
 	visibility.add_child(water)
 
@@ -349,7 +373,10 @@ func refresh() -> void:
 		"stamp":
 			_hint.text = "Drag to size a mass · the drag direction is its facing · , and . pick the form"
 		"area":
-			_hint.text = "Click corners (max 8) · Enter closes · Bksp undoes a corner"
+			# The cap depends on what is being drawn — a zone gets more corners than a field —
+			# so it is read from the tool rather than written into the sentence.
+			_hint.text = "Click corners (max %d) · Enter closes · Bksp undoes a corner" \
+				% int(_editor.call("shape_tool").call("max_corners"))
 		"slot":
 			_hint.text = "Click to reserve ground for a gameplay building · [ and ] rotate"
 		"special":
@@ -454,5 +481,15 @@ func _caption(text: String) -> Label:
 
 ## "very_small" -> "Very small". The ids are the storage names; this is the only place they
 ## become English, so a new class needs no second table to be readable in the panel.
+## "industrial_reserve" -> "Reserve". The kind ids are storage names; this is where they
+## become the words on the button.
+func _zone_label(zone_kind: String) -> String:
+	match zone_kind:
+		"industrial": return "Default industrial"
+		"industrial_reserve": return "Reserve industrial"
+		"extraction": return "Mining / extraction"
+	return zone_kind.replace("_", " ").capitalize()
+
+
 func _slot_label(slot_class: String) -> String:
 	return slot_class.replace("_", " ").capitalize()

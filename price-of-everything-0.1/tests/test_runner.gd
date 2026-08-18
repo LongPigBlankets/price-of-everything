@@ -75,6 +75,8 @@ func _ready() -> void:
 	_test_authored_slot_box_holds_its_class()
 	_test_authored_area_buildings_exist()
 	await _test_authored_slot_claim_order()
+	_test_authored_zones()
+	_test_tile_deposits_exclude_water()
 	_test_authored_map_write_barrier()
 	_test_shipped_code_avoids_editor_only_paths()
 	_test_authored_road_geometry()
@@ -15112,6 +15114,94 @@ func _test_authored_slot_claim_order() -> void:
 	bv.queue_free()
 	terrain.queue_free()
 	await get_tree().process_frame
+
+
+## Industrial zones: the region a gameplay building may be placed IN, as opposed to a slot,
+## which is a box reserved before anyone knows what will stand in it.
+func _test_authored_zones() -> void:
+	var base := {"version": AuthoredMap.SCHEMA_VERSION,
+		"settlements": {"s": {"tiles": ["tile_1_1"]}}}
+
+	var good := base.duplicate(true)
+	good["settlements"]["s"]["zones"] = [{"id": "z1", "kind": "industrial",
+		"tiles": ["tile_1_1"], "outline": [[0, 0], [40, 0], [40, 40], [0, 40]]}]
+	_check(AuthoredMap.validate(good).is_empty(), "zones: a well-formed zone passes")
+
+	var bad_kind := base.duplicate(true)
+	bad_kind["settlements"]["s"]["zones"] = [{"id": "z1", "kind": "residential",
+		"outline": [[0, 0], [40, 0], [40, 40]]}]
+	_check(not AuthoredMap.validate(bad_kind).is_empty(), "zones: an unknown kind is rejected")
+
+	var thin := base.duplicate(true)
+	thin["settlements"]["s"]["zones"] = [{"id": "z1", "kind": "industrial",
+		"outline": [[0, 0], [40, 0]]}]
+	_check(not AuthoredMap.validate(thin).is_empty(), "zones: two corners is not a region")
+
+	# TEN corners, which is more than a farm field may have — the cap is the point.
+	var ten: Array = []
+	for i in 10:
+		ten.append([cos(TAU * float(i) / 10.0) * 60.0, sin(TAU * float(i) / 10.0) * 60.0])
+	var big := base.duplicate(true)
+	big["settlements"]["s"]["zones"] = [{"id": "z1", "kind": "extraction", "outline": ten}]
+	_check(AuthoredMap.validate(big).is_empty(), "zones: ten corners is allowed (%d max)"
+		% AuthoredMap.ZONE_MAX_VERTICES)
+	_check(AuthoredMap.ZONE_MAX_VERTICES > AuthoredMap.AREA_MAX_VERTICES,
+		"zones: a zone may have more corners than a farm field")
+	var eleven := base.duplicate(true)
+	var over := ten.duplicate(true)
+	over.append([0, 0])
+	eleven["settlements"]["s"]["zones"] = [{"id": "z1", "kind": "extraction", "outline": over}]
+	_check(not AuthoredMap.validate(eleven).is_empty(), "zones: eleven corners is refused")
+
+	# All three kinds the owner asked for exist, and the lookup filters by kind AND tile.
+	for kind in ["industrial", "industrial_reserve", "extraction"]:
+		_check(AuthoredMap.ZONE_KINDS.has(kind), "zones: '%s' is a kind" % kind)
+	var doc := base.duplicate(true)
+	doc["settlements"]["s"]["zones"] = [
+		{"id": "z1", "kind": "industrial", "tiles": ["tile_1_1"],
+			"outline": [[0, 0], [40, 0], [40, 40]]},
+		{"id": "z2", "kind": "extraction", "tiles": ["tile_1_1"],
+			"outline": [[0, 0], [40, 0], [40, 40]]},
+		{"id": "z3", "kind": "industrial", "tiles": ["tile_2_2"],
+			"outline": [[0, 0], [40, 0], [40, 40]]},
+	]
+	AuthoredMap.set_document_for_tests(doc)
+	_check((AuthoredMap.zones_for_tile("tile_1_1", "industrial") as Array).size() == 1,
+		"zones: the lookup takes only this tile's zones of this kind")
+	_check((AuthoredMap.zones_for_tile("tile_1_1", "extraction") as Array).size() == 1,
+		"zones: and finds the extraction one separately")
+	_check((AuthoredMap.zones_for_tile("tile_2_2", "extraction") as Array).is_empty(),
+		"zones: a tile with none of a kind gets none")
+	AuthoredMap.set_document_for_tests({})
+	AuthoredMap.reset_for_tests()
+
+
+## The extraction-resources overlay marks tiles carrying a deposit that is NOT water. Water is
+## on 123 tiles against 98 with anything else, and a water pump is an industrial building, not
+## an extraction one (owner) — marking water would bury what the overlay exists to find.
+func _test_tile_deposits_exclude_water() -> void:
+	var with_any := 0
+	var water_only := 0
+	var non_water := 0
+	for tile_id in Catalog.tile_ids_for_tests():
+		var raw := Catalog.tile_deposits_raw(tile_id)
+		if raw == "":
+			continue
+		with_any += 1
+		var has_other := false
+		for token in raw.split("|", false):
+			if str(token).split("(", false)[0].strip_edges().to_lower() != "water":
+				has_other = true
+		if has_other:
+			non_water += 1
+		else:
+			water_only += 1
+	_check(with_any > 100, "deposits: the CSV column is being read (%d tiles carry one)" % with_any)
+	_check(non_water > 0 and water_only > 0,
+		"deposits: both kinds exist to tell apart (%d non-water, %d water-only)"
+		% [non_water, water_only])
+	_check(non_water < with_any,
+		"deposits: excluding water actually excludes something (%d of %d)" % [non_water, with_any])
 
 
 func _test_authored_map_write_barrier() -> void:

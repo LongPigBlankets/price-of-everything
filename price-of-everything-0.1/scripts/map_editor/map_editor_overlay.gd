@@ -88,6 +88,30 @@ const SLOT_SWATCH := {
 	"standard": "blue",
 }
 const SLOT_FILL_ALPHA := 0.16
+
+## Industrial zones. Owner's colours: blue default, red reserve, black extraction. Drawn as a
+## tinted region with a heavy edge — a zone is ground, not an object, so it reads as a wash
+## rather than as an outline you could grab.
+const ZONE_COLORS := {
+	"industrial": Color(0.30, 0.60, 1.00, 1.0),
+	"industrial_reserve": Color(0.95, 0.30, 0.28, 1.0),
+	"extraction": Color(0.08, 0.09, 0.12, 1.0),
+}
+const ZONE_SWATCH := {
+	"industrial": "blue",
+	"industrial_reserve": "red",
+	"extraction": "black",
+}
+const ZONE_FILL_ALPHA := 0.20
+const ZONE_EDGE_WIDTH := 3.0
+
+## Tiles holding at least one non-water deposit. An authoring aid for placing extraction
+## zones: water is excluded because 123 tiles carry it and a pump is not an extraction
+## building — marking them would hide the 98 tiles that actually matter.
+const DEPOSIT_FILL := Color(0.10, 0.09, 0.13, 0.30)
+const DEPOSIT_EDGE := Color(0.85, 0.72, 0.35, 0.95)
+const DEPOSIT_LABEL := Color(1.0, 0.92, 0.70, 0.95)
+const DEPOSIT_MIN_ZOOM := 0.22
 const SLOT_WIDTH := 2.0
 const SLOT_PICKED_WIDTH := 4.0
 
@@ -100,6 +124,8 @@ var show_grid := true
 var show_labels := true
 ## Off by default — it is a check you turn on while drawing a coastline, not scenery.
 var show_water_mask := false
+## Off by default — it is a check you turn on while siting extraction zones, not scenery.
+var show_deposit_marks := false
 
 var _font: Font
 
@@ -128,6 +154,8 @@ func _draw() -> void:
 	_draw_pen(camera)
 	_draw_trace(camera)
 	_draw_dots(camera)
+	_draw_deposit_marks(camera)
+	_draw_zones(camera)
 	_draw_slots(camera)
 	_draw_marquee(camera)
 
@@ -383,6 +411,68 @@ func _draw_corner_handles(camera: Camera2D) -> void:
 		var centre := _to_screen(corners[i], camera)
 		draw_circle(centre, CORNER_RADIUS + 1.5, DOT_EDGE)
 		draw_circle(centre, CORNER_RADIUS, DOT_ARMED if i == held else CORNER_COLOR)
+
+
+## Industrial zones: the regions a gameplay building may be placed in.
+func _draw_zones(camera: Camera2D) -> void:
+	var document: Dictionary = editor.call("document").call("data")
+	var settlements_value: Variant = document.get("settlements", {})
+	if typeof(settlements_value) != TYPE_DICTIONARY:
+		return
+	for key in (settlements_value as Dictionary).keys():
+		var settlement_value: Variant = (settlements_value as Dictionary)[key]
+		if typeof(settlement_value) != TYPE_DICTIONARY:
+			continue
+		for zone_value in ((settlement_value as Dictionary).get("zones", []) as Array):
+			if typeof(zone_value) != TYPE_DICTIONARY:
+				continue
+			var zone: Dictionary = zone_value
+			var world := PackedVector2Array()
+			for entry in (zone.get("outline", []) as Array):
+				var values: Array = entry as Array
+				if values != null and values.size() >= 2:
+					world.append(Vector2(float(values[0]), float(values[1])))
+			if world.size() < 3:
+				continue
+			var colour: Color = ZONE_COLORS.get(str(zone.get("kind", "")),
+				ZONE_COLORS["industrial"])
+			var screen := _project(world, camera)
+			var fill := colour
+			fill.a = ZONE_FILL_ALPHA
+			draw_colored_polygon(screen, fill)
+			var ring := screen.duplicate()
+			ring.append(screen[0])
+			draw_polyline(ring, colour, ZONE_EDGE_WIDTH, true)
+
+
+## Tiles carrying at least one non-water deposit, so extraction zones can be sited where the
+## resources actually are rather than from memory.
+func _draw_deposit_marks(camera: Camera2D) -> void:
+	if not show_deposit_marks or camera.zoom.x < DEPOSIT_MIN_ZOOM:
+		return
+	var marks: Array = editor.call("deposit_tiles")
+	for mark_value in marks:
+		var mark: Dictionary = mark_value
+		var centre: Vector2 = mark["centre"]
+		# The map's own hex vertices, not a local copy, so a change to tile size cannot
+		# desynchronise this overlay from the real tiles.
+		var world := PackedVector2Array()
+		for vertex in HexGridOverlayRef.HEX_VERTS:
+			world.append(centre + (vertex as Vector2) - HexGridOverlayRef.TILE_CENTER)
+		var ring := _project(world, camera)
+		if ring.size() < 3:
+			continue
+		draw_colored_polygon(ring, DEPOSIT_FILL)
+		var closed := ring.duplicate()
+		closed.append(ring[0])
+		draw_polyline(closed, DEPOSIT_EDGE, 2.0, true)
+		if _font != null and camera.zoom.x >= LABEL_MIN_ZOOM:
+			var at := _to_screen(mark["centre"] as Vector2, camera)
+			var text := str(mark["what"])
+			var width := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1,
+				LABEL_SIZE).x
+			draw_string(_font, at - Vector2(width * 0.5, -LABEL_SIZE * 1.6),
+				text, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_SIZE, DEPOSIT_LABEL)
 
 
 ## Reserved ground for gameplay buildings. Drawn as an oriented outline with a faint fill and

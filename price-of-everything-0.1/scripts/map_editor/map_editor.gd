@@ -169,6 +169,8 @@ var _nudging := false
 ## The slot pin currently picked, as `{tile_id, index}` — slots live in a per-tile dictionary
 ## rather than a settlement list, so they are selected separately from shapes.
 var _slot_pick: Dictionary = {}
+## Built once — tile deposits are static map data.
+var _deposit_cache: Array = []
 var _panel: MapEditorPanel
 var _tool := TOOL_PAN
 var _world: Node
@@ -938,12 +940,25 @@ func _finish_area() -> void:
 	_document.begin_edit("draw %s" % kind)
 	settlement = _ensure_settlement()
 	settlement["next_id"] = next_id + 1
-	var items: Array = settlement.get(kind, []) as Array
+	# Zones all live in ONE list with their kind on the record, rather than a list per kind:
+	# the placement side asks "which zones of kind X cover this tile", and three parallel
+	# lists would be three chances for them to drift apart.
+	var list_key := kind
+	var label := kind.trim_suffix("s").capitalize()
+	if kind.begins_with(MapEditorShapeTool.ZONE_PREFIX):
+		list_key = "zones"
+		record["kind"] = kind.trim_prefix(MapEditorShapeTool.ZONE_PREFIX)
+		label = str(record["kind"]).replace("_", " ").capitalize() + " zone"
+	var items: Array = settlement.get(list_key, []) as Array
 	items.append(record)
-	settlement[kind] = items
+	settlement[list_key] = items
 	_cover_tiles_of(settlement, record.get("outline", []) as Array)
+	# A zone declares the tiles it covers, so the mask can be built per tile without
+	# re-testing every polygon on the map.
+	if list_key == "zones":
+		record["tiles"] = _tiles_under(record.get("outline", []) as Array)
 	_overlay.queue_redraw()
-	_set_status("%s placed (%d corners)." % [kind.trim_suffix("s").capitalize(),
+	_set_status("%s placed (%d corners)." % [label,
 		(record.get("outline", []) as Array).size()])
 
 
@@ -965,6 +980,31 @@ func _finish_stamp() -> void:
 	_cover_tiles_of(settlement, [record.get("pos", [0, 0])])
 	_overlay.queue_redraw()
 	_set_status("Stamped %s." % str(record.get("form", "")))
+
+
+## The tiles a polygon's corners fall on, sorted. Corner sampling rather than a full
+## rasterisation: a zone is drawn to sit inside usable ground, so a polygon that spans a tile
+## without a corner on it would have to be enormous.
+func _tiles_under(points: Array) -> Array:
+	var terrain := get_tree().get_first_node_in_group("hex_map")
+	if terrain == null:
+		return []
+	var tiles: Dictionary = terrain.get("tiles")
+	var out: Array = []
+	for entry in points:
+		var values: Array = entry as Array
+		if values == null or values.size() < 2:
+			continue
+		var world := Vector2(float(values[0]), float(values[1]))
+		var coord: Vector2i = terrain.call("tile_coord_for_map_coord",
+			terrain.call("local_to_map", world))
+		if not tiles.has(coord):
+			continue
+		var tile_id := str((tiles[coord] as Dictionary).get("id", ""))
+		if tile_id != "" and not out.has(tile_id):
+			out.append(tile_id)
+	out.sort()
+	return out
 
 
 ## Add the tiles a set of world points falls on to the settlement's coverage. Ground and
@@ -1635,6 +1675,54 @@ func grid_shown() -> bool:
 
 func water_mask_shown() -> bool:
 	return _overlay != null and _overlay.show_water_mask
+
+
+## Tiles carrying at least one NON-WATER deposit, with the hex ring to draw and a short
+## label. Water is excluded deliberately: 123 tiles carry it against 98 with anything else,
+## and a water pump is an industrial building, not an extraction one — marking water would
+## bury the tiles this overlay exists to find.
+func deposit_tiles() -> Array:
+	if not _deposit_cache.is_empty():
+		return _deposit_cache
+	var terrain := get_tree().get_first_node_in_group("hex_map")
+	if terrain == null:
+		return []
+	for coord in (terrain.get("tiles") as Dictionary).keys():
+		var tile: Dictionary = (terrain.get("tiles") as Dictionary)[coord]
+		var tile_id := str(tile.get("id", ""))
+		var what := _non_water_deposits(tile_id)
+		if what == "":
+			continue
+		var centre: Vector2 = terrain.call("map_to_local",
+			terrain.call("map_coord_for_tile_coord", coord))
+		_deposit_cache.append({"centre": centre, "what": what})
+	return _deposit_cache
+
+
+## The deposit names on a tile with water dropped, comma separated, or "" when there are none.
+func _non_water_deposits(tile_id: String) -> String:
+	var raw := str(Catalog.tile_deposits_raw(tile_id))
+	if raw == "":
+		return ""
+	var names := PackedStringArray()
+	for token in raw.split("|", false):
+		var name := str(token).split("(", false)[0].strip_edges().to_lower()
+		if name == "" or name == "water" or names.has(name):
+			continue
+		names.append(name)
+	return ", ".join(names)
+
+
+func toggle_deposit_marks() -> void:
+	if _overlay != null:
+		_overlay.show_deposit_marks = not _overlay.show_deposit_marks
+		_set_status("Extraction resources %s (%d tile(s))."
+			% ["shown" if _overlay.show_deposit_marks else "hidden", deposit_tiles().size()])
+		_refresh_status()
+
+
+func deposit_marks_shown() -> bool:
+	return _overlay != null and _overlay.show_deposit_marks
 
 
 func toggle_water_mask() -> void:

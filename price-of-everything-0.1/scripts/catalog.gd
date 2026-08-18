@@ -60,6 +60,7 @@ var _tile_infra: Dictionary = {}   # tile_id -> ["roads","rail",...] (normalised
 var _tile_infra_levels: Dictionary = {}
 var _tile_land: Dictionary = {}    # tile_id -> bool (false for sea/deep_sea)
 var _tile_types: Dictionary = {}   # tile_id -> "urban" | "rural" | "hill" | "mountain" | ...
+var _tile_deposits: Dictionary = {}  # tile_id -> the raw deposits cell, e.g. "coal|water"
 
 # Routing caches. route() pathfinding and nearest_port_tile() are recomputed per
 # building, per input good, EVERY turn by the production loop — and the results
@@ -206,6 +207,7 @@ func _load_tile_names() -> void:
 	var nick_i: int = idx.get("nickname", -1)
 	var city_i: int = idx.get("city_name", -1)
 	var type_i: int = idx.get("type", -1)
+	var dep_i: int = idx.get("deposits", -1)
 	var infra_i: int = idx.get("infrastructure_present", -1)
 	if id_i < 0:
 		return
@@ -223,6 +225,8 @@ func _load_tile_names() -> void:
 		var label_name := nick if nick != "" else city
 		if label_name != "":
 			_tile_names[tid] = label_name
+		if dep_i >= 0 and dep_i < line.size() and line[dep_i].strip_edges() != "":
+			_tile_deposits[tid] = line[dep_i].strip_edges()
 		var ttype := ""
 		if type_i >= 0 and type_i < line.size():
 			ttype = line[type_i].strip_edges().to_lower()
@@ -255,6 +259,18 @@ func _normalise_infra_id(value: String) -> String:
 
 func tile_name(tile_id: String) -> String:
 	return _tile_names.get(tile_id, "")
+
+
+## Every tile id the properties CSV declared. For tests that sweep the map's own data.
+func tile_ids_for_tests() -> Array:
+	return _tile_types.keys()
+
+
+## The raw `deposits` cell for a tile, e.g. "copper_ore|water" or "oil(2000)". Unparsed on
+## purpose: callers want different things from it (the map editor wants names without water,
+## the sim wants quantities), and one shared half-parse would serve neither.
+func tile_deposits_raw(tile_id: String) -> String:
+	return str(_tile_deposits.get(tile_id, ""))
 
 
 ## Terrain type from tile_properties.csv ("urban", "rural", "hill", "mountain", "sea",

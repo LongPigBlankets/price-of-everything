@@ -108,6 +108,25 @@ const SLOT_CLASS_CEILINGS := {
 ## Farm and forest outlines are authored as simple polygons of at most this many vertices.
 const AREA_MAX_VERTICES := 8
 
+## INDUSTRIAL ZONES (docs/industrial-zones-plan.md). A zone reserves no ground and has no
+## size — it is the region a gameplay building may be placed IN, which is what lets a tile
+## hold six mines or thirteen workshops depending on what the player builds, instead of
+## whatever mix of slot sizes a designer guessed.
+##
+## `industrial` is used first; `industrial_reserve` only once it is full, so a town visibly
+## spills into its reserve rather than silently refusing a building. `extraction` is for
+## mines and wells — the buildings that are hardcoded to seek a tile edge today — and is the
+## only kind that gates WHO may use it.
+##
+## WATER PUMPS ARE NOT EXTRACTION (owner, 2026-08-17): they take the industrial zones like any
+## other plant, whatever their recipe looks like. Recorded here because the name invites the
+## opposite assumption every time.
+const ZONE_KINDS := ["industrial", "industrial_reserve", "extraction"]
+
+## Zones are drawn to fit a tile's usable ground rather than a building, so they need more
+## corners than a farm field does.
+const ZONE_MAX_VERTICES := 10
+
 static var _cache: Dictionary = {}
 static var _loaded := false
 ## Set by the tools to read a specific document regardless of the active pointer.
@@ -313,7 +332,46 @@ static func validate(doc: Dictionary) -> PackedStringArray:
 					continue
 				errors.append_array(_validate_area(key, field, area_value))
 		errors.append_array(_validate_slots(key, settlement))
+		for zone_value in _array(settlement, "zones"):
+			if typeof(zone_value) != TYPE_DICTIONARY:
+				errors.append("settlement '%s' has a malformed zone" % key)
+				continue
+			errors.append_array(_validate_zone(key, zone_value))
 	return errors
+
+
+## A zone is an area like a farm, with a kind that decides who may build in it.
+static func _validate_zone(key: String, zone: Dictionary) -> PackedStringArray:
+	var errors := PackedStringArray()
+	var id := str(zone.get("id", ""))
+	if id == "":
+		errors.append("settlement '%s' has a zone with no id" % key)
+	var kind := str(zone.get("kind", ""))
+	if not ZONE_KINDS.has(kind):
+		errors.append("zone '%s' has unknown kind '%s'" % [id, kind])
+	var outline := _array(zone, "outline")
+	if outline.size() < 3:
+		errors.append("zone '%s' needs at least three corners" % id)
+	elif outline.size() > ZONE_MAX_VERTICES:
+		errors.append("zone '%s' has %d corners (max %d)"
+			% [id, outline.size(), ZONE_MAX_VERTICES])
+	return errors
+
+
+## Every zone of one kind over a tile, for the placement mask and for the editor.
+static func zones_for_tile(tile_id: String, kind: String) -> Array:
+	var settlement := settlement_for_tile(tile_id)
+	var out: Array = []
+	for zone_value in _array(settlement, "zones"):
+		if typeof(zone_value) != TYPE_DICTIONARY:
+			continue
+		var zone: Dictionary = zone_value
+		if str(zone.get("kind", "")) != kind:
+			continue
+		var tiles: Array = _array(zone, "tiles")
+		if tiles.is_empty() or tiles.has(tile_id):
+			out.append(zone)
+	return out
 
 
 ## Slots reserve the ground a gameplay building will stand on, so a malformed one is not a

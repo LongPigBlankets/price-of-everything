@@ -1,6 +1,8 @@
 # Industrial zones — plan
 
-**Status:** proposed, not started. 2026-08-17.
+**Status:** P0 authoring BUILT 2026-08-17 — the three kinds are drawable, validated, stored
+and visible in the editor. Placement still ignores them; that is the next step (see
+[Phases](#phases)).
 **Replaces (partly):** authored slots as the primary placement mechanism. Slots stay; see
 [What happens to slots](#what-happens-to-slots).
 
@@ -134,12 +136,22 @@ unchanged and are worth keeping:
 
 ## Phases
 
-### P0 — one kind, end to end
-Schema + validator for `zones`; rasterise a zone to a mask; `_search` prefers the
-`industrial` mask and falls back to tile land. Editor: `industrial` as a fourth area kind,
-reusing the existing polygon tool and the `set_area_kind` path. Prove it on one tile with a
-screenshot and a headless test that a building lands inside the polygon and outside it when
-the zone is removed.
+### P0 — authoring ✅ BUILT
+Schema + validator for `zones` (one list, kind on the record); all three kinds drawable to
+**10** corners against a field's 8; the editor panel section, the three colours, and the
+`zone:` prefix that sorts a drawn polygon into the `zones` list. Zones declare the tiles they
+cover on commit, so the mask can be built per tile without re-testing every polygon.
+
+Also built: the **Extraction resources** visibility toggle, marking the 98 tiles that carry a
+deposit other than water — water is on 104 tiles by itself and would bury what the overlay
+exists to find.
+
+### P0b — placement, NOT built
+Rasterise a zone to a mask and have `_search` prefer it, falling back to tile land. This is
+the half that makes zones do anything; see [The insight](#the-insight-that-makes-this-cheap)
+for why it is small. Needs a headless test that a building lands inside the polygon **and
+outside it when the zone is removed** — the second half matters, or it passes on a build
+where zones do nothing.
 
 ### P1 — the three kinds and priority
 `industrial_reserve` and `extraction`; the ordered fallback; the extraction gate on mines and

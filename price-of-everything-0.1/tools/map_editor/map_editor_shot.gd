@@ -67,6 +67,10 @@ func _ready() -> void:
 		await _demo_hatch(editor)
 	if OS.get_environment("POE_EDITOR_SHOT_SPECIAL") == "1":
 		await _demo_special(editor)
+	if OS.get_environment("POE_EDITOR_SHOT_ZONES") == "1":
+		editor.call("focus_tile", _tile, _zoom)
+		await get_tree().process_frame
+		await _demo_zones(editor)
 	if OS.get_environment("POE_EDITOR_SHOT_SLOTS") == "1":
 		editor.call("focus_tile", _tile, _zoom)
 		await get_tree().process_frame
@@ -245,6 +249,25 @@ func _demo_slots(editor: Node) -> void:
 	# Pick one, so the frame shows the heavier outline a selected slot gets.
 	editor.call("set_tool", "select")
 	await _click(picked)
+
+
+## One zone of each kind, so a capture shows all three colours together and proves the corner
+## cap is the zone cap rather than the area one.
+func _demo_zones(editor: Node) -> void:
+	var boxes := [
+		[Vector2(300, 200), Vector2(520, 190), Vector2(560, 330), Vector2(430, 380), Vector2(290, 320)],
+		[Vector2(620, 200), Vector2(840, 190), Vector2(880, 330), Vector2(750, 380), Vector2(610, 320)],
+		[Vector2(300, 440), Vector2(520, 430), Vector2(560, 570), Vector2(430, 620), Vector2(290, 560)],
+	]
+	var kinds: Array = AuthoredMapRef.ZONE_KINDS
+	for i in kinds.size():
+		editor.call("set_area_kind", "zone:%s" % str(kinds[i]))
+		for at in boxes[i]:
+			await _click(at)
+		_key(KEY_ENTER)
+		await get_tree().process_frame
+	editor.call("toggle_deposit_marks")
+	await get_tree().process_frame
 
 
 ## Lay the three primitives, resize one, and drag a corner of another — so a capture shows

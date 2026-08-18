@@ -569,6 +569,57 @@ func _ready() -> void:
 	_check("cycling wraps back around (%s)" % str(_editor.call("current_slot_class")),
 		str(_editor.call("current_slot_class")) == next_class)
 
+	# ── Industrial zones ────────────────────────────────────────────────────────
+	# Three kinds, each drawable to ten corners. The corner cap is what separates a zone from
+	# a farm field, so it is checked by actually clicking an eleventh rather than by reading
+	# the constant back.
+	var zone_kinds: Array = AuthoredMapRef.ZONE_KINDS
+	_check("there are three zone kinds (%d)" % zone_kinds.size(), zone_kinds.size() == 3)
+	var zone_doc: RefCounted = _editor.call("document")
+	for kind_value in zone_kinds:
+		var zone_kind := str(kind_value)
+		_editor.call("set_area_kind", "zone:%s" % zone_kind)
+		_check("picking %s selects the area tool" % zone_kind,
+			str(_editor.call("current_tool")) == "area")
+		_check("the corner cap is the zone cap, not the field cap (%d)"
+			% int(_editor.call("shape_tool").call("max_corners")),
+			int(_editor.call("shape_tool").call("max_corners"))
+				== AuthoredMapRef.ZONE_MAX_VERTICES)
+		var before_zones := (_zones_of(zone_doc)).size()
+		# Eleven clicks for a ten-corner cap: the last must be refused, not accepted.
+		for i in 11:
+			var t := TAU * float(i) / 11.0
+			await _click(Vector2(660, 420) + Vector2(cos(t), sin(t)) * 150.0)
+		_send_key(KEY_ENTER)
+		await get_tree().process_frame
+		var zones := _zones_of(zone_doc)
+		_check("a %s zone is committed (%d -> %d)" % [zone_kind, before_zones, zones.size()],
+			zones.size() == before_zones + 1)
+		if zones.size() > before_zones:
+			var zone: Dictionary = zones[zones.size() - 1]
+			_check("it carries its kind (%s)" % str(zone.get("kind", "")),
+				str(zone.get("kind", "")) == zone_kind)
+			_check("it stopped at the cap (%d corners)"
+				% (zone.get("outline", []) as Array).size(),
+				(zone.get("outline", []) as Array).size() == AuthoredMapRef.ZONE_MAX_VERTICES)
+			_check("it declares the tiles it covers (%s)" % str(zone.get("tiles", [])),
+				not (zone.get("tiles", []) as Array).is_empty())
+
+	# The extraction-resources overlay is a toggle like the water mask.
+	_check("extraction resources start hidden", not bool(_editor.call("deposit_marks_shown")))
+	_editor.call("toggle_deposit_marks")
+	await get_tree().process_frame
+	_check("toggling shows them", bool(_editor.call("deposit_marks_shown")))
+	var marked: Array = _editor.call("deposit_tiles")
+	_check("it marks the tiles with a non-water deposit (%d)" % marked.size(),
+		marked.size() > 0)
+	var water_marked := 0
+	for mark_value in marked:
+		if str((mark_value as Dictionary).get("what", "")).contains("water"):
+			water_marked += 1
+	_check("and never labels water (%d water labels)" % water_marked, water_marked == 0)
+	_editor.call("toggle_deposit_marks")
+
 	if _failures.is_empty():
 		print("[INPUT] ALL CHECKS PASSED")
 		get_tree().quit(0)
@@ -586,6 +637,15 @@ func _slot_centre(document: RefCounted) -> Vector2:
 
 ## The first slot pin in the document, whichever tile it landed on. The checks place one at
 ## a time, so "first" and "the one just placed" are the same record.
+## Every zone in the document, in order.
+func _zones_of(document: RefCounted) -> Array:
+	var out: Array = []
+	for settlement_value in (document.call("data").get("settlements", {}) as Dictionary).values():
+		for zone in ((settlement_value as Dictionary).get("zones", []) as Array):
+			out.append(zone)
+	return out
+
+
 func _first_slot(document: RefCounted) -> Dictionary:
 	var settlements: Dictionary = document.call("data").get("settlements", {})
 	for key in settlements.keys():
