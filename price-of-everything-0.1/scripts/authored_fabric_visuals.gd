@@ -20,6 +20,10 @@ var _sacrificed: Dictionary = {}
 
 
 func _ready() -> void:
+	# Findable by the placement path, which evicts a mass when a gameplay building takes the
+	# ground it stands on. Same shape as `building_footprints`, and the only coupling between
+	# the two — placement reads no fabric geometry from here, it measures the document.
+	add_to_group("authored_fabric")
 	MapStyle.style_changed.connect(func() -> void: queue_redraw())
 
 

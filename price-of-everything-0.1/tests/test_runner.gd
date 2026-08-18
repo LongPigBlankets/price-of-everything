@@ -74,6 +74,7 @@ func _ready() -> void:
 	_test_authored_slot_class_agrees_with_art()
 	_test_authored_slot_box_holds_its_class()
 	_test_authored_area_buildings_exist()
+	await _test_authored_slot_claim_order()
 	_test_authored_map_write_barrier()
 	_test_shipped_code_avoids_editor_only_paths()
 	_test_authored_road_geometry()
@@ -15037,6 +15038,82 @@ func _test_authored_slot_boxes_contract() -> void:
 ## panel's Save button, once moving slot pins and deleting a road — and both times the tool
 ## believed it was in scratch mode. This asserts the WRITER refuses, so the guarantee does not
 ## depend on every tool remembering to be careful.
+## Slots are handed out least-destructive first: a slot on clear ground before one standing
+## on a decorative building, so the fabric survives until the tile runs out of clear ground.
+## Document order is just the order someone clicked, and would demolish a terrace while bare
+## ground sat free two slots along.
+func _test_authored_slot_claim_order() -> void:
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		bv.queue_free(); terrain.queue_free(); return
+	var centre: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+
+	# Three slots in a row. A mass is parked squarely on the FIRST, so document order and
+	# least-destructive order disagree — which is the whole point of the check.
+	var mass_centre := centre + Vector2(-120.0, 0.0)
+	var doc := {
+		"version": AuthoredMap.SCHEMA_VERSION,
+		"settlements": {"s": {
+			"tiles": [tile_id],
+			"decor": [{"id": "m1", "form": "rect", "pos": [mass_centre.x, mass_centre.y],
+				"rot": 0.0, "size": [90, 90], "sacrificial": true}],
+			"slots": {tile_id: {"pins": [
+				{"pos": [-120.0, 0.0], "angle": 0.0, "size": "standard"},
+				{"pos": [0.0, 0.0], "angle": 0.0, "size": "standard"},
+				{"pos": [120.0, 0.0], "angle": 0.0, "size": "standard"},
+			]}},
+		}},
+	}
+	_check(AuthoredMap.validate(doc).is_empty(), "claim order: the fixture document is valid")
+	AuthoredMap.set_document_for_tests(doc)
+
+	var tmpl: Dictionary = bv._authored_block_template(tile_id, coord)
+	_check(not tmpl.is_empty(), "claim order: the authored template built")
+	if not tmpl.is_empty():
+		var cost: Array = tmpl.get("lot_cost", [])
+		var order: Array = tmpl.get("lot_order", [])
+		var masses: Array = tmpl.get("lot_masses", [])
+		_check(cost.size() == 3 and order.size() == 3,
+			"claim order: every slot got a cost and a place in the order")
+		_check(float(cost[0]) > 0.0, "claim order: the slot under the mass costs something (%.0f u2)"
+			% float(cost[0]))
+		_check(is_zero_approx(float(cost[1])) and is_zero_approx(float(cost[2])),
+			"claim order: the slots on clear ground cost nothing")
+		_check(int(order[order.size() - 1]) == 0,
+			"claim order: the slot under the mass is visited LAST (order %s)" % str(order))
+		_check(int(order[0]) == 1 and int(order[1]) == 2,
+			"claim order: clear slots keep document order between themselves (%s)" % str(order))
+		_check((masses[0] as PackedStringArray).has("m1"),
+			"claim order: the covered slot knows which mass it would evict")
+		_check((masses[1] as PackedStringArray).is_empty(),
+			"claim order: a clear slot would evict nothing")
+
+		# Protected fabric sorts behind offered fabric of the same size.
+		(doc["settlements"]["s"]["decor"][0] as Dictionary)["sacrificial"] = false
+		AuthoredMap.set_document_for_tests(doc)
+		bv._tile_block_templates.erase(tile_id)
+		var protected: Dictionary = bv._authored_block_template(tile_id, coord)
+		_check(float((protected.get("lot_cost", []) as Array)[0]) > float(cost[0]),
+			"claim order: protected fabric costs more than fabric offered up")
+
+	AuthoredMap.set_document_for_tests({})
+	AuthoredMap.reset_for_tests()
+	bv.queue_free()
+	terrain.queue_free()
+	await get_tree().process_frame
+
+
 func _test_authored_map_write_barrier() -> void:
 	var was_scratch := OS.get_environment("POE_EDITOR_SCRATCH")
 	OS.set_environment("POE_EDITOR_SCRATCH", "1")

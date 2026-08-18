@@ -25,6 +25,15 @@ signal footprints_changed(version: int, affected_tile_ids: Array)
 # present at re-emit, so relayout() is idempotent there.
 
 const AuthoredMap := preload("res://scripts/authored_map.gd")
+## Authored fabric, for measuring which decorative masses a slot stands on. Read-only here:
+## the drawing of it belongs to `authored_fabric_visuals.gd`.
+const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
+const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
+
+## How much heavier a mass the designer did NOT mark `sacrificial` counts when choosing which
+## slot to use. High enough that any amount of protected fabric loses to any amount of
+## offered fabric, low enough that a tile with only protected ground is still buildable.
+const PROTECTED_MASS_WEIGHT := 8.0
 const TileViewData := preload("res://scripts/tile_view_data.gd")
 
 # Network infrastructure drawn by its own layer, NOT as a building footprint:
@@ -627,7 +636,7 @@ func _ensure_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	# into the same template shape the grid produces, so _claim_slot and the re-pack path work
 	# unchanged — including consuming a lot that fails validation and freeing them all when the
 	# tile is re-laid.
-	var authored := _authored_block_template(tile_id)
+	var authored := _authored_block_template(tile_id, coord)
 	if not authored.is_empty():
 		_tile_block_templates[tile_id] = authored
 		return authored
@@ -646,7 +655,7 @@ func _ensure_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 ## rather than being sized by the generic fill rule — the mechanism chunk tiles already use,
 ## extended to one size per lot. `lot_classes` lets a building be refused a slot too small
 ## for it.
-func _authored_block_template(tile_id: String) -> Dictionary:
+func _authored_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	if not AuthoredMap.is_active() or not AuthoredMap.covers(tile_id):
 		return {}
 	var slots := AuthoredMap.slots_for_tile(tile_id)
@@ -675,9 +684,103 @@ func _authored_block_template(tile_id: String) -> Dictionary:
 		lot_cells.append(AUTHORED_SLOT_BOXES.get(slot_class, AUTHORED_SLOT_BOXES["standard"]))
 	if lots.is_empty():
 		return {}
+	var cover := _authored_slot_cover(tile_id, coord, lots, lot_angles, lot_cells)
 	return {"angle": float(lot_angles[0]), "lots": lots, "claimed": claimed,
 		"lot_angles": lot_angles, "lot_cells": lot_cells, "lot_classes": lot_classes,
+		"lot_masses": cover["masses"], "lot_cost": cover["cost"], "lot_order": cover["order"],
 		"segs": _tile_segs.get(tile_id, []), "rows": [], "authored": true}
+
+
+## WHICH SLOT GETS USED FIRST (owner, 2026-08-17).
+##
+## Slots are filled least-destructive first: a slot standing on empty ground is taken before
+## one standing on a decorative building, so the fabric survives until the tile genuinely runs
+## out of clear ground. Only then does a slot force an eviction, and it evicts the least it
+## can. Document order — which is just the order someone happened to click — would demolish a
+## terrace while bare ground sat free two slots along.
+##
+## On rural tiles almost every slot scores zero and the sort is a no-op; it earns its keep in
+## towns, where the fabric is dense enough that some slot always overlaps something.
+##
+## COST is overlapped area, with masses the designer did NOT mark `sacrificial` weighted up:
+## between two slots covering the same area, the one covering fabric that was offered up goes
+## first. Weighting rather than forbidding — a tile whose only free ground is under a
+## protected terrace should still be buildable, just last.
+func _authored_slot_cover(tile_id: String, coord: Vector2i, lots: Array,
+		lot_angles: Array, lot_cells: Array) -> Dictionary:
+	var masses: Array = []
+	var cost: Array = []
+	for i in lots.size():
+		masses.append(PackedStringArray())
+		cost.append(0.0)
+	var decor := _authored_decor_local(tile_id, coord)
+	if not decor.is_empty():
+		for i in lots.size():
+			var box := _rotate(BuildingShapes.make_rect(
+				(lot_cells[i] as Vector2).x, (lot_cells[i] as Vector2).y).verts,
+				float(lot_angles[i]))
+			var placed := PackedVector2Array()
+			for v in box:
+				placed.append(v + (lots[i] as Vector2))
+			var hit := PackedStringArray()
+			var total := 0.0
+			for entry_value in decor:
+				var entry: Dictionary = entry_value
+				var area := 0.0
+				for piece in Geometry2D.intersect_polygons(placed, entry["poly"]):
+					area += absf(_poly_area(piece))
+				if area <= 0.5:
+					continue
+				total += area * (1.0 if bool(entry["sacrificial"]) else PROTECTED_MASS_WEIGHT)
+				if not hit.has(str(entry["id"])):
+					hit.append(str(entry["id"]))
+			masses[i] = hit
+			cost[i] = total
+	var order: Array = []
+	for i in lots.size():
+		order.append(i)
+	# Ties keep document order, so a tile with no fabric fills exactly as it was authored.
+	order.sort_custom(func(a: int, b: int) -> bool:
+		if is_equal_approx(float(cost[a]), float(cost[b])):
+			return a < b
+		return float(cost[a]) < float(cost[b]))
+	return {"masses": masses, "cost": cost, "order": order}
+
+
+## Authored decorative masses over this tile, in TILE-LOCAL coordinates so they can be
+## compared with the lots. Everything in the document is world-space; a lot is measured from
+## the tile's top-left corner.
+func _authored_decor_local(tile_id: String, coord: Vector2i) -> Array:
+	if not AuthoredMap.is_active() or not AuthoredMap.covers(tile_id):
+		return []
+	var settlement := AuthoredMap.settlement_for_tile(tile_id)
+	if settlement.is_empty():
+		return []
+	var shift := TILE_CENTER - _tile_center_world_pos(coord)
+	var out: Array = []
+	for record_value in (settlement.get("decor", []) as Array):
+		if typeof(record_value) != TYPE_DICTIONARY:
+			continue
+		var record: Dictionary = record_value
+		for poly in AuthoredFabricPainter.mass_polygons(record):
+			_append_local_poly(out, poly as PackedVector2Array, record, shift)
+	for record_value in (settlement.get("specials", []) as Array):
+		if typeof(record_value) != TYPE_DICTIONARY:
+			continue
+		var record: Dictionary = record_value
+		_append_local_poly(out, AuthoredSpecialShapes.render_polygon(record), record, shift)
+	return out
+
+
+func _append_local_poly(out: Array, poly: PackedVector2Array, record: Dictionary,
+		shift: Vector2) -> void:
+	if poly.size() < 3:
+		return
+	var moved := PackedVector2Array()
+	for v in poly:
+		moved.append(v + shift)
+	out.append({"id": str(record.get("id", "")), "poly": moved,
+		"sacrificial": bool(record.get("sacrificial", false))})
 
 
 ## Does this tile carry hand-placed slots?
@@ -688,6 +791,23 @@ func _has_authored_slots(tile_id: String) -> bool:
 
 
 ## Whether a building of `wanted` may occupy a slot of `offered`. Equal or larger only.
+## Hide the decorative masses a just-claimed slot stands on. A no-op on the overwhelming
+## majority of slots: the claim order visits clear ground first, so a slot only ever carries
+## masses once the tile has run out of it.
+func _evict_masses_under(tmpl: Dictionary, index: int) -> void:
+	var per_lot: Array = tmpl.get("lot_masses", [])
+	if index < 0 or index >= per_lot.size():
+		return
+	var ids: PackedStringArray = per_lot[index]
+	if ids.is_empty():
+		return
+	var fabric := get_tree().get_first_node_in_group("authored_fabric")
+	if fabric == null:
+		return
+	for id in ids:
+		fabric.call("evict", id)
+
+
 ## The slot class a building asks for. Infrastructure by category — the same rule
 ## `authored_slot_sizes.gd` applies, restated because that file preloads this one and the
 ## pair would cycle. `_test_authored_slot_class_agrees_with_art` holds the two together.
@@ -1193,7 +1313,14 @@ func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: St
 	# which cannot be preloaded from here without forming a cycle.
 	var wanted_class := _authored_class_for(iname, size_units) if not lot_classes.is_empty() else ""
 	var fill: float = BLOCK_LOT * clampf(BLOCK_FILL_MIN + 0.04 * float(size_units), BLOCK_FILL_MIN, BLOCK_FILL_MAX)
-	for i in lots.size():
+	# Authored tiles hand out their slots least-destructive first (see _authored_slot_cover);
+	# a procedural block grid has no fabric to weigh and keeps its own order.
+	var visit: Array = tmpl.get("lot_order", [])
+	if visit.size() != lots.size():
+		visit = []
+		for i in lots.size():
+			visit.append(i)
+	for i in visit:
 		if bool(claimed[i]):
 			continue
 		# A building may take a slot of its own class or larger, never a smaller one: a
@@ -1228,6 +1355,9 @@ func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: St
 			claimed[i] = true   # blocked (a road moved onto it, or a fallback sits there) — consume it
 			continue
 		claimed[i] = true
+		# The slot is taken, so whatever decorative fabric stood on it is gone. Only reached
+		# once the emptier slots are used up, because of the order this loop visits them in.
+		_evict_masses_under(tmpl, i)
 		_grow_block_rows(tmpl, tile_id, coord)   # keep spare lots ahead of demand
 		return _finalize(coord, ctr, rv, half)
 	# Every lot is spoken for — but lots are also consumed when they turn out to

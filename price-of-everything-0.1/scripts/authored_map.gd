@@ -531,6 +531,17 @@ static func reset_cache() -> void:
 
 
 ## Full reset, including the override. For the suite, between cases.
+## Install a document IN MEMORY, without touching disk. The unit suite needs to exercise
+## placement against specific fabric-and-slot arrangements, and the alternative — writing a
+## fixture into `data/map_authored/` — would put test files in a tracked directory holding
+## hand-drawn work. Pass `{}` to clear.
+static func set_document_for_tests(doc: Dictionary) -> void:
+	_cache = doc
+	_loaded = true
+	_tile_index = {}
+	_tile_index_built = false
+
+
 static func reset_for_tests() -> void:
 	reset_cache()
 	_override_name = ""
