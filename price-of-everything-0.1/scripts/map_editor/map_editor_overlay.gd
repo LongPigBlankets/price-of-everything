@@ -150,7 +150,6 @@ func _draw() -> void:
 	if camera == null:
 		return
 	_draw_water_mask(camera)
-	_draw_authored_fabric(camera)
 	_draw_authored_roads(camera)
 	_draw_pen(camera)
 	_draw_trace(camera)
@@ -198,90 +197,6 @@ func _draw_authored_roads(camera: Camera2D) -> void:
 				draw_polyline(screen, UNLOCKABLE_COLOR, 1.6, true)
 			if selected.has(str(stroke.get("id", ""))):
 				draw_polyline(screen, SELECTED_COLOR, 3.0, true)
-
-
-## Ground and fabric, drawn with the SAME painter the game uses, through a transform rather
-## than a re-implementation — so the preview cannot drift from what will be rendered.
-## Roads draw after, matching the game's layering.
-func _draw_authored_fabric(camera: Camera2D) -> void:
-	var document: Dictionary = editor.call("document").call("data")
-	var settlements_value: Variant = document.get("settlements", {})
-	if typeof(settlements_value) != TYPE_DICTIONARY:
-		return
-	# The painter works in world units; this Control draws in screen space. Rather than
-	# teach the painter about cameras, the canvas is transformed for the duration.
-	draw_set_transform(size * 0.5 - camera.get_screen_center_position() * camera.zoom.x,
-		0.0, Vector2(camera.zoom.x, camera.zoom.x))
-	var settlements: Dictionary = settlements_value
-	var selected: Dictionary = editor.call("selected_ids")
-	var keys := settlements.keys()
-	keys.sort()
-	for key in keys:
-		var settlement_value: Variant = settlements[key]
-		if typeof(settlement_value) != TYPE_DICTIONARY:
-			continue
-		var settlement: Dictionary = settlement_value
-		# Same order as authored_fabric_visuals.gd: ground lowest, parks and plazas lowest of
-		# all. An editor that stacks them differently from the game is showing a composition
-		# nobody will ever see.
-		for plaza in _entries(settlement, "plazas"):
-			AuthoredFabricPainter.draw_plaza(self, plaza)
-			if selected.has(str(plaza.get("id", ""))):
-				_hatch([_polygon_of(plaza)], camera)
-		for park in _entries(settlement, "parks"):
-			AuthoredFabricPainter.draw_park(self, park)
-			if selected.has(str(park.get("id", ""))):
-				_hatch([_polygon_of(park)], camera)
-		for area in _entries(settlement, "farms"):
-			AuthoredFabricPainter.draw_farm(self, area)
-			if selected.has(str(area.get("id", ""))):
-				_hatch([_polygon_of(area)], camera)
-		for mass in _entries(settlement, "decor"):
-			AuthoredFabricPainter.draw_mass(self, mass)
-			if selected.has(str(mass.get("id", ""))):
-				_hatch(AuthoredFabricPainter.mass_polygons(mass), camera)
-		for special in _entries(settlement, "specials"):
-			AuthoredFabricPainter.draw_special(self, special)
-			if selected.has(str(special.get("id", ""))):
-				_hatch([AuthoredSpecialShapesRef.render_polygon(special)], camera)
-		for area in _entries(settlement, "forests"):
-			AuthoredFabricPainter.draw_forest(self, area)
-	# The stamp being dragged, previewed as the real thing.
-	var shape: RefCounted = editor.call("shape_tool")
-	if shape != null and bool(shape.call("is_stamping")):
-		var preview: Dictionary = shape.call("stamp_preview", "__preview__")
-		if not preview.is_empty():
-			AuthoredFabricPainter.draw_mass(self, preview)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	_draw_corner_handles(camera)
-
-	# The outline being clicked out stays in screen space: it is scaffolding, not content.
-	var pending: Array = editor.call("poly_points")
-	if not pending.is_empty():
-		var poly_screen := PackedVector2Array()
-		for entry_value in pending:
-			var entry: Array = entry_value as Array
-			if entry != null and entry.size() >= 2:
-				poly_screen.append(_to_screen(Vector2(float(entry[0]), float(entry[1])), camera))
-		for point in poly_screen:
-			draw_circle(point, POINT_RADIUS + 1.0, PEN_POINT_COLOR)
-		if poly_screen.size() >= 2:
-			var closed_poly := poly_screen.duplicate()
-			closed_poly.append(poly_screen[0])
-			draw_polyline(closed_poly, PEN_COLOR, 2.0, true)
-	if shape != null and bool(shape.call("is_drawing")):
-		var points: Array = shape.call("polygon_points")
-		var screen := PackedVector2Array()
-		for entry_value in points:
-			var entry: Array = entry_value as Array
-			if entry != null and entry.size() >= 2:
-				screen.append(_to_screen(Vector2(float(entry[0]), float(entry[1])), camera))
-		for point in screen:
-			draw_circle(point, POINT_RADIUS + 1.0, PEN_POINT_COLOR)
-		if screen.size() >= 2:
-			var closed := screen.duplicate()
-			closed.append(screen[0])
-			draw_polyline(closed, PEN_COLOR, 2.0, true)
 
 
 ## Diagonal hatching clipped to a set of polygons. Drawn in WORLD space (the canvas is

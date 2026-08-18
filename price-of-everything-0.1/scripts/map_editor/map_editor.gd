@@ -35,6 +35,7 @@ const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd
 const MapEditorRoadSnap := preload("res://scripts/map_editor/map_editor_road_snap.gd")
 const AuthoredSlotSizes := preload("res://scripts/authored_slot_sizes.gd")
 const MapEditorSlotBoxes := preload("res://scripts/map_editor/map_editor_slot_boxes.gd")
+const MapEditorFabric := preload("res://scripts/map_editor/map_editor_fabric.gd")
 const BuildingVisualsRef := preload("res://scenes/building_visuals.gd")
 const MapEditorPanel := preload("res://scripts/map_editor/map_editor_panel.gd")
 
@@ -173,6 +174,8 @@ var _slot_pick: Dictionary = {}
 ## Built once — tile deposits are static map data.
 var _deposit_cache: Array = []
 var _report_tile := ""
+## The working document's fabric, drawn in the world (see `_mount_fabric_layer`).
+var _fabric: Node2D = null
 var _panel: MapEditorPanel
 var _tool := TOOL_PAN
 var _world: Node
@@ -275,11 +278,31 @@ func _boot_world() -> void:
 		await get_tree().process_frame
 	_hide_game_ui()
 	_silence_world_input(_world)
+	_mount_fabric_layer()
 	_take_camera()
 	_layers.bind(_world)
 	_panel.build(self, _layers)
 	_ready_to_edit = true
 	_refresh_status()
+
+
+## Put the working document's fabric INTO THE WORLD, at the shipped fabric node's own place
+## in the sibling order, so it layers against buildings and roads exactly as the game will.
+##
+## Drawing it on the overlay could never be right: the overlay is a CanvasLayer at layer 64,
+## above the entire world, so a park drawn there sat on top of the buildings it belongs under
+## no matter what order the overlay drew things in.
+func _mount_fabric_layer() -> void:
+	var shipped := _world.get_node_or_null("AuthoredFabricVisuals")
+	if shipped == null:
+		return
+	_fabric = MapEditorFabric.new()
+	_fabric.editor = self
+	_fabric.name = "MapEditorFabric"
+	_world.add_child(_fabric)
+	# Directly after the shipped node: same depth, and it draws over the saved document so an
+	# edit is visible immediately rather than only after a save.
+	_world.move_child(_fabric, shipped.get_index() + 1)
 
 
 ## Stop the GAME from consuming input while the editor is up.
@@ -1558,6 +1581,12 @@ func adjust_special_side(index: int, delta: float) -> void:
 	_set_status("%s = %d  (rebuilt from parameters — corner edits cleared)"
 		% [str(special_parameter_names()[index]), int(sides[index])])
 	_refresh_status()
+
+
+## The layer visibility controller. The panel owns the buttons; a capture harness needs to
+## turn a world layer on without one.
+func layers() -> MapEditorLayers:
+	return _layers
 
 
 func shape_tool() -> MapEditorShapeTool:

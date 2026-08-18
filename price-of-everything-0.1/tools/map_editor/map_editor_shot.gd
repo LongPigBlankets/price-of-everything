@@ -67,6 +67,21 @@ func _ready() -> void:
 		await _demo_hatch(editor)
 	if OS.get_environment("POE_EDITOR_SHOT_SPECIAL") == "1":
 		await _demo_special(editor)
+	# Park over a tile that HAS buildings, with the building layer on: the layering question
+	# only has an answer when there is something to be layered against.
+	if OS.get_environment("POE_EDITOR_SHOT_LAYERS") == "1":
+		editor.call("focus_tile", _tile, _zoom)
+		await get_tree().process_frame
+		for key in ["buildings", "roads"]:
+			if not bool(editor.call("layers").call("is_on", key)):
+				editor.call("layers").call("toggle", key)
+		editor.call("layers").call("apply")
+		await get_tree().process_frame
+		editor.call("set_area_kind", "parks")
+		for at in [Vector2(430, 250), Vector2(720, 240), Vector2(760, 470), Vector2(420, 480)]:
+			await _click(at)
+		_key(KEY_ENTER)
+		await get_tree().process_frame
 	if OS.get_environment("POE_EDITOR_SHOT_ZONES") == "1":
 		editor.call("focus_tile", _tile, _zoom)
 		await get_tree().process_frame
