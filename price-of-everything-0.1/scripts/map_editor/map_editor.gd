@@ -658,12 +658,20 @@ func _handle_key(event: InputEventKey) -> void:
 		KEY_3:
 			set_road_class("minor")
 		KEY_ENTER, KEY_KP_ENTER:
-			if _tool == TOOL_SPECIAL and _special_kind == "poly":
+			# Enter is "done" (owner, 2026-08-18). Mid-draw it commits the thing being drawn
+			# and STAYS on the tool, so the next primitive or field needs no re-pick; with
+			# nothing in progress it exits whatever mode is live back to Navigate.
+			if _tool == TOOL_SPECIAL and _special_kind == "poly" and not _poly_points.is_empty():
 				_finish_poly()
-			elif _tool == TOOL_AREA:
+			elif _tool == TOOL_AREA and _shape_tool.is_drawing():
 				_finish_area()
-			else:
+			elif _road_tool.is_drawing():
 				_finish_stroke()
+			else:
+				_leave_shape_mode()
+				set_tool(TOOL_PAN)
+				_set_status("Back to Navigate.")
+				_refresh_status()
 		KEY_BACKSPACE:
 			# In SELECT, Backspace removes what is selected. In the drawing tools it still
 			# steps back a point, which is what a half-drawn shape needs it for.

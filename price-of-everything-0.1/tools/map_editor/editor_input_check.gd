@@ -952,6 +952,40 @@ func _ready() -> void:
 	_send_key(KEY_ENTER)
 	await get_tree().process_frame
 
+	# ── Enter is "done": commits mid-draw and stays; exits the mode otherwise ──
+	_editor.call("set_tool", "select")
+	_send_key(KEY_ENTER)
+	await get_tree().process_frame
+	_check("Enter in Select returns to Navigate (%s)" % str(_editor.call("current_tool")),
+		str(_editor.call("current_tool")) == "pan")
+
+	# Mid-draw, Enter COMMITS and stays armed — the special tool after a free polygon, so
+	# the next primitive needs no re-pick (the owner's "default to M again").
+	_editor.call("pick_special", "poly")
+	for at in [Vector2(500, 330), Vector2(600, 320), Vector2(590, 410)]:
+		await _click(at)
+	var poly_doc2: RefCounted = _editor.call("document")
+	var before_id := str((_last_of(poly_doc2, "specials") as Dictionary).get("id", ""))
+	_send_key(KEY_ENTER)
+	await get_tree().process_frame
+	_check("Enter mid-polygon commits it",
+		str((_last_of(poly_doc2, "specials") as Dictionary).get("id", "")) != before_id)
+	_check("and STAYS on the special tool (%s)" % str(_editor.call("current_tool")),
+		str(_editor.call("current_tool")) == "special")
+	_check("still armed on poly (%s)" % str(_editor.call("current_special_kind")),
+		str(_editor.call("current_special_kind")) == "poly")
+	# A second Enter, with nothing in progress, is the exit.
+	_send_key(KEY_ENTER)
+	await get_tree().process_frame
+	_check("Enter again (nothing mid-draw) exits to Navigate (%s)"
+		% str(_editor.call("current_tool")), str(_editor.call("current_tool")) == "pan")
+
+	# Placing a U primitive keeps the tool armed too.
+	_editor.call("pick_special", "u")
+	await _click(Vector2(700, 350))
+	_check("placing a primitive keeps M armed (%s)" % str(_editor.call("current_tool")),
+		str(_editor.call("current_tool")) == "special")
+
 	if _failures.is_empty():
 		print("[INPUT] ALL CHECKS PASSED")
 		get_tree().quit(0)
