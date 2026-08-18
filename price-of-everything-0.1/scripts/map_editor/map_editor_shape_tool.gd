@@ -110,8 +110,12 @@ func finish_polygon(settlement_key: String, next_id: int) -> Dictionary:
 	if _points.size() < 3:
 		abandon()
 		return {}
-	var prefix: String = str({"farms": "fa", "forests": "fo", "parks": "p",
-		"plazas": "pz"}.get(_kind, "x"))
+	# Zones share one prefix whatever their kind, matching the ids `convert_slots_to_zone`
+	# mints. Without this they fell through to the "x" fallback, which is the marker for a
+	# kind nobody named — and made a hand-drawn zone and a converted one look unrelated.
+	var prefix: String = "z" if _kind.begins_with(ZONE_PREFIX) \
+		else str({"farms": "fa", "forests": "fo", "parks": "p",
+			"plazas": "pz"}.get(_kind, "x"))
 	var record := {
 		"id": "%s:%s:%d" % [prefix, settlement_key, next_id],
 		"outline": _points.duplicate(true),

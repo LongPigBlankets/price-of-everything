@@ -1349,7 +1349,7 @@ func _rebind_after_history() -> void:
 	var settlements: Dictionary = _document.data().get("settlements", {})
 	for key in settlements.keys():
 		var settlement: Dictionary = settlements[key]
-		for kind in ["decor", "specials", "farms", "forests", "parks", "plazas"]:
+		for kind in ["decor", "specials", "farms", "forests", "parks", "plazas", "zones"]:
 			for record_value in (settlement.get(kind, []) as Array):
 				var record: Dictionary = record_value
 				if str(record.get("id", "")) == wanted:
@@ -1618,6 +1618,18 @@ func marquee_rect() -> Rect2:
 
 
 ## Ids of the selected records, for the overlay's highlight.
+## Which KINDS a small marquee around a point would select. For the harness: the asymmetry
+## between click-select and marquee-select is deliberate and needs asserting, not trusting.
+func marquee_kinds_for_test(world: Vector2) -> Array:
+	var rect := Rect2(world - Vector2(12.0, 12.0), Vector2(24.0, 24.0))
+	var kinds: Array = []
+	for entry_value in MapEditorSelection.in_rect(_document.data(), rect):
+		var kind := str((entry_value as Dictionary).get("kind", ""))
+		if not kinds.has(kind):
+			kinds.append(kind)
+	return kinds
+
+
 func selected_ids() -> Dictionary:
 	var out: Dictionary = {}
 	for entry_value in _selection:

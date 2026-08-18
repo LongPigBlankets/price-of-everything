@@ -711,6 +711,80 @@ func _ready() -> void:
 			left += 1
 	_check("the slots it replaced are gone (%d left on the tile)" % left, left == 0)
 
+	# ── Zones are editable like any other shape ────────────────────────────────
+	# Somewhere the harness has NOT already drawn: roads test before zones (a zone is the
+	# ground everything else stands on), so a zone drawn over the earlier roads would be
+	# correctly passed over and the check would be measuring precedence, not selection.
+	_editor.call("focus_tile", "tile_18_14", 0.9)
+	await get_tree().process_frame
+	_editor.call("set_area_kind", "zone:extraction")
+	var zone_at := Vector2(760, 500)
+	for offset in [Vector2(-70, -60), Vector2(70, -60), Vector2(70, 60), Vector2(-70, 60)]:
+		await _click(zone_at + offset)
+	_send_key(KEY_ENTER)
+	await get_tree().process_frame
+	var all_zones := _zones_of(_editor.call("document"))
+	_check("a zone to edit exists (%d)" % all_zones.size(), not all_zones.is_empty())
+	if not all_zones.is_empty():
+		var edit_zone: Dictionary = all_zones[all_zones.size() - 1]
+		var zone_id := str(edit_zone.get("id", ""))
+		# Is the click's WORLD point actually inside the polygon that was drawn? If the
+		# geometry is wrong the selection failure means nothing.
+		var zone_poly := PackedVector2Array()
+		for entry in (edit_zone.get("outline", []) as Array):
+			var values: Array = entry as Array
+			if values != null and values.size() >= 2:
+				zone_poly.append(Vector2(float(values[0]), float(values[1])))
+		var click_world: Vector2 = _editor.call("_world_at", zone_at)
+		_check("the click lands inside the drawn polygon (%s in %d corners)"
+			% [str(click_world.round()), zone_poly.size()],
+			zone_poly.size() >= 3 and Geometry2D.is_point_in_polygon(click_world, zone_poly))
+		_editor.call("set_tool", "select")
+		await _click(zone_at)
+		var got: Dictionary = _editor.call("selected_ids")
+		_check("clicking inside a zone selects it (wanted %s, got %s)"
+			% [zone_id, "nothing" if got.is_empty() else ", ".join(PackedStringArray(got.keys()))],
+			got.has(zone_id))
+		var zone_handles: PackedVector2Array = _editor.call("editable_corners")
+		_check("it offers its corners for dragging (%d)" % zone_handles.size(),
+			zone_handles.size() == 4)
+
+		if zone_handles.size() == 4:
+			var zone_corner := zone_handles[0]
+			await _drag(_screen_of(zone_corner, camera),
+				_screen_of(zone_corner + Vector2(-45.0, -38.0), camera))
+			var zone_moved: PackedVector2Array = _editor.call("editable_corners")
+			_check("dragging a corner reshapes the zone (%.0f u)"
+				% zone_corner.distance_to(zone_moved[0]),
+				zone_moved.size() == 4 and zone_corner.distance_to(zone_moved[0]) > 20.0)
+			var zone_others := 0
+			for i in range(1, 4):
+				if zone_handles[i].distance_to(zone_moved[i]) > 0.01:
+					zone_others += 1
+			_check("the other corners stayed put (%d moved)" % zone_others, zone_others == 0)
+
+		# Drag the body to move the whole zone.
+		var zone_from := Vector2.ZERO
+		for entry in (_editor.call("editable_corners") as PackedVector2Array):
+			zone_from += entry
+		zone_from /= 4.0
+		await _drag(_screen_of(zone_from, camera),
+			_screen_of(zone_from + Vector2(60.0, 40.0), camera))
+		var zone_to := Vector2.ZERO
+		for entry in (_editor.call("editable_corners") as PackedVector2Array):
+			zone_to += entry
+		zone_to /= 4.0
+		_check("dragging the body moves the whole zone (%.0f u)"
+			% zone_from.distance_to(zone_to),
+			zone_from.distance_to(zone_to) > 30.0)
+
+		# A marquee must NOT sweep a zone up: `_meets_rect` counts an outline as met when
+		# the rect's centre is inside it, so every bulk delete in a town would take the zone.
+		var zone_swept: Array = _editor.call("marquee_kinds_for_test", zone_to)
+		_check("a marquee inside a zone does not select the zone (%s)"
+			% ("none" if zone_swept.is_empty() else ", ".join(PackedStringArray(zone_swept))),
+			not zone_swept.has("zones"))
+
 	if _failures.is_empty():
 		print("[INPUT] ALL CHECKS PASSED")
 		get_tree().quit(0)

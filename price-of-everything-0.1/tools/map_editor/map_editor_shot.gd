@@ -266,7 +266,12 @@ func _demo_zones(editor: Node) -> void:
 			await _click(at)
 		_key(KEY_ENTER)
 		await get_tree().process_frame
-	editor.call("toggle_deposit_marks")
+	# Select the last one, so a capture shows the hatch a selected zone gets.
+	if OS.get_environment("POE_EDITOR_SHOT_ZONE_PICK") == "1":
+		editor.call("set_tool", "select")
+		await _click(Vector2(340 + 160 * (AuthoredMapRef.ZONE_KINDS.size() - 1), 300))
+	else:
+		editor.call("toggle_deposit_marks")
 	await get_tree().process_frame
 
 

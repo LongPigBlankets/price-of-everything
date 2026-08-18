@@ -25,7 +25,12 @@ const SELECTABLE := ["roads", "decor", "specials", "farms", "forests", "parks", 
 
 ## Kinds whose geometry is an explicit outline, and which can therefore have their corners
 ## dragged. A road is a centreline and a mass is generated from a form, so neither qualifies.
-const OUTLINE_KINDS := ["specials", "farms", "forests", "parks", "plazas"]
+## Kinds whose corners can be dragged once one of them is the sole selection. Zones are here
+## but deliberately NOT in [constant SELECTABLE]: a zone is click-selectable and reshapeable,
+## and a marquee cannot sweep it up. `_meets_rect` counts an outline as met when the rect's
+## CENTRE is inside it, so a zone covering most of a tile would be caught by every marquee
+## drawn within it — and a bulk delete of some masses would silently take the zone with them.
+const OUTLINE_KINDS := ["specials", "farms", "forests", "parks", "plazas", "zones"]
 
 ## A drag shorter than this on screen is a click, not a marquee — without it, every stray
 ## click would clear the selection by "selecting" a zero-area box.
@@ -51,7 +56,12 @@ static func at_point(document: Dictionary, world: Vector2) -> Dictionary:
 		var settlement: Dictionary = settlement_value
 		# Reverse of the painter's order: specials and masses sit above ground, ground above
 		# roads only in the sense that a road is a line you must click precisely.
-		for kind in ["specials", "decor", "parks", "plazas", "forests", "farms", "roads"]:
+		# ZONES LAST, and that ordering is the whole reason a zone is clickable at all: it is
+		# the ground everything else stands on, and it usually covers most of a tile. Tested
+		# any earlier it would swallow every click meant for a mass, a field or a road inside
+		# it, and the shapes a designer actually places would become unselectable.
+		for kind in ["specials", "decor", "parks", "plazas", "forests", "farms", "roads",
+				"zones"]:
 			var items: Array = settlement.get(kind, []) as Array
 			for index in range(items.size() - 1, -1, -1):
 				var item_value: Variant = items[index]

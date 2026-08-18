@@ -415,6 +415,7 @@ func _draw_corner_handles(camera: Camera2D) -> void:
 
 ## Industrial zones: the regions a gameplay building may be placed in.
 func _draw_zones(camera: Camera2D) -> void:
+	var selected: Dictionary = editor.call("selected_ids")
 	var document: Dictionary = editor.call("document").call("data")
 	var settlements_value: Variant = document.get("settlements", {})
 	if typeof(settlements_value) != TYPE_DICTIONARY:
@@ -442,7 +443,16 @@ func _draw_zones(camera: Camera2D) -> void:
 			draw_colored_polygon(screen, fill)
 			var ring := screen.duplicate()
 			ring.append(screen[0])
-			draw_polyline(ring, colour, ZONE_EDGE_WIDTH, true)
+			var picked: bool = selected.has(str(zone.get("id", "")))
+			draw_polyline(ring, colour, ZONE_EDGE_WIDTH * (2.0 if picked else 1.0), true)
+			if picked:
+				# `_hatch` steps in WORLD units so its density is stable as a shape moves,
+				# and this function otherwise draws in screen space. Borrow the fabric
+				# layer's transform for the hatch alone, then hand the canvas back.
+				draw_set_transform(size * 0.5 - camera.get_screen_center_position()
+					* camera.zoom.x, 0.0, Vector2(camera.zoom.x, camera.zoom.x))
+				_hatch([world], camera)
+				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 ## Tiles carrying at least one non-water deposit, so extraction zones can be sited where the
