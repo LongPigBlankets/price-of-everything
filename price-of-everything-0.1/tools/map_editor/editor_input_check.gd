@@ -620,6 +620,86 @@ func _ready() -> void:
 	_check("and never labels water (%d water labels)" % water_marked, water_marked == 0)
 	_editor.call("toggle_deposit_marks")
 
+	# ── P3: the tile report and slot conversion ────────────────────────────────
+	# The report exists to show the designer which of two independent limits binds. Both are
+	# checked, because reporting only the one you thought of is how a lint becomes decoration.
+	var report_tile := "tile_9_10"
+	var report: Dictionary = _editor.call("tile_report", report_tile)
+	_check("the tile report resolves a tile (%s, %s, cap %d)"
+		% [str(report.get("tile", "")), str(report.get("terrain", "")), int(report.get("cap", 0))],
+		str(report.get("tile", "")) == report_tile and int(report.get("cap", 0)) > 0)
+	var fits: Array = report.get("fits", [])
+	_check("it reports what the land allows (%d sizes)" % fits.size(), fits.size() >= 3)
+	var descending := true
+	for i in range(1, fits.size()):
+		if int((fits[i] as Dictionary)["count"]) > int((fits[i - 1] as Dictionary)["count"]):
+			descending = false
+	_check("bigger buildings come out fewer per tile", descending)
+	_check("a tile with no zones says so", (report.get("zones", []) as Array).is_empty())
+	# Sea falls through the terrain cap table to the 200 default, which means nothing there.
+	# The report must say so rather than quote a factory capacity for open water.
+	var sea: Dictionary = _editor.call("tile_report", "tile_22_17")
+	_check("a water tile is reported as offshore, not as 200 land (%s)"
+		% str(sea.get("terrain", "")),
+		bool(sea.get("offshore", false)) and (sea.get("fits", []) as Array).is_empty())
+
+	# Draw a SMALL zone and the zone must become the binding limit, not the land cap.
+	_editor.call("set_area_kind", "zone:industrial")
+	var centre_screen := _screen_of(_editor.call("_world_at", Vector2(640, 400)), camera)
+	for at in [centre_screen + Vector2(-40, -40), centre_screen + Vector2(40, -40),
+			centre_screen + Vector2(40, 40), centre_screen + Vector2(-40, 40)]:
+		await _click(at)
+	_send_key(KEY_ENTER)
+	await get_tree().process_frame
+	# Report on the tile the zone actually LANDED on, from its own coverage list — not on
+	# whatever the synthetic pointer is over, which is how this check ended up interrogating
+	# open water.
+	var drawn_zones := _zones_of(_editor.call("document"))
+	var zoned_tile := ""
+	if not drawn_zones.is_empty():
+		var covered: Array = (drawn_zones[drawn_zones.size() - 1] as Dictionary).get("tiles", [])
+		if not covered.is_empty():
+			zoned_tile = str(covered[0])
+	_check("the drawn zone recorded a tile (%s)" % zoned_tile, zoned_tile != "")
+	var small: Dictionary = _editor.call("tile_report", zoned_tile)
+	var zones: Array = small.get("zones", [])
+	_check("a drawn zone appears in the report (%d)" % zones.size(), zones.size() >= 1)
+	if not zones.is_empty():
+		_check("it measures an area (%.0f u2)" % float((zones[0] as Dictionary)["area"]),
+			float((zones[0] as Dictionary)["area"]) > 0.0)
+		var land_count := 0
+		for entry_value in (small.get("fits", []) as Array):
+			if str((entry_value as Dictionary)["what"]) == "standard plant":
+				land_count = int((entry_value as Dictionary)["count"])
+		_check("a SMALL zone binds tighter than the land cap (%d boxes vs %d by land)"
+			% [int((zones[0] as Dictionary)["max_boxes"]), land_count],
+			int((zones[0] as Dictionary)["max_boxes"]) < land_count)
+
+	# Slots -> zone. The slots must GO: leaving them would keep _claim_slot seating buildings
+	# in boxes the zone was drawn to replace.
+	_editor.call("pick_slot_class", "standard")
+	for at in [Vector2(560, 300), Vector2(680, 320), Vector2(620, 420)]:
+		await _click(at)
+	var before_slots := (_editor.call("document_slot_boxes") as Array).size()
+	_check("slots were laid to convert (%d)" % before_slots, before_slots >= 3)
+	var slot_tile := str((_editor.call("document_slot_boxes") as Array)[0]["tile_id"])
+	var before_zones := _zones_of(_editor.call("document")).size()
+	var said: String = _editor.call("convert_slots_to_zone", slot_tile)
+	await get_tree().process_frame
+	_check("conversion reports what it did (%s)" % said, said.contains("industrial zone"))
+	var after_zones := _zones_of(_editor.call("document"))
+	_check("a zone was created (%d -> %d)" % [before_zones, after_zones.size()],
+		after_zones.size() == before_zones + 1)
+	var made: Dictionary = after_zones[after_zones.size() - 1]
+	_check("it is within the corner cap (%d)" % (made.get("outline", []) as Array).size(),
+		(made.get("outline", []) as Array).size() <= AuthoredMapRef.ZONE_MAX_VERTICES
+			and (made.get("outline", []) as Array).size() >= 3)
+	var left := 0
+	for box_value in (_editor.call("document_slot_boxes") as Array):
+		if str((box_value as Dictionary)["tile_id"]) == slot_tile:
+			left += 1
+	_check("the slots it replaced are gone (%d left on the tile)" % left, left == 0)
+
 	if _failures.is_empty():
 		print("[INPUT] ALL CHECKS PASSED")
 		get_tree().quit(0)

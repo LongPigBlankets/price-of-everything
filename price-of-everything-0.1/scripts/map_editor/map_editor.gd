@@ -35,6 +35,7 @@ const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd
 const MapEditorRoadSnap := preload("res://scripts/map_editor/map_editor_road_snap.gd")
 const AuthoredSlotSizes := preload("res://scripts/authored_slot_sizes.gd")
 const MapEditorSlotBoxes := preload("res://scripts/map_editor/map_editor_slot_boxes.gd")
+const BuildingVisualsRef := preload("res://scenes/building_visuals.gd")
 const MapEditorPanel := preload("res://scripts/map_editor/map_editor_panel.gd")
 
 ## Tools. NAVIGATE is the default and does nothing but move the view: an editor whose idle
@@ -171,6 +172,7 @@ var _nudging := false
 var _slot_pick: Dictionary = {}
 ## Built once — tile deposits are static map data.
 var _deposit_cache: Array = []
+var _report_tile := ""
 var _panel: MapEditorPanel
 var _tool := TOOL_PAN
 var _world: Node
@@ -405,6 +407,7 @@ func _refresh_status() -> void:
 			"UNSAVED" if _document.is_dirty() else "saved"])
 	if _panel != null:
 		_panel.refresh()
+		_panel.set_tile_report(tile_report(_hovered_tile()))
 
 
 # ── Input ───────────────────────────────────────────────────────────────────────
@@ -1711,6 +1714,227 @@ func _non_water_deposits(tile_id: String) -> String:
 			continue
 		names.append(name)
 	return ", ".join(names)
+
+
+## THE BUILDABILITY REPORT for one tile — what the sim will allow, what the zones can hold,
+## and where those two disagree. A designer draws zones by eye; this is the arithmetic.
+##
+## The disagreement is the point. Land capacity and zone area are two independent limits and
+## either can bind: a generous zone on a mountain is capped by terrain, and a thin zone on
+## rural ground is capped by its own area. Only one of them is visible while drawing.
+func tile_report(tile_id: String) -> Dictionary:
+	if tile_id == "":
+		return {}
+	var terrain_name := Catalog.tile_type(tile_id)
+	var cap := MatchState.max_tile_land(tile_id)
+	# Sea is not in the terrain cap table, so it falls through to the 200 default — a number
+	# that means nothing there. Offshore platforms and offshore wind farms DO stand on water,
+	# so it is not "unbuildable"; it is a different kind of tile, and the report says which
+	# rather than quoting a capacity for factories that can never be built.
+	var offshore := terrain_name == "sea" or terrain_name == "deep_sea"
+	var out := {"tile": tile_id, "terrain": terrain_name, "cap": cap, "offshore": offshore,
+		"zones": [], "fits": []}
+	if offshore:
+		out["fits"] = []
+		out["decor"] = _tile_decor_counts(tile_id)
+		return out
+
+	# By LAND: what the sim's size-unit budget allows, for the sizes that actually exist.
+	for entry in [["standard plant", 15], ["furnace / power", 18], ["farm", 20], ["mine", 25]]:
+		out["fits"].append({"what": str(entry[0]), "size": int(entry[1]),
+			"count": int(cap / int(entry[1]))})
+
+	# By ZONE AREA: an UPPER BOUND, because it assumes perfect packing of square boxes into
+	# the polygon. Reported as such — a number that pretends to be exact here would be worse
+	# than no number, since it is the optimistic side that misleads.
+	var box: float = (BuildingVisualsRef.AUTHORED_SLOT_BOXES["standard"] as Vector2).x
+	for kind_value in AuthoredMap.ZONE_KINDS:
+		var kind := str(kind_value)
+		var area := 0.0
+		for zone_value in _document_zones(tile_id, kind):
+			area += absf(_polygon_area(zone_value as Dictionary))
+		if area <= 0.0:
+			continue
+		out["zones"].append({"kind": kind, "area": area,
+			"max_boxes": int(area / (box * box))})
+	out["decor"] = _tile_decor_counts(tile_id)
+	return out
+
+
+## Zones of one kind over a tile, read from the document being EDITED rather than the saved
+## one — the report has to describe what is on screen.
+func _document_zones(tile_id: String, kind: String) -> Array:
+	var out: Array = []
+	for settlement_value in (_document.data().get("settlements", {}) as Dictionary).values():
+		for zone_value in ((settlement_value as Dictionary).get("zones", []) as Array):
+			if typeof(zone_value) != TYPE_DICTIONARY:
+				continue
+			var zone: Dictionary = zone_value
+			if str(zone.get("kind", "")) != kind:
+				continue
+			var tiles: Array = zone.get("tiles", []) as Array
+			if tiles.is_empty() or tiles.has(tile_id):
+				out.append(zone)
+	return out
+
+
+func _polygon_area(record: Dictionary) -> float:
+	var pts: Array = record.get("outline", []) as Array
+	if pts.size() < 3:
+		return 0.0
+	var total := 0.0
+	for i in pts.size():
+		var a: Array = pts[i] as Array
+		var b: Array = pts[(i + 1) % pts.size()] as Array
+		if a == null or b == null or a.size() < 2 or b.size() < 2:
+			return 0.0
+		total += float(a[0]) * float(b[1]) - float(b[0]) * float(a[1])
+	return total * 0.5
+
+
+## Decorative masses over a tile, split by whether they were offered up. What a building here
+## would cost in fabric.
+func _tile_decor_counts(tile_id: String) -> Dictionary:
+	var terrain := get_tree().get_first_node_in_group("hex_map")
+	if terrain == null:
+		return {"total": 0, "protected": 0}
+	var coord: Vector2i = terrain.call("id_to_coord", tile_id)
+	if not (terrain.get("tiles") as Dictionary).has(coord):
+		return {"total": 0, "protected": 0}
+	var centre: Vector2 = terrain.call("map_to_local",
+		terrain.call("map_coord_for_tile_coord", coord))
+	var total := 0
+	var protected := 0
+	for settlement_value in (_document.data().get("settlements", {}) as Dictionary).values():
+		for key in ["decor", "specials"]:
+			for record_value in ((settlement_value as Dictionary).get(key, []) as Array):
+				if typeof(record_value) != TYPE_DICTIONARY:
+					continue
+				var record: Dictionary = record_value
+				if not _record_over_tile(record, centre):
+					continue
+				total += 1
+				if not bool(record.get("sacrificial", false)):
+					protected += 1
+	return {"total": total, "protected": protected}
+
+
+## Is a mass's anchor inside this tile's box? The tile box, not the hex — a cheap test that
+## over-counts slightly at the corners, which is the safe direction for a warning.
+func _record_over_tile(record: Dictionary, centre: Vector2) -> bool:
+	var at := Vector2.INF
+	if record.has("pos"):
+		var pos: Array = record.get("pos", []) as Array
+		if pos.size() >= 2:
+			at = Vector2(float(pos[0]), float(pos[1]))
+	elif record.has("outline"):
+		var outline: Array = record.get("outline", []) as Array
+		if not outline.is_empty():
+			var first: Array = outline[0] as Array
+			if first != null and first.size() >= 2:
+				at = Vector2(float(first[0]), float(first[1]))
+	if at == Vector2.INF:
+		return false
+	return absf(at.x - centre.x) <= 270.0 and absf(at.y - centre.y) <= 240.0
+
+
+## Turn a tile's authored SLOTS into one industrial zone covering the ground they reserved,
+## and drop the slots. The convex hull of their boxes, simplified to the zone corner cap.
+##
+## The point is that 31 tiles were slotted by hand before zones existed, and redrawing them
+## is the only thing standing between that work and the mechanism that replaced it.
+func convert_slots_to_zone(tile_id: String) -> String:
+	var boxes: Array = []
+	for box_value in document_slot_boxes():
+		if str((box_value as Dictionary).get("tile_id", "")) == tile_id:
+			boxes.append(box_value)
+	if boxes.is_empty():
+		return "No slots on %s to convert." % tile_id
+	var corners := PackedVector2Array()
+	for box_value in boxes:
+		var box: Dictionary = box_value
+		var centre: Vector2 = box["centre"]
+		var size: Vector2 = box["size"]
+		var angle := float(box["angle"])
+		for corner in [Vector2(-0.5, -0.5), Vector2(0.5, -0.5), Vector2(0.5, 0.5),
+				Vector2(-0.5, 0.5)]:
+			corners.append(centre + (corner * size).rotated(angle))
+	var hull := Geometry2D.convex_hull(corners)
+	if hull.size() < 3:
+		return "Those slots do not enclose an area."
+	# convex_hull repeats the first point to close the ring; the document stores open rings.
+	if hull.size() > 1 and hull[0].is_equal_approx(hull[hull.size() - 1]):
+		hull.remove_at(hull.size() - 1)
+	hull = _simplify_ring(hull, AuthoredMap.ZONE_MAX_VERTICES)
+
+	var settlement := _ensure_settlement()
+	var next_id := int(settlement.get("next_id", 1))
+	_document.begin_edit("slots to zone")
+	settlement = _ensure_settlement()
+	settlement["next_id"] = next_id + 1
+	var outline: Array = []
+	for v in hull:
+		outline.append([v.x, v.y])
+	var zones: Array = settlement.get("zones", []) as Array
+	zones.append({"id": "z:%s:%d" % [_settlement, next_id], "kind": "industrial",
+		"tiles": [tile_id], "outline": outline})
+	settlement["zones"] = zones
+	# The slots are gone: leaving them would keep _claim_slot seating buildings in boxes the
+	# zone was drawn to replace, which is the worst of both mechanisms.
+	var slots: Dictionary = settlement.get("slots", {})
+	var removed := 0
+	if slots.has(tile_id):
+		removed = ((slots[tile_id] as Dictionary).get("pins", []) as Array).size()
+		slots.erase(tile_id)
+		settlement["slots"] = slots
+	_overlay.queue_redraw()
+	return "%s: %d slot(s) became an industrial zone of %d corners." \
+		% [tile_id, removed, hull.size()]
+
+
+## Drop the corners that matter least until a ring is within `limit`, by removing whichever
+## vertex changes the enclosed area least. Keeps the shape rather than the vertex count.
+func _simplify_ring(ring: PackedVector2Array, limit: int) -> PackedVector2Array:
+	var out := ring.duplicate()
+	while out.size() > limit:
+		var drop := 0
+		var least := INF
+		for i in out.size():
+			var a: Vector2 = out[(i - 1 + out.size()) % out.size()]
+			var b: Vector2 = out[i]
+			var c: Vector2 = out[(i + 1) % out.size()]
+			var loss := absf((b - a).cross(c - a)) * 0.5
+			if loss < least:
+				least = loss
+				drop = i
+		out.remove_at(drop)
+	return out
+
+
+## The tile under the pointer, for the report. Falls back to the last one clicked so the
+## report does not blank out the moment the pointer leaves the map for the panel.
+func _hovered_tile() -> String:
+	var terrain := get_tree().get_first_node_in_group("hex_map")
+	if terrain == null or _camera == null:
+		return _report_tile
+	var world := _world_at(get_viewport().get_mouse_position())
+	var coord: Vector2i = terrain.call("tile_coord_for_map_coord",
+		terrain.call("local_to_map", world))
+	var tiles: Dictionary = terrain.get("tiles")
+	if tiles.has(coord):
+		_report_tile = str((tiles[coord] as Dictionary).get("id", ""))
+	return _report_tile
+
+
+## Convert the slots on the tile under the pointer. The panel has no notion of which tile is
+## meant, and asking would be a dialog for something a pointer already answers.
+func convert_focused_slots_to_zone() -> void:
+	var tile_id := _hovered_tile()
+	if tile_id == "":
+		_set_status("Point at a tile first.")
+		return
+	_set_status(convert_slots_to_zone(tile_id))
+	_refresh_status()
 
 
 func toggle_deposit_marks() -> void:

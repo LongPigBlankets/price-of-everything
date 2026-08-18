@@ -75,6 +75,7 @@ var _special_tiles: Dictionary = {}
 var _slot_buttons: Dictionary = {}
 var _zone_buttons: Dictionary = {}
 var _deposit_button: Button = null
+var _report_label: Label = null
 var _special_rows: VBoxContainer
 var _folds: Dictionary = {}
 var _status: Label
@@ -212,6 +213,17 @@ func build(editor: Node, layers: MapEditorLayers) -> void:
 		_zone_buttons[zone_kind] = button
 		zones.add_child(button)
 	zones.add_child(_caption("Default fills first, then reserve. Extraction is mines and wells only — water pumps use the industrial zones."))
+	var convert := _toggle_button("Slots on this tile -> zone")
+	convert.pressed.connect(func() -> void: _editor.call("convert_focused_slots_to_zone"))
+	zones.add_child(convert)
+
+	# ── Tile report ─────────────────────────────────────────────────────────────
+	# What the sim will allow on the tile under the pointer, against what the zones drawn on
+	# it can hold. Both limits are real and only one of them is visible while drawing.
+	var report := _fold(column, "Tile Report")
+	_report_label = _caption("Hover a tile.")
+	_report_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	report.add_child(_report_label)
 
 	# ── Building slots ──────────────────────────────────────────────────────────
 	# Empty ground reserved for a gameplay building — placed at a size class, facing the
@@ -483,6 +495,57 @@ func _caption(text: String) -> Label:
 ## become English, so a new class needs no second table to be readable in the panel.
 ## "industrial_reserve" -> "Reserve". The kind ids are storage names; this is where they
 ## become the words on the button.
+## Refresh the tile report. Called from the editor's own status refresh, so it follows the
+## pointer without a second timer.
+func set_tile_report(report: Dictionary) -> void:
+	if _report_label == null:
+		return
+	if report.is_empty():
+		_report_label.text = "Hover a tile."
+		return
+	var lines := PackedStringArray()
+	if bool(report.get("offshore", false)):
+		_report_label.text = "%s · %s\nWater — offshore platforms and wind only. No land cap applies." \
+			% [str(report["tile"]), str(report["terrain"])]
+		return
+	lines.append("%s · %s · %d land" % [str(report["tile"]), str(report["terrain"]),
+		int(report["cap"])])
+	var fits := PackedStringArray()
+	for entry_value in (report.get("fits", []) as Array):
+		var entry: Dictionary = entry_value
+		fits.append("%d %s" % [int(entry["count"]), str(entry["what"])])
+	lines.append("Land allows: " + ", ".join(fits))
+	var zones: Array = report.get("zones", [])
+	if zones.is_empty():
+		lines.append("No zones — the whole tile is buildable ground.")
+	else:
+		for zone_value in zones:
+			var zone: Dictionary = zone_value
+			lines.append("%s zone: %.0f u2, at most %d buildings"
+				% [str(zone["kind"]).replace("_", " "), float(zone["area"]),
+					int(zone["max_boxes"])])
+		# THE LINT: whichever limit is smaller is the one that will actually bite.
+		var by_land := 0
+		for entry_value in (report.get("fits", []) as Array):
+			if str((entry_value as Dictionary)["what"]) == "standard plant":
+				by_land = int((entry_value as Dictionary)["count"])
+		var by_zone := 0
+		for zone_value in zones:
+			if str((zone_value as Dictionary)["kind"]) != "extraction":
+				by_zone += int((zone_value as Dictionary)["max_boxes"])
+		if by_zone < by_land:
+			lines.append("→ the ZONES bind first (%d vs %d by land). Draw wider, or accept it."
+				% [by_zone, by_land])
+		else:
+			lines.append("→ the LAND CAP binds first (%d vs %d by zone area)."
+				% [by_land, by_zone])
+	var decor: Dictionary = report.get("decor", {})
+	if int(decor.get("total", 0)) > 0:
+		lines.append("Fabric here: %d masses, %d protected."
+			% [int(decor["total"]), int(decor["protected"])])
+	_report_label.text = "\n".join(lines)
+
+
 func _zone_label(zone_kind: String) -> String:
 	match zone_kind:
 		"industrial": return "Default industrial"

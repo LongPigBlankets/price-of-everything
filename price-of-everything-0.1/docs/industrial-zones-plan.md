@@ -1,8 +1,6 @@
 # Industrial zones — plan
 
-**Status:** P0–P2 BUILT 2026-08-17 — zones are drawable, validated, they constrain placement
-with extraction gated to mines and wells, and inside a zone a building takes clear ground
-before fabric. Only P3 (authoring readout, slot→zone conversion) remains.
+**Status:** COMPLETE 2026-08-17 — P0 through P3 built and verified.
 **Replaces (partly):** authored slots as the primary placement mechanism. Slots stay; see
 [What happens to slots](#what-happens-to-slots).
 
@@ -178,7 +176,22 @@ inside it may be 50, so evicting by the box was demolishing terraces the buildin
 touched. The slot `lot_masses` still order the claim loop; they just no longer decide what
 dies.
 
-### P3 — authoring quality of life
+### P3 — authoring quality of life ✅ BUILT
+A **Tile Report** panel section following the pointer: terrain and land cap, how many of each
+building size that allows, the area and upper-bound capacity of each zone drawn on the tile,
+the fabric standing there, and — the actual lint — **which of the two independent limits binds
+first**. A designer draws zones by eye and can only see one of them.
+
+Water tiles are reported as offshore rather than quoting a 200-unit cap, which is what they
+fall through to and which means nothing there. That was found by looking at the capture, not
+by reasoning.
+
+**Slots → zone** converts a tile's authored slots into the convex hull of the ground they
+reserved, simplified to the corner cap by dropping whichever vertex costs the least area, and
+deletes the slots. Leaving them would keep `_claim_slot` seating buildings in boxes the zone
+was drawn to replace.
+
+### P3 — original scope
 A per-tile readout in the editor — "fits 6 mines / 10 furnaces / 20 workshops at L1" — which
 is the buildability lint already outstanding from the slot work, and is far more useful
 against a zone than against a fixed slot count. Bulk-convert existing slots to a zone on a
@@ -207,6 +220,21 @@ question is only whether a building already standing in the severed half should 
 **Recommendation: no.** Placement is not re-run for standing buildings anywhere else either.
 
 ---
+
+## Answered: would a rotated sprite variant pack better?
+
+Asked during P3, measured rather than argued (`tools/map_editor/sprite_pack_probe.tscn`).
+
+**No, not yet.** 413 buildings stand on the real map and **0 fail to pack**. The land cap
+binds long before the packer does: a mountain tile allows ~8 buildings and eight 78 u boxes
+occupy about a quarter of a tile's area; even a rural tile at 13 buildings is ~41%. Every
+"tile is full" in the e2e is a size-unit refusal, never a packing failure.
+
+The aspect ratios are real — 13 of 20 buildings are oblong, up to 2.61 for the wind farms —
+so a transposed variant would work. It has nothing to recover. Where it WILL matter is thin
+or small zones, because a zone can bind tighter than a tile: the P3 report already measures
+exactly that and says which limit is binding, so the moment zones start being the constraint
+it will be visible rather than inferred.
 
 ## Risks
 
