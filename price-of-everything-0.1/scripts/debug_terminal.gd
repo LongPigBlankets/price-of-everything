@@ -24,6 +24,10 @@ extends CanvasLayer
 ##   swap song                       advance to the next music track
 ##   help                             list commands
 
+## Emitted when `debug CandC` unlocks this terminal. The main menu listens so it can
+## reveal its cheat-gated entries (the Map Editor) without polling.
+signal cheats_unlocked
+
 const TOGGLE_KEY := KEY_QUOTELEFT  # the ` / ~ key
 const UNLOCK_WORD := "CandC"  # case-sensitive pass-phrase for `debug <word>`
 
@@ -44,6 +48,13 @@ var menu_mode := false
 
 # Survives scene reloads (e.g. the `load` cheat) but resets on app restart.
 static var _cheats_unlocked := false
+
+
+## Whether `debug CandC` has been entered this app run. Read by the main menu, which
+## reveals its cheat-gated entries on it — and, because the flag is static, keeps them
+## revealed after a return from a match or the editor.
+static func cheats_are_unlocked() -> bool:
+	return _cheats_unlocked
 
 var _panel: PanelContainer
 var _cmd: LineEdit
@@ -133,6 +144,7 @@ func _run_command(text: String) -> String:
 				return "debug mode already enabled"
 			_cheats_unlocked = true
 			_cmd.placeholder_text = "cheat…  e.g.  cash 1000        ( ` to close )"
+			cheats_unlocked.emit()
 			return "Debug mode enabled — type 'help' for commands."
 		return "invalid operation"
 	if not _cheats_unlocked:

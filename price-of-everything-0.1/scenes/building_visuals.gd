@@ -24,6 +24,16 @@ signal footprints_changed(version: int, affected_tile_ids: Array)
 # relayout() once roads exist to re-snap them to frontage. On load roads are already
 # present at re-emit, so relayout() is idempotent there.
 
+const AuthoredMap := preload("res://scripts/authored_map.gd")
+## Authored fabric, for measuring which decorative masses a slot stands on. Read-only here:
+## the drawing of it belongs to `authored_fabric_visuals.gd`.
+const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
+const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
+
+## How much heavier a mass the designer did NOT mark `sacrificial` counts when choosing which
+## slot to use. High enough that any amount of protected fabric loses to any amount of
+## offered fabric, low enough that a tile with only protected ground is still buildable.
+const PROTECTED_MASS_WEIGHT := 8.0
 const TileViewData := preload("res://scripts/tile_view_data.gd")
 
 # Network infrastructure drawn by its own layer, NOT as a building footprint:
@@ -276,6 +286,12 @@ var _block_masses: Dictionary = {}     # tile_id -> Array[{poly, holes, color, b
 var _massed_by_tile: Dictionary = {}   # tile_id -> {instance_id: true} — members drawn as ink divisions
 var _subcomp_dirty: Dictionary = {}   # tile_id -> true, tiles needing a subcomponent rebuild
 var _subcomp_queued := false
+## "tile_id|kind" -> the land mask restricted to that kind's zones. Built lazily, on the first
+## placement that needs one and only for tiles that carry a zone: _ensure_tile is a hot path
+## that has been optimised from 60s to 11s and must not grow three rasterisations per tile.
+var _zone_masks: Dictionary = {}
+## tile_id -> authored decorative masses in world units. Static for a run.
+var _decor_cache: Dictionary = {}
 # Farm layout (re-derived with subcomponents; never persisted). A field's render shape depends on its
 # neighbours (it Voronoi-snaps to the lanes between them), so it is computed per tile, not at placement.
 var _farm_render: Dictionary = {}     # instance_id -> {verts (world, cell-clipped), hatch}
@@ -513,16 +529,22 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	var offshore := str(bd.get("internal_name", "")).to_lower().begins_with("offshore")
 	if offshore:
 		placed = _place_offshore(coord, area, placed_here)
-	elif not is_edge and cat != "farm" and _use_block_mode(tile_id, coord):
+	# Extraction normally seeks a tile edge and farms own a field, so both skip the block
+	# grid. An AUTHORED SLOT outranks that: the designer said where this building goes, and
+	# a mine that ignored its slot to go and sit in a corner would make the tool a
+	# suggestion. Farms still opt out — their footprint is an authored POLYGON, which is a
+	# different mechanism (not yet built).
+	elif (not is_edge or _has_authored_slots(tile_id)) and cat != "farm" \
+			and _use_block_mode(tile_id, coord):
 		var tmpl := _ensure_block_template(tile_id, coord)
 		if not tmpl.is_empty():
-			placed = _claim_slot(tmpl, size_units, coord, tile_id, placed_here)
+			placed = _claim_slot(tmpl, size_units, coord, tile_id, placed_here, iname_lot)
 	if placed.is_empty() and not offshore:
 		# Art buildings front the road tightly (edge ~1u off the carriageway).
 		var rc := ART_ROAD_PAD if has_art else ROAD_CLEAR
 		var akey := str(INK_ART_KEY.get(iname_lot, ""))
 		placed = _search(tile_id, coord, kind, area, seed_v, cat, is_edge, placed_here, rc,
-			_sprite_lot_verts(size_units, akey))
+			_sprite_lot_verts(size_units, akey), iname_lot)
 		# Dense tiles (Stoneshore Docks runs 100+ buildings): rather than
 		# silently vanishing, art buildings retry with smaller lots — the
 		# city packs tighter and the art just draws smaller (strokes stay
@@ -533,7 +555,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 			# 0.6 still reads; 0.3 is the last resort before going undrawn.
 			for shrink in [0.6, 0.3]:
 				placed = _search(tile_id, coord, kind, area * float(shrink), seed_v, cat, is_edge, placed_here, rc,
-					_sprite_lot_verts(size_units, akey, sqrt(float(shrink))))
+					_sprite_lot_verts(size_units, akey, sqrt(float(shrink))), iname_lot)
 				if not placed.is_empty():
 					placed["shrink"] = shrink
 					break
@@ -542,6 +564,11 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 
 	if has_art:
 		_crop_to_sprite(placed, size_units, str(INK_ART_KEY.get(iname_lot, "")))
+	# Whatever decorative fabric this building actually stands on is now gone. Done HERE, on
+	# the final cropped footprint, rather than per-slot: a slot box is up to 84 u and the
+	# building inside it may be 50, so evicting by the box demolished terraces the building
+	# never touched.
+	_evict_fabric_under(tile_id, placed.verts)
 	var verts: PackedVector2Array = placed.verts
 	# Farms carry BOTH looks baked once (clipped to the — possibly hex-cut —
 	# field): the classic 45° green hatch and the ink-mode parcel fabric
@@ -581,6 +608,13 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 
 ## True if this (urban) tile uses the slot-grid block mode. Seeded once per tile_id, cached.
 func _use_block_mode(tile_id: String, _coord: Vector2i) -> bool:
+	# AUTHORED TILES ALWAYS TAKE THIS PATH. The block route is what reaches
+	# _ensure_block_template, and therefore the designer's slots; leaving it behind a
+	# probability roll would mean a hand-placed slot was honoured on some tiles and silently
+	# ignored on others. The farm rule below does not apply either — a designer who put a
+	# slot among fields meant it.
+	if _has_authored_slots(tile_id):
+		return true
 	# Any tile (seeded). A block only actually FORMS where there's a straight road run + room
 	# (_build_block_template returns {} otherwise), so this self-limits to developed/connected
 	# tiles regardless of urban/rural. Tune BLOCK_PROB for how many eligible tiles block.
@@ -608,6 +642,15 @@ func _tile_farm_count(tile_id: String) -> int:
 func _ensure_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	if _tile_block_templates.has(tile_id):
 		return _tile_block_templates[tile_id]
+	# AUTHORED SLOTS WIN. A designer who placed slots on this tile has said where buildings
+	# go; the procedural block grid is the fallback for tiles nobody has authored. Synthesised
+	# into the same template shape the grid produces, so _claim_slot and the re-pack path work
+	# unchanged — including consuming a lot that fails validation and freeing them all when the
+	# tile is re-laid.
+	var authored := _authored_block_template(tile_id, coord)
+	if not authored.is_empty():
+		_tile_block_templates[tile_id] = authored
+		return authored
 	var tmpl := _build_block_template(tile_id, coord)
 	# Cache only a REAL block. An empty result (no road yet / no room) is NOT cached, so the
 	# next building — or the road-settle re-pack — retries. Otherwise a tile built up BEFORE
@@ -615,6 +658,311 @@ func _ensure_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	if not tmpl.is_empty():
 		_tile_block_templates[tile_id] = tmpl
 	return tmpl
+
+## The tile's authored slots as a block template, or {} when none were authored.
+##
+## Lots are stored tile-centre-relative in the document and used here in the same frame the
+## procedural grid works in. `lot_cells` carries each slot's box so a building FILLS its slot
+## rather than being sized by the generic fill rule — the mechanism chunk tiles already use,
+## extended to one size per lot. `lot_classes` lets a building be refused a slot too small
+## for it.
+func _authored_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
+	if not AuthoredMap.is_active() or not AuthoredMap.covers(tile_id):
+		return {}
+	var slots := AuthoredMap.slots_for_tile(tile_id)
+	var pins: Array = slots.get("pins", []) as Array
+	if pins.is_empty():
+		return {}
+	var lots: Array = []
+	var claimed: Array = []
+	var lot_angles: Array = []
+	var lot_cells: Array = []
+	var lot_classes: Array = []
+	for pin_value in pins:
+		if typeof(pin_value) != TYPE_DICTIONARY:
+			continue
+		var pin: Dictionary = pin_value
+		var pos: Array = pin.get("pos", []) as Array
+		if pos.size() < 2:
+			continue
+		# Document coordinates are relative to the tile CENTRE; the mask and the validators
+		# work from the tile's top-left corner.
+		lots.append(TILE_CENTER + Vector2(float(pos[0]), float(pos[1])))
+		claimed.append(false)
+		lot_angles.append(float(pin.get("angle", 0.0)))
+		var slot_class := AuthoredMap.canonical_slot_class(str(pin.get("size", "standard")))
+		lot_classes.append(slot_class)
+		lot_cells.append(AUTHORED_SLOT_BOXES.get(slot_class, AUTHORED_SLOT_BOXES["standard"]))
+	if lots.is_empty():
+		return {}
+	var cover := _authored_slot_cover(tile_id, coord, lots, lot_angles, lot_cells)
+	return {"angle": float(lot_angles[0]), "lots": lots, "claimed": claimed,
+		"lot_angles": lot_angles, "lot_cells": lot_cells, "lot_classes": lot_classes,
+		"lot_masses": cover["masses"], "lot_cost": cover["cost"], "lot_order": cover["order"],
+		"segs": _tile_segs.get(tile_id, []), "rows": [], "authored": true}
+
+
+## WHICH SLOT GETS USED FIRST (owner, 2026-08-17).
+##
+## Slots are filled least-destructive first: a slot standing on empty ground is taken before
+## one standing on a decorative building, so the fabric survives until the tile genuinely runs
+## out of clear ground. Only then does a slot force an eviction, and it evicts the least it
+## can. Document order — which is just the order someone happened to click — would demolish a
+## terrace while bare ground sat free two slots along.
+##
+## On rural tiles almost every slot scores zero and the sort is a no-op; it earns its keep in
+## towns, where the fabric is dense enough that some slot always overlaps something.
+##
+## COST is overlapped area, with masses the designer did NOT mark `sacrificial` weighted up:
+## between two slots covering the same area, the one covering fabric that was offered up goes
+## first. Weighting rather than forbidding — a tile whose only free ground is under a
+## protected terrace should still be buildable, just last.
+func _authored_slot_cover(tile_id: String, coord: Vector2i, lots: Array,
+		lot_angles: Array, lot_cells: Array) -> Dictionary:
+	var masses: Array = []
+	var cost: Array = []
+	for i in lots.size():
+		masses.append(PackedStringArray())
+		cost.append(0.0)
+	var decor := _authored_decor_local(tile_id, coord)
+	if not decor.is_empty():
+		for i in lots.size():
+			var box := _rotate(BuildingShapes.make_rect(
+				(lot_cells[i] as Vector2).x, (lot_cells[i] as Vector2).y).verts,
+				float(lot_angles[i]))
+			var placed := PackedVector2Array()
+			for v in box:
+				placed.append(v + (lots[i] as Vector2))
+			var hit := PackedStringArray()
+			var total := 0.0
+			for entry_value in decor:
+				var entry: Dictionary = entry_value
+				var area := 0.0
+				for piece in Geometry2D.intersect_polygons(placed, entry["poly"]):
+					area += absf(_poly_area(piece))
+				if area <= 0.5:
+					continue
+				total += area * (1.0 if bool(entry["sacrificial"]) else PROTECTED_MASS_WEIGHT)
+				if not hit.has(str(entry["id"])):
+					hit.append(str(entry["id"]))
+			masses[i] = hit
+			cost[i] = total
+	var order: Array = []
+	for i in lots.size():
+		order.append(i)
+	# Ties keep document order, so a tile with no fabric fills exactly as it was authored.
+	order.sort_custom(func(a: int, b: int) -> bool:
+		if is_equal_approx(float(cost[a]), float(cost[b])):
+			return a < b
+		return float(cost[a]) < float(cost[b]))
+	return {"masses": masses, "cost": cost, "order": order}
+
+
+## Authored decorative masses over this tile, in TILE-LOCAL coordinates so they can be
+## compared with the lots. Everything in the document is world-space; a lot is measured from
+## the tile's top-left corner.
+func _authored_decor_local(tile_id: String, coord: Vector2i) -> Array:
+	var shift := TILE_CENTER - _tile_center_world_pos(coord)
+	var out: Array = []
+	for entry_value in _authored_decor_world(tile_id):
+		var entry: Dictionary = entry_value
+		var moved := PackedVector2Array()
+		for v in (entry["poly"] as PackedVector2Array):
+			moved.append(v + shift)
+		out.append({"id": entry["id"], "poly": moved, "sacrificial": entry["sacrificial"]})
+	return out
+
+
+## Authored decorative masses over this tile, in WORLD units — the frame both the placed
+## footprint and the document itself are already in. Cached: the document does not change
+## during a run, and this is consulted per placement.
+func _authored_decor_world(tile_id: String) -> Array:
+	if _decor_cache.has(tile_id):
+		return _decor_cache[tile_id]
+	var out: Array = []
+	if AuthoredMap.is_active() and AuthoredMap.covers(tile_id):
+		var settlement := AuthoredMap.settlement_for_tile(tile_id)
+		for record_value in (settlement.get("decor", []) as Array):
+			if typeof(record_value) != TYPE_DICTIONARY:
+				continue
+			var record: Dictionary = record_value
+			for poly in AuthoredFabricPainter.mass_polygons(record):
+				_append_local_poly(out, poly as PackedVector2Array, record, Vector2.ZERO)
+		for record_value in (settlement.get("specials", []) as Array):
+			if typeof(record_value) != TYPE_DICTIONARY:
+				continue
+			var record: Dictionary = record_value
+			_append_local_poly(out, AuthoredSpecialShapes.render_polygon(record), record,
+				Vector2.ZERO)
+	_decor_cache[tile_id] = out
+	return out
+
+
+func _append_local_poly(out: Array, poly: PackedVector2Array, record: Dictionary,
+		shift: Vector2) -> void:
+	if poly.size() < 3:
+		return
+	var moved := PackedVector2Array()
+	for v in poly:
+		moved.append(v + shift)
+	out.append({"id": str(record.get("id", "")), "poly": moved,
+		"sacrificial": bool(record.get("sacrificial", false))})
+
+
+## Does this tile carry hand-placed slots?
+func _has_authored_slots(tile_id: String) -> bool:
+	if not AuthoredMap.is_active() or not AuthoredMap.covers(tile_id):
+		return false
+	return not (AuthoredMap.slots_for_tile(tile_id).get("pins", []) as Array).is_empty()
+
+
+## Whether a building of `wanted` may occupy a slot of `offered`. Equal or larger only.
+## Hide the decorative masses a placed building actually covers. A no-op on the overwhelming
+## majority of placements — both the zone tiers and the slot claim order take clear ground
+## first, so fabric is only ever displaced once a tile has run out of it.
+##
+## `verts` is the FINAL footprint in world units, after `_crop_to_sprite`, which is the only
+## honest thing to evict by: it is the ground the art occupies rather than the ground the
+## placement machinery reserved on the way there.
+func _evict_fabric_under(tile_id: String, verts: PackedVector2Array) -> void:
+	if verts.size() < 3:
+		return
+	var decor := _authored_decor_world(tile_id)
+	if decor.is_empty():
+		return
+	var fabric := get_tree().get_first_node_in_group("authored_fabric")
+	if fabric == null:
+		return
+	for entry_value in decor:
+		var entry: Dictionary = entry_value
+		if Geometry2D.intersect_polygons(verts, entry["poly"] as PackedVector2Array).is_empty():
+			continue
+		fabric.call("evict", str(entry["id"]))
+
+
+## The slot class a building asks for. Infrastructure by category — the same rule
+## `authored_slot_sizes.gd` applies, restated because that file preloads this one and the
+## pair would cycle. `_test_authored_slot_class_agrees_with_art` holds the two together.
+# ── Industrial zones ────────────────────────────────────────────────────────────
+#
+# A zone is the region a gameplay building may be placed IN — no size, no rotation, so
+# nothing to mismatch when the player builds six mines where the designer imagined a mix.
+# See docs/industrial-zones-plan.md.
+#
+# The whole placement-side implementation is a MASK. `_ensure_tile` already rasterises the
+# tile into a PackedByteArray of buildable cells, and already builds a second one (`_farm_land`)
+# for a different kind of building. A zone is a third of exactly the same shape, so every
+# placer, validator and overlap test downstream behaves identically — they only ever saw a mask.
+
+
+## Buildings an `extraction` zone is for. WATER PUMPS ARE NOT ON THIS LIST (owner,
+## 2026-08-17): a pump is an industrial building whatever its recipe reads like, and the name
+## invites the opposite assumption every time.
+const EXTRACTION_NAMES := {
+	"mine": true, "oil_well": true, "fracking_oil_well": true,
+	"offshore_oil_platform": true,
+}
+
+## The zone kinds a building may be placed in, best first. Extraction buildings prefer their
+## own zone and then fall back like anything else — a mine on a tile with no extraction zone
+## is not a mine that cannot be built.
+func _zone_preference(iname: String) -> Array:
+	if EXTRACTION_NAMES.has(iname):
+		return ["extraction", "industrial", "industrial_reserve"]
+	return ["industrial", "industrial_reserve"]
+
+
+## The land mask restricted to zones of one kind, or an EMPTY array when this tile has no
+## zone of that kind — which the caller reads as "skip this kind", not as "nowhere to build".
+## How much fabric a cell may sit on. The tiers ARE the least-destructive rule from the slot
+## work, expressed as masks rather than as a sort: try the ground that displaces nothing, then
+## the ground the designer marked sacrificial, then whatever is left. Masks because that is
+## the currency every placer already speaks — no scoring loop had to be opened up.
+enum ZoneTier { CLEAR, SACRIFICIAL_OK, ANY }
+
+
+func _zone_mask(tile_id: String, coord: Vector2i, kind: String,
+		tier: int = ZoneTier.ANY) -> PackedByteArray:
+	var cache_key := "%s|%s|%d" % [tile_id, kind, tier]
+	if _zone_masks.has(cache_key):
+		return _zone_masks[cache_key]
+	var mask := PackedByteArray()
+	var zones := AuthoredMap.zones_for_tile(tile_id, kind)
+	if not zones.is_empty() and _tile_land.has(tile_id):
+		var outlines: Array = []
+		for zone_value in zones:
+			var poly := PackedVector2Array()
+			for entry in ((zone_value as Dictionary).get("outline", []) as Array):
+				var values: Array = entry as Array
+				if values != null and values.size() >= 2:
+					poly.append(Vector2(float(values[0]), float(values[1])))
+			if poly.size() >= 3:
+				outlines.append(poly)
+		if not outlines.is_empty():
+			var land: PackedByteArray = _tile_land[tile_id]
+			mask.resize(land.size())
+			var origin := _tile_center_world_pos(coord) - TILE_CENTER
+			# Fabric this tier refuses to build over. CLEAR refuses all of it;
+			# SACRIFICIAL_OK refuses only what was NOT offered up; ANY refuses none.
+			var blocked: Array = []
+			if tier != ZoneTier.ANY:
+				for entry_value in _authored_decor_world(tile_id):
+					var entry: Dictionary = entry_value
+					if tier == ZoneTier.CLEAR or not bool(entry["sacrificial"]):
+						blocked.append(entry["poly"])
+			# Only LAND cells are tested: a zone drawn over water still cannot be built on,
+			# and this keeps the cost proportional to the tile's usable ground rather than to
+			# the whole 108x96 grid.
+			for key in (_tile_landkeys.get(tile_id, PackedInt32Array()) as PackedInt32Array):
+				var world := origin + Vector2(
+					(float(key % GRID_COLS) + 0.5) * CELL,
+					(float(key / GRID_COLS) + 0.5) * CELL)
+				var inside := false
+				for poly in outlines:
+					if Geometry2D.is_point_in_polygon(world, poly):
+						inside = true
+						break
+				if not inside:
+					continue
+				var on_fabric := false
+				for poly in blocked:
+					if Geometry2D.is_point_in_polygon(world, poly):
+						on_fabric = true
+						break
+				if not on_fabric:
+					mask[key] = 1
+	_zone_masks[cache_key] = mask
+	return mask
+
+
+## Does a mask have anything in it? An all-zero mask means the zone exists but covers no
+## buildable cell on this tile, which must not be mistaken for "no zone".
+## Forget a tile's zone masks AND its cached fabric — the tile is being re-laid, and its
+## zones or its decor may have moved. The two go together because the masks are derived from
+## the fabric (the tiers refuse cells standing on it), so dropping one without the other
+## leaves a mask that describes a document nobody is looking at any more.
+func _drop_zone_masks(tile_id: String) -> void:
+	for key in _zone_masks.keys():
+		if str(key).begins_with("%s|" % tile_id):
+			_zone_masks.erase(key)
+	_decor_cache.erase(tile_id)
+
+
+func _mask_has_room(mask: PackedByteArray) -> bool:
+	for i in mask.size():
+		if mask[i] != 0:
+			return true
+	return false
+
+
+func _authored_class_for(iname: String, size_units: int) -> String:
+	return AuthoredMap.slot_class_for(
+		_art_size_for(size_units, str(INK_ART_KEY.get(iname, ""))), false)
+
+
+func _slot_fits(wanted: String, offered: String) -> bool:
+	return AuthoredMap.slot_fits(wanted, offered)
+
 
 ## Public: build/cache this tile's block template if a road run + room exist; true when a real grid formed.
 ## Ensures the tile's land mask first so the template can validate lots. (Used by tests; gameplay builds
@@ -1091,7 +1439,7 @@ func _cell_near_road(center: Vector2, segs: Array) -> bool:
 
 ## Claim the next free lot (emit order) for one building. Returns {verts, center_rel, half}
 ## or {} when the block is full or the lot is now blocked (caller falls back to _search).
-func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: String, placed_here: Array) -> Dictionary:
+func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: String, placed_here: Array, iname: String = "") -> Dictionary:
 	var lots: Array = tmpl.lots
 	var claimed: Array = tmpl.claimed
 	var angle: float = tmpl.angle
@@ -1099,10 +1447,33 @@ func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: St
 	var rivers: Array = _tile_rivers.get(tile_id, [])
 	var land: PackedByteArray = _tile_land.get(tile_id, PackedByteArray())
 	var cell: Vector2 = tmpl.get("cell", Vector2.ZERO)   # chunk tiles: the building FILLS the cell
+	# Authored tiles size each slot individually, so the cell is per-lot there.
+	var lot_cells: Array = tmpl.get("lot_cells", [])
+	var lot_classes: Array = tmpl.get("lot_classes", [])
+	# The ART KEY matters here. `_art_size_for` applies ART_SIZE_OVERRIDE, and passing an empty
+	# key skipped it — so both wind farms, whose art is pinned to ART_DRAWN_MAX, asked for a
+	# SMALL slot while their art needs a medium one. The building then either overhangs its
+	# neighbours or is crushed to fit by _crop_to_sprite. Same rule as `authored_slot_sizes.gd`,
+	# which cannot be preloaded from here without forming a cycle.
+	var wanted_class := _authored_class_for(iname, size_units) if not lot_classes.is_empty() else ""
 	var fill: float = BLOCK_LOT * clampf(BLOCK_FILL_MIN + 0.04 * float(size_units), BLOCK_FILL_MIN, BLOCK_FILL_MAX)
-	for i in lots.size():
+	# Authored tiles hand out their slots least-destructive first (see _authored_slot_cover);
+	# a procedural block grid has no fabric to weigh and keeps its own order.
+	var visit: Array = tmpl.get("lot_order", [])
+	if visit.size() != lots.size():
+		visit = []
+		for i in lots.size():
+			visit.append(i)
+	for i in visit:
 		if bool(claimed[i]):
 			continue
+		# A building may take a slot of its own class or larger, never a smaller one: a
+		# medium building in a small slot would overhang its neighbours.
+		if not lot_classes.is_empty() and i < lot_classes.size() \
+				and not _slot_fits(wanted_class, str(lot_classes[i])):
+			continue
+		if i < lot_cells.size():
+			cell = lot_cells[i]
 		var ctr: Vector2 = lots[i]
 		var rv: PackedVector2Array
 		if cell != Vector2.ZERO:
@@ -1128,6 +1499,9 @@ func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: St
 			claimed[i] = true   # blocked (a road moved onto it, or a fallback sits there) — consume it
 			continue
 		claimed[i] = true
+		# NOT evicted here. The slot's `lot_masses` still ORDER the loop — a slot that would
+		# displace fabric is visited last — but what actually goes is decided from the placed
+		# building's own footprint in `_place_building`, which is a smaller thing than the box.
 		_grow_block_rows(tmpl, tile_id, coord)   # keep spare lots ahead of demand
 		return _finalize(coord, ctr, rv, half)
 	# Every lot is spoken for — but lots are also consumed when they turn out to
@@ -1137,7 +1511,7 @@ func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: St
 	if not _grew_this_claim:
 		_grew_this_claim = true
 		_grow_block_rows(tmpl, tile_id, coord)
-		var out := _claim_slot(tmpl, size_units, coord, tile_id, placed_here)
+		var out := _claim_slot(tmpl, size_units, coord, tile_id, placed_here, iname)
 		_grew_this_claim = false
 		return out
 	return {}
@@ -1257,6 +1631,7 @@ func relayout_tile(tile_id: String) -> void:
 				break
 		if not conflict:
 			_tile_land.erase(tile_id)
+			_drop_zone_masks(tile_id)
 			_tile_landkeys.erase(tile_id)
 			_farm_land.erase(tile_id)
 			_farm_landkeys.erase(tile_id)
@@ -1306,6 +1681,7 @@ func relayout_tile(tile_id: String) -> void:
 	# Drop just this tile's cached mask/frontage so _ensure_tile rebuilds it with
 	# the road that just appeared, then replay the tile's placements in emit order.
 	_tile_land.erase(tile_id)
+	_drop_zone_masks(tile_id)
 	_tile_landkeys.erase(tile_id)
 	_farm_land.erase(tile_id)
 	_farm_landkeys.erase(tile_id)
@@ -2928,7 +3304,7 @@ func _carve_service_lane(tile_id: String, segs: Array) -> void:
 		_farm_landkeys[tile_id] = fkeys
 
 ## Place one building. Returns {verts (world), center_rel, half}; {} if nothing fits.
-func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v: int, cat: String, is_edge: bool, placed_here: Array, road_clear: float = ROAD_CLEAR, override_verts: PackedVector2Array = PackedVector2Array()) -> Dictionary:
+func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v: int, cat: String, is_edge: bool, placed_here: Array, road_clear: float = ROAD_CLEAR, override_verts: PackedVector2Array = PackedVector2Array(), iname: String = "") -> Dictionary:
 	if not _tile_land.has(tile_id):
 		return {}   # caller must _ensure_tile first; never KeyError-crash on a miss
 	var land: PackedByteArray = _tile_land[tile_id]
@@ -2947,6 +3323,22 @@ func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v
 	# Shape-language buildings supply their own lot (the sprite's box); everyone
 	# else gets the seeded plate shape sized from `area`.
 	var base_verts: PackedVector2Array = override_verts if not override_verts.is_empty() else BuildingShapes.make(kind, area, seed_v).verts
+	# ZONES. Each kind is tried in turn as a narrower land mask; the last attempt is the
+	# unzoned tile, which is both the fallback and the entire behaviour of any tile nobody has
+	# zoned. That is what keeps this additive.
+	for zone_kind in _zone_preference(iname):
+		# Least destructive first, within each kind: a building takes clear ground before it
+		# takes fabric the designer offered up, and offered fabric before protected fabric.
+		for tier in [ZoneTier.CLEAR, ZoneTier.SACRIFICIAL_OK, ZoneTier.ANY]:
+			var mask := _zone_mask(tile_id, coord, zone_kind, tier)
+			if mask.is_empty() or not _mask_has_room(mask):
+				continue
+			var zoned := _place_edge(tile_id, coord, base_verts, placed_here, mask, road_clear) \
+				if is_edge \
+				else _place_frontage(tile_id, coord, base_verts, cat, placed_here, mask,
+					road_clear)
+			if not zoned.is_empty():
+				return zoned
 	if is_edge:
 		return _place_edge(tile_id, coord, base_verts, placed_here, land, road_clear)
 	return _place_frontage(tile_id, coord, base_verts, cat, placed_here, land, road_clear)
@@ -3430,13 +3822,51 @@ static var DIAG := false
 ## sized the lot — block-template lots ignore the art lot area entirely.
 ## Scaled by tile_size_used, whose real range in the buildings CSV is 1..30
 ## (1-2 = tiny infra, 10 = the bulk, 30 = mine, the largest).
-const ART_DRAWN_MIN := 40.0
-const ART_DRAWN_MAX := 90.0
+## ART SIZE — BALANCE/ART CONSTANTS (owner ruling, 2026-08-17).
+##
+## Were 40 / 90. Scaled by 0.75 because the ground an authored slot reserves is derived from
+## these, and the slots read as too large on a 540x480 tile. Everything else about the split
+## is unchanged: the class ceilings moved by the same factor, so exactly the same buildings
+## land in each class.
+##
+## Knock-on worth knowing before retuning: smaller gameplay art frees ground, and the
+## decorative packer fills it — so lowering these makes towns DENSER, not just smaller. Below
+## about 0.7 the gameplay buildings start getting lost in their own fabric. Compare with
+##   <godot> --path . res://tools/tile_shot.tscn --quit-after 6000 -- --tiles=tile_23_8 --zoom=1.15
+const ART_DRAWN_MIN := 30.0
+const ART_DRAWN_MAX := 68.0
 const ART_SIZE_UNITS_MAX := 30.0
+## Boxes an authored slot reserves per class, world units. DERIVED, never typed in: these were
+## hand-written as 62/96 and were wrong in both directions — they applied ART_BLOCK_MARGIN once
+## per AXIS where the game blocks it once per SIDE, so 13 of the 20 buildings with ink art were
+## silently drawn 10-14% small to fit. A slot must hold its class's largest member exactly as
+## _crop_to_sprite will size it: the art extent, plus the margin on both sides.
+##
+## Square, not rectangular, and that is not laziness: a class holds both wide-and-shallow art
+## (industrial_factory 67.5 x 37.5 at the old scale) and tall-and-narrow (offshore_wind_farm
+## 46.5 x 102), and a slot is authored before anyone knows which building will take it.
+##
+## CHUNK_GAP is in the sum because `_claim_slot` builds its rect as (cell - CHUNK_GAP) and the
+## sprite is fitted inside THAT, not inside the cell. Leave it out and every slot is 4 u short
+## of what it advertises — which is a shrink nobody sees, only measures.
+const AUTHORED_SLOT_BOXES := {
+	"infra": Vector2.ONE * (AuthoredMap.SLOT_CLASS_CEILINGS["infra"]
+		+ ART_BLOCK_MARGIN * 2.0 + CHUNK_GAP),
+	"standard": Vector2.ONE * (AuthoredMap.SLOT_CLASS_CEILINGS["standard"]
+		+ ART_BLOCK_MARGIN * 2.0 + CHUNK_GAP),
+}
 ## Per-recipe drawn-size overrides. Wind sites sprawl — at the size-10 default
 ## they read as a cramped cluster rather than machines spread over open ground
 ## (owner). Visual only: it moves the lot too, so reservation stays honest.
-const ART_SIZE_OVERRIDE := {"wind_farm": ART_DRAWN_MAX}
+## Wind sites sprawl, so they were pinned to the largest drawn size. That override was
+## written when they were tile_size_used 10 and would otherwise have drawn at 40 — a cramped
+## cluster rather than machines over open ground. They are size 25 now and lerp to 61.4 on
+## their own, so the pin was buying 10% of extra sprawl while setting the STANDARD SLOT BOX
+## for every building on the map, since the box is the class ceiling plus margins.
+##
+## 0.7 (owner, 2026-08-17) compresses them into 70% of that space, which takes them below the
+## mine and lets the ceiling come down with them.
+const ART_SIZE_OVERRIDE := {"wind_farm": ART_DRAWN_MAX * 0.7}
 ## Blocked space is the DRAWN sprite plus this margin, not the lot the packer
 ## reserved — a lot is sized for the biggest thing that could stand on it, and
 ## treating all of it as solid wasted ground and pushed neighbours away.
@@ -3972,6 +4402,8 @@ func _clear_tile_caches() -> void:
 	_tile_rivers.clear()
 	_tile_block_mode.clear()
 	_tile_block_templates.clear()
+	_zone_masks.clear()
+	_decor_cache.clear()
 	_farm_render.clear()   # neighbour-dependent farm render + lanes are rebuilt per tile after a relayout
 	_farm_lanes.clear()
 	_farm_bridges.clear()

@@ -59,6 +59,8 @@ var _tile_infra: Dictionary = {}   # tile_id -> ["roads","rail",...] (normalised
 # tree. MatchState.set_tile_infra_level and SaveLoad mirror every write here.
 var _tile_infra_levels: Dictionary = {}
 var _tile_land: Dictionary = {}    # tile_id -> bool (false for sea/deep_sea)
+var _tile_types: Dictionary = {}   # tile_id -> "urban" | "rural" | "hill" | "mountain" | ...
+var _tile_deposits: Dictionary = {}  # tile_id -> the raw deposits cell, e.g. "coal|water"
 
 # Routing caches. route() pathfinding and nearest_port_tile() are recomputed per
 # building, per input good, EVERY turn by the production loop — and the results
@@ -205,6 +207,7 @@ func _load_tile_names() -> void:
 	var nick_i: int = idx.get("nickname", -1)
 	var city_i: int = idx.get("city_name", -1)
 	var type_i: int = idx.get("type", -1)
+	var dep_i: int = idx.get("deposits", -1)
 	var infra_i: int = idx.get("infrastructure_present", -1)
 	if id_i < 0:
 		return
@@ -222,10 +225,16 @@ func _load_tile_names() -> void:
 		var label_name := nick if nick != "" else city
 		if label_name != "":
 			_tile_names[tid] = label_name
+		if dep_i >= 0 and dep_i < line.size() and line[dep_i].strip_edges() != "":
+			_tile_deposits[tid] = line[dep_i].strip_edges()
 		var ttype := ""
 		if type_i >= 0 and type_i < line.size():
 			ttype = line[type_i].strip_edges().to_lower()
 		_tile_land[tid] = ttype != "sea" and ttype != "deep_sea"
+		# The terrain itself, not only land-or-sea: the buildable cap is per terrain, and
+		# the sim needs to resolve it headlessly from the same CSV the map is built from.
+		if ttype != "":
+			_tile_types[tid] = ttype
 		if infra_i >= 0 and infra_i < line.size():
 			var infra_list: Array = []
 			for part in str(line[infra_i]).split("|", false):
@@ -250,6 +259,24 @@ func _normalise_infra_id(value: String) -> String:
 
 func tile_name(tile_id: String) -> String:
 	return _tile_names.get(tile_id, "")
+
+
+## Every tile id the properties CSV declared. For tests that sweep the map's own data.
+func tile_ids_for_tests() -> Array:
+	return _tile_types.keys()
+
+
+## The raw `deposits` cell for a tile, e.g. "copper_ore|water" or "oil(2000)". Unparsed on
+## purpose: callers want different things from it (the map editor wants names without water,
+## the sim wants quantities), and one shared half-parse would serve neither.
+func tile_deposits_raw(tile_id: String) -> String:
+	return str(_tile_deposits.get(tile_id, ""))
+
+
+## Terrain type from tile_properties.csv ("urban", "rural", "hill", "mountain", "sea",
+## "deep_sea"), lowercased. Empty for a tile this map does not have.
+func tile_type(tile_id: String) -> String:
+	return str(_tile_types.get(tile_id, ""))
 
 func tile_has_infrastructure(tile_id: String, infra_type: String) -> bool:
 	return _tile_infra.get(tile_id, []).has(_normalise_infra_id(infra_type.strip_edges().to_lower()))

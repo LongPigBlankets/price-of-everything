@@ -47,6 +47,12 @@ const NORTH_OLD_GROWTH_MAX_ROW := 6
 const OLD_GROWTH_TILE_TYPES := ["rural", "hill"]
 
 signal building_placed(tile_id: String, building_id: String, recipe_id: String, instance_id: String, coord: Vector2i)
+## A tile gained infrastructure of some type. Emitted for EVERY route that sets the flag —
+## a completed construction, the tutorial's free reveal, the baked start flags — because a
+## flag flip is invisible to renderers that watch edge counts: the geometry is unchanged,
+## only which of it qualifies to draw. Authored roads (`authored_road_visuals.gd`) reveal on
+## this; the baked network still relies on its own counters plus a manual repaint.
+signal tile_infrastructure_changed(tile_id: String, infra_type: String)
 
 var _survey_dialog: PanelContainer = null
 var _special_order_resolution_dialog: Control = null
@@ -2183,6 +2189,7 @@ func _apply_built_infrastructure(coord: Vector2i, tile_id: String, infra_type: S
 		tile["infrastructure_present"] = infra
 		terrain_layer.tiles[coord] = tile
 	Catalog.add_tile_infrastructure(tile_id, infra_type)
+	tile_infrastructure_changed.emit(tile_id, infra_type)
 	print("Built %s on %s" % [infra_type, tile_id])
 
 ## Tutorial-only, zero-cost infrastructure reveal. This is intentionally exposed at
@@ -2244,8 +2251,9 @@ func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
 	var added_space := maxf(0.0, float(building_data.get("tile_size_used", 1.0)))
 	var current_space := MatchState.get_tile_space_used(tile_id)
 	var projected_space := current_space + added_space
-	if projected_space > float(MatchState.MAX_TILE_LAND):
-		print("[Build] FAILED: tile %s is full (need %s, max %s)" % [tile_id, str(projected_space), str(MatchState.MAX_TILE_LAND)])
+	var tile_cap := MatchState.max_tile_land(tile_id)
+	if projected_space > float(tile_cap):
+		print("[Build] FAILED: tile %s is full (need %s, max %s)" % [tile_id, str(projected_space), str(tile_cap)])
 		_show_tile_space_error("There is no more room on that tile. Demolish buildings to make room.")
 		return {"allowed": false, "cost_multiplier": 1.0}
 	# The owned-land gate only counts the player's estate — NPC buildings sit on

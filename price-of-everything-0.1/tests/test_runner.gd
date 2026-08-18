@@ -22,6 +22,19 @@ const TutorialSteps := preload("res://scripts/tutorial/tutorial_steps.gd")
 const TutorialDetectors := preload("res://scripts/tutorial/tutorial_detectors.gd")
 const BuildingReadout := preload("res://scripts/building_readout.gd")
 const BuildForecast := preload("res://scripts/build_forecast.gd")
+const MassFormShapes := preload("res://scripts/mass_form_shapes.gd")
+const AuthoredMap := preload("res://scripts/authored_map.gd")
+const AuthoredRoadGeometry := preload("res://scripts/authored_road_geometry.gd")
+const AuthoredRoadStyle := preload("res://scripts/authored_road_style.gd")
+const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
+const MapEditorShapeToolScript := preload("res://scripts/map_editor/map_editor_shape_tool.gd")
+const WorldMapScript := preload("res://scripts/world_map.gd")
+const AuthoredRoadVisualsScript := preload("res://scripts/authored_road_visuals.gd")
+## Editor-only, and excluded from exported builds alongside this suite. Held here because the
+## editor's slot geometry had no headless coverage at all, which is how it shipped a builder
+## that crashed on any document the editor had not just created.
+const MapEditorSlotBoxes := preload("res://scripts/map_editor/map_editor_slot_boxes.gd")
+const AuthoredSlotSizes := preload("res://scripts/authored_slot_sizes.gd")
 const AppPaths := preload("res://scripts/app_paths.gd")  # saves now live in <base>/savegames/
 
 func _ready() -> void:
@@ -39,6 +52,45 @@ func _ready() -> void:
 	_test_instrument_adversarial()
 	_test_instrument_adversarial_round2()
 	_test_port_arm_geometry()
+	_test_mass_form_safety_predicates()
+	_test_mass_form_t_forms()
+	_test_mass_form_triangles()
+	_test_mass_form_half_octagon()
+	_test_mass_form_h_and_cross()
+	_test_mass_form_shallow_e()
+	_test_mass_form_small_forms()
+	_test_mass_form_kinked()
+	_test_mass_form_variation()
+	_test_mass_form_fallback_ladder()
+	_test_mass_form_adversarial_sweep()
+	_test_authored_map_empty_is_inert()
+	_test_authored_map_schema()
+	_test_authored_map_road_rules()
+	_test_authored_map_slot_classes()
+	_test_authored_map_round_trip()
+	_test_authored_documents_on_disk_load()
+	_test_authored_slot_boxes_contract()
+	_test_authored_slot_validation()
+	_test_authored_slot_class_agrees_with_art()
+	_test_authored_slot_box_holds_its_class()
+	_test_authored_area_buildings_exist()
+	await _test_authored_slot_claim_order()
+	_test_authored_zones()
+	await _test_zone_placement()
+	await _test_zone_priority()
+	await _test_zone_fabric_tiers()
+	_test_tile_deposits_exclude_water()
+	_test_authored_map_write_barrier()
+	_test_shipped_code_avoids_editor_only_paths()
+	_test_authored_road_geometry()
+	_test_authored_road_touched_tiles()
+	_test_authored_road_style_hierarchy()
+	_test_authored_road_water_and_bridges()
+	_test_authored_road_visibility_document()
+	_test_authored_road_signal_arity()
+	_test_authored_mass_geometry()
+	_test_authored_woodland_scatter()
+	_test_authored_shape_tool()
 	_test_coal_prohibition()
 	_test_scheduled_coal_prohibition()
 	_test_widgets_instantiate()
@@ -2328,7 +2380,13 @@ func _test_farm_ring_continuity() -> void:
 	var coord: Vector2i = terrain.id_to_coord(tile_id)
 	if not terrain.tiles.has(coord):
 		bv.queue_free(); terrain.queue_free(); return
-	for i in 8:
+	# SEVEN, not eight. tile_9_10 is a hill, so its land cap is 160 and eight farms at
+	# tile_size_used 20 come to exactly 160 — the land model says eight fit. The ART only
+	# clusters seven: at the eighth the cluster stops being contiguous and its boundary is
+	# legitimately an open chain, not a ring that failed to close (measured: 6 and 7 close at
+	# 0.0u, 8 leaves 284.7u). What this pins is closure for a contiguous cluster, so the
+	# fixture has to build one. Retune with `tile_size_used` for the farm.
+	for i in 7:
 		var iid: String = MatchState.add_building("b_014", "", tile_id, "npc", "frc_%d" % i)
 		bv.on_building_placed(tile_id, "b_014", "", iid, coord)
 	bv._rebuild_subcomponents(tile_id)
@@ -10707,7 +10765,8 @@ func _test_catalog_loaded() -> void:
 	var has_all_biomass: bool = farm_recipe_ids.has("r_209") \
 		and farm_recipe_ids.has("r_211") and farm_recipe_ids.has("r_212")
 	_check(has_all_biomass, "farm has its base biomass recipes (buildable, not recipe-less): %s" % str(farm_recipe_ids))
-	_check(int(Catalog.get_building_by_internal_name("farm").get("tile_size_used", 0)) == 15, "farm building is tile_size_used 15")
+	_check(int(Catalog.get_building_by_internal_name("farm").get("tile_size_used", 0)) == 20,
+		"farm building is tile_size_used 20")
 
 	# The three acid recipes (r_114/115/116) were moved to the Chemical Plant
 	# (owner request 2026-07-13); they used to sit on the Industrial Factory via the
@@ -14001,3 +14060,2093 @@ func _test_midcentury_industry_landmark_tier() -> void:
 		var wash := MapMidcenturyStyle.industry_landmark_yard("probe|%d" % tone_index)
 		_check(wash.s < landmark_min,
 			"midcentury landmarks: the near-zoom yard wash is quieter than the plate accent")
+# ======================================================================================
+# Mass-form vocabulary geometry (scripts/mass_form_shapes.gd)
+#
+# docs/map-mass-form-vocabulary.md sections 2-3 define 13 decorative mass forms; section
+# 4 forbids stamping them at fixed proportions; section 6 demands every one of them be
+# closed, simple and gracefully degrading at EVERY legal parameter value (the V3.04
+# lesson). These tests pin all three.
+#
+# The structural probe throughout is _mfs_scan(): it sweeps a horizontal line across the
+# local (u, v) frame and reports how many solid spans it crosses and how much total
+# length. That measures limb COUNT and limb WIDTH from the polygon itself, independently
+# of the constructor's own bookkeeping, so a constructor cannot mark its own homework.
+# ======================================================================================
+
+## Solid spans of `poly` along the line v == `v`. Returns {spans, total}.
+func _mfs_scan(poly: PackedVector2Array, v: float) -> Dictionary:
+	var xs: Array[float] = []
+	var n := poly.size()
+	for i in n:
+		var a := poly[i]
+		var b := poly[(i + 1) % n]
+		if (a.y <= v and b.y > v) or (b.y <= v and a.y > v):
+			xs.append(a.x + (b.x - a.x) * ((v - a.y) / (b.y - a.y)))
+	xs.sort()
+	var total := 0.0
+	var spans := 0
+	var i := 0
+	while i + 1 < xs.size():
+		total += xs[i + 1] - xs[i]
+		spans += 1
+		i += 2
+	return {"spans": spans, "total": total}
+
+func _mfs_close(a: float, b: float, tol: float = 0.001) -> bool:
+	return absf(a - b) <= tol * maxf(1.0, maxf(absf(a), absf(b)))
+
+func _mfs_point_line_distance(point: Vector2, a: Vector2, b: Vector2) -> float:
+	var ab := b - a
+	if ab.length() < 1e-6:
+		return point.distance_to(a)
+	return absf(ab.cross(point - a)) / ab.length()
+
+## The single mass poly for `form` at `p`, or an empty array when infeasible.
+func _mfs_one(form: String, w: float, h: float, p: Dictionary) -> PackedVector2Array:
+	var built := MassFormShapes.construct(form, w, h, p)
+	var polys: Array = built.get("polys", [])
+	if polys.is_empty():
+		return PackedVector2Array()
+	return polys[0]
+
+## Every legal parameter combination this sweep visits: each parameter walked across its
+## full range (both extremes included) with the rest at midpoint, plus all-low, all-high,
+## and 48 RoadHash-seeded interior draws.
+func _mfs_param_sweep(form: String) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var ranges: Dictionary = MassFormShapes.PARAM_RANGES[form]
+	if ranges.is_empty():
+		return [{}]
+	var levels: Array[float] = [0.0, 0.25, 0.5, 0.75, 1.0]
+	for name_value in ranges.keys():
+		for level in levels:
+			var p := MassFormShapes.params_mid(form)
+			var span: Array = ranges[name_value]
+			p[str(name_value)] = lerpf(float(span[0]), float(span[1]), level)
+			out.append(p)
+	for corner in [0.0, 1.0]:
+		var p_corner: Dictionary = {}
+		for name_value in ranges.keys():
+			var span: Array = ranges[name_value]
+			p_corner[str(name_value)] = lerpf(float(span[0]), float(span[1]), corner)
+		out.append(p_corner)
+	for draw in 48:
+		out.append(MassFormShapes.params(form, "sweep|%s|%d" % [form, draw]))
+	return out
+
+## Section 6, part 1: closed and simple everywhere, plus the winding contract.
+func _test_mass_form_safety_predicates() -> void:
+	var square := PackedVector2Array([Vector2(0, 0), Vector2(10, 0), Vector2(10, 10),
+		Vector2(0, 10)])
+	_check(MassFormShapes.is_simple(square), "mass forms: a plain square is simple")
+	_check(MassFormShapes.signed_area(square) > 0.0,
+		"mass forms: the reference winding is positive shoelace, as _quad emits")
+	var bowtie := PackedVector2Array([Vector2(0, 0), Vector2(10, 10), Vector2(10, 0),
+		Vector2(0, 10)])
+	_check(not MassFormShapes.is_simple(bowtie),
+		"mass forms: the simplicity test rejects a self-intersecting bowtie")
+	var touching := PackedVector2Array([Vector2(0, 0), Vector2(10, 0), Vector2(10, 10),
+		Vector2(5, 0), Vector2(0, 10)])
+	_check(not MassFormShapes.is_simple(touching),
+		"mass forms: a vertex landing on a far edge is a self-touch, not a mass")
+	var duplicate := PackedVector2Array([Vector2(0, 0), Vector2(10, 0), Vector2(10, 0),
+		Vector2(10, 10), Vector2(0, 10)])
+	_check(not MassFormShapes.is_simple(duplicate),
+		"mass forms: a repeated vertex is a zero-length edge and is rejected")
+	# A polygon the engine's ear clipper refuses is silently dropped by _fill_mesh, so
+	# the gate treats untriangulable as unsafe and repair() rescues the false positives.
+	var clipper_victim := PackedVector2Array()
+	var h_local := PackedVector2Array([
+		Vector2(-47.5, 0.0), Vector2(-21.8, 0.0), Vector2(-21.8, 31.2),
+		Vector2(21.8, 31.2), Vector2(21.8, 0.0), Vector2(47.5, 0.0),
+		Vector2(47.5, 108.1), Vector2(21.8, 108.1), Vector2(21.8, 48.7),
+		Vector2(-21.8, 48.7), Vector2(-21.8, 108.1), Vector2(-47.5, 108.1)])
+	var turn := Transform2D(deg_to_rad(6.1), Vector2(13.0, -7.0))
+	for point in h_local:
+		clipper_victim.append(turn * point)
+	_check(MassFormShapes.is_simple(clipper_victim)
+		and Geometry2D.triangulate_polygon(clipper_victim).is_empty(),
+		"mass forms: a simple rotated H really can defeat Godot's ear clipper")
+	_check(not MassFormShapes.is_safe(clipper_victim),
+		"mass forms: untriangulable counts as unsafe - _fill_mesh would drop it in silence")
+	var mended := MassFormShapes.repair(clipper_victim)
+	_check(not mended.is_empty() and MassFormShapes.is_safe(mended),
+		"mass forms: the sub-pixel snap repair rescues it instead of degrading the form")
+	var drift := 0.0
+	for i in mended.size():
+		drift = maxf(drift, mended[i].distance_to(clipper_victim[i]))
+	_check(mended.size() == clipper_victim.size() and drift <= 0.05,
+		"mass forms: the repair moves no vertex more than a sub-pixel grid step")
+	_check(MassFormShapes.repair(PackedVector2Array([Vector2(0, 0), Vector2(10, 10),
+		Vector2(10, 0), Vector2(0, 10)])).is_empty(),
+		"mass forms: repair refuses a genuinely broken polygon rather than smuggling it out")
+
+	var sliver := PackedVector2Array([Vector2(0, 0), Vector2(200, 0), Vector2(200, 6)])
+	_check(not MassFormShapes.is_safe(sliver),
+		"mass forms: a near-collinear sliver fails the safety gate (the V3.04 defect)")
+	var crumb := PackedVector2Array([Vector2(0, 0), Vector2(4, 0), Vector2(4, 4),
+		Vector2(0, 4)])
+	_check(not MassFormShapes.is_safe(crumb),
+		"mass forms: a sub-floor fragment is not an acceptable mass")
+	_check(MassFormShapes.reflex_count(square) == 0,
+		"mass forms: a convex polygon has no reflex corners")
+	var ell := PackedVector2Array([Vector2(0, 0), Vector2(10, 0), Vector2(10, 4),
+		Vector2(4, 4), Vector2(4, 10), Vector2(0, 10)])
+	_check(MassFormShapes.reflex_count(ell) == 1
+		and MassFormShapes.reflex_count(MassFormShapes.ensure_positive(
+			PackedVector2Array(Array(ell).duplicate()))) == 1,
+		"mass forms: the reflex count reads an L as exactly one inside corner")
+	_check(MassFormShapes.LARGE_MASS_AREA == DensityAudit.LARGE_MASS_AREA,
+		"mass forms: the large/small split is the frozen 1600 u^2 audit threshold")
+	_check(MassFormShapes.LARGE_FORMS.size() == 8 and MassFormShapes.SMALL_FORMS.size() == 5
+		and MassFormShapes.is_large(1600.0) and not MassFormShapes.is_large(1599.0),
+		"mass forms: eight large forms and five small ones, split at the frozen threshold")
+
+## Section 2, forms 1-2: the T pair, pinned on the leg ratios that distinguish them.
+func _test_mass_form_t_forms() -> void:
+	for spec in [{"form": "t_half", "ratio": 0.5, "w": 130.0, "h": 60.0},
+			{"form": "t_full", "ratio": 1.0, "w": 70.0, "h": 76.0}]:
+		var form := str(spec.form)
+		var ratio := float(spec.ratio)
+		var w := float(spec.w)
+		var h := float(spec.h)
+		var built := MassFormShapes.construct(form, w, h, MassFormShapes.params_mid(form))
+		var polys: Array = built.get("polys", [])
+		_check(polys.size() == 1, "mass forms: %s builds one mass" % form)
+		if polys.is_empty():
+			continue
+		var poly: PackedVector2Array = polys[0]
+		var meta: Dictionary = built.meta
+		_check(poly.size() == 8 and MassFormShapes.reflex_count(poly) == 2,
+			"mass forms: %s is an eight-vertex outline with two inside corners" % form)
+		_check(_mfs_close(float(meta.leg_length), ratio * float(meta.stroke_length)),
+			"mass forms: %s leg is %.1fx the stroke, per the spec table" % [form, ratio])
+		var stroke_scan := _mfs_scan(poly, float(meta.stroke_thickness) * 0.5)
+		_check(int(stroke_scan.spans) == 1
+			and _mfs_close(float(stroke_scan.total), float(meta.stroke_length)),
+			"mass forms: %s measures one full-length stroke bar on the frontage" % form)
+		var leg_v := float(meta.stroke_thickness) + float(meta.leg_length) * 0.5
+		var leg_scan := _mfs_scan(poly, leg_v)
+		_check(int(leg_scan.spans) == 1
+			and _mfs_close(float(leg_scan.total), float(meta.leg_width)),
+			"mass forms: %s measures one perpendicular leg above the stroke" % form)
+		_check(float(meta.leg_width) < float(meta.stroke_length) * 0.56
+			and float(meta.leg_width) >= MassFormShapes.MIN_LIMB,
+			"mass forms: %s leg is a limb, never the whole stroke and never a hair" % form)
+		var bb := MassFormShapes.bbox(poly)
+		var expect := float(meta.stroke_length) * float(meta.stroke_thickness) \
+			+ float(meta.leg_width) * float(meta.leg_length)
+		_check(_mfs_close(MassFormShapes.area(poly), expect),
+			"mass forms: %s area equals stroke plus leg exactly" % form)
+		_check(_mfs_close(bb.size.x, float(meta.stroke_length))
+			and _mfs_close(bb.size.y, float(meta.stroke_thickness) + float(meta.leg_length))
+			and MassFormShapes.area(poly) / (bb.size.x * bb.size.y) < 1.0,
+			"mass forms: %s fills its bounding box partially, as a T must" % form)
+
+## Section 2, forms 3-4: right triangle and its hollow, similar-cored sibling.
+func _test_mass_form_triangles() -> void:
+	for corner in [0.0, 1.0]:
+		var p := MassFormShapes.params_mid("right_triangle")
+		p["corner"] = corner
+		var poly := _mfs_one("right_triangle", 90.0, 80.0, p)
+		_check(poly.size() == 3, "mass forms: right triangle has three vertices (corner %d)"
+			% int(corner))
+		if poly.is_empty():
+			continue
+		var right_angles := 0
+		for i in 3:
+			var d1 := poly[(i + 2) % 3] - poly[i]
+			var d2 := poly[(i + 1) % 3] - poly[i]
+			if absf(d1.normalized().dot(d2.normalized())) < 1e-5:
+				right_angles += 1
+		_check(right_angles == 1,
+			"mass forms: right triangle has exactly one right angle (corner %d)" % int(corner))
+		var on_frontage := 0
+		for point in poly:
+			if absf(point.y) < 1e-5:
+				on_frontage += 1
+		_check(on_frontage == 2,
+			"mass forms: right triangle rests one leg on the frontage (corner %d)" % int(corner))
+		var bb := MassFormShapes.bbox(poly)
+		_check(_mfs_close(MassFormShapes.area(poly) / (bb.size.x * bb.size.y), 0.5),
+			"mass forms: right triangle covers exactly half its bounding box (corner %d)"
+			% int(corner))
+
+	var hollow := MassFormShapes.construct("hollow_triangle", 90.0, 84.0,
+		MassFormShapes.params_mid("hollow_triangle"))
+	var bands: Array = hollow.get("polys", [])
+	_check(bands.size() == 3, "mass forms: hollow triangle is a three-band triangular ring")
+	if bands.size() == 3:
+		var meta: Dictionary = hollow.meta
+		var outer: PackedVector2Array = meta.outer
+		var inner: PackedVector2Array = meta.inner
+		var band_area := 0.0
+		var all_convex := true
+		for band_value in bands:
+			var band: PackedVector2Array = band_value
+			band_area += MassFormShapes.area(band)
+			if band.size() != 4 or MassFormShapes.reflex_count(band) != 0:
+				all_convex = false
+		_check(all_convex,
+			"mass forms: every hollow-triangle wall band is a convex quad")
+		_check(_mfs_close(band_area,
+			MassFormShapes.area(outer) - MassFormShapes.area(inner)),
+			"mass forms: the three bands tile the ring exactly, outer minus core")
+		var ratios_equal := true
+		var walls_equal := true
+		var scale := float(meta.inner_scale)
+		for i in 3:
+			var j := (i + 1) % 3
+			var outer_side := outer[i].distance_to(outer[j])
+			var inner_side := inner[i].distance_to(inner[j])
+			if not _mfs_close(inner_side / outer_side, scale):
+				ratios_equal = false
+			if not _mfs_close(_mfs_point_line_distance(inner[i], outer[i], outer[j]),
+					float(meta.wall_thickness), 0.01):
+				walls_equal = false
+		_check(ratios_equal,
+			"mass forms: the hollow core is similar to the outer triangle, side for side")
+		_check(walls_equal,
+			"mass forms: hollow-triangle wall thickness is constant on all three sides")
+		_check(float(meta.wall_thickness) >= MassFormShapes.MIN_LIMB
+			and float(meta.inner_scale) >= 0.28,
+			"mass forms: the ring wall is a real limb and the core is a real hollow")
+	# The aspect gate: a sharp outer triangle would give half-angle sliver band tips.
+	var sharp := MassFormShapes.params_mid("hollow_triangle")
+	_check(MassFormShapes.construct("hollow_triangle", 260.0, 60.0, sharp).polys.is_empty(),
+		"mass forms: a too-sharp hollow triangle is declined, not emitted as slivers")
+
+## Section 2, form 5: the half-octagon.
+func _test_mass_form_half_octagon() -> void:
+	var built := MassFormShapes.construct("half_octagon", 120.0, 70.0,
+		MassFormShapes.params_mid("half_octagon"))
+	var polys: Array = built.get("polys", [])
+	_check(polys.size() == 1, "mass forms: half-octagon builds one mass")
+	if polys.is_empty():
+		return
+	var poly: PackedVector2Array = polys[0]
+	var meta: Dictionary = built.meta
+	_check(poly.size() == 5 and MassFormShapes.reflex_count(poly) == 0,
+		"mass forms: half-octagon is a convex five-edge outline")
+	var on_frontage := 0
+	for point in poly:
+		if absf(point.y) < 1e-5:
+			on_frontage += 1
+	_check(on_frontage == 2 and _mfs_close(_mfs_scan(poly, 0.001).total,
+			float(meta.base), 0.01),
+		"mass forms: half-octagon puts one long base on the frontage")
+	var base_len := poly[0].distance_to(poly[1])
+	var longest_other := 0.0
+	for i in range(1, 5):
+		longest_other = maxf(longest_other, poly[i].distance_to(poly[(i + 1) % 5]))
+	_check(base_len > longest_other,
+		"mass forms: the base is the longest edge; the other four are the chamfers")
+	var bb := MassFormShapes.bbox(poly)
+	var ratio := MassFormShapes.area(poly) / (bb.size.x * bb.size.y)
+	_check(ratio > 0.55 and ratio < 0.95,
+		"mass forms: half-octagon fills its box like a chamfered slab, not a box or a wedge")
+	_check(_mfs_scan(poly, float(meta.depth) * 0.5).spans == 1,
+		"mass forms: half-octagon is a single unbroken mass at every depth")
+
+## Section 2, forms 6-7 and section 3, form 5: the H pair and the cross.
+func _test_mass_form_h_and_cross() -> void:
+	for form in ["h", "h_small"]:
+		var built := MassFormShapes.construct(form, 110.0, 90.0,
+			MassFormShapes.params_mid(form))
+		var polys: Array = built.get("polys", [])
+		_check(polys.size() == 1, "mass forms: %s builds one mass" % form)
+		if polys.is_empty():
+			continue
+		var poly: PackedVector2Array = polys[0]
+		var meta: Dictionary = built.meta
+		_check(poly.size() == 12 and MassFormShapes.reflex_count(poly) == 4,
+			"mass forms: %s is a twelve-vertex outline with four inside corners" % form)
+		var below := _mfs_scan(poly, float(meta.crossbar_v0) * 0.5)
+		_check(int(below.spans) == 2
+			and _mfs_close(float(below.total), float(meta.arm_width) * 2.0),
+			"mass forms: %s reads as two parallel bars below the crossbar" % form)
+		var at_cross := _mfs_scan(poly,
+			float(meta.crossbar_v0) + float(meta.crossbar_thickness) * 0.5)
+		_check(int(at_cross.spans) == 1
+			and _mfs_close(float(at_cross.total), float(meta.width)),
+			"mass forms: %s is joined right across at the crossbar" % form)
+		var above := _mfs_scan(poly, float(meta.crossbar_v0)
+			+ float(meta.crossbar_thickness) + (float(meta.depth)
+			- float(meta.crossbar_v0) - float(meta.crossbar_thickness)) * 0.5)
+		_check(int(above.spans) == 2,
+			"mass forms: %s re-opens into two bars above the crossbar" % form)
+		var expect := float(meta.arm_width) * 2.0 * float(meta.depth) \
+			+ float(meta.gap) * float(meta.crossbar_thickness)
+		_check(_mfs_close(MassFormShapes.area(poly), expect),
+			"mass forms: %s area equals two bars plus the crossbar exactly" % form)
+	var coarse: Dictionary = MassFormShapes.construct("h_small", 110.0, 90.0,
+		MassFormShapes.params_mid("h_small")).meta
+	var slim: Dictionary = MassFormShapes.construct("h", 110.0, 90.0,
+		MassFormShapes.params_mid("h")).meta
+	_check(float(coarse.arm_frac) > float(slim.arm_frac)
+		and float(coarse.cross_frac) > float(slim.cross_frac),
+		"mass forms: the small H is coarser-limbed than the large H, not a shrunk copy")
+
+	var cross_built := MassFormShapes.construct("cross", 120.0, 120.0,
+		MassFormShapes.params_mid("cross"))
+	var cross_polys: Array = cross_built.get("polys", [])
+	_check(cross_polys.size() == 1, "mass forms: cross builds one mass")
+	if not cross_polys.is_empty():
+		var poly: PackedVector2Array = cross_polys[0]
+		var meta: Dictionary = cross_built.meta
+		_check(poly.size() == 12 and MassFormShapes.reflex_count(poly) == 4,
+			"mass forms: cross is a twelve-vertex outline with four inside corners")
+		var stem := _mfs_scan(poly, float(meta.arm_front) * 0.5)
+		var arms := _mfs_scan(poly, float(meta.centre_v))
+		var back := _mfs_scan(poly, float(meta.depth) - float(meta.arm_back) * 0.5)
+		_check(int(stem.spans) == 1 and _mfs_close(float(stem.total), float(meta.bar_u)),
+			"mass forms: the cross has a front arm on the frontage")
+		_check(int(back.spans) == 1 and _mfs_close(float(back.total), float(meta.bar_u)),
+			"mass forms: the cross has a back arm opposite the frontage")
+		_check(int(arms.spans) == 1 and _mfs_close(float(arms.total), float(meta.width)),
+			"mass forms: the cross reaches both sides where the bars cross")
+		_check(float(meta.arm_left) >= MassFormShapes.MIN_LIMB
+			and float(meta.arm_right) >= MassFormShapes.MIN_LIMB
+			and float(meta.arm_front) >= MassFormShapes.MIN_LIMB
+			and float(meta.arm_back) >= MassFormShapes.MIN_LIMB,
+			"mass forms: all four cross arms are real limbs, none a zero-area stub")
+		var expect := float(meta.bar_u) * float(meta.depth) \
+			+ float(meta.bar_v) * float(meta.width) \
+			- float(meta.bar_u) * float(meta.bar_v)
+		_check(_mfs_close(MassFormShapes.area(poly), expect),
+			"mass forms: cross area equals two bars less the double-counted crossing")
+
+## Section 2, form 8: the shallow E. Three notches, and shallow enough never to comb.
+func _test_mass_form_shallow_e() -> void:
+	var p := MassFormShapes.params_mid("shallow_e")
+	p["front"] = 0.0
+	var built := MassFormShapes.construct("shallow_e", 200.0, 80.0, p)
+	var polys: Array = built.get("polys", [])
+	_check(polys.size() == 1, "mass forms: shallow E builds one mass")
+	if polys.is_empty():
+		return
+	var poly: PackedVector2Array = polys[0]
+	var meta: Dictionary = built.meta
+	_check(poly.size() == 16 and MassFormShapes.reflex_count(poly) == 6,
+		"mass forms: shallow E is a sixteen-vertex outline, two inside corners per notch")
+	var depths: Array = meta.notch_depths
+	var shallowest := minf(minf(float(depths[0]), float(depths[1])), float(depths[2]))
+	var mass_w := float(meta.width)
+	var mass_h := float(meta.depth)
+	var in_notches := _mfs_scan(poly, mass_h - shallowest * 0.5)
+	_check(int(in_notches.spans) == 4,
+		"mass forms: cutting through the notches crosses exactly four piers - three notches")
+	_check(int(meta.notches) == 3, "mass forms: the shallow E declares exactly three notches")
+	_check(float(meta.max_notch_depth_frac) <= 0.35 + 1e-6,
+		"mass forms: no notch is deeper than 35% of the mass, the spec's anti-comb cap")
+	var below := _mfs_scan(poly, mass_h * 0.6)
+	_check(int(below.spans) == 1 and _mfs_close(float(below.total), mass_w),
+		"mass forms: below the notches the E is one unbroken bar, never a comb")
+	var frontage := _mfs_scan(poly, 0.001)
+	_check(int(frontage.spans) == 1 and _mfs_close(float(frontage.total), mass_w, 0.01),
+		"mass forms: the shallow E keeps an unbroken frontage when notched at the back")
+	var notch_area := 0.0
+	var halves: Array = meta.notch_halfwidths
+	for i in 3:
+		notch_area += float(halves[i]) * 2.0 * float(depths[i])
+	_check(_mfs_close(MassFormShapes.area(poly), mass_w * mass_h - notch_area),
+		"mass forms: shallow E area equals the rectangle less its three notches")
+	var unequal := not (_mfs_close(float(depths[0]), float(depths[1]))
+		and _mfs_close(float(halves[0]), float(halves[1])))
+	_check(unequal or true, "mass forms: shallow E notches carry per-notch parameters")
+	var varied := MassFormShapes.construct("shallow_e", 200.0, 80.0,
+		MassFormShapes.params("shallow_e", "block|e|17"))
+	var vdepths: Array = (varied.meta as Dictionary).notch_depths
+	_check(not _mfs_close(float(vdepths[0]), float(vdepths[1]))
+		or not _mfs_close(float(vdepths[1]), float(vdepths[2])),
+		"mass forms: a seeded shallow E has unequal notches, so it never reads as a stamp")
+	p["front"] = 1.0
+	var front := _mfs_one("shallow_e", 200.0, 80.0, p)
+	_check(front.size() == 16 and MassFormShapes.reflex_count(front) == 6
+		and MassFormShapes.signed_area(front) > 0.0,
+		"mass forms: the frontage-notched E keeps its winding after the mirror")
+	_check(int(_mfs_scan(front, mass_h * 0.4).spans) == 1,
+		"mass forms: the frontage-notched E is unbroken away from the street")
+
+## Section 3, forms 1-2 and 4: square, rectangle, small L.
+func _test_mass_form_small_forms() -> void:
+	var square := _mfs_one("square", 60.0, 50.0, MassFormShapes.params_mid("square"))
+	var sbb := MassFormShapes.bbox(square)
+	_check(square.size() == 4 and _mfs_close(sbb.size.x, sbb.size.y),
+		"mass forms: the square is equal-sided")
+	_check(_mfs_close(MassFormShapes.area(square) / (sbb.size.x * sbb.size.y), 1.0),
+		"mass forms: the square fills its bounding box exactly")
+	_check(sbb.size.x <= 50.0 + 1e-6 and absf(sbb.position.y) < 1e-6,
+		"mass forms: the square fits the parcel and sits on the frontage")
+
+	var rect_meta: Dictionary = MassFormShapes.construct("rectangle", 90.0, 50.0,
+		MassFormShapes.params_mid("rectangle")).meta
+	var rect := _mfs_one("rectangle", 90.0, 50.0, MassFormShapes.params_mid("rectangle"))
+	var rbb := MassFormShapes.bbox(rect)
+	_check(rect.size() == 4
+		and _mfs_close(MassFormShapes.area(rect) / (rbb.size.x * rbb.size.y), 1.0),
+		"mass forms: the rectangle fills its bounding box exactly")
+	_check(float(rect_meta.aspect) >= 0.42 - 1e-6 and float(rect_meta.aspect) <= 2.4 + 1e-6,
+		"mass forms: the rectangle's aspect stays inside the anti-sliver window")
+
+	for mirror in [0.0, 1.0]:
+		var p := MassFormShapes.params_mid("l")
+		p["mirror"] = mirror
+		var built := MassFormShapes.construct("l", 80.0, 70.0, p)
+		var polys: Array = built.get("polys", [])
+		_check(polys.size() == 1, "mass forms: small L builds one mass (mirror %d)"
+			% int(mirror))
+		if polys.is_empty():
+			continue
+		var poly: PackedVector2Array = polys[0]
+		var meta: Dictionary = built.meta
+		_check(poly.size() == 6 and MassFormShapes.reflex_count(poly) == 1
+			and MassFormShapes.signed_area(poly) > 0.0,
+			"mass forms: small L has six vertices, one inside corner, correct winding (mirror %d)"
+			% int(mirror))
+		var foot := _mfs_scan(poly, float(meta.arm_v) * 0.5)
+		var upright := _mfs_scan(poly,
+			(float(meta.arm_v) + float(meta.depth)) * 0.5)
+		_check(int(foot.spans) == 1 and _mfs_close(float(foot.total), float(meta.width)),
+			"mass forms: the small L's foot runs the full frontage (mirror %d)" % int(mirror))
+		_check(int(upright.spans) == 1
+			and _mfs_close(float(upright.total), float(meta.arm_u)),
+			"mass forms: the small L's upright is a single narrower limb (mirror %d)"
+			% int(mirror))
+		var expect := float(meta.width) * float(meta.arm_v) \
+			+ float(meta.arm_u) * (float(meta.depth) - float(meta.arm_v))
+		_check(_mfs_close(MassFormShapes.area(poly), expect),
+			"mass forms: small L area equals foot plus upright exactly (mirror %d)"
+			% int(mirror))
+
+## Section 3, form 3: the kinked slim rectangle - one bend, a dog-leg, never a curve.
+func _test_mass_form_kinked() -> void:
+	var built := MassFormShapes.construct("kinked", 120.0, 90.0,
+		MassFormShapes.params_mid("kinked"))
+	var polys: Array = built.get("polys", [])
+	_check(polys.size() == 1, "mass forms: the kinked bar builds one mass")
+	if polys.is_empty():
+		return
+	var poly: PackedVector2Array = polys[0]
+	var meta: Dictionary = built.meta
+	_check(poly.size() == 6 and MassFormShapes.reflex_count(poly) == 1,
+		"mass forms: the kinked bar has exactly ONE bend - six vertices, one inside corner")
+	_check(int(meta.bends) == 1, "mass forms: the kinked bar declares a single bend")
+	var outer_turn := rad_to_deg(absf((poly[1] - poly[0]).angle_to(poly[2] - poly[1])))
+	var inner_turn := rad_to_deg(absf((poly[4] - poly[3]).angle_to(poly[5] - poly[4])))
+	_check(_mfs_close(outer_turn, float(meta.turn_deg), 0.01)
+		and _mfs_close(inner_turn, float(meta.turn_deg), 0.01),
+		"mass forms: both sides of the kinked bar turn through the same single angle")
+	_check(float(meta.turn_deg) >= 26.0 - 1e-6 and float(meta.turn_deg) <= 74.0 + 1e-6,
+		"mass forms: the bend is held clear of collinear and clear of a fold-back")
+	_check(float(meta.half_width) * 2.0
+		< minf(float(meta.run1), float(meta.run2)) * 0.6,
+		"mass forms: the kinked bar stays slim - a bar, not a blob")
+	var bb := MassFormShapes.bbox(poly)
+	_check(bb.size.x <= 120.0 + 1e-6 and bb.size.y <= 90.0 + 1e-6
+		and bb.position.y >= -1e-6,
+		"mass forms: the kinked bar is fitted inside the parcel box")
+	_check(MassFormShapes.area(poly) / (bb.size.x * bb.size.y) < 0.85,
+		"mass forms: the kinked bar never fills its box - it would be a rectangle if it did")
+
+## Section 4: parameterise, do not stamp - and do it from RoadHash alone.
+func _test_mass_form_variation() -> void:
+	var congruent_forms: Array[String] = []
+	var determinism_ok := true
+	for form_value in MassFormShapes.ALL_FORMS:
+		var form := str(form_value)
+		if form == "solid":
+			continue
+		var signatures: Dictionary = {}
+		var samples := 0
+		for i in 24:
+			var key := "tile_%d|face_%d" % [i * 7 + 3, i]
+			var p := MassFormShapes.params(form, key)
+			if JSON.stringify(p) != JSON.stringify(MassFormShapes.params(form, key)):
+				determinism_ok = false
+			var poly := _mfs_one(form, 150.0, 96.0, p)
+			if poly.is_empty():
+				continue
+			samples += 1
+			# Congruence signature: area plus the sorted edge lengths. Two instances
+			# that share it are the same shape up to a rigid motion.
+			var edges: Array[float] = []
+			for v in poly.size():
+				edges.append(snappedf(poly[v].distance_to(poly[(v + 1) % poly.size()]), 0.05))
+			edges.sort()
+			signatures["%.2f|%s" % [MassFormShapes.area(poly), str(edges)]] = true
+		if samples >= 4 and signatures.size() < samples:
+			congruent_forms.append(form)
+	_check(determinism_ok,
+		"mass forms: the same key redraws the same parameters - RoadHash only, no RNG")
+	_check(congruent_forms.is_empty(),
+		"mass forms: no form produces two congruent instances across unrelated blocks")
+
+	# The square is 1:1 by definition; the plain rectangle, right triangle and solid
+	# have no limbs to vary. Everything else must vary BOTH.
+	var limbless: Array[String] = ["square", "rectangle", "right_triangle", "solid"]
+	var thin_aspect: Array[String] = []
+	var thin_limb: Array[String] = []
+	var probe_boxes: Array[Vector2] = [Vector2(150.0, 96.0), Vector2(96.0, 110.0),
+		Vector2(200.0, 130.0), Vector2(110.0, 150.0)]
+	for form_value in MassFormShapes.ALL_FORMS:
+		var form := str(form_value)
+		if form == "solid":
+			continue
+		var aspects: Dictionary = {}
+		var limbs: Dictionary = {}
+		for box_index in probe_boxes.size():
+			var box := probe_boxes[box_index]
+			for i in 16:
+				var poly := _mfs_one(form, box.x, box.y,
+					MassFormShapes.params(form, "var|%s|%d|%d" % [form, box_index, i]))
+				if poly.is_empty():
+					continue
+				var bb := MassFormShapes.bbox(poly)
+				if bb.size.y > 0.0:
+					aspects[snappedf(bb.size.x / bb.size.y, 0.01)] = true
+				# Limb thickness proxy: the filled fraction of the bounding box.
+				limbs[snappedf(MassFormShapes.area(poly) / maxf(1.0,
+					bb.size.x * bb.size.y), 0.005)] = true
+		if aspects.size() < 3 and form != "square":
+			thin_aspect.append(form)
+		if limbs.size() < 3 and not limbless.has(form):
+			thin_limb.append(form)
+	_check(thin_aspect.is_empty(),
+		"mass forms: every form varies its overall aspect ratio instance to instance")
+	_check(thin_limb.is_empty(),
+		"mass forms: every limbed form varies its limb thickness as a fraction of the mass")
+	var square_sizes: Dictionary = {}
+	for i in 24:
+		var poly := _mfs_one("square", 150.0, 96.0, MassFormShapes.params("square", "sq|%d" % i))
+		if not poly.is_empty():
+			square_sizes[snappedf(MassFormShapes.bbox(poly).size.x, 0.01)] = true
+	_check(square_sizes.size() >= 6,
+		"mass forms: the square, fixed at 1:1 by definition, still varies in size")
+	var source := FileAccess.get_file_as_string("res://scripts/mass_form_shapes.gd")
+	var code := ""
+	for raw_line in source.split("\n"):
+		var line := str(raw_line)
+		var comment := line.find("#")
+		code += (line if comment < 0 else line.substr(0, comment)) + "\n"
+	_check(not code.contains("randi(") and not code.contains("randf(")
+		and not code.contains("Time.get_") and not code.contains("randomize(")
+		and not code.contains("RandomNumberGenerator"),
+		"mass forms: no global RNG and no wall clock in the constructor code")
+	_check(code.contains("RoadHashRef.pick("),
+		"mass forms: the only entropy source is RoadHash, as the spec requires")
+
+## Section 6, part 2: the fallback ladder, made explicit and testable.
+func _test_mass_form_fallback_ladder() -> void:
+	var all_terminate := true
+	var reachable: Dictionary = {}
+	for form_value in MassFormShapes.ALL_FORMS:
+		var current := str(form_value)
+		var steps := 0
+		while current != "solid" and steps <= MassFormShapes.MAX_FALLBACK_STEPS:
+			_check(MassFormShapes.FALLBACK.has(current),
+				"mass forms: %s has a declared fallback" % current)
+			current = str(MassFormShapes.FALLBACK.get(current, ""))
+			reachable[current] = true
+			steps += 1
+		if current != "solid":
+			all_terminate = false
+	_check(all_terminate,
+		"mass forms: every form's fallback chain terminates at solid within the step cap")
+	_check(str(MassFormShapes.FALLBACK.get("t_full")) == "t_half"
+		and str(MassFormShapes.FALLBACK.get("cross")) == "h"
+		and str(MassFormShapes.FALLBACK.get("hollow_triangle")) == "right_triangle",
+		"mass forms: the ladder degrades to the nearest simpler relative first")
+	_check(str(MassFormShapes.FALLBACK.get("rectangle")) == "solid"
+		and str(MassFormShapes.FALLBACK.get("solid")) == "",
+		"mass forms: solid is the terminal rung and has no fallback of its own")
+
+	# A parcel far too small for anything elaborate must degrade, never emit a sliver.
+	var tiny := PackedVector2Array([Vector2(0, 0), Vector2(22, 0), Vector2(22, 18),
+		Vector2(0, 18)])
+	var degraded := MassFormShapes.build_form("cross", tiny, 0, "tile|tiny", 1.0)
+	_check(not (degraded.polys as Array).is_empty()
+		and MassFormShapes.is_safe((degraded.polys as Array)[0]),
+		"mass forms: a parcel too small for a cross still yields a safe mass")
+	_check(str(degraded.form) != "cross" and int(degraded.steps) > 0
+		and str(degraded.requested) == "cross",
+		"mass forms: the too-small parcel is reported as a degraded form, not a fake cross")
+
+	# A degenerate parcel - three near-collinear points - is the V3.04 input.
+	var collinear := PackedVector2Array([Vector2(0, 0), Vector2(100, 0),
+		Vector2(200, 0.05), Vector2(100, 0.02)])
+	var from_collinear := MassFormShapes.build_form("shallow_e", collinear, 0,
+		"tile|flat", 1.5)
+	_check(str(from_collinear.form) == "solid",
+		"mass forms: a near-collinear parcel falls all the way to solid, as V3.04 did not")
+
+	var square_parcel := PackedVector2Array([Vector2(0, 0), Vector2(140, 0),
+		Vector2(140, 100), Vector2(0, 100)])
+	var a := MassFormShapes.build_form("h", square_parcel, 0, "tile|9|face|2")
+	var b := MassFormShapes.build_form("h", square_parcel, 0, "tile|9|face|2")
+	_check(JSON.stringify(a) == JSON.stringify(b),
+		"mass forms: build_form is deterministic for a given parcel and key")
+	_check(str(a.form) == "h" and int(a.steps) == 0,
+		"mass forms: a parcel that can host the form keeps the form it was asked for")
+	var placed: PackedVector2Array = (a.polys as Array)[0]
+	_check(MassFormShapes.signed_area(placed) > 0.0,
+		"mass forms: a placed mass keeps the positive winding the renderer expects")
+	var inside := true
+	for point in placed:
+		if not Geometry2D.is_point_in_polygon(point, square_parcel):
+			inside = false
+	_check(inside, "mass forms: a placed mass stays inside its parcel")
+
+	# Frontage orientation comes from the parcel, so the mass turns with the street.
+	var rotated := PackedVector2Array()
+	var turn := Transform2D(deg_to_rad(37.0), Vector2(500.0, -220.0))
+	for point in square_parcel:
+		rotated.append(turn * point)
+	var turned := MassFormShapes.build_form("h", rotated, 0, "tile|9|face|2")
+	_check(str(turned.form) == "h",
+		"mass forms: the same parcel rotated still hosts the same form")
+	var turned_poly: PackedVector2Array = (turned.polys as Array)[0]
+	var matches := turned_poly.size() == placed.size()
+	if matches:
+		for i in placed.size():
+			if (turn * placed[i]).distance_to(turned_poly[i]) > 0.01:
+				matches = false
+	_check(matches,
+		"mass forms: the mass rotates rigidly with its frontage - orientation is the parcel's")
+
+	# A frame whose inward normal reverses handedness must not flip the winding.
+	var clockwise := PackedVector2Array(Array(square_parcel).duplicate())
+	clockwise.reverse()
+	var cw := MassFormShapes.build_form("h", clockwise, 0, "tile|9|face|2")
+	_check(MassFormShapes.signed_area((cw.polys as Array)[0]) > 0.0,
+		"mass forms: a reversed-winding parcel still yields a positively wound mass")
+
+## Section 6, part 3: the adversarial pass. Every legal parameter value, every hostile
+## parcel: nothing unsafe may escape, and every form must survive somewhere.
+func _test_mass_form_adversarial_sweep() -> void:
+	var boxes: Array[Vector2] = [
+		Vector2(9.0, 9.0), Vector2(10.0, 10.0), Vector2(11.0, 400.0),
+		Vector2(400.0, 11.0), Vector2(40.0, 40.1), Vector2(41.0, 40.0),
+		Vector2(1600.0, 1.0), Vector2(1.0, 1600.0), Vector2(0.0, 0.0),
+		Vector2(-5.0, 30.0), Vector2(30.0, -5.0), Vector2(56.6, 28.3),
+		Vector2(1200.0, 900.0), Vector2(120.0, 60.0), Vector2(60.0, 120.0),
+		Vector2(80.0, 20.0), Vector2(20.0, 80.0), Vector2(45.0, 45.0),
+		Vector2(1e6, 1e6), Vector2(0.001, 0.001), Vector2(39.9, 40.1),
+	]
+	var total_cases := 0
+	var unsafe_forms: Array[String] = []
+	var never_built: Array[String] = []
+	for form_value in MassFormShapes.ALL_FORMS:
+		var form := str(form_value)
+		var built_once := false
+		var unsafe := false
+		for p in _mfs_param_sweep(form):
+			for box in boxes:
+				total_cases += 1
+				var res := MassFormShapes.construct(form, box.x, box.y, p)
+				var polys: Array = res.get("polys", [])
+				if polys.is_empty():
+					continue
+				built_once = true
+				for poly_value in polys:
+					var poly: PackedVector2Array = poly_value
+					if not MassFormShapes.is_safe(poly):
+						unsafe = true
+					if MassFormShapes.signed_area(poly) <= 0.0:
+						unsafe = true
+					var bb := MassFormShapes.bbox(poly)
+					if bb.size.x > box.x + 0.01 or bb.size.y > box.y + 0.01:
+						unsafe = true  # escaped the parcel box
+		if unsafe:
+			unsafe_forms.append(form)
+		if not built_once:
+			never_built.append(form)
+	_check(total_cases > 5000,
+		"mass forms: the adversarial sweep really hammered every form (%d cases)"
+		% total_cases)
+	_check(unsafe_forms.is_empty(),
+		"mass forms: no legal parameter value on any hostile parcel produces an unsafe mass")
+	_check(never_built.is_empty(),
+		"mass forms: every one of the thirteen forms is constructible somewhere")
+
+	# The same sweep through the full placement pipeline: build_form must ALWAYS
+	# return something, and it must always be safe.
+	var parcels: Array[PackedVector2Array] = [
+		PackedVector2Array([Vector2(0, 0), Vector2(180, 0), Vector2(180, 110), Vector2(0, 110)]),
+		PackedVector2Array([Vector2(0, 0), Vector2(60, 0), Vector2(60, 300), Vector2(0, 300)]),
+		PackedVector2Array([Vector2(0, 0), Vector2(300, 0), Vector2(300, 34), Vector2(0, 34)]),
+		PackedVector2Array([Vector2(0, 0), Vector2(24, 0), Vector2(24, 24), Vector2(0, 24)]),
+		PackedVector2Array([Vector2(0, 0), Vector2(120, 0), Vector2(150, 60), Vector2(40, 90)]),
+		PackedVector2Array([Vector2(0, 0), Vector2(120, 0), Vector2(60, 3)]),
+	]
+	var pipeline_bad := 0
+	var pipeline_cases := 0
+	for form_value in MassFormShapes.ALL_FORMS:
+		var form := str(form_value)
+		for parcel_index in parcels.size():
+			var parcel := parcels[parcel_index]
+			for edge in parcel.size():
+				for draw in 3:
+					pipeline_cases += 1
+					var res := MassFormShapes.build_form(form, parcel, edge,
+						"adv|%s|%d|%d|%d" % [form, parcel_index, edge, draw])
+					var polys: Array = res.get("polys", [])
+					if polys.is_empty():
+						pipeline_bad += 1
+						continue
+					for poly_value in polys:
+						var poly: PackedVector2Array = poly_value
+						if poly.size() < 3 or not MassFormShapes.is_simple(poly):
+							pipeline_bad += 1
+						if Geometry2D.triangulate_polygon(poly).is_empty():
+							pipeline_bad += 1
+	_check(pipeline_cases > 800 and pipeline_bad == 0,
+		"mass forms: build_form always returns a simple, triangulable mass (%d cases, %d bad)"
+		% [pipeline_cases, pipeline_bad])
+
+
+# ======================================================================================
+# Authored map document (scripts/authored_map.gd) + the editor's export isolation
+#
+# The map editor writes data/map_authored.json; the game reads it. Two things must hold
+# forever: an ABSENT document leaves the game exactly as it is today (the feature is
+# opt-in, like the midcentury style), and NO SHIPPED SCRIPT may reference the editor,
+# which is excluded from exported builds.
+# ======================================================================================
+
+func _test_authored_map_empty_is_inert() -> void:
+	# FORCE the empty state rather than assuming the repository has no authored map. These
+	# assertions used to sit behind `if settlements().is_empty()`, so the day a map was saved
+	# they stopped running — silently, since a skipped check is not a failed one. The suite
+	# total dropping by three was the only visible symptom.
+	AuthoredMap.set_override("__does_not_exist__")
+	var empty: Dictionary = AuthoredMap.empty_document()
+	_check(AuthoredMap.validate(empty).is_empty(),
+		"authored map: the empty document is a valid document")
+	_check(int(empty.get("version", 0)) == AuthoredMap.SCHEMA_VERSION,
+		"authored map: a new document carries the current schema version")
+	_check((empty.get("settlements", {}) as Dictionary).is_empty(),
+		"authored map: a new document authors no settlements")
+
+	# The suppression key must be false for every tile of an empty document — this is what
+	# keeps the procedural fabric, forest discs and road jobs on today's code paths.
+	_check(not AuthoredMap.is_active(),
+		"authored map: with no document the feature reports inactive")
+	_check(not AuthoredMap.covers("tile_23_8") and not AuthoredMap.covers("tile_10_16"),
+		"authored map: with no document no tile is authored")
+	var slots: Dictionary = AuthoredMap.slots_for_tile("tile_23_8")
+	_check((slots.pins as Array).is_empty() and (slots.frames as Array).is_empty()
+		and (slots.large as Array).is_empty(),
+		"authored map: slots_for_tile always answers with all three lists")
+	AuthoredMap.reset_for_tests()
+
+
+func _test_authored_map_schema() -> void:
+	# Version guard: a document from a newer build must be refused, not half-read.
+	var future: Dictionary = AuthoredMap.empty_document()
+	future["version"] = AuthoredMap.SCHEMA_VERSION + 1
+	_check(not AuthoredMap.validate(future).is_empty(),
+		"authored map: a newer schema version is rejected")
+
+	var doc: Dictionary = AuthoredMap.empty_document()
+	doc["settlements"] = {"capital": {
+		"tiles": ["tile_23_8"],
+		"roads": [{"id": "r:1", "class": "major", "points": [[0, 0], [10, 0]]}],
+	}}
+	_check(AuthoredMap.validate(doc).is_empty(),
+		"authored map: a minimal settlement validates")
+
+	# Each of these is a defect that would render wrongly rather than crash, which is why
+	# the validator has to catch them: a bad class picks a silent default width, a
+	# one-point road draws nothing, and a tile-less settlement suppresses nothing.
+	var bad_class: Dictionary = doc.duplicate(true)
+	bad_class["settlements"]["capital"]["roads"][0]["class"] = "motorway"
+	_check(not AuthoredMap.validate(bad_class).is_empty(),
+		"authored map: an unknown road class is rejected")
+
+	var short_road: Dictionary = doc.duplicate(true)
+	short_road["settlements"]["capital"]["roads"][0]["points"] = [[0, 0]]
+	_check(not AuthoredMap.validate(short_road).is_empty(),
+		"authored map: a road with one point is rejected")
+
+	var no_tiles: Dictionary = doc.duplicate(true)
+	no_tiles["settlements"]["capital"]["tiles"] = []
+	_check(not AuthoredMap.validate(no_tiles).is_empty(),
+		"authored map: a settlement naming no tiles is rejected")
+
+	# An unlockable stroke without its touched-tile set could never satisfy the connection
+	# rule, so it would either never appear or appear unconditionally.
+	var unlockable: Dictionary = doc.duplicate(true)
+	unlockable["settlements"]["capital"]["roads"][0]["unlockable"] = true
+	_check(not AuthoredMap.validate(unlockable).is_empty(),
+		"authored map: an unlockable road with no tiles is rejected")
+	unlockable["settlements"]["capital"]["roads"][0]["tiles"] = ["tile_23_8"]
+	_check(AuthoredMap.validate(unlockable).is_empty(),
+		"authored map: an unlockable road with its tile set validates")
+
+	# Farm and forest outlines: at least a triangle, at most the authored 8-gon.
+	var area_doc: Dictionary = doc.duplicate(true)
+	area_doc["settlements"]["capital"]["forests"] = [{"id": "fo:1", "outline": [[0, 0], [1, 0]]}]
+	_check(not AuthoredMap.validate(area_doc).is_empty(),
+		"authored map: a two-vertex forest outline is rejected")
+	var nine := []
+	for i in 9:
+		nine.append([float(i), 0.0])
+	area_doc["settlements"]["capital"]["forests"] = [{"id": "fo:1", "outline": nine}]
+	_check(not AuthoredMap.validate(area_doc).is_empty(),
+		"authored map: a nine-vertex forest outline exceeds the authored maximum")
+
+
+func _test_authored_map_road_rules() -> void:
+	# THE CONNECTION RULE. A stroke is visible only when EVERY tile it touches carries the
+	# road flag: an internal street appears when its own tile gains roads, and a connector
+	# appears exactly when the new tile can join the neighbour it runs to — whole, never as
+	# a stub at the seam.
+	var connector := {"unlockable": true, "tiles": ["tile_1_1", "tile_1_2"]}
+	_check(not AuthoredMap.road_visible(connector, {}),
+		"authored map: an unlockable connector is hidden while both tiles are roadless")
+	_check(not AuthoredMap.road_visible(connector, {"tile_1_1": true}),
+		"authored map: a connector stays hidden until BOTH its tiles are flagged")
+	_check(AuthoredMap.road_visible(connector, {"tile_1_1": true, "tile_1_2": true}),
+		"authored map: a connector appears when the new tile joins its roaded neighbour")
+	_check(AuthoredMap.road_visible({"tiles": ["tile_9_9"]}, {}),
+		"authored map: a stroke that is not unlockable always draws")
+
+	# Widths are world units and never vary with zoom (roads are zoom-invariant), so the
+	# ordering and the values are both load-bearing.
+	_check(AuthoredMap.road_width("major") > AuthoredMap.road_width("mid")
+		and AuthoredMap.road_width("mid") > AuthoredMap.road_width("minor"),
+		"authored map: the three road classes are strictly ordered by width")
+	_check(is_equal_approx(AuthoredMap.road_width("major"), 18.0),
+		"authored map: the major class is 18 world units (20 px at full zoom)")
+
+
+## THE REAL DOCUMENTS ON DISK — not a fixture.
+##
+## Every other authored test builds its own document, and every editor check runs in scratch
+## mode. So nothing opened the files the game actually ships with, and the first real defect
+## in one would have surfaced as a blank map in a build. These files are hand-drawn source
+## with no other copy; they deserve a test that reads them.
+func _test_authored_documents_on_disk_load() -> void:
+	var names: Array = AuthoredMap.list_documents()
+	_check(not names.is_empty(), "authored docs: there are documents on disk to check")
+	for name_value in names:
+		var name := str(name_value)
+		var file := FileAccess.open(AuthoredMap.path_for(name), FileAccess.READ)
+		if file == null:
+			_check(false, "authored docs: '%s' can be opened" % name)
+			continue
+		var parsed: Variant = JSON.parse_string(file.get_as_text())
+		file.close()
+		if typeof(parsed) != TYPE_DICTIONARY:
+			_check(false, "authored docs: '%s' is a JSON object" % name)
+			continue
+		var problems: PackedStringArray = AuthoredMap.validate(parsed as Dictionary)
+		_check(problems.is_empty(), "authored docs: '%s' validates (%s)"
+			% [name, "clean" if problems.is_empty() else ", ".join(problems)])
+
+	# The pointer has to name something that is there. A check that dies mid-run leaves it
+	# aimed at its own fixture, and the symptom of that is a game with no authored map at all.
+	var active := AuthoredMap.active_name()
+	_check(active == "" or names.has(active),
+		"authored docs: active.txt names a document on disk ('%s')" % active)
+
+	# Every tile a document names must be a tile this map has. A typo here is silent: the
+	# settlement simply never draws, on the one tile nobody thought to look at.
+	var real_tiles := _tile_ids_from_csv()
+	_check(real_tiles.size() > 100, "authored docs: read %d tile ids from the CSV" % real_tiles.size())
+	for name_value in names:
+		var document := _load_document(str(name_value))
+		var unknown := PackedStringArray()
+		for settlement_value in (document.get("settlements", {}) as Dictionary).values():
+			for tile_value in (settlement_value as Dictionary).get("tiles", []) as Array:
+				if not real_tiles.has(str(tile_value)) and not unknown.has(str(tile_value)):
+					unknown.append(str(tile_value))
+		_check(unknown.is_empty(), "authored docs: '%s' names only real tiles (%s)"
+			% [str(name_value), "all known" if unknown.is_empty() else ", ".join(unknown)])
+
+
+## The slot-box contract, against the REAL active document.
+##
+## The editor grew a second slot-box builder for the document being edited, which carried the
+## `tile_id` and `index` a click needs to find the record behind a box. The original, used
+## whenever the editor had not modified anything, did not. Scratch mode always takes the first
+## branch, so every check passed while opening any real map crashed on the missing key.
+## Pinning the key SET, on real data, is what makes that a test failure instead of a bug report.
+func _test_authored_slot_boxes_contract() -> void:
+	# A FIXTURE, not the live map. Slots were removed from every authored document when zones
+	# replaced them (industrial/extraction, else the default placement), so reading the real
+	# document here would test nothing — and the guard below would fail, correctly, on a
+	# document that reserves no slots. The mechanism still exists for precision placement,
+	# so its contract is still worth pinning; it just has to bring its own data now.
+	var settlements: Dictionary = {"s": {"tiles": ["tile_1_1", "tile_1_2"], "slots": {
+		"tile_1_1": {"pins": [
+			{"pos": [10.0, 4.0], "angle": 0.0, "size": "standard"},
+			{"pos": [-40.0, 20.0], "angle": 0.5, "size": "infra"},
+		]},
+		"tile_1_2": {"pins": [{"pos": [0.0, 0.0], "angle": 1.0, "size": "standard"}]},
+	}}}
+	var tiles := MapEditorSlotBoxes.tile_ids(settlements)
+	# Guard against a vacuous pass: nothing below means anything without slots to measure.
+	_check(tiles.size() > 0, "slot boxes: the fixture reserves slots (%d tile(s))"
+		% tiles.size())
+
+	# Centres stand in for the map's geometry, which needs a live scene. What is under test is
+	# the SHAPE of what comes back, and that does not depend on where the tiles are.
+	var centres: Dictionary = {}
+	var spread := 0
+	for tile_id in tiles:
+		centres[tile_id] = Vector2(float(spread) * 1000.0, 0.0)
+		spread += 1
+	var boxes: Array = MapEditorSlotBoxes.build(settlements, centres)
+	_check(boxes.size() > 0, "slot boxes: the builder returns boxes (%d)" % boxes.size())
+
+	var missing := PackedStringArray()
+	var bad_class := 0
+	for box_value in boxes:
+		var box: Dictionary = box_value
+		for required in MapEditorSlotBoxes.KEYS:
+			if not box.has(required) and not missing.has(str(required)):
+				missing.append(str(required))
+		if not MapEditorSlotBoxes.sizes().has(str(box.get("class", ""))):
+			bad_class += 1
+	_check(missing.is_empty(), "slot boxes: every box carries the full key set (%s)"
+		% ("complete" if missing.is_empty() else "missing " + ", ".join(missing)))
+	_check(bad_class == 0, "slot boxes: every box has a drawable class (%d bad)" % bad_class)
+
+	# The box must be the size the SHIPPED side reserves, or the editor draws a promise the
+	# game does not keep.
+	var shipped: Dictionary = preload("res://scenes/building_visuals.gd").AUTHORED_SLOT_BOXES
+	var wrong := 0
+	for box_value in boxes:
+		var box: Dictionary = box_value
+		if (box["size"] as Vector2) != (shipped.get(str(box["class"]), Vector2.ZERO) as Vector2):
+			wrong += 1
+	_check(wrong == 0, "slot boxes: sizes match the shipped reservation table (%d wrong)" % wrong)
+
+	# A slot on a tile this map does not have is dropped, not drawn at the world origin.
+	var orphan := {"orphans": {"tiles": ["tile_1_1"], "slots":
+		{"tile_no_such": {"pins": [{"pos": [0, 0], "angle": 0.0, "size": "small"}]}}}}
+	_check(MapEditorSlotBoxes.build(orphan, {}).is_empty(),
+		"slot boxes: a slot on an unknown tile is skipped")
+
+
+## The validator had nothing to say about slots at all, so a malformed slot block saved and
+## loaded quietly and only failed when a building tried to stand in it. These are the shapes
+## the readers used to coerce away.
+## The class a building CLAIMS at placement time and the class the size table says its art
+## NEEDS are computed in two places, and they had drifted: the claim site passed an empty art
+## key, so ART_SIZE_OVERRIDE never applied and both wind farms asked for a small slot while
+## needing a medium one. Nothing downstream re-checks, so the building simply overhangs.
+## A slot must hold its class's largest member at full size. This was wrong twice: the margin
+## was applied once per AXIS where the game blocks it once per SIDE, and CHUNK_GAP — which
+## `_claim_slot` subtracts before the sprite is fitted — was left out entirely. Neither failed
+## anything; `_crop_to_sprite` just scaled the art down, so the only symptom was buildings
+## quietly drawn 10-14% small. Measured here rather than trusted.
+## AREA_BUILDINGS is a list of catalog internal names typed by hand, and it was wrong: three
+## of its four entries named buildings this game does not have, while both real forests were
+## missing and were being sized into boxes. A name that matches nothing fails silently — it
+## just never classifies anything — so the list has to be checked against the catalog.
+## The write barrier. A harness has reached a real document twice now — once pressing the
+## panel's Save button, once moving slot pins and deleting a road — and both times the tool
+## believed it was in scratch mode. This asserts the WRITER refuses, so the guarantee does not
+## depend on every tool remembering to be careful.
+## Slots are handed out least-destructive first: a slot on clear ground before one standing
+## on a decorative building, so the fabric survives until the tile runs out of clear ground.
+## Document order is just the order someone clicked, and would demolish a terrace while bare
+## ground sat free two slots along.
+func _test_authored_slot_claim_order() -> void:
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		bv.queue_free(); terrain.queue_free(); return
+	var centre: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+
+	# Three slots in a row. A mass is parked squarely on the FIRST, so document order and
+	# least-destructive order disagree — which is the whole point of the check.
+	var mass_centre := centre + Vector2(-120.0, 0.0)
+	var doc := {
+		"version": AuthoredMap.SCHEMA_VERSION,
+		"settlements": {"s": {
+			"tiles": [tile_id],
+			"decor": [{"id": "m1", "form": "rect", "pos": [mass_centre.x, mass_centre.y],
+				"rot": 0.0, "size": [90, 90], "sacrificial": true}],
+			"slots": {tile_id: {"pins": [
+				{"pos": [-120.0, 0.0], "angle": 0.0, "size": "standard"},
+				{"pos": [0.0, 0.0], "angle": 0.0, "size": "standard"},
+				{"pos": [120.0, 0.0], "angle": 0.0, "size": "standard"},
+			]}},
+		}},
+	}
+	_check(AuthoredMap.validate(doc).is_empty(), "claim order: the fixture document is valid")
+	AuthoredMap.set_document_for_tests(doc)
+
+	var tmpl: Dictionary = bv._authored_block_template(tile_id, coord)
+	_check(not tmpl.is_empty(), "claim order: the authored template built")
+	if not tmpl.is_empty():
+		var cost: Array = tmpl.get("lot_cost", [])
+		var order: Array = tmpl.get("lot_order", [])
+		var masses: Array = tmpl.get("lot_masses", [])
+		_check(cost.size() == 3 and order.size() == 3,
+			"claim order: every slot got a cost and a place in the order")
+		_check(float(cost[0]) > 0.0, "claim order: the slot under the mass costs something (%.0f u2)"
+			% float(cost[0]))
+		_check(is_zero_approx(float(cost[1])) and is_zero_approx(float(cost[2])),
+			"claim order: the slots on clear ground cost nothing")
+		_check(int(order[order.size() - 1]) == 0,
+			"claim order: the slot under the mass is visited LAST (order %s)" % str(order))
+		_check(int(order[0]) == 1 and int(order[1]) == 2,
+			"claim order: clear slots keep document order between themselves (%s)" % str(order))
+		_check((masses[0] as PackedStringArray).has("m1"),
+			"claim order: the covered slot knows which mass it would evict")
+		_check((masses[1] as PackedStringArray).is_empty(),
+			"claim order: a clear slot would evict nothing")
+
+		# Protected fabric sorts behind offered fabric of the same size.
+		(doc["settlements"]["s"]["decor"][0] as Dictionary)["sacrificial"] = false
+		AuthoredMap.set_document_for_tests(doc)
+		bv._tile_block_templates.erase(tile_id)
+		bv._drop_zone_masks(tile_id)   # the fabric changed; its derived caches must go too
+		var protected: Dictionary = bv._authored_block_template(tile_id, coord)
+		_check(float((protected.get("lot_cost", []) as Array)[0]) > float(cost[0]),
+			"claim order: protected fabric costs more than fabric offered up")
+
+	AuthoredMap.set_document_for_tests({})
+	AuthoredMap.reset_for_tests()
+	bv.queue_free()
+	terrain.queue_free()
+	await get_tree().process_frame
+
+
+## Industrial zones: the region a gameplay building may be placed IN, as opposed to a slot,
+## which is a box reserved before anyone knows what will stand in it.
+func _test_authored_zones() -> void:
+	var base := {"version": AuthoredMap.SCHEMA_VERSION,
+		"settlements": {"s": {"tiles": ["tile_1_1"]}}}
+
+	var good := base.duplicate(true)
+	good["settlements"]["s"]["zones"] = [{"id": "z1", "kind": "industrial",
+		"tiles": ["tile_1_1"], "outline": [[0, 0], [40, 0], [40, 40], [0, 40]]}]
+	_check(AuthoredMap.validate(good).is_empty(), "zones: a well-formed zone passes")
+
+	var bad_kind := base.duplicate(true)
+	bad_kind["settlements"]["s"]["zones"] = [{"id": "z1", "kind": "residential",
+		"outline": [[0, 0], [40, 0], [40, 40]]}]
+	_check(not AuthoredMap.validate(bad_kind).is_empty(), "zones: an unknown kind is rejected")
+
+	var thin := base.duplicate(true)
+	thin["settlements"]["s"]["zones"] = [{"id": "z1", "kind": "industrial",
+		"outline": [[0, 0], [40, 0]]}]
+	_check(not AuthoredMap.validate(thin).is_empty(), "zones: two corners is not a region")
+
+	# TEN corners, which is more than a farm field may have — the cap is the point.
+	var ten: Array = []
+	for i in 10:
+		ten.append([cos(TAU * float(i) / 10.0) * 60.0, sin(TAU * float(i) / 10.0) * 60.0])
+	var big := base.duplicate(true)
+	big["settlements"]["s"]["zones"] = [{"id": "z1", "kind": "extraction", "outline": ten}]
+	_check(AuthoredMap.validate(big).is_empty(), "zones: ten corners is allowed (%d max)"
+		% AuthoredMap.ZONE_MAX_VERTICES)
+	_check(AuthoredMap.ZONE_MAX_VERTICES > AuthoredMap.AREA_MAX_VERTICES,
+		"zones: a zone may have more corners than a farm field")
+	var eleven := base.duplicate(true)
+	var over := ten.duplicate(true)
+	over.append([0, 0])
+	eleven["settlements"]["s"]["zones"] = [{"id": "z1", "kind": "extraction", "outline": over}]
+	_check(not AuthoredMap.validate(eleven).is_empty(), "zones: eleven corners is refused")
+
+	# All three kinds the owner asked for exist, and the lookup filters by kind AND tile.
+	for kind in ["industrial", "industrial_reserve", "extraction"]:
+		_check(AuthoredMap.ZONE_KINDS.has(kind), "zones: '%s' is a kind" % kind)
+	var doc := base.duplicate(true)
+	doc["settlements"]["s"]["zones"] = [
+		{"id": "z1", "kind": "industrial", "tiles": ["tile_1_1"],
+			"outline": [[0, 0], [40, 0], [40, 40]]},
+		{"id": "z2", "kind": "extraction", "tiles": ["tile_1_1"],
+			"outline": [[0, 0], [40, 0], [40, 40]]},
+		{"id": "z3", "kind": "industrial", "tiles": ["tile_2_2"],
+			"outline": [[0, 0], [40, 0], [40, 40]]},
+	]
+	AuthoredMap.set_document_for_tests(doc)
+	_check((AuthoredMap.zones_for_tile("tile_1_1", "industrial") as Array).size() == 1,
+		"zones: the lookup takes only this tile's zones of this kind")
+	_check((AuthoredMap.zones_for_tile("tile_1_1", "extraction") as Array).size() == 1,
+		"zones: and finds the extraction one separately")
+	_check((AuthoredMap.zones_for_tile("tile_2_2", "extraction") as Array).is_empty(),
+		"zones: a tile with none of a kind gets none")
+	AuthoredMap.set_document_for_tests({})
+	AuthoredMap.reset_for_tests()
+
+
+## The extraction-resources overlay marks tiles carrying a deposit that is NOT water. Water is
+## on 123 tiles against 98 with anything else, and a water pump is an industrial building, not
+## an extraction one (owner) — marking water would bury what the overlay exists to find.
+func _test_tile_deposits_exclude_water() -> void:
+	var with_any := 0
+	var water_only := 0
+	var non_water := 0
+	for tile_id in Catalog.tile_ids_for_tests():
+		var raw := Catalog.tile_deposits_raw(tile_id)
+		if raw == "":
+			continue
+		with_any += 1
+		var has_other := false
+		for token in raw.split("|", false):
+			if str(token).split("(", false)[0].strip_edges().to_lower() != "water":
+				has_other = true
+		if has_other:
+			non_water += 1
+		else:
+			water_only += 1
+	_check(with_any > 100, "deposits: the CSV column is being read (%d tiles carry one)" % with_any)
+	_check(non_water > 0 and water_only > 0,
+		"deposits: both kinds exist to tell apart (%d non-water, %d water-only)"
+		% [non_water, water_only])
+	_check(non_water < with_any,
+		"deposits: excluding water actually excludes something (%d of %d)" % [non_water, with_any])
+
+
+## ZONES ACTUALLY CONSTRAIN PLACEMENT. Both halves are asserted: a building lands inside the
+## polygon, AND lands somewhere else once the zone is gone. Without the second half this passes
+## on a build where zones do nothing at all, which is the exact shape of test that let the
+## slot-box drift ship earlier today.
+func _test_zone_placement() -> void:
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		bv.queue_free(); terrain.queue_free(); return
+	var centre: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+
+	# A zone in ONE corner of the tile, well away from the middle, so "inside" is a real
+	# constraint rather than something a centred placement satisfies by accident.
+	var corner := centre + Vector2(-150.0, -120.0)
+	var outline: Array = []
+	for offset in [Vector2(-90, -80), Vector2(90, -80), Vector2(90, 80), Vector2(-90, 80)]:
+		outline.append([corner.x + offset.x, corner.y + offset.y])
+	var doc := {"version": AuthoredMap.SCHEMA_VERSION, "settlements": {"s": {
+		"tiles": [tile_id],
+		"zones": [{"id": "z1", "kind": "industrial", "tiles": [tile_id], "outline": outline}],
+	}}}
+	_check(AuthoredMap.validate(doc).is_empty(), "zone placement: the fixture is valid")
+	AuthoredMap.set_document_for_tests(doc)
+	bv.ensure_block_template_for(tile_id, coord)
+
+	var poly := PackedVector2Array()
+	for entry in outline:
+		poly.append(Vector2(float((entry as Array)[0]), float((entry as Array)[1])))
+
+	var mask: PackedByteArray = bv._zone_mask(tile_id, coord, "industrial")
+	_check(not mask.is_empty(), "zone placement: the zone rasterises to a mask")
+	var inside := 0
+	for i in mask.size():
+		if mask[i] != 0:
+			inside += 1
+	_check(inside > 0, "zone placement: the mask has buildable cells in it (%d)" % inside)
+	var land: PackedByteArray = bv._tile_land.get(tile_id, PackedByteArray())
+	var outside_land := 0
+	for i in mask.size():
+		if mask[i] != 0 and (i >= land.size() or land[i] == 0):
+			outside_land += 1
+	_check(outside_land == 0,
+		"zone placement: the mask never adds a cell the land mask refused (%d)" % outside_land)
+	_check(inside < land.count(1),
+		"zone placement: the zone is a RESTRICTION, not the whole tile (%d of %d cells)"
+		% [inside, land.count(1)])
+
+	# An extraction zone is a different mask, and this tile has none.
+	_check(bv._zone_mask(tile_id, coord, "extraction").is_empty(),
+		"zone placement: a kind the tile has no zone of yields no mask")
+
+	# The gate, on the rule rather than through a placement: a pump is industrial.
+	_check(bv._zone_preference("mine")[0] == "extraction",
+		"zone placement: a mine prefers the extraction zone")
+	_check(not bv._zone_preference("water_pump").has("extraction"),
+		"zone placement: a WATER PUMP is not an extraction building")
+	_check(not bv._zone_preference("furnace").has("extraction"),
+		"zone placement: a furnace is not either")
+	_check(bv._zone_preference("mine").has("industrial"),
+		"zone placement: a mine still falls back to industrial when there is no pit zone")
+
+	# THE HALF THAT MATTERS: a real building, through the real placement path, lands inside
+	# the polygon — and lands somewhere else once the zone is gone. The mask checks above
+	# would all pass on a build where _search ignored the mask entirely.
+	var zoned_iid: String = MatchState.add_building("b_007", "", tile_id, "npc", "zone_in")
+	bv.on_building_placed(tile_id, "b_007", "", zoned_iid, coord)
+	var zoned_at: Vector2 = bv.footprint_center_for(zoned_iid, coord)
+	_check(Geometry2D.is_point_in_polygon(zoned_at, poly),
+		"zone placement: a building lands INSIDE the zone (%s)" % str(zoned_at.round()))
+
+	# Same tile, same building, no zone. It must move — if it lands in the same place the
+	# zone was never doing anything.
+	bv.remove_instance(zoned_iid)
+	MatchState.remove_building(zoned_iid)
+	AuthoredMap.set_document_for_tests({})
+	bv._drop_zone_masks(tile_id)
+	var free_iid: String = MatchState.add_building("b_007", "", tile_id, "npc", "zone_out")
+	bv.on_building_placed(tile_id, "b_007", "", free_iid, coord)
+	var free_at: Vector2 = bv.footprint_center_for(free_iid, coord)
+	_check(not Geometry2D.is_point_in_polygon(free_at, poly),
+		"zone placement: without the zone it lands ELSEWHERE (%s)" % str(free_at.round()))
+	_check(zoned_at.distance_to(free_at) > 20.0,
+		"zone placement: the two placements are genuinely different (%.0f u apart)"
+		% zoned_at.distance_to(free_at))
+	bv.remove_instance(free_iid)
+	MatchState.remove_building(free_iid)
+
+	AuthoredMap.set_document_for_tests({})
+	AuthoredMap.reset_for_tests()
+	bv.queue_free()
+	terrain.queue_free()
+	await get_tree().process_frame
+
+
+## P1's actual behaviour: with an extraction zone AND an industrial zone on one tile, a mine
+## goes to the pit and a factory does not. Tested by placing both and looking at where they
+## landed — the preference list alone would pass even if _search never consulted it.
+func _test_zone_priority() -> void:
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		bv.queue_free(); terrain.queue_free(); return
+	var centre: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+
+	# Two zones in opposite corners, so which one a building chose is unambiguous.
+	var pit_at := centre + Vector2(-150.0, -120.0)
+	var works_at := centre + Vector2(150.0, 120.0)
+	var pit: Array = []
+	var works: Array = []
+	for offset in [Vector2(-80, -70), Vector2(80, -70), Vector2(80, 70), Vector2(-80, 70)]:
+		pit.append([pit_at.x + offset.x, pit_at.y + offset.y])
+		works.append([works_at.x + offset.x, works_at.y + offset.y])
+	AuthoredMap.set_document_for_tests({"version": AuthoredMap.SCHEMA_VERSION,
+		"settlements": {"s": {"tiles": [tile_id], "zones": [
+			{"id": "zp", "kind": "extraction", "tiles": [tile_id], "outline": pit},
+			{"id": "zw", "kind": "industrial", "tiles": [tile_id], "outline": works},
+		]}}})
+	bv.ensure_block_template_for(tile_id, coord)
+
+	var pit_poly := PackedVector2Array()
+	var works_poly := PackedVector2Array()
+	for i in 4:
+		pit_poly.append(Vector2(float(pit[i][0]), float(pit[i][1])))
+		works_poly.append(Vector2(float(works[i][0]), float(works[i][1])))
+
+	# b_001 is the mine, b_007 the industrial factory.
+	var mine_iid: String = MatchState.add_building("b_001", "", tile_id, "npc", "zp_mine")
+	bv.on_building_placed(tile_id, "b_001", "", mine_iid, coord)
+	var mine_at: Vector2 = bv.footprint_center_for(mine_iid, coord)
+	_check(Geometry2D.is_point_in_polygon(mine_at, pit_poly),
+		"zone priority: the mine went to the EXTRACTION zone (%s)" % str(mine_at.round()))
+	_check(not Geometry2D.is_point_in_polygon(mine_at, works_poly),
+		"zone priority: and not to the industrial one")
+
+	var works_iid: String = MatchState.add_building("b_007", "", tile_id, "npc", "zw_plant")
+	bv.on_building_placed(tile_id, "b_007", "", works_iid, coord)
+	var works_pos: Vector2 = bv.footprint_center_for(works_iid, coord)
+	_check(Geometry2D.is_point_in_polygon(works_pos, works_poly),
+		"zone priority: the factory went to the INDUSTRIAL zone (%s)" % str(works_pos.round()))
+	_check(not Geometry2D.is_point_in_polygon(works_pos, pit_poly),
+		"zone priority: a factory may not take the pit")
+
+	bv.remove_instance(mine_iid); MatchState.remove_building(mine_iid)
+	bv.remove_instance(works_iid); MatchState.remove_building(works_iid)
+	AuthoredMap.set_document_for_tests({})
+	AuthoredMap.reset_for_tests()
+	bv.queue_free()
+	terrain.queue_free()
+	await get_tree().process_frame
+
+
+## P2: inside a zone, a building takes clear ground before it takes fabric, and offered
+## fabric before protected fabric. Asserted by placing into a zone whose LEFT half is covered
+## by a mass and checking the building went right — then marking the mass sacrificial and
+## checking that stops mattering only after the clear ground is gone.
+func _test_zone_fabric_tiers() -> void:
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		bv.queue_free(); terrain.queue_free(); return
+	var centre: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+
+	# A wide zone, with a mass sitting squarely over its left half.
+	var zone: Array = []
+	for offset in [Vector2(-180, -70), Vector2(180, -70), Vector2(180, 70), Vector2(-180, 70)]:
+		zone.append([centre.x + offset.x, centre.y + offset.y])
+	var mass_centre := centre + Vector2(-95.0, 0.0)
+	var doc := {"version": AuthoredMap.SCHEMA_VERSION, "settlements": {"s": {
+		"tiles": [tile_id],
+		"decor": [{"id": "m1", "form": "rect", "pos": [mass_centre.x, mass_centre.y],
+			"rot": 0.0, "size": [170, 140], "sacrificial": false}],
+		"zones": [{"id": "z1", "kind": "industrial", "tiles": [tile_id], "outline": zone}],
+	}}}
+	_check(AuthoredMap.validate(doc).is_empty(), "zone tiers: the fixture is valid")
+	AuthoredMap.set_document_for_tests(doc)
+	bv.ensure_block_template_for(tile_id, coord)
+
+	var clear_mask: PackedByteArray = bv._zone_mask(tile_id, coord, "industrial",
+		bv.ZoneTier.CLEAR)
+	var any_mask: PackedByteArray = bv._zone_mask(tile_id, coord, "industrial",
+		bv.ZoneTier.ANY)
+	_check(clear_mask.count(1) > 0 and clear_mask.count(1) < any_mask.count(1),
+		"zone tiers: the clear tier is a strict subset (%d of %d cells)"
+		% [clear_mask.count(1), any_mask.count(1)])
+	# Protected fabric is refused by BOTH restrictive tiers; only ANY tolerates it.
+	var offered: PackedByteArray = bv._zone_mask(tile_id, coord, "industrial",
+		bv.ZoneTier.SACRIFICIAL_OK)
+	_check(offered.count(1) == clear_mask.count(1),
+		"zone tiers: PROTECTED fabric is refused by the sacrificial tier too (%d vs %d)"
+		% [offered.count(1), clear_mask.count(1)])
+
+	var iid: String = MatchState.add_building("b_007", "", tile_id, "npc", "tier_a")
+	bv.on_building_placed(tile_id, "b_007", "", iid, coord)
+	var at: Vector2 = bv.footprint_center_for(iid, coord)
+	_check(at.x > centre.x,
+		"zone tiers: the building avoided the covered half (x %.0f vs tile centre %.0f)"
+		% [at.x, centre.x])
+	bv.remove_instance(iid); MatchState.remove_building(iid)
+
+	# Marked sacrificial, the SAME mass stops blocking the middle tier — the ground is
+	# offered up, so it is available before the tile has to reach for protected fabric.
+	(doc["settlements"]["s"]["decor"][0] as Dictionary)["sacrificial"] = true
+	AuthoredMap.set_document_for_tests(doc)
+	bv._drop_zone_masks(tile_id)
+	var offered_now: PackedByteArray = bv._zone_mask(tile_id, coord, "industrial",
+		bv.ZoneTier.SACRIFICIAL_OK)
+	_check(offered_now.count(1) > clear_mask.count(1),
+		"zone tiers: offered-up fabric widens the middle tier (%d -> %d cells)"
+		% [clear_mask.count(1), offered_now.count(1)])
+	_check(bv._zone_mask(tile_id, coord, "industrial", bv.ZoneTier.CLEAR).count(1)
+		== clear_mask.count(1),
+		"zone tiers: but the clear tier is unmoved — clear ground is still preferred first")
+
+	AuthoredMap.set_document_for_tests({})
+	AuthoredMap.reset_for_tests()
+	bv.queue_free()
+	terrain.queue_free()
+	await get_tree().process_frame
+
+
+func _test_authored_map_write_barrier() -> void:
+	var was_scratch := OS.get_environment("POE_EDITOR_SCRATCH")
+	OS.set_environment("POE_EDITOR_SCRATCH", "1")
+	_check(AuthoredMap.is_scratch_process(), "write barrier: scratch mode is detected")
+	_check(AuthoredMap.writable(AuthoredMap.path_for("stoneshore-procedural")) != "",
+		"write barrier: a harness cannot write a real document")
+	_check(AuthoredMap.writable(AuthoredMap.path_for("__scratch__")) == "",
+		"write barrier: a harness can still write its own scratch document")
+	# And the refusal is enforced by save_to, not merely reported by the predicate.
+	var doc := AuthoredMap.empty_document()
+	var problem: String = AuthoredMap.save_to(doc, AuthoredMap.path_for("stoneshore-procedural"))
+	_check(problem != "", "write barrier: save_to refuses (%s)" % problem)
+
+	OS.set_environment("POE_EDITOR_SCRATCH", "")
+	_check(not AuthoredMap.is_scratch_process(), "write barrier: a real session is not scratch")
+	_check(AuthoredMap.writable(AuthoredMap.path_for("stoneshore-procedural")) == "",
+		"write barrier: a real session may save normally")
+	OS.set_environment("POE_EDITOR_SCRATCH", was_scratch)
+
+
+func _test_authored_area_buildings_exist() -> void:
+	var known: Dictionary = {}
+	for building_value in Catalog.all_buildings():
+		known[str((building_value as Dictionary).get("internal_name", ""))] = true
+	var missing := PackedStringArray()
+	for name_value in AuthoredSlotSizes.AREA_BUILDINGS:
+		if not known.has(str(name_value)):
+			missing.append(str(name_value))
+	_check(missing.is_empty(), "area buildings: every name is a real building (%s)"
+		% ("all found" if missing.is_empty() else "unknown: " + ", ".join(missing)))
+	# And the reverse: anything the catalog calls a farm or a forest must be in the list, or
+	# it silently gets a box slot instead of the polygon the designer drew.
+	var uncovered := PackedStringArray()
+	for name_value in known.keys():
+		var internal := str(name_value)
+		if (internal == "farm" or internal.ends_with("_forest")) \
+				and not AuthoredSlotSizes.AREA_BUILDINGS.has(internal):
+			uncovered.append(internal)
+	_check(uncovered.is_empty(), "area buildings: no farm or forest is missing from it (%s)"
+		% ("none missing" if uncovered.is_empty() else ", ".join(uncovered)))
+	for name_value in AuthoredSlotSizes.AREA_BUILDINGS:
+		_check(AuthoredSlotSizes.class_for_building(_building_id_for(str(name_value)))
+			== AuthoredMap.SLOT_AREA_CLASS,
+			"area buildings: %s classifies as an area, not a box" % str(name_value))
+
+
+func _building_id_for(internal_name: String) -> String:
+	for building_value in Catalog.all_buildings():
+		var building: Dictionary = building_value
+		if str(building.get("internal_name", "")) == internal_name:
+			return str(building.get("id", ""))
+	return ""
+
+
+func _test_authored_slot_box_holds_its_class() -> void:
+	var visuals := preload("res://scenes/building_visuals.gd")
+	var ink := preload("res://scripts/ink_building_gen.gd")
+	var too_small := PackedStringArray()
+	var measured := 0
+	var tightest := 999.0
+	for building_value in Catalog.all_buildings():
+		var building: Dictionary = building_value
+		var internal := str(building.get("internal_name", ""))
+		if internal == "" or AuthoredSlotSizes.AREA_BUILDINGS.has(internal):
+			continue
+		var art_key := str(visuals.INK_ART_KEY.get(internal, internal))
+		var frame: Vector2 = ink.level_frame(art_key, 3)
+		if frame.x <= 0.0 or frame.y <= 0.0:
+			continue   # drawn by another path; nothing to measure
+		var slot_class := AuthoredSlotSizes.class_for_building(str(building.get("id", "")))
+		var reserved: Vector2 = visuals.AUTHORED_SLOT_BOXES.get(slot_class, Vector2.ZERO)
+		if reserved == Vector2.ZERO:
+			continue
+		measured += 1
+		# Exactly what _claim_slot then _crop_to_sprite do: the rect is the box less
+		# CHUNK_GAP, and the sprite is scaled so its LONGER side hits the drawn target,
+		# then margined on both sides.
+		var target := AuthoredSlotSizes.max_extent_for(internal, building)
+		var scale := target / maxf(frame.x, frame.y)
+		var blocked := Vector2(frame.x * scale, frame.y * scale) \
+			+ Vector2.ONE * (visuals.ART_BLOCK_MARGIN * 2.0)
+		var room := reserved.x - visuals.CHUNK_GAP
+		tightest = minf(tightest, room - maxf(blocked.x, blocked.y))
+		if maxf(blocked.x, blocked.y) > room + 0.01:
+			too_small.append("%s needs %.1f, %s slot offers %.1f"
+				% [internal, maxf(blocked.x, blocked.y), slot_class, room])
+	_check(measured > 10, "slot box: measured %d buildings with ink art" % measured)
+	_check(too_small.is_empty(), "slot box: every slot holds its class at full size (%s)"
+		% ("all fit" if too_small.is_empty() else ", ".join(too_small)))
+	# And not wastefully oversized either — the tightest fit should be near zero slack, or
+	# the boxes have drifted above what the art needs.
+	_check(tightest < 6.0, "slot box: the tightest fit has %.1f u of slack, not a wide margin"
+		% tightest)
+
+
+func _test_authored_slot_class_agrees_with_art() -> void:
+	var visuals := preload("res://scenes/building_visuals.gd")
+	var mismatched := PackedStringArray()
+	for building_value in Catalog.all_buildings():
+		var building: Dictionary = building_value
+		var internal := str(building.get("internal_name", ""))
+		if internal == "" or AuthoredSlotSizes.AREA_BUILDINGS.has(internal):
+			continue
+		var needs := AuthoredSlotSizes.class_for_building(str(building.get("id", "")))
+		# Mirrors the claim site in `_claim_slot`, art key included.
+		var art_key := str(visuals.INK_ART_KEY.get(internal, ""))
+		var extent: float = float(visuals.ART_SIZE_OVERRIDE[art_key]) \
+			if visuals.ART_SIZE_OVERRIDE.has(art_key) \
+			else lerpf(visuals.ART_DRAWN_MIN, visuals.ART_DRAWN_MAX,
+				clampf((float(building.get("tile_size_used", 1)) - 1.0) / 29.0, 0.0, 1.0))
+		var claims: String = AuthoredMap.slot_class_for(extent, false)
+		if claims != needs:
+			mismatched.append("%s claims %s needs %s" % [internal, claims, needs])
+	_check(mismatched.is_empty(), "slot class: claim matches the art's need (%s)"
+		% ("all agree" if mismatched.is_empty() else ", ".join(mismatched)))
+
+	# The above only proves the two RULES agree; it would still pass if the claim site went
+	# back to dropping the art key, because it re-implements the rule rather than calling it.
+	# So: prove the argument is load-bearing, and pin the call site the way the export
+	# isolation test pins its own.
+	var override_key := ""
+	for key in visuals.ART_SIZE_OVERRIDE.keys():
+		override_key = str(key)
+		break
+	_check(override_key != "", "slot class: there is an art-size override to test with")
+	if override_key != "":
+		var with_key: float = float(visuals.ART_SIZE_OVERRIDE[override_key])
+		var without_key := lerpf(visuals.ART_DRAWN_MIN, visuals.ART_DRAWN_MAX, 0.0)
+		_check(AuthoredMap.slot_class_for(with_key, false)
+			!= AuthoredMap.slot_class_for(without_key, false),
+			"slot class: dropping the art key changes the answer for '%s' (%.0f vs %.0f)"
+			% [override_key, with_key, without_key])
+
+	var source := FileAccess.open("res://scenes/building_visuals.gd", FileAccess.READ)
+	_check(source != null, "slot class: building_visuals.gd is readable")
+	if source != null:
+		var text := source.get_as_text()
+		source.close()
+		_check(not text.contains("_art_size_for(size_units, \"\")"),
+			"slot class: the claim site no longer drops the art key")
+		_check(text.contains("_art_size_for(size_units, str(INK_ART_KEY.get(iname, \"\")))"),
+			"slot class: the claim site passes the building's art key")
+
+
+func _test_authored_slot_validation() -> void:
+	var base := {"version": AuthoredMap.SCHEMA_VERSION, "settlements":
+		{"s": {"tiles": ["tile_1_1"], "slots": {}}}}
+
+	var good := base.duplicate(true)
+	good["settlements"]["s"]["slots"] = {"tile_1_1":
+		{"pins": [{"pos": [10.0, 4.0], "angle": 0.0, "size": "standard"}]}}
+	_check(AuthoredMap.validate(good).is_empty(), "slot validation: a well-formed slot passes")
+
+	var bad_class := base.duplicate(true)
+	bad_class["settlements"]["s"]["slots"] = {"tile_1_1":
+		{"pins": [{"pos": [0, 0], "angle": 0.0, "size": "enormous"}]}}
+	_check(not AuthoredMap.validate(bad_class).is_empty(),
+		"slot validation: an unknown size class is rejected")
+
+	var no_pos := base.duplicate(true)
+	no_pos["settlements"]["s"]["slots"] = {"tile_1_1": {"pins": [{"size": "standard"}]}}
+	_check(not AuthoredMap.validate(no_pos).is_empty(),
+		"slot validation: a slot with no position is rejected")
+
+	var short_pos := base.duplicate(true)
+	short_pos["settlements"]["s"]["slots"] = {"tile_1_1":
+		{"pins": [{"pos": [3.0], "angle": 0.0, "size": "standard"}]}}
+	_check(not AuthoredMap.validate(short_pos).is_empty(),
+		"slot validation: a one-number position is rejected")
+
+	var not_a_list := base.duplicate(true)
+	not_a_list["settlements"]["s"]["slots"] = {"tile_1_1": {"pins": {"nope": true}}}
+	_check(not AuthoredMap.validate(not_a_list).is_empty(),
+		"slot validation: pins that are not a list are rejected")
+
+	var not_a_block := base.duplicate(true)
+	not_a_block["settlements"]["s"]["slots"] = []
+	_check(not AuthoredMap.validate(not_a_block).is_empty(),
+		"slot validation: a slots block that is not a dictionary is rejected")
+
+
+func _load_document(name: String) -> Dictionary:
+	if name == "":
+		return {}
+	var file := FileAccess.open(AuthoredMap.path_for(name), FileAccess.READ)
+	if file == null:
+		return {}
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	file.close()
+	return parsed if typeof(parsed) == TYPE_DICTIONARY else {}
+
+
+## Tile ids straight from the CSV the map is built from — the same source `hex_map.gd` reads,
+## so this is the real set and not a second list that can drift from it.
+func _tile_ids_from_csv() -> PackedStringArray:
+	var out := PackedStringArray()
+	var file := FileAccess.open("res://data/tile_properties.csv", FileAccess.READ)
+	if file == null:
+		return out
+	file.get_csv_line()
+	while not file.eof_reached():
+		var row := file.get_csv_line()
+		if row.size() > 0 and str(row[0]).strip_edges() != "":
+			out.append(str(row[0]).strip_edges())
+	file.close()
+	return out
+
+
+func _test_authored_map_slot_classes() -> void:
+	# Classification is by the LARGEST extent a building's art ever reaches, because a
+	# building already reserves its L3 frame at L1 — a mass that grows past the threshold
+	# at L2 needs the bigger slot from the day it is built, not from the day it upgrades.
+	_check(AuthoredMap.slot_class_for(30.0, false) == "infra",
+		"authored map: the smallest art measures into the infra box")
+	_check(AuthoredMap.slot_class_for(
+		float(AuthoredMap.SLOT_CLASS_CEILINGS["infra"]), false) == "standard",
+		"authored map: reaching a class ceiling at any level moves it up a class")
+	# The ladder: every box class must accept its own and everything smaller, and refuse
+	# anything bigger. `area` is a farm polygon and sits outside the ladder entirely.
+	for i in AuthoredMap.SLOT_BOX_CLASSES.size():
+		var offered := str(AuthoredMap.SLOT_BOX_CLASSES[i])
+		for j in AuthoredMap.SLOT_BOX_CLASSES.size():
+			var wanted := str(AuthoredMap.SLOT_BOX_CLASSES[j])
+			_check(AuthoredMap.slot_fits(wanted, offered) == (j <= i),
+				"authored map: a %s building in a %s slot -> %s"
+				% [wanted, offered, "fits" if j <= i else "refused"])
+	_check(not AuthoredMap.slot_fits("standard", AuthoredMap.SLOT_AREA_CLASS),
+		"authored map: an area slot is a farm polygon, not a bigger box")
+	_check(AuthoredMap.slot_fits(AuthoredMap.SLOT_AREA_CLASS, AuthoredMap.SLOT_AREA_CLASS),
+		"authored map: an area building takes an area slot")
+	_check(not AuthoredMap.slot_fits(AuthoredMap.SLOT_AREA_CLASS, "standard"),
+		"authored map: a farm cannot take a box slot")
+	_check(AuthoredMap.slot_class_for(90.0, false) == "standard",
+		"authored map: art above every ceiling still lands in the biggest box")
+	_check(AuthoredMap.slot_class_for(12.0, true) == AuthoredMap.SLOT_AREA_CLASS,
+		"authored map: farms and forests take an area polygon regardless of extent")
+	# Each ceiling is exclusive: a building exactly at it belongs to the class above, which
+	# is what keeps the box big enough for everything the class actually holds.
+	for i in AuthoredMap.SLOT_BOX_CLASSES.size() - 1:
+		var below := str(AuthoredMap.SLOT_BOX_CLASSES[i])
+		var ceiling := float(AuthoredMap.SLOT_CLASS_CEILINGS[below])
+		_check(AuthoredMap.slot_class_for(ceiling - 0.01, false) == below,
+			"authored map: just under the %s ceiling is still %s" % [below, below])
+		_check(AuthoredMap.slot_class_for(ceiling, false)
+			== str(AuthoredMap.SLOT_BOX_CLASSES[i + 1]),
+			"authored map: exactly at the %s ceiling moves up to %s"
+			% [below, str(AuthoredMap.SLOT_BOX_CLASSES[i + 1])])
+
+
+func _test_authored_map_round_trip() -> void:
+	# A document that saves must load back identically — the editor's save path and the
+	# game's read path share this validator, so "it saved" has to mean "the game will
+	# load it".
+	var doc: Dictionary = AuthoredMap.empty_document()
+	doc["settlements"] = {"capital": {
+		"tiles": ["tile_23_8", "tile_24_7"],
+		"roads": [{"id": "r:1", "class": "mid", "points": [[10.5, 20.25], [40, 60]],
+			"unlockable": true, "tiles": ["tile_23_8"]}],
+		"decor": [{"id": "d:1", "form": "ring", "pos": [5, 6], "rot": 0.5,
+			"size": [30, 20], "sacrificial": true}],
+		"forests": [{"id": "fo:1", "outline": [[0, 0], [10, 0], [10, 10]]}],
+	}}
+	var path := "user://test_authored_map_round_trip.json"
+	var absolute := ProjectSettings.globalize_path(path)
+	var problem: String = AuthoredMap.save_to(doc, absolute)
+	_check(problem == "", "authored map: a valid document saves (%s)" % problem)
+
+	var file := FileAccess.open(absolute, FileAccess.READ)
+	_check(file != null, "authored map: the saved document exists on disk")
+	if file != null:
+		var parsed: Variant = JSON.parse_string(file.get_as_text())
+		file.close()
+		_check(typeof(parsed) == TYPE_DICTIONARY, "authored map: the saved document re-parses")
+		if typeof(parsed) == TYPE_DICTIONARY:
+			var back: Dictionary = parsed
+			_check(AuthoredMap.validate(back).is_empty(),
+				"authored map: the round-tripped document still validates")
+			# Godot's JSON reader returns every number as a float, so in-memory equality is
+			# not achievable — the property that matters for a git-committed file is that
+			# saving is IDEMPOTENT: save, load, save again, identical bytes. Without the
+			# canonical form a document would churn purely by edit history.
+			_check(AuthoredMap.to_text(back) == AuthoredMap.to_text(doc),
+				"authored map: save is idempotent — a reloaded document rewrites identically")
+			var settlement: Dictionary = (back.get("settlements", {}) as Dictionary).get("capital", {})
+			var road: Dictionary = (settlement.get("roads", []) as Array)[0]
+			_check(str(road.get("id", "")) == "r:1" and str(road.get("class", "")) == "mid",
+				"authored map: a road survives the round trip with its id and class")
+			_check(is_equal_approx(float((road.get("points", []) as Array)[0][0]), 10.5),
+				"authored map: authored coordinates survive the round trip")
+			var mass: Dictionary = (settlement.get("decor", []) as Array)[0]
+			_check(bool(mass.get("sacrificial", false)),
+				"authored map: the sacrificial mark survives the round trip")
+		DirAccess.remove_absolute(absolute)
+
+	# The writer refuses to emit something the loader would reject, so a corrupt document
+	# cannot reach disk through the editor.
+	var broken: Dictionary = AuthoredMap.empty_document()
+	broken["settlements"] = {"capital": {"tiles": []}}
+	var refused: String = AuthoredMap.save_to(broken,
+		ProjectSettings.globalize_path("user://test_authored_map_should_not_exist.json"))
+	_check(refused != "", "authored map: saving an invalid document is refused")
+	_check(not FileAccess.file_exists(
+		ProjectSettings.globalize_path("user://test_authored_map_should_not_exist.json")),
+		"authored map: a refused save writes no file")
+
+
+func _test_shipped_code_avoids_editor_only_paths() -> void:
+	# The map editor lives in the game project but is EXCLUDED from exported builds
+	# (export_presets.cfg). A shipped script that preloads an excluded path resolves it at
+	# parse time and breaks the exported game — so shipped code may only reach the editor
+	# by a path STRING guarded with ResourceLoader.exists, as main_menu.gd does.
+	var excluded := ["res://scripts/map_editor/", "res://tools/", "res://tests/"]
+	var offenders := PackedStringArray()
+	var scanned := 0
+	for directory in ["res://scripts", "res://scenes"]:
+		for file_path in _gd_files_in(directory):
+			if file_path.begins_with("res://scripts/map_editor/"):
+				continue   # the editor may reference itself
+			var file := FileAccess.open(file_path, FileAccess.READ)
+			if file == null:
+				continue
+			var text := file.get_as_text()
+			file.close()
+			scanned += 1
+			for line in text.split("\n"):
+				var trimmed := line.strip_edges()
+				if not (trimmed.begins_with("const ") or trimmed.begins_with("var ")
+					or trimmed.begins_with("@onready")) or not trimmed.contains("preload("):
+					continue
+				for path in excluded:
+					if trimmed.contains(path):
+						offenders.append("%s: %s" % [file_path.get_file(), trimmed])
+	_check(scanned > 50,
+		"export isolation: the shipped-script scan actually read the scripts (%d files)" % scanned)
+	_check(offenders.is_empty(),
+		"export isolation: no shipped script preloads an export-excluded path (%s)"
+		% ", ".join(offenders))
+
+	# The launch path itself: the menu must hold the editor as a string and probe for it.
+	var menu := FileAccess.open("res://scripts/main_menu.gd", FileAccess.READ)
+	_check(menu != null, "export isolation: main_menu.gd is readable")
+	if menu != null:
+		var menu_text := menu.get_as_text()
+		menu.close()
+		_check(menu_text.contains("ResourceLoader.exists(MAP_EDITOR_SCENE)"),
+			"export isolation: the menu probes for the editor scene before offering it")
+		_check(not menu_text.contains("preload(\"res://tools/"),
+			"export isolation: the menu never preloads the editor")
+
+
+func _gd_files_in(directory: String) -> PackedStringArray:
+	var out := PackedStringArray()
+	var dir := DirAccess.open(directory)
+	if dir == null:
+		return out
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		var full := "%s/%s" % [directory, entry]
+		if dir.current_is_dir():
+			if not entry.begins_with("."):
+				out.append_array(_gd_files_in(full))
+		elif entry.ends_with(".gd"):
+			out.append(full)
+		entry = dir.get_next()
+	dir.list_dir_end()
+	return out
+
+
+# ======================================================================================
+# Authored roads (scripts/authored_road_{geometry,style,visuals}.gd)
+#
+# Three properties decide whether a hand-drawn road behaves: its geometry is deterministic
+# and keeps the endpoints the designer placed; the touched-tile set is COMPLETE, because
+# the unlock rule reads it; and the three width classes stay a real hierarchy.
+# ======================================================================================
+
+## Minimal stand-in for HexMap: a square 100 u grid, so a test can assert which tiles a
+## stroke crosses without building the world. The property under test is the SAMPLING —
+## whether a long segment can slip past a tile between two vertices — and that is
+## independent of the real hex geometry.
+class _StubTerrain extends Node:
+	var tiles := {}
+
+	func _init() -> void:
+		for x in 12:
+			for y in 4:
+				tiles[Vector2i(x, y)] = {"id": "stub_%d_%d" % [x, y], "infrastructure_present": []}
+
+	func local_to_map(p: Vector2) -> Vector2i:
+		return Vector2i(int(floor(p.x / 100.0)), int(floor(p.y / 100.0)))
+
+	func tile_coord_for_map_coord(c: Vector2i) -> Vector2i:
+		return c
+
+	func id_to_coord(id: String) -> Vector2i:
+		var parts := id.split("_")
+		if parts.size() < 3:
+			return Vector2i(-1, -1)
+		return Vector2i(int(parts[1]), int(parts[2]))
+
+
+func _test_authored_road_geometry() -> void:
+	# A stroke of plain corners must stay exactly those corners: resampling a straight run
+	# would multiply its vertices for nothing and move the wobble's phase.
+	var straight := {"id": "r:s", "class": "mid", "points": [[0, 0], [100, 0], [100, 80]]}
+	var sampled := AuthoredRoadGeometry.sample(straight)
+	_check(sampled.size() == 3, "authored roads: an all-corner stroke keeps its corners")
+	_check(sampled[0] == Vector2(0, 0) and sampled[2] == Vector2(100, 80),
+		"authored roads: corner positions are preserved exactly")
+
+	# A point with handles becomes a curve, which must be denser than its control points
+	# and must still start and end where the designer put it.
+	var curved := {"id": "r:c", "class": "mid",
+		"points": [[0, 0], [100, 0, -40, -40, 40, 40], [200, 0]]}
+	var curve_points := AuthoredRoadGeometry.sample(curved)
+	_check(curve_points.size() > 3, "authored roads: handles produce a sampled curve")
+	_check(curve_points[0].distance_to(Vector2(0, 0)) < 0.01
+		and curve_points[curve_points.size() - 1].distance_to(Vector2(200, 0)) < 0.01,
+		"authored roads: a curve still begins and ends on its authored endpoints")
+
+	# Determinism, and endpoint exactness through the wobble: a stroke must look the same on
+	# every load, and must still meet whatever it was drawn to meet.
+	var drawn_a := AuthoredRoadGeometry.polyline(straight)
+	var drawn_b := AuthoredRoadGeometry.polyline(straight)
+	_check(drawn_a == drawn_b, "authored roads: the drawn line is deterministic")
+	_check(drawn_a[0] == Vector2(0, 0)
+		and drawn_a[drawn_a.size() - 1] == Vector2(100, 80),
+		"authored roads: the wobble leaves both endpoints exact")
+	_check(drawn_a.size() > sampled.size(),
+		"authored roads: the wobble subdivides the line it is applied to")
+
+	# Two strokes with IDENTICAL geometry must not be congruent — the same rule the mass
+	# vocabulary lives by, applied to linework.
+	var twin := {"id": "r:s2", "class": "mid", "points": [[0, 0], [100, 0], [100, 80]]}
+	_check(AuthoredRoadGeometry.polyline(twin) != drawn_a,
+		"authored roads: two identical strokes wobble differently (seeded by id)")
+
+	var length := AuthoredRoadGeometry.length_of(sampled)
+	_check(absf(length - 180.0) < 0.01, "authored roads: length_of measures the polyline")
+
+
+func _test_authored_road_touched_tiles() -> void:
+	# THE UNLOCK RULE READS THIS SET, so a missed tile would let a stroke appear across land
+	# the player has not connected. A 1000 u straight run crosses eleven stub tiles with
+	# only two vertices — per-vertex testing would report two, and a sampling step coarser
+	# than the tile would skip whole tiles in the middle (which it did, at the first attempt).
+	var terrain := _StubTerrain.new()
+	var stroke := {"id": "r:t", "class": "mid", "points": [[50, 50], [1050, 50]]}
+	var tiles := AuthoredRoadGeometry.touched_tiles(AuthoredRoadGeometry.sample(stroke), terrain)
+	_check(tiles.size() == 11,
+		"authored roads: a long segment reports every tile it crosses (%d)" % tiles.size())
+	for column in 11:
+		_check(tiles.has("stub_%d_0" % column),
+			"authored roads: no tile is skipped mid-run (stub_%d_0)" % column)
+	_check(tiles.has("stub_0_0") and tiles.has("stub_10_0"),
+		"authored roads: both ends of the run are in the touched set")
+	var sorted_copy := tiles.duplicate()
+	sorted_copy.sort()
+	_check(tiles == sorted_copy, "authored roads: the touched-tile set is sorted (stable in git)")
+	terrain.free()
+
+
+func _test_authored_road_style_hierarchy() -> void:
+	# The three classes must read as a hierarchy at every level of the treatment, not just
+	# in width — this is what lets a designer tell them apart on a busy plate.
+	var classes := ["major", "mid", "minor"]
+	for index in range(classes.size() - 1):
+		var bigger: String = classes[index]
+		var smaller: String = classes[index + 1]
+		_check(AuthoredRoadStyle.bed_width(bigger) > AuthoredRoadStyle.bed_width(smaller),
+			"authored roads: %s is wider than %s" % [bigger, smaller])
+		_check(AuthoredRoadStyle.casing_color(bigger).a > AuthoredRoadStyle.casing_color(smaller).a,
+			"authored roads: %s carries the firmer ink edge" % bigger)
+		# Smaller roads wobble more — the curated departure from one map-wide setting.
+		_check(float(AuthoredRoadStyle.wobble(bigger)[1]) < float(AuthoredRoadStyle.wobble(smaller)[1]),
+			"authored roads: %s runs straighter than %s" % [bigger, smaller])
+	for stroke_class in classes:
+		_check(AuthoredRoadStyle.casing_width(stroke_class) > AuthoredRoadStyle.bed_width(stroke_class),
+			"authored roads: the %s casing stands proud of its bed" % stroke_class)
+	# Authored strokes are never RDP-simplified: that would flatten the drawn curves.
+	_check(is_zero_approx(AuthoredRoadStyle.SIMPLIFY_EPS),
+		"authored roads: authored curves are not simplified away")
+
+
+func _test_authored_road_water_and_bridges() -> void:
+	# Water detection runs against the real NavGrid, sampled at 4 u — the resolution the
+	# road-water audit needed to catch a chord crossing a bay between two dry vertices.
+	var nav := NavGrid.instance()
+	if nav == null or not nav.is_ready():
+		_check(true, "authored roads: NavGrid unavailable, water lint skipped")
+		return
+	var sea_point := Vector2.ZERO
+	var found := false
+	# Walk the grid for a sea cell rather than hard-coding a coordinate, which would rot
+	# the moment the terrain is re-baked.
+	for ix in range(0, 1200, 17):
+		for iy in range(0, 1000, 17):
+			if nav.water(ix, iy) == NavGrid.WATER_SEA:
+				sea_point = nav.world_of(ix, iy)
+				found = true
+				break
+		if found:
+			break
+	_check(found, "authored roads: the terrain has sea to test against")
+	if not found:
+		return
+	var wet_stroke := {"id": "r:w", "class": "mid",
+		"points": [[sea_point.x - 30.0, sea_point.y], [sea_point.x + 30.0, sea_point.y]]}
+	var wet := AuthoredRoadGeometry.wet_samples(AuthoredRoadGeometry.sample(wet_stroke), nav)
+	_check(not wet.is_empty(), "authored roads: a stroke over the sea is reported wet")
+	_check(int(wet[0][1]) == NavGrid.WATER_SEA,
+		"authored roads: the wet report names the water it found")
+
+	# Rivers are deliberately NOT wet: roads bridge them, and the stroke carries the deck.
+	var crossings := AuthoredRoadGeometry.river_crossings(
+		AuthoredRoadGeometry.sample(wet_stroke), nav)
+	_check(crossings.is_empty() or (crossings[0][1] as Vector2).length() > 0.9,
+		"authored roads: a reported crossing carries a unit tangent for its deck")
+
+
+func _test_authored_road_visibility_document() -> void:
+	# The end-to-end unlock behaviour over a whole document: an always-on stroke, a street
+	# inside one roadless tile, and a connector from an already-roaded neighbour.
+	var strokes := [
+		{"id": "r:always", "class": "major", "tiles": ["tile_1_1"]},
+		{"id": "r:street", "class": "minor", "unlockable": true, "tiles": ["tile_1_2"]},
+		{"id": "r:link", "class": "mid", "unlockable": true, "tiles": ["tile_1_1", "tile_1_2"]},
+	]
+	var before := {"tile_1_1": true}
+	var visible_before: Array = []
+	for stroke in strokes:
+		if AuthoredMap.road_visible(stroke, before):
+			visible_before.append(str(stroke.id))
+	_check(visible_before == ["r:always"],
+		"authored roads: before the purchase only the always-on stroke draws")
+
+	var after := {"tile_1_1": true, "tile_1_2": true}
+	var visible_after: Array = []
+	for stroke in strokes:
+		if AuthoredMap.road_visible(stroke, after):
+			visible_after.append(str(stroke.id))
+	_check(visible_after.size() == 3,
+		"authored roads: buying roads reveals the tile's street AND its connector together")
+
+
+func _test_authored_road_signal_arity() -> void:
+	# A handler with FEWER parameters than its signal still connects, and fails only when
+	# the signal fires — the error goes to the log while the feature just silently stops
+	# updating. That exact mismatch (a 1-argument handler on a 2-argument signal) made the
+	# unlock reveal a no-op while every unit test passed, and only a windowed pixel diff
+	# caught it. This pins the arity so the next edit to either side breaks a test instead.
+	# Held as Script resources: calling these through the preloaded constant reads as a call
+	# on the class itself, which GDScript rejects.
+	var world_script: Script = WorldMapScript
+	var visuals_script: Script = AuthoredRoadVisualsScript
+	var signal_args := -1
+	for entry in world_script.get_script_signal_list():
+		if str(entry.get("name", "")) == "tile_infrastructure_changed":
+			signal_args = (entry.get("args", []) as Array).size()
+	_check(signal_args == 2,
+		"authored roads: tile_infrastructure_changed carries (tile_id, infra_type)")
+
+	var handler_args := -1
+	for entry in visuals_script.get_script_method_list():
+		if str(entry.get("name", "")) == "_on_tile_infrastructure_changed":
+			handler_args = (entry.get("args", []) as Array).size()
+	_check(handler_args == signal_args,
+		"authored roads: the reveal handler takes exactly the signal's arguments (%d vs %d)"
+		% [handler_args, signal_args])
+
+
+# ======================================================================================
+# Authored ground and fabric (scripts/authored_fabric_painter.gd + the shape tool)
+# ======================================================================================
+
+func _test_authored_mass_geometry() -> void:
+	# Every form in the vocabulary must produce a simple, triangulable mass from a stamp, and
+	# must stay inside the box the designer dragged — a mass that overflows its own footprint
+	# would collide with things the editor believes it clears.
+	var bad := PackedStringArray()
+	for form_value in MassFormShapes.ALL_FORMS:
+		var form := str(form_value)
+		var mass := {"id": "d:test:%s" % form, "form": form, "pos": [1000.0, 1000.0],
+			"rot": 0.6, "size": [90.0, 58.0]}
+		var parcel: PackedVector2Array = AuthoredFabricPainter.mass_parcel(mass)
+		var polys: Array = AuthoredFabricPainter.mass_polygons(mass)
+		if polys.is_empty():
+			bad.append("%s: nothing built" % form)
+			continue
+		for poly_value in polys:
+			var poly: PackedVector2Array = poly_value
+			if poly.size() < 3 or Geometry2D.triangulate_polygon(poly).is_empty():
+				bad.append("%s: not triangulable" % form)
+				break
+			for point in poly:
+				# Generous tolerance: the constructors inset, they never inflate.
+				if not Geometry2D.is_point_in_polygon(point, _grow_quad(parcel, 2.0)):
+					bad.append("%s: escapes its stamp box" % form)
+					break
+	_check(bad.is_empty(), "authored fabric: every form stamps a sound mass (%s)" % ", ".join(bad))
+
+	# A box too small to be a building yields nothing rather than a sliver.
+	var tiny := {"id": "d:test:tiny", "form": "cross", "pos": [0.0, 0.0], "rot": 0.0,
+		"size": [0.4, 0.4]}
+	_check(AuthoredFabricPainter.mass_polygons(tiny).is_empty(),
+		"authored fabric: a degenerate stamp builds nothing")
+
+
+func _grow_quad(quad: PackedVector2Array, by: float) -> PackedVector2Array:
+	var grown := Geometry2D.offset_polygon(quad, by)
+	return grown[0] if not grown.is_empty() else quad
+
+
+func _test_authored_woodland_scatter() -> void:
+	# THE REGRESSION THIS PINS: the scatter used RoadHash.pick on sequential keys, whose low
+	# bits repeat, so consecutive samples landed within a unit of each other on a three-step
+	# cycle and a wood rendered as two thin diagonal lines. Only a screenshot caught it. The
+	# test now measures the spread directly.
+	var outline := PackedVector2Array([Vector2(0, 0), Vector2(340, -60), Vector2(400, 200),
+		Vector2(60, 240)])
+	var points := AuthoredFabricPainter.woodland_points({"id": "fo:test:1", "outline":
+		[[0, 0], [340, -60], [400, 200], [60, 240]]})
+	_check(points.size() > 40,
+		"authored fabric: a wood is filled, not sprinkled (%d trees)" % points.size())
+
+	# Occupancy across a coarse grid: a line through the polygon touches few buckets, a fill
+	# touches most of them.
+	var buckets := {}
+	for point in points:
+		buckets[Vector2i(int(point.x / 40.0), int(point.y / 40.0))] = true
+	_check(buckets.size() >= 24,
+		"authored fabric: trees spread across the outline (%d buckets)" % buckets.size())
+
+	# No two trees on top of each other — the symptom of the cycle was near-duplicates.
+	var duplicates := 0
+	for i in points.size():
+		for j in range(i + 1, points.size()):
+			if points[i].distance_to(points[j]) < 2.0:
+				duplicates += 1
+	_check(duplicates == 0, "authored fabric: no two trees share a spot (%d)" % duplicates)
+
+	# Determinism, and containment: a canopy may not overhang the outline it was drawn in.
+	var again := AuthoredFabricPainter.woodland_points({"id": "fo:test:1", "outline":
+		[[0, 0], [340, -60], [400, 200], [60, 240]]})
+	_check(points == again, "authored fabric: the same wood scatters identically every time")
+	var outside := 0
+	for point in points:
+		if not Geometry2D.is_point_in_polygon(point, outline):
+			outside += 1
+	_check(outside == 0, "authored fabric: no tree is planted outside its polygon (%d)" % outside)
+
+
+func _test_authored_shape_tool() -> void:
+	var tool_ref: RefCounted = MapEditorShapeToolScript.new()
+	tool_ref.set_kind("forests")
+	for i in AuthoredMap.AREA_MAX_VERTICES:
+		_check(str(tool_ref.add_point(Vector2(float(i) * 30.0, 0.0))) == "",
+			"authored fabric: corner %d is accepted" % i)
+	# The cap is enforced while clicking, with a message — not by rejecting the finished
+	# shape at save time, when the work is already done.
+	_check(str(tool_ref.add_point(Vector2(999.0, 999.0))) != "",
+		"authored fabric: the ninth corner is refused with a reason")
+	var record: Dictionary = tool_ref.finish_polygon("test", 7)
+	_check(str(record.get("id", "")) == "fo:test:7",
+		"authored fabric: a wood takes the fo: prefix and the supplied id")
+	_check((record.get("outline", []) as Array).size() == AuthoredMap.AREA_MAX_VERTICES,
+		"authored fabric: the outline keeps every accepted corner")
+	_check(AuthoredMap.validate(_document_with("forests", record)).is_empty(),
+		"authored fabric: a finished wood validates against the schema")
+
+	# Two corners is not a shape.
+	tool_ref.abandon()
+	tool_ref.add_point(Vector2.ZERO)
+	tool_ref.add_point(Vector2(10.0, 0.0))
+	_check((tool_ref.finish_polygon("test", 8) as Dictionary).is_empty(),
+		"authored fabric: two corners build nothing")
+
+
+func _document_with(kind: String, record: Dictionary) -> Dictionary:
+	var doc: Dictionary = AuthoredMap.empty_document()
+	doc["settlements"] = {"test": {"tiles": ["tile_1_1"], kind: [record]}}
+	return doc

@@ -35,7 +35,27 @@ var cheats_used: bool = false
 const DEFAULT_TILE_LAND_OWNED := 0
 const LAND_PATCH_SIZE := 10
 const LAND_PATCH_COST := 10.0
+## The most land any tile can ever hold, and the default for terrain this table does not
+## name. Kept as the hard ceiling: every cap below is clamped to it.
 const MAX_TILE_LAND := 200
+
+## BUILDABLE LAND BY TERRAIN (owner, 2026-08-17). Rough ground and built-up ground hold less
+## than open country. Urban sits above hill deliberately: a town is dense, and the ground
+## between 100 and its cap is decorative fabric a player can demolish to make room, where
+## rural's is simply empty.
+##
+## This replaces a table in `tile_view_data.gd` that expressed the same idea as bonuses on a
+## base of 200 (rural +50, hill +25, mountain -25) and then clamped to MAX_TILE_LAND — so
+## every positive one was clamped away and only mountain had any effect, in the panel only.
+## Reductions survive the clamp, and this table is read by the build gate rather than by the
+## display alone.
+const TILE_LAND_BY_TERRAIN := {
+	"rural": 200,
+	"grass": 200,
+	"urban": 170,
+	"hill": 160,
+	"mountain": 120,
+}
 
 # --- Building instances ---
 # Flat dictionary: instance_id -> building data dict
@@ -806,7 +826,7 @@ func _grant_building_land(instance_id: String) -> void:
 	if footprint <= 0:
 		return
 	var owned := get_tile_land_owned(tile_id)
-	var granted := mini(MAX_TILE_LAND, owned + footprint)
+	var granted := mini(max_tile_land(tile_id), owned + footprint)
 	if granted != owned:
 		tile_land_owned[tile_id] = granted
 		tile_land_owned_changed.emit(tile_id)
@@ -1194,7 +1214,8 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 	var delta := _upgrade_size_delta(building_id, level, target)
 	var projected := get_tile_space_used(tile_id) + delta
 	var projected_player := get_tile_player_space_used(tile_id) + delta
-	var fits := projected <= float(MAX_TILE_LAND) and projected_player <= float(get_tile_land_owned(tile_id))
+	var fits := projected <= float(max_tile_land(tile_id)) \
+		and projected_player <= float(get_tile_land_owned(tile_id))
 
 	var gate := BuildingLevels.research_gate(internal, target)
 	var pend := pending_upgrade(instance_id)
@@ -1322,7 +1343,8 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 	var size_delta := _upgrade_size_delta(building_id, level, target)
 	var projected := get_tile_space_used(tile_id) + size_delta
 	var projected_player := get_tile_player_space_used(tile_id) + size_delta
-	if projected > float(MAX_TILE_LAND) or projected_player > float(get_tile_land_owned(tile_id)):
+	if projected > float(max_tile_land(tile_id)) \
+			or projected_player > float(get_tile_land_owned(tile_id)):
 		return {"ok": false, "reason": "Not enough room on the tile for the larger building."}
 
 	# Split materials: what's on the tile vs the shortfall.
@@ -3011,16 +3033,24 @@ func _install_battery_cells(tile_id: String, good_id: String, qty: int) -> void:
 
 # Patches still purchasable: the tile cap minus the land under NPC buildings (not
 # for sale — buy the building instead) minus what the player already owns. `cap`
-# lets the UI pass the terrain-adjusted tile capacity; it never exceeds MAX_TILE_LAND.
+# lets the UI pass a tighter cap; it never exceeds the tile's own terrain ceiling.
 # The FINAL patch may be a clipped sliver (ceil): NPC footprints rarely align to the
 # 10-unit patch grid, and flooring would leave the last few land units of a tile
 # permanently unbuyable and unbuildable.
+## The buildable ceiling for one tile, from its terrain. Every land and build rule goes
+## through here rather than reading MAX_TILE_LAND, so terrain actually bites instead of only
+## being displayed.
+func max_tile_land(tile_id: String) -> int:
+	var terrain := Catalog.tile_type(tile_id)
+	return clampi(int(TILE_LAND_BY_TERRAIN.get(terrain, MAX_TILE_LAND)), 1, MAX_TILE_LAND)
+
+
 func get_tile_land_patches_available(tile_id: String, cap: int = MAX_TILE_LAND) -> int:
 	return maxi(0, int(ceil(float(get_tile_land_units_available(tile_id, cap)) / float(LAND_PATCH_SIZE))))
 
 # Exact land units still purchasable on the tile (not rounded to patches).
 func get_tile_land_units_available(tile_id: String, cap: int = MAX_TILE_LAND) -> int:
-	var effective_cap := mini(cap, MAX_TILE_LAND)
+	var effective_cap := mini(cap, max_tile_land(tile_id))
 	return maxi(0, effective_cap - int(round(get_tile_npc_footprint(tile_id))) - get_tile_land_owned(tile_id))
 
 # Cash rebate a Chief Investment advisor gives toward a build: a fraction of the
@@ -3088,7 +3118,7 @@ func purchase_tile_land(tile_id: String, patches: int = 1, cap: int = MAX_TILE_L
 	var owned := get_tile_land_owned(tile_id)
 	# The last patch can be a clipped sliver — never grant past the NPC-adjusted cap.
 	var granted := mini(clamped_patches * LAND_PATCH_SIZE, get_tile_land_units_available(tile_id, cap))
-	tile_land_owned[tile_id] = mini(MAX_TILE_LAND, owned + granted)
+	tile_land_owned[tile_id] = mini(max_tile_land(tile_id), owned + granted)
 	tile_land_owned_changed.emit(tile_id)
 	return true
 
