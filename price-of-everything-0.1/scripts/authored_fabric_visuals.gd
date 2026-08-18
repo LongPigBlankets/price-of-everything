@@ -50,13 +50,16 @@ func _draw() -> void:
 		if typeof(settlement_value) != TYPE_DICTIONARY:
 			continue
 		var settlement: Dictionary = settlement_value
-		for area in _list(settlement, "farms"):
-			AuthoredFabricPainter.draw_farm(self, area)
-		# Plazas before parks and masses: paving is ground, and everything else stands on it.
+		# GROUND FIRST, and parks and plazas are the lowest of it (owner, 2026-08-17). Paving
+		# and greens are surfaces; a farm is worked land; everything else stands on top. The
+		# node itself sits before BuildingVisuals in main.tscn, so all of this is already
+		# under the gameplay buildings — this is the order WITHIN the authored layer.
 		for plaza in _list(settlement, "plazas"):
 			AuthoredFabricPainter.draw_plaza(self, plaza)
 		for park in _list(settlement, "parks"):
 			AuthoredFabricPainter.draw_park(self, park)
+		for area in _list(settlement, "farms"):
+			AuthoredFabricPainter.draw_farm(self, area)
 		for mass in _list(settlement, "decor"):
 			if not _sacrificed.has(str(mass.get("id", ""))):
 				AuthoredFabricPainter.draw_mass(self, mass)

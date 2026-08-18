@@ -26,7 +26,9 @@ const LABEL_MIN_ZOOM := 0.45
 const GRID_MIN_ZOOM := 0.16
 
 const GRID_COLOR := Color(0.45, 0.85, 0.6, 0.30)
-const GRID_WIDTH := 1.0
+## Twice the old 1.0 (owner, 2026-08-17). The grid is the frame a designer composes against,
+## and a hairline vanished under the fabric it was meant to measure.
+const GRID_WIDTH := 2.0
 const LABEL_COLOR := Color(0.60, 0.95, 0.75, 0.55)
 const LABEL_SIZE := 11
 
@@ -147,7 +149,6 @@ func _draw() -> void:
 	var camera: Camera2D = editor.call("camera")
 	if camera == null:
 		return
-	_draw_grid(camera)
 	_draw_water_mask(camera)
 	_draw_authored_fabric(camera)
 	_draw_authored_roads(camera)
@@ -157,6 +158,9 @@ func _draw() -> void:
 	_draw_deposit_marks(camera)
 	_draw_zones(camera)
 	_draw_slots(camera)
+	# LAST, so tile boundaries stay visible over fabric, zones and buildings alike. It used
+	# to be first and was buried by everything drawn after it.
+	_draw_grid(camera)
 	_draw_marquee(camera)
 
 
@@ -217,10 +221,9 @@ func _draw_authored_fabric(camera: Camera2D) -> void:
 		if typeof(settlement_value) != TYPE_DICTIONARY:
 			continue
 		var settlement: Dictionary = settlement_value
-		for area in _entries(settlement, "farms"):
-			AuthoredFabricPainter.draw_farm(self, area)
-			if selected.has(str(area.get("id", ""))):
-				_hatch([_polygon_of(area)], camera)
+		# Same order as authored_fabric_visuals.gd: ground lowest, parks and plazas lowest of
+		# all. An editor that stacks them differently from the game is showing a composition
+		# nobody will ever see.
 		for plaza in _entries(settlement, "plazas"):
 			AuthoredFabricPainter.draw_plaza(self, plaza)
 			if selected.has(str(plaza.get("id", ""))):
@@ -229,6 +232,10 @@ func _draw_authored_fabric(camera: Camera2D) -> void:
 			AuthoredFabricPainter.draw_park(self, park)
 			if selected.has(str(park.get("id", ""))):
 				_hatch([_polygon_of(park)], camera)
+		for area in _entries(settlement, "farms"):
+			AuthoredFabricPainter.draw_farm(self, area)
+			if selected.has(str(area.get("id", ""))):
+				_hatch([_polygon_of(area)], camera)
 		for mass in _entries(settlement, "decor"):
 			AuthoredFabricPainter.draw_mass(self, mass)
 			if selected.has(str(mass.get("id", ""))):

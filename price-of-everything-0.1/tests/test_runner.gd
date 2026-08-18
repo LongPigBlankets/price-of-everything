@@ -14975,12 +14975,21 @@ func _test_authored_documents_on_disk_load() -> void:
 ## branch, so every check passed while opening any real map crashed on the missing key.
 ## Pinning the key SET, on real data, is what makes that a test failure instead of a bug report.
 func _test_authored_slot_boxes_contract() -> void:
-	var document := _load_document(AuthoredMap.active_name())
-	var settlements: Dictionary = document.get("settlements", {})
+	# A FIXTURE, not the live map. Slots were removed from every authored document when zones
+	# replaced them (industrial/extraction, else the default placement), so reading the real
+	# document here would test nothing — and the guard below would fail, correctly, on a
+	# document that reserves no slots. The mechanism still exists for precision placement,
+	# so its contract is still worth pinning; it just has to bring its own data now.
+	var settlements: Dictionary = {"s": {"tiles": ["tile_1_1", "tile_1_2"], "slots": {
+		"tile_1_1": {"pins": [
+			{"pos": [10.0, 4.0], "angle": 0.0, "size": "standard"},
+			{"pos": [-40.0, 20.0], "angle": 0.5, "size": "infra"},
+		]},
+		"tile_1_2": {"pins": [{"pos": [0.0, 0.0], "angle": 1.0, "size": "standard"}]},
+	}}}
 	var tiles := MapEditorSlotBoxes.tile_ids(settlements)
-	# Guard against a vacuous pass: a document with no slots would satisfy every assertion
-	# below by having nothing to satisfy them with.
-	_check(tiles.size() > 0, "slot boxes: the active document reserves slots (%d tile(s))"
+	# Guard against a vacuous pass: nothing below means anything without slots to measure.
+	_check(tiles.size() > 0, "slot boxes: the fixture reserves slots (%d tile(s))"
 		% tiles.size())
 
 	# Centres stand in for the map's geometry, which needs a live scene. What is under test is

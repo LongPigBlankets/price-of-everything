@@ -367,6 +367,12 @@ func refresh() -> void:
 		var tile: Control = _kind_tiles[key]
 		tile.selected = str(key) == area_kind and tool_name == "area"
 		tile.queue_redraw()
+	# Zones share the AREA tool, so they need the same mark. Without it the panel showed
+	# nothing selected while the tool was still armed — which reads as the tool having
+	# dropped out after a shape is placed, when in fact it is ready for the next one.
+	for key in _zone_buttons:
+		_mark(_zone_buttons[key],
+			area_kind == MapEditorShapeToolRef.ZONE_PREFIX + str(key) and tool_name == "area")
 	match tool_name:
 		"pan":
 			_hint.text = "WASD or drag to pan · wheel or Q/E to zoom"

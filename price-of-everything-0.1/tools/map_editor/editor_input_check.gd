@@ -785,6 +785,26 @@ func _ready() -> void:
 			% ("none" if zone_swept.is_empty() else ", ".join(PackedStringArray(zone_swept))),
 			not zone_swept.has("zones"))
 
+	# ── Placing an area leaves the tool armed for another of the same kind ─────
+	for kind in ["parks", "plazas", "farms", "forests",
+			"zone:industrial", "zone:extraction"]:
+		_editor.call("set_area_kind", kind)
+		var here := Vector2(430, 560)
+		for offset in [Vector2(-50, -45), Vector2(50, -45), Vector2(50, 45), Vector2(-50, 45)]:
+			await _click(here + offset)
+		_send_key(KEY_ENTER)
+		await get_tree().process_frame
+		_check("after placing a %s the tool is still the area tool (%s)"
+			% [kind, str(_editor.call("current_tool"))],
+			str(_editor.call("current_tool")) == "area")
+		_check("and still armed on %s (%s)" % [kind, str(_editor.call("current_area_kind"))],
+			str(_editor.call("current_area_kind")) == kind)
+		# And it must be READY — a leftover corner would make the next click continue the
+		# last shape instead of starting a new one.
+		_check("with no corners carried over from the last %s (%d)"
+			% [kind, (_editor.call("shape_tool").call("polygon_points") as Array).size()],
+			(_editor.call("shape_tool").call("polygon_points") as Array).is_empty())
+
 	if _failures.is_empty():
 		print("[INPUT] ALL CHECKS PASSED")
 		get_tree().quit(0)
