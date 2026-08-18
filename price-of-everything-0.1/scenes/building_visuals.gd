@@ -290,6 +290,8 @@ var _subcomp_queued := false
 ## placement that needs one and only for tiles that carry a zone: _ensure_tile is a hot path
 ## that has been optimised from 60s to 11s and must not grow three rasterisations per tile.
 var _zone_masks: Dictionary = {}
+## tile_id -> authored decorative masses in world units. Static for a run.
+var _decor_cache: Dictionary = {}
 # Farm layout (re-derived with subcomponents; never persisted). A field's render shape depends on its
 # neighbours (it Voronoi-snaps to the lanes between them), so it is computed per tile, not at placement.
 var _farm_render: Dictionary = {}     # instance_id -> {verts (world, cell-clipped), hatch}
@@ -562,6 +564,11 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 
 	if has_art:
 		_crop_to_sprite(placed, size_units, str(INK_ART_KEY.get(iname_lot, "")))
+	# Whatever decorative fabric this building actually stands on is now gone. Done HERE, on
+	# the final cropped footprint, rather than per-slot: a slot box is up to 84 u and the
+	# building inside it may be 50, so evicting by the box demolished terraces the building
+	# never touched.
+	_evict_fabric_under(tile_id, placed.verts)
 	var verts: PackedVector2Array = placed.verts
 	# Farms carry BOTH looks baked once (clipped to the — possibly hex-cut —
 	# field): the classic 45° green hatch and the ink-mode parcel fabric
@@ -755,24 +762,39 @@ func _authored_slot_cover(tile_id: String, coord: Vector2i, lots: Array,
 ## compared with the lots. Everything in the document is world-space; a lot is measured from
 ## the tile's top-left corner.
 func _authored_decor_local(tile_id: String, coord: Vector2i) -> Array:
-	if not AuthoredMap.is_active() or not AuthoredMap.covers(tile_id):
-		return []
-	var settlement := AuthoredMap.settlement_for_tile(tile_id)
-	if settlement.is_empty():
-		return []
 	var shift := TILE_CENTER - _tile_center_world_pos(coord)
 	var out: Array = []
-	for record_value in (settlement.get("decor", []) as Array):
-		if typeof(record_value) != TYPE_DICTIONARY:
-			continue
-		var record: Dictionary = record_value
-		for poly in AuthoredFabricPainter.mass_polygons(record):
-			_append_local_poly(out, poly as PackedVector2Array, record, shift)
-	for record_value in (settlement.get("specials", []) as Array):
-		if typeof(record_value) != TYPE_DICTIONARY:
-			continue
-		var record: Dictionary = record_value
-		_append_local_poly(out, AuthoredSpecialShapes.render_polygon(record), record, shift)
+	for entry_value in _authored_decor_world(tile_id):
+		var entry: Dictionary = entry_value
+		var moved := PackedVector2Array()
+		for v in (entry["poly"] as PackedVector2Array):
+			moved.append(v + shift)
+		out.append({"id": entry["id"], "poly": moved, "sacrificial": entry["sacrificial"]})
+	return out
+
+
+## Authored decorative masses over this tile, in WORLD units — the frame both the placed
+## footprint and the document itself are already in. Cached: the document does not change
+## during a run, and this is consulted per placement.
+func _authored_decor_world(tile_id: String) -> Array:
+	if _decor_cache.has(tile_id):
+		return _decor_cache[tile_id]
+	var out: Array = []
+	if AuthoredMap.is_active() and AuthoredMap.covers(tile_id):
+		var settlement := AuthoredMap.settlement_for_tile(tile_id)
+		for record_value in (settlement.get("decor", []) as Array):
+			if typeof(record_value) != TYPE_DICTIONARY:
+				continue
+			var record: Dictionary = record_value
+			for poly in AuthoredFabricPainter.mass_polygons(record):
+				_append_local_poly(out, poly as PackedVector2Array, record, Vector2.ZERO)
+		for record_value in (settlement.get("specials", []) as Array):
+			if typeof(record_value) != TYPE_DICTIONARY:
+				continue
+			var record: Dictionary = record_value
+			_append_local_poly(out, AuthoredSpecialShapes.render_polygon(record), record,
+				Vector2.ZERO)
+	_decor_cache[tile_id] = out
 	return out
 
 
@@ -795,21 +817,27 @@ func _has_authored_slots(tile_id: String) -> bool:
 
 
 ## Whether a building of `wanted` may occupy a slot of `offered`. Equal or larger only.
-## Hide the decorative masses a just-claimed slot stands on. A no-op on the overwhelming
-## majority of slots: the claim order visits clear ground first, so a slot only ever carries
-## masses once the tile has run out of it.
-func _evict_masses_under(tmpl: Dictionary, index: int) -> void:
-	var per_lot: Array = tmpl.get("lot_masses", [])
-	if index < 0 or index >= per_lot.size():
+## Hide the decorative masses a placed building actually covers. A no-op on the overwhelming
+## majority of placements — both the zone tiers and the slot claim order take clear ground
+## first, so fabric is only ever displaced once a tile has run out of it.
+##
+## `verts` is the FINAL footprint in world units, after `_crop_to_sprite`, which is the only
+## honest thing to evict by: it is the ground the art occupies rather than the ground the
+## placement machinery reserved on the way there.
+func _evict_fabric_under(tile_id: String, verts: PackedVector2Array) -> void:
+	if verts.size() < 3:
 		return
-	var ids: PackedStringArray = per_lot[index]
-	if ids.is_empty():
+	var decor := _authored_decor_world(tile_id)
+	if decor.is_empty():
 		return
 	var fabric := get_tree().get_first_node_in_group("authored_fabric")
 	if fabric == null:
 		return
-	for id in ids:
-		fabric.call("evict", id)
+	for entry_value in decor:
+		var entry: Dictionary = entry_value
+		if Geometry2D.intersect_polygons(verts, entry["poly"] as PackedVector2Array).is_empty():
+			continue
+		fabric.call("evict", str(entry["id"]))
 
 
 ## The slot class a building asks for. Infrastructure by category — the same rule
@@ -846,8 +874,16 @@ func _zone_preference(iname: String) -> Array:
 
 ## The land mask restricted to zones of one kind, or an EMPTY array when this tile has no
 ## zone of that kind — which the caller reads as "skip this kind", not as "nowhere to build".
-func _zone_mask(tile_id: String, coord: Vector2i, kind: String) -> PackedByteArray:
-	var cache_key := "%s|%s" % [tile_id, kind]
+## How much fabric a cell may sit on. The tiers ARE the least-destructive rule from the slot
+## work, expressed as masks rather than as a sort: try the ground that displaces nothing, then
+## the ground the designer marked sacrificial, then whatever is left. Masks because that is
+## the currency every placer already speaks — no scoring loop had to be opened up.
+enum ZoneTier { CLEAR, SACRIFICIAL_OK, ANY }
+
+
+func _zone_mask(tile_id: String, coord: Vector2i, kind: String,
+		tier: int = ZoneTier.ANY) -> PackedByteArray:
+	var cache_key := "%s|%s|%d" % [tile_id, kind, tier]
 	if _zone_masks.has(cache_key):
 		return _zone_masks[cache_key]
 	var mask := PackedByteArray()
@@ -866,6 +902,14 @@ func _zone_mask(tile_id: String, coord: Vector2i, kind: String) -> PackedByteArr
 			var land: PackedByteArray = _tile_land[tile_id]
 			mask.resize(land.size())
 			var origin := _tile_center_world_pos(coord) - TILE_CENTER
+			# Fabric this tier refuses to build over. CLEAR refuses all of it;
+			# SACRIFICIAL_OK refuses only what was NOT offered up; ANY refuses none.
+			var blocked: Array = []
+			if tier != ZoneTier.ANY:
+				for entry_value in _authored_decor_world(tile_id):
+					var entry: Dictionary = entry_value
+					if tier == ZoneTier.CLEAR or not bool(entry["sacrificial"]):
+						blocked.append(entry["poly"])
 			# Only LAND cells are tested: a zone drawn over water still cannot be built on,
 			# and this keeps the cost proportional to the tile's usable ground rather than to
 			# the whole 108x96 grid.
@@ -873,21 +917,35 @@ func _zone_mask(tile_id: String, coord: Vector2i, kind: String) -> PackedByteArr
 				var world := origin + Vector2(
 					(float(key % GRID_COLS) + 0.5) * CELL,
 					(float(key / GRID_COLS) + 0.5) * CELL)
+				var inside := false
 				for poly in outlines:
 					if Geometry2D.is_point_in_polygon(world, poly):
-						mask[key] = 1
+						inside = true
 						break
+				if not inside:
+					continue
+				var on_fabric := false
+				for poly in blocked:
+					if Geometry2D.is_point_in_polygon(world, poly):
+						on_fabric = true
+						break
+				if not on_fabric:
+					mask[key] = 1
 	_zone_masks[cache_key] = mask
 	return mask
 
 
 ## Does a mask have anything in it? An all-zero mask means the zone exists but covers no
 ## buildable cell on this tile, which must not be mistaken for "no zone".
-## Forget a tile's zone masks — the tile is being re-laid, and its zones may have moved.
+## Forget a tile's zone masks AND its cached fabric — the tile is being re-laid, and its
+## zones or its decor may have moved. The two go together because the masks are derived from
+## the fabric (the tiers refuse cells standing on it), so dropping one without the other
+## leaves a mask that describes a document nobody is looking at any more.
 func _drop_zone_masks(tile_id: String) -> void:
 	for key in _zone_masks.keys():
 		if str(key).begins_with("%s|" % tile_id):
 			_zone_masks.erase(key)
+	_decor_cache.erase(tile_id)
 
 
 func _mask_has_room(mask: PackedByteArray) -> bool:
@@ -1441,9 +1499,9 @@ func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: St
 			claimed[i] = true   # blocked (a road moved onto it, or a fallback sits there) — consume it
 			continue
 		claimed[i] = true
-		# The slot is taken, so whatever decorative fabric stood on it is gone. Only reached
-		# once the emptier slots are used up, because of the order this loop visits them in.
-		_evict_masses_under(tmpl, i)
+		# NOT evicted here. The slot's `lot_masses` still ORDER the loop — a slot that would
+		# displace fabric is visited last — but what actually goes is decided from the placed
+		# building's own footprint in `_place_building`, which is a smaller thing than the box.
 		_grow_block_rows(tmpl, tile_id, coord)   # keep spare lots ahead of demand
 		return _finalize(coord, ctr, rv, half)
 	# Every lot is spoken for — but lots are also consumed when they turn out to
@@ -3269,14 +3327,18 @@ func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v
 	# unzoned tile, which is both the fallback and the entire behaviour of any tile nobody has
 	# zoned. That is what keeps this additive.
 	for zone_kind in _zone_preference(iname):
-		var mask := _zone_mask(tile_id, coord, zone_kind)
-		if mask.is_empty() or not _mask_has_room(mask):
-			continue
-		var zoned := _place_edge(tile_id, coord, base_verts, placed_here, mask, road_clear) \
-			if is_edge \
-			else _place_frontage(tile_id, coord, base_verts, cat, placed_here, mask, road_clear)
-		if not zoned.is_empty():
-			return zoned
+		# Least destructive first, within each kind: a building takes clear ground before it
+		# takes fabric the designer offered up, and offered fabric before protected fabric.
+		for tier in [ZoneTier.CLEAR, ZoneTier.SACRIFICIAL_OK, ZoneTier.ANY]:
+			var mask := _zone_mask(tile_id, coord, zone_kind, tier)
+			if mask.is_empty() or not _mask_has_room(mask):
+				continue
+			var zoned := _place_edge(tile_id, coord, base_verts, placed_here, mask, road_clear) \
+				if is_edge \
+				else _place_frontage(tile_id, coord, base_verts, cat, placed_here, mask,
+					road_clear)
+			if not zoned.is_empty():
+				return zoned
 	if is_edge:
 		return _place_edge(tile_id, coord, base_verts, placed_here, land, road_clear)
 	return _place_frontage(tile_id, coord, base_verts, cat, placed_here, land, road_clear)
@@ -4333,6 +4395,7 @@ func _clear_tile_caches() -> void:
 	_tile_block_mode.clear()
 	_tile_block_templates.clear()
 	_zone_masks.clear()
+	_decor_cache.clear()
 	_farm_render.clear()   # neighbour-dependent farm render + lanes are rebuilt per tile after a relayout
 	_farm_lanes.clear()
 	_farm_bridges.clear()

@@ -78,6 +78,7 @@ func _ready() -> void:
 	_test_authored_zones()
 	await _test_zone_placement()
 	await _test_zone_priority()
+	await _test_zone_fabric_tiers()
 	_test_tile_deposits_exclude_water()
 	_test_authored_map_write_barrier()
 	_test_shipped_code_avoids_editor_only_paths()
@@ -15107,6 +15108,7 @@ func _test_authored_slot_claim_order() -> void:
 		(doc["settlements"]["s"]["decor"][0] as Dictionary)["sacrificial"] = false
 		AuthoredMap.set_document_for_tests(doc)
 		bv._tile_block_templates.erase(tile_id)
+		bv._drop_zone_masks(tile_id)   # the fabric changed; its derived caches must go too
 		var protected: Dictionary = bv._authored_block_template(tile_id, coord)
 		_check(float((protected.get("lot_cost", []) as Array)[0]) > float(cost[0]),
 			"claim order: protected fabric costs more than fabric offered up")
@@ -15370,6 +15372,85 @@ func _test_zone_priority() -> void:
 
 	bv.remove_instance(mine_iid); MatchState.remove_building(mine_iid)
 	bv.remove_instance(works_iid); MatchState.remove_building(works_iid)
+	AuthoredMap.set_document_for_tests({})
+	AuthoredMap.reset_for_tests()
+	bv.queue_free()
+	terrain.queue_free()
+	await get_tree().process_frame
+
+
+## P2: inside a zone, a building takes clear ground before it takes fabric, and offered
+## fabric before protected fabric. Asserted by placing into a zone whose LEFT half is covered
+## by a mass and checking the building went right — then marking the mass sacrificial and
+## checking that stops mattering only after the clear ground is gone.
+func _test_zone_fabric_tiers() -> void:
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		bv.queue_free(); terrain.queue_free(); return
+	var centre: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+
+	# A wide zone, with a mass sitting squarely over its left half.
+	var zone: Array = []
+	for offset in [Vector2(-180, -70), Vector2(180, -70), Vector2(180, 70), Vector2(-180, 70)]:
+		zone.append([centre.x + offset.x, centre.y + offset.y])
+	var mass_centre := centre + Vector2(-95.0, 0.0)
+	var doc := {"version": AuthoredMap.SCHEMA_VERSION, "settlements": {"s": {
+		"tiles": [tile_id],
+		"decor": [{"id": "m1", "form": "rect", "pos": [mass_centre.x, mass_centre.y],
+			"rot": 0.0, "size": [170, 140], "sacrificial": false}],
+		"zones": [{"id": "z1", "kind": "industrial", "tiles": [tile_id], "outline": zone}],
+	}}}
+	_check(AuthoredMap.validate(doc).is_empty(), "zone tiers: the fixture is valid")
+	AuthoredMap.set_document_for_tests(doc)
+	bv.ensure_block_template_for(tile_id, coord)
+
+	var clear_mask: PackedByteArray = bv._zone_mask(tile_id, coord, "industrial",
+		bv.ZoneTier.CLEAR)
+	var any_mask: PackedByteArray = bv._zone_mask(tile_id, coord, "industrial",
+		bv.ZoneTier.ANY)
+	_check(clear_mask.count(1) > 0 and clear_mask.count(1) < any_mask.count(1),
+		"zone tiers: the clear tier is a strict subset (%d of %d cells)"
+		% [clear_mask.count(1), any_mask.count(1)])
+	# Protected fabric is refused by BOTH restrictive tiers; only ANY tolerates it.
+	var offered: PackedByteArray = bv._zone_mask(tile_id, coord, "industrial",
+		bv.ZoneTier.SACRIFICIAL_OK)
+	_check(offered.count(1) == clear_mask.count(1),
+		"zone tiers: PROTECTED fabric is refused by the sacrificial tier too (%d vs %d)"
+		% [offered.count(1), clear_mask.count(1)])
+
+	var iid: String = MatchState.add_building("b_007", "", tile_id, "npc", "tier_a")
+	bv.on_building_placed(tile_id, "b_007", "", iid, coord)
+	var at: Vector2 = bv.footprint_center_for(iid, coord)
+	_check(at.x > centre.x,
+		"zone tiers: the building avoided the covered half (x %.0f vs tile centre %.0f)"
+		% [at.x, centre.x])
+	bv.remove_instance(iid); MatchState.remove_building(iid)
+
+	# Marked sacrificial, the SAME mass stops blocking the middle tier — the ground is
+	# offered up, so it is available before the tile has to reach for protected fabric.
+	(doc["settlements"]["s"]["decor"][0] as Dictionary)["sacrificial"] = true
+	AuthoredMap.set_document_for_tests(doc)
+	bv._drop_zone_masks(tile_id)
+	var offered_now: PackedByteArray = bv._zone_mask(tile_id, coord, "industrial",
+		bv.ZoneTier.SACRIFICIAL_OK)
+	_check(offered_now.count(1) > clear_mask.count(1),
+		"zone tiers: offered-up fabric widens the middle tier (%d -> %d cells)"
+		% [clear_mask.count(1), offered_now.count(1)])
+	_check(bv._zone_mask(tile_id, coord, "industrial", bv.ZoneTier.CLEAR).count(1)
+		== clear_mask.count(1),
+		"zone tiers: but the clear tier is unmoved — clear ground is still preferred first")
+
 	AuthoredMap.set_document_for_tests({})
 	AuthoredMap.reset_for_tests()
 	bv.queue_free()

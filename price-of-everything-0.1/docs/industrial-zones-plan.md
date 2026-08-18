@@ -1,8 +1,8 @@
 # Industrial zones — plan
 
-**Status:** P0, P0b and P1 BUILT 2026-08-17 — zones are drawable, validated, and they
-constrain placement, with extraction gated to mines and wells. P2 (fabric-aware cell scoring)
-and P3 (authoring readout, slot→zone conversion) remain.
+**Status:** P0–P2 BUILT 2026-08-17 — zones are drawable, validated, they constrain placement
+with extraction gated to mines and wells, and inside a zone a building takes clear ground
+before fabric. Only P3 (authoring readout, slot→zone conversion) remains.
 **Replaces (partly):** authored slots as the primary placement mechanism. Slots stay; see
 [What happens to slots](#what-happens-to-slots).
 
@@ -166,10 +166,17 @@ consulted it. `EXTRACTION_NAMES` is mine, oil well, fracking well and offshore p
 The editor half of this phase landed early with P0: all three kinds are drawable and the
 panel and overlay read `ZONE_KINDS` rather than a hand-written trio.
 
-### P2 — fabric-aware cell scoring
-Port the least-destructive ordering from slots: score cells inside a zone by the decorative
-fabric they would displace, with `sacrificial` weighted as it is now, and evict only what a
-placement actually covers.
+### P2 — fabric-aware cell scoring ✅ BUILT
+Expressed as **tiers of mask** rather than as a scoring loop, which meant no placer had to be
+opened up: `CLEAR` (cells displacing nothing) → `SACRIFICIAL_OK` (may sit on fabric the
+designer offered up) → `ANY`. Each kind is tried at each tier before moving on. The ×8
+`sacrificial` weight from the slot work became the boundary between the first two tiers.
+
+Eviction moved with it, and got more accurate on the way: it now runs on the FINAL cropped
+footprint in `_place_building` rather than per-slot. A slot box is up to 84 u and the building
+inside it may be 50, so evicting by the box was demolishing terraces the building never
+touched. The slot `lot_masses` still order the claim loop; they just no longer decide what
+dies.
 
 ### P3 — authoring quality of life
 A per-tile readout in the editor — "fits 6 mines / 10 furnaces / 20 workshops at L1" — which
