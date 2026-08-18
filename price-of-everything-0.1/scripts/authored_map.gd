@@ -96,13 +96,17 @@ const LEGACY_SLOT_CLASSES := {
 ## The DRAWN-ART extent each box class tops out at, world units, turned into reserved ground
 ## by `building_visuals.AUTHORED_SLOT_BOXES`.
 ##
-## `standard` is ART_DRAWN_MAX because the largest drawn thing must fit: today that is the
-## wind farms, pinned there by ART_SIZE_OVERRIDE. Drop that override and the largest becomes
-## 61.4 (mine, solar farm) and the box could come down from 84 to 77 — worth knowing, since
-## one override is currently costing every slot on the map 7 u.
+## `standard` must clear the largest drawn thing, which is the MINE and the SOLAR FARM at
+## 61.4 — not ART_DRAWN_MAX. It was 68 (= ART_DRAWN_MAX) while the wind farms were pinned
+## there by ART_SIZE_OVERRIDE; compressing them to 70% took them to 47.6 and let this follow,
+## which is worth 6 u off the reserved box of EVERY building on the map (84 -> 78).
+##
+## Tracks the art rather than the band, so retune it with `tile_size_used` and the overrides.
+## `_test_authored_slot_box_holds_its_class` fails the moment a building outgrows it, and it
+## asserts the fit is TIGHT as well, so this cannot quietly drift back up either.
 const SLOT_CLASS_CEILINGS := {
 	"infra": 32.0,
-	"standard": 68.0,
+	"standard": 62.0,
 }
 
 ## Farm and forest outlines are authored as simple polygons of at most this many vertices.

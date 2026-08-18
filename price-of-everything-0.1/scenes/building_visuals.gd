@@ -3858,7 +3858,15 @@ const AUTHORED_SLOT_BOXES := {
 ## Per-recipe drawn-size overrides. Wind sites sprawl — at the size-10 default
 ## they read as a cramped cluster rather than machines spread over open ground
 ## (owner). Visual only: it moves the lot too, so reservation stays honest.
-const ART_SIZE_OVERRIDE := {"wind_farm": ART_DRAWN_MAX}
+## Wind sites sprawl, so they were pinned to the largest drawn size. That override was
+## written when they were tile_size_used 10 and would otherwise have drawn at 40 — a cramped
+## cluster rather than machines over open ground. They are size 25 now and lerp to 61.4 on
+## their own, so the pin was buying 10% of extra sprawl while setting the STANDARD SLOT BOX
+## for every building on the map, since the box is the class ceiling plus margins.
+##
+## 0.7 (owner, 2026-08-17) compresses them into 70% of that space, which takes them below the
+## mine and lets the ceiling come down with them.
+const ART_SIZE_OVERRIDE := {"wind_farm": ART_DRAWN_MAX * 0.7}
 ## Blocked space is the DRAWN sprite plus this margin, not the lot the packer
 ## reserved — a lot is sized for the biggest thing that could stand on it, and
 ## treating all of it as solid wasted ground and pushed neighbours away.

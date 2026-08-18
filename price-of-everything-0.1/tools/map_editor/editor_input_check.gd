@@ -80,10 +80,21 @@ func _ready() -> void:
 	# Cursor anchoring: the world point under the pointer must stay under it, so zooming in
 	# on a junction gets you closer to that junction instead of sliding it off screen.
 	await _wheel(MOUSE_BUTTON_WHEEL_UP, Vector2(700, 400), 20)
+	var stuck := PackedStringArray()
+	for entry in [["W", KEY_W], ["A", KEY_A], ["S", KEY_S], ["D", KEY_D],
+			["Q", KEY_Q], ["E", KEY_E]]:
+		if Input.is_physical_key_pressed(entry[1] as Key):
+			stuck.append(str(entry[0]))
+	_check("no pan key is still held before the anchor probe (%s)"
+		% ("none" if stuck.is_empty() else ", ".join(stuck)), stuck.is_empty())
 	var probe := Vector2(1100, 620)
+	var drift_from: Vector2 = camera.position
 	var world_before: Vector2 = _editor.call("_world_at", probe)
 	await _wheel(MOUSE_BUTTON_WHEEL_UP, probe, 3)
 	var world_after: Vector2 = _editor.call("_world_at", probe)
+	_check("the camera only moved as much as the zoom compensation needed (%.1f u)"
+		% camera.position.distance_to(drift_from),
+		camera.position.distance_to(drift_from) < 400.0)
 	_check("zoom stays anchored on the cursor (%.1f u drift)" % world_before.distance_to(world_after),
 		world_before.distance_to(world_after) < 1.0)
 
