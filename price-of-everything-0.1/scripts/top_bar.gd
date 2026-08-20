@@ -178,6 +178,12 @@ func _style_bar() -> void:
 	offset_bottom = BAR_H
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = C_BAR_BG
+	# Bleed the navy fill a few pixels ABOVE the bar's top edge (draw-only — expand margins
+	# never affect layout, so no module shifts). The window is stretched by a non-integer
+	# factor (canvas_items + expand; monitor px / 1920×1080) with pixel-snap off, which left a
+	# shimmering 1–3px seam along the very top row as the camera nudged sub-pixel every frame.
+	# Extending the opaque fill past y=0 buries that edge off-screen, so the top row is solid.
+	sb.expand_margin_top = 8
 	sb.content_margin_left = 12
 	sb.content_margin_right = 12
 	sb.content_margin_top = 6   # trimmed padding — remove unused space, don't shrink modules

@@ -10,6 +10,7 @@ signal back_requested
 
 const NAVY := Color(0, 0.07, 0.14)
 const OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
+const MenuChrome := preload("res://scripts/menu_chrome.gd")
 
 var _rows_box: VBoxContainer
 
@@ -45,13 +46,8 @@ func _build() -> void:
 	# Navy plate matching the menu frame.
 	var plate := Panel.new()
 	plate.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = NAVY
-	sb.border_color = OFF_WHITE
-	sb.set_border_width_all(3)
-	sb.set_corner_radius_all(22)
-	plate.add_theme_stylebox_override("panel", sb)
 	add_child(plate)
+	MenuChrome.apply(plate)   # navy fill + brass metallic edge (lit top-left), in sync with the menu
 
 	# Content column: banner up top, the record list scrolling beneath.
 	var margin := MarginContainer.new()

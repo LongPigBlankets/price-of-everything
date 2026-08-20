@@ -4,6 +4,7 @@
 	"name": "metal_magnate",
 	"ruleset": "standard",
 	"money": 300,
+	"steady_profit_per_turn": 45,
 	"buildings": [
 		{ "building_id": "b_001", "recipe_id": "r_001", "tile_id": "tile_6_8", "output_to": "tile_5_10" },
 		{ "building_id": "b_001", "recipe_id": "r_002", "tile_id": "tile_7_10", "output_to": "tile_5_10" },

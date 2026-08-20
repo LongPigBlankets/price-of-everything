@@ -2,23 +2,13 @@
 	"_comment": "Selectable starts for the New Game screen, shown as a single row of 7 cards in display order. Each: id, file (res:// start config), title, blurb, description (expanded), tier (green|amber|red -> Beginner-friendly|Average|Challenging badge + hex colour), good_id+good_internal (the goods icon shown on the hex), optional recommended:true for the default. Fact bullets (cash/buildings/loans) are DERIVED from the start config file.",
 	"starts": [
 		{
-			"id": "open_field",
-			"file": "res://data/starts/open_field.json",
-			"title": "Open Field",
-			"tier": "green",
-			"good_id": "g_062", "good_internal": "biomass",
-			"blurb": "A clean slate with a healthy float.",
-			"description": "£1,500 and nothing else. Survey the map, read the markets, and build exactly the supply chain you want from the ground up. The purest test of an industrialist.",
-			"recommended": true
-		},
-		{
 			"id": "metal_magnate",
 			"file": "res://data/starts/metal_magnate.json",
 			"title": "Metal Magnate",
 			"tier": "green",
 			"good_id": "g_004", "good_internal": "iron_ingots",
 			"blurb": "Ore into iron, on Stoneshore's coast.",
-			"description": "A coal mine north of Stoneshore, an iron mine on the eastern coast, and a furnace between them already smelting iron ingots for market — the mines feed the furnace, the furnace sells the metal, and a Metals Magnate bonus lifts every ingot. £300 in the till and no debt."
+			"description": "Your father swore there was truth in metal, then sold the mill before he could prove it. He left you the mines, the furnace, and a name that lifts every ingot you cast. Strike while the iron's hot."
 		},
 		{
 			"id": "glass_merchant",
@@ -27,7 +17,17 @@
 			"tier": "green",
 			"good_id": "g_038", "good_internal": "glass",
 			"blurb": "Sand into glass, on Vandel's doorstep.",
-			"description": "Three glass furnaces and a sand pit clustered on Vandel's Skip, fed straight from the quarry — plus £200 cash and a £250 debt. Turn sand into glass and glass into a fortune before the interest bites."
+			"description": "You borrowed heavy to turn Vandel's sand into glass, and fast. Now the debt's due, and glass and fortune crack the same way."
+		},
+		{
+			"id": "open_field",
+			"file": "res://data/starts/open_field.json",
+			"title": "Open Field",
+			"tier": "amber",
+			"good_id": "g_062", "good_internal": "biomass",
+			"blurb": "A clean slate with a healthy float.",
+			"description": "£1,500 and nothing else. Survey the map, read the markets, and build exactly the supply chain you want from the ground up. The purest test of an industrialist.",
+			"recommended": true
 		},
 		{
 			"id": "troubled_carmaker",

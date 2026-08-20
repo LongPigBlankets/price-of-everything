@@ -7,6 +7,11 @@ extends Node2D
 ## no simulation objects and creates no per-building nodes. Gameplay footprints,
 ## roads, water and forest discs are avoidance inputs only.
 
+# An authored map REPLACES the procedural fabric (see authored_fabric_visuals.gd's header),
+# so this node stands down when an authored document is active — otherwise its decorative
+# buildings would draw under the authored parks/plazas (owner bug, 2026-08-19).
+const AuthoredMap := preload("res://scripts/authored_map.gd")
+
 const TILE_CENTER := Vector2(270.0, 240.0)
 ## How far beyond a tile's own box a NEIGHBOUR's gameplay footprint can still
 ## reach into it. Generous on purpose: the cost of over-including a footprint is
@@ -208,7 +213,7 @@ func _load_explicit_profiles() -> void:
 		_explicit_profiles = parsed
 
 func _on_style_changed() -> void:
-	visible = MapStyle.is_midcentury()
+	visible = MapStyle.is_midcentury() and not AuthoredMap.is_active()
 	set_process(visible)
 	if visible:
 		_update_far_plate_state()

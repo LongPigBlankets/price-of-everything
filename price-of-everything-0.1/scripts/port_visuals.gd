@@ -56,8 +56,24 @@ func setup(hex_map: TileMapLayer) -> void:
 	_rebuild_midcentury_plans()
 	queue_redraw()
 
-func _on_footprints_changed(_version: int, _affected_tile_ids: Array) -> void:
+func _on_footprints_changed(_version: int, affected_tile_ids: Array) -> void:
+	# Ports are fixed coastal geometry; the 4-port planner costs ~15-20s to re-run. Only replan
+	# when a PORT tile's footprint actually changes — not when a mine/furnace lands elsewhere,
+	# which was re-triggering the whole planner on every 'order from market' (owner lag, 2026-08-19).
+	if not _footprints_touch_a_port(affected_tile_ids):
+		return
 	_queue_plan_rebuild()
+
+func _footprints_touch_a_port(tile_ids: Array) -> bool:
+	if tile_ids == null or tile_ids.is_empty():
+		return true   # unknown scope — rebuild to be safe
+	var port_tiles := {}
+	for p in Catalog.all_ports():
+		port_tiles[str((p as Dictionary).get("tile_id", ""))] = true
+	for t in tile_ids:
+		if port_tiles.has(str(t)):
+			return true
+	return false
 
 func _on_authoritative_geometry_changed(_order_id: int) -> void:
 	MidcenturyPortPlan.invalidate_cache()

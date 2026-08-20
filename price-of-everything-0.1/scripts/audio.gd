@@ -77,6 +77,11 @@ const BUS_MASTER := &"Master"
 const BUS_MUSIC := &"Music"
 const BUS_SFX := &"SFX"
 
+# Headroom cap per bus (owner 2026-08-19): the 0-100 Settings slider maps to 0-CAP of the
+# bus's LINEAR volume, so the whole slider range now sits at/under what used to be its 40%
+# point. Master is untouched; music and cues top out at 40% of full at the slider's max.
+const BUS_MAX_SCALE := {&"Master": 1.0, &"Music": 0.4, &"SFX": 0.4}
+
 # Music playlist — five PLACEHOLDER tracks (stereo Ogg Vorbis; licensing pending,
 # see memory: music-licensing) that play in sequence with MUSIC_GAP seconds of
 # silence between them, looping. The `swap song` cheat jumps to the next.
@@ -371,6 +376,10 @@ func _ensure_buses() -> void:
 			AudioServer.add_bus(idx)
 			AudioServer.set_bus_name(idx, bus_name)
 			AudioServer.set_bus_send(idx, BUS_MASTER)
+			# No saved settings and no bus layout, so a fresh bus would sit at 0 dB (full).
+			# Seat it at the slider's top, which the headroom cap pulls to 40% of full, so the
+			# game boots at the new lower volume rather than blasting until Settings is opened.
+			set_bus_percent(bus_name, 100.0)
 
 
 ## Set a bus's volume from a 0–100 percentage (linear). 0 mutes the bus. Used by
@@ -379,8 +388,8 @@ func set_bus_percent(bus: StringName, percent: float) -> void:
 	var idx := AudioServer.get_bus_index(bus)
 	if idx == -1:
 		return
-	var frac := clampf(percent, 0.0, 100.0) / 100.0
-	AudioServer.set_bus_mute(idx, frac <= 0.0)
+	var frac := clampf(percent, 0.0, 100.0) / 100.0 * float(BUS_MAX_SCALE.get(bus, 1.0))
+	AudioServer.set_bus_mute(idx, percent <= 0.0)
 	AudioServer.set_bus_volume_db(idx, linear_to_db(maxf(frac, 0.0001)))
 
 
@@ -392,7 +401,7 @@ func get_bus_percent(bus: StringName) -> float:
 		return 100.0
 	if AudioServer.is_bus_mute(idx):
 		return 0.0
-	return clampf(db_to_linear(AudioServer.get_bus_volume_db(idx)) * 100.0, 0.0, 100.0)
+	return clampf(db_to_linear(AudioServer.get_bus_volume_db(idx)) / float(BUS_MAX_SCALE.get(bus, 1.0)) * 100.0, 0.0, 100.0)
 
 
 # --- Internals ---------------------------------------------------------------

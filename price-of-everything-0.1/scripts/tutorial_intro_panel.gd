@@ -10,6 +10,7 @@ signal begin_requested
 signal back_requested
 
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
+const MenuChrome := preload("res://scripts/menu_chrome.gd")
 
 const NAVY := Color(0, 0.07, 0.14)
 const OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
@@ -37,23 +38,8 @@ func _build() -> void:
 	# Navy plate matching the menu frame.
 	var plate := Panel.new()
 	plate.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = NAVY
-	sb.border_color = OFF_WHITE
-	sb.set_border_width_all(3)
-	sb.set_corner_radius_all(22)
-	plate.add_theme_stylebox_override("panel", sb)
 	add_child(plate)
-
-	# Back button, top-right.
-	var back := Button.new()
-	back.text = "Back"
-	back.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	back.offset_left = -120
-	back.offset_top = 24
-	back.offset_right = -24
-	back.pressed.connect(func() -> void: back_requested.emit())
-	plate.add_child(back)
+	MenuChrome.apply(plate)   # navy fill + brass metallic edge (lit top-left), in sync with the menu
 
 	# Centred content column.
 	var center := CenterContainer.new()
@@ -113,6 +99,18 @@ func _build() -> void:
 	var consent_center := CenterContainer.new()
 	consent_center.add_child(consent["row"])
 	col.add_child(consent_center)
+
+	# Back button, top-right — added LAST so it renders on top of the full-rect content
+	# container and actually receives the click (a CenterContainer defaults to MOUSE_FILTER_STOP
+	# and would otherwise swallow it). Mirrors hall_of_records_panel / new_game_panel.
+	var back := Button.new()
+	back.text = "Back"
+	back.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	back.offset_left = -120
+	back.offset_top = 24
+	back.offset_right = -24
+	back.pressed.connect(func() -> void: back_requested.emit())
+	plate.add_child(back)
 
 
 func send_metrics_enabled() -> bool:

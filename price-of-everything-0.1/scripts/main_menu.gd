@@ -15,29 +15,24 @@ const MAP_SCENE := "res://scenes/main.tscn"
 const MAP_EDITOR_SCENE := "res://tools/map_editor/map_editor.tscn"
 const NAVY := Color(0, 0.07, 0.14)            # established theme background navy
 const OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
-const TITLE_PLATE: Texture2D = preload("res://assets/ui/title_plate.png")
+const TITLE_LOGO: Texture2D = preload("res://assets/ui/title_logo.png")
 # Preload (not a class_name) keeps the New Game panel out of the headless class cache.
 const NewGamePanelScene := preload("res://scripts/new_game_panel.gd")
 const TutorialPanelScene := preload("res://scripts/tutorial_intro_panel.gd")
 const HallOfRecordsPanelScene := preload("res://scripts/hall_of_records_panel.gd")
 const TutorialPromptScene := preload("res://scripts/tutorial_prompt_dialog.gd")
+const MenuChrome := preload("res://scripts/menu_chrome.gd")
 const TUTORIAL_START := "res://data/starts/tutorial.json"
-const NEW_GAME_BOTTOM_GAP := 220.0   # panel stops this far above the screen bottom (board peeks beneath)
+const NEW_GAME_BOTTOM_GAP := 90.0   # panel stops this far above the screen bottom (board peeks beneath); low enough that the Start CTA sits on the panel, not the board
 
 const PANEL_INSET := 24.0   # frame inset from the screen edges
 const SIDE_PAD := 30        # left/right padding inside the frame
 const EDGE_PAD := 44        # New Game from the top of the buttons / Quit from the bottom
-const TITLE_AREA := 218     # top strip the title plate occupies (buttons start below it)
-const TITLE_FONT := 56      # block-caps title size
-
-# 9-slice borders of the plate (source pixels, sized to keep the corner bolts in
-# the fixed corner regions) and where the plate sits in the frame.
-const PLATE_L := 44
-const PLATE_R := 44
-const PLATE_T := 42
-const PLATE_B := 42
-const PLATE_TOP := -16.0
-const PLATE_BOTTOM := 206.0
+# The hexagonal metal logo floats above the button frame (outside it), inset in the left column.
+const LOGO_TOP := 24.0        # gap from the top of the column down to the logo
+const LOGO_H := 313.0         # display height (10% smaller than before; width follows via aspect)
+const BUTTONS_TOP := 351.0    # the button frame starts here — below the logo (LOGO_TOP + LOGO_H + gap)
+const BUTTONS_PAD_TOP := 26   # padding inside the button frame, above New Game
 
 # The New Game settings panel and the goods board it slides in over.
 var _new_game_panel: Control
@@ -323,24 +318,18 @@ func _build_menu() -> void:
 	panel.anchor_right = 0.25
 	panel.anchor_bottom = 1.0
 	panel.offset_left = PANEL_INSET
-	panel.offset_top = PANEL_INSET
+	panel.offset_top = BUTTONS_TOP   # starts below the logo, which now floats above the frame
 	panel.offset_right = -PANEL_INSET
 	panel.offset_bottom = -PANEL_INSET
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = NAVY
-	sb.border_color = OFF_WHITE
-	sb.set_border_width_all(3)
-	sb.set_corner_radius_all(22)
-	panel.add_theme_stylebox_override("panel", sb)
 	add_child(panel)
+	MenuChrome.apply(panel)          # navy fill + the brass metallic edge (lit top-left → bottom-right)
 
-	# Button column: New Game at the top, Quit pinned to the bottom, the rest
-	# between. The top margin clears the title plate.
+	# Button column: New Game at the top, Quit pinned to the bottom, the rest between.
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	margin.add_theme_constant_override("margin_left", SIDE_PAD)
 	margin.add_theme_constant_override("margin_right", SIDE_PAD)
-	margin.add_theme_constant_override("margin_top", TITLE_AREA)
+	margin.add_theme_constant_override("margin_top", BUTTONS_PAD_TOP)
 	margin.add_theme_constant_override("margin_bottom", EDGE_PAD)
 	panel.add_child(margin)
 
@@ -382,56 +371,19 @@ func _build_menu() -> void:
 	quit_btn.pressed.connect(TelemetryState.request_app_quit)
 	vbox.add_child(quit_btn)
 
-	# 9-sliced ornate plate overlapping the top of the frame (hides the outline
-	# behind it), with the title centred in its cream middle.
-	var plate := NinePatchRect.new()
-	plate.texture = TITLE_PLATE
-	plate.patch_margin_left = PLATE_L
-	plate.patch_margin_right = PLATE_R
-	plate.patch_margin_top = PLATE_T
-	plate.patch_margin_bottom = PLATE_B
-	plate.anchor_right = 1.0
-	plate.offset_left = -10.0
-	plate.offset_right = 10.0
-	plate.offset_top = PLATE_TOP
-	plate.offset_bottom = PLATE_BOTTOM
-	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_child(plate)
-
-	# Title in the plate's cream middle: a navy block-caps label over a soft,
-	# fading black shadow - stacked outlines that grow and fade out, rather than
-	# one hard-edged shadow.
-	var title_box := Control.new()
-	title_box.anchor_right = 1.0
-	title_box.anchor_bottom = 1.0
-	title_box.offset_left = PLATE_L
-	title_box.offset_top = PLATE_T
-	title_box.offset_right = -PLATE_R
-	title_box.offset_bottom = -PLATE_B
-	title_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	plate.add_child(title_box)
-	for layer in [Vector2(4, 0.26), Vector2(8, 0.15), Vector2(13, 0.07)]:
-		var s := _title_label()
-		s.add_theme_color_override("font_color", Color(0, 0, 0, layer.y))
-		s.add_theme_color_override("font_outline_color", Color(0, 0, 0, layer.y))
-		s.add_theme_constant_override("outline_size", int(layer.x))
-		title_box.add_child(s)
-	var title := _title_label()
-	title.add_theme_color_override("font_color", NAVY)
-	title_box.add_child(title)
-
-
-func _title_label() -> Label:
-	var l := Label.new()
-	l.text = "CARBON AND CAPITAL"
-	l.theme_type_variation = &"Title"   # Bebas Neue - block capitals
-	l.add_theme_font_size_override("font_size", TITLE_FONT)
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD
-	l.set_anchors_preset(Control.PRESET_FULL_RECT)
-	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return l
+	# Hexagonal metal logo (the site emblem: navy plate, gold bolts, factory + solar icons
+	# and the three-row wordmark). It floats ABOVE the button frame, spanning the left column.
+	var logo := TextureRect.new()
+	logo.texture = TITLE_LOGO
+	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE   # honour the anchored box; don't grow to the texture's full size
+	logo.anchor_right = 0.25
+	logo.offset_left = PANEL_INSET
+	logo.offset_right = -PANEL_INSET
+	logo.offset_top = LOGO_TOP
+	logo.offset_bottom = LOGO_TOP + LOGO_H
+	logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(logo)
 
 
 # Grey a menu button into a "not available yet" state that STILL shows its tooltip
