@@ -12,12 +12,15 @@ class_name SettingsPanel
 
 const PANEL_BLACK := Color(0.03, 0.03, 0.045)
 const OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
+const MenuChrome := preload("res://scripts/menu_chrome.gd")
 
 # Selectable window resolutions offered on the Graphics tab.
 const RESOLUTIONS: Array[Vector2i] = [Vector2i(1920, 1080), Vector2i(2560, 1440), Vector2i(3440, 1440)]
 
 var _sliders: Dictionary = {}   # bus StringName -> HSlider
 var _resolution_option: OptionButton
+var _fullscreen_check: CheckBox
+var _screen_option: OptionButton   # only built when more than one monitor is present
 
 
 static func open(parent: Node) -> SettingsPanel:
@@ -45,12 +48,11 @@ func _ready() -> void:
 	panel.offset_bottom = -40
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = PANEL_BLACK
-	sb.border_color = OFF_WHITE
-	sb.set_border_width_all(2)
-	sb.set_corner_radius_all(20)
+	sb.set_corner_radius_all(MenuChrome.CORNER)
 	sb.set_content_margin_all(30)
 	panel.add_theme_stylebox_override("panel", sb)
 	add_child(panel)
+	MenuChrome.frame_rect(self, 48, 40, -48, -40)   # brass metallic edge (lit top-left), in sync with the menu
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 18)
@@ -157,12 +159,54 @@ func _build_graphics_tab() -> Control:
 	col.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	tab.add_child(col)
 
-	# Resolution row: label + dropdown, mirroring the audio slider-row layout.
+	# Monitor picker — only meaningful with more than one display (laptop + external). Lets
+	# the player put the game on the right screen; fullscreen then fills THAT monitor.
+	if DisplayServer.get_screen_count() > 1:
+		var scr_row := HBoxContainer.new()
+		scr_row.add_theme_constant_override("separation", 16)
+		scr_row.custom_minimum_size = Vector2(0, 40)
+		var scr_label := Label.new()
+		scr_label.text = "Monitor"
+		scr_label.theme_type_variation = &"Body"
+		scr_label.custom_minimum_size = Vector2(140, 0)
+		scr_row.add_child(scr_label)
+		_screen_option = OptionButton.new()
+		for i in DisplayServer.get_screen_count():
+			var sz := DisplayServer.screen_get_size(i)
+			var tag := "  (primary)" if i == DisplayServer.get_primary_screen() else ""
+			_screen_option.add_item("Screen %d — %d × %d%s" % [i + 1, sz.x, sz.y, tag])
+		var cur_screen := PlayerProfile.screen_index
+		if cur_screen < 0 or cur_screen >= DisplayServer.get_screen_count():
+			cur_screen = DisplayServer.window_get_current_screen()
+		_screen_option.select(cur_screen)
+		_screen_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_screen_option.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		scr_row.add_child(_screen_option)
+		col.add_child(scr_row)
+
+	# Fullscreen toggle — the reliable "fill the whole screen" control. A windowed pick
+	# smaller than the monitor only floats centred, so fullscreen is what actually fills.
+	var fs_row := HBoxContainer.new()
+	fs_row.add_theme_constant_override("separation", 16)
+	fs_row.custom_minimum_size = Vector2(0, 40)
+	var fs_label := Label.new()
+	fs_label.text = "Fullscreen"
+	fs_label.theme_type_variation = &"Body"
+	fs_label.custom_minimum_size = Vector2(140, 0)
+	fs_row.add_child(fs_label)
+	_fullscreen_check = CheckBox.new()
+	_fullscreen_check.button_pressed = PlayerProfile.fullscreen
+	_fullscreen_check.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	fs_row.add_child(_fullscreen_check)
+	col.add_child(fs_row)
+
+	# Resolution row: label + dropdown, mirroring the audio slider-row layout. It sets the
+	# WINDOWED size, so it's greyed out while Fullscreen is on.
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
 	row.custom_minimum_size = Vector2(0, 40)
 	var name_label := Label.new()
-	name_label.text = "Resolution"
+	name_label.text = "Window size"
 	name_label.theme_type_variation = &"Body"
 	name_label.custom_minimum_size = Vector2(140, 0)
 	row.add_child(name_label)
@@ -173,12 +217,18 @@ func _build_graphics_tab() -> Control:
 	_resolution_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_resolution_option.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_resolution_option.select(_current_resolution_index())
+	_resolution_option.disabled = _fullscreen_check.button_pressed
 	row.add_child(_resolution_option)
 	col.add_child(row)
 
+	# Fullscreen owns the screen, so the windowed-size picker is only live when it's off.
+	_fullscreen_check.toggled.connect(func(on: bool) -> void:
+		_resolution_option.disabled = on)
+
 	var hint := Label.new()
-	hint.text = "Applied on Apply. 3440 × 1440 is ultrawide (21:9); the others are 16:9."
+	hint.text = "Fullscreen fills the selected monitor. Turn it off to run in a window at the size below — always clamped to fit the screen (3440 × 1440 is ultrawide 21:9; the others are 16:9)."
 	hint.theme_type_variation = &"Caption"
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.add_theme_color_override("font_color", Color(OFF_WHITE.r, OFF_WHITE.g, OFF_WHITE.b, 0.6))
 	col.add_child(hint)
 	return tab
@@ -219,12 +269,24 @@ func _make_button(text: String, primary: bool, handler: Callable) -> Button:
 
 
 func _on_apply_pressed() -> void:
+	# Audio: apply live, then persist the slider positions so they survive a restart.
+	var levels: Dictionary = {}
 	for bus: StringName in _sliders:
-		Audio.set_bus_percent(bus, (_sliders[bus] as HSlider).value)
-	if _resolution_option != null:
-		var idx := _resolution_option.selected
-		if idx >= 0 and idx < RESOLUTIONS.size():
-			PlayerProfile.set_window_size(RESOLUTIONS[idx])
+		var v: float = (_sliders[bus] as HSlider).value
+		Audio.set_bus_percent(bus, v)
+		levels[str(bus)] = v
+	PlayerProfile.set_audio_levels(levels)
+	# Display: commit monitor + fullscreen + the windowed size together.
+	if _fullscreen_check != null:
+		var size := PlayerProfile.window_size
+		if _resolution_option != null:
+			var idx := _resolution_option.selected
+			if idx >= 0 and idx < RESOLUTIONS.size():
+				size = RESOLUTIONS[idx]
+		var screen := PlayerProfile.screen_index
+		if _screen_option != null:
+			screen = _screen_option.selected
+		PlayerProfile.set_display(_fullscreen_check.button_pressed, size, screen)
 	hide()
 
 

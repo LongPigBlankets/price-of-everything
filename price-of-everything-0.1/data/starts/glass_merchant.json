@@ -4,15 +4,44 @@
 	"name": "glass_merchant",
 	"ruleset": "standard",
 	"money": 200,
-	"loans": [ { "principal": 250 } ],
+	"steady_profit_per_turn": 51,
+	"loans": [ { "principal": 700 } ],
 	"buildings": [
-		{ "building_id": "b_001", "recipe_id": "r_018", "tile_id": "tile_22_15" },
-		{ "building_id": "b_002", "recipe_id": "r_053", "tile_id": "tile_22_16" },
-		{ "building_id": "b_002", "recipe_id": "r_053", "tile_id": "tile_22_16" },
-		{ "building_id": "b_002", "recipe_id": "r_053", "tile_id": "tile_22_16" }
+		{ "building_id": "b_001", "recipe_id": "r_018", "tile_id": "tile_22_15", "output_to": "tile_22_16" },
+		{ "building_id": "b_002", "recipe_id": "r_053", "tile_id": "tile_22_16", "output_to": "tile_22_16" },
+		{ "building_id": "b_002", "recipe_id": "r_053", "tile_id": "tile_22_16", "output_to": "market" },
+		{ "building_id": "b_002", "recipe_id": "r_053", "tile_id": "tile_22_16", "output_to": "market" },
+		{ "building_id": "b_007", "recipe_id": "r_056", "tile_id": "tile_22_16", "output_to": "market" }
 	],
 	"land": {
 		"tile_22_15": 120,
-		"tile_22_16": 150
-	}
+		"tile_22_16": 200
+	},
+	"stockpile": {
+		"tile_22_16": { "g_018": 192, "g_013": 54, "g_016": 54, "g_038": 62, "g_029": 20 }
+	},
+	"infrastructure": {
+		"tile_22_15": { "present": [ "cables" ], "levels": { "cables": 1 } },
+		"tile_22_16": { "present": [ "cables" ], "levels": { "cables": 1 } }
+	},
+	"modifiers": [
+		{
+			"id": "start_glass_merchant_glass",
+			"domain": "recipe_output",
+			"target": "*",
+			"target_match": { "good_internal": "glass" },
+			"pct": 5.0,
+			"label": "Vandel Glassworks: +5% glass output",
+			"source": "start:glass_merchant"
+		},
+		{
+			"id": "start_glass_merchant_windows",
+			"domain": "recipe_output",
+			"target": "*",
+			"target_match": { "good_internal": "windows" },
+			"pct": 5.0,
+			"label": "Vandel Glassworks: +5% window output",
+			"source": "start:glass_merchant"
+		}
+	]
 }

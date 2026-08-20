@@ -21,6 +21,7 @@ extends CanvasLayer
 ##   swap empire button               toggle the Empire View button's two icon treatments
 ##   research all                     unlock every research node (alias of `unlock all`)
 ##   unlock hidden_buildings          enable the three hidden prototype buildings
+##   unlock demo                     lift the New Game demo locks (advanced settings + all starts/difficulties/speeds)
 ##   swap song                       advance to the next music track
 ##   help                             list commands
 
@@ -48,6 +49,8 @@ var menu_mode := false
 
 # Survives scene reloads (e.g. the `load` cheat) but resets on app restart.
 static var _cheats_unlocked := false
+# `unlock demo` lifts the New Game demo restrictions (advanced settings, locked starts/difficulty/speed).
+static var _demo_unlocked := false
 
 
 ## Whether `debug CandC` has been entered this app run. Read by the main menu, which
@@ -55,6 +58,11 @@ static var _cheats_unlocked := false
 ## revealed after a return from a match or the editor.
 static func cheats_are_unlocked() -> bool:
 	return _cheats_unlocked
+
+
+## Whether `unlock demo` has been entered — the New Game panel reads this to drop its demo locks.
+static func demo_is_unlocked() -> bool:
+	return _demo_unlocked
 
 var _panel: PanelContainer
 var _cmd: LineEdit
@@ -170,13 +178,16 @@ func _run_command(text: String) -> String:
 			return "Unlocked ALL research (%d nodes)." % count
 		"unlock":
 			if parts.size() < 2:
-				return "usage: unlock <research title>  (e.g. 'unlock hydro')  |  unlock all | hidden_buildings"
+				return "usage: unlock <research title>  (e.g. 'unlock hydro')  |  unlock all | hidden_buildings | demo"
 			if parts[1].to_lower() == "all":
 				var unlocked_count: int = MatchState.cheat_unlock_all_research()
 				return "Unlocked ALL research (%d nodes)." % unlocked_count
 			if parts[1].to_lower() == "hidden_buildings":
 				MatchState.cheat_unlock_hidden_buildings()
 				return "Hidden buildings enabled for this match."
+			if parts[1].to_lower() == "demo":
+				_demo_unlocked = true
+				return "Demo restrictions lifted: advanced settings + all starts/difficulties/speeds. Reopen New Game."
 			var title := " ".join(parts.slice(1))
 			MatchState.grant_unlock(title)
 			return "Unlocked '%s'." % title

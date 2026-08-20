@@ -309,6 +309,21 @@ const UNLOCK_MODIFIERS := {
 	"research_infra_019": {"id": "rn_heavy_freight_corridors", "domain": "transport_throughput", "target_match": {"mode": "rail"}, "pct": 25.0, "label": "Heavy Freight Corridors", "source": "research_node"},  # Heavy Freight Corridors
 	"research_infra_026": {"id": "rn_large_diameter_mains", "domain": "maintenance", "target_match": {"building_id": "b_018"}, "pct": -10.0, "label": "Large-Diameter Mains", "source": "research_node"},  # Large-Diameter Mains
 	"research_infra_028": {"id": "rn_trunk_pipeline_networks", "domain": "transport_cost", "pct": -5.0, "label": "Trunk Pipeline Networks", "source": "research_node"},  # Trunk Pipeline Networks
+	# ── repurposed spares + wired solar/wind potential nodes (2026-08-19) ──
+	# The three infra spares are per-mode throughput (the engine's transport-cost domains are
+	# coarse — flat empire-wide or whole-route — so a rail-only/heavy-class cost cut can't be
+	# targeted; reinf_pipes had no throughput node until now). The rest are output boosters,
+	# and the four solar/wind ones replace the never-wired "+X% potential" effect.
+	"research_infra_022": {"id": "rn_heavy_haul_bogies", "domain": "transport_throughput", "target_match": {"mode": "rail"}, "pct": 25.0, "label": "Heavy-Haul Bogies: +25% rail throughput", "source": "research_node"},
+	"research_infra_029": {"id": "rn_smart_flow_control", "domain": "transport_throughput", "target_match": {"mode": "pipes"}, "pct": 25.0, "label": "Smart Flow Control: +25% pipe throughput", "source": "research_node"},
+	"research_infra_033": {"id": "rn_ultra_high_pressure_mains", "domain": "transport_throughput", "target_match": {"mode": "reinf_pipes"}, "pct": 25.0, "label": "Ultra-High-Pressure Mains: +25% reinforced-pipe throughput", "source": "research_node"},
+	"research_inorg_023": {"id": "rn_zero_liquid_discharge", "domain": "recipe_output", "target_match": {"building_id": "b_037"}, "pct": 10.0, "label": "Zero-Liquid Discharge: +10% water pump output", "source": "research_node"},
+	"research_mfg_021": {"id": "rn_class_100_cleanrooms", "domain": "recipe_output", "target_match": {"building_id": "b_010"}, "pct": 5.0, "label": "Class-100 Cleanrooms: +5% high-tech output", "source": "research_node"},
+	"research_renew_020": {"id": "rn_perovskite_tandem", "domain": "recipe_output", "target_match": {"building_id": "b_024"}, "pct": 5.0, "label": "Perovskite Tandem Arrays: +5% solar output", "source": "research_node"},
+	"research_renew_017": {"id": "rn_bifacial_panels", "domain": "recipe_output", "target_match": {"building_id": "b_024"}, "pct": 5.0, "label": "Bifacial Panel Arrays: +5% solar output", "source": "research_node"},
+	"research_renew_022": {"id": "rn_anti_reflective_coatings", "domain": "recipe_output", "target_match": {"building_id": "b_024"}, "pct": 5.0, "label": "Anti-Reflective Coatings: +5% solar output", "source": "research_node"},
+	"research_renew_023": {"id": "rn_tall_tower_wind", "domain": "recipe_output", "target_match": {"building_id": "b_025"}, "pct": 5.0, "label": "Tall-Tower Wind Capture: +5% onshore wind output", "source": "research_node"},
+	"research_renew_024": {"id": "rn_marine_wind_profiling", "domain": "recipe_output", "target_match": {"building_id": "b_026"}, "pct": 5.0, "label": "Marine Wind Profiling: +5% offshore wind output", "source": "research_node"},
 }
 
 # Standing deposit penalty per extraction good — a permanent recipe_output tile on

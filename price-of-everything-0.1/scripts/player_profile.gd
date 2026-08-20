@@ -28,11 +28,26 @@ var window_size: Vector2i = Vector2i.ZERO
 # per-install player id (16 random bytes, hex — never personal information).
 var telemetry_opt_out: bool = false
 var telemetry_player_id: String = ""
+# Display mode chosen in Settings → Graphics (persisted, applied at startup). Fullscreen
+# fills the current monitor via the project's canvas_items/expand stretch; it is the only
+# reliable "fill the whole screen" control, since a windowed pick smaller than the monitor
+# just floats centred. Defaults on so the game fills the screen out of the box.
+var fullscreen: bool = true
+# Which monitor the game runs on (Settings → Graphics), for laptop-plus-external setups.
+# -1 = auto (whichever screen the window opened on). Fullscreen fills that screen; windowed
+# is clamped to its usable area so the window can never be taller/wider than the monitor
+# (which stranded buttons off-screen for a playtester on a 1080p external display).
+var screen_index: int = -1
+# Audio volumes chosen in Settings → Audio (persisted, applied at startup). Bus name
+# ("Master"/"Music"/"SFX") → 0–100 slider percent. Empty = never set → keep Audio's boot
+# defaults (the 40 %-headroom seat).
+var audio_levels: Dictionary = {}
 
 
 func _ready() -> void:
 	_load()
-	_apply_window_size()  # honour the saved resolution before the menu is shown
+	_apply_display()        # honour the saved resolution / fullscreen before the menu is shown
+	_apply_audio_levels()   # honour the saved volumes (buses exist — Audio autoloads earlier)
 	# Registered after TurnManager in [autoload], so the singleton already exists.
 	if TurnManager != null and TurnManager.has_signal("game_ended_signal"):
 		if not TurnManager.game_ended_signal.is_connected(_on_game_ended):
@@ -165,6 +180,10 @@ func _load() -> void:
 		var recorded: Variant = (parsed as Dictionary).get("wins", [])
 		wins = recorded if recorded is Array else []
 		window_size = Vector2i(int((parsed as Dictionary).get("window_w", 0)), int((parsed as Dictionary).get("window_h", 0)))
+		fullscreen = bool((parsed as Dictionary).get("fullscreen", true))
+		screen_index = int((parsed as Dictionary).get("screen_index", -1))
+		var lv: Variant = (parsed as Dictionary).get("audio_levels", {})
+		audio_levels = (lv as Dictionary) if lv is Dictionary else {}
 		telemetry_opt_out = bool((parsed as Dictionary).get("telemetry_opt_out", false))
 		telemetry_player_id = str((parsed as Dictionary).get("telemetry_player_id", ""))
 	_merge_legacy()
@@ -177,33 +196,83 @@ func _save() -> void:
 	if f == null:
 		push_warning("[PlayerProfile] could not write %s" % tmp_path)
 		return
-	f.store_string(JSON.stringify({"games_completed": games_completed, "tutorial_completed": tutorial_completed, "wins": wins, "window_w": window_size.x, "window_h": window_size.y, "telemetry_opt_out": telemetry_opt_out, "telemetry_player_id": telemetry_player_id}, "\t"))
+	f.store_string(JSON.stringify({"games_completed": games_completed, "tutorial_completed": tutorial_completed, "wins": wins, "window_w": window_size.x, "window_h": window_size.y, "fullscreen": fullscreen, "screen_index": screen_index, "audio_levels": audio_levels, "telemetry_opt_out": telemetry_opt_out, "telemetry_player_id": telemetry_player_id}, "\t"))
 	f.close()
 	var err := DirAccess.rename_absolute(tmp_path, _path())
 	if err != OK:
 		push_warning("[PlayerProfile] could not finalise %s (%s)" % [_path(), error_string(err)])
 
 
-## Persist and apply the window resolution chosen in Settings → Graphics.
-func set_window_size(size: Vector2i) -> void:
-	window_size = size
-	_apply_window_size()
+## Persist and apply the display mode + windowed resolution + target monitor chosen in
+## Settings → Graphics. `screen` is a monitor index, or -1 for auto (keep the current screen).
+func set_display(is_fullscreen: bool, size: Vector2i, screen: int = -1) -> void:
+	fullscreen = is_fullscreen
+	if size.x > 0 and size.y > 0:
+		window_size = size
+	screen_index = screen
+	_apply_display()
 	_save()
 
 
-## Apply the saved window size to the OS window, re-centred on the current screen with
-## the top-left clamped on-screen (so an ultrawide pick on a smaller display can't push
-## the title bar off the top-left). No-op when headless or when nothing is saved.
-func _apply_window_size() -> void:
+## Back-compat shim: set just the windowed resolution, keeping the current mode + screen.
+func set_window_size(size: Vector2i) -> void:
+	set_display(fullscreen, size, screen_index)
+
+
+## The monitor the game should use: the saved index when it still exists, else the screen the
+## window is currently on (so unplugging the external display can't strand the game off-screen).
+func _target_screen() -> int:
+	if screen_index >= 0 and screen_index < DisplayServer.get_screen_count():
+		return screen_index
+	return DisplayServer.window_get_current_screen()
+
+
+## Apply the saved display prefs to the OS window. Fullscreen fills the chosen monitor
+## (borderless; the project's canvas_items/expand stretch scales the UI to fit) — the only
+## reliable way to fill a display when the picked size differs from it. Windowed is clamped
+## to that monitor's USABLE area (work area minus taskbar) and centred there, so the window
+## can never be larger/taller than the screen — which had stranded buttons off the bottom on
+## a 1080p external display. No-op headless.
+func _apply_display() -> void:
 	if DisplayServer.get_name() == "headless":
 		return
-	if window_size.x <= 0 or window_size.y <= 0:
+	var target := _target_screen()
+	if fullscreen:
+		# Must be windowed to move between monitors; then fill the target.
+		if DisplayServer.window_get_current_screen() != target:
+			if DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN:
+				DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+			DisplayServer.window_set_current_screen(target)
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 		return
-	DisplayServer.window_set_size(window_size)
-	var screen := DisplayServer.window_get_current_screen()
-	var origin := DisplayServer.screen_get_position(screen)
-	var avail := DisplayServer.screen_get_size(screen)
-	var pos := origin + (avail - window_size) / 2
-	pos.x = maxi(pos.x, origin.x)
-	pos.y = maxi(pos.y, origin.y)
+	if DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+	var usable := DisplayServer.screen_get_usable_rect(target)
+	# Clamp the requested size to what the monitor can actually show (fall back to the
+	# monitor's usable size when nothing sensible is saved).
+	var want := window_size if window_size.x > 0 and window_size.y > 0 else usable.size
+	var size := Vector2i(mini(want.x, usable.size.x), mini(want.y, usable.size.y))
+	DisplayServer.window_set_size(size)
+	var pos := usable.position + (usable.size - size) / 2
+	pos.x = maxi(pos.x, usable.position.x)
+	pos.y = maxi(pos.y, usable.position.y)
 	DisplayServer.window_set_position(pos)
+
+
+## Persist and apply the audio volumes chosen in Settings → Audio. `levels` maps bus
+## name ("Master"/"Music"/"SFX") → 0–100 percent, so the player's choice survives a restart.
+func set_audio_levels(levels: Dictionary) -> void:
+	audio_levels = levels.duplicate()
+	_apply_audio_levels()  # no-op headless; buses are live otherwise
+	_save()                # a settings choice, so persist even in headless (like set_window_size)
+
+
+## Re-apply the saved audio volumes to the live Audio buses (already created — Audio
+## autoloads before PlayerProfile). No-op headless or when nothing is saved.
+func _apply_audio_levels() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	if audio_levels.is_empty() or Audio == null:
+		return
+	for bus: String in audio_levels:
+		Audio.set_bus_percent(StringName(bus), float(audio_levels[bus]))

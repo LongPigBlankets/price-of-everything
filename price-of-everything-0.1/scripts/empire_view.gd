@@ -87,7 +87,7 @@ func _build_ui() -> void:
 
 	var hint := Label.new()
 	hint.name = "Hint"
-	hint.text = "EMPIRE VIEW  ·  drag to pan · scroll to zoom · Tab to return"
+	hint.text = "SUPPLY CHAIN VIEW  ·  drag to pan · scroll to zoom · Tab to return"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hint.theme_type_variation = &"Caption"

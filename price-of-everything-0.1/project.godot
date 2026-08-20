@@ -59,6 +59,7 @@ Tutorial="*res://scripts/tutorial/tutorial_engine.gd"
 
 window/size/viewport_width=1920
 window/size/viewport_height=1080
+window/size/mode=3
 window/size/window_width_override=2360
 window/size/window_height_override=1328
 window/stretch/mode="canvas_items"
@@ -146,7 +147,7 @@ toggle_goods_graph={
 [rendering]
 
 textures/canvas_textures/default_texture_filter=2
-textures/vram_compression/import_etc2_astc=true
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true

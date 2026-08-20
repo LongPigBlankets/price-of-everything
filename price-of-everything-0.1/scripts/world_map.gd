@@ -427,11 +427,14 @@ func finish_build(animate: bool) -> void:
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", MatchState.buildings.size())
 
-	# Fresh Metal Magnate start: pin the camera on Stoneshore Docks and show the
-	# once-only founding intro. Gated on pending_start so a loaded save (which keeps
-	# ruleset.start_id) never re-shows it.
-	if pending_start and String(MatchState.ruleset.get("start_id", "")) == "metal_magnate":
-		_show_metal_magnate_intro()
+	# Fresh scripted start: pin the camera on the start's hub and show the once-only founding
+	# intro. Gated on pending_start so a loaded save (which keeps ruleset.start_id) never re-shows it.
+	if pending_start:
+		match String(MatchState.ruleset.get("start_id", "")):
+			"metal_magnate":
+				_show_metal_magnate_intro()
+			"glass_merchant":
+				_show_glass_merchant_intro()
 
 
 func _show_metal_magnate_intro() -> void:
@@ -441,6 +444,14 @@ func _show_metal_magnate_intro() -> void:
 		await get_tree().process_frame
 	_focus_camera_on_tile("tile_5_10")   # centre on Stoneshore Docks (the start's hub)
 	var intro: CanvasLayer = load("res://scripts/metal_magnate_intro.gd").new()
+	add_child(intro)
+
+
+func _show_glass_merchant_intro() -> void:
+	while _loading_screen_active():
+		await get_tree().process_frame
+	_focus_camera_on_tile("tile_22_16")   # centre on Vandel's Skip (the start's hub)
+	var intro: CanvasLayer = load("res://scripts/glass_merchant_intro.gd").new()
 	add_child(intro)
 
 

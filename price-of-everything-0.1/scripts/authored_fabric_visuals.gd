@@ -45,27 +45,43 @@ func _draw() -> void:
 	var settlements := AuthoredMap.settlements()
 	var keys := settlements.keys()
 	keys.sort()   # stable draw order, so overlaps stack the same way every run
+	var ordered: Array = []   # valid settlements in stable key order
 	for key in keys:
 		var settlement_value: Variant = settlements[key]
-		if typeof(settlement_value) != TYPE_DICTIONARY:
-			continue
-		var settlement: Dictionary = settlement_value
-		# GROUND FIRST, and parks and plazas are the lowest of it (owner, 2026-08-17). Paving
-		# and greens are surfaces; a farm is worked land; everything else stands on top. The
-		# node itself sits before BuildingVisuals in main.tscn, so all of this is already
-		# under the gameplay buildings — this is the order WITHIN the authored layer.
+		if typeof(settlement_value) == TYPE_DICTIONARY:
+			ordered.append(settlement_value)
+
+	# LAYER-MAJOR, not settlement-major. Every settlement's GROUND (plazas, then parks, then
+	# worked land) is laid down before ANY settlement's standing things, so a plaza or park in
+	# one settlement can never cover the decorative buildings of a neighbour it overlaps. This
+	# map is exactly that case: two settlements share the same ground — one holds the building
+	# masses, the other the greens laid over them — and a per-settlement loop (draw one whole,
+	# then the next) painted the greens on top of the buildings. This mirrors the editor, which
+	# mounts GROUND below STANDING as two separate nodes for the very same reason
+	# (see map_editor_fabric.gd). The node itself still sits before BuildingVisuals in
+	# main.tscn, so all of this stays under the gameplay buildings.
+
+	# GROUND: paving lowest, then greens, then worked land — surfaces everything stands on.
+	for settlement in ordered:
 		for plaza in _list(settlement, "plazas"):
 			AuthoredFabricPainter.draw_plaza(self, plaza)
+	for settlement in ordered:
 		for park in _list(settlement, "parks"):
 			AuthoredFabricPainter.draw_park(self, park)
+	for settlement in ordered:
 		for area in _list(settlement, "farms"):
 			AuthoredFabricPainter.draw_farm(self, area)
+	# STANDING: decorative masses, then specials. Woodland is drawn last of all (a canopy
+	# overhangs what it grows beside, so a tree under a mass would read as the mass in a hole).
+	for settlement in ordered:
 		for mass in _list(settlement, "decor"):
 			if not _sacrificed.has(str(mass.get("id", ""))):
 				AuthoredFabricPainter.draw_mass(self, mass)
+	for settlement in ordered:
 		for special in _list(settlement, "specials"):
 			if not _sacrificed.has(str(special.get("id", ""))):
 				AuthoredFabricPainter.draw_special(self, special)
+	for settlement in ordered:
 		for area in _list(settlement, "forests"):
 			AuthoredFabricPainter.draw_forest(self, area)
 

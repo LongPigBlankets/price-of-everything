@@ -395,8 +395,28 @@ func _test_tutorial_engine() -> void:
 	var ws_saved: Vector2i = PlayerProfile.window_size
 	PlayerProfile.set_window_size(Vector2i(3440, 1440))
 	_check(PlayerProfile.window_size == Vector2i(3440, 1440), "profile: set_window_size stores the chosen resolution")
-	PlayerProfile.set_window_size(ws_saved)  # restore + persist the original
-	_check(PlayerProfile.window_size == ws_saved, "profile: window_size restored after test")
+
+	# Fullscreen, target monitor, and audio volumes are settings that persist across sessions.
+	# Verify the setters store them and that they survive the profile's JSON encode/decode.
+	# (The real fixes: fullscreen fills the chosen screen; the monitor pick + windowed clamp
+	# keep the window from overflowing a smaller external display.)
+	var fs_saved: bool = PlayerProfile.fullscreen
+	var sc_saved: int = PlayerProfile.screen_index
+	var al_saved: Dictionary = PlayerProfile.audio_levels.duplicate()
+	PlayerProfile.set_display(false, Vector2i(1920, 1080), 0)
+	_check(PlayerProfile.fullscreen == false and PlayerProfile.window_size == Vector2i(1920, 1080) and PlayerProfile.screen_index == 0, "profile: set_display stores mode + windowed size + monitor")
+	PlayerProfile.set_audio_levels({"Master": 100.0, "Music": 55.0, "SFX": 30.0})
+	_check(int(PlayerProfile.audio_levels.get("Music", 0)) == 55, "profile: set_audio_levels stores volumes")
+	var round_trip: Variant = JSON.parse_string(JSON.stringify({"fullscreen": PlayerProfile.fullscreen, "screen_index": PlayerProfile.screen_index, "audio_levels": PlayerProfile.audio_levels}))
+	_check(round_trip is Dictionary and (round_trip as Dictionary).get("fullscreen") == false \
+		and int((round_trip as Dictionary).get("screen_index", -99)) == 0 \
+		and int(((round_trip as Dictionary).get("audio_levels", {}) as Dictionary).get("Music", 0)) == 55, \
+		"profile: display + audio prefs survive a JSON round-trip")
+
+	PlayerProfile.fullscreen = fs_saved
+	PlayerProfile.set_audio_levels(al_saved)              # restore + re-persist the originals
+	PlayerProfile.set_display(fs_saved, ws_saved, sc_saved)
+	_check(PlayerProfile.window_size == ws_saved and PlayerProfile.screen_index == sc_saved, "profile: window_size + monitor restored after test")
 
 	var terminal_present := false
 	var terminal_step: Dictionary = {}
