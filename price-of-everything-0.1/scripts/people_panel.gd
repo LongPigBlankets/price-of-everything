@@ -909,6 +909,8 @@ func _card_pentagon(advisor: Dictionary) -> Control:
 func _advisor_role_fit(advisor_id: String) -> Dictionary:
 	var rows: Array = []
 	for seat_id in MatchState.SEAT_DEFINITIONS:
+		if not MatchState.is_seat_available(str(seat_id)):
+			continue  # locked seats stay hidden until `unlock advisors`
 		var seat: Dictionary = MatchState.SEAT_DEFINITIONS[seat_id]
 		rows.append({"name": str(seat.get("seat_name", seat_id)), "tier": MatchState.advisor_seat_tier(advisor_id, str(seat_id))})
 	rows.sort_custom(func(a, b): return int(a["tier"]) > int(b["tier"]))
@@ -1383,6 +1385,8 @@ func _on_discipline_label(disc: String, advisor_id: String) -> void:
 	_discipline_info_section.add_child(_wrapped("This advisor: %s  (%d / 3)" % [tier_word, stat], "Body"))
 	var seat_names: Array = []
 	for seat_id in MatchState.SEAT_DEFINITIONS:
+		if not MatchState.is_seat_available(str(seat_id)):
+			continue  # locked seats stay hidden until `unlock advisors`
 		var seat: Dictionary = MatchState.SEAT_DEFINITIONS[seat_id]
 		if str(seat.get("governs", "")) == disc or (seat.get("flexible", []) as Array).has(disc):
 			seat_names.append(str(seat.get("seat_name", seat_id)))
@@ -1421,6 +1425,8 @@ func _seat_assignment_section(advisor: Dictionary, with_header: bool = true) -> 
 	if not hired:
 		root.add_child(_label("Hire this advisor to assign a seat.", "Caption"))
 	for seat_id in MatchState.SEAT_DEFINITIONS:
+		if not MatchState.is_seat_available(str(seat_id)):
+			continue  # locked seats stay hidden until `unlock advisors`
 		root.add_child(_seat_row(str(seat_id), advisor_id, hired))
 	return panel
 

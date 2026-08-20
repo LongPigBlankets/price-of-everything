@@ -18,6 +18,11 @@ var money: float = 1000.0  # was: int = 1000
 const HIDDEN_BUILDING_IDS := {"b_029": true, "b_030": true, "b_031": true, "b_035": true}
 var hidden_buildings_unlocked: bool = false
 
+# Demo gating (owner 2026-08-19): only the three DEMO_ADVISORS and four BASE_SEATS are
+# available until the `unlock advisors` cheat opens the full roster, every seat, and the
+# People-Management seat-unlock research.
+var advisors_unlocked: bool = false
+
 # --- Ruleset ---
 # Which rule variant this match plays under. Carried in saves and start configs so
 # future rule changes (scoring, brakes, era pacing, …) can key off it; only "name"
@@ -106,6 +111,9 @@ var advisor_seats: Dictionary = {}          # seat_id -> advisor_id
 ## posts is a real decision; choosing between eleven is a menu.
 ## See docs/early-game-onboarding-spec.md §5.4.
 const STARTING_SEATS: Array[String] = ["cfo", "coo"]
+# The seats a match runs with by default — CFO, COO, Technical Director, Chief Markets.
+# The rest wait behind `unlock advisors` (see advisors_unlocked / is_seat_available).
+const BASE_SEATS: Array[String] = ["cfo", "coo", "technical_director", "chief_markets"]
 const FOUNDER_ADVISOR_ID := "andrew"
 const FOUNDER_TENURE_TURNS := 30
 ## The research title that opens the rest of the council (data/research_unlocks.csv).
@@ -137,7 +145,11 @@ var max_advisor_slots: int = MAX_ADVISOR_SLOTS_DEFAULT
 # --- Advisor acquisition (spec §4.2-4.4) ---
 const DEFAULT_MATCH_RNG_SEED := 5060301
 const PROFIT_MILESTONES := [50, 100, 150, 200, 300, 400, 500, 750, 1000]
-const STARTING_TRIO := ["vera", "tom", "rufus"]
+# Andrew (the founder, seated via the family-friend decision), Vera (CFO) and Gerald (COO)
+# are the only advisors until `unlock advisors`. The starting recruited pool is the two
+# non-founder demo advisors; Andrew joins separately through seat_founder.
+const DEMO_ADVISORS := ["andrew", "vera", "gerald"]
+const STARTING_TRIO := ["vera", "gerald"]
 var _match_rng := RandomNumberGenerator.new()
 var match_rng_seed: int = DEFAULT_MATCH_RNG_SEED   # seeded match RNG (draws + tile reveal)
 var crossed_milestones: Array = []                 # latched profit thresholds
@@ -3167,6 +3179,20 @@ func cheat_unlock_hidden_buildings() -> void:
 	unlock_granted.emit("Hidden Buildings", "Legacy prototype buildings enabled.", false)
 	hidden_buildings_enabled.emit()
 
+## Cheat (`unlock advisors`): open the full advisor roster, every seat, and the
+## People-Management seat-unlock research — all hidden by default in the demo, which
+## ships only Andrew/Vera/Gerald and the CFO/COO/Technical Director/Chief Markets seats.
+func cheat_unlock_advisors() -> void:
+	if advisors_unlocked:
+		return
+	advisors_unlocked = true
+	all_seats_unlocked = true
+	for a in ADVISOR_ROSTER:
+		var id := str(a.get("id", ""))
+		if id != "" and not recruited_advisor_ids.has(id):
+			recruited_advisor_ids.append(id)
+	advisors_changed.emit()
+
 # --- Helpers ---
 func _generate_instance_id(building_id: String) -> String:
 	_next_instance_counter += 1
@@ -3182,6 +3208,7 @@ func reserve_instance_id(building_id: String) -> String:
 func reset() -> void:
 	money = 1000
 	hidden_buildings_unlocked = false
+	advisors_unlocked = false
 	construct_cost_display = "grid"
 	construct_start_half_capacity = false
 	construct_auto_buy_land = false
@@ -3464,9 +3491,12 @@ func import_state(d: Dictionary) -> void:
 	for pid in permanent_advisor_ids:
 		advisor_hired_turn[str(pid)] = int(raw_hired.get(str(pid), int(TurnManager.current_turn) - 1))
 	advisor_seats = _sanitize_advisor_seats(d.get("advisor_seats", {}))
-	# Tolerant readers: saves from before the founder existed load with every seat open, which
-	# is what those saves already behaved like.
-	all_seats_unlocked = bool(d.get("all_seats_unlocked", true))
+	# Default LOCKED: the demo ships four base seats until `unlock advisors` (owner 2026-08-19).
+	# A save that had actually opened the council carries the flag; only a snapshot missing the
+	# key (a fresh start config, which never sets it) reads false — which is the gated default
+	# a new game wants. (Was `true` as a pre-founder tolerant-reader default; that leaked every
+	# seat onto the council grid on every new game.)
+	all_seats_unlocked = bool(d.get("all_seats_unlocked", false))
 	founder_seat = str(d.get("founder_seat", ""))
 	founder_leaves_turn = int(d.get("founder_leaves_turn", 0))
 	freight_credit_units = int(d.get("freight_credit_units", 0))
@@ -5992,7 +6022,7 @@ func peek_freight_credit(units: int) -> int:
 ## Which posts the company can fill. Only CFO and COO exist until the people/labour research
 ## node opens the rest — see docs/early-game-onboarding-spec.md §5.4.
 func is_seat_available(seat_id: String) -> bool:
-	return all_seats_unlocked or STARTING_SEATS.has(seat_id)
+	return advisors_unlocked or all_seats_unlocked or BASE_SEATS.has(seat_id)
 
 
 func available_seat_ids() -> Array[String]:
@@ -6194,6 +6224,8 @@ func advisor_best_effect_seat(advisor_id: String) -> String:
 	var best_seat := ""
 	var best_tier := -1
 	for sid in SEAT_DEFINITIONS:
+		if not is_seat_available(str(sid)):
+			continue  # a locked seat never becomes an advisor's shown "best" seat
 		var t: int = advisor_seat_tier(advisor_id, str(sid))
 		var has_fx: bool = not _SEAT_EFFECTS.get(str(sid), []).is_empty()
 		# Prefer seats that carry effects; among those, the highest tier.
@@ -6247,6 +6279,8 @@ func _advisor_draw_pool() -> Array:
 	var out: Array = []
 	for a in ADVISOR_ROSTER:
 		var id := str(a.get("id", ""))
+		if not advisors_unlocked and not DEMO_ADVISORS.has(id):
+			continue  # only the three demo advisors exist until `unlock advisors`
 		if not recruited_advisor_ids.has(id):
 			out.append(id)
 	return out
@@ -6750,17 +6784,17 @@ const ADVISOR_DISPLAY := {
 	# The family friend. Added to ADVISOR_ROSTER without a presentation entry, which is what
 	# crashed the advisors tab when he was clicked — every other reader of this table assumes
 	# one exists for anyone on the roster.
-	"andrew":   {"initials": "AK", "portrait_path": "", "accent": "#6B7F5A", "bonus": "Old Family Friend: serves 30 turns unpaid, in one of two chairs", "recommendation": "Free, capable, and temporary — take the seat you need most for the next 30 turns.", "bio": "A friend of your father's for thirty years, who says he owes the family more than he ever repaid. He has come to settle it.", "agenda": "Repay an old debt, then leave with it settled.", "likes": ["Being useful", "Cheap freight"], "dislikes": ["Being kept past his welcome"], "bonuses": ["No salary for his tenure", "A signing gift in either chair"]},
+	"andrew":   {"initials": "AK", "portrait_path": "res://assets/advisors/andrew.png", "accent": "#6B7F5A", "bonus": "Old Family Friend: serves 30 turns unpaid, in one of two chairs", "recommendation": "Free, capable, and temporary — take the seat you need most for the next 30 turns.", "bio": "A friend of your father's for thirty years, who says he owes the family more than he ever repaid. He has come to settle it.", "agenda": "Repay an old debt, then leave with it settled.", "likes": ["Being useful", "Cheap freight"], "dislikes": ["Being kept past his welcome"], "bonuses": ["No salary for his tenure", "A signing gift in either chair"]},
 	"vera":      {"initials": "VA", "portrait_path": "res://assets/advisors/natasha.png", "accent": "#7C5A80", "bonus": "Family Trust: cheap, steady, strong almost anywhere", "recommendation": "Your reliable keystone — she holds any seat well.", "bio": "Your sister and the steady hand on the board: numerate, unflappable, and very hard to surprise twice.", "agenda": "Anchor the board and keep every seat competently filled.", "likes": ["Steady growth", "A balanced board"], "dislikes": ["Reckless bets", "Idle capital"], "bonuses": ["Reduced salary", "No weak seat"]},
 	"alexandra": {"initials": "AR", "portrait_path": "res://assets/advisors/alexandra.png", "accent": "#8A5A5A", "bonus": "Prima Donna: superb everywhere, high salary + walk-risk", "recommendation": "A top hire who forces a full board reshuffle when she arrives.", "bio": "A rival operator good enough at everything to make your whole board nervous — and she knows her price.", "agenda": "Be indispensable, be paid, and never be sidelined.", "likes": ["Being centrally slotted", "Ambitious plays"], "dislikes": ["Being benched", "Being under-slotted"], "bonuses": ["Strong in any seat", "Commands a high salary"]},
 	"gerald":    {"initials": "GV", "portrait_path": "res://assets/advisors/dan.png", "accent": "#455C78", "bonus": "Dinosaur: superb operator, brakes the green pivot", "recommendation": "Keep him for the throughput; the carbon squeeze makes him a dilemma.", "bio": "A superb pure operator who runs a plant beautifully and fights decarbonisation on instinct.", "agenda": "Maximise output and upkeep; resist the clean transition.", "likes": ["High utilisation", "Cheap fuel"], "dislikes": ["Clean retrofits", "Carbon rules"], "bonuses": ["Excellent COO", "Drags clean adoption"]},
 	"eleanor":   {"initials": "ES", "portrait_path": "res://assets/advisors/anita.png", "accent": "#51707A", "bonus": "Beloved: labour + morale, slows churn", "recommendation": "The glue that lets a flawed board function.", "bio": "The diplomat the crews trust — dampens labour spikes and keeps the board from walking.", "agenda": "Keep the workforce and the board loyal.", "likes": ["Fair policies", "A stable board"], "dislikes": ["Layoffs", "Churn"], "bonuses": ["Labour cost down", "Advisor retention"]},
 	"sloane":    {"initials": "SV", "portrait_path": "", "accent": "#6E5A86", "bonus": "Slick: best sale prices, quietly toxic", "recommendation": "Your best seller — pair with a strong IR to counter the fallout.", "bio": "The closer. Best sale prices in the business, and quietly toxic to everything that isn't a deal.", "agenda": "Push prices and volume; damn the standing.", "likes": ["Fat margins", "High volume"], "dislikes": ["Slow markets", "HR duty"], "bonuses": ["Better sell prices", "Weak with people"]},
-	"priya":     {"initials": "PA", "portrait_path": "", "accent": "#4F6B58", "bonus": "Idealist: amplifies green, dents near-term profit", "recommendation": "Superb if you're racing Greenest; a cash drain if you're not.", "bio": "A true believer who reaches for the clean option every time, whatever it costs this quarter.", "agenda": "Decarbonise, capture subsidy, win Greenest.", "likes": ["Clean recipes", "Green subsidy"], "dislikes": ["Dirty routes", "Short-termism"], "bonuses": ["Green amplified", "Raises short-term spend"]},
-	"hitomi":    {"initials": "HS", "portrait_path": "", "accent": "#7A6A45", "bonus": "Flow State: systems savant, socially inept", "recommendation": "Brilliant on logistics and the line; keep her from people seats.", "bio": "Brilliant with systems, hopeless with people — a logistics and manufacturing savant.", "agenda": "Optimise flow and throughput everywhere.", "likes": ["Tight networks", "Clean processes"], "dislikes": ["Meetings", "People seats"], "bonuses": ["Logistics/mfg boost", "Malus in people seats"]},
+	"priya":     {"initials": "PA", "portrait_path": "res://assets/advisors/priya.png", "accent": "#4F6B58", "bonus": "Idealist: amplifies green, dents near-term profit", "recommendation": "Superb if you're racing Greenest; a cash drain if you're not.", "bio": "A true believer who reaches for the clean option every time, whatever it costs this quarter.", "agenda": "Decarbonise, capture subsidy, win Greenest.", "likes": ["Clean recipes", "Green subsidy"], "dislikes": ["Dirty routes", "Short-termism"], "bonuses": ["Green amplified", "Raises short-term spend"]},
+	"hitomi":    {"initials": "HS", "portrait_path": "res://assets/advisors/hitomi.png", "accent": "#7A6A45", "bonus": "Flow State: systems savant, socially inept", "recommendation": "Brilliant on logistics and the line; keep her from people seats.", "bio": "Brilliant with systems, hopeless with people — a logistics and manufacturing savant.", "agenda": "Optimise flow and throughput everywhere.", "likes": ["Tight networks", "Clean processes"], "dislikes": ["Meetings", "People seats"], "bonuses": ["Logistics/mfg boost", "Malus in people seats"]},
 	"hal":       {"initials": "HR", "portrait_path": "", "accent": "#5A6F4A", "bonus": "Backroom Deals: regulatory relief at a price", "recommendation": "A real lever if you're staying dirty into the squeeze.", "bio": "The fixer. Buys you time against the regulators, at an ethical price.", "agenda": "Soften the rules and the tax bill.", "likes": ["Loopholes", "Delay"], "dislikes": ["Scrutiny", "Clean mandates"], "bonuses": ["Tax + carbon relief", "Reputation cost"]},
 	"tom":       {"initials": "TB", "portrait_path": "res://assets/advisors/lance.png", "accent": "#66513B", "bonus": "Shop-Floor Respect: dependable operations", "recommendation": "Put him near the floor; he flounders near markets or the lab.", "bio": "The old foreman. Dependable operations, no frills, and the crews trust him.", "agenda": "Keep the line running cheaply.", "likes": ["A steady floor", "Trusted crews"], "dislikes": ["Market games", "Lab work"], "bonuses": ["Extra Ops labour cut", "Poor off the floor"]},
-	"marcus":    {"initials": "MT", "portrait_path": "", "accent": "#765742", "bonus": "Leverage: cheap capital, dangerous debt", "recommendation": "High-risk finance specialist; dangerous outside his lane.", "bio": "A financier who makes capital cheap and acquisitions cheaper — until the debt bites.", "agenda": "Borrow big, buy cheap, grow fast.", "likes": ["Cheap debt", "Acquisitions"], "dislikes": ["Thin reserves", "Operations duty"], "bonuses": ["Cheap capital", "Debt-risk exposure"]},
+	"marcus":    {"initials": "MT", "portrait_path": "res://assets/advisors/marcus.png", "accent": "#765742", "bonus": "Leverage: cheap capital, dangerous debt", "recommendation": "High-risk finance specialist; dangerous outside his lane.", "bio": "A financier who makes capital cheap and acquisitions cheaper — until the debt bites.", "agenda": "Borrow big, buy cheap, grow fast.", "likes": ["Cheap debt", "Acquisitions"], "dislikes": ["Thin reserves", "Operations duty"], "bonuses": ["Cheap capital", "Debt-risk exposure"]},
 	"idris":     {"initials": "IK", "portrait_path": "", "accent": "#536C92", "bonus": "Insufferable Genius: brilliant, unbearable", "recommendation": "Atrocious except in the lab — silo him in a TD seat.", "bio": "A brilliant process chemist nobody can stand to work near — keep him in the lab.", "agenda": "Perfect the process; ignore the room.", "likes": ["Hard problems", "Being left alone"], "dislikes": ["Management", "Small talk"], "bonuses": ["Big recipe efficiency", "Empire labour malus unless siloed"]},
 	"rufus":     {"initials": "RA", "portrait_path": "", "accent": "#6B6077", "bonus": "Silver Tongue, Empty Suit: one good seat", "recommendation": "Genuinely, and only, a lobbyist.", "bio": "Your cousin. Great in a room, useless everywhere else, riding the family name.", "agenda": "Talk his way through; do as little as possible.", "likes": ["A podium", "Family favour"], "dislikes": ["Real work", "Being found out"], "bonuses": ["Strong lobbyist", "A disaster elsewhere"]},
 }
