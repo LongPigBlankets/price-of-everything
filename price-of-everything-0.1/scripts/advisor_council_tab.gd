@@ -169,6 +169,9 @@ func _build_roster() -> void:
 	for seat_id in MatchState.SEAT_DEFINITIONS:
 		var sid := str(seat_id)
 		var aid := MatchState.get_advisor_in_seat(sid)
+		# Locked, empty seats are hidden until `unlock advisors` (a seated advisor still shows).
+		if aid == "" and not MatchState.is_seat_available(sid):
+			continue
 		if aid != "":
 			grid.add_child(_filled_seat_card(sid, aid))
 		else:
@@ -196,7 +199,6 @@ func _filled_seat_card(seat_id: String, advisor_id: String) -> Control:
 	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(names)
 	names.add_child(_title_label(str(adv.get("name", advisor_id)), 19))
-	names.add_child(_dim_label(_archetype(advisor_id), 12))
 	head.add_child(_role_chip(seat_id, scol))
 
 	var lrow := HBoxContainer.new()
@@ -305,7 +307,6 @@ func _candidate_card(adv: Dictionary) -> Control:
 	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(names)
 	names.add_child(_title_label(str(adv.get("name", aid)), 19))
-	names.add_child(_dim_label(_archetype(aid), 12))
 	var fee := VBoxContainer.new()
 	fee.add_theme_constant_override("separation", 0)
 	head.add_child(fee)
@@ -360,7 +361,7 @@ func _build_detail() -> void:
 	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(names)
 	names.add_child(_title_label(str(adv.get("name", aid)), 26))
-	names.add_child(_dim_label("%s · %s" % [_archetype(aid), "★".repeat(MatchState.advisor_star_by_id(aid))], 13))
+	names.add_child(_dim_label("★".repeat(MatchState.advisor_star_by_id(aid)), 13))
 	if seated_seat != "":
 		head.add_child(_role_chip(seated_seat, _seat_color(seated_seat)))
 	else:

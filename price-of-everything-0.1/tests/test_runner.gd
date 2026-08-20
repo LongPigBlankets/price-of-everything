@@ -140,6 +140,7 @@ func _ready() -> void:
 	_test_build_duration()
 	_test_advisor_seats_save_roundtrip()
 	_test_advisor_milestone_acquisition()
+	_test_advisor_demo_gating()
 	_test_advisor_slot_progression()
 	_test_advisor_fake_money_and_track()
 	_test_advisor_slot_unlock()
@@ -262,6 +263,7 @@ func _ready() -> void:
 	_test_building_leveling()
 	_test_run_failure_warnings()
 	await _test_mining_mastery_free_unlock()
+	_test_free_unlock_cadence()
 	_test_modifiers_pct_additive_and_resolve()
 	_test_modifiers_new_domain_unlocks()
 	_test_event_grouping()
@@ -5731,6 +5733,29 @@ func _test_live_unlock_conditions() -> void:
 
 # Free-pick path: spending a free unlock on Mining Mastery (via_condition=false)
 # also routes through grant_unlock → unlock_granted, so the bonus still lands.
+# Free-unlock cadence (owner, 2026-08-19): one at turns 1/12/36/60/84, then two every
+# 48 turns. The schedule is a pure static function on the panel, so it tests without UI.
+func _test_free_unlock_cadence() -> void:
+	var RP := preload("res://scripts/research_panel.gd")
+	var sched: Dictionary = RP.free_unlock_schedule(TurnManager.MAX_TURNS)
+	for t in [1, 12, 36, 60, 84]:
+		_check(int(sched.get(t, 0)) == 1, "one free unlock at turn %d" % t)
+	for t in [132, 180, 228, 276]:
+		_check(int(sched.get(t, 0)) == 2, "two free unlocks at turn %d (48-turn cadence)" % t)
+	_check(not sched.has(84 + FREE_UNLOCK_OFFCADENCE), "no grant on an off-cadence turn")
+	_check(not sched.has(276 + 48), "the recurring grants stop at MAX_TURNS (no turn 324)")
+	# Cumulative opening balance a panel would show at each turn.
+	_check(RP.free_unlocks_earned_by(0, TurnManager.MAX_TURNS) == 0, "nothing earned before turn 1")
+	_check(RP.free_unlocks_earned_by(1, TurnManager.MAX_TURNS) == 1, "1 earned by turn 1")
+	_check(RP.free_unlocks_earned_by(11, TurnManager.MAX_TURNS) == 1, "still 1 the turn before 12")
+	_check(RP.free_unlocks_earned_by(12, TurnManager.MAX_TURNS) == 2, "2 earned by turn 12")
+	_check(RP.free_unlocks_earned_by(84, TurnManager.MAX_TURNS) == 5, "5 earned by turn 84 (the five singles)")
+	_check(RP.free_unlocks_earned_by(132, TurnManager.MAX_TURNS) == 7, "7 earned by turn 132 (first pair)")
+	_check(RP.free_unlocks_earned_by(TurnManager.MAX_TURNS, TurnManager.MAX_TURNS) == 5 + 2 * 4,
+		"13 earned by turn 300 (five singles + four pairs at 132/180/228/276)")
+
+const FREE_UNLOCK_OFFCADENCE := 1
+
 func _test_mining_mastery_free_unlock() -> void:
 	Modifiers.reset()
 	MatchState.reset()
@@ -7655,16 +7680,18 @@ func _test_purchase_inventory_seed() -> void:
 	Stockpile.clear_all()
 
 func _test_founder_advisor() -> void:
-	# Only two posts exist until the player earns the rest, and the family friend fills one of
-	# them pro bono for 30 turns. See docs/early-game-onboarding-spec.md §5.4.
+	# Demo gating (owner 2026-08-19): four posts exist by default — CFO, COO, Technical Director,
+	# Chief Markets — and the rest wait behind `unlock advisors`. The family friend still fills one
+	# of the two starting chairs pro bono. See docs/early-game-onboarding-spec.md §5.4.
 	MatchState.reset()
-	_check(MatchState.is_seat_available("cfo") and MatchState.is_seat_available("coo"),
-		"seats: CFO and COO are open from the start")
-	_check(not MatchState.is_seat_available("vp_logistics")
+	_check(MatchState.is_seat_available("cfo") and MatchState.is_seat_available("coo")
+		and MatchState.is_seat_available("technical_director") and MatchState.is_seat_available("chief_markets"),
+		"seats: the four base posts are open from the start")
+	_check(not MatchState.is_seat_available("hr_director")
 		and not MatchState.is_seat_available("government_affairs"),
 		"seats: every other post is closed until unlocked")
-	_check(MatchState.available_seat_ids().size() == MatchState.STARTING_SEATS.size(),
-		"seats: exactly two posts are offered at the start")
+	_check(MatchState.available_seat_ids().size() == MatchState.BASE_SEATS.size(),
+		"seats: exactly the four base posts are offered at the start")
 	MatchState.permanent_advisor_ids = ["vera"]
 	_check(not MatchState.assign_advisor_to_seat("vp_logistics", "vera"),
 		"seats: a closed post refuses an appointment")
@@ -10073,6 +10100,10 @@ func _test_advisor_payroll_cost() -> void:
 func _test_advisor_milestone_acquisition() -> void:
 	var saved_hired: Array = MatchState.recruited_advisor_ids.duplicate(true)
 	var saved_crossed: Array = MatchState.crossed_milestones.duplicate(true)
+	var saved_unlocked := MatchState.advisors_unlocked
+	# The milestone-recruit mechanism draws from the FULL roster once the gate is open; the
+	# demo restriction (only the three demo advisors) is covered by _test_advisor_demo_gating.
+	MatchState.advisors_unlocked = true
 	MatchState.recruited_advisor_ids = []
 	MatchState.crossed_milestones = []
 	MatchState._match_rng.seed = MatchState.DEFAULT_MATCH_RNG_SEED
@@ -10094,6 +10125,45 @@ func _test_advisor_milestone_acquisition() -> void:
 	_check(str(MatchState.recruited_advisor_ids[0]) == first_id, "milestone: seeded recruit is deterministic")
 	MatchState.recruited_advisor_ids = saved_hired
 	MatchState.crossed_milestones = saved_crossed
+	MatchState.advisors_unlocked = saved_unlocked
+
+# Demo gating (owner 2026-08-19): only Andrew/Vera/Gerald and the four base seats exist until
+# the `unlock advisors` cheat opens the full roster, every seat, and the seat-unlock research.
+func _test_advisor_demo_gating() -> void:
+	# NB: do NOT call MatchState.reset() here — it wipes the NPC ports placed at scene _ready
+	# that a later test depends on. Save/restore only the fields this test actually touches.
+	var saved_hired: Array = MatchState.recruited_advisor_ids.duplicate(true)
+	var saved_crossed: Array = MatchState.crossed_milestones.duplicate(true)
+	var saved_unlocked := MatchState.advisors_unlocked
+	var saved_all_seats := MatchState.all_seats_unlocked
+	var saved_rng: int = MatchState._match_rng.state
+	MatchState.advisors_unlocked = false
+	MatchState.all_seats_unlocked = false
+	_check(MatchState.DEMO_ADVISORS.size() == 3 and MatchState.BASE_SEATS.size() == 4,
+		"gating: three demo advisors, four base seats")
+	_check(MatchState.available_seat_ids().size() == MatchState.BASE_SEATS.size(),
+		"gating: only the four base seats before unlock")
+	# Milestones only ever recruit the three demo advisors while locked.
+	MatchState.recruited_advisor_ids = []
+	MatchState.crossed_milestones = []
+	MatchState._match_rng.seed = MatchState.DEFAULT_MATCH_RNG_SEED
+	MatchState.check_profit_milestones(100000.0)  # cross every milestone at once
+	for id in MatchState.recruited_advisor_ids:
+		_check(MatchState.DEMO_ADVISORS.has(str(id)), "gating: locked milestones recruit only demo advisors")
+	_check(MatchState.recruited_advisor_ids.size() <= MatchState.DEMO_ADVISORS.size(),
+		"gating: no more than the three demo advisors recruited while locked")
+	# The cheat opens the roster, every seat, and (elsewhere) the seat research.
+	MatchState.cheat_unlock_advisors()
+	_check(MatchState.advisors_unlocked, "gating: unlock advisors flips the flag")
+	_check(MatchState.is_seat_available("hr_director") and MatchState.is_seat_available("government_affairs"),
+		"gating: unlock advisors opens the previously-closed seats")
+	_check(MatchState.recruited_advisor_ids.has("marcus") and MatchState.recruited_advisor_ids.has("idris"),
+		"gating: unlock advisors recruits the previously-locked advisors")
+	MatchState.advisors_unlocked = saved_unlocked
+	MatchState.all_seats_unlocked = saved_all_seats
+	MatchState.recruited_advisor_ids = saved_hired
+	MatchState.crossed_milestones = saved_crossed
+	MatchState._match_rng.state = saved_rng
 
 func _test_advisor_slot_progression() -> void:
 	var saved_slots: int = MatchState.max_advisor_slots
@@ -10442,6 +10512,10 @@ func _test_widgets_instantiate() -> void:
 	for _a in MatchState.advisor_pool():
 		_all_ids.append(str(_a.get("id", "")))
 	MatchState.recruited_advisor_ids = _all_ids
+	# This fixture exercises the FULL council (all seats + roster), so open the demo gate;
+	# restored after pp is freed below.
+	var _saved_adv_unlocked := MatchState.advisors_unlocked
+	MatchState.advisors_unlocked = true
 	MatchState.advisors_changed.emit()
 	var pp: Node = load("res://scripts/people_panel.gd").new()
 	add_child(pp)
@@ -10590,6 +10664,7 @@ func _test_widgets_instantiate() -> void:
 	if detail != null:
 		detail.queue_free()
 	pp.queue_free()
+	MatchState.advisors_unlocked = _saved_adv_unlocked
 	MatchState.permanent_advisor_ids = saved_advisors
 	MatchState.recruited_advisor_ids = saved_recruited
 	MatchState.fired_advisor_cooldowns = saved_fired
