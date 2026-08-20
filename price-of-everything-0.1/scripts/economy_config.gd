@@ -285,8 +285,8 @@ const TRANSPORT_ADVALOREM_BY_WEIGHT_CLASS := {
 	"gas": 0.04,    # ~10x safe_liquid (owner ruling 2026-07-27). Gases ride NORMAL pipework
 	                # — they do not need the reinforced line — but compression and cryogenic
 	                # handling make them an order of magnitude dearer to move and hold. This
-	                # is why real air-separation units sit ON the customer's site rather than
-	                # shipping product: it pushes gas production local, which is correct.
+					# is why real air-separation units sit ON the customer's site rather than
+					# shipping product: it pushes gas production local, which is correct.
 	"electricity": 0.0,
 }
 

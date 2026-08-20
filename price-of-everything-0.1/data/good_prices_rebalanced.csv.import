@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://b6id113msq2oh"
+
+[deps]
+
+files=["res://data/good_prices_rebalanced.tier.translation", "res://data/good_prices_rebalanced.integrated.translation", "res://data/good_prices_rebalanced.new.translation", "res://data/good_prices_rebalanced.held.translation"]
+
+source_file="res://data/good_prices_rebalanced.csv"
+dest_files=["res://data/good_prices_rebalanced.tier.translation", "res://data/good_prices_rebalanced.integrated.translation", "res://data/good_prices_rebalanced.new.translation", "res://data/good_prices_rebalanced.held.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

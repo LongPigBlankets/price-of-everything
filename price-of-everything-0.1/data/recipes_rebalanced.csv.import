@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://dai7nke0ghfdo"
+
+[deps]
+
+files=["res://data/recipes_rebalanced.display.translation", "res://data/recipes_rebalanced.building.translation", "res://data/recipes_rebalanced.input.translation", "res://data/recipes_rebalanced.qty.translation", "res://data/recipes_rebalanced.input.translation", "res://data/recipes_rebalanced.qty.translation", "res://data/recipes_rebalanced.input.translation", "res://data/recipes_rebalanced.qty.translation", "res://data/recipes_rebalanced.input.translation", "res://data/recipes_rebalanced.qty.translation", "res://data/recipes_rebalanced.input.translation", "res://data/recipes_rebalanced.qty.translation", "res://data/recipes_rebalanced.input.translation", "res://data/recipes_rebalanced.qty.translation", "res://data/recipes_rebalanced.energy.translation", "res://data/recipes_rebalanced.output.translation", "res://data/recipes_rebalanced.output.translation", "res://data/recipes_rebalanced.output.translation", "res://data/recipes_rebalanced.output.translation", "res://data/recipes_rebalanced.output.translation", "res://data/recipes_rebalanced.output.translation", "res://data/recipes_rebalanced.output.translation", "res://data/recipes_rebalanced.output.translation", "res://data/recipes_rebalanced.en.translation", "res://data/recipes_rebalanced.en.translation", "res://data/recipes_rebalanced.requirements.translation", "res://data/recipes_rebalanced.pollution.translation", "res://data/recipes_rebalanced.en.translation", "res://data/recipes_rebalanced.category.translation", "res://data/recipes_rebalanced.terminal.translation"]
+
+source_file="res://data/recipes_rebalanced.csv"
+dest_files=["res://data/recipes_rebalanced.display.translation", "res://data/recipes_rebalanced.building.translation", "res://data/recipes_rebalanced.input.translation", "res://data/recipes_rebalanced.qty.translation", "res://data/recipes_rebalanced.input.translation", "res://data/recipes_rebalanced.qty.translation", "res://data/recipes_rebalanced.input.translation", "res://data/recipes_rebalanced.qty.translation", "res://data/recipes_rebalanced.input.translation", "res://data/recipes_rebalanced.qty.translation", "res://data/recipes_rebalanced.input.translation", "res://data/recipes_rebalanced.qty.translation", "res://data/recipes_rebalanced.input.translation", "res://data/recipes_rebalanced.qty.translation", "res://data/recipes_rebalanced.energy.translation", "res://data/recipes_rebalanced.output.translation", "res://data/recipes_rebalanced.output.translation", "res://data/recipes_rebalanced.output.translation", "res://data/recipes_rebalanced.output.translation", "res://data/recipes_rebalanced.output.translation", "res://data/recipes_rebalanced.output.translation", "res://data/recipes_rebalanced.output.translation", "res://data/recipes_rebalanced.output.translation", "res://data/recipes_rebalanced.en.translation", "res://data/recipes_rebalanced.en.translation", "res://data/recipes_rebalanced.requirements.translation", "res://data/recipes_rebalanced.pollution.translation", "res://data/recipes_rebalanced.en.translation", "res://data/recipes_rebalanced.category.translation", "res://data/recipes_rebalanced.terminal.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true
