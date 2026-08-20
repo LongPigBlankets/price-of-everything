@@ -122,7 +122,7 @@ research_mfg_017,Manufacturing,,,,,I,Build,assembly_plant,3,units,Just-in-Time S
 research_mfg_018,Manufacturing,research_mfg_001,,,,II,Build,assembly_plant,3,units,Modular Sub-Assembly,module,Increases Assembly Plant output by 5% permanently.
 research_mfg_019,Manufacturing,,,,,I,Build,assembly_plant,7,units,Robotic Final Assembly,robot,Reduces Assembly Plant labour by 10% for 20 turns.
 research_mfg_020,Manufacturing,,,,,I,Build,industrial_factory,12,units,Automated Guided Assembly,agv,Reduces Industrial Goods Factory labour by 5% permanently.
-research_mfg_021,Manufacturing,,,,,I,Placeholder,,,,Class-100 Cleanrooms,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+research_mfg_021,Manufacturing,,,,,I,Run,high_tech_manufactory,3,20 turns,Class-100 Cleanrooms,fab,Increases High Tech Manufactory output by 5% permanently.
 research_mfg_022,Manufacturing,research_mfg_001,,,,II,Build,high_tech_manufactory,3,units,Advanced Photolithography,litho,Unlocks new recipe: Fabless Semiconductors (3 CPU).
 research_mfg_023,Manufacturing,research_mfg_005,,,,III,Run Profitable,high_tech_manufactory,3,buildings,Atomic Layer Deposition,ald,Increases High Tech Manufactory output by 5% permanently. Unlocks new recipe: Durable Perovskite Solar Panels.
 research_mfg_024,Manufacturing,,,,,I,Build,high_tech_manufactory,3,units,Fully-Automated Fabs,fab,Increases High Tech Manufactory output by 10% permanently.
@@ -167,14 +167,14 @@ research_hcpower_008,Hydrocarbon Power,,,,,I,Build,power_plant,3,units,Reheat Tu
 research_hcpower_009,Hydrocarbon Power,research_hcpower_003,,,,III,Run,Power Plant,15,turns,Combined Heat & Power,chp,Reduces maintenance for all buildings by 5% permanently.
 research_renew_015,Renewable Power,,,,,I,Build,onshore_wind_farm,3,units,Taller Turbine Towers,onwind,Increases Onshore Wind Farm output by 10% permanently.
 research_renew_016,Renewable Power,,,,,I,Build,onshore_wind_farm,7,units,Variable-Pitch Control,pitch,Reduces Onshore Wind Farm maintenance by 10% for 20 turns.
-research_renew_017,Renewable Power,research_renew_001,,,,II,Run,Solar Farm,12,turns,Bifacial Panel Arrays,bifacial,Increases solar potential on all tiles by 10% permanently.
+research_renew_017,Renewable Power,research_renew_001,,,,II,Run,solar_farm,3,12 turns,Bifacial Panel Arrays,bifacial,Increases Solar Farm output by 5% permanently.
 research_renew_018,Renewable Power,,,,,I,Build,solar_farm,3,units,Utility-Scale Inverters,inverter,Increases Solar Farm output by 10% permanently.
 research_renew_019,Renewable Power,,,,,I,Build,solar_farm,7,units,Dual-Axis Tracking Farms,solar,Increases Solar Farm output by 10% permanently.
-research_renew_020,Renewable Power,,,,,I,Placeholder,,,,Perovskite Tandem Arrays,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+research_renew_020,Renewable Power,,,,,I,Run,solar_farm,5,20 turns,Perovskite Tandem Arrays,solar,Increases Solar Farm output by 5% permanently.
 research_renew_021,Renewable Power,,,,,I,Build,battery,3,units,Containerised Battery Racks,battery,Reduces Battery Electric Storage maintenance by 10% for 20 turns.
 research_inorg_021,Inorganic Chemistry,,,,,I,Build,desal,3,units,Multi-Stage Flash Desal,desal,Increases Desalination Plant output by 20% permanently.
 research_inorg_022,Inorganic Chemistry,research_inorg_018,,,,III,Run,Desalination Plant,15,turns,Energy-Recovery Devices,erd,Reduces Desalination Plant power consumption by 50% permanently.
-research_inorg_023,Inorganic Chemistry,,,,,I,Placeholder,,,,Zero-Liquid Discharge,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+research_inorg_023,Inorganic Chemistry,,,,,I,Run,water_pump,3,25 turns,Zero-Liquid Discharge,pump,Increases Water Pump output by 10% permanently.
 research_recyc_003,Recycling,,,,,I,Build,water_recycling,3,units,Tertiary Filtration,filter,Increases Water Recycling Plant output by 15% permanently.
 research_recyc_004,Recycling,,,,,I,Build,recycling_plant,3,units,Advanced Oxidation Loops,scrub,Unlocks new recipe: E-Waste Recycling (3 Copper Wiring).
 research_recyc_005,Recycling,,,,,I,Build,water_recycling,7,units,Zero-Discharge Water,loop,Reduces Water Recycling Plant power consumption by 10% permanently.
@@ -182,23 +182,23 @@ research_biochem_008,Biochemistry,,,,,I,Build,new_forest,3,units,Automated Harve
 research_infra_019,Infrastructure,,,,,I,Build,rails,3,units,Heavy Freight Corridors,rail,Increases rail throughput by 25% permanently.
 research_infra_020,Infrastructure,research_infra_001,,,,III,Use Infrastructure,roads,10,80% for 5 turns,Smart Traffic Control,traffic,Increases road throughput by 25% permanently.
 research_infra_021,Infrastructure,,,,,I,Build,rails,7,units,Double-Track Sidings,rail,Reduces Railways maintenance by 10% permanently.
-research_infra_022,Infrastructure,,,,,I,Placeholder,,,,Heavy-Haul Bogies,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+research_infra_022,Infrastructure,,,,,I,Build,rails,5,,Heavy-Haul Bogies,rail,Increases rail throughput by 25% permanently.
 research_infra_023,Infrastructure,research_infra_008,,,,III,Use Infrastructure,rails,10,80% for 5 turns,Electrified Rolling Stock,erail,Increases rail throughput by 25% permanently.
 research_infra_024,Infrastructure,,,,,I,Build,rails,12,units,Automated Rail Yards,rail,Reduces Railways maintenance by 10% permanently.
 research_infra_025,Infrastructure,,,,,I,Build,rails,12,units,Distributed-Power Trains,rail,Reduces transport cost by 5% permanently.
 research_infra_026,Infrastructure,,,,,I,Build,reinf_pipes,3,units,Large-Diameter Mains,pipe,Reduces Reinforced Pipeworks maintenance by 10% permanently.
 research_infra_027,Infrastructure,,,,,I,Build,pipes,3,units,Booster Pumping Stations,pipe,Reduces Pipeworks maintenance by 10% permanently.
 research_infra_028,Infrastructure,,,,,I,Build,pipes,7,units,Trunk Pipeline Networks,pipe,Reduces transport cost by 5% permanently.
-research_infra_029,Infrastructure,,,,,I,Placeholder,,,,Smart Flow Control,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+research_infra_029,Infrastructure,,,,,I,Use Infrastructure,pipes,3,80% for 5 turns,Smart Flow Control,pipe,Increases pipe throughput by 25% permanently.
 research_infra_030,Infrastructure,,,,,I,Build,reinf_pipes,7,units,Double-Walled Pipelines,pipe,Reduces Reinforced Pipeworks maintenance by 10% permanently.
 research_infra_031,Infrastructure,,,,,I,Build,pipes,12,units,Corrosion-Resistant Linings,pipe,Reduces Pipeworks maintenance by 10% permanently.
 research_infra_032,Infrastructure,research_infra_003,,,,III,Use Infrastructure,pipes,10,80% for 5 turns,Leak-Detection Networks,leak,Increases pipe throughput by 25% permanently.
-research_infra_033,Infrastructure,,,,,I,Placeholder,,,,Ultra-High-Pressure Mains,ph,Spare tech name (unused leveling option) — no effect yet; available to repurpose.
+research_infra_033,Infrastructure,,,,,I,Use Infrastructure,reinf_pipes,3,80% for 5 turns,Ultra-High-Pressure Mains,manifold,Increases reinforced-pipe throughput by 25% permanently.
 research_mfg_025,Manufacturing,research_mfg_002,,,,III,Run Profitable,assembly_plant,3,buildings,Coordinated Robot Handoff,handoff,Increases Assembly Plant output by 5% permanently.
 research_infra_034,Infrastructure,research_infra_001,,,,III,Own,Roads,6,units,Electrified Road Haul,eroad,Increases road throughput by 25% permanently.
-research_renew_022,Renewable Power,research_renew_017,,,,II,Sell,Power,250,units,Anti-Reflective Coatings,arc,Increases solar potential on all tiles by 10% permanently.
-research_renew_023,Renewable Power,research_renew_002,,,,II,Run,Wind Farm,12,turns,Tall-Tower Wind Capture,onwind,Increases onshore wind potential by 10% permanently.
-research_renew_024,Renewable Power,research_renew_002,,,,II,Own,land,5,units,Marine Wind Profiling,offwind,Increases offshore wind potential by 10% permanently.
+research_renew_022,Renewable Power,research_renew_017,,,,II,Run,solar_farm,3,12 turns,Anti-Reflective Coatings,arc,Increases Solar Farm output by 5% permanently.
+research_renew_023,Renewable Power,research_renew_002,,,,II,Run,onshore_wind_farm,3,12 turns,Tall-Tower Wind Capture,onwind,Increases Onshore Wind Farm output by 5% permanently.
+research_renew_024,Renewable Power,research_renew_002,,,,II,Run,offshore_wind_farm,3,12 turns,Marine Wind Profiling,offwind,Increases Offshore Wind Farm output by 5% permanently.
 research_renew_025,Renewable Power,,,,,I,Produce,lithium_battery,30,units,Lithium Battery Storage,battery,Unlocks loading Lithium Ion Battery cells into battery storage (the all-round storage medium).
 research_renew_026,Renewable Power,research_renew_025,,,,II,Produce,sodium_battery,50,units,Sodium Battery Storage,battery,Unlocks loading Sodium Ion Battery cells — cheaper storage that avoids lithium/rare earths.
 research_renew_027,Renewable Power,research_renew_003,,,,III,Build,battery,10,buildings,Iron Air Long Duration Storage,storage,"Unlocks loading Iron Air Battery cells — the cheapest, long-duration bulk storage medium."
