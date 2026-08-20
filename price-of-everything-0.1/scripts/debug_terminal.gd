@@ -21,6 +21,7 @@ extends CanvasLayer
 ##   swap empire button               toggle the Empire View button's two icon treatments
 ##   research all                     unlock every research node (alias of `unlock all`)
 ##   unlock hidden_buildings          enable the three hidden prototype buildings
+##   unlock advisors                 open the full advisor roster, all seats + seat research
 ##   swap song                       advance to the next music track
 ##   help                             list commands
 
@@ -170,13 +171,16 @@ func _run_command(text: String) -> String:
 			return "Unlocked ALL research (%d nodes)." % count
 		"unlock":
 			if parts.size() < 2:
-				return "usage: unlock <research title>  (e.g. 'unlock hydro')  |  unlock all | hidden_buildings"
+				return "usage: unlock <research title>  (e.g. 'unlock hydro')  |  unlock all | hidden_buildings | advisors"
 			if parts[1].to_lower() == "all":
 				var unlocked_count: int = MatchState.cheat_unlock_all_research()
 				return "Unlocked ALL research (%d nodes)." % unlocked_count
 			if parts[1].to_lower() == "hidden_buildings":
 				MatchState.cheat_unlock_hidden_buildings()
 				return "Hidden buildings enabled for this match."
+			if parts[1].to_lower() == "advisors":
+				MatchState.cheat_unlock_advisors()
+				return "All advisors and seats unlocked for this match."
 			var title := " ".join(parts.slice(1))
 			MatchState.grant_unlock(title)
 			return "Unlocked '%s'." % title
@@ -390,7 +394,7 @@ func _run_command(text: String) -> String:
 			PolicyState.cheat_set_coal_ban(true, ban_turn)
 			return "Coal BANNED from turn %d: mining halts, imports refused on every route. 'ban coal off' to lift." % ban_turn
 		"help":
-			return "commands:  cash <int>   |   unlock <title>|all|hidden_buildings   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink|plate|midcentury   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   ban coal [off]   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   unlock <title>|all|hidden_buildings|advisors   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink|plate|midcentury   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   ban coal [off]   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 

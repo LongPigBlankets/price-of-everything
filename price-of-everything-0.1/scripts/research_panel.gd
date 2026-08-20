@@ -6,6 +6,11 @@ const TITLE_FONT: Font = preload("res://assets/fonts/BarlowCondensed-SemiBold.tt
 const BODY_FONT: Font = preload("res://assets/fonts/IBMPlexSans-Medium.ttf")
 
 const RESEARCH_UNLOCKS_PATH := "res://data/research_unlocks.csv"
+# The advisor-seat progression nodes stay hidden until MatchState.advisors_unlocked (the
+# `unlock advisors` cheat). Nothing else prereqs them, so hiding strands no chain.
+const _SEAT_RESEARCH := {"research_people_008": true, "research_people_009": true,
+	"research_people_010": true, "research_people_011": true}
+var _seat_research_shown := false
 const NAVY_TOP_LEFT := Color(0.025, 0.18, 0.34, 1.0)
 const NAVY_TOP_RIGHT := Color(0.0, 0.12156863, 0.24313726, 1.0)
 const NAVY_BOTTOM_LEFT := Color(0.0, 0.105, 0.215, 1.0)
@@ -64,7 +69,15 @@ const CABLE_CONNECTOR_LEAD := 10.0
 const PAN_SPEED_MULTIPLIER := 1.2
 const MAX_ZOOM := 1.0
 const ZOOM_STEP := 1.12
-const FREE_UNLOCK_TEST_START_COUNT := 2
+# ── Free-unlock cadence (owner, 2026-08-19) ────────────────────────────────
+# One free unlock at turns 1, 12, 36, 60 and 84; then two more every 48 turns
+# (132, 180, 228, 276 in the 300-turn game). Turn 1 carries no turn_advanced event
+# — that signal fires for turns 2..MAX_TURNS+1 — so the turn-1 grant lands as the
+# opening balance in _ready, and every later milestone is added as its turn arrives.
+const FREE_UNLOCK_MILESTONES: Array[int] = [1, 12, 36, 60, 84]
+const FREE_UNLOCK_RECUR_AFTER := 84
+const FREE_UNLOCK_RECUR_EVERY := 48
+const FREE_UNLOCK_RECUR_COUNT := 2
 const RANKS := ["I", "II", "III"]
 const CATEGORIES := [
 	"Mining and Surveying",
@@ -97,19 +110,36 @@ var _search_input: LineEdit
 var _search_query := ""
 var _stamp_font: Font
 var _dragging_tree := false
-var _free_unlocks := FREE_UNLOCK_TEST_START_COUNT
+var _free_unlocks := 0
 var _choosing_free_unlock := false
 var _hover_unlock_title := ""
 var _free_unlocked_titles := {}
 var _expanded_requirement_titles := {}
-var _knowledge_grants := {
-	41: 2,
-	81: 3,
-	121: 4,
-	161: 4,
-	201: 5,
-	241: 5,
-}
+# turn -> free unlocks granted that turn; built from the cadence above in _ready.
+var _knowledge_grants: Dictionary = {}
+
+## The cadence as a {turn: grant} table. Pure — MAX_TURNS is the only input — so the
+## schedule can be unit-tested without standing the panel up.
+static func free_unlock_schedule(max_turns: int) -> Dictionary:
+	var out: Dictionary = {}
+	for t in FREE_UNLOCK_MILESTONES:
+		if t <= max_turns:
+			out[t] = int(out.get(t, 0)) + 1
+	var recur := FREE_UNLOCK_RECUR_AFTER + FREE_UNLOCK_RECUR_EVERY
+	while recur <= max_turns:
+		out[recur] = int(out.get(recur, 0)) + FREE_UNLOCK_RECUR_COUNT
+		recur += FREE_UNLOCK_RECUR_EVERY
+	return out
+
+## Free unlocks earned by `turn` inclusive — the opening balance for a panel that comes
+## up mid-game (a load, or lazy creation), since past turn_advanced events won't replay.
+static func free_unlocks_earned_by(turn: int, max_turns: int) -> int:
+	var total := 0
+	var schedule := free_unlock_schedule(max_turns)
+	for t in schedule:
+		if int(t) <= turn:
+			total += int(schedule[t])
+	return total
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -119,8 +149,15 @@ func _ready() -> void:
 	_create_search_input()
 	_build_styles()
 	_load_unlock_rows()
+	_knowledge_grants = free_unlock_schedule(TurnManager.MAX_TURNS)
+	# Opening balance = everything earned up to the current turn (turn 1 for a new game,
+	# more if this panel came up after a load). Later milestones arrive via turn_advanced.
+	_free_unlocks = free_unlocks_earned_by(TurnManager.current_turn, TurnManager.MAX_TURNS)
 	if not TurnManager.turn_advanced.is_connected(_on_turn_advanced):
 		TurnManager.turn_advanced.connect(_on_turn_advanced)
+	_seat_research_shown = MatchState.advisors_unlocked
+	if not MatchState.advisors_changed.is_connected(_on_advisors_changed):
+		MatchState.advisors_changed.connect(_on_advisors_changed)
 	resized.connect(_on_resized)
 	call_deferred("_sync_close_button_layout")
 
@@ -510,6 +547,8 @@ func _load_unlock_rows() -> void:
 		var row := file.get_csv_line()
 		if row.is_empty() or row[0].strip_edges().is_empty():
 			continue
+		if _SEAT_RESEARCH.has(_csv_value(row, column_index, "research_node_id")) and not MatchState.advisors_unlocked:
+			continue
 		_unlock_rows.append({
 			"category": _csv_value(row, column_index, "category"),
 			"prereq_1": _csv_value(row, column_index, "prereq_1"),
@@ -531,6 +570,15 @@ func _on_resized() -> void:
 	_category_view_state.clear()
 	_sync_close_button_layout()
 	_sync_search_input_layout()
+	queue_redraw()
+
+## Reload the tree only when the seat-research visibility actually flips (the `unlock
+## advisors` cheat) — not on every hire/fire, which also emit advisors_changed.
+func _on_advisors_changed() -> void:
+	if _seat_research_shown == MatchState.advisors_unlocked:
+		return
+	_seat_research_shown = MatchState.advisors_unlocked
+	_load_unlock_rows()
 	queue_redraw()
 
 func _on_turn_advanced(new_turn: int) -> void:
