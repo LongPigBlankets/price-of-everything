@@ -11,7 +11,8 @@ extends Node
 ##   drift climbing       decode cannot keep up at all (wrong resolution for the box)
 
 const SAMPLE_MS := 250
-const SHOT_AT_MS := 4000
+const SHOT_EVERY_MS := 700
+const MAX_SHOTS := 14
 
 var screen: Node = null
 
@@ -22,7 +23,8 @@ var _last_sample := 0
 var _last_frame := 0
 var _worst_gap := 0
 var _worst_gap_at := 0
-var _shot_taken := false
+var _last_shot := 0
+var _shots := 0
 var _done := false
 var _last_drift := -1.0
 var _frames := 0
@@ -52,11 +54,15 @@ func _process(_delta: float) -> void:
 	if _play_t0 < 0 and _film != null and is_instance_valid(_film) and _film.is_playing():
 		_play_t0 = now
 		print("FILM started at t+%d ms" % (now - _t0))
-	if not _shot_taken and now - _t0 >= SHOT_AT_MS and OS.get_environment("FILM_SHOT") != "":
-		_shot_taken = true
+	# FILM_SHOT=<dir>: a shot every SHOT_EVERY_MS, so the intro sequence can be looked at as a
+	# strip rather than guessed at from one frame.
+	if OS.get_environment("FILM_SHOT") != "" and now - _last_shot >= SHOT_EVERY_MS and _shots < MAX_SHOTS:
+		_last_shot = now
+		_shots += 1
 		await RenderingServer.frame_post_draw
-		get_viewport().get_texture().get_image().save_png(OS.get_environment("FILM_SHOT"))
-		print("FILM shot at t+%d ms -> %s" % [now - _t0, OS.get_environment("FILM_SHOT")])
+		var path := "%s/shot_%02d_t%05d.png" % [OS.get_environment("FILM_SHOT"), _shots, now - _t0]
+		get_viewport().get_texture().get_image().save_png(path)
+		print("FILM shot %d at t+%d ms" % [_shots, now - _t0])
 	if now - _last_sample >= SAMPLE_MS:
 		_last_sample = now
 		_sample(now)

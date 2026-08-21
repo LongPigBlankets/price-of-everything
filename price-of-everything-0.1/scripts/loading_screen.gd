@@ -27,6 +27,24 @@ const FILM_SIZE := Vector2(2400.0, 1080.0)
 ## start. It is a beat, not a wait: the load begins the moment a frame is presented.
 const FILM_HEAD_START := 1.5
 
+## THE INTRO PLATES — the film's opening composition, assembling itself.
+##
+## The first seconds of a load are the ones the main thread cannot share: the scene
+## instantiation alone is a ~1.3 s frame, and a video frozen for 1.3 s is a shot frozen for
+## 1.3 s. Still images do not have that problem. A tween that misses a frame resumes where it
+## was; a video that misses a frame has lost that frame for good, which is why the film used to
+## finish 4.4 s behind the wall clock.
+##
+## So the load opens on plates — sky, then skyline, then street, then ground, then the whole
+## frame — cross-fading one into the next, and the film starts only once the sequence has
+## finished AND the build is done. The last plate IS the film's first frame, so the cut into
+## video is on an identical picture.
+##
+## Absent is normal: with no plates on disk the screen behaves exactly as it did before.
+const INTRO_DIR := "res://assets/loading/intro"
+const PLATE_FADE := 0.5    # seconds to bring the next layer in
+const PLATE_HOLD := 1.0    # seconds to sit on it before the next starts
+
 ## WHEN THE FILM STARTS — the one setting worth understanding here.
 ##
 ## Theora decodes on the MAIN THREAD, so the film runs at speed only while the main thread is
@@ -49,8 +67,11 @@ const FILM_HEAD_START := 1.5
 ##
 ## There is no "right" answer here, only a trade between how soon the film appears and how
 ## smoothly it plays; this is a presentation decision, so it is one word in one place.
-enum FilmStart { IMMEDIATE, AFTER_SCENE, AFTER_BUILD }
-const FILM_START := FilmStart.IMMEDIATE
+##   AFTER_INTRO  the default when plates exist: the film waits for the plate sequence AND
+##                the build, so it only ever starts on a main thread that is free. This is
+##                what the plates are for.
+enum FilmStart { IMMEDIATE, AFTER_SCENE, AFTER_BUILD, AFTER_INTRO }
+const FILM_START := FilmStart.AFTER_INTRO
 ## How long the film takes to fade up over the lattice, and to fade back down when it ends.
 const FILM_FADE := 0.6
 
@@ -78,7 +99,12 @@ var _hex_bg: Control          # animated hex-field background (draw-in + gold sw
 var _film_box: Control        # clips the film to the window (see _layout_film)
 var _film: VideoStreamPlayer  # null when no film has been rendered yet
 var _film_box_size := Vector2.ZERO   # last size the film was framed for
+var _plate_box: Control = null      # clips the intro plates, same fit as the film
+var _plate_box_size := Vector2.ZERO
+var _plate_paths := PackedStringArray()
 var _film_started := false          # a deferred film (FILM_START) has been kicked off
+var _plates: Array[TextureRect] = []   # intro plates, back to front
+var _intro_done := false               # the plate sequence has finished (or there were none)
 
 var _plate: LoadingPlate
 var _begin: Button
@@ -141,6 +167,7 @@ func _ready() -> void:
 	add_child(_root)
 
 	_build_backgrounds()
+	_build_intro_plates()
 	_build_film()
 	_build_plate()
 	_build_begin_button()
@@ -165,6 +192,95 @@ func _build_backgrounds() -> void:
 ## FILM_RUNBOOK.md renders 2400x1080 so that a 16:9 window shows the approved 1920x1080
 ## composition at 1:1 and an ultrawide gets more street — which is a centre crop, and a
 ## letterbox would throw away exactly the framing the render was set up to give.
+## Stack the intro plates in the same cover-fitted box the film uses, all transparent but the
+## first, and start the sequence. Each plate is the whole picture up to that layer, so they
+## simply stack — no masks, no ordering rules, and a missing one costs a step and nothing else.
+func _build_intro_plates() -> void:
+	var paths := _intro_plate_paths()
+	if paths.is_empty():
+		_intro_done = true
+		return
+	_plate_box = Control.new()
+	_plate_box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_plate_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_plate_box.clip_contents = true
+	_plate_box.z_index = 4   # over the lattice, under the film (5) and the plate (10)
+	_root.add_child(_plate_box)
+	# The first is wanted this frame; the rest are wanted a second apart, so they are read on
+	# worker threads rather than costing four PNG loads before the screen has painted once.
+	for i in range(1, paths.size()):
+		ResourceLoader.load_threaded_request(paths[i])
+	for i in paths.size():
+		var rect := TextureRect.new()
+		rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		rect.stretch_mode = TextureRect.STRETCH_SCALE
+		rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		rect.modulate.a = 1.0 if i == 0 else 0.0
+		if i == 0:
+			rect.texture = load(paths[i]) as Texture2D
+		_plates.append(rect)
+		_plate_box.add_child(rect)
+	_plate_paths = paths
+	_layout_plates()
+	# The plates cover the lattice from the first frame, and the lattice is ~1,832 draw calls
+	# of something nobody can see. (_tick_film does this too, but only when there is a film.)
+	if _hex_bg != null:
+		_hex_bg.visible = false
+	_run_intro()
+
+
+## The plates, in name order — 01_, 02_, ... The numbering IS the sequence.
+func _intro_plate_paths() -> PackedStringArray:
+	var out := PackedStringArray()
+	var dir := DirAccess.open(INTRO_DIR)
+	if dir == null:
+		return out
+	var names := dir.get_files()
+	names.sort()
+	for n in names:
+		var name := String(n).trim_suffix(".remap").trim_suffix(".import")
+		if name.ends_with(".png") and not out.has(INTRO_DIR + "/" + name):
+			out.append(INTRO_DIR + "/" + name)
+	return out
+
+
+## Bring each plate up in turn. Tweens, not video: a frame lost to a busy main thread pauses
+## this sequence, it does not desynchronise it, which is the whole reason the load opens on
+## stills rather than on the film.
+func _run_intro() -> void:
+	for i in _plates.size():
+		if not is_inside_tree():
+			return
+		if i > 0:
+			if _plates[i].texture == null:
+				_plates[i].texture = load(_plate_paths[i]) as Texture2D
+				_layout_plates()
+			var tw := create_tween()
+			tw.tween_property(_plates[i], "modulate:a", 1.0, PLATE_FADE)
+			await tw.finished
+		if i < _plates.size() - 1:
+			await get_tree().create_timer(PLATE_HOLD).timeout
+	_intro_done = true
+
+
+## Cover-fit every plate the way the film is fitted, so the hand-off between the last plate and
+## the first frame of video does not move the picture.
+func _layout_plates() -> void:
+	if _plate_box == null:
+		return
+	var box := _plate_box.size
+	if box.x <= 1.0 or box.y <= 1.0:
+		return
+	for rect in _plates:
+		var native := FILM_SIZE
+		if rect.texture != null and rect.texture.get_size().x > 1.0:
+			native = rect.texture.get_size()
+		var scale := maxf(box.x / native.x, box.y / native.y)
+		rect.size = native * scale
+		rect.position = (box - native * scale) * 0.5
+	_plate_box_size = box
+
+
 func _build_film() -> void:
 	if not ResourceLoader.exists(FILM_PATH):
 		return   # not rendered yet: the lattice is the screen, exactly as before
@@ -222,6 +338,8 @@ func _maybe_start_film() -> void:
 			ready_now = _scene_changed
 		FilmStart.AFTER_BUILD:
 			ready_now = _ready_to_begin()
+		FilmStart.AFTER_INTRO:
+			ready_now = _intro_done and _ready_to_begin()
 		_:
 			ready_now = true
 	if ready_now:
@@ -296,6 +414,8 @@ func _tick_film(delta: float) -> void:
 	_maybe_start_film()
 	if _film_box != null and _film_box.size != _film_box_size:
 		_layout_film()
+	if _plate_box != null and _plate_box.size != _plate_box_size:
+		_layout_plates()
 	var tex := _film.get_video_texture()
 	var showing := _film.is_playing() and tex != null and tex.get_size().x > 1.0
 	var target := 1.0 if showing else 0.0
@@ -307,7 +427,11 @@ func _tick_film(delta: float) -> void:
 	# hands a frame back between steps, so the SCREEN'S frame cost is charged to every one of
 	# those yields. It comes straight back when the film fades out or fails.
 	if _hex_bg != null:
-		_hex_bg.visible = _film.modulate.a < 1.0
+		# The plates cover it too, and they are up from the first frame.
+		_hex_bg.visible = _film.modulate.a < 1.0 and _plates.is_empty()
+	# Once the film is fully up the plates underneath it are pure cost, exactly like the lattice.
+	if _plate_box != null:
+		_plate_box.visible = _film.modulate.a < 1.0
 
 
 func _ready_to_begin() -> bool:
