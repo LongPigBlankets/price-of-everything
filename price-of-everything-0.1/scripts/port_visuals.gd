@@ -15,9 +15,10 @@ const PIER_COUNT := 3
 var _glyphs: Array = []   # [{pos: Vector2, angle: float, tile_h: float}]
 var _hex_map: TileMapLayer = null
 var _midcentury_plans: Array = []
-const AuthoredMap := preload("res://scripts/authored_map.gd")
-const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
-const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
+## How far the decorative fabric is cut back from a harbour, world units — about 10 px at full
+## zoom (~1.107 px/u), which is the gap the owner asked for. Big enough to read as a margin
+## between the town and the quay, small enough that the blocks still fill their ground.
+const PORT_FABRIC_CLEARANCE := 10.0
 
 var _rebuild_queued := false
 var _diagnostic_overlay := false
@@ -117,76 +118,35 @@ func _rebuild_midcentury_plans() -> void:
 	queue_redraw()
 
 
-## Decorative fabric standing where the harbour is built is CLEARED, exactly as it is under a
-## gameplay building (`building_visuals._evict_fabric_under`).
+## The town is CUT BACK from the harbour, not deleted around it.
 ##
-## Why clear rather than dodge: the planner already treats gameplay footprints as a hard gate
-## and will refuse a seat that hits one, but a port is a large structure pinned to one tile and
-## one stretch of coast, and an authored town is drawn dense and without knowing where the
-## harbour will land. Making authored decor a second hard gate would leave ports with no legal
-## seat at all; making it a scoring preference would only trade one overlap for another. Every
-## other building on the map resolves this by taking the ground it needs, so the port does too
-## — the terrace that was standing on the quay is gone, which is what a harbour does to a
-## waterfront.
+## Each plan's compound envelope (dock + arms + sheds), grown by PORT_FABRIC_CLEARANCE, is
+## handed to the fabric layer as a keep-out region; the painter clips every decorative mass and
+## special against it. So the blocks north-east of a dock still fill their ground and simply
+## stop a little short of the quay, the way a real street front does — where deleting whole
+## masses left an obvious hole in the fabric wherever a harbour happened to land.
 ##
-## Uses `total_compound_envelope` (dock + arms + sheds), so nothing is cleared beyond the
-## structure's own outline.
+## Clipping rather than dodging remains the right call: a port is pinned to one tile and one
+## stretch of coast, and an authored town is drawn dense without knowing where the harbour will
+## go, so making decor a hard placement gate would leave ports with no legal seat. A mass that
+## lies wholly inside the envelope still disappears — it is clipped to nothing — so the
+## "standing on the quay" case is handled by the same rule, with no special case.
 func _clear_authored_fabric_under_ports() -> void:
-	if _midcentury_plans.is_empty() or not AuthoredMap.is_active():
-		return
 	var fabric := get_tree().get_first_node_in_group("authored_fabric")
-	if fabric == null or not fabric.has_method("evict"):
+	if fabric == null or not fabric.has_method("set_keep_out"):
 		return
-	var masses := _authored_masses()
-	if masses.is_empty():
-		return
+	var regions: Array = []
 	for plan_value in _midcentury_plans:
 		var envelope: PackedVector2Array = (plan_value as Dictionary).total_compound_envelope
 		if envelope.size() < 3:
 			continue
-		var envelope_bb := _poly_bb(envelope)
-		for record_value in masses:
-			var record: Dictionary = record_value
-			if not envelope_bb.intersects(record.bb):
-				continue
-			if not Geometry2D.intersect_polygons(envelope, record.poly as PackedVector2Array).is_empty():
-				fabric.call("evict", str(record.id))
+		for grown_value in Geometry2D.offset_polygon(envelope, PORT_FABRIC_CLEARANCE,
+				Geometry2D.JOIN_MITER):
+			var grown: PackedVector2Array = grown_value
+			if grown.size() >= 3 and not Geometry2D.is_polygon_clockwise(grown):
+				regions.append(grown)
+	fabric.call("set_keep_out", regions)
 
-
-## Every authored decorative mass and special as world polygons, the same two record kinds
-## `building_visuals._authored_decor_world` evicts. Built once per plan rebuild, which happens
-## only when a port tile's footprints change.
-func _authored_masses() -> Array:
-	var out: Array = []
-	var settlements := AuthoredMap.settlements()
-	for key in settlements:
-		var settlement_value: Variant = settlements[key]
-		if typeof(settlement_value) != TYPE_DICTIONARY:
-			continue
-		var settlement: Dictionary = settlement_value
-		for record_value in (settlement.get("decor", []) as Array):
-			if typeof(record_value) != TYPE_DICTIONARY:
-				continue
-			for poly_value in AuthoredFabricPainter.mass_polygons(record_value as Dictionary):
-				_append_mass(out, poly_value as PackedVector2Array, record_value as Dictionary)
-		for record_value in (settlement.get("specials", []) as Array):
-			if typeof(record_value) != TYPE_DICTIONARY:
-				continue
-			_append_mass(out, AuthoredSpecialShapes.render_polygon(record_value as Dictionary),
-				record_value as Dictionary)
-	return out
-
-
-func _append_mass(out: Array, poly: PackedVector2Array, record: Dictionary) -> void:
-	if poly.size() >= 3:
-		out.append({"id": str(record.get("id", "")), "poly": poly, "bb": _poly_bb(poly)})
-
-
-func _poly_bb(poly: PackedVector2Array) -> Rect2:
-	var bb := Rect2(poly[0], Vector2.ZERO)
-	for point in poly:
-		bb = bb.expand(point)
-	return bb
 
 func _draw() -> void:
 	# THE PLAN IS THE PORT. When the coastline planner has produced a valid harbour it is

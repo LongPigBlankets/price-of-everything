@@ -109,19 +109,16 @@ static func woodland_points(area: Dictionary) -> PackedVector2Array:
 
 ## A parametric primitive. Drawn like a mass — same wash, same SE micro-shadow, same ink —
 ## because it IS one; only how its shape is arrived at differs.
-static func draw_special(canvas: CanvasItem, special: Dictionary) -> void:
+static func draw_special(canvas: CanvasItem, special: Dictionary,
+		keep_out: Array = []) -> void:
 	# The DRAWN polygon, which for a ring is a band around the four corners the designer
 	# edits — see AuthoredSpecialShapes.render_polygon.
 	var outline := AuthoredSpecialShapes.render_polygon(special)
 	if outline.size() < 3:
 		return
 	var colour := MidcenturyStyle.urban_block(str(special.get("id", "")), 0.6)
-	var shadow := PackedVector2Array()
-	for point in outline:
-		shadow.append(point + SHADOW_OFFSET)
-	canvas.draw_colored_polygon(shadow, MidcenturyStyle.SHADOW)
-	canvas.draw_colored_polygon(outline, colour)
-	canvas.draw_polyline(_closed(outline), MidcenturyStyle.INK, 1.0, true)
+	for piece_value in _subtract(outline, keep_out):
+		_block(canvas, piece_value as PackedVector2Array, colour)
 
 
 ## A plaza: paved cream ground. The same paper the streets are drawn in, so a square reads as
@@ -142,18 +139,62 @@ static func draw_park(canvas: CanvasItem, park: Dictionary) -> void:
 
 
 ## A decorative mass from the 17-form vocabulary, with the map's SE micro-shadow under it.
-static func draw_mass(canvas: CanvasItem, mass: Dictionary) -> void:
+static func draw_mass(canvas: CanvasItem, mass: Dictionary,
+		keep_out: Array = []) -> void:
 	var id := str(mass.get("id", ""))
 	var colour := MidcenturyStyle.urban_block(id, 0.6)
 	for polygon in mass_polygons(mass):
-		if polygon.size() < 3:
+		for piece_value in _subtract(polygon as PackedVector2Array, keep_out):
+			_block(canvas, piece_value as PackedVector2Array, colour)
+
+
+## One built block: SE micro-shadow, fill, ink outline. Shared so a mass and a special that
+## have been cut by a keep-out region are finished exactly like one that has not.
+static func _block(canvas: CanvasItem, polygon: PackedVector2Array, colour: Color) -> void:
+	if polygon.size() < 3:
+		return
+	var shadow := PackedVector2Array()
+	for point in polygon:
+		shadow.append(point + SHADOW_OFFSET)
+	canvas.draw_colored_polygon(shadow, MidcenturyStyle.SHADOW)
+	canvas.draw_colored_polygon(polygon, colour)
+	canvas.draw_polyline(_closed(polygon), MidcenturyStyle.INK, 1.0, true)
+
+
+## `polygon` minus every keep-out region, as the pieces that survive.
+##
+## KEEP-OUT CUTS BUILDINGS, IT DOES NOT DELETE THEM. A harbour is dropped onto a town that was
+## drawn without knowing it was coming, so the terrace it lands on should stop at the quay the
+## way a real street does — not vanish, which leaves a hole in the fabric where a block used to
+## be. A piece cut to nothing simply does not draw, so a mass wholly inside the region still
+## disappears without a special case.
+##
+## Clockwise rings are holes (a region entirely inside one block) and are dropped: the fill
+## call takes no holes, and a ring drawn as if solid would be worse than the small overdraw.
+static func surviving_pieces(polygon: PackedVector2Array, keep_out: Array) -> Array:
+	return _subtract(polygon, keep_out)
+
+
+static func _subtract(polygon: PackedVector2Array, keep_out: Array) -> Array:
+	if polygon.size() < 3:
+		return []
+	if keep_out.is_empty():
+		return [polygon]
+	var pieces: Array = [polygon]
+	for region_value in keep_out:
+		var region: PackedVector2Array = region_value
+		if region.size() < 3:
 			continue
-		var shadow := PackedVector2Array()
-		for point in polygon:
-			shadow.append(point + SHADOW_OFFSET)
-		canvas.draw_colored_polygon(shadow, MidcenturyStyle.SHADOW)
-		canvas.draw_colored_polygon(polygon, colour)
-		canvas.draw_polyline(_closed(polygon), MidcenturyStyle.INK, 1.0, true)
+		var next: Array = []
+		for piece_value in pieces:
+			for result_value in Geometry2D.clip_polygons(piece_value as PackedVector2Array, region):
+				var result: PackedVector2Array = result_value
+				if result.size() >= 3 and not Geometry2D.is_polygon_clockwise(result):
+					next.append(result)
+		pieces = next
+		if pieces.is_empty():
+			return []
+	return pieces
 
 
 ## The world-space polygons of a stamped mass. Built through `MassFormShapes`, which owns

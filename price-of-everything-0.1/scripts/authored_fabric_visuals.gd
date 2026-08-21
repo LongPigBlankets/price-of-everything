@@ -18,6 +18,10 @@ const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd
 const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
 
 var _sacrificed: Dictionary = {}
+## Regions the fabric is CUT AROUND rather than deleted inside — the harbours, each grown by a
+## clearance so the town stops a little short of the quay instead of touching it. Set by
+## PortVisuals once its plans are built.
+var _keep_out: Array = []
 
 
 func _ready() -> void:
@@ -32,6 +36,22 @@ func _ready() -> void:
 ## — only masses marked `sacrificial` in the editor are ever passed here).
 func evict(mass_id: String) -> void:
 	_sacrificed[mass_id] = true
+	queue_redraw()
+
+
+## Replace the keep-out regions (world polygons). Cheap and idempotent: a redraw only happens
+## when the set actually changes, because PortVisuals recomputes its plans on every footprint
+## change on a port tile and would otherwise repaint the whole fabric each time.
+func set_keep_out(regions: Array) -> void:
+	if regions.size() == _keep_out.size():
+		var same := true
+		for i in regions.size():
+			if (regions[i] as PackedVector2Array) != (_keep_out[i] as PackedVector2Array):
+				same = false
+				break
+		if same:
+			return
+	_keep_out = regions.duplicate()
 	queue_redraw()
 
 
@@ -108,11 +128,15 @@ func visible_mass_polygons() -> Array:
 			if _sacrificed.has(str(record.get("id", ""))):
 				continue
 			for poly_value in AuthoredFabricPainter.mass_polygons(record):
-				_append_visible(out, poly_value as PackedVector2Array, record)
+				for piece in AuthoredFabricPainter.surviving_pieces(
+						poly_value as PackedVector2Array, _keep_out):
+					_append_visible(out, piece as PackedVector2Array, record)
 		for record in _list(settlement, "specials"):
 			if _sacrificed.has(str(record.get("id", ""))):
 				continue
-			_append_visible(out, AuthoredSpecialShapes.render_polygon(record), record)
+			for piece in AuthoredFabricPainter.surviving_pieces(
+					AuthoredSpecialShapes.render_polygon(record), _keep_out):
+				_append_visible(out, piece as PackedVector2Array, record)
 	return out
 
 
