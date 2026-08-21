@@ -147,7 +147,9 @@ func warm_meshes_deferred() -> void:
 	if _meshes_full_warm or not is_inside_tree():
 		return
 	_meshes_full_warm = true
-	await _warm_all_meshes()
+	# Small slices, and yield whether or not a loading screen is still up — this outlives the
+	# screen by design, so it must not fall back to running synchronously when it goes.
+	await _warm_all_meshes(WARM_SLICE_PLAY_MS, true)
 
 ## Exact, read-only land-relief geometry for draw-only planning layers.
 ##
@@ -573,32 +575,50 @@ func _ensure_coast_lines(tiers: Array) -> void:
 ## Triangulate every fill polygon once (load-time, ~tens of ms — the old direct
 ## draw triangulated all of these EVERY frame), so panning only ever draws
 ## already-built meshes.
-func _warm_all_meshes() -> void:
+## Slice size for the deferred warm. It runs while the player is looking at the map, so it has
+## to fit inside a frame nobody notices — 35 ms would BE the frame.
+const WARM_SLICE_PLAY_MS := 4
+## Slice size while a loading screen is up and there is nothing to stutter but an animation.
+const WARM_SLICE_LOAD_MS := 35
+
+func _warm_all_meshes(slice_ms: int = WARM_SLICE_LOAD_MS, always_yield: bool = false) -> void:
 	if DisplayServer.get_name() == "headless":
 		return   # tests never render the vector LOD; skip the triangulation cost
 	# Triangulating every contour is ~2 s of work, and a fixed contour-count batch is uneven (a few
-	# huge contours dominate, giving a ~2 s frame). During a background build (loading screen up)
-	# hand a frame back whenever ~35 ms have accumulated, so it spreads into smooth ~35 ms slices.
-	# (Time only paces the yields; the meshes built are identical/deterministic.)
+	# huge contours dominate, giving a ~2 s frame), so hand a frame back whenever `slice_ms` has
+	# accumulated. (Time only paces the yields; the meshes built are identical/deterministic.)
+	#
+	# ALWAYS_YIELD MATTERS. LoadPacing.bg_yield() is a no-op with no loading screen up, which is
+	# right for the build — tests and the e2e harness want it synchronous — and catastrophic for
+	# the deferred warm: the player presses "Begin", the screen is freed, and every remaining
+	# contour is then triangulated in ONE frame, on the map, in front of them.
 	var t_last := Time.get_ticks_msec()
 	for i in _sea.size():
 		if (_sea[i].p as PackedVector2Array).size() >= 3:
 			_build_fill_mesh("s%d" % i, _sea[i].p)
-		if Time.get_ticks_msec() - t_last > 35:
-			await LoadPacing.bg_yield()
+		if Time.get_ticks_msec() - t_last > slice_ms:
+			await _warm_yield(always_yield)
 			t_last = Time.get_ticks_msec()
 	for i in _polys.size():
 		if (_polys[i].p as PackedVector2Array).size() >= 3:
 			_build_fill_mesh("p%d" % i, _polys[i].p)
-		if Time.get_ticks_msec() - t_last > 35:
-			await LoadPacing.bg_yield()
+		if Time.get_ticks_msec() - t_last > slice_ms:
+			await _warm_yield(always_yield)
 			t_last = Time.get_ticks_msec()
 	for i in _lakes.size():
 		if (_lakes[i] as PackedVector2Array).size() >= 3:
 			_build_fill_mesh("l%d" % i, _lakes[i])
-		if Time.get_ticks_msec() - t_last > 35:
-			await LoadPacing.bg_yield()
+		if Time.get_ticks_msec() - t_last > slice_ms:
+			await _warm_yield(always_yield)
 			t_last = Time.get_ticks_msec()
+
+
+func _warm_yield(always: bool) -> void:
+	if always:
+		if is_inside_tree():
+			await get_tree().process_frame
+	else:
+		await LoadPacing.bg_yield()
 
 func _draw_fill(key: String, pts: PackedVector2Array, color: Color, white: Texture2D) -> void:
 	var mesh: Mesh = _mesh_cache.get(key, null) if _mesh_cache.has(key) else _build_fill_mesh(key, pts)

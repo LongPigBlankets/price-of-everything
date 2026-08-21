@@ -35,13 +35,20 @@ static func color_for(infra_key: String) -> Color:
 ## Icon for an infrastructure type via its building (whose internal_name is the
 ## slot key). Returns null when the building or its art doesn't exist (HVDC).
 static func texture_for(building_id: String, infra_key: String) -> Texture2D:
+	var path := source_path_for(building_id, infra_key)
+	return load(path) as Texture2D if path != "" else null
+
+
+## The file texture_for would load, or "". Split out so a caller can hash the exact source it
+## is about to clean (see building_icon.gd) rather than guessing at the extension.
+static func source_path_for(building_id: String, infra_key: String) -> String:
 	if building_id == "" or infra_key == "":
-		return null
+		return ""
 	for ext in _EXTS:
 		var path := "res://assets/icons/buildings/%s_%s%s" % [building_id, infra_key, ext]
 		if ResourceLoader.exists(path):
-			return load(path) as Texture2D
-	return null
+			return path
+	return ""
 
 static func normalise(infra_name: String) -> String:
 	match infra_name.strip_edges().to_lower():
