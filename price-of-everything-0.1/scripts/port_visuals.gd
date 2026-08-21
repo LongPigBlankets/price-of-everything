@@ -20,6 +20,14 @@ var _midcentury_plans: Array = []
 ## between the town and the quay, small enough that the blocks still fill their ground.
 const PORT_FABRIC_CLEARANCE := 10.0
 
+## Container edging and the plumbing palette. The pipe and tank are drawn white so they read
+## against both the tan quay and the grey town; the dark grey edge is what keeps neighbouring
+## container stacks from merging into one blob.
+const CONTAINER_EDGE := Color(0.24, 0.24, 0.26)
+const CONTAINER_EDGE_WIDTH := 1.0
+const PIPE_WHITE := Color(0.97, 0.97, 0.95)
+const PIPE_WIDTH := 3.2
+
 const AuthoredMap := preload("res://scripts/authored_map.gd")
 
 var _rebuild_queued := false
@@ -250,11 +258,17 @@ func _draw_midcentury_ports() -> void:
 			_draw_filled_poly(poly_value,
 				MapMidcenturyStyle.gameplay_block_top("brick"))
 			_draw_warehouse_cap(poly_value, str(plan.key))
+		# The fuel line and its tank go down BEFORE the cargo, so a stack that ends up beside
+		# the pipe reads as standing next to it rather than under it.
+		_draw_plumbing(plan)
 		for poly_value in plan.container_polygons:
 			var poly: PackedVector2Array = poly_value
 			var index := RoadHash.pick("%s|container|%s" % [str(plan.key),
 				str(_poly_center(poly))], InkBuildingGen.CONTAINER_COLS.size())
-			_draw_filled_poly(poly, InkBuildingGen.CONTAINER_COLS[index])
+			draw_colored_polygon(poly, InkBuildingGen.CONTAINER_COLS[index])
+			# A thin dark edge: a container is a small block of flat colour on a tan quay, and
+			# without an edge two stacks of similar colour merge into one shape.
+			draw_polyline(_closed(poly), CONTAINER_EDGE, CONTAINER_EDGE_WIDTH, true)
 		for crane_value in plan.crane_sites:
 			var crane: Dictionary = crane_value
 			_draw_crane(crane)
@@ -300,6 +314,26 @@ func _draw_shadow(poly_value: Variant) -> void:
 	for point in poly:
 		shadow.append(point + Vector2(2.2, 2.8))
 	draw_colored_polygon(shadow, Color(MapMidcenturyStyle.SHADOW, 0.72))
+
+## The fuel line and its tank: a white run along the harbour's southern flank, out of a white
+## tank standing on the landside block. Both get a dark casing first so the white stays legible
+## where it crosses the pale apron.
+func _draw_plumbing(plan: Dictionary) -> void:
+	if not bool(plan.get("has_plumbing", false)):
+		return
+	var pipe: PackedVector2Array = plan.get("pipe_polyline", PackedVector2Array())
+	if pipe.size() >= 2:
+		draw_polyline(pipe, MapMidcenturyStyle.INK, PIPE_WIDTH + 2.0, true)
+		draw_polyline(pipe, PIPE_WHITE, PIPE_WIDTH, true)
+	var radius := float(plan.get("tank_radius", 0.0))
+	if radius > 0.0:
+		var centre: Vector2 = plan.get("tank_center", Vector2.ZERO)
+		draw_circle(centre + Vector2(2.2, 2.8), radius, MapMidcenturyStyle.SHADOW)
+		draw_circle(centre, radius, PIPE_WHITE)
+		draw_arc(centre, radius, 0.0, TAU, 28, MapMidcenturyStyle.INK, 1.4, true)
+		# The inner ring reads as the tank's rim rather than a plain dot.
+		draw_arc(centre, radius * 0.62, 0.0, TAU, 24, MapMidcenturyStyle.INK, 1.0, true)
+
 
 func _draw_warehouse_cap(poly_value: Variant, key: String) -> void:
 	var poly: PackedVector2Array = poly_value

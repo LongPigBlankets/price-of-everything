@@ -127,9 +127,9 @@ func _ready() -> void:
 ## (`AuthoredMap.port_tiles`), so the planner draws the harbour until it is authored and never
 ## draws it twice. Delete the shapes and the planner takes the tile back.
 ##
-## The dock, its arms, the warehouses and the deck plates come across. The cranes, containers
-## and road access do not: they are generated decoration hung off the plan rather than shapes
-## in their own right, and a person tweaking a harbour is moving its quay, not its bollards.
+## The dock, its arms, the warehouses and the deck plates come across as shapes; the cranes,
+## containers, fuel line and tank come across as `port_decor` records beside them. Road access
+## does not: it is a route the road layer already draws.
 func _import_ports(world: Node, id_offset: int) -> Array:
 	var ports := world.find_child("PortVisuals", true, false)
 	if ports == null or not ports.has_method("midcentury_plans"):

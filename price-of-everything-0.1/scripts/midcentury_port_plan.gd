@@ -43,6 +43,14 @@ const ARM_HEAD_BITE := 8.0
 ## lengths and row pitch scale with it so the stacks stay rectangular and stay apart.
 const CONTAINER_WIDTH := 8.0
 
+## THE FUEL LINE AND ITS TANK. A working port moves liquids as well as boxes, and the pipe run
+## is what says so at a glance: a white line along the harbour's SOUTHERN flank, from a round
+## tank standing on the landside block out to the berth on that side. Both are drawn white so
+## they read against the tan quay and the grey town alike, and the container packer treats them
+## as an exclusion, so cargo is stacked around the pipe rather than on it.
+const TANK_RADIUS := 13.0
+const PIPE_CLEARANCE := 5.0
+
 ## Reject an apron the coast has eaten away to a sliver.
 const MIN_HEAD_AREA_FRACTION := 0.34
 ## Seat gates for the STRAIGHT head. Most of the block must be real ground; the
@@ -396,9 +404,13 @@ static func _finish_plan(candidate: Dictionary, tile_id: String,
 	var right_arms: Array = candidate.right_arms
 	var left_points: PackedVector2Array = candidate.left_points
 	var right_points: PackedVector2Array = candidate.right_points
+	# The pipe run and its tank are laid BEFORE the containers, so the packer can treat them as
+	# an exclusion and stack cargo clear of them instead of on top.
+	var plumbing := _plumbing(head, left_points, right_points,
+		candidate.seaward, candidate.tangent)
 	var containers := _containers(head, warehouses, left_points, right_points,
 		left_arms, right_arms, basin, corridor, candidate.road_access, key,
-		candidate.seaward, candidate.tangent)
+		candidate.seaward, candidate.tangent, plumbing)
 	var left_crane := _crane_site(left_points, float(candidate.left_width),
 		"left", key)
 	var right_crane := _crane_site(right_points, float(candidate.right_width),
@@ -490,6 +502,10 @@ static func _finish_plan(candidate: Dictionary, tile_id: String,
 		"harbour_mouth": harbour_mouth,
 		"open_water_corridor": corridor,
 		"container_polygons": containers,
+		"pipe_polyline": plumbing.get("pipe", PackedVector2Array()),
+		"tank_center": plumbing.get("tank_center", Vector2.ZERO),
+		"tank_radius": float(plumbing.get("tank_radius", 0.0)),
+		"has_plumbing": not plumbing.is_empty(),
 		"crane_sites": cranes,
 		"solid_exclusion": _records(solid_polys),
 		"marine_reservation": {"poly": basin, "bb": _bbox(basin),
@@ -689,28 +705,69 @@ static func _warehouses(head: PackedVector2Array, head_front: Vector2,
 			out.append(piece)
 	return out
 
+## The fuel line and its tank, in the harbour's own frame.
+##
+## SOUTH IS WORLD SOUTH, not a side of the plan: the four harbours face different ways, so the
+## flank is chosen by taking whichever sense of the shore tangent points to greater y. The tank
+## stands on the LANDWARD half of the apron (it is a shore installation, not a pier), and the
+## pipe leaves it, crosses to the southern arm's root and runs part way out that arm to the
+## berth it serves — so the line always ends at water on the same side it started.
+static func _plumbing(head: PackedVector2Array, left_points: PackedVector2Array,
+		right_points: PackedVector2Array, seaward: Vector2,
+		tangent: Vector2) -> Dictionary:
+	if head.size() < 3 or left_points.size() < 2 or right_points.size() < 2:
+		return {}
+	var south := tangent if tangent.y > 0.0 else -tangent
+	var head_center := _poly_center(head)
+	# Landward of centre and out toward the southern flank, then pulled back inside the apron
+	# so the tank always stands on the block rather than half off its edge.
+	var tank := head_center - seaward * 14.0 + south * 26.0
+	if not Geometry2D.is_point_in_polygon(tank, head):
+		tank = head_center - seaward * 10.0 + south * 12.0
+	if not Geometry2D.is_point_in_polygon(tank, head):
+		tank = head_center
+	var south_arm := left_points if left_points[0].y > right_points[0].y else right_points
+	var root: Vector2 = south_arm[0]
+	var tip: Vector2 = south_arm[south_arm.size() - 1]
+	return {
+		"tank_center": tank,
+		"tank_radius": TANK_RADIUS,
+		"pipe": PackedVector2Array([tank, root.lerp(tank, 0.18), root.lerp(tip, 0.55)]),
+	}
+
+
 static func _containers(head: PackedVector2Array, warehouses: Array,
 		left_points: PackedVector2Array, right_points: PackedVector2Array,
 		left_arms: Array, right_arms: Array, basin: PackedVector2Array,
 		corridor: PackedVector2Array, road_access: PackedVector2Array,
-		key: String, seaward: Vector2, tangent: Vector2) -> Array:
+		key: String, seaward: Vector2, tangent: Vector2,
+		plumbing: Dictionary = {}) -> Array:
 	var out: Array = []
 	var exclusions: Array = [basin, corridor]
 	exclusions.append_array(warehouses)
+	# Keep cargo off the fuel line and out of the tank's yard.
+	var pipe: PackedVector2Array = plumbing.get("pipe", PackedVector2Array())
+	for i in range(pipe.size() - 1):
+		exclusions.append(_segment_quad(pipe[i], pipe[i + 1], PIPE_CLEARANCE))
+	if plumbing.has("tank_center"):
+		exclusions.append(_circle_poly(plumbing.tank_center,
+			float(plumbing.tank_radius) + PIPE_CLEARANCE, 16))
 	for i in range(road_access.size() - 1):
 		exclusions.append(_segment_quad(road_access[i], road_access[i + 1], 7.0))
 	var head_center := _poly_center(head)
 	for side in [-1.0, 1.0]:
 		for row in range(4):
-			for col in range(4):
+			for col in range(6):
 				var ckey := "%s|head-container|%d|%d|%d" % [key, int(side), row, col]
-				if RoadHash.pick(ckey + "|skip", 100) < 12:
+				if RoadHash.pick(ckey + "|skip", 100) < 6:
 					continue
 				var point := head_center + tangent * float(side) * (30.0 + col * 9.5) + \
 					seaward * (float(row) - 1.5) * 9.0
 				var length := _rr(ckey + "|length", 10.0, 19.0)
 				var poly := _oriented_rect(point, tangent, seaward, length, CONTAINER_WIDTH)
-				if _poly_inside_fraction(poly, [head]) < 0.995 or \
+				# A stack may sit ON the quay edge — that is where cargo goes. Demanding 99.5%
+				# inside the apron left the tighter harbours (Stoneshore) half empty.
+				if _poly_inside_fraction(poly, [head]) < 0.94 or \
 						_overlap_with_any(poly, exclusions + out) > 0.01:
 					continue
 				out.append(poly)
@@ -720,7 +777,7 @@ static func _containers(head: PackedVector2Array, warehouses: Array,
 
 static func _append_arm_containers(out: Array, points: PackedVector2Array,
 		arm_polys: Array, exclusions: Array, key: String) -> void:
-	var count := 10 + RoadHash.pick(key + "|count", 5)
+	var count := 14 + RoadHash.pick(key + "|count", 5)
 	for index in range(count):
 		var fraction := lerpf(0.34, 0.90,
 			(float(index) + 0.5) / float(count))

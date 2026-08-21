@@ -18,6 +18,13 @@ const TreeShapesRef := preload("res://scripts/tree_shapes.gd")
 const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
 const InkBuildingGen := preload("res://scripts/ink_building_gen.gd")
 
+## Matches port_visuals: white plumbing so it reads on the tan quay, and a dark container edge
+## so neighbouring stacks stay separate shapes.
+const CONTAINER_EDGE := Color(0.24, 0.24, 0.26)
+const CONTAINER_EDGE_WIDTH := 1.0
+const PIPE_WHITE := Color(0.97, 0.97, 0.95)
+const PIPE_WIDTH := 3.2
+
 ## Nominal spacing between trees, world units — a JITTERED GRID rather than random points.
 ##
 ## Rejection sampling looked obvious and was wrong: successive keys fed to `RoadHash.pick`
@@ -207,8 +214,25 @@ static func draw_port_decor(canvas: CanvasItem, records: Array, keep_out: Array 
 				var index := RoadHash.pick("port|container|%s" % str(poly[0]),
 					InkBuildingGen.CONTAINER_COLS.size())
 				for piece_value in _subtract(poly, keep_out):
-					canvas.draw_colored_polygon(piece_value as PackedVector2Array,
-						InkBuildingGen.CONTAINER_COLS[index])
+					var piece: PackedVector2Array = piece_value
+					canvas.draw_colored_polygon(piece, InkBuildingGen.CONTAINER_COLS[index])
+					# A thin dark edge, so two stacks of similar colour stay two stacks.
+					canvas.draw_polyline(_closed(piece), CONTAINER_EDGE,
+						CONTAINER_EDGE_WIDTH, true)
+			"pipe":
+				var line := _points_of(record, "points")
+				if line.size() >= 2:
+					canvas.draw_polyline(line, MidcenturyStyle.INK, PIPE_WIDTH + 2.0, true)
+					canvas.draw_polyline(line, PIPE_WHITE, PIPE_WIDTH, true)
+			"tank":
+				var centre := _vector_of(record.get("center", null))
+				var radius := float(record.get("radius", 0.0))
+				if radius > 0.0:
+					canvas.draw_circle(centre + SHADOW_OFFSET, radius, MidcenturyStyle.SHADOW)
+					canvas.draw_circle(centre, radius, PIPE_WHITE)
+					canvas.draw_arc(centre, radius, 0.0, TAU, 28, MidcenturyStyle.INK, 1.4, true)
+					canvas.draw_arc(centre, radius * 0.62, 0.0, TAU, 24,
+						MidcenturyStyle.INK, 1.0, true)
 			"crane":
 				_draw_crane(canvas, record)
 
