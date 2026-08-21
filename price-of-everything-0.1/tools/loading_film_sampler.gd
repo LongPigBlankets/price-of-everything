@@ -25,6 +25,8 @@ var _worst_gap_at := 0
 var _shot_taken := false
 var _done := false
 var _last_drift := -1.0
+var _frames := 0
+var _frames_at_sample := 0
 
 
 func _ready() -> void:
@@ -39,6 +41,7 @@ func _process(_delta: float) -> void:
 	var now := Time.get_ticks_msec()
 	var gap := now - _last_frame
 	_last_frame = now
+	_frames += 1
 	if gap > _worst_gap:
 		_worst_gap = gap
 		_worst_gap_at = now - _t0
@@ -69,8 +72,13 @@ func _sample(now: int) -> void:
 	var wall := float(now - _play_t0) / 1000.0
 	var pos := _film.stream_position
 	_last_drift = wall - pos
-	print("FILM t+%5d ms  wall %6.2f s  stream %6.2f s  drift %6.2f s  worst gap %4d ms" %
-		[now - _t0, wall, pos, _last_drift, _worst_gap])
+	var win := _frames - _frames_at_sample
+	_frames_at_sample = _frames
+	# Average frame interval over this window: the number that says whether DECODE is keeping
+	# up, as distinct from drift, which only records that the process stopped.
+	var avg := float(SAMPLE_MS) / maxf(1.0, float(win))
+	print("FILM t+%5d ms  wall %6.2f s  stream %6.2f s  drift %6.2f s  %2d f (avg %5.1f ms/f)  worst gap %4d ms" %
+		[now - _t0, wall, pos, _last_drift, win, avg, _worst_gap])
 
 
 func _report(now: int) -> void:

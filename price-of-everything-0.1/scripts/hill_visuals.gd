@@ -92,7 +92,10 @@ func _ready() -> void:
 	# result identical every time. tools/bake_hill_texture.tscn renders it once; this loads
 	# it. A missing or stale bake falls back to the live render below, so the picture is
 	# never wrong, only slower to arrive.
+	var _lp_t := Time.get_ticks_usec()
 	_baked_tex = HillTextureBaked.texture(_style_key(), _bake_rect)
+	if OS.get_environment("LOAD_PROF") != "":
+		print("LOADPROF-CALL %-30s %8.1f ms" % ["hills baked texture load", float(Time.get_ticks_usec() - _lp_t) / 1000.0])
 	if _baked_tex != null:
 		# _draw_fill builds its meshes on demand, so the zoomed-in LOD is usable immediately:
 		# the pre-warm is an optimisation, not a prerequisite, and it is not worth ~2 s of
