@@ -37,6 +37,10 @@ var empire_view: EmpireViewScript
 const GoodsGraphViewScript := preload("res://scripts/goods_graph_view.gd")
 const GoodsFlowGraphScript := preload("res://scripts/goods_flow_graph.gd")
 const GoodIconsScript := preload("res://scripts/good_icons.gd")
+const AuthoredBakeScript := preload("res://scripts/authored_bake.gd")
+## How far past the opening view to preload baked tiles, world units — two tiles of slack so
+## the first pan does not have to hit the disk.
+const WARM_MARGIN := 1000.0
 var goods_graph_view: GoodsGraphViewScript
 
 const DENSITY_SOFT_CAPACITY := 100.0
@@ -421,6 +425,11 @@ func finish_build(animate: bool) -> void:
 	# cache scan; any straggler blocks briefly here (under the screen) rather than on open.
 	if _loading_screen_active():
 		GoodIconsScript.warm(Catalog.all_goods())
+		# Baked authored-map tiles the opening camera will see. Streaming loads the rest as it
+		# scrolls; paying for the first screenful here means play does not open on a burst of
+		# disk reads. No-op without a bake, and cheap (a handful of small textures).
+		await _build_yield()
+		_warm_authored_bake()
 
 	_audit_start_visuals()
 	build_complete = true   # the loading screen may now offer "Begin"
@@ -453,6 +462,22 @@ func _show_glass_merchant_intro() -> void:
 	_focus_camera_on_tile("tile_22_16")   # centre on Vandel's Skip (the start's hub)
 	var intro: CanvasLayer = load("res://scripts/glass_merchant_intro.gd").new()
 	add_child(intro)
+
+
+## Preload the baked authored-map textures the opening camera will see. The rest stream in as
+## the player scrolls (authored_bake.gd), so this is deliberately a screenful and not the whole
+## map — 209 tiles resident at once would be ~289 MB of VRAM for ~7 MB of disk.
+func _warm_authored_bake() -> void:
+	if not AuthoredBakeScript.is_available():
+		return
+	var camera := get_viewport().get_camera_2d()
+	if camera == null:
+		return   # no camera yet: streaming will load the first screenful on the first frame
+	var extent := get_viewport().get_visible_rect().size / maxf(0.001, camera.zoom.x)
+	var view := Rect2(camera.global_position - extent * 0.5, extent).grow(WARM_MARGIN)
+	var warmed := AuthoredBakeScript.warm(AuthoredBakeScript.tiles_in_rect(view).keys())
+	if warmed > 0:
+		print("AuthoredBake: warmed %d texture(s) for the opening view" % warmed)
 
 
 ## A loading screen (parented to the tree root, surviving the scene change) is up

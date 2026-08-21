@@ -948,6 +948,20 @@ func _drop_zone_masks(tile_id: String) -> void:
 	_decor_cache.erase(tile_id)
 
 
+## Intersection of two cell masks. Used to narrow a special-purpose mask (the farm mask, which
+## tolerates ground ordinary buildings refuse) by a zone, so a zoned farm lands on cells that
+## satisfy BOTH. An empty operand means "no such mask" and yields empty — the caller reads that
+## as "this kind is not drawn on this tile" and moves on, never as "nowhere to build".
+func _mask_and(a: PackedByteArray, b: PackedByteArray) -> PackedByteArray:
+	if a.is_empty() or b.is_empty() or a.size() != b.size():
+		return PackedByteArray()
+	var out := PackedByteArray()
+	out.resize(a.size())
+	for i in a.size():
+		out[i] = 1 if (a[i] != 0 and b[i] != 0) else 0
+	return out
+
+
 func _mask_has_room(mask: PackedByteArray) -> bool:
 	for i in mask.size():
 		if mask[i] != 0:
@@ -3325,6 +3339,20 @@ func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v
 		var fverts: PackedVector2Array = BuildingShapes.farm_field(area * FARM_FIELD_SCALE * FARM_FIELD_SCALE, seed_v).verts
 		var toward_river := not _has_non_farm_buildings(tile_id)
 		var farm_mask: PackedByteArray = _farm_land.get(tile_id, land)   # farms nestle closer to forests
+		# ZONES APPLY TO FARMS TOO. A field is still a building the designer zoned ground for,
+		# and this branch returns before the zone loop below, so it has to do its own pass:
+		# each kind, narrowed by the farm mask, before the unzoned field the tile would
+		# otherwise get. Without this a farm was the one thing that ignored a zone entirely.
+		for zone_kind in _zone_preference(iname):
+			for tier in [ZoneTier.CLEAR, ZoneTier.SACRIFICIAL_OK, ZoneTier.ANY]:
+				var zone_mask := _mask_and(farm_mask, _zone_mask(tile_id, coord, zone_kind, tier))
+				if zone_mask.is_empty() or not _mask_has_room(zone_mask):
+					continue
+				var zoned_farm := _place_farm(tile_id, coord, fverts, placed_here, zone_mask,
+					toward_river)
+				if not zoned_farm.is_empty():
+					zoned_farm.verts = _clip_to_hex(zoned_farm.verts, coord)
+					return zoned_farm
 		var placed := _place_farm(tile_id, coord, fverts, placed_here, farm_mask, toward_river)
 		if not placed.is_empty():
 			placed.verts = _clip_to_hex(placed.verts, coord)
