@@ -18,13 +18,16 @@ extends Node2D
 ## keeps this as the debug fallback.
 
 const AuthoredMap := preload("res://scripts/authored_map.gd")
-const AuthoredRoadStyle := preload("res://scripts/authored_road_style.gd")
-const AuthoredRoadGeometry := preload("res://scripts/authored_road_geometry.gd")
+const AuthoredRoadPainter := preload("res://scripts/authored_road_painter.gd")
+const AuthoredBake := preload("res://scripts/authored_bake.gd")
+const BakeLayout := preload("res://scripts/authored_bake_layout.gd")
 
-## Bridge glyph proportions, matching `road_network_visuals._draw_bridge_glyph` so an
-## authored crossing reads like every other crossing on the map.
-const BRIDGE_DECK_SCALE := 1.15
-const BRIDGE_RAIL_WIDTH := 1.4
+## Keep baked textures resident a little past the camera (world units), so a tile loads before
+## it scrolls in. Matches authored_fabric_visuals.
+const STREAM_MARGIN := 600.0
+
+## Last view rect the baked path drew for; a change means recull and redraw.
+var _view_rect := Rect2()
 
 ## stroke id -> drawn polyline. Sampling and wobbling every stroke on each redraw would
 ## repeat work that cannot change unless the document does; the procedural layer needed the
@@ -71,28 +74,17 @@ func _draw() -> void:
 	if not RoadNetwork.roads_visible:
 		return
 	var flagged := _flagged_tile_ids()
-	# Two passes over the whole map, casings then beds: per-stroke casing-then-bed would
-	# let a later stroke's dark edge cut across an earlier stroke's carriageway at every
-	# junction. The river layer needs the same discipline for its bank casings.
-	var visible_strokes := _visible_strokes(flagged)
-	for stroke_class in AuthoredRoadStyle.class_order():
-		for stroke in visible_strokes:
-			if str(stroke.get("class", "mid")) != stroke_class:
-				continue
-			var points: PackedVector2Array = _geometry_for(stroke)
-			if points.size() >= 2:
-				draw_polyline(points, AuthoredRoadStyle.casing_color(stroke_class),
-					AuthoredRoadStyle.casing_width(stroke_class), true)
-	for stroke_class in AuthoredRoadStyle.class_order():
-		for stroke in visible_strokes:
-			if str(stroke.get("class", "mid")) != stroke_class:
-				continue
-			var points: PackedVector2Array = _geometry_for(stroke)
-			if points.size() >= 2:
-				draw_polyline(points, AuthoredRoadStyle.bed_color(stroke_class),
-					AuthoredRoadStyle.bed_width(stroke_class), true)
-	for stroke in visible_strokes:
-		_draw_bridges(stroke)
+	# One painter for the live render and the texture bake (see authored_road_painter.gd),
+	# which also owns the global casings-then-beds pass order.
+	if AuthoredBake.is_available():
+		# The 287 permanent strokes come from the textures; the ~37 UNLOCKABLE ones are drawn
+		# live over them, because whether they are visible depends on flags that move during
+		# the match. Keeping them vector is what preserves the whole-stroke reveal with no
+		# overlay artifacts to bake, and at this count it costs nothing.
+		AuthoredBake.draw_layer(self, "roads", AuthoredBake.visible_world_rect(self, STREAM_MARGIN))
+		AuthoredRoadPainter.draw_strokes(self, _unlockable_strokes(flagged), _geometry_cache)
+		return
+	AuthoredRoadPainter.draw_strokes(self, _visible_strokes(flagged), _geometry_cache)
 
 
 ## Ids of the strokes currently drawing. A read-only seam for the verification harness and
@@ -124,37 +116,25 @@ func _visible_strokes(flagged: Dictionary) -> Array:
 	return out
 
 
-func _geometry_for(stroke: Dictionary) -> PackedVector2Array:
-	var id := str(stroke.get("id", ""))
-	if _geometry_cache.has(id):
-		return _geometry_cache[id]
-	var points := AuthoredRoadGeometry.polyline(stroke)
-	_geometry_cache[id] = points
-	return points
+## The visible strokes the bake could not contain: unlockable ones that have since been
+## revealed. Their permanent siblings are already in the texture, so drawing these over it
+## reproduces the full picture exactly.
+func _unlockable_strokes(flagged: Dictionary) -> Array:
+	var out: Array = []
+	for stroke in _visible_strokes(flagged):
+		if not BakeLayout.road_is_static(stroke as Dictionary):
+			out.append(stroke)
+	return out
 
 
-## Bridge decks at the stroke's authored crossings. A deck is drawn across the road, its
-## length set by the class, so a major road's bridge reads as the heavier structure.
-func _draw_bridges(stroke: Dictionary) -> void:
-	var crossings: Array = stroke.get("bridges", []) as Array
-	if crossings.is_empty():
+## Baked mode streams by camera, so the layer has to notice the camera moving.
+func _process(_delta: float) -> void:
+	if not visible or not AuthoredBake.is_available():
 		return
-	var stroke_class := str(stroke.get("class", "mid"))
-	var half := AuthoredRoadStyle.casing_width(stroke_class) * BRIDGE_DECK_SCALE * 0.5
-	for crossing_value in crossings:
-		if typeof(crossing_value) != TYPE_ARRAY:
-			continue
-		var crossing: Array = crossing_value
-		if crossing.size() < 4:
-			continue
-		var centre := Vector2(float(crossing[0]), float(crossing[1]))
-		var tangent := Vector2(float(crossing[2]), float(crossing[3]))
-		if tangent.length() < 0.001:
-			continue
-		tangent = tangent.normalized()
-		var across := Vector2(-tangent.y, tangent.x) * half
-		draw_line(centre - across, centre + across, MapStyle.road_bridge(),
-			BRIDGE_RAIL_WIDTH * 2.0, true)
+	var view := AuthoredBake.visible_world_rect(self, STREAM_MARGIN)
+	if view != _view_rect:
+		_view_rect = view
+		queue_redraw()
 
 
 ## `{tile_id: true}` for every tile carrying roads. The procedural renderer keys the same

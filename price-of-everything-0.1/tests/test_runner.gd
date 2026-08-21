@@ -67,6 +67,7 @@ func _ready() -> void:
 	_test_authored_map_schema()
 	_test_authored_map_road_rules()
 	_test_authored_port_handover()
+	_test_authored_bake_layout()
 	_test_authored_map_slot_classes()
 	_test_authored_map_round_trip()
 	_test_authored_documents_on_disk_load()
@@ -15014,6 +15015,73 @@ func _test_authored_port_handover() -> void:
 	_check(tiles.size() == 1,
 		"port handover: an ordinary special claims nothing — only the tag hands a tile over")
 	AuthoredMap.reset_for_tests()
+## THE BAKE PARTITION (scripts/authored_bake_layout.gd). Everything the texture bake does rests
+## on this being right: the wrong rect and every tile is subtly misaligned; the wrong cull and
+## content vanishes at a seam; the wrong static/dynamic split and the unlock reveal or a mass
+## eviction is frozen into a PNG where no one can fix it.
+func _test_authored_bake_layout() -> void:
+	var BakeLayout := preload("res://scripts/authored_bake_layout.gd")
+
+	# THE UNIT IS THE PITCH RECT, NOT THE HEX BBOX. Hex bboxes are 540 wide at 405 pitch, so
+	# they overlap by 135 and could never partition the plane; pitch rects tile it exactly.
+	var centre := Vector2(1080.0, 1200.0)   # tile_1_1's centre (docs/map-editor-plan.md §2)
+	var rect := BakeLayout.pitch_rect(centre)
+	_check(rect.size == Vector2(405.0, 480.0), "bake layout: the unit is the 405x480 pitch rect")
+	_check(rect.get_center().is_equal_approx(centre), "bake layout: the rect is centred on the tile")
+	# Neighbouring rects must abut exactly — no gap (a seam line) and no overlap (double-drawn
+	# content). One column pitch to the right is the adjacency the bake depends on.
+	var east := BakeLayout.pitch_rect(centre + Vector2(405.0, 0.0))
+	_check(is_equal_approx(rect.end.x, east.position.x),
+		"bake layout: adjacent pitch rects abut exactly, so textures reassemble without a seam")
+
+	# Integer texel rects at the chosen scale: 405x480 u -> 540x640 px.
+	_check(BakeLayout.texture_size() == Vector2i(540, 640), "bake layout: 540x640 px per tile")
+	_check(BakeLayout.BAKE_SCALE > 1.107,
+		"bake layout: the bake scale is above max play zoom, so a tile is never magnified")
+
+	# The transform the export viewport uses must map the rect's own corners onto the texture.
+	var xform := BakeLayout.bake_transform(rect)
+	_check((xform * rect.position).is_equal_approx(Vector2.ZERO),
+		"bake layout: the rect's origin maps to the texture's (0,0)")
+	_check((xform * rect.end).is_equal_approx(Vector2(540.0, 640.0)),
+		"bake layout: the rect's far corner maps to the texture's far corner")
+
+	# STATIC BAKES, DYNAMIC STAYS LIVE. Anything whose visibility can change mid-match must be
+	# excluded, or the texture would freeze it.
+	_check(BakeLayout.road_is_static({"id": "r1"}), "bake layout: a permanent stroke bakes")
+	_check(not BakeLayout.road_is_static({"id": "r2", "unlockable": true}),
+		"bake layout: an unlockable stroke is excluded (it appears when its tiles gain roads)")
+	_check(BakeLayout.mass_is_static({"id": "m1"}), "bake layout: an ordinary mass bakes")
+	_check(not BakeLayout.mass_is_static({"id": "m2", "sacrificial": true}),
+		"bake layout: a sacrificial mass is excluded (a building may evict it)")
+
+	# Culling is by grown bbox, and the growth matters: a mass drops a shadow and a road has a
+	# bed width, so content whose outline sits just OUTSIDE a rect still reaches into it.
+	var doc := {"s": {
+		"tiles": ["tile_1_1"],
+		"parks": [{"id": "p_in", "outline": [[1000, 1150], [1100, 1150], [1100, 1250]]}],
+		"decor": [{"id": "d_far", "pos": [9000, 9000], "size": [40, 40]}],
+		"specials": [{"id": "x_evict", "sacrificial": true,
+			"outline": [[1000, 1150], [1100, 1150], [1100, 1250]]}],
+		"roads": [
+			{"id": "r_in", "points": [[1000, 1200], [1150, 1200]]},
+			{"id": "r_unlock", "unlockable": true, "points": [[1000, 1210], [1150, 1210]]},
+		],
+	}}
+	var records := BakeLayout.records_for_rect(doc, rect)
+	_check((records["parks"] as Array).size() == 1, "bake layout: a park inside the rect is included")
+	_check((records["decor"] as Array).is_empty(), "bake layout: a mass far outside is culled")
+	_check((records["specials"] as Array).is_empty(),
+		"bake layout: a sacrificial special is excluded even though it lies inside")
+	_check((records["roads"] as Array).size() == 1
+		and str(((records["roads"] as Array)[0] as Dictionary).get("id", "")) == "r_in",
+		"bake layout: the permanent stroke bakes and the unlockable one does not")
+	_check(not BakeLayout.is_empty(records), "bake layout: a rect with content is not empty")
+	# A rect nothing reaches produces no texture at all — that is what keeps the bake to the
+	# authored area instead of 816 transparent PNGs.
+	var far := BakeLayout.pitch_rect(Vector2(12000.0, 10000.0))
+	_check(BakeLayout.is_empty(BakeLayout.records_for_rect(doc, far)),
+		"bake layout: a rect with nothing on it bakes no texture")
 
 
 func _test_authored_map_road_rules() -> void:

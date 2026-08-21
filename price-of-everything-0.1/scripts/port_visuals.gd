@@ -15,10 +15,12 @@ const PIER_COUNT := 3
 var _glyphs: Array = []   # [{pos: Vector2, angle: float, tile_h: float}]
 var _hex_map: TileMapLayer = null
 var _midcentury_plans: Array = []
-## How far the decorative fabric is cut back from a harbour, world units — about 10 px at full
-## zoom (~1.107 px/u), which is the gap the owner asked for. Big enough to read as a margin
-## between the town and the quay, small enough that the blocks still fill their ground.
-const PORT_FABRIC_CLEARANCE := 10.0
+const BakeLayout := preload("res://scripts/authored_bake_layout.gd")
+
+## How far the decorative fabric is cut back from a harbour. Defined in `authored_bake_layout`
+## so the cut the EXPORTER bakes into a texture and the cut the running game applies are the
+## same number — two copies would drift and a baked map would disagree with a vector one.
+const PORT_FABRIC_CLEARANCE := BakeLayout.PORT_CLEARANCE
 
 ## Container edging and the plumbing palette. The pipe and tank are drawn white so they read
 ## against both the tan quay and the grey town; the dark grey edge is what keeps neighbouring
