@@ -163,9 +163,29 @@ see the header of `tools/frame_anatomy_watcher.gd`, and mind the two traps recor
    start tiles could claim them from the same bake, with the player's own buildings placed live
    — but `relayout()` would have to stop re-packing what the bake already packed, and that
    needs its own measured pass.
-1. **`main.tscn` takes 5.2 s to load and ~1 s to instantiate.** The load is on a worker thread and
-   a film would cover it; the instantiate is a genuine main-thread stall and is the one thing that
-   must not land under a playing video. Start the film before it, or hold a still frame across it.
+1. **The instantiation frame is ~1.3 s and it is DIFFUSE — do not go hunting for a culprit.**
+   Measured with a per-`_ready` timeline in a single run (the numbers move between runs, so one
+   run is the only honest way to compare within it):
+
+   | | |
+   |---|---:|
+   | scene instantiation + `hex_map._ready` | 56 ms |
+   | `hill_visuals` (incl. 146 ms loading the baked texture) | ~320 ms |
+   | the other nine map layers, ~15 ms each | ~110 ms |
+   | overlays + the HUD subtree up to the first big panel | ~460 ms |
+   | BuildingDetailPanel / ResearchPanel / TopBar `_ready` | ~110 ms |
+   | SearchOverlay + the rest of the HUD | ~265 ms |
+
+   **Moving the big HUD panels out of `main.tscn` was investigated and is NOT worth it.** The four
+   largest scripts under UILayer — BuildingDetailPanel (3,308 lines), ResearchPanel, TopBar,
+   SearchOverlay — cost about 95 ms of `_ready` between them, not the ~1 s that their size
+   suggests. Deferring them means turning `@onready` unique-name scene nodes into lazily-built
+   ones across a lot of call sites, to recover a tenth of a second. Script length is not
+   `_ready` cost, and this is where that was learned.
+
+   (BuildingDetailPanel is still worth a look for a different reason: it is the v1 panel, kept
+   only as the `swap bdp` fallback, and `use_bdp_v2` defaults true — so it is built every load
+   and essentially never shown. That is 58 ms and a lot of dead weight in the scene.)
 2. **The full-map view costs ~190 ms a frame at 26.5k draw calls** — about 5 fps. This is the
    opening camera position, so it is the first thing a player sees moving. It is a play-time
    frame-budget problem as much as a load one; the buildings' zoom-out LOD is the lever
