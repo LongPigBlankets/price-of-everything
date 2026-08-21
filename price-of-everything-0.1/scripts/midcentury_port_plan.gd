@@ -17,9 +17,11 @@ const SHADOW_OFFSET := Vector2(2.2, 2.8)
 const SHORE_SHIFTS := [-18.0, 18.0]
 const APPROACH_ANGLES_DEG := [-22.0, -8.0, 8.0, 22.0]
 ## How far SEAWARD of the sampled shore point the quay face — the shared edge
-## between the dry head and the harbour water — is pushed. The head is a
-## seaward-overshooting block clipped back to the real coastline, so the apron
-## covers every scrap of land inside the harbour throat.
+## between the dry head and the harbour water — is pushed. THE HEAD IS A STRAIGHT
+## BLOCK AND IS NEVER CLIPPED TO THE COASTLINE (owner, 2026-08-21). A dock is
+## reclaimed ground: its quay face is a straight edge cut across the shore, not a
+## tracing of every cove and spit. Clipping produced a ragged apron whose outline
+## wandered with the beach and left the arms meeting it at odd angles.
 ## Squaring the basin (parallel arms, 90 degrees to the head) makes the seating
 ## fussier on a curved shore: the rectangle's root corners must both be wet. Two
 ## further shifts let the existing search find a wetter seat rather than us
@@ -33,14 +35,16 @@ const BASIN_WIDTH_LADDER := [1.0, 0.88, 0.76, 0.64]
 ## Rendered coastline = the boundary of the baked band-5 "land base" polygon.
 ## Probed against NavGrid over 789,496 coastal-band cells: 99.470% agreement.
 const LAND_BASE_BAND := 5
-## Pull the clipped apron inside the coastline until the NavGrid dry-land gate
-## reads 100% despite the half-cell quantisation difference. Smallest first.
-const HEAD_INSET_LADDER := [1.0, 2.0, 3.5, 6.0, 10.0]
 ## How far back an arm may reach to find the apron, and how deep it bites in.
 const MAX_ARM_ATTACH_REACH := 110.0
 const ARM_HEAD_BITE := 8.0
 ## Reject an apron the coast has eaten away to a sliver.
 const MIN_HEAD_AREA_FRACTION := 0.34
+## Seat gates for the STRAIGHT head. Most of the block must be real ground; the
+## landward half must be almost all of it. What is left in front is the reclaimed
+## quay, which is what lets the face be a straight line across a ragged shore.
+const HEAD_MIN_LAND := 0.58
+const HEAD_MIN_BACK_LAND := 0.93
 
 static var _land_polygon_cache: Array = []
 
@@ -226,11 +230,13 @@ static func _candidate(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 
 	# Exact branch-and-bound: every remaining score term can only subtract, except
 	# the bounded asymmetry bonus. A candidate that cannot beat the incumbent even
-	# at its best is skipped before the expensive clip/offset/road work. The
+	# at its best is skipped before the expensive offset/road work. There is no
+	# head-inset term any more (the head is never eroded); reintroducing one here
+	# without also scoring it would make this bound smaller than the score it
+	# bounds, and the prune below would then discard the best seat. The
 	# selected plan is bit-identical to the exhaustive search.
 	var score_bound := _poly_area(basin) * 0.012 + mouth_run * 0.42 - \
-		shore.distance_to(tile_center) * 0.035 + 0.22 * 120.0 - \
-		float(HEAD_INSET_LADDER[0]) * 8.0
+		shore.distance_to(tile_center) * 0.035 + 0.22 * 120.0
 	if score_bound <= best_score:
 		return {"pruned": true}
 
@@ -348,7 +354,7 @@ static func _candidate(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 	# the U. Score against it, or the search happily buys basin area with land.
 	var score := _poly_area(basin) * 0.012 + mouth_run * 0.42 - \
 		access_length * 0.30 - compactness * 0.035 + \
-		clampf(asymmetry, 0.06, 0.22) * 120.0 - head_inset * 8.0
+		clampf(asymmetry, 0.06, 0.22) * 120.0
 	return {
 		"basin_valid": true, "land_valid": true, "river_valid": true,
 		"collision_valid": true, "access_valid": true, "score": score,
@@ -764,52 +770,41 @@ static func _land_polygons() -> Array:
 			_land_polygon_cache.append({"poly": poly, "bb": _bbox(poly)})
 	return _land_polygon_cache
 
-## Clip a block back to dry land, then walk the inset ladder until the UNCHANGED
-## NavGrid dry-land gates are satisfied. Clipping puts the apron's seaward edge
-## on the drawn coastline; the ladder pays for the 0.53% of coastal cells where
-## the 12u NavGrid lattice and the drawn coastline disagree, and no further.
+## Accept or reject the head AS DRAWN — a straight block, kept exactly as built.
+##
+## This used to intersect the block with the land polygons and then erode it along
+## an inset ladder, which is what made the apron follow the coastline. A dock does
+## not follow a coastline; it reclaims one. So the shape is now untouched and only
+## its SEAT is judged: enough of the block must be real ground that the quay reads
+## as built on the shore rather than floating off it, with the remainder being the
+## reclaimed apron in front. Candidates that cannot meet that move on — the search
+## already sweeps shore shifts, approach angles, quay shifts and a width ladder, so
+## rejecting a bad seat finds a straighter piece of coast instead of bending the
+## dock to fit a crooked one.
 static func _fit_head(block: PackedVector2Array) -> Dictionary:
-	var block_bb := _bbox(block)
-	var block_area := _poly_area(block)
-	var clipped := PackedVector2Array()
-	var clipped_area := 0.0
-	for record_value in _land_polygons():
-		var record: Dictionary = record_value
-		if not block_bb.intersects(record.bb):
-			continue
-		for piece_value in Geometry2D.intersect_polygons(block, record.poly):
-			var piece: PackedVector2Array = piece_value
-			if piece.size() < 3 or Geometry2D.is_polygon_clockwise(piece):
-				continue
-			var area := _poly_area(piece)
-			if area > clipped_area:
-				clipped_area = area
-				clipped = piece
-	if clipped.size() < 3 or clipped_area < block_area * MIN_HEAD_AREA_FRACTION:
-		return {"reason": "area"}
-	# The dry-land gate is effectively "no sea cell inside", and eroding only ever
-	# removes cells, so if the DEEPEST inset still swallows one, no shallower one
-	# can pass. One offset instead of the whole ladder on the common reject path.
-	var deepest := _largest_inset_piece(clipped,
-		float(HEAD_INSET_LADDER[HEAD_INSET_LADDER.size() - 1]))
-	if deepest.size() < 3 or _poly_area(deepest) < block_area * MIN_HEAD_AREA_FRACTION \
-			or _class_coverage(deepest, NavGrid.WATER_LAND) < 0.999:
+	var land := _class_coverage(block, NavGrid.WATER_LAND)
+	if land < HEAD_MIN_LAND:
 		return {"reason": "cover"}
-	var last_reason := "cover"
-	for inset in HEAD_INSET_LADDER:
-		var best := _largest_inset_piece(clipped, float(inset))
-		if best.size() < 3 or _poly_area(best) < block_area * MIN_HEAD_AREA_FRACTION:
-			return {"reason": last_reason}
-		var land := _class_coverage(best, NavGrid.WATER_LAND)
-		if land < 0.999:
-			last_reason = "cover"
-			continue
-		var edge := _edge_class_coverage(best, NavGrid.WATER_LAND, 5.0)
-		if edge < 0.985:
-			last_reason = "edge"
-			continue
-		return {"poly": best, "land": land, "edge": edge, "inset": float(inset)}
-	return {"reason": last_reason}
+	# The BACK half is the part that must be genuine ground — the front is the
+	# reclaimed quay and is allowed to sit over water.
+	if _class_coverage(_back_half(block), NavGrid.WATER_LAND) < HEAD_MIN_BACK_LAND:
+		return {"reason": "back"}
+	return {"poly": block, "land": land, "edge": land, "inset": 0.0}
+
+
+## The landward half of a head block: midpoints of the two side edges, plus the back
+## corners. The block is built front-two-corners-then-back-two, so the halves are found
+## by walking that order rather than by measuring against the seaward axis.
+static func _back_half(block: PackedVector2Array) -> PackedVector2Array:
+	if block.size() != 4:
+		return block
+	return PackedVector2Array([
+		(block[0] + block[3]) * 0.5,
+		(block[1] + block[2]) * 0.5,
+		block[2],
+		block[3],
+	])
+
 
 ## March an arm backwards along its own axis until it reaches the apron, then
 ## bite a little further in. Returns Vector2.INF when the apron is out of reach.

@@ -11,13 +11,14 @@ const THICKNESS_FRAC := 0.09
 const LENGTH_FRAC := 0.52      # dockhouse length along the shore, in tile heights
 const PIER_LEN_FRAC := 0.30    # how far the pier fingers reach into the sea
 const PIER_COUNT := 3
-## Breakwater arms: poured concrete, a shade cooler and greyer than the timber decks
-## (Color("c8b890")) so the two structures stay legible where an arm meets a quay.
-const ARM_COLOR := Color("b9ad93")
 
 var _glyphs: Array = []   # [{pos: Vector2, angle: float, tile_h: float}]
 var _hex_map: TileMapLayer = null
 var _midcentury_plans: Array = []
+const AuthoredMap := preload("res://scripts/authored_map.gd")
+const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
+const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
+
 var _rebuild_queued := false
 var _diagnostic_overlay := false
 
@@ -112,7 +113,80 @@ func _rebuild_midcentury_plans() -> void:
 			str(instance.get("tile_id", "")), str(instance.get("instance_id", "")))
 		if not plan.is_empty() and bool(plan.get("valid", false)):
 			_midcentury_plans.append(plan)
+	_clear_authored_fabric_under_ports()
 	queue_redraw()
+
+
+## Decorative fabric standing where the harbour is built is CLEARED, exactly as it is under a
+## gameplay building (`building_visuals._evict_fabric_under`).
+##
+## Why clear rather than dodge: the planner already treats gameplay footprints as a hard gate
+## and will refuse a seat that hits one, but a port is a large structure pinned to one tile and
+## one stretch of coast, and an authored town is drawn dense and without knowing where the
+## harbour will land. Making authored decor a second hard gate would leave ports with no legal
+## seat at all; making it a scoring preference would only trade one overlap for another. Every
+## other building on the map resolves this by taking the ground it needs, so the port does too
+## — the terrace that was standing on the quay is gone, which is what a harbour does to a
+## waterfront.
+##
+## Uses `total_compound_envelope` (dock + arms + sheds), so nothing is cleared beyond the
+## structure's own outline.
+func _clear_authored_fabric_under_ports() -> void:
+	if _midcentury_plans.is_empty() or not AuthoredMap.is_active():
+		return
+	var fabric := get_tree().get_first_node_in_group("authored_fabric")
+	if fabric == null or not fabric.has_method("evict"):
+		return
+	var masses := _authored_masses()
+	if masses.is_empty():
+		return
+	for plan_value in _midcentury_plans:
+		var envelope: PackedVector2Array = (plan_value as Dictionary).total_compound_envelope
+		if envelope.size() < 3:
+			continue
+		var envelope_bb := _poly_bb(envelope)
+		for record_value in masses:
+			var record: Dictionary = record_value
+			if not envelope_bb.intersects(record.bb):
+				continue
+			if not Geometry2D.intersect_polygons(envelope, record.poly as PackedVector2Array).is_empty():
+				fabric.call("evict", str(record.id))
+
+
+## Every authored decorative mass and special as world polygons, the same two record kinds
+## `building_visuals._authored_decor_world` evicts. Built once per plan rebuild, which happens
+## only when a port tile's footprints change.
+func _authored_masses() -> Array:
+	var out: Array = []
+	var settlements := AuthoredMap.settlements()
+	for key in settlements:
+		var settlement_value: Variant = settlements[key]
+		if typeof(settlement_value) != TYPE_DICTIONARY:
+			continue
+		var settlement: Dictionary = settlement_value
+		for record_value in (settlement.get("decor", []) as Array):
+			if typeof(record_value) != TYPE_DICTIONARY:
+				continue
+			for poly_value in AuthoredFabricPainter.mass_polygons(record_value as Dictionary):
+				_append_mass(out, poly_value as PackedVector2Array, record_value as Dictionary)
+		for record_value in (settlement.get("specials", []) as Array):
+			if typeof(record_value) != TYPE_DICTIONARY:
+				continue
+			_append_mass(out, AuthoredSpecialShapes.render_polygon(record_value as Dictionary),
+				record_value as Dictionary)
+	return out
+
+
+func _append_mass(out: Array, poly: PackedVector2Array, record: Dictionary) -> void:
+	if poly.size() >= 3:
+		out.append({"id": str(record.get("id", "")), "poly": poly, "bb": _poly_bb(poly)})
+
+
+func _poly_bb(poly: PackedVector2Array) -> Rect2:
+	var bb := Rect2(poly[0], Vector2.ZERO)
+	for point in poly:
+		bb = bb.expand(point)
+	return bb
 
 func _draw() -> void:
 	# THE PLAN IS THE PORT. When the coastline planner has produced a valid harbour it is
@@ -181,21 +255,24 @@ func set_diagnostic_overlay(on: bool) -> void:
 func _draw_midcentury_ports() -> void:
 	for plan_value in _midcentury_plans:
 		var plan: Dictionary = plan_value
-		for poly_value in plan.apron_polygons:
-			_draw_filled_poly(poly_value,
-				MapMidcenturyStyle.industrial_yard("%s|land" % str(plan.key)))
-		# THE TWO ARMS. Parallel moles reaching seaward off the apron, one per side, enclosing
-		# the basin — the thing that makes this read as a harbour rather than a wharf. Drawn
-		# before the decks so a deck sitting on an arm root reads as built ON it, and shadowed
-		# like every other raised structure so they sit above the water rather than in it.
+		# THE QUAY IS ONE STRUCTURE. The landside dock and its two seaward arms are the same
+		# poured deck, so they are filled in one colour and outlined ONCE around their merged
+		# silhouette. Outlining each piece separately drew an ink line straight across the
+		# junction where an arm meets the dock — a seam through a thing that is continuous.
+		var yard := MapMidcenturyStyle.industrial_yard("%s|land" % str(plan.key))
+		var quay: Array = []
+		quay.append_array(plan.apron_polygons)
+		quay.append_array(plan.left_arm_polygons)
+		quay.append_array(plan.right_arm_polygons)
+		# Arms stand over water, so they cast; the dock sits on the shore and does not.
 		for poly_value in plan.left_arm_polygons:
 			_draw_shadow(poly_value)
 		for poly_value in plan.right_arm_polygons:
 			_draw_shadow(poly_value)
-		for poly_value in plan.left_arm_polygons:
-			_draw_filled_poly(poly_value, ARM_COLOR)
-		for poly_value in plan.right_arm_polygons:
-			_draw_filled_poly(poly_value, ARM_COLOR)
+		for poly_value in quay:
+			draw_colored_polygon(poly_value, yard)
+		for ring_value in _merged_rings(quay):
+			draw_polyline(_closed(ring_value), MapMidcenturyStyle.INK, 1.05, true)
 		for poly_value in plan.deck_polygons:
 			_draw_shadow(poly_value)
 		for poly_value in plan.deck_polygons:
@@ -294,6 +371,40 @@ func _draw_crane(crane: Dictionary) -> void:
 		MapMidcenturyStyle.gameplay_block_top("mustard"), 3.0, true)
 	draw_line(position, jib_end, MapMidcenturyStyle.INK, 1.0, true)
 	draw_circle(jib_end, 2.1, MapMidcenturyStyle.INK)
+
+## Outer boundaries of a set of touching polygons, merged into as few rings as possible.
+## `merge_polygons` is pairwise, so the accumulator is folded through every piece; holes
+## (clockwise rings) are dropped because the quay never encloses water it does not own.
+func _merged_rings(polygons: Array) -> Array:
+	var merged: Array = []
+	for poly_value in polygons:
+		var poly: PackedVector2Array = poly_value
+		if poly.size() < 3:
+			continue
+		if merged.is_empty():
+			merged.append(poly)
+			continue
+		var next: Array = []
+		var absorbed := false
+		for existing_value in merged:
+			var existing: PackedVector2Array = existing_value
+			var union := Geometry2D.merge_polygons(existing, poly)
+			# One ring back means the two genuinely touched; more means they are disjoint
+			# (or made a hole), in which case keep them apart and try the next.
+			if union.size() == 1 and not absorbed:
+				poly = union[0]
+				absorbed = true
+			else:
+				next.append(existing)
+		next.append(poly)
+		merged = next
+	var out: Array = []
+	for poly_value in merged:
+		var poly: PackedVector2Array = poly_value
+		if poly.size() >= 3 and not Geometry2D.is_polygon_clockwise(poly):
+			out.append(poly)
+	return out
+
 
 func _draw_filled_poly(poly: PackedVector2Array, color: Color) -> void:
 	draw_colored_polygon(poly, color)

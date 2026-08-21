@@ -162,8 +162,14 @@ func _failures(audit: Dictionary) -> Array[String]:
 	if not bool(audit.open_sea_connectivity) or \
 			float(audit.open_water_corridor_coverage) < 0.999:
 		out.append("%s lacks open-sea corridor" % tile)
-	if float(audit.landward_dry_land_coverage) < 0.999:
-		out.append("%s landward head is not dry" % tile)
+	# THE HEAD IS A RECLAIMED QUAY, NOT A TRACING OF THE BEACH (owner, 2026-08-21). It is a
+	# straight block that is deliberately allowed to sit over the water line at its face, so
+	# the old "100% dry" assertion now describes a shape the planner no longer produces. The
+	# gate that still matters is the one the planner enforces: enough of the block is real
+	# ground that the quay is built on the shore rather than floating off it.
+	if float(audit.landward_dry_land_coverage) < MidcenturyPortPlan.HEAD_MIN_LAND:
+		out.append("%s head is mostly water (%.2f%% land)" % [tile,
+			float(audit.landward_dry_land_coverage) * 100.0])
 	if float(audit.river_overlap_area) > 0.01:
 		out.append("%s obstructs river/channel" % tile)
 	if float(audit.basin_opaque_overlap_area) > 0.01:
