@@ -155,6 +155,14 @@ see the header of `tools/frame_anatomy_watcher.gd`, and mind the two traps recor
 
 ## 7. What is left, in order
 
+0. **LOADING A SAVE still takes ~90 s.** The bake deliberately does not apply to a loaded save
+   — the save carries its own buildings, and `_rebuild_after_load` re-emits every one of them
+   through the live placement path, then `relayout()` re-packs the lot. Measured 89.6 s for
+   `autosave_3` (562 buildings). Now that a new game is 11 s, this is by far the worst load in
+   the game. The shape of a fix is visible — a save whose start buildings still stand on their
+   start tiles could claim them from the same bake, with the player's own buildings placed live
+   — but `relayout()` would have to stop re-packing what the bake already packed, and that
+   needs its own measured pass.
 1. **`main.tscn` takes 5.2 s to load and ~1 s to instantiate.** The load is on a worker thread and
    a film would cover it; the instantiate is a genuine main-thread stall and is the one thing that
    must not land under a playing video. Start the film before it, or hold a still frame across it.
