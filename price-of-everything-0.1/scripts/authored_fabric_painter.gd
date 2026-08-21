@@ -121,6 +121,69 @@ static func draw_special(canvas: CanvasItem, special: Dictionary,
 		_block(canvas, piece_value as PackedVector2Array, colour)
 
 
+## A HARBOUR, from the shapes a port was imported as (`port: <tile_id>`).
+##
+## Drawn as a GROUP rather than one special at a time, for the same reason the planner's own
+## renderer does: a dock and its arms are one poured deck, so they are filled in one colour and
+## outlined ONCE around their merged silhouette. Outlining each imported shape separately would
+## put an ink seam across every junction — which is exactly the seam that was removed from the
+## planner's harbours, and it would come straight back the moment a port was authored.
+##
+## The quay tone is keyed off the tile, so every shape of one harbour agrees and two harbours
+## still differ slightly, exactly as `industrial_yard` intends.
+static func draw_port_group(canvas: CanvasItem, records: Array, tile_id: String,
+		keep_out: Array = []) -> void:
+	var colour := MidcenturyStyle.industrial_yard("port|%s" % tile_id)
+	var pieces: Array = []
+	for record_value in records:
+		var outline := AuthoredSpecialShapes.render_polygon(record_value as Dictionary)
+		for piece_value in _subtract(outline, keep_out):
+			pieces.append(piece_value)
+	for piece_value in pieces:
+		var piece: PackedVector2Array = piece_value
+		var shadow := PackedVector2Array()
+		for point in piece:
+			shadow.append(point + SHADOW_OFFSET)
+		canvas.draw_colored_polygon(shadow, MidcenturyStyle.SHADOW)
+	for piece_value in pieces:
+		canvas.draw_colored_polygon(piece_value as PackedVector2Array, colour)
+	for ring_value in merged_rings(pieces):
+		canvas.draw_polyline(_closed(ring_value as PackedVector2Array),
+			MidcenturyStyle.INK, 1.05, true)
+
+
+## Outer boundaries of a set of touching polygons, merged into as few rings as possible.
+## `merge_polygons` is pairwise, so the accumulator is folded through every piece; clockwise
+## rings are holes and are dropped, because a quay never encloses water it does not own.
+static func merged_rings(polygons: Array) -> Array:
+	var merged: Array = []
+	for poly_value in polygons:
+		var poly: PackedVector2Array = poly_value
+		if poly.size() < 3:
+			continue
+		if merged.is_empty():
+			merged.append(poly)
+			continue
+		var next: Array = []
+		var absorbed := false
+		for existing_value in merged:
+			var existing: PackedVector2Array = existing_value
+			var union := Geometry2D.merge_polygons(existing, poly)
+			if union.size() == 1 and not absorbed:
+				poly = union[0]
+				absorbed = true
+			else:
+				next.append(existing)
+		next.append(poly)
+		merged = next
+	var out: Array = []
+	for poly_value in merged:
+		var poly: PackedVector2Array = poly_value
+		if poly.size() >= 3 and not Geometry2D.is_polygon_clockwise(poly):
+			out.append(poly)
+	return out
+
+
 ## A plaza: paved cream ground. The same paper the streets are drawn in, so a square reads as
 ## an opening in the fabric rather than as another kind of green.
 static func draw_plaza(canvas: CanvasItem, plaza: Dictionary) -> void:

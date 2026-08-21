@@ -3102,6 +3102,15 @@ func _rasterize_seg_clearance(segs: Array, pad: float) -> PackedByteArray:
 func _ensure_service_lane(tile_id: String, coord: Vector2i, building_count: int) -> void:
 	if _service_segs.has(tile_id) or not _tile_land.has(tile_id):
 		return
+	# AUTHORED TILES DRAW THEIR OWN STREETS. A service lane is the generator's answer to "this
+	# block needs a back road", laid at 2 u — a third of the narrowest authored class (minor,
+	# 6.3 u) — so on a hand-drawn settlement it reads as a stray thread through the fabric
+	# rather than a street. The document already says where every road goes, including the
+	# small ones, so the generator stands down here exactly as the fabric and the baked network
+	# do (docs/map-editor-plan.md section 6, "authored tiles stand down the procedural systems").
+	if AuthoredMap.is_active() and AuthoredMap.covers(tile_id):
+		_service_segs[tile_id] = []   # decided once, same as the early-outs below
+		return
 	if building_count < SERVICE_MIN_BUILDINGS:
 		return
 	var segs: Array = _tile_segs.get(tile_id, [])

@@ -97,11 +97,27 @@ func _draw() -> void:
 	for settlement in ordered:
 		for mass in _list(settlement, "decor"):
 			if not _sacrificed.has(str(mass.get("id", ""))):
-				AuthoredFabricPainter.draw_mass(self, mass)
+				AuthoredFabricPainter.draw_mass(self, mass, _keep_out)
 	for settlement in ordered:
+		# Imported harbours draw as ONE grouped structure (draw_port_group): a dock and
+		# its arms are one deck, so outlining each imported shape on its own would put
+		# an ink seam across every junction. Everything else draws on its own.
+		var harbours: Dictionary = {}
 		for special in _list(settlement, "specials"):
-			if not _sacrificed.has(str(special.get("id", ""))):
-				AuthoredFabricPainter.draw_special(self, special)
+			if _sacrificed.has(str(special.get("id", ""))):
+				continue
+			var port_tile := str(special.get("port", ""))
+			if port_tile != "":
+				if not harbours.has(port_tile):
+					harbours[port_tile] = []
+				(harbours[port_tile] as Array).append(special)
+				continue
+			AuthoredFabricPainter.draw_special(self, special, _keep_out)
+		var harbour_keys := harbours.keys()
+		harbour_keys.sort()
+		for port_tile in harbour_keys:
+			AuthoredFabricPainter.draw_port_group(self, harbours[port_tile],
+				str(port_tile), _keep_out)
 	for settlement in ordered:
 		for area in _list(settlement, "forests"):
 			AuthoredFabricPainter.draw_forest(self, area)
