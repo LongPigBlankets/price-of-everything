@@ -641,6 +641,18 @@ class HillPainter:
 			out[i] = (pts[i] - _origin) * _scale
 		return out
 
+	## Bake-time line width. The POINTS above are transformed world -> texture, so widths must
+	## be too — passing MapStyle's world-unit widths raw baked a 1.35 u contour as 1.35 TEXTURE
+	## pixels (~4.6 world units), which read ~3x too fat wherever the texture shows magnified
+	## (the mid-zoom band: >VECTOR_CAP polys on screen while the camera is at 0.3-0.7 px/u,
+	## above the texture's ~0.295 px/u native). The honest width x scale is sub-pixel (~0.4 px)
+	## and would wash out to nothing, so a hairline floor keeps every line drawable: thin at
+	## mid zoom, still legible in the far view the texture was built for.
+	const BAKE_HAIRLINE := 0.75
+
+	func _w(width: float) -> float:
+		return maxf(width * _scale, BAKE_HAIRLINE)
+
 	func _draw() -> void:
 		# Draw the already-triangulated cached meshes (transformed world→texture) instead of
 		# draw_colored_polygon, which re-triangulates every contour (~2 s for the whole map).
@@ -655,7 +667,7 @@ class HillPainter:
 			var lk := MapStyle.ink_color()
 			for entry in _coast_lines:
 				var tier: Array = lining[entry.tier]
-				draw_polyline(_to_tex(entry.pts), Color(lk.r, lk.g, lk.b, float(tier[1])), float(tier[2]), true)
+				draw_polyline(_to_tex(entry.pts), Color(lk.r, lk.g, lk.b, float(tier[1])), _w(float(tier[2])), true)
 		for i in _polys.size():
 			var pts: PackedVector2Array = _polys[i].p
 			if pts.size() < 3:
@@ -665,7 +677,7 @@ class HillPainter:
 			_fill("p%d" % i, pts, color, xform)
 			var outline := _to_tex(pts)
 			outline.append(outline[0])
-			draw_polyline(outline, MapStyle.contour_color(band, color), MapStyle.contour_width(band), true)
+			draw_polyline(outline, MapStyle.contour_color(band, color), _w(MapStyle.contour_width(band)), true)
 		var coast := MapStyle.coast_color()
 		if coast.a > 0.0:
 			for i in _sea.size():
@@ -676,7 +688,7 @@ class HillPainter:
 					continue
 				var cloop := _to_tex(cpts)
 				cloop.append(cloop[0])
-				draw_polyline(cloop, coast, MapStyle.coast_width(), true)
+				draw_polyline(cloop, coast, _w(MapStyle.coast_width()), true)
 		for i in _lakes.size():
 			var lake_pts: PackedVector2Array = _lakes[i]
 			if lake_pts.size() < 3:
@@ -684,7 +696,7 @@ class HillPainter:
 			_fill("l%d" % i, lake_pts, _water, xform)
 			var shore := _to_tex(lake_pts)
 			shore.append(shore[0])
-			draw_polyline(shore, MapStyle.lake_shore_color(_water), MapStyle.lake_shore_width(), true)
+			draw_polyline(shore, MapStyle.lake_shore_color(_water), _w(MapStyle.lake_shore_width()), true)
 
 	func _fill(key: String, pts: PackedVector2Array, color: Color, xform: Transform2D) -> void:
 		var mesh: Mesh = _meshes.get(key, null)

@@ -115,7 +115,12 @@ static func texture_for(tile_id: String, layer: String) -> Texture2D:
 	if _textures.has(path):
 		return _textures[path]
 	if not ResourceLoader.exists(path):
-		_warn("AuthoredBake: %s is in the manifest but missing on disk — %s." % [path, REBAKE_HINT])
+		# A manifest entry whose texture cannot be loaded (deleted, or baked but never
+		# `--import`ed) must not leave a HOLE in the map while every other tile draws. One
+		# missing texture disables the whole bake for the session, so the vector fallback
+		# takes over wholesale — slow and right, exactly like the staleness path.
+		_available = 0
+		_warn("AuthoredBake: %s is in the manifest but not loadable — falling back to vectors. Run `--headless --import`, or %s." % [path, REBAKE_HINT])
 		return null
 	var texture: Texture2D = load(path)
 	_textures[path] = texture
