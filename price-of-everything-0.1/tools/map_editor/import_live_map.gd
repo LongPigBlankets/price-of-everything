@@ -140,8 +140,12 @@ func _import_ports(world: Node, id_offset: int) -> Array:
 		var tile_id := str(plan.get("tile_id", ""))
 		if tile_id == "" or not _wanted(tile_id):
 			continue
+		# The quay and the buildings standing on it are tagged apart: the quay merges into one
+		# silhouette, a warehouse is a building with its own roof and has to stay legible on top
+		# of it (see authored_fabric_painter.draw_port_group).
 		for field in ["apron_polygons", "left_arm_polygons", "right_arm_polygons",
 				"warehouse_polygons", "deck_polygons"]:
+			var role := "warehouse" if field == "warehouse_polygons" else "quay"
 			for poly_value in (plan.get(field, []) as Array):
 				var poly: PackedVector2Array = poly_value
 				if poly.size() < 3:
@@ -151,7 +155,7 @@ func _import_ports(world: Node, id_offset: int) -> Array:
 				for point in shaped:
 					outline.append([point.x, point.y])
 				out.append({"id": "s:port:%d" % (id_offset + out.size()), "kind": "poly",
-					"sides": [], "outline": outline, "port": tile_id})
+					"sides": [], "outline": outline, "port": tile_id, "port_role": role})
 	return out
 
 

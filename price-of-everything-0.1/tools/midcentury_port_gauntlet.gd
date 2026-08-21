@@ -58,6 +58,13 @@ func _ready() -> void:
 		var spec: Dictionary = spec_value
 		var plan: Dictionary = by_tile.get(str(spec.tile_id), {})
 		if plan.is_empty():
+			# A harbour taken into the authored document HAS no plan, by design: the planner
+			# stands down for that tile and the document draws it. Auditing the planner for a
+			# port it no longer owns would fail forever on a working map.
+			if AuthoredMapRef.port_tiles().has(str(spec.tile_id)):
+				print("[PORT GAUNTLET] %s is authored — planner stands down, not audited"
+					% str(spec.tile_id))
+				continue
 			failures.append("%s has no valid plan" % str(spec.tile_id))
 			continue
 		await _capture(plan.position, 1.42,
@@ -87,7 +94,8 @@ func _ready() -> void:
 		"ports": audits,
 		"decorative_collision": collision,
 		"failures": failures,
-		"hard_gate_passes": plans.size() == 4 and failures.is_empty(),
+		"authored_port_tiles": AuthoredMapRef.port_tiles().keys(),
+		"hard_gate_passes": plans.size() + AuthoredMapRef.port_tiles().size() >= 4 			and failures.is_empty(),
 	}
 	var out := FileAccess.open("%smetrics.json" % _out_prefix, FileAccess.WRITE)
 	if out != null:

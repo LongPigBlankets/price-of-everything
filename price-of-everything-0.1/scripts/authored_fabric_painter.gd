@@ -136,8 +136,18 @@ static func draw_port_group(canvas: CanvasItem, records: Array, tile_id: String,
 		keep_out: Array = []) -> void:
 	var colour := MidcenturyStyle.industrial_yard("port|%s" % tile_id)
 	var pieces: Array = []
+	var sheds: Array = []
 	for record_value in records:
-		var outline := AuthoredSpecialShapes.render_polygon(record_value as Dictionary)
+		var record: Dictionary = record_value
+		var outline := AuthoredSpecialShapes.render_polygon(record)
+		# A warehouse is a BUILDING standing on the quay, not part of the deck: it keeps its own
+		# brick roof and its own outline, drawn after the quay so it reads on top. Folding it
+		# into the merged silhouette (as the first import did) painted the office the same
+		# colour as the ground it stands on, which is to say painted it out.
+		if str(record.get("port_role", "quay")) == "warehouse":
+			for piece_value in _subtract(outline, keep_out):
+				sheds.append(piece_value)
+			continue
 		for piece_value in _subtract(outline, keep_out):
 			pieces.append(piece_value)
 	for piece_value in pieces:
@@ -151,6 +161,32 @@ static func draw_port_group(canvas: CanvasItem, records: Array, tile_id: String,
 	for ring_value in merged_rings(pieces):
 		canvas.draw_polyline(_closed(ring_value as PackedVector2Array),
 			MidcenturyStyle.INK, 1.05, true)
+	for shed_value in sheds:
+		var shed: PackedVector2Array = shed_value
+		if shed.size() < 3:
+			continue
+		var shadow := PackedVector2Array()
+		for point in shed:
+			shadow.append(point + SHADOW_OFFSET)
+		canvas.draw_colored_polygon(shadow, MidcenturyStyle.SHADOW)
+		canvas.draw_colored_polygon(shed, MidcenturyStyle.gameplay_block_top("brick"))
+		canvas.draw_polyline(_closed(shed), MidcenturyStyle.INK, 1.05, true)
+		# The roof cap: a smaller concentric plate in the roof red, the same read the planner
+		# gives its sheds so an authored office and a planned one are the same building.
+		var centre := Vector2.ZERO
+		for point in shed:
+			centre += point
+		centre /= float(shed.size())
+		var cap := PackedVector2Array()
+		var scale := 0.72 + float(RoadHash.pick("%s|warehouse-cap" % tile_id, 9)) * 0.012
+		for point in shed:
+			cap.append(centre + (point - centre) * scale)
+		var cap_shadow := PackedVector2Array()
+		for point in cap:
+			cap_shadow.append(point + SHADOW_OFFSET)
+		canvas.draw_colored_polygon(cap_shadow, MidcenturyStyle.SHADOW)
+		canvas.draw_colored_polygon(cap, Color("a6634f"))
+		canvas.draw_polyline(_closed(cap), MidcenturyStyle.INK, 1.05, true)
 
 
 ## The decoration that belongs to an imported harbour: container stacks and gantry cranes.

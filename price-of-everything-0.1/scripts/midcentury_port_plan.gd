@@ -38,6 +38,11 @@ const LAND_BASE_BAND := 5
 ## How far back an arm may reach to find the apron, and how deep it bites in.
 const MAX_ARM_ATTACH_REACH := 110.0
 const ARM_HEAD_BITE := 8.0
+## Drawn width of a container stack, world units. Was 4.8 — about 5 px at the ~1.107 px/u
+## maximum play zoom, below the size at which a coloured box reads as cargo at all. The
+## lengths and row pitch scale with it so the stacks stay rectangular and stay apart.
+const CONTAINER_WIDTH := 8.0
+
 ## Reject an apron the coast has eaten away to a sliver.
 const MIN_HEAD_AREA_FRACTION := 0.34
 ## Seat gates for the STRAIGHT head. Most of the block must be real ground; the
@@ -696,15 +701,15 @@ static func _containers(head: PackedVector2Array, warehouses: Array,
 		exclusions.append(_segment_quad(road_access[i], road_access[i + 1], 7.0))
 	var head_center := _poly_center(head)
 	for side in [-1.0, 1.0]:
-		for row in range(3):
+		for row in range(4):
 			for col in range(4):
 				var ckey := "%s|head-container|%d|%d|%d" % [key, int(side), row, col]
-				if RoadHash.pick(ckey + "|skip", 100) < 24:
+				if RoadHash.pick(ckey + "|skip", 100) < 12:
 					continue
-				var point := head_center + tangent * float(side) * (30.0 + col * 7.0) + \
-					seaward * (float(row) - 1.0) * 6.5
-				var length := _rr(ckey + "|length", 7.0, 15.5)
-				var poly := _oriented_rect(point, tangent, seaward, length, 4.8)
+				var point := head_center + tangent * float(side) * (30.0 + col * 9.5) + \
+					seaward * (float(row) - 1.5) * 9.0
+				var length := _rr(ckey + "|length", 10.0, 19.0)
+				var poly := _oriented_rect(point, tangent, seaward, length, CONTAINER_WIDTH)
 				if _poly_inside_fraction(poly, [head]) < 0.995 or \
 						_overlap_with_any(poly, exclusions + out) > 0.01:
 					continue
@@ -715,7 +720,7 @@ static func _containers(head: PackedVector2Array, warehouses: Array,
 
 static func _append_arm_containers(out: Array, points: PackedVector2Array,
 		arm_polys: Array, exclusions: Array, key: String) -> void:
-	var count := 6 + RoadHash.pick(key + "|count", 4)
+	var count := 10 + RoadHash.pick(key + "|count", 5)
 	for index in range(count):
 		var fraction := lerpf(0.34, 0.90,
 			(float(index) + 0.5) / float(count))
@@ -726,8 +731,8 @@ static func _append_arm_containers(out: Array, points: PackedVector2Array,
 		var point: Vector2 = sample.point
 		var poly := _oriented_rect(point, direction,
 			Vector2(-direction.y, direction.x),
-			_rr("%s|%d|length" % [key, index], 7.5, 13.0),
-			_rr("%s|%d|width" % [key, index], 4.2, 5.4))
+			_rr("%s|%d|length" % [key, index], 10.0, 16.0),
+			_rr("%s|%d|width" % [key, index], 7.0, 9.0))
 		if _poly_inside_fraction(poly, arm_polys) < 0.985 or \
 				_overlap_with_any(poly, exclusions + out) > 0.01:
 			continue
