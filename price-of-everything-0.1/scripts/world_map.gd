@@ -502,7 +502,7 @@ func finish_build(animate: bool) -> void:
 		# scrolls; paying for the first screenful here means play does not open on a burst of
 		# disk reads. No-op without a bake, and cheap (a handful of small textures).
 		var t_ab := Time.get_ticks_usec()
-		_warm_authored_bake()
+		await _warm_authored_bake()
 		_prof_us("_warm_authored_bake", t_ab)
 
 	_audit_start_visuals()
@@ -563,6 +563,12 @@ func _show_glass_merchant_intro() -> void:
 ## Preload the baked authored-map textures the opening camera will see. The rest stream in as
 ## the player scrolls (authored_bake.gd), so this is deliberately a screenful and not the whole
 ## map — 209 tiles resident at once would be ~289 MB of VRAM for ~7 MB of disk.
+## Baked tiles read per frame by _warm_authored_bake. Reading all ~150 in one go is a 0.8 s
+## frozen frame; handing back a frame between batches costs the loading screen's own frame time
+## each time, so this is a trade and not a free win — at 12 the total went to 1.9 s. 25 keeps
+## the worst frame near 150 ms for about 1.1 s of wall clock.
+const BAKE_WARM_PER_FRAME := 25
+
 func _warm_authored_bake() -> void:
 	if not AuthoredBakeScript.is_available():
 		return
@@ -571,7 +577,20 @@ func _warm_authored_bake() -> void:
 		return   # no camera yet: streaming will load the first screenful on the first frame
 	var extent := get_viewport().get_visible_rect().size / maxf(0.001, camera.zoom.x)
 	var view := Rect2(camera.global_position - extent * 0.5, extent).grow(WARM_MARGIN)
-	var warmed := AuthoredBakeScript.warm(AuthoredBakeScript.tiles_in_rect(view).keys())
+	# Sliced: reading ~150 baked tiles off disk in one go is ~0.8 s in a single frame, which
+	# under a playing film is a visible hitch. Batching trades total wall clock for the size of
+	# the worst frame — see BAKE_WARM_PER_FRAME.
+	var tiles: Array = AuthoredBakeScript.tiles_in_rect(view).keys()
+	var warmed := 0
+	var batch: Array = []
+	for tile_id in tiles:
+		batch.append(tile_id)
+		if batch.size() >= BAKE_WARM_PER_FRAME:
+			warmed += AuthoredBakeScript.warm(batch)
+			batch.clear()
+			await get_tree().process_frame
+	if not batch.is_empty():
+		warmed += AuthoredBakeScript.warm(batch)
 	if warmed > 0:
 		print("AuthoredBake: warmed %d texture(s) for the opening view" % warmed)
 
@@ -650,6 +669,11 @@ func _reveal_world_for_play() -> void:
 			await get_tree().process_frame
 		if waited > 0:
 			_prof_total("waited for fabric repairs (frames)", waited * 1000)
+	# ALL AT ONCE, deliberately. Revealing one layer per frame to spread the first paint was
+	# measured and is WORSE: each frame re-renders everything revealed so far, so twenty
+	# frames cost far more than the one big frame they replace (reveal 1.8 s -> ~4 s, and the
+	# film lost 5.9 s of stream time instead of 4.1 s). The first paint of a world is not
+	# divisible by hiding part of it.
 	for layer in _hidden_for_load:
 		if is_instance_valid(layer):
 			layer.visible = true

@@ -16,6 +16,44 @@ const MORPH_SECS := 1.0        # plate → Begin button crossfade
 const EXIT_SECS := 1.0         # fade-out + camera zoom on Begin
 const ZOOM_FRAC := 0.5         # how far between full-out and full-in the intro zoom lands
 
+## The loading film, when one has been rendered. ABSENT IS NORMAL: with no file here the
+## screen is exactly what it was — the hex lattice drawing in under the plate — so the film is
+## something the screen gains, never something it depends on.
+const FILM_PATH := "res://assets/loading/film.ogv"
+## What the film was authored at (FILM_RUNBOOK.md). Used to frame it before the first decoded
+## frame arrives; after that the real texture size wins.
+const FILM_SIZE := Vector2(2400.0, 1080.0)
+## Seconds the film is given to put its first frame up before the heavy load is allowed to
+## start. It is a beat, not a wait: the load begins the moment a frame is presented.
+const FILM_HEAD_START := 1.5
+
+## WHEN THE FILM STARTS — the one setting worth understanding here.
+##
+## Theora decodes on the MAIN THREAD, so the film runs at speed only while the main thread is
+## free. Loading a new game leaves it free for the first stretch (the map scene is read on a
+## worker) and then takes it three times. Measured on a 1280x720 window with
+## tools/loading_film_check.tscn, as stream time the film LOSES — a frozen film does not catch
+## up, it falls behind:
+##
+##   IMMEDIATE    5.5 s of clean play while the scene loads on the worker, then freezes of
+##                ~1.8 s (scene instantiation), ~1.4 s (world build) and ~1.2 s (first paint
+##                of the revealed map). Total drift 4.1 s.
+##   AFTER_SCENE  starts once the map scene exists (~7.5 s in), so the instantiation freeze is
+##                already behind it — but the other two are not. Drift 3.0 s, and the hex
+##                lattice covers the first ~7 s.
+##   AFTER_BUILD  starts when the world is ready. The build is over, so there is nothing left
+##                to freeze it: the lattice covers the whole load and the film plays clean
+##                end to end. With the load down to ~12 s and the film 45 s long, this makes
+##                it an intro rather than a loading screen — which is arguably what a 45 s
+##                film now is.
+##
+## There is no "right" answer here, only a trade between how soon the film appears and how
+## smoothly it plays; this is a presentation decision, so it is one word in one place.
+enum FilmStart { IMMEDIATE, AFTER_SCENE, AFTER_BUILD }
+const FILM_START := FilmStart.IMMEDIATE
+## How long the film takes to fade up over the lattice, and to fade back down when it ends.
+const FILM_FADE := 0.6
+
 const TIP := "Tip: Some goods are interchangeable in recipes, like coal, petroleum needle coke and carbonised biomass. Change which one you use in recipes from the Construct menu."
 const HEAD_FONT := preload("res://assets/fonts/BebasNeue-Regular.ttf")
 const LoadingHexBg := preload("res://scripts/loading_hex_bg.gd")
@@ -37,6 +75,10 @@ var _exiting := false
 
 var _root: Control            # holds everything; its modulate is faded on exit
 var _hex_bg: Control          # animated hex-field background (draw-in + gold sweep)
+var _film_box: Control        # clips the film to the window (see _layout_film)
+var _film: VideoStreamPlayer  # null when no film has been rendered yet
+var _film_box_size := Vector2.ZERO   # last size the film was framed for
+var _film_started := false          # a deferred film (FILM_START) has been kicked off
 
 var _plate: LoadingPlate
 var _begin: Button
@@ -61,6 +103,10 @@ func begin_load(scene_path: String) -> void:
 	# Let the loading screen actually paint before we touch the heavy load.
 	await get_tree().process_frame
 	await get_tree().process_frame
+	# And, when there is a film, let it get a frame on screen before the load starts
+	# competing for the main thread. Theora decodes on the MAIN thread, so a film that
+	# starts underneath a busy build opens on a stutter instead of a shot.
+	await _await_film_started()
 	var _lp_t := Time.get_ticks_msec()
 	if ResourceLoader.load_threaded_request(scene_path) != OK:
 		get_tree().change_scene_to_file(scene_path)   # fallback: blocking load
@@ -95,6 +141,7 @@ func _ready() -> void:
 	add_child(_root)
 
 	_build_backgrounds()
+	_build_film()
 	_build_plate()
 	_build_begin_button()
 
@@ -104,11 +151,94 @@ func _ready() -> void:
 func _build_backgrounds() -> void:
 	# Animated hex-field background (its own navy fill + grey→gold lines), full-bleed
 	# behind the metallic "Loading…" plate. z 0 so the plate (z 10) sits over it.
+	# IT STAYS when there is a film. The film is layered OVER it (z 5), fades up rather than
+	# cutting, and fades back down when it ends — so the lattice is what the screen opens on,
+	# what it returns to, and the whole screen when no film has been rendered.
 	_hex_bg = LoadingHexBg.new()
 	_hex_bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_hex_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hex_bg.z_index = 0
 	_root.add_child(_hex_bg)
+
+
+## The film, if one has been rendered. It is COVER-fitted and clipped, never letterboxed:
+## FILM_RUNBOOK.md renders 2400x1080 so that a 16:9 window shows the approved 1920x1080
+## composition at 1:1 and an ultrawide gets more street — which is a centre crop, and a
+## letterbox would throw away exactly the framing the render was set up to give.
+func _build_film() -> void:
+	if not ResourceLoader.exists(FILM_PATH):
+		return   # not rendered yet: the lattice is the screen, exactly as before
+	var stream: VideoStream = load(FILM_PATH) as VideoStream
+	if stream == null:
+		push_warning("LoadingScreen: %s is not a video stream — showing the hex field only." % FILM_PATH)
+		return
+	_film_box = Control.new()
+	_film_box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_film_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_film_box.clip_contents = true
+	_film_box.z_index = 5   # over the lattice, under the plate (z 10) and the button (z 11)
+	_root.add_child(_film_box)
+
+	_film = VideoStreamPlayer.new()
+	_film.stream = stream
+	_film.expand = true
+	_film.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_film.modulate.a = 0.0   # faded up by _process once the first frame is decoded
+	_film_box.add_child(_film)
+	_layout_film()
+	if FILM_START == FilmStart.IMMEDIATE:
+		_film.play()
+
+
+## Frame the film to COVER the window, centred, with the overflow clipped by _film_box.
+func _layout_film() -> void:
+	if _film == null or _film_box == null:
+		return
+	var box := _film_box.size
+	if box.x <= 1.0 or box.y <= 1.0:
+		return
+	var native := FILM_SIZE
+	var tex := _film.get_video_texture()
+	if tex != null and tex.get_size().x > 1.0:
+		native = tex.get_size()
+	var scale := maxf(box.x / native.x, box.y / native.y)
+	var shown := native * scale
+	_film.size = shown
+	_film.position = (box - shown) * 0.5
+	_film_box_size = box
+
+
+## Hand the film a beat to put its first frame up before the caller starts the heavy load.
+## Returns immediately when there is no film, and gives up after FILM_HEAD_START either way —
+## a film that will not start must not hold the game hostage.
+## Start a deferred film once the thing it was waiting for has happened. No-op for
+## IMMEDIATE (already playing) and once it is running.
+func _maybe_start_film() -> void:
+	if _film == null or _film.is_playing() or _film_started:
+		return
+	var ready_now := false
+	match FILM_START:
+		FilmStart.AFTER_SCENE:
+			ready_now = _scene_changed
+		FilmStart.AFTER_BUILD:
+			ready_now = _ready_to_begin()
+		_:
+			ready_now = true
+	if ready_now:
+		_film_started = true
+		_film.play()
+
+
+func _await_film_started() -> void:
+	if _film == null or FILM_START != FilmStart.IMMEDIATE:
+		return   # a deferred film is waiting on the load, so the load must not wait on it
+	var waited := 0.0
+	while waited < FILM_HEAD_START and is_inside_tree():
+		var tex := _film.get_video_texture()
+		if _film.is_playing() and tex != null and tex.get_size().x > 1.0:
+			return
+		waited += get_process_delta_time()
+		await get_tree().process_frame
 
 
 func _build_plate() -> void:
@@ -151,10 +281,26 @@ func _bottom_box(c: Control, w: float, h: float, bottom_margin: float) -> void:
 
 func _process(delta: float) -> void:
 	_elapsed += delta
+	_tick_film(delta)
 	if not _morphed:
 		_plate.set_header("Loading" + ".".repeat(1 + int(_elapsed / DOT_PERIOD) % 3))
 		if _ready_to_begin():
 			_show_begin()
+
+
+## Fade the film up on its first decoded frame, keep it framed if the window changes, and
+## fade it back down to the lattice when it runs out. Cheap: two compares and a lerp.
+func _tick_film(delta: float) -> void:
+	if _film == null:
+		return
+	_maybe_start_film()
+	if _film_box != null and _film_box.size != _film_box_size:
+		_layout_film()
+	var tex := _film.get_video_texture()
+	var showing := _film.is_playing() and tex != null and tex.get_size().x > 1.0
+	var target := 1.0 if showing else 0.0
+	if not is_equal_approx(_film.modulate.a, target):
+		_film.modulate.a = move_toward(_film.modulate.a, target, delta / maxf(0.01, FILM_FADE))
 
 
 func _ready_to_begin() -> bool:
