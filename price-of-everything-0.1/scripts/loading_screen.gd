@@ -301,6 +301,13 @@ func _tick_film(delta: float) -> void:
 	var target := 1.0 if showing else 0.0
 	if not is_equal_approx(_film.modulate.a, target):
 		_film.modulate.a = move_toward(_film.modulate.a, target, delta / maxf(0.01, FILM_FADE))
+	# STOP DRAWING THE LATTICE UNDER AN OPAQUE FILM. The hex field is ~1,832 draw calls and the
+	# film covers every pixel of it (cover-fitted, no alpha), so once the fade is done it is
+	# pure cost — and an expensive loading screen is not just a slow loading screen: the build
+	# hands a frame back between steps, so the SCREEN'S frame cost is charged to every one of
+	# those yields. It comes straight back when the film fades out or fails.
+	if _hex_bg != null:
+		_hex_bg.visible = _film.modulate.a < 1.0
 
 
 func _ready_to_begin() -> bool:

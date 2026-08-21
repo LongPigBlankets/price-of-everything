@@ -6,6 +6,8 @@ extends Node2D
 ## the load: a 2,400-line panel whose shell cost ~330 ms of the build to construct something
 ## the player cannot see until they click a building. Read it through the
 ## `building_panel_v2` property, which builds it; test whether it EXISTS with `_bdp_v2`.
+## True once the deferred dialog/effect set has been built (see _build_dialogs_and_fx).
+var _dialogs_built := false
 var _bdp_v2: PanelContainer = null
 var building_panel_v2: PanelContainer:
 	get:
@@ -282,45 +284,13 @@ func _build_base() -> void:
 	# See docs/building-detail-v2-plan.md. BUILT LAZILY — see _build_building_panel_v2.
 	MatchState.bdp_v2_changed.connect(_on_bdp_v2_changed)
 
-	# Capacity dialog: prompts the player when a tile first hits max storage.
-	_hud.add_child(load("res://scripts/capacity_dialog.gd").new())
-
-	# Overflow dialog: prompts when construction materials arrive at a full tile.
-	var overflow_dialog: Node = load("res://scripts/overflow_dialog.gd").new()
-	_hud.add_child(overflow_dialog)
-	overflow_dialog.go_to_stockpile_requested.connect(_on_go_to_tile_stockpile)
-
-	# Special-order closure dialog: handles over-delivery and tagged shipments that
-	# remain in flight after the premium order is gone.
-	_special_order_resolution_dialog = load("res://scripts/special_order_resolution_dialog.gd").new()
-	_hud.add_child(_special_order_resolution_dialog)
-	_special_order_resolution_dialog.reroute_requested.connect(_on_special_order_reroute_requested)
-
-	# Survey dialog: opened by clicking a tile in the Surveying mapmode.
-	_survey_dialog = load("res://scripts/survey_dialog.gd").new()
-	_hud.add_child(_survey_dialog)
-
 	# Research unlocks no longer pop a dialog — they are aggregated into a single
 	# Turn Briefing "Research unlocked" update (see turn_briefing._research_aggregate_item).
-
-	# The tabbed Tile View Panel lives under HUDContent, named "TileInfoPanel" so
-	# building_detail_panel's panel-stacking lookups find it. BUILT LAZILY — see
-	# _build_info_panel.
-
-	# Debug cheat terminal (toggle with the ` key)
-	add_child(load("res://scripts/debug_terminal.gd").new())
-
-	# Floating £ that rises from a port whenever a market sale lands there
-	var _sale_fx: CanvasLayer = load("res://scripts/sale_effects.gd").new()
-	_sale_fx.terrain_layer = terrain_layer
-	add_child(_sale_fx)
-
-	# Collapsing-hex + rising-deposit-icon animation when a tile finishes surveying.
-	var _survey_fx: Node2D = load("res://scripts/survey_effects.gd").new()
-	_survey_fx.name = "SurveyEffects"
-	_survey_fx.terrain_layer = terrain_layer
-	add_child(_survey_fx)
-	_prof("base: dialogs+fx")
+	#
+	# The dialogs, the debug terminal and the two effect layers are built AFTER the build,
+	# one per frame — see _build_dialogs_and_fx. The tabbed Tile View Panel lives under
+	# HUDContent, named "TileInfoPanel" so building_detail_panel's panel-stacking lookups
+	# find it, and is built on first use (_build_info_panel).
 	await _build_yield()
 
 
@@ -335,6 +305,10 @@ func finish_build(animate: bool) -> void:
 	# a loading screen — tests / e2e / load-game don't open the graph and shouldn't pay it.
 	if _loading_screen_active():
 		GoodIconsScript.warm_async(Catalog.all_goods())
+		# And the baked map tiles the opening camera will want. Both are worker-thread reads
+		# kicked off here so they run alongside the ~4 s of build below instead of being paid
+		# as a frozen frame at the end of it.
+		_request_opening_bake_tiles()
 	# The port tiles start surveyed (the Surveying mapmode reveals them on turn 1).
 	MatchState.seed_surveyed_ports()
 	# Track depletable-deposit yields so mining can run them down over time.
@@ -502,8 +476,8 @@ func finish_build(animate: bool) -> void:
 		# scrolls; paying for the first screenful here means play does not open on a burst of
 		# disk reads. No-op without a bake, and cheap (a handful of small textures).
 		var t_ab := Time.get_ticks_usec()
-		await _warm_authored_bake()
-		_prof_us("_warm_authored_bake", t_ab)
+		_warm_authored_bake()
+		_prof_us("_warm_authored_bake (collect)", t_ab)
 
 	_audit_start_visuals()
 	_prof("audit_start_visuals")
@@ -514,6 +488,7 @@ func finish_build(animate: bool) -> void:
 	# world has to have them in it by the time that flag flips. Same work, same order as before
 	# this was made lazy; only the interactive path defers.
 	if not _loading_screen_active():
+		await _build_dialogs_and_fx(false)
 		_build_info_panel()
 		_build_building_panel_v2()
 	# Paint the finished world UNDER the still-opaque loading screen. Every layer's first
@@ -563,11 +538,20 @@ func _show_glass_merchant_intro() -> void:
 ## Preload the baked authored-map textures the opening camera will see. The rest stream in as
 ## the player scrolls (authored_bake.gd), so this is deliberately a screenful and not the whole
 ## map — 209 tiles resident at once would be ~289 MB of VRAM for ~7 MB of disk.
-## Baked tiles read per frame by _warm_authored_bake. Reading all ~150 in one go is a 0.8 s
-## frozen frame; handing back a frame between batches costs the loading screen's own frame time
-## each time, so this is a trade and not a free win — at 12 the total went to 1.9 s. 25 keeps
-## the worst frame near 150 ms for about 1.1 s of wall clock.
-const BAKE_WARM_PER_FRAME := 25
+## Ask the worker threads for the baked tiles the opening camera will need. Called at the top
+## of the build so the reads overlap everything else; _warm_authored_bake collects them at the
+## end. Slicing the reads across frames was tried instead and is worse — the disk time is the
+## same and each yielded frame adds ~90 ms, so it only spreads the cost while raising it.
+func _request_opening_bake_tiles() -> void:
+	if not AuthoredBakeScript.is_available():
+		return
+	var camera := get_viewport().get_camera_2d()
+	if camera == null:
+		return
+	var extent := get_viewport().get_visible_rect().size / maxf(0.001, camera.zoom.x)
+	var view := Rect2(camera.global_position - extent * 0.5, extent).grow(WARM_MARGIN)
+	AuthoredBakeScript.warm_async(AuthoredBakeScript.tiles_in_rect(view).keys())
+
 
 func _warm_authored_bake() -> void:
 	if not AuthoredBakeScript.is_available():
@@ -577,20 +561,10 @@ func _warm_authored_bake() -> void:
 		return   # no camera yet: streaming will load the first screenful on the first frame
 	var extent := get_viewport().get_visible_rect().size / maxf(0.001, camera.zoom.x)
 	var view := Rect2(camera.global_position - extent * 0.5, extent).grow(WARM_MARGIN)
-	# Sliced: reading ~150 baked tiles off disk in one go is ~0.8 s in a single frame, which
-	# under a playing film is a visible hitch. Batching trades total wall clock for the size of
-	# the worst frame — see BAKE_WARM_PER_FRAME.
-	var tiles: Array = AuthoredBakeScript.tiles_in_rect(view).keys()
-	var warmed := 0
-	var batch: Array = []
-	for tile_id in tiles:
-		batch.append(tile_id)
-		if batch.size() >= BAKE_WARM_PER_FRAME:
-			warmed += AuthoredBakeScript.warm(batch)
-			batch.clear()
-			await get_tree().process_frame
-	if not batch.is_empty():
-		warmed += AuthoredBakeScript.warm(batch)
+	# Collection, not loading: request_opening_bake_tiles asked the worker threads for these
+	# at the top of the build, so by now this is mostly a cache scan. Any straggler blocks
+	# here — under the screen — rather than on the frame that reveals the map.
+	var warmed := AuthoredBakeScript.warm(AuthoredBakeScript.tiles_in_rect(view).keys())
 	if warmed > 0:
 		print("AuthoredBake: warmed %d texture(s) for the opening view" % warmed)
 
@@ -699,6 +673,11 @@ func _warm_deferred_ui() -> void:
 	# Every step below yields, and this runs at the very end of the build — where a harness
 	# (or a player pressing alt-F4 on the Begin plate) can tear the tree down underneath it.
 	await get_tree().process_frame
+	if not is_inside_tree():
+		return
+	# The listeners first: they are what a gameplay event will look for, and the panels are
+	# only wanted when the player opens something.
+	await _build_dialogs_and_fx(true)
 	if not is_inside_tree():
 		return
 	var t := Time.get_ticks_usec()
@@ -879,6 +858,79 @@ func _build_info_panel() -> void:
 	_info_panel.building_clicked.connect(_on_v2_building_clicked)
 	_info_panel.pick_destination_requested.connect(_on_v2_pick_destination)
 	_info_panel.survey_requested.connect(_on_survey_tile_clicked)
+
+
+## Dialogs, the debug terminal and the two effect layers.
+##
+## Every one of these is a LISTENER — it exists so that some later gameplay event has
+## something to pop, animate or print. None of them is needed to start a match, and building
+## the set cost 0.7 s in one frame of the load. Under a loading screen that is a frozen frame,
+## which used to be invisible and is not any more: the screen may be playing a film.
+##
+## `paced` hands a frame back between each, so the cost lands as a run of ordinary frames
+## rather than one stall. It is false for tests / e2e / tools, which build the set inline at
+## the end of _build_base exactly as before and expect it present the moment the world is.
+func _build_dialogs_and_fx(paced: bool) -> void:
+	if _dialogs_built:
+		return
+	_dialogs_built = true
+	var t := Time.get_ticks_usec()
+
+	# Prompts the player when a tile first hits max storage.
+	_hud.add_child(load("res://scripts/capacity_dialog.gd").new())
+	_prof_us("  dialog: capacity", t)
+	if paced:
+		await get_tree().process_frame
+
+	# Prompts when construction materials arrive at a full tile.
+	t = Time.get_ticks_usec()
+	var overflow_dialog: Node = load("res://scripts/overflow_dialog.gd").new()
+	_hud.add_child(overflow_dialog)
+	overflow_dialog.go_to_stockpile_requested.connect(_on_go_to_tile_stockpile)
+	_prof_us("  dialog: overflow", t)
+	if paced:
+		await get_tree().process_frame
+
+	# Over-delivery and tagged shipments still in flight after a premium order is gone.
+	t = Time.get_ticks_usec()
+	_special_order_resolution_dialog = load("res://scripts/special_order_resolution_dialog.gd").new()
+	_hud.add_child(_special_order_resolution_dialog)
+	_special_order_resolution_dialog.reroute_requested.connect(_on_special_order_reroute_requested)
+	_prof_us("  dialog: special order", t)
+	if paced:
+		await get_tree().process_frame
+
+	# Opened by clicking a tile in the Surveying mapmode.
+	t = Time.get_ticks_usec()
+	_survey_dialog = load("res://scripts/survey_dialog.gd").new()
+	_hud.add_child(_survey_dialog)
+	_prof_us("  dialog: survey", t)
+	if paced:
+		await get_tree().process_frame
+
+	# Debug cheat terminal (toggle with the ` key).
+	t = Time.get_ticks_usec()
+	add_child(load("res://scripts/debug_terminal.gd").new())
+	_prof_us("  debug terminal", t)
+	if paced:
+		await get_tree().process_frame
+
+	# Floating £ that rises from a port whenever a market sale lands there.
+	t = Time.get_ticks_usec()
+	var sale_fx: CanvasLayer = load("res://scripts/sale_effects.gd").new()
+	sale_fx.terrain_layer = terrain_layer
+	add_child(sale_fx)
+	_prof_us("  sale effects", t)
+	if paced:
+		await get_tree().process_frame
+
+	# Collapsing-hex + rising-deposit-icon animation when a tile finishes surveying.
+	t = Time.get_ticks_usec()
+	var survey_fx: Node2D = load("res://scripts/survey_effects.gd").new()
+	survey_fx.name = "SurveyEffects"
+	survey_fx.terrain_layer = terrain_layer
+	add_child(survey_fx)
+	_prof_us("  survey effects", t)
 
 
 ## Build the Building Detail v2 panel — same lazy contract as _build_info_panel.

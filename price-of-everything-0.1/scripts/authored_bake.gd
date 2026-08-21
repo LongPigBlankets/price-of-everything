@@ -157,6 +157,29 @@ static func trim(keep_tile_ids: Dictionary) -> void:
 
 ## Preload the textures for a set of tiles — the loading screen calls this for the tiles the
 ## opening camera will see, so the first frame of play is not a burst of disk reads.
+## Ask the worker threads to read these tiles NOW, and return immediately.
+##
+## Reading the opening view off disk is 0.8-2.8 s depending on what the OS has cached, and on
+## the main thread every millisecond of that is a frozen loading screen. It is pure I/O plus a
+## PNG decode, which is what ResourceLoader's threaded path is for. Kick this early; `warm`
+## below then collects the results, and a request that has already landed costs a dictionary
+## lookup. Same pattern as good_icons.warm_async.
+static func warm_async(tile_ids: Array, layers: Array = ["fabric", "roads"]) -> void:
+	if not is_available():
+		return
+	for tile_value in tile_ids:
+		var entry: Variant = tiles().get(str(tile_value), null)
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		var entry_layers: Variant = (entry as Dictionary).get("layers", {})
+		if typeof(entry_layers) != TYPE_DICTIONARY:
+			continue
+		for layer in layers:
+			var path := str((entry_layers as Dictionary).get(str(layer), ""))
+			if path != "" and not _textures.has(path) and ResourceLoader.exists(path):
+				ResourceLoader.load_threaded_request(path)
+
+
 static func warm(tile_ids: Array, layers: Array = ["fabric", "roads"]) -> int:
 	if not is_available():
 		return 0
