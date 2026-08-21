@@ -66,6 +66,7 @@ func _ready() -> void:
 	_test_authored_map_empty_is_inert()
 	_test_authored_map_schema()
 	_test_authored_map_road_rules()
+	_test_authored_port_handover()
 	_test_authored_map_slot_classes()
 	_test_authored_map_round_trip()
 	_test_authored_documents_on_disk_load()
@@ -14991,6 +14992,28 @@ func _test_authored_map_schema() -> void:
 	area_doc["settlements"]["capital"]["forests"] = [{"id": "fo:1", "outline": nine}]
 	_check(not AuthoredMap.validate(area_doc).is_empty(),
 		"authored map: a nine-vertex forest outline exceeds the authored maximum")
+
+
+## THE PORT HANDOVER. A harbour imported into the document must take the tile OVER from the
+## planner, or the hand-tweaked dock and the searched one both draw on the same coast.
+func _test_authored_port_handover() -> void:
+	AuthoredMap.set_document_for_tests({})
+	_check(AuthoredMap.port_tiles().is_empty(),
+		"port handover: no document means no authored ports, so the planner keeps every tile")
+	AuthoredMap.set_document_for_tests({"version": 1, "settlements": {"s": {
+		"tiles": ["tile_5_10"],
+		"specials": [
+			{"id": "s:port:0", "kind": "poly", "port": "tile_5_10",
+				"outline": [[0, 0], [10, 0], [10, 10]]},
+			{"id": "s:procedural:1", "kind": "poly",
+				"outline": [[50, 50], [60, 50], [60, 60]]},
+		],
+	}}})
+	var tiles := AuthoredMap.port_tiles()
+	_check(tiles.has("tile_5_10"), "port handover: a special tagged with a port claims its tile")
+	_check(tiles.size() == 1,
+		"port handover: an ordinary special claims nothing — only the tag hands a tile over")
+	AuthoredMap.reset_for_tests()
 
 
 func _test_authored_map_road_rules() -> void:

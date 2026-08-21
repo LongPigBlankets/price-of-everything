@@ -76,6 +76,9 @@ func _ready() -> void:
 		specials.append({"id": "s:procedural:%d" % specials.size(), "kind": "poly",
 			"sides": [], "outline": outline})
 
+	# Ports come in as ordinary shapes so the harbour is editable like everything else.
+	specials.append_array(_import_ports(world, specials.size()))
+
 	var slots: Dictionary = _import_slots(terrain, visuals)
 	var tiles: Dictionary = {}
 	for road in roads:
@@ -109,6 +112,47 @@ func _ready() -> void:
 	print("[LIVE] %d tiles covered — saved as '%s' (NOT made active; open it from the editor)"
 		% [tile_list.size(), _name])
 	get_tree().quit(0)
+
+
+## THE HARBOURS, AS EDITABLE SHAPES.
+##
+## `midcentury_port_plan` seats a port by search: it sweeps shore shifts, approach angles, quay
+## shifts and a width ladder against the coastline and picks the best-scoring seat. That is a
+## good first answer and a poor last one — it cannot know that a dock crowds a particular
+## terrace, or that one arm would read better a few units shorter. Importing the plan turns
+## that answer into geometry a person can drag.
+##
+## Each structural polygon becomes one `poly` special carrying `port: <tile_id>`. That tag is
+## the handover: `PortVisuals` stands down for any tile the document has port shapes for
+## (`AuthoredMap.port_tiles`), so the planner draws the harbour until it is authored and never
+## draws it twice. Delete the shapes and the planner takes the tile back.
+##
+## The dock, its arms, the warehouses and the deck plates come across. The cranes, containers
+## and road access do not: they are generated decoration hung off the plan rather than shapes
+## in their own right, and a person tweaking a harbour is moving its quay, not its bollards.
+func _import_ports(world: Node, id_offset: int) -> Array:
+	var ports := world.find_child("PortVisuals", true, false)
+	if ports == null or not ports.has_method("midcentury_plans"):
+		return []
+	var out: Array = []
+	for plan_value in (ports.call("midcentury_plans") as Array):
+		var plan: Dictionary = plan_value
+		var tile_id := str(plan.get("tile_id", ""))
+		if tile_id == "" or not _wanted(tile_id):
+			continue
+		for field in ["apron_polygons", "left_arm_polygons", "right_arm_polygons",
+				"warehouse_polygons", "deck_polygons"]:
+			for poly_value in (plan.get(field, []) as Array):
+				var poly: PackedVector2Array = poly_value
+				if poly.size() < 3:
+					continue
+				var shaped := poly if poly.size() <= MAX_CORNERS else _simplify_to_cap(poly)
+				var outline: Array = []
+				for point in shaped:
+					outline.append([point.x, point.y])
+				out.append({"id": "s:port:%d" % (id_offset + out.size()), "kind": "poly",
+					"sides": [], "outline": outline, "port": tile_id})
+	return out
 
 
 ## Built network edges as authored strokes. Tier maps onto a class, and the edge's own tiles

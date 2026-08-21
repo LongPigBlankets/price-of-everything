@@ -20,6 +20,8 @@ var _midcentury_plans: Array = []
 ## between the town and the quay, small enough that the blocks still fill their ground.
 const PORT_FABRIC_CLEARANCE := 10.0
 
+const AuthoredMap := preload("res://scripts/authored_map.gd")
+
 var _rebuild_queued := false
 var _diagnostic_overlay := false
 
@@ -108,8 +110,14 @@ func _rebuild_midcentury_plans() -> void:
 		if str(a.tile_id) != str(b.tile_id):
 			return str(a.tile_id) < str(b.tile_id)
 		return str(a.instance_id) < str(b.instance_id))
+	# A harbour the designer has taken into the authored document is drawn from THAT geometry
+	# (as ordinary fabric), so the planner stands down for its tile — otherwise the hand-tweaked
+	# dock and the searched one would both draw. Delete the shapes and the tile comes back here.
+	var authored_ports := AuthoredMap.port_tiles()
 	for instance_value in instances:
 		var instance: Dictionary = instance_value
+		if authored_ports.has(str(instance.get("tile_id", ""))):
+			continue
 		var plan := MidcenturyPortPlan.build(_hex_map,
 			str(instance.get("tile_id", "")), str(instance.get("instance_id", "")))
 		if not plan.is_empty() and bool(plan.get("valid", false)):
