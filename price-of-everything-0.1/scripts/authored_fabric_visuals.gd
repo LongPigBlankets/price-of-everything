@@ -15,8 +15,13 @@ extends Node2D
 
 const AuthoredMap := preload("res://scripts/authored_map.gd")
 const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
+const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
 
 var _sacrificed: Dictionary = {}
+## Regions the fabric is CUT AROUND rather than deleted inside — the harbours, each grown by a
+## clearance so the town stops a little short of the quay instead of touching it. Set by
+## PortVisuals once its plans are built.
+var _keep_out: Array = []
 
 
 func _ready() -> void:
@@ -31,6 +36,22 @@ func _ready() -> void:
 ## — only masses marked `sacrificial` in the editor are ever passed here).
 func evict(mass_id: String) -> void:
 	_sacrificed[mass_id] = true
+	queue_redraw()
+
+
+## Replace the keep-out regions (world polygons). Cheap and idempotent: a redraw only happens
+## when the set actually changes, because PortVisuals recomputes its plans on every footprint
+## change on a port tile and would otherwise repaint the whole fabric each time.
+func set_keep_out(regions: Array) -> void:
+	if regions.size() == _keep_out.size():
+		var same := true
+		for i in regions.size():
+			if (regions[i] as PackedVector2Array) != (_keep_out[i] as PackedVector2Array):
+				same = false
+				break
+		if same:
+			return
+	_keep_out = regions.duplicate()
 	queue_redraw()
 
 
@@ -76,14 +97,80 @@ func _draw() -> void:
 	for settlement in ordered:
 		for mass in _list(settlement, "decor"):
 			if not _sacrificed.has(str(mass.get("id", ""))):
-				AuthoredFabricPainter.draw_mass(self, mass)
+				AuthoredFabricPainter.draw_mass(self, mass, _keep_out)
 	for settlement in ordered:
+		# Imported harbours draw as ONE grouped structure (draw_port_group): a dock and
+		# its arms are one deck, so outlining each imported shape on its own would put
+		# an ink seam across every junction. Everything else draws on its own.
+		var harbours: Dictionary = {}
 		for special in _list(settlement, "specials"):
-			if not _sacrificed.has(str(special.get("id", ""))):
-				AuthoredFabricPainter.draw_special(self, special)
+			if _sacrificed.has(str(special.get("id", ""))):
+				continue
+			var port_tile := str(special.get("port", ""))
+			if port_tile != "":
+				if not harbours.has(port_tile):
+					harbours[port_tile] = []
+				(harbours[port_tile] as Array).append(special)
+				continue
+			AuthoredFabricPainter.draw_special(self, special, _keep_out)
+		var harbour_keys := harbours.keys()
+		harbour_keys.sort()
+		for port_tile in harbour_keys:
+			AuthoredFabricPainter.draw_port_group(self, harbours[port_tile],
+				str(port_tile), _keep_out)
+			# Containers and cranes ride in the document with the quay they belong to, and
+			# draw over it — the planner stacks its own harbours the same way.
+			var decor: Array = []
+			for record in _list(settlement, "port_decor"):
+				if str(record.get("tile", "")) == str(port_tile):
+					decor.append(record)
+			if not decor.is_empty():
+				AuthoredFabricPainter.draw_port_decor(self, decor, _keep_out)
 	for settlement in ordered:
 		for area in _list(settlement, "forests"):
 			AuthoredFabricPainter.draw_forest(self, area)
+
+
+## READ-ONLY SEAM FOR AUDITS. Every decorative mass and special this layer is CURRENTLY
+## drawing, as world polygons with their ids. Evicted masses are absent, so an audit asking
+## "is anything still standing under this port" gets the same answer the screen shows —
+## which is the whole point: comparing a plan against the document would keep reporting
+## masses that were cleared, and comparing screenshots would mistake a stale frame for a pass.
+func visible_mass_polygons() -> Array:
+	var out: Array = []
+	if not AuthoredMap.is_active():
+		return out
+	var settlements := AuthoredMap.settlements()
+	var keys := settlements.keys()
+	keys.sort()
+	for key in keys:
+		var settlement_value: Variant = settlements[key]
+		if typeof(settlement_value) != TYPE_DICTIONARY:
+			continue
+		var settlement: Dictionary = settlement_value
+		for record in _list(settlement, "decor"):
+			if _sacrificed.has(str(record.get("id", ""))):
+				continue
+			for poly_value in AuthoredFabricPainter.mass_polygons(record):
+				for piece in AuthoredFabricPainter.surviving_pieces(
+						poly_value as PackedVector2Array, _keep_out):
+					_append_visible(out, piece as PackedVector2Array, record)
+		for record in _list(settlement, "specials"):
+			if _sacrificed.has(str(record.get("id", ""))):
+				continue
+			for piece in AuthoredFabricPainter.surviving_pieces(
+					AuthoredSpecialShapes.render_polygon(record), _keep_out):
+				_append_visible(out, piece as PackedVector2Array, record)
+	return out
+
+
+func _append_visible(out: Array, poly: PackedVector2Array, record: Dictionary) -> void:
+	if poly.size() < 3:
+		return
+	var bb := Rect2(poly[0], Vector2.ZERO)
+	for point in poly:
+		bb = bb.expand(point)
+	out.append({"id": str(record.get("id", "")), "poly": poly, "bb": bb})
 
 
 func _list(settlement: Dictionary, key: String) -> Array:

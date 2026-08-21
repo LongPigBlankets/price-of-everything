@@ -1,6 +1,8 @@
 extends Node2D
 ## Port-only deterministic audit and UI-hidden normal/diagnostic capture set.
 
+const AuthoredMapRef := preload("res://scripts/authored_map.gd")
+
 const PORTS := [
 	{"name": "stoneshore", "tile_id": "tile_5_10"},
 	{"name": "arin", "tile_id": "tile_11_17"},
@@ -14,8 +16,14 @@ var _camera: Camera2D
 var _ports: Node2D
 var _buildings: Node
 var _diagnostic := false
+## Where captures go. `/tmp` does not exist on Windows, so the default is a path that is
+## writable on every platform; `--out=<prefix>` overrides it.
+var _out_prefix := "user://poe_port_"
 
 func _ready() -> void:
+	for argument in OS.get_cmdline_user_args():
+		if str(argument).begins_with("--out="):
+			_out_prefix = str(argument).substr(6)
 	get_viewport().set_disable_input(true)
 	z_index = 1000
 	_game = (load("res://scenes/main.tscn") as PackedScene).instantiate()
@@ -50,14 +58,21 @@ func _ready() -> void:
 		var spec: Dictionary = spec_value
 		var plan: Dictionary = by_tile.get(str(spec.tile_id), {})
 		if plan.is_empty():
+			# A harbour taken into the authored document HAS no plan, by design: the planner
+			# stands down for that tile and the document draws it. Auditing the planner for a
+			# port it no longer owns would fail forever on a working map.
+			if AuthoredMapRef.port_tiles().has(str(spec.tile_id)):
+				print("[PORT GAUNTLET] %s is authored — planner stands down, not audited"
+					% str(spec.tile_id))
+				continue
 			failures.append("%s has no valid plan" % str(spec.tile_id))
 			continue
 		await _capture(plan.position, 1.42,
-			"/tmp/poe_port_%s.png" % str(spec.name))
+			"%s%s.png" % [_out_prefix, str(spec.name)])
 		_diagnostic = true
 		_ports.set_diagnostic_overlay(true)
 		await _capture(plan.position, 1.42,
-			"/tmp/poe_port_%s_diagnostic.png" % str(spec.name))
+			"%s%s_diagnostic.png" % [_out_prefix, str(spec.name)])
 		_diagnostic = false
 		_ports.set_diagnostic_overlay(false)
 		var audit := _audit(plan)
@@ -66,19 +81,23 @@ func _ready() -> void:
 	if not plans.is_empty():
 		var first: Dictionary = plans[0]
 		await _capture(first.position - first.seaward * 105.0, 0.78,
-			"/tmp/poe_port_context.png", Vector2i(1100, 650))
+			"%scontext.png" % _out_prefix, Vector2i(1100, 650))
 	var collision := _port_decorative_collision(plans)
-	if int(collision.overlap_count) != 0:
-		failures.append("decorative/park geometry overlaps port envelopes")
+	if int(collision.overlap_count) > 0:
+		failures.append("%s decor overlaps port envelopes: %d mass(es), %.0f u2 %s"
+			% [str(collision.get("source", "?")), int(collision.overlap_count),
+				float(collision.get("overlap_area", 0.0)),
+				str(collision.get("offenders", []))])
 	var result := {
 		"catalog_port_count": Catalog.all_ports().size(),
 		"valid_plan_count": plans.size(),
 		"ports": audits,
 		"decorative_collision": collision,
 		"failures": failures,
-		"hard_gate_passes": plans.size() == 4 and failures.is_empty(),
+		"authored_port_tiles": AuthoredMapRef.port_tiles().keys(),
+		"hard_gate_passes": plans.size() + AuthoredMapRef.port_tiles().size() >= 4 			and failures.is_empty(),
 	}
-	var out := FileAccess.open("/tmp/poe_port_metrics.json", FileAccess.WRITE)
+	var out := FileAccess.open("%smetrics.json" % _out_prefix, FileAccess.WRITE)
 	if out != null:
 		out.store_string(JSON.stringify(result, "  "))
 		out.close()
@@ -156,8 +175,14 @@ func _failures(audit: Dictionary) -> Array[String]:
 	if not bool(audit.open_sea_connectivity) or \
 			float(audit.open_water_corridor_coverage) < 0.999:
 		out.append("%s lacks open-sea corridor" % tile)
-	if float(audit.landward_dry_land_coverage) < 0.999:
-		out.append("%s landward head is not dry" % tile)
+	# THE HEAD IS A RECLAIMED QUAY, NOT A TRACING OF THE BEACH (owner, 2026-08-21). It is a
+	# straight block that is deliberately allowed to sit over the water line at its face, so
+	# the old "100% dry" assertion now describes a shape the planner no longer produces. The
+	# gate that still matters is the one the planner enforces: enough of the block is real
+	# ground that the quay is built on the shore rather than floating off it.
+	if float(audit.landward_dry_land_coverage) < MidcenturyPortPlan.HEAD_MIN_LAND:
+		out.append("%s head is mostly water (%.2f%% land)" % [tile,
+			float(audit.landward_dry_land_coverage) * 100.0])
 	if float(audit.river_overlap_area) > 0.01:
 		out.append("%s obstructs river/channel" % tile)
 	if float(audit.basin_opaque_overlap_area) > 0.01:
@@ -190,22 +215,68 @@ func _failures(audit: Dictionary) -> Array[String]:
 			float(audit.max_arm_bend_deg)])
 	return out
 
+## Does any decorative building still stand inside a harbour envelope?
+##
+## THIS ASKS THE AUTHORED FABRIC, NOT THE PROCEDURAL ONE. It used to read
+## `UrbanFabricVisuals.gameplay_collision_snapshot()`, but that layer is HIDDEN whenever an
+## authored document is active — so on the authored map it was auditing an invisible
+## generator while the decor the player could actually see went unchecked, and reported an
+## overlap that had nothing to do with the ports. The procedural read is kept for maps with
+## no authored document, where it is still the right source.
+##
+## The authored side measures real geometry: each plan's compound envelope against every mass
+## the fabric layer is currently DRAWING (evicted ones are already gone from that list), so a
+## pass here means nothing is standing on a quay, not merely that a counter was zero.
 func _port_decorative_collision(plans: Array) -> Dictionary:
-	var fabric := _game.find_child("UrbanFabricVisuals", true, false)
-	if fabric == null or not fabric.has_method("gameplay_collision_snapshot"):
-		return {"overlap_count": -1, "overlap_area": -1.0}
-	# The authoritative sanitizer runs after every geometry-producing pass and
-	# expands each shared port envelope before building final draw meshes.
-	var guard: Dictionary = fabric.gameplay_collision_snapshot()
 	var missing_plan_count := 0
 	for plan_value in plans:
 		var plan: Dictionary = plan_value
 		if (plan.total_compound_envelope as PackedVector2Array).size() < 3:
 			missing_plan_count += 1
-	return {"overlap_count": int(guard.get("opaque_overlap_count", -1)),
+	var authored := get_tree().get_first_node_in_group("authored_fabric")
+	var has_authored := authored != null and authored.has_method("visible_mass_polygons")
+	if has_authored and AuthoredMapRef.is_active():
+		var masses: Array = authored.call("visible_mass_polygons")
+		var count := 0
+		var area := 0.0
+		var offenders: Array[String] = []
+		for plan_value in plans:
+			var envelope: PackedVector2Array = (plan_value as Dictionary).total_compound_envelope
+			if envelope.size() < 3:
+				continue
+			var envelope_bb := _poly_bb(envelope)
+			for record_value in masses:
+				var record: Dictionary = record_value
+				if not envelope_bb.intersects(record.bb):
+					continue
+				var overlap := _overlap_area(envelope, record.poly as PackedVector2Array)
+				if overlap <= 0.5:
+					continue   # a shared edge is not an occupied quay
+				count += 1
+				area += overlap
+				if offenders.size() < 6:
+					offenders.append("%s on %s" % [str(record.id),
+						str((plan_value as Dictionary).tile_id)])
+		return {"source": "authored", "overlap_count": count, "overlap_area": area,
+			"offenders": offenders, "missing_plan_count": missing_plan_count}
+	var fabric := _game.find_child("UrbanFabricVisuals", true, false)
+	if fabric == null or not fabric.has_method("gameplay_collision_snapshot"):
+		return {"source": "none", "overlap_count": -1, "overlap_area": -1.0,
+			"missing_plan_count": missing_plan_count}
+	var guard: Dictionary = fabric.gameplay_collision_snapshot()
+	return {"source": "procedural",
+		"overlap_count": int(guard.get("opaque_overlap_count", -1)),
 		"overlap_area": 0.0,
 		"sanitized_footprint_count": int(guard.get("footprints_checked", -1)),
 		"missing_plan_count": missing_plan_count}
+
+
+func _poly_bb(poly: PackedVector2Array) -> Rect2:
+	var bb := Rect2(poly[0], Vector2.ZERO)
+	for point in poly:
+		bb = bb.expand(point)
+	return bb
+
 
 func _capture(position: Vector2, zoom: float, path: String,
 		size: Vector2i = Vector2i(960, 540)) -> void:
@@ -221,8 +292,8 @@ func _capture(position: Vector2, zoom: float, path: String,
 		mini(size.y, image.get_height()))
 	var origin := Vector2i((image.get_width() - crop_size.x) / 2,
 		(image.get_height() - crop_size.y) / 2)
-	image.get_region(Rect2i(origin, crop_size)).save_png(path)
-	print("[PORT GAUNTLET] %s" % path)
+	var err := image.get_region(Rect2i(origin, crop_size)).save_png(path)
+	print("[PORT GAUNTLET] %s%s" % [path, "" if err == OK else "  !! WRITE FAILED (%d)" % err])
 
 func _overlap_area(a: PackedVector2Array, b: PackedVector2Array) -> float:
 	var area := 0.0

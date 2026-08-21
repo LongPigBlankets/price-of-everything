@@ -16,6 +16,14 @@ const MidcenturyStyle := preload("res://scripts/map_midcentury_style.gd")
 const MassFormShapes := preload("res://scripts/mass_form_shapes.gd")
 const TreeShapesRef := preload("res://scripts/tree_shapes.gd")
 const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
+const InkBuildingGen := preload("res://scripts/ink_building_gen.gd")
+
+## Matches port_visuals: white plumbing so it reads on the tan quay, and a dark container edge
+## so neighbouring stacks stay separate shapes.
+const CONTAINER_EDGE := Color(0.24, 0.24, 0.26)
+const CONTAINER_EDGE_WIDTH := 1.0
+const PIPE_WHITE := Color(0.97, 0.97, 0.95)
+const PIPE_WIDTH := 3.2
 
 ## Nominal spacing between trees, world units — a JITTERED GRID rather than random points.
 ##
@@ -109,19 +117,204 @@ static func woodland_points(area: Dictionary) -> PackedVector2Array:
 
 ## A parametric primitive. Drawn like a mass — same wash, same SE micro-shadow, same ink —
 ## because it IS one; only how its shape is arrived at differs.
-static func draw_special(canvas: CanvasItem, special: Dictionary) -> void:
+static func draw_special(canvas: CanvasItem, special: Dictionary,
+		keep_out: Array = []) -> void:
 	# The DRAWN polygon, which for a ring is a band around the four corners the designer
 	# edits — see AuthoredSpecialShapes.render_polygon.
 	var outline := AuthoredSpecialShapes.render_polygon(special)
 	if outline.size() < 3:
 		return
 	var colour := MidcenturyStyle.urban_block(str(special.get("id", "")), 0.6)
-	var shadow := PackedVector2Array()
-	for point in outline:
-		shadow.append(point + SHADOW_OFFSET)
-	canvas.draw_colored_polygon(shadow, MidcenturyStyle.SHADOW)
-	canvas.draw_colored_polygon(outline, colour)
-	canvas.draw_polyline(_closed(outline), MidcenturyStyle.INK, 1.0, true)
+	for piece_value in _subtract(outline, keep_out):
+		_block(canvas, piece_value as PackedVector2Array, colour)
+
+
+## A HARBOUR, from the shapes a port was imported as (`port: <tile_id>`).
+##
+## Drawn as a GROUP rather than one special at a time, for the same reason the planner's own
+## renderer does: a dock and its arms are one poured deck, so they are filled in one colour and
+## outlined ONCE around their merged silhouette. Outlining each imported shape separately would
+## put an ink seam across every junction — which is exactly the seam that was removed from the
+## planner's harbours, and it would come straight back the moment a port was authored.
+##
+## The quay tone is keyed off the tile, so every shape of one harbour agrees and two harbours
+## still differ slightly, exactly as `industrial_yard` intends.
+static func draw_port_group(canvas: CanvasItem, records: Array, tile_id: String,
+		keep_out: Array = []) -> void:
+	var colour := MidcenturyStyle.industrial_yard("port|%s" % tile_id)
+	var pieces: Array = []
+	var sheds: Array = []
+	for record_value in records:
+		var record: Dictionary = record_value
+		var outline := AuthoredSpecialShapes.render_polygon(record)
+		# A warehouse is a BUILDING standing on the quay, not part of the deck: it keeps its own
+		# brick roof and its own outline, drawn after the quay so it reads on top. Folding it
+		# into the merged silhouette (as the first import did) painted the office the same
+		# colour as the ground it stands on, which is to say painted it out.
+		if str(record.get("port_role", "quay")) == "warehouse":
+			for piece_value in _subtract(outline, keep_out):
+				sheds.append(piece_value)
+			continue
+		for piece_value in _subtract(outline, keep_out):
+			pieces.append(piece_value)
+	for piece_value in pieces:
+		var piece: PackedVector2Array = piece_value
+		var shadow := PackedVector2Array()
+		for point in piece:
+			shadow.append(point + SHADOW_OFFSET)
+		canvas.draw_colored_polygon(shadow, MidcenturyStyle.SHADOW)
+	for piece_value in pieces:
+		canvas.draw_colored_polygon(piece_value as PackedVector2Array, colour)
+	for ring_value in merged_rings(pieces):
+		canvas.draw_polyline(_closed(ring_value as PackedVector2Array),
+			MidcenturyStyle.INK, 1.05, true)
+	for shed_value in sheds:
+		var shed: PackedVector2Array = shed_value
+		if shed.size() < 3:
+			continue
+		var shadow := PackedVector2Array()
+		for point in shed:
+			shadow.append(point + SHADOW_OFFSET)
+		canvas.draw_colored_polygon(shadow, MidcenturyStyle.SHADOW)
+		canvas.draw_colored_polygon(shed, MidcenturyStyle.gameplay_block_top("brick"))
+		canvas.draw_polyline(_closed(shed), MidcenturyStyle.INK, 1.05, true)
+		# The roof cap: a smaller concentric plate in the roof red, the same read the planner
+		# gives its sheds so an authored office and a planned one are the same building.
+		var centre := Vector2.ZERO
+		for point in shed:
+			centre += point
+		centre /= float(shed.size())
+		var cap := PackedVector2Array()
+		var scale := 0.72 + float(RoadHash.pick("%s|warehouse-cap" % tile_id, 9)) * 0.012
+		for point in shed:
+			cap.append(centre + (point - centre) * scale)
+		var cap_shadow := PackedVector2Array()
+		for point in cap:
+			cap_shadow.append(point + SHADOW_OFFSET)
+		canvas.draw_colored_polygon(cap_shadow, MidcenturyStyle.SHADOW)
+		canvas.draw_colored_polygon(cap, Color("a6634f"))
+		canvas.draw_polyline(_closed(cap), MidcenturyStyle.INK, 1.05, true)
+
+
+## The decoration that belongs to an imported harbour: container stacks and gantry cranes.
+##
+## It rides in the document beside the structure (`port_decor`) rather than being regenerated,
+## because the planner's own decoration is positioned from the seat it searched for — and that
+## seat moves with the player's buildings. Regenerating it against a hand-placed quay would put
+## the cranes somewhere else entirely. Moving the quay in the editor means moving these too;
+## they are ordinary records with ordinary coordinates.
+static func draw_port_decor(canvas: CanvasItem, records: Array, keep_out: Array = []) -> void:
+	for record_value in records:
+		var record: Dictionary = record_value
+		match str(record.get("kind", "")):
+			"container":
+				var poly := _points_of(record, "outline")
+				if poly.size() < 3:
+					continue
+				var index := RoadHash.pick("port|container|%s" % str(poly[0]),
+					InkBuildingGen.CONTAINER_COLS.size())
+				for piece_value in _subtract(poly, keep_out):
+					var piece: PackedVector2Array = piece_value
+					canvas.draw_colored_polygon(piece, InkBuildingGen.CONTAINER_COLS[index])
+					# A thin dark edge, so two stacks of similar colour stay two stacks.
+					canvas.draw_polyline(_closed(piece), CONTAINER_EDGE,
+						CONTAINER_EDGE_WIDTH, true)
+			"pipe":
+				var line := _points_of(record, "points")
+				if line.size() >= 2:
+					canvas.draw_polyline(line, MidcenturyStyle.INK, PIPE_WIDTH + 2.0, true)
+					canvas.draw_polyline(line, PIPE_WHITE, PIPE_WIDTH, true)
+			"tank":
+				var centre := _vector_of(record.get("center", null))
+				var radius := float(record.get("radius", 0.0))
+				if radius > 0.0:
+					canvas.draw_circle(centre + SHADOW_OFFSET, radius, MidcenturyStyle.SHADOW)
+					canvas.draw_circle(centre, radius, PIPE_WHITE)
+					canvas.draw_arc(centre, radius, 0.0, TAU, 28, MidcenturyStyle.INK, 1.4, true)
+					canvas.draw_arc(centre, radius * 0.62, 0.0, TAU, 24,
+						MidcenturyStyle.INK, 1.0, true)
+			"crane":
+				_draw_crane(canvas, record)
+
+
+## One gantry crane: base block, rail across the quay, two legs, and the jib reaching over the
+## basin. Mirrors `port_visuals._draw_crane` — the planner's harbours and the authored ones must
+## put the same machine on the same quay.
+static func _draw_crane(canvas: CanvasItem, crane: Dictionary) -> void:
+	var position := _vector_of(crane.get("position", null))
+	var direction := _vector_of(crane.get("direction", null))
+	var cross := _vector_of(crane.get("cross", null))
+	var span := float(crane.get("gantry_span", 0.0))
+	var jib := float(crane.get("jib_length", 0.0))
+	if span <= 0.0 or jib <= 0.0:
+		return
+	var basin_direction := -cross if str(crane.get("arm", "")) == "left" else cross
+	var base := _points_of(crane, "base_polygon")
+	if base.size() >= 3:
+		var shadow := PackedVector2Array()
+		for point in base:
+			shadow.append(point + SHADOW_OFFSET)
+		canvas.draw_colored_polygon(shadow, MidcenturyStyle.SHADOW)
+		canvas.draw_colored_polygon(base, MidcenturyStyle.gameplay_block_top("mustard"))
+		canvas.draw_polyline(_closed(base), MidcenturyStyle.INK, 1.05, true)
+	var rail_a := position - cross * span * 0.5
+	var rail_b := position + cross * span * 0.5
+	canvas.draw_line(rail_a + SHADOW_OFFSET, rail_b + SHADOW_OFFSET,
+		Color(MidcenturyStyle.SHADOW, 0.72), 4.8, true)
+	canvas.draw_line(rail_a, rail_b, MidcenturyStyle.INK, 3.2, true)
+	for side in [-1.0, 1.0]:
+		var leg := position + cross * float(side) * span * 0.40
+		canvas.draw_circle(leg, 2.8, MidcenturyStyle.gameplay_block_top("mustard"))
+		canvas.draw_arc(leg, 2.8, 0.0, TAU, 12, MidcenturyStyle.INK, 1.1, true)
+	var jib_end := position + basin_direction * jib + direction * 4.0
+	canvas.draw_line(position + SHADOW_OFFSET, jib_end + SHADOW_OFFSET,
+		Color(MidcenturyStyle.SHADOW, 0.72), 4.6, true)
+	canvas.draw_line(position, jib_end, MidcenturyStyle.gameplay_block_top("mustard"), 3.0, true)
+	canvas.draw_line(position, jib_end, MidcenturyStyle.INK, 1.0, true)
+	canvas.draw_circle(jib_end, 2.1, MidcenturyStyle.INK)
+
+
+static func _points_of(record: Dictionary, key: String) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var value: Variant = record.get(key, [])
+	if typeof(value) != TYPE_ARRAY:
+		return out
+	for entry in (value as Array):
+		if typeof(entry) == TYPE_ARRAY and (entry as Array).size() >= 2:
+			out.append(Vector2(float((entry as Array)[0]), float((entry as Array)[1])))
+	return out
+
+
+## Outer boundaries of a set of touching polygons, merged into as few rings as possible.
+## `merge_polygons` is pairwise, so the accumulator is folded through every piece; clockwise
+## rings are holes and are dropped, because a quay never encloses water it does not own.
+static func merged_rings(polygons: Array) -> Array:
+	var merged: Array = []
+	for poly_value in polygons:
+		var poly: PackedVector2Array = poly_value
+		if poly.size() < 3:
+			continue
+		if merged.is_empty():
+			merged.append(poly)
+			continue
+		var next: Array = []
+		var absorbed := false
+		for existing_value in merged:
+			var existing: PackedVector2Array = existing_value
+			var union := Geometry2D.merge_polygons(existing, poly)
+			if union.size() == 1 and not absorbed:
+				poly = union[0]
+				absorbed = true
+			else:
+				next.append(existing)
+		next.append(poly)
+		merged = next
+	var out: Array = []
+	for poly_value in merged:
+		var poly: PackedVector2Array = poly_value
+		if poly.size() >= 3 and not Geometry2D.is_polygon_clockwise(poly):
+			out.append(poly)
+	return out
 
 
 ## A plaza: paved cream ground. The same paper the streets are drawn in, so a square reads as
@@ -142,18 +335,62 @@ static func draw_park(canvas: CanvasItem, park: Dictionary) -> void:
 
 
 ## A decorative mass from the 17-form vocabulary, with the map's SE micro-shadow under it.
-static func draw_mass(canvas: CanvasItem, mass: Dictionary) -> void:
+static func draw_mass(canvas: CanvasItem, mass: Dictionary,
+		keep_out: Array = []) -> void:
 	var id := str(mass.get("id", ""))
 	var colour := MidcenturyStyle.urban_block(id, 0.6)
 	for polygon in mass_polygons(mass):
-		if polygon.size() < 3:
+		for piece_value in _subtract(polygon as PackedVector2Array, keep_out):
+			_block(canvas, piece_value as PackedVector2Array, colour)
+
+
+## One built block: SE micro-shadow, fill, ink outline. Shared so a mass and a special that
+## have been cut by a keep-out region are finished exactly like one that has not.
+static func _block(canvas: CanvasItem, polygon: PackedVector2Array, colour: Color) -> void:
+	if polygon.size() < 3:
+		return
+	var shadow := PackedVector2Array()
+	for point in polygon:
+		shadow.append(point + SHADOW_OFFSET)
+	canvas.draw_colored_polygon(shadow, MidcenturyStyle.SHADOW)
+	canvas.draw_colored_polygon(polygon, colour)
+	canvas.draw_polyline(_closed(polygon), MidcenturyStyle.INK, 1.0, true)
+
+
+## `polygon` minus every keep-out region, as the pieces that survive.
+##
+## KEEP-OUT CUTS BUILDINGS, IT DOES NOT DELETE THEM. A harbour is dropped onto a town that was
+## drawn without knowing it was coming, so the terrace it lands on should stop at the quay the
+## way a real street does — not vanish, which leaves a hole in the fabric where a block used to
+## be. A piece cut to nothing simply does not draw, so a mass wholly inside the region still
+## disappears without a special case.
+##
+## Clockwise rings are holes (a region entirely inside one block) and are dropped: the fill
+## call takes no holes, and a ring drawn as if solid would be worse than the small overdraw.
+static func surviving_pieces(polygon: PackedVector2Array, keep_out: Array) -> Array:
+	return _subtract(polygon, keep_out)
+
+
+static func _subtract(polygon: PackedVector2Array, keep_out: Array) -> Array:
+	if polygon.size() < 3:
+		return []
+	if keep_out.is_empty():
+		return [polygon]
+	var pieces: Array = [polygon]
+	for region_value in keep_out:
+		var region: PackedVector2Array = region_value
+		if region.size() < 3:
 			continue
-		var shadow := PackedVector2Array()
-		for point in polygon:
-			shadow.append(point + SHADOW_OFFSET)
-		canvas.draw_colored_polygon(shadow, MidcenturyStyle.SHADOW)
-		canvas.draw_colored_polygon(polygon, colour)
-		canvas.draw_polyline(_closed(polygon), MidcenturyStyle.INK, 1.0, true)
+		var next: Array = []
+		for piece_value in pieces:
+			for result_value in Geometry2D.clip_polygons(piece_value as PackedVector2Array, region):
+				var result: PackedVector2Array = result_value
+				if result.size() >= 3 and not Geometry2D.is_polygon_clockwise(result):
+					next.append(result)
+		pieces = next
+		if pieces.is_empty():
+			return []
+	return pieces
 
 
 ## The world-space polygons of a stamped mass. Built through `MassFormShapes`, which owns

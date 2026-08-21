@@ -15,6 +15,21 @@ const PIER_COUNT := 3
 var _glyphs: Array = []   # [{pos: Vector2, angle: float, tile_h: float}]
 var _hex_map: TileMapLayer = null
 var _midcentury_plans: Array = []
+## How far the decorative fabric is cut back from a harbour, world units — about 10 px at full
+## zoom (~1.107 px/u), which is the gap the owner asked for. Big enough to read as a margin
+## between the town and the quay, small enough that the blocks still fill their ground.
+const PORT_FABRIC_CLEARANCE := 10.0
+
+## Container edging and the plumbing palette. The pipe and tank are drawn white so they read
+## against both the tan quay and the grey town; the dark grey edge is what keeps neighbouring
+## container stacks from merging into one blob.
+const CONTAINER_EDGE := Color(0.24, 0.24, 0.26)
+const CONTAINER_EDGE_WIDTH := 1.0
+const PIPE_WHITE := Color(0.97, 0.97, 0.95)
+const PIPE_WIDTH := 3.2
+
+const AuthoredMap := preload("res://scripts/authored_map.gd")
+
 var _rebuild_queued := false
 var _diagnostic_overlay := false
 
@@ -103,18 +118,65 @@ func _rebuild_midcentury_plans() -> void:
 		if str(a.tile_id) != str(b.tile_id):
 			return str(a.tile_id) < str(b.tile_id)
 		return str(a.instance_id) < str(b.instance_id))
+	# A harbour the designer has taken into the authored document is drawn from THAT geometry
+	# (as ordinary fabric), so the planner stands down for its tile — otherwise the hand-tweaked
+	# dock and the searched one would both draw. Delete the shapes and the tile comes back here.
+	var authored_ports := AuthoredMap.port_tiles()
 	for instance_value in instances:
 		var instance: Dictionary = instance_value
+		if authored_ports.has(str(instance.get("tile_id", ""))):
+			continue
 		var plan := MidcenturyPortPlan.build(_hex_map,
 			str(instance.get("tile_id", "")), str(instance.get("instance_id", "")))
 		if not plan.is_empty() and bool(plan.get("valid", false)):
 			_midcentury_plans.append(plan)
+	_clear_authored_fabric_under_ports()
 	queue_redraw()
 
+
+## The town is CUT BACK from the harbour, not deleted around it.
+##
+## Each plan's compound envelope (dock + arms + sheds), grown by PORT_FABRIC_CLEARANCE, is
+## handed to the fabric layer as a keep-out region; the painter clips every decorative mass and
+## special against it. So the blocks north-east of a dock still fill their ground and simply
+## stop a little short of the quay, the way a real street front does — where deleting whole
+## masses left an obvious hole in the fabric wherever a harbour happened to land.
+##
+## Clipping rather than dodging remains the right call: a port is pinned to one tile and one
+## stretch of coast, and an authored town is drawn dense without knowing where the harbour will
+## go, so making decor a hard placement gate would leave ports with no legal seat. A mass that
+## lies wholly inside the envelope still disappears — it is clipped to nothing — so the
+## "standing on the quay" case is handled by the same rule, with no special case.
+func _clear_authored_fabric_under_ports() -> void:
+	var fabric := get_tree().get_first_node_in_group("authored_fabric")
+	if fabric == null or not fabric.has_method("set_keep_out"):
+		return
+	var regions: Array = []
+	for plan_value in _midcentury_plans:
+		var envelope: PackedVector2Array = (plan_value as Dictionary).total_compound_envelope
+		if envelope.size() < 3:
+			continue
+		for grown_value in Geometry2D.offset_polygon(envelope, PORT_FABRIC_CLEARANCE,
+				Geometry2D.JOIN_MITER):
+			var grown: PackedVector2Array = grown_value
+			if grown.size() >= 3 and not Geometry2D.is_polygon_clockwise(grown):
+				regions.append(grown)
+	fabric.call("set_keep_out", regions)
+
+
 func _draw() -> void:
-	if MapStyle.is_midcentury():
+	# THE PLAN IS THE PORT. When the coastline planner has produced a valid harbour it is
+	# drawn in every style, not just under the midcentury toggle. The plan was already being
+	# computed on every load regardless of style (setup -> _rebuild_midcentury_plans), and
+	# nothing in the shipped game ever turns midcentury ON — only a debug cheat does — so the
+	# two arms, the basin and the quay were being paid for and then thrown away, while the
+	# player saw the older pier-fingers glyph. The map's fabric is already drawn from the
+	# midcentury palette (the authored document), so the harbour now matches its town.
+	if not _midcentury_plans.is_empty():
 		_draw_midcentury_ports()
 		return
+	if MapStyle.is_midcentury():
+		return   # midcentury with no valid plan: draw nothing rather than a foreign glyph
 	if MapStyle.uses_ink_linework():
 		# Ink mode: the shape-language port (quay spine + warehouses +
 		# container stacks + plank piers + jib cranes), world-lit like every
@@ -169,9 +231,24 @@ func set_diagnostic_overlay(on: bool) -> void:
 func _draw_midcentury_ports() -> void:
 	for plan_value in _midcentury_plans:
 		var plan: Dictionary = plan_value
-		for poly_value in plan.apron_polygons:
-			_draw_filled_poly(poly_value,
-				MapMidcenturyStyle.industrial_yard("%s|land" % str(plan.key)))
+		# THE QUAY IS ONE STRUCTURE. The landside dock and its two seaward arms are the same
+		# poured deck, so they are filled in one colour and outlined ONCE around their merged
+		# silhouette. Outlining each piece separately drew an ink line straight across the
+		# junction where an arm meets the dock — a seam through a thing that is continuous.
+		var yard := MapMidcenturyStyle.industrial_yard("%s|land" % str(plan.key))
+		var quay: Array = []
+		quay.append_array(plan.apron_polygons)
+		quay.append_array(plan.left_arm_polygons)
+		quay.append_array(plan.right_arm_polygons)
+		# Arms stand over water, so they cast; the dock sits on the shore and does not.
+		for poly_value in plan.left_arm_polygons:
+			_draw_shadow(poly_value)
+		for poly_value in plan.right_arm_polygons:
+			_draw_shadow(poly_value)
+		for poly_value in quay:
+			draw_colored_polygon(poly_value, yard)
+		for ring_value in _merged_rings(quay):
+			draw_polyline(_closed(ring_value), MapMidcenturyStyle.INK, 1.05, true)
 		for poly_value in plan.deck_polygons:
 			_draw_shadow(poly_value)
 		for poly_value in plan.deck_polygons:
@@ -181,11 +258,17 @@ func _draw_midcentury_ports() -> void:
 			_draw_filled_poly(poly_value,
 				MapMidcenturyStyle.gameplay_block_top("brick"))
 			_draw_warehouse_cap(poly_value, str(plan.key))
+		# The fuel line and its tank go down BEFORE the cargo, so a stack that ends up beside
+		# the pipe reads as standing next to it rather than under it.
+		_draw_plumbing(plan)
 		for poly_value in plan.container_polygons:
 			var poly: PackedVector2Array = poly_value
 			var index := RoadHash.pick("%s|container|%s" % [str(plan.key),
 				str(_poly_center(poly))], InkBuildingGen.CONTAINER_COLS.size())
-			_draw_filled_poly(poly, InkBuildingGen.CONTAINER_COLS[index])
+			draw_colored_polygon(poly, InkBuildingGen.CONTAINER_COLS[index])
+			# A thin dark edge: a container is a small block of flat colour on a tan quay, and
+			# without an edge two stacks of similar colour merge into one shape.
+			draw_polyline(_closed(poly), CONTAINER_EDGE, CONTAINER_EDGE_WIDTH, true)
 		for crane_value in plan.crane_sites:
 			var crane: Dictionary = crane_value
 			_draw_crane(crane)
@@ -232,6 +315,26 @@ func _draw_shadow(poly_value: Variant) -> void:
 		shadow.append(point + Vector2(2.2, 2.8))
 	draw_colored_polygon(shadow, Color(MapMidcenturyStyle.SHADOW, 0.72))
 
+## The fuel line and its tank: a white run along the harbour's southern flank, out of a white
+## tank standing on the landside block. Both get a dark casing first so the white stays legible
+## where it crosses the pale apron.
+func _draw_plumbing(plan: Dictionary) -> void:
+	if not bool(plan.get("has_plumbing", false)):
+		return
+	var pipe: PackedVector2Array = plan.get("pipe_polyline", PackedVector2Array())
+	if pipe.size() >= 2:
+		draw_polyline(pipe, MapMidcenturyStyle.INK, PIPE_WIDTH + 2.0, true)
+		draw_polyline(pipe, PIPE_WHITE, PIPE_WIDTH, true)
+	var radius := float(plan.get("tank_radius", 0.0))
+	if radius > 0.0:
+		var centre: Vector2 = plan.get("tank_center", Vector2.ZERO)
+		draw_circle(centre + Vector2(2.2, 2.8), radius, MapMidcenturyStyle.SHADOW)
+		draw_circle(centre, radius, PIPE_WHITE)
+		draw_arc(centre, radius, 0.0, TAU, 28, MapMidcenturyStyle.INK, 1.4, true)
+		# The inner ring reads as the tank's rim rather than a plain dot.
+		draw_arc(centre, radius * 0.62, 0.0, TAU, 24, MapMidcenturyStyle.INK, 1.0, true)
+
+
 func _draw_warehouse_cap(poly_value: Variant, key: String) -> void:
 	var poly: PackedVector2Array = poly_value
 	var center := _poly_center(poly)
@@ -270,6 +373,40 @@ func _draw_crane(crane: Dictionary) -> void:
 		MapMidcenturyStyle.gameplay_block_top("mustard"), 3.0, true)
 	draw_line(position, jib_end, MapMidcenturyStyle.INK, 1.0, true)
 	draw_circle(jib_end, 2.1, MapMidcenturyStyle.INK)
+
+## Outer boundaries of a set of touching polygons, merged into as few rings as possible.
+## `merge_polygons` is pairwise, so the accumulator is folded through every piece; holes
+## (clockwise rings) are dropped because the quay never encloses water it does not own.
+func _merged_rings(polygons: Array) -> Array:
+	var merged: Array = []
+	for poly_value in polygons:
+		var poly: PackedVector2Array = poly_value
+		if poly.size() < 3:
+			continue
+		if merged.is_empty():
+			merged.append(poly)
+			continue
+		var next: Array = []
+		var absorbed := false
+		for existing_value in merged:
+			var existing: PackedVector2Array = existing_value
+			var union := Geometry2D.merge_polygons(existing, poly)
+			# One ring back means the two genuinely touched; more means they are disjoint
+			# (or made a hole), in which case keep them apart and try the next.
+			if union.size() == 1 and not absorbed:
+				poly = union[0]
+				absorbed = true
+			else:
+				next.append(existing)
+		next.append(poly)
+		merged = next
+	var out: Array = []
+	for poly_value in merged:
+		var poly: PackedVector2Array = poly_value
+		if poly.size() >= 3 and not Geometry2D.is_polygon_clockwise(poly):
+			out.append(poly)
+	return out
+
 
 func _draw_filled_poly(poly: PackedVector2Array, color: Color) -> void:
 	draw_colored_polygon(poly, color)

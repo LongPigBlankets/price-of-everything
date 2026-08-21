@@ -203,6 +203,26 @@ static func tile_index() -> Dictionary:
 	return _tile_index
 
 
+## Tiles whose HARBOUR is authored: any settlement carrying a special tagged `port: <tile_id>`.
+## `PortVisuals` stands down for these, so a hand-tweaked dock is never drawn on top of the
+## planner's own. Empty for every document that has not imported a port, which is why the
+## planner keeps drawing harbours exactly as it does today until someone edits one.
+static func port_tiles() -> Dictionary:
+	var out: Dictionary = {}
+	var all := settlements()
+	for key in all:
+		var settlement_value: Variant = all[key]
+		if typeof(settlement_value) != TYPE_DICTIONARY:
+			continue
+		for special_value in _array(settlement_value as Dictionary, "specials"):
+			if typeof(special_value) != TYPE_DICTIONARY:
+				continue
+			var tile_id := str((special_value as Dictionary).get("port", ""))
+			if tile_id != "":
+				out[tile_id] = true
+	return out
+
+
 ## THE SUPPRESSION KEY. True when this tile's look is hand-authored, and the procedural
 ## fabric, forest discs, accommodation sites and road-geometry jobs must stand down for it
 ## (`docs/map-editor-plan.md` section 6). Cheap enough for per-tile calls.
