@@ -1,6 +1,8 @@
 extends Node2D
 ## Port-only deterministic audit and UI-hidden normal/diagnostic capture set.
 
+const AuthoredMapRef := preload("res://scripts/authored_map.gd")
+
 const PORTS := [
 	{"name": "stoneshore", "tile_id": "tile_5_10"},
 	{"name": "arin", "tile_id": "tile_11_17"},
@@ -74,8 +76,11 @@ func _ready() -> void:
 		await _capture(first.position - first.seaward * 105.0, 0.78,
 			"%scontext.png" % _out_prefix, Vector2i(1100, 650))
 	var collision := _port_decorative_collision(plans)
-	if int(collision.overlap_count) != 0:
-		failures.append("decorative/park geometry overlaps port envelopes")
+	if int(collision.overlap_count) > 0:
+		failures.append("%s decor overlaps port envelopes: %d mass(es), %.0f u2 %s"
+			% [str(collision.get("source", "?")), int(collision.overlap_count),
+				float(collision.get("overlap_area", 0.0)),
+				str(collision.get("offenders", []))])
 	var result := {
 		"catalog_port_count": Catalog.all_ports().size(),
 		"valid_plan_count": plans.size(),
@@ -202,22 +207,68 @@ func _failures(audit: Dictionary) -> Array[String]:
 			float(audit.max_arm_bend_deg)])
 	return out
 
+## Does any decorative building still stand inside a harbour envelope?
+##
+## THIS ASKS THE AUTHORED FABRIC, NOT THE PROCEDURAL ONE. It used to read
+## `UrbanFabricVisuals.gameplay_collision_snapshot()`, but that layer is HIDDEN whenever an
+## authored document is active — so on the authored map it was auditing an invisible
+## generator while the decor the player could actually see went unchecked, and reported an
+## overlap that had nothing to do with the ports. The procedural read is kept for maps with
+## no authored document, where it is still the right source.
+##
+## The authored side measures real geometry: each plan's compound envelope against every mass
+## the fabric layer is currently DRAWING (evicted ones are already gone from that list), so a
+## pass here means nothing is standing on a quay, not merely that a counter was zero.
 func _port_decorative_collision(plans: Array) -> Dictionary:
-	var fabric := _game.find_child("UrbanFabricVisuals", true, false)
-	if fabric == null or not fabric.has_method("gameplay_collision_snapshot"):
-		return {"overlap_count": -1, "overlap_area": -1.0}
-	# The authoritative sanitizer runs after every geometry-producing pass and
-	# expands each shared port envelope before building final draw meshes.
-	var guard: Dictionary = fabric.gameplay_collision_snapshot()
 	var missing_plan_count := 0
 	for plan_value in plans:
 		var plan: Dictionary = plan_value
 		if (plan.total_compound_envelope as PackedVector2Array).size() < 3:
 			missing_plan_count += 1
-	return {"overlap_count": int(guard.get("opaque_overlap_count", -1)),
+	var authored := get_tree().get_first_node_in_group("authored_fabric")
+	var has_authored := authored != null and authored.has_method("visible_mass_polygons")
+	if has_authored and AuthoredMapRef.is_active():
+		var masses: Array = authored.call("visible_mass_polygons")
+		var count := 0
+		var area := 0.0
+		var offenders: Array[String] = []
+		for plan_value in plans:
+			var envelope: PackedVector2Array = (plan_value as Dictionary).total_compound_envelope
+			if envelope.size() < 3:
+				continue
+			var envelope_bb := _poly_bb(envelope)
+			for record_value in masses:
+				var record: Dictionary = record_value
+				if not envelope_bb.intersects(record.bb):
+					continue
+				var overlap := _overlap_area(envelope, record.poly as PackedVector2Array)
+				if overlap <= 0.5:
+					continue   # a shared edge is not an occupied quay
+				count += 1
+				area += overlap
+				if offenders.size() < 6:
+					offenders.append("%s on %s" % [str(record.id),
+						str((plan_value as Dictionary).tile_id)])
+		return {"source": "authored", "overlap_count": count, "overlap_area": area,
+			"offenders": offenders, "missing_plan_count": missing_plan_count}
+	var fabric := _game.find_child("UrbanFabricVisuals", true, false)
+	if fabric == null or not fabric.has_method("gameplay_collision_snapshot"):
+		return {"source": "none", "overlap_count": -1, "overlap_area": -1.0,
+			"missing_plan_count": missing_plan_count}
+	var guard: Dictionary = fabric.gameplay_collision_snapshot()
+	return {"source": "procedural",
+		"overlap_count": int(guard.get("opaque_overlap_count", -1)),
 		"overlap_area": 0.0,
 		"sanitized_footprint_count": int(guard.get("footprints_checked", -1)),
 		"missing_plan_count": missing_plan_count}
+
+
+func _poly_bb(poly: PackedVector2Array) -> Rect2:
+	var bb := Rect2(poly[0], Vector2.ZERO)
+	for point in poly:
+		bb = bb.expand(point)
+	return bb
+
 
 func _capture(position: Vector2, zoom: float, path: String,
 		size: Vector2i = Vector2i(960, 540)) -> void:

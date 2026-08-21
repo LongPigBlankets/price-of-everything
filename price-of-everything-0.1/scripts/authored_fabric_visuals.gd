@@ -15,6 +15,7 @@ extends Node2D
 
 const AuthoredMap := preload("res://scripts/authored_map.gd")
 const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
+const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
 
 var _sacrificed: Dictionary = {}
 
@@ -84,6 +85,44 @@ func _draw() -> void:
 	for settlement in ordered:
 		for area in _list(settlement, "forests"):
 			AuthoredFabricPainter.draw_forest(self, area)
+
+
+## READ-ONLY SEAM FOR AUDITS. Every decorative mass and special this layer is CURRENTLY
+## drawing, as world polygons with their ids. Evicted masses are absent, so an audit asking
+## "is anything still standing under this port" gets the same answer the screen shows —
+## which is the whole point: comparing a plan against the document would keep reporting
+## masses that were cleared, and comparing screenshots would mistake a stale frame for a pass.
+func visible_mass_polygons() -> Array:
+	var out: Array = []
+	if not AuthoredMap.is_active():
+		return out
+	var settlements := AuthoredMap.settlements()
+	var keys := settlements.keys()
+	keys.sort()
+	for key in keys:
+		var settlement_value: Variant = settlements[key]
+		if typeof(settlement_value) != TYPE_DICTIONARY:
+			continue
+		var settlement: Dictionary = settlement_value
+		for record in _list(settlement, "decor"):
+			if _sacrificed.has(str(record.get("id", ""))):
+				continue
+			for poly_value in AuthoredFabricPainter.mass_polygons(record):
+				_append_visible(out, poly_value as PackedVector2Array, record)
+		for record in _list(settlement, "specials"):
+			if _sacrificed.has(str(record.get("id", ""))):
+				continue
+			_append_visible(out, AuthoredSpecialShapes.render_polygon(record), record)
+	return out
+
+
+func _append_visible(out: Array, poly: PackedVector2Array, record: Dictionary) -> void:
+	if poly.size() < 3:
+		return
+	var bb := Rect2(poly[0], Vector2.ZERO)
+	for point in poly:
+		bb = bb.expand(point)
+	out.append({"id": str(record.get("id", "")), "poly": poly, "bb": bb})
 
 
 func _list(settlement: Dictionary, key: String) -> Array:
