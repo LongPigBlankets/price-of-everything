@@ -719,16 +719,21 @@ static func _plumbing(head: PackedVector2Array, left_points: PackedVector2Array,
 		return {}
 	var south := tangent if tangent.y > 0.0 else -tangent
 	var head_center := _poly_center(head)
-	# Landward of centre and out toward the southern flank, then pulled back inside the apron
-	# so the tank always stands on the block rather than half off its edge.
-	var tank := head_center - seaward * 14.0 + south * 26.0
-	if not Geometry2D.is_point_in_polygon(tank, head):
-		tank = head_center - seaward * 10.0 + south * 12.0
-	if not Geometry2D.is_point_in_polygon(tank, head):
-		tank = head_center
 	var south_arm := left_points if left_points[0].y > right_points[0].y else right_points
 	var root: Vector2 = south_arm[0]
 	var tip: Vector2 = south_arm[south_arm.size() - 1]
+	# AT THE FOOT OF THE SOUTHERN ARM (owner, 2026-08-21). The tank belongs where the line
+	# leaves the land — beside the point the lower arm meets the block — not parked in the
+	# middle of the apron. Seated just inboard of that root so the whole circle stands on the
+	# quay rather than half over the basin, with fallbacks that walk it back toward the centre
+	# on a harbour whose apron is too small to hold it there.
+	var tank := root - seaward * (TANK_RADIUS + 5.0) + south * TANK_RADIUS * 0.35
+	if not Geometry2D.is_point_in_polygon(tank, head):
+		tank = root - seaward * (TANK_RADIUS + 10.0)
+	if not Geometry2D.is_point_in_polygon(tank, head):
+		tank = head_center - seaward * 8.0 + south * 18.0
+	if not Geometry2D.is_point_in_polygon(tank, head):
+		tank = head_center
 	return {
 		"tank_center": tank,
 		"tank_radius": TANK_RADIUS,
