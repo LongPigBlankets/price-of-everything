@@ -15,6 +15,12 @@ const PIER_COUNT := 3
 var _glyphs: Array = []   # [{pos: Vector2, angle: float, tile_h: float}]
 var _hex_map: TileMapLayer = null
 var _midcentury_plans: Array = []
+## Harbour plans off the start-layout bake, keyed "tile_id|instance_id". The coastline search
+## is ~3.3 s for the four ports and lands the same answer every run, so world_map hands the
+## baked answers in and the FIRST rebuild uses them instead of searching. They are consumed
+## once and dropped: any later rebuild happens because a footprint on a port tile actually
+## moved, which is exactly when a baked answer stops being the right one.
+var _baked_plans: Dictionary = {}
 const BakeLayout := preload("res://scripts/authored_bake_layout.gd")
 
 ## How far the decorative fabric is cut back from a harbour. Defined in `authored_bake_layout`
@@ -73,6 +79,20 @@ func setup(hex_map: TileMapLayer) -> void:
 	_rebuild_midcentury_plans()
 	queue_redraw()
 
+## Hand in baked harbour plans (see _baked_plans). Call before setup().
+func install_baked_plans(plans: Dictionary) -> void:
+	_baked_plans = plans
+
+
+## The current plans, keyed the way install_baked_plans wants them back. For the bake tool.
+func export_plans() -> Dictionary:
+	var out: Dictionary = {}
+	for plan_value in _midcentury_plans:
+		var plan: Dictionary = plan_value
+		out["%s|%s" % [str(plan.get("tile_id", "")), str(plan.get("instance_id", ""))]] = plan
+	return out
+
+
 func _on_footprints_changed(_version: int, affected_tile_ids: Array) -> void:
 	# Ports are fixed coastal geometry; the 4-port planner costs ~15-20s to re-run. Only replan
 	# when a PORT tile's footprint actually changes — not when a mine/furnace lands elsewhere,
@@ -128,10 +148,14 @@ func _rebuild_midcentury_plans() -> void:
 		var instance: Dictionary = instance_value
 		if authored_ports.has(str(instance.get("tile_id", ""))):
 			continue
-		var plan := MidcenturyPortPlan.build(_hex_map,
-			str(instance.get("tile_id", "")), str(instance.get("instance_id", "")))
+		var baked_key := "%s|%s" % [str(instance.get("tile_id", "")), str(instance.get("instance_id", ""))]
+		var plan: Dictionary = _baked_plans.get(baked_key, {})
+		if plan.is_empty():
+			plan = MidcenturyPortPlan.build(_hex_map,
+				str(instance.get("tile_id", "")), str(instance.get("instance_id", "")))
 		if not plan.is_empty() and bool(plan.get("valid", false)):
 			_midcentury_plans.append(plan)
+	_baked_plans.clear()   # consumed: a later rebuild means something actually moved
 	_clear_authored_fabric_under_ports()
 	queue_redraw()
 

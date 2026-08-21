@@ -30,6 +30,12 @@ func _write_bake(main: Node) -> void:
 		get_tree().quit(1)
 		return
 	var layout: Dictionary = bv.export_layout_state()
+	# The harbour plans belong to the same "this is the start world" answer, and cost 3.3 s of
+	# coastline search to reproduce, so they ride along in the same file.
+	var terrain: Node = main.get("terrain_layer")
+	var ports: Node = terrain.get_node_or_null("PortVisuals") if terrain != null else null
+	if ports != null and ports.has_method("export_plans"):
+		layout["port_plans"] = ports.export_plans()
 	var placements: Array = layout.get("_placements", [])
 	var subcomponents: Array = layout.get("_subcomponents", [])
 	var owned: Dictionary = layout.get("owned", {})
@@ -42,8 +48,9 @@ func _write_bake(main: Node) -> void:
 		return
 	var handle := FileAccess.open(StartLayoutBaked.BAKE_PATH, FileAccess.READ)
 	var size := handle.get_length() if handle != null else 0
-	print("bake_start_layout: %d placements, %d subcomponents, %d owned instances" % [
-		placements.size(), subcomponents.size(), owned.size()])
+	print("bake_start_layout: %d placements, %d subcomponents, %d owned instances, %d harbour plans" % [
+		placements.size(), subcomponents.size(), owned.size(),
+		(layout.get("port_plans", {}) as Dictionary).size()])
 	print("bake_start_layout: %.1f KB -> %s (%.1f s)" % [
 		float(size) / 1024.0, StartLayoutBaked.BAKE_PATH,
 		float(Time.get_ticks_msec() - _t0) / 1000.0])

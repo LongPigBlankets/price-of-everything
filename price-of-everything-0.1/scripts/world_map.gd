@@ -138,9 +138,14 @@ var _prof_last := 0
 ## includes any frame awaited in between — fine for phases, misleading for a single
 ## synchronous call sitting after a yield.
 func _prof_us(label: String, t0_us: int) -> void:
+	_prof_total(label, Time.get_ticks_usec() - t0_us)
+
+
+## Wall cost already accumulated by the caller (a running total across many calls).
+func _prof_total(label: String, us: int) -> void:
 	if OS.get_environment("LOAD_PROF") == "":
 		return
-	print("LOADPROF-CALL %-30s %8.1f ms" % [label, float(Time.get_ticks_usec() - t0_us) / 1000.0])
+	print("LOADPROF-CALL %-30s %8.1f ms" % [label, float(us) / 1000.0])
 
 
 func _prof(label: String) -> void:
@@ -431,8 +436,8 @@ func finish_build(animate: bool) -> void:
 				await _place_ruins("tile_23_16", animate)
 			await _place_start_buildings(animate)
 			_prof("place ruins+start buildings")
-			_prof_us("  of which MatchState.add_building", Time.get_ticks_usec() - _place_add_us)
-			_prof_us("  of which building_placed.emit", Time.get_ticks_usec() - _place_emit_us)
+			_prof_total("  of which MatchState.add_building", _place_add_us)
+			_prof_total("  of which building_placed.emit", _place_emit_us)
 		if pending_start:
 			await _place_pending_start_buildings(animate)
 			_prof("place pending_start buildings")
@@ -452,6 +457,8 @@ func finish_build(animate: bool) -> void:
 	port_visuals.name = "PortVisuals"
 	port_visuals.z_index = 60   # above hills/roads decoration, below UI
 	terrain_layer.add_child(port_visuals)
+	if not _baked_port_plans.is_empty():
+		port_visuals.install_baked_plans(_baked_port_plans)
 	var t_pv := Time.get_ticks_usec()
 	port_visuals.setup(terrain_layer)
 	_prof_us("port_visuals.setup", t_pv)
@@ -500,6 +507,15 @@ func finish_build(animate: bool) -> void:
 
 	_audit_start_visuals()
 	_prof("audit_start_visuals")
+	# The two big panels are lazy, and under a loading screen they are built after "Begin" is
+	# offered (see _warm_deferred_ui). WITHOUT one — tests, the e2e harness, the screenshot
+	# tools — there is no such "after": those callers watch build_complete and then reach
+	# straight for world.info_panel or look up "TileInfoPanel" under HUDContent, so a finished
+	# world has to have them in it by the time that flag flips. Same work, same order as before
+	# this was made lazy; only the interactive path defers.
+	if not _loading_screen_active():
+		_build_info_panel()
+		_build_building_panel_v2()
 	# Paint the finished world UNDER the still-opaque loading screen. Every layer's first
 	# paint (and the hills' far-zoom LOD switch) is an expensive frame; it has to land here
 	# rather than on the fade-out, or the reveal stutters on the frame the player is
@@ -560,6 +576,10 @@ func _warm_authored_bake() -> void:
 		print("AuthoredBake: warmed %d texture(s) for the opening view" % warmed)
 
 
+## Harbour plans from the start-layout bake, held between the restore and the point later in
+## the build where PortVisuals is created. See port_visuals.install_baked_plans.
+var _baked_port_plans: Dictionary = {}
+
 ## Install the baked start layout, if there is a usable one. Skipped entirely when
 ## NO_LAYOUT_BAKE is set in the environment — that is how the bake tool (and an A/B check)
 ## forces the live placement path in a build that would otherwise restore.
@@ -573,6 +593,7 @@ func _install_baked_layout() -> void:
 		return
 	if not building_visuals.import_layout_state(baked):
 		return
+	_baked_port_plans = baked.get("port_plans", {})
 	_prof_us("baked start layout restored", t)
 	print("StartLayout: restored %d baked placement(s)" % (baked.get("owned", {}) as Dictionary).size())
 
