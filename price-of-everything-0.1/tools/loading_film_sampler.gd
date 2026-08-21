@@ -13,6 +13,8 @@ extends Node
 const SAMPLE_MS := 250
 const SHOT_EVERY_MS := 700
 const MAX_SHOTS := 14
+## How long to keep watching after the build finishes, to see the film's real frame rate.
+const WATCH_AFTER_MS := 8000
 
 var screen: Node = null
 
@@ -27,6 +29,7 @@ var _last_shot := 0
 var _shots := 0
 var _done := false
 var _last_drift := -1.0
+var _build_done_at := -1
 var _frames := 0
 var _frames_at_sample := 0
 
@@ -68,7 +71,13 @@ func _process(_delta: float) -> void:
 		_sample(now)
 	var cur := get_tree().current_scene
 	if cur != null and cur.get("build_complete") != null and bool(cur.get("build_complete")):
-		_report(now)
+		if _build_done_at < 0:
+			_build_done_at = now
+			print("FILM ==== build_complete at t+%d ms — now watching the film play ====" % (now - _t0))
+		# Keep sampling PAST build_complete: the question "does the film run at 30 fps once the
+		# load is over" is not answerable before the load is over.
+		elif now - _build_done_at >= WATCH_AFTER_MS:
+			_report(now)
 
 
 func _sample(now: int) -> void:

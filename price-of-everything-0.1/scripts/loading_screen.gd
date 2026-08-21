@@ -434,6 +434,14 @@ func _tick_film(delta: float) -> void:
 		_plate_box.visible = _film.modulate.a < 1.0
 
 
+## Seconds of film the player gets before "Begin" appears.
+##
+## The button used to arrive the instant the build finished, which — now that the build finishes
+## in ~10 s — is the same instant the film starts. Offering someone a way out of a shot on its
+## first frame is the same as not showing it. This is a deliberate, small wait, and the safety
+## timeout below still overrides everything.
+const BEGIN_AFTER_FILM := 4.0
+
 func _ready_to_begin() -> bool:
 	if _elapsed > SAFETY_TIMEOUT:
 		return true   # don't strand the player if a transition goes sideways
@@ -449,8 +457,11 @@ func _ready_to_begin() -> bool:
 	# map's build_complete flag if it exposes one.
 	if current != null:
 		var bc: Variant = current.get("build_complete")
-		if bc != null:
-			return bool(bc)
+		if bc != null and not bool(bc):
+			return false
+	# The world is ready; give the film its opening seconds before offering a way past it.
+	if _film != null and _film_started and _film.is_playing():
+		return _film.stream_position >= BEGIN_AFTER_FILM
 	return true
 
 
@@ -473,6 +484,12 @@ func _on_begin_pressed() -> void:
 	if _exiting:
 		return
 	_exiting = true
+	# The world has been painted once already and then hidden again so the film could have the
+	# main thread (world_map._hide_world_after_warm). Bring it back now, one frame before the
+	# fade starts over it.
+	var scene := get_tree().current_scene
+	if scene != null and scene.has_method("reveal_for_play"):
+		scene.call("reveal_for_play")
 	# Fade the theme as the game begins (it played through loading), then bring the
 	# playlist back ~3 s later so gameplay isn't left silent.
 	Audio.fade_music(2.0, 5.0)

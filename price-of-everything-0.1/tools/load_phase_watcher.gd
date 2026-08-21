@@ -42,6 +42,10 @@ func _process(_d: float) -> void:
 			_dump_layout(cur, dump_path)
 		var shot_path := OS.get_environment("LAYOUT_SHOT")
 		if shot_path != "":
+			# The world is hidden behind the loading screen until Begin, so taking the screen
+			# away is no longer enough to see the map — ask the scene to reveal it.
+			if cur.has_method("reveal_for_play"):
+				cur.call("reveal_for_play")
 			for c in get_tree().root.get_children():
 				if c is LoadingScreen:
 					c.visible = false

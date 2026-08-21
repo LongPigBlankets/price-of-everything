@@ -496,16 +496,25 @@ func finish_build(animate: bool) -> void:
 	# rather than on the fade-out, or the reveal stutters on the frame the player is
 	# watching. No-op when the world was never hidden (tests / e2e / load-game).
 	await _reveal_world_for_play()
+	# ...and then take it away again until "Begin".
+	#
+	# A revealed map is ~26,000 draw calls a frame, and the loading screen is opaque, so while
+	# it is up those are 26,000 draw calls of nothing. That is affordable against a hex lattice
+	# and fatal against a film: measured, the film ran at 0.6-4 fps behind the revealed world
+	# and advanced 1.7 s of footage in 9.5 s of wall clock. The paint above has done its job —
+	# the expensive first frame is paid, the textures are resident, the shaders are compiled —
+	# so it goes back under until the player asks for it, and comes back in a frame nobody is
+	# looking at because the screen is fading out over it.
+	_hide_world_after_warm()
+
+	# EVERYTHING ELSE ALSO HAPPENS BEFORE "Begin" IS OFFERED. It used to run after, on the
+	# theory that the player's read-and-click was dead time — but with the load down to ~10 s
+	# the button now arrives while they are still watching, they click straight through, and
+	# the work lands on the map instead. "Ready" has to mean ready.
+	await _warm_deferred_ui()
 	build_complete = true   # the loading screen may now offer "Begin"
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", MatchState.buildings.size())
-
-	# Everything the match does not need in order to START is built HERE, after the screen
-	# has been told it may offer "Begin". The player's read-and-click on that plate is dead
-	# time, and spending it costs nothing: if they click through faster than this finishes,
-	# the click lands a frame or two later; if something asks for a panel sooner, the lazy
-	# property builds it on demand instead. See _warm_deferred_ui.
-	await _warm_deferred_ui()
 
 	# Fresh scripted start: pin the camera on the start's hub and show the once-only founding
 	# intro. Gated on pending_start so a loaded save (which keeps ruleset.start_id) never re-shows it.
@@ -652,7 +661,6 @@ func _reveal_world_for_play() -> void:
 		if is_instance_valid(layer):
 			layer.visible = true
 			layer.queue_redraw()   # a redraw queued while hidden must not be lost
-	_hidden_for_load.clear()
 	_prof("world revealed")
 	for i in REVEAL_WARM_FRAMES:
 		var t := Time.get_ticks_usec()
@@ -661,7 +669,35 @@ func _reveal_world_for_play() -> void:
 	_prof("reveal warm frames")
 
 
-## Build, after "Begin" has been offered, the things a match does not need in order to
+## Put the warmed world back under the loading screen until "Begin". `_hidden_for_load` is
+## deliberately NOT cleared by the warm reveal, so this is the same list going back the way it
+## came; reveal_for_play() is what finally clears it.
+func _hide_world_after_warm() -> void:
+	if _hidden_for_load.is_empty():
+		return
+	for layer in _hidden_for_load:
+		if is_instance_valid(layer):
+			layer.visible = false
+
+
+## Show the world for good. Called by the loading screen as it starts fading out, and cheap by
+## then: the layers painted once already, so this is a repaint with everything warm.
+func reveal_for_play() -> void:
+	for layer in _hidden_for_load:
+		if is_instance_valid(layer):
+			layer.visible = true
+			layer.queue_redraw()
+	_hidden_for_load.clear()
+	# And start the one warm that is too big for a load. 8.6 s of contour triangulation, in
+	# slices small enough to disappear into a play frame, for a picture the player only needs
+	# if they zoom all the way in — and which _draw_fill will build on demand if they get there
+	# first. Fire and forget: nothing waits on it.
+	var hills := get_node_or_null("HillVisuals")
+	if hills != null and hills.has_method("warm_meshes_deferred"):
+		hills.warm_meshes_deferred()
+
+
+## Build, before "Begin" is offered, the things a match does not need in order to
 ## start: the two big HUD panels and the Goods Graph layout. Each is behind a lazy
 ## accessor, so this is a WARM and not a requirement — if the player gets there first the
 ## accessor builds it, and if they never open a building or press G it is never built at
@@ -698,17 +734,11 @@ func _warm_deferred_ui() -> void:
 	t = Time.get_ticks_usec()
 	GoodIconsScript.warm(Catalog.all_goods())
 	_prof_us("warm good icons join", t)
-	# Pre-triangulate the hill contours for the zoom-IN LOD. The opening view is covered by
-	# the baked far-zoom texture, so this is not needed to start a match — only to keep the
-	# first zoom-in smooth. It paces itself across frames (LoadPacing.bg_yield).
-	await get_tree().process_frame
-	if not is_inside_tree():
-		return
-	var hills := get_node_or_null("HillVisuals")
-	if hills != null and hills.has_method("warm_meshes_deferred"):
-		t = Time.get_ticks_usec()
-		await hills.warm_meshes_deferred()
-		_prof_us("warm hill meshes", t)
+	# The hill contour pre-warm is deliberately NOT here. It is 8.6 s of triangulation — far
+	# too much to put in a load — and it is optional: _draw_fill builds a contour's mesh the
+	# first time it is drawn, and the zoomed-in LOD culls to what is on screen, so the opening
+	# view (which uses the baked far-zoom texture) needs none of it. It runs in the background
+	# once the player has the map instead; see reveal_for_play.
 
 
 ## A loading screen (parented to the tree root, surviving the scene change) is up

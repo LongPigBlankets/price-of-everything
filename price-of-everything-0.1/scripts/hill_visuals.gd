@@ -147,9 +147,14 @@ func warm_meshes_deferred() -> void:
 	if _meshes_full_warm or not is_inside_tree():
 		return
 	_meshes_full_warm = true
-	# Small slices, and yield whether or not a loading screen is still up — this outlives the
-	# screen by design, so it must not fall back to running synchronously when it goes.
-	await _warm_all_meshes(WARM_SLICE_PLAY_MS, true)
+	# The slice depends on WHO IS WATCHING, and getting it wrong is expensive in both
+	# directions. Under a loading screen a yielded frame costs that screen's own frame time
+	# (~30 ms, more with a film), so 4 ms slices spend 15.7 s of yielding on 2 s of work —
+	# measured. On the map the opposite holds: 35 ms slices ARE the dropped frame.
+	# Either way it yields unconditionally; falling back to synchronous is what put the whole
+	# triangulation into one frame in front of the player.
+	var slice := WARM_SLICE_LOAD_MS if LoadPacing.is_background_build() else WARM_SLICE_PLAY_MS
+	await _warm_all_meshes(slice, true)
 
 ## Exact, read-only land-relief geometry for draw-only planning layers.
 ##
@@ -576,8 +581,9 @@ func _ensure_coast_lines(tiers: Array) -> void:
 ## draw triangulated all of these EVERY frame), so panning only ever draws
 ## already-built meshes.
 ## Slice size for the deferred warm. It runs while the player is looking at the map, so it has
-## to fit inside a frame nobody notices — 35 ms would BE the frame.
-const WARM_SLICE_PLAY_MS := 4
+## to fit inside a frame nobody notices — 35 ms would BE the frame. At 2 ms it is ~12% of a
+## 60 fps budget and the whole 8.6 s of triangulation is done inside a minute or so of play.
+const WARM_SLICE_PLAY_MS := 2
 ## Slice size while a loading screen is up and there is nothing to stutter but an animation.
 const WARM_SLICE_LOAD_MS := 35
 
