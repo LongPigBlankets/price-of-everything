@@ -54,6 +54,7 @@ func _enter_tree() -> void:
 	add_to_group("hex_map")
 
 func _ready() -> void:
+	var _lp_t := Time.get_ticks_msec()
 	_generate_tile_data()
 	_load_tile_overrides()
 	river_properties = _load_river_properties()
@@ -62,6 +63,8 @@ func _ready() -> void:
 	_build_prototype_map()
 	_build_hover_overlay()
 	_build_category_overlays()
+	if OS.get_environment("LOAD_PROF") != "":
+		print("LOADPROF hex_map._ready %d ms   abs=%d" % [Time.get_ticks_msec() - _lp_t, Time.get_ticks_msec()])
 
 func begin_stockpile_destination_selection(good_id: String = "", paint: bool = true) -> void:
 	_stockpile_destination_selection_active = true

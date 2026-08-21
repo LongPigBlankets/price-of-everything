@@ -95,6 +95,14 @@ func restore_all() -> void:
 
 
 func _draw() -> void:
+	var _lpd := Time.get_ticks_usec()
+	_lp_draw_inner()
+	var _lpms := float(Time.get_ticks_usec() - _lpd) / 1000.0
+	if _lpms > 50.0 and OS.get_environment("LOAD_PROF") != "":
+		print("LOADPROF-DRAW %s %.0f ms   abs=%d" % [name, _lpms, Time.get_ticks_msec()])
+
+
+func _lp_draw_inner() -> void:
 	if not AuthoredMap.is_active():
 		return
 	# Baked textures when they exist and match the document; vectors otherwise. The vector path

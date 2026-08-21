@@ -113,13 +113,31 @@ var _deposit_dialog_target: Dictionary = {}  # building the current deposit dial
 ## ready" — the loading screen waits on this flag before offering "Begin".
 var build_complete := false
 
+## LOAD_PROF=1 (env): print a wall-clock breakdown of the new-game build — one line per
+## phase (delta since the previous mark + cumulative + absolute ticks, so stall logs from
+## other watchers can be correlated). Zero cost when the env var is unset.
+var _prof_t0 := 0
+var _prof_last := 0
+func _prof(label: String) -> void:
+	if OS.get_environment("LOAD_PROF") == "":
+		return
+	var now := Time.get_ticks_msec()
+	if _prof_t0 == 0:
+		_prof_t0 = now
+		_prof_last = now
+	print("LOADPROF %-36s +%6d ms   t=%7d ms   abs=%d" % [label, now - _prof_last, now - _prof_t0, now])
+	_prof_last = now
+
+
 func _ready() -> void:
+	_prof("world_map._ready enter")
 	# Advisor agenda: any building placement/completion counts as "a building built".
 	building_placed.connect(func(_t: String, _b: String, _r: String, _i: String, _c: Vector2i) -> void:
 		MatchState.note_building_built())
 	if not MatchState.advisor_walked.is_connected(_on_advisor_walked):
 		MatchState.advisor_walked.connect(_on_advisor_walked)
 	await _build_base()
+	_prof("_build_base (HUD scaffold)")
 	# A fresh new game with a loading screen up animates its build (it yields between steps to keep
 	# the loading animation live); tests / e2e / load-game (no loading screen) build synchronously.
 	await finish_build(_loading_screen_active())
@@ -181,6 +199,7 @@ func _build_base() -> void:
 	_build_stockpile_select_prompt()
 	_build_dim_overlay()
 	_build_stockpile_legend()
+	_prof("base: wiring+prompts")
 	# Hand a frame to the loading screen here (right after the scene instantiated) so its
 	# animation + the OS window stay live while the rest of the world builds. No-op without
 	# a loading screen (tests / e2e / load-game run the build synchronously, as before).
@@ -189,18 +208,21 @@ func _build_base() -> void:
 	# Infrastructure mapmode panel: shows/hides itself with the mapmode.
 	hud_content.add_child(load("res://scripts/infrastructure_panel.gd").new())
 	_apply_demo_infra_levels()
+	_prof("base: infra panel")
 
 	# Empire view: full-screen node-graph alternative to the map (Tab to toggle).
 	empire_view = EmpireViewScript.new()
 	empire_view.name = "EmpireView"
 	empire_view.visible = false
 	hud_content.add_child(empire_view)
+	_prof("base: empire view")
 
 	# Goods Graph: full-screen goods-web view (G to toggle).
 	goods_graph_view = GoodsGraphViewScript.new()
 	goods_graph_view.name = "GoodsGraphView"
 	goods_graph_view.visible = false
 	hud_content.add_child(goods_graph_view)
+	_prof("base: goods graph view")
 
 	# Wire visuals to react to building placements
 	building_placed.connect(building_visuals.on_building_placed)
@@ -231,6 +253,7 @@ func _build_base() -> void:
 		building_connection_visuals.on_building_connections_changed
 	)
 	MatchState.bdp_v2_changed.connect(_on_bdp_v2_changed)
+	_prof("base: building detail v2")
 
 	# Capacity dialog: prompts the player when a tile first hits max storage.
 	_hud.add_child(load("res://scripts/capacity_dialog.gd").new())
@@ -261,6 +284,7 @@ func _build_base() -> void:
 	info_panel.building_clicked.connect(_on_v2_building_clicked)
 	info_panel.pick_destination_requested.connect(_on_v2_pick_destination)
 	info_panel.survey_requested.connect(_on_survey_tile_clicked)
+	_prof("base: tile info panel")
 
 	# Debug cheat terminal (toggle with the ` key)
 	add_child(load("res://scripts/debug_terminal.gd").new())
@@ -275,6 +299,7 @@ func _build_base() -> void:
 	_survey_fx.name = "SurveyEffects"
 	_survey_fx.terrain_layer = terrain_layer
 	add_child(_survey_fx)
+	_prof("base: dialogs+fx")
 	await _build_yield()
 
 
@@ -282,6 +307,7 @@ func _build_base() -> void:
 # scaffold. `animate` (true when a loading screen is up) spreads building placement one-per-frame
 # so the loading animation keeps running; false builds synchronously (tests / e2e / load-game).
 func finish_build(animate: bool) -> void:
+	_prof("finish_build enter")
 	# Kick off worker-thread loads of the Goods Graph's MEDIUM good icons NOW, so they
 	# stream in parallel with the ~5 s map build below instead of stalling the main
 	# thread ~3.2 s on first Goods Graph open (69 medium PNGs at ~47 ms each). Only under
@@ -292,6 +318,7 @@ func finish_build(animate: bool) -> void:
 	MatchState.seed_surveyed_ports()
 	# Track depletable-deposit yields so mining can run them down over time.
 	MatchState.seed_deposits(terrain_layer)
+	_prof("seed ports+deposits")
 	# NOTE: the game-start BUILDINGS (NPC ports, the ruins, the start companies — and any future player
 	# start buildings) are placed LATER, AFTER the baked road network exists, so they lay out against
 	# real streets. See the "roads → buildings" sequence below.
@@ -304,6 +331,7 @@ func finish_build(animate: bool) -> void:
 	# A loaded save applies only now, once the terrain and default seeding exist;
 	# it overwrites the fresh-match state above (docs/save_load_spec.md).
 	var loaded_pending := SaveLoad.apply_pending()
+	_prof("apply_pending snapshot")
 	# A normal loaded save must restore its existing visual state immediately. A
 	# start snapshot is different: its player buildings need to wait for the baked
 	# road network below, otherwise they use the roadless fallback and sit under
@@ -324,6 +352,7 @@ func finish_build(animate: bool) -> void:
 	# roads. The buildings that used to follow here are deferred until after the roads exist.
 	if (not loaded_pending or pending_start) and not pending_tutorial:
 		_place_northern_old_growth_forests()
+	_prof("old-growth forests")
 
 	# roads-v2: the predetermined river crossings must exist before any runtime
 	# routing — the realizer whitelists river cells near these gates, so without
@@ -332,6 +361,7 @@ func finish_build(animate: bool) -> void:
 	# river tiles), static for the match.
 	if not RoadCrossings.is_built():
 		RoadCrossings.build(terrain_layer)
+	_prof("road crossings")
 	# A loaded save restores its as-built network + work orders
 	# (SaveLoad.import_snapshot); anything else starts from the baked anchor
 	# spine (spec 4.5b). bootstrap_from_bake no-ops when edges were imported.
@@ -339,6 +369,7 @@ func finish_build(animate: bool) -> void:
 		RoadNetwork.reset()
 		RoadWorks.reset()
 	RoadNetwork.bootstrap_from_bake()
+	_prof("road bootstrap_from_bake")
 	# roads-v3: every tile the baked network crosses carries "roads" infrastructure
 	# from turn 0 (geometry == gameplay — anchors AND the corridor tiles a trunk
 	# passes through). Fresh start only; a loaded save restores its own flags.
@@ -367,17 +398,22 @@ func finish_build(animate: bool) -> void:
 		# BUILDINGS now — after the baked road network — so they lay out against real
 		# streets (NPC ports, the ruins, the start companies, + future player start builds).
 		await _place_npc_ports(animate)
+		_prof("place npc_ports")
 		# Tutorial keeps the ports (coast/docks) but drops the ruins + NPC start
 		# companies so the board is a clean slate around the seeded window factory.
 		if not pending_tutorial:
 			if MatchState.is_building_available("b_031"):
 				await _place_ruins("tile_23_16", animate)
 			await _place_start_buildings(animate)
+			_prof("place ruins+start buildings")
 		if pending_start:
 			await _place_pending_start_buildings(animate)
+			_prof("place pending_start buildings")
 		if bulk_place:
 			building_visuals.end_bulk()
 			forest_visuals.end_bulk()
+		_prof("end_bulk (coalesced redraw queued)")
+	_prof("pre-occupancy")
 	RoadWorks.rebuild_occupancy()   # no-op until OCCUPANCY_ROADS_ENABLED
 
 	# Port dockhouses: white harbour slabs + pier fingers on the sea edge of
@@ -387,6 +423,7 @@ func finish_build(animate: bool) -> void:
 	port_visuals.z_index = 60   # above hills/roads decoration, below UI
 	terrain_layer.add_child(port_visuals)
 	port_visuals.setup(terrain_layer)
+	_prof("port_visuals (harbour plan)")
 
 	# Parchment grain: one world-anchored multiply texture over the whole plate
 	# (terrain + roads + buildings; UI lives on CanvasLayers above and stays clean).
@@ -401,6 +438,7 @@ func finish_build(animate: bool) -> void:
 		pmax = pmax.max(pc)
 	# Pad well past the tile grid so the open sea at minimum zoom sits in the same paper.
 	parchment.setup(Rect2(pmin - Vector2(2400, 2400), (pmax - pmin) + Vector2(4800, 4800)))
+	_prof("parchment overlay")
 
 	# Re-gravitate every building once (deterministic, idempotent): a loaded save re-emitted its buildings
 	# before its imported road network was in hand, and this also re-fills the enclosure chunk grids now that
@@ -412,6 +450,7 @@ func finish_build(animate: bool) -> void:
 	# re-packed against it now.
 	if loaded_pending and not pending_start and building_visuals.has_method("relayout"):
 		building_visuals.relayout()
+	_prof("relayout (loaded save only)")
 
 	# Warm the Goods Graph layout under the loading screen so its first open is instant.
 	# The ~120 ms Sugiyama ordering + routing is deterministic (a pure function of the
@@ -420,18 +459,22 @@ func finish_build(animate: bool) -> void:
 	# re-paid on every open. Yield first so it lands on its own slice under the animation.
 	await _build_yield()
 	GoodsFlowGraphScript.build()
+	_prof("goods graph layout warm")
 	# Populate the good-icon cache from the medium loads kicked off at the top of the
 	# build. By now the workers have had the whole build to run, so this is mostly a
 	# cache scan; any straggler blocks briefly here (under the screen) rather than on open.
 	if _loading_screen_active():
 		GoodIconsScript.warm(Catalog.all_goods())
+		_prof("good icons warm join")
 		# Baked authored-map tiles the opening camera will see. Streaming loads the rest as it
 		# scrolls; paying for the first screenful here means play does not open on a burst of
 		# disk reads. No-op without a bake, and cheap (a handful of small textures).
 		await _build_yield()
 		_warm_authored_bake()
+		_prof("authored bake warm")
 
 	_audit_start_visuals()
+	_prof("audit_start_visuals")
 	build_complete = true   # the loading screen may now offer "Begin"
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", MatchState.buildings.size())

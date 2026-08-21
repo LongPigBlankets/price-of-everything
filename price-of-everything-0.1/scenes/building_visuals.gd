@@ -421,6 +421,26 @@ func all_farm_cluster_rings() -> Array:
 	return out
 
 
+## LOAD_PROF=1: accumulate per-stage placement wall costs across the whole start
+## build; end_bulk() dumps the table.
+static var _lp_on := OS.get_environment("LOAD_PROF") != ""
+static var _lp_acc: Dictionary = {}
+static func _lp_add(label: String, us: int) -> void:
+	var e: Array = _lp_acc.get(label, [0, 0])
+	e[0] += us
+	e[1] += 1
+	_lp_acc[label] = e
+static func _lp_dump() -> void:
+	if not _lp_on:
+		return
+	var keys := _lp_acc.keys()
+	keys.sort()
+	for k in keys:
+		var e: Array = _lp_acc[k]
+		print("LOADPROF-PLACE %-24s %8.1f ms total  n=%5d  avg %7.2f ms" % [k, e[0] / 1000.0, e[1], e[0] / 1000.0 / maxf(1.0, float(e[1]))])
+	_lp_acc.clear()
+
+
 func on_building_placed(tile_id: String, building_id: String, _recipe_id: String, instance_id: String, coord: Vector2i) -> void:
 	if NON_FOOTPRINT_IDS.has(building_id) or FOREST_BUILDING_IDS.has(building_id):
 		return  # roads/cables are networks; forests are drawn by ForestVisuals
@@ -447,8 +467,12 @@ func begin_bulk() -> void:
 
 func end_bulk() -> void:
 	_bulk = false
+	var _lpt := Time.get_ticks_usec()
 	for tid in _bulk_dirty_tiles:
 		_mark_subcomp_dirty(str(tid))
+	if _lp_on:
+		_lp_add("end_bulk_subcomp", Time.get_ticks_usec() - _lpt)
+		_lp_dump()
 	_bulk_dirty_tiles.clear()
 	_queue_footprint_change_notification()
 	queue_redraw()
@@ -486,7 +510,11 @@ func has_placement(instance_id: String) -> bool:
 ## neighbour, else low ground). Appends a placement (or nothing if the tile is full).
 
 func _place_building(instance_id: String, building_id: String, tile_id: String, coord: Vector2i) -> void:
+	var _lpt := Time.get_ticks_usec()
 	_ensure_tile(tile_id, coord)
+	if _lp_on:
+		_lp_add("ensure_tile", Time.get_ticks_usec() - _lpt)
+		_lpt = Time.get_ticks_usec()
 	var bd := Catalog.get_building(building_id)
 	var types: Array = bd.get("building_type", [])
 	# Recycling (internal_name ~ "recycl": b_036 recycling_plant + b_022 water_recycling)
@@ -517,6 +545,9 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	# this building is sited — so everything from here on has an interior frontage to
 	# face instead of drifting to the "any free cell" fallback in the tile's middle.
 	_ensure_service_lane(tile_id, coord, placed_here.size())
+	if _lp_on:
+		_lp_add("service_lane", Time.get_ticks_usec() - _lpt)
+		_lpt = Time.get_ticks_usec()
 
 	# Block-subdivision (seeded urban tiles): claim a lot first; the continuous packer is
 	# the fallback for every building the grid can't take (full / blocked). Edge-seekers
@@ -539,6 +570,9 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		var tmpl := _ensure_block_template(tile_id, coord)
 		if not tmpl.is_empty():
 			placed = _claim_slot(tmpl, size_units, coord, tile_id, placed_here, iname_lot)
+		if _lp_on:
+			_lp_add("block_template+claim", Time.get_ticks_usec() - _lpt)
+			_lpt = Time.get_ticks_usec()
 	if placed.is_empty() and not offshore:
 		# Art buildings front the road tightly (edge ~1u off the carriageway).
 		var rc := ART_ROAD_PAD if has_art else ROAD_CLEAR
@@ -559,6 +593,9 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 				if not placed.is_empty():
 					placed["shrink"] = shrink
 					break
+	if _lp_on:
+		_lp_add("search_pack", Time.get_ticks_usec() - _lpt)
+		_lpt = Time.get_ticks_usec()
 	if placed.is_empty():
 		return  # tile too crowded to fit it — not drawn rather than overlapping
 
@@ -605,6 +642,8 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	_placements.append(placement)
 	footprint_version += 1
 	_record_footprint_change(tile_id)
+	if _lp_on:
+		_lp_add("crop+evict+tail", Time.get_ticks_usec() - _lpt)
 
 ## True if this (urban) tile uses the slot-grid block mode. Seeded once per tile_id, cached.
 func _use_block_mode(tile_id: String, _coord: Vector2i) -> bool:
@@ -4684,6 +4723,14 @@ func remove_instance(instance_id: String) -> void:
 		queue_redraw()
 
 func _draw() -> void:
+	var _lpd := Time.get_ticks_usec()
+	_lp_draw_inner()
+	var _lpms := float(Time.get_ticks_usec() - _lpd) / 1000.0
+	if _lpms > 50.0 and OS.get_environment("LOAD_PROF") != "":
+		print("LOADPROF-DRAW %s %.0f ms   abs=%d" % [name, _lpms, Time.get_ticks_msec()])
+
+
+func _lp_draw_inner() -> void:
 	# The farm layer lives on a sibling canvas beneath the trees; keep it in step with
 	# this one (same frame's geometry, same _view for culling).
 	if _farm_underlay != null and is_instance_valid(_farm_underlay):

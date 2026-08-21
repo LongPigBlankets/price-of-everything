@@ -32,6 +32,8 @@ static var _warned := false
 static var _available := -1   # -1 unknown, 0 no, 1 yes
 ## Resolved texture cache, path -> Texture2D, trimmed to what the camera needs.
 static var _textures: Dictionary = {}
+static var _lp_load_us := 0
+static var _lp_load_n := 0
 
 
 ## The parsed manifest, or an empty dictionary when there is no bake.
@@ -122,7 +124,12 @@ static func texture_for(tile_id: String, layer: String) -> Texture2D:
 		_available = 0
 		_warn("AuthoredBake: %s is in the manifest but not loadable — falling back to vectors. Run `--headless --import`, or %s." % [path, REBAKE_HINT])
 		return null
+	var _lpt := Time.get_ticks_usec()
 	var texture: Texture2D = load(path)
+	_lp_load_us += Time.get_ticks_usec() - _lpt
+	_lp_load_n += 1
+	if _lp_load_n % 25 == 0 and OS.get_environment("LOAD_PROF") != "":
+		print("LOADPROF-BAKE %d textures loaded, %.0f ms total   abs=%d" % [_lp_load_n, _lp_load_us / 1000.0, Time.get_ticks_msec()])
 	_textures[path] = texture
 	return texture
 

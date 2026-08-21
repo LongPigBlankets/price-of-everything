@@ -61,6 +61,7 @@ func begin_load(scene_path: String) -> void:
 	# Let the loading screen actually paint before we touch the heavy load.
 	await get_tree().process_frame
 	await get_tree().process_frame
+	var _lp_t := Time.get_ticks_msec()
 	if ResourceLoader.load_threaded_request(scene_path) != OK:
 		get_tree().change_scene_to_file(scene_path)   # fallback: blocking load
 		return
@@ -69,6 +70,8 @@ func begin_load(scene_path: String) -> void:
 		var status := ResourceLoader.load_threaded_get_status(scene_path, progress)
 		if status == ResourceLoader.THREAD_LOAD_LOADED:
 			var packed: Variant = ResourceLoader.load_threaded_get(scene_path)
+			if OS.get_environment("LOAD_PROF") != "":
+				print("LOADPROF threaded scene load %d ms   abs=%d" % [Time.get_ticks_msec() - _lp_t, Time.get_ticks_msec()])
 			if packed is PackedScene:
 				get_tree().change_scene_to_packed(packed)
 			else:
