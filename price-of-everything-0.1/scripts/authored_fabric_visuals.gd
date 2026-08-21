@@ -118,6 +118,14 @@ func _draw() -> void:
 		for port_tile in harbour_keys:
 			AuthoredFabricPainter.draw_port_group(self, harbours[port_tile],
 				str(port_tile), _keep_out)
+			# Containers and cranes ride in the document with the quay they belong to, and
+			# draw over it — the planner stacks its own harbours the same way.
+			var decor: Array = []
+			for record in _list(settlement, "port_decor"):
+				if str(record.get("tile", "")) == str(port_tile):
+					decor.append(record)
+			if not decor.is_empty():
+				AuthoredFabricPainter.draw_port_decor(self, decor, _keep_out)
 	for settlement in ordered:
 		for area in _list(settlement, "forests"):
 			AuthoredFabricPainter.draw_forest(self, area)

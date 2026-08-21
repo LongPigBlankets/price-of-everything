@@ -16,6 +16,7 @@ const MidcenturyStyle := preload("res://scripts/map_midcentury_style.gd")
 const MassFormShapes := preload("res://scripts/mass_form_shapes.gd")
 const TreeShapesRef := preload("res://scripts/tree_shapes.gd")
 const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
+const InkBuildingGen := preload("res://scripts/ink_building_gen.gd")
 
 ## Nominal spacing between trees, world units — a JITTERED GRID rather than random points.
 ##
@@ -150,6 +151,78 @@ static func draw_port_group(canvas: CanvasItem, records: Array, tile_id: String,
 	for ring_value in merged_rings(pieces):
 		canvas.draw_polyline(_closed(ring_value as PackedVector2Array),
 			MidcenturyStyle.INK, 1.05, true)
+
+
+## The decoration that belongs to an imported harbour: container stacks and gantry cranes.
+##
+## It rides in the document beside the structure (`port_decor`) rather than being regenerated,
+## because the planner's own decoration is positioned from the seat it searched for — and that
+## seat moves with the player's buildings. Regenerating it against a hand-placed quay would put
+## the cranes somewhere else entirely. Moving the quay in the editor means moving these too;
+## they are ordinary records with ordinary coordinates.
+static func draw_port_decor(canvas: CanvasItem, records: Array, keep_out: Array = []) -> void:
+	for record_value in records:
+		var record: Dictionary = record_value
+		match str(record.get("kind", "")):
+			"container":
+				var poly := _points_of(record, "outline")
+				if poly.size() < 3:
+					continue
+				var index := RoadHash.pick("port|container|%s" % str(poly[0]),
+					InkBuildingGen.CONTAINER_COLS.size())
+				for piece_value in _subtract(poly, keep_out):
+					canvas.draw_colored_polygon(piece_value as PackedVector2Array,
+						InkBuildingGen.CONTAINER_COLS[index])
+			"crane":
+				_draw_crane(canvas, record)
+
+
+## One gantry crane: base block, rail across the quay, two legs, and the jib reaching over the
+## basin. Mirrors `port_visuals._draw_crane` — the planner's harbours and the authored ones must
+## put the same machine on the same quay.
+static func _draw_crane(canvas: CanvasItem, crane: Dictionary) -> void:
+	var position := _vector_of(crane.get("position", null))
+	var direction := _vector_of(crane.get("direction", null))
+	var cross := _vector_of(crane.get("cross", null))
+	var span := float(crane.get("gantry_span", 0.0))
+	var jib := float(crane.get("jib_length", 0.0))
+	if span <= 0.0 or jib <= 0.0:
+		return
+	var basin_direction := -cross if str(crane.get("arm", "")) == "left" else cross
+	var base := _points_of(crane, "base_polygon")
+	if base.size() >= 3:
+		var shadow := PackedVector2Array()
+		for point in base:
+			shadow.append(point + SHADOW_OFFSET)
+		canvas.draw_colored_polygon(shadow, MidcenturyStyle.SHADOW)
+		canvas.draw_colored_polygon(base, MidcenturyStyle.gameplay_block_top("mustard"))
+		canvas.draw_polyline(_closed(base), MidcenturyStyle.INK, 1.05, true)
+	var rail_a := position - cross * span * 0.5
+	var rail_b := position + cross * span * 0.5
+	canvas.draw_line(rail_a + SHADOW_OFFSET, rail_b + SHADOW_OFFSET,
+		Color(MidcenturyStyle.SHADOW, 0.72), 4.8, true)
+	canvas.draw_line(rail_a, rail_b, MidcenturyStyle.INK, 3.2, true)
+	for side in [-1.0, 1.0]:
+		var leg := position + cross * float(side) * span * 0.40
+		canvas.draw_circle(leg, 2.8, MidcenturyStyle.gameplay_block_top("mustard"))
+		canvas.draw_arc(leg, 2.8, 0.0, TAU, 12, MidcenturyStyle.INK, 1.1, true)
+	var jib_end := position + basin_direction * jib + direction * 4.0
+	canvas.draw_line(position + SHADOW_OFFSET, jib_end + SHADOW_OFFSET,
+		Color(MidcenturyStyle.SHADOW, 0.72), 4.6, true)
+	canvas.draw_line(position, jib_end, MidcenturyStyle.gameplay_block_top("mustard"), 3.0, true)
+	canvas.draw_line(position, jib_end, MidcenturyStyle.INK, 1.0, true)
+	canvas.draw_circle(jib_end, 2.1, MidcenturyStyle.INK)
+
+
+static func _points_of(record: Dictionary, key: String) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var value: Variant = record.get(key, [])
+	if typeof(value) != TYPE_ARRAY:
+		return out
+	for entry in (value as Array):
+		if typeof(entry) == TYPE_ARRAY and (entry as Array).size() >= 2:
+			out.append(Vector2(float((entry as Array)[0]), float((entry as Array)[1])))
+	return out
 
 
 ## Outer boundaries of a set of touching polygons, merged into as few rings as possible.
