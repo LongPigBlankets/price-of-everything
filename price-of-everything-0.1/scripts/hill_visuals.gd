@@ -141,7 +141,7 @@ func _style_key() -> String:
 ## the load path when the disk bake covers the opening view - world_map calls this once the
 ## match is running, so the first zoom-in has its meshes ready.
 func warm_meshes_deferred() -> void:
-	if _meshes_full_warm:
+	if _meshes_full_warm or not is_inside_tree():
 		return
 	_meshes_full_warm = true
 	await _warm_all_meshes()

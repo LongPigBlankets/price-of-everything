@@ -21,6 +21,12 @@ var _midcentury_plans: Array = []
 ## once and dropped: any later rebuild happens because a footprint on a port tile actually
 ## moved, which is exactly when a baked answer stops being the right one.
 var _baked_plans: Dictionary = {}
+## The footprint version the current plans were built against. A footprints_changed carrying
+## THIS version (or older) is not news — it is the state already planned for — and replanning
+## on it cost a full 3.3 s coastline search on every single load: the match-start restore
+## emits one change covering every tile it just placed, ports included, and it lands right
+## after setup() has planned against exactly that. -1 means nothing has been planned yet.
+var _planned_footprint_version := -1
 const BakeLayout := preload("res://scripts/authored_bake_layout.gd")
 
 ## How far the decorative fabric is cut back from a harbour. Defined in `authored_bake_layout`
@@ -93,10 +99,12 @@ func export_plans() -> Dictionary:
 	return out
 
 
-func _on_footprints_changed(_version: int, affected_tile_ids: Array) -> void:
+func _on_footprints_changed(version: int, affected_tile_ids: Array) -> void:
 	# Ports are fixed coastal geometry; the 4-port planner costs ~15-20s to re-run. Only replan
 	# when a PORT tile's footprint actually changes — not when a mine/furnace lands elsewhere,
 	# which was re-triggering the whole planner on every 'order from market' (owner lag, 2026-08-19).
+	if version <= _planned_footprint_version:
+		return   # already planned against this exact state (see _planned_footprint_version)
 	if not _footprints_touch_a_port(affected_tile_ids):
 		return
 	_queue_plan_rebuild()
@@ -156,6 +164,7 @@ func _rebuild_midcentury_plans() -> void:
 		if not plan.is_empty() and bool(plan.get("valid", false)):
 			_midcentury_plans.append(plan)
 	_baked_plans.clear()   # consumed: a later rebuild means something actually moved
+	_planned_footprint_version = int(source.get("footprint_version")) if source != null else -1
 	_clear_authored_fabric_under_ports()
 	queue_redraw()
 

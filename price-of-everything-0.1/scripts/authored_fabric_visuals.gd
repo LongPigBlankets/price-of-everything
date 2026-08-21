@@ -261,13 +261,26 @@ func _repair_evicted_tiles() -> void:
 	queue_redraw()
 
 
+## True while any tile whose decorative masses were demolished is still waiting to be re-rendered
+## without them. world_map waits on this before revealing the map, so the first frame the player
+## sees is already the repaired one.
+func has_pending_repairs() -> bool:
+	return _repair_running or not _dirty_tiles.is_empty()
+
+
 ## Baked mode streams by camera, so the layer has to notice the camera moving. Costs one rect
 ## compare per frame when a bake is present, and nothing at all when it isn't.
 func _process(_delta: float) -> void:
-	if not visible or not AuthoredBake.is_available():
+	if not AuthoredBake.is_available():
 		return
+	# The repair renders into its OWN SubViewport, so it does not need this layer to be on
+	# screen — and it must not wait for that. The loading screen hides the world for the length
+	# of the build, and a repair that only started at the reveal would show the player a few
+	# frames of town standing where a factory has just been built, then pop.
 	if not _dirty_tiles.is_empty():
 		_repair_evicted_tiles()
+	if not visible:
+		return
 	var view := AuthoredBake.visible_world_rect(self, STREAM_MARGIN)
 	if view != _view_rect:
 		_view_rect = view

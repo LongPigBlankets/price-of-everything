@@ -1,8 +1,8 @@
 # Load time: what is baked, and when to re-bake it
 
-A new game used to take **100 s** to reach the "Begin" button. It now takes about **19 s**, and
-the worst single frozen frame went from 12.3 s to roughly 2 s. Nothing about the map changed:
-the same 417 buildings stand in the same places, byte for byte.
+A new game used to take **100 s** to reach the "Begin" button. It now takes about **10.5 s**,
+and the worst single frozen frame went from 12.3 s to 1.2 s. Nothing about the map changed: the
+same 417 buildings stand in the same places, byte for byte.
 
 This is the operator's page for the three bakes that got it there. If you edit the map and the
 game suddenly feels slow again, the answer is on this page.
@@ -18,16 +18,26 @@ Measured with `LOAD_PROF=1` and `tools/frame_anatomy_watcher.gd` (Windows, GL Co
 | Rendering the world under an opaque loading screen | ~52 % of all wall clock | 0 |
 | `HillVisuals` cold draw (one frame) | 8.9 s | 0 |
 | Hill far-zoom texture render | ~5 s | 0 (off disk) |
-| Start-building placement | 55 s | 10 ms |
-| Harbour (`MidcenturyPortPlan`) search | 3.3 s | 2 ms |
+| Start-building placement | 55 s | 8 ms |
+| Harbour (`MidcenturyPortPlan`) search, first pass | 3.3 s | 3 ms |
+| Harbour search, redundant SECOND pass | 3.3 s | 0 |
 | Tile panel + building detail panel | 1.1 s | after "Begin" |
 | Goods Graph layout | 0.24 s | first open |
 
-Two findings drove all of it. **Half the load was drawing a map nobody could see** — the loading
-screen is opaque, but the renderer kept submitting the whole plate every frame at 9.5–17k draw
-calls. And **the expensive half of placement was the visual half**: `MatchState.add_building`
-for all 417 start buildings measures 4.5 ms; the search for where to put them was 32.5 s, plus
-the ~22 s of yielded frames that searching forced.
+Three findings drove all of it.
+
+**Half the load was drawing a map nobody could see.** The loading screen is opaque, but the
+renderer kept submitting the whole plate every frame at 9.5–17k draw calls.
+
+**The expensive half of placement was the visual half.** `MatchState.add_building` for all 417
+start buildings measures 4.5 ms; the search for where to put them was 32.5 s, plus the ~22 s of
+yielded frames that searching forced.
+
+**The harbour planner ran twice.** `PortVisuals.setup()` plans, and then the single
+`footprints_changed` that `end_bulk` emits for the whole match-start placement — ports included
+— arrived a moment later and triggered a full replan against the state just planned for. That
+was 3.3 s on every load, before this work and unrelated to it. `_planned_footprint_version` now
+makes the layer ignore a change notification carrying a version it has already planned against.
 
 ---
 
@@ -131,17 +141,31 @@ see the header of `tools/frame_anatomy_watcher.gd`, and mind the two traps recor
 
 ---
 
-## 6. What is left, in order
+## 6. Where the remaining 10.5 s goes
 
-1. **Authored-map textures are ~10× oversampled at the opening zoom.** 209 tiles at 540×640 RGBA
-   is ~289 MB; the full-map opening view warms about 150 of them (~207 MB) and pays the GPU
-   upload on the first frame after the reveal — the 2–6 s "reveal warm", which is spent under the
-   plate and so is invisible, but is now the largest single item. Each of those tiles covers
-   roughly 60×55 px at that zoom. A quarter-resolution second layer in the same manifest would
-   cut it about 16× and look identical.
-2. **The loading screen costs 45–85 ms a frame on its own** — the hex lattice is ~1,832 draw
-   calls, redrawn every frame. With the world hidden it is now the only thing rendering, so it
-   sets the floor for every frame the build yields. A film would replace it with one draw call.
-3. **`main.tscn` takes ~6.5 s to load on the worker thread** and ~1.7 s to instantiate on the main
-   one. The worker half is covered by the loading screen; the instantiate is a real stall and is
-   the one thing that must not land under a playing video.
+| | |
+|---|---:|
+| `main.tscn` load, on a worker thread | 5.2 s |
+| Scene instantiation, main thread — **a real stall** | ~1.0 s |
+| HUD scaffold (`_build_base`) | 0.7 s |
+| Seeds, roads, layout restore, ports | 0.8 s |
+| `_warm_authored_bake` (150 baked tile textures, disk) | 0.8 s |
+| Reveal: first paint of the world | 1.2 s |
+| Reveal: three more warm frames at ~190 ms | 0.6 s |
+
+## 7. What is left, in order
+
+1. **`main.tscn` takes 5.2 s to load and ~1 s to instantiate.** The load is on a worker thread and
+   a film would cover it; the instantiate is a genuine main-thread stall and is the one thing that
+   must not land under a playing video. Start the film before it, or hold a still frame across it.
+2. **The full-map view costs ~190 ms a frame at 26.5k draw calls** — about 5 fps. This is the
+   opening camera position, so it is the first thing a player sees moving. It is a play-time
+   frame-budget problem as much as a load one; the buildings' zoom-out LOD is the lever
+   (see `building-visuals-lod`).
+3. **The loading screen costs 35–85 ms a frame on its own** — the hex lattice is ~1,832 draw calls,
+   redrawn every frame. With the world hidden it is now the only thing rendering, so it sets the
+   floor for every frame the build yields. A film would replace it with one draw call.
+4. **Authored-map textures are ~10× oversampled at the opening zoom.** 209 tiles at 540×640 RGBA is
+   ~289 MB of VRAM if it were all resident. Not a load-time problem any more (the disk read is
+   0.8 s and the upload turned out not to be the reveal cost), but a quarter-resolution second
+   layer in the same manifest would cut the resident set about 16× and look identical that far out.

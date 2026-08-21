@@ -632,17 +632,34 @@ func _hide_world_for_load() -> void:
 ## switching to their far-zoom LOD), and it must be spent HERE, not on the fade-out.
 const REVEAL_WARM_FRAMES := 4
 
+## Frames the reveal will wait for the fabric layer to finish re-rendering the tiles whose
+## decorative masses a building demolished. One tile per frame; a cap so a stuck repair delays
+## the match rather than stopping it.
+const REPAIR_WAIT_FRAMES := 180
+
 func _reveal_world_for_play() -> void:
 	if _hidden_for_load.is_empty():
 		return
+	# Those repairs run while the world is hidden (see authored_fabric_visuals._process), but
+	# they are paced one tile a frame, so a fast build can reach here before they finish.
+	var fabric := get_tree().get_first_node_in_group("authored_fabric")
+	if fabric != null and fabric.has_method("has_pending_repairs"):
+		var waited := 0
+		while bool(fabric.call("has_pending_repairs")) and waited < REPAIR_WAIT_FRAMES:
+			waited += 1
+			await get_tree().process_frame
+		if waited > 0:
+			_prof_total("waited for fabric repairs (frames)", waited * 1000)
 	for layer in _hidden_for_load:
 		if is_instance_valid(layer):
 			layer.visible = true
 			layer.queue_redraw()   # a redraw queued while hidden must not be lost
 	_hidden_for_load.clear()
 	_prof("world revealed")
-	for _i in REVEAL_WARM_FRAMES:
+	for i in REVEAL_WARM_FRAMES:
+		var t := Time.get_ticks_usec()
 		await get_tree().process_frame
+		_prof_us("  reveal frame %d (draws=%d)" % [i, int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))], t)
 	_prof("reveal warm frames")
 
 
@@ -655,15 +672,23 @@ func _reveal_world_for_play() -> void:
 func _warm_deferred_ui() -> void:
 	if not _loading_screen_active():
 		return   # tests / e2e / tools: leave the lazy accessors to do it on demand
+	# Every step below yields, and this runs at the very end of the build — where a harness
+	# (or a player pressing alt-F4 on the Begin plate) can tear the tree down underneath it.
 	await get_tree().process_frame
+	if not is_inside_tree():
+		return
 	var t := Time.get_ticks_usec()
 	_build_info_panel()
 	_prof_us("warm tile info panel", t)
 	await get_tree().process_frame
+	if not is_inside_tree():
+		return
 	t = Time.get_ticks_usec()
 	_build_building_panel_v2()
 	_prof_us("warm building detail v2", t)
 	await get_tree().process_frame
+	if not is_inside_tree():
+		return
 	t = Time.get_ticks_usec()
 	GoodsFlowGraphScript.build()
 	_prof_us("warm goods graph layout", t)
@@ -674,6 +699,8 @@ func _warm_deferred_ui() -> void:
 	# the baked far-zoom texture, so this is not needed to start a match — only to keep the
 	# first zoom-in smooth. It paces itself across frames (LoadPacing.bg_yield).
 	await get_tree().process_frame
+	if not is_inside_tree():
+		return
 	var hills := get_node_or_null("HillVisuals")
 	if hills != null and hills.has_method("warm_meshes_deferred"):
 		t = Time.get_ticks_usec()

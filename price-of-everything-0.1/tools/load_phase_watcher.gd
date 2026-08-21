@@ -45,7 +45,14 @@ func _process(_d: float) -> void:
 			for c in get_tree().root.get_children():
 				if c is LoadingScreen:
 					c.visible = false
-			for _i in 6:
+			# LAYOUT_SHOT_FRAMES raises the settle time before the grab. The default is
+			# enough for a finished world; raise it when comparing against a path that is
+			# still catching up on paced background work (e.g. the fabric's evicted-tile
+			# repair, one tile a frame).
+			var settle := 6
+			if OS.get_environment("LAYOUT_SHOT_FRAMES") != "":
+				settle = int(OS.get_environment("LAYOUT_SHOT_FRAMES"))
+			for _i in settle:
 				await get_tree().process_frame
 			get_viewport().get_texture().get_image().save_png(shot_path)
 			print("PHASE layout shot -> %s" % shot_path)
