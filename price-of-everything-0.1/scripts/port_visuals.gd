@@ -11,6 +11,9 @@ const THICKNESS_FRAC := 0.09
 const LENGTH_FRAC := 0.52      # dockhouse length along the shore, in tile heights
 const PIER_LEN_FRAC := 0.30    # how far the pier fingers reach into the sea
 const PIER_COUNT := 3
+## Breakwater arms: poured concrete, a shade cooler and greyer than the timber decks
+## (Color("c8b890")) so the two structures stay legible where an arm meets a quay.
+const ARM_COLOR := Color("b9ad93")
 
 var _glyphs: Array = []   # [{pos: Vector2, angle: float, tile_h: float}]
 var _hex_map: TileMapLayer = null
@@ -112,9 +115,18 @@ func _rebuild_midcentury_plans() -> void:
 	queue_redraw()
 
 func _draw() -> void:
-	if MapStyle.is_midcentury():
+	# THE PLAN IS THE PORT. When the coastline planner has produced a valid harbour it is
+	# drawn in every style, not just under the midcentury toggle. The plan was already being
+	# computed on every load regardless of style (setup -> _rebuild_midcentury_plans), and
+	# nothing in the shipped game ever turns midcentury ON — only a debug cheat does — so the
+	# two arms, the basin and the quay were being paid for and then thrown away, while the
+	# player saw the older pier-fingers glyph. The map's fabric is already drawn from the
+	# midcentury palette (the authored document), so the harbour now matches its town.
+	if not _midcentury_plans.is_empty():
 		_draw_midcentury_ports()
 		return
+	if MapStyle.is_midcentury():
+		return   # midcentury with no valid plan: draw nothing rather than a foreign glyph
 	if MapStyle.uses_ink_linework():
 		# Ink mode: the shape-language port (quay spine + warehouses +
 		# container stacks + plank piers + jib cranes), world-lit like every
@@ -172,6 +184,18 @@ func _draw_midcentury_ports() -> void:
 		for poly_value in plan.apron_polygons:
 			_draw_filled_poly(poly_value,
 				MapMidcenturyStyle.industrial_yard("%s|land" % str(plan.key)))
+		# THE TWO ARMS. Parallel moles reaching seaward off the apron, one per side, enclosing
+		# the basin — the thing that makes this read as a harbour rather than a wharf. Drawn
+		# before the decks so a deck sitting on an arm root reads as built ON it, and shadowed
+		# like every other raised structure so they sit above the water rather than in it.
+		for poly_value in plan.left_arm_polygons:
+			_draw_shadow(poly_value)
+		for poly_value in plan.right_arm_polygons:
+			_draw_shadow(poly_value)
+		for poly_value in plan.left_arm_polygons:
+			_draw_filled_poly(poly_value, ARM_COLOR)
+		for poly_value in plan.right_arm_polygons:
+			_draw_filled_poly(poly_value, ARM_COLOR)
 		for poly_value in plan.deck_polygons:
 			_draw_shadow(poly_value)
 		for poly_value in plan.deck_polygons:

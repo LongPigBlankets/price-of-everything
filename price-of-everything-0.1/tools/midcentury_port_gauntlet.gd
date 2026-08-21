@@ -14,8 +14,14 @@ var _camera: Camera2D
 var _ports: Node2D
 var _buildings: Node
 var _diagnostic := false
+## Where captures go. `/tmp` does not exist on Windows, so the default is a path that is
+## writable on every platform; `--out=<prefix>` overrides it.
+var _out_prefix := "user://poe_port_"
 
 func _ready() -> void:
+	for argument in OS.get_cmdline_user_args():
+		if str(argument).begins_with("--out="):
+			_out_prefix = str(argument).substr(6)
 	get_viewport().set_disable_input(true)
 	z_index = 1000
 	_game = (load("res://scenes/main.tscn") as PackedScene).instantiate()
@@ -53,11 +59,11 @@ func _ready() -> void:
 			failures.append("%s has no valid plan" % str(spec.tile_id))
 			continue
 		await _capture(plan.position, 1.42,
-			"/tmp/poe_port_%s.png" % str(spec.name))
+			"%s%s.png" % [_out_prefix, str(spec.name)])
 		_diagnostic = true
 		_ports.set_diagnostic_overlay(true)
 		await _capture(plan.position, 1.42,
-			"/tmp/poe_port_%s_diagnostic.png" % str(spec.name))
+			"%s%s_diagnostic.png" % [_out_prefix, str(spec.name)])
 		_diagnostic = false
 		_ports.set_diagnostic_overlay(false)
 		var audit := _audit(plan)
@@ -66,7 +72,7 @@ func _ready() -> void:
 	if not plans.is_empty():
 		var first: Dictionary = plans[0]
 		await _capture(first.position - first.seaward * 105.0, 0.78,
-			"/tmp/poe_port_context.png", Vector2i(1100, 650))
+			"%scontext.png" % _out_prefix, Vector2i(1100, 650))
 	var collision := _port_decorative_collision(plans)
 	if int(collision.overlap_count) != 0:
 		failures.append("decorative/park geometry overlaps port envelopes")
@@ -78,7 +84,7 @@ func _ready() -> void:
 		"failures": failures,
 		"hard_gate_passes": plans.size() == 4 and failures.is_empty(),
 	}
-	var out := FileAccess.open("/tmp/poe_port_metrics.json", FileAccess.WRITE)
+	var out := FileAccess.open("%smetrics.json" % _out_prefix, FileAccess.WRITE)
 	if out != null:
 		out.store_string(JSON.stringify(result, "  "))
 		out.close()
@@ -221,8 +227,8 @@ func _capture(position: Vector2, zoom: float, path: String,
 		mini(size.y, image.get_height()))
 	var origin := Vector2i((image.get_width() - crop_size.x) / 2,
 		(image.get_height() - crop_size.y) / 2)
-	image.get_region(Rect2i(origin, crop_size)).save_png(path)
-	print("[PORT GAUNTLET] %s" % path)
+	var err := image.get_region(Rect2i(origin, crop_size)).save_png(path)
+	print("[PORT GAUNTLET] %s%s" % [path, "" if err == OK else "  !! WRITE FAILED (%d)" % err])
 
 func _overlap_area(a: PackedVector2Array, b: PackedVector2Array) -> float:
 	var area := 0.0
