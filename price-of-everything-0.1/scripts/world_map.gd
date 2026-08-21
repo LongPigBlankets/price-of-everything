@@ -53,6 +53,7 @@ const GoodsGraphViewScript := preload("res://scripts/goods_graph_view.gd")
 const GoodsFlowGraphScript := preload("res://scripts/goods_flow_graph.gd")
 const GoodIconsScript := preload("res://scripts/good_icons.gd")
 const AuthoredBakeScript := preload("res://scripts/authored_bake.gd")
+const StartLayoutBakedScript := preload("res://scripts/start_layout_baked.gd")
 ## How far past the opening view to preload baked tiles, world units — two tiles of slack so
 ## the first pan does not have to hit the disk.
 const WARM_MARGIN := 1000.0
@@ -411,6 +412,13 @@ func finish_build(animate: bool) -> void:
 		if bulk_place:
 			building_visuals.begin_bulk()
 			forest_visuals.begin_bulk()
+		# THE START LAYOUT COMES OFF DISK. Every emit below still runs — the sim half of a
+		# start building is 4.5 ms for the whole set, and the passes stay the single source of
+		# truth for WHAT gets placed — but BuildingVisuals answers each one from the bake
+		# instead of searching the tile for a spot it has already found on every previous run.
+		# A building the bake does not hold is laid out live against the baked world;
+		# reconcile below removes any the bake holds that this match never emitted.
+		_install_baked_layout()
 		_place_slice_t0 = Time.get_ticks_msec()
 		# BUILDINGS now — after the baked road network — so they lay out against real
 		# streets (NPC ports, the ruins, the start companies, + future player start builds).
@@ -428,6 +436,9 @@ func finish_build(animate: bool) -> void:
 		if pending_start:
 			await _place_pending_start_buildings(animate)
 			_prof("place pending_start buildings")
+		var dropped: int = building_visuals.reconcile_baked_layout()
+		if dropped > 0:
+			print("StartLayout: dropped %d baked placement(s) this match does not emit" % dropped)
 		if bulk_place:
 			building_visuals.end_bulk()
 			forest_visuals.end_bulk()
@@ -547,6 +558,23 @@ func _warm_authored_bake() -> void:
 	var warmed := AuthoredBakeScript.warm(AuthoredBakeScript.tiles_in_rect(view).keys())
 	if warmed > 0:
 		print("AuthoredBake: warmed %d texture(s) for the opening view" % warmed)
+
+
+## Install the baked start layout, if there is a usable one. Skipped entirely when
+## NO_LAYOUT_BAKE is set in the environment — that is how the bake tool (and an A/B check)
+## forces the live placement path in a build that would otherwise restore.
+func _install_baked_layout() -> void:
+	if OS.get_environment("NO_LAYOUT_BAKE") != "":
+		print("StartLayout: NO_LAYOUT_BAKE set — placing live.")
+		return
+	var t := Time.get_ticks_usec()
+	var baked := StartLayoutBakedScript.layout()
+	if baked.is_empty():
+		return
+	if not building_visuals.import_layout_state(baked):
+		return
+	_prof_us("baked start layout restored", t)
+	print("StartLayout: restored %d baked placement(s)" % (baked.get("owned", {}) as Dictionary).size())
 
 
 # ── The world is not rendered while the loading screen covers it ───────────────
