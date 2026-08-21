@@ -31,6 +31,8 @@ const CULL_MARGIN := 320.0   # world units; keep partially-visible polys
 const RELIEF_SHOULDER_HALF_WIDTH := 4.0
 const RELIEF_MATERIAL_MIN_AREA := 1450.0
 
+const HillTextureBaked := preload("res://scripts/hill_texture_baked.gd")
+
 enum { MODE_TEXTURE, MODE_VECTOR }
 
 var _polys: Array = []
@@ -62,7 +64,8 @@ var _bake_deferred := false   # the far-zoom texture bake is pending; built lazi
 var _bake_in_progress := false
 var _bake_generation := 0
 var _completed_bake_generation := -1
-var _meshes_warm := false     # _warm_all_meshes() done → the cached-mesh vector LOD is usable
+var _meshes_warm := false     # the cached-mesh vector LOD is usable
+var _meshes_full_warm := false  # every contour pre-triangulated (warm_meshes_deferred)
 # Water-lining polylines: the COAST_BAND polys offset seaward per MapStyle
 # tier, cached once (style-independent geometry; only ink mode draws them).
 # Entries: {src: int (index into _sea), tier: int, pts: PackedVector2Array (closed)}.
@@ -83,14 +86,30 @@ func _ready() -> void:
 	_sea_bb = _bboxes(_sea, true)
 	_lake_bb = _bboxes(_lakes, false)
 	_bake_rect = _compute_bounds()
-	await _warm_all_meshes()   # triangulate every contour ONCE (spread across frames during a bg build)
-	_meshes_warm = true        # the vector LOD can now draw cached meshes (no bake needed for it)
-	queue_redraw()
-	# The far-zoom texture LOD's bake is a big one-frame GPU render of every hill. Build it LAZILY
-	# the first time a zoomed-out view actually needs it (see _process), never during the load — so
-	# it can't freeze the loading screen. Headless has no GPU; it draws polys directly.
-	if DisplayServer.get_name() != "headless":
-		_bake_deferred = true
+	# THE FAR-ZOOM TEXTURE COMES OFF DISK. It is a picture of data that cannot change during
+	# a match (baked contours, fixed palette), so rendering it at every single game start - a
+	# ~5 s one-frame SubViewport pass over ~1,300 contours - was paying, every load, for a
+	# result identical every time. tools/bake_hill_texture.tscn renders it once; this loads
+	# it. A missing or stale bake falls back to the live render below, so the picture is
+	# never wrong, only slower to arrive.
+	_baked_tex = HillTextureBaked.texture(_style_key(), _bake_rect)
+	if _baked_tex != null:
+		# _draw_fill builds its meshes on demand, so the zoomed-in LOD is usable immediately:
+		# the pre-warm is an optimisation, not a prerequisite, and it is not worth ~2 s of
+		# every load for contours the opening view never draws. world_map warms them once the
+		# match is running instead (warm_meshes_deferred).
+		_meshes_warm = true
+		_mode = MODE_TEXTURE
+		queue_redraw()
+	else:
+		await _warm_all_meshes()   # triangulate every contour ONCE (spread across frames during a bg build)
+		_meshes_warm = true        # the vector LOD can now draw cached meshes (no bake needed for it)
+		queue_redraw()
+		# No disk bake: build the far-zoom texture LAZILY on the first zoomed-out view (see
+		# _process), never inline here, so it cannot freeze the loading screen. Headless has no
+		# GPU; it draws polys directly.
+		if DisplayServer.get_name() != "headless":
+			_bake_deferred = true
 
 ## 'toggle ink': colors are read from MapStyle at draw time, so the vector LOD
 ## re-tints on the next redraw; the far-zoom texture is stale the moment the
@@ -100,9 +119,32 @@ func _on_style_changed() -> void:
 	_baked_tex = null
 	_completed_bake_generation = -1
 	_mode = MODE_VECTOR
-	if DisplayServer.get_name() != "headless":
+	# The disk bake is palette-specific. If the style just moved to is the one it was baked
+	# in (the normal case - something toggled back), take it off disk again rather than
+	# re-rendering the whole map; otherwise fall back to the live bake.
+	_baked_tex = HillTextureBaked.texture(_style_key(), _bake_rect)
+	if _baked_tex != null:
+		_completed_bake_generation = _bake_generation
+		_mode = MODE_TEXTURE
+	elif DisplayServer.get_name() != "headless":
 		_bake_deferred = true
 	queue_redraw()
+
+
+## Which palette the far-zoom texture is drawn in. The bake is only valid for the style it
+## was rendered in, so this string is stored beside it and compared on load.
+func _style_key() -> String:
+	return HillTextureBaked.style_key(MapStyle.ink, MapStyle.plate, MapStyle.is_midcentury())
+
+
+## Triangulate every contour up front. Optional (see _draw_fill), and deliberately kept OFF
+## the load path when the disk bake covers the opening view - world_map calls this once the
+## match is running, so the first zoom-in has its meshes ready.
+func warm_meshes_deferred() -> void:
+	if _meshes_full_warm:
+		return
+	_meshes_full_warm = true
+	await _warm_all_meshes()
 
 ## Exact, read-only land-relief geometry for draw-only planning layers.
 ##
@@ -382,16 +424,18 @@ func _compute_bounds() -> Rect2:
 
 ## Render every contour into an off-screen SubViewport once, copy it into a
 ## standalone ImageTexture, then free the viewport.
-func _bake_to_texture(generation: int) -> void:
+## Render every contour into ONE image at BAKE_LONG_SIDE, through a SubViewport.
+## Shared by the live fallback bake below and the OFFLINE bake
+## (tools/bake_hill_texture.tscn) so the two can never drift apart: same painter,
+## same scale, same palette, same pixels. Needs a real renderer - returns null
+## headless. The caller owns the returned Image.
+func render_bake_image() -> Image:
 	var size := _bake_rect.size
 	if size.x <= 0.0 or size.y <= 0.0:
-		_bake_in_progress = false
-		return
+		return null
 	var scale: float = BAKE_LONG_SIDE / maxf(size.x, size.y)
-	var tex_w := int(ceil(size.x * scale))
-	var tex_h := int(ceil(size.y * scale))
 	var vp := SubViewport.new()
-	vp.size = Vector2i(tex_w, tex_h)
+	vp.size = Vector2i(int(ceil(size.x * scale)), int(ceil(size.y * scale)))
 	vp.transparent_bg = true
 	vp.disable_3d = true
 	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
@@ -407,10 +451,18 @@ func _bake_to_texture(generation: int) -> void:
 	await get_tree().process_frame
 	await RenderingServer.frame_post_draw
 	var img := vp.get_texture().get_image()
+	vp.queue_free()
+	return img
+
+
+## LIVE fallback bake: only reached when the offline bake is missing or stale, or when
+## the `toggle ink` cheat has moved the palette out from under it. A big one-frame GPU
+## render of the whole map - which is exactly why the shipped path loads it from disk.
+func _bake_to_texture(generation: int) -> void:
+	var img: Image = await render_bake_image()
 	if generation == _bake_generation and img != null and not img.is_empty():
 		_baked_tex = ImageTexture.create_from_image(img)
 		_completed_bake_generation = generation
-	vp.queue_free()
 	_bake_in_progress = false
 	queue_redraw()
 

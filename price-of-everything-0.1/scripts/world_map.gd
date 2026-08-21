@@ -2,12 +2,27 @@ extends Node2D
 
 @onready var terrain_layer: HexMap = %TerrainLayer
 @onready var building_panel: PanelContainer = %BuildingDetailPanel
-## Redesigned Building Detail v2 — code-instantiated in _build_base, toggled by `swap bdp`.
-var building_panel_v2: PanelContainer = null
+## Redesigned Building Detail v2 — toggled by `swap bdp`. Built ON FIRST USE, not during
+## the load: a 2,400-line panel whose shell cost ~330 ms of the build to construct something
+## the player cannot see until they click a building. Read it through the
+## `building_panel_v2` property, which builds it; test whether it EXISTS with `_bdp_v2`.
+var _bdp_v2: PanelContainer = null
+var building_panel_v2: PanelContainer:
+	get:
+		if _bdp_v2 == null:
+			_build_building_panel_v2()
+		return _bdp_v2
 ## The building most recently shown in the detail panel, kept so a live v1↔v2 swap re-renders it.
 var _last_detail_building: Dictionary = {}
-## The tabbed Tile View Panel, instantiated in code in _ready.
-var info_panel: PanelContainer = null
+## The tabbed Tile View Panel. Built ON FIRST USE (same reasoning as the detail panel
+## above: ~740 ms of the load for a panel nobody sees until they click a tile). Read it
+## through the property; test for existence with `_info_panel`.
+var _info_panel: PanelContainer = null
+var info_panel: PanelContainer:
+	get:
+		if _info_panel == null:
+			_build_info_panel()
+		return _info_panel
 ## The most recently selected tile, kept so a live TVP swap can re-render it.
 var _last_selected_tile: Dictionary = {}
 ## True while the v2 stockpile "Move/Sell" flow is picking a destination tile.
@@ -118,6 +133,15 @@ var build_complete := false
 ## other watchers can be correlated). Zero cost when the env var is unset.
 var _prof_t0 := 0
 var _prof_last := 0
+## Wall cost of ONE call, in isolation. _prof measures the gap between marks, which
+## includes any frame awaited in between — fine for phases, misleading for a single
+## synchronous call sitting after a yield.
+func _prof_us(label: String, t0_us: int) -> void:
+	if OS.get_environment("LOAD_PROF") == "":
+		return
+	print("LOADPROF-CALL %-30s %8.1f ms" % [label, float(Time.get_ticks_usec() - t0_us) / 1000.0])
+
+
 func _prof(label: String) -> void:
 	if OS.get_environment("LOAD_PROF") == "":
 		return
@@ -131,12 +155,17 @@ func _prof(label: String) -> void:
 
 func _ready() -> void:
 	_prof("world_map._ready enter")
+	# Nothing the build produces is visible until "Begin" is pressed — the loading screen
+	# is opaque and covers the window — but the renderer does not know that, and was
+	# submitting the whole map every frame for the length of the build. See _hide_world_for_load.
+	_hide_world_for_load()
 	# Advisor agenda: any building placement/completion counts as "a building built".
 	building_placed.connect(func(_t: String, _b: String, _r: String, _i: String, _c: Vector2i) -> void:
 		MatchState.note_building_built())
 	if not MatchState.advisor_walked.is_connected(_on_advisor_walked):
 		MatchState.advisor_walked.connect(_on_advisor_walked)
 	await _build_base()
+	_hide_world_for_load()   # _build_base parents a couple of effect layers onto us
 	_prof("_build_base (HUD scaffold)")
 	# A fresh new game with a loading screen up animates its build (it yields between steps to keep
 	# the loading animation live); tests / e2e / load-game (no loading screen) build synchronously.
@@ -244,16 +273,8 @@ func _build_base() -> void:
 
 	# Building Detail v2 — the default panel since Phase 3 (MatchState.use_bdp_v2, default true).
 	# The classic v1 panel (%BuildingDetailPanel) stays as a fallback, reachable via `swap bdp`.
-	# See docs/building-detail-v2-plan.md.
-	building_panel_v2 = load("res://scripts/building_detail_panel_v2.gd").new()
-	building_panel_v2.name = "BuildingDetailPanelV2"
-	hud_content.add_child(building_panel_v2)
-	building_panel_v2.hide()
-	building_panel_v2.building_connections_changed.connect(
-		building_connection_visuals.on_building_connections_changed
-	)
+	# See docs/building-detail-v2-plan.md. BUILT LAZILY — see _build_building_panel_v2.
 	MatchState.bdp_v2_changed.connect(_on_bdp_v2_changed)
-	_prof("base: building detail v2")
 
 	# Capacity dialog: prompts the player when a tile first hits max storage.
 	_hud.add_child(load("res://scripts/capacity_dialog.gd").new())
@@ -276,15 +297,9 @@ func _build_base() -> void:
 	# Research unlocks no longer pop a dialog — they are aggregated into a single
 	# Turn Briefing "Research unlocked" update (see turn_briefing._research_aggregate_item).
 
-	# The tabbed Tile View Panel; built in code, lives under HUDContent. Named
-	# "TileInfoPanel" so building_detail_panel's panel-stacking lookups find it.
-	info_panel = load("res://scripts/tile_info_panel_v2.gd").new()
-	info_panel.name = "TileInfoPanel"
-	hud_content.add_child(info_panel)
-	info_panel.building_clicked.connect(_on_v2_building_clicked)
-	info_panel.pick_destination_requested.connect(_on_v2_pick_destination)
-	info_panel.survey_requested.connect(_on_survey_tile_clicked)
-	_prof("base: tile info panel")
+	# The tabbed Tile View Panel lives under HUDContent, named "TileInfoPanel" so
+	# building_detail_panel's panel-stacking lookups find it. BUILT LAZILY — see
+	# _build_info_panel.
 
 	# Debug cheat terminal (toggle with the ` key)
 	add_child(load("res://scripts/debug_terminal.gd").new())
@@ -360,7 +375,9 @@ func finish_build(animate: bool) -> void:
 	# debug cheats, so river roads silently failed in normal play). Cheap (~123
 	# river tiles), static for the match.
 	if not RoadCrossings.is_built():
+		var t_rc := Time.get_ticks_usec()
 		RoadCrossings.build(terrain_layer)
+		_prof_us("RoadCrossings.build", t_rc)
 	_prof("road crossings")
 	# A loaded save restores its as-built network + work orders
 	# (SaveLoad.import_snapshot); anything else starts from the baked anchor
@@ -406,6 +423,8 @@ func finish_build(animate: bool) -> void:
 				await _place_ruins("tile_23_16", animate)
 			await _place_start_buildings(animate)
 			_prof("place ruins+start buildings")
+			_prof_us("  of which MatchState.add_building", Time.get_ticks_usec() - _place_add_us)
+			_prof_us("  of which building_placed.emit", Time.get_ticks_usec() - _place_emit_us)
 		if pending_start:
 			await _place_pending_start_buildings(animate)
 			_prof("place pending_start buildings")
@@ -422,7 +441,9 @@ func finish_build(animate: bool) -> void:
 	port_visuals.name = "PortVisuals"
 	port_visuals.z_index = 60   # above hills/roads decoration, below UI
 	terrain_layer.add_child(port_visuals)
+	var t_pv := Time.get_ticks_usec()
 	port_visuals.setup(terrain_layer)
+	_prof_us("port_visuals.setup", t_pv)
 	_prof("port_visuals (harbour plan)")
 
 	# Parchment grain: one world-anchored multiply texture over the whole plate
@@ -452,32 +473,37 @@ func finish_build(animate: bool) -> void:
 		building_visuals.relayout()
 	_prof("relayout (loaded save only)")
 
-	# Warm the Goods Graph layout under the loading screen so its first open is instant.
-	# The ~120 ms Sugiyama ordering + routing is deterministic (a pure function of the
-	# Catalog — no sim/research/RNG state), so it is computed once here and cached for the
-	# app run; without this it was paid as a hitch on the first Goods Graph (G) open, and
-	# re-paid on every open. Yield first so it lands on its own slice under the animation.
-	await _build_yield()
-	GoodsFlowGraphScript.build()
-	_prof("goods graph layout warm")
-	# Populate the good-icon cache from the medium loads kicked off at the top of the
-	# build. By now the workers have had the whole build to run, so this is mostly a
-	# cache scan; any straggler blocks briefly here (under the screen) rather than on open.
+	# The Goods Graph layout is NOT built here any more. It is a pure function of the
+	# Catalog and `GoodsFlowGraph.build()` caches it for the app run, so the view builds
+	# it on its first open (goods_graph_view._rebuild_graph) — off the load's critical
+	# path, and never paid at all by a player who does not press G. The deferred warm
+	# below still builds it before they can, whenever the build finishes ahead of the
+	# player's click on "Begin".
 	if _loading_screen_active():
-		GoodIconsScript.warm(Catalog.all_goods())
-		_prof("good icons warm join")
 		# Baked authored-map tiles the opening camera will see. Streaming loads the rest as it
 		# scrolls; paying for the first screenful here means play does not open on a burst of
 		# disk reads. No-op without a bake, and cheap (a handful of small textures).
-		await _build_yield()
+		var t_ab := Time.get_ticks_usec()
 		_warm_authored_bake()
-		_prof("authored bake warm")
+		_prof_us("_warm_authored_bake", t_ab)
 
 	_audit_start_visuals()
 	_prof("audit_start_visuals")
+	# Paint the finished world UNDER the still-opaque loading screen. Every layer's first
+	# paint (and the hills' far-zoom LOD switch) is an expensive frame; it has to land here
+	# rather than on the fade-out, or the reveal stutters on the frame the player is
+	# watching. No-op when the world was never hidden (tests / e2e / load-game).
+	await _reveal_world_for_play()
 	build_complete = true   # the loading screen may now offer "Begin"
 	print("WorldMap ready, signals connected")
 	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", MatchState.buildings.size())
+
+	# Everything the match does not need in order to START is built HERE, after the screen
+	# has been told it may offer "Begin". The player's read-and-click on that plate is dead
+	# time, and spending it costs nothing: if they click through faster than this finishes,
+	# the click lands a frame or two later; if something asks for a panel sooner, the lazy
+	# property builds it on demand instead. See _warm_deferred_ui.
+	await _warm_deferred_ui()
 
 	# Fresh scripted start: pin the camera on the start's hub and show the once-only founding
 	# intro. Gated on pending_start so a loaded save (which keeps ruleset.start_id) never re-shows it.
@@ -523,6 +549,89 @@ func _warm_authored_bake() -> void:
 		print("AuthoredBake: warmed %d texture(s) for the opening view" % warmed)
 
 
+# ── The world is not rendered while the loading screen covers it ───────────────
+#
+# HALF of a new-game load was spent RENDERING a map nobody could see: the loading screen
+# is opaque and full-screen, yet every build frame still submitted the whole plate —
+# terrain tilemap, hills, fabric, roads, buildings — at 9.5-17k draw calls and 150-210 ms
+# a frame (measured with tools/frame_anatomy_watcher.gd: frame_end 52% of wall clock).
+# The build yields a frame between slices to keep the loading animation alive, so it paid
+# that tax hundreds of times over.
+#
+# Hiding the layers removes the cost outright, and it also removes the load's worst freeze
+# for free: HillVisuals' cold `_draw` (the one that triangulates every contour before its
+# mesh cache is warm) was an 8.9 s single frame, and a hidden CanvasItem is never drawn.
+#
+# Same idiom as goods_graph_view._hide_world / empire_view: the Camera2D is skipped (it is
+# not a drawn thing and the intro zoom needs it), only layers that were ALREADY visible are
+# recorded, and UILayer is a CanvasLayer so the HUD is untouched.
+var _hidden_for_load: Array[CanvasItem] = []
+
+func _hide_world_for_load() -> void:
+	if not _loading_screen_active():
+		return   # tests / e2e / load-game render normally, exactly as before
+	for child in get_children():
+		if child is Camera2D:
+			continue
+		if child is CanvasItem and (child as CanvasItem).visible:
+			(child as CanvasItem).visible = false
+			_hidden_for_load.append(child as CanvasItem)
+
+
+## Put the map back and let it paint while the plate is still up. The frames matter: the
+## first paint of the finished world is expensive (every layer's first draw, plus the hills
+## switching to their far-zoom LOD), and it must be spent HERE, not on the fade-out.
+const REVEAL_WARM_FRAMES := 4
+
+func _reveal_world_for_play() -> void:
+	if _hidden_for_load.is_empty():
+		return
+	for layer in _hidden_for_load:
+		if is_instance_valid(layer):
+			layer.visible = true
+			layer.queue_redraw()   # a redraw queued while hidden must not be lost
+	_hidden_for_load.clear()
+	_prof("world revealed")
+	for _i in REVEAL_WARM_FRAMES:
+		await get_tree().process_frame
+	_prof("reveal warm frames")
+
+
+## Build, after "Begin" has been offered, the things a match does not need in order to
+## start: the two big HUD panels and the Goods Graph layout. Each is behind a lazy
+## accessor, so this is a WARM and not a requirement — if the player gets there first the
+## accessor builds it, and if they never open a building or press G it is never built at
+## all. A frame is handed back between items so the plate keeps animating and a Begin
+## click is still processed promptly.
+func _warm_deferred_ui() -> void:
+	if not _loading_screen_active():
+		return   # tests / e2e / tools: leave the lazy accessors to do it on demand
+	await get_tree().process_frame
+	var t := Time.get_ticks_usec()
+	_build_info_panel()
+	_prof_us("warm tile info panel", t)
+	await get_tree().process_frame
+	t = Time.get_ticks_usec()
+	_build_building_panel_v2()
+	_prof_us("warm building detail v2", t)
+	await get_tree().process_frame
+	t = Time.get_ticks_usec()
+	GoodsFlowGraphScript.build()
+	_prof_us("warm goods graph layout", t)
+	t = Time.get_ticks_usec()
+	GoodIconsScript.warm(Catalog.all_goods())
+	_prof_us("warm good icons join", t)
+	# Pre-triangulate the hill contours for the zoom-IN LOD. The opening view is covered by
+	# the baked far-zoom texture, so this is not needed to start a match — only to keep the
+	# first zoom-in smooth. It paces itself across frames (LoadPacing.bg_yield).
+	await get_tree().process_frame
+	var hills := get_node_or_null("HillVisuals")
+	if hills != null and hills.has_method("warm_meshes_deferred"):
+		t = Time.get_ticks_usec()
+		await hills.warm_meshes_deferred()
+		_prof_us("warm hill meshes", t)
+
+
 ## A loading screen (parented to the tree root, surviving the scene change) is up
 ## iff one of the root's children is a LoadingScreen — only then do we spread the
 ## build across frames.
@@ -542,6 +651,10 @@ func _build_yield() -> void:
 
 const PLACE_SLICE_MS := 30
 var _place_slice_t0 := 0
+## LOAD_PROF accounting for the start-building loop: the sim half (MatchState.add_building)
+## against the visual half (the building_placed fan-out, i.e. BuildingVisuals + ForestVisuals).
+var _place_add_us := 0
+var _place_emit_us := 0
 
 # Time-budget yield for the start-building placement passes: batch ~PLACE_SLICE_MS of
 # placements per frame, yielding only when the slice is spent, so the loading screen
@@ -652,21 +765,52 @@ func _open_building_detail(building: Dictionary, empire_dock: bool = false) -> v
 	panel.move_to_front()
 	panel.show_building(building)
 
+## Build the Tile View Panel. Called by the `info_panel` property the first time anything
+## asks for it — a tile click, a stockpile flow, a tool. Everything it needs (HUDContent,
+## the DS theme, the signals it connects to) exists from _build_base onward, and the panel
+## anchors itself in its own _ready, so building it late is indistinguishable from building
+## it early except in when the ~740 ms is paid.
+func _build_info_panel() -> void:
+	if _info_panel != null:
+		return
+	_info_panel = load("res://scripts/tile_info_panel_v2.gd").new()
+	_info_panel.name = "TileInfoPanel"
+	hud_content.add_child(_info_panel)
+	_info_panel.building_clicked.connect(_on_v2_building_clicked)
+	_info_panel.pick_destination_requested.connect(_on_v2_pick_destination)
+	_info_panel.survey_requested.connect(_on_survey_tile_clicked)
+
+
+## Build the Building Detail v2 panel — same lazy contract as _build_info_panel.
+func _build_building_panel_v2() -> void:
+	if _bdp_v2 != null:
+		return
+	_bdp_v2 = load("res://scripts/building_detail_panel_v2.gd").new()
+	_bdp_v2.name = "BuildingDetailPanelV2"
+	hud_content.add_child(_bdp_v2)
+	_bdp_v2.hide()
+	_bdp_v2.building_connections_changed.connect(
+		building_connection_visuals.on_building_connections_changed
+	)
+
+
 ## The building-detail panel currently selected by the `swap bdp` dev-toggle.
 func _active_building_panel() -> PanelContainer:
-	if MatchState.use_bdp_v2 and building_panel_v2 != null:
-		return building_panel_v2
+	if MatchState.use_bdp_v2:
+		return building_panel_v2   # property: builds it on the first building click
 	return building_panel
 
 ## Hide whichever detail panel(s) may be open (both, to survive a mid-open swap).
+## Uses the backing field, not the property: hiding a panel that was never built must
+## not build it.
 func _hide_building_detail() -> void:
 	building_panel.hide()
-	if building_panel_v2 != null:
-		building_panel_v2.hide()
+	if _bdp_v2 != null:
+		_bdp_v2.hide()
 
 ## `swap bdp` flipped: drop both panels, re-render the last building in the now-active one.
 func _on_bdp_v2_changed(_enabled: bool) -> void:
-	var was_open := building_panel.visible or (building_panel_v2 != null and building_panel_v2.visible)
+	var was_open := building_panel.visible or (_bdp_v2 != null and _bdp_v2.visible)
 	_hide_building_detail()
 	if was_open and not _last_detail_building.is_empty():
 		_open_building_detail(_last_detail_building)
@@ -849,7 +993,8 @@ func _close_transfer() -> void:
 	_exit_transfer_ui()
 
 func _enter_transfer_ui() -> void:
-	info_panel.hide()
+	if _info_panel != null:
+		_info_panel.hide()
 	_hide_building_detail()
 	if _hud.has_method("hide_bottom_menu"):
 		_hud.hide_bottom_menu()
@@ -1527,7 +1672,8 @@ func _cancel_special_order_reroute_pick() -> void:
 # ----- Stockpile selection UI mode -----
 
 func _enter_stockpile_ui_mode() -> void:
-	info_panel.hide()
+	if _info_panel != null:
+		_info_panel.hide()
 	_hide_building_detail()
 	if _hud.has_method("hide_bottom_menu"):
 		_hud.hide_bottom_menu()
@@ -1937,10 +2083,14 @@ func _place_start_buildings(animate: bool = false) -> void:
 		var instance_id := str(entry.instance_id)
 		if MatchState.buildings.has(instance_id):
 			continue
+		var t_add := Time.get_ticks_usec()
 		MatchState.add_building(
 			str(entry.building), str(entry.recipe), tile_id,
 			str(entry.owner), instance_id, false)
+		_place_add_us += Time.get_ticks_usec() - t_add
+		var t_emit := Time.get_ticks_usec()
 		building_placed.emit(tile_id, str(entry.building), str(entry.recipe), instance_id, coord)
+		_place_emit_us += Time.get_ticks_usec() - t_emit
 		await _place_yield(animate)   # ~30 ms placement slices keep the slideshow moving
 ## Emit a start snapshot's player-owned buildings only after RoadNetwork has
 ## bootstrapped. SaveLoad already imported their simulation data; this is solely
