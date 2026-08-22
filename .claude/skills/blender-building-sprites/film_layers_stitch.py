@@ -37,16 +37,20 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # Stacking order, back to front — which is the order these are WRITTEN and therefore the
 # order the loading screen stacks them. It is not the order they arrive in; that is
 # sequence.json, written at the end, and it runs the other way (road first, sky last).
+# THE GROUND GOES UNDER THE BUILDINGS. The street layer is the whole ground plane, rendered
+# with everything else invisible — so it has grass, water and road WHERE THE BUILDINGS STAND
+# too, and stacking it above them paints their lower halves over with the landscape behind.
+# Buildings occlude the ground they stand on; the plate order has to say so.
 LAYERS = [
     ("03_city", "02_city"),
-    ("04_bldg_far", "07_bldg_far"),
-    ("05_bldg_near", "06_bldg_near"),
-    ("06_street", "03_street"),
+    ("04_street", "03_street"),
+    ("05_bldg_far", "07_bldg_far"),
+    ("06_bldg_near", "06_bldg_near"),
     ("07_props", "05_props"),
 ]
 # Front to back: the road, then what stands on it, then the near buildings, the far ones,
-# the city, and the sky last of all.
-REVEAL = ["06_street.png", "07_props.png", "05_bldg_near.png", "04_bldg_far.png",
+# the city, and the sky last of all. Nothing to do with the stacking above.
+REVEAL = ["04_street.png", "07_props.png", "06_bldg_near.png", "05_bldg_far.png",
           "03_city.png", "02_sky.png"]
 CROP_W, CROP_H = 1920, 1080
 
@@ -92,6 +96,19 @@ def _dominant(arr, want_green):
     return (int(med[0]), int(med[1]), int(med[2]), 255)
 
 
+def _city_foot(dirpath, fallback=0.5):
+    """Where the city stands on the ground, as a fraction of frame height."""
+    path = os.path.join(dirpath, "02_city_geo.png")
+    if not os.path.exists(path):
+        return fallback
+    a = np.asarray(Image.open(path).convert("RGBA"))
+    rows = (a[..., 3] > 40).sum(axis=1)
+    lit = np.nonzero(rows > 8)[0]
+    if len(lit) == 0:
+        return fallback
+    return float(lit.max()) / a.shape[0]
+
+
 def _centre_crop(img):
     if img.width == CROP_W and img.height == CROP_H:
         return img
@@ -127,17 +144,27 @@ def main():
         plates[name] = img
         print("wrote %s.png %dx%d" % (name, img.size[0], img.size[1]))
 
-    # 01: the empty world the sequence opens on — sky blue over grass green, split at the
-    # half. Both colours are TAKEN FROM THE ART rather than picked: the blue is the graded
-    # sky's own zenith, the green is the median of the street layer's grass. Nothing new is
-    # invented, so the card cannot drift away from the film it introduces.
+    # 01: the empty world the sequence opens on — sky blue over grass green.
+    #
+    # The horizon is MEASURED, not chosen: the ground meets the sky where the city stands on
+    # it, so the split is the lowest row the city's geometry reaches. That comes from the
+    # city's GEO pass, not its colour plate — the colour plate carries the whole scene's
+    # Freestyle outlines and so has alpha all the way to the bottom of the frame, while the
+    # geo pass is rendered with Freestyle off and is therefore the city's true silhouette.
+    #
+    # Both colours are TAKEN FROM THE ART rather than picked: the blue is the graded sky's own
+    # zenith, the green the median of the street layer's grass. Nothing here is invented, so
+    # the card cannot drift away from the film it introduces.
+    split = _city_foot(d)
     base = Image.new("RGBA", sky_img.size)
     blue = _dominant(np.asarray(sky_img)[: sky_img.height // 6], want_green=False)
-    green = _dominant(np.asarray(plates["06_street"]), want_green=True)
-    base.paste(blue, (0, 0, base.width, base.height // 2))
-    base.paste(green, (0, base.height // 2, base.width, base.height))
+    green = _dominant(np.asarray(plates["04_street"]), want_green=True)
+    y = int(round(base.height * split))
+    base.paste(blue, (0, 0, base.width, y))
+    base.paste(green, (0, y, base.width, base.height))
     base.save(os.path.join(out, "01_base.png"))
-    print("wrote 01_base.png %dx%d  sky=%s grass=%s" % (base.width, base.height, blue, green))
+    print("wrote 01_base.png %dx%d  horizon %.3f (row %d)  sky=%s grass=%s"
+          % (base.width, base.height, split, y, blue, green))
 
     import json
     with open(os.path.join(out, "sequence.json"), "w") as f:
