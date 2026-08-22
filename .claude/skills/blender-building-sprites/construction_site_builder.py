@@ -45,10 +45,15 @@ def build_construction_site() -> dict:
     K.box("deck1", fx, fy, FRAME_H + 0.14, fw, fd, 0.10, K.mat("yard_pad"))
     K.box("deck2", fx - fw * 0.22, fy, FRAME_H * 2.0 + 0.18, fw * 0.52, fd, 0.10,
           K.mat("yard_pad"))
+    # SEATED, not floating. These ran z 1.337..2.198 against a deck1 top of 1.240 and a deck2
+    # underside of 2.230 — so the whole second storey, columns and slab, hung in the air with
+    # 0.097 of clear sky beneath it. It read as suspended concrete because it was suspended.
+    # The storey is DEFINED by the two decks now — from the top of the one it stands on to the
+    # underside of the one it carries — so it cannot drift again if either deck moves.
     for i, ccx in enumerate(cols_x[:2]):
         for j, ccy in enumerate(cols_y):
-            K.box("col2_%d_%d" % (i, j), ccx, ccy, FRAME_H * 1.55 + 0.14, 0.20, 0.20,
-                  FRAME_H * 0.82, K.mat("wall_shell"))
+            K.box("col2_%d_%d" % (i, j), ccx, ccy, FRAME_H * 1.5 + 0.16, 0.20, 0.20,
+                  FRAME_H - 0.06, K.mat("wall_shell"))
     # One wall panel hung, so the frame is visibly being CLAD and not just poured.
     K.box("panel", fx - fw * 0.30, fy - fd / 2 - 0.04, FRAME_H * 0.62 + 0.10, fw * 0.34, 0.06,
           FRAME_H * 0.86, K.mat("wall_bright"))
