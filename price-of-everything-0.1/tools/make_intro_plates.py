@@ -17,11 +17,12 @@ THE BANDS ARE DEPTH. The film is a one-point-perspective dolly down a street, so
 the horizon IS distance from the camera: the world assembles from the vanishing point outward,
 which is what the shot is about.
 
-This is the stand-in. The real split is available: loading_scene.py keeps the film's geometry
-in four collections — LOAD_sky, LOAD_city, LOAD_street, LOAD_props_veh — and _show_only_load()
-already isolates them per object, so rendering frame 0 four times with progressively more of
-them camera-visible gives true semantic layers. That costs a ~16 min scene build plus three
-passes a plate; this costs six seconds. Same filenames either way.
+SUPERSEDED, AND KEPT AS THE FALLBACK. The shipped plates are now rendered properly in
+Blender — `tools_render_layers.py` + `film_layers_stitch.py` in the blender-building-sprites
+skill — which gives true per-collection cutouts with the film's own shading instead of depth
+bands cut out of the finished frame. Use this when Blender is not to hand, or to re-derive
+plates for a film whose scene you do not have: it costs six seconds against the render's
+~20 minutes, and writes the same filenames.
 """
 
 import os
