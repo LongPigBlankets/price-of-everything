@@ -180,19 +180,30 @@ A modelling fault reached the shipped film: the construction site's second store
 2. **Find the damaged span** by pulling frames out of the shipped film and looking:
    `ffmpeg -i film.ogv -frames:v 49 -fps_mode passthrough f%03d.png`. Render a few frames
    PAST it — they are the control in step 4.
-3. **Re-render the REGION only** —
-   `blender --background <file>.blend --python tools_render_patch.py -- 0 18`. A render
-   border cuts per-frame cost roughly by area (~25% here). The ~16 min scene build does not
-   shrink, so this is worth doing for a handful of frames, not for one.
-4. **Composite over the film's OWN frames** — `python film_patch_frames.py --patch <dir>
-   --orig <decoded> --out <dir> --frames 0 18 --fade 12 18`. Run `--report-only` first: the
-   per-frame strip diff drops to a floor once the fault leaves shot (here mean 4.4 -> 3.8 at
-   frame 12), and THAT is where `--fade` starts. The floor is fresh-render-vs-Theora, not
-   error. Everything outside the strip stays the shipped film, so nothing depends on this
-   machine reproducing the render machine.
-5. **Re-encode whole.** Ogg cannot be spliced with `-c copy` — it would chain two logical
-   streams and Godot's Theora decoder is not to be trusted past the join. So concat the
-   patched PNGs with the original's tail and encode once:
+3. **Re-render the REGION only** — `tools_render_con_fix.py` measures where the subject is
+   on screen every frame (projecting its bounding box through the film camera) and renders a
+   border that tracks it.
+
+   **A BORDER DOES NOT COST WHAT IT COVERS.** Measured 2026-08-22: **150-220 s/frame almost
+   regardless of border size** — a 4%-of-frame border costs nearly what a full frame does,
+   because Freestyle rebuilds its view map over the whole street every frame and only the
+   raster pass shrinks. Budget by FRAME COUNT, not by area. The first estimate here assumed
+   area-proportional cost and was wrong by an order of magnitude.
+
+   So the lever is WHICH FRAMES, not how big the box is. Ask the scene, never the eye: the
+   opening construction site is on screen for frames 0-75, not the dozen an eyeballed crop
+   suggested, and there are FOUR construction sites on this street, three of which the first
+   repair never touched.
+4. **Composite over the film's OWN frames** — `film_patch_frames.py --borders borders.json`
+   writes one small region PNG per repaired frame plus a manifest. Everything outside the
+   region stays the shipped film, so nothing depends on this machine reproducing the render
+   machine's output. Trim borders.json to the frames you actually rendered, or the cross-fade
+   at the end of each run lands in the wrong place.
+5. **Re-encode whole**, with `film_patch_encode.py`, which streams the film through ffmpeg
+   and paints the regions in as the frames go past — 1350 full frames on disk to carry a few
+   dozen small rectangles is ~3.4 GB for nothing. Ogg cannot be spliced with `-c copy`: it
+   would chain two logical streams and Godot's Theora decoder is not to be trusted past the
+   join. The equivalent by hand, for a single contiguous head:
 
        ffmpeg -y -r 30 -start_number 0 -i patched/p%04d.png -i film_ORIGINAL.ogv \
          -filter_complex "[1:v]trim=start_frame=18,setpts=PTS-STARTPTS[b];\

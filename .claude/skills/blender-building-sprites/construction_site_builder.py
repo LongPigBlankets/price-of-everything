@@ -21,6 +21,10 @@ CRANE = (0.55, 2.30, 5.60, 3.66, 1.25)      # cx, cy, mast height, jib, counter-
 CONTAINERS = (1.80, 1.10)                   # compound at the crane's foot
 FRAME = (-1.85, 0.75, 2.35, 1.75)           # part-built structure: cx, cy, width(+X), depth(+Y)
 FRAME_H = 1.05                              # slab-to-slab: one storey standing, next one open
+COL_W = 0.20                                # columns are square in plan
+# How far a slab runs PAST the centreline of the column at its edge. Must exceed COL_W/2 or
+# the column is standing on the slab's edge with nothing under the rest of it.
+DECK_LIP = 0.15
 SCAFF_H = 2.15
 # One excavator, one DOZER. Two excavators read as the same shape twice and their booms
 # overlapped; the dozer is low and wide where the excavator is tall and jointed.
@@ -34,17 +38,36 @@ def build_construction_site() -> dict:
 
     # ---------------- part-built frame: slab, columns, one poured floor ----------------
     fx, fy, fw, fd = FRAME
-    K.box("slab", fx, fy, 0.05, fw + 0.30, fd + 0.30, 0.10, K.mat("yard_pad"))
     cols_x = [fx - fw / 2 + fw * i / 2.0 for i in range(3)]
     cols_y = [fy - fd / 2, fy + fd / 2]
+
+    # A SLAB HAS TO COVER THE COLUMNS THAT STAND ON IT, not stop at their centrelines.
+    # deck1 was fw x fd and deck2 fw*0.52 x fd — those are the grid the columns are SET OUT
+    # on, so every outer column was half off its own floor and the four corner ones three
+    # quarters off, each standing on a slab edge with nothing under the rest. deck2 covered
+    # 26% of the column at its left end. The ground slab always had the lip (fw + 0.30); the
+    # decks never got it, which is why the storey read as unsupported even once its columns
+    # reached the deck below.
+    #
+    # All three slabs are DERIVED from the columns now, so a slab cannot be sized from the
+    # frame while the columns are sized from the grid and the two quietly disagree.
+    decks = {}
+
+    def deck(name, xs, zc):
+        x0, x1 = min(xs) - DECK_LIP, max(xs) + DECK_LIP
+        y0, y1 = cols_y[0] - DECK_LIP, cols_y[1] + DECK_LIP
+        decks[name] = (x0, x1, y0, y1)
+        K.box(name, (x0 + x1) * 0.5, (y0 + y1) * 0.5, zc, x1 - x0, y1 - y0, 0.10,
+              K.mat("yard_pad"))
+
+    deck("slab", cols_x, 0.05)
     for i, ccx in enumerate(cols_x):
         for j, ccy in enumerate(cols_y):
-            K.box("col%d_%d" % (i, j), ccx, ccy, FRAME_H / 2 + 0.10, 0.20, 0.20, FRAME_H,
+            K.box("col%d_%d" % (i, j), ccx, ccy, FRAME_H / 2 + 0.10, COL_W, COL_W, FRAME_H,
                   K.mat("wall_shell"))
     # First floor poured, second only started — the gap is what reads as UNFINISHED.
-    K.box("deck1", fx, fy, FRAME_H + 0.14, fw, fd, 0.10, K.mat("yard_pad"))
-    K.box("deck2", fx - fw * 0.22, fy, FRAME_H * 2.0 + 0.18, fw * 0.52, fd, 0.10,
-          K.mat("yard_pad"))
+    deck("deck1", cols_x, FRAME_H + 0.14)
+    deck("deck2", cols_x[:2], FRAME_H * 2.0 + 0.18)
     # SEATED, not floating. These ran z 1.337..2.198 against a deck1 top of 1.240 and a deck2
     # underside of 2.230 — so the whole second storey, columns and slab, hung in the air with
     # 0.097 of clear sky beneath it. It read as suspended concrete because it was suspended.
@@ -52,7 +75,7 @@ def build_construction_site() -> dict:
     # underside of the one it carries — so it cannot drift again if either deck moves.
     for i, ccx in enumerate(cols_x[:2]):
         for j, ccy in enumerate(cols_y):
-            K.box("col2_%d_%d" % (i, j), ccx, ccy, FRAME_H * 1.5 + 0.16, 0.20, 0.20,
+            K.box("col2_%d_%d" % (i, j), ccx, ccy, FRAME_H * 1.5 + 0.16, COL_W, COL_W,
                   FRAME_H - 0.06, K.mat("wall_shell"))
     # One wall panel hung, so the frame is visibly being CLAD and not just poured.
     K.box("panel", fx - fw * 0.30, fy - fd / 2 - 0.04, FRAME_H * 0.62 + 0.10, fw * 0.34, 0.06,
@@ -112,6 +135,20 @@ def build_construction_site() -> dict:
     # excavators, and it is a SCREEN overlap, so compare columns not plan distance.
     if abs((DOZER[0] + DOZER[1]) - (EXCAVATOR[0] + EXCAVATOR[1])) < 1.55:
         print("THE TWO MACHINES SHARE A SCREEN COLUMN")
+    # EVERY COLUMN MUST STAND WHOLLY ON THE SLAB BENEATH IT. This builder shipped the same
+    # fault twice — once in Z (a storey hanging 0.097 above the deck) and once in PLAN (slabs
+    # sized to the setting-out grid, so the corner columns were 75% off their own floor).
+    # Neither is visible to a silhouette check: the sprite's alpha IoU reads 0.999 across both.
+    # Only arithmetic on the extents catches this class, so it is done here, every build.
+    for slab_name, carried in (("slab", [(cx, cy) for cx in cols_x for cy in cols_y]),
+                               ("deck1", [(cx, cy) for cx in cols_x[:2] for cy in cols_y])):
+        sx0, sx1, sy0, sy1 = decks[slab_name]
+        for cx, cy in carried:
+            off_x = max(0.0, sx0 - (cx - COL_W / 2)) + max(0.0, (cx + COL_W / 2) - sx1)
+            off_y = max(0.0, sy0 - (cy - COL_W / 2)) + max(0.0, (cy + COL_W / 2) - sy1)
+            if off_x > 1e-6 or off_y > 1e-6:
+                print("COLUMN AT (%.3f, %.3f) OVERHANGS %s BY x %.3f y %.3f"
+                      % (cx, cy, slab_name.upper(), off_x, off_y))
     for wmsg in K.validate(ground=-0.21):
         print(wmsg)
     return {"building": "construction_site", "objects": len(K.col.objects)}

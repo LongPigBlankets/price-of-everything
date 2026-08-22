@@ -61,6 +61,71 @@ def _ramp(n, feather, at_start):
     return w
 
 
+def _rect_to_crop(rect):
+    """A border rect in RENDER pixels (y from the top) -> columns/rows of the shipped crop."""
+    off = (RENDER_W - CROP_W) // 2
+    x0, x1, y0, y1 = rect
+    return (max(0, int(round(x0)) - off), min(CROP_W, int(round(x1)) - off),
+            max(0, int(round(y0))), min(CROP_H, int(round(y1))))
+
+
+def _weights(cx0, cx1, cy0, cy1, feather):
+    """Spatial feather, applied only on edges that have film on the other side of them."""
+    wx = np.ones(cx1 - cx0, np.float32)
+    if cx0 > 0:
+        wx *= _ramp(cx1 - cx0, feather, at_start=True)
+    if cx1 < CROP_W:
+        wx *= _ramp(cx1 - cx0, feather, at_start=False)
+    wy = np.ones(cy1 - cy0, np.float32)
+    if cy0 > 0:
+        wy *= _ramp(cy1 - cy0, feather, at_start=True)
+    if cy1 < CROP_H:
+        wy *= _ramp(cy1 - cy0, feather, at_start=False)
+    return (wy[:, None] * wx[None, :])[..., None]
+
+
+def _runs(frames):
+    """Contiguous runs in a sorted frame list. Each one needs its own fade-out at the end."""
+    out = []
+    for f in frames:
+        if out and f == out[-1][-1] + 1:
+            out[-1].append(f)
+        else:
+            out.append([f])
+    return out
+
+
+def _run_per_frame(a, patch):
+    """The border moves with the subject, so the rectangle is read per frame."""
+    import json
+    rects = {int(k): v for k, v in json.load(open(a.borders)).items()}
+    frames = sorted(rects)
+    tail = {}
+    for run in _runs(frames):
+        span = max(1, min(a.fade_frames, len(run)))
+        for i, f in enumerate(run[-span:]):
+            tail[f] = max(0.0, 1.0 - float(i + 1) / span)
+    os.makedirs(a.out, exist_ok=True)
+    man = {}
+    for idx in frames:
+        cx0, cx1, cy0, cy1 = _rect_to_crop(rects[idx])
+        if cx1 <= cx0 or cy1 <= cy0:
+            continue
+        # Only the REGION is written, not a whole frame. The other half of the composite is
+        # the shipped film, and film_patch_encode.py already has that in its hands as it
+        # streams — writing 1350 full frames to disk to carry ~200 small rectangles would
+        # cost gigabytes to say the same thing.
+        new = _centre_crop(fs.frame(patch, idx, 0.0))
+        Image.fromarray(new[cy0:cy1, cx0:cx1]).save(
+            os.path.join(a.out, "r%06d.png" % idx))
+        man[idx] = {"rect": [cx0, cx1, cy0, cy1], "t": tail.get(idx, 1.0)}
+        print("f%-5d rect x %4d..%4d  y %4d..%4d  t %.2f"
+              % (idx, cx0, cx1, cy0, cy1, tail.get(idx, 1.0)), flush=True)
+    json.dump({"feather": a.feather, "frames": {str(k): v for k, v in man.items()}},
+              open(os.path.join(a.out, "manifest.json"), "w"))
+    print("done: %d regions + manifest.json" % len(man))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--patch", required=True)
@@ -68,6 +133,12 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--frames", nargs=2, type=int, required=True)
     ap.add_argument("--border", nargs=4, type=float, default=[0.09, 0.47, 0.0, 0.72])
+    ap.add_argument("--borders", default=None,
+                    help="borders.json from tools_render_con_fix: {frame: [x0,x1,y0,y1]} in "
+                         "RENDER pixels (2400 wide), y from the TOP. Overrides --border, and "
+                         "the frame list comes from it rather than from --frames.")
+    ap.add_argument("--fade-frames", type=int, default=6,
+                    help="with --borders: length of the cross-fade at the END of each run")
     ap.add_argument("--feather", type=int, default=48)
     ap.add_argument("--fade", nargs=2, type=int, default=None, metavar=("FROM", "TO"),
                     help="cross-fade the repair out across frames [FROM, TO); full strength "
@@ -80,6 +151,9 @@ def main():
     sky = a.sky if os.path.isabs(a.sky) else os.path.join(HERE, a.sky)
     os.makedirs(a.out, exist_ok=True)
     fs.set_size(RENDER_W, RENDER_H, sky=sky, shift_y=0.10)
+
+    if a.borders:
+        return _run_per_frame(a, patch)
 
     x0f, x1f, y0f, y1f = a.border
     # Border fractions are of the 2400-wide render, Y from the BOTTOM. Convert to rows and

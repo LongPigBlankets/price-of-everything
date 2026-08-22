@@ -86,20 +86,104 @@ this camera and vanish. The stacks turn 90° instead.
   middle rank.
 - The tank swan-necks are legible but busy where four tanks tap one main.
 
+## chem_plant — Chemical Plant  *(new, 2026-08-22)*
+
+Typed `electrochemistry|refinery`, and electrochemistry comes first, so the chroma is the
+ELECTROLYSER'S forest green (the game's `CAT_ELECTRO`), not refinery purple. Its recipes are
+acids, chlor-alkali, ammonia, air separation and fertiliser — a process plant, not a refinery
+— and the two refineries already own the spheres, dome vessels, bullets and flare, so none of
+those appear here.
+
+**The signature is the open steel process structure**: a multi-storey frame of columns and
+grated decks with jacketed, agitated reactor vessels rising THROUGH the decks, and a
+switchback stair tower on its flank. Nothing else in the set is a building you can see
+straight through at every level. Each deck is an annulus — a rectangle with a round hole —
+built with `poly_ring`, so the vessel genuinely passes through rather than sitting on it
+(`_rect_pts` samples the rectangle into the same 24 points as the circle, starting from the
+same corner, because `poly_ring` pairs outlines by index). Around it: a tall slim
+RECTANGULAR cold box (every other tall thing in the set is round), a row of forced-draft
+cooling cells with fan rings (the power plant owns the hyperbolic tower), tall narrow tanks
+(h/r 5) inside a bund wall (the petro plant's storage is squat on a cream apron), an MCC
+building and a thin scrubber stack.
+
+**Levels add parts, never length.** L2 adds a storey to the structure, the cold box and a
+cooling cell; L3 adds a rear bay directly BEHIND the structure (its decks and vessels show
+above the front bay's, and it costs no width), a third tank and a third cell.
+
+**The pipe rack was removed after the sightline check.** An elevated rack across the front at
+z 1.15–1.55 buried the tank farm — a tank base at depth 1.08 behind a rack top of 1.55 is
+hidden, and the bund wall went with it. A run at knee height on sleepers hides nothing and
+draws the same flow.
+
+**Flows, all closed.** tank farm → `farm0` / `farm1` → low run → up into the first deck →
+reactors (jacketed, agitated) → scrubber feed → stack; cold box (ASU) → main → structure;
+cooling cell → `cool0` → run; MCC → buried cables → structure (the one flow drawn by
+adjacency rather than by a line). The audit caught `farm1` ending 1.06 short of `farm0` —
+tank 1 connected to nothing — and the cells with no water line at all.
+
+**To improve after demo**
+- No solids handling: the fertiliser recipes would justify a small silo battery at L3.
+- The tank farm's piping is the busiest few pixels of the sprite.
+- The MCC is a plain shed; a louvred wall would say "electrical room" better.
+
 ## assembly_plant — Assembly Plant  *(new, 2026-08-22)*
 
-A WIDE hall (2.8 deep) under a gentle segmental GLASS BARREL VAULT — faintly light blue,
-curved panes with seams and no frames, rise/half-span 0.51 so it springs at 25° rather than a
-half-round's 13° — with the front left out as an open portal frame (the EAF's precedent) so the
-production line is visible: a conveyor along X carrying orange cartons, orange six-axis robots
-seated beside it and reaching over it. The belt exits through an arched opening in the right
-gable onto a LOADING BAY at every level: raised dock, roller door beside the arch, bumpers on
-the truck face, carton stacks. From L2 the plan is an L — a tall flat-roofed HEAD BLOCK at the
-hall's left end with a second vaulted WING running back from it — and at L3 the loading bay
-gains a JIB CRANE at its left-front corner, boom swung out over the dock. Manufacturing family
-beside the brick factory; orange is the chroma and it is carried by the robots and the boxes
-ONLY, since with the accent tracing the line straight through the building an orange dado on
-top of it stops being a signal.
+BRICK, like the factory beside it. A WIDE hall (2.8 deep) under a gentle segmental barrel
+vault of PARTLY TRANSPARENT pale-blue glass on arched ribs — rise/half-span 0.51 so it springs
+at 25° rather than a half-round's 13° — with the front left out as an open portal frame (the
+EAF's precedent) so the production line is visible: a conveyor along X carrying brown and
+black cartons, orange six-axis robots seated beside it and reaching over it. Orange is the
+chroma and it is carried by the ROBOTS ONLY. The belt exits through an arched opening in the
+right gable onto a CONTAINER loading bay at every level: the dock is the floor continued
+outside, a 20-ft box on a chassis stands end-on to the dock face, and at L3 a rail-mounted
+gantry crane in the port's bottle green straddles dock and lane carrying a second box. L2 adds
+a tall flat-roofed HEAD BLOCK at the hall's left end; L3 adds a second vaulted WING running
+back from it — the plan becomes an L, the wing a bay shorter than the hall so it reads square
+in iso (equal plan lengths look long in Y, because the wing runs up the screen) — and the crane.
+
+**The hall is the same length at every level, and it has to be.** The loading bay is built
+against the hall's right gable from L1 and the head block takes its left end at L2, so the
+hall cannot grow afterwards — an earlier version went 4 → 4 → 5 bays and the owner asked how
+a hall with a dock already on its end had extended by a window's width. Levels add PARTS,
+never length: only the robot count grows inside (2 → 4 → 5).
+
+**The wing's inner face is the same open portal frame as the hall's front** — columns on the
+bay lines, a header at the eave, the floor slab's exposed edge as the kerb — with a second
+line inside: a belt along Y running toward the head block, cartons, and its own robots on the
+far (−X) flank reaching toward the camera. Same visibility window, with depth measured in
+from the +X face: belt at d 0.85, far robots at d 1.40 (elbows 2.52 against 2.81). The first
+bay is largely hidden behind the hall's vault, which is why its robots start at bay 1. A
+glazed curtain wall was tried first and read as windows, not as the hall's opening.
+
+**The head block is a proper facade.** Three columns on a 0.75 grid and THREE storeys on a
+1.15 pitch: ground floor window, DOOR, window with the door taking the middle column and the
+window HEADS level with the door head (1.00); two rows of three windows above on the same
+columns. The first version had a window sharing the door's column and the upper row 0.13
+above the door; the second had only two rows with the upper one floating; the third had the
+ground-floor windows hung 0.36 above the door head — a head line across a storey is what
+makes a row of openings read as one floor. Flat roof with a
+brick parapet rim and cream coping, a mullioned skylight, the rooftop unit pushed to a corner.
+
+**Inner faces are brick.** They are seen through the glass, and a pale lining read as a
+missing brick wall through the steep part of the wing's vault — `SKILL.md` rule 21.
+
+**The floor is at dock height, and that is what made the loading bay physical.** The audit
+(the electrolyser method: name every flow, trace it, find where it stops) turned up the
+chain of faults in the first bay: the floor at grade with a dock 0.5 above it put the forklift
+door's sill half a metre above the floor it served — "half suspended" — and left the belt
+knee-high inside and lying on the slab outside; the door also overhung the dock's side edge.
+A real plant floor sits at truck-bed height and the YARD is the thing that is low. Raising the
+floor to 0.42 and continuing it through the wall as the dock fixes every one of those at once,
+the exposed slab edge along the open front is the kerb for free, and the belt is the same
+height above the floor inside and out. Cost: the eave went to 3.05 to keep the far-flank
+robots inside the view window (`FLOOR < z + d < header underside`, elbows at 2.72 vs 2.81).
+
+**Second-pass audit faults, all fixed.** The container's door seams were on the +X end because
+the camera sees it — physically the doors must face the dock, so they moved to the hidden end
+and the visible side carries the corrugation ribs instead. The chassis ran 0.02 into the dock
+face and through the middle bumper. The gantry's front rail stood half off the apron edge. And
+the vault's back 0.4 let rays escape over the wall top onto background — see `SKILL.md` rule
+21 for the glass in full.
 
 **The head block is taller than both crowns** (crown + 0.25). Two vaults meeting at a corner
 need something for their ends to die into; a flat-roofed block lower than the crowns shows two
@@ -124,10 +208,12 @@ proud of the glass to hide its cut edge.
 front of the cartons it is working on; a far-flank arm reaching toward us is seen against the
 belt, behind them. One or two near-flank machines complete the aisle.
 
-**Flows, all closed.** wing (sub-assembly) → head block → (through the shared gable) → belt
-→ robots → belt → arched exit in the right gable → external run → loading bay → carton stacks
-→ crane/trucks. Power: a switchgear cabinet against the right gable. At L1 there is no wing or
-head, so the belt starts inside the hall.
+**Flows, all closed.** wing line (belt along Y, toward the head) → head block → (through the
+shared gable) → hall belt → robots → arched exit in the right gable → palletising stand at the
+belt end → pallets
+on the dock → forklift door → container (doors to the dock, floor level with it, on a chassis
+at yard level) → gantry → lane. Power: a switchgear cabinet on the apron at the hall's
+front-right corner. At L1 there is no wing or head, so the belt starts inside the hall.
 
 **Framing was the one real bug** — see `SKILL.md` rule 20: the apron's left-front corner sets
 the smallest screen column, not the hall, and centring on the plan midpoint clipped L3.
@@ -135,11 +221,14 @@ the smallest screen column, not the hall, and centring on the plan midpoint clip
 **To improve after demo**
 - The apron is the darkest large surface and reads as asphalt; it may want the cream of the
   refinery aprons instead.
-- The open front with a pale kerb and mid-steel columns can read as a glazed wall rather than
-  an opening. Either reading is acceptable for an assembly hall.
+- The gantry's front portal stands in front of the belt exit. It is an open frame and the
+  exit shows between its posts, but it is the busiest corner of the sprite.
 - The wing's interior is never seen; its +X flank carries windows so it is not a blank wall.
-- No truck at the dock: the vehicle kit is the film's street-scale system with haze, shadows
-  and a `seed` argument, and pulling it into a sprite would break reproducibility.
+- No truck under the container: the vehicle kit is the film's street-scale system with haze,
+  shadows and a `seed` argument, and pulling it into a sprite would break reproducibility. The
+  chassis with wheels and axle hangers stands in for it.
+- L3's top margin in the 1024 render is 33 px with the 4-bay wing. A 5-bay wing left 13 px;
+  any growth needs a flatter WING_RISE or a shorter hall (note 5 in the builder).
 
 ## solar_farm — Solar Farm  *(new, 2026-08-22)*
 
@@ -364,19 +453,37 @@ Tower crane, scaffold frame, hi-vis containers, diggers. **Ships only an L1**;
 crane mast is 42 objects of fine-ink lattice and was the original cause of the `FINE_INK`
 leak documented in `SKILL.md` rule 12.
 
-**The second storey used to float, fixed 2026-08-22.** `col2` ran z 1.337..2.198 between a
-deck1 top of 1.240 and a deck2 underside of 2.230 — 0.097 of clear air under the columns and
-0.032 over them. At sprite scale it is 880 px and easy to miss; in the loading film the site
-is metres from camera and it read, correctly, as suspended concrete. Caught by the owner
-watching the film, not by any check here.
+**THE SECOND STOREY WAS UNSUPPORTED IN BOTH SENSES, fixed 2026-08-22. Two faults, and the
+first fix only found one of them.**
 
-The lesson is the fix: the storey is now DEFINED by its two decks (`FRAME_H * 1.5 + 0.16`
-centre, `FRAME_H - 0.06` height) instead of by two independently chosen numbers that happened
-to nearly meet. **A structural member's extent should be derived from what it lands on.** Any
-gap smaller than a line width survives every silhouette check in this pipeline — IoU sees
-0.999 — so nothing but arithmetic on the spans will catch this class of fault.
+*In Z:* `col2` ran 1.337..2.198 between a deck1 top of 1.240 and a deck2 underside of 2.230 —
+0.097 of clear air under the columns and 0.032 over them.
 
-Re-baked both consumers: the sprite, and `06_bldg_near` in the loading intro plates.
+*In plan:* every slab was sized to the grid the columns are SET OUT on (`deck1` = fw x fd,
+`deck2` = fw*0.52 x fd), so the slabs reached the column CENTRELINES and stopped. The outer
+columns were half off their own floor, the four corner ones three quarters off, and `deck2`
+covered 26% of the column at its left end. Lengthening the columns made them REACH deck1;
+it did not make deck1 wide enough to catch them. Found by the owner looking at the sprite,
+after the first fix had already shipped.
+
+The ground slab always had the lip (`fw + 0.30`, i.e. 0.15 past each centreline). The two
+decks never got it — which is the whole story: three slabs, one sized from the columns and
+two sized from the frame, quietly disagreeing.
+
+**Both are now DERIVED, not chosen.** The storey spans deck-top to deck-underside; all three
+slabs span `min(cols) - DECK_LIP .. max(cols) + DECK_LIP`. A number that describes where
+something LANDS must be computed from the thing it lands on.
+
+**And it is asserted, because nothing else here can see it.** Alpha IoU reads 0.999 across
+both faults — a gap thinner than a line width and a slab edge 0.10 short are invisible to
+every silhouette check in this pipeline. `build_construction_site()` now checks every
+column's footprint against the slab beneath it and prints `COLUMN AT ... OVERHANGS ...`.
+Arithmetic on the extents is the only thing that catches this class.
+
+Consumers re-baked: the L1 sprite, and the loading film's opening (`con_a`, frames 0-75).
+The street's other three construction sites (`con_b`/`c`/`d`) still carry the old geometry in
+the shipped film — see FILM_RUNBOOK, they cost ~50 h to repair for a fault a couple of pixels
+tall at that distance. Any future full film render fixes them for nothing.
 
 ## mine — Mine  *(FROZEN)*
 

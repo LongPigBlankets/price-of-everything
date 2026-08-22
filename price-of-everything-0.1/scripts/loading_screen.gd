@@ -584,7 +584,9 @@ func _show_begin() -> void:
 		print("BEGIN offered at %.2f s wall (film at %.2f s)" % [
 			float(Time.get_ticks_msec() - _wall_t0) / 1000.0,
 			_film.stream_position if _film != null else -1.0])
-	_plate.set_header("Ready")
+	# The plate does NOT announce itself before going. It is on screen for the one second
+	# it takes to dissolve into the button, which is not long enough to read a word that
+	# is not the button's — it only ever registered as a flicker in the text.
 	_begin.visible = true
 	_begin.modulate.a = 0.0
 	var tw := create_tween()
