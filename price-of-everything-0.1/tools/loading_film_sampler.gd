@@ -57,6 +57,12 @@ func _process(_delta: float) -> void:
 	if _play_t0 < 0 and _film != null and is_instance_valid(_film) and _film.is_playing():
 		_play_t0 = now
 		print("FILM started at t+%d ms" % (now - _t0))
+		# FILM_PAUSE=1: freeze the film the moment it starts. Everything else about the screen
+		# is unchanged, so the frame interval that remains is the screen's own cost — which is
+		# how "is this decode, or is it something else" gets answered instead of assumed.
+		if OS.get_environment("FILM_PAUSE") != "":
+			_film.paused = true
+			print("FILM paused for baseline")
 	# FILM_SHOT=<dir>: a shot every SHOT_EVERY_MS, so the intro sequence can be looked at as a
 	# strip rather than guessed at from one frame.
 	if OS.get_environment("FILM_SHOT") != "" and now - _last_shot >= SHOT_EVERY_MS and _shots < MAX_SHOTS:

@@ -20,9 +20,17 @@ const ZOOM_FRAC := 0.5         # how far between full-out and full-in the intro 
 ## screen is exactly what it was — the hex lattice drawing in under the plate — so the film is
 ## something the screen gains, never something it depends on.
 const FILM_PATH := "res://assets/loading/film.ogv"
-## What the film was authored at (FILM_RUNBOOK.md). Used to frame it before the first decoded
-## frame arrives; after that the real texture size wins.
-const FILM_SIZE := Vector2(2400.0, 1080.0)
+## What the film was authored at. Used to frame it before the first decoded frame arrives;
+## after that the real texture size wins.
+##
+## THE 16:9 MASTER, NOT THE WIDESCREEN ONE. FILM_RUNBOOK.md renders 2400x1080 so ultrawides
+## get ~12.5% more street, and the centre 1920x1080 of it is the approved composition at 1:1.
+## But Theora decodes on one thread and the wide frame costs 52-94 ms of it — 8-12 fps, which
+## is not a film. The 16:9 master costs ~10 ms (measured against the same screen with decode
+## paused, 31 ms either way), and on a 16:9 window it is pixel-for-pixel what the wide one
+## would have shown after cropping. The trade is only for ultrawide players, who now get the
+## same frame with the top and bottom cropped rather than a slideshow with more street.
+const FILM_SIZE := Vector2(1920.0, 1080.0)
 ## Seconds the film is given to put its first frame up before the heavy load is allowed to
 ## start. It is a beat, not a wait: the load begins the moment a frame is presented.
 const FILM_HEAD_START := 1.5
