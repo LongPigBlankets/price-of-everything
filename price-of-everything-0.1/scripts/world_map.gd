@@ -734,11 +734,27 @@ func _warm_deferred_ui() -> void:
 	t = Time.get_ticks_usec()
 	GoodIconsScript.warm(Catalog.all_goods())
 	_prof_us("warm good icons join", t)
-	# The hill contour pre-warm is deliberately NOT here. It is 8.6 s of triangulation — far
-	# too much to put in a load — and it is optional: _draw_fill builds a contour's mesh the
-	# first time it is drawn, and the zoomed-in LOD culls to what is on screen, so the opening
-	# view (which uses the baked far-zoom texture) needs none of it. It runs in the background
-	# once the player has the map instead; see reveal_for_play.
+	# The hill contours ARE pre-warmed here now, on worker threads.
+	#
+	# They used to be left until after Begin, on the reasoning that the zoomed-in LOD is only
+	# needed if the player zooms in. It is not: _on_begin_pressed starts the camera intro
+	# zoom, which crosses the LOD threshold on its own, so _draw_fill triangulated every
+	# visible contour inside a single draw call and the map opened on a 7.1 s frozen frame —
+	# 11.3 s of stall across the two frames after the click. Measured, before and after, with
+	# tools/begin_click_probe.tscn.
+	#
+	# It costs the LOAD nothing: triangulation is pure computation, so it runs on the thread
+	# pool while the film keeps the main thread, and it lands inside the slack that
+	# BEGIN_MIN_WALL already holds the button for. Nothing is awaited here — the button is not
+	# waiting on it, and _draw_fill still builds anything unfinished on demand.
+	#
+	# HillVisuals._ready starts this itself, as early as the contours exist. This call is the
+	# backstop for the path where that did not happen, and is a no-op when it did. Starting it
+	# HERE alone is not enough: this runs at the end of the build, ~1.3 s before the button can
+	# be pressed, against several seconds of work.
+	var hills_node := get_node_or_null("HillVisuals")
+	if hills_node != null and hills_node.has_method("warm_meshes_async"):
+		hills_node.warm_meshes_async()
 
 
 ## A loading screen (parented to the tree root, surviving the scene change) is up

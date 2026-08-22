@@ -66,6 +66,14 @@ var _bake_generation := 0
 var _completed_bake_generation := -1
 var _meshes_warm := false     # the cached-mesh vector LOD is usable
 var _meshes_full_warm := false  # every contour pre-triangulated (warm_meshes_deferred)
+## key -> triangle indices, computed on WORKER threads by warm_meshes_async. Present means
+## _build_fill_mesh has nothing expensive left to do; absent means it triangulates inline,
+## which is still correct, only slow.
+var _tri: Dictionary = {}
+## Scratch for the worker group. Each task writes ONE index of _tri_out and reads ONE of
+## _tri_pts, so no two threads touch the same element and no lock is needed.
+var _tri_pts: Array = []
+var _tri_out: Array = []
 # Water-lining polylines: the COAST_BAND polys offset seaward per MapStyle
 # tier, cached once (style-independent geometry; only ink mode draws them).
 # Entries: {src: int (index into _sea), tier: int, pts: PackedVector2Array (closed)}.
@@ -104,6 +112,12 @@ func _ready() -> void:
 		_meshes_warm = true
 		_mode = MODE_TEXTURE
 		queue_redraw()
+		# Triangulate the contours NOW, on worker threads, so the vector LOD is ready before
+		# anything asks to draw it. This is the earliest moment it can start — the contours
+		# exist and nothing else needs them — and starting it late is the same as not
+		# starting it: fired at the end of the build it had ~1.3 s before the player could
+		# click Begin, against several seconds of work. See warm_meshes_async.
+		warm_meshes_async()
 	else:
 		await _warm_all_meshes()   # triangulate every contour ONCE (spread across frames during a bg build)
 		_meshes_warm = true        # the vector LOD can now draw cached meshes (no bake needed for it)
@@ -143,6 +157,74 @@ func _style_key() -> String:
 ## Triangulate every contour up front. Optional (see _draw_fill), and deliberately kept OFF
 ## the load path when the disk bake covers the opening view - world_map calls this once the
 ## match is running, so the first zoom-in has its meshes ready.
+## Triangulate every contour on WORKER THREADS, then assemble the meshes on the main one.
+##
+## THE WORK DID NOT GET SMALLER, IT MOVED OFF THE THREAD THAT WAS STALLING. Contour
+## triangulation is a pure function of the points — no scene tree, no rendering, no shared
+## state — so it is exactly the kind of work a thread pool is for, and the film owns the main
+## thread throughout the load anyway.
+##
+## This exists because the old plan did not survive contact with the Begin button. The
+## pre-warm was left until after Begin on the reasoning that the zoomed-in LOD is only needed
+## "if the player zooms all the way in" — but _on_begin_pressed calls start_camera_intro,
+## which zooms in AUTOMATICALLY, every single time. The LOD flipped to vector, _draw_fill
+## built every visible contour inside one draw call, and the map opened on a 7.1 s frozen
+## frame. Measured with tools/begin_click_probe.tscn.
+##
+## Assembly stays on the main thread (ArrayMesh is a resource) but is cheap beside the
+## triangulation, and is sliced anyway so a slow machine cannot make one frame of it.
+func warm_meshes_async() -> void:
+	if _meshes_full_warm or DisplayServer.get_name() == "headless" or not is_inside_tree():
+		return
+	_meshes_full_warm = true
+	var keys: Array[String] = []
+	_tri_pts = []
+	for i in _sea.size():
+		var sp: PackedVector2Array = _sea[i].p
+		if sp.size() >= 3:
+			keys.append("s%d" % i)
+			_tri_pts.append(sp)
+	for i in _polys.size():
+		var pp: PackedVector2Array = _polys[i].p
+		if pp.size() >= 3:
+			keys.append("p%d" % i)
+			_tri_pts.append(pp)
+	for i in _lakes.size():
+		var lp: PackedVector2Array = _lakes[i]
+		if lp.size() >= 3:
+			keys.append("l%d" % i)
+			_tri_pts.append(lp)
+	if keys.is_empty():
+		return
+	var t0 := Time.get_ticks_msec()
+	_tri_out = []
+	_tri_out.resize(_tri_pts.size())
+	var group := WorkerThreadPool.add_group_task(
+		_tri_task, _tri_pts.size(), -1, false, "hill contour triangulation")
+	while not WorkerThreadPool.is_group_task_completed(group):
+		if not is_inside_tree():
+			WorkerThreadPool.wait_for_group_task_completion(group)
+			return
+		await get_tree().process_frame
+	WorkerThreadPool.wait_for_group_task_completion(group)
+	var t_tri := Time.get_ticks_msec() - t0
+	for i in keys.size():
+		_tri[keys[i]] = _tri_out[i]
+	_tri_pts = []
+	_tri_out = []
+	# Now the cheap half, on the main thread, still sliced.
+	var t1 := Time.get_ticks_msec()
+	await _warm_all_meshes(WARM_SLICE_LOAD_MS, true)
+	if OS.get_environment("LOAD_PROF") != "":
+		print("LOADPROF-CALL %-30s %8.1f ms (%d contours on workers) + %.1f ms assembly"
+			% ["hill triangulation (async)", float(t_tri), keys.size(),
+			float(Time.get_ticks_msec() - t1)])
+
+
+func _tri_task(i: int) -> void:
+	_tri_out[i] = Geometry2D.triangulate_polygon(_tri_pts[i])
+
+
 func warm_meshes_deferred() -> void:
 	if _meshes_full_warm or not is_inside_tree():
 		return
@@ -634,7 +716,12 @@ func _draw_fill(key: String, pts: PackedVector2Array, color: Color, white: Textu
 		draw_colored_polygon(pts, color)   # triangulation failed — rare
 
 func _build_fill_mesh(key: String, pts: PackedVector2Array) -> Mesh:
-	var idx := Geometry2D.triangulate_polygon(pts)
+	# Precomputed by warm_meshes_async on a worker thread when the load had time for it.
+	# Falling through to the inline call is correct, just slow — which is what it costs when
+	# this is reached from inside a draw.
+	var idx: PackedInt32Array = _tri.get(key, PackedInt32Array())
+	if idx.is_empty():
+		idx = Geometry2D.triangulate_polygon(pts)
 	var mesh: ArrayMesh = null
 	if not idx.is_empty():
 		var verts := PackedVector3Array()

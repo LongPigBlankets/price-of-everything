@@ -116,8 +116,12 @@ const LoadingHexBg := preload("res://scripts/loading_hex_bg.gd")
 # morph from one to the other is a clean crossfade in place.
 const PLATE_W := 250.0
 const PLATE_H := 72.0
-const BTN_W := 480.0
-const BTN_H := 72.0
+## The label the plate turns into. It is MEASURED against the plate at build time rather than
+## trusted to fit: Bebas 26 puts it at 154 px inside 190 px of clear navy, but a longer wording
+## would silently run under the bolts, so _build_begin_button steps the size down until it fits.
+const BEGIN_TEXT := "Begin your legacy"
+const BEGIN_FONT_SIZE := 26
+const BEGIN_FONT_MIN := 14
 
 var _from_scene: Node
 var _elapsed := 0.0
@@ -463,18 +467,70 @@ func _build_plate() -> void:
 	_root.add_child(_plate)
 
 
+## The button is a CHILD OF THE PLATE, filling the same box the header was centred in.
+##
+## The plate used to fade out and hand over to a 480-wide button floating where it had been.
+## That threw away the one solid object on screen at the exact moment the player is asked to
+## act on it. Now the panel stays put and only its CONTENTS change — the word dissolves, the
+## button arrives in the space it left — so the thing they click is the thing they have been
+## watching for twenty seconds.
+##
+## Being a child also means it cannot drift: it is anchored to the plate's own content_rect,
+## so it tracks the plate and stays clear of the bolts by construction rather than by a
+## second set of numbers that has to be kept in step.
 func _build_begin_button() -> void:
 	_begin = Button.new()
-	_begin.text = "Begin your industrial legacy"
+	_begin.text = BEGIN_TEXT
 	_begin.add_theme_font_override("font", HEAD_FONT)   # Bebas — matches END TURN / title
-	_begin.add_theme_font_size_override("font_size", 26)
 	_begin.z_index = 11
 	_begin.visible = false
 	_begin.modulate.a = 0.0
-	# Same centre as the plate, so the morph crossfades in place.
-	_centre_box(_begin, BTN_W, BTN_H)
+	_begin.focus_mode = Control.FOCUS_NONE              # no focus ring inside the panel
+	_begin.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+
+	var box: Rect2 = _plate.content_rect()
+	# Step down until the label clears the bolts. It fits at full size today; this is here so
+	# that stays true if the wording changes.
+	var fsize := BEGIN_FONT_SIZE
+	while fsize > BEGIN_FONT_MIN and HEAD_FONT.get_string_size(
+			BEGIN_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize).x > box.size.x - 8.0:
+		fsize -= 1
+	_begin.add_theme_font_size_override("font_size", fsize)
+
+	# Styled from the PLATE's own palette rather than the DS theme: a steel-blue DS surface
+	# dropped on the navy would read as a second panel sitting on the first. This reads as the
+	# panel's own face going live.
+	for state in ["normal", "hover", "pressed", "focus", "disabled"]:
+		_begin.add_theme_stylebox_override(state, _begin_style(state))
+	_begin.add_theme_color_override("font_color", LoadingPlate.RIM)
+	_begin.add_theme_color_override("font_hover_color", LoadingPlate.ACCENT)
+	_begin.add_theme_color_override("font_pressed_color", LoadingPlate.ACCENT)
+	_begin.add_theme_color_override("font_focus_color", LoadingPlate.RIM)
+
+	_begin.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	_begin.offset_left = box.position.x
+	_begin.offset_top = box.position.y
+	_begin.offset_right = box.position.x + box.size.x
+	_begin.offset_bottom = box.position.y + box.size.y
 	_begin.pressed.connect(_on_begin_pressed)
-	_root.add_child(_begin)
+	_plate.add_child(_begin)
+
+
+func _begin_style(state: String) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.set_corner_radius_all(7)
+	sb.set_border_width_all(1)
+	match state:
+		"hover":
+			sb.bg_color = Color(1, 1, 1, 0.09)
+			sb.border_color = Color(LoadingPlate.ACCENT, 0.85)
+		"pressed":
+			sb.bg_color = Color(0, 0, 0, 0.34)
+			sb.border_color = Color(LoadingPlate.ACCENT, 0.7)
+		_:
+			sb.bg_color = Color(0, 0, 0, 0.20)
+			sb.border_color = Color(LoadingPlate.RIM, 0.45)
+	return sb
 
 
 func _centre_box(c: Control, w: float, h: float) -> void:
@@ -584,17 +640,15 @@ func _show_begin() -> void:
 		print("BEGIN offered at %.2f s wall (film at %.2f s)" % [
 			float(Time.get_ticks_msec() - _wall_t0) / 1000.0,
 			_film.stream_position if _film != null else -1.0])
-	# The plate does NOT announce itself before going. It is on screen for the one second
-	# it takes to dissolve into the button, which is not long enough to read a word that
-	# is not the button's — it only ever registered as a flicker in the text.
+	# THE PANEL STAYS. Only what is written on it changes: the word goes, the button arrives in
+	# the space it left. The word leaves faster than the button arrives, and the button starts
+	# after the word is mostly gone, so the two never sit on top of each other mid-cross-fade.
 	_begin.visible = true
 	_begin.modulate.a = 0.0
 	var tw := create_tween()
 	tw.set_parallel(true)
-	tw.tween_property(_plate, "modulate:a", 0.0, MORPH_SECS)
-	tw.tween_property(_begin, "modulate:a", 1.0, MORPH_SECS)
-	tw.set_parallel(false)
-	tw.tween_callback(func() -> void: _plate.visible = false)
+	tw.tween_method(_plate.set_text_alpha, 1.0, 0.0, MORPH_SECS * 0.45)
+	tw.tween_property(_begin, "modulate:a", 1.0, MORPH_SECS * 0.65).set_delay(MORPH_SECS * 0.35)
 
 
 func _on_begin_pressed() -> void:
@@ -656,6 +710,23 @@ class LoadingPlate extends Control:
 	const WIDEST_HEADER := "Loading..."
 
 	var header := "Loading"
+	## The header fades on its own, INDEPENDENTLY of the plate. The plate does not leave when
+	## the load ends any more — the button arrives inside it — so the thing that has to go is
+	## the word, not the panel it is written on.
+	var text_alpha := 1.0
+
+	## The navy area clear of the bolts: where the header is centred, and exactly where the
+	## Begin button goes. ONE definition, so the button cannot land somewhere the text never
+	## was, or overlap a rivet if the plate is ever resized.
+	func content_rect() -> Rect2:
+		return Rect2(Vector2(TEXT_PAD, INSET + 3.0),
+			Vector2(size.x - TEXT_PAD * 2.0, size.y - (INSET + 3.0) * 2.0))
+
+	func set_text_alpha(a: float) -> void:
+		if is_equal_approx(a, text_alpha):
+			return
+		text_alpha = a
+		queue_redraw()
 
 	func set_header(s: String) -> void:
 		if s == header:
@@ -693,14 +764,16 @@ class LoadingPlate extends Control:
 		# word ever reaches, not on itself: the trailing dots animate, and centring each
 		# state in turn makes the whole word shuffle sideways as they come and go. So the
 		# text box is fixed and the dots grow into it.
+		if text_alpha <= 0.002:
+			return
 		var widest := F_HEAD.get_string_size(WIDEST_HEADER, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
 		var hx := r.position.x + (r.size.x - widest) * 0.5
 		var hy := r.position.y + (r.size.y - F_HEAD.get_height(FONT_SIZE)) * 0.5
 		var base := hy + F_HEAD.get_ascent(FONT_SIZE)
 		draw_string(F_HEAD, Vector2(hx + 1, base + 1), header,
-			HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, Color(0, 0, 0, 0.5))
+			HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, Color(0, 0, 0, 0.5 * text_alpha))
 		draw_string(F_HEAD, Vector2(hx, base), header,
-			HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, RIM)
+			HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, Color(RIM, text_alpha))
 
 	# A rounded-rectangle outline (clockwise), arc-traced at each corner. Fed to
 	# draw_polygon/_grad exactly like the old octagon was.
