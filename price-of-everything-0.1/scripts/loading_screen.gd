@@ -60,6 +60,22 @@ const INTRO_DIR := "res://assets/loading/intro"
 const PLATE_FADE := 0.45   # seconds to bring the next layer in
 const PLATE_HOLD := 0.55   # seconds to sit on it before the next starts
 
+## A CROSS-FADE IS THE ONLY MOVING THING ON THIS SCREEN, so it is the only thing a stalled
+## frame can visibly ruin. A plate that just sits there for a second is invisible; a fade
+## frozen half way through is not.
+##
+## The load's remaining big steps cannot be divided — the scene instantiates in one engine
+## call, a panel builds in one call, the world's first paint is one frame — so they cannot be
+## made to fit between transitions. What they CAN do is land during a hold, and that only
+## needs the sequence to refuse to START a fade while the main thread is busy.
+##
+## Busy is measured from the frames themselves rather than agreed with the build: it needs no
+## cooperation, and it catches a stall from any source, including ones nobody has thought of.
+## A frame over CALM_FRAME_MS means something is holding the thread; the sequence waits for
+## quiet, up to CALM_MAX_WAIT so a permanently busy machine still gets its intro.
+const CALM_FRAME_MS := 120.0
+const CALM_MAX_WAIT := 6.0
+
 ## WHEN THE FILM STARTS — the one setting worth understanding here.
 ##
 ## Theora decodes on the MAIN THREAD, so the film runs at speed only while the main thread is
@@ -108,6 +124,12 @@ var _elapsed := 0.0
 ## Real milliseconds since this screen went up. `_elapsed` cannot answer that (see
 ## BEGIN_MIN_WALL), and everything the PLAYER waits for is measured in real seconds.
 var _wall_t0 := 0
+## Wall duration of the last frame, ms. The clock the calm check reads — `delta` is clamped
+## while the main thread is blocked, so it cannot see the very stalls this is looking for.
+var _last_frame_ms := 0.0
+var _frame_mark := 0
+var _fade_waits := 0
+var _fade_wait_ms := 0
 var _scene_changed := false
 var _morphed := false
 var _exiting := false
@@ -266,6 +288,21 @@ func _intro_plate_paths() -> PackedStringArray:
 	return out
 
 
+## Hold here until the main thread looks calm, so a transition does not start into a stall.
+## See CALM_FRAME_MS. Waiting is in WALL time — the whole point is that the other clock stops
+## during exactly the frames being waited out.
+func _wait_for_calm() -> void:
+	if _last_frame_ms <= CALM_FRAME_MS:
+		return
+	var t0 := Time.get_ticks_msec()
+	while _last_frame_ms > CALM_FRAME_MS and is_inside_tree():
+		if float(Time.get_ticks_msec() - t0) / 1000.0 >= CALM_MAX_WAIT:
+			break
+		await get_tree().process_frame
+	_fade_waits += 1
+	_fade_wait_ms += Time.get_ticks_msec() - t0
+
+
 ## The order the plates ARRIVE in, as indices into `_plates` (which is stacking order).
 ## Read from sequence.json beside them; without one, they arrive bottom to top, which is what
 ## a set of plates with no opinion should do.
@@ -306,14 +343,17 @@ func _run_intro() -> void:
 		if _plates[step].texture == null:
 			_plates[step].texture = load(_plate_paths[step]) as Texture2D
 			_layout_plates()
+		await _wait_for_calm()
+		if not is_inside_tree():
+			return
 		var tw := create_tween()
 		tw.tween_property(_plates[step], "modulate:a", 1.0, PLATE_FADE)
 		await tw.finished
 		await get_tree().create_timer(PLATE_HOLD).timeout
 	_intro_done = true
 	if OS.get_environment("LOAD_PROF") != "":
-		print("INTRO done: %.2f s of process time, %.2f s of WALL time" % [
-			_elapsed, float(Time.get_ticks_msec() - _t_wall) / 1000.0])
+		print("INTRO done: %.2f s of process time, %.2f s of WALL time; %d fade(s) waited for calm, %d ms total" % [
+			_elapsed, float(Time.get_ticks_msec() - _t_wall) / 1000.0, _fade_waits, _fade_wait_ms])
 
 
 ## Cover-fit every plate the way the film is fitted, so the hand-off between the last plate and
@@ -452,6 +492,10 @@ func _centre_box(c: Control, w: float, h: float) -> void:
 # ── Per-frame ─────────────────────────────────────────────────────────────────
 
 func _process(delta: float) -> void:
+	var now := Time.get_ticks_msec()
+	if _frame_mark > 0:
+		_last_frame_ms = float(now - _frame_mark)
+	_frame_mark = now
 	_elapsed += delta
 	_tick_film(delta)
 	if not _morphed:
