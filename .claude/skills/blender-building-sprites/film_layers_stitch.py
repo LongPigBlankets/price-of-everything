@@ -34,7 +34,20 @@ from PIL import Image
 import film_stitch as fs
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-LAYERS = ["02_city", "03_street", "04_buildings"]
+# Stacking order, back to front — which is the order these are WRITTEN and therefore the
+# order the loading screen stacks them. It is not the order they arrive in; that is
+# sequence.json, written at the end, and it runs the other way (road first, sky last).
+LAYERS = [
+    ("03_city", "02_city"),
+    ("04_bldg_far", "07_bldg_far"),
+    ("05_bldg_near", "06_bldg_near"),
+    ("06_street", "03_street"),
+    ("07_props", "05_props"),
+]
+# Front to back: the road, then what stands on it, then the near buildings, the far ones,
+# the city, and the sky last of all.
+REVEAL = ["06_street.png", "07_props.png", "05_bldg_near.png", "04_bldg_far.png",
+          "03_city.png", "02_sky.png"]
 CROP_W, CROP_H = 1920, 1080
 
 
@@ -61,6 +74,24 @@ def layer_rgba(dirpath, tag):
     return (np.clip(out, 0, 1) * 255).astype(np.uint8)
 
 
+def _dominant(arr, want_green):
+    """A representative colour out of an RGBA array — the median of the pixels that count.
+
+    Median, not mean: the art is flat fills with ink outlines through it, and averaging drags
+    every colour toward that ink. `want_green` picks out the grass (green channel ahead of the
+    other two) rather than the road or the kerbs.
+    """
+    a = arr.reshape(-1, arr.shape[-1]).astype(np.int32)
+    keep = a[:, 3] > 200 if a.shape[1] == 4 else np.ones(len(a), bool)
+    if want_green:
+        keep = keep & (a[:, 1] > a[:, 0] + 12) & (a[:, 1] > a[:, 2] + 12)
+    sel = a[keep]
+    if len(sel) == 0:
+        sel = a
+    med = np.median(sel[:, :3], axis=0).astype(int)
+    return (int(med[0]), int(med[1]), int(med[2]), 255)
+
+
 def _centre_crop(img):
     if img.width == CROP_W and img.height == CROP_H:
         return img
@@ -74,7 +105,6 @@ def main():
     ap.add_argument("--dir", default="renders/loading/layers_frame0")
     ap.add_argument("--out", default=None, help="where the plates go (default: --dir/plates)")
     ap.add_argument("--sky", default="renders/loading/layers/L0_sky_wide.png")
-    ap.add_argument("--film", default=None, help="film to take the final frame-0 plate from")
     args = ap.parse_args()
     d = args.dir if os.path.isabs(args.dir) else os.path.join(HERE, args.dir)
     out = args.out or os.path.join(d, "plates")
@@ -84,29 +114,35 @@ def main():
     # The film's widescreen geometry, so the stipple grid and the sky pan match it exactly.
     fs.set_size(2400, 1080, sky=sky, shift_y=0.10)
 
-    # 01: the sky, at frame 0 — step_i 0, so no advance.
+    # 02: the sky, at frame 0 — step_i 0, so no advance. It stacks second from the bottom
+    # and arrives LAST, which is what finally hides the flat base underneath.
     sky_img = _centre_crop(fs.sky_for(0, 0.0).convert("RGBA"))
-    sky_img.save(os.path.join(out, "01_sky.png"))
-    print("wrote 01_sky.png %dx%d" % sky_img.size)
+    sky_img.save(os.path.join(out, "02_sky.png"))
+    print("wrote 02_sky.png %dx%d" % sky_img.size)
 
-    for tag in LAYERS:
+    plates = {}
+    for name, tag in LAYERS:
         img = _centre_crop(Image.fromarray(layer_rgba(d, tag), "RGBA"))
-        img.save(os.path.join(out, tag + ".png"))
-        print("wrote %s.png %dx%d" % (tag, img.size[0], img.size[1]))
+        img.save(os.path.join(out, name + ".png"))
+        plates[name] = img
+        print("wrote %s.png %dx%d" % (name, img.size[0], img.size[1]))
 
-    # 05: the film's own first frame, opaque. A per-layer render cannot carry the shadows
-    # buildings cast onto a road that lives in another layer, so the sequence ends on the
-    # truth rather than on an approximation of it — and the props arrive with the shading,
-    # which is what the last step should look like landing.
-    if args.film:
-        import subprocess
-        tmp = os.path.join(out, "_frame0.png")
-        subprocess.check_call(["ffmpeg", "-y", "-loglevel", "error", "-i", args.film,
-                               "-vf", "select=eq(n\,0)", "-vframes", "1", tmp])
-        full = _centre_crop(Image.open(tmp).convert("RGBA"))
-        full.save(os.path.join(out, "05_full.png"))
-        os.remove(tmp)
-        print("wrote 05_full.png %dx%d (from the film)" % full.size)
+    # 01: the empty world the sequence opens on — sky blue over grass green, split at the
+    # half. Both colours are TAKEN FROM THE ART rather than picked: the blue is the graded
+    # sky's own zenith, the green is the median of the street layer's grass. Nothing new is
+    # invented, so the card cannot drift away from the film it introduces.
+    base = Image.new("RGBA", sky_img.size)
+    blue = _dominant(np.asarray(sky_img)[: sky_img.height // 6], want_green=False)
+    green = _dominant(np.asarray(plates["06_street"]), want_green=True)
+    base.paste(blue, (0, 0, base.width, base.height // 2))
+    base.paste(green, (0, base.height // 2, base.width, base.height))
+    base.save(os.path.join(out, "01_base.png"))
+    print("wrote 01_base.png %dx%d  sky=%s grass=%s" % (base.width, base.height, blue, green))
+
+    import json
+    with open(os.path.join(out, "sequence.json"), "w") as f:
+        json.dump({"reveal": REVEAL}, f, indent=2)
+    print("wrote sequence.json: %s" % " -> ".join(r.split("_", 1)[1][:-4] for r in REVEAL))
     print("plates in %s" % out)
 
 

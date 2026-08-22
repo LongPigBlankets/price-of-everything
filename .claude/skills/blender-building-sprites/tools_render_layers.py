@@ -34,30 +34,27 @@ import mathutils
 B = "C:/Users/urigi/price-of-everything/.claude/skills/blender-building-sprites/"
 OUT = B + "renders/loading/layers_frame0/"
 
-# Back to front, as PREDICATES over collection names — the buildings are one collection each
-# (LOAD_bldg_off_a, LOAD_bldg_fac_a, ... 21 of them) rather than a single group, which is only
-# visible once the scene is standing.
+# The layers still to render. City and street are already in the output directory from the
+# previous run of this script against the same scene, so they are not re-rendered.
 #
-# Two plates are not rendered here. The SKY, because the film's colour pass hides the sky plane
-# and the vivid sky is composited in post (AgX crushes the emission bands), so it comes from
-# that same post step. And the LAST plate, which is the film's own first frame: a per-layer
-# render cannot carry the shadows the buildings cast on a road that is in a different layer, so
-# the sequence resolves onto the truth rather than onto an approximation of it. That also makes
-# the props their own step, arriving with the shading, which is what "trees, cars and
-# decoration" should look like landing.
-LAYERS = [
-    ("02_city", lambda n: n == "LOAD_city"),
-    ("03_street", lambda n: n == "LOAD_street"),
-    ("04_buildings", lambda n: n.startswith("LOAD_bldg")),
-]
+# NEAR AND FAR ARE SPLIT BY THE SLOT TABLE, not by hand: loading_scene.SLOTS carries each
+# building's x along the street, and the camera sits at FILM_START_X looking up it, so x IS
+# distance from the viewer. The split is read out of that table below, which means adding a
+# building to the street puts it in the right half automatically.
+NEAR_FAR_X = 30.0
 
-# loading_scene.py hardcodes the author's Mac asset root and pulls sprite_kit.py and the
-# builders from it. On this machine the kit lives in the skill directory itself, so the root
-# is rewritten in the SOURCE before it runs — patching the namespace afterwards is too late,
-# the sub-execs have already fired.
 _MAC_ROOT = "/Users/crisu/Price of Everything/blender-assets/"
 ns = {}
 exec(open(B + "loading_scene.py").read().replace(_MAC_ROOT, B), ns)
+
+SLOTS = ns["SLOTS"]
+_near = {"LOAD_bldg_" + str(row[0]) for row in SLOTS if float(row[4]) < NEAR_FAR_X}
+_far = {"LOAD_bldg_" + str(row[0]) for row in SLOTS if float(row[4]) >= NEAR_FAR_X}
+LAYERS = [
+    ("05_props", lambda n: n.startswith("LOAD_props")),
+    ("06_bldg_near", lambda n: n in _near),
+    ("07_bldg_far", lambda n: n in _far),
+]
 
 get_scene = ns["get_scene"]
 build_film_scene = ns["build_film_scene"]
