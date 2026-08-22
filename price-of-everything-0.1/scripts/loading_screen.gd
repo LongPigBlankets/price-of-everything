@@ -10,7 +10,9 @@ class_name LoadingScreen
 ## fades the whole screen out over 1 s while the map camera eases from the full-
 ## map view to mid-range — so the reveal *is* the zoom-in.
 
-const SAFETY_TIMEOUT := 60.0   # last-resort: offer Begin even if build_complete never arrives
+## Last-resort: offer Begin even if build_complete never arrives. In WALL seconds, like
+## BEGIN_MIN_WALL and for the same reason — a net measured in clamped delta is not a net.
+const SAFETY_TIMEOUT := 60.0
 const DOT_PERIOD := 0.45       # seconds per "Loading…" dot step
 const MORPH_SECS := 1.0        # plate → Begin button crossfade
 const EXIT_SECS := 1.0         # fade-out + camera zoom on Begin
@@ -55,8 +57,8 @@ const FILM_HEAD_START := 1.5
 ##
 ## Absent is normal: with no plates on disk the screen behaves exactly as it did before.
 const INTRO_DIR := "res://assets/loading/intro"
-const PLATE_FADE := 0.5    # seconds to bring the next layer in
-const PLATE_HOLD := 1.0    # seconds to sit on it before the next starts
+const PLATE_FADE := 0.45   # seconds to bring the next layer in
+const PLATE_HOLD := 0.55   # seconds to sit on it before the next starts
 
 ## WHEN THE FILM STARTS — the one setting worth understanding here.
 ##
@@ -80,9 +82,12 @@ const PLATE_HOLD := 1.0    # seconds to sit on it before the next starts
 ##
 ## There is no "right" answer here, only a trade between how soon the film appears and how
 ## smoothly it plays; this is a presentation decision, so it is one word in one place.
-##   AFTER_INTRO  the default when plates exist: the film waits for the plate sequence AND
-##                the build, so it only ever starts on a main thread that is free. This is
-##                what the plates are for.
+##   AFTER_INTRO  the default when plates exist: the film starts when the plate sequence ends,
+##                whether or not the build has finished. The plates cover the part of the load
+##                that cannot share a main thread at all; whatever is left over runs UNDER the
+##                film, which costs it a little (measured below) and buys two things — the
+##                player sees the film from the moment there is nothing better to show, and a
+##                load that grows in future eats into the film rather than into the wait.
 enum FilmStart { IMMEDIATE, AFTER_SCENE, AFTER_BUILD, AFTER_INTRO }
 const FILM_START := FilmStart.AFTER_INTRO
 ## How long the film takes to fade up over the lattice, and to fade back down when it ends.
@@ -100,6 +105,9 @@ const BTN_H := 72.0
 
 var _from_scene: Node
 var _elapsed := 0.0
+## Real milliseconds since this screen went up. `_elapsed` cannot answer that (see
+## BEGIN_MIN_WALL), and everything the PLAYER waits for is measured in real seconds.
+var _wall_t0 := 0
 var _scene_changed := false
 var _morphed := false
 var _exiting := false
@@ -167,6 +175,7 @@ func begin_load(scene_path: String) -> void:
 
 
 func _ready() -> void:
+	_wall_t0 = Time.get_ticks_msec()
 	layer = 100
 	_root = Control.new()
 	_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -289,6 +298,7 @@ func _reveal_order(paths: PackedStringArray) -> Array[int]:
 ## this sequence, it does not desynchronise it, which is the whole reason the load opens on
 ## stills rather than on the film.
 func _run_intro() -> void:
+	var _t_wall := Time.get_ticks_msec()
 	await get_tree().create_timer(PLATE_HOLD).timeout   # a beat on the empty world first
 	for step in _plate_reveal:
 		if not is_inside_tree():
@@ -301,6 +311,9 @@ func _run_intro() -> void:
 		await tw.finished
 		await get_tree().create_timer(PLATE_HOLD).timeout
 	_intro_done = true
+	if OS.get_environment("LOAD_PROF") != "":
+		print("INTRO done: %.2f s of process time, %.2f s of WALL time" % [
+			_elapsed, float(Time.get_ticks_msec() - _t_wall) / 1000.0])
 
 
 ## Cover-fit every plate the way the film is fitted, so the hand-off between the last plate and
@@ -379,7 +392,10 @@ func _maybe_start_film() -> void:
 		FilmStart.AFTER_BUILD:
 			ready_now = _ready_to_begin()
 		FilmStart.AFTER_INTRO:
-			ready_now = _intro_done and _ready_to_begin()
+			# The intro has run AND the world is built — but NOT that the button is allowed
+			# yet. The film starting is about having a free main thread; the button appearing
+			# is about giving the player a reason to have watched it. Different questions.
+			ready_now = _intro_done and _world_ready()
 		_:
 			ready_now = true
 	if ready_now:
@@ -472,17 +488,26 @@ func _tick_film(delta: float) -> void:
 		_plate_box.visible = _film.modulate.a < 1.0
 
 
-## Seconds of film the player gets before "Begin" appears.
+## The earliest "Begin" may appear, in seconds since this screen went up. The button waits for
+## the LATER of this and a finished world.
 ##
-## The button used to arrive the instant the build finished, which — now that the build finishes
-## in ~10 s — is the same instant the film starts. Offering someone a way out of a shot on its
-## first frame is the same as not showing it. This is a deliberate, small wait, and the safety
-## timeout below still overrides everything.
-const BEGIN_AFTER_FILM := 4.0
+## Two jobs. It gives the player a reason to have watched the film — a button offered on a
+## shot's first frame is the same as not showing the shot. And it is a BUFFER: the load is
+## ~13 s today, so there is ~7 s of slack, and a future load that grows into that slack costs
+## the player nothing at all, because they were never going to be allowed to leave before 20 s
+## anyway. It only starts costing time once the load exceeds it.
+##
+## The safety timeout below still overrides everything, so a transition that goes sideways
+## cannot strand anyone behind this.
+##
+## MEASURED IN WALL CLOCK, not in `_elapsed`. `_elapsed` accumulates `_process` delta, and
+## delta is CLAMPED while the main thread is blocked — 10.0 s of it measured 18.9 s of real
+## time across this load. A twenty-second promise made in that currency is not twenty seconds.
+const BEGIN_MIN_WALL := 20.0
 
-func _ready_to_begin() -> bool:
-	if _elapsed > SAFETY_TIMEOUT:
-		return true   # don't strand the player if a transition goes sideways
+## Is the world built and the pending snapshot applied? Says nothing about whether the player
+## may leave yet — see _ready_to_begin.
+func _world_ready() -> bool:
 	var current := get_tree().current_scene
 	if not _scene_changed:
 		if current != null and current != _from_scene:
@@ -490,23 +515,31 @@ func _ready_to_begin() -> bool:
 		return false
 	if SaveLoad.has_pending():
 		return false
-	# The map scene builds its visuals progressively across frames (so this screen can
-	# keep animating its background), so "scene exists" ≠ "world ready" — wait for the
-	# map's build_complete flag if it exposes one.
 	if current != null:
 		var bc: Variant = current.get("build_complete")
-		if bc != null and not bool(bc):
-			return false
-	# The world is ready; give the film its opening seconds before offering a way past it.
-	if _film != null and _film_started and _film.is_playing():
-		return _film.stream_position >= BEGIN_AFTER_FILM
+		if bc != null:
+			return bool(bc)
 	return true
+
+
+func _ready_to_begin() -> bool:
+	var wall := float(Time.get_ticks_msec() - _wall_t0) / 1000.0
+	if wall > SAFETY_TIMEOUT:
+		return true   # don't strand the player if a transition goes sideways
+	if not _world_ready():
+		return false
+	# Built. The button still waits for the 20 s mark — see BEGIN_MIN_WALL.
+	return wall >= BEGIN_MIN_WALL
 
 
 # ── Morph + exit ──────────────────────────────────────────────────────────────
 
 func _show_begin() -> void:
 	_morphed = true
+	if OS.get_environment("LOAD_PROF") != "":
+		print("BEGIN offered at %.2f s wall (film at %.2f s)" % [
+			float(Time.get_ticks_msec() - _wall_t0) / 1000.0,
+			_film.stream_position if _film != null else -1.0])
 	_plate.set_header("Ready")
 	_begin.visible = true
 	_begin.modulate.a = 0.0
