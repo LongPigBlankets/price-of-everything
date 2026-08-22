@@ -20,6 +20,7 @@ extends Node2D
 const AuthoredMap := preload("res://scripts/authored_map.gd")
 const AuthoredRoadPainter := preload("res://scripts/authored_road_painter.gd")
 const AuthoredBake := preload("res://scripts/authored_bake.gd")
+const ViewStream := preload("res://scripts/view_stream.gd")
 const BakeLayout := preload("res://scripts/authored_bake_layout.gd")
 
 ## Keep baked textures resident a little past the camera (world units), so a tile loads before
@@ -140,7 +141,9 @@ func _process(_delta: float) -> void:
 	if not visible or not AuthoredBake.is_available():
 		return
 	var view := AuthoredBake.visible_world_rect(self, STREAM_MARGIN)
-	if view != _view_rect:
+	# Not `!=`: the picture already reaches STREAM_MARGIN past the view, so a few units of
+	# drift changes nothing on screen. See view_stream.gd.
+	if not ViewStream.settled(view, _view_rect, STREAM_MARGIN):
 		_view_rect = view
 		queue_redraw()
 

@@ -258,6 +258,7 @@ const FARM_ROAD_MERGE_MAX := 120.0    # connect the farm tracks to a real road w
 ## in) draw only the visible ones; above it draw everything once and stay static.
 const CULL_CAP := 160
 const CULL_MARGIN := 600.0
+const ViewStream := preload("res://scripts/view_stream.gd")
 
 @onready var terrain_layer: HexMap = %TerrainLayer
 @onready var _forest_visuals: Node = get_node_or_null("../ForestVisuals")
@@ -4466,8 +4467,8 @@ func _process(_delta: float) -> void:
 		_cull = want_cull
 		_view = view
 		queue_redraw()
-	elif _cull and view != _view:
-		_view = view
+	elif _cull and not ViewStream.settled(view, _view, CULL_MARGIN):
+		_view = view        # see view_stream.gd — `!=` repainted on any sub-pixel drift
 		queue_redraw()
 
 func _visible_world_rect() -> Rect2:

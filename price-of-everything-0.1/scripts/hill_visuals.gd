@@ -28,6 +28,7 @@ const BAKE_LONG_SIDE := 4096.0
 ## path is cheap; the crossover lands at a moderate zoom-out.
 const VECTOR_CAP := 450
 const CULL_MARGIN := 320.0   # world units; keep partially-visible polys
+const ViewStream := preload("res://scripts/view_stream.gd")
 const RELIEF_SHOULDER_HALF_WIDTH := 4.0
 const RELIEF_MATERIAL_MIN_AREA := 1450.0
 
@@ -445,8 +446,8 @@ func _process(_delta: float) -> void:
 		_mode = want
 		_view_rect = view
 		queue_redraw()
-	elif want == MODE_VECTOR and view != _view_rect:
-		_view_rect = view   # camera moved while zoomed in — recull next draw
+	elif want == MODE_VECTOR and not ViewStream.settled(view, _view_rect, CULL_MARGIN):
+		_view_rect = view   # camera moved far enough to recull — see view_stream.gd
 		queue_redraw()
 
 func _draw() -> void:

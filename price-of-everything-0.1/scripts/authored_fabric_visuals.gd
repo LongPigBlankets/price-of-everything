@@ -17,6 +17,7 @@ const AuthoredMap := preload("res://scripts/authored_map.gd")
 const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
 const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
 const AuthoredBake := preload("res://scripts/authored_bake.gd")
+const ViewStream := preload("res://scripts/view_stream.gd")
 const BakeLayout := preload("res://scripts/authored_bake_layout.gd")
 const BakePainter := preload("res://scripts/authored_bake_painter.gd")
 
@@ -282,7 +283,8 @@ func _process(_delta: float) -> void:
 	if not visible:
 		return
 	var view := AuthoredBake.visible_world_rect(self, STREAM_MARGIN)
-	if view != _view_rect:
+	# Not `!=` — see view_stream.gd. This layer is the most expensive of the four.
+	if not ViewStream.settled(view, _view_rect, STREAM_MARGIN):
 		_view_rect = view
 		queue_redraw()
 
