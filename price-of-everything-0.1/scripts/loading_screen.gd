@@ -43,10 +43,15 @@ const FILM_HEAD_START := 1.5
 ## was; a video that misses a frame has lost that frame for good, which is why the film used to
 ## finish 4.4 s behind the wall clock.
 ##
-## So the load opens on plates — sky, then skyline, then street, then ground, then the whole
-## frame — cross-fading one into the next, and the film starts only once the sequence has
-## finished AND the build is done. The last plate IS the film's first frame, so the cut into
-## video is on an identical picture.
+## So the load opens on plates cross-fading one into the next, and the film starts only once
+## the sequence has finished AND the build is done.
+##
+## STACKING ORDER AND REVEAL ORDER ARE NOT THE SAME THING, which is the one subtlety here.
+## The plates are cutouts stacked back to front — sky behind, props in front — because that
+## is where those things are. But they arrive front to back: road, then the trees and cars,
+## then the near buildings, then the far ones, then the city, and the sky last. A building
+## revealed after the road still has to sit behind it. So the z order is the file order and
+## the arrival order is sequence.json, and neither is derived from the other.
 ##
 ## Absent is normal: with no plates on disk the screen behaves exactly as it did before.
 const INTRO_DIR := "res://assets/loading/intro"
@@ -86,14 +91,12 @@ const FILM_FADE := 0.6
 const HEAD_FONT := preload("res://assets/fonts/BebasNeue-Regular.ttf")
 const LoadingHexBg := preload("res://scripts/loading_hex_bg.gd")
 
-# Plate / button geometry. Both sit bottom-centred, BOTTOM_MARGIN px above the
-# screen bottom; the button is centred on the plate's footprint so the morph is a
-# clean crossfade in place.
+# Plate / button geometry. Both sit dead centre of the screen and share a centre, so the
+# morph from one to the other is a clean crossfade in place.
 const PLATE_W := 250.0
 const PLATE_H := 72.0
 const BTN_W := 480.0
 const BTN_H := 72.0
-const BOTTOM_MARGIN := 40.0
 
 var _from_scene: Node
 var _elapsed := 0.0
@@ -109,6 +112,7 @@ var _film_box_size := Vector2.ZERO   # last size the film was framed for
 var _plate_box: Control = null      # clips the intro plates, same fit as the film
 var _plate_box_size := Vector2.ZERO
 var _plate_paths := PackedStringArray()
+var _plate_reveal: Array[int] = []   # arrival order; see _reveal_order
 var _film_started := false          # a deferred film (FILM_START) has been kicked off
 var _plates: Array[TextureRect] = []   # intro plates, back to front
 var _intro_done := false               # the plate sequence has finished (or there were none)
@@ -228,6 +232,7 @@ func _build_intro_plates() -> void:
 		_plates.append(rect)
 		_plate_box.add_child(rect)
 	_plate_paths = paths
+	_plate_reveal = _reveal_order(paths)
 	_layout_plates()
 	# The plates cover the lattice from the first frame, and the lattice is ~1,832 draw calls
 	# of something nobody can see. (_tick_film does this too, but only when there is a film.)
@@ -236,7 +241,8 @@ func _build_intro_plates() -> void:
 	_run_intro()
 
 
-## The plates, in name order — 01_, 02_, ... The numbering IS the sequence.
+## The plates in name order — 01_, 02_, ... The numbering is the STACKING order, back to
+## front. What arrives when is sequence.json; see _reveal_order.
 func _intro_plate_paths() -> PackedStringArray:
 	var out := PackedStringArray()
 	var dir := DirAccess.open(INTRO_DIR)
@@ -251,22 +257,49 @@ func _intro_plate_paths() -> PackedStringArray:
 	return out
 
 
+## The order the plates ARRIVE in, as indices into `_plates` (which is stacking order).
+## Read from sequence.json beside them; without one, they arrive bottom to top, which is what
+## a set of plates with no opinion should do.
+func _reveal_order(paths: PackedStringArray) -> Array[int]:
+	var order: Array[int] = []
+	var file := FileAccess.open(INTRO_DIR + "/sequence.json", FileAccess.READ)
+	if file != null:
+		var parsed: Variant = JSON.parse_string(file.get_as_text())
+		file.close()
+		if typeof(parsed) == TYPE_DICTIONARY:
+			for name_value in ((parsed as Dictionary).get("reveal", []) as Array):
+				var want := INTRO_DIR + "/" + str(name_value)
+				var idx := -1
+				for i in paths.size():
+					if paths[i] == want:
+						idx = i
+						break
+				if idx >= 0 and not order.has(idx):
+					order.append(idx)
+				elif idx < 0:
+					push_warning("LoadingScreen: sequence.json names '%s', which is not there." % str(name_value))
+	# Anything the manifest did not mention still has to arrive, or it would never be seen.
+	for i in paths.size():
+		if i != 0 and not order.has(i):
+			order.append(i)
+	return order
+
+
 ## Bring each plate up in turn. Tweens, not video: a frame lost to a busy main thread pauses
 ## this sequence, it does not desynchronise it, which is the whole reason the load opens on
 ## stills rather than on the film.
 func _run_intro() -> void:
-	for i in _plates.size():
+	await get_tree().create_timer(PLATE_HOLD).timeout   # a beat on the empty world first
+	for step in _plate_reveal:
 		if not is_inside_tree():
 			return
-		if i > 0:
-			if _plates[i].texture == null:
-				_plates[i].texture = load(_plate_paths[i]) as Texture2D
-				_layout_plates()
-			var tw := create_tween()
-			tw.tween_property(_plates[i], "modulate:a", 1.0, PLATE_FADE)
-			await tw.finished
-		if i < _plates.size() - 1:
-			await get_tree().create_timer(PLATE_HOLD).timeout
+		if _plates[step].texture == null:
+			_plates[step].texture = load(_plate_paths[step]) as Texture2D
+			_layout_plates()
+		var tw := create_tween()
+		tw.tween_property(_plates[step], "modulate:a", 1.0, PLATE_FADE)
+		await tw.finished
+		await get_tree().create_timer(PLATE_HOLD).timeout
 	_intro_done = true
 
 
@@ -370,7 +403,7 @@ func _build_plate() -> void:
 	_plate = LoadingPlate.new()
 	_plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_plate.z_index = 10
-	_bottom_box(_plate, PLATE_W, PLATE_H, BOTTOM_MARGIN)
+	_centre_box(_plate, PLATE_W, PLATE_H)
 	_root.add_child(_plate)
 
 
@@ -382,23 +415,22 @@ func _build_begin_button() -> void:
 	_begin.z_index = 11
 	_begin.visible = false
 	_begin.modulate.a = 0.0
-	# Centre the button on the plate's footprint so the morph crossfades in place.
-	_bottom_box(_begin, BTN_W, BTN_H, BOTTOM_MARGIN + (PLATE_H - BTN_H) * 0.5)
+	# Same centre as the plate, so the morph crossfades in place.
+	_centre_box(_begin, BTN_W, BTN_H)
 	_begin.pressed.connect(_on_begin_pressed)
 	_root.add_child(_begin)
 
 
-func _bottom_box(c: Control, w: float, h: float, bottom_margin: float) -> void:
-	# Anchor bottom-centre: horizontally centred, bottom edge `bottom_margin` px above
-	# the screen bottom.
+func _centre_box(c: Control, w: float, h: float) -> void:
+	# Dead centre of the screen, both axes.
 	c.anchor_left = 0.5
 	c.anchor_right = 0.5
-	c.anchor_top = 1.0
-	c.anchor_bottom = 1.0
+	c.anchor_top = 0.5
+	c.anchor_bottom = 0.5
 	c.offset_left = -w * 0.5
 	c.offset_right = w * 0.5
-	c.offset_bottom = -bottom_margin
-	c.offset_top = -bottom_margin - h
+	c.offset_top = -h * 0.5
+	c.offset_bottom = h * 0.5
 
 
 # ── Per-frame ─────────────────────────────────────────────────────────────────
@@ -538,8 +570,11 @@ class LoadingPlate extends Control:
 	## INSET + RIVET_R is where a bolt would just clear the band, and the rest is the gap that
 	## keeps it looking seated rather than balanced on the edge.
 	const RIVET_EDGE := INSET + RIVET_R + 8.0
-	## Text starts clear of the bolts — their outer edge plus a breath.
+	## Text keeps clear of the bolts — their outer edge plus a breath. With the word centred
+	## this is the minimum the plate has to be wide enough for, not where the text starts.
 	const TEXT_PAD := RIVET_EDGE + RIVET_R + 9.0
+	## The longest the header ever gets. The text is centred on THIS so the dots do not move it.
+	const WIDEST_HEADER := "Loading..."
 
 	var header := "Loading"
 
@@ -575,10 +610,12 @@ class LoadingPlate extends Control:
 		# Four corner bolts, seated on the navy.
 		_rivets(r)
 
-		# Header — Bebas, cream, with a soft drop shadow. Left-aligned rather than centred:
-		# the trailing dots animate, and centring makes the whole word shuffle sideways as
-		# they come and go.
-		var hx := r.position.x + TEXT_PAD
+		# Header — Bebas, cream, with a soft drop shadow. Centred on the WIDEST state the
+		# word ever reaches, not on itself: the trailing dots animate, and centring each
+		# state in turn makes the whole word shuffle sideways as they come and go. So the
+		# text box is fixed and the dots grow into it.
+		var widest := F_HEAD.get_string_size(WIDEST_HEADER, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
+		var hx := r.position.x + (r.size.x - widest) * 0.5
 		var hy := r.position.y + (r.size.y - F_HEAD.get_height(FONT_SIZE)) * 0.5
 		var base := hy + F_HEAD.get_ascent(FONT_SIZE)
 		draw_string(F_HEAD, Vector2(hx + 1, base + 1), header,

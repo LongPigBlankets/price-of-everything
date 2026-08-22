@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c16hnbic167tj"
-path="res://.godot/imported/03_street.png-2076c5f4698ab6af12b7b69b30a96641.ctex"
+uid="uid://dq5tatcwhmfq6"
+path="res://.godot/imported/06_street.png-dd98e70aebb9229214be32c311660ae2.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/loading/intro/03_street.png"
-dest_files=["res://.godot/imported/03_street.png-2076c5f4698ab6af12b7b69b30a96641.ctex"]
+source_file="res://assets/loading/intro/06_street.png"
+dest_files=["res://.godot/imported/06_street.png-dd98e70aebb9229214be32c311660ae2.ctex"]
 
 [params]
 
