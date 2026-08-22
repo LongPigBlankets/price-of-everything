@@ -83,15 +83,14 @@ const FILM_START := FilmStart.AFTER_INTRO
 ## How long the film takes to fade up over the lattice, and to fade back down when it ends.
 const FILM_FADE := 0.6
 
-const TIP := "Tip: Some goods are interchangeable in recipes, like coal, petroleum needle coke and carbonised biomass. Change which one you use in recipes from the Construct menu."
 const HEAD_FONT := preload("res://assets/fonts/BebasNeue-Regular.ttf")
 const LoadingHexBg := preload("res://scripts/loading_hex_bg.gd")
 
 # Plate / button geometry. Both sit bottom-centred, BOTTOM_MARGIN px above the
 # screen bottom; the button is centred on the plate's footprint so the morph is a
 # clean crossfade in place.
-const PLATE_W := 740.0
-const PLATE_H := 176.0
+const PLATE_W := 250.0
+const PLATE_H := 72.0
 const BTN_W := 480.0
 const BTN_H := 72.0
 const BOTTOM_MARGIN := 40.0
@@ -369,7 +368,6 @@ func _await_film_started() -> void:
 
 func _build_plate() -> void:
 	_plate = LoadingPlate.new()
-	_plate.tip = TIP
 	_plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_plate.z_index = 10
 	_bottom_box(_plate, PLATE_W, PLATE_H, BOTTOM_MARGIN)
@@ -516,13 +514,13 @@ func _start_camera_intro() -> void:
 		cam.start_intro_zoom(ZOOM_FRAC, EXIT_SECS)
 
 
-# ── The metallic octagonal "Loading…" plate ───────────────────────────────────
+# ── The metallic "Loading…" plate ─────────────────────────────────────────────
 ## Replicates the End Turn dock's treatment: a squarish silver under-plate with a
-## navy octagon inset on top (so the silver reads as a riveted frame), diagonal
-## lighting, and a cream rim. Draws its own header (Bebas) + wrapped tip text.
+## navy panel inset on top (so the silver reads as a riveted frame), diagonal
+## lighting, and a cream rim. It says "Loading" and nothing else — it is a caption
+## under a film now, not a place to put reading matter.
 class LoadingPlate extends Control:
 	const F_HEAD := preload("res://assets/fonts/BebasNeue-Regular.ttf")
-	const F_BODY := preload("res://assets/fonts/IBMPlexSans-Regular.ttf")
 	const NAVY_TL := Color(0.025, 0.18, 0.34)
 	const NAVY_TR := Color(0.0, 0.12156863, 0.24313726)
 	const NAVY_BL := Color(0.0, 0.105, 0.215)
@@ -532,13 +530,18 @@ class LoadingPlate extends Control:
 	const SILVER_DK := Color("#5b636e")
 	const RIM := Color("#f4e6c0")          # cream metallic rim / header
 	const ACCENT := Color("#e6b34a")       # gold
-	const OFF_WHITE := Color("#eef1ea")    # tip body
-	const INSET := 6.0                     # navy inset inside the silver plate (= silver band width)
-	const RADIUS := 24.0                   # rounded-rect corner radius (was an octagon corner cut)
-	const RIVET_EDGE := 9.0                # bolts sit this far in from each edge — on the silver band
+	const INSET := 5.0                     # navy inset inside the silver plate (= silver band width)
+	const RADIUS := 14.0                   # rounded-rect corner radius
+	const FONT_SIZE := 26
+	const RIVET_R := 4.0
+	## Bolt centres, in from each edge. They sit ON THE NAVY PANEL, not on the silver band:
+	## INSET + RIVET_R is where a bolt would just clear the band, and the rest is the gap that
+	## keeps it looking seated rather than balanced on the edge.
+	const RIVET_EDGE := INSET + RIVET_R + 8.0
+	## Text starts clear of the bolts — their outer edge plus a breath.
+	const TEXT_PAD := RIVET_EDGE + RIVET_R + 9.0
 
 	var header := "Loading"
-	var tip := ""
 
 	func set_header(s: String) -> void:
 		if s == header:
@@ -569,25 +572,19 @@ class LoadingPlate extends Control:
 		no.append(np[0])
 		draw_polyline(no, Color(RIM, 0.6), 1.5, true)
 
-		# Four corner rivets on the silver frame.
+		# Four corner bolts, seated on the navy.
 		_rivets(r)
 
-		# Header — Bebas, cream, with a soft drop shadow.
-		var hx := nr.position.x + 30.0
-		var hy := nr.position.y + 22.0
-		draw_string(F_HEAD, Vector2(hx + 1, hy + 1 + F_HEAD.get_ascent(28)), header,
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Color(0, 0, 0, 0.5))
-		draw_string(F_HEAD, Vector2(hx, hy + F_HEAD.get_ascent(28)), header,
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 28, RIM)
-
-		# Hairline divider under the header.
-		var dy := hy + 42.0
-		draw_line(Vector2(nr.position.x + 26, dy), Vector2(nr.end.x - 26, dy), Color(RIM, 0.22), 1.0)
-
-		# Tip — off-white, wrapped to the plate width.
-		var tip_w := nr.size.x - 60.0
-		draw_multiline_string(F_BODY, Vector2(nr.position.x + 30, dy + 16 + F_BODY.get_ascent(16)),
-			tip, HORIZONTAL_ALIGNMENT_LEFT, tip_w, 16, -1, OFF_WHITE)
+		# Header — Bebas, cream, with a soft drop shadow. Left-aligned rather than centred:
+		# the trailing dots animate, and centring makes the whole word shuffle sideways as
+		# they come and go.
+		var hx := r.position.x + TEXT_PAD
+		var hy := r.position.y + (r.size.y - F_HEAD.get_height(FONT_SIZE)) * 0.5
+		var base := hy + F_HEAD.get_ascent(FONT_SIZE)
+		draw_string(F_HEAD, Vector2(hx + 1, base + 1), header,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, Color(0, 0, 0, 0.5))
+		draw_string(F_HEAD, Vector2(hx, base), header,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, RIM)
 
 	# A rounded-rectangle outline (clockwise), arc-traced at each corner. Fed to
 	# draw_polygon/_grad exactly like the old octagon was.
@@ -620,15 +617,14 @@ class LoadingPlate extends Control:
 		return cols
 
 	func _rivets(r: Rect2) -> void:
-		# Corners plus the midpoints of the long top/bottom edges (reads better on a
-		# wide plate), all sitting on the silver frame band.
+		# Four corners only. The mid-edge pair read well across a 740 px plate and crowd a
+		# 250 px one, where they would sit almost on top of the word.
 		var e := RIVET_EDGE
-		var mx := r.size.x * 0.5
 		for c in [
-			Vector2(e, e), Vector2(mx, e), Vector2(r.size.x - e, e),
-			Vector2(e, r.size.y - e), Vector2(mx, r.size.y - e), Vector2(r.size.x - e, r.size.y - e),
+			Vector2(e, e), Vector2(r.size.x - e, e),
+			Vector2(e, r.size.y - e), Vector2(r.size.x - e, r.size.y - e),
 		]:
-			_rivet(r.position + c, 4.0)
+			_rivet(r.position + c, RIVET_R)
 
 	func _rivet(c: Vector2, rad: float) -> void:
 		draw_circle(c, rad, Color("#5a636e"))
