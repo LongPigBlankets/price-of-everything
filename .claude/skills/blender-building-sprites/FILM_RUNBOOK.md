@@ -210,6 +210,11 @@ A modelling fault reached the shipped film: the construction site's second store
                           [0:v]format=yuv420p[a];[a][b]concat=n=2:v=1:a=0[v]" \
          -map "[v]" -c:v libtheora -q:v 6 -r 30 film.ogv
 
+   **Do not stream frames you are not repairing.** Pulling all 1350 through rgb24 costs a
+   YUV round trip on every untouched frame: measured 50.9 MB streamed against 44.0 MB
+   concatenated, same q6, same content. Use film_patch_encode.py only for repairs scattered
+   through the film; for one run starting at frame 0, write the head as PNGs and concat.
+
    **Pick q by SIZE, not by quality.** Theora decodes on Godot's MAIN thread, so bitrate is
    a load-time cost, not just a disk cost. q6 came out 44.0MB against the shipped 48.2MB at
    44.7 dB — one extra generation is imperceptible on flat-fill art, and the smaller file is

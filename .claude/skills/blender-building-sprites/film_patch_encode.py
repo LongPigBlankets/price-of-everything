@@ -10,6 +10,16 @@ STREAMING, because the alternative is 1350 uncompressed frames on disk (~3.4 GB)
 couple of hundred small rectangles. ffmpeg decodes to raw on one pipe and encodes from raw on
 another; this sits between them and paints the repaired rectangles as the frames go past.
 
+USE THE CONCAT PATH INSTEAD WHEN THE REPAIRS ARE ONE RUN STARTING AT FRAME 0. Streaming pulls
+EVERY frame through rgb24, so all 1350 pay a YUV -> RGB -> YUV round trip, including the 1274
+this never touches. Measured 2026-08-22 on the same repair: streaming 50.9 MB, concat 44.0 MB,
+against a shipped 48.2 MB. Same q6, same content — 6.9 MB of pure round-trip. Write the head
+as PNGs and let ffmpeg keep the tail in its own colour space:
+
+    ffmpeg -y -r 30 -start_number 0 -i head/p%04d.png -i film_ORIGINAL.ogv       -filter_complex "[1:v]trim=start_frame=<N>,setpts=PTS-STARTPTS[b];                       [0:v]format=yuv420p[a];[a][b]concat=n=2:v=1:a=0[v]"       -map "[v]" -c:v libtheora -q:v 6 -r 30 film.ogv
+
+This tool is for repairs SCATTERED through the film, where there is no tail to keep.
+
 THE WHOLE FILM IS RE-ENCODED, not spliced. Ogg cannot be cut and rejoined with -c copy without
 chaining two logical streams, and Godot's Theora decoder is not to be trusted past that join.
 One extra generation measured 44.7 dB at q6 — imperceptible on flat-fill art — and q6 lands
