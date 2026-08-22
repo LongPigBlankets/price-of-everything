@@ -13,7 +13,13 @@ import sys
 import os
 import mathutils
 
-B = "/Users/crisu/Price of Everything/blender-assets/"
+# The assets root on THIS machine. loading_scene.py carries the Mac author's absolute path
+# throughout, so the path is rewritten in its SOURCE below rather than patched afterwards —
+# by the time the module has been exec'd it has already resolved its own file paths, and
+# fixing them in the namespace is too late. Same treatment as tools_render_layers.py.
+_MAC_ROOT = "/Users/crisu/Price of Everything/blender-assets/"
+B = os.environ.get("POE_BLENDER_ASSETS",
+                   os.path.dirname(os.path.abspath(__file__)).replace("\\", "/") + "/")
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 # The range is joined-then-split so a launcher that passes it as ONE quoted token
 # (`-- "0 169"`) still works, and MISSING is a hard error rather than a default.
@@ -29,7 +35,7 @@ i0, i1 = int(parts[0]), int(parts[1])
 print("CHUNK_RANGE", i0, i1, flush=True)
 
 ns = {}
-exec(open(B + "loading_scene.py").read(), ns)
+exec(open(B + "loading_scene.py").read().replace(_MAC_ROOT, B), ns)
 print("CHUNK_BUILD_START", flush=True)
 r = ns["render_film_chunk"](i0, i1, rebuild=True)
 print("CHUNK_DONE", r, flush=True)
