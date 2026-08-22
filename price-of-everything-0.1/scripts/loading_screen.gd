@@ -24,7 +24,7 @@ const ZOOM_FRAC := 0.5         # how far between full-out and full-in the intro 
 ## Zoomed out frames the whole map at ~24,450 draw calls; the playing view is ~7,700. With the
 ## reveal repaint already gone, turning this on halved the worst frame after Begin again —
 ## 465 -> 244 ms and 488 -> 251 ms, interleaved. What it costs is the opening zoom itself.
-const START_AT_PLAY_ZOOM := false
+const START_AT_PLAY_ZOOM := true
 
 ## The loading film, when one has been rendered. ABSENT IS NORMAL: with no file here the
 ## screen is exactly what it was — the hex lattice drawing in under the plate — so the film is
@@ -489,31 +489,37 @@ func _build_plate() -> void:
 func _build_begin_button() -> void:
 	_begin = Button.new()
 	_begin.text = BEGIN_TEXT
-	_begin.add_theme_font_override("font", HEAD_FONT)   # Bebas — matches END TURN / title
+	# THE DESIGN SYSTEM'S CTA, not a local imitation of one. "Primary" is what every other
+	# call to action in the game uses — Buy, Upgrade, New Game — so the button that starts the
+	# match is the same object the player will meet everywhere else.
+	_begin.theme_type_variation = &"Primary"
 	_begin.z_index = 11
 	_begin.visible = false
 	_begin.modulate.a = 0.0
 	_begin.focus_mode = Control.FOCUS_NONE              # no focus ring inside the panel
 	_begin.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_plate.add_child(_begin)                           # in the tree first, or the theme lookups miss
 
 	var box: Rect2 = _plate.content_rect()
-	# Step down until the label clears the bolts. It fits at full size today; this is here so
-	# that stays true if the wording changes.
+	# Fit the DS CTA to the plate rather than the other way round, and MEASURE it against the
+	# theme's own font and padding instead of assuming: the variation brings its own typeface
+	# and its own content margins, and both move if the design system changes.
+	var f: Font = _begin.get_theme_font("font")
+	var sb: StyleBox = _begin.get_theme_stylebox("normal")
+	var pad := 8.0
+	if sb != null:
+		pad = sb.content_margin_left + sb.content_margin_right + 4.0
+	var avail := box.size.x - pad
 	var fsize := BEGIN_FONT_SIZE
-	while fsize > BEGIN_FONT_MIN and HEAD_FONT.get_string_size(
-			BEGIN_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize).x > box.size.x - 8.0:
-		fsize -= 1
+	if f != null:
+		while fsize > BEGIN_FONT_MIN and f.get_string_size(
+				BEGIN_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize).x > avail:
+			fsize -= 1
 	_begin.add_theme_font_size_override("font_size", fsize)
-
-	# Styled from the PLATE's own palette rather than the DS theme: a steel-blue DS surface
-	# dropped on the navy would read as a second panel sitting on the first. This reads as the
-	# panel's own face going live.
-	for state in ["normal", "hover", "pressed", "focus", "disabled"]:
-		_begin.add_theme_stylebox_override(state, _begin_style(state))
-	_begin.add_theme_color_override("font_color", LoadingPlate.RIM)
-	_begin.add_theme_color_override("font_hover_color", LoadingPlate.ACCENT)
-	_begin.add_theme_color_override("font_pressed_color", LoadingPlate.ACCENT)
-	_begin.add_theme_color_override("font_focus_color", LoadingPlate.RIM)
+	if OS.get_environment("LOAD_PROF") != "":
+		print("LOADPROF begin CTA: %.0f px of %.0f available at size %d"
+			% [f.get_string_size(BEGIN_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize).x
+				if f != null else 0.0, avail, fsize])
 
 	_begin.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	_begin.offset_left = box.position.x
@@ -521,24 +527,6 @@ func _build_begin_button() -> void:
 	_begin.offset_right = box.position.x + box.size.x
 	_begin.offset_bottom = box.position.y + box.size.y
 	_begin.pressed.connect(_on_begin_pressed)
-	_plate.add_child(_begin)
-
-
-func _begin_style(state: String) -> StyleBoxFlat:
-	var sb := StyleBoxFlat.new()
-	sb.set_corner_radius_all(7)
-	sb.set_border_width_all(1)
-	match state:
-		"hover":
-			sb.bg_color = Color(1, 1, 1, 0.09)
-			sb.border_color = Color(LoadingPlate.ACCENT, 0.85)
-		"pressed":
-			sb.bg_color = Color(0, 0, 0, 0.34)
-			sb.border_color = Color(LoadingPlate.ACCENT, 0.7)
-		_:
-			sb.bg_color = Color(0, 0, 0, 0.20)
-			sb.border_color = Color(LoadingPlate.RIM, 0.45)
-	return sb
 
 
 func _centre_box(c: Control, w: float, h: float) -> void:

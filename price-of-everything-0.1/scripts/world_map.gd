@@ -497,7 +497,12 @@ func finish_build(animate: bool) -> void:
 	# watching. No-op when the world was never hidden (tests / e2e / load-game).
 	# Optionally paint the warm frame at the zoom the player will actually be at, rather than
 	# fully zoomed out. See LoadingScreen.START_AT_PLAY_ZOOM.
-	if LoadingScreen.START_AT_PLAY_ZOOM:
+	#
+	# ONLY under a loading screen. This is about what the loading screen hands over, and the
+	# reveal it pairs with is itself loading-screen-only. Tests, the e2e harness and the
+	# screenshot tools have no such handover and DO have expectations about where the camera
+	# is; moving it for them would be changing their world to tune ours.
+	if LoadingScreen.START_AT_PLAY_ZOOM and _loading_screen_active():
 		_place_camera_at_play_zoom()
 	await _reveal_world_for_play()
 	# ...and then take it away again until "Begin".
