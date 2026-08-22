@@ -495,6 +495,10 @@ func finish_build(animate: bool) -> void:
 	# paint (and the hills' far-zoom LOD switch) is an expensive frame; it has to land here
 	# rather than on the fade-out, or the reveal stutters on the frame the player is
 	# watching. No-op when the world was never hidden (tests / e2e / load-game).
+	# Optionally paint the warm frame at the zoom the player will actually be at, rather than
+	# fully zoomed out. See LoadingScreen.START_AT_PLAY_ZOOM.
+	if LoadingScreen.START_AT_PLAY_ZOOM:
+		_place_camera_at_play_zoom()
 	await _reveal_world_for_play()
 	# ...and then take it away again until "Begin".
 	#
@@ -686,7 +690,18 @@ func reveal_for_play() -> void:
 	for layer in _hidden_for_load:
 		if is_instance_valid(layer):
 			layer.visible = true
-			layer.queue_redraw()
+			# NO queue_redraw HERE. Godot keeps a hidden CanvasItem's recorded commands, so
+			# showing it again costs nothing — while forcing a repaint throws away the paint
+			# the warm frame did under the plates and does the whole thing a second time. That
+			# was measured at ~1.2 s on the frame the player clicks Begin, which is exactly the
+			# frame this hide/warm/reveal dance exists to protect.
+			#
+			# Correctness does not depend on this call: every layer's own _process compares the
+			# live view against the one it painted and asks for a repaint when the camera has
+			# moved far enough to need one (see view_stream.gd). Repainting them all
+			# unconditionally only pre-empts a decision they already make for themselves.
+			# Measured, interleaved: 1229 -> 496 ms and 1309 -> 519 ms on the worst frame
+			# after the click, with the resulting map pixel-for-pixel the same.
 	_hidden_for_load.clear()
 	# And start the one warm that is too big for a load. 8.6 s of contour triangulation, in
 	# slices small enough to disappear into a play frame, for a picture the player only needs
@@ -1728,6 +1743,28 @@ func _on_focus_building_requested(instance_id: String) -> void:
 
 ## Pan the camera to a tile over 0.3s (UI-driven selection only — clicking a
 ## tile directly on the map never pans); returns its tile_data ({} if unknown).
+## Put the camera where the intro zoom would have LEFT it, before anything is painted.
+##
+## The map is painted at zoom_min otherwise, which frames the ENTIRE map — the most expensive
+## thing this game ever draws, at ~24,450 draw calls against ~7,700 for the view the player
+## actually plays at. The intro zoom then spends a second travelling from one to the other.
+##
+## NOTE the draw-call count is not what makes the reveal slow: cutting it 3x on its own moved
+## the reveal frame by ~10%, because most of that frame was the forced repaint in
+## reveal_for_play, not the geometry. With that repaint gone this is worth a further halving.
+func _place_camera_at_play_zoom() -> void:
+	var cam := get_viewport().get_camera_2d()
+	if cam == null or not cam.has_method("_effective_zoom_min"):
+		return
+	var zmin: float = cam.call("_effective_zoom_min")
+	var zmax: float = float(cam.get("zoom_max"))
+	var z := lerpf(zmin, zmax, LoadingScreen.ZOOM_FRAC)
+	cam.zoom = Vector2.ONE * z
+	cam.set("_target_zoom", cam.zoom)
+	if OS.get_environment("LOAD_PROF") != "":
+		print("LOADPROF camera placed at play zoom %.3f (was %.3f, max %.3f)" % [z, zmin, zmax])
+
+
 func _focus_camera_on_tile(tile_id: String) -> Dictionary:
 	var coord := terrain_layer.id_to_coord(tile_id)
 	if coord == Vector2i(-1, -1) or not terrain_layer.tiles.has(coord):

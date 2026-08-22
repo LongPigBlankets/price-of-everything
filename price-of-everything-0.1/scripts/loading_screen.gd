@@ -17,6 +17,14 @@ const DOT_PERIOD := 0.45       # seconds per "Loading…" dot step
 const MORPH_SECS := 1.0        # plate → Begin button crossfade
 const EXIT_SECS := 1.0         # fade-out + camera zoom on Begin
 const ZOOM_FRAC := 0.5         # how far between full-out and full-in the intro zoom lands
+## Start the match already at the playing zoom instead of zoomed fully out, and skip the intro
+## zoom (there would be nowhere to travel to).
+##
+## This is a LOOK decision with a measured price, which is why it is a switch and not a fix.
+## Zoomed out frames the whole map at ~24,450 draw calls; the playing view is ~7,700. With the
+## reveal repaint already gone, turning this on halved the worst frame after Begin again —
+## 465 -> 244 ms and 488 -> 251 ms, interleaved. What it costs is the opening zoom itself.
+const START_AT_PLAY_ZOOM := false
 
 ## The loading film, when one has been rendered. ABSENT IS NORMAL: with no file here the
 ## screen is exactly what it was — the hex lattice drawing in under the plate — so the film is
@@ -672,6 +680,11 @@ func _on_begin_pressed() -> void:
 
 
 func _start_camera_intro() -> void:
+	# With START_AT_PLAY_ZOOM the camera is already where this would have landed, and running it
+	# would throw the view back out to the whole map — the expensive framing that setting exists
+	# to avoid — only to travel back in.
+	if START_AT_PLAY_ZOOM:
+		return
 	var cam := get_viewport().get_camera_2d()
 	if cam == null:
 		cam = get_tree().get_first_node_in_group("camera")
