@@ -605,6 +605,7 @@ func _battery_type_row(gid: String, internal: String, subtitle: String, btn_text
 	cvb.add_child(hb)
 	var icon := UIHelpers.make_framed_good_icon(gid, internal, MARKET_ICON)
 	icon.custom_minimum_size = Vector2(MARKET_ICON, MARKET_ICON)
+	UIHelpers.link_good_icon_to_graph(icon, gid)
 	hb.add_child(icon)
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1450,6 +1451,10 @@ func _recipe_icon(good_id: String, internal: String, qty: int, size: int, bleed:
 func _good_icon_pill(good_id: String, internal: String, qty: int, size: int, base_qty: int = -1, mod_pct: int = 0) -> Control:
 	var holder := UIHelpers.make_framed_good_icon(good_id, internal, size)
 	holder.add_child(_qty_pill(qty, base_qty, mod_pct))
+	# Every input and output on this panel is a way into the Goods Graph: the player is
+	# already looking at what this building eats and makes, and 'how else is that made'
+	# is the next question.
+	UIHelpers.link_good_icon_to_graph(holder, good_id)
 	return holder
 
 # Back-compat name used by construction / shipments / demolish — now the pill icon.

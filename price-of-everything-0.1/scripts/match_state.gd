@@ -622,6 +622,9 @@ signal goods_graph_requested
 signal empire_view_requested
 ## The Goods Graph's expanded card asked for a good's Encyclopedia entry.
 signal encyclopedia_good_requested(good_id: String)
+## A good icon anywhere in the UI was clicked: open the Goods Graph focused on it, so a
+## good the player is reading about is one click from how it is made and what it feeds.
+signal goods_graph_good_requested(good_id: String)
 ## A UI element (e.g. the tile-view intermittency "see more" link) asked to open the
 ## building ledger pre-filtered to a single filter key (e.g. "green_intermittent").
 signal building_ledger_filter_requested(filter_key: String)

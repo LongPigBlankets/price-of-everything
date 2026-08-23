@@ -18,6 +18,7 @@ const BUILD_BUTTON_SIZE := Vector2(46, 46)
 const GOOD_RUBRIC_WIDTH := 720.0
 const GOOD_TRANSPORT_MODES := ["nothing", "roads", "rail", "pipes", "reinf_pipes"]
 const GoodIcons := preload("res://scripts/good_icons.gd")
+const UIHelpers := preload("res://scripts/ui_helpers.gd")
 
 # Palette aligned to the DS navy theme (was bespoke pure-black). Dark surfaces use
 # DS navy (#040F1B) / highlight (#002E54); muted text uses DS TEXT_MUTED; the build
@@ -1350,14 +1351,22 @@ func _make_catalog_icon(result: Dictionary) -> Control:
 		return _make_recipe_placeholder_icon()
 
 	var texture: Texture2D = null
+	var good_id := ""
 	if result.get("type", "") == "good":
-		texture = _load_good_texture(result.get("payload", {}))
+		var payload: Dictionary = result.get("payload", {})
+		texture = _load_good_texture(payload)
+		good_id = str(payload.get("id", payload.get("good_id", "")))
 	elif result.get("type", "") == "building":
 		var building: Dictionary = result.get("payload", {})
 		texture = _load_building_texture(building.get("id", ""))
 	if texture == null:
 		return _make_empty_icon("No icon")
-	return _make_texture_icon(texture)
+	var icon := _make_texture_icon(texture)
+	# A good's icon in the encyclopedia is a way into the Goods Graph. The playtester
+	# lived in the encyclopedia and asked for exactly this: click a good, see its web.
+	if good_id != "":
+		UIHelpers.link_good_icon_to_graph(icon, good_id)
+	return icon
 
 func _make_texture_icon(texture: Texture2D) -> TextureRect:
 	var icon := TextureRect.new()

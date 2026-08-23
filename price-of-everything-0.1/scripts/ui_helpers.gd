@@ -143,6 +143,27 @@ static func make_overlaid_quantity_pill(text: String, height: int = 22) -> Contr
 	return pill
 
 
+## Make a good icon a LINK to that good in the Goods Graph.
+##
+## The icons are built by the helpers above and handed out all over the UI, so the click
+## behaviour is attached here rather than rebuilt at each site: one place decides what a
+## good icon does when you click it, and every panel that opts in agrees.
+##
+## The icon roots are MOUSE_FILTER_PASS so they can sit inside clickable cards; a linked
+## icon takes STOP, which is the point — the click belongs to the good, not to the row.
+static func link_good_icon_to_graph(ctrl: Control, good_id: String) -> void:
+	if ctrl == null or good_id == "":
+		return
+	ctrl.mouse_filter = Control.MOUSE_FILTER_STOP
+	ctrl.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	var name := Catalog.get_display_name(good_id)
+	ctrl.tooltip_text = ("%s — click to see how it is made" % name) if name != "" else "Show in the Goods Graph"
+	ctrl.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			ctrl.accept_event()
+			MatchState.goods_graph_good_requested.emit(good_id))
+
+
 static var _checked_tex: Texture2D = null
 static var _unchecked_tex: Texture2D = null
 

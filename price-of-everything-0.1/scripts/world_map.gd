@@ -220,6 +220,7 @@ func _build_base() -> void:
 		search_overlay.recipe_build_requested.connect(_on_search_recipe_build_requested)
 	MatchState.encyclopedia_entry_requested.connect(_on_encyclopedia_entry_requested)
 	MatchState.goods_graph_requested.connect(_on_goods_graph_requested)
+	MatchState.goods_graph_good_requested.connect(_on_goods_graph_good_requested)
 	MatchState.empire_view_requested.connect(_on_empire_view_requested)
 	MatchState.encyclopedia_good_requested.connect(_on_encyclopedia_good_requested)
 	MatchState.focus_tile_requested.connect(_on_focus_tile_requested)
@@ -2050,6 +2051,11 @@ func _on_encyclopedia_entry_requested(entry_id: String) -> void:
 func _on_goods_graph_requested() -> void:
 	if goods_graph_view != null:
 		goods_graph_view.toggle()
+
+func _on_goods_graph_good_requested(good_id: String) -> void:
+	if goods_graph_view != null:
+		goods_graph_view.open_focused(good_id)
+
 
 func _on_empire_view_requested() -> void:
 	if empire_view != null:
