@@ -573,7 +573,7 @@ func _track_color(entry: Dictionary) -> Color:
 ## no building behind it, so its cleaned PNG is checked in beside the other UI icons.
 const BuildingIcon := preload("res://scripts/building_icon.gd")
 const WAREHOUSE_ICON: Texture2D = preload("res://assets/icons/ui_icons/warehouse.png")
-const FREIGHT_ICON_PX := 30
+const FREIGHT_ICON_PX := 38
 ## Gap between an icon and its own lamp, and between one pair and the next. The pair gap
 ## is the wider of the two on purpose: it is what makes three icon-and-lamp units read as
 ## three separate readouts rather than one row of six things.

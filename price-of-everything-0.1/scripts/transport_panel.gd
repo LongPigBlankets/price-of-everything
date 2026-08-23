@@ -35,7 +35,7 @@ const TITLE_SIZE := 40
 ## Content inset from the panel edge, clearing the brass pipe frame.
 const FRAME_INSET := 26
 const GOOD_ICON := 56           # the frameless cream tile; the usual size for a good
-const INFRA_ICON := 26          # the infrastructure's own building icon
+const INFRA_ICON := 38          # the infrastructure's own building icon
 const PILL_HEIGHT := 22
 
 ## The filter chips over the infrastructure column, in build order. Cables carry power
