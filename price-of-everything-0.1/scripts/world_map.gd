@@ -38,6 +38,8 @@ var _v2_picking_dest: bool = false
 @onready var search_overlay: Control = %SearchOverlay
 @onready var river_layer: TileMapLayer = $RiverLayer
 @onready var hud_content: Control = $UILayer/HUD/HUDContent
+# Transport (logistics) panel — built on first open, see _on_transport_panel_requested.
+var _transport_panel: Control = null
 @onready var _hud: Control = $UILayer/HUD
 @onready var _toast_layer: Control = $UILayer/HUD/ToastLayer
 @onready var forest_visuals: Node2D = %ForestVisuals
@@ -222,6 +224,8 @@ func _build_base() -> void:
 	MatchState.encyclopedia_good_requested.connect(_on_encyclopedia_good_requested)
 	MatchState.focus_tile_requested.connect(_on_focus_tile_requested)
 	MatchState.focus_building_requested.connect(_on_focus_building_requested)
+	MatchState.transport_panel_requested.connect(_on_transport_panel_requested)
+	MatchState.tile_stockpile_requested.connect(_on_go_to_tile_stockpile)
 
 	TurnManager.phase_started.connect(_on_phase_started)
 	TurnManager.turn_advanced.connect(_on_turn_advanced)
@@ -1709,6 +1713,15 @@ func _tile_data_by_id(tile_id: String) -> Dictionary:
 			return td
 	return {}
 
+## The top bar's Transport module. Built on first use — nothing in a match needs the
+## logistics panel to exist until the player opens it, and the load is already the
+## thing this project spends the most care protecting.
+func _on_transport_panel_requested() -> void:
+	if _transport_panel == null or not is_instance_valid(_transport_panel):
+		_transport_panel = load("res://scripts/transport_panel.gd").new()
+		hud_content.add_child(_transport_panel)
+	_transport_panel.open()
+
 func _on_go_to_tile_stockpile(tile_id: String) -> void:
 	var td := _tile_data_by_id(tile_id)
 	if td.is_empty():
@@ -1716,6 +1729,8 @@ func _on_go_to_tile_stockpile(tile_id: String) -> void:
 	_last_selected_tile = td
 	info_panel._active_tab = "stock"
 	info_panel.show_tile(td)
+	# show_tile resets to the Buildings tab, so ask for Stockpile again afterwards.
+	info_panel._select_tab("stock")
 
 ## Deep-link target for notifications etc: centre the camera on the tile and
 ## open its panel. Emitted via MatchState.focus_tile_requested.

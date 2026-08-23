@@ -27,12 +27,22 @@ const FLASH_RED := Color(0.9, 0.2, 0.2)
 # Show the "Bankruptcy imminent" strip when total runway — cash plus remaining
 # borrowing room — drops below this.
 const BANKRUPTCY_IMMINENT_RUNWAY := 100.0
+# A tile counts as "full" for the transport readout at this share of its capacity —
+# 95%% is close enough that the next shipment is the one that gets refused.
+const NEAR_FULL_FRACTION := 0.95
 
 # ── Prototype palette (top-bar local; the DS navy family, tuned per the design) ──
-const BAR_H := 69.0
-const MOD_H := 48.0
-# Briefing notch: taller than the bar, hangs below it as a two-row centre notch.
-const NOTCH_H := 102.0
+# v3 (docs/top-bar-v3-spec.md §1.1): the bar lost its per-module boxes, so the
+# padding those boxes needed went with them — 4 top + 38 module + 4 bottom + the
+# 7px bezel. Module chrome is flat now; see _module_box.
+const BAR_H := 53.0
+const MOD_H := 38.0
+# Briefing notch: taller than the bar, hanging below it as a two-row centre notch.
+# Derived from BAR_H rather than fixed — it was authored to drop NOTCH_DROP px past a
+# 69px bar, and v3's shorter bar would otherwise leave a notch nearly as deep as the
+# bar is tall. NOTCH_DROP also clears the 60px research badge plus its margins.
+const NOTCH_DROP := 33.0
+const NOTCH_H := BAR_H + NOTCH_DROP
 const NOTCH_MIN_W := 300.0
 const NOTCH_RADIUS := 16.0
 # Research microscope object — the exact art the bottom menu's (alt-mode) Research
@@ -43,18 +53,32 @@ const RESEARCH_DISC := Color("#1e5e63")   # teal disc  (ALT_COLORS["TechButton"]
 const RESEARCH_RING := Color("#ddefec")   # light ring (ALT_COLORS["TechButton"][1])
 # Metallic bottom bezel (the end-turn dock's machined-silver family), lit from the left.
 const EDGE_H := 7.0
+# Pixels the bar's ground is painted ABOVE its top edge, burying the sub-pixel seam
+# that non-integer window stretching leaves on the top row (see _style_bar).
+const TOP_BLEED := 8.0
 const SILVER_LT := Color("#b3bcc6")
 const SILVER_MD := Color("#8b95a1")
 const SILVER_DK := Color("#5b636e")
 const EDGE_SEAM := Color("#3a4048")
 const C_BAR_BG := Color("#0c1c2e")
 const C_BAR_EDGE := Color("#1c3149")
+# Bar ground = the END TURN dock's container navy (BarNavy.TL/TR/BL/BR), stretched
+# across the bar's full span instead of the dock's small face (spec §1.4). Both
+# surfaces read the same four constants so they can never drift apart.
+const BarNavy := preload("res://scripts/bar_navy.gd")
 const C_MOD_BG := Color(0.055, 0.125, 0.204, 0.85)     # rgba(14,32,52,.85)
 const C_MOD_BORDER := Color("#22384f")
 const C_ACTIVE_BG := Color("#15304a")
 const C_ACTIVE_BORDER := Color("#2f5578")
 const C_WARN_BORDER := Color(0.886, 0.376, 0.29, 0.55) # rgba(226,96,74,.55)
-const C_TEXT := Color("#cdd9e6")
+# v3 (spec §1.5): the bar's body text is the SAME off-white the panels use. The old
+# #cdd9e6 and the module labels' #8ea3ba both read as grey on this navy — the owner's
+# standing rule (ds.gd:50) is that grey never goes on a dark ground. Colour that carries
+# MEANING is untouched: good/bad green and red, amber warnings, the cream victory score.
+const C_TEXT := Color("#E8EEF7")        # = DS.PALETTE.TEXT
+# Resting colour for the icon-and-label modules (Encyclopedia, Goods Graph, Menu).
+# They brighten to C_BRIGHT on hover, so the affordance survives the contrast fix.
+const C_LABEL := Color("#E8EEF7")
 const C_BRIGHT := Color("#f3f8fd")
 const C_GOOD := Color("#7ec98a")
 const C_BAD := Color("#e6917f")
@@ -81,6 +105,14 @@ var _net_label: Label
 var _runway_label: Label
 var _money_inner: HBoxContainer
 
+# Status LEDs (spec §1.3): Treasury / Power / Transport only. Rankings,
+# Encyclopedia and the Goods Graph carry none by owner ruling, and Victory /
+# Council / Briefing have no defined red condition — a lamp that can never light
+# is noise, so those modules simply have none.
+var _treasury_led: Control
+var _power_led: Control
+var _transport_led: Control
+
 # Power module
 var _power_btn: Control
 var _power_glyph: Label
@@ -92,6 +124,11 @@ var _victory_btn: Control
 var _victory_meters: HBoxContainer
 var _victory_score: Label
 var _victory_target: Label   # "/ N" — the rising win threshold for the current turn
+
+# Transport module (v3)
+var _transport_btn: Control
+var _transport_head: Label
+var _transport_sub: Label
 
 # Company rankings module
 var _rankings_btn: Control
@@ -136,6 +173,7 @@ func _ready() -> void:
 	_build_treasury()
 	_build_power()
 	_build_victory()
+	_build_transport()
 	_build_rankings()
 	_build_briefing()
 	_build_council()
@@ -157,6 +195,8 @@ func _ready() -> void:
 		_research_seen = false
 		_queue_refresh())
 	LoanState.loans_updated.connect(_queue_refresh)
+	LoanState.loan_taken.connect(_on_loan_taken)
+	TurnManager.turn_resolution_completed.connect(_on_turn_resolved_anomalies)
 	VictoryState.score_changed.connect(func(_t: int, _b: Dictionary) -> void: _queue_refresh())
 	TurnBriefing.items_changed.connect(_queue_refresh)
 	# Opening the briefing marks research as seen — hide the microscope until next turn.
@@ -177,17 +217,19 @@ func _style_bar() -> void:
 	custom_minimum_size = Vector2(0, BAR_H)
 	offset_bottom = BAR_H
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = C_BAR_BG
-	# Bleed the navy fill a few pixels ABOVE the bar's top edge (draw-only — expand margins
-	# never affect layout, so no module shifts). The window is stretched by a non-integer
-	# factor (canvas_items + expand; monitor px / 1920×1080) with pixel-snap off, which left a
-	# shimmering 1–3px seam along the very top row as the camera nudged sub-pixel every frame.
-	# Extending the opaque fill past y=0 buries that edge off-screen, so the top row is solid.
-	sb.expand_margin_top = 8
+	# v3: the ground is PAINTED in _draw (the dock's 4-corner navy, stretched across the
+	# bar), so the stylebox carries padding and shadow only — a fill here would sit on top
+	# of the gradient and flatten it straight back out.
+	#
+	# The old opaque fill also bled TOP_BLEED px above y=0 to bury a shimmering 1–3px seam
+	# along the very top row (the window is stretched by a non-integer factor — canvas_items
+	# + expand, monitor px / 1920×1080 — with pixel-snap off, so the camera nudged that edge
+	# sub-pixel every frame). _draw paints the gradient over the same bleed, keeping the fix.
+	sb.bg_color = Color(0, 0, 0, 0)
 	sb.content_margin_left = 12
 	sb.content_margin_right = 12
-	sb.content_margin_top = 6   # trimmed padding — remove unused space, don't shrink modules
-	sb.content_margin_bottom = 6 + EDGE_H   # keep modules off the metallic rim
+	sb.content_margin_top = 4   # v3: modules lost their boxes, so they need less room
+	sb.content_margin_bottom = 4 + EDGE_H   # keep modules off the metallic rim
 	sb.shadow_color = Color(0, 0, 0, 0.35)
 	sb.shadow_size = 8
 	sb.shadow_offset = Vector2(0, 4)
@@ -199,6 +241,12 @@ func _style_bar() -> void:
 	var hbox := money_widget.get_parent() as HBoxContainer
 	hbox.add_theme_constant_override("separation", 10)
 
+## The bar's ground colour at canvas x, along its BOTTOM edge — what anything docked
+## under the bar must paint itself to continue the gradient rather than interrupt it.
+func bar_ground_at(canvas_x: float) -> Color:
+	var vw := maxf(1.0, get_viewport_rect().size.x)
+	return BarNavy.BL.lerp(BarNavy.BR, clampf(canvas_x / vw, 0.0, 1.0))
+
 ## Sample the bar's left→right metal lighting at canvas x (0 = lit, right = shadowed).
 func _silver_at(canvas_x: float) -> Color:
 	var vw := maxf(1.0, get_viewport_rect().size.x)
@@ -208,15 +256,17 @@ func _draw() -> void:
 	var w := size.x
 	var y1 := size.y
 	var y0 := y1 - EDGE_H
-	# Ambient light sweeping LEFT → RIGHT across the whole bar (owner 2026-07-11:
-	# the bar read top-lit; this gives it a horizontal light instead). Brightest at
-	# the left, fading to nothing by mid-bar; a matching shade deepens the right end.
+	# GROUND: the END TURN dock's container navy, spread over the bar's full span — the
+	# gradient that covers the dock's small face now travels the whole width, so the two
+	# surfaces read as one material (spec §1.4). Replaces both the old flat stylebox fill
+	# and the ambient left→right sweeps that used to fake its light.
+	#
+	# Drawn from -TOP_BLEED, not 0: _draw is unclipped (clip_contents is false), so the
+	# gradient covers the same few pixels above the bar that the old opaque fill's
+	# expand_margin_top did — that bleed is what buries the sub-pixel seam on the top row.
 	draw_polygon(
-		PackedVector2Array([Vector2(0, 0), Vector2(w, 0), Vector2(w, y0), Vector2(0, y0)]),
-		PackedColorArray([Color(1, 1, 1, 0.055), Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.05)]))
-	draw_polygon(
-		PackedVector2Array([Vector2(0, 0), Vector2(w, 0), Vector2(w, y0), Vector2(0, y0)]),
-		PackedColorArray([Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.10), Color(0, 0, 0, 0.09), Color(0, 0, 0, 0.0)]))
+		PackedVector2Array([Vector2(0, -TOP_BLEED), Vector2(w, -TOP_BLEED), Vector2(w, y0), Vector2(0, y0)]),
+		BarNavy.corner_colors())
 	# Machined metallic BEZEL along the bar's bottom (end-turn dock silver):
 	# lit left → right along its length, and bevelled through its depth — dark
 	# seam against the navy, bright top lip, mid body, shadowed lower return.
@@ -234,16 +284,20 @@ func _draw() -> void:
 		PackedColorArray([Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.45), Color(0, 0, 0, 0.38)]))
 	draw_line(Vector2(0, y1 - 0.5), Vector2(w, y1 - 0.5), Color(0.05, 0.07, 0.10, 0.9), 1.0)
 
-func _module_box(active: bool, warn: bool) -> StyleBoxFlat:
+## v3: modules are flat text on the bar — no outline, no shading (spec §1.2).
+## `active` (an open flyout) keeps a fill so the player can see which module the
+## panel belongs to; hover gets a fainter one. The old `warn` red border is gone —
+## a module in trouble lights its LED instead (_Led, §1.3) — so the argument is
+## accepted and ignored, which keeps every existing call site valid.
+func _module_box(active: bool, _warn: bool = false) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = C_ACTIVE_BG if active else C_MOD_BG
-	sb.border_color = C_ACTIVE_BORDER if active else (C_WARN_BORDER if warn else C_MOD_BORDER)
-	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(10)
-	sb.content_margin_left = 14
-	sb.content_margin_right = 14
-	sb.content_margin_top = 5
-	sb.content_margin_bottom = 5
+	sb.bg_color = C_ACTIVE_BG if active else Color(0, 0, 0, 0)
+	sb.set_border_width_all(0)
+	sb.set_corner_radius_all(8)
+	sb.content_margin_left = 10
+	sb.content_margin_right = 10
+	sb.content_margin_top = 2
+	sb.content_margin_bottom = 2
 	return sb
 
 ## Small uppercase module tag ("COUNCIL").
@@ -251,7 +305,7 @@ func _tag(text: String) -> Label:
 	var l := Label.new()
 	l.text = text.to_upper()
 	l.add_theme_font_size_override("font_size", 10)
-	l.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+	l.add_theme_color_override("font_color", C_TEXT)
 	return l
 
 func _mini(text: String, color: Color, size: int = 10) -> Label:
@@ -283,34 +337,54 @@ class _ModuleBtn extends PanelContainer:
 		mouse_entered.connect(func() -> void: _hover = true; _restyle())
 		mouse_exited.connect(func() -> void: _hover = false; _restyle())
 	func _restyle() -> void:
-		var sb: StyleBoxFlat = _bar._module_box(active or _hover, warn)
+		# Hover on a flat module is a faint wash, not a box: _module_box paints the
+		# active fill, and hover borrows it at low opacity.
+		var sb: StyleBoxFlat = _bar._module_box(active, warn)
+		if _hover and not active:
+			sb.bg_color = Color(1, 1, 1, 0.05)
 		add_theme_stylebox_override("panel", sb)
-		queue_redraw()
-	func _draw() -> void:
-		# Left → right light sheen over the module (drawn on top of the panel
-		# stylebox), so modules read as lit from the left rather than top-down.
-		var r := Rect2(Vector2.ZERO, size).grow(-2.0)
-		draw_polygon(
-			PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]),
-			PackedColorArray([Color(1, 1, 1, 0.07), Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.055)]))
 	func _gui_input(e: InputEvent) -> void:
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 			accept_event()
 			pressed.emit()
 
-## Full-rect left→right light sheen, mounted on the Button-based modules (Treasury,
-## Encyclopedia) that can't override _draw the way _ModuleBtn does — keeps the
-## whole bar's lighting horizontal and consistent.
-class _Sheen extends Control:
+## LED status lamp — a 5px-radius dot with a soft glow, in one of two states only:
+## RED (a problem the player should act on) or UNLIT grey. Never a third colour, and
+## never amber: the bar's old per-module warn BORDER was removed with the boxes, so
+## this lamp is now the whole of a module's alarm vocabulary (spec §1.3).
+##
+## Drawn rather than textured: concentric alpha circles give a cheap bloom that reads
+## as a lit bulb at any DPI, with no shader and no art dependency.
+class _Led extends Control:
+	const R := 5.0                  # the lamp itself; the glow rings extend past it
+	const GLOW := [[2.6, 0.28], [1.9, 0.16], [1.35, 0.09]]   # [radius x R, alpha]
+	# Held here, not read from the outer script: a GDScript inner class is its own
+	# scope and cannot see the enclosing file's constants by bare name.
+	const CORE := Color("#e2604a")        # same red as the bar's C_RED
+	const GLASS := Color("#3a4048")       # unlit — the bar's EDGE_SEAM
+	var lit := false:
+		set(v):
+			if v == lit:
+				return
+			lit = v
+			queue_redraw()
 	func _init() -> void:
+		# Sized for the widest glow ring so neighbouring text never clips it.
+		custom_minimum_size = Vector2(R * 2.0 + 6.0, R * 2.0 + 6.0)
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		set_anchors_preset(Control.PRESET_FULL_RECT)
-		resized.connect(queue_redraw)
 	func _draw() -> void:
-		var r := Rect2(Vector2.ZERO, size).grow(-2.0)
-		draw_polygon(
-			PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]),
-			PackedColorArray([Color(1, 1, 1, 0.07), Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.055)]))
+		var c := size * 0.5
+		if not lit:
+			# Dead bulb: dark glass with a faint rim, so the lamp is visibly PRESENT
+			# and off rather than missing — that contrast is what makes red mean something.
+			draw_circle(c, R, GLASS)
+			draw_arc(c, R, 0.0, TAU, 16, Color(1, 1, 1, 0.10), 1.0, true)
+			return
+		for ring: Array in GLOW:
+			draw_circle(c, R * float(ring[0]), Color(CORE, float(ring[1])))
+		draw_circle(c, R, CORE)
+		draw_circle(c, R * 0.45, CORE.lightened(0.45))   # hot filament
 
 func _module_row(mod: Control) -> HBoxContainer:
 	var row := HBoxContainer.new()
@@ -358,6 +432,8 @@ func _build_treasury() -> void:
 	_money_inner.add_theme_constant_override("separation", 10)
 	_money_inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	money_widget.add_child(_money_inner)
+	_treasury_led = _Led.new()
+	_money_inner.add_child(_treasury_led)
 	var coin := _mini("£", C_AMBER, 21)
 	_money_inner.add_child(coin)
 	var col := VBoxContainer.new()
@@ -378,7 +454,6 @@ func _build_treasury() -> void:
 	sub.add_child(_net_label)
 	_runway_label = _mini("", C_RED, 11)
 	sub.add_child(_runway_label)
-	money_widget.add_child(_Sheen.new())   # left→right light, matching the modules
 	money_widget.pressed.connect(func() -> void: _toggle_fly("treasury"))
 
 func _money_text(n: float) -> String:
@@ -402,6 +477,8 @@ func _build_power() -> void:
 	mod.name = "PowerModule"
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
+	_power_led = _Led.new()
+	row.add_child(_power_led)
 	_power_glyph = _mini("⚡", C_GOOD, 19)
 	row.add_child(_power_glyph)
 	var col := VBoxContainer.new()
@@ -411,7 +488,7 @@ func _build_power() -> void:
 	row.add_child(col)
 	_power_head = _mini("Powered", C_GOOD, 15)
 	col.add_child(_power_head)
-	_power_sub = _mini("self-sufficient", DS.PALETTE.TEXT_DIM, 12)
+	_power_sub = _mini("self-sufficient", C_TEXT, 12)
 	col.add_child(_power_sub)
 	_hbox().add_child(mod)
 	_power_btn = mod
@@ -469,7 +546,7 @@ func _build_victory() -> void:
 	_victory_score.add_theme_font_size_override("font_size", 18)
 	_victory_score.add_theme_color_override("font_color", C_CREAM)
 	col.add_child(_victory_score)
-	_victory_target = _mini("/ 4,000", DS.PALETTE.TEXT_DIM, 11)   # updated to the rising threshold each refresh
+	_victory_target = _mini("/ 4,000", C_TEXT, 11)   # updated to the rising threshold each refresh
 	_victory_target.tooltip_text = "Points needed to win rise over the game — 1 track from turn 105 up to 4 tracks by turn 300."
 	col.add_child(_victory_target)
 	mod.pressed.connect(func() -> void: _toggle_fly("victory"))
@@ -480,12 +557,102 @@ func _track_color(entry: Dictionary) -> Color:
 	return DS.PALETTE.get(str(entry.get("color_key", "")), C_CREAM)
 
 
+# ── 3b · Transport: what is moving, and what is choking (v3) ──────────────
+
+## Crate-and-arrow vector icon (drawn — no freight glyph in the bundled font).
+class _FreightIcon extends Control:
+	var color := Color("#E8EEF7")   # C_LABEL; inner classes can't read outer consts
+	func _init(c: Color) -> void:
+		color = c
+		custom_minimum_size = Vector2(19, 16)
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	func set_color(c: Color) -> void:
+		color = c
+		queue_redraw()
+	func _draw() -> void:
+		var h := size.y
+		# A crate on the left, an arrow leaving it to the right.
+		var box := Rect2(1.5, h * 0.28, 9.0, h * 0.5)
+		draw_rect(box, Color(color, 0.22))
+		draw_rect(box, color, false, 1.2)
+		draw_line(Vector2(box.position.x, box.position.y + box.size.y * 0.5),
+			Vector2(box.end.x, box.position.y + box.size.y * 0.5), Color(color, 0.7), 1.0, true)
+		var y := h * 0.53
+		draw_line(Vector2(12.0, y), Vector2(size.x - 1.5, y), color, 1.3, true)
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(size.x - 1.0, y), Vector2(size.x - 4.6, y - 2.8), Vector2(size.x - 4.6, y + 2.8)]), color)
+
+func _build_transport() -> void:
+	var mod := _ModuleBtn.new(self)
+	mod.name = "TransportModule"
+	mod.custom_minimum_size = Vector2(0, MOD_H)
+	var row := _module_row(mod)
+	_transport_led = _Led.new()
+	row.add_child(_transport_led)
+	row.add_child(_FreightIcon.new(C_LABEL))
+	var col := VBoxContainer.new()
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 2)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(col)
+	_transport_head = _mini("0 units → market", DS.PALETTE.TEXT, 15)
+	col.add_child(_transport_head)
+	_transport_sub = _mini("", DS.PALETTE.TEXT, 12)
+	col.add_child(_transport_sub)
+	mod.pressed.connect(func() -> void:
+		_close_fly()
+		MatchState.transport_panel_requested.emit())
+	_hbox().add_child(mod)
+	_transport_btn = mod
+
+## Freight headline: units of goods currently riding to MARKET (sale shipments), the
+## count of tile-links running over capacity, and tiles at/near their storage cap.
+## Every figure is derived from state the sim already keeps — nothing new is simulated.
+func _transport_stats() -> Dictionary:
+	var to_market := 0
+	for s in MatchState.pending_transport_shipments:
+		var ship: Dictionary = s
+		if not bool(ship.get("is_sale", false)):
+			continue
+		for it in (ship.get("sale_record", {}) as Dictionary).get("items", []):
+			to_market += int((it as Dictionary).get("qty", 0))
+	var over := MatchState.congested_links().size()
+	var full := 0
+	var rejecting := 0
+	for tile_key in Stockpile.tiles_with_stock():
+		var cap := float(Stockpile.get_capacity(tile_key))
+		if cap <= 0.0:
+			continue
+		if float(Stockpile.get_used_capacity(tile_key)) / cap >= NEAR_FULL_FRACTION:
+			full += 1
+		if Stockpile.get_refused(tile_key) > 0:
+			rejecting += 1
+	return {"to_market": to_market, "over": over, "full": full, "rejecting": rejecting}
+
+func _refresh_transport() -> void:
+	if _transport_head == null:
+		return
+	var t := _transport_stats()
+	var units := int(t.to_market)
+	_transport_head.text = "%s unit%s → market" % [_thousands(units), "" if units == 1 else "s"]
+	_transport_sub.text = "%d infra over · %d stockpile%s full" % [
+		int(t.over), int(t.full), "" if int(t.full) == 1 else "s"]
+	_transport_btn.tooltip_text = "Transport — %s units riding to market, %d link%s over capacity, %d tile%s at 95%%+ storage" % [
+		_thousands(units), int(t.over), "" if int(t.over) == 1 else "s",
+		int(t.full), "" if int(t.full) == 1 else "s"]
+	# RED when the network is actually losing the player goods or money: more than one
+	# tile turning shipments away, or more than three links paying the congestion
+	# surcharge. Below those, congestion is ordinary friction and the lamp stays dark.
+	(_transport_led as _Led).lit = int(t.rejecting) > 1 or int(t.over) > 3
+
+
 # ── 4 · Rankings: player position in the cosmetic company league ────────────
 
 func _build_rankings() -> void:
 	var mod := _ModuleBtn.new(self)
 	mod.name = "RankingsModule"
-	mod.tooltip_text = "Company rankings — total revenue league table"
+	mod.tooltip_text = "Company rankings — league position and the goods you lead"
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
 	row.add_child(_mini("▲", C_CREAM.darkened(0.12), 15))
@@ -494,10 +661,10 @@ func _build_rankings() -> void:
 	col.add_theme_constant_override("separation", 2)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(col)
-	col.add_child(_tag("Rankings"))
+	# Two lines only (v3): the "RANKINGS" tag row went with the module boxes.
 	_rankings_head = _mini("10TH OF 10", C_BRIGHT, 14)
 	col.add_child(_rankings_head)
-	_rankings_sub = _mini("total revenue", DS.PALETTE.TEXT_DIM, 11)
+	_rankings_sub = _mini("", DS.PALETTE.TEXT, 11)
 	col.add_child(_rankings_sub)
 	mod.pressed.connect(func() -> void: _toggle_fly("rankings"))
 	_hbox().add_child(mod)
@@ -513,8 +680,28 @@ func _refresh_rankings() -> void:
 		var movement: int = int(row.get("rank_change", 0))
 		_rankings_head.text = "%s %s OF %d" % [_ranking_arrow(movement), _ordinal(int(row.get("rank", 10))), rows.size()]
 		_rankings_head.add_theme_color_override("font_color", C_GOOD if movement > 0 else (C_BAD if movement < 0 else C_BRIGHT))
-		_rankings_sub.text = "%s total revenue" % _money_text(float(row.get("revenue", 0.0)))
+		# The sub-line answers "am I winning at anything?", which a revenue total never
+		# did — it counts the goods where the player outproduces all nine rivals.
+		var led := _goods_led_count()
+		_rankings_sub.text = "%d good%s you lead in" % [led, "" if led == 1 else "s"]
 		return
+
+## Goods where the player outproduces every rival. goods_standings() returns one row
+## per GOOD, each carrying a nested `producers` league — the player is one entry in it.
+##
+## Zero output never counts as leading. Apex goods have no rivals generated at all, so
+## the player is trivially rank 1 on every one of them; without the quantity test the
+## bar would boast about goods the player has never made a single unit of.
+func _goods_led_count() -> int:
+	var led := 0
+	for good: Dictionary in CompanyRankings.goods_standings():
+		for producer: Dictionary in (good.get("producers", []) as Array):
+			if not bool(producer.get("is_player", false)):
+				continue
+			if int(producer.get("rank", 0)) == 1 and int(producer.get("quantity", 0)) > 0:
+				led += 1
+			break
+	return led
 
 func _ranking_arrow(change: int) -> String:
 	if change > 0:
@@ -572,7 +759,7 @@ func _refresh_victory() -> void:
 		fill.offset_right = -1
 		meter.add_child(fill)
 		cell.add_child(meter)
-		var letter := _mini(str(t.get("name", "?")).substr(0, 1), DS.PALETTE.TEXT_DIM, 9)
+		var letter := _mini(str(t.get("name", "?")).substr(0, 1), C_TEXT, 9)
 		letter.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		letter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		cell.add_child(letter)
@@ -648,7 +835,11 @@ class _NotchBtn extends PanelContainer:
 		_restyle()
 	func _restyle() -> void:
 		var sb := StyleBoxFlat.new()
-		sb.bg_color = _bar.C_ACTIVE_BG if (active or _hover) else _bar.C_BAR_BG
+		# Match the bar's ground where the notch meets it: the bar is a gradient now, so a
+		# flat fill read as a darker slab bolted on. Sampled at the notch's own centre, the
+		# notch simply looks like the bar bulging downward.
+		sb.bg_color = _bar.C_ACTIVE_BG if (active or _hover) else _bar.bar_ground_at(
+			global_position.x + size.x * 0.5)
 		if warn:
 			sb.bg_color = (sb.bg_color as Color).lerp(Color(0.32, 0.07, 0.05), 0.30)
 		sb.corner_radius_bottom_left = int(_bar.NOTCH_RADIUS)
@@ -772,7 +963,7 @@ func _build_briefing() -> void:
 	row.add_child(col)
 	_briefing_head = _mini("Briefing", C_BRIGHT, 18)
 	col.add_child(_briefing_head)
-	_briefing_sub = _mini("0 updates", DS.PALETTE.TEXT_DIM, 14)
+	_briefing_sub = _mini("0 updates", C_TEXT, 14)
 	col.add_child(_briefing_sub)
 	notch.pressed.connect(func() -> void:
 		_close_fly()
@@ -815,7 +1006,7 @@ func _refresh_briefing() -> void:
 	_briefing_head.text = ("%d decision%s to make" % [decisions, "" if decisions == 1 else "s"]) if hot else "Briefing"
 	_briefing_head.add_theme_color_override("font_color", Color("#f0a496") if hot else C_BRIGHT)
 	_briefing_sub.text = "%d update%s" % [updates, "" if updates == 1 else "s"]
-	_briefing_sub.add_theme_color_override("font_color", C_TEXT if updates > 0 else DS.PALETTE.TEXT_DIM)
+	_briefing_sub.add_theme_color_override("font_color", C_TEXT)
 	_briefing_dot.visible = decisions + updates > 0
 	var dsb := _briefing_dot.get_theme_stylebox("panel") as StyleBoxFlat
 	if dsb != null:
@@ -840,7 +1031,7 @@ func _build_council() -> void:
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(col)
 	col.add_child(_tag("Council"))
-	_council_status = _mini("", DS.PALETTE.TEXT_DIM, 12)
+	_council_status = _mini("", C_TEXT, 12)
 	col.add_child(_council_status)
 	_council_stack = HBoxContainer.new()
 	_council_stack.add_theme_constant_override("separation", 6)
@@ -866,13 +1057,13 @@ func _refresh_council() -> void:
 	(_council_btn as _ModuleBtn).warn = disloyal > 0
 	if seated.is_empty():
 		_council_status.text = "no seats filled"
-		_council_status.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+		_council_status.add_theme_color_override("font_color", C_TEXT)
 	elif disloyal > 0:
 		_council_status.text = "%d DISLOYAL" % disloyal
 		_council_status.add_theme_color_override("font_color", C_RED)
 	else:
 		_council_status.text = "%d seated" % seated.size()
-		_council_status.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+		_council_status.add_theme_color_override("font_color", C_TEXT)
 	_clear_now(_council_stack)
 	for aid in seated:
 		_council_stack.add_child(_portrait_chip(str(aid), 36))
@@ -939,7 +1130,7 @@ func _portrait_chip(aid: String, size: float) -> Control:
 ## Small goods-web vector icon: tiered flow nodes joined by edges (drawn — no
 ## suitable glyph in the bundled font). Mirrors the _BookIcon pattern.
 class _WebIcon extends Control:
-	var color := Color("#8ea3ba")
+	var color := Color("#E8EEF7")   # C_LABEL; inner classes can't read outer consts
 	func _init(c: Color) -> void:
 		color = c
 		custom_minimum_size = Vector2(19, 16)
@@ -968,17 +1159,17 @@ func _build_goods_graph() -> void:
 	mod.tooltip_text = "Goods Graph (G) — how every good is made and what it feeds"
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
-	var icon := _WebIcon.new(Color("#8ea3ba"))
+	var icon := _WebIcon.new(C_LABEL)
 	row.add_child(icon)
-	var lbl := _mini("GOODS GRAPH", Color("#8ea3ba"), 13)
+	var lbl := _mini("GOODS GRAPH", C_LABEL, 13)
 	lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(lbl)
 	mod.mouse_entered.connect(func() -> void:
 		icon.set_color(C_BRIGHT)
 		lbl.add_theme_color_override("font_color", C_BRIGHT))
 	mod.mouse_exited.connect(func() -> void:
-		icon.set_color(Color("#8ea3ba"))
-		lbl.add_theme_color_override("font_color", Color("#8ea3ba")))
+		icon.set_color(C_LABEL)
+		lbl.add_theme_color_override("font_color", C_LABEL))
 	mod.pressed.connect(func() -> void:
 		_close_fly()
 		MatchState.goods_graph_requested.emit())
@@ -989,7 +1180,7 @@ func _build_goods_graph() -> void:
 
 ## Small open-book vector icon (drawn — the bundled font has no book glyph).
 class _BookIcon extends Control:
-	var color := Color("#8ea3ba")
+	var color := Color("#E8EEF7")   # C_LABEL; inner classes can't read outer consts
 	func _init(c: Color) -> void:
 		color = c
 		custom_minimum_size = Vector2(19, 16)
@@ -1044,18 +1235,17 @@ func _adopt_encyclopedia_and_turn() -> void:
 		_enc_inner.add_theme_constant_override("separation", 8)
 		_enc_inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		enc.add_child(_enc_inner)
-		var book := _BookIcon.new(Color("#8ea3ba"))
+		var book := _BookIcon.new(C_LABEL)
 		_enc_inner.add_child(book)
-		var lbl := _mini("ENCYCLOPEDIA", Color("#8ea3ba"), 13)
+		var lbl := _mini("ENCYCLOPEDIA", C_LABEL, 13)
 		lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		_enc_inner.add_child(lbl)
 		enc.mouse_entered.connect(func() -> void:
 			book.set_color(C_BRIGHT)
 			lbl.add_theme_color_override("font_color", C_BRIGHT))
 		enc.mouse_exited.connect(func() -> void:
-			book.set_color(Color("#8ea3ba"))
-			lbl.add_theme_color_override("font_color", Color("#8ea3ba")))
-		enc.add_child(_Sheen.new())   # left→right light, matching the modules
+			book.set_color(C_LABEL)
+			lbl.add_theme_color_override("font_color", C_LABEL))
 		_enc_button = enc
 	_hbox().add_child(_divider())
 	if turn != null:
@@ -1070,7 +1260,7 @@ func _adopt_encyclopedia_and_turn() -> void:
 		turn.add_theme_font_size_override("font_size", 16)
 		turn.add_theme_color_override("font_color", C_TEXT)
 		turn.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		_date_label = _mini("", DS.PALETTE.TEXT_DIM, 12)
+		_date_label = _mini("", C_TEXT, 12)
 		_date_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		_date_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		col.add_child(_date_label)
@@ -1091,7 +1281,7 @@ func _build_menu() -> void:
 	mod.tooltip_text = "Main menu — save, settings, quit"
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
-	row.add_child(_mini("☰", Color("#8ea3ba"), 19))
+	row.add_child(_mini("☰", C_LABEL, 19))
 	mod.pressed.connect(func() -> void:
 		_close_fly()
 		PauseMenu.open(get_parent()))
@@ -1287,7 +1477,7 @@ func _fly_pad(vb: VBoxContainer, sep: int = 7) -> VBoxContainer:
 	vb.add_child(pad)
 	return inner
 
-func _fly_row(label: String, value: String, tone: Color = C_TEXT, label_tone: Color = Color("#8ea3ba"), row_name: String = "") -> Control:
+func _fly_row(label: String, value: String, tone: Color = C_TEXT, label_tone: Color = DS.PALETTE.TEXT_DIM, row_name: String = "") -> Control:
 	var row := HBoxContainer.new()
 	if row_name != "":
 		row.name = row_name   # stable target for the tutorial's money primer
@@ -1741,6 +1931,7 @@ func _apply_refresh() -> void:
 	_refresh_treasury()
 	_refresh_power()
 	_refresh_victory()
+	_refresh_transport()
 	_refresh_rankings()
 	_refresh_briefing()
 	_refresh_council()
@@ -1758,6 +1949,10 @@ func _refresh_treasury() -> void:
 	var net := float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0))
 	_net_label.text = ("+" if net >= 0.0 else "−") + _money_text(absf(net)) + " / turn"
 	_net_label.add_theme_color_override("font_color", C_GOOD if net >= 0.0 else C_BAD)
+	# LED: overdrawn AND still losing money. Either alone is survivable — a negative
+	# balance with a profitable turn is climbing out, and a loss with cash in hand is
+	# affordable. Together they are the shape that ends runs (spec §1.3).
+	(_treasury_led as _Led).lit = MatchState.money < 0.0 and net < 0.0
 	var runway := _runway_turns()
 	_runway_label.visible = runway > 0
 	if runway > 0:
@@ -1767,10 +1962,17 @@ func _refresh_treasury() -> void:
 
 func _refresh_power() -> void:
 	var p := _power_stats()
+	var s: Dictionary = Production.last_turn_summary
 	var starved: bool = int(p.unpowered) > 0
 	var gridding: bool = not starved and int(p.grid_draw) > 0
 	var c := C_RED if starved else (C_AMBER if gridding else C_GOOD)
 	(_power_btn as _ModuleBtn).warn = starved
+	# LED: buildings actually derated by intermittency, or the player buying grid power
+	# while losing money. The second is the case the owner singled out — the lamp lights
+	# HERE and not on the treasury, because power is the thing to go and fix.
+	var net: float = float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0))
+	(_power_led as _Led).lit = (Production.intermittency_derated_count() > 0
+			or (int(p.grid_draw) > 0 and net < 0.0))
 	_power_glyph.add_theme_color_override("font_color", c)
 	_power_head.add_theme_color_override("font_color", c)
 	_power_head.text = ("%d unpowered" % int(p.unpowered)) if starved else (("Grid −%d" % int(p.grid_draw)) if gridding else "Powered")
@@ -1860,3 +2062,282 @@ func flash_red() -> void:
 		_flashing = false
 		_set_money_color(_base_money_color())
 	)
+
+
+# ── Anomaly popups (spec §4) ───────────────────────────────────────────────────
+#
+# A playtester finished a 118-turn run without ever understanding why her balance
+# swung, and read a +£2,500 turn as arbitrary. It was not: a batch of sale shipments
+# landed at once, on top of an auto-bridge loan she never noticed being taken, with
+# tax and dividends skimmed in the same turn. Every figure was already on screen
+# somewhere — none of it was ever ATTRIBUTED. These cards attribute it, in one
+# sentence, under the module the money actually moved through.
+#
+# Thresholds are ratios against the previous THREE resolved turns, so a steadily
+# growing empire never trips them — only a turn that breaks its own recent pattern.
+
+## Turns of history the baselines average over.
+const ANOMALY_BASELINE_TURNS := 3
+## Revenue / running-cost spike: this multiple of the baseline.
+const ANOMALY_SPIKE_RATIO := 1.5
+## Transport is touchier — freight creeping up is the thing players miss.
+const ANOMALY_TRANSPORT_RATIO := 1.25
+## Power: a fifth of generation lost, or a fifth more demand than usual.
+const ANOMALY_POWER_RATIO := 0.8
+const ANOMALY_DEMAND_RATIO := 1.2
+## Turns before the same trigger may fire again, so a long plateau does not nag.
+const ANOMALY_COOLDOWN := 5
+## At most two money cards at once (owner ruling), this far apart.
+const ANOMALY_MAX_STACK := 2
+const ANOMALY_STACK_GAP := 15.0
+## Priority when more than ANOMALY_MAX_STACK money triggers fire in one turn.
+const ANOMALY_MONEY_ORDER: Array[String] = ["loan", "spend", "transport", "payment"]
+## Running-cost lines the spend trigger watches, each against its OWN baseline, mapped
+## to the summary breakdown that says which buildings ran it up.
+const ANOMALY_COST_LINES := {
+	"goods_purchased_cost": "goods_purchased_by_type",
+	"labour_paid": "labour_by_type",
+	"maintenance_paid": "maintenance_by_type",
+	"power_purchase_cost": "power_purchase_by_type",
+}
+
+const AnomalyPopup := preload("res://scripts/anomaly_popup.gd")
+
+# Rolling history of the figures the triggers compare against: one entry per resolved
+# turn, newest last, at most ANOMALY_BASELINE_TURNS long.
+var _anomaly_history: Array[Dictionary] = []
+var _anomaly_cooldown := {}          # trigger id -> turn it last fired
+var _anomaly_cards: Array = []       # live popups, money and power together
+var _anomaly_scrim: Control = null
+var _loan_taken_this_turn := 0.0
+## Latched once per run: the intermittency lesson is taught the first time the player
+## actually generates intermittent green power, and never again.
+var _intermittency_taught := false
+
+
+func _on_loan_taken(loan: Dictionary) -> void:
+	# Every path lands here — the silent auto-bridge as much as a deliberate draw, and
+	# spread financing too (owner: 48 turns = 12 grace + 36 repaying IS a loan at
+	# standard interest). Cleared once the turn's popups have been evaluated.
+	_loan_taken_this_turn += float(loan.get("amount", 0.0))
+
+
+## Judge the resolved turn, then fold it into the baseline for the next one.
+func _on_turn_resolved_anomalies() -> void:
+	var s: Dictionary = Production.last_turn_summary
+	if s.is_empty():
+		return
+	var current := _anomaly_snapshot(s)
+	_evaluate_anomalies(current, s)
+	_anomaly_history.append(current)
+	if _anomaly_history.size() > ANOMALY_BASELINE_TURNS:
+		_anomaly_history = _anomaly_history.slice(_anomaly_history.size() - ANOMALY_BASELINE_TURNS)
+	_loan_taken_this_turn = 0.0
+
+
+func _anomaly_snapshot(s: Dictionary) -> Dictionary:
+	var snap := {
+		"revenue": float(s.get("goods_sales_revenue", 0.0)) + float(s.get("power_sales_revenue", 0.0)),
+		"transport": float(s.get("transport_paid", 0.0)),
+		"power_supply": float(s.get("power_supply", 0)),
+		"power_demand": float(s.get("power_demand", 0)),
+	}
+	for line in ANOMALY_COST_LINES:
+		snap[line] = float(s.get(line, 0.0))
+	return snap
+
+
+## Mean of `key` across the recorded history. Returns -1.0 until a FULL baseline exists:
+## with fewer than three turns behind it every ratio is noise, and the opening turns of
+## a run would otherwise fire on nothing but the empire starting up.
+func _anomaly_baseline(key: String) -> float:
+	if _anomaly_history.size() < ANOMALY_BASELINE_TURNS:
+		return -1.0
+	var total := 0.0
+	for entry: Dictionary in _anomaly_history:
+		total += float(entry.get(key, 0.0))
+	return total / float(_anomaly_history.size())
+
+
+func _anomaly_ready(id: String) -> bool:
+	return int(TurnManager.current_turn) - int(_anomaly_cooldown.get(id, -9999)) >= ANOMALY_COOLDOWN
+
+
+func _evaluate_anomalies(current: Dictionary, s: Dictionary) -> void:
+	_clear_anomaly_cards()
+	var money := _money_anomalies(current, s)
+	# Priority order first, then the owner's cap of two.
+	var chosen: Array = []
+	for id: String in ANOMALY_MONEY_ORDER:
+		for hit: Dictionary in money:
+			if str(hit.id) == id and chosen.size() < ANOMALY_MAX_STACK:
+				chosen.append(hit)
+	for hit: Dictionary in chosen:
+		_anomaly_cooldown[str(hit.id)] = int(TurnManager.current_turn)
+	_show_anomaly_stack(chosen, money_widget)
+
+	var power := _power_anomalies(current)
+	if not power.is_empty():
+		_anomaly_cooldown[str(power[0].id)] = int(TurnManager.current_turn)
+		_show_anomaly_stack([power[0]], _power_btn)
+
+
+## Money triggers that fired this turn, unordered. Each is {id, text}.
+func _money_anomalies(current: Dictionary, s: Dictionary) -> Array:
+	var hits: Array = []
+
+	if _loan_taken_this_turn > 0.0 and _anomaly_ready("loan"):
+		hits.append({"id": "loan",
+			"text": "We've taken a %s loan to cover this turn's bills." % _money_text(_loan_taken_this_turn)})
+
+	var revenue_base := _anomaly_baseline("revenue")
+	if revenue_base > 0.0 and float(current.revenue) >= revenue_base * ANOMALY_SPIKE_RATIO and _anomaly_ready("payment"):
+		hits.append({"id": "payment", "text": _big_payment_text(s)})
+
+	# Each running-cost line is judged against its OWN baseline, so a labour jump is not
+	# hidden by a quiet turn for inputs. One generic sentence covers them all (owner).
+	for line: String in ANOMALY_COST_LINES:
+		var base := _anomaly_baseline(line)
+		if base <= 0.0 or float(current.get(line, 0.0)) < base * ANOMALY_SPIKE_RATIO:
+			continue
+		if not _anomaly_ready("spend"):
+			break
+		hits.append({"id": "spend",
+			"text": "We're spending abnormal amounts of money: %s due to running costs for %s." % [
+				_money_text(float(current.get(line, 0.0))),
+				_cost_culprit(s, str(ANOMALY_COST_LINES[line]))]})
+		break
+
+	# Freight up sharply AND not paid for by extra revenue. The second half is the point:
+	# a bigger empire shipping more is fine — freight outrunning what it earns is not.
+	var transport_base := _anomaly_baseline("transport")
+	if transport_base > 0.0 and _anomaly_ready("transport"):
+		var transport_delta := float(current.transport) - transport_base
+		var revenue_delta := float(current.revenue) - maxf(0.0, revenue_base)
+		if transport_delta > transport_base * (ANOMALY_TRANSPORT_RATIO - 1.0) and revenue_delta < transport_delta:
+			hits.append({"id": "transport",
+				"text": "Transport costs are through the roof. Check if we're shipping by the most efficient transport."})
+	return hits
+
+
+## Name what ran a cost line up. `by_type_key` is the summary's building_id ->
+## {count, amount} breakdown that the money panel's tooltips already read.
+func _cost_culprit(s: Dictionary, by_type_key: String) -> String:
+	var by_type: Dictionary = s.get(by_type_key, {})
+	if by_type.is_empty():
+		return "our buildings"
+	var top_id := ""
+	var top_amount := 0.0
+	var total := 0.0
+	var count := 0
+	for bid in by_type:
+		var entry: Dictionary = by_type[bid]
+		var amount := float(entry.get("amount", 0.0))
+		total += amount
+		count += int(entry.get("count", 0))
+		if amount > top_amount:
+			top_amount = amount
+			top_id = str(bid)
+	# A single building is named only when it really is the story. Otherwise the honest
+	# answer is a count — picking the top of a flat distribution would blame the innocent.
+	if top_id != "" and total > 0.0 and top_amount / total >= 0.5:
+		return Catalog.get_building_display_name(top_id)
+	return "%d buildings" % count if count > 0 else "our buildings"
+
+
+## The sale that made the turn. Names the good when one dominates the payout, because
+## "you sold 40 units of steel for £900" is actionable where "revenue was up" is not.
+func _big_payment_text(s: Dictionary) -> String:
+	var sold: Dictionary = s.get("sold", {})
+	var top_id := ""
+	var top_revenue := 0.0
+	var top_qty := 0
+	var total_revenue := 0.0
+	var total_qty := 0
+	for gid in sold:
+		var entry: Dictionary = sold[gid]
+		var rev := float(entry.get("revenue", 0.0))
+		total_revenue += rev
+		total_qty += int(entry.get("qty", 0))
+		if rev > top_revenue:
+			top_revenue = rev
+			top_id = str(gid)
+			top_qty = int(entry.get("qty", 0))
+	if top_id != "" and total_revenue > 0.0 and top_revenue / total_revenue >= 0.5:
+		return "You sold %d units of %s to the global market, which earned you %s." % [
+			top_qty, Catalog.get_display_name(top_id), _money_text(top_revenue)]
+	return "You sold an unusually high %d units of %d goods." % [total_qty, sold.size()]
+
+
+## Power triggers, highest-priority first.
+func _power_anomalies(current: Dictionary) -> Array:
+	var hits: Array = []
+	var previous: Dictionary = _anomaly_history[-1] if not _anomaly_history.is_empty() else {}
+
+	var last_supply := float(previous.get("power_supply", 0.0))
+	if last_supply > 0.0 and float(current.power_supply) <= last_supply * ANOMALY_POWER_RATIO and _anomaly_ready("dark"):
+		hits.append({"id": "dark", "text": "Our power plants are going dark!"})
+
+	# Taught once, the first turn intermittent green is actually GENERATED — when the
+	# player has just built the wind or solar, not when it first bites (owner ruling:
+	# that is the teachable moment, ahead of the first derate).
+	if not _intermittency_taught:
+		var quality: Dictionary = Production.last_turn_summary.get("power_supply_by_quality", {})
+		if float(quality.get("green_intermittent", 0)) > 0.0:
+			_intermittency_taught = true
+			hits.append({"id": "intermittency",
+				"text": "Renewable power's great, but what do we do when the sun doesn't shine or the wind doesn't blow?"})
+
+	var demand_base := _anomaly_baseline("power_demand")
+	var flipped: bool = (not previous.is_empty()
+			and float(previous.get("power_supply", 0.0)) >= float(previous.get("power_demand", 0.0))
+			and float(current.power_supply) < float(current.power_demand))
+	var jumped: bool = demand_base > 0.0 and float(current.power_demand) >= demand_base * ANOMALY_DEMAND_RATIO
+	if (flipped or jumped) and _anomaly_ready("grid"):
+		hits.append({"id": "grid",
+			"text": "We're drawing power from the grid for now, but this is becoming expensive."})
+	return hits
+
+
+# ── Anomaly presentation ──────────────────────────────────────────────────────
+
+func _show_anomaly_stack(hits: Array, anchor: Control) -> void:
+	if hits.is_empty() or anchor == null or DisplayServer.get_name() == "headless":
+		return
+	_ensure_anomaly_scrim()
+	var offset := 0.0
+	for hit: Dictionary in hits:
+		var card := AnomalyPopup.new()
+		_fly_layer.add_child(card)
+		card.set_message(str(hit.text))
+		_anomaly_cards.append(card)
+		# Placed after layout: the card has no height until its wrapped label is measured.
+		card.call_deferred("place_under", anchor, offset)
+		offset += card.get_combined_minimum_size().y + ANOMALY_STACK_GAP
+	_anomaly_scrim.visible = true
+
+
+## Full-screen catcher: a click anywhere outside the cards dismisses them all. The cards
+## sit ABOVE it and stop their own clicks, so reading one can never dismiss it.
+func _ensure_anomaly_scrim() -> void:
+	if _anomaly_scrim != null and is_instance_valid(_anomaly_scrim):
+		return
+	_anomaly_scrim = _FlyScrim.new()
+	_anomaly_scrim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_anomaly_scrim.mouse_filter = Control.MOUSE_FILTER_STOP
+	_anomaly_scrim.visible = false
+	_anomaly_scrim.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed:
+			_anomaly_scrim.accept_event()
+			_clear_anomaly_cards())
+	_fly_layer.add_child(_anomaly_scrim)
+	_fly_layer.move_child(_anomaly_scrim, 0)
+
+
+func _clear_anomaly_cards() -> void:
+	for card in _anomaly_cards:
+		if is_instance_valid(card):
+			card.queue_free()
+	_anomaly_cards.clear()
+	if _anomaly_scrim != null and is_instance_valid(_anomaly_scrim):
+		_anomaly_scrim.visible = false

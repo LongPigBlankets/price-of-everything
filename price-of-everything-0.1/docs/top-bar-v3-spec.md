@@ -338,3 +338,75 @@ Inputs from the turn summary: `power_supply`, `power_demand`, `grid_bought`
 Assumptions shipping unless objected: hover = faint fill (§1.2); LEDs exist
 only on Treasury / Power / Transport — Victory / Council / Briefing have no
 red condition defined, so they carry no lamp (§1.3).
+
+---
+
+## 8 · Build log (implemented 2026-08-23)
+
+All three changes are built, compile clean, and were verified on a live map
+(`2845 passed, 2 failed` — the same two pre-existing perf failures the clean tree
+produces, see §9).
+
+| Area | Files |
+|---|---|
+| Bar restyle, LEDs, rankings face, transport module, anomaly popups | `scripts/top_bar.gd` |
+| Shared bar/dock navy | `scripts/bar_navy.gd` (new) |
+| Logistics panel | `scripts/transport_panel.gd` (new) |
+| Popup card | `scripts/anomaly_popup.gd` (new) |
+| Per-link history + congestion attribution, panel signals | `scripts/match_state.gd` |
+| Per-tile fill history, trend, turns-until-full | `scripts/stockpile.gd` |
+| `intermittency_derated_count()` | `scripts/production.gd` |
+| Panel wiring + stockpile deep-link | `scripts/world_map.gd` |
+
+Decisions taken during the build, beyond the spec:
+
+- **Congestion £ is attributed at `queue_transport_shipment`, not in
+  `transport_cost_for_route`.** That function is shared with quotes, previews and
+  the build forecast, so booking there would have counted charges the player never
+  paid — the same trap `land_cost_after_credit`'s `commit` flag exists to avoid.
+  The surcharge is recovered exactly from the multiplier the cost was priced with,
+  at the single funnel every committed shipment passes through.
+- **`route_congestion()` now also returns `key`**, the binding link, so a surcharge
+  has something to be charged against.
+- **The briefing notch is now `BAR_H + NOTCH_DROP`, not a fixed 102.** Against the
+  shorter bar the fixed height left a notch nearly as deep as the bar was tall.
+  Its fill also follows `bar_ground_at()` — with the bar now a gradient, its old
+  flat `C_BAR_BG` read as a darker slab bolted on.
+- **The bar's gradient is drawn from `-TOP_BLEED`**, preserving the sub-pixel seam
+  fix the old opaque stylebox's `expand_margin_top` provided.
+- **Rankings' "goods you lead in" requires quantity > 0.** `goods_standings()`
+  generates no rivals for apex goods, so the player is trivially rank 1 on every
+  one of them; without the quantity test the bar boasted about goods never made.
+- **`_module_box(active, warn)` keeps its `warn` argument** (unused) so no call
+  site had to change; LEDs replaced the red border entirely.
+- Existing tile deep-link `_on_go_to_tile_stockpile` had a latent bug: it set
+  `_active_tab` before `show_tile()`, which resets to Buildings. Now re-selects
+  after.
+
+Not done (needs the owner): the "Controls — a handful of things" list.
+
+## 9 · Discovered while verifying: PR #123's warm load is silently failing
+
+Unrelated to this work, and present on a clean checkout of `main` (41a731a):
+
+`main_menu.gd:64` warms the map scene with
+`ResourceLoader.load_threaded_request("res://scenes/main.tscn")`. On the worker
+thread, `building_detail_panel.gd`'s three `preload()`s of
+`assets/ui/goods_frame.tres`, `assets/ui/silver_frame.tres` and
+`assets/shaders/ui_blur.gdshader` fail, the script fails to compile, and the whole
+scene load fails:
+
+```
+SCRIPT ERROR: Parse Error: Could not preload resource file "res://assets/ui/goods_frame.tres".
+   at: GDScript::reload (res://scripts/building_detail_panel.gd:49)
+ERROR: Parse Error: Failed. [Resource file res://scenes/main.tscn:146]
+```
+
+All three files exist and are tracked; the textures are imported. The game still
+works because `loading_screen.gd:205` falls back to a blocking
+`change_scene_to_file`, which loads on the main thread and succeeds — so the
+failure is invisible in play, but **the ~1.8 s the optimisation was supposed to
+save is not being saved**, and the console carries errors at every boot.
+
+Worth confirming before the demo, since "loading screen optimisation" is on the
+roadmap as a cut candidate: it may already be a no-op.
