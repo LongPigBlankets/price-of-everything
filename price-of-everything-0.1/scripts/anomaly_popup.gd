@@ -17,6 +17,12 @@ extends PanelContainer
 
 const WIDTH := 320.0
 const ANCHOR_GAP := 8.0     # below the bar module it belongs to
+## The card announces itself, then stops. A turn is a busy moment — numbers change all
+## over the bar at once — so a card that simply appeared could be missed entirely, which
+## is the failure this whole feature exists to fix. Two beats of the border and the card
+## is found; any more and it becomes the thing you wait to stop rather than read.
+const FLASH_BEATS := 2
+const FLASH_BEAT_TIME := 0.28
 
 signal dismissed
 
@@ -54,6 +60,7 @@ func _build() -> void:
 func set_message(text: String) -> void:
 	_body.text = text
 	reset_size()
+	_flash()
 
 
 ## Place the card under `anchor`, `stack_offset` px further down for each card already
@@ -67,6 +74,32 @@ func place_under(anchor: Control, stack_offset: float = 0.0) -> void:
 	var x: float = clampf(anchor.global_position.x, 8.0, maxf(8.0, vw - size.x - 8.0))
 	var y: float = anchor.global_position.y + anchor.size.y + ANCHOR_GAP + stack_offset
 	global_position = Vector2(x, y)
+
+
+## Pulse the border and the ground, from the accent back down to rest. Tweened, not
+## animated per frame: a tween that misses a frame resumes where it was, and this runs on
+## the turn boundary, which is the busiest the main thread ever gets.
+func _flash() -> void:
+	var sb := get_theme_stylebox("panel")
+	if not (sb is StyleBoxFlat):
+		return
+	var box := (sb as StyleBoxFlat).duplicate() as StyleBoxFlat
+	add_theme_stylebox_override("panel", box)   # our own copy; never tween the shared one
+	var rest_border: Color = box.border_color
+	var rest_bg: Color = box.bg_color
+	var lit_border: Color = DS.PALETTE.ACCENT
+	var lit_bg: Color = rest_bg.lerp(DS.PALETTE.ACCENT, 0.14)
+	box.set_border_width_all(maxi(1, box.border_width_top))
+	var tween := create_tween()
+	for _beat in FLASH_BEATS:
+		tween.tween_method(func(t: float) -> void:
+			box.border_color = rest_border.lerp(lit_border, t)
+			box.bg_color = rest_bg.lerp(lit_bg, t),
+			0.0, 1.0, FLASH_BEAT_TIME * 0.4)
+		tween.tween_method(func(t: float) -> void:
+			box.border_color = lit_border.lerp(rest_border, t)
+			box.bg_color = lit_bg.lerp(rest_bg, t),
+			0.0, 1.0, FLASH_BEAT_TIME * 0.6)
 
 
 func dismiss() -> void:

@@ -17,9 +17,15 @@ extends PanelContainer
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const InfraIcons := preload("res://scripts/infra_icons.gd")
 
-const PANEL_WIDTH := 1180.0
+const PANEL_WIDTH := 1220.0     # +40 over the original, 20 a side, for the infra cards
 const PANEL_HEIGHT := 620.0
-const COLUMN_MIN_WIDTH := 330.0
+## The panel grows with its content, but only this far: a dashboard that resized itself
+## freely would jump under the cursor every turn as freight came and went.
+const PANEL_GROWTH := 60.0
+## Rows the base height already shows comfortably, and what each extra one is worth.
+const ROWS_BEFORE_GROWTH := 4
+const ROW_GROWTH_PX := 20.0
+const COLUMN_MIN_WIDTH := 356.0
 const HEADER_HEIGHT := 52.0
 ## The panel's own name, in Bebas — larger than the column headings under it.
 const TITLE_SIZE := 40
@@ -254,6 +260,23 @@ func _refresh() -> void:
 	_build_stockpiles()
 	_build_infra()
 	_build_transit()
+	_fit_height()
+
+
+## Grow the panel, up to PANEL_GROWTH, once the longest column has more rows than the base
+## height shows — and re-centre so the growth is shared top and bottom rather than pushing
+## the panel down the screen.
+func _fit_height() -> void:
+	var rows: int = maxi(maxi(_stock_list.get_child_count(), _infra_list.get_child_count()),
+			_transit_list.get_child_count())
+	var over: int = maxi(0, rows - ROWS_BEFORE_GROWTH)
+	var target: float = PANEL_HEIGHT + minf(PANEL_GROWTH, float(over) * ROW_GROWTH_PX)
+	if is_equal_approx(target, size.y):
+		return
+	custom_minimum_size = Vector2(PANEL_WIDTH, target)
+	size = Vector2(PANEL_WIDTH, target)
+	if visible:
+		_centre()
 
 
 # ── Column 1 · Stockpiles ─────────────────────────────────────────────────────
@@ -444,13 +467,36 @@ func _build_infra() -> void:
 func _infra_row(link: Dictionary) -> Control:
 	var mode := str(link.mode)
 	var ratio := float(link.ratio)
-	var card := _row_card()
-	var col := _card_body(card)
+	var card := _row_card(true)
+	card.tooltip_text = "Open this infrastructure to inspect or upgrade it"
+	card.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			card.accept_event()
+			_open_infra_building(str(link.tile_id), mode))
+
+	# The icon runs down the LEFT of the whole card rather than sitting in the first text
+	# row: at a glance the column then reads as a list of ROADS and PIPES, and the three
+	# lines beside each one are that link's detail.
+	var outer := HBoxContainer.new()
+	outer.add_theme_constant_override("separation", DS.SP.SM)
+	var pad := MarginContainer.new()
+	for m in ["margin_left", "margin_right"]:
+		pad.add_theme_constant_override(m, DS.SP.SM)
+	for m in ["margin_top", "margin_bottom"]:
+		pad.add_theme_constant_override(m, 6)
+	pad.add_child(outer)
+	card.add_child(pad)
+	var icon := _infra_icon(mode)
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	outer.add_child(icon)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 3)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	outer.add_child(col)
 
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", DS.SP.SM)
 	col.add_child(top)
-	top.add_child(_infra_icon(mode))
 	var name_label := _label("%s · %s" % [_mode_label(mode), Catalog.tile_label(str(link.tile_id))], DS.FS.CAPTION)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_label.clip_text = true
@@ -480,6 +526,33 @@ func _infra_row(link: Dictionary) -> Control:
 		col.add_child(_label("congestion has added £%s so far" % _money(paid),
 			DS.FS.CAPTION - 1, DS.PALETTE.DANGER))
 	return card
+
+
+## Open the Building Detail panel for the infrastructure this row is about, so the player
+## can inspect or upgrade it without hunting for the tile on the map.
+##
+## A link is a (tile, mode) pair, not a building reference — congestion is computed from
+## flow over terrain — so the instance has to be found: the player-owned building on that
+## tile whose type is this mode. focus_building_requested is the route the ledger and the
+## starvation notifications already use, and it pans the map as well as opening the panel.
+func _open_infra_building(tile_id: String, mode: String) -> void:
+	var wanted := InfraIcons.normalise(mode)
+	for b in MatchState.buildings.values():
+		if not (b is Dictionary) or not MatchState.is_player_owned(b):
+			continue
+		var building: Dictionary = b
+		if str(building.get("tile_id", "")) != tile_id:
+			continue
+		var type_name := str(Catalog.get_building(str(building.get("building_id", ""))).get("internal_name", ""))
+		if InfraIcons.normalise(type_name) != wanted:
+			continue
+		MatchState.focus_building_requested.emit(str(building.get("instance_id", "")))
+		hide()   # the detail panel takes the screen; this one would sit behind it
+		return
+	# Nothing built there: the link is terrain infrastructure the tile came with, so the
+	# tile itself is the only thing there is to show.
+	MatchState.focus_tile_requested.emit(tile_id)
+	hide()
 
 
 func _load_color(ratio: float) -> Color:

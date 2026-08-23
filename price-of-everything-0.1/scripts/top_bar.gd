@@ -561,57 +561,42 @@ func _track_color(entry: Dictionary) -> Color:
 
 # ── 3b · Transport: what is moving, and what is choking (v3) ──────────────
 
-## The three things that can go wrong with logistics, drawn rather than fonted: a
-## warehouse (tiles refusing goods), a road (links over capacity) and a port (freight
-## riding to market). Each carries its own lamp, so the module says WHICH of the three
-## is in trouble at a glance instead of collapsing them into one number — the count it
-## used to show was 'units to market', which is 0 in any game that ships tile-to-tile.
-class _FreightGlyph extends Control:
-	enum Kind { WAREHOUSE, ROAD, PORT }
-	var kind: int = Kind.WAREHOUSE
-	var color := Color("#E8EEF7")
-	func _init(k: int) -> void:
-		kind = k
-		custom_minimum_size = Vector2(22, 20)
-		size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-	func _draw() -> void:
-		var w := size.x
-		var h := size.y
-		match kind:
-			Kind.WAREHOUSE:
-				# Pitched roof over a body, with a shutter.
-				var body := Rect2(2.0, h * 0.42, w - 4.0, h * 0.44)
-				draw_rect(body, color, false, 1.3)
-				draw_polyline(PackedVector2Array([Vector2(1.0, h * 0.44),
-					Vector2(w * 0.5, h * 0.16), Vector2(w - 1.0, h * 0.44)]), color, 1.3, true)
-				draw_rect(Rect2(w * 0.38, h * 0.58, w * 0.24, h * 0.28), Color(color, 0.55), true)
-			Kind.ROAD:
-				# A carriageway narrowing to the horizon, dashed down the middle.
-				draw_polyline(PackedVector2Array([Vector2(1.5, h - 2.0), Vector2(w * 0.36, 2.0)]), color, 1.3, true)
-				draw_polyline(PackedVector2Array([Vector2(w - 1.5, h - 2.0), Vector2(w * 0.64, 2.0)]), color, 1.3, true)
-				for i in 3:
-					var t0 := float(i) / 3.0
-					var t1 := t0 + 0.20
-					draw_line(Vector2(w * 0.5, h - 2.0 - (h - 4.0) * t0),
-						Vector2(w * 0.5, h - 2.0 - (h - 4.0) * t1), Color(color, 0.8), 1.2, true)
-			Kind.PORT:
-				# Quay, bollard and water — the same mark the transit rows use for the market.
-				draw_line(Vector2(1.5, h * 0.60), Vector2(w * 0.66, h * 0.60), color, 1.3, true)
-				draw_line(Vector2(w * 0.32, h * 0.60), Vector2(w * 0.32, h * 0.20), color, 1.3, true)
-				draw_circle(Vector2(w * 0.32, h * 0.18), 1.9, color)
-				for i in 2:
-					var y := h * (0.76 + 0.14 * float(i))
-					draw_line(Vector2(1.5, y), Vector2(w - 1.5, y), Color(color, 0.45), 1.1, true)
+## The three things that can go wrong with logistics, each with its own lamp: storage
+## (tiles refusing goods), infrastructure (links over capacity) and freight (shipments
+## stuck with nowhere to unload). Splitting them is the point — the single count this
+## replaced read '0 units → market' in any game shipping tile-to-tile, which is most of
+## them, so the module spent the early game reporting nothing at all.
+##
+## The art is the game's OWN icons, run through the same cleaner the Construct menu uses:
+## the navy is keyed out, the artwork trimmed and centred, so they sit on the bar as
+## off-white shapes on nothing. Roads and the port are building icons; the warehouse has
+## no building behind it, so its cleaned PNG is checked in beside the other UI icons.
+const BuildingIcon := preload("res://scripts/building_icon.gd")
+const WAREHOUSE_ICON: Texture2D = preload("res://assets/icons/ui_icons/warehouse.png")
+const FREIGHT_ICON_PX := 24
 
-## One freight glyph with its lamp underneath, as a single column.
-func _freight_cell(kind: int, tip: String) -> Dictionary:
+## The cleaned icon for an infrastructure type, by its internal name.
+func _infra_texture(internal_name: String) -> Texture2D:
+	var building: Dictionary = Catalog.get_building_by_internal_name(internal_name)
+	return BuildingIcon.clean_texture(str(building.get("id", "")), internal_name)
+
+
+## One freight icon with its lamp underneath, as a single column.
+func _freight_cell(texture: Texture2D, tip: String) -> Dictionary:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 1)
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.tooltip_text = tip
-	col.add_child(_FreightGlyph.new(kind))
+	var icon := TextureRect.new()
+	icon.texture = texture
+	icon.custom_minimum_size = Vector2(FREIGHT_ICON_PX, FREIGHT_ICON_PX)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# The art is cream; the bar's other labels are the off-white, so match them.
+	icon.modulate = C_LABEL
+	col.add_child(icon)
 	var led := _Led.new()
 	col.add_child(led)
 	return {"root": col, "led": led}
@@ -623,9 +608,9 @@ func _build_transport() -> void:
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
 	row.add_theme_constant_override("separation", 12)
-	var store := _freight_cell(_FreightGlyph.Kind.WAREHOUSE, "Storage")
-	var road := _freight_cell(_FreightGlyph.Kind.ROAD, "Infrastructure")
-	var port := _freight_cell(_FreightGlyph.Kind.PORT, "Freight to market")
+	var store := _freight_cell(WAREHOUSE_ICON, "Storage")
+	var road := _freight_cell(_infra_texture("roads"), "Infrastructure")
+	var port := _freight_cell(_infra_texture("port"), "Freight to market")
 	for cell: Dictionary in [store, road, port]:
 		row.add_child(cell.root)
 	_store_led = store.led
