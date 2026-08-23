@@ -278,7 +278,7 @@ var _pending_binds: Dictionary = {}      # mapmode id -> keycode, staged until A
 var _bind_buttons: Dictionary = {}       # mapmode id -> Button
 var _listening_for: String = ""          # mapmode id currently capturing a key, "" if none
 var _listening_frame: int = -1            # frame the capture began, see _input
-var _bind_error: Label
+var _bind_errors: Dictionary = {}         # mapmode id -> Label, inline beside its field
 
 
 func _build_controls_tab() -> Control:
@@ -325,13 +325,6 @@ func _build_controls_tab() -> Control:
 	for m: Dictionary in Keybinds.MAPMODES:
 		col.add_child(_bindable_row(str(m.id), str(m.label)))
 
-	_bind_error = Label.new()
-	_bind_error.theme_type_variation = &"Caption"
-	_bind_error.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_bind_error.custom_minimum_size = Vector2(CONTROLS_WIDTH, 0)
-	_bind_error.add_theme_color_override("font_color", DS.PALETTE.DANGER)
-	_bind_error.text = ""
-	col.add_child(_bind_error)
 	return tab
 
 
@@ -385,6 +378,18 @@ func _bindable_row(id: String, label: String) -> Control:
 	button.pressed.connect(_on_bind_pressed.bind(id))
 	row.add_child(button)
 	_bind_buttons[id] = button
+	# The refusal belongs BESIDE the field it refused, not in a shared line at the foot of
+	# the list where it reads as a statement about the whole tab.
+	var err := Label.new()
+	err.theme_type_variation = "Caption"
+	err.add_theme_font_size_override("font_size", DS.FS.CAPTION - 2)
+	err.add_theme_color_override("font_color", DS.PALETTE.DANGER)
+	err.custom_minimum_size = Vector2(300, 0)
+	err.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	err.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	err.text = ""
+	row.add_child(err)
+	_bind_errors[id] = err
 	_refresh_bind_button(id)
 	return row
 
@@ -403,7 +408,7 @@ func _on_bind_pressed(id: String) -> void:
 	var previous := _listening_for
 	_listening_for = id
 	_listening_frame = int(Engine.get_process_frames())
-	_bind_error.text = ""
+	_clear_bind_errors()
 	if previous != "":
 		_refresh_bind_button(previous)
 	_refresh_bind_button(id)
@@ -446,14 +451,26 @@ func _input(event: InputEvent) -> void:
 		_reject_bind(id, str(verdict.message))
 		return
 	_pending_binds[id] = int(k.keycode)
-	_bind_error.text = ""
+	_clear_bind_errors()
 	_listening_for = ""
 	_refresh_bind_button(id)
 
 
+func _clear_bind_errors() -> void:
+	for l in _bind_errors.values():
+		(l as Label).text = ""
+
+
+func _set_bind_error(id: String, message: String) -> void:
+	_clear_bind_errors()
+	var l := _bind_errors.get(id) as Label
+	if l != null:
+		l.text = message
+
+
 ## Stop listening and say why, leaving the field on whatever it held before.
 func _reject_bind(id: String, message: String) -> void:
-	_bind_error.text = message
+	_set_bind_error(id, message)
 	_listening_for = ""
 	_refresh_bind_button(id)
 

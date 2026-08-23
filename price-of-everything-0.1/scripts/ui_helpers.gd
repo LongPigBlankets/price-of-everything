@@ -89,6 +89,60 @@ static func make_framed_good_icon(good_id: String, internal_name: String, frame_
 	root.add_child(bevel)
 	return root
 
+## The good icon WITHOUT the metal plate: a plain cream rounded square with the art on it.
+##
+## The framed version above is the market/recipe treatment — a 9-slice plate and a raised
+## bevel — which is a lot of chrome when a row is listing what is simply sitting on a tile.
+## This is the same art on the same cream, minus the frame, so a list of goods reads as a
+## list rather than as a shelf of trophies.
+##
+## `size` is the whole tile; callers overlay the navy quantity pill on it exactly as the
+## recipe cards do (see building_detail_panel_v2._good_icon_pill).
+static func make_plain_good_icon(good_id: String, internal_name: String, size: int = 56) -> Control:
+	var root := GoodIconHover.new()
+	root.good_id = good_id
+	root.custom_minimum_size = Vector2(size, size)
+	root.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	root.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	root.mouse_filter = Control.MOUSE_FILTER_PASS
+	var plate := PanelContainer.new()
+	plate.set_anchors_preset(Control.PRESET_FULL_RECT)
+	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = PILL_PAPER
+	style.set_corner_radius_all(int(round(size * 0.18)))
+	plate.add_theme_stylebox_override("panel", style)
+	root.add_child(plate)
+	var icon := TextureRect.new()
+	icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var inset := int(round(size * 0.10))
+	icon.offset_left = inset
+	icon.offset_top = inset
+	icon.offset_right = -inset
+	icon.offset_bottom = -inset
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var tex: Texture2D = GoodIcons.texture_for_size(good_id, internal_name, float(size))
+	if tex != null:
+		icon.texture = tex
+	root.add_child(icon)
+	return root
+
+
+## The navy quantity pill, positioned to overhang an icon's bottom-right — the recipe-card
+## placement. Add it as a CHILD of an icon returned above.
+static func make_overlaid_quantity_pill(text: String, height: int = 22) -> Control:
+	var pill := make_quantity_pill(text, height, 12)
+	pill.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	var w: float = pill.custom_minimum_size.x
+	pill.offset_left = -w + 6.0
+	pill.offset_top = -float(height) + 6.0
+	pill.offset_right = 6.0
+	pill.offset_bottom = 6.0
+	return pill
+
+
 static var _checked_tex: Texture2D = null
 static var _unchecked_tex: Texture2D = null
 

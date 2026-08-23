@@ -111,7 +111,6 @@ var _money_inner: HBoxContainer
 # is noise, so those modules simply have none.
 var _treasury_led: Control
 var _power_led: Control
-var _transport_led: Control
 
 # Power module
 var _power_btn: Control
@@ -127,8 +126,9 @@ var _victory_target: Label   # "/ N" — the rising win threshold for the curren
 
 # Transport module (v3)
 var _transport_btn: Control
-var _transport_head: Label
-var _transport_sub: Label
+var _store_led: Control      # tiles refusing goods
+var _road_led: Control       # links over capacity
+var _port_led: Control       # freight riding to market
 
 # Company rankings module
 var _rankings_btn: Control
@@ -543,10 +543,12 @@ func _build_victory() -> void:
 	row.add_child(col)
 	_victory_score = Label.new()
 	_victory_score.theme_type_variation = "Numeric"
-	_victory_score.add_theme_font_size_override("font_size", 18)
+	_victory_score.add_theme_font_size_override("font_size", 15)
 	_victory_score.add_theme_color_override("font_color", C_CREAM)
 	col.add_child(_victory_score)
-	_victory_target = _mini("/ 4,000", C_TEXT, 11)   # updated to the rising threshold each refresh
+	# Second line: how far off the win actually is, in turns, which is the question the
+	# score alone never answered. Falls back to the threshold when there is no rate yet.
+	_victory_target = _mini("", C_TEXT, 11)
 	_victory_target.tooltip_text = "Points needed to win rise over the game — 1 track from turn 105 up to 4 tracks by turn 300."
 	col.add_child(_victory_target)
 	mod.pressed.connect(func() -> void: _toggle_fly("victory"))
@@ -559,52 +561,82 @@ func _track_color(entry: Dictionary) -> Color:
 
 # ── 3b · Transport: what is moving, and what is choking (v3) ──────────────
 
-## Crate-and-arrow vector icon (drawn — no freight glyph in the bundled font).
-class _FreightIcon extends Control:
-	var color := Color("#E8EEF7")   # C_LABEL; inner classes can't read outer consts
-	func _init(c: Color) -> void:
-		color = c
-		custom_minimum_size = Vector2(19, 16)
+## The three things that can go wrong with logistics, drawn rather than fonted: a
+## warehouse (tiles refusing goods), a road (links over capacity) and a port (freight
+## riding to market). Each carries its own lamp, so the module says WHICH of the three
+## is in trouble at a glance instead of collapsing them into one number — the count it
+## used to show was 'units to market', which is 0 in any game that ships tile-to-tile.
+class _FreightGlyph extends Control:
+	enum Kind { WAREHOUSE, ROAD, PORT }
+	var kind: int = Kind.WAREHOUSE
+	var color := Color("#E8EEF7")
+	func _init(k: int) -> void:
+		kind = k
+		custom_minimum_size = Vector2(22, 20)
 		size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
-	func set_color(c: Color) -> void:
-		color = c
-		queue_redraw()
 	func _draw() -> void:
+		var w := size.x
 		var h := size.y
-		# A crate on the left, an arrow leaving it to the right.
-		var box := Rect2(1.5, h * 0.28, 9.0, h * 0.5)
-		draw_rect(box, Color(color, 0.22))
-		draw_rect(box, color, false, 1.2)
-		draw_line(Vector2(box.position.x, box.position.y + box.size.y * 0.5),
-			Vector2(box.end.x, box.position.y + box.size.y * 0.5), Color(color, 0.7), 1.0, true)
-		var y := h * 0.53
-		draw_line(Vector2(12.0, y), Vector2(size.x - 1.5, y), color, 1.3, true)
-		draw_colored_polygon(PackedVector2Array([
-			Vector2(size.x - 1.0, y), Vector2(size.x - 4.6, y - 2.8), Vector2(size.x - 4.6, y + 2.8)]), color)
+		match kind:
+			Kind.WAREHOUSE:
+				# Pitched roof over a body, with a shutter.
+				var body := Rect2(2.0, h * 0.42, w - 4.0, h * 0.44)
+				draw_rect(body, color, false, 1.3)
+				draw_polyline(PackedVector2Array([Vector2(1.0, h * 0.44),
+					Vector2(w * 0.5, h * 0.16), Vector2(w - 1.0, h * 0.44)]), color, 1.3, true)
+				draw_rect(Rect2(w * 0.38, h * 0.58, w * 0.24, h * 0.28), Color(color, 0.55), true)
+			Kind.ROAD:
+				# A carriageway narrowing to the horizon, dashed down the middle.
+				draw_polyline(PackedVector2Array([Vector2(1.5, h - 2.0), Vector2(w * 0.36, 2.0)]), color, 1.3, true)
+				draw_polyline(PackedVector2Array([Vector2(w - 1.5, h - 2.0), Vector2(w * 0.64, 2.0)]), color, 1.3, true)
+				for i in 3:
+					var t0 := float(i) / 3.0
+					var t1 := t0 + 0.20
+					draw_line(Vector2(w * 0.5, h - 2.0 - (h - 4.0) * t0),
+						Vector2(w * 0.5, h - 2.0 - (h - 4.0) * t1), Color(color, 0.8), 1.2, true)
+			Kind.PORT:
+				# Quay, bollard and water — the same mark the transit rows use for the market.
+				draw_line(Vector2(1.5, h * 0.60), Vector2(w * 0.66, h * 0.60), color, 1.3, true)
+				draw_line(Vector2(w * 0.32, h * 0.60), Vector2(w * 0.32, h * 0.20), color, 1.3, true)
+				draw_circle(Vector2(w * 0.32, h * 0.18), 1.9, color)
+				for i in 2:
+					var y := h * (0.76 + 0.14 * float(i))
+					draw_line(Vector2(1.5, y), Vector2(w - 1.5, y), Color(color, 0.45), 1.1, true)
+
+## One freight glyph with its lamp underneath, as a single column.
+func _freight_cell(kind: int, tip: String) -> Dictionary:
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 1)
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.tooltip_text = tip
+	col.add_child(_FreightGlyph.new(kind))
+	var led := _Led.new()
+	col.add_child(led)
+	return {"root": col, "led": led}
+
 
 func _build_transport() -> void:
 	var mod := _ModuleBtn.new(self)
 	mod.name = "TransportModule"
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
-	_transport_led = _Led.new()
-	row.add_child(_transport_led)
-	row.add_child(_FreightIcon.new(C_LABEL))
-	var col := VBoxContainer.new()
-	col.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_theme_constant_override("separation", 2)
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(col)
-	_transport_head = _mini("0 units → market", DS.PALETTE.TEXT, 15)
-	col.add_child(_transport_head)
-	_transport_sub = _mini("", DS.PALETTE.TEXT, 12)
-	col.add_child(_transport_sub)
+	row.add_theme_constant_override("separation", 12)
+	var store := _freight_cell(_FreightGlyph.Kind.WAREHOUSE, "Storage")
+	var road := _freight_cell(_FreightGlyph.Kind.ROAD, "Infrastructure")
+	var port := _freight_cell(_FreightGlyph.Kind.PORT, "Freight to market")
+	for cell: Dictionary in [store, road, port]:
+		row.add_child(cell.root)
+	_store_led = store.led
+	_road_led = road.led
+	_port_led = port.led
 	mod.pressed.connect(func() -> void:
 		_close_fly()
 		MatchState.transport_panel_requested.emit())
 	_hbox().add_child(mod)
 	_transport_btn = mod
+
 
 ## Freight headline: units of goods currently riding to MARKET (sale shipments), the
 ## count of tile-links running over capacity, and tiles at/near their storage cap.
@@ -631,20 +663,25 @@ func _transport_stats() -> Dictionary:
 	return {"to_market": to_market, "over": over, "full": full, "rejecting": rejecting}
 
 func _refresh_transport() -> void:
-	if _transport_head == null:
+	if _transport_btn == null:
 		return
 	var t := _transport_stats()
-	var units := int(t.to_market)
-	_transport_head.text = "%s unit%s → market" % [_thousands(units), "" if units == 1 else "s"]
-	_transport_sub.text = "%d infra over · %d stockpile%s full" % [
-		int(t.over), int(t.full), "" if int(t.full) == 1 else "s"]
-	_transport_btn.tooltip_text = "Transport — %s units riding to market, %d link%s over capacity, %d tile%s at 95%%+ storage" % [
-		_thousands(units), int(t.over), "" if int(t.over) == 1 else "s",
-		int(t.full), "" if int(t.full) == 1 else "s"]
-	# RED when the network is actually losing the player goods or money: more than one
-	# tile turning shipments away, or more than three links paying the congestion
-	# surcharge. Below those, congestion is ordinary friction and the lamp stays dark.
-	(_transport_led as _Led).lit = int(t.rejecting) > 1 or int(t.over) > 3
+	# Each lamp owns one failure. Splitting them is the point: the single count this
+	# replaced read '0 units → market' in any game shipping tile-to-tile, which is most of
+	# them, so the module spent the early game reporting nothing at all.
+	(_store_led as _Led).lit = int(t.rejecting) > 0 or int(t.full) > 1
+	(_road_led as _Led).lit = int(t.over) > 3
+	# Freight that arrived somewhere with no room and is stuck waiting for space. It is the
+	# one thing that can go wrong with a shipment AFTER it set off, so it is what the port
+	# lamp watches rather than the healthy count of goods in motion.
+	(_port_led as _Led).lit = MatchState.overflow_shipments.size() > 0
+	_transport_btn.tooltip_text = "Transport — %d tile%s at 95%%+ storage (%d refusing), %d link%s over capacity, %s unit%s riding to market" % [
+		int(t.full), "" if int(t.full) == 1 else "s", int(t.rejecting),
+		int(t.over), "" if int(t.over) == 1 else "s",
+		_thousands(int(t.to_market)), "" if int(t.to_market) == 1 else "s"]
+	if MatchState.overflow_shipments.size() > 0:
+		_transport_btn.tooltip_text += "
+%d shipment(s) stuck with nowhere to unload" % MatchState.overflow_shipments.size()
 
 
 # ── 4 · Rankings: player position in the cosmetic company league ────────────
@@ -655,7 +692,8 @@ func _build_rankings() -> void:
 	mod.tooltip_text = "Company rankings — league position and the goods you lead"
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
-	row.add_child(_mini("▲", C_CREAM.darkened(0.12), 15))
+	# No leading glyph: the head line carries its own movement arrow, and a second static
+	# triangle beside it read as a claim about the goods line underneath.
 	var col := VBoxContainer.new()
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.add_theme_constant_override("separation", 2)
@@ -764,9 +802,63 @@ func _refresh_victory() -> void:
 		letter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		cell.add_child(letter)
 		_victory_meters.add_child(cell)
-	_victory_score.text = _thousands(int(bd.get("total", 0)))
+	var total := int(bd.get("total", 0))
+	_record_victory_point(total)
+	_victory_score.text = "%s Victory Point%s" % [_thousands(total), "" if total == 1 else "s"]
 	if _victory_target != null:
-		_victory_target.text = "/ %s" % _thousands(int(bd.get("win_threshold", 4000)))
+		_victory_target.text = _victory_forecast(bd, total)
+
+## Score history, so "how many turns" can be answered at all: one entry per resolved turn,
+## newest last. Victory has no rate of its own — the tracks report where they ARE, not how
+## fast they are moving — so the bar keeps the little history the question needs.
+var _victory_history: Array[int] = []
+const VICTORY_HISTORY_TURNS := 6
+
+func _record_victory_point(total: int) -> void:
+	if not _victory_history.is_empty() and _victory_history[-1] == total:
+		return   # nothing resolved since the last sample
+	_victory_history.append(total)
+	if _victory_history.size() > VICTORY_HISTORY_TURNS:
+		_victory_history = _victory_history.slice(_victory_history.size() - VICTORY_HISTORY_TURNS)
+
+## The second line of the victory module. A track past halfway is the one the player is
+## actually chasing, so it gets named; otherwise the answer is the whole win. Either way it
+## is turns, not points, because turns are what the player is spending.
+func _victory_forecast(bd: Dictionary, total: int) -> String:
+	var threshold := int(bd.get("win_threshold", 4000))
+	var rate := _victory_rate()
+	# The nearest track past halfway, if there is one.
+	var best_name := ""
+	var best_progress := 0.5
+	for t in (bd.get("tracks", []) as Array):
+		var track: Dictionary = t
+		var progress := float(track.get("progress", 0.0))
+		if progress > best_progress and progress < 1.0:
+			best_progress = progress
+			best_name = str(track.get("name", ""))
+	if rate <= 0.0:
+		return "of %s to win" % _thousands(threshold)
+	if best_name != "":
+		# Time the TRACK, not the total: its own points are what finish it.
+		var track_left := (1.0 - best_progress) / maxf(0.0001, best_progress) * float(total)
+		var track_turns := int(ceil(track_left / rate))
+		if track_turns > 0 and track_turns < 999:
+			return "%d turn%s until %s" % [track_turns, "" if track_turns == 1 else "s", best_name]
+	var remaining := threshold - total
+	if remaining <= 0:
+		return "threshold reached"
+	var turns := int(ceil(float(remaining) / rate))
+	return "%d turn%s until victory" % [turns, "" if turns == 1 else "s"] if turns < 999 else "of %s to win" % _thousands(threshold)
+
+## Points per turn over the recorded history. 0 when there is not yet a second sample.
+func _victory_rate() -> float:
+	if _victory_history.size() < 2:
+		return 0.0
+	var gained := _victory_history[-1] - _victory_history[0]
+	if gained <= 0:
+		return 0.0
+	return float(gained) / float(_victory_history.size() - 1)
+
 
 func _thousands(n: int) -> String:
 	var s := str(absi(n))
@@ -1068,7 +1160,34 @@ func _refresh_council() -> void:
 	for aid in seated:
 		_council_stack.add_child(_portrait_chip(str(aid), 36))
 
-## Portrait in a loyalty-toned ring with a number chip bottom-right.
+## A portrait clipped to an ACTUAL circle, in a loyalty-toned ring, with a number chip
+## bottom-right. clip_contents only ever clips to the RECT, so the round ring used to hold
+## a square portrait — the mask has to BE the drawing, which is what the UV'd circle below
+## is: one polygon, the portrait mapped across it, no shader and no render target.
+class _PortraitCircle extends Control:
+	const SEGMENTS := 48
+	var texture: Texture2D = null
+	var ring := Color.WHITE
+	func _init(px: float) -> void:
+		custom_minimum_size = Vector2(px, px)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	func _draw() -> void:
+		var r: float = minf(size.x, size.y) * 0.5
+		var c: Vector2 = size * 0.5
+		if texture != null:
+			var pts := PackedVector2Array()
+			var uvs := PackedVector2Array()
+			for i in SEGMENTS:
+				var a := TAU * float(i) / float(SEGMENTS)
+				var dir := Vector2(cos(a), sin(a))
+				pts.append(c + dir * (r - 1.0))
+				# The art is square, so the circle samples the middle of it.
+				uvs.append(Vector2(0.5, 0.5) + dir * 0.5)
+			draw_colored_polygon(pts, Color.WHITE, uvs, texture)
+		else:
+			draw_circle(c, r - 1.0, Color("#0a1623"))
+		draw_arc(c, r - 1.0, 0.0, TAU, SEGMENTS, ring, 2.0, true)
+
 func _portrait_chip(aid: String, size: float) -> Control:
 	var v := MatchState.advisor_loyalty_value(aid)
 	var tone := _loyalty_tone(v)
@@ -1077,34 +1196,23 @@ func _portrait_chip(aid: String, size: float) -> Control:
 	holder.custom_minimum_size = Vector2(size + 4, size + 4)
 	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	holder.tooltip_text = "%s — %+.1f loyalty" % [str(adv.get("name", aid)), v]
-	var ring := PanelContainer.new()
-	ring.custom_minimum_size = Vector2(size, size)
-	ring.size = Vector2(size, size)
-	ring.clip_contents = true
-	ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = C_TRACK_BG
-	sb.border_color = tone
-	sb.set_border_width_all(2)
-	sb.set_corner_radius_all(int(size / 2.0))
-	ring.add_theme_stylebox_override("panel", sb)
+	var circle := _PortraitCircle.new(size)
+	circle.ring = tone
 	var path := str(adv.get("portrait_path", ""))
 	if path != "" and ResourceLoader.exists(path):
-		var img := TextureRect.new()
-		img.texture = load(path) as Texture2D
-		img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		img.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		ring.add_child(img)
-	else:
+		circle.texture = load(path) as Texture2D
+	circle.size = Vector2(size, size)
+	holder.add_child(circle)
+	if circle.texture == null:
 		var initials := Label.new()
 		initials.text = str(adv.get("initials", "?"))
 		initials.add_theme_font_size_override("font_size", int(size * 0.38))
 		initials.add_theme_color_override("font_color", adv.get("portrait_color", C_TEXT))
 		initials.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		initials.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		ring.add_child(initials)
-	holder.add_child(ring)
+		initials.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		initials.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		circle.add_child(initials)
 	var chip := Label.new()
 	chip.text = "%+d" % int(round(v))
 	chip.add_theme_font_size_override("font_size", 9)

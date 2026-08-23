@@ -21,8 +21,19 @@ const PANEL_WIDTH := 1180.0
 const PANEL_HEIGHT := 620.0
 const COLUMN_MIN_WIDTH := 330.0
 const HEADER_HEIGHT := 44.0
-const GOOD_ICON := 34            # framed good icon — the usual size for these rows
-const PILL_HEIGHT := 20
+const GOOD_ICON := 56           # the frameless cream tile; the usual size for a good
+const INFRA_ICON := 26          # the infrastructure's own building icon
+const PILL_HEIGHT := 22
+
+## The filter chips over the infrastructure column, in build order. Cables carry power
+## rather than freight, so they are listed for completeness and simply never have rows.
+const INFRA_FILTERS: Array[Dictionary] = [
+	{"mode": "roads", "label": "Roads"},
+	{"mode": "rail", "label": "Rails"},
+	{"mode": "pipes", "label": "Pipes"},
+	{"mode": "reinf_pipes", "label": "Reinf."},
+	{"mode": "cables", "label": "Cables"},
+]
 const ROW_SEPARATION := 6
 
 ## A tile at or above this share of capacity counts as "full" — the same threshold the
@@ -37,6 +48,7 @@ var _transit_list: VBoxContainer
 var _dragging := false
 var _drag_offset := Vector2.ZERO
 var _refresh_queued := false
+var _infra_enabled: Dictionary = {}      # mode -> bool, driven by the filter chips
 
 
 func _ready() -> void:
@@ -107,7 +119,7 @@ func _build() -> void:
 	root.add_child(columns)
 
 	_stock_list = _column(columns, "Stockpiles", "Fullest first")
-	_infra_list = _column(columns, "Infrastructure", "Most congested first")
+	_infra_list = _column(columns, "Infrastructure", "Most congested first", _infra_filter_bar())
 	_transit_list = _column(columns, "Units in transit", "Largest shipment first")
 
 
@@ -130,27 +142,40 @@ func _header() -> Control:
 	return row
 
 
-## One titled, scrolling column. Returns the VBox its rows go into.
-func _column(parent: HBoxContainer, title: String, subtitle: String) -> VBoxContainer:
+## One titled, scrolling column. The subtitle is the sort order, and it rides on the
+## RIGHT of the title's own row rather than taking a second line — three columns of
+## two-line headers pushed the actual content down for no information gained.
+##
+## `extra` is dropped between the header and the list (the infrastructure filters).
+func _column(parent: HBoxContainer, title: String, subtitle: String, extra: Control = null) -> VBoxContainer:
 	var wrap := VBoxContainer.new()
 	wrap.custom_minimum_size = Vector2(COLUMN_MIN_WIDTH, 0)
 	wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	wrap.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	wrap.add_theme_constant_override("separation", 2)
+	wrap.add_theme_constant_override("separation", 4)
 	parent.add_child(wrap)
 
+	var head_row := HBoxContainer.new()
+	head_row.add_theme_constant_override("separation", DS.SP.SM)
+	wrap.add_child(head_row)
 	var head := Label.new()
 	head.theme_type_variation = "Section"
 	head.add_theme_font_size_override("font_size", DS.FS.BODY + 4)
 	head.text = title
-	wrap.add_child(head)
-
+	head_row.add_child(head)
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head_row.add_child(gap)
 	var sub := Label.new()
 	sub.theme_type_variation = "Body"
 	sub.add_theme_font_size_override("font_size", DS.FS.CAPTION - 1)
-	sub.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
+	sub.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+	sub.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	sub.text = subtitle
-	wrap.add_child(sub)
+	head_row.add_child(sub)
+
+	if extra != null:
+		wrap.add_child(extra)
 
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -193,7 +218,7 @@ func _numeric(text: String, size: int = DS.FS.CAPTION, color: Color = DS.PALETTE
 
 
 func _empty_note(list: VBoxContainer, text: String) -> void:
-	var l := _label(text, DS.FS.CAPTION, DS.PALETTE.TEXT_DIM)
+	var l := _label(text, DS.FS.CAPTION, DS.PALETTE.TEXT)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	list.add_child(l)
 
@@ -255,7 +280,7 @@ func _stockpile_row(row: Dictionary) -> Control:
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_label.clip_text = true
 	top.add_child(name_label)
-	top.add_child(_label("L%d" % Stockpile.get_warehouse_level(tile_id), DS.FS.CAPTION - 1, DS.PALETTE.TEXT_DIM))
+	top.add_child(_label("L%d" % Stockpile.get_warehouse_level(tile_id), DS.FS.CAPTION - 1, DS.PALETTE.TEXT))
 	top.add_child(_numeric("%d%%" % int(round(fill * 100.0)), DS.FS.CAPTION, _fill_color(fill)))
 	var trend := Stockpile.fill_trend_per_turn(tile_id, TREND_TURNS)
 	top.add_child(_label(_trend_glyph(trend, cap), DS.FS.CAPTION, _trend_color(trend, cap)))
@@ -266,7 +291,7 @@ func _stockpile_row(row: Dictionary) -> Control:
 	var bottom := HBoxContainer.new()
 	bottom.add_theme_constant_override("separation", DS.SP.SM)
 	col.add_child(bottom)
-	bottom.add_child(_numeric("%d / %d" % [int(row.used), int(cap)], DS.FS.CAPTION - 1, DS.PALETTE.TEXT_DIM))
+	bottom.add_child(_numeric("%d / %d" % [int(row.used), int(cap)], DS.FS.CAPTION - 1, DS.PALETTE.TEXT))
 	var gap := Control.new()
 	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bottom.add_child(gap)
@@ -297,13 +322,13 @@ func _card_body(card: PanelContainer) -> VBoxContainer:
 	return col
 
 
-## Framed good icon with its quantity pill beside it.
+## A good as the frameless cream tile, with its count as the navy pill overhanging the
+## bottom-right — the placement the recipe cards use, so a good reads the same wherever
+## it appears.
 func _good_chip(good_id: String, qty: int) -> Control:
-	var wrap := HBoxContainer.new()
-	wrap.add_theme_constant_override("separation", 2)
-	wrap.add_child(UIHelpers.make_framed_good_icon(good_id, Catalog.get_internal_name(good_id), GOOD_ICON))
-	wrap.add_child(UIHelpers.make_quantity_pill(_short_qty(qty), PILL_HEIGHT, 11))
-	return wrap
+	var icon := UIHelpers.make_plain_good_icon(good_id, Catalog.get_internal_name(good_id), GOOD_ICON)
+	icon.add_child(UIHelpers.make_overlaid_quantity_pill(_short_qty(qty), PILL_HEIGHT))
+	return icon
 
 
 func _fill_bar(fill: float, color: Color) -> Control:
@@ -352,7 +377,7 @@ func _trend_color(rate: float, cap: float) -> Color:
 		return DS.PALETTE.WARN
 	if rate < -dead:
 		return DS.PALETTE.OK
-	return DS.PALETTE.TEXT_DIM
+	return DS.PALETTE.TEXT
 
 
 func _full_eta_text(tile_id: String, fill: float) -> String:
@@ -371,7 +396,7 @@ func _eta_color(tile_id: String, fill: float) -> Color:
 		return DS.PALETTE.DANGER
 	var turns := Stockpile.turns_until_full(tile_id, TREND_TURNS)
 	if turns < 0:
-		return DS.PALETTE.TEXT_DIM
+		return DS.PALETTE.TEXT
 	return DS.PALETTE.DANGER if turns <= 3 else DS.PALETTE.WARN
 
 
@@ -379,9 +404,19 @@ func _eta_color(tile_id: String, fill: float) -> Color:
 
 func _build_infra() -> void:
 	_clear(_infra_list)
-	var links: Array = MatchState.active_links()
+	var links: Array = []
+	var hidden := 0
+	for link_v in MatchState.active_links():
+		var link: Dictionary = link_v
+		if bool(_infra_enabled.get(str(link.mode), true)):
+			links.append(link)
+		else:
+			hidden += 1
 	if links.is_empty():
-		_empty_note(_infra_list, "Nothing is crossing a road, rail or pipe this turn.")
+		if hidden > 0:
+			_empty_note(_infra_list, "%d link%s hidden by the filters above." % [hidden, "" if hidden == 1 else "s"])
+		else:
+			_empty_note(_infra_list, "Nothing is crossing a road, rail or pipe this turn.")
 		return
 	for link: Dictionary in links:
 		_infra_list.add_child(_infra_row(link))
@@ -396,12 +431,12 @@ func _infra_row(link: Dictionary) -> Control:
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", DS.SP.SM)
 	col.add_child(top)
-	top.add_child(_mode_swatch(mode))
+	top.add_child(_infra_icon(mode))
 	var name_label := _label("%s · %s" % [_mode_label(mode), Catalog.tile_label(str(link.tile_id))], DS.FS.CAPTION)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_label.clip_text = true
 	top.add_child(name_label)
-	top.add_child(_label("L%d" % int(link.level), DS.FS.CAPTION - 1, DS.PALETTE.TEXT_DIM))
+	top.add_child(_label("L%d" % int(link.level), DS.FS.CAPTION - 1, DS.PALETTE.TEXT))
 	top.add_child(_numeric("%d%%" % int(round(ratio * 100.0)), DS.FS.CAPTION, _load_color(ratio)))
 
 	# Over-capacity links pin the bar full; the % beside it carries the overshoot.
@@ -411,13 +446,13 @@ func _infra_row(link: Dictionary) -> Control:
 	bottom.add_theme_constant_override("separation", DS.SP.SM)
 	col.add_child(bottom)
 	bottom.add_child(_numeric("%d / %d units" % [int(round(float(link.flow))), int(round(float(link.cap)))],
-		DS.FS.CAPTION - 1, DS.PALETTE.TEXT_DIM))
+		DS.FS.CAPTION - 1, DS.PALETTE.TEXT))
 	var gap := Control.new()
 	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bottom.add_child(gap)
 	var over_turns := MatchState.link_turns_over(str(link.key))
 	bottom.add_child(_label("at cap %d of last %d" % [over_turns, MatchState.LINK_HISTORY_TURNS],
-		DS.FS.CAPTION - 1, DS.PALETTE.WARN if over_turns > 0 else DS.PALETTE.TEXT_DIM))
+		DS.FS.CAPTION - 1, DS.PALETTE.WARN if over_turns > 0 else DS.PALETTE.TEXT))
 
 	# Shown only once congestion has actually cost money — a £0 line on every clear
 	# link would bury the ones that are really billing.
@@ -445,17 +480,42 @@ func _mode_label(mode: String) -> String:
 	return mode.capitalize()
 
 
-## Colour chip in the infra mapmode's palette, so a link reads the same here as on the
-## map. The mapmode keys rail as "rails"; the transport mode is "rail".
-func _mode_swatch(mode: String) -> Control:
-	var dot := Panel.new()
-	dot.custom_minimum_size = Vector2(10, 10)
-	dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = InfraIcons.color_for("rails" if mode == "rail" else mode)
-	sb.set_corner_radius_all(2)
-	dot.add_theme_stylebox_override("panel", sb)
-	return dot
+## The infrastructure's own building icon, so a road row is recognisably the thing the
+## player built. Falls back to nothing rather than to a coloured square: the swatch this
+## replaced said only 'road' twice, once in colour and once in words.
+func _infra_icon(mode: String) -> Control:
+	var holder := TextureRect.new()
+	holder.custom_minimum_size = Vector2(INFRA_ICON, INFRA_ICON)
+	holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	holder.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	holder.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var key := InfraIcons.normalise(mode)
+	var building: Dictionary = Catalog.get_building_by_internal_name(key)
+	holder.texture = InfraIcons.texture_for(str(building.get("id", "")), key)
+	return holder
+
+
+## The filter chips above the infrastructure list. Every mode starts on, so the column
+## opens showing everything and the filters only ever narrow it.
+func _infra_filter_bar() -> Control:
+	var bar := HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 4)
+	for row: Dictionary in INFRA_FILTERS:
+		var mode := str(row.mode)
+		_infra_enabled[mode] = true
+		var chip := Button.new()
+		chip.text = str(row.label)
+		chip.toggle_mode = true
+		chip.button_pressed = true
+		chip.focus_mode = Control.FOCUS_NONE
+		chip.add_theme_font_size_override("font_size", DS.FS.CAPTION - 2)
+		chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		chip.toggled.connect(func(on: bool) -> void:
+			_infra_enabled[mode] = on
+			_build_infra())
+		bar.add_child(chip)
+	return bar
 
 
 # ── Column 3 · Units in transit ───────────────────────────────────────────────
@@ -532,7 +592,7 @@ func _transit_row(row: Dictionary) -> Control:
 		dest.add_child(_PortIcon.new(DS.PALETTE.ACCENT))
 		dest.add_child(_label("Market", DS.FS.CAPTION - 1, DS.PALETTE.ACCENT))
 	else:
-		dest.add_child(_label(Catalog.tile_label(str(row.destination)), DS.FS.CAPTION - 1, DS.PALETTE.TEXT_DIM))
+		dest.add_child(_label(Catalog.tile_label(str(row.destination)), DS.FS.CAPTION - 1, DS.PALETTE.TEXT))
 
 	var turns := int(row.turns)
 	var eta := _numeric(("arrives now" if turns <= 0 else "%d turn%s" % [turns, "" if turns == 1 else "s"]),

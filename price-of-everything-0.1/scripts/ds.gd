@@ -45,7 +45,12 @@ const PALETTE := {
 	"ACCENT_DIM": Color("#7A5F2C"),
 	"TEXT": Color("#E8EEF7"),
 	"TEXT_MUTED": Color("#C2D2E5"),       # was #9BB1CC — bumped much closer to white for legibility
-	# Secondary label text on navy. Was #6B7F98, which measured 4.69:1 against BG_PANEL — over
+	# Secondary label text. NOT a way to make text quieter on a dark panel: on the navies
+	# this palette actually uses it reads as grey-on-grey at 11–14 px, which is where the
+	# owner keeps finding it. THE RULE (see CLAUDE.md): text on BG_PANEL / BG_CARD /
+	# BG_INSET / the top bar navy is TEXT unless it is saying something semantic. To make a
+	# label feel secondary on a dark surface, drop its SIZE or weight, not its contrast.
+	# Was #6B7F98, which measured 4.69:1 against BG_PANEL — over
 	# the WCAG AA line by a hair, and at 11-14px it read as grey-on-grey. Now 9.92:1.
 	# Owner rule, 9 Aug: the dark grey never goes on a navy or dark background.
 	"TEXT_DIM": Color("#A9BCD2"),
