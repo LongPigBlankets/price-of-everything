@@ -28,8 +28,11 @@ const BAKE_LONG_SIDE := 4096.0
 ## path is cheap; the crossover lands at a moderate zoom-out.
 const VECTOR_CAP := 450
 const CULL_MARGIN := 320.0   # world units; keep partially-visible polys
+const ViewStream := preload("res://scripts/view_stream.gd")
 const RELIEF_SHOULDER_HALF_WIDTH := 4.0
 const RELIEF_MATERIAL_MIN_AREA := 1450.0
+
+const HillTextureBaked := preload("res://scripts/hill_texture_baked.gd")
 
 enum { MODE_TEXTURE, MODE_VECTOR }
 
@@ -62,7 +65,16 @@ var _bake_deferred := false   # the far-zoom texture bake is pending; built lazi
 var _bake_in_progress := false
 var _bake_generation := 0
 var _completed_bake_generation := -1
-var _meshes_warm := false     # _warm_all_meshes() done → the cached-mesh vector LOD is usable
+var _meshes_warm := false     # the cached-mesh vector LOD is usable
+var _meshes_full_warm := false  # every contour pre-triangulated (warm_meshes_deferred)
+## key -> triangle indices, computed on WORKER threads by warm_meshes_async. Present means
+## _build_fill_mesh has nothing expensive left to do; absent means it triangulates inline,
+## which is still correct, only slow.
+var _tri: Dictionary = {}
+## Scratch for the worker group. Each task writes ONE index of _tri_out and reads ONE of
+## _tri_pts, so no two threads touch the same element and no lock is needed.
+var _tri_pts: Array = []
+var _tri_out: Array = []
 # Water-lining polylines: the COAST_BAND polys offset seaward per MapStyle
 # tier, cached once (style-independent geometry; only ink mode draws them).
 # Entries: {src: int (index into _sea), tier: int, pts: PackedVector2Array (closed)}.
@@ -83,14 +95,39 @@ func _ready() -> void:
 	_sea_bb = _bboxes(_sea, true)
 	_lake_bb = _bboxes(_lakes, false)
 	_bake_rect = _compute_bounds()
-	await _warm_all_meshes()   # triangulate every contour ONCE (spread across frames during a bg build)
-	_meshes_warm = true        # the vector LOD can now draw cached meshes (no bake needed for it)
-	queue_redraw()
-	# The far-zoom texture LOD's bake is a big one-frame GPU render of every hill. Build it LAZILY
-	# the first time a zoomed-out view actually needs it (see _process), never during the load — so
-	# it can't freeze the loading screen. Headless has no GPU; it draws polys directly.
-	if DisplayServer.get_name() != "headless":
-		_bake_deferred = true
+	# THE FAR-ZOOM TEXTURE COMES OFF DISK. It is a picture of data that cannot change during
+	# a match (baked contours, fixed palette), so rendering it at every single game start - a
+	# ~5 s one-frame SubViewport pass over ~1,300 contours - was paying, every load, for a
+	# result identical every time. tools/bake_hill_texture.tscn renders it once; this loads
+	# it. A missing or stale bake falls back to the live render below, so the picture is
+	# never wrong, only slower to arrive.
+	var _lp_t := Time.get_ticks_usec()
+	_baked_tex = HillTextureBaked.texture(_style_key(), _bake_rect)
+	if OS.get_environment("LOAD_PROF") != "":
+		print("LOADPROF-CALL %-30s %8.1f ms" % ["hills baked texture load", float(Time.get_ticks_usec() - _lp_t) / 1000.0])
+	if _baked_tex != null:
+		# _draw_fill builds its meshes on demand, so the zoomed-in LOD is usable immediately:
+		# the pre-warm is an optimisation, not a prerequisite, and it is not worth ~2 s of
+		# every load for contours the opening view never draws. world_map warms them once the
+		# match is running instead (warm_meshes_deferred).
+		_meshes_warm = true
+		_mode = MODE_TEXTURE
+		queue_redraw()
+		# Triangulate the contours NOW, on worker threads, so the vector LOD is ready before
+		# anything asks to draw it. This is the earliest moment it can start — the contours
+		# exist and nothing else needs them — and starting it late is the same as not
+		# starting it: fired at the end of the build it had ~1.3 s before the player could
+		# click Begin, against several seconds of work. See warm_meshes_async.
+		warm_meshes_async()
+	else:
+		await _warm_all_meshes()   # triangulate every contour ONCE (spread across frames during a bg build)
+		_meshes_warm = true        # the vector LOD can now draw cached meshes (no bake needed for it)
+		queue_redraw()
+		# No disk bake: build the far-zoom texture LAZILY on the first zoomed-out view (see
+		# _process), never inline here, so it cannot freeze the loading screen. Headless has no
+		# GPU; it draws polys directly.
+		if DisplayServer.get_name() != "headless":
+			_bake_deferred = true
 
 ## 'toggle ink': colors are read from MapStyle at draw time, so the vector LOD
 ## re-tints on the next redraw; the far-zoom texture is stale the moment the
@@ -100,9 +137,107 @@ func _on_style_changed() -> void:
 	_baked_tex = null
 	_completed_bake_generation = -1
 	_mode = MODE_VECTOR
-	if DisplayServer.get_name() != "headless":
+	# The disk bake is palette-specific. If the style just moved to is the one it was baked
+	# in (the normal case - something toggled back), take it off disk again rather than
+	# re-rendering the whole map; otherwise fall back to the live bake.
+	_baked_tex = HillTextureBaked.texture(_style_key(), _bake_rect)
+	if _baked_tex != null:
+		_completed_bake_generation = _bake_generation
+		_mode = MODE_TEXTURE
+	elif DisplayServer.get_name() != "headless":
 		_bake_deferred = true
 	queue_redraw()
+
+
+## Which palette the far-zoom texture is drawn in. The bake is only valid for the style it
+## was rendered in, so this string is stored beside it and compared on load.
+func _style_key() -> String:
+	return HillTextureBaked.style_key(MapStyle.ink, MapStyle.plate, MapStyle.is_midcentury())
+
+
+## Triangulate every contour up front. Optional (see _draw_fill), and deliberately kept OFF
+## the load path when the disk bake covers the opening view - world_map calls this once the
+## match is running, so the first zoom-in has its meshes ready.
+## Triangulate every contour on WORKER THREADS, then assemble the meshes on the main one.
+##
+## THE WORK DID NOT GET SMALLER, IT MOVED OFF THE THREAD THAT WAS STALLING. Contour
+## triangulation is a pure function of the points — no scene tree, no rendering, no shared
+## state — so it is exactly the kind of work a thread pool is for, and the film owns the main
+## thread throughout the load anyway.
+##
+## This exists because the old plan did not survive contact with the Begin button. The
+## pre-warm was left until after Begin on the reasoning that the zoomed-in LOD is only needed
+## "if the player zooms all the way in" — but _on_begin_pressed calls start_camera_intro,
+## which zooms in AUTOMATICALLY, every single time. The LOD flipped to vector, _draw_fill
+## built every visible contour inside one draw call, and the map opened on a 7.1 s frozen
+## frame. Measured with tools/begin_click_probe.tscn.
+##
+## Assembly stays on the main thread (ArrayMesh is a resource) but is cheap beside the
+## triangulation, and is sliced anyway so a slow machine cannot make one frame of it.
+func warm_meshes_async() -> void:
+	if _meshes_full_warm or DisplayServer.get_name() == "headless" or not is_inside_tree():
+		return
+	_meshes_full_warm = true
+	var keys: Array[String] = []
+	_tri_pts = []
+	for i in _sea.size():
+		var sp: PackedVector2Array = _sea[i].p
+		if sp.size() >= 3:
+			keys.append("s%d" % i)
+			_tri_pts.append(sp)
+	for i in _polys.size():
+		var pp: PackedVector2Array = _polys[i].p
+		if pp.size() >= 3:
+			keys.append("p%d" % i)
+			_tri_pts.append(pp)
+	for i in _lakes.size():
+		var lp: PackedVector2Array = _lakes[i]
+		if lp.size() >= 3:
+			keys.append("l%d" % i)
+			_tri_pts.append(lp)
+	if keys.is_empty():
+		return
+	var t0 := Time.get_ticks_msec()
+	_tri_out = []
+	_tri_out.resize(_tri_pts.size())
+	var group := WorkerThreadPool.add_group_task(
+		_tri_task, _tri_pts.size(), -1, false, "hill contour triangulation")
+	while not WorkerThreadPool.is_group_task_completed(group):
+		if not is_inside_tree():
+			WorkerThreadPool.wait_for_group_task_completion(group)
+			return
+		await get_tree().process_frame
+	WorkerThreadPool.wait_for_group_task_completion(group)
+	var t_tri := Time.get_ticks_msec() - t0
+	for i in keys.size():
+		_tri[keys[i]] = _tri_out[i]
+	_tri_pts = []
+	_tri_out = []
+	# Now the cheap half, on the main thread, still sliced.
+	var t1 := Time.get_ticks_msec()
+	await _warm_all_meshes(WARM_SLICE_LOAD_MS, true)
+	if OS.get_environment("LOAD_PROF") != "":
+		print("LOADPROF-CALL %-30s %8.1f ms (%d contours on workers) + %.1f ms assembly"
+			% ["hill triangulation (async)", float(t_tri), keys.size(),
+			float(Time.get_ticks_msec() - t1)])
+
+
+func _tri_task(i: int) -> void:
+	_tri_out[i] = Geometry2D.triangulate_polygon(_tri_pts[i])
+
+
+func warm_meshes_deferred() -> void:
+	if _meshes_full_warm or not is_inside_tree():
+		return
+	_meshes_full_warm = true
+	# The slice depends on WHO IS WATCHING, and getting it wrong is expensive in both
+	# directions. Under a loading screen a yielded frame costs that screen's own frame time
+	# (~30 ms, more with a film), so 4 ms slices spend 15.7 s of yielding on 2 s of work —
+	# measured. On the map the opposite holds: 35 ms slices ARE the dropped frame.
+	# Either way it yields unconditionally; falling back to synchronous is what put the whole
+	# triangulation into one frame in front of the player.
+	var slice := WARM_SLICE_LOAD_MS if LoadPacing.is_background_build() else WARM_SLICE_PLAY_MS
+	await _warm_all_meshes(slice, true)
 
 ## Exact, read-only land-relief geometry for draw-only planning layers.
 ##
@@ -311,11 +446,19 @@ func _process(_delta: float) -> void:
 		_mode = want
 		_view_rect = view
 		queue_redraw()
-	elif want == MODE_VECTOR and view != _view_rect:
-		_view_rect = view   # camera moved while zoomed in — recull next draw
+	elif want == MODE_VECTOR and not ViewStream.settled(view, _view_rect, CULL_MARGIN):
+		_view_rect = view   # camera moved far enough to recull — see view_stream.gd
 		queue_redraw()
 
 func _draw() -> void:
+	var _lpd := Time.get_ticks_usec()
+	_lp_draw_inner()
+	var _lpms := float(Time.get_ticks_usec() - _lpd) / 1000.0
+	if _lpms > 50.0 and OS.get_environment("LOAD_PROF") != "":
+		print("LOADPROF-DRAW %s %.0f ms   abs=%d" % [name, _lpms, Time.get_ticks_msec()])
+
+
+func _lp_draw_inner() -> void:
 	if not _meshes_warm:
 		_draw_polys_direct()   # headless, or before the cached meshes finish building (covered by the loading screen)
 		return
@@ -374,16 +517,18 @@ func _compute_bounds() -> Rect2:
 
 ## Render every contour into an off-screen SubViewport once, copy it into a
 ## standalone ImageTexture, then free the viewport.
-func _bake_to_texture(generation: int) -> void:
+## Render every contour into ONE image at BAKE_LONG_SIDE, through a SubViewport.
+## Shared by the live fallback bake below and the OFFLINE bake
+## (tools/bake_hill_texture.tscn) so the two can never drift apart: same painter,
+## same scale, same palette, same pixels. Needs a real renderer - returns null
+## headless. The caller owns the returned Image.
+func render_bake_image() -> Image:
 	var size := _bake_rect.size
 	if size.x <= 0.0 or size.y <= 0.0:
-		_bake_in_progress = false
-		return
+		return null
 	var scale: float = BAKE_LONG_SIDE / maxf(size.x, size.y)
-	var tex_w := int(ceil(size.x * scale))
-	var tex_h := int(ceil(size.y * scale))
 	var vp := SubViewport.new()
-	vp.size = Vector2i(tex_w, tex_h)
+	vp.size = Vector2i(int(ceil(size.x * scale)), int(ceil(size.y * scale)))
 	vp.transparent_bg = true
 	vp.disable_3d = true
 	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
@@ -399,10 +544,18 @@ func _bake_to_texture(generation: int) -> void:
 	await get_tree().process_frame
 	await RenderingServer.frame_post_draw
 	var img := vp.get_texture().get_image()
+	vp.queue_free()
+	return img
+
+
+## LIVE fallback bake: only reached when the offline bake is missing or stale, or when
+## the `toggle ink` cheat has moved the palette out from under it. A big one-frame GPU
+## render of the whole map - which is exactly why the shipped path loads it from disk.
+func _bake_to_texture(generation: int) -> void:
+	var img: Image = await render_bake_image()
 	if generation == _bake_generation and img != null and not img.is_empty():
 		_baked_tex = ImageTexture.create_from_image(img)
 		_completed_bake_generation = generation
-	vp.queue_free()
 	_bake_in_progress = false
 	queue_redraw()
 
@@ -510,32 +663,51 @@ func _ensure_coast_lines(tiers: Array) -> void:
 ## Triangulate every fill polygon once (load-time, ~tens of ms — the old direct
 ## draw triangulated all of these EVERY frame), so panning only ever draws
 ## already-built meshes.
-func _warm_all_meshes() -> void:
+## Slice size for the deferred warm. It runs while the player is looking at the map, so it has
+## to fit inside a frame nobody notices — 35 ms would BE the frame. At 2 ms it is ~12% of a
+## 60 fps budget and the whole 8.6 s of triangulation is done inside a minute or so of play.
+const WARM_SLICE_PLAY_MS := 2
+## Slice size while a loading screen is up and there is nothing to stutter but an animation.
+const WARM_SLICE_LOAD_MS := 35
+
+func _warm_all_meshes(slice_ms: int = WARM_SLICE_LOAD_MS, always_yield: bool = false) -> void:
 	if DisplayServer.get_name() == "headless":
 		return   # tests never render the vector LOD; skip the triangulation cost
 	# Triangulating every contour is ~2 s of work, and a fixed contour-count batch is uneven (a few
-	# huge contours dominate, giving a ~2 s frame). During a background build (loading screen up)
-	# hand a frame back whenever ~35 ms have accumulated, so it spreads into smooth ~35 ms slices.
-	# (Time only paces the yields; the meshes built are identical/deterministic.)
+	# huge contours dominate, giving a ~2 s frame), so hand a frame back whenever `slice_ms` has
+	# accumulated. (Time only paces the yields; the meshes built are identical/deterministic.)
+	#
+	# ALWAYS_YIELD MATTERS. LoadPacing.bg_yield() is a no-op with no loading screen up, which is
+	# right for the build — tests and the e2e harness want it synchronous — and catastrophic for
+	# the deferred warm: the player presses "Begin", the screen is freed, and every remaining
+	# contour is then triangulated in ONE frame, on the map, in front of them.
 	var t_last := Time.get_ticks_msec()
 	for i in _sea.size():
 		if (_sea[i].p as PackedVector2Array).size() >= 3:
 			_build_fill_mesh("s%d" % i, _sea[i].p)
-		if Time.get_ticks_msec() - t_last > 35:
-			await LoadPacing.bg_yield()
+		if Time.get_ticks_msec() - t_last > slice_ms:
+			await _warm_yield(always_yield)
 			t_last = Time.get_ticks_msec()
 	for i in _polys.size():
 		if (_polys[i].p as PackedVector2Array).size() >= 3:
 			_build_fill_mesh("p%d" % i, _polys[i].p)
-		if Time.get_ticks_msec() - t_last > 35:
-			await LoadPacing.bg_yield()
+		if Time.get_ticks_msec() - t_last > slice_ms:
+			await _warm_yield(always_yield)
 			t_last = Time.get_ticks_msec()
 	for i in _lakes.size():
 		if (_lakes[i] as PackedVector2Array).size() >= 3:
 			_build_fill_mesh("l%d" % i, _lakes[i])
-		if Time.get_ticks_msec() - t_last > 35:
-			await LoadPacing.bg_yield()
+		if Time.get_ticks_msec() - t_last > slice_ms:
+			await _warm_yield(always_yield)
 			t_last = Time.get_ticks_msec()
+
+
+func _warm_yield(always: bool) -> void:
+	if always:
+		if is_inside_tree():
+			await get_tree().process_frame
+	else:
+		await LoadPacing.bg_yield()
 
 func _draw_fill(key: String, pts: PackedVector2Array, color: Color, white: Texture2D) -> void:
 	var mesh: Mesh = _mesh_cache.get(key, null) if _mesh_cache.has(key) else _build_fill_mesh(key, pts)
@@ -545,7 +717,12 @@ func _draw_fill(key: String, pts: PackedVector2Array, color: Color, white: Textu
 		draw_colored_polygon(pts, color)   # triangulation failed — rare
 
 func _build_fill_mesh(key: String, pts: PackedVector2Array) -> Mesh:
-	var idx := Geometry2D.triangulate_polygon(pts)
+	# Precomputed by warm_meshes_async on a worker thread when the load had time for it.
+	# Falling through to the inline call is correct, just slow — which is what it costs when
+	# this is reached from inside a draw.
+	var idx: PackedInt32Array = _tri.get(key, PackedInt32Array())
+	if idx.is_empty():
+		idx = Geometry2D.triangulate_polygon(pts)
 	var mesh: ArrayMesh = null
 	if not idx.is_empty():
 		var verts := PackedVector3Array()

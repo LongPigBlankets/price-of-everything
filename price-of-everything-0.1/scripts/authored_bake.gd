@@ -32,6 +32,8 @@ static var _warned := false
 static var _available := -1   # -1 unknown, 0 no, 1 yes
 ## Resolved texture cache, path -> Texture2D, trimmed to what the camera needs.
 static var _textures: Dictionary = {}
+static var _lp_load_us := 0
+static var _lp_load_n := 0
 
 
 ## The parsed manifest, or an empty dictionary when there is no bake.
@@ -122,7 +124,12 @@ static func texture_for(tile_id: String, layer: String) -> Texture2D:
 		_available = 0
 		_warn("AuthoredBake: %s is in the manifest but not loadable — falling back to vectors. Run `--headless --import`, or %s." % [path, REBAKE_HINT])
 		return null
+	var _lpt := Time.get_ticks_usec()
 	var texture: Texture2D = load(path)
+	_lp_load_us += Time.get_ticks_usec() - _lpt
+	_lp_load_n += 1
+	if _lp_load_n % 25 == 0 and OS.get_environment("LOAD_PROF") != "":
+		print("LOADPROF-BAKE %d textures loaded, %.0f ms total   abs=%d" % [_lp_load_n, _lp_load_us / 1000.0, Time.get_ticks_msec()])
 	_textures[path] = texture
 	return texture
 
@@ -150,6 +157,29 @@ static func trim(keep_tile_ids: Dictionary) -> void:
 
 ## Preload the textures for a set of tiles — the loading screen calls this for the tiles the
 ## opening camera will see, so the first frame of play is not a burst of disk reads.
+## Ask the worker threads to read these tiles NOW, and return immediately.
+##
+## Reading the opening view off disk is 0.8-2.8 s depending on what the OS has cached, and on
+## the main thread every millisecond of that is a frozen loading screen. It is pure I/O plus a
+## PNG decode, which is what ResourceLoader's threaded path is for. Kick this early; `warm`
+## below then collects the results, and a request that has already landed costs a dictionary
+## lookup. Same pattern as good_icons.warm_async.
+static func warm_async(tile_ids: Array, layers: Array = ["fabric", "roads"]) -> void:
+	if not is_available():
+		return
+	for tile_value in tile_ids:
+		var entry: Variant = tiles().get(str(tile_value), null)
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		var entry_layers: Variant = (entry as Dictionary).get("layers", {})
+		if typeof(entry_layers) != TYPE_DICTIONARY:
+			continue
+		for layer in layers:
+			var path := str((entry_layers as Dictionary).get(str(layer), ""))
+			if path != "" and not _textures.has(path) and ResourceLoader.exists(path):
+				ResourceLoader.load_threaded_request(path)
+
+
 static func warm(tile_ids: Array, layers: Array = ["fabric", "roads"]) -> int:
 	if not is_available():
 		return 0

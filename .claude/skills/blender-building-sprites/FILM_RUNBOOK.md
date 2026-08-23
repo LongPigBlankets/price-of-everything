@@ -65,10 +65,11 @@ and hard-errors on a missing range, and every worker prints
 walking away** — it is the whole verification:
 
     grep CHUNK_RANGE <each log>     # must show three DIFFERENT ranges
- Expected wall: Mac ~2.5-4h (54-89s/frame),
-PC ~3.5-5.5h (est. 70-115s/frame on the 5600X; measure the first frames and
-recompute before believing an ETA). RAM: ~5.5GB/worker — on the PC verify the
-FIRST worker's usage in Task Manager before starting the other four.
+
+Expected wall: Mac ~2.5-4h (54-89s/frame), PC ~3.5-5.5h (est. 70-115s/frame on
+the 5600X; measure the first frames and recompute before believing an ETA).
+RAM: ~5.5GB/worker — on the PC verify the FIRST worker's usage in Task Manager
+before starting the other four.
 
 Transfer at the end: the PC ships its `film_wide/f*.png` (3 passes x 843 frames,
 ~2-3GB) back to wherever the stitch runs; frames are plain PNGs, any transport.
@@ -89,8 +90,6 @@ Transfer at the end: the PC ships its `film_wide/f*.png` (3 passes x 843 frames,
     ffmpeg -y -r 30 -i renders/loading/film_wide/_stage/k%04d.png -c:v libx264 -crf 17 -pix_fmt yuv420p -movflags +faststart loading_film_wide.mp4
     # 16:9 delivery = centre crop, no scaling:
     ffmpeg -y -i loading_film_wide.mp4 -vf "crop=1920:1080:240:0" -c:v libx264 -crf 17 -pix_fmt yuv420p loading_film_1080.mp4
-
-## What is being rendered — superseded 447-keyframe plan
 
 ## One-time setup on a new machine
 
@@ -153,24 +152,6 @@ Transfer at the end: the PC ships its `film_wide/f*.png` (3 passes x 843 frames,
   clears itself; the json records the resume index) — or just kill the process
   and relaunch from the last done index.
 
-## Stitch + encode (after all ranges done)
-
-    python3 - <<'EOF'
-    import sys, os
-    sys.path.insert(0, ".")
-    import film_stitch as F
-    from PIL import Image
-    d = "renders/loading/film"; stage = os.path.join(d, "_stage")
-    os.makedirs(stage, exist_ok=True)
-    N = 447   # or 1350
-    for i in range(N):
-        Image.fromarray(F.frame(d, i, 0.0)).save(os.path.join(stage, "k%03d.png" % i))
-    EOF
-    # interpolated (447-keyframe plan):
-    ffmpeg -y -r 9.923 -i renders/loading/film/_stage/k%03d.png -vf "minterpolate=fps=30:mi_mode=mci:mc_mode=aobmc:vsbmc=1" -c:v libx264 -crf 17 -pix_fmt yuv420p -movflags +faststart loading_film.mp4
-    # true 30fps (1350-frame plan): drop -vf entirely and use -r 30
-    # NOTE %03d breaks past frame 999 — use k%04d in both places for N=1350.
-
 Edge blur: `film_stitch.py` EDGE_SIGMA/EDGE_FRAC. It exists to hide MOTION-
 INTERPOLATION deformation at the frame edges. At true 30fps there is nothing to
 hide — set EDGE_SIGMA = 0 (or a token 2–3 purely as a speed cue if the owner
@@ -186,3 +167,59 @@ post over 1350 frames.
 - shift_y is in units of the LARGER image dimension.
 - 43–71s/frame is content-dependent; do not diagnose a "slowdown" at the port end.
 - Do not lower FILM_N to save time without the owner deciding it.
+
+## Repairing a few frames without re-rendering the film  (done 2026-08-22)
+
+A modelling fault reached the shipped film: the construction site's second storey floated
+(see `BUILDING_NOTES.md`). Only frames 0-11 showed it — the site leaves shot fast. Redoing
+1350 frames for 12 would have been several hours; this took about 25 minutes.
+
+1. **Fix the builder, and re-bake the sprite** — `python bake_sprite.py <name> --install
+   --no-verify`. `--no-verify` because the verify gate exists to stop UNINTENDED drift and
+   will refuse a change you meant.
+2. **Find the damaged span** by pulling frames out of the shipped film and looking:
+   `ffmpeg -i film.ogv -frames:v 49 -fps_mode passthrough f%03d.png`. Render a few frames
+   PAST it — they are the control in step 4.
+3. **Re-render the REGION only** — `tools_render_con_fix.py` measures where the subject is
+   on screen every frame (projecting its bounding box through the film camera) and renders a
+   border that tracks it.
+
+   **A BORDER DOES NOT COST WHAT IT COVERS.** Measured 2026-08-22: **150-220 s/frame almost
+   regardless of border size** — a 4%-of-frame border costs nearly what a full frame does,
+   because Freestyle rebuilds its view map over the whole street every frame and only the
+   raster pass shrinks. Budget by FRAME COUNT, not by area. The first estimate here assumed
+   area-proportional cost and was wrong by an order of magnitude.
+
+   So the lever is WHICH FRAMES, not how big the box is. Ask the scene, never the eye: the
+   opening construction site is on screen for frames 0-75, not the dozen an eyeballed crop
+   suggested, and there are FOUR construction sites on this street, three of which the first
+   repair never touched.
+4. **Composite over the film's OWN frames** — `film_patch_frames.py --borders borders.json`
+   writes one small region PNG per repaired frame plus a manifest. Everything outside the
+   region stays the shipped film, so nothing depends on this machine reproducing the render
+   machine's output. Trim borders.json to the frames you actually rendered, or the cross-fade
+   at the end of each run lands in the wrong place.
+5. **Re-encode whole**, with `film_patch_encode.py`, which streams the film through ffmpeg
+   and paints the regions in as the frames go past — 1350 full frames on disk to carry a few
+   dozen small rectangles is ~3.4 GB for nothing. Ogg cannot be spliced with `-c copy`: it
+   would chain two logical streams and Godot's Theora decoder is not to be trusted past the
+   join. The equivalent by hand, for a single contiguous head:
+
+       ffmpeg -y -r 30 -start_number 0 -i patched/p%04d.png -i film_ORIGINAL.ogv \
+         -filter_complex "[1:v]trim=start_frame=18,setpts=PTS-STARTPTS[b];\
+                          [0:v]format=yuv420p[a];[a][b]concat=n=2:v=1:a=0[v]" \
+         -map "[v]" -c:v libtheora -q:v 6 -r 30 film.ogv
+
+   **Do not stream frames you are not repairing.** Pulling all 1350 through rgb24 costs a
+   YUV round trip on every untouched frame: measured 50.9 MB streamed against 44.0 MB
+   concatenated, same q6, same content. Use film_patch_encode.py only for repairs scattered
+   through the film; for one run starting at frame 0, write the head as PNGs and concat.
+
+   **Pick q by SIZE, not by quality.** Theora decodes on Godot's MAIN thread, so bitrate is
+   a load-time cost, not just a disk cost. q6 came out 44.0MB against the shipped 48.2MB at
+   44.7 dB — one extra generation is imperceptible on flat-fill art, and the smaller file is
+   strictly better for the film's smoothness. q7 was 52.5MB for 1.3 dB nobody can see.
+6. **Verify it plays**, do not assume:
+   `<godot> --path . res://tools/loading_film_check.tscn --quit-after 42000`, and check drift
+   is still in band (0.63-0.72 s). Confirm the last patched frame is bit-identical to the
+   original — with `--fade` ending on it, it must be, and that makes the handoff seamless.

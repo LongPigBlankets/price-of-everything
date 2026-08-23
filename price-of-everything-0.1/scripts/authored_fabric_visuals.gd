@@ -17,6 +17,7 @@ const AuthoredMap := preload("res://scripts/authored_map.gd")
 const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
 const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
 const AuthoredBake := preload("res://scripts/authored_bake.gd")
+const ViewStream := preload("res://scripts/view_stream.gd")
 const BakeLayout := preload("res://scripts/authored_bake_layout.gd")
 const BakePainter := preload("res://scripts/authored_bake_painter.gd")
 
@@ -95,6 +96,14 @@ func restore_all() -> void:
 
 
 func _draw() -> void:
+	var _lpd := Time.get_ticks_usec()
+	_lp_draw_inner()
+	var _lpms := float(Time.get_ticks_usec() - _lpd) / 1000.0
+	if _lpms > 50.0 and OS.get_environment("LOAD_PROF") != "":
+		print("LOADPROF-DRAW %s %.0f ms   abs=%d" % [name, _lpms, Time.get_ticks_msec()])
+
+
+func _lp_draw_inner() -> void:
 	if not AuthoredMap.is_active():
 		return
 	# Baked textures when they exist and match the document; vectors otherwise. The vector path
@@ -253,15 +262,29 @@ func _repair_evicted_tiles() -> void:
 	queue_redraw()
 
 
+## True while any tile whose decorative masses were demolished is still waiting to be re-rendered
+## without them. world_map waits on this before revealing the map, so the first frame the player
+## sees is already the repaired one.
+func has_pending_repairs() -> bool:
+	return _repair_running or not _dirty_tiles.is_empty()
+
+
 ## Baked mode streams by camera, so the layer has to notice the camera moving. Costs one rect
 ## compare per frame when a bake is present, and nothing at all when it isn't.
 func _process(_delta: float) -> void:
-	if not visible or not AuthoredBake.is_available():
+	if not AuthoredBake.is_available():
 		return
+	# The repair renders into its OWN SubViewport, so it does not need this layer to be on
+	# screen — and it must not wait for that. The loading screen hides the world for the length
+	# of the build, and a repair that only started at the reveal would show the player a few
+	# frames of town standing where a factory has just been built, then pop.
 	if not _dirty_tiles.is_empty():
 		_repair_evicted_tiles()
+	if not visible:
+		return
 	var view := AuthoredBake.visible_world_rect(self, STREAM_MARGIN)
-	if view != _view_rect:
+	# Not `!=` — see view_stream.gd. This layer is the most expensive of the four.
+	if not ViewStream.settled(view, _view_rect, STREAM_MARGIN):
 		_view_rect = view
 		queue_redraw()
 

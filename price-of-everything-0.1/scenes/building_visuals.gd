@@ -258,6 +258,7 @@ const FARM_ROAD_MERGE_MAX := 120.0    # connect the farm tracks to a real road w
 ## in) draw only the visible ones; above it draw everything once and stay static.
 const CULL_CAP := 160
 const CULL_MARGIN := 600.0
+const ViewStream := preload("res://scripts/view_stream.gd")
 
 @onready var terrain_layer: HexMap = %TerrainLayer
 @onready var _forest_visuals: Node = get_node_or_null("../ForestVisuals")
@@ -421,9 +422,34 @@ func all_farm_cluster_rings() -> Array:
 	return out
 
 
+## LOAD_PROF=1: accumulate per-stage placement wall costs across the whole start
+## build; end_bulk() dumps the table.
+static var _lp_on := OS.get_environment("LOAD_PROF") != ""
+static var _lp_acc: Dictionary = {}
+static func _lp_add(label: String, us: int) -> void:
+	var e: Array = _lp_acc.get(label, [0, 0])
+	e[0] += us
+	e[1] += 1
+	_lp_acc[label] = e
+static func _lp_dump() -> void:
+	if not _lp_on:
+		return
+	var keys := _lp_acc.keys()
+	keys.sort()
+	for k in keys:
+		var e: Array = _lp_acc[k]
+		print("LOADPROF-PLACE %-24s %8.1f ms total  n=%5d  avg %7.2f ms" % [k, e[0] / 1000.0, e[1], e[0] / 1000.0 / maxf(1.0, float(e[1]))])
+	_lp_acc.clear()
+
+
 func on_building_placed(tile_id: String, building_id: String, _recipe_id: String, instance_id: String, coord: Vector2i) -> void:
 	if NON_FOOTPRINT_IDS.has(building_id) or FOREST_BUILDING_IDS.has(building_id):
 		return  # roads/cables are networks; forests are drawn by ForestVisuals
+	# Already standing, straight off the bake: the search that would find this exact spot has
+	# been run once, offline. Anything the bake does NOT hold falls through and is laid out
+	# live against it, so an edited start list costs one building, not the whole map.
+	if claim_baked_placement(instance_id, building_id, tile_id):
+		return
 	# Re-placement (e.g. a load re-emitting building_placed) must not orphan the old
 	# footprint — drop it first so it frees its space and can't ghost.
 	if instance_id != "" and _placement_index.has(instance_id):
@@ -447,8 +473,12 @@ func begin_bulk() -> void:
 
 func end_bulk() -> void:
 	_bulk = false
+	var _lpt := Time.get_ticks_usec()
 	for tid in _bulk_dirty_tiles:
 		_mark_subcomp_dirty(str(tid))
+	if _lp_on:
+		_lp_add("end_bulk_subcomp", Time.get_ticks_usec() - _lpt)
+		_lp_dump()
 	_bulk_dirty_tiles.clear()
 	_queue_footprint_change_notification()
 	queue_redraw()
@@ -486,7 +516,11 @@ func has_placement(instance_id: String) -> bool:
 ## neighbour, else low ground). Appends a placement (or nothing if the tile is full).
 
 func _place_building(instance_id: String, building_id: String, tile_id: String, coord: Vector2i) -> void:
+	var _lpt := Time.get_ticks_usec()
 	_ensure_tile(tile_id, coord)
+	if _lp_on:
+		_lp_add("ensure_tile", Time.get_ticks_usec() - _lpt)
+		_lpt = Time.get_ticks_usec()
 	var bd := Catalog.get_building(building_id)
 	var types: Array = bd.get("building_type", [])
 	# Recycling (internal_name ~ "recycl": b_036 recycling_plant + b_022 water_recycling)
@@ -517,6 +551,9 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	# this building is sited — so everything from here on has an interior frontage to
 	# face instead of drifting to the "any free cell" fallback in the tile's middle.
 	_ensure_service_lane(tile_id, coord, placed_here.size())
+	if _lp_on:
+		_lp_add("service_lane", Time.get_ticks_usec() - _lpt)
+		_lpt = Time.get_ticks_usec()
 
 	# Block-subdivision (seeded urban tiles): claim a lot first; the continuous packer is
 	# the fallback for every building the grid can't take (full / blocked). Edge-seekers
@@ -539,6 +576,9 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		var tmpl := _ensure_block_template(tile_id, coord)
 		if not tmpl.is_empty():
 			placed = _claim_slot(tmpl, size_units, coord, tile_id, placed_here, iname_lot)
+		if _lp_on:
+			_lp_add("block_template+claim", Time.get_ticks_usec() - _lpt)
+			_lpt = Time.get_ticks_usec()
 	if placed.is_empty() and not offshore:
 		# Art buildings front the road tightly (edge ~1u off the carriageway).
 		var rc := ART_ROAD_PAD if has_art else ROAD_CLEAR
@@ -559,6 +599,9 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 				if not placed.is_empty():
 					placed["shrink"] = shrink
 					break
+	if _lp_on:
+		_lp_add("search_pack", Time.get_ticks_usec() - _lpt)
+		_lpt = Time.get_ticks_usec()
 	if placed.is_empty():
 		return  # tile too crowded to fit it — not drawn rather than overlapping
 
@@ -605,6 +648,8 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	_placements.append(placement)
 	footprint_version += 1
 	_record_footprint_change(tile_id)
+	if _lp_on:
+		_lp_add("crop+evict+tail", Time.get_ticks_usec() - _lpt)
 
 ## True if this (urban) tile uses the slot-grid block mode. Seeded once per tile_id, cached.
 func _use_block_mode(tile_id: String, _coord: Vector2i) -> bool:
@@ -837,6 +882,10 @@ func _evict_fabric_under(tile_id: String, verts: PackedVector2Array) -> void:
 		var entry: Dictionary = entry_value
 		if Geometry2D.intersect_polygons(verts, entry["poly"] as PackedVector2Array).is_empty():
 			continue
+		# Recorded as well as applied: the eviction lives in the FABRIC node, not here, so a
+		# restored layout has to be able to re-tell it which masses this building demolished.
+		# Without that, a baked map draws its terraces straight through the factories.
+		_evicted_masses[str(entry["id"])] = true
 		fabric.call("evict", str(entry["id"]))
 
 
@@ -3917,6 +3966,9 @@ const OFF_ROAD_NAMES := {
 	"onshore_wind_farm": true, "offshore_wind_farm": true,
 }
 var _ink_art_iid: Dictionary = {}   # instance_id -> true (suppress procedural subcomponents)
+## Decorative masses a placement demolished (mass_id -> true). Mirrors state held by
+## AuthoredFabricVisuals; see _evict_fabric_under and _apply_evicted_masses.
+var _evicted_masses: Dictionary = {}
 
 ## P3b (ink farms): subdivide the DRAWN field into an oriented seeded grid of
 ## rect/trapezoid parcels clipped at the field boundary; each parcel is inset
@@ -4415,8 +4467,8 @@ func _process(_delta: float) -> void:
 		_cull = want_cull
 		_view = view
 		queue_redraw()
-	elif _cull and view != _view:
-		_view = view
+	elif _cull and not ViewStream.settled(view, _view, CULL_MARGIN):
+		_view = view        # see view_stream.gd — `!=` repainted on any sub-pixel drift
 		queue_redraw()
 
 func _visible_world_rect() -> Rect2:
@@ -4640,6 +4692,126 @@ func footprint_discs() -> Array:
 		out.append({"center": center, "radius": (p.half as Vector2).length()})
 	return out
 
+# ── Baked start layout ────────────────────────────────────────────────────
+#
+# Laying out the start buildings is deterministic and cost 55 s of every load, so it is done
+# once offline (tools/bake_start_layout.tscn) and restored here. What is restored is not just
+# the footprints: it is every per-tile working set the placement pass produced, because the
+# NEXT building the player puts down reads all of it — the buildable masks, the block grids
+# with their claimed lots, the service lanes, the farm tracks, the subcomponent geometry.
+# Restoring the pictures without the working state would leave a correct-looking map on which
+# the first new building lands on top of an existing one.
+#
+# EXPORTED_FIELDS is the whole contract. Start from the inventory clear_all() and
+# _clear_tile_caches() reset — between them those two define "the placed world" for this node
+# — and carry everything a DECISION was made about: where each building stands, which block
+# lots are spoken for, which service lanes were laid, which decorative masses were demolished.
+# Add a field to that inventory, add it here, and bump StartLayoutBaked.BAKE_VERSION.
+#
+# DELIBERATELY ABSENT: the per-tile rasterised masks (_tile_land, _farm_land and their key
+# arrays, _zone_masks) and _decor_cache. They are not decisions, they are a pure function of
+# terrain, roads, rivers and forest — _ensure_tile rebuilds any one of them in ~30 ms the
+# first time something asks, which happens when the PLAYER builds on that tile and never
+# during the load. Baking them made the file 16 MB, and a stale mask is a worse thing to own
+# than a cheap fresh one.
+const EXPORTED_FIELDS := [
+	"_placements", "_placement_index", "_subcomponents",
+	"_tile_segs", "_service_segs", "_service_world", "_tile_rivers",
+	"_tile_block_mode", "_tile_block_templates",
+	"_block_masses", "_massed_by_tile",
+	"_farm_render", "_farm_lanes", "_farm_bridges", "_farm_promote", "_farm_cluster_rings",
+	"_ink_art_iid", "_evicted_masses",
+]
+
+## Instance ids the baked layout brought with it: on_building_placed skips these, because the
+## placement they refer to is already standing. Cleared as each is claimed, so whatever is
+## left at reconcile time is a placement for a building this match never emitted.
+var _baked_unclaimed: Dictionary = {}
+## True once a baked layout has been installed — only then is skipping emits legitimate.
+var _baked_active := false
+
+
+## Snapshot the placed world for the bake tool. `exclude_tiles` is unused today and exists so
+## a future per-start bake can drop a start's own tiles without a second export path.
+func export_layout_state() -> Dictionary:
+	var out: Dictionary = {}
+	for field in EXPORTED_FIELDS:
+		out[field] = get(field)
+	out["footprint_version"] = footprint_version
+	out["farm_lanes_version"] = farm_lanes_version
+	# The reconcile pass needs to know which instances the bake is answering for. Taken from
+	# the placements themselves rather than tracked separately, so the two cannot disagree.
+	var owned: Dictionary = {}
+	for p in _placements:
+		var d: Dictionary = p
+		owned[str(d.get("instance_id", ""))] = "%s|%s" % [str(d.get("building_id", "")), str(d.get("tile_id", ""))]
+	out["owned"] = owned
+	return out
+
+
+## Install a baked layout. Returns false (changing nothing) if the payload is not the shape
+## this build expects, so a half-restored world is never left behind.
+func import_layout_state(state: Dictionary) -> bool:
+	for field in EXPORTED_FIELDS:
+		if not state.has(field):
+			push_warning("BuildingVisuals: baked layout is missing '%s' — placing live instead." % field)
+			return false
+	for field in EXPORTED_FIELDS:
+		set(field, state[field])
+	footprint_version = int(state.get("footprint_version", 0))
+	farm_lanes_version = int(state.get("farm_lanes_version", 0))
+	var owned: Variant = state.get("owned", {})
+	_baked_unclaimed = (owned as Dictionary).duplicate() if typeof(owned) == TYPE_DICTIONARY else {}
+	_baked_active = true
+	_apply_evicted_masses()
+	for p in _placements:
+		_record_footprint_change(str((p as Dictionary).get("tile_id", "")))
+	queue_redraw()
+	return true
+
+
+## Does the bake already hold THIS building, standing on THIS tile? Only then may the emit be
+## skipped: a building that moved tile, or changed id under the same instance, has to be laid
+## out for real.
+func claim_baked_placement(instance_id: String, building_id: String, tile_id: String) -> bool:
+	if not _baked_active:
+		return false
+	var key: Variant = _baked_unclaimed.get(instance_id, null)
+	if key == null or str(key) != "%s|%s" % [building_id, tile_id]:
+		return false
+	_baked_unclaimed.erase(instance_id)
+	return true
+
+
+## Drop baked placements no building claimed — they belong to buildings this match does not
+## have (a different start, an edited start list, a building removed from the catalog). Their
+## tiles are re-derived, so the block masses and subcomponents match what is actually standing.
+## Returns how many were dropped.
+func reconcile_baked_layout() -> int:
+	if not _baked_active:
+		return 0
+	var dropped := 0
+	for iid in _baked_unclaimed.keys():
+		if _placement_index.has(str(iid)):
+			remove_instance(str(iid))
+			dropped += 1
+	_baked_unclaimed.clear()
+	return dropped
+
+
+## Re-tell the fabric layer which decorative masses the baked buildings stand on. The live
+## path does this one building at a time inside _evict_fabric_under; a restore has to do it in
+## one pass, because the placements it restored never ran that code.
+func _apply_evicted_masses() -> void:
+	if _evicted_masses.is_empty():
+		return
+	var fabric := get_tree().get_first_node_in_group("authored_fabric")
+	if fabric == null or not fabric.has_method("evict"):
+		return
+	for mass_id in _evicted_masses:
+		fabric.call("evict", str(mass_id))
+
+
 func clear_all() -> void:
 	# A loaded save rebuilds visuals (world_map._rebuild_after_load).
 	for placement_value in _placements:
@@ -4656,6 +4828,7 @@ func clear_all() -> void:
 	_farm_bridges.clear()
 	_farm_promote.clear()
 	_farm_cluster_rings.clear()
+	_evicted_masses.clear()
 	footprint_version += 1
 	_queue_footprint_change_notification()
 	queue_redraw()
@@ -4684,6 +4857,14 @@ func remove_instance(instance_id: String) -> void:
 		queue_redraw()
 
 func _draw() -> void:
+	var _lpd := Time.get_ticks_usec()
+	_lp_draw_inner()
+	var _lpms := float(Time.get_ticks_usec() - _lpd) / 1000.0
+	if _lpms > 50.0 and OS.get_environment("LOAD_PROF") != "":
+		print("LOADPROF-DRAW %s %.0f ms   abs=%d" % [name, _lpms, Time.get_ticks_msec()])
+
+
+func _lp_draw_inner() -> void:
 	# The farm layer lives on a sibling canvas beneath the trees; keep it in step with
 	# this one (same frame's geometry, same _view for culling).
 	if _farm_underlay != null and is_instance_valid(_farm_underlay):

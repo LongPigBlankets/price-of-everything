@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=4]
+
+[ext_resource type="Script" path="res://tools/bake_start_layout.gd" id="1_bake"]
+
+[node name="BakeStartLayout" type="Node"]
+script = ExtResource("1_bake")
