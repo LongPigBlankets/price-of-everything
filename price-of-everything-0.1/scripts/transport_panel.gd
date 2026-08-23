@@ -16,6 +16,9 @@ extends PanelContainer
 
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const InfraIcons := preload("res://scripts/infra_icons.gd")
+const BuildingIcon := preload("res://scripts/building_icon.gd")
+## The tile view's building card, shared so the two lists look like one game.
+const BrushedCard := preload("res://scripts/brushed_card.gd")
 
 const PANEL_WIDTH := 1220.0     # +40 over the original, 20 a side, for the infra cards
 const PANEL_HEIGHT := 620.0
@@ -467,8 +470,15 @@ func _build_infra() -> void:
 func _infra_row(link: Dictionary) -> Control:
 	var mode := str(link.mode)
 	var ratio := float(link.ratio)
-	var card := _row_card(true)
+	# The same brushed card the tile view gives a building, because that is what this row
+	# leads to: clicking it opens exactly that building's detail panel.
+	var card := BrushedCard.new(DS.SP.SM, 6, 9.0)
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	card.tooltip_text = "Open this infrastructure to inspect or upgrade it"
+	card.mouse_entered.connect(func() -> void: card.hovered = true)
+	card.mouse_exited.connect(func() -> void: card.hovered = false)
 	card.gui_input.connect(func(e: InputEvent) -> void:
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 			card.accept_event()
@@ -479,13 +489,7 @@ func _infra_row(link: Dictionary) -> Control:
 	# lines beside each one are that link's detail.
 	var outer := HBoxContainer.new()
 	outer.add_theme_constant_override("separation", DS.SP.SM)
-	var pad := MarginContainer.new()
-	for m in ["margin_left", "margin_right"]:
-		pad.add_theme_constant_override(m, DS.SP.SM)
-	for m in ["margin_top", "margin_bottom"]:
-		pad.add_theme_constant_override(m, 6)
-	pad.add_child(outer)
-	card.add_child(pad)
+	card.add_child(outer)   # the card carries its own content margins
 	var icon := _infra_icon(mode)
 	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	outer.add_child(icon)
@@ -584,7 +588,9 @@ func _infra_icon(mode: String) -> Control:
 	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var key := InfraIcons.normalise(mode)
 	var building: Dictionary = Catalog.get_building_by_internal_name(key)
-	holder.texture = InfraIcons.texture_for(str(building.get("id", "")), key)
+	# CLEANED, not the raw source: the raw building PNGs carry an opaque navy block, which
+	# on a card of its own navy read as a slightly-wrong square behind every icon.
+	holder.texture = BuildingIcon.clean_texture(str(building.get("id", "")), key)
 	return holder
 
 

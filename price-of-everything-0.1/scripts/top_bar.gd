@@ -573,7 +573,12 @@ func _track_color(entry: Dictionary) -> Color:
 ## no building behind it, so its cleaned PNG is checked in beside the other UI icons.
 const BuildingIcon := preload("res://scripts/building_icon.gd")
 const WAREHOUSE_ICON: Texture2D = preload("res://assets/icons/ui_icons/warehouse.png")
-const FREIGHT_ICON_PX := 24
+const FREIGHT_ICON_PX := 30
+## Gap between an icon and its own lamp, and between one pair and the next. The pair gap
+## is the wider of the two on purpose: it is what makes three icon-and-lamp units read as
+## three separate readouts rather than one row of six things.
+const FREIGHT_LED_GAP := 4
+const FREIGHT_PAIR_GAP := 16
 
 ## The cleaned icon for an infrastructure type, by its internal name.
 func _infra_texture(internal_name: String) -> Texture2D:
@@ -581,25 +586,26 @@ func _infra_texture(internal_name: String) -> Texture2D:
 	return BuildingIcon.clean_texture(str(building.get("id", "")), internal_name)
 
 
-## One freight icon with its lamp underneath, as a single column.
+## One freight icon with its lamp BESIDE it, as a single pair.
 func _freight_cell(texture: Texture2D, tip: String) -> Dictionary:
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 1)
-	col.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.tooltip_text = tip
+	var pair := HBoxContainer.new()
+	pair.add_theme_constant_override("separation", FREIGHT_LED_GAP)
+	pair.alignment = BoxContainer.ALIGNMENT_CENTER
+	pair.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pair.tooltip_text = tip
 	var icon := TextureRect.new()
 	icon.texture = texture
 	icon.custom_minimum_size = Vector2(FREIGHT_ICON_PX, FREIGHT_ICON_PX)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# The art is cream; the bar's other labels are the off-white, so match them.
 	icon.modulate = C_LABEL
-	col.add_child(icon)
+	pair.add_child(icon)
 	var led := _Led.new()
-	col.add_child(led)
-	return {"root": col, "led": led}
+	pair.add_child(led)
+	return {"root": pair, "led": led}
 
 
 func _build_transport() -> void:
@@ -607,7 +613,7 @@ func _build_transport() -> void:
 	mod.name = "TransportModule"
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
-	row.add_theme_constant_override("separation", 12)
+	row.add_theme_constant_override("separation", FREIGHT_PAIR_GAP)
 	var store := _freight_cell(WAREHOUSE_ICON, "Storage")
 	var road := _freight_cell(_infra_texture("roads"), "Infrastructure")
 	var port := _freight_cell(_infra_texture("port"), "Freight to market")
