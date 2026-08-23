@@ -1365,7 +1365,7 @@ func _make_catalog_icon(result: Dictionary) -> Control:
 	# A good's icon in the encyclopedia is a way into the Goods Graph. The playtester
 	# lived in the encyclopedia and asked for exactly this: click a good, see its web.
 	if good_id != "":
-		UIHelpers.link_good_icon_to_graph(icon, good_id)
+		UIHelpers.link_good_icon_to_graph(icon, good_id, true)   # row opens the article, icon opens the web
 	return icon
 
 func _make_texture_icon(texture: Texture2D) -> TextureRect:
