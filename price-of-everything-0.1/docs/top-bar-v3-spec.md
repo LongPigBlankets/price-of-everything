@@ -471,3 +471,46 @@ every asset is fetched. Not a demo-week change.
 Recommendation for Sunday: **A now** (it is nearly free and removes the errors),
 with **B** as the follow-up if the Start time matters for the demo — B is where
 the 4.7 s actually is.
+
+### 9d · B′ built and measured (2026-08-23)
+
+Implemented, not on the menu but **under the intro plates** — the one stretch of the
+load already designed to be unshareable, per `loading_screen.gd`'s own reasoning
+that "a tween that misses a frame resumes where it was; a video that misses a
+frame has lost that frame for good."
+
+- `loading_screen.gd` — `_warm_scene_scripts()`, called from `begin_load()` before
+  `_await_film_started()`. Compiles the scene's `.gd` and `.tscn` dependencies on
+  the main thread, one per frame. The list comes from
+  `ResourceLoader.get_dependencies()`, which parses the scene header without
+  loading it, so it maintains itself as main.tscn grows.
+- `main_menu.gd` — the boot-time warm now requests the scene's **non-script**
+  dependencies (textures, tileset, audio), which load on a worker perfectly well.
+  That was the "pull the textures into RAM" the PR wanted; asking for the scene
+  itself only ever produced parse errors and warmed nothing.
+
+Measured with `tools/loading_film_check.tscn`, 1280×720, coal_baron start:
+
+| | before | after |
+|---|---|---|
+| Film drift by `build_complete` | **1.57 s** | **0.05 s** |
+| Worst single frame gap | 5,665 ms | 4,255 ms |
+| `build_complete` | t+28,603 ms | t+26,029 ms |
+| Film frame interval, playing | 62–250 ms (4–16 fps) | 42–50 ms (20–24 fps) |
+| Threaded scene load | never succeeded | **920 ms** |
+
+`LOADPROF threaded scene load 920 ms` prints only on the success path, so that
+line is the proof the worker is being used for the first time. Boot is silent.
+
+So both of the owner's non-negotiables are not merely held but improved: Start is
+**2.6 s faster**, and the film loses 0.05 s instead of 1.57 s. Nothing was added —
+the same ~5.3 s of compilation happens either way; it is now spent deliberately,
+where the design already expects a frozen main thread, and it buys back a real
+threaded load.
+
+The remaining 4,255 ms gap is scene **instantiation** (`abs=12148` → world_map
+`_ready` at `abs=14407`), which is main-thread by nature and a separate problem —
+`loading_screen.gd:51` already calls it out as "a ~1.3 s frame".
+
+Not attempted: option C. Still the only route to a genuinely off-thread load, and
+still a 31-file change.

@@ -57,11 +57,31 @@ func _ready() -> void:
 	term.cheats_unlocked.connect(_on_cheats_unlocked)
 	add_child(term)
 	Audio.play_music()   # looping main-menu theme (placeholder track)
-	# Warm the map scene off-thread while the player is on the menu: this pulls main.tscn and
-	# all its textures off disk into RAM on a worker thread (no main-thread cost, no frame drop),
-	# so the loading screen's threaded load returns instantly instead of spending ~1.8 s on I/O.
-	# Does NOT touch the Start-time freeze (that's main-thread instantiation + first-frame GPU).
-	ResourceLoader.load_threaded_request(MAP_SCENE)
+	# Warm the map's heavy ASSETS off-thread while the player is on the menu: textures, the
+	# tileset and audio come off disk into RAM on a worker thread (no main-thread cost, no
+	# frame drop), so the loading screen has less I/O left to do. Does NOT touch the
+	# Start-time freeze (that's main-thread compilation + instantiation + first-frame GPU).
+	#
+	# ASSETS, not the scene. Requesting main.tscn here asked a worker to compile its scripts,
+	# and a GDScript compiled on a loader thread cannot resolve preload() of a non-script
+	# asset — so the request failed every boot, spraying parse errors before the player had
+	# touched anything, and warmed nothing at all. The scripts are compiled on the main
+	# thread under the intro plates instead (LoadingScreen._warm_scene_scripts).
+	_warm_map_assets()
+
+
+## Ask a worker for every non-script dependency of the map scene. get_dependencies() reads
+## the scene header without loading it, so this list maintains itself.
+func _warm_map_assets() -> void:
+	for dep in ResourceLoader.get_dependencies(MAP_SCENE):
+		# Entries are either "res://path" or "uid://x::::res://path".
+		var at := String(dep).rfind("res://")
+		if at < 0:
+			continue
+		var path := String(dep).substr(at)
+		if path.ends_with(".gd") or path.ends_with(".tscn"):
+			continue   # compiling these off-thread is the thing that never worked
+		ResourceLoader.load_threaded_request(path)
 
 
 # Clicking New Game no longer launches immediately — it opens the settings panel,
