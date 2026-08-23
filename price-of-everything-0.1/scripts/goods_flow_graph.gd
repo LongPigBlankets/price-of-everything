@@ -28,13 +28,15 @@ const COL_W := 820.0
 # Column x-spacing is NOT uniform: within a tier the step is tightened, and each
 # tier boundary adds an extra gap (owner 2026-07-21). All column->x mapping goes
 # through col_x(); COL_W remains the base for card/channel geometry.
-# Column spacing (owner 2026-07-21: tight columns, wide tier gaps). 60u columns
-# was requested but is infeasible — the edge density needs >= ~180u between any
-# adjacent columns or y-overlapping risers crowd below the 11.9u readability floor
-# (measured; widening tiers does not rescue it). 200u is the tightest with margin,
-# still less than half the old ~420u; tiers get a clearly wider 500u.
-const INTRA_COL_GAP := 200.0
-const INTER_TIER_GAP := 500.0
+# Column spacing. The 200u floor below was measured against a web that drew EVERY edge at
+# rest: ~180u was the point where y-overlapping risers crowded past the 11.9u readability
+# floor. Resting edges are no longer drawn (goods_graph_world._REST_GHOST_ALPHA), so the
+# constraint that set that floor is gone — only a selected good's own chain is ever drawn
+# over these columns, which is a fraction of the density the 200u was protecting.
+# Tightened accordingly; the tier boundaries stay clearly wider than the columns inside
+# them, because that gap is what makes the tiers legible as bands.
+const INTRA_COL_GAP := 110.0
+const INTER_TIER_GAP := 280.0
 
 # Swimlanes (owner 2026-07-21): the resting view groups goods into CATEGORY
 # lanes that run horizontally across every tier — the vertical axis reads as
@@ -49,15 +51,21 @@ const LANE_LABELS := {
 	"vehicles": "VEHICLES & PARTS",
 	"electronics": "ELECTRICALS & ELECTRONICS",
 }
-const LANE_GAP_Y := 140.0   # vertical air between lane bands
+const LANE_GAP_Y := 90.0    # vertical air between lane bands (tightened with the columns)
 
 
 static func _lane_rank_of(cat: String) -> int:
 	var i := LANE_ORDER.find(cat)
 	return i if i >= 0 else LANE_ORDER.size()   # unknown categories sink to a trailing OTHER lane
 static var _col_x: PackedFloat32Array = PackedFloat32Array()
-const ROW_H := 160.0
-const DUMMY_ROW_H := 72.0   # dummy (edge-corridor) rows are compressed: no card to fit
+# Row heights. ROW_H has to clear CARD_H (112) with air around it; the rest was slack.
+#
+# DUMMY rows are edge-routing corridors — they hold no card, they exist so a line has
+# somewhere to run. At rest no line is drawn any more, so every one of them was spending
+# 72u of the player's screen on nothing. They still have to EXIST, because a selected
+# good's chain is routed through them, but they can be a good deal thinner than a card.
+const ROW_H := 132.0
+const DUMMY_ROW_H := 34.0
 const CARD_W := 380.0
 const CARD_H := 112.0
 const BARY_SWEEPS := 2     # barycentre sweeps per ordering round

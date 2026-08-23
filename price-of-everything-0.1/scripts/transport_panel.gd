@@ -541,8 +541,12 @@ func _infra_row(link: Dictionary) -> Control:
 ## starvation notifications already use, and it pans the map as well as opening the panel.
 func _open_infra_building(tile_id: String, mode: String) -> void:
 	var wanted := InfraIcons.normalise(mode)
+	# OWNERSHIP IS NOT A FILTER HERE. A road the player uses is very often one they did
+	# not build — the map ships with infrastructure, and rivals build their own — and the
+	# row is about the LINK the player's freight is crossing, whoever owns it. Filtering
+	# to player-owned buildings sent exactly those rows to the tile view instead.
 	for b in MatchState.buildings.values():
-		if not (b is Dictionary) or not MatchState.is_player_owned(b):
+		if not (b is Dictionary):
 			continue
 		var building: Dictionary = b
 		if str(building.get("tile_id", "")) != tile_id:
