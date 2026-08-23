@@ -86,45 +86,151 @@ this camera and vanish. The stacks turn 90° instead.
   middle rank.
 - The tank swan-necks are legible but busy where four tanks tap one main.
 
-## chem_plant — Chemical Plant  *(new, 2026-08-22)*
+## high_tech_manufactory — High Tech Manufactory  *(new, 2026-08-22; three passes the same day)*
 
-Typed `electrochemistry|refinery`, and electrochemistry comes first, so the chroma is the
-ELECTROLYSER'S forest green (the game's `CAT_ELECTRO`), not refinery purple. Its recipes are
-acids, chlor-alkali, ammonia, air separation and fertiliser — a process plant, not a refinery
-— and the two refineries already own the spheres, dome vessels, bullets and flare, so none of
-those appear here.
+Manufacturing family. Two-toned walls — brick orange below, white above — under a FRONT HALL
+whose mono-pitch roof is GLASS on steel rafters and purlins, rising from a low eave to the
+flat-roofed steps behind. Through the pitch: a robotic cell of four orange arms converging on
+one microchip carrier (green board, silver wafer, dark die), and server racks along the rear
+and left walls. The front-right corner is a two-storey glass box on steel pillars with transoms
+across the panes, white clean rooms and red laser benches aimed at green circuit boards.
+Rooftop air handlers on step 2, electrical units on the L3 extension's roof, a lattice mast
+with a dish. Orange — the family chroma — carries the robots, the entrance and the unit
+stripes; the red of the lasers is the highlight.
 
-**The signature is the open steel process structure**: a multi-storey frame of columns and
-grated decks with jacketed, agitated reactor vessels rising THROUGH the decks, and a
-switchback stair tower on its flank. Nothing else in the set is a building you can see
-straight through at every level. Each deck is an annulus — a rectangle with a round hole —
-built with `poly_ring`, so the vessel genuinely passes through rather than sitting on it
-(`_rect_pts` samples the rectangle into the same 24 points as the circle, starting from the
-same corner, because `poly_ring` pairs outlines by index). Around it: a tall slim
-RECTANGULAR cold box (every other tall thing in the set is round), a row of forced-draft
-cooling cells with fan rings (the power plant owns the hyperbolic tower), tall narrow tanks
-(h/r 5) inside a bund wall (the petro plant's storage is squat on a cream apron), an MCC
-building and a thin scrubber stack.
+**The glass pitch made the hall hollow.** A roof you can see through has to have something
+under it, so the front section is a floor, a thin two-toned end wall (rectangle in brick, a
+trapezoid in white above), the rear block's face and the corner partitions — not the solid
+prism of the first pass — with five rafters down the slope and two purlins across it under the
+glass. Every ray through the pitch lands on one of those; zero see-through in the installed
+sprites.
 
-**Levels add parts, never length.** L2 adds a storey to the structure, the cold box and a
-cooling cell; L3 adds a rear bay directly BEHIND the structure (its decks and vessels show
-above the front bay's, and it costs no width), a third tank and a third cell.
+**What can be seen through the pitch is set by the FRONT WALL, not the glass.** An interior
+point (y, z) is seen over the 2.0 eave wall iff z + (y − FY0) > EAVE, i.e. y + z > −0.2. So
+the cell sits in the back half of the hall (centre y −0.55, radius 0.5) with its elbows at
+1.05 — the front pair show from the elbow up, the back pair in full — and the 1.6-tall racks
+stand along the rear wall and the left wall. Content in the front half would simply be behind
+the wall.
 
-**The pipe rack was removed after the sightline check.** An elevated rack across the front at
-z 1.15–1.55 buried the tank farm — a tank base at depth 1.08 behind a rack top of 1.55 is
-hidden, and the bund wall went with it. A run at knee height on sleepers hides nothing and
-draws the same flow.
+**The roof slopes UP toward the back** (area ∝ cos t + sin t; toward the camera ∝ |cos t − sin t|,
+dead flat at 45°). Eave 2.0, 3.05 at the junction, 25.5°. The glass corner's +X pillars and
+panes follow the rake; its fascia is a rotbox at the pitch; its interior partition is a prism.
 
-**Flows, all closed.** tank farm → `farm0` / `farm1` → low run → up into the first deck →
-reactors (jacketed, agitated) → scrubber feed → stack; cold box (ASU) → main → structure;
-cooling cell → `cool0` → run; MCC → buried cables → structure (the one flow drawn by
-adjacency rather than by a line). The audit caught `farm1` ending 1.06 short of `farm0` —
-tank 1 connected to nothing — and the cells with no water line at all.
+**Engineering audit (owner-requested, third pass) — what was missing and was added:**
+- the transformer fed nothing → LV link to the switchgear, and the switchgear now feeds the
+  conduits via a drop to the cable tray;
+- no goods access on a production building → roller door on step 2's +X face with a dock pad;
+  the conduits moved aside for it;
+- rooftop units with no penetration → duct drops under every AHU, a roof tray linking the
+  electrical units with a drop through the roof;
+- no roof access → ladder from step 2's roof to step 3's;
+- no drainage → downpipes at the eave's left end and step 2's front-right corner, a ridge
+  flashing where the pitch meets the rear block;
+- a cantilevered canopy → two posts;
+- lasers into nothing → every bench ends on a circuit board.
+
+**The two flat blocks are LEVEL** (owner): one roof deck at 3.05, the rim between them left
+out where they abut, no ladder. At L3 the rear block is WIDER than the middle one (to x 3.4
+against 2.4) and extends back (to 4.2), and the extra width carries a RAIL LOADING BAY on its
++X face: a siding along Y on sleepers, two goods wagons, a platform at wagon-floor height
+(the assembly dock lesson — floor and deck at one level, 0.42), a roller door, and a canopy
+over platform and track on posts set outboard of the wagons. The transformer moved beside the
+switchgear because its old spot fell inside the widened footprint.
+
+**Framing paid for the rail bay.** Everything at the back-right costs screen width (column =
+x + y): the siding's back corner sets the frame, so the L3 extension back is 4.2 rather than
+5.0 and the apron's front-left overhang is trimmed. L3 renders 966 px wide with 29 px margins.
+
+**Growth is anchored on the showcase corner** (`SKILL.md` rule 22): L2 adds the third step
+(full width, no rail), the upper clean room, a third robot and rack; L3 widens and extends
+the third step, adds the rail bay, the mast, three roof electrical units, the fourth robot
+and rack.
 
 **To improve after demo**
-- No solids handling: the fertiliser recipes would justify a small silo battery at L3.
-- The tank farm's piping is the busiest few pixels of the sprite.
-- The MCC is a plain shed; a louvred wall would say "electrical room" better.
+- The glass tint is the same blue as the assembly vault; a greyer glass would separate them.
+- The front pair of robots show only from the elbow up; a lower eave would show more but
+  costs the corner's upper floor its headroom.
+- The servers read as dark blocks; a blinking-LED column would need a second emissive.
+
+## chem_plant — Chemical Plant  *(new, 2026-08-22; rebuilt to the owner's reference the same day)*
+
+Built to the owner's reference image: a stepped two-storey BACK BUILDING with a clerestory
+window strip and a roof vent, squat PROCESS TANKS in a grid in front of it with an accent band
+round their lower third, tall slender REACTION COLUMNS with inverted-U loop pipes at the right,
+pipework tying the three together, all on a slab. Typed `electrochemistry|refinery`, and the
+accent is LIME — the game's `CAT_ELECTRO` — by owner instruction: not the electrolyser's
+forest green, not the power family's mustard.
+
+**The back building grows with the tanks — and both grow to the LEFT.** Levels add a column
+to the tank grid (2 → 4 → 6) and a reaction column (1 → 2 → 3), and the building's width
+follows the grid so the plant stays one proportioned unit. This is the owner's explicit
+instruction for THIS building and the opposite of the assembly hall's rule; the difference is
+that nothing is built against the building's ends, so extending it is physically possible.
+
+**Growth is anchored on the serviced side.** The first version grew to the right, which is
+where the five wall pipes and the reaction columns are — so the pipe wall slid along with
+every level and the door, fixed at the left, looked stranded. A building cannot extend
+through the wall its services are on. Now the last tank column, the reaction columns, the
+pipe wall, the door and the window beside it are all placed from the RIGHT and never move;
+new tank columns, windows and fan units appear on the left (`TX_LAST`, `DOOR_FROM_R`). The
+building also stands 0.4 further back from the tanks than it first did.
+
+**The building itself (owner direction, second pass).** A SINGLE storey painted lime below the
+split and white above — two stacked boxes, whose faces share planes but never overlap in z, so
+no z-fight, and Freestyle draws the joint as the paint line. Windows sit at door height with
+their heads level with the door head (the facade rule from the assembly plant). Every flat
+roof has the assembly head block's parapet rim with a coping course, and a row of fan units
+runs along the FRONT roof edge behind the parapet, clear of the penthouse footprint. L3 adds
+the upper floor — a penthouse with a NAVY clerestory strip (the panes were lime at first;
+owner: normal-coloured), its own parapet and the roof vent — and a STANDALONE stack at ground
+level off the building's left wall, with a firebox base and a duct into the wall, where it
+had first been a chimney on the right of the roof.
+
+**Lime is measured, and the target hue is unreachable.** On the rendered tank bands, against
+`CAT_ELECTRO` 166,226,46:
+
+| linear | rendered | saturation | |
+|---|---|---|---|
+| (0.30, 0.62, 0.045) | 132,163,61 | 0.63 | |
+| (0.42, 0.92, 0.03) | 149,180,76 | 0.58 | owner: "too neon" |
+| (0.50, 1.10, 0.02) | 157,187,85 | 0.55 | drifting to mud |
+| (0.26, 0.52, 0.075) | 125,154,70 | 0.55 | dimmer, same chroma — still neon |
+| (0.30, 0.52, 0.12) | 132,155,89 | 0.43 | chosen |
+
+Two findings. AgX compresses saturation: pushing green lifts EVERY channel and the blue floor
+rises with it, so the `CAT_ELECTRO` hue is unreachable. And "too neon" is CHROMA, not
+brightness: dimming the lime by 16% left its saturation at 0.55 and it read the same; what
+calmed it was mixing grey in — raising red and blue relative to green — which took saturation
+to 0.43 at almost the same luma. Still clearly lime beside the electrolyser's green (68,116,73
+as installed) and the power mustard (123,96,27). A swatch probe was tried first and was
+useless — its sample points landed on shaded faces — measure on the real render.
+
+**Grammar from the reference.** Tanks are squat (h/r 1.8) and columns slender (h/r 11); the
+contrast is the silhouette. Tank-to-tank links are short horizontal stubs at mid-height and
+each row's last tank runs on to its column. Every column carries an inverted-U loop from its
+crown back down onto the row header (the loop's end sits on the header's top surface). The
+clerestory panes are flat lime, not emissive — one emissive per sprite, and this plant has
+none. Five pipes climb the building's visible +X wall and turn in at the top, collected by a
+header at the bottom that runs on to the nearest column.
+
+**Flows, all closed.** tank row → links → column (rows 0 and 1 each have one; the third column
+at L3 is fed from the second's header) → loop back to the header; building ↔ nearest column
+via the wall header. The building is the terminal (processing and packaging) and the plant's
+electrical room.
+
+**The first design was an open steel process structure** — a multi-storey frame with vessels
+through annular decks, a cold box and cooling cells — and it was sound, but the owner's
+reference is a different building. Its one reusable lesson: an elevated pipe rack across the
+front buried the tank farm (tank base at depth 1.08 behind a rack top of 1.55), which is why
+nothing here runs above knee height except the column loops.
+
+**To improve after demo**
+- The column loops overlap each other on screen at L3; the third column's could swing the
+  other way.
+- The slab is a large flat plate; the reference steps it, and a front step would help.
+- No solids handling for the fertiliser recipes.
+- The lime lower half is the single largest accent area in the set; if it shouts beside the
+  other buildings on the map, lower SPLIT rather than the colour.
 
 ## assembly_plant — Assembly Plant  *(new, 2026-08-22)*
 
