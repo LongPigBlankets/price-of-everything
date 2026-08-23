@@ -20,7 +20,11 @@ const InfraIcons := preload("res://scripts/infra_icons.gd")
 const PANEL_WIDTH := 1180.0
 const PANEL_HEIGHT := 620.0
 const COLUMN_MIN_WIDTH := 330.0
-const HEADER_HEIGHT := 44.0
+const HEADER_HEIGHT := 52.0
+## The panel's own name, in Bebas — larger than the column headings under it.
+const TITLE_SIZE := 40
+## Content inset from the panel edge, clearing the brass pipe frame.
+const FRAME_INSET := 26
 const GOOD_ICON := 56           # the frameless cream tile; the usual size for a good
 const INFRA_ICON := 26          # the infrastructure's own building icon
 const PILL_HEIGHT := 22
@@ -59,7 +63,19 @@ func _ready() -> void:
 	custom_minimum_size = Vector2(PANEL_WIDTH, PANEL_HEIGHT)
 	size = Vector2(PANEL_WIDTH, PANEL_HEIGHT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	# Own copy of the shared navy stylebox: keep the fill, drop the cream border, and zero
+	# content_margin so the brass overlay can reach the panel edge (the money panel does the
+	# same — the frame straddles the border, so a border underneath it reads as a double line).
+	var base_sb := get_theme_stylebox("panel")
+	if base_sb is StyleBoxFlat:
+		var sb := (base_sb as StyleBoxFlat).duplicate() as StyleBoxFlat
+		sb.set_border_width_all(0)
+		sb.set_content_margin_all(0)
+		add_theme_stylebox_override("panel", sb)
 	_build()
+	# Last child, so the PanelContainer fits it to the whole rect and it paints over the
+	# content rather than under it.
+	add_child(preload("res://scripts/brass_pipe_frame.gd").new())
 	# Coalesced (the notification-bell pattern the other panels use): stockpile_changed
 	# fires per transaction during PROCESS — hundreds of times in one burst — and each
 	# would otherwise tear down and rebuild all three columns.
@@ -103,8 +119,9 @@ func _apply_refresh() -> void:
 
 func _build() -> void:
 	var margin := MarginContainer.new()
+	# Wide enough that the content clears the brass frame, which straddles the panel edge.
 	for m in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
-		margin.add_theme_constant_override(m, DS.SP.MD)
+		margin.add_theme_constant_override(m, FRAME_INSET)
 	add_child(margin)
 
 	var root := VBoxContainer.new()
@@ -128,8 +145,10 @@ func _header() -> Control:
 	row.custom_minimum_size = Vector2(0, HEADER_HEIGHT)
 	row.add_theme_constant_override("separation", DS.SP.SM)
 	var title := Label.new()
-	title.theme_type_variation = "Section"
-	title.text = "Transport"
+	# Bebas at title size — this is the panel's name, not a section heading inside it.
+	title.theme_type_variation = "Title"
+	title.add_theme_font_size_override("font_size", TITLE_SIZE)
+	title.text = "Shipments and Stockpiles"
 	row.add_child(title)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
