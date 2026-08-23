@@ -23,7 +23,9 @@ const DEFAULT_START := "res://data/starts/default.json"
 const DEMO_LOCK := true
 const DEMO_START_IDS: Array = ["metal_magnate", "glass_merchant"]   # the starts playable in the demo
 const DEMO_DIFFICULTY_ID := "normal"
-const DEMO_SPEED_ID := "300"
+## The length a demo build is pinned to. Now the Itch.io demo itself: 100 turns with its
+## own policy timeline, rather than a 300-turn campaign the player could never finish.
+const DEMO_SPEED_ID := "demo_itch"
 const DEMO_LOCK_TIP := "Locked in the Demo"
 
 const ICON := 120.0                                  # start-card icon size
@@ -89,6 +91,7 @@ var _start_id := ""
 var _start_path := DEFAULT_START
 var _difficulty_id := "normal"
 var _speed_turns := 300
+var _policy_timeline := ""   # only the demo length sets one
 # New Game never launches the tutorial coach (that's what the Tutorial menu is for).
 var _tutorial_on := false
 var _survey_all := true
@@ -417,6 +420,7 @@ func _build_settings_columns(parent: Node) -> void:
 	var sgroup := ButtonGroup.new()
 	for opt in SPEEDS:
 		var turns := int(opt["turns"])
+		var timeline := String(opt.get("policy_timeline", ""))
 		var b := _stacked_button(scol, String(opt["label"]), sgroup)
 		# Demo lock: only the 300-turn length is playable.
 		if _demo_locked() and String(opt["id"]) != DEMO_SPEED_ID:
@@ -425,7 +429,8 @@ func _build_settings_columns(parent: Node) -> void:
 			continue
 		b.toggled.connect(func(on: bool) -> void:
 			if on:
-				_speed_turns = turns)
+				_speed_turns = turns
+				_policy_timeline = timeline)
 	var note := Label.new()
 	note.text = "This also changes the Era pacing."
 	note.theme_type_variation = &"Caption"

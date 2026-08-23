@@ -21,10 +21,60 @@ const Schedule := preload("res://scripts/policy_schedule.gd")
 # seed/load (DecisionState reservations don't persist); `until_turn` stops arming once
 # the policy itself is in force.
 const NOTICES: Array = [
-	{"def": "carbon_tax_notice", "present_turn": 90, "until_turn": 101},
-	{"def": "green_subsidy_notice", "present_turn": 100, "until_turn": 105},
-	{"def": "green_subsidy_end_notice", "present_turn": 180, "until_turn": 191},
+	{"def": "carbon_tax_notice", "key": "tax_notice", "present_turn": 90, "until_turn": 101},
+	{"def": "green_subsidy_notice", "key": "subsidy_notice", "present_turn": 100, "until_turn": 105},
+	{"def": "green_subsidy_end_notice", "key": "subsidy_end_notice", "present_turn": 180, "until_turn": 191},
 ]
+
+# ── Per-length timelines ──────────────────────────────────────────────────────
+#
+# The decarbonisation arc is authored for the campaign, where it opens at turn 84 and the
+# subsidy lands at 105. A 100-turn game at those timings ENDS BEFORE THE SUBSIDY EXISTS
+# and gets only the tail of the levy ramp, so the demo has its own timeline rather than a
+# clipped copy of the campaign's. Owner-set, 23 Aug: election 54, announcement 58, the
+# levy hits 65 and ramps to full force by 75, subsidy 80.
+#
+# NOT a uniform shift — the beats are placed, not offset — which is why this is a table of
+# turns and not an arithmetic delta.
+const TIMELINE_CAMPAIGN := "campaign"
+const TIMELINE_DEMO := "demo_itch"
+const TIMELINES := {
+	TIMELINE_CAMPAIGN: {
+		"election_news": 84, "insider_first": 86, "insider_last": 89,
+		"tax_notice": 90, "ramp_first": 91, "p1": 101,
+		"subsidy_notice": 100, "subsidy": 105, "subsidy_end_notice": 180,
+		"subsidy_end": 191,
+	},
+	TIMELINE_DEMO: {
+		"election_news": 54, "insider_first": 56, "insider_last": 57,
+		"tax_notice": 58, "ramp_first": 65, "p1": 75,
+		"subsidy_notice": 76, "subsidy": 80,
+		# The subsidy runs to the end of the demo: its wind-down and closing notice sit
+		# past turn 100 and never arrive, which is deliberate — the demo ends while the
+		# player is still deciding what to do about it.
+		"subsidy_end_notice": 9999, "subsidy_end": 9999,
+	},
+}
+## Schedule rows the demo timeline re-places. Everything later (levy phases 2 and 3, the
+## subsidy wind-down) sits well beyond the demo's 100 turns and keeps its campaign turn.
+const DEMO_EFFECTIVE := {"co2_tax_p1": 75, "green_subsidy_p1": 80}
+
+## Which timeline this match is running. Read from the ruleset the New Game panel set, so
+## a save carries its own answer and nothing here has to be serialised.
+func timeline_id() -> String:
+	var id := str(MatchState.ruleset.get("policy_timeline", ""))
+	return TIMELINE_DEMO if id == TIMELINE_DEMO else TIMELINE_CAMPAIGN
+## One beat's turn under the live timeline.
+func beat(key: String) -> int:
+	return int((TIMELINES[timeline_id()] as Dictionary).get(key, 0))
+
+## A schedule row's effective turn under the live timeline.
+func effective_turn_of(entry: Dictionary) -> int:
+	if timeline_id() == TIMELINE_DEMO:
+		var id := str(entry.get("id", ""))
+		if DEMO_EFFECTIVE.has(id):
+			return int(DEMO_EFFECTIVE[id])
+	return int(entry.get("effective_turn", 0))
 
 # The levy ramps in (owner: "ramps up from turn 91 to turn 101"): the per-unit charge
 # scales linearly from 1/11 of P1 at turn 91 to full P1 at turn 101, then follows the
@@ -70,7 +120,7 @@ func _on_turn_resolution_completed() -> void:
 func co2_tax_level(turn: int) -> int:
 	var lvl := 0
 	for e in Schedule.SCHEDULE:
-		if str(e.policy) == "co2_tax" and turn >= int(e.effective_turn):
+		if str(e.policy) == "co2_tax" and turn >= effective_turn_of(e):
 			lvl = maxi(lvl, int(e.level))
 	return lvl
 
@@ -88,7 +138,7 @@ func green_subsidy_rate(turn: int) -> float:
 		return 0.0
 	var lvl := 0
 	for e in Schedule.SCHEDULE:
-		if str(e.policy) == "green_subsidy" and turn >= int(e.effective_turn):
+		if str(e.policy) == "green_subsidy" and turn >= effective_turn_of(e):
 			lvl = maxi(lvl, int(e.level))
 	if lvl <= 0 or lvl >= EconomyConfig.GREEN_SUBSIDY_PHASE_SCALE.size():
 		lvl = mini(lvl, EconomyConfig.GREEN_SUBSIDY_PHASE_SCALE.size() - 1)
@@ -97,10 +147,12 @@ func green_subsidy_rate(turn: int) -> float:
 ## The scale factor for the carbon charge at `turn`: 0 before the ramp, a linear
 ## ramp-in across turns 91..100 ((turn-90)/11 of P1), then the phase table from 101.
 func co2_tax_scale(turn: int) -> float:
-	if turn < CO2_RAMP_FIRST_TURN:
+	var ramp_first := beat("ramp_first")
+	var p1 := beat("p1")
+	if turn < ramp_first:
 		return 0.0
-	if turn < CO2_P1_TURN:
-		return float(turn - (CO2_RAMP_FIRST_TURN - 1)) / float(CO2_P1_TURN - (CO2_RAMP_FIRST_TURN - 1))
+	if turn < p1:
+		return float(turn - (ramp_first - 1)) / float(p1 - (ramp_first - 1))
 	var lvl := clampi(co2_tax_level(turn), 0, EconomyConfig.CO2_TAX_PHASE_SCALE.size() - 1)
 	return float(EconomyConfig.CO2_TAX_PHASE_SCALE[lvl])
 
@@ -128,7 +180,7 @@ func _banned_set(kind: String, turn: int) -> Dictionary:
 	if _ban_override_turn >= 0 and turn >= _ban_override_turn:
 		out["coal"] = true
 	for e in Schedule.SCHEDULE:
-		if turn < int(e.effective_turn):
+		if turn < effective_turn_of(e):
 			continue
 		var bans: Dictionary = e.get("bans", {})
 		for gid in bans.get(kind, []):
@@ -272,7 +324,7 @@ func _seed_if_needed() -> void:
 	# The election that opens the arc: a dismissible news item READ on turn 84.
 	# Scheduled events fire during their turn's NARRATIVE (mid-resolution), surfacing on
 	# the NEXT turn's DECIDE — so fire it one turn early to land on 84 itself.
-	EventScheduler.schedule(ELECTION_NEWS_TURN - 1, {
+	EventScheduler.schedule(beat("election_news") - 1, {
 		"id": "policy:election_markets_party",
 		"kind": "policy_enacted",
 		"severity": "warning",
@@ -285,7 +337,7 @@ func _seed_if_needed() -> void:
 	})
 	# The subsidy's end news at t191 (the wind-down's zero turn). The advance warning is
 	# the blocking green_subsidy_end_notice at t180, so no passive forewarn here.
-	EventScheduler.schedule(GREEN_SUBSIDY_END_TURN, {
+	EventScheduler.schedule(beat("subsidy_end"), {
 		"id": "policy:green_subsidy_end",
 		"kind": "policy_enacted",
 		"severity": "warning",
@@ -298,7 +350,7 @@ func _seed_if_needed() -> void:
 		"auto_dismiss_turns": 6,
 	})
 	for e in Schedule.SCHEDULE:
-		EventScheduler.schedule(int(e.effective_turn), {
+		EventScheduler.schedule(effective_turn_of(e), {
 			"id": "policy:%s" % str(e.id),
 			"kind": "policy_enacted",
 			"severity": str(e.get("severity", "warning")),
@@ -319,11 +371,16 @@ func _arm_notices() -> void:
 	var turn := int(TurnManager.current_turn)
 	for n in NOTICES:
 		var def_id := str(n.def)
-		if turn >= int(n.until_turn):
+		# Each notice's turn comes from the live timeline; its authored until_turn is kept
+		# as a MARGIN past that turn rather than an absolute, so a compressed timeline does
+		# not close a notice's window before the notice is due.
+		var present := beat(str(n.get("key", "")))
+		var until := present + (int(n.until_turn) - int(n.present_turn))
+		if present <= 0 or turn >= until:
 			continue
 		if _notice_seen(def_id):
 			continue
-		DecisionState.reserve(maxi(int(n.present_turn) - 1, turn), def_id)
+		DecisionState.reserve(maxi(present - 1, turn), def_id)
 
 func _notice_seen(def_id: String) -> bool:
 	for rec in DecisionState.history():
@@ -341,7 +398,7 @@ func _maybe_fire_insider_tip() -> void:
 	if _insider_tip_fired:
 		return
 	var turn := int(TurnManager.current_turn)
-	if turn < INSIDER_TIP_FIRST_TURN or turn > INSIDER_TIP_LAST_TURN:
+	if turn < beat("insider_first") or turn > beat("insider_last"):
 		return
 	var aid := get_insider_tip_officer()
 	if aid == "":

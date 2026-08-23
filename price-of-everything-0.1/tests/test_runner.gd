@@ -333,6 +333,7 @@ func _ready() -> void:
 	_test_empire_ports()
 	_test_empire_rag()
 	_test_audio_service()
+	_test_demo_itch_speed()
 	_test_keybinds()
 	_test_tutorial_engine()
 	_test_decision_tenure_gate()
@@ -1293,6 +1294,70 @@ func _test_keybinds() -> void:
 	_check(not PlayerProfile.keybinds.has("water"), "keybinds: an unbound row is not persisted")
 
 	PlayerProfile.keybinds = saved
+
+
+# The Itch.io demo length: 100 turns with its own decarbonisation timeline. The campaign
+# arc opens at turn 84 and lands the subsidy at 105, so a 100-turn game at campaign timings
+# would end before the subsidy exists — which is the whole reason this timeline exists.
+func _test_demo_itch_speed() -> void:
+	var saved_rules: Dictionary = MatchState.ruleset.duplicate(true)
+	var saved_cap: int = TurnManager.MAX_TURNS
+
+	# The length selector reaches the turn cap at all. It used to be collected into the
+	# ruleset and never read, so every game ran 300 turns whichever length was chosen.
+	TurnManager.apply_ruleset({"speed_turns": 100})
+	_check(TurnManager.MAX_TURNS == 100, "demo: speed_turns sets the turn cap")
+	TurnManager.apply_ruleset({})
+	_check(TurnManager.MAX_TURNS == TurnManager.DEFAULT_MAX_TURNS,
+		"demo: a ruleset with no length falls back to the campaign")
+
+	# Campaign timeline unchanged — the demo must not move anyone else's beats.
+	MatchState.ruleset = {"name": "standard"}
+	_check(PolicyState.timeline_id() == PolicyState.TIMELINE_CAMPAIGN, "demo: default is the campaign timeline")
+	_check(PolicyState.beat("election_news") == 84, "campaign: election still turn 84")
+	_check(PolicyState.beat("ramp_first") == 91, "campaign: levy still ramps from 91")
+	_check(PolicyState.beat("p1") == 101, "campaign: levy still full force at 101")
+	_check(PolicyState.beat("subsidy") == 105, "campaign: subsidy still turn 105")
+	_check(is_equal_approx(PolicyState.co2_tax_scale(90), 0.0), "campaign: no levy at turn 90")
+	_check(PolicyState.co2_tax_level(101) >= 1, "campaign: levy in force at 101")
+
+	# The demo's authored beats (owner, 23 Aug).
+	MatchState.ruleset = {"name": "standard", "policy_timeline": PolicyState.TIMELINE_DEMO}
+	_check(PolicyState.timeline_id() == PolicyState.TIMELINE_DEMO, "demo: ruleset selects the demo timeline")
+	for row: Array in [["election_news", 54], ["tax_notice", 58], ["ramp_first", 65],
+			["p1", 75], ["subsidy", 80]]:
+		_check(PolicyState.beat(str(row[0])) == int(row[1]),
+			"demo: %s on turn %d" % [str(row[0]), int(row[1])])
+
+	# The levy ramp runs 65 -> 75 and nothing before it.
+	_check(is_equal_approx(PolicyState.co2_tax_scale(64), 0.0), "demo: no levy at turn 64")
+	_check(PolicyState.co2_tax_scale(65) > 0.0, "demo: levy starts biting at 65")
+	_check(PolicyState.co2_tax_scale(70) > PolicyState.co2_tax_scale(65), "demo: the levy ramps")
+	_check(is_equal_approx(PolicyState.co2_tax_scale(75), 1.0), "demo: levy at full force by 75")
+	_check(PolicyState.co2_tax_level(74) == 0, "demo: levy phase 1 not yet in force at 74")
+	_check(PolicyState.co2_tax_level(75) >= 1, "demo: levy phase 1 in force at 75")
+
+	# The subsidy arrives inside the demo's 100 turns, which it never did at campaign timings.
+	_check(is_zero_approx(PolicyState.green_subsidy_rate(79)), "demo: no subsidy at turn 79")
+	_check(PolicyState.green_subsidy_rate(80) > 0.0, "demo: subsidy live at turn 80")
+	_check(PolicyState.green_subsidy_rate(100) > 0.0, "demo: subsidy still live at the final turn")
+
+	# Every beat has to land inside the demo, or the player never sees it.
+	var inside := true
+	for key: String in ["election_news", "insider_first", "insider_last", "tax_notice",
+			"ramp_first", "p1", "subsidy_notice", "subsidy"]:
+		if PolicyState.beat(key) < 1 or PolicyState.beat(key) > 100:
+			inside = false
+	_check(inside, "demo: every policy beat falls inside the 100 turns")
+	# ...and in the order the story needs.
+	_check(PolicyState.beat("election_news") < PolicyState.beat("tax_notice")
+		and PolicyState.beat("tax_notice") < PolicyState.beat("ramp_first")
+		and PolicyState.beat("ramp_first") < PolicyState.beat("p1")
+		and PolicyState.beat("p1") <= PolicyState.beat("subsidy"),
+		"demo: election → notice → ramp → full force → subsidy, in that order")
+
+	MatchState.ruleset = saved_rules
+	TurnManager.MAX_TURNS = saved_cap
 
 
 func _test_audio_service() -> void:

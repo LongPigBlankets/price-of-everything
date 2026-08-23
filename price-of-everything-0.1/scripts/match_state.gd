@@ -3327,6 +3327,7 @@ func reset() -> void:
 	Production.reset_lifetime_research_metrics()
 	_next_instance_counter = 0
 	ruleset = DEFAULT_RULESET.duplicate(true)
+	TurnManager.apply_ruleset(ruleset)   # back to the campaign length until a match sets one
 	scenario_name = ""
 	cheats_used = false
 	state_reset.emit()
@@ -3462,6 +3463,9 @@ func import_state(d: Dictionary) -> void:
 	# new-game default, so older/partial snapshots (and Phase 3 start configs) load.
 	money = float(d.get("money", EconomyConfig.STARTING_MONEY))
 	ruleset = (d.get("ruleset", DEFAULT_RULESET) as Dictionary).duplicate(true)
+	# The campaign length lives in the ruleset, so this is the one moment it is known —
+	# for a new game and for a load alike. TurnManager reads nothing else about the match.
+	TurnManager.apply_ruleset(ruleset)
 	# Tolerant readers: saves from before these existed load as an unknown start, uncheated.
 	scenario_name = str(d.get("scenario_name", ""))
 	cheats_used = bool(d.get("cheats_used", false))
