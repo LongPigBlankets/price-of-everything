@@ -410,3 +410,64 @@ save is not being saved**, and the console carries errors at every boot.
 
 Worth confirming before the demo, since "loading screen optimisation" is on the
 roadmap as a cut candidate: it may already be a no-op.
+
+### 9b · Root cause, measured (2026-08-23)
+
+Three experiments, each on a clean tree:
+
+1. **Warm the three named resources on the main thread first.** All three load
+   fine (`[WARM] ... -> OK`) and their preload errors disappear — but the scene
+   still fails, now silently, on `world_map.gd`.
+2. **Delay the threaded request by 12 frames.** A *different* and much larger
+   cascade fails: `BebasNeue-Regular.ttf`, `BarlowCondensed-SemiBold.ttf`, all
+   five `assets/icons/victory/*.png`, and more. The load never completes.
+3. **Pre-compile main.tscn's 31 scripts + 8 sub-scenes on the main thread, then
+   request the threaded load.**
+
+```
+[WARM] main-thread precompiled 39 scripts/scenes in 4713 ms (0 failed)
+[WARM] threaded request rc=0
+[WARM] SCENE LOADED OK in 169 ms
+```
+
+So it is not those three files, and not a race:
+
+> **A GDScript compiled on a ResourceLoader worker thread cannot resolve
+> `preload()` of a non-script asset.** Fonts, icons, textures, `.tres`,
+> `.gdshader` — all fail. This project's scripts are built on `preload`, so a
+> threaded load of `main.tscn` can never succeed while it has to compile them.
+
+`building_detail_panel.gd` was only the first casualty; fixing it just moves the
+failure to the next script in the graph.
+
+Note this also means **`loading_screen.gd:190`'s own threaded request fails the
+same way, every time** — the "threaded scene load" has never once run. Every
+Start has silently fallen through to the blocking `change_scene_to_file` on line
+206, paying the full ~4.7 s of compilation on the main thread *while the film is
+playing* — and the film's Theora decode is itself main-thread (see the loading
+film notes), so the two have been competing for the entire load.
+
+### 9c · Options
+
+**A — Delete the warm request (minimal, ~15 min).** Remove
+`main_menu.gd:64` and stop `loading_screen.gd` attempting the threaded path.
+Zero behaviour change (both already fall back), and the boot/film error spam
+goes away. Does not recover any speed — but nothing is being lost today either.
+
+**B — Warm the SCRIPTS on the main thread while the player is on the menu,
+paced, then request the scene (recommended).** Experiment 3 is the proof: with
+the scripts already compiled, the worker thread has only the `.tscn` and its
+textures left and finishes in **169 ms, clean**. That moves ~4.7 s of
+compilation out of the film and into menu idle time. It must be paced — a
+single blocking pass would freeze the menu for 4.7 s — using the existing
+`LoadPacing` autoload / `_build_yield()` idiom, a few per frame. The trade is
+some hitching on a static menu in exchange for a much faster Start and a film
+that no longer competes with the compiler.
+
+**C — Convert the hot scripts' `preload`s to lazy `load()`.** The only route to
+a genuinely off-thread scene load, but it touches 31 files and changes when
+every asset is fetched. Not a demo-week change.
+
+Recommendation for Sunday: **A now** (it is nearly free and removes the errors),
+with **B** as the follow-up if the Start time matters for the demo — B is where
+the 4.7 s actually is.
