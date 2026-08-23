@@ -30,6 +30,88 @@ const DEMO_TRACKS: Array = [
 # Rank palette for the "biggest outputs" bars (rank 0 is drawn gold by the UI).
 const TOP_COLORS: Array = ["#e6b34a", "#8f9dae", "#a8b0bc", "#cdd2cb", "#7fd4e8", "#b9c4d2"]
 
+# ── The demo's endings (owner, 23 Aug) ─────────────────────────────────────────
+#
+# A 100-turn run cannot earn the campaign's track-count titles — "The Magnate" for three
+# tracks assumes 300 turns of compounding — so the demo is named by what the run actually
+# finished with. Five outcomes, decided in the order below because they overlap: a run with
+# 4 tracks also has more than 500 points, and only the FIRST match should name it.
+#
+#   bankruptcy          the company folded — the only ending that is not about the score
+#   full_ledger         4 or more tracks secured
+#   jack_of_all_trades  2,000+ points with NO track fully won
+#   sequel              more than 500 points
+#   lukewarm            500 or fewer
+#
+# Copy is the owner's, verbatim. `result` is the verdict word for a run that did NOT cross
+# the win bar — crossing it makes any ending a victory.
+const DEMO_JACK_POINTS := 2000
+const DEMO_SEQUEL_POINTS := 500
+const DEMO_FULL_LEDGER_TRACKS := 4
+
+const DEMO_ENDINGS := {
+	"bankruptcy": {
+		"title": "Bankruptcy",
+		"result": "defeat",
+		"copy": "Nothing more to say. You simply have to pick yourself back up and try again. Your father had his own failings and he'd tell you it was part and parcel of trying to build anything worthwhile.",
+	},
+	"full_ledger": {
+		"title": "The Full Ledger",
+		"result": "victory",
+		"copy": "No one could have predicted what heights you'd take this business to. Everyone in the country, maybe even a few out there in the world, are watching now. Where could you possibly go after demolishing every obstacle and rewriting the book on business?",
+	},
+	"jack_of_all_trades": {
+		"title": "The Jack of All Trades",
+		"result": "continuity",
+		"copy": "You've taken a business and expanded in all directions. No one knew your next move. Though you'll always wonder how much more sparkling your story could have been if you'd focused more. Well, time to kick back and enjoy the fruits of your labour. Well earned, too!",
+	},
+	"sequel": {
+		"title": "The Sequel",
+		"result": "continuity",
+		"copy": "Your father would be proud of you. Not only did you keep the business afloat, but you diversified and expanded. You've well and truly left his shadow and are your own person.",
+	},
+	"lukewarm": {
+		"title": "A lukewarm follow-up",
+		"result": "defeat",
+		"copy": "Your father had higher hopes. Survival will have to do. But the world moved faster than you and now the company might be a little bit better, but perhaps the next generation will pick up the mantle.",
+	},
+}
+
+## Is this match running the demo's victory set? The endings follow the tracks — a campaign
+## scored against campaign tracks keeps the campaign's titles.
+static func demo_endings_apply() -> bool:
+	return VictoryState.TRACK_ORDER == VictoryState.DEMO_TRACK_ORDER
+
+
+## Which ending a demo run earned. Precedence, not a score band lookup: the conditions
+## overlap and the first match wins. A run with exactly DEMO_SEQUEL_POINTS is lukewarm —
+## the owner's rule is "more than 500" for the sequel and "less than 500" for the lukewarm
+## one, and 500 itself has to fall on one side.
+static func demo_ending_id(secured: int, total: int, bankrupt: bool) -> String:
+	if bankrupt:
+		return "bankruptcy"
+	if secured >= DEMO_FULL_LEDGER_TRACKS:
+		return "full_ledger"
+	if total >= DEMO_JACK_POINTS and secured == 0:
+		return "jack_of_all_trades"
+	if total > DEMO_SEQUEL_POINTS:
+		return "sequel"
+	return "lukewarm"
+
+
+## The one-line subhead. The ending's copy is the owner's and says nothing about numbers, so
+## this is where the run's actual figures go — the player should not have to read the score
+## bar to find out what they finished on.
+static func _demo_epithet(id: String, secured: int, total: int, turn: int) -> String:
+	if id == "bankruptcy":
+		return "The company folded on turn %d" % turn
+	var tracks_part := "no track secured"
+	if secured == 1:
+		tracks_part = "1 track secured"
+	elif secured > 1:
+		tracks_part = "%d tracks secured" % secured
+	return "The books closed on turn %d — %s points, %s" % [turn, _num(total), tracks_part]
+
 # ── Public entry point ─────────────────────────────────────────────────────────
 static func gather() -> Dictionary:
 	var vs := VictoryState
@@ -50,6 +132,42 @@ static func gather() -> Dictionary:
 	for t in tracks:
 		if bool(t.done):
 			secured += 1
+
+	# The demo names its own endings, and each one carries the verdict word that fits its
+	# copy — "The Sequel" reads as a compliment and must not sit under DEFEAT because the
+	# last turn happened to close in the red.
+	if demo_endings_apply():
+		var ending_id := demo_ending_id(secured, total, SolvencyState.is_bankrupt())
+		var ending: Dictionary = DEMO_ENDINGS[ending_id]
+		# The authored result is the verdict for a run that did NOT cross the bar; `won`
+		# upgrades it. Both directions matter: "The Sequel" must never be stamped DEFEAT
+		# because the last turn closed in the red, and "The Jack of All Trades" must never say
+		# VICTORY over a score bar reading 2,100 / 2,500.
+		# Judged on the SCORE against the bar, not only on the latched `won` flag: 4 tracks is
+		# 4,000 against a 2,500 bar and reads as a win on the screen either way.
+		var cleared: bool = won or total >= threshold
+		var ending_result := str(ending.result)
+		if cleared:
+			ending_result = "victory"
+		elif ending_result == "victory":
+			ending_result = "continuity"
+		return {
+			"result": ending_result,
+			"won": won,
+			"turn": turn,
+			"max_turns": vs.MAX_TURNS,
+			"total": total,
+			"threshold": threshold,
+			"secured_count": secured,
+			"tracks": tracks,
+			"ending_id": ending_id,
+			"title": str(ending.title),
+			"epithet": _demo_epithet(ending_id, secured, total, turn),
+			"copy": [str(ending.copy)],
+			"statline": _statline(),
+			"charts": _charts(),
+			"empire": _empire(),
+		}
 
 	return {
 		"result": result,

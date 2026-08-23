@@ -1,6 +1,7 @@
 extends Node
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const NewGamePanel := preload("res://scripts/new_game_panel.gd")   # its SPEEDS table
+const EndGameData := preload("res://scripts/end_game_data.gd")     # the end-screen assembler
 const BuildingStatus := preload("res://scripts/building_status.gd")
 ## Minimal, zero-dependency headless test runner for price-of-everything.
 ##
@@ -336,6 +337,7 @@ func _ready() -> void:
 	_test_audio_service()
 	_test_demo_itch_speed()
 	_test_demo_victory_tracks()
+	_test_demo_endings()
 	_test_keybinds()
 	_test_tutorial_engine()
 	_test_decision_tenure_gate()
@@ -6531,6 +6533,138 @@ func _a_good_in_tier(tier: String) -> String:
 		if str(good.get("goods_graph_tier", "")) == tier:
 			return str(good.get("id", ""))
 	return ""
+
+# ── The demo's five endings (owner 2026-08-23) ──────────────────────────────
+
+func _test_demo_endings() -> void:
+	var saved_rules: Dictionary = MatchState.ruleset.duplicate(true)
+	var EGD := EndGameData
+
+	# Precedence, not a score-band lookup: the conditions overlap and the first match wins.
+	_check(EGD.demo_ending_id(5, 5000, true) == "bankruptcy",
+		"demo ending: bankruptcy outranks everything, including a full ledger")
+	_check(EGD.demo_ending_id(0, 0, true) == "bankruptcy",
+		"demo ending: bankruptcy does not care about the score")
+	_check(EGD.demo_ending_id(4, 4000, false) == "full_ledger",
+		"demo ending: 4 tracks is the full ledger")
+	_check(EGD.demo_ending_id(5, 5000, false) == "full_ledger",
+		"demo ending: 5 tracks is still the full ledger")
+	_check(EGD.demo_ending_id(3, 3200, false) != "full_ledger",
+		"demo ending: 3 tracks is not the full ledger")
+
+	# Jack of all trades — points WITHOUT a completed track. One finished track disqualifies
+	# it however high the score, which is the whole point of the ending.
+	_check(EGD.demo_ending_id(0, 2000, false) == "jack_of_all_trades",
+		"demo ending: 2000 points and no track is the jack of all trades")
+	_check(EGD.demo_ending_id(0, 2400, false) == "jack_of_all_trades",
+		"demo ending: still the jack well above 2000")
+	_check(EGD.demo_ending_id(1, 2400, false) == "sequel",
+		"demo ending: one finished track disqualifies the jack")
+	_check(EGD.demo_ending_id(0, 1999, false) == "sequel",
+		"demo ending: a point short of 2000 is the sequel, not the jack")
+
+	# The two score bands either side of 500.
+	_check(EGD.demo_ending_id(0, 501, false) == "sequel", "demo ending: 501 points is the sequel")
+	_check(EGD.demo_ending_id(0, 500, false) == "lukewarm",
+		"demo ending: exactly 500 falls to the lukewarm follow-up")
+	_check(EGD.demo_ending_id(0, 499, false) == "lukewarm", "demo ending: 499 points is lukewarm")
+	_check(EGD.demo_ending_id(0, 0, false) == "lukewarm", "demo ending: a scoreless run is lukewarm")
+
+	# Every ending is reachable, and every one is complete.
+	var reachable: Dictionary = {}
+	for row: Array in [[5, 5000, true], [4, 4000, false], [0, 2000, false],
+			[0, 900, false], [0, 10, false]]:
+		reachable[EGD.demo_ending_id(int(row[0]), int(row[1]), bool(row[2]))] = true
+	_check(reachable.size() == EGD.DEMO_ENDINGS.size(),
+		"demo ending: every authored ending is reachable")
+	var complete := true
+	for id in EGD.DEMO_ENDINGS:
+		var e: Dictionary = EGD.DEMO_ENDINGS[id]
+		if str(e.get("title", "")) == "" or str(e.get("copy", "")) == "":
+			complete = false
+		if not (str(e.get("result", "")) in ["victory", "continuity", "defeat"]):
+			complete = false
+	_check(complete, "demo ending: every ending has a title, a verdict and its copy")
+
+	# The endings follow the TRACKS. A campaign match keeps the campaign's titles.
+	MatchState.ruleset = {"name": "standard"}
+	VictoryState.apply_ruleset(MatchState.ruleset)
+	_check(not EGD.demo_endings_apply(), "demo ending: a campaign match does not use them")
+
+	MatchState.ruleset = {"name": "standard", "victory_set": "demo_itch",
+		"speed_turns": 100, "policy_timeline": "demo_itch"}
+	VictoryState.apply_ruleset(MatchState.ruleset)
+	TurnManager.apply_ruleset(MatchState.ruleset)
+	VictoryState.reset()
+	_check(EGD.demo_endings_apply(), "demo ending: a demo match does")
+
+	# Through the real assembler: a run with points banked but no track finished.
+	VictoryState.track_best["crown"] = 0.8
+	VictoryState.track_best["tiers"] = 0.7
+	VictoryState.track_best["distance"] = 0.6
+	var jack: Dictionary = EGD.gather()
+	_check(str(jack.get("ending_id", "")) == "jack_of_all_trades"
+		and str(jack.get("title", "")) == "The Jack of All Trades",
+		"demo ending: gather() names the jack of all trades")
+	_check((jack.get("copy", []) as Array).size() == 1
+		and str((jack.get("copy", []) as Array)[0]).begins_with("You've taken a business"),
+		"demo ending: the jack's copy is the owner's, in one paragraph")
+	_check(str(jack.get("epithet", "")).contains("no track secured")
+		and str(jack.get("epithet", "")).contains("2,100"),
+		"demo ending: the epithet carries the figures the copy leaves out")
+	# 2,100 is short of the 2,500 bar, so the banner must NOT read VICTORY over it.
+	_check(not bool(jack.get("won", true)) and str(jack.get("result", "")) == "continuity",
+		"demo ending: a jack short of the bar is not stamped a victory")
+	# ...but one that crosses it is.
+	VictoryState.track_best["green_demo"] = 1.0
+	VictoryState.won = true
+	var jack_won: Dictionary = EGD.gather()
+	_check(str(jack_won.get("result", "")) == "victory",
+		"demo ending: crossing the bar makes any ending a victory")
+	VictoryState.won = false
+
+	# ...and one with four tracks home.
+	VictoryState.reset()
+	for key: String in ["crown", "tiers", "distance", "green_demo"]:
+		VictoryState.track_best[key] = 1.0
+	var full: Dictionary = EGD.gather()
+	_check(str(full.get("ending_id", "")) == "full_ledger"
+		and str(full.get("title", "")) == "The Full Ledger"
+		and str(full.get("result", "")) == "victory",
+		"demo ending: four tracks home is the full ledger, and a victory")
+	_check(int(full.get("secured_count", 0)) == 4 and int(full.get("total", 0)) == 4000,
+		"demo ending: the full ledger's figures agree with the tracks")
+
+	# A losing turn must not stamp DEFEAT over copy that reads as a compliment.
+	VictoryState.reset()
+	VictoryState.track_best["crown"] = 0.9
+	var sequel: Dictionary = EGD.gather()
+	_check(str(sequel.get("ending_id", "")) == "sequel"
+		and str(sequel.get("result", "")) == "continuity",
+		"demo ending: the sequel is never shown under DEFEAT")
+	# The lukewarm one, by contrast, is authored as the downbeat verdict and keeps it.
+	VictoryState.reset()
+	VictoryState.track_best["crown"] = 0.3
+	var luke: Dictionary = EGD.gather()
+	_check(str(luke.get("ending_id", "")) == "lukewarm"
+		and str(luke.get("result", "")) == "defeat",
+		"demo ending: the lukewarm follow-up keeps its downbeat verdict")
+
+	# Bankruptcy is the fifth ending and has its own screen — the charts one SolvencyState
+	# mounts mid-game, not the turn-100 end screen. It reads the same table.
+	var panel: Object = (load("res://scripts/game_over_panel.gd") as GDScript).new()
+	_check(str(panel.call("_ending_title")) == "Bankruptcy"
+		and str(panel.call("_ending_body")).begins_with("Nothing more to say."),
+		"demo ending: the bankruptcy screen carries the demo ending")
+	MatchState.ruleset = {"name": "standard"}
+	VictoryState.apply_ruleset(MatchState.ruleset)
+	_check(str(panel.call("_ending_title")) == "Your legacy ends here",
+		"demo ending: a campaign bankruptcy keeps the campaign copy")
+	panel.free()
+
+	MatchState.ruleset = saved_rules
+	VictoryState.apply_ruleset(saved_rules)
+	VictoryState.reset()
 
 # ── Victory system (scripts/victory_state.gd; docs/victory-system-spec.md §12) ──
 

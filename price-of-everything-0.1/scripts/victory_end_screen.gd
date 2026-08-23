@@ -246,7 +246,7 @@ func _build_header(data: Dictionary) -> Control:
 
 	var sc := int(data.get("secured_count", 0))
 	# Counted from the set this match ran, not from 5 — the demo plays a different five and
-	a future set may not be five at all.
+	# a future set may not be five at all.
 	var sec_lbl := _lbl("%d of %d tracks secured" % [sc, VictoryState.TRACK_ORDER.size()],
 		_UIFonts.PLEX_MED, 12, DS.PALETTE.TEXT_DIM)
 	sec_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
