@@ -333,6 +333,7 @@ func _ready() -> void:
 	_test_empire_ports()
 	_test_empire_rag()
 	_test_audio_service()
+	_test_keybinds()
 	_test_tutorial_engine()
 	_test_decision_tenure_gate()
 	_test_decision_resolve_effects_and_loyalty()
@@ -1211,6 +1212,75 @@ func _test_tutorial_engine() -> void:
 # The Audio autoload (presentation-layer SFX service). Headless uses the Dummy
 # audio driver, so we assert wiring/state rather than actual playback: the click
 # stream imports, the voice pool is built, and click() runs without erroring.
+# Keybinds — what the Controls tab will and will not accept (scripts/keybinds.gd).
+# The demo ships every fixed binding read-only and the map modes unbound, so the only
+# behaviour worth pinning is the validator: it is the whole of what the player can do.
+func _test_keybinds() -> void:
+	var Keybinds = load("res://scripts/keybinds.gd")
+	var saved: Dictionary = PlayerProfile.keybinds.duplicate()
+	PlayerProfile.keybinds = {"logistics": KEY_J}
+
+	var key := func(code: int, sh := false, ct := false, al := false, me := false) -> InputEventKey:
+		var e := InputEventKey.new()
+		e.keycode = code
+		e.pressed = true
+		e.shift_pressed = sh
+		e.ctrl_pressed = ct
+		e.alt_pressed = al
+		e.meta_pressed = me
+		return e
+
+	# A free key is accepted.
+	_check(bool(Keybinds.validate(key.call(KEY_K), "power").ok), "keybinds: a free letter is accepted")
+	_check(bool(Keybinds.validate(key.call(KEY_F5), "power").ok), "keybinds: a function key is accepted")
+
+	# The modifier keys themselves, and any key pressed while one is held.
+	for row: Array in [["Shift", KEY_SHIFT], ["Ctrl", KEY_CTRL], ["Alt", KEY_ALT], ["Meta", KEY_META]]:
+		var v: Dictionary = Keybinds.validate(key.call(int(row[1])), "power")
+		_check(not bool(v.ok) and str(v.message) == Keybinds.MSG_MODIFIER,
+			"keybinds: %s is refused with 'Cannot use that key.'" % str(row[0]))
+	for row2: Array in [["Shift", key.call(KEY_K, true)], ["Ctrl", key.call(KEY_K, false, true)],
+			["Alt", key.call(KEY_K, false, false, true)], ["Meta", key.call(KEY_K, false, false, false, true)]]:
+		var v2: Dictionary = Keybinds.validate(row2[1], "power")
+		_check(not bool(v2.ok) and str(v2.message) == Keybinds.MSG_MODIFIER,
+			"keybinds: %s held with a letter is refused" % str(row2[0]))
+
+	# Numbers are reserved for gameplay, top row and keypad alike.
+	for row3: Array in [["1", KEY_1], ["0", KEY_0], ["numpad 7", KEY_KP_7]]:
+		var v3: Dictionary = Keybinds.validate(key.call(int(row3[1])), "power")
+		_check(not bool(v3.ok) and str(v3.message) == Keybinds.MSG_NUMBER,
+			"keybinds: %s is refused as a number" % str(row3[0]))
+
+	# Keys the rest of the game already owns, including the two added with this work.
+	for row4: Array in [["C", KEY_C], ["Space", KEY_SPACE], ["Z", KEY_Z], ["Tab", KEY_TAB], ["W", KEY_W]]:
+		_check(not bool(Keybinds.validate(key.call(int(row4[1])), "power").ok),
+			"keybinds: %s is refused, already bound" % str(row4[0]))
+	_check(not bool(Keybinds.validate(key.call(KEY_J), "power").ok),
+		"keybinds: a key held by another map mode is refused")
+	# ...but a row may always keep the key it already has.
+	_check(bool(Keybinds.validate(key.call(KEY_J), "logistics").ok),
+		"keybinds: a map mode may re-accept its own key")
+
+	_check(Keybinds.mapmode_for_keycode(KEY_J) == "logistics", "keybinds: keycode resolves to its map mode")
+	_check(Keybinds.mapmode_for_keycode(KEY_K) == "", "keybinds: an unbound keycode resolves to nothing")
+	_check(Keybinds.key_name(0) == "Unbound", "keybinds: 0 reads as Unbound")
+
+	# Every fixed row the Controls tab renders must have a label and key text to render.
+	var fixed_ok := true
+	for r: Dictionary in Keybinds.FIXED:
+		if str(r.get("label", "")) == "" or str(r.get("keys", "")) == "":
+			fixed_ok = false
+	_check(fixed_ok, "keybinds: every fixed row has a label and a key to show")
+	_check(Keybinds.MAPMODES.size() == 10, "keybinds: one bindable row per map mode")
+
+	# Commit + reload round-trip, and the 0 sentinel is dropped rather than saved.
+	Keybinds.set_mapmode_bindings({"power": KEY_K, "water": 0})
+	_check(int(PlayerProfile.keybinds.get("power", 0)) == KEY_K, "keybinds: a binding survives commit")
+	_check(not PlayerProfile.keybinds.has("water"), "keybinds: an unbound row is not persisted")
+
+	PlayerProfile.keybinds = saved
+
+
 func _test_audio_service() -> void:
 	for cue in ["CLICK", "CLICK_MENU", "CLICK_PRIMARY", "HOVER", "HAMMER", "RUBBLE", "SIGNATURE", "CASH_REGISTER", "TECH_UNLOCK", "SLOT_LEVER", "HINT"]:
 		_check(Audio.get(cue) != null, "audio: %s cue imports and loads" % cue)

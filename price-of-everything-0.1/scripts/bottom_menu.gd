@@ -41,6 +41,7 @@ static func _end_screen_scripts() -> Array[GDScript]:
 		_end_game_data_script = load("res://scripts/end_game_data.gd") as GDScript
 	return [_end_screen_script, _end_game_data_script]
 const MAIN_MENU_SCENE := "res://scenes/main_menu.tscn"
+const Keybinds := preload("res://scripts/keybinds.gd")
 
 var _end_screen: CanvasLayer = null
 
@@ -180,15 +181,53 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	var k := event as InputEventKey
 	if k.ctrl_pressed or k.alt_pressed or k.meta_pressed or k.shift_pressed:
 		return
-	if not _MENU_SHORTCUTS.has(k.keycode):
-		return
 	if _is_text_entry_focused():
+		return
+	# Space ends the turn, and does it by pressing the real button — so it inherits the
+	# disabled state during resolution and the dock's own click handling for free, rather
+	# than becoming a second way to advance a turn that could drift from the first.
+	if k.keycode == KEY_SPACE:
+		var end_turn := get_node_or_null("%EndTurnButton") as Button
+		if end_turn == null:
+			var scene := get_tree().current_scene
+			end_turn = scene.find_child("EndTurnButton", true, false) as Button if scene != null else null
+		if end_turn == null or end_turn.disabled or not end_turn.is_visible_in_tree():
+			return
+		end_turn.pressed.emit()
+		get_viewport().set_input_as_handled()
+		return
+	# Money has no bottom-menu button of its own — it opens from the top bar — so it goes
+	# through the same handler that widget uses.
+	if k.keycode == KEY_Z:
+		_on_money_widget_clicked()
+		get_viewport().set_input_as_handled()
+		return
+	# Map modes are the one rebindable set (Settings → Controls); unbound by default, so
+	# this does nothing until the player asks for it.
+	var mapmode := Keybinds.mapmode_for_keycode(k.keycode)
+	if mapmode != "":
+		_activate_mapmode(mapmode)
+		get_viewport().set_input_as_handled()
+		return
+	if not _MENU_SHORTCUTS.has(k.keycode):
 		return
 	var button := get_node_or_null("%" + str(_MENU_SHORTCUTS[k.keycode])) as Button
 	if button == null or button.disabled or not button.visible:
 		return
 	button.pressed.emit()
 	get_viewport().set_input_as_handled()
+
+
+## Drive a map mode from its hotkey by pressing the Mapmodes panel's own row, so the key
+## and the click cannot diverge — pickers open their good list, sentinels toggle, and the
+## panel re-syncs its pressed states exactly as it would on a click.
+func _activate_mapmode(id: String) -> void:
+	if not is_instance_valid(mapmodes_panel):
+		return
+	var row := mapmodes_panel.find_child("MapModeRow_%s" % id, true, false) as Button
+	if row == null or row.disabled:
+		return
+	row.pressed.emit()
 
 func _is_text_entry_focused() -> bool:
 	var fo := get_viewport().gui_get_focus_owner()
