@@ -377,17 +377,31 @@ static func build(force := false, legacy_layout := false) -> Dictionary:
 				y += h
 		route_bottom = max_height
 	else:
-		# Swimlane vertical placement: a lane band's height is its tallest
-		# (column, lane) cell; each cell centres within its band; bands stack with
-		# LANE_GAP_Y of air. Empty lanes take no space.
+		# Swimlane vertical placement. A lane band is sized by the CARDS in its tallest
+		# (column, lane) cell, and each cell's cards are packed contiguously and centred in
+		# the band. Bands stack with LANE_GAP_Y of air; empty lanes take no space.
+		#
+		# DUMMY ROWS ARE NOT SIZED IN. A dummy is an edge corridor, not a card, and counting
+		# them did two visible things: it inflated every band to fit corridors nobody can see,
+		# and it pushed a cell's cards apart so they no longer read as a group sitting in the
+		# middle of their lane. They still get a y — the routing code expects one for every
+		# layout vertex — taken from the cards they sit between, so a corridor stays where its
+		# edge would want it without spending a row on it.
+		#
+		# Safe because this branch is the MODERN presentation only (legacy_layout takes the
+		# arm above): there, resting edges are not drawn at all and a selection swaps to the
+		# focus layout, which does its own routing. Nothing visible routes through these
+		# corridors any more.
 		var lane_count := LANE_ORDER.size() + 1
-		var cell_h: Dictionary = {}     # "lane:column" -> summed row heights
+		var cell_h: Dictionary = {}     # "lane:column" -> summed CARD heights
 		var lane_h: Dictionary = {}     # lane rank -> band height
 		for d: int in range(maxd + 1):
 			for v: String in cols.get(d, []) as Array:
+				if not goods.has(v):
+					continue   # corridor: costs the band nothing
 				var lr := int(lane_rank.get(v, lane_count - 1))
 				var key := "%d:%d" % [lr, d]
-				cell_h[key] = float(cell_h.get(key, 0.0)) + (ROW_H if goods.has(v) else DUMMY_ROW_H)
+				cell_h[key] = float(cell_h.get(key, 0.0)) + ROW_H
 				lane_h[lr] = maxf(float(lane_h.get(lr, 0.0)), float(cell_h[key]))
 		var lane_top: Dictionary = {}
 		var ly := 0.0
@@ -401,16 +415,27 @@ static func build(force := false, legacy_layout := false) -> Dictionary:
 				"color": CAT_COLOR.get(slug, DEFAULT_COLOR)})
 			ly += float(lane_h[lr]) + LANE_GAP_Y
 		for d: int in range(maxd + 1):
-			var cursor: Dictionary = {}   # lane rank -> next free y in this column
+			var cursor: Dictionary = {}    # lane rank -> next free y for a CARD in this column
+			var pending: Array = []        # corridors waiting for the next card's y
 			for v: String in cols.get(d, []) as Array:
 				var lr := int(lane_rank.get(v, lane_count - 1))
+				if not goods.has(v):
+					pending.append(v)
+					continue
 				if not cursor.has(lr):
 					var cell := float(cell_h.get("%d:%d" % [lr, d], 0.0))
 					cursor[lr] = float(lane_top[lr]) + (float(lane_h[lr]) - cell) * 0.5
-				var h := ROW_H if goods.has(v) else DUMMY_ROW_H
-				ypos[v] = float(cursor[lr]) + h * 0.5
-				cursor[lr] = float(cursor[lr]) + h
-			route_bottom = ly - LANE_GAP_Y
+				var y := float(cursor[lr]) + ROW_H * 0.5
+				ypos[v] = y
+				cursor[lr] = float(cursor[lr]) + ROW_H
+				for pv in pending:
+					ypos[pv] = y   # the corridor rides with the card it precedes
+				pending.clear()
+			# Trailing corridors in a column have no card after them: park them on the last
+			# card placed, or on the top of the chart if the column is corridors all the way.
+			for pv in pending:
+				ypos[pv] = float(ypos.get(cols.get(d, [])[0], 0.0)) if not ypos.is_empty() else 0.0
+		route_bottom = ly - LANE_GAP_Y
 
 	var by_id: Dictionary = {}
 	var nodes: Array = []

@@ -7008,11 +7008,21 @@ func _test_goods_flow_graph() -> void:
 	# runs of different edges that share x-range never sit collinear (>= the sibling
 	# port-fan spacing H_SEP_SIBLING); and the final bilayer crossing count is
 	# bounded (and visible in the PASS name).
+	#
+	# THE SEPARATION FLOORS ARE MEASURED ON THE LEGACY LAYOUT, because that is the only
+	# presentation that still DRAWS resting web edges (the debug `legacy goods graph`
+	# toggle). The default presentation stopped drawing them, and its dummy rows —
+	# corridors that existed to hold those edges apart — were collapsed so the swimlane
+	# bands could tighten around the cards. Asserting a pixel floor there would be
+	# asserting the geometry of lines nobody renders; the invariants that DO matter for
+	# it are checked separately below.
+	var legacy: Dictionary = GoodsFlowGraph.build(true, true)
+	var legacy_edges: Array = legacy.get("edges", [])
 	var ortho := true
 	var verts: Array = []   # [x, y_lo, y_hi, edge_index]
 	var horiz: Array = []   # [y, x_lo, x_hi, edge_index]
-	for ei: int in range(edges.size()):
-		var wp: PackedVector2Array = (edges[ei] as Dictionary).get("waypoints", PackedVector2Array())
+	for ei: int in range(legacy_edges.size()):
+		var wp: PackedVector2Array = (legacy_edges[ei] as Dictionary).get("waypoints", PackedVector2Array())
 		if wp.size() < 2:
 			ortho = false
 			continue
@@ -7027,7 +7037,7 @@ func _test_goods_flow_graph() -> void:
 				verts.append([a.x, minf(a.y, b.y), maxf(a.y, b.y), ei])
 			if dy <= 0.01 and dx > 0.01:
 				horiz.append([a.y, minf(a.x, b.x), maxf(a.x, b.x), ei])
-	_check(ortho, "goods graph: every edge is an axis-aligned waypoint chain (>=2 points)")
+	_check(ortho, "goods graph: every legacy edge is an axis-aligned waypoint chain (>=2 points)")
 	var sep_ok := true
 	for i: int in range(verts.size()):
 		for j: int in range(i + 1, verts.size()):
@@ -7038,7 +7048,7 @@ func _test_goods_flow_graph() -> void:
 			var overlap: bool = maxf(float(a[1]), float(b[1])) < minf(float(a[2]), float(b[2])) - 0.01
 			if overlap and absf(float(a[0]) - float(b[0])) < 11.9:
 				sep_ok = false
-	_check(sep_ok, "goods graph: y-overlapping vertical runs sit >=11.9 units apart")
+	_check(sep_ok, "goods graph (legacy): y-overlapping vertical runs sit >=11.9 units apart")
 	var hsep_ok := true
 	for i: int in range(horiz.size()):
 		for j: int in range(i + 1, horiz.size()):
@@ -7049,7 +7059,67 @@ func _test_goods_flow_graph() -> void:
 			var overlap: bool = maxf(float(a[1]), float(b[1])) < minf(float(a[2]), float(b[2])) - 0.01
 			if overlap and absf(float(a[0]) - float(b[0])) < 5.9:
 				hsep_ok = false
-	_check(hsep_ok, "goods graph: x-overlapping horizontal runs sit >=5.9 units apart (owner floor: 5 px at max zoom 1.0)")
+	_check(hsep_ok, "goods graph (legacy): x-overlapping horizontal runs sit >=5.9 units apart (owner floor: 5 px at max zoom 1.0)")
+	# The swimlane bands: sized by CARDS, with each (column, lane) cell's cards packed
+	# contiguously and centred in its band. This is what replaced the pixel floors above
+	# for the default presentation — the bands used to be sized to fit edge corridors,
+	# which is why they were tall and why a cell's cards sat scattered inside one.
+	var lanes: Array = g.get("lanes", [])
+	var by_lane_col: Dictionary = {}   # "lane_top:col_x" -> [card centre ys]
+	for n in g.get("nodes", []):
+		var node: Dictionary = n
+		var pos: Vector2 = node["pos"]
+		for lane in lanes:
+			var top := float((lane as Dictionary)["top"])
+			var h := float((lane as Dictionary)["height"])
+			if pos.y >= top - 1.0 and pos.y <= top + h + 1.0:
+				var k := "%f:%f" % [top, pos.x]
+				var ys: Array = by_lane_col.get(k, [])
+				ys.append(pos.y)
+				by_lane_col[k] = ys
+				break
+	var packed_ok := true
+	var centred_ok := true
+	var checked := 0
+	for k in by_lane_col:
+		var ys: Array = by_lane_col[k]
+		if ys.size() < 2:
+			continue
+		ys.sort()
+		checked += 1
+		# Contiguous: consecutive cards in a cell sit exactly one ROW_H apart.
+		for i: int in range(ys.size() - 1):
+			if absf(float(ys[i + 1]) - float(ys[i]) - GoodsFlowGraph.ROW_H) > 0.51:
+				packed_ok = false
+	for lane in lanes:
+		var top := float((lane as Dictionary)["top"])
+		var h := float((lane as Dictionary)["height"])
+		var mid := top + h * 0.5
+		for k2 in by_lane_col:
+			if not str(k2).begins_with("%f:" % top):
+				continue
+			var ys2: Array = by_lane_col[k2]
+			ys2.sort()
+			# Centred: the card block's own midpoint sits on the band's midpoint.
+			var block_mid := (float(ys2[0]) + float(ys2[ys2.size() - 1])) * 0.5
+			if absf(block_mid - mid) > 0.51:
+				centred_ok = false
+	_check(checked > 0, "goods graph: swimlane cells found to check (%d multi-card cells)" % checked)
+	_check(packed_ok, "goods graph: a cell's cards are packed contiguously (one ROW_H apart)")
+	_check(centred_ok, "goods graph: a cell's card block is centred in its swimlane band")
+	# A band is exactly as tall as the most cards any one column puts in it — no corridor
+	# padding. Anything taller means dummy rows have crept back into the band sizing.
+	var band_sizing_ok := true
+	for lane in lanes:
+		var top := float((lane as Dictionary)["top"])
+		var h := float((lane as Dictionary)["height"])
+		var tallest := 0
+		for k3 in by_lane_col:
+			if str(k3).begins_with("%f:" % top):
+				tallest = maxi(tallest, (by_lane_col[k3] as Array).size())
+		if tallest > 0 and absf(h - float(tallest) * GoodsFlowGraph.ROW_H) > 0.51:
+			band_sizing_ok = false
+	_check(band_sizing_ok, "goods graph: each band is exactly its tallest cell's cards tall")
 	var crossings := int(g.get("crossings", -1))
 	# Canary re-baselined 2026-07-22: the 9-lane category swimlanes constrain the
 	# ordering (crossing-minimisation only runs within a lane cell), measured 1032
