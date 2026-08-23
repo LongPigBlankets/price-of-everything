@@ -514,3 +514,50 @@ The remaining 4,255 ms gap is scene **instantiation** (`abs=12148` → world_map
 
 Not attempted: option C. Still the only route to a genuinely off-thread load, and
 still a 31-file change.
+
+### 9e · Panels behind a click, and a correction to §9d
+
+`bottom_menu.gd` carried four preloads — the Building Ledger scene, the People
+panel, the victory end screen and its data gatherer. A preload is a load at
+compile time, so every start paid for all four, including sessions where none was
+opened and including the end screen, which cannot appear until the game is over.
+
+Fourteen files were reachable *only* through them. Measured marginally, against
+everything the map needs anyway: **810 ms**. All four are now fetched at their
+existing use sites and cached in `static var`s, so the load happens at most once
+per process; the panel instances are still cached by the pre-existing
+`is_instance_valid` guards, so a reopen never reaches the loader at all.
+
+Verified in a real match (temporary autoload, `main.tscn` booted directly):
+
+```
+before any open -> ledger_scene=<null> people_script=<null> end_screen=<null>
+ledger FIRST open: 290.0 ms      ledger SECOND open: 1.3 ms
+people FIRST open: 433.0 ms      people SECOND open: 0.5 ms
+end screen STILL not loaded: true      (after both panels were opened)
+```
+
+The warm phase drops with it: `warmed 39 scene scripts` went from **6,500 ms** to
+**5,185 / 5,456 / 5,398 ms** across three runs. The bottom menu's own chrome is
+untouched — its script still compiles with the map, and its button icons were
+always fetched by path at runtime, not preloaded.
+
+**Correction to §9d.** That table claimed `build_complete` improved 28.6 s → 26.0 s.
+Both figures were single runs, and they do not survive repetition: with n=3, and
+after this change too, `build_complete` lands at 19.4 / 20.3 / 20.6 s against the
+original single run's 20.4 s. **Start time is essentially unchanged** — which is
+what should have been expected, since warming under the plates MOVES compilation
+rather than removing it. The 810 ms this section removes is real but sits close to
+the harness's run-to-run noise (~±0.6 s).
+
+What §9d did establish, and what repeats cleanly, is the film:
+
+| | before | after (n=3) |
+|---|---|---|
+| Film drift by `build_complete` | 1.57 s | 0.10 – 0.14 s |
+| Worst single frame gap | 5,665 ms | 3,810 – 4,201 ms |
+| Threaded scene load | never succeeded | 725 ms |
+| Boot errors | a cascade every boot | none |
+
+Tests: 2845 passed, 2 failed — the same two timing-sensitive perf tests a clean
+tree fails. (An earlier run showed 2847/0; that was variance, not a fix.)

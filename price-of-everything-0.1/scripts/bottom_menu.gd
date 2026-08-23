@@ -1,9 +1,45 @@
 extends Control
 
-const BUILDING_LEDGER_PANEL_SCENE := preload("res://scenes/building_ledger_panel.tscn")
-const PeoplePanel := preload("res://scripts/people_panel.gd")
-const VictoryEndScreen := preload("res://scripts/victory_end_screen.gd")
-const EndGameData := preload("res://scripts/end_game_data.gd")
+# PANELS BEHIND A CLICK ARE NOT LOADED WITH THE MAP.
+#
+# These four were preloads, and a preload is a load at COMPILE time: every start paid for
+# the Building Ledger, the People panel and the whole end screen, in sessions where none
+# of them was ever opened. Measured against everything the map genuinely needs, the set
+# reachable only through them came to 810 ms — about half of it the end screen, which
+# cannot appear until the game is over.
+#
+# Each is now fetched at its existing use site. The loads are cached STATICALLY, so the
+# cost is paid at most once per run no matter how often a panel is opened, closed or
+# reopened — and once per PROCESS, so a second match does not pay again. On top of that
+# the panel INSTANCES are cached as before (the is_instance_valid guards further down),
+# so reopening a panel never reaches the loader at all: it is a visibility toggle.
+#
+# The bottom menu's own chrome is untouched by this. Its script compiles with the map (it
+# is a node in main.tscn) and its button icons are fetched by path at runtime, so the tray
+# the player sees on the first frame is exactly as before.
+static var _ledger_scene: PackedScene = null
+static var _people_script: GDScript = null
+static var _end_screen_script: GDScript = null
+static var _end_game_data_script: GDScript = null
+
+static func _ledger_panel_scene() -> PackedScene:
+	if _ledger_scene == null:
+		_ledger_scene = load("res://scenes/building_ledger_panel.tscn") as PackedScene
+	return _ledger_scene
+
+static func _people_panel_script() -> GDScript:
+	if _people_script == null:
+		_people_script = load("res://scripts/people_panel.gd") as GDScript
+	return _people_script
+
+## Loaded only once the game has actually ended — see _show_end_screen, which is the only
+## caller and is itself reached only from the victory and turn-cap paths.
+static func _end_screen_scripts() -> Array[GDScript]:
+	if _end_screen_script == null:
+		_end_screen_script = load("res://scripts/victory_end_screen.gd") as GDScript
+	if _end_game_data_script == null:
+		_end_game_data_script = load("res://scripts/end_game_data.gd") as GDScript
+	return [_end_screen_script, _end_game_data_script]
 const MAIN_MENU_SCENE := "res://scenes/main_menu.tscn"
 
 var _end_screen: CanvasLayer = null
@@ -420,7 +456,7 @@ func _show_building_ledger(allow_toggle: bool = true) -> void:
 		return
 	_hide_all_panels()
 	if not is_instance_valid(building_ledger_panel):
-		building_ledger_panel = BUILDING_LEDGER_PANEL_SCENE.instantiate()
+		building_ledger_panel = _ledger_panel_scene().instantiate()
 		# Add as sibling to the other panels so it lives in HUDContent.
 		construct_panel.get_parent().add_child(building_ledger_panel)
 		building_ledger_panel.hide()
@@ -450,7 +486,7 @@ func _on_people_pressed() -> void:
 		return
 	_hide_all_panels()
 	if not is_instance_valid(people_panel):
-		people_panel = PeoplePanel.new()
+		people_panel = _people_panel_script().new()
 		construct_panel.get_parent().add_child(people_panel)
 		people_panel.hide()
 		people_panel.close_requested.connect(
@@ -508,7 +544,10 @@ func _show_end_screen() -> void:
 	if _end_screen != null:
 		return
 	_hide_all_panels()
-	var data: Dictionary = EndGameData.gather()
+	# The game is over by the time we are here, which is the only moment either of these is
+	# worth having in memory.
+	var end_scripts := _end_screen_scripts()
+	var data: Dictionary = end_scripts[1].gather()
 	if str(data.get("result", "")) == "victory":
 		# Hall of Records: victories only — defeats leave no trace.
 		PlayerProfile.record_win({
@@ -518,7 +557,7 @@ func _show_end_screen() -> void:
 			"secured": int(data.get("secured_count", 0)),
 			"epithet": str(data.get("epithet", "")),
 		})
-	_end_screen = VictoryEndScreen.new()
+	_end_screen = end_scripts[0].new()
 	add_child(_end_screen)
 	_end_screen.back_to_menu_pressed.connect(_on_end_screen_back)
 	_end_screen.show_end(data)
