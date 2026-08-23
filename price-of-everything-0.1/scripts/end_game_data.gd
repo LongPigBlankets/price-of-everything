@@ -17,6 +17,16 @@ const TRACKS: Array = [
 	{"key": "widest",    "name": "Widest",    "color": "#5fa8e0", "desc": "Tiles occupied"},
 	{"key": "greenest",  "name": "Greenest",  "color": "#4fd0a0", "desc": "Renewable supply"},
 ]
+## The demo runs a different five (VictoryState.DEMO_TRACK_ORDER), so the pennants need
+## their own names and colours. Same shape as TRACKS; _track_display() picks between them
+## by what the match is actually running rather than by a flag read here.
+const DEMO_TRACKS: Array = [
+	{"key": "crown",      "name": "Crown",    "color": "#e6b34a", "desc": "Turns atop the ranking"},
+	{"key": "tiers",      "name": "Tiers",    "color": "#b9c4d2", "desc": "Every tier producing"},
+	{"key": "distance",   "name": "Distance", "color": "#5fa8e0", "desc": "Long-haul shipments"},
+	{"key": "green_demo", "name": "Green",    "color": "#4fd0a0", "desc": "Wind and solar in a turn"},
+	{"key": "estate",     "name": "Estate",   "color": "#5fbf6b", "desc": "Buildings owned and running"},
+]
 # Rank palette for the "biggest outputs" bars (rank 0 is drawn gold by the UI).
 const TOP_COLORS: Array = ["#e6b34a", "#8f9dae", "#a8b0bc", "#cdd2cb", "#7fd4e8", "#b9c4d2"]
 
@@ -62,12 +72,16 @@ static func gather() -> Dictionary:
 static func _tracks() -> Array:
 	var vs := VictoryState
 	var out: Array = []
-	for meta in TRACKS:
-		var key := str(meta.key)
+	# Driven by the set the match is running, not by TRACKS — a demo match plays five
+	# different tracks and its end screen has to show those and not the campaign's.
+	for key_variant: Variant in vs.TRACK_ORDER:
+		var key := str(key_variant)
+		var meta: Dictionary = _track_display(key)
 		var pct: float = clampf(float(vs.track_best.get(key, 0.0)), 0.0, 1.0)
 		var done := pct >= 0.999
 		out.append({
-			"key": key, "name": str(meta.name), "color": str(meta.color), "desc": str(meta.desc),
+			"key": key, "name": str(meta.get("name", key)), "color": str(meta.get("color", "#b9c4d2")),
+			"desc": str(meta.get("desc", "")),
 			"done": done, "pct": pct,
 			"at": int(vs.track_secured_turn.get(key, -1)),
 			"stat": _track_stat(key),
@@ -75,9 +89,30 @@ static func _tracks() -> Array:
 		})
 	return out
 
+## Display metadata for a track key, from whichever table names it. A set with no authored
+## row still renders: the name falls back to VictoryState's own, in the default steel.
+static func _track_display(key: String) -> Dictionary:
+	for table: Array in [TRACKS, DEMO_TRACKS]:
+		for meta_variant: Variant in table:
+			var meta: Dictionary = meta_variant
+			if str(meta.get("key", "")) == key:
+				return meta
+	return {"key": key, "name": str(VictoryState.TRACK_NAMES.get(key, key)),
+		"color": "#b9c4d2", "desc": ""}
+
 static func _track_stat(key: String) -> String:
 	var vs := VictoryState
 	match key:
+		"crown":
+			return "%d turns on top" % vs.demo_crown_turns
+		"tiers":
+			return "%d%% of the tiers" % int(round(100.0 * vs._demo_tiers_progress()))
+		"distance":
+			return "%d long hauls" % vs.demo_long_hauls
+		"green_demo":
+			return "%s MW green" % _num(int(round(float(vs._greenest_stats().get("green", 0.0)))))
+		"estate":
+			return "%d buildings" % int(vs.demo_estate_counts().owned)
 		"autarkic":
 			return "%d-turn streak" % vs.autarkic_streak
 		"logistics":
@@ -97,6 +132,16 @@ static func _track_stat(key: String) -> String:
 static func _track_sub(key: String, done: bool) -> String:
 	var vs := VictoryState
 	match key:
+		"crown":
+			return "of %d needed" % vs.DEMO_CROWN_TURNS
+		"tiers":
+			return "%d units a tier, every tier" % vs.DEMO_TIER_UNITS
+		"distance":
+			return "of %d over %d turns' travel" % [vs.DEMO_LONG_HAULS, vs.DEMO_LONG_HAUL_TURNS]
+		"green_demo":
+			return "of %s MW in one turn" % _num(int(vs.DEMO_GREEN_TARGET))
+		"estate":
+			return "%d running, of %d needed" % [int(vs.demo_estate_counts().running), vs.DEMO_ESTATE_BUILDINGS]
 		"autarkic":
 			return "self-supplied at scale" if done else "%s / %s units produced" % [_num(vs.produced_units_lifetime), _num(vs.AUTARKIC_MIN_UNITS)]
 		"logistics":
@@ -117,6 +162,11 @@ static func _track_sub(key: String, done: bool) -> String:
 #   3 tracks → The Magnate · 2 tracks → Visionary Industrialist
 #   1 track  → named for the winning track (see _SINGLE_TRACK_TITLES)
 const _SINGLE_TRACK_TITLES := {
+	"crown": "Head of the Table",
+	"tiers": "Every Rung",
+	"distance": "The Long Way Round",
+	"green_demo": "Green and Keen",
+	"estate": "Landed Interest",
 	"greenest": "Green and Keen",
 	"logistics": "I am Speed",
 	"richest": "Cash is King",
@@ -167,7 +217,7 @@ static func _epithet(result: String, secured: int, turn: int) -> String:
 	if result == "defeat":
 		return "The clock ran out — no track secured before turn %d" % turn
 	var n := "%d track%s secured" % [secured, "" if secured == 1 else "s"]
-	if secured >= 5:
+	if secured >= VictoryState.TRACK_ORDER.size():
 		return "Grand-slam victory — every track secured before the clock ran out"
 	return "%s — won on turn %d with the time in hand" % [n, turn]
 
@@ -185,10 +235,10 @@ static func _copy(result: String, secured: int, turn: int, tracks: Array) -> Arr
 			"%s No track ever crossed its gate, and the rising win bar climbed past everything the empire managed to bank." % lead,
 			"What remains is real — the buildings still stand, the ports still work — but the ledger fell short and the receivers take it from here.",
 		]
-	var secured_line := "on the strength of every track it built" if secured >= 5 else ("carried by " + _join_names(names))
+	var secured_line := "on the strength of every track it built" if secured >= VictoryState.TRACK_ORDER.size() else ("carried by " + _join_names(names))
 	return [
 		"%s An empire assembled turn by turn — mines, furnaces and factories feeding the docks — crossed the line %s." % [lead, secured_line],
-		"With the win bar already %s points high by turn %d, %d of five tracks came home, and the ledger closed in the black." % [_num(VictoryState.win_threshold_for_turn(turn)), turn, secured],
+		"With the win bar already %s points high by turn %d, %d of %d tracks came home, and the ledger closed in the black." % [_num(VictoryState.win_threshold_for_turn(turn)), turn, secured, VictoryState.TRACK_ORDER.size()],
 	]
 
 static func _join_names(names: Array) -> String:

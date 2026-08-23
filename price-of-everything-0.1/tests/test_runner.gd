@@ -1,5 +1,6 @@
 extends Node
 const BuildingLevels := preload("res://scripts/building_levels.gd")
+const NewGamePanel := preload("res://scripts/new_game_panel.gd")   # its SPEEDS table
 const BuildingStatus := preload("res://scripts/building_status.gd")
 ## Minimal, zero-dependency headless test runner for price-of-everything.
 ##
@@ -334,6 +335,7 @@ func _ready() -> void:
 	_test_empire_rag()
 	_test_audio_service()
 	_test_demo_itch_speed()
+	_test_demo_victory_tracks()
 	_test_keybinds()
 	_test_tutorial_engine()
 	_test_decision_tenure_gate()
@@ -1356,8 +1358,41 @@ func _test_demo_itch_speed() -> void:
 		and PolicyState.beat("p1") <= PolicyState.beat("subsidy"),
 		"demo: election → notice → ramp → full force → subsidy, in that order")
 
+	# The length row itself. Everything above tests what a ruleset DOES; this tests that the
+	# only thing that writes one actually says it — the first cut of this shipped a demo
+	# timeline nothing could select, because the row was never added to the table.
+	var demo_row: Dictionary = {}
+	for opt_variant: Variant in NewGamePanel.SPEEDS:
+		var opt: Dictionary = opt_variant
+		if str(opt.get("id", "")) == NewGamePanel.DEMO_SPEED_ID:
+			demo_row = opt
+	_check(not demo_row.is_empty(), "demo: the length selector has a Demo - Itch.io row")
+	_check(int(demo_row.get("turns", 0)) == 100, "demo: the row is 100 turns long")
+	_check(str(demo_row.get("policy_timeline", "")) == PolicyState.TIMELINE_DEMO,
+		"demo: the row carries the demo policy timeline")
+	_check(str(demo_row.get("victory_set", "")) == "demo_itch",
+		"demo: the row carries the demo victory set")
+	_check(NewGamePanel.SPEED_DEFAULT_DEMO >= 0
+		and NewGamePanel.SPEED_DEFAULT_DEMO < NewGamePanel.SPEEDS.size()
+		and str((NewGamePanel.SPEEDS[NewGamePanel.SPEED_DEFAULT_DEMO] as Dictionary).get("id", ""))
+			== NewGamePanel.DEMO_SPEED_ID,
+		"demo: a demo build starts on the one row it leaves enabled")
+	# ...and that a ruleset built from that row moves every system at once.
+	var demo_rules := {"speed_turns": int(demo_row.get("turns", 0)),
+		"policy_timeline": str(demo_row.get("policy_timeline", "")),
+		"victory_set": str(demo_row.get("victory_set", ""))}
+	MatchState.ruleset = demo_rules
+	TurnManager.apply_ruleset(demo_rules)
+	VictoryState.apply_ruleset(demo_rules)
+	_check(TurnManager.MAX_TURNS == 100
+		and PolicyState.timeline_id() == PolicyState.TIMELINE_DEMO
+		and VictoryState.TRACK_ORDER == VictoryState.DEMO_TRACK_ORDER
+		and VictoryState.win_threshold_for_turn(100) == 2500,
+		"demo: the row's ruleset sets the length, the timeline and the victory set together")
+
 	MatchState.ruleset = saved_rules
 	TurnManager.MAX_TURNS = saved_cap
+	VictoryState.apply_ruleset(saved_rules)
 
 
 func _test_audio_service() -> void:
@@ -6309,6 +6344,193 @@ func _test_building_category_key() -> void:
 			"layout edge rule: b_036 recycling_plant matches 'recycl'")
 		_check(TileViewData.category_key(prec) == "manufacturing",
 			"layout category_key: b_036 -> manufacturing")
+
+# ── Demo victory set (owner 2026-08-23; five tracks over 100 turns) ─────────
+
+func _test_demo_victory_tracks() -> void:
+	var saved_rules: Dictionary = MatchState.ruleset.duplicate(true)
+	var saved_run: Dictionary = Production.last_turn_run.duplicate()
+
+	# The campaign set is the default and stays untouched by any of this.
+	VictoryState.apply_ruleset({})
+	_check(VictoryState.TRACK_ORDER == VictoryState.CAMPAIGN_TRACK_ORDER,
+		"demo victory: a ruleset with no set runs the campaign tracks")
+	_check(VictoryState.win_threshold_for_turn(300) == 4000,
+		"demo victory: the campaign bar still rises to 4000")
+
+	# The demo set replaces the tracks wholesale, and everything that renders a track
+	# reads these tables, so no panel needs to know the names.
+	MatchState.ruleset = {"name": "standard", "victory_set": "demo_itch"}
+	VictoryState.apply_ruleset(MatchState.ruleset)
+	VictoryState.reset()
+	_check(VictoryState.TRACK_ORDER == VictoryState.DEMO_TRACK_ORDER
+		and VictoryState.TRACK_ORDER.size() == 5,
+		"demo victory: the ruleset selects the five demo tracks")
+	var named := true
+	for key: String in VictoryState.TRACK_ORDER:
+		if not (VictoryState.TRACK_NAMES.has(key) and VictoryState.TRACK_EXPLAIN.has(key)
+				and VictoryState.TRACK_COLOR_KEYS.has(key) and VictoryState.TRACK_MAX.has(key)):
+			named = false
+	_check(named, "demo victory: every demo track has a name, an explainer, a colour and a max")
+
+	# The bar does not rise: 2.5 tracks of 1000, at every turn of the demo.
+	_check(VictoryState.win_threshold_for_turn(1) == 2500
+		and VictoryState.win_threshold_for_turn(65) == 2500
+		and VictoryState.win_threshold_for_turn(100) == 2500,
+		"demo victory: a flat 2500 bar — 2.5 tracks — whatever the turn")
+	var all_1000 := true
+	for key: String in VictoryState.TRACK_ORDER:
+		if int(VictoryState.TRACK_MAX[key]) != 1000:
+			all_1000 = false
+	_check(all_1000, "demo victory: each track is worth 1000, so five tracks total 5000")
+	# ...and the tunables have to ADD UP to that 1000, or a track that reads as full would
+	# score something other than its max and "2.5 tracks" would stop meaning 2500.
+	var vs := VictoryState
+	_check(vs.DEMO_CROWN_TURNS * vs.DEMO_CROWN_POINTS_PER_TURN == 1000,
+		"demo arithmetic: 20 turns x 50 points = 1000")
+	_check(vs.DEMO_TIERS.size() * vs.DEMO_TIER_CAP == 1000
+		and vs.DEMO_TIER_UNITS * vs.DEMO_TIER_POINTS_PER_UNIT == vs.DEMO_TIER_CAP,
+		"demo arithmetic: 5 units x 40 caps a tier at 200, and 5 tiers = 1000")
+	_check(vs.DEMO_LONG_HAULS * 100 == 1000, "demo arithmetic: 10 hauls x 100 = 1000")
+	_check(int(vs.DEMO_GREEN_TARGET) / 100 * 25 == 1000, "demo arithmetic: 4000 MW at 25 per 100 = 1000")
+	_check(vs.DEMO_ESTATE_BUILDINGS * vs.DEMO_ESTATE_POINTS_PER_BUILDING
+		+ vs.DEMO_ESTATE_RUNNING_BONUS == 1000,
+		"demo arithmetic: 30 buildings x 30 + 100 running bonus = 1000")
+	_check(vs.DEMO_WIN_THRESHOLD == 2500 and vs.DEMO_WIN_THRESHOLD * 2 == 5 * 1000,
+		"demo arithmetic: the 2500 bar is exactly half of five full tracks")
+
+	# 1 · Crown — 50 points a turn at the top of the revenue ranking, banked.
+	VictoryState.demo_crown_turns = 0
+	_check(is_zero_approx(VictoryState._live_progress("crown")), "demo crown: nothing at zero turns")
+	VictoryState.demo_crown_turns = 10
+	_check(absf(VictoryState._live_progress("crown") - 0.5) < 0.001,
+		"demo crown: 10 of 20 turns is half the track (500 points)")
+	VictoryState.demo_crown_turns = 20
+	_check(is_equal_approx(VictoryState._live_progress("crown"), 1.0),
+		"demo crown: 20 turns tops the track")
+	VictoryState.demo_crown_turns = 40
+	_check(is_equal_approx(VictoryState._live_progress("crown"), 1.0),
+		"demo crown: more than 20 does not overflow it")
+
+	# 2 · Tiers — 5 units a tier, 40 points each, capped at 200 a tier. Every tier pays
+	# separately, so breadth is the ask and depth in one tier cannot substitute.
+	VictoryState._last_summary = {"produced": {}}
+	_check(is_zero_approx(VictoryState._live_progress("tiers")), "demo tiers: an idle turn scores nothing")
+	var raw_good := _a_good_in_tier("raw")
+	VictoryState._last_summary = {"produced": {raw_good: 5}}
+	_check(absf(VictoryState._live_progress("tiers") - 0.2) < 0.001,
+		"demo tiers: one tier at 5 units is a fifth of the track")
+	VictoryState._last_summary = {"produced": {raw_good: 500}}
+	_check(absf(VictoryState._live_progress("tiers") - 0.2) < 0.001,
+		"demo tiers: 500 units of one tier still caps at that tier's 200 points")
+	var five_tiers := {}
+	for tier: String in VictoryState.DEMO_TIERS:
+		five_tiers[_a_good_in_tier(tier)] = 5
+	VictoryState._last_summary = {"produced": five_tiers}
+	_check(is_equal_approx(VictoryState._live_progress("tiers"), 1.0),
+		"demo tiers: 5 units in each of the five tiers tops the track")
+	# Power is not a good and must not leak into a tier.
+	VictoryState._last_summary = {"produced": {"power": 9999}}
+	_check(is_zero_approx(VictoryState._live_progress("tiers")),
+		"demo tiers: generating power scores nothing on the goods track")
+
+	# 3 · Distance — 10 shipments that spent longer than 10 turns travelling.
+	VictoryState.demo_long_hauls = 0
+	VictoryState.record_movement("sell", "output", 10)
+	_check(VictoryState.demo_long_hauls == 0, "demo distance: exactly 10 turns is not over 10")
+	VictoryState.record_movement("sell", "output", 11)
+	VictoryState.record_movement("move", "output", 30)
+	_check(VictoryState.demo_long_hauls == 2, "demo distance: any long movement counts, sold or moved")
+	_check(absf(VictoryState._live_progress("distance") - 0.2) < 0.001,
+		"demo distance: 2 of 10 hauls is a fifth of the track")
+	VictoryState.demo_long_hauls = 10
+	_check(is_equal_approx(VictoryState._live_progress("distance"), 1.0),
+		"demo distance: 10 long hauls tops the track")
+
+	# 4 · Green — 4000 MW of wind and solar IN ONE TURN. Deliberately not cumulative.
+	VictoryState._last_summary = {"power_supply": 4000,
+		"power_supply_by_quality": {"green_intermittent": 2000.0, "green_steady": 0.0}}
+	_check(absf(VictoryState._live_progress("green_demo") - 0.5) < 0.001,
+		"demo green: 2000 MW of green is half the track")
+	VictoryState._last_summary = {"power_supply": 9000,
+		"power_supply_by_quality": {"green_intermittent": 4000.0, "green_steady": 0.0}}
+	_check(is_equal_approx(VictoryState._live_progress("green_demo"), 1.0),
+		"demo green: 4000 MW in a turn tops the track")
+	VictoryState._last_summary = {"power_supply": 9000,
+		"power_supply_by_quality": {"green_intermittent": 0.0, "green_steady": 0.0}}
+	_check(is_zero_approx(VictoryState._live_progress("green_demo")),
+		"demo green: a turn of coal scores nothing, however much it generates")
+
+	# 5 · Estate — 30 non-infrastructure buildings owned, plus 100 for having them all run.
+	MatchState.reset()
+	MatchState.ruleset = {"name": "standard", "victory_set": "demo_itch"}
+	VictoryState.apply_ruleset(MatchState.ruleset)
+	Production.last_turn_run.clear()
+	var max_points := (VictoryState.DEMO_ESTATE_BUILDINGS * VictoryState.DEMO_ESTATE_POINTS_PER_BUILDING
+		+ VictoryState.DEMO_ESTATE_RUNNING_BONUS)
+	_check(is_zero_approx(VictoryState._live_progress("estate")), "demo estate: no buildings, no points")
+	for i in range(15):
+		MatchState.buildings["e%d" % i] = {"building_id": "b_001", "tile_id": "et%d" % i, "owner": "player_1"}
+	_check(absf(VictoryState._live_progress("estate") - (15.0 * 30.0) / float(max_points)) < 0.001,
+		"demo estate: 15 idle buildings score 450 of 1000")
+	# The port is infrastructure: owning it must not move the track.
+	MatchState.buildings["eport"] = {"building_id": "b_004", "tile_id": "etport", "owner": "player_1"}
+	_check(absf(VictoryState._live_progress("estate") - (15.0 * 30.0) / float(max_points)) < 0.001,
+		"demo estate: infrastructure is not part of the estate")
+	# A rival's 30 buildings are not yours either.
+	for i in range(30):
+		MatchState.buildings["r%d" % i] = {"building_id": "b_001", "tile_id": "rt%d" % i, "owner": "ai_corp"}
+	_check(absf(VictoryState._live_progress("estate") - (15.0 * 30.0) / float(max_points)) < 0.001,
+		"demo estate: a rival's estate is not counted")
+	for i in range(15, 30):
+		MatchState.buildings["e%d" % i] = {"building_id": "b_001", "tile_id": "et%d" % i, "owner": "player_1"}
+	_check(absf(VictoryState._live_progress("estate") - 900.0 / float(max_points)) < 0.001,
+		"demo estate: 30 owned but idle is 900 — the last 100 is for running them")
+	for i in range(30):
+		Production.last_turn_run["e%d" % i] = true
+	_check(is_equal_approx(VictoryState._live_progress("estate"), 1.0),
+		"demo estate: 30 owned AND running tops the track")
+
+	# Two and a half tracks is a win at turn 100; two is not.
+	VictoryState.reset()
+	VictoryState.track_best["crown"] = 1.0
+	VictoryState.track_best["tiers"] = 1.0
+	_check(VictoryState.total_for_turn(100) == 2000
+		and VictoryState.total_for_turn(100) < VictoryState.win_threshold_for_turn(100),
+		"demo victory: two maxed tracks fall short at turn 100")
+	VictoryState.track_best["distance"] = 0.5
+	_check(VictoryState.total_for_turn(100) == 2500
+		and VictoryState.total_for_turn(100) >= VictoryState.win_threshold_for_turn(100),
+		"demo victory: two and a half tracks wins at turn 100")
+
+	# The counters survive a save, or a demo run reloaded is a demo run reset.
+	VictoryState.demo_crown_turns = 7
+	VictoryState.demo_long_hauls = 3
+	var snapshot: Dictionary = VictoryState.export_state()
+	VictoryState.reset()
+	_check(VictoryState.demo_crown_turns == 0 and VictoryState.demo_long_hauls == 0,
+		"demo victory: reset clears the demo counters")
+	VictoryState.import_state(snapshot)
+	_check(VictoryState.demo_crown_turns == 7 and VictoryState.demo_long_hauls == 3,
+		"demo victory: the demo counters round-trip through a save")
+
+	# Back to the campaign, and nothing of the demo is left behind.
+	MatchState.reset()
+	MatchState.ruleset = saved_rules
+	VictoryState.apply_ruleset(saved_rules)
+	VictoryState.reset()
+	Production.last_turn_run = saved_run
+	_check(VictoryState.TRACK_ORDER == VictoryState.CAMPAIGN_TRACK_ORDER,
+		"demo victory: leaving the demo restores the campaign tracks")
+
+## First good the catalog files under `tier`, by the id the production summary uses, so
+## the tiers test names real goods rather than assuming which one sits where.
+func _a_good_in_tier(tier: String) -> String:
+	for good_variant: Variant in Catalog.all_goods():
+		var good: Dictionary = good_variant
+		if str(good.get("goods_graph_tier", "")) == tier:
+			return str(good.get("id", ""))
+	return ""
 
 # ── Victory system (scripts/victory_state.gd; docs/victory-system-spec.md §12) ──
 

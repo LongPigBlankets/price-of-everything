@@ -549,7 +549,8 @@ func _build_victory() -> void:
 	# Second line: how far off the win actually is, in turns, which is the question the
 	# score alone never answered. Falls back to the threshold when there is no rate yet.
 	_victory_target = _mini("", C_TEXT, 11)
-	_victory_target.tooltip_text = "Points needed to win rise over the game — 1 track from turn 105 up to 4 tracks by turn 300."
+	# Text set on refresh (_victory_bar_tip) — at build time the ruleset has not landed yet,
+	# so the bar's shape is not yet known.
 	col.add_child(_victory_target)
 	mod.pressed.connect(func() -> void: _toggle_fly("victory"))
 	_hbox().add_child(mod)
@@ -798,6 +799,7 @@ func _refresh_victory() -> void:
 	_victory_score.text = "%s Victory Point%s" % [_thousands(total), "" if total == 1 else "s"]
 	if _victory_target != null:
 		_victory_target.text = _victory_forecast(bd, total)
+		_victory_target.tooltip_text = _victory_bar_tip(bd)
 
 ## Score history, so "how many turns" can be answered at all: one entry per resolved turn,
 ## newest last. Victory has no rate of its own — the tracks report where they ARE, not how
@@ -811,6 +813,16 @@ func _record_victory_point(total: int) -> void:
 	_victory_history.append(total)
 	if _victory_history.size() > VICTORY_HISTORY_TURNS:
 		_victory_history = _victory_history.slice(_victory_history.size() - VICTORY_HISTORY_TURNS)
+
+## What the win bar does, in one line. A campaign bar climbs with the turn; the demo's is
+## flat, and a demo player told to hold out for turn 300 has been told something false.
+func _victory_bar_tip(bd: Dictionary) -> String:
+	var max_turns := int(bd.get("max_turns", 300))
+	if VictoryState.win_threshold_for_turn(1) == VictoryState.win_threshold_for_turn(max_turns):
+		return "%s points wins, on any turn — the bar does not rise." % _thousands(
+			int(bd.get("win_threshold", 0)))
+	return "Points needed to win rise over the game — 1 track from turn %d up to 4 tracks by turn %d." % [
+		VictoryState.WIN_START_TURN, max_turns]
 
 ## The second line of the victory module. A track past halfway is the one the player is
 ## actually chasing, so it gets named; otherwise the answer is the whole win. Either way it
@@ -1951,7 +1963,8 @@ func _fly_victory(vb: VBoxContainer) -> void:
 	var foot := _fly_pad(vb)
 	var frow := HBoxContainer.new()
 	frow.add_theme_constant_override("separation", 8)
-	var total := _mini("Total %s / %s to win" % [_thousands(int(bd.get("total", 0))), _thousands(int(bd.get("win_threshold", 4000)))], DS.PALETTE.TEXT_DIM, 11)
+	var total := _mini("Total %s / %s to win" % [_thousands(int(bd.get("total", 0))),
+	_thousands(int(bd.get("win_threshold", 4000)))], C_TEXT, 11)
 	total.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	frow.add_child(total)
 	var full := _fly_btn("Full breakdown", true)

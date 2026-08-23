@@ -71,12 +71,19 @@ const DIFFICULTIES: Array = [
 ]
 const DIFFICULTY_DEFAULT := 1
 
+## A length carries its policy timeline and its victory set with it, because a 100-turn
+## match cannot use the campaign's decarbonisation beats (the subsidy lands after it ends)
+## or the campaign's victory tracks (they are written for 300 turns of compounding).
 const SPEEDS: Array = [
 	{"id": "200", "turns": 200, "label": "200 turns"},
 	{"id": "300", "turns": 300, "label": "300 turns"},
 	{"id": "400", "turns": 400, "label": "400 turns"},
+	{"id": DEMO_SPEED_ID, "turns": 100, "label": "Demo - Itch.io",
+		"policy_timeline": "demo_itch", "victory_set": "demo_itch"},
 ]
 const SPEED_DEFAULT := 1
+## Which row a demo build starts on — the only one it leaves enabled.
+const SPEED_DEFAULT_DEMO := 3
 
 # Advanced Settings tickboxes (the "Tutorial" column was replaced by these). Only
 # the first is wired today; 2 & 3 are placeholders for future toggles.
@@ -92,6 +99,7 @@ var _start_path := DEFAULT_START
 var _difficulty_id := "normal"
 var _speed_turns := 300
 var _policy_timeline := ""   # only the demo length sets one
+var _victory_set := ""       # ditto: the demo's five tracks, or the campaign's
 # New Game never launches the tutorial coach (that's what the Tutorial menu is for).
 var _tutorial_on := false
 var _survey_all := true
@@ -421,6 +429,7 @@ func _build_settings_columns(parent: Node) -> void:
 	for opt in SPEEDS:
 		var turns := int(opt["turns"])
 		var timeline := String(opt.get("policy_timeline", ""))
+		var victory_set := String(opt.get("victory_set", ""))
 		var b := _stacked_button(scol, String(opt["label"]), sgroup)
 		# Demo lock: only the 300-turn length is playable.
 		if _demo_locked() and String(opt["id"]) != DEMO_SPEED_ID:
@@ -430,13 +439,14 @@ func _build_settings_columns(parent: Node) -> void:
 		b.toggled.connect(func(on: bool) -> void:
 			if on:
 				_speed_turns = turns
-				_policy_timeline = timeline)
+				_policy_timeline = timeline
+			_victory_set = victory_set)
 	var note := Label.new()
 	note.text = "This also changes the Era pacing."
 	note.theme_type_variation = &"Caption"
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	scol.add_child(note)
-	_press_in_group(scol, SPEED_DEFAULT)
+	_press_in_group(scol, SPEED_DEFAULT_DEMO if _demo_locked() else SPEED_DEFAULT)
 
 	# Options column: three tickboxes (the accordion itself now carries the "Advanced Settings"
 	# title). The DS theme doesn't style CheckBox, so use UIHelpers' drawn box icons for a
@@ -844,6 +854,10 @@ func _on_start_pressed() -> void:
 			"start_id": _start_id,
 			"difficulty": _difficulty_id,
 			"speed_turns": _speed_turns,
+			# Set by the length row. Empty for a campaign length, which is what every reader
+			# falls back to, so only the demo has to say anything.
+			"policy_timeline": _policy_timeline,
+			"victory_set": _victory_set,
 			"tutorial_enabled": _tutorial_on,
 			# Advanced Settings: force every land tile surveyed at game start (this
 			# overrides whatever the difficulty's survey config would otherwise do).

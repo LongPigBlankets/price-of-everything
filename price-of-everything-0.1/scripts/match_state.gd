@@ -3328,6 +3328,7 @@ func reset() -> void:
 	_next_instance_counter = 0
 	ruleset = DEFAULT_RULESET.duplicate(true)
 	TurnManager.apply_ruleset(ruleset)   # back to the campaign length until a match sets one
+	VictoryState.apply_ruleset(ruleset)   # and back to the campaign victory tracks
 	scenario_name = ""
 	cheats_used = false
 	state_reset.emit()
@@ -3466,6 +3467,7 @@ func import_state(d: Dictionary) -> void:
 	# The campaign length lives in the ruleset, so this is the one moment it is known —
 	# for a new game and for a load alike. TurnManager reads nothing else about the match.
 	TurnManager.apply_ruleset(ruleset)
+	VictoryState.apply_ruleset(ruleset)   # which set of victory tracks this match runs
 	# Tolerant readers: saves from before these existed load as an unknown start, uncheated.
 	scenario_name = str(d.get("scenario_name", ""))
 	cheats_used = bool(d.get("cheats_used", false))
