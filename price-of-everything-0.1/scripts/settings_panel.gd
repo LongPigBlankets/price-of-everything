@@ -277,6 +277,7 @@ const CONTROLS_WIDTH := 720
 var _pending_binds: Dictionary = {}      # mapmode id -> keycode, staged until Apply
 var _bind_buttons: Dictionary = {}       # mapmode id -> Button
 var _listening_for: String = ""          # mapmode id currently capturing a key, "" if none
+var _listening_frame: int = -1            # frame the capture began, see _input
 var _bind_error: Label
 
 
@@ -401,6 +402,7 @@ func _refresh_bind_button(id: String) -> void:
 func _on_bind_pressed(id: String) -> void:
 	var previous := _listening_for
 	_listening_for = id
+	_listening_frame = int(Engine.get_process_frames())
 	_bind_error.text = ""
 	if previous != "":
 		_refresh_bind_button(previous)
@@ -409,26 +411,49 @@ func _on_bind_pressed(id: String) -> void:
 
 ## Captured here rather than on the button so the key never reaches the game underneath,
 ## and so Esc can cancel a capture instead of closing the whole settings panel.
+##
+## Mouse buttons come through here too, and are refused by the same validator the keys go
+## through — otherwise a mouse press would simply fall past this and leave the field stuck
+## waiting. The frame guard is for the click that STARTED the capture: the button emits
+## `pressed` on release, and that release is still travelling when listening begins.
 func _input(event: InputEvent) -> void:
-	if _listening_for == "" or not (event is InputEventKey):
+	if _listening_for == "":
+		return
+	var id := _listening_for
+	if event is InputEventMouseButton:
+		if not (event as InputEventMouseButton).pressed:
+			return
+		if int(Engine.get_process_frames()) == _listening_frame:
+			return   # the click that opened this capture
+		get_viewport().set_input_as_handled()
+		_reject_bind(id, Keybinds.MSG_UNUSABLE)
+		return
+	if not (event is InputEventKey):
 		return
 	var k := event as InputEventKey
 	if not k.pressed or k.echo:
 		return
-	var id := _listening_for
 	get_viewport().set_input_as_handled()
+	# Escape cancels rather than erroring. It can never BE a binding either (keybinds.gd
+	# refuses it), but inside a menu it is the way out, and taking that away to show a
+	# message would be a worse trade than simply not binding it.
 	if k.keycode == KEY_ESCAPE:
 		_listening_for = ""
 		_refresh_bind_button(id)
 		return
 	var verdict: Dictionary = Keybinds.validate(k, id)
 	if not bool(verdict.ok):
-		_bind_error.text = str(verdict.message)
-		_listening_for = ""
-		_refresh_bind_button(id)
+		_reject_bind(id, str(verdict.message))
 		return
 	_pending_binds[id] = int(k.keycode)
 	_bind_error.text = ""
+	_listening_for = ""
+	_refresh_bind_button(id)
+
+
+## Stop listening and say why, leaving the field on whatever it held before.
+func _reject_bind(id: String, message: String) -> void:
+	_bind_error.text = message
 	_listening_for = ""
 	_refresh_bind_button(id)
 

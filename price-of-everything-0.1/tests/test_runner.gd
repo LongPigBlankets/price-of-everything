@@ -1237,12 +1237,12 @@ func _test_keybinds() -> void:
 	# The modifier keys themselves, and any key pressed while one is held.
 	for row: Array in [["Shift", KEY_SHIFT], ["Ctrl", KEY_CTRL], ["Alt", KEY_ALT], ["Meta", KEY_META]]:
 		var v: Dictionary = Keybinds.validate(key.call(int(row[1])), "power")
-		_check(not bool(v.ok) and str(v.message) == Keybinds.MSG_MODIFIER,
+		_check(not bool(v.ok) and str(v.message) == Keybinds.MSG_UNUSABLE,
 			"keybinds: %s is refused with 'Cannot use that key.'" % str(row[0]))
 	for row2: Array in [["Shift", key.call(KEY_K, true)], ["Ctrl", key.call(KEY_K, false, true)],
 			["Alt", key.call(KEY_K, false, false, true)], ["Meta", key.call(KEY_K, false, false, false, true)]]:
 		var v2: Dictionary = Keybinds.validate(row2[1], "power")
-		_check(not bool(v2.ok) and str(v2.message) == Keybinds.MSG_MODIFIER,
+		_check(not bool(v2.ok) and str(v2.message) == Keybinds.MSG_UNUSABLE,
 			"keybinds: %s held with a letter is refused" % str(row2[0]))
 
 	# Numbers are reserved for gameplay, top row and keypad alike.
@@ -1261,6 +1261,20 @@ func _test_keybinds() -> void:
 	_check(bool(Keybinds.validate(key.call(KEY_J), "logistics").ok),
 		"keybinds: a map mode may re-accept its own key")
 
+	# Escape and the mouse are refused outright: Escape is the way out of every menu, and a
+	# mode bound to a click would fire while the player was driving the map with the mouse.
+	var esc: Dictionary = Keybinds.validate(key.call(KEY_ESCAPE), "power")
+	_check(not bool(esc.ok) and str(esc.message) == Keybinds.MSG_UNUSABLE,
+		"keybinds: Escape is refused")
+	for btn: Array in [["left", MOUSE_BUTTON_LEFT], ["right", MOUSE_BUTTON_RIGHT],
+			["middle", MOUSE_BUTTON_MIDDLE], ["wheel up", MOUSE_BUTTON_WHEEL_UP],
+			["extra 1", MOUSE_BUTTON_XBUTTON1]]:
+		var mb := InputEventMouseButton.new()
+		mb.button_index = int(btn[1])
+		mb.pressed = true
+		var mv: Dictionary = Keybinds.validate(mb, "power")
+		_check(not bool(mv.ok) and str(mv.message) == Keybinds.MSG_UNUSABLE,
+			"keybinds: mouse %s is refused" % str(btn[0]))
 	_check(Keybinds.mapmode_for_keycode(KEY_J) == "logistics", "keybinds: keycode resolves to its map mode")
 	_check(Keybinds.mapmode_for_keycode(KEY_K) == "", "keybinds: an unbound keycode resolves to nothing")
 	_check(Keybinds.key_name(0) == "Unbound", "keybinds: 0 reads as Unbound")

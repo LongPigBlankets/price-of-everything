@@ -57,10 +57,14 @@ const MAPMODES: Array[Dictionary] = [
 	{"id": "ownership", "label": "Ownership"},
 ]
 
-## Keys that are never a valid binding, whatever else is free.
-const MODIFIER_KEYS: Array[int] = [KEY_SHIFT, KEY_CTRL, KEY_ALT, KEY_META]
+## Keys that are never a valid binding, whatever else is free. Escape is here as well
+## as in FIXED: it is the universal cancel, and a player who loses it inside a menu has
+## no way back out. The Controls tab treats a press of it as cancelling the capture.
+const UNUSABLE_KEYS: Array[int] = [KEY_SHIFT, KEY_CTRL, KEY_ALT, KEY_META, KEY_ESCAPE]
 
-const MSG_MODIFIER := "Cannot use that key."
+## Every key that can never be a binding shares one refusal: modifiers, Escape and
+## the mouse buttons are all "not a key you may have" rather than "already taken".
+const MSG_UNUSABLE := "Cannot use that key."
 const MSG_NUMBER := "Cannot use a number because it would interfere with gameplay."
 
 
@@ -114,17 +118,26 @@ static func holder_of(keycode: int, ignore_mapmode: String = "") -> String:
 
 ## Is `event` allowed to become `mapmode_id`'s binding? Returns {ok, message}.
 ##
-## Order matters: a modifier or a digit is refused on its own terms before the "already
-## taken" check, so the player is told the real reason rather than a coincidence.
-static func validate(event: InputEventKey, mapmode_id: String) -> Dictionary:
-	var code := int(event.keycode)
+## Takes any InputEvent, not just a key, so a mouse button is refused HERE rather than by
+## the caller happening not to look at mouse events.
+##
+## Order matters: an unusable key or a digit is refused on its own terms before the
+## "already taken" check, so the player is told the real reason and not a coincidence.
+static func validate(event: InputEvent, mapmode_id: String) -> Dictionary:
+	# Mouse buttons: the map is driven with the mouse, so a mode bound to a click would fire
+	# while the player was doing something else entirely.
+	if not (event is InputEventKey):
+		return {"ok": false, "message": MSG_UNUSABLE}
+	var key_event := event as InputEventKey
+	var code := int(key_event.keycode)
 	if code == 0:
-		return {"ok": false, "message": MSG_MODIFIER}
-	# The modifier keys themselves, and any key pressed WITH one held: a binding that needs
-	# a chord is not something this screen can express, so both read as the same refusal.
-	if code in MODIFIER_KEYS or event.ctrl_pressed or event.alt_pressed \
-			or event.meta_pressed or event.shift_pressed:
-		return {"ok": false, "message": MSG_MODIFIER}
+		return {"ok": false, "message": MSG_UNUSABLE}
+	# The unusable keys themselves, and any key pressed WITH a modifier held: a binding that
+	# needs a chord is not something this screen can express, so both read as one refusal.
+	var chorded: bool = (key_event.ctrl_pressed or key_event.alt_pressed
+			or key_event.meta_pressed or key_event.shift_pressed)
+	if code in UNUSABLE_KEYS or chorded:
+		return {"ok": false, "message": MSG_UNUSABLE}
 	if _is_number(code):
 		return {"ok": false, "message": MSG_NUMBER}
 	var holder := holder_of(code, mapmode_id)
