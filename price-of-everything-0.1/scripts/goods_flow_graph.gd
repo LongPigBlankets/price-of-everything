@@ -33,10 +33,12 @@ const COL_W := 820.0
 # floor. Resting edges are no longer drawn (goods_graph_world._REST_GHOST_ALPHA), so the
 # constraint that set that floor is gone — only a selected good's own chain is ever drawn
 # over these columns, which is a fraction of the density the 200u was protecting.
-# Tightened accordingly; the tier boundaries stay clearly wider than the columns inside
-# them, because that gap is what makes the tiers legible as bands.
+# Tightened accordingly, then halved again at the owner's request. The tier boundary is
+# now only a little wider than an ordinary column gap (140 vs 110), so the tiers are read
+# from the header plates above them rather than from the spacing — worth knowing before
+# anyone tightens INTRA_COL_GAP further and closes the difference completely.
 const INTRA_COL_GAP := 110.0
-const INTER_TIER_GAP := 280.0
+const INTER_TIER_GAP := 140.0
 
 # Swimlanes (owner 2026-07-21): the resting view groups goods into CATEGORY
 # lanes that run horizontally across every tier — the vertical axis reads as
@@ -51,7 +53,7 @@ const LANE_LABELS := {
 	"vehicles": "VEHICLES & PARTS",
 	"electronics": "ELECTRICALS & ELECTRONICS",
 }
-const LANE_GAP_Y := 90.0    # vertical air between lane bands (tightened with the columns)
+const LANE_GAP_Y := 45.0    # vertical air between lane bands (tightened with the columns)
 
 
 static func _lane_rank_of(cat: String) -> int:
