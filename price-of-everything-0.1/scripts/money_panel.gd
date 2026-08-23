@@ -48,6 +48,9 @@ const HEADER_HEIGHT := 40.0
 @onready var proj_labour_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection/Proj_LabourRow/LabourValue
 @onready var proj_power_purchase_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection/Proj_PowerPurchaseRow/PowerPurchaseValue
 @onready var _costs_section: VBoxContainer = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection
+@onready var _revenue_section: VBoxContainer = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/RevenueSection
+## One gap between balance rows, everywhere. See _normalise_balance_rows.
+const BALANCE_ROW_GAP := 6
 @onready var _proj_costs_section: VBoxContainer = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection
 var _transport_value: Label
 var _transport_caret: Button
@@ -115,9 +118,26 @@ var _chart_mode: String = "revenue"
 var _refresh_queued := false
 var _dirty := false
 
+## Give every row in the balance sheet its natural height.
+##
+## Both the scene rows and the ones inserted here were EXPAND_FILL, which inside a VBox
+## does not mean 'fill the row' — it means 'share the container's leftover space'. Rows
+## whose content differs in height then take different shares, so the gaps between them
+## came out uneven and drifted again whenever a row was added or removed. Natural height
+## plus the VBox separation gives one gap, the same everywhere.
+func _normalise_balance_rows() -> void:
+	for section: Node in [_revenue_section, _costs_section]:
+		if section == null:
+			continue
+		for child in section.get_children():
+			if child is Control:
+				(child as Control).size_flags_vertical = Control.SIZE_FILL
+		(section as VBoxContainer).add_theme_constant_override("separation", BALANCE_ROW_GAP)
+
+
 func _insert_cost_row(section: VBoxContainer, after_node_name: String, label_text: String) -> Label:
 	var row := HBoxContainer.new()
-	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	row.size_flags_vertical = Control.SIZE_FILL   # natural height; see _normalise_balance_rows
 	row.add_theme_constant_override("separation", 8)
 	var name_label := Label.new()
 	name_label.custom_minimum_size = Vector2(80, 0)
@@ -209,7 +229,7 @@ func _set_transport_expanded(expanded: bool) -> void:
 
 func _insert_finance_row(section: VBoxContainer, after_node_name: String, label_text: String, default_text: String) -> Label:
 	var row := HBoxContainer.new()
-	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	row.size_flags_vertical = Control.SIZE_FILL   # natural height; see _normalise_balance_rows
 	row.add_theme_constant_override("separation", 8)
 	var name_label := Label.new()
 	name_label.custom_minimum_size = Vector2(80, 0)
@@ -232,7 +252,14 @@ func _ready() -> void:
 	_goods_purchased_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Goods purchased")
 	_proj_goods_purchased_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Goods purchased")
 	_advisor_value = _insert_cost_row(_costs_section, "LabourRow", "Advisor salaries")
-	_building_tab_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Deferred to building tabs")
+	_building_tab_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Put on building credit")
+	# Running costs a new building charged to its credit window instead of paying in cash
+	# this turn. It reads as a CREDIT here because the lines above already charged it in
+	# full; this is the part that did not leave the bank yet. The tab settles when the
+	# window closes (MatchState.tick_building_tabs).
+	if _building_tab_value != null and _building_tab_value.get_parent() != null:
+		_building_tab_value.get_parent().tooltip_text = "Running costs charged to a new building's credit window rather than paid in cash this turn. They are already counted in the costs above; this line takes back the part you have not actually paid yet, and the tab settles when the window closes."
+	_normalise_balance_rows()
 	_warehousing_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Warehousing")
 	_proj_warehousing_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Warehousing")
 	_carbon_tax_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Carbon tax")

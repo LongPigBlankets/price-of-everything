@@ -185,6 +185,10 @@ func begin_load(scene_path: String) -> void:
 	# And, when there is a film, let it get a frame on screen before the load starts
 	# competing for the main thread. Theora decodes on the MAIN thread, so a film that
 	# starts underneath a busy build opens on a stutter instead of a shot.
+	# Compile the scene's scripts before asking a worker for the scene (see below). This
+	# runs UNDER THE INTRO PLATES, ahead of the film, and is the reason the threaded
+	# request on the line after it can succeed at all.
+	await _warm_scene_scripts(scene_path)
 	await _await_film_started()
 	var _lp_t := Time.get_ticks_msec()
 	if ResourceLoader.load_threaded_request(scene_path) != OK:
@@ -206,6 +210,48 @@ func begin_load(scene_path: String) -> void:
 			get_tree().change_scene_to_file(scene_path)   # failed / invalid → fallback
 			return
 		await get_tree().process_frame
+
+
+## Compile the map scene's scripts on the MAIN thread before the worker is asked for the
+## scene itself.
+##
+## A GDScript compiled on a ResourceLoader WORKER THREAD cannot resolve preload() of a
+## non-script asset — fonts, icons, textures, .tres and .gdshader all fail — and this
+## project's scripts are built on preload. So the threaded request in begin_load had never
+## once succeeded: it failed outright on the first script it had to compile and fell
+## through to the blocking load on the line below, which then paid ~5.3 s of compilation
+## on the main thread. Measured before this warm existed: a single 5,665 ms frozen frame.
+##
+## Warming here does not add that cost, it MOVES it. The same compilation happens either
+## way; doing it deliberately, one script per frame, spends it under the intro plates — the
+## one part of the load already designed to be unshareable, because a tween that misses a
+## frame resumes where it was — and buys back a real threaded scene load (~270 ms) instead
+## of a blocking one. The film is unaffected either way: AFTER_INTRO holds it until the
+## world is ready, so it never sees this.
+##
+## The list is READ FROM THE SCENE rather than kept by hand. get_dependencies() parses the
+## header without loading anything, so it cannot go stale as main.tscn grows.
+func _warm_scene_scripts(scene_path: String) -> void:
+	var t0 := Time.get_ticks_msec()
+	var warmed := 0
+	for dep in ResourceLoader.get_dependencies(scene_path):
+		# Entries are either "res://path" or "uid://x::::res://path".
+		var at := String(dep).rfind("res://")
+		if at < 0:
+			continue
+		var path := String(dep).substr(at)
+		# Scripts and sub-scenes only. Textures, tilesets and audio load perfectly well on a
+		# worker thread, and leaving them to it is exactly the parallelism this buys back.
+		if not (path.ends_with(".gd") or path.ends_with(".tscn")):
+			continue
+		if not is_inside_tree():
+			return
+		ResourceLoader.load(path)
+		warmed += 1
+		await get_tree().process_frame   # let the plate tweens advance between compiles
+	if OS.get_environment("LOAD_PROF") != "":
+		print("LOADPROF warmed %d scene scripts in %d ms   abs=%d" % [
+			warmed, Time.get_ticks_msec() - t0, Time.get_ticks_msec()])
 
 
 func _ready() -> void:

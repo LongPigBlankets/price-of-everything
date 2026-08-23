@@ -1999,6 +1999,16 @@ func get_building_intermittency(instance_id: String) -> Dictionary:
 func get_tile_intermittency(tile_id: String) -> Dictionary:
 	return _intermittency_by_tile.get(tile_id, {})
 
+## How many player buildings are having their output cut by unfirmed intermittent
+## green power right now. Cheap read over the same per-building result the ledger's
+## green-power filters use; the top bar's power LED asks once per resolved turn.
+func intermittency_derated_count() -> int:
+	var n := 0
+	for entry in _intermittency_by_building.values():
+		if float((entry as Dictionary).get("derate", 0.0)) > 0.0:
+			n += 1
+	return n
+
 # On-demand power-source attribution for ONE consumer (called when the building detail panel
 # opens — NOT in the per-turn hot path). Attributes the building's draw to the NEAREST source
 # buildings: its green draw (from the intermittency result) to green plants, the remainder to

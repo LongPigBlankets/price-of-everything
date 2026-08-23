@@ -40,6 +40,20 @@ func toggle() -> void:
 	visible = not visible
 
 
+## Open the graph already focused on one good — the deep link from a good icon in the
+## encyclopedia or a building panel. Takes the CATALOG id and resolves it, because that
+## is what those panels hold; the graph itself is keyed by internal name.
+func open_focused(good_id: String) -> void:
+	var internal := Catalog.get_internal_name(good_id)
+	if internal == "":
+		internal = good_id   # already an internal name
+	visible = true
+	if _graph_world != null and _graph_world.has_method("select_good"):
+		# Deferred: the world lays out on becoming visible, and select_good needs the
+		# node it is focusing to have a position to fly from.
+		_graph_world.call_deferred("select_good", internal)
+
+
 ## Debug cheat: switch the full Goods Graph presentation between current and legacy.
 ## The normal default remains the current swimlane/focus presentation.
 func toggle_legacy_goods_graph() -> bool:

@@ -333,6 +333,7 @@ func _ready() -> void:
 	_test_empire_ports()
 	_test_empire_rag()
 	_test_audio_service()
+	_test_keybinds()
 	_test_tutorial_engine()
 	_test_decision_tenure_gate()
 	_test_decision_resolve_effects_and_loyalty()
@@ -1211,6 +1212,89 @@ func _test_tutorial_engine() -> void:
 # The Audio autoload (presentation-layer SFX service). Headless uses the Dummy
 # audio driver, so we assert wiring/state rather than actual playback: the click
 # stream imports, the voice pool is built, and click() runs without erroring.
+# Keybinds — what the Controls tab will and will not accept (scripts/keybinds.gd).
+# The demo ships every fixed binding read-only and the map modes unbound, so the only
+# behaviour worth pinning is the validator: it is the whole of what the player can do.
+func _test_keybinds() -> void:
+	var Keybinds = load("res://scripts/keybinds.gd")
+	var saved: Dictionary = PlayerProfile.keybinds.duplicate()
+	PlayerProfile.keybinds = {"logistics": KEY_J}
+
+	var key := func(code: int, sh := false, ct := false, al := false, me := false) -> InputEventKey:
+		var e := InputEventKey.new()
+		e.keycode = code
+		e.pressed = true
+		e.shift_pressed = sh
+		e.ctrl_pressed = ct
+		e.alt_pressed = al
+		e.meta_pressed = me
+		return e
+
+	# A free key is accepted.
+	_check(bool(Keybinds.validate(key.call(KEY_K), "power").ok), "keybinds: a free letter is accepted")
+	_check(bool(Keybinds.validate(key.call(KEY_F5), "power").ok), "keybinds: a function key is accepted")
+
+	# The modifier keys themselves, and any key pressed while one is held.
+	for row: Array in [["Shift", KEY_SHIFT], ["Ctrl", KEY_CTRL], ["Alt", KEY_ALT], ["Meta", KEY_META]]:
+		var v: Dictionary = Keybinds.validate(key.call(int(row[1])), "power")
+		_check(not bool(v.ok) and str(v.message) == Keybinds.MSG_UNUSABLE,
+			"keybinds: %s is refused with 'Cannot use that key.'" % str(row[0]))
+	for row2: Array in [["Shift", key.call(KEY_K, true)], ["Ctrl", key.call(KEY_K, false, true)],
+			["Alt", key.call(KEY_K, false, false, true)], ["Meta", key.call(KEY_K, false, false, false, true)]]:
+		var v2: Dictionary = Keybinds.validate(row2[1], "power")
+		_check(not bool(v2.ok) and str(v2.message) == Keybinds.MSG_UNUSABLE,
+			"keybinds: %s held with a letter is refused" % str(row2[0]))
+
+	# Numbers are reserved for gameplay, top row and keypad alike.
+	for row3: Array in [["1", KEY_1], ["0", KEY_0], ["numpad 7", KEY_KP_7]]:
+		var v3: Dictionary = Keybinds.validate(key.call(int(row3[1])), "power")
+		_check(not bool(v3.ok) and str(v3.message) == Keybinds.MSG_NUMBER,
+			"keybinds: %s is refused as a number" % str(row3[0]))
+
+	# Keys the rest of the game already owns, including the two added with this work.
+	for row4: Array in [["C", KEY_C], ["Space", KEY_SPACE], ["Z", KEY_Z], ["Tab", KEY_TAB], ["W", KEY_W]]:
+		_check(not bool(Keybinds.validate(key.call(int(row4[1])), "power").ok),
+			"keybinds: %s is refused, already bound" % str(row4[0]))
+	_check(not bool(Keybinds.validate(key.call(KEY_J), "power").ok),
+		"keybinds: a key held by another map mode is refused")
+	# ...but a row may always keep the key it already has.
+	_check(bool(Keybinds.validate(key.call(KEY_J), "logistics").ok),
+		"keybinds: a map mode may re-accept its own key")
+
+	# Escape and the mouse are refused outright: Escape is the way out of every menu, and a
+	# mode bound to a click would fire while the player was driving the map with the mouse.
+	var esc: Dictionary = Keybinds.validate(key.call(KEY_ESCAPE), "power")
+	_check(not bool(esc.ok) and str(esc.message) == Keybinds.MSG_UNUSABLE,
+		"keybinds: Escape is refused")
+	for btn: Array in [["left", MOUSE_BUTTON_LEFT], ["right", MOUSE_BUTTON_RIGHT],
+			["middle", MOUSE_BUTTON_MIDDLE], ["wheel up", MOUSE_BUTTON_WHEEL_UP],
+			["extra 1", MOUSE_BUTTON_XBUTTON1]]:
+		var mb := InputEventMouseButton.new()
+		mb.button_index = int(btn[1])
+		mb.pressed = true
+		var mv: Dictionary = Keybinds.validate(mb, "power")
+		_check(not bool(mv.ok) and str(mv.message) == Keybinds.MSG_UNUSABLE,
+			"keybinds: mouse %s is refused" % str(btn[0]))
+	_check(Keybinds.mapmode_for_keycode(KEY_J) == "logistics", "keybinds: keycode resolves to its map mode")
+	_check(Keybinds.mapmode_for_keycode(KEY_K) == "", "keybinds: an unbound keycode resolves to nothing")
+	_check(Keybinds.key_name(0) == "Unbound", "keybinds: 0 reads as Unbound")
+
+	# Every fixed row the Controls tab renders must have a label and key text to render.
+	var fixed_ok := true
+	for r: Dictionary in Keybinds.FIXED:
+		if str(r.get("label", "")) == "" or str(r.get("keys", "")) == "":
+			fixed_ok = false
+	_check(fixed_ok, "keybinds: every fixed row has a label and a key to show")
+	_check(Keybinds.MAPMODES.size() == 10, "keybinds: one bindable row per map mode")
+
+	# Commit + reload round-trip, and the 0 sentinel is dropped rather than saved.
+	Keybinds.set_mapmode_bindings({"power": KEY_K, "water": 0})
+	_check(int(PlayerProfile.keybinds.get("power", 0)) == KEY_K, "keybinds: a binding survives commit")
+	_check(not PlayerProfile.keybinds.has("water"), "keybinds: an unbound row is not persisted")
+
+	PlayerProfile.keybinds = saved
+
+
 func _test_audio_service() -> void:
 	for cue in ["CLICK", "CLICK_MENU", "CLICK_PRIMARY", "HOVER", "HAMMER", "RUBBLE", "SIGNATURE", "CASH_REGISTER", "TECH_UNLOCK", "SLOT_LEVER", "HINT"]:
 		_check(Audio.get(cue) != null, "audio: %s cue imports and loads" % cue)
@@ -6924,11 +7008,21 @@ func _test_goods_flow_graph() -> void:
 	# runs of different edges that share x-range never sit collinear (>= the sibling
 	# port-fan spacing H_SEP_SIBLING); and the final bilayer crossing count is
 	# bounded (and visible in the PASS name).
+	#
+	# THE SEPARATION FLOORS ARE MEASURED ON THE LEGACY LAYOUT, because that is the only
+	# presentation that still DRAWS resting web edges (the debug `legacy goods graph`
+	# toggle). The default presentation stopped drawing them, and its dummy rows —
+	# corridors that existed to hold those edges apart — were collapsed so the swimlane
+	# bands could tighten around the cards. Asserting a pixel floor there would be
+	# asserting the geometry of lines nobody renders; the invariants that DO matter for
+	# it are checked separately below.
+	var legacy: Dictionary = GoodsFlowGraph.build(true, true)
+	var legacy_edges: Array = legacy.get("edges", [])
 	var ortho := true
 	var verts: Array = []   # [x, y_lo, y_hi, edge_index]
 	var horiz: Array = []   # [y, x_lo, x_hi, edge_index]
-	for ei: int in range(edges.size()):
-		var wp: PackedVector2Array = (edges[ei] as Dictionary).get("waypoints", PackedVector2Array())
+	for ei: int in range(legacy_edges.size()):
+		var wp: PackedVector2Array = (legacy_edges[ei] as Dictionary).get("waypoints", PackedVector2Array())
 		if wp.size() < 2:
 			ortho = false
 			continue
@@ -6943,7 +7037,7 @@ func _test_goods_flow_graph() -> void:
 				verts.append([a.x, minf(a.y, b.y), maxf(a.y, b.y), ei])
 			if dy <= 0.01 and dx > 0.01:
 				horiz.append([a.y, minf(a.x, b.x), maxf(a.x, b.x), ei])
-	_check(ortho, "goods graph: every edge is an axis-aligned waypoint chain (>=2 points)")
+	_check(ortho, "goods graph: every legacy edge is an axis-aligned waypoint chain (>=2 points)")
 	var sep_ok := true
 	for i: int in range(verts.size()):
 		for j: int in range(i + 1, verts.size()):
@@ -6954,7 +7048,7 @@ func _test_goods_flow_graph() -> void:
 			var overlap: bool = maxf(float(a[1]), float(b[1])) < minf(float(a[2]), float(b[2])) - 0.01
 			if overlap and absf(float(a[0]) - float(b[0])) < 11.9:
 				sep_ok = false
-	_check(sep_ok, "goods graph: y-overlapping vertical runs sit >=11.9 units apart")
+	_check(sep_ok, "goods graph (legacy): y-overlapping vertical runs sit >=11.9 units apart")
 	var hsep_ok := true
 	for i: int in range(horiz.size()):
 		for j: int in range(i + 1, horiz.size()):
@@ -6965,7 +7059,67 @@ func _test_goods_flow_graph() -> void:
 			var overlap: bool = maxf(float(a[1]), float(b[1])) < minf(float(a[2]), float(b[2])) - 0.01
 			if overlap and absf(float(a[0]) - float(b[0])) < 5.9:
 				hsep_ok = false
-	_check(hsep_ok, "goods graph: x-overlapping horizontal runs sit >=5.9 units apart (owner floor: 5 px at max zoom 1.0)")
+	_check(hsep_ok, "goods graph (legacy): x-overlapping horizontal runs sit >=5.9 units apart (owner floor: 5 px at max zoom 1.0)")
+	# The swimlane bands: sized by CARDS, with each (column, lane) cell's cards packed
+	# contiguously and centred in its band. This is what replaced the pixel floors above
+	# for the default presentation — the bands used to be sized to fit edge corridors,
+	# which is why they were tall and why a cell's cards sat scattered inside one.
+	var lanes: Array = g.get("lanes", [])
+	var by_lane_col: Dictionary = {}   # "lane_top:col_x" -> [card centre ys]
+	for n in g.get("nodes", []):
+		var node: Dictionary = n
+		var pos: Vector2 = node["pos"]
+		for lane in lanes:
+			var top := float((lane as Dictionary)["top"])
+			var h := float((lane as Dictionary)["height"])
+			if pos.y >= top - 1.0 and pos.y <= top + h + 1.0:
+				var k := "%f:%f" % [top, pos.x]
+				var ys: Array = by_lane_col.get(k, [])
+				ys.append(pos.y)
+				by_lane_col[k] = ys
+				break
+	var packed_ok := true
+	var centred_ok := true
+	var checked := 0
+	for k in by_lane_col:
+		var ys: Array = by_lane_col[k]
+		if ys.size() < 2:
+			continue
+		ys.sort()
+		checked += 1
+		# Contiguous: consecutive cards in a cell sit exactly one ROW_H apart.
+		for i: int in range(ys.size() - 1):
+			if absf(float(ys[i + 1]) - float(ys[i]) - GoodsFlowGraph.ROW_H) > 0.51:
+				packed_ok = false
+	for lane in lanes:
+		var top := float((lane as Dictionary)["top"])
+		var h := float((lane as Dictionary)["height"])
+		var mid := top + h * 0.5
+		for k2 in by_lane_col:
+			if not str(k2).begins_with("%f:" % top):
+				continue
+			var ys2: Array = by_lane_col[k2]
+			ys2.sort()
+			# Centred: the card block's own midpoint sits on the band's midpoint.
+			var block_mid := (float(ys2[0]) + float(ys2[ys2.size() - 1])) * 0.5
+			if absf(block_mid - mid) > 0.51:
+				centred_ok = false
+	_check(checked > 0, "goods graph: swimlane cells found to check (%d multi-card cells)" % checked)
+	_check(packed_ok, "goods graph: a cell's cards are packed contiguously (one ROW_H apart)")
+	_check(centred_ok, "goods graph: a cell's card block is centred in its swimlane band")
+	# A band is exactly as tall as the most cards any one column puts in it — no corridor
+	# padding. Anything taller means dummy rows have crept back into the band sizing.
+	var band_sizing_ok := true
+	for lane in lanes:
+		var top := float((lane as Dictionary)["top"])
+		var h := float((lane as Dictionary)["height"])
+		var tallest := 0
+		for k3 in by_lane_col:
+			if str(k3).begins_with("%f:" % top):
+				tallest = maxi(tallest, (by_lane_col[k3] as Array).size())
+		if tallest > 0 and absf(h - float(tallest) * GoodsFlowGraph.ROW_H) > 0.51:
+			band_sizing_ok = false
+	_check(band_sizing_ok, "goods graph: each band is exactly its tallest cell's cards tall")
 	var crossings := int(g.get("crossings", -1))
 	# Canary re-baselined 2026-07-22: the 9-lane category swimlanes constrain the
 	# ordering (crossing-minimisation only runs within a lane cell), measured 1032

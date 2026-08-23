@@ -1,10 +1,47 @@
 extends Control
 
-const BUILDING_LEDGER_PANEL_SCENE := preload("res://scenes/building_ledger_panel.tscn")
-const PeoplePanel := preload("res://scripts/people_panel.gd")
-const VictoryEndScreen := preload("res://scripts/victory_end_screen.gd")
-const EndGameData := preload("res://scripts/end_game_data.gd")
+# PANELS BEHIND A CLICK ARE NOT LOADED WITH THE MAP.
+#
+# These four were preloads, and a preload is a load at COMPILE time: every start paid for
+# the Building Ledger, the People panel and the whole end screen, in sessions where none
+# of them was ever opened. Measured against everything the map genuinely needs, the set
+# reachable only through them came to 810 ms — about half of it the end screen, which
+# cannot appear until the game is over.
+#
+# Each is now fetched at its existing use site. The loads are cached STATICALLY, so the
+# cost is paid at most once per run no matter how often a panel is opened, closed or
+# reopened — and once per PROCESS, so a second match does not pay again. On top of that
+# the panel INSTANCES are cached as before (the is_instance_valid guards further down),
+# so reopening a panel never reaches the loader at all: it is a visibility toggle.
+#
+# The bottom menu's own chrome is untouched by this. Its script compiles with the map (it
+# is a node in main.tscn) and its button icons are fetched by path at runtime, so the tray
+# the player sees on the first frame is exactly as before.
+static var _ledger_scene: PackedScene = null
+static var _people_script: GDScript = null
+static var _end_screen_script: GDScript = null
+static var _end_game_data_script: GDScript = null
+
+static func _ledger_panel_scene() -> PackedScene:
+	if _ledger_scene == null:
+		_ledger_scene = load("res://scenes/building_ledger_panel.tscn") as PackedScene
+	return _ledger_scene
+
+static func _people_panel_script() -> GDScript:
+	if _people_script == null:
+		_people_script = load("res://scripts/people_panel.gd") as GDScript
+	return _people_script
+
+## Loaded only once the game has actually ended — see _show_end_screen, which is the only
+## caller and is itself reached only from the victory and turn-cap paths.
+static func _end_screen_scripts() -> Array[GDScript]:
+	if _end_screen_script == null:
+		_end_screen_script = load("res://scripts/victory_end_screen.gd") as GDScript
+	if _end_game_data_script == null:
+		_end_game_data_script = load("res://scripts/end_game_data.gd") as GDScript
+	return [_end_screen_script, _end_game_data_script]
 const MAIN_MENU_SCENE := "res://scenes/main_menu.tscn"
+const Keybinds := preload("res://scripts/keybinds.gd")
 
 var _end_screen: CanvasLayer = null
 
@@ -144,15 +181,53 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	var k := event as InputEventKey
 	if k.ctrl_pressed or k.alt_pressed or k.meta_pressed or k.shift_pressed:
 		return
-	if not _MENU_SHORTCUTS.has(k.keycode):
-		return
 	if _is_text_entry_focused():
+		return
+	# Space ends the turn, and does it by pressing the real button — so it inherits the
+	# disabled state during resolution and the dock's own click handling for free, rather
+	# than becoming a second way to advance a turn that could drift from the first.
+	if k.keycode == KEY_SPACE:
+		var end_turn := get_node_or_null("%EndTurnButton") as Button
+		if end_turn == null:
+			var scene := get_tree().current_scene
+			end_turn = scene.find_child("EndTurnButton", true, false) as Button if scene != null else null
+		if end_turn == null or end_turn.disabled or not end_turn.is_visible_in_tree():
+			return
+		end_turn.pressed.emit()
+		get_viewport().set_input_as_handled()
+		return
+	# Money has no bottom-menu button of its own — it opens from the top bar — so it goes
+	# through the same handler that widget uses.
+	if k.keycode == KEY_Z:
+		_on_money_widget_clicked()
+		get_viewport().set_input_as_handled()
+		return
+	# Map modes are the one rebindable set (Settings → Controls); unbound by default, so
+	# this does nothing until the player asks for it.
+	var mapmode := Keybinds.mapmode_for_keycode(k.keycode)
+	if mapmode != "":
+		_activate_mapmode(mapmode)
+		get_viewport().set_input_as_handled()
+		return
+	if not _MENU_SHORTCUTS.has(k.keycode):
 		return
 	var button := get_node_or_null("%" + str(_MENU_SHORTCUTS[k.keycode])) as Button
 	if button == null or button.disabled or not button.visible:
 		return
 	button.pressed.emit()
 	get_viewport().set_input_as_handled()
+
+
+## Drive a map mode from its hotkey by pressing the Mapmodes panel's own row, so the key
+## and the click cannot diverge — pickers open their good list, sentinels toggle, and the
+## panel re-syncs its pressed states exactly as it would on a click.
+func _activate_mapmode(id: String) -> void:
+	if not is_instance_valid(mapmodes_panel):
+		return
+	var row := mapmodes_panel.find_child("MapModeRow_%s" % id, true, false) as Button
+	if row == null or row.disabled:
+		return
+	row.pressed.emit()
 
 func _is_text_entry_focused() -> bool:
 	var fo := get_viewport().gui_get_focus_owner()
@@ -420,7 +495,7 @@ func _show_building_ledger(allow_toggle: bool = true) -> void:
 		return
 	_hide_all_panels()
 	if not is_instance_valid(building_ledger_panel):
-		building_ledger_panel = BUILDING_LEDGER_PANEL_SCENE.instantiate()
+		building_ledger_panel = _ledger_panel_scene().instantiate()
 		# Add as sibling to the other panels so it lives in HUDContent.
 		construct_panel.get_parent().add_child(building_ledger_panel)
 		building_ledger_panel.hide()
@@ -450,7 +525,7 @@ func _on_people_pressed() -> void:
 		return
 	_hide_all_panels()
 	if not is_instance_valid(people_panel):
-		people_panel = PeoplePanel.new()
+		people_panel = _people_panel_script().new()
 		construct_panel.get_parent().add_child(people_panel)
 		people_panel.hide()
 		people_panel.close_requested.connect(
@@ -508,7 +583,10 @@ func _show_end_screen() -> void:
 	if _end_screen != null:
 		return
 	_hide_all_panels()
-	var data: Dictionary = EndGameData.gather()
+	# The game is over by the time we are here, which is the only moment either of these is
+	# worth having in memory.
+	var end_scripts := _end_screen_scripts()
+	var data: Dictionary = end_scripts[1].gather()
 	if str(data.get("result", "")) == "victory":
 		# Hall of Records: victories only — defeats leave no trace.
 		PlayerProfile.record_win({
@@ -518,7 +596,7 @@ func _show_end_screen() -> void:
 			"secured": int(data.get("secured_count", 0)),
 			"epithet": str(data.get("epithet", "")),
 		})
-	_end_screen = VictoryEndScreen.new()
+	_end_screen = end_scripts[0].new()
 	add_child(_end_screen)
 	_end_screen.back_to_menu_pressed.connect(_on_end_screen_back)
 	_end_screen.show_end(data)

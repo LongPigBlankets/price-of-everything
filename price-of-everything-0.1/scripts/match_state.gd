@@ -371,6 +371,14 @@ var demolish_queue: Dictionary = {}
 var paused_buildings: Dictionary = {}
 # Last turn's per-link flow ("tile|mode"->units) — drives this turn's congestion cost.
 var _last_link_flow: Dictionary = {}
+# Per-link congestion HISTORY, for the transport panel's "at cap N of last 10 turns"
+# column: "tile|mode" -> Array[bool], newest last, capped at LINK_HISTORY_TURNS.
+# Appended once per turn from the same snapshot that prices congestion, so the two
+# can never disagree about whether a link was over.
+var _link_over_history: Dictionary = {}
+# Cumulative congestion surcharge attributed to each link, "tile|mode" -> float.
+# Diagnosis only — nothing prices off it. See note_congestion_surcharge().
+var _link_congestion_paid: Dictionary = {}
 # Shipments that arrived at a destination tile whose stockpile was full and so
 # couldn't unload. They wait here and retry each turn until there's room.
 # Record: {source_tile, destination_tile, good_id, qty, turns_waiting, construction_instance_id}
@@ -614,6 +622,9 @@ signal goods_graph_requested
 signal empire_view_requested
 ## The Goods Graph's expanded card asked for a good's Encyclopedia entry.
 signal encyclopedia_good_requested(good_id: String)
+## A good icon anywhere in the UI was clicked: open the Goods Graph focused on it, so a
+## good the player is reading about is one click from how it is made and what it feeds.
+signal goods_graph_good_requested(good_id: String)
 ## A UI element (e.g. the tile-view intermittency "see more" link) asked to open the
 ## building ledger pre-filtered to a single filter key (e.g. "green_intermittent").
 signal building_ledger_filter_requested(filter_key: String)
@@ -663,6 +674,10 @@ signal focus_tile_requested(tile_id: String)
 ## building instance (centring the camera on its tile). Used by starvation
 ## notifications' "Go to".
 signal focus_building_requested(instance_id: String)
+## The top bar's Transport module asks world_map to open the logistics panel.
+signal transport_panel_requested
+## A transport-panel stockpile row asks the map to open that tile's Stockpile tab.
+signal tile_stockpile_requested(tile_id: String)
 
 # --- Initialization ---
 func _ready() -> void:
@@ -3239,6 +3254,8 @@ func reset() -> void:
 	demolish_queue.clear()
 	paused_buildings.clear()
 	_last_link_flow.clear()
+	_link_over_history.clear()
+	_link_congestion_paid.clear()
 	overflow_shipments.clear()
 	sales_by_tile.clear()
 	tile_land_owned.clear()
@@ -3406,6 +3423,10 @@ func export_state() -> Dictionary:
 		"auto_sell_impact": auto_sell_impact.duplicate(true),
 		"queued_stockpile_market_sales": queued_stockpile_market_sales.duplicate(true),
 		"pending_transport_shipments": _shipments_for_save(),
+		# Additive (v3 transport panel): an older save has neither, and the empty
+		# default reads correctly as "no history yet" until turns accrue.
+		"link_over_history": _link_over_history.duplicate(true),
+		"link_congestion_paid": _link_congestion_paid.duplicate(),
 		"pending_upgrades": pending_upgrades.duplicate(true),
 		"pending_retrofits": pending_retrofits.duplicate(true),
 		"demolish_queue": demolish_queue.duplicate(true),
@@ -3529,6 +3550,8 @@ func import_state(d: Dictionary) -> void:
 	auto_sell_impact = (d.get("auto_sell_impact", {}) as Dictionary).duplicate(true)
 	queued_stockpile_market_sales = (d.get("queued_stockpile_market_sales", {}) as Dictionary).duplicate(true)
 	pending_transport_shipments = (d.get("pending_transport_shipments", []) as Array).duplicate(true)
+	_link_over_history = (d.get("link_over_history", {}) as Dictionary).duplicate(true)
+	_link_congestion_paid = (d.get("link_congestion_paid", {}) as Dictionary).duplicate()
 	_recompute_unpaid_purchases()  # rebuilt from the shipments so the accumulator can't drift
 	pending_upgrades = (d.get("pending_upgrades", []) as Array).duplicate(true)
 	pending_retrofits = (d.get("pending_retrofits", []) as Array).duplicate(true)
@@ -4040,7 +4063,36 @@ func queue_transport_shipment(shipment: Dictionary) -> void:
 		_shipment_id_counter += 1
 		s["id"] = _shipment_id_counter  # stable id so the overlay can track it across turns
 	pending_transport_shipments.append(s)
+	_note_shipment_congestion(s)
 	transport_shipments_changed.emit()
+
+## Book the congestion share of a real shipment's freight against the link that caused
+## it. Done HERE, at the one funnel every committed shipment passes through, rather than
+## in transport_cost_for_route — that function is shared with quotes, previews and the
+## build forecast, so attributing there would count charges the player never paid (the
+## same trap land_cost_after_credit's `commit` flag exists to avoid).
+##
+## The surcharge is recovered from the multiplier the cost was priced with: only the
+## units past the binding link's headroom pay it, so mult = (within + over*rate)/qty and
+## the surcharge share of the final cost is (1 - 1/mult).
+func _note_shipment_congestion(s: Dictionary) -> void:
+	var cost := float(s.get("transport_cost", 0.0))
+	if cost <= 0.0:
+		return
+	var qty := _shipment_total_units(s)
+	if qty <= 0:
+		return
+	var cong := route_congestion({"tiles": s.get("tiles", []), "legs": s.get("legs", [])})
+	var tier := int(cong.get("tier", 0))
+	var key := str(cong.get("key", ""))
+	if tier <= 0 or key == "":
+		return
+	var rate: float = 2.0 if tier == 1 else 3.0
+	var over: int = maxi(0, qty - int(cong.get("headroom", 0)))
+	var mult := (float(qty - over) + float(over) * rate) / float(qty)
+	if mult <= 1.0:
+		return
+	note_congestion_surcharge(key, cost * (1.0 - 1.0 / mult))
 
 func request_toast(message: String, toast_type: String = "success") -> void:
 	toast_requested.emit(message, toast_type)
@@ -5005,6 +5057,8 @@ func advance_transport_shipments() -> Array:
 # +200% once over capacity plus the base L1 cap. Last turn's flow drives this turn's
 # costs (route_congestion_tier), so it's stable rather than self-referential.
 const _CAPPED_MODES := ["roads", "rail", "pipes", "reinf_pipes"]
+## How many turns of over-capacity history the transport panel reports on.
+const LINK_HISTORY_TURNS := 10
 
 ## "tile_id|mode" -> total units crossing it this turn (capped modes only).
 func transport_link_flow() -> Dictionary:
@@ -5164,6 +5218,76 @@ func _queue_or_store_resolved_shipment(shipment: Dictionary) -> void:
 ## in TransportService.transport_cost_for_route via route_congestion_tier().
 func update_transport_congestion() -> void:
 	_last_link_flow = transport_link_flow()
+	_roll_link_history()
+
+## Record, for every link carrying freight this turn, whether it was over capacity.
+## Rolled here rather than in the cost path so a link is sampled once per turn no
+## matter how many shipments cross it.
+func _roll_link_history() -> void:
+	for key in _last_link_flow.keys():
+		var parts := str(key).split("|")
+		if parts.size() != 2:
+			continue
+		var cap := tile_mode_capacity(parts[1], _tile_infra_level(parts[0], parts[1]))
+		var over: bool = cap > 0.0 and float(_last_link_flow[key]) > cap
+		var hist: Array = _link_over_history.get(key, [])
+		hist.append(over)
+		if hist.size() > LINK_HISTORY_TURNS:
+			hist = hist.slice(hist.size() - LINK_HISTORY_TURNS)
+		_link_over_history[key] = hist
+
+## Turns in the last LINK_HISTORY_TURNS this link ran over capacity.
+func link_turns_over(link_key: String) -> int:
+	var n := 0
+	for over in (_link_over_history.get(link_key, []) as Array):
+		if bool(over):
+			n += 1
+	return n
+
+## Total congestion surcharge this link has been charged across the run (0 if never).
+func link_congestion_paid(link_key: String) -> float:
+	return float(_link_congestion_paid.get(link_key, 0.0))
+
+## Book a route's congestion surcharge against the link that caused it. The surcharge
+## is priced per ROUTE (marginally, against the tightest congested link's headroom),
+## so there is no exact per-link split to recover — attributing the whole charge to
+## the binding link is the honest approximation, and it is the link the player has to
+## upgrade to make the charge go away. Diagnostic only: nothing prices off this.
+func note_congestion_surcharge(link_key: String, amount: float) -> void:
+	if link_key == "" or amount <= 0.0:
+		return
+	_link_congestion_paid[link_key] = float(_link_congestion_paid.get(link_key, 0.0)) + amount
+
+## Every link currently over its capacity, worst first by utilisation. Rows are
+## {key, tile_id, mode, flow, cap, level, ratio} — the transport panel's Infra column
+## and the top bar's freight readout both read this.
+func congested_links() -> Array:
+	return active_links(true)
+
+## Links carrying freight this turn, worst-first by utilisation. `only_over` keeps
+## just the ones past capacity.
+func active_links(only_over: bool = false) -> Array:
+	var rows: Array = []
+	for key in _last_link_flow.keys():
+		var parts := str(key).split("|")
+		if parts.size() != 2:
+			continue
+		var flow := float(_last_link_flow[key])
+		if flow <= 0.0:
+			continue
+		var level := _tile_infra_level(parts[0], parts[1])
+		var cap := tile_mode_capacity(parts[1], level)
+		if cap <= 0.0:
+			continue   # uncapped mode — it can never be "over"
+		var ratio := flow / cap
+		if only_over and ratio <= 1.0:
+			continue
+		rows.append({
+			"key": str(key), "tile_id": parts[0], "mode": parts[1],
+			"flow": flow, "cap": cap, "level": level, "ratio": ratio,
+		})
+	rows.sort_custom(func(a, b): return float(a.ratio) > float(b.ratio))
+	return rows
 
 ## Congestion tier of a route, from last turn's flow on the links it crosses:
 ##   0 = clear · 1 = any link over its capacity · 2 = any link over capacity PLUS its
@@ -5181,7 +5305,7 @@ func route_congestion_tier(route_data: Dictionary) -> int:
 ## shipment rides at the base rate. Returns {tier, headroom}: headroom is the tightest
 ## remaining capacity across the route's capped links (0 when already at or over cap).
 func route_congestion(route_data: Dictionary) -> Dictionary:
-	var clear := {"tier": 0, "headroom": 0}
+	var clear := {"tier": 0, "headroom": 0, "key": ""}
 	if _last_link_flow.is_empty():
 		return clear
 	var tiles: Array = route_data.get("tiles", [])
@@ -5190,6 +5314,7 @@ func route_congestion(route_data: Dictionary) -> Dictionary:
 		return clear
 	var worst := 0
 	var headroom := -1.0
+	var binding := ""   # the link whose headroom governs — what a surcharge is charged for
 	var idx := 0
 	for leg in legs:
 		var start := idx
@@ -5211,10 +5336,12 @@ func route_congestion(route_data: Dictionary) -> Dictionary:
 				elif flow > cap:
 					worst = maxi(worst, 1)
 				var link_headroom := maxf(0.0, cap - flow)
+				if headroom < 0.0 or link_headroom < headroom:
+					binding = "%s|%s" % [tile_id, mode]
 				headroom = link_headroom if headroom < 0.0 else minf(headroom, link_headroom)
 	if worst == 0:
 		return clear
-	return {"tier": worst, "headroom": int(maxf(0.0, headroom))}
+	return {"tier": worst, "headroom": int(maxf(0.0, headroom)), "key": binding}
 
 func enable_sell_surplus(tile_id: String) -> void:
 	if tile_id == "" or sell_surplus_tiles.has(tile_id):

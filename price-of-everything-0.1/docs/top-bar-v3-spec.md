@@ -338,3 +338,226 @@ Inputs from the turn summary: `power_supply`, `power_demand`, `grid_bought`
 Assumptions shipping unless objected: hover = faint fill (§1.2); LEDs exist
 only on Treasury / Power / Transport — Victory / Council / Briefing have no
 red condition defined, so they carry no lamp (§1.3).
+
+---
+
+## 8 · Build log (implemented 2026-08-23)
+
+All three changes are built, compile clean, and were verified on a live map
+(`2845 passed, 2 failed` — the same two pre-existing perf failures the clean tree
+produces, see §9).
+
+| Area | Files |
+|---|---|
+| Bar restyle, LEDs, rankings face, transport module, anomaly popups | `scripts/top_bar.gd` |
+| Shared bar/dock navy | `scripts/bar_navy.gd` (new) |
+| Logistics panel | `scripts/transport_panel.gd` (new) |
+| Popup card | `scripts/anomaly_popup.gd` (new) |
+| Per-link history + congestion attribution, panel signals | `scripts/match_state.gd` |
+| Per-tile fill history, trend, turns-until-full | `scripts/stockpile.gd` |
+| `intermittency_derated_count()` | `scripts/production.gd` |
+| Panel wiring + stockpile deep-link | `scripts/world_map.gd` |
+
+Decisions taken during the build, beyond the spec:
+
+- **Congestion £ is attributed at `queue_transport_shipment`, not in
+  `transport_cost_for_route`.** That function is shared with quotes, previews and
+  the build forecast, so booking there would have counted charges the player never
+  paid — the same trap `land_cost_after_credit`'s `commit` flag exists to avoid.
+  The surcharge is recovered exactly from the multiplier the cost was priced with,
+  at the single funnel every committed shipment passes through.
+- **`route_congestion()` now also returns `key`**, the binding link, so a surcharge
+  has something to be charged against.
+- **The briefing notch is now `BAR_H + NOTCH_DROP`, not a fixed 102.** Against the
+  shorter bar the fixed height left a notch nearly as deep as the bar was tall.
+  Its fill also follows `bar_ground_at()` — with the bar now a gradient, its old
+  flat `C_BAR_BG` read as a darker slab bolted on.
+- **The bar's gradient is drawn from `-TOP_BLEED`**, preserving the sub-pixel seam
+  fix the old opaque stylebox's `expand_margin_top` provided.
+- **Rankings' "goods you lead in" requires quantity > 0.** `goods_standings()`
+  generates no rivals for apex goods, so the player is trivially rank 1 on every
+  one of them; without the quantity test the bar boasted about goods never made.
+- **`_module_box(active, warn)` keeps its `warn` argument** (unused) so no call
+  site had to change; LEDs replaced the red border entirely.
+- Existing tile deep-link `_on_go_to_tile_stockpile` had a latent bug: it set
+  `_active_tab` before `show_tile()`, which resets to Buildings. Now re-selects
+  after.
+
+Not done (needs the owner): the "Controls — a handful of things" list.
+
+## 9 · Discovered while verifying: PR #123's warm load is silently failing
+
+Unrelated to this work, and present on a clean checkout of `main` (41a731a):
+
+`main_menu.gd:64` warms the map scene with
+`ResourceLoader.load_threaded_request("res://scenes/main.tscn")`. On the worker
+thread, `building_detail_panel.gd`'s three `preload()`s of
+`assets/ui/goods_frame.tres`, `assets/ui/silver_frame.tres` and
+`assets/shaders/ui_blur.gdshader` fail, the script fails to compile, and the whole
+scene load fails:
+
+```
+SCRIPT ERROR: Parse Error: Could not preload resource file "res://assets/ui/goods_frame.tres".
+   at: GDScript::reload (res://scripts/building_detail_panel.gd:49)
+ERROR: Parse Error: Failed. [Resource file res://scenes/main.tscn:146]
+```
+
+All three files exist and are tracked; the textures are imported. The game still
+works because `loading_screen.gd:205` falls back to a blocking
+`change_scene_to_file`, which loads on the main thread and succeeds — so the
+failure is invisible in play, but **the ~1.8 s the optimisation was supposed to
+save is not being saved**, and the console carries errors at every boot.
+
+Worth confirming before the demo, since "loading screen optimisation" is on the
+roadmap as a cut candidate: it may already be a no-op.
+
+### 9b · Root cause, measured (2026-08-23)
+
+Three experiments, each on a clean tree:
+
+1. **Warm the three named resources on the main thread first.** All three load
+   fine (`[WARM] ... -> OK`) and their preload errors disappear — but the scene
+   still fails, now silently, on `world_map.gd`.
+2. **Delay the threaded request by 12 frames.** A *different* and much larger
+   cascade fails: `BebasNeue-Regular.ttf`, `BarlowCondensed-SemiBold.ttf`, all
+   five `assets/icons/victory/*.png`, and more. The load never completes.
+3. **Pre-compile main.tscn's 31 scripts + 8 sub-scenes on the main thread, then
+   request the threaded load.**
+
+```
+[WARM] main-thread precompiled 39 scripts/scenes in 4713 ms (0 failed)
+[WARM] threaded request rc=0
+[WARM] SCENE LOADED OK in 169 ms
+```
+
+So it is not those three files, and not a race:
+
+> **A GDScript compiled on a ResourceLoader worker thread cannot resolve
+> `preload()` of a non-script asset.** Fonts, icons, textures, `.tres`,
+> `.gdshader` — all fail. This project's scripts are built on `preload`, so a
+> threaded load of `main.tscn` can never succeed while it has to compile them.
+
+`building_detail_panel.gd` was only the first casualty; fixing it just moves the
+failure to the next script in the graph.
+
+Note this also means **`loading_screen.gd:190`'s own threaded request fails the
+same way, every time** — the "threaded scene load" has never once run. Every
+Start has silently fallen through to the blocking `change_scene_to_file` on line
+206, paying the full ~4.7 s of compilation on the main thread *while the film is
+playing* — and the film's Theora decode is itself main-thread (see the loading
+film notes), so the two have been competing for the entire load.
+
+### 9c · Options
+
+**A — Delete the warm request (minimal, ~15 min).** Remove
+`main_menu.gd:64` and stop `loading_screen.gd` attempting the threaded path.
+Zero behaviour change (both already fall back), and the boot/film error spam
+goes away. Does not recover any speed — but nothing is being lost today either.
+
+**B — Warm the SCRIPTS on the main thread while the player is on the menu,
+paced, then request the scene (recommended).** Experiment 3 is the proof: with
+the scripts already compiled, the worker thread has only the `.tscn` and its
+textures left and finishes in **169 ms, clean**. That moves ~4.7 s of
+compilation out of the film and into menu idle time. It must be paced — a
+single blocking pass would freeze the menu for 4.7 s — using the existing
+`LoadPacing` autoload / `_build_yield()` idiom, a few per frame. The trade is
+some hitching on a static menu in exchange for a much faster Start and a film
+that no longer competes with the compiler.
+
+**C — Convert the hot scripts' `preload`s to lazy `load()`.** The only route to
+a genuinely off-thread scene load, but it touches 31 files and changes when
+every asset is fetched. Not a demo-week change.
+
+Recommendation for Sunday: **A now** (it is nearly free and removes the errors),
+with **B** as the follow-up if the Start time matters for the demo — B is where
+the 4.7 s actually is.
+
+### 9d · B′ built and measured (2026-08-23)
+
+Implemented, not on the menu but **under the intro plates** — the one stretch of the
+load already designed to be unshareable, per `loading_screen.gd`'s own reasoning
+that "a tween that misses a frame resumes where it was; a video that misses a
+frame has lost that frame for good."
+
+- `loading_screen.gd` — `_warm_scene_scripts()`, called from `begin_load()` before
+  `_await_film_started()`. Compiles the scene's `.gd` and `.tscn` dependencies on
+  the main thread, one per frame. The list comes from
+  `ResourceLoader.get_dependencies()`, which parses the scene header without
+  loading it, so it maintains itself as main.tscn grows.
+- `main_menu.gd` — the boot-time warm now requests the scene's **non-script**
+  dependencies (textures, tileset, audio), which load on a worker perfectly well.
+  That was the "pull the textures into RAM" the PR wanted; asking for the scene
+  itself only ever produced parse errors and warmed nothing.
+
+Measured with `tools/loading_film_check.tscn`, 1280×720, coal_baron start:
+
+| | before | after |
+|---|---|---|
+| Film drift by `build_complete` | **1.57 s** | **0.05 s** |
+| Worst single frame gap | 5,665 ms | 4,255 ms |
+| `build_complete` | t+28,603 ms | t+26,029 ms |
+| Film frame interval, playing | 62–250 ms (4–16 fps) | 42–50 ms (20–24 fps) |
+| Threaded scene load | never succeeded | **920 ms** |
+
+`LOADPROF threaded scene load 920 ms` prints only on the success path, so that
+line is the proof the worker is being used for the first time. Boot is silent.
+
+So both of the owner's non-negotiables are not merely held but improved: Start is
+**2.6 s faster**, and the film loses 0.05 s instead of 1.57 s. Nothing was added —
+the same ~5.3 s of compilation happens either way; it is now spent deliberately,
+where the design already expects a frozen main thread, and it buys back a real
+threaded load.
+
+The remaining 4,255 ms gap is scene **instantiation** (`abs=12148` → world_map
+`_ready` at `abs=14407`), which is main-thread by nature and a separate problem —
+`loading_screen.gd:51` already calls it out as "a ~1.3 s frame".
+
+Not attempted: option C. Still the only route to a genuinely off-thread load, and
+still a 31-file change.
+
+### 9e · Panels behind a click, and a correction to §9d
+
+`bottom_menu.gd` carried four preloads — the Building Ledger scene, the People
+panel, the victory end screen and its data gatherer. A preload is a load at
+compile time, so every start paid for all four, including sessions where none was
+opened and including the end screen, which cannot appear until the game is over.
+
+Fourteen files were reachable *only* through them. Measured marginally, against
+everything the map needs anyway: **810 ms**. All four are now fetched at their
+existing use sites and cached in `static var`s, so the load happens at most once
+per process; the panel instances are still cached by the pre-existing
+`is_instance_valid` guards, so a reopen never reaches the loader at all.
+
+Verified in a real match (temporary autoload, `main.tscn` booted directly):
+
+```
+before any open -> ledger_scene=<null> people_script=<null> end_screen=<null>
+ledger FIRST open: 290.0 ms      ledger SECOND open: 1.3 ms
+people FIRST open: 433.0 ms      people SECOND open: 0.5 ms
+end screen STILL not loaded: true      (after both panels were opened)
+```
+
+The warm phase drops with it: `warmed 39 scene scripts` went from **6,500 ms** to
+**5,185 / 5,456 / 5,398 ms** across three runs. The bottom menu's own chrome is
+untouched — its script still compiles with the map, and its button icons were
+always fetched by path at runtime, not preloaded.
+
+**Correction to §9d.** That table claimed `build_complete` improved 28.6 s → 26.0 s.
+Both figures were single runs, and they do not survive repetition: with n=3, and
+after this change too, `build_complete` lands at 19.4 / 20.3 / 20.6 s against the
+original single run's 20.4 s. **Start time is essentially unchanged** — which is
+what should have been expected, since warming under the plates MOVES compilation
+rather than removing it. The 810 ms this section removes is real but sits close to
+the harness's run-to-run noise (~±0.6 s).
+
+What §9d did establish, and what repeats cleanly, is the film:
+
+| | before | after (n=3) |
+|---|---|---|
+| Film drift by `build_complete` | 1.57 s | 0.10 – 0.14 s |
+| Worst single frame gap | 5,665 ms | 3,810 – 4,201 ms |
+| Threaded scene load | never succeeded | 725 ms |
+| Boot errors | a cascade every boot | none |
+
+Tests: 2845 passed, 2 failed — the same two timing-sensitive perf tests a clean
+tree fails. (An earlier run showed 2847/0; that was variance, not a fix.)

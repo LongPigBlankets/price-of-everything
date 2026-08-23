@@ -36,7 +36,15 @@ const _ROUTE_COLORS: Array[Color] = [
 # was the screen's dominant noise, and nobody traces a line through 638 crossings
 # without selecting anyway. At rest the web is a faint ghost (0.0 = none at all);
 # hover lights a card's direct edges, click lights the full chain.
-const _REST_GHOST_ALPHA := 0.10
+## Resting edges are NOT DRAWN. The web at rest is a table of goods, and 600-odd ghost
+## lines behind it read as noise rather than as information nobody asked for yet. Select,
+## click, hover or search a good and its chain lights up — which is the moment the lines
+## are an answer to something. 0.0 takes the early-out in _draw_edge; the lit and hovered
+## branches above it are untouched.
+##
+## This is also what pays for the tighter columns in goods_flow_graph: the old 200u gap
+## existed so that a full web of risers stayed readable, and a full web is no longer drawn.
+const _REST_GHOST_ALPHA := 0.0
 # Legacy resting web, retained behind the `swap goods_graph` cheat for screenshots
 # and A/B comparison with the pre-ghost implementation.
 const _LEGACY_REST_ALPHA_BASE := 0.60
@@ -264,6 +272,12 @@ func _fit_zoom() -> float:
 	return clampf(fit, _ZOOM_MIN, _ZOOM_MAX)
 
 
+## How much closer than fit-the-whole-graph the view OPENS at. The floor stays the
+## whole-graph fit — you can still pull all the way back — but landing on it made the
+## cards unreadably small on arrival, so the chart opened as a texture rather than as a
+## table you could read. Opening in and letting the player zoom out is the better default.
+const _OPEN_ZOOM_MUL := 1.9
+
 func _reset_view() -> void:
 	var bb := _layout_bbox()
 	var view := get_rect().size
@@ -274,7 +288,8 @@ func _reset_view() -> void:
 		_view_zoom = 1.0
 		_view_offset = view * 0.5
 		return
-	_view_zoom = _zoom_floor
+	# Open closer than the floor, centred on the same point, and never past the max.
+	_view_zoom = clampf(_zoom_floor * _OPEN_ZOOM_MUL, _zoom_floor, _ZOOM_MAX)
 	_view_offset = view * 0.5 - bb.get_center() * _view_zoom
 
 
