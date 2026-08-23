@@ -39,10 +39,17 @@ something you can see.
 - **Light**: one sun, `use_shadow = False`. **No cast shadows ever** — form reads
   from flat face tones only; cast shadows render as smudgy artifacts in this style.
   Flat-shaded faces (`use_smooth = False` everywhere) give cel shading for free.
-- **Ink**: Freestyle, absolute thickness. Two linesets: `ink` (silhouette+border+
-  crease+edge marks, color ~`(0.055, 0.065, 0.13)`, 2.4px) and `contour`
-  (external contour only, `(0.045, 0.055, 0.11)`, 7px). Heavy outer line is the
-  icons' signature.
+- **Ink**: Freestyle, absolute thickness, THREE tiers — `ink` (silhouette+border+crease+
+  edge marks, `(0.055, 0.065, 0.13)`, 2.4px), `ink_fine` (1.05px, for FINE_INK equipment),
+  and **no ink at all** (a face-mark on `freestyle_face`, for anything whose outline would be
+  wider than the thing itself — grass blades, tiny crates).
+- **The heavy 7px outer line is NOT Freestyle's** (changed 2026-08-21). `setup_rig` still
+  creates a `contour` lineset, but `render_sprite.py` DROPS it and `sprite_export.py`
+  synthesizes the line in 2D instead. Reason: Freestyle's external contour is view-map based,
+  so it draws around every region of background — including the slot between two of one
+  component's own pipes and every hole inside a pylon's lattice — and no lineset selector
+  expresses "outermost boundary of a connected component". A morphological closing does.
+  Colour `(47, 59, 89)`, sampled from the shipped furnace so old and new sprites match.
 - **Film**: transparent. Render 1024×1024, EEVEE.
 - **Palette** (flat Principled, roughness 1, specular 0 — sheen breaks both the cel
   look and stylize.py's glass test. Canonical copy: `sprite_kit.PALETTE`, addressed by
@@ -315,6 +322,127 @@ have fixed any of these, because every one was a fault in the PATH.)
 
    Check this whenever a render shows geometry you did not build — the owning collection
    being hidden is not evidence that its objects are.
+13. **A disc facing the camera has an axis that projects VERTICAL — you cannot have both.**
+   A horizontal vector `d` projects to screen column `dx+dy` and screen height `-(dx-dy)/2`.
+   A disc reads as a true circle only when its in-plane horizontal is `(1,1)/√2`; its normal
+   is then `(1,-1)/√2`, whose column is **zero**. So anything mounted along that normal — a
+   nacelle behind a rotor, a barrel behind a wheel, a boom behind a dish — draws as a purely
+   vertical bar. The wind farm's first render read as the tower carrying on past the blades,
+   and no amount of repositioning the box could fix it, because it is the projection, not the
+   placement. The dial is to YAW the disc off the camera; the cost is measured and small:
+
+   | yaw | mounted axis, degrees from horizontal | disc aspect |
+   |---|---|---|
+   | 0° | 90° (vertical) | 1.00 |
+   | 15° | 69° | 0.98 |
+   | **25°** | **57°** | **0.95** |
+   | 35° | 45° | 0.91 |
+   | 45° | 35° (on the iso grid) | 0.87 |
+
+   25° buys a real horizontal component for under two pixels of roundness on a 250 px disc.
+   Past 35° the disc visibly squashes.
+14. **NEVER let `hash()` reach geometry.** Python randomises string hashing per process, so
+   `phase = (hash(tag) % 7) * 17.0` — three words to vary rotor clock positions across a farm
+   — made the sprite **unreproducible**: two bakes of an unchanged builder differed by 45 px
+   of bounding box, and the next re-bake would have tripped the verify gate with nothing
+   actually wrong. Derive per-instance variation from the INDEX instead, with a multiplier
+   coprime to the period (`(int(tag) * 47.0) % 120.0`). The same applies to `random` without
+   a fixed seed, to `set`/`dict` iteration order over strings, and to anything else that is
+   stable within a run but not across runs. Test: bake twice and require IoU 1.000.
+15. **Know whether a kit helper takes a CENTRE or ENDPOINTS, then bounds-check the extremity.**
+   `substation_gantry(p0, p1, ...)` plants a `lattice_mast` on each endpoint, so a span written
+   as `centre ± 0.80` puts hardware 0.80 out plus the mast's own half-width — which is how the
+   wind farm's takeoff gantry ended up with one leg hanging off the site plate. Same shape of
+   error for `pipe_run`, `conveyor` and anything else taking two points: the argument you wrote
+   is not the silhouette. After placing one, check `extremity ± half-width` against the site
+   bounds, never the centre.
+16. **A lofted body has no corners to save it.** Swapping a `dirbox` for a lofted elliptical
+   section makes the part SMALLER at every diagonal — a box of half-extents (w, h) reaches
+   `√(w²+h²)`, an ellipse only reaches `w` or `h`. The wind farm's nacelle vanished inside a
+   hub drum that had happily sat beside the box version. Re-check every neighbour's radius
+   after converting a box to a loft.
+17. **Decide DELIBERATELY what governs each level's bounding box — the shared-scale export
+   normalises it away.** One factor is computed for the whole level set from the largest
+   max-dimension, so whatever sets a level's overall extent is exactly what stops being a
+   level cue. Two builds, opposite conclusions, same rule:
+   * *Offshore wind* has nothing but turbines, so the sea plate is held CONSTANT at every
+     level. The plate governs the extent, the turbines vary inside it, and count and size come
+     through cleanly. Growing the sea with the machines would have cancelled them out exactly.
+   * *Solar* is flat and has no tall object at all. With a constant plate governing the
+     extent, all three levels exported at precisely 870x534 and the level was invisible; the
+     plate is computed from the content instead, and L1 drops to 57% of L3's width.
+   Check it the cheap way: bake the set and read the `ref =` line plus the three output sizes.
+   Three identical sizes on a building that is supposed to grow is the bug.
+18. **To draw a GRID pattern, tile one mesh across two material slots — never stack plates.**
+   Thin lines laid on top of a base plate are coplanar faces (rule 1) and, as separate objects,
+   each earn their own contour. Instead build the whole face as abutting quads — cell, line,
+   cell, line — that SHARE edges, and set `poly.material_index` per quad. No overlap means no
+   z-fighting, one object means one contour, and material boundaries inside a mesh are
+   hard-edged and uninked, which is precisely what a cell grid or a tiled facade wants. The
+   solar panel is 45 quads this way. Size the lines in FINAL pixels, not by realism: a real PV
+   cell gap is about 1% of a cell and is sub-pixel here; 14% turned the panels grey and 9% is
+   the smallest that survives the export downscale.
+19. **The rig is TRUE isometric. Use these pixel numbers, not 2:1 dimetric ones.** The camera
+   is `rotation (54.736°, 0, 45°)` at `ortho_scale 11` in a 1024 frame, i.e. elevation 35.264°.
+   Measured from the rig, per world unit:
+
+   | direction | across | up |
+   |---|---|---|
+   | camera right axis (1,1,0)/√2 | 93.1 px | — |
+   | world X (and Y, mirrored) | 65.8 px | 38.0 px (X down, Y up) |
+   | world Z | — | 76.0 px |
+
+   So screen column is `x + y` (65.8 px per unit of it) and screen height is `z − (x−y)/2`
+   (76.0 px per unit of it) — the RATIO form of every sightline rule in this file is exact,
+   but "93 px per world unit" is not: 93.1 is per unit along the camera's own axis. The solar
+   farm's cell-squaring was first done with dimetric numbers (80.5 / 103.8 px along its two
+   panel axes instead of the true 76.0 / 91.0) and left every cell 6% wider than tall. Any
+   time a constant is set "in final pixels", derive it from this table.
+20. **Frame from PROJECTED extents, never from the plan.** The camera target is the screen
+   centre exactly (`camera = target + (1,−1,1)·26`), so the target must be the midpoint of
+   the content's projected column range `[min(x+y), max(x+y)]` and height range
+   `[min(z−(x−y)/2), max(...)]`. The extreme corners are rarely where the plan suggests: on
+   the assembly plant the apron sits in FRONT of the hall, so its left-front corner sets the
+   smallest column, while the largest belongs to the rear gable at L3 and to the dock's back
+   corner at L2. Centring on the plan midpoint put L3 1.5 columns off and clipped the apron
+   at the frame edge. Write a `_frame(p)` that computes the four extremes per level and
+   returns the target; check the bake's bbox for `x0 <= 1` or `x1 >= 1023`.
+21. **Transparent glass: BLENDED, single-surface, opaque behind it, dark enough to survive
+   AgX, and with structure to see through it.** Verified on the assembly plant's vault, each
+   point measured:
+   * `mat.surface_render_method = 'BLENDED'` with Principled `Alpha` < 1 works under this rig
+     (`use_transparency_overlap` and face winding make no difference). DITHERED is noise, and
+     after the print pass noise is stipple.
+   * Alpha compounds per SURFACE: a 0.04-thick box at alpha 0.55 rendered at 0.80, because the
+     ray crossed two faces. Build glass as an open single-surface mesh.
+   * Every ray through the glass must land on something opaque, or the alpha reaches the
+     film and the map shows through the roof in-game. Trace the ray (−1, +1, −1) from the
+     glass: on the assembly plant it lands on the back wall's inner face for almost the whole
+     vault, but the back 0.4 of the arc escapes OVER the wall top (peak escape height is where
+     dz/dy = −1, i.e. y = R/√2: 3.08 against an eave of 3.05). A 0.08 parapet lip caught it.
+     Check the render's alpha channel for values between 20 and 200 inside the silhouette.
+   * Pale glass goes GREY: (0.47, 0.61, 0.72) renders 154,166,173 — AgX desaturates anything
+     that bright. (0.20, 0.36, 0.50) renders 112,140,156, a clear pale blue.
+   * The inner faces behind the glass are SEEN, so they must be the building's own material.
+     A pale "lining" was tried to keep the tint clean, and through the steep part of the vault
+     — where the glass is nearly edge-on and shows what is behind it strongly — it read as a
+     grey wall where a brick one was expected ("the left wall is missing its brick"); it also
+     stopped short of the gable and drew a seam in the glass. Brick inner faces at alpha 0.62
+     give a blue-grey over brick that still reads as glass because of the next point.
+   * With a flat wall behind it the transparency is INVISIBLE IN EFFECT: the roof just blends
+     to one tint. What makes a glasshouse read as glass is structure seen through it — arched
+     ribs under the panes at half-bay spacing. Freestyle treats the glass as opaque geometry,
+     so the ribs take no ink and show only as soft dark arcs, which is the look.
+   * The shading-mask pass uses a material OVERRIDE, so glass is opaque there: the print pass
+     treats the roof as a surface. That is right.
+22. **When a building grows between levels, anchor it on its serviced side.** Decide which
+   wall carries the services — pipes, the belt exit, the dock, the door to the yard — and hold
+   that wall fixed; the building extends away from it. The chem plant first grew toward its
+   pipe wall, so the pipes slid along with each level and the door, fixed at the far end, looked
+   stranded ("how did it extend to gain another window's width?"). Place the door and the
+   fixtures nearest the serviced wall FROM that wall (`bx1 - DOOR_FROM_R`), and let new
+   windows, fan units and tank columns march out on the free side. The assembly hall is the
+   limit case: serviced at BOTH ends, so it cannot grow at all and levels add parts instead.
 
 ## Ink weight: FINE detail needs its own lineset
 
@@ -393,20 +521,75 @@ not its bounding box (bbox corners fall outside a bean), and assert containment 
 or ring 1 breaches the cut face by a hair and — its normal differing from the face's
 — renders as a 1px bright sliver down the strata.
 
-## Pipeline order (render → export → stylize)
+## Pipeline order — ONE COMMAND (2026-08-21)
 
 ```bash
-# 1. render each level from Blender (build_factory(N) + render_viewport_to_path)
-# 2. crop/scale to the final square canvas
-python3 "…/blender-assets/sprite_export.py" exports/ <name> lvl1.png lvl2.png lvl3.png
-# 3. stylize AT FINAL SIZE (in-place is fine)
-python3 "…/blender-assets/stylize.py" exports/<name>_lvl2_800.png exports/<name>_lvl2_800.png
+python bake_sprite.py <internal_name> --install      # render -> export -> print -> install
+python bake_sprite.py --list                         # what it knows how to build
 ```
+
+`bake_sprite.py` holds the internal_name -> (builder, function, BLDG_ collection) map, so
+output filenames are right by construction and `building_sprites.gd` finds them with no code
+change. It runs, in order:
+
+1. **`render_sprite.py`** (headless, `--factory-startup`) - colour pass + shading mask, ~4 s
+   each. Nothing depends on saved .blend state.
+2. **`sprite_export.py`** - alpha crop, ONE shared scale per level set, synthesized outer
+   contour. Crops and scales the mask by the same box and factor, or the dots land on the
+   wrong faces.
+3. **`stylize_shade.py`** - the print pass, at FINAL size.
+4. **verify, then install.** Each level is compared against the shipped sprite and nothing
+   that moved is installed. Gate on GEOMETRY (silhouette within 2%): the pipeline changed on
+   purpose, so tone correlation just measures the change you wanted - it reads 0.79-0.83 on a
+   building that has not moved at all. Blurred interior tone is advisory only.
+
+Then bake the textures into Godot:
+
+```bash
+<godot> --headless --editor --quit --path .
+```
+
+**Two things about a fresh Blender that fail SILENTLY**, both handled in `render_sprite.py`:
+the default **Cube** renders (it lives in the Scene Collection, so the BLDG_*/SHOWCASE_*/
+STACK_* sweep never touches it - it sat *inside* a building as a pale box nobody modelled),
+and enabling Freestyle leaves Blender's own default **LineSet** in place, drawing a second
+thicker pass over everything.
+
+**Not every builder takes a level.** `build_docks()` and `build_construction_site()` build one
+fixed scene; the port ships that single image under all three level names and the construction
+site ships only an L1. `bake_sprite.py` models this as `levels=()` plus an `out` list.
+
+Per-building state, design intent and known weaknesses live in **`BUILDING_NOTES.md`**, which
+also documents the **physical-logic audit**: trace every flow the building implies end to end
+and find where it stops. It has caught an open circuit and a cable landing on a radiator.
 **Stylize LAST, after the resize.** The halftone is a property of the print, not
 of the subject: applied before the resize, each sprite's dot pitch ends up scaled
 by its own crop ratio and the set stops matching.
 
-## Print-texture pass (stipple = shading)
+## Print-texture pass (stipple = shading) — SUPERSEDED, see below
+
+> **Superseded 2026-08-21 by `stylize_shade.py`.** `stylize.py` decides where to stipple from
+> the colour render's own luma, which makes it a LUMA KEY: a dark material on a fully lit face
+> gets dotted and a pale material on a shaded face does not. Backwards. The exclusions below
+> still apply; only the trigger changed.
+>
+> **There is no directional light in this rig to key off.** Measured: a single cube in a single
+> material renders its three visible faces at lumas **129 / 130 / 132**. The world is white at
+> strength 0.75 against a 2.6 sun, so ambient swamps everything and ALL the tonal structure in
+> these sprites comes from MATERIALS. A lighting-based mask is flat by construction — tried at
+> override base 0.8 and 0.30, giving 0.687-0.710 and 0.502-0.529.
+>
+> So `render_sprite.py` MAKES the shading: a second pass with a `material_override` whose
+> emission is `dot(N, L)` mapped to 0..1, rendered with the **Standard** view transform so AgX
+> cannot compress the range straight back out. `LIGHT = (-0.30, -0.62, 0.72)` — upper-left-
+> front, so -Y faces and tops are lit and +X faces are the shaded side. Flip that vector to
+> move the shading. Coverage drops to roughly 2-5% of frame and follows planes, not paint.
+>
+> Free consequence: **open water stops being screened.** A water plane is a +Z face, the
+> brightest thing in the mask, so it takes no dots - the harbour bug that needed `--skip-hex`
+> is gone.
+
+### Original notes (exclusions still apply)
 Stippling is strictly a SHADING SUBSTITUTE (owner rule): denser stippling =
 darker shading. Lit faces stay completely clean; density ramps in three bands
 (sparse grid → +dual grid 2× → +half-spacing grid 4×) as face darkness grows;
@@ -422,12 +605,10 @@ texture; that was tried and rejected.
 
 ## Export: square canvas, EXACT pixel padding
 
-```bash
-# level sets: ALWAYS pass --ref = the render with the largest max-dimension
-python3 "…/blender-assets/sprite_export.py" blender-assets/exports <name> \
-    lvl1.png lvl2.png lvl3.png --pad 6 --ref lvl3.png
-```
-**`--ref` is mandatory for a level set.** The empire view draws every sprite in a
+`sprite_export.py` now picks the reference AUTOMATICALLY (largest max-dimension), so the
+old mandatory `--ref` flag is gone. Everything below still describes what it does and why.
+
+**The shared scale is the point.** The empire view draws every sprite in a
 fixed 400px box, so relative building size can only come from the PNG content:
 without a shared scale each level fills its own canvas and an L1 shack renders
 the same size as an L3 works. Pick the ref by measuring — the largest
