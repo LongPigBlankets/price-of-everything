@@ -34,6 +34,12 @@ const TABS := [
 	{"id": "prod", "label": "Goods"},
 	{"id": "stock", "label": "Stockpile"},
 ]
+## The summary tabs: polished navy plates with a thin brass rim. Same family as the top
+## bar, a shade stronger, because these sit on the panel navy rather than over the map.
+const TAB_METAL := Color(0.035, 0.135, 0.245)
+const TAB_METAL_HOVER := Color(0.055, 0.185, 0.315)
+const TAB_METAL_ACTIVE := Color(0.070, 0.230, 0.385)
+
 const CHART_HEIGHT := 170.0
 const STOCK_BAR_WIDTH := 60.0
 const STOCK_ICON_SIZE := 60.0
@@ -447,6 +453,11 @@ func _make_tile(tab_id: String, label_text: String) -> PanelContainer:
 	var name_row := HBoxContainer.new()
 	name_row.add_theme_constant_override("separation", 4)
 	name_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	# The status lamp. The status USED to tint the whole tab, and since a healthy tile is the
+	# normal case every tab read green all the time — colour that is always on says nothing
+	# (owner 2026-08-23). One small lamp carries it now; the plate is metal either way.
+	var led := StatusLed.new(DS.PALETTE["OK"])
+	name_row.add_child(led)
 	var name_label := Label.new()
 	name_label.text = label_text
 	name_label.theme_type_variation = &"Numeric"  # semibold font
@@ -473,7 +484,8 @@ func _make_tile(tab_id: String, label_text: String) -> PanelContainer:
 	metric_row.add_child(unit)
 	vbox.add_child(metric_row)
 
-	_tiles[tab_id] = {"root": tile, "color": DS.PALETTE.TEXT_DIM, "metric": metric, "unit": unit, "hover": false}
+	_tiles[tab_id] = {"root": tile, "color": DS.PALETTE.TEXT_DIM, "metric": metric, "unit": unit,
+		"hover": false, "led": led}
 	return tile
 
 func _set_tile_hover(tab_id: String, hovered: bool) -> void:
@@ -676,6 +688,12 @@ func _set_tile(tab_id: String, status: String, metric_text: String, unit_text: S
 	var t: Dictionary = _tiles[tab_id]
 	var color := _status_color(status)
 	t["color"] = color
+	var lamp := t.get("led") as StatusLed
+	if lamp != null:
+		lamp.color = color
+		# Lit for anything the player should look at. A healthy tab shows a dark bulb, which
+		# reads as "checked and fine" rather than as an absence.
+		lamp.lit = status in ["warn", "problem"]
 	(t.metric as Label).text = metric_text
 	(t.metric as Label).add_theme_color_override("font_color", color)
 	(t.unit as Label).text = unit_text
@@ -686,15 +704,20 @@ func _apply_tile_styles() -> void:
 		var t: Dictionary = _tiles[id]
 		var active := (id == _active_tab)
 		var hovered: bool = bool(t.get("hover", false)) and not active
-		var color: Color = t.get("color", DS.PALETTE.TEXT_DIM)
+		# Polished metal, always — the same navy family as the top bar but stronger, lit from
+		# the top. The ACTIVE tab is brighter and wears a full brass rim; the others carry a
+		# thin one so the row reads as a set of plates rather than as one dark block.
 		var style := StyleBoxFlat.new()
-		style.bg_color = Color(color, 0.16) if color != DS.PALETTE.TEXT_DIM else DS.PALETTE.BG_CARD
-		if hovered:
-			style.bg_color = DS.PALETTE.BG_HIGHLIGHT  # hover state for non-selected tabs
+		style.bg_color = TAB_METAL_ACTIVE if active else (
+			TAB_METAL_HOVER if hovered else TAB_METAL)
 		style.set_corner_radius_all(9)
 		style.set_content_margin_all(0)
-		style.border_color = DS.PALETTE.ACCENT if active else (Color(DS.PALETTE.ACCENT, 0.4) if hovered else Color(color, 0.0))
-		style.set_border_width_all(2 if active else (1 if hovered else 0))
+		style.border_color = DS.PALETTE.ACCENT if active else Color(DS.PALETTE.ACCENT, 0.55)
+		style.set_border_width_all(2 if active else 1)
+		# The top edge catches the light, which is what sells a plate as metal rather than as a
+		# flat rectangle with a border.
+		style.shadow_color = Color(1, 1, 1, 0.06)
+		style.shadow_size = 0
 		(t.root as PanelContainer).add_theme_stylebox_override("panel", style)
 
 # ─────────────────────────────────────────────────────────────────────────────

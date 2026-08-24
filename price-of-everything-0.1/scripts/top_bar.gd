@@ -287,7 +287,7 @@ func _draw() -> void:
 ## v3: modules are flat text on the bar — no outline, no shading (spec §1.2).
 ## `active` (an open flyout) keeps a fill so the player can see which module the
 ## panel belongs to; hover gets a fainter one. The old `warn` red border is gone —
-## a module in trouble lights its LED instead (_Led, §1.3) — so the argument is
+## a module in trouble lights its LED instead (StatusLed, §1.3) — so the argument is
 ## accepted and ignored, which keeps every existing call site valid.
 func _module_box(active: bool, _warn: bool = false) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
@@ -355,36 +355,9 @@ class _ModuleBtn extends PanelContainer:
 ##
 ## Drawn rather than textured: concentric alpha circles give a cheap bloom that reads
 ## as a lit bulb at any DPI, with no shader and no art dependency.
-class _Led extends Control:
-	const R := 5.0                  # the lamp itself; the glow rings extend past it
-	const GLOW := [[2.6, 0.28], [1.9, 0.16], [1.35, 0.09]]   # [radius x R, alpha]
-	# Held here, not read from the outer script: a GDScript inner class is its own
-	# scope and cannot see the enclosing file's constants by bare name.
-	const CORE := Color("#e2604a")        # same red as the bar's C_RED
-	const GLASS := Color("#3a4048")       # unlit — the bar's EDGE_SEAM
-	var lit := false:
-		set(v):
-			if v == lit:
-				return
-			lit = v
-			queue_redraw()
-	func _init() -> void:
-		# Sized for the widest glow ring so neighbouring text never clips it.
-		custom_minimum_size = Vector2(R * 2.0 + 6.0, R * 2.0 + 6.0)
-		size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-	func _draw() -> void:
-		var c := size * 0.5
-		if not lit:
-			# Dead bulb: dark glass with a faint rim, so the lamp is visibly PRESENT
-			# and off rather than missing — that contrast is what makes red mean something.
-			draw_circle(c, R, GLASS)
-			draw_arc(c, R, 0.0, TAU, 16, Color(1, 1, 1, 0.10), 1.0, true)
-			return
-		for ring: Array in GLOW:
-			draw_circle(c, R * float(ring[0]), Color(CORE, float(ring[1])))
-		draw_circle(c, R, CORE)
-		draw_circle(c, R * 0.45, CORE.lightened(0.45))   # hot filament
+## The lamp lives in scripts/status_led.gd now — the tile-view tabs wanted the same one in
+## green and amber, and one implementation cannot drift from itself. The bar's lamps are red,
+## which is StatusLed's default.
 
 func _module_row(mod: Control) -> HBoxContainer:
 	var row := HBoxContainer.new()
@@ -432,7 +405,7 @@ func _build_treasury() -> void:
 	_money_inner.add_theme_constant_override("separation", 10)
 	_money_inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	money_widget.add_child(_money_inner)
-	_treasury_led = _Led.new()
+	_treasury_led = StatusLed.new()
 	_money_inner.add_child(_treasury_led)
 	var coin := _mini("£", C_AMBER, 21)
 	_money_inner.add_child(coin)
@@ -477,7 +450,7 @@ func _build_power() -> void:
 	mod.name = "PowerModule"
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
-	_power_led = _Led.new()
+	_power_led = StatusLed.new()
 	row.add_child(_power_led)
 	_power_glyph = _mini("⚡", C_GOOD, 19)
 	row.add_child(_power_glyph)
@@ -604,7 +577,7 @@ func _freight_cell(texture: Texture2D, tip: String) -> Dictionary:
 	# The art is cream; the bar's other labels are the off-white, so match them.
 	icon.modulate = C_LABEL
 	pair.add_child(icon)
-	var led := _Led.new()
+	var led := StatusLed.new()
 	pair.add_child(led)
 	return {"root": pair, "led": led}
 
@@ -661,12 +634,12 @@ func _refresh_transport() -> void:
 	# Each lamp owns one failure. Splitting them is the point: the single count this
 	# replaced read '0 units → market' in any game shipping tile-to-tile, which is most of
 	# them, so the module spent the early game reporting nothing at all.
-	(_store_led as _Led).lit = int(t.rejecting) > 0 or int(t.full) > 1
-	(_road_led as _Led).lit = int(t.over) > 3
+	(_store_led as StatusLed).lit = int(t.rejecting) > 0 or int(t.full) > 1
+	(_road_led as StatusLed).lit = int(t.over) > 3
 	# Freight that arrived somewhere with no room and is stuck waiting for space. It is the
 	# one thing that can go wrong with a shipment AFTER it set off, so it is what the port
 	# lamp watches rather than the healthy count of goods in motion.
-	(_port_led as _Led).lit = MatchState.overflow_shipments.size() > 0
+	(_port_led as StatusLed).lit = MatchState.overflow_shipments.size() > 0
 	_transport_btn.tooltip_text = "Transport — %d tile%s at 95%%+ storage (%d refusing), %d link%s over capacity, %s unit%s riding to market" % [
 		int(t.full), "" if int(t.full) == 1 else "s", int(t.rejecting),
 		int(t.over), "" if int(t.over) == 1 else "s",
@@ -2064,7 +2037,7 @@ func _refresh_treasury() -> void:
 	# LED: overdrawn AND still losing money. Either alone is survivable — a negative
 	# balance with a profitable turn is climbing out, and a loss with cash in hand is
 	# affordable. Together they are the shape that ends runs (spec §1.3).
-	(_treasury_led as _Led).lit = MatchState.money < 0.0 and net < 0.0
+	(_treasury_led as StatusLed).lit = MatchState.money < 0.0 and net < 0.0
 	var runway := _runway_turns()
 	_runway_label.visible = runway > 0
 	if runway > 0:
@@ -2083,7 +2056,7 @@ func _refresh_power() -> void:
 	# while losing money. The second is the case the owner singled out — the lamp lights
 	# HERE and not on the treasury, because power is the thing to go and fix.
 	var net: float = float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0))
-	(_power_led as _Led).lit = (Production.intermittency_derated_count() > 0
+	(_power_led as StatusLed).lit = (Production.intermittency_derated_count() > 0
 			or (int(p.grid_draw) > 0 and net < 0.0))
 	_power_glyph.add_theme_color_override("font_color", c)
 	_power_head.add_theme_color_override("font_color", c)
