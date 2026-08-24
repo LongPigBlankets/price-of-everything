@@ -2,7 +2,7 @@ extends Control
 
 signal recipe_build_requested(building_id: String, recipe_id: String)
 
-const PLACEHOLDER_TEXT := "Begin typing to search for goods, recipes or buildings"
+const PLACEHOLDER_TEXT := "Begin typing to search for goods, recipes, buildings or tiles"
 const MAX_RESULTS_PER_COLUMN := 8
 const SEARCH_TOP_OFFSET := 72.0
 const SEARCH_WIDTH := 1040.0
@@ -338,10 +338,12 @@ func _refresh_results(query: String) -> void:
 	var goods := _goods_results(cleaned_query)
 	var recipes := _recipe_results(cleaned_query)
 	var buildings := _building_results(cleaned_query)
+	var tiles := _tile_results(cleaned_query)
 	_results_panel.visible = true
 	_columns_row.add_child(_make_result_column("Goods", goods))
 	_columns_row.add_child(_make_result_column("Recipes", recipes))
 	_columns_row.add_child(_make_result_column("Buildings", buildings))
+	_columns_row.add_child(_make_result_column("Tiles", tiles))
 
 func _clear_results_content() -> void:
 	_recipe_view_active = false
@@ -370,6 +372,29 @@ func _goods_results(query: String) -> Array:
 			"payload": good,
 		})
 	return _sorted_limited_results(results)
+
+## Tiles by their map name (owner 2026-08-24). A tile result is not an article — picking
+## one takes you to the place, which is the only thing a player wants from "where is
+## Fort Silversworth".
+func _tile_results(query: String) -> Array:
+	var results: Array = []
+	for tile_variant: Variant in Catalog.named_tiles():
+		var tile: Dictionary = tile_variant
+		var best_match := _best_text_match(query, [
+			{"text": str(tile.get("name", "")), "reason": "Tile name"},
+		])
+		if int(best_match.score) <= 0:
+			continue
+		results.append({
+			"type": "tile",
+			"id": str(tile.get("id", "")),
+			"score": best_match.score,
+			"title": str(tile.get("name", "")),
+			"subtitle": "Go to this tile",
+			"payload": tile,
+		})
+	return _sorted_limited_results(results)
+
 
 func _recipe_results(query: String) -> Array:
 	var results: Array = []
@@ -635,6 +660,10 @@ func _start_recipe_build(recipe: Dictionary) -> void:
 
 func _show_result_detail(result: Dictionary) -> void:
 	var result_type: String = result.get("type", "")
+	if result_type == "tile":
+		close_search()
+		MatchState.focus_tile_requested.emit(str(result.get("id", "")))
+		return
 	if result_type != "good" and result_type != "recipe" and result_type != "building" and result_type != "mechanic":
 		return
 	_clear_results_content()
@@ -1244,8 +1273,16 @@ func _make_encyclopedia_landing() -> Control:
 	_add_accordion_section(sections, "Game mechanics", MECHANIC_ENTRIES, "mechanic")
 	return root
 
+
+## The long-form concept articles are cut from the demo (owner 2026-08-24): the section is
+## greyed and says so on hover rather than being hidden, because a reader who goes looking
+## for it should learn it exists in the full game, not that it does not exist.
+func _mechanics_locked() -> bool:
+	return str(MatchState.ruleset.get("victory_set", "")) == "demo_itch"
+
 func _add_accordion_section(parent: VBoxContainer, title: String, items: Array, result_type: String) -> void:
-	var expanded: bool = _accordion_expanded.get(title, false)
+	var locked := result_type == "mechanic" and _mechanics_locked()
+	var expanded: bool = _accordion_expanded.get(title, false) and not locked
 
 	var header := Button.new()
 	header.custom_minimum_size = Vector2(0, 34)
@@ -1258,7 +1295,16 @@ func _add_accordion_section(parent: VBoxContainer, title: String, items: Array, 
 	header.add_theme_color_override("font_disabled_color", SUBTITLE_COLOR)
 	header.add_theme_stylebox_override("normal", _make_panel_style(RESULT_BLACK, RESULT_BORDER, 1.0, 5, 8))
 	header.add_theme_stylebox_override("hover", _make_panel_style(RESULT_HOVER, RESULT_BORDER, 1.0, 5, 8))
+	if locked:
+		header.disabled = true
+		header.text = "     %s" % title
+		header.tooltip_text = "Not available in the Demo"
+		header.mouse_default_cursor_shape = Control.CURSOR_ARROW
+		header.mouse_filter = Control.MOUSE_FILTER_STOP   # disabled Buttons still hover for a tooltip
+		header.modulate = Color(1, 1, 1, 0.55)
 	parent.add_child(header)
+	if locked:
+		return
 
 	header.pressed.connect(func() -> void:
 		var next_expanded := not bool(_accordion_expanded.get(title, false))
@@ -1272,7 +1318,9 @@ func _add_accordion_section(parent: VBoxContainer, title: String, items: Array, 
 		return
 
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(0, 220)
+	# Two and a half rows, so the half-row showing at the fold says "this scrolls" without
+	# needing a scrollbar to be noticed (owner 2026-08-24).
+	scroll.custom_minimum_size = Vector2(0, 260)
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	parent.add_child(scroll)
@@ -1353,9 +1401,15 @@ func _make_catalog_icon(result: Dictionary) -> Control:
 	var texture: Texture2D = null
 	var good_id := ""
 	if result.get("type", "") == "good":
+		# A good wears the same cream chip it wears everywhere else — rounded corners, no
+		# metal frame (owner 2026-08-24). It was a bare texture on the panel navy here,
+		# which is the one place in the game a good did not look like itself.
 		var payload: Dictionary = result.get("payload", {})
-		texture = _load_good_texture(payload)
 		good_id = str(payload.get("id", payload.get("good_id", "")))
+		var chip := UIHelpers.make_plain_good_icon(good_id,
+			str(payload.get("internal_name", "")), int(ACCORDION_ICON_SIZE.x))
+		UIHelpers.link_good_icon_to_graph(chip, good_id, true)
+		return chip
 	elif result.get("type", "") == "building":
 		var building: Dictionary = result.get("payload", {})
 		texture = _load_building_texture(building.get("id", ""))

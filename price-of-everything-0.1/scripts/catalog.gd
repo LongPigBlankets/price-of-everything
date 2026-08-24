@@ -261,9 +261,25 @@ func tile_name(tile_id: String) -> String:
 	return _tile_names.get(tile_id, "")
 
 
+## Every tile id the properties CSV declared.
+func all_tile_ids() -> Array:
+	return _tile_types.keys()
+
+
+## Every NAMED tile, as {id, name}. The search reads this; tiles with no name in the CSV
+## are left out, since a nameless tile is not something a player can search for.
+func named_tiles() -> Array:
+	var out: Array = []
+	for tile_id: Variant in _tile_types:
+		var nm := str(_tile_names.get(tile_id, ""))
+		if nm != "":
+			out.append({"id": str(tile_id), "name": nm})
+	return out
+
+
 ## Every tile id the properties CSV declared. For tests that sweep the map's own data.
 func tile_ids_for_tests() -> Array:
-	return _tile_types.keys()
+	return all_tile_ids()
 
 
 ## The raw `deposits` cell for a tile, e.g. "copper_ore|water" or "oil(2000)". Unparsed on

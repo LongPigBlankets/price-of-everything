@@ -58,6 +58,7 @@ var _transport_breakdown_values: Dictionary = {}
 var _transport_breakdown_amounts: Dictionary = {}
 var _transport_expanded := false
 var _section_carets: Dictionary = {}      # "revenue" / "costs" -> the fold Button
+var _section_totals: Dictionary = {}      # ...and the total Label on its header
 var _section_expanded: Dictionary = {}
 var _proj_transport_value: Label
 var _goods_purchased_value: Label
@@ -157,11 +158,21 @@ func _build_section_accordions() -> void:
 		caret.add_theme_font_size_override("font_size", BALANCE_HEADER_FONT)
 		caret.pressed.connect(_toggle_section.bind(key))
 		row.add_child(caret)
+		# The section's own total, on the header — so a FOLDED section still says what it
+		# came to, and an open one is topped by the figure its rows add up to.
+		var total := Label.new()
+		total.name = "SectionTotal_%s" % key
+		total.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		total.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		total.custom_minimum_size = Vector2(110, 0)
+		total.add_theme_font_size_override("font_size", BALANCE_HEADER_FONT)
+		_section_totals[key] = total
 		section.add_child(row)
 		section.move_child(row, header.get_index())
 		header.reparent(row)
 		header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		header.add_theme_font_size_override("font_size", BALANCE_HEADER_FONT)
+		row.add_child(_section_totals[key])
 		_section_carets[key] = caret
 		_section_expanded[key] = true
 		_apply_section_expanded(key)
@@ -623,6 +634,7 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	_carbon_tax_value.text = "-£%.2f" % carbon_tax
 	_green_subsidy_value.text = "+£%.2f" % green_subsidy
 	total_costs_value.text = "-£%.2f" % total_costs
+	_update_section_totals(total_revenue, total_costs)
 	
 	operating_profit_value.text = _format_signed(operating_profit)
 	_color_for_value(operating_profit_value, operating_profit)
@@ -648,6 +660,16 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	_apply_breakdown_tooltip(labour_value, summary.get("labour_by_type", {}), "labour")
 	_apply_breakdown_tooltip(power_purchase_value, summary.get("power_purchase_by_type", {}), "power")
 	_apply_breakdown_tooltip(_goods_purchased_value, summary.get("goods_purchased_by_type", {}), "goods purchased")
+
+
+## Mirror the two section totals onto their fold headers.
+func _update_section_totals(revenue: float, costs: float) -> void:
+	for pair: Array in [["revenue", revenue], ["costs", -absf(costs)]]:
+		var lbl := _section_totals.get(str(pair[0])) as Label
+		if lbl == null:
+			continue
+		lbl.text = _format_signed(float(pair[1]))
+		_color_for_value(lbl, float(pair[1]))
 
 
 func _render_transport_breakdown(transport: float, raw_breakdown: Dictionary) -> void:
