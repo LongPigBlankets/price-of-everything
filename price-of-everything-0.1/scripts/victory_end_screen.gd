@@ -18,19 +18,19 @@ signal back_to_menu_pressed
 # ── Design geometry ────────────────────────────────────────────────────────────
 const MARGIN := 20        # inset from every screen edge (almost full screen)
 const PANEL_W := 1560     # min plate width; the plate expands to fill the wider screen
-const BEZEL_PAD := 8
+const FRAME_CLEAR := 22   # content inset clearing the brass pipe frame (transport panel: 26)
 const SEC_PAD_H := 44
 
-# ── Design palette (the owner's exact hex values) ──────────────────────────────
-const C_BEZEL_LT := Color("#aeb6bf")
-const C_BEZEL_MD := Color("#727c87")
-const C_BEZEL_DK := Color("#454e58")
-const C_RIVET_LT := Color("#eef2f6")
-const C_RIVET_DK := Color("#5a636e")
-const C_NAVY_TOP := Color("#0c1d31")
-const C_NAVY_BOT := Color("#0a1521")
-const C_ACCENT_WIN := Color("#e6b34a")
-const C_ACCENT_LOSE := Color("#e2604a")
+# ── Design palette ─────────────────────────────────────────────────────────────
+# DS tokens, inlined by value (a const block cannot read the DS autoload). This screen was
+# ported from a "Victory Screen.html" mock and carried the mock's own palette — a lighter
+# blue navy, slate-grey secondary text and a silver bezel that existed nowhere else in the
+# game. Re-tokened 2026-08-24: the token each value mirrors is named beside it, and the few
+# NON-token colours left are the screen's own semantics (continuity amber, medal golds).
+const C_NAVY_TOP := Color("#040F1B")      # DS.BG_PANEL — every real panel's near-black
+const C_NAVY_BOT := Color("#02090F")      # a step deeper, for gradient feet
+const C_ACCENT_WIN := Color("#E6B85C")    # DS.WARN — the gold the menus pair with brass
+const C_ACCENT_LOSE := Color("#E66060")   # DS.DANGER
 ## "Continuity" — survived to the bell with no track but still in profit. Amber: neither the
 ## gold of a win nor the red of receivership (owner 2026-08-01).
 const C_ACCENT_CONT := Color("#e0932c")
@@ -38,15 +38,15 @@ const C_ACCENT_CONT := Color("#e0932c")
 ## word with a gold accent, but continuity reads as one amber verdict rather than two tones.
 const C_DISPLAY_CONT := Color("#e0932c")
 const C_TOTAL_CONT := Color("#e0932c")
-const C_HEADER_BORDER := Color("#16273a")
-const C_KICKER := Color("#71859b")
-const C_DISPLAY_WIN := Color("#f3f8fd")
+const C_HEADER_BORDER := Color(0.478, 0.373, 0.173, 0.55)   # DS.ACCENT_DIM — warm dividers
+const C_KICKER := Color("#E8EEF7")        # DS.TEXT (was slate #71859b — the banned grey-on-navy)
+const C_DISPLAY_WIN := Color("#E8EEF7")   # DS.TEXT
 const C_DISPLAY_LOSE := Color("#e8b0a4")
-const C_EPITHET := Color("#8298ac")
-const C_TOTAL_WIN := Color("#5fbf6b")
-const C_TOTAL_LOSE := Color("#e2604a")
-const C_TRACK_BG := Color("#0a1623")
-const C_MARKER := Color("#f2e6c8")
+const C_EPITHET := Color("#C2D2E5")      # DS.TEXT_MUTED
+const C_TOTAL_WIN := Color("#5BD180")    # DS.OK
+const C_TOTAL_LOSE := Color("#E66060")   # DS.DANGER
+const C_TRACK_BG := Color(0.0, 0.08, 0.16)   # DS.BG_INSET
+const C_MARKER := Color(0.995, 0.931, 0.763) # DS.ACCENT cream
 const C_CREST_GOLD_A := Color("#f0dfae")
 const C_CREST_GOLD_B := Color("#d9b96a")
 const C_CREST_GOLD_C := Color("#a8863c")
@@ -54,18 +54,18 @@ const C_CREST_UNLIT := Color("#0a1623")
 const C_CREST_UNLIT_STROKE := Color("#22384f")
 const C_GLYPH_LIT := Color("#141d29")
 const C_GLYPH_UNLIT := Color("#31465c")
-const C_NAME_LIT := Color("#f3f8fd")
-const C_NAME_UNLIT := Color("#5b6e84")
-const C_COPY := Color("#a9bccf")
-const C_CARD_BORDER := Color("#1c3149")
-const C_STAT_VALUE := Color("#eef4fb")
-const C_CHART_LABEL := Color("#71859b")
-const C_REV := Color("#5fbf6b")
-const C_OUT := Color("#e6b34a")
+const C_NAME_LIT := Color("#E8EEF7")     # DS.TEXT
+const C_NAME_UNLIT := Color("#6B7F98")   # DS.TEXT_DISABLED — unlit IS the disabled state
+const C_COPY := Color("#E8EEF7")         # DS.TEXT (body copy the player is meant to read)
+const C_CARD_BORDER := Color(0.995, 0.93, 0.76, 0.55)   # DS.BORDER_SOFT — cream, not slate
+const C_STAT_VALUE := Color("#E8EEF7")   # DS.TEXT
+const C_CHART_LABEL := Color("#C2D2E5")  # DS.TEXT_MUTED
+const C_REV := Color("#5BD180")          # DS.OK
+const C_OUT := Color("#E6B85C")          # DS.WARN
 const C_BLD := Color("#5fa8e0")
-const C_BIG := Color("#eef4fb")
-const C_FOOT_CAP := Color("#4a5d72")
-const C_SECTION_HEAD := Color("#c7d4e3")
+const C_BIG := Color("#E8EEF7")          # DS.TEXT
+const C_FOOT_CAP := Color("#C2D2E5")     # DS.TEXT_MUTED (was #4a5d72, ~3:1 on navy)
+const C_SECTION_HEAD := Color("#E8EEF7") # DS.TEXT
 
 # ── Fonts ──────────────────────────────────────────────────────────────────────
 const _UIFonts := preload("res://scripts/ui_fonts.gd")
@@ -130,29 +130,30 @@ func _grow() -> Control:
 	return s
 
 
-# ── Bezel + navy panel shell ─────────────────────────────────────────────────
+# ── Brass frame + navy panel shell ───────────────────────────────────────────
 func _build_bezel(data: Dictionary) -> Control:
-	# Silver metal plate: a PanelContainer with a solid mid-silver rounded fill, a
-	# diagonal sheen overlay, and four corner rivets. 8px pad → navy panel inside.
+	# The game's brass pipe frame around a DS-navy plate — the same chrome the transport and
+	# money panels wear (brass_pipe_frame.gd as the LAST child of a zero-margin
+	# PanelContainer, which auto-fits it to the full rect so it paints over the content
+	# edge). This replaced the HTML mock's silver bezel and corner rivets, which no other
+	# screen in the game shared.
 	var bezel := PanelContainer.new()
 	bezel.custom_minimum_size = Vector2(PANEL_W, 0)
 	bezel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bezel.add_theme_stylebox_override("panel", _sb(C_BEZEL_MD, C_BEZEL_DK, 1, 18, BEZEL_PAD))
+	bezel.add_theme_stylebox_override("panel", _sb(C_NAVY_TOP, C_NAVY_TOP, 0, 18, 0))
 
-	# Diagonal sheen + rivets, drawn over the plate (mouse-ignore).
-	var sheen := _Bezel.new()
-	sheen.set_anchors_preset(Control.PRESET_FULL_RECT)
-	sheen.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	bezel.add_child(sheen)
-
-	# Navy panel.
-	var navy := PanelContainer.new()
-	navy.add_theme_stylebox_override("panel", _sb(C_NAVY_TOP, C_NAVY_TOP, 0, 12, 0))
-	bezel.add_child(navy)
+	# Content clears the pipe with its own margins (the sections carry SEC_PAD_H already,
+	# so only the vertical clearance is new).
+	var clear := MarginContainer.new()
+	clear.add_theme_constant_override("margin_top", FRAME_CLEAR)
+	clear.add_theme_constant_override("margin_bottom", FRAME_CLEAR)
+	clear.add_theme_constant_override("margin_left", FRAME_CLEAR - 8)
+	clear.add_theme_constant_override("margin_right", FRAME_CLEAR - 8)
+	bezel.add_child(clear)
 
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 0)
-	navy.add_child(col)
+	clear.add_child(col)
 
 	# 3px top accent line (transparent → ACCENT → transparent).
 	var accent_line := _HRule.new()
@@ -170,6 +171,7 @@ func _build_bezel(data: Dictionary) -> Control:
 	col.add_child(_build_charts(data))
 	col.add_child(_hborder())
 	col.add_child(_build_footer())
+	bezel.add_child(preload("res://scripts/brass_pipe_frame.gd").new())
 	return bezel
 
 
@@ -234,7 +236,7 @@ func _build_header(data: Dictionary) -> Control:
 	var total_lbl := _lbl(str(int(data.get("total", 0))), _UIFonts.mono(), 52, total_col)
 	total_lbl.size_flags_vertical = Control.SIZE_SHRINK_END
 	total_row.add_child(total_lbl)
-	var thr_lbl := _lbl("/ %d" % int(data.get("threshold", 0)), _UIFonts.mono(), 20, DS.PALETTE.TEXT_DIM)
+	var thr_lbl := _lbl("/ %d" % int(data.get("threshold", 0)), _UIFonts.mono(), 20, DS.PALETTE.TEXT_MUTED)
 	thr_lbl.size_flags_vertical = Control.SIZE_SHRINK_END
 	total_row.add_child(thr_lbl)
 
@@ -248,7 +250,7 @@ func _build_header(data: Dictionary) -> Control:
 	# Counted from the set this match ran, not from 5 — the demo plays a different five and
 	# a future set may not be five at all.
 	var sec_lbl := _lbl("%d of %d tracks secured" % [sc, VictoryState.TRACK_ORDER.size()],
-		_UIFonts.PLEX_MED, 12, DS.PALETTE.TEXT_DIM)
+		_UIFonts.PLEX_MED, 12, DS.PALETTE.TEXT_MUTED)
 	sec_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	right.add_child(sec_lbl)
 
@@ -269,10 +271,10 @@ func _build_header(data: Dictionary) -> Control:
 
 	var labels := HBoxContainer.new()
 	bar_wrap.add_child(labels)
-	var l_left := _lbl("Tracks %d" % int(data.get("total", 0)), _UIFonts.PLEX_MED, 12, DS.PALETTE.TEXT_DIM)
+	var l_left := _lbl("Tracks %d" % int(data.get("total", 0)), _UIFonts.PLEX_MED, 12, DS.PALETTE.TEXT_MUTED)
 	l_left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	labels.add_child(l_left)
-	var l_mid := _lbl("%d to win" % int(data.get("threshold", 0)), _UIFonts.PLEX_MED, 12, DS.PALETTE.TEXT_DIM)
+	var l_mid := _lbl("%d to win" % int(data.get("threshold", 0)), _UIFonts.PLEX_MED, 12, DS.PALETTE.TEXT_MUTED)
 	l_mid.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l_mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	labels.add_child(l_mid)
@@ -384,18 +386,18 @@ func _build_pennant(t: Dictionary, result: String) -> Control:
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	inner.add_child(name_lbl)
 
-	var desc_lbl := _lbl(str(t.get("desc", "")), _UIFonts.PLEX, 11, DS.PALETTE.TEXT_DIM)
+	var desc_lbl := _lbl(str(t.get("desc", "")), _UIFonts.PLEX, 11, DS.PALETTE.TEXT_MUTED)
 	desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	inner.add_child(desc_lbl)
 
 	inner.add_child(_spacer_v(4))
 
-	var stat_lbl := _lbl(str(t.get("stat", "")), _UIFonts.mono(), 19, color if done else DS.PALETTE.TEXT_DIM)
+	var stat_lbl := _lbl(str(t.get("stat", "")), _UIFonts.mono(), 19, color if done else DS.PALETTE.TEXT_MUTED)
 	stat_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	inner.add_child(stat_lbl)
 
-	var sub_lbl := _lbl(str(t.get("sub", "")), _UIFonts.PLEX, 11, DS.PALETTE.TEXT_DIM)
+	var sub_lbl := _lbl(str(t.get("sub", "")), _UIFonts.PLEX, 11, DS.PALETTE.TEXT_MUTED)
 	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	inner.add_child(sub_lbl)
@@ -417,7 +419,7 @@ func _build_pennant(t: Dictionary, result: String) -> Control:
 	else:
 		var border := Color("#3a2224") if result == "defeat" else Color("#1c3149")
 		badge.add_theme_stylebox_override("panel", _sb(C_TRACK_BG, border, 1, 8, 0))
-		bmc.add_child(_lbl("%d%% banked" % int(round(float(t.get("pct", 0.0)) * 100.0)), _UIFonts.PLEX_MED, 11, DS.PALETTE.TEXT_DIM))
+		bmc.add_child(_lbl("%d%% banked" % int(round(float(t.get("pct", 0.0)) * 100.0)), _UIFonts.PLEX_MED, 11, DS.PALETTE.TEXT_MUTED))
 	inner.add_child(badge)
 	return card
 
@@ -498,7 +500,7 @@ func _stat_card(value: String, label: String) -> Control:
 	v.add_theme_constant_override("separation", 4)
 	mc.add_child(v)
 	v.add_child(_lbl(value, _UIFonts.mono(), 23, C_STAT_VALUE))
-	v.add_child(_lbl(label.to_upper(), _UIFonts.PLEX_MED, 11, DS.PALETTE.TEXT_DIM))
+	v.add_child(_lbl(label.to_upper(), _UIFonts.PLEX_MED, 11, DS.PALETTE.TEXT_MUTED))
 	return pc
 
 
@@ -571,7 +573,7 @@ func _chart_card(label: String, big: String, sub: String, col: Color, body: Cont
 	var big_lbl := _lbl(big, _UIFonts.mono(), 20, col)
 	big_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(big_lbl)
-	var sub_lbl := _lbl(sub, _UIFonts.PLEX, 11, DS.PALETTE.TEXT_DIM)
+	var sub_lbl := _lbl(sub, _UIFonts.PLEX, 11, DS.PALETTE.TEXT_MUTED)
 	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(sub_lbl)
 
@@ -580,7 +582,7 @@ func _chart_card(label: String, big: String, sub: String, col: Color, body: Cont
 	v.add_child(body)
 
 	if footer != "":
-		v.add_child(_lbl(footer, _UIFonts.PLEX, 11, DS.PALETTE.TEXT_DIM))
+		v.add_child(_lbl(footer, _UIFonts.PLEX, 11, DS.PALETTE.TEXT_MUTED))
 	return pc
 
 
@@ -610,7 +612,7 @@ func _build_biggest(charts: Dictionary) -> Control:
 	var big_lbl := _lbl(_num(int(charts.get("top_total", 0))), _UIFonts.mono(), 20, C_BIG)
 	big_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(big_lbl)
-	var sub_lbl := _lbl("lifetime units, top five goods", _UIFonts.PLEX, 11, DS.PALETTE.TEXT_DIM)
+	var sub_lbl := _lbl("lifetime units, top five goods", _UIFonts.PLEX, 11, DS.PALETTE.TEXT_MUTED)
 	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(sub_lbl)
 
@@ -679,7 +681,7 @@ func _build_empire(empire: Dictionary) -> Control:
 	v.add_child(head)
 	head.add_child(_lbl("THE EMPIRE", _UIFonts.PLEX_MED, 11, C_CHART_LABEL))
 	var ports: Array = empire.get("ports", [])
-	var meta := _lbl("final production network · %d ports" % ports.size(), _UIFonts.PLEX, 11, DS.PALETTE.TEXT_DIM)
+	var meta := _lbl("final production network · %d ports" % ports.size(), _UIFonts.PLEX, 11, DS.PALETTE.TEXT_MUTED)
 	meta.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	meta.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(meta)
@@ -971,31 +973,6 @@ class DrawUtil:
 
 
 # The silver bezel sheen + corner rivets, drawn over the plate.
-class _Bezel extends Control:
-	func _draw() -> void:
-		var w := size.x
-		var h := size.y
-		# Diagonal light band top-left → transparent (150deg feel).
-		draw_polygon(
-			PackedVector2Array([Vector2(0, 0), Vector2(w, 0), Vector2(w, h), Vector2(0, h)]),
-			PackedColorArray([Color(0.78, 0.82, 0.87, 0.55), Color(0.44, 0.48, 0.53, 0.0),
-				Color(0.27, 0.30, 0.35, 0.45), Color(0.68, 0.72, 0.78, 0.30)]))
-		# Central dark trough (horizontal band).
-		var y0 := h * 0.42
-		var y1 := h * 0.58
-		draw_polygon(
-			PackedVector2Array([Vector2(0, y0), Vector2(w, y0), Vector2(w, y1), Vector2(0, y1)]),
-			PackedColorArray([Color(0.16, 0.18, 0.21, 0.30), Color(0.16, 0.18, 0.21, 0.30),
-				Color(0.16, 0.18, 0.21, 0.30), Color(0.16, 0.18, 0.21, 0.30)]))
-		# Four corner rivets.
-		var inset := 12.0
-		for p in [Vector2(inset, inset), Vector2(w - inset, inset),
-				Vector2(inset, h - inset), Vector2(w - inset, h - inset)]:
-			draw_circle(p, 9.0, Color("#5a636e"))
-			draw_circle(p, 6.5, Color("#c9d0d8"))
-			draw_circle(p - Vector2(1.5, 1.5), 3.2, Color("#eef2f6"))
-
-
 # Faint radial accent glow (header + expand).
 class _Glow extends Control:
 	var col: Color = Color("#e6b34a")
