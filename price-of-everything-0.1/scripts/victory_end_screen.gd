@@ -481,9 +481,11 @@ func _build_copy(data: Dictionary) -> Control:
 
 
 func _copy_para(text: String) -> Control:
-	var l := _lbl(text, _UIFonts.PLEX_MED, 15, C_COPY)
+	# The verdict is the one piece of writing on the screen; at 15 it sat below the chart
+	# captions in weight and got skipped (owner 2026-08-24).
+	var l := _lbl(text, _UIFonts.PLEX_MED, 24, C_COPY)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.add_theme_constant_override("line_spacing", 9)
+	l.add_theme_constant_override("line_spacing", 12)
 	return l
 
 
@@ -491,14 +493,14 @@ func _dropcap_para(text: String) -> Control:
 	# Large ACCENT drop-cap of the first letter, then the rest flows beside/under it.
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
-	var cap := _lbl(text.substr(0, 1), _BEBAS, 42, _accent)
+	var cap := _lbl(text.substr(0, 1), _BEBAS, 64, _accent)
 	cap.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	cap.custom_minimum_size = Vector2(30, 0)
+	cap.custom_minimum_size = Vector2(44, 0)
 	row.add_child(cap)
-	var rest := _lbl(text.substr(1), _UIFonts.PLEX_MED, 15, C_COPY)
+	var rest := _lbl(text.substr(1), _UIFonts.PLEX_MED, 24, C_COPY)
 	rest.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rest.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	rest.add_theme_constant_override("line_spacing", 9)
+	rest.add_theme_constant_override("line_spacing", 12)
 	row.add_child(rest)
 	return row
 
@@ -1675,39 +1677,121 @@ class _LineChart extends Control:
 			draw_circle(pts[i], 3.4, GOLD_MID)
 			draw_circle(pts[i] + Vector2(-1.0, -1.0), 1.2, Color(GOLD_HI, 0.85))
 
-	## The board's runs and pads. A pad is live where the curve passes above it; a run is
-	## laid only between two live pads, so the etching stops exactly at the line.
+	## The board itself: a CPU seated in the middle of the copper, and BUSES running to it —
+	## bundles of parallel traces that go straight for a run, break to 45 degrees together,
+	## and go straight again (owner 2026-08-24). Every trace in a bundle breaks one pitch
+	## further along than the one beside it, which is what keeps the diagonals parallel and
+	## the spacing even; it is also how a real board fans a bus into a pin row.
+	##
+	## Nothing is clipped by a mask: each run is walked in short steps and a step is drawn
+	## only where the curve is above it, so the etching stops at the line by construction.
 	func _etch(pts: PackedVector2Array, w: float, h: float) -> void:
-		var cols := int(w / PITCH)
-		var rows := int(h / PITCH)
-		if cols < 2 or rows < 1:
+		if w < 90.0 or h < 50.0:
 			return
-		var live := []
-		for gy in rows + 1:
-			var row := []
-			for gx in cols + 1:
-				var px := float(gx) * PITCH + PITCH * 0.5
-				var py := h - float(gy) * PITCH - PITCH * 0.4
-				row.append(py > _curve_y(pts, px, w) and px < w - 2.0 and py > 2.0)
-			live.append(row)
-		var run := Color(GOLD_MID, 0.32)
-		var pad := Color(GOLD_MID, 0.44)
-		for gy in rows + 1:
-			for gx in cols + 1:
-				if not live[gy][gx]:
+		# Seat the CPU where the board is deepest towards the right, where the area is tallest.
+		var cx := w * 0.62
+		var top := _curve_y(pts, cx, w)
+		var room := h - top
+		if room < 46.0:
+			return
+		var side: float = clampf(minf(room * 0.52, w * 0.17), 34.0, 96.0)
+		var cy: float = clampf(top + room * 0.52, top + side * 0.5 + 10.0, h - side * 0.5 - 8.0)
+		var chip := Rect2(cx - side * 0.5, cy - side * 0.5, side, side)
+		var pitch: float = maxf(6.0, side / 7.0)
+		# Three buses into the chip: from the left edge, out to the right edge, and down to
+		# the board's foot. Each fans from a straight run through one 45-degree break.
+		var lanes := maxi(3, int(side / pitch) - 1)
+		var y_pin := chip.position.y + pitch * 1.2
+		_bus(pts, w, h, Vector2(2.0, top + room * 0.24), Vector2(chip.position.x - 2.0, y_pin),
+			lanes, pitch, 1.0)
+		_bus(pts, w, h, Vector2(chip.end.x + 2.0, y_pin), Vector2(w - 2.0, top + room * 0.16),
+			lanes, pitch, 1.0)
+		_bus(pts, w, h, Vector2(chip.position.x - 2.0, chip.end.y - pitch * 1.2),
+			Vector2(2.0, h - 6.0), lanes, pitch, -1.0)
+		_chip(chip, pitch)
+
+	## One bus: `lanes` parallel traces from `a` to `b`, straight-then-45-then-straight, each
+	## lane offset by `pitch` along `spread` (down when +1, up when -1) so the bundle keeps
+	## its spacing through the turn.
+	func _bus(pts: PackedVector2Array, w: float, h: float, a: Vector2, b: Vector2,
+			lanes: int, pitch: float, spread: float) -> void:
+		var dx: float = b.x - a.x
+		if absf(dx) < 24.0:
+			return
+		var sign_x: float = signf(dx)
+		for i in lanes:
+			var off := float(i) * pitch * spread
+			var ya := a.y + off
+			var yb := b.y + off
+			var dy := yb - ya
+			var diag: float = absf(dy)                       # 45 degrees: |dx| == |dy|
+			var lead: float = absf(dx) * 0.30 + float(i) * pitch
+			if lead + diag > absf(dx) - 6.0:
+				lead = maxf(4.0, absf(dx) - diag - 6.0)
+			var x1 := a.x + sign_x * lead
+			var x2 := x1 + sign_x * diag
+			var run := PackedVector2Array([a + Vector2(0, off), Vector2(x1, ya),
+				Vector2(x2, yb), Vector2(b.x, yb)])
+			_run(pts, w, h, run)
+
+	## A trace, drawn only where the board actually is. Each leg is stepped and a step is
+	## skipped when the curve above it has not risen past it yet; a pad is dropped at the
+	## last point that survived, so a run that meets the edge ends on a pad like a real one.
+	func _run(pts: PackedVector2Array, w: float, h: float, path: PackedVector2Array) -> void:
+		var run_col := Color(GOLD_MID, 0.34)
+		var last := Vector2.INF
+		var first := Vector2.INF
+		for seg in range(path.size() - 1):
+			var p0: Vector2 = path[seg]
+			var p1: Vector2 = path[seg + 1]
+			var steps := maxi(2, int(p0.distance_to(p1) / 5.0))
+			for k in steps:
+				var q0 := p0.lerp(p1, float(k) / float(steps))
+				var q1 := p0.lerp(p1, float(k + 1) / float(steps))
+				if not (_inside(pts, w, h, q0) and _inside(pts, w, h, q1)):
 					continue
-				var px := float(gx) * PITCH + PITCH * 0.5
-				var py := h - float(gy) * PITCH - PITCH * 0.4
-				# A hash of the cell decides which runs are etched: a full mesh reads as
-				# graph paper, a sparse one as a board.
-				var bit := int(absf(sin(float(gx) * 12.9898 + float(gy) * 78.233)) * 997.0)
-				if gx + 1 <= cols and live[gy][gx + 1] and bit % 3 != 0:
-					draw_line(Vector2(px, py), Vector2(px + PITCH, py), run, 1.3, true)
-				if gy + 1 <= rows and live[gy + 1][gx] and bit % 4 != 1:
-					draw_line(Vector2(px, py), Vector2(px, py - PITCH), run, 1.3, true)
-				draw_circle(Vector2(px, py), 3.0, Color(0, 0, 0, 0.30))
-				draw_circle(Vector2(px, py), 2.4, pad)
-				draw_circle(Vector2(px, py), 1.0, Color(0.02, 0.08, 0.05, 0.85))
+				draw_line(q0, q1, run_col, 1.4, true)
+				if first == Vector2.INF:
+					first = q0
+				last = q1
+		for pad in [first, last]:
+			if pad == Vector2.INF:
+				continue
+			draw_circle(pad, 3.0, Color(0, 0, 0, 0.30))
+			draw_circle(pad, 2.4, Color(GOLD_MID, 0.46))
+			draw_circle(pad, 1.0, Color(0.02, 0.08, 0.05, 0.85))
+
+	func _inside(pts: PackedVector2Array, w: float, h: float, p: Vector2) -> bool:
+		return p.x > 1.0 and p.x < w - 1.0 and p.y < h - 2.0 and p.y > _curve_y(pts, p.x, w) + 5.0
+
+	## The processor: a dark package with a brass rim, a pin comb on all four sides, the die
+	## showing through the lid, and the orientation dot every chip carries at pin 1.
+	func _chip(r: Rect2, pitch: float) -> void:
+		var pin := Color(GOLD_MID, 0.55)
+		var n := maxi(3, int(r.size.y / pitch) - 1)
+		for i in n:
+			var t := (float(i) + 1.0) / float(n + 1)
+			var y := r.position.y + r.size.y * t
+			var x := r.position.x + r.size.x * t
+			draw_line(Vector2(r.position.x - 6.0, y), Vector2(r.position.x, y), pin, 1.6, true)
+			draw_line(Vector2(r.end.x, y), Vector2(r.end.x + 6.0, y), pin, 1.6, true)
+			draw_line(Vector2(x, r.position.y - 6.0), Vector2(x, r.position.y), pin, 1.6, true)
+			draw_line(Vector2(x, r.end.y), Vector2(x, r.end.y + 6.0), pin, 1.6, true)
+		draw_rect(Rect2(r.position + Vector2(1.5, 2.5), r.size), Color(0, 0, 0, 0.45))
+		draw_rect(r, Color(0.043, 0.075, 0.063, 0.96))
+		var rim := PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end,
+			Vector2(r.position.x, r.end.y), r.position])
+		draw_polyline(rim, Color(GOLD_LO, 0.9), 2.4, true)
+		draw_polyline(rim, Color(GOLD_MID, 0.8), 1.2, true)
+		draw_polyline(PackedVector2Array([Vector2(r.position.x, r.end.y), r.position,
+			Vector2(r.end.x, r.position.y)]), Color(GOLD_HI, 0.45), 1.0, true)
+		var die := r.grow(-r.size.x * 0.26)
+		draw_rect(die, Color(0.114, 0.161, 0.137, 0.9))
+		draw_polyline(PackedVector2Array([die.position, Vector2(die.end.x, die.position.y),
+			die.end, Vector2(die.position.x, die.end.y), die.position]),
+			Color(GOLD_MID, 0.35), 1.0, true)
+		draw_circle(r.position + Vector2(r.size.x * 0.14, r.size.y * 0.14), 2.2,
+			Color(GOLD_HI, 0.75))
 
 	func _curve_y(pts: PackedVector2Array, x: float, w: float) -> float:
 		var t := clampf(x / maxf(w, 1.0), 0.0, 1.0) * float(pts.size() - 1)
@@ -1715,9 +1799,11 @@ class _LineChart extends Control:
 		return lerpf(pts[i].y, pts[i + 1].y, t - float(i))
 
 
-## Output as a rack of BEAKERS (owner 2026-08-24): thin glass tubes with rounded feet,
-## light-blue liquid to the turn's level, a meniscus glint on the surface and a brushed
-## highlight up the glass. The biggest turn's beaker holds cream.
+## Output as a rack of BEAKERS: flat-bottomed glass tubes with light-blue liquid to the
+## turn's level, a meniscus glint on the surface and a brushed highlight up the wall. The
+## biggest turn's beaker holds cream. The feet used to be drawn as half-circles, which
+## read as bubbles under the liquid rather than as the bottom of a tube (owner
+## 2026-08-24) — they are square now, with the corners eased by a short chamfer.
 class _BarChart extends Control:
 	const GLASS := Color(0.72, 0.78, 0.85, 0.45)
 	const LIQUID := Color(0.45, 0.68, 0.92, 0.8)
@@ -1742,25 +1828,33 @@ class _BarChart extends Control:
 		mx = maxf(mx, 1.0)
 		var gap := 7.0
 		var bw := (w - gap * float(n - 1)) / float(n)
-		var r := bw * 0.5
+		var foot := h - 1.0
+		var chamfer := minf(3.0, bw * 0.2)
 		for i in n:
 			var x := float(i) * (bw + gap)
-			var cx := x + r
-			var foot := h - r - 1.0
 			var liquid := LIQUID if i != peak_i else Color(0.95, 0.9, 0.78, 0.9)
-			var level := foot - (vals[i] / mx) * (h - r - 8.0)
-			# Liquid: rounded foot + column up to the level, meniscus glint on top.
-			draw_circle(Vector2(cx, foot), r - 1.5, liquid)
+			var level := foot - (vals[i] / mx) * (h - 10.0)
 			if level < foot:
-				draw_rect(Rect2(Vector2(x + 1.5, level), Vector2(bw - 3.0, foot - level)), liquid)
+				draw_rect(Rect2(Vector2(x + 1.5, level), Vector2(bw - 3.0, foot - level - chamfer)),
+					liquid)
+				# The eased corners of the tube's floor, so the liquid sits IN the glass.
+				draw_colored_polygon(PackedVector2Array([
+					Vector2(x + 1.5, foot - chamfer), Vector2(x + bw - 1.5, foot - chamfer),
+					Vector2(x + bw - 1.5 - chamfer, foot - 0.5),
+					Vector2(x + 1.5 + chamfer, foot - 0.5)]), liquid)
 				draw_line(Vector2(x + 1.5, level), Vector2(x + bw - 1.5, level),
 					Color(1, 1, 1, 0.35), 1.2, true)
-			# Glass: foot arc, walls, open top, and a brushed highlight up the left wall.
-			draw_arc(Vector2(cx, foot), r, 0.0, PI, 12, GLASS, 1.3, true)
-			draw_line(Vector2(x, foot), Vector2(x, 3.0), GLASS, 1.3, true)
-			draw_line(Vector2(x + bw, foot), Vector2(x + bw, 3.0), GLASS, 1.3, true)
-			draw_line(Vector2(x + 2.5, foot - 2.0), Vector2(x + 2.5, 6.0),
+			# Glass: two walls down to a flat floor, open at the top, chamfered at the corners.
+			draw_line(Vector2(x, 3.0), Vector2(x, foot - chamfer), GLASS, 1.3, true)
+			draw_line(Vector2(x + bw, 3.0), Vector2(x + bw, foot - chamfer), GLASS, 1.3, true)
+			draw_polyline(PackedVector2Array([
+				Vector2(x, foot - chamfer), Vector2(x + chamfer, foot),
+				Vector2(x + bw - chamfer, foot), Vector2(x + bw, foot - chamfer)]),
+				GLASS, 1.3, true)
+			draw_line(Vector2(x + 2.5, foot - 3.0), Vector2(x + 2.5, 6.0),
 				Color(1, 1, 1, 0.10), 1.0, true)
+
+
 ## Buildings standing, STACKED FROM THE ESTATE'S OWN EMBLEM (owner 2026-08-24: "a furnace
 ## or some other building the player built — stack that same icon over and over per bar").
 ## The unit is decided up front: one sprite is `step` buildings, chosen so the tallest
