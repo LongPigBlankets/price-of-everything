@@ -2396,6 +2396,9 @@ func _show_anomaly_stack(hits: Array, anchor: Control) -> void:
 	for hit: Dictionary in hits:
 		var card := AnomalyPopup.new()
 		_fly_layer.add_child(card)
+		# Width first: the stack offset below is measured off the card's wrapped height,
+		# which is only correct once the width its text wraps at is settled.
+		card.set_width(anchor.size.x)
 		card.set_message(str(hit.text))
 		_anomaly_cards.append(card)
 		# Placed after layout: the card has no height until its wrapped label is measured.

@@ -15,7 +15,14 @@ extends PanelContainer
 ##
 ## All copy is off-white (DS.PALETTE.TEXT) — never grey. See docs/top-bar-v3-spec.md §4.
 
+## The card is as wide as the MODULE it belongs to (owner 2026-08-24) — a fixed 320 made
+## a card under the narrow Power module read as a floating banner rather than as that
+## module's own footnote. WIDTH is only the fallback for an anchor with no width yet.
 const WIDTH := 320.0
+const MIN_WIDTH := 180.0    # a very narrow module still needs a readable measure
+const PAD := 6              # owner: no more than 6px
+const FONT_SIZE := 16
+const MAX_LINES := 3        # then the label trims with an ellipsis
 const ANCHOR_GAP := 8.0     # below the bar module it belongs to
 ## The card announces itself, then stops. A turn is a busy moment — numbers change all
 ## over the bar at once — so a card that simply appeared could be missed entirely, which
@@ -27,34 +34,55 @@ const FLASH_BEAT_TIME := 0.28
 signal dismissed
 
 var _body: Label
+var _width: float = WIDTH
 
 
 func _ready() -> void:
 	theme = DS.theme
 	theme_type_variation = "Card"
 	top_level = true          # positioned against a module, not laid out by a container
-	custom_minimum_size = Vector2(WIDTH, 0)
+	custom_minimum_size = Vector2(_width, 0)
 	mouse_filter = Control.MOUSE_FILTER_STOP   # clicks on the card itself never dismiss it
+	# The Card variation brings its own content margin, which stacked on top of the
+	# margin below and put the text ~27px in. Zero the stylebox's and let the one
+	# MarginContainer own the padding, so PAD is the whole of it.
+	var sb := get_theme_stylebox("panel")
+	if sb is StyleBoxFlat:
+		var box := (sb as StyleBoxFlat).duplicate() as StyleBoxFlat
+		box.set_content_margin_all(0.0)
+		add_theme_stylebox_override("panel", box)
 	_build()
 
 
 func _build() -> void:
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", DS.SP.MD)
-	margin.add_theme_constant_override("margin_right", DS.SP.MD)
-	margin.add_theme_constant_override("margin_top", DS.SP.SM + 2)
-	margin.add_theme_constant_override("margin_bottom", DS.SP.SM + 2)
+	for side: String in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, PAD)
 	add_child(margin)
 
 	_body = Label.new()
 	_body.theme_type_variation = "Body"
 	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_body.custom_minimum_size = Vector2(WIDTH - DS.SP.MD * 2, 0)
+	# Three lines, then an ellipsis. A card is a footnote under a module, not a paragraph:
+	# past three lines it stops being glanceable and starts covering the bar it explains.
+	_body.max_lines_visible = MAX_LINES
+	_body.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_body.custom_minimum_size = Vector2(_width - PAD * 2, 0)
 	# Explicit, not inherited: this card is the one place the owner named by hand —
 	# the text is off-white, never the dim secondary.
 	_body.add_theme_color_override("font_color", DS.PALETTE.TEXT)
-	_body.add_theme_font_size_override("font_size", DS.FS.BODY)
+	_body.add_theme_font_size_override("font_size", FONT_SIZE)
 	margin.add_child(_body)
+
+
+## Match the module this card belongs to. Called BEFORE set_message, because the wrapped
+## height the caller stacks by is only right once the width the text wraps at is.
+func set_width(w: float) -> void:
+	_width = maxf(MIN_WIDTH, w)
+	custom_minimum_size = Vector2(_width, 0)
+	if _body != null:
+		_body.custom_minimum_size = Vector2(_width - PAD * 2, 0)
+	reset_size()
 
 
 func set_message(text: String) -> void:
@@ -69,6 +97,8 @@ func set_message(text: String) -> void:
 func place_under(anchor: Control, stack_offset: float = 0.0) -> void:
 	if anchor == null or not is_instance_valid(anchor):
 		return
+	if anchor.size.x > 1.0:
+		set_width(anchor.size.x)
 	reset_size()
 	var vw := get_viewport_rect().size.x
 	var x: float = clampf(anchor.global_position.x, 8.0, maxf(8.0, vw - size.x - 8.0))
