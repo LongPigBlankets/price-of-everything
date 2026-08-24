@@ -389,7 +389,7 @@ func _build_pennant(t: Dictionary, result: String) -> Control:
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	inner.add_child(name_lbl)
 
-	var desc_lbl := _lbl(str(t.get("desc", "")), _UIFonts.PLEX, 14, DS.PALETTE.TEXT_MUTED)
+	var desc_lbl := _lbl(str(t.get("desc", "")), _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED)
 	desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	inner.add_child(desc_lbl)
@@ -400,7 +400,7 @@ func _build_pennant(t: Dictionary, result: String) -> Control:
 	stat_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	inner.add_child(stat_lbl)
 
-	var sub_lbl := _lbl(str(t.get("sub", "")), _UIFonts.PLEX, 14, DS.PALETTE.TEXT_MUTED)
+	var sub_lbl := _lbl(str(t.get("sub", "")), _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED)
 	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	inner.add_child(sub_lbl)
@@ -546,7 +546,7 @@ func _showcase_plate(caption: String, icon: Control, value: String, sub: String,
 	var val := _lbl(value, val_font, 20, C_STAT_VALUE)
 	val.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(val)
-	var s2 := _lbl(sub, _UIFonts.PLEX, 14, DS.PALETTE.TEXT_MUTED)
+	var s2 := _lbl(sub, _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED)
 	s2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(s2)
 	return plate
@@ -608,7 +608,7 @@ func _chain_row(chain: Dictionary) -> Control:
 		int(chain.get("band_total", 5))], _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED))
 	var nodes: Array = chain.get("nodes", [])
 	if nodes.is_empty():
-		v.add_child(_lbl("Nothing was ever produced.", _UIFonts.PLEX, 14, DS.PALETTE.TEXT_MUTED))
+		v.add_child(_lbl("Nothing was ever produced.", _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED))
 		return plate
 	var web := _ChainWeb.new()
 	web.nodes = nodes
@@ -674,9 +674,123 @@ func _build_charts(data: Dictionary) -> Control:
 	# Biggest outputs — five ranked bar rows.
 	grid.add_child(_build_biggest(charts))
 
-	# Empire card (full width).
-	box.add_child(_build_empire(data.get("empire", {})))
+	# The empire used to run the full width with most of the plate empty around a
+	# stamp-sized network (owner 2026-08-24). It is half now, and the other half is the
+	# league: where the company stood, and what it led — a quarter of the row each.
+	var bottom := HBoxContainer.new()
+	bottom.add_theme_constant_override("separation", 16)
+	box.add_child(bottom)
+	var emp := _build_empire(data.get("empire", {}))
+	emp.size_flags_stretch_ratio = 2.0
+	bottom.add_child(emp)
+	var league: Dictionary = data.get("league", {})
+	var place := _build_place(league)
+	place.size_flags_stretch_ratio = 1.0
+	bottom.add_child(place)
+	var led := _build_led(league)
+	led.size_flags_stretch_ratio = 1.0
+	bottom.add_child(led)
 	return sec
+
+
+## Where the company stood in the revenue table, turn by turn. Rank 1 is the TOP of the
+## chart, so the line rising means the company climbing — an axis that ran 1 at the bottom
+## read exactly backwards.
+func _build_place(league: Dictionary) -> Control:
+	var pc := _CutPlate.new(20, 16, _CutPlate.STEEL)
+	pc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 8)
+	pc.add_child(v)
+	var companies := int(league.get("companies", 10))
+	var final_rank := int(league.get("final_rank", companies))
+	v.add_child(_card_head("Place in the league", _ordinal(final_rank),
+		"of %d companies, at the close" % companies, C_OUT))
+	var chart := _RankChart.new()
+	chart.series = league.get("ranks", [])
+	chart.companies = companies
+	chart.font = _UIFonts.mono()
+	chart.custom_minimum_size = Vector2(0, 236)
+	chart.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	chart.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(chart)
+	var foot := "best: %s" % _ordinal(int(league.get("best_rank", final_rank)))
+	var crowned := int(league.get("crowned_turns", 0))
+	if crowned > 0:
+		foot += "  ·  %d turn%s on top" % [crowned, "" if crowned == 1 else "s"]
+	v.add_child(_lbl(foot, _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED))
+	return pc
+
+
+## The goods the company finished first in, on the Goods Graph's cream chips.
+func _build_led(league: Dictionary) -> Control:
+	var pc := _CutPlate.new(20, 16, _CutPlate.BRASS)
+	pc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 8)
+	pc.add_child(v)
+	var led: Array = league.get("led", [])
+	var contested := int(league.get("contested", 0))
+	v.add_child(_card_head("Goods you led", str(led.size()),
+		"of %d you competed in" % contested, C_ACCENT_WIN))
+	var wrap := HFlowContainer.new()
+	wrap.add_theme_constant_override("h_separation", 10)
+	wrap.add_theme_constant_override("v_separation", 10)
+	wrap.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(wrap)
+	if led.is_empty():
+		wrap.add_child(_lbl("No good finished first this game.", _UIFonts.PLEX_MED, 14,
+			DS.PALETTE.TEXT_MUTED))
+	for i in mini(10, led.size()):
+		var g: Dictionary = led[i]
+		var cell := VBoxContainer.new()
+		cell.add_theme_constant_override("separation", 3)
+		cell.add_child(_UIHelpers.make_plain_good_icon(str(g.get("gid", "")),
+			str(g.get("internal", "")), 50))
+		var nm := _lbl(str(g.get("name", "")), _UIFonts.PLEX_MED, 14, C_STAT_VALUE)
+		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		nm.custom_minimum_size = Vector2(78, 0)
+		nm.clip_text = true
+		nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		cell.add_child(nm)
+		wrap.add_child(cell)
+	if led.size() > 10:
+		wrap.add_child(_lbl("+%d more" % (led.size() - 10), _UIFonts.PLEX_SEMI, 14, C_OUT))
+	var runner := "second in %d  ·  third in %d" % [int(league.get("seconds", 0)),
+		int(league.get("thirds", 0))]
+	v.add_child(_lbl(runner, _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED))
+	return pc
+
+
+## The chart cards' header row: small-caps label left, the figure and its gloss right.
+func _card_head(label: String, big: String, sub: String, col: Color) -> Control:
+	var head := HBoxContainer.new()
+	var lbl := _lbl(label.to_upper(), _UIFonts.PLEX_MED, 14, C_CHART_LABEL)
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(lbl)
+	var rcol := VBoxContainer.new()
+	rcol.add_theme_constant_override("separation", 2)
+	head.add_child(rcol)
+	var big_lbl := _lbl(big, _UIFonts.mono(), 20, col)
+	big_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	rcol.add_child(big_lbl)
+	var sub_lbl := _lbl(sub, _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED)
+	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	rcol.add_child(sub_lbl)
+	return head
+
+
+func _ordinal(n: int) -> String:
+	if n <= 0:
+		return "—"
+	var suffix := "th"
+	if n % 100 < 11 or n % 100 > 13:
+		match n % 10:
+			1: suffix = "st"
+			2: suffix = "nd"
+			3: suffix = "rd"
+	return str(n) + suffix
 
 
 func _chart_card(label: String, big: String, sub: String, col: Color, body: Control,
@@ -702,7 +816,7 @@ func _chart_card(label: String, big: String, sub: String, col: Color, body: Cont
 	var big_lbl := _lbl(big, _UIFonts.mono(), 20, col)
 	big_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(big_lbl)
-	var sub_lbl := _lbl(sub, _UIFonts.PLEX, 14, DS.PALETTE.TEXT_MUTED)
+	var sub_lbl := _lbl(sub, _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED)
 	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(sub_lbl)
 
@@ -711,7 +825,7 @@ func _chart_card(label: String, big: String, sub: String, col: Color, body: Cont
 	v.add_child(body)
 
 	if footer != "":
-		v.add_child(_lbl(footer, _UIFonts.PLEX, 14, DS.PALETTE.TEXT_MUTED))
+		v.add_child(_lbl(footer, _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED))
 	return pc
 
 
@@ -736,7 +850,7 @@ func _build_biggest(charts: Dictionary) -> Control:
 	var big_lbl := _lbl(_num(int(charts.get("top_total", 0))), _UIFonts.mono(), 20, C_BIG)
 	big_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(big_lbl)
-	var sub_lbl := _lbl("lifetime units, top five goods", _UIFonts.PLEX, 14, DS.PALETTE.TEXT_MUTED)
+	var sub_lbl := _lbl("lifetime units, top five goods", _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED)
 	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(sub_lbl)
 
@@ -803,7 +917,7 @@ func _build_empire(empire: Dictionary) -> Control:
 	v.add_child(head)
 	head.add_child(_lbl("THE EMPIRE", _UIFonts.PLEX_MED, 14, C_CHART_LABEL))
 	var ports: Array = empire.get("ports", [])
-	var meta := _lbl("final production network · %d ports" % ports.size(), _UIFonts.PLEX, 14, DS.PALETTE.TEXT_MUTED)
+	var meta := _lbl("final production network · %d ports" % ports.size(), _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED)
 	meta.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	meta.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(meta)
@@ -818,7 +932,7 @@ func _build_empire(empire: Dictionary) -> Control:
 	# Falls back to the stylised design map when there is no graph to show.
 	var graph := _make_empire_graph(false)
 	if graph != null:
-		graph.custom_minimum_size = Vector2(0, 380)
+		graph.custom_minimum_size = Vector2(0, 300)
 		graph.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		v.add_child(graph)
 	else:
@@ -1158,6 +1272,73 @@ class _CutPlate extends PanelContainer:
 		if accent.a > 0.0:
 			draw_line(Vector2(r.position.x + c + 2.0, r.position.y + 4.0),
 				Vector2(r.end.x - c - 2.0, r.position.y + 4.0), accent, 3.0, true)
+
+
+## The company's place in the revenue table over the match: rank 1 at the TOP, one lane per
+## company, the top lane banded gold. The line is the same embossed brass trace the revenue
+## board uses, stepped — a rank is a whole number that holds until it changes, and drawing
+## it as a smooth curve would claim positions the company never held.
+class _RankChart extends Control:
+	const GOLD_HI := Color(0.965, 0.886, 0.659)
+	const GOLD_MID := Color(0.808, 0.667, 0.396)
+	const GOLD_LO := Color(0.518, 0.408, 0.204)
+	const GUTTER := 30.0
+	var series: Array = []
+	var companies: int = 10
+	var font: Font = null
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		resized.connect(queue_redraw)
+
+	func _draw() -> void:
+		var w := size.x - GUTTER
+		var h := size.y
+		if w < 20.0 or h < 20.0:
+			return
+		var lanes := maxi(2, companies)
+		var lane := h / float(lanes)
+		# The lanes, and the gold band the leader occupies.
+		draw_rect(Rect2(GUTTER, 0.0, w, lane), Color(GOLD_MID, 0.10))
+		for i in range(1, lanes):
+			var y := lane * float(i)
+			draw_line(Vector2(GUTTER, y), Vector2(GUTTER + w, y), Color(1, 1, 1, 0.05), 1.0)
+		if font != null:
+			for r in [1, lanes / 2, lanes]:
+				var y := lane * (float(r) - 0.5)
+				var lab := str(r)
+				var lw := font.get_string_size(lab, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
+				font.draw_string(get_canvas_item(), Vector2(GUTTER - 7.0 - lw, y + 5.0), lab,
+					HORIZONTAL_ALIGNMENT_LEFT, -1, 14,
+					Color(GOLD_HI, 0.95) if r == 1 else Color(0.761, 0.824, 0.898, 0.9))
+		if series.size() < 2:
+			return
+		var n := series.size()
+		var pts := PackedVector2Array()
+		for i in n:
+			var x := GUTTER + w * float(i) / float(n - 1)
+			var y := lane * (clampf(float(series[i]), 1.0, float(lanes)) - 0.5)
+			if i > 0:
+				pts.append(Vector2(x, pts[pts.size() - 1].y))
+			pts.append(Vector2(x, y))
+		var under := PackedVector2Array()
+		for pt in pts:
+			under.append(pt + Vector2(0, 1.6))
+		draw_polyline(under, Color(0, 0, 0, 0.5), 3.4, true)
+		draw_polyline(pts, GOLD_MID, 2.4, true)
+		var glint := PackedVector2Array()
+		for pt in pts:
+			glint.append(pt + Vector2(0, -1.0))
+		draw_polyline(glint, Color(GOLD_HI, 0.4), 1.0, true)
+		# A solder pad wherever the position actually changed, and at the close.
+		for i in n:
+			if i > 0 and int(series[i]) == int(series[i - 1]) and i != n - 1:
+				continue
+			var p := Vector2(GUTTER + w * float(i) / float(n - 1),
+				lane * (clampf(float(series[i]), 1.0, float(lanes)) - 0.5))
+			draw_circle(p, 4.4, GOLD_LO)
+			draw_circle(p, 3.2, GOLD_MID)
+			draw_circle(p + Vector2(-1.0, -1.0), 1.1, Color(GOLD_HI, 0.85))
 
 
 ## The player's own corner of the Goods Graph: cream chips in the flow chart's tier

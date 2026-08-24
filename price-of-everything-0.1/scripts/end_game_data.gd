@@ -177,6 +177,7 @@ static func gather() -> Dictionary:
 			"company": _company_highlights(),
 			"charts": _charts(),
 			"empire": _empire(),
+		"league": _league(),
 		}
 
 	return {
@@ -195,6 +196,7 @@ static func gather() -> Dictionary:
 		"company": _company_highlights(),
 		"charts": _charts(),
 		"empire": _empire(),
+		"league": _league(),
 	}
 
 # ── Tracks (pennants) ──────────────────────────────────────────────────────────
@@ -573,6 +575,61 @@ static func _charts() -> Dictionary:
 		"buildings_big": _num(standing), "buildings_sub": "owned at game end",
 		"top": top, "top_total": top_total,
 	}
+
+# ── The league (where the company stood against the other nine) ────────────────
+## Two figures the end screen shows beside the empire: the arc of the player's place in
+## the revenue table, and the goods the company finished first in. The rank arc is a
+## RECORDED series (CompanyRankings keeps it per turn) — it cannot be replayed here,
+## because VictoryState's revenue series is sales revenue while the table ranks money in.
+static func _league() -> Dictionary:
+	var ranks: Array = []
+	for r in CompanyRankings.player_rank_history:
+		ranks.append(int(r))
+	var final_rank := int(ranks[-1]) if not ranks.is_empty() else CompanyRankings.TOTAL_COMPANIES
+	var best := final_rank
+	var crowned := 0
+	for r in ranks:
+		best = mini(best, int(r))
+		if int(r) == 1:
+			crowned += 1
+	# Goods the company finished first in, and the near misses. Rival output is seeded, so
+	# this is the same table the rankings panel would show on the final turn.
+	var led: Array = []
+	var seconds := 0
+	var thirds := 0
+	var contested := 0
+	for row_variant: Variant in CompanyRankings.goods_standings():
+		var row: Dictionary = row_variant
+		var mine := 0
+		var qty := 0
+		for p_variant: Variant in row.get("producers", []):
+			var prod: Dictionary = p_variant
+			if bool(prod.get("is_player", false)):
+				mine = int(prod.get("rank", 0))
+				qty = int(prod.get("quantity", 0))
+		if qty <= 0:
+			continue          # a good the company never made is not a good it competed for
+		contested += 1
+		match mine:
+			1:
+				led.append({"gid": str(row.get("good_id", "")),
+					"internal": str(row.get("internal_name", "")),
+					"name": str(row.get("display_name", "")), "qty": qty})
+			2:
+				seconds += 1
+			3:
+				thirds += 1
+	led.sort_custom(_by_qty)
+	return {
+		"ranks": ranks, "final_rank": final_rank, "best_rank": best,
+		"crowned_turns": crowned, "companies": CompanyRankings.TOTAL_COMPANIES,
+		"led": led, "led_count": led.size(), "contested": contested,
+		"seconds": seconds, "thirds": thirds,
+	}
+
+static func _by_qty(a: Variant, b: Variant) -> bool:
+	return int((a as Dictionary).get("qty", 0)) > int((b as Dictionary).get("qty", 0))
+
 
 # ── Empire network (columns of the strategic view + ports) ──────────────────────
 static func _empire() -> Dictionary:

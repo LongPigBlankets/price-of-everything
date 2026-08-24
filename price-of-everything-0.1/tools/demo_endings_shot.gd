@@ -154,6 +154,21 @@ func _seed(secured: Array, partial: Dictionary) -> void:
 		"dshot_f1": {"value": 1820.0, "inputs": 610.0, "power": 140.0, "labour": 300.0,
 			"maint": 110.0, "turns": 64},
 	}
+	# The league cards: the rank arc CompanyRankings records per turn, and the per-good
+	# table it builds from the last turn's production. Both are seeded for the same reason
+	# as the P&L above — a synthetic end screen has no turns behind it.
+	var ranks: Array = []
+	for i in 100:
+		var r := 9 - int(float(i) / 14.0)
+		if i > 82:
+			r = 1
+		ranks.append(maxi(1, r))
+	# import_state CLEARS player_rank_history before reading the dict, so the dict must not
+	# hold the same array — pass a copy or the clear empties what is about to be read.
+	CompanyRankings.import_state({"player_revenue_history": [4200.0, 4600.0, 5100.0, 5600.0, 6000.0],
+		"player_goods_produced": {"g_005": 9400, "g_004": 5200, "g_010": 3100, "g_002": 2400,
+			"g_008": 1800, "g_009": 900},
+		"player_rank_history": ranks.duplicate()})
 	MatchState.advisor_seats = {"seat_founder": "andrew"}
 	MatchState.advisor_hired_turn = {"andrew": 3}
 

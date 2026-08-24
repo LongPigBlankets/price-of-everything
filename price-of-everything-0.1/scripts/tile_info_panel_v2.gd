@@ -164,7 +164,7 @@ func _apply_token_theme() -> void:
 	t.set_font("font", "Numeric", UIFonts.mono())
 	t.set_font("font", "Body", UIFonts.PLEX_MED)
 	t.set_font_size("font_size", "Body", 14)
-	t.set_font("font", "Caption", UIFonts.PLEX)
+	t.set_font("font", "Caption", UIFonts.PLEX_MED)
 	t.set_font_size("font_size", "Caption", 10)
 	theme = t
 

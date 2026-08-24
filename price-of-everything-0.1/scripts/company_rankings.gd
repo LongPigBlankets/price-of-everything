@@ -38,6 +38,12 @@ signal rankings_updated
 # turn; retaining five values lets the panel survive save/load with the same trend.
 var _player_revenue_history: Array[float] = []
 var _player_goods_produced: Dictionary = {}  # good_id -> last resolved turn quantity
+## The player's place in the revenue table, one entry per resolved turn, kept for the whole
+## match. The revenue history above is trimmed to HISTORY_TURNS because the table only needs
+## a trend; the end screen needs the whole arc, and it cannot be reconstructed afterwards —
+## VictoryState's revenue series is SALES revenue while the table ranks money in, so
+## replaying standings_for() over it would draw a curve the player never saw.
+var player_rank_history: Array[int] = []
 
 func _ready() -> void:
 	TurnManager.phase_started.connect(_on_phase_started)
@@ -46,6 +52,7 @@ func _ready() -> void:
 func reset() -> void:
 	_player_revenue_history.clear()
 	_player_goods_produced.clear()
+	player_rank_history.clear()
 	rankings_updated.emit()
 
 func _on_phase_started(phase: int) -> void:
@@ -53,12 +60,22 @@ func _on_phase_started(phase: int) -> void:
 		return
 	_record_player_revenue(float(Production.last_turn_summary.get("money_in", 0.0)))
 	_record_player_goods(Production.last_turn_summary.get("produced", {}))
+	_record_player_rank()
 	rankings_updated.emit()
 
 func _record_player_revenue(revenue: float) -> void:
 	_player_revenue_history.append(revenue)
 	while _player_revenue_history.size() > HISTORY_TURNS:
 		_player_revenue_history.pop_front()
+
+## One standings build a turn — the same one the rankings panel asks for when it is open,
+## and the only way to keep an honest arc of where the company stood.
+func _record_player_rank() -> void:
+	for row: Dictionary in standings():
+		if bool(row.get("is_player", false)):
+			player_rank_history.append(int(row.get("rank", TOTAL_COMPANIES)))
+			return
+
 
 func _record_player_goods(produced: Variant) -> void:
 	_player_goods_produced.clear()
@@ -353,6 +370,7 @@ func export_state() -> Dictionary:
 	return {
 		"player_revenue_history": _player_revenue_history.duplicate(),
 		"player_goods_produced": _player_goods_produced.duplicate(),
+		"player_rank_history": player_rank_history.duplicate(),
 	}
 
 func import_state(d: Dictionary) -> void:
@@ -362,6 +380,11 @@ func import_state(d: Dictionary) -> void:
 		for value: Variant in raw:
 			_player_revenue_history.append(float(value))
 	_player_revenue_history = _trim_history(_player_revenue_history)
+	player_rank_history.clear()
+	var raw_rank: Variant = d.get("player_rank_history", [])
+	if raw_rank is Array:
+		for value: Variant in raw_rank:
+			player_rank_history.append(int(value))
 	_player_goods_produced.clear()
 	var raw_goods: Variant = d.get("player_goods_produced", {})
 	if raw_goods is Dictionary:
