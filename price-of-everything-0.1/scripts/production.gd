@@ -14,6 +14,13 @@ var blocked_reason_by_building: Dictionary = {}  # instance_id -> {code, message
 var last_turn_run: Dictionary = {}  # instance_id -> true (set of buildings that ran)
 var produced_by_building: Dictionary = {}  # instance_id -> good_id/internal_name -> lifetime qty
 var full_output_streak_by_building: Dictionary = {}  # instance_id -> consecutive turns at full output
+# Per-building lifetime P&L, instance_id -> {value, inputs, power, labour, maint, turns}.
+# What the machine put into the world less what it cost to run it, accumulated as it
+# happens rather than reconstructed at the end: outputs and inputs at the market price of
+# the turn they were made and burned, POWER AT THE GRID PRICE whatever supplied it (own
+# generation is not free — it is a sale foregone), labour and upkeep as charged. The end
+# screen's "most value created" superlative reads this.
+var lifetime_pl_by_building: Dictionary = {}
 var _building_turn_reports: Array = []  # BuildingTurnReport dicts for CostSolver
 # Decarbonisation squeeze: taxed-good consumption accumulated during the production pass
 # (player buildings only), charged in the carbon_tax step after tax_dividends. The charge
@@ -95,12 +102,14 @@ signal building_starved(starvation_record: Dictionary)
 func export_state() -> Dictionary:
 	return {
 		"produced_by_building": produced_by_building.duplicate(true),
+		"lifetime_pl_by_building": lifetime_pl_by_building.duplicate(true),
 		"full_output_streak_by_building": full_output_streak_by_building.duplicate(true),
 		"direct_feed": _direct_feed.duplicate(true),
 	}
 
 func import_state(d: Dictionary) -> void:
 	produced_by_building = (d.get("produced_by_building", {}) as Dictionary).duplicate(true)
+	lifetime_pl_by_building = (d.get("lifetime_pl_by_building", {}) as Dictionary).duplicate(true)
 	full_output_streak_by_building = (d.get("full_output_streak_by_building", {}) as Dictionary).duplicate(true)
 	_direct_feed = (d.get("direct_feed", {}) as Dictionary).duplicate(true)
 	_jit_fed_this_turn.clear()
@@ -534,6 +543,13 @@ func _process_production() -> void:
 		summary.money_out += total_cost
 		_accumulate_by_type(summary.maintenance_by_type, btype, maint)
 		_accumulate_by_type(summary.labour_by_type, btype, labour)
+		var pl := _pl_row(iid_cost)
+		pl["labour"] += labour
+		pl["maint"] += maint
+		pl["turns"] = int(pl["turns"]) + 1
+		if bool(last_turn_run.get(iid_cost, false)):
+			pl["power"] += (float(_effective_energy_req(building, active_recipe))
+				* EconomyConfig.GRID_BUY_PRICE)
 		# A new build's first turns are CARRIED, not paid: charge as normal above so every
 		# ledger stays honest, then refund onto its tab. Inputs are attributed synthetically
 		# (recipe x market price) because no per-building record of a market buy exists; power
@@ -1438,6 +1454,14 @@ func _recipe_output_items(recipe: Dictionary) -> Array:
 		return []
 	return [{"internal_name": output_name, "qty": output_qty}]
 
+## The building's running P&L row, created on first touch.
+func _pl_row(instance_id: String) -> Dictionary:
+	if not lifetime_pl_by_building.has(instance_id):
+		lifetime_pl_by_building[instance_id] = {
+			"value": 0.0, "inputs": 0.0, "power": 0.0, "labour": 0.0, "maint": 0.0, "turns": 0}
+	return lifetime_pl_by_building[instance_id]
+
+
 func _record_building_output(instance_id: String, good_key: String, qty: int) -> void:
 	if instance_id == "" or good_key == "" or qty <= 0:
 		return
@@ -1446,6 +1470,13 @@ func _record_building_output(instance_id: String, good_key: String, qty: int) ->
 	var totals: Dictionary = produced_by_building[instance_id] as Dictionary
 	totals[good_key] = totals.get(good_key, 0) + qty
 	produced_by_building[instance_id] = totals
+	# Value created, priced the turn it was made. Material outputs key by good_id, power by
+	# its internal name — resolve either so a power station's worth is counted too.
+	var gid := good_key
+	if not gid.begins_with("g_"):
+		gid = str(Catalog.get_good_by_internal_name(good_key).get("id", ""))
+	if gid != "":
+		_pl_row(instance_id)["value"] += float(qty) * MarketState.get_price(gid)
 
 ## Lifetime units of a good produced across all buildings — feeds the "Produce N
 ## units of X" research conditions. Material outputs record under the good_id;
@@ -1468,6 +1499,7 @@ func lifetime_total(good: String) -> int:
 func reset_lifetime_research_metrics() -> void:
 	produced_by_building.clear()
 	full_output_streak_by_building.clear()
+	lifetime_pl_by_building.clear()
 
 func _capture_turn_report(building: Dictionary, recipe: Dictionary) -> void:
 	# A levelled building consumes/produces scaled quantities (see _consume_inputs /
@@ -2621,6 +2653,8 @@ func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictiona
 		if qty > 0:
 			MatchState.flag_agenda_event(MatchState.AGENDA_USED_STOCKPILE)
 		summary.consumed[input.good_id] = summary.consumed.get(input.good_id, 0) + qty
+		if player_owned and qty > 0:
+			_pl_row(iid)["inputs"] += float(qty) * MarketState.get_buy_price(str(input.good_id))
 		# Carbon levy accrual: taxed goods burned by PLAYER buildings this turn.
 		# Charged in one lump in the carbon_tax step (after tax_dividends).
 		if player_owned and qty > 0 and float(Catalog.get_good(str(input.good_id)).get("co2_tax_multiplier", 0.0)) > 0.0:

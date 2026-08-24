@@ -145,6 +145,15 @@ func _seed(secured: Array, partial: Dictionary) -> void:
 	# game's art rather than their empty-state dashes.
 	MarketState._lifetime_sold = {"g_005": 6100, "g_004": 2200}
 	Production.produced_by_building = {"dshot_g1": {"g_009": 5400}, "dshot_f1": {"g_004": 2100}}
+	# The per-building lifetime P&L the "most value created" plate reads. Seeded here too:
+	# the ledger is accumulated turn by turn by the live sim, and a synthetic end screen has
+	# no turns behind it.
+	Production.lifetime_pl_by_building = {
+		"dshot_g1": {"value": 3067.0, "inputs": 940.0, "power": 310.0, "labour": 520.0,
+			"maint": 180.0, "turns": 88},
+		"dshot_f1": {"value": 1820.0, "inputs": 610.0, "power": 140.0, "labour": 300.0,
+			"maint": 110.0, "turns": 64},
+	}
 	MatchState.advisor_seats = {"seat_founder": "andrew"}
 	MatchState.advisor_hired_turn = {"andrew": 3}
 

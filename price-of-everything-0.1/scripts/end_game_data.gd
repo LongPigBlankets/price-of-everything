@@ -389,32 +389,35 @@ static func _company_highlights() -> Dictionary:
 		var q := MarketState.lifetime_sold(gid)
 		if q > int(top_sold.qty):
 			top_sold = {"gid": gid, "qty": q, "qty_text": _num(q) + " units"}
-	# Most value created by one building: its lifetime output valued at today's market
-	# price. Profit is not ledgered per building, so output x price is the honest
-	# superlative — the machine that put the most worth into the world.
+	# Most value created by one building: what it PUT INTO THE WORLD less what it cost to
+	# run — inputs at market, upkeep, labour, and its power at the grid price whatever
+	# supplied it (owner 2026-08-24: own generation is a sale foregone, not a freebie).
+	# Production keeps the row as it happens; nothing here is reconstructed after the fact.
 	var work := {}
-	var work_value := 0.0
-	for iid in Production.produced_by_building:
-		var per: Dictionary = Production.produced_by_building[iid]
-		var total := 0
-		var value := 0.0
-		for k in per:
-			var qty := int(per[k])
-			total += qty
-			# Keys are good_ids for goods but the internal name for power.
-			var gid := str(k)
-			if not gid.begins_with("g_"):
-				gid = str(Catalog.get_good_by_internal_name(gid).get("id", ""))
-			if gid != "":
-				value += float(qty) * MarketState.get_price(gid)
-		if value > work_value and MatchState.buildings.has(str(iid)):
-			work_value = value
-			var b: Dictionary = MatchState.buildings[str(iid)]
-			var bd: Dictionary = Catalog.get_building(str(b.get("building_id", "")))
-			work = {"name": str(bd.get("display_name", "?")),
-				"sub": "£%s of goods · %s units · Level %d" % [
-					_num(int(round(value))), _num(total), int(b.get("level", 1))],
-				"icon": TileViewData._building_icon_tex(bd)}
+	var work_net := -INF
+	for iid in Production.lifetime_pl_by_building:
+		if not MatchState.buildings.has(str(iid)):
+			continue
+		var pl: Dictionary = Production.lifetime_pl_by_building[iid]
+		var value := float(pl.get("value", 0.0))
+		var costs := (float(pl.get("inputs", 0.0)) + float(pl.get("power", 0.0))
+			+ float(pl.get("labour", 0.0)) + float(pl.get("maint", 0.0)))
+		var net := value - costs
+		if net <= work_net:
+			continue
+		work_net = net
+		var units := 0
+		for k in (Production.produced_by_building.get(str(iid), {}) as Dictionary).values():
+			units += int(k)
+		var b: Dictionary = MatchState.buildings[str(iid)]
+		var bd: Dictionary = Catalog.get_building(str(b.get("building_id", "")))
+		work = {"name": str(bd.get("display_name", "?")),
+			"value": "£%s net" % _num(int(round(net))),
+			"sub": "%s · £%s made, £%s to run over %d turns" % [
+				str(bd.get("display_name", "?")), _num(int(round(value))),
+				_num(int(round(costs))), int(pl.get("turns", 0))],
+			"units": units,
+			"icon": TileViewData._building_icon_tex(bd)}
 	# Longest-serving SEATED advisor, by hire turn; the tenure reads in company years.
 	var adv := {}
 	var earliest := 999999
@@ -497,8 +500,28 @@ static func _charts() -> Dictionary:
 			"color": str(TOP_COLORS[i % TOP_COLORS.size()]),
 		})
 
+	# The estate's own emblem for the buildings chart: the type the player put up most of,
+	# stacked one sprite per N buildings rather than drawn as an abstract area (owner
+	# 2026-08-24: "a furnace or some other building the player built").
+	var counts: Dictionary = {}
+	for inst in MatchState.buildings.values():
+		if not MatchState.is_player_owned(inst):
+			continue
+		var bid := str(inst.get("building_id", ""))
+		counts[bid] = int(counts.get(bid, 0)) + 1
+	var emblem_id := ""
+	var emblem_n := 0
+	for bid in counts:
+		if int(counts[bid]) > emblem_n:
+			emblem_n = int(counts[bid])
+			emblem_id = str(bid)
+	var emblem = null
+	if emblem_id != "":
+		emblem = TileViewData._building_icon_tex(Catalog.get_building(emblem_id))
+
 	return {
 		"revenue": rev, "output": outp, "buildings": bld,
+		"buildings_icon": emblem,
 		"revenue_big": _money(peak_rev), "revenue_sub": "peak revenue / turn",
 		"output_big": _num(peak_out), "output_sub": "units — biggest turn (%d)" % peak_out_turn,
 		"buildings_big": _num(standing), "buildings_sub": "standing at game end",
