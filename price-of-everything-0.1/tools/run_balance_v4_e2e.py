@@ -116,6 +116,13 @@ def metric_row(name: str, recipes: list[str], data: dict) -> dict:
     return row
 
 
+def first_run(data: dict, recipe: str) -> str:
+    """Turn the target recipe first ran on, or "never" — after a build-cost rise a scenario
+    can fail to reach its own target recipe at all, and the report used to KeyError on it."""
+    turn = data.get("target_recipe_first_run", {}).get(recipe)
+    return "never" if turn is None else f"turn {turn}"
+
+
 def shown(value: int | float) -> str:
     if isinstance(value, int) and value < 0:
         return "—"
@@ -185,9 +192,9 @@ def write_reports(report_dir: Path, rows: list[dict], raw: dict) -> None:
         "- No portfolio reached profit above £100/turn by turn 150; all higher thresholds also remained unreached.",
         f"- Electrochem reaches bankruptcy on turn {raw['balance_v4_electrochem']['bankruptcy_turn']} and Advanced Materials on turn {raw['balance_v4_advanced_materials']['bankruptcy_turn']}; their earlier green results depended on earned bonuses.",
         f"- Batteries reaches bankruptcy on turn {raw['balance_v4_batteries']['bankruptcy_turn']} before any target battery recipe runs.",
-        f"- The £1,200 road motor variant starts two tiles from port, first runs motors on turn {road_motor['target_recipe_first_run']['r_009']}, sells {road_motor['target_units_sold']['motor']} motors, and reaches bankruptcy on turn {road_motor['bankruptcy_turn']}. It survives much longer than the £1,500 rail benchmark (turn {rail_motor['bankruptcy_turn']}) but still cannot finance copper extraction and full integration.",
-        f"- The prudent £1,200 motor path first runs motors on turn {prudent_motor['target_recipe_first_run']['r_009']} and sells {prudent_motor['target_units_sold']['motor']} motors. It takes {prudent_motor.get('expansion_loans_taken', 0)} strategy-approved expansion loan(s), waits {prudent_motor.get('unprofitable_cash_cushion_waits', 0)} times for the 1.5× loss-making cash cushion, and reaches bankruptcy on turn {prudent_motor['bankruptcy_turn']} before full raw integration.",
-        f"- Metal Magnate first runs motors on turn {magnate_motor['target_recipe_first_run']['r_009']}, sells {magnate_motor['target_units_sold']['motor']} motors and takes no strategy-approved expansion loan. Its inherited finite coal and iron deposits eventually exhaust; owned generation then stalls, cumulative post-integration grid purchases reach {magnate_motor['grid_bought_after_integration']} power, and bankruptcy follows on turn {magnate_motor['bankruptcy_turn']}.",
+        f"- The £1,200 road motor variant starts two tiles from port, first runs motors {first_run(road_motor, 'r_009')}, sells {road_motor['target_units_sold'].get('motor', 0)} motors, and reaches bankruptcy on turn {road_motor.get('bankruptcy_turn', -1)}. It survives much longer than the £1,500 rail benchmark (turn {rail_motor.get('bankruptcy_turn', -1)}) but still cannot finance copper extraction and full integration.",
+        f"- The prudent £1,200 motor path first runs motors {first_run(prudent_motor, 'r_009')} and sells {prudent_motor['target_units_sold'].get('motor', 0)} motors. It takes {prudent_motor.get('expansion_loans_taken', 0)} strategy-approved expansion loan(s), waits {prudent_motor.get('unprofitable_cash_cushion_waits', 0)} times for the 1.5× loss-making cash cushion, and reaches bankruptcy on turn {prudent_motor.get('bankruptcy_turn', -1)} before full raw integration.",
+        f"- Metal Magnate first runs motors {first_run(magnate_motor, 'r_009')}, sells {magnate_motor['target_units_sold'].get('motor', 0)} motors and takes no strategy-approved expansion loan. Its inherited finite coal and iron deposits eventually exhaust; owned generation then stalls, cumulative post-integration grid purchases reach {magnate_motor.get('grid_bought_after_integration', 0)} power, and bankruptcy follows on turn {magnate_motor.get('bankruptcy_turn', -1)}.",
     ])
     md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
