@@ -273,7 +273,7 @@ func _populate_land_rail() -> void:
 		_rail_total_label.custom_minimum_size = Vector2(0, 18)
 		_land_rail.add_child(_rail_total_label)
 		var caption := Label.new()
-		caption.text = "BUILT | BUYABLE | MAX"
+		caption.text = "BUILT | FREE | BUYABLE | MAX"
 		caption.theme_type_variation = &"Caption"
 		caption.add_theme_font_size_override("font_size", 9)
 		caption.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
@@ -296,7 +296,7 @@ func _populate_land_rail() -> void:
 		_rail_owned_label.custom_minimum_size = Vector2(0, 18)
 		_land_rail.add_child(_rail_owned_label)
 		var legend := Label.new()
-		legend.text = "OWNED / BUYABLE"
+		legend.text = "FREE · OWNED / BUYABLE"
 		legend.theme_type_variation = &"Caption"
 		legend.add_theme_font_size_override("font_size", 9)
 		legend.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
@@ -324,13 +324,16 @@ func _refresh_land_rail() -> void:
 	var totals := TileViewData.land_totals(_current_tile_id, _current_tile_data)
 	if _rail_expanded:
 		if _rail_total_label != null:
-			_rail_total_label.text = "%d | %d | %d" % [int(totals.built), int(totals.buyable), int(totals.max)]
+			_rail_total_label.text = "%d | %d | %d | %d" % [
+				int(totals.built), int(totals.free), int(totals.buyable), int(totals.max)]
 		if _density_note != null:
 			_density_note.visible = int(totals.built) > 100  # only once built crosses 100
 		_land_chart.configure(data.segments, float(data.type_cap), int(data.type_cap), true, int(data.owned), int(totals.buyable), int(data.npc_footprint))
 	else:
 		if _rail_owned_label != null:
-			_rail_owned_label.text = "%d / %d" % [int(data.owned), int(totals.buyable)]
+			# Collapsed rail: FREE first, because it is the one that answers "can I build here".
+			_rail_owned_label.text = "%d free · %d / %d" % [
+				int(totals.free), int(data.owned), int(totals.buyable)]
 		_land_chart.configure(data.segments, float(data.axis_max), int(data.type_cap), false, int(data.owned), int(totals.buyable), int(data.npc_footprint))
 
 func _build_header() -> HBoxContainer:

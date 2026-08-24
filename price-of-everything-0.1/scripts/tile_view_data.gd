@@ -263,6 +263,20 @@ static func land_chart_data(tile_id: String, tile_data: Dictionary) -> Dictionar
 			"tooltip": BuildingNaming.label_for_tile(tile_id, str(project.get("instance_id", "")), str(project.get("building_id", "")), str(project.get("recipe_id", ""))),
 		})
 
+	# Room an IN-PROGRESS upgrade has already reserved on this tile. The gate counts it and
+	# so does land_totals (the BUILT caption) — but the BAR did not, so it drew empty space
+	# that was already spoken for. A player looking at a tile with a big gap under the cap
+	# line was told there was room, and then refused (owner 2026-08-23).
+	var reserved := MatchState.reserved_upgrade_space_on_tile(tile_id)
+	if reserved > 0.0:
+		built += reserved
+		player_segments.append({
+			"size": reserved, "color": DS.PALETTE["ACCENT_DIM"], "is_other": false,
+			"is_ruins": false, "is_construction": true, "instance_id": "",
+			"name": "Upgrade in progress", "value": int(round(reserved)),
+			"icon": null, "stalled": false,
+			"tooltip": "Reserved by an upgrade in progress on this tile",
+		})
 	var owned := MatchState.get_tile_land_owned(tile_id)
 	var type_cap := _tile_max_capacity(tile_data)
 	# One axis for both chart modes: the terrain-adjusted cap the game actually
@@ -299,7 +313,13 @@ static func land_totals(tile_id: String, tile_data: Dictionary) -> Dictionary:
 	var max_cap := int(maxf(1.0, float(_tile_max_capacity(tile_data)) - npc))
 	var owned := MatchState.get_tile_land_owned(tile_id)
 	var buyable := maxi(0, max_cap - owned)
-	return {"built": int(round(built)), "buyable": buyable, "max": max_cap}
+	# FREE is the figure that decides whether anything can go up, and it was the one the
+	# readout made the player derive: a tile showing "BUILT 114 | BUYABLE 0 | MAX 122" reads
+	# as having room, when it has 8 (owner 2026-08-23). Two gates bound it — the land you own
+	# and the tile's physical space, which the NPC buildings are already sitting in — so the
+	# smaller of the two is the honest answer.
+	var free := maxi(0, mini(owned, max_cap) - int(round(built)))
+	return {"built": int(round(built)), "buyable": buyable, "max": max_cap, "free": free}
 
 static func _building_icon_tex(bd: Dictionary):
 	var building_id := str(bd.get("id", ""))

@@ -339,6 +339,7 @@ func _ready() -> void:
 	_test_demo_victory_tracks()
 	_test_demo_endings()
 	_test_recycling_gate()
+	_test_land_readout_matches_gate()
 	_test_research_link_is_exact()
 	_test_keybinds()
 	_test_tutorial_engine()
@@ -6710,6 +6711,78 @@ func _test_research_link_is_exact() -> void:
 	_check(checked > 20 and exact_ok,
 		"research link: an exact-title link returns that tech and nothing else (%d techs, %d of which are ambiguous under the loose search)" % [checked, ambiguous])
 	panel.free()
+
+# ── Land readout vs the build gate (owner 2026-08-23: "why did the chart show capacity?") ──
+
+func _test_land_readout_matches_gate() -> void:
+	var TileViewData := preload("res://scripts/tile_view_data.gd")
+	MatchState.reset()
+	var tile := "tile_5_10"
+	var tile_data: Dictionary = {"id": tile, "type": Catalog.tile_type(tile)}
+
+	# A player building and an NPC one on the same tile. The NPC footprint is the thing that
+	# made the readout look wrong: it eats the tile's physical space without ever counting
+	# against the land the player owns.
+	MatchState.add_building("b_009", "", tile, "player_1", "land_p1", false)
+	MatchState.add_building("b_009", "", tile, "ai_corp", "land_npc", false)
+	# Land starts at 0 owned, which would leave FREE clamped at 0 and test nothing. Give the
+	# player real headroom, which is also the state a tile is in when this question arises.
+	MatchState.tile_land_owned[tile] = 60
+	var totals: Dictionary = TileViewData.land_totals(tile, tile_data)
+	var owned: int = MatchState.get_tile_land_owned(tile)
+
+	# BUILT counts only the player. The chart used to be read as though it counted everything.
+	_check(absf(float(totals.built) - MatchState.get_tile_player_space_used(tile)) < 0.51,
+		"land readout: BUILT is the player's footprint, matching the gate's own figure")
+	_check(int(totals.max) < MatchState.max_tile_land(tile),
+		"land readout: MAX is the tile's capacity LESS the NPC buildings sitting on it")
+
+	# FREE is the figure that decides a build, and it must agree with the gate exactly: a
+	# building whose growth fits FREE is allowed, and one unit more is refused.
+	var free: int = int(totals.free)
+	_check(free > 0 and free == maxi(0, mini(owned, int(totals.max)) - int(totals.built)),
+		"land readout: FREE is the binding gate — owned or physical, whichever is smaller")
+
+	var used_before: float = MatchState.get_tile_space_used(tile)
+	var cap: int = MatchState.max_tile_land(tile)
+	var player_used: float = MatchState.get_tile_player_space_used(tile)
+	var fits_exactly: bool = (used_before + float(free) <= float(cap)
+		and player_used + float(free) <= float(owned))
+	var one_over_fails: bool = not (used_before + float(free + 1) <= float(cap)
+		and player_used + float(free + 1) <= float(owned))
+	_check(fits_exactly and one_over_fails,
+		"land readout: exactly FREE more fits and one more does not — chart and gate agree")
+	# THE BAR. Its drawn segments must add up to the same space the gate counts, or it shows
+	# headroom that is not there. It used to omit the room an in-progress upgrade had already
+	# reserved — the caption counted it, the bar did not, and the gap under the cap line was a
+	# lie by exactly that much.
+	var chart: Dictionary = TileViewData.land_chart_data(tile, tile_data)
+	var drawn := 0.0
+	for seg_variant: Variant in (chart.segments as Array):
+		drawn += float((seg_variant as Dictionary).get("size", 0.0))
+	_check(absf(drawn - MatchState.get_tile_space_used(tile)) < 0.01,
+		"land chart: the drawn bar sums to exactly the space the build gate counts")
+
+	# ...including while an upgrade is running, which is the case that was wrong.
+	MatchState.pending_upgrades.append({
+		"instance_id": "land_p1", "building_id": "b_009", "tile_id": tile,
+		"from_level": 1, "target_level": 2, "status": "upgrading",
+		"turns_remaining": 3, "size_delta": 12.0, "missing": {},
+	})
+	var chart_up: Dictionary = TileViewData.land_chart_data(tile, tile_data)
+	var drawn_up := 0.0
+	for seg_variant: Variant in (chart_up.segments as Array):
+		drawn_up += float((seg_variant as Dictionary).get("size", 0.0))
+	_check(absf(drawn_up - drawn - 12.0) < 0.01,
+		"land chart: an upgrade in progress is drawn, not left as empty space")
+	_check(absf(drawn_up - MatchState.get_tile_space_used(tile)) < 0.01,
+		"land chart: bar and gate still agree while an upgrade is running")
+	var totals_up: Dictionary = TileViewData.land_totals(tile, tile_data)
+	_check(int(totals_up.free) == int(totals.free) - 12,
+		"land readout: FREE drops by the room the upgrade reserved")
+	MatchState.pending_upgrades.clear()
+
+	MatchState.reset()
 
 # ── Recycling gate (owner 2026-08-23: out of the demo, behind `unlock recycling`) ──
 
