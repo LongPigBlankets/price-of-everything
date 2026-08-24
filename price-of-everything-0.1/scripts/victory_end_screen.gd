@@ -346,6 +346,12 @@ func _build_pennant(t: Dictionary, result: String) -> Control:
 	var card := _CutPlate.new(0, 0, _CutPlate.STEEL)
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.size_flags_vertical = Control.SIZE_FILL
+	# How the points were earned moved to HOVER (owner 2026-08-24). The card carries the
+	# crest, the name and the score; the working — what the track measures, where the run
+	# got to, what it needed — is one hover away and no longer four lines of small type
+	# under every hexagon.
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	card.tooltip_text = _track_tooltip(t)
 	# No colour bar across the top (owner 2026-08-24) — the crest below is the track's
 	# colour, struck in the research panel's metal, and a flat swatch over it was the one
 	# undesigned element on the card.
@@ -382,30 +388,14 @@ func _build_pennant(t: Dictionary, result: String) -> Control:
 	crest.done = done
 	crest.color = color
 	crest.glyph = str(t.get("key", ""))
-	crest.custom_minimum_size = Vector2(0, 104)
+	crest.custom_minimum_size = Vector2(0, 156)   # half again, now the card has the room
 	inner.add_child(crest)
 
 	var name_lbl := _lbl(str(t.get("name", "")), _BEBAS, 27, C_NAME_LIT if done else C_NAME_UNLIT)
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	inner.add_child(name_lbl)
 
-	var desc_lbl := _lbl(str(t.get("desc", "")), _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED)
-	desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	inner.add_child(desc_lbl)
-
-	inner.add_child(_spacer_v(4))
-
-	var stat_lbl := _lbl(str(t.get("stat", "")), _UIFonts.mono(), 19, color if done else DS.PALETTE.TEXT_MUTED)
-	stat_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	inner.add_child(stat_lbl)
-
-	var sub_lbl := _lbl(str(t.get("sub", "")), _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED)
-	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sub_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	inner.add_child(sub_lbl)
-
-	inner.add_child(_spacer_v(6))
+	inner.add_child(_spacer_v(12))
 
 	# Bottom badge.
 	var badge := PanelContainer.new()
@@ -422,9 +412,33 @@ func _build_pennant(t: Dictionary, result: String) -> Control:
 	else:
 		var border := Color("#3a2224") if result == "defeat" else Color("#1c3149")
 		badge.add_theme_stylebox_override("panel", _sb(C_TRACK_BG, border, 1, 8, 0))
-		bmc.add_child(_lbl("%d%% banked" % int(round(float(t.get("pct", 0.0)) * 100.0)), _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED))
+		# Points, not a percentage: every track is worth 1,000 and the score bar above is
+		# read in points, so the pennants should be too.
+		bmc.add_child(_lbl("%s / 1,000 points" % _num(int(round(float(t.get("pct", 0.0)) * 1000.0))),
+			_UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED))
 	inner.add_child(badge)
 	return card
+
+
+## What the card no longer says out loud: the track's rule, where the run got to, and what
+## that was measured against.
+func _track_tooltip(t: Dictionary) -> String:
+	var lines: Array[String] = [str(t.get("name", "")).to_upper()]
+	var desc := str(t.get("desc", ""))
+	if desc != "":
+		lines.append(desc)
+	var stat := str(t.get("stat", ""))
+	var sub := str(t.get("sub", ""))
+	if stat != "" and sub != "":
+		lines.append("%s — %s" % [stat, sub])
+	elif stat != "":
+		lines.append(stat)
+	elif sub != "":
+		lines.append(sub)
+	if bool(t.get("done", false)):
+		lines.append("Secured on turn %d." % int(t.get("at", 0)))
+	return "
+".join(lines)
 
 
 # ── Section 3: COPY + STATLINE ───────────────────────────────────────────────
