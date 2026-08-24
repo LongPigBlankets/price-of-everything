@@ -340,6 +340,7 @@ func _ready() -> void:
 	_test_demo_endings()
 	_test_recycling_gate()
 	_test_land_readout_matches_gate()
+	_test_upgrade_reserved_space_blocks()
 	_test_research_link_is_exact()
 	_test_keybinds()
 	_test_tutorial_engine()
@@ -6782,6 +6783,83 @@ func _test_land_readout_matches_gate() -> void:
 		"land readout: FREE drops by the room the upgrade reserved")
 	MatchState.pending_upgrades.clear()
 
+	MatchState.reset()
+
+# ── Upgrade-committed space actually BLOCKS (owner 2026-08-23) ──────────────
+#
+# An upgrade holds the room it is growing into from the moment it starts — including while
+# it is still awaiting materials, or a build could slip into the space and the upgrade could
+# never finish. These pin that the hold is real, that it is not double-counted when the
+# upgrade lands, and that cancelling gives it back.
+
+func _test_upgrade_reserved_space_blocks() -> void:
+	MatchState.reset()
+	var tile := "tile_5_10"
+	MatchState.add_building("b_009", "", tile, "player_1", "resv_a", false)
+	MatchState.add_building("b_009", "", tile, "player_1", "resv_b", false)
+	var base_used: float = MatchState.get_tile_space_used(tile)
+
+	# An upgrade in flight on this tile, growing by 12.
+	MatchState.pending_upgrades.append({
+		"instance_id": "resv_a", "building_id": "b_009", "tile_id": tile,
+		"from_level": 1, "target_level": 2, "status": MatchState.UPGRADE_STATUS_AWAITING,
+		"materials": {}, "missing": {"g_001": 1}, "turns_remaining": 3, "size_delta": 12.0,
+	})
+	_check(absf(MatchState.reserved_upgrade_space_on_tile(tile) - 12.0) < 0.01,
+		"upgrade hold: the tile reports the room the upgrade is growing into")
+	_check(absf(MatchState.get_tile_space_used(tile) - base_used - 12.0) < 0.01,
+		"upgrade hold: it counts against the tile's used space")
+	_check(absf(MatchState.get_tile_player_space_used(tile) - base_used - 12.0) < 0.01,
+		"upgrade hold: and against the player's own footprint, not the NPCs'")
+	# Still held while it waits for materials — that is the whole point of holding it.
+	_check(str((MatchState.pending_upgrades[0] as Dictionary).status)
+		== MatchState.UPGRADE_STATUS_AWAITING,
+		"upgrade hold: held while the upgrade is still awaiting materials")
+
+	# A SECOND upgrade on the same tile is refused BECAUSE of the hold. Proven by isolating
+	# it: land is set so the second upgrade fits without the hold and does not fit with it.
+	# The footprint gate runs BEFORE the materials gate, so the two refusals are
+	# distinguishable — a footprint reason means the hold blocked it, a materials reason
+	# means it got past the footprint gate.
+	# The research gate is checked before the footprint one, so grant it or the test would
+	# only ever prove that the tech is locked.
+	MatchState.grant_unlock(BuildingLevels.research_gate("assembly_plant", 2))
+	MatchState.tile_land_owned[tile] = int(ceil(MatchState.get_tile_space_used(tile))) + 4
+	var second: Dictionary = MatchState.start_upgrade("resv_b", "tile")
+	var blocked_reason := str(second.get("reason", "")).to_lower()
+	_check(not bool(second.get("ok", false))
+		and (blocked_reason.contains("own enough") or blocked_reason.contains("more space")),
+		"upgrade hold: a second upgrade is refused on FOOTPRINT while the first holds the room")
+	# Drop the hold and the same call gets past the footprint gate, failing on materials.
+	var held: Array = MatchState.pending_upgrades.duplicate(true)
+	MatchState.pending_upgrades.clear()
+	var unheld: Dictionary = MatchState.start_upgrade("resv_b", "tile")
+	_check(str(unheld.get("reason", "")).to_lower().contains("material"),
+		"upgrade hold: without the hold the same upgrade clears the footprint gate")
+	MatchState.pending_upgrades = held
+
+	# Completing it must not double-count: the level rises by exactly what the hold covered.
+	var held_used: float = MatchState.get_tile_space_used(tile)
+	(MatchState.pending_upgrades[0] as Dictionary)["status"] = "upgrading"
+	(MatchState.pending_upgrades[0] as Dictionary)["turns_remaining"] = 1
+	MatchState.tick_upgrades()
+	_check(MatchState.pending_upgrades.is_empty()
+		and int((MatchState.get_building("resv_a") as Dictionary).get("level", 1)) == 2,
+		"upgrade hold: the upgrade completes and the hold is released")
+	var grown: float = 15.0 * (BuildingLevels.mult("size", 2) - BuildingLevels.mult("size", 1))
+	_check(absf(MatchState.get_tile_space_used(tile) - (held_used - 12.0 + grown)) < 0.01,
+		"upgrade hold: the finished building takes the room, counted once, not twice")
+
+	# ...and cancelling hands it back.
+	MatchState.pending_upgrades.append({
+		"instance_id": "resv_b", "building_id": "b_009", "tile_id": tile,
+		"from_level": 1, "target_level": 2, "status": MatchState.UPGRADE_STATUS_AWAITING,
+		"materials": {}, "missing": {}, "turns_remaining": 3, "size_delta": 12.0,
+	})
+	var before_cancel: float = MatchState.get_tile_space_used(tile)
+	MatchState.cancel_upgrade("resv_b")
+	_check(absf(MatchState.get_tile_space_used(tile) - (before_cancel - 12.0)) < 0.01,
+		"upgrade hold: cancelling an upgrade returns the room it was holding")
 	MatchState.reset()
 
 # ── Recycling gate (owner 2026-08-23: out of the demo, behind `unlock recycling`) ──

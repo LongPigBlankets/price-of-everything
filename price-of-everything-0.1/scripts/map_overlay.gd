@@ -182,6 +182,12 @@ func _build_overlay_state(tile_data: Dictionary, reqs: Array, input_names: Array
 	var tile_id: String = tile_data.get("id", "")
 	if MatchState.survey_status(tile_id, str(tile_data.get("type", ""))) == "unsurveyed":
 		return "none"
+	# No physical room = blocked, whatever the inputs say. The overlay used to answer only
+	# "are the ingredients here", so a tile with nowhere to put the building still shone
+	# green and the click was refused (owner 2026-08-23). Checked FIRST, because a tile that
+	# cannot hold the building is not a candidate however good its deposits are.
+	if not _tile_has_physical_room(tile_id):
+		return "blocked"
 	var matched_input_count := _tile_input_match_count(tile_data, input_names)
 	var tracked_input_count := input_names.size()
 	if tracked_input_count > 0:
@@ -194,6 +200,23 @@ func _build_overlay_state(tile_data: Dictionary, reqs: Array, input_names: Array
 	if reqs.is_empty():
 		return "none"
 	return "blocked"
+
+## Is there room on the tile for the building being placed?
+##
+## Only the PHYSICAL cap, deliberately — that one is absolute. A shortfall in the land the
+## player OWNS may be resolvable by buying more (and the build path will auto-buy when that
+## setting is on), so marking those red would be a false negative. Physical space counts the
+## NPC buildings, live construction projects, and the room an in-progress upgrade has
+## already reserved — all of which are equally unavailable.
+func _tile_has_physical_room(tile_id: String, building_id: String = "") -> bool:
+	if tile_id == "":
+		return true
+	if building_id == "":
+		building_id = str(BuildMode.current_building_id)
+	if building_id == "":
+		return true
+	var needed := maxf(0.0, float(Catalog.get_building(building_id).get("tile_size_used", 1.0)))
+	return MatchState.get_tile_space_used(tile_id) + needed <= float(MatchState.max_tile_land(tile_id))
 
 func _tile_meets_all_build_reqs(tile_data: Dictionary, reqs: Array) -> bool:
 	for req in reqs:
@@ -441,6 +464,7 @@ func _render_infrastructure_build_overlay(infra_type: String) -> void:
 	var infra_key := InfraIcons.normalise(infra_type)
 	if infra_key == "":
 		return
+	var infra_building_id := str(Catalog.get_building_by_internal_name(infra_type).get("id", ""))
 	_add_build_backdrop()
 	for coord in terrain_layer.tiles:
 		var tile_data: Dictionary = terrain_layer.tiles[coord]
@@ -448,6 +472,14 @@ func _render_infrastructure_build_overlay(infra_type: String) -> void:
 		if MatchState.survey_status(tile_id, str(tile_data.get("type", ""))) == "unsurveyed":
 			continue
 		if _tile_has_infrastructure(tile_data, infra_key):
+			continue
+		# Infrastructure mode leaves current_building_id empty, so name the building the way
+		# world_map does when it actually places one.
+		if not _tile_has_physical_room(tile_id, infra_building_id):
+			var full := _make_build_hex_marker("blocked")
+			full.position = _tile_world_pos(coord) + BUILD_TILE_VERTICAL_OFFSET
+			add_child(full)
+			build_overlays.append(full)
 			continue
 		var state := "recommended" if _tile_needs_infrastructure(tile_id, infra_key) else "viable"
 		var marker := _make_build_hex_marker(state)
