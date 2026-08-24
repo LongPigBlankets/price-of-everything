@@ -341,6 +341,7 @@ func _ready() -> void:
 	_test_recycling_gate()
 	_test_land_readout_matches_gate()
 	_test_upgrade_reserved_space_blocks()
+	_test_construct_land_tickbox()
 	_test_research_link_is_exact()
 	_test_keybinds()
 	_test_tutorial_engine()
@@ -6860,6 +6861,55 @@ func _test_upgrade_reserved_space_blocks() -> void:
 	MatchState.cancel_upgrade("resv_b")
 	_check(absf(MatchState.get_tile_space_used(tile) - (before_cancel - 12.0)) < 0.01,
 		"upgrade hold: cancelling an upgrade returns the room it was holding")
+	MatchState.reset()
+
+# ── Construct confirm: buying the land is part of the decision (owner 2026-08-23) ──
+
+func _test_construct_land_tickbox() -> void:
+	MatchState.reset()
+	var tile := "tile_5_10"
+	var panel: Object = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
+	var building: Dictionary = Catalog.get_building("b_009")   # assembly plant, 15 land
+	panel.set("_selected_building", building)
+	panel.set("_locked_tile_id", tile)
+	var build_cost: float = panel.call("_construction_display_cost", "b_009")
+
+	# Plenty of land: no tickbox, nothing added to the total.
+	MatchState.tile_land_owned[tile] = 90
+	var roomy: Object = panel.call("_land_row", building)
+	_check(int(panel.get("_land_purchase_units")) == 0
+		and not bool(panel.get("_buy_land_wanted"))
+		and absf(float(panel.call("_confirm_total_cost")) - build_cost) < 0.01,
+		"construct land: a tile with room shows no tickbox and adds nothing to the total")
+	(roomy as Node).free()
+
+	# Not enough land: ticked already, priced, and the shortfall rounded up to whole patches.
+	MatchState.tile_land_owned[tile] = 5
+	var short: Object = panel.call("_land_row", building)
+	var units: int = int(panel.get("_land_purchase_units"))
+	var land_cost: float = float(panel.get("_land_purchase_cost"))
+	_check(bool(panel.get("_buy_land_wanted")),
+		"construct land: the box is ticked already when the player cannot build without it")
+	_check(units >= 15 - 5 and units % MatchState.LAND_PATCH_SIZE == 0,
+		"construct land: it buys at least the shortfall, in whole patches")
+	_check(land_cost > 0.0
+		and absf(float(panel.call("_confirm_total_cost")) - (build_cost + land_cost)) < 0.01,
+		"construct land: the Confirm total includes the land it is about to buy")
+
+	# Unticking is allowed, and takes the land back out of the total.
+	panel.call("_on_buy_land_toggled", false)
+	_check(absf(float(panel.call("_confirm_total_cost")) - build_cost) < 0.01,
+		"construct land: unticking drops the land back out of the total")
+	(short as Node).free()
+
+	# Enough land bought means the build gate would now pass — the tickbox buys the right
+	# amount, not merely some.
+	MatchState.tile_land_owned[tile] = 5 + units
+	var needed: float = float(building.get("tile_size_used", 1))
+	_check(MatchState.get_tile_player_space_used(tile) + needed
+		<= float(MatchState.get_tile_land_owned(tile)),
+		"construct land: the amount it buys is enough for the build to pass the land gate")
+	panel.free()
 	MatchState.reset()
 
 # ── Recycling gate (owner 2026-08-23: out of the demo, behind `unlock recycling`) ──
