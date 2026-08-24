@@ -1,6 +1,6 @@
 {
 	"assertions_failed": 4,
-	"assertions_passed": 354,
+	"assertions_passed": 366,
 	"average_port_distance": 2.0,
 	"bankruptcy_turn": -1,
 	"building_runs": {
@@ -400,6 +400,7 @@
 		"turn": 146
 	},
 	"last_profit": -42.6406548317091,
+	"local_consumer_reroutes": 4,
 	"maintenance_paid_total": 3067.0,
 	"max_bankruptcy_streak": 0,
 	"max_expansion_interest_per_turn": 2.73771388722297,
