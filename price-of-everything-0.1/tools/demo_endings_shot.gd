@@ -45,6 +45,19 @@ func _ready() -> void:
 		get_viewport().get_texture().get_image().save_png(
 			"user://poe_demo_ending_%s.png" % str(row[0]))
 
+	# The sections below the fold — company showcase and charts — for the ledger ending.
+	_screen.show_end(EndGameData.gather())
+	await _settle(20)
+	var sc: ScrollContainer = _screen.get_node_or_null("Scroll")
+	if sc != null:
+		sc.scroll_vertical = 980
+		await _settle(8)
+		get_viewport().get_texture().get_image().save_png("user://poe_end_scroll1.png")
+		sc.scroll_vertical = 2000
+		await _settle(8)
+		get_viewport().get_texture().get_image().save_png("user://poe_end_scroll2.png")
+		print("[DEMO_ENDING] scrolled shots written")
+
 	# The expand overlay: the supply-chain view, and whether its buildings can be clicked.
 	_screen.show_end(EndGameData.gather())
 	await _settle(20)
@@ -128,6 +141,12 @@ func _seed(secured: Array, partial: Dictionary) -> void:
 		VictoryState.history_buildings.append(3 + i / 4)
 	VictoryState.produced_by_good = {"g_005": 8600, "g_004": 4300, "g_010": 2690,
 		"g_002": 1820, "g_008": 1540}
+	# The company showcase reads three more ledgers; seed them so the plates carry the
+	# game's art rather than their empty-state dashes.
+	MarketState._lifetime_sold = {"g_005": 6100, "g_004": 2200}
+	Production.produced_by_building = {"dshot_g1": {"g_009": 5400}, "dshot_f1": {"g_004": 2100}}
+	MatchState.advisor_seats = {"seat_founder": "andrew"}
+	MatchState.advisor_hired_turn = {"andrew": 3}
 
 
 func _find_graph_worlds(n: Node, out: Array[Node]) -> void:

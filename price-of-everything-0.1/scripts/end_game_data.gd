@@ -5,6 +5,9 @@ extends RefCounted
 ## per-turn history), MatchState (buildings, tiles), Catalog (good names/icons) —
 ## exactly like tile_view_data.gd feeds the tile panel. UI is read-only against the sim.
 ##
+# tile_view_data owns the building-icon lookup (id_internal.png fallbacks).
+const TileViewData := preload("res://scripts/tile_view_data.gd")
+
 ## Adapts the design to the LIVE victory model: no base time score (you start at 0),
 ## the win threshold RISES over the game (win_threshold_for_turn), and the score bar is
 ## pure track contributions.
@@ -165,6 +168,7 @@ static func gather() -> Dictionary:
 			"epithet": _demo_epithet(ending_id, secured, total, turn),
 			"copy": [str(ending.copy)],
 			"statline": _statline(),
+			"company": _company_highlights(),
 			"charts": _charts(),
 			"empire": _empire(),
 		}
@@ -182,6 +186,7 @@ static func gather() -> Dictionary:
 		"epithet": _epithet(result, secured, turn),
 		"copy": _copy(result, secured, turn, tracks),
 		"statline": _statline(),
+		"company": _company_highlights(),
 		"charts": _charts(),
 		"empire": _empire(),
 	}
@@ -366,6 +371,67 @@ static func _join_names(names: Array) -> String:
 		return "the " + str(names[0]) + " ledger"
 	var head: Array = names.slice(0, names.size() - 1)
 	return ", ".join(head) + " and " + str(names[-1])
+
+# ── Company highlights (the run's own artefacts, for the showcase row) ─────────
+# Superlatives drawn from ledgers the sim already keeps, display-ready, so the screen can
+# show THIS run's things — good icons, building art, an advisor portrait — rather than
+# abstract numbers alone (owner 2026-08-24).
+static func _company_highlights() -> Dictionary:
+	var vs := VictoryState
+	var top_prod := {"gid": "", "qty": 0, "qty_text": "—"}
+	for gid in vs.produced_by_good:
+		var q: int = int(vs.produced_by_good[gid])
+		if q > int(top_prod.qty):
+			top_prod = {"gid": str(gid), "qty": q, "qty_text": _num(q) + " units"}
+	var top_sold := {"gid": "", "qty": 0, "qty_text": "—"}
+	for g_variant in MatchState.visible_goods():
+		var gid := str((g_variant as Dictionary).get("id", ""))
+		var q := MarketState.lifetime_sold(gid)
+		if q > int(top_sold.qty):
+			top_sold = {"gid": gid, "qty": q, "qty_text": _num(q) + " units"}
+	# Hardest-working building: the single instance with the most lifetime output. Profit is
+	# not ledgered per building, so units out of one machine is the honest superlative.
+	var work := {}
+	var work_units := 0
+	for iid in Production.produced_by_building:
+		var per: Dictionary = Production.produced_by_building[iid]
+		var total := 0
+		for k in per:
+			total += int(per[k])
+		if total > work_units and MatchState.buildings.has(str(iid)):
+			work_units = total
+			var b: Dictionary = MatchState.buildings[str(iid)]
+			var bd: Dictionary = Catalog.get_building(str(b.get("building_id", "")))
+			work = {"name": str(bd.get("display_name", "?")),
+				"sub": "%s units · Level %d" % [_num(total), int(b.get("level", 1))],
+				"icon": TileViewData._building_icon_tex(bd)}
+	# Longest-serving SEATED advisor, by hire turn; the tenure reads in company years.
+	var adv := {}
+	var earliest := 999999
+	for seat in MatchState.advisor_seats:
+		var aid := str(MatchState.advisor_seats[seat])
+		var t := int(MatchState.advisor_hired_turn.get(aid, 999998))
+		if t < earliest:
+			earliest = t
+			var a: Dictionary = MatchState.get_advisor(aid)
+			adv = {"name": str(a.get("name", aid.capitalize())),
+				"portrait": str(a.get("portrait_path", "")),
+				"since_year": 1 + maxi(0, t - 1) / 12}
+	# The chain, tier by tier: the most-produced good in each band, empty where the run
+	# never reached — drawn by the screen in the Goods Graph's own chip style.
+	var chain: Array = []
+	for tier in ["raw", "processed", "intermediate", "finished", "apex"]:
+		var best := {"tier": tier, "gid": "", "qty": 0}
+		for gid in vs.produced_by_good:
+			var good: Dictionary = Catalog.get_good(str(gid))
+			if str(good.get("goods_graph_tier", "")) != str(tier):
+				continue
+			if int(vs.produced_by_good[gid]) > int(best.qty):
+				best = {"tier": tier, "gid": str(gid), "qty": int(vs.produced_by_good[gid])}
+		chain.append(best)
+	return {"top_produced": top_prod, "top_sold": top_sold, "workhorse": work,
+		"advisor": adv, "chain": chain}
+
 
 # ── Statline (four headline figures) ───────────────────────────────────────────
 static func _statline() -> Array:

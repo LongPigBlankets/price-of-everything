@@ -168,6 +168,8 @@ func _build_bezel(data: Dictionary) -> Control:
 	col.add_child(_hborder())
 	col.add_child(_build_copy(data))
 	col.add_child(_hborder())
+	col.add_child(_build_company(data))
+	col.add_child(_hborder())
 	col.add_child(_build_charts(data))
 	col.add_child(_hborder())
 	col.add_child(_build_footer())
@@ -337,23 +339,19 @@ func _build_pennant(t: Dictionary, result: String) -> Control:
 	var done := bool(t.get("done", false))
 	var color := Color(str(t.get("color", "#ffffff")))
 
-	var card := PanelContainer.new()
+	var card := _CutPlate.new(0, 0)
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.size_flags_vertical = Control.SIZE_FILL
 	if done:
-		card.add_theme_stylebox_override("panel", _sb(Color("#0e2135"), Color(color.r, color.g, color.b, 0.40), 1, 13, 0))
+		card.fill = Color("#0D1E30")
+		card.accent = color
 	else:
-		card.modulate = Color(1, 1, 1, 0.82)
-		card.add_theme_stylebox_override("panel", _sb(Color("#0b1a2b"), C_HEADER_BORDER, 1, 13, 0))
+		card.dimmed = true
+		card.accent = Color(color, 0.25)
 
-	# Top hairline in the track colour (or grey).
 	var stack := VBoxContainer.new()
 	stack.add_theme_constant_override("separation", 0)
 	card.add_child(stack)
-	var hair := ColorRect.new()
-	hair.color = color if done else C_HEADER_BORDER
-	hair.custom_minimum_size = Vector2(0, 2)
-	stack.add_child(hair)
 
 	if done:
 		var glow := _PennantGlow.new()
@@ -386,7 +384,7 @@ func _build_pennant(t: Dictionary, result: String) -> Control:
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	inner.add_child(name_lbl)
 
-	var desc_lbl := _lbl(str(t.get("desc", "")), _UIFonts.PLEX, 11, DS.PALETTE.TEXT_MUTED)
+	var desc_lbl := _lbl(str(t.get("desc", "")), _UIFonts.PLEX, 13, DS.PALETTE.TEXT_MUTED)
 	desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	inner.add_child(desc_lbl)
@@ -397,7 +395,7 @@ func _build_pennant(t: Dictionary, result: String) -> Control:
 	stat_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	inner.add_child(stat_lbl)
 
-	var sub_lbl := _lbl(str(t.get("sub", "")), _UIFonts.PLEX, 11, DS.PALETTE.TEXT_MUTED)
+	var sub_lbl := _lbl(str(t.get("sub", "")), _UIFonts.PLEX, 13, DS.PALETTE.TEXT_MUTED)
 	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	inner.add_child(sub_lbl)
@@ -487,21 +485,166 @@ func _dropcap_para(text: String) -> Control:
 
 
 func _stat_card(value: String, label: String) -> Control:
-	var pc := PanelContainer.new()
+	var pc := _CutPlate.new(16, 14)
 	pc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	pc.add_theme_stylebox_override("panel", _sb(Color("#0b1a2b"), C_CARD_BORDER, 1, 11, 0))
 	var mc := MarginContainer.new()
-	mc.add_theme_constant_override("margin_left", 16)
-	mc.add_theme_constant_override("margin_right", 16)
-	mc.add_theme_constant_override("margin_top", 14)
-	mc.add_theme_constant_override("margin_bottom", 14)
 	pc.add_child(mc)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 4)
 	mc.add_child(v)
-	v.add_child(_lbl(value, _UIFonts.mono(), 23, C_STAT_VALUE))
-	v.add_child(_lbl(label.to_upper(), _UIFonts.PLEX_MED, 11, DS.PALETTE.TEXT_MUTED))
+	v.add_child(_lbl(value, _UIFonts.mono(), 26, C_STAT_VALUE))
+	v.add_child(_lbl(label.to_upper(), _UIFonts.PLEX_MED, 13, DS.PALETTE.TEXT_MUTED))
 	return pc
+
+
+# ── Section 3b: THE COMPANY — the run's own artefacts, in the game's own art ──
+# Owner 2026-08-24: use the assets the game already has — good icons on the Goods Graph's
+# cream chips, building icons, advisor portraits — and pack them four to a row.
+func _build_company(data: Dictionary) -> Control:
+	var co: Dictionary = data.get("company", {})
+	var sec := _section(32, SEC_PAD_H, 36)
+	var box: VBoxContainer = sec.get_child(0)
+	box.add_child(_section_head("The company"))
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 14)
+	box.add_child(row)
+	row.add_child(_good_showcase("Most produced", co.get("top_produced", {})))
+	row.add_child(_good_showcase("Most sold", co.get("top_sold", {})))
+	row.add_child(_workhorse_showcase(co.get("workhorse", {})))
+	row.add_child(_advisor_showcase(co.get("advisor", {})))
+
+	box.add_child(_chain_row(co.get("chain", [])))
+	return sec
+
+
+## One showcase plate: small-caps caption, an icon from the game's own art, the figure.
+func _showcase_plate(caption: String, icon: Control, value: String, sub: String,
+		mono: bool = true) -> Control:
+	var plate := _CutPlate.new(16, 12)
+	plate.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	plate.add_child(v)
+	v.add_child(_lbl(caption.to_upper(), _UIFonts.PLEX_MED, 13, DS.PALETTE.TEXT_MUTED))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	v.add_child(row)
+	if icon != null:
+		row.add_child(icon)
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	col.add_theme_constant_override("separation", 2)
+	row.add_child(col)
+	var val_font: Font = _UIFonts.mono() if mono else _UIFonts.PLEX_SEMI
+	var val := _lbl(value, val_font, 20, C_STAT_VALUE)
+	val.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(val)
+	var s2 := _lbl(sub, _UIFonts.PLEX, 13, DS.PALETTE.TEXT_MUTED)
+	s2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(s2)
+	return plate
+
+
+func _good_showcase(caption: String, d: Dictionary) -> Control:
+	var gid := str(d.get("gid", ""))
+	if gid == "":
+		return _showcase_plate(caption, null, "—", "nothing this run")
+	var icon := _UIHelpers.make_plain_good_icon(gid, Catalog.get_internal_name(gid), 72)
+	return _showcase_plate(caption, icon, str(d.get("qty_text", "")),
+		Catalog.get_display_name(gid))
+
+
+func _workhorse_showcase(d: Dictionary) -> Control:
+	if d.is_empty():
+		return _showcase_plate("Hardest-working building", null, "—", "nothing ran this game")
+	var icon: Control = null
+	var tex: Texture2D = d.get("icon")
+	if tex != null:
+		var tr := TextureRect.new()
+		tr.texture = tex
+		tr.custom_minimum_size = Vector2(72, 72)
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon = tr
+	return _showcase_plate("Hardest-working building", icon, str(d.get("name", "")),
+		str(d.get("sub", "")), false)
+
+
+func _advisor_showcase(d: Dictionary) -> Control:
+	if d.is_empty():
+		return _showcase_plate("Longest-serving advisor", null, "—", "no council seated")
+	var icon: Control = null
+	var path := str(d.get("portrait", ""))
+	if path != "" and ResourceLoader.exists(path):
+		var tr := TextureRect.new()
+		tr.texture = load(path)
+		tr.custom_minimum_size = Vector2(72, 72)
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		tr.clip_contents = true
+		icon = tr
+	return _showcase_plate("Longest-serving advisor", icon, str(d.get("name", "")),
+		"seated since Year %d" % int(d.get("since_year", 1)), false)
+
+
+## The supply chain the run actually established, drawn the Goods Graph's way: the
+## most-produced good of each tier on a cream chip, brass links between reached tiers,
+## dark embossed sockets where the chain never got.
+func _chain_row(chain: Array) -> Control:
+	var plate := _CutPlate.new(20, 14)
+	plate.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 10)
+	plate.add_child(v)
+	var reached := 0
+	for e in chain:
+		if str((e as Dictionary).get("gid", "")) != "":
+			reached += 1
+	v.add_child(_lbl("SUPPLY CHAIN — REACHED %d OF %d TIERS" % [reached, chain.size()],
+		_UIFonts.PLEX_MED, 13, DS.PALETTE.TEXT_MUTED))
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 6)
+	v.add_child(row)
+	for i in chain.size():
+		var e: Dictionary = chain[i]
+		if i > 0:
+			var link := _ChainLink.new()
+			link.lit = (str(e.get("gid", "")) != ""
+				and str((chain[i - 1] as Dictionary).get("gid", "")) != "")
+			row.add_child(link)
+		row.add_child(_chain_cell(e))
+	return plate
+
+
+func _chain_cell(e: Dictionary) -> Control:
+	var gid := str(e.get("gid", ""))
+	var cell := VBoxContainer.new()
+	cell.alignment = BoxContainer.ALIGNMENT_CENTER
+	cell.add_theme_constant_override("separation", 5)
+	if gid != "":
+		var chip := _UIHelpers.make_plain_good_icon(gid, Catalog.get_internal_name(gid), 64)
+		cell.add_child(chip)
+		var name_lbl := _lbl(Catalog.get_display_name(gid), _UIFonts.PLEX_MED, 12, C_STAT_VALUE)
+		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cell.add_child(name_lbl)
+	else:
+		var socket := _CutPlate.new(0, 0)
+		socket.dimmed = true
+		socket.cut = 10.0
+		socket.custom_minimum_size = Vector2(64, 64)
+		socket.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		cell.add_child(socket)
+		var dash := _lbl("not reached", _UIFonts.PLEX, 12, C_NAME_UNLIT)
+		dash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cell.add_child(dash)
+	var tier_lbl := _lbl(str(e.get("tier", "")).capitalize(), _UIFonts.PLEX, 12,
+		DS.PALETTE.TEXT_MUTED if gid != "" else C_NAME_UNLIT)
+	tier_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	cell.add_child(tier_lbl)
+	return cell
 
 
 # ── Section 4: CHARTS + EMPIRE ───────────────────────────────────────────────
@@ -547,14 +690,9 @@ func _build_charts(data: Dictionary) -> Control:
 
 
 func _chart_card(label: String, big: String, sub: String, col: Color, body: Control, footer: String) -> Control:
-	var pc := PanelContainer.new()
+	var pc := _CutPlate.new(20, 16)
 	pc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	pc.add_theme_stylebox_override("panel", _sb(Color("#0b1a2b"), C_CARD_BORDER, 1, 13, 0))
 	var mc := MarginContainer.new()
-	mc.add_theme_constant_override("margin_left", 20)
-	mc.add_theme_constant_override("margin_right", 20)
-	mc.add_theme_constant_override("margin_top", 16)
-	mc.add_theme_constant_override("margin_bottom", 16)
 	pc.add_child(mc)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 8)
@@ -563,7 +701,7 @@ func _chart_card(label: String, big: String, sub: String, col: Color, body: Cont
 	# Header row: label (left) + big number & sub (right).
 	var head := HBoxContainer.new()
 	v.add_child(head)
-	var lbl := _lbl(label.to_upper(), _UIFonts.PLEX_MED, 11, C_CHART_LABEL)
+	var lbl := _lbl(label.to_upper(), _UIFonts.PLEX_MED, 13, C_CHART_LABEL)
 	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(lbl)
@@ -573,7 +711,7 @@ func _chart_card(label: String, big: String, sub: String, col: Color, body: Cont
 	var big_lbl := _lbl(big, _UIFonts.mono(), 20, col)
 	big_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(big_lbl)
-	var sub_lbl := _lbl(sub, _UIFonts.PLEX, 11, DS.PALETTE.TEXT_MUTED)
+	var sub_lbl := _lbl(sub, _UIFonts.PLEX, 12, DS.PALETTE.TEXT_MUTED)
 	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(sub_lbl)
 
@@ -582,19 +720,14 @@ func _chart_card(label: String, big: String, sub: String, col: Color, body: Cont
 	v.add_child(body)
 
 	if footer != "":
-		v.add_child(_lbl(footer, _UIFonts.PLEX, 11, DS.PALETTE.TEXT_MUTED))
+		v.add_child(_lbl(footer, _UIFonts.PLEX, 12, DS.PALETTE.TEXT_MUTED))
 	return pc
 
 
 func _build_biggest(charts: Dictionary) -> Control:
-	var pc := PanelContainer.new()
+	var pc := _CutPlate.new(20, 16)
 	pc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	pc.add_theme_stylebox_override("panel", _sb(Color("#0b1a2b"), C_CARD_BORDER, 1, 13, 0))
 	var mc := MarginContainer.new()
-	mc.add_theme_constant_override("margin_left", 20)
-	mc.add_theme_constant_override("margin_right", 20)
-	mc.add_theme_constant_override("margin_top", 16)
-	mc.add_theme_constant_override("margin_bottom", 16)
 	pc.add_child(mc)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 8)
@@ -663,14 +796,9 @@ func _biggest_row(g: Dictionary, rank: int, maxu: int) -> Control:
 
 
 func _build_empire(empire: Dictionary) -> Control:
-	var pc := PanelContainer.new()
+	var pc := _CutPlate.new(20, 16)
 	pc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	pc.add_theme_stylebox_override("panel", _sb(Color("#0b1a2b"), C_CARD_BORDER, 1, 13, 0))
 	var mc := MarginContainer.new()
-	mc.add_theme_constant_override("margin_left", 20)
-	mc.add_theme_constant_override("margin_right", 20)
-	mc.add_theme_constant_override("margin_top", 16)
-	mc.add_theme_constant_override("margin_bottom", 16)
 	pc.add_child(mc)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 10)
@@ -973,6 +1101,79 @@ class DrawUtil:
 
 
 # The silver bezel sheen + corner rivets, drawn over the plate.
+## The game's skeuomorphic plate, replacing the mock's thin-lined rounded cards: a
+## cut-corner (octagonal) navy slab with machined relief — brass rim, light catching the
+## inner top edges, shadow pooling below — the same material language as the research
+## stamps and the menus' brass chrome (owner 2026-08-24).
+class _CutPlate extends PanelContainer:
+	const GOLD_HI := Color(0.965, 0.886, 0.659)
+	const GOLD_LO := Color(0.518, 0.408, 0.204)
+	var cut := 14.0
+	var fill := Color("#0A1826")
+	var rim_col := Color(0.808, 0.667, 0.396, 0.85)
+	var accent := Color(0, 0, 0, 0)      # optional inner top line (track colour)
+	var dimmed := false                  # unlit plates: duller rim, deeper fill
+
+	func _init(margin_h: int = 16, margin_v: int = 14) -> void:
+		var sb := StyleBoxEmpty.new()
+		sb.content_margin_left = margin_h
+		sb.content_margin_right = margin_h
+		sb.content_margin_top = margin_v
+		sb.content_margin_bottom = margin_v
+		add_theme_stylebox_override("panel", sb)
+		resized.connect(queue_redraw)
+
+	func _pts(r: Rect2, c: float) -> PackedVector2Array:
+		return PackedVector2Array([
+			Vector2(r.position.x + c, r.position.y), Vector2(r.end.x - c, r.position.y),
+			Vector2(r.end.x, r.position.y + c), Vector2(r.end.x, r.end.y - c),
+			Vector2(r.end.x - c, r.end.y), Vector2(r.position.x + c, r.end.y),
+			Vector2(r.position.x, r.end.y - c), Vector2(r.position.x, r.position.y + c)])
+
+	func _draw() -> void:
+		if size.x < 8.0 or size.y < 8.0:
+			return
+		var r := Rect2(Vector2(1.5, 1.5), size - Vector2(3, 3))
+		var c := minf(cut, minf(size.x, size.y) * 0.28)
+		var outer := _pts(r, c)
+		draw_colored_polygon(outer, fill.darkened(0.35) if dimmed else fill)
+		# Machined relief: light along the inner top run, shadow along the bottom.
+		var inner := _pts(r.grow(-2.5), maxf(2.0, c - 2.0))
+		draw_polyline(PackedVector2Array([inner[7], inner[0], inner[1], inner[2]]),
+			Color(1, 1, 1, 0.05 if dimmed else 0.11), 1.4, true)
+		draw_polyline(PackedVector2Array([inner[3], inner[4], inner[5], inner[6]]),
+			Color(0, 0, 0, 0.45), 1.6, true)
+		# The embossed groove a step further in.
+		var groove := _pts(r.grow(-5.0), maxf(2.0, c - 4.0))
+		groove.append(groove[0])
+		draw_polyline(groove, Color(0, 0, 0, 0.28), 1.0, true)
+		# Brass rim on the boundary: dark under-stroke, mid body, HI glint on the top run.
+		var loop := PackedVector2Array(outer)
+		loop.append(outer[0])
+		var rc := Color(rim_col, rim_col.a * 0.45) if dimmed else rim_col
+		draw_polyline(loop, Color(GOLD_LO, rc.a), 3.0, true)
+		draw_polyline(loop, rc, 1.6, true)
+		draw_polyline(PackedVector2Array([outer[7], outer[0], outer[1], outer[2]]),
+			Color(GOLD_HI, 0.22 if dimmed else 0.7), 1.2, true)
+		if accent.a > 0.0:
+			draw_line(Vector2(r.position.x + c + 2.0, r.position.y + 4.0),
+				Vector2(r.end.x - c - 2.0, r.position.y + 4.0), accent, 3.0, true)
+
+
+## Connector between chain chips — a short brass run, dim where the chain never got there.
+class _ChainLink extends Control:
+	var lit := false
+	func _init() -> void:
+		custom_minimum_size = Vector2(26, 64)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	func _draw() -> void:
+		var y := 32.0
+		var col := Color(0.808, 0.667, 0.396, 0.8) if lit else Color(1, 1, 1, 0.12)
+		draw_line(Vector2(2, y), Vector2(size.x - 2, y), col, 2.0, true)
+		if lit:
+			draw_circle(Vector2(size.x - 4.0, y), 2.5, col)
+
+
 # Faint radial accent glow (header + expand).
 class _Glow extends Control:
 	var col: Color = Color("#e6b34a")
