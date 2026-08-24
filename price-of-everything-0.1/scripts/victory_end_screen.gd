@@ -178,9 +178,10 @@ func _build_bezel(data: Dictionary) -> Control:
 
 
 func _hborder() -> Control:
-	var r := ColorRect.new()
-	r.color = C_HEADER_BORDER
-	r.custom_minimum_size = Vector2(0, 1)
+	# The mock's 1px section rules are gone (owner 2026-08-24: "remove them, keep the
+	# space") — the sections separate by breathing room and their own plates now.
+	var r := Control.new()
+	r.custom_minimum_size = Vector2(0, 10)
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return r
 
@@ -558,7 +559,7 @@ func _good_showcase(caption: String, d: Dictionary) -> Control:
 
 func _workhorse_showcase(d: Dictionary) -> Control:
 	if d.is_empty():
-		return _showcase_plate("Hardest-working building", null, "—", "nothing ran this game")
+		return _showcase_plate("Most value created", null, "—", "nothing ran this game")
 	var icon: Control = null
 	var tex: Texture2D = d.get("icon")
 	if tex != null:
@@ -568,7 +569,7 @@ func _workhorse_showcase(d: Dictionary) -> Control:
 		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon = tr
-	return _showcase_plate("Hardest-working building", icon, str(d.get("name", "")),
+	return _showcase_plate("Most value created", icon, str(d.get("name", "")),
 		str(d.get("sub", "")), false)
 
 
@@ -983,8 +984,8 @@ func _section_head(text: String) -> Control:
 	row.add_child(lbl)
 	var rule := _HRule.new()
 	rule.mode = _HRule.FADE_RIGHT
-	rule.col = C_CARD_BORDER
-	rule.custom_minimum_size = Vector2(0, 1)
+	rule.col = Color(0.518, 0.408, 0.204, 0.55)   # brass (GOLD_LO), not a slate hairline
+	rule.custom_minimum_size = Vector2(0, 2)
 	rule.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	rule.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(rule)
@@ -1299,13 +1300,18 @@ class _Crest extends Control:
 
 
 # Filled area line chart.
+## Revenue as a CIRCUIT TRACE (owner 2026-08-24: "gold lines leading to circles like
+## circuits"): an embossed brass line — dark under-stroke, brass body, a thin glint riding
+## on top — with solder-pad circles at sparse sample points and at the end.
 class _LineChart extends Control:
+	const GOLD_HI := Color(0.965, 0.886, 0.659)
+	const GOLD_MID := Color(0.808, 0.667, 0.396)
+	const GOLD_LO := Color(0.518, 0.408, 0.204)
 	var series: Array = []
 	var col: Color = Color.WHITE
 	func _draw() -> void:
 		var w := size.x
 		var h := size.y
-		# Faint gridlines.
 		for i in range(1, 4):
 			var y := h * float(i) / 4.0
 			draw_line(Vector2(0, y), Vector2(w, y), Color(1, 1, 1, 0.05), 1.0)
@@ -1319,18 +1325,38 @@ class _LineChart extends Control:
 		var n := series.size()
 		for i in n:
 			var x := w * float(i) / float(n - 1)
-			var y := h - (float(series[i]) / mx) * (h - 4.0)
+			var y := h - (float(series[i]) / mx) * (h - 6.0)
 			pts.append(Vector2(x, y))
-		# Fill under the line (fan from a baseline is fine — single solid colour, no per-vertex gradient).
+		# Faint fill keeps the area reading; single flat colour (no per-vertex gradient).
 		var fill := pts.duplicate()
 		fill.append(Vector2(w, h))
 		fill.append(Vector2(0, h))
-		draw_polygon(fill, PackedColorArray([Color(col.r, col.g, col.b, 0.18)]))
-		draw_polyline(pts, col, 2.0, true)
+		draw_polygon(fill, PackedColorArray([Color(GOLD_MID, 0.10)]))
+		# Embossed trace.
+		var under := PackedVector2Array()
+		for pt in pts:
+			under.append(pt + Vector2(0, 1.6))
+		draw_polyline(under, Color(0, 0, 0, 0.5), 3.0, true)
+		draw_polyline(pts, GOLD_MID, 2.4, true)
+		var glint := PackedVector2Array()
+		for pt in pts:
+			glint.append(pt + Vector2(0, -1.0))
+		draw_polyline(glint, Color(GOLD_HI, 0.4), 1.0, true)
+		# Solder pads: every eighth sample and the endpoint.
+		for i in n:
+			if i % 8 != 0 and i != n - 1:
+				continue
+			var pad := pts[i]
+			draw_circle(pad, 4.6, GOLD_LO)
+			draw_circle(pad, 3.4, GOLD_MID)
+			draw_circle(pad + Vector2(-1.0, -1.0), 1.2, Color(GOLD_HI, 0.85))
 
-
-# Bar chart (≈46 bars; peak in cream).
+## Output as a rack of BEAKERS (owner 2026-08-24): thin glass tubes with rounded feet,
+## light-blue liquid to the turn's level, a meniscus glint on the surface and a brushed
+## highlight up the glass. The biggest turn's beaker holds cream.
 class _BarChart extends Control:
+	const GLASS := Color(0.72, 0.78, 0.85, 0.45)
+	const LIQUID := Color(0.45, 0.68, 0.92, 0.8)
 	var series: Array = []
 	var col: Color = Color.WHITE
 	func _draw() -> void:
@@ -1338,8 +1364,7 @@ class _BarChart extends Control:
 		var h := size.y
 		if series.is_empty():
 			return
-		var n := mini(46, series.size())
-		# Sample n bars evenly.
+		var n := mini(24, series.size())
 		var vals := PackedFloat32Array()
 		var mx := 0.0
 		var peak_i := 0
@@ -1351,19 +1376,38 @@ class _BarChart extends Control:
 				mx = v
 				peak_i = i
 		mx = maxf(mx, 1.0)
-		var gap := 2.0
+		var gap := 7.0
 		var bw := (w - gap * float(n - 1)) / float(n)
+		var r := bw * 0.5
 		for i in n:
-			var bh := (vals[i] / mx) * (h - 2.0)
 			var x := float(i) * (bw + gap)
-			var c := Color("#f2e6c8") if i == peak_i else Color(col.r, col.g, col.b, 0.75)
-			draw_rect(Rect2(Vector2(x, h - bh), Vector2(maxf(1.0, bw), bh)), c)
-
-
-# Step area chart.
+			var cx := x + r
+			var foot := h - r - 1.0
+			var liquid := LIQUID if i != peak_i else Color(0.95, 0.9, 0.78, 0.9)
+			var level := foot - (vals[i] / mx) * (h - r - 8.0)
+			# Liquid: rounded foot + column up to the level, meniscus glint on top.
+			draw_circle(Vector2(cx, foot), r - 1.5, liquid)
+			if level < foot:
+				draw_rect(Rect2(Vector2(x + 1.5, level), Vector2(bw - 3.0, foot - level)), liquid)
+				draw_line(Vector2(x + 1.5, level), Vector2(x + bw - 1.5, level),
+					Color(1, 1, 1, 0.35), 1.2, true)
+			# Glass: foot arc, walls, open top, and a brushed highlight up the left wall.
+			draw_arc(Vector2(cx, foot), r, 0.0, PI, 12, GLASS, 1.3, true)
+			draw_line(Vector2(x, foot), Vector2(x, 3.0), GLASS, 1.3, true)
+			draw_line(Vector2(x + bw, foot), Vector2(x + bw, 3.0), GLASS, 1.3, true)
+			draw_line(Vector2(x + 2.5, foot - 2.0), Vector2(x + 2.5, 6.0),
+				Color(1, 1, 1, 0.10), 1.0, true)
+## Buildings standing as a HEAP OF NUGGETS (owner 2026-08-24: "filled with pebbles"):
+## the area under the step line packed with ore-like pebbles — steel-blue bodies, dark
+## outlines, a glint each — jittered deterministically so the heap holds still frame to
+## frame. The step line itself rides on top, embossed.
 class _StepChart extends Control:
 	var series: Array = []
 	var col: Color = Color.WHITE
+	func _height_at(x: float, w: float, mx: float, h: float) -> float:
+		var n := series.size()
+		var idx := clampi(int(x / w * float(n - 1) + 0.5), 0, n - 1)
+		return h - (float(series[idx]) / mx) * (h - 6.0)
 	func _draw() -> void:
 		var w := size.x
 		var h := size.y
@@ -1376,19 +1420,45 @@ class _StepChart extends Control:
 		for v in series:
 			mx = maxf(mx, float(v))
 		mx = maxf(mx, 1.0)
+		# The heap. Deterministic jitter (hash of the cell, not a RNG): _draw re-runs on
+		# every redraw, and pebbles that resettled each frame would shimmer.
+		var pr := 5.0
+		var col_step := pr * 2.0 + 2.5
+		var row_step := pr * 2.0 - 1.0
+		var cy := h - pr - 1.0
+		var row := 0
+		while cy > 8.0:
+			var cx := pr + (col_step * 0.5 if row % 2 == 1 else 0.0)
+			while cx < w - pr * 0.5:
+				var top := _height_at(cx, w, mx, h)
+				if cy - pr * 0.4 > top:
+					var seed := sin(float(row) * 12.9898 + cx * 0.784) * 43758.55
+					var jit := fposmod(seed, 1.0)
+					var pcx := cx + (jit - 0.5) * 3.0
+					var pcy := cy + (fmod(jit * 7.0, 1.0) - 0.5) * 2.0
+					var shade := 0.75 + jit * 0.45
+					var body := Color(col.r * shade, col.g * shade, col.b * shade, 0.95)
+					draw_circle(Vector2(pcx, pcy + 0.8), pr * (0.82 + jit * 0.3), Color(0, 0, 0, 0.4))
+					draw_circle(Vector2(pcx, pcy), pr * (0.78 + jit * 0.3), body)
+					draw_circle(Vector2(pcx - 1.4, pcy - 1.4), 1.3, Color(1, 1, 1, 0.22))
+				cx += col_step
+			cy -= row_step
+			row += 1
+		# The step line, embossed over the heap.
 		var pts := PackedVector2Array()
 		var n := series.size()
 		for i in n:
 			var x := w * float(i) / float(n - 1)
-			var y := h - (float(series[i]) / mx) * (h - 4.0)
+			var y := h - (float(series[i]) / mx) * (h - 6.0)
 			if i > 0:
 				pts.append(Vector2(x, pts[pts.size() - 1].y))
 			pts.append(Vector2(x, y))
-		var fill := pts.duplicate()
-		fill.append(Vector2(w, h))
-		fill.append(Vector2(0, h))
-		draw_polygon(fill, PackedColorArray([Color(col.r, col.g, col.b, 0.16)]))
+		var under := PackedVector2Array()
+		for pt in pts:
+			under.append(pt + Vector2(0, 1.5))
+		draw_polyline(under, Color(0, 0, 0, 0.5), 3.0, true)
 		draw_polyline(pts, col, 2.0, true)
+		draw_polyline(pts, Color(1, 1, 1, 0.18), 0.8, true)
 
 
 # A single horizontal ranked bar (rank 0 gold + glow).
@@ -1406,6 +1476,8 @@ class _RankBar extends Control:
 			DrawUtil.round_rect(self, Rect2(Vector2(0, 0), Vector2(bw, h * 0.55)), h * 0.4, Color(1, 1, 1, 0.18))
 		else:
 			DrawUtil.round_rect(self, Rect2(Vector2(0, 0), Vector2(bw, h)), h * 0.5, Color(col.r, col.g, col.b, 0.6))
+			# Machined bevel, same as the gold row: a light top half over a shaded body.
+			DrawUtil.round_rect(self, Rect2(Vector2(0, 0), Vector2(bw, h * 0.5)), h * 0.4, Color(1, 1, 1, 0.10))
 
 
 # The empire production-network map: four node columns, connectors, gold ports.

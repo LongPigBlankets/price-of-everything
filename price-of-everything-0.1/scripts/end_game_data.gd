@@ -389,21 +389,31 @@ static func _company_highlights() -> Dictionary:
 		var q := MarketState.lifetime_sold(gid)
 		if q > int(top_sold.qty):
 			top_sold = {"gid": gid, "qty": q, "qty_text": _num(q) + " units"}
-	# Hardest-working building: the single instance with the most lifetime output. Profit is
-	# not ledgered per building, so units out of one machine is the honest superlative.
+	# Most value created by one building: its lifetime output valued at today's market
+	# price. Profit is not ledgered per building, so output x price is the honest
+	# superlative — the machine that put the most worth into the world.
 	var work := {}
-	var work_units := 0
+	var work_value := 0.0
 	for iid in Production.produced_by_building:
 		var per: Dictionary = Production.produced_by_building[iid]
 		var total := 0
+		var value := 0.0
 		for k in per:
-			total += int(per[k])
-		if total > work_units and MatchState.buildings.has(str(iid)):
-			work_units = total
+			var qty := int(per[k])
+			total += qty
+			# Keys are good_ids for goods but the internal name for power.
+			var gid := str(k)
+			if not gid.begins_with("g_"):
+				gid = str(Catalog.get_good_by_internal_name(gid).get("id", ""))
+			if gid != "":
+				value += float(qty) * MarketState.get_price(gid)
+		if value > work_value and MatchState.buildings.has(str(iid)):
+			work_value = value
 			var b: Dictionary = MatchState.buildings[str(iid)]
 			var bd: Dictionary = Catalog.get_building(str(b.get("building_id", "")))
 			work = {"name": str(bd.get("display_name", "?")),
-				"sub": "%s units · Level %d" % [_num(total), int(b.get("level", 1))],
+				"sub": "£%s of goods · %s units · Level %d" % [
+					_num(int(round(value))), _num(total), int(b.get("level", 1))],
 				"icon": TileViewData._building_icon_tex(bd)}
 	# Longest-serving SEATED advisor, by hire turn; the tenure reads in company years.
 	var adv := {}
