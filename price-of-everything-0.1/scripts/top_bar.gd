@@ -1351,13 +1351,15 @@ func _adopt_encyclopedia_and_turn() -> void:
 	if hitbox != null:
 		hitbox.visible = false
 
-## Turn → month + year (owner 2026-07-10: months not seasons, campaign starts
-## January 2015; one month per turn — 300 turns run 2015 → 2039).
+## Turn → month + year. One month per turn, but the year is the COMPANY'S year, not a
+## calendar one (owner 2026-08-24): "January Year 1" through "December Year 25" over a
+## 300-turn campaign, and into Year 9 by the demo's turn 100. A real calendar year kept
+## implying a period the sim does not simulate.
 const _MONTHS: Array[String] = ["January", "February", "March", "April", "May", "June",
 	"July", "August", "September", "October", "November", "December"]
 
 func _turn_date(turn: int) -> String:
-	return "%s %d" % [_MONTHS[(turn - 1) % 12], 2015 + (turn - 1) / 12]
+	return "%s Year %d" % [_MONTHS[(turn - 1) % 12], 1 + (turn - 1) / 12]
 
 func _build_menu() -> void:
 	var mod := _ModuleBtn.new(self)
