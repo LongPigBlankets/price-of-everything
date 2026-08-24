@@ -227,7 +227,7 @@ func _color_for_good(good_id: String) -> Color:
 	return _generated_color(good_id)
 
 func _color_index(good_id: String) -> int:
-	var goods := Catalog.all_goods()
+	var goods := MatchState.visible_goods()
 	for i in goods.size():
 		var good: Dictionary = goods[i]
 		if good.get("id", "") == good_id:

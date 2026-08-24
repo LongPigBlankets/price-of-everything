@@ -121,7 +121,7 @@ func goods_standings() -> Array[Dictionary]:
 func goods_standings_for(match_seed: int, completed_turn: int, player_produced: Dictionary) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	var names := _rival_names_for(match_seed)
-	for good_variant: Variant in Catalog.all_goods():
+	for good_variant: Variant in MatchState.visible_goods():
 		var good: Dictionary = good_variant as Dictionary
 		var good_id := str(good.get("id", ""))
 		var apex: bool = str(good.get("goods_graph_tier", "")) == "apex"

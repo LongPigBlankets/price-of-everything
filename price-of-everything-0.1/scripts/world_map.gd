@@ -227,6 +227,7 @@ func _build_base() -> void:
 	MatchState.focus_building_requested.connect(_on_focus_building_requested)
 	MatchState.transport_panel_requested.connect(_on_transport_panel_requested)
 	MatchState.tile_stockpile_requested.connect(_on_go_to_tile_stockpile)
+	MatchState.research_search_requested.connect(_on_research_search_requested)
 
 	TurnManager.phase_started.connect(_on_phase_started)
 	TurnManager.turn_advanced.connect(_on_turn_advanced)
@@ -2060,6 +2061,13 @@ func _on_goods_graph_good_requested(good_id: String) -> void:
 func _on_empire_view_requested() -> void:
 	if empire_view != null:
 		empire_view.toggle()
+
+## Open the Research tree filtered to one tech. Goes through the bottom menu so the panel
+## opens the same way a click on the Research button does — stack, rise tween and all.
+func _on_research_search_requested(query: String) -> void:
+	if _hud == null or not _hud.has_method("open_research_search"):
+		return
+	_hud.open_research_search(query)
 
 func _on_encyclopedia_good_requested(good_id: String) -> void:
 	if search_overlay != null and search_overlay.has_method("open_encyclopedia_good"):

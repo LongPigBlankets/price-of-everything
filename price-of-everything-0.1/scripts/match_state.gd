@@ -18,6 +18,16 @@ var money: float = 1000.0  # was: int = 1000
 const HIDDEN_BUILDING_IDS := {"b_029": true, "b_030": true, "b_031": true, "b_035": true}
 var hidden_buildings_unlocked: bool = false
 
+# Recycling is off the table for the demo (owner 2026-08-23): the waste chain is a whole
+# second economy — collect it, sort it, feed it back — and a 100-turn demo has no room to
+# teach it. `unlock recycling` in the debug terminal puts it back for development.
+const RECYCLING_BUILDING_IDS := {"b_022": true, "b_036": true}
+# Waste Water, Scrap Metal, Bio Waste, Electronic Waste — the goods that only exist to be
+# recycled. Hidden alongside the plants, or the encyclopedia advertises a chain with no
+# building that can process it.
+const RECYCLING_GOOD_IDS := {"g_063": true, "g_067": true, "g_073": true, "g_074": true}
+var recycling_unlocked: bool = false
+
 # Demo gating (owner 2026-08-19): only the three DEMO_ADVISORS and four BASE_SEATS are
 # available until the `unlock advisors` cheat opens the full roster, every seat, and the
 # People-Management seat-unlock research.
@@ -631,6 +641,10 @@ signal goods_graph_good_requested(good_id: String)
 ## A UI element (e.g. the tile-view intermittency "see more" link) asked to open the
 ## building ledger pre-filtered to a single filter key (e.g. "green_intermittent").
 signal building_ledger_filter_requested(filter_key: String)
+## A research REQUIREMENT shown somewhere else in the UI was clicked — the tech gating a
+## building upgrade, for instance. Opens the Research panel with its search box already
+## holding that title, so the player lands on the node rather than on the whole tree.
+signal research_search_requested(query: String)
 signal output_stockpile_selection_started(selection: Dictionary)
 signal output_stockpile_selection_cancelled
 signal output_stockpile_destination_changed(instance_id: String, tile_id: String, good_id: String)
@@ -3270,7 +3284,34 @@ func is_building_available(building_id: String) -> bool:
 	# Ports are map infrastructure that may be bought from their existing owner, never built.
 	if building_id == "b_004":
 		return false
+	if RECYCLING_BUILDING_IDS.has(building_id) and not recycling_unlocked:
+		return false
 	return hidden_buildings_unlocked or not HIDDEN_BUILDING_IDS.has(building_id)
+
+## Is this good shown to the player at all? Only the recycling chain is ever hidden today.
+func is_good_available(good_id: String) -> bool:
+	return recycling_unlocked or not RECYCLING_GOOD_IDS.has(good_id)
+
+## Every good the player may see, in catalogue order. The one place the gate is applied, so
+## a panel opts in by calling this instead of Catalog.all_goods() — the market and telemetry
+## deliberately keep the full set (a price for a hidden good is harmless; a gap is not).
+func visible_goods() -> Array:
+	if recycling_unlocked:
+		return Catalog.all_goods()
+	var out: Array = []
+	for good_variant: Variant in Catalog.all_goods():
+		var good: Dictionary = good_variant
+		if is_good_available(str(good.get("id", ""))):
+			out.append(good)
+	return out
+
+## Cheat (`unlock recycling`): put the waste chain and its two plants back.
+func cheat_unlock_recycling() -> void:
+	if recycling_unlocked:
+		return
+	recycling_unlocked = true
+	unlock_granted.emit("Recycling", "The waste chain and its plants are enabled.", false)
+	hidden_buildings_enabled.emit()   # the catalogue panels already refresh on this
 
 func cheat_unlock_hidden_buildings() -> void:
 	if hidden_buildings_unlocked:
@@ -3309,6 +3350,7 @@ func reserve_instance_id(building_id: String) -> String:
 func reset() -> void:
 	money = 1000
 	hidden_buildings_unlocked = false
+	recycling_unlocked = false
 	advisors_unlocked = false
 	construct_cost_display = "grid"
 	construct_start_half_capacity = false

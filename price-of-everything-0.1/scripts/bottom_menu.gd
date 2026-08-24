@@ -547,6 +547,17 @@ func _on_money_panel_tab_requested(tab_name: String) -> void:
 	_set_panel_visible(money_panel, true)
 	money_panel.open_tab(tab_name)
 
+## Open the Research panel with its search box pre-filled — the route a "Requires research"
+## line takes when the player clicks it.
+func open_research_search(query: String) -> void:
+	if research_panel == null:
+		return
+	if not research_panel.visible:
+		_hide_all_panels()
+		_set_panel_visible(research_panel, true)
+	if research_panel.has_method("open_with_search"):
+		research_panel.open_with_search(query, true)   # exact: land on the named tech only
+
 func _on_victory_widget_clicked() -> void:
 	# Toggle: clicking the top-bar score widget opens the Victory panel, or closes
 	# it if it is already the open panel.

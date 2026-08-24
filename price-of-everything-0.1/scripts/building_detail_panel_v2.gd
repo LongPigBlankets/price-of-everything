@@ -968,12 +968,10 @@ func _open_upgrade_sheet(building: Dictionary) -> void:
 			vb.add_child(_upgrade_delta_row("Cost / unit", cc, cn, DS.PALETTE["DANGER"] if cn > cc else DS.PALETTE["OK"], 2, "£"))
 		# Blockers
 		if bool(pv.get("research_locked", false)):
-			var rl := Label.new()
-			rl.theme_type_variation = "Body"
-			rl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			rl.add_theme_color_override("font_color", DS.PALETTE["DANGER"])
-			rl.text = "Requires research: %s" % str(pv.get("research_gate", ""))
-			vb.add_child(rl)
+			# The tech name is a link into the Research tree — it is the most actionable thing
+			# on this sheet, and used to be flat text the player had to go and find by hand.
+			vb.add_child(UIHelpers.make_research_requirement_link(
+				str(pv.get("research_gate", "")), DS.PALETTE["DANGER"]))
 		if not bool(pv.get("fits", true)):
 			var nf := Label.new()
 			nf.theme_type_variation = "Body"
@@ -1029,7 +1027,11 @@ func _commit_upgrade(iid: String, mode: String, duration: int) -> void:
 	else:
 		MatchState.request_toast(str(res.get("reason", "Cannot upgrade.")), "warning")
 
-# A material cell for the upgrade sheet: framed good icon (need pill) + have/need caption.
+## Good-icon size on the upgrade sheet. Frameless: the metal bevel ate a 52 px cell and
+## left the good barely readable (owner 2026-08-23).
+const UPGRADE_MAT_ICON := 56
+
+# A material cell for the upgrade sheet: plain good icon (need pill) + have/need caption.
 func _upgrade_material_cell(m: Dictionary) -> Control:
 	var good_id := str(m.get("good_id", ""))
 	var need := int(m.get("need", 0))
@@ -1037,7 +1039,8 @@ func _upgrade_material_cell(m: Dictionary) -> Control:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", DS.SP["XS"])
 	col.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	col.add_child(_good_icon_pill(good_id, Catalog.get_internal_name(good_id), need, 52))
+	col.add_child(_plain_icon_pill(good_id, Catalog.get_internal_name(good_id), need,
+		UPGRADE_MAT_ICON))
 	var hn := Label.new()
 	hn.theme_type_variation = "Caption"
 	hn.text = "%d/%d" % [mini(have, need), need]
@@ -1451,6 +1454,14 @@ func _recipe_icon(good_id: String, internal: String, qty: int, size: int, bleed:
 # UIHelpers.make_framed_good_icon) with the qty PILL superimposed on its bottom-right. The framed
 # GoodIconHover root supplies the good-name hover tooltip itself. base_qty/mod_pct (output only) →
 # the pill shows the struck base + effective with a coloured outline.
+## The frameless variant: cream plate, rounded corners, no metal bevel. Same pill and same
+## route into the Goods Graph — only the plate differs.
+func _plain_icon_pill(good_id: String, internal: String, qty: int, size: int) -> Control:
+	var holder := UIHelpers.make_plain_good_icon(good_id, internal, size)
+	holder.add_child(_qty_pill(qty, -1, 0))
+	UIHelpers.link_good_icon_to_graph(holder, good_id)
+	return holder
+
 func _good_icon_pill(good_id: String, internal: String, qty: int, size: int, base_qty: int = -1, mod_pct: int = 0) -> Control:
 	var holder := UIHelpers.make_framed_good_icon(good_id, internal, size)
 	holder.add_child(_qty_pill(qty, base_qty, mod_pct))

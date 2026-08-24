@@ -132,11 +132,11 @@ func _build_rows() -> void:
 func _goods_for_kind() -> Array:
 	if _kind == "deposits":
 		var out: Array = []
-		for g in Catalog.all_goods():
+		for g in MatchState.visible_goods():
 			if str(g.get("good_type", "")) == "raw" and str(g.get("internal_name", "")) != "pure_water":
 				out.append(g)
 		return out
-	return Catalog.all_goods()
+	return MatchState.visible_goods()
 
 func _picker_mode() -> int:
 	return MapMode.Mode.TILES_CONSUMING if _kind == "consuming" else MapMode.Mode.TILES_PRODUCING

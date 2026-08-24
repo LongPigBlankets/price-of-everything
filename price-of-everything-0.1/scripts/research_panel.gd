@@ -108,6 +108,11 @@ var _tab_unselected_style: StyleBoxFlat
 var _close_button: Button
 var _search_input: LineEdit
 var _search_query := ""
+## Set when the tree was opened by a LINK to one named tech rather than by typing. The
+## ordinary matcher searches title, description and category by substring — right for
+## hunting, wrong for a link, which must land on the one node it names and nothing else.
+## Cleared as soon as the player edits the box, which puts them back in hunting mode.
+var _search_exact_title := ""
 var _stamp_font: Font
 var _dragging_tree := false
 var _free_unlocks := 0
@@ -187,8 +192,22 @@ func _create_search_input() -> void:
 	add_child(_search_input)
 
 
+## Open (or refocus) the tree with `query` already in the search box. Called via
+## MatchState.research_search_requested, so any panel can link to a tech without knowing
+## where the research panel lives.
+func open_with_search(query: String, exact_title: bool = false) -> void:
+	show()
+	if _search_input != null:
+		_search_input.text = query
+	_on_search_changed(query)
+	# After _on_search_changed, which clears it — a link sets it, typing never does.
+	_search_exact_title = query if exact_title else ""
+	queue_redraw()
+
 func _on_search_changed(text: String) -> void:
 	_search_query = text
+	if text != _search_exact_title:
+		_search_exact_title = ""
 	# Results are drawn as a flat rank layout across every category, so the stored
 	# per-category pan/zoom would leave them off-screen. Reset the view each keystroke.
 	_category_view_state.erase(_selected_category)
@@ -870,7 +889,10 @@ func _category_unlocks(category: String) -> Array[Dictionary]:
 	if query != "":
 		var hits: Array[Dictionary] = []
 		for unlock in _unlock_rows:
-			if _unlock_matches(unlock, query):
+			if _search_exact_title != "":
+				if str(unlock.get("title", "")).to_lower() == _search_exact_title.to_lower():
+					hits.append(unlock)
+			elif _unlock_matches(unlock, query):
 				hits.append(unlock)
 		return hits
 	var rows: Array[Dictionary] = [_category_root_unlock(category)]
@@ -1275,16 +1297,14 @@ func _draw_rank_stamp(rank: String, rect: Rect2, zoom: float) -> void:
 func _rank_stamp_color(rank: String) -> Color:
 	return _rank_shared_color(rank)
 
-func _rank_shared_color(rank: String) -> Color:
-	match rank:
-		"I":
-			return Color(0.62, 0.25, 0.16, 0.58)
-		"II":
-			return Color(0.62, 0.66, 0.67, 0.58)
-		"III":
-			return Color(0.78, 0.57, 0.18, 0.58)
-		_:
-			return Color(0.58, 0.39, 0.20, 0.58)
+## Every tier is GOLD (owner 2026-08-23). It used to run bronze / silver / gold by rank,
+## which read as a quality ladder — a Tier I tech looking cheaper than a Tier III one — when
+## the rank is only how deep in the tree it sits. The CATEGORY hexes down the left keep their
+## own colours; they are what actually distinguishes one branch from another.
+const RANK_GOLD := Color(0.78, 0.57, 0.18, 0.58)
+
+func _rank_shared_color(_rank: String) -> Color:
+	return RANK_GOLD
 
 func _hex_points(rect: Rect2) -> PackedVector2Array:
 	var left := rect.position.x

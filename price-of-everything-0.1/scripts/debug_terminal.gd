@@ -179,13 +179,16 @@ func _run_command(text: String) -> String:
 			return "Unlocked ALL research (%d nodes)." % count
 		"unlock":
 			if parts.size() < 2:
-				return "usage: unlock <research title>  (e.g. 'unlock hydro')  |  unlock all | hidden_buildings | advisors | demo"
+				return "usage: unlock <research title>  (e.g. 'unlock hydro')  |  unlock all | hidden_buildings | advisors | demo | recycling"
 			if parts[1].to_lower() == "all":
 				var unlocked_count: int = MatchState.cheat_unlock_all_research()
 				return "Unlocked ALL research (%d nodes)." % unlocked_count
 			if parts[1].to_lower() == "hidden_buildings":
 				MatchState.cheat_unlock_hidden_buildings()
 				return "Hidden buildings enabled for this match."
+			if parts[1].to_lower() == "recycling":
+				MatchState.cheat_unlock_recycling()
+				return "Recycling enabled: waste goods and both recycling plants are back."
 			if parts[1].to_lower() == "advisors":
 				MatchState.cheat_unlock_advisors()
 				return "All advisors and seats unlocked for this match."

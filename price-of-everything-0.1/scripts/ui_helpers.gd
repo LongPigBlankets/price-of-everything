@@ -98,6 +98,44 @@ static func make_framed_good_icon(good_id: String, internal_name: String, frame_
 ##
 ## `size` is the whole tile; callers overlay the navy quantity pill on it exactly as the
 ## recipe cards do (see building_detail_panel_v2._good_icon_pill).
+## A "Requires research: X" line where X is an underlined link into the Research tree.
+## The requirement is the most actionable thing on an upgrade sheet and used to be flat
+## text, leaving the player to find the tech by hand (owner 2026-08-23).
+static func make_research_requirement_link(gate: String, color: Color) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 0)
+	var lead := Label.new()
+	lead.theme_type_variation = "Body"
+	lead.text = "Requires research: "
+	lead.add_theme_color_override("font_color", color)
+	lead.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(lead)
+	var link := Label.new()
+	link.theme_type_variation = "Body"
+	link.text = gate
+	link.add_theme_color_override("font_color", color)
+	# Underline via the font itself, so it tracks the label's size and wrapping rather than
+	# being a drawn rule that drifts when the text reflows.
+	link.add_theme_constant_override("underline_alignment", 1)
+	link.mouse_filter = Control.MOUSE_FILTER_STOP
+	link.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	link.tooltip_text = "Open %s in the Research tree" % gate
+	var underline := ColorRect.new()
+	underline.color = color
+	underline.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	underline.offset_top = -2.0
+	underline.custom_minimum_size = Vector2(0, 1)
+	underline.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	link.add_child(underline)
+	link.gui_input.connect(func(e: InputEvent) -> void:
+		if not (e is InputEventMouseButton):
+			return
+		var mb := e as InputEventMouseButton
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+			MatchState.research_search_requested.emit(gate))
+	row.add_child(link)
+	return row
+
 static func make_plain_good_icon(good_id: String, internal_name: String, size: int = 56) -> Control:
 	var root := GoodIconHover.new()
 	root.good_id = good_id

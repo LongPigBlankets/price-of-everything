@@ -36,7 +36,7 @@ func _build_panel_content() -> void:
 	for child in content_vbox.get_children():
 		child.queue_free()
 
-	for good_data in Catalog.all_goods():
+	for good_data in MatchState.visible_goods():
 		var row := ResourceRowScene.instantiate()
 		content_vbox.add_child(row)
 		row.setup(good_data)

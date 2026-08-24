@@ -338,6 +338,8 @@ func _ready() -> void:
 	_test_demo_itch_speed()
 	_test_demo_victory_tracks()
 	_test_demo_endings()
+	_test_recycling_gate()
+	_test_research_link_is_exact()
 	_test_keybinds()
 	_test_tutorial_engine()
 	_test_decision_tenure_gate()
@@ -6666,6 +6668,77 @@ func _test_demo_endings() -> void:
 	VictoryState.apply_ruleset(saved_rules)
 	VictoryState.reset()
 
+# ── Research deep link (owner 2026-08-23: the blocking tech is a link, not flat text) ──
+
+func _test_research_link_is_exact() -> void:
+	var panel: Object = (load("res://scripts/research_panel.gd") as GDScript).new()
+	var rows: Array = panel.get("_unlock_rows")
+	if rows == null or rows.is_empty():
+		panel.call("_load_unlock_rows")
+		rows = panel.get("_unlock_rows")
+	_check(rows != null and rows.size() > 0, "research link: the unlock table loads")
+
+	# The ORDINARY search matches title, description and category by substring, which is
+	# right for hunting and wrong for a link: several techs mention another tech in their
+	# description. Count how often an exact title pulls in extras, so the exact mode below
+	# is demonstrably needed rather than assumed.
+	var ambiguous := 0
+	for row_variant: Variant in rows:
+		var title := str((row_variant as Dictionary).get("title", ""))
+		if title == "":
+			continue
+		var loose := 0
+		for other_variant: Variant in rows:
+			if bool(panel.call("_unlock_matches", other_variant, title.to_lower())):
+				loose += 1
+		if loose > 1:
+			ambiguous += 1
+
+	# The exact mode must return EXACTLY the named tech, for every tech there is.
+	var exact_ok := true
+	var checked := 0
+	for row_variant: Variant in rows:
+		var title := str((row_variant as Dictionary).get("title", ""))
+		if title == "":
+			continue
+		checked += 1
+		panel.set("_search_query", title)
+		panel.set("_search_exact_title", title)
+		var hits: Array = panel.call("_category_unlocks", "")
+		if hits.size() != 1 or str((hits[0] as Dictionary).get("title", "")) != title:
+			exact_ok = false
+	_check(checked > 20 and exact_ok,
+		"research link: an exact-title link returns that tech and nothing else (%d techs, %d of which are ambiguous under the loose search)" % [checked, ambiguous])
+	panel.free()
+
+# ── Recycling gate (owner 2026-08-23: out of the demo, behind `unlock recycling`) ──
+
+func _test_recycling_gate() -> void:
+	var was_unlocked: bool = MatchState.recycling_unlocked
+	MatchState.recycling_unlocked = false
+	var visible: Dictionary = {}
+	for good_variant: Variant in MatchState.visible_goods():
+		visible[str((good_variant as Dictionary).get("id", ""))] = true
+	var hidden_ok := true
+	for gid in MatchState.RECYCLING_GOOD_IDS:
+		if visible.has(str(gid)) or MatchState.is_good_available(str(gid)):
+			hidden_ok = false
+	_check(hidden_ok, "recycling: the waste goods are hidden by default")
+	_check(not MatchState.is_building_available("b_022")
+		and not MatchState.is_building_available("b_036"),
+		"recycling: both recycling plants are hidden by default")
+	_check(MatchState.visible_goods().size()
+		== Catalog.all_goods().size() - MatchState.RECYCLING_GOOD_IDS.size(),
+		"recycling: exactly the waste goods are removed, nothing else")
+	_check(MatchState.is_good_available("g_001") and MatchState.is_building_available("b_001"),
+		"recycling: ordinary goods and buildings are untouched")
+
+	MatchState.cheat_unlock_recycling()
+	_check(MatchState.visible_goods().size() == Catalog.all_goods().size()
+		and MatchState.is_building_available("b_036"),
+		"recycling: `unlock recycling` puts the chain and its plants back")
+	MatchState.recycling_unlocked = was_unlocked
+
 # ── Victory system (scripts/victory_state.gd; docs/victory-system-spec.md §12) ──
 
 func _test_victory_base_curve() -> void:
@@ -7273,8 +7346,10 @@ func _test_goods_flow_graph() -> void:
 	var nodes: Array = g["nodes"]
 	var by_id: Dictionary = g["by_id"]
 	var edges: Array = g["edges"]
-	_check(nodes.size() == Catalog.all_goods().size(),
-		"goods graph: one node per catalog good (%d)" % nodes.size())
+	# VISIBLE goods, not the whole catalogue: the recycling chain is gated out of the demo,
+	# and a graph node for a good the player can never see or make is a dead end.
+	_check(nodes.size() == MatchState.visible_goods().size(),
+		"goods graph: one node per visible good (%d)" % nodes.size())
 	var ok_edges := not edges.is_empty()
 	for e in edges:
 		if not (by_id.has(str(e["from"])) and by_id.has(str(e["to"]))):

@@ -1025,17 +1025,22 @@ func _add_breakdown_section(root: VBoxContainer, title: String, rows: Array, emp
 	total_row.add_child(total_val)
 	root.add_child(total_row)
 
-# One breakdown row: framed good icon (or spacer for power/no-good) · name · ×qty · bar · £amount.
+## Good-icon size in the sales / purchases breakdowns.
+const BREAKDOWN_ICON := 40
+
+# One breakdown row: plain good icon (or spacer for power/no-good) · name · ×qty · bar · £amount.
 func _breakdown_row(gid: String, label: String, qty: int, amount: float, max_amount: float) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	if gid != "":
-		var icon := UIHelpers.make_framed_good_icon(gid, Catalog.get_internal_name(gid), 30)
-		icon.custom_minimum_size = Vector2(30, 30)
+		# Frameless and bigger: at 30 px the metal bevel took most of the cell and the good
+		# itself was a few pixels of art. Cream plate, rounded, 40 px (owner 2026-08-23).
+		var icon := UIHelpers.make_plain_good_icon(gid, Catalog.get_internal_name(gid), BREAKDOWN_ICON)
+		icon.custom_minimum_size = Vector2(BREAKDOWN_ICON, BREAKDOWN_ICON)
 		row.add_child(icon)
 	else:
 		var sp := Control.new()
-		sp.custom_minimum_size = Vector2(30, 0)
+		sp.custom_minimum_size = Vector2(BREAKDOWN_ICON, 0)
 		row.add_child(sp)
 	var name_l := Label.new()
 	name_l.text = label

@@ -352,7 +352,7 @@ func _clear_results_content() -> void:
 
 func _goods_results(query: String) -> Array:
 	var results: Array = []
-	for good in Catalog.all_goods():
+	for good in MatchState.visible_goods():
 		var display_name: String = good.get("display_name", "")
 		var internal_name: String = good.get("internal_name", "")
 		var best_match := _best_text_match(query, [
@@ -1238,7 +1238,7 @@ func _make_encyclopedia_landing() -> Control:
 	sections.add_theme_constant_override("separation", 8)
 	accordion.add_child(sections)
 
-	_add_accordion_section(sections, "Goods", Catalog.all_goods(), "good")
+	_add_accordion_section(sections, "Goods", MatchState.visible_goods(), "good")
 	_add_accordion_section(sections, "Recipes", Catalog.all_recipes(), "recipe")
 	_add_accordion_section(sections, "Buildings", Catalog.all_buildings(), "building")
 	_add_accordion_section(sections, "Game mechanics", MECHANIC_ENTRIES, "mechanic")
