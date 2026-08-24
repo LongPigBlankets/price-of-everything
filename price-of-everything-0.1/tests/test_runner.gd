@@ -9547,7 +9547,12 @@ func _test_refund() -> void:
 	# Level 1: build money + build kit only, no upgrade-kit materials.
 	var r1: Dictionary = MatchState.refund_cost(id)
 	_check(is_equal_approx(float(r1.money), 100.0), "refund money == paid build cost at share 1.0 (%.1f)" % float(r1.money))
-	_check(int(r1.materials.get(ceq_id, 0)) == 1, "L1 refund returns the build kit (construction_equipment_ice ×1)")
+	# Against the live kit, not a number: these assertions are about the refund returning
+	# the build kit, and hard-coding the Mine's quantities made them fail on a balance pass.
+	var b001_kit: Dictionary = Construction.requirements_for("b_001")
+	var ceq_build: int = int(b001_kit.get(ceq_id, 0))
+	_check(ceq_build > 0 and int(r1.materials.get(ceq_id, 0)) == ceq_build,
+		"L1 refund returns the build kit (construction_equipment_ice x%d)" % ceq_build)
 	_check(not r1.materials.has(le_id), "L1 refund has no upgrade-kit materials")
 
 	# Level 3: refund increments to include the L2 + L3 upgrade kits.
@@ -9570,7 +9575,7 @@ func _test_refund() -> void:
 	# Fallback: a building with no stamped cost uses the Catalog build cost/materials.
 	var id2: String = MatchState.add_building("b_001", "r_001", "tile_8_8", MatchState.LOCAL_PLAYER, "inst_refund_fallback")
 	var r2: Dictionary = MatchState.refund_cost(id2)
-	_check(int(r2.materials.get(ceq_id, 0)) == 1
+	_check(int(r2.materials.get(ceq_id, 0)) == ceq_build
 		and is_equal_approx(float(r2.money), Catalog.get_building("b_001").base_price),
 		"refund falls back to Catalog build cost/materials when the instance has none")
 
@@ -9602,7 +9607,7 @@ func _test_refund() -> void:
 	var pinst: Dictionary = MatchState.buildings.get(proj_id, {})
 	_check(is_equal_approx(float(pinst.get("build_cost", -1.0)), 250.0),
 		"promotion stamps build_cost onto the live instance")
-	_check(int((pinst.get("build_materials", {}) as Dictionary).get(ceq_id, 0)) == 1,
+	_check(int((pinst.get("build_materials", {}) as Dictionary).get(ceq_id, 0)) == ceq_build,
 		"promotion stamps build_materials onto the live instance")
 
 	# Cleanup so these synthetic buildings/stock don't leak into later tests.
@@ -13144,10 +13149,12 @@ func _test_briefing_items_and_dismissal() -> void:
 		"target": {"scope": "company", "good_id": "g_001", "name": "Coal"}, "turn_drawn": 40}]
 	LoanState.loans = []
 	LoanState._profit_history = [-10.0]
-	# Whatever collateral the shared test env carries, park cash so runway < £100.
-	MatchState.money = -(LoanState.available_capacity() + 50.0)
 	MatchState.buildings["tb_starved"] = {"instance_id": "tb_starved", "building_id": "b_001",
 		"recipe_id": "", "tile_id": "tile_1_1", "owner": MatchState.LOCAL_PLAYER}
+	# Whatever collateral the shared test env carries, park cash so runway < £100. Measured
+	# AFTER the building is added: a building is collateral, so reading the capacity first
+	# left the company solvent again the moment build costs rose.
+	MatchState.money = -(LoanState.available_capacity() + 50.0)
 	Production.missing_by_building = {"tb_starved": [{"internal_name": "coal"}]}
 	TurnBriefing._rebuild_items()
 	var ids: Array = TurnBriefing.items().map(func(it) -> String: return str(it.id))
