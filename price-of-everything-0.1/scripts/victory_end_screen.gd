@@ -1616,7 +1616,10 @@ class _Crest extends Control:
 		var tex: Texture2D = _ICONS.get(str(_DEMO_GLYPH.get(glyph, glyph)))
 		if tex == null:
 			return
-		var gs := inner.size.y * 0.82
+		# 0.82 of the stamp's height overran the flat top and bottom runs — a hexagon is only
+		# full width across its middle, and the wider glyphs (the coin stack, the estate
+		# arrows) touched the rim (owner 2026-08-24).
+		var gs := inner.size.y * 0.66
 		var tint := Color("#141d29") if done else Color(color, 0.55)
 		draw_texture_rect(tex, Rect2(inner.get_center() - Vector2(gs, gs) * 0.5,
 			Vector2(gs, gs)), false, tint)
