@@ -700,10 +700,14 @@ func _run_balance_v4() -> void:
 		"player never exhausted loan capacity with negative cash and profit for five turns")
 	_check(float(_balance_metrics.get("maintenance_paid_total", 0.0)) > 0.0,
 		"real building and infrastructure maintenance was paid")
-	_check(_player_power_building_count() > 0,
-		"portfolio owns a live power-producing building")
-	_check(int(_balance_metrics.get("grid_bought_after_integration", 0)) == 0,
-		"fully integrated portfolio used owned power rather than grid imports")
+	# Not every start GENERATES. The Glass Merchant buys its power from the grid, and
+	# demanding a generator from a start that ships without one tests the scenario author,
+	# not the economy. Defaults true, so every existing scenario keeps the assertion.
+	if bool(_scenario.get("balance_expects_owned_power", true)):
+		_check(_player_power_building_count() > 0,
+			"portfolio owns a live power-producing building")
+		_check(int(_balance_metrics.get("grid_bought_after_integration", 0)) == 0,
+			"fully integrated portfolio used owned power rather than grid imports")
 	_check(_total_units_sold() > 0, "portfolio sold goods through the real market route")
 	for target in _scenario.get("target_goods", []):
 		_check(_sold_qty(_good_id(str(target))) > 0, "target good sold: %s" % str(target))

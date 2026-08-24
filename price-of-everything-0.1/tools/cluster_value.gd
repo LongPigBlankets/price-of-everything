@@ -30,6 +30,9 @@ func _ready() -> void:
 			continue
 		var price := float(BuildingPrice.sale_price(b))
 		buildings_total += price
+		var rec: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
+		print("[CLUSTER]   recipe %-10s %s" % [str(b.get("recipe_id", "")),
+			str(rec.get("display_name", "(none)"))])
 		print("[CLUSTER] %-28s %-22s %8d" % [
 			str(Catalog.get_building(str(b.get("building_id", ""))).get("display_name", "?")),
 			str(b.get("tile_id", "")), int(price)])
