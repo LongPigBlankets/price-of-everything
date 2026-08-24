@@ -394,8 +394,22 @@ const _TIP_TRANSPORT := "Cost of transport\nGreen: no shipping cost · Amber: pa
 static func rag_indicators(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Array:
 	var pc := produce_cost_status(building)
 	var uc: float = float(pc.unit_cost)
-	var pc_text := "£–" if uc < 0.0 else "£" + _fmt_upto2(uc)
-	var pc_tip := ("Production cost per unit: --" if uc < 0.0 else "Production cost per unit: £" + _fmt_upto2(uc)) + "\n" + _COST_RAG_LEGEND
+	# The cost per unit means little on its own — £4 is cheap for steel and ruinous for
+	# coal. It now carries what it is a share OF: the good's live market price (owner
+	# 2026-08-24). The colour band already read the same ratio; the number says it too.
+	var price: float = float(pc.get("base_price", 0.0))
+	var share := -1.0
+	if uc >= 0.0 and price > 0.0:
+		share = uc / price * 100.0
+	var pc_text := "£–"
+	if uc >= 0.0:
+		pc_text = "£" + _fmt_upto2(uc) + ("" if share < 0.0 else " (%d%%)" % int(round(share)))
+	var pc_tip := "Production cost per unit: --"
+	if uc >= 0.0:
+		pc_tip = "Production cost per unit: £" + _fmt_upto2(uc)
+		if share >= 0.0:
+			pc_tip += "\nThat is %d%% of the market price (£%s)." % [int(round(share)), _fmt_upto2(price)]
+	pc_tip += "\n" + _COST_RAG_LEGEND
 	var mod := net_output_modifier(building, recipe)
 	var mpf: float = float(mod.get("pct_f", 0.0))
 	var mod_text := "Δ" + ("+" if mpf > 0.0 else "") + _fmt_upto2(mpf) + "%"

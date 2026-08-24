@@ -187,22 +187,22 @@ func setup(node: Dictionary) -> void:
 	if str(node.get("output_good", "")) != "":
 		icons.add_child(_make_good_icon(node.get("good_icon"), int(node.get("output_qty", 0)), isz, cs))
 
-	# RAG row — 4 colour indicators (20x30) + £number + Δ…% number, each hover-tooltipped, centred.
+	# The two FIGURES sit inline, right of the good icon: cost per unit (with its share of
+	# the market price) over the net output modifier. The four colour indicators that used
+	# to run under the icons are gone (owner 2026-08-24) — four squares on every plate in
+	# the empire read as decoration at a glance and as a puzzle up close, and the same
+	# diagnosis is one click away in the building's own panel, spelled out in words.
+	# Their tooltips came with them: both figures still hover exactly as they did.
 	var rag: Array = node.get("rag", [])
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", int(round(10.0 * cs)))
-	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vb.add_child(row)
-	for i in range(mini(4, rag.size())):
-		var sq := ColorRect.new()
-		sq.color = rag[i].get("color", _GREY)
-		sq.custom_minimum_size = Vector2(30.0 * cs, 20.0 * cs)
-		_wire_tooltip(sq, str(rag[i].get("tooltip", "")))
-		row.add_child(sq)
 	if rag.size() >= 6:
-		row.add_child(_make_value(str(rag[4].get("text", "")), rag[4].get("color", _GREY), str(rag[4].get("tooltip", "")), cs))
-		row.add_child(_make_value(str(rag[5].get("text", "")), rag[5].get("color", _GREY), str(rag[5].get("tooltip", "")), cs))
+		var stats := VBoxContainer.new()
+		stats.alignment = BoxContainer.ALIGNMENT_CENTER
+		stats.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		stats.add_theme_constant_override("separation", int(round(2.0 * cs)))
+		stats.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		stats.add_child(_make_value(str(rag[4].get("text", "")), rag[4].get("color", _GREY), str(rag[4].get("tooltip", "")), cs))
+		stats.add_child(_make_value(str(rag[5].get("text", "")), rag[5].get("color", _GREY), str(rag[5].get("tooltip", "")), cs))
+		icons.add_child(stats)
 
 	# Level tag, top-right corner of the PLATE (== the Control in classic mode).
 	if _level >= 2:

@@ -37,7 +37,7 @@ func _ready() -> void:
 			"  ports=", (gw.get("_ports") as Array).size(),
 			"  sell=", sell.size(), "  per_port=", per_port)
 	print("OPEN : EmpireView visible=", ev.visible, "  camera input_blocked=", blocked)
-	_shot("/tmp/poe_empire.png")
+	_shot("user://poe_empire.png")
 
 	# Click-through: push a left click on a building panel and confirm the detail panel opens.
 	var detail0: Node = game.get_node_or_null("UILayer/HUD/HUDContent/BuildingDetailPanel")
@@ -84,7 +84,7 @@ func _ready() -> void:
 		gw.call("queue_redraw")
 		await _settle(6)
 		print("ZOOM : view_zoom=", gw.get("_view_zoom"))
-		_shot("/tmp/poe_empire_zoom.png")
+		_shot("user://poe_empire_zoom.png")
 
 	# Close path: toggle again and confirm the map/camera are fully restored.
 	var terrain: Node = game.get_node_or_null("TerrainLayer")
@@ -94,7 +94,7 @@ func _ready() -> void:
 	var terrain_visible := terrain != null and bool(terrain.get("visible"))
 	print("CLOSE: EmpireView visible=", ev.visible, "  camera input_blocked=", blocked2,
 		"  terrain restored=", terrain_visible)
-	_shot("/tmp/poe_empire_closed.png")
+	_shot("user://poe_empire_closed.png")
 
 	# Verify the refactored building detail panel still renders its 6 RAG indicators (now sharing
 	# building_status.gd with the Empire view).
@@ -104,7 +104,7 @@ func _ready() -> void:
 		detail.call("show_building", b)
 		await _settle(10)
 		print("DETAIL: panel visible=", detail.visible)
-		_shot("/tmp/poe_detail.png")
+		_shot("user://poe_detail.png")
 
 	get_tree().quit(0)
 

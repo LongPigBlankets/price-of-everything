@@ -327,7 +327,7 @@ func _build_banner(data: Dictionary) -> Control:
 	var result := str(data.get("result", "victory"))
 	var sec := _section(32, SEC_PAD_H, 36)
 	var box: VBoxContainer = sec.get_child(0)
-	box.add_child(_section_head("The banner"))
+	box.add_child(_section_head("The victory tracks"))
 
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 14)

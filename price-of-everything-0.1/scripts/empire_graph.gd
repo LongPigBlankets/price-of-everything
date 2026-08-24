@@ -56,7 +56,9 @@ const BuildingNaming := preload("res://scripts/building_naming.gd")
 const NodePanel := preload("res://scripts/empire_node_panel.gd")
 
 const PORT_BUILDING_ID := "b_004"
-const BASE_HALF := Vector2(152.0, 90.0)           # L1 panel half-extent in layout px; level-scaled per node
+# 90 -> 74: the RAG row under the icons is gone and its figures moved inline, so the plate
+# no longer needs the band it occupied (owner 2026-08-24).
+const BASE_HALF := Vector2(152.0, 74.0)           # L1 panel half-extent in layout px; level-scaled per node
 
 
 ## The sprite's opaque content as a rect measured from the PANEL CENTRE, in unscaled panel px.
