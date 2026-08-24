@@ -339,6 +339,7 @@ func _ready() -> void:
 	_test_demo_victory_tracks()
 	_test_demo_endings()
 	_test_recycling_gate()
+	_test_petrochemistry_changes()
 	_test_land_readout_matches_gate()
 	_test_upgrade_reserved_space_blocks()
 	_test_construct_land_tickbox()
@@ -5758,18 +5759,21 @@ func _test_flavor_nodes_wired() -> void:
 
 func _test_research_tier_gating() -> void:
 	MatchState.reset()
-	# Tier I is always open; a higher tier opens on >=min(3, prior-tier-count) unlocked
-	# in the prior tier of the SAME category.
+	# Tier I is always open; a higher tier opens on >= min(TIER_UNLOCK_THRESHOLD,
+	# prior-tier-count) unlocked in the prior tier of the SAME category. Written against the
+	# CONSTANT rather than a literal: the threshold moved 3 -> 2 (owner 2026-08-23) and this
+	# test was the only thing that had to change, which is the point of pinning it this way.
+	_check(MatchState.TIER_UNLOCK_THRESHOLD == 2,
+		"tier gate: a tier opens on two of the tier below")
 	_check(MatchState.is_tier_available("Metallurgy", "I"), "tier gate: Tier I always open")
 	_check(not MatchState.is_tier_available("Metallurgy", "II"),
 		"tier gate: Metallurgy II locked with 0 Tier-I unlocked")
 	MatchState.grant_unlock("Basic Blast Furnaces")
-	MatchState.grant_unlock("Continuous Casting")
 	_check(not MatchState.is_tier_available("Metallurgy", "II"),
-		"tier gate: Metallurgy II still locked at 2/3 Tier-I")
-	MatchState.grant_unlock("Oxygen-Enriched Blast")
+		"tier gate: Metallurgy II still locked at 1 Tier-I unlocked")
+	MatchState.grant_unlock("Continuous Casting")
 	_check(MatchState.is_tier_available("Metallurgy", "II"),
-		"tier gate: Metallurgy II opens at 3 Tier-I unlocked")
+		"tier gate: Metallurgy II opens at %d Tier-I unlocked" % MatchState.TIER_UNLOCK_THRESHOLD)
 	# Softlock clamp: Recycling has a single Tier-II node, so Tier III must open on just it.
 	_check(not MatchState.is_tier_available("Recycling", "III"),
 		"tier gate: Recycling III locked before its lone Tier-II node")
@@ -6910,6 +6914,67 @@ func _test_construct_land_tickbox() -> void:
 		<= float(MatchState.get_tile_land_owned(tile)),
 		"construct land: the amount it buys is enough for the build to pass the land gate")
 	panel.free()
+	MatchState.reset()
+
+# ── Petrochemistry additions (owner 2026-08-23) ─────────────────────────────
+
+func _test_petrochemistry_changes() -> void:
+	MatchState.reset()
+	# A fourth Tier I node, so the tier is a CHOICE of two from four rather than a queue.
+	var tier1: Array = []
+	var node: Dictionary = {}
+	for d_variant: Variant in MatchState._unlock_defs:
+		var d: Dictionary = d_variant
+		if str(d.get("category", "")) == "Petrochemistry" and str(d.get("rank", "")) == "I":
+			tier1.append(str(d.get("title", "")))
+		if str(d.get("title", "")) == "Specialised Petrochemical Pipelines":
+			node = d
+	_check(tier1.size() == 4 and "Specialised Petrochemical Pipelines" in tier1,
+		"petrochem: four Tier I nodes, including the new pipelines one")
+	_check(str(node.get("action", "")) == "Run" and int(node.get("qty", 0)) == 10,
+		"petrochem: the pipelines node is earned by running a refinery for 10 turns")
+	_check(MatchState.research_condition_issues().is_empty(),
+		"petrochem: every research row still resolves to a live condition")
+
+	# ...and it pays out on the Petrochemical Refinery.
+	Modifiers.reset()
+	var before: float = Modifiers.apply("recipe_output", "r", 100.0, {"building_id": "b_011"})
+	MatchState.grant_unlock("Specialised Petrochemical Pipelines")
+	var after: float = Modifiers.apply("recipe_output", "r", 100.0, {"building_id": "b_011"})
+	_check(absf(after - before - 5.0) < 0.001,
+		"petrochem: the pipelines node adds +5%% refinery output (%.1f -> %.1f)" % [before, after])
+	_check(absf(Modifiers.apply("recipe_output", "r", 100.0, {"building_id": "b_001"}) - 100.0) < 0.001,
+		"petrochem: it does not touch other buildings")
+	Modifiers.reset()
+
+	# Offshore drilling is earned on an offshore OIL FIELD, not on land anywhere.
+	MatchState.reset()
+	var offshore: Dictionary = {}
+	for d_variant: Variant in MatchState._unlock_defs:
+		var d: Dictionary = d_variant
+		if str(d.get("title", "")) == "Offshore Drilling Platforms":
+			offshore = d
+	_check(str(offshore.get("action", "")) == "Own"
+		and str(offshore.get("object", "")) == "offshore_oil_land"
+		and int(offshore.get("qty", 0)) == 50,
+		"offshore: earned by owning 50 land on a sea tile with oil")
+
+	# Land on an ordinary tile does not count, however much of it there is.
+	MatchState.tile_land_owned["tile_5_10"] = 200
+	_check(MatchState._owned_offshore_oil_land() == 0,
+		"offshore: inland acreage does not count toward the offshore gate")
+	# A sea tile carrying oil does.
+	var oil_tile := ""
+	for tid: String in ["tile_1_1", "tile_2_8", "tile_11_19", "tile_28_19", "tile_29_9"]:
+		if not (Catalog.tile_type(tid) in ["sea", "deep_sea"]):
+			continue
+		if "oil" in Catalog.tile_deposits_raw(tid).to_lower():
+			oil_tile = tid
+			break
+	_check(oil_tile != "", "offshore: the map has a sea tile with an oil deposit")
+	MatchState.tile_land_owned[oil_tile] = 50
+	_check(MatchState._owned_offshore_oil_land() == 50,
+		"offshore: acreage on an offshore oil field counts")
 	MatchState.reset()
 
 # ── Recycling gate (owner 2026-08-23: out of the demo, behind `unlock recycling`) ──

@@ -2255,7 +2255,10 @@ func get_unlock_def(title: String) -> Dictionary:
 	return {}
 
 # ── Research tier gating (per category) ──────────────────────────────────────
-const TIER_UNLOCK_THRESHOLD := 3
+## Nodes of the prior tier needed to open the next one. Two, not three (owner 2026-08-23):
+## Petrochemistry had exactly three Tier I nodes, so "three of the prior tier" meant ALL of
+## them, and Tier II was gated behind clearing a whole tier rather than committing to it.
+const TIER_UNLOCK_THRESHOLD := 2
 const _TIER_ORDER := ["I", "II", "III"]
 
 ## True when `category`'s roman `tier` is open. Tier I is always open; a higher
@@ -2493,6 +2496,8 @@ func _live_condition_met(d: Dictionary) -> bool:
 		"Own":
 			if _research_key(obj) == "land":
 				return _research_owned_land_units() >= need
+			if _research_key(obj) == "offshore_oil_land":
+				return _owned_offshore_oil_land() >= need
 			return _count_buildings(obj, -1, false, 0) >= need
 		"Run":
 			# Plain Run conditions mean one matching building sustaining full output
@@ -2671,6 +2676,26 @@ func _research_good_id(raw: String) -> String:
 	return ""
 
 
+## Land the player owns on SEA tiles that carry an oil deposit — the offshore drilling gate.
+##
+## Deliberately land UNITS on qualifying tiles, not a tile count: the point of the condition
+## is that the player has committed real money to a specific offshore field, which is the
+## thing offshore drilling is actually about. Seven tiles on the shipped map qualify, each
+## with 200 capacity, so the 50 units the CSV asks for fit on any one of them.
+func _owned_offshore_oil_land() -> int:
+	var total := 0
+	for tile_id in tile_land_owned:
+		var tid := str(tile_id)
+		var owned := int(tile_land_owned[tile_id])
+		if owned <= 0 or not tid.begins_with("tile_"):
+			continue
+		if not Catalog.tile_type(tid) in ["sea", "deep_sea"]:
+			continue
+		if not "oil" in Catalog.tile_deposits_raw(tid).to_lower():
+			continue
+		total += owned
+	return total
+
 func _research_owned_land_units() -> int:
 	var total := 0
 	for tile_id in tile_land_owned:
@@ -2707,6 +2732,8 @@ func _research_condition_issue(d: Dictionary) -> String:
 	if action == "Fulfil Special Orders":
 		return "" if _research_key(obj) == "special_order" else "unsupported special-order target"
 	if action == "Own":
+		if _research_key(obj) == "offshore_oil_land":
+			return ""
 		if _research_key(obj) != "land" and _research_building_targets(obj).is_empty():
 			return "unknown ownership target"
 		return ""

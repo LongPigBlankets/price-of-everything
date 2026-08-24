@@ -167,6 +167,9 @@ const UNLOCK_MODIFIERS := {
 		{"id": "yield_basic_salt_2", "domain": "recipe_output", "target_match": {"good_internal": "basic_salt"}, "pct": 15.0, "label": "Automated Mine Dispatch", "source": "research:mining_yield"},
 	],
 	"research_petro_001": {"id": "rn_fractional_distillation", "domain": "recipe_output", "target_match": {"building_id": "b_011"}, "pct": 5.0, "label": "Fractional Distillation", "source": "research_node"},  # Fractional Distillation
+	# Tier I, added 2026-08-23 (owner): run a refinery for 10 turns. Same shape as
+	# Fractional Distillation above — b_011 is the Petrochemical Refinery.
+	"research_petro_021": {"id": "rn_specialised_petro_pipelines", "domain": "recipe_output", "target_match": {"building_id": "b_011"}, "pct": 5.0, "label": "Specialised Petrochemical Pipelines", "source": "research_node"},
 	"research_petro_002": {"id": "rn_catalytic_cracking", "domain": "building_power", "target_match": {"building_id": "b_011"}, "pct": -5.0, "label": "Catalytic Cracking", "source": "research_node"},  # Catalytic Cracking
 	# ── Oil extraction (b_032 oil_well · b_033 offshore_oil_platform · b_034 fracking_oil_well).
 	# These five were authored in research_unlocks.csv with explicit numbers but never wired,

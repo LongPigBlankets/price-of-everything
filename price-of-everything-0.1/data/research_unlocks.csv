@@ -74,7 +74,7 @@ research_renew_006,Renewable Power,research_renew_003,,,,III,Run,Battery,15,turn
 research_mining_008,Mining and Surveying,,,,,I,Survey,deposits,2,deposits,Spectral Crystallography,survey,+1 adjacent tile revealed when surveying
 research_mining_009,Mining and Surveying,research_mining_008,,,,II,Survey,tiles,5,tiles,Computer Assisted Geoscanning,svt,+1 Survey range (2 to 3)
 research_petro_006,Petrochemistry,research_petro_002,,,,II,Build,oil_well,3,units,Directional & Horizontal Drilling,horizontal,Increases Oil Wells and Hydraulic Fracking Oil Wells output by 10% each permanently.
-research_petro_007,Petrochemistry,research_petro_001,,,,II,Own,land,8,units,Offshore Drilling Platforms,rig,Unlocks new recipe: Offshore Oil Extraction (10 Crude Oil).
+research_petro_007,Petrochemistry,research_petro_001,,,,II,Own,offshore_oil_land,50,units,Offshore Drilling Platforms,rig,Unlocks new recipe: Offshore Oil Extraction (10 Crude Oil).
 research_petro_008,Petrochemistry,research_petro_007,,,,III,Run,Offshore Platform,15,turns,Deepwater Drilling,deepsea,Unlocks new recipe: Deepwater Oil Extraction (12 Crude Oil).
 research_petro_009,Petrochemistry,research_petro_007,,,,III,Build,offshore_oil_platform,5,units,Subsea Tieback Systems,manifold,Increases Offshore Oil Platform crude oil output by 10% permanently.
 research_petro_010,Petrochemistry,research_petro_006,,,,II,Run Profitable,oil_well,3,buildings,Microseismic Monitoring,survey,Increases Oil Wells and Hydraulic Fracking Oil Wells output by 5% and reduces their maintenance by 10% permanently.
@@ -225,6 +225,7 @@ research_metal_018,Metallurgy,research_metal_004,,,,III,Produce,polysilicon,600,
 research_inorg_024,Inorganic Chemistry,research_inorg_004,,,,II,Produce,hydrogen,400,units,Membraneless Electrolysis,cell,Unlocks new recipe: Membraneless Electrolysis (22 Hydrogen and 11 Oxygen).
 research_petro_019,Petrochemistry,research_petro_001,,,,II,Produce,fuels,400,units,Fischer-Tropsch Synthesis,oil,Unlocks new recipe: Coal Liquefaction (8 Fuels).
 research_petro_020,Petrochemistry,research_petro_001,,,,II,Produce,hydrogen,400,units,Methane Pyrolysis,gas,Unlocks new recipe: Methane Pyrolysis (16 Hydrogen).
+research_petro_021,Petrochemistry,,,,,I,Run,Petrochemical Refinery,10,turns,Specialised Petrochemical Pipelines,manifold,Increases Petrochemical Refinery output by 5% permanently.
 research_biochem_009,Biochemistry,,,,,I,Produce,biomass,250,units,Energy Crop Cultivation,ferment,Unlocks new recipe: Sustainable Biomass Production (10 Biomass).
 research_mining_017,Mining and Surveying,,,,,I,Produce,crude_oil,250,units,Shale Oil Fracturing,frack,Unlocks new recipe: Shale Oil Fracking (12 Crude Oil).
 research_mining_018,Mining and Surveying,research_mining_017,,,,II,Produce,crude_oil,400,units,Dynamic-Positioning Drilling,rig,Unlocks new recipe: Deepwater Oil Extraction (12 Crude Oil).

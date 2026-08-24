@@ -1615,7 +1615,9 @@ func _requirement_details(unlock: Dictionary) -> String:
 		for node in _unlock_rows:
 			if str(node.get("category", "")) == category and _rank_value(node) == previous:
 				prior_tier_nodes += 1
-		var required_nodes := mini(3, prior_tier_nodes)
+		# From the gate itself, not a literal 3 — the threshold moved to 2 and this line is
+		# what the player reads to know what a tier costs.
+		var required_nodes := mini(MatchState.TIER_UNLOCK_THRESHOLD, prior_tier_nodes)
 		lines.append("Tier %s: unlock %d Tier %s node%s in %s" % [rank, required_nodes, previous, "" if required_nodes == 1 else "s", category])
 	return "\n".join(lines)
 
