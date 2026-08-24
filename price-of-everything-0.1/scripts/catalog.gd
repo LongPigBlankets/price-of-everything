@@ -462,6 +462,12 @@ func _tile_supports_mode(tile_id: String, mode: String) -> bool:
 
 const FLUID_CLASSES := ["safe_liquid", "hazard_liquid", "liquid", "gas"]
 
+## Which transport modes may carry this good — the SAME question the router asks, so a
+## UI quoting freight per mode cannot disagree with what the sim will charge.
+func modes_for_good(good_id: String) -> Array:
+	return _modes_for_good(good_id)
+
+
 func _modes_for_good(good_id: String) -> Array:
 	var tclass := get_transport_class(good_id) if good_id != "" else ""
 	# Fluids have no bare-ground fallback, but may use road tankers or rail tank wagons
