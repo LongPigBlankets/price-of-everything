@@ -16,6 +16,37 @@ extends RefCounted
 ## Edge dict: { from:iid, to:iid, good:good_id }
 
 const EmpireLayout := preload("res://scripts/empire_layout.gd")
+
+## Build the graph, lay it out and install it into `world` — the whole sequence in ONE place.
+##
+## The empire view and the end screen each did this by hand and drifted: the end screen called
+## `solve()` with two arguments instead of four, so its buildings were never grouped into
+## supply-chain columns under their destination port, and it passed an empty port list while
+## still passing the BUY ports — leaving a stray row along the bottom with nothing to sit
+## under. It read as an older sibling of the empire view because that is exactly what it was
+## (owner 2026-08-23: "use a helper so we are not reinventing the wheel").
+##
+## `trading` false is the end-of-game view: the company has stopped selling, so the sell ports
+## and their edges are dropped — but the LAYOUT is still solved with them, so the columns stand
+## where they always did and only the shipping lines are missing.
+##
+## Returns the built graph so a caller can inspect it (empty `nodes` means nothing to draw).
+static func populate(world: Object, terrain: Node, trading: bool = true) -> Dictionary:
+	var g: Dictionary = build(terrain)
+	if (g.get("nodes", []) as Array).is_empty():
+		return g
+	# Solved with the sell edges and ports in every case: they are what groups the buildings
+	# into columns per destination port, which is the layout worth sharing.
+	EmpireLayout.solve(g["nodes"], g["edges"], g["sell_edges"], g["ports"])
+	var area: Rect2 = EmpireLayout.bbox_of(g["nodes"])
+	EmpireLayout.place_ports(g["ports"], area)
+	EmpireLayout.place_buy_ports(g["buy_ports"], g["ports"], area)
+	if world != null and world.has_method("set_graph"):
+		world.call("set_graph", g["nodes"], g["edges"],
+			g["ports"] if trading else [],
+			g["sell_edges"] if trading else [],
+			g["market_edges"], g["buy_ports"])
+	return g
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const BuildingStatus := preload("res://scripts/building_status.gd")
 const BuildingIcon := preload("res://scripts/building_icon.gd")

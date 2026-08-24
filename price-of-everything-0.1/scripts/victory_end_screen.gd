@@ -713,30 +713,28 @@ func _build_empire(empire: Dictionary) -> Control:
 ## node cards' click-through (focus a building) is always disabled — game over.
 func _make_empire_graph(interactive: bool) -> Control:
 	var terrain: Node = get_tree().get_first_node_in_group("hex_map")
-	var g: Dictionary = _EmpireGraph.build(terrain)
-	if (g.get("nodes", []) as Array).is_empty():
+	if (_EmpireGraph.build(terrain).get("nodes", []) as Array).is_empty():
 		return null
-	_EmpireLayout.solve(g["nodes"], g["edges"])
-	# The end screen shows the network as it stood when the company stopped trading, so the SELL
-	# row goes: nothing leaves through those docks any more. The BUY row stays, because what the
-	# empire drew in from the market is part of the picture that remains (owner 2026-08-01).
-	# The sell ports are still POSITIONED — place_buy_ports mirrors each top hex onto its bottom
-	# twin's x — they are simply not handed to the graph, so nothing draws them.
-	var area: Rect2 = _EmpireLayout.bbox_of(g["nodes"])
-	_EmpireLayout.place_ports(g["ports"], area)
-	_EmpireLayout.place_buy_ports(g["buy_ports"], g["ports"], area)
 	var world: Control = _GraphWorld.new()
 	world.clip_contents = true
 	world.mouse_filter = Control.MOUSE_FILTER_STOP if interactive else Control.MOUSE_FILTER_IGNORE
-	# set_graph fits the view to the control's size, which is 0 until layout runs —
-	# apply it once the graph has a real rect (first resize with width; applied once).
+	# set_graph fits the view to the control's size, which is 0 until layout runs — apply it
+	# once the graph has a real rect (first resize with width; applied once).
 	var applied := [false]
 	world.resized.connect(func() -> void:
 		if applied[0] or world.size.x <= 1.0:
 			return
 		applied[0] = true
-		# Empty sell ports + empty sell edges; the buy row and its market lines carry through.
-		world.set_graph(g["nodes"], g["edges"], [], [], g["market_edges"], g["buy_ports"])
+		# The SAME setup the empire view uses (EmpireGraph.populate). This used to solve the
+		# layout with two arguments instead of four and pass an empty port list beside a full
+		# buy-port list, which is why it read as an older sibling with a stray bottom row.
+		# `trading: false` still drops the sell row — the company has stopped selling — but the
+		# columns are now solved exactly as they are in the live view.
+		_EmpireGraph.populate(world, get_tree().get_first_node_in_group("hex_map"), false)
+		if interactive:
+			return
+		# Static inline copy only: the expand overlay IS meant to be clicked, and blanking the
+		# node panels here was why clicking a building in the end screen did nothing.
 		for c in world.get_children():
 			if c is Control:
 				(c as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE)

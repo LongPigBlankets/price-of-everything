@@ -45,6 +45,36 @@ func _ready() -> void:
 		get_viewport().get_texture().get_image().save_png(
 			"user://poe_demo_ending_%s.png" % str(row[0]))
 
+	# The expand overlay: the supply-chain view, and whether its buildings can be clicked.
+	_screen.show_end(EndGameData.gather())
+	await _settle(20)
+	_screen.call("_open_expand")
+	await _settle(20)
+	get_viewport().get_texture().get_image().save_png("user://poe_end_expand.png")
+	var worlds: Array[Node] = []
+	_find_graph_worlds(_screen, worlds)
+	for w_i in worlds.size():
+		var w: Node = worlds[w_i]
+		var n_click := 0
+		for c in w.get_children():
+			if c is Control and (c as Control).mouse_filter != Control.MOUSE_FILTER_IGNORE:
+				n_click += 1
+		print("[DEMO_ENDING] graph world %d: filter=%s panels=%d clickable=%d visible=%s" % [
+			w_i, str((w as Control).mouse_filter), w.get_child_count(), n_click,
+			str((w as Control).is_visible_in_tree())])
+	var world: Node = worlds[0] if worlds.size() > 0 else null
+	if world != null:
+		var clickable := 0
+		for c in world.get_children():
+			if c is Control and (c as Control).mouse_filter != Control.MOUSE_FILTER_IGNORE:
+				clickable += 1
+		print("[DEMO_ENDING] expand graph: %d node panels, %d clickable" % [
+			world.get_child_count(), clickable])
+	else:
+		print("[DEMO_ENDING] expand graph world NOT FOUND")
+	_screen.call("_close_expand")
+	await _settle(8)
+
 	# The fifth ending has its own screen — SolvencyState mounts this one mid-game.
 	_screen.hide()
 	var over: Control = (load("res://scripts/game_over_panel.gd") as GDScript).new()
@@ -99,6 +129,21 @@ func _seed(secured: Array, partial: Dictionary) -> void:
 	VictoryState.produced_by_good = {"g_005": 8600, "g_004": 4300, "g_010": 2690,
 		"g_002": 1820, "g_008": 1540}
 
+
+func _find_graph_worlds(n: Node, out: Array[Node]) -> void:
+	if n.get_script() != null and str(n.get_script().resource_path).ends_with("empire_graph_world.gd"):
+		out.append(n)
+	for c in n.get_children():
+		_find_graph_worlds(c, out)
+
+func _find_graph_world(n: Node) -> Node:
+	if n.get_script() != null and str(n.get_script().resource_path).ends_with("empire_graph_world.gd"):
+		return n
+	for c in n.get_children():
+		var hit := _find_graph_world(c)
+		if hit != null:
+			return hit
+	return null
 
 func _settle(frames: int) -> void:
 	for _i in frames:
