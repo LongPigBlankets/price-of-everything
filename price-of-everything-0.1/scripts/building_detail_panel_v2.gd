@@ -978,7 +978,10 @@ func _open_upgrade_sheet(building: Dictionary) -> void:
 			var nf := Label.new()
 			nf.theme_type_variation = "Body"
 			nf.add_theme_color_override("font_color", DS.PALETTE["DANGER"])
-			nf.text = "Not enough room on the tile for the larger building."
+			# The specific reason, with the numbers. The old generic line sat under a tile panel
+			# reading "122 owned" and read as a bug rather than as a refusal with a cause.
+			nf.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			nf.text = str(pv.get("fits_reason", "Not enough room on the tile for the larger building."))
 			vb.add_child(nf)
 		# Actions
 		vb.add_child(HSeparator.new())

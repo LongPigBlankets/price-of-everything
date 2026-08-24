@@ -24,6 +24,10 @@ const ROOTS: Array[String] = ["res://scripts", "res://tools", "res://tests"]
 ## the exception stays visible and can be revisited.
 const KNOWN_UNRELOADABLE: Array[String] = ["res://scripts/road_realizer.gd"]
 
+## Failures at or above this count are read as "an autoload is broken" rather than as that
+## many independent mistakes. Measured: one bad line in match_state.gd failed 37 files.
+const AUTOLOAD_SUSPECT_COUNT := 10
+
 
 func _ready() -> void:
 	var files: Array[String] = []
@@ -56,6 +60,14 @@ func _ready() -> void:
 		files.size(), failed.size(), skipped])
 	for path: String in failed:
 		print("[parse_check] FAILED  %s" % path)
+	# A broken AUTOLOAD is skipped here (reload() refuses a live script) but breaks the
+	# compile of every script that names it, so it shows up as a broad sweep of unrelated
+	# failures rather than as itself. Point at the one line that does name it.
+	if failed.size() >= AUTOLOAD_SUSPECT_COUNT:
+		print("[parse_check] %d failures at once usually means a broken AUTOLOAD, which is"
+			% failed.size())
+		print("[parse_check] skipped above. The boot log names it:")
+		print("[parse_check]   godot --headless --path . --quit-after 5 | grep 'Parse Error'")
 	get_tree().quit(1 if not failed.is_empty() else 0)
 
 

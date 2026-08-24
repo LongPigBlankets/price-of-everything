@@ -5,6 +5,10 @@ extends Node
 const CompanyNames := preload("res://scripts/company_names.gd")
 
 const RIVAL_COUNT := 9
+## Fewest rival companies that contest any one good. The most is RIVAL_COUNT.
+const GOOD_MIN_COMPETITORS := 3
+const PARTICIPATION_SALT := 7717
+const TIEBREAK_SALT := 9931
 const TOTAL_COMPANIES := RIVAL_COUNT + 1
 const STARTING_REVENUE := 100.0
 const HISTORY_TURNS := 5
@@ -123,12 +127,16 @@ func goods_standings_for(match_seed: int, completed_turn: int, player_produced: 
 		var apex: bool = str(good.get("goods_graph_tier", "")) == "apex"
 		var rows: Array[Dictionary] = []
 		if not apex and Catalog.base_output_for_good(good_id) > 0:
-			for competitor_index: int in range(RIVAL_COUNT):
+			# Only the companies that are IN this good, not all nine. Every good used to list
+			# all of them at identical output, so the sort fell through to the id tiebreak and
+			# the same three names topped every good in the panel.
+			for competitor_index: int in _competitors_for_good(match_seed, good_id):
 				rows.append({
 					"id": "rival_%d" % competitor_index,
 					"name": names[competitor_index],
 					"is_player": false,
 					"quantity": _rival_good_output_for(match_seed, good_id, competitor_index, completed_turn),
+					"tiebreak": _good_tiebreak(match_seed, good_id, competitor_index),
 				})
 			_sort_good_rows(rows)
 			rows = rows.slice(0, 3)
@@ -149,6 +157,36 @@ func goods_standings_for(match_seed: int, completed_turn: int, player_produced: 
 			"producers": rows,
 		})
 	return out
+
+## Which rival companies compete in a given good, as rival indices.
+##
+## Deterministic from (match_seed, good_id), like every other rival figure here — the same
+## match always shows the same table — but DIFFERENT per good, which is the point: coal and
+## copper are not contested by the same firms, and a panel that said they were looked broken.
+## Between GOOD_MIN_COMPETITORS and RIVAL_COUNT of them, so some goods are crowded and some
+## are nearly the player's alone.
+func _competitors_for_good(match_seed: int, good_id: String) -> Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = _goods_seed_for(match_seed, good_id, 0, PARTICIPATION_SALT)
+	var pool: Array = []
+	for i: int in range(RIVAL_COUNT):
+		pool.append(i)
+	# Fisher-Yates on our own RNG. Array.shuffle() would draw from the global RNG, which
+	# this module must never touch (a test pins that table generation leaves it alone).
+	for i: int in range(pool.size() - 1, 0, -1):
+		var j: int = rng.randi_range(0, i)
+		var swap: Variant = pool[i]
+		pool[i] = pool[j]
+		pool[j] = swap
+	var count: int = rng.randi_range(GOOD_MIN_COMPETITORS, RIVAL_COUNT)
+	return pool.slice(0, count)
+
+## A stable per-(good, company) ordering key. Rival outputs are identical until the first
+## increment lands, so without this the display order inside one good is just id order.
+func _good_tiebreak(match_seed: int, good_id: String, competitor_index: int) -> int:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = _goods_seed_for(match_seed, good_id, competitor_index, TIEBREAK_SALT)
+	return rng.randi()
 
 func _player_good_quantity(good_id: String, player_produced: Dictionary) -> int:
 	# Power is keyed by its internal name in Production's summary, unlike normal goods.
@@ -186,6 +224,10 @@ func _sort_good_rows(rows: Array[Dictionary]) -> void:
 		var b_is_player: bool = bool(b["is_player"])
 		if a_is_player != b_is_player:
 			return a_is_player
+		# Equal output: use the per-good key when the rows carry one (the goods tables do),
+		# so the order inside a good is that good's, not a global id order.
+		if a.has("tiebreak") and b.has("tiebreak"):
+			return int(a["tiebreak"]) < int(b["tiebreak"])
 		return str(a["id"]) < str(b["id"])
 	)
 

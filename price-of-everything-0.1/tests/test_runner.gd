@@ -7644,6 +7644,44 @@ func _test_company_rankings() -> void:
 	CompanyRankings.goods_standings_for(13579, 300, {"g_001": 20})
 	_check(MatchState._match_rng.state == rng_before,
 		"company rankings: table generation does not consume the simulation RNG")
+	# Per-good competitors. Every good used to list all nine rivals at identical output, so
+	# the id tiebreak put the same three names on top of every good in the panel.
+	var name_sets: Dictionary = {}
+	var sizes_ok := true
+	var goods_checked := 0
+	for good_table: Dictionary in goods_tables:
+		if bool(good_table.get("is_apex", false)):
+			continue
+		var producers: Array = good_table.get("producers", []) as Array
+		if producers.size() < 2:
+			continue   # a good no rival produces
+		goods_checked += 1
+		var key: Array = []
+		for row_variant: Variant in producers:
+			var row: Dictionary = row_variant
+			if not bool(row.get("is_player", false)):
+				key.append(str(row.get("id", "")))
+		key.sort()
+		name_sets[", ".join(key)] = true
+	_check(goods_checked > 10 and name_sets.size() >= 5,
+		"company rankings: goods are contested by different companies, not the same three")
+	var participants: Array = CompanyRankings._competitors_for_good(24680, "g_001")
+	_check(participants.size() >= CompanyRankings.GOOD_MIN_COMPETITORS
+		and participants.size() <= CompanyRankings.RIVAL_COUNT,
+		"company rankings: a good is contested by 3 to 9 companies")
+	var unique_participants: Dictionary = {}
+	for idx_variant: Variant in participants:
+		unique_participants[int(idx_variant)] = true
+	_check(unique_participants.size() == participants.size(),
+		"company rankings: no company competes against itself in a good")
+	_check(CompanyRankings._competitors_for_good(24680, "g_001") == participants
+		and CompanyRankings._competitors_for_good(13579, "g_001") != participants,
+		"company rankings: the field is fixed for a match and differs between matches")
+	var rng_before_field: int = MatchState._match_rng.state
+	CompanyRankings._competitors_for_good(24680, "g_002")
+	_check(MatchState._match_rng.state == rng_before_field,
+		"company rankings: picking the field does not consume the simulation RNG")
+
 	var saved: Dictionary = CompanyRankings.export_state()
 	CompanyRankings.import_state({"player_revenue_history": history, "player_goods_produced": {"g_001": 9}})
 	var restored: Dictionary = CompanyRankings.export_state()

@@ -51,6 +51,14 @@ names at compile time, and under `--script` the autoloads do not exist — 283 o
 returns a GDScript object); and `can_instantiate()` is not either. Autoloads, the check's
 own script, and one known-unreloadable file are skipped and counted in the summary.
 
+A broken **autoload** is therefore skipped too — and since GDScript resolves autoload names at
+compile time, it fails every script that touches it. A sweep of many unrelated failures means
+an autoload, not that many mistakes. The check says so; the boot log names it:
+
+```bash
+"$GODOT" --headless --path . --quit-after 5 | grep "Parse Error"
+```
+
 Two perf tests
 ("road works: zero frames over 8 ms", "B4: ≤2% frames over 8 ms") sit close to their
 budgets and fail intermittently on a loaded machine — a failure in only those two is

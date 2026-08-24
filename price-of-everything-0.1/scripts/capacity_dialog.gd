@@ -19,6 +19,9 @@ const BADGE_NAVY := Color(0.0, 0.119856, 0.243095, 1.0)
 const BADGE_PAPER := Color(0.995234, 0.930806, 0.763265, 1.0)
 const ICON_SIZE := 100.0
 const CARD_WIDTH := 340.0       # fixed frame width; icons centre and shrink to fit
+const OPTION_HEIGHT := 150.0    # the three choice cards; fixed so they cannot balloon
+const OVERFLOW_ICON := 72.0     # goods shown filling the tile
+const OVERFLOW_MAX := 4         # ...how many of them, biggest first
 const MONEY_FONT := preload("res://assets/fonts/BarlowCondensed-Bold.ttf")
 
 const ACTION_SELL := "sell_surplus"
@@ -81,7 +84,14 @@ func _refresh_for_tile() -> void:
 		c.queue_free()
 	var quote: Dictionary = MatchState.warehouse_upgrade_quote(_current_tile)
 	if bool(quote.get("maxed", false)):
-		_cost_label.visible = false
+		# Storage maxed: expanding is off the table, so the card shows what is actually
+		# filling the tile. That is the thing the player needs in order to choose between
+		# selling the surplus and stopping production, and the dialog never showed it.
+		_cost_label.text = "Filling this tile:"
+		_cost_label.visible = true
+		var overflow := _build_overflow_section(_current_tile)
+		if overflow != null:
+			_cost_holder.add_child(overflow)
 		var note := Label.new()
 		note.text = "This tile's warehouse is already fully upgraded."
 		note.add_theme_font_size_override("font_size", 13)
@@ -92,6 +102,7 @@ func _refresh_for_tile() -> void:
 		_expand_btn.disabled = true
 		_expand_btn.tooltip_text = "This warehouse is already at its maximum level."
 		return
+	_cost_label.text = "This will cost:"
 	_cost_label.visible = true
 	_cost_holder.add_child(_build_cost_section(quote))
 	var gain: int = int(quote.get("next_cap", 0)) - int(quote.get("current_cap", 0))
@@ -180,7 +191,11 @@ func _build_ui() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	# SHRINK, not EXPAND: with EXPAND the three buttons absorbed every spare pixel of the
+	# 540 px dialog, and on a tile whose storage is already maxed — where there is no cost
+	# card to fill the rest — they rendered as three enormous empty boxes.
+	row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.custom_minimum_size = Vector2(0, OPTION_HEIGHT)
 	_sell_btn = _make_option_button("Sell surplus automatically", ACTION_SELL, 1.0)
 	row.add_child(_sell_btn)
 	_expand_btn = _make_option_button("Expand storage", ACTION_EXPAND, 2.0)
@@ -225,12 +240,46 @@ func _make_option_button(text: String, action: String, ratio: float) -> Button:
 	b.clip_text = false
 	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	b.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	b.size_flags_vertical = Control.SIZE_FILL
 	b.size_flags_stretch_ratio = ratio
 	b.custom_minimum_size = Vector2(60, 0)   # let autowrap shrink width; share the 400 row
 	b.pressed.connect(_choose.bind(action))
 	return b
 
+
+## The goods actually filling the tile, biggest first, in the same framed cream card the
+## cost section uses. Returns null when the tile is somehow empty.
+func _build_overflow_section(tile_id: String) -> Control:
+	var totals: Dictionary = Stockpile.get_tile_totals(tile_id)
+	var rows: Array = []
+	for gid_variant: Variant in totals:
+		var qty := int(totals[gid_variant])
+		if qty > 0:
+			rows.append({"good_id": str(gid_variant), "qty": qty})
+	if rows.is_empty():
+		return null
+	rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a["qty"]) > int(b["qty"]))
+	rows = rows.slice(0, OVERFLOW_MAX)
+
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", GOODS_FRAME)
+	card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	card.custom_minimum_size = Vector2(CARD_WIDTH, 0)
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_left", 12)
+	pad.add_theme_constant_override("margin_right", 12)
+	pad.add_theme_constant_override("margin_top", 16)
+	pad.add_theme_constant_override("margin_bottom", 12)
+	card.add_child(pad)
+	var icons_row := HBoxContainer.new()
+	icons_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	icons_row.add_theme_constant_override("separation", 6)
+	for row_variant: Variant in rows:
+		var row: Dictionary = row_variant
+		icons_row.add_child(_cost_cell(str(row["good_id"]), int(row["qty"]), OVERFLOW_ICON))
+	pad.add_child(icons_row)
+	return card
 
 func _build_cost_section(quote: Dictionary) -> Control:
 	# A framed cream card (the pipe frame, matching the title card) holding the REAL

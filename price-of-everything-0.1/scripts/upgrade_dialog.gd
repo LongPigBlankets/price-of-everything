@@ -186,7 +186,8 @@ func _rebuild() -> void:
 	if bool(_preview.get("research_locked", false)):
 		_content.add_child(_dlabel("Requires research: %s" % str(_preview.get("research_gate", "")), "Numeric", DS.PALETTE.DANGER))
 	if not bool(_preview.get("fits", true)):
-		_content.add_child(_dlabel("Not enough room on the tile for the larger building.", "Numeric", DS.PALETTE.DANGER))
+		_content.add_child(_dlabel(str(_preview.get("fits_reason",
+			"Not enough room on the tile for the larger building.")), "Numeric", DS.PALETTE.DANGER))
 
 	# --- Action buttons ---
 	_content.add_child(_sep())

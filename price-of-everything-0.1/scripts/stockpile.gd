@@ -42,6 +42,37 @@ const FILL_HISTORY_TURNS := 4
 var _fill_history: Dictionary = {}
 
 signal stockpile_changed()
+
+## stockpile_changed carries no argument, so every listener rebuilds itself in full whenever
+## it fires — and there are ~80 of them: the tile panel, the transport panel, the stockpile
+## overlay, and one row per good in the resource panel.
+##
+## The signal used to fire once per MUTATION, and a single market sale mutates once per good.
+## Selling a tile's surplus therefore rebuilt every one of those listeners ten-odd times in
+## one frame, for a result identical to rebuilding them once. That is the shape of the
+## multi-second freeze a playtester hit on "Sell surplus to market".
+##
+## So mutations now MARK, and the signal fires once, deferred to the end of the frame. Nothing
+## reads stockpile state through the signal — listeners re-read Stockpile directly — so a
+## coalesced edge carries exactly the same information as the last of a burst.
+var _change_pending := false
+
+func _mark_changed() -> void:
+	if _change_pending:
+		return
+	_change_pending = true
+	_emit_change.call_deferred()
+
+func _emit_change() -> void:
+	if not _change_pending:
+		return
+	_change_pending = false
+	stockpile_changed.emit()
+
+## Publish any pending change NOW. For callers that mutate and then immediately read a
+## listener's rendered state — the tests do this — rather than waiting a frame.
+func flush_changes() -> void:
+	_emit_change()
 # Fired the moment a tile crosses from below to at/over its storage capacity. The
 # capacity dialog listens to this to prompt the player (sell surplus / expand / stop).
 signal tile_reached_capacity(tile_id: String)
@@ -84,7 +115,7 @@ func set_warehouse_level(coord, level: int) -> void:
 	else:
 		_warehouse_levels[key] = clamped
 	_at_capacity.erase(key)  # capacity changed: let the full-latch re-evaluate
-	stockpile_changed.emit()
+	_mark_changed()
 
 # Warehouse level = 1 + the number of storage-research upgrades unlocked (empire-wide),
 # capped at the top table level. The two upgrades chain (Pallet Racking → Automated
@@ -150,7 +181,7 @@ func add(coord, good_id: String, qty: int) -> int:
 	var tile_stockpile := _stockpile_for_tile(coord, true)
 	tile_stockpile[good_id] = int(tile_stockpile.get(good_id, 0)) + added
 	_note_peak(coord)
-	stockpile_changed.emit()
+	_mark_changed()
 	_check_capacity(coord)
 	return added
 
@@ -177,7 +208,7 @@ func consume(coord, good_id: String, qty: int) -> int:
 		else:
 			tile_stockpile.erase(good_id)
 		_prune_empty_tile(coord)
-		stockpile_changed.emit()
+		_mark_changed()
 		_check_capacity(coord)
 	return taken
 
@@ -217,7 +248,7 @@ func consume_anywhere(good_id: String, qty: int) -> int:
 		taken += tile_taken
 		remaining -= tile_taken
 	if taken > 0:
-		stockpile_changed.emit()
+		_mark_changed()
 	return taken
 
 func clear_all() -> void:
@@ -228,7 +259,7 @@ func clear_all() -> void:
 	_peak_used.clear()
 	_refused.clear()
 	_fill_history.clear()
-	stockpile_changed.emit()
+	_mark_changed()
 
 # --- Save/load (orchestrated by the SaveLoad autoload; docs/save_load_spec.md) ---
 
