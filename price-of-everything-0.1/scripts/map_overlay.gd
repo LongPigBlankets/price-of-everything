@@ -218,6 +218,97 @@ func _tile_meets_build_req(tile_data: Dictionary, req: Dictionary) -> bool:
 		_:
 			return false
 
+## A refused placement, said WHERE it was refused. A build that cannot go ahead used to
+## fail with a toast in the corner and nothing at all on the tile the player just clicked,
+## so the placement icon simply appeared to do nothing (owner 2026-08-23).
+##
+## The tile flashes red and the reason sits under it in red for REFUSAL_SECONDS, then both
+## clear themselves. Any earlier refusal is dropped first, so rapid clicking on a tile that
+## cannot take a building shows one message rather than a stack of them.
+const REFUSAL_SECONDS := 5.0
+## Screen-space box for the reason text, and how far under the tile centre it sits.
+const REFUSAL_LABEL_WIDTH := 320.0
+const REFUSAL_LABEL_DROP := 34.0
+const REFUSAL_RED := Color("#E66060")
+## A SOLID red, not the BUILD_RED tile mask. The mask carries TILE_MASK_ALPHA so it can sit
+## under the map art; a flash that has to be noticed cannot also be see-through, and the
+## first attempt at this was invisible on screen at ~0.08 effective alpha.
+const REFUSAL_FILL := Color(0.72, 0.10, 0.10, 0.62)
+const REFUSAL_FLASHES := 3
+const REFUSAL_FLASH_TIME := 0.18
+
+var _refusal_nodes: Array[Node] = []
+var _refusal_layer: CanvasLayer = null
+var _refusal_label: Label = null
+var _refusal_world := Vector2.ZERO
+
+## Flash `coord` red and print `reason` under it in red for REFUSAL_SECONDS.
+##
+## A build that cannot go ahead used to fail with a toast in the corner and nothing at all on
+## the tile just clicked, so the placement icon simply appeared to do nothing (owner
+## 2026-08-23). Any earlier refusal is dropped first, so clicking repeatedly on a tile that
+## cannot take a building shows one message rather than a stack of them.
+func flash_build_refusal(coord: Vector2i, reason: String) -> void:
+	_clear_build_refusal()
+	_refusal_world = _tile_world_pos(coord) + BUILD_TILE_VERTICAL_OFFSET
+	var marker := _make_build_hex_marker("blocked")
+	marker.set("fill_color", REFUSAL_FILL)
+	marker.position = _refusal_world
+	add_child(marker)
+	_refusal_nodes.append(marker)
+
+	# The label lives on a CanvasLayer, NOT in the world: as a Node2D child it scaled with
+	# the map, and at a zoomed-out view its 15 px font came out around two pixels tall.
+	_refusal_layer = CanvasLayer.new()
+	_refusal_layer.layer = 90
+	add_child(_refusal_layer)
+	_refusal_nodes.append(_refusal_layer)
+	_refusal_label = Label.new()
+	_refusal_label.text = reason
+	_refusal_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_refusal_label.add_theme_color_override("font_color", REFUSAL_RED)
+	# Outlined: this sits over the map, which is a busy, mostly light surface — red alone is
+	# unreadable over sand or a town.
+	_refusal_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	_refusal_label.add_theme_constant_override("outline_size", 8)
+	_refusal_label.add_theme_font_size_override("font_size", 20)
+	_refusal_label.size = Vector2(REFUSAL_LABEL_WIDTH, 0)
+	_refusal_layer.add_child(_refusal_label)
+	_position_refusal_label()
+	# Per-frame while the flash lives, so the label stays over its tile if the camera pans
+	# or zooms. This node's own _process belongs to the infra hover markers and turns itself
+	# off, so it cannot be borrowed for this.
+	if not get_tree().process_frame.is_connected(_position_refusal_label):
+		get_tree().process_frame.connect(_position_refusal_label)
+
+	var tween := create_tween()
+	for _beat in REFUSAL_FLASHES:
+		tween.tween_property(marker, "modulate:a", 0.35, REFUSAL_FLASH_TIME)
+		tween.tween_property(marker, "modulate:a", 1.0, REFUSAL_FLASH_TIME)
+	tween.tween_interval(maxf(0.0, REFUSAL_SECONDS - REFUSAL_FLASHES * REFUSAL_FLASH_TIME * 2.0))
+	tween.tween_callback(_clear_build_refusal)
+
+## Keep the label over its tile while the camera pans or zooms under it.
+func _position_refusal_label() -> void:
+	if _refusal_label == null or not is_instance_valid(_refusal_label):
+		return
+	# CANVAS transform, not the viewport transform. The project stretches a 1920x1080 base
+	# to the window, and get_viewport_transform() carries that stretch — but a CanvasLayer
+	# child is already positioned in the stretched base space, so applying it twice put the
+	# label a few hundred pixels down and to the right of the tile it belonged to.
+	var screen := get_viewport().get_canvas_transform() * (get_global_transform() * _refusal_world)
+	_refusal_label.position = screen + Vector2(-REFUSAL_LABEL_WIDTH * 0.5, REFUSAL_LABEL_DROP)
+
+func _clear_build_refusal() -> void:
+	if get_tree() != null and get_tree().process_frame.is_connected(_position_refusal_label):
+		get_tree().process_frame.disconnect(_position_refusal_label)
+	for n in _refusal_nodes:
+		if is_instance_valid(n):
+			n.queue_free()
+	_refusal_nodes.clear()
+	_refusal_layer = null
+	_refusal_label = null
+
 func _make_build_hex_marker(state: String) -> Node2D:
 	var marker := Node2D.new()
 	marker.set_script(BuildModeHexOverlayScript)
