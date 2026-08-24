@@ -26,6 +26,7 @@ const BuildingNaming := preload("res://scripts/building_naming.gd")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const SellSurplusDialog := preload("res://scripts/sell_surplus_dialog.gd")
 const GOODS_FRAME := preload("res://assets/ui/goods_frame.tres")
+const KeyedBuildingIcon := preload("res://scripts/keyed_building_icon.gd")
 const PLUS_ICON_PATH := "res://assets/icons/ui_icons/plus_off_white.png"
 # Classic TileInfoPanel footprint is 760×630; this is 120px narrower, 100px taller.
 const TABS := [
@@ -3436,56 +3437,11 @@ func _make_construction_row(project: Dictionary) -> HBoxContainer:
 # ── Keyed building glyphs: the icon PNGs are cream art on a navy tile; key the
 # navy background out (cached per building) so only the off-white glyph remains.
 # Any residual fringe is navy — invisible on the navy metal cards.
-var _keyed_icon_cache: Dictionary = {}   # building_id -> ImageTexture (null = no art)
-const _ICON_KEY_MAX := 200               # downsample before keying — cards render ≤90px
 
+# The keyed glyph and its baked emboss now live in keyed_building_icon.gd, shared with the
+# end screen's building sprites — one implementation of the card's look, not two.
 func _keyed_building_texture(bd: Dictionary) -> Texture2D:
-	var building_id := str(bd.get("id", ""))
-	if _keyed_icon_cache.has(building_id):
-		return _keyed_icon_cache[building_id]
-	var tex := _building_texture(bd)
-	if tex == null:
-		_keyed_icon_cache[building_id] = null
-		return null
-	var img: Image = tex.get_image().duplicate()
-	if img.is_compressed():
-		img.decompress()
-	img.convert(Image.FORMAT_RGBA8)
-	if img.get_width() > _ICON_KEY_MAX:
-		img.resize(_ICON_KEY_MAX,
-			int(round(img.get_height() * float(_ICON_KEY_MAX) / float(img.get_width()))),
-			Image.INTERPOLATE_LANCZOS)
-	var bg := img.get_pixel(2, 2)
-	for y in img.get_height():
-		for x in img.get_width():
-			var c := img.get_pixel(x, y)
-			var d := absf(c.r - bg.r) + absf(c.g - bg.g) + absf(c.b - bg.b)
-			var a := clampf((d - 0.28) / 0.45, 0.0, 1.0) * c.a
-			if a < c.a:
-				img.set_pixel(x, y, Color(c.r, c.g, c.b, a))
-	# Bake the raised-emboss lighting INTO the texture (shadow silhouette to the
-	# bottom-right, light catch to the top-left, glyph on top) so the card needs
-	# ONE plain TextureRect. Layered rects + an additive material tripped a GL-
-	# compat blend quirk that rendered the keyed alpha as opaque navy.
-	var w := img.get_width()
-	var h := img.get_height()
-	var pad := 8
-	var shadow := Image.create(w, h, false, Image.FORMAT_RGBA8)
-	var catch := Image.create(w, h, false, Image.FORMAT_RGBA8)
-	for y in h:
-		for x in w:
-			var a := img.get_pixel(x, y).a
-			if a > 0.01:
-				shadow.set_pixel(x, y, Color(0.0, 0.0, 0.0, a * 0.5))
-				catch.set_pixel(x, y, Color(0.88, 0.93, 1.0, a * 0.85))
-	var canvas := Image.create(w + pad * 2, h + pad * 2, false, Image.FORMAT_RGBA8)
-	var full := Rect2i(0, 0, w, h)
-	canvas.blend_rect(shadow, full, Vector2i(pad + 4, pad + 5))
-	canvas.blend_rect(catch, full, Vector2i(pad - 2, pad - 2))
-	canvas.blend_rect(img, full, Vector2i(pad, pad))
-	var out := ImageTexture.create_from_image(canvas)
-	_keyed_icon_cache[building_id] = out
-	return out
+	return KeyedBuildingIcon.keyed(bd)
 
 # Building icon, embossed / raised off the card's metal (owner 2026-07-10): the
 # keyed off-white glyph only (no navy tile), with a shadow cast to the right and
@@ -3521,19 +3477,7 @@ func _make_building_icon(building_id: String, alpha: float, size: int = 80) -> C
 	return holder
 
 func _building_texture(building_data: Dictionary) -> Texture2D:
-	var building_id := str(building_data.get("id", ""))
-	var internal := str(building_data.get("internal_name", ""))
-	var paths: Array[String] = []
-	if building_id != "" and internal != "":
-		paths.append("res://assets/icons/buildings/%s_%s.png" % [building_id, internal])
-	if building_id != "":
-		paths.append("res://assets/icons/buildings/%s.png" % building_id)
-	if internal != "":
-		paths.append("res://assets/icons/buildings/%s.png" % internal)
-	for p in paths:
-		if ResourceLoader.exists(p):
-			return load(p) as Texture2D
-	return null
+	return KeyedBuildingIcon.raw_texture(building_data)
 
 func _make_land_bar(bl: Dictionary) -> Control:
 	var owned := float(bl.owned)

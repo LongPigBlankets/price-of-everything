@@ -346,12 +346,13 @@ func _build_pennant(t: Dictionary, result: String) -> Control:
 	var card := _CutPlate.new(0, 0, _CutPlate.STEEL)
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.size_flags_vertical = Control.SIZE_FILL
+	# No colour bar across the top (owner 2026-08-24) — the crest below is the track's
+	# colour, struck in the research panel's metal, and a flat swatch over it was the one
+	# undesigned element on the card.
 	if done:
 		card.fill = Color("#0D1E30")
-		card.accent = color
 	else:
 		card.dimmed = true
-		card.accent = Color(color, 0.25)
 
 	var stack := VBoxContainer.new()
 	stack.add_theme_constant_override("separation", 0)
@@ -518,7 +519,7 @@ func _build_company(data: Dictionary) -> Control:
 	row.add_child(_workhorse_showcase(co.get("workhorse", {})))
 	row.add_child(_advisor_showcase(co.get("advisor", {})))
 
-	box.add_child(_chain_row(co.get("chain", [])))
+	box.add_child(_chain_row(co.get("chain", {})))
 	return sec
 
 
@@ -593,62 +594,37 @@ func _advisor_showcase(d: Dictionary) -> Control:
 		"seated since Year %d" % int(d.get("since_year", 1)), false)
 
 
-## The supply chain the run actually established, drawn the Goods Graph's way: the
-## most-produced good of each tier on a cream chip, brass links between reached tiers,
-## dark embossed sockets where the chain never got.
-func _chain_row(chain: Array) -> Control:
+## The supply chain the run actually established, drawn as the GOODS GRAPH'S FOCUSED VIEW
+## (owner 2026-08-24): the goods this company made, in the flow chart's own columns, wired
+## to each other by the real recipe links — not a row of five tier slots with one good in
+## each. What the shape shows is how deep and how wide the business actually went.
+func _chain_row(chain: Dictionary) -> Control:
 	var plate := _CutPlate.new(20, 14, _CutPlate.BRASS)
 	plate.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 10)
 	plate.add_child(v)
-	var reached := 0
-	for e in chain:
-		if str((e as Dictionary).get("gid", "")) != "":
-			reached += 1
-	v.add_child(_lbl("SUPPLY CHAIN — REACHED %d OF %d TIERS" % [reached, chain.size()],
-		_UIFonts.PLEX_MED, 13, DS.PALETTE.TEXT_MUTED))
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 6)
-	v.add_child(row)
-	for i in chain.size():
-		var e: Dictionary = chain[i]
-		if i > 0:
-			var link := _ChainLink.new()
-			link.lit = (str(e.get("gid", "")) != ""
-				and str((chain[i - 1] as Dictionary).get("gid", "")) != "")
-			row.add_child(link)
-		row.add_child(_chain_cell(e))
+	v.add_child(_lbl("SUPPLY CHAIN — REACHED %d OF %d TIERS" % [int(chain.get("bands", 0)),
+		int(chain.get("band_total", 5))], _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED))
+	var nodes: Array = chain.get("nodes", [])
+	if nodes.is_empty():
+		v.add_child(_lbl("Nothing was ever produced.", _UIFonts.PLEX, 14, DS.PALETTE.TEXT_MUTED))
+		return plate
+	var web := _ChainWeb.new()
+	web.nodes = nodes
+	web.edges = chain.get("edges", [])
+	web.font = _UIFonts.PLEX_MED
+	web.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Tall enough for the busiest column, so nothing is squeezed off the plate.
+	var per_col: Dictionary = {}
+	var deep := 1
+	for n_variant: Variant in nodes:
+		var t := int((n_variant as Dictionary).get("tier", 0))
+		per_col[t] = int(per_col.get(t, 0)) + 1
+		deep = maxi(deep, int(per_col[t]))
+	web.custom_minimum_size = Vector2(0, float(deep) * _ChainWeb.ROW + 16.0)
+	v.add_child(web)
 	return plate
-
-
-func _chain_cell(e: Dictionary) -> Control:
-	var gid := str(e.get("gid", ""))
-	var cell := VBoxContainer.new()
-	cell.alignment = BoxContainer.ALIGNMENT_CENTER
-	cell.add_theme_constant_override("separation", 5)
-	if gid != "":
-		var chip := _UIHelpers.make_plain_good_icon(gid, Catalog.get_internal_name(gid), 64)
-		cell.add_child(chip)
-		var name_lbl := _lbl(Catalog.get_display_name(gid), _UIFonts.PLEX_MED, 14, C_STAT_VALUE)
-		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		cell.add_child(name_lbl)
-	else:
-		var socket := _CutPlate.new(0, 0, _CutPlate.STEEL)
-		socket.dimmed = true
-		socket.cut = 10.0
-		socket.custom_minimum_size = Vector2(64, 64)
-		socket.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		cell.add_child(socket)
-		var dash := _lbl("not reached", _UIFonts.PLEX, 14, DS.PALETTE.TEXT_MUTED)
-		dash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		cell.add_child(dash)
-	var tier_lbl := _lbl(str(e.get("tier", "")).capitalize(), _UIFonts.PLEX, 14,
-		DS.PALETTE.TEXT_MUTED)
-	tier_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	cell.add_child(tier_lbl)
-	return cell
 
 
 # ── Section 4: CHARTS + EMPIRE ───────────────────────────────────────────────
@@ -668,6 +644,7 @@ func _build_charts(data: Dictionary) -> Control:
 	var rev := _LineChart.new()
 	rev.series = charts.get("revenue", [])
 	rev.col = C_REV
+	rev.board = C_REV
 	grid.add_child(_chart_card("Revenue per turn", str(charts.get("revenue_big", "")),
 		str(charts.get("revenue_sub", "")), C_REV, rev,
 		"turn 1 … turn %d" % int(data.get("turn", 0)), _CutPlate.BRASS))
@@ -689,10 +666,9 @@ func _build_charts(data: Dictionary) -> Control:
 	for v in bld.series:
 		bpeak = maxi(bpeak, int(v))
 	bld.step = maxi(1, int(ceil(float(bpeak) / 4.0)))
+	bld.font = _UIFonts.mono()
 	var bfoot := "turn 1 … turn %d" % int(data.get("turn", 0))
-	if bld.icon != null:
-		bfoot += "  ·  one sprite = %d building%s" % [bld.step, "" if bld.step == 1 else "s"]
-	grid.add_child(_chart_card("Buildings standing", str(charts.get("buildings_big", "")),
+	grid.add_child(_chart_card("Buildings owned", str(charts.get("buildings_big", "")),
 		str(charts.get("buildings_sub", "")), C_BLD, bld, bfoot, _CutPlate.COPPER, 176))
 
 	# Biggest outputs — five ranked bar rows.
@@ -1184,18 +1160,142 @@ class _CutPlate extends PanelContainer:
 				Vector2(r.end.x - c - 2.0, r.position.y + 4.0), accent, 3.0, true)
 
 
-## Connector between chain chips — a short brass run, dim where the chain never got there.
-class _ChainLink extends Control:
-	var lit := false
+## The player's own corner of the Goods Graph: cream chips in the flow chart's tier
+## columns, wired by the real recipe links in the graph's own route colours. Everything is
+## drawn rather than laid out with containers, exactly as the Goods Graph draws its cards —
+## the edges need to know where the chips landed, and a container cannot tell them.
+class _ChainWeb extends Control:
+	const GoodIcons := preload("res://scripts/good_icons.gd")
+	const ROUTE_COLORS := [Color("#f2c14e"), Color("#6f9fd8"), Color("#7ec98a"), Color("#b48ad9")]
+	const CREAM := Color(0.995234, 0.930806, 0.763265)
+	const CHIP := 58.0
+	const ROW := 96.0
+	var nodes: Array = []
+	var edges: Array = []
+	var font: Font = null
+
 	func _init() -> void:
-		custom_minimum_size = Vector2(26, 64)
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		resized.connect(queue_redraw)
+
 	func _draw() -> void:
-		var y := 32.0
-		var col := Color(0.808, 0.667, 0.396, 0.8) if lit else Color(1, 1, 1, 0.12)
-		draw_line(Vector2(2, y), Vector2(size.x - 2, y), col, 2.0, true)
-		if lit:
-			draw_circle(Vector2(size.x - 4.0, y), 2.5, col)
+		if nodes.is_empty() or size.x < 40.0:
+			return
+		# Columns: the graph's own tier depths, squeezed to consecutive slots so a run that
+		# skipped a tier does not leave a gap the width of a column.
+		var tiers: Array = []
+		for n_variant: Variant in nodes:
+			var t := int((n_variant as Dictionary).get("tier", 0))
+			if not tiers.has(t):
+				tiers.append(t)
+		tiers.sort()
+		var col_of: Dictionary = {}
+		for i in tiers.size():
+			col_of[tiers[i]] = i
+		var by_col: Dictionary = {}
+		for n_variant: Variant in nodes:
+			var n: Dictionary = n_variant
+			var c := int(col_of[int(n.get("tier", 0))])
+			if not by_col.has(c):
+				by_col[c] = []
+			(by_col[c] as Array).append(n)
+		# Columns are capped and the block centred: spreading five goods across a
+		# 1,800px plate put a chip alone in the middle of each of five empty rooms.
+		var cw := minf(size.x / float(maxi(1, tiers.size())), 235.0)
+		var x0 := (size.x - cw * float(tiers.size())) * 0.5
+		var centre: Dictionary = {}      # id -> chip centre
+		for c in by_col:
+			var col: Array = by_col[c]
+			col.sort_custom(_bigger_first)
+			var total := float(col.size()) * ROW
+			var y := (size.y - total) * 0.5 + ROW * 0.5
+			for n_variant: Variant in col:
+				var n: Dictionary = n_variant
+				centre[str(n.get("id", ""))] = Vector2(x0 + cw * (float(c) + 0.5), y)
+				y += ROW
+		# Wires first, so the chips sit on top of them.
+		for e_variant: Variant in edges:
+			var e: Dictionary = e_variant
+			var a = centre.get(str(e.get("from", "")))
+			var b = centre.get(str(e.get("to", "")))
+			if a == null or b == null:
+				continue
+			_wire(a, b, ROUTE_COLORS[clampi(int(e.get("route", 0)), 0, ROUTE_COLORS.size() - 1)])
+		for n_variant: Variant in nodes:
+			var n: Dictionary = n_variant
+			var c2 = centre.get(str(n.get("id", "")))
+			if c2 != null:
+				_chip(n, c2)
+
+	## Busiest good at the top of its column. (A named method, not an inline lambda: a
+	## lambda body that wraps onto a second line inside a call argument does not parse.)
+	func _bigger_first(a: Variant, b: Variant) -> bool:
+		return int((a as Dictionary).get("units", 0)) > int((b as Dictionary).get("units", 0))
+
+	## One orthogonal run between two chips, filleted at the corners and tipped with an
+	## arrowhead. A link that runs backwards (a good feeding something in an earlier column)
+	## dips under its own row rather than cutting straight through the chips between.
+	func _wire(a: Vector2, b: Vector2, col: Color) -> void:
+		var from := a + Vector2(CHIP * 0.5 + 3.0, 0)
+		var to := b - Vector2(CHIP * 0.5 + 9.0, 0)
+		var route := PackedVector2Array()
+		if to.x > from.x + 12.0:
+			var mid := (from.x + to.x) * 0.5
+			route = PackedVector2Array([from, Vector2(mid, from.y), Vector2(mid, to.y), to])
+		else:
+			var dip := maxf(a.y, b.y) + ROW * 0.40
+			to = b + Vector2(0, CHIP * 0.5 + 6.0)
+			route = PackedVector2Array([from, Vector2(from.x + 14.0, from.y),
+				Vector2(from.x + 14.0, dip), Vector2(to.x, dip), to])
+		var pts := _fillet(route, 9.0)
+		draw_polyline(pts, Color(0, 0, 0, 0.45), 4.2, true)
+		draw_polyline(pts, Color(col, 0.85), 2.4, true)
+		var tip: Vector2 = pts[pts.size() - 1]
+		var dir: Vector2 = (tip - pts[pts.size() - 2]).normalized()
+		var nrm := Vector2(-dir.y, dir.x)
+		draw_colored_polygon(PackedVector2Array([tip, tip - dir * 9.0 + nrm * 5.4,
+			tip - dir * 9.0 - nrm * 5.4]), Color(col, 0.9))
+
+	func _fillet(route: PackedVector2Array, r: float) -> PackedVector2Array:
+		if route.size() < 3:
+			return route
+		var out := PackedVector2Array([route[0]])
+		for i in range(1, route.size() - 1):
+			var prev: Vector2 = route[i - 1]
+			var cur: Vector2 = route[i]
+			var nxt: Vector2 = route[i + 1]
+			var rad: float = minf(r, minf(cur.distance_to(prev), cur.distance_to(nxt)) * 0.45)
+			var p0 := cur + (prev - cur).normalized() * rad
+			var p1 := cur + (nxt - cur).normalized() * rad
+			for k in 5:
+				var t := float(k) / 4.0
+				out.append(p0.lerp(cur, t).lerp(cur.lerp(p1, t), t))
+		out.append(route[route.size() - 1])
+		return out
+
+	## The Goods Graph's chip: the good's icon on cream, with a rim in its category accent
+	## and the name underneath.
+	func _chip(n: Dictionary, c: Vector2) -> void:
+		var r := Rect2(c - Vector2(CHIP, CHIP) * 0.5, Vector2(CHIP, CHIP))
+		var accent := Color(str(n.get("accent", "b9c4d2")))
+		draw_rect(Rect2(r.position + Vector2(1.5, 2.5), r.size), Color(0, 0, 0, 0.40), true)
+		DrawUtil.round_rect(self, r, 11.0, CREAM)
+		var tex: Texture2D = GoodIcons.texture_for_size(str(n.get("gid", "")),
+			str(n.get("id", "")), CHIP)
+		if tex != null:
+			draw_texture_rect(tex, r.grow(-5.0), false)
+		var rim := PackedVector2Array([r.position + Vector2(11.0, 0), Vector2(r.end.x - 11.0, r.position.y),
+			Vector2(r.end.x, r.position.y + 11.0), Vector2(r.end.x, r.end.y - 11.0),
+			Vector2(r.end.x - 11.0, r.end.y), Vector2(r.position.x + 11.0, r.end.y),
+			Vector2(r.position.x, r.end.y - 11.0), Vector2(r.position.x, r.position.y + 11.0),
+			r.position + Vector2(11.0, 0)])
+		draw_polyline(rim, Color(accent, 0.9), 2.0, true)
+		if font == null:
+			return
+		var name := str(n.get("display", ""))
+		var tw := font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
+		font.draw_string(get_canvas_item(), Vector2(c.x - tw * 0.5, r.end.y + 17.0),
+			name, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#E8EEF7"))
 
 
 # Faint radial accent glow (header + expand).
@@ -1278,7 +1378,11 @@ class _ScoreBar extends Control:
 		draw_rect(Rect2(Vector2(mx - 1.0, -2.0), Vector2(2.0, h + 4.0)), Color("#f2e6c8"))
 
 
-# The gold crest hexagon + a minimal track glyph.
+## The track crest, struck as the RESEARCH PANEL'S TIER STAMP (owner 2026-08-24: "use the
+## rounded hex corner style hexes... reuse the same metallic raised effect"): a rounded-corner
+## hexagon with a dropped shadow, a diagonal gradient face inside a lighter outline shell, and
+## per-edge lighting from the top-left. Geometry and metal are HexStamp's, shared with the
+## panel itself. A secured track is struck in gold; an unsecured one in cold navy.
 class _Crest extends Control:
 	# Owner-supplied track icons (white silhouettes, tinted at draw time).
 	const _ICONS := {
@@ -1288,74 +1392,78 @@ class _Crest extends Control:
 		"widest": preload("res://assets/icons/victory/widest.png"),
 		"greenest": preload("res://assets/icons/victory/greenest.png"),
 	}
+	const _HexStamp := preload("res://scripts/hex_stamp.gd")
+	## The demo runs five tracks of its own, and the crests came up BLANK because the icon
+	## set is keyed by the campaign's names. Each demo track borrows the campaign crest that
+	## means the same thing: top of the rankings is the richest firm, producing at every
+	## tier is self-supply, long hauls are logistics, and an estate is reach.
+	const _DEMO_GLYPH := {
+		"crown": "richest", "tiers": "autarkic", "distance": "logistics",
+		"green_demo": "greenest", "estate": "widest",
+	}
 	var done: bool = false
 	var color: Color = Color.WHITE
 	var glyph: String = ""
 	func _draw() -> void:
-		var cx := size.x * 0.5
-		var cy := size.y * 0.5
-		var r := 48.0
-		var hex := DrawUtil.hexagon(cx, cy, r)
-		if done:
-			# Gold vertical gradient via a 4-vertex quad clipped visually by the hex fill:
-			# fill the hex with the mid gold, then lay a top-light / bottom-dark quad band.
-			draw_polygon(hex, PackedColorArray([
-				Color("#f0dfae"), Color("#e7cd8f"), Color("#c9a75c"),
-				Color("#a8863c"), Color("#c9a75c"), Color("#e7cd8f")]))
-			draw_polyline(_closed(hex), Color("#f2e6c8"), 2.0, true)
-			var inner := DrawUtil.hexagon(cx, cy, r - 6.0)
-			draw_polyline(_closed(inner), Color(1, 1, 1, 0.25), 1.0, true)
-		else:
-			draw_polygon(hex, PackedColorArray([
-				Color("#0a1623"), Color("#0a1623"), Color("#0a1623"),
-				Color("#0a1623"), Color("#0a1623"), Color("#0a1623")]))
-			draw_polyline(_closed(hex), Color("#22384f"), 1.5, true)
-		var tex: Texture2D = _ICONS.get(glyph)
-		if tex != null:
-			var s := 46.0
-			var tint := Color("#141d29") if done else Color("#31465c")
-			draw_texture_rect(tex, Rect2(cx - s * 0.5, cy - s * 0.5, s, s), false, tint)
-
-	func _closed(pts: PackedVector2Array) -> PackedVector2Array:
-		var c := pts.duplicate()
-		c.append(pts[0])
-		return c
+		var side := minf(size.x, size.y) - 6.0
+		if side < 12.0:
+			return
+		# The stamp is wider than tall, as it is in the tree — the hex points sideways.
+		var rw := side * 1.14
+		var rect := Rect2(size.x * 0.5 - rw * 0.5, size.y * 0.5 - side * 0.5, rw, side)
+		var fill := Color("#C9A75C") if done else Color("#0B1725")
+		var out_lt := Color(0.86, 0.80, 0.62, 0.90) if done else Color(0.40, 0.46, 0.54, 0.65)
+		var out_dk := Color(0.42, 0.34, 0.16, 0.85) if done else Color(0.16, 0.21, 0.27, 0.70)
+		var inner := _HexStamp.draw_stamp(self, rect, fill, out_lt, out_dk,
+			maxf(3.0, side * 0.08), maxf(4.0, side * 0.16))
+		var tex: Texture2D = _ICONS.get(str(_DEMO_GLYPH.get(glyph, glyph)))
+		if tex == null:
+			return
+		var gs := inner.size.y * 0.82
+		var tint := Color("#141d29") if done else Color(color, 0.55)
+		draw_texture_rect(tex, Rect2(inner.get_center() - Vector2(gs, gs) * 0.5,
+			Vector2(gs, gs)), false, tint)
 
 
-# Filled area line chart.
-## Revenue as a CIRCUIT TRACE (owner 2026-08-24: "gold lines leading to circles like
-## circuits"): an embossed brass line — dark under-stroke, brass body, a thin glint riding
-## on top — with solder-pad circles at sparse sample points and at the end.
+## Revenue as a CIRCUIT BOARD (owner 2026-08-24): the area under the line is the green
+## board, the line itself the gold edge trace, and the board is laid out with gold runs
+## between solder pads across its whole surface. Runs are laid on a lattice and kept only
+## where BOTH pads sit under the curve, so the etching fills the shape exactly and stops
+## at the line. The pattern is hashed off the lattice cell, never a RNG -- _draw re-runs
+## on every redraw, and a board that re-etched itself each frame would crawl.
 class _LineChart extends Control:
 	const GOLD_HI := Color(0.965, 0.886, 0.659)
 	const GOLD_MID := Color(0.808, 0.667, 0.396)
 	const GOLD_LO := Color(0.518, 0.408, 0.204)
+	const PITCH := 22.0
 	var series: Array = []
 	var col: Color = Color.WHITE
+	var board: Color = Color(0.357, 0.820, 0.502)   # the board green (DS.OK)
 	func _draw() -> void:
 		var w := size.x
 		var h := size.y
-		for i in range(1, 4):
-			var y := h * float(i) / 4.0
-			draw_line(Vector2(0, y), Vector2(w, y), Color(1, 1, 1, 0.05), 1.0)
 		if series.size() < 2:
 			return
 		var mx := 0.0
 		for v in series:
 			mx = maxf(mx, float(v))
 		mx = maxf(mx, 1.0)
-		var pts := PackedVector2Array()
 		var n := series.size()
+		var pts := PackedVector2Array()
 		for i in n:
-			var x := w * float(i) / float(n - 1)
-			var y := h - (float(series[i]) / mx) * (h - 6.0)
-			pts.append(Vector2(x, y))
-		# Faint fill keeps the area reading; single flat colour (no per-vertex gradient).
+			pts.append(Vector2(w * float(i) / float(n - 1),
+				h - (float(series[i]) / mx) * (h - 6.0)))
+		# The board: a green ground, darkening towards the foot.
 		var fill := pts.duplicate()
 		fill.append(Vector2(w, h))
 		fill.append(Vector2(0, h))
-		draw_polygon(fill, PackedColorArray([Color(GOLD_MID, 0.10)]))
-		# Embossed trace.
+		draw_polygon(fill, PackedColorArray([Color(board, 0.24)]))
+		var deep := board.darkened(0.62)
+		draw_polygon(PackedVector2Array([Vector2(0, h * 0.4), Vector2(w, h * 0.4),
+			Vector2(w, h), Vector2(0, h)]), PackedColorArray([
+			Color(deep, 0.0), Color(deep, 0.0), Color(deep, 0.34), Color(deep, 0.34)]))
+		_etch(pts, w, h)
+		# The gold edge trace: embossed, with a glint riding on top.
 		var under := PackedVector2Array()
 		for pt in pts:
 			under.append(pt + Vector2(0, 1.6))
@@ -1365,14 +1473,52 @@ class _LineChart extends Control:
 		for pt in pts:
 			glint.append(pt + Vector2(0, -1.0))
 		draw_polyline(glint, Color(GOLD_HI, 0.4), 1.0, true)
-		# Solder pads: every eighth sample and the endpoint.
 		for i in n:
 			if i % 8 != 0 and i != n - 1:
 				continue
-			var pad := pts[i]
-			draw_circle(pad, 4.6, GOLD_LO)
-			draw_circle(pad, 3.4, GOLD_MID)
-			draw_circle(pad + Vector2(-1.0, -1.0), 1.2, Color(GOLD_HI, 0.85))
+			draw_circle(pts[i], 4.6, GOLD_LO)
+			draw_circle(pts[i], 3.4, GOLD_MID)
+			draw_circle(pts[i] + Vector2(-1.0, -1.0), 1.2, Color(GOLD_HI, 0.85))
+
+	## The board's runs and pads. A pad is live where the curve passes above it; a run is
+	## laid only between two live pads, so the etching stops exactly at the line.
+	func _etch(pts: PackedVector2Array, w: float, h: float) -> void:
+		var cols := int(w / PITCH)
+		var rows := int(h / PITCH)
+		if cols < 2 or rows < 1:
+			return
+		var live := []
+		for gy in rows + 1:
+			var row := []
+			for gx in cols + 1:
+				var px := float(gx) * PITCH + PITCH * 0.5
+				var py := h - float(gy) * PITCH - PITCH * 0.4
+				row.append(py > _curve_y(pts, px, w) and px < w - 2.0 and py > 2.0)
+			live.append(row)
+		var run := Color(GOLD_MID, 0.32)
+		var pad := Color(GOLD_MID, 0.44)
+		for gy in rows + 1:
+			for gx in cols + 1:
+				if not live[gy][gx]:
+					continue
+				var px := float(gx) * PITCH + PITCH * 0.5
+				var py := h - float(gy) * PITCH - PITCH * 0.4
+				# A hash of the cell decides which runs are etched: a full mesh reads as
+				# graph paper, a sparse one as a board.
+				var bit := int(absf(sin(float(gx) * 12.9898 + float(gy) * 78.233)) * 997.0)
+				if gx + 1 <= cols and live[gy][gx + 1] and bit % 3 != 0:
+					draw_line(Vector2(px, py), Vector2(px + PITCH, py), run, 1.3, true)
+				if gy + 1 <= rows and live[gy + 1][gx] and bit % 4 != 1:
+					draw_line(Vector2(px, py), Vector2(px, py - PITCH), run, 1.3, true)
+				draw_circle(Vector2(px, py), 3.0, Color(0, 0, 0, 0.30))
+				draw_circle(Vector2(px, py), 2.4, pad)
+				draw_circle(Vector2(px, py), 1.0, Color(0.02, 0.08, 0.05, 0.85))
+
+	func _curve_y(pts: PackedVector2Array, x: float, w: float) -> float:
+		var t := clampf(x / maxf(w, 1.0), 0.0, 1.0) * float(pts.size() - 1)
+		var i := clampi(int(t), 0, pts.size() - 2)
+		return lerpf(pts[i].y, pts[i + 1].y, t - float(i))
+
 
 ## Output as a rack of BEAKERS (owner 2026-08-24): thin glass tubes with rounded feet,
 ## light-blue liquid to the turn's level, a meniscus glint on the surface and a brushed
@@ -1431,8 +1577,10 @@ class _StackChart extends Control:
 	var col: Color = Color.WHITE
 	var icon: Texture2D = null
 	var step: int = 1
+	var font: Font = null
+	const GUTTER := 36.0     # room for the left axis's figures
 	func _draw() -> void:
-		var w := size.x
+		var w := size.x - GUTTER
 		var h := size.y
 		if series.is_empty() or w < 8.0:
 			return
@@ -1451,17 +1599,26 @@ class _StackChart extends Control:
 		var rows := maxf(1.0, mx / float(step))
 		var sp: float = minf(cw - 3.0, (h - 4.0) / maxf(rows, 1.0))
 		sp = maxf(sp, 8.0)
-		# Shelf lines one sprite apart — the chart's only ruling, and it counts sprites.
+		# The left axis: one rule per sprite, each labelled with the count it stands for.
+		# The sprite IS the unit, so the axis is the legend — no "one sprite = N buildings"
+		# note under the chart (owner 2026-08-24: "just label the axes clearly").
 		var shelf := h - sp
+		var tick := 1
 		while shelf > 0.0:
-			draw_line(Vector2(0, shelf), Vector2(w, shelf), Color(1, 1, 1, 0.05), 1.0)
+			draw_line(Vector2(GUTTER, shelf), Vector2(GUTTER + w, shelf), Color(1, 1, 1, 0.05), 1.0)
+			if font != null:
+				var lab := str(tick * step)
+				var lw := font.get_string_size(lab, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
+				font.draw_string(get_canvas_item(), Vector2(GUTTER - 7.0 - lw, shelf + 5.0),
+					lab, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.761, 0.824, 0.898, 0.92))
 			shelf -= sp
+			tick += 1
 		var ts := Vector2(sp, sp) if icon == null else icon.get_size()
 		for i in n:
 			var units := vals[i] / float(step)
 			var full := int(floor(units))
 			var frac := units - float(full)
-			var x := float(i) * cw + (cw - sp) * 0.5
+			var x := GUTTER + float(i) * cw + (cw - sp) * 0.5
 			var tint := Color(1, 1, 1, 1) if i != peak_i else Color(1.12, 1.08, 0.94, 1)
 			for k in full:
 				var y := h - float(k + 1) * sp
@@ -1472,8 +1629,9 @@ class _StackChart extends Control:
 				# Source region: the sprite's lower `frac`, so its base sits on the stack.
 				_stamp(Rect2(x, y2, sp, ph),
 					Rect2(0.0, ts.y * (1.0 - frac), ts.x, ts.y * frac), tint)
-		# The ground the stacks stand on.
-		draw_line(Vector2(0, h - 0.5), Vector2(w, h - 0.5), Color(col, 0.5), 2.0)
+		# The ground the stacks stand on, and the axis they rise from.
+		draw_line(Vector2(GUTTER, h - 0.5), Vector2(GUTTER + w, h - 0.5), Color(col, 0.5), 2.0)
+		draw_line(Vector2(GUTTER - 0.5, 0.0), Vector2(GUTTER - 0.5, h), Color(col, 0.35), 1.5)
 
 	## One sprite, with a dark offset copy behind it so it sits on the stack below.
 	func _stamp(dst: Rect2, src: Rect2, tint: Color) -> void:
@@ -1491,21 +1649,61 @@ class _StackChart extends Control:
 
 # A single horizontal ranked bar (rank 0 gold + glow).
 class _RankBar extends Control:
+	## Brushed metal, the way the panels do it (owner 2026-08-24): a solid body under a
+	## top-left light, a fine horizontal grain, a machined rim and a bevel just inside the
+	## top edge. Square ends with a small corner radius -- the old pill's h/2 radius put a
+	## circle on both ends of every bar.
+	const RAD := 4.0
 	var frac: float = 0.0
 	var rank: int = 0
 	var col: Color = Color.WHITE
 	func _draw() -> void:
 		var w := size.x
 		var h := size.y
-		DrawUtil.round_rect(self, Rect2(Vector2.ZERO, Vector2(w, h)), h * 0.5, Color("#0a1623"))
+		DrawUtil.round_rect(self, Rect2(Vector2.ZERO, Vector2(w, h)), RAD, Color("#08131F"))
+		draw_polyline(_ring(Rect2(Vector2(0.5, 0.5), Vector2(w - 1.0, h - 1.0))),
+			Color(1, 1, 1, 0.06), 1.0, true)
 		var bw := maxf(h, frac * w)
-		if rank == 0:
-			DrawUtil.round_rect(self, Rect2(Vector2(0, 0), Vector2(bw, h)), h * 0.5, Color("#e6b34a"))
-			DrawUtil.round_rect(self, Rect2(Vector2(0, 0), Vector2(bw, h * 0.55)), h * 0.4, Color(1, 1, 1, 0.18))
-		else:
-			DrawUtil.round_rect(self, Rect2(Vector2(0, 0), Vector2(bw, h)), h * 0.5, Color(col.r, col.g, col.b, 0.6))
-			# Machined bevel, same as the gold row: a light top half over a shaded body.
-			DrawUtil.round_rect(self, Rect2(Vector2(0, 0), Vector2(bw, h * 0.5)), h * 0.4, Color(1, 1, 1, 0.10))
+		var body: Color = Color("#C9A75C") if rank == 0 else col
+		DrawUtil.round_rect(self, Rect2(Vector2.ZERO, Vector2(bw, h)), RAD, body.darkened(0.32))
+		# Light from the top-left, shade to the bottom-right -- on a 4-vertex quad, never a
+		# per-vertex ramp around the rounded outline (that fans into artifacts in GL compat).
+		var q := PackedVector2Array([Vector2(1.5, 1.5), Vector2(bw - 1.5, 1.5),
+			Vector2(bw - 1.5, h - 1.5), Vector2(1.5, h - 1.5)])
+		var lt := body.lightened(0.34)
+		draw_polygon(q, PackedColorArray([Color(lt, 0.95), Color(lt, 0.45),
+			Color(lt, 0.05), Color(lt, 0.45)]))
+		draw_polygon(q, PackedColorArray([Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.10),
+			Color(0, 0, 0, 0.34), Color(0, 0, 0, 0.10)]))
+		# Brushed grain: fine horizontal streaks at a deterministic alpha.
+		var y := 3.0
+		var i := 0
+		while y < h - 2.0:
+			draw_line(Vector2(2.5, y), Vector2(bw - 2.5, y),
+				Color(1, 1, 1, 0.025 + 0.022 * absf(sin(float(i) * 12.9898))), 1.0)
+			y += 3.0
+			i += 1
+		# Machined rim, and the bevel just inside the top edge.
+		draw_polyline(_ring(Rect2(Vector2(0.75, 0.75), Vector2(bw - 1.5, h - 1.5))),
+			Color(body.lightened(0.55), 0.75), 1.4, true)
+		draw_line(Vector2(RAD + 1.0, 2.2), Vector2(bw - RAD - 1.0, 2.2),
+			Color(1, 1, 1, 0.28), 1.2, true)
+
+	func _ring(r: Rect2) -> PackedVector2Array:
+		var rad: float = minf(RAD, minf(r.size.x, r.size.y) * 0.5)
+		var pts := PackedVector2Array()
+		var centres: Array[Vector2] = [
+			Vector2(r.position.x + rad, r.position.y + rad),
+			Vector2(r.end.x - rad, r.position.y + rad),
+			Vector2(r.end.x - rad, r.end.y - rad),
+			Vector2(r.position.x + rad, r.end.y - rad)]
+		var starts: Array[float] = [PI, PI * 1.5, 0.0, PI * 0.5]
+		for c in 4:
+			for j in 5:
+				var a: float = starts[c] + (PI * 0.5) * float(j) / 4.0
+				pts.append(centres[c] + Vector2(cos(a), sin(a)) * rad)
+		pts.append(pts[0])
+		return pts
 
 
 # The empire production-network map: four node columns, connectors, gold ports.

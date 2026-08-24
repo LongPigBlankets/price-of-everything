@@ -7,6 +7,12 @@ extends RefCounted
 ##
 # tile_view_data owns the building-icon lookup (id_internal.png fallbacks).
 const TileViewData := preload("res://scripts/tile_view_data.gd")
+# The tile view's building-card glyph: keyed to transparency with the raised off-white
+# emboss baked in. The end screen's sprites are the SAME object as the cards' (owner
+# 2026-08-24), so a building looks like itself wherever it appears.
+const KeyedBuildingIcon := preload("res://scripts/keyed_building_icon.gd")
+const GoodsFlowGraph := preload("res://scripts/goods_flow_graph.gd")
+const CHAIN_MAX := 14              # goods drawn in the supply-chain web
 
 ## Adapts the design to the LIVE victory model: no base time score (you start at 0),
 ## the win threshold RISES over the game (win_threshold_for_turn), and the score bar is
@@ -417,7 +423,7 @@ static func _company_highlights() -> Dictionary:
 				str(bd.get("display_name", "?")), _num(int(round(value))),
 				_num(int(round(costs))), int(pl.get("turns", 0))],
 			"units": units,
-			"icon": TileViewData._building_icon_tex(bd)}
+			"icon": KeyedBuildingIcon.keyed(bd)}
 	# Longest-serving SEATED advisor, by hire turn; the tenure reads in company years.
 	var adv := {}
 	var earliest := 999999
@@ -430,18 +436,58 @@ static func _company_highlights() -> Dictionary:
 			adv = {"name": str(a.get("name", aid.capitalize())),
 				"portrait": str(a.get("portrait_path", "")),
 				"since_year": 1 + maxi(0, t - 1) / 12}
-	# The chain, tier by tier: the most-produced good in each band, empty where the run
-	# never reached — drawn by the screen in the Goods Graph's own chip style.
-	var chain: Array = []
+	# The chain the run actually established, as a NETWORK rather than a row of five
+	# tiers (owner 2026-08-24: "use the focused view style — connect the different goods
+	# produced"). Take the goods graph's own web, keep only the goods this company ever
+	# made, and keep the edges between survivors: what is left is the player's own corner
+	# of the flow chart, laid out in the same columns the Goods Graph uses.
+	var web: Dictionary = GoodsFlowGraph.build()
+	var kept: Dictionary = {}          # internal -> node record
+	for n_variant: Variant in web.get("nodes", []):
+		var n: Dictionary = n_variant
+		var gid := str(n.get("good_id", ""))
+		if int(vs.produced_by_good.get(gid, 0)) > 0:
+			kept[str(n.get("id", ""))] = n
+	# Cap the web at the biggest CHAIN_MAX by units — a hundred-good run would draw a
+	# thicket, and the point of the panel is that the shape is legible.
+	if kept.size() > CHAIN_MAX:
+		var ranked: Array = []
+		for internal_variant: Variant in kept:
+			var rn: Dictionary = kept[internal_variant]
+			ranked.append({"id": str(internal_variant), "n": rn,
+				"u": int(vs.produced_by_good.get(str(rn.get("good_id", "")), 0))})
+		ranked.sort_custom(func(a, b): return int(a["u"]) > int(b["u"]))
+		var trimmed: Dictionary = {}
+		for i in CHAIN_MAX:
+			trimmed[str((ranked[i] as Dictionary)["id"])] = (ranked[i] as Dictionary)["n"]
+		kept = trimmed
+	var cnodes: Array = []
+	for internal in kept:
+		var n: Dictionary = kept[internal]
+		cnodes.append({
+			"id": str(internal),
+			"gid": str(n.get("good_id", "")),
+			"display": str(n.get("display", internal)),
+			"tier": int(n.get("tier", 0)),
+			"units": int(vs.produced_by_good.get(str(n.get("good_id", "")), 0)),
+			"accent": GoodsFlowGraph.accent_for(n).to_html(false),
+		})
+	var cedges: Array = []
+	for e_variant: Variant in web.get("edges", []):
+		var e: Dictionary = e_variant
+		var ef := str(e.get("from", ""))
+		var et := str(e.get("to", ""))
+		if kept.has(ef) and kept.has(et) and ef != et:
+			cedges.append({"from": ef, "to": et, "route": int(e.get("route", 0))})
+	# The five display bands still score the headline — "reached 3 of 5 tiers" is the
+	# sentence the panel opens with, and it reads off goods_graph_tier, not the column.
+	var bands := 0
 	for tier in ["raw", "processed", "intermediate", "finished", "apex"]:
-		var best := {"tier": tier, "gid": "", "qty": 0}
 		for gid in vs.produced_by_good:
-			var good: Dictionary = Catalog.get_good(str(gid))
-			if str(good.get("goods_graph_tier", "")) != str(tier):
-				continue
-			if int(vs.produced_by_good[gid]) > int(best.qty):
-				best = {"tier": tier, "gid": str(gid), "qty": int(vs.produced_by_good[gid])}
-		chain.append(best)
+			if str(Catalog.get_good(str(gid)).get("goods_graph_tier", "")) == tier:
+				bands += 1
+				break
+	var chain := {"nodes": cnodes, "edges": cedges, "bands": bands, "band_total": 5}
 	return {"top_produced": top_prod, "top_sold": top_sold, "workhorse": work,
 		"advisor": adv, "chain": chain}
 
@@ -461,7 +507,7 @@ static func _statline() -> Array:
 	return [
 		{"k": "Total revenue",  "v": _money(revenue)},
 		{"k": "Buildings built", "v": _num(maxi(buildings, vs._count_player_buildings()))},
-		{"k": "Tiles held",     "v": _num(_widest_tiles())},
+		{"k": "Tiles present on", "v": _num(_widest_tiles())},
 		{"k": "Goods shipped",  "v": _num(shipped)},
 	]
 
@@ -517,14 +563,14 @@ static func _charts() -> Dictionary:
 			emblem_id = str(bid)
 	var emblem = null
 	if emblem_id != "":
-		emblem = TileViewData._building_icon_tex(Catalog.get_building(emblem_id))
+		emblem = KeyedBuildingIcon.keyed(Catalog.get_building(emblem_id))
 
 	return {
 		"revenue": rev, "output": outp, "buildings": bld,
 		"buildings_icon": emblem,
 		"revenue_big": _money(peak_rev), "revenue_sub": "peak revenue / turn",
 		"output_big": _num(peak_out), "output_sub": "units — biggest turn (%d)" % peak_out_turn,
-		"buildings_big": _num(standing), "buildings_sub": "standing at game end",
+		"buildings_big": _num(standing), "buildings_sub": "owned at game end",
 		"top": top, "top_total": top_total,
 	}
 

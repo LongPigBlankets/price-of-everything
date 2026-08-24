@@ -1,5 +1,6 @@
 extends Control
 
+const HexStamp := preload("res://scripts/hex_stamp.gd")
 const BRASS_FRAME_TEXTURE: Texture2D = preload("res://assets/ui/brass_pipe_frame_transparent.png")
 const PANEL_TITLE_FONT: Font = preload("res://assets/fonts/BebasNeue-Regular.ttf")
 const TITLE_FONT: Font = preload("res://assets/fonts/BarlowCondensed-SemiBold.ttf")
@@ -1306,78 +1307,26 @@ const RANK_GOLD := Color(0.78, 0.57, 0.18, 0.58)
 func _rank_shared_color(_rank: String) -> Color:
 	return RANK_GOLD
 
+# The stamp geometry and its metal now live in hex_stamp.gd, so the end screen's victory
+# crests are the SAME chrome rather than a second drawing of it. These stay as the panel's
+# own names because the draw code below reads better with them.
 func _hex_points(rect: Rect2) -> PackedVector2Array:
-	var left := rect.position.x
-	var right := rect.end.x
-	var top := rect.position.y
-	var bottom := rect.end.y
-	var middle_y := rect.get_center().y
-	var bevel := rect.size.x * 0.22
-	return PackedVector2Array([
-		Vector2(left + bevel, top),
-		Vector2(right - bevel, top),
-		Vector2(right, middle_y),
-		Vector2(right - bevel, bottom),
-		Vector2(left + bevel, bottom),
-		Vector2(left, middle_y),
-	])
+	return HexStamp.hex_points(rect)
 
 func _rounded_hex_points(rect: Rect2, corner_radius: float) -> PackedVector2Array:
-	return _rounded_polygon_points(_hex_points(rect), corner_radius)
+	return HexStamp.rounded_hex_points(rect, corner_radius)
 
 func _rounded_polygon_points(vertices: PackedVector2Array, corner_radius: float) -> PackedVector2Array:
-	if vertices.size() < 3:
-		return vertices
-
-	var points := PackedVector2Array()
-	for index in vertices.size():
-		var current := vertices[index]
-		var previous := vertices[(index - 1 + vertices.size()) % vertices.size()]
-		var next := vertices[(index + 1) % vertices.size()]
-		var radius := minf(corner_radius, minf(current.distance_to(previous), current.distance_to(next)) * 0.42)
-		var from_point := current + (previous - current).normalized() * radius
-		var to_point := current + (next - current).normalized() * radius
-		for step in 5:
-			var t := float(step) / 4.0
-			var a := from_point.lerp(current, t)
-			var b := current.lerp(to_point, t)
-			points.append(a.lerp(b, t))
-	return points
+	return HexStamp.rounded_polygon_points(vertices, corner_radius)
 
 func _draw_rounded_edge_lighting(points: PackedVector2Array, rect: Rect2, width: float, light_color: Color, shadow_color: Color) -> void:
-	if points.size() < 2:
-		return
-
-	var center_sum := rect.get_center().x + rect.get_center().y
-	for index in points.size():
-		var start := points[index]
-		var end := points[(index + 1) % points.size()]
-		var mid := (start + end) * 0.5
-		var color := light_color if mid.x + mid.y <= center_sum else shadow_color
-		draw_line(start, end, color, width, true)
+	HexStamp.draw_rounded_edge_lighting(self, points, rect, width, light_color, shadow_color)
 
 func _solid_colors(count: int, color: Color) -> PackedColorArray:
-	var colors := PackedColorArray()
-	for index in count:
-		colors.append(color)
-	return colors
+	return HexStamp.solid_colors(count, color)
 
 func _hex_gradient_colors(points: PackedVector2Array, light_color: Color, dark_color: Color) -> PackedColorArray:
-	var bounds := Rect2()
-	var has_bounds := false
-	for point in points:
-		if has_bounds:
-			bounds = bounds.expand(point)
-		else:
-			bounds = Rect2(point, Vector2.ZERO)
-			has_bounds = true
-
-	var colors := PackedColorArray()
-	var denominator := maxf(bounds.size.x + bounds.size.y, 1.0)
-	for point in points:
-		var ratio := clampf(((point.x - bounds.position.x) + (point.y - bounds.position.y)) / denominator, 0.0, 1.0)
-		colors.append(light_color.lerp(dark_color, ratio))
-	return colors
+	return HexStamp.hex_gradient_colors(points, light_color, dark_color)
 
 func _with_alpha(color: Color, alpha: float) -> Color:
 	return Color(color.r, color.g, color.b, alpha)
