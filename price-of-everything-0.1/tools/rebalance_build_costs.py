@@ -31,6 +31,7 @@ TARGETS = {
     'solar_farm': 500,
     'offshore_oil_platform': 850,
     'industrial_factory': 500,
+    'farm': 150,
     'battery': 350,
     'heat_battery': 350,
 }

@@ -9,6 +9,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -42,7 +43,14 @@ def default_godot() -> str:
 
 
 def run_scenario(godot: str, project: Path, scenario: str, output: Path) -> None:
-    log_path = Path("/tmp") / f"{scenario}_turn_{TARGET_TURN}.log"
+    # The OS temp dir, not a hard-coded "/tmp": on Windows that resolved to "\tmp" on the
+    # current drive, which does not exist, and Godot SEGFAULTED trying to open the log. Every
+    # scenario then died at startup and the stale-output fallback below reported success.
+    log_path = Path(tempfile.gettempdir()) / f"{scenario}_turn_{TARGET_TURN}.log"
+    # A previous run's metrics must never stand in for this one. Removing the file first means
+    # the fallback can only ever read something THIS run wrote.
+    if output.exists():
+        output.unlink()
     command = [
         godot,
         "--headless",
@@ -59,6 +67,9 @@ def run_scenario(godot: str, project: Path, scenario: str, output: Path) -> None
     ]
     completed = subprocess.run(command, text=True, capture_output=True, check=False)
     if completed.returncode != 0:
+        # A non-zero exit is expected for a scenario whose balance assertions are red — but
+        # only when the run still produced its metrics. A crash produces nothing, and that is
+        # a failure however red the scenario is meant to be.
         if scenario in EXPECTED_RED_SCENARIOS and output.exists():
             data = json.loads(output.read_text(encoding="utf-8"))
             if int(data.get("assertions_failed", 0)) > 0:

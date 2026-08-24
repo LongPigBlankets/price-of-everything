@@ -12,7 +12,7 @@ b_010,high_tech_manufactory,High Tech Manufactory,1,10000,10,10,concrete,5,build
 b_011,petro_refinery,Petrochemical Refinery,1,10000,10,10,concrete,9,building_frame,6,chem_salts,18,construction_equipment_ice,3,rubber,28,2,15,production,standard,10000,,,,,8,1080,410,41,refinery,0,plastics,29,,,
 b_012,chem_plant,Chemical Plant,1,10000,18,18,concrete,9,building_frame,7,chem_salts,17,industrial_acids,9,construction_equipment_ice,4,2,18,production,standard,10000,,,,,7,3440,1290,130,electrochemistry|refinery,0,rubber,19,plastics,20,
 b_013,poly_plant,Polymerisation Refinery,1,10000,10,10,concrete,9,building_frame,6,chem_salts,18,construction_equipment_ice,3,rubber,28,2,15,production,standard,10000,,,,,8,790,470,94,refinery,0,plastics,29,,,
-b_014,farm,Farm,1,10000,15,15,steel,2,concrete,3,biomass,8,,,,,2,20,production,standard,10000,,,,,1.5,1380,210,11,farm_forests,0,,,,,
+b_014,farm,Farm,1,10000,15,15,steel,6,concrete,9,biomass,24,,,,,2,20,production,standard,10000,,,,,1.5,1380,210,11,farm_forests,0,,,,,
 b_015,new_forest,New Growth Forest,1,10000,10,10,biomass,8,,,,,,,,,2,25,production,standard,10000,,,,,4.5,4140,640,31,farm_forests,0,,,,,
 b_016,old_forest,Old Growth Forest,1,10000,25,25,biomass,8,,,,,,,,,2,25,production,standard,10000,,,,,1.5,120,63,31,farm_forests,0,,,,,
 b_017,pipes,Pipeworks,1,10000,30,30,,,,,,,,,,,1,1,infrastructure,standard,10000,,,,,2.5,0,0,0,infrastructure,0,,,,,
