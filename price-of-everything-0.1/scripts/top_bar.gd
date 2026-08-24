@@ -2274,12 +2274,12 @@ func _money_anomalies(current: Dictionary, s: Dictionary) -> Array:
 	var hits: Array = []
 
 	if _loan_taken_this_turn > 0.0 and _anomaly_ready("loan"):
-		hits.append({"id": "loan",
+		hits.append({"id": "loan", "word": "loan", "tone": "bad",
 			"text": "We've taken a %s loan to cover this turn's bills." % _money_text(_loan_taken_this_turn)})
 
 	var revenue_base := _anomaly_baseline("revenue")
 	if revenue_base > 0.0 and float(current.revenue) >= revenue_base * ANOMALY_SPIKE_RATIO and _anomaly_ready("payment"):
-		hits.append({"id": "payment", "text": _big_payment_text(s)})
+		hits.append({"id": "payment", "word": "sold", "tone": "good", "text": _big_payment_text(s)})
 
 	# Each running-cost line is judged against its OWN baseline, so a labour jump is not
 	# hidden by a quiet turn for inputs. One generic sentence covers them all (owner).
@@ -2289,7 +2289,7 @@ func _money_anomalies(current: Dictionary, s: Dictionary) -> Array:
 			continue
 		if not _anomaly_ready("spend"):
 			break
-		hits.append({"id": "spend",
+		hits.append({"id": "spend", "word": "spending", "tone": "bad",
 			"text": "We're spending abnormal amounts of money: %s due to running costs for %s." % [
 				_money_text(float(current.get(line, 0.0))),
 				_cost_culprit(s, str(ANOMALY_COST_LINES[line]))]})
@@ -2302,7 +2302,7 @@ func _money_anomalies(current: Dictionary, s: Dictionary) -> Array:
 		var transport_delta := float(current.transport) - transport_base
 		var revenue_delta := float(current.revenue) - maxf(0.0, revenue_base)
 		if transport_delta > transport_base * (ANOMALY_TRANSPORT_RATIO - 1.0) and revenue_delta < transport_delta:
-			hits.append({"id": "transport",
+			hits.append({"id": "transport", "word": "Transport", "tone": "bad",
 				"text": "Transport costs are through the roof. Check if we're shipping by the most efficient transport."})
 	return hits
 
@@ -2363,7 +2363,8 @@ func _power_anomalies(current: Dictionary) -> Array:
 
 	var last_supply := float(previous.get("power_supply", 0.0))
 	if last_supply > 0.0 and float(current.power_supply) <= last_supply * ANOMALY_POWER_RATIO and _anomaly_ready("dark"):
-		hits.append({"id": "dark", "text": "Our power plants are going dark!"})
+		hits.append({"id": "dark", "word": "power", "tone": "bad",
+			"text": "Our power plants are going dark!"})
 
 	# Taught once, the first turn intermittent green is actually GENERATED — when the
 	# player has just built the wind or solar, not when it first bites (owner ruling:
@@ -2372,7 +2373,7 @@ func _power_anomalies(current: Dictionary) -> Array:
 		var quality: Dictionary = Production.last_turn_summary.get("power_supply_by_quality", {})
 		if float(quality.get("green_intermittent", 0)) > 0.0:
 			_intermittency_taught = true
-			hits.append({"id": "intermittency",
+			hits.append({"id": "intermittency", "word": "Renewable", "tone": "good",
 				"text": "Renewable power's great, but what do we do when the sun doesn't shine or the wind doesn't blow?"})
 
 	var demand_base := _anomaly_baseline("power_demand")
@@ -2381,7 +2382,7 @@ func _power_anomalies(current: Dictionary) -> Array:
 			and float(current.power_supply) < float(current.power_demand))
 	var jumped: bool = demand_base > 0.0 and float(current.power_demand) >= demand_base * ANOMALY_DEMAND_RATIO
 	if (flipped or jumped) and _anomaly_ready("grid"):
-		hits.append({"id": "grid",
+		hits.append({"id": "grid", "word": "grid", "tone": "bad",
 			"text": "We're drawing power from the grid for now, but this is becoming expensive."})
 	return hits
 
@@ -2399,7 +2400,7 @@ func _show_anomaly_stack(hits: Array, anchor: Control) -> void:
 		# Width first: the stack offset below is measured off the card's wrapped height,
 		# which is only correct once the width its text wraps at is settled.
 		card.set_width(anchor.size.x)
-		card.set_message(str(hit.text))
+		card.set_message(str(hit.text), str(hit.get("word", "")), str(hit.get("tone", "warn")))
 		_anomaly_cards.append(card)
 		# Placed after layout: the card has no height until its wrapped label is measured.
 		card.call_deferred("place_under", anchor, offset)

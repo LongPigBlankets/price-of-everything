@@ -24,8 +24,10 @@ func _ready() -> void:
 	if anchor == null:
 		push_error("no module anchor to hang a card on"); get_tree().quit(1); return
 	bar.call("_show_anomaly_stack", [
-		{"text": "Revenue jumped: four shipments landed in the same turn."},
-		{"text": "Freight is up by half again on the last three turns — the new smelter is hauling ore nine tiles over roads, and every leg of that is charged separately, which is the whole of the difference and then some more besides."},
+		{"word": "sold", "tone": "good",
+			"text": "You sold 40 units of Steel to the global market, which earned you £912."},
+		{"word": "Transport", "tone": "bad",
+			"text": "Transport costs are through the roof. Check if we are shipping by the most efficient transport, because every leg of a long haul is charged separately and the new smelter is nine tiles out."},
 	], anchor)
 	await _settle(30)
 	await _shot("user://poe_anomaly_cards.png")

@@ -15,14 +15,20 @@ extends PanelContainer
 ##
 ## All copy is off-white (DS.PALETTE.TEXT) — never grey. See docs/top-bar-v3-spec.md §4.
 
+const _UIFonts := preload("res://scripts/ui_fonts.gd")
+
 ## The card is as wide as the MODULE it belongs to (owner 2026-08-24) — a fixed 320 made
 ## a card under the narrow Power module read as a floating banner rather than as that
 ## module's own footnote. WIDTH is only the fallback for an anchor with no width yet.
 const WIDTH := 320.0
 const MIN_WIDTH := 180.0    # a very narrow module still needs a readable measure
 const PAD := 6              # owner: no more than 6px
-const FONT_SIZE := 16
-const MAX_LINES := 3        # then the label trims with an ellipsis
+const FONT_SIZE := 14
+const MAX_LINES := 3        # then the text trims with an ellipsis
+## The one word that says what happened, bolded and coloured by whether it is good news
+## (owner 2026-08-24). A card is read in a glance on a busy turn boundary; the word is
+## what the glance lands on, and its colour answers "do I care?" before the sentence does.
+const TONE_COLORS := {"good": "OK", "bad": "DANGER", "warn": "WARN"}
 const ANCHOR_GAP := 8.0     # below the bar module it belongs to
 ## The card announces itself, then stops. A turn is a busy moment — numbers change all
 ## over the bar at once — so a card that simply appeared could be missed entirely, which
@@ -33,7 +39,7 @@ const FLASH_BEAT_TIME := 0.28
 
 signal dismissed
 
-var _body: Label
+var _body: RichTextLabel
 var _width: float = WIDTH
 
 
@@ -60,18 +66,23 @@ func _build() -> void:
 		margin.add_theme_constant_override("margin_" + side, PAD)
 	add_child(margin)
 
-	_body = Label.new()
-	_body.theme_type_variation = "Body"
+	# A RichTextLabel, because one word in the sentence is bold and coloured and a Label
+	# cannot do that. The three-line trim is therefore done by MEASUREMENT below rather
+	# than by max_lines_visible, which RichTextLabel does not have.
+	_body = RichTextLabel.new()
+	_body.bbcode_enabled = true
+	_body.fit_content = true
+	_body.scroll_active = false
 	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	# Three lines, then an ellipsis. A card is a footnote under a module, not a paragraph:
-	# past three lines it stops being glanceable and starts covering the bar it explains.
-	_body.max_lines_visible = MAX_LINES
-	_body.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_body.custom_minimum_size = Vector2(_width - PAD * 2, 0)
+	_body.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# Explicit, not inherited: this card is the one place the owner named by hand —
 	# the text is off-white, never the dim secondary.
-	_body.add_theme_color_override("font_color", DS.PALETTE.TEXT)
-	_body.add_theme_font_size_override("font_size", FONT_SIZE)
+	_body.add_theme_color_override("default_color", DS.PALETTE.TEXT)
+	_body.add_theme_font_override("normal_font", _UIFonts.PLEX_MED)
+	_body.add_theme_font_override("bold_font", _UIFonts.PLEX_SEMI)
+	_body.add_theme_font_size_override("normal_font_size", FONT_SIZE)
+	_body.add_theme_font_size_override("bold_font_size", FONT_SIZE)
 	margin.add_child(_body)
 
 
@@ -85,10 +96,52 @@ func set_width(w: float) -> void:
 	reset_size()
 
 
-func set_message(text: String) -> void:
-	_body.text = text
+## `word` is the one term the card is about and `tone` how to read it — "bad" for a cost
+## running away, "good" for money arriving, "warn" for something merely worth knowing.
+func set_message(text: String, word: String = "", tone: String = "warn") -> void:
+	var shown := _trim_to_lines(text)
+	_body.text = _mark(shown, word, tone)
 	reset_size()
 	_flash()
+
+
+## Cut `text` down to MAX_LINES at the card's width, ending on an ellipsis when it had to.
+## Measured against the font rather than the laid-out label: the caller stacks cards by
+## their height immediately after setting the text, before any layout pass has run.
+func _trim_to_lines(text: String) -> String:
+	var font: Font = _body.get_theme_font("normal_font")
+	if font == null:
+		return text
+	var avail: float = maxf(40.0, _width - PAD * 2)
+	var line_h: float = font.get_height(FONT_SIZE)
+	var budget: float = line_h * float(MAX_LINES) + 1.0
+	if font.get_multiline_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, avail, FONT_SIZE).y <= budget:
+		return text
+	var words := text.split(" ", false)
+	var kept := ""
+	for w: String in words:
+		var candidate := w if kept == "" else kept + " " + w
+		if font.get_multiline_string_size(candidate + "…", HORIZONTAL_ALIGNMENT_LEFT, avail, FONT_SIZE).y > budget:
+			break
+		kept = candidate
+	return (kept if kept != "" else text.substr(0, 12)) + "…"
+
+
+## Bold and colour the first whole-word occurrence of `word`. BBCode is escaped first, so
+## a message that happens to contain a bracket cannot open a tag by accident.
+func _mark(text: String, word: String, tone: String) -> String:
+	var safe := text.replace("[", "[lb]")
+	if word == "":
+		return safe
+	var lower := safe.to_lower()
+	var at := lower.find(word.to_lower())
+	if at < 0:
+		return safe
+	var key: String = str(TONE_COLORS.get(tone, "WARN"))
+	var col: Color = DS.PALETTE[key]
+	var hit := safe.substr(at, word.length())
+	return "%s[b][color=#%s]%s[/color][/b]%s" % [
+		safe.substr(0, at), col.to_html(false), hit, safe.substr(at + word.length())]
 
 
 ## Place the card under `anchor`, `stack_offset` px further down for each card already
