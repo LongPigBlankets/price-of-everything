@@ -134,8 +134,7 @@ theme_override_constants/separation = 8
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Goods sold
-"
+text = "Goods sold"
 
 [node name="GoodsValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/RevenueSection/GoodsRow" unique_id=2050695481]
 custom_minimum_size = Vector2(80, 0)
@@ -151,8 +150,7 @@ theme_override_constants/separation = 8
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Power sold
-"
+text = "Power sold"
 
 [node name="PowerSalesValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/RevenueSection/PowerSalesRow" unique_id=1560842205]
 custom_minimum_size = Vector2(80, 0)
@@ -171,8 +169,7 @@ theme_override_constants/separation = 8
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Total Revenue
-"
+text = "Total Revenue"
 
 [node name="TotalRevenueValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/RevenueSection/TotalRevenueRow" unique_id=100779803]
 custom_minimum_size = Vector2(80, 0)
@@ -216,8 +213,7 @@ theme_override_constants/separation = 8
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Labour & Salaries
-"
+text = "Labour & Salaries"
 
 [node name="LabourValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection/LabourRow" unique_id=536994724]
 custom_minimum_size = Vector2(80, 0)
@@ -233,8 +229,7 @@ theme_override_constants/separation = 8
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Power purchases
-"
+text = "Power purchases"
 
 [node name="PowerPurchaseValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection/PowerPurchaseRow" unique_id=1057542931]
 custom_minimum_size = Vector2(80, 0)
@@ -253,8 +248,7 @@ theme_override_constants/separation = 8
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Total Operating Costs
-"
+text = "Total Operating Costs"
 
 [node name="TotalCostsValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection/TotalCostsRow" unique_id=621082196]
 custom_minimum_size = Vector2(80, 0)
@@ -272,8 +266,7 @@ size_flags_vertical = 3
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Operating Profit
-"
+text = "Operating Profit"
 
 [node name="OperatingProfitValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/OperatingProfitRow" unique_id=511948010]
 custom_minimum_size = Vector2(80, 0)
@@ -288,8 +281,7 @@ size_flags_vertical = 3
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Loan Interest
-"
+text = "Loan Interest"
 
 [node name="InterestValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/InterestRow" unique_id=730497790]
 custom_minimum_size = Vector2(80, 0)
@@ -304,8 +296,7 @@ size_flags_vertical = 3
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Pre-tax profit
-"
+text = "Pre-tax profit"
 
 [node name="PreTaxValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/PreTaxRow" unique_id=1801484923]
 custom_minimum_size = Vector2(80, 0)
@@ -320,8 +311,7 @@ size_flags_vertical = 3
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Tax (20%)
-"
+text = "Tax (20%)"
 
 [node name="TaxValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/TaxRow" unique_id=599583945]
 custom_minimum_size = Vector2(80, 0)
@@ -336,8 +326,7 @@ size_flags_vertical = 3
 custom_minimum_size = Vector2(80, 30)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Post-tax profit
-"
+text = "Post-tax profit"
 
 [node name="PostTaxValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/PostTaxRow" unique_id=930876557]
 custom_minimum_size = Vector2(80, 0)
@@ -463,8 +452,7 @@ theme_override_constants/separation = 8
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Goods sold
-"
+text = "Goods sold"
 
 [node name="GoodsValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_RevenueSection/Proj_GoodsRow" unique_id=387479725]
 custom_minimum_size = Vector2(80, 0)
@@ -480,8 +468,7 @@ theme_override_constants/separation = 8
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Power sold
-"
+text = "Power sold"
 
 [node name="PowerSalesValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_RevenueSection/Proj_PowerSalesRow" unique_id=394089414]
 custom_minimum_size = Vector2(80, 0)
@@ -500,8 +487,7 @@ theme_override_constants/separation = 8
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Total Revenue
-"
+text = "Total Revenue"
 
 [node name="TotalRevenueValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_RevenueSection/Proj_TotalRevenueRow" unique_id=1227812252]
 custom_minimum_size = Vector2(80, 0)
@@ -545,8 +531,7 @@ theme_override_constants/separation = 8
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Labour & Salaries
-"
+text = "Labour & Salaries"
 
 [node name="LabourValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection/Proj_LabourRow" unique_id=1536786775]
 custom_minimum_size = Vector2(80, 0)
@@ -562,8 +547,7 @@ theme_override_constants/separation = 8
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Power purchases
-"
+text = "Power purchases"
 
 [node name="PowerPurchaseValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection/Proj_PowerPurchaseRow" unique_id=2079664074]
 custom_minimum_size = Vector2(80, 0)
@@ -582,8 +566,7 @@ theme_override_constants/separation = 8
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Total Operating Costs
-"
+text = "Total Operating Costs"
 
 [node name="TotalCostsValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection/Proj_TotalCostsRow" unique_id=607845399]
 custom_minimum_size = Vector2(80, 0)
@@ -601,8 +584,7 @@ size_flags_vertical = 3
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Operating Profit
-"
+text = "Operating Profit"
 
 [node name="OperatingProfitValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_OperatingProfitRow" unique_id=1116532202]
 custom_minimum_size = Vector2(80, 0)
@@ -617,8 +599,7 @@ size_flags_vertical = 3
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Loan Interest
-"
+text = "Loan Interest"
 
 [node name="InterestValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_InterestRow" unique_id=1666979602]
 custom_minimum_size = Vector2(80, 0)
@@ -633,8 +614,7 @@ size_flags_vertical = 3
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Pre-tax profit
-"
+text = "Pre-tax profit"
 
 [node name="PreTaxValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_PreTaxRow" unique_id=1940488066]
 custom_minimum_size = Vector2(80, 0)
@@ -649,8 +629,7 @@ size_flags_vertical = 3
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Tax (20%)
-"
+text = "Tax (20%)"
 
 [node name="TaxValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_TaxRow" unique_id=998722054]
 custom_minimum_size = Vector2(80, 0)
@@ -665,8 +644,7 @@ size_flags_vertical = 3
 custom_minimum_size = Vector2(80, 30)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Post-tax profit
-"
+text = "Post-tax profit"
 
 [node name="PostTaxValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_PostTaxRow" unique_id=1153649836]
 custom_minimum_size = Vector2(80, 0)
@@ -754,9 +732,11 @@ metadata/_tab_index = 4
 
 [node name="MarginContainer" type="MarginContainer" parent="MarginContainer/ModalLayout/TabContainer/Charts"]
 layout_mode = 2
+size_flags_vertical = 3
 
 [node name="ChartsContent" type="VBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Charts/MarginContainer"]
 layout_mode = 2
+size_flags_vertical = 3
 theme_override_constants/separation = 8
 
 [node name="ToggleRow" type="HBoxContainer" parent="MarginContainer/ModalLayout/TabContainer/Charts/MarginContainer/ChartsContent"]

@@ -289,13 +289,10 @@ func _build_header(data: Dictionary) -> Control:
 	l_right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	labels.add_child(l_right)
 
-	# Faint radial ACCENT glow at the top of the header.
-	var glow := _Glow.new()
-	glow.col = _accent
-	glow.set_anchors_preset(Control.PRESET_FULL_RECT)
-	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	sec.add_child(glow)
-	sec.move_child(glow, 0)
+	# (The radial accent glow that used to sit behind the header — red, amber or green by
+	# result — is gone: owner 2026-08-24. On the copper plate it read as a smudge in the
+	# gradient rather than as light, and the result already has a colour everywhere it
+	# matters: the pill, the total, and the score bar.)
 	return sec
 
 
@@ -1493,16 +1490,6 @@ class _ChainWeb extends Control:
 		var tw := font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
 		font.draw_string(get_canvas_item(), Vector2(c.x - tw * 0.5, r.end.y + 17.0),
 			name, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#E8EEF7"))
-
-
-# Faint radial accent glow (header + expand).
-class _Glow extends Control:
-	var col: Color = Color("#e6b34a")
-	func _draw() -> void:
-		var cx := size.x * 0.5
-		for i in range(6, 0, -1):
-			var rr := float(i) * 28.0
-			draw_circle(Vector2(cx, 4.0), rr, Color(col.r, col.g, col.b, 0.02))
 
 
 # Soft glow inside a lit pennant.

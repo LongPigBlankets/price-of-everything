@@ -57,6 +57,8 @@ var _transport_caret: Button
 var _transport_breakdown_values: Dictionary = {}
 var _transport_breakdown_amounts: Dictionary = {}
 var _transport_expanded := false
+var _section_carets: Dictionary = {}      # "revenue" / "costs" -> the fold Button
+var _section_expanded: Dictionary = {}
 var _proj_transport_value: Label
 var _goods_purchased_value: Label
 var _proj_goods_purchased_value: Label
@@ -88,11 +90,16 @@ var _drag_offset := Vector2.ZERO
 # Charts tab
 const CHART_MAX_TURNS := 10
 const DEFAULT_PANEL_SIZE := Vector2(560, 620)
-const CHART_PANEL_SIZE := Vector2(620, 600)
+const CHART_PANEL_SIZE := Vector2(820, 840)   # wider and taller: the legend is tickboxes now
 # Breathing room so the panel never runs to the screen edge.
 const PANEL_SCREEN_MARGIN := 90.0
 # Floor for the Balance tab on a short screen: below this the sheet is all scrollbar.
 const MIN_BALANCE_PANEL_HEIGHT := 360.0
+## The balance sheet reads at 18, not the theme's 14 (owner 2026-08-24). It is a document —
+## the one screen in the game a player scans line by line — and it was set at the size the
+## rest of the UI uses for captions.
+const BALANCE_ROW_FONT := 18
+const BALANCE_HEADER_FONT := 22
 const TRANSPORT_BREAKDOWN_ROWS := [
 	["port_inbound", "Port Charges — Imports"],
 	["port_outbound", "Port Charges — Exports"],
@@ -125,6 +132,85 @@ var _dirty := false
 ## whose content differs in height then take different shares, so the gaps between them
 ## came out uneven and drifted again whenever a row was added or removed. Natural height
 ## plus the VBox separation gives one gap, the same everywhere.
+## REVENUE and OPERATING COSTS fold (owner 2026-08-24). The sheet runs past the bottom of a
+## 1080p screen with everything open, and a player checking their profit line should not have
+## to scroll past fourteen cost rows to reach it. The header becomes a caret + title that
+## toggles every row under it; the totals stay with their own section, so a folded section
+## still shows what it came to.
+func _build_section_accordions() -> void:
+	for pair: Array in [[_revenue_section, "SectionHeader_Revenue", "revenue"],
+			[_costs_section, "SectionHeader_Costs", "costs"]]:
+		var section := pair[0] as VBoxContainer
+		if section == null:
+			continue
+		var header := section.get_node_or_null(str(pair[1])) as Label
+		if header == null:
+			continue
+		var key := str(pair[2])
+		var row := HBoxContainer.new()
+		row.name = "SectionHeaderRow_%s" % key
+		row.add_theme_constant_override("separation", 6)
+		var caret := Button.new()
+		caret.flat = true
+		caret.focus_mode = Control.FOCUS_NONE
+		caret.custom_minimum_size = Vector2(26, 0)
+		caret.add_theme_font_size_override("font_size", BALANCE_HEADER_FONT)
+		caret.pressed.connect(_toggle_section.bind(key))
+		row.add_child(caret)
+		section.add_child(row)
+		section.move_child(row, header.get_index())
+		header.reparent(row)
+		header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		header.add_theme_font_size_override("font_size", BALANCE_HEADER_FONT)
+		_section_carets[key] = caret
+		_section_expanded[key] = true
+		_apply_section_expanded(key)
+
+
+func _toggle_section(key: String) -> void:
+	_section_expanded[key] = not bool(_section_expanded.get(key, true))
+	_apply_section_expanded(key)
+	if _tab_container != null and _tab_container.get_tab_title(_tab_container.current_tab) == "Balance":
+		_apply_tab_size.call_deferred(_tab_container.current_tab)
+
+
+func _apply_section_expanded(key: String) -> void:
+	var section: VBoxContainer = _revenue_section if key == "revenue" else _costs_section
+	var caret := _section_carets.get(key) as Button
+	if section == null or caret == null:
+		return
+	var open := bool(_section_expanded.get(key, true))
+	caret.text = "⌄" if open else "›"
+	caret.tooltip_text = "Hide these rows" if open else "Show these rows"
+	for child in section.get_children():
+		if child is Control and not str(child.name).begins_with("SectionHeaderRow_"):
+			(child as Control).visible = open
+	# A folded section still shows what it came to.
+	if not open:
+		return
+	if key == "costs":
+		_set_transport_expanded(_transport_expanded)
+
+
+## Every label on the sheet at the reading size, and every row vertically centred so a
+## taller value never drags its own row out of line with the rest.
+func _apply_balance_type() -> void:
+	for section: Node in [_revenue_section, _costs_section, _balance_content]:
+		if section != null:
+			_restyle_balance_labels(section)
+
+
+func _restyle_balance_labels(node: Node) -> void:
+	for child in node.get_children():
+		if child is Label:
+			var lbl := child as Label
+			if not str(lbl.name).begins_with("SectionHeader"):
+				lbl.add_theme_font_size_override("font_size", BALANCE_ROW_FONT)
+			lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		elif child is Container:
+			_restyle_balance_labels(child)
+
+
 func _normalise_balance_rows() -> void:
 	for section: Node in [_revenue_section, _costs_section]:
 		if section == null:
@@ -272,6 +358,10 @@ func _ready() -> void:
 	var projection_content := $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent as VBoxContainer
 	_profit_sharing_value = _insert_finance_row(_balance_content, "DividendsRow", "Profit Sharing", "-£0.00")
 	_proj_profit_sharing_value = _insert_finance_row(projection_content, "Proj_DividendsRow", "Profit Sharing", "-£0.00")
+	# After every row exists, not before: both passes walk the finished sheet.
+	_normalise_balance_rows()
+	_apply_balance_type()
+	_build_section_accordions()
 	close_button.pressed.connect(hide)
 	title_label.text = "Money"
 	# Own copy of the shared navy stylebox: keep the navy fill, drop the cream border,
@@ -900,7 +990,10 @@ func _apply_tab_size(idx: int) -> void:
 	custom_minimum_size = Vector2.ZERO
 	match _tab_container.get_tab_title(idx):
 		"Charts":
-			size = CHART_PANEL_SIZE
+			# Capped to the screen like the Balance tab — a fixed height taller than the
+			# viewport puts the legend's buttons under the bottom dock.
+			var avail: float = get_viewport_rect().size.y - global_position.y - PANEL_SCREEN_MARGIN
+			size = Vector2(CHART_PANEL_SIZE.x, minf(CHART_PANEL_SIZE.y, maxf(420.0, avail)))
 		"Balance":
 			size = Vector2(DEFAULT_PANEL_SIZE.x, _balance_panel_height())
 		_:
