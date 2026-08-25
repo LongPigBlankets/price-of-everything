@@ -2044,7 +2044,12 @@ func _on_confirm_pressed() -> void:
 					"Could not buy the land on %s — the build needs it first."
 						% Catalog.tile_label(_locked_tile_id), "warning")
 				return
-		BuildMode.attempt_direct_build(building_id, str(_selected_recipe.get("recipe_id", "")), _locked_tile_id)
+		if not BuildMode.attempt_direct_build(building_id,
+				str(_selected_recipe.get("recipe_id", "")), _locked_tile_id):
+			# Refused — no land, no room, sea. The map has already said which, so stay exactly
+			# as we are: the building, the recipe and the tile are all still chosen, and the
+			# player can buy the land or pick another tile without starting the selection over.
+			return
 		MatchState.request_toast("Building %s on %s." % [str(_selected_building.get("display_name", "this building")), Catalog.tile_label(_locked_tile_id)], "info")
 		hide()
 		return

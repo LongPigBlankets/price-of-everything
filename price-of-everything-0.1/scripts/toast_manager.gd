@@ -144,6 +144,11 @@ func _on_money_changed(new_amount: float) -> void:
 func show_error(message: String) -> void:
 	_push_toast(_success_stack, message, TOAST_WARNING)
 
+## A build the map turned away. Bottom-CENTRE rather than the bottom-left stack: the construct
+## panel stays open on a refusal now, and it covers the left stack completely.
+func show_blocked(message: String) -> void:
+	_push_toast(_warning_stack, message, TOAST_WARNING)
+
 func show_caution(message: String) -> void:
 	_push_toast(_success_stack, message, TOAST_CAUTION)
 

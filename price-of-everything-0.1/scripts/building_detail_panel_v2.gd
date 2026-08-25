@@ -1736,20 +1736,40 @@ func _build_cost_to_produce(rows: Array) -> PanelContainer:
 
 # --- modifiers (accordion above economics) --------------------------------------------------
 
-## Everything currently bending this building's numbers — recipe-output modifiers,
-## workforce output effects, and power-draw modifiers — behind a chevroned section
-## header that expands on click (collapsed by default).
+## The sign convention each category reads by. Output and workforce are EARNINGS, so more is
+## better. Power draw and maintenance are COSTS, so less is better and a negative there is
+## green, not red — a research node that cuts a furnace's draw by 10% was being painted as
+## damage (owner, 25 Aug).
+const MOD_CATEGORIES: Array = [
+	{"cat": "Output", "good_up": true},
+	{"cat": "Workforce", "good_up": true},
+	{"cat": "Power draw", "good_up": false},
+	{"cat": "Maintenance", "good_up": false},
+]
+
+## Everything currently bending this building's numbers — recipe output, workforce, power draw
+## and maintenance — behind a chevroned section header that expands on click (collapsed by
+## default).
+##
+## Collapsed, the header carries the ONE number worth a glance: the net effect on OUTPUT. It
+## used to read "3 active", which counted power and maintenance modifiers into a figure the
+## player reads as production, and told them nothing about which way any of it went.
+##
+## Expanded, only the per-category summaries carry colour. Painting all fourteen individual
+## rows green and red made a wall of traffic lights out of what is really four numbers.
 func _add_modifiers_accordion(building: Dictionary, recipe: Dictionary) -> void:
-	var rows: Array = []
+	var by_cat: Dictionary = {}
 	var mod: Dictionary = BuildingStatus.net_output_modifier(building, recipe)
-	for p in (mod.get("parts", []) as Array):
-		rows.append({"cat": "Output", "label": str(p.get("label", "")), "pct": float(p.get("pct", 0.0))})
-	for p in (mod.get("workforce_parts", []) as Array):
-		rows.append({"cat": "Workforce", "label": str(p.get("label", "")), "pct": float(p.get("pct", 0.0))})
+	by_cat["Output"] = (mod.get("parts", []) as Array).duplicate()
+	by_cat["Workforce"] = (mod.get("workforce_parts", []) as Array).duplicate()
 	var bid := str(building.get("building_id", ""))
-	var pw: Dictionary = Modifiers.resolve_pct("building_power", bid, {"building_id": bid})
-	for p in (pw.get("parts", []) as Array):
-		rows.append({"cat": "Power draw", "label": str(p.get("label", "")), "pct": float(p.get("pct", 0.0))})
+	by_cat["Power draw"] = (Modifiers.resolve_pct(
+		"building_power", bid, {"building_id": bid}).get("parts", []) as Array).duplicate()
+	by_cat["Maintenance"] = (Modifiers.resolve_pct(
+		"maintenance", bid, {"building_id": bid}).get("parts", []) as Array).duplicate()
+	var total := 0
+	for cat_key: Variant in by_cat:
+		total += (by_cat[cat_key] as Array).size()
 
 	# Section header doubling as the accordion trigger ("Section" is a Label
 	# variation, so a chevron Label + section Label in a clickable row).
@@ -1767,12 +1787,16 @@ func _add_modifiers_accordion(building: Dictionary, recipe: Dictionary) -> void:
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	header.add_child(title)
-	var count_tag := ("%d active" % rows.size()) if not rows.is_empty() else "none"
 	var right := Label.new()
-	right.theme_type_variation = "Caption"
-	right.text = count_tag
-	right.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
+	right.theme_type_variation = "Numeric"
 	right.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if total == 0:
+		right.text = "none"
+		right.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
+	else:
+		var out_pct := float(mod.get("pct_f", float(mod.get("pct", 0))))
+		right.text = "Output %s" % _mod_pct_text(out_pct)
+		right.add_theme_color_override("font_color", _mod_tone(out_pct, true))
 	header.add_child(right)
 	_body.add_child(header)
 
@@ -1780,36 +1804,61 @@ func _add_modifiers_accordion(building: Dictionary, recipe: Dictionary) -> void:
 	card.visible = false
 	var vb := card.get_child(0) as VBoxContainer
 	vb.add_theme_constant_override("separation", 3)
-	if rows.is_empty():
+	if total == 0:
 		var none := Label.new()
 		none.theme_type_variation = "Caption"
 		none.text = "No active modifiers on this building."
-		none.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
+		none.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 		vb.add_child(none)
-	for r in rows:
-		var pct := float(r.get("pct", 0.0))
-		var line := HBoxContainer.new()
-		line.add_theme_constant_override("separation", DS.SP["SM"])
-		var cat := Label.new()
-		cat.theme_type_variation = "Caption"
-		cat.text = str(r.get("cat", ""))
-		cat.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
-		cat.custom_minimum_size = Vector2(84, 0)
-		line.add_child(cat)
-		var lbl := Label.new()
-		lbl.theme_type_variation = "Body"
-		lbl.text = str(r.get("label", ""))
-		lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		lbl.custom_minimum_size = Vector2(PANEL_WIDTH - 220.0, 0)
-		line.add_child(lbl)
-		var val := Label.new()
-		val.theme_type_variation = "Numeric"
-		val.text = "%s%d%%" % ["+" if pct >= 0.0 else "−", absi(int(round(pct)))]
-		val.add_theme_color_override("font_color", DS.PALETTE["OK"] if pct >= 0.0 else DS.PALETTE["DANGER"])
-		val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		line.add_child(val)
-		vb.add_child(line)
+	for entry_value: Variant in MOD_CATEGORIES:
+		var entry: Dictionary = entry_value
+		var cat := str(entry.get("cat", ""))
+		var parts: Array = by_cat.get(cat, [])
+		if parts.is_empty():
+			continue
+		var net := 0.0
+		for part_value: Variant in parts:
+			net += float((part_value as Dictionary).get("pct", 0.0))
+		# The category summary — the only coloured figure in the card.
+		var sum_row := HBoxContainer.new()
+		sum_row.add_theme_constant_override("separation", DS.SP["SM"])
+		var sum_label := Label.new()
+		sum_label.theme_type_variation = "Body"
+		sum_label.text = cat
+		sum_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sum_row.add_child(sum_label)
+		var sum_value := Label.new()
+		sum_value.theme_type_variation = "Numeric"
+		sum_value.text = _mod_pct_text(net)
+		sum_value.add_theme_color_override("font_color",
+			_mod_tone(net, bool(entry.get("good_up", true))))
+		sum_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		sum_row.add_child(sum_value)
+		vb.add_child(sum_row)
+		# ...and the modifiers that make it up, plainly.
+		for part_value: Variant in parts:
+			var part: Dictionary = part_value
+			var line := HBoxContainer.new()
+			line.add_theme_constant_override("separation", DS.SP["SM"])
+			var spacer := Control.new()
+			spacer.custom_minimum_size = Vector2(DS.SP["MD"], 0)
+			spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			line.add_child(spacer)
+			var lbl := Label.new()
+			lbl.theme_type_variation = "Caption"
+			lbl.text = str(part.get("label", ""))
+			lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			lbl.custom_minimum_size = Vector2(PANEL_WIDTH - 220.0, 0)
+			lbl.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
+			line.add_child(lbl)
+			var val := Label.new()
+			val.theme_type_variation = "Caption"
+			val.text = _mod_pct_text(float(part.get("pct", 0.0)))
+			val.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
+			val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			line.add_child(val)
+			vb.add_child(line)
 	_body.add_child(card)
 
 	header.gui_input.connect(func(e: InputEvent) -> void:
@@ -1817,6 +1866,19 @@ func _add_modifiers_accordion(building: Dictionary, recipe: Dictionary) -> void:
 			header.accept_event()
 			card.visible = not card.visible
 			chevron.text = "▾" if card.visible else "▸")
+
+
+static func _mod_pct_text(pct: float) -> String:
+	return "%s%d%%" % ["+" if pct >= 0.0 else "−", absi(int(round(pct)))]
+
+
+## Green when the number is in the player's favour, which is NOT the same as positive: an
+## output modifier wants to go up, a power-draw or maintenance one wants to go down.
+static func _mod_tone(pct: float, good_up: bool) -> Color:
+	if absf(pct) < 0.5:
+		return DS.PALETTE["TEXT"]
+	var good: bool = pct > 0.0 if good_up else pct < 0.0
+	return DS.PALETTE["OK"] if good else DS.PALETTE["DANGER"]
 
 # --- economics -----------------------------------------------------------------------------
 

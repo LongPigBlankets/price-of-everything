@@ -20,6 +20,11 @@ var current_recipe_id: String = ""
 var current_infrastructure_type: String = ""
 var return_to_construct_v2_on_exit: bool = false
 var _last_attempt_ms: int = 0
+## Set by the map when an attempt is turned away before anything is placed — no land, no room,
+## sea under a road. The construct panel reads it back through attempt_direct_build: a refusal
+## the player can act on should leave their choices on screen, not throw the panel away and
+## make them rebuild the whole selection to try the tile next door (owner, 25 Aug).
+var last_attempt_refused: bool = false
 
 func enter_build_mode(building_id: String, recipe_id: String, return_to_construct_v2: bool = false) -> void:
 	if building_id == "" or recipe_id == "":
@@ -78,11 +83,14 @@ func attempt_build(tile_id: String) -> void:
 	elif kind == Kind.INFRASTRUCTURE:
 		infrastructure_attempted.emit(current_infrastructure_type, tile_id)
 
-func attempt_direct_build(building_id: String, recipe_id: String, tile_id: String) -> void:
+## Returns true when the attempt got as far as placing something (or opening a dialog that
+## will). False means it was refused outright and nothing changed.
+func attempt_direct_build(building_id: String, recipe_id: String, tile_id: String) -> bool:
 	if building_id == "" or recipe_id == "" or tile_id == "":
-		return
+		return false
 	if not _can_attempt_now():
-		return
+		return false
+	last_attempt_refused = false
 	var previous_kind := kind
 	var previous_building := current_building_id
 	var previous_recipe := current_recipe_id
@@ -99,6 +107,8 @@ func attempt_direct_build(building_id: String, recipe_id: String, tile_id: Strin
 	current_recipe_id = previous_recipe
 	current_infrastructure_type = previous_infra
 	return_to_construct_v2_on_exit = previous_return_to_construct_v2
+	# build_attempted is emitted synchronously, so the map has already run its gates.
+	return not last_attempt_refused
 
 func _can_attempt_now() -> bool:
 	var now: int = Time.get_ticks_msec()

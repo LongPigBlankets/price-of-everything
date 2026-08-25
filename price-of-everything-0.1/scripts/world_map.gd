@@ -2802,7 +2802,8 @@ func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
 				"reason": "Insufficient money to buy the land"}
 	if projected_player > float(land_owned):
 		print("[Build] FAILED: insufficient land on tile %s (need %s, own %s)" % [tile_id, str(projected_player), str(land_owned)])
-		_show_tile_space_error("You cannot build that. You do not own sufficient land on tile %s" % tile_id)
+		_show_tile_space_error("You cannot build that. You do not own sufficient land on %s"
+			% Catalog.tile_label(tile_id))
 		return {"allowed": false, "cost_multiplier": 1.0, "reason": "Insufficient land — buy more here"}
 	var cost_multiplier := 1.0
 	if projected_space > DENSITY_SOFT_CAPACITY:
@@ -2815,8 +2816,18 @@ func _flash_build_refusal(coord: Vector2i, reason: String) -> void:
 	if map_overlay != null and map_overlay.has_method("flash_build_refusal"):
 		map_overlay.flash_build_refusal(coord, reason)
 
+## Every space refusal comes through here — no room, no owned land, sea under a road.
+##
+## It goes to the bottom-CENTRE stack, not the bottom-left one the other toasts share. The
+## left stack sits under the construct panel, and now that a refused build leaves that panel
+## open (so the player can buy land or pick another tile without rebuilding their selection),
+## a message posted there would be hidden behind the very panel that caused it. The centre
+## stack clears the bottom menu by 40px.
 func _show_tile_space_error(message: String) -> void:
-	if _toast_layer != null and _toast_layer.has_method("show_error"):
+	BuildMode.last_attempt_refused = true
+	if _toast_layer != null and _toast_layer.has_method("show_blocked"):
+		_toast_layer.call("show_blocked", message)
+	elif _toast_layer != null and _toast_layer.has_method("show_error"):
 		_toast_layer.call("show_error", message)
 	else:
 		push_warning(message)

@@ -107,6 +107,8 @@ func _ready() -> void:
 	_test_encyclopedia_good_rubric()
 	_test_company_rankings()
 	_test_port_plan_cache_locality()
+	_test_build_attempt_reports_refusal()
+	_test_modifier_sign_convention()
 	_test_goods_flow_graph()
 	_test_recipe_requirements()
 	_test_research_recipe_and_level_tiers()
@@ -8022,6 +8024,51 @@ func _test_port_plan_cache_locality() -> void:
 	_check(plan_script._exclusion_signature([{"poly": poly_a}])
 		== plan_script._exclusion_signature([{"poly": poly_a}]),
 		"port plan cache: an unchanged neighbourhood keeps the same key")
+
+
+## A refused build has to be distinguishable from a placed one, or the construct panel cannot
+## know whether to close. It used to close either way — four units short of land threw away the
+## building, the recipe and the tile the player had just chosen (owner, 25 Aug).
+func _test_build_attempt_reports_refusal() -> void:
+	var refuse := func(_bid: String, _tid: String) -> void:
+		BuildMode.last_attempt_refused = true
+	BuildMode.build_attempted.connect(refuse)
+	BuildMode._last_attempt_ms = 0
+	var refused: bool = BuildMode.attempt_direct_build("b_007", "r_009", "tile_5_10")
+	BuildMode.build_attempted.disconnect(refuse)
+	_check(not refused,
+		"build attempt: a refusal reports false, so the construct panel can stay open")
+	BuildMode._last_attempt_ms = 0
+	var placed: bool = BuildMode.attempt_direct_build("b_007", "r_009", "tile_5_10")
+	_check(placed,
+		"build attempt: an attempt nothing refused reports true, so the panel closes as before")
+	BuildMode.last_attempt_refused = false
+
+
+## Green means "in the player's favour", which is NOT the same as positive. Output wants to go
+## up; power draw and maintenance are costs and want to go down, so a research node that cuts a
+## furnace's draw by 10% must not be painted as damage (owner, 25 Aug).
+func _test_modifier_sign_convention() -> void:
+	var panel_script: Variant = load("res://scripts/building_detail_panel_v2.gd")
+	var ok: Color = DS.PALETTE["OK"]
+	var bad: Color = DS.PALETTE["DANGER"]
+	_check(panel_script._mod_tone(12.0, true) == ok and panel_script._mod_tone(-5.0, true) == bad,
+		"modifier colour: more output is good, less output is bad")
+	_check(panel_script._mod_tone(-10.0, false) == ok and panel_script._mod_tone(10.0, false) == bad,
+		"modifier colour: LESS power draw or maintenance is good, more is bad")
+	_check(panel_script._mod_tone(0.0, true) == DS.PALETTE["TEXT"]
+		and panel_script._mod_tone(0.0, false) == DS.PALETTE["TEXT"],
+		"modifier colour: a modifier that nets to nothing is neither")
+	_check(panel_script._mod_pct_text(7.0) == "+7%" and panel_script._mod_pct_text(-7.0) == "\u22127%",
+		"modifier text: signed, with a real minus sign")
+	var cats: Array = panel_script.MOD_CATEGORIES
+	var costs_invert := true
+	for entry_value: Variant in cats:
+		var entry: Dictionary = entry_value
+		if str(entry.get("cat", "")) in ["Power draw", "Maintenance"]:
+			costs_invert = costs_invert and not bool(entry.get("good_up", true))
+	_check(cats.size() == 4 and costs_invert,
+		"modifier colour: the cost categories are the ones that read upside down")
 
 
 func _test_company_rankings() -> void:
