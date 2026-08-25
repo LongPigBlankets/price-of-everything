@@ -106,6 +106,7 @@ func _ready() -> void:
 	_test_catalog_loaded()
 	_test_encyclopedia_good_rubric()
 	_test_company_rankings()
+	_test_port_plan_cache_locality()
 	_test_goods_flow_graph()
 	_test_recipe_requirements()
 	_test_research_recipe_and_level_tiers()
@@ -7944,6 +7945,48 @@ func _check(ok: bool, name: String) -> void:
 		_failed += 1
 		_failed_names.append(name)
 		printerr("  FAIL  ", name)
+
+## The harbour planner's cache key. It used to be made of two GLOBAL counters — RoadNetwork's
+## total edge count and the map-wide footprint version — so a shed raised, or a lane laid,
+## anywhere at all missed the cache for every port and re-ran a 1,440-candidate coastline
+## search per harbour to arrive at the identical drawing. Three of those is 3.2 s on the main
+## thread, which is the freeze the owner hit after pressing Build (25 Aug). Nothing could see
+## it: the plans came out right, only slowly, and no test asserted what the key was made of.
+## These pin the locality the fix rests on, in both directions.
+func _test_port_plan_cache_locality() -> void:
+	var plan_script: Variant = load("res://scripts/midcentury_port_plan.gd")
+	var net := RoadNetwork.instance()
+	var origin := Vector2i(10, 10)
+	var before: int = plan_script._road_signature(origin)
+	# _road_access only ever looks at the 5x5 block around the port, so a lane outside it
+	# cannot move the quay approach and must not cost a replan.
+	var far := origin + Vector2i(6, 6)
+	net.edges["_probe_edge"] = {"state": "built"}
+	net._edges_by_tile[far] = ["_probe_edge"]
+	var after_far: int = plan_script._road_signature(origin)
+	# ...and one INSIDE the block must change it, or a real approach could quietly go stale.
+	var near := origin + Vector2i(1, 0)
+	net._edges_by_tile[near] = ["_probe_edge"]
+	var after_near: int = plan_script._road_signature(origin)
+	net._edges_by_tile.erase(far)
+	net._edges_by_tile.erase(near)
+	net.edges.erase("_probe_edge")
+	_check(after_far == before,
+		"port plan cache: a lane six tiles from a harbour does not invalidate its plan")
+	_check(after_near != before,
+		"port plan cache: a lane beside a harbour does invalidate its plan")
+	_check(plan_script._road_signature(origin) == before,
+		"port plan cache: the locality probe left the road network as it found it")
+	# The other half of the key: the obstacles near the port.
+	var poly_a := PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1)])
+	var poly_b := PackedVector2Array([Vector2(0, 0), Vector2(2, 0), Vector2(2, 2)])
+	_check(plan_script._exclusion_signature([{"poly": poly_a}])
+		!= plan_script._exclusion_signature([{"poly": poly_b}]),
+		"port plan cache: a footprint that moves beside a harbour changes its key")
+	_check(plan_script._exclusion_signature([{"poly": poly_a}])
+		== plan_script._exclusion_signature([{"poly": poly_a}]),
+		"port plan cache: an unchanged neighbourhood keeps the same key")
+
 
 func _test_company_rankings() -> void:
 	var history: Array[float] = [80.0, 95.0, 120.0, 140.0, 160.0]

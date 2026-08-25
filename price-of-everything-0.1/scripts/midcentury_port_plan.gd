@@ -74,14 +74,6 @@ static var _plan_cache: Dictionary = {}
 
 static func build(hex_map: TileMapLayer, tile_id: String,
 		instance_id: String = "") -> Dictionary:
-	var footprint_source := hex_map.get_tree().get_first_node_in_group(
-		"building_footprints")
-	var footprint_version := int(footprint_source.get("footprint_version")) \
-		if footprint_source != null else 0
-	var cache_key := "%d|%s|%d|%d" % [hex_map.get_instance_id(), tile_id,
-		RoadNetwork.instance().edge_count(), footprint_version]
-	if _plan_cache.has(cache_key):
-		return (_plan_cache[cache_key] as Dictionary).duplicate(true)
 	var timer_start := Time.get_ticks_msec()
 	var coord: Vector2i = hex_map.id_to_coord(tile_id)
 	if coord == Vector2i(-1, -1) or not hex_map.tiles.has(coord):
@@ -94,7 +86,17 @@ static func build(hex_map: TileMapLayer, tile_id: String,
 	if coastline.is_empty():
 		return {}
 	var river_exclusions := _river_exclusions(hex_map, center)
+	# The exclusions have to be gathered BEFORE the cache is consulted, because they are what
+	# the key is made of. The key used to carry the global `footprint_version` instead, which
+	# every building placed anywhere on the map increments — so a harbour on the far side of
+	# the continent missed its cache the moment you built a shed, and re-ran a 1,440-candidate
+	# coastline search to arrive at the identical plan. That, three ports at a time, is the
+	# 3–4 s freeze on pressing Build (owner, 25 Aug). What a plan actually depends on is the
+	# obstacles NEAR THIS PORT, so that is what it is keyed on now.
 	var gameplay_exclusions := _gameplay_exclusions(hex_map, instance_id, center)
+	var cache_key := _cache_key(hex_map, tile_id, coord, gameplay_exclusions)
+	if _plan_cache.has(cache_key):
+		return (_plan_cache[cache_key] as Dictionary).duplicate(true)
 	var best: Dictionary = {}
 	var considered := 0
 	var water_rejects := 0
@@ -171,6 +173,58 @@ static func build(hex_map: TileMapLayer, tile_id: String,
 		water_rejects, str(land_reasons), arm_rejects, river_rejects,
 		collision_rejects, access_rejects, pruned])
 	return plan
+
+## Everything one harbour's plan actually depends on, and nothing else. Both halves used to be
+## GLOBAL counters — RoadNetwork's total edge count and the map-wide footprint version — so a
+## lane laid, or a shed placed, anywhere on the continent missed the cache for every port and
+## re-ran a 1,440-candidate coastline search per harbour to arrive at the identical drawing.
+## Three of those is the 3–4 s freeze the owner saw after pressing Build (25 Aug).
+static func _cache_key(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
+		gameplay_exclusions: Array) -> String:
+	return "%d|%s|%d|%d" % [hex_map.get_instance_id(), tile_id,
+		_road_signature(coord), _exclusion_signature(gameplay_exclusions)]
+
+
+## A signature of the obstacles that can push this harbour around. Order comes from the
+## footprint source and is insertion-ordered, so it is stable for a given set; were it ever to
+## shuffle the only cost is a cache miss — a slow frame, not a wrong drawing.
+static func _exclusion_signature(exclusions: Array) -> int:
+	var parts: Array = []
+	for value in exclusions:
+		parts.append((value as Dictionary).get("poly", PackedVector2Array()))
+	return hash(parts)
+
+
+## The roads that can move this harbour's quay approach: exactly the ones _road_access looks
+## at, which is the 5x5 block of tiles around the port. State is part of it, so a lane going
+## from planned to built counts as a change and a lane three regions away does not.
+static func _road_signature(coord: Vector2i) -> int:
+	var net := RoadNetwork.instance()
+	var parts: Array = []
+	for dx in range(-2, 3):
+		for dy in range(-2, 3):
+			var edges: Array = net.edges_on_tile(coord + Vector2i(dx, dy))
+			edges.sort()
+			for edge_id_value in edges:
+				var edge: Dictionary = net.edges.get(str(edge_id_value), {})
+				parts.append("%s:%s" % [str(edge_id_value), str(edge.get("state", ""))])
+	return hash(parts)
+
+
+## Enter a plan that was computed OFFLINE (the start-layout bake) into the live cache under the
+## key today's world gives it. Without this the baked plans were a second, parallel bank with
+## its own ad-hoc invalidation, and the first thing that retired them cost a full search of
+## every harbour. Seeded here they are just a warm cache, and the ordinary key decides when
+## they stop being true.
+static func seed_cache(hex_map: TileMapLayer, tile_id: String, instance_id: String,
+		plan: Dictionary) -> void:
+	var coord: Vector2i = hex_map.id_to_coord(tile_id)
+	if coord == Vector2i(-1, -1) or not hex_map.tiles.has(coord):
+		return
+	var center := hex_map.map_to_local(hex_map.map_coord_for_tile_coord(coord))
+	var exclusions := _gameplay_exclusions(hex_map, instance_id, center)
+	_plan_cache[_cache_key(hex_map, tile_id, coord, exclusions)] = plan.duplicate(true)
+
 
 static func invalidate_cache() -> void:
 	_plan_cache.clear()
