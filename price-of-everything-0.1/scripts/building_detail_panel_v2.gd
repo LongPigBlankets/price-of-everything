@@ -1463,12 +1463,14 @@ func _plain_icon_pill(good_id: String, internal: String, qty: int, size: int) ->
 	return holder
 
 func _good_icon_pill(good_id: String, internal: String, qty: int, size: int, base_qty: int = -1, mod_pct: int = 0) -> Control:
-	var holder := UIHelpers.make_framed_good_icon(good_id, internal, size)
+	var holder := UIHelpers.make_plain_good_icon(good_id, internal, size)
 	holder.add_child(_qty_pill(qty, base_qty, mod_pct))
 	# Every input and output on this panel is a way into the Goods Graph: the player is
 	# already looking at what this building eats and makes, and 'how else is that made'
-	# is the next question.
-	UIHelpers.link_good_icon_to_graph(holder, good_id)
+	# is the next question. ALWAYS, not the deferring form — a recipe card is itself
+	# clickable, so the polite version handed every one of these clicks to the card and the
+	# graph never opened (owner 2026-08-25).
+	UIHelpers.link_good_icon_to_graph(holder, good_id, true)
 	return holder
 
 # Back-compat name used by construction / shipments / demolish — now the pill icon.
@@ -1569,16 +1571,57 @@ func _recipe_arrow(power_in: int) -> Control:
 	arrow.add_child(head)
 	return arrow
 
+## Sticky across refreshes: a player who opened the checklist wants it to stay open while
+## they watch the turn resolve, not to re-collapse under them every rebuild.
+var _diagnostics_open := false
+
 # --- diagnostics ---------------------------------------------------------------------------
 
+## The checklist, folded to one line when there is nothing wrong (owner 2026-08-25).
+## A building that is running fine still spent six rows saying so, above the numbers the
+## player opened the panel for. Nothing is hidden — the fold opens — but "all green" is a
+## one-line answer and it should take one line.
 func _build_diagnostics(rows: Array) -> PanelContainer:
 	var card := _make_card()
 	card.name = "DiagnosticsCard"   # stable target for the tutorial coach spotlight
 	var vb := card.get_child(0) as VBoxContainer
 	vb.add_theme_constant_override("separation", 0)
+	var all_ok := not rows.is_empty()
+	for r_variant: Variant in rows:
+		if str((r_variant as Dictionary).get("tone", "info")) not in ["ok", "good", "info"]:
+			all_ok = false
+			break
+	if not all_ok:
+		for i in rows.size():
+			vb.add_child(_diag_row(rows[i], i > 0))
+		return card
+
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 0)
+	body.visible = _diagnostics_open
 	for i in rows.size():
-		vb.add_child(_diag_row(rows[i], i > 0))
+		body.add_child(_diag_row(rows[i], i > 0))
+
+	var head := Button.new()
+	head.flat = true
+	head.focus_mode = Control.FOCUS_NONE
+	head.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	head.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	head.add_theme_color_override("font_color", DS.PALETTE["OK"])
+	head.add_theme_color_override("font_hover_color", DS.PALETTE["OK"])
+	head.text = _diag_head_text()
+	head.tooltip_text = "Show every check"
+	head.pressed.connect(func() -> void:
+		_diagnostics_open = not _diagnostics_open
+		body.visible = _diagnostics_open
+		head.text = _diag_head_text())
+	vb.add_child(head)
+	vb.add_child(body)
 	return card
+
+
+func _diag_head_text() -> String:
+	return ("⌄  All green" if _diagnostics_open else "›  All green")
 
 func _diag_row(r: Dictionary, top_border: bool) -> Control:
 	var wrap := PanelContainer.new()

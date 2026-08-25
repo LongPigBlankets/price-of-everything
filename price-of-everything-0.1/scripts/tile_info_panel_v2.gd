@@ -2098,7 +2098,7 @@ func _make_warehouse_section() -> Control:
 		var good_id := str(m.get("good_id", ""))
 		var mat_row := HBoxContainer.new()
 		mat_row.add_theme_constant_override("separation", 8)
-		mat_row.add_child(UIHelpers.make_framed_good_icon(good_id, Catalog.get_internal_name(good_id), 26))
+		mat_row.add_child(UIHelpers.make_plain_good_icon(good_id, Catalog.get_internal_name(good_id), 50))
 		var name_lbl := Label.new()
 		name_lbl.text = "%s ×%d" % [Catalog.get_display_name(good_id), int(m.get("qty", 0))]
 		name_lbl.theme_type_variation = &"Body"

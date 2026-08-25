@@ -744,7 +744,7 @@ func _navigate(dl: Dictionary) -> void:
 func _item_icon(it: Dictionary, tint: Color, box: int) -> Control:
 	var gid := str(it.get("icon_good_id", ""))
 	if gid != "":
-		return UIHelpers.make_framed_good_icon(gid, Catalog.get_internal_name(gid), box)
+		return UIHelpers.make_plain_good_icon(gid, Catalog.get_internal_name(gid), box)
 	var glyph := Label.new()
 	glyph.text = TurnBriefing.item_glyph(it)
 	glyph.custom_minimum_size = Vector2(box, 0)

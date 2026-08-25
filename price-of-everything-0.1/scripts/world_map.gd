@@ -2750,8 +2750,25 @@ func _is_tile_infra_type(internal_name: String) -> bool:
 			return true
 	return false
 
+## The infrastructure that runs over ground. Pipes and cables are deliberately absent —
+## a pipeline or a cable may cross water, and only these two may not.
+const OVERLAND_INFRA := {"roads": true, "rail": true}
+
+
 func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
 	var building_data: Dictionary = Catalog.get_building(building_id)
+	# Overland infrastructure cannot be laid on water, and saying so comes FIRST: a sea
+	# tile also has no land to own, so the land gate below would otherwise answer "buy more
+	# land here" for a road across open water — advice the player cannot act on and which
+	# hides the real reason (owner 2026-08-25).
+	var internal := str(building_data.get("internal_name", ""))
+	if OVERLAND_INFRA.has(internal):
+		var ttype := Catalog.tile_type(tile_id)
+		if ttype == "sea" or ttype == "deep_sea":
+			var sea_msg := "Cannot build that infrastructure on sea."
+			print("[Build] FAILED: %s on %s tile %s" % [internal, ttype, tile_id])
+			_show_tile_space_error(sea_msg)
+			return {"allowed": false, "cost_multiplier": 1.0, "reason": sea_msg}
 	var added_space := maxf(0.0, float(building_data.get("tile_size_used", 1.0)))
 	var current_space := MatchState.get_tile_space_used(tile_id)
 	var projected_space := current_space + added_space
