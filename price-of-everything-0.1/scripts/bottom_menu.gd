@@ -547,6 +547,17 @@ func _on_money_panel_tab_requested(tab_name: String) -> void:
 	_set_panel_visible(money_panel, true)
 	money_panel.open_tab(tab_name)
 
+## Open the Research panel with its search box pre-filled — the route a "Requires research"
+## line takes when the player clicks it.
+func open_research_search(query: String) -> void:
+	if research_panel == null:
+		return
+	if not research_panel.visible:
+		_hide_all_panels()
+		_set_panel_visible(research_panel, true)
+	if research_panel.has_method("open_with_search"):
+		research_panel.open_with_search(query, true)   # exact: land on the named tech only
+
 func _on_victory_widget_clicked() -> void:
 	# Toggle: clicking the top-bar score widget opens the Victory panel, or closes
 	# it if it is already the open panel.
@@ -556,11 +567,25 @@ func _on_victory_widget_clicked() -> void:
 		_hide_all_panels()
 		_set_panel_visible(victory_panel, true)
 
+## Does crossing the win bar END the run, or only bank the win?
+##
+## The campaign ends on the win (owner 2026-07-11). The DEMO does not: its bar is flat at
+## 2,500 from turn 1, so a good player clears it around turn 40 — before the election, the
+## carbon levy and the green subsidy, which are the whole reason the demo exists. Ending
+## there would show a player none of it. The demo always plays its 100 turns, and the
+## ending is named at the bell.
+func _ends_on_win() -> bool:
+	return VictoryState.TRACK_ORDER != VictoryState.DEMO_TRACK_ORDER
+
 func _on_victory_achieved(total: int, turn: int) -> void:
-	# Crossing the win threshold at ANY turn ends the game with the Victory screen
-	# (owner 2026-07-11 — previously the game kept going and only auto-opened the tracks
-	# panel). Headless balance runs are exempt so a mid-run win never cuts them short.
+	# Headless balance runs are exempt so a mid-run win never cuts them short.
 	if DisplayServer.get_name() == "headless":
+		return
+	if not _ends_on_win():
+		# Banked, not finished. Say so, or clearing the bar looks like nothing happened.
+		MatchState.request_toast(
+			"You have cleared the win bar on turn %d with %d points — the books close on turn %d."
+				% [turn, total, TurnManager.MAX_TURNS], "success")
 		return
 	MatchState.request_toast("VICTORY — score %d on turn %d!" % [total, turn], "success")
 	TurnManager.game_ended = true
@@ -574,7 +599,10 @@ func _on_game_ended_signal(reason: String) -> void:
 		return
 	await TurnManager.turn_resolution_completed
 	await get_tree().process_frame   # let VictoryState._tick finish for the final turn
-	if VictoryState.won:
+	# Re-check AFTER the awaits, and on the screen rather than on `won`: a demo run that
+	# cleared the bar at turn 40 has won and has NOT been shown anything yet, so testing
+	# `won` here would send it away with no ending at all.
+	if _end_screen != null:
 		return
 	_show_end_screen()
 

@@ -120,8 +120,16 @@ func _populate() -> void:
 
 	_base_label.text = "Score %s  (turn %d of %d)   ·   need %s to win now" % [
 		_commas(total), turn, max_turns, _commas(threshold)]
-	_hint_label.text = "You start at 0 and the bar rises: win with 1 track at turn %d, 2 at %d, 3 at %d, 4 at %d." % [
-		VictoryState.WIN_START_TURN, VictoryState.WIN_START_TURN + VictoryState.WIN_STEP_TURNS, VictoryState.WIN_START_TURN + 2 * VictoryState.WIN_STEP_TURNS, max_turns]
+	# Two shapes of bar, so two hints. The campaign's rises with the turn; the demo's is
+	# flat, and telling a demo player to wait for turn 170 would be telling them to wait
+	# past the end of the game.
+	var threshold_max := int(b.get("win_threshold_max", threshold))
+	if VictoryState.win_threshold_for_turn(1) == VictoryState.win_threshold_for_turn(max_turns):
+		_hint_label.text = "You start at 0. The bar does not rise: %s points wins, on any turn — two and a half tracks of the %d." % [
+			_commas(threshold_max), VictoryState.TRACK_ORDER.size()]
+	else:
+		_hint_label.text = "You start at 0 and the bar rises: win with 1 track at turn %d, 2 at %d, 3 at %d, 4 at %d." % [
+			VictoryState.WIN_START_TURN, VictoryState.WIN_START_TURN + VictoryState.WIN_STEP_TURNS, VictoryState.WIN_START_TURN + 2 * VictoryState.WIN_STEP_TURNS, max_turns]
 
 	if won:
 		_banner.text = "✓ VICTORY — scored %s on turn %d. Keep playing to push your score." % [

@@ -26,6 +26,7 @@ const BuildingNaming := preload("res://scripts/building_naming.gd")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const SellSurplusDialog := preload("res://scripts/sell_surplus_dialog.gd")
 const GOODS_FRAME := preload("res://assets/ui/goods_frame.tres")
+const KeyedBuildingIcon := preload("res://scripts/keyed_building_icon.gd")
 const PLUS_ICON_PATH := "res://assets/icons/ui_icons/plus_off_white.png"
 # Classic TileInfoPanel footprint is 760×630; this is 120px narrower, 100px taller.
 const TABS := [
@@ -34,6 +35,12 @@ const TABS := [
 	{"id": "prod", "label": "Goods"},
 	{"id": "stock", "label": "Stockpile"},
 ]
+## The summary tabs: polished navy plates with a thin brass rim. Same family as the top
+## bar, a shade stronger, because these sit on the panel navy rather than over the map.
+const TAB_METAL := Color(0.035, 0.135, 0.245)
+const TAB_METAL_HOVER := Color(0.055, 0.185, 0.315)
+const TAB_METAL_ACTIVE := Color(0.070, 0.230, 0.385)
+
 const CHART_HEIGHT := 170.0
 const STOCK_BAR_WIDTH := 60.0
 const STOCK_ICON_SIZE := 60.0
@@ -128,8 +135,10 @@ func _ready() -> void:
 	visible = false
 
 func _apply_anchors() -> void:
-	# Rail is 75px collapsed / 200px expanded; widen the whole panel to match.
-	var panel_w := 780.0 if _rail_expanded else 655.0
+	# Rail is 75px collapsed / 216px expanded; widen the whole panel to match. The expanded
+	# rail grew by 16 when the land chart gained its owned-bracket gutter, so the bars keep
+	# the width — and the room for a building's name — that they had before it.
+	var panel_w := 796.0 if _rail_expanded else 655.0
 	custom_minimum_size = Vector2(panel_w, 0)
 	anchor_left = 1.0
 	anchor_right = 1.0
@@ -157,7 +166,7 @@ func _apply_token_theme() -> void:
 	t.set_font("font", "Numeric", UIFonts.mono())
 	t.set_font("font", "Body", UIFonts.PLEX_MED)
 	t.set_font_size("font_size", "Body", 14)
-	t.set_font("font", "Caption", UIFonts.PLEX)
+	t.set_font("font", "Caption", UIFonts.PLEX_MED)
 	t.set_font_size("font_size", "Caption", 10)
 	theme = t
 
@@ -241,7 +250,7 @@ func _populate_land_rail() -> void:
 		c.queue_free()
 	_rail_owned_label = null
 	_rail_total_label = null
-	_land_rail.custom_minimum_size = Vector2(200 if _rail_expanded else 75, 0)
+	_land_rail.custom_minimum_size = Vector2(216 if _rail_expanded else 75, 0)
 
 	# Expand / Collapse toggle (top row).
 	var toggle := Button.new()
@@ -267,7 +276,7 @@ func _populate_land_rail() -> void:
 		_rail_total_label.custom_minimum_size = Vector2(0, 18)
 		_land_rail.add_child(_rail_total_label)
 		var caption := Label.new()
-		caption.text = "BUILT | BUYABLE | MAX"
+		caption.text = "BUILT | FREE | BUYABLE | MAX"
 		caption.theme_type_variation = &"Caption"
 		caption.add_theme_font_size_override("font_size", 9)
 		caption.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
@@ -290,7 +299,7 @@ func _populate_land_rail() -> void:
 		_rail_owned_label.custom_minimum_size = Vector2(0, 18)
 		_land_rail.add_child(_rail_owned_label)
 		var legend := Label.new()
-		legend.text = "OWNED / BUYABLE"
+		legend.text = "FREE · OWNED / BUYABLE"
 		legend.theme_type_variation = &"Caption"
 		legend.add_theme_font_size_override("font_size", 9)
 		legend.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
@@ -318,13 +327,16 @@ func _refresh_land_rail() -> void:
 	var totals := TileViewData.land_totals(_current_tile_id, _current_tile_data)
 	if _rail_expanded:
 		if _rail_total_label != null:
-			_rail_total_label.text = "%d | %d | %d" % [int(totals.built), int(totals.buyable), int(totals.max)]
+			_rail_total_label.text = "%d | %d | %d | %d" % [
+				int(totals.built), int(totals.free), int(totals.buyable), int(totals.max)]
 		if _density_note != null:
 			_density_note.visible = int(totals.built) > 100  # only once built crosses 100
 		_land_chart.configure(data.segments, float(data.type_cap), int(data.type_cap), true, int(data.owned), int(totals.buyable), int(data.npc_footprint))
 	else:
 		if _rail_owned_label != null:
-			_rail_owned_label.text = "%d / %d" % [int(data.owned), int(totals.buyable)]
+			# Collapsed rail: FREE first, because it is the one that answers "can I build here".
+			_rail_owned_label.text = "%d free · %d / %d" % [
+				int(totals.free), int(data.owned), int(totals.buyable)]
 		_land_chart.configure(data.segments, float(data.axis_max), int(data.type_cap), false, int(data.owned), int(totals.buyable), int(data.npc_footprint))
 
 func _build_header() -> HBoxContainer:
@@ -447,6 +459,11 @@ func _make_tile(tab_id: String, label_text: String) -> PanelContainer:
 	var name_row := HBoxContainer.new()
 	name_row.add_theme_constant_override("separation", 4)
 	name_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	# The status lamp. The status USED to tint the whole tab, and since a healthy tile is the
+	# normal case every tab read green all the time — colour that is always on says nothing
+	# (owner 2026-08-23). One small lamp carries it now; the plate is metal either way.
+	var led := StatusLed.new(DS.PALETTE["OK"])
+	name_row.add_child(led)
 	var name_label := Label.new()
 	name_label.text = label_text
 	name_label.theme_type_variation = &"Numeric"  # semibold font
@@ -473,7 +490,8 @@ func _make_tile(tab_id: String, label_text: String) -> PanelContainer:
 	metric_row.add_child(unit)
 	vbox.add_child(metric_row)
 
-	_tiles[tab_id] = {"root": tile, "color": DS.PALETTE.TEXT_DIM, "metric": metric, "unit": unit, "hover": false}
+	_tiles[tab_id] = {"root": tile, "color": DS.PALETTE.TEXT_DIM, "metric": metric, "unit": unit,
+		"hover": false, "led": led}
 	return tile
 
 func _set_tile_hover(tab_id: String, hovered: bool) -> void:
@@ -676,6 +694,12 @@ func _set_tile(tab_id: String, status: String, metric_text: String, unit_text: S
 	var t: Dictionary = _tiles[tab_id]
 	var color := _status_color(status)
 	t["color"] = color
+	var lamp := t.get("led") as StatusLed
+	if lamp != null:
+		lamp.color = color
+		# Lit for anything the player should look at. A healthy tab shows a dark bulb, which
+		# reads as "checked and fine" rather than as an absence.
+		lamp.lit = status in ["warn", "problem"]
 	(t.metric as Label).text = metric_text
 	(t.metric as Label).add_theme_color_override("font_color", color)
 	(t.unit as Label).text = unit_text
@@ -686,15 +710,20 @@ func _apply_tile_styles() -> void:
 		var t: Dictionary = _tiles[id]
 		var active := (id == _active_tab)
 		var hovered: bool = bool(t.get("hover", false)) and not active
-		var color: Color = t.get("color", DS.PALETTE.TEXT_DIM)
+		# Polished metal, always — the same navy family as the top bar but stronger, lit from
+		# the top. The ACTIVE tab is brighter and wears a full brass rim; the others carry a
+		# thin one so the row reads as a set of plates rather than as one dark block.
 		var style := StyleBoxFlat.new()
-		style.bg_color = Color(color, 0.16) if color != DS.PALETTE.TEXT_DIM else DS.PALETTE.BG_CARD
-		if hovered:
-			style.bg_color = DS.PALETTE.BG_HIGHLIGHT  # hover state for non-selected tabs
+		style.bg_color = TAB_METAL_ACTIVE if active else (
+			TAB_METAL_HOVER if hovered else TAB_METAL)
 		style.set_corner_radius_all(9)
 		style.set_content_margin_all(0)
-		style.border_color = DS.PALETTE.ACCENT if active else (Color(DS.PALETTE.ACCENT, 0.4) if hovered else Color(color, 0.0))
-		style.set_border_width_all(2 if active else (1 if hovered else 0))
+		style.border_color = DS.PALETTE.ACCENT if active else Color(DS.PALETTE.ACCENT, 0.55)
+		style.set_border_width_all(2 if active else 1)
+		# The top edge catches the light, which is what sells a plate as metal rather than as a
+		# flat rectangle with a border.
+		style.shadow_color = Color(1, 1, 1, 0.06)
+		style.shadow_size = 0
 		(t.root as PanelContainer).add_theme_stylebox_override("panel", style)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2071,7 +2100,7 @@ func _make_warehouse_section() -> Control:
 		var good_id := str(m.get("good_id", ""))
 		var mat_row := HBoxContainer.new()
 		mat_row.add_theme_constant_override("separation", 8)
-		mat_row.add_child(UIHelpers.make_framed_good_icon(good_id, Catalog.get_internal_name(good_id), 26))
+		mat_row.add_child(UIHelpers.make_plain_good_icon(good_id, Catalog.get_internal_name(good_id), 50))
 		var name_lbl := Label.new()
 		name_lbl.text = "%s ×%d" % [Catalog.get_display_name(good_id), int(m.get("qty", 0))]
 		name_lbl.theme_type_variation = &"Body"
@@ -2547,6 +2576,18 @@ func _make_stock_bar(name: String, good_id: String, qty: int, max_qty: int, colo
 	bs.set_corner_radius_all(3)
 	bar.add_theme_stylebox_override("panel", bs)
 	col.add_child(bar)
+	# Hover: the bar lights up and throws its own colour as a soft halo, so the column under
+	# the cursor is obvious before it is clicked (owner, 25 Aug). The whole COLUMN is the hit
+	# target — the bar itself ignores the mouse — so the glow follows the thing you can click.
+	var glow := StyleBoxFlat.new()
+	glow.bg_color = color.lightened(0.22)
+	glow.set_corner_radius_all(3)
+	glow.shadow_color = Color(color, 0.55)
+	glow.shadow_size = 7
+	col.mouse_entered.connect(func() -> void:
+		bar.add_theme_stylebox_override("panel", glow))
+	col.mouse_exited.connect(func() -> void:
+		bar.add_theme_stylebox_override("panel", bs))
 
 	# 60×60 good icon (blank slot for "Other goods").
 	var icon_slot := Control.new()
@@ -3410,56 +3451,11 @@ func _make_construction_row(project: Dictionary) -> HBoxContainer:
 # ── Keyed building glyphs: the icon PNGs are cream art on a navy tile; key the
 # navy background out (cached per building) so only the off-white glyph remains.
 # Any residual fringe is navy — invisible on the navy metal cards.
-var _keyed_icon_cache: Dictionary = {}   # building_id -> ImageTexture (null = no art)
-const _ICON_KEY_MAX := 200               # downsample before keying — cards render ≤90px
 
+# The keyed glyph and its baked emboss now live in keyed_building_icon.gd, shared with the
+# end screen's building sprites — one implementation of the card's look, not two.
 func _keyed_building_texture(bd: Dictionary) -> Texture2D:
-	var building_id := str(bd.get("id", ""))
-	if _keyed_icon_cache.has(building_id):
-		return _keyed_icon_cache[building_id]
-	var tex := _building_texture(bd)
-	if tex == null:
-		_keyed_icon_cache[building_id] = null
-		return null
-	var img: Image = tex.get_image().duplicate()
-	if img.is_compressed():
-		img.decompress()
-	img.convert(Image.FORMAT_RGBA8)
-	if img.get_width() > _ICON_KEY_MAX:
-		img.resize(_ICON_KEY_MAX,
-			int(round(img.get_height() * float(_ICON_KEY_MAX) / float(img.get_width()))),
-			Image.INTERPOLATE_LANCZOS)
-	var bg := img.get_pixel(2, 2)
-	for y in img.get_height():
-		for x in img.get_width():
-			var c := img.get_pixel(x, y)
-			var d := absf(c.r - bg.r) + absf(c.g - bg.g) + absf(c.b - bg.b)
-			var a := clampf((d - 0.28) / 0.45, 0.0, 1.0) * c.a
-			if a < c.a:
-				img.set_pixel(x, y, Color(c.r, c.g, c.b, a))
-	# Bake the raised-emboss lighting INTO the texture (shadow silhouette to the
-	# bottom-right, light catch to the top-left, glyph on top) so the card needs
-	# ONE plain TextureRect. Layered rects + an additive material tripped a GL-
-	# compat blend quirk that rendered the keyed alpha as opaque navy.
-	var w := img.get_width()
-	var h := img.get_height()
-	var pad := 8
-	var shadow := Image.create(w, h, false, Image.FORMAT_RGBA8)
-	var catch := Image.create(w, h, false, Image.FORMAT_RGBA8)
-	for y in h:
-		for x in w:
-			var a := img.get_pixel(x, y).a
-			if a > 0.01:
-				shadow.set_pixel(x, y, Color(0.0, 0.0, 0.0, a * 0.5))
-				catch.set_pixel(x, y, Color(0.88, 0.93, 1.0, a * 0.85))
-	var canvas := Image.create(w + pad * 2, h + pad * 2, false, Image.FORMAT_RGBA8)
-	var full := Rect2i(0, 0, w, h)
-	canvas.blend_rect(shadow, full, Vector2i(pad + 4, pad + 5))
-	canvas.blend_rect(catch, full, Vector2i(pad - 2, pad - 2))
-	canvas.blend_rect(img, full, Vector2i(pad, pad))
-	var out := ImageTexture.create_from_image(canvas)
-	_keyed_icon_cache[building_id] = out
-	return out
+	return KeyedBuildingIcon.keyed(bd)
 
 # Building icon, embossed / raised off the card's metal (owner 2026-07-10): the
 # keyed off-white glyph only (no navy tile), with a shadow cast to the right and
@@ -3495,19 +3491,7 @@ func _make_building_icon(building_id: String, alpha: float, size: int = 80) -> C
 	return holder
 
 func _building_texture(building_data: Dictionary) -> Texture2D:
-	var building_id := str(building_data.get("id", ""))
-	var internal := str(building_data.get("internal_name", ""))
-	var paths: Array[String] = []
-	if building_id != "" and internal != "":
-		paths.append("res://assets/icons/buildings/%s_%s.png" % [building_id, internal])
-	if building_id != "":
-		paths.append("res://assets/icons/buildings/%s.png" % building_id)
-	if internal != "":
-		paths.append("res://assets/icons/buildings/%s.png" % internal)
-	for p in paths:
-		if ResourceLoader.exists(p):
-			return load(p) as Texture2D
-	return null
+	return KeyedBuildingIcon.raw_texture(building_data)
 
 func _make_land_bar(bl: Dictionary) -> Control:
 	var owned := float(bl.owned)

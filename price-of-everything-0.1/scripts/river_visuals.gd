@@ -36,6 +36,37 @@ var river_properties := {}
 ## neighbouring path's water.
 var _pass := 1
 
+## Viewport culling, the same shape BuildingVisuals uses.
+##
+## _draw walked EVERY tile on the map — twice, because the shipped style draws ink linework as
+## a second pass — and the resulting command buffer is replayed by the renderer every frame
+## whether or not _draw runs again. Measured at 13.5 ms/frame, 58% of everything the world
+## costs, for a map of which a screenful is a small fraction (owner, 25 Aug: panning is jerky).
+##
+## The margin is generous because a river is drawn from its tile CENTRE and reaches into its
+## neighbours; culling on the centre alone would clip an arm at the screen edge.
+const CULL_MARGIN := 900.0
+const ViewStream := preload("res://scripts/view_stream.gd")
+var _view := Rect2()
+
+func _process(_delta: float) -> void:
+	var view := _visible_world_rect()
+	if view.size.x <= 0.0:
+		return
+	# See view_stream.gd: `!=` repaints on any sub-pixel drift, which is every frame.
+	if not ViewStream.settled(view, _view, CULL_MARGIN):
+		_view = view
+		queue_redraw()
+
+func _visible_world_rect() -> Rect2:
+	var vp := get_viewport()
+	if vp == null:
+		return Rect2()
+	var size := vp.get_visible_rect().size
+	if size.x <= 0.0:
+		return Rect2()
+	return (vp.get_canvas_transform().affine_inverse() * Rect2(Vector2.ZERO, size)).grow(CULL_MARGIN)
+
 func _ready() -> void:
 	river_properties = _load_river_properties()
 	MapStyle.style_changed.connect(queue_redraw)
@@ -46,11 +77,17 @@ func _draw() -> void:
 		return
 
 	var passes: Array = [0, 1] if MapStyle.uses_ink_linework() else [1]
+	# Empty until _process has polled once (and in tests, which never run a viewport): an empty
+	# rect means "no opinion", and every tile is drawn exactly as before.
+	var cull := _view.size.x > 0.0
 	for p in passes:
 		_pass = p
 		for coord in terrain_layer.tiles:
 			var tile_data: Dictionary = terrain_layer.tiles[coord]
 			if not tile_data.get("has_river", false):
+				continue
+			if cull and not _view.has_point(
+					terrain_layer.map_to_local(terrain_layer.map_coord_for_tile_coord(coord))):
 				continue
 			var river_type: String = str(tile_data.get("river_type", ""))
 			if river_type == "" or not river_properties.has(river_type):
@@ -419,6 +456,21 @@ func _river_point(tile_center: Vector2, point_id: String) -> Vector2:
 	var local_point: Vector2 = RIVER_POINTS[point_id]
 	return tile_center + local_point - TILE_CENTER
 
+## True when this world point sits on SEA.
+##
+## Off the baked navgrid rather than the 458 sea polygons: one array lookup against a 12 u
+## raster, which is the same order as the spacing of the river's own bezier samples. Rivers
+## themselves are classed WATER_RIVER and lakes WATER_LAKE, so a river never clips on itself.
+## Returns false when there is no bake (tests, and any install without one), which leaves the
+## old unclipped behaviour exactly as it was.
+func _point_is_sea(point: Vector2) -> bool:
+	var nav := NavGrid.instance()
+	if nav == null or not nav.is_ready():
+		return false
+	var cell := nav.cell_of(point)
+	return nav.water(cell.x, cell.y) == NavGrid.WATER_SEA
+
+
 func _draw_curved_river_path(points: PackedVector2Array, point_ids: Array[String], has_river_mouth: bool) -> void:
 	var draw_points: PackedVector2Array = PackedVector2Array(points)
 	if has_river_mouth:
@@ -428,7 +480,8 @@ func _draw_curved_river_path(points: PackedVector2Array, point_ids: Array[String
 	var tangents: Array[Vector2] = _path_tangents(draw_points, point_ids)
 	for i in range(draw_points.size() - 1):
 		var start_width: float = RIVER_WIDTH
-		var end_width: float = RIVER_MOUTH_WIDTH if has_river_mouth and i == draw_points.size() - 2 else RIVER_WIDTH
+		var is_mouth_segment: bool = has_river_mouth and i == draw_points.size() - 2
+		var end_width: float = RIVER_MOUTH_WIDTH if is_mouth_segment else RIVER_WIDTH
 		_draw_cubic_segment(
 			draw_points[i],
 			draw_points[i + 1],
@@ -437,7 +490,8 @@ func _draw_curved_river_path(points: PackedVector2Array, point_ids: Array[String
 			POINT_TENSIONS[i],
 			POINT_TENSIONS[i + 1],
 			start_width,
-			end_width
+			end_width,
+			is_mouth_segment
 		)
 
 func _path_tangents(points: PackedVector2Array, point_ids: Array[String]) -> Array[Vector2]:
@@ -489,7 +543,8 @@ func _draw_cubic_segment(
 	start_tension: float,
 	end_tension: float,
 	start_width: float,
-	end_width: float
+	end_width: float,
+	clip_at_sea: bool = false
 ) -> void:
 	var segment_length: float = start.distance_to(end)
 	var control_a: Vector2 = start + start_tangent * segment_length * start_tension
@@ -500,12 +555,30 @@ func _draw_cubic_segment(
 		var t: float = float(step) / float(CURVE_STEPS)
 		var point: Vector2 = _cubic_bezier(start, control_a, control_b, end, t)
 		var width: float = lerpf(start_width, end_width, t)
+		# THE MOUTH ENDS AT THE COASTLINE, it does not swim out into the bay.
+		#
+		# A mouth is detected from the neighbouring TILE's type and then pushed
+		# MOUTH_EXIT_EXTENSION past the tile edge — but the coastline is a wiggly polygon that
+		# often cuts well inland of that edge, so the last stretch was painted on top of open
+		# water: a paler tongue of river ink crossing the sea, with its own casing cutting
+		# through the coast stroke (owner, 25 Aug). Draw the step that CROSSES the boundary and
+		# then stop: that leaves no gap, and the ≤1 sample of overlap tucks under the coast ink
+		# rather than reading as a river running out to sea.
+		var reached_sea: bool = clip_at_sea and _point_is_sea(point)
 		if _pass == 0:
 			draw_line(previous, point, MapStyle.river_casing(), width + MapStyle.river_casing_extra(), true)
+			if reached_sea:
+				# draw_line has square caps, so a clip mid-flare ends in a corner that reads as
+				# a jetty. One circle rounds it off into a mouth.
+				draw_circle(point, (width + MapStyle.river_casing_extra()) * 0.5, MapStyle.river_casing())
 		else:
 			draw_line(previous, point, MapStyle.river_color(), width, true)
+			if reached_sea:
+				draw_circle(point, width * 0.5, MapStyle.river_color())
 			if MapStyle.uses_ink_linework() and step == CURVE_STEPS / 2:
 				_draw_flow_squiggle(previous, point, width)
+		if reached_sea:
+			return
 		previous = point
 
 ## One short darker-blue dash along the flow direction, seeded per location —

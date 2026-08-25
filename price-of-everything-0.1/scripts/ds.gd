@@ -85,7 +85,7 @@ const FONT_PATHS := {
 	"BEBAS": "res://assets/fonts/BebasNeue-Regular.ttf",
 	"BARLOW_BOLD": "res://assets/fonts/BarlowCondensed-Bold.ttf",
 	"BARLOW_SEMI": "res://assets/fonts/BarlowCondensed-SemiBold.ttf",
-	"PLEX": "res://assets/fonts/IBMPlexSans-Regular.ttf",
+	"PLEX": "res://assets/fonts/IBMPlexSans-Regular.ttf",   # catalogued, deliberately unused
 	"PLEX_MED": "res://assets/fonts/IBMPlexSans-Medium.ttf",
 	"PLEX_SEMI": "res://assets/fonts/IBMPlexSans-SemiBold.ttf",
 	"PLEX_COND_SEMI": "res://assets/fonts/IBMPlexSansCondensed-SemiBold.ttf",
@@ -139,7 +139,12 @@ func _build_theme() -> Theme:
 	_label_var(t, fonts, "Section",      "BARLOW_BOLD", FS["SECTION"],  PALETTE["ACCENT"], 0.08)
 	_label_var(t, fonts, "BuildingName", "BARLOW_SEMI", FS["BUILDING"], PALETTE["TEXT"])
 	_label_var(t, fonts, "Body",         "PLEX_MED",    FS["BODY"],     PALETTE["TEXT"])
-	_label_var(t, fonts, "Caption",      "PLEX",        FS["CAPTION"],  PALETTE["TEXT"])  # off-white, not muted — small text was low-contrast
+	# Caption is MEDIUM, not Regular (owner 2026-08-24: "stop using the thin font
+	# altogether"). Regular at caption sizes on the panel navies reads as low contrast even
+	# in the off-white — the weight was doing what a greyer colour would have, and the
+	# standing rule already forbids that. Nothing in the UI uses PLEX Regular now: the
+	# ladder is MEDIUM for body and caption, SEMIBOLD for emphasis and every numeral.
+	_label_var(t, fonts, "Caption",      "PLEX_MED",    FS["CAPTION"],  PALETTE["TEXT"])
 	_label_var(t, fonts, "Numeric",      "PLEX_SEMI",   FS["NUMERIC"],  PALETTE["TEXT"])
 
 	# ── PanelContainer base + variations ───────────────────────────────

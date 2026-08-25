@@ -89,19 +89,30 @@ func _tile_centres(settlements: Dictionary) -> Dictionary:
 	var terrain: Node = scene.get_node_or_null(NodePath("TerrainLayer"))
 	var out: Dictionary = {}
 	if terrain != null:
-		for key in settlements:
-			var settlement_value: Variant = settlements[key]
-			if typeof(settlement_value) != TYPE_DICTIONARY:
+		# EVERY tile, not just the ones the settlements declare.
+		#
+		# A settlement's `tiles` list says what it is made OF; it does not bound where its
+		# geometry goes. A connector road is authored precisely to run from one settlement's
+		# tiles out towards a neighbour, and records_for_rect culls with CULL_MARGIN of slack
+		# besides. Tiles beyond the declared list were never offered to the baker, so they got
+		# no texture — and the runtime only ever iterates the manifest, so the stroke stopped
+		# dead at the last declared tile's edge. That straight cut is the road clipping the
+		# owner reported (25 Aug): 33 of 323 road strokes had points on no baked tile, one of
+		# them every point it had.
+		#
+		# Offering all of them costs nothing in output: _bake_all already skips a tile whose
+		# layers all come back empty, so the manifest still holds exactly the tiles with
+		# content on them. It costs one records_for_rect per world tile at bake time.
+		# Straight off the terrain's own cells, which is the coordinate authority the plan
+		# names (docs/map-editor-plan.md §2) and is already in the scene file, so this still
+		# needs nothing built.
+		for cell_value: Variant in terrain.call("get_used_cells"):
+			var map_coord: Vector2i = cell_value
+			var coord: Vector2i = terrain.call("tile_coord_for_map_coord", map_coord)
+			var tile_id := "tile_%d_%d" % [coord.x + 1, coord.y + 1]
+			if out.has(tile_id):
 				continue
-			for tile_value in ((settlement_value as Dictionary).get("tiles", []) as Array):
-				var tile_id := str(tile_value)
-				if out.has(tile_id):
-					continue
-				var coord: Vector2i = terrain.call("id_to_coord", tile_id)
-				if coord == Vector2i(-1, -1):
-					continue
-				var map_coord: Vector2i = terrain.call("map_coord_for_tile_coord", coord)
-				out[tile_id] = terrain.call("map_to_local", map_coord)
+			out[tile_id] = terrain.call("map_to_local", map_coord)
 	scene.free()
 	return out
 

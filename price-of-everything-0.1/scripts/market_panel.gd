@@ -1166,7 +1166,7 @@ func _build_content() -> void:
 		child.queue_free()
 	rows.clear()
 	
-	var all_goods = Catalog.all_goods()
+	var all_goods = MatchState.visible_goods()
 	for good_data in all_goods:
 		var row := MarketRowScene.instantiate()
 		content_vbox.add_child(row)

@@ -284,7 +284,7 @@ func _menu_row(it: Dictionary) -> Control:
 	sb.set_border_width_all(1)
 	sb.set_corner_radius_all(8)
 	sb.content_margin_left = 8
-	sb.content_margin_right = 6
+	sb.content_margin_right = 2   # the dismiss cross rides close to the row's right edge
 	sb.content_margin_top = 5
 	sb.content_margin_bottom = 5
 	row.add_theme_stylebox_override("panel", sb)
@@ -299,24 +299,34 @@ func _menu_row(it: Dictionary) -> Control:
 	var title := Label.new()
 	title.theme_type_variation = "Caption"
 	title.text = str(it.title)
-	title.clip_text = true
+	# Two lines before it gives up, rather than one clipped mid-word: most of these titles
+	# name a building or a good, and the name was the half being cut off (owner, 25 Aug).
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.max_lines_visible = 2
+	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.add_theme_color_override("font_color", Color("#F3F8FD") if on else DS.PALETTE["TEXT_MUTED"])
 	hb.add_child(title)
 
-	var glyph := Label.new()
-	glyph.add_theme_font_size_override("font_size", 11)
-	if str(it.kind) == "decision":
-		glyph.text = "●"
-		glyph.add_theme_color_override("font_color", tint)
-	elif str(it.section) == "alerts":
-		glyph.text = "⚠"
-		glyph.add_theme_color_override("font_color", tint)
+	if str(it.kind) != "decision" and str(it.section) == "alerts":
+		# An alert's status marker is a DRAWN triangle, not a dingbat the font may not carry.
+		hb.add_child(_warning_glyph(tint, 13))
 	else:
-		glyph.text = "✓" if bool(it.get("acked", false)) else "◔"
-		glyph.add_theme_color_override("font_color",
-			DS.PALETTE["OK"] if bool(it.get("acked", false)) else DS.PALETTE["TEXT_MUTED"])
-	hb.add_child(glyph)
+		var glyph := Label.new()
+		glyph.add_theme_font_size_override("font_size", 11)
+		if str(it.kind) == "decision":
+			glyph.text = "●"
+			glyph.add_theme_color_override("font_color", tint)
+		elif bool(it.get("acked", false)):
+			glyph.text = "✓"
+			glyph.add_theme_color_override("font_color", DS.PALETTE["OK"])
+		else:
+			# "◔" was the last dingbat in the row and the one that rendered as a filled pie on
+			# the owner's machine. A drawn ring says "seen, not yet acted on" at any font.
+			hb.add_child(_ring_glyph(DS.PALETTE["TEXT_MUTED"], 11))
+			glyph = null
+		if glyph != null:
+			hb.add_child(glyph)
 
 	# ✕ dismiss on everything except decisions (owner ruling).
 	if bool(it.get("dismissible", false)):
@@ -741,13 +751,109 @@ func _navigate(dl: Dictionary) -> void:
 ## An update's leading mark: the GOOD's icon when the item names one (a deposit warning
 ## shows the ore that is running out), otherwise the tone glyph. Keeps every other update
 ## on the existing glyph path.
+## Every briefing glyph, mapped to the game's OWN art rather than a font dingbat.
+##
+## ICON_GLYPHS in TurnBriefing is a table of "⚠ ▦ ⚗ £ ➤ ⚑ ⚒ ☰ ❧ ◔ ⚖" — characters that render
+## as whatever face the machine happens to have: a colour emoji on one, a hollow box on
+## another, and never the game's own art. Replacing warn and beaker was not enough; the scale
+## on every decision row is the one the owner kept seeing (25 Aug). Anything still missing here
+## falls through to the dingbat, so a new glyph kind degrades rather than disappears.
+const GLYPH_ART := {
+	"scale":  "res://assets/icons/ui_icons/alt/politics.png",   # decisions — the council gavel
+	"flag":   "res://assets/icons/ui_icons/alt/politics.png",
+	"beaker": "res://assets/icons/ui_icons/alt/research.png",
+	"users":  "res://assets/icons/ui_icons/alt/people.png",
+	"coin":   "res://assets/icons/ui_icons/alt/market.png",
+	"box":    "res://assets/icons/ui_icons/alt/goods.png",
+	"gauge":  "res://assets/icons/ui_icons/alt/mapmodes.png",
+	"hammer": "res://assets/icons/ui_icons/hammer_off_white.png",
+	"truck":  "res://assets/icons/ui_icons/cost_of_transport_icon.png",
+	"leaf":   "res://assets/icons/ui_icons/carbon_levy_p1.png",
+}
+
 func _item_icon(it: Dictionary, tint: Color, box: int) -> Control:
 	var gid := str(it.get("icon_good_id", ""))
 	if gid != "":
-		return UIHelpers.make_framed_good_icon(gid, Catalog.get_internal_name(gid), box)
+		return UIHelpers.make_plain_good_icon(gid, Catalog.get_internal_name(gid), box)
+	# Resolve back to the glyph KIND rather than comparing rendered characters: the kind is
+	# what the art is keyed on, and it survives someone editing the dingbat table.
+	var kind := _glyph_kind(it)
+	if kind == "warn":
+		return _warning_glyph(tint, box)
+	if GLYPH_ART.has(kind):
+		var tex: Texture2D = load(str(GLYPH_ART[kind])) as Texture2D
+		if tex != null:
+			var icon := TextureRect.new()
+			icon.texture = tex
+			icon.custom_minimum_size = Vector2(box, box)
+			icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			return icon
 	var glyph := Label.new()
 	glyph.text = TurnBriefing.item_glyph(it)
 	glyph.custom_minimum_size = Vector2(box, 0)
 	glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	glyph.add_theme_color_override("font_color", tint)
 	return glyph
+
+
+## The glyph KIND for an item — the same fallback chain TurnBriefing.item_glyph walks, stopped
+## one step earlier, before the kind is turned into a character.
+func _glyph_kind(it: Dictionary) -> String:
+	var icon := str(it.get("icon", ""))
+	if icon == "" and str(it.get("kind", "")) == "decision":
+		icon = str(TurnBriefing.CATEGORY_ICONS.get(str(it.get("category", "")), "scale"))
+	return icon
+
+
+func _warning_glyph(tint: Color, box: int) -> Control:
+	var g := WarnGlyph.new()
+	g.tint = tint
+	g.custom_minimum_size = Vector2(box, box)
+	g.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	g.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return g
+
+
+func _ring_glyph(tint: Color, box: int) -> Control:
+	var g := RingGlyph.new()
+	g.tint = tint
+	g.custom_minimum_size = Vector2(box, box)
+	g.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	g.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return g
+
+
+## An open ring — the "pending" marker, drawn so no font gets a vote.
+class RingGlyph extends Control:
+	var tint: Color = Color.WHITE
+
+	func _draw() -> void:
+		var s: float = minf(size.x, size.y)
+		if s <= 0.0:
+			return
+		draw_arc(size * 0.5, s * 0.34, 0.0, TAU, 20, tint, 1.6, true)
+
+
+## A drawn warning triangle with a cut-out bang. Vector, so it is the same shape at any size
+## and on any machine — which "⚠" is not.
+class WarnGlyph extends Control:
+	var tint: Color = Color.WHITE
+
+	func _draw() -> void:
+		var s: float = minf(size.x, size.y)
+		if s <= 0.0:
+			return
+		var cx: float = size.x * 0.5
+		var top: float = (size.y - s) * 0.5
+		var r: float = s * 0.08
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(cx, top + r),
+			Vector2(cx + s * 0.47, top + s * 0.90),
+			Vector2(cx - s * 0.47, top + s * 0.90)]), tint)
+		# The bang is punched out in the panel's own navy so it reads at 13px.
+		var bang := DS.PALETTE["BG_PANEL"] as Color
+		draw_rect(Rect2(cx - s * 0.055, top + s * 0.36, s * 0.11, s * 0.31), bang, true)
+		draw_rect(Rect2(cx - s * 0.055, top + s * 0.72, s * 0.11, s * 0.10), bang, true)

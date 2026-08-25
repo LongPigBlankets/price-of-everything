@@ -287,7 +287,7 @@ func _draw() -> void:
 ## v3: modules are flat text on the bar — no outline, no shading (spec §1.2).
 ## `active` (an open flyout) keeps a fill so the player can see which module the
 ## panel belongs to; hover gets a fainter one. The old `warn` red border is gone —
-## a module in trouble lights its LED instead (_Led, §1.3) — so the argument is
+## a module in trouble lights its LED instead (StatusLed, §1.3) — so the argument is
 ## accepted and ignored, which keeps every existing call site valid.
 func _module_box(active: bool, _warn: bool = false) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
@@ -355,36 +355,9 @@ class _ModuleBtn extends PanelContainer:
 ##
 ## Drawn rather than textured: concentric alpha circles give a cheap bloom that reads
 ## as a lit bulb at any DPI, with no shader and no art dependency.
-class _Led extends Control:
-	const R := 5.0                  # the lamp itself; the glow rings extend past it
-	const GLOW := [[2.6, 0.28], [1.9, 0.16], [1.35, 0.09]]   # [radius x R, alpha]
-	# Held here, not read from the outer script: a GDScript inner class is its own
-	# scope and cannot see the enclosing file's constants by bare name.
-	const CORE := Color("#e2604a")        # same red as the bar's C_RED
-	const GLASS := Color("#3a4048")       # unlit — the bar's EDGE_SEAM
-	var lit := false:
-		set(v):
-			if v == lit:
-				return
-			lit = v
-			queue_redraw()
-	func _init() -> void:
-		# Sized for the widest glow ring so neighbouring text never clips it.
-		custom_minimum_size = Vector2(R * 2.0 + 6.0, R * 2.0 + 6.0)
-		size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-	func _draw() -> void:
-		var c := size * 0.5
-		if not lit:
-			# Dead bulb: dark glass with a faint rim, so the lamp is visibly PRESENT
-			# and off rather than missing — that contrast is what makes red mean something.
-			draw_circle(c, R, GLASS)
-			draw_arc(c, R, 0.0, TAU, 16, Color(1, 1, 1, 0.10), 1.0, true)
-			return
-		for ring: Array in GLOW:
-			draw_circle(c, R * float(ring[0]), Color(CORE, float(ring[1])))
-		draw_circle(c, R, CORE)
-		draw_circle(c, R * 0.45, CORE.lightened(0.45))   # hot filament
+## The lamp lives in scripts/status_led.gd now — the tile-view tabs wanted the same one in
+## green and amber, and one implementation cannot drift from itself. The bar's lamps are red,
+## which is StatusLed's default.
 
 func _module_row(mod: Control) -> HBoxContainer:
 	var row := HBoxContainer.new()
@@ -432,7 +405,7 @@ func _build_treasury() -> void:
 	_money_inner.add_theme_constant_override("separation", 10)
 	_money_inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	money_widget.add_child(_money_inner)
-	_treasury_led = _Led.new()
+	_treasury_led = StatusLed.new()
 	_money_inner.add_child(_treasury_led)
 	var coin := _mini("£", C_AMBER, 21)
 	_money_inner.add_child(coin)
@@ -477,7 +450,7 @@ func _build_power() -> void:
 	mod.name = "PowerModule"
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
-	_power_led = _Led.new()
+	_power_led = StatusLed.new()
 	row.add_child(_power_led)
 	_power_glyph = _mini("⚡", C_GOOD, 19)
 	row.add_child(_power_glyph)
@@ -549,7 +522,8 @@ func _build_victory() -> void:
 	# Second line: how far off the win actually is, in turns, which is the question the
 	# score alone never answered. Falls back to the threshold when there is no rate yet.
 	_victory_target = _mini("", C_TEXT, 11)
-	_victory_target.tooltip_text = "Points needed to win rise over the game — 1 track from turn 105 up to 4 tracks by turn 300."
+	# Text set on refresh (_victory_bar_tip) — at build time the ruleset has not landed yet,
+	# so the bar's shape is not yet known.
 	col.add_child(_victory_target)
 	mod.pressed.connect(func() -> void: _toggle_fly("victory"))
 	_hbox().add_child(mod)
@@ -603,7 +577,7 @@ func _freight_cell(texture: Texture2D, tip: String) -> Dictionary:
 	# The art is cream; the bar's other labels are the off-white, so match them.
 	icon.modulate = C_LABEL
 	pair.add_child(icon)
-	var led := _Led.new()
+	var led := StatusLed.new()
 	pair.add_child(led)
 	return {"root": pair, "led": led}
 
@@ -660,12 +634,12 @@ func _refresh_transport() -> void:
 	# Each lamp owns one failure. Splitting them is the point: the single count this
 	# replaced read '0 units → market' in any game shipping tile-to-tile, which is most of
 	# them, so the module spent the early game reporting nothing at all.
-	(_store_led as _Led).lit = int(t.rejecting) > 0 or int(t.full) > 1
-	(_road_led as _Led).lit = int(t.over) > 3
+	(_store_led as StatusLed).lit = int(t.rejecting) > 0 or int(t.full) > 1
+	(_road_led as StatusLed).lit = int(t.over) > 3
 	# Freight that arrived somewhere with no room and is stuck waiting for space. It is the
 	# one thing that can go wrong with a shipment AFTER it set off, so it is what the port
 	# lamp watches rather than the healthy count of goods in motion.
-	(_port_led as _Led).lit = MatchState.overflow_shipments.size() > 0
+	(_port_led as StatusLed).lit = MatchState.overflow_shipments.size() > 0
 	_transport_btn.tooltip_text = "Transport — %d tile%s at 95%%+ storage (%d refusing), %d link%s over capacity, %s unit%s riding to market" % [
 		int(t.full), "" if int(t.full) == 1 else "s", int(t.rejecting),
 		int(t.over), "" if int(t.over) == 1 else "s",
@@ -798,6 +772,7 @@ func _refresh_victory() -> void:
 	_victory_score.text = "%s Victory Point%s" % [_thousands(total), "" if total == 1 else "s"]
 	if _victory_target != null:
 		_victory_target.text = _victory_forecast(bd, total)
+		_victory_target.tooltip_text = _victory_bar_tip(bd)
 
 ## Score history, so "how many turns" can be answered at all: one entry per resolved turn,
 ## newest last. Victory has no rate of its own — the tracks report where they ARE, not how
@@ -811,6 +786,16 @@ func _record_victory_point(total: int) -> void:
 	_victory_history.append(total)
 	if _victory_history.size() > VICTORY_HISTORY_TURNS:
 		_victory_history = _victory_history.slice(_victory_history.size() - VICTORY_HISTORY_TURNS)
+
+## What the win bar does, in one line. A campaign bar climbs with the turn; the demo's is
+## flat, and a demo player told to hold out for turn 300 has been told something false.
+func _victory_bar_tip(bd: Dictionary) -> String:
+	var max_turns := int(bd.get("max_turns", 300))
+	if VictoryState.win_threshold_for_turn(1) == VictoryState.win_threshold_for_turn(max_turns):
+		return "%s points wins, on any turn — the bar does not rise." % _thousands(
+			int(bd.get("win_threshold", 0)))
+	return "Points needed to win rise over the game — 1 track from turn %d up to 4 tracks by turn %d." % [
+		VictoryState.WIN_START_TURN, max_turns]
 
 ## The second line of the victory module. A track past halfway is the one the player is
 ## actually chasing, so it gets named; otherwise the answer is the whole win. Either way it
@@ -1366,13 +1351,15 @@ func _adopt_encyclopedia_and_turn() -> void:
 	if hitbox != null:
 		hitbox.visible = false
 
-## Turn → month + year (owner 2026-07-10: months not seasons, campaign starts
-## January 2015; one month per turn — 300 turns run 2015 → 2039).
+## Turn → month + year. One month per turn, but the year is the COMPANY'S year, not a
+## calendar one (owner 2026-08-24): "January Year 1" through "December Year 25" over a
+## 300-turn campaign, and into Year 9 by the demo's turn 100. A real calendar year kept
+## implying a period the sim does not simulate.
 const _MONTHS: Array[String] = ["January", "February", "March", "April", "May", "June",
 	"July", "August", "September", "October", "November", "December"]
 
 func _turn_date(turn: int) -> String:
-	return "%s %d" % [_MONTHS[(turn - 1) % 12], 2015 + (turn - 1) / 12]
+	return "%s Year %d" % [_MONTHS[(turn - 1) % 12], 1 + (turn - 1) / 12]
 
 func _build_menu() -> void:
 	var mod := _ModuleBtn.new(self)
@@ -1951,7 +1938,8 @@ func _fly_victory(vb: VBoxContainer) -> void:
 	var foot := _fly_pad(vb)
 	var frow := HBoxContainer.new()
 	frow.add_theme_constant_override("separation", 8)
-	var total := _mini("Total %s / %s to win" % [_thousands(int(bd.get("total", 0))), _thousands(int(bd.get("win_threshold", 4000)))], DS.PALETTE.TEXT_DIM, 11)
+	var total := _mini("Total %s / %s to win" % [_thousands(int(bd.get("total", 0))),
+	_thousands(int(bd.get("win_threshold", 4000)))], C_TEXT, 11)
 	total.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	frow.add_child(total)
 	var full := _fly_btn("Full breakdown", true)
@@ -2051,7 +2039,7 @@ func _refresh_treasury() -> void:
 	# LED: overdrawn AND still losing money. Either alone is survivable — a negative
 	# balance with a profitable turn is climbing out, and a loss with cash in hand is
 	# affordable. Together they are the shape that ends runs (spec §1.3).
-	(_treasury_led as _Led).lit = MatchState.money < 0.0 and net < 0.0
+	(_treasury_led as StatusLed).lit = MatchState.money < 0.0 and net < 0.0
 	var runway := _runway_turns()
 	_runway_label.visible = runway > 0
 	if runway > 0:
@@ -2070,7 +2058,7 @@ func _refresh_power() -> void:
 	# while losing money. The second is the case the owner singled out — the lamp lights
 	# HERE and not on the treasury, because power is the thing to go and fix.
 	var net: float = float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0))
-	(_power_led as _Led).lit = (Production.intermittency_derated_count() > 0
+	(_power_led as StatusLed).lit = (Production.intermittency_derated_count() > 0
 			or (int(p.grid_draw) > 0 and net < 0.0))
 	_power_glyph.add_theme_color_override("font_color", c)
 	_power_head.add_theme_color_override("font_color", c)
@@ -2286,12 +2274,14 @@ func _money_anomalies(current: Dictionary, s: Dictionary) -> Array:
 	var hits: Array = []
 
 	if _loan_taken_this_turn > 0.0 and _anomaly_ready("loan"):
-		hits.append({"id": "loan",
+		hits.append({"id": "loan", "word": "loan", "tone": "bad",
 			"text": "We've taken a %s loan to cover this turn's bills." % _money_text(_loan_taken_this_turn)})
 
 	var revenue_base := _anomaly_baseline("revenue")
 	if revenue_base > 0.0 and float(current.revenue) >= revenue_base * ANOMALY_SPIKE_RATIO and _anomaly_ready("payment"):
-		hits.append({"id": "payment", "text": _big_payment_text(s)})
+		var pay := _big_payment_text(s)
+		hits.append({"id": "payment", "tone": "good",
+			"text": str(pay.get("text", "")), "word": str(pay.get("word", ""))})
 
 	# Each running-cost line is judged against its OWN baseline, so a labour jump is not
 	# hidden by a quiet turn for inputs. One generic sentence covers them all (owner).
@@ -2301,7 +2291,7 @@ func _money_anomalies(current: Dictionary, s: Dictionary) -> Array:
 			continue
 		if not _anomaly_ready("spend"):
 			break
-		hits.append({"id": "spend",
+		hits.append({"id": "spend", "word": "spending", "tone": "bad",
 			"text": "We're spending abnormal amounts of money: %s due to running costs for %s." % [
 				_money_text(float(current.get(line, 0.0))),
 				_cost_culprit(s, str(ANOMALY_COST_LINES[line]))]})
@@ -2314,7 +2304,7 @@ func _money_anomalies(current: Dictionary, s: Dictionary) -> Array:
 		var transport_delta := float(current.transport) - transport_base
 		var revenue_delta := float(current.revenue) - maxf(0.0, revenue_base)
 		if transport_delta > transport_base * (ANOMALY_TRANSPORT_RATIO - 1.0) and revenue_delta < transport_delta:
-			hits.append({"id": "transport",
+			hits.append({"id": "transport", "word": "Transport", "tone": "bad",
 				"text": "Transport costs are through the roof. Check if we're shipping by the most efficient transport."})
 	return hits
 
@@ -2344,9 +2334,11 @@ func _cost_culprit(s: Dictionary, by_type_key: String) -> String:
 	return "%d buildings" % count if count > 0 else "our buildings"
 
 
-## The sale that made the turn. Names the good when one dominates the payout, because
-## "you sold 40 units of steel for £900" is actionable where "revenue was up" is not.
-func _big_payment_text(s: Dictionary) -> String:
+## The sale that made the turn, as {text, word}. Names the good when one dominates the
+## payout, because "you sold 40 units of steel for £900" is actionable where "revenue was
+## up" is not. `word` is the span the card colours: the MONEY, which is what the player is
+## looking for, rather than the verb that got it there (owner 2026-08-24).
+func _big_payment_text(s: Dictionary) -> Dictionary:
 	var sold: Dictionary = s.get("sold", {})
 	var top_id := ""
 	var top_revenue := 0.0
@@ -2363,9 +2355,13 @@ func _big_payment_text(s: Dictionary) -> String:
 			top_id = str(gid)
 			top_qty = int(entry.get("qty", 0))
 	if top_id != "" and total_revenue > 0.0 and top_revenue / total_revenue >= 0.5:
-		return "You sold %d units of %s to the global market, which earned you %s." % [
-			top_qty, Catalog.get_display_name(top_id), _money_text(top_revenue)]
-	return "You sold an unusually high %d units of %d goods." % [total_qty, sold.size()]
+		var earned := "earned you %s" % _money_text(top_revenue)
+		return {"word": earned,
+			"text": "You sold %d units of %s to the global market, which %s." % [
+				top_qty, Catalog.get_display_name(top_id), earned]}
+	var span := "%d units" % total_qty
+	return {"word": span,
+		"text": "You sold an unusually high %s of %d goods." % [span, sold.size()]}
 
 
 ## Power triggers, highest-priority first.
@@ -2375,7 +2371,8 @@ func _power_anomalies(current: Dictionary) -> Array:
 
 	var last_supply := float(previous.get("power_supply", 0.0))
 	if last_supply > 0.0 and float(current.power_supply) <= last_supply * ANOMALY_POWER_RATIO and _anomaly_ready("dark"):
-		hits.append({"id": "dark", "text": "Our power plants are going dark!"})
+		hits.append({"id": "dark", "word": "power", "tone": "bad",
+			"text": "Our power plants are going dark!"})
 
 	# Taught once, the first turn intermittent green is actually GENERATED — when the
 	# player has just built the wind or solar, not when it first bites (owner ruling:
@@ -2384,7 +2381,7 @@ func _power_anomalies(current: Dictionary) -> Array:
 		var quality: Dictionary = Production.last_turn_summary.get("power_supply_by_quality", {})
 		if float(quality.get("green_intermittent", 0)) > 0.0:
 			_intermittency_taught = true
-			hits.append({"id": "intermittency",
+			hits.append({"id": "intermittency", "word": "Renewable", "tone": "good",
 				"text": "Renewable power's great, but what do we do when the sun doesn't shine or the wind doesn't blow?"})
 
 	var demand_base := _anomaly_baseline("power_demand")
@@ -2393,7 +2390,7 @@ func _power_anomalies(current: Dictionary) -> Array:
 			and float(current.power_supply) < float(current.power_demand))
 	var jumped: bool = demand_base > 0.0 and float(current.power_demand) >= demand_base * ANOMALY_DEMAND_RATIO
 	if (flipped or jumped) and _anomaly_ready("grid"):
-		hits.append({"id": "grid",
+		hits.append({"id": "grid", "word": "grid", "tone": "bad",
 			"text": "We're drawing power from the grid for now, but this is becoming expensive."})
 	return hits
 
@@ -2408,7 +2405,10 @@ func _show_anomaly_stack(hits: Array, anchor: Control) -> void:
 	for hit: Dictionary in hits:
 		var card := AnomalyPopup.new()
 		_fly_layer.add_child(card)
-		card.set_message(str(hit.text))
+		# Width first: the stack offset below is measured off the card's wrapped height,
+		# which is only correct once the width its text wraps at is settled.
+		card.set_width(anchor.size.x)
+		card.set_message(str(hit.text), str(hit.get("word", "")), str(hit.get("tone", "warn")))
 		_anomaly_cards.append(card)
 		# Placed after layout: the card has no height until its wrapped label is measured.
 		card.call_deferred("place_under", anchor, offset)

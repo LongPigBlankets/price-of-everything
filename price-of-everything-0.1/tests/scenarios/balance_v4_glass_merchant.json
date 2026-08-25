@@ -1,0 +1,96 @@
+{
+  "name": "balance_v4_glass_merchant",
+  "display_name": "Balance v4 \u2014 exact Glass Merchant start",
+  "note": "Load the live Glass Merchant start unchanged and operate it: a sand mine on tile_22_15 feeding three glass furnaces and a window factory on tile_22_16. No authored expansion plan \u2014 whatever the estate grows into comes from the run's own right-sizing when a good stays short, so this measures the SHIPPED start rather than a strategy written for it. Glass Merchant is one of the two demo starts, so this is the demo's own opening.",
+  "integration_scope": "the exact Glass Merchant start \u2014 \u00a3200, five inherited buildings, two owned tiles, seeded inputs, authored cables",
+  "balance_v4": true,
+  "balance_start_config": "res://data/starts/glass_merchant.json",
+  "balance_start_id": "glass_merchant",
+  "balance_keep_start_modifiers": true,
+  "balance_keep_deposit_penalties": true,
+  "balance_consider_research_modifiers": true,
+  "starting_money": 200,
+  "balance_expected_start_buildings": 5,
+  "balance_existing_buildings": [
+    {
+      "id": "sand",
+      "internal_name": "mine",
+      "recipe_id": "r_018",
+      "tile": "tile_22_15"
+    },
+    {
+      "id": "glass_a",
+      "internal_name": "furnace",
+      "recipe_id": "r_053",
+      "tile": "tile_22_16"
+    },
+    {
+      "id": "glass_b",
+      "internal_name": "furnace",
+      "recipe_id": "r_053",
+      "tile": "tile_22_16"
+    },
+    {
+      "id": "glass_c",
+      "internal_name": "furnace",
+      "recipe_id": "r_053",
+      "tile": "tile_22_16"
+    },
+    {
+      "id": "windows",
+      "internal_name": "industrial_factory",
+      "recipe_id": "r_056",
+      "tile": "tile_22_16"
+    }
+  ],
+  "target_goods": [
+    "windows"
+  ],
+  "target_recipe_ids": [
+    "r_056"
+  ],
+  "surplus_sales": [
+    "tile_22_16"
+  ],
+  "balance_prudent_expansion": true,
+  "balance_profit_window": 3,
+  "balance_loan_interest_profit_fraction": 0.5,
+  "balance_unprofitable_cash_multiplier": 1.5,
+  "balance_funding_wait_turns": 100,
+  "balance_runway_turns": 8,
+  "balance_runway_transport_spine": {},
+  "balance_runway_buildings": [],
+  "balance_runway_routes": [],
+  "balance_runway_tile_only_inputs": [],
+  "balance_runway_surplus_sales": [],
+  "transport_spine": {},
+  "balance_standalone_buildings": [],
+  "balance_post_transport_buildings": [],
+  "balance_standalone_routes": [],
+  "balance_preintegration_buildings": [],
+  "balance_preintegration_routes": [],
+  "balance_integration_stage_transport_spines": [],
+  "balance_integration_buildings": [],
+  "balance_required_integration_ids": [],
+  "balance_integration_stage_routes": [],
+  "balance_integration_stage_tile_only_inputs": [],
+  "balance_integration_routes": [],
+  "balance_tile_only_inputs": [],
+  "balance_scale_transport_spine": {},
+  "balance_scale_buildings": [],
+  "balance_scale_routes": [],
+  "balance_scale_tile_only_inputs": [],
+  "port_distance_pairs": [
+    {
+      "hub": "tile_22_16",
+      "port": "tile_22_16"
+    },
+    {
+      "hub": "tile_22_15",
+      "port": "tile_22_16"
+    }
+  ],
+  "expected_average_port_distance": 0.5,
+  "port_distance_tolerance": 0.01,
+  "balance_expects_owned_power": false
+}

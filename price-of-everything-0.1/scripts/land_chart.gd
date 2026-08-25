@@ -24,6 +24,16 @@ const SCALE_W := 22.0  # left label gutter — wide enough for 3 digits ("250")
 const BRACKET_MIN_OWNED := 10       # below one patch there is nothing to bracket
 const BRACKET_TICK := 5.0
 const BRACKET_W := 2.0
+## Strip reserved to the RIGHT of the bar for the owned bracket and its label. The bracket
+## always hung at the chart's right edge, but the bar ran to that edge too, so the line and
+## the rotated "Owned" sat on top of the topmost building's fill and its land figure. The bar
+## now stops short of it and the chart widens to match, so nothing is given up for the gutter.
+##
+## The COLLAPSED chart missed this the first time — the gutter was only ever applied on the
+## expanded path, and the tile rail draws collapsed, which is where the owner kept seeing the
+## bracket sitting on the bar (owner, 25 Aug). Wide enough for the tick, the spine and the
+## rotated word beside it.
+const BRACKET_GUTTER := 18.0
 
 var _segments: Array = []
 var _axis_max: float = 1.0
@@ -61,7 +71,7 @@ func configure(segments: Array, axis_max: float, max_label: int, detailed: bool 
 	_owned = owned
 	_buyable = buyable
 	_npc = npc
-	custom_minimum_size.x = 190 if detailed else 60  # 10px wider (eats rail padding)
+	custom_minimum_size.x = int((190.0 if detailed else 60.0) + BRACKET_GUTTER)  # bar + bracket gutter
 	queue_redraw()
 
 func _draw() -> void:
@@ -74,23 +84,24 @@ func _draw() -> void:
 # ── Compact (collapsed) ──────────────────────────────────────────────────────
 func _draw_compact() -> void:
 	var w := size.x
+	var bw := w - BRACKET_GUTTER   # the bar; the strip to its right belongs to the bracket
 	var h := size.y
 	var chart_top := TOP_RESERVED
 	var chart_h := h - TOP_RESERVED - BOTTOM_RESERVED
-	if chart_h <= 0.0:
+	if chart_h <= 0.0 or bw <= 0.0:
 		return
 	var bottom := h - BOTTOM_RESERVED
 	var unit := chart_h / _axis_max
 
 	if SOFT_CAP < _axis_max:
-		_hatch(Rect2(0, chart_top, w, (bottom - SOFT_CAP * unit) - chart_top), RED, 6.0)
+		_hatch(Rect2(0, chart_top, bw, (bottom - SOFT_CAP * unit) - chart_top), RED, 6.0)
 
 	var cur := bottom
 	for seg in _segments:
 		var sh: float = float(seg.size) * unit
 		if sh <= 0.0:
 			continue
-		var rect := Rect2(0, cur - sh, w, sh)
+		var rect := Rect2(0, cur - sh, bw, sh)
 		if bool(seg.get("is_ruins", false)):
 			draw_rect(rect, seg.color, true)
 			draw_rect(rect, Color(0, 0, 0, 0.25), false, 1.0)
@@ -107,18 +118,18 @@ func _draw_compact() -> void:
 		_hit_rects.append({"rect": rect, "tooltip": seg.get("tooltip", ""), "instance_id": seg.get("instance_id", "")})
 		cur -= sh
 
-	draw_rect(Rect2(0, chart_top, w, chart_h), DS.PALETTE.BORDER_SOFT, false, 1.0)
+	draw_rect(Rect2(0, chart_top, bw, chart_h), DS.PALETTE.BORDER_SOFT, false, 1.0)
 	if SOFT_CAP < _axis_max:
-		_dashed_h(0.0, w, bottom - SOFT_CAP * unit, DS.PALETTE.ACCENT)
-	draw_string(UIFonts.mono(), Vector2(0.0, 11.0), str(_max_label), HORIZONTAL_ALIGNMENT_CENTER, w, 10, DS.PALETTE.TEXT_MUTED)
-	_draw_owned_bracket(w, bottom, unit)
+		_dashed_h(0.0, bw, bottom - SOFT_CAP * unit, DS.PALETTE.ACCENT)
+	draw_string(UIFonts.mono(), Vector2(0.0, 11.0), str(_max_label), HORIZONTAL_ALIGNMENT_CENTER, bw, 10, DS.PALETTE.TEXT_MUTED)
+	_draw_owned_bracket(bw, bottom, unit)
 
 # ── Detailed (expanded) ──────────────────────────────────────────────────────
 func _draw_detailed() -> void:
 	var w := size.x
 	var h := size.y
 	var bx := SCALE_W
-	var bw := w - SCALE_W
+	var bw := w - SCALE_W - BRACKET_GUTTER
 	var ctop := 6.0
 	var cbot := h - BOTTOM_RESERVED
 	var ch := cbot - ctop
@@ -176,7 +187,7 @@ func _draw_detailed() -> void:
 	draw_rect(Rect2(bx, ctop, bw, ch), DS.PALETTE.BORDER_SOFT, false, 1.0)
 	# The right-edge square bracket replaces the old dashed OWNED line: it spans
 	# exactly the player-owned land (NPC pile below it, unowned land above it).
-	_draw_owned_bracket(w, cbot, unit)
+	_draw_owned_bracket(bx + bw, cbot, unit)
 
 # Truncate text to fit max_width, appending an ellipsis when it doesn't.
 func _fit_ellipsis(font: Font, text: String, max_width: float, fsize: int) -> String:
@@ -199,21 +210,26 @@ func _shadowed(font: Font, pos: Vector2, text: String, align: int, width: float,
 # Right-edge square bracket over the player-owned land: it starts above the NPC
 # pile (their land isn't yours) and ends at owned units — unowned land above it
 # stays outside. Hidden below one patch (10) of owned land.
-func _draw_owned_bracket(right_x: float, bottom_y: float, unit: float) -> void:
+func _draw_owned_bracket(bar_right: float, bottom_y: float, unit: float) -> void:
 	if _owned < BRACKET_MIN_OWNED:
 		return
-	var x := right_x - BRACKET_W * 0.5
+	# The spine stands one tick clear of the bar, so the ticks reach back to touch it and the
+	# whole bracket — word included — sits in the gutter rather than over the fills.
+	var x := bar_right + BRACKET_TICK
 	var y_bottom := bottom_y - float(_npc) * unit
 	var y_top := bottom_y - float(_npc + _owned) * unit
 	draw_line(Vector2(x, y_top), Vector2(x, y_bottom), OFF_WHITE, BRACKET_W)
 	draw_line(Vector2(x - BRACKET_TICK, y_top), Vector2(x, y_top), OFF_WHITE, BRACKET_W)
 	draw_line(Vector2(x - BRACKET_TICK, y_bottom), Vector2(x, y_bottom), OFF_WHITE, BRACKET_W)
-	# "Owned" runs along the bracket (rotated), only when the span can fit it.
+	# "Owned" runs along the bracket, only when the span can fit it. Rotated +90° and not -90°:
+	# the old way read bottom-to-top and you had to tilt your head the wrong way (owner, 25
+	# Aug). At +90° the glyphs also grow to the RIGHT of the spine, which is what keeps the word
+	# out of the bar. Text advances downward, so the origin is the TOP of the word.
 	var span := y_bottom - y_top
 	if span >= 34.0:
 		var num := UIFonts.mono()
 		var mid := (y_top + y_bottom) * 0.5
-		draw_set_transform(Vector2(x - 4.0, mid + 17.0), -PI * 0.5, Vector2.ONE)
+		draw_set_transform(Vector2(x + 3.0, mid - 17.0), PI * 0.5, Vector2.ONE)
 		draw_string(num, Vector2.ZERO, "Owned", HORIZONTAL_ALIGNMENT_CENTER, 34.0, 9, OFF_WHITE)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 

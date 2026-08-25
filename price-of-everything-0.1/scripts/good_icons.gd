@@ -63,6 +63,15 @@ static func texture_for(good_id: String, internal_name: String, tier := TIER_SMA
 			if t2 != null:
 				_texture_cache[cache_key] = t2
 				return t2
+		# Internal name alone, the way the building icons resolve. Art often lands before
+		# the good has an id — or before it is in goods.csv at all — and naming the file
+		# for the thing it draws means it starts working the moment the row exists,
+		# instead of needing a rename nobody remembers to do.
+		if internal_name != "":
+			var t3 := _try(dir, internal_name)
+			if t3 != null:
+				_texture_cache[cache_key] = t3
+				return t3
 	_texture_cache[cache_key] = null
 	return null
 
@@ -101,7 +110,7 @@ static func _try(dir: String, stem: String) -> Texture2D:
 ## good uses.
 static func resolve_path(good_id: String, internal_name: String, tier := TIER_SMALL) -> String:
 	for dir in _dirs_for(tier):
-		for stem in ([("%s_%s" % [good_id, internal_name]) if (good_id != "" and internal_name != "") else "", good_id]):
+		for stem in ([("%s_%s" % [good_id, internal_name]) if (good_id != "" and internal_name != "") else "", good_id, internal_name]):
 			if stem == "":
 				continue
 			for ext in _EXTS:

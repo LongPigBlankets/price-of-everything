@@ -121,7 +121,7 @@ func _pick(pool: Array, i: int) -> int:
 
 func _goods_with_icons() -> Array:
 	var result: Array = []
-	for good in Catalog.all_goods():
+	for good in MatchState.visible_goods():
 		if GoodIcons.texture_for(good.get("id", ""), good.get("internal_name", "")) != null:
 			result.append(good)
 	return result

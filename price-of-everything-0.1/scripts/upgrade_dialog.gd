@@ -10,6 +10,7 @@ extends Control
 # A full-rect scrim makes it modal. One instance is reused across buildings via open().
 
 const GoodIcons := preload("res://scripts/good_icons.gd")
+const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const GOODS_FRAME := preload("res://assets/ui/goods_frame.tres")  # skinny pipe frame (nine-patch)
 
 const BADGE_DIAMETER := 22
@@ -184,9 +185,11 @@ func _rebuild() -> void:
 
 	# --- Blockers ---
 	if bool(_preview.get("research_locked", false)):
-		_content.add_child(_dlabel("Requires research: %s" % str(_preview.get("research_gate", "")), "Numeric", DS.PALETTE.DANGER))
+		_content.add_child(UIHelpers.make_research_requirement_link(
+			str(_preview.get("research_gate", "")), DS.PALETTE.DANGER))
 	if not bool(_preview.get("fits", true)):
-		_content.add_child(_dlabel("Not enough room on the tile for the larger building.", "Numeric", DS.PALETTE.DANGER))
+		_content.add_child(_dlabel(str(_preview.get("fits_reason",
+			"Not enough room on the tile for the larger building.")), "Numeric", DS.PALETTE.DANGER))
 
 	# --- Action buttons ---
 	_content.add_child(_sep())

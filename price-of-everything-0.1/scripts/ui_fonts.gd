@@ -6,6 +6,10 @@ extends RefCounted
 ## (tabular figures) feature, which gives fixed-width digits for aligned columns.
 ## Drop in IBMPlexMono-SemiBold.ttf and point `mono()` at it to get true Plex Mono.
 
+## Plex REGULAR is catalogued but no longer used by the UI (owner 2026-08-24). At the
+## sizes this game sets text, Regular on the panel navies read as low contrast — the
+## weight was doing the job a greyer colour would have, which the standing contrast rule
+## forbids. The ladder is MEDIUM for body and caption, SEMIBOLD for emphasis and numerals.
 const PLEX := preload("res://assets/fonts/IBMPlexSans-Regular.ttf")
 const PLEX_MED := preload("res://assets/fonts/IBMPlexSans-Medium.ttf")
 const PLEX_SEMI := preload("res://assets/fonts/IBMPlexSans-SemiBold.ttf")

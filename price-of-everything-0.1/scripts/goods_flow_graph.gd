@@ -166,7 +166,7 @@ static func build(force := false, legacy_layout := false) -> Dictionary:
 		return cache
 	# 1 · Goods universe, keyed by internal name.
 	var goods: Dictionary = {}
-	for g in Catalog.all_goods():
+	for g in MatchState.visible_goods():
 		var internal := str(g.get("internal_name", ""))
 		if internal != "":
 			goods[internal] = g

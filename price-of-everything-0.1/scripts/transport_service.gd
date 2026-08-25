@@ -69,6 +69,38 @@ func transport_cost(good_id: String, qty: int, transport_turns: int, mode_mult: 
 	return EconomyConfig.transport_cost_for(good_id, qty, transport_turns, mode_mult)
 
 
+## £ per unit per TILE for one good on one mode at one infrastructure level — the freight
+## quote the Resources panel shows. Derived from the same model transport_cost_for_route
+## charges with: a leg is one turn-move costing class_rate x mode multiplier (or the fluid
+## overland premium), and a leg reaches infra_range_for_level tiles, so per-tile is the leg
+## divided by the level's range. That division is why L3 is CHEAPER per tile, not just
+## faster. Route-level effects that need an actual route — congestion, the road/rail share
+## split, the freight credit — are not in it and cannot be: there is no route here.
+func freight_per_tile(good_id: String, mode: String, level: int) -> float:
+	var rate := EconomyConfig.transport_rate_for_good(good_id)
+	var mult := float(EconomyConfig.TRANSPORT_MODE_COST_MULT.get(mode, 1.0))
+	if Catalog.requires_pipeline(good_id):
+		var overland := EconomyConfig.fluid_overland_mult(good_id, mode)
+		if overland > 0.0:
+			mult = overland
+	var per_leg: float = Modifiers.apply("transport_cost", good_id, rate * mult, {"good_id": good_id})
+	if mode == "roads" or mode == "rail":
+		var overland_pct: float = float(Modifiers.resolve_pct("road_rail_transport_cost", "*", {}).get("net", 0.0))
+		if not is_zero_approx(overland_pct):
+			per_leg *= 1.0 + overland_pct / 100.0
+	return per_leg / float(maxi(EconomyConfig.infra_range_for_level(mode, level), 1))
+
+
+## What one unit pays crossing a port this turn: {rate, cost}. The ad valorem on its market
+## value, at today's schedule and growth, after research relief. The port's flat per-good
+## fee is per SHIPMENT rather than per unit, so it is deliberately not folded in.
+func port_ad_valorem_per_unit(good_id: String) -> Dictionary:
+	var base := EconomyConfig.seaport_ad_valorem_rate(int(TurnManager.current_turn))
+	var rate: float = maxf(0.0, Modifiers.apply("port_ad_valorem_fee", "port", base))
+	rate *= MatchState.sea_shipping_growth_factor()
+	return {"rate": rate, "cost": rate * MarketState.get_price(good_id)}
+
+
 func transport_cost_for_route(good_id: String, qty: int, route_data: Dictionary, surcharge: float = 1.0) -> float:
 	# A route that can't be travelled costs nothing — the INF_TURNS sentinel would
 	# otherwise explode the per-turn cost into the billions (fluids with no pipe

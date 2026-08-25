@@ -107,21 +107,52 @@ func _on_footprints_changed(version: int, affected_tile_ids: Array) -> void:
 		return   # already planned against this exact state (see _planned_footprint_version)
 	if not _footprints_touch_a_port(affected_tile_ids):
 		return
+	_drop_baked_plans_for(affected_tile_ids)
 	_queue_plan_rebuild()
 
 func _footprints_touch_a_port(tile_ids: Array) -> bool:
 	if tile_ids == null or tile_ids.is_empty():
 		return true   # unknown scope — rebuild to be safe
-	var port_tiles := {}
-	for p in Catalog.all_ports():
-		port_tiles[str((p as Dictionary).get("tile_id", ""))] = true
+	var port_tiles := _planner_port_tiles()
 	for t in tile_ids:
 		if port_tiles.has(str(t)):
 			return true
 	return false
 
+
+## The port tiles the PLANNER is answerable for: every port, less the ones the designer has
+## taken into the authored document — _rebuild_midcentury_plans already stands down for those.
+## Counting them here meant building anything on Stoneshore Docks, which IS authored, replanned
+## the other three harbours from scratch to redraw exactly what was already on screen.
+func _planner_port_tiles() -> Dictionary:
+	var authored := AuthoredMap.port_tiles()
+	var out: Dictionary = {}
+	for p in Catalog.all_ports():
+		var tile_id := str((p as Dictionary).get("tile_id", ""))
+		if tile_id != "" and not authored.has(tile_id):
+			out[tile_id] = true
+	return out
+
+
+## Retire the baked answers for the tiles that actually moved, and only those. Dropping the
+## whole bank meant one shed landing beside one harbour cost a live coastline search of ALL of
+## them — and the slowest of the four takes 3.6 s on its own.
+func _drop_baked_plans_for(tile_ids: Array) -> void:
+	if tile_ids == null or tile_ids.is_empty():
+		_baked_plans.clear()   # unknown scope: trust nothing
+		return
+	var moved: Dictionary = {}
+	for t in tile_ids:
+		moved[str(t)] = true
+	for key in _baked_plans.keys():
+		if moved.has(str(key).get_slice("|", 0)):
+			_baked_plans.erase(key)
+
+## A settled road order can move a quay approach, so the plans are rebuilt — but NOT wiped.
+## Blanket-invalidating here is what made every finished lane cost a 4.5 s replan of all three
+## searched harbours: the planner's key now covers the roads within two tiles of each port, so
+## a rebuild re-searches the harbours that road actually reached and no others.
 func _on_authoritative_geometry_changed(_order_id: int) -> void:
-	MidcenturyPortPlan.invalidate_cache()
 	_queue_plan_rebuild()
 
 func _queue_plan_rebuild() -> void:
@@ -156,14 +187,20 @@ func _rebuild_midcentury_plans() -> void:
 		var instance: Dictionary = instance_value
 		if authored_ports.has(str(instance.get("tile_id", ""))):
 			continue
-		var baked_key := "%s|%s" % [str(instance.get("tile_id", "")), str(instance.get("instance_id", ""))]
+		var tile_id := str(instance.get("tile_id", ""))
+		var inst_id := str(instance.get("instance_id", ""))
+		var baked_key := "%s|%s" % [tile_id, inst_id]
 		var plan: Dictionary = _baked_plans.get(baked_key, {})
 		if plan.is_empty():
-			plan = MidcenturyPortPlan.build(_hex_map,
-				str(instance.get("tile_id", "")), str(instance.get("instance_id", "")))
+			plan = MidcenturyPortPlan.build(_hex_map, tile_id, inst_id)
+		else:
+			# Seed rather than shortcut: a baked plan enters the ordinary cache under today's
+			# key, so from here on ONE invalidation rule decides when it stops being true.
+			MidcenturyPortPlan.seed_cache(_hex_map, tile_id, inst_id, plan)
 		if not plan.is_empty() and bool(plan.get("valid", false)):
 			_midcentury_plans.append(plan)
-	_baked_plans.clear()   # consumed: a later rebuild means something actually moved
+	# The bank is NOT emptied here. A baked answer stops being right only for the harbour whose
+	# own surroundings changed, and _drop_baked_plans_for has already retired exactly those.
 	_planned_footprint_version = int(source.get("footprint_version")) if source != null else -1
 	_clear_authored_fabric_under_ports()
 	queue_redraw()

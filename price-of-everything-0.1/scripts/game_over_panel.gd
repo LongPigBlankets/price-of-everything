@@ -5,6 +5,13 @@ extends Control
 ## empire value / output value), and one big CTA: Return to Main Menu.
 
 const MAIN_MENU_SCENE := "res://scenes/main_menu.tscn"
+## The demo names this ending too — one table of endings in EndGameData, so the
+## bankruptcy screen and the turn-100 screen cannot drift apart.
+const EndGameData := preload("res://scripts/end_game_data.gd")
+
+## The campaign copy, kept as the fallback for any match that is not running the demo set.
+const CAMPAIGN_TITLE := "Your legacy ends here"
+const CAMPAIGN_BODY := "Some journeys are meant to be cautionary tales. You tried your best but your strategy didn't pan out. But few succeed on their first business — maybe you'll succeed on the ashes of this attempt…"
 
 const _SERIES := [
 	{"key": "money", "label": "Money", "signed": true},
@@ -62,14 +69,14 @@ func _build() -> void:
 	title.theme_type_variation = "Title"
 	title.add_theme_font_size_override("font_size", 42)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.text = "Your legacy ends here"
+	title.text = _ending_title()
 	col.add_child(title)
 
 	var body := Label.new()
 	body.theme_type_variation = "Body"
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	body.text = "Some journeys are meant to be cautionary tales. You tried your best but your strategy didn't pan out. But few succeed on their first business — maybe you'll succeed on the ashes of this attempt…"
+	body.text = _ending_body()
 	col.add_child(body)
 
 	# Chart card: filter row + the plot.
@@ -109,6 +116,16 @@ func _build() -> void:
 	cta.add_theme_font_size_override("font_size", 22)
 	cta.pressed.connect(_on_return)
 	col.add_child(cta)
+
+func _ending_title() -> String:
+	if EndGameData.demo_endings_apply():
+		return str((EndGameData.DEMO_ENDINGS["bankruptcy"] as Dictionary).title)
+	return CAMPAIGN_TITLE
+
+func _ending_body() -> String:
+	if EndGameData.demo_endings_apply():
+		return str((EndGameData.DEMO_ENDINGS["bankruptcy"] as Dictionary).copy)
+	return CAMPAIGN_BODY
 
 func _on_filter(key: String) -> void:
 	_active_key = key

@@ -5,13 +5,71 @@ extends Node
 const CompanyNames := preload("res://scripts/company_names.gd")
 
 const RIVAL_COUNT := 9
+## Fewest rival companies that contest any one good. The most is RIVAL_COUNT.
+const GOOD_MIN_COMPETITORS := 3
+const PARTICIPATION_SALT := 7717
+const TIEBREAK_SALT := 9931
 const TOTAL_COMPANIES := RIVAL_COUNT + 1
-const STARTING_REVENUE := 100.0
+## Rivals open level with the player rather than a third of the way behind. At 100 the
+## player led the table for the first dozen turns simply by existing, which banked most of
+## the Crown track before a single decision was made.
+## Where every rival starts. Lives in the difficulty preset with the rest of the rival tuning;
+## the alias is kept because callers and tests read CompanyRankings.STARTING_REVENUE.
+static var STARTING_REVENUE: float = float(difficulty()["starting_revenue"])
 const HISTORY_TURNS := 5
 const PLAYER_ID := "player"
 const PLAYER_NAME := "Your Company"
-const GROWTH_MEAN := 0.15
-const GROWTH_STANDARD_DEVIATION := 0.05
+## What the PLAYER actually earns per turn, measured off a full 100-turn demo run: £145 on
+## turn 1 rising to about £1,100 by turn 100 — a shade over 2% a turn, compounded. Every
+## rival ceiling below is expressed against this curve rather than as a flat number, for
+## three reasons. It is a race for the whole match instead of a wall in the first fifty
+## turns and a walkover in the last fifty. It is calibrated to something measured rather
+## than guessed. And a 300-turn campaign scales itself, instead of needing its own constant.
+const REFERENCE_START := 145.0
+const REFERENCE_END := 1100.0
+const REFERENCE_TURNS := 100
+## ── Rival difficulty ────────────────────────────────────────────────────────────────────
+##
+## Everything above is the YARDSTICK — the player's own measured earnings — and is not a
+## difficulty knob. What follows is: where the nine rivals sit against that yardstick, and how
+## hard they push. It is a named preset rather than loose constants so that a difficulty
+## selector, when there is one, has somewhere to point (owner, 25 Aug: "save the growth curve
+## above as a 'hard' difficulty setting for the future"). Switching ACTIVE_DIFFICULTY is the
+## whole switch — nothing else in this file carries a number of its own.
+##
+## Only the calibrated preset exists today. Adding "standard" and "gentle" is a balance pass
+## with its own measured run behind it, not a guess made here.
+##
+##   leader_ceiling / tail_ceiling — the band the nine occupy, as multiples of the yardstick.
+##       The narrow top is the point: at 1.5x the leader was out of reach and the podium was a
+##       spectator sport, where at 1.2x a player on the reference run trades second and third
+##       place, and a run 20% better than it leads outright.
+##   headroom_exponent — growth is damped by the SQUARE ROOT of the headroom left, not the
+##       headroom itself. Damping linearly makes a firm creep: it stalls at roughly two thirds
+##       of a ceiling that is itself still rising, so the leader never reaches its own band.
+##       The square root leaves early growth alone (headroom starts at 1, its own root) and
+##       only bites near the top.
+const DIFFICULTIES := {
+	# Calibrated against the owner's full 100-turn run, 25 Aug 2026.
+	"hard": {
+		"starting_revenue": 150.0,
+		"leader_ceiling": 1.2,
+		"tail_ceiling": 0.6,
+		"headroom_exponent": 0.5,
+		"growth_mean": 0.15,
+		"growth_standard_deviation": 0.05,
+	},
+}
+const ACTIVE_DIFFICULTY := "hard"
+
+static func difficulty() -> Dictionary:
+	return DIFFICULTIES.get(ACTIVE_DIFFICULTY, DIFFICULTIES["hard"])
+
+static var LEADER_CEILING_MULTIPLE: float = float(difficulty()["leader_ceiling"])
+static var TAIL_CEILING_MULTIPLE: float = float(difficulty()["tail_ceiling"])
+static var HEADROOM_EXPONENT: float = float(difficulty()["headroom_exponent"])
+static var GROWTH_MEAN: float = float(difficulty()["growth_mean"])
+static var GROWTH_STANDARD_DEVIATION: float = float(difficulty()["growth_standard_deviation"])
 const GROWTH_MIN := 0.01
 const GROWTH_MAX := 0.25
 const DECAY_MIN := 0.01
@@ -34,6 +92,12 @@ signal rankings_updated
 # turn; retaining five values lets the panel survive save/load with the same trend.
 var _player_revenue_history: Array[float] = []
 var _player_goods_produced: Dictionary = {}  # good_id -> last resolved turn quantity
+## The player's place in the revenue table, one entry per resolved turn, kept for the whole
+## match. The revenue history above is trimmed to HISTORY_TURNS because the table only needs
+## a trend; the end screen needs the whole arc, and it cannot be reconstructed afterwards —
+## VictoryState's revenue series is SALES revenue while the table ranks money in, so
+## replaying standings_for() over it would draw a curve the player never saw.
+var player_rank_history: Array[int] = []
 
 func _ready() -> void:
 	TurnManager.phase_started.connect(_on_phase_started)
@@ -42,6 +106,7 @@ func _ready() -> void:
 func reset() -> void:
 	_player_revenue_history.clear()
 	_player_goods_produced.clear()
+	player_rank_history.clear()
 	rankings_updated.emit()
 
 func _on_phase_started(phase: int) -> void:
@@ -49,12 +114,22 @@ func _on_phase_started(phase: int) -> void:
 		return
 	_record_player_revenue(float(Production.last_turn_summary.get("money_in", 0.0)))
 	_record_player_goods(Production.last_turn_summary.get("produced", {}))
+	_record_player_rank()
 	rankings_updated.emit()
 
 func _record_player_revenue(revenue: float) -> void:
 	_player_revenue_history.append(revenue)
 	while _player_revenue_history.size() > HISTORY_TURNS:
 		_player_revenue_history.pop_front()
+
+## One standings build a turn — the same one the rankings panel asks for when it is open,
+## and the only way to keep an honest arc of where the company stood.
+func _record_player_rank() -> void:
+	for row: Dictionary in standings():
+		if bool(row.get("is_player", false)):
+			player_rank_history.append(int(row.get("rank", TOTAL_COMPANIES)))
+			return
+
 
 func _record_player_goods(produced: Variant) -> void:
 	_player_goods_produced.clear()
@@ -117,18 +192,22 @@ func goods_standings() -> Array[Dictionary]:
 func goods_standings_for(match_seed: int, completed_turn: int, player_produced: Dictionary) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	var names := _rival_names_for(match_seed)
-	for good_variant: Variant in Catalog.all_goods():
+	for good_variant: Variant in MatchState.visible_goods():
 		var good: Dictionary = good_variant as Dictionary
 		var good_id := str(good.get("id", ""))
 		var apex: bool = str(good.get("goods_graph_tier", "")) == "apex"
 		var rows: Array[Dictionary] = []
 		if not apex and Catalog.base_output_for_good(good_id) > 0:
-			for competitor_index: int in range(RIVAL_COUNT):
+			# Only the companies that are IN this good, not all nine. Every good used to list
+			# all of them at identical output, so the sort fell through to the id tiebreak and
+			# the same three names topped every good in the panel.
+			for competitor_index: int in _competitors_for_good(match_seed, good_id):
 				rows.append({
 					"id": "rival_%d" % competitor_index,
 					"name": names[competitor_index],
 					"is_player": false,
 					"quantity": _rival_good_output_for(match_seed, good_id, competitor_index, completed_turn),
+					"tiebreak": _good_tiebreak(match_seed, good_id, competitor_index),
 				})
 			_sort_good_rows(rows)
 			rows = rows.slice(0, 3)
@@ -149,6 +228,36 @@ func goods_standings_for(match_seed: int, completed_turn: int, player_produced: 
 			"producers": rows,
 		})
 	return out
+
+## Which rival companies compete in a given good, as rival indices.
+##
+## Deterministic from (match_seed, good_id), like every other rival figure here — the same
+## match always shows the same table — but DIFFERENT per good, which is the point: coal and
+## copper are not contested by the same firms, and a panel that said they were looked broken.
+## Between GOOD_MIN_COMPETITORS and RIVAL_COUNT of them, so some goods are crowded and some
+## are nearly the player's alone.
+func _competitors_for_good(match_seed: int, good_id: String) -> Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = _goods_seed_for(match_seed, good_id, 0, PARTICIPATION_SALT)
+	var pool: Array = []
+	for i: int in range(RIVAL_COUNT):
+		pool.append(i)
+	# Fisher-Yates on our own RNG. Array.shuffle() would draw from the global RNG, which
+	# this module must never touch (a test pins that table generation leaves it alone).
+	for i: int in range(pool.size() - 1, 0, -1):
+		var j: int = rng.randi_range(0, i)
+		var swap: Variant = pool[i]
+		pool[i] = pool[j]
+		pool[j] = swap
+	var count: int = rng.randi_range(GOOD_MIN_COMPETITORS, RIVAL_COUNT)
+	return pool.slice(0, count)
+
+## A stable per-(good, company) ordering key. Rival outputs are identical until the first
+## increment lands, so without this the display order inside one good is just id order.
+func _good_tiebreak(match_seed: int, good_id: String, competitor_index: int) -> int:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = _goods_seed_for(match_seed, good_id, competitor_index, TIEBREAK_SALT)
+	return rng.randi()
 
 func _player_good_quantity(good_id: String, player_produced: Dictionary) -> int:
 	# Power is keyed by its internal name in Production's summary, unlike normal goods.
@@ -186,6 +295,10 @@ func _sort_good_rows(rows: Array[Dictionary]) -> void:
 		var b_is_player: bool = bool(b["is_player"])
 		if a_is_player != b_is_player:
 			return a_is_player
+		# Equal output: use the per-good key when the rows carry one (the goods tables do),
+		# so the order inside a good is that good's, not a global id order.
+		if a.has("tiebreak") and b.has("tiebreak"):
+			return int(a["tiebreak"]) < int(b["tiebreak"])
 		return str(a["id"]) < str(b["id"])
 	)
 
@@ -254,10 +367,39 @@ func _rival_revenue_for(match_seed: int, competitor_index: int, completed_turn: 
 		var rng := RandomNumberGenerator.new()
 		rng.seed = _seed_for(match_seed, competitor_index, turn, DRAW_SALT)
 		if phase == CyclePhase.GROW:
-			revenue *= 1.0 + _growth_rate(rng)
+			# Damped by how much headroom this firm has left against ITS ceiling for THIS turn.
+			# Undamped, this line compounds five turns in every nine at a 15% mean and never
+			# stops: x1,197 by turn 100 and x1.7 BILLION by turn 300, which is how the table
+			# came to read £50k a turn against a player earning £1.1k. The market these firms
+			# trade in is finite and it grows at the pace the player's does; the curve now says
+			# so. Early growth is untouched, because headroom starts at 1.
+			revenue *= 1.0 + _growth_rate(rng) * _headroom(revenue, _ceiling_for(competitor_index, turn))
 		else:
 			revenue *= 1.0 - _decay_rate(rng)
 	return revenue
+
+
+## What a player on the measured run is earning per turn at `turn`. Exponential rather than
+## straight-line, because an economy compounds — a linear reading would put the reference far
+## too high through the opening fifty turns, which is exactly where the demo lives.
+func _reference_revenue(turn: int) -> float:
+	return REFERENCE_START * pow(REFERENCE_END / REFERENCE_START, float(turn) / float(REFERENCE_TURNS))
+
+
+## The ceiling for one rival slot on one turn. Slot 0 is the leader; each slot after it sits
+## a step lower, which is what makes the table fan out into positions rather than a huddle.
+## Seeded name shuffling means slot 0 is a different company every match, so a fixed ladder
+## here does not mean the same firm always wins.
+func _ceiling_for(competitor_index: int, turn: int) -> float:
+	var step: float = float(competitor_index) / float(maxi(RIVAL_COUNT - 1, 1))
+	return _reference_revenue(turn) * lerpf(LEADER_CEILING_MULTIPLE, TAIL_CEILING_MULTIPLE, step)
+
+
+## How much of its growth a firm still has in front of it, 1 at the start and falling to 0
+## at the ceiling. Decay still bites at full strength, so firms near the top oscillate
+## under it rather than pinning to it.
+func _headroom(revenue: float, ceiling: float) -> float:
+	return pow(clampf(1.0 - revenue / maxf(ceiling, 1.0), 0.0, 1.0), HEADROOM_EXPONENT)
 
 ## Normal draws favour 10–20% while the hard limits prevent an exceptional
 ## sample from making a runaway one-turn jump.
@@ -311,6 +453,7 @@ func export_state() -> Dictionary:
 	return {
 		"player_revenue_history": _player_revenue_history.duplicate(),
 		"player_goods_produced": _player_goods_produced.duplicate(),
+		"player_rank_history": player_rank_history.duplicate(),
 	}
 
 func import_state(d: Dictionary) -> void:
@@ -320,6 +463,11 @@ func import_state(d: Dictionary) -> void:
 		for value: Variant in raw:
 			_player_revenue_history.append(float(value))
 	_player_revenue_history = _trim_history(_player_revenue_history)
+	player_rank_history.clear()
+	var raw_rank: Variant = d.get("player_rank_history", [])
+	if raw_rank is Array:
+		for value: Variant in raw_rank:
+			player_rank_history.append(int(value))
 	_player_goods_produced.clear()
 	var raw_goods: Variant = d.get("player_goods_produced", {})
 	if raw_goods is Dictionary:
