@@ -36,6 +36,37 @@ var river_properties := {}
 ## neighbouring path's water.
 var _pass := 1
 
+## Viewport culling, the same shape BuildingVisuals uses.
+##
+## _draw walked EVERY tile on the map — twice, because the shipped style draws ink linework as
+## a second pass — and the resulting command buffer is replayed by the renderer every frame
+## whether or not _draw runs again. Measured at 13.5 ms/frame, 58% of everything the world
+## costs, for a map of which a screenful is a small fraction (owner, 25 Aug: panning is jerky).
+##
+## The margin is generous because a river is drawn from its tile CENTRE and reaches into its
+## neighbours; culling on the centre alone would clip an arm at the screen edge.
+const CULL_MARGIN := 900.0
+const ViewStream := preload("res://scripts/view_stream.gd")
+var _view := Rect2()
+
+func _process(_delta: float) -> void:
+	var view := _visible_world_rect()
+	if view.size.x <= 0.0:
+		return
+	# See view_stream.gd: `!=` repaints on any sub-pixel drift, which is every frame.
+	if not ViewStream.settled(view, _view, CULL_MARGIN):
+		_view = view
+		queue_redraw()
+
+func _visible_world_rect() -> Rect2:
+	var vp := get_viewport()
+	if vp == null:
+		return Rect2()
+	var size := vp.get_visible_rect().size
+	if size.x <= 0.0:
+		return Rect2()
+	return (vp.get_canvas_transform().affine_inverse() * Rect2(Vector2.ZERO, size)).grow(CULL_MARGIN)
+
 func _ready() -> void:
 	river_properties = _load_river_properties()
 	MapStyle.style_changed.connect(queue_redraw)
@@ -46,11 +77,17 @@ func _draw() -> void:
 		return
 
 	var passes: Array = [0, 1] if MapStyle.uses_ink_linework() else [1]
+	# Empty until _process has polled once (and in tests, which never run a viewport): an empty
+	# rect means "no opinion", and every tile is drawn exactly as before.
+	var cull := _view.size.x > 0.0
 	for p in passes:
 		_pass = p
 		for coord in terrain_layer.tiles:
 			var tile_data: Dictionary = terrain_layer.tiles[coord]
 			if not tile_data.get("has_river", false):
+				continue
+			if cull and not _view.has_point(
+					terrain_layer.map_to_local(terrain_layer.map_coord_for_tile_coord(coord))):
 				continue
 			var river_type: String = str(tile_data.get("river_type", ""))
 			if river_type == "" or not river_properties.has(river_type):
