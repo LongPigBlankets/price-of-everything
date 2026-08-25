@@ -30,8 +30,12 @@ const PANEL_INSET := 24.0   # frame inset from the screen edges
 ## Anchored across the whole right region it came out ~2,500px wide on the owner's ultrawide,
 ## which pulled the seven start cards, the narrative line and the settings columns apart into
 ## a band of whitespace with the content stranded in the middle of it.
-const NEW_GAME_PANEL_W := 1420.0
-## ...and it opens this far right of the main menu's own section, rather than a full inset.
+## 1396 is what a 1080p screen leaves between the navy block and the right inset, so a wide
+## display shows the panel at exactly the size a 1080p one does.
+const NEW_GAME_PANEL_W := 1396.0
+## ...and it opens this far right of the NAVY BLOCK behind the menu, not of the bordered frame
+## inside it. Measuring from the frame put the panel four pixels inside the navy and it read as
+## an overlap (owner, 25 Aug) — the block runs the full left quarter, the frame is inset in it.
 const NEW_GAME_PANEL_GAP := 20.0
 const SIDE_PAD := 30        # left/right padding inside the frame
 const EDGE_PAD := 44        # New Game from the top of the buttons / Quit from the bottom
@@ -201,7 +205,7 @@ func _layout_new_game_panel() -> void:
 	if _new_game_panel == null:
 		return
 	var vw: float = get_viewport_rect().size.x
-	var left: float = vw * 0.25 - PANEL_INSET + NEW_GAME_PANEL_GAP
+	var left: float = vw * 0.25 + NEW_GAME_PANEL_GAP
 	var w: float = minf(NEW_GAME_PANEL_W, maxf(320.0, vw - PANEL_INSET - left))
 	_new_game_panel.anchor_left = 0.0
 	_new_game_panel.anchor_right = 0.0

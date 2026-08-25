@@ -281,6 +281,7 @@ func _ready() -> void:
 	await _test_notification_bell_smoke()
 	_test_road_regions()
 	_test_hills_baked_fresh()
+	_test_hill_texture_baked_fresh()
 	_test_start_layout_baked_fresh()
 	await _test_hill_field_determinism()
 	await _test_grid_selection_follows_panel()
@@ -1469,6 +1470,38 @@ func _test_audio_service() -> void:
 # tile_properties.csv, which it also hashes) silently invalidated it, every one of the
 # 417 start placements fell through to the live packer, and a 10 s load became 53 s with
 # a green suite. The hills bake has had this test since it existed; this one earns it.
+# The hill TEXTURE bake is the fourth of the four and, until now, the only one with no
+# freshness test — which is how a stale one shipped and stayed. Re-baking the hills silently
+# invalidated it, HillTextureBaked.texture() refused the picture on disk as "not a picture of
+# this map", and the relief was redrawn live on every load: 6.9 s, measured, of a 15.4 s load.
+# It says so on stdout, but nothing fails, so the warning scrolls past under everything else.
+#
+# It is refused for FOUR reasons and every one of them costs the same 6.9 s, so all four are
+# checked here rather than only the hash: a version bump, a stale hash, a palette that is not
+# the shipped default, and a PNG Godot cannot load because it never got an .import sidecar.
+func _test_hill_texture_baked_fresh() -> void:
+	var script: Variant = load("res://scripts/hill_texture_baked.gd")
+	var doc: Dictionary = script.data()
+	_check(not doc.is_empty(),
+		"hill texture: bake manifest exists and parses (run tools/bake_hill_texture.tscn)")
+	if doc.is_empty():
+		return
+	_check(int(doc.get("bake_version", -1)) == script.BAKE_VERSION,
+		"hill texture: bake is this build's version")
+	_check(str(doc.get("source_hash", "")) == HillBaked.source_hash(),
+		"hill texture: bake matches the hills (re-run tools/bake_hill_texture.tscn after "
+		+ "tools/bake_hills.tscn — a stale one costs ~7 s of load, silently)")
+	# The shipped bake has to be in the style the game SHIPS in, or it is refused at load for a
+	# palette mismatch and redrawn live. `toggle ink` legitimately moves off it; the default
+	# must not.
+	_check(str(doc.get("style", "")) == script.style_key(
+			MapStyle.ink, MapStyle.plate, MapStyle.is_midcentury()),
+		"hill texture: bake is in the shipped default map style")
+	_check(ResourceLoader.exists(script.TEXTURE_PATH),
+		"hill texture: the baked PNG is loadable (run `--headless --import` after a re-bake, "
+		+ "or Godot cannot see it and the relief is drawn live anyway)")
+
+
 func _test_start_layout_baked_fresh() -> void:
 	var script := load("res://scripts/start_layout_baked.gd")
 	_check(FileAccess.file_exists(script.BAKE_PATH), "start layout: baked file exists")
