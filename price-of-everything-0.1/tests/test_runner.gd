@@ -6413,8 +6413,13 @@ func _test_demo_victory_tracks() -> void:
 	# ...and the tunables have to ADD UP to that 1000, or a track that reads as full would
 	# score something other than its max and "2.5 tracks" would stop meaning 2500.
 	var vs := VictoryState
-	_check(vs.DEMO_CROWN_TURNS * vs.DEMO_CROWN_POINTS_PER_TURN == 1000,
-		"demo arithmetic: 20 turns x 50 points = 1000")
+	var crown_rates_add_up := true
+	for place: int in vs.DEMO_CROWN_TURNS_BY_RANK:
+		crown_rates_add_up = crown_rates_add_up and (
+			int(vs.DEMO_CROWN_TURNS_BY_RANK[place]) * int(vs.DEMO_CROWN_POINTS_BY_RANK[place])
+			== vs.DEMO_CROWN_TARGET)
+	_check(crown_rates_add_up and vs.DEMO_CROWN_TARGET == 1000,
+		"demo arithmetic: 20 turns first, 40 second and 100 third each reach the same 1000")
 	_check(vs.DEMO_TIERS.size() * vs.DEMO_TIER_CAP == 1000
 		and vs.DEMO_TIER_UNITS * vs.DEMO_TIER_POINTS_PER_UNIT == vs.DEMO_TIER_CAP,
 		"demo arithmetic: 5 units x 40 caps a tier at 200, and 5 tiers = 1000")
@@ -6426,18 +6431,28 @@ func _test_demo_victory_tracks() -> void:
 	_check(vs.DEMO_WIN_THRESHOLD == 2500 and vs.DEMO_WIN_THRESHOLD * 2 == 5 * 1000,
 		"demo arithmetic: the 2500 bar is exactly half of five full tracks")
 
-	# 1 · Crown — 50 points a turn at the top of the revenue ranking, banked.
-	VictoryState.demo_crown_turns = 0
-	_check(is_zero_approx(VictoryState._live_progress("crown")), "demo crown: nothing at zero turns")
-	VictoryState.demo_crown_turns = 10
+	# 1 · Crown — podium points, banked: 50 for first, 25 for second, 10 for third, nothing
+	# below. Counting POINTS rather than turns is what lets the three places mix and match.
+	VictoryState.demo_crown_points = 0
+	_check(is_zero_approx(VictoryState._live_progress("crown")), "demo crown: nothing off the podium")
+	VictoryState.demo_crown_points = 500
 	_check(absf(VictoryState._live_progress("crown") - 0.5) < 0.001,
-		"demo crown: 10 of 20 turns is half the track (500 points)")
-	VictoryState.demo_crown_turns = 20
+		"demo crown: 500 points is half the track — ten turns leading, or twenty in second")
+	VictoryState.demo_crown_points = VictoryState.DEMO_CROWN_TARGET
 	_check(is_equal_approx(VictoryState._live_progress("crown"), 1.0),
-		"demo crown: 20 turns tops the track")
-	VictoryState.demo_crown_turns = 40
+		"demo crown: 1000 points tops the track")
+	VictoryState.demo_crown_points = VictoryState.DEMO_CROWN_TARGET * 3
 	_check(is_equal_approx(VictoryState._live_progress("crown"), 1.0),
-		"demo crown: more than 20 does not overflow it")
+		"demo crown: a long run on the podium does not overflow it")
+	# The mix the owner asked for: a season split between places has to land on the same
+	# 1000 as a season spent wholly at any one of them.
+	var mixed: int = 10 * int(VictoryState.DEMO_CROWN_POINTS_BY_RANK[1])
+	mixed += 10 * int(VictoryState.DEMO_CROWN_POINTS_BY_RANK[2])
+	mixed += 25 * int(VictoryState.DEMO_CROWN_POINTS_BY_RANK[3])
+	_check(mixed == VictoryState.DEMO_CROWN_TARGET,
+		"demo crown: 10 turns first + 10 second + 25 third also fills it exactly")
+	_check(not VictoryState.DEMO_CROWN_POINTS_BY_RANK.has(4),
+		"demo crown: fourth place and below pay nothing")
 
 	# 2 · Tiers — 5 units a tier, 40 points each, capped at 200 a tier. Every tier pays
 	# separately, so breadth is the ask and depth in one tier cannot substitute.
@@ -6531,15 +6546,20 @@ func _test_demo_victory_tracks() -> void:
 		"demo victory: two and a half tracks wins at turn 100")
 
 	# The counters survive a save, or a demo run reloaded is a demo run reset.
-	VictoryState.demo_crown_turns = 7
+	VictoryState.demo_crown_points = 350
 	VictoryState.demo_long_hauls = 3
 	var snapshot: Dictionary = VictoryState.export_state()
 	VictoryState.reset()
-	_check(VictoryState.demo_crown_turns == 0 and VictoryState.demo_long_hauls == 0,
+	_check(VictoryState.demo_crown_points == 0 and VictoryState.demo_long_hauls == 0,
 		"demo victory: reset clears the demo counters")
 	VictoryState.import_state(snapshot)
-	_check(VictoryState.demo_crown_turns == 7 and VictoryState.demo_long_hauls == 3,
+	_check(VictoryState.demo_crown_points == 350 and VictoryState.demo_long_hauls == 3,
 		"demo victory: the demo counters round-trip through a save")
+	# Saves written before the Crown paid by place hold a first-place TURN count, not points.
+	VictoryState.import_state({"demo_crown_turns": 7})
+	_check(VictoryState.demo_crown_points == 7 * int(VictoryState.DEMO_CROWN_POINTS_BY_RANK[1]),
+		"demo victory: an older save's crown turns convert to points on load")
+	VictoryState.import_state(snapshot)
 
 	# Back to the campaign, and nothing of the demo is left behind.
 	MatchState.reset()
@@ -7974,7 +7994,11 @@ func _test_company_rankings() -> void:
 		"company rankings: no rival ever passes 1.5x what the player earns, at turn 25, 100 or 300")
 	_check(fanned_out,
 		"company rankings: the field fans out into positions rather than bunching at the ceiling")
-	var tied: Array[Dictionary] = CompanyRankings.standings_for(24680, 0, [100.0])
+	# Turn 0: every rival is still on STARTING_REVENUE, so matching it is a real tie. Written
+	# against the constant rather than a literal, because the literal silently stopped tying
+	# the moment rivals were moved off 100 to open level with the player.
+	var tied: Array[Dictionary] = CompanyRankings.standings_for(
+		24680, 0, [CompanyRankings.STARTING_REVENUE])
 	_check(bool(tied[0].get("is_player", false)) and int(tied[0].get("rank", 0)) == 1,
 		"company rankings: equal revenue always favours Your Company")
 	var player_row: Dictionary = {}

@@ -15,7 +15,7 @@ func _ready() -> void:
 	await _settle(60)
 	# Part-filled tracks, so the meters, the metric lines and the forecast all have
 	# something to say — an all-zero panel would hide a formatting mistake.
-	VictoryState.demo_crown_turns = 13
+	VictoryState.demo_crown_points = 650
 	VictoryState.demo_long_hauls = 4
 	VictoryState.track_best["crown"] = 0.65
 	VictoryState.track_best["tiers"] = 1.0

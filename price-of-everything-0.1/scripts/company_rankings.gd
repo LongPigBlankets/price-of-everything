@@ -10,7 +10,10 @@ const GOOD_MIN_COMPETITORS := 3
 const PARTICIPATION_SALT := 7717
 const TIEBREAK_SALT := 9931
 const TOTAL_COMPANIES := RIVAL_COUNT + 1
-const STARTING_REVENUE := 100.0
+## Rivals open level with the player rather than a third of the way behind. At 100 the
+## player led the table for the first dozen turns simply by existing, which banked most of
+## the Crown track before a single decision was made.
+const STARTING_REVENUE := 150.0
 const HISTORY_TURNS := 5
 const PLAYER_ID := "player"
 const PLAYER_NAME := "Your Company"
@@ -23,13 +26,13 @@ const PLAYER_NAME := "Your Company"
 const REFERENCE_START := 145.0
 const REFERENCE_END := 1100.0
 const REFERENCE_TURNS := 100
-## The leading firm's ceiling, as a multiple of that curve (owner: "max 1.5x"). It is an
-## asymptote, not a target: the leader settles a little under it, around 1.35x the player.
-const LEADER_CEILING_MULTIPLE := 1.5
-## ...and how far each slot below the leader sits under it, so positions 2-10 fan out
-## instead of stacking. Nine rivals at 7% a step spans 1.5x the curve down to 0.9x; a player
-## on the reference run lands mid-table with four firms to climb past.
-const SLOT_CEILING_FALLOFF := 0.07
+## The band the nine rivals occupy, as multiples of that curve: the leading firm tops out at
+## 1.2x what the player earns and the ninth at 0.6x, with the seven between them spread
+## evenly. The narrow top is the point (owner, 25 Aug) — at 1.5x the leader was out of reach
+## and the podium was a spectator sport, where at 1.2x a player on the reference run trades
+## second and third place and a run 20% better than it leads outright.
+const LEADER_CEILING_MULTIPLE := 1.2
+const TAIL_CEILING_MULTIPLE := 0.6
 ## Growth is damped by the SQUARE ROOT of the headroom left, not the headroom itself. Damping
 ## linearly makes a firm creep: it stalls at roughly two thirds of a ceiling that is itself
 ## still rising, so the leader never actually gets near its 1.5x. The square root leaves early
@@ -358,8 +361,8 @@ func _reference_revenue(turn: int) -> float:
 ## Seeded name shuffling means slot 0 is a different company every match, so a fixed ladder
 ## here does not mean the same firm always wins.
 func _ceiling_for(competitor_index: int, turn: int) -> float:
-	var slot: float = maxf(0.1, 1.0 - SLOT_CEILING_FALLOFF * float(competitor_index))
-	return _reference_revenue(turn) * LEADER_CEILING_MULTIPLE * slot
+	var step: float = float(competitor_index) / float(maxi(RIVAL_COUNT - 1, 1))
+	return _reference_revenue(turn) * lerpf(LEADER_CEILING_MULTIPLE, TAIL_CEILING_MULTIPLE, step)
 
 
 ## How much of its growth a firm still has in front of it, 1 at the start and falling to 0

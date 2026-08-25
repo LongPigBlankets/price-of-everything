@@ -235,7 +235,7 @@ static func _track_stat(key: String) -> String:
 	var vs := VictoryState
 	match key:
 		"crown":
-			return "%d turns on top" % vs.demo_crown_turns
+			return "%d podium points" % vs.demo_crown_points
 		"tiers":
 			return "%d%% of the tiers" % int(round(100.0 * vs._demo_tiers_progress()))
 		"distance":
@@ -264,7 +264,7 @@ static func _track_sub(key: String, done: bool) -> String:
 	var vs := VictoryState
 	match key:
 		"crown":
-			return "of %d needed" % vs.DEMO_CROWN_TURNS
+			return "of %d — 50 first, 25 second, 10 third" % vs.DEMO_CROWN_TARGET
 		"tiers":
 			return "%d units a tier, every tier" % vs.DEMO_TIER_UNITS
 		"distance":

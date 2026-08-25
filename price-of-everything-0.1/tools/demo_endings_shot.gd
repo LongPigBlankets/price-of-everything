@@ -130,7 +130,7 @@ func _seed(secured: Array, partial: Dictionary) -> void:
 			VictoryState.track_best[key] = float(partial.get(key, 0.0))
 	VictoryState.won = VictoryState.total_for_turn(100) >= VictoryState.win_threshold_for_turn(100)
 	VictoryState.won_turn = 100 if VictoryState.won else 0
-	VictoryState.demo_crown_turns = 13
+	VictoryState.demo_crown_points = 650
 	VictoryState.demo_long_hauls = 4
 	VictoryState.history_revenue = []
 	VictoryState.history_output = []

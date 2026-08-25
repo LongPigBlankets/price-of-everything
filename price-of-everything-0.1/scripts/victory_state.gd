@@ -90,7 +90,7 @@ const CAMPAIGN_TRACK_EXPLAIN := {
 #
 # Each track still maxes at TRACK_MAX (1000), so the shapes downstream are unchanged and
 # the arithmetic the owner specified lands exactly on it:
-#   crown     20 turns x 50            = 1000
+#   crown     20 turns 1st x 50        = 1000  (or 40 x 25 2nd, or 100 x 10 3rd)
 #   tiers     5 tiers x 200 cap        = 1000
 #   distance  10 shipments x 100       = 1000
 #   green     4000 power / 100 x 25    = 1000
@@ -109,7 +109,7 @@ const DEMO_TRACK_COLOR_KEYS := {
 	"green_demo": "OK", "estate": "BUTTON_RIM_LIGHT",
 }
 const DEMO_TRACK_EXPLAIN := {
-	"crown": "Turns spent top of the revenue ranking. Cumulative — a turn at the top is banked and never lost, so 20 of them wins the track however they are spread.",
+	"crown": "Points for ending a turn on the podium: 50 for first, 25 for second, 10 for third. Cumulative, and they mix — 1,000 fills it, so 20 turns leading, or 40 in second, or 100 in third, or any blend of the three.",
 	"tiers": "Units produced this turn in each tier, up to 5 a tier. Every tier pays, so a broad chain beats a deep one — five units of each of the five tiers fills it.",
 	"distance": "Shipments delivered over a journey of more than 10 turns. Cumulative, and long hauls only: ten of them fills the track.",
 	"green_demo": "Wind and solar generated THIS TURN. It does not accumulate between turns — your best single turn is what stands, and 4,000 MW fills it.",
@@ -121,14 +121,22 @@ const DEMO_TRACK_EXPLAIN := {
 const DEMO_WIN_THRESHOLD := 2500
 
 ## Every demo track is worth exactly 1000, which is what makes "2.5 tracks" a round 2500:
-##   crown    20 turns x 50            = 1000
+##   crown    20 turns 1st x 50        = 1000  (or 40 x 25 2nd, or 100 x 10 3rd)
 ##   tiers    5 tiers x 200 a tier     = 1000
 ##   distance 10 hauls x 100           = 1000
 ##   green    4000 MW / 100 x 25       = 1000
 ##   estate   30 buildings x 30 + 100  = 1000
 ## The numbers below are the owner's (23 Aug); the equalities above are pinned by the suite.
-const DEMO_CROWN_TURNS := 20        # turns at the top of the revenue ranking to fill it
-const DEMO_CROWN_POINTS_PER_TURN := 50
+## The Crown pays by PODIUM PLACE, not by first alone (owner, 25 Aug). Because the track
+## counts points rather than turns the three rates mix freely: 20 turns leading fills it,
+## and so does 40 in second, 100 in third, or any combination that reaches DEMO_CROWN_TARGET.
+## Fourth and below pay nothing, so slipping off the podium stops the clock rather than
+## slowing it — which is the pressure the track exists to apply.
+const DEMO_CROWN_POINTS_BY_RANK := {1: 50, 2: 25, 3: 10}
+const DEMO_CROWN_TARGET := 1000
+## Turns at each place that would fill it alone, for the panels to quote. Derived, not a
+## second source of truth: the suite pins each against the rate above.
+const DEMO_CROWN_TURNS_BY_RANK := {1: 20, 2: 40, 3: 100}
 const DEMO_TIER_UNITS := 5          # units per tier per turn that pay
 const DEMO_TIER_POINTS_PER_UNIT := 40
 const DEMO_TIER_CAP := 200          # per tier, per turn
@@ -194,7 +202,7 @@ var _green_ids: Array = []               # building_ids resolved from GREEN_BUIL
 
 # Demo counters. Only these two accumulate; the other three demo tracks are read fresh
 # from the turn and kept by the same monotonic track_best the campaign uses.
-var demo_crown_turns: int = 0            # turns finished top of the revenue ranking
+var demo_crown_points: int = 0           # podium points banked, 50/25/10 by place
 var demo_long_hauls: int = 0             # shipments delivered over a long journey
 
 signal score_changed(total: int, breakdown: Dictionary)
@@ -284,7 +292,7 @@ func export_state() -> Dictionary:
 		"history_buildings": history_buildings.duplicate(),
 		"produced_by_good": produced_by_good.duplicate(),
 		"track_secured_turn": track_secured_turn.duplicate(),
-		"demo_crown_turns": demo_crown_turns,
+		"demo_crown_points": demo_crown_points,
 		"demo_long_hauls": demo_long_hauls,
 	}
 
@@ -322,7 +330,9 @@ func import_state(d: Dictionary) -> void:
 	var pbg: Dictionary = d.get("produced_by_good", {})
 	for g in pbg:
 		produced_by_good[str(g)] = int(pbg[g])
-	demo_crown_turns = int(d.get("demo_crown_turns", 0))
+	# Saves written before the Crown paid by place carry a TURN count at first place only.
+	demo_crown_points = int(d.get("demo_crown_points",
+		int(d.get("demo_crown_turns", 0)) * int(DEMO_CROWN_POINTS_BY_RANK.get(1, 50))))
 	demo_long_hauls = int(d.get("demo_long_hauls", 0))
 	var tst: Dictionary = d.get("track_secured_turn", {})
 	for k in tst:
@@ -397,8 +407,8 @@ func _tick() -> void:
 	richest_window.append(rp)
 	while richest_window.size() > RICHEST_WINDOW:
 		richest_window.pop_front()
-	# Demo counters advance before progress is read, so a turn spent top of the ranking
-	# scores on the turn it happened rather than the next one.
+	# Demo counters advance before progress is read, so a turn spent on the podium scores on
+	# the turn it happened rather than the next one.
 	if _demo_rules:
 		_demo_tick_counters()
 	# Live progress per track, then raise the best-ever (monotonic).
@@ -498,9 +508,9 @@ func _count_widest_tiles() -> int:
 # does the rest: a per-turn track keeps the best turn the player ever had, which is what
 # "does not stack from one turn to the next" means for the green track.
 
-## Turns spent top of the revenue ranking. Banked — a turn at the top is never lost.
+## Podium points banked. Never lost — a turn on the podium is paid for once and kept.
 func _demo_crown_progress() -> float:
-	return clampf(float(demo_crown_turns) / float(DEMO_CROWN_TURNS), 0.0, 1.0)
+	return clampf(float(demo_crown_points) / float(DEMO_CROWN_TARGET), 0.0, 1.0)
 
 ## Units produced THIS TURN per tier, DEMO_TIER_UNITS a tier paying
 ## DEMO_TIER_POINTS_PER_UNIT each, capped at DEMO_TIER_CAP per tier. Every tier pays
@@ -571,8 +581,7 @@ func _is_infrastructure(building_id: String) -> bool:
 func _demo_tick_counters() -> void:
 	for row: Dictionary in CompanyRankings.standings():
 		if bool(row.get("is_player", false)):
-			if int(row.get("rank", 99)) == 1:
-				demo_crown_turns += 1
+			demo_crown_points += int(DEMO_CROWN_POINTS_BY_RANK.get(int(row.get("rank", 99)), 0))
 			break
 
 func _greenest_stats() -> Dictionary:
@@ -638,8 +647,11 @@ func _build_breakdown(turn: int, total: int) -> Dictionary:
 func _metric_text(key: String) -> String:
 	match key:
 		"crown":
-			return "%d / %d turns top of the ranking (%d points a turn, banked)" % [
-				demo_crown_turns, DEMO_CROWN_TURNS, DEMO_CROWN_POINTS_PER_TURN]
+			return "%d / %d podium points — %d first, %d second, %d third, banked" % [
+				demo_crown_points, DEMO_CROWN_TARGET,
+				int(DEMO_CROWN_POINTS_BY_RANK.get(1, 0)),
+				int(DEMO_CROWN_POINTS_BY_RANK.get(2, 0)),
+				int(DEMO_CROWN_POINTS_BY_RANK.get(3, 0))]
 		"tiers":
 			return "%d%% this turn — %d units in each of the %d tiers fills it" % [
 				int(round(100.0 * _demo_tiers_progress())), DEMO_TIER_UNITS, DEMO_TIERS.size()]
@@ -723,7 +735,7 @@ func _reset_fields() -> void:
 	history_buildings = []
 	produced_by_good = {}
 	track_secured_turn = {}
-	demo_crown_turns = 0
+	demo_crown_points = 0
 	demo_long_hauls = 0
 	_last_summary = {}
 	_scored_turn = TurnManager.current_turn
