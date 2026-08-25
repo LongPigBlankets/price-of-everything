@@ -14,6 +14,13 @@ const STARTING_REVENUE := 100.0
 const HISTORY_TURNS := 5
 const PLAYER_ID := "player"
 const PLAYER_NAME := "Your Company"
+## The revenue a rival asymptotically approaches, in £ per turn. This is the ONE number
+## that decides whether the table is a race or a scoreboard: it wants to sit a little above
+## what a strong player reaches by the end of the match, so the top of the ranking is a
+## stretch rather than a fantasy. 15,000 is set against the demo's 100 turns, where a good
+## run peaks near £6k a turn. A 300-turn campaign, where the player grows far past that,
+## will want its own answer — most likely a ceiling that scales with the match length.
+const REVENUE_CEILING := 15000.0
 const GROWTH_MEAN := 0.15
 const GROWTH_STANDARD_DEVIATION := 0.05
 const GROWTH_MIN := 0.01
@@ -313,10 +320,22 @@ func _rival_revenue_for(match_seed: int, competitor_index: int, completed_turn: 
 		var rng := RandomNumberGenerator.new()
 		rng.seed = _seed_for(match_seed, competitor_index, turn, DRAW_SALT)
 		if phase == CyclePhase.GROW:
-			revenue *= 1.0 + _growth_rate(rng)
+			# Damped by how much headroom is left. Undamped this line compounds five turns
+			# in every nine at a 15% mean and NEVER stops: x1,197 by turn 100 and x1.7
+			# BILLION by turn 300, which is why the table read £50k+ a turn against a player
+			# peaking near £6k. The market these firms trade in is finite; the curve now
+			# says so, and early growth is untouched because headroom starts at 1.
+			revenue *= 1.0 + _growth_rate(rng) * _headroom(revenue)
 		else:
 			revenue *= 1.0 - _decay_rate(rng)
 	return revenue
+
+
+## How much of its growth a firm still has in front of it, 1 at the start and falling to 0
+## at the ceiling. Decay still bites at full strength, so firms near the top oscillate
+## under it rather than pinning to it.
+func _headroom(revenue: float) -> float:
+	return clampf(1.0 - revenue / REVENUE_CEILING, 0.0, 1.0)
 
 ## Normal draws favour 10–20% while the hard limits prevent an exceptional
 ## sample from making a runaway one-turn jump.

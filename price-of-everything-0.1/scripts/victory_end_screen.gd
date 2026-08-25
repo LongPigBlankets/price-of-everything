@@ -1467,23 +1467,26 @@ class _ChainWeb extends Control:
 		out.append(route[route.size() - 1])
 		return out
 
-	## The Goods Graph's chip: the good's icon on cream, with a rim in its category accent
-	## and the name underneath.
+	## The Goods Graph's chip: the good's icon on cream, and the name underneath. NO
+	## coloured rim (owner 2026-08-25) — the category accent read as a status light around
+	## every good, and the goods already say what they are. The art is drawn at its OWN
+	## ASPECT inside the chip: stretching it to the square squashed the tall ones, which is
+	## why Ethylene's flask came out short and fat.
 	func _chip(n: Dictionary, c: Vector2) -> void:
 		var r := Rect2(c - Vector2(CHIP, CHIP) * 0.5, Vector2(CHIP, CHIP))
-		var accent := Color(str(n.get("accent", "b9c4d2")))
 		draw_rect(Rect2(r.position + Vector2(1.5, 2.5), r.size), Color(0, 0, 0, 0.40), true)
 		DrawUtil.round_rect(self, r, 11.0, CREAM)
 		var tex: Texture2D = GoodIcons.texture_for_size(str(n.get("gid", "")),
 			str(n.get("id", "")), CHIP)
 		if tex != null:
-			draw_texture_rect(tex, r.grow(-5.0), false)
-		var rim := PackedVector2Array([r.position + Vector2(11.0, 0), Vector2(r.end.x - 11.0, r.position.y),
-			Vector2(r.end.x, r.position.y + 11.0), Vector2(r.end.x, r.end.y - 11.0),
-			Vector2(r.end.x - 11.0, r.end.y), Vector2(r.position.x + 11.0, r.end.y),
-			Vector2(r.position.x, r.end.y - 11.0), Vector2(r.position.x, r.position.y + 11.0),
-			r.position + Vector2(11.0, 0)])
-		draw_polyline(rim, Color(accent, 0.9), 2.0, true)
+			var box := r.grow(-5.0)
+			var ts := tex.get_size()
+			if ts.x > 0.0 and ts.y > 0.0:
+				var k: float = minf(box.size.x / ts.x, box.size.y / ts.y)
+				var drawn := ts * k
+				draw_texture_rect(tex, Rect2(box.get_center() - drawn * 0.5, drawn), false)
+			else:
+				draw_texture_rect(tex, box, false)
 		if font == null:
 			return
 		var name := str(n.get("display", ""))
