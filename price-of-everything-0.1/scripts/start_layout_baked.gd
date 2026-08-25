@@ -38,12 +38,16 @@ const BAKE_VERSION := 1
 ## Files that decide WHERE a building can stand. A change to any of them invalidates the
 ## whole bake. (start_buildings.json / ports.csv are deliberately NOT here: they decide WHAT
 ## is placed, which is reconciled per building instead.)
+const BakeInputs := preload("res://scripts/bake_inputs.gd")
+## Hashed whole — all three are geometry end to end.
 const PLACEMENT_INPUTS := [
 	"res://data/hills_baked.json",       # water, elevation and the coastline the masks cut against
 	"res://data/roads_baked.json",       # the start road network buildings lay out along
-	"res://data/tile_properties.csv",    # tile types, so which tiles are land at all
 	"res://data/river_properties.csv",   # river arms and their reserved bank corridors
 ]
+## Digested column-wise instead: placement cares what a tile IS — its type, its deposits, its
+## capacity — and never what it is called. See BakeInputs for why that is an exclude list.
+const TILE_CSV := "res://data/tile_properties.csv"
 
 static var _cache: Dictionary = {}
 static var _loaded := false
@@ -55,6 +59,7 @@ static func content_hash() -> String:
 	var blob := "v%d" % BAKE_VERSION
 	for path in PLACEMENT_INPUTS:
 		blob += "|" + FileAccess.get_md5(path)
+	blob += "|" + BakeInputs.csv_digest(TILE_CSV)
 	var doc: String = AuthoredMap.active_name()
 	blob += "|doc=" + doc
 	if doc != "":
