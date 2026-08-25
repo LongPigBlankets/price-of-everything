@@ -35,7 +35,7 @@ const TITLE_SIZE := 40
 ## Content inset from the panel edge, clearing the brass pipe frame.
 const FRAME_INSET := 26
 const GOOD_ICON := 56           # the frameless cream tile; the usual size for a good
-const INFRA_ICON := 38          # the infrastructure's own building icon
+const INFRA_ICON := 32          # the infrastructure's own art, on the same cream chip as a good
 const PILL_HEIGHT := 22
 
 ## The filter chips over the infrastructure column, in build order. Cables carry power
@@ -584,18 +584,16 @@ func _mode_label(mode: String) -> String:
 ## player built. Falls back to nothing rather than to a coloured square: the swatch this
 ## replaced said only 'road' twice, once in colour and once in words.
 func _infra_icon(mode: String) -> Control:
-	var holder := TextureRect.new()
-	holder.custom_minimum_size = Vector2(INFRA_ICON, INFRA_ICON)
-	holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	holder.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	holder.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var key := InfraIcons.normalise(mode)
 	var building: Dictionary = Catalog.get_building_by_internal_name(key)
-	# CLEANED, not the raw source: the raw building PNGs carry an opaque navy block, which
-	# on a card of its own navy read as a slightly-wrong square behind every icon.
-	holder.texture = BuildingIcon.clean_texture(str(building.get("id", "")), key)
-	return holder
+	# CLEANED, not the raw source: the raw building PNGs carry an opaque navy block, which on a
+	# card of its own navy read as a slightly-wrong square behind every icon. And on the SAME
+	# cream chip the goods in this panel wear — pipes and reinforced pipes were the only art
+	# here sitting bare on the navy, so they read as a different class of thing (owner, 25 Aug).
+	var texture: Texture2D = BuildingIcon.clean_texture(str(building.get("id", "")), key)
+	var chip := UIHelpers.make_plain_texture_icon(texture, INFRA_ICON)
+	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return chip
 
 
 ## The filter chips above the infrastructure list. Every mode starts on, so the column

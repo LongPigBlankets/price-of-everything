@@ -2576,6 +2576,18 @@ func _make_stock_bar(name: String, good_id: String, qty: int, max_qty: int, colo
 	bs.set_corner_radius_all(3)
 	bar.add_theme_stylebox_override("panel", bs)
 	col.add_child(bar)
+	# Hover: the bar lights up and throws its own colour as a soft halo, so the column under
+	# the cursor is obvious before it is clicked (owner, 25 Aug). The whole COLUMN is the hit
+	# target — the bar itself ignores the mouse — so the glow follows the thing you can click.
+	var glow := StyleBoxFlat.new()
+	glow.bg_color = color.lightened(0.22)
+	glow.set_corner_radius_all(3)
+	glow.shadow_color = Color(color, 0.55)
+	glow.shadow_size = 7
+	col.mouse_entered.connect(func() -> void:
+		bar.add_theme_stylebox_override("panel", glow))
+	col.mouse_exited.connect(func() -> void:
+		bar.add_theme_stylebox_override("panel", bs))
 
 	# 60×60 good icon (blank slot for "Other goods").
 	var icon_slot := Control.new()
