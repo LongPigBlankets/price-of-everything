@@ -278,6 +278,7 @@ func _ready() -> void:
 	await _test_notification_bell_smoke()
 	_test_road_regions()
 	_test_hills_baked_fresh()
+	_test_start_layout_baked_fresh()
 	await _test_hill_field_determinism()
 	await _test_grid_selection_follows_panel()
 	await _test_tile_view_player_building_filter()
@@ -1460,6 +1461,21 @@ func _test_audio_service() -> void:
 # Baked hills are the canonical hand-painted shape: the file must exist, match
 # the current CSVs/generator (else someone forgot to re-bake), and only ever
 # block subtiles on hill tiles (flat tiles take lv1-2 spill but never block).
+# The START LAYOUT bake is the third of the three, and the only one with no freshness
+# check — which is how a stale one shipped: re-baking hills and roads (and touching
+# tile_properties.csv, which it also hashes) silently invalidated it, every one of the
+# 417 start placements fell through to the live packer, and a 10 s load became 53 s with
+# a green suite. The hills bake has had this test since it existed; this one earns it.
+func _test_start_layout_baked_fresh() -> void:
+	var script := load("res://scripts/start_layout_baked.gd")
+	_check(FileAccess.file_exists(script.BAKE_PATH), "start layout: baked file exists")
+	var doc: Dictionary = script.state()
+	_check(not doc.is_empty(), "start layout: baked file parses")
+	_check(str(doc.get("content_hash", "")) == script.content_hash(),
+		"start layout: bake is fresh (re-run tools/bake_start_layout.tscn after a map, "
+		+ "roads or hills re-bake — a stale one costs ~40 s of load)")
+
+
 func _test_hills_baked_fresh() -> void:
 	_check(FileAccess.file_exists(HillBaked.BAKED_PATH), "hills: baked file exists")
 	var doc := HillBaked.data()

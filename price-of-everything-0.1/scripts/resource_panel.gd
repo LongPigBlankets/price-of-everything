@@ -30,7 +30,8 @@ const MODE_ORDER := ["rail", "roads", "pipes", "reinf_pipes"]
 var _dragging := false
 var _drag_offset := Vector2.ZERO
 var _expanded: Dictionary = {}       # good_id -> bool
-var _detail_boxes: Dictionary = {}   # good_id -> the detail Control under its row
+var _detail_boxes: Dictionary = {}   # good_id -> the detail Control under its row (lazy)
+var _good_data: Dictionary = {}      # good_id -> the catalog row, for building that detail
 
 func _ready() -> void:
 	close_button.pressed.connect(hide)
@@ -95,6 +96,7 @@ func _build_panel_content() -> void:
 	for child in content_vbox.get_children():
 		child.queue_free()
 	_detail_boxes.clear()
+	_good_data.clear()
 	content_vbox.add_theme_constant_override("separation", 2)
 	for good_data: Variant in MatchState.visible_goods():
 		_add_good(good_data as Dictionary)
@@ -150,16 +152,24 @@ func _add_good(good: Dictionary) -> void:
 	tail.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	line.add_child(tail)
 
-	var detail := _build_detail(good)
-	detail.visible = bool(_expanded.get(gid, false))
-	group.add_child(detail)
-	_detail_boxes[gid] = detail
+	# The freight table is built when the row is first OPENED. Building all of them up
+	# front cost half a second of the load for panels nobody had asked for yet — every
+	# good, twelve TransportService quotes each, and a grid of Controls apiece. This panel
+	# is in main.tscn, so its _ready is on the load path.
+	_good_data[gid] = good
 	_refresh_row(group, gid)
 
 
 func _toggle_good(gid: String) -> void:
 	_expanded[gid] = not bool(_expanded.get(gid, false))
 	var detail := _detail_boxes.get(gid) as Control
+	if detail == null and bool(_expanded[gid]):
+		var group := content_vbox.get_node_or_null("Good_%s" % gid)
+		if group == null:
+			return
+		detail = _build_detail(_good_data.get(gid, {}))
+		group.add_child(detail)
+		_detail_boxes[gid] = detail
 	if detail != null:
 		detail.visible = bool(_expanded[gid])
 
