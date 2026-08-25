@@ -384,6 +384,9 @@ static func _join_names(names: Array) -> String:
 # Superlatives drawn from ledgers the sim already keeps, display-ready, so the screen can
 # show THIS run's things — good icons, building art, an advisor portrait — rather than
 # abstract numbers alone (owner 2026-08-24).
+## How many goods the "Most sold" plate ranks.
+const TOP_SOLD_SHOWN := 5
+
 static func _company_highlights() -> Dictionary:
 	var vs := VictoryState
 	var top_prod := {"gid": "", "qty": 0, "qty_text": "—"}
@@ -391,12 +394,19 @@ static func _company_highlights() -> Dictionary:
 		var q: int = int(vs.produced_by_good[gid])
 		if q > int(top_prod.qty):
 			top_prod = {"gid": str(gid), "qty": q, "qty_text": _num(q) + " units"}
-	var top_sold := {"gid": "", "qty": 0, "qty_text": "—"}
+	# The top FIVE sold, ranked, not just the winner (owner, 25 Aug). One good said almost
+	# nothing about a run: a company that sold five things in quantity and one that sold one
+	# looked identical here. `top_sold` stays as the head of the list so nothing else that reads
+	# it has to change.
+	var sold_rank: Array = []
 	for g_variant in MatchState.visible_goods():
 		var gid := str((g_variant as Dictionary).get("id", ""))
 		var q := MarketState.lifetime_sold(gid)
-		if q > int(top_sold.qty):
-			top_sold = {"gid": gid, "qty": q, "qty_text": _num(q) + " units"}
+		if q > 0:
+			sold_rank.append({"gid": gid, "qty": q, "qty_text": _num(q) + " units"})
+	sold_rank.sort_custom(func(a, b): return int(a["qty"]) > int(b["qty"]))
+	sold_rank = sold_rank.slice(0, TOP_SOLD_SHOWN)
+	var top_sold: Dictionary = sold_rank[0] if not sold_rank.is_empty() 		else {"gid": "", "qty": 0, "qty_text": "—"}
 	# Most value created by one building: what it PUT INTO THE WORLD less what it cost to
 	# run — inputs at market, upkeep, labour, and its power at the grid price whatever
 	# supplied it (owner 2026-08-24: own generation is a sale foregone, not a freebie).
@@ -490,7 +500,7 @@ static func _company_highlights() -> Dictionary:
 				bands += 1
 				break
 	var chain := {"nodes": cnodes, "edges": cedges, "bands": bands, "band_total": 5}
-	return {"top_produced": top_prod, "top_sold": top_sold, "workhorse": work,
+	return {"top_produced": top_prod, "top_sold": top_sold, "top_sold_list": sold_rank, "workhorse": work,
 		"advisor": adv, "chain": chain}
 
 

@@ -13,7 +13,9 @@ const TOTAL_COMPANIES := RIVAL_COUNT + 1
 ## Rivals open level with the player rather than a third of the way behind. At 100 the
 ## player led the table for the first dozen turns simply by existing, which banked most of
 ## the Crown track before a single decision was made.
-const STARTING_REVENUE := 150.0
+## Where every rival starts. Lives in the difficulty preset with the rest of the rival tuning;
+## the alias is kept because callers and tests read CompanyRankings.STARTING_REVENUE.
+static var STARTING_REVENUE: float = float(difficulty()["starting_revenue"])
 const HISTORY_TURNS := 5
 const PLAYER_ID := "player"
 const PLAYER_NAME := "Your Company"
@@ -26,20 +28,48 @@ const PLAYER_NAME := "Your Company"
 const REFERENCE_START := 145.0
 const REFERENCE_END := 1100.0
 const REFERENCE_TURNS := 100
-## The band the nine rivals occupy, as multiples of that curve: the leading firm tops out at
-## 1.2x what the player earns and the ninth at 0.6x, with the seven between them spread
-## evenly. The narrow top is the point (owner, 25 Aug) — at 1.5x the leader was out of reach
-## and the podium was a spectator sport, where at 1.2x a player on the reference run trades
-## second and third place and a run 20% better than it leads outright.
-const LEADER_CEILING_MULTIPLE := 1.2
-const TAIL_CEILING_MULTIPLE := 0.6
-## Growth is damped by the SQUARE ROOT of the headroom left, not the headroom itself. Damping
-## linearly makes a firm creep: it stalls at roughly two thirds of a ceiling that is itself
-## still rising, so the leader never actually gets near its 1.5x. The square root leaves early
-## growth alone (headroom starts at 1, and 1 is its own root) and only bites near the top.
-const HEADROOM_EXPONENT := 0.5
-const GROWTH_MEAN := 0.15
-const GROWTH_STANDARD_DEVIATION := 0.05
+## ── Rival difficulty ────────────────────────────────────────────────────────────────────
+##
+## Everything above is the YARDSTICK — the player's own measured earnings — and is not a
+## difficulty knob. What follows is: where the nine rivals sit against that yardstick, and how
+## hard they push. It is a named preset rather than loose constants so that a difficulty
+## selector, when there is one, has somewhere to point (owner, 25 Aug: "save the growth curve
+## above as a 'hard' difficulty setting for the future"). Switching ACTIVE_DIFFICULTY is the
+## whole switch — nothing else in this file carries a number of its own.
+##
+## Only the calibrated preset exists today. Adding "standard" and "gentle" is a balance pass
+## with its own measured run behind it, not a guess made here.
+##
+##   leader_ceiling / tail_ceiling — the band the nine occupy, as multiples of the yardstick.
+##       The narrow top is the point: at 1.5x the leader was out of reach and the podium was a
+##       spectator sport, where at 1.2x a player on the reference run trades second and third
+##       place, and a run 20% better than it leads outright.
+##   headroom_exponent — growth is damped by the SQUARE ROOT of the headroom left, not the
+##       headroom itself. Damping linearly makes a firm creep: it stalls at roughly two thirds
+##       of a ceiling that is itself still rising, so the leader never reaches its own band.
+##       The square root leaves early growth alone (headroom starts at 1, its own root) and
+##       only bites near the top.
+const DIFFICULTIES := {
+	# Calibrated against the owner's full 100-turn run, 25 Aug 2026.
+	"hard": {
+		"starting_revenue": 150.0,
+		"leader_ceiling": 1.2,
+		"tail_ceiling": 0.6,
+		"headroom_exponent": 0.5,
+		"growth_mean": 0.15,
+		"growth_standard_deviation": 0.05,
+	},
+}
+const ACTIVE_DIFFICULTY := "hard"
+
+static func difficulty() -> Dictionary:
+	return DIFFICULTIES.get(ACTIVE_DIFFICULTY, DIFFICULTIES["hard"])
+
+static var LEADER_CEILING_MULTIPLE: float = float(difficulty()["leader_ceiling"])
+static var TAIL_CEILING_MULTIPLE: float = float(difficulty()["tail_ceiling"])
+static var HEADROOM_EXPONENT: float = float(difficulty()["headroom_exponent"])
+static var GROWTH_MEAN: float = float(difficulty()["growth_mean"])
+static var GROWTH_STANDARD_DEVIATION: float = float(difficulty()["growth_standard_deviation"])
 const GROWTH_MIN := 0.01
 const GROWTH_MAX := 0.25
 const DECAY_MIN := 0.01

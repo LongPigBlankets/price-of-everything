@@ -524,11 +524,16 @@ func _build_company(data: Dictionary) -> Control:
 	var box: VBoxContainer = sec.get_child(0)
 	box.add_child(_section_head("The company"))
 
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 14)
+	# A FLOW row, not a fixed one: "Most sold" now carries a ranked five and is wider than the
+	# single-figure plates beside it, so the last plate drops to a second line rather than all
+	# four being squeezed (owner, 25 Aug — "expand that section up to 5, maybe sideways which
+	# kicks another panel onto the next row").
+	var row := HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 14)
+	row.add_theme_constant_override("v_separation", 14)
 	box.add_child(row)
 	row.add_child(_good_showcase("Most produced", co.get("top_produced", {})))
-	row.add_child(_good_showcase("Most sold", co.get("top_sold", {})))
+	row.add_child(_top_sold_showcase(co.get("top_sold_list", [])))
 	row.add_child(_workhorse_showcase(co.get("workhorse", {})))
 	row.add_child(_advisor_showcase(co.get("advisor", {})))
 
@@ -572,6 +577,48 @@ func _good_showcase(caption: String, d: Dictionary) -> Control:
 	var icon := _UIHelpers.make_plain_good_icon(gid, Catalog.get_internal_name(gid), 72)
 	return _showcase_plate(caption, icon, str(d.get("qty_text", "")),
 		Catalog.get_display_name(gid))
+
+
+## The five goods the company sold most of, ranked — the plate that replaced a single winner.
+## One good said almost nothing about a run: a company that sold five things in quantity and
+## one that sold only one read identically (owner, 25 Aug).
+const TOP_SOLD_PLATE_W := 430
+
+func _top_sold_showcase(list: Array) -> Control:
+	if list.is_empty():
+		return _showcase_plate("Most sold", null, "—", "nothing sold this run")
+	var plate := _CutPlate.new(16, 12, _CutPlate.COPPER)
+	plate.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	plate.custom_minimum_size = Vector2(TOP_SOLD_PLATE_W, 0)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	plate.add_child(v)
+	v.add_child(_lbl("MOST SOLD", _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED))
+	for i in list.size():
+		var g: Dictionary = list[i]
+		var gid := str(g.get("gid", ""))
+		var r := HBoxContainer.new()
+		r.add_theme_constant_override("separation", 10)
+		# The rank reads quieter by SIZE, not by a greyer ink — the house rule for anything on
+		# one of these dark plates.
+		var rank := _lbl(str(i + 1), _UIFonts.mono(), 13, C_STAT_VALUE)
+		rank.custom_minimum_size = Vector2(14, 0)
+		rank.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		rank.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		r.add_child(rank)
+		r.add_child(_UIHelpers.make_plain_good_icon(gid, Catalog.get_internal_name(gid), 34))
+		var nm := _lbl(Catalog.get_display_name(gid), _UIFonts.PLEX_MED, 15, C_STAT_VALUE)
+		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		nm.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		nm.clip_text = true
+		nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		r.add_child(nm)
+		var qty := _lbl(str(g.get("qty_text", "")), _UIFonts.mono(), 15, C_STAT_VALUE)
+		qty.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		qty.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		r.add_child(qty)
+		v.add_child(r)
+	return plate
 
 
 func _workhorse_showcase(d: Dictionary) -> Control:
@@ -1363,6 +1410,7 @@ class _ChainWeb extends Control:
 	const ROUTE_COLORS := [Color("#f2c14e"), Color("#6f9fd8"), Color("#7ec98a"), Color("#b48ad9")]
 	const CREAM := Color(0.995234, 0.930806, 0.763265)
 	const CHIP := 58.0
+	const WIRE_CHIP := 26.0   # the good riding a connector, small enough not to fight the nodes
 	const ROW := 96.0
 	var nodes: Array = []
 	var edges: Array = []
@@ -1398,6 +1446,10 @@ class _ChainWeb extends Control:
 		var cw := minf(size.x / float(maxi(1, tiers.size())), 235.0)
 		var x0 := (size.x - cw * float(tiers.size())) * 0.5
 		var centre: Dictionary = {}      # id -> chip centre
+		var gid_of: Dictionary = {}      # id -> good id, for the icon riding each wire
+		for n_variant: Variant in nodes:
+			var nn: Dictionary = n_variant
+			gid_of[str(nn.get("id", ""))] = str(nn.get("gid", ""))
 		for c in by_col:
 			var col: Array = by_col[c]
 			col.sort_custom(_bigger_first)
@@ -1414,7 +1466,9 @@ class _ChainWeb extends Control:
 			var b = centre.get(str(e.get("to", "")))
 			if a == null or b == null:
 				continue
-			_wire(a, b, ROUTE_COLORS[clampi(int(e.get("route", 0)), 0, ROUTE_COLORS.size() - 1)])
+			# The good travelling the line is the one at its TAIL — the input being fed on.
+			_wire(a, b, ROUTE_COLORS[clampi(int(e.get("route", 0)), 0, ROUTE_COLORS.size() - 1)],
+				str(gid_of.get(str(e.get("from", "")), "")), str(e.get("from", "")))
 		for n_variant: Variant in nodes:
 			var n: Dictionary = n_variant
 			var c2 = centre.get(str(n.get("id", "")))
@@ -1429,7 +1483,7 @@ class _ChainWeb extends Control:
 	## One orthogonal run between two chips, filleted at the corners and tipped with an
 	## arrowhead. A link that runs backwards (a good feeding something in an earlier column)
 	## dips under its own row rather than cutting straight through the chips between.
-	func _wire(a: Vector2, b: Vector2, col: Color) -> void:
+	func _wire(a: Vector2, b: Vector2, col: Color, gid := "", internal := "") -> void:
 		var from := a + Vector2(CHIP * 0.5 + 3.0, 0)
 		var to := b - Vector2(CHIP * 0.5 + 9.0, 0)
 		var route := PackedVector2Array()
@@ -1449,6 +1503,46 @@ class _ChainWeb extends Control:
 		var nrm := Vector2(-dir.y, dir.x)
 		draw_colored_polygon(PackedVector2Array([tip, tip - dir * 9.0 + nrm * 5.4,
 			tip - dir * 9.0 - nrm * 5.4]), Color(col, 0.9))
+		# The good itself, riding the line — the main supply chain's own treatment, which this
+		# panel never picked up (owner, 25 Aug). Without it a wire says only THAT two goods are
+		# linked, never WHICH good moves along it, and on a web with four route colours that is
+		# the question the reader actually has.
+		if gid != "":
+			_wire_good(_along(pts, 0.5), gid, internal)
+
+	## The point half way along a polyline BY LENGTH — not the middle vertex, which on an
+	## orthogonal run with a long leg and a short one is nowhere near the middle.
+	func _along(pts: PackedVector2Array, t: float) -> Vector2:
+		if pts.size() < 2:
+			return pts[0] if pts.size() == 1 else Vector2.ZERO
+		var total := 0.0
+		for i in range(1, pts.size()):
+			total += pts[i].distance_to(pts[i - 1])
+		var want := total * t
+		var walked := 0.0
+		for i in range(1, pts.size()):
+			var seg := pts[i].distance_to(pts[i - 1])
+			if walked + seg >= want and seg > 0.0:
+				return pts[i - 1].lerp(pts[i], (want - walked) / seg)
+			walked += seg
+		return pts[pts.size() - 1]
+
+	## A small cream chip on the wire, the node chips' treatment at wire scale.
+	func _wire_good(c: Vector2, gid: String, internal: String) -> void:
+		var r := Rect2(c - Vector2(WIRE_CHIP, WIRE_CHIP) * 0.5, Vector2(WIRE_CHIP, WIRE_CHIP))
+		draw_rect(Rect2(r.position + Vector2(1.0, 1.5), r.size), Color(0, 0, 0, 0.40), true)
+		DrawUtil.round_rect(self, r, 6.0, CREAM)
+		var tex: Texture2D = GoodIcons.texture_for_size(gid, internal, WIRE_CHIP)
+		if tex == null:
+			return
+		var box := r.grow(-3.0)
+		var ts := tex.get_size()
+		if ts.x > 0.0 and ts.y > 0.0:
+			var k: float = minf(box.size.x / ts.x, box.size.y / ts.y)
+			var drawn := ts * k
+			draw_texture_rect(tex, Rect2(box.get_center() - drawn * 0.5, drawn), false)
+		else:
+			draw_texture_rect(tex, box, false)
 
 	func _fillet(route: PackedVector2Array, r: float) -> PackedVector2Array:
 		if route.size() < 3:

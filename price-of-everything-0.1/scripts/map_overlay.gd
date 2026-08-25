@@ -1028,11 +1028,17 @@ func _get_power_status_for_tile(tile_data: Dictionary) -> Dictionary:
 	if has_power_buildings:
 		if power_required_total > 0 and not has_cables:
 			return {"state": "cables_missing", "power_required": power_required_total}
-		# Intermittent renewable generation (solar/wind) gets its own barber-pole overlay,
-		# taking precedence over the tile's net balance so intermittent sources stand out.
-		var intermittent: int = int(Production.get_tile_intermittency(tile_id).get("green_intermittent_produced", 0))
-		if intermittent > 0:
-			return {"state": "intermittent", "intermittent": intermittent}
+		# The amber/green barber-pole is a WARNING — "intermittent generation here is not firmed"
+		# — so it keys on the unfirmed share, not on the mere presence of a solar panel.
+		#
+		# It used to fire on green_intermittent_produced, which is what the tile GENERATES. That
+		# never falls, so a tile stayed striped after batteries had firmed it and there was
+		# nothing left to warn about (owner, 25 Aug). unfirmed_consumed is the same number the
+		# derate and firmed_intermittent_power() are computed from: batteries firm it, it drops
+		# to zero, and the tile falls through to its ordinary surplus/deficit colour.
+		var unfirmed: float = float(Production.get_tile_intermittency(tile_id).get("unfirmed_consumed", 0.0))
+		if unfirmed > 0.0:
+			return {"state": "intermittent", "intermittent": int(round(unfirmed))}
 		var net: int = power_produced - power_consumed
 		if net > 0:
 			return {"state": "surplus", "net": net}

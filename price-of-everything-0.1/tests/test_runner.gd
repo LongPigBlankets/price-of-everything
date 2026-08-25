@@ -283,6 +283,9 @@ func _ready() -> void:
 	_test_hills_baked_fresh()
 	_test_hill_texture_baked_fresh()
 	_test_start_layout_baked_fresh()
+	_test_authored_roads_all_baked()
+	_test_upgrade_techs_stand_on_lower_tiers()
+	_test_power_gates_in_band()
 	await _test_hill_field_determinism()
 	await _test_grid_selection_follows_panel()
 	await _test_tile_view_player_building_filter()
@@ -1479,6 +1482,129 @@ func _test_audio_service() -> void:
 # It is refused for FOUR reasons and every one of them costs the same 6.9 s, so all four are
 # checked here rather than only the hash: a version bump, a stale hash, a palette that is not
 # the shipped default, and a PNG Godot cannot load because it never got an .import sidecar.
+# Every authored road stroke has to land on a tile the bake actually wrote a texture for.
+#
+# The exporter used to offer the baker only the tiles each settlement DECLARES, but a
+# connector road is authored precisely to run past them, and the runtime only ever iterates
+# the manifest. So a stroke that left the declared set was drawn up to the last declared
+# tile's edge and then stopped — a dead straight cut across a road (owner, 25 Aug; 33 of 323
+# strokes had points on no baked tile, one of them every point it had).
+#
+# This checks the OUTPUT, not the exporter: it is equally a staleness tripwire, because a
+# document that gains a road running somewhere new fails here until the bake is re-run.
+func _test_authored_roads_all_baked() -> void:
+	var bake: Variant = load("res://scripts/authored_bake.gd")
+	var layout: Variant = load("res://scripts/authored_bake_layout.gd")
+	var doc: Dictionary = AuthoredMap.data()
+	var settlements: Dictionary = doc.get("settlements", {})
+	if settlements.is_empty():
+		return   # no authored document in this install; nothing to guard
+	var rects: Array[Rect2] = []
+	for tile_value: Variant in bake.tiles():
+		rects.append(bake.tile_rect(str(tile_value)))
+	_check(not rects.is_empty(), "authored roads: the bake manifest names at least one tile")
+	var stray := 0
+	var worst := ""
+	for settlement_value: Variant in settlements.values():
+		for stroke_value: Variant in ((settlement_value as Dictionary).get("roads", []) as Array):
+			var stroke: Dictionary = stroke_value
+			# STATIC strokes only. An `unlockable` one is deliberately kept out of the bake and
+			# drawn live by authored_road_visuals, so it has no baked tile to land on and never
+			# should — the 91 points that first failed this check all belonged to those.
+			if not layout.road_is_static(stroke):
+				continue
+			var points_value: Variant = stroke.get("points", [])
+			if typeof(points_value) != TYPE_ARRAY or (points_value as Array).size() < 2:
+				continue
+			for point_value: Variant in (points_value as Array):
+				if typeof(point_value) != TYPE_ARRAY or (point_value as Array).size() < 2:
+					continue
+				var p := Vector2(float((point_value as Array)[0]), float((point_value as Array)[1]))
+				var covered := false
+				for rect_value: Variant in rects:
+					if (rect_value as Rect2).has_point(p):
+						covered = true
+						break
+				if not covered:
+					stray += 1
+					if worst == "":
+						worst = str(stroke.get("id", "?"))
+	_check(stray == 0, "authored roads: every static stroke lies on a baked tile (re-run "
+		+ "tools/map_editor/bake_authored_map.tscn — %d stray point(s), first on %s)" % [stray, worst])
+
+
+# An upgrade tech may only stand on a tech from a LOWER tier.
+#
+# Industrial Goods Factory L2 (rank II) was gated behind a rank III node, so the upgrade that
+# should open the middle game sat behind the late one (owner, 25 Aug). Same-tier prereqs are
+# caught too: they make a tier a queue rather than a set of choices.
+func _test_upgrade_techs_stand_on_lower_tiers() -> void:
+	const RANK_ORDER := {"I": 1, "II": 2, "III": 3, "IV": 4, "V": 5}
+	var rows := _research_rows()
+	_check(not rows.is_empty(), "research: research_unlocks.csv parses")
+	var rank_of: Dictionary = {}
+	for row_value: Variant in rows:
+		var row: Dictionary = row_value
+		rank_of[str(row.get("research_node_id", ""))] = str(row.get("rank", ""))
+	var offenders: Array[String] = []
+	for row_value: Variant in rows:
+		var row: Dictionary = row_value
+		if not str(row.get("icon", "")) in ["level2", "level3"]:
+			continue
+		var mine: int = int(RANK_ORDER.get(str(row.get("rank", "")), 0))
+		for key in ["prereq_1", "prereq_2", "prereq_3", "prereq_othercategory"]:
+			var prereq := str(row.get(key, "")).strip_edges()
+			if prereq == "":
+				continue
+			_check(rank_of.has(prereq), "research: %s names a real prereq (%s)" % [
+				str(row.get("research_node_id", "")), prereq])
+			if int(RANK_ORDER.get(str(rank_of.get(prereq, "")), 9)) >= mine:
+				offenders.append("%s(%s)<-%s(%s)" % [str(row.get("research_node_id", "")),
+					str(row.get("rank", "")), prereq, str(rank_of.get(prereq, ""))])
+	_check(offenders.is_empty(),
+		"research: no upgrade tech stands on its own tier or above (%s)" % ", ".join(offenders))
+
+
+# A power gate asks for a quantity a real grid reaches, and not one it passes in a turn.
+# The shipped floor was 250 — one turn of the starting plant, so the node unlocked itself
+# (owner, 25 Aug: "minimum of 2500 and max of 10000").
+func _test_power_gates_in_band() -> void:
+	const FLOOR := 2500
+	const CEILING := 10000
+	var checked := 0
+	for row_value: Variant in _research_rows():
+		var row: Dictionary = row_value
+		if str(row.get("Object", "")).to_lower() != "power":
+			continue
+		var quantity := str(row.get("Quantity", ""))
+		if not quantity.is_valid_int():
+			continue
+		checked += 1
+		var q := int(quantity)
+		_check(q >= FLOOR and q <= CEILING,
+			"research: %s asks for %d power, inside %d–%d" % [
+				str(row.get("research_node_id", "")), q, FLOOR, CEILING])
+	_check(checked > 0, "research: at least one power gate was found to check")
+
+
+## research_unlocks.csv as an array of column->value dictionaries.
+func _research_rows() -> Array:
+	var file := FileAccess.open("res://data/research_unlocks.csv", FileAccess.READ)
+	if file == null:
+		return []
+	var header := file.get_csv_line()
+	var out: Array = []
+	while not file.eof_reached():
+		var row := file.get_csv_line()
+		if row.size() < header.size():
+			continue
+		var d: Dictionary = {}
+		for i in header.size():
+			d[header[i]] = row[i]
+		out.append(d)
+	return out
+
+
 func _test_hill_texture_baked_fresh() -> void:
 	var script: Variant = load("res://scripts/hill_texture_baked.gd")
 	var doc: Dictionary = script.data()
@@ -5645,8 +5771,8 @@ func _test_sell_protects_build_materials() -> void:
 		if str(input.get("good_id", "")) == "g_005":
 			need = Production._scaled_input_qty(input, MatchState.get_building(wire_mill))
 	var bought_in: int = int(Production.compute_sell_reserve_for_tile(own_tile).get("g_005", 0))
-	_check(need > 0 and bought_in >= need * 2,
-		"sell reserve: an input bought from market covers its lead plus a turn (%d of %d/turn)"
+	_check(need > 0 and bought_in == need,
+		"sell reserve: one turn's burn, whether the input is bought or smelted (%d of %d/turn)"
 		% [bought_in, need])
 	# Now the tile smelts its own, at more than the mill burns.
 	var copper_smelter := MatchState.add_building("b_002", "r_020", own_tile, "player_1")
@@ -9290,10 +9416,12 @@ func _test_auto_sell_goods() -> void:
 	MatchState.disable_auto_sell_good(t, "g_001")
 	_check(not MatchState.is_auto_sell_good(t, "g_001"), "per-good auto-sell clears")
 	_check(not MatchState.get_auto_sell_tiles().has(t), "tile drops out once no orders remain")
-	# Sell reserve = the local consumers' WORKING stock, not one turn of inputs:
-	# per-turn need × (market lead + 1), player-owned buildings only. r_008 eats
-	# 24 copper_ingots (g_005)/turn; lead ≥ 1 → reserve ≥ 48 and always a
-	# multiple of one turn's need above it. NPC buildings reserve nothing.
+	# Sell reserve = exactly ONE turn of the local consumers' burn, player-owned buildings
+	# only. r_008 eats 24 copper_ingots (g_005)/turn, so the tile keeps 24 and everything
+	# above it is surplus. It used to keep need × (market lead + 1); covering the lead here
+	# double-booked it against _buy_market_inputs, which already sizes orders against what is
+	# in transit, and left a consumer burning 40 sitting on 80 (owner, 25 Aug). NPC buildings
+	# reserve nothing.
 	var rt := "tile_15_5"
 	var riid: String = MatchState.add_building("b_007", "r_008", rt, "player_1", "reserve_test")
 	var reserve: Dictionary = Production.compute_sell_reserve_for_tile(rt)
@@ -9301,8 +9429,7 @@ func _test_auto_sell_goods() -> void:
 	var need: int = int(committed.get("g_005", 0))
 	_check(need > 0, "sell reserve test: recipe commits copper ingots per turn (%d)" % need)
 	var kept: int = int(reserve.get("g_005", 0))
-	_check(kept >= need * 2, "sell reserve keeps at least (lead+1)>=2 turns of inputs (%d >= %d)" % [kept, need * 2])
-	_check(kept % need == 0 and kept / need >= 2, "sell reserve is a whole number of turns (%d = %dx need)" % [kept, kept / need])
+	_check(kept == need, "sell reserve keeps exactly one turn of inputs (%d of %d/turn)" % [kept, need])
 	MatchState.remove_building(riid)
 	var npc_iid: String = MatchState.add_building("b_007", "r_008", rt, "npc", "reserve_test_npc")
 	_check(int(Production.compute_sell_reserve_for_tile(rt).get("g_005", 0)) == 0,
