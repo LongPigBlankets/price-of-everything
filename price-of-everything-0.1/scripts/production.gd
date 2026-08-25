@@ -2327,22 +2327,54 @@ func compute_committed_for_tile(tile_id: String) -> Dictionary:
 ## A good with no market route quotes lead 1 (2 turns kept) — the floor, since
 ## an unreachable tile can't refill what it sells.
 func compute_sell_reserve_for_tile(tile_id: String) -> Dictionary:
-	var reserve: Dictionary = {}
-	var lead_cache: Dictionary = {}
+	# What the tile burns, what it makes, and which inputs are still topped up from market.
+	var need_per_turn: Dictionary = {}    # good_id -> units consumed here each turn
+	var made_per_turn: Dictionary = {}    # good_id -> units produced here each turn
+	var market_sourced: Dictionary = {}   # good_id -> a consumer here still orders it
 	for building in MatchState.get_buildings_on_tile(tile_id):
 		if not MatchState.is_player_owned(building):
 			continue
+		var instance_id := str(building.get("instance_id", ""))
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
 		for input in recipe.get("inputs", []):
 			var good_id: String = input.get("good_id", "")
 			var qty: int = _scaled_input_qty(input, building)
 			if good_id == "" or qty <= 0:
 				continue
+			need_per_turn[good_id] = int(need_per_turn.get(good_id, 0)) + qty
+			if not MatchState.is_input_tile_only(instance_id, good_id):
+				market_sourced[good_id] = true
+		for output in recipe.get("outputs", []):
+			var out_id := str(output.get("good_id", ""))
+			if out_id == "":
+				continue
+			made_per_turn[out_id] = int(made_per_turn.get(out_id, 0)) + int(round(
+				float(output.get("qty", 0))
+				* BuildingLevels.mult("output", int(building.get("level", 1)))))
+
+	# The reserve covers the RESUPPLY LEAD, so an input with no lead to cover needs exactly one
+	# turn on hand — enough for next turn's run, which is what the player is promised.
+	#
+	# Two inputs have no lead. One the tile makes at least as much of as it burns: next turn
+	# makes more, and no order is ever placed. One the player has taken off market top-up:
+	# _buy_market_inputs skips those, so quoting a market lead for them was the SELL half of the
+	# pipeline disagreeing with the BUY half. That disagreement is why a tile that smelted its
+	# own ingots sat on two turns of them for ever with Sell all Surplus on, and looked to the
+	# owner like the reserve had frozen at whatever was there when they pressed it (25 Aug).
+	var reserve: Dictionary = {}
+	var lead_cache: Dictionary = {}
+	for good_key in need_per_turn:
+		var good_id := str(good_key)
+		var need: int = int(need_per_turn[good_id])
+		var lead := 0
+		var covered_locally: bool = int(made_per_turn.get(good_id, 0)) >= need
+		if not covered_locally and market_sourced.has(good_id):
 			if not lead_cache.has(good_id):
 				var quote: Dictionary = TransportService.quote_market_buy(
 					tile_id, good_id, 1, MatchState.seaport_would_cover(good_id))
 				lead_cache[good_id] = maxi(1, int(quote.get("turns", 1))) if not quote.is_empty() else 1
-			reserve[good_id] = int(reserve.get(good_id, 0)) + qty * (int(lead_cache[good_id]) + 1)
+			lead = int(lead_cache[good_id])
+		reserve[good_id] = need * (lead + 1)
 	# Materials an AWAITING construction on this tile still needs are not surplus
 	# either — the bill may gather over several turns, and selling the first half
 	# while the second is in transit re-buys the same goods forever.

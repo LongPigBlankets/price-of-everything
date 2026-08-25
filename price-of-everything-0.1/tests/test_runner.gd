@@ -5596,6 +5596,42 @@ func _test_sell_protects_build_materials() -> void:
 	MatchState.reset()
 	Stockpile.clear_all()
 
+	# (d) The reserve exists to cover a RESUPPLY LEAD, so an input with no lead to cover needs
+	# exactly one turn on hand. Two have none: one the tile makes at least as much of as it
+	# burns, and one the player has taken off market top-up. Quoting a market lead for either
+	# was the SELL half of the pipeline disagreeing with the BUY half — _buy_market_inputs
+	# skips both — and it is why a tile that smelted its own ingots sat on two turns of them
+	# for ever with Sell all Surplus on, which read as the reserve freezing (owner, 25 Aug).
+	var own_tile := "tile_9_9"
+	var wire_mill := MatchState.add_building("b_007", "r_008", own_tile, "player_1")   # burns g_005
+	var need := 0
+	for input_value: Variant in Catalog.get_recipe("r_008").get("inputs", []):
+		var input: Dictionary = input_value
+		if str(input.get("good_id", "")) == "g_005":
+			need = Production._scaled_input_qty(input, MatchState.get_building(wire_mill))
+	var bought_in: int = int(Production.compute_sell_reserve_for_tile(own_tile).get("g_005", 0))
+	_check(need > 0 and bought_in >= need * 2,
+		"sell reserve: an input bought from market covers its lead plus a turn (%d of %d/turn)"
+		% [bought_in, need])
+	# Now the tile smelts its own, at more than the mill burns.
+	var copper_smelter := MatchState.add_building("b_002", "r_020", own_tile, "player_1")
+	var made_here: int = int(Production.compute_sell_reserve_for_tile(own_tile).get("g_005", 0))
+	_check(made_here == need,
+		"sell reserve: a good the tile makes for itself is held at one turn's use (%d of %d/turn)"
+		% [made_here, need])
+	MatchState.remove_building(copper_smelter)
+	# ...and the same when the player has simply opted the input out of market top-up.
+	MatchState.set_input_tile_only(wire_mill, "g_005", true)
+	var tile_only: int = int(Production.compute_sell_reserve_for_tile(own_tile).get("g_005", 0))
+	_check(tile_only == need,
+		"sell reserve: an input taken off market top-up is held at one turn too (%d of %d/turn)"
+		% [tile_only, need])
+	MatchState.set_input_tile_only(wire_mill, "g_005", false)
+	MatchState.remove_building(wire_mill)
+	Modifiers.reset()
+	MatchState.reset()
+	Stockpile.clear_all()
+
 func _test_warehousing_fee_rates() -> void:
 	# Per-unit storage fee is a TWO-PART tariff by transport class (owner ruling 2026-07-27):
 	# flat floor-space leg + ad-valorem capital leg charged on this turn's decayed base price.
