@@ -713,31 +713,24 @@ func _build_port_card(building: Dictionary) -> PanelContainer:
 	var owned := bool(sea.get("owned", false))
 	var growth := float(sea.get("growth", 1.0))
 	var rate_pct := float(sea.get("insurance_rate", 0.0)) * 100.0 * growth
-	var default_head := Label.new()
-	default_head.theme_type_variation = "Caption"
-	default_head.text = "DEFAULT PORT TERMS"
-	default_head.add_theme_color_override("font_color", Color.WHITE)
-	vb.add_child(default_head)
-	vb.add_child(_port_metric("Ad valorem · turns 1–30", "0.5000% of market buy value"))
-	vb.add_child(_port_metric("Ad valorem · turn 31 onward", "3.0000% of market buy value"))
-	vb.add_child(_port_metric("Annual drift", "+0.1% to the fee each turn"))
-	vb.add_child(_port_metric("Throughput", "1,500 per class · 300 hazardous liquids, gases and ultra-heavy solids"))
-	vb.add_child(_port_metric("At the throughput cap", "Sea fees double for that shipment"))
-	vb.add_child(_port_metric("Owned port", "Ad valorem rate is halved; upkeep and labour apply"))
-	vb.add_child(HSeparator.new())
-	var actual_head := Label.new()
-	actual_head.theme_type_variation = "Caption"
-	actual_head.text = "YOUR CURRENT PORT COSTS"
-	actual_head.add_theme_color_override("font_color", Color.WHITE)
-	vb.add_child(actual_head)
-	vb.add_child(_port_metric("Flat fee now", "£%.2f per active good" % (float(sea.get("base_fee", 0.0)) * growth)))
-	vb.add_child(_port_metric("Ad valorem now", "%.4f%% of market buy value" % rate_pct))
-	vb.add_child(_port_metric("Throughput now", "%s per class · %s each for hazardous liquids, gases and ultra-heavy solids" % [
+	# Three sections, ordered by what each is WORTH to the player rather than by what is
+	# easiest to explain (owner, 25 Aug). What you are paying right now comes first, the goods
+	# that actually moved this turn second, and the rate card — reference you read once — last.
+	# Eleven metrics one separation apart read as a single undifferentiated wall; the air
+	# between the sections is what does the separating, so the rows inside one stay tight.
+	vb.add_theme_constant_override("separation", 5)
+
+	_port_section(vb, "WHAT YOU PAY NOW", true)
+	vb.add_child(_port_metric("Flat fee", "£%.2f per active good" % (float(sea.get("base_fee", 0.0)) * growth)))
+	vb.add_child(_port_metric("Ad valorem", "%.4f%% of market buy value" % rate_pct))
+	vb.add_child(_port_metric("Throughput", "%s per class · %s each for hazardous liquids, gases and ultra-heavy solids" % [
 		_fmt_int(sea_port_cap("g_018")), _fmt_int(sea_port_cap("g_017"))
 	]))
 	if owned:
 		vb.add_child(_port_metric("Owned-port upkeep", "£20.00 maintenance · about £15 labour / turn"))
+
 	var rows: Array = sea.get("rows", [])
+	_port_section(vb, "THIS TURN'S SEA FREIGHT" if bool(sea.get("is_current_turn", true)) else "MOST RECENT SEA FREIGHT", false)
 	if rows.is_empty():
 		var none := Label.new()
 		none.add_theme_color_override("font_color", Color.WHITE)
@@ -745,22 +738,41 @@ func _build_port_card(building: Dictionary) -> PanelContainer:
 		vb.add_child(none)
 	else:
 		var used_by_class: Dictionary = sea.get("usage", {})
-		var activity := Label.new()
-		activity.theme_type_variation = "Caption"
-		activity.add_theme_color_override("font_color", Color.WHITE)
-		activity.text = "THIS TURN'S SEA FREIGHT" if bool(sea.get("is_current_turn", true)) else "MOST RECENT SEA FREIGHT"
-		vb.add_child(activity)
 		for row_value in rows:
 			var row: Dictionary = row_value
 			vb.add_child(_port_activity_row(row, used_by_class))
+
+	_port_section(vb, "THE RATE CARD", false)
+	vb.add_child(_port_metric("Ad valorem · turns 1–30", "0.5000% of market buy value"))
+	vb.add_child(_port_metric("Ad valorem · turn 31 onward", "3.0000% of market buy value"))
+	vb.add_child(_port_metric("Annual drift", "+0.1% to the fee each turn"))
+	vb.add_child(_port_metric("Throughput", "1,500 per class · 300 hazardous liquids, gases and ultra-heavy solids"))
+	vb.add_child(_port_metric("At the throughput cap", "Sea fees double for that shipment"))
+	vb.add_child(_port_metric("Owned port", "Ad valorem rate is halved; upkeep and labour apply"))
 	return card
+
+
+## A section heading with air above it — less for the one that opens the card, since the
+## intro paragraph above it is already a break. The air IS the structure here: the rows
+## inside a section sit five pixels apart, so without it eleven metrics read as one wall.
+func _port_section(vb: VBoxContainer, title: String, first: bool) -> void:
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(0, DS.SP["MD"] if first else DS.SP["LG"])
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vb.add_child(gap)
+	var head := Label.new()
+	head.theme_type_variation = "Caption"
+	head.text = title
+	head.add_theme_color_override("font_color", Color.WHITE)
+	vb.add_child(head)
 
 func _port_activity_row(row_data: Dictionary, used_by_class: Dictionary) -> HBoxContainer:
 	var row := HBoxContainer.new()
-	row.custom_minimum_size = Vector2(0, 48)
-	row.add_theme_constant_override("separation", 8)
+	row.custom_minimum_size = Vector2(0, 62)
+	row.add_theme_constant_override("separation", 10)
 	var gid := str(row_data.get("good_id", ""))
-	var icon := _flat_good_cell(gid, Catalog.get_internal_name(gid), int(row_data.get("total_qty", 0)), 40)
+	# 50px on the cream plate, the size a good icon is everywhere else in the UI.
+	var icon := _flat_good_cell(gid, Catalog.get_internal_name(gid), int(row_data.get("total_qty", 0)), 50)
 	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(icon)
 	var detail := VBoxContainer.new()

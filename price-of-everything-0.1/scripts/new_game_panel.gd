@@ -29,8 +29,10 @@ const DEMO_SPEED_ID := "demo_itch"
 const DEMO_LOCK_TIP := "Locked in the Demo"
 
 const ICON := 120.0                                  # start-card icon size
-const CARD_PAD := 12                                 # fixed card content margin (constant across states)
-const DESC_INSET := 200                              # description inset from each container edge
+const CARD_PAD := 8                                  # fixed card content margin (constant across states)
+## Inset of the narrative line from each edge. 200 was set against a panel that stretched to
+## the screen; against a fixed 1420 it only squeezed the sentence into a column.
+const DESC_INSET := 72
 const BevelEdge := preload("res://scripts/bevel_edge.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
@@ -182,7 +184,7 @@ func _build() -> void:
 	# Expanded explanation — "Buildings owned" | "Financials". Shown while the accordion is
 	# closed; the accordion's toggle hides it when opened, freeing the space for the settings.
 	_start_detail_box = HBoxContainer.new()
-	_start_detail_box.add_theme_constant_override("separation", DS.SP["XL"] * 3)
+	_start_detail_box.add_theme_constant_override("separation", DS.SP["XL"])
 	_start_detail_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	_start_detail_box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	detail_col.add_child(_start_detail_box)
@@ -212,7 +214,8 @@ func _build_cards(parent: Node) -> void:
 	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	parent.add_child(center)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", DS.SP["LG"])
+	# Tight, so seven cards read as one row of choices rather than seven islands.
+	row.add_theme_constant_override("separation", DS.SP["SM"])
 	center.add_child(row)
 	var group := ButtonGroup.new()
 	for start in _starts:

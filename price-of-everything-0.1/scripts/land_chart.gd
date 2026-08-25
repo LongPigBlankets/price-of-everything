@@ -24,6 +24,11 @@ const SCALE_W := 22.0  # left label gutter — wide enough for 3 digits ("250")
 const BRACKET_MIN_OWNED := 10       # below one patch there is nothing to bracket
 const BRACKET_TICK := 5.0
 const BRACKET_W := 2.0
+## Strip reserved to the RIGHT of the bar for the owned bracket and its label. The bracket
+## always hung at the chart's right edge, but the bar ran to that edge too, so the line and
+## the rotated "Owned" sat on top of the topmost building's fill and its land figure. The bar
+## now stops short of it and the chart widens to match, so nothing is given up for the gutter.
+const BRACKET_GUTTER := 16.0
 
 var _segments: Array = []
 var _axis_max: float = 1.0
@@ -61,7 +66,7 @@ func configure(segments: Array, axis_max: float, max_label: int, detailed: bool 
 	_owned = owned
 	_buyable = buyable
 	_npc = npc
-	custom_minimum_size.x = 190 if detailed else 60  # 10px wider (eats rail padding)
+	custom_minimum_size.x = int(190 + BRACKET_GUTTER) if detailed else 60  # bar 190 + the bracket gutter
 	queue_redraw()
 
 func _draw() -> void:
@@ -118,7 +123,7 @@ func _draw_detailed() -> void:
 	var w := size.x
 	var h := size.y
 	var bx := SCALE_W
-	var bw := w - SCALE_W
+	var bw := w - SCALE_W - BRACKET_GUTTER
 	var ctop := 6.0
 	var cbot := h - BOTTOM_RESERVED
 	var ch := cbot - ctop

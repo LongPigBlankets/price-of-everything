@@ -135,8 +135,10 @@ func _ready() -> void:
 	visible = false
 
 func _apply_anchors() -> void:
-	# Rail is 75px collapsed / 200px expanded; widen the whole panel to match.
-	var panel_w := 780.0 if _rail_expanded else 655.0
+	# Rail is 75px collapsed / 216px expanded; widen the whole panel to match. The expanded
+	# rail grew by 16 when the land chart gained its owned-bracket gutter, so the bars keep
+	# the width — and the room for a building's name — that they had before it.
+	var panel_w := 796.0 if _rail_expanded else 655.0
 	custom_minimum_size = Vector2(panel_w, 0)
 	anchor_left = 1.0
 	anchor_right = 1.0
@@ -248,7 +250,7 @@ func _populate_land_rail() -> void:
 		c.queue_free()
 	_rail_owned_label = null
 	_rail_total_label = null
-	_land_rail.custom_minimum_size = Vector2(200 if _rail_expanded else 75, 0)
+	_land_rail.custom_minimum_size = Vector2(216 if _rail_expanded else 75, 0)
 
 	# Expand / Collapse toggle (top row).
 	var toggle := Button.new()

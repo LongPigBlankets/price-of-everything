@@ -6,7 +6,10 @@ extends Node
 ##   <godot> --path . res://tools/new_game_shot.tscn --quit-after 1200 -- 1
 
 func _ready() -> void:
-	get_window().size = Vector2i(1920, 1080)   # the game's resolution
+	# Width from the second user arg so the FIXED panel width can be checked against both a
+	# 1080p screen and the owner's ultrawide. /tmp does not exist on Windows — user:// does,
+	# and lands in AppData/Roaming/Godot/app_userdata.
+	get_window().size = Vector2i(_arg_width(), 1080)
 	var menu: Node = (load("res://scenes/main_menu.tscn") as PackedScene).instantiate()
 	add_child(menu)
 	await _settle(10)
@@ -24,10 +27,20 @@ func _ready() -> void:
 	if panel != null:
 		(panel as Control).modulate.a = 1.0
 	await _settle(3)
-	var out := "/tmp/poe_new_game_%d.png" % idx
+	var out := "user://poe_new_game_%d_%d.png" % [idx, _arg_width()]
 	get_viewport().get_texture().get_image().save_png(out)
 	print("saved ", out)
 	get_tree().quit(0)
+
+func _arg_width() -> int:
+	var seen := 0
+	for a in OS.get_cmdline_user_args():
+		if a.is_valid_int():
+			seen += 1
+			if seen == 2:
+				return a.to_int()
+	return 1920
+
 
 func _arg_index() -> int:
 	for a in OS.get_cmdline_user_args():
