@@ -14,13 +14,27 @@ const STARTING_REVENUE := 100.0
 const HISTORY_TURNS := 5
 const PLAYER_ID := "player"
 const PLAYER_NAME := "Your Company"
-## The revenue a rival asymptotically approaches, in £ per turn. This is the ONE number
-## that decides whether the table is a race or a scoreboard: it wants to sit a little above
-## what a strong player reaches by the end of the match, so the top of the ranking is a
-## stretch rather than a fantasy. 15,000 is set against the demo's 100 turns, where a good
-## run peaks near £6k a turn. A 300-turn campaign, where the player grows far past that,
-## will want its own answer — most likely a ceiling that scales with the match length.
-const REVENUE_CEILING := 15000.0
+## What the PLAYER actually earns per turn, measured off a full 100-turn demo run: £145 on
+## turn 1 rising to about £1,100 by turn 100 — a shade over 2% a turn, compounded. Every
+## rival ceiling below is expressed against this curve rather than as a flat number, for
+## three reasons. It is a race for the whole match instead of a wall in the first fifty
+## turns and a walkover in the last fifty. It is calibrated to something measured rather
+## than guessed. And a 300-turn campaign scales itself, instead of needing its own constant.
+const REFERENCE_START := 145.0
+const REFERENCE_END := 1100.0
+const REFERENCE_TURNS := 100
+## The leading firm's ceiling, as a multiple of that curve (owner: "max 1.5x"). It is an
+## asymptote, not a target: the leader settles a little under it, around 1.35x the player.
+const LEADER_CEILING_MULTIPLE := 1.5
+## ...and how far each slot below the leader sits under it, so positions 2-10 fan out
+## instead of stacking. Nine rivals at 7% a step spans 1.5x the curve down to 0.9x; a player
+## on the reference run lands mid-table with four firms to climb past.
+const SLOT_CEILING_FALLOFF := 0.07
+## Growth is damped by the SQUARE ROOT of the headroom left, not the headroom itself. Damping
+## linearly makes a firm creep: it stalls at roughly two thirds of a ceiling that is itself
+## still rising, so the leader never actually gets near its 1.5x. The square root leaves early
+## growth alone (headroom starts at 1, and 1 is its own root) and only bites near the top.
+const HEADROOM_EXPONENT := 0.5
 const GROWTH_MEAN := 0.15
 const GROWTH_STANDARD_DEVIATION := 0.05
 const GROWTH_MIN := 0.01
@@ -320,22 +334,39 @@ func _rival_revenue_for(match_seed: int, competitor_index: int, completed_turn: 
 		var rng := RandomNumberGenerator.new()
 		rng.seed = _seed_for(match_seed, competitor_index, turn, DRAW_SALT)
 		if phase == CyclePhase.GROW:
-			# Damped by how much headroom is left. Undamped this line compounds five turns
-			# in every nine at a 15% mean and NEVER stops: x1,197 by turn 100 and x1.7
-			# BILLION by turn 300, which is why the table read £50k+ a turn against a player
-			# peaking near £6k. The market these firms trade in is finite; the curve now
-			# says so, and early growth is untouched because headroom starts at 1.
-			revenue *= 1.0 + _growth_rate(rng) * _headroom(revenue)
+			# Damped by how much headroom this firm has left against ITS ceiling for THIS turn.
+			# Undamped, this line compounds five turns in every nine at a 15% mean and never
+			# stops: x1,197 by turn 100 and x1.7 BILLION by turn 300, which is how the table
+			# came to read £50k a turn against a player earning £1.1k. The market these firms
+			# trade in is finite and it grows at the pace the player's does; the curve now says
+			# so. Early growth is untouched, because headroom starts at 1.
+			revenue *= 1.0 + _growth_rate(rng) * _headroom(revenue, _ceiling_for(competitor_index, turn))
 		else:
 			revenue *= 1.0 - _decay_rate(rng)
 	return revenue
 
 
+## What a player on the measured run is earning per turn at `turn`. Exponential rather than
+## straight-line, because an economy compounds — a linear reading would put the reference far
+## too high through the opening fifty turns, which is exactly where the demo lives.
+func _reference_revenue(turn: int) -> float:
+	return REFERENCE_START * pow(REFERENCE_END / REFERENCE_START, float(turn) / float(REFERENCE_TURNS))
+
+
+## The ceiling for one rival slot on one turn. Slot 0 is the leader; each slot after it sits
+## a step lower, which is what makes the table fan out into positions rather than a huddle.
+## Seeded name shuffling means slot 0 is a different company every match, so a fixed ladder
+## here does not mean the same firm always wins.
+func _ceiling_for(competitor_index: int, turn: int) -> float:
+	var slot: float = maxf(0.1, 1.0 - SLOT_CEILING_FALLOFF * float(competitor_index))
+	return _reference_revenue(turn) * LEADER_CEILING_MULTIPLE * slot
+
+
 ## How much of its growth a firm still has in front of it, 1 at the start and falling to 0
 ## at the ceiling. Decay still bites at full strength, so firms near the top oscillate
 ## under it rather than pinning to it.
-func _headroom(revenue: float) -> float:
-	return clampf(1.0 - revenue / REVENUE_CEILING, 0.0, 1.0)
+func _headroom(revenue: float, ceiling: float) -> float:
+	return pow(clampf(1.0 - revenue / maxf(ceiling, 1.0), 0.0, 1.0), HEADROOM_EXPONENT)
 
 ## Normal draws favour 10–20% while the hard limits prevent an exceptional
 ## sample from making a runaway one-turn jump.

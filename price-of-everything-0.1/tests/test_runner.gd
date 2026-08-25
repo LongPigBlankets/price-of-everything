@@ -7951,6 +7951,29 @@ func _test_company_rankings() -> void:
 			flats += 1
 	_check(grows == 5 and decays == 2 and flats == 2,
 		"company rankings: every rival cycle has 5 growth, 2 decay, and 2 flat turns")
+	# Rival revenue used to compound with nothing stopping it, and reached £50k a turn against
+	# a player earning £1.1k before anyone noticed — a cosmetic table, but one that made the
+	# Crown track unwinnable after the opening. Nothing in the suite could see it, because
+	# nothing asserted a scale. This does, at both ends of the demo and out into a campaign.
+	var band_ok := true
+	var fanned_out := true
+	for check_turn: int in [25, 100, 300]:
+		var curve: float = CompanyRankings._reference_revenue(check_turn)
+		var top := 0.0
+		var bottom := INF
+		for rival: int in range(CompanyRankings.RIVAL_COUNT):
+			var r: float = CompanyRankings._rival_revenue_for(24680, rival, check_turn)
+			top = maxf(top, r)
+			bottom = minf(bottom, r)
+		# 2% of slack: the ceiling is an asymptote applied per discrete turn, so one maximal
+		# 25% draw taken at 98% of the cap can land ~1.5% over it before decay and the next
+		# turn's higher ceiling pull it back. The runaway this guards against was 4,500%.
+		band_ok = band_ok and top <= curve * CompanyRankings.LEADER_CEILING_MULTIPLE * 1.02
+		fanned_out = fanned_out and bottom < top * 0.75
+	_check(band_ok,
+		"company rankings: no rival ever passes 1.5x what the player earns, at turn 25, 100 or 300")
+	_check(fanned_out,
+		"company rankings: the field fans out into positions rather than bunching at the ceiling")
 	var tied: Array[Dictionary] = CompanyRankings.standings_for(24680, 0, [100.0])
 	_check(bool(tied[0].get("is_player", false)) and int(tied[0].get("rank", 0)) == 1,
 		"company rankings: equal revenue always favours Your Company")
