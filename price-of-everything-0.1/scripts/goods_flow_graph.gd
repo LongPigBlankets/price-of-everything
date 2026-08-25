@@ -28,13 +28,17 @@ const COL_W := 820.0
 # Column x-spacing is NOT uniform: within a tier the step is tightened, and each
 # tier boundary adds an extra gap (owner 2026-07-21). All column->x mapping goes
 # through col_x(); COL_W remains the base for card/channel geometry.
-# Column spacing (owner 2026-07-21: tight columns, wide tier gaps). 60u columns
-# was requested but is infeasible — the edge density needs >= ~180u between any
-# adjacent columns or y-overlapping risers crowd below the 11.9u readability floor
-# (measured; widening tiers does not rescue it). 200u is the tightest with margin,
-# still less than half the old ~420u; tiers get a clearly wider 500u.
-const INTRA_COL_GAP := 200.0
-const INTER_TIER_GAP := 500.0
+# Column spacing. The 200u floor below was measured against a web that drew EVERY edge at
+# rest: ~180u was the point where y-overlapping risers crowded past the 11.9u readability
+# floor. Resting edges are no longer drawn (goods_graph_world._REST_GHOST_ALPHA), so the
+# constraint that set that floor is gone — only a selected good's own chain is ever drawn
+# over these columns, which is a fraction of the density the 200u was protecting.
+# Tightened accordingly, then halved again at the owner's request. The tier boundary is
+# now only a little wider than an ordinary column gap (140 vs 110), so the tiers are read
+# from the header plates above them rather than from the spacing — worth knowing before
+# anyone tightens INTRA_COL_GAP further and closes the difference completely.
+const INTRA_COL_GAP := 110.0
+const INTER_TIER_GAP := 140.0
 
 # Swimlanes (owner 2026-07-21): the resting view groups goods into CATEGORY
 # lanes that run horizontally across every tier — the vertical axis reads as
@@ -49,15 +53,21 @@ const LANE_LABELS := {
 	"vehicles": "VEHICLES & PARTS",
 	"electronics": "ELECTRICALS & ELECTRONICS",
 }
-const LANE_GAP_Y := 140.0   # vertical air between lane bands
+const LANE_GAP_Y := 45.0    # vertical air between lane bands (tightened with the columns)
 
 
 static func _lane_rank_of(cat: String) -> int:
 	var i := LANE_ORDER.find(cat)
 	return i if i >= 0 else LANE_ORDER.size()   # unknown categories sink to a trailing OTHER lane
 static var _col_x: PackedFloat32Array = PackedFloat32Array()
-const ROW_H := 160.0
-const DUMMY_ROW_H := 72.0   # dummy (edge-corridor) rows are compressed: no card to fit
+# Row heights. ROW_H has to clear CARD_H (112) with air around it; the rest was slack.
+#
+# DUMMY rows are edge-routing corridors — they hold no card, they exist so a line has
+# somewhere to run. At rest no line is drawn any more, so every one of them was spending
+# 72u of the player's screen on nothing. They still have to EXIST, because a selected
+# good's chain is routed through them, but they can be a good deal thinner than a card.
+const ROW_H := 132.0
+const DUMMY_ROW_H := 34.0
 const CARD_W := 380.0
 const CARD_H := 112.0
 const BARY_SWEEPS := 2     # barycentre sweeps per ordering round
@@ -156,7 +166,7 @@ static func build(force := false, legacy_layout := false) -> Dictionary:
 		return cache
 	# 1 · Goods universe, keyed by internal name.
 	var goods: Dictionary = {}
-	for g in Catalog.all_goods():
+	for g in MatchState.visible_goods():
 		var internal := str(g.get("internal_name", ""))
 		if internal != "":
 			goods[internal] = g
@@ -367,17 +377,31 @@ static func build(force := false, legacy_layout := false) -> Dictionary:
 				y += h
 		route_bottom = max_height
 	else:
-		# Swimlane vertical placement: a lane band's height is its tallest
-		# (column, lane) cell; each cell centres within its band; bands stack with
-		# LANE_GAP_Y of air. Empty lanes take no space.
+		# Swimlane vertical placement. A lane band is sized by the CARDS in its tallest
+		# (column, lane) cell, and each cell's cards are packed contiguously and centred in
+		# the band. Bands stack with LANE_GAP_Y of air; empty lanes take no space.
+		#
+		# DUMMY ROWS ARE NOT SIZED IN. A dummy is an edge corridor, not a card, and counting
+		# them did two visible things: it inflated every band to fit corridors nobody can see,
+		# and it pushed a cell's cards apart so they no longer read as a group sitting in the
+		# middle of their lane. They still get a y — the routing code expects one for every
+		# layout vertex — taken from the cards they sit between, so a corridor stays where its
+		# edge would want it without spending a row on it.
+		#
+		# Safe because this branch is the MODERN presentation only (legacy_layout takes the
+		# arm above): there, resting edges are not drawn at all and a selection swaps to the
+		# focus layout, which does its own routing. Nothing visible routes through these
+		# corridors any more.
 		var lane_count := LANE_ORDER.size() + 1
-		var cell_h: Dictionary = {}     # "lane:column" -> summed row heights
+		var cell_h: Dictionary = {}     # "lane:column" -> summed CARD heights
 		var lane_h: Dictionary = {}     # lane rank -> band height
 		for d: int in range(maxd + 1):
 			for v: String in cols.get(d, []) as Array:
+				if not goods.has(v):
+					continue   # corridor: costs the band nothing
 				var lr := int(lane_rank.get(v, lane_count - 1))
 				var key := "%d:%d" % [lr, d]
-				cell_h[key] = float(cell_h.get(key, 0.0)) + (ROW_H if goods.has(v) else DUMMY_ROW_H)
+				cell_h[key] = float(cell_h.get(key, 0.0)) + ROW_H
 				lane_h[lr] = maxf(float(lane_h.get(lr, 0.0)), float(cell_h[key]))
 		var lane_top: Dictionary = {}
 		var ly := 0.0
@@ -391,16 +415,27 @@ static func build(force := false, legacy_layout := false) -> Dictionary:
 				"color": CAT_COLOR.get(slug, DEFAULT_COLOR)})
 			ly += float(lane_h[lr]) + LANE_GAP_Y
 		for d: int in range(maxd + 1):
-			var cursor: Dictionary = {}   # lane rank -> next free y in this column
+			var cursor: Dictionary = {}    # lane rank -> next free y for a CARD in this column
+			var pending: Array = []        # corridors waiting for the next card's y
 			for v: String in cols.get(d, []) as Array:
 				var lr := int(lane_rank.get(v, lane_count - 1))
+				if not goods.has(v):
+					pending.append(v)
+					continue
 				if not cursor.has(lr):
 					var cell := float(cell_h.get("%d:%d" % [lr, d], 0.0))
 					cursor[lr] = float(lane_top[lr]) + (float(lane_h[lr]) - cell) * 0.5
-				var h := ROW_H if goods.has(v) else DUMMY_ROW_H
-				ypos[v] = float(cursor[lr]) + h * 0.5
-				cursor[lr] = float(cursor[lr]) + h
-			route_bottom = ly - LANE_GAP_Y
+				var y := float(cursor[lr]) + ROW_H * 0.5
+				ypos[v] = y
+				cursor[lr] = float(cursor[lr]) + ROW_H
+				for pv in pending:
+					ypos[pv] = y   # the corridor rides with the card it precedes
+				pending.clear()
+			# Trailing corridors in a column have no card after them: park them on the last
+			# card placed, or on the top of the chart if the column is corridors all the way.
+			for pv in pending:
+				ypos[pv] = float(ypos.get(cols.get(d, [])[0], 0.0)) if not ypos.is_empty() else 0.0
+		route_bottom = ly - LANE_GAP_Y
 
 	var by_id: Dictionary = {}
 	var nodes: Array = []

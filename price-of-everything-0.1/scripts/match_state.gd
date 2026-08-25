@@ -18,6 +18,16 @@ var money: float = 1000.0  # was: int = 1000
 const HIDDEN_BUILDING_IDS := {"b_029": true, "b_030": true, "b_031": true, "b_035": true}
 var hidden_buildings_unlocked: bool = false
 
+# Recycling is off the table for the demo (owner 2026-08-23): the waste chain is a whole
+# second economy — collect it, sort it, feed it back — and a 100-turn demo has no room to
+# teach it. `unlock recycling` in the debug terminal puts it back for development.
+const RECYCLING_BUILDING_IDS := {"b_022": true, "b_036": true}
+# Waste Water, Scrap Metal, Bio Waste, Electronic Waste — the goods that only exist to be
+# recycled. Hidden alongside the plants, or the encyclopedia advertises a chain with no
+# building that can process it.
+const RECYCLING_GOOD_IDS := {"g_063": true, "g_067": true, "g_073": true, "g_074": true}
+var recycling_unlocked: bool = false
+
 # Demo gating (owner 2026-08-19): only the three DEMO_ADVISORS and four BASE_SEATS are
 # available until the `unlock advisors` cheat opens the full roster, every seat, and the
 # People-Management seat-unlock research.
@@ -360,6 +370,9 @@ var pending_transport_shipments: Array = []
 # dict — see start_upgrade() for the shape. While an upgrade is pending it reserves its
 # extra footprint and the building keeps producing at its CURRENT level until promotion.
 var pending_upgrades: Array = []
+## Turns an upgrade may sit with NOTHING inbound before the shortfall is re-ordered.
+## Generous on purpose: a genuinely slow haul must never trip it, and it resets on progress.
+const UPGRADE_STALL_TURNS := 5
 # In-progress retrofits (recipe changes): {instance_id, from_recipe, to_recipe,
 # turns_remaining, labour_fraction}. The building produces nothing while retooling.
 var pending_retrofits: Array = []
@@ -371,6 +384,14 @@ var demolish_queue: Dictionary = {}
 var paused_buildings: Dictionary = {}
 # Last turn's per-link flow ("tile|mode"->units) — drives this turn's congestion cost.
 var _last_link_flow: Dictionary = {}
+# Per-link congestion HISTORY, for the transport panel's "at cap N of last 10 turns"
+# column: "tile|mode" -> Array[bool], newest last, capped at LINK_HISTORY_TURNS.
+# Appended once per turn from the same snapshot that prices congestion, so the two
+# can never disagree about whether a link was over.
+var _link_over_history: Dictionary = {}
+# Cumulative congestion surcharge attributed to each link, "tile|mode" -> float.
+# Diagnosis only — nothing prices off it. See note_congestion_surcharge().
+var _link_congestion_paid: Dictionary = {}
 # Shipments that arrived at a destination tile whose stockpile was full and so
 # couldn't unload. They wait here and retry each turn until there's room.
 # Record: {source_tile, destination_tile, good_id, qty, turns_waiting, construction_instance_id}
@@ -614,9 +635,16 @@ signal goods_graph_requested
 signal empire_view_requested
 ## The Goods Graph's expanded card asked for a good's Encyclopedia entry.
 signal encyclopedia_good_requested(good_id: String)
+## A good icon anywhere in the UI was clicked: open the Goods Graph focused on it, so a
+## good the player is reading about is one click from how it is made and what it feeds.
+signal goods_graph_good_requested(good_id: String)
 ## A UI element (e.g. the tile-view intermittency "see more" link) asked to open the
 ## building ledger pre-filtered to a single filter key (e.g. "green_intermittent").
 signal building_ledger_filter_requested(filter_key: String)
+## A research REQUIREMENT shown somewhere else in the UI was clicked — the tech gating a
+## building upgrade, for instance. Opens the Research panel with its search box already
+## holding that title, so the player lands on the node rather than on the whole tree.
+signal research_search_requested(query: String)
 signal output_stockpile_selection_started(selection: Dictionary)
 signal output_stockpile_selection_cancelled
 signal output_stockpile_destination_changed(instance_id: String, tile_id: String, good_id: String)
@@ -663,6 +691,10 @@ signal focus_tile_requested(tile_id: String)
 ## building instance (centring the camera on its tile). Used by starvation
 ## notifications' "Go to".
 signal focus_building_requested(instance_id: String)
+## The top bar's Transport module asks world_map to open the logistics panel.
+signal transport_panel_requested
+## A transport-panel stockpile row asks the map to open that tile's Stockpile tab.
+signal tile_stockpile_requested(tile_id: String)
 
 # --- Initialization ---
 func _ready() -> void:
@@ -853,6 +885,23 @@ func _upgrade_need_by_gid(internal: String, target: int) -> Dictionary:
 	return need_by_gid
 
 # Extra tile footprint a building takes when it grows from `from_level` to `target`.
+## One sentence saying which gate refused the upgrade and what it would take to pass it.
+## Empty when the building fits.
+func _fits_reason(tile_id: String, delta: float, fits_physical: bool, fits_owned: bool) -> String:
+	if fits_physical and fits_owned:
+		return ""
+	if not fits_physical:
+		var free := float(max_tile_land(tile_id)) - get_tile_space_used(tile_id)
+		return ("The larger building needs %s more space than this tile has. It grows by %s, and only %s is free of the tile's %s."
+			% [_land(delta - free), _land(delta), _land(free), _land(float(max_tile_land(tile_id)))])
+	var free_owned := get_tile_land_owned(tile_id) - get_tile_player_space_used(tile_id)
+	return ("You do not own enough of this tile. The upgrade needs %s and only %s of your %s is free — buy land to make room."
+		% [_land(delta), _land(free_owned), _land(get_tile_land_owned(tile_id))])
+
+## Land figures read as whole units unless the fraction matters.
+func _land(v: float) -> String:
+	return str(int(round(v))) if absf(v - round(v)) < 0.05 else "%.1f" % v
+
 func _upgrade_size_delta(building_id: String, from_level: int, target: int) -> float:
 	var base_size := float(Catalog.get_building(building_id).get("tile_size_used", 1.0))
 	return base_size * (BuildingLevels.mult("size", target) - BuildingLevels.mult("size", from_level))
@@ -1226,8 +1275,9 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 	var delta := _upgrade_size_delta(building_id, level, target)
 	var projected := get_tile_space_used(tile_id) + delta
 	var projected_player := get_tile_player_space_used(tile_id) + delta
-	var fits := projected <= float(max_tile_land(tile_id)) \
-		and projected_player <= float(get_tile_land_owned(tile_id))
+	var fits_physical: bool = projected <= float(max_tile_land(tile_id))
+	var fits_owned: bool = projected_player <= float(get_tile_land_owned(tile_id))
+	var fits: bool = fits_physical and fits_owned
 
 	var gate := BuildingLevels.research_gate(internal, target)
 	var pend := pending_upgrade(instance_id)
@@ -1247,6 +1297,11 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 		"source_turns": int(source.get("turns", 0)),
 		"market_cost": market_cost,
 		"fits": fits,
+		# WHY it does not fit, and by how much. "Not enough room" over a tile panel reading
+		# "122 owned" reads as a bug: the binding limit is usually the tile's PHYSICAL space,
+		# which counts the NPC buildings sitting on it, not the land the player owns.
+		"fits_reason": _fits_reason(tile_id, delta, fits_physical, fits_owned),
+		"size_delta": delta,
 		"already_upgrading": not pend.is_empty(),
 		"pending_turns_left": int(pend.get("turns_remaining", 0)),
 		"pending_status": str(pend.get("status", "")),
@@ -1355,9 +1410,10 @@ func start_upgrade(instance_id: String, mode: String = "tile") -> Dictionary:
 	var size_delta := _upgrade_size_delta(building_id, level, target)
 	var projected := get_tile_space_used(tile_id) + size_delta
 	var projected_player := get_tile_player_space_used(tile_id) + size_delta
-	if projected > float(max_tile_land(tile_id)) \
-			or projected_player > float(get_tile_land_owned(tile_id)):
-		return {"ok": false, "reason": "Not enough room on the tile for the larger building."}
+	var room_physical: bool = projected <= float(max_tile_land(tile_id))
+	var room_owned: bool = projected_player <= float(get_tile_land_owned(tile_id))
+	if not (room_physical and room_owned):
+		return {"ok": false, "reason": _fits_reason(tile_id, size_delta, room_physical, room_owned)}
 
 	# Split materials: what's on the tile vs the shortfall.
 	var need_by_gid := _upgrade_need_by_gid(internal, target)
@@ -1485,6 +1541,9 @@ func tick_upgrades() -> Array:
 			p["missing"] = still
 			if still.is_empty():
 				p["status"] = UPGRADE_STATUS_UPGRADING
+				p["stalled_turns"] = 0
+			else:
+				_retry_stalled_upgrade(p, instance_id, tile_id, still)
 			building_upgrade_progress.emit(instance_id)
 			remaining.append(p)
 			continue
@@ -1509,6 +1568,62 @@ func tick_upgrades() -> Array:
 			remaining.append(p)
 	pending_upgrades = remaining
 	return completed
+
+## An upgrade waiting on materials that nothing is carrying will wait FOREVER: the buy is
+## queued once, at start_upgrade, and if that shipment is never made or is lost on the way
+## there is nothing that would ever order another. Two buildings sat like that for the whole
+## back half of a playtest, saying "No shipment is carrying the remaining N" every turn.
+##
+## So: once an upgrade has stood UPGRADE_STALL_TURNS turns with nothing inbound, re-order the
+## shortfall down the same path start_upgrade used. Only genuinely STRANDED goods are
+## re-ordered — a slow shipment still on the road is not stalled — and the counter resets on
+## any progress, so a long haul never triggers it.
+func _retry_stalled_upgrade(p: Dictionary, instance_id: String, tile_id: String,
+		still: Dictionary) -> void:
+	var stranded: Dictionary = {}
+	for gid_value in still:
+		var gid := str(gid_value)
+		if not _upgrade_has_inbound(instance_id, tile_id, gid):
+			stranded[gid] = int(still[gid_value])
+	if stranded.is_empty():
+		p["stalled_turns"] = 0   # something is still on its way; waiting is correct
+		return
+	var stalled := int(p.get("stalled_turns", 0)) + 1
+	p["stalled_turns"] = stalled
+	if stalled < UPGRADE_STALL_TURNS:
+		return
+	p["stalled_turns"] = 0
+	var ordered: Array = []
+	var refused: Array = []
+	for gid_value in stranded:
+		var gid := str(gid_value)
+		var qty := int(stranded[gid_value])
+		if queue_buy(tile_id, gid, qty, false, {"upgrade_instance_id": instance_id}).is_empty():
+			refused.append(Catalog.get_display_name(gid))
+		else:
+			ordered.append("%d %s" % [qty, Catalog.get_display_name(gid)])
+	var building_id := str(get_building(instance_id).get("building_id", str(p.get("building_id", ""))))
+	var what := str(Catalog.get_building(building_id).get("display_name", "An upgrade"))
+	if not ordered.is_empty():
+		request_toast("%s was waiting on materials nothing was carrying — re-ordered %s."
+			% [what, ", ".join(ordered)], "info")
+	elif not refused.is_empty():
+		# The retry itself could not be placed. Say why rather than silently waiting again.
+		request_toast("%s cannot be supplied with %s — no route, no headroom, or imports are banned."
+			% [what, ", ".join(refused)], "warn")
+
+## Is anything actually carrying `gid` to this upgrade right now?
+func _upgrade_has_inbound(instance_id: String, tile_id: String, gid: String) -> bool:
+	for list_variant: Variant in [pending_transport_shipments, overflow_shipments]:
+		for shipment_variant: Variant in (list_variant as Array):
+			var shipment: Dictionary = shipment_variant
+			if str(shipment.get("upgrade_instance_id", "")) != instance_id:
+				continue
+			if str(shipment.get("destination_tile", "")) != tile_id:
+				continue
+			if str(shipment.get("good_id", "")) == gid and int(shipment.get("qty", 0)) > 0:
+				return true
+	return false
 
 ## Cancel an in-progress upgrade and hand the player back the materials it has already banked
 ## on the tile (full kit minus whatever's still in transit). Goods still being shipped in keep
@@ -2140,7 +2255,10 @@ func get_unlock_def(title: String) -> Dictionary:
 	return {}
 
 # ── Research tier gating (per category) ──────────────────────────────────────
-const TIER_UNLOCK_THRESHOLD := 3
+## Nodes of the prior tier needed to open the next one. Two, not three (owner 2026-08-23):
+## Petrochemistry had exactly three Tier I nodes, so "three of the prior tier" meant ALL of
+## them, and Tier II was gated behind clearing a whole tier rather than committing to it.
+const TIER_UNLOCK_THRESHOLD := 2
 const _TIER_ORDER := ["I", "II", "III"]
 
 ## True when `category`'s roman `tier` is open. Tier I is always open; a higher
@@ -2378,6 +2496,8 @@ func _live_condition_met(d: Dictionary) -> bool:
 		"Own":
 			if _research_key(obj) == "land":
 				return _research_owned_land_units() >= need
+			if _research_key(obj) == "offshore_oil_land":
+				return _owned_offshore_oil_land() >= need
 			return _count_buildings(obj, -1, false, 0) >= need
 		"Run":
 			# Plain Run conditions mean one matching building sustaining full output
@@ -2556,6 +2676,26 @@ func _research_good_id(raw: String) -> String:
 	return ""
 
 
+## Land the player owns on SEA tiles that carry an oil deposit — the offshore drilling gate.
+##
+## Deliberately land UNITS on qualifying tiles, not a tile count: the point of the condition
+## is that the player has committed real money to a specific offshore field, which is the
+## thing offshore drilling is actually about. Seven tiles on the shipped map qualify, each
+## with 200 capacity, so the 50 units the CSV asks for fit on any one of them.
+func _owned_offshore_oil_land() -> int:
+	var total := 0
+	for tile_id in tile_land_owned:
+		var tid := str(tile_id)
+		var owned := int(tile_land_owned[tile_id])
+		if owned <= 0 or not tid.begins_with("tile_"):
+			continue
+		if not Catalog.tile_type(tid) in ["sea", "deep_sea"]:
+			continue
+		if not "oil" in Catalog.tile_deposits_raw(tid).to_lower():
+			continue
+		total += owned
+	return total
+
 func _research_owned_land_units() -> int:
 	var total := 0
 	for tile_id in tile_land_owned:
@@ -2592,6 +2732,8 @@ func _research_condition_issue(d: Dictionary) -> String:
 	if action == "Fulfil Special Orders":
 		return "" if _research_key(obj) == "special_order" else "unsupported special-order target"
 	if action == "Own":
+		if _research_key(obj) == "offshore_oil_land":
+			return ""
 		if _research_key(obj) != "land" and _research_building_targets(obj).is_empty():
 			return "unknown ownership target"
 		return ""
@@ -3169,7 +3311,34 @@ func is_building_available(building_id: String) -> bool:
 	# Ports are map infrastructure that may be bought from their existing owner, never built.
 	if building_id == "b_004":
 		return false
+	if RECYCLING_BUILDING_IDS.has(building_id) and not recycling_unlocked:
+		return false
 	return hidden_buildings_unlocked or not HIDDEN_BUILDING_IDS.has(building_id)
+
+## Is this good shown to the player at all? Only the recycling chain is ever hidden today.
+func is_good_available(good_id: String) -> bool:
+	return recycling_unlocked or not RECYCLING_GOOD_IDS.has(good_id)
+
+## Every good the player may see, in catalogue order. The one place the gate is applied, so
+## a panel opts in by calling this instead of Catalog.all_goods() — the market and telemetry
+## deliberately keep the full set (a price for a hidden good is harmless; a gap is not).
+func visible_goods() -> Array:
+	if recycling_unlocked:
+		return Catalog.all_goods()
+	var out: Array = []
+	for good_variant: Variant in Catalog.all_goods():
+		var good: Dictionary = good_variant
+		if is_good_available(str(good.get("id", ""))):
+			out.append(good)
+	return out
+
+## Cheat (`unlock recycling`): put the waste chain and its two plants back.
+func cheat_unlock_recycling() -> void:
+	if recycling_unlocked:
+		return
+	recycling_unlocked = true
+	unlock_granted.emit("Recycling", "The waste chain and its plants are enabled.", false)
+	hidden_buildings_enabled.emit()   # the catalogue panels already refresh on this
 
 func cheat_unlock_hidden_buildings() -> void:
 	if hidden_buildings_unlocked:
@@ -3208,6 +3377,7 @@ func reserve_instance_id(building_id: String) -> String:
 func reset() -> void:
 	money = 1000
 	hidden_buildings_unlocked = false
+	recycling_unlocked = false
 	advisors_unlocked = false
 	construct_cost_display = "grid"
 	construct_start_half_capacity = false
@@ -3239,6 +3409,8 @@ func reset() -> void:
 	demolish_queue.clear()
 	paused_buildings.clear()
 	_last_link_flow.clear()
+	_link_over_history.clear()
+	_link_congestion_paid.clear()
 	overflow_shipments.clear()
 	sales_by_tile.clear()
 	tile_land_owned.clear()
@@ -3310,6 +3482,8 @@ func reset() -> void:
 	Production.reset_lifetime_research_metrics()
 	_next_instance_counter = 0
 	ruleset = DEFAULT_RULESET.duplicate(true)
+	TurnManager.apply_ruleset(ruleset)   # back to the campaign length until a match sets one
+	VictoryState.apply_ruleset(ruleset)   # and back to the campaign victory tracks
 	scenario_name = ""
 	cheats_used = false
 	state_reset.emit()
@@ -3406,6 +3580,10 @@ func export_state() -> Dictionary:
 		"auto_sell_impact": auto_sell_impact.duplicate(true),
 		"queued_stockpile_market_sales": queued_stockpile_market_sales.duplicate(true),
 		"pending_transport_shipments": _shipments_for_save(),
+		# Additive (v3 transport panel): an older save has neither, and the empty
+		# default reads correctly as "no history yet" until turns accrue.
+		"link_over_history": _link_over_history.duplicate(true),
+		"link_congestion_paid": _link_congestion_paid.duplicate(),
 		"pending_upgrades": pending_upgrades.duplicate(true),
 		"pending_retrofits": pending_retrofits.duplicate(true),
 		"demolish_queue": demolish_queue.duplicate(true),
@@ -3441,6 +3619,10 @@ func import_state(d: Dictionary) -> void:
 	# new-game default, so older/partial snapshots (and Phase 3 start configs) load.
 	money = float(d.get("money", EconomyConfig.STARTING_MONEY))
 	ruleset = (d.get("ruleset", DEFAULT_RULESET) as Dictionary).duplicate(true)
+	# The campaign length lives in the ruleset, so this is the one moment it is known —
+	# for a new game and for a load alike. TurnManager reads nothing else about the match.
+	TurnManager.apply_ruleset(ruleset)
+	VictoryState.apply_ruleset(ruleset)   # which set of victory tracks this match runs
 	# Tolerant readers: saves from before these existed load as an unknown start, uncheated.
 	scenario_name = str(d.get("scenario_name", ""))
 	cheats_used = bool(d.get("cheats_used", false))
@@ -3529,6 +3711,8 @@ func import_state(d: Dictionary) -> void:
 	auto_sell_impact = (d.get("auto_sell_impact", {}) as Dictionary).duplicate(true)
 	queued_stockpile_market_sales = (d.get("queued_stockpile_market_sales", {}) as Dictionary).duplicate(true)
 	pending_transport_shipments = (d.get("pending_transport_shipments", []) as Array).duplicate(true)
+	_link_over_history = (d.get("link_over_history", {}) as Dictionary).duplicate(true)
+	_link_congestion_paid = (d.get("link_congestion_paid", {}) as Dictionary).duplicate()
 	_recompute_unpaid_purchases()  # rebuilt from the shipments so the accumulator can't drift
 	pending_upgrades = (d.get("pending_upgrades", []) as Array).duplicate(true)
 	pending_retrofits = (d.get("pending_retrofits", []) as Array).duplicate(true)
@@ -4040,7 +4224,36 @@ func queue_transport_shipment(shipment: Dictionary) -> void:
 		_shipment_id_counter += 1
 		s["id"] = _shipment_id_counter  # stable id so the overlay can track it across turns
 	pending_transport_shipments.append(s)
+	_note_shipment_congestion(s)
 	transport_shipments_changed.emit()
+
+## Book the congestion share of a real shipment's freight against the link that caused
+## it. Done HERE, at the one funnel every committed shipment passes through, rather than
+## in transport_cost_for_route — that function is shared with quotes, previews and the
+## build forecast, so attributing there would count charges the player never paid (the
+## same trap land_cost_after_credit's `commit` flag exists to avoid).
+##
+## The surcharge is recovered from the multiplier the cost was priced with: only the
+## units past the binding link's headroom pay it, so mult = (within + over*rate)/qty and
+## the surcharge share of the final cost is (1 - 1/mult).
+func _note_shipment_congestion(s: Dictionary) -> void:
+	var cost := float(s.get("transport_cost", 0.0))
+	if cost <= 0.0:
+		return
+	var qty := _shipment_total_units(s)
+	if qty <= 0:
+		return
+	var cong := route_congestion({"tiles": s.get("tiles", []), "legs": s.get("legs", [])})
+	var tier := int(cong.get("tier", 0))
+	var key := str(cong.get("key", ""))
+	if tier <= 0 or key == "":
+		return
+	var rate: float = 2.0 if tier == 1 else 3.0
+	var over: int = maxi(0, qty - int(cong.get("headroom", 0)))
+	var mult := (float(qty - over) + float(over) * rate) / float(qty)
+	if mult <= 1.0:
+		return
+	note_congestion_surcharge(key, cost * (1.0 - 1.0 / mult))
 
 func request_toast(message: String, toast_type: String = "success") -> void:
 	toast_requested.emit(message, toast_type)
@@ -5005,6 +5218,8 @@ func advance_transport_shipments() -> Array:
 # +200% once over capacity plus the base L1 cap. Last turn's flow drives this turn's
 # costs (route_congestion_tier), so it's stable rather than self-referential.
 const _CAPPED_MODES := ["roads", "rail", "pipes", "reinf_pipes"]
+## How many turns of over-capacity history the transport panel reports on.
+const LINK_HISTORY_TURNS := 10
 
 ## "tile_id|mode" -> total units crossing it this turn (capped modes only).
 func transport_link_flow() -> Dictionary:
@@ -5164,6 +5379,76 @@ func _queue_or_store_resolved_shipment(shipment: Dictionary) -> void:
 ## in TransportService.transport_cost_for_route via route_congestion_tier().
 func update_transport_congestion() -> void:
 	_last_link_flow = transport_link_flow()
+	_roll_link_history()
+
+## Record, for every link carrying freight this turn, whether it was over capacity.
+## Rolled here rather than in the cost path so a link is sampled once per turn no
+## matter how many shipments cross it.
+func _roll_link_history() -> void:
+	for key in _last_link_flow.keys():
+		var parts := str(key).split("|")
+		if parts.size() != 2:
+			continue
+		var cap := tile_mode_capacity(parts[1], _tile_infra_level(parts[0], parts[1]))
+		var over: bool = cap > 0.0 and float(_last_link_flow[key]) > cap
+		var hist: Array = _link_over_history.get(key, [])
+		hist.append(over)
+		if hist.size() > LINK_HISTORY_TURNS:
+			hist = hist.slice(hist.size() - LINK_HISTORY_TURNS)
+		_link_over_history[key] = hist
+
+## Turns in the last LINK_HISTORY_TURNS this link ran over capacity.
+func link_turns_over(link_key: String) -> int:
+	var n := 0
+	for over in (_link_over_history.get(link_key, []) as Array):
+		if bool(over):
+			n += 1
+	return n
+
+## Total congestion surcharge this link has been charged across the run (0 if never).
+func link_congestion_paid(link_key: String) -> float:
+	return float(_link_congestion_paid.get(link_key, 0.0))
+
+## Book a route's congestion surcharge against the link that caused it. The surcharge
+## is priced per ROUTE (marginally, against the tightest congested link's headroom),
+## so there is no exact per-link split to recover — attributing the whole charge to
+## the binding link is the honest approximation, and it is the link the player has to
+## upgrade to make the charge go away. Diagnostic only: nothing prices off this.
+func note_congestion_surcharge(link_key: String, amount: float) -> void:
+	if link_key == "" or amount <= 0.0:
+		return
+	_link_congestion_paid[link_key] = float(_link_congestion_paid.get(link_key, 0.0)) + amount
+
+## Every link currently over its capacity, worst first by utilisation. Rows are
+## {key, tile_id, mode, flow, cap, level, ratio} — the transport panel's Infra column
+## and the top bar's freight readout both read this.
+func congested_links() -> Array:
+	return active_links(true)
+
+## Links carrying freight this turn, worst-first by utilisation. `only_over` keeps
+## just the ones past capacity.
+func active_links(only_over: bool = false) -> Array:
+	var rows: Array = []
+	for key in _last_link_flow.keys():
+		var parts := str(key).split("|")
+		if parts.size() != 2:
+			continue
+		var flow := float(_last_link_flow[key])
+		if flow <= 0.0:
+			continue
+		var level := _tile_infra_level(parts[0], parts[1])
+		var cap := tile_mode_capacity(parts[1], level)
+		if cap <= 0.0:
+			continue   # uncapped mode — it can never be "over"
+		var ratio := flow / cap
+		if only_over and ratio <= 1.0:
+			continue
+		rows.append({
+			"key": str(key), "tile_id": parts[0], "mode": parts[1],
+			"flow": flow, "cap": cap, "level": level, "ratio": ratio,
+		})
+	rows.sort_custom(func(a, b): return float(a.ratio) > float(b.ratio))
+	return rows
 
 ## Congestion tier of a route, from last turn's flow on the links it crosses:
 ##   0 = clear · 1 = any link over its capacity · 2 = any link over capacity PLUS its
@@ -5181,7 +5466,7 @@ func route_congestion_tier(route_data: Dictionary) -> int:
 ## shipment rides at the base rate. Returns {tier, headroom}: headroom is the tightest
 ## remaining capacity across the route's capped links (0 when already at or over cap).
 func route_congestion(route_data: Dictionary) -> Dictionary:
-	var clear := {"tier": 0, "headroom": 0}
+	var clear := {"tier": 0, "headroom": 0, "key": ""}
 	if _last_link_flow.is_empty():
 		return clear
 	var tiles: Array = route_data.get("tiles", [])
@@ -5190,6 +5475,7 @@ func route_congestion(route_data: Dictionary) -> Dictionary:
 		return clear
 	var worst := 0
 	var headroom := -1.0
+	var binding := ""   # the link whose headroom governs — what a surcharge is charged for
 	var idx := 0
 	for leg in legs:
 		var start := idx
@@ -5211,10 +5497,12 @@ func route_congestion(route_data: Dictionary) -> Dictionary:
 				elif flow > cap:
 					worst = maxi(worst, 1)
 				var link_headroom := maxf(0.0, cap - flow)
+				if headroom < 0.0 or link_headroom < headroom:
+					binding = "%s|%s" % [tile_id, mode]
 				headroom = link_headroom if headroom < 0.0 else minf(headroom, link_headroom)
 	if worst == 0:
 		return clear
-	return {"tier": worst, "headroom": int(maxf(0.0, headroom))}
+	return {"tier": worst, "headroom": int(maxf(0.0, headroom)), "key": binding}
 
 func enable_sell_surplus(tile_id: String) -> void:
 	if tile_id == "" or sell_surplus_tiles.has(tile_id):

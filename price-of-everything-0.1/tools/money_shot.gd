@@ -2,8 +2,8 @@ extends Node2D
 ## Verifies the money panel's Sales + new Purchases tabs (per-good breakdown with framed good icons).
 ## Seeds a couple of turns of sales/purchase history directly, then screenshots each tab.
 ##   Godot --path . res://tools/money_shot.tscn --quit-after 900
-## Writes /tmp/poe_money_sales.png, /tmp/poe_money_purchases.png, and the
-## expanded transport accordion at /tmp/poe_money_transport.png.
+## Writes user://poe_money_sales.png, user://poe_money_purchases.png, and the
+## expanded transport accordion at user://poe_money_transport.png.
 
 func _ready() -> void:
 	var packed := load("res://scenes/main.tscn") as PackedScene
@@ -40,13 +40,13 @@ func _ready() -> void:
 
 	_select_tab(mp, "Sales")
 	await _settle(8)
-	get_viewport().get_texture().get_image().save_png("/tmp/poe_money_sales.png")
-	print("[MONEY_SHOT] saved /tmp/poe_money_sales.png")
+	get_viewport().get_texture().get_image().save_png("user://poe_money_sales.png")
+	print("[MONEY_SHOT] saved user://poe_money_sales.png")
 
 	_select_tab(mp, "Purchases")
 	await _settle(8)
-	get_viewport().get_texture().get_image().save_png("/tmp/poe_money_purchases.png")
-	print("[MONEY_SHOT] saved /tmp/poe_money_purchases.png")
+	get_viewport().get_texture().get_image().save_png("user://poe_money_purchases.png")
+	print("[MONEY_SHOT] saved user://poe_money_purchases.png")
 
 	_select_tab(mp, "Balance")
 	mp._render_balance_sheet({
@@ -58,8 +58,8 @@ func _ready() -> void:
 	})
 	mp._set_transport_expanded(true)
 	await _settle(8)
-	get_viewport().get_texture().get_image().save_png("/tmp/poe_money_transport.png")
-	print("[MONEY_SHOT] saved /tmp/poe_money_transport.png")
+	get_viewport().get_texture().get_image().save_png("user://poe_money_transport.png")
+	print("[MONEY_SHOT] saved user://poe_money_transport.png")
 
 	get_tree().quit(0)
 

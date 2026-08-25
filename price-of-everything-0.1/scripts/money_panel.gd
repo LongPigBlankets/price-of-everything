@@ -48,12 +48,18 @@ const HEADER_HEIGHT := 40.0
 @onready var proj_labour_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection/Proj_LabourRow/LabourValue
 @onready var proj_power_purchase_value: Label = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection/Proj_PowerPurchaseRow/PowerPurchaseValue
 @onready var _costs_section: VBoxContainer = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/CostsSection
+@onready var _revenue_section: VBoxContainer = $MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/RevenueSection
+## One gap between balance rows, everywhere. See _normalise_balance_rows.
+const BALANCE_ROW_GAP := 6
 @onready var _proj_costs_section: VBoxContainer = $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_CostsSection
 var _transport_value: Label
 var _transport_caret: Button
 var _transport_breakdown_values: Dictionary = {}
 var _transport_breakdown_amounts: Dictionary = {}
 var _transport_expanded := false
+var _section_carets: Dictionary = {}      # "revenue" / "costs" -> the fold Button
+var _section_totals: Dictionary = {}      # ...and the total Label on its header
+var _section_expanded: Dictionary = {}
 var _proj_transport_value: Label
 var _goods_purchased_value: Label
 var _proj_goods_purchased_value: Label
@@ -85,11 +91,16 @@ var _drag_offset := Vector2.ZERO
 # Charts tab
 const CHART_MAX_TURNS := 10
 const DEFAULT_PANEL_SIZE := Vector2(560, 620)
-const CHART_PANEL_SIZE := Vector2(620, 600)
+const CHART_PANEL_SIZE := Vector2(820, 840)   # wider and taller: the legend is tickboxes now
 # Breathing room so the panel never runs to the screen edge.
 const PANEL_SCREEN_MARGIN := 90.0
 # Floor for the Balance tab on a short screen: below this the sheet is all scrollbar.
 const MIN_BALANCE_PANEL_HEIGHT := 360.0
+## The balance sheet reads at 18, not the theme's 14 (owner 2026-08-24). It is a document —
+## the one screen in the game a player scans line by line — and it was set at the size the
+## rest of the UI uses for captions.
+const BALANCE_ROW_FONT := 18
+const BALANCE_HEADER_FONT := 22
 const TRANSPORT_BREAKDOWN_ROWS := [
 	["port_inbound", "Port Charges — Imports"],
 	["port_outbound", "Port Charges — Exports"],
@@ -115,9 +126,115 @@ var _chart_mode: String = "revenue"
 var _refresh_queued := false
 var _dirty := false
 
+## Give every row in the balance sheet its natural height.
+##
+## Both the scene rows and the ones inserted here were EXPAND_FILL, which inside a VBox
+## does not mean 'fill the row' — it means 'share the container's leftover space'. Rows
+## whose content differs in height then take different shares, so the gaps between them
+## came out uneven and drifted again whenever a row was added or removed. Natural height
+## plus the VBox separation gives one gap, the same everywhere.
+## REVENUE and OPERATING COSTS fold (owner 2026-08-24). The sheet runs past the bottom of a
+## 1080p screen with everything open, and a player checking their profit line should not have
+## to scroll past fourteen cost rows to reach it. The header becomes a caret + title that
+## toggles every row under it; the totals stay with their own section, so a folded section
+## still shows what it came to.
+func _build_section_accordions() -> void:
+	for pair: Array in [[_revenue_section, "SectionHeader_Revenue", "revenue"],
+			[_costs_section, "SectionHeader_Costs", "costs"]]:
+		var section := pair[0] as VBoxContainer
+		if section == null:
+			continue
+		var header := section.get_node_or_null(str(pair[1])) as Label
+		if header == null:
+			continue
+		var key := str(pair[2])
+		var row := HBoxContainer.new()
+		row.name = "SectionHeaderRow_%s" % key
+		row.add_theme_constant_override("separation", 6)
+		var caret := Button.new()
+		caret.flat = true
+		caret.focus_mode = Control.FOCUS_NONE
+		caret.custom_minimum_size = Vector2(26, 0)
+		caret.add_theme_font_size_override("font_size", BALANCE_HEADER_FONT)
+		caret.pressed.connect(_toggle_section.bind(key))
+		row.add_child(caret)
+		# The section's own total, on the header — so a FOLDED section still says what it
+		# came to, and an open one is topped by the figure its rows add up to.
+		var total := Label.new()
+		total.name = "SectionTotal_%s" % key
+		total.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		total.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		total.custom_minimum_size = Vector2(110, 0)
+		total.add_theme_font_size_override("font_size", BALANCE_HEADER_FONT)
+		_section_totals[key] = total
+		section.add_child(row)
+		section.move_child(row, header.get_index())
+		header.reparent(row)
+		header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		header.add_theme_font_size_override("font_size", BALANCE_HEADER_FONT)
+		row.add_child(_section_totals[key])
+		_section_carets[key] = caret
+		_section_expanded[key] = true
+		_apply_section_expanded(key)
+
+
+func _toggle_section(key: String) -> void:
+	_section_expanded[key] = not bool(_section_expanded.get(key, true))
+	_apply_section_expanded(key)
+	if _tab_container != null and _tab_container.get_tab_title(_tab_container.current_tab) == "Balance":
+		_apply_tab_size.call_deferred(_tab_container.current_tab)
+
+
+func _apply_section_expanded(key: String) -> void:
+	var section: VBoxContainer = _revenue_section if key == "revenue" else _costs_section
+	var caret := _section_carets.get(key) as Button
+	if section == null or caret == null:
+		return
+	var open := bool(_section_expanded.get(key, true))
+	caret.text = "⌄" if open else "›"
+	caret.tooltip_text = "Hide these rows" if open else "Show these rows"
+	for child in section.get_children():
+		if child is Control and not str(child.name).begins_with("SectionHeaderRow_"):
+			(child as Control).visible = open
+	# A folded section still shows what it came to.
+	if not open:
+		return
+	if key == "costs":
+		_set_transport_expanded(_transport_expanded)
+
+
+## Every label on the sheet at the reading size, and every row vertically centred so a
+## taller value never drags its own row out of line with the rest.
+func _apply_balance_type() -> void:
+	for section: Node in [_revenue_section, _costs_section, _balance_content]:
+		if section != null:
+			_restyle_balance_labels(section)
+
+
+func _restyle_balance_labels(node: Node) -> void:
+	for child in node.get_children():
+		if child is Label:
+			var lbl := child as Label
+			if not str(lbl.name).begins_with("SectionHeader"):
+				lbl.add_theme_font_size_override("font_size", BALANCE_ROW_FONT)
+			lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		elif child is Container:
+			_restyle_balance_labels(child)
+
+
+func _normalise_balance_rows() -> void:
+	for section: Node in [_revenue_section, _costs_section]:
+		if section == null:
+			continue
+		for child in section.get_children():
+			if child is Control:
+				(child as Control).size_flags_vertical = Control.SIZE_FILL
+		(section as VBoxContainer).add_theme_constant_override("separation", BALANCE_ROW_GAP)
+
+
 func _insert_cost_row(section: VBoxContainer, after_node_name: String, label_text: String) -> Label:
 	var row := HBoxContainer.new()
-	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	row.size_flags_vertical = Control.SIZE_FILL   # natural height; see _normalise_balance_rows
 	row.add_theme_constant_override("separation", 8)
 	var name_label := Label.new()
 	name_label.custom_minimum_size = Vector2(80, 0)
@@ -209,7 +326,7 @@ func _set_transport_expanded(expanded: bool) -> void:
 
 func _insert_finance_row(section: VBoxContainer, after_node_name: String, label_text: String, default_text: String) -> Label:
 	var row := HBoxContainer.new()
-	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	row.size_flags_vertical = Control.SIZE_FILL   # natural height; see _normalise_balance_rows
 	row.add_theme_constant_override("separation", 8)
 	var name_label := Label.new()
 	name_label.custom_minimum_size = Vector2(80, 0)
@@ -232,7 +349,14 @@ func _ready() -> void:
 	_goods_purchased_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Goods purchased")
 	_proj_goods_purchased_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Goods purchased")
 	_advisor_value = _insert_cost_row(_costs_section, "LabourRow", "Advisor salaries")
-	_building_tab_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Deferred to building tabs")
+	_building_tab_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Put on building credit")
+	# Running costs a new building charged to its credit window instead of paying in cash
+	# this turn. It reads as a CREDIT here because the lines above already charged it in
+	# full; this is the part that did not leave the bank yet. The tab settles when the
+	# window closes (MatchState.tick_building_tabs).
+	if _building_tab_value != null and _building_tab_value.get_parent() != null:
+		_building_tab_value.get_parent().tooltip_text = "Running costs charged to a new building's credit window rather than paid in cash this turn. They are already counted in the costs above; this line takes back the part you have not actually paid yet, and the tab settles when the window closes."
+	_normalise_balance_rows()
 	_warehousing_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Warehousing")
 	_proj_warehousing_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Warehousing")
 	_carbon_tax_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Carbon tax")
@@ -245,6 +369,10 @@ func _ready() -> void:
 	var projection_content := $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent as VBoxContainer
 	_profit_sharing_value = _insert_finance_row(_balance_content, "DividendsRow", "Profit Sharing", "-£0.00")
 	_proj_profit_sharing_value = _insert_finance_row(projection_content, "Proj_DividendsRow", "Profit Sharing", "-£0.00")
+	# After every row exists, not before: both passes walk the finished sheet.
+	_normalise_balance_rows()
+	_apply_balance_type()
+	_build_section_accordions()
 	close_button.pressed.connect(hide)
 	title_label.text = "Money"
 	# Own copy of the shared navy stylebox: keep the navy fill, drop the cream border,
@@ -506,6 +634,7 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	_carbon_tax_value.text = "-£%.2f" % carbon_tax
 	_green_subsidy_value.text = "+£%.2f" % green_subsidy
 	total_costs_value.text = "-£%.2f" % total_costs
+	_update_section_totals(total_revenue, total_costs)
 	
 	operating_profit_value.text = _format_signed(operating_profit)
 	_color_for_value(operating_profit_value, operating_profit)
@@ -531,6 +660,16 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	_apply_breakdown_tooltip(labour_value, summary.get("labour_by_type", {}), "labour")
 	_apply_breakdown_tooltip(power_purchase_value, summary.get("power_purchase_by_type", {}), "power")
 	_apply_breakdown_tooltip(_goods_purchased_value, summary.get("goods_purchased_by_type", {}), "goods purchased")
+
+
+## Mirror the two section totals onto their fold headers.
+func _update_section_totals(revenue: float, costs: float) -> void:
+	for pair: Array in [["revenue", revenue], ["costs", -absf(costs)]]:
+		var lbl := _section_totals.get(str(pair[0])) as Label
+		if lbl == null:
+			continue
+		lbl.text = _format_signed(float(pair[1]))
+		_color_for_value(lbl, float(pair[1]))
 
 
 func _render_transport_breakdown(transport: float, raw_breakdown: Dictionary) -> void:
@@ -873,7 +1012,10 @@ func _apply_tab_size(idx: int) -> void:
 	custom_minimum_size = Vector2.ZERO
 	match _tab_container.get_tab_title(idx):
 		"Charts":
-			size = CHART_PANEL_SIZE
+			# Capped to the screen like the Balance tab — a fixed height taller than the
+			# viewport puts the legend's buttons under the bottom dock.
+			var avail: float = get_viewport_rect().size.y - global_position.y - PANEL_SCREEN_MARGIN
+			size = Vector2(CHART_PANEL_SIZE.x, minf(CHART_PANEL_SIZE.y, maxf(420.0, avail)))
 		"Balance":
 			size = Vector2(DEFAULT_PANEL_SIZE.x, _balance_panel_height())
 		_:
@@ -998,17 +1140,22 @@ func _add_breakdown_section(root: VBoxContainer, title: String, rows: Array, emp
 	total_row.add_child(total_val)
 	root.add_child(total_row)
 
-# One breakdown row: framed good icon (or spacer for power/no-good) · name · ×qty · bar · £amount.
+## Good-icon size in the sales / purchases breakdowns.
+const BREAKDOWN_ICON := 40
+
+# One breakdown row: plain good icon (or spacer for power/no-good) · name · ×qty · bar · £amount.
 func _breakdown_row(gid: String, label: String, qty: int, amount: float, max_amount: float) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	if gid != "":
-		var icon := UIHelpers.make_framed_good_icon(gid, Catalog.get_internal_name(gid), 30)
-		icon.custom_minimum_size = Vector2(30, 30)
+		# Frameless and bigger: at 30 px the metal bevel took most of the cell and the good
+		# itself was a few pixels of art. Cream plate, rounded, 40 px (owner 2026-08-23).
+		var icon := UIHelpers.make_plain_good_icon(gid, Catalog.get_internal_name(gid), BREAKDOWN_ICON)
+		icon.custom_minimum_size = Vector2(BREAKDOWN_ICON, BREAKDOWN_ICON)
 		row.add_child(icon)
 	else:
 		var sp := Control.new()
-		sp.custom_minimum_size = Vector2(30, 0)
+		sp.custom_minimum_size = Vector2(BREAKDOWN_ICON, 0)
 		row.add_child(sp)
 	var name_l := Label.new()
 	name_l.text = label

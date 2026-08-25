@@ -3,7 +3,7 @@ extends Camera2D
 # Movement
 @export var pan_speed: float = 600.0          # pixels/sec when fully held
 @export var edge_pan_enabled: bool = true
-@export var edge_pan_margin: int = 30         # pixels from screen edge to trigger
+@export var edge_pan_margin: int = 15         # pixels from screen edge to trigger
 @export var edge_pan_speed: float = 500.0
 
 # Zoom
@@ -188,6 +188,32 @@ func _input(event: InputEvent) -> void:
 		_dragging = false
 		_drag_button = -1
 
+## The panel the pointer is over, or null. Every HUD panel is a direct child of
+## HUDContent, so this is one shallow pass rather than a tree walk, and it is only ever
+## asked on a wheel event.
+##
+## Cached by name: the node is created once per match and the camera outlives nothing.
+var _ui_root: Node = null
+
+func _panel_under_pointer() -> Control:
+	if _ui_root == null or not is_instance_valid(_ui_root):
+		var scene := get_tree().current_scene if is_inside_tree() else null
+		_ui_root = scene.find_child("HUDContent", true, false) if scene != null else null
+		if _ui_root == null:
+			return null
+	var mouse := get_viewport().get_mouse_position()
+	for child in _ui_root.get_children():
+		if not (child is Control):
+			continue
+		var panel := child as Control
+		# IGNORE-filter children are pass-through decoration (dim layers, legends): the
+		# pointer is not 'on' them in any sense the player would recognise.
+		if not panel.is_visible_in_tree() or panel.mouse_filter == Control.MOUSE_FILTER_IGNORE:
+			continue
+		if panel.get_global_rect().has_point(mouse):
+			return panel
+	return null
+
 func _unhandled_input(event: InputEvent) -> void:
 	if input_blocked:
 		return
@@ -197,6 +223,15 @@ func _unhandled_input(event: InputEvent) -> void:
 			_drag_button = event.button_index
 			_drag_accum = Vector2.ZERO
 			return   # not consumed: a clean click still selects on release
+		var wheel: bool = (event.button_index == MOUSE_BUTTON_WHEEL_UP
+				or event.button_index == MOUSE_BUTTON_WHEEL_DOWN)
+		if wheel and _panel_under_pointer() != null:
+			# The wheel belongs to the panel under the cursor. A ScrollContainer only
+			# CONSUMES the wheel while it still has somewhere to scroll, so at the end of a
+			# list — or in a panel with no scroll at all — the event fell through to here and
+			# zoomed the map out from under the player. Swallow it instead.
+			get_viewport().set_input_as_handled()
+			return
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_adjust_zoom(_scroll_factor(event))
 			get_viewport().set_input_as_handled()

@@ -1,5 +1,7 @@
 extends Node
 const BuildingLevels := preload("res://scripts/building_levels.gd")
+const NewGamePanel := preload("res://scripts/new_game_panel.gd")   # its SPEEDS table
+const EndGameData := preload("res://scripts/end_game_data.gd")     # the end-screen assembler
 const BuildingStatus := preload("res://scripts/building_status.gd")
 ## Minimal, zero-dependency headless test runner for price-of-everything.
 ##
@@ -104,6 +106,9 @@ func _ready() -> void:
 	_test_catalog_loaded()
 	_test_encyclopedia_good_rubric()
 	_test_company_rankings()
+	_test_port_plan_cache_locality()
+	_test_build_attempt_reports_refusal()
+	_test_modifier_sign_convention()
 	_test_goods_flow_graph()
 	_test_recipe_requirements()
 	_test_research_recipe_and_level_tiers()
@@ -276,6 +281,11 @@ func _ready() -> void:
 	await _test_notification_bell_smoke()
 	_test_road_regions()
 	_test_hills_baked_fresh()
+	_test_hill_texture_baked_fresh()
+	_test_start_layout_baked_fresh()
+	_test_authored_roads_all_baked()
+	_test_upgrade_techs_stand_on_lower_tiers()
+	_test_power_gates_in_band()
 	await _test_hill_field_determinism()
 	await _test_grid_selection_follows_panel()
 	await _test_tile_view_player_building_filter()
@@ -333,6 +343,16 @@ func _ready() -> void:
 	_test_empire_ports()
 	_test_empire_rag()
 	_test_audio_service()
+	_test_demo_itch_speed()
+	_test_demo_victory_tracks()
+	_test_demo_endings()
+	_test_recycling_gate()
+	_test_petrochemistry_changes()
+	_test_land_readout_matches_gate()
+	_test_upgrade_reserved_space_blocks()
+	_test_construct_land_tickbox()
+	_test_research_link_is_exact()
+	_test_keybinds()
 	_test_tutorial_engine()
 	_test_decision_tenure_gate()
 	_test_decision_resolve_effects_and_loyalty()
@@ -1211,6 +1231,186 @@ func _test_tutorial_engine() -> void:
 # The Audio autoload (presentation-layer SFX service). Headless uses the Dummy
 # audio driver, so we assert wiring/state rather than actual playback: the click
 # stream imports, the voice pool is built, and click() runs without erroring.
+# Keybinds — what the Controls tab will and will not accept (scripts/keybinds.gd).
+# The demo ships every fixed binding read-only and the map modes unbound, so the only
+# behaviour worth pinning is the validator: it is the whole of what the player can do.
+func _test_keybinds() -> void:
+	var Keybinds = load("res://scripts/keybinds.gd")
+	var saved: Dictionary = PlayerProfile.keybinds.duplicate()
+	PlayerProfile.keybinds = {"logistics": KEY_J}
+
+	var key := func(code: int, sh := false, ct := false, al := false, me := false) -> InputEventKey:
+		var e := InputEventKey.new()
+		e.keycode = code
+		e.pressed = true
+		e.shift_pressed = sh
+		e.ctrl_pressed = ct
+		e.alt_pressed = al
+		e.meta_pressed = me
+		return e
+
+	# A free key is accepted.
+	_check(bool(Keybinds.validate(key.call(KEY_K), "power").ok), "keybinds: a free letter is accepted")
+	_check(bool(Keybinds.validate(key.call(KEY_F5), "power").ok), "keybinds: a function key is accepted")
+
+	# The modifier keys themselves, and any key pressed while one is held.
+	for row: Array in [["Shift", KEY_SHIFT], ["Ctrl", KEY_CTRL], ["Alt", KEY_ALT], ["Meta", KEY_META]]:
+		var v: Dictionary = Keybinds.validate(key.call(int(row[1])), "power")
+		_check(not bool(v.ok) and str(v.message) == Keybinds.MSG_UNUSABLE,
+			"keybinds: %s is refused with 'Cannot use that key.'" % str(row[0]))
+	for row2: Array in [["Shift", key.call(KEY_K, true)], ["Ctrl", key.call(KEY_K, false, true)],
+			["Alt", key.call(KEY_K, false, false, true)], ["Meta", key.call(KEY_K, false, false, false, true)]]:
+		var v2: Dictionary = Keybinds.validate(row2[1], "power")
+		_check(not bool(v2.ok) and str(v2.message) == Keybinds.MSG_UNUSABLE,
+			"keybinds: %s held with a letter is refused" % str(row2[0]))
+
+	# Numbers are reserved for gameplay, top row and keypad alike.
+	for row3: Array in [["1", KEY_1], ["0", KEY_0], ["numpad 7", KEY_KP_7]]:
+		var v3: Dictionary = Keybinds.validate(key.call(int(row3[1])), "power")
+		_check(not bool(v3.ok) and str(v3.message) == Keybinds.MSG_NUMBER,
+			"keybinds: %s is refused as a number" % str(row3[0]))
+
+	# Keys the rest of the game already owns, including the two added with this work.
+	for row4: Array in [["C", KEY_C], ["Space", KEY_SPACE], ["Z", KEY_Z], ["Tab", KEY_TAB], ["W", KEY_W]]:
+		_check(not bool(Keybinds.validate(key.call(int(row4[1])), "power").ok),
+			"keybinds: %s is refused, already bound" % str(row4[0]))
+	_check(not bool(Keybinds.validate(key.call(KEY_J), "power").ok),
+		"keybinds: a key held by another map mode is refused")
+	# ...but a row may always keep the key it already has.
+	_check(bool(Keybinds.validate(key.call(KEY_J), "logistics").ok),
+		"keybinds: a map mode may re-accept its own key")
+
+	# Escape and the mouse are refused outright: Escape is the way out of every menu, and a
+	# mode bound to a click would fire while the player was driving the map with the mouse.
+	var esc: Dictionary = Keybinds.validate(key.call(KEY_ESCAPE), "power")
+	_check(not bool(esc.ok) and str(esc.message) == Keybinds.MSG_UNUSABLE,
+		"keybinds: Escape is refused")
+	for btn: Array in [["left", MOUSE_BUTTON_LEFT], ["right", MOUSE_BUTTON_RIGHT],
+			["middle", MOUSE_BUTTON_MIDDLE], ["wheel up", MOUSE_BUTTON_WHEEL_UP],
+			["extra 1", MOUSE_BUTTON_XBUTTON1]]:
+		var mb := InputEventMouseButton.new()
+		mb.button_index = int(btn[1])
+		mb.pressed = true
+		var mv: Dictionary = Keybinds.validate(mb, "power")
+		_check(not bool(mv.ok) and str(mv.message) == Keybinds.MSG_UNUSABLE,
+			"keybinds: mouse %s is refused" % str(btn[0]))
+	_check(Keybinds.mapmode_for_keycode(KEY_J) == "logistics", "keybinds: keycode resolves to its map mode")
+	_check(Keybinds.mapmode_for_keycode(KEY_K) == "", "keybinds: an unbound keycode resolves to nothing")
+	_check(Keybinds.key_name(0) == "Unbound", "keybinds: 0 reads as Unbound")
+
+	# Every fixed row the Controls tab renders must have a label and key text to render.
+	var fixed_ok := true
+	for r: Dictionary in Keybinds.FIXED:
+		if str(r.get("label", "")) == "" or str(r.get("keys", "")) == "":
+			fixed_ok = false
+	_check(fixed_ok, "keybinds: every fixed row has a label and a key to show")
+	_check(Keybinds.MAPMODES.size() == 10, "keybinds: one bindable row per map mode")
+
+	# Commit + reload round-trip, and the 0 sentinel is dropped rather than saved.
+	Keybinds.set_mapmode_bindings({"power": KEY_K, "water": 0})
+	_check(int(PlayerProfile.keybinds.get("power", 0)) == KEY_K, "keybinds: a binding survives commit")
+	_check(not PlayerProfile.keybinds.has("water"), "keybinds: an unbound row is not persisted")
+
+	PlayerProfile.keybinds = saved
+
+
+# The Itch.io demo length: 100 turns with its own decarbonisation timeline. The campaign
+# arc opens at turn 84 and lands the subsidy at 105, so a 100-turn game at campaign timings
+# would end before the subsidy exists — which is the whole reason this timeline exists.
+func _test_demo_itch_speed() -> void:
+	var saved_rules: Dictionary = MatchState.ruleset.duplicate(true)
+	var saved_cap: int = TurnManager.MAX_TURNS
+
+	# The length selector reaches the turn cap at all. It used to be collected into the
+	# ruleset and never read, so every game ran 300 turns whichever length was chosen.
+	TurnManager.apply_ruleset({"speed_turns": 100})
+	_check(TurnManager.MAX_TURNS == 100, "demo: speed_turns sets the turn cap")
+	TurnManager.apply_ruleset({})
+	_check(TurnManager.MAX_TURNS == TurnManager.DEFAULT_MAX_TURNS,
+		"demo: a ruleset with no length falls back to the campaign")
+
+	# Campaign timeline unchanged — the demo must not move anyone else's beats.
+	MatchState.ruleset = {"name": "standard"}
+	_check(PolicyState.timeline_id() == PolicyState.TIMELINE_CAMPAIGN, "demo: default is the campaign timeline")
+	_check(PolicyState.beat("election_news") == 84, "campaign: election still turn 84")
+	_check(PolicyState.beat("ramp_first") == 91, "campaign: levy still ramps from 91")
+	_check(PolicyState.beat("p1") == 101, "campaign: levy still full force at 101")
+	_check(PolicyState.beat("subsidy") == 105, "campaign: subsidy still turn 105")
+	_check(is_equal_approx(PolicyState.co2_tax_scale(90), 0.0), "campaign: no levy at turn 90")
+	_check(PolicyState.co2_tax_level(101) >= 1, "campaign: levy in force at 101")
+
+	# The demo's authored beats (owner, 23 Aug).
+	MatchState.ruleset = {"name": "standard", "policy_timeline": PolicyState.TIMELINE_DEMO}
+	_check(PolicyState.timeline_id() == PolicyState.TIMELINE_DEMO, "demo: ruleset selects the demo timeline")
+	for row: Array in [["election_news", 54], ["tax_notice", 58], ["ramp_first", 65],
+			["p1", 75], ["subsidy", 80]]:
+		_check(PolicyState.beat(str(row[0])) == int(row[1]),
+			"demo: %s on turn %d" % [str(row[0]), int(row[1])])
+
+	# The levy ramp runs 65 -> 75 and nothing before it.
+	_check(is_equal_approx(PolicyState.co2_tax_scale(64), 0.0), "demo: no levy at turn 64")
+	_check(PolicyState.co2_tax_scale(65) > 0.0, "demo: levy starts biting at 65")
+	_check(PolicyState.co2_tax_scale(70) > PolicyState.co2_tax_scale(65), "demo: the levy ramps")
+	_check(is_equal_approx(PolicyState.co2_tax_scale(75), 1.0), "demo: levy at full force by 75")
+	_check(PolicyState.co2_tax_level(74) == 0, "demo: levy phase 1 not yet in force at 74")
+	_check(PolicyState.co2_tax_level(75) >= 1, "demo: levy phase 1 in force at 75")
+
+	# The subsidy arrives inside the demo's 100 turns, which it never did at campaign timings.
+	_check(is_zero_approx(PolicyState.green_subsidy_rate(79)), "demo: no subsidy at turn 79")
+	_check(PolicyState.green_subsidy_rate(80) > 0.0, "demo: subsidy live at turn 80")
+	_check(PolicyState.green_subsidy_rate(100) > 0.0, "demo: subsidy still live at the final turn")
+
+	# Every beat has to land inside the demo, or the player never sees it.
+	var inside := true
+	for key: String in ["election_news", "insider_first", "insider_last", "tax_notice",
+			"ramp_first", "p1", "subsidy_notice", "subsidy"]:
+		if PolicyState.beat(key) < 1 or PolicyState.beat(key) > 100:
+			inside = false
+	_check(inside, "demo: every policy beat falls inside the 100 turns")
+	# ...and in the order the story needs.
+	_check(PolicyState.beat("election_news") < PolicyState.beat("tax_notice")
+		and PolicyState.beat("tax_notice") < PolicyState.beat("ramp_first")
+		and PolicyState.beat("ramp_first") < PolicyState.beat("p1")
+		and PolicyState.beat("p1") <= PolicyState.beat("subsidy"),
+		"demo: election → notice → ramp → full force → subsidy, in that order")
+
+	# The length row itself. Everything above tests what a ruleset DOES; this tests that the
+	# only thing that writes one actually says it — the first cut of this shipped a demo
+	# timeline nothing could select, because the row was never added to the table.
+	var demo_row: Dictionary = {}
+	for opt_variant: Variant in NewGamePanel.SPEEDS:
+		var opt: Dictionary = opt_variant
+		if str(opt.get("id", "")) == NewGamePanel.DEMO_SPEED_ID:
+			demo_row = opt
+	_check(not demo_row.is_empty(), "demo: the length selector has a Demo - Itch.io row")
+	_check(int(demo_row.get("turns", 0)) == 100, "demo: the row is 100 turns long")
+	_check(str(demo_row.get("policy_timeline", "")) == PolicyState.TIMELINE_DEMO,
+		"demo: the row carries the demo policy timeline")
+	_check(str(demo_row.get("victory_set", "")) == "demo_itch",
+		"demo: the row carries the demo victory set")
+	_check(NewGamePanel.SPEED_DEFAULT_DEMO >= 0
+		and NewGamePanel.SPEED_DEFAULT_DEMO < NewGamePanel.SPEEDS.size()
+		and str((NewGamePanel.SPEEDS[NewGamePanel.SPEED_DEFAULT_DEMO] as Dictionary).get("id", ""))
+			== NewGamePanel.DEMO_SPEED_ID,
+		"demo: a demo build starts on the one row it leaves enabled")
+	# ...and that a ruleset built from that row moves every system at once.
+	var demo_rules := {"speed_turns": int(demo_row.get("turns", 0)),
+		"policy_timeline": str(demo_row.get("policy_timeline", "")),
+		"victory_set": str(demo_row.get("victory_set", ""))}
+	MatchState.ruleset = demo_rules
+	TurnManager.apply_ruleset(demo_rules)
+	VictoryState.apply_ruleset(demo_rules)
+	_check(TurnManager.MAX_TURNS == 100
+		and PolicyState.timeline_id() == PolicyState.TIMELINE_DEMO
+		and VictoryState.TRACK_ORDER == VictoryState.DEMO_TRACK_ORDER
+		and VictoryState.win_threshold_for_turn(100) == 2500,
+		"demo: the row's ruleset sets the length, the timeline and the victory set together")
+
+	MatchState.ruleset = saved_rules
+	TurnManager.MAX_TURNS = saved_cap
+	VictoryState.apply_ruleset(saved_rules)
+
+
 func _test_audio_service() -> void:
 	for cue in ["CLICK", "CLICK_MENU", "CLICK_PRIMARY", "HOVER", "HAMMER", "RUBBLE", "SIGNATURE", "CASH_REGISTER", "TECH_UNLOCK", "SLOT_LEVER", "HINT"]:
 		_check(Audio.get(cue) != null, "audio: %s cue imports and loads" % cue)
@@ -1268,6 +1468,176 @@ func _test_audio_service() -> void:
 # Baked hills are the canonical hand-painted shape: the file must exist, match
 # the current CSVs/generator (else someone forgot to re-bake), and only ever
 # block subtiles on hill tiles (flat tiles take lv1-2 spill but never block).
+# The START LAYOUT bake is the third of the three, and the only one with no freshness
+# check — which is how a stale one shipped: re-baking hills and roads (and touching
+# tile_properties.csv, which it also hashes) silently invalidated it, every one of the
+# 417 start placements fell through to the live packer, and a 10 s load became 53 s with
+# a green suite. The hills bake has had this test since it existed; this one earns it.
+# The hill TEXTURE bake is the fourth of the four and, until now, the only one with no
+# freshness test — which is how a stale one shipped and stayed. Re-baking the hills silently
+# invalidated it, HillTextureBaked.texture() refused the picture on disk as "not a picture of
+# this map", and the relief was redrawn live on every load: 6.9 s, measured, of a 15.4 s load.
+# It says so on stdout, but nothing fails, so the warning scrolls past under everything else.
+#
+# It is refused for FOUR reasons and every one of them costs the same 6.9 s, so all four are
+# checked here rather than only the hash: a version bump, a stale hash, a palette that is not
+# the shipped default, and a PNG Godot cannot load because it never got an .import sidecar.
+# Every authored road stroke has to land on a tile the bake actually wrote a texture for.
+#
+# The exporter used to offer the baker only the tiles each settlement DECLARES, but a
+# connector road is authored precisely to run past them, and the runtime only ever iterates
+# the manifest. So a stroke that left the declared set was drawn up to the last declared
+# tile's edge and then stopped — a dead straight cut across a road (owner, 25 Aug; 33 of 323
+# strokes had points on no baked tile, one of them every point it had).
+#
+# This checks the OUTPUT, not the exporter: it is equally a staleness tripwire, because a
+# document that gains a road running somewhere new fails here until the bake is re-run.
+func _test_authored_roads_all_baked() -> void:
+	var bake: Variant = load("res://scripts/authored_bake.gd")
+	var layout: Variant = load("res://scripts/authored_bake_layout.gd")
+	var doc: Dictionary = AuthoredMap.data()
+	var settlements: Dictionary = doc.get("settlements", {})
+	if settlements.is_empty():
+		return   # no authored document in this install; nothing to guard
+	var rects: Array[Rect2] = []
+	for tile_value: Variant in bake.tiles():
+		rects.append(bake.tile_rect(str(tile_value)))
+	_check(not rects.is_empty(), "authored roads: the bake manifest names at least one tile")
+	var stray := 0
+	var worst := ""
+	for settlement_value: Variant in settlements.values():
+		for stroke_value: Variant in ((settlement_value as Dictionary).get("roads", []) as Array):
+			var stroke: Dictionary = stroke_value
+			# STATIC strokes only. An `unlockable` one is deliberately kept out of the bake and
+			# drawn live by authored_road_visuals, so it has no baked tile to land on and never
+			# should — the 91 points that first failed this check all belonged to those.
+			if not layout.road_is_static(stroke):
+				continue
+			var points_value: Variant = stroke.get("points", [])
+			if typeof(points_value) != TYPE_ARRAY or (points_value as Array).size() < 2:
+				continue
+			for point_value: Variant in (points_value as Array):
+				if typeof(point_value) != TYPE_ARRAY or (point_value as Array).size() < 2:
+					continue
+				var p := Vector2(float((point_value as Array)[0]), float((point_value as Array)[1]))
+				var covered := false
+				for rect_value: Variant in rects:
+					if (rect_value as Rect2).has_point(p):
+						covered = true
+						break
+				if not covered:
+					stray += 1
+					if worst == "":
+						worst = str(stroke.get("id", "?"))
+	_check(stray == 0, "authored roads: every static stroke lies on a baked tile (re-run "
+		+ "tools/map_editor/bake_authored_map.tscn — %d stray point(s), first on %s)" % [stray, worst])
+
+
+# An upgrade tech may only stand on a tech from a LOWER tier.
+#
+# Industrial Goods Factory L2 (rank II) was gated behind a rank III node, so the upgrade that
+# should open the middle game sat behind the late one (owner, 25 Aug). Same-tier prereqs are
+# caught too: they make a tier a queue rather than a set of choices.
+func _test_upgrade_techs_stand_on_lower_tiers() -> void:
+	const RANK_ORDER := {"I": 1, "II": 2, "III": 3, "IV": 4, "V": 5}
+	var rows := _research_rows()
+	_check(not rows.is_empty(), "research: research_unlocks.csv parses")
+	var rank_of: Dictionary = {}
+	for row_value: Variant in rows:
+		var row: Dictionary = row_value
+		rank_of[str(row.get("research_node_id", ""))] = str(row.get("rank", ""))
+	var offenders: Array[String] = []
+	for row_value: Variant in rows:
+		var row: Dictionary = row_value
+		if not str(row.get("icon", "")) in ["level2", "level3"]:
+			continue
+		var mine: int = int(RANK_ORDER.get(str(row.get("rank", "")), 0))
+		for key in ["prereq_1", "prereq_2", "prereq_3", "prereq_othercategory"]:
+			var prereq := str(row.get(key, "")).strip_edges()
+			if prereq == "":
+				continue
+			_check(rank_of.has(prereq), "research: %s names a real prereq (%s)" % [
+				str(row.get("research_node_id", "")), prereq])
+			if int(RANK_ORDER.get(str(rank_of.get(prereq, "")), 9)) >= mine:
+				offenders.append("%s(%s)<-%s(%s)" % [str(row.get("research_node_id", "")),
+					str(row.get("rank", "")), prereq, str(rank_of.get(prereq, ""))])
+	_check(offenders.is_empty(),
+		"research: no upgrade tech stands on its own tier or above (%s)" % ", ".join(offenders))
+
+
+# A power gate asks for a quantity a real grid reaches, and not one it passes in a turn.
+# The shipped floor was 250 — one turn of the starting plant, so the node unlocked itself
+# (owner, 25 Aug: "minimum of 2500 and max of 10000").
+func _test_power_gates_in_band() -> void:
+	const FLOOR := 2500
+	const CEILING := 10000
+	var checked := 0
+	for row_value: Variant in _research_rows():
+		var row: Dictionary = row_value
+		if str(row.get("Object", "")).to_lower() != "power":
+			continue
+		var quantity := str(row.get("Quantity", ""))
+		if not quantity.is_valid_int():
+			continue
+		checked += 1
+		var q := int(quantity)
+		_check(q >= FLOOR and q <= CEILING,
+			"research: %s asks for %d power, inside %d–%d" % [
+				str(row.get("research_node_id", "")), q, FLOOR, CEILING])
+	_check(checked > 0, "research: at least one power gate was found to check")
+
+
+## research_unlocks.csv as an array of column->value dictionaries.
+func _research_rows() -> Array:
+	var file := FileAccess.open("res://data/research_unlocks.csv", FileAccess.READ)
+	if file == null:
+		return []
+	var header := file.get_csv_line()
+	var out: Array = []
+	while not file.eof_reached():
+		var row := file.get_csv_line()
+		if row.size() < header.size():
+			continue
+		var d: Dictionary = {}
+		for i in header.size():
+			d[header[i]] = row[i]
+		out.append(d)
+	return out
+
+
+func _test_hill_texture_baked_fresh() -> void:
+	var script: Variant = load("res://scripts/hill_texture_baked.gd")
+	var doc: Dictionary = script.data()
+	_check(not doc.is_empty(),
+		"hill texture: bake manifest exists and parses (run tools/bake_hill_texture.tscn)")
+	if doc.is_empty():
+		return
+	_check(int(doc.get("bake_version", -1)) == script.BAKE_VERSION,
+		"hill texture: bake is this build's version")
+	_check(str(doc.get("source_hash", "")) == HillBaked.source_hash(),
+		"hill texture: bake matches the hills (re-run tools/bake_hill_texture.tscn after "
+		+ "tools/bake_hills.tscn — a stale one costs ~7 s of load, silently)")
+	# The shipped bake has to be in the style the game SHIPS in, or it is refused at load for a
+	# palette mismatch and redrawn live. `toggle ink` legitimately moves off it; the default
+	# must not.
+	_check(str(doc.get("style", "")) == script.style_key(
+			MapStyle.ink, MapStyle.plate, MapStyle.is_midcentury()),
+		"hill texture: bake is in the shipped default map style")
+	_check(ResourceLoader.exists(script.TEXTURE_PATH),
+		"hill texture: the baked PNG is loadable (run `--headless --import` after a re-bake, "
+		+ "or Godot cannot see it and the relief is drawn live anyway)")
+
+
+func _test_start_layout_baked_fresh() -> void:
+	var script := load("res://scripts/start_layout_baked.gd")
+	_check(FileAccess.file_exists(script.BAKE_PATH), "start layout: baked file exists")
+	var doc: Dictionary = script.state()
+	_check(not doc.is_empty(), "start layout: baked file parses")
+	_check(str(doc.get("content_hash", "")) == script.content_hash(),
+		"start layout: bake is fresh (re-run tools/bake_start_layout.tscn after a map, "
+		+ "roads or hills re-bake — a stale one costs ~40 s of load)")
+
+
 func _test_hills_baked_fresh() -> void:
 	_check(FileAccess.file_exists(HillBaked.BAKED_PATH), "hills: baked file exists")
 	var doc := HillBaked.data()
@@ -5387,6 +5757,42 @@ func _test_sell_protects_build_materials() -> void:
 	MatchState.reset()
 	Stockpile.clear_all()
 
+	# (d) The reserve exists to cover a RESUPPLY LEAD, so an input with no lead to cover needs
+	# exactly one turn on hand. Two have none: one the tile makes at least as much of as it
+	# burns, and one the player has taken off market top-up. Quoting a market lead for either
+	# was the SELL half of the pipeline disagreeing with the BUY half — _buy_market_inputs
+	# skips both — and it is why a tile that smelted its own ingots sat on two turns of them
+	# for ever with Sell all Surplus on, which read as the reserve freezing (owner, 25 Aug).
+	var own_tile := "tile_9_9"
+	var wire_mill := MatchState.add_building("b_007", "r_008", own_tile, "player_1")   # burns g_005
+	var need := 0
+	for input_value: Variant in Catalog.get_recipe("r_008").get("inputs", []):
+		var input: Dictionary = input_value
+		if str(input.get("good_id", "")) == "g_005":
+			need = Production._scaled_input_qty(input, MatchState.get_building(wire_mill))
+	var bought_in: int = int(Production.compute_sell_reserve_for_tile(own_tile).get("g_005", 0))
+	_check(need > 0 and bought_in == need,
+		"sell reserve: one turn's burn, whether the input is bought or smelted (%d of %d/turn)"
+		% [bought_in, need])
+	# Now the tile smelts its own, at more than the mill burns.
+	var copper_smelter := MatchState.add_building("b_002", "r_020", own_tile, "player_1")
+	var made_here: int = int(Production.compute_sell_reserve_for_tile(own_tile).get("g_005", 0))
+	_check(made_here == need,
+		"sell reserve: a good the tile makes for itself is held at one turn's use (%d of %d/turn)"
+		% [made_here, need])
+	MatchState.remove_building(copper_smelter)
+	# ...and the same when the player has simply opted the input out of market top-up.
+	MatchState.set_input_tile_only(wire_mill, "g_005", true)
+	var tile_only: int = int(Production.compute_sell_reserve_for_tile(own_tile).get("g_005", 0))
+	_check(tile_only == need,
+		"sell reserve: an input taken off market top-up is held at one turn too (%d of %d/turn)"
+		% [tile_only, need])
+	MatchState.set_input_tile_only(wire_mill, "g_005", false)
+	MatchState.remove_building(wire_mill)
+	Modifiers.reset()
+	MatchState.reset()
+	Stockpile.clear_all()
+
 func _test_warehousing_fee_rates() -> void:
 	# Per-unit storage fee is a TWO-PART tariff by transport class (owner ruling 2026-07-27):
 	# flat floor-space leg + ad-valorem capital leg charged on this turn's decayed base price.
@@ -5567,18 +5973,21 @@ func _test_flavor_nodes_wired() -> void:
 
 func _test_research_tier_gating() -> void:
 	MatchState.reset()
-	# Tier I is always open; a higher tier opens on >=min(3, prior-tier-count) unlocked
-	# in the prior tier of the SAME category.
+	# Tier I is always open; a higher tier opens on >= min(TIER_UNLOCK_THRESHOLD,
+	# prior-tier-count) unlocked in the prior tier of the SAME category. Written against the
+	# CONSTANT rather than a literal: the threshold moved 3 -> 2 (owner 2026-08-23) and this
+	# test was the only thing that had to change, which is the point of pinning it this way.
+	_check(MatchState.TIER_UNLOCK_THRESHOLD == 2,
+		"tier gate: a tier opens on two of the tier below")
 	_check(MatchState.is_tier_available("Metallurgy", "I"), "tier gate: Tier I always open")
 	_check(not MatchState.is_tier_available("Metallurgy", "II"),
 		"tier gate: Metallurgy II locked with 0 Tier-I unlocked")
 	MatchState.grant_unlock("Basic Blast Furnaces")
-	MatchState.grant_unlock("Continuous Casting")
 	_check(not MatchState.is_tier_available("Metallurgy", "II"),
-		"tier gate: Metallurgy II still locked at 2/3 Tier-I")
-	MatchState.grant_unlock("Oxygen-Enriched Blast")
+		"tier gate: Metallurgy II still locked at 1 Tier-I unlocked")
+	MatchState.grant_unlock("Continuous Casting")
 	_check(MatchState.is_tier_available("Metallurgy", "II"),
-		"tier gate: Metallurgy II opens at 3 Tier-I unlocked")
+		"tier gate: Metallurgy II opens at %d Tier-I unlocked" % MatchState.TIER_UNLOCK_THRESHOLD)
 	# Softlock clamp: Recycling has a single Tier-II node, so Tier III must open on just it.
 	_check(not MatchState.is_tier_available("Recycling", "III"),
 		"tier gate: Recycling III locked before its lone Tier-II node")
@@ -6160,6 +6569,675 @@ func _test_building_category_key() -> void:
 			"layout edge rule: b_036 recycling_plant matches 'recycl'")
 		_check(TileViewData.category_key(prec) == "manufacturing",
 			"layout category_key: b_036 -> manufacturing")
+
+# ── Demo victory set (owner 2026-08-23; five tracks over 100 turns) ─────────
+
+func _test_demo_victory_tracks() -> void:
+	var saved_rules: Dictionary = MatchState.ruleset.duplicate(true)
+	var saved_run: Dictionary = Production.last_turn_run.duplicate()
+
+	# The campaign set is the default and stays untouched by any of this.
+	VictoryState.apply_ruleset({})
+	_check(VictoryState.TRACK_ORDER == VictoryState.CAMPAIGN_TRACK_ORDER,
+		"demo victory: a ruleset with no set runs the campaign tracks")
+	_check(VictoryState.win_threshold_for_turn(300) == 4000,
+		"demo victory: the campaign bar still rises to 4000")
+
+	# The demo set replaces the tracks wholesale, and everything that renders a track
+	# reads these tables, so no panel needs to know the names.
+	MatchState.ruleset = {"name": "standard", "victory_set": "demo_itch"}
+	VictoryState.apply_ruleset(MatchState.ruleset)
+	VictoryState.reset()
+	_check(VictoryState.TRACK_ORDER == VictoryState.DEMO_TRACK_ORDER
+		and VictoryState.TRACK_ORDER.size() == 5,
+		"demo victory: the ruleset selects the five demo tracks")
+	var named := true
+	for key: String in VictoryState.TRACK_ORDER:
+		if not (VictoryState.TRACK_NAMES.has(key) and VictoryState.TRACK_EXPLAIN.has(key)
+				and VictoryState.TRACK_COLOR_KEYS.has(key) and VictoryState.TRACK_MAX.has(key)):
+			named = false
+	_check(named, "demo victory: every demo track has a name, an explainer, a colour and a max")
+
+	# The bar does not rise: 2.5 tracks of 1000, at every turn of the demo.
+	_check(VictoryState.win_threshold_for_turn(1) == 2500
+		and VictoryState.win_threshold_for_turn(65) == 2500
+		and VictoryState.win_threshold_for_turn(100) == 2500,
+		"demo victory: a flat 2500 bar — 2.5 tracks — whatever the turn")
+	var all_1000 := true
+	for key: String in VictoryState.TRACK_ORDER:
+		if int(VictoryState.TRACK_MAX[key]) != 1000:
+			all_1000 = false
+	_check(all_1000, "demo victory: each track is worth 1000, so five tracks total 5000")
+	# ...and the tunables have to ADD UP to that 1000, or a track that reads as full would
+	# score something other than its max and "2.5 tracks" would stop meaning 2500.
+	var vs := VictoryState
+	var crown_rates_add_up := true
+	for place: int in vs.DEMO_CROWN_TURNS_BY_RANK:
+		crown_rates_add_up = crown_rates_add_up and (
+			int(vs.DEMO_CROWN_TURNS_BY_RANK[place]) * int(vs.DEMO_CROWN_POINTS_BY_RANK[place])
+			== vs.DEMO_CROWN_TARGET)
+	_check(crown_rates_add_up and vs.DEMO_CROWN_TARGET == 1000,
+		"demo arithmetic: 20 turns first, 40 second and 100 third each reach the same 1000")
+	_check(vs.DEMO_TIERS.size() * vs.DEMO_TIER_CAP == 1000
+		and vs.DEMO_TIER_UNITS * vs.DEMO_TIER_POINTS_PER_UNIT == vs.DEMO_TIER_CAP,
+		"demo arithmetic: 5 units x 40 caps a tier at 200, and 5 tiers = 1000")
+	_check(vs.DEMO_LONG_HAULS * 100 == 1000, "demo arithmetic: 10 hauls x 100 = 1000")
+	_check(int(vs.DEMO_GREEN_TARGET) / 100 * 25 == 1000, "demo arithmetic: 4000 MW at 25 per 100 = 1000")
+	_check(vs.DEMO_ESTATE_BUILDINGS * vs.DEMO_ESTATE_POINTS_PER_BUILDING
+		+ vs.DEMO_ESTATE_RUNNING_BONUS == 1000,
+		"demo arithmetic: 30 buildings x 30 + 100 running bonus = 1000")
+	_check(vs.DEMO_WIN_THRESHOLD == 2500 and vs.DEMO_WIN_THRESHOLD * 2 == 5 * 1000,
+		"demo arithmetic: the 2500 bar is exactly half of five full tracks")
+
+	# 1 · Crown — podium points, banked: 50 for first, 25 for second, 10 for third, nothing
+	# below. Counting POINTS rather than turns is what lets the three places mix and match.
+	VictoryState.demo_crown_points = 0
+	_check(is_zero_approx(VictoryState._live_progress("crown")), "demo crown: nothing off the podium")
+	VictoryState.demo_crown_points = 500
+	_check(absf(VictoryState._live_progress("crown") - 0.5) < 0.001,
+		"demo crown: 500 points is half the track — ten turns leading, or twenty in second")
+	VictoryState.demo_crown_points = VictoryState.DEMO_CROWN_TARGET
+	_check(is_equal_approx(VictoryState._live_progress("crown"), 1.0),
+		"demo crown: 1000 points tops the track")
+	VictoryState.demo_crown_points = VictoryState.DEMO_CROWN_TARGET * 3
+	_check(is_equal_approx(VictoryState._live_progress("crown"), 1.0),
+		"demo crown: a long run on the podium does not overflow it")
+	# The mix the owner asked for: a season split between places has to land on the same
+	# 1000 as a season spent wholly at any one of them.
+	var mixed: int = 10 * int(VictoryState.DEMO_CROWN_POINTS_BY_RANK[1])
+	mixed += 10 * int(VictoryState.DEMO_CROWN_POINTS_BY_RANK[2])
+	mixed += 25 * int(VictoryState.DEMO_CROWN_POINTS_BY_RANK[3])
+	_check(mixed == VictoryState.DEMO_CROWN_TARGET,
+		"demo crown: 10 turns first + 10 second + 25 third also fills it exactly")
+	_check(not VictoryState.DEMO_CROWN_POINTS_BY_RANK.has(4),
+		"demo crown: fourth place and below pay nothing")
+
+	# 2 · Tiers — 5 units a tier, 40 points each, capped at 200 a tier. Every tier pays
+	# separately, so breadth is the ask and depth in one tier cannot substitute.
+	VictoryState._last_summary = {"produced": {}}
+	_check(is_zero_approx(VictoryState._live_progress("tiers")), "demo tiers: an idle turn scores nothing")
+	var raw_good := _a_good_in_tier("raw")
+	VictoryState._last_summary = {"produced": {raw_good: 5}}
+	_check(absf(VictoryState._live_progress("tiers") - 0.2) < 0.001,
+		"demo tiers: one tier at 5 units is a fifth of the track")
+	VictoryState._last_summary = {"produced": {raw_good: 500}}
+	_check(absf(VictoryState._live_progress("tiers") - 0.2) < 0.001,
+		"demo tiers: 500 units of one tier still caps at that tier's 200 points")
+	var five_tiers := {}
+	for tier: String in VictoryState.DEMO_TIERS:
+		five_tiers[_a_good_in_tier(tier)] = 5
+	VictoryState._last_summary = {"produced": five_tiers}
+	_check(is_equal_approx(VictoryState._live_progress("tiers"), 1.0),
+		"demo tiers: 5 units in each of the five tiers tops the track")
+	# Power is not a good and must not leak into a tier.
+	VictoryState._last_summary = {"produced": {"power": 9999}}
+	_check(is_zero_approx(VictoryState._live_progress("tiers")),
+		"demo tiers: generating power scores nothing on the goods track")
+
+	# 3 · Distance — 10 shipments that spent longer than 10 turns travelling.
+	VictoryState.demo_long_hauls = 0
+	VictoryState.record_movement("sell", "output", 10)
+	_check(VictoryState.demo_long_hauls == 0, "demo distance: exactly 10 turns is not over 10")
+	VictoryState.record_movement("sell", "output", 11)
+	VictoryState.record_movement("move", "output", 30)
+	_check(VictoryState.demo_long_hauls == 2, "demo distance: any long movement counts, sold or moved")
+	_check(absf(VictoryState._live_progress("distance") - 0.2) < 0.001,
+		"demo distance: 2 of 10 hauls is a fifth of the track")
+	VictoryState.demo_long_hauls = 10
+	_check(is_equal_approx(VictoryState._live_progress("distance"), 1.0),
+		"demo distance: 10 long hauls tops the track")
+
+	# 4 · Green — 4000 MW of wind and solar IN ONE TURN. Deliberately not cumulative.
+	VictoryState._last_summary = {"power_supply": 4000,
+		"power_supply_by_quality": {"green_intermittent": 2000.0, "green_steady": 0.0}}
+	_check(absf(VictoryState._live_progress("green_demo") - 0.5) < 0.001,
+		"demo green: 2000 MW of green is half the track")
+	VictoryState._last_summary = {"power_supply": 9000,
+		"power_supply_by_quality": {"green_intermittent": 4000.0, "green_steady": 0.0}}
+	_check(is_equal_approx(VictoryState._live_progress("green_demo"), 1.0),
+		"demo green: 4000 MW in a turn tops the track")
+	VictoryState._last_summary = {"power_supply": 9000,
+		"power_supply_by_quality": {"green_intermittent": 0.0, "green_steady": 0.0}}
+	_check(is_zero_approx(VictoryState._live_progress("green_demo")),
+		"demo green: a turn of coal scores nothing, however much it generates")
+
+	# 5 · Estate — 30 non-infrastructure buildings owned, plus 100 for having them all run.
+	MatchState.reset()
+	MatchState.ruleset = {"name": "standard", "victory_set": "demo_itch"}
+	VictoryState.apply_ruleset(MatchState.ruleset)
+	Production.last_turn_run.clear()
+	var max_points := (VictoryState.DEMO_ESTATE_BUILDINGS * VictoryState.DEMO_ESTATE_POINTS_PER_BUILDING
+		+ VictoryState.DEMO_ESTATE_RUNNING_BONUS)
+	_check(is_zero_approx(VictoryState._live_progress("estate")), "demo estate: no buildings, no points")
+	for i in range(15):
+		MatchState.buildings["e%d" % i] = {"building_id": "b_001", "tile_id": "et%d" % i, "owner": "player_1"}
+	_check(absf(VictoryState._live_progress("estate") - (15.0 * 30.0) / float(max_points)) < 0.001,
+		"demo estate: 15 idle buildings score 450 of 1000")
+	# The port is infrastructure: owning it must not move the track.
+	MatchState.buildings["eport"] = {"building_id": "b_004", "tile_id": "etport", "owner": "player_1"}
+	_check(absf(VictoryState._live_progress("estate") - (15.0 * 30.0) / float(max_points)) < 0.001,
+		"demo estate: infrastructure is not part of the estate")
+	# A rival's 30 buildings are not yours either.
+	for i in range(30):
+		MatchState.buildings["r%d" % i] = {"building_id": "b_001", "tile_id": "rt%d" % i, "owner": "ai_corp"}
+	_check(absf(VictoryState._live_progress("estate") - (15.0 * 30.0) / float(max_points)) < 0.001,
+		"demo estate: a rival's estate is not counted")
+	for i in range(15, 30):
+		MatchState.buildings["e%d" % i] = {"building_id": "b_001", "tile_id": "et%d" % i, "owner": "player_1"}
+	_check(absf(VictoryState._live_progress("estate") - 900.0 / float(max_points)) < 0.001,
+		"demo estate: 30 owned but idle is 900 — the last 100 is for running them")
+	for i in range(30):
+		Production.last_turn_run["e%d" % i] = true
+	_check(is_equal_approx(VictoryState._live_progress("estate"), 1.0),
+		"demo estate: 30 owned AND running tops the track")
+
+	# Two and a half tracks is a win at turn 100; two is not.
+	VictoryState.reset()
+	VictoryState.track_best["crown"] = 1.0
+	VictoryState.track_best["tiers"] = 1.0
+	_check(VictoryState.total_for_turn(100) == 2000
+		and VictoryState.total_for_turn(100) < VictoryState.win_threshold_for_turn(100),
+		"demo victory: two maxed tracks fall short at turn 100")
+	VictoryState.track_best["distance"] = 0.5
+	_check(VictoryState.total_for_turn(100) == 2500
+		and VictoryState.total_for_turn(100) >= VictoryState.win_threshold_for_turn(100),
+		"demo victory: two and a half tracks wins at turn 100")
+
+	# The counters survive a save, or a demo run reloaded is a demo run reset.
+	VictoryState.demo_crown_points = 350
+	VictoryState.demo_long_hauls = 3
+	var snapshot: Dictionary = VictoryState.export_state()
+	VictoryState.reset()
+	_check(VictoryState.demo_crown_points == 0 and VictoryState.demo_long_hauls == 0,
+		"demo victory: reset clears the demo counters")
+	VictoryState.import_state(snapshot)
+	_check(VictoryState.demo_crown_points == 350 and VictoryState.demo_long_hauls == 3,
+		"demo victory: the demo counters round-trip through a save")
+	# Saves written before the Crown paid by place hold a first-place TURN count, not points.
+	VictoryState.import_state({"demo_crown_turns": 7})
+	_check(VictoryState.demo_crown_points == 7 * int(VictoryState.DEMO_CROWN_POINTS_BY_RANK[1]),
+		"demo victory: an older save's crown turns convert to points on load")
+	VictoryState.import_state(snapshot)
+
+	# Back to the campaign, and nothing of the demo is left behind.
+	MatchState.reset()
+	MatchState.ruleset = saved_rules
+	VictoryState.apply_ruleset(saved_rules)
+	VictoryState.reset()
+	Production.last_turn_run = saved_run
+	_check(VictoryState.TRACK_ORDER == VictoryState.CAMPAIGN_TRACK_ORDER,
+		"demo victory: leaving the demo restores the campaign tracks")
+
+## First good the catalog files under `tier`, by the id the production summary uses, so
+## the tiers test names real goods rather than assuming which one sits where.
+func _a_good_in_tier(tier: String) -> String:
+	for good_variant: Variant in Catalog.all_goods():
+		var good: Dictionary = good_variant
+		if str(good.get("goods_graph_tier", "")) == tier:
+			return str(good.get("id", ""))
+	return ""
+
+# ── The demo's five endings (owner 2026-08-23) ──────────────────────────────
+
+func _test_demo_endings() -> void:
+	var saved_rules: Dictionary = MatchState.ruleset.duplicate(true)
+	var EGD := EndGameData
+
+	# Precedence, not a score-band lookup: the conditions overlap and the first match wins.
+	_check(EGD.demo_ending_id(5, 5000, true) == "bankruptcy",
+		"demo ending: bankruptcy outranks everything, including a full ledger")
+	_check(EGD.demo_ending_id(0, 0, true) == "bankruptcy",
+		"demo ending: bankruptcy does not care about the score")
+	_check(EGD.demo_ending_id(4, 4000, false) == "full_ledger",
+		"demo ending: 4 tracks is the full ledger")
+	_check(EGD.demo_ending_id(5, 5000, false) == "full_ledger",
+		"demo ending: 5 tracks is still the full ledger")
+	_check(EGD.demo_ending_id(3, 3200, false) != "full_ledger",
+		"demo ending: 3 tracks is not the full ledger")
+
+	# Jack of all trades — points WITHOUT a completed track. One finished track disqualifies
+	# it however high the score, which is the whole point of the ending.
+	_check(EGD.demo_ending_id(0, 2000, false) == "jack_of_all_trades",
+		"demo ending: 2000 points and no track is the jack of all trades")
+	_check(EGD.demo_ending_id(0, 2400, false) == "jack_of_all_trades",
+		"demo ending: still the jack well above 2000")
+	_check(EGD.demo_ending_id(1, 2400, false) == "sequel",
+		"demo ending: one finished track disqualifies the jack")
+	_check(EGD.demo_ending_id(0, 1999, false) == "sequel",
+		"demo ending: a point short of 2000 is the sequel, not the jack")
+
+	# The two score bands either side of 500.
+	_check(EGD.demo_ending_id(0, 501, false) == "sequel", "demo ending: 501 points is the sequel")
+	_check(EGD.demo_ending_id(0, 500, false) == "lukewarm",
+		"demo ending: exactly 500 falls to the lukewarm follow-up")
+	_check(EGD.demo_ending_id(0, 499, false) == "lukewarm", "demo ending: 499 points is lukewarm")
+	_check(EGD.demo_ending_id(0, 0, false) == "lukewarm", "demo ending: a scoreless run is lukewarm")
+
+	# Every ending is reachable, and every one is complete.
+	var reachable: Dictionary = {}
+	for row: Array in [[5, 5000, true], [4, 4000, false], [0, 2000, false],
+			[0, 900, false], [0, 10, false]]:
+		reachable[EGD.demo_ending_id(int(row[0]), int(row[1]), bool(row[2]))] = true
+	_check(reachable.size() == EGD.DEMO_ENDINGS.size(),
+		"demo ending: every authored ending is reachable")
+	var complete := true
+	for id in EGD.DEMO_ENDINGS:
+		var e: Dictionary = EGD.DEMO_ENDINGS[id]
+		if str(e.get("title", "")) == "" or str(e.get("copy", "")) == "":
+			complete = false
+		if not (str(e.get("result", "")) in ["victory", "continuity", "defeat"]):
+			complete = false
+	_check(complete, "demo ending: every ending has a title, a verdict and its copy")
+
+	# The endings follow the TRACKS. A campaign match keeps the campaign's titles.
+	MatchState.ruleset = {"name": "standard"}
+	VictoryState.apply_ruleset(MatchState.ruleset)
+	_check(not EGD.demo_endings_apply(), "demo ending: a campaign match does not use them")
+
+	MatchState.ruleset = {"name": "standard", "victory_set": "demo_itch",
+		"speed_turns": 100, "policy_timeline": "demo_itch"}
+	VictoryState.apply_ruleset(MatchState.ruleset)
+	TurnManager.apply_ruleset(MatchState.ruleset)
+	VictoryState.reset()
+	_check(EGD.demo_endings_apply(), "demo ending: a demo match does")
+
+	# Through the real assembler: a run with points banked but no track finished.
+	VictoryState.track_best["crown"] = 0.8
+	VictoryState.track_best["tiers"] = 0.7
+	VictoryState.track_best["distance"] = 0.6
+	var jack: Dictionary = EGD.gather()
+	_check(str(jack.get("ending_id", "")) == "jack_of_all_trades"
+		and str(jack.get("title", "")) == "The Jack of All Trades",
+		"demo ending: gather() names the jack of all trades")
+	_check((jack.get("copy", []) as Array).size() == 1
+		and str((jack.get("copy", []) as Array)[0]).begins_with("You've taken a business"),
+		"demo ending: the jack's copy is the owner's, in one paragraph")
+	_check(str(jack.get("epithet", "")).contains("no track secured")
+		and str(jack.get("epithet", "")).contains("2,100"),
+		"demo ending: the epithet carries the figures the copy leaves out")
+	# 2,100 is short of the 2,500 bar, so the banner must NOT read VICTORY over it.
+	_check(not bool(jack.get("won", true)) and str(jack.get("result", "")) == "continuity",
+		"demo ending: a jack short of the bar is not stamped a victory")
+	# ...but one that crosses it is.
+	VictoryState.track_best["green_demo"] = 1.0
+	VictoryState.won = true
+	var jack_won: Dictionary = EGD.gather()
+	_check(str(jack_won.get("result", "")) == "victory",
+		"demo ending: crossing the bar makes any ending a victory")
+	VictoryState.won = false
+
+	# ...and one with four tracks home.
+	VictoryState.reset()
+	for key: String in ["crown", "tiers", "distance", "green_demo"]:
+		VictoryState.track_best[key] = 1.0
+	var full: Dictionary = EGD.gather()
+	_check(str(full.get("ending_id", "")) == "full_ledger"
+		and str(full.get("title", "")) == "The Full Ledger"
+		and str(full.get("result", "")) == "victory",
+		"demo ending: four tracks home is the full ledger, and a victory")
+	_check(int(full.get("secured_count", 0)) == 4 and int(full.get("total", 0)) == 4000,
+		"demo ending: the full ledger's figures agree with the tracks")
+
+	# A losing turn must not stamp DEFEAT over copy that reads as a compliment.
+	VictoryState.reset()
+	VictoryState.track_best["crown"] = 0.9
+	var sequel: Dictionary = EGD.gather()
+	_check(str(sequel.get("ending_id", "")) == "sequel"
+		and str(sequel.get("result", "")) == "continuity",
+		"demo ending: the sequel is never shown under DEFEAT")
+	# The lukewarm one, by contrast, is authored as the downbeat verdict and keeps it.
+	VictoryState.reset()
+	VictoryState.track_best["crown"] = 0.3
+	var luke: Dictionary = EGD.gather()
+	_check(str(luke.get("ending_id", "")) == "lukewarm"
+		and str(luke.get("result", "")) == "defeat",
+		"demo ending: the lukewarm follow-up keeps its downbeat verdict")
+
+	# Bankruptcy is the fifth ending and has its own screen — the charts one SolvencyState
+	# mounts mid-game, not the turn-100 end screen. It reads the same table.
+	var panel: Object = (load("res://scripts/game_over_panel.gd") as GDScript).new()
+	_check(str(panel.call("_ending_title")) == "Bankruptcy"
+		and str(panel.call("_ending_body")).begins_with("Nothing more to say."),
+		"demo ending: the bankruptcy screen carries the demo ending")
+	MatchState.ruleset = {"name": "standard"}
+	VictoryState.apply_ruleset(MatchState.ruleset)
+	_check(str(panel.call("_ending_title")) == "Your legacy ends here",
+		"demo ending: a campaign bankruptcy keeps the campaign copy")
+	panel.free()
+
+	MatchState.ruleset = saved_rules
+	VictoryState.apply_ruleset(saved_rules)
+	VictoryState.reset()
+
+# ── Research deep link (owner 2026-08-23: the blocking tech is a link, not flat text) ──
+
+func _test_research_link_is_exact() -> void:
+	var panel: Object = (load("res://scripts/research_panel.gd") as GDScript).new()
+	var rows: Array = panel.get("_unlock_rows")
+	if rows == null or rows.is_empty():
+		panel.call("_load_unlock_rows")
+		rows = panel.get("_unlock_rows")
+	_check(rows != null and rows.size() > 0, "research link: the unlock table loads")
+
+	# The ORDINARY search matches title, description and category by substring, which is
+	# right for hunting and wrong for a link: several techs mention another tech in their
+	# description. Count how often an exact title pulls in extras, so the exact mode below
+	# is demonstrably needed rather than assumed.
+	var ambiguous := 0
+	for row_variant: Variant in rows:
+		var title := str((row_variant as Dictionary).get("title", ""))
+		if title == "":
+			continue
+		var loose := 0
+		for other_variant: Variant in rows:
+			if bool(panel.call("_unlock_matches", other_variant, title.to_lower())):
+				loose += 1
+		if loose > 1:
+			ambiguous += 1
+
+	# The exact mode must return EXACTLY the named tech, for every tech there is.
+	var exact_ok := true
+	var checked := 0
+	for row_variant: Variant in rows:
+		var title := str((row_variant as Dictionary).get("title", ""))
+		if title == "":
+			continue
+		checked += 1
+		panel.set("_search_query", title)
+		panel.set("_search_exact_title", title)
+		var hits: Array = panel.call("_category_unlocks", "")
+		if hits.size() != 1 or str((hits[0] as Dictionary).get("title", "")) != title:
+			exact_ok = false
+	_check(checked > 20 and exact_ok,
+		"research link: an exact-title link returns that tech and nothing else (%d techs, %d of which are ambiguous under the loose search)" % [checked, ambiguous])
+	panel.free()
+
+# ── Land readout vs the build gate (owner 2026-08-23: "why did the chart show capacity?") ──
+
+func _test_land_readout_matches_gate() -> void:
+	var TileViewData := preload("res://scripts/tile_view_data.gd")
+	MatchState.reset()
+	var tile := "tile_5_10"
+	var tile_data: Dictionary = {"id": tile, "type": Catalog.tile_type(tile)}
+
+	# A player building and an NPC one on the same tile. The NPC footprint is the thing that
+	# made the readout look wrong: it eats the tile's physical space without ever counting
+	# against the land the player owns.
+	MatchState.add_building("b_009", "", tile, "player_1", "land_p1", false)
+	MatchState.add_building("b_009", "", tile, "ai_corp", "land_npc", false)
+	# Land starts at 0 owned, which would leave FREE clamped at 0 and test nothing. Give the
+	# player real headroom, which is also the state a tile is in when this question arises.
+	MatchState.tile_land_owned[tile] = 60
+	var totals: Dictionary = TileViewData.land_totals(tile, tile_data)
+	var owned: int = MatchState.get_tile_land_owned(tile)
+
+	# BUILT counts only the player. The chart used to be read as though it counted everything.
+	_check(absf(float(totals.built) - MatchState.get_tile_player_space_used(tile)) < 0.51,
+		"land readout: BUILT is the player's footprint, matching the gate's own figure")
+	_check(int(totals.max) < MatchState.max_tile_land(tile),
+		"land readout: MAX is the tile's capacity LESS the NPC buildings sitting on it")
+
+	# FREE is the figure that decides a build, and it must agree with the gate exactly: a
+	# building whose growth fits FREE is allowed, and one unit more is refused.
+	var free: int = int(totals.free)
+	_check(free > 0 and free == maxi(0, mini(owned, int(totals.max)) - int(totals.built)),
+		"land readout: FREE is the binding gate — owned or physical, whichever is smaller")
+
+	var used_before: float = MatchState.get_tile_space_used(tile)
+	var cap: int = MatchState.max_tile_land(tile)
+	var player_used: float = MatchState.get_tile_player_space_used(tile)
+	var fits_exactly: bool = (used_before + float(free) <= float(cap)
+		and player_used + float(free) <= float(owned))
+	var one_over_fails: bool = not (used_before + float(free + 1) <= float(cap)
+		and player_used + float(free + 1) <= float(owned))
+	_check(fits_exactly and one_over_fails,
+		"land readout: exactly FREE more fits and one more does not — chart and gate agree")
+	# THE BAR. Its drawn segments must add up to the same space the gate counts, or it shows
+	# headroom that is not there. It used to omit the room an in-progress upgrade had already
+	# reserved — the caption counted it, the bar did not, and the gap under the cap line was a
+	# lie by exactly that much.
+	var chart: Dictionary = TileViewData.land_chart_data(tile, tile_data)
+	var drawn := 0.0
+	for seg_variant: Variant in (chart.segments as Array):
+		drawn += float((seg_variant as Dictionary).get("size", 0.0))
+	_check(absf(drawn - MatchState.get_tile_space_used(tile)) < 0.01,
+		"land chart: the drawn bar sums to exactly the space the build gate counts")
+
+	# ...including while an upgrade is running, which is the case that was wrong.
+	MatchState.pending_upgrades.append({
+		"instance_id": "land_p1", "building_id": "b_009", "tile_id": tile,
+		"from_level": 1, "target_level": 2, "status": "upgrading",
+		"turns_remaining": 3, "size_delta": 12.0, "missing": {},
+	})
+	var chart_up: Dictionary = TileViewData.land_chart_data(tile, tile_data)
+	var drawn_up := 0.0
+	for seg_variant: Variant in (chart_up.segments as Array):
+		drawn_up += float((seg_variant as Dictionary).get("size", 0.0))
+	_check(absf(drawn_up - drawn - 12.0) < 0.01,
+		"land chart: an upgrade in progress is drawn, not left as empty space")
+	_check(absf(drawn_up - MatchState.get_tile_space_used(tile)) < 0.01,
+		"land chart: bar and gate still agree while an upgrade is running")
+	var totals_up: Dictionary = TileViewData.land_totals(tile, tile_data)
+	_check(int(totals_up.free) == int(totals.free) - 12,
+		"land readout: FREE drops by the room the upgrade reserved")
+	MatchState.pending_upgrades.clear()
+
+	MatchState.reset()
+
+# ── Upgrade-committed space actually BLOCKS (owner 2026-08-23) ──────────────
+#
+# An upgrade holds the room it is growing into from the moment it starts — including while
+# it is still awaiting materials, or a build could slip into the space and the upgrade could
+# never finish. These pin that the hold is real, that it is not double-counted when the
+# upgrade lands, and that cancelling gives it back.
+
+func _test_upgrade_reserved_space_blocks() -> void:
+	MatchState.reset()
+	var tile := "tile_5_10"
+	MatchState.add_building("b_009", "", tile, "player_1", "resv_a", false)
+	MatchState.add_building("b_009", "", tile, "player_1", "resv_b", false)
+	var base_used: float = MatchState.get_tile_space_used(tile)
+
+	# An upgrade in flight on this tile, growing by 12.
+	MatchState.pending_upgrades.append({
+		"instance_id": "resv_a", "building_id": "b_009", "tile_id": tile,
+		"from_level": 1, "target_level": 2, "status": MatchState.UPGRADE_STATUS_AWAITING,
+		"materials": {}, "missing": {"g_001": 1}, "turns_remaining": 3, "size_delta": 12.0,
+	})
+	_check(absf(MatchState.reserved_upgrade_space_on_tile(tile) - 12.0) < 0.01,
+		"upgrade hold: the tile reports the room the upgrade is growing into")
+	_check(absf(MatchState.get_tile_space_used(tile) - base_used - 12.0) < 0.01,
+		"upgrade hold: it counts against the tile's used space")
+	_check(absf(MatchState.get_tile_player_space_used(tile) - base_used - 12.0) < 0.01,
+		"upgrade hold: and against the player's own footprint, not the NPCs'")
+	# Still held while it waits for materials — that is the whole point of holding it.
+	_check(str((MatchState.pending_upgrades[0] as Dictionary).status)
+		== MatchState.UPGRADE_STATUS_AWAITING,
+		"upgrade hold: held while the upgrade is still awaiting materials")
+
+	# A SECOND upgrade on the same tile is refused BECAUSE of the hold. Proven by isolating
+	# it: land is set so the second upgrade fits without the hold and does not fit with it.
+	# The footprint gate runs BEFORE the materials gate, so the two refusals are
+	# distinguishable — a footprint reason means the hold blocked it, a materials reason
+	# means it got past the footprint gate.
+	# The research gate is checked before the footprint one, so grant it or the test would
+	# only ever prove that the tech is locked.
+	MatchState.grant_unlock(BuildingLevels.research_gate("assembly_plant", 2))
+	MatchState.tile_land_owned[tile] = int(ceil(MatchState.get_tile_space_used(tile))) + 4
+	var second: Dictionary = MatchState.start_upgrade("resv_b", "tile")
+	var blocked_reason := str(second.get("reason", "")).to_lower()
+	_check(not bool(second.get("ok", false))
+		and (blocked_reason.contains("own enough") or blocked_reason.contains("more space")),
+		"upgrade hold: a second upgrade is refused on FOOTPRINT while the first holds the room")
+	# Drop the hold and the same call gets past the footprint gate, failing on materials.
+	var held: Array = MatchState.pending_upgrades.duplicate(true)
+	MatchState.pending_upgrades.clear()
+	var unheld: Dictionary = MatchState.start_upgrade("resv_b", "tile")
+	_check(str(unheld.get("reason", "")).to_lower().contains("material"),
+		"upgrade hold: without the hold the same upgrade clears the footprint gate")
+	MatchState.pending_upgrades = held
+
+	# Completing it must not double-count: the level rises by exactly what the hold covered.
+	var held_used: float = MatchState.get_tile_space_used(tile)
+	(MatchState.pending_upgrades[0] as Dictionary)["status"] = "upgrading"
+	(MatchState.pending_upgrades[0] as Dictionary)["turns_remaining"] = 1
+	MatchState.tick_upgrades()
+	_check(MatchState.pending_upgrades.is_empty()
+		and int((MatchState.get_building("resv_a") as Dictionary).get("level", 1)) == 2,
+		"upgrade hold: the upgrade completes and the hold is released")
+	var grown: float = 15.0 * (BuildingLevels.mult("size", 2) - BuildingLevels.mult("size", 1))
+	_check(absf(MatchState.get_tile_space_used(tile) - (held_used - 12.0 + grown)) < 0.01,
+		"upgrade hold: the finished building takes the room, counted once, not twice")
+
+	# ...and cancelling hands it back.
+	MatchState.pending_upgrades.append({
+		"instance_id": "resv_b", "building_id": "b_009", "tile_id": tile,
+		"from_level": 1, "target_level": 2, "status": MatchState.UPGRADE_STATUS_AWAITING,
+		"materials": {}, "missing": {}, "turns_remaining": 3, "size_delta": 12.0,
+	})
+	var before_cancel: float = MatchState.get_tile_space_used(tile)
+	MatchState.cancel_upgrade("resv_b")
+	_check(absf(MatchState.get_tile_space_used(tile) - (before_cancel - 12.0)) < 0.01,
+		"upgrade hold: cancelling an upgrade returns the room it was holding")
+	MatchState.reset()
+
+# ── Construct confirm: buying the land is part of the decision (owner 2026-08-23) ──
+
+func _test_construct_land_tickbox() -> void:
+	MatchState.reset()
+	var tile := "tile_5_10"
+	var panel: Object = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
+	var building: Dictionary = Catalog.get_building("b_009")   # assembly plant, 15 land
+	panel.set("_selected_building", building)
+	panel.set("_locked_tile_id", tile)
+	var build_cost: float = panel.call("_construction_display_cost", "b_009")
+
+	# Plenty of land: no tickbox, nothing added to the total.
+	MatchState.tile_land_owned[tile] = 90
+	var roomy: Object = panel.call("_land_row", building)
+	_check(int(panel.get("_land_purchase_units")) == 0
+		and not bool(panel.get("_buy_land_wanted"))
+		and absf(float(panel.call("_confirm_total_cost")) - build_cost) < 0.01,
+		"construct land: a tile with room shows no tickbox and adds nothing to the total")
+	(roomy as Node).free()
+
+	# Not enough land: ticked already, priced, and the shortfall rounded up to whole patches.
+	MatchState.tile_land_owned[tile] = 5
+	var short: Object = panel.call("_land_row", building)
+	var units: int = int(panel.get("_land_purchase_units"))
+	var land_cost: float = float(panel.get("_land_purchase_cost"))
+	_check(bool(panel.get("_buy_land_wanted")),
+		"construct land: the box is ticked already when the player cannot build without it")
+	_check(units >= 15 - 5 and units % MatchState.LAND_PATCH_SIZE == 0,
+		"construct land: it buys at least the shortfall, in whole patches")
+	_check(land_cost > 0.0
+		and absf(float(panel.call("_confirm_total_cost")) - (build_cost + land_cost)) < 0.01,
+		"construct land: the Confirm total includes the land it is about to buy")
+
+	# Unticking is allowed, and takes the land back out of the total.
+	panel.call("_on_buy_land_toggled", false)
+	_check(absf(float(panel.call("_confirm_total_cost")) - build_cost) < 0.01,
+		"construct land: unticking drops the land back out of the total")
+	(short as Node).free()
+
+	# Enough land bought means the build gate would now pass — the tickbox buys the right
+	# amount, not merely some.
+	MatchState.tile_land_owned[tile] = 5 + units
+	var needed: float = float(building.get("tile_size_used", 1))
+	_check(MatchState.get_tile_player_space_used(tile) + needed
+		<= float(MatchState.get_tile_land_owned(tile)),
+		"construct land: the amount it buys is enough for the build to pass the land gate")
+	panel.free()
+	MatchState.reset()
+
+# ── Petrochemistry additions (owner 2026-08-23) ─────────────────────────────
+
+func _test_petrochemistry_changes() -> void:
+	MatchState.reset()
+	# A fourth Tier I node, so the tier is a CHOICE of two from four rather than a queue.
+	var tier1: Array = []
+	var node: Dictionary = {}
+	for d_variant: Variant in MatchState._unlock_defs:
+		var d: Dictionary = d_variant
+		if str(d.get("category", "")) == "Petrochemistry" and str(d.get("rank", "")) == "I":
+			tier1.append(str(d.get("title", "")))
+		if str(d.get("title", "")) == "Specialised Petrochemical Pipelines":
+			node = d
+	_check(tier1.size() == 4 and "Specialised Petrochemical Pipelines" in tier1,
+		"petrochem: four Tier I nodes, including the new pipelines one")
+	_check(str(node.get("action", "")) == "Run" and int(node.get("qty", 0)) == 10,
+		"petrochem: the pipelines node is earned by running a refinery for 10 turns")
+	_check(MatchState.research_condition_issues().is_empty(),
+		"petrochem: every research row still resolves to a live condition")
+
+	# ...and it pays out on the Petrochemical Refinery.
+	Modifiers.reset()
+	var before: float = Modifiers.apply("recipe_output", "r", 100.0, {"building_id": "b_011"})
+	MatchState.grant_unlock("Specialised Petrochemical Pipelines")
+	var after: float = Modifiers.apply("recipe_output", "r", 100.0, {"building_id": "b_011"})
+	_check(absf(after - before - 5.0) < 0.001,
+		"petrochem: the pipelines node adds +5%% refinery output (%.1f -> %.1f)" % [before, after])
+	_check(absf(Modifiers.apply("recipe_output", "r", 100.0, {"building_id": "b_001"}) - 100.0) < 0.001,
+		"petrochem: it does not touch other buildings")
+	Modifiers.reset()
+
+	# Offshore drilling is earned on an offshore OIL FIELD, not on land anywhere.
+	MatchState.reset()
+	var offshore: Dictionary = {}
+	for d_variant: Variant in MatchState._unlock_defs:
+		var d: Dictionary = d_variant
+		if str(d.get("title", "")) == "Offshore Drilling Platforms":
+			offshore = d
+	_check(str(offshore.get("action", "")) == "Own"
+		and str(offshore.get("object", "")) == "offshore_oil_land"
+		and int(offshore.get("qty", 0)) == 50,
+		"offshore: earned by owning 50 land on a sea tile with oil")
+
+	# Land on an ordinary tile does not count, however much of it there is.
+	MatchState.tile_land_owned["tile_5_10"] = 200
+	_check(MatchState._owned_offshore_oil_land() == 0,
+		"offshore: inland acreage does not count toward the offshore gate")
+	# A sea tile carrying oil does.
+	var oil_tile := ""
+	for tid: String in ["tile_1_1", "tile_2_8", "tile_11_19", "tile_28_19", "tile_29_9"]:
+		if not (Catalog.tile_type(tid) in ["sea", "deep_sea"]):
+			continue
+		if "oil" in Catalog.tile_deposits_raw(tid).to_lower():
+			oil_tile = tid
+			break
+	_check(oil_tile != "", "offshore: the map has a sea tile with an oil deposit")
+	MatchState.tile_land_owned[oil_tile] = 50
+	_check(MatchState._owned_offshore_oil_land() == 50,
+		"offshore: acreage on an offshore oil field counts")
+	MatchState.reset()
+
+# ── Recycling gate (owner 2026-08-23: out of the demo, behind `unlock recycling`) ──
+
+func _test_recycling_gate() -> void:
+	var was_unlocked: bool = MatchState.recycling_unlocked
+	MatchState.recycling_unlocked = false
+	var visible: Dictionary = {}
+	for good_variant: Variant in MatchState.visible_goods():
+		visible[str((good_variant as Dictionary).get("id", ""))] = true
+	var hidden_ok := true
+	for gid in MatchState.RECYCLING_GOOD_IDS:
+		if visible.has(str(gid)) or MatchState.is_good_available(str(gid)):
+			hidden_ok = false
+	_check(hidden_ok, "recycling: the waste goods are hidden by default")
+	_check(not MatchState.is_building_available("b_022")
+		and not MatchState.is_building_available("b_036"),
+		"recycling: both recycling plants are hidden by default")
+	_check(MatchState.visible_goods().size()
+		== Catalog.all_goods().size() - MatchState.RECYCLING_GOOD_IDS.size(),
+		"recycling: exactly the waste goods are removed, nothing else")
+	_check(MatchState.is_good_available("g_001") and MatchState.is_building_available("b_001"),
+		"recycling: ordinary goods and buildings are untouched")
+
+	MatchState.cheat_unlock_recycling()
+	_check(MatchState.visible_goods().size() == Catalog.all_goods().size()
+		and MatchState.is_building_available("b_036"),
+		"recycling: `unlock recycling` puts the chain and its plants back")
+	MatchState.recycling_unlocked = was_unlocked
 
 # ── Victory system (scripts/victory_state.gd; docs/victory-system-spec.md §12) ──
 
@@ -6768,8 +7846,10 @@ func _test_goods_flow_graph() -> void:
 	var nodes: Array = g["nodes"]
 	var by_id: Dictionary = g["by_id"]
 	var edges: Array = g["edges"]
-	_check(nodes.size() == Catalog.all_goods().size(),
-		"goods graph: one node per catalog good (%d)" % nodes.size())
+	# VISIBLE goods, not the whole catalogue: the recycling chain is gated out of the demo,
+	# and a graph node for a good the player can never see or make is a dead end.
+	_check(nodes.size() == MatchState.visible_goods().size(),
+		"goods graph: one node per visible good (%d)" % nodes.size())
 	var ok_edges := not edges.is_empty()
 	for e in edges:
 		if not (by_id.has(str(e["from"])) and by_id.has(str(e["to"]))):
@@ -6924,11 +8004,21 @@ func _test_goods_flow_graph() -> void:
 	# runs of different edges that share x-range never sit collinear (>= the sibling
 	# port-fan spacing H_SEP_SIBLING); and the final bilayer crossing count is
 	# bounded (and visible in the PASS name).
+	#
+	# THE SEPARATION FLOORS ARE MEASURED ON THE LEGACY LAYOUT, because that is the only
+	# presentation that still DRAWS resting web edges (the debug `legacy goods graph`
+	# toggle). The default presentation stopped drawing them, and its dummy rows —
+	# corridors that existed to hold those edges apart — were collapsed so the swimlane
+	# bands could tighten around the cards. Asserting a pixel floor there would be
+	# asserting the geometry of lines nobody renders; the invariants that DO matter for
+	# it are checked separately below.
+	var legacy: Dictionary = GoodsFlowGraph.build(true, true)
+	var legacy_edges: Array = legacy.get("edges", [])
 	var ortho := true
 	var verts: Array = []   # [x, y_lo, y_hi, edge_index]
 	var horiz: Array = []   # [y, x_lo, x_hi, edge_index]
-	for ei: int in range(edges.size()):
-		var wp: PackedVector2Array = (edges[ei] as Dictionary).get("waypoints", PackedVector2Array())
+	for ei: int in range(legacy_edges.size()):
+		var wp: PackedVector2Array = (legacy_edges[ei] as Dictionary).get("waypoints", PackedVector2Array())
 		if wp.size() < 2:
 			ortho = false
 			continue
@@ -6943,7 +8033,7 @@ func _test_goods_flow_graph() -> void:
 				verts.append([a.x, minf(a.y, b.y), maxf(a.y, b.y), ei])
 			if dy <= 0.01 and dx > 0.01:
 				horiz.append([a.y, minf(a.x, b.x), maxf(a.x, b.x), ei])
-	_check(ortho, "goods graph: every edge is an axis-aligned waypoint chain (>=2 points)")
+	_check(ortho, "goods graph: every legacy edge is an axis-aligned waypoint chain (>=2 points)")
 	var sep_ok := true
 	for i: int in range(verts.size()):
 		for j: int in range(i + 1, verts.size()):
@@ -6954,7 +8044,7 @@ func _test_goods_flow_graph() -> void:
 			var overlap: bool = maxf(float(a[1]), float(b[1])) < minf(float(a[2]), float(b[2])) - 0.01
 			if overlap and absf(float(a[0]) - float(b[0])) < 11.9:
 				sep_ok = false
-	_check(sep_ok, "goods graph: y-overlapping vertical runs sit >=11.9 units apart")
+	_check(sep_ok, "goods graph (legacy): y-overlapping vertical runs sit >=11.9 units apart")
 	var hsep_ok := true
 	for i: int in range(horiz.size()):
 		for j: int in range(i + 1, horiz.size()):
@@ -6965,7 +8055,67 @@ func _test_goods_flow_graph() -> void:
 			var overlap: bool = maxf(float(a[1]), float(b[1])) < minf(float(a[2]), float(b[2])) - 0.01
 			if overlap and absf(float(a[0]) - float(b[0])) < 5.9:
 				hsep_ok = false
-	_check(hsep_ok, "goods graph: x-overlapping horizontal runs sit >=5.9 units apart (owner floor: 5 px at max zoom 1.0)")
+	_check(hsep_ok, "goods graph (legacy): x-overlapping horizontal runs sit >=5.9 units apart (owner floor: 5 px at max zoom 1.0)")
+	# The swimlane bands: sized by CARDS, with each (column, lane) cell's cards packed
+	# contiguously and centred in its band. This is what replaced the pixel floors above
+	# for the default presentation — the bands used to be sized to fit edge corridors,
+	# which is why they were tall and why a cell's cards sat scattered inside one.
+	var lanes: Array = g.get("lanes", [])
+	var by_lane_col: Dictionary = {}   # "lane_top:col_x" -> [card centre ys]
+	for n in g.get("nodes", []):
+		var node: Dictionary = n
+		var pos: Vector2 = node["pos"]
+		for lane in lanes:
+			var top := float((lane as Dictionary)["top"])
+			var h := float((lane as Dictionary)["height"])
+			if pos.y >= top - 1.0 and pos.y <= top + h + 1.0:
+				var k := "%f:%f" % [top, pos.x]
+				var ys: Array = by_lane_col.get(k, [])
+				ys.append(pos.y)
+				by_lane_col[k] = ys
+				break
+	var packed_ok := true
+	var centred_ok := true
+	var checked := 0
+	for k in by_lane_col:
+		var ys: Array = by_lane_col[k]
+		if ys.size() < 2:
+			continue
+		ys.sort()
+		checked += 1
+		# Contiguous: consecutive cards in a cell sit exactly one ROW_H apart.
+		for i: int in range(ys.size() - 1):
+			if absf(float(ys[i + 1]) - float(ys[i]) - GoodsFlowGraph.ROW_H) > 0.51:
+				packed_ok = false
+	for lane in lanes:
+		var top := float((lane as Dictionary)["top"])
+		var h := float((lane as Dictionary)["height"])
+		var mid := top + h * 0.5
+		for k2 in by_lane_col:
+			if not str(k2).begins_with("%f:" % top):
+				continue
+			var ys2: Array = by_lane_col[k2]
+			ys2.sort()
+			# Centred: the card block's own midpoint sits on the band's midpoint.
+			var block_mid := (float(ys2[0]) + float(ys2[ys2.size() - 1])) * 0.5
+			if absf(block_mid - mid) > 0.51:
+				centred_ok = false
+	_check(checked > 0, "goods graph: swimlane cells found to check (%d multi-card cells)" % checked)
+	_check(packed_ok, "goods graph: a cell's cards are packed contiguously (one ROW_H apart)")
+	_check(centred_ok, "goods graph: a cell's card block is centred in its swimlane band")
+	# A band is exactly as tall as the most cards any one column puts in it — no corridor
+	# padding. Anything taller means dummy rows have crept back into the band sizing.
+	var band_sizing_ok := true
+	for lane in lanes:
+		var top := float((lane as Dictionary)["top"])
+		var h := float((lane as Dictionary)["height"])
+		var tallest := 0
+		for k3 in by_lane_col:
+			if str(k3).begins_with("%f:" % top):
+				tallest = maxi(tallest, (by_lane_col[k3] as Array).size())
+		if tallest > 0 and absf(h - float(tallest) * GoodsFlowGraph.ROW_H) > 0.51:
+			band_sizing_ok = false
+	_check(band_sizing_ok, "goods graph: each band is exactly its tallest cell's cards tall")
 	var crossings := int(g.get("crossings", -1))
 	# Canary re-baselined 2026-07-22: the 9-lane category swimlanes constrain the
 	# ordering (crossing-minimisation only runs within a lane cell), measured 1032
@@ -6993,6 +8143,93 @@ func _check(ok: bool, name: String) -> void:
 		_failed_names.append(name)
 		printerr("  FAIL  ", name)
 
+## The harbour planner's cache key. It used to be made of two GLOBAL counters — RoadNetwork's
+## total edge count and the map-wide footprint version — so a shed raised, or a lane laid,
+## anywhere at all missed the cache for every port and re-ran a 1,440-candidate coastline
+## search per harbour to arrive at the identical drawing. Three of those is 3.2 s on the main
+## thread, which is the freeze the owner hit after pressing Build (25 Aug). Nothing could see
+## it: the plans came out right, only slowly, and no test asserted what the key was made of.
+## These pin the locality the fix rests on, in both directions.
+func _test_port_plan_cache_locality() -> void:
+	var plan_script: Variant = load("res://scripts/midcentury_port_plan.gd")
+	var net := RoadNetwork.instance()
+	var origin := Vector2i(10, 10)
+	var before: int = plan_script._road_signature(origin)
+	# _road_access only ever looks at the 5x5 block around the port, so a lane outside it
+	# cannot move the quay approach and must not cost a replan.
+	var far := origin + Vector2i(6, 6)
+	net.edges["_probe_edge"] = {"state": "built"}
+	net._edges_by_tile[far] = ["_probe_edge"]
+	var after_far: int = plan_script._road_signature(origin)
+	# ...and one INSIDE the block must change it, or a real approach could quietly go stale.
+	var near := origin + Vector2i(1, 0)
+	net._edges_by_tile[near] = ["_probe_edge"]
+	var after_near: int = plan_script._road_signature(origin)
+	net._edges_by_tile.erase(far)
+	net._edges_by_tile.erase(near)
+	net.edges.erase("_probe_edge")
+	_check(after_far == before,
+		"port plan cache: a lane six tiles from a harbour does not invalidate its plan")
+	_check(after_near != before,
+		"port plan cache: a lane beside a harbour does invalidate its plan")
+	_check(plan_script._road_signature(origin) == before,
+		"port plan cache: the locality probe left the road network as it found it")
+	# The other half of the key: the obstacles near the port.
+	var poly_a := PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1)])
+	var poly_b := PackedVector2Array([Vector2(0, 0), Vector2(2, 0), Vector2(2, 2)])
+	_check(plan_script._exclusion_signature([{"poly": poly_a}])
+		!= plan_script._exclusion_signature([{"poly": poly_b}]),
+		"port plan cache: a footprint that moves beside a harbour changes its key")
+	_check(plan_script._exclusion_signature([{"poly": poly_a}])
+		== plan_script._exclusion_signature([{"poly": poly_a}]),
+		"port plan cache: an unchanged neighbourhood keeps the same key")
+
+
+## A refused build has to be distinguishable from a placed one, or the construct panel cannot
+## know whether to close. It used to close either way — four units short of land threw away the
+## building, the recipe and the tile the player had just chosen (owner, 25 Aug).
+func _test_build_attempt_reports_refusal() -> void:
+	var refuse := func(_bid: String, _tid: String) -> void:
+		BuildMode.last_attempt_refused = true
+	BuildMode.build_attempted.connect(refuse)
+	BuildMode._last_attempt_ms = 0
+	var refused: bool = BuildMode.attempt_direct_build("b_007", "r_009", "tile_5_10")
+	BuildMode.build_attempted.disconnect(refuse)
+	_check(not refused,
+		"build attempt: a refusal reports false, so the construct panel can stay open")
+	BuildMode._last_attempt_ms = 0
+	var placed: bool = BuildMode.attempt_direct_build("b_007", "r_009", "tile_5_10")
+	_check(placed,
+		"build attempt: an attempt nothing refused reports true, so the panel closes as before")
+	BuildMode.last_attempt_refused = false
+
+
+## Green means "in the player's favour", which is NOT the same as positive. Output wants to go
+## up; power draw and maintenance are costs and want to go down, so a research node that cuts a
+## furnace's draw by 10% must not be painted as damage (owner, 25 Aug).
+func _test_modifier_sign_convention() -> void:
+	var panel_script: Variant = load("res://scripts/building_detail_panel_v2.gd")
+	var ok: Color = DS.PALETTE["OK"]
+	var bad: Color = DS.PALETTE["DANGER"]
+	_check(panel_script._mod_tone(12.0, true) == ok and panel_script._mod_tone(-5.0, true) == bad,
+		"modifier colour: more output is good, less output is bad")
+	_check(panel_script._mod_tone(-10.0, false) == ok and panel_script._mod_tone(10.0, false) == bad,
+		"modifier colour: LESS power draw or maintenance is good, more is bad")
+	_check(panel_script._mod_tone(0.0, true) == DS.PALETTE["TEXT"]
+		and panel_script._mod_tone(0.0, false) == DS.PALETTE["TEXT"],
+		"modifier colour: a modifier that nets to nothing is neither")
+	_check(panel_script._mod_pct_text(7.0) == "+7%" and panel_script._mod_pct_text(-7.0) == "\u22127%",
+		"modifier text: signed, with a real minus sign")
+	var cats: Array = panel_script.MOD_CATEGORIES
+	var costs_invert := true
+	for entry_value: Variant in cats:
+		var entry: Dictionary = entry_value
+		if str(entry.get("cat", "")) in ["Power draw", "Maintenance"]:
+			costs_invert = costs_invert and not bool(entry.get("good_up", true))
+	_check(cats.size() == 4 and costs_invert,
+		"modifier colour: the cost categories are the ones that read upside down")
+
+
 func _test_company_rankings() -> void:
 	var history: Array[float] = [80.0, 95.0, 120.0, 140.0, 160.0]
 	var first: Array[Dictionary] = CompanyRankings.standings_for(24680, 50, history)
@@ -7019,7 +8256,34 @@ func _test_company_rankings() -> void:
 			flats += 1
 	_check(grows == 5 and decays == 2 and flats == 2,
 		"company rankings: every rival cycle has 5 growth, 2 decay, and 2 flat turns")
-	var tied: Array[Dictionary] = CompanyRankings.standings_for(24680, 0, [100.0])
+	# Rival revenue used to compound with nothing stopping it, and reached £50k a turn against
+	# a player earning £1.1k before anyone noticed — a cosmetic table, but one that made the
+	# Crown track unwinnable after the opening. Nothing in the suite could see it, because
+	# nothing asserted a scale. This does, at both ends of the demo and out into a campaign.
+	var band_ok := true
+	var fanned_out := true
+	for check_turn: int in [25, 100, 300]:
+		var curve: float = CompanyRankings._reference_revenue(check_turn)
+		var top := 0.0
+		var bottom := INF
+		for rival: int in range(CompanyRankings.RIVAL_COUNT):
+			var r: float = CompanyRankings._rival_revenue_for(24680, rival, check_turn)
+			top = maxf(top, r)
+			bottom = minf(bottom, r)
+		# 2% of slack: the ceiling is an asymptote applied per discrete turn, so one maximal
+		# 25% draw taken at 98% of the cap can land ~1.5% over it before decay and the next
+		# turn's higher ceiling pull it back. The runaway this guards against was 4,500%.
+		band_ok = band_ok and top <= curve * CompanyRankings.LEADER_CEILING_MULTIPLE * 1.02
+		fanned_out = fanned_out and bottom < top * 0.75
+	_check(band_ok,
+		"company rankings: no rival ever passes 1.5x what the player earns, at turn 25, 100 or 300")
+	_check(fanned_out,
+		"company rankings: the field fans out into positions rather than bunching at the ceiling")
+	# Turn 0: every rival is still on STARTING_REVENUE, so matching it is a real tie. Written
+	# against the constant rather than a literal, because the literal silently stopped tying
+	# the moment rivals were moved off 100 to open level with the player.
+	var tied: Array[Dictionary] = CompanyRankings.standings_for(
+		24680, 0, [CompanyRankings.STARTING_REVENUE])
 	_check(bool(tied[0].get("is_player", false)) and int(tied[0].get("rank", 0)) == 1,
 		"company rankings: equal revenue always favours Your Company")
 	var player_row: Dictionary = {}
@@ -7069,6 +8333,44 @@ func _test_company_rankings() -> void:
 	CompanyRankings.goods_standings_for(13579, 300, {"g_001": 20})
 	_check(MatchState._match_rng.state == rng_before,
 		"company rankings: table generation does not consume the simulation RNG")
+	# Per-good competitors. Every good used to list all nine rivals at identical output, so
+	# the id tiebreak put the same three names on top of every good in the panel.
+	var name_sets: Dictionary = {}
+	var sizes_ok := true
+	var goods_checked := 0
+	for good_table: Dictionary in goods_tables:
+		if bool(good_table.get("is_apex", false)):
+			continue
+		var producers: Array = good_table.get("producers", []) as Array
+		if producers.size() < 2:
+			continue   # a good no rival produces
+		goods_checked += 1
+		var key: Array = []
+		for row_variant: Variant in producers:
+			var row: Dictionary = row_variant
+			if not bool(row.get("is_player", false)):
+				key.append(str(row.get("id", "")))
+		key.sort()
+		name_sets[", ".join(key)] = true
+	_check(goods_checked > 10 and name_sets.size() >= 5,
+		"company rankings: goods are contested by different companies, not the same three")
+	var participants: Array = CompanyRankings._competitors_for_good(24680, "g_001")
+	_check(participants.size() >= CompanyRankings.GOOD_MIN_COMPETITORS
+		and participants.size() <= CompanyRankings.RIVAL_COUNT,
+		"company rankings: a good is contested by 3 to 9 companies")
+	var unique_participants: Dictionary = {}
+	for idx_variant: Variant in participants:
+		unique_participants[int(idx_variant)] = true
+	_check(unique_participants.size() == participants.size(),
+		"company rankings: no company competes against itself in a good")
+	_check(CompanyRankings._competitors_for_good(24680, "g_001") == participants
+		and CompanyRankings._competitors_for_good(13579, "g_001") != participants,
+		"company rankings: the field is fixed for a match and differs between matches")
+	var rng_before_field: int = MatchState._match_rng.state
+	CompanyRankings._competitors_for_good(24680, "g_002")
+	_check(MatchState._match_rng.state == rng_before_field,
+		"company rankings: picking the field does not consume the simulation RNG")
+
 	var saved: Dictionary = CompanyRankings.export_state()
 	CompanyRankings.import_state({"player_revenue_history": history, "player_goods_produced": {"g_001": 9}})
 	var restored: Dictionary = CompanyRankings.export_state()
@@ -8114,10 +9416,12 @@ func _test_auto_sell_goods() -> void:
 	MatchState.disable_auto_sell_good(t, "g_001")
 	_check(not MatchState.is_auto_sell_good(t, "g_001"), "per-good auto-sell clears")
 	_check(not MatchState.get_auto_sell_tiles().has(t), "tile drops out once no orders remain")
-	# Sell reserve = the local consumers' WORKING stock, not one turn of inputs:
-	# per-turn need × (market lead + 1), player-owned buildings only. r_008 eats
-	# 24 copper_ingots (g_005)/turn; lead ≥ 1 → reserve ≥ 48 and always a
-	# multiple of one turn's need above it. NPC buildings reserve nothing.
+	# Sell reserve = exactly ONE turn of the local consumers' burn, player-owned buildings
+	# only. r_008 eats 24 copper_ingots (g_005)/turn, so the tile keeps 24 and everything
+	# above it is surplus. It used to keep need × (market lead + 1); covering the lead here
+	# double-booked it against _buy_market_inputs, which already sizes orders against what is
+	# in transit, and left a consumer burning 40 sitting on 80 (owner, 25 Aug). NPC buildings
+	# reserve nothing.
 	var rt := "tile_15_5"
 	var riid: String = MatchState.add_building("b_007", "r_008", rt, "player_1", "reserve_test")
 	var reserve: Dictionary = Production.compute_sell_reserve_for_tile(rt)
@@ -8125,8 +9429,7 @@ func _test_auto_sell_goods() -> void:
 	var need: int = int(committed.get("g_005", 0))
 	_check(need > 0, "sell reserve test: recipe commits copper ingots per turn (%d)" % need)
 	var kept: int = int(reserve.get("g_005", 0))
-	_check(kept >= need * 2, "sell reserve keeps at least (lead+1)>=2 turns of inputs (%d >= %d)" % [kept, need * 2])
-	_check(kept % need == 0 and kept / need >= 2, "sell reserve is a whole number of turns (%d = %dx need)" % [kept, kept / need])
+	_check(kept == need, "sell reserve keeps exactly one turn of inputs (%d of %d/turn)" % [kept, need])
 	MatchState.remove_building(riid)
 	var npc_iid: String = MatchState.add_building("b_007", "r_008", rt, "npc", "reserve_test_npc")
 	_check(int(Production.compute_sell_reserve_for_tile(rt).get("g_005", 0)) == 0,
@@ -8658,7 +9961,12 @@ func _test_refund() -> void:
 	# Level 1: build money + build kit only, no upgrade-kit materials.
 	var r1: Dictionary = MatchState.refund_cost(id)
 	_check(is_equal_approx(float(r1.money), 100.0), "refund money == paid build cost at share 1.0 (%.1f)" % float(r1.money))
-	_check(int(r1.materials.get(ceq_id, 0)) == 1, "L1 refund returns the build kit (construction_equipment_ice ×1)")
+	# Against the live kit, not a number: these assertions are about the refund returning
+	# the build kit, and hard-coding the Mine's quantities made them fail on a balance pass.
+	var b001_kit: Dictionary = Construction.requirements_for("b_001")
+	var ceq_build: int = int(b001_kit.get(ceq_id, 0))
+	_check(ceq_build > 0 and int(r1.materials.get(ceq_id, 0)) == ceq_build,
+		"L1 refund returns the build kit (construction_equipment_ice x%d)" % ceq_build)
 	_check(not r1.materials.has(le_id), "L1 refund has no upgrade-kit materials")
 
 	# Level 3: refund increments to include the L2 + L3 upgrade kits.
@@ -8681,7 +9989,7 @@ func _test_refund() -> void:
 	# Fallback: a building with no stamped cost uses the Catalog build cost/materials.
 	var id2: String = MatchState.add_building("b_001", "r_001", "tile_8_8", MatchState.LOCAL_PLAYER, "inst_refund_fallback")
 	var r2: Dictionary = MatchState.refund_cost(id2)
-	_check(int(r2.materials.get(ceq_id, 0)) == 1
+	_check(int(r2.materials.get(ceq_id, 0)) == ceq_build
 		and is_equal_approx(float(r2.money), Catalog.get_building("b_001").base_price),
 		"refund falls back to Catalog build cost/materials when the instance has none")
 
@@ -8713,7 +10021,7 @@ func _test_refund() -> void:
 	var pinst: Dictionary = MatchState.buildings.get(proj_id, {})
 	_check(is_equal_approx(float(pinst.get("build_cost", -1.0)), 250.0),
 		"promotion stamps build_cost onto the live instance")
-	_check(int((pinst.get("build_materials", {}) as Dictionary).get(ceq_id, 0)) == 1,
+	_check(int((pinst.get("build_materials", {}) as Dictionary).get(ceq_id, 0)) == ceq_build,
 		"promotion stamps build_materials onto the live instance")
 
 	# Cleanup so these synthetic buildings/stock don't leak into later tests.
@@ -12255,10 +13563,12 @@ func _test_briefing_items_and_dismissal() -> void:
 		"target": {"scope": "company", "good_id": "g_001", "name": "Coal"}, "turn_drawn": 40}]
 	LoanState.loans = []
 	LoanState._profit_history = [-10.0]
-	# Whatever collateral the shared test env carries, park cash so runway < £100.
-	MatchState.money = -(LoanState.available_capacity() + 50.0)
 	MatchState.buildings["tb_starved"] = {"instance_id": "tb_starved", "building_id": "b_001",
 		"recipe_id": "", "tile_id": "tile_1_1", "owner": MatchState.LOCAL_PLAYER}
+	# Whatever collateral the shared test env carries, park cash so runway < £100. Measured
+	# AFTER the building is added: a building is collateral, so reading the capacity first
+	# left the company solvent again the moment build costs rose.
+	MatchState.money = -(LoanState.available_capacity() + 50.0)
 	Production.missing_by_building = {"tb_starved": [{"internal_name": "coal"}]}
 	TurnBriefing._rebuild_items()
 	var ids: Array = TurnBriefing.items().map(func(it) -> String: return str(it.id))

@@ -121,22 +121,15 @@ func _rebuild_graph() -> void:
 	if _bg != null:
 		_bg.visible = not MatchState.use_empire_sprite_view
 	var terrain := get_tree().get_first_node_in_group("hex_map")
-	var g: Dictionary = EmpireGraphScript.build(terrain)
-	# Lay buildings out as supply-chain columns grouped into a sector per destination port
-	# (sector width follows the chains feeding that port), then drop the ports into their
-	# fixed-order row beneath — each centred under its own sector — and mirror the Market
-	# hub above the block for the dashed market-input lines.
-	EmpireLayout.solve(g["nodes"], g["edges"], g["sell_edges"], g["ports"])
-	var area := EmpireLayout.bbox_of(g["nodes"])
-	EmpireLayout.place_ports(g["ports"], area)
-	EmpireLayout.place_buy_ports(g["buy_ports"], g["ports"], area)
-	# set_graph rebuilds every panel, which drops any open mini-chart. Put it back, WITHOUT the
+	# One shared setup (EmpireGraph.populate): build, solve the supply-chain columns, drop the
+	# ports into their row and mirror the Market hub above. The end screen calls the same thing.
+	#
+	# set_graph rebuilds every panel, which drops any open mini-chart. Put it back WITHOUT the
 	# ease-in: a chart that re-animated once a turn would read as the view flinching. A focused
 	# construction site keeps its id through promotion, so a build completing under an open
 	# chart simply becomes the finished building's chart.
 	var was_focused := str(_graph_world.call("focus_iid"))
-	_graph_world.set_graph(g["nodes"], g["edges"], g["ports"], g["sell_edges"],
-		g["market_edges"], g["buy_ports"])
+	EmpireGraphScript.populate(_graph_world, terrain)
 	if was_focused != "":
 		_graph_world.call("focus_on", was_focused, true)
 

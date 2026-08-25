@@ -18,19 +18,19 @@ signal back_to_menu_pressed
 # ── Design geometry ────────────────────────────────────────────────────────────
 const MARGIN := 20        # inset from every screen edge (almost full screen)
 const PANEL_W := 1560     # min plate width; the plate expands to fill the wider screen
-const BEZEL_PAD := 8
+const FRAME_CLEAR := 22   # content inset clearing the brass pipe frame (transport panel: 26)
 const SEC_PAD_H := 44
 
-# ── Design palette (the owner's exact hex values) ──────────────────────────────
-const C_BEZEL_LT := Color("#aeb6bf")
-const C_BEZEL_MD := Color("#727c87")
-const C_BEZEL_DK := Color("#454e58")
-const C_RIVET_LT := Color("#eef2f6")
-const C_RIVET_DK := Color("#5a636e")
-const C_NAVY_TOP := Color("#0c1d31")
-const C_NAVY_BOT := Color("#0a1521")
-const C_ACCENT_WIN := Color("#e6b34a")
-const C_ACCENT_LOSE := Color("#e2604a")
+# ── Design palette ─────────────────────────────────────────────────────────────
+# DS tokens, inlined by value (a const block cannot read the DS autoload). This screen was
+# ported from a "Victory Screen.html" mock and carried the mock's own palette — a lighter
+# blue navy, slate-grey secondary text and a silver bezel that existed nowhere else in the
+# game. Re-tokened 2026-08-24: the token each value mirrors is named beside it, and the few
+# NON-token colours left are the screen's own semantics (continuity amber, medal golds).
+const C_NAVY_TOP := Color("#040F1B")      # DS.BG_PANEL — every real panel's near-black
+const C_NAVY_BOT := Color("#02090F")      # a step deeper, for gradient feet
+const C_ACCENT_WIN := Color("#E6B85C")    # DS.WARN — the gold the menus pair with brass
+const C_ACCENT_LOSE := Color("#E66060")   # DS.DANGER
 ## "Continuity" — survived to the bell with no track but still in profit. Amber: neither the
 ## gold of a win nor the red of receivership (owner 2026-08-01).
 const C_ACCENT_CONT := Color("#e0932c")
@@ -38,15 +38,15 @@ const C_ACCENT_CONT := Color("#e0932c")
 ## word with a gold accent, but continuity reads as one amber verdict rather than two tones.
 const C_DISPLAY_CONT := Color("#e0932c")
 const C_TOTAL_CONT := Color("#e0932c")
-const C_HEADER_BORDER := Color("#16273a")
-const C_KICKER := Color("#71859b")
-const C_DISPLAY_WIN := Color("#f3f8fd")
+const C_HEADER_BORDER := Color(0.478, 0.373, 0.173, 0.55)   # DS.ACCENT_DIM — warm dividers
+const C_KICKER := Color("#E8EEF7")        # DS.TEXT (was slate #71859b — the banned grey-on-navy)
+const C_DISPLAY_WIN := Color("#E8EEF7")   # DS.TEXT
 const C_DISPLAY_LOSE := Color("#e8b0a4")
-const C_EPITHET := Color("#8298ac")
-const C_TOTAL_WIN := Color("#5fbf6b")
-const C_TOTAL_LOSE := Color("#e2604a")
-const C_TRACK_BG := Color("#0a1623")
-const C_MARKER := Color("#f2e6c8")
+const C_EPITHET := Color("#C2D2E5")      # DS.TEXT_MUTED
+const C_TOTAL_WIN := Color("#5BD180")    # DS.OK
+const C_TOTAL_LOSE := Color("#E66060")   # DS.DANGER
+const C_TRACK_BG := Color(0.0, 0.08, 0.16)   # DS.BG_INSET
+const C_MARKER := Color(0.995, 0.931, 0.763) # DS.ACCENT cream
 const C_CREST_GOLD_A := Color("#f0dfae")
 const C_CREST_GOLD_B := Color("#d9b96a")
 const C_CREST_GOLD_C := Color("#a8863c")
@@ -54,18 +54,21 @@ const C_CREST_UNLIT := Color("#0a1623")
 const C_CREST_UNLIT_STROKE := Color("#22384f")
 const C_GLYPH_LIT := Color("#141d29")
 const C_GLYPH_UNLIT := Color("#31465c")
-const C_NAME_LIT := Color("#f3f8fd")
-const C_NAME_UNLIT := Color("#5b6e84")
-const C_COPY := Color("#a9bccf")
-const C_CARD_BORDER := Color("#1c3149")
-const C_STAT_VALUE := Color("#eef4fb")
-const C_CHART_LABEL := Color("#71859b")
-const C_REV := Color("#5fbf6b")
-const C_OUT := Color("#e6b34a")
+const C_NAME_LIT := Color("#E8EEF7")     # DS.TEXT
+# An unsecured track is still a NAME the player reads, so it stays legible; the unlit
+# crest and the missing gold badge already say it was not won (owner 2026-08-24: "no dark
+# grey text"). TEXT_DISABLED is for controls you cannot press, not for words.
+const C_NAME_UNLIT := Color("#C2D2E5")   # DS.TEXT_MUTED
+const C_COPY := Color("#E8EEF7")         # DS.TEXT (body copy the player is meant to read)
+const C_CARD_BORDER := Color(0.995, 0.93, 0.76, 0.55)   # DS.BORDER_SOFT — cream, not slate
+const C_STAT_VALUE := Color("#E8EEF7")   # DS.TEXT
+const C_CHART_LABEL := Color("#C2D2E5")  # DS.TEXT_MUTED
+const C_REV := Color("#5BD180")          # DS.OK
+const C_OUT := Color("#E6B85C")          # DS.WARN
 const C_BLD := Color("#5fa8e0")
-const C_BIG := Color("#eef4fb")
-const C_FOOT_CAP := Color("#4a5d72")
-const C_SECTION_HEAD := Color("#c7d4e3")
+const C_BIG := Color("#E8EEF7")          # DS.TEXT
+const C_FOOT_CAP := Color("#C2D2E5")     # DS.TEXT_MUTED (was #4a5d72, ~3:1 on navy)
+const C_SECTION_HEAD := Color("#E8EEF7") # DS.TEXT
 
 # ── Fonts ──────────────────────────────────────────────────────────────────────
 const _UIFonts := preload("res://scripts/ui_fonts.gd")
@@ -130,29 +133,31 @@ func _grow() -> Control:
 	return s
 
 
-# ── Bezel + navy panel shell ─────────────────────────────────────────────────
+# ── Brass frame + navy panel shell ───────────────────────────────────────────
 func _build_bezel(data: Dictionary) -> Control:
-	# Silver metal plate: a PanelContainer with a solid mid-silver rounded fill, a
-	# diagonal sheen overlay, and four corner rivets. 8px pad → navy panel inside.
+	# The COPPER pipe the tile view wears (owner 2026-08-24). pipe_frame's stylebox is a
+	# single 9-slice carrying both the pipe and the opaque navy centre, so it supplies the
+	# ground as well as the border — no separate background and no overlay child. This
+	# replaced first the mock's silver bezel, then the brass overlay: brass is now spent
+	# sparingly INSIDE the panel, and the outer chrome is the game's copper.
 	var bezel := PanelContainer.new()
 	bezel.custom_minimum_size = Vector2(PANEL_W, 0)
 	bezel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bezel.add_theme_stylebox_override("panel", _sb(C_BEZEL_MD, C_BEZEL_DK, 1, 18, BEZEL_PAD))
+	bezel.add_theme_stylebox_override("panel",
+		preload("res://scripts/pipe_frame.gd").dark_brown_stylebox(0.0))
 
-	# Diagonal sheen + rivets, drawn over the plate (mouse-ignore).
-	var sheen := _Bezel.new()
-	sheen.set_anchors_preset(Control.PRESET_FULL_RECT)
-	sheen.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	bezel.add_child(sheen)
-
-	# Navy panel.
-	var navy := PanelContainer.new()
-	navy.add_theme_stylebox_override("panel", _sb(C_NAVY_TOP, C_NAVY_TOP, 0, 12, 0))
-	bezel.add_child(navy)
+	# Content clears the pipe with its own margins (the sections carry SEC_PAD_H already,
+	# so only the vertical clearance is new).
+	var clear := MarginContainer.new()
+	clear.add_theme_constant_override("margin_top", FRAME_CLEAR)
+	clear.add_theme_constant_override("margin_bottom", FRAME_CLEAR)
+	clear.add_theme_constant_override("margin_left", FRAME_CLEAR - 8)
+	clear.add_theme_constant_override("margin_right", FRAME_CLEAR - 8)
+	bezel.add_child(clear)
 
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 0)
-	navy.add_child(col)
+	clear.add_child(col)
 
 	# 3px top accent line (transparent → ACCENT → transparent).
 	var accent_line := _HRule.new()
@@ -167,6 +172,8 @@ func _build_bezel(data: Dictionary) -> Control:
 	col.add_child(_hborder())
 	col.add_child(_build_copy(data))
 	col.add_child(_hborder())
+	col.add_child(_build_company(data))
+	col.add_child(_hborder())
 	col.add_child(_build_charts(data))
 	col.add_child(_hborder())
 	col.add_child(_build_footer())
@@ -174,9 +181,10 @@ func _build_bezel(data: Dictionary) -> Control:
 
 
 func _hborder() -> Control:
-	var r := ColorRect.new()
-	r.color = C_HEADER_BORDER
-	r.custom_minimum_size = Vector2(0, 1)
+	# The mock's 1px section rules are gone (owner 2026-08-24: "remove them, keep the
+	# space") — the sections separate by breathing room and their own plates now.
+	var r := Control.new()
+	r.custom_minimum_size = Vector2(0, 10)
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return r
 
@@ -199,7 +207,7 @@ func _build_header(data: Dictionary) -> Control:
 	top.add_child(left)
 
 	var kicker := "CARBON AND CAPITAL · END OF GAME · TURN %d OF %d" % [int(data.get("turn", 0)), int(data.get("max_turns", 300))]
-	left.add_child(_lbl(kicker, _tracked_font(), 12, C_KICKER))
+	left.add_child(_lbl(kicker, _tracked_font(), 14, C_KICKER))
 
 	var word_row := HBoxContainer.new()
 	word_row.add_theme_constant_override("separation", 18)
@@ -234,7 +242,7 @@ func _build_header(data: Dictionary) -> Control:
 	var total_lbl := _lbl(str(int(data.get("total", 0))), _UIFonts.mono(), 52, total_col)
 	total_lbl.size_flags_vertical = Control.SIZE_SHRINK_END
 	total_row.add_child(total_lbl)
-	var thr_lbl := _lbl("/ %d" % int(data.get("threshold", 0)), _UIFonts.mono(), 20, DS.PALETTE.TEXT_DIM)
+	var thr_lbl := _lbl("/ %d" % int(data.get("threshold", 0)), _UIFonts.mono(), 20, DS.PALETTE.TEXT_MUTED)
 	thr_lbl.size_flags_vertical = Control.SIZE_SHRINK_END
 	total_row.add_child(thr_lbl)
 
@@ -245,7 +253,10 @@ func _build_header(data: Dictionary) -> Control:
 	pill_row.add_child(_build_pill(won, int(data.get("turn", 0)), result))
 
 	var sc := int(data.get("secured_count", 0))
-	var sec_lbl := _lbl("%d of 5 tracks secured" % sc, _UIFonts.PLEX_MED, 12, DS.PALETTE.TEXT_DIM)
+	# Counted from the set this match ran, not from 5 — the demo plays a different five and
+	# a future set may not be five at all.
+	var sec_lbl := _lbl("%d of %d tracks secured" % [sc, VictoryState.TRACK_ORDER.size()],
+		_UIFonts.PLEX_MED, 12, DS.PALETTE.TEXT_MUTED)
 	sec_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	right.add_child(sec_lbl)
 
@@ -266,25 +277,22 @@ func _build_header(data: Dictionary) -> Control:
 
 	var labels := HBoxContainer.new()
 	bar_wrap.add_child(labels)
-	var l_left := _lbl("Tracks %d" % int(data.get("total", 0)), _UIFonts.PLEX_MED, 12, DS.PALETTE.TEXT_DIM)
+	var l_left := _lbl("Tracks %d" % int(data.get("total", 0)), _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED)
 	l_left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	labels.add_child(l_left)
-	var l_mid := _lbl("%d to win" % int(data.get("threshold", 0)), _UIFonts.PLEX_MED, 12, DS.PALETTE.TEXT_DIM)
+	var l_mid := _lbl("%d to win" % int(data.get("threshold", 0)), _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED)
 	l_mid.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l_mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	labels.add_child(l_mid)
-	var l_right := _lbl("Final %d" % int(data.get("total", 0)), _UIFonts.mono(), 12, total_col)
+	var l_right := _lbl("Final %d" % int(data.get("total", 0)), _UIFonts.mono(), 14, total_col)
 	l_right.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	l_right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	labels.add_child(l_right)
 
-	# Faint radial ACCENT glow at the top of the header.
-	var glow := _Glow.new()
-	glow.col = _accent
-	glow.set_anchors_preset(Control.PRESET_FULL_RECT)
-	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	sec.add_child(glow)
-	sec.move_child(glow, 0)
+	# (The radial accent glow that used to sit behind the header — red, amber or green by
+	# result — is gone: owner 2026-08-24. On the copper plate it read as a smudge in the
+	# gradient rather than as light, and the result already has a colour everywhere it
+	# matters: the pill, the total, and the score bar.)
 	return sec
 
 
@@ -298,16 +306,16 @@ func _build_pill(won: bool, turn: int, result: String = "victory") -> Control:
 	pc.add_child(mc)
 	if won:
 		pc.add_theme_stylebox_override("panel", _sb(C_TOTAL_WIN, C_TOTAL_WIN, 0, 12, 0))
-		mc.add_child(_lbl("✓  Won on turn %d" % turn, _UIFonts.PLEX_SEMI, 13, Color("#0c1622")))
+		mc.add_child(_lbl("✓  Won on turn %d" % turn, _UIFonts.PLEX_SEMI, 14, Color("#0c1622")))
 	elif result == "continuity":
 		# Not a red cross: no track was secured, but the company is still trading.
 		var amb := C_ACCENT_CONT
 		pc.add_theme_stylebox_override("panel", _sb(Color(amb.r, amb.g, amb.b, 0.14), amb, 1, 12, 0))
-		mc.add_child(_lbl("=  Still trading on turn %d" % turn, _UIFonts.PLEX_SEMI, 13, amb))
+		mc.add_child(_lbl("=  Still trading on turn %d" % turn, _UIFonts.PLEX_SEMI, 14, amb))
 	else:
 		var red := C_ACCENT_LOSE
 		pc.add_theme_stylebox_override("panel", _sb(Color(red.r, red.g, red.b, 0.14), red, 1, 12, 0))
-		mc.add_child(_lbl("✗  No track secured", _UIFonts.PLEX_SEMI, 13, red))
+		mc.add_child(_lbl("✗  No track secured", _UIFonts.PLEX_SEMI, 14, red))
 	return pc
 
 
@@ -316,7 +324,7 @@ func _build_banner(data: Dictionary) -> Control:
 	var result := str(data.get("result", "victory"))
 	var sec := _section(32, SEC_PAD_H, 36)
 	var box: VBoxContainer = sec.get_child(0)
-	box.add_child(_section_head("The banner"))
+	box.add_child(_section_head("The victory tracks"))
 
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 14)
@@ -332,23 +340,26 @@ func _build_pennant(t: Dictionary, result: String) -> Control:
 	var done := bool(t.get("done", false))
 	var color := Color(str(t.get("color", "#ffffff")))
 
-	var card := PanelContainer.new()
+	var card := _CutPlate.new(0, 0, _CutPlate.STEEL)
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.size_flags_vertical = Control.SIZE_FILL
+	# How the points were earned moved to HOVER (owner 2026-08-24). The card carries the
+	# crest, the name and the score; the working — what the track measures, where the run
+	# got to, what it needed — is one hover away and no longer four lines of small type
+	# under every hexagon.
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	card.tooltip_text = _track_tooltip(t)
+	# No colour bar across the top (owner 2026-08-24) — the crest below is the track's
+	# colour, struck in the research panel's metal, and a flat swatch over it was the one
+	# undesigned element on the card.
 	if done:
-		card.add_theme_stylebox_override("panel", _sb(Color("#0e2135"), Color(color.r, color.g, color.b, 0.40), 1, 13, 0))
+		card.fill = Color("#0D1E30")
 	else:
-		card.modulate = Color(1, 1, 1, 0.82)
-		card.add_theme_stylebox_override("panel", _sb(Color("#0b1a2b"), C_HEADER_BORDER, 1, 13, 0))
+		card.dimmed = true
 
-	# Top hairline in the track colour (or grey).
 	var stack := VBoxContainer.new()
 	stack.add_theme_constant_override("separation", 0)
 	card.add_child(stack)
-	var hair := ColorRect.new()
-	hair.color = color if done else C_HEADER_BORDER
-	hair.custom_minimum_size = Vector2(0, 2)
-	stack.add_child(hair)
 
 	if done:
 		var glow := _PennantGlow.new()
@@ -374,30 +385,14 @@ func _build_pennant(t: Dictionary, result: String) -> Control:
 	crest.done = done
 	crest.color = color
 	crest.glyph = str(t.get("key", ""))
-	crest.custom_minimum_size = Vector2(0, 104)
+	crest.custom_minimum_size = Vector2(0, 156)   # half again, now the card has the room
 	inner.add_child(crest)
 
 	var name_lbl := _lbl(str(t.get("name", "")), _BEBAS, 27, C_NAME_LIT if done else C_NAME_UNLIT)
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	inner.add_child(name_lbl)
 
-	var desc_lbl := _lbl(str(t.get("desc", "")), _UIFonts.PLEX, 11, DS.PALETTE.TEXT_DIM)
-	desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	inner.add_child(desc_lbl)
-
-	inner.add_child(_spacer_v(4))
-
-	var stat_lbl := _lbl(str(t.get("stat", "")), _UIFonts.mono(), 19, color if done else DS.PALETTE.TEXT_DIM)
-	stat_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	inner.add_child(stat_lbl)
-
-	var sub_lbl := _lbl(str(t.get("sub", "")), _UIFonts.PLEX, 11, DS.PALETTE.TEXT_DIM)
-	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sub_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	inner.add_child(sub_lbl)
-
-	inner.add_child(_spacer_v(6))
+	inner.add_child(_spacer_v(12))
 
 	# Bottom badge.
 	var badge := PanelContainer.new()
@@ -410,13 +405,37 @@ func _build_pennant(t: Dictionary, result: String) -> Control:
 	badge.add_child(bmc)
 	if done:
 		badge.add_theme_stylebox_override("panel", _sb(C_CREST_GOLD_B, C_CREST_GOLD_A, 1, 8, 0))
-		bmc.add_child(_lbl("Secured · turn %d" % int(t.get("at", 0)), _UIFonts.PLEX_SEMI, 11, Color("#241a08")))
+		bmc.add_child(_lbl("Secured · turn %d" % int(t.get("at", 0)), _UIFonts.PLEX_SEMI, 14, Color("#241a08")))
 	else:
 		var border := Color("#3a2224") if result == "defeat" else Color("#1c3149")
 		badge.add_theme_stylebox_override("panel", _sb(C_TRACK_BG, border, 1, 8, 0))
-		bmc.add_child(_lbl("%d%% banked" % int(round(float(t.get("pct", 0.0)) * 100.0)), _UIFonts.PLEX_MED, 11, DS.PALETTE.TEXT_DIM))
+		# Points, not a percentage: every track is worth 1,000 and the score bar above is
+		# read in points, so the pennants should be too.
+		bmc.add_child(_lbl("%s / 1,000 points" % _num(int(round(float(t.get("pct", 0.0)) * 1000.0))),
+			_UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED))
 	inner.add_child(badge)
 	return card
+
+
+## What the card no longer says out loud: the track's rule, where the run got to, and what
+## that was measured against.
+func _track_tooltip(t: Dictionary) -> String:
+	var lines: Array[String] = [str(t.get("name", "")).to_upper()]
+	var desc := str(t.get("desc", ""))
+	if desc != "":
+		lines.append(desc)
+	var stat := str(t.get("stat", ""))
+	var sub := str(t.get("sub", ""))
+	if stat != "" and sub != "":
+		lines.append("%s — %s" % [stat, sub])
+	elif stat != "":
+		lines.append(stat)
+	elif sub != "":
+		lines.append(sub)
+	if bool(t.get("done", false)):
+		lines.append("Secured on turn %d." % int(t.get("at", 0)))
+	return "
+".join(lines)
 
 
 # ── Section 3: COPY + STATLINE ───────────────────────────────────────────────
@@ -459,9 +478,11 @@ func _build_copy(data: Dictionary) -> Control:
 
 
 func _copy_para(text: String) -> Control:
-	var l := _lbl(text, _UIFonts.PLEX_MED, 15, C_COPY)
+	# The verdict is the one piece of writing on the screen; at 15 it sat below the chart
+	# captions in weight and got skipped (owner 2026-08-24).
+	var l := _lbl(text, _UIFonts.PLEX_MED, 24, C_COPY)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.add_theme_constant_override("line_spacing", 9)
+	l.add_theme_constant_override("line_spacing", 12)
 	return l
 
 
@@ -469,34 +490,201 @@ func _dropcap_para(text: String) -> Control:
 	# Large ACCENT drop-cap of the first letter, then the rest flows beside/under it.
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
-	var cap := _lbl(text.substr(0, 1), _BEBAS, 42, _accent)
+	var cap := _lbl(text.substr(0, 1), _BEBAS, 64, _accent)
 	cap.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	cap.custom_minimum_size = Vector2(30, 0)
+	cap.custom_minimum_size = Vector2(44, 0)
 	row.add_child(cap)
-	var rest := _lbl(text.substr(1), _UIFonts.PLEX_MED, 15, C_COPY)
+	var rest := _lbl(text.substr(1), _UIFonts.PLEX_MED, 24, C_COPY)
 	rest.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rest.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	rest.add_theme_constant_override("line_spacing", 9)
+	rest.add_theme_constant_override("line_spacing", 12)
 	row.add_child(rest)
 	return row
 
 
 func _stat_card(value: String, label: String) -> Control:
-	var pc := PanelContainer.new()
+	var pc := _CutPlate.new(16, 14, _CutPlate.STEEL)
 	pc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	pc.add_theme_stylebox_override("panel", _sb(Color("#0b1a2b"), C_CARD_BORDER, 1, 11, 0))
 	var mc := MarginContainer.new()
-	mc.add_theme_constant_override("margin_left", 16)
-	mc.add_theme_constant_override("margin_right", 16)
-	mc.add_theme_constant_override("margin_top", 14)
-	mc.add_theme_constant_override("margin_bottom", 14)
 	pc.add_child(mc)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 4)
 	mc.add_child(v)
-	v.add_child(_lbl(value, _UIFonts.mono(), 23, C_STAT_VALUE))
-	v.add_child(_lbl(label.to_upper(), _UIFonts.PLEX_MED, 11, DS.PALETTE.TEXT_DIM))
+	v.add_child(_lbl(value, _UIFonts.mono(), 26, C_STAT_VALUE))
+	v.add_child(_lbl(label.to_upper(), _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED))
 	return pc
+
+
+# ── Section 3b: THE COMPANY — the run's own artefacts, in the game's own art ──
+# Owner 2026-08-24: use the assets the game already has — good icons on the Goods Graph's
+# cream chips, building icons, advisor portraits — and pack them four to a row.
+func _build_company(data: Dictionary) -> Control:
+	var co: Dictionary = data.get("company", {})
+	var sec := _section(32, SEC_PAD_H, 36)
+	var box: VBoxContainer = sec.get_child(0)
+	box.add_child(_section_head("The company"))
+
+	# A FLOW row, not a fixed one: "Most sold" now carries a ranked five and is wider than the
+	# single-figure plates beside it, so the last plate drops to a second line rather than all
+	# four being squeezed (owner, 25 Aug — "expand that section up to 5, maybe sideways which
+	# kicks another panel onto the next row").
+	var row := HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 14)
+	row.add_theme_constant_override("v_separation", 14)
+	box.add_child(row)
+	row.add_child(_good_showcase("Most produced", co.get("top_produced", {})))
+	row.add_child(_top_sold_showcase(co.get("top_sold_list", [])))
+	row.add_child(_workhorse_showcase(co.get("workhorse", {})))
+	row.add_child(_advisor_showcase(co.get("advisor", {})))
+
+	box.add_child(_chain_row(co.get("chain", {})))
+	return sec
+
+
+## One showcase plate: small-caps caption, an icon from the game's own art, the figure.
+func _showcase_plate(caption: String, icon: Control, value: String, sub: String,
+		mono: bool = true) -> Control:
+	var plate := _CutPlate.new(16, 12, _CutPlate.COPPER)
+	plate.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	plate.add_child(v)
+	v.add_child(_lbl(caption.to_upper(), _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	v.add_child(row)
+	if icon != null:
+		row.add_child(icon)
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	col.add_theme_constant_override("separation", 2)
+	row.add_child(col)
+	var val_font: Font = _UIFonts.mono() if mono else _UIFonts.PLEX_SEMI
+	var val := _lbl(value, val_font, 20, C_STAT_VALUE)
+	val.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(val)
+	var s2 := _lbl(sub, _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED)
+	s2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(s2)
+	return plate
+
+
+func _good_showcase(caption: String, d: Dictionary) -> Control:
+	var gid := str(d.get("gid", ""))
+	if gid == "":
+		return _showcase_plate(caption, null, "—", "nothing this run")
+	var icon := _UIHelpers.make_plain_good_icon(gid, Catalog.get_internal_name(gid), 72)
+	return _showcase_plate(caption, icon, str(d.get("qty_text", "")),
+		Catalog.get_display_name(gid))
+
+
+## The five goods the company sold most of, ranked — the plate that replaced a single winner.
+## One good said almost nothing about a run: a company that sold five things in quantity and
+## one that sold only one read identically (owner, 25 Aug).
+const TOP_SOLD_PLATE_W := 430
+
+func _top_sold_showcase(list: Array) -> Control:
+	if list.is_empty():
+		return _showcase_plate("Most sold", null, "—", "nothing sold this run")
+	var plate := _CutPlate.new(16, 12, _CutPlate.COPPER)
+	plate.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	plate.custom_minimum_size = Vector2(TOP_SOLD_PLATE_W, 0)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	plate.add_child(v)
+	v.add_child(_lbl("MOST SOLD", _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED))
+	for i in list.size():
+		var g: Dictionary = list[i]
+		var gid := str(g.get("gid", ""))
+		var r := HBoxContainer.new()
+		r.add_theme_constant_override("separation", 10)
+		# The rank reads quieter by SIZE, not by a greyer ink — the house rule for anything on
+		# one of these dark plates.
+		var rank := _lbl(str(i + 1), _UIFonts.mono(), 13, C_STAT_VALUE)
+		rank.custom_minimum_size = Vector2(14, 0)
+		rank.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		rank.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		r.add_child(rank)
+		r.add_child(_UIHelpers.make_plain_good_icon(gid, Catalog.get_internal_name(gid), 34))
+		var nm := _lbl(Catalog.get_display_name(gid), _UIFonts.PLEX_MED, 15, C_STAT_VALUE)
+		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		nm.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		nm.clip_text = true
+		nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		r.add_child(nm)
+		var qty := _lbl(str(g.get("qty_text", "")), _UIFonts.mono(), 15, C_STAT_VALUE)
+		qty.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		qty.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		r.add_child(qty)
+		v.add_child(r)
+	return plate
+
+
+func _workhorse_showcase(d: Dictionary) -> Control:
+	if d.is_empty():
+		return _showcase_plate("Most value created", null, "—", "nothing ran this game")
+	var icon: Control = null
+	var tex: Texture2D = d.get("icon")
+	if tex != null:
+		var tr := TextureRect.new()
+		tr.texture = tex
+		tr.custom_minimum_size = Vector2(72, 72)
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon = tr
+	return _showcase_plate("Most value created", icon, str(d.get("value", "—")),
+		str(d.get("sub", "")))
+
+
+func _advisor_showcase(d: Dictionary) -> Control:
+	if d.is_empty():
+		return _showcase_plate("Longest-serving advisor", null, "—", "no council seated")
+	var icon: Control = null
+	var path := str(d.get("portrait", ""))
+	if path != "" and ResourceLoader.exists(path):
+		var tr := TextureRect.new()
+		tr.texture = load(path)
+		tr.custom_minimum_size = Vector2(72, 72)
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		tr.clip_contents = true
+		icon = tr
+	return _showcase_plate("Longest-serving advisor", icon, str(d.get("name", "")),
+		"seated since Year %d" % int(d.get("since_year", 1)), false)
+
+
+## The supply chain the run actually established, drawn as the GOODS GRAPH'S FOCUSED VIEW
+## (owner 2026-08-24): the goods this company made, in the flow chart's own columns, wired
+## to each other by the real recipe links — not a row of five tier slots with one good in
+## each. What the shape shows is how deep and how wide the business actually went.
+func _chain_row(chain: Dictionary) -> Control:
+	var plate := _CutPlate.new(20, 14, _CutPlate.BRASS)
+	plate.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 10)
+	plate.add_child(v)
+	v.add_child(_lbl("SUPPLY CHAIN — REACHED %d OF %d TIERS" % [int(chain.get("bands", 0)),
+		int(chain.get("band_total", 5))], _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED))
+	var nodes: Array = chain.get("nodes", [])
+	if nodes.is_empty():
+		v.add_child(_lbl("Nothing was ever produced.", _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED))
+		return plate
+	var web := _ChainWeb.new()
+	web.nodes = nodes
+	web.edges = chain.get("edges", [])
+	web.font = _UIFonts.PLEX_MED
+	web.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Tall enough for the busiest column, so nothing is squeezed off the plate.
+	var per_col: Dictionary = {}
+	var deep := 1
+	for n_variant: Variant in nodes:
+		var t := int((n_variant as Dictionary).get("tier", 0))
+		per_col[t] = int(per_col.get(t, 0)) + 1
+		deep = maxi(deep, int(per_col[t]))
+	web.custom_minimum_size = Vector2(0, float(deep) * _ChainWeb.ROW + 16.0)
+	v.add_child(web)
+	return plate
 
 
 # ── Section 4: CHARTS + EMPIRE ───────────────────────────────────────────────
@@ -516,49 +704,128 @@ func _build_charts(data: Dictionary) -> Control:
 	var rev := _LineChart.new()
 	rev.series = charts.get("revenue", [])
 	rev.col = C_REV
+	rev.board = C_REV
 	grid.add_child(_chart_card("Revenue per turn", str(charts.get("revenue_big", "")),
-		str(charts.get("revenue_sub", "")), C_REV, rev, "turn 1 … turn %d" % int(data.get("turn", 0))))
+		str(charts.get("revenue_sub", "")), C_REV, rev,
+		"turn 1 … turn %d" % int(data.get("turn", 0)), _CutPlate.BRASS))
 
 	# Output — bar chart.
 	var outp := _BarChart.new()
 	outp.series = charts.get("output", [])
 	outp.col = C_OUT
 	grid.add_child(_chart_card("Output per turn", str(charts.get("output_big", "")),
-		str(charts.get("output_sub", "")), C_OUT, outp, "sampled across the game"))
+		str(charts.get("output_sub", "")), C_OUT, outp, "sampled across the game",
+		_CutPlate.STEEL))
 
-	# Buildings — step area.
-	var bld := _StepChart.new()
+	# Buildings — a stack of the estate's own emblem, one sprite per STEP buildings.
+	var bld := _StackChart.new()
 	bld.series = charts.get("buildings", [])
 	bld.col = C_BLD
-	grid.add_child(_chart_card("Buildings standing", str(charts.get("buildings_big", "")),
-		str(charts.get("buildings_sub", "")), C_BLD, bld, "turn 1 … turn %d" % int(data.get("turn", 0))))
+	bld.icon = charts.get("buildings_icon")
+	var bpeak := 0
+	for v in bld.series:
+		bpeak = maxi(bpeak, int(v))
+	bld.step = maxi(1, int(ceil(float(bpeak) / 4.0)))
+	bld.font = _UIFonts.mono()
+	var bfoot := "turn 1 … turn %d" % int(data.get("turn", 0))
+	grid.add_child(_chart_card("Buildings owned", str(charts.get("buildings_big", "")),
+		str(charts.get("buildings_sub", "")), C_BLD, bld, bfoot, _CutPlate.COPPER, 176))
 
 	# Biggest outputs — five ranked bar rows.
 	grid.add_child(_build_biggest(charts))
 
-	# Empire card (full width).
-	box.add_child(_build_empire(data.get("empire", {})))
+	# The empire used to run the full width with most of the plate empty around a
+	# stamp-sized network (owner 2026-08-24). It is half now, and the other half is the
+	# league: where the company stood, and what it led — a quarter of the row each.
+	var bottom := HBoxContainer.new()
+	bottom.add_theme_constant_override("separation", 16)
+	box.add_child(bottom)
+	var emp := _build_empire(data.get("empire", {}))
+	emp.size_flags_stretch_ratio = 2.0
+	bottom.add_child(emp)
+	var league: Dictionary = data.get("league", {})
+	var place := _build_place(league)
+	place.size_flags_stretch_ratio = 1.0
+	bottom.add_child(place)
+	var led := _build_led(league)
+	led.size_flags_stretch_ratio = 1.0
+	bottom.add_child(led)
 	return sec
 
 
-func _chart_card(label: String, big: String, sub: String, col: Color, body: Control, footer: String) -> Control:
-	var pc := PanelContainer.new()
+## Where the company stood in the revenue table, turn by turn. Rank 1 is the TOP of the
+## chart, so the line rising means the company climbing — an axis that ran 1 at the bottom
+## read exactly backwards.
+func _build_place(league: Dictionary) -> Control:
+	var pc := _CutPlate.new(20, 16, _CutPlate.STEEL)
 	pc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	pc.add_theme_stylebox_override("panel", _sb(Color("#0b1a2b"), C_CARD_BORDER, 1, 13, 0))
-	var mc := MarginContainer.new()
-	mc.add_theme_constant_override("margin_left", 20)
-	mc.add_theme_constant_override("margin_right", 20)
-	mc.add_theme_constant_override("margin_top", 16)
-	mc.add_theme_constant_override("margin_bottom", 16)
-	pc.add_child(mc)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 8)
-	mc.add_child(v)
+	pc.add_child(v)
+	var companies := int(league.get("companies", 10))
+	var final_rank := int(league.get("final_rank", companies))
+	v.add_child(_card_head("Place in the league", _ordinal(final_rank),
+		"of %d companies, at the close" % companies, C_OUT))
+	var chart := _RankChart.new()
+	chart.series = league.get("ranks", [])
+	chart.companies = companies
+	chart.font = _UIFonts.mono()
+	chart.custom_minimum_size = Vector2(0, 236)
+	chart.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	chart.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(chart)
+	var foot := "best: %s" % _ordinal(int(league.get("best_rank", final_rank)))
+	var crowned := int(league.get("crowned_turns", 0))
+	if crowned > 0:
+		foot += "  ·  %d turn%s on top" % [crowned, "" if crowned == 1 else "s"]
+	v.add_child(_lbl(foot, _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED))
+	return pc
 
-	# Header row: label (left) + big number & sub (right).
+
+## The goods the company finished first in, on the Goods Graph's cream chips.
+func _build_led(league: Dictionary) -> Control:
+	var pc := _CutPlate.new(20, 16, _CutPlate.BRASS)
+	pc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 8)
+	pc.add_child(v)
+	var led: Array = league.get("led", [])
+	var contested := int(league.get("contested", 0))
+	v.add_child(_card_head("Goods you led", str(led.size()),
+		"of %d you competed in" % contested, C_ACCENT_WIN))
+	var wrap := HFlowContainer.new()
+	wrap.add_theme_constant_override("h_separation", 10)
+	wrap.add_theme_constant_override("v_separation", 10)
+	wrap.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(wrap)
+	if led.is_empty():
+		wrap.add_child(_lbl("No good finished first this game.", _UIFonts.PLEX_MED, 14,
+			DS.PALETTE.TEXT_MUTED))
+	for i in mini(10, led.size()):
+		var g: Dictionary = led[i]
+		var cell := VBoxContainer.new()
+		cell.add_theme_constant_override("separation", 3)
+		cell.add_child(_UIHelpers.make_plain_good_icon(str(g.get("gid", "")),
+			str(g.get("internal", "")), 50))
+		var nm := _lbl(str(g.get("name", "")), _UIFonts.PLEX_MED, 14, C_STAT_VALUE)
+		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		nm.custom_minimum_size = Vector2(78, 0)
+		nm.clip_text = true
+		nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		cell.add_child(nm)
+		wrap.add_child(cell)
+	if led.size() > 10:
+		wrap.add_child(_lbl("+%d more" % (led.size() - 10), _UIFonts.PLEX_SEMI, 14, C_OUT))
+	var runner := "second in %d  ·  third in %d" % [int(league.get("seconds", 0)),
+		int(league.get("thirds", 0))]
+	v.add_child(_lbl(runner, _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED))
+	return pc
+
+
+## The chart cards' header row: small-caps label left, the figure and its gloss right.
+func _card_head(label: String, big: String, sub: String, col: Color) -> Control:
 	var head := HBoxContainer.new()
-	v.add_child(head)
-	var lbl := _lbl(label.to_upper(), _UIFonts.PLEX_MED, 11, C_CHART_LABEL)
+	var lbl := _lbl(label.to_upper(), _UIFonts.PLEX_MED, 14, C_CHART_LABEL)
 	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(lbl)
@@ -568,28 +835,64 @@ func _chart_card(label: String, big: String, sub: String, col: Color, body: Cont
 	var big_lbl := _lbl(big, _UIFonts.mono(), 20, col)
 	big_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(big_lbl)
-	var sub_lbl := _lbl(sub, _UIFonts.PLEX, 11, DS.PALETTE.TEXT_DIM)
+	var sub_lbl := _lbl(sub, _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED)
+	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	rcol.add_child(sub_lbl)
+	return head
+
+
+func _ordinal(n: int) -> String:
+	if n <= 0:
+		return "—"
+	var suffix := "th"
+	if n % 100 < 11 or n % 100 > 13:
+		match n % 10:
+			1: suffix = "st"
+			2: suffix = "nd"
+			3: suffix = "rd"
+	return str(n) + suffix
+
+
+func _chart_card(label: String, big: String, sub: String, col: Color, body: Control,
+		footer: String, metal: int = 2, body_h: int = 150) -> Control:
+	var pc := _CutPlate.new(20, 16, metal)
+	pc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var mc := MarginContainer.new()
+	pc.add_child(mc)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 8)
+	mc.add_child(v)
+
+	# Header row: label (left) + big number & sub (right).
+	var head := HBoxContainer.new()
+	v.add_child(head)
+	var lbl := _lbl(label.to_upper(), _UIFonts.PLEX_MED, 14, C_CHART_LABEL)
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(lbl)
+	var rcol := VBoxContainer.new()
+	rcol.add_theme_constant_override("separation", 2)
+	head.add_child(rcol)
+	var big_lbl := _lbl(big, _UIFonts.mono(), 20, col)
+	big_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	rcol.add_child(big_lbl)
+	var sub_lbl := _lbl(sub, _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED)
 	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(sub_lbl)
 
-	body.custom_minimum_size = Vector2(0, 150)
+	body.custom_minimum_size = Vector2(0, body_h)
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	v.add_child(body)
 
 	if footer != "":
-		v.add_child(_lbl(footer, _UIFonts.PLEX, 11, DS.PALETTE.TEXT_DIM))
+		v.add_child(_lbl(footer, _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED))
 	return pc
 
 
 func _build_biggest(charts: Dictionary) -> Control:
-	var pc := PanelContainer.new()
+	var pc := _CutPlate.new(20, 16, _CutPlate.STEEL)
 	pc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	pc.add_theme_stylebox_override("panel", _sb(Color("#0b1a2b"), C_CARD_BORDER, 1, 13, 0))
 	var mc := MarginContainer.new()
-	mc.add_theme_constant_override("margin_left", 20)
-	mc.add_theme_constant_override("margin_right", 20)
-	mc.add_theme_constant_override("margin_top", 16)
-	mc.add_theme_constant_override("margin_bottom", 16)
 	pc.add_child(mc)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 8)
@@ -597,7 +900,7 @@ func _build_biggest(charts: Dictionary) -> Control:
 
 	var head := HBoxContainer.new()
 	v.add_child(head)
-	var lbl := _lbl("BIGGEST OUTPUTS", _UIFonts.PLEX_MED, 11, C_CHART_LABEL)
+	var lbl := _lbl("BIGGEST OUTPUTS", _UIFonts.PLEX_MED, 14, C_CHART_LABEL)
 	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(lbl)
@@ -607,7 +910,7 @@ func _build_biggest(charts: Dictionary) -> Control:
 	var big_lbl := _lbl(_num(int(charts.get("top_total", 0))), _UIFonts.mono(), 20, C_BIG)
 	big_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(big_lbl)
-	var sub_lbl := _lbl("lifetime units, top five goods", _UIFonts.PLEX, 11, DS.PALETTE.TEXT_DIM)
+	var sub_lbl := _lbl("lifetime units, top five goods", _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED)
 	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(sub_lbl)
 
@@ -626,15 +929,18 @@ func _build_biggest(charts: Dictionary) -> Control:
 
 func _biggest_row(g: Dictionary, rank: int, maxu: int) -> Control:
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	row.custom_minimum_size = Vector2(0, 30)
+	row.add_theme_constant_override("separation", 12)
+	row.custom_minimum_size = Vector2(0, 54)
 
-	var icon: Control = _UIHelpers.make_framed_good_icon(str(g.get("good_id", "")), str(g.get("internal", "")), 26)
+	# The Goods Graph's plain chip — cream ground, rounded corners, no metal frame, at the
+	# size the rest of the game shows a good (owner 2026-08-24: these were 26px and tiny).
+	var icon: Control = _UIHelpers.make_plain_good_icon(str(g.get("good_id", "")),
+		str(g.get("internal", "")), 50)
 	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(icon)
 
-	var name_lbl := _lbl(str(g.get("label", "")), _UIFonts.PLEX_MED, 13, C_STAT_VALUE)
-	name_lbl.custom_minimum_size = Vector2(108, 0)
+	var name_lbl := _lbl(str(g.get("label", "")), _UIFonts.PLEX_MED, 14, C_STAT_VALUE)
+	name_lbl.custom_minimum_size = Vector2(126, 0)
 	name_lbl.clip_text = true
 	name_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -646,7 +952,7 @@ func _biggest_row(g: Dictionary, rank: int, maxu: int) -> Control:
 	bar.col = Color(str(g.get("color", "#8f9dae")))
 	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	bar.custom_minimum_size = Vector2(0, 18)
+	bar.custom_minimum_size = Vector2(0, 22)
 	row.add_child(bar)
 
 	var num := _lbl(_num(int(g.get("units", 0))), _UIFonts.mono(), 14, C_OUT if rank == 0 else C_STAT_VALUE)
@@ -658,14 +964,9 @@ func _biggest_row(g: Dictionary, rank: int, maxu: int) -> Control:
 
 
 func _build_empire(empire: Dictionary) -> Control:
-	var pc := PanelContainer.new()
+	var pc := _CutPlate.new(20, 16, _CutPlate.COPPER)
 	pc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	pc.add_theme_stylebox_override("panel", _sb(Color("#0b1a2b"), C_CARD_BORDER, 1, 13, 0))
 	var mc := MarginContainer.new()
-	mc.add_theme_constant_override("margin_left", 20)
-	mc.add_theme_constant_override("margin_right", 20)
-	mc.add_theme_constant_override("margin_top", 16)
-	mc.add_theme_constant_override("margin_bottom", 16)
 	pc.add_child(mc)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 10)
@@ -674,9 +975,9 @@ func _build_empire(empire: Dictionary) -> Control:
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 10)
 	v.add_child(head)
-	head.add_child(_lbl("THE EMPIRE", _UIFonts.PLEX_MED, 11, C_CHART_LABEL))
+	head.add_child(_lbl("THE EMPIRE", _UIFonts.PLEX_MED, 14, C_CHART_LABEL))
 	var ports: Array = empire.get("ports", [])
-	var meta := _lbl("final production network · %d ports" % ports.size(), _UIFonts.PLEX, 11, DS.PALETTE.TEXT_DIM)
+	var meta := _lbl("final production network · %d ports" % ports.size(), _UIFonts.PLEX_MED, 14, DS.PALETTE.TEXT_MUTED)
 	meta.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	meta.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(meta)
@@ -691,7 +992,7 @@ func _build_empire(empire: Dictionary) -> Control:
 	# Falls back to the stylised design map when there is no graph to show.
 	var graph := _make_empire_graph(false)
 	if graph != null:
-		graph.custom_minimum_size = Vector2(0, 380)
+		graph.custom_minimum_size = Vector2(0, 300)
 		graph.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		v.add_child(graph)
 	else:
@@ -710,30 +1011,28 @@ func _build_empire(empire: Dictionary) -> Control:
 ## node cards' click-through (focus a building) is always disabled — game over.
 func _make_empire_graph(interactive: bool) -> Control:
 	var terrain: Node = get_tree().get_first_node_in_group("hex_map")
-	var g: Dictionary = _EmpireGraph.build(terrain)
-	if (g.get("nodes", []) as Array).is_empty():
+	if (_EmpireGraph.build(terrain).get("nodes", []) as Array).is_empty():
 		return null
-	_EmpireLayout.solve(g["nodes"], g["edges"])
-	# The end screen shows the network as it stood when the company stopped trading, so the SELL
-	# row goes: nothing leaves through those docks any more. The BUY row stays, because what the
-	# empire drew in from the market is part of the picture that remains (owner 2026-08-01).
-	# The sell ports are still POSITIONED — place_buy_ports mirrors each top hex onto its bottom
-	# twin's x — they are simply not handed to the graph, so nothing draws them.
-	var area: Rect2 = _EmpireLayout.bbox_of(g["nodes"])
-	_EmpireLayout.place_ports(g["ports"], area)
-	_EmpireLayout.place_buy_ports(g["buy_ports"], g["ports"], area)
 	var world: Control = _GraphWorld.new()
 	world.clip_contents = true
 	world.mouse_filter = Control.MOUSE_FILTER_STOP if interactive else Control.MOUSE_FILTER_IGNORE
-	# set_graph fits the view to the control's size, which is 0 until layout runs —
-	# apply it once the graph has a real rect (first resize with width; applied once).
+	# set_graph fits the view to the control's size, which is 0 until layout runs — apply it
+	# once the graph has a real rect (first resize with width; applied once).
 	var applied := [false]
 	world.resized.connect(func() -> void:
 		if applied[0] or world.size.x <= 1.0:
 			return
 		applied[0] = true
-		# Empty sell ports + empty sell edges; the buy row and its market lines carry through.
-		world.set_graph(g["nodes"], g["edges"], [], [], g["market_edges"], g["buy_ports"])
+		# The SAME setup the empire view uses (EmpireGraph.populate). This used to solve the
+		# layout with two arguments instead of four and pass an empty port list beside a full
+		# buy-port list, which is why it read as an older sibling with a stray bottom row.
+		# `trading: false` still drops the sell row — the company has stopped selling — but the
+		# columns are now solved exactly as they are in the live view.
+		_EmpireGraph.populate(world, get_tree().get_first_node_in_group("hex_map"), false)
+		if interactive:
+			return
+		# Static inline copy only: the expand overlay IS meant to be clicked, and blanking the
+		# node panels here was why clicking a building in the end screen did nothing.
 		for c in world.get_children():
 			if c is Control:
 				(c as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE)
@@ -747,11 +1046,8 @@ func _build_footer() -> Control:
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 16)
 
-	var divider := ColorRect.new()
-	divider.color = C_HEADER_BORDER
-	divider.custom_minimum_size = Vector2(120, 1)
-	divider.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	box.add_child(divider)
+	# (The 120px hairline that used to sit here went with the section rules — owner
+	# 2026-08-24, "stop using the fading line". The button carries the section on its own.)
 
 	var btn := Button.new()
 	btn.text = "   Back to Main Menu"
@@ -769,7 +1065,7 @@ func _build_footer() -> Control:
 	btn.pressed.connect(func() -> void: back_to_menu_pressed.emit())
 	box.add_child(btn)
 
-	var cap := _lbl("Your ledger has been archived to the Hall of Records.", _UIFonts.PLEX_MED, 12, C_FOOT_CAP)
+	var cap := _lbl("Your ledger has been archived to the Hall of Records.", _UIFonts.PLEX_MED, 14, C_FOOT_CAP)
 	cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(cap)
 	return sec
@@ -800,7 +1096,7 @@ func _open_expand() -> void:
 
 	var head := HBoxContainer.new()
 	v.add_child(head)
-	var h := _lbl("THE EMPIRE — FINAL PRODUCTION NETWORK", _tracked_font(), 13, C_ACCENT_WIN)
+	var h := _lbl("THE EMPIRE — FINAL PRODUCTION NETWORK", _tracked_font(), 14, C_ACCENT_WIN)
 	h.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(h)
@@ -850,13 +1146,8 @@ func _section_head(text: String) -> Control:
 	var lbl := _lbl(text, _BEBAS, 26, C_SECTION_HEAD)
 	lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(lbl)
-	var rule := _HRule.new()
-	rule.mode = _HRule.FADE_RIGHT
-	rule.col = C_CARD_BORDER
-	rule.custom_minimum_size = Vector2(0, 1)
-	rule.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	rule.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	row.add_child(rule)
+	# No trailing rule (owner 2026-08-24: "stop using the fading line"). The heading stands
+	# on its own; the plates below it already say where the section starts.
 	return row
 
 
@@ -970,39 +1261,332 @@ class DrawUtil:
 
 
 # The silver bezel sheen + corner rivets, drawn over the plate.
-class _Bezel extends Control:
+## The game's skeuomorphic plate, replacing the mock's thin-lined rounded cards: a
+## cut-corner (octagonal) navy slab with machined relief — brass rim, light catching the
+## inner top edges, shadow pooling below — the same material language as the research
+## stamps and the menus' brass chrome (owner 2026-08-24).
+class _CutPlate extends PanelContainer:
+	# Three metals, so a screenful of plates is not a screenful of gold (owner 2026-08-24:
+	# "some coppery, others silver-steel, only 1-2 gold-brass"). Each is [under, body,
+	# glint] — the rim is struck three times, dark first, to read as a turned edge.
+	const BRASS := 0
+	const COPPER := 1
+	const STEEL := 2
+	const _RIMS := {
+		0: [Color(0.518, 0.408, 0.204), Color(0.808, 0.667, 0.396), Color(0.965, 0.886, 0.659)],
+		1: [Color(0.392, 0.192, 0.110), Color(0.776, 0.451, 0.278), Color(0.949, 0.706, 0.529)],
+		2: [Color(0.259, 0.318, 0.392), Color(0.616, 0.686, 0.769), Color(0.898, 0.933, 0.976)],
+	}
+	const GOLD_HI := Color(0.965, 0.886, 0.659)
+	const GOLD_LO := Color(0.518, 0.408, 0.204)
+	var cut := 14.0
+	var fill := Color("#0A1826")
+	var tone := BRASS
+	var rim_alpha := 0.85
+	var accent := Color(0, 0, 0, 0)      # optional inner top line (track colour)
+	var dimmed := false                  # unlit plates: duller rim, deeper fill
+
+	func _init(margin_h: int = 16, margin_v: int = 14, metal: int = BRASS) -> void:
+		tone = metal
+		var sb := StyleBoxEmpty.new()
+		sb.content_margin_left = margin_h
+		sb.content_margin_right = margin_h
+		sb.content_margin_top = margin_v
+		sb.content_margin_bottom = margin_v
+		add_theme_stylebox_override("panel", sb)
+		resized.connect(queue_redraw)
+
+	func _pts(r: Rect2, c: float) -> PackedVector2Array:
+		return PackedVector2Array([
+			Vector2(r.position.x + c, r.position.y), Vector2(r.end.x - c, r.position.y),
+			Vector2(r.end.x, r.position.y + c), Vector2(r.end.x, r.end.y - c),
+			Vector2(r.end.x - c, r.end.y), Vector2(r.position.x + c, r.end.y),
+			Vector2(r.position.x, r.end.y - c), Vector2(r.position.x, r.position.y + c)])
+
 	func _draw() -> void:
-		var w := size.x
+		if size.x < 8.0 or size.y < 8.0:
+			return
+		var r := Rect2(Vector2(1.5, 1.5), size - Vector2(3, 3))
+		var c := minf(cut, minf(size.x, size.y) * 0.28)
+		var outer := _pts(r, c)
+		draw_colored_polygon(outer, fill.darkened(0.35) if dimmed else fill)
+		# Machined relief: light along the inner top run, shadow along the bottom.
+		var inner := _pts(r.grow(-2.5), maxf(2.0, c - 2.0))
+		draw_polyline(PackedVector2Array([inner[7], inner[0], inner[1], inner[2]]),
+			Color(1, 1, 1, 0.05 if dimmed else 0.11), 1.4, true)
+		draw_polyline(PackedVector2Array([inner[3], inner[4], inner[5], inner[6]]),
+			Color(0, 0, 0, 0.45), 1.6, true)
+		# The embossed groove a step further in.
+		var groove := _pts(r.grow(-5.0), maxf(2.0, c - 4.0))
+		groove.append(groove[0])
+		draw_polyline(groove, Color(0, 0, 0, 0.28), 1.0, true)
+		# The rim on the boundary: dark under-stroke, mid body, glint on the top run.
+		var metal: Array = _RIMS[tone]
+		var a := rim_alpha * (0.45 if dimmed else 1.0)
+		var loop := PackedVector2Array(outer)
+		loop.append(outer[0])
+		draw_polyline(loop, Color(metal[0], a), 3.0, true)
+		draw_polyline(loop, Color(metal[1], a), 1.6, true)
+		draw_polyline(PackedVector2Array([outer[7], outer[0], outer[1], outer[2]]),
+			Color(metal[2], 0.22 if dimmed else 0.7), 1.2, true)
+		if accent.a > 0.0:
+			draw_line(Vector2(r.position.x + c + 2.0, r.position.y + 4.0),
+				Vector2(r.end.x - c - 2.0, r.position.y + 4.0), accent, 3.0, true)
+
+
+## The company's place in the revenue table over the match: rank 1 at the TOP, one lane per
+## company, the top lane banded gold. The line is the same embossed brass trace the revenue
+## board uses, stepped — a rank is a whole number that holds until it changes, and drawing
+## it as a smooth curve would claim positions the company never held.
+class _RankChart extends Control:
+	const GOLD_HI := Color(0.965, 0.886, 0.659)
+	const GOLD_MID := Color(0.808, 0.667, 0.396)
+	const GOLD_LO := Color(0.518, 0.408, 0.204)
+	const GUTTER := 30.0
+	var series: Array = []
+	var companies: int = 10
+	var font: Font = null
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		resized.connect(queue_redraw)
+
+	func _draw() -> void:
+		var w := size.x - GUTTER
 		var h := size.y
-		# Diagonal light band top-left → transparent (150deg feel).
-		draw_polygon(
-			PackedVector2Array([Vector2(0, 0), Vector2(w, 0), Vector2(w, h), Vector2(0, h)]),
-			PackedColorArray([Color(0.78, 0.82, 0.87, 0.55), Color(0.44, 0.48, 0.53, 0.0),
-				Color(0.27, 0.30, 0.35, 0.45), Color(0.68, 0.72, 0.78, 0.30)]))
-		# Central dark trough (horizontal band).
-		var y0 := h * 0.42
-		var y1 := h * 0.58
-		draw_polygon(
-			PackedVector2Array([Vector2(0, y0), Vector2(w, y0), Vector2(w, y1), Vector2(0, y1)]),
-			PackedColorArray([Color(0.16, 0.18, 0.21, 0.30), Color(0.16, 0.18, 0.21, 0.30),
-				Color(0.16, 0.18, 0.21, 0.30), Color(0.16, 0.18, 0.21, 0.30)]))
-		# Four corner rivets.
-		var inset := 12.0
-		for p in [Vector2(inset, inset), Vector2(w - inset, inset),
-				Vector2(inset, h - inset), Vector2(w - inset, h - inset)]:
-			draw_circle(p, 9.0, Color("#5a636e"))
-			draw_circle(p, 6.5, Color("#c9d0d8"))
-			draw_circle(p - Vector2(1.5, 1.5), 3.2, Color("#eef2f6"))
+		if w < 20.0 or h < 20.0:
+			return
+		var lanes := maxi(2, companies)
+		var lane := h / float(lanes)
+		# The lanes, and the gold band the leader occupies.
+		draw_rect(Rect2(GUTTER, 0.0, w, lane), Color(GOLD_MID, 0.10))
+		for i in range(1, lanes):
+			var y := lane * float(i)
+			draw_line(Vector2(GUTTER, y), Vector2(GUTTER + w, y), Color(1, 1, 1, 0.05), 1.0)
+		if font != null:
+			for r in [1, lanes / 2, lanes]:
+				var y := lane * (float(r) - 0.5)
+				var lab := str(r)
+				var lw := font.get_string_size(lab, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
+				font.draw_string(get_canvas_item(), Vector2(GUTTER - 7.0 - lw, y + 5.0), lab,
+					HORIZONTAL_ALIGNMENT_LEFT, -1, 14,
+					Color(GOLD_HI, 0.95) if r == 1 else Color(0.761, 0.824, 0.898, 0.9))
+		if series.size() < 2:
+			return
+		var n := series.size()
+		var pts := PackedVector2Array()
+		for i in n:
+			var x := GUTTER + w * float(i) / float(n - 1)
+			var y := lane * (clampf(float(series[i]), 1.0, float(lanes)) - 0.5)
+			if i > 0:
+				pts.append(Vector2(x, pts[pts.size() - 1].y))
+			pts.append(Vector2(x, y))
+		var under := PackedVector2Array()
+		for pt in pts:
+			under.append(pt + Vector2(0, 1.6))
+		draw_polyline(under, Color(0, 0, 0, 0.5), 3.4, true)
+		draw_polyline(pts, GOLD_MID, 2.4, true)
+		var glint := PackedVector2Array()
+		for pt in pts:
+			glint.append(pt + Vector2(0, -1.0))
+		draw_polyline(glint, Color(GOLD_HI, 0.4), 1.0, true)
+		# A solder pad wherever the position actually changed, and at the close.
+		for i in n:
+			if i > 0 and int(series[i]) == int(series[i - 1]) and i != n - 1:
+				continue
+			var p := Vector2(GUTTER + w * float(i) / float(n - 1),
+				lane * (clampf(float(series[i]), 1.0, float(lanes)) - 0.5))
+			draw_circle(p, 4.4, GOLD_LO)
+			draw_circle(p, 3.2, GOLD_MID)
+			draw_circle(p + Vector2(-1.0, -1.0), 1.1, Color(GOLD_HI, 0.85))
 
 
-# Faint radial accent glow (header + expand).
-class _Glow extends Control:
-	var col: Color = Color("#e6b34a")
+## The player's own corner of the Goods Graph: cream chips in the flow chart's tier
+## columns, wired by the real recipe links in the graph's own route colours. Everything is
+## drawn rather than laid out with containers, exactly as the Goods Graph draws its cards —
+## the edges need to know where the chips landed, and a container cannot tell them.
+class _ChainWeb extends Control:
+	const GoodIcons := preload("res://scripts/good_icons.gd")
+	const ROUTE_COLORS := [Color("#f2c14e"), Color("#6f9fd8"), Color("#7ec98a"), Color("#b48ad9")]
+	const CREAM := Color(0.995234, 0.930806, 0.763265)
+	const CHIP := 58.0
+	const WIRE_CHIP := 26.0   # the good riding a connector, small enough not to fight the nodes
+	const ROW := 96.0
+	var nodes: Array = []
+	var edges: Array = []
+	var font: Font = null
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		resized.connect(queue_redraw)
+
 	func _draw() -> void:
-		var cx := size.x * 0.5
-		for i in range(6, 0, -1):
-			var rr := float(i) * 28.0
-			draw_circle(Vector2(cx, 4.0), rr, Color(col.r, col.g, col.b, 0.02))
+		if nodes.is_empty() or size.x < 40.0:
+			return
+		# Columns: the graph's own tier depths, squeezed to consecutive slots so a run that
+		# skipped a tier does not leave a gap the width of a column.
+		var tiers: Array = []
+		for n_variant: Variant in nodes:
+			var t := int((n_variant as Dictionary).get("tier", 0))
+			if not tiers.has(t):
+				tiers.append(t)
+		tiers.sort()
+		var col_of: Dictionary = {}
+		for i in tiers.size():
+			col_of[tiers[i]] = i
+		var by_col: Dictionary = {}
+		for n_variant: Variant in nodes:
+			var n: Dictionary = n_variant
+			var c := int(col_of[int(n.get("tier", 0))])
+			if not by_col.has(c):
+				by_col[c] = []
+			(by_col[c] as Array).append(n)
+		# Columns are capped and the block centred: spreading five goods across a
+		# 1,800px plate put a chip alone in the middle of each of five empty rooms.
+		var cw := minf(size.x / float(maxi(1, tiers.size())), 235.0)
+		var x0 := (size.x - cw * float(tiers.size())) * 0.5
+		var centre: Dictionary = {}      # id -> chip centre
+		var gid_of: Dictionary = {}      # id -> good id, for the icon riding each wire
+		for n_variant: Variant in nodes:
+			var nn: Dictionary = n_variant
+			gid_of[str(nn.get("id", ""))] = str(nn.get("gid", ""))
+		for c in by_col:
+			var col: Array = by_col[c]
+			col.sort_custom(_bigger_first)
+			var total := float(col.size()) * ROW
+			var y := (size.y - total) * 0.5 + ROW * 0.5
+			for n_variant: Variant in col:
+				var n: Dictionary = n_variant
+				centre[str(n.get("id", ""))] = Vector2(x0 + cw * (float(c) + 0.5), y)
+				y += ROW
+		# Wires first, so the chips sit on top of them.
+		for e_variant: Variant in edges:
+			var e: Dictionary = e_variant
+			var a = centre.get(str(e.get("from", "")))
+			var b = centre.get(str(e.get("to", "")))
+			if a == null or b == null:
+				continue
+			# The good travelling the line is the one at its TAIL — the input being fed on.
+			_wire(a, b, ROUTE_COLORS[clampi(int(e.get("route", 0)), 0, ROUTE_COLORS.size() - 1)],
+				str(gid_of.get(str(e.get("from", "")), "")), str(e.get("from", "")))
+		for n_variant: Variant in nodes:
+			var n: Dictionary = n_variant
+			var c2 = centre.get(str(n.get("id", "")))
+			if c2 != null:
+				_chip(n, c2)
+
+	## Busiest good at the top of its column. (A named method, not an inline lambda: a
+	## lambda body that wraps onto a second line inside a call argument does not parse.)
+	func _bigger_first(a: Variant, b: Variant) -> bool:
+		return int((a as Dictionary).get("units", 0)) > int((b as Dictionary).get("units", 0))
+
+	## One orthogonal run between two chips, filleted at the corners and tipped with an
+	## arrowhead. A link that runs backwards (a good feeding something in an earlier column)
+	## dips under its own row rather than cutting straight through the chips between.
+	func _wire(a: Vector2, b: Vector2, col: Color, gid := "", internal := "") -> void:
+		var from := a + Vector2(CHIP * 0.5 + 3.0, 0)
+		var to := b - Vector2(CHIP * 0.5 + 9.0, 0)
+		var route := PackedVector2Array()
+		if to.x > from.x + 12.0:
+			var mid := (from.x + to.x) * 0.5
+			route = PackedVector2Array([from, Vector2(mid, from.y), Vector2(mid, to.y), to])
+		else:
+			var dip := maxf(a.y, b.y) + ROW * 0.40
+			to = b + Vector2(0, CHIP * 0.5 + 6.0)
+			route = PackedVector2Array([from, Vector2(from.x + 14.0, from.y),
+				Vector2(from.x + 14.0, dip), Vector2(to.x, dip), to])
+		var pts := _fillet(route, 9.0)
+		draw_polyline(pts, Color(0, 0, 0, 0.45), 4.2, true)
+		draw_polyline(pts, Color(col, 0.85), 2.4, true)
+		var tip: Vector2 = pts[pts.size() - 1]
+		var dir: Vector2 = (tip - pts[pts.size() - 2]).normalized()
+		var nrm := Vector2(-dir.y, dir.x)
+		draw_colored_polygon(PackedVector2Array([tip, tip - dir * 9.0 + nrm * 5.4,
+			tip - dir * 9.0 - nrm * 5.4]), Color(col, 0.9))
+		# The good itself, riding the line — the main supply chain's own treatment, which this
+		# panel never picked up (owner, 25 Aug). Without it a wire says only THAT two goods are
+		# linked, never WHICH good moves along it, and on a web with four route colours that is
+		# the question the reader actually has.
+		if gid != "":
+			_wire_good(_along(pts, 0.5), gid, internal)
+
+	## The point half way along a polyline BY LENGTH — not the middle vertex, which on an
+	## orthogonal run with a long leg and a short one is nowhere near the middle.
+	func _along(pts: PackedVector2Array, t: float) -> Vector2:
+		if pts.size() < 2:
+			return pts[0] if pts.size() == 1 else Vector2.ZERO
+		var total := 0.0
+		for i in range(1, pts.size()):
+			total += pts[i].distance_to(pts[i - 1])
+		var want := total * t
+		var walked := 0.0
+		for i in range(1, pts.size()):
+			var seg := pts[i].distance_to(pts[i - 1])
+			if walked + seg >= want and seg > 0.0:
+				return pts[i - 1].lerp(pts[i], (want - walked) / seg)
+			walked += seg
+		return pts[pts.size() - 1]
+
+	## A small cream chip on the wire, the node chips' treatment at wire scale.
+	func _wire_good(c: Vector2, gid: String, internal: String) -> void:
+		var r := Rect2(c - Vector2(WIRE_CHIP, WIRE_CHIP) * 0.5, Vector2(WIRE_CHIP, WIRE_CHIP))
+		draw_rect(Rect2(r.position + Vector2(1.0, 1.5), r.size), Color(0, 0, 0, 0.40), true)
+		DrawUtil.round_rect(self, r, 6.0, CREAM)
+		var tex: Texture2D = GoodIcons.texture_for_size(gid, internal, WIRE_CHIP)
+		if tex == null:
+			return
+		var box := r.grow(-3.0)
+		var ts := tex.get_size()
+		if ts.x > 0.0 and ts.y > 0.0:
+			var k: float = minf(box.size.x / ts.x, box.size.y / ts.y)
+			var drawn := ts * k
+			draw_texture_rect(tex, Rect2(box.get_center() - drawn * 0.5, drawn), false)
+		else:
+			draw_texture_rect(tex, box, false)
+
+	func _fillet(route: PackedVector2Array, r: float) -> PackedVector2Array:
+		if route.size() < 3:
+			return route
+		var out := PackedVector2Array([route[0]])
+		for i in range(1, route.size() - 1):
+			var prev: Vector2 = route[i - 1]
+			var cur: Vector2 = route[i]
+			var nxt: Vector2 = route[i + 1]
+			var rad: float = minf(r, minf(cur.distance_to(prev), cur.distance_to(nxt)) * 0.45)
+			var p0 := cur + (prev - cur).normalized() * rad
+			var p1 := cur + (nxt - cur).normalized() * rad
+			for k in 5:
+				var t := float(k) / 4.0
+				out.append(p0.lerp(cur, t).lerp(cur.lerp(p1, t), t))
+		out.append(route[route.size() - 1])
+		return out
+
+	## The Goods Graph's chip: the good's icon on cream, and the name underneath. NO
+	## coloured rim (owner 2026-08-25) — the category accent read as a status light around
+	## every good, and the goods already say what they are. The art is drawn at its OWN
+	## ASPECT inside the chip: stretching it to the square squashed the tall ones, which is
+	## why Ethylene's flask came out short and fat.
+	func _chip(n: Dictionary, c: Vector2) -> void:
+		var r := Rect2(c - Vector2(CHIP, CHIP) * 0.5, Vector2(CHIP, CHIP))
+		draw_rect(Rect2(r.position + Vector2(1.5, 2.5), r.size), Color(0, 0, 0, 0.40), true)
+		DrawUtil.round_rect(self, r, 11.0, CREAM)
+		var tex: Texture2D = GoodIcons.texture_for_size(str(n.get("gid", "")),
+			str(n.get("id", "")), CHIP)
+		if tex != null:
+			var box := r.grow(-5.0)
+			var ts := tex.get_size()
+			if ts.x > 0.0 and ts.y > 0.0:
+				var k: float = minf(box.size.x / ts.x, box.size.y / ts.y)
+				var drawn := ts * k
+				draw_texture_rect(tex, Rect2(box.get_center() - drawn * 0.5, drawn), false)
+			else:
+				draw_texture_rect(tex, box, false)
+		if font == null:
+			return
+		var name := str(n.get("display", ""))
+		var tw := font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
+		font.draw_string(get_canvas_item(), Vector2(c.x - tw * 0.5, r.end.y + 17.0),
+			name, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#E8EEF7"))
 
 
 # Soft glow inside a lit pennant.
@@ -1075,7 +1659,11 @@ class _ScoreBar extends Control:
 		draw_rect(Rect2(Vector2(mx - 1.0, -2.0), Vector2(2.0, h + 4.0)), Color("#f2e6c8"))
 
 
-# The gold crest hexagon + a minimal track glyph.
+## The track crest, struck as the RESEARCH PANEL'S TIER STAMP (owner 2026-08-24: "use the
+## rounded hex corner style hexes... reuse the same metallic raised effect"): a rounded-corner
+## hexagon with a dropped shadow, a diagonal gradient face inside a lighter outline shell, and
+## per-edge lighting from the top-left. Geometry and metal are HexStamp's, shared with the
+## panel itself. A secured track is struck in gold; an unsecured one in cold navy.
 class _Crest extends Control:
 	# Owner-supplied track icons (white silhouettes, tinted at draw time).
 	const _ICONS := {
@@ -1085,73 +1673,227 @@ class _Crest extends Control:
 		"widest": preload("res://assets/icons/victory/widest.png"),
 		"greenest": preload("res://assets/icons/victory/greenest.png"),
 	}
+	const _HexStamp := preload("res://scripts/hex_stamp.gd")
+	## The demo runs five tracks of its own, and the crests came up BLANK because the icon
+	## set is keyed by the campaign's names. Each demo track borrows the campaign crest that
+	## means the same thing: top of the rankings is the richest firm, producing at every
+	## tier is self-supply, long hauls are logistics, and an estate is reach.
+	const _DEMO_GLYPH := {
+		"crown": "richest", "tiers": "autarkic", "distance": "logistics",
+		"green_demo": "greenest", "estate": "widest",
+	}
 	var done: bool = false
 	var color: Color = Color.WHITE
 	var glyph: String = ""
 	func _draw() -> void:
-		var cx := size.x * 0.5
-		var cy := size.y * 0.5
-		var r := 48.0
-		var hex := DrawUtil.hexagon(cx, cy, r)
-		if done:
-			# Gold vertical gradient via a 4-vertex quad clipped visually by the hex fill:
-			# fill the hex with the mid gold, then lay a top-light / bottom-dark quad band.
-			draw_polygon(hex, PackedColorArray([
-				Color("#f0dfae"), Color("#e7cd8f"), Color("#c9a75c"),
-				Color("#a8863c"), Color("#c9a75c"), Color("#e7cd8f")]))
-			draw_polyline(_closed(hex), Color("#f2e6c8"), 2.0, true)
-			var inner := DrawUtil.hexagon(cx, cy, r - 6.0)
-			draw_polyline(_closed(inner), Color(1, 1, 1, 0.25), 1.0, true)
-		else:
-			draw_polygon(hex, PackedColorArray([
-				Color("#0a1623"), Color("#0a1623"), Color("#0a1623"),
-				Color("#0a1623"), Color("#0a1623"), Color("#0a1623")]))
-			draw_polyline(_closed(hex), Color("#22384f"), 1.5, true)
-		var tex: Texture2D = _ICONS.get(glyph)
-		if tex != null:
-			var s := 46.0
-			var tint := Color("#141d29") if done else Color("#31465c")
-			draw_texture_rect(tex, Rect2(cx - s * 0.5, cy - s * 0.5, s, s), false, tint)
-
-	func _closed(pts: PackedVector2Array) -> PackedVector2Array:
-		var c := pts.duplicate()
-		c.append(pts[0])
-		return c
+		var side := minf(size.x, size.y) - 6.0
+		if side < 12.0:
+			return
+		# The stamp is wider than tall, as it is in the tree — the hex points sideways.
+		var rw := side * 1.14
+		var rect := Rect2(size.x * 0.5 - rw * 0.5, size.y * 0.5 - side * 0.5, rw, side)
+		var fill := Color("#C9A75C") if done else Color("#0B1725")
+		var out_lt := Color(0.86, 0.80, 0.62, 0.90) if done else Color(0.40, 0.46, 0.54, 0.65)
+		var out_dk := Color(0.42, 0.34, 0.16, 0.85) if done else Color(0.16, 0.21, 0.27, 0.70)
+		var inner := _HexStamp.draw_stamp(self, rect, fill, out_lt, out_dk,
+			maxf(3.0, side * 0.08), maxf(4.0, side * 0.16))
+		var tex: Texture2D = _ICONS.get(str(_DEMO_GLYPH.get(glyph, glyph)))
+		if tex == null:
+			return
+		# 0.82 of the stamp's height overran the flat top and bottom runs — a hexagon is only
+		# full width across its middle, and the wider glyphs (the coin stack, the estate
+		# arrows) touched the rim (owner 2026-08-24).
+		var gs := inner.size.y * 0.66
+		var tint := Color("#141d29") if done else Color(color, 0.55)
+		draw_texture_rect(tex, Rect2(inner.get_center() - Vector2(gs, gs) * 0.5,
+			Vector2(gs, gs)), false, tint)
 
 
-# Filled area line chart.
+## Revenue as a CIRCUIT BOARD (owner 2026-08-24): the area under the line is the green
+## board, the line itself the gold edge trace, and the board is laid out with gold runs
+## between solder pads across its whole surface. Runs are laid on a lattice and kept only
+## where BOTH pads sit under the curve, so the etching fills the shape exactly and stops
+## at the line. The pattern is hashed off the lattice cell, never a RNG -- _draw re-runs
+## on every redraw, and a board that re-etched itself each frame would crawl.
 class _LineChart extends Control:
+	const GOLD_HI := Color(0.965, 0.886, 0.659)
+	const GOLD_MID := Color(0.808, 0.667, 0.396)
+	const GOLD_LO := Color(0.518, 0.408, 0.204)
+	const PITCH := 22.0
 	var series: Array = []
 	var col: Color = Color.WHITE
+	var board: Color = Color(0.357, 0.820, 0.502)   # the board green (DS.OK)
 	func _draw() -> void:
 		var w := size.x
 		var h := size.y
-		# Faint gridlines.
-		for i in range(1, 4):
-			var y := h * float(i) / 4.0
-			draw_line(Vector2(0, y), Vector2(w, y), Color(1, 1, 1, 0.05), 1.0)
 		if series.size() < 2:
 			return
 		var mx := 0.0
 		for v in series:
 			mx = maxf(mx, float(v))
 		mx = maxf(mx, 1.0)
-		var pts := PackedVector2Array()
 		var n := series.size()
+		var pts := PackedVector2Array()
 		for i in n:
-			var x := w * float(i) / float(n - 1)
-			var y := h - (float(series[i]) / mx) * (h - 4.0)
-			pts.append(Vector2(x, y))
-		# Fill under the line (fan from a baseline is fine — single solid colour, no per-vertex gradient).
+			pts.append(Vector2(w * float(i) / float(n - 1),
+				h - (float(series[i]) / mx) * (h - 6.0)))
+		# The board: a green ground, darkening towards the foot.
 		var fill := pts.duplicate()
 		fill.append(Vector2(w, h))
 		fill.append(Vector2(0, h))
-		draw_polygon(fill, PackedColorArray([Color(col.r, col.g, col.b, 0.18)]))
-		draw_polyline(pts, col, 2.0, true)
+		draw_polygon(fill, PackedColorArray([Color(board, 0.24)]))
+		var deep := board.darkened(0.62)
+		draw_polygon(PackedVector2Array([Vector2(0, h * 0.4), Vector2(w, h * 0.4),
+			Vector2(w, h), Vector2(0, h)]), PackedColorArray([
+			Color(deep, 0.0), Color(deep, 0.0), Color(deep, 0.34), Color(deep, 0.34)]))
+		_etch(pts, w, h)
+		# The gold edge trace: embossed, with a glint riding on top.
+		var under := PackedVector2Array()
+		for pt in pts:
+			under.append(pt + Vector2(0, 1.6))
+		draw_polyline(under, Color(0, 0, 0, 0.5), 3.0, true)
+		draw_polyline(pts, GOLD_MID, 2.4, true)
+		var glint := PackedVector2Array()
+		for pt in pts:
+			glint.append(pt + Vector2(0, -1.0))
+		draw_polyline(glint, Color(GOLD_HI, 0.4), 1.0, true)
+		for i in n:
+			if i % 8 != 0 and i != n - 1:
+				continue
+			draw_circle(pts[i], 4.6, GOLD_LO)
+			draw_circle(pts[i], 3.4, GOLD_MID)
+			draw_circle(pts[i] + Vector2(-1.0, -1.0), 1.2, Color(GOLD_HI, 0.85))
+
+	## The board itself: a CPU seated in the middle of the copper, and BUSES running to it —
+	## bundles of parallel traces that go straight for a run, break to 45 degrees together,
+	## and go straight again (owner 2026-08-24). Every trace in a bundle breaks one pitch
+	## further along than the one beside it, which is what keeps the diagonals parallel and
+	## the spacing even; it is also how a real board fans a bus into a pin row.
+	##
+	## Nothing is clipped by a mask: each run is walked in short steps and a step is drawn
+	## only where the curve is above it, so the etching stops at the line by construction.
+	func _etch(pts: PackedVector2Array, w: float, h: float) -> void:
+		if w < 90.0 or h < 50.0:
+			return
+		# Seat the CPU where the board is deepest towards the right, where the area is tallest.
+		var cx := w * 0.62
+		var top := _curve_y(pts, cx, w)
+		var room := h - top
+		if room < 46.0:
+			return
+		var side: float = clampf(minf(room * 0.52, w * 0.17), 34.0, 96.0)
+		var cy: float = clampf(top + room * 0.52, top + side * 0.5 + 10.0, h - side * 0.5 - 8.0)
+		var chip := Rect2(cx - side * 0.5, cy - side * 0.5, side, side)
+		var pitch: float = maxf(6.0, side / 7.0)
+		# Three buses into the chip: from the left edge, out to the right edge, and down to
+		# the board's foot. Each fans from a straight run through one 45-degree break.
+		var lanes := maxi(3, int(side / pitch) - 1)
+		var y_pin := chip.position.y + pitch * 1.2
+		_bus(pts, w, h, Vector2(2.0, top + room * 0.24), Vector2(chip.position.x - 2.0, y_pin),
+			lanes, pitch, 1.0)
+		_bus(pts, w, h, Vector2(chip.end.x + 2.0, y_pin), Vector2(w - 2.0, top + room * 0.16),
+			lanes, pitch, 1.0)
+		_bus(pts, w, h, Vector2(chip.position.x - 2.0, chip.end.y - pitch * 1.2),
+			Vector2(2.0, h - 6.0), lanes, pitch, -1.0)
+		_chip(chip, pitch)
+
+	## One bus: `lanes` parallel traces from `a` to `b`, straight-then-45-then-straight, each
+	## lane offset by `pitch` along `spread` (down when +1, up when -1) so the bundle keeps
+	## its spacing through the turn.
+	func _bus(pts: PackedVector2Array, w: float, h: float, a: Vector2, b: Vector2,
+			lanes: int, pitch: float, spread: float) -> void:
+		var dx: float = b.x - a.x
+		if absf(dx) < 24.0:
+			return
+		var sign_x: float = signf(dx)
+		for i in lanes:
+			var off := float(i) * pitch * spread
+			var ya := a.y + off
+			var yb := b.y + off
+			var dy := yb - ya
+			var diag: float = absf(dy)                       # 45 degrees: |dx| == |dy|
+			var lead: float = absf(dx) * 0.30 + float(i) * pitch
+			if lead + diag > absf(dx) - 6.0:
+				lead = maxf(4.0, absf(dx) - diag - 6.0)
+			var x1 := a.x + sign_x * lead
+			var x2 := x1 + sign_x * diag
+			var run := PackedVector2Array([a + Vector2(0, off), Vector2(x1, ya),
+				Vector2(x2, yb), Vector2(b.x, yb)])
+			_run(pts, w, h, run)
+
+	## A trace, drawn only where the board actually is. Each leg is stepped and a step is
+	## skipped when the curve above it has not risen past it yet; a pad is dropped at the
+	## last point that survived, so a run that meets the edge ends on a pad like a real one.
+	func _run(pts: PackedVector2Array, w: float, h: float, path: PackedVector2Array) -> void:
+		var run_col := Color(GOLD_MID, 0.34)
+		var last := Vector2.INF
+		var first := Vector2.INF
+		for seg in range(path.size() - 1):
+			var p0: Vector2 = path[seg]
+			var p1: Vector2 = path[seg + 1]
+			var steps := maxi(2, int(p0.distance_to(p1) / 5.0))
+			for k in steps:
+				var q0 := p0.lerp(p1, float(k) / float(steps))
+				var q1 := p0.lerp(p1, float(k + 1) / float(steps))
+				if not (_inside(pts, w, h, q0) and _inside(pts, w, h, q1)):
+					continue
+				draw_line(q0, q1, run_col, 1.4, true)
+				if first == Vector2.INF:
+					first = q0
+				last = q1
+		for pad in [first, last]:
+			if pad == Vector2.INF:
+				continue
+			draw_circle(pad, 3.0, Color(0, 0, 0, 0.30))
+			draw_circle(pad, 2.4, Color(GOLD_MID, 0.46))
+			draw_circle(pad, 1.0, Color(0.02, 0.08, 0.05, 0.85))
+
+	func _inside(pts: PackedVector2Array, w: float, h: float, p: Vector2) -> bool:
+		return p.x > 1.0 and p.x < w - 1.0 and p.y < h - 2.0 and p.y > _curve_y(pts, p.x, w) + 5.0
+
+	## The processor: a dark package with a brass rim, a pin comb on all four sides, the die
+	## showing through the lid, and the orientation dot every chip carries at pin 1.
+	func _chip(r: Rect2, pitch: float) -> void:
+		var pin := Color(GOLD_MID, 0.55)
+		var n := maxi(3, int(r.size.y / pitch) - 1)
+		for i in n:
+			var t := (float(i) + 1.0) / float(n + 1)
+			var y := r.position.y + r.size.y * t
+			var x := r.position.x + r.size.x * t
+			draw_line(Vector2(r.position.x - 6.0, y), Vector2(r.position.x, y), pin, 1.6, true)
+			draw_line(Vector2(r.end.x, y), Vector2(r.end.x + 6.0, y), pin, 1.6, true)
+			draw_line(Vector2(x, r.position.y - 6.0), Vector2(x, r.position.y), pin, 1.6, true)
+			draw_line(Vector2(x, r.end.y), Vector2(x, r.end.y + 6.0), pin, 1.6, true)
+		draw_rect(Rect2(r.position + Vector2(1.5, 2.5), r.size), Color(0, 0, 0, 0.45))
+		draw_rect(r, Color(0.043, 0.075, 0.063, 0.96))
+		var rim := PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end,
+			Vector2(r.position.x, r.end.y), r.position])
+		draw_polyline(rim, Color(GOLD_LO, 0.9), 2.4, true)
+		draw_polyline(rim, Color(GOLD_MID, 0.8), 1.2, true)
+		draw_polyline(PackedVector2Array([Vector2(r.position.x, r.end.y), r.position,
+			Vector2(r.end.x, r.position.y)]), Color(GOLD_HI, 0.45), 1.0, true)
+		var die := r.grow(-r.size.x * 0.26)
+		draw_rect(die, Color(0.114, 0.161, 0.137, 0.9))
+		draw_polyline(PackedVector2Array([die.position, Vector2(die.end.x, die.position.y),
+			die.end, Vector2(die.position.x, die.end.y), die.position]),
+			Color(GOLD_MID, 0.35), 1.0, true)
+		draw_circle(r.position + Vector2(r.size.x * 0.14, r.size.y * 0.14), 2.2,
+			Color(GOLD_HI, 0.75))
+
+	func _curve_y(pts: PackedVector2Array, x: float, w: float) -> float:
+		var t := clampf(x / maxf(w, 1.0), 0.0, 1.0) * float(pts.size() - 1)
+		var i := clampi(int(t), 0, pts.size() - 2)
+		return lerpf(pts[i].y, pts[i + 1].y, t - float(i))
 
 
-# Bar chart (≈46 bars; peak in cream).
+## Output as a rack of BEAKERS: flat-bottomed glass tubes with light-blue liquid to the
+## turn's level, a meniscus glint on the surface and a brushed highlight up the wall. The
+## biggest turn's beaker holds cream. The feet used to be drawn as half-circles, which
+## read as bubbles under the liquid rather than as the bottom of a tube (owner
+## 2026-08-24) — they are square now, with the corners eased by a short chamfer.
 class _BarChart extends Control:
+	const GLASS := Color(0.72, 0.78, 0.85, 0.45)
+	const LIQUID := Color(0.45, 0.68, 0.92, 0.8)
 	var series: Array = []
 	var col: Color = Color.WHITE
 	func _draw() -> void:
@@ -1159,8 +1901,7 @@ class _BarChart extends Control:
 		var h := size.y
 		if series.is_empty():
 			return
-		var n := mini(46, series.size())
-		# Sample n bars evenly.
+		var n := mini(24, series.size())
 		var vals := PackedFloat32Array()
 		var mx := 0.0
 		var peak_i := 0
@@ -1172,61 +1913,173 @@ class _BarChart extends Control:
 				mx = v
 				peak_i = i
 		mx = maxf(mx, 1.0)
-		var gap := 2.0
+		var gap := 7.0
 		var bw := (w - gap * float(n - 1)) / float(n)
+		var foot := h - 1.0
+		var chamfer := minf(3.0, bw * 0.2)
 		for i in n:
-			var bh := (vals[i] / mx) * (h - 2.0)
 			var x := float(i) * (bw + gap)
-			var c := Color("#f2e6c8") if i == peak_i else Color(col.r, col.g, col.b, 0.75)
-			draw_rect(Rect2(Vector2(x, h - bh), Vector2(maxf(1.0, bw), bh)), c)
+			var liquid := LIQUID if i != peak_i else Color(0.95, 0.9, 0.78, 0.9)
+			var level := foot - (vals[i] / mx) * (h - 10.0)
+			if level < foot:
+				draw_rect(Rect2(Vector2(x + 1.5, level), Vector2(bw - 3.0, foot - level - chamfer)),
+					liquid)
+				# The eased corners of the tube's floor, so the liquid sits IN the glass.
+				draw_colored_polygon(PackedVector2Array([
+					Vector2(x + 1.5, foot - chamfer), Vector2(x + bw - 1.5, foot - chamfer),
+					Vector2(x + bw - 1.5 - chamfer, foot - 0.5),
+					Vector2(x + 1.5 + chamfer, foot - 0.5)]), liquid)
+				draw_line(Vector2(x + 1.5, level), Vector2(x + bw - 1.5, level),
+					Color(1, 1, 1, 0.35), 1.2, true)
+			# Glass: two walls down to a flat floor, open at the top, chamfered at the corners.
+			draw_line(Vector2(x, 3.0), Vector2(x, foot - chamfer), GLASS, 1.3, true)
+			draw_line(Vector2(x + bw, 3.0), Vector2(x + bw, foot - chamfer), GLASS, 1.3, true)
+			draw_polyline(PackedVector2Array([
+				Vector2(x, foot - chamfer), Vector2(x + chamfer, foot),
+				Vector2(x + bw - chamfer, foot), Vector2(x + bw, foot - chamfer)]),
+				GLASS, 1.3, true)
+			draw_line(Vector2(x + 2.5, foot - 3.0), Vector2(x + 2.5, 6.0),
+				Color(1, 1, 1, 0.10), 1.0, true)
 
 
-# Step area chart.
-class _StepChart extends Control:
+## Buildings standing, STACKED FROM THE ESTATE'S OWN EMBLEM (owner 2026-08-24: "a furnace
+## or some other building the player built — stack that same icon over and over per bar").
+## The unit is decided up front: one sprite is `step` buildings, chosen so the tallest
+## column runs about five sprites, and the card's footer says so. A column 1.5 units high
+## draws a whole sprite with half a sprite standing on it — and the half shown is the
+## sprite's LOWER half, so the part that is cut off is its roof, not its footings.
+class _StackChart extends Control:
 	var series: Array = []
 	var col: Color = Color.WHITE
+	var icon: Texture2D = null
+	var step: int = 1
+	var font: Font = null
+	const GUTTER := 36.0     # room for the left axis's figures
 	func _draw() -> void:
-		var w := size.x
+		var w := size.x - GUTTER
 		var h := size.y
-		for i in range(1, 4):
-			var y := h * float(i) / 4.0
-			draw_line(Vector2(0, y), Vector2(w, y), Color(1, 1, 1, 0.05), 1.0)
-		if series.size() < 2:
+		if series.is_empty() or w < 8.0:
 			return
+		var n := mini(12, series.size())
+		var vals := PackedFloat32Array()
 		var mx := 0.0
-		for v in series:
-			mx = maxf(mx, float(v))
-		mx = maxf(mx, 1.0)
-		var pts := PackedVector2Array()
-		var n := series.size()
+		var peak_i := 0
 		for i in n:
-			var x := w * float(i) / float(n - 1)
-			var y := h - (float(series[i]) / mx) * (h - 4.0)
-			if i > 0:
-				pts.append(Vector2(x, pts[pts.size() - 1].y))
-			pts.append(Vector2(x, y))
-		var fill := pts.duplicate()
-		fill.append(Vector2(w, h))
-		fill.append(Vector2(0, h))
-		draw_polygon(fill, PackedColorArray([Color(col.r, col.g, col.b, 0.16)]))
-		draw_polyline(pts, col, 2.0, true)
+			var src := int(float(i) / float(n) * float(series.size()))
+			var v := float(series[clampi(src, 0, series.size() - 1)])
+			vals.append(v)
+			if v > mx:
+				mx = v
+				peak_i = i
+		var cw := w / float(n)
+		var rows := maxf(1.0, mx / float(step))
+		var sp: float = minf(cw - 3.0, (h - 4.0) / maxf(rows, 1.0))
+		sp = maxf(sp, 8.0)
+		# The left axis: one rule per sprite, each labelled with the count it stands for.
+		# The sprite IS the unit, so the axis is the legend — no "one sprite = N buildings"
+		# note under the chart (owner 2026-08-24: "just label the axes clearly").
+		var shelf := h - sp
+		var tick := 1
+		while shelf > 0.0:
+			draw_line(Vector2(GUTTER, shelf), Vector2(GUTTER + w, shelf), Color(1, 1, 1, 0.05), 1.0)
+			if font != null:
+				var lab := str(tick * step)
+				var lw := font.get_string_size(lab, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
+				font.draw_string(get_canvas_item(), Vector2(GUTTER - 7.0 - lw, shelf + 5.0),
+					lab, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.761, 0.824, 0.898, 0.92))
+			shelf -= sp
+			tick += 1
+		var ts := Vector2(sp, sp) if icon == null else icon.get_size()
+		for i in n:
+			var units := vals[i] / float(step)
+			var full := int(floor(units))
+			var frac := units - float(full)
+			var x := GUTTER + float(i) * cw + (cw - sp) * 0.5
+			var tint := Color(1, 1, 1, 1) if i != peak_i else Color(1.12, 1.08, 0.94, 1)
+			for k in full:
+				var y := h - float(k + 1) * sp
+				_stamp(Rect2(x, y, sp, sp), Rect2(Vector2.ZERO, ts), tint)
+			if frac > 0.06:
+				var ph := sp * frac
+				var y2 := h - float(full) * sp - ph
+				# Source region: the sprite's lower `frac`, so its base sits on the stack.
+				_stamp(Rect2(x, y2, sp, ph),
+					Rect2(0.0, ts.y * (1.0 - frac), ts.x, ts.y * frac), tint)
+		# The ground the stacks stand on, and the axis they rise from.
+		draw_line(Vector2(GUTTER, h - 0.5), Vector2(GUTTER + w, h - 0.5), Color(col, 0.5), 2.0)
+		draw_line(Vector2(GUTTER - 0.5, 0.0), Vector2(GUTTER - 0.5, h), Color(col, 0.35), 1.5)
+
+	## One sprite, with a dark offset copy behind it so it sits on the stack below.
+	func _stamp(dst: Rect2, src: Rect2, tint: Color) -> void:
+		if icon == null:
+			var body := Color(col.r * 0.9, col.g * 0.9, col.b * 0.9, 0.95)
+			draw_rect(Rect2(dst.position + Vector2(0, 1.5), dst.size), Color(0, 0, 0, 0.45))
+			draw_rect(dst, body)
+			draw_line(dst.position, dst.position + Vector2(dst.size.x, 0),
+				Color(1, 1, 1, 0.22), 1.2)
+			return
+		draw_texture_rect_region(icon, Rect2(dst.position + Vector2(1.0, 1.6), dst.size),
+			src, Color(0, 0, 0, 0.5))
+		draw_texture_rect_region(icon, dst, src, tint)
 
 
 # A single horizontal ranked bar (rank 0 gold + glow).
 class _RankBar extends Control:
+	## Brushed metal, the way the panels do it (owner 2026-08-24): a solid body under a
+	## top-left light, a fine horizontal grain, a machined rim and a bevel just inside the
+	## top edge. Square ends with a small corner radius -- the old pill's h/2 radius put a
+	## circle on both ends of every bar.
+	const RAD := 4.0
 	var frac: float = 0.0
 	var rank: int = 0
 	var col: Color = Color.WHITE
 	func _draw() -> void:
 		var w := size.x
 		var h := size.y
-		DrawUtil.round_rect(self, Rect2(Vector2.ZERO, Vector2(w, h)), h * 0.5, Color("#0a1623"))
+		DrawUtil.round_rect(self, Rect2(Vector2.ZERO, Vector2(w, h)), RAD, Color("#08131F"))
+		draw_polyline(_ring(Rect2(Vector2(0.5, 0.5), Vector2(w - 1.0, h - 1.0))),
+			Color(1, 1, 1, 0.06), 1.0, true)
 		var bw := maxf(h, frac * w)
-		if rank == 0:
-			DrawUtil.round_rect(self, Rect2(Vector2(0, 0), Vector2(bw, h)), h * 0.5, Color("#e6b34a"))
-			DrawUtil.round_rect(self, Rect2(Vector2(0, 0), Vector2(bw, h * 0.55)), h * 0.4, Color(1, 1, 1, 0.18))
-		else:
-			DrawUtil.round_rect(self, Rect2(Vector2(0, 0), Vector2(bw, h)), h * 0.5, Color(col.r, col.g, col.b, 0.6))
+		var body: Color = Color("#C9A75C") if rank == 0 else col
+		DrawUtil.round_rect(self, Rect2(Vector2.ZERO, Vector2(bw, h)), RAD, body.darkened(0.32))
+		# Light from the top-left, shade to the bottom-right -- on a 4-vertex quad, never a
+		# per-vertex ramp around the rounded outline (that fans into artifacts in GL compat).
+		var q := PackedVector2Array([Vector2(1.5, 1.5), Vector2(bw - 1.5, 1.5),
+			Vector2(bw - 1.5, h - 1.5), Vector2(1.5, h - 1.5)])
+		var lt := body.lightened(0.34)
+		draw_polygon(q, PackedColorArray([Color(lt, 0.95), Color(lt, 0.45),
+			Color(lt, 0.05), Color(lt, 0.45)]))
+		draw_polygon(q, PackedColorArray([Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.10),
+			Color(0, 0, 0, 0.34), Color(0, 0, 0, 0.10)]))
+		# Brushed grain: fine horizontal streaks at a deterministic alpha.
+		var y := 3.0
+		var i := 0
+		while y < h - 2.0:
+			draw_line(Vector2(2.5, y), Vector2(bw - 2.5, y),
+				Color(1, 1, 1, 0.025 + 0.022 * absf(sin(float(i) * 12.9898))), 1.0)
+			y += 3.0
+			i += 1
+		# Machined rim, and the bevel just inside the top edge.
+		draw_polyline(_ring(Rect2(Vector2(0.75, 0.75), Vector2(bw - 1.5, h - 1.5))),
+			Color(body.lightened(0.55), 0.75), 1.4, true)
+		draw_line(Vector2(RAD + 1.0, 2.2), Vector2(bw - RAD - 1.0, 2.2),
+			Color(1, 1, 1, 0.28), 1.2, true)
+
+	func _ring(r: Rect2) -> PackedVector2Array:
+		var rad: float = minf(RAD, minf(r.size.x, r.size.y) * 0.5)
+		var pts := PackedVector2Array()
+		var centres: Array[Vector2] = [
+			Vector2(r.position.x + rad, r.position.y + rad),
+			Vector2(r.end.x - rad, r.position.y + rad),
+			Vector2(r.end.x - rad, r.end.y - rad),
+			Vector2(r.position.x + rad, r.end.y - rad)]
+		var starts: Array[float] = [PI, PI * 1.5, 0.0, PI * 0.5]
+		for c in 4:
+			for j in 5:
+				var a: float = starts[c] + (PI * 0.5) * float(j) / 4.0
+				pts.append(centres[c] + Vector2(cos(a), sin(a)) * rad)
+		pts.append(pts[0])
+		return pts
 
 
 # The empire production-network map: four node columns, connectors, gold ports.

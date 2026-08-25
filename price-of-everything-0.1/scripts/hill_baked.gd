@@ -12,7 +12,11 @@ extends RefCounted
 
 const BAKED_PATH := "res://data/hills_baked.json"
 const SEED := 1337
-const SOURCE_CSVS := ["res://data/tile_properties.csv", "res://data/river_properties.csv"]
+const BakeInputs := preload("res://scripts/bake_inputs.gd")
+## tile_properties is digested column-wise (labels excluded — see BakeInputs); river_properties
+## is hashed whole, because every column in it is geometry.
+const TILE_CSV := "res://data/tile_properties.csv"
+const RIVER_CSV := "res://data/river_properties.csv"
 
 static var _cache: Dictionary = {}
 static var _loaded := false
@@ -38,10 +42,17 @@ static func data() -> Dictionary:
 		push_warning("HillBaked: baked hills are STALE (map CSVs or generator changed) — rerun tools/bake_hills.tscn.")
 	return _cache
 
+## What the hill field is actually generated FROM.
+##
+## HillField reads two things off a tile — its id and its type — and the river polylines it
+## carves against come from has_river / river_type plus river_properties. It has never read a
+## nickname. Hashing the whole of tile_properties.csv meant renaming a tile invalidated the
+## hills, and with them the hill texture and the start layout: contours redrawn to come out
+## pixel-identical, at ~7 s of load, plus 417 buildings re-placed at ~40 s (owner, 25 Aug).
 static func source_hash() -> String:
 	var blob := "v%d|seed%d" % [HillField.GEN_VERSION, SEED]
-	for path in SOURCE_CSVS:
-		blob += "|" + FileAccess.get_md5(path)
+	blob += "|" + BakeInputs.csv_digest(TILE_CSV)
+	blob += "|" + FileAccess.get_md5(RIVER_CSV)
 	return blob.md5_text()
 
 ## Paint-ordered polygons: Array of {b: int band, p: PackedVector2Array}.

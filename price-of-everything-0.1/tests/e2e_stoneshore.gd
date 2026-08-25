@@ -499,7 +499,7 @@ func _run_balance_v4() -> void:
 	_balance_metrics["start_config"] = str(_scenario.get("balance_start_config", "res://data/starts/open_field.json"))
 	_balance_metrics["earned_research_modifiers_enabled"] = consider_research
 	_balance_metrics["start_modifiers_preserved"] = keep_start_modifiers
-	_balance_metrics["prudent_expansion_enabled"] = bool(_scenario.get("balance_prudent_expansion", false))
+	_balance_metrics["prudent_expansion_enabled"] = bool(_scenario.get("balance_prudent_expansion", true))
 	_balance_metrics["expansion_loans_taken"] = 0
 	_balance_metrics["expansion_loan_principal"] = 0.0
 	_balance_metrics["expansion_loan_gate_rejections"] = 0
@@ -700,10 +700,14 @@ func _run_balance_v4() -> void:
 		"player never exhausted loan capacity with negative cash and profit for five turns")
 	_check(float(_balance_metrics.get("maintenance_paid_total", 0.0)) > 0.0,
 		"real building and infrastructure maintenance was paid")
-	_check(_player_power_building_count() > 0,
-		"portfolio owns a live power-producing building")
-	_check(int(_balance_metrics.get("grid_bought_after_integration", 0)) == 0,
-		"fully integrated portfolio used owned power rather than grid imports")
+	# Not every start GENERATES. The Glass Merchant buys its power from the grid, and
+	# demanding a generator from a start that ships without one tests the scenario author,
+	# not the economy. Defaults true, so every existing scenario keeps the assertion.
+	if bool(_scenario.get("balance_expects_owned_power", true)):
+		_check(_player_power_building_count() > 0,
+			"portfolio owns a live power-producing building")
+		_check(int(_balance_metrics.get("grid_bought_after_integration", 0)) == 0,
+			"fully integrated portfolio used owned power rather than grid imports")
 	_check(_total_units_sold() > 0, "portfolio sold goods through the real market route")
 	for target in _scenario.get("target_goods", []):
 		_check(_sold_qty(_good_id(str(target))) > 0, "target good sold: %s" % str(target))
@@ -1361,6 +1365,14 @@ func _build_buildings_from_list(entries: Array) -> void:
 func _register_built(logical_id: String, instance_id: String) -> void:
 	if logical_id == "":
 		return
+	# A build that never happened is not a built building. The empty id used to be recorded
+	# anyway, and _advance_until_no_construction then asserted that "" was live — so a player
+	# who prudently declined an expansion was reported as having lost a building it had
+	# deliberately not built (owner 2026-08-23: the scenarios should pace themselves).
+	if instance_id == "":
+		var declined := int(_balance_metrics.get("expansions_declined", 0))
+		_balance_metrics["expansions_declined"] = declined + 1
+		return
 	var list: Array = _built_by_id.get(logical_id, [])
 	list.append(instance_id)
 	_built_by_id[logical_id] = list
@@ -1407,7 +1419,7 @@ func _upgrade_to_level(instance_id: String, target_level: int) -> void:
 			land_cost = MatchState.LAND_PATCH_COST
 		var required := float(preview.get("market_cost", 0.0)) + land_cost
 		var funded := true
-		if _balance_mode and bool(_scenario.get("balance_prudent_expansion", false)):
+		if _balance_mode and bool(_scenario.get("balance_prudent_expansion", true)):
 			funded = await _ensure_prudent_expansion_cash(required)
 		elif _balance_mode:
 			funded = await _ensure_balance_cash(required + 5.0)
@@ -2060,7 +2072,11 @@ func _ensure_balance_build_funding(building_id: String, tile_id: String) -> bool
 	if material_cost <= 0.0 and not Construction.requirements_for(building_id).is_empty():
 		material_cost = Construction.market_purchase_value(building_id) * 1.10
 	var project_cost := land_cost + float(building.get("base_price", 0.0)) + material_cost
-	if bool(_scenario.get("balance_prudent_expansion", false)):
+	# CASH/DEBT check by default (owner 2026-08-23). This used to be opt-in, and only two of
+	# the seven scenarios opted in — the same two that never went bankrupt. The other five
+	# borrowed to the collateral limit for every building and drowned servicing it, which is
+	# not what a player does. A scenario can still set it false to model a reckless builder.
+	if bool(_scenario.get("balance_prudent_expansion", true)):
 		return await _ensure_prudent_expansion_cash(project_cost)
 	var reserve := float(_scenario.get("balance_build_cash_reserve", 5.0))
 	var required := project_cost + reserve
@@ -2208,6 +2224,103 @@ func _find_new_project_or_building(before_projects: Dictionary, before_buildings
 	return ""
 
 
+## Prefer a NEARBY CONSUMER over the market, and re-check whenever the estate changes.
+##
+## The scenarios routed every output where the JSON said, and the JSON mostly said "market".
+## A player does not do that: before shipping a good to the docks they look at what they
+## already own that eats it, and if something does — on this tile or a hex or two away —
+## they feed it instead. That is what vertical integration IS, and a benchmark that never
+## does it understates every portfolio's margin and overstates its freight.
+##
+## Range is 0-2 tiles (owner 2026-08-23): 0 is the same tile, where the consumer draws
+## straight from the tile stockpile and the haul is free.
+const LOCAL_CONSUMER_RANGE := 2
+
+
+## Re-point outputs at local consumers. Called after every build, because a new building can
+## be the consumer that makes an existing producer's output worth keeping.
+##
+## Only ever moves an output that is currently going TO MARKET: a destination the scenario
+## authored deliberately is left alone, or the test would be marking its own homework.
+func _reroute_outputs_to_local_consumers(reason: String = "") -> int:
+	if not _balance_mode:
+		return 0
+	var moved := 0
+	var considered := 0
+	for producer_id in MatchState.buildings.keys():
+		var producer: Dictionary = MatchState.buildings[producer_id]
+		if not MatchState.is_player_owned(producer):
+			continue
+		var recipe: Dictionary = Catalog.get_recipe(str(producer.get("recipe_id", "")))
+		if recipe.is_empty():
+			continue
+		var from_tile := str(producer.get("tile_id", ""))
+		for output_variant: Variant in recipe.get("outputs", []):
+			var good_id := str((output_variant as Dictionary).get("good_id", ""))
+			if good_id == "" or good_id == "g_010":
+				continue   # power moves on cables, not as a routed good
+			# Eligible when the output goes to MARKET or nowhere in particular. An unrouted
+			# output is the common case — most scenarios author no routes at all — and
+			# is_output_market() reports false for it, which skipped every good on the first cut.
+			# A destination the scenario named is left alone.
+			var current := str(MatchState.get_output_stockpile_destination(str(producer_id), good_id))
+			if current != "" and current != MatchState.MARKET_DESTINATION:
+				continue
+			considered += 1
+			var dest := _nearest_local_consumer(from_tile, good_id, str(producer_id))
+			if dest == "":
+				continue
+			_select_output_destination(str(producer_id), good_id, dest)
+			moved += 1
+			_balance_metrics["local_consumer_reroutes"] = \
+				int(_balance_metrics.get("local_consumer_reroutes", 0)) + 1
+	if moved > 0:
+		print("[E2E-LOCAL] %s: considered %d output(s), fed %d to a local consumer"
+			% [reason, considered, moved])
+		_check(true, "player fed %d output(s) to a consumer within %d tiles instead of market%s"
+			% [moved, LOCAL_CONSUMER_RANGE, "" if reason == "" else " (" + reason + ")"])
+	return moved
+
+
+## The closest player-owned building that CONSUMES `good_id`, within LOCAL_CONSUMER_RANGE of
+## `from_tile`. Returns its tile, or "" when nothing nearby wants the good.
+##
+## Ties break on the instance id so the choice is deterministic — two equidistant consumers
+## must not depend on dictionary order, or a run stops being reproducible.
+func _nearest_local_consumer(from_tile: String, good_id: String, producer_id: String) -> String:
+	var best_tile := ""
+	var best_distance := LOCAL_CONSUMER_RANGE + 1
+	var best_id := ""
+	for consumer_id in MatchState.buildings.keys():
+		if str(consumer_id) == producer_id:
+			continue
+		var consumer: Dictionary = MatchState.buildings[consumer_id]
+		if not MatchState.is_player_owned(consumer):
+			continue
+		if not _recipe_consumes(str(consumer.get("recipe_id", "")), good_id):
+			continue
+		var to_tile := str(consumer.get("tile_id", ""))
+		if to_tile == "":
+			continue
+		var distance := Catalog.tile_hex_distance(from_tile, to_tile)
+		if distance > LOCAL_CONSUMER_RANGE:
+			continue
+		if distance < best_distance or (distance == best_distance and str(consumer_id) < best_id):
+			best_distance = distance
+			best_tile = to_tile
+			best_id = str(consumer_id)
+	return best_tile
+
+
+func _recipe_consumes(recipe_id: String, good_id: String) -> bool:
+	if recipe_id == "":
+		return false
+	for input_variant: Variant in Catalog.get_recipe(recipe_id).get("inputs", []):
+		if str((input_variant as Dictionary).get("good_id", "")) == good_id:
+			return true
+	return false
+
+
 func _select_output_destination(instance_id: String, good_id: String, tile_id: String) -> void:
 	MatchState.begin_output_stockpile_selection(instance_id, good_id)
 	_check(not MatchState.pending_output_stockpile_selection.is_empty(),
@@ -2260,6 +2373,7 @@ func _advance_turns(count: int, reason: String) -> void:
 			_check(TurnManager.current_turn == before_turn + 1,
 				"turn advanced for %s (%d -> %d)" % [reason, before_turn, TurnManager.current_turn])
 		_upgrade_saturated_infrastructure()
+		_reroute_outputs_to_local_consumers("turn %d" % TurnManager.current_turn)
 		await _rightsize_tick()
 		await _power_tick()
 		var elapsed_ms := float(Time.get_ticks_usec() - start) / 1000.0

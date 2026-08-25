@@ -37,13 +37,17 @@ const SILVER_MD := Color("#8b95a1")
 const SILVER_DK := Color("#5b636e")
 
 # ── Geometry (local px; computed rects derive from these in _update_layout) ───
-const PLATE_W := 330.0    # visible width of the navy plate (grows off the right edge)
+const PLATE_W := 290.0    # visible width of the navy plate (grows off the right edge)
 const BTN_W := 150.0
 const BTN_H := 56.0
 const ROLLER_W := 96.0    # phase roller width (sits to the right of the button)
 const ROLLER_H := 30.0    # phase roller height
 const ROW_GAP := 12.0     # gap between the button and the roller
-const PAD := 40.0         # button inset from the plate top + left and the screen bottom
+## Inset from the metal rim, and from the screen bottom, all at once (owner 2026-08-25:
+## 10px, was 40). The dock was carrying a third of its own height in padding; the plate is
+## chrome around a button, not a room for it. PLATE_W came down with it so the rim sits the
+## same 10px to the right of the roller.
+const PAD := 10.0         # button inset from the plate top + left and the screen bottom
 const RIVET_EDGE := 5.0   # rivet centre inset from a plate edge
 const BASE_BLEED := 20.0  # base bottom/right edges extend this far off-screen
 const BASE_RADIUS := 14.0 # squarish-rounded corner radius on the silver under-plate

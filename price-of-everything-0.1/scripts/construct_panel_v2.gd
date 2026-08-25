@@ -265,6 +265,14 @@ var _view := View.BROWSE
 var _buildings: Array = []
 var _recipes_by_building: Dictionary = {}
 var _active_filters: Dictionary = {}  # classic Construct building_type filters
+
+# Land bought as part of THIS build, decided on the confirm screen. Zero unless the locked
+# tile is short and there is land left to buy on it.
+var _land_purchase_units := 0
+var _land_purchase_cost := 0.0
+var _buy_land_wanted := false
+var _buy_land_checkbox: CheckBox = null
+var _confirm_total_label: Label = null
 var _search_query := ""
 var _expanded_building_id := ""
 var _selected_building: Dictionary = {}
@@ -1184,7 +1192,6 @@ func _render_confirm() -> void:
 	material_note.add_theme_color_override("font_color", MUTED)
 	_content.add_child(material_note)
 	_content.add_child(_materials_grid(_selected_building))
-	_content.add_child(_land_required_row(_selected_building))
 
 	var value_card := PanelContainer.new()
 	value_card.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, GOLD_DARK, 1, 9, 10))
@@ -1216,9 +1223,15 @@ func _render_confirm() -> void:
 	placement_note.add_theme_color_override("font_color", GREEN)
 	_content.add_child(placement_note)
 
+	# Land sits with the Confirm button, not up with the material kit: buying it is a
+	# DECISION the player makes at the moment of committing, and it costs money the total
+	# below has to include (owner 2026-08-23).
+	_content.add_child(_land_row(_selected_building))
+
 	_footer.visible = true
 	var total := Label.new()
-	total.text = _money(_construction_display_cost(str(_selected_building.get("id", ""))))
+	_confirm_total_label = total
+	total.text = _money(_confirm_total_cost())
 	total.custom_minimum_size = Vector2(90, 0)
 	total.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	total.add_theme_font_size_override("font_size", 16)
@@ -1264,6 +1277,76 @@ func _materials_grid(building: Dictionary) -> Control:
 		grid.add_child(none)
 	return box
 
+
+## Land, immediately above Confirm. On a tile that has room this is one quiet line. On a
+## tile that does not, it becomes a TICKBOX with the purchase price on it, ticked already,
+## because buying the land is what the player is going to have to do and the alternative is
+## a build that gets refused. Untick to be refused deliberately rather than by surprise.
+func _land_row(building: Dictionary) -> Control:
+	var needed := int(round(maxf(0.0, float(building.get("tile_size_used", 1)))))
+	if _locked_tile_id == "":
+		_land_purchase_units = 0
+		_land_purchase_cost = 0.0
+		return _land_required_row(building)
+	var owned := MatchState.get_tile_land_owned(_locked_tile_id)
+	var used := int(round(MatchState.get_tile_player_space_used(_locked_tile_id)))
+	var free := maxi(0, owned - used)
+	if free >= needed:
+		_land_purchase_units = 0
+		_land_purchase_cost = 0.0
+		return _land_required_row(building)
+
+	# Land is sold in whole patches, so round the shortfall up to one.
+	var short := needed - free
+	var patches := int(ceil(float(short) / float(MatchState.LAND_PATCH_SIZE)))
+	var for_sale := MatchState.get_tile_land_patches_available(_locked_tile_id)
+	var row := PanelContainer.new()
+	row.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, GOLD_DARK, 1, 9, 8))
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	row.add_child(box)
+
+	if for_sale <= 0:
+		# Nothing left to buy on this tile — the NPC buildings hold the rest of it.
+		_land_purchase_units = 0
+		_land_purchase_cost = 0.0
+		var none := Label.new()
+		none.text = ("Needs %d land · %d free on %s · no more land for sale here"
+			% [needed, free, Catalog.tile_label(_locked_tile_id)])
+		none.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		none.add_theme_font_size_override("font_size", 12)
+		none.add_theme_color_override("font_color", GOLD)
+		box.add_child(none)
+		return row
+
+	patches = mini(patches, for_sale)
+	_land_purchase_units = patches * MatchState.LAND_PATCH_SIZE
+	_land_purchase_cost = MatchState.purchase_cost_after_advisor(
+		float(patches) * MatchState.LAND_PATCH_COST, {"tile_id": _locked_tile_id})
+
+	var check := CheckBox.new()
+	check.text = "Buy %d land on %s  ·  %s" % [
+		_land_purchase_units, Catalog.tile_label(_locked_tile_id), _money(_land_purchase_cost)]
+	check.button_pressed = true      # ticked already: without it the build is refused
+	check.focus_mode = Control.FOCUS_NONE
+	check.add_theme_font_size_override("font_size", 13)
+	check.add_theme_color_override("font_color", TEXT)
+	check.toggled.connect(_on_buy_land_toggled)
+	_buy_land_checkbox = check
+	_buy_land_wanted = true
+	box.add_child(check)
+
+	var detail := Label.new()
+	detail.text = "Needs %d land · %d free on this tile" % [needed, free]
+	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	detail.add_theme_font_size_override("font_size", 11)
+	detail.add_theme_color_override("font_color", MUTED)
+	box.add_child(detail)
+	return row
+
+func _on_buy_land_toggled(pressed: bool) -> void:
+	_buy_land_wanted = pressed
+	_refresh_confirm_total()
 
 ## "Land required: N" under the material kit. When the flow is locked to a tile the line
 ## also reports what is actually free there, and says whether auto-buy will cover the gap —
@@ -1897,12 +1980,29 @@ func _on_unaffordable_recipe_pressed(building_id: String) -> void:
 	_show_insufficient_funds(building_id)
 
 
+## What the Confirm button is about to spend: the build, plus the land if the player left
+## the box ticked. The footer used to show the build alone, which understated a confirm that
+## was about to buy land as well.
+func _confirm_total_cost() -> float:
+	var cost := _construction_display_cost(str(_selected_building.get("id", "")))
+	if _buy_land_wanted:
+		cost += _land_purchase_cost
+	return cost
+
+func _refresh_confirm_total() -> void:
+	if _confirm_total_label != null and is_instance_valid(_confirm_total_label):
+		_confirm_total_label.text = _money(_confirm_total_cost())
+
 func _is_building_affordable(building_id: String) -> bool:
-	return _construction_display_cost(building_id) <= MatchState.money + 0.0001
+	var cost := _construction_display_cost(building_id)
+	if _buy_land_wanted:
+		cost += _land_purchase_cost
+	return cost <= MatchState.money + 0.0001
 
 
 func _show_insufficient_funds(building_id: String) -> void:
-	var needed := _construction_display_cost(building_id)
+	var needed := _construction_display_cost(building_id) + (
+		_land_purchase_cost if _buy_land_wanted else 0.0)
 	MatchState.request_toast("Insufficient funds. Need %s and have %s." % [_money(needed), _money(MatchState.money)], "caution")
 
 
@@ -1936,7 +2036,20 @@ func _on_confirm_pressed() -> void:
 		# and is filtered out of the locked list — but guard defensively anyway.
 		if _selected_recipe.is_empty():
 			return
-		BuildMode.attempt_direct_build(building_id, str(_selected_recipe.get("recipe_id", "")), _locked_tile_id)
+		# Buy the land FIRST, or the build is refused for the room it was about to have.
+		if _buy_land_wanted and _land_purchase_units > 0:
+			var patches := int(ceil(float(_land_purchase_units) / float(MatchState.LAND_PATCH_SIZE)))
+			if not MatchState.purchase_tile_land(_locked_tile_id, patches):
+				MatchState.request_toast(
+					"Could not buy the land on %s — the build needs it first."
+						% Catalog.tile_label(_locked_tile_id), "warning")
+				return
+		if not BuildMode.attempt_direct_build(building_id,
+				str(_selected_recipe.get("recipe_id", "")), _locked_tile_id):
+			# Refused — no land, no room, sea. The map has already said which, so stay exactly
+			# as we are: the building, the recipe and the tile are all still chosen, and the
+			# player can buy the land or pick another tile without starting the selection over.
+			return
 		MatchState.request_toast("Building %s on %s." % [str(_selected_building.get("display_name", "this building")), Catalog.tile_label(_locked_tile_id)], "info")
 		hide()
 		return

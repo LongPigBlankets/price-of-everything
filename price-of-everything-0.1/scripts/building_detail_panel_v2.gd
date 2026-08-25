@@ -605,6 +605,7 @@ func _battery_type_row(gid: String, internal: String, subtitle: String, btn_text
 	cvb.add_child(hb)
 	var icon := UIHelpers.make_framed_good_icon(gid, internal, MARKET_ICON)
 	icon.custom_minimum_size = Vector2(MARKET_ICON, MARKET_ICON)
+	UIHelpers.link_good_icon_to_graph(icon, gid)
 	hb.add_child(icon)
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -712,31 +713,24 @@ func _build_port_card(building: Dictionary) -> PanelContainer:
 	var owned := bool(sea.get("owned", false))
 	var growth := float(sea.get("growth", 1.0))
 	var rate_pct := float(sea.get("insurance_rate", 0.0)) * 100.0 * growth
-	var default_head := Label.new()
-	default_head.theme_type_variation = "Caption"
-	default_head.text = "DEFAULT PORT TERMS"
-	default_head.add_theme_color_override("font_color", Color.WHITE)
-	vb.add_child(default_head)
-	vb.add_child(_port_metric("Ad valorem · turns 1–30", "0.5000% of market buy value"))
-	vb.add_child(_port_metric("Ad valorem · turn 31 onward", "3.0000% of market buy value"))
-	vb.add_child(_port_metric("Annual drift", "+0.1% to the fee each turn"))
-	vb.add_child(_port_metric("Throughput", "1,500 per class · 300 hazardous liquids, gases and ultra-heavy solids"))
-	vb.add_child(_port_metric("At the throughput cap", "Sea fees double for that shipment"))
-	vb.add_child(_port_metric("Owned port", "Ad valorem rate is halved; upkeep and labour apply"))
-	vb.add_child(HSeparator.new())
-	var actual_head := Label.new()
-	actual_head.theme_type_variation = "Caption"
-	actual_head.text = "YOUR CURRENT PORT COSTS"
-	actual_head.add_theme_color_override("font_color", Color.WHITE)
-	vb.add_child(actual_head)
-	vb.add_child(_port_metric("Flat fee now", "£%.2f per active good" % (float(sea.get("base_fee", 0.0)) * growth)))
-	vb.add_child(_port_metric("Ad valorem now", "%.4f%% of market buy value" % rate_pct))
-	vb.add_child(_port_metric("Throughput now", "%s per class · %s each for hazardous liquids, gases and ultra-heavy solids" % [
+	# Three sections, ordered by what each is WORTH to the player rather than by what is
+	# easiest to explain (owner, 25 Aug). What you are paying right now comes first, the goods
+	# that actually moved this turn second, and the rate card — reference you read once — last.
+	# Eleven metrics one separation apart read as a single undifferentiated wall; the air
+	# between the sections is what does the separating, so the rows inside one stay tight.
+	vb.add_theme_constant_override("separation", 5)
+
+	_port_section(vb, "WHAT YOU PAY NOW", true)
+	vb.add_child(_port_metric("Flat fee", "£%.2f per active good" % (float(sea.get("base_fee", 0.0)) * growth)))
+	vb.add_child(_port_metric("Ad valorem", "%.4f%% of market buy value" % rate_pct))
+	vb.add_child(_port_metric("Throughput", "%s per class · %s each for hazardous liquids, gases and ultra-heavy solids" % [
 		_fmt_int(sea_port_cap("g_018")), _fmt_int(sea_port_cap("g_017"))
 	]))
 	if owned:
 		vb.add_child(_port_metric("Owned-port upkeep", "£20.00 maintenance · about £15 labour / turn"))
+
 	var rows: Array = sea.get("rows", [])
+	_port_section(vb, "THIS TURN'S SEA FREIGHT" if bool(sea.get("is_current_turn", true)) else "MOST RECENT SEA FREIGHT", false)
 	if rows.is_empty():
 		var none := Label.new()
 		none.add_theme_color_override("font_color", Color.WHITE)
@@ -744,22 +738,41 @@ func _build_port_card(building: Dictionary) -> PanelContainer:
 		vb.add_child(none)
 	else:
 		var used_by_class: Dictionary = sea.get("usage", {})
-		var activity := Label.new()
-		activity.theme_type_variation = "Caption"
-		activity.add_theme_color_override("font_color", Color.WHITE)
-		activity.text = "THIS TURN'S SEA FREIGHT" if bool(sea.get("is_current_turn", true)) else "MOST RECENT SEA FREIGHT"
-		vb.add_child(activity)
 		for row_value in rows:
 			var row: Dictionary = row_value
 			vb.add_child(_port_activity_row(row, used_by_class))
+
+	_port_section(vb, "THE RATE CARD", false)
+	vb.add_child(_port_metric("Ad valorem · turns 1–30", "0.5000% of market buy value"))
+	vb.add_child(_port_metric("Ad valorem · turn 31 onward", "3.0000% of market buy value"))
+	vb.add_child(_port_metric("Annual drift", "+0.1% to the fee each turn"))
+	vb.add_child(_port_metric("Throughput", "1,500 per class · 300 hazardous liquids, gases and ultra-heavy solids"))
+	vb.add_child(_port_metric("At the throughput cap", "Sea fees double for that shipment"))
+	vb.add_child(_port_metric("Owned port", "Ad valorem rate is halved; upkeep and labour apply"))
 	return card
+
+
+## A section heading with air above it — less for the one that opens the card, since the
+## intro paragraph above it is already a break. The air IS the structure here: the rows
+## inside a section sit five pixels apart, so without it eleven metrics read as one wall.
+func _port_section(vb: VBoxContainer, title: String, first: bool) -> void:
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(0, DS.SP["MD"] if first else DS.SP["LG"])
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vb.add_child(gap)
+	var head := Label.new()
+	head.theme_type_variation = "Caption"
+	head.text = title
+	head.add_theme_color_override("font_color", Color.WHITE)
+	vb.add_child(head)
 
 func _port_activity_row(row_data: Dictionary, used_by_class: Dictionary) -> HBoxContainer:
 	var row := HBoxContainer.new()
-	row.custom_minimum_size = Vector2(0, 48)
-	row.add_theme_constant_override("separation", 8)
+	row.custom_minimum_size = Vector2(0, 62)
+	row.add_theme_constant_override("separation", 10)
 	var gid := str(row_data.get("good_id", ""))
-	var icon := _flat_good_cell(gid, Catalog.get_internal_name(gid), int(row_data.get("total_qty", 0)), 40)
+	# 50px on the cream plate, the size a good icon is everywhere else in the UI.
+	var icon := _flat_good_cell(gid, Catalog.get_internal_name(gid), int(row_data.get("total_qty", 0)), 50)
 	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(icon)
 	var detail := VBoxContainer.new()
@@ -967,17 +980,18 @@ func _open_upgrade_sheet(building: Dictionary) -> void:
 			vb.add_child(_upgrade_delta_row("Cost / unit", cc, cn, DS.PALETTE["DANGER"] if cn > cc else DS.PALETTE["OK"], 2, "£"))
 		# Blockers
 		if bool(pv.get("research_locked", false)):
-			var rl := Label.new()
-			rl.theme_type_variation = "Body"
-			rl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			rl.add_theme_color_override("font_color", DS.PALETTE["DANGER"])
-			rl.text = "Requires research: %s" % str(pv.get("research_gate", ""))
-			vb.add_child(rl)
+			# The tech name is a link into the Research tree — it is the most actionable thing
+			# on this sheet, and used to be flat text the player had to go and find by hand.
+			vb.add_child(UIHelpers.make_research_requirement_link(
+				str(pv.get("research_gate", "")), DS.PALETTE["DANGER"]))
 		if not bool(pv.get("fits", true)):
 			var nf := Label.new()
 			nf.theme_type_variation = "Body"
 			nf.add_theme_color_override("font_color", DS.PALETTE["DANGER"])
-			nf.text = "Not enough room on the tile for the larger building."
+			# The specific reason, with the numbers. The old generic line sat under a tile panel
+			# reading "122 owned" and read as a bug rather than as a refusal with a cause.
+			nf.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			nf.text = str(pv.get("fits_reason", "Not enough room on the tile for the larger building."))
 			vb.add_child(nf)
 		# Actions
 		vb.add_child(HSeparator.new())
@@ -1025,7 +1039,11 @@ func _commit_upgrade(iid: String, mode: String, duration: int) -> void:
 	else:
 		MatchState.request_toast(str(res.get("reason", "Cannot upgrade.")), "warning")
 
-# A material cell for the upgrade sheet: framed good icon (need pill) + have/need caption.
+## Good-icon size on the upgrade sheet. Frameless: the metal bevel ate a 52 px cell and
+## left the good barely readable (owner 2026-08-23).
+const UPGRADE_MAT_ICON := 56
+
+# A material cell for the upgrade sheet: plain good icon (need pill) + have/need caption.
 func _upgrade_material_cell(m: Dictionary) -> Control:
 	var good_id := str(m.get("good_id", ""))
 	var need := int(m.get("need", 0))
@@ -1033,7 +1051,8 @@ func _upgrade_material_cell(m: Dictionary) -> Control:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", DS.SP["XS"])
 	col.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	col.add_child(_good_icon_pill(good_id, Catalog.get_internal_name(good_id), need, 52))
+	col.add_child(_plain_icon_pill(good_id, Catalog.get_internal_name(good_id), need,
+		UPGRADE_MAT_ICON))
 	var hn := Label.new()
 	hn.theme_type_variation = "Caption"
 	hn.text = "%d/%d" % [mini(have, need), need]
@@ -1447,9 +1466,23 @@ func _recipe_icon(good_id: String, internal: String, qty: int, size: int, bleed:
 # UIHelpers.make_framed_good_icon) with the qty PILL superimposed on its bottom-right. The framed
 # GoodIconHover root supplies the good-name hover tooltip itself. base_qty/mod_pct (output only) →
 # the pill shows the struck base + effective with a coloured outline.
+## The frameless variant: cream plate, rounded corners, no metal bevel. Same pill and same
+## route into the Goods Graph — only the plate differs.
+func _plain_icon_pill(good_id: String, internal: String, qty: int, size: int) -> Control:
+	var holder := UIHelpers.make_plain_good_icon(good_id, internal, size)
+	holder.add_child(_qty_pill(qty, -1, 0))
+	UIHelpers.link_good_icon_to_graph(holder, good_id)
+	return holder
+
 func _good_icon_pill(good_id: String, internal: String, qty: int, size: int, base_qty: int = -1, mod_pct: int = 0) -> Control:
-	var holder := UIHelpers.make_framed_good_icon(good_id, internal, size)
+	var holder := UIHelpers.make_plain_good_icon(good_id, internal, size)
 	holder.add_child(_qty_pill(qty, base_qty, mod_pct))
+	# Every input and output on this panel is a way into the Goods Graph: the player is
+	# already looking at what this building eats and makes, and 'how else is that made'
+	# is the next question. ALWAYS, not the deferring form — a recipe card is itself
+	# clickable, so the polite version handed every one of these clicks to the card and the
+	# graph never opened (owner 2026-08-25).
+	UIHelpers.link_good_icon_to_graph(holder, good_id, true)
 	return holder
 
 # Back-compat name used by construction / shipments / demolish — now the pill icon.
@@ -1550,16 +1583,57 @@ func _recipe_arrow(power_in: int) -> Control:
 	arrow.add_child(head)
 	return arrow
 
+## Sticky across refreshes: a player who opened the checklist wants it to stay open while
+## they watch the turn resolve, not to re-collapse under them every rebuild.
+var _diagnostics_open := false
+
 # --- diagnostics ---------------------------------------------------------------------------
 
+## The checklist, folded to one line when there is nothing wrong (owner 2026-08-25).
+## A building that is running fine still spent six rows saying so, above the numbers the
+## player opened the panel for. Nothing is hidden — the fold opens — but "all green" is a
+## one-line answer and it should take one line.
 func _build_diagnostics(rows: Array) -> PanelContainer:
 	var card := _make_card()
 	card.name = "DiagnosticsCard"   # stable target for the tutorial coach spotlight
 	var vb := card.get_child(0) as VBoxContainer
 	vb.add_theme_constant_override("separation", 0)
+	var all_ok := not rows.is_empty()
+	for r_variant: Variant in rows:
+		if str((r_variant as Dictionary).get("tone", "info")) not in ["ok", "good", "info"]:
+			all_ok = false
+			break
+	if not all_ok:
+		for i in rows.size():
+			vb.add_child(_diag_row(rows[i], i > 0))
+		return card
+
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 0)
+	body.visible = _diagnostics_open
 	for i in rows.size():
-		vb.add_child(_diag_row(rows[i], i > 0))
+		body.add_child(_diag_row(rows[i], i > 0))
+
+	var head := Button.new()
+	head.flat = true
+	head.focus_mode = Control.FOCUS_NONE
+	head.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	head.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	head.add_theme_color_override("font_color", DS.PALETTE["OK"])
+	head.add_theme_color_override("font_hover_color", DS.PALETTE["OK"])
+	head.text = _diag_head_text()
+	head.tooltip_text = "Show every check"
+	head.pressed.connect(func() -> void:
+		_diagnostics_open = not _diagnostics_open
+		body.visible = _diagnostics_open
+		head.text = _diag_head_text())
+	vb.add_child(head)
+	vb.add_child(body)
 	return card
+
+
+func _diag_head_text() -> String:
+	return ("⌄  All green" if _diagnostics_open else "›  All green")
 
 func _diag_row(r: Dictionary, top_border: bool) -> Control:
 	var wrap := PanelContainer.new()
@@ -1662,20 +1736,40 @@ func _build_cost_to_produce(rows: Array) -> PanelContainer:
 
 # --- modifiers (accordion above economics) --------------------------------------------------
 
-## Everything currently bending this building's numbers — recipe-output modifiers,
-## workforce output effects, and power-draw modifiers — behind a chevroned section
-## header that expands on click (collapsed by default).
+## The sign convention each category reads by. Output and workforce are EARNINGS, so more is
+## better. Power draw and maintenance are COSTS, so less is better and a negative there is
+## green, not red — a research node that cuts a furnace's draw by 10% was being painted as
+## damage (owner, 25 Aug).
+const MOD_CATEGORIES: Array = [
+	{"cat": "Output", "good_up": true},
+	{"cat": "Workforce", "good_up": true},
+	{"cat": "Power draw", "good_up": false},
+	{"cat": "Maintenance", "good_up": false},
+]
+
+## Everything currently bending this building's numbers — recipe output, workforce, power draw
+## and maintenance — behind a chevroned section header that expands on click (collapsed by
+## default).
+##
+## Collapsed, the header carries the ONE number worth a glance: the net effect on OUTPUT. It
+## used to read "3 active", which counted power and maintenance modifiers into a figure the
+## player reads as production, and told them nothing about which way any of it went.
+##
+## Expanded, only the per-category summaries carry colour. Painting all fourteen individual
+## rows green and red made a wall of traffic lights out of what is really four numbers.
 func _add_modifiers_accordion(building: Dictionary, recipe: Dictionary) -> void:
-	var rows: Array = []
+	var by_cat: Dictionary = {}
 	var mod: Dictionary = BuildingStatus.net_output_modifier(building, recipe)
-	for p in (mod.get("parts", []) as Array):
-		rows.append({"cat": "Output", "label": str(p.get("label", "")), "pct": float(p.get("pct", 0.0))})
-	for p in (mod.get("workforce_parts", []) as Array):
-		rows.append({"cat": "Workforce", "label": str(p.get("label", "")), "pct": float(p.get("pct", 0.0))})
+	by_cat["Output"] = (mod.get("parts", []) as Array).duplicate()
+	by_cat["Workforce"] = (mod.get("workforce_parts", []) as Array).duplicate()
 	var bid := str(building.get("building_id", ""))
-	var pw: Dictionary = Modifiers.resolve_pct("building_power", bid, {"building_id": bid})
-	for p in (pw.get("parts", []) as Array):
-		rows.append({"cat": "Power draw", "label": str(p.get("label", "")), "pct": float(p.get("pct", 0.0))})
+	by_cat["Power draw"] = (Modifiers.resolve_pct(
+		"building_power", bid, {"building_id": bid}).get("parts", []) as Array).duplicate()
+	by_cat["Maintenance"] = (Modifiers.resolve_pct(
+		"maintenance", bid, {"building_id": bid}).get("parts", []) as Array).duplicate()
+	var total := 0
+	for cat_key: Variant in by_cat:
+		total += (by_cat[cat_key] as Array).size()
 
 	# Section header doubling as the accordion trigger ("Section" is a Label
 	# variation, so a chevron Label + section Label in a clickable row).
@@ -1693,12 +1787,16 @@ func _add_modifiers_accordion(building: Dictionary, recipe: Dictionary) -> void:
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	header.add_child(title)
-	var count_tag := ("%d active" % rows.size()) if not rows.is_empty() else "none"
 	var right := Label.new()
-	right.theme_type_variation = "Caption"
-	right.text = count_tag
-	right.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
+	right.theme_type_variation = "Numeric"
 	right.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if total == 0:
+		right.text = "none"
+		right.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
+	else:
+		var out_pct := float(mod.get("pct_f", float(mod.get("pct", 0))))
+		right.text = "Output %s" % _mod_pct_text(out_pct)
+		right.add_theme_color_override("font_color", _mod_tone(out_pct, true))
 	header.add_child(right)
 	_body.add_child(header)
 
@@ -1706,36 +1804,61 @@ func _add_modifiers_accordion(building: Dictionary, recipe: Dictionary) -> void:
 	card.visible = false
 	var vb := card.get_child(0) as VBoxContainer
 	vb.add_theme_constant_override("separation", 3)
-	if rows.is_empty():
+	if total == 0:
 		var none := Label.new()
 		none.theme_type_variation = "Caption"
 		none.text = "No active modifiers on this building."
-		none.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
+		none.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 		vb.add_child(none)
-	for r in rows:
-		var pct := float(r.get("pct", 0.0))
-		var line := HBoxContainer.new()
-		line.add_theme_constant_override("separation", DS.SP["SM"])
-		var cat := Label.new()
-		cat.theme_type_variation = "Caption"
-		cat.text = str(r.get("cat", ""))
-		cat.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
-		cat.custom_minimum_size = Vector2(84, 0)
-		line.add_child(cat)
-		var lbl := Label.new()
-		lbl.theme_type_variation = "Body"
-		lbl.text = str(r.get("label", ""))
-		lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		lbl.custom_minimum_size = Vector2(PANEL_WIDTH - 220.0, 0)
-		line.add_child(lbl)
-		var val := Label.new()
-		val.theme_type_variation = "Numeric"
-		val.text = "%s%d%%" % ["+" if pct >= 0.0 else "−", absi(int(round(pct)))]
-		val.add_theme_color_override("font_color", DS.PALETTE["OK"] if pct >= 0.0 else DS.PALETTE["DANGER"])
-		val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		line.add_child(val)
-		vb.add_child(line)
+	for entry_value: Variant in MOD_CATEGORIES:
+		var entry: Dictionary = entry_value
+		var cat := str(entry.get("cat", ""))
+		var parts: Array = by_cat.get(cat, [])
+		if parts.is_empty():
+			continue
+		var net := 0.0
+		for part_value: Variant in parts:
+			net += float((part_value as Dictionary).get("pct", 0.0))
+		# The category summary — the only coloured figure in the card.
+		var sum_row := HBoxContainer.new()
+		sum_row.add_theme_constant_override("separation", DS.SP["SM"])
+		var sum_label := Label.new()
+		sum_label.theme_type_variation = "Body"
+		sum_label.text = cat
+		sum_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sum_row.add_child(sum_label)
+		var sum_value := Label.new()
+		sum_value.theme_type_variation = "Numeric"
+		sum_value.text = _mod_pct_text(net)
+		sum_value.add_theme_color_override("font_color",
+			_mod_tone(net, bool(entry.get("good_up", true))))
+		sum_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		sum_row.add_child(sum_value)
+		vb.add_child(sum_row)
+		# ...and the modifiers that make it up, plainly.
+		for part_value: Variant in parts:
+			var part: Dictionary = part_value
+			var line := HBoxContainer.new()
+			line.add_theme_constant_override("separation", DS.SP["SM"])
+			var spacer := Control.new()
+			spacer.custom_minimum_size = Vector2(DS.SP["MD"], 0)
+			spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			line.add_child(spacer)
+			var lbl := Label.new()
+			lbl.theme_type_variation = "Caption"
+			lbl.text = str(part.get("label", ""))
+			lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			lbl.custom_minimum_size = Vector2(PANEL_WIDTH - 220.0, 0)
+			lbl.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
+			line.add_child(lbl)
+			var val := Label.new()
+			val.theme_type_variation = "Caption"
+			val.text = _mod_pct_text(float(part.get("pct", 0.0)))
+			val.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
+			val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			line.add_child(val)
+			vb.add_child(line)
 	_body.add_child(card)
 
 	header.gui_input.connect(func(e: InputEvent) -> void:
@@ -1743,6 +1866,19 @@ func _add_modifiers_accordion(building: Dictionary, recipe: Dictionary) -> void:
 			header.accept_event()
 			card.visible = not card.visible
 			chevron.text = "▾" if card.visible else "▸")
+
+
+static func _mod_pct_text(pct: float) -> String:
+	return "%s%d%%" % ["+" if pct >= 0.0 else "−", absi(int(round(pct)))]
+
+
+## Green when the number is in the player's favour, which is NOT the same as positive: an
+## output modifier wants to go up, a power-draw or maintenance one wants to go down.
+static func _mod_tone(pct: float, good_up: bool) -> Color:
+	if absf(pct) < 0.5:
+		return DS.PALETTE["TEXT"]
+	var good: bool = pct > 0.0 if good_up else pct < 0.0
+	return DS.PALETTE["OK"] if good else DS.PALETTE["DANGER"]
 
 # --- economics -----------------------------------------------------------------------------
 

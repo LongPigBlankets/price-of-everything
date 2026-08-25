@@ -1,0 +1,38 @@
+name	id	category	land	cash	materials	total	cash_pct	kit_units	kit
+Port	b_004	infrastructure	15	10000.00	0.00	10000.00	100.0	0	
+Airport	b_035	infrastructure	1	10000.00	0.00	10000.00	100.0	0	
+High Tech Manufactory	b_010	production	15	10.00	1314.17	1324.17	0.8	53	5x Concrete @6.36 = 32, 6x Building Frame @19.62 = 118, 4x Construction Equipment ICE @45.15 = 181, 7x Computer @94.92 = 664, 10x Electrical Components @15.22 = 152, 10x Rubber @6.11 = 61, 11x Plastics @9.66 = 106
+Assembly Plant	b_009	production	15	10.00	1091.93	1101.93	0.9	50	6x Concrete @6.36 = 38, 5x Building Frame @19.62 = 98, 2x Construction Equipment ICE @45.15 = 90, 6x Computer @94.92 = 570, 7x Electrical Components @15.22 = 107, 12x Rubber @6.11 = 73, 12x Plastics @9.66 = 116
+Electrolyser	b_020	production	15	10.00	991.93	1001.93	1.0	96	10x Concrete @6.36 = 64, 5x Building Frame @19.62 = 98, 4x Construction Equipment ICE @45.15 = 181, 6x Electrical Components @15.22 = 91, 36x Rubber @6.11 = 220, 35x Plastics @9.66 = 338
+Offshore Oil Platform	b_033	production	15	10.00	839.15	849.15	1.2	79	29x Steel @2.49 = 72, 10x Construction Equipment ICE @45.15 = 452, 20x Rubber @6.11 = 122, 20x Plastics @9.66 = 193
+Chemical Plant	b_012	production	18	18.00	782.13	800.13	2.2	85	9x Concrete @6.36 = 57, 7x Building Frame @19.62 = 137, 17x Chemical Salts @1.55 = 26, 9x Industrial Acids @7.91 = 71, 4x Construction Equipment ICE @45.15 = 181, 19x Rubber @6.11 = 116, 20x Plastics @9.66 = 193
+Offshore Wind Farm	b_026	power	25	10.00	789.70	799.70	1.3	82	26x Steel @2.49 = 65, 12x Concrete @6.36 = 76, 8x Construction Equipment ICE @45.15 = 361, 17x Rubber @6.11 = 104, 19x Plastics @9.66 = 184
+Petrochemical Refinery	b_011	production	15	10.00	789.67	799.67	1.3	93	9x Concrete @6.36 = 57, 6x Building Frame @19.62 = 118, 18x Chemical Salts @1.55 = 28, 3x Construction Equipment ICE @45.15 = 135, 28x Rubber @6.11 = 171, 29x Plastics @9.66 = 280
+Polymerisation Refinery	b_013	production	15	10.00	789.67	799.67	1.3	93	9x Concrete @6.36 = 57, 6x Building Frame @19.62 = 118, 18x Chemical Salts @1.55 = 28, 3x Construction Equipment ICE @45.15 = 135, 28x Rubber @6.11 = 171, 29x Plastics @9.66 = 280
+Electric Arc Furnace	b_008	production	15	10.00	788.06	798.06	1.3	63	8x Concrete @6.36 = 51, 8x Building Frame @19.62 = 157, 4x Construction Equipment ICE @45.15 = 181, 8x Electrical Components @15.22 = 122, 17x Rubber @6.11 = 104, 18x Plastics @9.66 = 174
+Onshore Wind Farm	b_025	power	25	10.00	589.92	599.92	1.7	65	17x Steel @2.49 = 42, 9x Concrete @6.36 = 57, 5x Construction Equipment ICE @45.15 = 226, 18x Rubber @6.11 = 110, 16x Plastics @9.66 = 155
+Solar Farm	b_024	power	25	10.00	492.97	502.97	2.0	40	5x Concrete @6.36 = 32, 10x Electrical Components @15.22 = 152, 3x Construction Equipment ICE @45.15 = 135, 11x Rubber @6.11 = 67, 11x Plastics @9.66 = 106
+Power plant	b_003	power	18	15.00	486.29	501.29	3.0	60	14x Steel @2.49 = 35, 14x Concrete @6.36 = 89, 3x Construction Equipment ICE @45.15 = 135, 15x Rubber @6.11 = 92, 14x Plastics @9.66 = 135
+Industrial Goods Factory	b_007	production	15	10.00	490.87	500.87	2.0	39	7x Concrete @6.36 = 45, 7x Building Frame @19.62 = 137, 3x Construction Equipment ICE @45.15 = 135, 11x Rubber @6.11 = 67, 11x Plastics @9.66 = 106
+Furnace	b_002	production	18	20.00	431.06	451.06	4.4	32	10x Concrete @6.36 = 64, 7x Building Frame @19.62 = 137, 3x Construction Equipment ICE @45.15 = 135, 6x Rubber @6.11 = 37, 6x Plastics @9.66 = 58
+Mine	b_001	production	25	30.00	420.18	450.18	6.7	41	3x Construction Equipment ICE @45.15 = 135, 11x Concrete @6.36 = 70, 13x Rubber @6.11 = 79, 14x Plastics @9.66 = 135
+Thermal Battery Storage	b_029	battery	15	10.00	340.80	350.80	2.9	30	5x Concrete @6.36 = 32, 3x Construction Equipment ICE @45.15 = 135, 11x Rubber @6.11 = 67, 11x Plastics @9.66 = 106
+Battery Electric Storage	b_028	battery	15	10.00	339.06	349.06	2.9	28	5x Concrete @6.36 = 32, 7x Electrical Components @15.22 = 107, 2x Construction Equipment ICE @45.15 = 90, 7x Rubber @6.11 = 43, 7x Plastics @9.66 = 68
+Desalination Plant	b_021	production	15	10.00	277.02	287.02	3.5	28	3x Concrete @6.36 = 19, 2x Building Frame @19.62 = 39, 1x Construction Equipment ICE @45.15 = 45, 11x Rubber @6.11 = 67, 11x Plastics @9.66 = 106
+Hydraulic Fracking Oil Wells	b_034	production	15	10.00	239.78	249.78	4.0	17	4x Concrete @6.36 = 25, 3x Construction Equipment ICE @45.15 = 135, 5x Rubber @6.11 = 31, 5x Plastics @9.66 = 48
+Oil Wells	b_032	production	15	10.00	238.90	248.90	4.0	22	6x Concrete @6.36 = 38, 2x Construction Equipment ICE @45.15 = 90, 7x Rubber @6.11 = 43, 7x Plastics @9.66 = 68
+Hydroelectric Dam	b_027	power	18	10.00	191.57	201.57	5.0	16	6x Concrete @6.36 = 38, 2x Construction Equipment ICE @45.15 = 90, 4x Rubber @6.11 = 24, 4x Plastics @9.66 = 39
+Water Pump	b_037	production	15	10.00	188.51	198.51	5.0	15	4x Concrete @6.36 = 25, 2x Construction Equipment ICE @45.15 = 90, 4x Rubber @6.11 = 24, 5x Plastics @9.66 = 48
+Consumer Goods Factory	b_030	production	15	10.00	186.20	196.20	5.1	15	3x Concrete @6.36 = 19, 3x Building Frame @19.62 = 59, 1x Construction Equipment ICE @45.15 = 45, 4x Rubber @6.11 = 24, 4x Plastics @9.66 = 39
+Recycling Plant	b_036	production	15	10.00	166.58	176.58	5.7	14	3x Concrete @6.36 = 19, 2x Building Frame @19.62 = 39, 1x Construction Equipment ICE @45.15 = 45, 4x Rubber @6.11 = 24, 4x Plastics @9.66 = 39
+Water Recyling Plant	b_022	production	15	10.00	115.40	125.40	8.0	9	3x Concrete @6.36 = 19, 1x Building Frame @19.62 = 20, 1x Construction Equipment ICE @45.15 = 45, 2x Rubber @6.11 = 12, 2x Plastics @9.66 = 19
+Cables	b_006	infrastructure	2	20.00	55.30	75.30	26.6	7	5x Copper Wiring @4.97 = 25, 2x Electrical Components @15.22 = 30
+Railways	b_019	infrastructure	1	70.00	0.00	70.00	100.0	0	
+Farm	b_014	production	20	15.00	45.05	60.05	25.0	13	2x Steel @2.49 = 5, 3x Concrete @6.36 = 19, 8x Biomass @2.62 = 21
+Reinforced Pipeworks	b_018	infrastructure	1	50.00	0.00	50.00	100.0	0	
+Old Growth Forest	b_016	production	25	25.00	21.00	46.00	54.3	8	8x Biomass @2.62 = 21
+New Growth Forest	b_015	production	25	10.00	21.00	31.00	32.3	8	8x Biomass @2.62 = 21
+Pipeworks	b_017	infrastructure	1	30.00	0.00	30.00	100.0	0	
+Roads	b_005	infrastructure	2	25.00	0.00	25.00	100.0	0	
+Landfill	b_023	production	15	1.00	0.00	1.00	100.0	0	
+Disused Buildings	b_031	production	15	1.00	0.00	1.00	100.0	0	

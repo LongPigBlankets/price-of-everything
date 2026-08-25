@@ -36,8 +36,12 @@ var _v2_picking_dest: bool = false
 @onready var building_visuals: Node2D = %BuildingVisuals
 @onready var building_connection_visuals: Node2D = %BuildingConnectionVisuals
 @onready var search_overlay: Control = %SearchOverlay
+# Sibling under the WorldMap root; it is not a unique_name node, so fetch it by path.
+@onready var map_overlay: Node2D = get_node_or_null("MapOverlay")
 @onready var river_layer: TileMapLayer = $RiverLayer
 @onready var hud_content: Control = $UILayer/HUD/HUDContent
+# Transport (logistics) panel — built on first open, see _on_transport_panel_requested.
+var _transport_panel: Control = null
 @onready var _hud: Control = $UILayer/HUD
 @onready var _toast_layer: Control = $UILayer/HUD/ToastLayer
 @onready var forest_visuals: Node2D = %ForestVisuals
@@ -218,10 +222,14 @@ func _build_base() -> void:
 		search_overlay.recipe_build_requested.connect(_on_search_recipe_build_requested)
 	MatchState.encyclopedia_entry_requested.connect(_on_encyclopedia_entry_requested)
 	MatchState.goods_graph_requested.connect(_on_goods_graph_requested)
+	MatchState.goods_graph_good_requested.connect(_on_goods_graph_good_requested)
 	MatchState.empire_view_requested.connect(_on_empire_view_requested)
 	MatchState.encyclopedia_good_requested.connect(_on_encyclopedia_good_requested)
 	MatchState.focus_tile_requested.connect(_on_focus_tile_requested)
 	MatchState.focus_building_requested.connect(_on_focus_building_requested)
+	MatchState.transport_panel_requested.connect(_on_transport_panel_requested)
+	MatchState.tile_stockpile_requested.connect(_on_go_to_tile_stockpile)
+	MatchState.research_search_requested.connect(_on_research_search_requested)
 
 	TurnManager.phase_started.connect(_on_phase_started)
 	TurnManager.turn_advanced.connect(_on_turn_advanced)
@@ -1709,6 +1717,15 @@ func _tile_data_by_id(tile_id: String) -> Dictionary:
 			return td
 	return {}
 
+## The top bar's Transport module. Built on first use — nothing in a match needs the
+## logistics panel to exist until the player opens it, and the load is already the
+## thing this project spends the most care protecting.
+func _on_transport_panel_requested() -> void:
+	if _transport_panel == null or not is_instance_valid(_transport_panel):
+		_transport_panel = load("res://scripts/transport_panel.gd").new()
+		hud_content.add_child(_transport_panel)
+	_transport_panel.open()
+
 func _on_go_to_tile_stockpile(tile_id: String) -> void:
 	var td := _tile_data_by_id(tile_id)
 	if td.is_empty():
@@ -1716,6 +1733,8 @@ func _on_go_to_tile_stockpile(tile_id: String) -> void:
 	_last_selected_tile = td
 	info_panel._active_tab = "stock"
 	info_panel.show_tile(td)
+	# show_tile resets to the Buildings tab, so ask for Stockpile again afterwards.
+	info_panel._select_tab("stock")
 
 ## Deep-link target for notifications etc: centre the camera on the tile and
 ## open its panel. Emitted via MatchState.focus_tile_requested.
@@ -2036,9 +2055,21 @@ func _on_goods_graph_requested() -> void:
 	if goods_graph_view != null:
 		goods_graph_view.toggle()
 
+func _on_goods_graph_good_requested(good_id: String) -> void:
+	if goods_graph_view != null:
+		goods_graph_view.open_focused(good_id)
+
+
 func _on_empire_view_requested() -> void:
 	if empire_view != null:
 		empire_view.toggle()
+
+## Open the Research tree filtered to one tech. Goes through the bottom menu so the panel
+## opens the same way a click on the Research button does — stack, rise tween and all.
+func _on_research_search_requested(query: String) -> void:
+	if _hud == null or not _hud.has_method("open_research_search"):
+		return
+	_hud.open_research_search(query)
 
 func _on_encyclopedia_good_requested(good_id: String) -> void:
 	if search_overlay != null and search_overlay.has_method("open_encyclopedia_good"):
@@ -2595,6 +2626,9 @@ func _on_infrastructure_attempted(infra_type: String, tile_id: String) -> void:
 				return
 		var space_check := _space_check_for_build(tile_id, infra_building_id)
 		if not bool(space_check.get("allowed", false)):
+			# Say it ON THE TILE. This used to return silently, so the placement icon simply
+			# appeared to do nothing and the corner toast went unread (owner 2026-08-23).
+			_flash_build_refusal(coord, str(space_check.get("reason", "Cannot build here")))
 			return
 		# Infrastructure uses the same construction-material lifecycle as every
 		# other building. Previously it skipped this check, then start_on_tile()
@@ -2628,6 +2662,7 @@ func _try_build_infrastructure(tile_id: String, coord: Vector2i, infra_type: Str
 	if not MatchState.deduct_money(cost):
 		print("[Build] FAILED: insufficient money for %s. Need £%.2f, have £%.2f" % [infra_type, cost, MatchState.money])
 		MatchState.build_rejected_no_funds.emit("Not enough money to build %s — need £%.2f, you have £%.2f" % [infra_type, cost, MatchState.money])
+		_flash_build_refusal(coord, "Insufficient money — £%d needed" % int(ceil(cost)))
 		return
 
 	if infra_building_id == "":
@@ -2715,16 +2750,34 @@ func _is_tile_infra_type(internal_name: String) -> bool:
 			return true
 	return false
 
+## The infrastructure that runs over ground. Pipes and cables are deliberately absent —
+## a pipeline or a cable may cross water, and only these two may not.
+const OVERLAND_INFRA := {"roads": true, "rail": true}
+
+
 func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
 	var building_data: Dictionary = Catalog.get_building(building_id)
+	# Overland infrastructure cannot be laid on water, and saying so comes FIRST: a sea
+	# tile also has no land to own, so the land gate below would otherwise answer "buy more
+	# land here" for a road across open water — advice the player cannot act on and which
+	# hides the real reason (owner 2026-08-25).
+	var internal := str(building_data.get("internal_name", ""))
+	if OVERLAND_INFRA.has(internal):
+		var ttype := Catalog.tile_type(tile_id)
+		if ttype == "sea" or ttype == "deep_sea":
+			var sea_msg := "Cannot build that infrastructure on sea."
+			print("[Build] FAILED: %s on %s tile %s" % [internal, ttype, tile_id])
+			_show_tile_space_error(sea_msg)
+			return {"allowed": false, "cost_multiplier": 1.0, "reason": sea_msg}
 	var added_space := maxf(0.0, float(building_data.get("tile_size_used", 1.0)))
 	var current_space := MatchState.get_tile_space_used(tile_id)
 	var projected_space := current_space + added_space
 	var tile_cap := MatchState.max_tile_land(tile_id)
 	if projected_space > float(tile_cap):
 		print("[Build] FAILED: tile %s is full (need %s, max %s)" % [tile_id, str(projected_space), str(tile_cap)])
-		_show_tile_space_error("There is no more room on that tile. Demolish buildings to make room.")
-		return {"allowed": false, "cost_multiplier": 1.0}
+		var full_msg := "There is no more room on that tile. Demolish buildings to make room."
+		_show_tile_space_error(full_msg)
+		return {"allowed": false, "cost_multiplier": 1.0, "reason": "No room on this tile"}
 	# The owned-land gate only counts the player's estate — NPC buildings sit on
 	# their own land and must not eat the land the player has bought.
 	var projected_player := MatchState.get_tile_player_space_used(tile_id) + added_space
@@ -2745,19 +2798,36 @@ func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
 		else:
 			print("[Build] auto-buy land FAILED on %s (wanted %d patch(es))" % [tile_id, patches])
 			_show_tile_space_error("Not enough money (or land for sale) to buy the land this building needs on %s" % Catalog.tile_label(tile_id))
-			return {"allowed": false, "cost_multiplier": 1.0}
+			return {"allowed": false, "cost_multiplier": 1.0,
+				"reason": "Insufficient money to buy the land"}
 	if projected_player > float(land_owned):
 		print("[Build] FAILED: insufficient land on tile %s (need %s, own %s)" % [tile_id, str(projected_player), str(land_owned)])
-		_show_tile_space_error("You cannot build that. You do not own sufficient land on tile %s" % tile_id)
-		return {"allowed": false, "cost_multiplier": 1.0}
+		_show_tile_space_error("You cannot build that. You do not own sufficient land on %s"
+			% Catalog.tile_label(tile_id))
+		return {"allowed": false, "cost_multiplier": 1.0, "reason": "Insufficient land — buy more here"}
 	var cost_multiplier := 1.0
 	if projected_space > DENSITY_SOFT_CAPACITY:
 		cost_multiplier = 1.5
 		_show_tile_space_caution("Local opposition to density on tile %s will increase material and money costs for new buildings by 50%%" % tile_id)
 	return {"allowed": true, "cost_multiplier": cost_multiplier}
 
+## Flash the refused tile red and print the reason under it, via the map overlay.
+func _flash_build_refusal(coord: Vector2i, reason: String) -> void:
+	if map_overlay != null and map_overlay.has_method("flash_build_refusal"):
+		map_overlay.flash_build_refusal(coord, reason)
+
+## Every space refusal comes through here — no room, no owned land, sea under a road.
+##
+## It goes to the bottom-CENTRE stack, not the bottom-left one the other toasts share. The
+## left stack sits under the construct panel, and now that a refused build leaves that panel
+## open (so the player can buy land or pick another tile without rebuilding their selection),
+## a message posted there would be hidden behind the very panel that caused it. The centre
+## stack clears the bottom menu by 40px.
 func _show_tile_space_error(message: String) -> void:
-	if _toast_layer != null and _toast_layer.has_method("show_error"):
+	BuildMode.last_attempt_refused = true
+	if _toast_layer != null and _toast_layer.has_method("show_blocked"):
+		_toast_layer.call("show_blocked", message)
+	elif _toast_layer != null and _toast_layer.has_method("show_error"):
 		_toast_layer.call("show_error", message)
 	else:
 		push_warning(message)

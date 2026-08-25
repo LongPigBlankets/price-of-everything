@@ -43,6 +43,11 @@ var screen_index: int = -1
 # defaults (the 40 %-headroom seat).
 var audio_levels: Dictionary = {}
 
+## Player-set MAP MODE hotkeys, id -> keycode. Absent ids are unbound, which is how the
+## demo ships: the fixed bindings are read-only, and these are the only ones the Controls
+## tab lets anyone change. Validation lives in scripts/keybinds.gd.
+var keybinds: Dictionary = {}
+
 
 func _ready() -> void:
 	_load()
@@ -182,6 +187,8 @@ func _load() -> void:
 		window_size = Vector2i(int((parsed as Dictionary).get("window_w", 0)), int((parsed as Dictionary).get("window_h", 0)))
 		fullscreen = bool((parsed as Dictionary).get("fullscreen", true))
 		screen_index = int((parsed as Dictionary).get("screen_index", -1))
+		var kb: Variant = (parsed as Dictionary).get("keybinds", {})
+		keybinds = ((kb as Dictionary) if kb is Dictionary else {}).duplicate()
 		var lv: Variant = (parsed as Dictionary).get("audio_levels", {})
 		audio_levels = (lv as Dictionary) if lv is Dictionary else {}
 		telemetry_opt_out = bool((parsed as Dictionary).get("telemetry_opt_out", false))
@@ -196,7 +203,7 @@ func _save() -> void:
 	if f == null:
 		push_warning("[PlayerProfile] could not write %s" % tmp_path)
 		return
-	f.store_string(JSON.stringify({"games_completed": games_completed, "tutorial_completed": tutorial_completed, "wins": wins, "window_w": window_size.x, "window_h": window_size.y, "fullscreen": fullscreen, "screen_index": screen_index, "audio_levels": audio_levels, "telemetry_opt_out": telemetry_opt_out, "telemetry_player_id": telemetry_player_id}, "\t"))
+	f.store_string(JSON.stringify({"games_completed": games_completed, "tutorial_completed": tutorial_completed, "wins": wins, "window_w": window_size.x, "window_h": window_size.y, "fullscreen": fullscreen, "screen_index": screen_index, "audio_levels": audio_levels, "keybinds": keybinds, "telemetry_opt_out": telemetry_opt_out, "telemetry_player_id": telemetry_player_id}, "\t"))
 	f.close()
 	var err := DirAccess.rename_absolute(tmp_path, _path())
 	if err != OK:
@@ -261,6 +268,12 @@ func _apply_display() -> void:
 
 ## Persist and apply the audio volumes chosen in Settings → Audio. `levels` maps bus
 ## name ("Master"/"Music"/"SFX") → 0–100 percent, so the player's choice survives a restart.
+## Commit the map-mode hotkeys (Settings → Controls, on Apply).
+func set_keybinds(bindings: Dictionary) -> void:
+	keybinds = bindings.duplicate()
+	_save()
+
+
 func set_audio_levels(levels: Dictionary) -> void:
 	audio_levels = levels.duplicate()
 	_apply_audio_levels()  # no-op headless; buses are live otherwise

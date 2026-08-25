@@ -167,6 +167,9 @@ const UNLOCK_MODIFIERS := {
 		{"id": "yield_basic_salt_2", "domain": "recipe_output", "target_match": {"good_internal": "basic_salt"}, "pct": 15.0, "label": "Automated Mine Dispatch", "source": "research:mining_yield"},
 	],
 	"research_petro_001": {"id": "rn_fractional_distillation", "domain": "recipe_output", "target_match": {"building_id": "b_011"}, "pct": 5.0, "label": "Fractional Distillation", "source": "research_node"},  # Fractional Distillation
+	# Tier I, added 2026-08-23 (owner): run a refinery for 10 turns. Same shape as
+	# Fractional Distillation above — b_011 is the Petrochemical Refinery.
+	"research_petro_021": {"id": "rn_specialised_petro_pipelines", "domain": "recipe_output", "target_match": {"building_id": "b_011"}, "pct": 5.0, "label": "Specialised Petrochemical Pipelines", "source": "research_node"},
 	"research_petro_002": {"id": "rn_catalytic_cracking", "domain": "building_power", "target_match": {"building_id": "b_011"}, "pct": -5.0, "label": "Catalytic Cracking", "source": "research_node"},  # Catalytic Cracking
 	# ── Oil extraction (b_032 oil_well · b_033 offshore_oil_platform · b_034 fracking_oil_well).
 	# These five were authored in research_unlocks.csv with explicit numbers but never wired,
@@ -184,6 +187,10 @@ const UNLOCK_MODIFIERS := {
 		{"id": "rn_microseismic_maint_well", "domain": "maintenance", "target_match": {"building_id": "b_032"}, "pct": -10.0, "label": "Microseismic Monitoring", "source": "research_node"},
 		{"id": "rn_microseismic_maint_frack", "domain": "maintenance", "target_match": {"building_id": "b_034"}, "pct": -10.0, "label": "Microseismic Monitoring", "source": "research_node"},
 	],
+	# Also unwired until the 25 Aug audit. The CSV says "building maintenance by 15% for 30
+	# turns" and means ALL buildings, so target_match is empty — which _target_matches reads as
+	# "everything", and this is the first modifier in the table to want that.
+	"research_renew_006": {"id": "rn_long_duration_storage", "domain": "maintenance", "target_match": {}, "pct": -15.0, "duration_turns": 30, "label": "Long Duration Storage", "source": "research_node"},  # Long Duration Storage
 	"research_petro_011": {"id": "rn_reservoir_stimulation", "domain": "recipe_output", "target_match": {"building_id": "b_032"}, "pct": 20.0, "duration_turns": 30, "label": "Reservoir Stimulation", "source": "research_node"},  # Reservoir Stimulation
 	"research_petro_009": {"id": "rn_subsea_tieback", "domain": "recipe_output", "target_match": {"building_id": "b_033"}, "pct": 10.0, "label": "Subsea Tieback Systems", "source": "research_node"},  # Subsea Tieback Systems
 	"research_petro_012": {"id": "rn_multiphase_subsea_boosting", "domain": "recipe_output", "target_match": {"building_id": "b_033"}, "pct": 10.0, "label": "Multiphase Subsea Boosting", "source": "research_node"},  # Multiphase Subsea Boosting
@@ -267,6 +274,9 @@ const UNLOCK_MODIFIERS := {
 	# / EconomyConfig.WAREHOUSE_STORAGE_CAP), so no standing modifier is registered here.
 	"research_infra_004": {"id": "rn_substation_layouts", "domain": "transport_throughput", "target_match": {"mode": "cables"}, "pct": 25.0, "label": "Substation Layouts", "source": "research_node"},  # Substation Layouts
 	"research_infra_020": {"id": "rn_smart_traffic_control", "domain": "transport_throughput", "target_match": {"mode": "roads"}, "pct": 25.0, "label": "Smart Traffic Control", "source": "research_node"},  # Smart Traffic Control
+	# Authored with a number in research_unlocks.csv and never wired, so the player unlocked it
+	# and the roads did nothing (owner audit, 25 Aug). Same shape as Smart Traffic Control above.
+	"research_infra_034": {"id": "rn_electrified_road_haul", "domain": "transport_throughput", "target_match": {"mode": "roads"}, "pct": 25.0, "label": "Electrified Road Haul", "source": "research_node"},  # Electrified Road Haul
 	"research_infra_023": {"id": "rn_electrified_rolling_stock", "domain": "transport_throughput", "target_match": {"mode": "rail"}, "pct": 25.0, "label": "Electrified Rolling Stock", "source": "research_node"},  # Electrified Rolling Stock
 	"research_infra_032": {"id": "rn_leak_detection_networks", "domain": "transport_throughput", "target_match": {"mode": "pipes"}, "pct": 25.0, "label": "Leak-Detection Networks", "source": "research_node"},  # Leak-Detection Networks
 	"research_infra_035": {"id": "rn_dynamic_line_rating", "domain": "transport_throughput", "target_match": {"mode": "cables"}, "pct": 25.0, "label": "Dynamic Line Rating", "source": "research_node"},  # Dynamic Line Rating

@@ -9,8 +9,22 @@ enum Phase { DECIDE, PROCESS, SEND, AI, NARRATIVE, RECEIVE }
 # Last playable turn. The player gets MAX_TURNS decision phases (turns 1..MAX_TURNS).
 # After committing the final turn, current_turn ticks to MAX_TURNS + 1 and the game
 # soft-ends: DECIDE still fires so UI can show victory/defeat overlays, but
-# commit_turn() becomes a no-op. Edit this constant to lengthen or shorten the game.
-const MAX_TURNS := 300
+# commit_turn() becomes a no-op.
+#
+# A VARIABLE, not a constant, since the New Game panel's length selector became real:
+# it collected `speed_turns` into the ruleset and NOTHING EVER READ IT, so every game
+# ran 300 turns whichever length was picked. apply_ruleset() is now the one place that
+# answers it, and everything downstream that scales off the campaign length — the
+# research free-unlock schedule, the turn counter, the grid-carbon ramp — follows for
+# free because they all read this.
+const DEFAULT_MAX_TURNS := 300
+var MAX_TURNS: int = DEFAULT_MAX_TURNS
+
+## Set the campaign length from the match ruleset. Falls back to the campaign default so
+## a save without the key, or a harness that never sets one, behaves exactly as before.
+func apply_ruleset(ruleset: Dictionary) -> void:
+	var turns := int(ruleset.get("speed_turns", DEFAULT_MAX_TURNS))
+	MAX_TURNS = turns if turns > 0 else DEFAULT_MAX_TURNS
 
 const _RESOLUTION_PHASES: Array = [
 	Phase.PROCESS,

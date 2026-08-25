@@ -33,7 +33,46 @@ var _at_capacity: Dictionary = {}  # tile_key -> bool
 var _peak_used: Dictionary = {}    # tile_key -> int, highest used capacity since the turn began
 var _refused: Dictionary = {}      # tile_key -> int, units the cap turned away since then
 
+# --- Per-tile FILL HISTORY, for the transport panel's trend arrow and its estimate of
+# turns-until-full. tile_key -> Array[int] of used capacity, newest last, capped at
+# FILL_HISTORY_TURNS. Sampled once per turn in roll_turn_peaks (which already runs at
+# the top of PROCESS), so a sample is one turn's settled level rather than a mid-turn
+# reading that production or a sale is still moving.
+const FILL_HISTORY_TURNS := 4
+var _fill_history: Dictionary = {}
+
 signal stockpile_changed()
+
+## stockpile_changed carries no argument, so every listener rebuilds itself in full whenever
+## it fires — and there are ~80 of them: the tile panel, the transport panel, the stockpile
+## overlay, and one row per good in the resource panel.
+##
+## The signal used to fire once per MUTATION, and a single market sale mutates once per good.
+## Selling a tile's surplus therefore rebuilt every one of those listeners ten-odd times in
+## one frame, for a result identical to rebuilding them once. That is the shape of the
+## multi-second freeze a playtester hit on "Sell surplus to market".
+##
+## So mutations now MARK, and the signal fires once, deferred to the end of the frame. Nothing
+## reads stockpile state through the signal — listeners re-read Stockpile directly — so a
+## coalesced edge carries exactly the same information as the last of a burst.
+var _change_pending := false
+
+func _mark_changed() -> void:
+	if _change_pending:
+		return
+	_change_pending = true
+	_emit_change.call_deferred()
+
+func _emit_change() -> void:
+	if not _change_pending:
+		return
+	_change_pending = false
+	stockpile_changed.emit()
+
+## Publish any pending change NOW. For callers that mutate and then immediately read a
+## listener's rendered state — the tests do this — rather than waiting a frame.
+func flush_changes() -> void:
+	_emit_change()
 # Fired the moment a tile crosses from below to at/over its storage capacity. The
 # capacity dialog listens to this to prompt the player (sell surplus / expand / stop).
 signal tile_reached_capacity(tile_id: String)
@@ -76,7 +115,7 @@ func set_warehouse_level(coord, level: int) -> void:
 	else:
 		_warehouse_levels[key] = clamped
 	_at_capacity.erase(key)  # capacity changed: let the full-latch re-evaluate
-	stockpile_changed.emit()
+	_mark_changed()
 
 # Warehouse level = 1 + the number of storage-research upgrades unlocked (empire-wide),
 # capped at the top table level. The two upgrades chain (Pallet Racking → Automated
@@ -142,7 +181,7 @@ func add(coord, good_id: String, qty: int) -> int:
 	var tile_stockpile := _stockpile_for_tile(coord, true)
 	tile_stockpile[good_id] = int(tile_stockpile.get(good_id, 0)) + added
 	_note_peak(coord)
-	stockpile_changed.emit()
+	_mark_changed()
 	_check_capacity(coord)
 	return added
 
@@ -169,7 +208,7 @@ func consume(coord, good_id: String, qty: int) -> int:
 		else:
 			tile_stockpile.erase(good_id)
 		_prune_empty_tile(coord)
-		stockpile_changed.emit()
+		_mark_changed()
 		_check_capacity(coord)
 	return taken
 
@@ -209,7 +248,7 @@ func consume_anywhere(good_id: String, qty: int) -> int:
 		taken += tile_taken
 		remaining -= tile_taken
 	if taken > 0:
-		stockpile_changed.emit()
+		_mark_changed()
 	return taken
 
 func clear_all() -> void:
@@ -219,7 +258,8 @@ func clear_all() -> void:
 	_capacity_lost_this_turn = 0
 	_peak_used.clear()
 	_refused.clear()
-	stockpile_changed.emit()
+	_fill_history.clear()
+	_mark_changed()
 
 # --- Save/load (orchestrated by the SaveLoad autoload; docs/save_load_spec.md) ---
 
@@ -231,6 +271,7 @@ func export_state() -> Dictionary:
 		"warehouse_levels": _warehouse_levels.duplicate(true),
 		"peak_used": _peak_used.duplicate(),
 		"refused": _refused.duplicate(),
+		"fill_history": _fill_history.duplicate(true),
 	}
 
 func import_state(d: Dictionary) -> void:
@@ -239,6 +280,7 @@ func import_state(d: Dictionary) -> void:
 	_warehouse_levels = (d.get("warehouse_levels", {}) as Dictionary).duplicate(true)
 	_peak_used = (d.get("peak_used", {}) as Dictionary).duplicate()
 	_refused = (d.get("refused", {}) as Dictionary).duplicate()
+	_fill_history = (d.get("fill_history", {}) as Dictionary).duplicate(true)
 	_at_capacity.clear()
 	_capacity_lost_this_turn = 0
 
@@ -269,10 +311,51 @@ func reset_capacity_lost_this_turn() -> void:
 ## seeded with its current level, so a tile that begins the turn full reads full even if
 ## nothing further lands on it.
 func roll_turn_peaks() -> void:
+	# Sample the level the finished turn LEFT before the new turn's marks are seeded:
+	# the trend and the fill estimate both want settled levels, one per turn.
+	_sample_fill_history()
 	_peak_used.clear()
 	_refused.clear()
 	for tile_key in _by_tile.keys():
 		_peak_used[tile_key] = get_used_capacity(tile_key)
+
+func _sample_fill_history() -> void:
+	for tile_key in _by_tile.keys():
+		var hist: Array = _fill_history.get(tile_key, [])
+		hist.append(get_used_capacity(tile_key))
+		if hist.size() > FILL_HISTORY_TURNS:
+			hist = hist.slice(hist.size() - FILL_HISTORY_TURNS)
+		_fill_history[tile_key] = hist
+	# A tile emptied to nothing is pruned from _by_tile, so drop its history too rather
+	# than leaving a stale trend behind for a tile that no longer holds anything.
+	for tile_key in _fill_history.keys():
+		if not _by_tile.has(tile_key):
+			_fill_history.erase(tile_key)
+
+## Settled used-capacity readings for a tile, oldest first (at most FILL_HISTORY_TURNS).
+func get_fill_history(coord) -> Array:
+	return (_fill_history.get(_tile_key(coord), []) as Array).duplicate()
+
+## Average change in used capacity per turn across the recorded history, using the last
+## `turns` steps. 0.0 when there is not yet a second sample to difference against.
+func fill_trend_per_turn(coord, turns: int = 3) -> float:
+	var hist: Array = _fill_history.get(_tile_key(coord), [])
+	if hist.size() < 2:
+		return 0.0
+	var span: int = mini(turns + 1, hist.size())
+	var window: Array = hist.slice(hist.size() - span)
+	return float(int(window[window.size() - 1]) - int(window[0])) / float(window.size() - 1)
+
+## Estimated turns until this tile's storage is full at the current rate of change.
+## -1 when it is not filling (flat or draining) — there is no honest number there.
+func turns_until_full(coord, turns: int = 3) -> int:
+	var rate := fill_trend_per_turn(coord, turns)
+	if rate <= 0.0:
+		return -1
+	var room := float(get_capacity(coord) - get_used_capacity(coord))
+	if room <= 0.0:
+		return 0
+	return int(round(room / rate))
 
 ## Highest storage this tile held at any point in the turn — NOT the same number as
 ## get_used_capacity(), which is the end-of-turn residue the Stockpile tab shows.

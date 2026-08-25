@@ -2,7 +2,6 @@
 
 [ext_resource type="StyleBox" uid="uid://lwmbvk8gve6r" path="res://assets/navy_opaque_style_box.tres" id="1_ls4bu"]
 [ext_resource type="Script" uid="uid://c662pbb48ej1o" path="res://scripts/resource_panel.gd" id="2_48lnh"]
-[ext_resource type="PackedScene" uid="uid://d3hty384xemad" path="res://scenes/resource_row.tscn" id="2_eqtha"]
 
 [node name="ResourcePanel" type="PanelContainer" unique_id=628861186]
 visible = false
@@ -10,7 +9,7 @@ anchors_preset = 4
 anchor_top = 0.5
 anchor_bottom = 0.5
 offset_top = -300.0
-offset_right = 460.0
+offset_right = 1040.0
 offset_bottom = 300.0
 grow_vertical = 2
 theme_override_styles/panel = ExtResource("1_ls4bu")
@@ -82,5 +81,3 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 4
 
-[node name="ResourceRow" parent="MarginContainer/VBoxContainer/ScrollContainer/ContentVBox" unique_id=750221307 instance=ExtResource("2_eqtha")]
-layout_mode = 2

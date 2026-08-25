@@ -6,8 +6,13 @@ extends Control
 # Up to MAX_TOASTS per stack; oldest is dropped immediately when exceeded.
 # Each toast auto-dismisses (with fade) after TOAST_DURATION seconds.
 
-const MAX_TOASTS := 4
-const TOAST_DURATION := 4.0
+# Cap per stack. Raised from 4 (owner, 23 Aug): the oldest toast is dropped the INSTANT
+# the cap is exceeded, whatever is left of its timer, so on a busy turn — several
+# buildings finishing, a loan, a shipment landing — a toast could be gone in a fraction
+# of a second. That is a large part of what "the toasts are too short lived" meant; the
+# stack simply rises higher now.
+const MAX_TOASTS := 6
+const TOAST_DURATION := 5.0   # owner, 23 Aug
 const FADE_DURATION := 0.35
 const TOAST_WIDTH := 380.0
 # Bottom-left stack for success toasts, sitting under the Construct panel.
@@ -138,6 +143,11 @@ func _on_money_changed(new_amount: float) -> void:
 
 func show_error(message: String) -> void:
 	_push_toast(_success_stack, message, TOAST_WARNING)
+
+## A build the map turned away. Bottom-CENTRE rather than the bottom-left stack: the construct
+## panel stays open on a refusal now, and it covers the left stack completely.
+func show_blocked(message: String) -> void:
+	_push_toast(_warning_stack, message, TOAST_WARNING)
 
 func show_caution(message: String) -> void:
 	_push_toast(_success_stack, message, TOAST_CAUTION)

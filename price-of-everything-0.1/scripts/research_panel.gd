@@ -1,5 +1,6 @@
 extends Control
 
+const HexStamp := preload("res://scripts/hex_stamp.gd")
 const BRASS_FRAME_TEXTURE: Texture2D = preload("res://assets/ui/brass_pipe_frame_transparent.png")
 const PANEL_TITLE_FONT: Font = preload("res://assets/fonts/BebasNeue-Regular.ttf")
 const TITLE_FONT: Font = preload("res://assets/fonts/BarlowCondensed-SemiBold.ttf")
@@ -108,6 +109,11 @@ var _tab_unselected_style: StyleBoxFlat
 var _close_button: Button
 var _search_input: LineEdit
 var _search_query := ""
+## Set when the tree was opened by a LINK to one named tech rather than by typing. The
+## ordinary matcher searches title, description and category by substring — right for
+## hunting, wrong for a link, which must land on the one node it names and nothing else.
+## Cleared as soon as the player edits the box, which puts them back in hunting mode.
+var _search_exact_title := ""
 var _stamp_font: Font
 var _dragging_tree := false
 var _free_unlocks := 0
@@ -187,8 +193,22 @@ func _create_search_input() -> void:
 	add_child(_search_input)
 
 
+## Open (or refocus) the tree with `query` already in the search box. Called via
+## MatchState.research_search_requested, so any panel can link to a tech without knowing
+## where the research panel lives.
+func open_with_search(query: String, exact_title: bool = false) -> void:
+	show()
+	if _search_input != null:
+		_search_input.text = query
+	_on_search_changed(query)
+	# After _on_search_changed, which clears it — a link sets it, typing never does.
+	_search_exact_title = query if exact_title else ""
+	queue_redraw()
+
 func _on_search_changed(text: String) -> void:
 	_search_query = text
+	if text != _search_exact_title:
+		_search_exact_title = ""
 	# Results are drawn as a flat rank layout across every category, so the stored
 	# per-category pan/zoom would leave them off-screen. Reset the view each keystroke.
 	_category_view_state.erase(_selected_category)
@@ -870,7 +890,10 @@ func _category_unlocks(category: String) -> Array[Dictionary]:
 	if query != "":
 		var hits: Array[Dictionary] = []
 		for unlock in _unlock_rows:
-			if _unlock_matches(unlock, query):
+			if _search_exact_title != "":
+				if str(unlock.get("title", "")).to_lower() == _search_exact_title.to_lower():
+					hits.append(unlock)
+			elif _unlock_matches(unlock, query):
 				hits.append(unlock)
 		return hits
 	var rows: Array[Dictionary] = [_category_root_unlock(category)]
@@ -1275,89 +1298,35 @@ func _draw_rank_stamp(rank: String, rect: Rect2, zoom: float) -> void:
 func _rank_stamp_color(rank: String) -> Color:
 	return _rank_shared_color(rank)
 
-func _rank_shared_color(rank: String) -> Color:
-	match rank:
-		"I":
-			return Color(0.62, 0.25, 0.16, 0.58)
-		"II":
-			return Color(0.62, 0.66, 0.67, 0.58)
-		"III":
-			return Color(0.78, 0.57, 0.18, 0.58)
-		_:
-			return Color(0.58, 0.39, 0.20, 0.58)
+## Every tier is GOLD (owner 2026-08-23). It used to run bronze / silver / gold by rank,
+## which read as a quality ladder — a Tier I tech looking cheaper than a Tier III one — when
+## the rank is only how deep in the tree it sits. The CATEGORY hexes down the left keep their
+## own colours; they are what actually distinguishes one branch from another.
+const RANK_GOLD := Color(0.78, 0.57, 0.18, 0.58)
 
+func _rank_shared_color(_rank: String) -> Color:
+	return RANK_GOLD
+
+# The stamp geometry and its metal now live in hex_stamp.gd, so the end screen's victory
+# crests are the SAME chrome rather than a second drawing of it. These stay as the panel's
+# own names because the draw code below reads better with them.
 func _hex_points(rect: Rect2) -> PackedVector2Array:
-	var left := rect.position.x
-	var right := rect.end.x
-	var top := rect.position.y
-	var bottom := rect.end.y
-	var middle_y := rect.get_center().y
-	var bevel := rect.size.x * 0.22
-	return PackedVector2Array([
-		Vector2(left + bevel, top),
-		Vector2(right - bevel, top),
-		Vector2(right, middle_y),
-		Vector2(right - bevel, bottom),
-		Vector2(left + bevel, bottom),
-		Vector2(left, middle_y),
-	])
+	return HexStamp.hex_points(rect)
 
 func _rounded_hex_points(rect: Rect2, corner_radius: float) -> PackedVector2Array:
-	return _rounded_polygon_points(_hex_points(rect), corner_radius)
+	return HexStamp.rounded_hex_points(rect, corner_radius)
 
 func _rounded_polygon_points(vertices: PackedVector2Array, corner_radius: float) -> PackedVector2Array:
-	if vertices.size() < 3:
-		return vertices
-
-	var points := PackedVector2Array()
-	for index in vertices.size():
-		var current := vertices[index]
-		var previous := vertices[(index - 1 + vertices.size()) % vertices.size()]
-		var next := vertices[(index + 1) % vertices.size()]
-		var radius := minf(corner_radius, minf(current.distance_to(previous), current.distance_to(next)) * 0.42)
-		var from_point := current + (previous - current).normalized() * radius
-		var to_point := current + (next - current).normalized() * radius
-		for step in 5:
-			var t := float(step) / 4.0
-			var a := from_point.lerp(current, t)
-			var b := current.lerp(to_point, t)
-			points.append(a.lerp(b, t))
-	return points
+	return HexStamp.rounded_polygon_points(vertices, corner_radius)
 
 func _draw_rounded_edge_lighting(points: PackedVector2Array, rect: Rect2, width: float, light_color: Color, shadow_color: Color) -> void:
-	if points.size() < 2:
-		return
-
-	var center_sum := rect.get_center().x + rect.get_center().y
-	for index in points.size():
-		var start := points[index]
-		var end := points[(index + 1) % points.size()]
-		var mid := (start + end) * 0.5
-		var color := light_color if mid.x + mid.y <= center_sum else shadow_color
-		draw_line(start, end, color, width, true)
+	HexStamp.draw_rounded_edge_lighting(self, points, rect, width, light_color, shadow_color)
 
 func _solid_colors(count: int, color: Color) -> PackedColorArray:
-	var colors := PackedColorArray()
-	for index in count:
-		colors.append(color)
-	return colors
+	return HexStamp.solid_colors(count, color)
 
 func _hex_gradient_colors(points: PackedVector2Array, light_color: Color, dark_color: Color) -> PackedColorArray:
-	var bounds := Rect2()
-	var has_bounds := false
-	for point in points:
-		if has_bounds:
-			bounds = bounds.expand(point)
-		else:
-			bounds = Rect2(point, Vector2.ZERO)
-			has_bounds = true
-
-	var colors := PackedColorArray()
-	var denominator := maxf(bounds.size.x + bounds.size.y, 1.0)
-	for point in points:
-		var ratio := clampf(((point.x - bounds.position.x) + (point.y - bounds.position.y)) / denominator, 0.0, 1.0)
-		colors.append(light_color.lerp(dark_color, ratio))
-	return colors
+	return HexStamp.hex_gradient_colors(points, light_color, dark_color)
 
 func _with_alpha(color: Color, alpha: float) -> Color:
 	return Color(color.r, color.g, color.b, alpha)
@@ -1595,7 +1564,9 @@ func _requirement_details(unlock: Dictionary) -> String:
 		for node in _unlock_rows:
 			if str(node.get("category", "")) == category and _rank_value(node) == previous:
 				prior_tier_nodes += 1
-		var required_nodes := mini(3, prior_tier_nodes)
+		# From the gate itself, not a literal 3 — the threshold moved to 2 and this line is
+		# what the player reads to know what a tier costs.
+		var required_nodes := mini(MatchState.TIER_UNLOCK_THRESHOLD, prior_tier_nodes)
 		lines.append("Tier %s: unlock %d Tier %s node%s in %s" % [rank, required_nodes, previous, "" if required_nodes == 1 else "s", category])
 	return "\n".join(lines)
 

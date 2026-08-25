@@ -26,6 +26,17 @@ const TUTORIAL_START := "res://data/starts/tutorial.json"
 const NEW_GAME_BOTTOM_GAP := 90.0   # panel stops this far above the screen bottom (board peeks beneath); low enough that the Start CTA sits on the panel, not the board
 
 const PANEL_INSET := 24.0   # frame inset from the screen edges
+## The New Game panel holds the width a 1080p screen gives it and does not stretch past it.
+## Anchored across the whole right region it came out ~2,500px wide on the owner's ultrawide,
+## which pulled the seven start cards, the narrative line and the settings columns apart into
+## a band of whitespace with the content stranded in the middle of it.
+## 1396 is what a 1080p screen leaves between the navy block and the right inset, so a wide
+## display shows the panel at exactly the size a 1080p one does.
+const NEW_GAME_PANEL_W := 1396.0
+## ...and it opens this far right of the NAVY BLOCK behind the menu, not of the bordered frame
+## inside it. Measuring from the frame put the panel four pixels inside the navy and it read as
+## an overlap (owner, 25 Aug) — the block runs the full left quarter, the frame is inset in it.
+const NEW_GAME_PANEL_GAP := 20.0
 const SIDE_PAD := 30        # left/right padding inside the frame
 const EDGE_PAD := 44        # New Game from the top of the buttons / Quit from the bottom
 # The hexagonal metal logo floats above the button frame (outside it), inset in the left column.
@@ -46,6 +57,7 @@ var _map_editor_button: Button
 func _ready() -> void:
 	_build_menu()
 	_build_new_game_panel()
+	get_viewport().size_changed.connect(_layout_new_game_panel)
 	_build_tutorial_panel()
 	_build_hall_of_records_panel()
 	_build_tutorial_prompt()
@@ -57,11 +69,31 @@ func _ready() -> void:
 	term.cheats_unlocked.connect(_on_cheats_unlocked)
 	add_child(term)
 	Audio.play_music()   # looping main-menu theme (placeholder track)
-	# Warm the map scene off-thread while the player is on the menu: this pulls main.tscn and
-	# all its textures off disk into RAM on a worker thread (no main-thread cost, no frame drop),
-	# so the loading screen's threaded load returns instantly instead of spending ~1.8 s on I/O.
-	# Does NOT touch the Start-time freeze (that's main-thread instantiation + first-frame GPU).
-	ResourceLoader.load_threaded_request(MAP_SCENE)
+	# Warm the map's heavy ASSETS off-thread while the player is on the menu: textures, the
+	# tileset and audio come off disk into RAM on a worker thread (no main-thread cost, no
+	# frame drop), so the loading screen has less I/O left to do. Does NOT touch the
+	# Start-time freeze (that's main-thread compilation + instantiation + first-frame GPU).
+	#
+	# ASSETS, not the scene. Requesting main.tscn here asked a worker to compile its scripts,
+	# and a GDScript compiled on a loader thread cannot resolve preload() of a non-script
+	# asset — so the request failed every boot, spraying parse errors before the player had
+	# touched anything, and warmed nothing at all. The scripts are compiled on the main
+	# thread under the intro plates instead (LoadingScreen._warm_scene_scripts).
+	_warm_map_assets()
+
+
+## Ask a worker for every non-script dependency of the map scene. get_dependencies() reads
+## the scene header without loading it, so this list maintains itself.
+func _warm_map_assets() -> void:
+	for dep in ResourceLoader.get_dependencies(MAP_SCENE):
+		# Entries are either "res://path" or "uid://x::::res://path".
+		var at := String(dep).rfind("res://")
+		if at < 0:
+			continue
+		var path := String(dep).substr(at)
+		if path.ends_with(".gd") or path.ends_with(".tscn"):
+			continue   # compiling these off-thread is the thing that never worked
+		ResourceLoader.load_threaded_request(path)
 
 
 # Clicking New Game no longer launches immediately — it opens the settings panel,
@@ -149,14 +181,11 @@ func _on_back_requested() -> void:
 func _build_new_game_panel() -> void:
 	_goods_grid = get_node_or_null("GoodsGrid")
 	_new_game_panel = NewGamePanelScene.new()
-	# Occupy the right region (where the goods board is), matching the left frame inset.
-	_new_game_panel.anchor_left = 0.25
+	# Full height (less the gap that lets the goods board peek beneath); the horizontal
+	# geometry is fixed rather than anchored, so see _layout_new_game_panel.
 	_new_game_panel.anchor_top = 0.0
-	_new_game_panel.anchor_right = 1.0
 	_new_game_panel.anchor_bottom = 1.0
-	_new_game_panel.offset_left = PANEL_INSET
 	_new_game_panel.offset_top = PANEL_INSET
-	_new_game_panel.offset_right = -PANEL_INSET
 	_new_game_panel.offset_bottom = -NEW_GAME_BOTTOM_GAP   # leave room so the goods board shows beneath
 	_new_game_panel.visible = false
 	_new_game_panel.modulate.a = 0.0
@@ -164,6 +193,24 @@ func _build_new_game_panel() -> void:
 	_new_game_panel.start_requested.connect(_on_start_requested)
 	_new_game_panel.back_requested.connect(_on_back_requested)
 	add_child(_new_game_panel)
+	_layout_new_game_panel()
+
+
+## Left edge: the menu section ends at a quarter of the screen less its inset, and the panel
+## opens NEW_GAME_PANEL_GAP to the right of that. The width is FIXED — it does not follow the
+## screen — but clamped, so a display narrower than 1080p keeps the panel inside it instead of
+## running it off the right edge. Re-run on every resize, which is also what makes it right in
+## the editor's embedded window and in borderless fullscreen on a second monitor.
+func _layout_new_game_panel() -> void:
+	if _new_game_panel == null:
+		return
+	var vw: float = get_viewport_rect().size.x
+	var left: float = vw * 0.25 + NEW_GAME_PANEL_GAP
+	var w: float = minf(NEW_GAME_PANEL_W, maxf(320.0, vw - PANEL_INSET - left))
+	_new_game_panel.anchor_left = 0.0
+	_new_game_panel.anchor_right = 0.0
+	_new_game_panel.offset_left = left
+	_new_game_panel.offset_right = left + w
 
 
 func _show_new_game_panel() -> void:
