@@ -24,7 +24,8 @@ const WIDTH := 320.0
 const MIN_WIDTH := 180.0    # a very narrow module still needs a readable measure
 const PAD := 6              # owner: no more than 6px
 const FONT_SIZE := 14
-const MAX_LINES := 3        # then the text trims with an ellipsis
+const MAX_LINES := 4        # then the text trims with an ellipsis; short cards stay short
+const BORDER := 2           # owner: a heavier rim, so a card reads as a card
 ## The one word that says what happened, bolded and coloured by whether it is good news
 ## (owner 2026-08-24). A card is read in a glance on a busy turn boundary; the word is
 ## what the glance lands on, and its colour answers "do I care?" before the sentence does.
@@ -56,6 +57,7 @@ func _ready() -> void:
 	if sb is StyleBoxFlat:
 		var box := (sb as StyleBoxFlat).duplicate() as StyleBoxFlat
 		box.set_content_margin_all(0.0)
+		box.set_border_width_all(BORDER)
 		add_theme_stylebox_override("panel", box)
 	_build()
 
@@ -127,8 +129,10 @@ func _trim_to_lines(text: String) -> String:
 	return (kept if kept != "" else text.substr(0, 12)) + "…"
 
 
-## Bold and colour the first whole-word occurrence of `word`. BBCode is escaped first, so
-## a message that happens to contain a bracket cannot open a tag by accident.
+## Bold and colour the first occurrence of `word` — a PHRASE as often as a single word:
+## on a big-sale card the part worth seeing is "earned you £912", not the verb.
+## BBCode is escaped first, so a message that happens to contain a bracket cannot open a
+## tag by accident.
 func _mark(text: String, word: String, tone: String) -> String:
 	var safe := text.replace("[", "[lb]")
 	if word == "":

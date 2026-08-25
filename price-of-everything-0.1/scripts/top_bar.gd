@@ -2279,7 +2279,9 @@ func _money_anomalies(current: Dictionary, s: Dictionary) -> Array:
 
 	var revenue_base := _anomaly_baseline("revenue")
 	if revenue_base > 0.0 and float(current.revenue) >= revenue_base * ANOMALY_SPIKE_RATIO and _anomaly_ready("payment"):
-		hits.append({"id": "payment", "word": "sold", "tone": "good", "text": _big_payment_text(s)})
+		var pay := _big_payment_text(s)
+		hits.append({"id": "payment", "tone": "good",
+			"text": str(pay.get("text", "")), "word": str(pay.get("word", ""))})
 
 	# Each running-cost line is judged against its OWN baseline, so a labour jump is not
 	# hidden by a quiet turn for inputs. One generic sentence covers them all (owner).
@@ -2332,9 +2334,11 @@ func _cost_culprit(s: Dictionary, by_type_key: String) -> String:
 	return "%d buildings" % count if count > 0 else "our buildings"
 
 
-## The sale that made the turn. Names the good when one dominates the payout, because
-## "you sold 40 units of steel for £900" is actionable where "revenue was up" is not.
-func _big_payment_text(s: Dictionary) -> String:
+## The sale that made the turn, as {text, word}. Names the good when one dominates the
+## payout, because "you sold 40 units of steel for £900" is actionable where "revenue was
+## up" is not. `word` is the span the card colours: the MONEY, which is what the player is
+## looking for, rather than the verb that got it there (owner 2026-08-24).
+func _big_payment_text(s: Dictionary) -> Dictionary:
 	var sold: Dictionary = s.get("sold", {})
 	var top_id := ""
 	var top_revenue := 0.0
@@ -2351,9 +2355,13 @@ func _big_payment_text(s: Dictionary) -> String:
 			top_id = str(gid)
 			top_qty = int(entry.get("qty", 0))
 	if top_id != "" and total_revenue > 0.0 and top_revenue / total_revenue >= 0.5:
-		return "You sold %d units of %s to the global market, which earned you %s." % [
-			top_qty, Catalog.get_display_name(top_id), _money_text(top_revenue)]
-	return "You sold an unusually high %d units of %d goods." % [total_qty, sold.size()]
+		var earned := "earned you %s" % _money_text(top_revenue)
+		return {"word": earned,
+			"text": "You sold %d units of %s to the global market, which %s." % [
+				top_qty, Catalog.get_display_name(top_id), earned]}
+	var span := "%d units" % total_qty
+	return {"word": span,
+		"text": "You sold an unusually high %s of %d goods." % [span, sold.size()]}
 
 
 ## Power triggers, highest-priority first.
