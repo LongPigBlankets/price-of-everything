@@ -165,6 +165,14 @@ func _celebration_shot(bar: Node) -> void:
 	MiniQuest._on_turn_processed(_sum({"glass": 40, "silica": 20, "sand": 60}, {"silica": 12, "sand": 30}))
 	await _at(t0, 1.05)  # second flash peak-ish, label gone, tick nearly complete
 	await _shoot_module("res://quest_celebrate.png")
+	# A second frame with the tick FORCED complete, so the flat bottom can be judged without
+	# waiting for the exact instant the wipe finishes.
+	var mod = bar.get("_quest_btn")
+	if mod != null:
+		mod.glow = 0.9
+		mod.tick_progress = 1.0
+		await _settle(2)
+		await _shoot_module("res://quest_celebrate_full.png")
 	MiniQuest._on_state_reset()
 	bar._close_fly()
 
