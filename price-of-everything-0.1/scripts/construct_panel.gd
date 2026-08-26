@@ -135,7 +135,12 @@ func _setup_controls() -> void:
 
 func _on_visibility_changed() -> void:
 	if not visible:
+		PanelStack.remove(self)
 		return
+	# Owner 2026-08-26: like the V2 panel, this one was never registered with
+	# PanelStack at all, so Esc didn't close it either — every other panel
+	# pairs push() on show with remove() on hide.
+	PanelStack.push(self)
 	search_input.release_focus()
 	# Always reopen at the anchored home position (undo any prior drag).
 	_reset_position.call_deferred()

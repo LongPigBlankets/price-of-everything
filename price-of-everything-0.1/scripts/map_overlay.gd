@@ -3,6 +3,7 @@ extends Node2D
 const SliceMarkerScene: PackedScene = preload("res://scenes/slice_marker.tscn")
 const BuildModeHexOverlayScript: Script = preload("res://scripts/build_mode_hex_overlay.gd")
 const BuildModeBackdropScript: Script = preload("res://scripts/build_mode_backdrop.gd")
+const BuildCostPreviewScript: Script = preload("res://scripts/build_cost_preview.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const InfraIcons := preload("res://scripts/infra_icons.gd")
 const InfraMarkersScript := preload("res://scripts/infra_mapmode_markers.gd")
@@ -60,6 +61,11 @@ var build_legend: PanelContainer = null
 var _infra_markers: Node2D = null
 var _infra_built_pos: Dictionary = {}   # tile_id -> tile-centre world pos
 var _infra_hover_tile := ""
+
+# Build-mode hover: while placing a building (map click still to come), the tile
+# under the mouse shows the building/transport/land cost it would take there.
+var _build_hover_tile := ""
+var _build_cost_preview: Node2D = null
 
 # Infrastructure mapmode key -> the router's mode name (Catalog namespace).
 const INFRA_ROUTE_MODES := {
@@ -125,6 +131,7 @@ func _on_build_mode_entered(_building_id: String, recipe_id: String) -> void:
 	if recipe.is_empty():
 		return
 	_render_build_overlay(recipe)
+	set_process(true)   # drives the building/transport/land cost hover preview below
 
 func _on_build_mode_exited() -> void:
 	_clear_build_overlays()
@@ -135,6 +142,8 @@ func _clear_build_overlays() -> void:
 		if is_instance_valid(node):
 			node.queue_free()
 	build_overlays.clear()
+	_build_hover_tile = ""
+	_build_cost_preview = null
 
 func _render_build_overlay(recipe: Dictionary) -> void:
 	_add_build_backdrop()
@@ -616,20 +625,119 @@ func _render_infrastructure_overlay() -> void:
 	set_process(true)
 
 func _process(_delta: float) -> void:
-	if _infra_markers == null or not is_instance_valid(_infra_markers):
+	# Two independent hover systems share this one _process (GDScript allows only
+	# one override per script) — infra throughput-on-hover, and the build-mode
+	# cost preview added 2026-08-26. Each gates and early-outs on its own state;
+	# neither may unconditionally disable processing the other still needs.
+	var infra_active := _infra_markers != null and is_instance_valid(_infra_markers)
+	var build_hover_active := BuildMode.is_active and BuildMode.kind == BuildMode.Kind.BUILDING
+	if not infra_active and not build_hover_active:
 		set_process(false)
 		return
+	if infra_active:
+		var tile_id := terrain_layer.tile_id_under_mouse()
+		if not _infra_built_pos.has(tile_id):
+			tile_id = ""
+		if tile_id != _infra_hover_tile:
+			_infra_hover_tile = tile_id
+			if tile_id == "":
+				_infra_markers.set_hover(Vector2.INF, [])
+			else:
+				_infra_markers.set_hover(_infra_built_pos[tile_id],
+					_infra_hover_lines(tile_id, MapMode.infrastructure_selection))
+	if build_hover_active:
+		_update_build_cost_hover()
+
+
+## Building/transport/land cost preview (owner 2026-08-26) for whichever tile is
+## under the mouse while placing a building. Recomputes only when the hovered
+## tile actually changes — mirrors the infra branch above, and keeps this off
+## the per-frame cost even though _process runs every frame.
+func _update_build_cost_hover() -> void:
 	var tile_id := terrain_layer.tile_id_under_mouse()
-	if not _infra_built_pos.has(tile_id):
-		tile_id = ""
-	if tile_id == _infra_hover_tile:
+	if tile_id == _build_hover_tile:
 		return
-	_infra_hover_tile = tile_id
+	_build_hover_tile = tile_id
+	if _build_cost_preview != null and is_instance_valid(_build_cost_preview):
+		build_overlays.erase(_build_cost_preview)
+		_build_cost_preview.queue_free()
+		_build_cost_preview = null
 	if tile_id == "":
-		_infra_markers.set_hover(Vector2.INF, [])
-	else:
-		_infra_markers.set_hover(_infra_built_pos[tile_id],
-			_infra_hover_lines(tile_id, MapMode.infrastructure_selection))
+		return
+	var coord: Vector2i = terrain_layer.id_to_coord(tile_id)
+	if not terrain_layer.tiles.has(coord):
+		return
+	var rows := _build_cost_rows(tile_id)
+	if rows.is_empty():
+		return
+	var preview := Node2D.new()
+	preview.set_script(BuildCostPreviewScript)
+	preview.set("tile_size", _tile_size())
+	preview.set("rows", rows)
+	preview.position = _tile_world_pos(coord)
+	add_child(preview)
+	build_overlays.append(preview)
+	_build_cost_preview = preview
+
+
+## Building / transport / land cost for BuildMode.current_building_id on
+## `tile_id`, as if Confirm had been pressed there right now — the same pricing
+## Construction.materials_ledger and the confirm panel's land math already use
+## (MatchState.preview_buy for the goods/freight split, the same land-patch
+## arithmetic as _v3_compute_land), re-derived here as pure reads with no side
+## effects on any panel or sim state.
+func _build_cost_rows(tile_id: String) -> Array[String]:
+	var building_id: String = BuildMode.current_building_id
+	if building_id == "":
+		return []
+	var building: Dictionary = Catalog.get_building(building_id)
+	if building.is_empty():
+		return []
+
+	var missing: Dictionary = Construction.check_tile(tile_id, building_id).get("missing", {})
+	var goods_cost := 0.0
+	var transport_cost := 0.0
+	for good_id in missing:
+		var qty: int = int(missing[good_id])
+		var quote: Dictionary = MatchState.preview_buy(tile_id, str(good_id), qty)
+		if quote.is_empty():
+			var unit_price := MarketState.get_buy_price(str(good_id))
+			if unit_price <= 0.0:
+				unit_price = Catalog.get_base_price(str(good_id))
+			goods_cost += float(qty) * unit_price
+			continue
+		goods_cost += float(quote.get("goods_cost", 0.0))
+		transport_cost += float(quote.get("transport_cost", 0.0))
+	var building_cost: float = maxf(0.0, float(building.get("base_price", 0.0))) + goods_cost
+
+	var needed: int = int(round(maxf(0.0, float(building.get("tile_size_used", 1)))))
+	var owned: int = MatchState.get_tile_land_owned(tile_id)
+	var used: int = int(round(MatchState.get_tile_player_space_used(tile_id)))
+	var free: int = maxi(0, owned - used)
+	var land_row := "Land — none needed here"
+	if free < needed:
+		var short: int = needed - free
+		var for_sale: int = MatchState.get_tile_land_patches_available(tile_id)
+		if for_sale <= 0:
+			land_row = "Land — unavailable here"
+		else:
+			var patches: int = mini(int(ceil(float(short) / float(MatchState.LAND_PATCH_SIZE))), for_sale)
+			if free + patches * MatchState.LAND_PATCH_SIZE < needed:
+				land_row = "Land — short (only %d for sale)" % (patches * MatchState.LAND_PATCH_SIZE)
+			else:
+				var land_cost: float = MatchState.purchase_cost_after_advisor(
+					float(patches) * MatchState.LAND_PATCH_COST, {"tile_id": tile_id})
+				land_row = "Land  %s" % _preview_money(land_cost)
+
+	return [
+		"Building  %s" % _preview_money(building_cost),
+		"Transport  %s" % _preview_money(transport_cost),
+		land_row,
+	]
+
+
+func _preview_money(value: float) -> String:
+	return "£%d" % roundi(value)
 
 # Throughput card rows for a hovered built tile. Shipment-carried infra counts
 # the in-transit units whose route crosses this tile on this infra's network;

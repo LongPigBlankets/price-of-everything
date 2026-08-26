@@ -195,6 +195,7 @@ func _ready() -> void:
 	_test_construct_v3_ds()
 	await _test_construct_v3_confirm_layout()
 	await _test_construct_v3_1_iteration()
+	_test_build_cost_hover_preview()
 	_test_purchases()
 	_test_exhausted_input_source_falls_back_to_market()
 	_test_recipes_producing()
@@ -8978,19 +8979,74 @@ func _test_construct_v3_1_iteration() -> void:
 	panel._on_recipe_pressed("b_002", "r_005")
 	await get_tree().process_frame
 
-	# Materials table: header row present, and the new columns render.
-	_check(panel.find_child("V3RecipeToggle", true, false) != null
-		and panel.find_child("V3RecipeDiagram", true, false) != null,
-		"v3.1 recipe row: a collapse toggle and the diagram both exist")
-	var diagram: Control = panel.find_child("V3RecipeDiagram", true, false)
-	_check(not diagram.visible, "v3.1 recipe row: the diagram is collapsed by default")
-	var recipe_toggle: Button = panel.find_child("V3RecipeToggle", true, false)
-	recipe_toggle.pressed.emit()
-	await get_tree().process_frame
-	_check(diagram.visible, "v3.1 recipe row: tapping the summary expands the diagram")
-	recipe_toggle.pressed.emit()
-	await get_tree().process_frame
-	_check(not diagram.visible, "v3.1 recipe row: tapping again collapses it")
+	# Recipe: shown open by default, no collapse toggle (owner 2026-08-26 — the
+	# v3.1 collapse-by-default was reverted; it read as hiding the recipe, not
+	# demoting it).
+	_check(panel.find_child("V3RecipeToggle", true, false) == null,
+		"v3.1 recipe: no collapse toggle — the diagram is not hidden behind one")
+	var diagram: Control = panel.find_child("RecipeDiagramCard", true, false)
+	_check(diagram != null and diagram.visible,
+		"v3.1 recipe: the diagram renders open by default")
+
+	# Materials: 60px icons carrying the name as a tooltip (not row text), and
+	# every header/value column centred (owner 2026-08-26).
+	var mat_icon: Control = diagram.get_parent().find_child("*", false, false)   # placeholder, replaced below
+	var icon_row: HBoxContainer = null
+	for child in panel._content.get_children():
+		if child is HBoxContainer and (child as HBoxContainer).get_child_count() >= 4 \
+				and (child as HBoxContainer).get_child(0) is Control \
+				and not ((child as HBoxContainer).get_child(0) is Label):
+			icon_row = child
+			break
+	_check(icon_row != null, "v3.1 materials: a material row was found to inspect")
+	if icon_row != null:
+		var icon_ctrl: Control = icon_row.get_child(0)
+		_check(is_equal_approx(icon_ctrl.custom_minimum_size.x, 60.0)
+			and is_equal_approx(icon_ctrl.custom_minimum_size.y, 60.0),
+			"v3.1 materials: the good icon is 60x60")
+		_check(icon_ctrl.tooltip_text != "" and icon_ctrl.mouse_filter == Control.MOUSE_FILTER_PASS,
+			"v3.1 materials: the good name is a hover tooltip on the icon, not row text")
+		var has_left_label := false
+		for grandchild in icon_row.get_children():
+			if grandchild is Label and (grandchild as Label).horizontal_alignment == HORIZONTAL_ALIGNMENT_LEFT:
+				has_left_label = true
+		_check(not has_left_label, "v3.1 materials: no left-aligned name label remains in the row")
+		for grandchild in icon_row.get_children():
+			if grandchild is Label:
+				_check((grandchild as Label).horizontal_alignment == HORIZONTAL_ALIGNMENT_CENTER,
+					"v3.1 materials: every value column is centred (%s)" % (grandchild as Label).text)
+
+	# Materials totals: subtotal (unchanged reconciliation), a Cash fee line, and
+	# a Total that reconciles to the verdict's construction figure — the band
+	# explains itself without needing the verdict strip above it.
+	var subtotal_label: Label = panel.find_child("V3MaterialsSubtotal", true, false)
+	_check(subtotal_label != null
+		and subtotal_label.text == panel._money(float(panel.get("_v3_ledger").get("subtotal", -1.0))),
+		"v3.1 materials totals: the subtotal still reconciles to the ledger")
+	var total_label: Label = panel.find_child("V3MaterialsTotal", true, false)
+	_check(total_label != null and total_label.text == panel._money(panel._v3_construction_cost()),
+		"v3.1 materials totals: Total reconciles to the verdict strip's construction figure")
+
+	# The inaccurate "you choose each delivery" line is gone.
+	var stray_note := false
+	for child in panel._content.get_children():
+		if child is Label and (child as Label).text.contains("choose each delivery"):
+			stray_note = true
+	_check(not stray_note, "v3.1 materials: the inaccurate sourcing note is removed")
+
+	# Verdict facts (Build time / Buffer / Run rate / Payback) read larger and bold.
+	var build_time_value: Label = null
+	for grid in [panel.find_child("V3VerdictStrip", true, false)]:
+		pass
+	for child in panel.find_child("V3VerdictStrip", true, false).find_children("*", "GridContainer", true, false):
+		var grid_container := child as GridContainer
+		for i in grid_container.get_child_count():
+			var node := grid_container.get_child(i)
+			if node is Label and (node as Label).text == "Build time":
+				build_time_value = grid_container.get_child(i + 1) as Label
+	_check(build_time_value != null and build_time_value.get_theme_font_size("font_size") >= 15
+		and build_time_value.theme_type_variation == &"Numeric",
+		"v3.1 verdict facts: Build time's value is larger and bold (Numeric)")
 
 	# Footer: "cash after" (bank minus the confirm's total), not a bare restated total.
 	var footer_value: Label = panel.find_child("BuildCostValue", true, false)
@@ -9001,6 +9057,13 @@ func _test_construct_v3_1_iteration() -> void:
 	# No power-intermittent building selected — no priority-supply band at all.
 	_check(panel.find_child("V3AffordChip", true, false) != null,   # sanity: confirm actually rendered
 		"v3.1 priority supply: sanity — confirm rendered for the non-power fixture")
+
+	# Esc closes the construct panel (owner 2026-08-26): it had remove() but was
+	# missing push() entirely, so world_map's Esc handler never found it
+	# registered — every other panel pairs the two.
+	_check(PanelStack.top() == panel, "construct panel: registers with PanelStack on show")
+	_check(PanelStack.close_top() and not panel.visible,
+		"construct panel: Esc (PanelStack.close_top) closes it")
 
 	remove_child(panel)
 	panel.free()
@@ -9032,6 +9095,51 @@ func _test_construct_v3_1_iteration() -> void:
 		solar_panel.free()
 
 	MatchState.use_construct_panel_v3 = saved_v3
+	MatchState.reset()
+
+
+func _test_build_cost_hover_preview() -> void:
+	# v3.1 feedback (owner 2026-08-26): while placing a building on the map,
+	# hovering a candidate tile shows building/transport/land cost — a pure,
+	# read-only re-derivation of the same pricing the confirm panel uses.
+	# _build_cost_rows() touches no @onready state (terrain_layer), so the
+	# script can be probed standalone without adding it to the scene tree —
+	# same pattern as probing construct_panel_v2.gd's private helpers.
+	MatchState.reset()
+	MarketState._init_prices_from_catalog()
+	var overlay: Node2D = (load("res://scripts/map_overlay.gd") as GDScript).new()
+
+	# b_002 (Furnace) on a fresh tile_5_10: real land + material shortfalls, so
+	# every row should carry a genuine non-placeholder figure.
+	BuildMode.enter_build_mode("b_002", "r_005")
+	var rows: Array = overlay._build_cost_rows("tile_5_10")
+	_check(rows.size() == 3, "build hover: three rows (building / transport / land)")
+	_check(str(rows[0]).begins_with("Building"), "build hover: row 1 is the building cost")
+	_check(str(rows[1]).begins_with("Transport"), "build hover: row 2 is the transport cost")
+	_check(str(rows[2]).begins_with("Land"), "build hover: row 3 is the land line")
+	_check(not str(rows[2]).contains("none needed"),
+		"build hover: land is genuinely short on a tile that owns none")
+	_check(str(rows[0]) != "Building  £0",
+		"build hover: building cost is a real, non-zero figure")
+
+	# No active BuildMode session (or no building selected) — no rows, no crash.
+	BuildMode.exit_build_mode()
+	_check(overlay._build_cost_rows("tile_5_10").is_empty(),
+		"build hover: nothing to show once BuildMode is inactive")
+
+	# Read-only: computing the preview must never mutate land ownership or any
+	# other sim state — it's a hover, not a purchase.
+	var owned_before: int = MatchState.get_tile_land_owned("tile_5_10")
+	var money_before: float = MatchState.money
+	BuildMode.enter_build_mode("b_002", "r_005")
+	overlay._build_cost_rows("tile_5_10")
+	overlay._build_cost_rows("tile_5_10")   # twice — a cache/memo bug would show on repeat
+	_check(MatchState.get_tile_land_owned("tile_5_10") == owned_before
+		and is_equal_approx(MatchState.money, money_before),
+		"build hover: computing the preview never mutates land or money")
+
+	BuildMode.exit_build_mode()
+	overlay.free()
 	MatchState.reset()
 
 

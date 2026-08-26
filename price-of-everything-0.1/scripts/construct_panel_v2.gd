@@ -415,6 +415,11 @@ func _on_visibility_changed() -> void:
 	if not MatchState.use_construct_panel_v2:
 		hide()
 		return
+	# Owner 2026-08-26: Esc didn't close this panel — remove() was already here,
+	# but push() never was, so world_map's Esc handler (PanelStack.close_top())
+	# never found it registered. Every other panel pairs the two; this one was
+	# missing half the contract.
+	PanelStack.push(self)
 	_load_data()
 	_render()
 
@@ -1396,20 +1401,15 @@ func _render_confirm_v3() -> void:
 		_content.add_child(caption)
 
 	_content.add_child(_section_label("MATERIALS"))
-	var source_note := Label.new()
-	source_note.text = _v3_material_source_note()
-	source_note.add_theme_font_size_override("font_size", 11)
-	source_note.add_theme_color_override("font_color", _muted_tone())
-	_content.add_child(source_note)
 	for row in _v3_material_rows():
 		_content.add_child(row)
-	_content.add_child(_v3_materials_subtotal())
+	_content.add_child(_v3_materials_totals())
 
-	# The recipe survives, demoted below the decision bands and collapsed by
-	# default (v3.1, from the V4 iteration): reference material, not part of the
-	# verdict, so it opens on tap rather than always occupying the scroll.
+	# The recipe survives, demoted below the decision bands: reference material,
+	# not part of the verdict (owner 2026-08-26: shown open, not behind a tap —
+	# the v3.1 collapse-by-default read as hiding it, not demoting it).
 	_content.add_child(_section_label("RECIPE"))
-	_content.add_child(_v3_recipe_row(_selected_recipe))
+	_content.add_child(_recipe_diagram(_selected_recipe))
 
 	_v3_build_footer()
 	_v3_pulse_if_changed(_v3_total_cost())
@@ -1526,17 +1526,21 @@ func _v3_cash_facts() -> Control:
 	return facts
 
 
+## Owner 2026-08-26: these read as the panel's decisive facts, so they carry
+## more weight than a caption/value pair usually would — bigger and bold
+## (Numeric = SemiBold in this theme), not just a quiet key beside a value.
 func _v3_fact(grid: GridContainer, key: String, value: String, tone: Color, tip: String) -> void:
 	var key_label := Label.new()
 	key_label.text = key
-	key_label.add_theme_font_size_override("font_size", 11)
+	key_label.add_theme_font_size_override("font_size", 13)
 	key_label.add_theme_color_override("font_color", _muted_tone())
 	grid.add_child(key_label)
 	var value_label := Label.new()
 	value_label.text = value
+	value_label.theme_type_variation = "Numeric"
 	value_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	value_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	value_label.add_theme_font_size_override("font_size", 12)
+	value_label.add_theme_font_size_override("font_size", 15)
 	value_label.add_theme_color_override("font_color", tone)
 	if tip != "":
 		value_label.tooltip_text = tip
@@ -1830,6 +1834,7 @@ func _v3_cash_timeline() -> Control:
 	return plate
 
 
+const V3_MAT_ICON_SIZE := 60
 const V3_MAT_COL_ONTILE := 58
 const V3_MAT_COL_ELSEWHERE := 70
 const V3_MAT_COL_MARKET := 92
@@ -1859,16 +1864,13 @@ func _v3_material_rows() -> Array:
 func _v3_material_header() -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
-	var lead := Control.new()   # spacer matching the icon column below
-	lead.custom_minimum_size = Vector2(40, 0)
-	lead.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var lead := Label.new()   # header for the icon column — centred over it (owner 2026-08-26)
+	lead.text = "GOOD"
+	lead.custom_minimum_size = Vector2(V3_MAT_ICON_SIZE, 0)
+	lead.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lead.add_theme_font_size_override("font_size", 9)
+	lead.add_theme_color_override("font_color", _muted_tone())
 	row.add_child(lead)
-	var name := Label.new()
-	name.text = "GOOD"
-	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name.add_theme_font_size_override("font_size", 9)
-	name.add_theme_color_override("font_color", _muted_tone())
-	row.add_child(name)
 	for col in [
 		{"text": "ON TILE", "width": V3_MAT_COL_ONTILE, "tip": ""},
 		{"text": "ELSEWHERE", "width": V3_MAT_COL_ELSEWHERE,
@@ -1879,7 +1881,8 @@ func _v3_material_header() -> Control:
 		var head := Label.new()
 		head.text = str(col.text)
 		head.custom_minimum_size = Vector2(int(col.width), 0)
-		head.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		head.add_theme_font_size_override("font_size", 9)
 		head.add_theme_color_override("font_color", _muted_tone())
 		if str(col.tip) != "":
@@ -1892,21 +1895,22 @@ func _v3_material_header() -> Control:
 func _v3_material_row(entry: Dictionary) -> Control:
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", 8)
-	line.add_child(_good_icon(str(entry.get("good_id", "")), 40, -1, int(entry.get("need", 0))))
-	var name := Label.new()
-	name.text = str(entry.get("name", ""))
-	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	name.add_theme_font_size_override("font_size", 12)
-	name.add_theme_color_override("font_color", TEXT)
-	line.add_child(name)
+	# 60px icon (owner 2026-08-26: more visible), name dropped from the row and
+	# moved to a hover tooltip on the icon instead — _good_icon returns its
+	# holder with mouse_filter IGNORE (so it never blocks clicks elsewhere);
+	# PASS is needed here so the tooltip actually fires.
+	var icon := _good_icon(str(entry.get("good_id", "")), V3_MAT_ICON_SIZE, -1, int(entry.get("need", 0)))
+	icon.tooltip_text = str(entry.get("name", ""))
+	icon.mouse_filter = Control.MOUSE_FILTER_PASS
+	line.add_child(icon)
 	line.add_child(_v3_mat_figure(int(entry.get("have", 0)), V3_MAT_COL_ONTILE))
 	line.add_child(_v3_mat_figure(int(entry.get("elsewhere", 0)), V3_MAT_COL_ELSEWHERE))
 	var market := Label.new()
 	market.text = "~%s" % _money(float(entry.get("market_price", 0.0)))
 	market.custom_minimum_size = Vector2(V3_MAT_COL_MARKET, 0)
+	market.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	market.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	market.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	market.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	market.theme_type_variation = "Numeric"
 	market.add_theme_font_size_override("font_size", 12)
 	market.add_theme_color_override("font_color", _muted_tone())
@@ -1934,71 +1938,51 @@ func _v3_mat_figure(qty: int, col_width: int) -> Label:
 	var label := Label.new()
 	label.text = str(qty)
 	label.custom_minimum_size = Vector2(col_width, 0)
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.theme_type_variation = "Numeric"
 	label.add_theme_font_size_override("font_size", 12)
 	label.add_theme_color_override("font_color", TEXT if qty > 0 else _muted_tone())
 	return label
 
 
-func _v3_materials_subtotal() -> Control:
+## Materials subtotal, the flat cash fee (base_price — what construction costs
+## regardless of the kit), and a Total that reconciles to the verdict strip's
+## construction figure (owner 2026-08-26): the materials band is now
+## self-contained — it explains its own total instead of leaving the player to
+## do (construction total) − (materials subtotal) = "what's the rest?" in their head.
+func _v3_materials_totals() -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 3)
+	box.add_child(_v3_totals_row("Materials subtotal", float(_v3_ledger.get("subtotal", 0.0)),
+		"V3MaterialsSubtotal", false))
+	box.add_child(_v3_totals_row("Cash fee", maxf(0.0, float(_selected_building.get("base_price", 0.0))),
+		"", false))
+	box.add_child(DS.section_rule())
+	box.add_child(_v3_totals_row("Total", _v3_construction_cost(), "V3MaterialsTotal", true))
+	return box
+
+
+func _v3_totals_row(label_text: String, amount: float, node_name: String, emphasize: bool) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	var label := Label.new()
-	label.text = "Materials subtotal"
+	label.text = label_text
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	label.add_theme_font_size_override("font_size", 11)
-	label.add_theme_color_override("font_color", _muted_tone())
+	label.add_theme_font_size_override("font_size", 14 if emphasize else 11)
+	label.add_theme_color_override("font_color", TEXT if emphasize else _muted_tone())
 	row.add_child(label)
 	var value := Label.new()
-	value.name = "V3MaterialsSubtotal"
-	value.text = _money(float(_v3_ledger.get("subtotal", 0.0)))
+	if node_name != "":
+		value.name = node_name
+	value.text = _money(amount)
 	value.theme_type_variation = "Numeric"
-	value.add_theme_font_size_override("font_size", 13)
+	value.add_theme_font_size_override("font_size", 16 if emphasize else 13)
+	value.add_theme_color_override("font_color", TEXT)
 	row.add_child(value)
 	return row
-
-
-func _v3_material_source_note() -> String:
-	# No coordinates here — the site is named once, in the header (§2 copy rules).
-	match MatchState.construct_material_source:
-		"market":
-			return "Bought from the market as construction needs them."
-		"same_tile":
-			return "The site must already hold every material — nothing is bought."
-		"any_tile":
-			return "Pulled from your tiles with surplus; bought in if none have spare."
-		_:
-			return "You choose each delivery when construction starts."
-
-
-## Recipe, demoted and collapsed by default (v3.1, from the V4 iteration): a
-## one-line summary that expands to the full diagram card on tap. Reference
-## material, not part of the verdict — collapsing it keeps the panel reading as
-## a document, not a poster (spec §5), and stops it eating scroll space by default.
-func _v3_recipe_row(recipe: Dictionary) -> Control:
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 7)
-	var summary := _recipe_flow(recipe)
-	var toggle := Button.new()
-	toggle.name = "V3RecipeToggle"
-	toggle.text = "›  " + summary
-	toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	toggle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	toggle.custom_minimum_size = Vector2(0, 34)
-	toggle.focus_mode = Control.FOCUS_NONE
-	_style_button(toggle, NAVY_FIELD, NAVY_LINE, TEXT)
-	box.add_child(toggle)
-	var diagram := _recipe_diagram(recipe)
-	diagram.name = "V3RecipeDiagram"
-	diagram.visible = false
-	box.add_child(diagram)
-	toggle.pressed.connect(func() -> void:
-		diagram.visible = not diagram.visible
-		toggle.text = ("⌄  " if diagram.visible else "›  ") + summary)
-	return box
 
 
 ## Priority-supply preview (v3.1 stub, owner 2026-08-26): "stub the control, no
@@ -2642,6 +2626,7 @@ func _recipe_flow(recipe: Dictionary) -> String:
 
 func _recipe_diagram(recipe: Dictionary) -> PanelContainer:
 	var card := PanelContainer.new()
+	card.name = "RecipeDiagramCard"   # test/tutorial spotlight handle
 	var card_style := StyleBoxFlat.new()
 	card_style.bg_color = DIAGRAM_PAPER
 	card_style.set_corner_radius_all(2)
