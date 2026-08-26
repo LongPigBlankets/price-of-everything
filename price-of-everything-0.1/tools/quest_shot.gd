@@ -134,12 +134,16 @@ func _celebration_case() -> void:
 		[str(bar.get("_fly_open_id")), str(bar.get("_quest_open"))])
 	var t0: int = Time.get_ticks_msec()
 	MiniQuest._on_turn_processed(_sum({"glass": 40, "silica": 20, "sand": 60}, {"silica": 12, "sand": 30}))
+	# The flash is on the MODULE, and the flyout stays SHUT the whole time — that is the whole
+	# point of the change. So during the flash want_fly is "" (closed), and the module carries
+	# the glow and the tick. Only after 1.5 s does the flyout pop open on the next mission.
+	# During the flash the flyout is shut, so which accordion section is "open" is moot — want "".
 	await _at(t0, 0.35)
-	_celeb_sample(bar, t0, "flash", "quest", "integrate")
+	_celeb_sample(bar, t0, "flash", "", "")
 	await _at(t0, 0.75)
-	_celeb_sample(bar, t0, "half tick", "quest", "integrate")
+	_celeb_sample(bar, t0, "half tick", "", "")
 	await _at(t0, 1.25)
-	_celeb_sample(bar, t0, "tick drawn", "quest", "integrate")
+	_celeb_sample(bar, t0, "tick drawn", "", "")
 	await _at(t0, 1.90)
 	_celeb_sample(bar, t0, "moved on", "quest", "monetise")
 	await _at(t0, 5.20)
@@ -165,13 +169,13 @@ func _celebration_shot(bar: Node) -> void:
 	bar._close_fly()
 
 
+## The glow and tick are read off the MODULE now, not a flyout section — that is where the
+## animation moved. want_fly is what the flyout should be doing at this instant: "" through the
+## flash (shut), "quest" once the next mission has popped open.
 func _celeb_sample(bar: Node, t0: int, label: String, want_fly: String, want_open: String) -> void:
-	var sections: Dictionary = bar.get("_quest_sections")
-	var sect = sections.get("integrate") if sections != null else null
-	var glow: float = sect.glow if sect != null and is_instance_valid(sect) else -1.0
-	var tick: float = -1.0
-	if sect != null and is_instance_valid(sect) and sect.tick != null and is_instance_valid(sect.tick):
-		tick = sect.tick.progress
+	var mod = bar.get("_quest_btn")
+	var glow: float = mod.glow if mod != null and is_instance_valid(mod) else -1.0
+	var tick: float = mod.tick_progress if mod != null and is_instance_valid(mod) else -1.0
 	var fly := str(bar.get("_fly_open_id"))
 	var open := str(bar.get("_quest_open"))
 	print("[CELEB] %+5.2fs %-11s fly=%-5s open=%-9s glow=%.2f tick=%.2f  %s" %
@@ -241,13 +245,13 @@ func _quest_cases() -> void:
 		[str(MiniQuest.is_mission_complete("integrate")),
 		str(Modifiers.has(MiniQuest.REWARD_ID_INTEGRATE)), MiniQuest.title()])
 
-	# The third channel: the module itself pulses. A toast and a signal both firing still leaves
-	# the bar looking exactly as it did, which is most of what "no feedback" meant.
+	# The third channel: the module itself flashes on the bar. A toast and a signal both firing
+	# still leaves the bar looking exactly as it did, which is most of what "no feedback" meant.
 	if bar != null:
-		var pulse = bar.get("_quest_pulse")
-		print("[ANNOUNCE] module pulse=%s (rim now %s)" %
-			["running" if pulse != null and pulse.is_valid() else "NONE",
-			str(bar.get("_quest_btn").rim)])
+		var anim = bar.get("_quest_anim")
+		print("[ANNOUNCE] module flash=%s celebrating=%s" %
+			["running" if anim != null and anim.is_valid() else "NONE",
+			str(bar.get("_quest_celebrating"))])
 	print("[ANNOUNCE] signal=%s" % str(announced))
 	print("[ANNOUNCE] toast=%s" % str(toasts).replace("\n", " / "))
 
