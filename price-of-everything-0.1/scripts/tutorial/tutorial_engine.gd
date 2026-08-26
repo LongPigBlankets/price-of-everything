@@ -20,6 +20,16 @@ const PORT_PURCHASE_DISABLED_TOOLTIP := "This option is disabled during the tuto
 signal step_changed(id: String)
 
 var active: bool = false
+## Did this run reach the point where the post-tutorial missions make sense?
+##
+## The missions assume the setup the last steps build — the recipe switch that leaves the
+## furnace eating silica, or the smelter on carbochlorination. Finishing earns it; so does
+## skipping out at the second-to-last step, by which point the setup is done. Skipping before
+## that does not, and the bar stays clear rather than offering a chain the player never built.
+## Reset per run in start(), read by MiniQuest.is_available().
+var setup_reached: bool = false
+## How close to the end counts as "the setup is done" — the second-to-last step.
+const SETUP_STEPS_FROM_END := 2
 var hard_gate: bool = false  # true while a lock_panel step is up: Esc is swallowed (world_map)
 var _steps: Array = []
 var _index: int = -1
@@ -72,6 +82,7 @@ func _await_world_ready() -> void:
 func _start() -> void:
 	# Reset any prior run (autoload persists across scene changes).
 	_teardown_overlay()
+	setup_reached = false
 	_steps = TutorialSteps.steps()
 	if _steps.is_empty():
 		return
@@ -105,6 +116,8 @@ func _enter(i: int) -> void:
 	if _index < 0 or _index >= _steps.size():
 		_finish()
 		return
+	if _index >= _steps.size() - SETUP_STEPS_FROM_END:
+		setup_reached = true
 	_entry_turn = TurnManager.current_turn
 	_entry_market_sales_seen = _market_sales_seen
 	_entry_market_sale_counts = _market_sale_counts.duplicate()
