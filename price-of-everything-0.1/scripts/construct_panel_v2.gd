@@ -1421,16 +1421,11 @@ func _render_confirm_v3() -> void:
 			warn.add_theme_color_override("font_color", RED)
 			_content.add_child(warn)
 		_content.add_child(_v3_cash_timeline())
-		# Buffer / run rate / payback sit beside the timeline they explain (v3.1,
-		# from the V4 iteration) rather than crowding the always-visible verdict
-		# strip, which now carries only the total, build time and the chip.
+		# Payback sits beside the timeline it explains (owner 2026-08-26: Buffer
+		# and Run rate removed) rather than crowding the always-visible verdict
+		# strip, which now carries only the total and the durations.
 		_content.add_child(_v3_cash_facts())
-		var caption := Label.new()
-		caption.text = "Per turn, at today's prices: goods, freight, port fees, storage, power, labour and upkeep. Assumes it sells straight to market with any pipework already built."
-		caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		caption.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
-		caption.add_theme_color_override("font_color", _muted_tone())
-		_content.add_child(caption)
+		_content.add_child(_v3_calculation_note())
 
 	_content.add_child(_section_label("MATERIALS"))
 	for row in _v3_material_rows():
@@ -1453,7 +1448,12 @@ func _render_confirm_v3() -> void:
 func _v3_header_band() -> Control:
 	var band := HBoxContainer.new()
 	band.add_theme_constant_override("separation", 11)
-	band.add_child(_building_icon(_selected_building, 48))
+	# Same brushed-navy + silver-bezel metal plate as the Tile View building
+	# cards (owner 2026-08-26) — _building_icon alone is just the emboss layers,
+	# with no plate beneath it; TileBuildingCard IS the plate.
+	var icon_card := TileBuildingCard.new(6, 6, 8)
+	icon_card.add_child(_building_icon(_selected_building, 40))
+	band.add_child(icon_card)
 	var text_box := VBoxContainer.new()
 	text_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	text_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -1482,12 +1482,15 @@ func _v3_header_band() -> Control:
 	return band
 
 
-## Band 2 — the decision in one band (§2), kept minimal (v3.1, from the V4
-## iteration): itemised grand total, build time, affordability chip. Buffer, run
-## rate and payback moved to sit beside the cash timeline that explains them
-## (_v3_cash_facts) — the strip stays the one thing that's ALWAYS pinned. Fill
-## only, no border — borders carry semantics, and the strip is structure. The
-## double rule above it is the ledger's mark for a totals band.
+## Band 2 — the decision in one band (§2), pared down further (owner 2026-08-26):
+## just the grand total and how long it takes — no itemisation caption (that
+## reconciliation now lives in Materials, where Land's cost also moved), no
+## affordability chip (dropped — it read the future, which is exactly the
+## projection risk being avoided here, and the space cost wasn't earning it).
+## Cost and time are deliberately separate: the total is the ONLY money in this
+## band; everything below it is duration. Fill only, no border — borders carry
+## semantics, and the strip is structure. The double rule above it is the
+## ledger's mark for a totals band.
 func _v3_verdict_strip() -> Control:
 	var box := VBoxContainer.new()
 	box.name = "V3VerdictStrip"
@@ -1498,63 +1501,67 @@ func _v3_verdict_strip() -> Control:
 	strip.add_theme_stylebox_override("panel", _panel_style(NAVY_RAISED, NAVY_RAISED, 0, 9, 10))
 	box.add_child(strip)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 6)
+	col.add_theme_constant_override("separation", 4)
 	strip.add_child(col)
 
-	var total_row := HBoxContainer.new()
-	total_row.add_theme_constant_override("separation", 9)
-	col.add_child(total_row)
 	var total := Label.new()
 	total.name = "V3Total"
 	total.theme_type_variation = "Numeric"
 	total.add_theme_font_size_override("font_size", 20)
 	total.text = _money(_v3_total_cost())
 	_v3_verdict_total_label = total
-	total_row.add_child(total)
-	var itemised := Label.new()
-	if _buy_land_wanted and _land_purchase_cost > 0.0:
-		itemised.text = "Construction %s + Land %s" % [
-			_money(_v3_construction_cost()), _money(_land_purchase_cost)]
-	else:
-		itemised.text = "Construction"
-	itemised.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	itemised.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	itemised.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
-	itemised.add_theme_color_override("font_color", _muted_tone())
-	total_row.add_child(itemised)
-	total_row.add_child(_v3_afford_chip())
+	col.add_child(total)
 
-	var facts := GridContainer.new()
-	facts.columns = 2
-	facts.add_theme_constant_override("h_separation", 12)
-	facts.add_theme_constant_override("v_separation", 2)
-	col.add_child(facts)
+	# Materials arrival and build duration are two separate waits (§7 below) —
+	# the site can't start counting down build_duration until every required
+	# good is actually on it. Only knowable once a site is chosen.
+	var arrival_turns := _v3_materials_arrival_turns()
+	if _locked_tile_id != "" and arrival_turns > 0:
+		col.add_child(_v3_duration_line("%d turn%s for materials to arrive"
+			% [arrival_turns, "" if arrival_turns == 1 else "s"]))
 	var build_turns := int(_v3_forecast.get("build_turns", 0))
-	_v3_fact(facts, "Build time", "%d turn%s" % [build_turns, "" if build_turns == 1 else "s"], TEXT, "")
+	col.add_child(_v3_duration_line("%d turn%s to build" % [build_turns, "" if build_turns == 1 else "s"]))
 	return box
 
 
-## Buffer, run rate and payback (v3.1, moved out of the verdict strip — see
-## _v3_verdict_strip): placed right beside the cash timeline they explain instead
-## of crowding the band that has to stay pinned at every panel height.
+func _v3_duration_line(text: String) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
+	label.add_theme_color_override("font_color", TEXT)
+	return label
+
+
+## The slowest delivery among this build's still-missing materials (§7) — 0 when
+## everything needed is already on the tile, or when no tile is chosen yet.
+## Construction only starts its own countdown once every required good has
+## arrived (Construction.claim_materials), so the WORST line gates the whole wait.
+func _v3_materials_arrival_turns() -> int:
+	var worst := 0
+	for entry in _v3_ledger.get("rows", []):
+		var turns := int((entry as Dictionary).get("market_turns", 0))
+		if turns > worst:
+			worst = turns
+	return worst
+
+
+## Payback (owner 2026-08-26: Buffer and Run rate rows removed — the pre-revenue
+## cash story now lives entirely in the timeline + its per-phase figures, not
+## restated as separate facts beside it). Sits right after the cash timeline;
+## _v3_calculation_note() follows both with the hover explainer that used to be
+## an always-visible caption.
 func _v3_cash_facts() -> Control:
 	var facts := GridContainer.new()
 	facts.columns = 2
 	facts.add_theme_constant_override("h_separation", 14)
 	facts.add_theme_constant_override("v_separation", 5)
-	_v3_fact(facts, "Buffer", "needs %s in the bank to reach the first sale"
-		% _money(float(_v3_forecast.get("cash_needed", 0.0))), TEXT,
-		"What the building costs from the day it completes until its first sale lands: labour, upkeep, inputs, power and storage.")
 	var steady := float(_v3_forecast.get("steady_net", 0.0))
-	_v3_fact(facts, "Run rate", "%s/turn once selling" % _signed_money(steady),
-		GREEN if steady > 0.0 else RED, "")
 	var payback := BuildForecast.payback_turn(_v3_total_cost(),
 		float(_v3_forecast.get("cash_needed", 0.0)), steady,
 		int(_v3_forecast.get("first_selling_turn", 0)))
 	_v3_fact(facts, "Payback",
-		"pays back ~turn %d" % payback if payback > 0 else "never at today's prices",
-		TEXT if payback > 0 else RED,
-		"At today's prices: Construction, Land and every pre-revenue cost, earned back at the steady per-turn margin.")
+		"Turn %d" % payback if payback > 0 else "Never at today's prices",
+		TEXT if payback > 0 else RED, "")
 	return facts
 
 
@@ -1580,34 +1587,17 @@ func _v3_fact(grid: GridContainer, key: String, value: String, tone: Color, tip:
 	grid.add_child(value_label)
 
 
-## The RAG chip (§2): green = affordable incl. buffer · amber = affordable but the
-## buffer is not covered · red = cannot afford. Always states its verdict in words —
-## never colour-only. One of the four places a coloured border is allowed (§4).
-func _v3_afford_chip() -> Control:
-	var verdict := BuildForecast.affordability_verdict(_v3_total_cost(),
-		float(_v3_forecast.get("cash_needed", 0.0)), MatchState.money)
-	var text := "Affordable"
-	var tone := GREEN
-	match verdict:
-		"buffer_short":
-			text = "Buffer not covered"
-			tone = GOLD
-		"unaffordable":
-			text = "Can't afford"
-			tone = RED
-	var chip := PanelContainer.new()
-	chip.name = "V3AffordChip"
-	chip.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, tone, 1, 7, 5))
-	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	chip.tooltip_text = "Against current cash of %s: green covers the build and the buffer, amber covers the build only, red covers neither." % _money(MatchState.money)
-	chip.mouse_filter = Control.MOUSE_FILTER_PASS
-	var label := Label.new()
-	label.text = text
-	label.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
-	label.add_theme_color_override("font_color", tone)
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	chip.add_child(label)
-	return chip
+## Replaces the old always-visible assumptions caption (owner 2026-08-26): the
+## explanation is now a hover-only disclosure, so the always-on-screen space
+## cost is just one quiet line instead of two sentences of fine print.
+func _v3_calculation_note() -> Control:
+	var note := Label.new()
+	note.text = "How is this calculated?"
+	note.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
+	note.add_theme_color_override("font_color", _muted_tone())
+	note.tooltip_text = "Per turn, at market prices: goods, freight, port fees, storage, power, labour and upkeep. Assumes it sells straight to market with any pipework already built."
+	note.mouse_filter = Control.MOUSE_FILTER_PASS
+	return note
 
 
 ## Band 3 — requirements as a compact checklist (§3): passes collapse to one line
@@ -1689,7 +1679,6 @@ func _v3_land_requirement_row() -> Control:
 ## "build without this room" choice — it blocks Confirm with a stated reason,
 ## the same as any other requirement failure, never a silent dead end.
 func _v3_land_toggle_row(needed: int, free: int) -> Control:
-	var lots := "" if MatchState.LAND_PATCH_SIZE <= 1 else " (sold in lots of %d)" % MatchState.LAND_PATCH_SIZE
 	var outer := PanelContainer.new()
 	outer.add_theme_stylebox_override("panel",
 		_panel_style(NAVY_FIELD, GOLD if _buy_land_wanted else RED, 1, 9, 7))
@@ -1726,8 +1715,8 @@ func _v3_land_toggle_row(needed: int, free: int) -> Control:
 	line.add_child(glyph)
 
 	var label := Label.new()
-	label.text = "Buy %d Land on this tile · %s%s" % [
-		int(_v3_land.get("units", 0)), _money(float(_v3_land.get("cost", 0.0))), lots]
+	label.text = "Buy %d Land on this tile · %s" % [
+		int(_v3_land.get("units", 0)), _money(float(_v3_land.get("cost", 0.0)))]
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -1807,52 +1796,62 @@ func _v3_compute_land() -> Dictionary:
 ## Band 4 — the money story as a flowing timeline, not a table (§4): each phase is
 ## turn-range · name · £/turn, chained left to right. "Making, not yet paid" reads
 ## as "First production run" here.
+## Owner 2026-08-26: rebuilt as a row-major grid (matching BuildForecastTable's
+## established technique) instead of one VBox per phase — a per-column VBox let
+## a taller middle cell (e.g. "First production run" wrapping to 2 lines) push
+## that ONE column's money down, so the row no longer lined up with its
+## neighbours even though the code always added marker→name→money in the same
+## order. A GridContainer makes "turn always on top, name always in the middle,
+## money always on the bottom" a structural guarantee, not just an add-order
+## convention — every row's cells are true siblings sharing one shelf.
 func _v3_cash_timeline() -> Control:
 	var plate := PanelContainer.new()
 	plate.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, NAVY_FIELD, 0, 9, 8))
-	var flow := HBoxContainer.new()
-	flow.alignment = BoxContainer.ALIGNMENT_CENTER
-	flow.add_theme_constant_override("separation", 5)
-	plate.add_child(flow)
 	var phases: Array = _v3_forecast.get("phases", [])
-	for i in phases.size():
-		var phase: Dictionary = phases[i]
-		if i > 0:
-			var arrow := Label.new()
-			arrow.text = "→"
-			arrow.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-			arrow.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
-			arrow.add_theme_color_override("font_color", _muted_tone())
-			flow.add_child(arrow)
-		var cell := VBoxContainer.new()
-		cell.alignment = BoxContainer.ALIGNMENT_CENTER
-		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		cell.add_theme_constant_override("separation", 1)
-		flow.add_child(cell)
+	var grid := GridContainer.new()
+	grid.columns = maxi(1, phases.size())
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 3)
+	plate.add_child(grid)
+
+	for phase in phases:
 		var turns := int(phase.get("turns", 0))
 		var marker := Label.new()
 		marker.text = str(phase.get("range", "")) + ("  ·  %d turns" % turns if turns > 1 else "")
 		marker.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		marker.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		marker.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 		marker.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 		marker.add_theme_color_override("font_color", _muted_tone())
-		cell.add_child(marker)
+		grid.add_child(marker)
+	for phase in phases:
 		var name := Label.new()
 		name.text = str(V3_PHASE_LABELS.get(str(phase.get("kind", "")), str(phase.get("label", ""))))
 		name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		# Top-align within the row (owner 2026-08-26): a Label's default vertical
+		# fill CENTRES it inside whatever height the row ends up needing, so when
+		# one phase's name wraps to 2 lines and makes the whole row taller, every
+		# 1-line neighbour in that same row drifted down instead of staying level
+		# with it — the very row-alignment bug this grid rewrite was meant to fix.
+		name.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 		name.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 		name.add_theme_color_override("font_color", TEXT)
-		cell.add_child(name)
+		grid.add_child(name)
+	for phase in phases:
 		var per_turn := float(phase.get("per_turn", 0.0))
 		var money := Label.new()
 		money.text = _signed_money(per_turn) + ("/turn" if str(phase.get("kind", "")) == "selling" else "")
 		money.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		money.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		money.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 		money.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 		if str(phase.get("kind", "")) == "building":
 			money.add_theme_color_override("font_color", _muted_tone())
 		else:
 			money.add_theme_color_override("font_color", GREEN if per_turn >= 0.0 else RED)
-		cell.add_child(money)
+		grid.add_child(money)
 	return plate
 
 
@@ -1979,8 +1978,13 @@ func _v3_materials_totals() -> Control:
 		"V3MaterialsSubtotal", false))
 	box.add_child(_v3_totals_row("Cash fee", maxf(0.0, float(_selected_building.get("base_price", 0.0))),
 		"", false))
+	# Land's cost moved down here (owner 2026-08-26; was itemised in the verdict
+	# strip) — Total below now includes it, so it still reconciles to the big
+	# number at the top of the panel.
+	if _buy_land_wanted and _land_purchase_cost > 0.0:
+		box.add_child(_v3_totals_row("Land", _land_purchase_cost, "V3MaterialsLand", false))
 	box.add_child(DS.section_rule())
-	box.add_child(_v3_totals_row("Total", _v3_construction_cost(), "V3MaterialsTotal", true))
+	box.add_child(_v3_totals_row("Total", _v3_total_cost(), "V3MaterialsTotal", true))
 	return box
 
 

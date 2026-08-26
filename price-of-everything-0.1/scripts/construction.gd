@@ -118,6 +118,10 @@ func market_purchase_value(building_id: String) -> float:
 ##   market_price  reference estimate for buying the FULL need at today's buy price —
 ##                 always populated, unlike market_cost which is freight-inclusive
 ##                 and only covers the actual gap. Display-only; never summed.
+##   market_turns  delivery lead time for this line's gap (0 = already covered, or
+##                 no route quoted) — the confirm screen's "turns for materials to
+##                 arrive" is the MAX of this across every row, since construction
+##                 cannot start until every required good is on site.
 ##
 ## The "any_tile" source is deliberately priced as market here: which surplus tile
 ## would feed the build (and its freight) is only resolved by the delivery flow, so
@@ -134,19 +138,22 @@ func materials_ledger(building_id: String, tile_id: String) -> Dictionary:
 		var gap: int = need - from_stock
 		var market_qty := 0
 		var market_cost := 0.0
+		var market_turns := 0
 		var short := 0
 		if gap > 0:
 			if same_tile_only:
 				short = gap
 			else:
 				market_qty = gap
-				market_cost = _market_gap_cost(tile_id, str(good_id), gap)
+				var quote := _market_gap_quote(tile_id, str(good_id), gap)
+				market_cost = float(quote.get("cost", 0.0))
+				market_turns = int(quote.get("turns", 0))
 		rows.append({
 			"good_id": str(good_id),
 			"name": Catalog.get_display_name(str(good_id)),
 			"need": need, "have": have, "from_stock": from_stock,
 			"market_qty": market_qty, "market_cost": market_cost,
-			"short": short, "line_cost": market_cost,
+			"short": short, "line_cost": market_cost, "market_turns": market_turns,
 			"elsewhere": network_surplus_for_good(str(good_id), tile_id),
 			"market_price": _reference_market_price(str(good_id), need),
 		})
@@ -182,17 +189,18 @@ func network_surplus_for_good(good_id: String, exclude_tile_id: String) -> int:
 	return total
 
 
-## Market cost of buying `qty` of one good for a build: the tile-aware buy preview
-## (goods + freight) when a site is chosen, the plain buy price before one is.
-func _market_gap_cost(tile_id: String, good_id: String, qty: int) -> float:
+## Market quote for buying `qty` of one good for a build: {cost, turns}. Cost is
+## the tile-aware buy preview (goods + freight) when a site is chosen, else the
+## plain buy price with turns 0 (no route to quote a lead time from yet).
+func _market_gap_quote(tile_id: String, good_id: String, qty: int) -> Dictionary:
 	if tile_id != "":
 		var preview: Dictionary = MatchState.preview_buy(tile_id, good_id, qty)
 		if not preview.is_empty():
-			return float(preview.get("cost", 0.0))
+			return {"cost": float(preview.get("cost", 0.0)), "turns": int(preview.get("turns", 0))}
 	var unit_price := MarketState.get_buy_price(good_id)
 	if unit_price <= 0.0:
 		unit_price = Catalog.get_base_price(good_id)
-	return float(qty) * unit_price
+	return {"cost": float(qty) * unit_price, "turns": 0}
 
 
 # Whether the target tile holds every required material, and what's short.
