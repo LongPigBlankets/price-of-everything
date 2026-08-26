@@ -315,6 +315,8 @@ func _ready() -> void:
 		MatchState.money_changed.connect(_on_money_changed)
 	if not MatchState.construct_settings_changed.is_connected(_on_construct_settings_changed):
 		MatchState.construct_settings_changed.connect(_on_construct_settings_changed)
+	if not MatchState.construct_panel_v3_changed.is_connected(_on_construct_panel_v3_changed):
+		MatchState.construct_panel_v3_changed.connect(_on_construct_panel_v3_changed)
 	if not BuildMode.mode_exited_with_selection.is_connected(_on_build_mode_exited_with_selection):
 		BuildMode.mode_exited_with_selection.connect(_on_build_mode_exited_with_selection)
 	visibility_changed.connect(_on_visibility_changed)
@@ -408,6 +410,13 @@ func _on_money_changed(_new_amount: float) -> void:
 		_render()
 
 func _on_construct_settings_changed() -> void:
+	if visible:
+		_render()
+
+
+## The `swap construct_panel_v3` cheat flipped: re-render so the V3-gated visuals
+## (icon-plate keyline, confirm redesign as it lands) apply without reopening.
+func _on_construct_panel_v3_changed(_enabled: bool) -> void:
 	if visible:
 		_render()
 
@@ -1650,8 +1659,11 @@ func _good_icon(good_id: String, icon_size: int, plate_width: int = -1, qty: int
 	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var plate_style := StyleBoxFlat.new()
 	plate_style.bg_color = CREAM
-	plate_style.border_color = CREAM_SHADOW
-	plate_style.set_border_width_all(2)
+	# V3 drops the darker keyline around the cream plate — the plate reads as one
+	# clean pedestal instead of an outlined chip.
+	if not MatchState.use_construct_panel_v3:
+		plate_style.border_color = CREAM_SHADOW
+		plate_style.set_border_width_all(2)
 	plate_style.set_corner_radius_all(maxi(7, int(round(float(icon_size) * 0.16))))
 	plate.add_theme_stylebox_override("panel", plate_style)
 	holder.add_child(plate)
@@ -1837,8 +1849,10 @@ func _power_output_cell(qty: int, size_px: int = 62) -> Control:
 	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := StyleBoxFlat.new()
 	style.bg_color = CREAM
-	style.border_color = CREAM_SHADOW
-	style.set_border_width_all(2)
+	# Same V3 keyline removal as _good_icon — the power plate is the same pedestal.
+	if not MatchState.use_construct_panel_v3:
+		style.border_color = CREAM_SHADOW
+		style.set_border_width_all(2)
 	style.set_corner_radius_all(8)
 	plate.add_theme_stylebox_override("panel", style)
 	holder.add_child(plate)
@@ -2076,20 +2090,31 @@ func _on_confirm_pressed() -> void:
 		# and is filtered out of the locked list — but guard defensively anyway.
 		if _selected_recipe.is_empty():
 			return
-		# Buy the land FIRST, or the build is refused for the room it was about to have.
-		if _buy_land_wanted and _land_purchase_units > 0:
-			var patches := int(ceil(float(_land_purchase_units) / float(MatchState.LAND_PATCH_SIZE)))
-			if not MatchState.purchase_tile_land(_locked_tile_id, patches):
-				MatchState.request_toast(
-					"Could not buy the land on %s — the build needs it first."
-						% Catalog.tile_label(_locked_tile_id), "warning")
+		if MatchState.use_construct_panel_v3:
+			# V3: one intent. The land shortfall is bought inside the build attempt's own
+			# space gate (world_map._space_check_for_build via BuildMode.attempt_buy_land),
+			# so a build refused upstream of that gate can no longer leave the player
+			# owning land they bought for nothing.
+			if not BuildMode.attempt_direct_build(building_id,
+					str(_selected_recipe.get("recipe_id", "")), _locked_tile_id,
+					_buy_land_wanted and _land_purchase_units > 0):
+				# Refused — the map has already said why; keep the selection on screen.
 				return
-		if not BuildMode.attempt_direct_build(building_id,
-				str(_selected_recipe.get("recipe_id", "")), _locked_tile_id):
-			# Refused — no land, no room, sea. The map has already said which, so stay exactly
-			# as we are: the building, the recipe and the tile are all still chosen, and the
-			# player can buy the land or pick another tile without starting the selection over.
-			return
+		else:
+			# Buy the land FIRST, or the build is refused for the room it was about to have.
+			if _buy_land_wanted and _land_purchase_units > 0:
+				var patches := int(ceil(float(_land_purchase_units) / float(MatchState.LAND_PATCH_SIZE)))
+				if not MatchState.purchase_tile_land(_locked_tile_id, patches):
+					MatchState.request_toast(
+						"Could not buy the land on %s — the build needs it first."
+							% Catalog.tile_label(_locked_tile_id), "warning")
+					return
+			if not BuildMode.attempt_direct_build(building_id,
+					str(_selected_recipe.get("recipe_id", "")), _locked_tile_id):
+				# Refused — no land, no room, sea. The map has already said which, so stay exactly
+				# as we are: the building, the recipe and the tile are all still chosen, and the
+				# player can buy the land or pick another tile without starting the selection over.
+				return
 		MatchState.request_toast("Building %s on %s." % [str(_selected_building.get("display_name", "this building")), Catalog.tile_label(_locked_tile_id)], "info")
 		hide()
 		return

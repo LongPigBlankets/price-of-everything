@@ -191,6 +191,7 @@ func _ready() -> void:
 	_test_start_labour_preset()
 	_test_telemetry_schema3_row()
 	_test_build_forecast()
+	_test_construct_v3_sim()
 	_test_purchases()
 	_test_exhausted_input_source_falls_back_to_market()
 	_test_recipes_producing()
@@ -8693,6 +8694,99 @@ func _test_build_forecast() -> void:
 	var junk: Dictionary = BuildForecast.project("b_nope", "r_nope", "tile_5_10")
 	_check((junk.get("phases", []) as Array).is_empty(),
 		"forecast: unknown building/recipe yields no projection instead of crashing")
+
+func _test_construct_v3_sim() -> void:
+	# Phase-1 sim layer for the Construct V3 confirm redesign (gated in the UI behind
+	# the `swap construct_panel_v3` cheat): payback and affordability as shared
+	# helpers, the forecast's exported turn facts, the materials ledger the verdict
+	# strip reconciles against, and the single-intent buy-land build flag.
+
+	# Payback math: £100 build + £50 pre-revenue hole at +£50/turn from turn 10
+	# → three selling turns → paid back by the end of turn 12.
+	_check(BuildForecast.payback_turn(100.0, 50.0, 50.0, 10) == 12,
+		"v3 payback: capex plus the hole is earned back at steady_net per selling turn")
+	_check(BuildForecast.payback_turn(100.0, 50.0, 0.0, 10) == -1
+		and BuildForecast.payback_turn(100.0, 50.0, -5.0, 10) == -1,
+		"v3 payback: a building that never nets positive never pays back")
+	_check(BuildForecast.payback_turn(0.0, 0.0, 12.0, 7) == 7,
+		"v3 payback: nothing to earn back pays back the turn revenue first lands")
+
+	_check(BuildForecast.affordability_verdict(500.0, 300.0, 1000.0) == "ok",
+		"v3 affordability: build and buffer both covered")
+	_check(BuildForecast.affordability_verdict(500.0, 300.0, 600.0) == "buffer_short",
+		"v3 affordability: build covered but the pre-revenue buffer is not")
+	_check(BuildForecast.affordability_verdict(500.0, 300.0, 400.0) == "unaffordable",
+		"v3 affordability: cannot pay for the build at all")
+
+	MatchState.reset()
+	MarketState._init_prices_from_catalog()
+	var forecast: Dictionary = BuildForecast.project("b_002", "r_005", "tile_5_10")
+	_check(int(forecast.get("build_turns", -1)) >= 0
+		and int(forecast.get("first_selling_turn", 0)) > int(forecast.get("build_turns", 0)),
+		"v3 forecast: exports build_turns and a first selling turn after construction")
+	var expected_capex: float = maxf(0.0, float(Catalog.get_building("b_002").get("base_price", 0.0))) \
+		+ Construction.market_purchase_value("b_002")
+	_check(is_equal_approx(float(forecast.get("capex_total", 0.0)), expected_capex),
+		"v3 forecast: capex_total is the confirm's real outlay (money leg + kit at buy prices)")
+	if float(forecast.get("steady_net", 0.0)) > 0.0:
+		_check(int(forecast.get("payback_turn", -1)) >= int(forecast.get("first_selling_turn", 0)),
+			"v3 forecast: a profitable build pays back no earlier than its first sale")
+
+	# Materials ledger: with no site chosen nothing is in stock, so the subtotal IS
+	# the kit at market buy prices — the same figure the confirm total already quotes.
+	var reqs: Dictionary = Construction.requirements_for("b_002")
+	var ledger: Dictionary = Construction.materials_ledger("b_002", "")
+	_check((ledger.get("rows", []) as Array).size() == reqs.size(),
+		"v3 ledger: one row per required material")
+	_check(is_equal_approx(float(ledger.get("subtotal", 0.0)), Construction.market_purchase_value("b_002")),
+		"v3 ledger: with no stock the subtotal reconciles to the kit's market purchase value")
+
+	# Stock on the site covers its line for free, so the subtotal drops by that line.
+	var first_good := ""
+	for good_id in reqs:
+		first_good = str(good_id)
+		break
+	Stockpile.clear_all()
+	Stockpile.add("tile_5_10", first_good, int(reqs[first_good]))
+	var stocked: Dictionary = Construction.materials_ledger("b_002", "tile_5_10")
+	var covered_row: Dictionary = {}
+	for row in stocked.get("rows", []):
+		if str((row as Dictionary).get("good_id", "")) == first_good:
+			covered_row = row
+	_check(int(covered_row.get("from_stock", -1)) == int(reqs[first_good])
+		and int(covered_row.get("market_qty", -1)) == 0
+		and is_zero_approx(float(covered_row.get("line_cost", -1.0))),
+		"v3 ledger: on-site stock covers its line for free")
+	Stockpile.clear_all()
+
+	# Under "same_tile" sourcing a gap is a SHORTFALL that blocks the build; the
+	# ledger must say so instead of quietly pricing a purchase that won't happen.
+	var saved_source := MatchState.construct_material_source
+	MatchState.construct_material_source = "same_tile"
+	var strict: Dictionary = Construction.materials_ledger("b_002", "tile_5_10")
+	var all_short := true
+	for row in strict.get("rows", []):
+		var r := row as Dictionary
+		if int(r.get("market_qty", 0)) != 0 or int(r.get("short", 0)) != int(r.get("need", -1)):
+			all_short = false
+	_check(all_short and is_zero_approx(float(strict.get("subtotal", -1.0))),
+		"v3 ledger: same-tile sourcing marks gaps short and prices nothing")
+	MatchState.construct_material_source = saved_source
+
+	# The single-intent build: buy-land is armed only while the attempt's gates run,
+	# and never leaks into the next attempt.
+	var seen := {"during": false}
+	var probe := func(_bid: String, _tid: String) -> void:
+		seen["during"] = BuildMode.attempt_buy_land
+		BuildMode.last_attempt_refused = true   # refuse, so the probe places nothing
+	BuildMode.build_attempted.connect(probe)
+	BuildMode._last_attempt_ms = 0
+	BuildMode.attempt_direct_build("b_002", "r_005", "tile_5_10", true)
+	BuildMode.build_attempted.disconnect(probe)
+	_check(bool(seen["during"]) and not BuildMode.attempt_buy_land,
+		"v3 single intent: buy-land is armed during the attempt and cleared after it")
+	BuildMode.last_attempt_refused = false
+
 
 func _test_telemetry_schema3_row() -> void:
 	# Schema 3 adds the diagnosis fields the first playtest wanted and could not answer:

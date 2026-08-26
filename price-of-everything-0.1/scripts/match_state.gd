@@ -557,6 +557,12 @@ var use_empire_button_badge: bool = true
 # Session-only; the cheat only changes the active match.
 var use_construct_panel_v2: bool = true
 
+# Debug-only: `swap construct_panel_v3` progressively enables the confirm-screen
+# redesign (designer spec "Confirm Construction Panel v2", tracked as v3 here)
+# inside the V2 panel while it is built out band by band. Off by default;
+# session-only, never persisted.
+var use_construct_panel_v3: bool = false
+
 # Construct V2 defaults. They are match settings rather than panel-local state so
 # a construction captures the current choices when it begins, including after a
 # save/load. The legacy cost-display field remains load-compatible but is no
@@ -682,6 +688,9 @@ signal special_order_overflow_ready(record: Dictionary)
 # active detail panel. Session-only.
 signal bdp_v2_changed(enabled: bool)
 signal construct_panel_v2_changed(enabled: bool)
+# The confirm-screen v3 dev-toggle flipped (`swap construct_panel_v3` cheat); the V2
+# panel re-renders so the gated visuals apply immediately. Session-only.
+signal construct_panel_v3_changed(enabled: bool)
 signal empire_button_icon_changed(use_badge: bool)
 signal construct_settings_changed
 ## A UI surface (notification deep-link, etc.) asks the map to focus a tile:
@@ -3877,6 +3886,16 @@ func set_use_construct_panel_v2(enabled: bool) -> bool:
 
 func toggle_use_construct_panel_v2() -> bool:
 	return set_use_construct_panel_v2(not use_construct_panel_v2)
+
+func set_use_construct_panel_v3(enabled: bool) -> bool:
+	if enabled == use_construct_panel_v3:
+		return use_construct_panel_v3
+	use_construct_panel_v3 = enabled
+	construct_panel_v3_changed.emit(use_construct_panel_v3)
+	return use_construct_panel_v3
+
+func toggle_use_construct_panel_v3() -> bool:
+	return set_use_construct_panel_v3(not use_construct_panel_v3)
 
 func set_construct_cost_display(value: String, emit_change: bool = true) -> void:
 	var resolved := value.to_lower()
