@@ -257,8 +257,8 @@ func _on_turn_processed(summary: Dictionary) -> void:
 		match k:
 			"integrate": _eval_integrate(produced, consumed)
 			"monetise": _eval_monetise(produced, sold)
-			"steel": _eval_steel(produced, consumed)
-			"deposits": _eval_deposits(consumed)
+			"steel": _eval_steel(produced, summary)
+			"deposits": _eval_deposits(summary)
 		if _all_done(k) and not bool(granted.get(k, false)):
 			_grant(k)
 	quest_changed.emit()
@@ -290,7 +290,7 @@ func _eval_monetise(produced: Dictionary, sold: Dictionary) -> void:
 		_tick("monetise", 2, float(sold.get(monetised_good, 0)) > 0.0)
 
 
-func _eval_steel(produced: Dictionary, consumed: Dictionary) -> void:
+func _eval_steel(produced: Dictionary, summary: Dictionary) -> void:
 	var steel := _good_id("steel")
 	var ingots := _good_id("iron_ingots")
 	_tick("steel", 0, float(produced.get(steel, 0)) > 0.0)
@@ -298,7 +298,7 @@ func _eval_steel(produced: Dictionary, consumed: Dictionary) -> void:
 	# a tile where a steel plant of theirs stands that actually consumes ingots, and ingots were
 	# consumed this turn. Per-building consumption is not recorded anywhere, so the empire-wide
 	# figure is the closest honest second half.
-	_tick("steel", 1, _supplied(ingots, ingots, steel, consumed))
+	_tick("steel", 1, _supplied(ingots, ingots, steel, summary))
 
 
 ## Coal and iron each: a mine standing on an inexhaustible deposit, then that mine's output
@@ -340,28 +340,25 @@ func _deposits_steps() -> Array:
 	return out
 
 
-func _eval_deposits(consumed: Dictionary) -> void:
+func _eval_deposits(summary: Dictionary) -> void:
 	var coal := _good_id("coal")
 	var iron := _good_id("iron_ore")
 	var ingots := _good_id("iron_ingots")
 	var steel := _good_id("steel")
 	var coal_mines := _mines_on_infinite(coal, "coal")
 	var iron_mines := _mines_on_infinite(iron, "iron_ore")
-	var coal_to_ingots := _tiles_consuming(ingots, coal)
-	var coal_to_steel := _tiles_consuming(steel, coal)
-	var iron_to_ingots := _tiles_consuming(ingots, iron)
 	# Built in the SAME branch order as _deposits_steps, so a dropped step cannot leave the
 	# labels and the checks pointing at different things.
+	# `coal_mines` is already the player's, and already stood on an inexhaustible deposit, so
+	# _supplied_from restricts the same test to exactly those mines.
 	var conds: Array = [
 		not coal_mines.is_empty(),
-		_any_routes_to(coal_mines, coal, coal_to_ingots) and float(consumed.get(coal, 0)) > 0.0,
+		_supplied_from(coal_mines, coal, ingots, summary),
 	]
 	if _deposits_wants_coal_steel():
-		conds.append(_any_routes_to(coal_mines, coal, coal_to_steel)
-			and float(consumed.get(coal, 0)) > 0.0)
+		conds.append(_supplied_from(coal_mines, coal, steel, summary))
 	conds.append(not iron_mines.is_empty())
-	conds.append(_any_routes_to(iron_mines, iron, iron_to_ingots)
-		and float(consumed.get(iron, 0)) > 0.0)
+	conds.append(_supplied_from(iron_mines, iron, ingots, summary))
 	for i in conds.size():
 		_tick("deposits", i, bool(conds[i]))
 
@@ -421,21 +418,40 @@ func _mines_on_infinite(good_id: String, token: String) -> Array:
 	return out
 
 
-func _any_routes_to(instances: Array, good_id: String, tiles: Dictionary) -> bool:
-	if tiles.is_empty():
+## _supplied, but from a named set of producers — the mines already filtered to "the player's,
+## on an inexhaustible deposit", so the mission's "that mine" is exact.
+func _supplied_from(instances: Array, ship_good: String, to_good: String, summary: Dictionary) -> bool:
+	var destinations := _tiles_consuming(to_good, ship_good)
+	if destinations.is_empty():
 		return false
+	var supplied: Dictionary = summary.get("tile_supplied", {})
+	var consumed: Dictionary = summary.get("tile_consumed", {})
 	for iid in instances:
-		if tiles.has(str(MatchState.get_output_stockpile_destination(str(iid), good_id))):
+		var tile := str(MatchState.get_output_stockpile_destination(str(iid), ship_good))
+		if tile == "" or not destinations.has(tile):
+			continue
+		if float((supplied.get(tile, {}) as Dictionary).get(ship_good, 0)) <= 0.0:
+			continue
+		if float((consumed.get(tile, {}) as Dictionary).get(ship_good, 0)) > 0.0:
 			return true
 	return false
 
 
-## True when a producer of `from_good` (theirs) routes `ship_good` to a tile where a building of
-## theirs making `to_good` actually consumes it — and some was consumed this turn.
-func _supplied(from_good: String, ship_good: String, to_good: String, consumed: Dictionary) -> bool:
-	if float(consumed.get(ship_good, 0)) <= 0.0:
-		return false
-	return _any_routes_to(_producers_of(from_good), ship_good, _tiles_consuming(to_good, ship_good))
+## THE WHOLE SUPPLY TEST, in one place.
+##
+## Four things have to be true, and none of them is implied by the others:
+##   1. the producer is the PLAYER'S (MatchState.buildings holds NPC buildings too),
+##   2. it ROUTES the good to a tile where a building of theirs making `to_good` actually eats
+##      that good — delivering to an Electric Arc plant that burns no coal is not supply,
+##   3. the good ARRIVED there from their own production this turn (summary.tile_supplied
+##      counts only own output, so a sack bought off the market does not qualify), and
+##   4. that tile CONSUMED it (summary.tile_consumed). A building consumes from the tile it
+##      stands on, so tile-scoped use is as close to per-building as the sim records.
+##
+## 3 and 4 are what make it supply rather than intent: a route with nothing moving down it, or
+## goods piling up unused, both fail.
+func _supplied(from_good: String, ship_good: String, to_good: String, summary: Dictionary) -> bool:
+	return _supplied_from(_producers_of(from_good), ship_good, to_good, summary)
 
 
 ## The output good of any building of theirs whose recipe consumes the surplus and makes
