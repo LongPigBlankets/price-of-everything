@@ -196,6 +196,7 @@ func _ready() -> void:
 	await _test_construct_v3_confirm_layout()
 	await _test_construct_v3_1_iteration()
 	await _test_construct_v3_2_iteration()
+	await _test_construct_v3_3_iteration()
 	_test_build_cost_hover_preview()
 	_test_purchases()
 	_test_exhausted_input_source_falls_back_to_market()
@@ -9001,7 +9002,7 @@ func _test_construct_v3_1_iteration() -> void:
 	_check(diagram != null and diagram.visible,
 		"v3.1 recipe: the diagram renders open by default")
 
-	# Materials: 60px icons carrying the name as a tooltip (not row text), and
+	# Materials: icons carrying the name as a tooltip (not row text), and
 	# every header/value column centred (owner 2026-08-26).
 	var mat_icon: Control = diagram.get_parent().find_child("*", false, false)   # placeholder, replaced below
 	var icon_row: HBoxContainer = null
@@ -9014,9 +9015,10 @@ func _test_construct_v3_1_iteration() -> void:
 	_check(icon_row != null, "v3.1 materials: a material row was found to inspect")
 	if icon_row != null:
 		var icon_ctrl: Control = icon_row.get_child(0)
-		_check(is_equal_approx(icon_ctrl.custom_minimum_size.x, 60.0)
-			and is_equal_approx(icon_ctrl.custom_minimum_size.y, 60.0),
-			"v3.1 materials: the good icon is 60x60")
+		var icon_size := float(panel.V3_MAT_ICON_SIZE)
+		_check(is_equal_approx(icon_ctrl.custom_minimum_size.x, icon_size)
+			and is_equal_approx(icon_ctrl.custom_minimum_size.y, icon_size),
+			"v3.1 materials: the good icon matches V3_MAT_ICON_SIZE")
 		_check(icon_ctrl.tooltip_text != "" and icon_ctrl.mouse_filter == Control.MOUSE_FILTER_PASS,
 			"v3.1 materials: the good name is a hover tooltip on the icon, not row text")
 		var has_left_label := false
@@ -9196,21 +9198,30 @@ func _test_construct_v3_2_iteration() -> void:
 	if timeline_grid != null:
 		await get_tree().process_frame
 		var row0_y: float = (timeline_grid.get_child(0) as Control).get_global_rect().position.y
-		var row1_y: float = (timeline_grid.get_child(phase_count) as Control).get_global_rect().position.y
+		var row1_rect0: Rect2 = (timeline_grid.get_child(phase_count) as Control).get_global_rect()
+		var row1_center_y: float = row1_rect0.position.y + row1_rect0.size.y / 2.0
 		var row2_y: float = (timeline_grid.get_child(phase_count * 2) as Control).get_global_rect().position.y
-		var rows_distinct := row0_y < row1_y and row1_y < row2_y
+		var rows_distinct := row0_y < row1_center_y and row1_center_y < row2_y
 		var row0_aligned := true
-		var row1_aligned := true
 		var row2_aligned := true
 		for i in phase_count:
 			if not is_equal_approx((timeline_grid.get_child(i) as Control).get_global_rect().position.y, row0_y):
 				row0_aligned = false
-			if not is_equal_approx((timeline_grid.get_child(phase_count + i) as Control).get_global_rect().position.y, row1_y):
-				row1_aligned = false
 			if not is_equal_approx((timeline_grid.get_child(phase_count * 2 + i) as Control).get_global_rect().position.y, row2_y):
 				row2_aligned = false
-		_check(rows_distinct and row0_aligned and row1_aligned and row2_aligned,
-			"v3.1 cash timeline: every turn marker/name/money cell aligns with its own row, regardless of text wrapping")
+		_check(rows_distinct and row0_aligned and row2_aligned,
+			"v3.1 cash timeline: every turn-marker/money cell top-aligns with its own row, regardless of text wrapping")
+		# Owner 2026-08-26: the name row instead centres each cell on a shared
+		# axis — one line sits on it, two straddle it, three put their middle
+		# line on it — so the invariant here is centre-Y equality, not top-Y.
+		var row1_aligned := true
+		for i in phase_count:
+			var cell_rect: Rect2 = (timeline_grid.get_child(phase_count + i) as Control).get_global_rect()
+			var cell_center_y := cell_rect.position.y + cell_rect.size.y / 2.0
+			if not is_equal_approx(cell_center_y, row1_center_y):
+				row1_aligned = false
+		_check(row1_aligned,
+			"v3.1 cash timeline: every phase-name cell shares the same centre axis, regardless of line count")
 
 	# Verdict strip: cost separated from time. On tile_5_10 (the fixture used
 	# throughout — the player's own port) the "Build time" fact row is simply
@@ -9275,13 +9286,13 @@ func _test_construct_v3_2_iteration() -> void:
 	_check(bool(panel.get("_buy_land_wanted"))
 		and panel.find_child("V3MaterialsLand", true, false) != null,
 		"v3.1 materials: Land's cost line is present for a tile that needs it")
-	# _v3_header_band() is _pinned's first child (added before the verdict
-	# strip, a sibling — NOT its parent).
+	# The icon now lives in the verdict strip's own hero row (owner 2026-08-26 —
+	# _v3_header_band() is just the back link above it these days), so search
+	# the whole pinned area rather than assuming which sibling holds it.
 	var pinned: Control = panel.get("_pinned")
-	var header_band: Node = pinned.get_child(0)
 	var icon_holder: Node = null
-	for child in header_band.get_children():
-		if child is PanelContainer and (child as PanelContainer).get("radius") != null:
+	for child in pinned.find_children("*", "PanelContainer", true, false):
+		if (child as PanelContainer).get("radius") != null:
 			icon_holder = child
 	_check(icon_holder != null,
 		"v3.1 header: the building icon sits on the same metal-plate card (TileBuildingCard) as Tile View")
@@ -9301,6 +9312,97 @@ func _test_construct_v3_2_iteration() -> void:
 			no_tile_has_arrival = true
 	_check(not no_tile_has_arrival,
 		"v3.1 verdict strip: no materials-arrival line when no tile is chosen yet")
+
+	remove_child(panel)
+	panel.free()
+	MatchState.use_construct_panel_v3 = saved_v3
+	MatchState.reset()
+
+
+func _test_construct_v3_3_iteration() -> void:
+	# v3.1 third designer review pass (owner 2026-08-26): the site sits on the
+	# left of band 1, next to "< Recipe" on the right (blank until a tile is
+	# chosen) — a correction after a first pass put it in the verdict strip
+	# instead. The verdict strip below carries icon/title/building name on the
+	# left and the grand total + duration right-anchored on the right, under
+	# one single rule now (was double — that heavier emphasis made sense when
+	# the strip also carried the site, less so now it's back to just the
+	# decision). The cash-timeline name row centres on a shared axis regardless
+	# of line count (checked above, in _test_construct_v3_2_iteration, since it
+	# reuses that function's rect-alignment scaffolding). Materials icons grew
+	# to match the recipe diagram's art size, and the table's own figures are
+	# bold again.
+	MatchState.reset()
+	MarketState._init_prices_from_catalog()
+	var saved_v3 := MatchState.use_construct_panel_v3
+	MatchState.use_construct_panel_v3 = true
+	var panel: PanelContainer = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
+	add_child(panel)
+	panel.open_for_tile("tile_5_10", {"type": ""})
+	panel._on_recipe_pressed("b_002", "r_005")
+	await get_tree().process_frame
+
+	# The panel's own subtitle line is blank — the site lives in band 1 now.
+	_check(str(panel.get("_header_subtitle").text) == "",
+		"v3.1 header band: the panel subtitle is blank — the site sits with < Recipe now")
+	var site_label: Label = panel.find_child("V3Site", true, false)
+	_check(site_label != null and site_label.text == Catalog.tile_label("tile_5_10"),
+		"v3.1 header band: the site label names the locked tile")
+	# "next to < Recipe" means a sibling under the same row, not just anywhere
+	# in the panel.
+	var back_button: Button = null
+	for button in panel.find_children("*", "Button", true, false):
+		if (button as Button).text == "< Recipe":
+			back_button = button as Button
+	_check(back_button != null and site_label != null
+		and site_label.get_parent() == back_button.get_parent(),
+		"v3.1 header band: the site and < Recipe share one row")
+
+	# No tile chosen yet: the site is blank, not a placeholder sentence.
+	panel.open_browser()
+	await get_tree().process_frame
+	panel._on_recipe_pressed("b_002", "r_005")
+	await get_tree().process_frame
+	var no_tile_site: Label = panel.find_child("V3Site", true, false)
+	_check(no_tile_site != null and no_tile_site.text == "",
+		"v3.1 header band: the site is blank (not a placeholder sentence) with no tile chosen")
+	# Back to a locked tile for the rest of this pass.
+	panel.open_for_tile("tile_5_10", {"type": ""})
+	panel._on_recipe_pressed("b_002", "r_005")
+	await get_tree().process_frame
+
+	# The verdict strip's own rule is single now, not double (owner 2026-08-26).
+	var verdict_box: Control = panel.find_child("V3VerdictStrip", true, false)
+	var rule: Control = verdict_box.get_child(0) as Control
+	_check(rule != null and bool(rule.get("double_rule")) == false,
+		"v3.1 verdict strip: the rule above it is single now, not double")
+
+	# Cost and duration both right-anchor inside the strip.
+	var total_label: Label = panel.find_child("V3Total", true, false)
+	_check(total_label != null and total_label.horizontal_alignment == HORIZONTAL_ALIGNMENT_RIGHT,
+		"v3.1 hero band: the grand total is right-anchored")
+	var duration_box: Control = panel.find_child("V3DurationBox", true, false)
+	var duration_labels: Array = duration_box.find_children("*", "Label", true, false) if duration_box != null else []
+	var durations_right_anchored := not duration_labels.is_empty()
+	for label in duration_labels:
+		if (label as Label).horizontal_alignment != HORIZONTAL_ALIGNMENT_RIGHT:
+			durations_right_anchored = false
+	_check(durations_right_anchored,
+		"v3.1 hero band: the duration line(s) right-anchor under the total")
+
+	# Materials icons grew to match the recipe diagram's ~56px art (74px
+	# plate, 12%-of-size inset) — and the table's own figures are bold again.
+	_check(int(panel.V3_MAT_ICON_SIZE) == 74,
+		"v3.1 materials: the icon size matches the recipe diagram's art size")
+	var figure_label: Label = panel._v3_mat_figure(5, 60)
+	_check(figure_label.theme_type_variation == &"Numeric",
+		"v3.1 materials: on tile/elsewhere figures are bold (Numeric) again")
+	var market_numeric := false
+	for label in panel._content.find_children("*", "Label", true, false):
+		if str((label as Label).text).begins_with("~") and (label as Label).theme_type_variation == &"Numeric":
+			market_numeric = true
+	_check(market_numeric,
+		"v3.1 materials: the market-price column is bold (Numeric) again")
 
 	remove_child(panel)
 	panel.free()

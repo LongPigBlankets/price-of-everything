@@ -275,7 +275,9 @@ var _close_button: Button
 var _settings_button: Button
 var _mode_toggle: HBoxContainer
 var _search_input: LineEdit
+var _search_margin: MarginContainer
 var _filter_scroll: ScrollContainer
+var _filter_margin: MarginContainer
 var _filter_row: HBoxContainer
 var _scroll: ScrollContainer
 var _content: VBoxContainer
@@ -583,9 +585,9 @@ func _build_shell() -> void:
 	_settings_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_mode_toggle.add_child(_settings_button)
 
-	var search_margin := MarginContainer.new()
-	search_margin.add_theme_constant_override("margin_top", 8)
-	root.add_child(search_margin)
+	_search_margin = MarginContainer.new()
+	_search_margin.add_theme_constant_override("margin_top", 8)
+	root.add_child(_search_margin)
 	_search_input = LineEdit.new()
 	_search_input.placeholder_text = "Search buildings and recipes"
 	_search_input.clear_button_enabled = true
@@ -596,17 +598,17 @@ func _build_shell() -> void:
 	_search_input.add_theme_stylebox_override("normal", _panel_style(NAVY_FIELD, NAVY_LINE, 1, 8, 9))
 	_search_input.add_theme_stylebox_override("focus", _panel_style(NAVY_FIELD, GOLD_DARK, 1, 8, 9))
 	_search_input.text_changed.connect(_on_search_changed)
-	search_margin.add_child(_search_input)
+	_search_margin.add_child(_search_input)
 
-	var filter_margin := MarginContainer.new()
-	filter_margin.add_theme_constant_override("margin_top", 13)
-	filter_margin.add_theme_constant_override("margin_bottom", 15)
-	root.add_child(filter_margin)
+	_filter_margin = MarginContainer.new()
+	_filter_margin.add_theme_constant_override("margin_top", 13)
+	_filter_margin.add_theme_constant_override("margin_bottom", 15)
+	root.add_child(_filter_margin)
 	_filter_scroll = ScrollContainer.new()
 	_filter_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	_filter_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_filter_scroll.custom_minimum_size = Vector2(0, 45)
-	filter_margin.add_child(_filter_scroll)
+	_filter_margin.add_child(_filter_scroll)
 	_filter_row = HBoxContainer.new()
 	_filter_row.add_theme_constant_override("separation", 6)
 	_filter_scroll.add_child(_filter_row)
@@ -749,7 +751,9 @@ func _on_settings_pressed() -> void:
 func _render_settings() -> void:
 	_set_panel_width(false)
 	_search_input.visible = false
+	_search_margin.visible = false
 	_filter_scroll.visible = false
+	_filter_margin.visible = false
 	_mode_toggle.visible = false
 	_settings_button.visible = false
 	_header_title.text = "CONSTRUCT SETTINGS"
@@ -978,7 +982,9 @@ func _render_browse() -> void:
 	_settings_button.visible = true
 	_mode_toggle.visible = true
 	_search_input.visible = true
+	_search_margin.visible = true
 	_filter_scroll.visible = true
+	_filter_margin.visible = true
 	_rebuild_filters()
 
 	var shown := _filtered_buildings()
@@ -1245,7 +1251,9 @@ func _render_confirm() -> void:
 		return
 	_set_panel_width(false)
 	_search_input.visible = false
+	_search_margin.visible = false
 	_filter_scroll.visible = false
+	_filter_margin.visible = false
 	_mode_toggle.visible = false
 	_settings_button.visible = false
 	var building_name := str(_selected_building.get("display_name", ""))
@@ -1381,15 +1389,18 @@ const V3_PHASE_LABELS := {
 func _render_confirm_v3() -> void:
 	_set_panel_width(true)
 	_search_input.visible = false
+	_search_margin.visible = false
 	_filter_scroll.visible = false
+	_filter_margin.visible = false
 	_mode_toggle.visible = false
 	_settings_button.visible = false
 	_confirm_flash_pending = false   # the verdict strip is the "look here" now
 
 	var building_id := str(_selected_building.get("id", ""))
 	_header_title.text = "CONFIRM CONSTRUCTION"
-	_header_subtitle.text = Catalog.tile_label(_locked_tile_id) if _locked_tile_id != "" \
-		else "Site: chosen on the map after confirming"
+	# The hero band below now names the site itself (owner 2026-08-26 — it
+	# used to live here); keep the title line uncluttered, same as V2 confirm.
+	_header_subtitle.text = ""
 
 	_v3_land = _v3_compute_land()
 	_v3_ledger = Construction.materials_ledger(building_id, _locked_tile_id)
@@ -1442,23 +1453,73 @@ func _render_confirm_v3() -> void:
 	_v3_pulse_if_changed(_v3_total_cost())
 
 
-## Band 1 — identity: icon plate, recipe + building name, and the small
-## "‹ Recipe" back link. The header's X stays the single close control (§7):
-## never two same-weight exits.
+## Band 1 — the site (left, blank until one is chosen) and the small
+## "< Recipe" back link (right), sharing one row. The header's X stays the
+## single close control (§7): never two same-weight exits, so the back link
+## is a lighter-weight affordance, not X's peer.
 func _v3_header_band() -> Control:
 	var band := HBoxContainer.new()
 	band.add_theme_constant_override("separation", 11)
+	var site := Label.new()
+	site.name = "V3Site"
+	site.text = Catalog.tile_label(_locked_tile_id) if _locked_tile_id != "" else ""
+	site.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
+	site.add_theme_color_override("font_color", _muted_tone())
+	site.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	site.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	band.add_child(site)
+	# Same DS Button chrome as the header's × close button — a real CTA, not a
+	# flat text link. Plain default Button styling, no overrides, exactly like
+	# _close_button below.
+	var back := Button.new()
+	back.text = "< Recipe"
+	back.tooltip_text = "Back to recipes"
+	back.focus_mode = Control.FOCUS_NONE
+	back.pressed.connect(_on_back_to_browse)
+	band.add_child(back)
+	return band
+
+
+## Band 2 — the hero band: identity and the decision, together. Left column:
+## icon plate, recipe + building name. Right column, right-anchored: the
+## grand total, then how long it takes. Cost and time stay two different
+## questions — the total is the ONLY money in this band, everything below it
+## on the right is duration. No itemisation caption (that reconciliation lives
+## in Materials, where Land's cost also moved), no affordability chip
+## (dropped — it read the future, and the space cost wasn't earning it). Fill
+## only, no border — borders carry semantics, and the strip is structure. A
+## single rule above it is the ledger's mark for a totals band (owner
+## 2026-08-26: single, not double — the site sits with "< Recipe" in band 1
+## now, so this band carries less than it used to and doesn't need the
+## heavier two-line emphasis).
+func _v3_verdict_strip() -> Control:
+	var box := VBoxContainer.new()
+	box.name = "V3VerdictStrip"
+	box.add_theme_constant_override("separation", 6)
+	box.add_child(DS.section_rule())
+
+	var strip := PanelContainer.new()
+	strip.add_theme_stylebox_override("panel", _panel_style(NAVY_RAISED, NAVY_RAISED, 0, 9, 6))
+	box.add_child(strip)
+	var outer := VBoxContainer.new()
+	outer.add_theme_constant_override("separation", 6)
+	strip.add_child(outer)
+
+	# Row 1: icon + recipe/building identity (left) … the grand total (right).
+	var row1 := HBoxContainer.new()
+	row1.add_theme_constant_override("separation", 11)
+	outer.add_child(row1)
 	# Same brushed-navy + silver-bezel metal plate as the Tile View building
-	# cards (owner 2026-08-26) — _building_icon alone is just the emboss layers,
-	# with no plate beneath it; TileBuildingCard IS the plate.
+	# cards — _building_icon alone is just the emboss layers, with no plate
+	# beneath it; TileBuildingCard IS the plate.
 	var icon_card := TileBuildingCard.new(6, 6, 8)
 	icon_card.add_child(_building_icon(_selected_building, 40))
-	band.add_child(icon_card)
+	row1.add_child(icon_card)
 	var text_box := VBoxContainer.new()
 	text_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	text_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	text_box.add_theme_constant_override("separation", 1)
-	band.add_child(text_box)
+	row1.add_child(text_box)
 	var title := Label.new()
 	title.text = str(_selected_recipe.get("display_name", ""))
 	title.add_theme_font_size_override("font_size", 17)
@@ -1469,58 +1530,35 @@ func _v3_header_band() -> Control:
 	sub.add_theme_font_size_override("font_size", 11)
 	sub.add_theme_color_override("font_color", _muted_tone())
 	text_box.add_child(sub)
-	# Same DS Button chrome as the header's × close button (owner 2026-08-26) —
-	# a real CTA, not a flat text link. Plain default Button styling, no
-	# overrides, exactly like _close_button below.
-	var back := Button.new()
-	back.text = "< Recipe"
-	back.tooltip_text = "Back to recipes"
-	back.focus_mode = Control.FOCUS_NONE
-	back.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	back.pressed.connect(_on_back_to_browse)
-	band.add_child(back)
-	return band
-
-
-## Band 2 — the decision in one band (§2), pared down further (owner 2026-08-26):
-## just the grand total and how long it takes — no itemisation caption (that
-## reconciliation now lives in Materials, where Land's cost also moved), no
-## affordability chip (dropped — it read the future, which is exactly the
-## projection risk being avoided here, and the space cost wasn't earning it).
-## Cost and time are deliberately separate: the total is the ONLY money in this
-## band; everything below it is duration. Fill only, no border — borders carry
-## semantics, and the strip is structure. The double rule above it is the
-## ledger's mark for a totals band.
-func _v3_verdict_strip() -> Control:
-	var box := VBoxContainer.new()
-	box.name = "V3VerdictStrip"
-	box.add_theme_constant_override("separation", 5)
-	box.add_child(DS.section_rule(true))
-
-	var strip := PanelContainer.new()
-	strip.add_theme_stylebox_override("panel", _panel_style(NAVY_RAISED, NAVY_RAISED, 0, 9, 10))
-	box.add_child(strip)
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 4)
-	strip.add_child(col)
 
 	var total := Label.new()
 	total.name = "V3Total"
 	total.theme_type_variation = "Numeric"
 	total.add_theme_font_size_override("font_size", 20)
 	total.text = _money(_v3_total_cost())
+	total.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	total.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_v3_verdict_total_label = total
-	col.add_child(total)
+	row1.add_child(total)
 
+	# Row 2: nothing on the left now that the site sits in band 1 with
+	# "< Recipe" — just duration, right-anchored under the total (up to two
+	# lines). duration_box defaults to SIZE_FILL horizontal as outer's direct
+	# child, so it spans the same width as row1 and its own right-aligned
+	# labels land on the same right edge as the total above them.
+	var duration_box := VBoxContainer.new()
+	duration_box.name = "V3DurationBox"
+	duration_box.add_theme_constant_override("separation", 1)
+	outer.add_child(duration_box)
 	# Materials arrival and build duration are two separate waits (§7 below) —
 	# the site can't start counting down build_duration until every required
 	# good is actually on it. Only knowable once a site is chosen.
 	var arrival_turns := _v3_materials_arrival_turns()
 	if _locked_tile_id != "" and arrival_turns > 0:
-		col.add_child(_v3_duration_line("%d turn%s for materials to arrive"
+		duration_box.add_child(_v3_duration_line("%d turn%s for materials to arrive"
 			% [arrival_turns, "" if arrival_turns == 1 else "s"]))
 	var build_turns := int(_v3_forecast.get("build_turns", 0))
-	col.add_child(_v3_duration_line("%d turn%s to build" % [build_turns, "" if build_turns == 1 else "s"]))
+	duration_box.add_child(_v3_duration_line("%d turn%s to build" % [build_turns, "" if build_turns == 1 else "s"]))
 	return box
 
 
@@ -1529,6 +1567,7 @@ func _v3_duration_line(text: String) -> Label:
 	label.text = text
 	label.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	label.add_theme_color_override("font_color", TEXT)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	return label
 
 
@@ -1830,12 +1869,15 @@ func _v3_cash_timeline() -> Control:
 		name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		# Top-align within the row (owner 2026-08-26): a Label's default vertical
-		# fill CENTRES it inside whatever height the row ends up needing, so when
-		# one phase's name wraps to 2 lines and makes the whole row taller, every
-		# 1-line neighbour in that same row drifted down instead of staying level
-		# with it — the very row-alignment bug this grid rewrite was meant to fix.
-		name.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		# Centre within the row (owner 2026-08-26), deliberately unlike the marker
+		# and money rows below: the name row is the one place text should sit ON
+		# a shared centre axis regardless of how many lines it wraps to — one
+		# line sits on the axis, two straddle it evenly, three put their middle
+		# line on it. A Label sized to its own natural (wrapped) height and
+		# shrink-centred within the row's shared height does exactly this: the
+		# tallest phase's own centre already sits on the row's centre by
+		# definition, so every shorter neighbour lands on the same line too.
+		name.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		name.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 		name.add_theme_color_override("font_color", TEXT)
 		grid.add_child(name)
@@ -1855,7 +1897,12 @@ func _v3_cash_timeline() -> Control:
 	return plate
 
 
-const V3_MAT_ICON_SIZE := 60
+## 74px (owner 2026-08-26): sized so the icon ART inside the cream plate
+## matches the recipe diagram's ~56px icons (_recipe_flow_cell's 62px cell,
+## 3px inset each side) — _good_icon's inset is proportional (12% of size, 4px
+## floor), so the plate itself has to grow to keep the ART that big, not just
+## the plate's own footprint.
+const V3_MAT_ICON_SIZE := 74
 const V3_MAT_COL_ONTILE := 58
 const V3_MAT_COL_ELSEWHERE := 70
 const V3_MAT_COL_MARKET := 92
@@ -1916,7 +1963,7 @@ func _v3_material_header() -> Control:
 func _v3_material_row(entry: Dictionary) -> Control:
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", 8)
-	# 60px icon (owner 2026-08-26: more visible), name dropped from the row and
+	# V3_MAT_ICON_SIZE icon (matches the recipe diagram's art size), name dropped from the row and
 	# moved to a hover tooltip on the icon instead — _good_icon returns its
 	# holder with mouse_filter IGNORE (so it never blocks clicks elsewhere);
 	# PASS is needed here so the tooltip actually fires.
@@ -1928,6 +1975,7 @@ func _v3_material_row(entry: Dictionary) -> Control:
 	line.add_child(_v3_mat_figure(int(entry.get("elsewhere", 0)), V3_MAT_COL_ELSEWHERE))
 	var market := Label.new()
 	market.text = "~%s" % _money(float(entry.get("market_price", 0.0)))
+	market.theme_type_variation = "Numeric"
 	market.custom_minimum_size = Vector2(V3_MAT_COL_MARKET, 0)
 	market.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	market.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -1957,6 +2005,7 @@ func _v3_material_row(entry: Dictionary) -> Control:
 func _v3_mat_figure(qty: int, col_width: int) -> Label:
 	var label := Label.new()
 	label.text = str(qty)
+	label.theme_type_variation = "Numeric"
 	label.custom_minimum_size = Vector2(col_width, 0)
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
