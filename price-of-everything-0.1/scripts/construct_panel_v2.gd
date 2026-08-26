@@ -1391,6 +1391,10 @@ func _land_required_row(building: Dictionary) -> Control:
 ## output with no way off the tile cannot be sold or shipped at all.
 func _site_requirement_rows() -> Array:
 	var rows: Array = []
+	# The intermittency warning is not about the RECIPE, it is about the building, so it comes
+	# before the early return: solar and wind carry it whichever recipe is selected.
+	if str(_selected_building.get("internal_name", "")) in EconomyConfig.POWER_INTERMITTENT_BUILDINGS:
+		rows.append(_intermittent_power_row())
 	if _selected_recipe.is_empty():
 		return rows   # infrastructure builds have no recipe, so no supply to route
 	var input_needs := _infra_needs_for(_selected_recipe.get("inputs", []))
@@ -1477,6 +1481,42 @@ func _infra_requirement_row(infra_key: String, good_ids: Array, is_output: bool)
 	if bold != null:
 		text.add_theme_font_override("bold_font", bold)
 	text.text = _infra_requirement_text(infra_key, good_ids, is_output, satisfied)
+	body.add_child(text)
+	return row
+
+
+## Solar and wind make power the grid cannot lean on: a recipe running on UNFIRMED intermittent
+## green is derated (EconomyConfig.INTERMITTENCY_DERATE), so the player who builds one and walks
+## away is quietly paid less than the nameplate suggests. That is a property of the BUILDING, not
+## of a tile or a recipe, so unlike the routing rows it is never "satisfied" and never turns
+## green — it names the fix instead. Membership comes from EconomyConfig, the same list the
+## production code derates on, so a fourth renewable is covered without editing this file.
+func _intermittent_power_row() -> PanelContainer:
+	var row := PanelContainer.new()
+	row.custom_minimum_size = Vector2(0, INFRA_ROW_HEIGHT)
+	row.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, GOLD, 1, 9, 6))
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 10)
+	row.add_child(body)
+	# The battery is the remedy, and the routing rows already set the precedent that the icon
+	# shows what to build rather than what is being built.
+	body.add_child(_building_icon(Catalog.get_building_by_internal_name("battery"), INFRA_ROW_ICON))
+
+	var text := RichTextLabel.new()
+	text.bbcode_enabled = true
+	text.fit_content = true
+	text.scroll_active = false
+	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	text.add_theme_font_size_override("normal_font_size", 12)
+	text.add_theme_font_size_override("bold_font_size", 12)
+	text.add_theme_color_override("default_color", TEXT)
+	var bold := _semibold_font()
+	if bold != null:
+		text.add_theme_font_override("bold_font", bold)
+	text.text = "This building produces intermittent power. Stabilise it with [b]battery storage[/b] to avoid reducing output."
 	body.add_child(text)
 	return row
 

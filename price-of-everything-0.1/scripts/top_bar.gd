@@ -121,6 +121,9 @@ var _power_sub: Label
 # Victory module
 var _victory_btn: Control
 var _victory_meters: HBoxContainer
+var _quest_btn: Control
+var _quest_title: Label
+var _quest_sub: Label
 var _victory_score: Label
 var _victory_target: Label   # "/ N" — the rising win threshold for the current turn
 
@@ -176,6 +179,7 @@ func _ready() -> void:
 	_build_transport()
 	_build_rankings()
 	_build_briefing()
+	_build_quest()
 	_build_council()
 	_build_goods_graph()
 	_adopt_encyclopedia_and_turn()
@@ -327,6 +331,12 @@ class _ModuleBtn extends PanelContainer:
 		set(v):
 			active = v
 			_restyle()
+	## Optional thin border, re-applied by _restyle so hover cannot wipe it. Transparent (the
+	## default) leaves a module exactly as it was.
+	var rim := Color(0, 0, 0, 0):
+		set(v):
+			rim = v
+			_restyle()
 	var _hover := false
 	var _bar: Node
 	func _init(bar: Node) -> void:
@@ -342,6 +352,10 @@ class _ModuleBtn extends PanelContainer:
 		var sb: StyleBoxFlat = _bar._module_box(active, warn)
 		if _hover and not active:
 			sb.bg_color = Color(1, 1, 1, 0.05)
+		if rim.a > 0.0:
+			sb.border_color = rim
+			sb.set_border_width_all(1)
+			sb.set_corner_radius_all(8)
 		add_theme_stylebox_override("panel", sb)
 	func _gui_input(e: InputEvent) -> void:
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
@@ -519,8 +533,8 @@ func _build_victory() -> void:
 	_victory_score.add_theme_font_size_override("font_size", 15)
 	_victory_score.add_theme_color_override("font_color", C_CREAM)
 	col.add_child(_victory_score)
-	# Second line: how far off the win actually is, in turns, which is the question the
-	# score alone never answered. Falls back to the threshold when there is no rate yet.
+	# Second line: the points needed to win. Just the threshold — see below for why there is
+	# no turn estimate here.
 	_victory_target = _mini("", C_TEXT, 11)
 	# Text set on refresh (_victory_bar_tip) — at build time the ruleset has not landed yet,
 	# so the bar's shape is not yet known.
@@ -768,24 +782,10 @@ func _refresh_victory() -> void:
 		cell.add_child(letter)
 		_victory_meters.add_child(cell)
 	var total := int(bd.get("total", 0))
-	_record_victory_point(total)
 	_victory_score.text = "%s Victory Point%s" % [_thousands(total), "" if total == 1 else "s"]
 	if _victory_target != null:
-		_victory_target.text = _victory_forecast(bd, total)
+		_victory_target.text = "of %s to win" % _thousands(int(bd.get("win_threshold", 4000)))
 		_victory_target.tooltip_text = _victory_bar_tip(bd)
-
-## Score history, so "how many turns" can be answered at all: one entry per resolved turn,
-## newest last. Victory has no rate of its own — the tracks report where they ARE, not how
-## fast they are moving — so the bar keeps the little history the question needs.
-var _victory_history: Array[int] = []
-const VICTORY_HISTORY_TURNS := 6
-
-func _record_victory_point(total: int) -> void:
-	if not _victory_history.is_empty() and _victory_history[-1] == total:
-		return   # nothing resolved since the last sample
-	_victory_history.append(total)
-	if _victory_history.size() > VICTORY_HISTORY_TURNS:
-		_victory_history = _victory_history.slice(_victory_history.size() - VICTORY_HISTORY_TURNS)
 
 ## What the win bar does, in one line. A campaign bar climbs with the turn; the demo's is
 ## flat, and a demo player told to hold out for turn 300 has been told something false.
@@ -797,43 +797,14 @@ func _victory_bar_tip(bd: Dictionary) -> String:
 	return "Points needed to win rise over the game — 1 track from turn %d up to 4 tracks by turn %d." % [
 		VictoryState.WIN_START_TURN, max_turns]
 
-## The second line of the victory module. A track past halfway is the one the player is
-## actually chasing, so it gets named; otherwise the answer is the whole win. Either way it
-## is turns, not points, because turns are what the player is spending.
-func _victory_forecast(bd: Dictionary, total: int) -> String:
-	var threshold := int(bd.get("win_threshold", 4000))
-	var rate := _victory_rate()
-	# The nearest track past halfway, if there is one.
-	var best_name := ""
-	var best_progress := 0.5
-	for t in (bd.get("tracks", []) as Array):
-		var track: Dictionary = t
-		var progress := float(track.get("progress", 0.0))
-		if progress > best_progress and progress < 1.0:
-			best_progress = progress
-			best_name = str(track.get("name", ""))
-	if rate <= 0.0:
-		return "of %s to win" % _thousands(threshold)
-	if best_name != "":
-		# Time the TRACK, not the total: its own points are what finish it.
-		var track_left := (1.0 - best_progress) / maxf(0.0001, best_progress) * float(total)
-		var track_turns := int(ceil(track_left / rate))
-		if track_turns > 0 and track_turns < 999:
-			return "%d turn%s until %s" % [track_turns, "" if track_turns == 1 else "s", best_name]
-	var remaining := threshold - total
-	if remaining <= 0:
-		return "threshold reached"
-	var turns := int(ceil(float(remaining) / rate))
-	return "%d turn%s until victory" % [turns, "" if turns == 1 else "s"] if turns < 999 else "of %s to win" % _thousands(threshold)
-
-## Points per turn over the recorded history. 0 when there is not yet a second sample.
-func _victory_rate() -> float:
-	if _victory_history.size() < 2:
-		return 0.0
-	var gained := _victory_history[-1] - _victory_history[0]
-	if gained <= 0:
-		return 0.0
-	return float(gained) / float(_victory_history.size() - 1)
+## NO TURN FORECAST HERE, DELIBERATELY (owner, 25 Aug). The module used to extrapolate a
+## points-per-turn rate from the last six resolved turns and print "N turns until victory".
+## Victory has no rate of its own — the tracks report where they ARE, not how fast they are
+## moving — so the estimate was a straight-line guess over a curve, and the win threshold
+## itself RISES with the turn (see _victory_bar_tip), which the extrapolation never modelled.
+## It read as a promise and was routinely wrong. The second line now states the threshold and
+## nothing else; the score above it is the progress. Do not reintroduce an ETA without a real
+## model of the tracks.
 
 
 func _thousands(n: int) -> String:
@@ -1049,6 +1020,7 @@ func _recenter_notch() -> void:
 	var min_size := _briefing_btn.get_combined_minimum_size()
 	_briefing_btn.size = Vector2(maxf(min_size.x, NOTCH_MIN_W), NOTCH_H)
 	_briefing_btn.position = Vector2(roundf((vw - _briefing_btn.size.x) * 0.5), 0.0)
+	_place_quest()
 	queue_redraw()
 
 func _refresh_briefing() -> void:
@@ -1083,6 +1055,89 @@ func _refresh_briefing() -> void:
 
 
 # ── 5 · Council: seated portraits with loyalty rings + number chips ─────────────
+
+## The post-tutorial mini quest (scripts/mini_quest.gd). Sits immediately right of the updates
+## notch: the hbox separation is 10, which is the offset asked for, so it needs no spacer.
+## Hidden until MiniQuest says there is a quest — that wants a finished tutorial AND a chain the
+## player has actually gone into.
+func _build_quest() -> void:
+	var mod := _ModuleBtn.new(self)
+	mod.name = "QuestModule"
+	mod.tooltip_text = "Mini quest"
+	# The thin gold rim is what marks this out from its neighbours: every other module on the
+	# bar is bare or silver-edged, so the rim does the work a badge would.
+	mod.rim = C_CREAM.darkened(0.15)
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_left", 12)
+	pad.add_theme_constant_override("margin_right", 12)
+	pad.add_theme_constant_override("margin_top", 6)
+	pad.add_theme_constant_override("margin_bottom", 6)
+	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mod.add_child(pad)
+	var col := VBoxContainer.new()
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 2)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pad.add_child(col)
+	_quest_title = _mini("", C_CREAM, 13)
+	col.add_child(_quest_title)
+	_quest_sub = _mini("", C_TEXT, 11)
+	col.add_child(_quest_sub)
+	mod.pressed.connect(func() -> void: _toggle_fly("quest"))
+	add_child(mod)
+	_quest_btn = mod
+	mod.visible = false
+	MiniQuest.quest_changed.connect(_refresh_quest)
+	get_viewport().size_changed.connect(_place_quest)
+	sort_children.connect(func() -> void: _place_quest.call_deferred())
+	_refresh_quest()
+
+
+## Ten pixels off the notch's right edge, vertically centred in the bar proper (the notch hangs
+## below it; the quest does not). Re-run whenever the notch moves or the label changes, since
+## both change the rect this is measured against.
+const QUEST_GAP := 10.0
+
+## THE BAR IS A PanelContainer, so it stretches every Control child to fill — measured: the
+## module came out 2556 px wide at (12, 4). The notch escapes that only because
+## _recenter_notch reassigns its rect after the layout has run, so this has to do the same,
+## and it has to do it after EVERY sort, not just on a viewport resize: changing the quest
+## label changes its minimum size, which re-sorts the bar and stomps the rect again.
+func _place_quest() -> void:
+	if _quest_btn == null or not is_instance_valid(_quest_btn) or not _quest_btn.visible:
+		return
+	if _briefing_btn == null or not is_instance_valid(_briefing_btn):
+		return
+	var min_size := _quest_btn.get_combined_minimum_size()
+	var want_size := Vector2(min_size.x, minf(min_size.y, BAR_H - 8.0))
+	var want_pos := Vector2(
+		_briefing_btn.position.x + _briefing_btn.size.x + QUEST_GAP,
+		roundf((BAR_H - want_size.y) * 0.5))
+	# Idempotent: re-assigning a child rect can ask the container to sort again, and this is
+	# called FROM sort_children.
+	if _quest_btn.size.is_equal_approx(want_size) and _quest_btn.position.is_equal_approx(want_pos):
+		return
+	_quest_btn.size = want_size
+	_quest_btn.position = want_pos
+
+
+## Text and visibility both come from MiniQuest; the bar never decides either for itself.
+func _refresh_quest() -> void:
+	if _quest_btn == null or not is_instance_valid(_quest_btn):
+		return
+	var on: bool = MiniQuest.is_available()
+	_quest_btn.visible = on
+	if not on:
+		if _fly_open_id == "quest":
+			_close_fly()
+		return
+	# MiniQuest decides which of its two missions is showing; the bar just renders it.
+	_quest_title.text = MiniQuest.title()
+	_quest_sub.text = MiniQuest.subtitle()
+	_place_quest.call_deferred()   # the new label decides the width
+	if _fly_open_id == "quest":
+		_refresh_open_fly()
+
 
 func _build_council() -> void:
 	# Everything from Council rightwards is anchored to the far right edge (the
@@ -1376,6 +1431,30 @@ func _build_menu() -> void:
 
 # ── Flyouts (Treasury · Council · Victory), anchored under their modules ────────
 
+## The quest panel: the four steps with their ticks, the reward, and where to look if lost.
+## No heading — at 120 px a title would spend a third of the panel repeating the module the
+## player just clicked.
+const QUEST_FLY_H := 120
+
+func _fly_quest(vb: VBoxContainer) -> void:
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_left", 14)
+	pad.add_theme_constant_override("margin_right", 14)
+	pad.add_theme_constant_override("margin_top", 9)
+	pad.add_theme_constant_override("margin_bottom", 9)
+	vb.add_child(pad)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 0)
+	pad.add_child(col)
+	var steps: Array = MiniQuest.steps()
+	for i in steps.size():
+		var step_done: bool = MiniQuest.step_done(i)
+		col.add_child(_mini("%s  %d. %s" % ["✓" if step_done else "·", i + 1, str(steps[i])],
+			C_CREAM if step_done else C_TEXT, 11))
+	col.add_child(_mini("Reward: %s" % MiniQuest.reward_text(), C_CREAM.darkened(0.1), 11))
+	col.add_child(_mini(MiniQuest.hint(), C_TEXT, 10))
+
+
 func _build_fly_layer() -> void:
 	_fly_layer = CanvasLayer.new()
 	_fly_layer.layer = 110   # under the Turn Briefing hub (120)
@@ -1447,6 +1526,8 @@ func _close_fly() -> void:
 		(_rankings_btn as _ModuleBtn).active = false
 	if _council_btn != null:
 		(_council_btn as _ModuleBtn).active = false
+	if _quest_btn != null and is_instance_valid(_quest_btn):
+		(_quest_btn as _ModuleBtn).active = false
 
 func _open_fly(id: String) -> void:
 	_close_fly()
@@ -1506,6 +1587,12 @@ func _open_fly(id: String) -> void:
 			_fly_council(vb)
 			anchor = _council_btn
 			(_council_btn as _ModuleBtn).active = true
+		"quest":
+			# 120 tall as specced, and wide enough that the longest step sits on one line.
+			_fly_panel.custom_minimum_size = Vector2(430, QUEST_FLY_H)
+			_fly_quest(vb)
+			anchor = _quest_btn
+			(_quest_btn as _ModuleBtn).active = true
 	_fly_layer.add_child(_fly_panel)
 	# Position after layout: left-align to the module, clamped to the viewport.
 	var place := func() -> void:
