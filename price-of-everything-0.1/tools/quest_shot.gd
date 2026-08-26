@@ -129,7 +129,9 @@ func _magnate_body(bar: Node) -> void:
 		_route("mq_ingots", "iron_ingots", STEEL_TILE)
 		print("[MAGNATE %s] steel recipe burns coal: %s" %
 			[steel_recipe, str(MiniQuest._steel_recipe_needs_coal())])
-		MiniQuest._on_turn_processed(_sum({"steel": 20, "iron_ingots": 30}))
+		# Consumption matters now: the steel plant must actually EAT the ingots, not just be
+		# shipped them, so every magnate summary carries what was consumed as well.
+		MiniQuest._on_turn_processed(_sum({"steel": 20, "iron_ingots": 30}, {"iron_ingots": 25}))
 		print("[MAGNATE %s] m1 steps=%s done=%s complete=%s power_reward=%s" %
 			[steel_recipe, str(MiniQuest.steps()), str(MiniQuest.done.get("steel")),
 			str(MiniQuest.is_mission_complete("steel")), str(Modifiers.has(MiniQuest.REWARD_ID_STEEL))])
@@ -137,7 +139,8 @@ func _magnate_body(bar: Node) -> void:
 		# Mission 2 is now live: its step list is decided here, from the steel recipe.
 		_route("mq_coal", "coal", INGOT_TILE)
 		_route("mq_iron", "iron_ore", INGOT_TILE)
-		MiniQuest._on_turn_processed(_sum({"steel": 20, "iron_ingots": 30, "coal": 50, "iron_ore": 50}))
+		MiniQuest._on_turn_processed(_sum({"steel": 20, "iron_ingots": 30, "coal": 50, "iron_ore": 50},
+			{"iron_ingots": 25, "coal": 40, "iron_ore": 40}))
 		var steps: Array = MiniQuest.steps()
 		print("[MAGNATE %s] m2 (%d steps, coal->steel present=%s) done=%s" %
 			[steel_recipe, steps.size(), str(steps.has("Supply coal from that mine to your steel building")),
@@ -146,7 +149,8 @@ func _magnate_body(bar: Node) -> void:
 			# One more coal mine, routed to the steel tile, closes the last step.
 			_probe("mq_coal2", "b_001", "r_001", "tile_8_4")
 			_route("mq_coal2", "coal", STEEL_TILE)
-			MiniQuest._on_turn_processed(_sum({"steel": 20, "iron_ingots": 30, "coal": 50, "iron_ore": 50}))
+			MiniQuest._on_turn_processed(_sum({"steel": 20, "iron_ingots": 30, "coal": 50, "iron_ore": 50},
+				{"iron_ingots": 25, "coal": 40, "iron_ore": 40}))
 		print("[MAGNATE %s] m2 complete=%s transport_reward=%s" %
 			[steel_recipe, str(MiniQuest.is_mission_complete("deposits")),
 			str(Modifiers.has("%s_coal" % MiniQuest.REWARD_ID_DEPOSITS))])
@@ -155,12 +159,51 @@ func _magnate_body(bar: Node) -> void:
 			await _settle(10)
 			await _shoot_module("res://quest_flyout.png")
 			bar._toggle_fly("quest")
+	await _magnate_negatives()
 	_clear_probes()
 
 
-func _probe(iid: String, building_id: String, recipe_id: String, tile_id: String) -> void:
+## The two things routing alone does NOT prove. Each is run from a state that is complete except
+## for the one fact under test, so a pass means that fact is what carried it.
+func _magnate_negatives() -> void:
+	const INGOT_TILE := "tile_5_10"
+	const COAL_TILE := "tile_7_4"
+
+	# 1. An NPC's mine on an inexhaustible deposit, routed correctly, must not count.
+	MiniQuest._on_state_reset()
+	_clear_probes()
+	_probe("mq_ingots", "b_002", "r_005", INGOT_TILE)
+	_probe("mq_steel", "b_002", "r_003", "tile_5_11")
+	_probe("mq_coal", "b_001", "r_001", COAL_TILE, "npc_rival")
+	_route("mq_ingots", "iron_ingots", "tile_5_11")
+	_route("mq_coal", "coal", INGOT_TILE)
+	MiniQuest._on_turn_processed(_sum({"steel": 20, "iron_ingots": 30, "coal": 50},
+		{"iron_ingots": 25, "coal": 40}))
+	var d: Array = MiniQuest.done.get("deposits", [])
+	print("[MAGNATE npc-mine] coal steps=%s (want [false, false] — a rival's mine is not theirs)" %
+		str([d[0] if d.size() > 0 else null, d[1] if d.size() > 1 else null]))
+
+	# 2. A player mine routed to a tile whose building does NOT eat coal. Basic Oxygen
+	#    steelmaking takes oxygen and limestone, never coal, so delivery there is not supply.
+	MiniQuest._on_state_reset()
+	_clear_probes()
+	_probe("mq_steel", "b_002", "r_025", "tile_5_11")     # Basic Oxygen — no coal
+	_probe("mq_ingots", "b_002", "r_031", INGOT_TILE)     # Direct Reduced Iron — no coal either
+	_probe("mq_coal", "b_001", "r_001", COAL_TILE)
+	_route("mq_ingots", "iron_ingots", "tile_5_11")
+	_route("mq_coal", "coal", INGOT_TILE)
+	MiniQuest._on_turn_processed(_sum({"steel": 20, "iron_ingots": 30, "coal": 50},
+		{"iron_ingots": 25, "coal": 40}))
+	var d2: Array = MiniQuest.done.get("deposits", [])
+	print("[MAGNATE no-consumer] coal->ingots=%s (want false — that ingots plant burns no coal)" %
+		str(d2[1] if d2.size() > 1 else null))
+
+
+func _probe(iid: String, building_id: String, recipe_id: String, tile_id: String,
+		owner: String = "player_1") -> void:
 	MatchState.buildings[iid] = {
-		"instance_id": iid, "building_id": building_id, "recipe_id": recipe_id, "tile_id": tile_id}
+		"instance_id": iid, "building_id": building_id, "recipe_id": recipe_id,
+		"tile_id": tile_id, "owner": owner}
 
 
 func _route(iid: String, good_internal: String, tile_id: String) -> void:
