@@ -7,6 +7,7 @@
 #   Label:
 #     "Title"        — Bebas Neue 48 (panel / tile titles)
 #     "Section"      — Barlow Cond. Bold 22, uppercase, 0.08em tracking
+#     "SectionRuled" — Barlow Cond. Bold 15, uppercase — pairs with ruled_section_head()
 #     "BuildingName" — Barlow Cond. SemiBold 22
 #     "Body"         — Plex Medium 14 (default for stats / labels)
 #     "Caption"      — Plex 12 muted (tiny metadata)
@@ -21,6 +22,7 @@
 #   Button:
 #     (default)      — Plex Sans Condensed SemiBold 17 steel-blue button
 #     "Primary"      — brighter steel-blue CTA
+#     "Brass"        — brass fill, dark navy text: the commit CTA (Construct V3 confirm)
 #     "Build"        — steel-blue build / upgrade button (pill-ish)
 #
 # Code tokens (don't hardcode hex / px in panels):
@@ -123,6 +125,16 @@ func recipe_diagram(flow: Dictionary) -> PanelContainer:
 func recipe_diagram_for(recipe: Dictionary) -> PanelContainer:
 	return RecipeDiagram.from_recipe(recipe)
 
+## Ledger section head (Construct V3, spec §4): a fine rule above a small-caps
+## title. Rules replace coloured tick-bars — structure never wears a status
+## colour. double_rule marks a verdict/total band (the classic ledger double line).
+func ruled_section_head(text: String, double_rule: bool = false) -> Control:
+	return UIHelpers.make_ruled_section_head(text, double_rule)
+
+## The bare rule, for placing above non-label content (e.g. a sticky footer).
+func section_rule(double_rule: bool = false) -> Control:
+	return UIHelpers.make_section_rule(double_rule)
+
 func _ready() -> void:
 	theme = _build_theme()
 	get_tree().root.theme = theme
@@ -157,6 +169,10 @@ func _build_theme() -> Theme:
 	# What a mission pays out. Brass and semibold, so the one line on a quest card that is a
 	# REWARD rather than an instruction reads as one at a glance.
 	_label_var(t, fonts, "Reward",       "PLEX_SEMI",   FS["BODY"],     PALETTE["BRASS"])
+	# Ledger section head (Construct V3, spec §4): small-caps at ~1.1x body, off-white,
+	# paired with the fine rule that ruled_section_head() draws above it. The head is
+	# quieter than "Section" because the rule carries the separation, not size or colour.
+	_label_var(t, fonts, "SectionRuled", "BARLOW_BOLD", 15,             PALETTE["TEXT"], 0.08)
 
 	# ── PanelContainer base + variations ───────────────────────────────
 	# Default panel: opaque navy + 2px solid cream outline + generous padding
@@ -246,6 +262,28 @@ func _build_theme() -> Theme:
 	t.set_color("font_hover_color", "Silver", PALETTE["BG_PANEL"])
 	t.set_color("font_pressed_color", "Silver", PALETTE["BG_PANEL"])
 	_apply_button_font(t, fonts, "Silver")
+
+	# ── Brass commit CTA (Construct V3 confirm; spec §4 "one metal per panel") ──
+	# The copper/bronze research-panel family: brass fill, dark navy text — meant to
+	# be the highest-contrast object on the panel. Disabled keeps the brass identity
+	# but dimmed, because the V3 confirm pairs it with a reason line rather than
+	# hiding the button.
+	t.set_type_variation("Brass", "Button")
+	t.set_stylebox("normal", "Brass",
+		_button_stylebox(Color("#EFC96B"), Color("#C6963A"), Color("#54401C"), 8, 2, 21, 10, 0.50))
+	t.set_stylebox("hover", "Brass",
+		_button_stylebox(Color("#F6D67F"), Color("#D2A344"), Color("#54401C"), 8, 2, 21, 10, 0.56))
+	t.set_stylebox("pressed", "Brass",
+		_button_stylebox(Color("#C6963A"), Color("#A87D2C"), Color("#3E2F13"), 8, 2, 21, 9, 0.22))
+	t.set_stylebox("disabled", "Brass",
+		_button_stylebox(Color("#8A7648"), Color("#5E5030"), Color("#3A331F"), 8, 2, 21, 10, 0.14))
+	t.set_stylebox("focus", "Brass", t.get_stylebox("hover", "Brass"))
+	t.set_color("font_color", "Brass", PALETTE["BG_PANEL"])
+	t.set_color("font_hover_color", "Brass", PALETTE["BG_PANEL"])
+	t.set_color("font_pressed_color", "Brass", PALETTE["BG_PANEL"])
+	t.set_color("font_disabled_color", "Brass",
+		Color(PALETTE["BG_PANEL"].r, PALETTE["BG_PANEL"].g, PALETTE["BG_PANEL"].b, 0.65))
+	_apply_button_font(t, fonts, "Brass")
 
 	# ── Selected choice (off-white fill, navy text) ─────────────────────
 	# Used by persistent selector rows such as the advisor-position preview.

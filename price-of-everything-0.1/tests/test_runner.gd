@@ -192,6 +192,7 @@ func _ready() -> void:
 	_test_telemetry_schema3_row()
 	_test_build_forecast()
 	_test_construct_v3_sim()
+	_test_construct_v3_ds()
 	_test_purchases()
 	_test_exhausted_input_source_falls_back_to_market()
 	_test_recipes_producing()
@@ -8786,6 +8787,46 @@ func _test_construct_v3_sim() -> void:
 	_check(bool(seen["during"]) and not BuildMode.attempt_buy_land,
 		"v3 single intent: buy-land is armed during the attempt and cleared after it")
 	BuildMode.last_attempt_refused = false
+
+
+func _test_construct_v3_ds() -> void:
+	# Phase-2 DS extensions for the V3 confirm redesign: the brass commit CTA and
+	# the ledger-grammar ruled section heads, both living in the theme/DS façade so
+	# every future panel inherits them.
+	_check(DS.theme.has_stylebox("normal", "Brass") and DS.theme.has_stylebox("disabled", "Brass"),
+		"v3 DS: the Brass CTA variation exists, disabled state included")
+	_check(DS.theme.get_color("font_color", "Brass") == DS.PALETTE["BG_PANEL"],
+		"v3 DS: brass carries dark navy text (highest-contrast object on the panel)")
+	_check(DS.theme.get_font_size("font_size", "SectionRuled") == 15,
+		"v3 DS: SectionRuled heads sit at ~1.1x body")
+
+	var head := DS.ruled_section_head("What it does to your cash", true)
+	var head_label: Label = null
+	var has_rule := false
+	for child in head.get_children():
+		if child is Label:
+			head_label = child
+		elif child is Control:
+			has_rule = true
+	_check(has_rule and head_label != null
+		and head_label.text == "WHAT IT DOES TO YOUR CASH"
+		and head_label.theme_type_variation == &"SectionRuled",
+		"v3 DS: ruled section heads are a rule over a small-caps SectionRuled title")
+	head.free()
+
+	# The gated tone swap: the panel's secondary labels raise one step under V3
+	# (DS.TEXT_MUTED), and drop back to the legacy grey with the cheat off.
+	var panel_script: Variant = load("res://scripts/construct_panel_v2.gd")
+	var probe: Control = panel_script.new()
+	var saved_v3 := MatchState.use_construct_panel_v3
+	MatchState.use_construct_panel_v3 = true
+	var raised: Color = probe._muted_tone()
+	MatchState.use_construct_panel_v3 = false
+	var legacy: Color = probe._muted_tone()
+	MatchState.use_construct_panel_v3 = saved_v3
+	probe.free()
+	_check(raised == DS.PALETTE["TEXT_MUTED"] and legacy == Color("#8da0b6"),
+		"v3 tone: secondary labels raise one contrast step under the cheat only")
 
 
 func _test_telemetry_schema3_row() -> void:

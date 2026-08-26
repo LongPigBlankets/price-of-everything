@@ -527,7 +527,7 @@ func _build_shell() -> void:
 	_search_input.custom_minimum_size = Vector2(0, 38)
 	_search_input.add_theme_font_size_override("font_size", 13)
 	_search_input.add_theme_color_override("font_color", TEXT)
-	_search_input.add_theme_color_override("font_placeholder_color", MUTED)
+	_search_input.add_theme_color_override("font_placeholder_color", _muted_tone())
 	_search_input.add_theme_stylebox_override("normal", _panel_style(NAVY_FIELD, NAVY_LINE, 1, 8, 9))
 	_search_input.add_theme_stylebox_override("focus", _panel_style(NAVY_FIELD, GOLD_DARK, 1, 8, 9))
 	_search_input.text_changed.connect(_on_search_changed)
@@ -668,7 +668,7 @@ func _render_settings() -> void:
 	var back := Button.new()
 	back.text = "‹  Back to construct"
 	back.custom_minimum_size = Vector2(0, 34)
-	_style_button(back, NAVY_RAISED, NAVY_LINE, MUTED)
+	_style_button(back, NAVY_RAISED, NAVY_LINE, _muted_tone())
 	back.pressed.connect(_on_back_from_settings)
 	_content.add_child(back)
 	_content.add_child(_section_label("CONSTRUCTION DEFAULTS"))
@@ -687,7 +687,7 @@ func _render_settings() -> void:
 	var output_note := Label.new()
 	output_note.text = "This applies to recipes started after changing the setting."
 	output_note.add_theme_font_size_override("font_size", 11)
-	output_note.add_theme_color_override("font_color", MUTED)
+	output_note.add_theme_color_override("font_color", _muted_tone())
 	output_box.add_child(output_note)
 	var output_choices := HBoxContainer.new()
 	output_choices.add_theme_constant_override("separation", 6)
@@ -714,7 +714,7 @@ func _render_settings() -> void:
 	source_note.text = "Choose what happens when the selected tile does not hold the full kit."
 	source_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	source_note.add_theme_font_size_override("font_size", 11)
-	source_note.add_theme_color_override("font_color", MUTED)
+	source_note.add_theme_color_override("font_color", _muted_tone())
 	source_box.add_child(source_note)
 	var source_group := ButtonGroup.new()
 	for option in [
@@ -744,13 +744,13 @@ func _render_settings() -> void:
 	var credit_title := Label.new()
 	credit_title.text = "Credit facility for new buildings"
 	credit_title.add_theme_font_size_override("font_size", 14)
-	credit_title.add_theme_color_override("font_color", TEXT if has_cfo else MUTED)
+	credit_title.add_theme_color_override("font_color", TEXT if has_cfo else _muted_tone())
 	credit_box.add_child(credit_title)
 	var credit_note := Label.new()
 	credit_note.text = "A new building's first %d turns of inputs, labour, energy and maintenance can be carried instead of paid." % MatchState.TAB_WINDOW_TURNS
 	credit_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	credit_note.add_theme_font_size_override("font_size", 11)
-	credit_note.add_theme_color_override("font_color", MUTED)
+	credit_note.add_theme_color_override("font_color", _muted_tone())
 	credit_box.add_child(credit_note)
 	if not has_cfo:
 		var need_cfo := Label.new()
@@ -808,7 +808,7 @@ func _settings_toggle_card(title_text: String, note_text: String, is_on: bool, o
 	note.text = note_text
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.add_theme_font_size_override("font_size", 11)
-	note.add_theme_color_override("font_color", MUTED)
+	note.add_theme_color_override("font_color", _muted_tone())
 	copy.add_child(note)
 	var toggle := Button.new()
 	toggle.text = "ON" if is_on else "OFF"
@@ -898,7 +898,7 @@ func _render_browse() -> void:
 		else:
 			empty.text = "No buildings match your search."
 		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		empty.add_theme_color_override("font_color", MUTED)
+		empty.add_theme_color_override("font_color", _muted_tone())
 		empty.add_theme_font_size_override("font_size", 13)
 		empty.custom_minimum_size = Vector2(0, 120)
 		_content.add_child(empty)
@@ -920,7 +920,7 @@ func _rebuild_filters() -> void:
 		button.add_theme_font_size_override("font_size", 14)
 		var selected: bool = _active_filters.has(category)
 		_style_button(button, GOLD if selected else NAVY_FIELD, GOLD_DARK if selected else NAVY_LINE,
-			NAVY if selected else MUTED)
+			NAVY if selected else _muted_tone())
 		button.toggled.connect(_on_filter_toggled.bind(category))
 		_filter_row.add_child(button)
 
@@ -1032,7 +1032,7 @@ func _make_building_card(building: Dictionary) -> Control:
 	var category := Label.new()
 	category.text = "INSUFFICIENT FUNDS" if not affordable and not disabled else ("INFRASTRUCTURE" if is_infra else ("NO RECIPES" if disabled else str(recipe_count.size()) + (" RECIPE" if recipe_count.size() == 1 else " RECIPES")))
 	category.add_theme_font_size_override("font_size", 9)
-	category.add_theme_color_override("font_color", Color("#697583") if disabled or not affordable else MUTED)
+	category.add_theme_color_override("font_color", Color("#697583") if disabled or not affordable else _muted_tone())
 	category.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	name_row.add_child(category)
 	var value := Label.new()
@@ -1045,7 +1045,7 @@ func _make_building_card(building: Dictionary) -> Control:
 	chevron.text = "—" if disabled else ("›" if is_infra else ("⌄" if expanded else "›"))
 	chevron.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	chevron.add_theme_font_size_override("font_size", 20)
-	chevron.add_theme_color_override("font_color", MUTED)
+	chevron.add_theme_color_override("font_color", _muted_tone())
 	chevron.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(chevron)
 
@@ -1062,7 +1062,7 @@ func _make_building_card(building: Dictionary) -> Control:
 		var hint := Label.new()
 		hint.text = "%d recipe%s" % [recipe_count.size(), "" if recipe_count.size() == 1 else "s"]
 		hint.add_theme_font_size_override("font_size", 10)
-		hint.add_theme_color_override("font_color", MUTED)
+		hint.add_theme_color_override("font_color", _muted_tone())
 		hint.add_theme_constant_override("outline_size", 0)
 		hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		branch_heading.add_child(hint)
@@ -1122,7 +1122,7 @@ func _make_recipe_button(building_id: String, recipe: Dictionary, affordable: bo
 	var detail := Label.new()
 	detail.text = _recipe_summary(recipe)
 	detail.add_theme_font_size_override("font_size", 12)
-	detail.add_theme_color_override("font_color", MUTED)
+	detail.add_theme_color_override("font_color", _muted_tone())
 	detail.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	text_box.add_child(detail)
 	if affordable:
@@ -1153,7 +1153,7 @@ func _render_confirm() -> void:
 	var back := Button.new()
 	back.text = "‹  Back to recipes"
 	back.custom_minimum_size = Vector2(0, 34)
-	_style_button(back, NAVY_RAISED, NAVY_LINE, MUTED)
+	_style_button(back, NAVY_RAISED, NAVY_LINE, _muted_tone())
 	back.pressed.connect(_on_back_to_browse)
 	_content.add_child(back)
 
@@ -1175,7 +1175,7 @@ func _render_confirm() -> void:
 	var sub := Label.new()
 	sub.text = building_name if recipe_name != "" else "Infrastructure"
 	sub.add_theme_font_size_override("font_size", 11)
-	sub.add_theme_color_override("font_color", MUTED)
+	sub.add_theme_color_override("font_color", _muted_tone())
 	hero_text.add_child(sub)
 
 	if not _selected_recipe.is_empty():
@@ -1198,7 +1198,7 @@ func _render_confirm() -> void:
 	var material_note := Label.new()
 	material_note.text = _material_source_note()
 	material_note.add_theme_font_size_override("font_size", 11)
-	material_note.add_theme_color_override("font_color", MUTED)
+	material_note.add_theme_color_override("font_color", _muted_tone())
 	_content.add_child(material_note)
 	_content.add_child(_materials_grid(_selected_building))
 
@@ -1211,7 +1211,7 @@ func _render_confirm() -> void:
 	value_label.text = "Construction cost estimate + freight and warehousing"
 	value_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	value_label.add_theme_font_size_override("font_size", 12)
-	value_label.add_theme_color_override("font_color", MUTED)
+	value_label.add_theme_color_override("font_color", _muted_tone())
 	value_row.add_child(value_label)
 	var value := Label.new()
 	value.name = "BuildCostValue"   # tutorial spotlight target (build-cost step)
@@ -1250,7 +1250,9 @@ func _render_confirm() -> void:
 	confirm.name = "BuildConfirmButton"   # tutorial spotlight target
 	confirm.text = "Confirm" if _locked_tile_id != "" else "Confirm · select tile"
 	confirm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	confirm.theme_type_variation = "Primary"
+	# V3 (spec §4): the commit joins the panel's one metal — brass fill, dark text,
+	# the highest-contrast object on the panel. The silver family stays retired here.
+	confirm.theme_type_variation = "Brass" if MatchState.use_construct_panel_v3 else "Primary"
 	confirm.focus_mode = Control.FOCUS_NONE
 	confirm.pressed.connect(_on_confirm_pressed)
 	_footer.add_child(confirm)
@@ -1282,7 +1284,7 @@ func _materials_grid(building: Dictionary) -> Control:
 	if grid.get_child_count() == 0:
 		var none := Label.new()
 		none.text = "No material kit required"
-		none.add_theme_color_override("font_color", MUTED)
+		none.add_theme_color_override("font_color", _muted_tone())
 		grid.add_child(none)
 	return box
 
@@ -1349,7 +1351,7 @@ func _land_row(building: Dictionary) -> Control:
 	detail.text = "Needs %d land · %d free on this tile" % [needed, free]
 	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	detail.add_theme_font_size_override("font_size", 11)
-	detail.add_theme_color_override("font_color", MUTED)
+	detail.add_theme_color_override("font_color", _muted_tone())
 	box.add_child(detail)
 	return row
 
@@ -1363,7 +1365,7 @@ func _on_buy_land_toggled(pressed: bool) -> void:
 func _land_required_row(building: Dictionary) -> Control:
 	var needed := int(round(maxf(0.0, float(building.get("tile_size_used", 1)))))
 	var text := "Land required: %d" % needed
-	var tint := MUTED
+	var tint := _muted_tone()
 	if _locked_tile_id != "":
 		var owned := MatchState.get_tile_land_owned(_locked_tile_id)
 		var used := int(round(MatchState.get_tile_player_space_used(_locked_tile_id)))
@@ -1593,7 +1595,19 @@ func _flash_row(row: Control) -> void:
 	tween.tween_callback(wash.queue_free)
 
 
-func _section_label(text: String) -> Control:
+## Secondary-label tone. V3 raises it one step (spec §6): the local grey reads as
+## grey-on-grey on the panel navies at the 10–14 px this panel actually uses —
+## the pattern the standing contrast rule in CLAUDE.md forbids. DS.TEXT_MUTED is
+## the blessed quiet tone; V2 keeps its original grey untouched.
+func _muted_tone() -> Color:
+	return DS.PALETTE.TEXT_MUTED if MatchState.use_construct_panel_v3 else MUTED
+
+
+func _section_label(text: String, double_rule: bool = false) -> Control:
+	# V3 (spec §4): fine ruled lines replace the gold tick-bar — ledger grammar,
+	# no status colour spent on furniture. double_rule marks the verdict band.
+	if MatchState.use_construct_panel_v3:
+		return DS.ruled_section_head(text, double_rule)
 	# Matches the Tile View's compact section heading: a clear uppercase title,
 	# off-white type and a restrained accent rule rather than plain body text.
 	var row := HBoxContainer.new()
@@ -1924,7 +1938,7 @@ func _infrastructure_level_accordion(key: String, level: int) -> VBoxContainer:
 		name.text = str(item[0])
 		name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		name.add_theme_font_size_override("font_size", 10)
-		name.add_theme_color_override("font_color", MUTED)
+		name.add_theme_color_override("font_color", _muted_tone())
 		line.add_child(name)
 		var value := Label.new()
 		value.text = str(item[1])
@@ -2013,7 +2027,7 @@ func _add_forecast_section() -> void:
 	caption.text = "Per turn, at today's prices: goods, freight, port fees, storage, power, labour and upkeep. Assumes it sells straight to market with any pipework already built."
 	caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	caption.add_theme_font_size_override("font_size", 10)
-	caption.add_theme_color_override("font_color", MUTED)
+	caption.add_theme_color_override("font_color", _muted_tone())
 	_content.add_child(caption)
 
 
