@@ -47,6 +47,36 @@ func _ready() -> void:
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png("res://construct_v3_shot_bottom.png")
 	print("SAVED construct_v3_shot_bottom.png")
+
+	# Third: the land toggle unticked — new in v3.1.
+	panel._scroll.scroll_vertical = 0
+	var land_toggle: Button = panel.find_child("V3LandToggle", true, false)
+	if land_toggle != null:
+		land_toggle.button_pressed = false
+		land_toggle.toggled.emit(false)
+		await _settle(4)
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png("res://construct_v3_shot_land_off.png")
+		print("SAVED construct_v3_shot_land_off.png")
+	else:
+		print("[V3_SHOT] no V3LandToggle found — skipping land-off shot")
+
+	# Fourth: an intermittent-power building — the priority-supply preview band.
+	var solar_recipe_id := ""
+	for recipe in Catalog.all_recipes():
+		if str(recipe.get("building_id", "")) == "b_024":
+			solar_recipe_id = str(recipe.get("recipe_id", ""))
+			break
+	if solar_recipe_id != "":
+		panel._locked_tile_id = "tile_5_10"
+		panel._on_recipe_pressed("b_024", solar_recipe_id)
+		await _settle(6)
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png("res://construct_v3_shot_solar.png")
+		print("SAVED construct_v3_shot_solar.png")
+	else:
+		print("[V3_SHOT] no solar-farm recipe found (b_024) — skipping priority-supply shot")
+
 	get_tree().quit()
 
 

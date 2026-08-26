@@ -194,6 +194,7 @@ func _ready() -> void:
 	_test_construct_v3_sim()
 	_test_construct_v3_ds()
 	await _test_construct_v3_confirm_layout()
+	await _test_construct_v3_1_iteration()
 	_test_purchases()
 	_test_exhausted_input_source_falls_back_to_market()
 	_test_recipes_producing()
@@ -8832,8 +8833,9 @@ func _test_construct_v3_ds() -> void:
 
 func _test_construct_v3_confirm_layout() -> void:
 	# Phase-3 V3 confirm: the verdict strip pins above the scroll and reads sim
-	# state, land is a requirement line (no checkbox anywhere), and a blocked
-	# Confirm always states its reason — then re-enables on live recompute.
+	# state, and a blocked Confirm always states its reason — then re-enables on
+	# live recompute. (v3.1 brought the land toggle back — see the dedicated
+	# land-toggle assertions below and _test_construct_v3_1_iteration.)
 	MatchState.reset()
 	MarketState._init_prices_from_catalog()
 	var saved_v3 := MatchState.use_construct_panel_v3
@@ -8860,15 +8862,50 @@ func _test_construct_v3_confirm_layout() -> void:
 		and subtotal.text == panel._money(float(panel.get("_v3_ledger").get("subtotal", -1.0))),
 		"v3 confirm: the materials subtotal reconciles to the ledger the verdict reads")
 
-	var has_checkbox := false
-	var stack: Array = [panel]
-	while not stack.is_empty():
-		var node: Node = stack.pop_back()
-		if node is CheckBox:
-			has_checkbox = true
-			break
-		stack.append_array(node.get_children())
-	_check(not has_checkbox, "v3 confirm: land is a requirement line — no checkbox anywhere")
+	# Land toggle (v3.1, owner 2026-08-26: "add the toggle in but always ticked by
+	# default"). tile_5_10 owns no land on a fresh match, so b_002's footprint is a
+	# real, purchasable shortfall here — exactly the case the toggle governs.
+	var land_toggle: Button = panel.find_child("V3LandToggle", true, false)
+	_check(land_toggle != null and land_toggle.button_pressed and panel.get("_buy_land_wanted"),
+		"v3.1 land toggle: renders for a purchasable shortfall, ticked by default")
+	_check(bool(panel.get("_v3_land").get("covered", false)),
+		"v3.1 land toggle: ticked reads as covered — matches the old auto-include")
+
+	land_toggle.button_pressed = false
+	land_toggle.toggled.emit(false)
+	await get_tree().process_frame
+	_check(not bool(panel.get("_buy_land_wanted")) and bool(panel.get("_land_toggle_touched")),
+		"v3.1 land toggle: unticking is tracked as touched")
+	_check(not bool(panel.get("_v3_land").get("covered", true)),
+		"v3.1 land toggle: unticked reads as NOT covered")
+	var untick_reason: Label = panel.find_child("V3ConfirmReason", true, false)
+	_check(untick_reason != null and untick_reason.text.begins_with("Short")
+		and untick_reason.text.contains("land"),
+		"v3.1 land toggle: unticking blocks Confirm with a land-specific reason")
+	var total_without_land: float = panel._v3_total_cost()
+
+	# A live recompute (money/price change) must NOT silently re-tick a box the
+	# player just unticked — the exact regression _land_toggle_touched exists for.
+	# The bank balance itself has no bearing on the confirm's spend total; bumping
+	# it here is purely the recompute TRIGGER (mirrors _on_money_changed), and the
+	# total should be exactly what it was — land cost still excluded.
+	MatchState.money = MatchState.money + 1.0
+	panel._render()
+	await get_tree().process_frame
+	_check(not bool(panel.get("_buy_land_wanted")),
+		"v3.1 land toggle: a live recompute does not silently re-tick an unticked box")
+	_check(is_equal_approx(panel._v3_total_cost(), total_without_land),
+		"v3.1 land toggle: unticked land cost stays out of the total across recomputes")
+
+	# Re-ticking restores the covered/affordable state.
+	land_toggle = panel.find_child("V3LandToggle", true, false)
+	land_toggle.button_pressed = true
+	land_toggle.toggled.emit(true)
+	await get_tree().process_frame
+	_check(bool(panel.get("_buy_land_wanted"))
+		and bool(panel.get("_v3_land").get("covered", false))
+		and panel.find_child("V3ConfirmReason", true, false) == null,
+		"v3.1 land toggle: re-ticking restores covered and clears the block reason")
 
 	var money_saved := MatchState.money
 	MatchState.money = 0.0
@@ -8889,6 +8926,111 @@ func _test_construct_v3_confirm_layout() -> void:
 
 	remove_child(panel)
 	panel.free()
+	MatchState.use_construct_panel_v3 = saved_v3
+	MatchState.reset()
+
+
+func _test_construct_v3_1_iteration() -> void:
+	# v3.1: the confirm screen re-read against the designer's V4 mockup —
+	# network-surplus-backed "elsewhere" ledger column, the recipe collapsing by
+	# default, and a priority-supply preview that is decoration only (owner
+	# 2026-08-26: "stub the control, no sim wiring").
+	MatchState.reset()
+	MarketState._init_prices_from_catalog()
+
+	# network_surplus_for_good: sums uncommitted stock across every OTHER tile,
+	# excludes the tile itself, and reports zero rather than going negative.
+	Stockpile.clear_all()
+	var req: Dictionary = Construction.requirements_for("b_002")
+	var probe_good := ""
+	for good_id in req:
+		probe_good = str(good_id)
+		break
+	_check(probe_good != "", "v3.1 elsewhere: b_002 has at least one required material to probe")
+	_check(Construction.network_surplus_for_good(probe_good, "tile_5_10") == 0,
+		"v3.1 elsewhere: no stock anywhere reports zero surplus")
+	Stockpile.add("tile_1_1", probe_good, 30)
+	_check(Construction.network_surplus_for_good(probe_good, "tile_5_10") == 30,
+		"v3.1 elsewhere: stock on another tile counts as surplus")
+	_check(Construction.network_surplus_for_good(probe_good, "tile_1_1") == 0,
+		"v3.1 elsewhere: the excluded tile's own stock never counts as \"elsewhere\"")
+	Stockpile.clear_all()
+
+	# materials_ledger: market_price is a reference figure decoupled from what is
+	# actually charged (market_cost, which the subtotal sums) — it stays
+	# populated even when the whole line is covered from stock.
+	Stockpile.add("tile_5_10", probe_good, int(req[probe_good]))
+	var ledger: Dictionary = Construction.materials_ledger("b_002", "tile_5_10")
+	var covered_row: Dictionary = {}
+	for row in ledger.get("rows", []):
+		if str((row as Dictionary).get("good_id", "")) == probe_good:
+			covered_row = row
+	_check(int(covered_row.get("market_qty", -1)) == 0
+		and float(covered_row.get("market_price", 0.0)) > 0.0,
+		"v3.1 ledger: market_price stays populated as a reference even when the line is fully stocked")
+	Stockpile.clear_all()
+
+	var saved_v3 := MatchState.use_construct_panel_v3
+	MatchState.use_construct_panel_v3 = true
+	var panel: PanelContainer = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
+	add_child(panel)
+	panel.open_for_tile("tile_5_10", {"type": ""})
+	panel._on_recipe_pressed("b_002", "r_005")
+	await get_tree().process_frame
+
+	# Materials table: header row present, and the new columns render.
+	_check(panel.find_child("V3RecipeToggle", true, false) != null
+		and panel.find_child("V3RecipeDiagram", true, false) != null,
+		"v3.1 recipe row: a collapse toggle and the diagram both exist")
+	var diagram: Control = panel.find_child("V3RecipeDiagram", true, false)
+	_check(not diagram.visible, "v3.1 recipe row: the diagram is collapsed by default")
+	var recipe_toggle: Button = panel.find_child("V3RecipeToggle", true, false)
+	recipe_toggle.pressed.emit()
+	await get_tree().process_frame
+	_check(diagram.visible, "v3.1 recipe row: tapping the summary expands the diagram")
+	recipe_toggle.pressed.emit()
+	await get_tree().process_frame
+	_check(not diagram.visible, "v3.1 recipe row: tapping again collapses it")
+
+	# Footer: "cash after" (bank minus the confirm's total), not a bare restated total.
+	var footer_value: Label = panel.find_child("BuildCostValue", true, false)
+	var expected_after: String = panel._money(MatchState.money - panel._v3_total_cost())
+	_check(footer_value != null and footer_value.text == expected_after,
+		"v3.1 footer: shows cash AFTER the build, not the total again")
+
+	# No power-intermittent building selected — no priority-supply band at all.
+	_check(panel.find_child("V3AffordChip", true, false) != null,   # sanity: confirm actually rendered
+		"v3.1 priority supply: sanity — confirm rendered for the non-power fixture")
+
+	remove_child(panel)
+	panel.free()
+
+	# Priority supply: renders ONLY for an intermittent-power building, defaults
+	# to "grid", and is genuinely decorative — never read by the forecast.
+	var solar_recipe_id := ""
+	for recipe in Catalog.all_recipes():
+		if str(recipe.get("building_id", "")) == "b_024":
+			solar_recipe_id = str(recipe.get("recipe_id", ""))
+			break
+	if solar_recipe_id != "":
+		var solar_panel: PanelContainer = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
+		add_child(solar_panel)
+		MatchState.use_construct_panel_v3 = true
+		solar_panel._on_recipe_pressed("b_024", solar_recipe_id)
+		await get_tree().process_frame
+		_check(str(solar_panel.get("_v3_priority_supply")) == "grid",
+			"v3.1 priority supply: defaults to grid")
+		var grid_forecast: Dictionary = BuildForecast.project("b_024", solar_recipe_id, "")
+		solar_panel.call("_on_v3_priority_supply_selected", "buildings")
+		await get_tree().process_frame
+		_check(str(solar_panel.get("_v3_priority_supply")) == "buildings",
+			"v3.1 priority supply: the segmented control updates panel-local state")
+		var after_forecast: Dictionary = BuildForecast.project("b_024", solar_recipe_id, "")
+		_check(is_equal_approx(float(grid_forecast.get("steady_net", 0.0)), float(after_forecast.get("steady_net", 0.0))),
+			"v3.1 priority supply: switching it never changes what the forecast/sim computes (stub only)")
+		remove_child(solar_panel)
+		solar_panel.free()
+
 	MatchState.use_construct_panel_v3 = saved_v3
 	MatchState.reset()
 

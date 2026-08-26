@@ -261,6 +261,8 @@ var _scroll: ScrollContainer
 var _content: VBoxContainer
 var _pinned: VBoxContainer
 var _footer: HBoxContainer
+var _footer_panel: PanelContainer   # background wrapper around _footer; see _build_shell
+var _footer_rule: Control           # ledger double-rule above the footer; toggles with it
 
 var _view := View.BROWSE
 var _buildings: Array = []
@@ -301,6 +303,16 @@ var _v3_forecast: Dictionary = {}      # BuildForecast.project for this render
 var _v3_land: Dictionary = {}          # _v3_compute_land() facts for this render
 var _v3_last_total := -1.0             # previous grand total, for the change tick
 var _v3_verdict_total_label: Label = null
+# Whether the player has touched the land-purchase toggle THIS confirm session
+# (v3.1, owner 2026-08-26: the toggle is back, ticked by default). Once true,
+# _v3_compute_land() stops defaulting _buy_land_wanted back to true on every
+# re-render — a live money/price recompute must not silently re-tick a box the
+# player just unticked. Reset whenever a fresh confirm opens.
+var _land_toggle_touched := false
+# Priority-supply choice for intermittent-power buildings (v3.1 preview, owner
+# 2026-08-26: stub the control, no sim wiring). "grid" | "buildings". Panel-local
+# only — never read by BuildForecast or Production. Reset per confirm session.
+var _v3_priority_supply := "grid"
 
 
 func _ready() -> void:
@@ -390,6 +402,8 @@ func _reset_to_browse() -> void:
 	_view = View.BROWSE
 	_v3_last_total = -1.0
 	_v3_verdict_total_label = null
+	_land_toggle_touched = false
+	_v3_priority_supply = "grid"
 	if _search_input != null:
 		_search_input.text = ""
 
@@ -456,6 +470,9 @@ func _on_build_mode_exited_with_selection(building_id: String, recipe_id: String
 	_view = View.CONFIRM
 	_confirm_flash_pending = true
 	_output_good_filter = ""
+	_v3_last_total = -1.0
+	_land_toggle_touched = false
+	_v3_priority_supply = "grid"
 	_render()
 	show()
 
@@ -587,10 +604,22 @@ func _build_shell() -> void:
 	_scroll.add_child(_content)
 
 	_footer = HBoxContainer.new()
-	_footer.visible = false
 	_footer.custom_minimum_size = Vector2(0, 62)
 	_footer.add_theme_constant_override("separation", 10)
-	root.add_child(_footer)
+	# A real background + the same ledger double-rule that marks the verdict strip
+	# (DS.section_rule) so the footer reads as a docked band regardless of what's
+	# scrolled up against it. A plain NAVY_LINE border was tried first and proved
+	# too close in value to both the fill and the panel's own near-black backing
+	# to read as a divider at all — BORDER_SOFT (what section_rule draws) is the
+	# tone this theme actually uses for a visible structural line on these navies.
+	_footer_rule = DS.section_rule(true)
+	_footer_rule.visible = false
+	root.add_child(_footer_rule)
+	_footer_panel = PanelContainer.new()
+	_footer_panel.visible = false
+	_footer_panel.add_theme_stylebox_override("panel", _panel_style(NAVY_RAISED, NAVY_RAISED, 0, 0, 0))
+	_footer_panel.add_child(_footer)
+	root.add_child(_footer_panel)
 
 
 func _load_data() -> void:
@@ -677,7 +706,8 @@ func _render() -> void:
 	for child in _pinned.get_children():
 		child.queue_free()
 	_pinned.visible = false
-	_footer.visible = false
+	_footer_panel.visible = false
+	_footer_rule.visible = false
 	if _view == View.SETTINGS:
 		_render_settings()
 	elif _view == View.CONFIRM:
@@ -1276,7 +1306,8 @@ func _render_confirm() -> void:
 	# below has to include (owner 2026-08-23).
 	_content.add_child(_land_row(_selected_building))
 
-	_footer.visible = true
+	_footer_panel.visible = true
+	_footer_rule.visible = true
 	var total := Label.new()
 	_confirm_total_label = total
 	total.text = _money(_confirm_total_cost())
@@ -1336,6 +1367,12 @@ func _render_confirm_v3() -> void:
 	for row in _v3_requirement_rows():
 		_content.add_child(row)
 
+	# Priority supply (v3.1 preview, owner 2026-08-26: stub only, no sim wiring —
+	# every intermittent building still prices as fully grid-sold).
+	if str(_selected_building.get("internal_name", "")) in EconomyConfig.POWER_INTERMITTENT_BUILDINGS:
+		_content.add_child(_section_label("SETTINGS"))
+		_content.add_child(_v3_priority_supply_band())
+
 	if not (_v3_forecast.get("phases", []) as Array).is_empty():
 		_content.add_child(_section_label("WHAT IT DOES TO YOUR CASH"))
 		if bool(_v3_forecast.get("no_supply", false)):
@@ -1347,6 +1384,10 @@ func _render_confirm_v3() -> void:
 			warn.add_theme_color_override("font_color", RED)
 			_content.add_child(warn)
 		_content.add_child(_v3_cash_timeline())
+		# Buffer / run rate / payback sit beside the timeline they explain (v3.1,
+		# from the V4 iteration) rather than crowding the always-visible verdict
+		# strip, which now carries only the total, build time and the chip.
+		_content.add_child(_v3_cash_facts())
 		var caption := Label.new()
 		caption.text = "Per turn, at today's prices: goods, freight, port fees, storage, power, labour and upkeep. Assumes it sells straight to market with any pipework already built."
 		caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1364,10 +1405,11 @@ func _render_confirm_v3() -> void:
 		_content.add_child(row)
 	_content.add_child(_v3_materials_subtotal())
 
-	# The recipe diagram survives, demoted below the decision bands: reference
-	# material, not part of the verdict. (Open spec question, resolved as "keep".)
+	# The recipe survives, demoted below the decision bands and collapsed by
+	# default (v3.1, from the V4 iteration): reference material, not part of the
+	# verdict, so it opens on tap rather than always occupying the scroll.
 	_content.add_child(_section_label("RECIPE"))
-	_content.add_child(_recipe_diagram(_selected_recipe))
+	_content.add_child(_v3_recipe_row(_selected_recipe))
 
 	_v3_build_footer()
 	_v3_pulse_if_changed(_v3_total_cost())
@@ -1408,10 +1450,12 @@ func _v3_header_band() -> Control:
 	return band
 
 
-## Band 2 — the decision in one band (§2): itemised grand total, build time,
-## buffer, run rate, payback, affordability chip. Fill only, no border — borders
-## carry semantics, and the strip is structure. The double rule above it is the
-## ledger's mark for a totals band.
+## Band 2 — the decision in one band (§2), kept minimal (v3.1, from the V4
+## iteration): itemised grand total, build time, affordability chip. Buffer, run
+## rate and payback moved to sit beside the cash timeline that explains them
+## (_v3_cash_facts) — the strip stays the one thing that's ALWAYS pinned. Fill
+## only, no border — borders carry semantics, and the strip is structure. The
+## double rule above it is the ledger's mark for a totals band.
 func _v3_verdict_strip() -> Control:
 	var box := VBoxContainer.new()
 	box.name = "V3VerdictStrip"
@@ -1455,6 +1499,17 @@ func _v3_verdict_strip() -> Control:
 	col.add_child(facts)
 	var build_turns := int(_v3_forecast.get("build_turns", 0))
 	_v3_fact(facts, "Build time", "%d turn%s" % [build_turns, "" if build_turns == 1 else "s"], TEXT, "")
+	return box
+
+
+## Buffer, run rate and payback (v3.1, moved out of the verdict strip — see
+## _v3_verdict_strip): placed right beside the cash timeline they explain instead
+## of crowding the band that has to stay pinned at every panel height.
+func _v3_cash_facts() -> Control:
+	var facts := GridContainer.new()
+	facts.columns = 2
+	facts.add_theme_constant_override("h_separation", 14)
+	facts.add_theme_constant_override("v_separation", 5)
 	_v3_fact(facts, "Buffer", "needs %s in the bank to reach the first sale"
 		% _money(float(_v3_forecast.get("cash_needed", 0.0))), TEXT,
 		"What the building costs from the day it completes until its first sale lands: labour, upkeep, inputs, power and storage.")
@@ -1468,7 +1523,7 @@ func _v3_verdict_strip() -> Control:
 		"pays back ~turn %d" % payback if payback > 0 else "never at today's prices",
 		TEXT if payback > 0 else RED,
 		"At today's prices: construction, land and every pre-revenue cost, earned back at the steady per-turn margin.")
-	return box
+	return facts
 
 
 func _v3_fact(grid: GridContainer, key: String, value: String, tone: Color, tip: String) -> void:
@@ -1582,33 +1637,116 @@ func _v3_land_requirement_row() -> Control:
 	var free := int(_v3_land.get("free", 0))
 	if int(_v3_land.get("short", 0)) <= 0:
 		return _v3_req_line("✓", GREEN, "Land — needs %d · %d free on this tile" % [needed, free])
-	if bool(_v3_land.get("covered", false)):
-		var lots := "" if MatchState.LAND_PATCH_SIZE <= 1 else " (sold in lots of %d)" % MatchState.LAND_PATCH_SIZE
-		return _v3_req_line("✓", GREEN, "Land — needs %d · %d free · includes purchase of %d · %s%s"
-			% [needed, free, int(_v3_land.get("units", 0)), _money(float(_v3_land.get("cost", 0.0))), lots])
-	if int(_v3_land.get("for_sale", 0)) <= 0:
-		return _v3_req_fail("Land — needs %d, %d free, and no more is for sale on this tile." % [needed, free])
-	return _v3_req_fail("Land — needs %d, %d free; only %d more can be bought here — still short."
-		% [needed, free, int(_v3_land.get("units", 0))])
+	if not bool(_v3_land.get("purchasable", false)):
+		if int(_v3_land.get("for_sale", 0)) <= 0:
+			return _v3_req_fail("Land — needs %d, %d free, and no more is for sale on this tile." % [needed, free])
+		return _v3_req_fail("Land — needs %d, %d free; only %d more can be bought here — still short."
+			% [needed, free, int(_v3_land.get("units", 0))])
+	# A real, reversible choice (v3.1, owner 2026-08-26: the toggle is back — the
+	# shortfall CAN be covered by a purchase, so whether to make it is genuinely
+	# the player's call, not an auto-included fact).
+	return _v3_land_toggle_row(needed, free)
 
 
-## The land facts for this confirm, and the purchase V3 folds into it: no checkbox
-## (§7) — a shortfall the tile can cover is simply included, itemised in the
-## verdict total, and executed inside the build's own gate on Confirm.
+## The land-purchase toggle (v3.1): ticked by default, so leaving it alone
+## behaves exactly like the old auto-include. Unticking is a deliberate
+## "build without this room" choice — it blocks Confirm with a stated reason,
+## the same as any other requirement failure, never a silent dead end.
+func _v3_land_toggle_row(needed: int, free: int) -> Control:
+	var lots := "" if MatchState.LAND_PATCH_SIZE <= 1 else " (sold in lots of %d)" % MatchState.LAND_PATCH_SIZE
+	var outer := PanelContainer.new()
+	outer.add_theme_stylebox_override("panel",
+		_panel_style(NAVY_FIELD, GOLD if _buy_land_wanted else RED, 1, 9, 7))
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	outer.add_child(box)
+
+	var toggle := Button.new()
+	toggle.name = "V3LandToggle"
+	toggle.toggle_mode = true
+	toggle.button_pressed = _buy_land_wanted
+	toggle.focus_mode = Control.FOCUS_NONE
+	toggle.custom_minimum_size = Vector2(0, 22)
+	var clear := StyleBoxEmpty.new()
+	for state in ["normal", "hover", "pressed", "disabled", "focus"]:
+		toggle.add_theme_stylebox_override(state, clear)
+	box.add_child(toggle)
+	var line := HBoxContainer.new()
+	line.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_theme_constant_override("separation", 8)
+	toggle.add_child(line)
+
+	var glyph := PanelContainer.new()
+	glyph.custom_minimum_size = Vector2(16, 16)
+	glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	glyph.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var glyph_style := StyleBoxFlat.new()
+	glyph_style.bg_color = GOLD if _buy_land_wanted else NAVY_FIELD
+	glyph_style.border_color = GOLD_DARK if _buy_land_wanted else NAVY_LINE
+	glyph_style.set_border_width_all(1)
+	glyph_style.set_corner_radius_all(4)
+	glyph.add_theme_stylebox_override("panel", glyph_style)
+	line.add_child(glyph)
+	if _buy_land_wanted:
+		var check := Label.new()
+		check.text = "✓"
+		check.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		check.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		check.add_theme_font_size_override("font_size", 11)
+		check.add_theme_color_override("font_color", NAVY)
+		check.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		glyph.add_child(check)
+
+	var label := Label.new()
+	label.text = "Buy %d land on this tile · %s%s" % [
+		int(_v3_land.get("units", 0)), _money(float(_v3_land.get("cost", 0.0))), lots]
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_color_override("font_color", TEXT)
+	line.add_child(label)
+	toggle.toggled.connect(_on_v3_land_toggled)
+
+	var note := Label.new()
+	note.text = ("Needs %d land · %d free on this tile." % [needed, free]) if _buy_land_wanted \
+		else "Short %d land — this build will be refused until you tick this or free up room." % (needed - free)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.add_theme_font_size_override("font_size", 11)
+	note.add_theme_color_override("font_color", TEXT if _buy_land_wanted else RED)
+	box.add_child(note)
+	return outer
+
+
+func _on_v3_land_toggled(pressed: bool) -> void:
+	_buy_land_wanted = pressed
+	_land_toggle_touched = true
+	_render()
+
+
+## The land facts for this confirm, and the purchase V3 folds into it when the
+## toggle is on. `_land_purchase_units`/`_land_purchase_cost` always hold what a
+## full purchase of the shortfall WOULD cost (so the toggle row and a re-tick
+## always show live numbers); `_buy_land_wanted` — preserved across re-renders
+## once the player has touched it (_land_toggle_touched) — decides whether that
+## cost actually applies. `covered` reflects the CURRENT toggle state, so the
+## requirement row, the confirm-block reason and the affordability chip all agree.
 func _v3_compute_land() -> Dictionary:
 	var needed := int(round(maxf(0.0, float(_selected_building.get("tile_size_used", 1)))))
 	var out := {"needed": needed, "free": 0, "short": 0, "units": 0, "cost": 0.0,
-		"for_sale": 0, "covered": true}
+		"for_sale": 0, "purchasable": false, "covered": true}
 	_land_purchase_units = 0
 	_land_purchase_cost = 0.0
-	_buy_land_wanted = false
 	if _locked_tile_id == "":
+		_buy_land_wanted = false
 		return out
 	var owned := MatchState.get_tile_land_owned(_locked_tile_id)
 	var used := int(round(MatchState.get_tile_player_space_used(_locked_tile_id)))
 	var free := maxi(0, owned - used)
 	out.free = free
 	if free >= needed:
+		_buy_land_wanted = false
 		return out
 	var short := needed - free
 	out.short = short
@@ -1616,15 +1754,26 @@ func _v3_compute_land() -> Dictionary:
 	var for_sale := MatchState.get_tile_land_patches_available(_locked_tile_id)
 	out.for_sale = for_sale
 	if for_sale <= 0:
+		_buy_land_wanted = false
 		return out
 	var patches := mini(int(ceil(float(short) / float(MatchState.LAND_PATCH_SIZE))), for_sale)
-	_land_purchase_units = patches * MatchState.LAND_PATCH_SIZE
-	_land_purchase_cost = MatchState.purchase_cost_after_advisor(
+	var units := patches * MatchState.LAND_PATCH_SIZE
+	var cost := MatchState.purchase_cost_after_advisor(
 		float(patches) * MatchState.LAND_PATCH_COST, {"tile_id": _locked_tile_id})
-	_buy_land_wanted = true
-	out.units = _land_purchase_units
-	out.cost = _land_purchase_cost
-	out.covered = free + _land_purchase_units >= needed
+	out.units = units
+	out.cost = cost
+	if free + units < needed:
+		# Not enough for sale here to close the gap even fully bought — nothing
+		# to toggle, this is a hard failure.
+		_buy_land_wanted = false
+		out.covered = false
+		return out
+	out.purchasable = true
+	if not _land_toggle_touched:
+		_buy_land_wanted = true   # default ON — untouched behaves like the old auto-include
+	_land_purchase_units = units
+	_land_purchase_cost = cost
+	out.covered = _buy_land_wanted
 	return out
 
 
@@ -1681,27 +1830,69 @@ func _v3_cash_timeline() -> Control:
 	return plate
 
 
-## Band 5 — the bill of materials as a ledger (§5): icon plate · name · need ·
-## have · source tag. Shortfall lines take the red border; everything else is
-## boxless. The subtotal below reconciles to the verdict's construction figure
-## because both read _v3_ledger.
+const V3_MAT_COL_ONTILE := 58
+const V3_MAT_COL_ELSEWHERE := 70
+const V3_MAT_COL_MARKET := 92
+
+## Band 5 — the bill of materials as a table (v3.1, from the V4 iteration): icon ·
+## name · on tile · elsewhere · market price, header row first. "Elsewhere" is
+## uncommitted surplus on every OTHER tile (Construction.network_surplus_for_good)
+## — informational regardless of the active material-sourcing setting. Shortfall
+## lines take the red border and a note beneath; everything else is boxless. The
+## subtotal below reconciles to the verdict's construction figure because both
+## read _v3_ledger's market_cost — market_price here is a display-only estimate,
+## never summed.
 func _v3_material_rows() -> Array:
-	var rows: Array = []
-	for entry in _v3_ledger.get("rows", []):
-		rows.append(_v3_material_row(entry))
-	if rows.is_empty():
+	var entries: Array = _v3_ledger.get("rows", [])
+	if entries.is_empty():
 		var none := Label.new()
 		none.text = "No material kit required"
 		none.add_theme_font_size_override("font_size", 12)
 		none.add_theme_color_override("font_color", _muted_tone())
-		rows.append(none)
+		return [none]
+	var rows: Array = [_v3_material_header()]
+	for entry in entries:
+		rows.append(_v3_material_row(entry))
 	return rows
+
+
+func _v3_material_header() -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var lead := Control.new()   # spacer matching the icon column below
+	lead.custom_minimum_size = Vector2(40, 0)
+	lead.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(lead)
+	var name := Label.new()
+	name.text = "GOOD"
+	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name.add_theme_font_size_override("font_size", 9)
+	name.add_theme_color_override("font_color", _muted_tone())
+	row.add_child(name)
+	for col in [
+		{"text": "ON TILE", "width": V3_MAT_COL_ONTILE, "tip": ""},
+		{"text": "ELSEWHERE", "width": V3_MAT_COL_ELSEWHERE,
+			"tip": "Uncommitted surplus on your other tiles — what an \"any tile with surplus\" source could actually draw on."},
+		{"text": "MARKET PRICE", "width": V3_MAT_COL_MARKET,
+			"tip": "Reference estimate to buy the full amount needed at today's price. What this build actually pays is the materials subtotal below."},
+	]:
+		var head := Label.new()
+		head.text = str(col.text)
+		head.custom_minimum_size = Vector2(int(col.width), 0)
+		head.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		head.add_theme_font_size_override("font_size", 9)
+		head.add_theme_color_override("font_color", _muted_tone())
+		if str(col.tip) != "":
+			head.tooltip_text = str(col.tip)
+			head.mouse_filter = Control.MOUSE_FILTER_PASS
+		row.add_child(head)
+	return row
 
 
 func _v3_material_row(entry: Dictionary) -> Control:
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", 8)
-	line.add_child(_good_icon(str(entry.get("good_id", "")), 40))
+	line.add_child(_good_icon(str(entry.get("good_id", "")), 40, -1, int(entry.get("need", 0))))
 	var name := Label.new()
 	name.text = str(entry.get("name", ""))
 	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1709,54 +1900,46 @@ func _v3_material_row(entry: Dictionary) -> Control:
 	name.add_theme_font_size_override("font_size", 12)
 	name.add_theme_color_override("font_color", TEXT)
 	line.add_child(name)
-	var need := Label.new()
-	need.text = "×%d" % int(entry.get("need", 0))
-	need.custom_minimum_size = Vector2(38, 0)
-	need.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	need.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	need.theme_type_variation = "Numeric"
-	need.add_theme_font_size_override("font_size", 12)
-	line.add_child(need)
-	var have := Label.new()
-	have.text = "have ×%d" % int(entry.get("have", 0))
-	have.custom_minimum_size = Vector2(64, 0)
-	have.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	have.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	have.add_theme_font_size_override("font_size", 11)
-	have.add_theme_color_override("font_color", _muted_tone())
-	line.add_child(have)
-	var tag := Label.new()
-	tag.custom_minimum_size = Vector2(104, 0)
-	tag.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	tag.add_theme_font_size_override("font_size", 11)
+	line.add_child(_v3_mat_figure(int(entry.get("have", 0)), V3_MAT_COL_ONTILE))
+	line.add_child(_v3_mat_figure(int(entry.get("elsewhere", 0)), V3_MAT_COL_ELSEWHERE))
+	var market := Label.new()
+	market.text = "~%s" % _money(float(entry.get("market_price", 0.0)))
+	market.custom_minimum_size = Vector2(V3_MAT_COL_MARKET, 0)
+	market.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	market.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	market.theme_type_variation = "Numeric"
+	market.add_theme_font_size_override("font_size", 12)
+	market.add_theme_color_override("font_color", _muted_tone())
+	line.add_child(market)
+
 	var short := int(entry.get("short", 0))
-	var market_qty := int(entry.get("market_qty", 0))
-	var from_stock := int(entry.get("from_stock", 0))
-	if short > 0:
-		tag.text = "short ×%d" % short
-		tag.add_theme_color_override("font_color", RED)
-		tag.tooltip_text = "This site must already hold every material (construct setting) — deliver it here first."
-	elif market_qty > 0 and from_stock > 0:
-		tag.text = "stock + market ~%s" % _money(float(entry.get("market_cost", 0.0)))
-		tag.add_theme_color_override("font_color", TEXT)
-		tag.tooltip_text = "×%d from this site's stock; ×%d bought at today's buy price, freight included." % [from_stock, market_qty]
-	elif market_qty > 0:
-		tag.text = "market — ~%s" % _money(float(entry.get("market_cost", 0.0)))
-		tag.add_theme_color_override("font_color", TEXT)
-		tag.tooltip_text = "Bought at today's buy price, freight included."
-	else:
-		tag.text = "from stock"
-		tag.add_theme_color_override("font_color", GREEN)
-		tag.tooltip_text = "Already on this site — costs nothing to use."
-	tag.mouse_filter = Control.MOUSE_FILTER_PASS
-	line.add_child(tag)
-	if short > 0:
-		var boxed := PanelContainer.new()
-		boxed.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, RED, 1, 9, 6))
-		boxed.add_child(line)
-		return boxed
-	return line
+	if short <= 0:
+		return line
+	var wrap := VBoxContainer.new()
+	wrap.add_theme_constant_override("separation", 2)
+	var boxed := PanelContainer.new()
+	boxed.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, RED, 1, 9, 6))
+	boxed.add_child(line)
+	wrap.add_child(boxed)
+	var short_note := Label.new()
+	short_note.text = "short ×%d — this site must hold every material before building" % short
+	short_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	short_note.add_theme_font_size_override("font_size", 10)
+	short_note.add_theme_color_override("font_color", RED)
+	wrap.add_child(short_note)
+	return wrap
+
+
+func _v3_mat_figure(qty: int, col_width: int) -> Label:
+	var label := Label.new()
+	label.text = str(qty)
+	label.custom_minimum_size = Vector2(col_width, 0)
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	label.theme_type_variation = "Numeric"
+	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_color_override("font_color", TEXT if qty > 0 else _muted_tone())
+	return label
 
 
 func _v3_materials_subtotal() -> Control:
@@ -1791,18 +1974,114 @@ func _v3_material_source_note() -> String:
 			return "You choose each delivery when construction starts."
 
 
-## Sticky footer: grand total + Confirm — and when Confirm must be disabled, the
-## reason sits under it in words (§7). Never a dead button with no explanation.
+## Recipe, demoted and collapsed by default (v3.1, from the V4 iteration): a
+## one-line summary that expands to the full diagram card on tap. Reference
+## material, not part of the verdict — collapsing it keeps the panel reading as
+## a document, not a poster (spec §5), and stops it eating scroll space by default.
+func _v3_recipe_row(recipe: Dictionary) -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 7)
+	var summary := _recipe_flow(recipe)
+	var toggle := Button.new()
+	toggle.name = "V3RecipeToggle"
+	toggle.text = "›  " + summary
+	toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	toggle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	toggle.custom_minimum_size = Vector2(0, 34)
+	toggle.focus_mode = Control.FOCUS_NONE
+	_style_button(toggle, NAVY_FIELD, NAVY_LINE, TEXT)
+	box.add_child(toggle)
+	var diagram := _recipe_diagram(recipe)
+	diagram.name = "V3RecipeDiagram"
+	diagram.visible = false
+	box.add_child(diagram)
+	toggle.pressed.connect(func() -> void:
+		diagram.visible = not diagram.visible
+		toggle.text = ("⌄  " if diagram.visible else "›  ") + summary)
+	return box
+
+
+## Priority-supply preview (v3.1 stub, owner 2026-08-26): "stub the control, no
+## sim wiring". Shown only for buildings in EconomyConfig.POWER_INTERMITTENT_
+## BUILDINGS. _v3_priority_supply is panel-local state ONLY — BuildForecast and
+## Production never read it. Every intermittent building is still priced (and
+## will run) as fully grid-sold; the copy says so, so the preview can't mislead.
+func _v3_priority_supply_band() -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	var seg_panel := PanelContainer.new()
+	seg_panel.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, NAVY_LINE, 1, 9, 3))
+	box.add_child(seg_panel)
+	var seg := HBoxContainer.new()
+	seg.add_theme_constant_override("separation", 4)
+	seg_panel.add_child(seg)
+	for option in [["grid", "Grid"], ["buildings", "Your buildings"]]:
+		var opt_id := str(option[0])
+		var on := _v3_priority_supply == opt_id
+		var btn := Button.new()
+		btn.text = str(option[1])
+		btn.toggle_mode = true
+		btn.button_pressed = on
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.custom_minimum_size = Vector2(0, 30)
+		btn.add_theme_font_size_override("font_size", 12)
+		_style_button(btn, GOLD if on else NAVY_FIELD, GOLD_DARK if on else NAVY_LINE,
+			NAVY if on else _muted_tone())
+		btn.pressed.connect(_on_v3_priority_supply_selected.bind(opt_id))
+		seg.add_child(btn)
+	var note := Label.new()
+	note.text = ("All output sells to the grid at spot price each turn — steady, unaffected by intermittency."
+			if _v3_priority_supply == "grid"
+			else "Preview only — production still sells every unit to the grid today; local-first routing isn't wired up yet.")
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.add_theme_font_size_override("font_size", 11)
+	note.add_theme_color_override("font_color", _muted_tone())
+	box.add_child(note)
+	return box
+
+
+func _on_v3_priority_supply_selected(option_id: String) -> void:
+	_v3_priority_supply = option_id
+	_render()
+
+
+## Sticky footer (v3.1, from the V4 iteration): "Cash after" replaces a second
+## restatement of the grand total — the verdict strip already shows the spend, so
+## the footer answers the next question, what's left. Confirm keeps a reason line
+## under it when blocked (§7) rather than folding the reason into the button
+## label: the one line has to cover land, materials AND funds, which a short
+## button caption can't hold uniformly the way V4's two-case version could.
 func _v3_build_footer() -> void:
-	_footer.visible = true
+	_footer_panel.visible = true
+	_footer_rule.visible = true
+	var cash_box := VBoxContainer.new()
+	cash_box.custom_minimum_size = Vector2(112, 0)
+	cash_box.add_theme_constant_override("separation", 1)
+	_footer.add_child(cash_box)
+	var cash_caption := Label.new()
+	cash_caption.text = "CASH AFTER"
+	cash_caption.add_theme_font_size_override("font_size", 10)
+	cash_caption.add_theme_color_override("font_color", _muted_tone())
+	cash_box.add_child(cash_caption)
 	var total := Label.new()
 	total.name = "BuildCostValue"   # tutorial spotlight target, same as V2
 	_confirm_total_label = total
-	total.text = _money(_v3_total_cost())
-	total.custom_minimum_size = Vector2(96, 0)
-	total.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var total_cost := _v3_total_cost()
+	var after := MatchState.money - total_cost
+	var affordable := after >= -0.0001
+	var below_buffer := affordable and after < float(_v3_forecast.get("cash_needed", 0.0))
+	total.text = _money(after)
 	total.theme_type_variation = "Numeric"
-	_footer.add_child(total)
+	total.add_theme_font_size_override("font_size", 16)
+	total.add_theme_color_override("font_color", RED if not affordable else (GOLD if below_buffer else TEXT))
+	cash_box.add_child(total)
+	if below_buffer:
+		var below := Label.new()
+		below.text = "below buffer"
+		below.add_theme_font_size_override("font_size", 9)
+		below.add_theme_color_override("font_color", GOLD)
+		cash_box.add_child(below)
 	var cta_box := VBoxContainer.new()
 	cta_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cta_box.add_theme_constant_override("separation", 2)
@@ -1831,6 +2110,9 @@ func _v3_build_footer() -> void:
 ## must hold, then money.
 func _v3_confirm_block_reason() -> String:
 	if _locked_tile_id != "" and not bool(_v3_land.get("covered", true)):
+		if bool(_v3_land.get("purchasable", false)):
+			return "Short %d land — tick \"Buy land\" above, or choose a tile with more room." \
+				% (int(_v3_land.get("needed", 0)) - int(_v3_land.get("free", 0)))
 		return "Not enough land — needs %d, %d free, and what's for sale here doesn't cover it." \
 			% [int(_v3_land.get("needed", 0)), int(_v3_land.get("free", 0))]
 	var shorts := PackedStringArray()
@@ -2681,6 +2963,8 @@ func _on_recipe_pressed(building_id: String, recipe_id: String) -> void:
 	_view = View.CONFIRM
 	_confirm_flash_pending = true
 	_v3_last_total = -1.0   # a fresh confirm never pulses its opening total
+	_land_toggle_touched = false
+	_v3_priority_supply = "grid"
 	_render()
 
 
@@ -2733,6 +3017,8 @@ func _on_back_to_browse() -> void:
 	_selected_recipe = {}
 	_v3_last_total = -1.0
 	_v3_verdict_total_label = null
+	_land_toggle_touched = false
+	_v3_priority_supply = "grid"
 	_render()
 
 

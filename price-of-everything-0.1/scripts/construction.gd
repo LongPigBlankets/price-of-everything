@@ -112,6 +112,12 @@ func market_purchase_value(building_id: String) -> float:
 ##   short         covered by nobody. Only under the "same_tile" material source,
 ##                 where a missing good blocks the build instead of being bought.
 ##   line_cost     what this line adds to the confirm total (= market_cost)
+##   elsewhere     uncommitted surplus of this good on every OTHER tile — informational:
+##                 what an "any_tile" switch could actually draw on, shown regardless
+##                 of the active setting (v3.1 spec: On tile / Elsewhere / Market price).
+##   market_price  reference estimate for buying the FULL need at today's buy price —
+##                 always populated, unlike market_cost which is freight-inclusive
+##                 and only covers the actual gap. Display-only; never summed.
 ##
 ## The "any_tile" source is deliberately priced as market here: which surplus tile
 ## would feed the build (and its freight) is only resolved by the delivery flow, so
@@ -141,9 +147,39 @@ func materials_ledger(building_id: String, tile_id: String) -> Dictionary:
 			"need": need, "have": have, "from_stock": from_stock,
 			"market_qty": market_qty, "market_cost": market_cost,
 			"short": short, "line_cost": market_cost,
+			"elsewhere": network_surplus_for_good(str(good_id), tile_id),
+			"market_price": _reference_market_price(str(good_id), need),
 		})
 		subtotal += market_cost
 	return {"rows": rows, "subtotal": subtotal}
+
+
+## Reference estimate for buying `need` units of one good at today's buy price —
+## no freight, no tile awareness. A flat "what the market would charge" figure for
+## the materials table, independent of what is actually being bought (market_cost).
+func _reference_market_price(good_id: String, need: int) -> float:
+	var unit_price := MarketState.get_buy_price(good_id)
+	if unit_price <= 0.0:
+		unit_price = Catalog.get_base_price(good_id)
+	return float(need) * unit_price
+
+
+## Uncommitted surplus of one good across every OTHER tile with stock — mirrors
+## find_source_tile's per-tile spare formula (stock minus this turn's committed
+## input use) but SUMS across every tile instead of stopping at the first one that
+## alone covers the whole shortfall. Purely informational for the confirm screen;
+## nothing here reserves or moves the goods.
+func network_surplus_for_good(good_id: String, exclude_tile_id: String) -> int:
+	var total := 0
+	for tile_key in Stockpile.tiles_with_stock():
+		var src := str(tile_key)
+		if src == exclude_tile_id or not src.begins_with("tile_"):
+			continue
+		var committed: Dictionary = Production.compute_committed_for_tile(src)
+		var spare: int = Stockpile.get_at_tile(src, good_id) - int(committed.get(good_id, 0))
+		if spare > 0:
+			total += spare
+	return total
 
 
 ## Market cost of buying `qty` of one good for a build: the tile-aware buy preview
