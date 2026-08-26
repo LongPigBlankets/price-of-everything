@@ -106,6 +106,11 @@ const RecipeDiagram := preload("res://scripts/recipe_diagram.gd")
 func good_icon(good_id: String, internal_name: String, size: int = 98) -> Control:
 	return UIHelpers.make_framed_good_icon(good_id, internal_name, size)
 
+## The same art on the same cream, WITHOUT the metal plate and bevel — for lists, where a
+## column of framed icons reads as a shelf of trophies rather than as a list.
+func good_icon_plain(good_id: String, internal_name: String, size: int = 60) -> Control:
+	return UIHelpers.make_plain_good_icon(good_id, internal_name, size)
+
 ## Recipe strip (cream card, inputs → navy power-arrow → output, bleeding icons +
 ## qty pills) from a BuildingReadout.flow() dict.
 func recipe_diagram(flow: Dictionary) -> PanelContainer:

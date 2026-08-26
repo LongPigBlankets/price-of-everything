@@ -8317,8 +8317,36 @@ func _test_company_rankings() -> void:
 			cpu_table = good_table
 	var coal_rows: Array = coal_table.get("producers", []) as Array
 	var cpu_rows: Array = cpu_table.get("producers", []) as Array
-	_check(coal_rows.size() == 4 and cpu_rows.size() == 1 and bool((cpu_rows[0] as Dictionary).get("is_player", false)),
-		"company rankings: normal goods show three rivals plus player; apex goods show only player")
+	# The podium rule, checked on EVERY good rather than on coal alone: three rows when the
+	# player is among the top three, four when they are not, and never more than the field holds.
+	# The old assertion pinned "always 4", which was the bug — rivals were cut to three and the
+	# player appended, so a player leading a good pushed a fourth-place rival onto the card.
+	var podium_ok := true
+	var player_on_every_card := true
+	var rank_exceeds_card := false
+	for good_table: Dictionary in goods_tables:
+		var producers: Array = good_table.get("producers", []) as Array
+		var own_row: Dictionary = {}
+		for row_variant: Variant in producers:
+			var card_row: Dictionary = row_variant
+			if bool(card_row.get("is_player", false)):
+				own_row = card_row
+		if own_row.is_empty():
+			player_on_every_card = false
+			continue
+		var player_rank: int = int(own_row.get("rank", 0))
+		var shown: int = CompanyRankings.GOOD_ROWS_SHOWN
+		if player_rank > CompanyRankings.GOOD_ROWS_SHOWN:
+			shown += 1
+		if producers.size() != mini(shown, int(good_table.get("field_size", shown))):
+			podium_ok = false
+		if player_rank > producers.size():
+			rank_exceeds_card = true
+	_check(podium_ok and player_on_every_card and coal_rows.size() >= 3
+		and cpu_rows.size() == 1 and bool((cpu_rows[0] as Dictionary).get("is_player", false)),
+		"company rankings: a good shows the top three plus the player; apex goods show only player")
+	_check(rank_exceeds_card,
+		"company rankings: an off-podium player keeps their rank in the whole field, not on the card")
 	var coal_base: int = Catalog.base_output_for_good("g_001")
 	_check(int((coal_rows[0] as Dictionary).get("quantity", 0)) >= coal_base
 		and coal_rows.any(func(row: Dictionary) -> bool: return bool(row.get("is_player", false)) and int(row.get("quantity", 0)) == 7),
@@ -8357,7 +8385,7 @@ func _test_company_rankings() -> void:
 	var participants: Array = CompanyRankings._competitors_for_good(24680, "g_001")
 	_check(participants.size() >= CompanyRankings.GOOD_MIN_COMPETITORS
 		and participants.size() <= CompanyRankings.RIVAL_COUNT,
-		"company rankings: a good is contested by 3 to 9 companies")
+		"company rankings: a good is contested by 3 to RIVAL_COUNT companies")
 	var unique_participants: Dictionary = {}
 	for idx_variant: Variant in participants:
 		unique_participants[int(idx_variant)] = true
