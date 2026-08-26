@@ -163,25 +163,33 @@ func _celebration_shot(bar: Node) -> void:
 	await _settle(4)
 	var t0: int = Time.get_ticks_msec()
 	MiniQuest._on_turn_processed(_sum({"glass": 40, "silica": 20, "sand": 60}, {"silica": 12, "sand": 30}))
-	await _at(t0, 0.9)   # deep into the second flash, tick most of the way drawn
+	await _at(t0, 1.05)  # second flash peak-ish, label gone, tick nearly complete
 	await _shoot_module("res://quest_celebrate.png")
 	MiniQuest._on_state_reset()
 	bar._close_fly()
 
 
-## The glow and tick are read off the MODULE now, not a flyout section — that is where the
-## animation moved. want_fly is what the flyout should be doing at this instant: "" through the
-## flash (shut), "quest" once the next mission has popped open.
+## The glow, tick and label alpha are read off the MODULE now, not a flyout section — that is
+## where the animation moved. `text` is the label's opacity: it must be ~0 whenever the tick is
+## being drawn, which is the "tick only when the text is away" the owner asked for. want_fly is
+## what the flyout should be doing: "" through the flash (shut), "quest" once the next mission
+## has popped open.
 func _celeb_sample(bar: Node, t0: int, label: String, want_fly: String, want_open: String) -> void:
 	var mod = bar.get("_quest_btn")
-	var glow: float = mod.glow if mod != null and is_instance_valid(mod) else -1.0
-	var tick: float = mod.tick_progress if mod != null and is_instance_valid(mod) else -1.0
+	var valid: bool = mod != null and is_instance_valid(mod)
+	var glow: float = mod.glow if valid else -1.0
+	var tick: float = mod.tick_progress if valid else -1.0
+	var col = bar.get("_quest_text_col")
+	var text_a: float = col.modulate.a if col != null and is_instance_valid(col) else -1.0
+	var navy: bool = valid and mod.tick_color.a > 0.0 and mod.tick_color.b > mod.tick_color.r
 	var fly := str(bar.get("_fly_open_id"))
 	var open := str(bar.get("_quest_open"))
-	print("[CELEB] %+5.2fs %-11s fly=%-5s open=%-9s glow=%.2f tick=%.2f  %s" %
+	# When the tick is drawing, the label must be gone AND the tick must be navy.
+	var pairing_ok: bool = tick <= 0.01 or (text_a <= 0.05 and navy)
+	print("[CELEB] %+5.2fs %-11s fly=%-5s open=%-9s glow=%.2f tick=%.2f text_a=%.2f navy=%s  %s" %
 		[(Time.get_ticks_msec() - t0) / 1000.0, label, fly if fly != "" else "-",
-		open if open != "" else "-", glow, tick,
-		"OK" if fly == want_fly and open == want_open else "WANT fly=%s open=%s" % [want_fly, want_open]])
+		open if open != "" else "-", glow, tick, text_a, str(navy),
+		"OK" if fly == want_fly and open == want_open and pairing_ok else "WRONG"])
 
 
 ## Wait until `seconds` after t0, whatever the frame rate has been doing.

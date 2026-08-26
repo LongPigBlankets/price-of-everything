@@ -124,6 +124,7 @@ var _victory_meters: HBoxContainer
 var _quest_btn: Control
 var _quest_title: Label
 var _quest_sub: Label
+var _quest_text_col: VBoxContainer
 var _victory_score: Label
 var _victory_target: Label   # "/ N" — the rising win threshold for the current turn
 
@@ -344,10 +345,18 @@ class _ModuleBtn extends PanelContainer:
 			glow = v
 			_restyle()
 	## A checkmark drawn straight onto the module over 0–1, so completion is marked where the
-	## player is already looking. Overlays the label for the ~1.2 s of the flash, then clears.
+	## player is already looking. It draws only while the label has faded away (see
+	## _celebrate_mission), so it has the module to itself rather than sitting over the text.
 	var tick_progress := 0.0:
 		set(v):
 			tick_progress = clampf(v, 0.0, 1.0)
+			queue_redraw()
+	## The tick is NEGATIVE SPACE: it is drawn in the navy of the bar directly behind the module,
+	## so it reads as a checkmark cut out of the brass plate rather than a mark laid on top. The
+	## bar sets this to a sample of its own gradient at the module's position.
+	var tick_color := Color(0, 0, 0, 0):
+		set(v):
+			tick_color = v
 			queue_redraw()
 	var _hover := false
 	var _bar: Node
@@ -370,18 +379,20 @@ class _ModuleBtn extends PanelContainer:
 			sb.set_corner_radius_all(8)
 		if glow > 0.0:
 			var brass: Color = DS.PALETTE.BRASS
-			sb.bg_color = sb.bg_color.lerp(Color(brass.r, brass.g, brass.b, 0.55), glow)
+			# Near-opaque, so the navy tick punched through it reads as a hole rather than a
+			# tint. Alpha climbs fast and caps, so even the trough between flashes stays solid
+			# enough for the negative space to hold.
+			sb.bg_color = Color(brass.r, brass.g, brass.b, minf(1.0, glow * 1.7))
 			sb.shadow_color = Color(brass.r, brass.g, brass.b, 0.6 * glow)
 			sb.shadow_size = int(round(16.0 * glow))
 			sb.set_corner_radius_all(8)
 		add_theme_stylebox_override("panel", sb)
 	## The tick, drawn OVER the panel. A PanelContainer paints its stylebox from a C++
 	## notification and then still calls this script _draw, so the checkmark lands on top of
-	## the fill rather than replacing it. White over a dark halo: white so it reads on the
-	## brass at the peak of a flash, the halo so it reads over the label's own letters (there
-	## is no empty corner on a module the text already fills) and on the navy between flashes.
+	## the brass fill. Drawn in the bar's own navy (tick_color), it reads as a hole cut through
+	## the plate to the bar behind — negative space, not a mark laid on.
 	func _draw() -> void:
-		if tick_progress <= 0.0:
+		if tick_progress <= 0.0 or tick_color.a <= 0.0:
 			return
 		var s: float = minf(size.x, size.y) * 0.72
 		var ox: float = (size.x - s) * 0.5
@@ -392,14 +403,9 @@ class _ModuleBtn extends PanelContainer:
 		var w: float = maxf(2.5, s * 0.17)
 		const SHORT := 0.35
 		var first: Vector2 = a.lerp(b, minf(tick_progress / SHORT, 1.0))
-		var second: Vector2 = b.lerp(c, (tick_progress - SHORT) / (1.0 - SHORT)) if tick_progress > SHORT else b
-		# Halo first (wider, dark, translucent), then the white stroke on top.
-		draw_line(a, first, Color(0.02, 0.09, 0.18, 0.6), w + 3.0, true)
+		draw_line(a, first, tick_color, w, true)
 		if tick_progress > SHORT:
-			draw_line(b, second, Color(0.02, 0.09, 0.18, 0.6), w + 3.0, true)
-		draw_line(a, first, Color(1, 1, 1, 1), w, true)
-		if tick_progress > SHORT:
-			draw_line(b, second, Color(1, 1, 1, 1), w, true)
+			draw_line(b, b.lerp(c, (tick_progress - SHORT) / (1.0 - SHORT)), tick_color, w, true)
 	func _gui_input(e: InputEvent) -> void:
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 			accept_event()
@@ -1126,6 +1132,10 @@ func _build_quest() -> void:
 	col.add_child(_quest_title)
 	_quest_sub = _mini("", C_TEXT, 11)
 	col.add_child(_quest_sub)
+	# The whole text block, kept so the completion flash can fade it away and the tick can take
+	# the module to itself. Fading modulate (not visibility) leaves the layout — and so the
+	# module's width — untouched while the label is gone.
+	_quest_text_col = col
 	mod.pressed.connect(func() -> void: _toggle_fly("quest"))
 	# TOP-LEVEL, like the briefing notch and the bankruptcy strip. The bar is a PanelContainer:
 	# an ordinary child is both stretched to fill it AND counted in its minimum size, and measured
@@ -1187,6 +1197,10 @@ func _refresh_quest() -> void:
 		if _fly_open_id == "quest":
 			_close_fly()
 		return
+	# Recover the label's opacity outside a celebration: if one was interrupted (a state reset
+	# mid-flash) the fade could otherwise leave the module reading blank.
+	if not _quest_celebrating and _quest_text_col != null and is_instance_valid(_quest_text_col):
+		_quest_text_col.modulate.a = 1.0
 	# MiniQuest decides which of its missions is showing; the bar just renders it — EXCEPT
 	# during the completion sequence, which holds the module on the mission that just finished
 	# (reading "Complete — <reward>") until the flash is over and it hands over deliberately.
@@ -1516,12 +1530,18 @@ const QUEST_STEP_PT := 13
 const QUEST_HINT_PT := 12
 const QUEST_BOX := 12.0             # the per-step tickbox, per spec
 
-## Completion sequence, in seconds: two flashes, a tick drawn across both, then the next
-## mission pops open and collapses itself again.
+## Completion sequence, in seconds: the label fades away, the module flashes brass twice with a
+## navy tick cut through it, then the next mission pops open and collapses itself again.
 const QUEST_FLASH_SEC := 0.6
 const QUEST_FLASHES := 2
 const QUEST_CELEBRATE_SEC := 1.5
 const QUEST_NEXT_OPEN_SEC := 3.0
+## How long the label takes to fade out at the start (and the next one to fade in at the end).
+## The tick waits this out before it starts drawing, so it never shares the module with text.
+const QUEST_TEXT_FADE := 0.18
+## The brass never drops below this through the flash, so the navy negative-space tick always
+## has a plate to sit in — a flash that returned to zero would blink the tick out with it.
+const QUEST_GLOW_FLOOR := 0.55
 
 ## Which section is open, by mission kind; "" is all-collapsed. It lives on the bar rather than
 ## on the built nodes because _refresh_open_fly throws the whole flyout away and rebuilds it.
@@ -1529,6 +1549,7 @@ var _quest_open := ""
 var _quest_sections: Dictionary = {}
 var _quest_anim: Tween = null
 var _quest_tick_anim: Tween = null
+var _quest_text_anim: Tween = null
 ## Did the completion sequence open this flyout by itself? If so it closes it again afterwards,
 ## rather than leaving a panel over the map that the player never asked for.
 var _quest_auto_opened := false
@@ -1689,17 +1710,27 @@ func _celebrate_mission(kind: String) -> void:
 	_refresh_quest()   # the module holds on the finished mission ("Complete — <reward>")
 	var mod := _quest_btn as _ModuleBtn
 	mod.tick_progress = 0.0
+	# The tick is the navy of the bar directly behind the module, so it reads as a hole in the
+	# brass. Sampled once — the module does not move during the flash.
+	mod.tick_color = _bar_navy_at(mod.position + mod.size * 0.5)
 	_kill_quest_anim()
-	# One tween flashes the module — rim and fill glow together, twice — then hands over.
+	# The label fades away first, so the tick has the module to itself (owner, 26 Aug).
+	_quest_text_anim = create_tween()
+	if _quest_text_col != null and is_instance_valid(_quest_text_col):
+		_quest_text_anim.tween_property(_quest_text_col, "modulate:a", 0.0, QUEST_TEXT_FADE)
+	# Two flashes, but between them the glow only dips to the floor rather than to zero, so the
+	# brass plate — and the navy tick cut into it — stays lit the whole way through.
 	_quest_anim = create_tween()
 	for _i in QUEST_FLASHES:
-		_quest_anim.tween_method(_set_quest_celebrate, 0.0, 1.0, QUEST_FLASH_SEC * 0.5)
-		_quest_anim.tween_method(_set_quest_celebrate, 1.0, 0.0, QUEST_FLASH_SEC * 0.5)
+		_quest_anim.tween_method(_set_quest_celebrate, QUEST_GLOW_FLOOR, 1.0, QUEST_FLASH_SEC * 0.5)
+		_quest_anim.tween_method(_set_quest_celebrate, 1.0, QUEST_GLOW_FLOOR, QUEST_FLASH_SEC * 0.5)
 	_quest_anim.tween_interval(maxf(0.0, QUEST_CELEBRATE_SEC - QUEST_FLASH_SEC * QUEST_FLASHES))
 	_quest_anim.tween_callback(_finish_celebration.bind(kind))
-	# The tick draws across BOTH flashes, so it is its own tween rather than a step of the flash.
+	# The tick waits for the label to clear, then draws across the two flashes.
 	_quest_tick_anim = create_tween()
-	_quest_tick_anim.tween_property(mod, "tick_progress", 1.0, QUEST_FLASH_SEC * QUEST_FLASHES)
+	_quest_tick_anim.tween_interval(QUEST_TEXT_FADE)
+	_quest_tick_anim.tween_property(mod, "tick_progress", 1.0,
+		QUEST_FLASH_SEC * QUEST_FLASHES - QUEST_TEXT_FADE)
 
 
 ## One flash of the module: rim to brass and the fill glow, together on the same eased value.
@@ -1711,12 +1742,24 @@ func _set_quest_celebrate(t: float) -> void:
 	mod.glow = t
 
 
+## The bar's own ground gradient, sampled at a canvas point — bilinear across the four BarNavy
+## corners, the same fill _draw lays down. Used to colour the negative-space completion tick so
+## it matches the bar exactly rather than approximating it.
+func _bar_navy_at(pos: Vector2) -> Color:
+	var w: float = maxf(1.0, size.x)
+	var y0: float = size.y - EDGE_H
+	var u: float = clampf(pos.x / w, 0.0, 1.0)
+	var v: float = clampf((pos.y + TOP_BLEED) / maxf(1.0, y0 + TOP_BLEED), 0.0, 1.0)
+	return BarNavy.TL.lerp(BarNavy.TR, u).lerp(BarNavy.BL.lerp(BarNavy.BR, u), v)
+
+
 func _kill_quest_anim() -> void:
-	for t: Tween in [_quest_anim, _quest_tick_anim]:
+	for t: Tween in [_quest_anim, _quest_tick_anim, _quest_text_anim]:
 		if t != null and t.is_valid():
 			t.kill()
 	_quest_anim = null
 	_quest_tick_anim = null
+	_quest_text_anim = null
 
 
 ## 1.5 s in: the flash is over. Clear the module back to its resting look, switch it to the next
@@ -1734,6 +1777,14 @@ func _finish_celebration(finished_kind: String) -> void:
 	var next := str(list[idx + 1]) if idx >= 0 and idx + 1 < list.size() else ""
 	_quest_open = next
 	_refresh_quest()   # the module now reads the next mission (or hides, if the chain is done)
+	# Fade the (new) label back in — it was faded to nothing for the tick. If the chain is done
+	# the module is hidden anyway, but restore the alpha so a fresh match starts opaque.
+	if _quest_text_col != null and is_instance_valid(_quest_text_col):
+		if next == "":
+			_quest_text_col.modulate.a = 1.0
+		else:
+			_quest_text_anim = create_tween()
+			_quest_text_anim.tween_property(_quest_text_col, "modulate:a", 1.0, QUEST_TEXT_FADE)
 	if next == "":
 		return
 	# The reveal: the next mission pops open, and folds itself away after three seconds.
