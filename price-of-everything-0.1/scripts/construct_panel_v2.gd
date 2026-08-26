@@ -35,6 +35,23 @@ const RECIPE_ROW_HEIGHT := 116
 const FILTER_TYPES: Array = ["extraction", "refinery", "metallurgy", "electrochemistry",
 	"farm_forests", "power", "infrastructure", "water", "manufacturing"]
 
+# Panel width: normal for BROWSE/SETTINGS/V2 confirm; the V3 confirm runs 20%
+# narrower (owner 2026-08-26). Scoped to the V3 confirm specifically rather than
+# the whole panel — BROWSE's recipe-row layout wasn't part of this review and
+# narrowing it too is untested risk this ask didn't ask for.
+const PANEL_WIDTH_NORMAL := 560.0
+const PANEL_MIN_WIDTH_NORMAL := 510.0
+const PANEL_WIDTH_V3_CONFIRM := 448.0        # 560 * 0.8
+const PANEL_MIN_WIDTH_V3_CONFIRM := 408.0    # 510 * 0.8
+
+# V3 confirm text (owner 2026-08-26): one size, the DS default body font,
+# everywhere EXCEPT the three call-outs that earn their own treatment — the
+# grand-total/Cash-after/materials-Total "amount" figures (Numeric/bold), the
+# header band's building/recipe name, and the ruled section headers. Semantic
+# colour (green/red/gold/muted) still varies per the standing contrast rule —
+# only size and weight are being unified here, not meaning.
+const V3_TEXT_SIZE := 12
+
 # --- Site requirements (confirm screen) -------------------------------------
 # Fluids and gases move ONLY by pipe and power only over cables, so a recipe that
 # touches one and a tile that has no pipe/cable is a hard stall the build flow
@@ -727,6 +744,7 @@ func _on_settings_pressed() -> void:
 
 
 func _render_settings() -> void:
+	_set_panel_width(false)
 	_search_input.visible = false
 	_filter_scroll.visible = false
 	_mode_toggle.visible = false
@@ -947,6 +965,7 @@ func _on_start_capacity_toggled(enabled: bool) -> void:
 
 
 func _render_browse() -> void:
+	_set_panel_width(false)
 	if _locked_tile_id != "":
 		_header_title.text = "BUILD ON %s" % Catalog.tile_label(_locked_tile_id).to_upper()
 		_header_subtitle.text = "Only what this tile allows — choose a building and recipe"
@@ -1207,12 +1226,21 @@ func _make_recipe_button(building_id: String, recipe: Dictionary, affordable: bo
 	return button
 
 
+## Panel width for the current view (owner 2026-08-26: the V3 confirm runs 20%
+## narrower than everything else). Idempotent — safe to call on every render.
+func _set_panel_width(narrow: bool) -> void:
+	offset_right = offset_left + (PANEL_WIDTH_V3_CONFIRM if narrow else PANEL_WIDTH_NORMAL)
+	custom_minimum_size.x = PANEL_MIN_WIDTH_V3_CONFIRM if narrow else PANEL_MIN_WIDTH_NORMAL
+
+
 func _render_confirm() -> void:
 	# V3 gets its own confirm layout (bands in decision order, spec §1). The
-	# infrastructure confirm — no recipe, no cash story — keeps the V2 layout.
+	# infrastructure confirm — no recipe, no cash story — keeps the V2 layout
+	# (and the normal panel width — only the V3 confirm runs narrower).
 	if MatchState.use_construct_panel_v3 and not _selected_recipe.is_empty():
 		_render_confirm_v3()
 		return
+	_set_panel_width(false)
 	_search_input.visible = false
 	_filter_scroll.visible = false
 	_mode_toggle.visible = false
@@ -1348,6 +1376,7 @@ const V3_PHASE_LABELS := {
 
 
 func _render_confirm_v3() -> void:
+	_set_panel_width(true)
 	_search_input.visible = false
 	_filter_scroll.visible = false
 	_mode_toggle.visible = false
@@ -1385,7 +1414,7 @@ func _render_confirm_v3() -> void:
 			warn.text = "No supply route on this tile for %s — it would sit idle." \
 				% ", ".join(PackedStringArray(_v3_forecast.get("input_names", [])))
 			warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			warn.add_theme_font_size_override("font_size", 11)
+			warn.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 			warn.add_theme_color_override("font_color", RED)
 			_content.add_child(warn)
 		_content.add_child(_v3_cash_timeline())
@@ -1396,7 +1425,7 @@ func _render_confirm_v3() -> void:
 		var caption := Label.new()
 		caption.text = "Per turn, at today's prices: goods, freight, port fees, storage, power, labour and upkeep. Assumes it sells straight to market with any pipework already built."
 		caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		caption.add_theme_font_size_override("font_size", 11)
+		caption.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 		caption.add_theme_color_override("font_color", _muted_tone())
 		_content.add_child(caption)
 
@@ -1442,7 +1471,7 @@ func _v3_header_band() -> Control:
 	back.flat = true
 	back.focus_mode = Control.FOCUS_NONE
 	back.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	back.add_theme_font_size_override("font_size", 13)
+	back.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	back.add_theme_color_override("font_color", _muted_tone())
 	back.add_theme_color_override("font_hover_color", TEXT)
 	back.pressed.connect(_on_back_to_browse)
@@ -1487,7 +1516,7 @@ func _v3_verdict_strip() -> Control:
 		itemised.text = "construction"
 	itemised.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	itemised.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	itemised.add_theme_font_size_override("font_size", 11)
+	itemised.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	itemised.add_theme_color_override("font_color", _muted_tone())
 	total_row.add_child(itemised)
 	total_row.add_child(_v3_afford_chip())
@@ -1526,21 +1555,21 @@ func _v3_cash_facts() -> Control:
 	return facts
 
 
-## Owner 2026-08-26: these read as the panel's decisive facts, so they carry
-## more weight than a caption/value pair usually would — bigger and bold
-## (Numeric = SemiBold in this theme), not just a quiet key beside a value.
+## Owner 2026-08-26: text standardised — these are facts (turns, a turn number,
+## a rate), not "the amount", so they read at the same size/font as everything
+## else on the panel. Semantic tone (the colour argument) still varies; only
+## the size/weight distinction is gone.
 func _v3_fact(grid: GridContainer, key: String, value: String, tone: Color, tip: String) -> void:
 	var key_label := Label.new()
 	key_label.text = key
-	key_label.add_theme_font_size_override("font_size", 13)
+	key_label.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	key_label.add_theme_color_override("font_color", _muted_tone())
 	grid.add_child(key_label)
 	var value_label := Label.new()
 	value_label.text = value
-	value_label.theme_type_variation = "Numeric"
 	value_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	value_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	value_label.add_theme_font_size_override("font_size", 15)
+	value_label.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	value_label.add_theme_color_override("font_color", tone)
 	if tip != "":
 		value_label.tooltip_text = tip
@@ -1571,7 +1600,7 @@ func _v3_afford_chip() -> Control:
 	chip.mouse_filter = Control.MOUSE_FILTER_PASS
 	var label := Label.new()
 	label.text = text
-	label.add_theme_font_size_override("font_size", 11)
+	label.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	label.add_theme_color_override("font_color", tone)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	chip.add_child(label)
@@ -1613,14 +1642,14 @@ func _v3_req_line(mark: String, mark_tone: Color, text: String) -> Control:
 	var mark_label := Label.new()
 	mark_label.text = mark
 	mark_label.custom_minimum_size = Vector2(14, 0)
-	mark_label.add_theme_font_size_override("font_size", 12)
+	mark_label.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	mark_label.add_theme_color_override("font_color", mark_tone)
 	row.add_child(mark_label)
 	var text_label := Label.new()
 	text_label.text = text
 	text_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	text_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	text_label.add_theme_font_size_override("font_size", 12)
+	text_label.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	text_label.add_theme_color_override("font_color", TEXT)
 	row.add_child(text_label)
 	return row
@@ -1640,11 +1669,11 @@ func _v3_land_requirement_row() -> Control:
 			"Land — needs %d on the site you choose" % needed)
 	var free := int(_v3_land.get("free", 0))
 	if int(_v3_land.get("short", 0)) <= 0:
-		return _v3_req_line("✓", GREEN, "Land — needs %d · %d free on this tile" % [needed, free])
+		return _v3_req_line("✓", GREEN, "Land — needs %d · %d available on this tile" % [needed, free])
 	if not bool(_v3_land.get("purchasable", false)):
 		if int(_v3_land.get("for_sale", 0)) <= 0:
-			return _v3_req_fail("Land — needs %d, %d free, and no more is for sale on this tile." % [needed, free])
-		return _v3_req_fail("Land — needs %d, %d free; only %d more can be bought here — still short."
+			return _v3_req_fail("Land — needs %d, %d available, and no more is for sale on this tile." % [needed, free])
+		return _v3_req_fail("Land — needs %d, %d available; only %d more can be bought here — still short."
 			% [needed, free, int(_v3_land.get("units", 0))])
 	# A real, reversible choice (v3.1, owner 2026-08-26: the toggle is back — the
 	# shortfall CAN be covered by a purchase, so whether to make it is genuinely
@@ -1681,26 +1710,17 @@ func _v3_land_toggle_row(needed: int, free: int) -> Control:
 	line.add_theme_constant_override("separation", 8)
 	toggle.add_child(line)
 
-	var glyph := PanelContainer.new()
-	glyph.custom_minimum_size = Vector2(16, 16)
+	# Same tickbox glyph as the rest of the DS theme (tile-panel setting rows,
+	# telemetry consent) — UIHelpers.checkbox_icon — instead of a bespoke one
+	# (owner 2026-08-26). The outer row's gold/red border already carries the
+	# ticked/blocking state; the icon itself stays exactly as it renders
+	# everywhere else (plain white, no extra tint).
+	var glyph := TextureRect.new()
+	glyph.texture = UIHelpers.checkbox_icon(_buy_land_wanted)
+	glyph.custom_minimum_size = Vector2(UIHelpers.CHECKBOX_ICON_SIZE, UIHelpers.CHECKBOX_ICON_SIZE)
 	glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	glyph.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var glyph_style := StyleBoxFlat.new()
-	glyph_style.bg_color = GOLD if _buy_land_wanted else NAVY_FIELD
-	glyph_style.border_color = GOLD_DARK if _buy_land_wanted else NAVY_LINE
-	glyph_style.set_border_width_all(1)
-	glyph_style.set_corner_radius_all(4)
-	glyph.add_theme_stylebox_override("panel", glyph_style)
 	line.add_child(glyph)
-	if _buy_land_wanted:
-		var check := Label.new()
-		check.text = "✓"
-		check.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		check.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		check.add_theme_font_size_override("font_size", 11)
-		check.add_theme_color_override("font_color", NAVY)
-		check.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		glyph.add_child(check)
 
 	var label := Label.new()
 	label.text = "Buy %d land on this tile · %s%s" % [
@@ -1708,16 +1728,16 @@ func _v3_land_toggle_row(needed: int, free: int) -> Control:
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	label.add_theme_color_override("font_color", TEXT)
 	line.add_child(label)
 	toggle.toggled.connect(_on_v3_land_toggled)
 
 	var note := Label.new()
-	note.text = ("Needs %d land · %d free on this tile." % [needed, free]) if _buy_land_wanted \
+	note.text = ("Needs %d land · %d available on this tile." % [needed, free]) if _buy_land_wanted \
 		else "Short %d land — this build will be refused until you tick this or free up room." % (needed - free)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	note.add_theme_font_size_override("font_size", 11)
+	note.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	note.add_theme_color_override("font_color", TEXT if _buy_land_wanted else RED)
 	box.add_child(note)
 	return outer
@@ -1798,7 +1818,7 @@ func _v3_cash_timeline() -> Control:
 			var arrow := Label.new()
 			arrow.text = "→"
 			arrow.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-			arrow.add_theme_font_size_override("font_size", 13)
+			arrow.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 			arrow.add_theme_color_override("font_color", _muted_tone())
 			flow.add_child(arrow)
 		var cell := VBoxContainer.new()
@@ -1810,22 +1830,21 @@ func _v3_cash_timeline() -> Control:
 		var marker := Label.new()
 		marker.text = str(phase.get("range", "")) + ("  ·  %d turns" % turns if turns > 1 else "")
 		marker.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		marker.add_theme_font_size_override("font_size", 10)
+		marker.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 		marker.add_theme_color_override("font_color", _muted_tone())
 		cell.add_child(marker)
 		var name := Label.new()
 		name.text = str(V3_PHASE_LABELS.get(str(phase.get("kind", "")), str(phase.get("label", ""))))
 		name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		name.add_theme_font_size_override("font_size", 11)
+		name.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 		name.add_theme_color_override("font_color", TEXT)
 		cell.add_child(name)
 		var per_turn := float(phase.get("per_turn", 0.0))
 		var money := Label.new()
 		money.text = _signed_money(per_turn) + ("/turn" if str(phase.get("kind", "")) == "selling" else "")
 		money.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		money.theme_type_variation = "Numeric"
-		money.add_theme_font_size_override("font_size", 14)
+		money.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 		if str(phase.get("kind", "")) == "building":
 			money.add_theme_color_override("font_color", _muted_tone())
 		else:
@@ -1852,7 +1871,7 @@ func _v3_material_rows() -> Array:
 	if entries.is_empty():
 		var none := Label.new()
 		none.text = "No material kit required"
-		none.add_theme_font_size_override("font_size", 12)
+		none.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 		none.add_theme_color_override("font_color", _muted_tone())
 		return [none]
 	var rows: Array = [_v3_material_header()]
@@ -1868,7 +1887,7 @@ func _v3_material_header() -> Control:
 	lead.text = "GOOD"
 	lead.custom_minimum_size = Vector2(V3_MAT_ICON_SIZE, 0)
 	lead.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lead.add_theme_font_size_override("font_size", 9)
+	lead.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	lead.add_theme_color_override("font_color", _muted_tone())
 	row.add_child(lead)
 	for col in [
@@ -1883,7 +1902,7 @@ func _v3_material_header() -> Control:
 		head.custom_minimum_size = Vector2(int(col.width), 0)
 		head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		head.add_theme_font_size_override("font_size", 9)
+		head.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 		head.add_theme_color_override("font_color", _muted_tone())
 		if str(col.tip) != "":
 			head.tooltip_text = str(col.tip)
@@ -1911,8 +1930,7 @@ func _v3_material_row(entry: Dictionary) -> Control:
 	market.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	market.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	market.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	market.theme_type_variation = "Numeric"
-	market.add_theme_font_size_override("font_size", 12)
+	market.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	market.add_theme_color_override("font_color", _muted_tone())
 	line.add_child(market)
 
@@ -1928,7 +1946,7 @@ func _v3_material_row(entry: Dictionary) -> Control:
 	var short_note := Label.new()
 	short_note.text = "short ×%d — this site must hold every material before building" % short
 	short_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	short_note.add_theme_font_size_override("font_size", 10)
+	short_note.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	short_note.add_theme_color_override("font_color", RED)
 	wrap.add_child(short_note)
 	return wrap
@@ -1941,8 +1959,7 @@ func _v3_mat_figure(qty: int, col_width: int) -> Label:
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.theme_type_variation = "Numeric"
-	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	label.add_theme_color_override("font_color", TEXT if qty > 0 else _muted_tone())
 	return label
 
@@ -1964,6 +1981,10 @@ func _v3_materials_totals() -> Control:
 	return box
 
 
+## "Total" (emphasize=true) is one of the panel's three call-outs (owner
+## 2026-08-26: "the amount") and keeps the larger, bold Numeric treatment.
+## Materials subtotal / Cash fee are supporting figures on the way to it, not
+## the amount itself, so they read at the standard size like everything else.
 func _v3_totals_row(label_text: String, amount: float, node_name: String, emphasize: bool) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
@@ -1971,16 +1992,17 @@ func _v3_totals_row(label_text: String, amount: float, node_name: String, emphas
 	label.text = label_text
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	label.add_theme_font_size_override("font_size", 14 if emphasize else 11)
+	label.add_theme_font_size_override("font_size", 14 if emphasize else V3_TEXT_SIZE)
 	label.add_theme_color_override("font_color", TEXT if emphasize else _muted_tone())
 	row.add_child(label)
 	var value := Label.new()
 	if node_name != "":
 		value.name = node_name
 	value.text = _money(amount)
-	value.theme_type_variation = "Numeric"
-	value.add_theme_font_size_override("font_size", 16 if emphasize else 13)
+	value.add_theme_font_size_override("font_size", 16 if emphasize else V3_TEXT_SIZE)
 	value.add_theme_color_override("font_color", TEXT)
+	if emphasize:
+		value.theme_type_variation = "Numeric"
 	row.add_child(value)
 	return row
 
@@ -2009,7 +2031,7 @@ func _v3_priority_supply_band() -> Control:
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.focus_mode = Control.FOCUS_NONE
 		btn.custom_minimum_size = Vector2(0, 30)
-		btn.add_theme_font_size_override("font_size", 12)
+		btn.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 		_style_button(btn, GOLD if on else NAVY_FIELD, GOLD_DARK if on else NAVY_LINE,
 			NAVY if on else _muted_tone())
 		btn.pressed.connect(_on_v3_priority_supply_selected.bind(opt_id))
@@ -2019,7 +2041,7 @@ func _v3_priority_supply_band() -> Control:
 			if _v3_priority_supply == "grid"
 			else "Preview only — production still sells every unit to the grid today; local-first routing isn't wired up yet.")
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	note.add_theme_font_size_override("font_size", 11)
+	note.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	note.add_theme_color_override("font_color", _muted_tone())
 	box.add_child(note)
 	return box
@@ -2045,7 +2067,7 @@ func _v3_build_footer() -> void:
 	_footer.add_child(cash_box)
 	var cash_caption := Label.new()
 	cash_caption.text = "CASH AFTER"
-	cash_caption.add_theme_font_size_override("font_size", 10)
+	cash_caption.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	cash_caption.add_theme_color_override("font_color", _muted_tone())
 	cash_box.add_child(cash_caption)
 	var total := Label.new()
@@ -2063,7 +2085,7 @@ func _v3_build_footer() -> void:
 	if below_buffer:
 		var below := Label.new()
 		below.text = "below buffer"
-		below.add_theme_font_size_override("font_size", 9)
+		below.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 		below.add_theme_color_override("font_color", GOLD)
 		cash_box.add_child(below)
 	var cta_box := VBoxContainer.new()
@@ -2084,7 +2106,7 @@ func _v3_build_footer() -> void:
 		why.name = "V3ConfirmReason"
 		why.text = reason
 		why.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		why.add_theme_font_size_override("font_size", 11)
+		why.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 		why.add_theme_color_override("font_color", RED)
 		cta_box.add_child(why)
 
@@ -2097,7 +2119,7 @@ func _v3_confirm_block_reason() -> String:
 		if bool(_v3_land.get("purchasable", false)):
 			return "Short %d land — tick \"Buy land\" above, or choose a tile with more room." \
 				% (int(_v3_land.get("needed", 0)) - int(_v3_land.get("free", 0)))
-		return "Not enough land — needs %d, %d free, and what's for sale here doesn't cover it." \
+		return "Not enough land — needs %d, %d available, and what's for sale here doesn't cover it." \
 			% [int(_v3_land.get("needed", 0)), int(_v3_land.get("free", 0))]
 	var shorts := PackedStringArray()
 	for entry in _v3_ledger.get("rows", []):

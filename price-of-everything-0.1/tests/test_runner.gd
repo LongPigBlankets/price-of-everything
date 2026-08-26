@@ -9034,19 +9034,34 @@ func _test_construct_v3_1_iteration() -> void:
 			stray_note = true
 	_check(not stray_note, "v3.1 materials: the inaccurate sourcing note is removed")
 
-	# Verdict facts (Build time / Buffer / Run rate / Payback) read larger and bold.
+	# Text standardisation (owner 2026-08-26): every verdict fact reads at the
+	# one standard size/font — no more bold/oversized treatment for Build time,
+	# Buffer, Run rate, Payback — while the three call-outs ("the amount": the
+	# grand total, materials Total, Cash after; plus the building/recipe name
+	# and section headers, styled separately) keep their distinct treatment.
 	var build_time_value: Label = null
-	for grid in [panel.find_child("V3VerdictStrip", true, false)]:
-		pass
 	for child in panel.find_child("V3VerdictStrip", true, false).find_children("*", "GridContainer", true, false):
 		var grid_container := child as GridContainer
 		for i in grid_container.get_child_count():
 			var node := grid_container.get_child(i)
 			if node is Label and (node as Label).text == "Build time":
 				build_time_value = grid_container.get_child(i + 1) as Label
-	_check(build_time_value != null and build_time_value.get_theme_font_size("font_size") >= 15
-		and build_time_value.theme_type_variation == &"Numeric",
-		"v3.1 verdict facts: Build time's value is larger and bold (Numeric)")
+	_check(build_time_value != null
+		and build_time_value.get_theme_font_size("font_size") == panel.V3_TEXT_SIZE
+		and build_time_value.theme_type_variation != &"Numeric",
+		"v3.1 text standardisation: Build time's value reads at the standard size, not bold")
+	var plain_subtotal_label: Label = panel.find_child("V3MaterialsSubtotal", true, false)
+	_check(plain_subtotal_label != null
+		and plain_subtotal_label.get_theme_font_size("font_size") == panel.V3_TEXT_SIZE
+		and plain_subtotal_label.theme_type_variation != &"Numeric",
+		"v3.1 text standardisation: Materials subtotal is no longer bold (Total alone is)")
+	var v3_total: Label = panel.find_child("V3Total", true, false)
+	var materials_total: Label = panel.find_child("V3MaterialsTotal", true, false)
+	var cash_after: Label = panel.find_child("BuildCostValue", true, false)
+	_check(v3_total != null and v3_total.theme_type_variation == &"Numeric"
+		and materials_total != null and materials_total.theme_type_variation == &"Numeric"
+		and cash_after != null and cash_after.theme_type_variation == &"Numeric",
+		"v3.1 text standardisation: the three \"amount\" call-outs (verdict total, materials Total, cash after) keep the bold treatment")
 
 	# Footer: "cash after" (bank minus the confirm's total), not a bare restated total.
 	var footer_value: Label = panel.find_child("BuildCostValue", true, false)
