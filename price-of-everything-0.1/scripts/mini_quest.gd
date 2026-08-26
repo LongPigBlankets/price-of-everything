@@ -141,12 +141,26 @@ func _on_state_reset() -> void:
 
 # ── What the top bar asks ────────────────────────────────────────────────────
 
-## Shown only once the tutorial is behind the player: during a tutorial match the coach owns
-## their attention, and before they have ever finished one there is no "what now?" to answer.
+## SHOWN BY DEFAULT. The missions are hidden in exactly two situations, and both are about the
+## tutorial rather than about the player:
+##
+##   the tutorial is RUNNING      the coach owns the screen; nothing else competes with it.
+##   they SKIPPED it early        a skip before the second-to-last step leaves them without the
+##                                setup the missions assume, so offering one would point at a
+##                                chain they never built. Skipping later, or finishing, keeps
+##                                them: _complete_tutorial clears tutorial_enabled, so the
+##                                missions appear in that same match.
+##
+## It deliberately does NOT check PlayerProfile.tutorial_completed. That was the first cut and it
+## was wrong: the owner's own profile reads tutorial_completed=false after four finished games,
+## because the flag is only set by pressing End Tutorial, not by playing. Anyone who skipped the
+## tutorial, or finished it before the flag existed, would never see a mission again.
 func is_available() -> bool:
-	if bool(MatchState.ruleset.get("tutorial_enabled", false)):
+	if Tutorial.active:
 		return false
-	if not PlayerProfile.tutorial_completed:
+	# A skip leaves tutorial rules on (only End Tutorial clears them), which is how a bailed-out
+	# run is told apart from a normal match — where tutorial_enabled was never set at all.
+	if bool(MatchState.ruleset.get("tutorial_enabled", false)) and not Tutorial.setup_reached:
 		return false
 	return chain != ""
 

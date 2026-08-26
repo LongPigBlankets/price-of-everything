@@ -98,13 +98,30 @@ func _bar_height_check() -> void:
 
 func _quest_cases() -> void:
 	# Nothing until the tutorial is behind the player.
+	# The four states the gate has to tell apart. The profile flag is set to FALSE throughout:
+	# a veteran who never pressed End Tutorial must still see missions in a normal match, which is
+	# the case that was broken.
 	PlayerProfile.tutorial_completed = false
-	MatchState.ruleset["tutorial_enabled"] = false
 	MatchState.ruleset["start_id"] = ""
+	for spec in [
+			{"name": "normal match", "enabled": false, "active": false, "setup": false, "want": true},
+			{"name": "tutorial running", "enabled": true, "active": true, "setup": true, "want": false},
+			{"name": "skipped early", "enabled": true, "active": false, "setup": false, "want": false},
+			{"name": "skipped late", "enabled": true, "active": false, "setup": true, "want": true},
+			{"name": "finished", "enabled": false, "active": false, "setup": true, "want": true},
+		]:
+		MiniQuest._on_state_reset()
+		MatchState.ruleset["tutorial_enabled"] = bool(spec.enabled)
+		Tutorial.active = bool(spec.active)
+		Tutorial.setup_reached = bool(spec.setup)
+		MiniQuest._on_turn_processed(_sum({"glass": 40}))
+		var got: bool = MiniQuest.is_available()
+		print("[GATE] %-18s -> %s (want %s) %s" %
+			[str(spec.name), str(got), str(spec.want), "OK" if got == bool(spec.want) else "WRONG"])
+	Tutorial.active = false
+	Tutorial.setup_reached = true
+	MatchState.ruleset["tutorial_enabled"] = false
 	MiniQuest._on_state_reset()
-	print("[QUEST] before tutorial: available=%s (want false)" % str(MiniQuest.is_available()))
-
-	PlayerProfile.tutorial_completed = true
 	# Glass player, two steps in: silica made and self-supplied, sand still bought.
 	MiniQuest._on_turn_processed(_sum({"glass": 40, "silica": 20}, {"silica": 12, "sand": 30}))
 	print("[QUEST] m1 glass: chain=%s active=%s done=%s title=%s" %

@@ -249,8 +249,23 @@ func _competitors_for_good(match_seed: int, good_id: String) -> Array:
 		var swap: Variant = pool[i]
 		pool[i] = pool[j]
 		pool[j] = swap
+	# Draw the count BEFORE filtering, so the roster a firm happens to be in cannot change the
+	# rest of the table's shape — the seed answers "how crowded is this good", the theme answers
+	# "who is allowed in it".
 	var count: int = rng.randi_range(GOOD_MIN_COMPETITORS, RIVAL_COUNT)
-	return pool.slice(0, count)
+	# A firm whose name says what it makes only competes in what it makes: Pemberton Chemical
+	# does not mine bauxite. Unthemed firms are generic and keep every good populated.
+	var good: Dictionary = Catalog.get_good(good_id)
+	var names := _rival_names_for(match_seed)
+	var eligible: Array = []
+	for index: int in pool:
+		if CompanyNames.competes_in(names[index], good):
+			eligible.append(index)
+	# A roster can, rarely, hold no one eligible for a good (nine draws from sixteen names can
+	# miss every generic). Better the old behaviour than an empty column.
+	if eligible.is_empty():
+		eligible = pool
+	return eligible.slice(0, mini(count, eligible.size()))
 
 ## A stable per-(good, company) ordering key. Rival outputs are identical until the first
 ## increment lands, so without this the display order inside one good is just id order.
