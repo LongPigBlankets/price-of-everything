@@ -391,21 +391,69 @@ class _ModuleBtn extends PanelContainer:
 	## notification and then still calls this script _draw, so the checkmark lands on top of
 	## the brass fill. Drawn in the bar's own navy (tick_color), it reads as a hole cut through
 	## the plate to the bar behind — negative space, not a mark laid on.
+	##
+	## It is a single FILLED outline, not two strokes. Two draw_line segments met at the bottom
+	## vertex with square end-caps that left a notch — "two lines that don't quite meet" — so the
+	## shape is built as one polygon whose bottom is a short flat edge (owner, 26 Aug). It reveals
+	## left to right: x rises monotonically along the stroke, so a vertical wipe reads as drawing.
 	func _draw() -> void:
 		if tick_progress <= 0.0 or tick_color.a <= 0.0:
 			return
 		var s: float = minf(size.x, size.y) * 0.72
 		var ox: float = (size.x - s) * 0.5
 		var oy: float = (size.y - s) * 0.5
+		var x0: float = ox + 0.06 * s
+		var x1: float = ox + 0.98 * s
+		var cut: float = x0 + (x1 - x0) * tick_progress
+		var clip := PackedVector2Array([
+			Vector2(x0 - s, oy - s), Vector2(cut, oy - s),
+			Vector2(cut, oy + 2.0 * s), Vector2(x0 - s, oy + 2.0 * s)])
+		# Each piece is convex, so clipping keeps it convex and draw_colored_polygon fills it
+		# correctly. The area guard drops the near-zero slivers the wipe front throws off — even
+		# draw_colored_polygon triangulates internally and errors on a degenerate one.
+		for piece: PackedVector2Array in _tick_pieces(s, ox, oy):
+			for shown: PackedVector2Array in Geometry2D.intersect_polygons(piece, clip):
+				if shown.size() >= 3 and absf(_poly_area(shown)) >= 0.5:
+					draw_colored_polygon(shown, tick_color)
+
+	## The checkmark as three CONVEX pieces that tile it exactly — the two arms and the wedge
+	## between them — with a FLAT bottom (bl → br). Two draw_line strokes met at a point whose
+	## square end-caps left a notch ("two lines that don't quite meet"); this closes it and the
+	## bottom is a short horizontal edge instead of a vanishing point. Centreline a → b → c.
+	func _tick_pieces(s: float, ox: float, oy: float) -> Array:
 		var a := Vector2(ox + 0.16 * s, oy + 0.52 * s)
-		var b := Vector2(ox + 0.40 * s, oy + 0.80 * s)
-		var c := Vector2(ox + 0.88 * s, oy + 0.18 * s)
-		var w: float = maxf(2.5, s * 0.17)
-		const SHORT := 0.35
-		var first: Vector2 = a.lerp(b, minf(tick_progress / SHORT, 1.0))
-		draw_line(a, first, tick_color, w, true)
-		if tick_progress > SHORT:
-			draw_line(b, b.lerp(c, (tick_progress - SHORT) / (1.0 - SHORT)), tick_color, w, true)
+		var b := Vector2(ox + 0.44 * s, oy + 0.80 * s)
+		var c := Vector2(ox + 0.90 * s, oy + 0.16 * s)
+		var half: float = maxf(1.5, s * 0.17) * 0.5
+		var d1 := (b - a).normalized()
+		var d2 := (c - b).normalized()
+		var n1 := Vector2(d1.y, -d1.x)   # up-normal (points to −y)
+		var n2 := Vector2(d2.y, -d2.x)
+		var a_top := a + n1 * half
+		var a_bot := a - n1 * half
+		var c_top := c + n2 * half
+		var c_bot := c - n2 * half
+		var top_v = Geometry2D.line_intersects_line(a_top, d1, c_top, d2)   # inner concave notch
+		var bot_v = Geometry2D.line_intersects_line(a_bot, d1, c_bot, d2)   # would-be sharp point
+		if not (top_v is Vector2) or not (bot_v is Vector2):
+			return []
+		# The flat, cut a little above the sharp point, where it crosses each bottom edge.
+		var y_flat: float = (bot_v as Vector2).y - half * 0.9
+		var bl := a_bot + d1 * ((y_flat - a_bot.y) / d1.y)
+		var br := c_bot + d2 * ((y_flat - c_bot.y) / d2.y)
+		return [
+			PackedVector2Array([a_top, top_v, bl, a_bot]),    # short arm
+			PackedVector2Array([top_v, c_top, c_bot, br]),    # long arm
+			PackedVector2Array([bl, top_v, br]),              # the wedge, closing the flat bottom
+		]
+
+	func _poly_area(poly: PackedVector2Array) -> float:
+		var acc := 0.0
+		for i in poly.size():
+			var p := poly[i]
+			var q := poly[(i + 1) % poly.size()]
+			acc += p.x * q.y - q.x * p.y
+		return acc * 0.5
 	func _gui_input(e: InputEvent) -> void:
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 			accept_event()
