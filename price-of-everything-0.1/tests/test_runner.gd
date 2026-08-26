@@ -8802,6 +8802,16 @@ func _test_construct_v3_ds() -> void:
 		"v3 DS: brass carries dark navy text (highest-contrast object on the panel)")
 	_check(DS.theme.get_font_size("font_size", "SectionRuled") == 15,
 		"v3 DS: SectionRuled heads sit at ~1.1x body")
+	# Owner 2026-08-26: one font family throughout Construct V3 (Bebas Neue for
+	# the panel title only, bold/not-bold the only other differentiator) —
+	# SectionRuled was the one label left on a second family (Barlow Condensed);
+	# it now shares Numeric's font (Plex SemiBold — the "bold" cut this theme
+	# uses). SectionRuled's own tracking (spacing_glyph) wraps that same font in
+	# a FontVariation, so compare the underlying base_font, not object identity.
+	var section_font: Font = DS.theme.get_font("font", "SectionRuled")
+	var section_base_font: Font = section_font.base_font if section_font is FontVariation else section_font
+	_check(section_base_font == DS.theme.get_font("font", "Numeric"),
+		"v3 DS: SectionRuled shares Numeric's font — one family, weight is the only differentiator")
 
 	var head := DS.ruled_section_head("What it does to your cash", true)
 	var head_label: Label = null
@@ -8881,7 +8891,7 @@ func _test_construct_v3_confirm_layout() -> void:
 		"v3.1 land toggle: unticked reads as NOT covered")
 	var untick_reason: Label = panel.find_child("V3ConfirmReason", true, false)
 	_check(untick_reason != null and untick_reason.text.begins_with("Short")
-		and untick_reason.text.contains("land"),
+		and untick_reason.text.contains("Land"),
 		"v3.1 land toggle: unticking blocks Confirm with a land-specific reason")
 	var total_without_land: float = panel._v3_total_cost()
 
@@ -9050,6 +9060,8 @@ func _test_construct_v3_1_iteration() -> void:
 		and build_time_value.get_theme_font_size("font_size") == panel.V3_TEXT_SIZE
 		and build_time_value.theme_type_variation != &"Numeric",
 		"v3.1 text standardisation: Build time's value reads at the standard size, not bold")
+	_check(int(panel.V3_TEXT_SIZE) == 14,
+		"v3.1 text standardisation: the standard size is 14 (owner 2026-08-26, was 12)")
 	var plain_subtotal_label: Label = panel.find_child("V3MaterialsSubtotal", true, false)
 	_check(plain_subtotal_label != null
 		and plain_subtotal_label.get_theme_font_size("font_size") == panel.V3_TEXT_SIZE

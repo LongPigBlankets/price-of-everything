@@ -49,8 +49,11 @@ const PANEL_MIN_WIDTH_V3_CONFIRM := 408.0    # 510 * 0.8
 # grand-total/Cash-after/materials-Total "amount" figures (Numeric/bold), the
 # header band's building/recipe name, and the ruled section headers. Semantic
 # colour (green/red/gold/muted) still varies per the standing contrast rule —
-# only size and weight are being unified here, not meaning.
-const V3_TEXT_SIZE := 12
+# only size and weight are being unified here, not meaning. Owner 2026-08-26:
+# bumped 12 -> 14, and DS.SectionRuled moved off Barlow Condensed onto the same
+# Plex Sans family this uses, so the panel is down to one font (Bebas Neue for
+# the panel title only) with bold/not-bold as the only other differentiator.
+const V3_TEXT_SIZE := 14
 
 # --- Site requirements (confirm screen) -------------------------------------
 # Fluids and gases move ONLY by pipe and power only over cables, so a recipe that
@@ -1466,14 +1469,14 @@ func _v3_header_band() -> Control:
 	sub.add_theme_font_size_override("font_size", 11)
 	sub.add_theme_color_override("font_color", _muted_tone())
 	text_box.add_child(sub)
+	# Same DS Button chrome as the header's × close button (owner 2026-08-26) —
+	# a real CTA, not a flat text link. Plain default Button styling, no
+	# overrides, exactly like _close_button below.
 	var back := Button.new()
-	back.text = "‹ Recipe"
-	back.flat = true
+	back.text = "< Recipe"
+	back.tooltip_text = "Back to recipes"
 	back.focus_mode = Control.FOCUS_NONE
 	back.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	back.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
-	back.add_theme_color_override("font_color", _muted_tone())
-	back.add_theme_color_override("font_hover_color", TEXT)
 	back.pressed.connect(_on_back_to_browse)
 	band.add_child(back)
 	return band
@@ -1510,10 +1513,10 @@ func _v3_verdict_strip() -> Control:
 	total_row.add_child(total)
 	var itemised := Label.new()
 	if _buy_land_wanted and _land_purchase_cost > 0.0:
-		itemised.text = "construction %s + land %s" % [
+		itemised.text = "Construction %s + Land %s" % [
 			_money(_v3_construction_cost()), _money(_land_purchase_cost)]
 	else:
-		itemised.text = "construction"
+		itemised.text = "Construction"
 	itemised.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	itemised.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	itemised.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
@@ -1551,7 +1554,7 @@ func _v3_cash_facts() -> Control:
 	_v3_fact(facts, "Payback",
 		"pays back ~turn %d" % payback if payback > 0 else "never at today's prices",
 		TEXT if payback > 0 else RED,
-		"At today's prices: construction, land and every pre-revenue cost, earned back at the steady per-turn margin.")
+		"At today's prices: Construction, Land and every pre-revenue cost, earned back at the steady per-turn margin.")
 	return facts
 
 
@@ -1723,7 +1726,7 @@ func _v3_land_toggle_row(needed: int, free: int) -> Control:
 	line.add_child(glyph)
 
 	var label := Label.new()
-	label.text = "Buy %d land on this tile · %s%s" % [
+	label.text = "Buy %d Land on this tile · %s%s" % [
 		int(_v3_land.get("units", 0)), _money(float(_v3_land.get("cost", 0.0))), lots]
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1734,8 +1737,8 @@ func _v3_land_toggle_row(needed: int, free: int) -> Control:
 	toggle.toggled.connect(_on_v3_land_toggled)
 
 	var note := Label.new()
-	note.text = ("Needs %d land · %d available on this tile." % [needed, free]) if _buy_land_wanted \
-		else "Short %d land — this build will be refused until you tick this or free up room." % (needed - free)
+	note.text = ("Needs %d Land · %d available on this tile." % [needed, free]) if _buy_land_wanted \
+		else "Short %d Land — this build will be refused until you tick this or free up room." % (needed - free)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	note.add_theme_color_override("font_color", TEXT if _buy_land_wanted else RED)
@@ -2117,9 +2120,9 @@ func _v3_build_footer() -> void:
 func _v3_confirm_block_reason() -> String:
 	if _locked_tile_id != "" and not bool(_v3_land.get("covered", true)):
 		if bool(_v3_land.get("purchasable", false)):
-			return "Short %d land — tick \"Buy land\" above, or choose a tile with more room." \
+			return "Short %d Land — tick \"Buy Land\" above, or choose a tile with more room." \
 				% (int(_v3_land.get("needed", 0)) - int(_v3_land.get("free", 0)))
-		return "Not enough land — needs %d, %d available, and what's for sale here doesn't cover it." \
+		return "Not enough Land — needs %d, %d available, and what's for sale here doesn't cover it." \
 			% [int(_v3_land.get("needed", 0)), int(_v3_land.get("free", 0))]
 	var shorts := PackedStringArray()
 	for entry in _v3_ledger.get("rows", []):
