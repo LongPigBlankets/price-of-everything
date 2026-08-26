@@ -96,6 +96,16 @@ func _bar_height_check() -> void:
 	MiniQuest._on_state_reset()
 
 
+## "id=on id=on" for every modifier a mission's reward is supposed to create, so a reward that
+## lands on only one of its apply-sites is visible in the log rather than hidden behind a single
+## has() that happens to be true.
+func _rewards_live(kind: String) -> String:
+	var parts: Array = []
+	for id in MiniQuest.reward_modifier_ids(kind):
+		parts.append("%s=%s" % [str(id), "on" if Modifiers.has(str(id)) else "MISSING"])
+	return " ".join(parts)
+
+
 func _quest_cases() -> void:
 	# Nothing until the tutorial is behind the player.
 	# The four states the gate has to tell apart. The profile flag is set to FALSE throughout:
@@ -135,11 +145,30 @@ func _quest_cases() -> void:
 			[str(qb.position), bb.position.x + bb.size.x])
 	await _shoot_module("res://quest_module.png")
 
+	# Does finishing a mission actually SAY anything? Both channels, since a toast with no
+	# signal leaves the module silent and a signal with no toast leaves the screen silent.
+	var announced: Array = []
+	MiniQuest.mission_completed.connect(func(k: String, t: String, r: String) -> void:
+		announced.append("%s | %s | %s" % [k, t, r]))
+	var toasts: Array = []
+	MatchState.toast_requested.connect(func(msg: String, _kind: String) -> void:
+		toasts.append(msg))
+
 	# Finish mission 1 — reward lands, module flips to mission 2.
 	MiniQuest._on_turn_processed(_sum({"glass": 40, "silica": 20, "sand": 60}, {"silica": 12, "sand": 30}))
 	print("[QUEST] m1 complete=%s reward=%s | now: %s" %
 		[str(MiniQuest.is_mission_complete("integrate")),
 		str(Modifiers.has(MiniQuest.REWARD_ID_INTEGRATE)), MiniQuest.title()])
+
+	# The third channel: the module itself pulses. A toast and a signal both firing still leaves
+	# the bar looking exactly as it did, which is most of what "no feedback" meant.
+	if bar != null:
+		var pulse = bar.get("_quest_pulse")
+		print("[ANNOUNCE] module pulse=%s (rim now %s)" %
+			["running" if pulse != null and pulse.is_valid() else "NONE",
+			str(bar.get("_quest_btn").rim)])
+	print("[ANNOUNCE] signal=%s" % str(announced))
+	print("[ANNOUNCE] toast=%s" % str(toasts).replace("\n", " / "))
 
 	# Mission 2: r_029 Concrete Firing consumes silica and makes concrete.
 	var iid := "quest_probe_concrete"
@@ -202,9 +231,11 @@ func _magnate_body(bar: Node) -> void:
 		# shipped them, so every magnate summary carries what was consumed as well.
 		MiniQuest._on_turn_processed(_sum({"steel": 20, "iron_ingots": 30}, {"iron_ingots": 25}, {},
 			{STEEL_TILE: {"iron_ingots": 30}}, {STEEL_TILE: {"iron_ingots": 25}}))
+		# The reward has to be on the FURNACE AND THE EAF, not on whichever one this harness
+		# happened to stub. Checking a single id passed while an EAF player saw nothing.
 		print("[MAGNATE %s] m1 steps=%s done=%s complete=%s power_reward=%s" %
 			[steel_recipe, str(MiniQuest.steps()), str(MiniQuest.done.get("steel")),
-			str(MiniQuest.is_mission_complete("steel")), str(Modifiers.has(MiniQuest.REWARD_ID_STEEL))])
+			str(MiniQuest.is_mission_complete("steel")), _rewards_live("steel")])
 
 		# Mission 2 is now live: its step list is decided here, from the steel recipe.
 		_route("mq_coal", "coal", INGOT_TILE)
@@ -226,11 +257,22 @@ func _magnate_body(bar: Node) -> void:
 				{STEEL_TILE: {"iron_ingots": 30, "coal": 25}, INGOT_TILE: {"coal": 25, "iron_ore": 25}},
 				{STEEL_TILE: {"iron_ingots": 25, "coal": 20}, INGOT_TILE: {"coal": 20, "iron_ore": 20}}))
 		print("[MAGNATE %s] m2 complete=%s transport_reward=%s" %
-			[steel_recipe, str(MiniQuest.is_mission_complete("deposits")),
-			str(Modifiers.has("%s_coal" % MiniQuest.REWARD_ID_DEPOSITS))])
+			[steel_recipe, str(MiniQuest.is_mission_complete("deposits")), _rewards_live("deposits")])
 		if bar != null and burns_coal:
 			bar._toggle_fly("quest")
 			await _settle(10)
+			var fly: Control = bar.get("_fly_panel")
+			# The flyout sizes itself to its longest line. Printed rather than eyeballed off a
+			# screenshot: the window is 3440 px wide but the viewport is 2580, so a panel measured
+			# in image pixels reads a third wider than it is.
+			print("[FLYW] quest flyout %.0f x %.0f (viewport %s, clamp %d..%d)" %
+				[fly.size.x, fly.size.y, str(get_viewport().get_visible_rect().size),
+				bar.QUEST_FLY_MIN_W, bar.QUEST_FLY_MAX_W])
+			for n in _all(fly):
+				if n is Label:
+					var lab: Label = n
+					print("[FLYW]   rect=%.0f minx=%.0f lines=%d  %s" %
+						[lab.size.x, lab.get_minimum_size().x, lab.get_line_count(), lab.text])
 			await _shoot_module("res://quest_flyout.png")
 			bar._toggle_fly("quest")
 	await _magnate_negatives()

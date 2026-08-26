@@ -81,7 +81,12 @@ const REWARD_GOOD := "windows"
 const REWARD_TEXT := "+5% output when producing windows"
 const MONETISE_PCT := 15.0
 const MONETISE_TURNS := 20
-const FURNACE_BUILDING := "b_002"
+## Every building the furnace-power reward lands on. b_002 is the Furnace and b_008 the Electric
+## Arc Furnace, and BOTH make steel — r_003/r_025/r_077 in the furnace, r_076 Electric Arc
+## Steelmaking in the EAF. Granting only b_002 was the first cut and it was wrong: an EAF player
+## finished the mission and the modifier appeared on a building they may not even own, which is
+## indistinguishable from no reward at all (owner, 26 Aug).
+const STEEL_BUILDINGS := ["b_002", "b_008"]
 const STEEL_POWER_PCT := -10.0
 const ORE_TRANSPORT_PCT := -10.0
 
@@ -113,6 +118,9 @@ const MISSION_TEXT := {
 const MONETISE_TITLE := "Monetise the production surplus"
 
 signal quest_changed
+## A mission just finished and its reward is live. Carries the finished mission's own text,
+## because by the time this fires the module has already moved on to the next one.
+signal mission_completed(kind: String, mission_title: String, reward: String)
 
 var chain := ""
 var done: Dictionary = {}      # mission kind -> Array[bool]
@@ -182,8 +190,12 @@ func active_mission() -> String:
 	return str(list[list.size() - 1]) if not list.is_empty() else ""
 
 
-func title() -> String:
-	var kind := active_mission()
+## The five text accessors below default to the ACTIVE mission — which is what the module and
+## the flyout want — but take an explicit kind, because the announcement needs to describe the
+## mission that just finished, and by then the active one has already moved on.
+func title(kind := "") -> String:
+	if kind == "":
+		kind = active_mission()
 	if kind == "monetise":
 		return MONETISE_TITLE
 	if MISSION_TEXT.has(kind):
@@ -191,10 +203,11 @@ func title() -> String:
 	return str(spec().get("title", ""))
 
 
-func subtitle() -> String:
-	var kind := active_mission()
+func subtitle(kind := "") -> String:
+	if kind == "":
+		kind = active_mission()
 	if _all_done(kind):
-		return "Complete — %s" % reward_text()
+		return "Complete — %s" % reward_text(kind)
 	if kind == "monetise":
 		return "Find a second buyer for your %s" % _display(_surplus_id())
 	if MISSION_TEXT.has(kind):
@@ -202,8 +215,9 @@ func subtitle() -> String:
 	return str(spec().get("subtitle", ""))
 
 
-func steps() -> Array:
-	var kind := active_mission()
+func steps(kind := "") -> Array:
+	if kind == "":
+		kind = active_mission()
 	if kind == "monetise":
 		return [
 			"Figure out what else can use %s" % _display(_surplus_id()),
@@ -222,8 +236,9 @@ func step_done(i: int) -> bool:
 	return i < d.size() and bool(d[i])
 
 
-func reward_text() -> String:
-	var kind := active_mission()
+func reward_text(kind := "") -> String:
+	if kind == "":
+		kind = active_mission()
 	if kind == "monetise":
 		var what := _display(monetised_good) if monetised_good != "" else "the new good"
 		return "%d%% increased output of %s for %d turns" % [int(MONETISE_PCT), what, MONETISE_TURNS]
@@ -232,8 +247,9 @@ func reward_text() -> String:
 	return REWARD_TEXT
 
 
-func hint() -> String:
-	var kind := active_mission()
+func hint(kind := "") -> String:
+	if kind == "":
+		kind = active_mission()
 	if kind == "monetise":
 		return "If unsure, check the Goods Graph for %s." % _display(_surplus_id())
 	if MISSION_TEXT.has(kind):
@@ -275,6 +291,7 @@ func _on_turn_processed(summary: Dictionary) -> void:
 			"deposits": _eval_deposits(summary)
 		if _all_done(k) and not bool(granted.get(k, false)):
 			_grant(k)
+			_announce(k)
 	quest_changed.emit()
 
 
@@ -587,12 +604,13 @@ func _grant(kind: String) -> void:
 				"pct": MONETISE_PCT, "duration_turns": MONETISE_TURNS,
 				"label": "Monetised surplus", "source": "quest:surplus_monetised"})
 		"steel":
-			# building_power's apply-site ctx carries `building_id`, so that is the key to
-			# match on. b_002 is the Furnace.
-			_add(REWARD_ID_STEEL, {
-				"domain": "building_power", "target_match": {"building_id": FURNACE_BUILDING},
-				"pct": STEEL_POWER_PCT, "label": "Steelworks heat recovery",
-				"source": "quest:steel"})
+			# building_power's apply-site ctx carries `building_id`, so that is the key to match
+			# on — and one modifier per steel building, since target_match takes a single id.
+			for bid in STEEL_BUILDINGS:
+				_add("%s_%s" % [REWARD_ID_STEEL, str(bid)], {
+					"domain": "building_power", "target_match": {"building_id": str(bid)},
+					"pct": STEEL_POWER_PCT, "label": "Steelworks heat recovery",
+					"source": "quest:steel"})
 		"deposits":
 			# transport_cost's ctx carries `good_id`, not `good_internal` — one entry per ore.
 			for token in ["coal", "iron_ore"]:
@@ -600,6 +618,37 @@ func _grant(kind: String) -> void:
 					"domain": "transport_cost", "target_match": {"good_id": _good_id(token)},
 					"pct": ORE_TRANSPORT_PCT, "label": "Secured ore deposits",
 					"source": "quest:deposits"})
+
+
+## Nothing used to mark the moment a mission landed. The module quietly retitled itself to the
+## next one and the reward appeared as a line in a panel the player had no reason to open, so a
+## finished mission and an unfinished one looked the same (owner, 26 Aug). Two channels, because
+## they answer different questions: the toast says WHAT happened, the signal lets the top bar
+## pulse the module so the player's eye goes to WHERE it happened.
+func _announce(kind: String) -> void:
+	var mission := title(kind)
+	var reward := reward_text(kind)
+	mission_completed.emit(kind, mission, reward)
+	MatchState.request_toast("Mission complete: %s\nReward: %s" % [mission, reward], "success")
+
+
+## The modifier ids one mission's reward creates. Neither of the magnate rewards is a single id
+## — the steel one is per building and the deposits one per ore — so callers that want to check
+## a reward really landed ask here rather than guessing the id.
+func reward_modifier_ids(kind: String) -> Array:
+	match kind:
+		"integrate":
+			return [REWARD_ID_INTEGRATE]
+		"monetise":
+			return [REWARD_ID_MONETISE]
+		"steel":
+			var out: Array = []
+			for bid in STEEL_BUILDINGS:
+				out.append("%s_%s" % [REWARD_ID_STEEL, str(bid)])
+			return out
+		"deposits":
+			return ["%s_coal" % REWARD_ID_DEPOSITS, "%s_iron_ore" % REWARD_ID_DEPOSITS]
+	return []
 
 
 func _add(id: String, fields: Dictionary) -> void:

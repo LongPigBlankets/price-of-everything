@@ -1066,7 +1066,7 @@ func _build_quest() -> void:
 	mod.tooltip_text = "Mini quest"
 	# The thin gold rim is what marks this out from its neighbours: every other module on the
 	# bar is bare or silver-edged, so the rim does the work a badge would.
-	mod.rim = C_CREAM.darkened(0.15)
+	mod.rim = _quest_rim()
 	var pad := MarginContainer.new()
 	pad.add_theme_constant_override("margin_left", 12)
 	pad.add_theme_constant_override("margin_right", 12)
@@ -1093,8 +1093,40 @@ func _build_quest() -> void:
 	_quest_btn = mod
 	mod.visible = false
 	MiniQuest.quest_changed.connect(_refresh_quest)
+	MiniQuest.mission_completed.connect(_on_quest_mission_completed)
 	get_viewport().size_changed.connect(_place_quest)
 	_refresh_quest()
+
+
+## The module's resting rim. Not a const: Color.darkened() is a method call, so it cannot be
+## folded at parse time.
+func _quest_rim() -> Color:
+	return C_CREAM.darkened(0.15)
+
+
+## A mission landed — flash the rim white and back, three times, then settle on the gold.
+## The toast MiniQuest raises says what happened; this says where, so the player looks at the
+## module that changed rather than at the corner of the screen the toast occupied.
+const QUEST_PULSES := 3
+const QUEST_PULSE_SEC := 0.22
+var _quest_pulse: Tween = null
+
+func _on_quest_mission_completed(_kind: String, _mission_title: String, _reward: String) -> void:
+	_refresh_quest()   # the module may only now be earning its place on the bar
+	if _quest_btn == null or not is_instance_valid(_quest_btn) or not _quest_btn.visible:
+		return
+	if _quest_pulse != null and _quest_pulse.is_valid():
+		_quest_pulse.kill()
+	_quest_pulse = create_tween()
+	for _i in QUEST_PULSES:
+		_quest_pulse.tween_method(_set_quest_rim, 0.0, 1.0, QUEST_PULSE_SEC)
+		_quest_pulse.tween_method(_set_quest_rim, 1.0, 0.0, QUEST_PULSE_SEC)
+
+
+func _set_quest_rim(t: float) -> void:
+	if _quest_btn == null or not is_instance_valid(_quest_btn):
+		return
+	(_quest_btn as _ModuleBtn).rim = _quest_rim().lerp(Color(1, 1, 1, 1), t)
 
 
 ## Ten pixels off the notch's right edge, vertically centred in the bar proper (the notch hangs
@@ -1432,24 +1464,75 @@ func _build_menu() -> void:
 ## No heading — at 120 px a title would spend a third of the panel repeating the module the
 ## player just clicked.
 const QUEST_FLY_H := 120
+## The flyout is as wide as its longest line and no wider. A FIXED width cannot be right for
+## both missions this panel has to hold: 430 left the two-step steel mission reading as an empty
+## box (owner, 26 Aug), and narrowing it enough to fix that wrapped every step of the six-step
+## deposits mission onto two lines. So it is measured, then clamped — the floor stops a short
+## mission from looking like a tooltip, the ceiling stops a long one from spanning the screen,
+## and between them the panel simply fits.
+const QUEST_FLY_MIN_W := 300
+const QUEST_FLY_MAX_W := 420
+const QUEST_FLY_PAD := 28   # the left+right margins below, which the text does not get to use
+const QUEST_FLY_SLACK := 6
+const QUEST_STEP_PT := 13
+const QUEST_HINT_PT := 12
+
+## Widest of the lines _fly_quest is about to render, at the size each one is actually drawn at.
+##
+## The font comes from get_theme_font("font", "Label") ON THIS NODE, which resolves the same
+## theme chain a Label child would. Theme.default_font is NOT the same face — measuring with it
+## came up about 9% short, so every long step still folded its last word onto a line of its own
+## at what was supposedly its exact width.
+func _quest_fly_width(lines: Array) -> int:
+	var font: Font = get_theme_font("font", "Label")
+	if font == null and DS.theme != null:
+		font = DS.theme.default_font
+	if font == null:
+		return QUEST_FLY_MAX_W
+	var widest := 0.0
+	for entry: Variant in lines:
+		var pair: Array = entry
+		widest = maxf(widest, font.get_string_size(
+			str(pair[0]), HORIZONTAL_ALIGNMENT_LEFT, -1, int(pair[1])).x)
+	# +SLACK because get_string_size and the label's own layout disagree by a pixel or two, and
+	# at exactly the measured width every long step wrapped its last word onto a line of its own.
+	return int(clampf(widest + QUEST_FLY_PAD + QUEST_FLY_SLACK, QUEST_FLY_MIN_W, QUEST_FLY_MAX_W))
+
 
 func _fly_quest(vb: VBoxContainer) -> void:
 	var pad := MarginContainer.new()
 	pad.add_theme_constant_override("margin_left", 14)
 	pad.add_theme_constant_override("margin_right", 14)
-	pad.add_theme_constant_override("margin_top", 9)
-	pad.add_theme_constant_override("margin_bottom", 9)
+	pad.add_theme_constant_override("margin_top", 10)
+	pad.add_theme_constant_override("margin_bottom", 10)
 	vb.add_child(pad)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 0)
+	col.add_theme_constant_override("separation", 3)
 	pad.add_child(col)
+	# Build the text first, measure it, then lay it out at that width.
+	var lines: Array = []
 	var steps: Array = MiniQuest.steps()
 	for i in steps.size():
 		var step_done: bool = MiniQuest.step_done(i)
-		col.add_child(_mini("%s  %d. %s" % ["✓" if step_done else "·", i + 1, str(steps[i])],
-			C_CREAM if step_done else C_TEXT, 11))
-	col.add_child(_mini("Reward: %s" % MiniQuest.reward_text(), C_CREAM.darkened(0.1), 11))
-	col.add_child(_mini(MiniQuest.hint(), C_TEXT, 10))
+		lines.append(["%s  %d. %s" % ["✓" if step_done else "·", i + 1, str(steps[i])],
+			QUEST_STEP_PT, C_CREAM if step_done else C_TEXT])
+	lines.append(["Reward: %s" % MiniQuest.reward_text(), QUEST_STEP_PT, C_CREAM.darkened(0.1)])
+	lines.append([MiniQuest.hint(), QUEST_HINT_PT, C_TEXT])
+	var width := _quest_fly_width(lines)
+	if _fly_panel != null and is_instance_valid(_fly_panel):
+		_fly_panel.custom_minimum_size = Vector2(width, QUEST_FLY_H)
+	for entry: Variant in lines:
+		var line: Array = entry
+		col.add_child(_quest_line(str(line[0]), line[2], int(line[1]), width))
+
+## One line of the flyout. It WRAPS: a step longer than QUEST_FLY_MAX_W has to fold rather than
+## push the panel wider, or the ceiling above is only a suggestion — which is how the panel got
+## wide in the first place.
+func _quest_line(text: String, color: Color, pt: int, width: int) -> Label:
+	var l := _mini(text, color, pt)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size = Vector2(width - QUEST_FLY_PAD, 0)
+	return l
 
 
 func _build_fly_layer() -> void:
@@ -1528,6 +1611,7 @@ func _close_fly() -> void:
 
 func _open_fly(id: String) -> void:
 	_close_fly()
+	_fly_scroll = null
 	if TurnBriefing.expanded:
 		TurnBriefing.collapse()
 	_fly_open_id = id
@@ -1545,6 +1629,16 @@ func _open_fly(id: String) -> void:
 		_fly_panel.theme = DS.theme
 		_fly_panel.theme_type_variation = "Card"
 	else:
+		# The quest panel needs the DS theme for the same reason the rankings one does: a
+		# CanvasLayer child does not reliably inherit the viewport's, so its Labels fall back to
+		# the ENGINE default font. Off-brand, and it made this panel unmeasurable — the width was
+		# computed in the DS face and rendered in a wider one, so steps kept wrapping at what was
+		# supposedly a generous width. Setting it took the panel from 228 px tall to 165.
+		#
+		# The OTHER flyouts here (treasury, council, victory) have the same gap and are left
+		# alone deliberately: none of them was in scope, and each would want its own look at.
+		if id == "quest":
+			_fly_panel.theme = DS.theme
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = Color("#0d1e31")
 		sb.border_color = C_ACTIVE_BORDER
@@ -1586,8 +1680,7 @@ func _open_fly(id: String) -> void:
 			(_council_btn as _ModuleBtn).active = true
 		"quest":
 			# 120 tall as specced, and wide enough that the longest step sits on one line.
-			_fly_panel.custom_minimum_size = Vector2(430, QUEST_FLY_H)
-			_fly_quest(vb)
+			_fly_quest(vb)   # measures its own text and sets the panel width
 			anchor = _quest_btn
 			(_quest_btn as _ModuleBtn).active = true
 	_fly_layer.add_child(_fly_panel)
@@ -1599,6 +1692,16 @@ func _open_fly(id: String) -> void:
 		# Give the mini-panel its measured content height explicitly, otherwise it
 		# retains the viewport height and leaves an empty panel below its actions.
 		_fly_panel.size = _fly_panel.get_combined_minimum_size()
+		# Now that there IS a real rect, hand any overshoot back to the scroller: the panel ends
+		# above the screen edge and the rows that no longer fit scroll inside it, rather than
+		# sitting below the bottom of the display where nothing can reach them.
+		var vh: float = get_viewport().get_visible_rect().size.y
+		var max_h: float = vh - (BAR_H + 8.0) - FLY_BOTTOM_MARGIN
+		if _fly_panel.size.y > max_h and _fly_scroll != null and is_instance_valid(_fly_scroll):
+			var overflow: float = _fly_panel.size.y - max_h
+			_fly_scroll.custom_minimum_size.y = maxf(
+				FLY_LIST_MIN_H, _fly_scroll.custom_minimum_size.y - overflow)
+			_fly_panel.size.y = minf(_fly_panel.size.y, max_h)
 		var vw := get_viewport().get_visible_rect().size.x
 		var x := 12.0 if id == "rankings" else anchor.global_position.x
 		x = clampf(x, 8.0, vw - _fly_panel.size.x - 8.0)
@@ -1705,6 +1808,48 @@ func _set_rankings_tab(tab: String) -> void:
 	_close_fly()
 	_open_fly("rankings")
 
+## How tall a rankings list may be before it scrolls: everything between the bar and the bottom
+## of the screen, less this panel's own chrome (title, tabs, column headings) and a margin.
+##
+## A CONSTANT will not do here. At nine rivals the revenue table fitted on any screen; at
+## nineteen it is twenty rows deep and ran off the bottom of a 1440 px display with ranks 13–20
+## unreachable — and a constant chosen to fit 1080p would waste half of a taller one.
+const FLY_LIST_CHROME := 260.0
+const FLY_LIST_MIN_H := 360.0
+## Clearance kept between the bottom of a flyout and the bottom of the screen.
+const FLY_BOTTOM_MARGIN := 16.0
+
+func _fly_list_height() -> float:
+	var vp := get_viewport()
+	var vh: float = vp.get_visible_rect().size.y if vp != null else 1080.0
+	return maxf(FLY_LIST_MIN_H, vh - FLY_LIST_CHROME)
+
+
+## The scroller of whichever flyout is open, so _open_fly's deferred placement can hand back
+## any height the panel overshot the screen by. Null for the flyouts that hold no list.
+var _fly_scroll: ScrollContainer = null
+
+## A scroller sized by _fly_list_height, with the list inside it. Both rankings tabs use it: the
+## goods tab has always been longer than the screen, and the revenue tab now is too.
+##
+## _fly_list_height is only an OPENING BID — it subtracts an ESTIMATE of this panel's chrome,
+## and an estimate is what left the revenue table hanging off the bottom of a 1440 px screen
+## with its last rows unreachable. The correction is measured in _open_fly's placement, once
+## the panel has a real rect.
+func _fly_list_scroll(vb: VBoxContainer, separation: int) -> VBoxContainer:
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, _fly_list_height())
+	_fly_scroll = scroll
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", separation)
+	scroll.add_child(list)
+	vb.add_child(scroll)
+	return list
+
+
 func _fly_revenue_rankings(vb: VBoxContainer) -> void:
 	var inner := _fly_pad(vb, 5)
 	var hint := Label.new()
@@ -1730,8 +1875,20 @@ func _fly_revenue_rankings(vb: VBoxContainer) -> void:
 	header.add_child(average_head)
 	inner.add_child(header)
 	inner.add_child(_fly_sep())
+	# The rows go in a scroller, not in `inner`: twenty of them are taller than the screen.
+	var rows := _fly_list_scroll(vb, 5)
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_left", 14)
+	pad.add_theme_constant_override("margin_right", 14)
+	pad.add_theme_constant_override("margin_bottom", 12)
+	pad.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 5)
+	stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pad.add_child(stack)
+	rows.add_child(pad)
 	for entry: Dictionary in CompanyRankings.standings():
-		inner.add_child(_ranking_row(entry))
+		stack.add_child(_ranking_row(entry))
 
 func _fly_goods_rankings(vb: VBoxContainer) -> void:
 	var hint_pad := MarginContainer.new()
@@ -1741,50 +1898,63 @@ func _fly_goods_rankings(vb: VBoxContainer) -> void:
 	hint_pad.add_theme_constant_override("margin_bottom", 8)
 	var hint := Label.new()
 	hint.theme_type_variation = "Caption"
-	hint.text = "TOP 3 RIVAL PRODUCERS + YOUR LAST-TURN OUTPUT · APEX GOODS ARE PLAYER-ONLY"
+	hint.text = "TOP 3 PRODUCERS + YOUR LAST-TURN OUTPUT · APEX GOODS ARE PLAYER-ONLY"
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint_pad.add_child(hint)
 	vb.add_child(hint_pad)
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(0, 650)
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	var list := VBoxContainer.new()
-	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	list.add_theme_constant_override("separation", 8)
-	scroll.add_child(list)
+	var list := _fly_list_scroll(vb, 8)
 	for good: Dictionary in CompanyRankings.goods_standings():
 		list.add_child(_goods_ranking_card(good))
-	vb.add_child(scroll)
+
+## One good: its icon, its name, and the podium with the player under it.
+##
+## The card has NO fixed height. It carries three rows when the player is on the podium and four
+## when they are not, and it is meant to grow by exactly that one row — a fixed height would
+## either clip the fourth or leave a hole under the third. What IS pinned is the floor: the
+## 60 px icon, so a three-row card cannot shrink below its own artwork.
+const GOOD_CARD_ICON := 60
+const GOOD_RANK_W := 42.0
 
 func _goods_ranking_card(good: Dictionary) -> Control:
 	var card := PanelContainer.new()
 	card.theme_type_variation = "Card"
 	var body := HBoxContainer.new()
-	body.add_theme_constant_override("separation", 10)
+	body.add_theme_constant_override("separation", 12)
 	card.add_child(body)
-	body.add_child(DS.good_icon(str(good.get("good_id", "")), str(good.get("internal_name", "")), 40))
+	# Unframed: the plate-and-bevel treatment is the market shelf's, and a scrolling column of it
+	# read as chrome (owner, 26 Aug). Same art, same cream, rounded corners, no rim.
+	body.add_child(DS.good_icon_plain(
+		str(good.get("good_id", "")), str(good.get("internal_name", "")), GOOD_CARD_ICON))
 	var details := VBoxContainer.new()
 	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	details.add_theme_constant_override("separation", 3)
+	details.add_theme_constant_override("separation", 4)
 	body.add_child(details)
 	var name := Label.new()
 	name.theme_type_variation = "BuildingName"
 	name.text = str(good.get("display_name", ""))
 	details.add_child(name)
 	for producer: Dictionary in (good.get("producers", []) as Array):
+		var mine: bool = bool(producer.get("is_player", false))
 		var producer_row := HBoxContainer.new()
-		var rank := _mini("%s" % _ordinal(int(producer.get("rank", 0))), DS.PALETTE.TEXT_DIM, 11)
-		rank.custom_minimum_size = Vector2(38, 0)
+		# The player's own rank is the one number on the card worth finding at a glance, so it is
+		# cream where the rivals' are quiet. Rank is measured against the WHOLE field, which is
+		# why it can read 7th on a card that lists four rows.
+		var rank := _mini(_ordinal(int(producer.get("rank", 0))),
+			C_CREAM if mine else DS.PALETTE.TEXT_DIM, 12)
+		rank.custom_minimum_size = Vector2(GOOD_RANK_W, 0)
 		producer_row.add_child(rank)
 		var producer_name := Label.new()
 		producer_name.theme_type_variation = "Body"
 		producer_name.text = str(producer.get("name", ""))
 		producer_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if mine:
+			producer_name.add_theme_color_override("font_color", C_CREAM)
 		producer_row.add_child(producer_name)
 		var quantity := Label.new()
 		quantity.theme_type_variation = "Numeric"
 		quantity.text = "(%d)" % int(producer.get("quantity", 0))
+		if mine:
+			quantity.add_theme_color_override("font_color", C_CREAM)
 		producer_row.add_child(quantity)
 		details.add_child(producer_row)
 	return card

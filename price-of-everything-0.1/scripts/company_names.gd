@@ -6,6 +6,9 @@ const NAMES := [
 	"Ironbridge Group", "Nordvik Materials", "Halcyon Works", "Sterling Combine",
 	"Thornfield Mills", "Vantage Refineries", "Crown Metalworks", "Pemberton Chemical",
 	"Drexel Manufacturing", "Grayson Foundry Co.", "Aldridge Consolidated", "Whitmore Petrochem",
+	"Tegan Corporation", "Simple Products Inc", "Longridge Limited", "Grapefruit Chemicals",
+	"The Lightning Company", "Merek Construction Supplies", "KMSR Holdings", "Green & Molling",
+	"Molling (West Taralia) Inc", "Taralian Industrial Group (TIG)",
 ]
 
 ## WHAT EACH NAMED FIRM ACTUALLY MAKES.
@@ -26,7 +29,13 @@ const NAMES := [
 ## Deliberately GENERIC, though the names hint at industry: Ashworth Industrials, Blackwater
 ## Holdings, Calderon & Vance, Halcyon Works, Sterling Combine, Aldridge Consolidated — and
 ## Thornfield Mills, because a mill rolls steel or grinds grain depending on who you ask, and a
-## guess there would be a worse promise than none.
+## guess there would be a worse promise than none. From the second intake: Tegan, Simple
+## Products, Longridge, KMSR, Green & Molling, Molling (West Taralia) and TIG — a holding
+## company or an "industrial group" is precisely a firm with fingers everywhere.
+##
+## THE RATIO MATTERS. Every themed firm removes itself from most of the table, so the generics
+## are what keep 76 goods populated; that is why the second intake is 3 themed to 7 generic
+## rather than the other way round.
 const THEMES := {
 	# Owner's calls.
 	"Pemberton Chemical": {"categories": ["chems"]},
@@ -41,6 +50,11 @@ const THEMES := {
 	"Crown Metalworks": {"categories": ["metals"]},
 	"Ironbridge Group": {"categories": ["metals"]},
 	"Drexel Manufacturing": {"categories": ["vehicles", "electronics"]},
+	# Second intake. Only three of the ten name an industry; the rest are deliberately generic,
+	# and that is the point of the ratio — a roster of specialists cannot populate 76 goods.
+	"Grapefruit Chemicals": {"categories": ["chems"]},
+	"The Lightning Company": {"categories": ["energy"]},
+	"Merek Construction Supplies": {"categories": ["construction"]},
 }
 
 
