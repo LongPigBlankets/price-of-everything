@@ -1435,8 +1435,9 @@ func _render_confirm_v3() -> void:
 		# Payback sits beside the timeline it explains (owner 2026-08-26: Buffer
 		# and Run rate removed) rather than crowding the always-visible verdict
 		# strip, which now carries only the total and the durations.
-		_content.add_child(_v3_cash_facts())
-		_content.add_child(_v3_calculation_note())
+		# "How is this calculated?" shares that same row, right-anchored (owner
+		# 2026-08-26 — was its own row underneath).
+		_content.add_child(_v3_cash_facts_row())
 
 	_content.add_child(_section_label("MATERIALS"))
 	for row in _v3_material_rows():
@@ -1480,9 +1481,11 @@ func _v3_header_band() -> Control:
 	return band
 
 
-## Band 2 — the hero band: identity and the decision, together. Left column:
-## icon plate, recipe + building name. Right column, right-anchored: the
-## grand total, then how long it takes. Cost and time stay two different
+## Band 2 — the hero band: identity and the decision, together. Left column: a
+## large icon plate (owner 2026-08-26: nearly fills the strip's height now),
+## then building name (big) + recipe (small) beside it — top-aligned so the
+## name lines up with the total on the right. Right column, right-anchored:
+## the grand total, then how long it takes. Cost and time stay two different
 ## questions — the total is the ONLY money in this band, everything below it
 ## on the right is duration. No itemisation caption (that reconciliation lives
 ## in Materials, where Land's cost also moved), no affordability chip
@@ -1505,28 +1508,36 @@ func _v3_verdict_strip() -> Control:
 	outer.add_theme_constant_override("separation", 6)
 	strip.add_child(outer)
 
-	# Row 1: icon + recipe/building identity (left) … the grand total (right).
+	# Row 1: icon + identity (left) … the grand total (right). Both text_box
+	# and total top-align (owner 2026-08-26, was centred) so the building name
+	# — the top line — lines up with the total, regardless of how tall the
+	# icon makes this row.
 	var row1 := HBoxContainer.new()
 	row1.add_theme_constant_override("separation", 11)
 	outer.add_child(row1)
 	# Same brushed-navy + silver-bezel metal plate as the Tile View building
 	# cards — _building_icon alone is just the emboss layers, with no plate
-	# beneath it; TileBuildingCard IS the plate.
-	var icon_card := TileBuildingCard.new(6, 6, 8)
-	icon_card.add_child(_building_icon(_selected_building, 40))
+	# beneath it; TileBuildingCard IS the plate. Icon 40->60px (owner
+	# 2026-08-26: nearly fills the strip's height) — margins/radius scale with
+	# it (was 6/6/8) to keep the same plate proportions, not just a bigger
+	# icon in the same bezel.
+	var icon_card := TileBuildingCard.new(10, 10, 13)
+	icon_card.add_child(_building_icon(_selected_building, 60))
 	row1.add_child(icon_card)
 	var text_box := VBoxContainer.new()
 	text_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	text_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	text_box.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	text_box.add_theme_constant_override("separation", 1)
 	row1.add_child(text_box)
+	# Building name is the big text, recipe the small line under it (owner
+	# 2026-08-26 — was the other way round: recipe big, building name small).
 	var title := Label.new()
-	title.text = str(_selected_recipe.get("display_name", ""))
+	title.text = str(_selected_building.get("display_name", ""))
 	title.add_theme_font_size_override("font_size", 17)
 	title.add_theme_color_override("font_color", TEXT)
 	text_box.add_child(title)
 	var sub := Label.new()
-	sub.text = str(_selected_building.get("display_name", ""))
+	sub.text = str(_selected_recipe.get("display_name", ""))
 	sub.add_theme_font_size_override("font_size", 11)
 	sub.add_theme_color_override("font_color", _muted_tone())
 	text_box.add_child(sub)
@@ -1536,7 +1547,7 @@ func _v3_verdict_strip() -> Control:
 	total.theme_type_variation = "Numeric"
 	total.add_theme_font_size_override("font_size", 20)
 	total.text = _money(_v3_total_cost())
-	total.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	total.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	total.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_v3_verdict_total_label = total
 	row1.add_child(total)
@@ -1586,9 +1597,19 @@ func _v3_materials_arrival_turns() -> int:
 
 ## Payback (owner 2026-08-26: Buffer and Run rate rows removed — the pre-revenue
 ## cash story now lives entirely in the timeline + its per-phase figures, not
-## restated as separate facts beside it). Sits right after the cash timeline;
-## _v3_calculation_note() follows both with the hover explainer that used to be
-## an always-visible caption.
+## restated as separate facts beside it) plus "How is this calculated?",
+## right-anchored on the same row (owner 2026-08-26 — was its own row
+## underneath; see _v3_calculation_note()). Sits right after the cash timeline.
+func _v3_cash_facts_row() -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	var facts := _v3_cash_facts()
+	facts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(facts)
+	row.add_child(_v3_calculation_note())
+	return row
+
+
 func _v3_cash_facts() -> Control:
 	var facts := GridContainer.new()
 	facts.columns = 2
@@ -1628,15 +1649,22 @@ func _v3_fact(grid: GridContainer, key: String, value: String, tone: Color, tip:
 
 ## Replaces the old always-visible assumptions caption (owner 2026-08-26): the
 ## explanation is now a hover-only disclosure, so the always-on-screen space
-## cost is just one quiet line instead of two sentences of fine print.
+## cost is just one quiet line instead of two sentences of fine print. A thin
+## outline (owner 2026-08-26) marks it as its own small hoverable control, not
+## just another line of body text.
 func _v3_calculation_note() -> Control:
+	var tip := "Per turn, at market prices: goods, freight, port fees, storage, power, labour and upkeep. Assumes it sells straight to market with any pipework already built."
+	var pill := PanelContainer.new()
+	pill.add_theme_stylebox_override("panel", _panel_style(Color(0, 0, 0, 0), NAVY_LINE, 1, 8, 6))
+	pill.tooltip_text = tip
 	var note := Label.new()
 	note.text = "How is this calculated?"
 	note.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	note.add_theme_color_override("font_color", _muted_tone())
-	note.tooltip_text = "Per turn, at market prices: goods, freight, port fees, storage, power, labour and upkeep. Assumes it sells straight to market with any pipework already built."
+	note.tooltip_text = tip
 	note.mouse_filter = Control.MOUSE_FILTER_PASS
-	return note
+	pill.add_child(note)
+	return pill
 
 
 ## Band 3 — requirements as a compact checklist (§3): passes collapse to one line
@@ -1832,6 +1860,20 @@ func _v3_compute_land() -> Dictionary:
 	return out
 
 
+## build_forecast.gd's phase.range is the sim-layer's own short form — "t1",
+## "t1–t3", "t6 onwards" — shared with V2, so left alone there. V3 reads
+## friendlier: "Turn 1", "Turn 1–3", "Turn 6 onwards" (owner 2026-08-26) — a
+## display-only transform, not a change to the sim string itself.
+func _v3_turn_marker(range_text: String) -> String:
+	if not range_text.begins_with("t"):
+		return range_text
+	var rest := range_text.substr(1)
+	var dash_index := rest.find("–")
+	if dash_index >= 0 and dash_index + 1 < rest.length() and rest[dash_index + 1] == "t":
+		rest = rest.substr(0, dash_index + 1) + rest.substr(dash_index + 2)
+	return "Turn " + rest
+
+
 ## Band 4 — the money story as a flowing timeline, not a table (§4): each phase is
 ## turn-range · name · £/turn, chained left to right. "Making, not yet paid" reads
 ## as "First production run" here.
@@ -1854,9 +1896,14 @@ func _v3_cash_timeline() -> Control:
 	plate.add_child(grid)
 
 	for phase in phases:
-		var turns := int(phase.get("turns", 0))
 		var marker := Label.new()
-		marker.text = str(phase.get("range", "")) + ("  ·  %d turns" % turns if turns > 1 else "")
+		# No "· N turns" suffix (owner 2026-08-26, dropped alongside the
+		# t1-style -> Turn 1-style reword): the range already says how many
+		# turns it spans, so the suffix was pure repetition — and dropping it
+		# freed enough column width to stop "Completes"/"First production
+		# run" wrapping mid-word once "Turn " made the range/onwards markers
+		# longer than "t"-prefixed ones.
+		marker.text = _v3_turn_marker(str(phase.get("range", "")))
 		marker.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		marker.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		marker.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
@@ -2088,12 +2135,16 @@ func _v3_priority_supply_band() -> Control:
 		btn.focus_mode = Control.FOCUS_NONE
 		btn.custom_minimum_size = Vector2(0, 30)
 		btn.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
-		_style_button(btn, GOLD if on else NAVY_FIELD, GOLD_DARK if on else NAVY_LINE,
+		# Cream + navy for the selected state (owner 2026-08-26, was gold +
+		# navy) — the same off-white-plate/navy-type pairing the good-icon
+		# plates and Tile View ownership banner already use, not an accent
+		# colour spent on a segmented control.
+		_style_button(btn, CREAM if on else NAVY_FIELD, CREAM_SHADOW if on else NAVY_LINE,
 			NAVY if on else _muted_tone())
 		btn.pressed.connect(_on_v3_priority_supply_selected.bind(opt_id))
 		seg.add_child(btn)
 	var note := Label.new()
-	note.text = ("All output sells to the grid at spot price each turn — steady, unaffected by intermittency."
+	note.text = ("Selling power to the grid is unaffected by intermittency."
 			if _v3_priority_supply == "grid"
 			else "Preview only — production still sells every unit to the grid today; local-first routing isn't wired up yet.")
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

@@ -197,6 +197,7 @@ func _ready() -> void:
 	await _test_construct_v3_1_iteration()
 	await _test_construct_v3_2_iteration()
 	await _test_construct_v3_3_iteration()
+	await _test_construct_v3_4_iteration()
 	_test_build_cost_hover_preview()
 	_test_purchases()
 	_test_exhausted_input_source_falls_back_to_market()
@@ -9191,7 +9192,9 @@ func _test_construct_v3_2_iteration() -> void:
 	for grid in panel._content.find_children("*", "GridContainer", true, false):
 		if (grid as GridContainer).columns == phase_count and phase_count > 0:
 			var first_child := (grid as GridContainer).get_child(0)
-			if first_child is Label and str((first_child as Label).text).begins_with("t"):
+			# Marker text reads "Turn 1"/"Turn 1–3" now (owner 2026-08-26, was
+			# "t1"/"t1–t3") — identify the grid by that instead.
+			if first_child is Label and str((first_child as Label).text).begins_with("Turn "):
 				timeline_grid = grid as GridContainer
 	_check(timeline_grid != null and timeline_grid.get_child_count() == phase_count * 3,
 		"v3.1 cash timeline: one GridContainer cell per phase per row (3 rows)")
@@ -9403,6 +9406,127 @@ func _test_construct_v3_3_iteration() -> void:
 			market_numeric = true
 	_check(market_numeric,
 		"v3.1 materials: the market-price column is bold (Numeric) again")
+
+	remove_child(panel)
+	panel.free()
+	MatchState.use_construct_panel_v3 = saved_v3
+	MatchState.reset()
+
+
+func _test_construct_v3_4_iteration() -> void:
+	# v3.1 fourth designer review pass (owner 2026-08-26): the hero band's icon
+	# grew to 60px (was 40) and building name/recipe swapped which is the big
+	# text, both top-aligned so the name lines up with the total; the
+	# priority-supply toggle went cream+navy (was gold+navy); cash-timeline
+	# markers read "Turn 1-3" (was "t1-t3"), the now-redundant "· N turns"
+	# suffix dropped; "How is this calculated?" moved onto Payback's row,
+	# right-anchored, with a thin outline.
+	MatchState.reset()
+	MarketState._init_prices_from_catalog()
+	var saved_v3 := MatchState.use_construct_panel_v3
+	MatchState.use_construct_panel_v3 = true
+	var panel: PanelContainer = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
+	add_child(panel)
+	panel.open_for_tile("tile_5_10", {"type": ""})
+	panel._on_recipe_pressed("b_002", "r_005")
+	await get_tree().process_frame
+
+	var verdict_box: Control = panel.find_child("V3VerdictStrip", true, false)
+	var building_name := str(panel.get("_selected_building").get("display_name", ""))
+	var recipe_name := str(panel.get("_selected_recipe").get("display_name", ""))
+	var name_label: Label = null
+	var recipe_label: Label = null
+	for label in verdict_box.find_children("*", "Label", true, false):
+		var l := label as Label
+		if l.text == building_name and int(l.get_theme_font_size("font_size")) == 17:
+			name_label = l
+		elif l.text == recipe_name and int(l.get_theme_font_size("font_size")) == 11:
+			recipe_label = l
+	_check(name_label != null and recipe_label != null,
+		"v3.1 hero band: building name is the big (17px) text, recipe the small (11px) text")
+
+	# Building name and the total line up (owner 2026-08-26: both top-align
+	# within row1, regardless of the icon's height).
+	var total_label: Label = panel.find_child("V3Total", true, false)
+	_check(name_label != null and total_label != null
+		and is_equal_approx(name_label.get_global_rect().position.y, total_label.get_global_rect().position.y),
+		"v3.1 hero band: the building name and the total share the same row")
+
+	# Icon grew 40 -> 60px.
+	var icon_found := false
+	for control in verdict_box.find_children("*", "Control", true, false):
+		if (control as Control).custom_minimum_size == Vector2(60, 60):
+			icon_found = true
+	_check(icon_found, "v3.1 hero band: the building icon is 60x60 now (was 40x40)")
+
+	# Priority-supply toggle: cream + navy for the selected state, not gold.
+	var solar_recipe_id := ""
+	for recipe in Catalog.all_recipes():
+		if str(recipe.get("building_id", "")) == "b_024":
+			solar_recipe_id = str(recipe.get("recipe_id", ""))
+			break
+	var solar_panel: PanelContainer = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
+	add_child(solar_panel)
+	solar_panel.open_for_tile("tile_5_10", {"type": ""})
+	solar_panel._on_recipe_pressed("b_024", solar_recipe_id)
+	await get_tree().process_frame
+	var grid_button: Button = null
+	var grid_note: Label = null
+	for button in solar_panel.find_children("*", "Button", true, false):
+		if (button as Button).text == "Grid":
+			grid_button = button as Button
+	for label in solar_panel._content.find_children("*", "Label", true, false):
+		if (label as Label).text.contains("unaffected by intermittency"):
+			grid_note = label as Label
+	var grid_style: StyleBoxFlat = null
+	if grid_button != null:
+		grid_style = grid_button.get_theme_stylebox("normal") as StyleBoxFlat
+	_check(grid_style != null and grid_style.bg_color == panel.CREAM,
+		"v3.1 priority supply: the selected toggle is cream, not gold")
+	_check(grid_note != null and grid_note.text == "Selling power to the grid is unaffected by intermittency.",
+		"v3.1 priority supply: the grid-selling explanation reads the new exact sentence")
+	remove_child(solar_panel)
+	solar_panel.free()
+
+	# Cash-timeline markers: "Turn 1-3", not "t1-t3", and no "· N turns" suffix.
+	_check(panel._v3_turn_marker("t1") == "Turn 1"
+		and panel._v3_turn_marker("t1–t3") == "Turn 1–3"
+		and panel._v3_turn_marker("t6 onwards") == "Turn 6 onwards"
+		and panel._v3_turn_marker("") == "",
+		"v3.1 cash timeline: _v3_turn_marker reworks t-prefixed ranges into \"Turn N\" form")
+	var has_turn_marker := false
+	var has_old_marker := false
+	var has_turns_suffix := false
+	for label in panel._content.find_children("*", "Label", true, false):
+		var text := str((label as Label).text)
+		if text.begins_with("Turn "):
+			has_turn_marker = true
+		if text.begins_with("t") and text.length() > 1 and text[1].is_valid_int():
+			has_old_marker = true
+		if text.contains("· ") and text.contains("turns"):
+			has_turns_suffix = true
+	_check(has_turn_marker and not has_old_marker,
+		"v3.1 cash timeline: markers read \"Turn N\", the old \"tN\" form is gone")
+	_check(not has_turns_suffix,
+		"v3.1 cash timeline: the redundant \"· N turns\" suffix is gone")
+
+	# "How is this calculated?" now shares Payback's row, right-anchored, with
+	# a thin outline (owner 2026-08-26 — was its own row underneath).
+	var facts_row: Control = panel._v3_cash_facts_row()
+	_check(facts_row is HBoxContainer and facts_row.get_child_count() == 2,
+		"v3.1 cash facts row: Payback and the calculation note share one HBox")
+	var note_pill: Control = null
+	if facts_row.get_child_count() == 2:
+		note_pill = facts_row.get_child(1) as Control
+	_check(note_pill is PanelContainer,
+		"v3.1 cash facts row: the calculation note sits in its own outlined container")
+	if note_pill is PanelContainer:
+		var note_style := note_pill.get_theme_stylebox("panel") as StyleBoxFlat
+		_check(note_style != null and note_style.border_width_left > 0,
+			"v3.1 cash facts row: the outline is a real (non-zero) border")
+		var note_label := note_pill.get_child(0) as Label
+		_check(note_label != null and note_label.text == "How is this calculated?",
+			"v3.1 cash facts row: the outlined control still reads \"How is this calculated?\"")
 
 	remove_child(panel)
 	panel.free()
