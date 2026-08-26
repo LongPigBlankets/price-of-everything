@@ -259,6 +259,30 @@ const FARM_ROAD_MERGE_MAX := 120.0    # connect the farm tracks to a real road w
 const CULL_CAP := 160
 const CULL_MARGIN := 600.0
 const ViewStream := preload("res://scripts/view_stream.gd")
+const CanvasBatch := preload("res://scripts/canvas_batch.gd")
+
+## FAR LOD. Below this many screen pixels across a typical footprint, its drop shadow, prism
+## sides, ink outline, roof motifs and shape-language art are all sub-pixel — about 19.5 draw
+## calls each, buying nothing a player can see. Measured 25 Aug with tools/pan_profile.tscn:
+## zoomed fully out this layer submitted 10,913 draw calls and the farm layer another 9,612,
+## together 92.5% of a 260 ms frame at 3.9 fps. Below the threshold every footprint collapses to
+## its flat silhouette and the whole screenful goes out as ONE triangle array.
+##
+## This is the performance half of the phase-6 "grey blob" LOD. It deliberately keeps each
+## building's own wash colour instead of greying the lot: at this distance the DETAIL is what
+## costs, not the hue, and the category colour-coding still reads. Greying is a separate visual
+## decision and can sit on top of this without changing the draw-call arithmetic.
+const DETAIL_MIN_PX := 24.0
+
+var _flat := false
+## Median footprint width in world units — the yardstick DETAIL_MIN_PX is measured against, so
+## the threshold means the same thing whatever the window size or the map's scale.
+var _typical_w := 0.0
+var _typical_for := -1
+## Silhouette triangles: key -> [triangles, colours, source vertex count, colour]. Geometry never
+## changes once a building is placed, so this is built once and reused by every later repaint;
+## see canvas_batch.gd for why the per-repaint alternative is not viable.
+var _silhouette: Dictionary = {}
 
 @onready var terrain_layer: HexMap = %TerrainLayer
 @onready var _forest_visuals: Node = get_node_or_null("../ForestVisuals")
@@ -339,7 +363,9 @@ func _ready() -> void:
 	if RoadWorks.has_signal("farm_roads_promoted"):
 		RoadWorks.farm_roads_promoted.connect(_on_farm_roads_promoted)
 	# 'toggle ink' map restyle: farm field/hatch colors come from MapStyle.
-	MapStyle.style_changed.connect(queue_redraw)
+	MapStyle.style_changed.connect(func() -> void:
+		_silhouette.clear()   # colours are baked per vertex
+		queue_redraw())
 	_ensure_farm_underlay.call_deferred()
 
 ## Farms draw on their own sibling canvas slotted just before ForestVisuals, so a field
@@ -4462,7 +4488,14 @@ func _process(_delta: float) -> void:
 	for p in _placements:
 		if view.intersects(p.bb):
 			visible += 1
+	var want_flat := _typical_width() * _pixels_per_unit() < DETAIL_MIN_PX
 	var want_cull := visible <= CULL_CAP
+	if want_flat != _flat:
+		_flat = want_flat
+		_cull = want_cull
+		_view = view
+		queue_redraw()
+		return
 	if want_cull != _cull:
 		_cull = want_cull
 		_view = view
@@ -4470,6 +4503,94 @@ func _process(_delta: float) -> void:
 	elif _cull and not ViewStream.settled(view, _view, CULL_MARGIN):
 		_view = view        # see view_stream.gd — `!=` repainted on any sub-pixel drift
 		queue_redraw()
+
+## Screen pixels per world unit — the camera's zoom, taken from the canvas transform so it is
+## whatever the renderer is actually using rather than whatever the camera node last stored.
+func _pixels_per_unit() -> float:
+	var vp := get_viewport()
+	if vp == null:
+		return 1.0
+	return absf(vp.get_canvas_transform().get_scale().x)
+
+
+## Median footprint width, recomputed only when the number of placements changes. The median
+## rather than the mean: one enormous refinery should not hold the whole map at full detail.
+func _typical_width() -> float:
+	if _typical_for == _placements.size() and _typical_w > 0.0:
+		return _typical_w
+	_typical_for = _placements.size()
+	var widths := PackedFloat32Array()
+	for p in _placements:
+		var w: float = (p.bb as Rect2).size.x
+		if w > 0.0:
+			widths.append(w)
+	if widths.is_empty():
+		_typical_w = 0.0
+		return 0.0
+	var arr := Array(widths)
+	arr.sort()
+	_typical_w = float(arr[arr.size() / 2])
+	return _typical_w
+
+
+## Cached triangles for one silhouette, appended to a batch. Rebuilt only when the polygon or
+## the style colour moves — the colour is part of the key test because it is baked per vertex.
+func _add_silhouette(pts: PackedVector2Array, cols: PackedColorArray, key: String,
+		poly: PackedVector2Array, color: Color) -> void:
+	var e: Array = _silhouette.get(key, [])
+	if e.is_empty() or int(e[2]) != poly.size() or Color(e[3]) != color:
+		var tris := CanvasBatch.polygon_soup(poly)
+		var cc := PackedColorArray()
+		cc.resize(tris.size())
+		cc.fill(color)
+		e = [tris, cc, poly.size(), color]
+		_silhouette[key] = e
+	pts.append_array(e[0])
+	cols.append_array(e[1])
+
+
+## Far LOD for the building canvas: every mass and footprint as a flat silhouette, one command.
+## Skipped entirely down here: annex/wing/corridor subcomponents and tanks (they sit inside or
+## on top of shapes that are already a few pixels wide), service lanes (hairlines), and every
+## outline, motif and extrusion.
+func _draw_flat_buildings() -> void:
+	var pts := PackedVector2Array()
+	var cols := PackedColorArray()
+	for tid_m in _block_masses:
+		for m in (_block_masses[tid_m] as Array):
+			if _cull and not _view.intersects(m.bb):
+				continue
+			_add_silhouette(pts, cols, "m|" + str(m.key), m.poly, _mass_wash(m))
+	for placement in _placements:
+		if _cull and not _view.intersects(placement.bb):
+			continue
+		if str(placement.cat) == "farm":
+			continue   # farms draw on the underlay, beneath the forest canopy
+		if (_massed_by_tile.get(str(placement.tile_id), {}) as Dictionary).has(str(placement.instance_id)):
+			continue   # a mass member: the welded mass above already carries its ground
+		_add_silhouette(pts, cols, str(placement.instance_id), placement.verts,
+			_wash_for(str(placement.cat), str(placement.instance_id), bool(placement.is_npc)))
+	CanvasBatch.flush(self, pts, cols)
+
+
+## Far LOD for the farm canvas. A field's parcels, their outlines and their hatch are the bulk
+## of this layer's cost and the first thing to vanish with distance, so the field draws as one
+## polygon in its own variant colour — the same colour the classic style already picks for it.
+func _draw_flat_farms(c: CanvasItem) -> void:
+	var pts := PackedVector2Array()
+	var cols := PackedColorArray()
+	for placement in _placements:
+		if str(placement.cat) != "farm":
+			continue
+		if _cull and not _view.intersects(placement.bb):
+			continue
+		var fid := str(placement.instance_id)
+		var verts: PackedVector2Array = placement.verts
+		if _farm_render.has(fid):
+			verts = _farm_render[fid].verts
+		_add_silhouette(pts, cols, "f|" + fid, verts, MapStyle.farm_field_variant(fid))
+	CanvasBatch.flush(c, pts, cols)
+
 
 func _visible_world_rect() -> Rect2:
 	var vp := get_viewport()
@@ -4869,6 +4990,9 @@ func _lp_draw_inner() -> void:
 	# this one (same frame's geometry, same _view for culling).
 	if _farm_underlay != null and is_instance_valid(_farm_underlay):
 		_farm_underlay.queue_redraw()
+	if _flat:
+		_draw_flat_buildings()
+		return
 	# Annexes + wings draw UNDER buildings so a same-colour extension merges seamlessly.
 	for sc in _subcomponents:
 		var uk := str(sc.kind)
@@ -4957,6 +5081,9 @@ func _lp_draw_inner() -> void:
 ## `c`, the FarmUnderlay canvas that sits below ForestVisuals. Geometry and caches stay
 ## here; only the canvas differs, so a field can run under a wood and be covered by it.
 func draw_farm_layer(c: CanvasItem) -> void:
+	if _flat:
+		_draw_flat_farms(c)
+		return
 	for placement in _placements:
 		if str(placement.cat) != "farm":
 			continue
