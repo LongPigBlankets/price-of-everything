@@ -111,7 +111,10 @@ const MISSION_TEXT := {
 		# Owner's call, 25 Aug.
 		"steps": [],
 		"reward": "-10% transport cost for coal and iron",
-		"hint": "Survey tiles to find inexhaustible deposits.",
+		# No hint. Surveying is not a thing the demo asks the player to do, so pointing at it
+		# was advice for a game they are not playing (owner, 26 Aug). The flyout skips an empty
+		# hint rather than rendering a blank line.
+		"hint": "",
 	},
 }
 
@@ -231,8 +234,8 @@ func steps(kind := "") -> Array:
 	return spec().get("steps", []) as Array
 
 
-func step_done(i: int) -> bool:
-	var d := _slots(active_mission())
+func step_done(i: int, kind := "") -> bool:
+	var d := _slots(kind if kind != "" else active_mission())
 	return i < d.size() and bool(d[i])
 
 

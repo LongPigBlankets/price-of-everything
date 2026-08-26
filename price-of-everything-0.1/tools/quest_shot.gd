@@ -22,6 +22,7 @@ func _ready() -> void:
 
 	await _bar_height_check()
 	await _quest_cases()
+	await _celebration_case()
 	await _flash_case()
 	get_tree().quit()
 
@@ -104,6 +105,86 @@ func _rewards_live(kind: String) -> String:
 	for id in MiniQuest.reward_modifier_ids(kind):
 		parts.append("%s=%s" % [str(id), "on" if Modifiers.has(str(id)) else "MISSING"])
 	return " ".join(parts)
+
+
+## The 1.5 s completion sequence, sampled against the CLOCK.
+##
+## Deliberately starts with the flyout SHUT, which is the state a player is actually in when a
+## turn resolves: the sequence has to open it, flash, draw the tick, move to the next mission,
+## hold it open, and put it away again. Every one of those is a separate thing that can fail.
+##
+## Waits are wall-clock, not frame counts. A frame in this harness is 50-70 ms, not 16, so
+## counting frames put every sample well past the moment it meant to catch and the whole
+## sequence looked like it had fired instantly.
+func _celebration_case() -> void:
+	var bar: Node = _find_topbar(_wm)
+	if bar == null:
+		return
+	Tutorial.active = false
+	Tutorial.setup_reached = true
+	MatchState.ruleset["tutorial_enabled"] = false
+	MatchState.ruleset["start_id"] = ""
+	MiniQuest._on_state_reset()
+	bar._close_fly()
+	bar.set("_quest_open", "")
+	# Two steps in, mission 1 not yet done.
+	MiniQuest._on_turn_processed(_sum({"glass": 40, "silica": 20}, {"silica": 12, "sand": 30}))
+	await _settle(4)
+	print("[CELEB] before: fly=%s open=%s" %
+		[str(bar.get("_fly_open_id")), str(bar.get("_quest_open"))])
+	var t0: int = Time.get_ticks_msec()
+	MiniQuest._on_turn_processed(_sum({"glass": 40, "silica": 20, "sand": 60}, {"silica": 12, "sand": 30}))
+	await _at(t0, 0.35)
+	_celeb_sample(bar, t0, "flash", "quest", "integrate")
+	await _at(t0, 0.75)
+	_celeb_sample(bar, t0, "half tick", "quest", "integrate")
+	await _at(t0, 1.25)
+	_celeb_sample(bar, t0, "tick drawn", "quest", "integrate")
+	await _at(t0, 1.90)
+	_celeb_sample(bar, t0, "moved on", "quest", "monetise")
+	await _at(t0, 5.20)
+	_celeb_sample(bar, t0, "put away", "", "")
+	MiniQuest._on_state_reset()
+	bar._close_fly()
+	await _celebration_shot(bar)
+
+
+## The same sequence again, purely for the picture. Saving a 3440x1440 PNG takes about a
+## second, so a screenshot inside the timed run knocks every later sample out of phase — the
+## measurement and the photograph cannot be the same pass.
+func _celebration_shot(bar: Node) -> void:
+	MiniQuest._on_state_reset()
+	bar.set("_quest_open", "")
+	MiniQuest._on_turn_processed(_sum({"glass": 40, "silica": 20}, {"silica": 12, "sand": 30}))
+	await _settle(4)
+	var t0: int = Time.get_ticks_msec()
+	MiniQuest._on_turn_processed(_sum({"glass": 40, "silica": 20, "sand": 60}, {"silica": 12, "sand": 30}))
+	await _at(t0, 0.9)   # deep into the second flash, tick most of the way drawn
+	await _shoot_module("res://quest_celebrate.png")
+	MiniQuest._on_state_reset()
+	bar._close_fly()
+
+
+func _celeb_sample(bar: Node, t0: int, label: String, want_fly: String, want_open: String) -> void:
+	var sections: Dictionary = bar.get("_quest_sections")
+	var sect = sections.get("integrate") if sections != null else null
+	var glow: float = sect.glow if sect != null and is_instance_valid(sect) else -1.0
+	var tick: float = -1.0
+	if sect != null and is_instance_valid(sect) and sect.tick != null and is_instance_valid(sect.tick):
+		tick = sect.tick.progress
+	var fly := str(bar.get("_fly_open_id"))
+	var open := str(bar.get("_quest_open"))
+	print("[CELEB] %+5.2fs %-11s fly=%-5s open=%-9s glow=%.2f tick=%.2f  %s" %
+		[(Time.get_ticks_msec() - t0) / 1000.0, label, fly if fly != "" else "-",
+		open if open != "" else "-", glow, tick,
+		"OK" if fly == want_fly and open == want_open else "WANT fly=%s open=%s" % [want_fly, want_open]])
+
+
+## Wait until `seconds` after t0, whatever the frame rate has been doing.
+func _at(t0: int, seconds: float) -> void:
+	var target: float = float(t0) + seconds * 1000.0
+	while float(Time.get_ticks_msec()) < target:
+		await get_tree().process_frame
 
 
 func _quest_cases() -> void:
@@ -259,20 +340,22 @@ func _magnate_body(bar: Node) -> void:
 		print("[MAGNATE %s] m2 complete=%s transport_reward=%s" %
 			[steel_recipe, str(MiniQuest.is_mission_complete("deposits")), _rewards_live("deposits")])
 		if bar != null and burns_coal:
-			bar._toggle_fly("quest")
+			bar._open_fly("quest")
 			await _settle(10)
 			var fly: Control = bar.get("_fly_panel")
-			# The flyout sizes itself to its longest line. Printed rather than eyeballed off a
-			# screenshot: the window is 3440 px wide but the viewport is 2580, so a panel measured
-			# in image pixels reads a third wider than it is.
-			print("[FLYW] quest flyout %.0f x %.0f (viewport %s, clamp %d..%d)" %
-				[fly.size.x, fly.size.y, str(get_viewport().get_visible_rect().size),
-				bar.QUEST_FLY_MIN_W, bar.QUEST_FLY_MAX_W])
+			var mod: Control = bar.get("_quest_btn")
+			# The panel is the MODULE's width and left edge, not its own text's. Printed rather
+			# than eyeballed off a screenshot: the window is 3440 px wide but the viewport is
+			# 2580, so a panel measured in image pixels reads a third wider than it is.
+			print("[FLYW] flyout %.0f wide at x=%.0f | module %.0f wide at x=%.0f -> %s" %
+				[fly.size.x, fly.global_position.x, mod.size.x, mod.global_position.x,
+				"ALIGNED" if absf(fly.size.x - mod.size.x) < 1.5
+					and absf(fly.global_position.x - mod.global_position.x) < 1.5 else "MISMATCH"])
 			for n in _all(fly):
 				if n is Label:
 					var lab: Label = n
-					print("[FLYW]   rect=%.0f minx=%.0f lines=%d  %s" %
-						[lab.size.x, lab.get_minimum_size().x, lab.get_line_count(), lab.text])
+					print("[FLYW]   rect=%.0f lines=%d  %s" %
+						[lab.size.x, lab.get_line_count(), lab.text])
 			await _shoot_module("res://quest_flyout.png")
 			bar._toggle_fly("quest")
 	await _magnate_negatives()

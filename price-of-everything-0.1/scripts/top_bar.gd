@@ -1104,29 +1104,22 @@ func _quest_rim() -> Color:
 	return C_CREAM.darkened(0.15)
 
 
-## A mission landed — flash the rim white and back, three times, then settle on the gold.
-## The toast MiniQuest raises says what happened; this says where, so the player looks at the
-## module that changed rather than at the corner of the screen the toast occupied.
-const QUEST_PULSES := 3
-const QUEST_PULSE_SEC := 0.22
+## A mission landed. The toast MiniQuest raises says WHAT happened; the module and its flyout
+## say where — see _celebrate_mission for the sequence itself.
 var _quest_pulse: Tween = null
 
-func _on_quest_mission_completed(_kind: String, _mission_title: String, _reward: String) -> void:
+func _on_quest_mission_completed(kind: String, _mission_title: String, _reward: String) -> void:
 	_refresh_quest()   # the module may only now be earning its place on the bar
 	if _quest_btn == null or not is_instance_valid(_quest_btn) or not _quest_btn.visible:
 		return
-	if _quest_pulse != null and _quest_pulse.is_valid():
-		_quest_pulse.kill()
-	_quest_pulse = create_tween()
-	for _i in QUEST_PULSES:
-		_quest_pulse.tween_method(_set_quest_rim, 0.0, 1.0, QUEST_PULSE_SEC)
-		_quest_pulse.tween_method(_set_quest_rim, 1.0, 0.0, QUEST_PULSE_SEC)
+	_celebrate_mission(kind)
 
 
+## The module's rim during the celebration: gold at rest, brass at the peak of a flash.
 func _set_quest_rim(t: float) -> void:
 	if _quest_btn == null or not is_instance_valid(_quest_btn):
 		return
-	(_quest_btn as _ModuleBtn).rim = _quest_rim().lerp(Color(1, 1, 1, 1), t)
+	(_quest_btn as _ModuleBtn).rim = _quest_rim().lerp(DS.PALETTE.BRASS, t)
 
 
 ## Ten pixels off the notch's right edge, vertically centred in the bar proper (the notch hangs
@@ -1160,11 +1153,18 @@ func _refresh_quest() -> void:
 		if _fly_open_id == "quest":
 			_close_fly()
 		return
-	# MiniQuest decides which of its two missions is showing; the bar just renders it.
-	_quest_title.text = MiniQuest.title()
-	_quest_sub.text = MiniQuest.subtitle()
+	# MiniQuest decides which of its missions is showing; the bar just renders it — EXCEPT
+	# during the completion sequence, which holds the module on the mission that just finished
+	# (reading "Complete — <reward>") until the flash is over and it hands over deliberately.
+	var kind: String = _quest_celebrating_kind if _quest_celebrating else MiniQuest.active_mission()
+	_quest_title.text = MiniQuest.title(kind)
+	_quest_sub.text = MiniQuest.subtitle(kind)
 	_place_quest.call_deferred()   # the new label decides the width
-	if _fly_open_id == "quest":
+	# Rebuilding the flyout mid-celebration would FREE the section the tween is driving, and a
+	# tween whose target dies completes instantly — which is how the whole 1.5 s sequence used
+	# to fire inside a third of a second. quest_changed lands right after mission_completed, so
+	# this is not a rare race; it happened every time.
+	if _fly_open_id == "quest" and not _quest_celebrating:
 		_refresh_open_fly()
 
 
@@ -1463,76 +1463,325 @@ func _build_menu() -> void:
 ## The quest panel: the four steps with their ticks, the reward, and where to look if lost.
 ## No heading — at 120 px a title would spend a third of the panel repeating the module the
 ## player just clicked.
-const QUEST_FLY_H := 120
-## The flyout is as wide as its longest line and no wider. A FIXED width cannot be right for
-## both missions this panel has to hold: 430 left the two-step steel mission reading as an empty
-## box (owner, 26 Aug), and narrowing it enough to fix that wrapped every step of the six-step
-## deposits mission onto two lines. So it is measured, then clamped — the floor stops a short
-## mission from looking like a tooltip, the ceiling stops a long one from spanning the screen,
-## and between them the panel simply fits.
-const QUEST_FLY_MIN_W := 300
-const QUEST_FLY_MAX_W := 420
-const QUEST_FLY_PAD := 28   # the left+right margins below, which the text does not get to use
-const QUEST_FLY_SLACK := 6
+## ── The mission flyout ───────────────────────────────────────────────────────
+##
+## An ACCORDION of every mission in the chain, not just the live one. One section open at a
+## time; opening one closes the rest.
+##
+## WIDTH IS THE MODULE'S, not the text's. This measured its own longest line for a while and
+## the result was correct in isolation and visibly misaligned in place — the panel hangs off
+## the module and the two have to read as one object (owner, 26 Aug). Steps wrap to fit;
+## the module is the ruler.
+const QUEST_FLY_FALLBACK_W := 320   # only if the module has not been laid out yet
+const QUEST_FLY_PAD := 20           # this panel's left+right margins, which the text cannot use
+## The flyout stylebox's 1 px border, both sides. A PanelContainer's minimum is its content plus
+## its stylebox, so without subtracting this the panel lands 2 px wider than the module and the
+## two edges visibly disagree.
+const QUEST_FLY_BORDER := 2
 const QUEST_STEP_PT := 13
 const QUEST_HINT_PT := 12
+const QUEST_BOX := 12.0             # the per-step tickbox, per spec
 
-## Widest of the lines _fly_quest is about to render, at the size each one is actually drawn at.
-##
-## The font comes from get_theme_font("font", "Label") ON THIS NODE, which resolves the same
-## theme chain a Label child would. Theme.default_font is NOT the same face — measuring with it
-## came up about 9% short, so every long step still folded its last word onto a line of its own
-## at what was supposedly its exact width.
-func _quest_fly_width(lines: Array) -> int:
-	var font: Font = get_theme_font("font", "Label")
-	if font == null and DS.theme != null:
-		font = DS.theme.default_font
-	if font == null:
-		return QUEST_FLY_MAX_W
-	var widest := 0.0
-	for entry: Variant in lines:
-		var pair: Array = entry
-		widest = maxf(widest, font.get_string_size(
-			str(pair[0]), HORIZONTAL_ALIGNMENT_LEFT, -1, int(pair[1])).x)
-	# +SLACK because get_string_size and the label's own layout disagree by a pixel or two, and
-	# at exactly the measured width every long step wrapped its last word onto a line of its own.
-	return int(clampf(widest + QUEST_FLY_PAD + QUEST_FLY_SLACK, QUEST_FLY_MIN_W, QUEST_FLY_MAX_W))
+## Completion sequence, in seconds: two flashes, a tick drawn across both, then the next
+## mission pops open and collapses itself again.
+const QUEST_FLASH_SEC := 0.6
+const QUEST_FLASHES := 2
+const QUEST_CELEBRATE_SEC := 1.5
+const QUEST_NEXT_OPEN_SEC := 3.0
+
+## Which section is open, by mission kind; "" is all-collapsed. It lives on the bar rather than
+## on the built nodes because _refresh_open_fly throws the whole flyout away and rebuilds it.
+var _quest_open := ""
+var _quest_sections: Dictionary = {}
+var _quest_anim: Tween = null
+var _quest_tick_anim: Tween = null
+## Did the completion sequence open this flyout by itself? If so it closes it again afterwards,
+## rather than leaving a panel over the map that the player never asked for.
+var _quest_auto_opened := false
+## While true, the module holds the finished mission's text and nothing rebuilds the flyout.
+var _quest_celebrating := false
+var _quest_celebrating_kind := ""
+
+
+func _quest_fly_width() -> int:
+	if _quest_btn != null and is_instance_valid(_quest_btn) and _quest_btn.size.x > 1.0:
+		return int(_quest_btn.size.x)
+	return QUEST_FLY_FALLBACK_W
 
 
 func _fly_quest(vb: VBoxContainer) -> void:
+	var width := _quest_fly_width()
+	if _fly_panel != null and is_instance_valid(_fly_panel):
+		_fly_panel.custom_minimum_size = Vector2(width - QUEST_FLY_BORDER, 0)
 	var pad := MarginContainer.new()
-	pad.add_theme_constant_override("margin_left", 14)
-	pad.add_theme_constant_override("margin_right", 14)
+	pad.add_theme_constant_override("margin_left", 10)
+	pad.add_theme_constant_override("margin_right", 10)
 	pad.add_theme_constant_override("margin_top", 10)
 	pad.add_theme_constant_override("margin_bottom", 10)
 	vb.add_child(pad)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 3)
+	col.add_theme_constant_override("separation", 6)
 	pad.add_child(col)
-	# Build the text first, measure it, then lay it out at that width.
-	var lines: Array = []
-	var steps: Array = MiniQuest.steps()
-	for i in steps.size():
-		var step_done: bool = MiniQuest.step_done(i)
-		lines.append(["%s  %d. %s" % ["✓" if step_done else "·", i + 1, str(steps[i])],
-			QUEST_STEP_PT, C_CREAM if step_done else C_TEXT])
-	lines.append(["Reward: %s" % MiniQuest.reward_text(), QUEST_STEP_PT, C_CREAM.darkened(0.1)])
-	lines.append([MiniQuest.hint(), QUEST_HINT_PT, C_TEXT])
-	var width := _quest_fly_width(lines)
-	if _fly_panel != null and is_instance_valid(_fly_panel):
-		_fly_panel.custom_minimum_size = Vector2(width, QUEST_FLY_H)
-	for entry: Variant in lines:
-		var line: Array = entry
-		col.add_child(_quest_line(str(line[0]), line[2], int(line[1]), width))
+	_quest_sections = {}
+	var list: Array = MiniQuest.missions()
+	if _quest_open == "" and not list.is_empty():
+		_quest_open = MiniQuest.active_mission()
+	var inner: int = width - QUEST_FLY_PAD - QUEST_FLY_BORDER
+	for kind_variant: Variant in list:
+		var kind := str(kind_variant)
+		var section := _quest_section(kind, inner)
+		_quest_sections[kind] = section
+		col.add_child(section)
 
-## One line of the flyout. It WRAPS: a step longer than QUEST_FLY_MAX_W has to fold rather than
-## push the panel wider, or the ceiling above is only a suggestion — which is how the panel got
-## wide in the first place.
-func _quest_line(text: String, color: Color, pt: int, width: int) -> Label:
+
+## One accordion section: its header always, its steps and reward only while it is the open one.
+func _quest_section(kind: String, inner: int) -> Control:
+	var done: bool = MiniQuest.is_mission_complete(kind)
+	var open: bool = _quest_open == kind
+	var section := _QuestSection.new()
+	section.custom_minimum_size = Vector2(inner, 0)
+	section.pressed.connect(_toggle_quest_section.bind(kind))
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 5)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	section.add_child(col)
+
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 6)
+	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	head.add_child(_quest_label("▾" if open else "▸", C_TEXT, QUEST_STEP_PT, false))
+	# A finished mission's title goes brass, because a COLLAPSED section shows nothing else —
+	# neither its filled boxes nor its ticked reward — and "which of these have I done" is the
+	# question an accordion has to answer while shut.
+	var title := _quest_label(MiniQuest.title(kind),
+		DS.PALETTE.BRASS if done else C_TEXT, QUEST_STEP_PT, true)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title)
+	col.add_child(head)
+	if not open:
+		return section
+
+	var steps: Array = MiniQuest.steps(kind)
+	for i in steps.size():
+		col.add_child(_quest_step_row(str(steps[i]), MiniQuest.step_done(i, kind)))
+
+	var reward_row := HBoxContainer.new()
+	reward_row.add_theme_constant_override("separation", 6)
+	reward_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var tick := _TickMark.new()
+	tick.custom_minimum_size = Vector2(QUEST_BOX + 2.0, QUEST_BOX + 2.0)
+	tick.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	tick.progress = 1.0 if done else 0.0
+	reward_row.add_child(tick)
+	section.tick = tick
+	var reward := Label.new()
+	reward.theme_type_variation = "Reward"   # brass + semibold, from DS
+	reward.text = "Reward: %s" % MiniQuest.reward_text(kind)
+	reward.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	reward.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	reward.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	reward_row.add_child(reward)
+	col.add_child(reward_row)
+
+	var hint: String = MiniQuest.hint(kind)
+	if hint != "":
+		col.add_child(_quest_label(hint, C_TEXT, QUEST_HINT_PT, true))
+	return section
+
+
+## A step: the 12 px tickbox the spec asks for, then the text. The box is empty until the step
+## is met and fills brass when it is; the text stays off-white either way, because dimming a
+## completed step would be the grey-on-navy the house rule forbids.
+func _quest_step_row(text: String, done: bool) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 7)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# The box hangs off the FIRST line of a wrapped step, not the middle of the block.
+	var box_pad := MarginContainer.new()
+	box_pad.add_theme_constant_override("margin_top", 3)
+	box_pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box_pad.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	var box := Panel.new()
+	box.custom_minimum_size = Vector2(QUEST_BOX, QUEST_BOX)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.set_corner_radius_all(3)
+	sb.bg_color = DS.PALETTE.BRASS if done else Color(0, 0, 0, 0)
+	sb.border_color = DS.PALETTE.BRASS if done else Color(C_TEXT.r, C_TEXT.g, C_TEXT.b, 0.55)
+	sb.set_border_width_all(1)
+	box.add_theme_stylebox_override("panel", sb)
+	box_pad.add_child(box)
+	row.add_child(box_pad)
+	var label := _quest_label(text, C_TEXT, QUEST_STEP_PT, true)
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(label)
+	return row
+
+
+## Off-white by default and never anything quieter (CLAUDE.md); IGNORE so every click inside a
+## section reaches the section itself, which is the whole hit target.
+func _quest_label(text: String, color: Color, pt: int, wrap: bool) -> Label:
 	var l := _mini(text, color, pt)
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.custom_minimum_size = Vector2(width - QUEST_FLY_PAD, 0)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if wrap:
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	return l
+
+
+func _toggle_quest_section(kind: String) -> void:
+	_quest_open = "" if _quest_open == kind else kind
+	_quest_auto_opened = false   # they are driving now; do not close it out from under them
+	if _fly_open_id == "quest":
+		_refresh_open_fly()
+
+
+## The completion sequence, 1.5 s of it: the finished section flashes brass twice while its
+## reward tick draws itself, then the next mission takes its place, sits open for three seconds
+## and folds away.
+func _celebrate_mission(kind: String) -> void:
+	if _quest_btn == null or not is_instance_valid(_quest_btn) or not _quest_btn.visible:
+		return
+	_quest_celebrating = true
+	_quest_celebrating_kind = kind
+	_refresh_quest()   # the module holds on the finished mission for the length of the flash
+	_quest_open = kind
+	if _fly_open_id != "quest":
+		_quest_auto_opened = true
+		_open_fly("quest")
+	else:
+		_refresh_open_fly()
+	# _open_fly builds synchronously, so the section exists by now.
+	var section: Control = _quest_sections.get(kind)
+	if section == null or not is_instance_valid(section):
+		return
+	_kill_quest_anim()
+	_quest_anim = create_tween()
+	for _i in QUEST_FLASHES:
+		_quest_anim.tween_property(section, "glow", 1.0, QUEST_FLASH_SEC * 0.5)
+		_quest_anim.tween_property(section, "glow", 0.0, QUEST_FLASH_SEC * 0.5)
+	# The module up on the bar flashes with it, on its own tween so the two stay in step even
+	# though one drives a stylebox and the other a rim colour.
+	_quest_pulse = create_tween()
+	for _i in QUEST_FLASHES:
+		_quest_pulse.tween_method(_set_quest_rim, 0.0, 1.0, QUEST_FLASH_SEC * 0.5)
+		_quest_pulse.tween_method(_set_quest_rim, 1.0, 0.0, QUEST_FLASH_SEC * 0.5)
+	_quest_anim.tween_interval(maxf(0.0, QUEST_CELEBRATE_SEC - QUEST_FLASH_SEC * QUEST_FLASHES))
+	_quest_anim.tween_callback(_advance_quest_accordion.bind(kind))
+	# The tick draws ACROSS both flashes rather than after them, so it is a second tween: a
+	# Tween is a sequence, and parallel() would only pair it with the last step of the flash.
+	var tick: Control = (section as _QuestSection).tick
+	if tick != null and is_instance_valid(tick):
+		# Back to zero first: the section was built from a mission that is ALREADY complete, so
+		# its tick starts drawn, and animating 1 -> 1 is a tick that never appears to be drawn.
+		tick.progress = 0.0
+		_quest_tick_anim = create_tween()
+		_quest_tick_anim.tween_property(tick, "progress", 1.0, QUEST_FLASH_SEC * QUEST_FLASHES)
+
+
+func _kill_quest_anim() -> void:
+	for t: Tween in [_quest_anim, _quest_tick_anim, _quest_pulse]:
+		if t != null and t.is_valid():
+			t.kill()
+	_quest_anim = null
+	_quest_tick_anim = null
+	_quest_pulse = null
+
+
+func _advance_quest_accordion(finished_kind: String) -> void:
+	var list: Array = MiniQuest.missions()
+	var idx: int = list.find(finished_kind)
+	var next := str(list[idx + 1]) if idx >= 0 and idx + 1 < list.size() else ""
+	_quest_open = next
+	# THIS is the moment the module switches to the next mission — 1.5 s in, after the flash,
+	# not the instant the turn resolved. _refresh_quest rebuilds the flyout with it.
+	_quest_celebrating = false
+	_quest_celebrating_kind = ""
+	_refresh_quest()
+	if next == "":
+		_collapse_quest_accordion("")
+		return
+	get_tree().create_timer(QUEST_NEXT_OPEN_SEC).timeout.connect(
+		_collapse_quest_accordion.bind(next))
+
+
+## Fold the accordion shut — but only if the player has not since opened something else, and
+## only close the flyout itself if the celebration is what opened it.
+func _collapse_quest_accordion(expected: String) -> void:
+	if _quest_open != expected:
+		return
+	_quest_open = ""
+	if _fly_open_id != "quest":
+		return
+	if _quest_auto_opened:
+		_quest_auto_opened = false
+		_close_fly()
+	else:
+		_refresh_open_fly()
+
+
+## One accordion section. A PanelContainer so the whole block is the click target and can carry
+## the completion glow, with `glow` (0–1) driven by the tween in _celebrate_mission.
+class _QuestSection extends PanelContainer:
+	signal pressed
+	var tick: Control = null
+	var glow := 0.0:
+		set(v):
+			glow = v
+			_restyle()
+	var _hover := false
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		mouse_entered.connect(func() -> void: _hover = true; _restyle())
+		mouse_exited.connect(func() -> void: _hover = false; _restyle())
+		_restyle()
+
+	func _restyle() -> void:
+		var brass: Color = DS.PALETTE.BRASS
+		var sb := StyleBoxFlat.new()
+		sb.set_corner_radius_all(8)
+		sb.content_margin_left = 9
+		sb.content_margin_right = 9
+		sb.content_margin_top = 7
+		sb.content_margin_bottom = 7
+		sb.bg_color = Color(1, 1, 1, 0.09 if _hover else 0.035).lerp(
+			Color(brass.r, brass.g, brass.b, 0.28), glow)
+		sb.set_border_width_all(1)
+		sb.border_color = Color(1, 1, 1, 0.13).lerp(brass, glow)
+		if glow > 0.0:
+			sb.shadow_color = Color(brass.r, brass.g, brass.b, 0.55 * glow)
+			sb.shadow_size = int(round(14.0 * glow))
+		add_theme_stylebox_override("panel", sb)
+
+	func _gui_input(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			accept_event()
+			pressed.emit()
+
+
+## A checkmark that DRAWS itself over `progress` 0→1, so the completion sequence has a tick
+## being drawn rather than a glyph that blinks into existence. Two strokes: the short one takes
+## the first third, the long one the rest.
+class _TickMark extends Control:
+	const SHORT_STROKE := 0.35
+	var progress := 0.0:
+		set(v):
+			progress = clampf(v, 0.0, 1.0)
+			queue_redraw()
+
+	func _draw() -> void:
+		if progress <= 0.0:
+			return
+		var s: float = minf(size.x, size.y)
+		var a := Vector2(0.16, 0.52) * s
+		var b := Vector2(0.40, 0.80) * s
+		var c := Vector2(0.88, 0.18) * s
+		var w: float = maxf(1.5, s * 0.15)
+		var col: Color = DS.PALETTE.BRASS
+		draw_line(a, a.lerp(b, minf(progress / SHORT_STROKE, 1.0)), col, w, true)
+		if progress > SHORT_STROKE:
+			draw_line(b, b.lerp(c, (progress - SHORT_STROKE) / (1.0 - SHORT_STROKE)), col, w, true)
 
 
 func _build_fly_layer() -> void:

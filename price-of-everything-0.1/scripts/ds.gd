@@ -43,6 +43,9 @@ const PALETTE := {
 	"BORDER_STRONG": Color(0.995234, 0.930806, 0.763265),
 	"ACCENT": Color(0.995234, 0.930806, 0.763265),
 	"ACCENT_DIM": Color("#7A5F2C"),
+	# Brass. SEMANTIC, like OK/WARN/DANGER: it means "this is the prize", so it is exempt from
+	# the off-white-on-navy rule the same way they are. Reads 8.4:1 on the panel navies.
+	"BRASS": Color("#D9B24C"),
 	"TEXT": Color("#E8EEF7"),
 	"TEXT_MUTED": Color("#C2D2E5"),       # was #9BB1CC — bumped much closer to white for legibility
 	# Secondary label text. NOT a way to make text quieter on a dark panel: on the navies
@@ -151,6 +154,9 @@ func _build_theme() -> Theme:
 	# ladder is MEDIUM for body and caption, SEMIBOLD for emphasis and every numeral.
 	_label_var(t, fonts, "Caption",      "PLEX_MED",    FS["CAPTION"],  PALETTE["TEXT"])
 	_label_var(t, fonts, "Numeric",      "PLEX_SEMI",   FS["NUMERIC"],  PALETTE["TEXT"])
+	# What a mission pays out. Brass and semibold, so the one line on a quest card that is a
+	# REWARD rather than an instruction reads as one at a glance.
+	_label_var(t, fonts, "Reward",       "PLEX_SEMI",   FS["BODY"],     PALETTE["BRASS"])
 
 	# ── PanelContainer base + variations ───────────────────────────────
 	# Default panel: opaque navy + 2px solid cream outline + generous padding
