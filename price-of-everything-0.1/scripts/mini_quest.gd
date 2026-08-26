@@ -257,8 +257,8 @@ func _on_turn_processed(summary: Dictionary) -> void:
 		match k:
 			"integrate": _eval_integrate(produced, consumed)
 			"monetise": _eval_monetise(produced, sold)
-			"steel": _eval_steel(produced)
-			"deposits": _eval_deposits()
+			"steel": _eval_steel(produced, consumed)
+			"deposits": _eval_deposits(consumed)
 		if _all_done(k) and not bool(granted.get(k, false)):
 			_grant(k)
 	quest_changed.emit()
@@ -290,13 +290,15 @@ func _eval_monetise(produced: Dictionary, sold: Dictionary) -> void:
 		_tick("monetise", 2, float(sold.get(monetised_good, 0)) > 0.0)
 
 
-func _eval_steel(produced: Dictionary) -> void:
+func _eval_steel(produced: Dictionary, consumed: Dictionary) -> void:
 	var steel := _good_id("steel")
 	var ingots := _good_id("iron_ingots")
 	_tick("steel", 0, float(produced.get(steel, 0)) > 0.0)
-	# Delivery, not self-sufficiency: an ingots building of theirs must ROUTE its ingots to a
-	# tile a steel building stands on.
-	_tick("steel", 1, _routes_between(ingots, ingots, steel))
+	# Delivery AND use, not self-sufficiency: an ingots building of theirs routes its ingots to
+	# a tile where a steel plant of theirs stands that actually consumes ingots, and ingots were
+	# consumed this turn. Per-building consumption is not recorded anywhere, so the empire-wide
+	# figure is the closest honest second half.
+	_tick("steel", 1, _supplied(ingots, ingots, steel, consumed))
 
 
 ## Coal and iron each: a mine standing on an inexhaustible deposit, then that mine's output
@@ -338,49 +340,73 @@ func _deposits_steps() -> Array:
 	return out
 
 
-func _eval_deposits() -> void:
+func _eval_deposits(consumed: Dictionary) -> void:
 	var coal := _good_id("coal")
 	var iron := _good_id("iron_ore")
 	var ingots := _good_id("iron_ingots")
 	var steel := _good_id("steel")
 	var coal_mines := _mines_on_infinite(coal, "coal")
 	var iron_mines := _mines_on_infinite(iron, "iron_ore")
-	var ingot_tiles := _tiles_producing(ingots)
-	var steel_tiles := _tiles_producing(steel)
+	var coal_to_ingots := _tiles_consuming(ingots, coal)
+	var coal_to_steel := _tiles_consuming(steel, coal)
+	var iron_to_ingots := _tiles_consuming(ingots, iron)
 	# Built in the SAME branch order as _deposits_steps, so a dropped step cannot leave the
 	# labels and the checks pointing at different things.
 	var conds: Array = [
 		not coal_mines.is_empty(),
-		_any_routes_to(coal_mines, coal, ingot_tiles),
+		_any_routes_to(coal_mines, coal, coal_to_ingots) and float(consumed.get(coal, 0)) > 0.0,
 	]
 	if _deposits_wants_coal_steel():
-		conds.append(_any_routes_to(coal_mines, coal, steel_tiles))
+		conds.append(_any_routes_to(coal_mines, coal, coal_to_steel)
+			and float(consumed.get(coal, 0)) > 0.0)
 	conds.append(not iron_mines.is_empty())
-	conds.append(_any_routes_to(iron_mines, iron, ingot_tiles))
+	conds.append(_any_routes_to(iron_mines, iron, iron_to_ingots)
+		and float(consumed.get(iron, 0)) > 0.0)
 	for i in conds.size():
 		_tick("deposits", i, bool(conds[i]))
 
 
 # ── Building queries ─────────────────────────────────────────────────────────
 
-## Instance ids of the player's buildings whose recipe's primary output is `good_id`.
+## Instance ids of the PLAYER'S buildings whose recipe's primary output is `good_id`. The
+## ownership filter is not decoration: MatchState.buildings holds NPC-owned buildings in the
+## same dictionary, so without it a rival's mine or furnace could tick the player's mission.
 func _producers_of(good_id: String) -> Array:
 	var out: Array = []
 	if good_id == "":
 		return out
 	for iid in MatchState.buildings:
-		var recipe: Dictionary = Catalog.get_recipe(str((MatchState.buildings[iid] as Dictionary).get("recipe_id", "")))
+		var inst: Dictionary = MatchState.buildings[iid]
+		if not MatchState.is_player_owned(inst):
+			continue
+		var recipe: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))
 		if not recipe.is_empty() and str(recipe.get("output_good_id", "")) == good_id:
 			out.append(str(iid))
 	return out
 
 
-## {tile_id: true} for every building of theirs producing `good_id`.
-func _tiles_producing(good_id: String) -> Dictionary:
+## {tile_id: true} for tiles where a building of the player's makes `produces` AND its recipe
+## actually EATS `eats`.
+##
+## Delivering to a tile is not the same as being used there. A building consumes its inputs from
+## the tile it stands on (production._consume_inputs -> Stockpile.consume(tile_id, ...)), so the
+## destination has to host a consumer of the good, not merely a building that happens to be the
+## right kind. Without the `eats` half, routing coal at an Electric Arc steel plant — which
+## burns none — would tick "supply coal to your steel building".
+func _tiles_consuming(produces: String, eats: String) -> Dictionary:
 	var out: Dictionary = {}
-	for iid in _producers_of(good_id):
-		var tid := str((MatchState.buildings[iid] as Dictionary).get("tile_id", ""))
-		if tid != "":
+	if eats == "":
+		return out
+	for iid in _producers_of(produces):
+		var inst: Dictionary = MatchState.buildings[iid]
+		var recipe: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))
+		var takes := false
+		for entry in (recipe.get("inputs", []) as Array):
+			if str((entry as Dictionary).get("good_id", "")) == eats:
+				takes = true
+				break
+		var tid := str(inst.get("tile_id", ""))
+		if takes and tid != "":
 			out[tid] = true
 	return out
 
@@ -404,9 +430,12 @@ func _any_routes_to(instances: Array, good_id: String, tiles: Dictionary) -> boo
 	return false
 
 
-## True when a producer of `from_good` routes `ship_good` to a tile that produces `to_good`.
-func _routes_between(from_good: String, ship_good: String, to_good: String) -> bool:
-	return _any_routes_to(_producers_of(from_good), ship_good, _tiles_producing(to_good))
+## True when a producer of `from_good` (theirs) routes `ship_good` to a tile where a building of
+## theirs making `to_good` actually consumes it — and some was consumed this turn.
+func _supplied(from_good: String, ship_good: String, to_good: String, consumed: Dictionary) -> bool:
+	if float(consumed.get(ship_good, 0)) <= 0.0:
+		return false
+	return _any_routes_to(_producers_of(from_good), ship_good, _tiles_consuming(to_good, ship_good))
 
 
 ## The output good of any building of theirs whose recipe consumes the surplus and makes
@@ -417,7 +446,10 @@ func _new_consumer_output() -> String:
 		return ""
 	var own := _good_id(str(spec().get("made", "")))
 	for iid in MatchState.buildings:
-		var recipe: Dictionary = Catalog.get_recipe(str((MatchState.buildings[iid] as Dictionary).get("recipe_id", "")))
+		var inst: Dictionary = MatchState.buildings[iid]
+		if not MatchState.is_player_owned(inst):
+			continue
+		var recipe: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))
 		if recipe.is_empty():
 			continue
 		var out_id := str(recipe.get("output_good_id", ""))
