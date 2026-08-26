@@ -22,7 +22,7 @@
 #   Button:
 #     (default)      — Plex Sans Condensed SemiBold 17 steel-blue button
 #     "Primary"      — brighter steel-blue CTA
-#     "Brass"        — brass fill, dark navy text: the commit CTA (Construct V3 confirm)
+#     "Brass"        — brass fill, dark navy text (accent; commit CTAs stay steel-blue)
 #     "Build"        — steel-blue build / upgrade button (pill-ish)
 #
 # Code tokens (don't hardcode hex / px in panels):
@@ -263,11 +263,10 @@ func _build_theme() -> Theme:
 	t.set_color("font_pressed_color", "Silver", PALETTE["BG_PANEL"])
 	_apply_button_font(t, fonts, "Silver")
 
-	# ── Brass commit CTA (Construct V3 confirm; spec §4 "one metal per panel") ──
-	# The copper/bronze research-panel family: brass fill, dark navy text — meant to
-	# be the highest-contrast object on the panel. Disabled keeps the brass identity
-	# but dimmed, because the V3 confirm pairs it with a reason line rather than
-	# hiding the button.
+	# ── Brass button (the copper/bronze research-panel family) ──────────────────
+	# Brass fill, dark navy text, dimmed-brass disabled state. Built for the V3
+	# confirm CTA, then benched: commit buttons stay steel-blue for consistency
+	# (owner 2026-08-26). Kept as an available accent variation.
 	t.set_type_variation("Brass", "Button")
 	t.set_stylebox("normal", "Brass",
 		_button_stylebox(Color("#EFC96B"), Color("#C6963A"), Color("#54401C"), 8, 2, 21, 10, 0.50))
