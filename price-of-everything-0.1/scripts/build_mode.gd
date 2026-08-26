@@ -25,6 +25,12 @@ var _last_attempt_ms: int = 0
 ## the player can act on should leave their choices on screen, not throw the panel away and
 ## make them rebuild the whole selection to try the tile next door (owner, 25 Aug).
 var last_attempt_refused: bool = false
+## True only for the duration of a direct-build attempt that asked to buy its land
+## shortfall as part of the build (Construct V3's single confirm intent). The map's
+## space gate (_space_check_for_build) reads it alongside the auto-buy-land setting,
+## so the purchase happens inside the same gate that validates the build — a refusal
+## upstream of the gate can no longer leave the player owning land bought for nothing.
+var attempt_buy_land: bool = false
 
 func enter_build_mode(building_id: String, recipe_id: String, return_to_construct_v2: bool = false) -> void:
 	if building_id == "" or recipe_id == "":
@@ -85,12 +91,15 @@ func attempt_build(tile_id: String) -> void:
 
 ## Returns true when the attempt got as far as placing something (or opening a dialog that
 ## will). False means it was refused outright and nothing changed.
-func attempt_direct_build(building_id: String, recipe_id: String, tile_id: String) -> bool:
+## buy_land: buy the tile's land shortfall (whole patches, clamped to what's for sale)
+## inside the build's own space gate — the V3 confirm's single intent. See attempt_buy_land.
+func attempt_direct_build(building_id: String, recipe_id: String, tile_id: String, buy_land: bool = false) -> bool:
 	if building_id == "" or recipe_id == "" or tile_id == "":
 		return false
 	if not _can_attempt_now():
 		return false
 	last_attempt_refused = false
+	attempt_buy_land = buy_land
 	var previous_kind := kind
 	var previous_building := current_building_id
 	var previous_recipe := current_recipe_id
@@ -102,6 +111,7 @@ func attempt_direct_build(building_id: String, recipe_id: String, tile_id: Strin
 	current_infrastructure_type = ""
 	return_to_construct_v2_on_exit = false
 	build_attempted.emit(building_id, tile_id)
+	attempt_buy_land = false
 	kind = previous_kind
 	current_building_id = previous_building
 	current_recipe_id = previous_recipe

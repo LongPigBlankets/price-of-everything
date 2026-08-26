@@ -54,6 +54,7 @@ TelemetryState="*res://scripts/telemetry_state.gd"
 PlayerProfile="*res://scripts/player_profile.gd"
 LoadPacing="*res://scripts/load_pacing.gd"
 Tutorial="*res://scripts/tutorial/tutorial_engine.gd"
+MiniQuest="*res://scripts/mini_quest.gd"
 
 [display]
 

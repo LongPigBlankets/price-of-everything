@@ -2782,12 +2782,14 @@ func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
 	# their own land and must not eat the land the player has bought.
 	var projected_player := MatchState.get_tile_player_space_used(tile_id) + added_space
 	var land_owned := MatchState.get_tile_land_owned(tile_id)
-	# Auto-buy land (construct setting): cover ONLY the shortfall, rounded up to whole
+	# Auto-buy land (construct setting, or this one attempt's buy-land intent from the
+	# V3 confirm — BuildMode.attempt_buy_land): cover ONLY the shortfall, rounded up to whole
 	# patches, and only when there genuinely isn't room already — a tile that can already
 	# take the building buys nothing. purchase_tile_land clamps to what's actually for sale
 	# and can grant a clipped sliver, so the gate below is re-evaluated on the real result
 	# rather than assumed to have succeeded.
-	if projected_player > float(land_owned) and MatchState.construct_auto_buy_land:
+	if projected_player > float(land_owned) \
+			and (MatchState.construct_auto_buy_land or BuildMode.attempt_buy_land):
 		var shortfall := projected_player - float(land_owned)
 		var patches := int(ceil(shortfall / float(MatchState.LAND_PATCH_SIZE)))
 		var before := land_owned

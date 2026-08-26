@@ -36,6 +36,14 @@ const PHASE_SELLING := "selling"
 ##   steady_net   per-turn net once revenue is flowing
 ##   breakdown    the steady turn's line items, for the tooltip/caption
 ##   capex        construction cost estimate
+##   capex_total  the full up-front spend a confirm commits to: the money leg
+##                (base_price) plus the material kit at market buy prices — the
+##                same figure the confirm screen quotes as "construction". Land is
+##                a separate decision and is NOT in here; add it via payback_turn().
+##   build_turns  construction turns before the completion turn
+##   first_selling_turn   the turn the first revenue lands, as the player counts turns
+##   payback_turn the turn by whose end the build has earned back capex_total plus
+##                the pre-revenue hole, at today's prices. -1 = never (steady_net <= 0).
 ##   sale_delay   turns between producing and the money landing
 ##   no_supply / input_names   inputs this tile has no route to
 static func project(building_id: String, recipe_id: String, tile_id: String) -> Dictionary:
@@ -43,7 +51,8 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 	var recipe: Dictionary = Catalog.get_recipe(recipe_id)
 	var out := {
 		"phases": [], "cash_needed": 0.0, "steady_net": 0.0, "breakdown": {},
-		"capex": 0.0, "sale_delay": 1, "no_supply": false, "input_names": [],
+		"capex": 0.0, "capex_total": 0.0, "build_turns": 0, "first_selling_turn": 0,
+		"payback_turn": -1, "sale_delay": 1, "no_supply": false, "input_names": [],
 	}
 	if building_def.is_empty() or recipe.is_empty():
 		return out
@@ -166,6 +175,14 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 	out.cash_needed = cash_needed
 	out.steady_net = revenue - selling_cost
 	out.capex = float(Construction.estimate_market_cost(tile_id, building_id))
+	# capex_total is what a confirm actually commits to spending, matching the panel's
+	# construction figure (base_price + full kit at buy prices) rather than capex's
+	# missing-materials-only quote, so payback is measured against the real outlay.
+	out.capex_total = maxf(0.0, float(building_def.get("base_price", 0.0))) \
+		+ Construction.market_purchase_value(building_id)
+	out.build_turns = build_turns
+	out.first_selling_turn = first_selling
+	out.payback_turn = payback_turn(float(out.capex_total), cash_needed, float(out.steady_net), first_selling)
 	out.sale_delay = sale_delay
 	out.no_supply = not unroutable.is_empty()
 	out.input_names = unroutable
@@ -175,6 +192,34 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 		"labour": labour, "maintenance": maintenance, "warehousing": warehousing,
 	}
 	return out
+
+
+## The turn by whose end cumulative net returns to zero: the whole up-front spend
+## (total_capex — pass capex_total plus any land the player is buying with the
+## build) and the pre-revenue hole (cash_needed) are earned back at steady_net per
+## selling turn, the first of which is first_selling_turn. -1 = never pays back at
+## today's prices. Shared by the forecast, the confirm panel and the harness so
+## "pays back ~turn N" is one computation everywhere.
+static func payback_turn(total_capex: float, cash_needed: float, steady_net: float, first_selling_turn: int) -> int:
+	if steady_net <= 0.0:
+		return -1
+	var hole: float = maxf(0.0, total_capex) + maxf(0.0, cash_needed)
+	if hole <= 0.0:
+		return first_selling_turn
+	return first_selling_turn + int(ceil(hole / steady_net)) - 1
+
+
+## The confirm screen's affordability chip, as data (spec: verdict strip, RAG vs
+## current cash). "ok" = the build AND the pre-revenue buffer are covered;
+## "buffer_short" = the build is affordable but the buffer is not, so the building
+## will strain the bank before its first sale; "unaffordable" = cannot pay for the
+## build at all. total_cost is everything the confirm spends (construction + land).
+static func affordability_verdict(total_cost: float, cash_needed: float, money: float) -> String:
+	if money + 0.0001 < total_cost:
+		return "unaffordable"
+	if money + 0.0001 < total_cost + maxf(0.0, cash_needed):
+		return "buffer_short"
+	return "ok"
 
 
 static func _turn_range(from_turn: int, to_turn: int) -> String:

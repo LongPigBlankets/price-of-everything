@@ -406,3 +406,42 @@ static func make_setting_row(label_text: String, control: Control, row_height: f
 		control.size_flags_horizontal = Control.SIZE_SHRINK_END
 	row.add_child(control)
 	return row
+
+
+## Ledger-grammar rule (Construct V3, spec §4): a fine full-width line. Rules are
+## STRUCTURE, not status — they stay in the DS's soft cream and never take a
+## semantic colour. double_rule is the classic ledger double line that sits above
+## a verdict/total band.
+class SectionRule extends Control:
+	var double_rule := false
+
+	func _init(is_double: bool = false) -> void:
+		double_rule = is_double
+		custom_minimum_size = Vector2(0, 5.0 if is_double else 2.0)
+		size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		var tone: Color = DS.PALETTE["BORDER_SOFT"]
+		draw_line(Vector2(0, 1), Vector2(size.x, 1), tone, 1.0)
+		if double_rule:
+			draw_line(Vector2(0, 4), Vector2(size.x, 4), tone, 1.0)
+
+
+static func make_section_rule(double_rule: bool = false) -> Control:
+	return SectionRule.new(double_rule)
+
+
+## Ruled section head: rule above a small-caps title (the "SectionRuled" label
+## variation). Replaces coloured tick-bar headings — same hierarchy, zero status
+## colour spent on furniture. Pass double_rule=true only for the verdict band.
+static func make_ruled_section_head(text: String, double_rule: bool = false) -> Control:
+	var box := VBoxContainer.new()
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_theme_constant_override("separation", 4)
+	box.add_child(SectionRule.new(double_rule))
+	var label := Label.new()
+	label.text = text.to_upper()
+	label.theme_type_variation = &"SectionRuled"
+	box.add_child(label)
+	return box

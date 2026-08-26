@@ -14,6 +14,7 @@ extends CanvasLayer
 ##   swap tvp                         toggle between the classic and alternate Tile View Panel
 ##   swap bdp                         toggle to the classic v1 building-detail panel (v2 is default)
 ##   swap construct_panel             toggle the construct-panel redesign
+##   swap construct_panel_v3          toggle the in-progress confirm-screen v3 redesign
 ##   swap loading_screen              toggle the slow pre-optimization new-game build (for recordings)
 ##   swap goods_graph                 toggle the legacy no-swimlane/fixed-card Goods Graph
 ##   swap empire view sprite          toggle the empire view sprite style (big 2.5D sprites, no backdrop)
@@ -222,6 +223,9 @@ func _run_command(text: String) -> String:
 			if parts.size() >= 2 and parts[1].to_lower() == "construct_panel":
 				MatchState.toggle_use_construct_panel_v2()
 				return "Construct panel → %s" % ("v2 (redesign)" if MatchState.use_construct_panel_v2 else "v1 (classic)")
+			if parts.size() >= 2 and parts[1].to_lower() == "construct_panel_v3":
+				MatchState.toggle_use_construct_panel_v3()
+				return "Construct panel v3 (confirm redesign) → %s" % ("ON" if MatchState.use_construct_panel_v3 else "OFF")
 			if parts.size() >= 2 and parts[1].to_lower() == "loading_screen":
 				var legacy: bool = LoadPacing.toggle_legacy_load()
 				return "New-game load → %s  (takes effect on the next New Game)" % (
@@ -247,7 +251,7 @@ func _run_command(text: String) -> String:
 				if empire != null:
 					empire.call("refresh_graph")
 				return "Empire view → %s" % ("SPRITE style (big sprites, plates below, no backdrop)" if sprite_view_on else "classic cards")
-			return "usage: swap song  |  swap bdp  |  swap construct_panel  |  swap loading_screen  |  swap goods_graph  |  swap empire button  |  swap empire view sprite  |  swap port badge"
+			return "usage: swap song  |  swap bdp  |  swap construct_panel  |  swap construct_panel_v3  |  swap loading_screen  |  swap goods_graph  |  swap empire button  |  swap empire view sprite  |  swap port badge"
 		"survey":
 			if parts.size() >= 2 and parts[1].to_lower() == "limit":
 				MatchState.cheat_survey_within_limits()
@@ -408,7 +412,7 @@ func _run_command(text: String) -> String:
 			PolicyState.cheat_set_coal_ban(true, ban_turn)
 			return "Coal BANNED from turn %d: mining halts, imports refused on every route. 'ban coal off' to lift." % ban_turn
 		"help":
-			return "commands:  cash <int>   |   unlock <title>|all|hidden_buildings|advisors   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink|plate|midcentury   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   ban coal [off]   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  cash <int>   |   unlock <title>|all|hidden_buildings|advisors   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap construct_panel_v3   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink|plate|midcentury   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   ban coal [off]   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 

@@ -4,9 +4,14 @@ extends Node
 
 const CompanyNames := preload("res://scripts/company_names.gd")
 
-const RIVAL_COUNT := 9
+## Rivals in the league table, which therefore runs RIVAL_COUNT + 1 rows deep. Nineteen of the
+## twenty-six names above are drawn per match, so two matches rarely field the same board.
+const RIVAL_COUNT := 19
 ## Fewest rival companies that contest any one good. The most is RIVAL_COUNT.
 const GOOD_MIN_COMPETITORS := 3
+## How many producers a good's card lists before the player's own row. The field behind it is
+## usually larger — the card shows the podium, and the player underneath it when they are off it.
+const GOOD_ROWS_SHOWN := 3
 const PARTICIPATION_SALT := 7717
 const TIEBREAK_SALT := 9931
 const TOTAL_COMPANIES := RIVAL_COUNT + 1
@@ -209,23 +214,36 @@ func goods_standings_for(match_seed: int, completed_turn: int, player_produced: 
 					"quantity": _rival_good_output_for(match_seed, good_id, competitor_index, completed_turn),
 					"tiebreak": _good_tiebreak(match_seed, good_id, competitor_index),
 				})
-			_sort_good_rows(rows)
-			rows = rows.slice(0, 3)
 		rows.append({
 			"id": PLAYER_ID,
 			"name": PLAYER_NAME,
 			"is_player": true,
 			"quantity": _player_good_quantity(good_id, player_produced),
 		})
+		# Rank against the WHOLE field first, and only then trim. The old order was the other way
+		# round — rivals cut to three, THEN the player added — which quietly meant two different
+		# things: a card always carried four rows, and the player leading a good pushed a rival
+		# onto it who was not actually third. Ranking first makes "3rd" mean third of everyone.
 		_sort_good_rows(rows)
 		for i: int in range(rows.size()):
 			rows[i]["rank"] = i + 1
+		var shown: Array[Dictionary] = rows.slice(0, GOOD_ROWS_SHOWN)
+		# The player is always on their own card. Off the podium they follow it, keeping the rank
+		# they actually hold (7th of 12, not 4th) — which is the number worth reading.
+		if not shown.any(func(row: Dictionary) -> bool: return bool(row.get("is_player", false))):
+			for row_variant: Variant in rows:
+				var row: Dictionary = row_variant
+				if bool(row.get("is_player", false)):
+					shown.append(row)
+					break
 		out.append({
 			"good_id": good_id,
 			"internal_name": str(good.get("internal_name", "")),
 			"display_name": str(good.get("display_name", good_id)),
 			"is_apex": apex,
-			"producers": rows,
+			"producers": shown,
+			## Everyone contesting this good, player included — the podium is a slice of it.
+			"field_size": rows.size(),
 		})
 	return out
 
@@ -249,8 +267,23 @@ func _competitors_for_good(match_seed: int, good_id: String) -> Array:
 		var swap: Variant = pool[i]
 		pool[i] = pool[j]
 		pool[j] = swap
+	# Draw the count BEFORE filtering, so the roster a firm happens to be in cannot change the
+	# rest of the table's shape — the seed answers "how crowded is this good", the theme answers
+	# "who is allowed in it".
 	var count: int = rng.randi_range(GOOD_MIN_COMPETITORS, RIVAL_COUNT)
-	return pool.slice(0, count)
+	# A firm whose name says what it makes only competes in what it makes: Pemberton Chemical
+	# does not mine bauxite. Unthemed firms are generic and keep every good populated.
+	var good: Dictionary = Catalog.get_good(good_id)
+	var names := _rival_names_for(match_seed)
+	var eligible: Array = []
+	for index: int in pool:
+		if CompanyNames.competes_in(names[index], good):
+			eligible.append(index)
+	# A roster can, rarely, hold no one eligible for a good. Better the old behaviour than an
+	# empty column.
+	if eligible.is_empty():
+		eligible = pool
+	return eligible.slice(0, mini(count, eligible.size()))
 
 ## A stable per-(good, company) ordering key. Rival outputs are identical until the first
 ## increment lands, so without this the display order inside one good is just id order.

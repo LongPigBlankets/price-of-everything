@@ -121,6 +121,10 @@ var _power_sub: Label
 # Victory module
 var _victory_btn: Control
 var _victory_meters: HBoxContainer
+var _quest_btn: Control
+var _quest_title: Label
+var _quest_sub: Label
+var _quest_text_col: VBoxContainer
 var _victory_score: Label
 var _victory_target: Label   # "/ N" — the rising win threshold for the current turn
 
@@ -176,6 +180,7 @@ func _ready() -> void:
 	_build_transport()
 	_build_rankings()
 	_build_briefing()
+	_build_quest()
 	_build_council()
 	_build_goods_graph()
 	_adopt_encyclopedia_and_turn()
@@ -327,6 +332,32 @@ class _ModuleBtn extends PanelContainer:
 		set(v):
 			active = v
 			_restyle()
+	## Optional thin border, re-applied by _restyle so hover cannot wipe it. Transparent (the
+	## default) leaves a module exactly as it was.
+	var rim := Color(0, 0, 0, 0):
+		set(v):
+			rim = v
+			_restyle()
+	## Completion glow, 0–1. Washes the fill brass and lifts a brass shadow — the mission-done
+	## flash the owner wants to happen HERE, on the bar, rather than down in the flyout.
+	var glow := 0.0:
+		set(v):
+			glow = v
+			_restyle()
+	## A checkmark drawn straight onto the module over 0–1, so completion is marked where the
+	## player is already looking. It draws only while the label has faded away (see
+	## _celebrate_mission), so it has the module to itself rather than sitting over the text.
+	var tick_progress := 0.0:
+		set(v):
+			tick_progress = clampf(v, 0.0, 1.0)
+			queue_redraw()
+	## The tick is NEGATIVE SPACE: it is drawn in the navy of the bar directly behind the module,
+	## so it reads as a checkmark cut out of the brass plate rather than a mark laid on top. The
+	## bar sets this to a sample of its own gradient at the module's position.
+	var tick_color := Color(0, 0, 0, 0):
+		set(v):
+			tick_color = v
+			queue_redraw()
 	var _hover := false
 	var _bar: Node
 	func _init(bar: Node) -> void:
@@ -342,7 +373,87 @@ class _ModuleBtn extends PanelContainer:
 		var sb: StyleBoxFlat = _bar._module_box(active, warn)
 		if _hover and not active:
 			sb.bg_color = Color(1, 1, 1, 0.05)
+		if rim.a > 0.0:
+			sb.border_color = rim
+			sb.set_border_width_all(1)
+			sb.set_corner_radius_all(8)
+		if glow > 0.0:
+			var brass: Color = DS.PALETTE.BRASS
+			# Near-opaque, so the navy tick punched through it reads as a hole rather than a
+			# tint. Alpha climbs fast and caps, so even the trough between flashes stays solid
+			# enough for the negative space to hold.
+			sb.bg_color = Color(brass.r, brass.g, brass.b, minf(1.0, glow * 1.7))
+			sb.shadow_color = Color(brass.r, brass.g, brass.b, 0.6 * glow)
+			sb.shadow_size = int(round(16.0 * glow))
+			sb.set_corner_radius_all(8)
 		add_theme_stylebox_override("panel", sb)
+	## The tick, drawn OVER the panel. A PanelContainer paints its stylebox from a C++
+	## notification and then still calls this script _draw, so the checkmark lands on top of
+	## the brass fill. Drawn in the bar's own navy (tick_color), it reads as a hole cut through
+	## the plate to the bar behind — negative space, not a mark laid on.
+	##
+	## It is a single FILLED outline, not two strokes. Two draw_line segments met at the bottom
+	## vertex with square end-caps that left a notch — "two lines that don't quite meet" — so the
+	## shape is built as one polygon whose bottom is a short flat edge (owner, 26 Aug). It reveals
+	## left to right: x rises monotonically along the stroke, so a vertical wipe reads as drawing.
+	func _draw() -> void:
+		if tick_progress <= 0.0 or tick_color.a <= 0.0:
+			return
+		var s: float = minf(size.x, size.y) * 0.72
+		var ox: float = (size.x - s) * 0.5
+		var oy: float = (size.y - s) * 0.5
+		var x0: float = ox + 0.06 * s
+		var x1: float = ox + 0.98 * s
+		var cut: float = x0 + (x1 - x0) * tick_progress
+		var clip := PackedVector2Array([
+			Vector2(x0 - s, oy - s), Vector2(cut, oy - s),
+			Vector2(cut, oy + 2.0 * s), Vector2(x0 - s, oy + 2.0 * s)])
+		# Each piece is convex, so clipping keeps it convex and draw_colored_polygon fills it
+		# correctly. The area guard drops the near-zero slivers the wipe front throws off — even
+		# draw_colored_polygon triangulates internally and errors on a degenerate one.
+		for piece: PackedVector2Array in _tick_pieces(s, ox, oy):
+			for shown: PackedVector2Array in Geometry2D.intersect_polygons(piece, clip):
+				if shown.size() >= 3 and absf(_poly_area(shown)) >= 0.5:
+					draw_colored_polygon(shown, tick_color)
+
+	## The checkmark as three CONVEX pieces that tile it exactly — the two arms and the wedge
+	## between them — with a FLAT bottom (bl → br). Two draw_line strokes met at a point whose
+	## square end-caps left a notch ("two lines that don't quite meet"); this closes it and the
+	## bottom is a short horizontal edge instead of a vanishing point. Centreline a → b → c.
+	func _tick_pieces(s: float, ox: float, oy: float) -> Array:
+		var a := Vector2(ox + 0.16 * s, oy + 0.52 * s)
+		var b := Vector2(ox + 0.44 * s, oy + 0.80 * s)
+		var c := Vector2(ox + 0.90 * s, oy + 0.16 * s)
+		var half: float = maxf(1.5, s * 0.17) * 0.5
+		var d1 := (b - a).normalized()
+		var d2 := (c - b).normalized()
+		var n1 := Vector2(d1.y, -d1.x)   # up-normal (points to −y)
+		var n2 := Vector2(d2.y, -d2.x)
+		var a_top := a + n1 * half
+		var a_bot := a - n1 * half
+		var c_top := c + n2 * half
+		var c_bot := c - n2 * half
+		var top_v = Geometry2D.line_intersects_line(a_top, d1, c_top, d2)   # inner concave notch
+		var bot_v = Geometry2D.line_intersects_line(a_bot, d1, c_bot, d2)   # would-be sharp point
+		if not (top_v is Vector2) or not (bot_v is Vector2):
+			return []
+		# The flat, cut a little above the sharp point, where it crosses each bottom edge.
+		var y_flat: float = (bot_v as Vector2).y - half * 0.9
+		var bl := a_bot + d1 * ((y_flat - a_bot.y) / d1.y)
+		var br := c_bot + d2 * ((y_flat - c_bot.y) / d2.y)
+		return [
+			PackedVector2Array([a_top, top_v, bl, a_bot]),    # short arm
+			PackedVector2Array([top_v, c_top, c_bot, br]),    # long arm
+			PackedVector2Array([bl, top_v, br]),              # the wedge, closing the flat bottom
+		]
+
+	func _poly_area(poly: PackedVector2Array) -> float:
+		var acc := 0.0
+		for i in poly.size():
+			var p := poly[i]
+			var q := poly[(i + 1) % poly.size()]
+			acc += p.x * q.y - q.x * p.y
+		return acc * 0.5
 	func _gui_input(e: InputEvent) -> void:
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 			accept_event()
@@ -519,8 +630,8 @@ func _build_victory() -> void:
 	_victory_score.add_theme_font_size_override("font_size", 15)
 	_victory_score.add_theme_color_override("font_color", C_CREAM)
 	col.add_child(_victory_score)
-	# Second line: how far off the win actually is, in turns, which is the question the
-	# score alone never answered. Falls back to the threshold when there is no rate yet.
+	# Second line: the points needed to win. Just the threshold — see below for why there is
+	# no turn estimate here.
 	_victory_target = _mini("", C_TEXT, 11)
 	# Text set on refresh (_victory_bar_tip) — at build time the ruleset has not landed yet,
 	# so the bar's shape is not yet known.
@@ -768,24 +879,10 @@ func _refresh_victory() -> void:
 		cell.add_child(letter)
 		_victory_meters.add_child(cell)
 	var total := int(bd.get("total", 0))
-	_record_victory_point(total)
 	_victory_score.text = "%s Victory Point%s" % [_thousands(total), "" if total == 1 else "s"]
 	if _victory_target != null:
-		_victory_target.text = _victory_forecast(bd, total)
+		_victory_target.text = "of %s to win" % _thousands(int(bd.get("win_threshold", 4000)))
 		_victory_target.tooltip_text = _victory_bar_tip(bd)
-
-## Score history, so "how many turns" can be answered at all: one entry per resolved turn,
-## newest last. Victory has no rate of its own — the tracks report where they ARE, not how
-## fast they are moving — so the bar keeps the little history the question needs.
-var _victory_history: Array[int] = []
-const VICTORY_HISTORY_TURNS := 6
-
-func _record_victory_point(total: int) -> void:
-	if not _victory_history.is_empty() and _victory_history[-1] == total:
-		return   # nothing resolved since the last sample
-	_victory_history.append(total)
-	if _victory_history.size() > VICTORY_HISTORY_TURNS:
-		_victory_history = _victory_history.slice(_victory_history.size() - VICTORY_HISTORY_TURNS)
 
 ## What the win bar does, in one line. A campaign bar climbs with the turn; the demo's is
 ## flat, and a demo player told to hold out for turn 300 has been told something false.
@@ -797,43 +894,14 @@ func _victory_bar_tip(bd: Dictionary) -> String:
 	return "Points needed to win rise over the game — 1 track from turn %d up to 4 tracks by turn %d." % [
 		VictoryState.WIN_START_TURN, max_turns]
 
-## The second line of the victory module. A track past halfway is the one the player is
-## actually chasing, so it gets named; otherwise the answer is the whole win. Either way it
-## is turns, not points, because turns are what the player is spending.
-func _victory_forecast(bd: Dictionary, total: int) -> String:
-	var threshold := int(bd.get("win_threshold", 4000))
-	var rate := _victory_rate()
-	# The nearest track past halfway, if there is one.
-	var best_name := ""
-	var best_progress := 0.5
-	for t in (bd.get("tracks", []) as Array):
-		var track: Dictionary = t
-		var progress := float(track.get("progress", 0.0))
-		if progress > best_progress and progress < 1.0:
-			best_progress = progress
-			best_name = str(track.get("name", ""))
-	if rate <= 0.0:
-		return "of %s to win" % _thousands(threshold)
-	if best_name != "":
-		# Time the TRACK, not the total: its own points are what finish it.
-		var track_left := (1.0 - best_progress) / maxf(0.0001, best_progress) * float(total)
-		var track_turns := int(ceil(track_left / rate))
-		if track_turns > 0 and track_turns < 999:
-			return "%d turn%s until %s" % [track_turns, "" if track_turns == 1 else "s", best_name]
-	var remaining := threshold - total
-	if remaining <= 0:
-		return "threshold reached"
-	var turns := int(ceil(float(remaining) / rate))
-	return "%d turn%s until victory" % [turns, "" if turns == 1 else "s"] if turns < 999 else "of %s to win" % _thousands(threshold)
-
-## Points per turn over the recorded history. 0 when there is not yet a second sample.
-func _victory_rate() -> float:
-	if _victory_history.size() < 2:
-		return 0.0
-	var gained := _victory_history[-1] - _victory_history[0]
-	if gained <= 0:
-		return 0.0
-	return float(gained) / float(_victory_history.size() - 1)
+## NO TURN FORECAST HERE, DELIBERATELY (owner, 25 Aug). The module used to extrapolate a
+## points-per-turn rate from the last six resolved turns and print "N turns until victory".
+## Victory has no rate of its own — the tracks report where they ARE, not how fast they are
+## moving — so the estimate was a straight-line guess over a curve, and the win threshold
+## itself RISES with the turn (see _victory_bar_tip), which the extrapolation never modelled.
+## It read as a promise and was routinely wrong. The second line now states the threshold and
+## nothing else; the score above it is the progress. Do not reintroduce an ETA without a real
+## model of the tracks.
 
 
 func _thousands(n: int) -> String:
@@ -1049,6 +1117,7 @@ func _recenter_notch() -> void:
 	var min_size := _briefing_btn.get_combined_minimum_size()
 	_briefing_btn.size = Vector2(maxf(min_size.x, NOTCH_MIN_W), NOTCH_H)
 	_briefing_btn.position = Vector2(roundf((vw - _briefing_btn.size.x) * 0.5), 0.0)
+	_place_quest()
 	queue_redraw()
 
 func _refresh_briefing() -> void:
@@ -1083,6 +1152,124 @@ func _refresh_briefing() -> void:
 
 
 # ── 5 · Council: seated portraits with loyalty rings + number chips ─────────────
+
+## The post-tutorial mini quest (scripts/mini_quest.gd). Sits immediately right of the updates
+## notch: the hbox separation is 10, which is the offset asked for, so it needs no spacer.
+## Hidden until MiniQuest says there is a quest — that wants a finished tutorial AND a chain the
+## player has actually gone into.
+func _build_quest() -> void:
+	var mod := _ModuleBtn.new(self)
+	mod.name = "QuestModule"
+	mod.tooltip_text = "Mini quest"
+	# The thin gold rim is what marks this out from its neighbours: every other module on the
+	# bar is bare or silver-edged, so the rim does the work a badge would.
+	mod.rim = _quest_rim()
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_left", 12)
+	pad.add_theme_constant_override("margin_right", 12)
+	pad.add_theme_constant_override("margin_top", 6)
+	pad.add_theme_constant_override("margin_bottom", 6)
+	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mod.add_child(pad)
+	var col := VBoxContainer.new()
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 2)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pad.add_child(col)
+	_quest_title = _mini("", C_CREAM, 13)
+	col.add_child(_quest_title)
+	_quest_sub = _mini("", C_TEXT, 11)
+	col.add_child(_quest_sub)
+	# The whole text block, kept so the completion flash can fade it away and the tick can take
+	# the module to itself. Fading modulate (not visibility) leaves the layout — and so the
+	# module's width — untouched while the label is gone.
+	_quest_text_col = col
+	mod.pressed.connect(func() -> void: _toggle_fly("quest"))
+	# TOP-LEVEL, like the briefing notch and the bankruptcy strip. The bar is a PanelContainer:
+	# an ordinary child is both stretched to fill it AND counted in its minimum size, and measured
+	# that took the bar from 64 px tall to 67. Containers skip a top_level child, which fixes the
+	# growth and removes any need to re-place it after every sort.
+	mod.top_level = true
+	add_child(mod)
+	_quest_btn = mod
+	mod.visible = false
+	MiniQuest.quest_changed.connect(_refresh_quest)
+	MiniQuest.mission_completed.connect(_on_quest_mission_completed)
+	# Refresh when the match snapshot lands: that is the first moment the ruleset (and its
+	# start_id) exists, and is_available() resolves a start-derived chain from it. Connecting
+	# HERE — on the bar, not only in MiniQuest — sidesteps a boot race: match_loaded fires during
+	# world build, after this bar's _ready, whereas MiniQuest is a deferred autoload that on a
+	# fast boot can still be wiring up. Without it the module first appeared on turn 2, because
+	# TurnManager emits turn 1's DECIDE before the ruleset is even loaded, so that nudge is lost.
+	SaveLoad.match_loaded.connect(_refresh_quest)
+	get_viewport().size_changed.connect(_place_quest)
+	_refresh_quest()
+
+
+## The module's resting rim. Not a const: Color.darkened() is a method call, so it cannot be
+## folded at parse time.
+func _quest_rim() -> Color:
+	return C_CREAM.darkened(0.15)
+
+
+## A mission landed. The toast MiniQuest raises says WHAT happened; the module — flashing up on
+## the bar — says where. See _celebrate_mission for the sequence itself.
+func _on_quest_mission_completed(kind: String, _mission_title: String, _reward: String) -> void:
+	_refresh_quest()   # the module may only now be earning its place on the bar
+	if _quest_btn == null or not is_instance_valid(_quest_btn) or not _quest_btn.visible:
+		return
+	_celebrate_mission(kind)
+
+
+## Ten pixels off the notch's right edge, vertically centred in the bar proper (the notch hangs
+## below it; the quest does not). Re-run whenever the notch moves or the label changes, since
+## both change the rect this is measured against.
+const QUEST_GAP := 10.0
+
+## Both this and the notch are top_level, so their positions live in the same space and the
+## container will not touch either. Centred in what the bar actually DRAWS — its live height
+## less the metallic bezel along the bottom — rather than in BAR_H, which is the offset the bar
+## is anchored by and is smaller than the height its styleboxes give it (53 vs a measured 64).
+func _place_quest() -> void:
+	if _quest_btn == null or not is_instance_valid(_quest_btn) or not _quest_btn.visible:
+		return
+	if _briefing_btn == null or not is_instance_valid(_briefing_btn):
+		return
+	var want_size := _quest_btn.get_combined_minimum_size()
+	_quest_btn.size = want_size
+	_quest_btn.position = Vector2(
+		_briefing_btn.position.x + _briefing_btn.size.x + QUEST_GAP,
+		maxf(0.0, roundf((size.y - EDGE_H - want_size.y) * 0.5)))
+
+
+## Text and visibility both come from MiniQuest; the bar never decides either for itself.
+func _refresh_quest() -> void:
+	if _quest_btn == null or not is_instance_valid(_quest_btn):
+		return
+	var on: bool = MiniQuest.is_available()
+	_quest_btn.visible = on
+	if not on:
+		if _fly_open_id == "quest":
+			_close_fly()
+		return
+	# Recover the label's opacity outside a celebration: if one was interrupted (a state reset
+	# mid-flash) the fade could otherwise leave the module reading blank.
+	if not _quest_celebrating and _quest_text_col != null and is_instance_valid(_quest_text_col):
+		_quest_text_col.modulate.a = 1.0
+	# MiniQuest decides which of its missions is showing; the bar just renders it — EXCEPT
+	# during the completion sequence, which holds the module on the mission that just finished
+	# (reading "Complete — <reward>") until the flash is over and it hands over deliberately.
+	var kind: String = _quest_celebrating_kind if _quest_celebrating else MiniQuest.active_mission()
+	_quest_title.text = MiniQuest.title(kind)
+	_quest_sub.text = MiniQuest.subtitle(kind)
+	_place_quest.call_deferred()   # the new label decides the width
+	# Rebuilding the flyout mid-celebration would FREE the section the tween is driving, and a
+	# tween whose target dies completes instantly — which is how the whole 1.5 s sequence used
+	# to fire inside a third of a second. quest_changed lands right after mission_completed, so
+	# this is not a rare race; it happened every time.
+	if _fly_open_id == "quest" and not _quest_celebrating:
+		_refresh_open_fly()
+
 
 func _build_council() -> void:
 	# Everything from Council rightwards is anchored to the far right edge (the
@@ -1376,6 +1563,367 @@ func _build_menu() -> void:
 
 # ── Flyouts (Treasury · Council · Victory), anchored under their modules ────────
 
+## The quest panel: the four steps with their ticks, the reward, and where to look if lost.
+## No heading — at 120 px a title would spend a third of the panel repeating the module the
+## player just clicked.
+## ── The mission flyout ───────────────────────────────────────────────────────
+##
+## An ACCORDION of every mission in the chain, not just the live one. One section open at a
+## time; opening one closes the rest.
+##
+## WIDTH IS THE MODULE'S, not the text's. This measured its own longest line for a while and
+## the result was correct in isolation and visibly misaligned in place — the panel hangs off
+## the module and the two have to read as one object (owner, 26 Aug). Steps wrap to fit;
+## the module is the ruler.
+const QUEST_FLY_FALLBACK_W := 320   # only if the module has not been laid out yet
+const QUEST_FLY_PAD := 20           # this panel's left+right margins, which the text cannot use
+## The flyout stylebox's 1 px border, both sides. A PanelContainer's minimum is its content plus
+## its stylebox, so without subtracting this the panel lands 2 px wider than the module and the
+## two edges visibly disagree.
+const QUEST_FLY_BORDER := 2
+const QUEST_STEP_PT := 13
+const QUEST_HINT_PT := 12
+const QUEST_BOX := 12.0             # the per-step tickbox, per spec
+
+## Completion sequence, in seconds: the label fades away, the module flashes brass twice with a
+## navy tick cut through it, then the next mission pops open and collapses itself again.
+const QUEST_FLASH_SEC := 0.6
+const QUEST_FLASHES := 2
+const QUEST_CELEBRATE_SEC := 1.5
+const QUEST_NEXT_OPEN_SEC := 3.0
+## How long the label takes to fade out at the start (and the next one to fade in at the end).
+## The tick waits this out before it starts drawing, so it never shares the module with text.
+const QUEST_TEXT_FADE := 0.18
+## The brass never drops below this through the flash, so the navy negative-space tick always
+## has a plate to sit in — a flash that returned to zero would blink the tick out with it.
+const QUEST_GLOW_FLOOR := 0.55
+
+## Which section is open, by mission kind; "" is all-collapsed. It lives on the bar rather than
+## on the built nodes because _refresh_open_fly throws the whole flyout away and rebuilds it.
+var _quest_open := ""
+var _quest_sections: Dictionary = {}
+var _quest_anim: Tween = null
+var _quest_tick_anim: Tween = null
+var _quest_text_anim: Tween = null
+## Did the completion sequence open this flyout by itself? If so it closes it again afterwards,
+## rather than leaving a panel over the map that the player never asked for.
+var _quest_auto_opened := false
+## While true, the module holds the finished mission's text and nothing rebuilds the flyout.
+var _quest_celebrating := false
+var _quest_celebrating_kind := ""
+
+
+func _quest_fly_width() -> int:
+	if _quest_btn != null and is_instance_valid(_quest_btn) and _quest_btn.size.x > 1.0:
+		return int(_quest_btn.size.x)
+	return QUEST_FLY_FALLBACK_W
+
+
+func _fly_quest(vb: VBoxContainer) -> void:
+	var width := _quest_fly_width()
+	if _fly_panel != null and is_instance_valid(_fly_panel):
+		_fly_panel.custom_minimum_size = Vector2(width - QUEST_FLY_BORDER, 0)
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_left", 10)
+	pad.add_theme_constant_override("margin_right", 10)
+	pad.add_theme_constant_override("margin_top", 10)
+	pad.add_theme_constant_override("margin_bottom", 10)
+	vb.add_child(pad)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	pad.add_child(col)
+	_quest_sections = {}
+	var list: Array = MiniQuest.missions()
+	if _quest_open == "" and not list.is_empty():
+		_quest_open = MiniQuest.active_mission()
+	var inner: int = width - QUEST_FLY_PAD - QUEST_FLY_BORDER
+	for kind_variant: Variant in list:
+		var kind := str(kind_variant)
+		var section := _quest_section(kind, inner)
+		_quest_sections[kind] = section
+		col.add_child(section)
+
+
+## One accordion section: its header always, its steps and reward only while it is the open one.
+func _quest_section(kind: String, inner: int) -> Control:
+	var done: bool = MiniQuest.is_mission_complete(kind)
+	var open: bool = _quest_open == kind
+	var section := _QuestSection.new()
+	section.custom_minimum_size = Vector2(inner, 0)
+	section.pressed.connect(_toggle_quest_section.bind(kind))
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 5)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	section.add_child(col)
+
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 6)
+	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	head.add_child(_quest_label("▾" if open else "▸", C_TEXT, QUEST_STEP_PT, false))
+	# A finished mission's title goes brass, because a COLLAPSED section shows nothing else —
+	# neither its filled boxes nor its ticked reward — and "which of these have I done" is the
+	# question an accordion has to answer while shut.
+	var title := _quest_label(MiniQuest.title(kind),
+		DS.PALETTE.BRASS if done else C_TEXT, QUEST_STEP_PT, true)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title)
+	col.add_child(head)
+	if not open:
+		return section
+
+	var steps: Array = MiniQuest.steps(kind)
+	for i in steps.size():
+		col.add_child(_quest_step_row(str(steps[i]), MiniQuest.step_done(i, kind)))
+
+	var reward_row := HBoxContainer.new()
+	reward_row.add_theme_constant_override("separation", 6)
+	reward_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var tick := _TickMark.new()
+	tick.custom_minimum_size = Vector2(QUEST_BOX + 2.0, QUEST_BOX + 2.0)
+	tick.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	tick.progress = 1.0 if done else 0.0
+	reward_row.add_child(tick)
+	section.tick = tick
+	var reward := Label.new()
+	reward.theme_type_variation = "Reward"   # brass + semibold, from DS
+	reward.text = "Reward: %s" % MiniQuest.reward_text(kind)
+	reward.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	reward.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	reward.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	reward_row.add_child(reward)
+	col.add_child(reward_row)
+
+	var hint: String = MiniQuest.hint(kind)
+	if hint != "":
+		col.add_child(_quest_label(hint, C_TEXT, QUEST_HINT_PT, true))
+	return section
+
+
+## A step: the 12 px tickbox the spec asks for, then the text. The box is empty until the step
+## is met and fills brass when it is; the text stays off-white either way, because dimming a
+## completed step would be the grey-on-navy the house rule forbids.
+func _quest_step_row(text: String, done: bool) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 7)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# The box hangs off the FIRST line of a wrapped step, not the middle of the block.
+	var box_pad := MarginContainer.new()
+	box_pad.add_theme_constant_override("margin_top", 3)
+	box_pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box_pad.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	var box := Panel.new()
+	box.custom_minimum_size = Vector2(QUEST_BOX, QUEST_BOX)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.set_corner_radius_all(3)
+	sb.bg_color = DS.PALETTE.BRASS if done else Color(0, 0, 0, 0)
+	sb.border_color = DS.PALETTE.BRASS if done else Color(C_TEXT.r, C_TEXT.g, C_TEXT.b, 0.55)
+	sb.set_border_width_all(1)
+	box.add_theme_stylebox_override("panel", sb)
+	box_pad.add_child(box)
+	row.add_child(box_pad)
+	var label := _quest_label(text, C_TEXT, QUEST_STEP_PT, true)
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(label)
+	return row
+
+
+## Off-white by default and never anything quieter (CLAUDE.md); IGNORE so every click inside a
+## section reaches the section itself, which is the whole hit target.
+func _quest_label(text: String, color: Color, pt: int, wrap: bool) -> Label:
+	var l := _mini(text, color, pt)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if wrap:
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	return l
+
+
+func _toggle_quest_section(kind: String) -> void:
+	_quest_open = "" if _quest_open == kind else kind
+	_quest_auto_opened = false   # they are driving now; do not close it out from under them
+	if _fly_open_id == "quest":
+		_refresh_open_fly()
+
+
+## The completion sequence, 1.5 s of it, and it happens ON THE BAR (owner, 26 Aug). The module
+## itself flashes brass twice while a tick draws across it; the flyout stays SHUT through all of
+## that. Only when the flash is done does the module switch to the next mission and the flyout
+## pop open for three seconds to reveal it, then fold away.
+##
+## Driving the module rather than a flyout section is also what makes the timing trustworthy:
+## the module is a permanent node, so nothing the turn-resolution does can free the tween's
+## target mid-flight — which is exactly what used to collapse the whole 1.5 s into an instant.
+func _celebrate_mission(kind: String) -> void:
+	if _quest_btn == null or not is_instance_valid(_quest_btn) or not _quest_btn.visible:
+		return
+	_quest_celebrating = true
+	_quest_celebrating_kind = kind
+	# The flash is on the bar, so the flyout has no part in it — close it if a prior celebration
+	# left it open, and do NOT open it now.
+	if _fly_open_id == "quest" and _quest_auto_opened:
+		_close_fly()
+	_refresh_quest()   # the module holds on the finished mission ("Complete — <reward>")
+	var mod := _quest_btn as _ModuleBtn
+	mod.tick_progress = 0.0
+	# The tick is the navy of the bar directly behind the module, so it reads as a hole in the
+	# brass. Sampled once — the module does not move during the flash.
+	mod.tick_color = _bar_navy_at(mod.position + mod.size * 0.5)
+	_kill_quest_anim()
+	# The label fades away first, so the tick has the module to itself (owner, 26 Aug).
+	_quest_text_anim = create_tween()
+	if _quest_text_col != null and is_instance_valid(_quest_text_col):
+		_quest_text_anim.tween_property(_quest_text_col, "modulate:a", 0.0, QUEST_TEXT_FADE)
+	# Two flashes, but between them the glow only dips to the floor rather than to zero, so the
+	# brass plate — and the navy tick cut into it — stays lit the whole way through.
+	_quest_anim = create_tween()
+	for _i in QUEST_FLASHES:
+		_quest_anim.tween_method(_set_quest_celebrate, QUEST_GLOW_FLOOR, 1.0, QUEST_FLASH_SEC * 0.5)
+		_quest_anim.tween_method(_set_quest_celebrate, 1.0, QUEST_GLOW_FLOOR, QUEST_FLASH_SEC * 0.5)
+	_quest_anim.tween_interval(maxf(0.0, QUEST_CELEBRATE_SEC - QUEST_FLASH_SEC * QUEST_FLASHES))
+	_quest_anim.tween_callback(_finish_celebration.bind(kind))
+	# The tick waits for the label to clear, then draws across the two flashes.
+	_quest_tick_anim = create_tween()
+	_quest_tick_anim.tween_interval(QUEST_TEXT_FADE)
+	_quest_tick_anim.tween_property(mod, "tick_progress", 1.0,
+		QUEST_FLASH_SEC * QUEST_FLASHES - QUEST_TEXT_FADE)
+
+
+## One flash of the module: rim to brass and the fill glow, together on the same eased value.
+func _set_quest_celebrate(t: float) -> void:
+	if _quest_btn == null or not is_instance_valid(_quest_btn):
+		return
+	var mod := _quest_btn as _ModuleBtn
+	mod.rim = _quest_rim().lerp(DS.PALETTE.BRASS, t)
+	mod.glow = t
+
+
+## The bar's own ground gradient, sampled at a canvas point — bilinear across the four BarNavy
+## corners, the same fill _draw lays down. Used to colour the negative-space completion tick so
+## it matches the bar exactly rather than approximating it.
+func _bar_navy_at(pos: Vector2) -> Color:
+	var w: float = maxf(1.0, size.x)
+	var y0: float = size.y - EDGE_H
+	var u: float = clampf(pos.x / w, 0.0, 1.0)
+	var v: float = clampf((pos.y + TOP_BLEED) / maxf(1.0, y0 + TOP_BLEED), 0.0, 1.0)
+	return BarNavy.TL.lerp(BarNavy.TR, u).lerp(BarNavy.BL.lerp(BarNavy.BR, u), v)
+
+
+func _kill_quest_anim() -> void:
+	for t: Tween in [_quest_anim, _quest_tick_anim, _quest_text_anim]:
+		if t != null and t.is_valid():
+			t.kill()
+	_quest_anim = null
+	_quest_tick_anim = null
+	_quest_text_anim = null
+
+
+## 1.5 s in: the flash is over. Clear the module back to its resting look, switch it to the next
+## mission, and THEN — not before — pop the flyout open on that mission for three seconds.
+func _finish_celebration(finished_kind: String) -> void:
+	if _quest_btn != null and is_instance_valid(_quest_btn):
+		var mod := _quest_btn as _ModuleBtn
+		mod.glow = 0.0
+		mod.tick_progress = 0.0
+		mod.rim = _quest_rim()
+	_quest_celebrating = false
+	_quest_celebrating_kind = ""
+	var list: Array = MiniQuest.missions()
+	var idx: int = list.find(finished_kind)
+	var next := str(list[idx + 1]) if idx >= 0 and idx + 1 < list.size() else ""
+	_quest_open = next
+	_refresh_quest()   # the module now reads the next mission (or hides, if the chain is done)
+	# Fade the (new) label back in — it was faded to nothing for the tick. If the chain is done
+	# the module is hidden anyway, but restore the alpha so a fresh match starts opaque.
+	if _quest_text_col != null and is_instance_valid(_quest_text_col):
+		if next == "":
+			_quest_text_col.modulate.a = 1.0
+		else:
+			_quest_text_anim = create_tween()
+			_quest_text_anim.tween_property(_quest_text_col, "modulate:a", 1.0, QUEST_TEXT_FADE)
+	if next == "":
+		return
+	# The reveal: the next mission pops open, and folds itself away after three seconds.
+	if _fly_open_id != "quest":
+		_quest_auto_opened = true
+		_open_fly("quest")
+	else:
+		_refresh_open_fly()
+	get_tree().create_timer(QUEST_NEXT_OPEN_SEC).timeout.connect(
+		_collapse_quest_accordion.bind(next))
+
+
+## Fold the accordion shut — but only if the player has not since opened something else, and
+## only close the flyout itself if the celebration is what opened it.
+func _collapse_quest_accordion(expected: String) -> void:
+	if _quest_open != expected:
+		return
+	_quest_open = ""
+	if _fly_open_id != "quest":
+		return
+	if _quest_auto_opened:
+		_quest_auto_opened = false
+		_close_fly()
+	else:
+		_refresh_open_fly()
+
+
+## One accordion section: the whole block is the click target that toggles it. It still holds a
+## `tick` for the reward line's static checkmark, but the completion FLASH is no longer here —
+## that plays on the module up on the bar (see _celebrate_mission), where the eye already is.
+class _QuestSection extends PanelContainer:
+	signal pressed
+	var tick: Control = null
+	var _hover := false
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		mouse_entered.connect(func() -> void: _hover = true; _restyle())
+		mouse_exited.connect(func() -> void: _hover = false; _restyle())
+		_restyle()
+
+	func _restyle() -> void:
+		var sb := StyleBoxFlat.new()
+		sb.set_corner_radius_all(8)
+		sb.content_margin_left = 9
+		sb.content_margin_right = 9
+		sb.content_margin_top = 7
+		sb.content_margin_bottom = 7
+		sb.bg_color = Color(1, 1, 1, 0.09 if _hover else 0.035)
+		sb.set_border_width_all(1)
+		sb.border_color = Color(1, 1, 1, 0.13)
+		add_theme_stylebox_override("panel", sb)
+
+	func _gui_input(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			accept_event()
+			pressed.emit()
+
+
+## A checkmark that DRAWS itself over `progress` 0→1, so the completion sequence has a tick
+## being drawn rather than a glyph that blinks into existence. Two strokes: the short one takes
+## the first third, the long one the rest.
+class _TickMark extends Control:
+	const SHORT_STROKE := 0.35
+	var progress := 0.0:
+		set(v):
+			progress = clampf(v, 0.0, 1.0)
+			queue_redraw()
+
+	func _draw() -> void:
+		if progress <= 0.0:
+			return
+		var s: float = minf(size.x, size.y)
+		var a := Vector2(0.16, 0.52) * s
+		var b := Vector2(0.40, 0.80) * s
+		var c := Vector2(0.88, 0.18) * s
+		var w: float = maxf(1.5, s * 0.15)
+		var col: Color = DS.PALETTE.BRASS
+		draw_line(a, a.lerp(b, minf(progress / SHORT_STROKE, 1.0)), col, w, true)
+		if progress > SHORT_STROKE:
+			draw_line(b, b.lerp(c, (progress - SHORT_STROKE) / (1.0 - SHORT_STROKE)), col, w, true)
+
+
 func _build_fly_layer() -> void:
 	_fly_layer = CanvasLayer.new()
 	_fly_layer.layer = 110   # under the Turn Briefing hub (120)
@@ -1447,9 +1995,12 @@ func _close_fly() -> void:
 		(_rankings_btn as _ModuleBtn).active = false
 	if _council_btn != null:
 		(_council_btn as _ModuleBtn).active = false
+	if _quest_btn != null and is_instance_valid(_quest_btn):
+		(_quest_btn as _ModuleBtn).active = false
 
 func _open_fly(id: String) -> void:
 	_close_fly()
+	_fly_scroll = null
 	if TurnBriefing.expanded:
 		TurnBriefing.collapse()
 	_fly_open_id = id
@@ -1467,6 +2018,16 @@ func _open_fly(id: String) -> void:
 		_fly_panel.theme = DS.theme
 		_fly_panel.theme_type_variation = "Card"
 	else:
+		# The quest panel needs the DS theme for the same reason the rankings one does: a
+		# CanvasLayer child does not reliably inherit the viewport's, so its Labels fall back to
+		# the ENGINE default font. Off-brand, and it made this panel unmeasurable — the width was
+		# computed in the DS face and rendered in a wider one, so steps kept wrapping at what was
+		# supposedly a generous width. Setting it took the panel from 228 px tall to 165.
+		#
+		# The OTHER flyouts here (treasury, council, victory) have the same gap and are left
+		# alone deliberately: none of them was in scope, and each would want its own look at.
+		if id == "quest":
+			_fly_panel.theme = DS.theme
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = Color("#0d1e31")
 		sb.border_color = C_ACTIVE_BORDER
@@ -1506,6 +2067,11 @@ func _open_fly(id: String) -> void:
 			_fly_council(vb)
 			anchor = _council_btn
 			(_council_btn as _ModuleBtn).active = true
+		"quest":
+			# 120 tall as specced, and wide enough that the longest step sits on one line.
+			_fly_quest(vb)   # measures its own text and sets the panel width
+			anchor = _quest_btn
+			(_quest_btn as _ModuleBtn).active = true
 	_fly_layer.add_child(_fly_panel)
 	# Position after layout: left-align to the module, clamped to the viewport.
 	var place := func() -> void:
@@ -1515,6 +2081,16 @@ func _open_fly(id: String) -> void:
 		# Give the mini-panel its measured content height explicitly, otherwise it
 		# retains the viewport height and leaves an empty panel below its actions.
 		_fly_panel.size = _fly_panel.get_combined_minimum_size()
+		# Now that there IS a real rect, hand any overshoot back to the scroller: the panel ends
+		# above the screen edge and the rows that no longer fit scroll inside it, rather than
+		# sitting below the bottom of the display where nothing can reach them.
+		var vh: float = get_viewport().get_visible_rect().size.y
+		var max_h: float = vh - (BAR_H + 8.0) - FLY_BOTTOM_MARGIN
+		if _fly_panel.size.y > max_h and _fly_scroll != null and is_instance_valid(_fly_scroll):
+			var overflow: float = _fly_panel.size.y - max_h
+			_fly_scroll.custom_minimum_size.y = maxf(
+				FLY_LIST_MIN_H, _fly_scroll.custom_minimum_size.y - overflow)
+			_fly_panel.size.y = minf(_fly_panel.size.y, max_h)
 		var vw := get_viewport().get_visible_rect().size.x
 		var x := 12.0 if id == "rankings" else anchor.global_position.x
 		x = clampf(x, 8.0, vw - _fly_panel.size.x - 8.0)
@@ -1621,6 +2197,48 @@ func _set_rankings_tab(tab: String) -> void:
 	_close_fly()
 	_open_fly("rankings")
 
+## How tall a rankings list may be before it scrolls: everything between the bar and the bottom
+## of the screen, less this panel's own chrome (title, tabs, column headings) and a margin.
+##
+## A CONSTANT will not do here. At nine rivals the revenue table fitted on any screen; at
+## nineteen it is twenty rows deep and ran off the bottom of a 1440 px display with ranks 13–20
+## unreachable — and a constant chosen to fit 1080p would waste half of a taller one.
+const FLY_LIST_CHROME := 260.0
+const FLY_LIST_MIN_H := 360.0
+## Clearance kept between the bottom of a flyout and the bottom of the screen.
+const FLY_BOTTOM_MARGIN := 16.0
+
+func _fly_list_height() -> float:
+	var vp := get_viewport()
+	var vh: float = vp.get_visible_rect().size.y if vp != null else 1080.0
+	return maxf(FLY_LIST_MIN_H, vh - FLY_LIST_CHROME)
+
+
+## The scroller of whichever flyout is open, so _open_fly's deferred placement can hand back
+## any height the panel overshot the screen by. Null for the flyouts that hold no list.
+var _fly_scroll: ScrollContainer = null
+
+## A scroller sized by _fly_list_height, with the list inside it. Both rankings tabs use it: the
+## goods tab has always been longer than the screen, and the revenue tab now is too.
+##
+## _fly_list_height is only an OPENING BID — it subtracts an ESTIMATE of this panel's chrome,
+## and an estimate is what left the revenue table hanging off the bottom of a 1440 px screen
+## with its last rows unreachable. The correction is measured in _open_fly's placement, once
+## the panel has a real rect.
+func _fly_list_scroll(vb: VBoxContainer, separation: int) -> VBoxContainer:
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, _fly_list_height())
+	_fly_scroll = scroll
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", separation)
+	scroll.add_child(list)
+	vb.add_child(scroll)
+	return list
+
+
 func _fly_revenue_rankings(vb: VBoxContainer) -> void:
 	var inner := _fly_pad(vb, 5)
 	var hint := Label.new()
@@ -1646,8 +2264,20 @@ func _fly_revenue_rankings(vb: VBoxContainer) -> void:
 	header.add_child(average_head)
 	inner.add_child(header)
 	inner.add_child(_fly_sep())
+	# The rows go in a scroller, not in `inner`: twenty of them are taller than the screen.
+	var rows := _fly_list_scroll(vb, 5)
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_left", 14)
+	pad.add_theme_constant_override("margin_right", 14)
+	pad.add_theme_constant_override("margin_bottom", 12)
+	pad.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 5)
+	stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pad.add_child(stack)
+	rows.add_child(pad)
 	for entry: Dictionary in CompanyRankings.standings():
-		inner.add_child(_ranking_row(entry))
+		stack.add_child(_ranking_row(entry))
 
 func _fly_goods_rankings(vb: VBoxContainer) -> void:
 	var hint_pad := MarginContainer.new()
@@ -1657,50 +2287,63 @@ func _fly_goods_rankings(vb: VBoxContainer) -> void:
 	hint_pad.add_theme_constant_override("margin_bottom", 8)
 	var hint := Label.new()
 	hint.theme_type_variation = "Caption"
-	hint.text = "TOP 3 RIVAL PRODUCERS + YOUR LAST-TURN OUTPUT · APEX GOODS ARE PLAYER-ONLY"
+	hint.text = "TOP 3 PRODUCERS + YOUR LAST-TURN OUTPUT · APEX GOODS ARE PLAYER-ONLY"
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint_pad.add_child(hint)
 	vb.add_child(hint_pad)
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(0, 650)
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	var list := VBoxContainer.new()
-	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	list.add_theme_constant_override("separation", 8)
-	scroll.add_child(list)
+	var list := _fly_list_scroll(vb, 8)
 	for good: Dictionary in CompanyRankings.goods_standings():
 		list.add_child(_goods_ranking_card(good))
-	vb.add_child(scroll)
+
+## One good: its icon, its name, and the podium with the player under it.
+##
+## The card has NO fixed height. It carries three rows when the player is on the podium and four
+## when they are not, and it is meant to grow by exactly that one row — a fixed height would
+## either clip the fourth or leave a hole under the third. What IS pinned is the floor: the
+## 60 px icon, so a three-row card cannot shrink below its own artwork.
+const GOOD_CARD_ICON := 60
+const GOOD_RANK_W := 42.0
 
 func _goods_ranking_card(good: Dictionary) -> Control:
 	var card := PanelContainer.new()
 	card.theme_type_variation = "Card"
 	var body := HBoxContainer.new()
-	body.add_theme_constant_override("separation", 10)
+	body.add_theme_constant_override("separation", 12)
 	card.add_child(body)
-	body.add_child(DS.good_icon(str(good.get("good_id", "")), str(good.get("internal_name", "")), 40))
+	# Unframed: the plate-and-bevel treatment is the market shelf's, and a scrolling column of it
+	# read as chrome (owner, 26 Aug). Same art, same cream, rounded corners, no rim.
+	body.add_child(DS.good_icon_plain(
+		str(good.get("good_id", "")), str(good.get("internal_name", "")), GOOD_CARD_ICON))
 	var details := VBoxContainer.new()
 	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	details.add_theme_constant_override("separation", 3)
+	details.add_theme_constant_override("separation", 4)
 	body.add_child(details)
 	var name := Label.new()
 	name.theme_type_variation = "BuildingName"
 	name.text = str(good.get("display_name", ""))
 	details.add_child(name)
 	for producer: Dictionary in (good.get("producers", []) as Array):
+		var mine: bool = bool(producer.get("is_player", false))
 		var producer_row := HBoxContainer.new()
-		var rank := _mini("%s" % _ordinal(int(producer.get("rank", 0))), DS.PALETTE.TEXT_DIM, 11)
-		rank.custom_minimum_size = Vector2(38, 0)
+		# The player's own rank is the one number on the card worth finding at a glance, so it is
+		# cream where the rivals' are quiet. Rank is measured against the WHOLE field, which is
+		# why it can read 7th on a card that lists four rows.
+		var rank := _mini(_ordinal(int(producer.get("rank", 0))),
+			C_CREAM if mine else DS.PALETTE.TEXT_DIM, 12)
+		rank.custom_minimum_size = Vector2(GOOD_RANK_W, 0)
 		producer_row.add_child(rank)
 		var producer_name := Label.new()
 		producer_name.theme_type_variation = "Body"
 		producer_name.text = str(producer.get("name", ""))
 		producer_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if mine:
+			producer_name.add_theme_color_override("font_color", C_CREAM)
 		producer_row.add_child(producer_name)
 		var quantity := Label.new()
 		quantity.theme_type_variation = "Numeric"
 		quantity.text = "(%d)" % int(producer.get("quantity", 0))
+		if mine:
+			quantity.add_theme_color_override("font_color", C_CREAM)
 		producer_row.add_child(quantity)
 		details.add_child(producer_row)
 	return card

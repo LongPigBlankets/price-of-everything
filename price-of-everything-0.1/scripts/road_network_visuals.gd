@@ -18,6 +18,37 @@ extends Node2D
 
 ## Hand-authored tiles draw their own roads; this layer stands down on them.
 const AuthoredMap := preload("res://scripts/authored_map.gd")
+const ViewStream := preload("res://scripts/view_stream.gd")
+
+## THE SAME BUG THE RIVERS HAD (see river_visuals.gd). _draw walked EVERY edge of the whole
+## 728-edge network — twice, casing under bed — and the renderer replays that command buffer
+## every frame whether or not _draw runs again. Measured 25 Aug with tools/pan_profile.tscn:
+## 2,466 draw calls and ~43 ms of a 59 ms frame at MAXIMUM ZOOM, on a camera that was not even
+## moving. The proof it was not culling: the layer cost 2,466 draw calls zoomed all the way in
+## and 2,482 zoomed all the way out — the same network, for a screen showing three hexes and a
+## screen showing the whole map.
+##
+## The margin is generous because an edge is culled on its geometry's bbox, but the things
+## hung off that geometry reach past it: terminus arms (30 u), bridge decks (21 u) and the ink
+## wobble. 600 matches the authored road layer's STREAM_MARGIN, so both road layers pop in at
+## the same distance and a redraw of one is a redraw of the other.
+const CULL_MARGIN := 600.0
+var _view := Rect2()
+## edge_id -> [Rect2 bbox, point count]. Geometry never changes once an edge exists, so the
+## count is only a tripwire against a rebuilt network reusing an id.
+var _bb_cache: Dictionary = {}
+## Did the last paint keep every edge, and over what view? When everything was drawn the picture
+## can never go WRONG as the camera moves — every later view is a subset of what is already on
+## the canvas — so a repaint is an optimisation, not a correction, and panning while zoomed out
+## (where nothing is ever culled) should not buy a full-network repaint for no saving.
+##
+## It IS worth repainting when the view SHRINKS, though: that is the zoom-in that finally makes
+## culling pay. Without the size test, zooming in from the far view would keep all 728 edges on
+## the canvas until some unrelated trigger — an order settling, a style flip — happened to fire.
+var _drew_whole_network := false
+var _drawn_view_size := Vector2.ZERO
+## Things the current _draw left out, counted across edges, glyphs and bridges alike.
+var _culled := 0
 
 var _drawn_edges := -1
 var _drawn_previews := -1
@@ -34,17 +65,23 @@ var _active_layer: Node2D = null
 ## froze the run). Entries invalidate by run-count/point-count mismatch;
 ## the whole cache clears on style flip.
 var _ink_cache: Dictionary = {}
+## Ribbon geometry: cache key -> [verts, colours, source point count, width, colour].
+## See add_ribbons for why this exists rather than rebuilding on every repaint.
+var _ribbon_cache: Dictionary = {}
 
 func _ready() -> void:
 	_active_layer = Node2D.new()
 	_active_layer.name = "ActiveReveals"
 	_active_layer.draw.connect(_draw_active)
 	add_child(_active_layer)
-	RoadWorks.order_settled.connect(func(_id: int) -> void: _drawn_edges = -1)
+	RoadWorks.order_settled.connect(func(_id: int) -> void:
+		_drawn_edges = -1
+		_term_edges = -1)
 	MapStyle.style_changed.connect(_on_style_changed)
 
 func _on_style_changed() -> void:
 	_ink_cache.clear()
+	_ribbon_cache.clear()   # widths and colours are baked into the vertices
 	_drawn_edges = -1
 	queue_redraw()
 	_active_layer.queue_redraw()
@@ -57,6 +94,12 @@ func _process(_delta: float) -> void:
 		queue_redraw()
 	if not RoadNetwork.roads_visible:
 		return
+	# See view_stream.gd: `!=` would repaint on any sub-pixel drift, which is every frame.
+	var view := _visible_world_rect()
+	if view.size.x > 0.0 and not ViewStream.settled(view, _view, CULL_MARGIN):
+		_view = view
+		if not _drew_whole_network or view.size.x < _drawn_view_size.x * 0.95:
+			queue_redraw()
 	var network := RoadNetwork.instance()
 	var want := _built_count(network)
 	var previews := RoadWorks.preview_bridges().size()
@@ -83,6 +126,43 @@ func _process(_delta: float) -> void:
 		_active_layer.queue_redraw()   # one clearing redraw after the last settle
 	_active_layer.set_meta("had_reveals", RoadWorks.has_active_reveals())
 
+func _visible_world_rect() -> Rect2:
+	var vp := get_viewport()
+	if vp == null:
+		return Rect2()
+	var size := vp.get_visible_rect().size
+	if size.x <= 0.0:
+		return Rect2()
+	return (vp.get_canvas_transform().affine_inverse() * Rect2(Vector2.ZERO, size)).grow(CULL_MARGIN)
+
+
+## Glyphs (terminus arms, bridge decks) are placed at a point and reach at most 30 u from it,
+## which the cull margin swallows whole.
+func _point_in_view(p: Vector2) -> bool:
+	if _view.size.x <= 0.0 or _view.has_point(p):
+		return true
+	_culled += 1
+	return false
+
+
+## The bbox of an edge's geometry, cached. Empty `_view` means "no opinion" — the layer has not
+## polled a viewport yet (tests never do), and then every edge draws exactly as it used to.
+func _edge_visible(edge_id: Variant, geometry: PackedVector2Array) -> bool:
+	if _view.size.x <= 0.0 or geometry.is_empty():
+		return true
+	var entry: Array = _bb_cache.get(edge_id, [])
+	if entry.is_empty() or int(entry[1]) != geometry.size():
+		var bb := Rect2(geometry[0], Vector2.ZERO)
+		for p in geometry:
+			bb = bb.expand(p)
+		entry = [bb, geometry.size()]
+		_bb_cache[edge_id] = entry
+	if _view.intersects(entry[0]):
+		return true
+	_culled += 1
+	return false
+
+
 func _built_count(network: RoadNetwork) -> int:
 	var n := 0
 	for edge_id in network.edges:
@@ -90,7 +170,19 @@ func _built_count(network: RoadNetwork) -> int:
 			n += 1
 	return n
 
+## The repo's per-layer draw timer (see authored_road_visuals.gd). Worth having HERE in
+## particular: culling turned this layer from one paint a match into a paint every time the
+## view drifts, which is what surfaced an 84 ms terminus pass and a 112 ms footprint scan that
+## had been invisible for as long as they only ran once.
 func _draw() -> void:
+	var _lpd := Time.get_ticks_usec()
+	_lp_draw_inner()
+	var _lpms := float(Time.get_ticks_usec() - _lpd) / 1000.0
+	if _lpms > 50.0 and OS.get_environment("LOAD_PROF") != "":
+		print("LOADPROF-DRAW %s %.0f ms   abs=%d" % [name, _lpms, Time.get_ticks_msec()])
+
+
+func _lp_draw_inner() -> void:
 	var network := RoadNetwork.instance()
 	var terrain := _terrain()
 	var flagged := _flagged_tiles(terrain)
@@ -98,11 +190,14 @@ func _draw() -> void:
 	# infrastructure carries "roads", dropping spans over roadless tiles. Since
 	# roads-v3 the bake flags every tile its network crosses, so for baked
 	# geometry this clip is a no-op safety net (geometry == gameplay).
+	_culled = 0
 	var runs_by_edge: Dictionary = {}
 	for edge_id in network.edges:
 		var edge: Dictionary = network.edges[edge_id]
 		if str(edge.state) != RoadNetwork.STATE_BUILT:
 			continue
+		if not _edge_visible(edge_id, edge.geometry):
+			continue   # off screen: no commands, and no point-wise clip either
 		# Fast path: when every tile the edge crosses is flagged (true for all
 		# baked geometry — the bake flags its corridor), skip the point-wise clip.
 		# 728 baked edges × ~60 pts of tile lookups per redraw was a real cost.
@@ -113,25 +208,42 @@ func _draw() -> void:
 	if MapStyle.uses_ink_linework():
 		_draw_runs_ink(self, runs_by_edge, network)
 	else:
-		for pass_i in 2:   # casing under colour
-			for edge_id4 in runs_by_edge:
-				for run in runs_by_edge[edge_id4]:
-					_draw_edge_polyline(self, run, str(network.edges[edge_id4].tier), pass_i)
+		# Classic: same two-array shape as the ink path — all casings, then all beds.
+		var classic_casing: Array = []
+		var classic_beds: Array = []
+		for edge_id4 in runs_by_edge:
+			var trunk4 := str(network.edges[edge_id4].tier) == RoadNetwork.TIER_TRUNK
+			for run in runs_by_edge[edge_id4]:
+				if (run as PackedVector2Array).size() < 2:
+					continue
+				classic_casing.append(["%s|%d|cc" % [edge_id4, classic_beds.size()], run,
+					MapStyle.road_casing_width(trunk4), MapStyle.road_casing()])
+				classic_beds.append(["%s|%d|cb" % [edge_id4, classic_beds.size()], run,
+					MapStyle.road_width(trunk4),
+					MapStyle.road_trunk() if trunk4 else MapStyle.road_local()])
+		add_ribbons(self, classic_casing)
+		add_ribbons(self, classic_beds)
 	_draw_terminus_glyphs(network, terrain, flagged)
 	for edge_id2 in network.edges:
 		var edge2: Dictionary = network.edges[edge_id2]
 		if str(edge2.state) != RoadNetwork.STATE_BUILT:
 			continue
 		for bridge in edge2.bridges:
+			if not _point_in_view(bridge.point):
+				continue   # off screen — and the landfall probe below is not free either
 			if not _point_built(terrain, flagged, bridge.point):
 				continue   # the road there is hidden — so is its bridge
 			_draw_bridge_glyph(self, bridge.point, bridge.tangent)
 	# Preview bridges: drawn the instant a river road is built, at its
 	# predetermined crossing, while the connecting road is still planning.
 	for pb in RoadWorks.preview_bridges():
+		if not _point_in_view(pb.point):
+			continue
 		if not _point_built(terrain, flagged, pb.point):
 			continue
 		_draw_bridge_glyph(self, pb.point, pb.tangent)
+	_drew_whole_network = _culled == 0
+	_drawn_view_size = _view.size
 
 ## The deck used to be a FIXED 42u bar (point +/- tangent * 21). A bridge over a
 ## narrow river therefore ran on well past both banks, and a crossing near a
@@ -191,7 +303,8 @@ func _draw_bridge_deck(canvas: CanvasItem, point: Vector2, tangent: Vector2,
 ## Ink-mode run renderer: dashes for every run are accumulated per tier and
 ## submitted as ONE draw_multiline each; the solid near-parchment beds go on
 ## top (dashes stick out both sides = the vintage dashed-casing symbol).
-func _draw_runs_ink(canvas: CanvasItem, runs_by_edge: Dictionary, network: RoadNetwork) -> void:
+func _draw_runs_ink(canvas: CanvasItem, runs_by_edge: Dictionary, network: RoadNetwork,
+		cacheable: bool = true) -> void:
 	var dash_local := PackedVector2Array()
 	var dash_trunk := PackedVector2Array()
 	var center_trunk := PackedVector2Array()
@@ -223,8 +336,10 @@ func _draw_runs_ink(canvas: CanvasItem, runs_by_edge: Dictionary, network: RoadN
 			center_trunk.append_array(entry.center)
 		else:
 			dash_local.append_array(entry.dashes)
+		var run_i := 0
 		for pts2 in entry.styled:
-			beds.append([pts2, is_trunk])
+			beds.append([pts2, is_trunk, ("%s|%d" % [edge_id, run_i]) if cacheable else null])
+			run_i += 1
 	if dash_local.size() >= 2:
 		canvas.draw_multiline(dash_local, MapStyle.road_casing(), MapStyle.road_casing_width(false), true)
 	if dash_trunk.size() >= 2:
@@ -232,13 +347,22 @@ func _draw_runs_ink(canvas: CanvasItem, runs_by_edge: Dictionary, network: RoadN
 	# City plate: streets are cream CHANNELS, so the casing is a solid hairline
 	# edge under the bed rather than the survey-map dash. Trunk edges take the
 	# heavier alpha — in this idiom that line is the block frontage.
+	# ONE array for every casing, then ONE for every bed — see add_ribbons. The two passes stay
+	# separate because every casing must sit under every bed, not just under its own.
 	if not MapStyle.road_casing_dashed():
+		var casings: Array = []
 		for b0 in beds:
 			var trunk0: bool = b0[1]
-			canvas.draw_polyline(b0[0], MapStyle.road_casing_trunk() if trunk0 else MapStyle.road_casing(),
-				MapStyle.road_casing_width(trunk0), true)
+			casings.append([("%s|c" % b0[2]) if b0[2] != null else null, b0[0],
+				MapStyle.road_casing_width(trunk0),
+				MapStyle.road_casing_trunk() if trunk0 else MapStyle.road_casing()])
+		add_ribbons(canvas, casings)
+	var bed_strokes: Array = []
 	for b in beds:
-		canvas.draw_polyline(b[0], MapStyle.road_trunk() if b[1] else MapStyle.road_local(), MapStyle.road_width(b[1]), true)
+		bed_strokes.append([("%s|b" % b[2]) if b[2] != null else null, b[0],
+			MapStyle.road_width(b[1]),
+			MapStyle.road_trunk() if b[1] else MapStyle.road_local()])
+	add_ribbons(canvas, bed_strokes)
 	if center_trunk.size() >= 2:
 		canvas.draw_multiline(center_trunk, MapStyle.trunk_center_color(), MapStyle.trunk_center_width(), true)
 
@@ -357,7 +481,7 @@ func _draw_active() -> void:
 		if MapStyle.uses_ink_linework():
 			var single: Dictionary = {}
 			single[edge_id] = runs
-			_draw_runs_ink(_active_layer, single, network)
+			_draw_runs_ink(_active_layer, single, network, false)
 			continue
 		for run in runs:
 			for pass_i in 2:
@@ -395,7 +519,21 @@ const TERMINUS_CLUSTER_CLEAR := 60.0
 ## geometry — gets a small turning-loop glyph, purely draw-time (no edges, no
 ## saved state). The moment a later road reaches it the glyph vanishes by
 ## construction. Gateways/crossings are skipped, as are tips beside a building.
-func _draw_terminus_glyphs(network: RoadNetwork, terrain: HexMap, flagged: Dictionary) -> void:
+## WHICH TIPS ARE DEAD ENDS IS A PROPERTY OF THE NETWORK, NOT THE CAMERA: node degrees, the one
+## edge touching each tip, every edge's bbox, and the tip positions. None of it moves when the
+## view does, and rebuilding it per repaint cost 84 ms of a 92 ms _draw — invisible while this
+## layer painted once a match, and the whole of the panning stutter once culling made it repaint
+## as the camera moved. Keyed on the built-edge count, which is what `_drawn_edges` already
+## invalidates on, and dropped outright when an order settles.
+var _term_cache: Dictionary = {}
+var _term_edges := -1
+
+
+func _terminus_data(network: RoadNetwork) -> Dictionary:
+	var built := _built_count(network)
+	if _term_edges == built and not _term_cache.is_empty():
+		return _term_cache
+	_term_edges = built
 	var degree: Dictionary = {}
 	var tip_edge: Dictionary = {}   # node_id -> the one BUILT edge touching it
 	var edge_bbox: Dictionary = {}  # edge_id -> Rect2 over its geometry
@@ -409,12 +547,14 @@ func _draw_terminus_glyphs(network: RoadNetwork, terrain: HexMap, flagged: Dicti
 			for p0 in geo0:
 				bb = bb.expand(p0)
 			edge_bbox[edge_id] = bb.grow(TERMINUS_MERGE_CLEAR)
-		for nid in [str(edge.a), str(edge.b)]:
-			degree[nid] = int(degree.get(nid, 0)) + 1
-			tip_edge[nid] = edge
-	var bv := _building_visuals()
-	# All dead-end tip positions first: a tip with ANOTHER dead-end tip nearby is
-	# part of a convergence cluster and must not draw a bar (they'd overlap).
+		var a_id := str(edge.a)
+		var b_id := str(edge.b)
+		degree[a_id] = int(degree.get(a_id, 0)) + 1
+		degree[b_id] = int(degree.get(b_id, 0)) + 1
+		tip_edge[a_id] = edge
+		tip_edge[b_id] = edge
+	# A tip with ANOTHER dead-end tip nearby is part of a convergence cluster and must not draw
+	# a bar (they would overlap), so every tip position is collected before any of them draws.
 	var tip_pos: Dictionary = {}   # node_id -> Vector2
 	for nid0 in degree:
 		if int(degree[nid0]) != 1:
@@ -422,14 +562,39 @@ func _draw_terminus_glyphs(network: RoadNetwork, terrain: HexMap, flagged: Dicti
 		var node0: Dictionary = network.nodes.get(nid0, {})
 		if not node0.is_empty() and str(node0.kind) == RoadNetwork.KIND_JUNCTION:
 			tip_pos[nid0] = node0.pos
+	_term_cache = {"tip_edge": tip_edge, "bbox": edge_bbox, "tips": tip_pos}
+	return _term_cache
+
+
+func _draw_terminus_glyphs(network: RoadNetwork, terrain: HexMap, flagged: Dictionary) -> void:
+	var term := _terminus_data(network)
+	var tip_edge: Dictionary = term.tip_edge
+	var edge_bbox: Dictionary = term.bbox
+	var tip_pos: Dictionary = term.tips
+	# footprint_discs() rebuilds a Dictionary per building — 561 of them — on every call, and
+	# this asked it once PER TIP: 223 on-screen tips x 561 buildings measured at 112 ms of a
+	# 150 ms _draw, the single most expensive thing in the layer. Ask once, and keep only the
+	# discs near the view: a tip off screen never reaches the loop below, so a building off
+	# screen can never be the one a drawn tip ends at.
+	var discs := _nearby_discs(_building_visuals())
+	# Same argument for _near_other_edge, which scans every edge's bbox per tip.
+	var near_bbox: Dictionary = edge_bbox
+	if _view.size.x > 0.0:
+		near_bbox = {}
+		for eid in edge_bbox:
+			if _view.intersects(edge_bbox[eid]):
+				near_bbox[eid] = edge_bbox[eid]
 	for nid2 in tip_pos:
 		var pos: Vector2 = tip_pos[nid2]
+		if not _point_in_view(pos):
+			continue   # off screen. The degree/tip passes above stay whole-network: whether a
+			# tip IS a dead end depends on edges that may themselves be off screen.
 		if not _point_built(terrain, flagged, pos):
 			continue   # the road there is hidden — so is its terminus
-		if bv != null and _near_building(bv, pos):
+		if _near_disc(discs, pos):
 			continue   # ends at a building frontage — that IS the terminus
 		var edge2: Dictionary = tip_edge[nid2]
-		if _near_other_edge(network, edge_bbox, str(edge2.id), pos):
+		if _near_other_edge(network, near_bbox, str(edge2.id), pos):
 			continue   # the tip lands on/joins another road — a junction, not a dead end
 		var clustered := false
 		for other_nid in tip_pos:
@@ -502,11 +667,41 @@ func _building_visuals() -> Node:
 	var found := get_tree().get_nodes_in_group("building_footprints")
 	return found[0] if not found.is_empty() else null
 
-func _near_building(bv: Node, pos: Vector2) -> bool:
-	if not bv.has_method("footprint_discs"):
-		return false
+## Building footprints as flat centre/radius arrays, taken ONCE per draw and clipped to the
+## view. Flat arrays rather than the Dictionary list `footprint_discs()` returns, because the
+## test below runs for every on-screen tip and a Variant lookup per building per tip is exactly
+## the cost this replaces.
+func _nearby_discs(bv: Node) -> Array:
+	var cx := PackedFloat32Array()
+	var cy := PackedFloat32Array()
+	var rr := PackedFloat32Array()
+	if bv == null or not bv.has_method("footprint_discs"):
+		return [cx, cy, rr]
+	var clip := _view.size.x > 0.0
+	var lo := _view.position
+	var hi := _view.end
 	for disc in bv.footprint_discs():
-		if pos.distance_to(disc.center) <= float(disc.radius) + TERMINUS_BUILDING_CLEAR:
+		var c: Vector2 = disc.center
+		var r := float(disc.radius) + TERMINUS_BUILDING_CLEAR
+		if clip and (c.x < lo.x - r or c.x > hi.x + r or c.y < lo.y - r or c.y > hi.y + r):
+			continue
+		cx.append(c.x)
+		cy.append(c.y)
+		rr.append(float(disc.radius))
+	return [cx, cy, rr]
+
+
+## Squared throughout: this is the innermost loop of the terminus pass and a square root per
+## building per tip buys nothing a comparison cannot.
+static func _near_disc(discs: Array, pos: Vector2) -> bool:
+	var cx: PackedFloat32Array = discs[0]
+	var cy: PackedFloat32Array = discs[1]
+	var rr: PackedFloat32Array = discs[2]
+	for i in cx.size():
+		var dx := cx[i] - pos.x
+		var dy := cy[i] - pos.y
+		var reach := rr[i] + TERMINUS_BUILDING_CLEAR
+		if dx * dx + dy * dy <= reach * reach:
 			return true
 	return false
 
@@ -592,7 +787,166 @@ func _draw_edge_polyline(canvas: CanvasItem, pts: PackedVector2Array, tier: Stri
 	if pts.size() < 2:
 		return
 	var is_trunk := tier == RoadNetwork.TIER_TRUNK
+	# No cache key: the only caller is the reveal layer, whose geometry moves every frame.
 	if pass_i == 0:
-		canvas.draw_polyline(pts, MapStyle.road_casing(), MapStyle.road_casing_width(is_trunk), true)
+		add_ribbons(canvas, [[null, pts, MapStyle.road_casing_width(is_trunk), MapStyle.road_casing()]])
 	else:
-		canvas.draw_polyline(pts, MapStyle.road_trunk() if is_trunk else MapStyle.road_local(), MapStyle.road_width(is_trunk), true)
+		add_ribbons(canvas, [[null, pts, MapStyle.road_width(is_trunk),
+			MapStyle.road_trunk() if is_trunk else MapStyle.road_local()]])
+
+
+# ------------------------------------------------------------------ ribbon batching
+
+## Feather band, world units, so an edge is soft rather than stepped. Sized to about a pixel at
+## the closest play zoom; further out it goes sub-pixel, which is where the roads are hairlines
+## anyway. This is what replaces `draw_polyline(..., antialiased = true)`.
+const RIBBON_FEATHER := 1.0
+## How far a mitre may reach past the half-width before it is cut back. Roads are RDP-simplified
+## and gently wobbled, so a corner sharp enough to hit this is rare; the clamp only stops a
+## near-reversal from throwing a spike across the map.
+const RIBBON_MITER_LIMIT := 2.5
+
+
+## EVERY road bed on screen in ONE draw call.
+##
+## `draw_polyline(antialiased = true)` is the most expensive command in the gl_compatibility
+## canvas: each call is its own dynamic vertex upload, and the antialiasing splits it further —
+## measured 25 Aug at ~3 draw calls and ~30 us PER EDGE, so 728 edges cost ~2,180 draw calls and
+## ~43 ms of a 59 ms frame. Culling fixed that close in and could not fix it at all zoomed out,
+## where every edge genuinely is on screen.
+##
+## So do here what the casing dashes already do (one `draw_multiline` per tier) and what the
+## canopy does (one MultiMesh): build the ribbon triangles and hand the renderer a single
+## triangle array. Width and colour ride on the vertices, so beds and trunks share one array;
+## only DRAW ORDER forces a second one, for the casing that goes under them.
+##
+## THE GEOMETRY IS CACHED, AND THAT IS NOT OPTIONAL. Building the ribbons is work draw_polyline
+## used to do in C++, and GDScript is not the place to redo it 39 times in six seconds: measured
+## uncached at 38-86 ms per repaint for ~100 strokes, which turned a 10 ms panning frame into a
+## 46 ms one — a worse layer than the one it replaced. Cached, a repaint is `append_array` over
+## a handful of PackedArrays, which is a memcpy. An edge's ribbon depends only on its geometry
+## (fixed once built) and the style's width and colour, so the entry carries all three and
+## rebuilds when any of them moves; `_on_style_changed` drops the lot.
+##
+## `strokes` is `[cache_key, PackedVector2Array points, float width, Color colour]`. A null key
+## means do not cache — the reveal layer's geometry is different every frame, and caching it
+## would either thrash or, worse, hand back the previous frame's shape at the same point count.
+func add_ribbons(canvas: CanvasItem, strokes: Array) -> void:
+	var out_p := PackedVector2Array()
+	var out_c := PackedColorArray()
+	for st in strokes:
+		var key: Variant = st[0]
+		var pts: PackedVector2Array = st[1]
+		var width := float(st[2])
+		var col: Color = st[3]
+		var soup: Array
+		if key == null:
+			soup = _ribbon_soup(pts, width, col)
+		else:
+			var e: Array = _ribbon_cache.get(key, [])
+			if e.is_empty() or int(e[2]) != pts.size() \
+					or not is_equal_approx(float(e[3]), width) or Color(e[4]) != col:
+				soup = _ribbon_soup(pts, width, col)
+				_ribbon_cache[key] = [soup[0], soup[1], pts.size(), width, col]
+			else:
+				soup = e
+		out_p.append_array(soup[0])
+		out_c.append_array(soup[1])
+	var n := out_p.size()
+	if n == 0:
+		return
+	RenderingServer.canvas_item_add_triangle_array(canvas.get_canvas_item(), _sequence(n), out_p, out_c)
+
+
+## 0,1,2,...,n-1. The soups are plain triangle lists, so the index array is always the identity
+## and can be grown once for the whole run and sliced — a memcpy instead of n GDScript writes.
+static var _seq := PackedInt32Array()
+
+static func _sequence(n: int) -> PackedInt32Array:
+	if _seq.size() < n:
+		var was := _seq.size()
+		_seq.resize(n)
+		for i in range(was, n):
+			_seq[i] = i
+	return _seq.slice(0, n)
+
+
+## One stroke as a flat triangle list: four offsets per point — outer, core, core, outer — woven
+## into three bands per segment, so the two outer bands fade to alpha 0 and carry the
+## antialiasing that draw_polyline's `antialiased` argument used to.
+static func _ribbon_soup(p_in: PackedVector2Array, width: float, color: Color) -> Array:
+	# A repeated point has no direction to take a normal from, and the wobble can emit one.
+	var p := PackedVector2Array()
+	for q in p_in:
+		if p.is_empty() or not p[p.size() - 1].is_equal_approx(q):
+			p.append(q)
+	var n := p.size()
+	if n < 2 or width <= 0.0:
+		return [PackedVector2Array(), PackedColorArray()]
+	var half := width * 0.5
+	var feather: float = minf(RIBBON_FEATHER, half * 0.5)
+	var core := half - feather
+	var fade := Color(color.r, color.g, color.b, 0.0)
+	var band: Array = [fade, color, color, fade]
+
+	var seg := PackedVector2Array()
+	seg.resize(n - 1)
+	for i in n - 1:
+		var d := (p[i + 1] - p[i]).normalized()
+		seg[i] = Vector2(-d.y, d.x)
+
+	var off := PackedVector2Array()
+	off.resize(n * 4)
+	for i in n:
+		var nrm: Vector2
+		var reach := 1.0
+		if i == 0:
+			nrm = seg[0]
+		elif i == n - 1:
+			nrm = seg[n - 2]
+		else:
+			var total := seg[i - 1] + seg[i]
+			if total.length_squared() < 0.000001:
+				nrm = seg[i]            # a near-reversal: no mitre exists, butt the ends
+			else:
+				nrm = total.normalized()
+				# 1/cos(theta/2) — how far the mitre must reach to hold the ribbon's width.
+				reach = clampf(1.0 / maxf(nrm.dot(seg[i]), 0.0001), 1.0, RIBBON_MITER_LIMIT)
+		var outer := nrm * (half * reach)
+		var inner := nrm * (core * reach)
+		var b := i * 4
+		off[b] = p[i] + outer
+		off[b + 1] = p[i] + inner
+		off[b + 2] = p[i] - inner
+		off[b + 3] = p[i] - outer
+
+	var segs := n - 1
+	var verts := PackedVector2Array()
+	var cols := PackedColorArray()
+	verts.resize(segs * 18)
+	cols.resize(segs * 18)
+	var w := 0
+	for i in segs:
+		var a := i * 4
+		var c := a + 4
+		for k in 3:                      # fade band, core, fade band
+			verts[w] = off[a + k]
+			cols[w] = band[k]
+			w += 1
+			verts[w] = off[a + k + 1]
+			cols[w] = band[k + 1]
+			w += 1
+			verts[w] = off[c + k]
+			cols[w] = band[k]
+			w += 1
+			verts[w] = off[a + k + 1]
+			cols[w] = band[k + 1]
+			w += 1
+			verts[w] = off[c + k + 1]
+			cols[w] = band[k + 1]
+			w += 1
+			verts[w] = off[c + k]
+			cols[w] = band[k]
+			w += 1
+	return [verts, cols]
+
