@@ -44,6 +44,10 @@ var _warning_buy_preview_cache: Dictionary = {}  # "tile|good|qty" -> preview_bu
 # { tile_id -> { good_id -> {"cost": float, "qty": float} } }. Used to impute inbound
 # transport into the unit cost of buildings that consume those goods.
 var _inbound_delivery_this_turn: Dictionary = {}
+## Goods that reached a tile FROM THE PLAYER'S OWN PRODUCTION this turn, {tile: {good: qty}}.
+## Deliberately narrower than _inbound_delivery_this_turn, which also counts market purchases
+## (it exists to amortise freight per unit, so it must count everything that landed).
+var _own_delivery_this_turn: Dictionary = {}
 # This turn's same-tile (0-turn) outputs, merged into stockpiles AFTER production
 # so a good produced this turn can't be consumed by another building the same turn.
 var _output_buffer: Array = []
@@ -145,6 +149,7 @@ func _process_production() -> void:
 	_building_turn_reports.clear()
 	_carbon_consumed_by_building.clear()
 	_inbound_delivery_this_turn.clear()
+	_own_delivery_this_turn.clear()
 	_output_buffer.clear()
 	_green_supply_by_tile.clear()  # _intermittency_by_* persist (they are last turn's)
 	_power_sources_by_tile.clear()
@@ -170,6 +175,13 @@ func _process_production() -> void:
 	# building for the transport lead before bigger orders arrive.
 	"input_orders_short": [],
 	"input_splices": [],
+	# Tile-scoped supply and use, for the mini missions (scripts/mini_quest.gd), which ask
+	# whether YOUR mine fed YOUR building rather than whether the empire's totals balance.
+	# tile_supplied counts only goods arriving from the player's OWN production — not market
+	# purchases, which land in the same stockpile and would otherwise read the same. Both are
+	# {tile_id: {good_id: qty}}.
+	"tile_supplied": {},
+	"tile_consumed": {},
 	# Orders clipped by the destination tile's STORAGE capacity (not cash):
 	# {tile_id, good_id, wanted, placed}. Feeds the tile-full briefing alert.
 	"input_orders_capped": [],
@@ -639,6 +651,7 @@ func _process_production() -> void:
 	MatchState.fake_money_this_turn = 0.0
 	last_turn_summary = summary
 	_active_turn_summary = {}
+	summary.tile_supplied = _own_delivery_this_turn.duplicate(true)
 	turn_processed.emit(summary)
 	TurnProfiler.section_end("emit_summary")
 
@@ -936,6 +949,10 @@ func _process_transport_arrivals(summary: Dictionary) -> void:
 		var added := Stockpile.add(destination_tile, good_id, qty)
 		var per_unit_transport: float = float(shipment.get("transport_cost", 0.0)) / float(qty)
 		_record_inbound_delivery(destination_tile, good_id, added, per_unit_transport)
+		# Nothing bought and nothing sold: this is one of the player's buildings shipping to
+		# another of their tiles, which is the only kind of arrival a mission may count.
+		if purchase_cost <= 0.0:
+			_note_own_delivery(destination_tile, good_id, added)
 		if added < qty:
 			# Tile is full: hold the remainder instead of losing it. It waits on the
 			# tile and retries each turn until there's room (see retry_overflow_unload).
@@ -1215,6 +1232,7 @@ func _flush_output_buffer() -> void:
 		if t != "":
 			var per_unit: float = (float(o.transport_cost) / float(o.qty)) if int(o.qty) > 0 else 0.0
 			_record_inbound_delivery(t, str(o.good_id), added + (qty - to_store), per_unit)
+			_note_own_delivery(t, str(o.good_id), added + (qty - to_store))
 			# tally this turn's recurring same-tile supply (fed direct or stockpiled —
 			# both cover local demand) so the market pipeline doesn't re-buy it
 			var per_tile: Dictionary = _same_tile_supply.get(t, {})
@@ -1584,6 +1602,17 @@ func _record_inbound_delivery(tile_id: String, good_id: String, qty_added: int, 
 	rec.qty += float(qty_added)
 	by_good[good_id] = rec
 	_inbound_delivery_this_turn[tile_id] = by_good
+
+## One tile's intake of its owner's own output. Called only where the goods are known to be the
+## player's own production; market arrivals go through _record_inbound_delivery alone.
+func _note_own_delivery(tile_id: String, good_id: String, qty: int) -> void:
+	if tile_id == "" or good_id == "" or qty <= 0:
+		return
+	if not _own_delivery_this_turn.has(tile_id):
+		_own_delivery_this_turn[tile_id] = {}
+	var by_good: Dictionary = _own_delivery_this_turn[tile_id]
+	by_good[good_id] = int(by_good.get(good_id, 0)) + qty
+
 
 func _inbound_transport_per_unit(tile_id: String, good_id: String) -> float:
 	var by_good: Dictionary = _inbound_delivery_this_turn.get(tile_id, {})
@@ -2664,6 +2693,15 @@ func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictiona
 		if qty > 0:
 			MatchState.flag_agenda_event(MatchState.AGENDA_USED_STOCKPILE)
 		summary.consumed[input.good_id] = summary.consumed.get(input.good_id, 0) + qty
+		# The same figure, kept per TILE. A building consumes from the tile it stands on, so
+		# this is as close to per-building use as the sim records, and it is what lets a
+		# mission say "your ingots plant ate that coal" instead of "the empire ate coal".
+		if player_owned and qty > 0:
+			var tc: Dictionary = summary.tile_consumed
+			if not tc.has(tile_id):
+				tc[tile_id] = {}
+			var tcg: Dictionary = tc[tile_id]
+			tcg[input.good_id] = int(tcg.get(input.good_id, 0)) + qty
 		if player_owned and qty > 0:
 			_pl_row(iid)["inputs"] += float(qty) * MarketState.get_buy_price(str(input.good_id))
 		# Carbon levy accrual: taxed goods burned by PLAYER buildings this turn.
