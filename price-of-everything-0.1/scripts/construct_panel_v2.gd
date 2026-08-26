@@ -35,6 +35,26 @@ const RECIPE_ROW_HEIGHT := 116
 const FILTER_TYPES: Array = ["extraction", "refinery", "metallurgy", "electrochemistry",
 	"farm_forests", "power", "infrastructure", "water", "manufacturing"]
 
+# Panel width: normal for BROWSE/SETTINGS/V2 confirm; the V3 confirm runs 20%
+# narrower (owner 2026-08-26). Scoped to the V3 confirm specifically rather than
+# the whole panel — BROWSE's recipe-row layout wasn't part of this review and
+# narrowing it too is untested risk this ask didn't ask for.
+const PANEL_WIDTH_NORMAL := 560.0
+const PANEL_MIN_WIDTH_NORMAL := 510.0
+const PANEL_WIDTH_V3_CONFIRM := 448.0        # 560 * 0.8
+const PANEL_MIN_WIDTH_V3_CONFIRM := 408.0    # 510 * 0.8
+
+# V3 confirm text (owner 2026-08-26): one size, the DS default body font,
+# everywhere EXCEPT the three call-outs that earn their own treatment — the
+# grand-total/Cash-after/materials-Total "amount" figures (Numeric/bold), the
+# header band's building/recipe name, and the ruled section headers. Semantic
+# colour (green/red/gold/muted) still varies per the standing contrast rule —
+# only size and weight are being unified here, not meaning. Owner 2026-08-26:
+# bumped 12 -> 14, and DS.SectionRuled moved off Barlow Condensed onto the same
+# Plex Sans family this uses, so the panel is down to one font (Bebas Neue for
+# the panel title only) with bold/not-bold as the only other differentiator.
+const V3_TEXT_SIZE := 14
+
 # --- Site requirements (confirm screen) -------------------------------------
 # Fluids and gases move ONLY by pipe and power only over cables, so a recipe that
 # touches one and a tile that has no pipe/cable is a hard stall the build flow
@@ -255,12 +275,16 @@ var _close_button: Button
 var _settings_button: Button
 var _mode_toggle: HBoxContainer
 var _search_input: LineEdit
+var _search_margin: MarginContainer
 var _filter_scroll: ScrollContainer
+var _filter_margin: MarginContainer
 var _filter_row: HBoxContainer
 var _scroll: ScrollContainer
 var _content: VBoxContainer
 var _pinned: VBoxContainer
 var _footer: HBoxContainer
+var _footer_panel: PanelContainer   # background wrapper around _footer; see _build_shell
+var _footer_rule: Control           # ledger double-rule above the footer; toggles with it
 
 var _view := View.BROWSE
 var _buildings: Array = []
@@ -301,6 +325,16 @@ var _v3_forecast: Dictionary = {}      # BuildForecast.project for this render
 var _v3_land: Dictionary = {}          # _v3_compute_land() facts for this render
 var _v3_last_total := -1.0             # previous grand total, for the change tick
 var _v3_verdict_total_label: Label = null
+# Whether the player has touched the land-purchase toggle THIS confirm session
+# (v3.1, owner 2026-08-26: the toggle is back, ticked by default). Once true,
+# _v3_compute_land() stops defaulting _buy_land_wanted back to true on every
+# re-render — a live money/price recompute must not silently re-tick a box the
+# player just unticked. Reset whenever a fresh confirm opens.
+var _land_toggle_touched := false
+# Priority-supply choice for intermittent-power buildings (v3.1 preview, owner
+# 2026-08-26: stub the control, no sim wiring). "grid" | "buildings". Panel-local
+# only — never read by BuildForecast or Production. Reset per confirm session.
+var _v3_priority_supply := "grid"
 
 
 func _ready() -> void:
@@ -390,6 +424,8 @@ func _reset_to_browse() -> void:
 	_view = View.BROWSE
 	_v3_last_total = -1.0
 	_v3_verdict_total_label = null
+	_land_toggle_touched = false
+	_v3_priority_supply = "grid"
 	if _search_input != null:
 		_search_input.text = ""
 
@@ -401,6 +437,11 @@ func _on_visibility_changed() -> void:
 	if not MatchState.use_construct_panel_v2:
 		hide()
 		return
+	# Owner 2026-08-26: Esc didn't close this panel — remove() was already here,
+	# but push() never was, so world_map's Esc handler (PanelStack.close_top())
+	# never found it registered. Every other panel pairs the two; this one was
+	# missing half the contract.
+	PanelStack.push(self)
 	_load_data()
 	_render()
 
@@ -456,6 +497,9 @@ func _on_build_mode_exited_with_selection(building_id: String, recipe_id: String
 	_view = View.CONFIRM
 	_confirm_flash_pending = true
 	_output_good_filter = ""
+	_v3_last_total = -1.0
+	_land_toggle_touched = false
+	_v3_priority_supply = "grid"
 	_render()
 	show()
 
@@ -541,9 +585,9 @@ func _build_shell() -> void:
 	_settings_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_mode_toggle.add_child(_settings_button)
 
-	var search_margin := MarginContainer.new()
-	search_margin.add_theme_constant_override("margin_top", 8)
-	root.add_child(search_margin)
+	_search_margin = MarginContainer.new()
+	_search_margin.add_theme_constant_override("margin_top", 8)
+	root.add_child(_search_margin)
 	_search_input = LineEdit.new()
 	_search_input.placeholder_text = "Search buildings and recipes"
 	_search_input.clear_button_enabled = true
@@ -554,17 +598,17 @@ func _build_shell() -> void:
 	_search_input.add_theme_stylebox_override("normal", _panel_style(NAVY_FIELD, NAVY_LINE, 1, 8, 9))
 	_search_input.add_theme_stylebox_override("focus", _panel_style(NAVY_FIELD, GOLD_DARK, 1, 8, 9))
 	_search_input.text_changed.connect(_on_search_changed)
-	search_margin.add_child(_search_input)
+	_search_margin.add_child(_search_input)
 
-	var filter_margin := MarginContainer.new()
-	filter_margin.add_theme_constant_override("margin_top", 13)
-	filter_margin.add_theme_constant_override("margin_bottom", 15)
-	root.add_child(filter_margin)
+	_filter_margin = MarginContainer.new()
+	_filter_margin.add_theme_constant_override("margin_top", 13)
+	_filter_margin.add_theme_constant_override("margin_bottom", 15)
+	root.add_child(_filter_margin)
 	_filter_scroll = ScrollContainer.new()
 	_filter_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	_filter_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_filter_scroll.custom_minimum_size = Vector2(0, 45)
-	filter_margin.add_child(_filter_scroll)
+	_filter_margin.add_child(_filter_scroll)
 	_filter_row = HBoxContainer.new()
 	_filter_row.add_theme_constant_override("separation", 6)
 	_filter_scroll.add_child(_filter_row)
@@ -587,10 +631,22 @@ func _build_shell() -> void:
 	_scroll.add_child(_content)
 
 	_footer = HBoxContainer.new()
-	_footer.visible = false
 	_footer.custom_minimum_size = Vector2(0, 62)
 	_footer.add_theme_constant_override("separation", 10)
-	root.add_child(_footer)
+	# A real background + the same ledger double-rule that marks the verdict strip
+	# (DS.section_rule) so the footer reads as a docked band regardless of what's
+	# scrolled up against it. A plain NAVY_LINE border was tried first and proved
+	# too close in value to both the fill and the panel's own near-black backing
+	# to read as a divider at all — BORDER_SOFT (what section_rule draws) is the
+	# tone this theme actually uses for a visible structural line on these navies.
+	_footer_rule = DS.section_rule(true)
+	_footer_rule.visible = false
+	root.add_child(_footer_rule)
+	_footer_panel = PanelContainer.new()
+	_footer_panel.visible = false
+	_footer_panel.add_theme_stylebox_override("panel", _panel_style(NAVY_RAISED, NAVY_RAISED, 0, 0, 0))
+	_footer_panel.add_child(_footer)
+	root.add_child(_footer_panel)
 
 
 func _load_data() -> void:
@@ -677,7 +733,8 @@ func _render() -> void:
 	for child in _pinned.get_children():
 		child.queue_free()
 	_pinned.visible = false
-	_footer.visible = false
+	_footer_panel.visible = false
+	_footer_rule.visible = false
 	if _view == View.SETTINGS:
 		_render_settings()
 	elif _view == View.CONFIRM:
@@ -692,8 +749,11 @@ func _on_settings_pressed() -> void:
 
 
 func _render_settings() -> void:
+	_set_panel_width(false)
 	_search_input.visible = false
+	_search_margin.visible = false
 	_filter_scroll.visible = false
+	_filter_margin.visible = false
 	_mode_toggle.visible = false
 	_settings_button.visible = false
 	_header_title.text = "CONSTRUCT SETTINGS"
@@ -912,6 +972,7 @@ func _on_start_capacity_toggled(enabled: bool) -> void:
 
 
 func _render_browse() -> void:
+	_set_panel_width(false)
 	if _locked_tile_id != "":
 		_header_title.text = "BUILD ON %s" % Catalog.tile_label(_locked_tile_id).to_upper()
 		_header_subtitle.text = "Only what this tile allows — choose a building and recipe"
@@ -921,7 +982,9 @@ func _render_browse() -> void:
 	_settings_button.visible = true
 	_mode_toggle.visible = true
 	_search_input.visible = true
+	_search_margin.visible = true
 	_filter_scroll.visible = true
+	_filter_margin.visible = true
 	_rebuild_filters()
 
 	var shown := _filtered_buildings()
@@ -1172,14 +1235,25 @@ func _make_recipe_button(building_id: String, recipe: Dictionary, affordable: bo
 	return button
 
 
+## Panel width for the current view (owner 2026-08-26: the V3 confirm runs 20%
+## narrower than everything else). Idempotent — safe to call on every render.
+func _set_panel_width(narrow: bool) -> void:
+	offset_right = offset_left + (PANEL_WIDTH_V3_CONFIRM if narrow else PANEL_WIDTH_NORMAL)
+	custom_minimum_size.x = PANEL_MIN_WIDTH_V3_CONFIRM if narrow else PANEL_MIN_WIDTH_NORMAL
+
+
 func _render_confirm() -> void:
 	# V3 gets its own confirm layout (bands in decision order, spec §1). The
-	# infrastructure confirm — no recipe, no cash story — keeps the V2 layout.
+	# infrastructure confirm — no recipe, no cash story — keeps the V2 layout
+	# (and the normal panel width — only the V3 confirm runs narrower).
 	if MatchState.use_construct_panel_v3 and not _selected_recipe.is_empty():
 		_render_confirm_v3()
 		return
+	_set_panel_width(false)
 	_search_input.visible = false
+	_search_margin.visible = false
 	_filter_scroll.visible = false
+	_filter_margin.visible = false
 	_mode_toggle.visible = false
 	_settings_button.visible = false
 	var building_name := str(_selected_building.get("display_name", ""))
@@ -1276,7 +1350,8 @@ func _render_confirm() -> void:
 	# below has to include (owner 2026-08-23).
 	_content.add_child(_land_row(_selected_building))
 
-	_footer.visible = true
+	_footer_panel.visible = true
+	_footer_rule.visible = true
 	var total := Label.new()
 	_confirm_total_label = total
 	total.text = _money(_confirm_total_cost())
@@ -1312,16 +1387,20 @@ const V3_PHASE_LABELS := {
 
 
 func _render_confirm_v3() -> void:
+	_set_panel_width(true)
 	_search_input.visible = false
+	_search_margin.visible = false
 	_filter_scroll.visible = false
+	_filter_margin.visible = false
 	_mode_toggle.visible = false
 	_settings_button.visible = false
 	_confirm_flash_pending = false   # the verdict strip is the "look here" now
 
 	var building_id := str(_selected_building.get("id", ""))
 	_header_title.text = "CONFIRM CONSTRUCTION"
-	_header_subtitle.text = Catalog.tile_label(_locked_tile_id) if _locked_tile_id != "" \
-		else "Site: chosen on the map after confirming"
+	# The hero band below now names the site itself (owner 2026-08-26 — it
+	# used to live here); keep the title line uncluttered, same as V2 confirm.
+	_header_subtitle.text = ""
 
 	_v3_land = _v3_compute_land()
 	_v3_ledger = Construction.materials_ledger(building_id, _locked_tile_id)
@@ -1336,6 +1415,12 @@ func _render_confirm_v3() -> void:
 	for row in _v3_requirement_rows():
 		_content.add_child(row)
 
+	# Priority supply (v3.1 preview, owner 2026-08-26: stub only, no sim wiring —
+	# every intermittent building still prices as fully grid-sold).
+	if str(_selected_building.get("internal_name", "")) in EconomyConfig.POWER_INTERMITTENT_BUILDINGS:
+		_content.add_child(_section_label("SETTINGS"))
+		_content.add_child(_v3_priority_supply_band())
+
 	if not (_v3_forecast.get("phases", []) as Array).is_empty():
 		_content.add_child(_section_label("WHAT IT DOES TO YOUR CASH"))
 		if bool(_v3_forecast.get("no_supply", false)):
@@ -1343,29 +1428,25 @@ func _render_confirm_v3() -> void:
 			warn.text = "No supply route on this tile for %s — it would sit idle." \
 				% ", ".join(PackedStringArray(_v3_forecast.get("input_names", [])))
 			warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			warn.add_theme_font_size_override("font_size", 11)
+			warn.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 			warn.add_theme_color_override("font_color", RED)
 			_content.add_child(warn)
 		_content.add_child(_v3_cash_timeline())
-		var caption := Label.new()
-		caption.text = "Per turn, at today's prices: goods, freight, port fees, storage, power, labour and upkeep. Assumes it sells straight to market with any pipework already built."
-		caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		caption.add_theme_font_size_override("font_size", 11)
-		caption.add_theme_color_override("font_color", _muted_tone())
-		_content.add_child(caption)
+		# Payback sits beside the timeline it explains (owner 2026-08-26: Buffer
+		# and Run rate removed) rather than crowding the always-visible verdict
+		# strip, which now carries only the total and the durations.
+		# "How is this calculated?" shares that same row, right-anchored (owner
+		# 2026-08-26 — was its own row underneath).
+		_content.add_child(_v3_cash_facts_row())
 
 	_content.add_child(_section_label("MATERIALS"))
-	var source_note := Label.new()
-	source_note.text = _v3_material_source_note()
-	source_note.add_theme_font_size_override("font_size", 11)
-	source_note.add_theme_color_override("font_color", _muted_tone())
-	_content.add_child(source_note)
 	for row in _v3_material_rows():
 		_content.add_child(row)
-	_content.add_child(_v3_materials_subtotal())
+	_content.add_child(_v3_materials_totals())
 
-	# The recipe diagram survives, demoted below the decision bands: reference
-	# material, not part of the verdict. (Open spec question, resolved as "keep".)
+	# The recipe survives, demoted below the decision bands: reference material,
+	# not part of the verdict (owner 2026-08-26: shown open, not behind a tap —
+	# the v3.1 collapse-by-default read as hiding it, not demoting it).
 	_content.add_child(_section_label("RECIPE"))
 	_content.add_child(_recipe_diagram(_selected_recipe))
 
@@ -1373,115 +1454,192 @@ func _render_confirm_v3() -> void:
 	_v3_pulse_if_changed(_v3_total_cost())
 
 
-## Band 1 — identity: icon plate, recipe + building name, and the small
-## "‹ Recipe" back link. The header's X stays the single close control (§7):
-## never two same-weight exits.
+## Band 1 — the site (left, blank until one is chosen) and the small
+## "< Recipe" back link (right), sharing one row. The header's X stays the
+## single close control (§7): never two same-weight exits, so the back link
+## is a lighter-weight affordance, not X's peer.
 func _v3_header_band() -> Control:
 	var band := HBoxContainer.new()
 	band.add_theme_constant_override("separation", 11)
-	band.add_child(_building_icon(_selected_building, 48))
-	var text_box := VBoxContainer.new()
-	text_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	text_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	text_box.add_theme_constant_override("separation", 1)
-	band.add_child(text_box)
-	var title := Label.new()
-	title.text = str(_selected_recipe.get("display_name", ""))
-	title.add_theme_font_size_override("font_size", 17)
-	title.add_theme_color_override("font_color", TEXT)
-	text_box.add_child(title)
-	var sub := Label.new()
-	sub.text = str(_selected_building.get("display_name", ""))
-	sub.add_theme_font_size_override("font_size", 11)
-	sub.add_theme_color_override("font_color", _muted_tone())
-	text_box.add_child(sub)
+	var site := Label.new()
+	site.name = "V3Site"
+	site.text = Catalog.tile_label(_locked_tile_id) if _locked_tile_id != "" else ""
+	site.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
+	site.add_theme_color_override("font_color", _muted_tone())
+	site.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	site.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	band.add_child(site)
+	# Same DS Button chrome as the header's × close button — a real CTA, not a
+	# flat text link. Plain default Button styling, no overrides, exactly like
+	# _close_button below.
 	var back := Button.new()
-	back.text = "‹ Recipe"
-	back.flat = true
+	back.text = "< Recipe"
+	back.tooltip_text = "Back to recipes"
 	back.focus_mode = Control.FOCUS_NONE
-	back.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	back.add_theme_font_size_override("font_size", 13)
-	back.add_theme_color_override("font_color", _muted_tone())
-	back.add_theme_color_override("font_hover_color", TEXT)
 	back.pressed.connect(_on_back_to_browse)
 	band.add_child(back)
 	return band
 
 
-## Band 2 — the decision in one band (§2): itemised grand total, build time,
-## buffer, run rate, payback, affordability chip. Fill only, no border — borders
-## carry semantics, and the strip is structure. The double rule above it is the
-## ledger's mark for a totals band.
+## Band 2 — the hero band: identity and the decision, together. Left column: a
+## large icon plate (owner 2026-08-26: nearly fills the strip's height now),
+## then building name (big) + recipe (small) beside it — top-aligned so the
+## name lines up with the total on the right. Right column, right-anchored:
+## the grand total, then how long it takes. Cost and time stay two different
+## questions — the total is the ONLY money in this band, everything below it
+## on the right is duration. No itemisation caption (that reconciliation lives
+## in Materials, where Land's cost also moved), no affordability chip
+## (dropped — it read the future, and the space cost wasn't earning it). Fill
+## only, no border — borders carry semantics, and the strip is structure. A
+## single rule above it is the ledger's mark for a totals band (owner
+## 2026-08-26: single, not double — the site sits with "< Recipe" in band 1
+## now, so this band carries less than it used to and doesn't need the
+## heavier two-line emphasis).
 func _v3_verdict_strip() -> Control:
 	var box := VBoxContainer.new()
 	box.name = "V3VerdictStrip"
-	box.add_theme_constant_override("separation", 5)
-	box.add_child(DS.section_rule(true))
+	box.add_theme_constant_override("separation", 6)
+	box.add_child(DS.section_rule())
 
 	var strip := PanelContainer.new()
-	strip.add_theme_stylebox_override("panel", _panel_style(NAVY_RAISED, NAVY_RAISED, 0, 9, 10))
+	strip.add_theme_stylebox_override("panel", _panel_style(NAVY_RAISED, NAVY_RAISED, 0, 9, 6))
 	box.add_child(strip)
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 6)
-	strip.add_child(col)
+	var outer := VBoxContainer.new()
+	outer.add_theme_constant_override("separation", 6)
+	strip.add_child(outer)
 
-	var total_row := HBoxContainer.new()
-	total_row.add_theme_constant_override("separation", 9)
-	col.add_child(total_row)
+	# Row 1: icon + identity (left) … the grand total (right). Both text_box
+	# and total top-align (owner 2026-08-26, was centred) so the building name
+	# — the top line — lines up with the total, regardless of how tall the
+	# icon makes this row.
+	var row1 := HBoxContainer.new()
+	row1.add_theme_constant_override("separation", 11)
+	outer.add_child(row1)
+	# Same brushed-navy + silver-bezel metal plate as the Tile View building
+	# cards — _building_icon alone is just the emboss layers, with no plate
+	# beneath it; TileBuildingCard IS the plate. Icon 40->60px (owner
+	# 2026-08-26: nearly fills the strip's height) — margins/radius scale with
+	# it (was 6/6/8) to keep the same plate proportions, not just a bigger
+	# icon in the same bezel.
+	var icon_card := TileBuildingCard.new(10, 10, 13)
+	icon_card.add_child(_building_icon(_selected_building, 60))
+	row1.add_child(icon_card)
+	var text_box := VBoxContainer.new()
+	text_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text_box.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	text_box.add_theme_constant_override("separation", 1)
+	row1.add_child(text_box)
+	# Building name is the big text, recipe the small line under it (owner
+	# 2026-08-26 — was the other way round: recipe big, building name small).
+	var title := Label.new()
+	title.text = str(_selected_building.get("display_name", ""))
+	title.add_theme_font_size_override("font_size", 17)
+	title.add_theme_color_override("font_color", TEXT)
+	text_box.add_child(title)
+	var sub := Label.new()
+	sub.text = str(_selected_recipe.get("display_name", ""))
+	sub.add_theme_font_size_override("font_size", 11)
+	sub.add_theme_color_override("font_color", _muted_tone())
+	text_box.add_child(sub)
+
 	var total := Label.new()
 	total.name = "V3Total"
 	total.theme_type_variation = "Numeric"
 	total.add_theme_font_size_override("font_size", 20)
 	total.text = _money(_v3_total_cost())
+	total.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	total.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_v3_verdict_total_label = total
-	total_row.add_child(total)
-	var itemised := Label.new()
-	if _buy_land_wanted and _land_purchase_cost > 0.0:
-		itemised.text = "construction %s + land %s" % [
-			_money(_v3_construction_cost()), _money(_land_purchase_cost)]
-	else:
-		itemised.text = "construction"
-	itemised.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	itemised.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	itemised.add_theme_font_size_override("font_size", 11)
-	itemised.add_theme_color_override("font_color", _muted_tone())
-	total_row.add_child(itemised)
-	total_row.add_child(_v3_afford_chip())
+	row1.add_child(total)
 
+	# Row 2: nothing on the left now that the site sits in band 1 with
+	# "< Recipe" — just duration, right-anchored under the total (up to two
+	# lines). duration_box defaults to SIZE_FILL horizontal as outer's direct
+	# child, so it spans the same width as row1 and its own right-aligned
+	# labels land on the same right edge as the total above them.
+	var duration_box := VBoxContainer.new()
+	duration_box.name = "V3DurationBox"
+	duration_box.add_theme_constant_override("separation", 1)
+	outer.add_child(duration_box)
+	# Materials arrival and build duration are two separate waits (§7 below) —
+	# the site can't start counting down build_duration until every required
+	# good is actually on it. Only knowable once a site is chosen.
+	var arrival_turns := _v3_materials_arrival_turns()
+	if _locked_tile_id != "" and arrival_turns > 0:
+		duration_box.add_child(_v3_duration_line("%d turn%s for materials to arrive"
+			% [arrival_turns, "" if arrival_turns == 1 else "s"]))
+	var build_turns := int(_v3_forecast.get("build_turns", 0))
+	duration_box.add_child(_v3_duration_line("%d turn%s to build" % [build_turns, "" if build_turns == 1 else "s"]))
+	return box
+
+
+func _v3_duration_line(text: String) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
+	label.add_theme_color_override("font_color", TEXT)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	return label
+
+
+## The slowest delivery among this build's still-missing materials (§7) — 0 when
+## everything needed is already on the tile, or when no tile is chosen yet.
+## Construction only starts its own countdown once every required good has
+## arrived (Construction.claim_materials), so the WORST line gates the whole wait.
+func _v3_materials_arrival_turns() -> int:
+	var worst := 0
+	for entry in _v3_ledger.get("rows", []):
+		var turns := int((entry as Dictionary).get("market_turns", 0))
+		if turns > worst:
+			worst = turns
+	return worst
+
+
+## Payback (owner 2026-08-26: Buffer and Run rate rows removed — the pre-revenue
+## cash story now lives entirely in the timeline + its per-phase figures, not
+## restated as separate facts beside it) plus "How is this calculated?",
+## right-anchored on the same row (owner 2026-08-26 — was its own row
+## underneath; see _v3_calculation_note()). Sits right after the cash timeline.
+func _v3_cash_facts_row() -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	var facts := _v3_cash_facts()
+	facts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(facts)
+	row.add_child(_v3_calculation_note())
+	return row
+
+
+func _v3_cash_facts() -> Control:
 	var facts := GridContainer.new()
 	facts.columns = 2
-	facts.add_theme_constant_override("h_separation", 12)
-	facts.add_theme_constant_override("v_separation", 2)
-	col.add_child(facts)
-	var build_turns := int(_v3_forecast.get("build_turns", 0))
-	_v3_fact(facts, "Build time", "%d turn%s" % [build_turns, "" if build_turns == 1 else "s"], TEXT, "")
-	_v3_fact(facts, "Buffer", "needs %s in the bank to reach the first sale"
-		% _money(float(_v3_forecast.get("cash_needed", 0.0))), TEXT,
-		"What the building costs from the day it completes until its first sale lands: labour, upkeep, inputs, power and storage.")
+	facts.add_theme_constant_override("h_separation", 14)
+	facts.add_theme_constant_override("v_separation", 5)
 	var steady := float(_v3_forecast.get("steady_net", 0.0))
-	_v3_fact(facts, "Run rate", "%s/turn once selling" % _signed_money(steady),
-		GREEN if steady > 0.0 else RED, "")
 	var payback := BuildForecast.payback_turn(_v3_total_cost(),
 		float(_v3_forecast.get("cash_needed", 0.0)), steady,
 		int(_v3_forecast.get("first_selling_turn", 0)))
 	_v3_fact(facts, "Payback",
-		"pays back ~turn %d" % payback if payback > 0 else "never at today's prices",
-		TEXT if payback > 0 else RED,
-		"At today's prices: construction, land and every pre-revenue cost, earned back at the steady per-turn margin.")
-	return box
+		"Turn %d" % payback if payback > 0 else "Never at today's prices",
+		TEXT if payback > 0 else RED, "")
+	return facts
 
 
+## Owner 2026-08-26: text standardised — these are facts (turns, a turn number,
+## a rate), not "the amount", so they read at the same size/font as everything
+## else on the panel. Semantic tone (the colour argument) still varies; only
+## the size/weight distinction is gone.
 func _v3_fact(grid: GridContainer, key: String, value: String, tone: Color, tip: String) -> void:
 	var key_label := Label.new()
 	key_label.text = key
-	key_label.add_theme_font_size_override("font_size", 11)
+	key_label.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	key_label.add_theme_color_override("font_color", _muted_tone())
 	grid.add_child(key_label)
 	var value_label := Label.new()
 	value_label.text = value
 	value_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	value_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	value_label.add_theme_font_size_override("font_size", 12)
+	value_label.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	value_label.add_theme_color_override("font_color", tone)
 	if tip != "":
 		value_label.tooltip_text = tip
@@ -1489,34 +1647,24 @@ func _v3_fact(grid: GridContainer, key: String, value: String, tone: Color, tip:
 	grid.add_child(value_label)
 
 
-## The RAG chip (§2): green = affordable incl. buffer · amber = affordable but the
-## buffer is not covered · red = cannot afford. Always states its verdict in words —
-## never colour-only. One of the four places a coloured border is allowed (§4).
-func _v3_afford_chip() -> Control:
-	var verdict := BuildForecast.affordability_verdict(_v3_total_cost(),
-		float(_v3_forecast.get("cash_needed", 0.0)), MatchState.money)
-	var text := "Affordable"
-	var tone := GREEN
-	match verdict:
-		"buffer_short":
-			text = "Buffer not covered"
-			tone = GOLD
-		"unaffordable":
-			text = "Can't afford"
-			tone = RED
-	var chip := PanelContainer.new()
-	chip.name = "V3AffordChip"
-	chip.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, tone, 1, 7, 5))
-	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	chip.tooltip_text = "Against current cash of %s: green covers the build and the buffer, amber covers the build only, red covers neither." % _money(MatchState.money)
-	chip.mouse_filter = Control.MOUSE_FILTER_PASS
-	var label := Label.new()
-	label.text = text
-	label.add_theme_font_size_override("font_size", 11)
-	label.add_theme_color_override("font_color", tone)
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	chip.add_child(label)
-	return chip
+## Replaces the old always-visible assumptions caption (owner 2026-08-26): the
+## explanation is now a hover-only disclosure, so the always-on-screen space
+## cost is just one quiet line instead of two sentences of fine print. A thin
+## outline (owner 2026-08-26) marks it as its own small hoverable control, not
+## just another line of body text.
+func _v3_calculation_note() -> Control:
+	var tip := "Per turn, at market prices: goods, freight, port fees, storage, power, labour and upkeep. Assumes it sells straight to market with any pipework already built."
+	var pill := PanelContainer.new()
+	pill.add_theme_stylebox_override("panel", _panel_style(Color(0, 0, 0, 0), NAVY_LINE, 1, 8, 6))
+	pill.tooltip_text = tip
+	var note := Label.new()
+	note.text = "How is this calculated?"
+	note.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
+	note.add_theme_color_override("font_color", _muted_tone())
+	note.tooltip_text = tip
+	note.mouse_filter = Control.MOUSE_FILTER_PASS
+	pill.add_child(note)
+	return pill
 
 
 ## Band 3 — requirements as a compact checklist (§3): passes collapse to one line
@@ -1554,14 +1702,14 @@ func _v3_req_line(mark: String, mark_tone: Color, text: String) -> Control:
 	var mark_label := Label.new()
 	mark_label.text = mark
 	mark_label.custom_minimum_size = Vector2(14, 0)
-	mark_label.add_theme_font_size_override("font_size", 12)
+	mark_label.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	mark_label.add_theme_color_override("font_color", mark_tone)
 	row.add_child(mark_label)
 	var text_label := Label.new()
 	text_label.text = text
 	text_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	text_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	text_label.add_theme_font_size_override("font_size", 12)
+	text_label.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 	text_label.add_theme_color_override("font_color", TEXT)
 	row.add_child(text_label)
 	return row
@@ -1581,34 +1729,107 @@ func _v3_land_requirement_row() -> Control:
 			"Land — needs %d on the site you choose" % needed)
 	var free := int(_v3_land.get("free", 0))
 	if int(_v3_land.get("short", 0)) <= 0:
-		return _v3_req_line("✓", GREEN, "Land — needs %d · %d free on this tile" % [needed, free])
-	if bool(_v3_land.get("covered", false)):
-		var lots := "" if MatchState.LAND_PATCH_SIZE <= 1 else " (sold in lots of %d)" % MatchState.LAND_PATCH_SIZE
-		return _v3_req_line("✓", GREEN, "Land — needs %d · %d free · includes purchase of %d · %s%s"
-			% [needed, free, int(_v3_land.get("units", 0)), _money(float(_v3_land.get("cost", 0.0))), lots])
-	if int(_v3_land.get("for_sale", 0)) <= 0:
-		return _v3_req_fail("Land — needs %d, %d free, and no more is for sale on this tile." % [needed, free])
-	return _v3_req_fail("Land — needs %d, %d free; only %d more can be bought here — still short."
-		% [needed, free, int(_v3_land.get("units", 0))])
+		return _v3_req_line("✓", GREEN, "Land — needs %d · %d available on this tile" % [needed, free])
+	if not bool(_v3_land.get("purchasable", false)):
+		if int(_v3_land.get("for_sale", 0)) <= 0:
+			return _v3_req_fail("Land — needs %d, %d available, and no more is for sale on this tile." % [needed, free])
+		return _v3_req_fail("Land — needs %d, %d available; only %d more can be bought here — still short."
+			% [needed, free, int(_v3_land.get("units", 0))])
+	# A real, reversible choice (v3.1, owner 2026-08-26: the toggle is back — the
+	# shortfall CAN be covered by a purchase, so whether to make it is genuinely
+	# the player's call, not an auto-included fact).
+	return _v3_land_toggle_row(needed, free)
 
 
-## The land facts for this confirm, and the purchase V3 folds into it: no checkbox
-## (§7) — a shortfall the tile can cover is simply included, itemised in the
-## verdict total, and executed inside the build's own gate on Confirm.
+## The land-purchase toggle (v3.1): ticked by default, so leaving it alone
+## behaves exactly like the old auto-include. Unticking is a deliberate
+## "build without this room" choice — it blocks Confirm with a stated reason,
+## the same as any other requirement failure, never a silent dead end.
+func _v3_land_toggle_row(needed: int, free: int) -> Control:
+	var outer := PanelContainer.new()
+	outer.add_theme_stylebox_override("panel",
+		_panel_style(NAVY_FIELD, GOLD if _buy_land_wanted else RED, 1, 9, 7))
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	outer.add_child(box)
+
+	var toggle := Button.new()
+	toggle.name = "V3LandToggle"
+	toggle.toggle_mode = true
+	toggle.button_pressed = _buy_land_wanted
+	toggle.focus_mode = Control.FOCUS_NONE
+	toggle.custom_minimum_size = Vector2(0, 22)
+	var clear := StyleBoxEmpty.new()
+	for state in ["normal", "hover", "pressed", "disabled", "focus"]:
+		toggle.add_theme_stylebox_override(state, clear)
+	box.add_child(toggle)
+	var line := HBoxContainer.new()
+	line.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_theme_constant_override("separation", 8)
+	toggle.add_child(line)
+
+	# Same tickbox glyph as the rest of the DS theme (tile-panel setting rows,
+	# telemetry consent) — UIHelpers.checkbox_icon — instead of a bespoke one
+	# (owner 2026-08-26). The outer row's gold/red border already carries the
+	# ticked/blocking state; the icon itself stays exactly as it renders
+	# everywhere else (plain white, no extra tint).
+	var glyph := TextureRect.new()
+	glyph.texture = UIHelpers.checkbox_icon(_buy_land_wanted)
+	glyph.custom_minimum_size = Vector2(UIHelpers.CHECKBOX_ICON_SIZE, UIHelpers.CHECKBOX_ICON_SIZE)
+	glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	glyph.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_child(glyph)
+
+	var label := Label.new()
+	label.text = "Buy %d Land on this tile · %s" % [
+		int(_v3_land.get("units", 0)), _money(float(_v3_land.get("cost", 0.0)))]
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
+	label.add_theme_color_override("font_color", TEXT)
+	line.add_child(label)
+	toggle.toggled.connect(_on_v3_land_toggled)
+
+	var note := Label.new()
+	note.text = ("Needs %d Land · %d available on this tile." % [needed, free]) if _buy_land_wanted \
+		else "Short %d Land — this build will be refused until you tick this or free up room." % (needed - free)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
+	note.add_theme_color_override("font_color", TEXT if _buy_land_wanted else RED)
+	box.add_child(note)
+	return outer
+
+
+func _on_v3_land_toggled(pressed: bool) -> void:
+	_buy_land_wanted = pressed
+	_land_toggle_touched = true
+	_render()
+
+
+## The land facts for this confirm, and the purchase V3 folds into it when the
+## toggle is on. `_land_purchase_units`/`_land_purchase_cost` always hold what a
+## full purchase of the shortfall WOULD cost (so the toggle row and a re-tick
+## always show live numbers); `_buy_land_wanted` — preserved across re-renders
+## once the player has touched it (_land_toggle_touched) — decides whether that
+## cost actually applies. `covered` reflects the CURRENT toggle state, so the
+## requirement row, the confirm-block reason and the affordability chip all agree.
 func _v3_compute_land() -> Dictionary:
 	var needed := int(round(maxf(0.0, float(_selected_building.get("tile_size_used", 1)))))
 	var out := {"needed": needed, "free": 0, "short": 0, "units": 0, "cost": 0.0,
-		"for_sale": 0, "covered": true}
+		"for_sale": 0, "purchasable": false, "covered": true}
 	_land_purchase_units = 0
 	_land_purchase_cost = 0.0
-	_buy_land_wanted = false
 	if _locked_tile_id == "":
+		_buy_land_wanted = false
 		return out
 	var owned := MatchState.get_tile_land_owned(_locked_tile_id)
 	var used := int(round(MatchState.get_tile_player_space_used(_locked_tile_id)))
 	var free := maxi(0, owned - used)
 	out.free = free
 	if free >= needed:
+		_buy_land_wanted = false
 		return out
 	var short := needed - free
 	out.short = short
@@ -1616,193 +1837,364 @@ func _v3_compute_land() -> Dictionary:
 	var for_sale := MatchState.get_tile_land_patches_available(_locked_tile_id)
 	out.for_sale = for_sale
 	if for_sale <= 0:
+		_buy_land_wanted = false
 		return out
 	var patches := mini(int(ceil(float(short) / float(MatchState.LAND_PATCH_SIZE))), for_sale)
-	_land_purchase_units = patches * MatchState.LAND_PATCH_SIZE
-	_land_purchase_cost = MatchState.purchase_cost_after_advisor(
+	var units := patches * MatchState.LAND_PATCH_SIZE
+	var cost := MatchState.purchase_cost_after_advisor(
 		float(patches) * MatchState.LAND_PATCH_COST, {"tile_id": _locked_tile_id})
-	_buy_land_wanted = true
-	out.units = _land_purchase_units
-	out.cost = _land_purchase_cost
-	out.covered = free + _land_purchase_units >= needed
+	out.units = units
+	out.cost = cost
+	if free + units < needed:
+		# Not enough for sale here to close the gap even fully bought — nothing
+		# to toggle, this is a hard failure.
+		_buy_land_wanted = false
+		out.covered = false
+		return out
+	out.purchasable = true
+	if not _land_toggle_touched:
+		_buy_land_wanted = true   # default ON — untouched behaves like the old auto-include
+	_land_purchase_units = units
+	_land_purchase_cost = cost
+	out.covered = _buy_land_wanted
 	return out
+
+
+## build_forecast.gd's phase.range is the sim-layer's own short form — "t1",
+## "t1–t3", "t6 onwards" — shared with V2, so left alone there. V3 reads
+## friendlier: "Turn 1", "Turn 1–3", "Turn 6 onwards" (owner 2026-08-26) — a
+## display-only transform, not a change to the sim string itself.
+func _v3_turn_marker(range_text: String) -> String:
+	if not range_text.begins_with("t"):
+		return range_text
+	var rest := range_text.substr(1)
+	var dash_index := rest.find("–")
+	if dash_index >= 0 and dash_index + 1 < rest.length() and rest[dash_index + 1] == "t":
+		rest = rest.substr(0, dash_index + 1) + rest.substr(dash_index + 2)
+	return "Turn " + rest
 
 
 ## Band 4 — the money story as a flowing timeline, not a table (§4): each phase is
 ## turn-range · name · £/turn, chained left to right. "Making, not yet paid" reads
 ## as "First production run" here.
+## Owner 2026-08-26: rebuilt as a row-major grid (matching BuildForecastTable's
+## established technique) instead of one VBox per phase — a per-column VBox let
+## a taller middle cell (e.g. "First production run" wrapping to 2 lines) push
+## that ONE column's money down, so the row no longer lined up with its
+## neighbours even though the code always added marker→name→money in the same
+## order. A GridContainer makes "turn always on top, name always in the middle,
+## money always on the bottom" a structural guarantee, not just an add-order
+## convention — every row's cells are true siblings sharing one shelf.
 func _v3_cash_timeline() -> Control:
 	var plate := PanelContainer.new()
 	plate.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, NAVY_FIELD, 0, 9, 8))
-	var flow := HBoxContainer.new()
-	flow.alignment = BoxContainer.ALIGNMENT_CENTER
-	flow.add_theme_constant_override("separation", 5)
-	plate.add_child(flow)
 	var phases: Array = _v3_forecast.get("phases", [])
-	for i in phases.size():
-		var phase: Dictionary = phases[i]
-		if i > 0:
-			var arrow := Label.new()
-			arrow.text = "→"
-			arrow.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-			arrow.add_theme_font_size_override("font_size", 13)
-			arrow.add_theme_color_override("font_color", _muted_tone())
-			flow.add_child(arrow)
-		var cell := VBoxContainer.new()
-		cell.alignment = BoxContainer.ALIGNMENT_CENTER
-		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		cell.add_theme_constant_override("separation", 1)
-		flow.add_child(cell)
-		var turns := int(phase.get("turns", 0))
+	var grid := GridContainer.new()
+	grid.columns = maxi(1, phases.size())
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 3)
+	plate.add_child(grid)
+
+	for phase in phases:
 		var marker := Label.new()
-		marker.text = str(phase.get("range", "")) + ("  ·  %d turns" % turns if turns > 1 else "")
+		# No "· N turns" suffix (owner 2026-08-26, dropped alongside the
+		# t1-style -> Turn 1-style reword): the range already says how many
+		# turns it spans, so the suffix was pure repetition — and dropping it
+		# freed enough column width to stop "Completes"/"First production
+		# run" wrapping mid-word once "Turn " made the range/onwards markers
+		# longer than "t"-prefixed ones.
+		marker.text = _v3_turn_marker(str(phase.get("range", "")))
 		marker.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		marker.add_theme_font_size_override("font_size", 10)
+		marker.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		marker.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		marker.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 		marker.add_theme_color_override("font_color", _muted_tone())
-		cell.add_child(marker)
+		grid.add_child(marker)
+	for phase in phases:
 		var name := Label.new()
 		name.text = str(V3_PHASE_LABELS.get(str(phase.get("kind", "")), str(phase.get("label", ""))))
 		name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		name.add_theme_font_size_override("font_size", 11)
+		name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		# Centre within the row (owner 2026-08-26), deliberately unlike the marker
+		# and money rows below: the name row is the one place text should sit ON
+		# a shared centre axis regardless of how many lines it wraps to — one
+		# line sits on the axis, two straddle it evenly, three put their middle
+		# line on it. A Label sized to its own natural (wrapped) height and
+		# shrink-centred within the row's shared height does exactly this: the
+		# tallest phase's own centre already sits on the row's centre by
+		# definition, so every shorter neighbour lands on the same line too.
+		name.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		name.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 		name.add_theme_color_override("font_color", TEXT)
-		cell.add_child(name)
+		grid.add_child(name)
+	for phase in phases:
 		var per_turn := float(phase.get("per_turn", 0.0))
 		var money := Label.new()
 		money.text = _signed_money(per_turn) + ("/turn" if str(phase.get("kind", "")) == "selling" else "")
 		money.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		money.theme_type_variation = "Numeric"
-		money.add_theme_font_size_override("font_size", 14)
+		money.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		money.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		money.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 		if str(phase.get("kind", "")) == "building":
 			money.add_theme_color_override("font_color", _muted_tone())
 		else:
 			money.add_theme_color_override("font_color", GREEN if per_turn >= 0.0 else RED)
-		cell.add_child(money)
+		grid.add_child(money)
 	return plate
 
 
-## Band 5 — the bill of materials as a ledger (§5): icon plate · name · need ·
-## have · source tag. Shortfall lines take the red border; everything else is
-## boxless. The subtotal below reconciles to the verdict's construction figure
-## because both read _v3_ledger.
+## 74px (owner 2026-08-26): sized so the icon ART inside the cream plate
+## matches the recipe diagram's ~56px icons (_recipe_flow_cell's 62px cell,
+## 3px inset each side) — _good_icon's inset is proportional (12% of size, 4px
+## floor), so the plate itself has to grow to keep the ART that big, not just
+## the plate's own footprint.
+const V3_MAT_ICON_SIZE := 74
+const V3_MAT_COL_ONTILE := 58
+const V3_MAT_COL_ELSEWHERE := 70
+const V3_MAT_COL_MARKET := 92
+
+## Band 5 — the bill of materials as a table (v3.1, from the V4 iteration): icon ·
+## name · on tile · elsewhere · market price, header row first. "Elsewhere" is
+## uncommitted surplus on every OTHER tile (Construction.network_surplus_for_good)
+## — informational regardless of the active material-sourcing setting. Shortfall
+## lines take the red border and a note beneath; everything else is boxless. The
+## subtotal below reconciles to the verdict's construction figure because both
+## read _v3_ledger's market_cost — market_price here is a display-only estimate,
+## never summed.
 func _v3_material_rows() -> Array:
-	var rows: Array = []
-	for entry in _v3_ledger.get("rows", []):
-		rows.append(_v3_material_row(entry))
-	if rows.is_empty():
+	var entries: Array = _v3_ledger.get("rows", [])
+	if entries.is_empty():
 		var none := Label.new()
 		none.text = "No material kit required"
-		none.add_theme_font_size_override("font_size", 12)
+		none.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 		none.add_theme_color_override("font_color", _muted_tone())
-		rows.append(none)
+		return [none]
+	var rows: Array = [_v3_material_header()]
+	for entry in entries:
+		rows.append(_v3_material_row(entry))
 	return rows
+
+
+func _v3_material_header() -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var lead := Label.new()   # header for the icon column — centred over it (owner 2026-08-26)
+	lead.text = "GOOD"
+	lead.custom_minimum_size = Vector2(V3_MAT_ICON_SIZE, 0)
+	lead.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lead.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
+	lead.add_theme_color_override("font_color", _muted_tone())
+	row.add_child(lead)
+	for col in [
+		{"text": "ON TILE", "width": V3_MAT_COL_ONTILE, "tip": ""},
+		{"text": "ELSEWHERE", "width": V3_MAT_COL_ELSEWHERE,
+			"tip": "Uncommitted surplus on your other tiles — what an \"any tile with surplus\" source could actually draw on."},
+		{"text": "MARKET PRICE", "width": V3_MAT_COL_MARKET,
+			"tip": "Reference estimate to buy the full amount needed at today's price. What this build actually pays is the materials subtotal below."},
+	]:
+		var head := Label.new()
+		head.text = str(col.text)
+		head.custom_minimum_size = Vector2(int(col.width), 0)
+		head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		head.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
+		head.add_theme_color_override("font_color", _muted_tone())
+		if str(col.tip) != "":
+			head.tooltip_text = str(col.tip)
+			head.mouse_filter = Control.MOUSE_FILTER_PASS
+		row.add_child(head)
+	return row
 
 
 func _v3_material_row(entry: Dictionary) -> Control:
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", 8)
-	line.add_child(_good_icon(str(entry.get("good_id", "")), 40))
-	var name := Label.new()
-	name.text = str(entry.get("name", ""))
-	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	name.add_theme_font_size_override("font_size", 12)
-	name.add_theme_color_override("font_color", TEXT)
-	line.add_child(name)
-	var need := Label.new()
-	need.text = "×%d" % int(entry.get("need", 0))
-	need.custom_minimum_size = Vector2(38, 0)
-	need.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	need.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	need.theme_type_variation = "Numeric"
-	need.add_theme_font_size_override("font_size", 12)
-	line.add_child(need)
-	var have := Label.new()
-	have.text = "have ×%d" % int(entry.get("have", 0))
-	have.custom_minimum_size = Vector2(64, 0)
-	have.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	have.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	have.add_theme_font_size_override("font_size", 11)
-	have.add_theme_color_override("font_color", _muted_tone())
-	line.add_child(have)
-	var tag := Label.new()
-	tag.custom_minimum_size = Vector2(104, 0)
-	tag.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	tag.add_theme_font_size_override("font_size", 11)
+	# V3_MAT_ICON_SIZE icon (matches the recipe diagram's art size), name dropped from the row and
+	# moved to a hover tooltip on the icon instead — _good_icon returns its
+	# holder with mouse_filter IGNORE (so it never blocks clicks elsewhere);
+	# PASS is needed here so the tooltip actually fires.
+	var icon := _good_icon(str(entry.get("good_id", "")), V3_MAT_ICON_SIZE, -1, int(entry.get("need", 0)))
+	icon.tooltip_text = str(entry.get("name", ""))
+	icon.mouse_filter = Control.MOUSE_FILTER_PASS
+	line.add_child(icon)
+	line.add_child(_v3_mat_figure(int(entry.get("have", 0)), V3_MAT_COL_ONTILE))
+	line.add_child(_v3_mat_figure(int(entry.get("elsewhere", 0)), V3_MAT_COL_ELSEWHERE))
+	var market := Label.new()
+	market.text = "~%s" % _money(float(entry.get("market_price", 0.0)))
+	market.theme_type_variation = "Numeric"
+	market.custom_minimum_size = Vector2(V3_MAT_COL_MARKET, 0)
+	market.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	market.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	market.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	market.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
+	market.add_theme_color_override("font_color", _muted_tone())
+	line.add_child(market)
+
 	var short := int(entry.get("short", 0))
-	var market_qty := int(entry.get("market_qty", 0))
-	var from_stock := int(entry.get("from_stock", 0))
-	if short > 0:
-		tag.text = "short ×%d" % short
-		tag.add_theme_color_override("font_color", RED)
-		tag.tooltip_text = "This site must already hold every material (construct setting) — deliver it here first."
-	elif market_qty > 0 and from_stock > 0:
-		tag.text = "stock + market ~%s" % _money(float(entry.get("market_cost", 0.0)))
-		tag.add_theme_color_override("font_color", TEXT)
-		tag.tooltip_text = "×%d from this site's stock; ×%d bought at today's buy price, freight included." % [from_stock, market_qty]
-	elif market_qty > 0:
-		tag.text = "market — ~%s" % _money(float(entry.get("market_cost", 0.0)))
-		tag.add_theme_color_override("font_color", TEXT)
-		tag.tooltip_text = "Bought at today's buy price, freight included."
-	else:
-		tag.text = "from stock"
-		tag.add_theme_color_override("font_color", GREEN)
-		tag.tooltip_text = "Already on this site — costs nothing to use."
-	tag.mouse_filter = Control.MOUSE_FILTER_PASS
-	line.add_child(tag)
-	if short > 0:
-		var boxed := PanelContainer.new()
-		boxed.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, RED, 1, 9, 6))
-		boxed.add_child(line)
-		return boxed
-	return line
+	if short <= 0:
+		return line
+	var wrap := VBoxContainer.new()
+	wrap.add_theme_constant_override("separation", 2)
+	var boxed := PanelContainer.new()
+	boxed.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, RED, 1, 9, 6))
+	boxed.add_child(line)
+	wrap.add_child(boxed)
+	var short_note := Label.new()
+	short_note.text = "short ×%d — this site must hold every material before building" % short
+	short_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	short_note.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
+	short_note.add_theme_color_override("font_color", RED)
+	wrap.add_child(short_note)
+	return wrap
 
 
-func _v3_materials_subtotal() -> Control:
+func _v3_mat_figure(qty: int, col_width: int) -> Label:
+	var label := Label.new()
+	label.text = str(qty)
+	label.theme_type_variation = "Numeric"
+	label.custom_minimum_size = Vector2(col_width, 0)
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
+	label.add_theme_color_override("font_color", TEXT if qty > 0 else _muted_tone())
+	return label
+
+
+## Materials subtotal, the flat cash fee (base_price — what construction costs
+## regardless of the kit), and a Total that reconciles to the verdict strip's
+## construction figure (owner 2026-08-26): the materials band is now
+## self-contained — it explains its own total instead of leaving the player to
+## do (construction total) − (materials subtotal) = "what's the rest?" in their head.
+func _v3_materials_totals() -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 3)
+	box.add_child(_v3_totals_row("Materials subtotal", float(_v3_ledger.get("subtotal", 0.0)),
+		"V3MaterialsSubtotal", false))
+	box.add_child(_v3_totals_row("Cash fee", maxf(0.0, float(_selected_building.get("base_price", 0.0))),
+		"", false))
+	# Land's cost moved down here (owner 2026-08-26; was itemised in the verdict
+	# strip) — Total below now includes it, so it still reconciles to the big
+	# number at the top of the panel.
+	if _buy_land_wanted and _land_purchase_cost > 0.0:
+		box.add_child(_v3_totals_row("Land", _land_purchase_cost, "V3MaterialsLand", false))
+	box.add_child(DS.section_rule())
+	box.add_child(_v3_totals_row("Total", _v3_total_cost(), "V3MaterialsTotal", true))
+	return box
+
+
+## "Total" (emphasize=true) is one of the panel's three call-outs (owner
+## 2026-08-26: "the amount") and keeps the larger, bold Numeric treatment.
+## Materials subtotal / Cash fee are supporting figures on the way to it, not
+## the amount itself, so they read at the standard size like everything else.
+func _v3_totals_row(label_text: String, amount: float, node_name: String, emphasize: bool) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	var label := Label.new()
-	label.text = "Materials subtotal"
+	label.text = label_text
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	label.add_theme_font_size_override("font_size", 11)
-	label.add_theme_color_override("font_color", _muted_tone())
+	label.add_theme_font_size_override("font_size", 14 if emphasize else V3_TEXT_SIZE)
+	label.add_theme_color_override("font_color", TEXT if emphasize else _muted_tone())
 	row.add_child(label)
 	var value := Label.new()
-	value.name = "V3MaterialsSubtotal"
-	value.text = _money(float(_v3_ledger.get("subtotal", 0.0)))
-	value.theme_type_variation = "Numeric"
-	value.add_theme_font_size_override("font_size", 13)
+	if node_name != "":
+		value.name = node_name
+	value.text = _money(amount)
+	value.add_theme_font_size_override("font_size", 16 if emphasize else V3_TEXT_SIZE)
+	value.add_theme_color_override("font_color", TEXT)
+	if emphasize:
+		value.theme_type_variation = "Numeric"
 	row.add_child(value)
 	return row
 
 
-func _v3_material_source_note() -> String:
-	# No coordinates here — the site is named once, in the header (§2 copy rules).
-	match MatchState.construct_material_source:
-		"market":
-			return "Bought from the market as construction needs them."
-		"same_tile":
-			return "The site must already hold every material — nothing is bought."
-		"any_tile":
-			return "Pulled from your tiles with surplus; bought in if none have spare."
-		_:
-			return "You choose each delivery when construction starts."
+## Priority-supply preview (v3.1 stub, owner 2026-08-26): "stub the control, no
+## sim wiring". Shown only for buildings in EconomyConfig.POWER_INTERMITTENT_
+## BUILDINGS. _v3_priority_supply is panel-local state ONLY — BuildForecast and
+## Production never read it. Every intermittent building is still priced (and
+## will run) as fully grid-sold; the copy says so, so the preview can't mislead.
+func _v3_priority_supply_band() -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	var seg_panel := PanelContainer.new()
+	seg_panel.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, NAVY_LINE, 1, 9, 3))
+	box.add_child(seg_panel)
+	var seg := HBoxContainer.new()
+	seg.add_theme_constant_override("separation", 4)
+	seg_panel.add_child(seg)
+	for option in [["grid", "Grid"], ["buildings", "Your buildings"]]:
+		var opt_id := str(option[0])
+		var on := _v3_priority_supply == opt_id
+		var btn := Button.new()
+		btn.text = str(option[1])
+		btn.toggle_mode = true
+		btn.button_pressed = on
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.custom_minimum_size = Vector2(0, 30)
+		btn.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
+		# Cream + navy for the selected state (owner 2026-08-26, was gold +
+		# navy) — the same off-white-plate/navy-type pairing the good-icon
+		# plates and Tile View ownership banner already use, not an accent
+		# colour spent on a segmented control.
+		_style_button(btn, CREAM if on else NAVY_FIELD, CREAM_SHADOW if on else NAVY_LINE,
+			NAVY if on else _muted_tone())
+		btn.pressed.connect(_on_v3_priority_supply_selected.bind(opt_id))
+		seg.add_child(btn)
+	var note := Label.new()
+	note.text = ("Selling power to the grid is unaffected by intermittency."
+			if _v3_priority_supply == "grid"
+			else "Preview only — production still sells every unit to the grid today; local-first routing isn't wired up yet.")
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
+	note.add_theme_color_override("font_color", _muted_tone())
+	box.add_child(note)
+	return box
 
 
-## Sticky footer: grand total + Confirm — and when Confirm must be disabled, the
-## reason sits under it in words (§7). Never a dead button with no explanation.
+func _on_v3_priority_supply_selected(option_id: String) -> void:
+	_v3_priority_supply = option_id
+	_render()
+
+
+## Sticky footer (v3.1, from the V4 iteration): "Cash after" replaces a second
+## restatement of the grand total — the verdict strip already shows the spend, so
+## the footer answers the next question, what's left. Confirm keeps a reason line
+## under it when blocked (§7) rather than folding the reason into the button
+## label: the one line has to cover land, materials AND funds, which a short
+## button caption can't hold uniformly the way V4's two-case version could.
 func _v3_build_footer() -> void:
-	_footer.visible = true
+	_footer_panel.visible = true
+	_footer_rule.visible = true
+	var cash_box := VBoxContainer.new()
+	cash_box.custom_minimum_size = Vector2(112, 0)
+	cash_box.add_theme_constant_override("separation", 1)
+	_footer.add_child(cash_box)
+	var cash_caption := Label.new()
+	cash_caption.text = "CASH AFTER"
+	cash_caption.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
+	cash_caption.add_theme_color_override("font_color", _muted_tone())
+	cash_box.add_child(cash_caption)
 	var total := Label.new()
 	total.name = "BuildCostValue"   # tutorial spotlight target, same as V2
 	_confirm_total_label = total
-	total.text = _money(_v3_total_cost())
-	total.custom_minimum_size = Vector2(96, 0)
-	total.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var total_cost := _v3_total_cost()
+	var after := MatchState.money - total_cost
+	var affordable := after >= -0.0001
+	var below_buffer := affordable and after < float(_v3_forecast.get("cash_needed", 0.0))
+	total.text = _money(after)
 	total.theme_type_variation = "Numeric"
-	_footer.add_child(total)
+	total.add_theme_font_size_override("font_size", 16)
+	total.add_theme_color_override("font_color", RED if not affordable else (GOLD if below_buffer else TEXT))
+	cash_box.add_child(total)
+	if below_buffer:
+		var below := Label.new()
+		below.text = "below buffer"
+		below.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
+		below.add_theme_color_override("font_color", GOLD)
+		cash_box.add_child(below)
 	var cta_box := VBoxContainer.new()
 	cta_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cta_box.add_theme_constant_override("separation", 2)
@@ -1821,7 +2213,7 @@ func _v3_build_footer() -> void:
 		why.name = "V3ConfirmReason"
 		why.text = reason
 		why.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		why.add_theme_font_size_override("font_size", 11)
+		why.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
 		why.add_theme_color_override("font_color", RED)
 		cta_box.add_child(why)
 
@@ -1831,7 +2223,10 @@ func _v3_build_footer() -> void:
 ## must hold, then money.
 func _v3_confirm_block_reason() -> String:
 	if _locked_tile_id != "" and not bool(_v3_land.get("covered", true)):
-		return "Not enough land — needs %d, %d free, and what's for sale here doesn't cover it." \
+		if bool(_v3_land.get("purchasable", false)):
+			return "Short %d Land — tick \"Buy Land\" above, or choose a tile with more room." \
+				% (int(_v3_land.get("needed", 0)) - int(_v3_land.get("free", 0)))
+		return "Not enough Land — needs %d, %d available, and what's for sale here doesn't cover it." \
 			% [int(_v3_land.get("needed", 0)), int(_v3_land.get("free", 0))]
 	var shorts := PackedStringArray()
 	for entry in _v3_ledger.get("rows", []):
@@ -2360,6 +2755,7 @@ func _recipe_flow(recipe: Dictionary) -> String:
 
 func _recipe_diagram(recipe: Dictionary) -> PanelContainer:
 	var card := PanelContainer.new()
+	card.name = "RecipeDiagramCard"   # test/tutorial spotlight handle
 	var card_style := StyleBoxFlat.new()
 	card_style.bg_color = DIAGRAM_PAPER
 	card_style.set_corner_radius_all(2)
@@ -2681,6 +3077,8 @@ func _on_recipe_pressed(building_id: String, recipe_id: String) -> void:
 	_view = View.CONFIRM
 	_confirm_flash_pending = true
 	_v3_last_total = -1.0   # a fresh confirm never pulses its opening total
+	_land_toggle_touched = false
+	_v3_priority_supply = "grid"
 	_render()
 
 
@@ -2733,6 +3131,8 @@ func _on_back_to_browse() -> void:
 	_selected_recipe = {}
 	_v3_last_total = -1.0
 	_v3_verdict_total_label = null
+	_land_toggle_touched = false
+	_v3_priority_supply = "grid"
 	_render()
 
 

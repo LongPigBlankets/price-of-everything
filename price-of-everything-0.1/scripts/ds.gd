@@ -7,7 +7,7 @@
 #   Label:
 #     "Title"        — Bebas Neue 48 (panel / tile titles)
 #     "Section"      — Barlow Cond. Bold 22, uppercase, 0.08em tracking
-#     "SectionRuled" — Barlow Cond. Bold 15, uppercase — pairs with ruled_section_head()
+#     "SectionRuled" — Plex SemiBold 15, uppercase — pairs with ruled_section_head()
 #     "BuildingName" — Barlow Cond. SemiBold 22
 #     "Body"         — Plex Medium 14 (default for stats / labels)
 #     "Caption"      — Plex 12 muted (tiny metadata)
@@ -172,7 +172,11 @@ func _build_theme() -> Theme:
 	# Ledger section head (Construct V3, spec §4): small-caps at ~1.1x body, off-white,
 	# paired with the fine rule that ruled_section_head() draws above it. The head is
 	# quieter than "Section" because the rule carries the separation, not size or colour.
-	_label_var(t, fonts, "SectionRuled", "BARLOW_BOLD", 15,             PALETTE["TEXT"], 0.08)
+	# Plex SemiBold (owner 2026-08-26: one font family throughout Construct V3 —
+	# Bebas Neue for the panel title only — with bold vs not-bold as the sole other
+	# differentiator; this was the one label still on a second family, Barlow
+	# Condensed, purely by inheriting the older "Section" variation's choice).
+	_label_var(t, fonts, "SectionRuled", "PLEX_SEMI",   15,             PALETTE["TEXT"], 0.08)
 
 	# ── PanelContainer base + variations ───────────────────────────────
 	# Default panel: opaque navy + 2px solid cream outline + generous padding
