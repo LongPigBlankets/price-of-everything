@@ -1,20 +1,18 @@
 extends Node
-## The post-tutorial mini missions: integrate the chain you were just taught to run, then find
-## a second buyer for what it leaves you holding.
+## Sequential mini missions: a short, concrete goal for the moment a start (or the tutorial)
+## stops telling the player what to do.
 ##
-## The tutorial ends with the player's furnace switched to a better recipe and its inputs still
-## coming off the market, which is the moment "what now?" arrives. Mission 1 answers it by
-## walking back up the chain; mission 2 answers the problem mission 1 creates — you now make
-## more of an intermediate than the one building can eat.
+## THREE CHAINS, AND THEY DO NOT SHARE A SHAPE.
 ##
-## TWO CHAINS, ONE SHAPE. The tutorial forks. A glass player is left on High Strength
-## Glassmaking (r_054), which eats SILICA; an aluminium player on Bauxite Carbochlorination
-## (r_232), which eats CHLORINE and BAUXITE as two independent inputs — chlorine comes from the
-## Chlor-Alkali process, not from bauxite, so the aluminium mission is two parallel supplies
-## rather than the glass mission's two-deep chain. The step wording differs for that reason.
+##   glass / aluminium (post-tutorial)  integrate the chain you were just taught, then find a
+##                                      second buyer for the surplus that creates.
+##   magnate (the Metal Magnate start)  smelt your own ingots into steel, then get both ores
+##                                      onto deposits that never run out.
 ##
-## Mission 1 pays the same on both sides, and that is not a coincidence: Window Manufacturing
-## (r_056) consumes GLASS AND ALUMINIUM, so +5% windows output really is the end of both.
+## Glass is a ladder — sand -> silica (r_035) -> furnace (r_054) — so its second supply step
+## points at a DIFFERENT building one rung up. Aluminium is two siblings: r_232 takes bauxite
+## and chlorine as independent inputs (chlorine is Chlor-Alkali, from salt and water), so both
+## its supply steps feed the same smelter. The wording differs because the graph does.
 ##
 ## STEPS ARE STICKY. A step ticks the turn it is true and stays ticked. Production swings with
 ## prices and storage, and a mission that un-ticked itself because one turn's silica was bought
@@ -22,26 +20,23 @@ extends Node
 ##
 ## GOOD IDS, NOT INTERNAL NAMES. Production keys its turn summary by `good.id` (g_020), never by
 ## internal_name (silica). Checking the summary with internal names silently never matches — it
-## does not error, it just never fires — so everything here resolves through Catalog first.
+## does not error, it just never fires — so everything here resolves through Catalog first. The
+## same trap applies to modifier `target_match`, whose keys are matched against the APPLY-SITE
+## ctx: recipe_output carries `good_internal`, building_power carries `building_id`, and
+## transport_cost carries `good_id`. Each reward below uses the key its own domain provides.
 
-const MISSION_INTEGRATE := 0
-const MISSION_MONETISE := 1
+## Fixed-length missions. `deposits` is absent on purpose — its length depends on the recipe
+## the player's steel plant runs, so it is measured from _deposits_steps instead.
+const MISSION_KINDS := {
+	"integrate": 4, "monetise": 3, "steel": 2,
+}
 
-const REWARD_ID_INTEGRATE := "mini_quest_chain_integration"
-const REWARD_ID_MONETISE := "mini_quest_surplus_monetised"
-const REWARD_PCT := 5.0
-const REWARD_GOOD := "windows"
-const REWARD_TEXT := "+5% output when producing windows"
-const MONETISE_PCT := 15.0
-const MONETISE_TURNS := 20
+# ── Chain definitions ────────────────────────────────────────────────────────
 
-## `made` identifies the chain the player went into. `mid` and `ore` are the two supplies
-## mission 1 asks them to own; `mid` doubles as the SURPLUS mission 2 asks them to sell on.
 const CHAINS := {
 	"glass": {
-		"made": "glass",
-		"mid": "silica",
-		"ore": "sand",
+		"made": "glass", "mid": "silica", "ore": "sand",
+		"missions": ["integrate", "monetise"],
 		"title": "Integrate glass and sand production",
 		"subtitle": "Make your own sand",
 		"steps": [
@@ -53,13 +48,10 @@ const CHAINS := {
 		"hint": "If unsure, check the Goods Graph for Glass.",
 	},
 	"aluminium": {
-		"made": "aluminium",
-		"mid": "chlorine",
-		"ore": "bauxite_ore",
+		"made": "aluminium", "mid": "chlorine", "ore": "bauxite_ore",
+		"missions": ["integrate", "monetise"],
 		"title": "Integrate aluminium and bauxite production",
 		"subtitle": "Make your own chlorine",
-		# Chlorine and bauxite both feed the smelter directly (r_232), so this is two supplies
-		# to one building rather than the glass chain's sand -> silica -> furnace ladder.
 		"steps": [
 			"Produce your own chlorine",
 			"Supply it to your aluminium smelter",
@@ -68,19 +60,68 @@ const CHAINS := {
 		],
 		"hint": "If unsure, check the Goods Graph for Aluminium.",
 	},
+	"magnate": {
+		"made": "steel",
+		"missions": ["steel", "deposits"],
+	},
+}
+
+## The start whose missions are the magnate pair. Picked from the ruleset rather than from what
+## the player produces: the magnate already smelts ingots on turn 1, so there is nothing to wait
+## for and nothing to infer.
+const MAGNATE_START := "metal_magnate"
+
+const REWARD_ID_INTEGRATE := "mini_quest_chain_integration"
+const REWARD_ID_MONETISE := "mini_quest_surplus_monetised"
+const REWARD_ID_STEEL := "mini_quest_steel_furnace_power"
+const REWARD_ID_DEPOSITS := "mini_quest_ore_transport"
+
+const REWARD_PCT := 5.0
+const REWARD_GOOD := "windows"
+const REWARD_TEXT := "+5% output when producing windows"
+const MONETISE_PCT := 15.0
+const MONETISE_TURNS := 20
+const FURNACE_BUILDING := "b_002"
+const STEEL_POWER_PCT := -10.0
+const ORE_TRANSPORT_PCT := -10.0
+
+const MISSION_TEXT := {
+	"steel": {
+		"title": "Produce Steel",
+		"subtitle": "Smelt your own ingots into steel",
+		"steps": [
+			"Produce your own steel",
+			"Supply your iron ingots to the steel furnace",
+		],
+		"reward": "-10% power in furnaces",
+		"hint": "If unsure, check the Goods Graph for Steel.",
+	},
+	"deposits": {
+		"title": "Secure lasting coal and iron deposits",
+		"subtitle": "Mine deposits that never run out",
+		# Steps are BUILT, not listed — see _deposits_steps. There is no "supply iron to your
+		# steel building" step at all: every steel recipe takes iron INGOTS, never ore
+		# (r_003 ingots+coal, r_025 ingots+oxygen+limestone, r_076 ingots+hydrogen,
+		# r_077 ingots+oxygen+coal), so it has no path through the graph and could never tick.
+		# Owner's call, 25 Aug.
+		"steps": [],
+		"reward": "-10% transport cost for coal and iron",
+		"hint": "Survey tiles to find inexhaustible deposits.",
+	},
 }
 
 const MONETISE_TITLE := "Monetise the production surplus"
-const MONETISE_HINT := "If unsure, check the Goods Graph for %s."
 
 signal quest_changed
 
-## "" until the player has produced something that picks a chain.
 var chain := ""
-var done: Array = [[false, false, false, false], [false, false, false]]
-var granted: Array = [false, false]
-## good_id of the product they chose to sell the surplus on as. "" until they pick one.
+var done: Dictionary = {}      # mission kind -> Array[bool]
+var granted: Dictionary = {}   # mission kind -> bool
+## good_id of the product picked to sell the surplus on as. "" until they pick one.
 var monetised_good := ""
+## Does the deposits mission include "supply coal to your steel building"? -1 until the mission
+## is triggered, then frozen. See _deposits_wants_coal_steel.
+var deposits_coal_step := -1
 
 
 func _ready() -> void:
@@ -91,9 +132,10 @@ func _ready() -> void:
 
 func _on_state_reset() -> void:
 	chain = ""
-	done = [[false, false, false, false], [false, false, false]]
-	granted = [false, false]
+	done = {}
+	granted = {}
 	monetised_good = ""
+	deposits_coal_step = -1
 	quest_changed.emit()
 
 
@@ -101,8 +143,6 @@ func _on_state_reset() -> void:
 
 ## Shown only once the tutorial is behind the player: during a tutorial match the coach owns
 ## their attention, and before they have ever finished one there is no "what now?" to answer.
-## A chain must also have picked itself — a player producing neither glass nor aluminium is not
-## being asked to integrate one.
 func is_available() -> bool:
 	if bool(MatchState.ruleset.get("tutorial_enabled", false)):
 		return false
@@ -111,65 +151,91 @@ func is_available() -> bool:
 	return chain != ""
 
 
-## Mission 1 until it is done, then mission 2. Both finished leaves mission 2 showing, complete.
-func active_mission() -> int:
-	return MISSION_MONETISE if _all_done(MISSION_INTEGRATE) else MISSION_INTEGRATE
-
-
 func spec() -> Dictionary:
 	return CHAINS.get(chain, {}) as Dictionary
 
 
+func missions() -> Array:
+	return spec().get("missions", []) as Array
+
+
+## The first unfinished mission, or the last one when they are all done.
+func active_mission() -> String:
+	var list := missions()
+	for kind in list:
+		if not _all_done(str(kind)):
+			return str(kind)
+	return str(list[list.size() - 1]) if not list.is_empty() else ""
+
+
 func title() -> String:
-	if active_mission() == MISSION_MONETISE:
+	var kind := active_mission()
+	if kind == "monetise":
 		return MONETISE_TITLE
+	if MISSION_TEXT.has(kind):
+		return str(MISSION_TEXT[kind].title)
 	return str(spec().get("title", ""))
 
 
 func subtitle() -> String:
-	var m := active_mission()
-	if is_mission_complete(m):
+	var kind := active_mission()
+	if _all_done(kind):
 		return "Complete — %s" % reward_text()
-	if m == MISSION_MONETISE:
+	if kind == "monetise":
 		return "Find a second buyer for your %s" % _display(_surplus_id())
+	if MISSION_TEXT.has(kind):
+		return str(MISSION_TEXT[kind].subtitle)
 	return str(spec().get("subtitle", ""))
 
 
 func steps() -> Array:
-	if active_mission() == MISSION_MONETISE:
+	var kind := active_mission()
+	if kind == "monetise":
 		return [
 			"Figure out what else can use %s" % _display(_surplus_id()),
 			"Build a production building to consume it",
 			"Sell the new good to the market",
 		]
+	if kind == "deposits":
+		return _deposits_steps()
+	if MISSION_TEXT.has(kind):
+		return MISSION_TEXT[kind].steps as Array
 	return spec().get("steps", []) as Array
 
 
 func step_done(i: int) -> bool:
-	var d: Array = done[active_mission()]
+	var d := _slots(active_mission())
 	return i < d.size() and bool(d[i])
 
 
 func reward_text() -> String:
-	if active_mission() == MISSION_MONETISE:
+	var kind := active_mission()
+	if kind == "monetise":
 		var what := _display(monetised_good) if monetised_good != "" else "the new good"
 		return "%d%% increased output of %s for %d turns" % [int(MONETISE_PCT), what, MONETISE_TURNS]
+	if MISSION_TEXT.has(kind):
+		return str(MISSION_TEXT[kind].reward)
 	return REWARD_TEXT
 
 
 func hint() -> String:
-	if active_mission() == MISSION_MONETISE:
-		return MONETISE_HINT % _display(_surplus_id())
+	var kind := active_mission()
+	if kind == "monetise":
+		return "If unsure, check the Goods Graph for %s." % _display(_surplus_id())
+	if MISSION_TEXT.has(kind):
+		return str(MISSION_TEXT[kind].hint)
 	return str(spec().get("hint", ""))
 
 
-func is_mission_complete(m: int) -> bool:
-	return chain != "" and _all_done(m)
+func is_mission_complete(kind: String) -> bool:
+	return chain != "" and _all_done(kind)
 
 
-## Kept for callers that only care whether there is anything left to do.
 func is_complete() -> bool:
-	return is_mission_complete(MISSION_INTEGRATE) and is_mission_complete(MISSION_MONETISE)
+	for kind in missions():
+		if not _all_done(str(kind)):
+			return false
+	return chain != ""
 
 
 # ── Evaluation ───────────────────────────────────────────────────────────────
@@ -182,55 +248,176 @@ func _on_turn_processed(summary: Dictionary) -> void:
 		chain = _pick_chain(produced)
 		if chain == "":
 			return
-	var s := spec()
-	if s.is_empty():
-		return
-	var mid := _good_id(str(s.mid))
-	var ore := _good_id(str(s.ore))
-	# "Produce your own X" is simply that X came out of one of your buildings this turn.
-	# "Supply it to Y" is SELF-SUFFICIENCY rather than a delivery trace: you used the good and
-	# made at least as much of it as you used, so none of that consumption leaned on the
-	# market. It is the claim a player can verify for themselves in the Goods Graph, and it
-	# does not need the transport layer to expose per-shipment provenance.
-	_tick(MISSION_INTEGRATE, 0, float(produced.get(mid, 0)) > 0.0)
-	_tick(MISSION_INTEGRATE, 1, _self_supplied(produced, consumed, mid))
-	_tick(MISSION_INTEGRATE, 2, float(produced.get(ore, 0)) > 0.0)
-	_tick(MISSION_INTEGRATE, 3, _self_supplied(produced, consumed, ore))
-	if _all_done(MISSION_INTEGRATE) and not granted[MISSION_INTEGRATE]:
-		_grant_integrate()
-
-	# Mission 2 only starts counting once mission 1 is done — its whole premise is a surplus
-	# that mission 1 created.
-	if _all_done(MISSION_INTEGRATE):
-		_evaluate_monetise(produced, sold)
+	for kind in missions():
+		var k := str(kind)
+		# Missions run in order: each one's premise is the previous one's result, so a later
+		# mission does not start counting until its predecessor is finished.
+		if k != str(missions()[0]) and not _all_done(_previous(k)):
+			continue
+		match k:
+			"integrate": _eval_integrate(produced, consumed)
+			"monetise": _eval_monetise(produced, sold)
+			"steel": _eval_steel(produced)
+			"deposits": _eval_deposits()
+		if _all_done(k) and not bool(granted.get(k, false)):
+			_grant(k)
 	quest_changed.emit()
 
 
-## Three escalating states: you have PICKED a second use (a building of yours is set to a
-## recipe that eats the surplus and makes something else), that building is RUNNING, and its
-## output has SOLD.
-func _evaluate_monetise(produced: Dictionary, sold: Dictionary) -> void:
+func _eval_integrate(produced: Dictionary, consumed: Dictionary) -> void:
+	var mid := _good_id(str(spec().get("mid", "")))
+	var ore := _good_id(str(spec().get("ore", "")))
+	# "Produce your own X" is simply that X came out of one of your buildings this turn.
+	# "Supply it to Y" is SELF-SUFFICIENCY rather than a delivery trace: you used the good and
+	# made at least as much of it as you used, so none of that consumption leaned on the
+	# market. (The magnate missions below CAN trace delivery, because a mine declares where it
+	# ships; a furnace consuming silica does not say where the silica came from.)
+	_tick("integrate", 0, float(produced.get(mid, 0)) > 0.0)
+	_tick("integrate", 1, _self_supplied(produced, consumed, mid))
+	_tick("integrate", 2, float(produced.get(ore, 0)) > 0.0)
+	_tick("integrate", 3, _self_supplied(produced, consumed, ore))
+
+
+## Three escalating states: a second use has been PICKED (a building of theirs is set to a
+## recipe that eats the surplus and makes something else), it is RUNNING, and its output SOLD.
+func _eval_monetise(produced: Dictionary, sold: Dictionary) -> void:
 	var picked := _new_consumer_output()
 	if picked != "":
 		monetised_good = picked
-	_tick(MISSION_MONETISE, 0, monetised_good != "")
+	_tick("monetise", 0, monetised_good != "")
 	if monetised_good != "":
-		_tick(MISSION_MONETISE, 1, float(produced.get(monetised_good, 0)) > 0.0)
-		_tick(MISSION_MONETISE, 2, float(sold.get(monetised_good, 0)) > 0.0)
-	if _all_done(MISSION_MONETISE) and not granted[MISSION_MONETISE]:
-		_grant_monetise()
+		_tick("monetise", 1, float(produced.get(monetised_good, 0)) > 0.0)
+		_tick("monetise", 2, float(sold.get(monetised_good, 0)) > 0.0)
+
+
+func _eval_steel(produced: Dictionary) -> void:
+	var steel := _good_id("steel")
+	var ingots := _good_id("iron_ingots")
+	_tick("steel", 0, float(produced.get(steel, 0)) > 0.0)
+	# Delivery, not self-sufficiency: an ingots building of theirs must ROUTE its ingots to a
+	# tile a steel building stands on.
+	_tick("steel", 1, _routes_between(ingots, ingots, steel))
+
+
+## Coal and iron each: a mine standing on an inexhaustible deposit, then that mine's output
+## routed to the buildings that need it. "That mine" is exact here — a producer declares its
+## destination tile, so this is a real delivery check rather than a balance of totals.
+## The coal-to-steel step only exists if their steel plant actually BURNS coal. r_003
+## Steelmaking and r_077 HIsarna do; Basic Oxygen (oxygen + limestone), Electric Arc
+## (hydrogen) and Scrap Recycling do not — asking an EAF player to route coal into it would be
+## a step they could never complete.
+##
+## FROZEN AT TRIGGER. Decided the first time the mission is evaluated, which is the turn
+## mission 1 finishes, and never re-read: a player who retools mid-mission should not watch the
+## list they are working through change shape underneath them.
+func _deposits_wants_coal_steel() -> bool:
+	if deposits_coal_step < 0:
+		deposits_coal_step = 1 if _steel_recipe_needs_coal() else 0
+	return deposits_coal_step == 1
+
+
+func _steel_recipe_needs_coal() -> bool:
+	var coal := _good_id("coal")
+	for iid in _producers_of(_good_id("steel")):
+		var recipe: Dictionary = Catalog.get_recipe(str((MatchState.buildings[iid] as Dictionary).get("recipe_id", "")))
+		for entry in (recipe.get("inputs", []) as Array):
+			if str((entry as Dictionary).get("good_id", "")) == coal:
+				return true
+	return false
+
+
+func _deposits_steps() -> Array:
+	var out: Array = [
+		"Run a mine on an infinite coal deposit",
+		"Supply coal from that mine to your ingots building",
+	]
+	if _deposits_wants_coal_steel():
+		out.append("Supply coal from that mine to your steel building")
+	out.append("Run a mine on an infinite iron deposit")
+	out.append("Supply iron from that mine to your ingots building")
+	return out
+
+
+func _eval_deposits() -> void:
+	var coal := _good_id("coal")
+	var iron := _good_id("iron_ore")
+	var ingots := _good_id("iron_ingots")
+	var steel := _good_id("steel")
+	var coal_mines := _mines_on_infinite(coal, "coal")
+	var iron_mines := _mines_on_infinite(iron, "iron_ore")
+	var ingot_tiles := _tiles_producing(ingots)
+	var steel_tiles := _tiles_producing(steel)
+	# Built in the SAME branch order as _deposits_steps, so a dropped step cannot leave the
+	# labels and the checks pointing at different things.
+	var conds: Array = [
+		not coal_mines.is_empty(),
+		_any_routes_to(coal_mines, coal, ingot_tiles),
+	]
+	if _deposits_wants_coal_steel():
+		conds.append(_any_routes_to(coal_mines, coal, steel_tiles))
+	conds.append(not iron_mines.is_empty())
+	conds.append(_any_routes_to(iron_mines, iron, ingot_tiles))
+	for i in conds.size():
+		_tick("deposits", i, bool(conds[i]))
+
+
+# ── Building queries ─────────────────────────────────────────────────────────
+
+## Instance ids of the player's buildings whose recipe's primary output is `good_id`.
+func _producers_of(good_id: String) -> Array:
+	var out: Array = []
+	if good_id == "":
+		return out
+	for iid in MatchState.buildings:
+		var recipe: Dictionary = Catalog.get_recipe(str((MatchState.buildings[iid] as Dictionary).get("recipe_id", "")))
+		if not recipe.is_empty() and str(recipe.get("output_good_id", "")) == good_id:
+			out.append(str(iid))
+	return out
+
+
+## {tile_id: true} for every building of theirs producing `good_id`.
+func _tiles_producing(good_id: String) -> Dictionary:
+	var out: Dictionary = {}
+	for iid in _producers_of(good_id):
+		var tid := str((MatchState.buildings[iid] as Dictionary).get("tile_id", ""))
+		if tid != "":
+			out[tid] = true
+	return out
+
+
+## Producers of `good_id` that stand on an inexhaustible deposit of `token`.
+func _mines_on_infinite(good_id: String, token: String) -> Array:
+	var out: Array = []
+	for iid in _producers_of(good_id):
+		var tid := str((MatchState.buildings[iid] as Dictionary).get("tile_id", ""))
+		if tid != "" and MatchState.has_infinite_deposit(tid, token):
+			out.append(iid)
+	return out
+
+
+func _any_routes_to(instances: Array, good_id: String, tiles: Dictionary) -> bool:
+	if tiles.is_empty():
+		return false
+	for iid in instances:
+		if tiles.has(str(MatchState.get_output_stockpile_destination(str(iid), good_id))):
+			return true
+	return false
+
+
+## True when a producer of `from_good` routes `ship_good` to a tile that produces `to_good`.
+func _routes_between(from_good: String, ship_good: String, to_good: String) -> bool:
+	return _any_routes_to(_producers_of(from_good), ship_good, _tiles_producing(to_good))
 
 
 ## The output good of any building of theirs whose recipe consumes the surplus and makes
-## something OTHER than the chain's own product — i.e. the second buyer the mission asks for.
+## something OTHER than the chain's own product — the second buyer the mission asks for.
 func _new_consumer_output() -> String:
 	var surplus := _surplus_id()
 	if surplus == "":
 		return ""
 	var own := _good_id(str(spec().get("made", "")))
 	for iid in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[iid]
-		var recipe: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))
+		var recipe: Dictionary = Catalog.get_recipe(str((MatchState.buildings[iid] as Dictionary).get("recipe_id", "")))
 		if recipe.is_empty():
 			continue
 		var out_id := str(recipe.get("output_good_id", ""))
@@ -242,6 +429,8 @@ func _new_consumer_output() -> String:
 	return ""
 
 
+# ── Plumbing ─────────────────────────────────────────────────────────────────
+
 static func _self_supplied(produced: Dictionary, consumed: Dictionary, good_id: String) -> bool:
 	if good_id == "":
 		return false
@@ -249,26 +438,54 @@ static func _self_supplied(produced: Dictionary, consumed: Dictionary, good_id: 
 	return used > 0.0 and float(produced.get(good_id, 0)) >= used
 
 
+func _slots(kind: String) -> Array:
+	if not done.has(kind):
+		var n := _deposits_steps().size() if kind == "deposits" else int(MISSION_KINDS.get(kind, 0))
+		var a: Array = []
+		for _i in n:
+			a.append(false)
+		done[kind] = a
+	return done[kind] as Array
+
+
 ## Sticky — see the header.
-func _tick(mission: int, i: int, met: bool) -> void:
+func _tick(kind: String, i: int, met: bool) -> void:
 	if met:
-		(done[mission] as Array)[i] = true
+		var a := _slots(kind)
+		if i < a.size():
+			a[i] = true
 
 
-func _all_done(mission: int) -> bool:
-	for d in (done[mission] as Array):
+func _all_done(kind: String) -> bool:
+	if kind == "":
+		return false
+	var a := _slots(kind)
+	if a.is_empty():
+		return false
+	for d in a:
 		if not d:
 			return false
 	return true
 
 
-## Whichever of the two the player actually makes. On the rare run that works both lines the
-## larger output wins — the mission should name the chain they are already invested in.
+func _previous(kind: String) -> String:
+	var list := missions()
+	var i := list.find(kind)
+	return str(list[i - 1]) if i > 0 else ""
+
+
+## The magnate is decided by the start; glass and aluminium by whichever the player makes more
+## of, since the tutorial forks and nothing in the ruleset records which way they went.
 func _pick_chain(produced: Dictionary) -> String:
+	if str(MatchState.ruleset.get("start_id", "")) == MAGNATE_START:
+		return "magnate"
 	var best := ""
 	var best_qty := 0.0
 	for key in CHAINS:
-		var qty := float(produced.get(_good_id(str(CHAINS[key].made)), 0))
+		var made := str((CHAINS[key] as Dictionary).get("made", ""))
+		if key == "magnate" or made == "":
+			continue
+		var qty := float(produced.get(_good_id(made), 0))
 		if qty > best_qty:
 			best_qty = qty
 			best = str(key)
@@ -289,32 +506,43 @@ static func _display(good_id: String) -> String:
 	return Catalog.get_display_name(good_id) if good_id != "" else ""
 
 
-func _grant_integrate() -> void:
-	granted[MISSION_INTEGRATE] = true
-	if Modifiers.has(REWARD_ID_INTEGRATE):
-		return
-	Modifiers.add({
-		"id": REWARD_ID_INTEGRATE,
-		"domain": "recipe_output",
-		"target_match": {"good_internal": REWARD_GOOD},
-		"pct": REWARD_PCT,
-		"label": "Integrated supply chain",
-		"source": "quest:chain_integration",
-	})
+# ── Rewards ──────────────────────────────────────────────────────────────────
+
+func _grant(kind: String) -> void:
+	granted[kind] = true
+	match kind:
+		"integrate":
+			_add(REWARD_ID_INTEGRATE, {
+				"domain": "recipe_output", "target_match": {"good_internal": REWARD_GOOD},
+				"pct": REWARD_PCT, "label": "Integrated supply chain",
+				"source": "quest:chain_integration"})
+		"monetise":
+			if monetised_good == "":
+				return
+			_add(REWARD_ID_MONETISE, {
+				"domain": "recipe_output",
+				"target_match": {"good_internal": Catalog.get_internal_name(monetised_good)},
+				"pct": MONETISE_PCT, "duration_turns": MONETISE_TURNS,
+				"label": "Monetised surplus", "source": "quest:surplus_monetised"})
+		"steel":
+			# building_power's apply-site ctx carries `building_id`, so that is the key to
+			# match on. b_002 is the Furnace.
+			_add(REWARD_ID_STEEL, {
+				"domain": "building_power", "target_match": {"building_id": FURNACE_BUILDING},
+				"pct": STEEL_POWER_PCT, "label": "Steelworks heat recovery",
+				"source": "quest:steel"})
+		"deposits":
+			# transport_cost's ctx carries `good_id`, not `good_internal` — one entry per ore.
+			for token in ["coal", "iron_ore"]:
+				_add("%s_%s" % [REWARD_ID_DEPOSITS, token], {
+					"domain": "transport_cost", "target_match": {"good_id": _good_id(token)},
+					"pct": ORE_TRANSPORT_PCT, "label": "Secured ore deposits",
+					"source": "quest:deposits"})
 
 
-## Timed, unlike mission 1's: duration_turns is ModifierState's own convenience and it handles
-## the expiry phase arithmetic, so this does not need its own clock.
-func _grant_monetise() -> void:
-	granted[MISSION_MONETISE] = true
-	if monetised_good == "" or Modifiers.has(REWARD_ID_MONETISE):
+func _add(id: String, fields: Dictionary) -> void:
+	if Modifiers.has(id):
 		return
-	Modifiers.add({
-		"id": REWARD_ID_MONETISE,
-		"domain": "recipe_output",
-		"target_match": {"good_internal": Catalog.get_internal_name(monetised_good)},
-		"pct": MONETISE_PCT,
-		"duration_turns": MONETISE_TURNS,
-		"label": "Monetised surplus",
-		"source": "quest:surplus_monetised",
-	})
+	var m := fields.duplicate(true)
+	m["id"] = id
+	Modifiers.add(m)

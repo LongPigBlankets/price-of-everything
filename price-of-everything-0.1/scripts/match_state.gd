@@ -2006,6 +2006,18 @@ func seed_deposits(terrain) -> void:
 				deposit_remaining[tid] = {}
 			deposit_remaining[tid][token] = qty
 
+## True when `tile_id` carries an INEXHAUSTIBLE deposit of `token`.
+##
+## Not answerable from `deposit_remaining`: seed_deposits skips anything with qty <= 0, so an
+## infinite deposit is absent from that map entirely and `deposit_remaining_for` returns -1
+## for "inexhaustible" and for "no deposit here" alike. The distinction lives in the terrain,
+## which is what this reads.
+func has_infinite_deposit(tile_id: String, token: String) -> bool:
+	for d in _tile_deposit_goods(tile_id):
+		if str((d as Dictionary).get("internal_name", "")) == token:
+			return bool((d as Dictionary).get("infinite", false))
+	return false
+
 ## Remaining yield of a deposit, or -1 if the deposit isn't tracked (e.g. water,
 ## or a deposit given no amount in the CSV). 0 means it has been mined out.
 func deposit_remaining_for(tile_id: String, token: String) -> int:
