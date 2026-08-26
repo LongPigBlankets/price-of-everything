@@ -66,10 +66,15 @@ const CHAINS := {
 	},
 }
 
-## The start whose missions are the magnate pair. Picked from the ruleset rather than from what
-## the player produces: the magnate already smelts ingots on turn 1, so there is nothing to wait
-## for and nothing to infer.
-const MAGNATE_START := "metal_magnate"
+## Starts whose chain is known the moment the match loads, so the module can appear on turn 1
+## rather than after the first turn resolves. Both demo starts are here — the magnate already
+## smelts ingots on turn 1 and the glass merchant already makes glass, so there is nothing to
+## wait for. The tutorial fork is NOT here: it records no start_id for which way the player went,
+## so its chain is inferred from output in _pick_chain instead.
+const START_CHAINS := {
+	"metal_magnate": "magnate",
+	"glass_merchant": "glass",
+}
 
 const REWARD_ID_INTEGRATE := "mini_quest_chain_integration"
 const REWARD_ID_MONETISE := "mini_quest_surplus_monetised"
@@ -139,6 +144,21 @@ func _ready() -> void:
 	await get_tree().process_frame
 	MatchState.state_reset.connect(_on_state_reset)
 	Production.turn_processed.connect(_on_turn_processed)
+	# Why TWO more hooks, not just turn_processed? A start whose chain is known up front should
+	# show the module on turn 1, not after the first turn resolves. The ruleset (with its
+	# start_id) is only in place once the snapshot is applied, which match_loaded announces — but
+	# that can fire a hair before this autoload finishes connecting on a fast boot, so it is not
+	# leaned on alone. phase_started(DECIDE) fires at the top of every turn INCLUDING turn 1,
+	# well after setup, and is the reliable one. Both only nudge a refresh; is_available() does
+	# the actual resolving, lazily, so it cannot matter which nudge lands first or whether one is
+	# missed.
+	SaveLoad.match_loaded.connect(func() -> void: quest_changed.emit())
+	TurnManager.phase_started.connect(_on_phase_started)
+
+
+func _on_phase_started(phase: int) -> void:
+	if phase == TurnManager.Phase.DECIDE:
+		quest_changed.emit()
 
 
 func _on_state_reset() -> void:
@@ -173,6 +193,12 @@ func is_available() -> bool:
 	# run is told apart from a normal match — where tutorial_enabled was never set at all.
 	if bool(MatchState.ruleset.get("tutorial_enabled", false)) and not Tutorial.setup_reached:
 		return false
+	# Resolve the chain lazily and cache it. For a START_CHAINS start this needs no production,
+	# so the module can answer "available" on turn 1 the first time anything asks — no dependence
+	# on which setup signal fired when. The tutorial fork returns "" here (no start_id, nothing
+	# produced yet) and is filled in later by _on_turn_processed.
+	if chain == "":
+		chain = _pick_chain({})
 	return chain != ""
 
 
@@ -556,11 +582,14 @@ func _previous(kind: String) -> String:
 	return str(list[i - 1]) if i > 0 else ""
 
 
-## The magnate is decided by the start; glass and aluminium by whichever the player makes more
-## of, since the tutorial forks and nothing in the ruleset records which way they went.
+## A named start decides the chain outright; the tutorial fork, which records nothing in the
+## ruleset, is inferred from whichever of glass/aluminium the player makes more of. The start
+## check comes first and needs no production, which is why a START_CHAINS start resolves the
+## instant the match loads rather than after a turn.
 func _pick_chain(produced: Dictionary) -> String:
-	if str(MatchState.ruleset.get("start_id", "")) == MAGNATE_START:
-		return "magnate"
+	var start := str(MatchState.ruleset.get("start_id", ""))
+	if START_CHAINS.has(start):
+		return str(START_CHAINS[start])
 	var best := ""
 	var best_qty := 0.0
 	for key in CHAINS:

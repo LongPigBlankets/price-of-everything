@@ -21,6 +21,7 @@ func _ready() -> void:
 		cam.edge_pan_enabled = false
 
 	await _bar_height_check()
+	await _turn_one_visibility()
 	await _quest_cases()
 	await _celebration_case()
 	await _flash_case()
@@ -116,6 +117,31 @@ func _rewards_live(kind: String) -> String:
 ## Waits are wall-clock, not frame counts. A frame in this harness is 50-70 ms, not 16, so
 ## counting frames put every sample well past the moment it meant to catch and the whole
 ## sequence looked like it had fired instantly.
+## The module has to be visible on TURN 1 for a start whose chain is known up front — the two
+## demo starts. It used to wait for the first turn to PROCESS (chain was only set in
+## _on_turn_processed), so it appeared on turn 2. Now match_loaded resolves it, so this drives
+## match_loaded and asserts the chain WITHOUT processing any turn.
+func _turn_one_visibility() -> void:
+	Tutorial.active = false
+	Tutorial.setup_reached = true
+	MatchState.ruleset["tutorial_enabled"] = false
+	for start_id: String in ["metal_magnate", "glass_merchant"]:
+		# The match we are pretending to be in, then a fresh (unresolved) chain. Set start_id
+		# BEFORE clearing the chain: _on_state_reset would re-cache from a stale start_id here,
+		# which the real game avoids because teardown clears start_id first.
+		MatchState.ruleset["start_id"] = start_id
+		MiniQuest.chain = ""
+		# No _on_turn_processed here — the whole point is turn 1, before any turn resolves.
+		# is_available() must resolve the chain on its own; call it first so chain is populated.
+		var avail: bool = MiniQuest.is_available()
+		var want := "magnate" if start_id == "metal_magnate" else "glass"
+		print("[TURN1] %-14s -> chain=%s available=%s (want %s / true) %s" %
+			[start_id, MiniQuest.chain, str(avail), want,
+			"OK" if MiniQuest.chain == want and avail else "WRONG"])
+	MiniQuest._on_state_reset()
+	MatchState.ruleset["start_id"] = ""
+
+
 func _celebration_case() -> void:
 	var bar: Node = _find_topbar(_wm)
 	if bar == null:

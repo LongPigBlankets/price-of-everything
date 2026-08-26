@@ -1195,6 +1195,13 @@ func _build_quest() -> void:
 	mod.visible = false
 	MiniQuest.quest_changed.connect(_refresh_quest)
 	MiniQuest.mission_completed.connect(_on_quest_mission_completed)
+	# Refresh when the match snapshot lands: that is the first moment the ruleset (and its
+	# start_id) exists, and is_available() resolves a start-derived chain from it. Connecting
+	# HERE — on the bar, not only in MiniQuest — sidesteps a boot race: match_loaded fires during
+	# world build, after this bar's _ready, whereas MiniQuest is a deferred autoload that on a
+	# fast boot can still be wiring up. Without it the module first appeared on turn 2, because
+	# TurnManager emits turn 1's DECIDE before the ruleset is even loaded, so that nudge is lost.
+	SaveLoad.match_loaded.connect(_refresh_quest)
 	get_viewport().size_changed.connect(_place_quest)
 	_refresh_quest()
 
