@@ -20,6 +20,7 @@ func _ready() -> void:
 	if cam != null:
 		cam.edge_pan_enabled = false
 
+	await _bar_height_check()
 	await _quest_cases()
 	await _flash_case()
 	get_tree().quit()
@@ -56,6 +57,43 @@ func _by_gid(by_name: Dictionary) -> Dictionary:
 	for k in by_name:
 		out[_gid(str(k))] = by_name[k]
 	return out
+
+
+## Does the quest module make the bar thicker, or spill out of it?
+##
+## TopBar is a PanelContainer, and a container grows to its children's minimum size — but this
+## one hangs off HUD (a plain Control) by anchors with offset_bottom = BAR_H, so its height is
+## pinned. Worth MEASURING rather than reasoning about: the module is a direct child, and the
+## briefing notch next to it is deliberately TALLER than the bar, so "a child taller than BAR_H"
+## is a shape this bar already contains.
+func _bar_height_check() -> void:
+	var bar: Node = _find_topbar(_wm)
+	if bar == null:
+		print("[BARH] top bar not found")
+		return
+	PlayerProfile.tutorial_completed = false
+	MatchState.ruleset["tutorial_enabled"] = false
+	MiniQuest._on_state_reset()
+	await _settle(8)
+	var off_h: float = bar.size.y
+	var off_min: float = bar.get_combined_minimum_size().y
+	# Now make the quest appear.
+	PlayerProfile.tutorial_completed = true
+	MiniQuest._on_turn_processed(_sum({"glass": 40, "silica": 20}, {"silica": 12}))
+	await _settle(10)
+	var on_h: float = bar.size.y
+	var on_min: float = bar.get_combined_minimum_size().y
+	var qb = bar.get("_quest_btn")
+	var bar_h: float = bar.BAR_H
+	print("[BARH] BAR_H=%.0f | bar height  quest off=%.1f  on=%.1f  (delta %.1f)" %
+		[bar_h, off_h, on_h, on_h - off_h])
+	print("[BARH] bar min height  off=%.1f  on=%.1f  (delta %.1f)" % [off_min, on_min, on_min - off_min])
+	if qb != null:
+		var bottom: float = qb.position.y + qb.size.y
+		print("[BARH] module rect y=%.1f h=%.1f bottom=%.1f vs drawn bar height=%.0f -> %s" %
+			[qb.position.y, qb.size.y, bottom, on_h,
+			"INSIDE" if bottom <= on_h + 0.5 else "OVERFLOWS BY %.1f" % (bottom - on_h)])
+	MiniQuest._on_state_reset()
 
 
 func _quest_cases() -> void:
