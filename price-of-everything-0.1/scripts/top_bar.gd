@@ -337,6 +337,18 @@ class _ModuleBtn extends PanelContainer:
 		set(v):
 			rim = v
 			_restyle()
+	## Completion glow, 0–1. Washes the fill brass and lifts a brass shadow — the mission-done
+	## flash the owner wants to happen HERE, on the bar, rather than down in the flyout.
+	var glow := 0.0:
+		set(v):
+			glow = v
+			_restyle()
+	## A checkmark drawn straight onto the module over 0–1, so completion is marked where the
+	## player is already looking. Overlays the label for the ~1.2 s of the flash, then clears.
+	var tick_progress := 0.0:
+		set(v):
+			tick_progress = clampf(v, 0.0, 1.0)
+			queue_redraw()
 	var _hover := false
 	var _bar: Node
 	func _init(bar: Node) -> void:
@@ -356,7 +368,38 @@ class _ModuleBtn extends PanelContainer:
 			sb.border_color = rim
 			sb.set_border_width_all(1)
 			sb.set_corner_radius_all(8)
+		if glow > 0.0:
+			var brass: Color = DS.PALETTE.BRASS
+			sb.bg_color = sb.bg_color.lerp(Color(brass.r, brass.g, brass.b, 0.55), glow)
+			sb.shadow_color = Color(brass.r, brass.g, brass.b, 0.6 * glow)
+			sb.shadow_size = int(round(16.0 * glow))
+			sb.set_corner_radius_all(8)
 		add_theme_stylebox_override("panel", sb)
+	## The tick, drawn OVER the panel. A PanelContainer paints its stylebox from a C++
+	## notification and then still calls this script _draw, so the checkmark lands on top of
+	## the fill rather than replacing it. White over a dark halo: white so it reads on the
+	## brass at the peak of a flash, the halo so it reads over the label's own letters (there
+	## is no empty corner on a module the text already fills) and on the navy between flashes.
+	func _draw() -> void:
+		if tick_progress <= 0.0:
+			return
+		var s: float = minf(size.x, size.y) * 0.72
+		var ox: float = (size.x - s) * 0.5
+		var oy: float = (size.y - s) * 0.5
+		var a := Vector2(ox + 0.16 * s, oy + 0.52 * s)
+		var b := Vector2(ox + 0.40 * s, oy + 0.80 * s)
+		var c := Vector2(ox + 0.88 * s, oy + 0.18 * s)
+		var w: float = maxf(2.5, s * 0.17)
+		const SHORT := 0.35
+		var first: Vector2 = a.lerp(b, minf(tick_progress / SHORT, 1.0))
+		var second: Vector2 = b.lerp(c, (tick_progress - SHORT) / (1.0 - SHORT)) if tick_progress > SHORT else b
+		# Halo first (wider, dark, translucent), then the white stroke on top.
+		draw_line(a, first, Color(0.02, 0.09, 0.18, 0.6), w + 3.0, true)
+		if tick_progress > SHORT:
+			draw_line(b, second, Color(0.02, 0.09, 0.18, 0.6), w + 3.0, true)
+		draw_line(a, first, Color(1, 1, 1, 1), w, true)
+		if tick_progress > SHORT:
+			draw_line(b, second, Color(1, 1, 1, 1), w, true)
 	func _gui_input(e: InputEvent) -> void:
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 			accept_event()
@@ -1104,22 +1147,13 @@ func _quest_rim() -> Color:
 	return C_CREAM.darkened(0.15)
 
 
-## A mission landed. The toast MiniQuest raises says WHAT happened; the module and its flyout
-## say where — see _celebrate_mission for the sequence itself.
-var _quest_pulse: Tween = null
-
+## A mission landed. The toast MiniQuest raises says WHAT happened; the module — flashing up on
+## the bar — says where. See _celebrate_mission for the sequence itself.
 func _on_quest_mission_completed(kind: String, _mission_title: String, _reward: String) -> void:
 	_refresh_quest()   # the module may only now be earning its place on the bar
 	if _quest_btn == null or not is_instance_valid(_quest_btn) or not _quest_btn.visible:
 		return
 	_celebrate_mission(kind)
-
-
-## The module's rim during the celebration: gold at rest, brass at the peak of a flash.
-func _set_quest_rim(t: float) -> void:
-	if _quest_btn == null or not is_instance_valid(_quest_btn):
-		return
-	(_quest_btn as _ModuleBtn).rim = _quest_rim().lerp(DS.PALETTE.BRASS, t)
 
 
 ## Ten pixels off the notch's right edge, vertically centred in the bar proper (the notch hangs
@@ -1635,71 +1669,79 @@ func _toggle_quest_section(kind: String) -> void:
 		_refresh_open_fly()
 
 
-## The completion sequence, 1.5 s of it: the finished section flashes brass twice while its
-## reward tick draws itself, then the next mission takes its place, sits open for three seconds
-## and folds away.
+## The completion sequence, 1.5 s of it, and it happens ON THE BAR (owner, 26 Aug). The module
+## itself flashes brass twice while a tick draws across it; the flyout stays SHUT through all of
+## that. Only when the flash is done does the module switch to the next mission and the flyout
+## pop open for three seconds to reveal it, then fold away.
+##
+## Driving the module rather than a flyout section is also what makes the timing trustworthy:
+## the module is a permanent node, so nothing the turn-resolution does can free the tween's
+## target mid-flight — which is exactly what used to collapse the whole 1.5 s into an instant.
 func _celebrate_mission(kind: String) -> void:
 	if _quest_btn == null or not is_instance_valid(_quest_btn) or not _quest_btn.visible:
 		return
 	_quest_celebrating = true
 	_quest_celebrating_kind = kind
-	_refresh_quest()   # the module holds on the finished mission for the length of the flash
-	_quest_open = kind
+	# The flash is on the bar, so the flyout has no part in it — close it if a prior celebration
+	# left it open, and do NOT open it now.
+	if _fly_open_id == "quest" and _quest_auto_opened:
+		_close_fly()
+	_refresh_quest()   # the module holds on the finished mission ("Complete — <reward>")
+	var mod := _quest_btn as _ModuleBtn
+	mod.tick_progress = 0.0
+	_kill_quest_anim()
+	# One tween flashes the module — rim and fill glow together, twice — then hands over.
+	_quest_anim = create_tween()
+	for _i in QUEST_FLASHES:
+		_quest_anim.tween_method(_set_quest_celebrate, 0.0, 1.0, QUEST_FLASH_SEC * 0.5)
+		_quest_anim.tween_method(_set_quest_celebrate, 1.0, 0.0, QUEST_FLASH_SEC * 0.5)
+	_quest_anim.tween_interval(maxf(0.0, QUEST_CELEBRATE_SEC - QUEST_FLASH_SEC * QUEST_FLASHES))
+	_quest_anim.tween_callback(_finish_celebration.bind(kind))
+	# The tick draws across BOTH flashes, so it is its own tween rather than a step of the flash.
+	_quest_tick_anim = create_tween()
+	_quest_tick_anim.tween_property(mod, "tick_progress", 1.0, QUEST_FLASH_SEC * QUEST_FLASHES)
+
+
+## One flash of the module: rim to brass and the fill glow, together on the same eased value.
+func _set_quest_celebrate(t: float) -> void:
+	if _quest_btn == null or not is_instance_valid(_quest_btn):
+		return
+	var mod := _quest_btn as _ModuleBtn
+	mod.rim = _quest_rim().lerp(DS.PALETTE.BRASS, t)
+	mod.glow = t
+
+
+func _kill_quest_anim() -> void:
+	for t: Tween in [_quest_anim, _quest_tick_anim]:
+		if t != null and t.is_valid():
+			t.kill()
+	_quest_anim = null
+	_quest_tick_anim = null
+
+
+## 1.5 s in: the flash is over. Clear the module back to its resting look, switch it to the next
+## mission, and THEN — not before — pop the flyout open on that mission for three seconds.
+func _finish_celebration(finished_kind: String) -> void:
+	if _quest_btn != null and is_instance_valid(_quest_btn):
+		var mod := _quest_btn as _ModuleBtn
+		mod.glow = 0.0
+		mod.tick_progress = 0.0
+		mod.rim = _quest_rim()
+	_quest_celebrating = false
+	_quest_celebrating_kind = ""
+	var list: Array = MiniQuest.missions()
+	var idx: int = list.find(finished_kind)
+	var next := str(list[idx + 1]) if idx >= 0 and idx + 1 < list.size() else ""
+	_quest_open = next
+	_refresh_quest()   # the module now reads the next mission (or hides, if the chain is done)
+	if next == "":
+		return
+	# The reveal: the next mission pops open, and folds itself away after three seconds.
 	if _fly_open_id != "quest":
 		_quest_auto_opened = true
 		_open_fly("quest")
 	else:
 		_refresh_open_fly()
-	# _open_fly builds synchronously, so the section exists by now.
-	var section: Control = _quest_sections.get(kind)
-	if section == null or not is_instance_valid(section):
-		return
-	_kill_quest_anim()
-	_quest_anim = create_tween()
-	for _i in QUEST_FLASHES:
-		_quest_anim.tween_property(section, "glow", 1.0, QUEST_FLASH_SEC * 0.5)
-		_quest_anim.tween_property(section, "glow", 0.0, QUEST_FLASH_SEC * 0.5)
-	# The module up on the bar flashes with it, on its own tween so the two stay in step even
-	# though one drives a stylebox and the other a rim colour.
-	_quest_pulse = create_tween()
-	for _i in QUEST_FLASHES:
-		_quest_pulse.tween_method(_set_quest_rim, 0.0, 1.0, QUEST_FLASH_SEC * 0.5)
-		_quest_pulse.tween_method(_set_quest_rim, 1.0, 0.0, QUEST_FLASH_SEC * 0.5)
-	_quest_anim.tween_interval(maxf(0.0, QUEST_CELEBRATE_SEC - QUEST_FLASH_SEC * QUEST_FLASHES))
-	_quest_anim.tween_callback(_advance_quest_accordion.bind(kind))
-	# The tick draws ACROSS both flashes rather than after them, so it is a second tween: a
-	# Tween is a sequence, and parallel() would only pair it with the last step of the flash.
-	var tick: Control = (section as _QuestSection).tick
-	if tick != null and is_instance_valid(tick):
-		# Back to zero first: the section was built from a mission that is ALREADY complete, so
-		# its tick starts drawn, and animating 1 -> 1 is a tick that never appears to be drawn.
-		tick.progress = 0.0
-		_quest_tick_anim = create_tween()
-		_quest_tick_anim.tween_property(tick, "progress", 1.0, QUEST_FLASH_SEC * QUEST_FLASHES)
-
-
-func _kill_quest_anim() -> void:
-	for t: Tween in [_quest_anim, _quest_tick_anim, _quest_pulse]:
-		if t != null and t.is_valid():
-			t.kill()
-	_quest_anim = null
-	_quest_tick_anim = null
-	_quest_pulse = null
-
-
-func _advance_quest_accordion(finished_kind: String) -> void:
-	var list: Array = MiniQuest.missions()
-	var idx: int = list.find(finished_kind)
-	var next := str(list[idx + 1]) if idx >= 0 and idx + 1 < list.size() else ""
-	_quest_open = next
-	# THIS is the moment the module switches to the next mission — 1.5 s in, after the flash,
-	# not the instant the turn resolved. _refresh_quest rebuilds the flyout with it.
-	_quest_celebrating = false
-	_quest_celebrating_kind = ""
-	_refresh_quest()
-	if next == "":
-		_collapse_quest_accordion("")
-		return
 	get_tree().create_timer(QUEST_NEXT_OPEN_SEC).timeout.connect(
 		_collapse_quest_accordion.bind(next))
 
@@ -1719,15 +1761,12 @@ func _collapse_quest_accordion(expected: String) -> void:
 		_refresh_open_fly()
 
 
-## One accordion section. A PanelContainer so the whole block is the click target and can carry
-## the completion glow, with `glow` (0–1) driven by the tween in _celebrate_mission.
+## One accordion section: the whole block is the click target that toggles it. It still holds a
+## `tick` for the reward line's static checkmark, but the completion FLASH is no longer here —
+## that plays on the module up on the bar (see _celebrate_mission), where the eye already is.
 class _QuestSection extends PanelContainer:
 	signal pressed
 	var tick: Control = null
-	var glow := 0.0:
-		set(v):
-			glow = v
-			_restyle()
 	var _hover := false
 
 	func _init() -> void:
@@ -1738,20 +1777,15 @@ class _QuestSection extends PanelContainer:
 		_restyle()
 
 	func _restyle() -> void:
-		var brass: Color = DS.PALETTE.BRASS
 		var sb := StyleBoxFlat.new()
 		sb.set_corner_radius_all(8)
 		sb.content_margin_left = 9
 		sb.content_margin_right = 9
 		sb.content_margin_top = 7
 		sb.content_margin_bottom = 7
-		sb.bg_color = Color(1, 1, 1, 0.09 if _hover else 0.035).lerp(
-			Color(brass.r, brass.g, brass.b, 0.28), glow)
+		sb.bg_color = Color(1, 1, 1, 0.09 if _hover else 0.035)
 		sb.set_border_width_all(1)
-		sb.border_color = Color(1, 1, 1, 0.13).lerp(brass, glow)
-		if glow > 0.0:
-			sb.shadow_color = Color(brass.r, brass.g, brass.b, 0.55 * glow)
-			sb.shadow_size = int(round(14.0 * glow))
+		sb.border_color = Color(1, 1, 1, 0.13)
 		add_theme_stylebox_override("panel", sb)
 
 	func _gui_input(e: InputEvent) -> void:
