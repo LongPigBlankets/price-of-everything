@@ -48,65 +48,132 @@ func _quest_cases() -> void:
 	# Nothing until the tutorial is behind the player.
 	PlayerProfile.tutorial_completed = false
 	MatchState.ruleset["tutorial_enabled"] = false
+	MatchState.ruleset["start_id"] = ""
 	MiniQuest._on_state_reset()
 	print("[QUEST] before tutorial: available=%s (want false)" % str(MiniQuest.is_available()))
 
 	PlayerProfile.tutorial_completed = true
 	# Glass player, two steps in: silica made and self-supplied, sand still bought.
 	MiniQuest._on_turn_processed(_sum({"glass": 40, "silica": 20}, {"silica": 12, "sand": 30}))
-	print("[QUEST] m1 glass: chain=%s available=%s done=%s title=%s (want glass/true/2 done)" %
-		[MiniQuest.chain, str(MiniQuest.is_available()), str(MiniQuest.done[0]), MiniQuest.title()])
+	print("[QUEST] m1 glass: chain=%s active=%s done=%s title=%s" %
+		[MiniQuest.chain, MiniQuest.active_mission(), str(MiniQuest.done), MiniQuest.title()])
 	await _settle(6)
 	var bar: Node = _find_topbar(_wm)
 	if bar != null:
 		var qb = bar.get("_quest_btn")
 		var bb = bar.get("_briefing_btn")
-		print("[QUEST] module pos=%s size=%s | notch right edge=%.0f (want pos.x = edge + 10)" %
-			[str(qb.position), str(qb.size), bb.position.x + bb.size.x])
+		print("[QUEST] module pos=%s | notch right edge=%.0f (want pos.x = edge + 10)" %
+			[str(qb.position), bb.position.x + bb.size.x])
 	await _shoot_module("res://quest_module.png")
 
-	# Finish mission 1 — the reward lands and the module flips to mission 2.
+	# Finish mission 1 — reward lands, module flips to mission 2.
 	MiniQuest._on_turn_processed(_sum({"glass": 40, "silica": 20, "sand": 60}, {"silica": 12, "sand": 30}))
-	print("[QUEST] m1 complete=%s reward=%s | now showing: %s" %
-		[str(MiniQuest.is_mission_complete(0)), str(Modifiers.has(MiniQuest.REWARD_ID_INTEGRATE)),
-		MiniQuest.title()])
-	print("[QUEST] m2 steps=%s" % str(MiniQuest.steps()))
+	print("[QUEST] m1 complete=%s reward=%s | now: %s" %
+		[str(MiniQuest.is_mission_complete("integrate")),
+		str(Modifiers.has(MiniQuest.REWARD_ID_INTEGRATE)), MiniQuest.title()])
 
-	# Mission 2 needs a building of theirs running a recipe that eats the surplus and makes
-	# something else. r_029 Concrete Firing consumes silica and makes concrete.
+	# Mission 2: r_029 Concrete Firing consumes silica and makes concrete.
 	var iid := "quest_probe_concrete"
-	MatchState.buildings[iid] = {"building_id": "b_001", "recipe_id": "r_029", "instance_id": iid}
+	MatchState.buildings[iid] = {"building_id": "b_002", "recipe_id": "r_029", "instance_id": iid, "tile_id": "tile_5_10"}
 	MiniQuest._on_turn_processed(_sum(
-		{"glass": 40, "silica": 20, "sand": 60, "concrete": 12},
-		{"silica": 12, "sand": 30},
-		{"concrete": 9}))
-	print("[QUEST] m2 done=%s picked=%s reward=%s (want 3 done)" %
-		[str(MiniQuest.done[1]), Catalog.get_display_name(MiniQuest.monetised_good),
+		{"glass": 40, "silica": 20, "sand": 60, "concrete": 12}, {"silica": 12, "sand": 30}, {"concrete": 9}))
+	print("[QUEST] m2 done=%s picked=%s reward=%s" %
+		[str(MiniQuest.done.get("monetise")), Catalog.get_display_name(MiniQuest.monetised_good),
 		MiniQuest.reward_text()])
-	var timed := false
-	for m in Modifiers.active():
-		if str(m.get("id", "")) == MiniQuest.REWARD_ID_MONETISE:
-			timed = int(m.get("expires_turn", 0)) > 0
-			print("[QUEST] m2 modifier pct=%s expires_turn=%s target=%s" %
-				[str(m.get("pct")), str(m.get("expires_turn")), str(m.get("target_match"))])
-	print("[QUEST] m2 reward is time-limited: %s (want true)" % str(timed))
 	MatchState.buildings.erase(iid)
-
-	if bar != null:
-		bar._toggle_fly("quest")
-		await _settle(10)
-		await _shoot_module("res://quest_flyout.png")
-		print("[QUEST] flyout size=%s (want y=120)" % str(bar._fly_panel.size))
-		bar._toggle_fly("quest")
 
 	# Aluminium mirror: chlorine + bauxite, both feeding the smelter.
 	MiniQuest._on_state_reset()
 	MiniQuest._on_turn_processed(_sum(
-		{"aluminium": 30, "chlorine": 15, "bauxite_ore": 40},
-		{"chlorine": 10, "bauxite_ore": 22}))
-	print("[QUEST] alu: chain=%s done=%s title=%s" %
-		[MiniQuest.chain, str(MiniQuest.done[0]), MiniQuest.title()])
-	print("[QUEST] alu steps=%s" % str(MiniQuest.steps()))
+		{"aluminium": 30, "chlorine": 15, "bauxite_ore": 40}, {"chlorine": 10, "bauxite_ore": 22}))
+	print("[QUEST] alu: chain=%s steps=%s" % [MiniQuest.chain, str(MiniQuest.steps())])
+
+	await _magnate_cases(bar)
+
+
+## The magnate pair. Buildings are stubbed into MatchState the way the sim holds them
+## (building_id / recipe_id / tile_id) and routed through output_stockpile_destinations, which
+## is the same dict get_output_stockpile_destination reads — so the delivery checks exercise the
+## real accessor rather than a stand-in. Mine tiles are REAL tiles carrying inexhaustible
+## deposits in tile_properties.csv, because has_infinite_deposit reads the terrain.
+func _magnate_cases(bar: Node) -> void:
+	# ISOLATE THE WORLD. This harness boots a real match, which already holds 561 buildings —
+	# and _producers_of scans all of them. Left alone, a REAL coal-burning furnace elsewhere on
+	# the map answered "does your steel plant need coal?" and the EAF case silently tested
+	# nothing. Swap in only the probes, then put the match back.
+	var saved_buildings: Dictionary = MatchState.buildings
+	var saved_routes: Dictionary = MatchState.output_stockpile_destinations
+	MatchState.buildings = {}
+	MatchState.output_stockpile_destinations = {}
+	await _magnate_body(bar)
+	MatchState.buildings = saved_buildings
+	MatchState.output_stockpile_destinations = saved_routes
+	MatchState.ruleset["start_id"] = ""
+
+
+func _magnate_body(bar: Node) -> void:
+	const INGOT_TILE := "tile_5_10"
+	const STEEL_TILE := "tile_5_11"
+	const COAL_TILE := "tile_7_4"      # bare "coal" => inexhaustible
+	const IRON_TILE := "tile_7_2"      # bare "iron_ore" => inexhaustible
+	for steel_recipe in ["r_003", "r_076"]:
+		var burns_coal: bool = steel_recipe == "r_003"
+		MiniQuest._on_state_reset()
+		MatchState.ruleset["start_id"] = "metal_magnate"
+		_clear_probes()
+		_probe("mq_ingots", "b_002", "r_005", INGOT_TILE)
+		_probe("mq_steel", "b_002" if burns_coal else "b_008", steel_recipe, STEEL_TILE)
+		_probe("mq_coal", "b_001", "r_001", COAL_TILE)
+		_probe("mq_iron", "b_001", "r_002", IRON_TILE)
+		# The ingots plant ships ingots to the steel tile.
+		_route("mq_ingots", "iron_ingots", STEEL_TILE)
+		print("[MAGNATE %s] steel recipe burns coal: %s" %
+			[steel_recipe, str(MiniQuest._steel_recipe_needs_coal())])
+		MiniQuest._on_turn_processed(_sum({"steel": 20, "iron_ingots": 30}))
+		print("[MAGNATE %s] m1 steps=%s done=%s complete=%s power_reward=%s" %
+			[steel_recipe, str(MiniQuest.steps()), str(MiniQuest.done.get("steel")),
+			str(MiniQuest.is_mission_complete("steel")), str(Modifiers.has(MiniQuest.REWARD_ID_STEEL))])
+
+		# Mission 2 is now live: its step list is decided here, from the steel recipe.
+		_route("mq_coal", "coal", INGOT_TILE)
+		_route("mq_iron", "iron_ore", INGOT_TILE)
+		MiniQuest._on_turn_processed(_sum({"steel": 20, "iron_ingots": 30, "coal": 50, "iron_ore": 50}))
+		var steps: Array = MiniQuest.steps()
+		print("[MAGNATE %s] m2 (%d steps, coal->steel present=%s) done=%s" %
+			[steel_recipe, steps.size(), str(steps.has("Supply coal from that mine to your steel building")),
+			str(MiniQuest.done.get("deposits"))])
+		if burns_coal:
+			# One more coal mine, routed to the steel tile, closes the last step.
+			_probe("mq_coal2", "b_001", "r_001", "tile_8_4")
+			_route("mq_coal2", "coal", STEEL_TILE)
+			MiniQuest._on_turn_processed(_sum({"steel": 20, "iron_ingots": 30, "coal": 50, "iron_ore": 50}))
+		print("[MAGNATE %s] m2 complete=%s transport_reward=%s" %
+			[steel_recipe, str(MiniQuest.is_mission_complete("deposits")),
+			str(Modifiers.has("%s_coal" % MiniQuest.REWARD_ID_DEPOSITS))])
+		if bar != null and burns_coal:
+			bar._toggle_fly("quest")
+			await _settle(10)
+			await _shoot_module("res://quest_flyout.png")
+			bar._toggle_fly("quest")
+	_clear_probes()
+
+
+func _probe(iid: String, building_id: String, recipe_id: String, tile_id: String) -> void:
+	MatchState.buildings[iid] = {
+		"instance_id": iid, "building_id": building_id, "recipe_id": recipe_id, "tile_id": tile_id}
+
+
+func _route(iid: String, good_internal: String, tile_id: String) -> void:
+	var gid := _gid(good_internal)
+	if not MatchState.output_stockpile_destinations.has(iid):
+		MatchState.output_stockpile_destinations[iid] = {}
+	(MatchState.output_stockpile_destinations[iid] as Dictionary)[gid] = tile_id
+
+
+func _clear_probes() -> void:
+	for iid in ["mq_ingots", "mq_steel", "mq_coal", "mq_coal2", "mq_iron"]:
+		MatchState.buildings.erase(iid)
+		MatchState.output_stockpile_destinations.erase(iid)
 
 
 ## The intermittency row must not just exist, it must flash: _flash_row parents a ColorRect
