@@ -193,6 +193,7 @@ func _ready() -> void:
 	_test_build_forecast()
 	_test_construct_v3_sim()
 	_test_construct_v3_ds()
+	await _test_construct_v3_confirm_layout()
 	_test_purchases()
 	_test_exhausted_input_source_falls_back_to_market()
 	_test_recipes_producing()
@@ -8827,6 +8828,69 @@ func _test_construct_v3_ds() -> void:
 	probe.free()
 	_check(raised == DS.PALETTE["TEXT_MUTED"] and legacy == Color("#8da0b6"),
 		"v3 tone: secondary labels raise one contrast step under the cheat only")
+
+
+func _test_construct_v3_confirm_layout() -> void:
+	# Phase-3 V3 confirm: the verdict strip pins above the scroll and reads sim
+	# state, land is a requirement line (no checkbox anywhere), and a blocked
+	# Confirm always states its reason — then re-enables on live recompute.
+	MatchState.reset()
+	MarketState._init_prices_from_catalog()
+	var saved_v3 := MatchState.use_construct_panel_v3
+	MatchState.use_construct_panel_v3 = true
+	var panel: PanelContainer = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
+	add_child(panel)
+	panel.open_for_tile("tile_5_10", {"type": ""})
+	panel._on_recipe_pressed("b_002", "r_005")
+	# Renders queue_free their predecessors; let a frame pass so find_child never
+	# sees a stale, deletion-pending node ahead of the live one.
+	await get_tree().process_frame
+
+	var pinned: Control = panel.get("_pinned")
+	_check(pinned != null and pinned.visible
+		and panel.find_child("V3VerdictStrip", true, false) != null,
+		"v3 confirm: the verdict strip pins above the scroll")
+	var total_label: Label = panel.find_child("V3Total", true, false)
+	_check(total_label != null and total_label.text == panel._money(panel._v3_total_cost()),
+		"v3 confirm: the verdict total is the ledger-based grand total")
+	_check(panel.find_child("V3AffordChip", true, false) != null,
+		"v3 confirm: the affordability chip renders")
+	var subtotal: Label = panel.find_child("V3MaterialsSubtotal", true, false)
+	_check(subtotal != null
+		and subtotal.text == panel._money(float(panel.get("_v3_ledger").get("subtotal", -1.0))),
+		"v3 confirm: the materials subtotal reconciles to the ledger the verdict reads")
+
+	var has_checkbox := false
+	var stack: Array = [panel]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		if node is CheckBox:
+			has_checkbox = true
+			break
+		stack.append_array(node.get_children())
+	_check(not has_checkbox, "v3 confirm: land is a requirement line — no checkbox anywhere")
+
+	var money_saved := MatchState.money
+	MatchState.money = 0.0
+	panel._render()
+	await get_tree().process_frame
+	var confirm_btn: Button = panel.find_child("BuildConfirmButton", true, false)
+	var reason: Label = panel.find_child("V3ConfirmReason", true, false)
+	_check(confirm_btn != null and confirm_btn.disabled and reason != null
+		and reason.text.contains("Insufficient funds"),
+		"v3 confirm: a dead Confirm explains itself")
+	MatchState.money = money_saved
+	panel._render()
+	await get_tree().process_frame
+	confirm_btn = panel.find_child("BuildConfirmButton", true, false)
+	_check(confirm_btn != null and not confirm_btn.disabled
+		and panel.find_child("V3ConfirmReason", true, false) == null,
+		"v3 confirm: affordable again re-enables Confirm on recompute")
+
+	remove_child(panel)
+	panel.free()
+	MatchState.use_construct_panel_v3 = saved_v3
+	MatchState.reset()
 
 
 func _test_telemetry_schema3_row() -> void:
