@@ -1084,12 +1084,16 @@ func _build_quest() -> void:
 	_quest_sub = _mini("", C_TEXT, 11)
 	col.add_child(_quest_sub)
 	mod.pressed.connect(func() -> void: _toggle_fly("quest"))
+	# TOP-LEVEL, like the briefing notch and the bankruptcy strip. The bar is a PanelContainer:
+	# an ordinary child is both stretched to fill it AND counted in its minimum size, and measured
+	# that took the bar from 64 px tall to 67. Containers skip a top_level child, which fixes the
+	# growth and removes any need to re-place it after every sort.
+	mod.top_level = true
 	add_child(mod)
 	_quest_btn = mod
 	mod.visible = false
 	MiniQuest.quest_changed.connect(_refresh_quest)
 	get_viewport().size_changed.connect(_place_quest)
-	sort_children.connect(func() -> void: _place_quest.call_deferred())
 	_refresh_quest()
 
 
@@ -1098,27 +1102,20 @@ func _build_quest() -> void:
 ## both change the rect this is measured against.
 const QUEST_GAP := 10.0
 
-## THE BAR IS A PanelContainer, so it stretches every Control child to fill — measured: the
-## module came out 2556 px wide at (12, 4). The notch escapes that only because
-## _recenter_notch reassigns its rect after the layout has run, so this has to do the same,
-## and it has to do it after EVERY sort, not just on a viewport resize: changing the quest
-## label changes its minimum size, which re-sorts the bar and stomps the rect again.
+## Both this and the notch are top_level, so their positions live in the same space and the
+## container will not touch either. Centred in what the bar actually DRAWS — its live height
+## less the metallic bezel along the bottom — rather than in BAR_H, which is the offset the bar
+## is anchored by and is smaller than the height its styleboxes give it (53 vs a measured 64).
 func _place_quest() -> void:
 	if _quest_btn == null or not is_instance_valid(_quest_btn) or not _quest_btn.visible:
 		return
 	if _briefing_btn == null or not is_instance_valid(_briefing_btn):
 		return
-	var min_size := _quest_btn.get_combined_minimum_size()
-	var want_size := Vector2(min_size.x, minf(min_size.y, BAR_H - 8.0))
-	var want_pos := Vector2(
-		_briefing_btn.position.x + _briefing_btn.size.x + QUEST_GAP,
-		roundf((BAR_H - want_size.y) * 0.5))
-	# Idempotent: re-assigning a child rect can ask the container to sort again, and this is
-	# called FROM sort_children.
-	if _quest_btn.size.is_equal_approx(want_size) and _quest_btn.position.is_equal_approx(want_pos):
-		return
+	var want_size := _quest_btn.get_combined_minimum_size()
 	_quest_btn.size = want_size
-	_quest_btn.position = want_pos
+	_quest_btn.position = Vector2(
+		_briefing_btn.position.x + _briefing_btn.size.x + QUEST_GAP,
+		maxf(0.0, roundf((size.y - EDGE_H - want_size.y) * 0.5)))
 
 
 ## Text and visibility both come from MiniQuest; the bar never decides either for itself.
