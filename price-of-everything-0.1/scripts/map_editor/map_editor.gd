@@ -647,6 +647,8 @@ func _handle_key(event: InputEventKey) -> void:
 			toggle_grid()
 		KEY_H:
 			toggle_water_mask()
+		KEY_J:
+			_toggle_hijack_selection()
 		KEY_E:
 			_zoom_by(ZOOM_STEP)
 		KEY_Q:
@@ -1326,6 +1328,46 @@ func _resize_selection(factor: float) -> void:
 	_set_status("Resized %d item%s to %d%%%s." % [changed, "" if changed == 1 else "s",
 		int(round(factor * 100.0)),
 		"" if changed == records.size() else " (roads have a class, not a size)"])
+	_refresh_status()
+
+
+## Mark the selected decorative buildings as hijack slots (J). A marked mass is ground
+## a gameplay building will later claim: hidden in the shipped game until an NPC or
+## player building takes it over and stamps it in the owner's colour. Only decor masses
+## and specials qualify — ground (parks, plazas, farms, forests) and roads cannot be a
+## building slot, so they are silently skipped rather than erroring a mixed selection.
+## Stored as `hijack: true` on the record; cleared by erasing the key, so an unmarked
+## document round-trips byte-identical.
+func _toggle_hijack_selection() -> void:
+	var settlements: Dictionary = _document.data().get("settlements", {})
+	var records: Array = []
+	for entry_value in _selection:
+		var entry: Dictionary = entry_value
+		var kind := str(entry.get("kind", ""))
+		if kind != "decor" and kind != "specials":
+			continue
+		var settlement: Dictionary = settlements.get(str(entry.get("settlement", "")), {})
+		var items: Array = settlement.get(kind, []) as Array
+		var index := int(entry.get("index", -1))
+		if index >= 0 and index < items.size():
+			records.append(items[index])
+	if records.is_empty():
+		_set_status("Nothing hijackable selected — J marks decorative buildings (masses/specials).")
+		_refresh_status()
+		return
+	_document.begin_edit("mark hijack")
+	var marked := 0
+	var cleared := 0
+	for record_value in records:
+		var record: Dictionary = record_value
+		if bool(record.get("hijack", false)):
+			record.erase("hijack")
+			cleared += 1
+		else:
+			record["hijack"] = true
+			marked += 1
+	_overlay.queue_redraw()
+	_set_status("Hijack slots: %d marked, %d cleared." % [marked, cleared])
 	_refresh_status()
 
 

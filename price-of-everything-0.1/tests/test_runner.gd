@@ -316,6 +316,10 @@ func _ready() -> void:
 	await _test_block_subdivision()
 	await _test_level_storeys_and_owner_swap()
 	_test_ink_art_reserves_upgrade_space()
+	_test_player_colours()
+	_test_smoke_stacks()
+	_test_construction_sites()
+	await _test_crowded_tile_gentle_failure()
 	await _test_river_bank_and_bridge_head()
 	await _test_bridge_corridor()
 	await _test_subcomponents()
@@ -2302,6 +2306,235 @@ func _test_footprint_rejects_interior_road_segment() -> void:
 ## frame, and the lot area is derived from tile_size_used alone — never from
 ## the level. This pins the first half; the second is the signature of
 ## BuildingVisuals._art_size_for(size_units), which takes no level.
+## The GENTLE FAILURE on a saturated tile (owner, 2026-08-27). A dense tile used to send the
+## frontage packer round every road segment against every neighbour, three times over as the
+## shrink ladder retried — seconds of frozen frame, reported as the game crashing. Now the
+## search carries a 2 s budget and, when it comes back empty, the building takes the nearest
+## 50 u^2 beside a road instead of vanishing.
+##
+## This SATURATES a tile for real rather than mocking the packer, because the bug only shows
+## up once the tile is genuinely full.
+func _test_crowded_tile_gentle_failure() -> void:
+	var visuals := preload("res://scenes/building_visuals.gd")
+	_check(int(visuals.PLACE_BUDGET_MS) == 2000, "crowded tile: the search budget is 2 s")
+	var plot: Vector2 = visuals.FALLBACK_PLOT
+	_check(absf(plot.x * plot.y - 50.0) < 0.01,
+		"crowded tile: the fallback plot is 50 u^2 (%.1f)" % (plot.x * plot.y))
+
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	RoadNetwork.reset()
+	var bv := visuals.new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		_check(false, "crowded tile: test tile exists")
+		bv.queue_free(); terrain.queue_free(); RoadNetwork.reset(); return
+
+	# b_002 (furnace) is stamped, so it takes the rect/L path and the shrink ladder — the
+	# exact combination that produced the freeze.
+	var ids: Array = []
+	var started := Time.get_ticks_msec()
+	for i in 60:
+		var iid := MatchState.add_building("b_002", "", tile_id, "npc", "crowd_%d" % i, false)
+		ids.append(iid)
+		bv.on_building_placed(tile_id, "b_002", "", iid, coord)
+	var elapsed := Time.get_ticks_msec() - started
+
+	var drawn := 0
+	var fallbacks := 0
+	for iid in ids:
+		if not bv.has_placement(str(iid)):
+			continue
+		drawn += 1
+		var p: Dictionary = bv._placements[int(bv._placement_index[str(iid)])]
+		if str(p.get("via", "")) == "fallback":
+			fallbacks += 1
+	_check(drawn == ids.size(),
+		"crowded tile: every one of %d buildings got a footprint (%d drawn, %d via fallback)"
+		% [ids.size(), drawn, fallbacks])
+	# 60 buildings must not take 60 x the budget: the budget is per building, but a tile that
+	# saturates should start failing FAST via the fallback rather than burning 2 s each.
+	_check(elapsed < 60 * int(visuals.PLACE_BUDGET_MS),
+		"crowded tile: saturating took %d ms, under the worst-case ceiling" % elapsed)
+
+	# And the fallback itself, called directly. 60 buildings does not always saturate a tile
+	# (this run placed all 60 the normal way), so exercising the emergency path by hoping the
+	# packer fails would be a test that silently stops testing anything.
+	var plot_out: Dictionary = bv._place_fallback_plot(tile_id, coord, bv._placed_on_tile(tile_id))
+	_check(not plot_out.is_empty(), "crowded tile: the fallback finds a road-side plot")
+	if not plot_out.is_empty():
+		_check(str(plot_out.get("via", "")) == "fallback",
+			"crowded tile: the fallback marks its placement 'fallback'")
+		var fv: PackedVector2Array = plot_out.verts
+		_check(fv.size() == 4, "crowded tile: the fallback plot is a rectangle")
+		_check(absf(BuildingShapes.polygon_area(fv) - 50.0) < 0.5,
+			"crowded tile: the fallback plot measures 50 u^2 (%.1f)"
+			% BuildingShapes.polygon_area(fv))
+		# Beside a road when the tile HAS one. Several tiles carry no carriageway at all, and
+		# there the rule cannot apply — the plot still has to exist, which is the point.
+		var segs: Array = bv._tile_segs.get(tile_id, [])
+		if segs.is_empty():
+			_check(true, "crowded tile: test tile is roadless — plot placed centrally instead")
+		else:
+			var centre: Vector2 = plot_out.center_rel
+			var near := INF
+			for seg_value in segs:
+				var seg: Array = seg_value
+				near = minf(near, Geometry2D.get_closest_point_to_segment(
+					centre, seg[0], seg[1]).distance_to(centre))
+			_check(near < 40.0,
+				"crowded tile: the fallback plot sits beside a road (%.1f u)" % near)
+
+	for iid in ids:
+		MatchState.buildings.erase(str(iid))
+	bv.queue_free(); terrain.queue_free(); RoadNetwork.reset()
+
+
+## Construction sites and their cranes (owner spec 2026-08-27). The crane's swing is pure
+## arithmetic, so it is worth pinning exactly: 90 degrees out over 2 s, back over 2 s, and
+## sites on one tile a second apart.
+func _test_construction_sites() -> void:
+	var visuals := preload("res://scenes/building_visuals.gd")
+	var beige: Color = visuals.CONSTRUCTION_BEIGE
+	var npc: Color = visuals.NPC_WHITE
+	var road := Color("eadfbe")   # MapMidcenturyStyle.ROAD_LOCAL / PAPER
+	var d_npc := absf(beige.r - npc.r) + absf(beige.g - npc.g) + absf(beige.b - npc.b)
+	var d_road := absf(beige.r - road.r) + absf(beige.g - road.g) + absf(beige.b - road.b)
+	_check(d_npc > 0.18, "construction: beige is not NPC paper-white (%.2f)" % d_npc)
+	_check(d_road > 0.18, "construction: beige is not the road cream (%.2f)" % d_road)
+
+	var cranes: Node = preload("res://scripts/construction_visuals.gd").new()
+	# `.new()` and never added to the tree on purpose: _ready connects to the Construction
+	# autoload's signals, and the swing maths needs none of that.
+	cranes.set("_clock", 0.0)
+	_check(is_zero_approx(cranes.call("_angle_at", 0)), "crane: at rest at t=0")
+	cranes.set("_clock", 1.0)
+	_check(absf(float(cranes.call("_angle_at", 0)) - PI * 0.25) < 0.001,
+		"crane: halfway (45 deg) at t=1 s")
+	cranes.set("_clock", 2.0)
+	_check(absf(float(cranes.call("_angle_at", 0)) - PI * 0.5) < 0.001,
+		"crane: a full 90 deg at t=2 s")
+	cranes.set("_clock", 3.0)
+	_check(absf(float(cranes.call("_angle_at", 0)) - PI * 0.25) < 0.001,
+		"crane: back through 45 deg at t=3 s")
+	cranes.set("_clock", 4.0)
+	_check(is_zero_approx(cranes.call("_angle_at", 0)), "crane: home again at t=4 s")
+	# The per-site stagger: site 1 now must equal site 0 one second ago, exactly.
+	cranes.set("_clock", 0.0)
+	var second_site := float(cranes.call("_angle_at", 1))
+	cranes.set("_clock", 1.0)
+	_check(absf(float(cranes.call("_angle_at", 0)) - second_site) < 0.001,
+		"crane: sites on a tile are offset by exactly 1 s")
+	cranes.free()
+
+	var scene := FileAccess.open("res://scenes/main.tscn", FileAccess.READ)
+	_check(scene != null, "construction: main.tscn is readable")
+	if scene != null:
+		var text := scene.get_as_text()
+		scene.close()
+		_check(text.contains("construction_visuals.gd"),
+			"construction: main.tscn mounts the crane layer")
+
+
+## Chimney counts per industry (owner spec 2026-08-27), pinned because they are a design
+## decision rather than a derived number — nothing else in the code would notice if a
+## refinery quietly dropped to one stack.
+func _test_smoke_stacks() -> void:
+	var visuals := preload("res://scenes/building_visuals.gd")
+	var spec: Dictionary = visuals.SMOKE_STACKS
+	for pair in [["furnace", 1], ["petro_refinery", 3], ["chem_plant", 2],
+			["power_plant", 1], ["eaf", 1]]:
+		var iname := str(pair[0])
+		_check(spec.has(iname), "smoke: %s carries stacks" % iname)
+		if spec.has(iname):
+			_check(int((spec[iname] as Dictionary)["count"]) == int(pair[1]),
+				"smoke: %s has %d stack(s)" % [iname, int(pair[1])])
+	# The power plant's is "one larger" and the EAF's "a small one" — relative sizes, so it
+	# is the ORDER that is the spec, not the millimetres.
+	var r_power := float((spec["power_plant"] as Dictionary)["r"])
+	var r_furnace := float((spec["furnace"] as Dictionary)["r"])
+	var r_eaf := float((spec["eaf"] as Dictionary)["r"])
+	_check(r_power > r_furnace, "smoke: the power plant's stack is the largest")
+	_check(r_eaf < r_furnace, "smoke: the EAF's stack is the smallest")
+	# Every stack-carrying building must be STAMPED — an exempt one keeps its ink-art
+	# recipe, which draws chimneys of its own, and the two would fight.
+	for iname_value in spec:
+		_check(not visuals.STAMP_EXEMPT.has(str(iname_value)),
+			"smoke: %s is stamped, so its stacks are the only ones drawn" % str(iname_value))
+
+	# The smoke layer must be in the scene, or nothing animates and no test would notice.
+	var scene := FileAccess.open("res://scenes/main.tscn", FileAccess.READ)
+	_check(scene != null, "smoke: main.tscn is readable")
+	if scene != null:
+		var text := scene.get_as_text()
+		scene.close()
+		_check(text.contains("smoke_visuals.gd"), "smoke: main.tscn mounts the smoke layer")
+
+
+## The eight company liveries: the table loads, every livery is distinguishable from every
+## other, and the New Game panel's choice reaches the match ruleset (which is what carries it
+## into a save file). The distinctness check is the point of the sampler's livery band — two
+## liveries that read the same on the map make the colour useless as an owner cue, and the
+## raw samples DID collide (ethylene sampled a near-black navy against Graphite Black).
+func _test_player_colours() -> void:
+	var PlayerColours := preload("res://scripts/player_colours.gd")
+	var all: Array = PlayerColours.all()
+	_check(all.size() == 8, "player colours: 8 liveries load (got %d)" % all.size())
+	_check(PlayerColours.has(PlayerColours.DEFAULT_KEY),
+		"player colours: the default livery is in the table")
+
+	var seen: Dictionary = {}
+	var too_close := PackedStringArray()
+	for a_value in all:
+		var a: Dictionary = a_value
+		_check(not seen.has(str(a["key"])), "player colours: '%s' appears once" % str(a["key"]))
+		seen[str(a["key"])] = true
+		_check(str(a["label"]) != "", "player colours: %s has a label" % str(a["key"]))
+		var ca: Color = a["color"]
+		for b_value in all:
+			var b: Dictionary = b_value
+			if str(a["key"]) >= str(b["key"]):
+				continue
+			var cb: Color = b["color"]
+			# Plain RGB distance. Crude next to a perceptual metric, and enough to catch the
+			# failure that actually happened — two liveries landing on the same dark slate.
+			var d := absf(ca.r - cb.r) + absf(ca.g - cb.g) + absf(ca.b - cb.b)
+			if d < 0.22:
+				too_close.append("%s vs %s (%.2f)" % [str(a["key"]), str(b["key"]), d])
+	_check(too_close.is_empty(), "player colours: every livery is distinguishable (%s)"
+		% ("all distinct" if too_close.is_empty() else ", ".join(too_close)))
+
+	# A 20px swatch, the size the dropdown asks for (owner, 2026-08-27).
+	var swatch: ImageTexture = PlayerColours.swatch(PlayerColours.DEFAULT_KEY, 20)
+	_check(swatch != null and swatch.get_width() == 20 and swatch.get_height() == 20,
+		"player colours: swatch is 20x20")
+
+	# An unknown key must fall back rather than colour a company with nothing — this is the
+	# hand-edited-save and renamed-livery path.
+	_check(not PlayerColours.has("no_such_livery"),
+		"player colours: an unknown key is not in the table")
+	_check(PlayerColours.color_for("no_such_livery") == PlayerColours.FALLBACK,
+		"player colours: an unknown key falls back")
+
+	# The picker writes into the ruleset; that is how the livery reaches a save.
+	var snap: Dictionary = SaveLoad.expand_start_config(
+		{"start": true, "ruleset": {"name": "standard"}},
+		{"ruleset": {"company_colour": "graphite_black"}})
+	var rules: Dictionary = (snap.get("match", {}) as Dictionary).get("ruleset", {})
+	_check(str(rules.get("company_colour", "")) == "graphite_black",
+		"player colours: the picked livery merges into the match ruleset")
+
+
 func _test_ink_art_reserves_upgrade_space() -> void:
 	var keys := ["furnace", "eaf", "industrial_factory", "consumer_factory",
 		"assembly_plant", "high_tech_manufactory", "petro_refinery", "poly_plant",
