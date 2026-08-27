@@ -1234,14 +1234,26 @@ func _make_recipe_button(building_id: String, recipe: Dictionary, affordable: bo
 		button.pressed.connect(_on_unaffordable_recipe_pressed.bind(building_id))
 	var col := VBoxContainer.new()
 	col.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	col.offset_left = 5
 	# The tree-line connector sits OUTSIDE this button, in the sibling 30px to its
 	# left (recipe_row in _make_building_card) — button's own right edge has no
 	# matching reservation, so a name/diagram that fills 100% of button's width
 	# sits visibly closer to the panel's right frame than to the connector on the
-	# left. 15px back from the right (on top of the existing 5 on the left) reads
-	# as centred against that same connector rather than hugging the frame.
-	col.offset_right = -15
+	# left. Owner ask (2026-08-27, re-check): +10px left / +20px right on top of
+	# the previous 5/15. Applied to MINI only: mini's own worst case (5 inputs + 1
+	# output) has a measured 412px minimum, so a 12/30 (42px total) inset — close
+	# to the ask's own ~1:2 split, capped so 454-42=412 still fits it exactly —
+	# keeps every mini card, including the widest real one, at the same width
+	# (custom_minimum_size floors, doesn't cap, so overshooting the cap would make
+	# just that one card wider than its neighbours). Expanded's OWN worst case
+	# already sits at 444/454 with its existing hero/pair/grid sizing — there's no
+	# similar room to add padding there without shrinking icons nobody asked to
+	# shrink, so it keeps the original, tighter 5/15.
+	if expanded:
+		col.offset_left = 5
+		col.offset_right = -15
+	else:
+		col.offset_left = 12
+		col.offset_right = -30
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_theme_constant_override("separation", 0)
 	button.add_child(col)
