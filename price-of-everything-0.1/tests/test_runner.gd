@@ -197,6 +197,7 @@ func _ready() -> void:
 	_test_recipe_diagram_size_by_count()
 	await _test_construct_browse_building_header()
 	await _test_construct_browse_recipe_card()
+	await _test_construct_browse_mini_recipe_card()
 	await _test_construct_v3_confirm_layout()
 	await _test_construct_v3_1_iteration()
 	await _test_construct_v3_2_iteration()
@@ -9172,16 +9173,19 @@ func _test_construct_browse_building_header() -> void:
 	panel.queue_free()
 
 
-## Recipe cards under an expanded building (2026-08-27 rewrite, then a same-day
-## follow-up): the full recipe diagram instead of one output icon + a text summary;
-## the name ABOVE the diagram (moved off a cramped side-by-side column once icons
-## grew — see below) at the building header's own font size; 50px goods icons at
-## Building Details' own flow-card height (156px, _build_recipe_strip) instead of
-## the smaller/shorter figures the first pass invented for this reuse.
+## Recipe cards under an expanded building, EXPANDED mode (2026-08-27 rewrite, then
+## two same-day follow-ups): the full recipe diagram instead of one output icon + a
+## text summary; the name ABOVE the diagram (moved off a cramped side-by-side column
+## once icons grew — see below) at the building header's own font size; Building
+## Details' own flow-card height (156px, _build_recipe_strip). Expanded mode is now
+## an opt-in toggle (Construct Settings → "Expanded mode") rather than the only
+## mode — see _test_construct_browse_mini_recipe_card for the (now default) MINI
+## diagram this rewrite originally replaced entirely, before that toggle existed.
 func _test_construct_browse_recipe_card() -> void:
 	MatchState.reset()
 	MarketState._init_prices_from_catalog()
 	MatchState.money = 100000.0
+	MatchState.set_construct_expanded_recipe_mode(true, false)
 	var panel: PanelContainer = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
 	add_child(panel)
 	panel.open_for_tile("tile_5_10", {"type": ""})
@@ -9219,6 +9223,77 @@ func _test_construct_browse_recipe_card() -> void:
 			has_chevron = true
 	_check(not has_chevron, "recipe card: the chevron/caret is gone — the diagram is the only thing in the row now")
 	panel.queue_free()
+	MatchState.set_construct_expanded_recipe_mode(false, false)
+
+
+## Recipe cards under an expanded building, MINI mode (2026-08-27, the SAME-day
+## third follow-up as the toggle itself) — the default now: bare good icons in a
+## row, "+" between same-side items, an arrow to the outputs, no quantities, no
+## power-cost badge. Cream, rounded corners, one icon tall + a little padding —
+## MINI_ICON_SIZE regardless of item count (unlike the expanded diagram's
+## hero/pair/grid tiers, since there's no qty pill competing for room here).
+func _test_construct_browse_mini_recipe_card() -> void:
+	MatchState.reset()
+	MarketState._init_prices_from_catalog()
+	MatchState.money = 100000.0
+	_check(not MatchState.construct_expanded_recipe_mode, "mini recipe: expanded mode defaults OFF — mini is the default")
+	var panel: PanelContainer = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
+	add_child(panel)
+	panel.open_for_tile("tile_5_10", {"type": ""})
+	panel._on_building_pressed("b_007")
+	await get_tree().process_frame
+
+	var row: Control = panel.find_child("RecipeRow_r_033", true, false)
+	_check(row != null, "mini recipe: r_033's row exists once b_007 is expanded")
+	if row == null:
+		panel.queue_free()
+		return
+	var mini: Control = row.find_child("MiniRecipeDiagramCard", true, false)
+	_check(mini != null, "mini recipe: the mini diagram renders by default")
+	_check(row.find_child("RecipeDiagramCard", true, false) == null,
+		"mini recipe: the full diagram does NOT render when expanded mode is off")
+	if mini != null:
+		# find_children("*", "TextureRect") also catches the arrow art (itself a
+		# TextureRect, just MINI_ARROW_SIZE-shaped, not MINI_ICON_SIZE) — split by
+		# that to check goods icons and the arrow each on their own terms.
+		var rects := mini.find_children("*", "TextureRect", true, false)
+		var icons: Array = []
+		var arrows: Array = []
+		for r in rects:
+			if absf((r as TextureRect).custom_minimum_size.x - float(panel.MINI_ICON_SIZE)) < 0.5:
+				icons.append(r)
+			else:
+				arrows.append(r)
+		# r_033 has 5 inputs + 1 output = 6 icons, all the SAME mini size — no
+		# hero/pair/grid tiering here, unlike the expanded diagram.
+		_check(icons.size() == 6, "mini recipe: one icon per input/output, 5+1=6 for r_033 (got %d)" % icons.size())
+		for icon in icons:
+			_check(absf((icon as TextureRect).custom_minimum_size.x - 40.0) < 0.5,
+				"mini recipe: every icon is the same 40px size regardless of item count")
+		_check(arrows.size() == 1, "mini recipe: exactly one arrow between the inputs and outputs groups")
+		var plus_count := 0
+		for lbl in _all_labels(mini):
+			if lbl.text == "+":
+				plus_count += 1
+		# 5 inputs -> 4 "+" between them; 1 output -> 0 "+"; 4 total.
+		_check(plus_count == 4, "mini recipe: '+' separates each side's own items (4 for 5 inputs + 1 output, got %d)" % plus_count)
+		var pills := 0
+		for child in _all_panel_containers(mini):
+			pills += 1
+		_check(pills == 0, "mini recipe: no quantity pills anywhere (the mini diagram never shows qty)")
+	panel.queue_free()
+
+
+## Small helper: every PanelContainer under `root`, recursively — a quantity pill
+## (UIHelpers.make_quantity_pill) is always a PanelContainer, so "none anywhere"
+## is a real structural check that the mini diagram never builds one.
+func _all_panel_containers(root: Node) -> Array:
+	var out: Array = []
+	for child in root.get_children():
+		if child is PanelContainer:
+			out.append(child)
+		out.append_array(_all_panel_containers(child))
+	return out
 
 
 ## Small helper: every Label under `root`, recursively. GDScript has no built-in

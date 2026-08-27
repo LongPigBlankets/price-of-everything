@@ -40,7 +40,9 @@ const RECIPE_ROW_HEIGHT := 196
 ## Shared between the building-card header name and each recipe card's own name —
 ## the ask was explicit that the two match.
 const BUILDING_NAME_FONT_SIZE := 19
-## Fixed width for a recipe card's name column, so it wraps onto (up to) 3 lines
+## The mini diagram is one icon (40px) tall plus a little padding, versus the full
+## diagram's 156px — name row (~36px) + mini diagram (~56px) fits well inside this.
+const MINI_RECIPE_ROW_HEIGHT := 100
 const FILTER_TYPES: Array = ["extraction", "refinery", "metallurgy", "electrochemistry",
 	"farm_forests", "power", "infrastructure", "water", "manufacturing"]
 
@@ -234,14 +236,17 @@ class TileBuildingCard extends PanelContainer:
 ## Four-pixel gold connector used to link a parent building card to its recipe
 ## rows. Its first/last caps make a clean single or multi-recipe branch.
 class RecipeBranchConnector extends Control:
-	const ROW_HEIGHT := 196.0   # kept in sync with the outer RECIPE_ROW_HEIGHT
 	var first := false
 	var last := false
 
-	func _init(is_first: bool, is_last: bool) -> void:
+	# row_height varies with MatchState.construct_expanded_recipe_mode (the caller
+	# passes RECIPE_ROW_HEIGHT or MINI_RECIPE_ROW_HEIGHT) — this is only a FLOOR
+	# (custom_minimum_size), and _draw() below reads the connector's own actual
+	# rendered `size.y`, so an exact match isn't load-bearing, just tidy.
+	func _init(is_first: bool, is_last: bool, row_height: float = 196.0) -> void:
 		first = is_first
 		last = is_last
-		custom_minimum_size = Vector2(30, ROW_HEIGHT)
+		custom_minimum_size = Vector2(30, row_height)
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	func _draw() -> void:
@@ -898,6 +903,10 @@ func _render_settings() -> void:
 		"Auto-buy land when building",
 		"If the chosen tile does not have enough of your land for the building, buy just enough to fit it as part of confirming. Tiles that already have room buy nothing.",
 		MatchState.construct_auto_buy_land, _on_auto_buy_land_toggled))
+	_content.add_child(_settings_toggle_card(
+		"Expanded mode",
+		"Recipe cards show the full diagram with quantities, sized to what's actually in the recipe. Off shows a compact icons-only row instead.",
+		MatchState.construct_expanded_recipe_mode, _on_expanded_recipe_mode_toggled))
 
 
 ## A settings row: title + explanatory note on the left, ON/OFF toggle on the right.
@@ -941,6 +950,11 @@ func _settings_toggle_card(title_text: String, note_text: String, is_on: bool, o
 
 func _on_auto_buy_land_toggled(enabled: bool) -> void:
 	MatchState.set_construct_auto_buy_land(enabled)
+	_render()
+
+
+func _on_expanded_recipe_mode_toggled(enabled: bool) -> void:
+	MatchState.set_construct_expanded_recipe_mode(enabled)
 	_render()
 
 
@@ -1191,7 +1205,8 @@ func _make_building_card(building: Dictionary) -> Control:
 			var recipe_row := HBoxContainer.new()
 			recipe_row.add_theme_constant_override("separation", 0)
 			recipe_branch.add_child(recipe_row)
-			recipe_row.add_child(RecipeBranchConnector.new(recipe_index == 0, recipe_index == recipe_count.size() - 1))
+			var branch_row_h := RECIPE_ROW_HEIGHT if MatchState.construct_expanded_recipe_mode else MINI_RECIPE_ROW_HEIGHT
+			recipe_row.add_child(RecipeBranchConnector.new(recipe_index == 0, recipe_index == recipe_count.size() - 1, branch_row_h))
 			var recipe_button := _make_recipe_button(building_id, recipe_count[recipe_index], affordable)
 			recipe_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			recipe_row.add_child(recipe_button)
@@ -1199,9 +1214,10 @@ func _make_building_card(building: Dictionary) -> Control:
 
 
 func _make_recipe_button(building_id: String, recipe: Dictionary, affordable: bool = true) -> Button:
+	var expanded := MatchState.construct_expanded_recipe_mode
 	var button := MetalRecipeRow.new()
 	button.name = "RecipeRow_%s" % str(recipe.get("recipe_id", ""))   # tutorial spotlight target
-	button.custom_minimum_size = Vector2(0, RECIPE_ROW_HEIGHT)
+	button.custom_minimum_size = Vector2(0, RECIPE_ROW_HEIGHT if expanded else MINI_RECIPE_ROW_HEIGHT)
 	button.tooltip_text = "Choose this recipe" if affordable else "Insufficient funds"
 	button.add_theme_color_override("font_color", TEXT)
 	button.add_theme_color_override("font_hover_color", TEXT)
@@ -1222,10 +1238,9 @@ func _make_recipe_button(building_id: String, recipe: Dictionary, affordable: bo
 	col.add_theme_constant_override("separation", 0)
 	button.add_child(col)
 	# Name above the diagram, padded 5px top/bottom and centred on the row — the SAME
-	# row the diagram itself centres in below (diagram is SHRINK_CENTER, not a forced
-	# EXPAND_FILL stretch, now that there's no chevron sharing the row with it — see
-	# below), so the two share one visual axis without needing to read the diagram's
-	# actual rendered width back into the label.
+	# row the diagram itself centres in below (both EXPAND_FILL, now that there's no
+	# chevron sharing the row with the diagram), so the two share one visual axis
+	# without needing to read the diagram's actual rendered width back into the label.
 	var name_pad := MarginContainer.new()
 	name_pad.add_theme_constant_override("margin_top", 5)
 	name_pad.add_theme_constant_override("margin_bottom", 5)
@@ -1239,14 +1254,15 @@ func _make_recipe_button(building_id: String, recipe: Dictionary, affordable: bo
 	recipe_name.add_theme_color_override("font_color", TEXT)
 	recipe_name.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	name_pad.add_child(recipe_name)
-	# Building Details' own hero/pair/grid icon sizing (size_by_count=true — see
-	# _recipe_diagram), at its own 156px flow-card height. EXPAND_FILL so every
-	# recipe's card is the SAME width regardless of its own input/output count —
-	# _recipe_diagram's internal row already centres a narrower group of icons
-	# within whatever width it's given, so a 1-input recipe's card just gets more
-	# breathing room around its icons rather than rendering visibly narrower than
-	# its neighbours (a real inconsistency the first SHRINK_CENTER pass produced).
-	var diagram := _recipe_diagram(recipe, 62, Vector2(90, 55), 156.0, true)
+	# MatchState.construct_expanded_recipe_mode (Construct Settings → "Expanded
+	# mode") picks the diagram: off (default) is the compact icons-only glance,
+	# on is Building Details' own hero/pair/grid sizing with quantities. EXPAND_FILL
+	# either way so every recipe's card is the SAME width regardless of its own
+	# input/output count — each diagram's internal row already centres a narrower
+	# icon group within whatever width it's given, so a simple recipe's card just
+	# gets more breathing room rather than rendering visibly narrower than its
+	# neighbours.
+	var diagram: Control = _recipe_diagram(recipe, 62, Vector2(90, 55), 156.0, true) if expanded else _mini_recipe_diagram(recipe)
 	diagram.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	diagram.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(diagram)
@@ -2944,6 +2960,88 @@ func _flow_side_columns(count: int, by_count: bool) -> int:
 	if count == 2:
 		return 2
 	return 3
+
+
+## The compact recipe glance — MatchState.construct_expanded_recipe_mode's OFF state
+## (the browse list's default): bare good icons only, no quantity pills, no power
+## cost. Inputs joined by "+", an arrow, then outputs joined by "+" — the shape of
+## the recipe at a glance rather than the numbers. Cream, rounded corners, one icon
+## tall plus a little padding — full row width regardless of item count, same as
+## _recipe_diagram's own EXPAND_FILL (see _make_recipe_button).
+const MINI_ICON_SIZE := 40
+const MINI_ARROW_SIZE := Vector2(48, 30)
+
+func _mini_recipe_diagram(recipe: Dictionary) -> PanelContainer:
+	var card := PanelContainer.new()
+	card.name = "MiniRecipeDiagramCard"   # test/tutorial spotlight handle
+	var card_style := StyleBoxFlat.new()
+	card_style.bg_color = DIAGRAM_PAPER
+	card_style.set_corner_radius_all(14)
+	card_style.set_content_margin_all(8)
+	card.add_theme_stylebox_override("panel", card_style)
+	var row := HBoxContainer.new()
+	row.custom_minimum_size = Vector2(0, MINI_ICON_SIZE)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 6)
+	card.add_child(row)
+
+	var inputs: Array = recipe.get("inputs", [])
+	if inputs.is_empty():
+		var raw := Label.new()
+		raw.text = "Raw"
+		raw.add_theme_font_size_override("font_size", 12)
+		raw.add_theme_color_override("font_color", DIAGRAM_NAVY)
+		row.add_child(raw)
+	else:
+		for i in inputs.size():
+			row.add_child(_mini_flow_icon(str((inputs[i] as Dictionary).get("good_id", ""))))
+			if i < inputs.size() - 1:
+				row.add_child(_mini_plus())
+
+	var arrow_art := TextureRect.new()
+	arrow_art.texture = load(RECIPE_ARROW_PATH) as Texture2D
+	arrow_art.custom_minimum_size = MINI_ARROW_SIZE
+	arrow_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	arrow_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	arrow_art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(arrow_art)
+
+	var outputs: Array = recipe.get("outputs", [])
+	if outputs.is_empty() and str(recipe.get("output_good_id", "")) != "":
+		outputs = [{"good_id": recipe.get("output_good_id", "")}]
+	for i in outputs.size():
+		row.add_child(_mini_flow_icon(str((outputs[i] as Dictionary).get("good_id", ""))))
+		if i < outputs.size() - 1:
+			row.add_child(_mini_plus())
+	return card
+
+
+## One bare good icon for the mini diagram — no plate, no pill, no bevel. Power
+## reuses the same lightning glyph the full diagram's energy badge uses (power has
+## no chroma good-icon art of its own to draw here).
+func _mini_flow_icon(good_id: String) -> TextureRect:
+	var art := TextureRect.new()
+	if Catalog.get_internal_name(good_id) == "power":
+		art.texture = load(RECIPE_POWER_ICON_PATH) as Texture2D
+	else:
+		art.texture = GoodIcons.texture_for_size(good_id, Catalog.get_internal_name(good_id), float(MINI_ICON_SIZE))
+	art.custom_minimum_size = Vector2(MINI_ICON_SIZE, MINI_ICON_SIZE)
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	art.mouse_filter = Control.MOUSE_FILTER_PASS   # PASS, not IGNORE: this is the only thing carrying the good's name
+	if good_id != "":
+		art.tooltip_text = Catalog.get_display_name(good_id)
+	return art
+
+
+func _mini_plus() -> Label:
+	var plus := Label.new()
+	plus.text = "+"
+	plus.add_theme_font_size_override("font_size", 18)
+	plus.add_theme_color_override("font_color", DIAGRAM_NAVY)
+	plus.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	plus.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return plus
 
 
 func _recipe_flow_cell(good_id: String, qty: int, size_px: int) -> Panel:

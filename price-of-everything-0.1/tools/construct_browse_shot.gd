@@ -1,10 +1,12 @@
 extends Node2D
 ## Verification shot for the Construct panel's BROWSE list: bigger building name,
-## cost on the right, no recipe-count text, and — expanded — each recipe card showing
-## its full diagram (3-wide input grid, name wrapped left) instead of one icon + a
-## text summary.
+## cost on the right, no recipe-count text; recipe cards default to the compact MINI
+## diagram (icons + "+" + arrow, no qty), Construct Settings' "Expanded mode" toggle
+## switches to the full Building-Details-style diagram with quantities.
 ##   Godot --path . res://tools/construct_browse_shot.tscn --quit-after 1200
-## Writes to OUT_DIR: construct_browse_top.png, construct_browse_expanded.png
+## Writes to OUT_DIR: construct_browse_top.png, construct_browse_mini.png,
+## construct_settings_toggle.png, construct_browse_expanded_on.png,
+## construct_confirm_r033.png
 
 const OUT_DIR := "C:/Users/urigi/AppData/Local/Temp/claude/C--Users-urigi-price-of-everything-price-of-everything-0-1/07c26e3a-d370-4e95-9ab5-05bbb28794cb/scratchpad/out/"
 
@@ -50,15 +52,44 @@ func _ready() -> void:
 		panel._scroll.ensure_control_visible(target)
 		await _settle(6)
 	if target != null:
-		var diagram: Control = target.find_child("RecipeDiagramCard", true, false)
-		print("[browse_shot] recipe row size=", target.size, " min=", target.get_combined_minimum_size())
+		var mini: Control = target.find_child("MiniRecipeDiagramCard", true, false)
+		print("[browse_shot] MINI recipe row size=", target.size, " min=", target.get_combined_minimum_size())
+		if mini != null:
+			print("[browse_shot] mini diagram size=", mini.size, " global_position=", mini.global_position)
+		else:
+			print("[browse_shot] WARNING: MiniRecipeDiagramCard not found — expanded mode default wrong?")
+	await _shot(OUT_DIR + "construct_browse_mini.png")
+
+	# Construct Settings — the new "Expanded mode" toggle should be visible, OFF.
+	panel._view = panel.View.SETTINGS
+	panel._render()
+	await _settle(6)
+	await _shot(OUT_DIR + "construct_settings_toggle.png")
+
+	# Flip it on and confirm the SAME recipe now renders the full diagram instead.
+	MatchState.set_construct_expanded_recipe_mode(true)
+	panel._view = panel.View.BROWSE
+	# Set directly rather than _on_building_pressed("b_007") again — that TOGGLES,
+	# and b_007 is already expanded from earlier in this script, so a second call
+	# would collapse it instead.
+	panel._expanded_building_id = "b_007"
+	panel._render()
+	await _settle(10)
+	var target2: Control = panel.find_child("RecipeRow_r_033", true, false)
+	if target2 == null:
+		print("[browse_shot] WARNING: RecipeRow_r_033 not found with expanded mode on")
+	if target2 != null and panel._scroll != null:
+		panel._scroll.ensure_control_visible(target2)
+		await _settle(6)
+	if target2 != null:
+		var diagram: Control = target2.find_child("RecipeDiagramCard", true, false)
+		print("[browse_shot] EXPANDED recipe row size=", target2.size, " min=", target2.get_combined_minimum_size())
 		if diagram != null:
-			print("[browse_shot] diagram size=", diagram.size, " min=", diagram.get_combined_minimum_size(),
-				" global_position=", diagram.global_position)
-		var name_lbl: Control = target.find_child("*", false, false)
-		print("[browse_shot] name column min=", (name_lbl as Control).get_combined_minimum_size() if name_lbl != null else "n/a")
-		print("[browse_shot] panel global size=", panel.size)
-	await _shot(OUT_DIR + "construct_browse_expanded.png")
+			print("[browse_shot] full diagram size=", diagram.size, " min=", diagram.get_combined_minimum_size())
+		else:
+			print("[browse_shot] WARNING: RecipeDiagramCard not found with expanded mode on")
+	await _shot(OUT_DIR + "construct_browse_expanded_on.png")
+	MatchState.set_construct_expanded_recipe_mode(false)
 
 	# Also check the CONFIRM screen's own (full-size, 62px-cell) use of the same
 	# diagram builder with the same 5-input recipe — the new honest-width report

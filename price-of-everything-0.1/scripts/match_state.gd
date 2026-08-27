@@ -588,6 +588,10 @@ var construct_start_half_capacity: bool = false
 ## When on, confirming a build on a tile the player has too little land for buys exactly
 ## enough land patches to cover the shortfall first (see world_map._space_check_for_build).
 var construct_auto_buy_land: bool = false
+## Off = the browse list's recipe cards show the compact mini diagram (icons + "+" +
+## an arrow, no quantities); on = the full Building-Details-style diagram with qty
+## pills. Display-only — never read by BuildForecast/Production.
+var construct_expanded_recipe_mode: bool = false
 # Defaults captured by constructions when they are started. "ask" preserves the
 # existing delivery prompt; the other modes choose a source automatically.
 var construct_material_source: String = "ask"
@@ -3434,6 +3438,7 @@ func reset() -> void:
 	construct_cost_display = "grid"
 	construct_start_half_capacity = false
 	construct_auto_buy_land = false
+	construct_expanded_recipe_mode = false
 	construct_material_source = "ask"
 	construct_output_destination = "market"
 	power_priority_coal_gas = "self"
@@ -3577,6 +3582,7 @@ func export_state() -> Dictionary:
 		"construct_cost_display": construct_cost_display,
 		"construct_start_half_capacity": construct_start_half_capacity,
 		"construct_auto_buy_land": construct_auto_buy_land,
+		"construct_expanded_recipe_mode": construct_expanded_recipe_mode,
 		"construct_material_source": construct_material_source,
 		"construct_output_destination": construct_output_destination,
 		"power_priority_coal_gas": power_priority_coal_gas,
@@ -3687,6 +3693,7 @@ func import_state(d: Dictionary) -> void:
 	set_construct_start_half_capacity(bool(d.get("construct_start_half_capacity", false)), false)
 	# Additive key: saves written before this setting existed simply default to off.
 	set_construct_auto_buy_land(bool(d.get("construct_auto_buy_land", false)), false)
+	set_construct_expanded_recipe_mode(bool(d.get("construct_expanded_recipe_mode", false)), false)
 	set_construct_material_source(str(d.get("construct_material_source", "ask")), false)
 	set_construct_output_destination(str(d.get("construct_output_destination", "market")), false)
 	# Additive key: saves written before this setting existed default to the same
@@ -3968,6 +3975,13 @@ func set_construct_auto_buy_land(enabled: bool, emit_change: bool = true) -> voi
 	if construct_auto_buy_land == enabled:
 		return
 	construct_auto_buy_land = enabled
+	if emit_change:
+		construct_settings_changed.emit()
+
+func set_construct_expanded_recipe_mode(enabled: bool, emit_change: bool = true) -> void:
+	if construct_expanded_recipe_mode == enabled:
+		return
+	construct_expanded_recipe_mode = enabled
 	if emit_change:
 		construct_settings_changed.emit()
 
