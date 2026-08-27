@@ -198,6 +198,7 @@ func _ready() -> void:
 	await _test_construct_browse_building_header()
 	await _test_construct_browse_recipe_card()
 	await _test_construct_browse_mini_recipe_card()
+	await _test_recipe_choice_row_mini_diagram()
 	await _test_construct_v3_confirm_layout()
 	await _test_construct_v3_1_iteration()
 	await _test_construct_v3_2_iteration()
@@ -9253,24 +9254,20 @@ func _test_construct_browse_mini_recipe_card() -> void:
 	_check(row.find_child("RecipeDiagramCard", true, false) == null,
 		"mini recipe: the full diagram does NOT render when expanded mode is off")
 	if mini != null:
-		# find_children("*", "TextureRect") also catches the arrow art (itself a
-		# TextureRect, just MINI_ARROW_SIZE-shaped, not MINI_ICON_SIZE) — split by
-		# that to check goods icons and the arrow each on their own terms.
-		var rects := mini.find_children("*", "TextureRect", true, false)
-		var icons: Array = []
-		var arrows: Array = []
-		for r in rects:
-			if absf((r as TextureRect).custom_minimum_size.x - float(panel.MINI_ICON_SIZE)) < 0.5:
-				icons.append(r)
-			else:
-				arrows.append(r)
+		# Goods icons are TextureRects; the arrow is UIHelpers.MiniRecipeArrow (a
+		# drawn, filled-navy shape, not a texture — see the arrow/plus follow-up
+		# below), found by its own stable name rather than find_children's type
+		# match — an inner class's get_class() reports its base (Control), not its
+		# own script class name.
+		var icons := mini.find_children("*", "TextureRect", true, false)
 		# r_033 has 5 inputs + 1 output = 6 icons, all the SAME mini size — no
 		# hero/pair/grid tiering here, unlike the expanded diagram.
 		_check(icons.size() == 6, "mini recipe: one icon per input/output, 5+1=6 for r_033 (got %d)" % icons.size())
 		for icon in icons:
 			_check(absf((icon as TextureRect).custom_minimum_size.x - 40.0) < 0.5,
 				"mini recipe: every icon is the same 40px size regardless of item count")
-		_check(arrows.size() == 1, "mini recipe: exactly one arrow between the inputs and outputs groups")
+		_check(mini.find_child("MiniRecipeArrow", true, false) != null,
+			"mini recipe: exactly one (filled, drawn) arrow between the inputs and outputs groups")
 		var plus_count := 0
 		for lbl in _all_labels(mini):
 			if lbl.text == "+":
@@ -9282,6 +9279,48 @@ func _test_construct_browse_mini_recipe_card() -> void:
 			pills += 1
 		_check(pills == 0, "mini recipe: no quantity pills anywhere (the mini diagram never shows qty)")
 	panel.queue_free()
+
+
+## The building detail panel's "Change recipe" sheet (2026-08-27 follow-up): rows
+## now carry the SAME compressed mini diagram the Construct panel's own recipe cards
+## use (UIHelpers.mini_recipe_diagram — one shared implementation so the two panels
+## can't drift into two different looks) instead of a text-only summary line; and
+## the sheet widens the whole panel to fit it, since a sheet is a same-rect overlay
+## (PanelContainer manages every direct child to the identical rect) with no other
+## way to claim more room than the panel's own normal width.
+func _test_recipe_choice_row_mini_diagram() -> void:
+	var detail_panel = load("res://scripts/building_detail_panel_v2.gd").new()
+	var recipe: Dictionary = Catalog.get_recipe("r_033")   # 5 inputs + 1 output
+	var row: Control = detail_panel.call("_recipe_choice_row", "probe_iid", recipe, false)
+	var diagram: Control = row.find_child("MiniRecipeDiagramCard", true, false)
+	_check(diagram != null, "recipe choice row: the mini diagram renders")
+	if diagram != null:
+		var icons := diagram.find_children("*", "TextureRect", true, false)
+		_check(icons.size() == 6, "recipe choice row: one icon per input/output, 5+1=6 for r_033 (got %d)" % icons.size())
+		_check(diagram.find_child("MiniRecipeArrow", true, false) != null,
+			"recipe choice row: the filled navy arrow renders")
+	row.free()
+	detail_panel.free()
+
+	var panel2 = load("res://scripts/building_detail_panel_v2.gd").new()
+	add_child(panel2)
+	await get_tree().process_frame
+	panel2.call("_resize_body")
+	var normal_width: float = panel2.size.x
+	# NOT a plain "normal_width + 100" check: self is a PanelContainer, which clamps
+	# size up to its OWN children's combined minimum regardless of what _resize_body()
+	# assigns — normal_width can already sit above the bare PANEL_WIDTH constant for
+	# reasons unrelated to this fix. What this fix actually guarantees is the ABSOLUTE
+	# target once a sheet asks for it: PANEL_WIDTH + extra_width, exactly.
+	panel2.call("_open_recipe_sheet", {"instance_id": "probe_iid", "building_id": "b_007", "recipe_id": "r_033"})
+	await get_tree().process_frame
+	_check(absf(panel2.size.x - (panel2.PANEL_WIDTH + 100.0)) < 0.5,
+		"change-recipe sheet: opening it widens the panel to PANEL_WIDTH+100 to fit the mini diagram bars (got %.1f)" % panel2.size.x)
+	panel2.call("_close_sheet")
+	await get_tree().process_frame
+	_check(absf(panel2.size.x - normal_width) < 0.5,
+		"change-recipe sheet: closing it restores the panel's normal width (got %.1f, was %.1f)" % [panel2.size.x, normal_width])
+	panel2.queue_free()
 
 
 ## Small helper: every PanelContainer under `root`, recursively — a quantity pill

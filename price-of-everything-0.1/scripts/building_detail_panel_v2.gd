@@ -26,6 +26,11 @@ const PANEL_WIDTH := 460.0
 # panel's spot instead of the default edge position — in that view there IS no tile panel,
 # and the detail panel takes its place.
 var empire_dock := false
+# Set by _open_sheet's optional extra_width — widens the WHOLE panel (right-anchored,
+# so it grows further left, never off-screen) while a sheet that needs more than
+# PANEL_WIDTH is open, e.g. the "Change recipe" sheet's mini diagram bars. Reset to
+# 0 on _close_sheet so every other view keeps the normal width.
+var _sheet_extra_width := 0.0
 const MARKET_ICON := 98  # framed good-icon size, matching the market panel's goods rows
 const CREAM := Color(0.995234, 0.930806, 0.763265)  # recipe-strip parchment (matches v1 diagram paper)
 const CREAM_INK := Color(0.0, 0.119856, 0.243095)   # navy ink on the parchment
@@ -1150,8 +1155,15 @@ func _fmt_dec(v: float, decimals: int) -> String:
 
 # --- action-sheet framework (an in-panel overlay that covers the whole panel) --------------
 
-func _open_sheet(title: String, populate: Callable) -> void:
+## `extra_width` widens the WHOLE panel while this sheet is up (see _sheet_extra_width)
+## — a sheet is a same-size overlay (PanelContainer manages every direct child to the
+## SAME rect), so a sheet that needs more room than the panel's normal PANEL_WIDTH has
+## no other way to get it than the panel itself growing.
+func _open_sheet(title: String, populate: Callable, extra_width: float = 0.0) -> void:
 	_close_sheet()
+	_sheet_extra_width = extra_width
+	if extra_width > 0.0:
+		_size_and_position()
 	var sheet := PanelContainer.new()
 	sheet.name = "ActionSheet"
 	var st := StyleBoxFlat.new()
@@ -1197,6 +1209,9 @@ func _close_sheet() -> void:
 	if _sheet != null and is_instance_valid(_sheet):
 		_sheet.queue_free()
 	_sheet = null
+	if _sheet_extra_width > 0.0:
+		_sheet_extra_width = 0.0
+		_size_and_position()
 
 # --- change-recipe sheet -------------------------------------------------------------------
 
@@ -1204,7 +1219,7 @@ func _open_recipe_sheet(building: Dictionary) -> void:
 	var iid := str(building.get("instance_id", ""))
 	var building_id := str(building.get("building_id", ""))
 	var current := str(building.get("recipe_id", ""))
-	_open_sheet("Change recipe", func(vb: VBoxContainer) -> void:
+	var populate := func(vb: VBoxContainer) -> void:
 		if MatchState.is_retooling(iid):
 			var t := MatchState.retrofit_turns_remaining(iid)
 			var note := Label.new()
@@ -1229,7 +1244,11 @@ func _open_recipe_sheet(building: Dictionary) -> void:
 			int(tier.get("fee", 0.0)), int(tier.get("turns", 2)), "" if int(tier.get("turns", 2)) == 1 else "s", int(round(float(tier.get("labour", 0.5)) * 100.0))]
 		vb.add_child(info)
 		for r in Catalog.get_recipes_for_building(building_id):
-			vb.add_child(_recipe_choice_row(iid, r, str(r.get("recipe_id", "")) == current)))
+			vb.add_child(_recipe_choice_row(iid, r, str(r.get("recipe_id", "")) == current))
+	# +100 (460 -> 560) matches the Construct panel's own width exactly — the mini
+	# diagram bars were sized for that panel, so reusing its width, not inventing
+	# a third figure, is what makes them "the same width bar" here too.
+	_open_sheet("Change recipe", populate, 100.0)
 
 func _recipe_choice_row(iid: String, recipe: Dictionary, is_current: bool) -> Control:
 	var card := PanelContainer.new()
@@ -1267,15 +1286,12 @@ func _recipe_choice_row(iid: String, recipe: Dictionary, is_current: bool) -> Co
 		cur.text = "current"
 		cur.add_theme_color_override("font_color", DS.PALETTE["OK"])
 		head.add_child(cur)
-	var parts: Array = []
-	for inp in recipe.get("inputs", []):
-		parts.append("%d %s" % [int(inp.get("qty", 0)), BuildingStatus.good_display_from_internal(str(inp.get("internal_name", "")))])
-	var flow_line := Label.new()
-	flow_line.theme_type_variation = "Caption"
-	flow_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	flow_line.text = "%s  →  %d %s · %d MW" % [
-		", ".join(parts) if not parts.is_empty() else "no inputs", int(recipe.get("output_qty", 0)), out_disp, int(recipe.get("energy_req", 0))]
-	vb.add_child(flow_line)
+	# The same compressed look the Construct panel's own recipe cards use — icons,
+	# "+", a filled navy arrow — instead of a text summary (UIHelpers.mini_recipe_diagram,
+	# shared between both panels so they can't drift into two different looks).
+	var diagram := UIHelpers.mini_recipe_diagram(recipe)
+	diagram.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vb.add_child(diagram)
 	return card
 
 func _apply_retrofit(iid: String, recipe: Dictionary) -> void:
@@ -2549,8 +2565,9 @@ func _target_height() -> float:
 
 func _resize_body() -> void:
 	var h := _target_height()
-	custom_minimum_size = Vector2(PANEL_WIDTH, h)
-	size = Vector2(PANEL_WIDTH, h)
+	var w := PANEL_WIDTH + _sheet_extra_width
+	custom_minimum_size = Vector2(w, h)
+	size = Vector2(w, h)
 
 func _size_and_position() -> void:
 	_resize_body()

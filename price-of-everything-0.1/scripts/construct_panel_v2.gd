@@ -283,6 +283,7 @@ class RecipePowerPentagon extends Control:
 		draw_colored_polygon(poly, FACE)
 		draw_polyline(PackedVector2Array([poly[0], poly[1], poly[2], poly[3], poly[4], poly[0]]), OUTLINE, 2.0, true)
 
+
 var _header_title: Label
 var _header_subtitle: Label
 var _close_button: Button
@@ -1234,6 +1235,13 @@ func _make_recipe_button(building_id: String, recipe: Dictionary, affordable: bo
 	var col := VBoxContainer.new()
 	col.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	col.offset_left = 5
+	# The tree-line connector sits OUTSIDE this button, in the sibling 30px to its
+	# left (recipe_row in _make_building_card) — button's own right edge has no
+	# matching reservation, so a name/diagram that fills 100% of button's width
+	# sits visibly closer to the panel's right frame than to the connector on the
+	# left. 15px back from the right (on top of the existing 5 on the left) reads
+	# as centred against that same connector rather than hugging the frame.
+	col.offset_right = -15
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_theme_constant_override("separation", 0)
 	button.add_child(col)
@@ -1262,7 +1270,7 @@ func _make_recipe_button(building_id: String, recipe: Dictionary, affordable: bo
 	# icon group within whatever width it's given, so a simple recipe's card just
 	# gets more breathing room rather than rendering visibly narrower than its
 	# neighbours.
-	var diagram: Control = _recipe_diagram(recipe, 62, Vector2(90, 55), 156.0, true) if expanded else _mini_recipe_diagram(recipe)
+	var diagram: Control = _recipe_diagram(recipe, 62, Vector2(90, 55), 156.0, true) if expanded else UIHelpers.mini_recipe_diagram(recipe)
 	diagram.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	diagram.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(diagram)
@@ -2963,85 +2971,9 @@ func _flow_side_columns(count: int, by_count: bool) -> int:
 
 
 ## The compact recipe glance — MatchState.construct_expanded_recipe_mode's OFF state
-## (the browse list's default): bare good icons only, no quantity pills, no power
-## cost. Inputs joined by "+", an arrow, then outputs joined by "+" — the shape of
-## the recipe at a glance rather than the numbers. Cream, rounded corners, one icon
-## tall plus a little padding — full row width regardless of item count, same as
-## _recipe_diagram's own EXPAND_FILL (see _make_recipe_button).
-const MINI_ICON_SIZE := 40
-const MINI_ARROW_SIZE := Vector2(48, 30)
-
-func _mini_recipe_diagram(recipe: Dictionary) -> PanelContainer:
-	var card := PanelContainer.new()
-	card.name = "MiniRecipeDiagramCard"   # test/tutorial spotlight handle
-	var card_style := StyleBoxFlat.new()
-	card_style.bg_color = DIAGRAM_PAPER
-	card_style.set_corner_radius_all(14)
-	card_style.set_content_margin_all(8)
-	card.add_theme_stylebox_override("panel", card_style)
-	var row := HBoxContainer.new()
-	row.custom_minimum_size = Vector2(0, MINI_ICON_SIZE)
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 6)
-	card.add_child(row)
-
-	var inputs: Array = recipe.get("inputs", [])
-	if inputs.is_empty():
-		var raw := Label.new()
-		raw.text = "Raw"
-		raw.add_theme_font_size_override("font_size", 12)
-		raw.add_theme_color_override("font_color", DIAGRAM_NAVY)
-		row.add_child(raw)
-	else:
-		for i in inputs.size():
-			row.add_child(_mini_flow_icon(str((inputs[i] as Dictionary).get("good_id", ""))))
-			if i < inputs.size() - 1:
-				row.add_child(_mini_plus())
-
-	var arrow_art := TextureRect.new()
-	arrow_art.texture = load(RECIPE_ARROW_PATH) as Texture2D
-	arrow_art.custom_minimum_size = MINI_ARROW_SIZE
-	arrow_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	arrow_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	arrow_art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(arrow_art)
-
-	var outputs: Array = recipe.get("outputs", [])
-	if outputs.is_empty() and str(recipe.get("output_good_id", "")) != "":
-		outputs = [{"good_id": recipe.get("output_good_id", "")}]
-	for i in outputs.size():
-		row.add_child(_mini_flow_icon(str((outputs[i] as Dictionary).get("good_id", ""))))
-		if i < outputs.size() - 1:
-			row.add_child(_mini_plus())
-	return card
-
-
-## One bare good icon for the mini diagram — no plate, no pill, no bevel. Power
-## reuses the same lightning glyph the full diagram's energy badge uses (power has
-## no chroma good-icon art of its own to draw here).
-func _mini_flow_icon(good_id: String) -> TextureRect:
-	var art := TextureRect.new()
-	if Catalog.get_internal_name(good_id) == "power":
-		art.texture = load(RECIPE_POWER_ICON_PATH) as Texture2D
-	else:
-		art.texture = GoodIcons.texture_for_size(good_id, Catalog.get_internal_name(good_id), float(MINI_ICON_SIZE))
-	art.custom_minimum_size = Vector2(MINI_ICON_SIZE, MINI_ICON_SIZE)
-	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	art.mouse_filter = Control.MOUSE_FILTER_PASS   # PASS, not IGNORE: this is the only thing carrying the good's name
-	if good_id != "":
-		art.tooltip_text = Catalog.get_display_name(good_id)
-	return art
-
-
-func _mini_plus() -> Label:
-	var plus := Label.new()
-	plus.text = "+"
-	plus.add_theme_font_size_override("font_size", 18)
-	plus.add_theme_color_override("font_color", DIAGRAM_NAVY)
-	plus.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	plus.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return plus
+## (the browse list's default). Moved into UIHelpers.mini_recipe_diagram() so the
+## building detail panel's "Change recipe" sheet can share the exact same look
+## rather than a second copy — see UIHelpers for the actual implementation.
 
 
 func _recipe_flow_cell(good_id: String, qty: int, size_px: int) -> Panel:
