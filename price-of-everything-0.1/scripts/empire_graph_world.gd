@@ -292,6 +292,9 @@ func _reposition_panels() -> void:
 		var a := 1.0 if (_focus_t <= 0.0 or _focus_members.has(iid2)) else (1.0 - _focus_t)
 		ctrl.modulate.a = a
 		ctrl.visible = a > 0.01
+		# The focused building's own sell line (with its good-icon chip) now says "ships to
+		# market, and where" directly — its port badge would just repeat that.
+		ctrl.call("set_badge_hidden", iid2 == _focus_iid)
 
 
 ## A node's LAYOUT position, eased toward its focus-chart position while a mini-chart is open.
