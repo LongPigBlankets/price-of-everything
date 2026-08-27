@@ -360,7 +360,7 @@ static func _copy(result: String, secured: int, turn: int, tracks: Array) -> Arr
 	var lead := "The books closed on turn %d." % turn
 	if result == "continuity":
 		# Owner's copy, verbatim (2026-08-01).
-		return ["You continued your predecessors' task and made this company survive through a lot of change. Although you never reached the crazy heights of success some thought you capable of, there is greatness in maintaining such a steady ship. Few businesses can claim to have survived this long or managed to avoid catastrophe like yours. Raise a glass - but make it a small one, we can't afford the fancy stuff."]
+		return ["You continued your predecessors' task and made this company survive through a lot of change. Although you never reached the crazy heights of success some thought you capable of, there is greatness in maintaining such a steady ship. Few businesses can claim to have survived this long or managed to avoid catastrophe like yours. Raise a glass. But make it a small one, we can't afford the fancy stuff."]
 	if result == "defeat":
 		return [
 			"%s No track ever crossed its gate, and the rising win bar climbed past everything the empire managed to bank." % lead,
