@@ -451,20 +451,36 @@ func _build_infra() -> void:
 	_clear(_infra_list)
 	var links: Array = []
 	var hidden := 0
+	var present_modes := {}
 	for link_v in MatchState.active_links():
 		var link: Dictionary = link_v
+		present_modes[str(link.mode)] = true
 		if bool(_infra_enabled.get(str(link.mode), true)):
 			links.append(link)
 		else:
 			hidden += 1
+	# Enabled filters with nothing "above 0%" this turn — named explicitly (owner,
+	# 27 Aug) rather than the column just quietly having no rows for that mode,
+	# which otherwise reads identically to a broken filter. Cables especially: it
+	# carries power, not freight, so it's ALWAYS in this list when enabled —
+	# INFRA_FILTERS' own comment already flags that as by design, not a bug.
+	var empty_enabled: Array[String] = []
+	for row: Dictionary in INFRA_FILTERS:
+		var mode := str(row.mode)
+		if bool(_infra_enabled.get(mode, true)) and not present_modes.has(mode):
+			empty_enabled.append(str(row.label))
 	if links.is_empty():
 		if hidden > 0:
 			_empty_note(_infra_list, "%d link%s hidden by the filters above." % [hidden, "" if hidden == 1 else "s"])
+		elif not empty_enabled.is_empty():
+			_empty_note(_infra_list, "No %s above 0%%." % ", ".join(empty_enabled))
 		else:
 			_empty_note(_infra_list, "Nothing is crossing a road, rail or pipe this turn.")
 		return
 	for link: Dictionary in links:
 		_infra_list.add_child(_infra_row(link))
+	if not empty_enabled.is_empty():
+		_empty_note(_infra_list, "No %s above 0%%." % ", ".join(empty_enabled))
 
 
 func _infra_row(link: Dictionary) -> Control:

@@ -269,6 +269,10 @@ func _rebuild(building: Dictionary) -> void:
 	if is_infra:
 		_body.add_child(_make_section("Infrastructure"))
 		_body.add_child(_build_infrastructure_details(building_data))
+		var breakdown := _build_infra_breakdown(building, building_data)
+		if breakdown != null:
+			_body.add_child(_make_section("Breakdown"))
+			_body.add_child(breakdown)
 
 	var pw := BuildingReadout.power(building, recipe)
 	if bool(pw.get("needs", false)):
@@ -683,6 +687,60 @@ func _infrastructure_level_accordion(key: String, level: int) -> VBoxContainer:
 		details.visible = not details.visible
 		header.text = "Level %d   %s" % [level, "▾" if details.visible else "▸"])
 	return box
+
+## "Breakdown" table: goods that transited this tile's infra last turn, one row each —
+## icon+qty cell (the same cream plain-icon-with-navy-pill every other good row on this
+## panel uses), total transport cost, and the congestion-penalty share of that cost.
+## Cables/hvdc carry power, not goods, and a quiet tile carries nothing at all — both
+## just come back empty from MatchState.tile_good_breakdown(), so there's a single
+## empty check here rather than a separate mode allow-list to keep in sync with it.
+func _build_infra_breakdown(building: Dictionary, building_data: Dictionary) -> Control:
+	var mode := InfrastructureInfo.key_for(building_data)
+	var rows := MatchState.tile_good_breakdown(str(building.get("tile_id", "")), mode)
+	if rows.is_empty():
+		return null
+	var card := _make_card()
+	card.name = "InfraBreakdownCard"   # stable target for the dev screenshot harness
+	var vb := card.get_child(0) as VBoxContainer
+	vb.add_theme_constant_override("separation", DS.SP["SM"])
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", DS.SP["LG"])
+	grid.add_theme_constant_override("v_separation", DS.SP["SM"])
+	vb.add_child(grid)
+	grid.add_child(Control.new())   # spacer over the icon column — it names itself
+	grid.add_child(_breakdown_col_header("COST"))
+	grid.add_child(_breakdown_col_header("PENALTIES"))
+	for row_value in rows:
+		var row: Dictionary = row_value
+		var good_id := str(row.get("good_id", ""))
+		var qty := int(row.get("qty", 0))
+		var cost := float(row.get("cost", 0.0))
+		var penalty := float(row.get("penalty", 0.0))
+		grid.add_child(_good_icon_pill(good_id, Catalog.get_internal_name(good_id), qty, 60))
+		grid.add_child(_breakdown_value_label("£%.2f" % cost, DS.PALETTE["TEXT"]))
+		var has_penalty := penalty > 0.01
+		grid.add_child(_breakdown_value_label(("£%.2f" % penalty) if has_penalty else "—",
+			DS.PALETTE["WARN"] if has_penalty else DS.PALETTE["TEXT_DIM"]))
+	return card
+
+func _breakdown_col_header(text: String) -> Label:
+	var l := Label.new()
+	l.theme_type_variation = "Caption"
+	l.text = text
+	l.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return l
+
+func _breakdown_value_label(text: String, color: Color) -> Label:
+	var l := Label.new()
+	l.theme_type_variation = "Numeric"
+	l.text = text
+	l.add_theme_color_override("font_color", color)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return l
 
 func _build_port_card(building: Dictionary) -> PanelContainer:
 	var card := _make_card()

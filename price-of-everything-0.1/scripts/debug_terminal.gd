@@ -251,7 +251,10 @@ func _run_command(text: String) -> String:
 				if empire != null:
 					empire.call("refresh_graph")
 				return "Empire view → %s" % ("SPRITE style (big sprites, plates below, no backdrop)" if sprite_view_on else "classic cards")
-			return "usage: swap song  |  swap bdp  |  swap construct_panel  |  swap construct_panel_v3  |  swap loading_screen  |  swap goods_graph  |  swap empire button  |  swap empire view sprite  |  swap port badge"
+			if " ".join(parts.slice(1)).to_lower() == "topbar v3.1":
+				MatchState.toggle_use_topbar_v3_1()
+				return "Top bar → %s" % ("v3.1 (icon faces)" if MatchState.use_topbar_v3_1 else "classic")
+			return "usage: swap song  |  swap bdp  |  swap construct_panel  |  swap construct_panel_v3  |  swap loading_screen  |  swap goods_graph  |  swap empire button  |  swap empire view sprite  |  swap port badge  |  swap topbar v3.1"
 		"survey":
 			if parts.size() >= 2 and parts[1].to_lower() == "limit":
 				MatchState.cheat_survey_within_limits()

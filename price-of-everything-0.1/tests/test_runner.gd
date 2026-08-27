@@ -193,6 +193,10 @@ func _ready() -> void:
 	_test_build_forecast()
 	_test_construct_v3_sim()
 	_test_construct_v3_ds()
+	_test_recipe_diagram_input_grid()
+	_test_recipe_diagram_size_by_count()
+	await _test_construct_browse_building_header()
+	await _test_construct_browse_recipe_card()
 	await _test_construct_v3_confirm_layout()
 	await _test_construct_v3_1_iteration()
 	await _test_construct_v3_2_iteration()
@@ -271,6 +275,8 @@ func _ready() -> void:
 	_test_cost_report_credits_output_modifiers()
 	_test_flavor_nodes_wired()
 	_test_transport_congestion()
+	_test_transport_flow_no_double_count()
+	_test_tile_good_breakdown()
 	_test_tile_mode_flow_endpoints()
 	_test_cable_power_cap()
 	_test_power_network_settlement()
@@ -5943,6 +5949,169 @@ func _test_transport_congestion() -> void:
 	MatchState.pending_transport_shipments.clear()
 	MatchState._last_link_flow.clear()
 
+## transport_link_flow() must count a shipment's units against a (tile, mode) link
+## exactly ONCE, no matter how many consecutive legs of the SAME mode share that
+## tile as a boundary. A 4-tile, 4-leg same-mode route touches its 3 internal tiles
+## (pass-through: goods enter AND exit) from TWO adjacent legs each, and its two end
+## tiles (origin: goods exiting; destination: goods landing) from one leg each — all
+## five positions must read the same qty, not doubled at the internal ones.
+func _test_transport_flow_no_double_count() -> void:
+	Modifiers.reset()
+	MatchState.reset()
+	MatchState.pending_transport_shipments.clear()
+	MatchState._last_link_flow.clear()
+
+	var qty := 50
+	var same_mode_route := func(mode: String) -> void:
+		MatchState.pending_transport_shipments.clear()
+		MatchState.pending_transport_shipments.append({
+			"qty": qty, "good_id": "coal", "turns_remaining": 3,
+			"tiles": ["t0", "t1", "t2", "t3", "t4"],
+			"legs": [
+				{"mode": mode, "from": "t0", "to": "t1"},
+				{"mode": mode, "from": "t1", "to": "t2"},
+				{"mode": mode, "from": "t2", "to": "t3"},
+				{"mode": mode, "from": "t3", "to": "t4"},
+			],
+		})
+		var flow := MatchState.transport_link_flow()
+		_check(int(flow.get("t0|%s" % mode, -1)) == qty,
+			"%s: origin tile (goods exiting) counts %d once" % [mode, qty])
+		_check(int(flow.get("t1|%s" % mode, -1)) == qty,
+			"%s: pass-through tile counts %d once, not doubled (enters + exits)" % [mode, qty])
+		_check(int(flow.get("t2|%s" % mode, -1)) == qty,
+			"%s: pass-through tile counts %d once, not doubled (enters + exits)" % [mode, qty])
+		_check(int(flow.get("t3|%s" % mode, -1)) == qty,
+			"%s: pass-through tile counts %d once, not doubled (enters + exits)" % [mode, qty])
+		_check(int(flow.get("t4|%s" % mode, -1)) == qty,
+			"%s: destination tile (goods landing) counts %d once" % [mode, qty])
+
+	same_mode_route.call("roads")
+	same_mode_route.call("pipes")
+	same_mode_route.call("reinf_pipes")
+
+	# A mode SWITCH mid-route (roads -> rail at t1) is NOT this bug: the transfer
+	# tile legitimately draws on two separate capacity pools, so it should
+	# correctly appear under BOTH keys, each at the full qty — not deduped away.
+	MatchState.pending_transport_shipments.clear()
+	MatchState.pending_transport_shipments.append({
+		"qty": qty, "good_id": "coal", "turns_remaining": 2,
+		"tiles": ["t0", "t1", "t2"],
+		"legs": [
+			{"mode": "roads", "from": "t0", "to": "t1"},
+			{"mode": "rail", "from": "t1", "to": "t2"},
+		],
+	})
+	var mixed_flow := MatchState.transport_link_flow()
+	_check(int(mixed_flow.get("t1|roads", -1)) == qty,
+		"mode switch: the transfer tile's roads leg still counts %d" % qty)
+	_check(int(mixed_flow.get("t1|rail", -1)) == qty,
+		"mode switch: the transfer tile's rail leg ALSO counts %d — separate capacity pool, correctly not deduped" % qty)
+
+	Modifiers.reset()
+	MatchState.reset()
+	MatchState.pending_transport_shipments.clear()
+	MatchState._last_link_flow.clear()
+
+## MatchState.tile_good_breakdown() — the infra building detail panel's "Breakdown"
+## table: per-good qty/cost/penalty for whatever transited one tile's infra last turn.
+func _test_tile_good_breakdown() -> void:
+	Modifiers.reset()
+	MatchState.reset()
+	MatchState.pending_transport_shipments.clear()
+	MatchState._last_link_flow.clear()
+	MatchState._last_transit_shipments.clear()
+
+	# --- basic pass-through: one good, one leg, no congestion -----------------------
+	# "reachable"/"turns" are set here (unlike route_congestion's own tests above) because
+	# this route also feeds transport_cost_for_route() directly below, which — unlike
+	# route_congestion() — refuses to price an "unreachable" route and, with no explicit
+	# "reachable" key, falls back to reading "turns" (absent here too) against INF_TURNS.
+	var route := {"tiles": ["t0", "t1"], "legs": [{"mode": "roads", "from": "t0", "to": "t1"}],
+		"reachable": true, "turns": 1}
+	MatchState.pending_transport_shipments.append({
+		"good_id": "g_001", "qty": 100, "turns_remaining": 2,
+		"tile_distance": 1, "transport_turns": 1,
+		"tiles": route.tiles, "legs": route.legs,
+	})
+	MatchState.update_transport_congestion()
+	var rows := MatchState.tile_good_breakdown("t0", "roads")
+	_check(rows.size() == 1, "one good touching t0|roads -> one breakdown row (got %d)" % rows.size())
+	_check(str(rows[0].get("good_id", "")) == "g_001", "the row is g_001")
+	_check(int(rows[0].get("qty", -1)) == 100, "qty is the shipment's full 100 units")
+	var expect_clear_cost: float = TransportService.transport_cost_for_route("g_001", 100, route)
+	_check(expect_clear_cost > 0.0, "sanity: g_001 actually has a non-zero transport rate")
+	_check(absf(float(rows[0].get("cost", -1.0)) - expect_clear_cost) < 0.01,
+		"cost matches a direct transport_cost_for_route quote for the same qty/route (got %.4f, want %.4f)" % [float(rows[0].get("cost", -1.0)), expect_clear_cost])
+	_check(absf(float(rows[0].get("penalty", -1.0))) < 0.01, "an uncongested link charges no penalty")
+	_check(MatchState.tile_good_breakdown("t0", "pipes").is_empty(), "the same tile on a different mode sees nothing")
+	_check(MatchState.tile_good_breakdown("elsewhere", "roads").is_empty(), "a non-touching tile sees nothing")
+	_check(MatchState.tile_good_breakdown("t1", "roads").size() == 1, "the destination tile sees it too")
+
+	# --- congestion: penalty equals what the SAME qty/route would cost congested minus
+	# what it would cost clear — proven against the pricing model directly rather than
+	# re-deriving the tier/headroom formula a second time in the test. -----------------
+	MatchState.pending_transport_shipments.clear()
+	MatchState.pending_transport_shipments.append({
+		"good_id": "g_001", "qty": 450, "turns_remaining": 2,
+		"tile_distance": 1, "transport_turns": 1,
+		"tiles": route.tiles, "legs": route.legs,
+	})
+	MatchState.update_transport_congestion()
+	_check(MatchState.route_congestion_tier(route) == 1, "sanity: 450 over roads L1's 300 cap is tier 1")
+	var congested_rows := MatchState.tile_good_breakdown("t0", "roads")
+	_check(congested_rows.size() == 1, "still one row once congested")
+	var congested_cost := float(congested_rows[0].get("cost", -1.0))
+	var congested_penalty := float(congested_rows[0].get("penalty", -1.0))
+	# transport_cost_for_route is pure/read-only (never spends the founder freight
+	# credit — that's land_cost_after_credit's job), so clearing the flow snapshot to
+	# get a clear-link quote and then restoring it has no other side effects.
+	var saved_flow: Dictionary = MatchState._last_link_flow.duplicate()
+	MatchState._last_link_flow.clear()
+	var clear_cost: float = TransportService.transport_cost_for_route("g_001", 450, route)
+	MatchState._last_link_flow = saved_flow
+	_check(congested_cost > clear_cost + 0.01, "congested cost exceeds the clear-link quote")
+	_check(absf(congested_penalty - (congested_cost - clear_cost)) < 0.01,
+		"penalty is exactly congested cost minus the clear-link quote (got %.4f, want %.4f)" % [congested_penalty, congested_cost - clear_cost])
+
+	# --- sale shipment: multiple goods, split per item, same route -------------------
+	MatchState.pending_transport_shipments.clear()
+	MatchState.pending_transport_shipments.append({
+		"is_sale": true, "turns_remaining": 2,
+		"tile_distance": 1, "transport_turns": 1,
+		"tiles": route.tiles, "legs": route.legs,
+		"sale_record": {"tile_id": "t0", "items": [
+			{"good_id": "g_001", "qty": 30, "revenue": 300.0},
+			{"good_id": "g_002", "qty": 20, "revenue": 400.0},
+		], "total_qty": 50, "total_revenue": 700.0},
+	})
+	MatchState.update_transport_congestion()
+	var sale_rows := MatchState.tile_good_breakdown("t0", "roads")
+	_check(sale_rows.size() == 2, "a 2-good sale shipment splits into 2 breakdown rows (got %d)" % sale_rows.size())
+	var by_id := {}
+	for r in sale_rows:
+		by_id[str(r.get("good_id", ""))] = r
+	_check(int((by_id.get("g_001", {}) as Dictionary).get("qty", -1)) == 30, "g_001 keeps its own item qty, not the shipment total")
+	_check(int((by_id.get("g_002", {}) as Dictionary).get("qty", -1)) == 20, "g_002 keeps its own item qty, not the shipment total")
+	_check(float((by_id.get("g_001", {}) as Dictionary).get("cost", -1.0)) > 0.0, "g_001 gets its own cost")
+	_check(float((by_id.get("g_002", {}) as Dictionary).get("cost", -1.0)) > 0.0, "g_002 gets its own cost")
+
+	# --- overland fallback: transport-class gating still applies, same rule tile_mode_flow uses ---
+	MatchState.pending_transport_shipments.clear()
+	MatchState.pending_transport_shipments.append({
+		"good_id": "g_026", "qty": 50, "source_tile": "tile_a", "destination_tile": "port_x",
+		"tiles": [], "legs": [], "turns_remaining": 2, "tile_distance": 3, "transport_turns": 2,
+	})  # crude oil (liquid) -> pipes only
+	MatchState.update_transport_congestion()
+	_check(MatchState.tile_good_breakdown("tile_a", "pipes").size() == 1, "overland crude oil shows up under pipes")
+	_check(MatchState.tile_good_breakdown("tile_a", "roads").is_empty(), "but not under roads — wrong transport class")
+
+	Modifiers.reset()
+	MatchState.reset()
+	MatchState.pending_transport_shipments.clear()
+	MatchState._last_link_flow.clear()
+	MatchState._last_transit_shipments.clear()
+
 func _test_flavor_nodes_wired() -> void:
 	# The 41 wired flavor nodes register real modifiers on unlock, one per domain.
 	Modifiers.reset()
@@ -8843,6 +9012,224 @@ func _test_construct_v3_ds() -> void:
 	probe.free()
 	_check(raised == DS.PALETTE["TEXT_MUTED"] and legacy == Color("#8da0b6"),
 		"v3 tone: secondary labels raise one contrast step under the cheat only")
+
+
+## _recipe_diagram()'s input grid: 3 columns (up to 2 rows) once a recipe has more
+## than 2 inputs — a 2026-08-27 fix. Was 2 columns (up to 3 rows), which overflowed
+## the diagram's fixed 140px height for 5-6 input recipes. Also the "honest width"
+## fix alongside it: diagram_root is a bare Control with its content row placed by
+## anchors, not container management, so unlike a normal Container it never bubbled
+## up that row's real content width on its own — silently reporting 0 regardless of
+## how many cells it actually held. That was harmless while every caller gave it the
+## whole row anyway (the confirm screen), but the same call reused compact in a
+## recipe card that shares its row with a name column let the card claim less than
+## it needed, and the output cell rendered clipped off the panel's own edge.
+func _test_recipe_diagram_input_grid() -> void:
+	var panel_script: Variant = load("res://scripts/construct_panel_v2.gd")
+	var probe: Control = panel_script.new()
+	add_child(probe)
+
+	var five_inputs := {
+		"inputs": [
+			{"good_id": "g_001", "qty": 1}, {"good_id": "g_002", "qty": 1},
+			{"good_id": "g_003", "qty": 1}, {"good_id": "g_004", "qty": 1},
+			{"good_id": "g_005", "qty": 1},
+		],
+		"output_good_id": "g_006", "output_qty": 1, "energy_req": 0,
+	}
+	var five_diagram: PanelContainer = probe._recipe_diagram(five_inputs)
+	add_child(five_diagram)   # min-size only resolves for a node in the tree
+	var five_grid: GridContainer = five_diagram.find_child("RecipeInputsGrid", true, false)
+	_check(five_grid != null and five_grid.columns == 3,
+		"recipe diagram: >2 inputs lays out 3 columns, not 2 (got %s)" % (str(five_grid.columns) if five_grid != null else "no grid"))
+	_check(five_diagram.get_combined_minimum_size().x > 0.0,
+		"recipe diagram: reports an honest (non-zero) minimum width once it holds real cells")
+	five_diagram.queue_free()
+
+	var two_inputs := {
+		"inputs": [{"good_id": "g_001", "qty": 1}, {"good_id": "g_002", "qty": 1}],
+		"output_good_id": "g_006", "output_qty": 1, "energy_req": 0,
+	}
+	var two_diagram: PanelContainer = probe._recipe_diagram(two_inputs)
+	add_child(two_diagram)
+	var two_grid: GridContainer = two_diagram.find_child("RecipeInputsGrid", true, false)
+	_check(two_grid != null and two_grid.columns == 1,
+		"recipe diagram: <=2 inputs is unchanged — still 1 column (stacked), not part of this fix")
+	two_diagram.queue_free()
+
+	# Compact reuse (the recipe-card call site passes smaller cell/arrow sizes than
+	# the confirm screen's defaults) still reports an honest width, just a smaller one.
+	var compact: PanelContainer = probe._recipe_diagram(five_inputs, 36, Vector2(54, 34))
+	add_child(compact)
+	var default_size: PanelContainer = probe._recipe_diagram(five_inputs)
+	add_child(default_size)
+	_check(compact.get_combined_minimum_size().x < default_size.get_combined_minimum_size().x,
+		"recipe diagram: smaller cell/arrow params report a correspondingly smaller minimum width")
+	compact.queue_free()
+	default_size.queue_free()
+	probe.free()
+
+
+## _recipe_diagram(..., size_by_count=true) — Building Details' own hero/pair/grid
+## rule (2026-08-27 follow-up), inputs and outputs sized off their OWN counts
+## independently, and outputs reading the recipe's FULL outputs array (co-products)
+## instead of just the primary. Legacy calls (size_by_count omitted) are untouched —
+## that's the confirm screen's flat cell_size, unrelated to this ask.
+func _test_recipe_diagram_size_by_count() -> void:
+	var panel_script: Variant = load("res://scripts/construct_panel_v2.gd")
+	var probe: Control = panel_script.new()
+	add_child(probe)
+
+	_check(probe._flow_side_size(1, 62, true) == 126, "flow side size: a single item is the 126px hero")
+	_check(probe._flow_side_size(2, 62, true) == 90, "flow side size: exactly 2 items are 90px each")
+	_check(probe._flow_side_size(3, 62, true) == 60, "flow side size: 3+ items are 60px each")
+	_check(probe._flow_side_size(5, 62, true) == 60, "flow side size: 5 items are still the same 60px tier as 3")
+	_check(probe._flow_side_size(5, 62, false) == 62, "flow side size: by_count=false ignores count, returns the flat fallback")
+	_check(probe._flow_side_columns(1, true) == 1 and probe._flow_side_columns(2, true) == 2
+			and probe._flow_side_columns(3, true) == 3,
+		"flow side columns: 1/2/3+ items lay out 1/2/3 columns under size_by_count")
+	_check(probe._flow_side_columns(2, false) == 1,
+		"flow side columns: by_count=false keeps its own original threshold (2 items still stack at 1 column)")
+
+	# Independent sizing on a real diagram: 5 inputs + 1 output — inputs land in the
+	# 60px/3-wide tier, the SINGLE output gets the 126px hero, on the SAME diagram.
+	var five_in_one_out := {
+		"inputs": [
+			{"good_id": "g_001", "qty": 1}, {"good_id": "g_002", "qty": 1},
+			{"good_id": "g_003", "qty": 1}, {"good_id": "g_004", "qty": 1},
+			{"good_id": "g_005", "qty": 1},
+		],
+		"outputs": [{"good_id": "g_006", "qty": 1}],
+		"output_good_id": "g_006", "output_qty": 1, "energy_req": 0,
+	}
+	var mixed: PanelContainer = probe._recipe_diagram(five_in_one_out, 62, Vector2(90, 55), 156.0, true)
+	add_child(mixed)
+	var in_grid: GridContainer = mixed.find_child("RecipeInputsGrid", true, false)
+	var out_grid: GridContainer = mixed.find_child("RecipeOutputsGrid", true, false)
+	_check(in_grid != null and in_grid.columns == 3, "size_by_count: 5 inputs still lay out 3 columns")
+	_check(out_grid != null and out_grid.columns == 1, "size_by_count: the single output is its own 1-column hero")
+	if in_grid != null:
+		var an_input_cell: Control = in_grid.get_child(0)
+		_check(absf(an_input_cell.custom_minimum_size.x - 60.0) < 0.5,
+			"size_by_count: input cells are 60px (5-item tier)")
+	if out_grid != null:
+		var the_output_cell: Control = out_grid.get_child(0)
+		_check(absf(the_output_cell.custom_minimum_size.x - 126.0) < 0.5,
+			"size_by_count: the output cell is 126px (hero tier) — independent of the input side's own 60px")
+	mixed.queue_free()
+
+	# Multi-output (co-products): the FULL outputs array renders, not just the primary.
+	var two_outputs := {
+		"inputs": [{"good_id": "g_001", "qty": 1}],
+		"outputs": [{"good_id": "g_006", "qty": 1}, {"good_id": "g_007", "qty": 1}],
+		"output_good_id": "g_006", "output_qty": 1, "energy_req": 0,
+	}
+	var co_product: PanelContainer = probe._recipe_diagram(two_outputs, 62, Vector2(90, 55), 156.0, true)
+	add_child(co_product)
+	var co_grid: GridContainer = co_product.find_child("RecipeOutputsGrid", true, false)
+	_check(co_grid != null and co_grid.get_child_count() == 2,
+		"size_by_count: BOTH co-products render, not just the recipe's primary output")
+	_check(co_grid != null and co_grid.columns == 2, "size_by_count: 2 outputs lay out side by side")
+	co_product.queue_free()
+	probe.free()
+
+
+## The BROWSE building card header (2026-08-27 restructure): a bigger name, cost
+## moved onto the name row instead of a full second line, and no bare "N recipes"
+## tally — a recipe count reads as redundant once every recipe gets its own full
+## diagram in the branch below (see _test_construct_browse_recipe_card).
+func _test_construct_browse_building_header() -> void:
+	MatchState.reset()
+	MarketState._init_prices_from_catalog()
+	MatchState.money = 100000.0
+	var panel: PanelContainer = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
+	add_child(panel)
+	panel.open_for_tile("tile_5_10", {"type": ""})
+	await get_tree().process_frame
+
+	var card: Control = panel.find_child("BuildingCard_b_007", true, false)
+	_check(card != null, "browse header: b_007's card is in the (unexpanded) list")
+	if card == null:
+		panel.queue_free()
+		return
+
+	var name_lbl: Label = null
+	var cost_lbl: Label = null
+	for lbl in _all_labels(card):
+		if lbl.text == "Industrial Goods Factory":
+			name_lbl = lbl
+		elif lbl.text.begins_with("£"):
+			cost_lbl = lbl
+	_check(name_lbl != null and int(name_lbl.get_theme_font_size("font_size")) == 19,
+		"browse header: building name renders at the shared larger size (19px, was 15px)")
+	_check(cost_lbl != null, "browse header: a plain £-figure label exists (cost moved out of a 'CONSTRUCTION COST' line)")
+	if name_lbl != null and cost_lbl != null:
+		_check(name_lbl.get_parent() == cost_lbl.get_parent(),
+			"browse header: name and cost are on the SAME row (cost sits to its right, not stacked below)")
+	for lbl in _all_labels(card):
+		_check(not lbl.text.to_lower().contains("recipe"),
+			"browse header: no label anywhere mentions a recipe count (found %s)" % lbl.text)
+	panel.queue_free()
+
+
+## Recipe cards under an expanded building (2026-08-27 rewrite, then a same-day
+## follow-up): the full recipe diagram instead of one output icon + a text summary;
+## the name ABOVE the diagram (moved off a cramped side-by-side column once icons
+## grew — see below) at the building header's own font size; 50px goods icons at
+## Building Details' own flow-card height (156px, _build_recipe_strip) instead of
+## the smaller/shorter figures the first pass invented for this reuse.
+func _test_construct_browse_recipe_card() -> void:
+	MatchState.reset()
+	MarketState._init_prices_from_catalog()
+	MatchState.money = 100000.0
+	var panel: PanelContainer = (load("res://scripts/construct_panel_v2.gd") as GDScript).new()
+	add_child(panel)
+	panel.open_for_tile("tile_5_10", {"type": ""})
+	panel._on_building_pressed("b_007")
+	await get_tree().process_frame
+
+	var row: Control = panel.find_child("RecipeRow_r_033", true, false)
+	_check(row != null, "recipe card: r_033's row exists once b_007 is expanded")
+	if row == null:
+		panel.queue_free()
+		return
+	var diagram: Control = row.find_child("RecipeDiagramCard", true, false)
+	_check(diagram != null, "recipe card: the full recipe diagram renders (not just the output icon)")
+	_check(diagram != null and absf(diagram.get_combined_minimum_size().y - 156.0) < 0.5,
+		"recipe card: diagram height matches Building Details' own flow-card height (156px)")
+	var name_lbl: Label = null
+	for lbl in _all_labels(row):
+		if lbl.text == "Construction Equiment Assembly (ICE)":   # "Equiment" is the source CSV's own spelling
+			name_lbl = lbl
+	_check(name_lbl != null, "recipe card: the recipe name is present")
+	if name_lbl != null and diagram != null:
+		_check(int(name_lbl.get_theme_font_size("font_size")) == 19,
+			"recipe card: name matches the building header's font size (19px)")
+		_check(name_lbl.global_position.y < diagram.global_position.y,
+			"recipe card: name sits ABOVE the diagram, not beside it")
+	if diagram != null:
+		# The whole recipe row must be at least as wide as the diagram needs — the
+		# concrete regression this fix targets: a 5-input diagram silently claiming
+		# less than its own content required, clipping the output cell off-panel.
+		_check(row.size.x + 0.5 >= diagram.get_combined_minimum_size().x,
+			"recipe card: the row is wide enough for the diagram's own reported minimum (got row=%.1f, diagram min=%.1f)" % [row.size.x, diagram.get_combined_minimum_size().x])
+	var has_chevron := false
+	for lbl in _all_labels(row):
+		if lbl.text == "›":
+			has_chevron = true
+	_check(not has_chevron, "recipe card: the chevron/caret is gone — the diagram is the only thing in the row now")
+	panel.queue_free()
+
+
+## Small helper: every Label under `root`, recursively. GDScript has no built-in
+## "find all of type" — get_children() is one level, find_child() finds only one.
+func _all_labels(root: Node) -> Array:
+	var out: Array = []
+	for child in root.get_children():
+		if child is Label:
+			out.append(child)
+		out.append_array(_all_labels(child))
+	return out
 
 
 func _test_construct_v3_confirm_layout() -> void:
