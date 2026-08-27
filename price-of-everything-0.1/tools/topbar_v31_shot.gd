@@ -88,23 +88,26 @@ func _ready() -> void:
 	await _shot(OUT_DIR + "quest_v31_intro.png")
 	await _wait(3.0 + 1.0 + 0.5)   # QUEST_V31_HOLD_SEC + QUEST_V31_COLLAPSE_SEC + margin
 	await _shot(OUT_DIR + "quest_v31_resting.png")
-	# Completion timeline from the emit (t=0): icon fades out + tick wipes across
-	# [.18, 1.2], 2 brass flashes through ~1.2, pad to QUEST_CELEBRATE_SEC=1.5,
-	# _finish_celebration fires -> icon fades IN gold over .18 (done ~1.68), holds
-	# QUEST_GOLD_HOLD_SEC=.6 (done ~2.28), hands off to "monetise"'s text reveal.
+	# Completion timeline from the emit (t=0, resequenced 27 Aug — gold fill, then a tick wipes
+	# across it, THEN the handoff; no more separate "icon holds gold" beat in between):
+	# stage 0 fade [0, .18], stage 1 gold fill [.18, .53] + hold [.53, .78],
+	# stage 2 tick wipe [.78, 1.23] + hold [1.23, 1.68] -> _finish_celebration fires.
+	# stage 3: expand tween starts immediately, [1.68, 2.68]; QUEST_V31_HOLD_SEC's 3s timer
+	# starts at the SAME t=1.68, so the true "settled, holding" window is [2.68, 4.68].
+	# stage 4: collapse tween [4.68, 5.68].
 	# Actually mark it done, not just the signal — active_mission() reads MiniQuest's
 	# own done[] state, not the completion signal, so faking only the signal would
 	# leave "integrate" the active mission and the reveal below would show it again.
 	MiniQuest.done["integrate"] = [true, true, true, true]
 	MiniQuest.mission_completed.emit("integrate", "Integrate glass and sand production", "+5% margin")
-	await _wait(0.5)
-	await _shot(OUT_DIR + "quest_v31_tick_wipe.png")     # t=.5: tick mid-wipe, icon faded
-	await _wait(1.4)
-	await _shot(OUT_DIR + "quest_v31_gold.png")          # t=1.9: icon gold, holding
+	await _wait(0.4)
+	await _shot(OUT_DIR + "quest_v31_fill.png")          # t=.4: stage 1, gold filling in
 	await _wait(0.6)
-	await _shot(OUT_DIR + "quest_v31_next_reveal.png")   # t=2.5: "monetise" full-text reveal
-	await _wait(3.0 + 1.0 + 0.5)   # QUEST_V31_HOLD_SEC + QUEST_V31_COLLAPSE_SEC + margin
-	await _shot(OUT_DIR + "quest_v31_after_collapse.png")
+	await _shot(OUT_DIR + "quest_v31_tick_wipe.png")     # t=1.0: stage 2, tick mid-wipe
+	await _wait(1.9)
+	await _shot(OUT_DIR + "quest_v31_next_reveal.png")   # t=2.9: stage 3 settled, next mission shown
+	await _wait(3.3)
+	await _shot(OUT_DIR + "quest_v31_after_collapse.png")  # t=6.2: stage 4 done + margin
 
 	# Power flyout: two Supply Priority toggles. Factory defaults are coal_gas=
 	# "self" ("Your buildings" pill lit) and wind_solar="grid" ("Grid" pill lit).

@@ -48,12 +48,12 @@ const NOTCH_DROP := 33.0
 const NOTCH_H := BAR_H + NOTCH_DROP
 const NOTCH_MIN_W := 300.0
 const NOTCH_RADIUS := 16.0
-# Research microscope object — the exact art the bottom menu's (alt-mode) Research
-# button uses. Composited onto a teal disc + light ring in the briefing notch on
-# research-unlock turns, mirroring bottom_menu.ALT_COLORS["TechButton"].
-const RESEARCH_ICON: Texture2D = preload("res://assets/icons/ui_icons/alt/research.png")
-const RESEARCH_DISC := Color("#1e5e63")   # teal disc  (ALT_COLORS["TechButton"][0])
-const RESEARCH_RING := Color("#ddefec")   # light ring (ALT_COLORS["TechButton"][1])
+# Research-unlock toast timing (owner, 27 Aug — replaces the teal microscope badge that used
+# to live in the notch): a small banner slides down under the notch, holds, then fades.
+const RESEARCH_TOAST_GAP := 8.0
+const RESEARCH_TOAST_SLIDE_SEC := 0.35
+const RESEARCH_TOAST_HOLD_SEC := 5.0
+const RESEARCH_TOAST_FADE_OUT_SEC := 0.3
 # v3.1 (cheat: `swap topbar v3.1`) — Goods Graph / Encyclopedia / Mission / Power /
 # Victory / Rankings swap their text/vector-glyph faces for these baked standalone
 # icons: the bottom-menu button treatment (cream emboss + bevel + drop shadow) minus
@@ -199,10 +199,13 @@ var _rankings_icon: Control   # v3.1
 # Briefing notch (top_level: centred on the viewport, hangs below the bar)
 var _briefing_btn: Control
 var _briefing_glyph: Control   # _BellIcon (vector — the font has no bell glyph)
-var _research_badge: Panel  # teal microscope badge — visible only on turns research unlocks
-var _research_pill: Panel  # count pill on the badge — shown when >1 research unlocks in a turn
-var _research_pill_label: Label
-var _research_seen := false  # UI-only: briefing opened while research showing; reset each turn
+# Research-unlock toast (replaces the teal microscope badge, 27 Aug): a small two-row banner
+# that slides down under the notch, rather than a persistent badge living in it.
+var _research_toast: PanelContainer
+var _research_toast_head: Label   # "New research unlocked:" — hidden for the multi-unlock case
+var _research_toast_name: Label   # the tech's name, or "N research unlocked"
+var _research_toast_anim: Tween
+var _research_toast_shown_count := 0   # aggregate count already toasted this turn (edge-trigger gate)
 var _briefing_head: Label
 var _briefing_sub: Label
 var _briefing_dot: Panel
@@ -249,6 +252,7 @@ func _ready() -> void:
 	_build_transport()
 	_build_rankings()
 	_build_briefing()
+	_build_research_toast()
 	_build_quest()
 	_build_council()
 	_build_goods_graph()
@@ -265,20 +269,15 @@ func _ready() -> void:
 	MatchState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _queue_refresh())
 	Production.turn_processed.connect(func(_s: Dictionary) -> void: _queue_refresh())
 	CompanyRankings.rankings_updated.connect(_queue_refresh)
-	# A new turn brings a fresh research digest, so the microscope should show again.
+	# A new turn resets the research-toast gate, so next turn's unlocks pop a fresh toast.
 	TurnManager.turn_advanced.connect(func(_t: int) -> void:
-		_research_seen = false
+		_research_toast_shown_count = 0
 		_queue_refresh())
 	LoanState.loans_updated.connect(_queue_refresh)
 	LoanState.loan_taken.connect(_on_loan_taken)
 	TurnManager.turn_resolution_completed.connect(_on_turn_resolved_anomalies)
 	VictoryState.score_changed.connect(func(_t: int, _b: Dictionary) -> void: _queue_refresh())
 	TurnBriefing.items_changed.connect(_queue_refresh)
-	# Opening the briefing marks research as seen — hide the microscope until next turn.
-	TurnBriefing.expanded_changed.connect(func(e: bool) -> void:
-		if e:
-			_research_seen = true
-		_queue_refresh())
 	# The v2 briefing notch replaces the collapsed strip.
 	TurnBriefing.strip_enabled = false
 	get_viewport().size_changed.connect(_recenter_notch)
@@ -656,8 +655,8 @@ func _v31_glow(px: float) -> TextureRect:
 ## A small clipped bell (see the single-bell v3.1 comment this superseded — a bare
 ## TextureRect.size under a non-Container parent kept reverting to the bell's native
 ## crop) PLUS a full-rect sibling "pill_slot" a caller can anchor a corner badge to —
-## same corner-badge shape as _research_pill on _research_badge, just generalised so
-## _refresh_briefing can rebuild the badge without touching the bell underneath it.
+## a generalised corner-badge shape so _refresh_briefing can rebuild the count pill
+## (see _overhang_bottom_right/_notice_pill) without touching the bell underneath it.
 ## `hover_source` — see _v31_icon's own doc — usually the notch, so both bells catch
 ## the light together on hover.
 func _bell_unit(hover_source: Control = null) -> Dictionary:
@@ -715,9 +714,9 @@ func _overhang_bottom_right(pill: Control, host: Control, inset: float = 4.0) ->
 
 ## A small count pill, shaped like UIHelpers.make_quantity_pill (rounded oval capsule,
 ## sized to its text, centred label) but with its own colour pair — Briefing's decisions/
-## updates split needs colours outside that helper's fixed navy-bg/cream-text. Sized to
-## match _research_pill (the same corner-badge role, on the research badge) rather than
-## make_quantity_pill's own default — that read too tall for a badge this small.
+## updates split needs colours outside that helper's fixed navy-bg/cream-text. Deliberately
+## smaller than make_quantity_pill's own default — that read too tall for a corner badge
+## this small.
 func _notice_pill(text: String, bg: Color, fg: Color) -> PanelContainer:
 	var height := 16
 	var width: int = maxi(20, text.length() * 8 + 12)
@@ -1376,53 +1375,6 @@ func _build_briefing() -> void:
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	notch.add_child(row)
-	# Research badge (leads the row) — the bottom menu's teal microscope, built to
-	# match its alt-mode style: research.png object on a teal disc + light ring.
-	# Shown only on turns a research unlock lands.
-	_research_badge = Panel.new()
-	_research_badge.custom_minimum_size = Vector2(60, 60)
-	var rbsb := StyleBoxFlat.new()
-	rbsb.bg_color = RESEARCH_DISC
-	rbsb.set_corner_radius_all(30)          # circular on the 60px disc
-	rbsb.border_color = RESEARCH_RING
-	rbsb.set_border_width_all(4)
-	_research_badge.add_theme_stylebox_override("panel", rbsb)
-	_research_badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_research_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_research_badge.tooltip_text = "Research unlocked this turn"
-	_research_badge.visible = false
-	var micro := TextureRect.new()
-	micro.texture = RESEARCH_ICON
-	micro.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	micro.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	micro.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	micro.offset_left = 6.0
-	micro.offset_top = 6.0
-	micro.offset_right = -6.0
-	micro.offset_bottom = -6.0
-	micro.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_research_badge.add_child(micro)
-	# Count pill on the badge's bottom-right corner — only when >1 research this turn.
-	_research_pill = Panel.new()
-	_research_pill.custom_minimum_size = Vector2(24, 18)
-	_research_pill.position = Vector2(40, 48)
-	_research_pill.z_index = 1
-	_research_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var rpsb := StyleBoxFlat.new()
-	rpsb.bg_color = C_RED
-	rpsb.set_corner_radius_all(9)           # stadium/pill shape
-	rpsb.border_color = C_BRIGHT
-	rpsb.set_border_width_all(2)
-	_research_pill.add_theme_stylebox_override("panel", rpsb)
-	_research_pill.visible = false
-	_research_pill_label = _mini("2", C_BRIGHT, 12)
-	_research_pill_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_research_pill_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_research_pill_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_research_pill_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_research_pill.add_child(_research_pill_label)
-	_research_badge.add_child(_research_pill)
-	row.add_child(_research_badge)
 	var glyph_holder := Control.new()
 	glyph_holder.custom_minimum_size = Vector2(28, 28)
 	glyph_holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -1484,10 +1436,9 @@ func _recenter_notch() -> void:
 	if _briefing_btn == null or not is_instance_valid(_briefing_btn):
 		return
 	var vw := get_viewport_rect().size.x
-	# v3.1: nothing left in `row` to show but the (optional) research badge — the
-	# bells are top_level now, so they don't feed row's content width — so the
-	# classic text's much wider NOTCH_MIN_W floor would leave the bells looking
-	# lost in a wide box. Hug the bells instead.
+	# v3.1: `row` has nothing left to show at all — the bells are top_level now, so they
+	# don't feed row's content width — so the classic text's much wider NOTCH_MIN_W floor
+	# would leave the bells looking lost in a wide box. Hug the bells instead.
 	#
 	# custom_minimum_size was set ONCE at build time to NOTCH_MIN_W (_build_briefing),
 	# and get_combined_minimum_size() always returns at least custom_minimum_size —
@@ -1498,8 +1449,8 @@ func _recenter_notch() -> void:
 	if MatchState.use_topbar_v3_1 and _briefing_icon_v31 != null and is_instance_valid(_briefing_icon_v31):
 		floor_w = _briefing_icon_v31.get_combined_minimum_size().x + NOTCH_V31_SIDE_PAD * 2.0
 	_briefing_btn.custom_minimum_size.x = floor_w
-	# maxf against the (now correctly floored) min_size still lets real content —
-	# the research badge, or classic text — widen the notch past floor_w when shown.
+	# maxf against the (now correctly floored) min_size still lets real content — the
+	# classic text — widen the notch past floor_w when shown.
 	var min_size := _briefing_btn.get_combined_minimum_size()
 	_briefing_btn.size = Vector2(maxf(min_size.x, floor_w), NOTCH_H)
 	_briefing_btn.position = Vector2(roundf((vw - _briefing_btn.size.x) * 0.5), 0.0)
@@ -1507,9 +1458,8 @@ func _recenter_notch() -> void:
 	_place_briefing_bells()
 	queue_redraw()
 
-## v3.1: keeps the two bells centred on the notch's own midline regardless of
-## whether the research badge is showing beside them — see the top_level comment
-## where _briefing_icon_v31 is built.
+## v3.1: keeps the two bells centred on the notch's own midline — see the top_level
+## comment where _briefing_icon_v31 is built.
 func _place_briefing_bells() -> void:
 	if _briefing_icon_v31 == null or not is_instance_valid(_briefing_icon_v31):
 		return
@@ -1525,6 +1475,7 @@ func _refresh_briefing() -> void:
 	var decisions := 0
 	var updates := 0
 	var research_count := 0
+	var research_agg: Dictionary = {}
 	for it in TurnBriefing.items():
 		if str(it.get("kind", "")) == "decision":
 			decisions += 1
@@ -1532,11 +1483,16 @@ func _refresh_briefing() -> void:
 			updates += 1
 		if str(it.get("event_kind", "")) == "research_unlocked":
 			research_count += int(it.get("magnitude", 1))   # aggregated item carries the count
-	if _research_badge != null:
-		_research_badge.visible = research_count > 0 and not _research_seen
-	if _research_pill != null:
-		_research_pill.visible = research_count > 1 and not _research_seen
-		_research_pill_label.text = "%d" % research_count
+			research_agg = it
+	# Pop a fresh toast only when the aggregate grows past what was already toasted this turn —
+	# TurnBriefing can rebuild its items more than once as unlocks land, and this must not
+	# re-pop for unlocks it has already shown (owner, 27 Aug).
+	if research_count > _research_toast_shown_count:
+		var research_list: Array = research_agg.get("research", [])
+		var single_name := str((research_list[0] as Dictionary).get("name", "")) \
+			if research_count == 1 and not research_list.is_empty() else ""
+		_pop_research_toast(single_name, research_count)
+		_research_toast_shown_count = research_count
 	var hot := decisions > 0
 	(_briefing_btn as _NotchBtn).warn = hot
 	(_briefing_btn as _NotchBtn).active = TurnBriefing.expanded
@@ -1570,6 +1526,123 @@ func _refresh_briefing() -> void:
 	call_deferred("_recenter_notch")
 
 
+# ── 4b · Research-unlock toast: a small banner sliding down under the notch ─────
+
+## The banner itself, built once and hidden — _pop_research_toast fills it in and animates it
+## on demand. top_level (like the quest module and the notch's own bells) so its position is
+## independent of container layout; DS.theme is assigned directly because a top_level Control
+## does not reliably inherit the viewport's theme (see _open_fly's note on the same gap for the
+## quest/rankings flyouts).
+func _build_research_toast() -> void:
+	var panel := PanelContainer.new()
+	panel.name = "ResearchToast"
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color("#0d1e31")
+	sb.border_color = C_ACTIVE_BORDER
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(10)
+	sb.set_content_margin_all(12)
+	sb.shadow_color = Color(0, 0, 0, 0.55)
+	sb.shadow_size = 14
+	panel.add_theme_stylebox_override("panel", sb)
+	panel.theme = DS.theme
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	panel.top_level = true
+	panel.visible = false
+	panel.modulate.a = 0.0
+	panel.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			panel.accept_event()
+			_on_research_toast_pressed())
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 2)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(col)
+	# Row 1: the lead-in, smaller — hidden for the "N research unlocked" multi case, which is
+	# one row on its own rather than a lead-in with nothing under it.
+	_research_toast_head = _mini("New research unlocked:", C_TEXT, 11)
+	col.add_child(_research_toast_head)
+	# Row 2: the tech's name (single case) or "N research unlocked" (multi case) — bigger, so
+	# it reads as the actual news rather than the label above it (CLAUDE.md: size, not a
+	# dimmer colour, is what marks the lead-in as secondary).
+	_research_toast_name = _mini("", C_BRIGHT, 14)
+	col.add_child(_research_toast_name)
+	add_child(panel)
+	_research_toast = panel
+
+
+## Centred under the notch, hanging further below it the way the notch itself hangs below the
+## bar. Sized to content each time — the name varies, so the banner's width does too.
+func _position_research_toast() -> void:
+	if _research_toast == null or not is_instance_valid(_research_toast):
+		return
+	if _briefing_btn == null or not is_instance_valid(_briefing_btn):
+		return
+	var want := _research_toast.get_combined_minimum_size()
+	_research_toast.size = want
+	_research_toast.position = Vector2(
+		roundf(_briefing_btn.position.x + (_briefing_btn.size.x - want.x) * 0.5),
+		_briefing_btn.position.y + _briefing_btn.size.y + RESEARCH_TOAST_GAP)
+
+
+## Pops the toast for a newly-grown research count. `single_name` non-empty means exactly one
+## unlock — the two-row "New research unlocked: / <Name>" look; empty means several — one row,
+## "N research unlocked" (_on_research_toast_pressed reads _research_toast_head.visible back to
+## tell the two cases apart when the click lands).
+func _pop_research_toast(single_name: String, count: int) -> void:
+	if _research_toast == null or not is_instance_valid(_research_toast):
+		return
+	if single_name != "":
+		_research_toast_head.visible = true
+		_research_toast_name.text = single_name
+	else:
+		_research_toast_head.visible = false
+		_research_toast_name.text = "%d research unlocked" % count
+	_position_research_toast.call_deferred()
+	_research_toast.visible = true
+	if _research_toast_anim != null and _research_toast_anim.is_valid():
+		_research_toast_anim.kill()
+	var settled_y := _research_toast.position.y
+	_research_toast.position.y = settled_y - 10.0
+	_research_toast.modulate.a = 0.0
+	_research_toast_anim = create_tween()
+	_research_toast_anim.set_parallel(true)
+	_research_toast_anim.tween_property(_research_toast, "modulate:a", 1.0, RESEARCH_TOAST_SLIDE_SEC)
+	_research_toast_anim.tween_property(_research_toast, "position:y", settled_y, RESEARCH_TOAST_SLIDE_SEC)
+	_research_toast_anim.set_parallel(false)
+	_research_toast_anim.tween_interval(RESEARCH_TOAST_HOLD_SEC)
+	_research_toast_anim.tween_callback(_dismiss_research_toast)
+
+
+func _dismiss_research_toast() -> void:
+	if _research_toast == null or not is_instance_valid(_research_toast) or not _research_toast.visible:
+		return
+	if _research_toast_anim != null and _research_toast_anim.is_valid():
+		_research_toast_anim.kill()
+	_research_toast_anim = create_tween()
+	_research_toast_anim.tween_property(_research_toast, "modulate:a", 0.0, RESEARCH_TOAST_FADE_OUT_SEC)
+	_research_toast_anim.tween_callback(func() -> void:
+		if _research_toast != null and is_instance_valid(_research_toast):
+			_research_toast.visible = false)
+
+
+## Single unlock → search the research panel for that tech (MatchState.research_search_requested,
+## the same signal UIHelpers.make_research_requirement_link uses, so this needs no reference to
+## wherever the research panel actually lives). Multiple → open the turn briefing panel instead,
+## since there is no single tech to jump to — it already lists every unlock (_build_research_list).
+func _on_research_toast_pressed() -> void:
+	var single: bool = _research_toast_head != null and _research_toast_head.visible
+	var name_text: String = _research_toast_name.text if _research_toast_name != null else ""
+	_dismiss_research_toast()
+	if single and name_text != "":
+		MatchState.research_search_requested.emit(name_text)
+	else:
+		if TurnBriefing.expanded:
+			TurnBriefing.collapse()
+		TurnBriefing.expand()
+
+
 # ── 5 · Council: seated portraits with loyalty rings + number chips ─────────────
 
 ## The post-tutorial mini quest (scripts/mini_quest.gd). Sits immediately right of the updates
@@ -1580,9 +1653,8 @@ func _build_quest() -> void:
 	var mod := _ModuleBtn.new(self)
 	mod.name = "QuestModule"
 	mod.tooltip_text = "Mini quest"
-	# The thin gold rim is what marks this out from its neighbours: every other module on the
-	# bar is bare or silver-edged, so the rim does the work a badge would.
-	mod.rim = _quest_rim()
+	# No rim (owner, 27 Aug — was a thin gold outline; the fixed 120 px resting width now does
+	# the "marks this out from its neighbours" job the rim used to do).
 	# v3.1: the collapse-to-icon animation shrinks mod.size.x with the full-width text
 	# still visible underneath (see _quest_v31_collapse_to_icon) — clip so the text
 	# is cropped by the shrinking edge instead of overflowing it.
@@ -1614,6 +1686,10 @@ func _build_quest() -> void:
 	# _ModuleBtn itself, not on whichever content sits inside it.
 	_quest_icon = _v31_icon(ICON_QUEST, mod)
 	_quest_icon.visible = false
+	# The module's resting width (QUEST_ICON_MODULE_W, 120) is wider than the icon+padding
+	# would size to on its own (~68) — SHRINK_CENTER keeps the icon at its natural size and
+	# centred in that extra room, rather than the icon stretching to fill it.
+	_quest_icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	pad.add_child(_quest_icon)
 	mod.pressed.connect(func() -> void: _toggle_fly("quest"))
 	# TOP-LEVEL, like the briefing notch and the bankruptcy strip. The bar is a PanelContainer:
@@ -1637,12 +1713,6 @@ func _build_quest() -> void:
 	_refresh_quest()
 
 
-## The module's resting rim. Not a const: Color.darkened() is a method call, so it cannot be
-## folded at parse time.
-func _quest_rim() -> Color:
-	return C_CREAM.darkened(0.15)
-
-
 ## A mission landed. The toast MiniQuest raises says WHAT happened; the module — flashing up on
 ## the bar — says where. See _celebrate_mission for the sequence itself.
 func _on_quest_mission_completed(kind: String, _mission_title: String, _reward: String) -> void:
@@ -1657,6 +1727,10 @@ func _on_quest_mission_completed(kind: String, _mission_title: String, _reward: 
 ## both change the rect this is measured against.
 const QUEST_GAP := 10.0
 
+## v3.1: the module's fixed resting width while showing icon-only (owner, 27 Aug). Wider than
+## the icon+padding would size to on their own (~68 px) — see _build_quest's SHRINK_CENTER note.
+const QUEST_ICON_MODULE_W := 120.0
+
 ## Both this and the notch are top_level, so their positions live in the same space and the
 ## container will not touch either. Centred in what the bar actually DRAWS — its live height
 ## less the metallic bezel along the bottom — rather than in BAR_H, which is the offset the bar
@@ -1669,6 +1743,8 @@ func _place_quest() -> void:
 	if _quest_v31_animating:
 		return   # a width tween owns .size right now (see _quest_v31_collapse_to_icon)
 	var want_size := _quest_btn.get_combined_minimum_size()
+	if MatchState.use_topbar_v3_1 and not _quest_v31_wide:
+		want_size.x = maxf(want_size.x, QUEST_ICON_MODULE_W)
 	_quest_btn.size = want_size
 	_quest_btn.position = Vector2(
 		_briefing_btn.position.x + _briefing_btn.size.x + QUEST_GAP,
@@ -1724,10 +1800,10 @@ func _refresh_quest() -> void:
 		_refresh_open_fly()
 
 
-## v3.1: show the full mission text immediately (no reveal animation of its own —
-## there's nothing to reveal FROM the first time, and after a celebration the gold
-## icon already carried that beat), hold it, then collapse to the icon. Used both
-## for the mission's first appearance and for the mission a completion hands off to.
+## v3.1 stage 3, "expand to show the next mission": animate the module's width out to the full
+## mission text, symmetric to stage 4's collapse tween below (a snap here would read as
+## unfinished next to that one) — hold it, then collapse to the icon (stage 4). Used both for
+## the mission's first appearance and for the mission a completion hands off to.
 func _quest_v31_reveal_then_collapse() -> void:
 	if _quest_btn == null or not is_instance_valid(_quest_btn):
 		return
@@ -1737,10 +1813,15 @@ func _quest_v31_reveal_then_collapse() -> void:
 	_quest_text_col.visible = true
 	_quest_text_col.modulate.a = 1.0
 	_quest_v31_wide = true
-	_quest_v31_animating = false
 	var want: float = _quest_text_col.get_combined_minimum_size().x + 24.0   # pad's L/R margins
-	mod.size.x = want
-	_place_quest.call_deferred()
+	if _quest_width_anim != null and _quest_width_anim.is_valid():
+		_quest_width_anim.kill()
+	_quest_v31_animating = true
+	_quest_width_anim = create_tween()
+	_quest_width_anim.tween_property(mod, "size:x", want, QUEST_V31_COLLAPSE_SEC)
+	_quest_width_anim.tween_callback(func() -> void:
+		_quest_v31_animating = false
+		_place_quest.call_deferred())
 	# Only collapse if we're still resting on the mission this was raised for — a real
 	# completion landing mid-hold replaces this with its own sequence instead.
 	var expected_kind := (_quest_celebrating_kind if _quest_celebrating else MiniQuest.active_mission())
@@ -1758,7 +1839,7 @@ func _quest_v31_collapse_to_icon() -> void:
 	if _quest_btn == null or not is_instance_valid(_quest_btn):
 		return
 	var mod := _quest_btn as _ModuleBtn
-	var icon_w: float = _quest_icon.get_combined_minimum_size().x + 24.0
+	var icon_w: float = maxf(_quest_icon.get_combined_minimum_size().x + 24.0, QUEST_ICON_MODULE_W)
 	if _quest_width_anim != null and _quest_width_anim.is_valid():
 		_quest_width_anim.kill()
 	_quest_v31_animating = true
@@ -2138,34 +2219,31 @@ const QUEST_STEP_PT := 13
 const QUEST_HINT_PT := 12
 const QUEST_BOX := 12.0             # the per-step tickbox, per spec
 
-## Completion sequence, in seconds: the label fades away, the module flashes brass twice with a
-## navy tick cut through it, then the next mission pops open and collapses itself again.
-const QUEST_FLASH_SEC := 0.6
-const QUEST_FLASHES := 2
-const QUEST_CELEBRATE_SEC := 1.5
+## Completion sequence, in seconds (owner, 27 Aug — gold fill, then a tick wipes across it as a
+## navy hole cut through the plate; sequential, not the old concurrent double-flash-with-wipe).
+## The label fades away first, then: fill → hold → tick → hold, then the next mission pops open
+## (classic: the flyout; v3.1: the module itself expands — see QUEST_V31_* below).
+const QUEST_FILL_SEC := 0.35        # stage 1: gold fill
+const QUEST_FILL_HOLD_SEC := 0.25   # stage 1: hold on solid gold before the tick starts cutting in
+const QUEST_TICK_SEC := 0.45        # stage 2: tick wipes across as a hole in the gold
+const QUEST_TICK_HOLD_SEC := 0.45   # stage 2: hold on the finished tick before handing off
 const QUEST_NEXT_OPEN_SEC := 3.0
-## How long the label takes to fade out at the start (and the next one to fade in at the end).
-## The tick waits this out before it starts drawing, so it never shares the module with text.
+## How long the label takes to fade out at the start (and the next one to fade in at the end,
+## classic mode only). The fill waits this out before it starts, so it never shares the module
+## with text.
 const QUEST_TEXT_FADE := 0.18
-## The brass never drops below this through the flash, so the navy negative-space tick always
-## has a plate to sit in — a flash that returned to zero would blink the tick out with it.
-const QUEST_GLOW_FLOOR := 0.55
 
 ## v3.1 (cheat: `swap topbar v3.1`): the module's own expand/collapse, independent of the
 ## flyout — first appearance and each post-celebration handoff hold the full mission text
 ## for QUEST_V31_HOLD_SEC, then animate down to the icon over QUEST_V31_COLLAPSE_SEC.
 const QUEST_V31_HOLD_SEC := 3.0
 const QUEST_V31_COLLAPSE_SEC := 1.0
-## How long the icon holds gold after the tick, before handing off to the next mission's
-## text reveal — long enough to register as its own beat, not a flicker.
-const QUEST_GOLD_HOLD_SEC := 0.6
 
 ## Which section is open, by mission kind; "" is all-collapsed. It lives on the bar rather than
 ## on the built nodes because _refresh_open_fly throws the whole flyout away and rebuilds it.
 var _quest_open := ""
 var _quest_sections: Dictionary = {}
 var _quest_anim: Tween = null
-var _quest_tick_anim: Tween = null
 var _quest_text_anim: Tween = null
 ## Did the completion sequence open this flyout by itself? If so it closes it again afterwards,
 ## rather than leaving a panel over the map that the player never asked for.
@@ -2307,14 +2385,15 @@ func _toggle_quest_section(kind: String) -> void:
 		_refresh_open_fly()
 
 
-## The completion sequence, 1.5 s of it, and it happens ON THE BAR (owner, 26 Aug). The module
-## itself flashes brass twice while a tick draws across it; the flyout stays SHUT through all of
-## that. Only when the flash is done does the module switch to the next mission and the flyout
-## pop open for three seconds to reveal it, then fold away.
+## The completion sequence, and it happens ON THE BAR (owner, 26 Aug; resequenced to fill-then-
+## tick 27 Aug). The module itself fills solid gold, then a tick wipes across it as a navy hole
+## cut through the plate; the flyout stays SHUT through all of that. Only when the tick's hold is
+## done does the module hand off to the next mission — v3.1 expands the module itself to reveal
+## it (see _finish_celebration_v31); classic pops the flyout open for three seconds instead.
 ##
 ## Driving the module rather than a flyout section is also what makes the timing trustworthy:
 ## the module is a permanent node, so nothing the turn-resolution does can free the tween's
-## target mid-flight — which is exactly what used to collapse the whole 1.5 s into an instant.
+## target mid-flight — which is exactly what used to collapse the whole sequence into an instant.
 func _celebrate_mission(kind: String) -> void:
 	if _quest_btn == null or not is_instance_valid(_quest_btn) or not _quest_btn.visible:
 		return
@@ -2327,39 +2406,35 @@ func _celebrate_mission(kind: String) -> void:
 	_refresh_quest()   # the module holds on the finished mission ("Complete — <reward>")
 	var mod := _quest_btn as _ModuleBtn
 	mod.tick_progress = 0.0
+	mod.glow = 0.0
 	# The tick is the navy of the bar directly behind the module, so it reads as a hole in the
-	# brass. Sampled once — the module does not move during the flash.
+	# gold. Sampled once — the module does not move during the sequence.
 	mod.tick_color = _bar_navy_at(mod.position + mod.size * 0.5)
 	_kill_quest_anim()
-	# The label (or v3.1 icon) fades away first, so the tick has the module to itself
+	# Stage 0: the label (or v3.1 icon) fades away first, so the fill has the module to itself
 	# (owner, 26 Aug). Both are tweened — whichever is currently hidden just no-ops.
 	_quest_text_anim = create_tween()
 	if _quest_text_col != null and is_instance_valid(_quest_text_col):
 		_quest_text_anim.tween_property(_quest_text_col, "modulate:a", 0.0, QUEST_TEXT_FADE)
 	if _quest_icon != null and is_instance_valid(_quest_icon):
 		_quest_text_anim.parallel().tween_property(_quest_icon, "modulate:a", 0.0, QUEST_TEXT_FADE)
-	# Two flashes, but between them the glow only dips to the floor rather than to zero, so the
-	# brass plate — and the navy tick cut into it — stays lit the whole way through.
+	# Stage 1 (gold fill) then stage 2 (tick wipes across as a hole in it), one after the other on
+	# a single timeline — the plate reads as filling, THEN as marked complete, not both at once.
 	_quest_anim = create_tween()
-	for _i in QUEST_FLASHES:
-		_quest_anim.tween_method(_set_quest_celebrate, QUEST_GLOW_FLOOR, 1.0, QUEST_FLASH_SEC * 0.5)
-		_quest_anim.tween_method(_set_quest_celebrate, 1.0, QUEST_GLOW_FLOOR, QUEST_FLASH_SEC * 0.5)
-	_quest_anim.tween_interval(maxf(0.0, QUEST_CELEBRATE_SEC - QUEST_FLASH_SEC * QUEST_FLASHES))
+	_quest_anim.tween_interval(QUEST_TEXT_FADE)
+	_quest_anim.tween_method(_set_quest_glow, 0.0, 1.0, QUEST_FILL_SEC)
+	_quest_anim.tween_interval(QUEST_FILL_HOLD_SEC)
+	_quest_anim.tween_property(mod, "tick_progress", 1.0, QUEST_TICK_SEC)
+	_quest_anim.tween_interval(QUEST_TICK_HOLD_SEC)
 	_quest_anim.tween_callback(_finish_celebration.bind(kind))
-	# The tick waits for the label to clear, then draws across the two flashes.
-	_quest_tick_anim = create_tween()
-	_quest_tick_anim.tween_interval(QUEST_TEXT_FADE)
-	_quest_tick_anim.tween_property(mod, "tick_progress", 1.0,
-		QUEST_FLASH_SEC * QUEST_FLASHES - QUEST_TEXT_FADE)
 
 
-## One flash of the module: rim to brass and the fill glow, together on the same eased value.
-func _set_quest_celebrate(t: float) -> void:
+## Stage 1 of the completion sequence: the module's plate fills gold. No rim to touch — the
+## module has none (removed 27 Aug); the fill alone carries the beat.
+func _set_quest_glow(t: float) -> void:
 	if _quest_btn == null or not is_instance_valid(_quest_btn):
 		return
-	var mod := _quest_btn as _ModuleBtn
-	mod.rim = _quest_rim().lerp(DS.PALETTE.BRASS, t)
-	mod.glow = t
+	(_quest_btn as _ModuleBtn).glow = t
 
 
 ## The bar's own ground gradient, sampled at a canvas point — bilinear across the four BarNavy
@@ -2374,22 +2449,21 @@ func _bar_navy_at(pos: Vector2) -> Color:
 
 
 func _kill_quest_anim() -> void:
-	for t: Tween in [_quest_anim, _quest_tick_anim, _quest_text_anim]:
+	for t: Tween in [_quest_anim, _quest_text_anim]:
 		if t != null and t.is_valid():
 			t.kill()
 	_quest_anim = null
-	_quest_tick_anim = null
 	_quest_text_anim = null
 
 
-## 1.5 s in: the flash is over. Clear the module back to its resting look, switch it to the next
-## mission, and THEN — not before — pop the flyout open on that mission for three seconds.
+## The gold-fill+tick sequence is over. Clear the module back to its resting look, switch it to
+## the next mission, and THEN — not before — hand off: classic pops the flyout open on it for
+## three seconds; v3.1 expands the module itself (_finish_celebration_v31).
 func _finish_celebration(finished_kind: String) -> void:
 	if _quest_btn != null and is_instance_valid(_quest_btn):
 		var mod := _quest_btn as _ModuleBtn
 		mod.glow = 0.0
 		mod.tick_progress = 0.0
-		mod.rim = _quest_rim()
 	_quest_celebrating = false
 	_quest_celebrating_kind = ""
 	var list: Array = MiniQuest.missions()
@@ -2423,35 +2497,25 @@ func _finish_celebration(finished_kind: String) -> void:
 		_collapse_quest_accordion.bind(next))
 
 
-## v3.1's half of _finish_celebration (classic instead pops the flyout open, above —
-## the module itself now carries the reveal, so v3.1 skips that entirely, avoiding
-## showing the same "here's the new mission" information twice at once).
-##
-## The icon reveals already turning gold (fading in on a gold modulate, not to white
-## then re-tinting — one motion, not two), holds long enough to read as its own beat,
-## then hands off to the reveal-then-collapse sequence for the mission this completion
-## advanced to. With no next mission, it just rests on the icon in white.
+## v3.1's half of _finish_celebration (classic instead pops the flyout open, above). Stages 1-2
+## (gold fill, tick) already played out on the bar in _celebrate_mission, so this just hands
+## straight to stage 3 — the module itself expanding to reveal the next mission — with no second
+## gold moment of its own. With no next mission, it just rests on the icon in white (stage 4,
+## "retract to just the target icon", never had anything to expand FROM in that case).
 func _finish_celebration_v31(next: String) -> void:
 	if _quest_icon == null or not is_instance_valid(_quest_icon):
 		_quest_v31_animating = false
 		return
 	_quest_text_col.visible = false
 	_quest_icon.visible = true
+	_quest_icon.modulate = Color.WHITE
 	if next == "":
-		_quest_icon.modulate = Color.WHITE
 		_quest_v31_wide = false
 		_quest_v31_animating = false
 		_place_quest.call_deferred()
 		return
-	var brass: Color = DS.PALETTE.BRASS
-	_quest_icon.modulate = Color(brass.r, brass.g, brass.b, 0.0)
-	_place_quest.call_deferred()
-	var gold_anim := create_tween()
-	gold_anim.tween_property(_quest_icon, "modulate", brass, QUEST_TEXT_FADE)
-	gold_anim.tween_interval(QUEST_GOLD_HOLD_SEC)
-	gold_anim.tween_callback(func() -> void:
-		_quest_v31_animating = false
-		_quest_v31_reveal_then_collapse())
+	_quest_v31_animating = false
+	_quest_v31_reveal_then_collapse()
 
 
 ## Fold the accordion shut — but only if the player has not since opened something else, and
