@@ -1512,7 +1512,11 @@ func _recipe_icon(good_id: String, internal: String, qty: int, size: int, bleed:
 	slot.clip_contents = false
 	if good_id != "":
 		slot.tooltip_text = Catalog.get_display_name(good_id)  # hover shows the good's name
-	var tex := GoodIcons.texture_for_size(good_id, internal, float(size))
+	# Power uses the flat recipe-diagram glyph everywhere a recipe flow is drawn (matches
+	# UIHelpers.mini_recipe_diagram / construct_panel_v2's _power_output_cell) instead of the
+	# illustrated goods-icon art GoodIcons would otherwise serve for good_id "power".
+	var tex: Texture2D = load(RECIPE_POWER_ICON_PATH) as Texture2D if internal == "power" \
+		else GoodIcons.texture_for_size(good_id, internal, float(size))
 	if tex != null:
 		var tr := TextureRect.new()
 		tr.texture = tex
