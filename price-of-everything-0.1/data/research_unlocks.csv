@@ -231,7 +231,7 @@ research_mining_017,Mining and Surveying,,,,,I,Produce,crude_oil,250,units,Shale
 research_mining_018,Mining and Surveying,research_mining_017,,,,II,Produce,crude_oil,400,units,Dynamic-Positioning Drilling,rig,Unlocks new recipe: Deepwater Oil Extraction (12 Crude Oil).
 research_mining_019,Mining and Surveying,research_mining_018,,,,III,Produce,crude_oil,600,units,Subsea Production Systems,manifold,Unlocks new recipe: Subsea Manifold Extraction (14 Crude Oil).
 research_recyc_006,Recycling,,,,,I,Produce,biomass,250,units,Biowaste Digestion,bio,Unlocks new recipe: Biowaste Recycling (24 Biomass).
-research_hcpower_010,Hydrocarbon Power,,,,,I,Produce,power,2500,units,Hydrogen Combustion Turbines,turbine,Unlocks new recipe: Hydrogen Power (100 Power).
+research_hcpower_010,Hydrocarbon Power,,,,,I,Run,Power Plant,25,turns,Hydrogen Combustion Turbines,turbine,Unlocks new recipe: Hydrogen Power (100 Power).
 research_infra_035,Infrastructure,research_infra_004,,,,III,Use Infrastructure,cables,10,80% for 5 turns,Dynamic Line Rating,hvdc1,Increases cable throughput by 25% permanently.
 research_logi_006,Logistics,research_logi_001,,,,II,Build,port,3,units,Pallet Racking Systems,depot,Raises tile storage to 1600 (warehouse level 2).
 research_logi_007,Logistics,research_logi_006,,,,II,Build,port,3,units,Automated Storage & Retrieval,depot,Raises tile storage to 2500 (warehouse level 3).
