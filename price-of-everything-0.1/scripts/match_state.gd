@@ -566,18 +566,19 @@ var use_empire_button_badge: bool = true
 # Session-only; the cheat only changes the active match.
 var use_construct_panel_v2: bool = true
 
-# Debug-only: `swap construct_panel_v3` progressively enables the confirm-screen
-# redesign (designer spec "Confirm Construction Panel v2", tracked as v3 here)
-# inside the V2 panel while it is built out band by band. Off by default;
-# session-only, never persisted.
-var use_construct_panel_v3: bool = false
+# Debug-only: `swap construct_panel_v3` keeps the pre-redesign confirm screen
+# available for comparison (designer spec "Confirm Construction Panel v2",
+# tracked as v3 here) inside the V2 panel. The redesigned confirm screen is
+# the normal default. Session-only, never persisted.
+var use_construct_panel_v3: bool = true
 
-# Debug-only: `swap topbar v3.1` gates the icon-faced top bar redesign (Goods Graph,
-# Encyclopedia, Mission, Power, Victory, Rankings swap their text/vector-glyph faces
-# for the baked standalone icons in assets/icons/ui_icons/standalone/) inside the
-# existing top_bar.gd — same "render branch behind a flag, not a second scene" shape
-# as use_construct_panel_v3. Off by default; session-only, never persisted.
-var use_topbar_v3_1: bool = false
+# Debug-only: `swap topbar v3.1` keeps the pre-redesign top bar (Goods Graph,
+# Encyclopedia, Mission, Power, Victory, Rankings as text/vector-glyph faces)
+# available for comparison inside the existing top_bar.gd — same "render branch
+# behind a flag, not a second scene" shape as use_construct_panel_v3. The
+# icon-faced redesign (baked standalone icons in assets/icons/ui_icons/standalone/)
+# is the normal default. Session-only, never persisted.
+var use_topbar_v3_1: bool = true
 
 # Construct V2 defaults. They are match settings rather than panel-local state so
 # a construction captures the current choices when it begins, including after a
