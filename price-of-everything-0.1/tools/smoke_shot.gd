@@ -90,7 +90,32 @@ func _ready() -> void:
 			print("[SMOKE]   ... more not listed")
 			break
 
+	# BIRD CHECK: where are the skeins actually, so a shot can be aimed at one.
+	var birds := _wm.find_child("BirdVisuals", true, false)
+	if birds == null:
+		print("[BIRD] no BirdVisuals node")
+	else:
+		print("[BIRD] bounds ready=%s lo=%s hi=%s"
+			% [str(birds.get("_ready_bounds")), str(birds.get("_lo")), str(birds.get("_hi"))])
+		var lo: Vector2 = birds.get("_lo")
+		var hi: Vector2 = birds.get("_hi")
+		var lats: Array = birds.get("LATITUDES")
+		for si in lats.size():
+			var uu: float = fposmod(float(birds.get("_clock")) / 30.0 + float(si) / 5.0, 1.0)
+			var lx: float = lerpf(lo.x - 104.0, lo.x - 104.0 + float(birds.get("RUN")), uu)
+			var ly: float = lerpf(lo.y, hi.y, float(lats[si]))
+			print("[BIRD]   set %d  u=%.2f  lead=(%.0f, %.0f)" % [si, uu, lx, ly])
 	var pos := _tile_pos(tile_id)
+	# `--aim=bird` points the camera at a real skein instead of a tile. Guessing a tile's
+	# world position by hand was wrong twice; ask the layer where its birds actually are.
+	if str(opt.get("aim", "")) == "bird" and birds != null:
+		var lo2: Vector2 = birds.get("_lo")
+		var hi2: Vector2 = birds.get("_hi")
+		var lats2: Array = birds.get("LATITUDES")
+		var uu2: float = fposmod(float(birds.get("_clock")) / 30.0 + 2.0 / 5.0, 1.0)
+		pos = Vector2(lerpf(lo2.x - 104.0, lo2.x - 104.0 + float(birds.get("RUN")), uu2),
+			lerpf(lo2.y, hi2.y, float(lats2[2])))
+		print("[BIRD] aiming at %s" % str(pos))
 	if pos == Vector2.INF:
 		push_error("smoke_shot: unknown tile %s" % tile_id)
 		get_tree().quit(3)

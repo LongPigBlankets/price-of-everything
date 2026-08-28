@@ -36,8 +36,13 @@ const SMOKE := Color(0.44, 0.435, 0.42)
 const STEAM := Color(0.93, 0.945, 0.95)
 ## Steam is thinner than smoke — it is water, and at the grey's opacity a white plume reads
 ## as a solid cloud sitting on the map rather than as something you can see through.
-const PEAK_ALPHA := 0.50
-const STEAM_ALPHA_SCALE := 0.82
+## FULLY OPAQUE at birth, gone by the end (owner, 2026-08-27). Because a puff lives exactly
+## as long as the gap between puffs, the new one appears at full strength the instant the old
+## one reaches zero -- which reads as a fresh burst out of the stack rather than a seam.
+const PEAK_ALPHA := 1.0
+## Steam is left at full strength too, per the same instruction. Drop this if white vapour
+## ends up reading heavier than the grey.
+const STEAM_ALPHA_SCALE := 1.0
 
 ## THE PUFF SILHOUETTE, traced from the owner's own drawing (`puff smoke.PNG`,
 ## `tools/trace_puff_smoke.py`). The drawing carries two thin stem lines below the cloud that
@@ -101,13 +106,14 @@ static var PUFF_SHAPE := PackedVector2Array([
 ## the size of its chimney would be a speck lost against that journey. At these numbers a
 ## furnace (r 3.2) ends about 29 u across and a power plant (r 4.6) about 41 — a plume that
 ## reads as weather over the building rather than a dot beside it.
-## Both raised 25% (owner, 2026-08-27) from 1.4 / 9.0.
-const START_SCALE := 1.75
-const END_SCALE := 11.25
+## Raised 25% twice (owner, 2026-08-27): 1.4 / 9.0 -> 1.75 / 11.25 -> these.
+const START_SCALE := 2.19
+const END_SCALE := 14.06
 ## Below this many pixels across, a puff is a smudge nobody can read and every one of its
 ## six discs still costs a draw call — so the whole layer stands down when zoomed out.
-## How far the silhouette turns over a puff's life, radians.
-const SPIN := 0.55
+## A puff rolls a QUARTER TURN over its life (owner, 2026-08-27), left or right depending on
+## the stack's own seed -- so neighbouring chimneys do not all wind the same way.
+const SPIN := PI * 0.5
 const MIN_PUFF_PX := 3.0
 ## Keep drawing a little beyond the screen edge, so a puff drifting in from off-screen does
 ## not pop into existence at the border.
@@ -179,8 +185,9 @@ func _draw() -> void:
 		# Cull against the whole path the puff can travel, not just its origin.
 		if not view.has_point(at) and not view.has_point(at + NE * DRIFT):
 			continue
-		_append_puff(pts, cols, at, base_r, _phase(float(stack["seed"])),
-			bool(stack.get("carbon", true)))
+		var seed_val := float(stack["seed"])
+		_append_puff(pts, cols, at, base_r, _phase(seed_val),
+			bool(stack.get("carbon", true)), 1.0 if seed_val < 0.5 else -1.0)
 	CanvasBatch.flush(self, pts, cols)
 
 
@@ -191,7 +198,7 @@ func _phase(seed_val: float) -> float:
 
 
 func _append_puff(pts: PackedVector2Array, cols: PackedColorArray, origin: Vector2,
-		base_r: float, p: float, carbon: bool) -> void:
+		base_r: float, p: float, carbon: bool, spin_dir: float) -> void:
 	# Drift eases OUT: a puff leaves the stack briskly and slows as it spreads and cools.
 	var travelled := 1.0 - pow(1.0 - p, 1.7)
 	var centre := origin + NE * DRIFT * travelled
@@ -201,7 +208,8 @@ func _append_puff(pts: PackedVector2Array, cols: PackedColorArray, origin: Vecto
 	# Alpha rises fast then falls away to nothing. The quick rise is what hides the seam
 	# where one puff dies and the next is born on the same frame; the gentle exponent keeps
 	# the cloud readable through mid-life instead of washing out as soon as it spreads.
-	var alpha := PEAK_ALPHA * (minf(p / 0.10, 1.0) if p < 0.10 else pow(1.0 - p, 1.15))
+	# No ramp-in any more: full strength at birth, fading to nothing by the end.
+	var alpha := PEAK_ALPHA * pow(1.0 - p, 1.15)
 	if not carbon:
 		alpha *= STEAM_ALPHA_SCALE
 	if alpha <= 0.004:
@@ -209,7 +217,7 @@ func _append_puff(pts: PackedVector2Array, cols: PackedColorArray, origin: Vecto
 	var tint := SMOKE if carbon else STEAM
 	# The silhouette turns slowly as it drifts, so consecutive puffs from one chimney are not
 	# rubber stamps of each other.
-	var spin := p * SPIN
+	var spin := p * SPIN * spin_dir
 	var col := Color(tint.r, tint.g, tint.b, alpha)
 	var base := pts.size()
 	pts.resize(base + _puff_tris.size())
