@@ -319,6 +319,7 @@ func _ready() -> void:
 	_test_player_colours()
 	_test_smoke_stacks()
 	_test_construction_sites()
+	_test_dash_segments()
 	await _test_crowded_tile_gentle_failure()
 	await _test_river_bank_and_bridge_head()
 	await _test_bridge_corridor()
@@ -2398,6 +2399,58 @@ func _test_crowded_tile_gentle_failure() -> void:
 	for iid in ids:
 		MatchState.buildings.erase(str(iid))
 	bv.queue_free(); terrain.queue_free(); RoadNetwork.reset()
+
+
+## THE DASH WALKER. This exists because the first version hung the game: it accumulated
+## `t += run` along each edge, and once `t` was large enough, adding a sub-epsilon `run` no
+## longer changed `carry + t` in float — so the phase never advanced and it emitted
+## antialiased `draw_line` calls forever. Script memory stayed flat while the graphics driver
+## climbed past 9 GB and the process died. The rewrite walks dash starts by INDEX, so progress
+## is exact and the iteration count is bounded by construction; these tests pin that.
+func _test_dash_segments() -> void:
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	var dash: float = bv.SITE_DASH
+	var gap: float = bv.SITE_GAP
+	var period := dash + gap
+
+	# A long thin rectangle: the shape most likely to expose an accumulation bug, because one
+	# pair of edges is hundreds of periods long.
+	var long_rect := PackedVector2Array([Vector2(0, 0), Vector2(900, 0),
+		Vector2(900, 12), Vector2(0, 12)])
+	var segs: Array = bv._dash_segments(long_rect, dash, gap)
+	var perimeter := 2.0 * (900.0 + 12.0)
+	var ceiling := int(perimeter / period) + long_rect.size() + 2
+	_check(segs.size() > 0, "dash: a long rectangle produces dashes (%d)" % segs.size())
+	_check(segs.size() <= ceiling,
+		"dash: segment count is bounded by perimeter/period (%d <= %d)" % [segs.size(), ceiling])
+	# Every run must be a real segment of at most one dash — never a zero-length smear, which
+	# is what the runaway loop emitted millions of.
+	var bad := 0
+	for seg_value in segs:
+		var seg: PackedVector2Array = seg_value
+		var run := seg[0].distance_to(seg[1])
+		if run <= 0.0 or run > dash + 0.01:
+			bad += 1
+	_check(bad == 0, "dash: every run is >0 and <= one dash (%d bad)" % bad)
+
+	# The pathological input: an edge length that is an exact multiple of the period, so the
+	# phase lands precisely on the dash boundary at every corner.
+	var exact := PackedVector2Array([Vector2(0, 0), Vector2(period * 40.0, 0),
+		Vector2(period * 40.0, period * 40.0), Vector2(0, period * 40.0)])
+	var exact_segs: Array = bv._dash_segments(exact, dash, gap)
+	_check(exact_segs.size() > 0 and exact_segs.size() < 400,
+		"dash: an exact-multiple edge terminates sanely (%d)" % exact_segs.size())
+
+	# Degenerate inputs must return nothing rather than spin.
+	_check(bv._dash_segments(long_rect, 0.0, gap).is_empty(), "dash: zero dash draws nothing")
+	_check(bv._dash_segments(long_rect, dash, 0.0).is_empty(), "dash: zero gap draws nothing")
+	_check(bv._dash_segments(PackedVector2Array([Vector2.ZERO]), dash, gap).is_empty(),
+		"dash: a single point draws nothing")
+	# Coincident points must be skipped, not divided by.
+	var degenerate := PackedVector2Array([Vector2(5, 5), Vector2(5, 5), Vector2(5, 5)])
+	_check(bv._dash_segments(degenerate, dash, gap).is_empty(),
+		"dash: a zero-area ring draws nothing")
+	bv.free()
 
 
 ## Construction sites and their cranes (owner spec 2026-08-27). The crane's swing is pure

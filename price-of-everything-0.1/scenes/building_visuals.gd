@@ -5766,16 +5766,26 @@ func _draw_construction_site(verts: PackedVector2Array) -> void:
 	_draw_dashed_ring(verts, MapMidcenturyStyle.INK, 1.2, SITE_DASH, SITE_GAP)
 
 
-## A dashed outline around a closed polygon. The dash phase CARRIES across corners rather
-## than restarting at each vertex, so a short edge cannot end up solid while a long one is
-## dashed — on an L, where one leg is a third the length of another, restarting per edge
-## reads as a mistake rather than a pattern.
-func _draw_dashed_ring(pts: PackedVector2Array, col: Color, width: float,
-		dash: float, gap: float) -> void:
+## The dash runs of a closed polygon, as [start, end] point pairs. Pure and testable, which
+## is the point: the drawing version of this had a float-precision INFINITE LOOP that cost
+## hours to find. It accumulated `t += run` where `run` was the remaining length of the
+## current dash — and once `t` grew large enough, adding a sub-epsilon `run` no longer changed
+## `carry + t` at all, so the phase never advanced and it emitted antialiased `draw_line`
+## calls forever. Static memory stayed flat while the driver climbed past 9 GB and died.
+##
+## This walks dash starts by INDEX (`k * period`) instead. Every iteration advances by a whole
+## period, so progress is exact, the iteration count is `span / period + 1` by construction,
+## and no accumulation of tiny steps is possible.
+##
+## The phase CARRIES across corners rather than restarting at each vertex: on an L, where one
+## leg is a third the length of another, restarting per edge reads as a mistake rather than a
+## pattern.
+func _dash_segments(pts: PackedVector2Array, dash: float, gap: float) -> Array:
+	var out: Array = []
 	var n := pts.size()
-	if n < 2 or dash <= 0.0 or gap <= 0.0:
-		return
 	var period := dash + gap
+	if n < 2 or dash <= 0.0 or gap <= 0.0 or period <= 0.0:
+		return out
 	var carry := 0.0
 	for i in n:
 		var a := pts[i]
@@ -5784,16 +5794,26 @@ func _draw_dashed_ring(pts: PackedVector2Array, col: Color, width: float,
 		if span < 0.001:
 			continue
 		var dir := (b - a) / span
-		var t := 0.0
-		while t < span:
-			var phase := fposmod(carry + t, period)
-			if phase < dash:
-				var run := minf(dash - phase, span - t)
-				draw_line(a + dir * t, a + dir * (t + run), col, width, true)
-				t += run
-			else:
-				t += period - phase
-		carry = fposmod(carry + span, period)
+		var offset := fposmod(carry, period)
+		var k := 0
+		while true:
+			var start := float(k) * period - offset
+			if start >= span:
+				break
+			var s0 := maxf(start, 0.0)
+			var s1 := minf(start + dash, span)
+			if s1 > s0:
+				out.append(PackedVector2Array([a + dir * s0, a + dir * s1]))
+			k += 1
+		carry += span
+	return out
+
+
+func _draw_dashed_ring(pts: PackedVector2Array, col: Color, width: float,
+		dash: float, gap: float) -> void:
+	for seg_value in _dash_segments(pts, dash, gap):
+		var seg: PackedVector2Array = seg_value
+		draw_line(seg[0], seg[1], col, width, true)
 
 
 ## Hijack-look stamp: the decorative fabric's exact block treatment (SE shadow, flat

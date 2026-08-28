@@ -56,6 +56,12 @@ func _ready() -> void:
 		_cam.set("edge_pan_enabled", false)
 
 	var cranes := _wm.find_child("ConstructionVisuals", true, false)
+	# BISECT AID: --disable=cranes silences the animated crane layer so a memory blowup can be
+	# attributed to it or to the placement/eviction path underneath.
+	if str(opt.get("disable", "")) == "cranes" and cranes != null:
+		(cranes as Node).set_process(false)
+		(cranes as CanvasItem).visible = false
+		print("[SITE] crane layer DISABLED for this run")
 	var visuals := _wm.find_child("BuildingVisuals", true, false)
 	if cranes == null or visuals == null:
 		push_error("construction_shot: ConstructionVisuals / BuildingVisuals missing")
@@ -76,6 +82,7 @@ func _ready() -> void:
 		started.append(iid)
 		if _wm.has_signal("building_placed"):
 			_wm.emit_signal("building_placed", tile_id, build_id, "", iid, coord)
+	_mem("projects started")
 	print("[SITE] started %d project(s): %s" % [started.size(), str(started)])
 	print("[SITE] Construction.construction_projects = %d" % Construction.construction_projects.size())
 	await get_tree().process_frame
@@ -131,6 +138,12 @@ func _ready() -> void:
 	print("[SITE] %s_done.png  (projects left: %d)" % [out_prefix, Construction.construction_projects.size()])
 	print("[SITE] done")
 	get_tree().quit(0)
+
+
+func _mem(tag: String) -> void:
+	print("[SITEMEM] %-28s static=%7.1f MB objects=%6d" % [tag,
+		float(OS.get_static_memory_usage()) / 1048576.0,
+		int(Performance.get_monitor(Performance.OBJECT_COUNT))])
 
 
 func _tile_pos(tile_id: String) -> Vector2:
