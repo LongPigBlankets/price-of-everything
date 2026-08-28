@@ -5,7 +5,7 @@
     "procedural": {
       "forests": [
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_16_1",
           "outline": [
             [
@@ -43,7 +43,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_23_1",
           "outline": [
             [
@@ -81,7 +81,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_12_2",
           "outline": [
             [
@@ -119,7 +119,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_16_2",
           "outline": [
             [
@@ -157,7 +157,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_17_2",
           "outline": [
             [
@@ -195,7 +195,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_18_2",
           "outline": [
             [
@@ -233,7 +233,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_19_2",
           "outline": [
             [
@@ -271,7 +271,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_20_2",
           "outline": [
             [
@@ -309,7 +309,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_24_2",
           "outline": [
             [
@@ -347,7 +347,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_25_2",
           "outline": [
             [
@@ -385,7 +385,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_26_2",
           "outline": [
             [
@@ -423,7 +423,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_27_2",
           "outline": [
             [
@@ -461,7 +461,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_4_3",
           "outline": [
             [
@@ -499,7 +499,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_13_3",
           "outline": [
             [
@@ -537,7 +537,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_15_3",
           "outline": [
             [
@@ -575,7 +575,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_16_3",
           "outline": [
             [
@@ -613,7 +613,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_17_3",
           "outline": [
             [
@@ -651,7 +651,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_19_3",
           "outline": [
             [
@@ -689,7 +689,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_22_3",
           "outline": [
             [
@@ -727,7 +727,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_25_3",
           "outline": [
             [
@@ -765,7 +765,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_26_3",
           "outline": [
             [
@@ -803,7 +803,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_4_4",
           "outline": [
             [
@@ -837,7 +837,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_12_4",
           "outline": [
             [
@@ -875,7 +875,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_13_4",
           "outline": [
             [
@@ -913,7 +913,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_14_4",
           "outline": [
             [
@@ -951,7 +951,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_15_4",
           "outline": [
             [
@@ -989,7 +989,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_16_4",
           "outline": [
             [
@@ -1027,7 +1027,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_17_4",
           "outline": [
             [
@@ -1065,7 +1065,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_20_4",
           "outline": [
             [
@@ -1103,7 +1103,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_23_4",
           "outline": [
             [
@@ -1141,7 +1141,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_24_4",
           "outline": [
             [
@@ -1179,7 +1179,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_25_4",
           "outline": [
             [
@@ -1217,7 +1217,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_26_4",
           "outline": [
             [
@@ -1255,7 +1255,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_13_5",
           "outline": [
             [
@@ -1293,7 +1293,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_14_5",
           "outline": [
             [
@@ -1331,7 +1331,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_15_5",
           "outline": [
             [
@@ -1369,7 +1369,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_16_5",
           "outline": [
             [
@@ -1407,7 +1407,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_17_5",
           "outline": [
             [
@@ -1445,7 +1445,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_18_5",
           "outline": [
             [
@@ -1483,7 +1483,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_20_5",
           "outline": [
             [
@@ -1521,7 +1521,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_22_5",
           "outline": [
             [
@@ -1559,7 +1559,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_23_5",
           "outline": [
             [
@@ -1597,7 +1597,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_24_5",
           "outline": [
             [
@@ -1635,7 +1635,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_25_5",
           "outline": [
             [
@@ -1673,7 +1673,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_26_5",
           "outline": [
             [
@@ -1711,7 +1711,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_13_6",
           "outline": [
             [
@@ -1749,7 +1749,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_16_6",
           "outline": [
             [
@@ -1787,7 +1787,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_17_6",
           "outline": [
             [
@@ -1825,7 +1825,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_19_6",
           "outline": [
             [
@@ -1863,7 +1863,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_22_6",
           "outline": [
             [
@@ -1901,7 +1901,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_23_6",
           "outline": [
             [
@@ -1939,7 +1939,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:forest_b_016_tile_28_6",
           "outline": [
             [
@@ -1977,7 +1977,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_9_15",
           "outline": [
             [
@@ -2015,7 +2015,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_8_14",
           "outline": [
             [
@@ -2053,7 +2053,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_8_15",
           "outline": [
             [
@@ -2091,7 +2091,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_8_14_1",
           "outline": [
             [
@@ -2129,7 +2129,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_17_7",
           "outline": [
             [
@@ -2167,7 +2167,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_18_18",
           "outline": [
             [
@@ -2201,7 +2201,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_21_9",
           "outline": [
             [
@@ -2239,7 +2239,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_28_17",
           "outline": [
             [
@@ -2277,7 +2277,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_29_8",
           "outline": [
             [
@@ -2311,7 +2311,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_14_10",
           "outline": [
             [
@@ -2345,7 +2345,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_25_12",
           "outline": [
             [
@@ -2383,7 +2383,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_4_17",
           "outline": [
             [
@@ -2421,7 +2421,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_3_19",
           "outline": [
             [
@@ -2459,7 +2459,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_4_18",
           "outline": [
             [
@@ -2497,7 +2497,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_6_17",
           "outline": [
             [
@@ -2535,7 +2535,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_4_17_1",
           "outline": [
             [
@@ -2573,7 +2573,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_3_19_1",
           "outline": [
             [
@@ -2611,7 +2611,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_21_12",
           "outline": [
             [
@@ -2649,7 +2649,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_20_12",
           "outline": [
             [
@@ -2687,7 +2687,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_22_12",
           "outline": [
             [
@@ -2725,7 +2725,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_21_13",
           "outline": [
             [
@@ -2763,7 +2763,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_21_14",
           "outline": [
             [
@@ -2801,7 +2801,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_22_13",
           "outline": [
             [
@@ -2839,7 +2839,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_16_14",
           "outline": [
             [
@@ -2873,7 +2873,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_17_10",
           "outline": [
             [
@@ -2911,7 +2911,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_16_10",
           "outline": [
             [
@@ -2949,7 +2949,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_17_11",
           "outline": [
             [
@@ -2987,7 +2987,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_7_15",
           "outline": [
             [
@@ -3025,7 +3025,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_6_15",
           "outline": [
             [
@@ -3063,7 +3063,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_6_16",
           "outline": [
             [
@@ -3101,7 +3101,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_7_17",
           "outline": [
             [
@@ -3139,7 +3139,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_7_16",
           "outline": [
             [
@@ -3177,7 +3177,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_7_15_1",
           "outline": [
             [
@@ -3215,7 +3215,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_9_10",
           "outline": [
             [
@@ -3253,7 +3253,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_3_13",
           "outline": [
             [
@@ -3291,7 +3291,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_26_13",
           "outline": [
             [
@@ -3329,7 +3329,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_27_14",
           "outline": [
             [
@@ -3367,7 +3367,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_27_15",
           "outline": [
             [
@@ -3405,7 +3405,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_28_14",
           "outline": [
             [
@@ -3443,7 +3443,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_24_13",
           "outline": [
             [
@@ -3481,7 +3481,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_23_14",
           "outline": [
             [
@@ -3519,7 +3519,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_23_15",
           "outline": [
             [
@@ -3557,7 +3557,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_25_14",
           "outline": [
             [
@@ -3595,7 +3595,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_15_11",
           "outline": [
             [
@@ -3633,7 +3633,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_16_11",
           "outline": [
             [
@@ -3671,7 +3671,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_17_12",
           "outline": [
             [
@@ -3709,7 +3709,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_15_12",
           "outline": [
             [
@@ -3747,7 +3747,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_15_13",
           "outline": [
             [
@@ -3785,7 +3785,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:procedural:imported:start_b_015_tile_15_11_1",
           "outline": [
             [
@@ -21532,7 +21532,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_4_2",
           "outline": [
             [
@@ -21570,7 +21570,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_6_2",
           "outline": [
             [
@@ -21608,7 +21608,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_10_2",
           "outline": [
             [
@@ -21646,7 +21646,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_11_2",
           "outline": [
             [
@@ -21684,7 +21684,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_5_3",
           "outline": [
             [
@@ -21722,7 +21722,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_6_3",
           "outline": [
             [
@@ -21760,7 +21760,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_7_3",
           "outline": [
             [
@@ -21798,7 +21798,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_8_3",
           "outline": [
             [
@@ -21836,7 +21836,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_11_3",
           "outline": [
             [
@@ -21874,7 +21874,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_12_3",
           "outline": [
             [
@@ -21912,7 +21912,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_3_4",
           "outline": [
             [
@@ -21950,7 +21950,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_6_4",
           "outline": [
             [
@@ -21988,7 +21988,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_7_4",
           "outline": [
             [
@@ -22022,7 +22022,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_8_4",
           "outline": [
             [
@@ -22060,7 +22060,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_3_5",
           "outline": [
             [
@@ -22098,7 +22098,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_4_5",
           "outline": [
             [
@@ -22136,7 +22136,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_5_5",
           "outline": [
             [
@@ -22174,7 +22174,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_7_5",
           "outline": [
             [
@@ -22212,7 +22212,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_9_5",
           "outline": [
             [
@@ -22250,7 +22250,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_10_5",
           "outline": [
             [
@@ -22288,7 +22288,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_3_6",
           "outline": [
             [
@@ -22326,7 +22326,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_4_6",
           "outline": [
             [
@@ -22364,7 +22364,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_5_6",
           "outline": [
             [
@@ -22402,7 +22402,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_6_6",
           "outline": [
             [
@@ -22440,7 +22440,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_7_6",
           "outline": [
             [
@@ -22478,7 +22478,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_8_6",
           "outline": [
             [
@@ -22516,7 +22516,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_9_6",
           "outline": [
             [
@@ -22554,7 +22554,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_11_6",
           "outline": [
             [
@@ -22592,7 +22592,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:forest_b_016_tile_15_6",
           "outline": [
             [
@@ -22630,7 +22630,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:start_b_015_tile_4_15",
           "outline": [
             [
@@ -22668,7 +22668,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:start_b_015_tile_4_8",
           "outline": [
             [
@@ -22706,7 +22706,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:start_b_015_tile_10_11",
           "outline": [
             [
@@ -22744,7 +22744,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:start_b_015_tile_3_18",
           "outline": [
             [
@@ -22782,7 +22782,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:start_b_015_tile_5_18",
           "outline": [
             [
@@ -22820,7 +22820,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:start_b_015_tile_5_17",
           "outline": [
             [
@@ -22858,7 +22858,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:start_b_015_tile_3_18_1",
           "outline": [
             [
@@ -22896,7 +22896,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:start_b_015_tile_11_7",
           "outline": [
             [
@@ -22934,7 +22934,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:start_b_015_tile_11_8",
           "outline": [
             [
@@ -22972,7 +22972,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:start_b_015_tile_11_10",
           "outline": [
             [
@@ -23010,7 +23010,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:start_b_015_tile_11_8_1",
           "outline": [
             [
@@ -23048,7 +23048,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:start_b_015_tile_9_7",
           "outline": [
             [
@@ -23086,7 +23086,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:start_b_015_tile_7_12",
           "outline": [
             [
@@ -23124,7 +23124,7 @@
           ]
         },
         {
-          "density": 2.0,
+          "density": 4.0,
           "id": "fo:untitled:imported:start_b_015_tile_6_9",
           "outline": [
             [

@@ -33,6 +33,9 @@ const PIPE_WIDTH := 3.2
 ## grid also gives even coverage, which random points do not — clumps and bare patches read
 ## as a mistake in a wood of only a few dozen trees.
 const TREE_SPACING := 19.0
+## How dense a wood may be asked to be. At 4.0 that is 4.75 u between trees, so crowns overlap
+## roughly two deep and the wood reads as closed canopy rather than as a scatter.
+const MAX_DENSITY := 4.0
 ## A clump is tighter than a wood -- it is a stand of trees, not a forest.
 const CLUMP_SPACING := 13.0
 ## [small, fir, large] for a clump. Weighted toward the middle size so a stand reads as one
@@ -99,7 +102,11 @@ static func woodland_points(area: Dictionary) -> PackedVector2Array:
 		return out
 	var id := str(area.get("id", ""))
 	var bounds := _bounds(outline)
-	var spacing := TREE_SPACING / clampf(float(area.get("density", 1.0)), 0.25, 2.0)
+	# The ceiling was 2.0, which is 9.5 u between trees -- already overlapping for the large
+	# ones, and still too open to read as a dense wood at working zoom (owner, 2026-08-28).
+	# Raised so a wood can actually close its canopy; the floor is untouched, so a sparse
+	# copse is still available.
+	var spacing := TREE_SPACING / clampf(float(area.get("density", 1.0)), 0.25, MAX_DENSITY)
 	var salt := RoadHash.fnv1a(id) & 0xFFFF
 	var columns := int(bounds.size.x / spacing) + 1
 	var rows := int(bounds.size.y / spacing) + 1
