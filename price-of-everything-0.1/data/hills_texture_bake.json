@@ -11,6 +11,6 @@
 		3492
 	],
 	"source_hash": "9b5a8a106b53a5bffc3cafe73e0cf2c4",
-	"style": "ink=true|plate=false|mid=false",
+	"style": "ink=true|plate=false|mid=true",
 	"texture": "res://assets/baked/hills_far_zoom.png"
 }

@@ -1,5 +1,6 @@
 extends Node
 ## MapStyle — the map-restyle seam (docs/map_ink_wash_restyle_spec.md, P0).
+## THE SHIPPED LOOK IS MIDCENTURY (owner, 2026-08-28), with ink underneath it.
 ## Style tables for every base-map color the restyles touch: `classic` mirrors
 ## the pre-restyle constants byte-for-byte; `ink` is the vintage board-game
 ## grade; `plate` is the city-plate sub-variant of ink (docs/map_city_plate_spec.md).
@@ -16,16 +17,20 @@ extends Node
 
 signal style_changed
 
-## Ink & wash is the DEFAULT look (owner 2026-08-01). `classic` is kept as the A/B reference —
-## `toggle ink` in the debug terminal flips back to it, which is still the regression check that
-## every layer reads its colours through this seam rather than hardcoding them.
+## Ink & wash, the default until 2026-08-28 and now the layer UNDER midcentury: turning
+## midcentury off reveals this. `classic` is kept as the A/B reference — `toggle ink` flips
+## back to it, which is still the regression check that every layer reads its colours through
+## this seam rather than hardcoding them.
 var ink := true
 ## "City plate" sub-variant; only active while `ink` is true. Never saved.
 var plate := false
-## Optional inhabited mid-century renderer. It is orthogonal to the three
-## legacy modes: enabling it masks (but never mutates) the current legacy
-## choice, and disabling it reveals that exact choice again.
-var midcentury := false
+## The inhabited mid-century renderer, and the DEFAULT look since 2026-08-28: playtesters
+## picked it out for its colour and its lighter grunge. It is orthogonal to the three legacy
+## modes -- it masks (but never mutates) the current legacy choice, and disabling it reveals
+## that exact choice again, which is why `ink` below stays true underneath it. `toggle
+## midcentury` in the debug terminal therefore drops to ink & wash, and `toggle ink` from
+## there to classic; both remain the A/B reference they always were.
+var midcentury := true
 
 func set_ink(on: bool) -> void:
 	if ink == on:
