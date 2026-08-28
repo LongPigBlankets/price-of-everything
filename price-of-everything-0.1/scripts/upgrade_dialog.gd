@@ -11,11 +11,15 @@ extends Control
 
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
-const GOODS_FRAME := preload("res://assets/ui/goods_frame.tres")  # skinny pipe frame (nine-patch)
 
-const BADGE_DIAMETER := 22
-const BADGE_TEXT_SIZE := 13
-const CELL_SIZE := 72.0
+## Each material is its OWN cream chip at 80 px with the count in bold underneath (owner,
+## 2026-08-28), instead of four icons sharing one framed strip with a black corner badge.
+const CELL_SIZE := 80.0
+## Ordinary copy at 14; the figures stay a step larger, so a row still reads label-then-number
+## at a glance. Panel-scoped overrides rather than a DS change -- the owner sized this one
+## dialog by eye, and the variations are shared with every other panel.
+const TEXT_PX := 14
+const NUMBER_PX := 17
 
 signal closed
 signal committed(instance_id: String)
@@ -129,8 +133,7 @@ func _rebuild() -> void:
 	var duration := int(_preview.get("duration", 3))
 
 	_content.add_child(_dlabel("Upgrade %s" % bname.to_upper(), "Title"))
-	_content.add_child(_dlabel("Level %d  →  %d   ·   takes %d turn%s to upgrade" % [
-		from_level, target, duration, "" if duration == 1 else "s"], "Caption"))
+	_content.add_child(_dlabel("Level %d  →  %d" % [from_level, target], "Caption"))
 
 	# Already in progress: show the countdown and offer Cancel / Close only.
 	if bool(_preview.get("already_upgrading", false)):
@@ -145,32 +148,30 @@ func _rebuild() -> void:
 		return
 
 	# --- Materials ---
-	_content.add_child(_sep())
-	_content.add_child(_dlabel("MATERIALS", "Section"))
+	# DS.ruled_section_head, not the "Section" variation: Section is Barlow Condensed, and
+	# Construct V3 already ruled that a panel runs on ONE family with Bebas for its title
+	# only (ds.gd's SectionRuled note). It draws its own rule, so the separator goes.
+	_content.add_child(DS.ruled_section_head("MATERIALS"))
 	var materials: Array = _preview.get("materials", [])
 	if materials.is_empty():
 		_content.add_child(_dlabel("No materials required.", "Body"))
 	else:
-		var frame := PanelContainer.new()
-		frame.add_theme_stylebox_override("panel", GOODS_FRAME)
-		frame.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		var grid := GridContainer.new()
 		grid.columns = mini(4, maxi(1, materials.size()))
+		grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		grid.add_theme_constant_override("h_separation", DS.SP.MD)
 		grid.add_theme_constant_override("v_separation", DS.SP.SM)
-		frame.add_child(grid)
 		for m in materials:
 			grid.add_child(_make_material_column(m))
-		_content.add_child(frame)
-
-	if not bool(_preview.get("all_on_tile", false)):
-		_content.add_child(_dlabel(
-			"Some materials aren't on this tile — order them from market or transfer them in to begin.",
-			"Caption"))
+		_content.add_child(grid)
+		var to_buy := float(_preview.get("market_cost", 0.0))
+		if to_buy > 0.0:
+			var price := _dlabel("Market Price of Materials:  £%s" % _money(to_buy), "Numeric")
+			price.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			_content.add_child(price)
 
 	# --- Benefits & costs (cur → new) ---
-	_content.add_child(_sep())
-	_content.add_child(_dlabel("PER TURN AT LEVEL %d" % target, "Section"))
+	_content.add_child(DS.ruled_section_head("PER TURN AT LEVEL %d" % target))
 	_add_stat_rows(_preview.get("stats", {}))
 
 	# --- Cost of production per unit (bold summary row) ---
@@ -193,27 +194,38 @@ func _rebuild() -> void:
 
 	# --- Action buttons ---
 	_content.add_child(_sep())
+	_content.add_child(_dlabel(
+		"Upgrading takes %d turns. The building continues to produce at its previous level until done."
+			% duration, "Caption"))
 	_content.add_child(_make_action_buttons())
 
 
+## The action row. "Use materials on tile" is ALWAYS present (owner, 2026-08-28) rather than
+## swapping in and out with the market button: a CTA that appears only when it would work
+## tells the player nothing about why it is not there. It is enabled exactly when every good
+## in the kit is on the tile AND unclaimed by another awaiting job -- see
+## MatchState.reserved_materials_on_tile, which is why this reads `all_on_tile_free` and not
+## the raw `all_on_tile`.
 func _make_action_buttons() -> Control:
 	var locked := bool(_preview.get("research_locked", false))
 	var fits := bool(_preview.get("fits", true))
 	var blocked := locked or not fits
+	var on_tile := bool(_preview.get("all_on_tile", false))
+	var free := bool(_preview.get("all_on_tile_free", on_tile))
 	var specs: Array = []
-	if bool(_preview.get("all_on_tile", false)):
-		var dur := int(_preview.get("duration", 3))
-		specs.append({
-			"text": "Upgrade (%d turns)" % dur,
-			"cb": func(): _commit("tile"),
-			"disabled": blocked, "primary": true,
-		})
-	else:
+	var tile_text := "Use materials on tile"
+	if on_tile and not free:
+		tile_text = "Materials on tile are already claimed"
+	specs.append({
+		"text": tile_text,
+		"cb": func(): _commit("tile"),
+		"disabled": blocked or not free, "primary": free and not blocked,
+	})
+	if not free:
 		# Market order — only when every shortfall good actually has a port route here.
 		var sourceable := bool(_preview.get("market_sourceable", true))
-		var cost := float(_preview.get("market_cost", 0.0))
 		specs.append({
-			"text": ("Order from market  (£%s)" % _money(cost)) if sourceable else "No market route for some materials",
+			"text": "Order from market" if sourceable else "No market route for some materials",
 			"cb": func(): _commit("market"),
 			"disabled": blocked or not sourceable, "primary": sourceable,
 		})
@@ -281,11 +293,17 @@ func _add_stat_rows(stats: Dictionary) -> void:
 	_content.add_child(_delta_row("Tile size", float(cur.get("size", 1.0)), float(new_s.get("size", 1.0)), DS.PALETTE.DANGER, 0, ""))
 
 
-# A "Label   cur → new  (±N% ↑)" row. `color` tints the value (and, when bold, the label too).
+# A "Label   cur → new  (±N%)" row. `color` tints the value (and, when bold, the label too).
+#
+# The percentage carries its own sign and its own colour, so it needs neither the word "up"
+# nor an arrow after it: "(+100% up ↑)" said one thing three times, on six rows at once.
 func _delta_row(label_text: String, cur: float, new_v: float, color: Color, decimals: int, prefix: String, bold: bool = false) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", DS.SP.SM)
-	var name := _dlabel(label_text, "Numeric" if bold else "Body", color if bold else null)
+	# The label stays TEXT even on the bold summary row: green-on-navy for a heading is the
+	# contrast rule's grey-on-navy in another hue, and the colour belongs to the number that
+	# earned it (owner, 2026-08-28).
+	var name := _dlabel(label_text, "Numeric" if bold else "Body", DS.PALETTE.TEXT)
 	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(name)
 
@@ -293,9 +311,9 @@ func _delta_row(label_text: String, cur: float, new_v: float, color: Color, deci
 	if cur > 0.0:
 		var pct := int(round((new_v / cur - 1.0) * 100.0))
 		if new_v > cur:
-			pct_txt = "  (+%d%% up ↑)" % pct
+			pct_txt = "  (+%d%%)" % pct
 		elif new_v < cur:
-			pct_txt = "  (%d%% down ↓)" % pct
+			pct_txt = "  (%d%%)" % pct
 	elif new_v > 0.0:
 		pct_txt = "  (new)"
 	var value := _dlabel("%s%s → %s%s%s" % [
@@ -308,6 +326,11 @@ func _delta_row(label_text: String, cur: float, new_v: float, color: Color, deci
 
 # ---- material cell (icon + need badge + have/need) --------------------------
 
+## One material: its own cream rounded chip, with the count in bold underneath.
+##
+## The chip is `UIHelpers.make_plain_good_icon`, the same one the Resources table uses, so a
+## good looks like itself wherever it appears. The count moved out from a black badge on the
+## artwork's corner -- at 80 px that badge was covering the picture it labelled.
 func _make_material_column(m: Dictionary) -> Control:
 	var good_id := str(m.get("good_id", ""))
 	var need := int(m.get("need", 0))
@@ -315,68 +338,22 @@ func _make_material_column(m: Dictionary) -> Control:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", DS.SP.XS)
 	col.custom_minimum_size = Vector2(CELL_SIZE, 0)
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
 
-	var slot := Control.new()
-	slot.custom_minimum_size = Vector2(CELL_SIZE, CELL_SIZE)
-	var icon := GoodIcons.texture_for(good_id, Catalog.get_internal_name(good_id))
-	if icon != null:
-		var tr := TextureRect.new()
-		tr.texture = icon
-		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		tr.set_anchors_preset(Control.PRESET_FULL_RECT)
-		slot.add_child(tr)
-	else:
-		var ph := _dlabel(Catalog.get_display_name(good_id), "Caption")
-		ph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		ph.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		ph.set_anchors_preset(Control.PRESET_FULL_RECT)
-		slot.add_child(ph)
-	slot.add_child(_make_qty_badge(need))
-	col.add_child(slot)
+	var chip := UIHelpers.make_plain_good_icon(good_id,
+		Catalog.get_internal_name(good_id), int(CELL_SIZE))
+	chip.tooltip_text = Catalog.get_display_name(good_id)
+	col.add_child(chip)
 
 	var ok := have >= need
-	var have_lbl := _dlabel("%d/%d" % [mini(have, need), need], "Caption", DS.PALETTE.OK if ok else DS.PALETTE.DANGER)
-	have_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	col.add_child(have_lbl)
+	var count := _dlabel("%d/%d" % [mini(have, need), need], "Numeric",
+		DS.PALETTE.OK if ok else DS.PALETTE.WARN)
+	count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	count.add_theme_font_size_override("font_size", NUMBER_PX)
+	col.add_child(count)
 	return col
 
 
-func _make_qty_badge(qty: int) -> Control:
-	var qty_text := str(qty)
-	var h: int = BADGE_DIAMETER
-	var w: int = h if qty_text.length() <= 1 else maxi(h, qty_text.length() * 9 + 12)
-	var badge := PanelContainer.new()
-	badge.custom_minimum_size = Vector2(w, h)
-	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	badge.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	badge.offset_left = -w + 6
-	badge.offset_top = -h + 6
-	badge.offset_right = 6
-	badge.offset_bottom = 6
-	var style := StyleBoxFlat.new()
-	style.bg_color = DS.PALETTE.BG_PANEL
-	style.border_color = DS.PALETTE.BORDER
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(int(h / 2.0))
-	badge.add_theme_stylebox_override("panel", style)
-	var ls := LabelSettings.new()
-	ls.font_color = DS.PALETTE.ACCENT
-	ls.font_size = BADGE_TEXT_SIZE
-	var label := Label.new()
-	label.text = qty_text
-	label.label_settings = ls
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	badge.add_child(label)
-	return badge
-
-
-# ---- small builders ---------------------------------------------------------
-
-# A DS-styled Label: `variation` selects the theme type variation (Title / Section / Body /
-# Caption / Numeric); `color` optionally overrides the font colour with a DS.PALETTE token.
 func _dlabel(text: String, variation: String = "Body", color = null) -> Label:
 	var l := Label.new()
 	l.text = text
@@ -385,6 +362,12 @@ func _dlabel(text: String, variation: String = "Body", color = null) -> Label:
 	if color != null:
 		l.add_theme_color_override("font_color", color)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# Sizes are set HERE rather than in DS: the owner sized this one dialog by eye, and the
+	# variations are shared with every other panel. Titles and section heads keep theirs.
+	if variation == "Body" or variation == "Caption":
+		l.add_theme_font_size_override("font_size", TEXT_PX)
+	elif variation == "Numeric":
+		l.add_theme_font_size_override("font_size", NUMBER_PX)
 	return l
 
 
