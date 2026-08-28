@@ -107,7 +107,7 @@ const SEA_SPEED := 62.0
 const PORT_SCHEDULE := {
 	"tile_24_7": {"every": 10.0, "burst": 1, "gap": 0.0},    # Capital Port
 	"tile_11_17": {"every": 15.0, "burst": 1, "gap": 0.0},   # Arin Estuary Docks
-	"tile_22_16": {"every": 30.0, "burst": 1, "gap": 0.0},   # Vandel's Skip
+	"tile_22_16": {"every": 20.0, "burst": 1, "gap": 0.0},   # Vandel's Skip
 	"tile_5_10": {"every": 30.0, "burst": 2, "gap": 2.5},    # Stoneshore Docks
 }
 const DEFAULT_SCHEDULE := {"every": 30.0, "burst": 1, "gap": 0.0}
