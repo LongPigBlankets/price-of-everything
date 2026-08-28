@@ -212,8 +212,19 @@ func _load_explicit_profiles() -> void:
 	if typeof(parsed) == TYPE_DICTIONARY:
 		_explicit_profiles = parsed
 
+## THE ONE CONDITION. It used to be spelled out here and paraphrased as a bare
+## `MapStyle.is_midcentury()` in the rebuild guards, which is not the same test: an authored
+## document turns this layer OFF, and the guards did not know that. While midcentury was an
+## opt-in cheat the difference never showed. The moment it shipped as the default, every
+## footprint change on an authored map -- four hundred of them during a load -- queued a full
+## procedural-fabric rebuild for a layer that draws nothing, and the CPU that went into it
+## starved the hill triangulation's worker pool: 6 s of contour work took 380 s.
+func _draws_here() -> bool:
+	return MapStyle.is_midcentury() and not AuthoredMap.is_active()
+
+
 func _on_style_changed() -> void:
-	visible = MapStyle.is_midcentury() and not AuthoredMap.is_active()
+	visible = _draws_here()
 	set_process(visible)
 	if visible:
 		_update_far_plate_state()
@@ -239,14 +250,14 @@ func _on_road_settled(_order_id: int) -> void:
 	_schedule_rebuild()
 
 func _schedule_rebuild() -> void:
-	if not MapStyle.is_midcentury() or _queued:
+	if not _draws_here() or _queued:
 		return
 	_queued = true
 	_rebuild.call_deferred()
 
 func _rebuild() -> void:
 	_queued = false
-	if not MapStyle.is_midcentury():
+	if not _draws_here():
 		return
 	_terrain = get_node_or_null("../TerrainLayer") as TileMapLayer
 	_buildings = get_tree().get_first_node_in_group("building_footprints")

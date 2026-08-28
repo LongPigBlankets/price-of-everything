@@ -3622,14 +3622,69 @@ func _place_offshore(coord: Vector2i, area: float, placed_here: Array) -> Dictio
 	p["offshore"] = true
 	return p
 
+## Harbour lookups the draw and placement paths lean on, held rather than re-derived: both
+## are asked once per building and neither answer changes during a match.
+var _ports_layer: Node = null
+var _authored_ports_cache: Dictionary = {}
+var _authored_ports_read := false
+var _marine_cache: Array = []
+var _marine_cache_version := -1
+
+
+## Is this port tile's harbour already drawn by somebody else?
+##
+## Two ways it can be: PortVisuals has a plan for it, or the harbour is HAND-AUTHORED, in
+## which case the fabric draws it and the planner stands down (port_visuals.gd's own rule).
+## The authored case matters twice over -- an authored port has no plan and never will, so
+## asking the planner about one is a guaranteed full-cost search for a guaranteed empty
+## answer. Stoneshore Docks is one, and it is the 2.2 s in the boot log.
+func _port_compound_drawn(tile_id: String) -> bool:
+	if tile_id == "":
+		return false
+	if _authored_port_tiles().has(tile_id):
+		return true
+	var ports := _port_visuals()
+	return ports != null and ports.has_plan_for_tile(tile_id)
+
+
+func _authored_port_tiles() -> Dictionary:
+	if _authored_ports_cache.is_empty() and not _authored_ports_read:
+		_authored_ports_read = true
+		_authored_ports_cache = AuthoredMap.port_tiles()
+	return _authored_ports_cache
+
+
+func _port_visuals() -> Node:
+	if _ports_layer != null and is_instance_valid(_ports_layer):
+		return _ports_layer
+	if terrain_layer == null:
+		return null
+	_ports_layer = terrain_layer.get_node_or_null("PortVisuals")
+	return _ports_layer
+
+
+## Water the harbours have claimed, which offshore placements must keep out of.
+##
+## CACHED, because the caller is _place_offshore -- once per offshore building, and the start
+## layout restores four hundred placements at load. Every call planned all four harbours, and
+## `MidcenturyPortPlan.build` samples the coastline and gathers exclusions BEFORE it consults
+## its cache, so even the hits were not cheap and Stoneshore (authored, so never plannable)
+## was a fresh multi-second search each time. A harbour's marine reservation only moves when
+## the harbour is replanned, which is what the version stamp watches.
 func _midcentury_port_marine_reservations() -> Array:
+	if _marine_cache_version == footprint_version and not _marine_cache.is_empty():
+		return _marine_cache
 	var out: Array = []
 	if terrain_layer == null:
 		return out
 	for port_value in Catalog.all_ports():
 		var port: Dictionary = port_value
-		var plan := MidcenturyPortPlan.build(terrain_layer,
-			str(port.get("tile_id", "")), str(port.get("id", "")))
+		var tile_id := str(port.get("tile_id", ""))
+		# An authored harbour has no plan and never will: asking is a full-cost search for a
+		# guaranteed empty answer.
+		if _authored_port_tiles().has(tile_id):
+			continue
+		var plan := MidcenturyPortPlan.build(terrain_layer, tile_id, str(port.get("id", "")))
 		if plan.is_empty():
 			continue
 		var marine: Dictionary = plan.marine_reservation
@@ -3638,6 +3693,8 @@ func _midcentury_port_marine_reservations() -> Array:
 			var poly: PackedVector2Array = poly_value
 			if poly.size() >= 3:
 				out.append({"poly": poly, "bb": _verts_bb(poly)})
+	_marine_cache = out
+	_marine_cache_version = footprint_version
 	return out
 
 func _poly_overlaps_records(poly: PackedVector2Array, records: Array) -> bool:
@@ -4860,7 +4917,8 @@ func midcentury_footprint_sites_on_tile(coord: Vector2i) -> Array:
 			"building_id": str(p.get("building_id", "")),
 			"category": str(p.get("cat", "default")),
 		}
-		if str(p.get("building_id", "")) == "b_004":
+		if str(p.get("building_id", "")) == "b_004" \
+				and not _authored_port_tiles().has(str(p.get("tile_id", ""))):
 			var port_plan := MidcenturyPortPlan.build(terrain_layer,
 				str(p.get("tile_id", "")), str(p.get("instance_id", "")))
 			if not port_plan.is_empty():
@@ -4886,7 +4944,8 @@ func midcentury_all_footprint_sites() -> Array:
 			"building_id": str(p.get("building_id", "")),
 			"category": str(p.get("cat", "default")),
 		}
-		if str(p.get("building_id", "")) == "b_004":
+		if str(p.get("building_id", "")) == "b_004" \
+				and not _authored_port_tiles().has(str(p.get("tile_id", ""))):
 			var port_plan := MidcenturyPortPlan.build(terrain_layer,
 				str(p.get("tile_id", "")), str(p.get("instance_id", "")))
 			if not port_plan.is_empty():
@@ -5506,12 +5565,15 @@ func _draw_ink_art(placement: Dictionary, verts: PackedVector2Array) -> bool:
 	# compound plan. Suppress the generic footprint art so the same gameplay
 	# building cannot appear as a second competing port representation.
 	if MapStyle.is_midcentury() and str(placement.get("building_id", "")) == "b_004":
-		# A rejected coastal compound must not make its authoritative gameplay
-		# building vanish.  PortVisuals draws a valid shared plan exactly once;
-		# otherwise this one footprint remains as the honest bounded fallback.
-		var port_plan := MidcenturyPortPlan.build(terrain_layer,
-			str(placement.get("tile_id", "")), str(placement.get("instance_id", "")))
-		if not port_plan.is_empty():
+		# A rejected coastal compound must not make its authoritative gameplay building
+		# vanish, so this only stands down where a harbour is ACTUALLY drawn; otherwise the
+		# footprint remains as the honest bounded fallback.
+		#
+		# ASKED, NOT BUILT. This used to call MidcenturyPortPlan.build() and test the result
+		# for emptiness -- a whole harbour search to answer a yes/no, from inside _draw. It
+		# was dormant while midcentury was off by default; the moment midcentury shipped it
+		# became a multi-second coastline search per port on the load path.
+		if _port_compound_drawn(str(placement.get("tile_id", ""))):
 			return true
 	var art_key: String = INK_ART_KEY.get(str(placement.get("iname", "")), "")
 	if art_key == "" or verts.size() < 3:
