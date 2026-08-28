@@ -5707,11 +5707,35 @@ func _stack_points(iname: String, iid: String, verts: PackedVector2Array) -> Arr
 ## Every chimney currently on the map, for the smoke layer. Rebuilt on demand rather than
 ## cached here: `SmokeVisuals` holds the result and re-asks only when `footprint_version`
 ## moves, so this runs on a build or a demolition, never per frame.
+## True when this building's CURRENT recipe burns something the carbon levy bites. Uses the
+## same test production does — `co2_tax_multiplier` on an input good — so the plume agrees
+## with the ledger instead of holding a second opinion about what is dirty.
+##
+## The levy's turn ramp (`co2_tax_scale`) is deliberately NOT consulted: the plume is about
+## what is being burnt, not about when the Treasury started charging for it.
+func _recipe_emits_carbon(iid: String) -> bool:
+	var inst := MatchState.get_building(iid)
+	if inst.is_empty():
+		return false
+	var recipe := Catalog.get_recipe(str(inst.get("recipe_id", "")))
+	for input_value in recipe.get("inputs", []):
+		var gid := str((input_value as Dictionary).get("good_id", ""))
+		if gid == "":
+			continue
+		if float(Catalog.get_good(gid).get("co2_tax_multiplier", 0.0)) > 0.0:
+			return true
+	return false
+
+
 func smoke_stacks() -> Array:
 	var out: Array = []
 	for placement in _placements:
 		var iname := str(placement.get("iname", ""))
 		if not SMOKE_STACKS.has(iname):
+			continue
+		# A site has no chimney drawn on it yet (`_draw_construction_site` skips them), so it
+		# must not be puffing out of one either.
+		if _is_under_construction(str(placement.instance_id)):
 			continue
 		for sp_value in _stack_points(iname, str(placement.instance_id), placement.verts):
 			var sp: Dictionary = sp_value
@@ -5719,6 +5743,7 @@ func smoke_stacks() -> Array:
 			# refinery's three stacks would breathe in unison and read as one machine.
 			sp["seed"] = float(RoadHash.pick("puff|%s|%.1f|%.1f"
 				% [str(placement.instance_id), sp["pos"].x, sp["pos"].y], 1000)) / 1000.0
+			sp["carbon"] = _recipe_emits_carbon(str(placement.instance_id))
 			out.append(sp)
 	return out
 

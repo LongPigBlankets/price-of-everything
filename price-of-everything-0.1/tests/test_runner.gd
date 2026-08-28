@@ -320,6 +320,7 @@ func _ready() -> void:
 	_test_smoke_stacks()
 	_test_construction_sites()
 	_test_dash_segments()
+	_test_smoke_carbon_split()
 	await _test_crowded_tile_gentle_failure()
 	await _test_river_bank_and_bridge_head()
 	await _test_bridge_corridor()
@@ -2399,6 +2400,53 @@ func _test_crowded_tile_gentle_failure() -> void:
 	for iid in ids:
 		MatchState.buildings.erase(str(iid))
 	bv.queue_free(); terrain.queue_free(); RoadNetwork.reset()
+
+
+## Grey smoke vs white steam (owner, 2026-08-27). The split must agree with what production
+## actually levies — `co2_tax_multiplier` on an input good — rather than being a second,
+## drifting opinion about which industries are dirty.
+func _test_smoke_carbon_split() -> void:
+	var bv := preload("res://scenes/building_visuals.gd").new()
+
+	# Find a real dirty recipe and a real clean one, so this tests the CSV as shipped.
+	var dirty_recipe := ""
+	var clean_recipe := ""
+	for recipe_value in Catalog.all_recipes():
+		var recipe: Dictionary = recipe_value
+		var inputs: Array = recipe.get("inputs", [])
+		if inputs.is_empty():
+			continue
+		var burns := false
+		for input_value in inputs:
+			var gid := str((input_value as Dictionary).get("good_id", ""))
+			if gid != "" and float(Catalog.get_good(gid).get("co2_tax_multiplier", 0.0)) > 0.0:
+				burns = true
+		# `recipe_id`, NOT `id` — the recipe dict uses the former and a wrong key here just
+		# silently finds nothing.
+		if burns and dirty_recipe == "":
+			dirty_recipe = str(recipe.get("recipe_id", ""))
+		elif not burns and clean_recipe == "":
+			clean_recipe = str(recipe.get("recipe_id", ""))
+	_check(dirty_recipe != "", "smoke: the catalog has a carbon-burning recipe")
+	_check(clean_recipe != "", "smoke: the catalog has a carbon-free recipe")
+
+	# An unknown instance must never be reported as emitting — the plume cannot invent
+	# emissions for something that is not a building.
+	_check(not bv._recipe_emits_carbon("no_such_instance"),
+		"smoke: an unknown building emits no carbon")
+
+	if dirty_recipe != "" and clean_recipe != "":
+		var d_id := MatchState.add_building("b_002", dirty_recipe, "tile_9_10", "npc",
+			"smoke_dirty", false)
+		var c_id := MatchState.add_building("b_002", clean_recipe, "tile_9_10", "npc",
+			"smoke_clean", false)
+		_check(bv._recipe_emits_carbon(str(d_id)),
+			"smoke: a fossil-burning recipe smokes grey (%s)" % dirty_recipe)
+		_check(not bv._recipe_emits_carbon(str(c_id)),
+			"smoke: a carbon-free recipe steams white (%s)" % clean_recipe)
+		MatchState.buildings.erase(str(d_id))
+		MatchState.buildings.erase(str(c_id))
+	bv.free()
 
 
 ## THE DASH WALKER. This exists because the first version hung the game: it accumulated

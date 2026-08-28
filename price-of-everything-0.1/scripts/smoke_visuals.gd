@@ -22,25 +22,38 @@ const PERIOD := 2.0
 ## How far a puff travels over its life, world units.
 const DRIFT := 100.0
 
-## Medium grey (owner spec). Deliberately a touch warm so it sits with the map's sepia ink
-## rather than reading as a blue-grey hole punched in the page.
+## Two plumes (owner, 2026-08-27). GREY where the recipe burns something the carbon levy
+## bites; near-white STEAM where it does not. The classification comes from BuildingVisuals,
+## which reads the same `co2_tax_multiplier` production levies on — so the map and the ledger
+## cannot disagree about which chimneys are dirty.
+##
+## The grey is deliberately a touch warm, so it sits with the map's sepia ink instead of
+## reading as a blue-grey hole in the page. The steam is cooled very slightly the other way:
+## pure white would look like a gap in the paper rather than vapour.
 const SMOKE := Color(0.44, 0.435, 0.42)
+const STEAM := Color(0.93, 0.945, 0.95)
+## Steam is thinner than smoke — it is water, and at the grey's opacity a white plume reads
+## as a solid cloud sitting on the map rather than as something you can see through.
 const PEAK_ALPHA := 0.50
+const STEAM_ALPHA_SCALE := 0.82
 
 ## A puff is a CLUSTER of overlapping discs, not one circle — that is what makes it read as
 ## a cloud instead of a bubble. Six is enough for a lumpy silhouette and cheap enough to run
 ## on every chimney in view.
-const LOBES := 6
+const LOBES := 8
 ## Lobe centres, as fractions of the puff radius. Hand-placed rather than random so the
 ## silhouette is a known good shape: a broad base with two smaller lobes riding above it.
+## Eight lobes (owner, 2026-08-27), up from six: the extra two fill the diagonals, which is
+## where a six-lobe cluster showed its ring.
 const LOBE_OFFSETS: Array[Vector2] = [
-	Vector2(0.00, 0.00), Vector2(-0.50, 0.12), Vector2(0.48, 0.08),
-	Vector2(-0.22, -0.44), Vector2(0.30, -0.38), Vector2(0.04, 0.44),
+	Vector2(0.00, 0.00), Vector2(-0.52, 0.10), Vector2(0.50, 0.06),
+	Vector2(-0.26, -0.46), Vector2(0.32, -0.40), Vector2(0.02, 0.46),
+	Vector2(-0.40, 0.36), Vector2(0.44, -0.14),
 ]
-const LOBE_SCALES: Array[float] = [1.00, 0.66, 0.64, 0.56, 0.52, 0.48]
+const LOBE_SCALES: Array[float] = [1.00, 0.66, 0.64, 0.56, 0.52, 0.48, 0.50, 0.54]
 ## Per-lobe alpha. Uniform lobes stack into one flat disc; letting the outer ones sit
 ## lighter than the core is what gives the puff a billowed edge instead of a soft blur.
-const LOBE_ALPHA: Array[float] = [1.00, 0.90, 0.90, 0.80, 0.80, 0.74]
+const LOBE_ALPHA: Array[float] = [1.00, 0.90, 0.90, 0.80, 0.80, 0.74, 0.76, 0.82]
 
 ## A puff leaves the stack a little wider than the flue and swells as it cools, both as
 ## multiples of the stack radius. The end figure is deliberately large: the puff travels
@@ -48,8 +61,9 @@ const LOBE_ALPHA: Array[float] = [1.00, 0.90, 0.90, 0.80, 0.80, 0.74]
 ## the size of its chimney would be a speck lost against that journey. At these numbers a
 ## furnace (r 3.2) ends about 29 u across and a power plant (r 4.6) about 41 — a plume that
 ## reads as weather over the building rather than a dot beside it.
-const START_SCALE := 1.4
-const END_SCALE := 9.0
+## Both raised 25% (owner, 2026-08-27) from 1.4 / 9.0.
+const START_SCALE := 1.75
+const END_SCALE := 11.25
 ## Below this many pixels across, a puff is a smudge nobody can read and every one of its
 ## six discs still costs a draw call — so the whole layer stands down when zoomed out.
 const MIN_PUFF_PX := 3.0
@@ -112,7 +126,7 @@ func _draw() -> void:
 		# Cull against the whole path the puff can travel, not just its origin.
 		if not view.has_point(at) and not view.has_point(at + NE * DRIFT):
 			continue
-		_draw_puff(at, base_r, _phase(float(stack["seed"])))
+		_draw_puff(at, base_r, _phase(float(stack["seed"])), bool(stack.get("carbon", true)))
 
 
 ## Age of this stack's current puff, 0 at emission and 1 at the end of its life. The seeded
@@ -121,7 +135,7 @@ func _phase(seed_val: float) -> float:
 	return fposmod(_clock + seed_val * PERIOD, PERIOD) / PERIOD
 
 
-func _draw_puff(origin: Vector2, base_r: float, p: float) -> void:
+func _draw_puff(origin: Vector2, base_r: float, p: float, carbon: bool) -> void:
 	# Drift eases OUT: a puff leaves the stack briskly and slows as it spreads and cools.
 	var travelled := 1.0 - pow(1.0 - p, 1.7)
 	var centre := origin + NE * DRIFT * travelled
@@ -132,15 +146,18 @@ func _draw_puff(origin: Vector2, base_r: float, p: float) -> void:
 	# where one puff dies and the next is born on the same frame; the gentle exponent keeps
 	# the cloud readable through mid-life instead of washing out as soon as it spreads.
 	var alpha := PEAK_ALPHA * (minf(p / 0.10, 1.0) if p < 0.10 else pow(1.0 - p, 1.15))
+	if not carbon:
+		alpha *= STEAM_ALPHA_SCALE
 	if alpha <= 0.004:
 		return
+	var tint := SMOKE if carbon else STEAM
 	# Lobes spread apart as the puff grows, so it frays rather than swelling as a rigid
 	# shape — the difference between smoke dispersing and a balloon inflating.
 	var spread := lerpf(0.35, 1.0, p)
 	for i in LOBES:
 		draw_circle(centre + LOBE_OFFSETS[i] * radius * spread,
 			radius * LOBE_SCALES[i] * 0.70,
-			Color(SMOKE.r, SMOKE.g, SMOKE.b, alpha * LOBE_ALPHA[i]))
+			Color(tint.r, tint.g, tint.b, alpha * LOBE_ALPHA[i]))
 
 
 func _pixels_per_unit() -> float:

@@ -64,7 +64,31 @@ func _ready() -> void:
 
 	var stacks: Array = smoke.call("smoke_stacks") if smoke.has_method("smoke_stacks") \
 		else (visuals.call("smoke_stacks") as Array)
-	print("[SMOKE] %d chimney(s) on the map" % stacks.size())
+	var grey := 0
+	for st_value in stacks:
+		if bool((st_value as Dictionary).get("carbon", true)):
+			grey += 1
+	print("[SMOKE] %d chimney(s) on the map — %d grey (carbon), %d steam"
+		% [stacks.size(), grey, stacks.size() - grey])
+	# Which tiles actually show a STEAM plume, so a demo shot can be aimed at one.
+	var steam_tiles: Dictionary = {}
+	var placements: Variant = visuals.get("_placements")
+	if placements is Array:
+		for p_value in (placements as Array):
+			var pl: Dictionary = p_value
+			var pn := str(pl.get("iname", ""))
+			if not (visuals.get("SMOKE_STACKS") as Dictionary).has(pn):
+				continue
+			if bool(visuals.call("_recipe_emits_carbon", str(pl.instance_id))):
+				continue
+			steam_tiles["%s (%s)" % [str(pl.get("tile_id", "")), pn]] = true
+	var listed := 0
+	for k in steam_tiles:
+		print("[SMOKE]   steam at %s" % str(k))
+		listed += 1
+		if listed >= 10:
+			print("[SMOKE]   ... more not listed")
+			break
 
 	var pos := _tile_pos(tile_id)
 	if pos == Vector2.INF:
