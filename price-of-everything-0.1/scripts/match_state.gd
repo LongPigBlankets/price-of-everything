@@ -544,7 +544,6 @@ var debug_turn_logs_enabled: bool = false
 # When true (the default since Phase 3), building clicks open the redesigned Building Detail v2
 # panel. The classic v1 panel is kept as a fallback, reachable by toggling the `swap bdp` cheat.
 # Session-only; never persisted. See docs/building-detail-v2-plan.md.
-var use_bdp_v2: bool = true
 
 # The empire view's DEFAULT look: no background pattern, a large 2.5D building sprite above
 # each node with its metal plate attached below. Buildings without a sprite keep the classic
@@ -718,7 +717,6 @@ signal overflow_shipment_held(record: Dictionary)
 signal special_order_overflow_ready(record: Dictionary)
 # The Building Detail v2 dev-toggle flipped (`swap bdp` cheat); world_map re-renders the
 # active detail panel. Session-only.
-signal bdp_v2_changed(enabled: bool)
 signal construct_panel_v2_changed(enabled: bool)
 # The confirm-screen v3 dev-toggle flipped (`swap construct_panel_v3` cheat); the V2
 # panel re-renders so the gated visuals apply immediately. Session-only.
@@ -3949,19 +3947,6 @@ func toggle_debug_turn_logs() -> bool:
 
 ## Debug cheat: switch between the classic and redesigned (v2) building-detail panel.
 ## Returns the new state. Session-only, never persisted.
-func set_use_bdp_v2(enabled: bool) -> bool:
-	if enabled == use_bdp_v2:
-		return use_bdp_v2
-	use_bdp_v2 = enabled
-	bdp_v2_changed.emit(use_bdp_v2)
-	return use_bdp_v2
-
-func toggle_use_bdp_v2() -> bool:
-	return set_use_bdp_v2(not use_bdp_v2)
-
-## Debug cheat: toggle the empire view between the sprite style (big 2.5D sprites,
-## plates below, no backdrop) and the classic card style. Returns the new state.
-## Session-only, never persisted.
 func toggle_show_port_badge() -> bool:
 	show_port_badge = not show_port_badge
 	return show_port_badge

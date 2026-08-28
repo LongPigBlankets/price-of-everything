@@ -52,7 +52,7 @@ func _ready() -> void:
 	# view panel's spot (30 right / 78 top); the tile panel itself must stay hidden.
 	MatchState.focus_building_requested.emit("spr_0")
 	await _settle(12)
-	var bdp: Control = game.get("building_panel_v2") if MatchState.use_bdp_v2 else game.get("building_panel")
+	var bdp: Control = game.get("building_panel_v2")
 	var tip: Control = game.get("info_panel")
 	if bdp != null:
 		var vp := get_viewport().get_visible_rect().size

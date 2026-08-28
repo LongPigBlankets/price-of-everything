@@ -8370,18 +8370,24 @@ func _test_detail_panel_owner_resolution() -> void:
 	# to the NPC. (Mirrors tools/repro_npc_blur.gd, headless.)
 	var npc_iid: String = MatchState.add_building("b_002", "r_003", "tile_5_10", "Stoneshore Ironworks")
 	var player_iid: String = MatchState.add_building("b_002", "r_003", "tile_5_10", MatchState.LOCAL_PLAYER)
-	var panel = load("res://scripts/building_detail_panel.gd").new()
-	_check(panel._resolve_owner_id(MatchState.get_building(player_iid)) == MatchState.LOCAL_PLAYER,
+	# The resolver lives in BuildingReadout.owner_info now -- it re-reads the live store, which
+	# is the whole point of the guard -- and both the detail panel and everything else that
+	# needs an owner goes through it. Testing it there rather than through a panel's private
+	# copy is what let the v1 panel be deleted without losing the regression.
+	var readout := preload("res://scripts/building_readout.gd")
+	_check(str(readout.owner_info(MatchState.get_building(player_iid)).owner_id) == MatchState.LOCAL_PLAYER,
 		"detail owner: canonical player dict -> player")
 	var poisoned: Dictionary = MatchState.get_building(player_iid).duplicate()
 	poisoned["owner"] = "Stoneshore Ironworks"
-	_check(panel._resolve_owner_id(poisoned) == MatchState.LOCAL_PLAYER,
+	_check(str(readout.owner_info(poisoned).owner_id) == MatchState.LOCAL_PLAYER,
 		"detail owner: stale-owner player dict re-resolves to player (no NPC frost)")
-	_check(panel._resolve_owner_id(MatchState.get_building(npc_iid)) == "Stoneshore Ironworks",
+	_check(not bool(readout.owner_info(poisoned).is_npc),
+		"detail owner: a re-resolved player building is not drawn as an NPC")
+	_check(str(readout.owner_info(MatchState.get_building(npc_iid)).owner_id) == "Stoneshore Ironworks"
+			and bool(readout.owner_info(MatchState.get_building(npc_iid)).is_npc),
 		"detail owner: NPC building -> NPC owner (frost preserved)")
-	_check(panel._resolve_owner_id({"instance_id": "stub_x", "building_id": "b_002"}) == MatchState.LOCAL_PLAYER,
+	_check(str(readout.owner_info({"instance_id": "stub_x", "building_id": "b_002"}).owner_id) == MatchState.LOCAL_PLAYER,
 		"detail owner: construction stub (not in store, no owner) -> player")
-	panel.free()
 	MatchState.buildings.erase(npc_iid)
 	MatchState.buildings.erase(player_iid)
 
@@ -11452,36 +11458,33 @@ func _test_construction_detail_panel() -> void:
 		Stockpile.add(tile, gid, int(reqs[gid]))
 	var iid: String = Construction.start_on_tile(bid, "", tile)  # under_construction project
 
-	# The detail panel lives inside main.tscn (no standalone scene), so instantiate and find it.
-	var packed: PackedScene = load("res://scenes/main.tscn")
-	var ok: bool = packed != null and Construction.construction_projects.has(iid)
+	# The panel is built in code and mounted lazily, so it is instantiated directly rather
+	# than fished out of main.tscn -- which is also why this no longer costs a whole scene
+	# instantiation per run.
+	var ok: bool = Construction.construction_projects.has(iid)
 	if ok:
-		var inst: Node = packed.instantiate()
-		add_child(inst)
+		var panel: Node = load("res://scripts/building_detail_panel_v2.gd").new()
+		add_child(panel)
 		await get_tree().process_frame
-		var panel: Node = inst.find_child("BuildingDetailPanel", true, false)
-		ok = panel != null
-		if ok:
-			panel.call("show_building", {
-				"instance_id": iid, "building_id": bid, "recipe_id": "",
-				"tile_id": tile, "owner": MatchState.LOCAL_PLAYER,
-				"construction_status": "under_construction",
-			})
-			var fv: Node = panel.get("fields_vbox")
-			_check(fv != null and fv.get_child_count() > 0, "construction detail panel renders the materials section")
-			# Regression guards: the close (X) button lives in the status rail and must stay,
-			# while Change Recipe is hidden during construction.
-			var close_button := panel.get("close_button") as Button
-			_check(close_button != null and close_button.visible and close_button.is_inside_tree(),
-				"construction panel keeps the close (X) button")
-			_check(not panel.get("change_recipe_button").visible, "construction panel hides Change Recipe")
-			# Switching to a running building restores the operational controls.
-			var rid: String = MatchState.add_building(bid, "", "tile_detail_running")
-			panel.call("show_building", MatchState.get_building(rid))
-			_check(panel.get("change_recipe_button").visible, "Change Recipe restored on a running building")
-			MatchState.remove_building(rid)
-			ok = true
-		inst.queue_free()
+		panel.call("show_building", {
+			"instance_id": iid, "building_id": bid, "recipe_id": "",
+			"tile_id": tile, "owner": MatchState.LOCAL_PLAYER,
+			"construction_status": "under_construction",
+		})
+		await get_tree().process_frame
+		var body: Node = panel.get("_body")
+		_check(body != null and body.get_child_count() > 0,
+			"construction detail panel renders a body for a building still under construction")
+		# ...and a running building renders too, from the same panel instance: the rebuild
+		# path has to survive being handed a different kind of building.
+		var rid: String = MatchState.add_building(bid, "", "tile_detail_running")
+		panel.call("show_building", MatchState.get_building(rid))
+		await get_tree().process_frame
+		body = panel.get("_body")
+		_check(body != null and body.get_child_count() > 0,
+			"detail panel re-renders when swapped to a running building")
+		MatchState.remove_building(rid)
+		panel.queue_free()
 		await get_tree().process_frame
 	if not ok:
 		_check(false, "construction detail panel instantiates")
@@ -13556,7 +13559,6 @@ func _test_scripts_parse() -> void:
 		"res://scripts/stockpile_view.gd",
 		"res://scripts/infra_grid.gd",
 		"res://scripts/tile_info_panel_v2.gd",
-		"res://scripts/building_detail_panel.gd",
 		"res://scripts/building_connection_visuals.gd",
 		"res://scripts/world_map.gd",
 		"res://scripts/map_overlay.gd",

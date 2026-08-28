@@ -5,7 +5,7 @@ extends Node2D
 ## real, RAG-coloured numbers for two outputs without committing a turn — which would pop the
 ## turn-summary/victory/capacity dialogs). Screenshots the classic panel and the v2 panel.
 ##   Godot --path . res://tools/bdp_v2_shot.tscn --quit-after 1200
-## Writes /tmp/poe_bdp_v1.png and /tmp/poe_bdp_v2.png.
+## Writes /tmp/poe_bdp_v2.png.
 
 var _wm
 
@@ -30,27 +30,18 @@ func _ready() -> void:
 		_wm.info_panel.show_tile(tile_data)
 	await _settle(10)
 
-	# Phase 3: with no `swap bdp`, opening a building should route to v2 by default.
+	# There is one detail panel now -- the classic v1 panel and the `swap bdp` seam were
+	# deleted on 2026-08-28 -- so this opens it and photographs it, with no A/B to run.
 	_wm._open_building_detail(building)
 	await _settle(8)
-	print("[BDP_V2_SHOT] default: use_bdp_v2=%s  v2.visible=%s  v1.visible=%s" % [
-		str(MatchState.use_bdp_v2), str(_wm.building_panel_v2.visible), str(_wm.building_panel.visible)])
+	print("[BDP_V2_SHOT] panel visible=%s" % str(_wm.building_panel_v2.visible))
 	_wm._hide_building_detail()
-
-	# v1 (classic) — reachable via the fallback toggle
-	MatchState.set_use_bdp_v2(false)
-	_wm._open_building_detail(building)
-	await _settle(12)
-	get_viewport().get_texture().get_image().save_png("/tmp/poe_bdp_v1.png")
-	print("[BDP_V2_SHOT] saved /tmp/poe_bdp_v1.png")
 
 	# Seed two output modifiers so the output pill shows the struck base + effective qty
 	# (green outline, net positive) and the diagnostics "See all modifiers" accordion has rows.
 	Modifiers.add({"domain": "recipe_output", "target": "*", "pct": 15.0, "label": "Assembly-line optimisation"})
 	Modifiers.add({"domain": "recipe_output", "target": "*", "pct": -6.0, "label": "Ageing machinery"})
 
-	# v2 (redesign) — flip the flag exactly as `swap bdp` does
-	MatchState.set_use_bdp_v2(true)
 	_wm._open_building_detail(building)
 	await _settle(20)
 	get_viewport().get_texture().get_image().save_png("/tmp/poe_bdp_v2.png")

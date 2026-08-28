@@ -1,6 +1,7 @@
 extends PanelContainer
 ## Building Detail v2 — the redesigned, scenario-adaptive detail panel (Phase 1).
-## Code-instantiated by world_map, toggled by the `swap bdp` cheat (MatchState.use_bdp_v2).
+## Code-instantiated by world_map. THE building detail panel: the classic v1 panel it was
+## written to replace was deleted on 2026-08-28, along with the `swap bdp` seam.
 ## Renders a shared, UI-agnostic readout (building_readout.gd): header + status badge → adaptive
 ## recipe/flow strip (frameless good icons in independent input/output grids) → always-open
 ## diagnostics checklist → emphasised per-output cost-to-produce → economics → inbound shipments →
@@ -1179,8 +1180,8 @@ func _fmt_dec(v: float, decimals: int) -> String:
 ## SAME rect), so a sheet that needs more room than the panel's normal PANEL_WIDTH has
 ## no other way to get it than the panel itself growing.
 ## One reusable upgrade dialog on a high CanvasLayer, built once and hidden on close. Same
-## arrangement as building_detail_panel.gd's, so the two panels share the screen rather than
-## each carrying their own.
+## arrangement the building ledger uses, so the screens share one dialog rather than each
+## carrying their own.
 func _ensure_upgrade_dialog() -> void:
 	if _upgrade_dialog != null and is_instance_valid(_upgrade_dialog):
 		return
