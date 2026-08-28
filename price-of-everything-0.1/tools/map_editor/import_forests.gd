@@ -31,11 +31,13 @@ const AuthoredMapData := preload("res://scripts/authored_map.gd")
 
 ## Points sampled round each canopy circle before hulling. Enough that a lobe reads as round.
 const RIM_SAMPLES := 10
-## Trees are laid at TREE_SPACING / density, and density is clamped to 2.0 — so this is as
-## dense as an authored wood goes, which is what "dense" was asked for.
-const DENSITY := 2.0
+## Trees are laid at TREE_SPACING / density, clamped by AuthoredFabricPainter.MAX_DENSITY.
+## This is the ceiling: closed canopy, which is what "dense" was asked for.
+const DENSITY := 4.0
 ## An authored area may carry at most eight corners — see AuthoredMap._validate_area.
 const MAX_CORNERS := 8
+## The marker in an imported wood's id. It is how a re-run knows which records are its own.
+const IMPORT_MARKER := "imported"
 
 
 func _ready() -> void:
@@ -69,6 +71,20 @@ func _ready() -> void:
 	# settlement, which changes where the record is STORED and nothing about where it draws.
 	var fallback := str(settlements.keys()[0])
 
+	# IDEMPOTENT. This tool appends, so running it twice used to double every wood. Records it
+	# wrote before are dropped first, identified by the marker in their id — hand-drawn
+	# forests never carry it and are left alone.
+	var dropped := 0
+	for key in settlements:
+		var settlement_pass: Dictionary = settlements[key]
+		var kept: Array = []
+		for area_value in (settlement_pass.get("forests", []) as Array):
+			if str((area_value as Dictionary).get("id", "")).contains(IMPORT_MARKER):
+				dropped += 1
+			else:
+				kept.append(area_value)
+		if settlement_pass.has("forests"):
+			settlement_pass["forests"] = kept
 	var registry: Dictionary = forests.get("_forests")
 	var added := 0
 	var skipped := 0
@@ -90,7 +106,7 @@ func _ready() -> void:
 		for point in outline:
 			points.append([snappedf(point.x, 0.01), snappedf(point.y, 0.01)])
 		(settlement["forests"] as Array).append({
-			"id": "fo:%s:imported:%s" % [key, str(instance_id)],
+			"id": "fo:%s:%s:%s" % [key, IMPORT_MARKER, str(instance_id)],
 			"outline": points,
 			"density": DENSITY,
 		})
@@ -98,7 +114,8 @@ func _ready() -> void:
 		added += 1
 
 	doc["forests_imported"] = true
-	print("[FORESTS] converted %d, skipped %d (no drawable outline)" % [added, skipped])
+	print("[FORESTS] converted %d, replaced %d, skipped %d (no drawable outline)"
+		% [added, dropped, skipped])
 	for key in per_settlement:
 		print("[FORESTS]   %s: +%d" % [key, int(per_settlement[key])])
 	var problems := AuthoredMapData.validate(doc)

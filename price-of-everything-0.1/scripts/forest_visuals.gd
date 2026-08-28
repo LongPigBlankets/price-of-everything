@@ -190,6 +190,17 @@ func _ensure_canopy() -> void:
 	if not _mm_dirty:
 		return
 	_mm_dirty = false
+	# THE DOCUMENT DRAWS THE WOODS NOW. Once `import_forests` has written every canopy out as
+	# a `forests` area, these discs would be a second copy of the same wood drawn over the top
+	# of the trees -- which is what was hiding the authored tree vocabulary (owner,
+	# 2026-08-28). The gate lives HERE, in the draw path, and not in `_forest_draw_data`: that
+	# function is the only description of where a wood is and how big, and the importer has to
+	# read it to do the conversion in the first place. Gating the data made the tool unable to
+	# see the very forests it had been asked to convert, the second time it was run.
+	if AuthoredMap.is_active() and AuthoredMap.forests_imported():
+		_canopy_mm = null
+		_arc_pts = PackedVector2Array()
+		return
 	var shadows: Array = []   # [pos, r, aspect, rotation]
 	var bases: Array = []     # [pos, r, color, aspect, rotation]
 	var lobes: Array = []     # [pos, r, color, aspect, rotation]
@@ -374,17 +385,6 @@ func _append_arc_segments(center: Vector2, mean_half: float, instance_id: String
 func _forest_draw_data(instance_id: String, tile_id: String, coord: Vector2i) -> Dictionary:
 	if _draw_cache.has(instance_id):
 		return _draw_cache[instance_id]
-	# THE DOCUMENT DRAWS THE WOODS NOW. Once `import_forests` has written every canopy out as
-	# a `forests` area, this layer's discs would be a second copy of the same wood drawn over
-	# the top of the trees -- which is exactly what was hiding the authored tree vocabulary
-	# (owner, 2026-08-28). The flag is the handover, not tile coverage: a wood's area draws
-	# wherever its outline is, while a settlement's tile list is the suppression key for an
-	# entirely different set of things.
-	if AuthoredMap.is_active() and AuthoredMap.forests_imported():
-		var empty := {"circles": [], "shadow_r": 0.0, "mean_half": 0.0,
-			"center": _tile_center(coord), "base_lobes": []}
-		_draw_cache[instance_id] = empty
-		return empty
 	var center: Vector2 = _forest_center(instance_id, tile_id, coord)
 	var shape: Dictionary = ForestFootprint.shape_for(instance_id, tile_id, center)
 	var mean_half: float = (float(shape.hw) + float(shape.hh)) * 0.5
