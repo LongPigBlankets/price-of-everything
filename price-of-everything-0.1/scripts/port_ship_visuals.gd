@@ -37,10 +37,34 @@ const DECK := Color("39465f")
 const MIN_SHIP_PX := 6.0
 const CULL_MARGIN := 220.0
 
+## SEA LANES (owner, 2026-08-27). Coastal traffic crossing the south of the continent:
+## one stream enters mid-west and works round to the south-east, the other runs the reverse.
+##
+## The centreline is given in NORMALISED map coordinates (0..1 over the world bounds), traced
+## off the land/water map that `tools/sea_map_probe.tscn` prints — the west approach hugs the
+## seaboard at u~0.03, and the long leg runs along the southern water below the coast. The two
+## lanes are the SAME line offset perpendicular by half LANE_SEPARATION each way, so they are
+## parallel by construction and can never cross.
+const LANE: Array[Vector2] = [
+	Vector2(0.006, 0.44), Vector2(0.006, 0.72), Vector2(0.008, 0.86),
+	Vector2(0.026, 0.955), Vector2(0.10, 0.994), Vector2(0.45, 0.996),
+	Vector2(0.70, 0.992), Vector2(0.88, 0.975), Vector2(0.985, 0.950),
+]
+## World units between the two streams. Kept NARROW on purpose: the west seaboard is only a
+## ~150 u channel at mid-map (see the land/water map from `tools/sea_map_probe.tscn`), so a
+## wide separation puts the inshore lane on the beach. Validated by the probe, which samples
+## both lanes against NavGrid and counts anything that lands on ground.
+const LANE_SEPARATION := 110.0
+const LANE_SHIPS := 14
+const SEA_SHIP_LENGTH := 58.0
+## World units per second. A crossing should take minutes, not seconds — this is background.
+const SEA_SPEED := 62.0
+
 ## Set by world_map when it builds the layer.
 var ports: Node = null
 
 var _berths: Array = []
+var _lanes: Array = []      # [{points, length}] one per direction
 var _known := -1
 var _clock := 0.0
 
@@ -57,7 +81,8 @@ func _process(delta: float) -> void:
 	if _clock > 86400.0:
 		_clock = 0.0
 	_refresh()
-	if not _berths.is_empty():
+	_ensure_lanes()
+	if not _berths.is_empty() or not _lanes.is_empty():
 		queue_redraw()
 
 
@@ -103,13 +128,82 @@ func _refresh() -> void:
 			var inset := maxf(half_across - length * BEAM_FRAC - 3.0, 0.0)
 			_berths.append({
 				"berth": centre + tangent * side * inset,
-				# Bow points landward — a ship comes in facing the quay it will work.
-				"heading": (-seaward).angle(),
+				# The bow ALWAYS leads: a ship comes in facing the quay and turns about while
+				# alongside, so it leaves bow-first instead of reversing out of the harbour.
+				"heading_in": (-seaward).angle(),
 				"seaward": seaward,
 				"length": length,
 				"phase": 0.0 if side > 0.0 else ARM_OFFSET,
 				"seed": RoadHash.pick("ship|%s|%d" % [str(plan.get("key", "")), int(side)], 7),
 			})
+
+
+## Build the two lane polylines once, from the map's own extent. Deferred to the first frame
+## rather than done in _ready because the tiles have to exist to measure.
+func _ensure_lanes() -> void:
+	if not _lanes.is_empty():
+		return
+	var terrain := get_parent() as TileMapLayer
+	if terrain == null or terrain.get("tiles") == null:
+		return
+	var tiles: Dictionary = terrain.get("tiles")
+	if tiles.is_empty():
+		return
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	for coord in tiles:
+		var world: Vector2 = terrain.map_to_local(
+			terrain.map_coord_for_tile_coord(coord as Vector2i))
+		lo = lo.min(world)
+		hi = hi.max(world)
+	var centre := PackedVector2Array()
+	for point in LANE:
+		centre.append(Vector2(lerpf(lo.x, hi.x, point.x), lerpf(lo.y, hi.y, point.y)))
+	for side in [1.0, -1.0]:
+		var offset := _offset_polyline(centre, side * LANE_SEPARATION * 0.5)
+		_lanes.append({
+			"points": offset,
+			"length": _polyline_length(offset),
+			# One direction runs the line forwards, the other backwards.
+			"reverse": side < 0.0,
+		})
+
+
+## A polyline shifted sideways by `d`, using each vertex's averaged normal so the two lanes
+## stay parallel round the corners instead of pinching where the line bends.
+func _offset_polyline(pts: PackedVector2Array, d: float) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var n := pts.size()
+	for i in n:
+		var before: Vector2 = pts[maxi(i - 1, 0)]
+		var after: Vector2 = pts[mini(i + 1, n - 1)]
+		var dir := (after - before)
+		if dir.length() < 0.001:
+			dir = Vector2.RIGHT
+		dir = dir.normalized()
+		out.append(pts[i] + Vector2(-dir.y, dir.x) * d)
+	return out
+
+
+func _polyline_length(pts: PackedVector2Array) -> float:
+	var total := 0.0
+	for i in range(1, pts.size()):
+		total += pts[i - 1].distance_to(pts[i])
+	return total
+
+
+## Position and heading at `dist` along a polyline. Wraps, so a ship that runs off the end
+## reappears at the start and the stream never empties.
+func _along(pts: PackedVector2Array, total: float, dist: float) -> Array:
+	var d := fposmod(dist, total)
+	for i in range(1, pts.size()):
+		var seg := pts[i] - pts[i - 1]
+		var seg_len := seg.length()
+		if d <= seg_len or i == pts.size() - 1:
+			var u := 0.0 if seg_len < 0.001 else clampf(d / seg_len, 0.0, 1.0)
+			return [pts[i - 1] + seg * u, seg.angle()]
+		d -= seg_len
+	return [pts[0], 0.0]
 
 
 ## How far a set of arm polygons reaches along the seaward axis — the arm's own length,
@@ -126,7 +220,7 @@ func _seaward_run(polys: Array, seaward: Vector2) -> float:
 
 
 func _draw() -> void:
-	if _berths.is_empty():
+	if _berths.is_empty() and _lanes.is_empty():
 		return
 	var ppu := _pixels_per_unit()
 	if ppu <= 0.0:
@@ -144,12 +238,14 @@ func _draw() -> void:
 		var length: float = berth["length"]
 		if length * ppu < MIN_SHIP_PX:
 			continue
-		var along := _travel(fposmod(_clock + float(berth["phase"]), CYCLE))
+		var t := fposmod(_clock + float(berth["phase"]), CYCLE)
+		var along := _travel(t)
 		var pos: Vector2 = (berth["berth"] as Vector2) \
 			+ (berth["seaward"] as Vector2) * length * APPROACH * along
 		if not view.has_point(pos):
 			continue
-		var basis := Transform2D(float(berth["heading"]), pos).scaled_local(Vector2(length, length))
+		var basis := Transform2D(float(berth["heading_in"]) + _turn(t), pos) \
+			.scaled_local(Vector2(length, length))
 		var base := pts.size()
 		pts.resize(base + _hull_tris.size())
 		cols.resize(base + _hull_tris.size())
@@ -157,8 +253,32 @@ func _draw() -> void:
 			pts[base + i] = basis * _hull_tris[i]
 			cols[base + i] = HULL
 		topside.append({"basis": basis, "seed": int(berth["seed"])})
+	# Sea traffic, into the SAME batch as the harbour ships.
+	for lane_value in _lanes:
+		var lane: Dictionary = lane_value
+		var points: PackedVector2Array = lane["points"]
+		var total: float = lane["length"]
+		if total <= 1.0 or SEA_SHIP_LENGTH * ppu < MIN_SHIP_PX:
+			continue
+		var backwards: bool = lane["reverse"]
+		for k in LANE_SHIPS:
+			# Evenly spaced along the lane, all moving at one speed, so the spacing holds.
+			var d := float(k) * total / float(LANE_SHIPS) + _clock * SEA_SPEED
+			var at: Array = _along(points, total, total - d if backwards else d)
+			var pos: Vector2 = at[0]
+			if not view.has_point(pos):
+				continue
+			var heading: float = float(at[1]) + (PI if backwards else 0.0)
+			var basis := Transform2D(heading, pos) 				.scaled_local(Vector2(SEA_SHIP_LENGTH, SEA_SHIP_LENGTH))
+			var b := pts.size()
+			pts.resize(b + _hull_tris.size())
+			cols.resize(b + _hull_tris.size())
+			for i in _hull_tris.size():
+				pts[b + i] = basis * _hull_tris[i]
+				cols[b + i] = HULL
+			topside.append({"basis": basis, "seed": k})
 	# Every hull on screen in one command; outlines and cargo go over the top per ship, which
-	# is a handful of calls for the few harbours ever in view at once.
+	# is a handful for the few harbours and lane stretches ever in view at once.
 	CanvasBatch.flush(self, pts, cols)
 	for entry_value in topside:
 		var entry: Dictionary = entry_value
@@ -175,6 +295,19 @@ func _travel(t: float) -> float:
 		return 0.0                                  # alongside
 	var v := (t - IN_TIME - HOLD_TIME) / OUT_TIME   # leaving: 0 -> 1
 	return v * v * (3.0 - 2.0 * v)
+
+
+## The turn about while alongside, in radians added to the arrival heading. Zero on the way
+## in, PI by the time it leaves, so the bow always leads and a ship never reverses out of a
+## harbour. Swung over the middle 60% of the hold, so it reads as manoeuvring rather than
+## pivoting on the spot the instant it stops.
+func _turn(t: float) -> float:
+	if t <= IN_TIME:
+		return 0.0
+	if t >= IN_TIME + HOLD_TIME:
+		return PI
+	var u := clampf(((t - IN_TIME) / HOLD_TIME - 0.2) / 0.6, 0.0, 1.0)
+	return PI * u * u * (3.0 - 2.0 * u)
 
 
 func _draw_topside(basis: Transform2D, seed_val: int) -> void:

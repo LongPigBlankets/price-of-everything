@@ -450,7 +450,10 @@ func finish_build(animate: bool) -> void:
 	# plans it reads already exist.
 	var port_ships: Node2D = load("res://scripts/port_ship_visuals.gd").new()
 	port_ships.name = "PortShipVisuals"
-	port_ships.z_index = 61
+	# BELOW PortVisuals (60), not above. The quay and its arms sit outboard of the basin, so
+	# they never cover a berthed hull — but the crane jibs reach out over the water, and a
+	# crane working a ship has to be drawn on top of it.
+	port_ships.z_index = 59
 	port_ships.set("ports", port_visuals)
 	terrain_layer.add_child(port_ships)
 	_prof("port_visuals (harbour plan)")
