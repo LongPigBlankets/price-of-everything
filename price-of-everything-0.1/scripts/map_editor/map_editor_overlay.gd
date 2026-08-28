@@ -99,9 +99,11 @@ const ZONE_COLORS := {
 	"industrial_reserve": Color(0.95, 0.30, 0.28, 1.0),
 	"extraction": Color(0.08, 0.09, 0.12, 1.0),
 }
+## Only extraction draws (see `_draw_zones`), so only extraction claims a colour word.
+## The other two say so rather than naming a swatch the designer will never find.
 const ZONE_SWATCH := {
-	"industrial": "blue",
-	"industrial_reserve": "red",
+	"industrial": "(not shown)",
+	"industrial_reserve": "(not shown)",
 	"extraction": "black",
 }
 const ZONE_FILL_ALPHA := 0.20
@@ -399,6 +401,21 @@ func _draw_zones(camera: Camera2D) -> void:
 			if typeof(zone_value) != TYPE_DICTIONARY:
 				continue
 			var zone: Dictionary = zone_value
+			var picked: bool = selected.has(str(zone.get("id", "")))
+			# The blue `industrial` and red `industrial_reserve` washes no longer draw
+			# (owner, 2026-08-27): hijack-marked decorative buildings are what says where a
+			# gameplay building goes now, and two full-tile colour washes underneath them
+			# buried the marks. EXTRACTION still draws — mines and wells are sited against
+			# the deposits, not against the fabric, so its black region is still the only
+			# thing saying where a mine may stand. The zones themselves are untouched in the
+			# document and still drive placement; only the passive wash is gone.
+			#
+			# A SELECTED zone still draws whatever its kind: hiding it outright would leave
+			# the existing blue and red regions in the document invisible, so a designer
+			# could neither find nor delete one — a marquee would be the only way to catch
+			# something they cannot see.
+			if str(zone.get("kind", "")) != "extraction" and not picked:
+				continue
 			var world := PackedVector2Array()
 			for entry in (zone.get("outline", []) as Array):
 				var values: Array = entry as Array
@@ -414,7 +431,6 @@ func _draw_zones(camera: Camera2D) -> void:
 			draw_colored_polygon(screen, fill)
 			var ring := screen.duplicate()
 			ring.append(screen[0])
-			var picked: bool = selected.has(str(zone.get("id", "")))
 			draw_polyline(ring, colour, ZONE_EDGE_WIDTH * (2.0 if picked else 1.0), true)
 			if picked:
 				# `_hatch` steps in WORLD units so its density is stable as a shape moves,

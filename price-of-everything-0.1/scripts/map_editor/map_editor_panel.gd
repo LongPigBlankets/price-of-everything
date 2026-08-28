@@ -213,6 +213,7 @@ func build(editor: Node, layers: MapEditorLayers) -> void:
 		_zone_buttons[zone_kind] = button
 		zones.add_child(button)
 	zones.add_child(_caption("Default fills first, then reserve. Extraction is mines and wells only — water pumps use the industrial zones."))
+	zones.add_child(_caption("Only extraction draws on the map now — the blue and red washes are hidden so they cannot bury the hijack marks. Both still place buildings; select one to see it."))
 	var convert := _toggle_button("Slots on this tile -> zone")
 	convert.pressed.connect(func() -> void: _editor.call("convert_focused_slots_to_zone"))
 	zones.add_child(convert)
@@ -387,7 +388,7 @@ func refresh() -> void:
 		"upgrade":
 			_hint.text = "Click a road to widen it · Shift-click to narrow it"
 		"select":
-			_hint.text = "Drag to move (Ctrl/Cmd snaps) · arrows nudge · [ ] rotate · +/- size · Bksp deletes"
+			_hint.text = "Drag to move (Ctrl/Cmd snaps) · arrows nudge · [ ] rotate · +/- size · J hijack-slot · Bksp deletes"
 		"stamp":
 			_hint.text = "Drag to size a mass · the drag direction is its facing · , and . pick the form"
 		"area":

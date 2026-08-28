@@ -40,6 +40,7 @@ const MenuChrome := preload("res://scripts/menu_chrome.gd")
 const BEBAS := preload("res://assets/fonts/BebasNeue-Regular.ttf")
 const BuildingIcon := preload("res://scripts/building_icon.gd")   # navy-keyed metallic building icons
 const DebugTerminal := preload("res://scripts/debug_terminal.gd")   # for the `unlock demo` cheat flag
+const PlayerColours := preload("res://scripts/player_colours.gd")   # company livery table
 const GOLD := Color(0.90, 0.72, 0.36, 1.0)
 const CREAM := Color(0.995234, 0.930806, 0.763265)   # recipe-card parchment, for the goods tiles
 # "2 sizes larger" body text in the start detail (DS Body 14 / Numeric 16 baselines).
@@ -51,6 +52,11 @@ const START_NAME_FS := 22
 # "Buildings owned" column width pins the centred group's horizontal position.
 const DESC_MIN_H := 84
 const BCOL_W := 600
+## Company-livery swatch, in the dropdown and on its own row. 20 px square (owner, 2026-08-27).
+const SWATCH_PX := 20
+## Fixed like the other two detail columns, so adding a third does not slide the centred
+## group sideways when a start with fewer buildings is picked.
+const CCOL_W := 250
 
 # Tier -> hex fill colour + difficulty badge.
 const TIERS := {
@@ -110,7 +116,10 @@ var _send_metrics := true        # telemetry opt-out checkbox (default on; remem
 
 var _card_buttons: Array = []
 var _detail_desc: Label
-var _start_detail_box: HBoxContainer   # "Buildings owned" | "Financials"; hidden when the accordion opens
+var _start_detail_box: HBoxContainer   # "Buildings owned" | "Financials" | "Company colour"; hidden when the accordion opens
+## The chosen livery. Held OUTSIDE the detail box because that box is cleared and rebuilt on
+## every start switch — the dropdown is rebuilt with it, and the choice has to survive.
+var _colour_key: String = PlayerColours.DEFAULT_KEY
 var _difficulty_caption: Label
 
 static var _vig_tex: Texture2D = null
@@ -599,6 +608,47 @@ func _populate_start_detail(start: Dictionary) -> void:
 	var profit_txt := ("−£%s" % _fmt_money(absf(profit))) if loss else ("+£%s" % _fmt_money(profit))
 	fcol.add_child(_fin_row("Avg. profit / turn", profit_txt, Color(0.85, 0.36, 0.32) if loss else null))
 
+	# Column 3 — Company colour: the livery every building this company owns is painted in.
+	_start_detail_box.add_child(_colour_column())
+
+
+## The livery picker. A third detail column rather than an Advanced Setting: it is a choice
+## about the company you are about to play, so it belongs beside what that company owns and
+## what it is worth — and the detail box is already centred, so it lands centred for free.
+func _colour_column() -> Control:
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", DS.SP["SM"])
+	col.custom_minimum_size = Vector2(CCOL_W, 0)
+	col.add_child(_detail_heading("Company colour"))
+
+	var option := OptionButton.new()
+	# Each livery carries its own 20px swatch, so the colour is read from the row rather
+	# than recalled from its name — "Ethylene Blue" means nothing until you have seen it.
+	for entry_value in PlayerColours.all():
+		var entry: Dictionary = entry_value
+		option.add_icon_item(PlayerColours.swatch(str(entry["key"]), SWATCH_PX),
+			str(entry["label"]))
+		option.set_item_metadata(option.item_count - 1, str(entry["key"]))
+		if str(entry["key"]) == _colour_key:
+			option.select(option.item_count - 1)
+	# A start switch rebuilds this column; if the remembered livery somehow is not in the
+	# table any more, land on the first item rather than on nothing.
+	if option.selected < 0 and option.item_count > 0:
+		option.select(0)
+		_colour_key = str(option.get_item_metadata(0))
+	option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	option.item_selected.connect(func(index: int) -> void:
+		_colour_key = str(option.get_item_metadata(index)))
+	col.add_child(option)
+
+	var caption := Label.new()
+	caption.text = "Your buildings will use this colour."
+	caption.theme_type_variation = &"Body"
+	caption.add_theme_font_size_override("font_size", 13)
+	caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(caption)
+	return col
+
 
 func _detail_heading(text: String) -> Label:
 	var l := Label.new()
@@ -865,6 +915,9 @@ func _on_start_pressed() -> void:
 			# Advanced Settings: force every land tile surveyed at game start (this
 			# overrides whatever the difficulty's survey config would otherwise do).
 			"survey_all_tiles": _survey_all,
+			# The company livery. Rides the ruleset so it reaches a save file the same way
+			# the difficulty does — a colour that reset on load would repaint the map.
+			"company_colour": _colour_key,
 		},
 	}
 	start_requested.emit(_start_path, overrides)

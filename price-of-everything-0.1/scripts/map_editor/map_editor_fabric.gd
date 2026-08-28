@@ -26,6 +26,15 @@ const HATCH_COLOR := Color(0.99, 0.97, 0.90, 0.75)
 const HATCH_SPACING := 7.0
 const HATCH_WIDTH := 1.6
 
+## Buildings marked as hijack slots (J): a BLUE ring + bbox cross (owner, 2026-08-27).
+## An outline rather than a tint for the same reason the selection hatches — the fill
+## colour is what the designer is judging the composition by. The cross says "hidden in
+## play" at a glance. Blue is free here now that the industrial zone wash no longer
+## draws; it is the same blue that wash used, so the editor's "a building goes here"
+## colour is unchanged — it has just moved onto the thing that actually says so.
+const HIJACK_COLOR := Color(0.30, 0.60, 1.00, 0.95)
+const HIJACK_WIDTH := 1.8
+
 ## Which half of the fabric this node paints. GROUND (plazas, parks, worked land) is mounted
 ## BELOW the procedural fabric so it sits under the decorative buildings the generator draws;
 ## STANDING (masses, specials, woodland) is mounted above, with the shipped authored node.
@@ -78,10 +87,14 @@ func _draw() -> void:
 			continue
 		for mass in _entries(settlement, "decor"):
 			AuthoredFabricPainter.draw_mass(self, mass)
-			_mark(selected, mass, AuthoredFabricPainter.mass_polygons(mass))
+			var mass_polys: Array = AuthoredFabricPainter.mass_polygons(mass)
+			_mark_hijack(mass, mass_polys)
+			_mark(selected, mass, mass_polys)
 		for special in _entries(settlement, "specials"):
 			AuthoredFabricPainter.draw_special(self, special)
-			_mark(selected, special, [AuthoredSpecialShapesRef.render_polygon(special)])
+			var special_polys: Array = [AuthoredSpecialShapesRef.render_polygon(special)]
+			_mark_hijack(special, special_polys)
+			_mark(selected, special, special_polys)
 		for area in _entries(settlement, "forests"):
 			AuthoredFabricPainter.draw_forest(self, area)
 
@@ -106,6 +119,24 @@ func _entries(settlement: Dictionary, key: String) -> Array:
 func _mark(selected: Dictionary, record: Dictionary, polygons: Array) -> void:
 	if selected.has(str(record.get("id", ""))):
 		_hatch(polygons, bool(editor.call("is_shape_mode")))
+
+
+func _mark_hijack(record: Dictionary, polygons: Array) -> void:
+	if not bool(record.get("hijack", false)):
+		return
+	for polygon_value in polygons:
+		var polygon: PackedVector2Array = polygon_value
+		if polygon.size() < 3:
+			continue
+		var ring := polygon.duplicate()
+		ring.append(polygon[0])
+		draw_polyline(ring, HIJACK_COLOR, HIJACK_WIDTH, true)
+		var bounds := Rect2(polygon[0], Vector2.ZERO)
+		for point in polygon:
+			bounds = bounds.expand(point)
+		draw_line(bounds.position, bounds.end, HIJACK_COLOR, 1.2, true)
+		draw_line(Vector2(bounds.end.x, bounds.position.y),
+			Vector2(bounds.position.x, bounds.end.y), HIJACK_COLOR, 1.2, true)
 
 
 func _outline_of(record: Dictionary) -> PackedVector2Array:
