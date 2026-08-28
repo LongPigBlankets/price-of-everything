@@ -58,6 +58,8 @@ var _buy_dialog: Node = null
 var _buy_layer: CanvasLayer = null
 var _pending_buy: Dictionary = {}
 # Action sheets (in-panel overlay) + the reused upgrade dialog
+var _upgrade_dialog: Control = null
+var _upgrade_dialog_layer: CanvasLayer = null
 var _sheet: Control = null
 
 func _ready() -> void:
@@ -926,8 +928,25 @@ func _build_primary_actions(building: Dictionary, _building_data: Dictionary) ->
 # In-panel upgrade action sheet — the upgrade_dialog.gd content (level stat deltas, material
 # sourcing modes) rendered as one of the BDP's own sheets. Driven by MatchState.preview_upgrade /
 # start_upgrade / cancel_upgrade.
+## The material upgrade opens THE SHARED DIALOG (scripts/upgrade_dialog.gd), which is what
+## the v1 panel has always done. This panel grew its own in-sheet copy of the same screen, and
+## the two then drifted: every improvement made to the dialog -- the cream material chips, the
+## "use materials on tile" CTA, the trimmed copy -- landed in a screen the default panel never
+## opened, which is why the owner saw none of it (2026-08-28). One screen, one implementation.
+##
+## The full-height action sheet stays for the CASH-ONLY INFRASTRUCTURE upgrade and for the
+## already-upgrading countdown, which the dialog does not model; those are genuinely different
+## screens rather than a second copy of this one. It is also why the upgrade "kept going" past
+## its buttons: a sheet fills the panel by design, and a card sizes to its content.
 func _open_upgrade_sheet(building: Dictionary) -> void:
 	var iid := str(building.get("instance_id", ""))
+	var preview: Dictionary = MatchState.preview_upgrade(iid)
+	if bool(preview.get("ok", false)) and not bool(preview.get("at_max", false)) \
+			and not bool(preview.get("infra", false)) \
+			and not bool(preview.get("already_upgrading", false)):
+		_ensure_upgrade_dialog()
+		_upgrade_dialog.call("open", iid)
+		return
 	_open_sheet("Upgrade", func(vb: VBoxContainer) -> void:
 		var pv := MatchState.preview_upgrade(iid)
 		if pv.is_empty() or not bool(pv.get("ok", false)):
@@ -1159,6 +1178,21 @@ func _fmt_dec(v: float, decimals: int) -> String:
 ## — a sheet is a same-size overlay (PanelContainer manages every direct child to the
 ## SAME rect), so a sheet that needs more room than the panel's normal PANEL_WIDTH has
 ## no other way to get it than the panel itself growing.
+## One reusable upgrade dialog on a high CanvasLayer, built once and hidden on close. Same
+## arrangement as building_detail_panel.gd's, so the two panels share the screen rather than
+## each carrying their own.
+func _ensure_upgrade_dialog() -> void:
+	if _upgrade_dialog != null and is_instance_valid(_upgrade_dialog):
+		return
+	if _upgrade_dialog_layer == null or not is_instance_valid(_upgrade_dialog_layer):
+		_upgrade_dialog_layer = CanvasLayer.new()
+		_upgrade_dialog_layer.layer = 128
+		get_tree().root.add_child(_upgrade_dialog_layer)
+	_upgrade_dialog = (load("res://scripts/upgrade_dialog.gd") as Script).new()
+	_upgrade_dialog_layer.add_child(_upgrade_dialog)
+	_upgrade_dialog.connect("committed", func(_iid: String) -> void: _queue_refresh())
+
+
 func _open_sheet(title: String, populate: Callable, extra_width: float = 0.0) -> void:
 	_close_sheet()
 	_sheet_extra_width = extra_width

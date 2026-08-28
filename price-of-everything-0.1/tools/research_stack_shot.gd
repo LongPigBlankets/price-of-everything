@@ -20,9 +20,8 @@ func _ready() -> void:
 	TurnManager.current_turn = 12
 	TurnManager.turn_advanced.emit(12)
 	await _settle(20)
-	# Three at once: the ordinary multi-unlock turn.
-	for i in 3:
-		_unlock(NAMES[i])
+	# ONE unlock: the owner reports a single research showing up twice.
+	_unlock(NAMES[0])
 	await _settle(60)
 	await _shot("user://poe_research_stack.png")
 	# ...and the overflow case, where the tail folds into one "+N more".

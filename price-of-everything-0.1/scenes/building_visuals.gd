@@ -6104,9 +6104,13 @@ func _wash_for(cat: String, iid: String, is_npc: bool) -> Color:
 	if MapStyle.has_cartographic_depth():
 		# Block tops. Ruins first: an NPC-owned ruin must stay brown, matching the
 		# `is_npc and fam != "ruins"` carve-out below — decay, not ownership.
-		# Midcentury identifies real gameplay industries by restrained category
-		# colour regardless of owner. Plate keeps its frozen NPC-grey convention.
-		var key := fam if fam == "ruins" or not is_npc or MapStyle.is_midcentury() else "npc"
+		#
+		# NPCs ARE WHITE IN EVERY STYLE (owner, 2026-08-28). Midcentury used to colour real
+		# gameplay industries by category regardless of owner, which was defensible while it
+		# was an opt-in look and is not now that it ships: white is the rival cue, and the
+		# player's livery is the only colour on the map that means ownership. Plate keeps its
+		# own frozen NPC-grey convention.
+		var key := fam if fam == "ruins" or not is_npc else "npc"
 		var top := MapStyle.block_top(key)
 		return Color.from_hsv(top.h, top.s, clampf(top.v * (1.0 + jitter), 0.0, 1.0))
 	if is_npc and fam != "ruins":

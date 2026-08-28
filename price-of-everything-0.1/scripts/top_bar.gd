@@ -223,9 +223,14 @@ var _briefing_glyph: Control   # _BellIcon (vector — the font has no bell glyp
 ## to collapse into a single "N research unlocked" banner, which named none of them and made
 ## the player open the briefing to find out what they had got.
 var _research_toasts: Array[PanelContainer] = []
-## Tech names already toasted this turn. TurnBriefing rebuilds its items more than once as
-## unlocks land, so the gate has to be per-tech: a count would re-pop the whole stack the
-## moment a second unlock arrived (owner, 27 Aug, for the count version of the same bug).
+## Tech names already toasted THIS MATCH -- deliberately not this turn.
+##
+## Two things make it a match-long gate. TurnBriefing rebuilds its items several times as
+## unlocks land, so it has to be per tech rather than a count. And its window is
+## [current_turn - 1, current_turn], so an unlock is in the briefing for TWO turns running:
+## a gate cleared on turn change therefore popped every research a second time, one turn
+## later (owner, 2026-08-28: "it appears twice"). A tech unlocks once, so the set only ever
+## needs emptying when a new match starts.
 var _research_toasted: Dictionary = {}
 ## The single "+N more this turn" flyout, and its running total. It is UPDATED rather than
 ## re-created: TurnBriefing refreshes once per unlock as they land, so building a new one per
@@ -295,9 +300,9 @@ func _ready() -> void:
 	MatchState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _queue_refresh())
 	Production.turn_processed.connect(func(_s: Dictionary) -> void: _queue_refresh())
 	CompanyRankings.rankings_updated.connect(_queue_refresh)
-	# A new turn resets the research-toast gate, so next turn's unlocks pop a fresh toast.
+	# The research gate is NOT reset here -- see _research_toasted. Only the overflow tally is,
+	# since "+N more this turn" is a statement about one turn.
 	TurnManager.turn_advanced.connect(func(_t: int) -> void:
-		_research_toasted.clear()
 		_research_overflow_n = 0
 		_queue_refresh())
 	LoanState.loans_updated.connect(_queue_refresh)
@@ -1787,6 +1792,9 @@ func _build_quest() -> void:
 	# fast boot can still be wiring up. Without it the module first appeared on turn 2, because
 	# TurnManager emits turn 1's DECIDE before the ruleset is even loaded, so that nudge is lost.
 	SaveLoad.match_loaded.connect(_refresh_quest)
+	# A different match is a different set of unlocks, so the match-long research gate empties
+	# here -- the one place it should.
+	SaveLoad.match_loaded.connect(func() -> void: _research_toasted.clear())
 	get_viewport().size_changed.connect(_place_quest)
 	_refresh_quest()
 
@@ -2331,12 +2339,22 @@ var _quest_auto_opened := false
 ## While true, the module holds the finished mission's text and nothing rebuilds the flyout.
 var _quest_celebrating := false
 var _quest_celebrating_kind := ""
+## Widest the mission readout has ever been; the flyout's fixed width. See _quest_fly_width.
+var _quest_fly_w := 0
 
 
+## ONE WIDTH, ALWAYS (owner, 2026-08-28). The module's width ANIMATES -- it opens at the full
+## mission readout and collapses to the icon a few seconds later -- so following its current
+## size made the flyout a different width depending on when you happened to open it. The FULL
+## readout is the ruler, and the value only ever grows, so a longer mission later never makes
+## the panel jump back and forth.
 func _quest_fly_width() -> int:
+	if _quest_text_col != null and is_instance_valid(_quest_text_col):
+		var full := int(_quest_text_col.get_combined_minimum_size().x + 24.0)
+		_quest_fly_w = maxi(_quest_fly_w, full)
 	if _quest_btn != null and is_instance_valid(_quest_btn) and _quest_btn.size.x > 1.0:
-		return int(_quest_btn.size.x)
-	return QUEST_FLY_FALLBACK_W
+		_quest_fly_w = maxi(_quest_fly_w, int(_quest_btn.size.x))
+	return maxi(_quest_fly_w, QUEST_FLY_FALLBACK_W)
 
 
 func _fly_quest(vb: VBoxContainer) -> void:
@@ -2357,11 +2375,21 @@ func _fly_quest(vb: VBoxContainer) -> void:
 	if _quest_open == "" and not list.is_empty():
 		_quest_open = MiniQuest.active_mission()
 	var inner: int = width - QUEST_FLY_PAD - QUEST_FLY_BORDER
+	var all_done := not list.is_empty()
 	for kind_variant: Variant in list:
 		var kind := str(kind_variant)
+		if not MiniQuest.is_mission_complete(kind):
+			all_done = false
 		var section := _quest_section(kind, inner)
 		_quest_sections[kind] = section
 		col.add_child(section)
+	# The chain has an end, and the panel should say so rather than just showing a column of
+	# ticks and leaving the player to work out there is nothing left (owner, 2026-08-28).
+	if all_done:
+		var done_row := _mini("All missions completed!", C_BRIGHT, 13)
+		done_row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		done_row.custom_minimum_size = Vector2(inner, 0)
+		col.add_child(done_row)
 
 
 ## One accordion section: its header always, its steps and reward only while it is the open one.
