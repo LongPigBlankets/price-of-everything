@@ -90,40 +90,34 @@ func _ready() -> void:
 			print("[SMOKE]   ... more not listed")
 			break
 
-	# BIRD CHECK: where are the skeins actually, so a shot can be aimed at one.
+	# BIRD CHECK: ask the layer where its skeins are; never re-derive it here.
 	var birds := _wm.find_child("BirdVisuals", true, false)
-	if birds == null:
-		print("[BIRD] no BirdVisuals node")
-	else:
-		print("[BIRD] bounds ready=%s lo=%s hi=%s"
-			% [str(birds.get("_ready_bounds")), str(birds.get("_lo")), str(birds.get("_hi"))])
-		var lo: Vector2 = birds.get("_lo")
-		var hi: Vector2 = birds.get("_hi")
-		var lats: Array = birds.get("LATITUDES")
-		for si in lats.size():
-			var uu: float = fposmod(float(birds.get("_clock")) / 30.0 + float(si) / 5.0, 1.0)
-			var lx: float = lerpf(lo.x - 104.0, lo.x - 104.0 + float(birds.get("RUN")), uu)
-			var ly: float = lerpf(lo.y, hi.y, float(lats[si]))
-			print("[BIRD]   set %d  u=%.2f  lead=(%.0f, %.0f)" % [si, uu, lx, ly])
+	if birds != null and bool(birds.get("_ready_bounds")):
+		var courses: Array = birds.get("COURSES")
+		for si in courses.size():
+			var uu: float = fposmod(float(birds.get("_clock")) / float(birds.get("PERIOD"))
+				+ float(si) / float(birds.get("SETS")), 1.0)
+			var lead: Vector2 = birds.call("lead_of", si, uu)
+			print("[BIRD]   set %d  heading %.0f deg  u=%.2f  lead=(%.0f, %.0f)"
+				% [si, rad_to_deg(float((courses[si] as Vector3).z)), uu, lead.x, lead.y])
 	var pos := _tile_pos(tile_id)
-	# `--aim=bird` points the camera at a real skein instead of a tile. Guessing a tile's
-	# world position by hand was wrong twice; ask the layer where its birds actually are.
-	if str(opt.get("aim", "")) == "bird" and birds != null:
-		var lo2: Vector2 = birds.get("_lo")
-		var hi2: Vector2 = birds.get("_hi")
-		var lats2: Array = birds.get("LATITUDES")
-		var uu2: float = fposmod(float(birds.get("_clock")) / 30.0 + 2.0 / 5.0, 1.0)
-		pos = Vector2(lerpf(lo2.x - 104.0, lo2.x - 104.0 + float(birds.get("RUN")), uu2),
-			lerpf(lo2.y, hi2.y, float(lats2[2])))
-		print("[BIRD] aiming at %s" % str(pos))
-	if pos == Vector2.INF:
-		push_error("smoke_shot: unknown tile %s" % tile_id)
-		get_tree().quit(3)
-		return
+	# `--aim=bird=N` points the camera at set N's leader. Guessing a tile's world position by
+	# hand was wrong three times; ask the layer where its birds actually are.
+	var aim := str(opt.get("aim", ""))
+	if aim.begins_with("bird") and birds != null and bool(birds.get("_ready_bounds")):
+		var which := 0
+		if aim.contains("="):
+			which = int(aim.split("=")[1])
+		var uu2: float = fposmod(float(birds.get("_clock")) / float(birds.get("PERIOD"))
+			+ float(which) / float(birds.get("SETS")), 1.0)
+		pos = birds.call("lead_of", which, uu2)
+		print("[BIRD] aiming at set %d, %s" % [which, str(pos)])
+
 	_cam.position = pos + offset
 	_cam.zoom = Vector2(zoom, zoom)
 	if "_target_zoom" in _cam:
 		_cam.set("_target_zoom", _cam.zoom)
+
 	for _i in 12:
 		await get_tree().process_frame
 

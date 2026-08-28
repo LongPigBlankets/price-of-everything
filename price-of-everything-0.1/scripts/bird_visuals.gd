@@ -33,10 +33,6 @@ const FLAP_RATE := 2.6
 ## How deep the arch bows at the extremes, as a fraction of the half-span.
 const ARCH := 0.42
 
-## Every skein flies due east. Kept as a named heading rather than assumed, because BOTH the
-## formation and the bird glyph are built in a forward-facing frame and rotated by it -- so a
-## set flying some other way needs only this number changed.
-const HEADING := 0.0
 
 const INK := Color(0.06, 0.06, 0.07, 1.0)
 const LINE_W := 1.7
@@ -44,9 +40,21 @@ const LINE_W := 1.7
 const MIN_SPAN_PX := 5.0
 const CULL_MARGIN := 200.0
 
-## Latitudes as fractions of the world's height. Chosen over the landmass -- the southern
-## fifth of the map is open sea and a skein there would be crossing water, not country.
-const LATITUDES: Array[float] = [0.12, 0.26, 0.40, 0.54, 0.68]
+## One entry per set: (start x, start y) as fractions of the world, then the HEADING in
+## radians. Both the formation and the bird glyph are built in a forward-facing frame and
+## rotated by that heading, so a set flies, points and forms up along its own course.
+##
+## Screen y runs DOWN, so south is +y: south-east is PI/4 and due south is PI/2.
+## Three skeins run NORTH-WEST to SOUTH-EAST across the continent; two come down the eastern
+## side from the NORTH-EAST (owner, 2026-08-27). Starts sit over the landmass -- the southern
+## fifth of the map is open sea, and a skein there would be crossing water, not country.
+const COURSES: Array[Vector3] = [
+	Vector3(0.05, 0.06, PI * 0.25),   # NW -> SE
+	Vector3(0.02, 0.30, PI * 0.25),
+	Vector3(0.22, 0.03, PI * 0.25),
+	Vector3(0.72, 0.04, PI * 0.50),   # NE -> SE, down the eastern side
+	Vector3(0.88, 0.02, PI * 0.50),
+]
 
 var _clock := 0.0
 var _lo := Vector2.ZERO
@@ -106,9 +114,7 @@ func _draw() -> void:
 		# Each set starts a fifth of a period apart, so the sky is never empty and never has
 		# all five skeins abreast.
 		var u := fposmod(_clock / PERIOD + float(s) / float(SETS), 1.0)
-		var lead := Vector2(
-			lerpf(_lo.x - SPAN * 4.0, _lo.x - SPAN * 4.0 + RUN, u),
-			lerpf(_lo.y, _hi.y, LATITUDES[s]))
+		var lead := lead_of(s, u)
 		# Fade in and out at the ends of the run, so the wrap is a skein flying out of sight
 		# rather than one blinking off.
 		var fade := clampf(minf(u, 1.0 - u) / 0.08, 0.0, 1.0)
@@ -117,7 +123,7 @@ func _draw() -> void:
 		var col := Color(INK.r, INK.g, INK.b, fade)
 		# The V is laid out in the flight frame: ranks fall BACK along the course and OUT to
 		# either side of it, so the tip of the V leads in the direction of travel.
-		var forward := Vector2.RIGHT.rotated(HEADING)
+		var forward := Vector2.RIGHT.rotated(COURSES[s].z)
 		var beam := Vector2(-forward.y, forward.x)
 		for b in FLOCK:
 			# Rank 0 leads; the rest fall back alternately to either side.
@@ -130,6 +136,15 @@ func _draw() -> void:
 			# Each bird beats slightly out of step with the one ahead.
 			var flap := sin((_clock + float(b) * 0.11 + float(s) * 0.37) * TAU * FLAP_RATE)
 			draw_polyline(_bird(at, flap, forward, beam), col, LINE_W, true)
+
+
+## Where set `s` leads at fraction `u` of its run. Public so a shot tool can aim at a real
+## skein instead of re-deriving this and getting it wrong -- which is exactly what happened
+## the first time birds were photographed.
+func lead_of(s: int, u: float) -> Vector2:
+	var course: Vector3 = COURSES[s]
+	var start := Vector2(lerpf(_lo.x, _hi.x, course.x), lerpf(_lo.y, _hi.y, course.y))
+	return start + Vector2.RIGHT.rotated(course.z) * RUN * u
 
 
 ## One bird: one wingtip, in over the body, out to the other. `flap` in [-1, 1] is the stroke
