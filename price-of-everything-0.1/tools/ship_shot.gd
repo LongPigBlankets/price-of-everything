@@ -105,6 +105,26 @@ func _ready() -> void:
 			% [(berths_value as Array).size(), str(pos), float(first["length"])])
 	else:
 		print("[SHIP] NO BERTHS — falling back to the tile centre")
+	# CALLER CHECK: prove the port-call routes exist and actually reach the berth, which a
+	# screenshot of open water cannot show.
+	var routes: Variant = smoke.get("_callers")
+	if routes is Array:
+		print("[SHIP] %d caller route(s)" % (routes as Array).size())
+		for ri in (routes as Array).size():
+			var route: Dictionary = (routes as Array)[ri]
+			var berth_pos: Vector2 = (route["berth"] as Dictionary)["berth"]
+			var period: float = route["period"]
+			var nearest := INF
+			var at_berth := -1.0
+			for k in 400:
+				var u := period * float(k) / 400.0
+				var place: Array = smoke.call("_caller_at", route, u)
+				var gap: float = (place[0] as Vector2).distance_to(berth_pos)
+				if gap < nearest:
+					nearest = gap
+					at_berth = u
+			print("[SHIP]   route %d: period %.0fs, closest approach to berth %.1f u at t=%.0fs"
+				% [ri, period, nearest, at_berth])
 	_cam.position = pos + offset
 	_cam.zoom = Vector2(zoom, zoom)
 	if "_target_zoom" in _cam:
