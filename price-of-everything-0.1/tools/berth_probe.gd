@@ -51,12 +51,12 @@ func _ready() -> void:
 		for ri in (callers as Array).size():
 			var route: Dictionary = (callers as Array)[ri]
 			for key in ["spur_in", "spur_out"]:
-				var spur: PackedVector2Array = route[key]
+				var track: Dictionary = route[key + "_track"]
 				var bad := 0
 				var first := ""
 				for k in 200:
-					var at: Array = ships.call("_along", spur, float(route[key + "_len"]),
-						float(route[key + "_len"]) * float(k) / 200.0)
+					var at: Array = ships.call("_at_time", track,
+						float(track["duration"]) * float(k) / 200.0)
 					var cell := nav.cell_of(at[0] as Vector2)
 					if nav.water(cell.x, cell.y) == 0:
 						bad += 1
@@ -68,6 +68,47 @@ func _ready() -> void:
 				% [ri, str((route["berth"] as Dictionary).get("tile_id", "?")),
 					float(route["window"]), float(route["period"]), int(route["laps"]),
 					str(route["arrivals"])])
+	# DO THE APPROACHES CROSS? A ship leaving a harbour must not cut across one arriving at
+	# it, which is a question about the two spur polylines of the SAME route and about the
+	# in-spur of one route against the out-spur of the other at the same tile.
+	if callers is Array:
+		var by_tile: Dictionary = {}
+		for route_value in (callers as Array):
+			var route: Dictionary = route_value
+			var tile := str((route["berth"] as Dictionary).get("tile_id", "?"))
+			if not by_tile.has(tile):
+				by_tile[tile] = []
+			(by_tile[tile] as Array).append(route)
+		for tile in by_tile:
+			var routes: Array = by_tile[tile]
+			# SAME ROUTE is the one that matters: a ship leaving by the way it came in. Two
+			# routes of OPPOSITE directions must meet somewhere near the harbour mouth --
+			# inbound from the north and outbound to the south share one entrance -- so
+			# counting those together said "18 crossings" about geometry that is correct.
+			var same := 0
+			var cross := 0
+			var where := ""
+			for a in routes:
+				for b in routes:
+					var ra: Dictionary = a
+					var rb: Dictionary = b
+					var pa: PackedVector2Array = ra["spur_in"]
+					var pb: PackedVector2Array = rb["spur_out"]
+					var hits := 0
+					for i in range(1, pa.size()):
+						for j in range(1, pb.size()):
+							var hit: Variant = Geometry2D.segment_intersects_segment(
+								pa[i - 1], pa[i], pb[j - 1], pb[j])
+							if hit != null:
+								hits += 1
+								if where == "":
+									where = "%.0f,%.0f" % [(hit as Vector2).x, (hit as Vector2).y]
+					if ra.get("lane_track") == rb.get("lane_track"):
+						same += hits
+					else:
+						cross += hits
+			print("[BERTH] %s: same-route crossings = %d (opposite-direction = %d) %s"
+				% [tile, same, cross, where])
 	var total_ships := 0
 	if callers is Array:
 		for route_value in (callers as Array):

@@ -14,6 +14,7 @@ extends Node2D
 ## carry the connection rule, because only roads are something the player builds.
 
 const AuthoredMap := preload("res://scripts/authored_map.gd")
+const AuthoredPortCraneLayer := preload("res://scripts/authored_port_crane_layer.gd")
 const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
 const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
 const AuthoredBake := preload("res://scripts/authored_bake.gd")
@@ -97,7 +98,11 @@ func restore_all() -> void:
 
 func _draw() -> void:
 	var _lpd := Time.get_ticks_usec()
+	_cranes_this_pass = []
 	_lp_draw_inner()
+	# The cranes gathered during the pass go to their own layer, above the ships. Deferred
+	# because set_cranes queues a redraw on a sibling and this one is mid-draw.
+	_publish_cranes.call_deferred()
 	var _lpms := float(Time.get_ticks_usec() - _lpd) / 1000.0
 	if _lpms > 50.0 and OS.get_environment("LOAD_PROF") != "":
 		print("LOADPROF-DRAW %s %.0f ms   abs=%d" % [name, _lpms, Time.get_ticks_msec()])
@@ -176,7 +181,8 @@ func _lp_draw_inner() -> void:
 				if str(record.get("tile", "")) == str(port_tile):
 					decor.append(record)
 			if not decor.is_empty():
-				AuthoredFabricPainter.draw_port_decor(self, decor, _keep_out)
+				AuthoredFabricPainter.draw_port_decor(self, decor, _keep_out, true)
+				_collect_cranes(decor)
 	for settlement in ordered:
 		for area in _list(settlement, "forests"):
 			AuthoredFabricPainter.draw_forest(self, area)
@@ -331,7 +337,8 @@ func _draw_dynamic() -> void:
 				if str(record.get("tile", "")) == str(port_tile):
 					decor.append(record)
 			if not decor.is_empty():
-				AuthoredFabricPainter.draw_port_decor(self, decor, _keep_out)
+				AuthoredFabricPainter.draw_port_decor(self, decor, _keep_out, true)
+				_collect_cranes(decor)
 
 
 ## READ-ONLY SEAM FOR AUDITS. Every decorative mass and special this layer is CURRENTLY
@@ -382,3 +389,26 @@ func _list(settlement: Dictionary, key: String) -> Array:
 		if typeof(value) == TYPE_DICTIONARY:
 			out.append(value)
 	return out
+
+
+## The gantry cranes of every authored harbour, gathered while the docks are painted and
+## handed to a layer that draws them ABOVE the ships. See authored_port_crane_layer.gd.
+var _crane_layer: Node2D = null
+var _cranes_this_pass: Array = []
+
+
+func _collect_cranes(decor: Array) -> void:
+	for record_value in decor:
+		if str((record_value as Dictionary).get("kind", "")) == "crane":
+			_cranes_this_pass.append(record_value)
+
+
+## Called at the end of a draw pass: publish what was gathered, building the layer on first
+## need. A pass that painted no harbour publishes an empty list, which clears the last one.
+func _publish_cranes() -> void:
+	if _crane_layer == null or not is_instance_valid(_crane_layer):
+		_crane_layer = AuthoredPortCraneLayer.new()
+		_crane_layer.name = "AuthoredPortCranes"
+		add_child(_crane_layer)
+	_crane_layer.call("set_cranes", _cranes_this_pass.duplicate())
+	_cranes_this_pass = []

@@ -203,9 +203,15 @@ static func draw_port_group(canvas: CanvasItem, records: Array, tile_id: String,
 ## seat moves with the player's buildings. Regenerating it against a hand-placed quay would put
 ## the cranes somewhere else entirely. Moving the quay in the editor means moving these too;
 ## they are ordinary records with ordinary coordinates.
-static func draw_port_decor(canvas: CanvasItem, records: Array, keep_out: Array = []) -> void:
+## `skip_cranes` leaves the gantries to AuthoredPortCraneLayer, which draws them above the
+## ships instead of under them — see that script for why they are the one piece of an authored
+## harbour that moves up a layer.
+static func draw_port_decor(canvas: CanvasItem, records: Array, keep_out: Array = [],
+		skip_cranes: bool = false) -> void:
 	for record_value in records:
 		var record: Dictionary = record_value
+		if skip_cranes and str(record.get("kind", "")) == "crane":
+			continue
 		match str(record.get("kind", "")):
 			"container":
 				var poly := _points_of(record, "outline")
@@ -234,13 +240,13 @@ static func draw_port_decor(canvas: CanvasItem, records: Array, keep_out: Array 
 					canvas.draw_arc(centre, radius * 0.62, 0.0, TAU, 24,
 						MidcenturyStyle.INK, 1.0, true)
 			"crane":
-				_draw_crane(canvas, record)
+				draw_crane(canvas, record)
 
 
 ## One gantry crane: base block, rail across the quay, two legs, and the jib reaching over the
 ## basin. Mirrors `port_visuals._draw_crane` — the planner's harbours and the authored ones must
 ## put the same machine on the same quay.
-static func _draw_crane(canvas: CanvasItem, crane: Dictionary) -> void:
+static func draw_crane(canvas: CanvasItem, crane: Dictionary) -> void:
 	var position := _vector_of(crane.get("position", null))
 	var direction := _vector_of(crane.get("direction", null))
 	var cross := _vector_of(crane.get("cross", null))

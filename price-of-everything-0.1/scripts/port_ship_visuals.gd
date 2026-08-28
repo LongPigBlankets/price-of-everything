@@ -89,6 +89,14 @@ const SLOT_MARGIN := 30.0
 ## also runs up the east coast, which is a good deal more water to cover).
 const LANE_SHIPS := 20
 
+## A ship SLOWS TO A STOP over this, turns, and accelerates away over the same again (owner,
+## 2026-08-28). Ships used to change heading discontinuously at every polyline vertex, because
+## `_along` returned the segment's own angle: a corner was a frame, not a manoeuvre.
+const TURN_SEC := 1.0
+## Below this much course change a corner is a lean, not a manoeuvre: the heading still blends
+## rather than snapping, but the ship holds its speed. Without a threshold every stray vertex
+## of a routed sea path would cost two seconds and the stream would crawl.
+const TURN_MIN_ANGLE := 0.35   # ~20 degrees
 ## World units per second. A crossing should take minutes, not seconds — this is background.
 const SEA_SPEED := 62.0
 
@@ -116,7 +124,10 @@ const DEFAULT_SCHEDULE := {"every": 30.0, "burst": 1, "gap": 0.0}
 const MIN_LANE_TIME := 45.0
 ## How far downstream a departing caller rejoins the stream, so it merges in ahead of where
 ## it left instead of retracing its own approach.
-const MERGE_RUN := 900.0
+const MERGE_RUN := 2200.0
+## How far each approach sits off the middle of its fairway, so inbound and outbound traffic
+## pass each other rather than through each other.
+const FAIRWAY_OFFSET := 68.0
 ## SEA ROUTING for the port spurs. A Bezier straight at the harbour cut corners across
 ## headlands, so the run in is now A-STARRED over water (owner, 2026-08-27).
 ## The grid is built from NAVGRID -- the baked terrain -- not from the tile map, and a cell
@@ -434,10 +445,18 @@ func _ensure_lanes() -> void:
 			var slot := SLOT_MARGIN + (HALF_CHANNEL - SLOT_MARGIN * 2.0) 				* (float(k) + 0.5) / float(LANE_SHIPS)
 			var lateral := float(direction) * HALF_CHANNEL + slot
 			var line := _pull_to_water(_offset_polyline(centre, lateral), centre)
+			# The DIRECTION is baked into the polyline rather than applied as a PI flip at
+			# draw time: the timeline models a manoeuvre between two courses, and reversing a
+			# route by adding half a turn to its heading turns every corner inside out.
+			if direction == 1:
+				var back := PackedVector2Array()
+				for k2 in range(line.size() - 1, -1, -1):
+					back.append(line[k2])
+				line = back
 			_lanes.append({
 				"points": line,
+				"track": _timeline(line),
 				"length": _polyline_length(line),
-				"reverse": direction == 1,
 				# Staggered along the route as well as across it, so a half is not a rank of
 				# ships sailing abreast.
 				"start": float(k) / float(LANE_SHIPS),
@@ -446,6 +465,72 @@ func _ensure_lanes() -> void:
 				# container palette. A ship's colours are a property of the ship.
 				"seed": (direction * LANE_SHIPS + k) % 7,
 			})
+
+
+## One side of a fairway: the given route shifted to its own hand of the channel, by the most
+## the water will take.
+##
+## A single offset does not work everywhere. Stoneshore's bay is narrower than the separation
+## the open coast can afford, and forcing it there put legs ashore; falling back to the
+## centreline instead put the two directions back on top of each other -- eighteen crossings,
+## worse than the six the unseparated routes had. So the offset is TRIED DOWNWARDS: the widest
+## one whose every vertex and every leg is clear water wins, and a tight harbour simply gets a
+## narrower fairway rather than none.
+func _fairway(route: PackedVector2Array) -> PackedVector2Array:
+	# PER VERTEX, not per route. Trying one offset for the whole run and dropping to the next
+	# on any failure meant a single pinch anywhere put the entire approach back on the
+	# centreline -- Stoneshore and the Capital both went to nineteen crossings that way, which
+	# is what they had with no separation at all. Each point now keeps the widest offset IT
+	# can hold, so the fairway narrows through the pinch and opens out again after it.
+	var mags := PackedFloat32Array()
+	mags.resize(route.size())
+	mags.fill(FAIRWAY_OFFSET)
+	var normals := _vertex_normals(route)
+	for i in route.size():
+		while mags[i] > 0.0 and not _navigable(route[i] + normals[i] * mags[i]):
+			mags[i] = _narrower(mags[i])
+	# Then the legs: a pair of sound points can still have unsound water between them, so any
+	# leg that is not clear pulls both its ends in a step, until it is or they are on the line.
+	for _pass in 6:
+		var eased := false
+		for i in range(1, route.size()):
+			var a: Vector2 = route[i - 1] + normals[i - 1] * mags[i - 1]
+			var b: Vector2 = route[i] + normals[i] * mags[i]
+			if _sea_clear_between(a, b):
+				continue
+			if mags[i - 1] > 0.0:
+				mags[i - 1] = _narrower(mags[i - 1])
+				eased = true
+			if mags[i] > 0.0:
+				mags[i] = _narrower(mags[i])
+				eased = true
+		if not eased:
+			break
+	var out := PackedVector2Array()
+	for i in route.size():
+		out.append(route[i] + normals[i] * mags[i])
+	return out
+
+
+func _narrower(mag: float) -> float:
+	var next := mag * 0.55
+	return 0.0 if next < FAIRWAY_OFFSET * 0.12 else next
+
+
+## Each vertex's averaged sideways normal — the same construction `_offset_polyline` uses,
+## exposed so an offset can vary from point to point.
+func _vertex_normals(pts: PackedVector2Array) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var n := pts.size()
+	for i in n:
+		var before: Vector2 = pts[maxi(i - 1, 0)]
+		var after: Vector2 = pts[mini(i + 1, n - 1)]
+		var dir := after - before
+		if dir.length() < 0.001:
+			dir = Vector2.RIGHT
+		dir = dir.normalized()
+		out.append(Vector2(-dir.y, dir.x))
+	return out
 
 
 ## Bring an offset lane back onto water. The channel is two tiles wide, which is fine down the
@@ -457,13 +542,32 @@ func _pull_to_water(offset: PackedVector2Array, centre: PackedVector2Array) -> P
 	for i in offset.size():
 		var home: Vector2 = centre[mini(i, centre.size() - 1)]
 		var at: Vector2 = offset[i]
+		var afloat := false
 		for step in 9:
-			var cell := Vector2i(int((at.x - _sea_origin.x) / SEA_CELL),
-				int((at.y - _sea_origin.y) / SEA_CELL))
-			if _sea_ok(cell.x, cell.y):
+			if _navigable(at):
+				afloat = true
 				break
-			at = at.lerp(home, 0.25)
-		out.append(at)
+			at = at.lerp(home, 0.35)
+		# THE CENTRELINE IS THE FALLBACK, exactly. Lerping toward it only ever gets close --
+		# after nine steps the point is still a few per cent off -- and a few per cent off a
+		# line that itself hugs the shore is still aground. The centreline was validated on
+		# water, so when the slot cannot be saved the ship simply rides it.
+		out.append(at if afloat else home)
+	# ...and now the LEGS. Sound vertices are not a sound route: offsetting rounds the
+	# original path's corners off, and the straight line between two offset points can cut
+	# across a headland the path itself went round -- the same corner-cutting the sea search
+	# had to be taught about, arriving by a different door. Where a leg is not clear water,
+	# both its ends drop back to the centreline, which was validated as a whole.
+	for _pass in 2:
+		var fixed := false
+		for i in range(1, out.size()):
+			if _sea_clear_between(out[i - 1], out[i]):
+				continue
+			out[i - 1] = centre[mini(i - 1, centre.size() - 1)]
+			out[i] = centre[mini(i, centre.size() - 1)]
+			fixed = true
+		if not fixed:
+			break
 	return out
 
 
@@ -492,6 +596,84 @@ func _polyline_length(pts: PackedVector2Array) -> float:
 
 ## Position and heading at `dist` along a polyline. Wraps, so a ship that runs off the end
 ## reappears at the start and the stream never empties.
+## A polyline walked in TIME rather than in distance, so a ship can decelerate into a corner,
+## turn while stopped, and accelerate out of it.
+##
+## The schedule is a flat list of stages, each {kind, t, dur, ...}, built once per route. A
+## `run` stage is a straight leg at cruising speed; a `turn` stage is the two-second manoeuvre
+## at a vertex, during which the ship is momentarily stationary at the corner and its heading
+## eases from the incoming course to the outgoing one. Gentle bends get a `turn` stage too but
+## with no dwell -- the heading still eases rather than snapping, which is what stops a lane
+## reading as a series of flicks.
+##
+## Everything stays a pure function of the clock: no ship stores where it was.
+func _timeline(pts: PackedVector2Array) -> Dictionary:
+	var stages: Array = []
+	var t := 0.0
+	if pts.size() < 2:
+		return {"stages": stages, "duration": 0.0}
+	for i in range(1, pts.size()):
+		var seg: Vector2 = pts[i] - pts[i - 1]
+		var seg_len := seg.length()
+		if seg_len < 0.001:
+			continue
+		var course := seg.angle()
+		var run_len := seg_len
+		var turn := 0.0
+		var next_course := course
+		if i < pts.size() - 1:
+			var nxt: Vector2 = pts[i + 1] - pts[i]
+			if nxt.length() > 0.001:
+				next_course = nxt.angle()
+				turn = absf(angle_difference(course, next_course))
+		var dwell: bool = turn >= TURN_MIN_ANGLE
+		# A ship that stops has to slow down first, and that costs distance: the decel eats
+		# the tail of this leg and the accel the head of the next, so the run is shortened at
+		# both ends rather than the manoeuvre being bolted on top of a full-speed leg.
+		var brake := (SEA_SPEED * TURN_SEC * 0.5) if dwell else 0.0
+		run_len = maxf(seg_len - brake, seg_len * 0.05)
+		stages.append({"kind": "run", "t": t, "dur": run_len / SEA_SPEED,
+			"from": pts[i - 1], "to": pts[i - 1] + seg.normalized() * run_len,
+			"course": course})
+		t += run_len / SEA_SPEED
+		if i < pts.size() - 1:
+			var dur := (TURN_SEC * 2.0) if dwell else maxf((seg_len - run_len) / SEA_SPEED, 0.35)
+			stages.append({"kind": "turn", "t": t, "dur": dur,
+				"from": pts[i - 1] + seg.normalized() * run_len, "to": pts[i],
+				"course": course, "next": next_course})
+			t += dur
+	return {"stages": stages, "duration": maxf(t, 0.001)}
+
+
+## Where a ship on `line` is at local time `t`, as [position, heading]. Wraps.
+func _at_time(line: Dictionary, t: float) -> Array:
+	var stages: Array = line.get("stages", [])
+	if stages.is_empty():
+		return [Vector2.ZERO, 0.0]
+	var duration: float = line["duration"]
+	var local := fposmod(t, duration)
+	# Linear scan. The schedules are a few dozen stages and this runs once per ship per frame;
+	# a binary search would be more code for time nobody spends.
+	for stage_value in stages:
+		var stage: Dictionary = stage_value
+		var start: float = stage["t"]
+		var dur: float = stage["dur"]
+		if local > start + dur:
+			continue
+		var u := 0.0 if dur <= 0.0 else clampf((local - start) / dur, 0.0, 1.0)
+		if str(stage["kind"]) == "run":
+			return [(stage["from"] as Vector2).lerp(stage["to"] as Vector2, u),
+				float(stage["course"])]
+		# The manoeuvre: ease the last of the distance out while the heading comes round, so
+		# the ship is slowest exactly where it is turning hardest.
+		var eased := _ease(u)
+		var pos: Vector2 = (stage["from"] as Vector2).lerp(stage["to"] as Vector2, eased)
+		var course: float = float(stage["course"])
+		return [pos, course + angle_difference(course, float(stage["next"])) * eased]
+	var last: Dictionary = stages[stages.size() - 1]
+	return [last["to"], float(last.get("next", last["course"]))]
+
+
 func _along(pts: PackedVector2Array, total: float, dist: float) -> Array:
 	var d := fposmod(dist, total)
 	for i in range(1, pts.size()):
@@ -595,36 +777,61 @@ func _caller_route(berth: Dictionary, direction: int, window: float,
 	var lane: Dictionary = _lanes[direction * LANE_SHIPS]
 	var pts: PackedVector2Array = lane["points"]
 	var total: float = lane["length"]
-	var reverse: bool = lane["reverse"]
-	# Leave the lane at whatever point is nearest the harbour approach.
+	var lane_track: Dictionary = lane["track"]
+	var lane_time: float = lane_track["duration"]
+	# THE DIVERT POINT IS A TIME, not a distance. Once corners cost two seconds apiece,
+	# distance-along and time-along stop being proportional, and a join measured in metres
+	# lands the lane leg somewhere the spur does not start from -- a visible jump.
 	var leave := 0.0
 	var best_d := INF
 	var steps := 240
 	for k in steps:
-		var d := total * float(k) / float(steps)
-		var probe: Array = _along(pts, total, total - d if reverse else d)
+		var probe_t := lane_time * float(k) / float(steps)
+		var probe: Array = _at_time(lane_track, probe_t)
 		var gap: float = (probe[0] as Vector2).distance_to(standoff)
 		if gap < best_d:
 			best_d = gap
-			leave = d
-	var rejoin := fposmod(leave + MERGE_RUN, total)
-	var leave_at: Array = _along(pts, total, total - leave if reverse else leave)
-	var rejoin_at: Array = _along(pts, total, total - rejoin if reverse else rejoin)
-	var spur_in := _sea_path(leave_at[0] as Vector2, standoff)
-	var spur_out := _sea_path(standoff, rejoin_at[0] as Vector2)
+			leave = probe_t
+	var leave_at: Array = _at_time(lane_track, leave)
+	var approach := _sea_path(leave_at[0] as Vector2, standoff)
+	if approach.size() < 2:
+		return {}
+	# THE WAY OUT IS THE WAY IN, REVERSED. Routing the two independently gave two shortest
+	# paths through the same water that were nearly but not quite the same line, and they
+	# wove across each other -- eight crossings at Stoneshore of a ship leaving with one
+	# arriving. Reversed, the two are parallel by construction and cannot cross except where
+	# they must converge, at the quay and at the lane. `_fairway` then puts each on its own
+	# hand: it offsets along the direction of travel, and these two travel opposite ways, so
+	# one sign separates them.
+	var back := PackedVector2Array()
+	for k in range(approach.size() - 1, -1, -1):
+		back.append(approach[k])
+	var rejoin := leave
+	var spur_in := approach
+	var spur_out := back
 	if spur_in.size() < 2 or spur_out.size() < 2:
 		return {}
-	var in_len := _polyline_length(spur_in)
-	var out_len := _polyline_length(spur_out)
-	var t_in := in_len / SEA_SPEED
-	var t_out := out_len / SEA_SPEED
+	# KEEP RIGHT. The two spurs are independently-routed SHORTEST paths through the same
+	# water, so left to themselves they lie almost on top of each other and weave across --
+	# measured at 3 to 19 crossings per harbour, which is a ship leaving cutting straight
+	# through one arriving. Offsetting each to its own side of the fairway separates them
+	# without either having to take a longer way round: `_offset_polyline` uses the vertex
+	# normal of the direction of travel, and the two run in opposite directions, so ONE sign
+	# puts each on its own hand.
+	spur_in = _fairway(spur_in)
+	spur_out = _fairway(spur_out)
+	var in_track := _timeline(spur_in)
+	var out_track := _timeline(spur_out)
+	var t_in: float = in_track["duration"]
+	var t_out: float = out_track["duration"]
 	# The voyage rounded up to whole windows; the lane leg takes up the slack.
 	var voyage := t_in + CYCLE + t_out
 	var period: float = ceilf((voyage + MIN_LANE_TIME) / window) * window
 	return {
-		"points": pts, "length": total, "reverse": reverse, "join": rejoin,
-		"spur_in": spur_in, "spur_in_len": in_len,
-		"spur_out": spur_out, "spur_out_len": out_len,
+		"points": pts, "length": total, "join": rejoin,
+		"lane_track": lane["track"],
+		"spur_in": spur_in, "spur_in_track": in_track,
+		"spur_out": spur_out, "spur_out_track": out_track,
 		"berth": berth,
 		"t_lane": period - voyage, "t_in": t_in, "t_out": t_out,
 		"period": period, "window": window, "arrivals": arrivals,
@@ -643,16 +850,10 @@ func _caller_route(berth: Dictionary, direction: int, window: float,
 func _caller_at(route: Dictionary, u: float) -> Array:
 	var t_lane: float = route["t_lane"]
 	var t_in: float = route["t_in"]
-	var reverse: bool = route["reverse"]
 	if u < t_lane:
-		var pts: PackedVector2Array = route["points"]
-		var total: float = route["length"]
-		var d: float = fposmod(float(route["join"]) + u * SEA_SPEED, total)
-		var at: Array = _along(pts, total, total - d if reverse else d)
-		return [at[0], float(at[1]) + (PI if reverse else 0.0)]
+		return _at_time(route["lane_track"], float(route["join"]) + u)
 	if u < t_lane + t_in:
-		var spur: PackedVector2Array = route["spur_in"]
-		return _along(spur, float(route["spur_in_len"]), (u - t_lane) * SEA_SPEED)
+		return _at_time(route["spur_in_track"], u - t_lane)
 	if u < t_lane + t_in + CYCLE:
 		# The berth manoeuvre, reused exactly as the harbour ships use it.
 		var berth: Dictionary = route["berth"]
@@ -662,9 +863,7 @@ func _caller_at(route: Dictionary, u: float) -> Array:
 		var sea: Vector2 = berth["seaward"]
 		return [base_pos + sea * float(move[0]),
 				float(berth["heading_in"]) + float(move[1])]
-	var out_spur: PackedVector2Array = route["spur_out"]
-	return _along(out_spur, float(route["spur_out_len"]),
-			(u - t_lane - t_in - CYCLE) * SEA_SPEED)
+	return _at_time(route["spur_out_track"], u - t_lane - t_in - CYCLE)
 
 
 ## How far a set of arm polygons reaches along the seaward axis — the arm's own length,
@@ -701,13 +900,13 @@ func _draw() -> void:
 		var total: float = lane["length"]
 		if total <= 1.0 or SHIP_LENGTH * ppu < MIN_SHIP_PX:
 			continue
-		var backwards: bool = lane["reverse"]
-		var d := float(lane["start"]) * total + _clock * SEA_SPEED
-		var at: Array = _along(points, total, total - d if backwards else d)
+		var track: Dictionary = lane["track"]
+		var at: Array = _at_time(track,
+			float(lane["start"]) * float(track["duration"]) + _clock)
 		var pos: Vector2 = at[0]
 		if not view.has_point(pos):
 			continue
-		var heading: float = float(at[1]) + (PI if backwards else 0.0)
+		var heading: float = float(at[1])
 		var basis := Transform2D(heading, pos) 			.scaled_local(Vector2(SHIP_LENGTH, SHIP_LENGTH))
 		var b := pts.size()
 		pts.resize(b + _hull_tris.size())
