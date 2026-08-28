@@ -33,6 +33,11 @@ const PIPE_WIDTH := 3.2
 ## grid also gives even coverage, which random points do not — clumps and bare patches read
 ## as a mistake in a wood of only a few dozen trees.
 const TREE_SPACING := 19.0
+## A clump is tighter than a wood -- it is a stand of trees, not a forest.
+const CLUMP_SPACING := 13.0
+## [small, fir, large] for a clump. Weighted toward the middle size so a stand reads as one
+## group of trees rather than as a scatter of extremes.
+const CLUMP_MIX := [40, 35, 25]
 ## Hard ceiling per polygon, so an accidentally enormous outline cannot stall a frame.
 const TREE_LIMIT := 900
 ## Trees are rejected outside the outline, so the fill never spills onto neighbouring
@@ -196,6 +201,57 @@ static func draw_port_group(canvas: CanvasItem, records: Array, tile_id: String,
 		canvas.draw_polyline(_closed(cap), MidcenturyStyle.INK, 1.05, true)
 
 
+## Hand-placed trees: single specimens, and mixed clumps.
+##
+## A single tree is drawn at its point in the size it was placed. A CLUMP is a seeded scatter
+## inside its radius, and it is always MIXED: `pick_kind` is given all three weights, so a
+## clump has small, fir and large in it. That is the whole reason clumps exist as their own
+## kind -- a handful of identical trees reads as a repeated stamp, and the map's woods read as
+## woods precisely because the vocabulary varies within them.
+##
+## The scatter is the same jittered grid `woodland_points` uses rather than random points, and
+## for the same reason recorded there: successive RoadHash keys repeat in their low bits, so
+## rejection sampling put trees on a three-step diagonal.
+static func draw_trees(canvas: CanvasItem, records: Array) -> void:
+	for record_value in records:
+		var record: Dictionary = record_value
+		var at := _vector_of(record.get("position", null))
+		var id := str(record.get("id", ""))
+		match str(record.get("kind", "")):
+			"small":
+				TreeShapesRef.draw_tree(canvas, TreeShapesRef.Kind.SMALL, at, id)
+			"large":
+				TreeShapesRef.draw_tree(canvas, TreeShapesRef.Kind.LARGE, at, id)
+			"mixed":
+				for point in clump_points(record):
+					var key := "%s|%.0f|%.0f" % [id, point.x, point.y]
+					TreeShapesRef.draw_tree(canvas,
+						TreeShapesRef.pick_kind(key, CLUMP_MIX), point, key)
+
+
+## Where a mixed clump's trees stand. Split out from the drawing so a test — and the editor's
+## own preview — can ask without a canvas.
+static func clump_points(record: Dictionary) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var centre := _vector_of(record.get("position", null))
+	var radius := float(record.get("radius", 0.0))
+	if radius <= 0.0:
+		return out
+	var id := str(record.get("id", ""))
+	var salt := RoadHash.fnv1a(id) & 0xFFFF
+	var step := CLUMP_SPACING
+	var span := int(radius / step) + 1
+	for gy in range(-span, span + 1):
+		for gx in range(-span, span + 1):
+			var jitter := Vector2(
+				float(RoadHash.pick("clump|%d|%d|%d|x" % [salt, gx, gy], 100)) / 100.0 - 0.5,
+				float(RoadHash.pick("clump|%d|%d|%d|y" % [salt, gx, gy], 100)) / 100.0 - 0.5)
+			var at := centre + Vector2(float(gx), float(gy)) * step + jitter * step * 0.8
+			if at.distance_to(centre) <= radius:
+				out.append(at)
+	return out
+
+
 ## The decoration that belongs to an imported harbour: container stacks and gantry cranes.
 ##
 ## It rides in the document beside the structure (`port_decor`) rather than being regenerated,
@@ -203,9 +259,15 @@ static func draw_port_group(canvas: CanvasItem, records: Array, tile_id: String,
 ## seat moves with the player's buildings. Regenerating it against a hand-placed quay would put
 ## the cranes somewhere else entirely. Moving the quay in the editor means moving these too;
 ## they are ordinary records with ordinary coordinates.
-static func draw_port_decor(canvas: CanvasItem, records: Array, keep_out: Array = []) -> void:
+## `skip_cranes` leaves the gantries to AuthoredPortCraneLayer, which draws them above the
+## ships instead of under them — see that script for why they are the one piece of an authored
+## harbour that moves up a layer.
+static func draw_port_decor(canvas: CanvasItem, records: Array, keep_out: Array = [],
+		skip_cranes: bool = false) -> void:
 	for record_value in records:
 		var record: Dictionary = record_value
+		if skip_cranes and str(record.get("kind", "")) == "crane":
+			continue
 		match str(record.get("kind", "")):
 			"container":
 				var poly := _points_of(record, "outline")
@@ -234,13 +296,13 @@ static func draw_port_decor(canvas: CanvasItem, records: Array, keep_out: Array 
 					canvas.draw_arc(centre, radius * 0.62, 0.0, TAU, 24,
 						MidcenturyStyle.INK, 1.0, true)
 			"crane":
-				_draw_crane(canvas, record)
+				draw_crane(canvas, record)
 
 
 ## One gantry crane: base block, rail across the quay, two legs, and the jib reaching over the
 ## basin. Mirrors `port_visuals._draw_crane` — the planner's harbours and the authored ones must
 ## put the same machine on the same quay.
-static func _draw_crane(canvas: CanvasItem, crane: Dictionary) -> void:
+static func draw_crane(canvas: CanvasItem, crane: Dictionary) -> void:
 	var position := _vector_of(crane.get("position", null))
 	var direction := _vector_of(crane.get("direction", null))
 	var cross := _vector_of(crane.get("cross", null))

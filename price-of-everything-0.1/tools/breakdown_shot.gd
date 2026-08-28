@@ -49,7 +49,7 @@ func _ready() -> void:
 			" cost=", r.get("cost", 0.0), " penalty=", r.get("penalty", 0.0))
 
 	# The scene-authored BuildingDetailPanel node runs the OLD v1 script — the panel a
-	# player actually sees (default since Phase 3, MatchState.use_bdp_v2) is v2, built
+	# player actually sees is the code-built detail panel (the v1 scene node is gone), built
 	# lazily off WorldMap.building_panel_v2. Go through that property, not the node.
 	# main.tscn's ROOT node runs world_map.gd — `game` (its instantiated root) IS the
 	# WorldMap, not a container holding one (topbar_v31_shot.gd's game.get_node("UILayer/…")

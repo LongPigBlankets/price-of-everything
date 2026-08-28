@@ -1,0 +1,101 @@
+{
+  "note": "Sampled ONCE from the goods icons by tools/sample_player_colours.py. Edit by hand freely -- nothing re-samples at runtime.",
+  "colours": {
+    "diesel_red": {
+      "label": "Diesel Red",
+      "good_icon": "g_031_fuels",
+      "hex": "b94c40",
+      "hsv": [
+        0.0161,
+        0.6522,
+        0.7255
+      ],
+      "raw_hex": "b94c40",
+      "subject_share": 0.6158
+    },
+    "ethylene_blue": {
+      "label": "Ethylene Blue",
+      "good_icon": "g_024_ethylene",
+      "hex": "405b80",
+      "hsv": [
+        0.5965,
+        0.5,
+        0.5
+      ],
+      "raw_hex": "35455b",
+      "subject_share": 0.2617
+    },
+    "fertiliser_green": {
+      "label": "Fertiliser Green",
+      "good_icon": "g_064_fertilisers",
+      "hex": "5b9b55",
+      "hsv": [
+        0.3203,
+        0.45,
+        0.6078
+      ],
+      "raw_hex": "5f9b5a",
+      "subject_share": 0.2958
+    },
+    "biomass_brown": {
+      "label": "Biomass Brown",
+      "good_icon": "g_062_biomass",
+      "hex": "6c4d3a",
+      "hsv": [
+        0.062,
+        0.463,
+        0.4235
+      ],
+      "raw_hex": "6c4d3a",
+      "subject_share": 0.4526
+    },
+    "construction_yellow": {
+      "label": "Construction Yellow",
+      "good_icon": "g_071_construction_equipment_ice",
+      "hex": "daae5c",
+      "hsv": [
+        0.1086,
+        0.5758,
+        0.8549
+      ],
+      "raw_hex": "daae5c",
+      "subject_share": 0.3013
+    },
+    "graphite_black": {
+      "label": "Graphite Black",
+      "good_icon": "g_066_graphite",
+      "hex": "3f4147",
+      "hsv": [
+        0.625,
+        0.1209,
+        0.28
+      ],
+      "raw_hex": "494b53",
+      "subject_share": 0.7024
+    },
+    "pipe_orange": {
+      "label": "Pipe Orange",
+      "good_icon": "g_021_copper_pipe",
+      "hex": "be7a5f",
+      "hsv": [
+        0.0479,
+        0.5026,
+        0.7451
+      ],
+      "raw_hex": "be7a5f",
+      "subject_share": 0.7497
+    },
+    "lithium_pink": {
+      "label": "Lithium Pink",
+      "good_icon": "g_051_lithium_carbonate",
+      "hex": "e08ba8",
+      "hsv": [
+        0.9429,
+        0.38,
+        0.88
+      ],
+      "raw_hex": "e297b1",
+      "subject_share": 0.6756
+    }
+  }
+}

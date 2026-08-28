@@ -217,9 +217,6 @@ func _run_command(text: String) -> String:
 		"swap":
 			if parts.size() >= 2 and parts[1].to_lower() == "song":
 				return "Now playing: %s" % Audio.swap_song()
-			if parts.size() >= 2 and parts[1].to_lower() == "bdp":
-				MatchState.toggle_use_bdp_v2()
-				return "Building Detail panel → %s" % ("v2 (redesign)" if MatchState.use_bdp_v2 else "v1 (classic)")
 			if parts.size() >= 2 and parts[1].to_lower() == "construct_panel":
 				MatchState.toggle_use_construct_panel_v2()
 				return "Construct panel → %s" % ("v2 (redesign)" if MatchState.use_construct_panel_v2 else "v1 (classic)")

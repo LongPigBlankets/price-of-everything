@@ -544,7 +544,6 @@ var debug_turn_logs_enabled: bool = false
 # When true (the default since Phase 3), building clicks open the redesigned Building Detail v2
 # panel. The classic v1 panel is kept as a fallback, reachable by toggling the `swap bdp` cheat.
 # Session-only; never persisted. See docs/building-detail-v2-plan.md.
-var use_bdp_v2: bool = true
 
 # The empire view's DEFAULT look: no background pattern, a large 2.5D building sprite above
 # each node with its metal plate attached below. Buildings without a sprite keep the classic
@@ -718,7 +717,6 @@ signal overflow_shipment_held(record: Dictionary)
 signal special_order_overflow_ready(record: Dictionary)
 # The Building Detail v2 dev-toggle flipped (`swap bdp` cheat); world_map re-renders the
 # active detail panel. Session-only.
-signal bdp_v2_changed(enabled: bool)
 signal construct_panel_v2_changed(enabled: bool)
 # The confirm-screen v3 dev-toggle flipped (`swap construct_panel_v3` cheat); the V2
 # panel re-renders so the gated visuals apply immediately. Session-only.
@@ -1258,6 +1256,49 @@ func _preview_infra_upgrade(inst: Dictionary, internal: String) -> Dictionary:
 		"stats": {}, "unit_cost": {},
 	}
 
+## Goods sitting on a tile that some OTHER pending job has already claimed.
+##
+## An awaiting project keeps the part of its kit it has already gathered IN THE TILE
+## STOCKPILE -- the sell-surplus reserve protects it there until `claim_materials` takes it
+## (construction.gd's own note says so) -- and an awaiting upgrade does the same. So a raw
+## `Stockpile.get_at_tile` reading counts goods that are spoken for, and a second job started
+## against them would find them gone. What is gathered is the full bill minus what is still
+## missing, which is exactly what both records carry.
+##
+## `except_instance_id` drops one job's own claim, so previewing a job does not reserve
+## against itself.
+func reserved_materials_on_tile(tile_id: String, except_instance_id: String = "") -> Dictionary:
+	var out: Dictionary = {}
+	for instance_id in Construction.construction_projects:
+		var project: Dictionary = Construction.construction_projects[instance_id]
+		if str(project.get("tile_id", "")) != tile_id:
+			continue
+		if str(instance_id) == except_instance_id:
+			continue
+		if str(project.get("status", "")) != Construction.STATUS_AWAITING_MATERIALS:
+			continue
+		var missing: Dictionary = project.get("missing_materials", {})
+		for gid in project.get("required_materials", {}):
+			var gathered: int = maxi(int(project["required_materials"][gid])
+				- int(missing.get(gid, 0)), 0)
+			if gathered > 0:
+				out[gid] = int(out.get(gid, 0)) + gathered
+	for pending_value in pending_upgrades:
+		var pending: Dictionary = pending_value
+		if str(pending.get("tile_id", "")) != tile_id:
+			continue
+		if str(pending.get("instance_id", "")) == except_instance_id:
+			continue
+		if str(pending.get("status", "")) != UPGRADE_STATUS_AWAITING:
+			continue
+		var short: Dictionary = pending.get("missing", {})
+		for gid in pending.get("materials", {}):
+			var banked: int = maxi(int(pending["materials"][gid]) - int(short.get(gid, 0)), 0)
+			if banked > 0:
+				out[gid] = int(out.get(gid, 0)) + banked
+	return out
+
+
 func _infra_capacity_delta(internal: String, level: int, target: int) -> Dictionary:
 	if internal == "cables":
 		return {"label": "Power capacity", "unit": "power/turn",
@@ -1294,9 +1335,16 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 	var shortfall: Dictionary = {}
 	var market_cost := 0.0
 	var market_sourceable := true  # false if any shortfall good has no port route to this tile
+	# What another awaiting job on this tile has already banked is on the tile but not
+	# available -- see reserved_materials_on_tile.
+	var claimed := reserved_materials_on_tile(tile_id, instance_id)
+	var all_free := true
 	for gid in need_by_gid:
 		var need := int(need_by_gid[gid])
 		var have := Stockpile.get_at_tile(tile_id, gid)
+		var free := maxi(have - int(claimed.get(gid, 0)), 0)
+		if free < need:
+			all_free = false
 		var short := maxi(0, need - have)
 		if short > 0:
 			shortfall[gid] = short
@@ -1307,9 +1355,11 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 				market_cost += float(quote.get("cost", 0.0))
 		materials.append({
 			"good_id": gid, "name": Catalog.get_display_name(gid),
-			"need": need, "have": have, "short": short,
+			"need": need, "have": have, "short": short, "free": free,
 		})
 	var all_on_tile := shortfall.is_empty()
+	# The kit is usable off the tile only when every good is there AND unclaimed.
+	var all_on_tile_free := all_on_tile and all_free
 
 	# A single other tile that can cover the whole shortfall (powers the "use stockpile" CTA).
 	var source := Construction.find_source_tile(tile_id, shortfall) if not all_on_tile else {}
@@ -1337,6 +1387,7 @@ func preview_upgrade(instance_id: String) -> Dictionary:
 		"research_locked": gate != "" and not is_unlocked(gate),
 		"materials": materials,
 		"all_on_tile": all_on_tile,
+		"all_on_tile_free": all_on_tile_free,
 		"market_sourceable": market_sourceable,
 		"source_tile": str(source.get("tile_id", "")),
 		"source_turns": int(source.get("turns", 0)),
@@ -3896,19 +3947,6 @@ func toggle_debug_turn_logs() -> bool:
 
 ## Debug cheat: switch between the classic and redesigned (v2) building-detail panel.
 ## Returns the new state. Session-only, never persisted.
-func set_use_bdp_v2(enabled: bool) -> bool:
-	if enabled == use_bdp_v2:
-		return use_bdp_v2
-	use_bdp_v2 = enabled
-	bdp_v2_changed.emit(use_bdp_v2)
-	return use_bdp_v2
-
-func toggle_use_bdp_v2() -> bool:
-	return set_use_bdp_v2(not use_bdp_v2)
-
-## Debug cheat: toggle the empire view between the sprite style (big 2.5D sprites,
-## plates below, no backdrop) and the classic card style. Returns the new state.
-## Session-only, never persisted.
 func toggle_show_port_badge() -> bool:
 	show_port_badge = not show_port_badge
 	return show_port_badge

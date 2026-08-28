@@ -291,6 +291,20 @@ func _draw() -> void:
 		draw_rect(Rect2(Vector2(-thick, -b_len * 0.5), Vector2(thick, b_len)), outline, false, tile_h * 0.012)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
 
+## Does THIS layer already draw a harbour on `tile_id`?
+##
+## Cheap on purpose, and the reason it exists: callers used to answer the same question by
+## running MidcenturyPortPlan.build() and testing the result for emptiness. That builds a
+## whole harbour to ask a yes/no, and `build` does its coastline sampling and exclusion
+## gathering BEFORE it consults its cache -- so even a hit is expensive, and a miss is a
+## multi-second search.
+func has_plan_for_tile(tile_id: String) -> bool:
+	for plan_value in _midcentury_plans:
+		if str((plan_value as Dictionary).get("tile_id", "")) == tile_id:
+			return true
+	return false
+
+
 func midcentury_plans() -> Array:
 	return _midcentury_plans.duplicate(true)
 

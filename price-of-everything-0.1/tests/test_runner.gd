@@ -316,6 +316,17 @@ func _ready() -> void:
 	await _test_block_subdivision()
 	await _test_level_storeys_and_owner_swap()
 	_test_ink_art_reserves_upgrade_space()
+	_test_player_colours()
+	_test_smoke_stacks()
+	_test_construction_sites()
+	_test_dash_segments()
+	_test_stacks_sit_in_a_line()
+	_test_sea_path_goes_round_land()
+	_test_port_timetable()
+	_test_authored_trees()
+	_test_smoke_carbon_split()
+	_test_ship_manoeuvre_clears_the_arms()
+	await _test_crowded_tile_gentle_failure()
 	await _test_river_bank_and_bridge_head()
 	await _test_bridge_corridor()
 	await _test_subcomponents()
@@ -2302,6 +2313,399 @@ func _test_footprint_rejects_interior_road_segment() -> void:
 ## frame, and the lot area is derived from tile_size_used alone — never from
 ## the level. This pins the first half; the second is the signature of
 ## BuildingVisuals._art_size_for(size_units), which takes no level.
+## The GENTLE FAILURE on a saturated tile (owner, 2026-08-27). A dense tile used to send the
+## frontage packer round every road segment against every neighbour, three times over as the
+## shrink ladder retried — seconds of frozen frame, reported as the game crashing. Now the
+## search carries a 2 s budget and, when it comes back empty, the building takes the nearest
+## 50 u^2 beside a road instead of vanishing.
+##
+## This SATURATES a tile for real rather than mocking the packer, because the bug only shows
+## up once the tile is genuinely full.
+func _test_crowded_tile_gentle_failure() -> void:
+	var visuals := preload("res://scenes/building_visuals.gd")
+	_check(int(visuals.PLACE_BUDGET_MS) == 2000, "crowded tile: the search budget is 2 s")
+	var plot: Vector2 = visuals.FALLBACK_PLOT
+	_check(absf(plot.x * plot.y - 50.0) < 0.01,
+		"crowded tile: the fallback plot is 50 u^2 (%.1f)" % (plot.x * plot.y))
+
+	var nav := NavGrid.instance()
+	if not nav.is_ready():
+		return
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	RoadNetwork.reset()
+	var bv := visuals.new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		_check(false, "crowded tile: test tile exists")
+		bv.queue_free(); terrain.queue_free(); RoadNetwork.reset(); return
+
+	# b_002 (furnace) is stamped, so it takes the rect/L path and the shrink ladder — the
+	# exact combination that produced the freeze.
+	var ids: Array = []
+	var started := Time.get_ticks_msec()
+	for i in 60:
+		var iid := MatchState.add_building("b_002", "", tile_id, "npc", "crowd_%d" % i, false)
+		ids.append(iid)
+		bv.on_building_placed(tile_id, "b_002", "", iid, coord)
+	var elapsed := Time.get_ticks_msec() - started
+
+	var drawn := 0
+	var fallbacks := 0
+	for iid in ids:
+		if not bv.has_placement(str(iid)):
+			continue
+		drawn += 1
+		var p: Dictionary = bv._placements[int(bv._placement_index[str(iid)])]
+		if str(p.get("via", "")) == "fallback":
+			fallbacks += 1
+	_check(drawn == ids.size(),
+		"crowded tile: every one of %d buildings got a footprint (%d drawn, %d via fallback)"
+		% [ids.size(), drawn, fallbacks])
+	# 60 buildings must not take 60 x the budget: the budget is per building, but a tile that
+	# saturates should start failing FAST via the fallback rather than burning 2 s each.
+	_check(elapsed < 60 * int(visuals.PLACE_BUDGET_MS),
+		"crowded tile: saturating took %d ms, under the worst-case ceiling" % elapsed)
+
+	# And the fallback itself, called directly. 60 buildings does not always saturate a tile
+	# (this run placed all 60 the normal way), so exercising the emergency path by hoping the
+	# packer fails would be a test that silently stops testing anything.
+	var plot_out: Dictionary = bv._place_fallback_plot(tile_id, coord, bv._placed_on_tile(tile_id))
+	_check(not plot_out.is_empty(), "crowded tile: the fallback finds a road-side plot")
+	if not plot_out.is_empty():
+		_check(str(plot_out.get("via", "")) == "fallback",
+			"crowded tile: the fallback marks its placement 'fallback'")
+		var fv: PackedVector2Array = plot_out.verts
+		_check(fv.size() == 4, "crowded tile: the fallback plot is a rectangle")
+		_check(absf(BuildingShapes.polygon_area(fv) - 50.0) < 0.5,
+			"crowded tile: the fallback plot measures 50 u^2 (%.1f)"
+			% BuildingShapes.polygon_area(fv))
+		# Beside a road when the tile HAS one. Several tiles carry no carriageway at all, and
+		# there the rule cannot apply — the plot still has to exist, which is the point.
+		var segs: Array = bv._tile_segs.get(tile_id, [])
+		if segs.is_empty():
+			_check(true, "crowded tile: test tile is roadless — plot placed centrally instead")
+		else:
+			var centre: Vector2 = plot_out.center_rel
+			var near := INF
+			for seg_value in segs:
+				var seg: Array = seg_value
+				near = minf(near, Geometry2D.get_closest_point_to_segment(
+					centre, seg[0], seg[1]).distance_to(centre))
+			_check(near < 40.0,
+				"crowded tile: the fallback plot sits beside a road (%.1f u)" % near)
+
+	for iid in ids:
+		MatchState.buildings.erase(str(iid))
+	bv.queue_free(); terrain.queue_free(); RoadNetwork.reset()
+
+
+## THE SHIP MANOEUVRE. Pinned because the failure is geometric and invisible in a still: a
+## ship that begins its three-point turn before it is clear of the arm tips sweeps its own
+## quay as it rotates, and only a frame caught mid-turn would ever show it.
+func _test_ship_manoeuvre_clears_the_arms() -> void:
+	var ships: Node = preload("res://scripts/port_ship_visuals.gd").new()
+	var length := 48.0
+	var clear := 130.0        # stands in for arm tip + swept radius + margin
+	var away := clear + length * 4.0
+
+	var in_time: float = ships.IN_TIME
+	var hold: float = ships.HOLD_TIME
+	var cycle: float = ships.CYCLE
+
+	# Arrival ends exactly alongside, and departure ends exactly at `away` — otherwise a ship
+	# jumps on the loop seam.
+	var arrive: Array = ships.call("_manoeuvre", 0.0, clear, away, length)
+	_check(absf(float(arrive[0]) - away) < 0.5, "ship: the cycle starts out at sea")
+	var berthed: Array = ships.call("_manoeuvre", in_time + hold * 0.5, clear, away, length)
+	_check(is_zero_approx(float(berthed[0])), "ship: sits alongside during the hold")
+	_check(is_zero_approx(float(berthed[1])), "ship: does not turn while alongside")
+
+	# THE INVARIANT: once any turning has begun, the ship is never nearer than `clear`.
+	var worst := INF
+	var turn_started := -1.0
+	var samples := 400
+	for i in samples:
+		var t := cycle * float(i) / float(samples)
+		var m: Array = ships.call("_manoeuvre", t, clear, away, length)
+		var dist := float(m[0])
+		var turn := absf(float(m[1]))
+		if turn > 0.001:
+			if turn_started < 0.0:
+				turn_started = dist
+			worst = minf(worst, dist)
+	_check(turn_started >= clear - 0.5,
+		"ship: turning only begins past the clearance line (%.1f >= %.1f)" % [turn_started, clear])
+	_check(worst >= clear - 0.5,
+		"ship: never comes back inside the clearance line while turning (%.1f)" % worst)
+
+	# And it really does end up round, having gone forward-back-forward on the way.
+	var ended: Array = ships.call("_manoeuvre", cycle - 0.01, clear, away, length)
+	_check(absf(float(ended[1]) - PI) < 0.01, "ship: finishes the turn fully round")
+	var reversed := false
+	var prev := -1.0
+	for i in samples:
+		var t2: float = in_time + hold + (float(ships.OUT_TIME) * float(i) / float(samples))
+		var d2 := float((ships.call("_manoeuvre", t2, clear, away, length) as Array)[0])
+		if prev >= 0.0 and d2 < prev - 0.01:
+			reversed = true
+		prev = d2
+	_check(reversed, "ship: the departure includes an astern leg (the middle of the three)")
+	ships.free()
+
+
+## Grey smoke vs white steam (owner, 2026-08-27). The split must agree with what production
+## actually levies — `co2_tax_multiplier` on an input good — rather than being a second,
+## drifting opinion about which industries are dirty.
+func _test_smoke_carbon_split() -> void:
+	var bv := preload("res://scenes/building_visuals.gd").new()
+
+	# Find a real dirty recipe and a real clean one, so this tests the CSV as shipped.
+	var dirty_recipe := ""
+	var clean_recipe := ""
+	for recipe_value in Catalog.all_recipes():
+		var recipe: Dictionary = recipe_value
+		var inputs: Array = recipe.get("inputs", [])
+		if inputs.is_empty():
+			continue
+		var burns := false
+		for input_value in inputs:
+			var gid := str((input_value as Dictionary).get("good_id", ""))
+			if gid != "" and float(Catalog.get_good(gid).get("co2_tax_multiplier", 0.0)) > 0.0:
+				burns = true
+		# `recipe_id`, NOT `id` — the recipe dict uses the former and a wrong key here just
+		# silently finds nothing.
+		if burns and dirty_recipe == "":
+			dirty_recipe = str(recipe.get("recipe_id", ""))
+		elif not burns and clean_recipe == "":
+			clean_recipe = str(recipe.get("recipe_id", ""))
+	_check(dirty_recipe != "", "smoke: the catalog has a carbon-burning recipe")
+	_check(clean_recipe != "", "smoke: the catalog has a carbon-free recipe")
+
+	# An unknown instance must never be reported as emitting — the plume cannot invent
+	# emissions for something that is not a building.
+	_check(not bv._recipe_emits_carbon("no_such_instance"),
+		"smoke: an unknown building emits no carbon")
+
+	if dirty_recipe != "" and clean_recipe != "":
+		var d_id := MatchState.add_building("b_002", dirty_recipe, "tile_9_10", "npc",
+			"smoke_dirty", false)
+		var c_id := MatchState.add_building("b_002", clean_recipe, "tile_9_10", "npc",
+			"smoke_clean", false)
+		_check(bv._recipe_emits_carbon(str(d_id)),
+			"smoke: a fossil-burning recipe smokes grey (%s)" % dirty_recipe)
+		_check(not bv._recipe_emits_carbon(str(c_id)),
+			"smoke: a carbon-free recipe steams white (%s)" % clean_recipe)
+		MatchState.buildings.erase(str(d_id))
+		MatchState.buildings.erase(str(c_id))
+	bv.free()
+
+
+## THE DASH WALKER. This exists because the first version hung the game: it accumulated
+## `t += run` along each edge, and once `t` was large enough, adding a sub-epsilon `run` no
+## longer changed `carry + t` in float — so the phase never advanced and it emitted
+## antialiased `draw_line` calls forever. Script memory stayed flat while the graphics driver
+## climbed past 9 GB and the process died. The rewrite walks dash starts by INDEX, so progress
+## is exact and the iteration count is bounded by construction; these tests pin that.
+func _test_dash_segments() -> void:
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	var dash: float = bv.SITE_DASH
+	var gap: float = bv.SITE_GAP
+	var period := dash + gap
+
+	# A long thin rectangle: the shape most likely to expose an accumulation bug, because one
+	# pair of edges is hundreds of periods long.
+	var long_rect := PackedVector2Array([Vector2(0, 0), Vector2(900, 0),
+		Vector2(900, 12), Vector2(0, 12)])
+	var segs: Array = bv._dash_segments(long_rect, dash, gap)
+	var perimeter := 2.0 * (900.0 + 12.0)
+	var ceiling := int(perimeter / period) + long_rect.size() + 2
+	_check(segs.size() > 0, "dash: a long rectangle produces dashes (%d)" % segs.size())
+	_check(segs.size() <= ceiling,
+		"dash: segment count is bounded by perimeter/period (%d <= %d)" % [segs.size(), ceiling])
+	# Every run must be a real segment of at most one dash — never a zero-length smear, which
+	# is what the runaway loop emitted millions of.
+	var bad := 0
+	for seg_value in segs:
+		var seg: PackedVector2Array = seg_value
+		var run := seg[0].distance_to(seg[1])
+		if run <= 0.0 or run > dash + 0.01:
+			bad += 1
+	_check(bad == 0, "dash: every run is >0 and <= one dash (%d bad)" % bad)
+
+	# The pathological input: an edge length that is an exact multiple of the period, so the
+	# phase lands precisely on the dash boundary at every corner.
+	var exact := PackedVector2Array([Vector2(0, 0), Vector2(period * 40.0, 0),
+		Vector2(period * 40.0, period * 40.0), Vector2(0, period * 40.0)])
+	var exact_segs: Array = bv._dash_segments(exact, dash, gap)
+	_check(exact_segs.size() > 0 and exact_segs.size() < 400,
+		"dash: an exact-multiple edge terminates sanely (%d)" % exact_segs.size())
+
+	# Degenerate inputs must return nothing rather than spin.
+	_check(bv._dash_segments(long_rect, 0.0, gap).is_empty(), "dash: zero dash draws nothing")
+	_check(bv._dash_segments(long_rect, dash, 0.0).is_empty(), "dash: zero gap draws nothing")
+	_check(bv._dash_segments(PackedVector2Array([Vector2.ZERO]), dash, gap).is_empty(),
+		"dash: a single point draws nothing")
+	# Coincident points must be skipped, not divided by.
+	var degenerate := PackedVector2Array([Vector2(5, 5), Vector2(5, 5), Vector2(5, 5)])
+	_check(bv._dash_segments(degenerate, dash, gap).is_empty(),
+		"dash: a zero-area ring draws nothing")
+	bv.free()
+
+
+## Construction sites and their cranes (owner spec 2026-08-27, revised 2026-08-28). The
+## crane's swing is pure arithmetic, so it is worth pinning exactly: 90 degrees out over 2 s,
+## STAND for 3 s, back over 2 s, stand 3 s -- and sites on one tile a second apart. The holds
+## are the point of the revision, so the test spends its assertions inside them.
+func _test_construction_sites() -> void:
+	var visuals := preload("res://scenes/building_visuals.gd")
+	var beige: Color = visuals.CONSTRUCTION_BEIGE
+	var npc: Color = visuals.NPC_WHITE
+	var road := Color("eadfbe")   # MapMidcenturyStyle.ROAD_LOCAL / PAPER
+	var d_npc := absf(beige.r - npc.r) + absf(beige.g - npc.g) + absf(beige.b - npc.b)
+	var d_road := absf(beige.r - road.r) + absf(beige.g - road.g) + absf(beige.b - road.b)
+	_check(d_npc > 0.18, "construction: beige is not NPC paper-white (%.2f)" % d_npc)
+	_check(d_road > 0.18, "construction: beige is not the road cream (%.2f)" % d_road)
+
+	var cranes: Node = preload("res://scripts/construction_visuals.gd").new()
+	# `.new()` and never added to the tree on purpose: _ready connects to the Construction
+	# autoload's signals, and the swing maths needs none of that.
+	cranes.set("_clock", 0.0)
+	_check(is_zero_approx(cranes.call("_angle_at", 0)), "crane: at rest at t=0")
+	cranes.set("_clock", 1.0)
+	_check(absf(float(cranes.call("_angle_at", 0)) - PI * 0.25) < 0.001,
+		"crane: halfway (45 deg) at t=1 s")
+	cranes.set("_clock", 2.0)
+	_check(absf(float(cranes.call("_angle_at", 0)) - PI * 0.5) < 0.001,
+		"crane: a full 90 deg at t=2 s")
+	# The far-end hold: three seconds standing at 90 degrees, not a turn straight back.
+	for held in [2.5, 3.0, 4.0, 4.9]:
+		cranes.set("_clock", held)
+		_check(absf(float(cranes.call("_angle_at", 0)) - PI * 0.5) < 0.001,
+			"crane: still out at 90 deg at t=%.1f s" % held)
+	cranes.set("_clock", 6.0)
+	_check(absf(float(cranes.call("_angle_at", 0)) - PI * 0.25) < 0.001,
+		"crane: back through 45 deg at t=6 s")
+	cranes.set("_clock", 7.0)
+	_check(is_zero_approx(cranes.call("_angle_at", 0)), "crane: home again at t=7 s")
+	# ...and the near-end hold, which is what makes the cycle 10 s rather than 7.
+	for resting in [7.5, 8.0, 9.9]:
+		cranes.set("_clock", resting)
+		_check(is_zero_approx(cranes.call("_angle_at", 0)),
+			"crane: still home at t=%.1f s" % resting)
+	# The per-site stagger: site 1 now must equal site 0 one second ago, exactly.
+	cranes.set("_clock", 0.0)
+	var second_site := float(cranes.call("_angle_at", 1))
+	cranes.set("_clock", 1.0)
+	_check(absf(float(cranes.call("_angle_at", 0)) - second_site) < 0.001,
+		"crane: sites on a tile are offset by exactly 1 s")
+	cranes.free()
+
+	var scene := FileAccess.open("res://scenes/main.tscn", FileAccess.READ)
+	_check(scene != null, "construction: main.tscn is readable")
+	if scene != null:
+		var text := scene.get_as_text()
+		scene.close()
+		_check(text.contains("construction_visuals.gd"),
+			"construction: main.tscn mounts the crane layer")
+
+
+## Chimney counts per industry (owner spec 2026-08-27), pinned because they are a design
+## decision rather than a derived number — nothing else in the code would notice if a
+## refinery quietly dropped to one stack.
+func _test_smoke_stacks() -> void:
+	var visuals := preload("res://scenes/building_visuals.gd")
+	var spec: Dictionary = visuals.SMOKE_STACKS
+	for pair in [["furnace", 1], ["petro_refinery", 3], ["chem_plant", 2],
+			["power_plant", 1], ["eaf", 1]]:
+		var iname := str(pair[0])
+		_check(spec.has(iname), "smoke: %s carries stacks" % iname)
+		if spec.has(iname):
+			_check(int((spec[iname] as Dictionary)["count"]) == int(pair[1]),
+				"smoke: %s has %d stack(s)" % [iname, int(pair[1])])
+	# The power plant's is "one larger" and the EAF's "a small one" — relative sizes, so it
+	# is the ORDER that is the spec, not the millimetres.
+	var r_power := float((spec["power_plant"] as Dictionary)["r"])
+	var r_furnace := float((spec["furnace"] as Dictionary)["r"])
+	var r_eaf := float((spec["eaf"] as Dictionary)["r"])
+	_check(r_power > r_furnace, "smoke: the power plant's stack is the largest")
+	_check(r_eaf < r_furnace, "smoke: the EAF's stack is the smallest")
+	# Every stack-carrying building must be STAMPED — an exempt one keeps its ink-art
+	# recipe, which draws chimneys of its own, and the two would fight.
+	for iname_value in spec:
+		_check(not visuals.STAMP_EXEMPT.has(str(iname_value)),
+			"smoke: %s is stamped, so its stacks are the only ones drawn" % str(iname_value))
+
+	# The smoke layer must be in the scene, or nothing animates and no test would notice.
+	var scene := FileAccess.open("res://scenes/main.tscn", FileAccess.READ)
+	_check(scene != null, "smoke: main.tscn is readable")
+	if scene != null:
+		var text := scene.get_as_text()
+		scene.close()
+		_check(text.contains("smoke_visuals.gd"), "smoke: main.tscn mounts the smoke layer")
+
+
+## The eight company liveries: the table loads, every livery is distinguishable from every
+## other, and the New Game panel's choice reaches the match ruleset (which is what carries it
+## into a save file). The distinctness check is the point of the sampler's livery band — two
+## liveries that read the same on the map make the colour useless as an owner cue, and the
+## raw samples DID collide (ethylene sampled a near-black navy against Graphite Black).
+func _test_player_colours() -> void:
+	var PlayerColours := preload("res://scripts/player_colours.gd")
+	var all: Array = PlayerColours.all()
+	_check(all.size() == 8, "player colours: 8 liveries load (got %d)" % all.size())
+	_check(PlayerColours.has(PlayerColours.DEFAULT_KEY),
+		"player colours: the default livery is in the table")
+
+	var seen: Dictionary = {}
+	var too_close := PackedStringArray()
+	for a_value in all:
+		var a: Dictionary = a_value
+		_check(not seen.has(str(a["key"])), "player colours: '%s' appears once" % str(a["key"]))
+		seen[str(a["key"])] = true
+		_check(str(a["label"]) != "", "player colours: %s has a label" % str(a["key"]))
+		var ca: Color = a["color"]
+		for b_value in all:
+			var b: Dictionary = b_value
+			if str(a["key"]) >= str(b["key"]):
+				continue
+			var cb: Color = b["color"]
+			# Plain RGB distance. Crude next to a perceptual metric, and enough to catch the
+			# failure that actually happened — two liveries landing on the same dark slate.
+			var d := absf(ca.r - cb.r) + absf(ca.g - cb.g) + absf(ca.b - cb.b)
+			if d < 0.22:
+				too_close.append("%s vs %s (%.2f)" % [str(a["key"]), str(b["key"]), d])
+	_check(too_close.is_empty(), "player colours: every livery is distinguishable (%s)"
+		% ("all distinct" if too_close.is_empty() else ", ".join(too_close)))
+
+	# A 20px swatch, the size the dropdown asks for (owner, 2026-08-27).
+	var swatch: ImageTexture = PlayerColours.swatch(PlayerColours.DEFAULT_KEY, 20)
+	_check(swatch != null and swatch.get_width() == 20 and swatch.get_height() == 20,
+		"player colours: swatch is 20x20")
+
+	# An unknown key must fall back rather than colour a company with nothing — this is the
+	# hand-edited-save and renamed-livery path.
+	_check(not PlayerColours.has("no_such_livery"),
+		"player colours: an unknown key is not in the table")
+	_check(PlayerColours.color_for("no_such_livery") == PlayerColours.FALLBACK,
+		"player colours: an unknown key falls back")
+
+	# The picker writes into the ruleset; that is how the livery reaches a save.
+	var snap: Dictionary = SaveLoad.expand_start_config(
+		{"start": true, "ruleset": {"name": "standard"}},
+		{"ruleset": {"company_colour": "graphite_black"}})
+	var rules: Dictionary = (snap.get("match", {}) as Dictionary).get("ruleset", {})
+	_check(str(rules.get("company_colour", "")) == "graphite_black",
+		"player colours: the picked livery merges into the match ruleset")
+
+
 func _test_ink_art_reserves_upgrade_space() -> void:
 	var keys := ["furnace", "eaf", "industrial_factory", "consumer_factory",
 		"assembly_plant", "high_tech_manufactory", "petro_refinery", "poly_plant",
@@ -7967,18 +8371,24 @@ func _test_detail_panel_owner_resolution() -> void:
 	# to the NPC. (Mirrors tools/repro_npc_blur.gd, headless.)
 	var npc_iid: String = MatchState.add_building("b_002", "r_003", "tile_5_10", "Stoneshore Ironworks")
 	var player_iid: String = MatchState.add_building("b_002", "r_003", "tile_5_10", MatchState.LOCAL_PLAYER)
-	var panel = load("res://scripts/building_detail_panel.gd").new()
-	_check(panel._resolve_owner_id(MatchState.get_building(player_iid)) == MatchState.LOCAL_PLAYER,
+	# The resolver lives in BuildingReadout.owner_info now -- it re-reads the live store, which
+	# is the whole point of the guard -- and both the detail panel and everything else that
+	# needs an owner goes through it. Testing it there rather than through a panel's private
+	# copy is what let the v1 panel be deleted without losing the regression.
+	var readout := preload("res://scripts/building_readout.gd")
+	_check(str(readout.owner_info(MatchState.get_building(player_iid)).owner_id) == MatchState.LOCAL_PLAYER,
 		"detail owner: canonical player dict -> player")
 	var poisoned: Dictionary = MatchState.get_building(player_iid).duplicate()
 	poisoned["owner"] = "Stoneshore Ironworks"
-	_check(panel._resolve_owner_id(poisoned) == MatchState.LOCAL_PLAYER,
+	_check(str(readout.owner_info(poisoned).owner_id) == MatchState.LOCAL_PLAYER,
 		"detail owner: stale-owner player dict re-resolves to player (no NPC frost)")
-	_check(panel._resolve_owner_id(MatchState.get_building(npc_iid)) == "Stoneshore Ironworks",
+	_check(not bool(readout.owner_info(poisoned).is_npc),
+		"detail owner: a re-resolved player building is not drawn as an NPC")
+	_check(str(readout.owner_info(MatchState.get_building(npc_iid)).owner_id) == "Stoneshore Ironworks"
+			and bool(readout.owner_info(MatchState.get_building(npc_iid)).is_npc),
 		"detail owner: NPC building -> NPC owner (frost preserved)")
-	_check(panel._resolve_owner_id({"instance_id": "stub_x", "building_id": "b_002"}) == MatchState.LOCAL_PLAYER,
+	_check(str(readout.owner_info({"instance_id": "stub_x", "building_id": "b_002"}).owner_id) == MatchState.LOCAL_PLAYER,
 		"detail owner: construction stub (not in store, no owner) -> player")
-	panel.free()
 	MatchState.buildings.erase(npc_iid)
 	MatchState.buildings.erase(player_iid)
 
@@ -11049,36 +11459,33 @@ func _test_construction_detail_panel() -> void:
 		Stockpile.add(tile, gid, int(reqs[gid]))
 	var iid: String = Construction.start_on_tile(bid, "", tile)  # under_construction project
 
-	# The detail panel lives inside main.tscn (no standalone scene), so instantiate and find it.
-	var packed: PackedScene = load("res://scenes/main.tscn")
-	var ok: bool = packed != null and Construction.construction_projects.has(iid)
+	# The panel is built in code and mounted lazily, so it is instantiated directly rather
+	# than fished out of main.tscn -- which is also why this no longer costs a whole scene
+	# instantiation per run.
+	var ok: bool = Construction.construction_projects.has(iid)
 	if ok:
-		var inst: Node = packed.instantiate()
-		add_child(inst)
+		var panel: Node = load("res://scripts/building_detail_panel_v2.gd").new()
+		add_child(panel)
 		await get_tree().process_frame
-		var panel: Node = inst.find_child("BuildingDetailPanel", true, false)
-		ok = panel != null
-		if ok:
-			panel.call("show_building", {
-				"instance_id": iid, "building_id": bid, "recipe_id": "",
-				"tile_id": tile, "owner": MatchState.LOCAL_PLAYER,
-				"construction_status": "under_construction",
-			})
-			var fv: Node = panel.get("fields_vbox")
-			_check(fv != null and fv.get_child_count() > 0, "construction detail panel renders the materials section")
-			# Regression guards: the close (X) button lives in the status rail and must stay,
-			# while Change Recipe is hidden during construction.
-			var close_button := panel.get("close_button") as Button
-			_check(close_button != null and close_button.visible and close_button.is_inside_tree(),
-				"construction panel keeps the close (X) button")
-			_check(not panel.get("change_recipe_button").visible, "construction panel hides Change Recipe")
-			# Switching to a running building restores the operational controls.
-			var rid: String = MatchState.add_building(bid, "", "tile_detail_running")
-			panel.call("show_building", MatchState.get_building(rid))
-			_check(panel.get("change_recipe_button").visible, "Change Recipe restored on a running building")
-			MatchState.remove_building(rid)
-			ok = true
-		inst.queue_free()
+		panel.call("show_building", {
+			"instance_id": iid, "building_id": bid, "recipe_id": "",
+			"tile_id": tile, "owner": MatchState.LOCAL_PLAYER,
+			"construction_status": "under_construction",
+		})
+		await get_tree().process_frame
+		var body: Node = panel.get("_body")
+		_check(body != null and body.get_child_count() > 0,
+			"construction detail panel renders a body for a building still under construction")
+		# ...and a running building renders too, from the same panel instance: the rebuild
+		# path has to survive being handed a different kind of building.
+		var rid: String = MatchState.add_building(bid, "", "tile_detail_running")
+		panel.call("show_building", MatchState.get_building(rid))
+		await get_tree().process_frame
+		body = panel.get("_body")
+		_check(body != null and body.get_child_count() > 0,
+			"detail panel re-renders when swapped to a running building")
+		MatchState.remove_building(rid)
+		panel.queue_free()
 		await get_tree().process_frame
 	if not ok:
 		_check(false, "construction detail panel instantiates")
@@ -13153,7 +13560,6 @@ func _test_scripts_parse() -> void:
 		"res://scripts/stockpile_view.gd",
 		"res://scripts/infra_grid.gd",
 		"res://scripts/tile_info_panel_v2.gd",
-		"res://scripts/building_detail_panel.gd",
 		"res://scripts/building_connection_visuals.gd",
 		"res://scripts/world_map.gd",
 		"res://scripts/map_overlay.gd",
@@ -19060,3 +19466,206 @@ func _document_with(kind: String, record: Dictionary) -> Dictionary:
 	var doc: Dictionary = AuthoredMap.empty_document()
 	doc["settlements"] = {"test": {"tiles": ["tile_1_1"], kind: [record]}}
 	return doc
+
+
+## A building with more than one chimney gets them ADJACENT, IN A LINE (owner, 2026-08-27).
+## Three flues scattered round a footprint read as three separate works; a row reads as one
+## plant. This pins the row -- collinear, evenly spaced, and every stack still on the roof.
+func _test_stacks_sit_in_a_line() -> void:
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	var rect := PackedVector2Array([Vector2(0, 0), Vector2(120, 0),
+		Vector2(120, 60), Vector2(0, 60)])
+	var stacks: Array = bv._stack_points("petro_refinery", "inst_1", rect)
+	_check(stacks.size() == 3, "stacks: a refinery has three (%d)" % stacks.size())
+	if stacks.size() == 3:
+		var a: Vector2 = stacks[0]["pos"]
+		var b: Vector2 = stacks[1]["pos"]
+		var c: Vector2 = stacks[2]["pos"]
+		# Collinear: the cross product of the two gaps is zero for a straight row.
+		var cross: float = absf((b - a).cross(c - b))
+		_check(cross < 0.5, "stacks: the three are collinear (cross %.3f)" % cross)
+		# Adjacent: equal gaps, each no wider than a couple of stack diameters.
+		var g1 := a.distance_to(b)
+		var g2 := b.distance_to(c)
+		var r: float = float(stacks[0]["r"])
+		_check(absf(g1 - g2) < 0.01, "stacks: evenly spaced (%.2f vs %.2f)" % [g1, g2])
+		_check(g1 > r and g1 <= r * 2.5,
+			"stacks: adjacent, about a diameter apart (%.2f for r %.2f)" % [g1, r])
+		# On the roof, not straddling the outline.
+		var outside := 0
+		for stack_value in stacks:
+			if not Geometry2D.is_point_in_polygon(stack_value["pos"] as Vector2, rect):
+				outside += 1
+		_check(outside == 0, "stacks: all inside the footprint (%d outside)" % outside)
+	# A single-stack building is unaffected by the row logic.
+	var one: Array = bv._stack_points("furnace", "inst_2", rect)
+	_check(one.size() == 1, "stacks: a furnace still has exactly one (%d)" % one.size())
+	bv.free()
+
+
+## The port spurs used to be Bezier curves aimed straight at the harbour, so they cut across
+## headlands and callers sailed overland. They are sea paths now. Driven here on a SYNTHETIC
+## grid rather than the real map, so the test says something about the router itself: given a
+## wall of land between two points, does it go round, and does every step stay on water?
+func _test_sea_path_goes_round_land() -> void:
+	var ships := preload("res://scripts/port_ship_visuals.gd").new()
+	var cols := 40
+	var rows := 40
+	var grid := PackedByteArray()
+	grid.resize(cols * rows)
+	grid.fill(1)
+	# A peninsula reaching down from the top, leaving a gap along the bottom rows.
+	for r in 30:
+		for c in range(18, 23):
+			grid[r * cols + c] = 0
+	ships.set("_sea_navigable", grid)
+	ships.set("_sea_cols", cols)
+	ships.set("_sea_rows", rows)
+	ships.set("_sea_origin", Vector2.ZERO)
+	var cell: float = ships.SEA_CELL
+	var from_world := Vector2(5.0 * cell, 5.0 * cell)
+	var to_world := Vector2(35.0 * cell, 5.0 * cell)
+	var path: PackedVector2Array = ships._sea_path(from_world, to_world)
+	_check(path.size() >= 2, "sea path: a route exists round the peninsula (%d points)"
+		% path.size())
+	if path.size() >= 2:
+		_check(path[0].distance_to(from_world) < 0.01, "sea path: starts where asked")
+		_check(path[path.size() - 1].distance_to(to_world) < 0.01, "sea path: ends where asked")
+		# Every sample on land is a caller drawn over a hill.
+		var on_land := 0
+		var deepest := 0.0
+		for i in range(path.size() - 1):
+			var span := path[i].distance_to(path[i + 1])
+			var steps := maxi(int(span / 10.0), 1)
+			for k in range(steps + 1):
+				var at := path[i].lerp(path[i + 1], float(k) / float(steps))
+				deepest = maxf(deepest, at.y)
+				var gc := int(at.x / cell)
+				var gr := int(at.y / cell)
+				if gc >= 0 and gr >= 0 and gc < cols and gr < rows:
+					if grid[gr * cols + gc] == 0:
+						on_land += 1
+		_check(on_land == 0, "sea path: no sample crosses land (%d)" % on_land)
+		# It cannot have gone straight: the only water is south of the peninsula.
+		_check(deepest > 29.0 * cell,
+			"sea path: routes south round the headland (reached y %.0f)" % deepest)
+	# A goal walled off from the start yields no route at all, so the caller draws nothing
+	# rather than something wrong.
+	for r in rows:
+		for c in range(18, 23):
+			grid[r * cols + c] = 0
+	ships.set("_sea_navigable", grid)
+	var blocked: PackedVector2Array = ships._sea_path(from_world, to_world)
+	_check(blocked.is_empty(), "sea path: an unreachable harbour returns no route (%d)"
+		% blocked.size())
+	ships.free()
+
+
+## The harbour timetable (owner, 2026-08-28): Capital every 10 s, Arin every 15, Vandel every
+## 30, Stoneshore two ships every 30 s a couple of seconds apart. Two claims worth pinning,
+## because getting either wrong is exactly what the map showed before: the cadence has to be
+## what was asked, and NO TWO SHIPS may be alongside the same quay at once -- which is what
+## the two overlapping ship populations used to look like.
+func _test_port_timetable() -> void:
+	var ships := preload("res://scripts/port_ship_visuals.gd")
+	var visit: float = ships.CYCLE
+	for tile in ships.PORT_SCHEDULE:
+		var schedule: Dictionary = ships.PORT_SCHEDULE[tile]
+		var every := float(schedule["every"])
+		var burst: int = int(schedule["burst"])
+		var gap := float(schedule["gap"])
+		var window := every * 2.0
+		var arrivals: Array = ships.timetable(every, burst, gap, 2)
+		_check(arrivals.size() == burst * 2,
+			"timetable %s: %d arrivals a window (%d)" % [tile, burst * 2, arrivals.size()])
+		# THE CADENCE. Sort the arrival times over one window and check the port is served at
+		# the stated interval -- for a burst, that the burst repeats at it.
+		var times: Array = []
+		for a_value in arrivals:
+			times.append(float((a_value as Dictionary)["t"]))
+		times.sort()
+		var first_of_burst: Array = []
+		for i in times.size():
+			if i % burst == 0:
+				first_of_burst.append(times[i])
+		for i in range(1, first_of_burst.size()):
+			var step: float = float(first_of_burst[i]) - float(first_of_burst[i - 1])
+			_check(absf(step - every) < 0.01,
+				"timetable %s: a ship every %.1f s (got %.1f)" % [tile, every, step])
+		if burst > 1:
+			for i in range(1, burst):
+				var within: float = float(times[i]) - float(times[i - 1])
+				_check(absf(within - gap) < 0.01,
+					"timetable %s: burst ships %.1f s apart (got %.1f)" % [tile, gap, within])
+		# NO DOUBLE OCCUPANCY. Per quay, over three windows so the wrap is covered too.
+		for quay in 2:
+			var visits: Array = []
+			for w in 3:
+				for a_value in arrivals:
+					var a: Dictionary = a_value
+					if int(a["quay"]) == quay:
+						visits.append(float(a["t"]) + float(w) * window)
+			visits.sort()
+			var clash := 0
+			var tightest := INF
+			for i in range(1, visits.size()):
+				var apart: float = float(visits[i]) - float(visits[i - 1])
+				tightest = minf(tightest, apart)
+				if apart < visit:
+					clash += 1
+			_check(clash == 0,
+				"timetable %s quay %d: no two ships alongside at once (%d clashes, tightest %.1f s vs a %.1f s visit)"
+					% [tile, quay, clash, tightest, visit])
+
+
+## Hand-placed trees in the authored document (owner, 2026-08-28): two single sizes and a
+## MIXED clump. Three things worth pinning, each of which is a decision rather than an
+## accident: the schema refuses a clump with no radius, a clump's scatter is genuinely mixed
+## rather than a repeated stamp, and every tree of it lands inside the radius that was drawn.
+func _test_authored_trees() -> void:
+	var authored := preload("res://scripts/authored_map.gd")
+	var painter := preload("res://scripts/authored_fabric_painter.gd")
+
+	var doc := authored.empty_document()
+	doc["settlements"] = {"t": {
+		"tiles": ["tile_1_1"],
+		"trees": [
+			{"id": "t:t:1", "position": [10.0, 20.0], "kind": "small"},
+			{"id": "t:t:2", "position": [40.0, 20.0], "kind": "large"},
+			{"id": "t:t:3", "position": [90.0, 20.0], "kind": "mixed", "radius": 26.0},
+		],
+	}}
+	_check(authored.validate(doc).is_empty(),
+		"authored trees: a document with all three kinds validates")
+
+	# A clump with no radius has no size, so it would draw nothing and silently look like a
+	# tree that failed to place. The schema refuses it instead.
+	var bad := authored.empty_document()
+	bad["settlements"] = {"t": {"tiles": ["tile_1_1"],
+		"trees": [{"id": "t:t:9", "position": [0.0, 0.0], "kind": "mixed"}]}}
+	_check(not authored.validate(bad).is_empty(),
+		"authored trees: a mixed clump without a radius is refused")
+
+	var wrong := authored.empty_document()
+	wrong["settlements"] = {"t": {"tiles": ["tile_1_1"],
+		"trees": [{"id": "t:t:8", "position": [0.0, 0.0], "kind": "enormous"}]}}
+	_check(not authored.validate(wrong).is_empty(),
+		"authored trees: an unknown kind is refused")
+
+	# THE CLUMP IS MIXED. That is the whole reason it is its own kind, so it is the thing to
+	# assert: a stand of identical trees reads as a repeated stamp, not as woodland.
+	var clump := {"id": "t:t:3", "position": [90.0, 20.0], "kind": "mixed", "radius": 26.0}
+	var points := painter.clump_points(clump)
+	_check(points.size() >= 6, "authored trees: a clump plants several trees (%d)" % points.size())
+	var kinds: Dictionary = {}
+	var outside := 0
+	var centre := Vector2(90.0, 20.0)
+	for point in points:
+		if point.distance_to(centre) > 26.0 + 0.01:
+			outside += 1
+		kinds[painter.TreeShapesRef.pick_kind("t:t:3|%.0f|%.0f" % [point.x, point.y],
+			painter.CLUMP_MIX)] = true
+	_check(outside == 0, "authored trees: every tree of a clump is inside its radius (%d out)"
+		% outside)
+	_check(kinds.size() >= 2,
+		"authored trees: a clump mixes sizes rather than repeating one (%d kinds)" % kinds.size())

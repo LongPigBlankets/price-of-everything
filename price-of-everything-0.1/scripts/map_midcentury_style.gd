@@ -49,7 +49,11 @@ const GAMEPLAY_BLOCK_TOPS := {
 	"blue": Color("7b8c8f"),
 	"red": Color("908278"),
 	"red_mass": Color("94695c"),
-	"npc": Color("858178"),
+	# NPC-owned buildings are WHITE, in every style (owner, 2026-08-28). This was a warm grey
+	# while midcentury was an opt-in look; now that it ships, white is the rival cue and the
+	# player's livery is the only colour on the map that means ownership. Matches
+	# building_visuals.NPC_WHITE so the two styles agree on what a rival looks like.
+	"npc": Color("efe9db"),
 	"decor": Color("a49f91"),
 	"ruins": Color("785c43"),
 }

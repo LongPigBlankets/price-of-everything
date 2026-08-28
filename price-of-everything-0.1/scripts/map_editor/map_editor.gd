@@ -61,6 +61,16 @@ const TOOL_STAMP := "stamp"
 const TOOL_SPECIAL := "special"
 ## Click to place an empty slot a gameplay building will later occupy.
 const TOOL_SLOT := "slot"
+## Click to plant a tree: a single small one, a single large one, or a MIXED clump. Each press
+## of the key cycles which, so a row of varied planting never needs the pointer to leave the
+## map — the same idiom the slot tool uses for its classes.
+const TOOL_TREE := "tree"
+## The three, in cycle order. "mixed" is the only clump: a stand of identical trees reads as a
+## repeated stamp rather than as woodland (owner, 2026-08-28), so there is no small-clump or
+## large-clump to choose by mistake.
+const TREE_KINDS := ["small", "large", "mixed"]
+## How wide a planted clump is, in world units.
+const TREE_CLUMP_RADIUS := 26.0
 
 ## The box a slot of each class reserves comes from `MapEditorSlotBoxes`, which reads the
 ## SHIPPED table in `building_visuals.gd`. The editor had its own copy of those numbers; two
@@ -180,6 +190,8 @@ var _fabric: Node2D = null
 var _fabric_ground: Node2D = null
 var _panel: MapEditorPanel
 var _tool := TOOL_PAN
+## Which tree the tree tool plants next; cycled by pressing its key again.
+var _tree_kind := "small"
 var _world: Node
 var _camera: Camera2D
 var _status: Label
@@ -443,9 +455,12 @@ func _set_status(text: String) -> void:
 
 func _refresh_status() -> void:
 	var counts := _document.counts()
-	_set_status("%s   |   %d settlements · %d roads · %d masses   |   %s"
+	# The tree tool's kind is cycled by re-pressing its key, so the status line has to say
+	# which one is loaded — otherwise the only way to find out is to plant one.
+	var tool_note := ("   |   planting %s (T cycles)" % _tree_label()) if _tool == TOOL_TREE else ""
+	_set_status("%s   |   %d settlements · %d roads · %d masses   |   %s%s"
 		% [_document.display_name(), counts.settlements, counts.roads, counts.masses,
-			"UNSAVED" if _document.is_dirty() else "saved"])
+			"UNSAVED" if _document.is_dirty() else "saved", tool_note])
 	if _panel != null:
 		_panel.refresh()
 		_panel.set_tile_report(tile_report(_hovered_tile()))
@@ -543,6 +558,9 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 				TOOL_SLOT:
 					if event.pressed:
 						_place_slot(world)
+				TOOL_TREE:
+					if event.pressed:
+						_place_tree(world)
 				TOOL_SELECT:
 					if event.pressed:
 						_select_press(world, event.position)
@@ -627,6 +645,16 @@ func _handle_key(event: InputEventKey) -> void:
 			else:
 				set_tool(TOOL_SLOT)
 
+		KEY_T:
+			# First press picks the tool; each one after cycles small -> large -> mixed clump,
+			# so planting a varied group never needs the pointer to leave the map.
+			if _tool == TOOL_TREE:
+				var at := TREE_KINDS.find(_tree_kind)
+				_tree_kind = str(TREE_KINDS[(at + 1) % TREE_KINDS.size()])
+				_refresh_status()
+			else:
+				set_tool(TOOL_TREE)
+
 		KEY_EQUAL, KEY_KP_ADD:
 			_resize_selection(RESIZE_STEP)
 		KEY_MINUS, KEY_KP_SUBTRACT:
@@ -647,6 +675,8 @@ func _handle_key(event: InputEventKey) -> void:
 			toggle_grid()
 		KEY_H:
 			toggle_water_mask()
+		KEY_J:
+			_toggle_hijack_selection()
 		KEY_E:
 			_zoom_by(ZOOM_STEP)
 		KEY_Q:
@@ -1329,6 +1359,46 @@ func _resize_selection(factor: float) -> void:
 	_refresh_status()
 
 
+## Mark the selected decorative buildings as hijack slots (J). A marked mass is ground
+## a gameplay building will later claim: hidden in the shipped game until an NPC or
+## player building takes it over and stamps it in the owner's colour. Only decor masses
+## and specials qualify — ground (parks, plazas, farms, forests) and roads cannot be a
+## building slot, so they are silently skipped rather than erroring a mixed selection.
+## Stored as `hijack: true` on the record; cleared by erasing the key, so an unmarked
+## document round-trips byte-identical.
+func _toggle_hijack_selection() -> void:
+	var settlements: Dictionary = _document.data().get("settlements", {})
+	var records: Array = []
+	for entry_value in _selection:
+		var entry: Dictionary = entry_value
+		var kind := str(entry.get("kind", ""))
+		if kind != "decor" and kind != "specials":
+			continue
+		var settlement: Dictionary = settlements.get(str(entry.get("settlement", "")), {})
+		var items: Array = settlement.get(kind, []) as Array
+		var index := int(entry.get("index", -1))
+		if index >= 0 and index < items.size():
+			records.append(items[index])
+	if records.is_empty():
+		_set_status("Nothing hijackable selected — J marks decorative buildings (masses/specials).")
+		_refresh_status()
+		return
+	_document.begin_edit("mark hijack")
+	var marked := 0
+	var cleared := 0
+	for record_value in records:
+		var record: Dictionary = record_value
+		if bool(record.get("hijack", false)):
+			record.erase("hijack")
+			cleared += 1
+		else:
+			record["hijack"] = true
+			marked += 1
+	_overlay.queue_redraw()
+	_set_status("Hijack slots: %d marked, %d cleared." % [marked, cleared])
+	_refresh_status()
+
+
 ## The live records behind a selection, so a move can mutate them in place.
 func _records_of(selection: Array) -> Array:
 	var out: Array = []
@@ -1553,6 +1623,45 @@ func _place_slot(world: Vector2) -> void:
 	_overlay.queue_redraw()
 	_set_status("%s slot on %s (%d there)."
 		% [_slot_class.replace("_", " ").capitalize(), tile_id, pins.size()])
+
+
+## Plant one tree at `world`.
+##
+## Unlike a slot pin, this does NOT add the tile to the settlement. A slot is a promise about
+## a tile and authoring it is the point; a tree is decoration standing at a point, and
+## planting one must not quietly take a tile's fabric, roads and accommodation away from the
+## generator (`AuthoredMap.covers` is that switch, and it is nothing to do with trees).
+func _place_tree(world: Vector2) -> void:
+	var settlement := _ensure_settlement()
+	_document.begin_edit("plant tree")
+	settlement = _ensure_settlement()
+	var next_id := int(settlement.get("next_id", 1))
+	var trees_value: Variant = settlement.get("trees", [])
+	var trees: Array = trees_value if typeof(trees_value) == TYPE_ARRAY else []
+	var record := {
+		"id": "t:%s:%d" % [_settlement, next_id],
+		"position": [snappedf(world.x, 0.01), snappedf(world.y, 0.01)],
+		"kind": _tree_kind,
+	}
+	if _tree_kind == "mixed":
+		record["radius"] = TREE_CLUMP_RADIUS
+	trees.append(record)
+	settlement["trees"] = trees
+	settlement["next_id"] = next_id + 1
+	_fabric.queue_redraw()
+	_overlay.queue_redraw()
+	_set_status("Planted %s (%d tree record%s)."
+		% [_tree_label(), trees.size(), "" if trees.size() == 1 else "s"])
+
+
+func _tree_label() -> String:
+	match _tree_kind:
+		"small":
+			return "a small tree"
+		"large":
+			return "a large tree"
+		_:
+			return "a mixed clump"
 
 
 ## The facing for a slot: along the nearest authored road, or zero when there is none near.

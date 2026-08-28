@@ -51,6 +51,16 @@ const NOTCH_RADIUS := 16.0
 # Research-unlock toast timing (owner, 27 Aug — replaces the teal microscope badge that used
 # to live in the notch): a small banner slides down under the notch, holds, then fades.
 const RESEARCH_TOAST_GAP := 8.0
+## Between one flyout and the next in the stack.
+const RESEARCH_TOAST_STACK_GAP := 6.0
+## How far behind the one above each flyout slides in.
+const RESEARCH_TOAST_CASCADE_SEC := 0.12
+## The most flyouts on screen at once; beyond it the rest become one "+N more" rather than a
+## curtain over the map.
+const RESEARCH_TOAST_MAX := 4
+## The overflow flyout's placeholder name; its label is rewritten with the running count, so
+## the text itself is never what identifies it.
+const RESEARCH_OVERFLOW_TECH := "__overflow__"
 const RESEARCH_TOAST_SLIDE_SEC := 0.35
 const RESEARCH_TOAST_HOLD_SEC := 5.0
 const RESEARCH_TOAST_FADE_OUT_SEC := 0.3
@@ -62,6 +72,14 @@ const RESEARCH_TOAST_FADE_OUT_SEC := 0.3
 # display time — they are already coloured to the building-icon off-white and
 # re-tinting would pull them off that match.
 const ICON_GOODS_GRAPH: Texture2D = preload("res://assets/icons/ui_icons/standalone/sankey.png")
+## The menu glyph, baked by tools/bake_menu_icon.py. It used to be the text "☰", which is why
+## it was the one control on the bar with no cream tint, no sheen and no hover glow -- those
+## are applied to a texture, and a glyph is not one (owner, 2026-08-28).
+const ICON_MENU: Texture2D = preload("res://assets/icons/ui_icons/standalone/menu.png")
+## The sankey is all thin strokes and no solid mass, so at the shared 44 px it reads smaller
+## than the council table and the book either side of it. Drawn larger to weigh the same
+## (owner, 2026-08-28) -- the art is unchanged; only the box it is given is.
+const SANKEY_ICON_PX := 56.0
 const ICON_ENCYCLOPEDIA: Texture2D = preload("res://assets/icons/ui_icons/standalone/open-book.png")
 const ICON_QUEST: Texture2D = preload("res://assets/icons/ui_icons/standalone/target.png")
 const ICON_POWER: Texture2D = preload("res://assets/icons/ui_icons/standalone/power_icon.png")
@@ -201,11 +219,25 @@ var _briefing_btn: Control
 var _briefing_glyph: Control   # _BellIcon (vector — the font has no bell glyph)
 # Research-unlock toast (replaces the teal microscope badge, 27 Aug): a small two-row banner
 # that slides down under the notch, rather than a persistent badge living in it.
-var _research_toast: PanelContainer
-var _research_toast_head: Label   # "New research unlocked:" — hidden for the multi-unlock case
-var _research_toast_name: Label   # the tech's name, or "N research unlocked"
-var _research_toast_anim: Tween
-var _research_toast_shown_count := 0   # aggregate count already toasted this turn (edge-trigger gate)
+## ONE FLYOUT PER UNLOCK, stacked (owner, 2026-08-28). Several techs landing on one turn used
+## to collapse into a single "N research unlocked" banner, which named none of them and made
+## the player open the briefing to find out what they had got.
+var _research_toasts: Array[PanelContainer] = []
+## Tech names already toasted THIS MATCH -- deliberately not this turn.
+##
+## Two things make it a match-long gate. TurnBriefing rebuilds its items several times as
+## unlocks land, so it has to be per tech rather than a count. And its window is
+## [current_turn - 1, current_turn], so an unlock is in the briefing for TWO turns running:
+## a gate cleared on turn change therefore popped every research a second time, one turn
+## later (owner, 2026-08-28: "it appears twice"). A tech unlocks once, so the set only ever
+## needs emptying when a new match starts.
+var _research_toasted: Dictionary = {}
+## The single "+N more this turn" flyout, and its running total. It is UPDATED rather than
+## re-created: TurnBriefing refreshes once per unlock as they land, so building a new one per
+## refresh stacked several "+N more" panels on top of each other.
+var _research_overflow: PanelContainer = null
+var _research_overflow_label: Label = null
+var _research_overflow_n := 0
 var _briefing_head: Label
 var _briefing_sub: Label
 var _briefing_dot: Panel
@@ -252,7 +284,6 @@ func _ready() -> void:
 	_build_transport()
 	_build_rankings()
 	_build_briefing()
-	_build_research_toast()
 	_build_quest()
 	_build_council()
 	_build_goods_graph()
@@ -269,9 +300,10 @@ func _ready() -> void:
 	MatchState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _queue_refresh())
 	Production.turn_processed.connect(func(_s: Dictionary) -> void: _queue_refresh())
 	CompanyRankings.rankings_updated.connect(_queue_refresh)
-	# A new turn resets the research-toast gate, so next turn's unlocks pop a fresh toast.
+	# The research gate is NOT reset here -- see _research_toasted. Only the overflow tally is,
+	# since "+N more this turn" is a statement about one turn.
 	TurnManager.turn_advanced.connect(func(_t: int) -> void:
-		_research_toast_shown_count = 0
+		_research_overflow_n = 0
 		_queue_refresh())
 	LoanState.loans_updated.connect(_queue_refresh)
 	LoanState.loan_taken.connect(_on_loan_taken)
@@ -967,7 +999,10 @@ func _victory_trending_up(bd: Dictionary) -> bool:
 ## no building behind it, so its cleaned PNG is checked in beside the other UI icons.
 const BuildingIcon := preload("res://scripts/building_icon.gd")
 const WAREHOUSE_ICON: Texture2D = preload("res://assets/icons/ui_icons/warehouse.png")
-const FREIGHT_ICON_PX := 38
+## The same 44 px every other indicator on the bar uses, and placed through the same
+## `_v31_icon` wrap so these three sit on the module row's shared baseline instead of a
+## centre of their own (owner, 2026-08-28: larger, and centred like the others).
+const FREIGHT_ICON_PX := V31_ICON_PX
 ## Gap between an icon and its own lamp, and between one pair and the next. The pair gap
 ## is the wider of the two on purpose: it is what makes three icon-and-lamp units read as
 ## three separate readouts rather than one row of six things.
@@ -981,7 +1016,15 @@ func _infra_texture(internal_name: String) -> Texture2D:
 
 
 ## One freight icon with its lamp BESIDE it, as a single pair.
-func _freight_cell(texture: Texture2D, tip: String) -> Dictionary:
+##
+## The icon goes through `_v31_icon`, the same builder Power, Victory, Rankings and Council
+## use, so it is the same size, sits on the same baseline and catches the same hover sheen.
+## Built by hand at 38 px and shrink-centred, these three were the only icons on the bar
+## floating at a height of their own.
+##
+## The LED is nudged down by half the wrap's bottom pad so it stays level with the MIDDLE of
+## the icon rather than with the middle of the padded slot the icon hangs in.
+func _freight_cell(texture: Texture2D, tip: String, hover_source: Control) -> Dictionary:
 	var pair := HBoxContainer.new()
 	pair.add_theme_constant_override("separation", FREIGHT_LED_GAP)
 	pair.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -991,18 +1034,23 @@ func _freight_cell(texture: Texture2D, tip: String) -> Dictionary:
 	# Rankings, Council) leads with its lamp; these three were the one place that
 	# read icon-then-LED.
 	var led := StatusLed.new()
-	pair.add_child(led)
-	var icon := TextureRect.new()
-	icon.texture = texture
-	icon.custom_minimum_size = Vector2(FREIGHT_ICON_PX, FREIGHT_ICON_PX)
-	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var led_slot := Control.new()
+	led_slot.custom_minimum_size = Vector2(led.get_combined_minimum_size().x,
+		FREIGHT_ICON_PX + V31_ICON_BOTTOM_PAD)
+	led_slot.size_flags_vertical = Control.SIZE_SHRINK_END
+	led_slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Level with the ICON's middle, not the padded slot's: the wrap hangs its art in the top
+	# `FREIGHT_ICON_PX` of a taller box, so a lamp centred on the box sits low.
+	led.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	led.offset_top = (FREIGHT_ICON_PX - led.get_combined_minimum_size().y) * 0.5
+	led.offset_bottom = led.offset_top + led.get_combined_minimum_size().y
+	led_slot.add_child(led)
+	pair.add_child(led_slot)
+	var icon := _v31_icon(texture, hover_source, FREIGHT_ICON_PX)
 	# The art is cream; the bar's other labels are the off-white, so match them.
 	icon.modulate = C_LABEL
 	pair.add_child(icon)
-	return {"root": pair, "led": led}
+	return {"root": pair, "led": led, "led_slot": led_slot}
 
 
 func _build_transport() -> void:
@@ -1011,9 +1059,9 @@ func _build_transport() -> void:
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
 	row.add_theme_constant_override("separation", FREIGHT_PAIR_GAP)
-	var store := _freight_cell(WAREHOUSE_ICON, "Storage")
-	var road := _freight_cell(_infra_texture("roads"), "Infrastructure")
-	var port := _freight_cell(_infra_texture("port"), "Freight to market")
+	var store := _freight_cell(WAREHOUSE_ICON, "Storage", mod)
+	var road := _freight_cell(_infra_texture("roads"), "Infrastructure", mod)
+	var port := _freight_cell(_infra_texture("port"), "Freight to market", mod)
 	for cell: Dictionary in [store, road, port]:
 		row.add_child(cell.root)
 	_store_led = store.led
@@ -1456,6 +1504,7 @@ func _recenter_notch() -> void:
 	_briefing_btn.position = Vector2(roundf((vw - _briefing_btn.size.x) * 0.5), 0.0)
 	_place_quest()
 	_place_briefing_bells()
+	_position_research_toasts()
 	queue_redraw()
 
 ## v3.1: keeps the two bells centred on the notch's own midline — see the top_level
@@ -1487,12 +1536,15 @@ func _refresh_briefing() -> void:
 	# Pop a fresh toast only when the aggregate grows past what was already toasted this turn —
 	# TurnBriefing can rebuild its items more than once as unlocks land, and this must not
 	# re-pop for unlocks it has already shown (owner, 27 Aug).
-	if research_count > _research_toast_shown_count:
-		var research_list: Array = research_agg.get("research", [])
-		var single_name := str((research_list[0] as Dictionary).get("name", "")) \
-			if research_count == 1 and not research_list.is_empty() else ""
-		_pop_research_toast(single_name, research_count)
-		_research_toast_shown_count = research_count
+	if research_count > 0:
+		var fresh: Array[String] = []
+		for entry in (research_agg.get("research", []) as Array):
+			var tech := str((entry as Dictionary).get("name", ""))
+			if tech != "" and not _research_toasted.has(tech):
+				_research_toasted[tech] = true
+				fresh.append(tech)
+		if not fresh.is_empty():
+			_pop_research_toasts(fresh)
 	var hot := decisions > 0
 	(_briefing_btn as _NotchBtn).warn = hot
 	(_briefing_btn as _NotchBtn).active = TurnBriefing.expanded
@@ -1526,14 +1578,13 @@ func _refresh_briefing() -> void:
 	call_deferred("_recenter_notch")
 
 
-# ── 4b · Research-unlock toast: a small banner sliding down under the notch ─────
+# ── 4b · Research-unlock flyouts: one per tech, stacked under the notch ────────
 
-## The banner itself, built once and hidden — _pop_research_toast fills it in and animates it
-## on demand. top_level (like the quest module and the notch's own bells) so its position is
-## independent of container layout; DS.theme is assigned directly because a top_level Control
-## does not reliably inherit the viewport's theme (see _open_fly's note on the same gap for the
-## quest/rankings flyouts).
-func _build_research_toast() -> void:
+## One flyout. `top_level` (like the quest module and the notch's own bells) so its position
+## is independent of container layout; DS.theme is assigned directly because a top_level
+## Control does not reliably inherit the viewport's theme (see _open_fly's note on the same
+## gap for the quest/rankings flyouts).
+func _build_research_toast(tech: String) -> PanelContainer:
 	var panel := PanelContainer.new()
 	panel.name = "ResearchToast"
 	var sb := StyleBoxFlat.new()
@@ -1549,98 +1600,130 @@ func _build_research_toast() -> void:
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	panel.top_level = true
-	panel.visible = false
 	panel.modulate.a = 0.0
 	panel.gui_input.connect(func(e: InputEvent) -> void:
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 			panel.accept_event()
-			_on_research_toast_pressed())
+			_on_research_toast_pressed(panel, tech))
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 2)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(col)
-	# Row 1: the lead-in, smaller — hidden for the "N research unlocked" multi case, which is
-	# one row on its own rather than a lead-in with nothing under it.
-	_research_toast_head = _mini("New research unlocked:", C_TEXT, 11)
-	col.add_child(_research_toast_head)
-	# Row 2: the tech's name (single case) or "N research unlocked" (multi case) — bigger, so
-	# it reads as the actual news rather than the label above it (CLAUDE.md: size, not a
-	# dimmer colour, is what marks the lead-in as secondary).
-	_research_toast_name = _mini("", C_BRIGHT, 14)
-	col.add_child(_research_toast_name)
+	# The lead-in is smaller rather than greyer: on this navy a dimmer tone would be the
+	# contrast rule's grey-on-navy, so SIZE marks it as secondary (CLAUDE.md).
+	col.add_child(_mini("New research unlocked:", C_TEXT, 11))
+	var name_label := _mini(tech, C_BRIGHT, 14)
+	col.add_child(name_label)
+	if tech == RESEARCH_OVERFLOW_TECH:
+		_research_overflow_label = name_label
 	add_child(panel)
-	_research_toast = panel
+	return panel
 
 
-## Centred under the notch, hanging further below it the way the notch itself hangs below the
-## bar. Sized to content each time — the name varies, so the banner's width does too.
-func _position_research_toast() -> void:
-	if _research_toast == null or not is_instance_valid(_research_toast):
-		return
+## Lay the stack out under the notch: the first where the single banner used to hang, each
+## next one below the one before it. Sized to content every time — the names vary, so the
+## flyouts' widths do.
+func _position_research_toasts() -> void:
 	if _briefing_btn == null or not is_instance_valid(_briefing_btn):
 		return
-	var want := _research_toast.get_combined_minimum_size()
-	_research_toast.size = want
-	_research_toast.position = Vector2(
-		roundf(_briefing_btn.position.x + (_briefing_btn.size.x - want.x) * 0.5),
-		_briefing_btn.position.y + _briefing_btn.size.y + RESEARCH_TOAST_GAP)
+	var y := _briefing_btn.position.y + _briefing_btn.size.y + RESEARCH_TOAST_GAP
+	for panel_value in _research_toasts:
+		var panel: PanelContainer = panel_value
+		if panel == null or not is_instance_valid(panel):
+			continue
+		var want := panel.get_combined_minimum_size()
+		panel.size = want
+		panel.position = Vector2(
+			roundf(_briefing_btn.position.x + (_briefing_btn.size.x - want.x) * 0.5), y)
+		y += want.y + RESEARCH_TOAST_STACK_GAP
 
 
-## Pops the toast for a newly-grown research count. `single_name` non-empty means exactly one
-## unlock — the two-row "New research unlocked: / <Name>" look; empty means several — one row,
-## "N research unlocked" (_on_research_toast_pressed reads _research_toast_head.visible back to
-## tell the two cases apart when the click lands).
-func _pop_research_toast(single_name: String, count: int) -> void:
-	if _research_toast == null or not is_instance_valid(_research_toast):
+## Pop one flyout per newly unlocked tech, cascading down the stack.
+##
+## Capped at RESEARCH_TOAST_MAX with a "+N more" flyout on the end: a turn that unlocks eight
+## techs would otherwise curtain the map, and the briefing already lists them all.
+func _pop_research_toasts(names: Array) -> void:
+	var fresh: Array[PanelContainer] = []
+	var shown := 0
+	# The cap is on what is ON SCREEN, not on this pop. Flyouts hold for five seconds, so a
+	# second turn's unlocks can arrive while the first turn's are still up; capping per pop
+	# let the stack grow past the limit it exists to enforce.
+	var room: int = maxi(RESEARCH_TOAST_MAX - _research_toasts.size(), 0)
+	for tech in names:
+		if shown >= room:
+			break
+		shown += 1
+		var panel := _build_research_toast(str(tech))
+		_research_toasts.append(panel)
+		fresh.append(panel)
+	var overflow: int = names.size() - shown
+	if overflow > 0:
+		_research_overflow_n += overflow
+		if _research_overflow == null or not is_instance_valid(_research_overflow):
+			_research_overflow = _build_research_toast(RESEARCH_OVERFLOW_TECH)
+			_research_toasts.append(_research_overflow)
+			fresh.append(_research_overflow)
+		if _research_overflow_label != null and is_instance_valid(_research_overflow_label):
+			_research_overflow_label.text = "+%d more this turn" % _research_overflow_n
+	_position_research_toasts.call_deferred()
+	# Each slides in a beat after the one above, so the stack reads as arriving rather than
+	# appearing. The animation is PER PANEL and nothing is shared, so one dismissing early
+	# cannot disturb the others — which is what a single shared Tween did.
+	for i in fresh.size():
+		_animate_research_toast(fresh[i], float(i) * RESEARCH_TOAST_CASCADE_SEC)
+
+
+func _animate_research_toast(panel: PanelContainer, delay: float) -> void:
+	if panel == null or not is_instance_valid(panel):
 		return
-	if single_name != "":
-		_research_toast_head.visible = true
-		_research_toast_name.text = single_name
-	else:
-		_research_toast_head.visible = false
-		_research_toast_name.text = "%d research unlocked" % count
-	_position_research_toast.call_deferred()
-	_research_toast.visible = true
-	if _research_toast_anim != null and _research_toast_anim.is_valid():
-		_research_toast_anim.kill()
-	var settled_y := _research_toast.position.y
-	_research_toast.position.y = settled_y - 10.0
-	_research_toast.modulate.a = 0.0
-	_research_toast_anim = create_tween()
-	_research_toast_anim.set_parallel(true)
-	_research_toast_anim.tween_property(_research_toast, "modulate:a", 1.0, RESEARCH_TOAST_SLIDE_SEC)
-	_research_toast_anim.tween_property(_research_toast, "position:y", settled_y, RESEARCH_TOAST_SLIDE_SEC)
-	_research_toast_anim.set_parallel(false)
-	_research_toast_anim.tween_interval(RESEARCH_TOAST_HOLD_SEC)
-	_research_toast_anim.tween_callback(_dismiss_research_toast)
-
-
-func _dismiss_research_toast() -> void:
-	if _research_toast == null or not is_instance_valid(_research_toast) or not _research_toast.visible:
+	await get_tree().process_frame   # let _position_research_toasts settle the resting y
+	if not is_instance_valid(panel):
 		return
-	if _research_toast_anim != null and _research_toast_anim.is_valid():
-		_research_toast_anim.kill()
-	_research_toast_anim = create_tween()
-	_research_toast_anim.tween_property(_research_toast, "modulate:a", 0.0, RESEARCH_TOAST_FADE_OUT_SEC)
-	_research_toast_anim.tween_callback(func() -> void:
-		if _research_toast != null and is_instance_valid(_research_toast):
-			_research_toast.visible = false)
+	var settled_y := panel.position.y
+	panel.position.y = settled_y - 10.0
+	panel.modulate.a = 0.0
+	var anim := create_tween()
+	if delay > 0.0:
+		anim.tween_interval(delay)
+	anim.set_parallel(true)
+	anim.tween_property(panel, "modulate:a", 1.0, RESEARCH_TOAST_SLIDE_SEC)
+	anim.tween_property(panel, "position:y", settled_y, RESEARCH_TOAST_SLIDE_SEC)
+	anim.set_parallel(false)
+	anim.tween_interval(RESEARCH_TOAST_HOLD_SEC)
+	anim.tween_callback(func() -> void: _dismiss_research_toast(panel))
 
 
-## Single unlock → search the research panel for that tech (MatchState.research_search_requested,
-## the same signal UIHelpers.make_research_requirement_link uses, so this needs no reference to
-## wherever the research panel actually lives). Multiple → open the turn briefing panel instead,
-## since there is no single tech to jump to — it already lists every unlock (_build_research_list).
-func _on_research_toast_pressed() -> void:
-	var single: bool = _research_toast_head != null and _research_toast_head.visible
-	var name_text: String = _research_toast_name.text if _research_toast_name != null else ""
-	_dismiss_research_toast()
-	if single and name_text != "":
-		MatchState.research_search_requested.emit(name_text)
-	else:
+## Fade one flyout out and drop it. The others keep their places: they pop within a second of
+## each other and hold the same time, so they expire together, and re-flowing a stack that is
+## about to vanish would only make it jump.
+func _dismiss_research_toast(panel: PanelContainer) -> void:
+	if panel == null or not is_instance_valid(panel):
+		return
+	var fade := create_tween()
+	fade.tween_property(panel, "modulate:a", 0.0, RESEARCH_TOAST_FADE_OUT_SEC)
+	if panel == _research_overflow:
+		_research_overflow = null
+		_research_overflow_label = null
+		_research_overflow_n = 0
+	fade.tween_callback(func() -> void:
+		_research_toasts.erase(panel)
+		if is_instance_valid(panel):
+			panel.queue_free())
+
+
+## Click a flyout → search the research panel for THAT tech
+## (MatchState.research_search_requested, the same signal
+## UIHelpers.make_research_requirement_link uses, so this needs no reference to wherever the
+## research panel actually lives). The "+N more" flyout has no single tech to jump to, so it
+## opens the turn briefing, which lists every unlock.
+func _on_research_toast_pressed(panel: PanelContainer, tech: String) -> void:
+	_dismiss_research_toast(panel)
+	if tech == RESEARCH_OVERFLOW_TECH:
 		if TurnBriefing.expanded:
 			TurnBriefing.collapse()
 		TurnBriefing.expand()
+		return
+	MatchState.research_search_requested.emit(tech)
 
 
 # ── 5 · Council: seated portraits with loyalty rings + number chips ─────────────
@@ -1709,6 +1792,9 @@ func _build_quest() -> void:
 	# fast boot can still be wiring up. Without it the module first appeared on turn 2, because
 	# TurnManager emits turn 1's DECIDE before the ruleset is even loaded, so that nudge is lost.
 	SaveLoad.match_loaded.connect(_refresh_quest)
+	# A different match is a different set of unlocks, so the match-long research gate empties
+	# here -- the one place it should.
+	SaveLoad.match_loaded.connect(func() -> void: _research_toasted.clear())
 	get_viewport().size_changed.connect(_place_quest)
 	_refresh_quest()
 
@@ -2061,7 +2147,7 @@ func _build_goods_graph() -> void:
 	mod.mouse_exited.connect(func() -> void:
 		icon.set_color(C_LABEL)
 		lbl.add_theme_color_override("font_color", C_LABEL))
-	var v31_icon := _v31_icon(ICON_GOODS_GRAPH, mod)
+	var v31_icon := _v31_icon(ICON_GOODS_GRAPH, mod, SANKEY_ICON_PX)
 	row.add_child(v31_icon)
 	_register_v31_pair(classic_row, v31_icon)
 	mod.pressed.connect(func() -> void:
@@ -2188,7 +2274,9 @@ func _build_menu() -> void:
 	mod.tooltip_text = "Main menu — save, settings, quit"
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
-	row.add_child(_mini("☰", C_LABEL, 19))
+	var icon := _v31_icon(ICON_MENU, mod)
+	icon.modulate = C_LABEL
+	row.add_child(icon)
 	mod.pressed.connect(func() -> void:
 		_close_fly()
 		PauseMenu.open(get_parent()))
@@ -2251,12 +2339,22 @@ var _quest_auto_opened := false
 ## While true, the module holds the finished mission's text and nothing rebuilds the flyout.
 var _quest_celebrating := false
 var _quest_celebrating_kind := ""
+## Widest the mission readout has ever been; the flyout's fixed width. See _quest_fly_width.
+var _quest_fly_w := 0
 
 
+## ONE WIDTH, ALWAYS (owner, 2026-08-28). The module's width ANIMATES -- it opens at the full
+## mission readout and collapses to the icon a few seconds later -- so following its current
+## size made the flyout a different width depending on when you happened to open it. The FULL
+## readout is the ruler, and the value only ever grows, so a longer mission later never makes
+## the panel jump back and forth.
 func _quest_fly_width() -> int:
+	if _quest_text_col != null and is_instance_valid(_quest_text_col):
+		var full := int(_quest_text_col.get_combined_minimum_size().x + 24.0)
+		_quest_fly_w = maxi(_quest_fly_w, full)
 	if _quest_btn != null and is_instance_valid(_quest_btn) and _quest_btn.size.x > 1.0:
-		return int(_quest_btn.size.x)
-	return QUEST_FLY_FALLBACK_W
+		_quest_fly_w = maxi(_quest_fly_w, int(_quest_btn.size.x))
+	return maxi(_quest_fly_w, QUEST_FLY_FALLBACK_W)
 
 
 func _fly_quest(vb: VBoxContainer) -> void:
@@ -2277,11 +2375,21 @@ func _fly_quest(vb: VBoxContainer) -> void:
 	if _quest_open == "" and not list.is_empty():
 		_quest_open = MiniQuest.active_mission()
 	var inner: int = width - QUEST_FLY_PAD - QUEST_FLY_BORDER
+	var all_done := not list.is_empty()
 	for kind_variant: Variant in list:
 		var kind := str(kind_variant)
+		if not MiniQuest.is_mission_complete(kind):
+			all_done = false
 		var section := _quest_section(kind, inner)
 		_quest_sections[kind] = section
 		col.add_child(section)
+	# The chain has an end, and the panel should say so rather than just showing a column of
+	# ticks and leaving the player to work out there is nothing left (owner, 2026-08-28).
+	if all_done:
+		var done_row := _mini("All missions completed!", C_BRIGHT, 13)
+		done_row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		done_row.custom_minimum_size = Vector2(inner, 0)
+		col.add_child(done_row)
 
 
 ## One accordion section: its header always, its steps and reward only while it is the open one.

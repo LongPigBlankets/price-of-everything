@@ -61,7 +61,7 @@ var _sort_key := "name"
 var _sort_asc := true
 var _header_cells := {}          # key -> Label (click-to-sort)
 
-# Upgrade dialog (lazily built on a high CanvasLayer, mirroring building_detail_panel.gd).
+# Upgrade dialog (lazily built on a high CanvasLayer, as the detail panel does).
 var _upgrade_dialog: Control = null
 var _upgrade_dialog_layer: CanvasLayer = null
 

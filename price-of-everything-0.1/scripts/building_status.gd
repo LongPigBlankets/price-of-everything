@@ -1,5 +1,5 @@
 extends RefCounted
-## Shared building status / cost helpers, extracted from building_detail_panel.gd so the
+## Shared building status / cost helpers, extracted from the old v1 detail panel so the
 ## detail panel and the Building Ledger compute RAG colours, power supply, primary output,
 ## lifetime production, etc. from ONE source of truth (no drift).
 ##
@@ -10,7 +10,7 @@ extends RefCounted
 
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 
-# RAG palette — identical values to building_detail_panel.gd's STATUS_* consts (the contract
+# RAG palette — identical values to the old v1 panel's STATUS_* consts (the contract
 # the detail panel's status dots already render against). power_supply()'s return strings are
 # likewise a contract: power_status_color() compares against the literal "Owned Supply".
 const STATUS_GREEN := Color("#5BD180")   # DS PALETTE OK

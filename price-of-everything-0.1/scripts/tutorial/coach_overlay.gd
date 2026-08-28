@@ -737,7 +737,7 @@ func _visible_ui_rects() -> Array[Rect2]:
 	# Deliberately limited to large surfaces. Small spotlight targets and HUD widgets
 	# remain readable through the cut-out and should not disqualify an entire side.
 	for node_name in [
-		"TopBar", "BottomMenuPanel", "BuildingDetailPanel", "BuildingDetailPanelV2",
+		"TopBar", "BottomMenuPanel", "BuildingDetailPanelV2",
 		"TileInfoPanel", "ConstructPanel", "ConstructPanelV2", "ResourcePanel",
 		"MarketPanel", "MapModesPanel", "MoneyPanel", "ResearchPanel",
 		"BuildingLedgerPanel", "PeoplePanel", "EmpireView", "SearchOverlay",

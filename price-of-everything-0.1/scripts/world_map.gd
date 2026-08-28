@@ -1,7 +1,6 @@
 extends Node2D
 
 @onready var terrain_layer: HexMap = %TerrainLayer
-@onready var building_panel: PanelContainer = %BuildingDetailPanel
 ## Redesigned Building Detail v2 — toggled by `swap bdp`. Built ON FIRST USE, not during
 ## the load: a 2,400-line panel whose shell cost ~330 ms of the build to construct something
 ## the player cannot see until they click a building. Read it through the
@@ -282,15 +281,9 @@ func _build_base() -> void:
 	Construction.construction_completed.connect(_on_construction_completed_infra)
 	MatchState.deposit_exhausted.connect(_on_deposit_exhausted)
 
-	# Wire building connection visuals to building detail panel
-	building_panel.building_connections_changed.connect(
-		building_connection_visuals.on_building_connections_changed
-	)
-
-	# Building Detail v2 — the default panel since Phase 3 (MatchState.use_bdp_v2, default true).
-	# The classic v1 panel (%BuildingDetailPanel) stays as a fallback, reachable via `swap bdp`.
-	# See docs/building-detail-v2-plan.md. BUILT LAZILY — see _build_building_panel_v2.
-	MatchState.bdp_v2_changed.connect(_on_bdp_v2_changed)
+	# The building detail panel is BUILT LAZILY — see _build_building_panel_v2. Its
+	# connection-visual wiring happens there, at construction, rather than here: there is no
+	# panel to wire until something asks for one.
 
 	# Research unlocks no longer pop a dialog — they are aggregated into a single
 	# Turn Briefing "Research unlocked" update (see turn_briefing._research_aggregate_item).
@@ -444,6 +437,18 @@ func finish_build(animate: bool) -> void:
 	var t_pv := Time.get_ticks_usec()
 	port_visuals.setup(terrain_layer)
 	_prof_us("port_visuals.setup", t_pv)
+	# Ships work the harbours on their own canvas, just above the quay so a hull reads as
+	# lying alongside it rather than under it. Animated, so it must not share the port
+	# layer, which repaints only when its plans change. Built AFTER setup(), so the
+	# plans it reads already exist.
+	var port_ships: Node2D = load("res://scripts/port_ship_visuals.gd").new()
+	port_ships.name = "PortShipVisuals"
+	# BELOW PortVisuals (60), not above. The quay and its arms sit outboard of the basin, so
+	# they never cover a berthed hull — but the crane jibs reach out over the water, and a
+	# crane working a ship has to be drawn on top of it.
+	port_ships.z_index = 59
+	port_ships.set("ports", port_visuals)
+	terrain_layer.add_child(port_ships)
 	_prof("port_visuals (harbour plan)")
 
 	# Parchment grain: one world-anchored multiply texture over the whole plate
@@ -905,15 +910,14 @@ func _on_survey_tile_clicked(tile_data: Dictionary) -> void:
 func _on_v2_building_clicked(building: Dictionary) -> void:
 	_open_building_detail(building)
 
-## Open the building detail panel for `building`, routing to whichever panel the `swap bdp`
-## dev-toggle selects. Both panels sit in HUDContent after later-added siblings, so
-## move_to_front() must precede show — otherwise a re-sort undoes the positioning, leaving
-## an empty-looking panel until the next click.
+## Open the building detail panel for `building`. The panel sits in HUDContent after
+## later-added siblings, so move_to_front() must precede show — otherwise a re-sort undoes
+## the positioning, leaving an empty-looking panel until the next click.
 func _open_building_detail(building: Dictionary, empire_dock: bool = false) -> void:
 	if building.is_empty():
 		return
 	_last_detail_building = building
-	var panel := _active_building_panel()
+	var panel := building_panel_v2   # property: builds it on the first building click
 	panel.set("empire_dock", empire_dock)
 	panel.move_to_front()
 	panel.show_building(building)
@@ -1007,7 +1011,7 @@ func _build_dialogs_and_fx(paced: bool) -> void:
 	_prof_us("  survey effects", t)
 
 
-## Build the Building Detail v2 panel — same lazy contract as _build_info_panel.
+## Build the Building Detail panel — same lazy contract as _build_info_panel.
 func _build_building_panel_v2() -> void:
 	if _bdp_v2 != null:
 		return
@@ -1020,26 +1024,11 @@ func _build_building_panel_v2() -> void:
 	)
 
 
-## The building-detail panel currently selected by the `swap bdp` dev-toggle.
-func _active_building_panel() -> PanelContainer:
-	if MatchState.use_bdp_v2:
-		return building_panel_v2   # property: builds it on the first building click
-	return building_panel
-
-## Hide whichever detail panel(s) may be open (both, to survive a mid-open swap).
-## Uses the backing field, not the property: hiding a panel that was never built must
-## not build it.
+## Hide the detail panel if it exists. Uses the backing field, not the property: hiding a
+## panel that was never built must not build it.
 func _hide_building_detail() -> void:
-	building_panel.hide()
 	if _bdp_v2 != null:
 		_bdp_v2.hide()
-
-## `swap bdp` flipped: drop both panels, re-render the last building in the now-active one.
-func _on_bdp_v2_changed(_enabled: bool) -> void:
-	var was_open := building_panel.visible or (_bdp_v2 != null and _bdp_v2.visible)
-	_hide_building_detail()
-	if was_open and not _last_detail_building.is_empty():
-		_open_building_detail(_last_detail_building)
 
 func _on_output_stockpile_selection_started(selection: Dictionary) -> void:
 	_pending_stockpile_selection = selection.duplicate()
