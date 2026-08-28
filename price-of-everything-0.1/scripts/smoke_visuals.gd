@@ -13,6 +13,8 @@ extends Node2D
 ## Sits ABOVE the road layers in `main.tscn`: smoke is in the air, and smoke that slid under
 ## a road would read as painted on the ground.
 
+const CanvasBatch := preload("res://scripts/canvas_batch.gd")
+
 const NE := Vector2(0.70710678, -0.70710678)   # +x east, -y north (y is down in 2D)
 
 ## One puff every 2 s, each puff living exactly as long (owner spec). Life == period means
@@ -37,23 +39,61 @@ const STEAM := Color(0.93, 0.945, 0.95)
 const PEAK_ALPHA := 0.50
 const STEAM_ALPHA_SCALE := 0.82
 
-## A puff is a CLUSTER of overlapping discs, not one circle — that is what makes it read as
-## a cloud instead of a bubble. Six is enough for a lumpy silhouette and cheap enough to run
-## on every chimney in view.
-const LOBES := 8
-## Lobe centres, as fractions of the puff radius. Hand-placed rather than random so the
-## silhouette is a known good shape: a broad base with two smaller lobes riding above it.
-## Eight lobes (owner, 2026-08-27), up from six: the extra two fill the diagonals, which is
-## where a six-lobe cluster showed its ring.
-const LOBE_OFFSETS: Array[Vector2] = [
-	Vector2(0.00, 0.00), Vector2(-0.52, 0.10), Vector2(0.50, 0.06),
-	Vector2(-0.26, -0.46), Vector2(0.32, -0.40), Vector2(0.02, 0.46),
-	Vector2(-0.40, 0.36), Vector2(0.44, -0.14),
-]
-const LOBE_SCALES: Array[float] = [1.00, 0.66, 0.64, 0.56, 0.52, 0.48, 0.50, 0.54]
-## Per-lobe alpha. Uniform lobes stack into one flat disc; letting the outer ones sit
-## lighter than the core is what gives the puff a billowed edge instead of a soft blur.
-const LOBE_ALPHA: Array[float] = [1.00, 0.90, 0.90, 0.80, 0.80, 0.74, 0.76, 0.82]
+## THE PUFF SILHOUETTE, traced from the owner's own drawing (`puff smoke.PNG`,
+## `tools/trace_puff_smoke.py`). The drawing carries two thin stem lines below the cloud that
+## are not part of the shape; a morphological OPENING removes anything narrower than its
+## kernel, which takes the stems and leaves the body untouched. What is left is sampled by
+## ray-casting from the centroid — the right representation for a puff, which is star-convex
+## about its middle — and normalised so the longest reach is 1.0.
+##
+## This REPLACED a cluster of eight overlapping circles. It is both a truer shape and cheaper:
+## one triangulated polygon per puff instead of eight discs, and because they are triangles
+## every puff on screen batches into a SINGLE draw call.
+## `static var`, not `const`: GDScript will not accept a PackedVector2Array of Vector2
+## constructors as a constant expression. Never mutated — treat it as one.
+static var PUFF_SHAPE := PackedVector2Array([
+	Vector2(0.8654, 0.0000),
+	Vector2(0.9188, 0.1455),
+	Vector2(0.9094, 0.2955),
+	Vector2(0.8173, 0.4164),
+	Vector2(0.6336, 0.4603),
+	Vector2(0.5721, 0.5721),
+	Vector2(0.4908, 0.6756),
+	Vector2(0.3752, 0.7363),
+	Vector2(0.2393, 0.7366),
+	Vector2(0.1029, 0.6496),
+	Vector2(0.0000, 0.7788),
+	Vector2(-0.1360, 0.8590),
+	Vector2(-0.2848, 0.8765),
+	Vector2(-0.4282, 0.8404),
+	Vector2(-0.5417, 0.7456),
+	Vector2(-0.6088, 0.6088),
+	Vector2(-0.6266, 0.4552),
+	Vector2(-0.8019, 0.4086),
+	Vector2(-0.9382, 0.3048),
+	Vector2(-1.0000, 0.1584),
+	Vector2(-0.9908, 0.0000),
+	Vector2(-0.9017, -0.1428),
+	Vector2(-0.7366, -0.2393),
+	Vector2(-0.7209, -0.3673),
+	Vector2(-0.7036, -0.5112),
+	Vector2(-0.6180, -0.6180),
+	Vector2(-0.4934, -0.6791),
+	Vector2(-0.3320, -0.6515),
+	Vector2(-0.2380, -0.7325),
+	Vector2(-0.1306, -0.8248),
+	Vector2(-0.0000, -0.8783),
+	Vector2(0.1388, -0.8761),
+	Vector2(0.2701, -0.8312),
+	Vector2(0.3732, -0.7325),
+	Vector2(0.4680, -0.6441),
+	Vector2(0.6272, -0.6272),
+	Vector2(0.7631, -0.5544),
+	Vector2(0.8597, -0.4380),
+	Vector2(0.9176, -0.2982),
+	Vector2(0.9188, -0.1455),
+])
+
 
 ## A puff leaves the stack a little wider than the flue and swells as it cools, both as
 ## multiples of the stack radius. The end figure is deliberately large: the puff travels
@@ -66,10 +106,15 @@ const START_SCALE := 1.75
 const END_SCALE := 11.25
 ## Below this many pixels across, a puff is a smudge nobody can read and every one of its
 ## six discs still costs a draw call — so the whole layer stands down when zoomed out.
+## How far the silhouette turns over a puff's life, radians.
+const SPIN := 0.55
 const MIN_PUFF_PX := 3.0
 ## Keep drawing a little beyond the screen edge, so a puff drifting in from off-screen does
 ## not pop into existence at the border.
 const CULL_MARGIN := 160.0
+
+## The silhouette triangulated once, in unit space. Scaled and shifted per puff at draw time.
+static var _puff_tris := PackedVector2Array()
 
 var _visuals: Node = null
 var _stacks: Array = []
@@ -113,7 +158,15 @@ func _draw() -> void:
 	var ppu := _pixels_per_unit()
 	if ppu <= 0.0:
 		return
+	if _puff_tris.is_empty():
+		_puff_tris = CanvasBatch.polygon_soup(PUFF_SHAPE)
+		if _puff_tris.is_empty():
+			return   # the silhouette would not triangulate; draw nothing rather than a mess
 	var view := _visible_world_rect()
+	# Every puff on screen goes into one triangle array, so the whole layer is ONE command
+	# however many chimneys are in view.
+	var pts := PackedVector2Array()
+	var cols := PackedColorArray()
 	for stack_value in _stacks:
 		var stack: Dictionary = stack_value
 		var base_r: float = stack["r"]
@@ -126,7 +179,9 @@ func _draw() -> void:
 		# Cull against the whole path the puff can travel, not just its origin.
 		if not view.has_point(at) and not view.has_point(at + NE * DRIFT):
 			continue
-		_draw_puff(at, base_r, _phase(float(stack["seed"])), bool(stack.get("carbon", true)))
+		_append_puff(pts, cols, at, base_r, _phase(float(stack["seed"])),
+			bool(stack.get("carbon", true)))
+	CanvasBatch.flush(self, pts, cols)
 
 
 ## Age of this stack's current puff, 0 at emission and 1 at the end of its life. The seeded
@@ -135,7 +190,8 @@ func _phase(seed_val: float) -> float:
 	return fposmod(_clock + seed_val * PERIOD, PERIOD) / PERIOD
 
 
-func _draw_puff(origin: Vector2, base_r: float, p: float, carbon: bool) -> void:
+func _append_puff(pts: PackedVector2Array, cols: PackedColorArray, origin: Vector2,
+		base_r: float, p: float, carbon: bool) -> void:
 	# Drift eases OUT: a puff leaves the stack briskly and slows as it spreads and cools.
 	var travelled := 1.0 - pow(1.0 - p, 1.7)
 	var centre := origin + NE * DRIFT * travelled
@@ -151,13 +207,16 @@ func _draw_puff(origin: Vector2, base_r: float, p: float, carbon: bool) -> void:
 	if alpha <= 0.004:
 		return
 	var tint := SMOKE if carbon else STEAM
-	# Lobes spread apart as the puff grows, so it frays rather than swelling as a rigid
-	# shape — the difference between smoke dispersing and a balloon inflating.
-	var spread := lerpf(0.35, 1.0, p)
-	for i in LOBES:
-		draw_circle(centre + LOBE_OFFSETS[i] * radius * spread,
-			radius * LOBE_SCALES[i] * 0.70,
-			Color(tint.r, tint.g, tint.b, alpha * LOBE_ALPHA[i]))
+	# The silhouette turns slowly as it drifts, so consecutive puffs from one chimney are not
+	# rubber stamps of each other.
+	var spin := p * SPIN
+	var col := Color(tint.r, tint.g, tint.b, alpha)
+	var base := pts.size()
+	pts.resize(base + _puff_tris.size())
+	cols.resize(base + _puff_tris.size())
+	for i in _puff_tris.size():
+		pts[base + i] = centre + _puff_tris[i].rotated(spin) * radius
+		cols[base + i] = col
 
 
 func _pixels_per_unit() -> float:
