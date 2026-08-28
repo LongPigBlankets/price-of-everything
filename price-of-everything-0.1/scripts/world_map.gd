@@ -444,6 +444,15 @@ func finish_build(animate: bool) -> void:
 	var t_pv := Time.get_ticks_usec()
 	port_visuals.setup(terrain_layer)
 	_prof_us("port_visuals.setup", t_pv)
+	# Ships work the harbours on their own canvas, just above the quay so a hull reads as
+	# lying alongside it rather than under it. Animated, so it must not share the port
+	# layer, which repaints only when its plans change. Built AFTER setup(), so the
+	# plans it reads already exist.
+	var port_ships: Node2D = load("res://scripts/port_ship_visuals.gd").new()
+	port_ships.name = "PortShipVisuals"
+	port_ships.z_index = 61
+	port_ships.set("ports", port_visuals)
+	terrain_layer.add_child(port_ships)
 	_prof("port_visuals (harbour plan)")
 
 	# Parchment grain: one world-anchored multiply texture over the whole plate
