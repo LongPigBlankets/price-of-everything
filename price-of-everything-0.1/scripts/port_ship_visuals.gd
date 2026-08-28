@@ -25,7 +25,14 @@ const LENGTH_FRAC := 1.0 / 3.0
 const BEAM_FRAC := 0.19
 ## How far out to sea a ship starts and ends its run, in ship lengths — far enough to be clear
 ## of the harbour mouth before it goes, rather than winking out over the water.
-const APPROACH := 2.2
+## Extra clearance before a ship dares turn, in ship lengths on top of its own swept radius.
+## "Well clear of the docks" (owner, 2026-08-27).
+const TURN_MARGIN := 0.55
+## How much farther out a ship runs once it is round, in ship lengths.
+const AWAY_RUN := 2.4
+## The three-point legs nose AHEAD by this much of a ship length, then come back to the
+## clearance line -- never inside it.
+const JOG := 0.30
 
 const HULL := Color("222f4a")          # dark navy
 const HULL_INK := Color("11182a")
@@ -136,15 +143,29 @@ func _refresh() -> void:
 			if run <= 1.0:
 				continue
 			var length := run * LENGTH_FRAC
+			# HOW FAR OUT IS CLEAR. Measured, not guessed: the seaward-most point of EITHER arm,
+			# plus half the ship (its swept radius when it pivots) plus a margin. A ship turning
+			# any closer sweeps its own quay, which is exactly what the owner saw.
+			var arm_tip := -INF
+			for both_key in ["left_arm_polygons", "right_arm_polygons"]:
+				for poly_value in (plan.get(both_key, []) as Array):
+					for point in (poly_value as PackedVector2Array):
+						arm_tip = maxf(arm_tip, (point as Vector2).dot(seaward))
 			# Alongside, not down the middle: half a beam plus a fender off the basin edge.
 			var inset := maxf(half_across - length * BEAM_FRAC - 3.0, 0.0)
+			var berth_pos: Vector2 = centre + tangent * side * inset
+			# Everything beyond this is open water; the turn happens past it and never inside.
+			var reach: float = maxf(arm_tip - berth_pos.dot(seaward), 0.0)
+			var clear_out: float = reach + length * (0.5 + TURN_MARGIN)
 			_berths.append({
-				"berth": centre + tangent * side * inset,
+				"berth": berth_pos,
 				# The bow ALWAYS leads: a ship comes in facing the quay and turns about while
 				# alongside, so it leaves bow-first instead of reversing out of the harbour.
 				"heading_in": (-seaward).angle(),
 				"seaward": seaward,
 				"length": length,
+				"clear": clear_out,
+				"away": clear_out + length * AWAY_RUN,
 				"phase": 0.0 if side > 0.0 else ARM_OFFSET,
 				"seed": RoadHash.pick("ship|%s|%d" % [str(plan.get("key", "")), int(side)], 7),
 			})
@@ -259,9 +280,9 @@ func _draw() -> void:
 		if length * ppu < MIN_SHIP_PX:
 			continue
 		var t := fposmod(_clock + float(berth["phase"]), CYCLE)
-		var move: Array = _manoeuvre(t)
+		var move: Array = _manoeuvre(t, float(berth["clear"]), float(berth["away"]), length)
 		var pos: Vector2 = (berth["berth"] as Vector2) \
-			+ (berth["seaward"] as Vector2) * length * APPROACH * float(move[0])
+			+ (berth["seaward"] as Vector2) * float(move[0])
 		if not view.has_point(pos):
 			continue
 		var basis := Transform2D(float(berth["heading_in"]) + float(move[1]), pos) \
@@ -303,43 +324,43 @@ func _draw() -> void:
 		_draw_topside(entry["basis"], int(entry["seed"]))
 
 
-## The whole harbour manoeuvre, as [distance out, heading offset].
+## The whole harbour manoeuvre, as [distance seaward of the berth in WORLD UNITS, heading
+## offset]. Absolute rather than a fraction because the safe turning distance is a measured
+## property of each harbour, not a constant.
 ##
-## `dist` is measured seaward from the berth in units of the full approach; the offset is
-## added to the arrival heading and reaches PI once the ship is round. Splitting the
-## departure into legs is what makes it a THREE-POINT TURN OUTSIDE THE PORT (owner,
-## 2026-08-27) rather than a pivot on the spot alongside the quay:
-##
-##   arrive    bow-first into the berth
+##   arrive    bow-first from open water into the berth
 ##   hold      alongside, no turn at all
-##   back out  astern, clear of the arms, still bow-landward
+##   back out  ASTERN, still bow-landward, all the way past `clear`
 ##   leg 1     ahead, swinging through 70 degrees
 ##   leg 2     ASTERN, swinging on to 115 -- the middle point of the three
 ##   leg 3     ahead, straightening onto 180
 ##   away      out to sea, bow leading
 ##
-## The short astern jog in leg 2 is what makes it read as a manoeuvre rather than a slow
-## rotation: a ship that only ever went forwards would be turning, not three-pointing.
-func _manoeuvre(t: float) -> Array:
+## THE INVARIANT: from the moment the turn starts until the ship is gone, the returned
+## distance is never less than `clear` -- which is itself the arm tip plus the swept radius
+## plus a margin. That is what keeps a turning hull off the quay. The jogs nose AHEAD of the
+## line and come back to it; they never cross it.
+func _manoeuvre(t: float, clear: float, away: float, length: float) -> Array:
 	if t < IN_TIME:
-		var u := t / IN_TIME
-		return [1.0 - _ease(u), 0.0]
+		return [away * (1.0 - _ease(t / IN_TIME)), 0.0]
 	if t < IN_TIME + HOLD_TIME:
 		return [0.0, 0.0]
 	var v := clampf((t - IN_TIME - HOLD_TIME) / OUT_TIME, 0.0, 1.0)
-	if v < 0.30:
-		return [0.45 * _ease(v / 0.30), 0.0]
-	if v < 0.45:
-		var a := _ease((v - 0.30) / 0.15)
-		return [0.45 + 0.07 * a, PI * 0.39 * a]
-	if v < 0.60:
-		var b := _ease((v - 0.45) / 0.15)
-		return [0.52 - 0.10 * b, PI * (0.39 + 0.25 * b)]
-	if v < 0.75:
-		var c := _ease((v - 0.60) / 0.15)
-		return [0.42 + 0.10 * c, PI * (0.64 + 0.36 * c)]
-	var d := _ease((v - 0.75) / 0.25)
-	return [0.52 + 0.48 * d, PI]
+	var jog := length * JOG
+	if v < 0.34:
+		# Astern, out of the basin and past the arm tips, before any turning begins.
+		return [clear * _ease(v / 0.34), 0.0]
+	if v < 0.49:
+		var a1 := _ease((v - 0.34) / 0.15)
+		return [clear + jog * a1, PI * 0.39 * a1]
+	if v < 0.64:
+		var a2 := _ease((v - 0.49) / 0.15)
+		return [clear + jog * (1.0 - a2), PI * (0.39 + 0.25 * a2)]
+	if v < 0.79:
+		var a3 := _ease((v - 0.64) / 0.15)
+		return [clear + jog * a3, PI * (0.64 + 0.36 * a3)]
+	var a4 := _ease((v - 0.79) / 0.21)
+	return [clear + jog + (away - clear - jog) * a4, PI]
 
 
 static func _ease(x: float) -> float:

@@ -321,6 +321,7 @@ func _ready() -> void:
 	_test_construction_sites()
 	_test_dash_segments()
 	_test_smoke_carbon_split()
+	_test_ship_manoeuvre_clears_the_arms()
 	await _test_crowded_tile_gentle_failure()
 	await _test_river_bank_and_bridge_head()
 	await _test_bridge_corridor()
@@ -2400,6 +2401,60 @@ func _test_crowded_tile_gentle_failure() -> void:
 	for iid in ids:
 		MatchState.buildings.erase(str(iid))
 	bv.queue_free(); terrain.queue_free(); RoadNetwork.reset()
+
+
+## THE SHIP MANOEUVRE. Pinned because the failure is geometric and invisible in a still: a
+## ship that begins its three-point turn before it is clear of the arm tips sweeps its own
+## quay as it rotates, and only a frame caught mid-turn would ever show it.
+func _test_ship_manoeuvre_clears_the_arms() -> void:
+	var ships: Node = preload("res://scripts/port_ship_visuals.gd").new()
+	var length := 48.0
+	var clear := 130.0        # stands in for arm tip + swept radius + margin
+	var away := clear + length * 4.0
+
+	var in_time: float = ships.IN_TIME
+	var hold: float = ships.HOLD_TIME
+	var cycle: float = ships.CYCLE
+
+	# Arrival ends exactly alongside, and departure ends exactly at `away` — otherwise a ship
+	# jumps on the loop seam.
+	var arrive: Array = ships.call("_manoeuvre", 0.0, clear, away, length)
+	_check(absf(float(arrive[0]) - away) < 0.5, "ship: the cycle starts out at sea")
+	var berthed: Array = ships.call("_manoeuvre", in_time + hold * 0.5, clear, away, length)
+	_check(is_zero_approx(float(berthed[0])), "ship: sits alongside during the hold")
+	_check(is_zero_approx(float(berthed[1])), "ship: does not turn while alongside")
+
+	# THE INVARIANT: once any turning has begun, the ship is never nearer than `clear`.
+	var worst := INF
+	var turn_started := -1.0
+	var samples := 400
+	for i in samples:
+		var t := cycle * float(i) / float(samples)
+		var m: Array = ships.call("_manoeuvre", t, clear, away, length)
+		var dist := float(m[0])
+		var turn := absf(float(m[1]))
+		if turn > 0.001:
+			if turn_started < 0.0:
+				turn_started = dist
+			worst = minf(worst, dist)
+	_check(turn_started >= clear - 0.5,
+		"ship: turning only begins past the clearance line (%.1f >= %.1f)" % [turn_started, clear])
+	_check(worst >= clear - 0.5,
+		"ship: never comes back inside the clearance line while turning (%.1f)" % worst)
+
+	# And it really does end up round, having gone forward-back-forward on the way.
+	var ended: Array = ships.call("_manoeuvre", cycle - 0.01, clear, away, length)
+	_check(absf(float(ended[1]) - PI) < 0.01, "ship: finishes the turn fully round")
+	var reversed := false
+	var prev := -1.0
+	for i in samples:
+		var t2: float = in_time + hold + (float(ships.OUT_TIME) * float(i) / float(samples))
+		var d2 := float((ships.call("_manoeuvre", t2, clear, away, length) as Array)[0])
+		if prev >= 0.0 and d2 < prev - 0.01:
+			reversed = true
+		prev = d2
+	_check(reversed, "ship: the departure includes an astern leg (the middle of the three)")
+	ships.free()
 
 
 ## Grey smoke vs white steam (owner, 2026-08-27). The split must agree with what production
