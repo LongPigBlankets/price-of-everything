@@ -1,6 +1,6 @@
 extends Node2D
-## Tower cranes on construction sites: the jib swings 90 degrees over 2 s, then back over
-## another 2 s, forever.
+## Tower cranes on construction sites: the jib swings 90 degrees over 2 s, stands 3 s, swings
+## back over 2 s, stands 3 s, forever.
 ##
 ## Same split as the chimney smoke, and for the same reason: `BuildingVisuals` repaints only
 ## when the view settles, so anything that moves every frame has to live on its own canvas or
@@ -14,7 +14,10 @@ const PlayerColours := preload("res://scripts/player_colours.gd")
 
 ## 2 s out, 2 s back (owner spec). The full cycle is therefore 4 s.
 const SWING := 2.0
-const CYCLE := SWING * 2.0
+## A crane does not sweep back and forth without stopping: it swings, HOLDS while the load is
+## hooked or landed, then swings back and holds again (owner, 2026-08-28).
+const HOLD := 3.0
+const CYCLE := (SWING + HOLD) * 2.0
 const SWEEP := PI * 0.5   # 90 degrees
 
 ## Sites on the SAME tile start a second apart (owner spec), so a tile with three sites reads
@@ -108,12 +111,19 @@ func _draw() -> void:
 		_draw_crane(at, reach, float(site["base_angle"]), int(site["index"]), livery)
 
 
-## Jib angle for this site right now. Out over SWING, back over SWING — a triangle wave, not
-## a sine: the spec is a crane slewing between two bearings and pausing at each, which is what
-## the flat turn at the ends of a triangle reads as.
+## Jib angle for this site right now. Out over SWING, hold, back over SWING, hold: a trapezoid
+## wave, not a sine. The spec is a crane slewing between two bearings and STANDING at each --
+## the pause is the part that reads as work being done rather than a metronome.
 func _angle_at(index: int) -> float:
 	var t := fposmod(_clock + float(index) * TILE_PHASE_STEP, CYCLE)
-	var u := t / SWING if t < SWING else 1.0 - (t - SWING) / SWING
+	var u := 0.0
+	if t < SWING:
+		u = t / SWING                             # swinging out
+	elif t < SWING + HOLD:
+		u = 1.0                                   # standing at the far end
+	elif t < SWING + HOLD + SWING:
+		u = 1.0 - (t - SWING - HOLD) / SWING      # swinging back
+	# else: standing at the near end, u stays 0
 	return SWEEP * u
 
 

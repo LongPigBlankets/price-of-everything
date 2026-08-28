@@ -64,5 +64,16 @@ func _ready() -> void:
 							first = "%.0f,%.0f" % [(at[0] as Vector2).x, (at[0] as Vector2).y]
 				print("[BERTH]   route %d %s: %d/200 ON LAND %s"
 					% [ri, key, bad, first])
+			print("[BERTH]   route %d tile %s window %.1f period %.1f laps %d arrivals %s"
+				% [ri, str((route["berth"] as Dictionary).get("tile_id", "?")),
+					float(route["window"]), float(route["period"]), int(route["laps"]),
+					str(route["arrivals"])])
+	var total_ships := 0
+	if callers is Array:
+		for route_value in (callers as Array):
+			var route: Dictionary = route_value
+			total_ships += int(route["laps"]) * (route["arrivals"] as Array).size()
+	print("[BERTH] caller ships: %d (plus %d in the stream)"
+		% [total_ships, 2 * ships.LANE_SHIPS])
 	print("[BERTH] done")
 	get_tree().quit(0)

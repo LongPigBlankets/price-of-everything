@@ -322,6 +322,7 @@ func _ready() -> void:
 	_test_dash_segments()
 	_test_stacks_sit_in_a_line()
 	_test_sea_path_goes_round_land()
+	_test_port_timetable()
 	_test_smoke_carbon_split()
 	_test_ship_manoeuvre_clears_the_arms()
 	await _test_crowded_tile_gentle_failure()
@@ -2558,9 +2559,10 @@ func _test_dash_segments() -> void:
 	bv.free()
 
 
-## Construction sites and their cranes (owner spec 2026-08-27). The crane's swing is pure
-## arithmetic, so it is worth pinning exactly: 90 degrees out over 2 s, back over 2 s, and
-## sites on one tile a second apart.
+## Construction sites and their cranes (owner spec 2026-08-27, revised 2026-08-28). The
+## crane's swing is pure arithmetic, so it is worth pinning exactly: 90 degrees out over 2 s,
+## STAND for 3 s, back over 2 s, stand 3 s -- and sites on one tile a second apart. The holds
+## are the point of the revision, so the test spends its assertions inside them.
 func _test_construction_sites() -> void:
 	var visuals := preload("res://scenes/building_visuals.gd")
 	var beige: Color = visuals.CONSTRUCTION_BEIGE
@@ -2582,11 +2584,21 @@ func _test_construction_sites() -> void:
 	cranes.set("_clock", 2.0)
 	_check(absf(float(cranes.call("_angle_at", 0)) - PI * 0.5) < 0.001,
 		"crane: a full 90 deg at t=2 s")
-	cranes.set("_clock", 3.0)
+	# The far-end hold: three seconds standing at 90 degrees, not a turn straight back.
+	for held in [2.5, 3.0, 4.0, 4.9]:
+		cranes.set("_clock", held)
+		_check(absf(float(cranes.call("_angle_at", 0)) - PI * 0.5) < 0.001,
+			"crane: still out at 90 deg at t=%.1f s" % held)
+	cranes.set("_clock", 6.0)
 	_check(absf(float(cranes.call("_angle_at", 0)) - PI * 0.25) < 0.001,
-		"crane: back through 45 deg at t=3 s")
-	cranes.set("_clock", 4.0)
-	_check(is_zero_approx(cranes.call("_angle_at", 0)), "crane: home again at t=4 s")
+		"crane: back through 45 deg at t=6 s")
+	cranes.set("_clock", 7.0)
+	_check(is_zero_approx(cranes.call("_angle_at", 0)), "crane: home again at t=7 s")
+	# ...and the near-end hold, which is what makes the cycle 10 s rather than 7.
+	for resting in [7.5, 8.0, 9.9]:
+		cranes.set("_clock", resting)
+		_check(is_zero_approx(cranes.call("_angle_at", 0)),
+			"crane: still home at t=%.1f s" % resting)
 	# The per-site stagger: site 1 now must equal site 0 one second ago, exactly.
 	cranes.set("_clock", 0.0)
 	var second_site := float(cranes.call("_angle_at", 1))
@@ -19544,3 +19556,60 @@ func _test_sea_path_goes_round_land() -> void:
 	_check(blocked.is_empty(), "sea path: an unreachable harbour returns no route (%d)"
 		% blocked.size())
 	ships.free()
+
+
+## The harbour timetable (owner, 2026-08-28): Capital every 10 s, Arin every 15, Vandel every
+## 30, Stoneshore two ships every 30 s a couple of seconds apart. Two claims worth pinning,
+## because getting either wrong is exactly what the map showed before: the cadence has to be
+## what was asked, and NO TWO SHIPS may be alongside the same quay at once -- which is what
+## the two overlapping ship populations used to look like.
+func _test_port_timetable() -> void:
+	var ships := preload("res://scripts/port_ship_visuals.gd")
+	var visit: float = ships.CYCLE
+	for tile in ships.PORT_SCHEDULE:
+		var schedule: Dictionary = ships.PORT_SCHEDULE[tile]
+		var every := float(schedule["every"])
+		var burst: int = int(schedule["burst"])
+		var gap := float(schedule["gap"])
+		var window := every * 2.0
+		var arrivals: Array = ships.timetable(every, burst, gap, 2)
+		_check(arrivals.size() == burst * 2,
+			"timetable %s: %d arrivals a window (%d)" % [tile, burst * 2, arrivals.size()])
+		# THE CADENCE. Sort the arrival times over one window and check the port is served at
+		# the stated interval -- for a burst, that the burst repeats at it.
+		var times: Array = []
+		for a_value in arrivals:
+			times.append(float((a_value as Dictionary)["t"]))
+		times.sort()
+		var first_of_burst: Array = []
+		for i in times.size():
+			if i % burst == 0:
+				first_of_burst.append(times[i])
+		for i in range(1, first_of_burst.size()):
+			var step: float = float(first_of_burst[i]) - float(first_of_burst[i - 1])
+			_check(absf(step - every) < 0.01,
+				"timetable %s: a ship every %.1f s (got %.1f)" % [tile, every, step])
+		if burst > 1:
+			for i in range(1, burst):
+				var within: float = float(times[i]) - float(times[i - 1])
+				_check(absf(within - gap) < 0.01,
+					"timetable %s: burst ships %.1f s apart (got %.1f)" % [tile, gap, within])
+		# NO DOUBLE OCCUPANCY. Per quay, over three windows so the wrap is covered too.
+		for quay in 2:
+			var visits: Array = []
+			for w in 3:
+				for a_value in arrivals:
+					var a: Dictionary = a_value
+					if int(a["quay"]) == quay:
+						visits.append(float(a["t"]) + float(w) * window)
+			visits.sort()
+			var clash := 0
+			var tightest := INF
+			for i in range(1, visits.size()):
+				var apart: float = float(visits[i]) - float(visits[i - 1])
+				tightest = minf(tightest, apart)
+				if apart < visit:
+					clash += 1
+			_check(clash == 0,
+				"timetable %s quay %d: no two ships alongside at once (%d clashes, tightest %.1f s vs a %.1f s visit)"
+					% [tile, quay, clash, tightest, visit])

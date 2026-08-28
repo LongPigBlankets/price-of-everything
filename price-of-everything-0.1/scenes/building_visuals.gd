@@ -104,6 +104,7 @@ const SMOKE_STACKS := {
 	"chem_plant": {"count": 2, "r": 2.8},
 	"power_plant": {"count": 1, "r": 4.6},   # one larger
 	"eaf": {"count": 1, "r": 2.1},           # one small
+	"industrial_factory": {"count": 1, "r": 3.0},   # owner, 2026-08-28: a factory smokes too
 }
 ## CONSTRUCTION SITES (owner spec, 2026-08-27). `building_placed` fires when a build is
 ## QUEUED, not when it finishes (world_map.gd:2163 and the awaiting-market paths), so a

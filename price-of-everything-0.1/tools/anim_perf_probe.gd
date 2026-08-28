@@ -20,6 +20,7 @@ var _cam: Camera2D
 var _smoke: CanvasItem
 var _cranes: CanvasItem
 var _visuals: Node
+var _ships: CanvasItem
 
 
 func _ready() -> void:
@@ -51,6 +52,7 @@ func _ready() -> void:
 	_smoke = _wm.find_child("SmokeVisuals", true, false) as CanvasItem
 	_cranes = _wm.find_child("ConstructionVisuals", true, false) as CanvasItem
 	_visuals = _wm.find_child("BuildingVisuals", true, false)
+	_ships = _wm.find_child("PortShipVisuals", true, false) as CanvasItem
 
 	# Cranes need sites, so queue real builds on the tile we are about to look at.
 	var coord: Vector2i = _terrain.id_to_coord(tile_id)
@@ -80,16 +82,19 @@ func _ready() -> void:
 
 	# Baseline last as a repeat, to show drift between the first and last measurement — a
 	# number that moved between two identical runs is a number not to trust.
-	await _measure("none (baseline)", false, false, false)
-	await _measure("chimneys only", true, false, false)
-	await _measure("chimneys + smoke", true, true, false)
-	await _measure("chimneys + smoke + cranes", true, true, true)
-	await _measure("none (repeat, drift check)", false, false, false)
+	await _measure("none (baseline)", false, false, false, false)
+	await _measure("chimneys only", true, false, false, false)
+	await _measure("chimneys + smoke", true, true, false, false)
+	await _measure("chimneys + smoke + cranes", true, true, true, false)
+	await _measure("+ ships", true, true, true, true)
+	await _measure("ships only", false, false, false, true)
+	await _measure("none (repeat, drift check)", false, false, false, false)
 	print("[PERF] done")
 	get_tree().quit(0)
 
 
-func _measure(label: String, chimneys: bool, smoke: bool, cranes: bool) -> void:
+func _measure(label: String, chimneys: bool, smoke: bool, cranes: bool,
+		ships: bool) -> void:
 	var visuals_script := preload("res://scenes/building_visuals.gd")
 	visuals_script.DRAW_CHIMNEYS = chimneys
 	if _smoke != null:
@@ -98,6 +103,9 @@ func _measure(label: String, chimneys: bool, smoke: bool, cranes: bool) -> void:
 	if _cranes != null:
 		_cranes.visible = cranes
 		(_cranes as Node).set_process(cranes)
+	if _ships != null:
+		_ships.visible = ships
+		(_ships as Node).set_process(ships)
 	# The building canvas only repaints on settle, so a chimney toggle needs saying out loud.
 	if _visuals != null:
 		(_visuals as CanvasItem).queue_redraw()

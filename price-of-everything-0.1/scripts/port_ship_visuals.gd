@@ -7,20 +7,22 @@ extends Node2D
 ##
 ## THE CYCLE (owner spec, 2026-08-27), 12.5 s end to end per ship:
 ##   in over 2.5 s  ->  alongside for 5 s  ->  out over 5 s
-## The second arm's ship is offset by 2.5 s, so the two are never doing the same thing at the
-## same moment and the harbour reads as worked rather than choreographed.
+## EVERY ship on the map is the same hull at the same size (owner, 2026-08-28). There used to
+## be two populations -- a permanent pair moored at each harbour, sized off its arms, and the
+## callers arriving off the sea lanes at a fixed length. They were different sizes and they
+## sat on top of each other at the quay. The moored pair is gone: a harbour's traffic is its
+## callers, and nothing else.
 
 const CanvasBatch := preload("res://scripts/canvas_batch.gd")
+const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
+const AuthoredMapData := preload("res://scripts/authored_map.gd")
 
 const IN_TIME := 2.5
 const HOLD_TIME := 5.0
 const OUT_TIME := 5.0
 const CYCLE := IN_TIME + HOLD_TIME + OUT_TIME     # 12.5 s
-## How far the second berth's ship lags the first.
-const ARM_OFFSET := 2.5
-
-## Ship length as a fraction of its arm's seaward run (owner spec: a third).
-const LENGTH_FRAC := 1.0 / 3.0
+## ONE ship size everywhere, standardised at the larger of the two the map used to carry.
+const SHIP_LENGTH := 58.0
 ## Half-beam as a fraction of length. Slim, as asked.
 const BEAM_FRAC := 0.19
 ## How far out to sea a ship starts and ends its run, in ship lengths — far enough to be clear
@@ -42,6 +44,11 @@ const DECK := Color("39465f")
 
 ## Below this many pixels of length a ship is a speck and its containers are noise.
 const MIN_SHIP_PX := 6.0
+## Below this many pixels the CARGO stops being legible: outline, deck and containers all
+## collapse into the hull colour anyway. The hull is already in the batch, so dropping the
+## topside below this costs nothing visible and saves six draw calls per ship -- which at a
+## zoom where the whole map is in frame is every ship on it.
+const TOPSIDE_PX := 17.0
 const CULL_MARGIN := 220.0
 
 ## SEA LANES (owner, 2026-08-27). Coastal traffic crossing the south of the continent:
@@ -57,6 +64,12 @@ const LANE: Array[Vector2] = [
 	Vector2(0.026, 0.955), Vector2(0.10, 0.994), Vector2(0.45, 0.996),
 	Vector2(0.70, 0.992), Vector2(0.88, 0.975), Vector2(0.985, 0.950),
 ]
+## ...and then UP THE EAST COAST (owner, 2026-08-28: "need more ships on the east coast").
+## That leg is not hand-traced. The eastern seaboard is a narrow strip of water -- in places a
+## single grid column -- and tracing it off a 78-column ASCII map is how you get ships ashore.
+## It is ROUTED instead, by the same sea path the port callers use, from the south-east end of
+## the traced lane to a point off the north-east corner.
+const LANE_NORTH_EAST := Vector2(0.99, 0.10)
 ## THE CHANNEL (owner, 2026-08-27). Traffic spreads across two tiles of sea: the water
 ## adjacent to the land plus one tile farther out. The LANE above is the INSHORE edge of that
 ## band -- it was validated hugging the coast -- and the channel extends OFFSHORE from it.
@@ -72,34 +85,38 @@ const CHANNEL := TILE_HEIGHT * CHANNEL_TILES
 const HALF_CHANNEL := CHANNEL * 0.5
 ## Keeps ships off the exact edges of their half.
 const SLOT_MARGIN := 30.0
-## Ships per direction (owner: 10-20 each way).
-const LANE_SHIPS := 14
+## Ships per direction (owner: 10-20 each way; at the top of the range now that the stream
+## also runs up the east coast, which is a good deal more water to cover).
+const LANE_SHIPS := 20
 
-const SEA_SHIP_LENGTH := 58.0
 ## World units per second. A crossing should take minutes, not seconds — this is background.
 const SEA_SPEED := 62.0
 
-## PORT CALLERS (owner, 2026-08-27). Five ships each way peel out of the stream, work the
-## Capital Port, and merge back in.
+## PORT CALLERS. Ships peel out of the stream, work a harbour, and merge back in.
 ##
-## NOTHING IS ANIMATED. A caller is still `position = f(clock)`: one baked ROUTE per
-## direction, shared by all five, differing only in phase. A route is a handful of segments
-## -- lane run, spur in, the berth manoeuvre we already have, spur out -- each with a
-## duration, so a frame costs one walk over ~4 segments and a lerp. Ten callers are ten
-## lookups; the geometry is built once at load.
-## The harbour is named by tile because that is what identifies it in the plan; if the map
-## ever stops carrying this tile the callers simply do not spawn.
-const CAPITAL_TILE := "tile_24_7"
-const CALLERS_PER_DIRECTION := 5
-## The two smaller harbours get a lighter service each way.
-const CALLERS_MINOR_PORT := 3
+## NOTHING IS ANIMATED. A caller is `position = f(clock)`: one baked ROUTE per berth per
+## direction, shared by every ship on it, differing only in phase. A route is four legs --
+## lane run, sea path in, the berth manoeuvre, sea path out -- each with a duration, so a
+## frame costs one walk over a few segments and a lerp. Fifty callers are fifty lookups; the
+## geometry is built once at load.
+##
+## THE TIMETABLE (owner, 2026-08-28), by harbour tile. `every` is the interval between
+## ARRIVALS AT THE PORT, counting both directions; `burst` ships arrive together `gap` apart.
+## Stoneshore Docks is authored rather than planned, which is why it had no harbour geometry
+## and so no ships at all -- "it looks like they never go there" was literally true.
+const PORT_SCHEDULE := {
+	"tile_24_7": {"every": 10.0, "burst": 1, "gap": 0.0},    # Capital Port
+	"tile_11_17": {"every": 15.0, "burst": 1, "gap": 0.0},   # Arin Estuary Docks
+	"tile_22_16": {"every": 30.0, "burst": 1, "gap": 0.0},   # Vandel's Skip
+	"tile_5_10": {"every": 30.0, "burst": 2, "gap": 2.5},    # Stoneshore Docks
+}
+const DEFAULT_SCHEDULE := {"every": 30.0, "burst": 1, "gap": 0.0}
+## A caller spends at least this long out in the stream between visits, so a route is a
+## voyage rather than a shuttle pacing the harbour mouth.
+const MIN_LANE_TIME := 45.0
 ## How far downstream a departing caller rejoins the stream, so it merges in ahead of where
 ## it left instead of retracing its own approach.
 const MERGE_RUN := 900.0
-## Points sampled along each joining curve. Enough that the merge reads as a curve.
-const SPUR_SAMPLES := 22
-## The outbound spur is nudged sideways so leaving does not exactly retrace arriving.
-const SPUR_SPLIT := 70.0
 ## SEA ROUTING for the port spurs. A Bezier straight at the harbour cut corners across
 ## headlands, so the run in is now A-STARRED over water (owner, 2026-08-27).
 ## The grid is built from NAVGRID -- the baked terrain -- not from the tile map, and a cell
@@ -121,6 +138,7 @@ var _lanes: Array = []      # [{points, length}] one per direction
 var _callers: Array = []   # one baked route per direction, shared by its ships
 var _known := -1
 var _clock := 0.0
+var _authored_berths_done := false
 ## World extent, measured once by _ensure_lanes and reused by the sea grid.
 var _world_lo := Vector2.ZERO
 var _world_hi := Vector2.ZERO
@@ -139,6 +157,7 @@ func _process(delta: float) -> void:
 		_clock = 0.0
 	_refresh()
 	_ensure_lanes()
+	_ensure_authored_berths()
 	_build_callers()
 	if not _berths.is_empty() or not _lanes.is_empty() or not _callers.is_empty():
 		queue_redraw()
@@ -158,6 +177,8 @@ func _refresh() -> void:
 		return
 	_known = plans.size()
 	_berths.clear()
+	_authored_berths_done = false
+	_callers.clear()
 	for plan_value in plans:
 		var plan: Dictionary = plan_value
 		if not bool(plan.get("valid", false)):
@@ -181,7 +202,10 @@ func _refresh() -> void:
 			var run := _seaward_run(plan.get(arm_key, []) as Array, seaward)
 			if run <= 1.0:
 				continue
-			var length := run * LENGTH_FRAC
+			# ONE size everywhere. The arm's own run still decides how far out is clear, but
+			# it no longer decides how big the ship is: a small harbour was getting visibly
+			# smaller ships than the stream sailing past it.
+			var length := SHIP_LENGTH
 			# HOW FAR OUT IS CLEAR. Measured, not guessed: the seaward-most point of EITHER arm,
 			# plus half the ship (its swept radius when it pivots) plus a margin. A ship turning
 			# any closer sweeps its own quay, which is exactly what the owner saw.
@@ -206,9 +230,169 @@ func _refresh() -> void:
 				"length": length,
 				"clear": clear_out,
 				"away": clear_out + length * AWAY_RUN,
-				"phase": 0.0 if side > 0.0 else ARM_OFFSET,
-				"seed": RoadHash.pick("ship|%s|%d" % [str(plan.get("key", "")), int(side)], 7),
 			})
+
+
+## Harbours the DESIGNER drew by hand get berths too.
+##
+## `PortVisuals` stands down for an authored port -- its dock is fabric, not a plan -- so those
+## tiles had no basin, no arms and therefore no ships. Stoneshore Docks is one, which is the
+## whole of "it looks like they never go there" (owner, 2026-08-28).
+##
+## There is no planned geometry to measure, so the berths come off the AUTHORED QUAYS: the
+## `port_role: quay` specials on the tile, of which the long thin ones are the piers. A ship
+## lies alongside a pier, parallel to it, on whichever side is open water -- which is the same
+## thing the planner's berths do against its arms, derived from a different drawing.
+func _ensure_authored_berths() -> void:
+	# `_known` rather than `_berths`: a map whose harbours are ALL authored has no planned
+	# berths to wait for, and gating on a non-empty list would leave it with no ships at all.
+	if _authored_berths_done or _known < 0:
+		return
+	if not _build_sea_grid(_world_lo, _world_hi):
+		return   # lanes have not measured the world yet, or the terrain is not baked
+	var planned: Dictionary = {}
+	for berth_value in _berths:
+		planned[str((berth_value as Dictionary).get("tile_id", ""))] = true
+	for port_value in Catalog.all_ports():
+		var tile_id := str((port_value as Dictionary).get("tile_id", ""))
+		if tile_id == "" or planned.has(tile_id):
+			continue
+		for pier_value in _authored_piers(tile_id):
+			var berth := _berth_alongside(tile_id, pier_value as PackedVector2Array)
+			if not berth.is_empty():
+				_berths.append(berth)
+	_authored_berths_done = true
+	_callers.clear()
+
+
+## The piers of an authored harbour: its `quay` specials, long and thin. The apron the piers
+## grow out of is a quay too, but it is a squat slab and no ship lies against it, so the
+## aspect ratio is the filter. Duplicates are dropped -- a document can carry the same shape
+## more than once, and Stoneshore does.
+func _authored_piers(tile_id: String) -> Array:
+	var seen: Dictionary = {}
+	var piers: Array = []
+	# EVERY settlement, not `settlement_for_tile`. More than one settlement can list the same
+	# tile -- Stoneshore's two both do -- and the tile index keeps whichever it saw first,
+	# which is not necessarily the one carrying the harbour. `port_tiles()` scans them all for
+	# the same reason.
+	var all: Dictionary = AuthoredMapData.settlements()
+	var specials: Array = []
+	for key in all:
+		var settlement_value: Variant = all[key]
+		if typeof(settlement_value) != TYPE_DICTIONARY:
+			continue
+		for special_value in (settlement_value as Dictionary).get("specials", []):
+			specials.append(special_value)
+	for special_value in specials:
+		if typeof(special_value) != TYPE_DICTIONARY:
+			continue
+		var special: Dictionary = special_value
+		if str(special.get("port", "")) != tile_id:
+			continue
+		if str(special.get("port_role", "quay")) != "quay":
+			continue
+		var outline := AuthoredSpecialShapes.render_polygon(special)
+		if outline.size() < 3:
+			continue
+		var span := _long_axis(outline)
+		var length := float(span[1])
+		var width := float(span[2])
+		if width < 0.001 or length / width < 2.5:
+			continue   # the apron, not a pier
+		var key := "%d|%d" % [int(round(outline[0].x)), int(round(outline[0].y))]
+		if seen.has(key):
+			continue
+		seen[key] = true
+		piers.append(outline)
+	return piers
+
+
+## A polygon's long axis, as [direction, length, width across it].
+func _long_axis(poly: PackedVector2Array) -> Array:
+	var centre := Vector2.ZERO
+	for point in poly:
+		centre += point
+	centre /= float(poly.size())
+	var best := Vector2.RIGHT
+	var longest := 0.0
+	for i in poly.size():
+		var edge: Vector2 = poly[(i + 1) % poly.size()] - poly[i]
+		if edge.length() > longest:
+			longest = edge.length()
+			best = edge.normalized()
+	var across := best.orthogonal()
+	var lo := INF
+	var hi := -INF
+	var lo_a := INF
+	var hi_a := -INF
+	for point in poly:
+		var d: float = (point - centre).dot(best)
+		lo = minf(lo, d)
+		hi = maxf(hi, d)
+		var a: float = (point - centre).dot(across)
+		lo_a = minf(lo_a, a)
+		hi_a = maxf(hi_a, a)
+	return [best, hi - lo, hi_a - lo_a, centre]
+
+
+## One berth lying alongside one pier: parallel to it, off its open-water side, facing up the
+## pier so the bow leads on the way in and on the way out.
+func _berth_alongside(tile_id: String, pier: PackedVector2Array) -> Dictionary:
+	var span := _long_axis(pier)
+	var axis: Vector2 = span[0]
+	var centre: Vector2 = span[3]
+	var half_width := float(span[2]) * 0.5
+	# SEAWARD is whichever way up the pier leads to open water: the ship runs out along it.
+	var seaward := axis
+	if _water_run(centre, -axis) > _water_run(centre, axis):
+		seaward = -axis
+	# ALONGSIDE is whichever side of the pier has water to lie in.
+	var reach_out := half_width + SHIP_LENGTH * BEAM_FRAC + 4.0
+	var across := seaward.orthogonal()
+	var berth_pos := centre + across * reach_out
+	if _water_run(centre, across) < _water_run(centre, -across):
+		across = -across
+		berth_pos = centre + across * reach_out
+	if not _navigable(berth_pos):
+		return {}
+	# Everything beyond the pier head is open water; the turn happens past it, never inside.
+	var head := -INF
+	for point in pier:
+		head = maxf(head, point.dot(seaward))
+	var clear_out: float = maxf(head - berth_pos.dot(seaward), 0.0) 		+ SHIP_LENGTH * (0.5 + TURN_MARGIN)
+	# Run out only as far as there is water to run out into. A bay is not an ocean, and the
+	# standoff is where the callers' sea paths begin -- it has to be somewhere a ship can be.
+	var away := clear_out + SHIP_LENGTH * AWAY_RUN
+	while away > clear_out + SHIP_LENGTH and not _navigable(berth_pos + seaward * away):
+		away -= SHIP_LENGTH * 0.25
+	if not _navigable(berth_pos + seaward * away):
+		return {}
+	return {
+		"tile_id": tile_id,
+		"berth": berth_pos,
+		"heading_in": (-seaward).angle(),
+		"seaward": seaward,
+		"length": SHIP_LENGTH,
+		"clear": clear_out,
+		"away": away,
+	}
+
+
+## How far from `at` the water holds out in direction `dir`, capped. Used to decide which end
+## of a pier faces the sea and which side of it a ship can lie on.
+func _water_run(at: Vector2, dir: Vector2) -> float:
+	var step := SEA_CELL * 0.5
+	var travelled := 0.0
+	while travelled < SEA_CELL * 12.0:
+		travelled += step
+		if not _navigable(at + dir * travelled):
+			break
+	return travelled
+
+
+func _navigable(at: Vector2) -> bool:
+	return _sea_ok(int((at.x - _sea_origin.x) / SEA_CELL), int((at.y - _sea_origin.y) / SEA_CELL))
 
 
 ## Build the two lane polylines once, from the map's own extent. Deferred to the first frame
@@ -231,9 +415,17 @@ func _ensure_lanes() -> void:
 		hi = hi.max(world)
 	_world_lo = lo
 	_world_hi = hi
+	if not _build_sea_grid(lo, hi):
+		return   # terrain not baked yet; the lanes wait rather than guess
 	var centre := PackedVector2Array()
 	for point in LANE:
 		centre.append(Vector2(lerpf(lo.x, hi.x, point.x), lerpf(lo.y, hi.y, point.y)))
+	# The east-coast leg, routed rather than traced.
+	var north_east := Vector2(lerpf(lo.x, hi.x, LANE_NORTH_EAST.x),
+		lerpf(lo.y, hi.y, LANE_NORTH_EAST.y))
+	var east_leg := _sea_path(centre[centre.size() - 1], north_east)
+	for i in range(1, east_leg.size()):
+		centre.append(east_leg[i])
 	# One polyline PER SHIP, each on its own lateral slot across the channel. Precomputed
 	# rather than offset per frame: 28 lines of nine points is nothing to hold, and offsetting
 	# a polyline every frame for every ship would not be.
@@ -241,7 +433,7 @@ func _ensure_lanes() -> void:
 		for k in LANE_SHIPS:
 			var slot := SLOT_MARGIN + (HALF_CHANNEL - SLOT_MARGIN * 2.0) 				* (float(k) + 0.5) / float(LANE_SHIPS)
 			var lateral := float(direction) * HALF_CHANNEL + slot
-			var line := _offset_polyline(centre, lateral)
+			var line := _pull_to_water(_offset_polyline(centre, lateral), centre)
 			_lanes.append({
 				"points": line,
 				"length": _polyline_length(line),
@@ -254,6 +446,25 @@ func _ensure_lanes() -> void:
 				# container palette. A ship's colours are a property of the ship.
 				"seed": (direction * LANE_SHIPS + k) % 7,
 			})
+
+
+## Bring an offset lane back onto water. The channel is two tiles wide, which is fine down the
+## open southern coast and far too wide where the eastern seaboard narrows to a strip; a slot
+## that would land a ship on the beach is walked back toward the centreline until it is afloat.
+## Traffic simply bunches together where the water is tight, which is what traffic does.
+func _pull_to_water(offset: PackedVector2Array, centre: PackedVector2Array) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for i in offset.size():
+		var home: Vector2 = centre[mini(i, centre.size() - 1)]
+		var at: Vector2 = offset[i]
+		for step in 9:
+			var cell := Vector2i(int((at.x - _sea_origin.x) / SEA_CELL),
+				int((at.y - _sea_origin.y) / SEA_CELL))
+			if _sea_ok(cell.x, cell.y):
+				break
+			at = at.lerp(home, 0.25)
+		out.append(at)
+	return out
 
 
 ## A polyline shifted sideways by `d`, using each vertex's averaged normal so the two lanes
@@ -293,76 +504,132 @@ func _along(pts: PackedVector2Array, total: float, dist: float) -> Array:
 	return [pts[0], 0.0]
 
 
-## Build the port-call routes once, after the berths and lanes exist. Each is a list of legs
-## with durations; every caller on it is the same route at a different phase -- which is the
-## answer to "how do we do that without animating each single ship every time".
+## Build the port-call routes once, after the berths and lanes exist.
 ##
-## EVERY harbour gets callers, not just the Capital (owner, 2026-08-27: "i'm not seeing ships
-## in most ports"). The Capital keeps the five-and-five it was asked for; the smaller harbours
-## get three a side, which is enough to look worked without crowding their approaches.
+## THE TIMETABLE, and the answer to "how do we do that without animating each single ship".
+## For a harbour on `every` seconds, arrivals alternate between its two berths and between the
+## two directions of the stream, so each BERTH sees a ship every `2 * every` -- comfortably
+## longer than the 12.5 s a visit takes, which is what stops two hulls sharing a quay. A burst
+## sends `burst` ships `gap` apart, each to a different berth, for the same reason.
 ##
-## The run between stream and harbour is a SEA PATH, not a Bezier: the old curve was drawn
-## straight at the port and cut across whatever headland lay between, which is why callers
-## were sailing overland. Inbound leaves the lane at the point nearest the harbour; outbound
-## rejoins it `MERGE_RUN` further downstream, so a ship merges into the stream ahead of where
-## it left rather than retracing its own wake.
+## One route per (berth, direction). Its period is the voyage rounded UP to a whole number of
+## timetable windows, and the LANE LEG absorbs the difference -- a ship simply stays out in the
+## stream a little longer. That is what lets an exact cadence come out of routes whose lengths
+## are whatever the coastline made them. `period / window` ships ride each route at one window's
+## spacing, so the harbour is served on the clock while every ship is still a pure function of
+## it.
 func _build_callers() -> void:
 	if not _callers.is_empty() or _berths.is_empty() or _lanes.is_empty():
 		return
+	if not _authored_berths_done:
+		return
 	if not _build_sea_grid(_world_lo, _world_hi):
 		return   # terrain not baked yet; try again next frame
-	# One berth per harbour is enough to call at.
+	# Berths, grouped by harbour and kept in a stable order so berth 0 is always berth 0.
 	var by_tile: Dictionary = {}
 	for berth_value in _berths:
 		var berth: Dictionary = berth_value
 		var tile := str(berth.get("tile_id", ""))
-		if tile != "" and not by_tile.has(tile):
-			by_tile[tile] = berth
+		if tile == "":
+			continue
+		if not by_tile.has(tile):
+			by_tile[tile] = []
+		(by_tile[tile] as Array).append(berth)
 	for tile in by_tile:
-		var call_berth: Dictionary = by_tile[tile]
-		var count: int = CALLERS_PER_DIRECTION if tile == CAPITAL_TILE else CALLERS_MINOR_PORT
-		var seaward: Vector2 = call_berth["seaward"]
-		var standoff: Vector2 = (call_berth["berth"] as Vector2) 			+ seaward * float(call_berth["away"])
-		for direction in 2:
-			# Callers ride the INSHORE edge of their half -- they are the ones peeling off
-			# toward land, so they cross no through-traffic to get there.
-			var lane: Dictionary = _lanes[direction * LANE_SHIPS]
-			var pts: PackedVector2Array = lane["points"]
-			var total: float = lane["length"]
-			var reverse: bool = lane["reverse"]
-			# Leave the lane at whatever point is nearest the harbour approach.
-			var leave := 0.0
-			var best_d := INF
-			var steps := 240
-			for k in steps:
-				var d := total * float(k) / float(steps)
-				var probe: Array = _along(pts, total, total - d if reverse else d)
-				var gap: float = (probe[0] as Vector2).distance_to(standoff)
-				if gap < best_d:
-					best_d = gap
-					leave = d
-			var rejoin := fposmod(leave + MERGE_RUN, total)
-			var leave_at: Array = _along(pts, total, total - leave if reverse else leave)
-			var rejoin_at: Array = _along(pts, total, total - rejoin if reverse else rejoin)
-			var spur_in := _sea_path(leave_at[0] as Vector2, standoff)
-			var spur_out := _sea_path(standoff, rejoin_at[0] as Vector2)
-			if spur_in.size() < 2 or spur_out.size() < 2:
-				continue   # no water route: no callers, rather than callers over a hill
-			var in_len := _polyline_length(spur_in)
-			var out_len := _polyline_length(spur_out)
-			var lane_run := total - MERGE_RUN
-			var t_lane := lane_run / SEA_SPEED
-			var t_in := in_len / SEA_SPEED
-			var t_out := out_len / SEA_SPEED
-			_callers.append({
-				"points": pts, "length": total, "reverse": reverse,
-				"join": rejoin, "lane_run": lane_run, "count": count,
-				"spur_in": spur_in, "spur_in_len": in_len,
-				"spur_out": spur_out, "spur_out_len": out_len,
-				"berth": call_berth,
-				"t_lane": t_lane, "t_in": t_in, "t_out": t_out,
-				"period": t_lane + t_in + CYCLE + t_out,
+		var quays: Array = by_tile[tile]
+		if quays.is_empty():
+			continue
+		var schedule: Dictionary = PORT_SCHEDULE.get(tile, DEFAULT_SCHEDULE)
+		var every := float(schedule["every"])
+		var burst: int = maxi(int(schedule["burst"]), 1)
+		var gap := float(schedule["gap"])
+		# One full turn of the timetable: two of `every`, one per direction.
+		var window := every * 2.0
+		var arrivals: Array = timetable(every, burst, gap, quays.size())
+		# Group them into routes: one per (berth, direction).
+		var grouped: Dictionary = {}
+		for arrival_value in arrivals:
+			var arrival: Dictionary = arrival_value
+			var key := "%d|%d" % [int(arrival["quay"]), int(arrival["direction"])]
+			if not grouped.has(key):
+				grouped[key] = []
+			(grouped[key] as Array).append(float(arrival["t"]))
+		for key in grouped:
+			var quay_index := int(str(key).get_slice("|", 0))
+			var direction := int(str(key).get_slice("|", 1))
+			var route := _caller_route(quays[quay_index] as Dictionary, direction, window,
+				grouped[key] as Array)
+			if not route.is_empty():
+				_callers.append(route)
+
+
+## EVERY ARRIVAL in one turn of a harbour's timetable, as {t, quay, direction}.
+##
+## Pure, and separated out so the schedules can be checked without a map: the property that
+## matters is that no two ships are ever alongside the SAME quay at once, and that is a claim
+## about this arithmetic rather than about any geometry. Stepping the quay by the burst index
+## AND by the direction is what buys it -- a harbour on `every` seconds hands each of its two
+## quays a ship every `2 * every`, which has to stay clear of the 12.5 s a visit takes.
+static func timetable(every: float, burst: int, gap: float, quays: int) -> Array:
+	var out: Array = []
+	var berths: int = maxi(quays, 1)
+	for k in 2:
+		for b in maxi(burst, 1):
+			out.append({
+				"t": float(k) * every + float(b) * gap,
+				"quay": (b + k) % berths,
+				"direction": k % 2,
 			})
+	return out
+
+
+## One route: out of the stream, into this berth, back out, and round again. Empty if the
+## harbour cannot be reached over water, in which case it simply gets no callers -- better an
+## empty harbour than ships sailing over a hill.
+func _caller_route(berth: Dictionary, direction: int, window: float,
+		arrivals: Array) -> Dictionary:
+	var seaward: Vector2 = berth["seaward"]
+	var standoff: Vector2 = (berth["berth"] as Vector2) + seaward * float(berth["away"])
+	# Callers ride the INSHORE edge of their half -- they are the ones peeling off toward
+	# land, so they cross no through-traffic to get there.
+	var lane: Dictionary = _lanes[direction * LANE_SHIPS]
+	var pts: PackedVector2Array = lane["points"]
+	var total: float = lane["length"]
+	var reverse: bool = lane["reverse"]
+	# Leave the lane at whatever point is nearest the harbour approach.
+	var leave := 0.0
+	var best_d := INF
+	var steps := 240
+	for k in steps:
+		var d := total * float(k) / float(steps)
+		var probe: Array = _along(pts, total, total - d if reverse else d)
+		var gap: float = (probe[0] as Vector2).distance_to(standoff)
+		if gap < best_d:
+			best_d = gap
+			leave = d
+	var rejoin := fposmod(leave + MERGE_RUN, total)
+	var leave_at: Array = _along(pts, total, total - leave if reverse else leave)
+	var rejoin_at: Array = _along(pts, total, total - rejoin if reverse else rejoin)
+	var spur_in := _sea_path(leave_at[0] as Vector2, standoff)
+	var spur_out := _sea_path(standoff, rejoin_at[0] as Vector2)
+	if spur_in.size() < 2 or spur_out.size() < 2:
+		return {}
+	var in_len := _polyline_length(spur_in)
+	var out_len := _polyline_length(spur_out)
+	var t_in := in_len / SEA_SPEED
+	var t_out := out_len / SEA_SPEED
+	# The voyage rounded up to whole windows; the lane leg takes up the slack.
+	var voyage := t_in + CYCLE + t_out
+	var period: float = ceilf((voyage + MIN_LANE_TIME) / window) * window
+	return {
+		"points": pts, "length": total, "reverse": reverse, "join": rejoin,
+		"spur_in": spur_in, "spur_in_len": in_len,
+		"spur_out": spur_out, "spur_out_len": out_len,
+		"berth": berth,
+		"t_lane": period - voyage, "t_in": t_in, "t_out": t_out,
+		"period": period, "window": window, "arrivals": arrivals,
+		"laps": maxi(int(round(period / window)), 1),
+	}
 
 
 ## WHERE A CALLER IS AT LOCAL TIME `u`, as [position, heading]. This is the whole trick:
@@ -400,19 +667,6 @@ func _caller_at(route: Dictionary, u: float) -> Array:
 			(u - t_lane - t_in - CYCLE) * SEA_SPEED)
 
 
-## A joining curve: quadratic Bezier from `a` to `b`, leaving along `tangent` so the ship
-## eases out of (or into) the stream instead of turning a corner. `bias` shifts the far end
-## sideways, which is how the outbound spur avoids exactly retracing the inbound one.
-func _spur(a: Vector2, b: Vector2, tangent: Vector2, bias: Vector2) -> PackedVector2Array:
-	var target := b + bias
-	var control := a + tangent.normalized() * a.distance_to(target) * 0.45
-	var out := PackedVector2Array()
-	for i in SPUR_SAMPLES:
-		var u := float(i) / float(SPUR_SAMPLES - 1)
-		out.append(a.lerp(control, u).lerp(control.lerp(target, u), u))
-	return out
-
-
 ## How far a set of arm polygons reaches along the seaward axis — the arm's own length,
 ## measured rather than assumed, since the two arms are jittered to different runs.
 func _seaward_run(polys: Array, seaward: Vector2) -> float:
@@ -440,32 +694,12 @@ func _draw() -> void:
 	var pts := PackedVector2Array()
 	var cols := PackedColorArray()
 	var topside: Array = []
-	for berth_value in _berths:
-		var berth: Dictionary = berth_value
-		var length: float = berth["length"]
-		if length * ppu < MIN_SHIP_PX:
-			continue
-		var t := fposmod(_clock + float(berth["phase"]), CYCLE)
-		var move: Array = _manoeuvre(t, float(berth["clear"]), float(berth["away"]), length)
-		var pos: Vector2 = (berth["berth"] as Vector2) \
-			+ (berth["seaward"] as Vector2) * float(move[0])
-		if not view.has_point(pos):
-			continue
-		var basis := Transform2D(float(berth["heading_in"]) + float(move[1]), pos) \
-			.scaled_local(Vector2(length, length))
-		var base := pts.size()
-		pts.resize(base + _hull_tris.size())
-		cols.resize(base + _hull_tris.size())
-		for i in _hull_tris.size():
-			pts[base + i] = basis * _hull_tris[i]
-			cols[base + i] = HULL
-		topside.append({"basis": basis, "seed": int(berth["seed"])})
-	# Sea traffic, into the SAME batch as the harbour ships.
+	# Sea traffic, into the SAME batch as the callers.
 	for lane_value in _lanes:
 		var lane: Dictionary = lane_value
 		var points: PackedVector2Array = lane["points"]
 		var total: float = lane["length"]
-		if total <= 1.0 or SEA_SHIP_LENGTH * ppu < MIN_SHIP_PX:
+		if total <= 1.0 or SHIP_LENGTH * ppu < MIN_SHIP_PX:
 			continue
 		var backwards: bool = lane["reverse"]
 		var d := float(lane["start"]) * total + _clock * SEA_SPEED
@@ -474,7 +708,7 @@ func _draw() -> void:
 		if not view.has_point(pos):
 			continue
 		var heading: float = float(at[1]) + (PI if backwards else 0.0)
-		var basis := Transform2D(heading, pos) 			.scaled_local(Vector2(SEA_SHIP_LENGTH, SEA_SHIP_LENGTH))
+		var basis := Transform2D(heading, pos) 			.scaled_local(Vector2(SHIP_LENGTH, SHIP_LENGTH))
 		var b := pts.size()
 		pts.resize(b + _hull_tris.size())
 		cols.resize(b + _hull_tris.size())
@@ -482,32 +716,40 @@ func _draw() -> void:
 			pts[b + i] = basis * _hull_tris[i]
 			cols[b + i] = HULL
 		topside.append({"basis": basis, "seed": int(lane["seed"])})
-	# PORT CALLERS. Five per route, the same baked route at five phases -- the whole reason
-	# this costs one lookup each rather than one animation each.
-	for route_value in _callers:
-		var route: Dictionary = route_value
+	# PORT CALLERS, placed from the timetable. A ship on lap `m` of arrival `t` is at
+	# `u = clock - t + (time it takes to get there) + m * window`: it reaches the quay exactly
+	# when the timetable says, and everything else about it follows from the clock.
+	for route_index in _callers.size():
+		var route: Dictionary = _callers[route_index]
 		var period: float = route["period"]
-		if period <= 0.0 or SEA_SHIP_LENGTH * ppu < MIN_SHIP_PX:
+		if period <= 0.0 or SHIP_LENGTH * ppu < MIN_SHIP_PX:
 			continue
-		var fleet: int = int(route.get("count", CALLERS_PER_DIRECTION))
-		for c in fleet:
-			var u := fposmod(_clock + period * float(c) / float(fleet), period)
-			var place: Array = _caller_at(route, u)
-			var cpos: Vector2 = place[0]
-			if not view.has_point(cpos):
-				continue
-			var cb := Transform2D(float(place[1]), cpos) \
-				.scaled_local(Vector2(SEA_SHIP_LENGTH, SEA_SHIP_LENGTH))
-			var cbase := pts.size()
-			pts.resize(cbase + _hull_tris.size())
-			cols.resize(cbase + _hull_tris.size())
-			for i2 in _hull_tris.size():
-				pts[cbase + i2] = cb * _hull_tris[i2]
-				cols[cbase + i2] = HULL
-			topside.append({"basis": cb, "seed": c})
+		var lead: float = float(route["t_lane"]) + float(route["t_in"])
+		var window: float = route["window"]
+		var arrivals: Array = route["arrivals"]
+		var laps: int = route["laps"]
+		for m in laps:
+			for ai in arrivals.size():
+				var u := fposmod(_clock - float(arrivals[ai]) + lead + float(m) * window,
+					period)
+				var place: Array = _caller_at(route, u)
+				var cpos: Vector2 = place[0]
+				if not view.has_point(cpos):
+					continue
+				var cb := Transform2D(float(place[1]), cpos) 					.scaled_local(Vector2(SHIP_LENGTH, SHIP_LENGTH))
+				var cbase := pts.size()
+				pts.resize(cbase + _hull_tris.size())
+				cols.resize(cbase + _hull_tris.size())
+				for i in _hull_tris.size():
+					pts[cbase + i] = cb * _hull_tris[i]
+					cols[cbase + i] = HULL
+				topside.append({"basis": cb,
+					"seed": (route_index * 5 + m * 3 + ai) % 7})
 	# Every hull on screen in one command; outlines and cargo go over the top per ship, which
 	# is a handful for the few harbours and lane stretches ever in view at once.
 	CanvasBatch.flush(self, pts, cols)
+	if SHIP_LENGTH * ppu < TOPSIDE_PX:
+		return
 	for entry_value in topside:
 		var entry: Dictionary = entry_value
 		_draw_topside(entry["basis"], int(entry["seed"]))
