@@ -13,12 +13,18 @@ extends Node2D
 ## The clock is DRIVEN (`ConstructionVisuals._clock` assigned directly), never waited on, so
 ## the frames land on exact phases and two runs match.
 
+const ShotHarness := preload("res://tools/shot_harness.gd")
+
 var _wm: Node
 var _terrain: TileMapLayer
 var _cam: Camera2D
 
 
 func _ready() -> void:
+	# SAFETY FIRST, before main.tscn exists: the project boots FULLSCREEN, and a tool
+	# that grabs the whole screen for a 30 s world build reads as a frozen machine.
+	ShotHarness.prepare_window(get_window())
+	ShotHarness.arm_watchdog(self)
 	var opt := _options()
 	var tile_id := str(opt.get("tile", "tile_5_10"))
 	var zoom := float(opt.get("zoom", 2.2))

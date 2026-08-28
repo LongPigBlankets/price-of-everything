@@ -9,8 +9,16 @@ extends Node
 ## why the shot has to force `gui_embed_subwindows` on rather than trusting the project's
 ## default — an OS-level popup window would be a second surface and photograph as a hole.
 
+const ShotHarness := preload("res://tools/shot_harness.gd")
+
 func _ready() -> void:
-	get_window().size = Vector2i(1920, 1080)
+	# SAFETY FIRST, before main.tscn exists: the project boots FULLSCREEN, and a tool
+	# that grabs the whole screen for a 30 s world build reads as a frozen machine.
+	ShotHarness.prepare_window(get_window())
+	ShotHarness.arm_watchdog(self)
+	# NOT a resize back to 1920x1080 — the harness deliberately keeps this small. The
+	# dropdown popup is what this shot is for, and it must be an EMBEDDED subwindow or it
+	# becomes a separate OS window and photographs as a hole in the page.
 	get_window().gui_embed_subwindows = true
 	var menu: Node = (load("res://scenes/main_menu.tscn") as PackedScene).instantiate()
 	add_child(menu)

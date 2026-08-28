@@ -12,12 +12,18 @@ extends Node2D
 ## Prints a census of every stack-carrying building first, which is how you find a refinery
 ## (3 stacks) or a chem plant (2) to point `--tile` at.
 
+const ShotHarness := preload("res://tools/shot_harness.gd")
+
 var _wm: Node
 var _terrain: TileMapLayer
 var _cam: Camera2D
 
 
 func _ready() -> void:
+	# SAFETY FIRST, before main.tscn exists: the project boots FULLSCREEN, and a tool
+	# that grabs the whole screen for a 30 s world build reads as a frozen machine.
+	ShotHarness.prepare_window(get_window())
+	ShotHarness.arm_watchdog(self)
 	var opt := _options()
 	var tile_id := str(opt.get("tile", "tile_5_10"))
 	var zoom := float(opt.get("zoom", 2.0))

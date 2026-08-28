@@ -12,6 +12,8 @@ extends Node2D
 ## The livery is swapped by writing the match ruleset and repainting -- `_wash_for` reads
 ## `PlayerColours.active_color()` at DRAW time, so no rebuild of the world is needed.
 
+const ShotHarness := preload("res://tools/shot_harness.gd")
+
 const PlayerColours := preload("res://scripts/player_colours.gd")
 
 var _wm: Node
@@ -20,6 +22,10 @@ var _cam: Camera2D
 
 
 func _ready() -> void:
+	# SAFETY FIRST, before main.tscn exists: the project boots FULLSCREEN, and a tool
+	# that grabs the whole screen for a 30 s world build reads as a frozen machine.
+	ShotHarness.prepare_window(get_window())
+	ShotHarness.arm_watchdog(self)
 	var opt := _options()
 	var tile_id := str(opt.get("tile", "tile_5_10"))
 	var zoom := float(opt.get("zoom", 2.2))
@@ -116,12 +122,7 @@ func _shot(pos: Vector2, zoom: float, size: Vector2i, path: String) -> void:
 		_cam.set("_target_zoom", _cam.zoom)
 	for _i in 12:
 		await get_tree().process_frame
-	RenderingServer.force_draw()
-	var image := get_viewport().get_texture().get_image()
-	var crop := Vector2i(mini(size.x, image.get_width()), mini(size.y, image.get_height()))
-	var origin := Vector2i((image.get_width() - crop.x) / 2, (image.get_height() - crop.y) / 2)
-	image.get_region(Rect2i(origin, crop)).save_png(path)
-	print("[LIVERY SWEEP] %s" % path)
+	ShotHarness.capture(self, path, size)
 
 
 func _options() -> Dictionary:
