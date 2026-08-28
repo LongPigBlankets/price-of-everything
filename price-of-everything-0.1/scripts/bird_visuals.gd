@@ -33,6 +33,11 @@ const FLAP_RATE := 2.6
 ## How deep the arch bows at the extremes, as a fraction of the half-span.
 const ARCH := 0.42
 
+## Every skein flies due east. Kept as a named heading rather than assumed, because BOTH the
+## formation and the bird glyph are built in a forward-facing frame and rotated by it -- so a
+## set flying some other way needs only this number changed.
+const HEADING := 0.0
+
 const INK := Color(0.06, 0.06, 0.07, 1.0)
 const LINE_W := 1.7
 ## Below this many pixels of wingspan a bird is a speck; the layer stands down.
@@ -110,36 +115,47 @@ func _draw() -> void:
 		if fade <= 0.01:
 			continue
 		var col := Color(INK.r, INK.g, INK.b, fade)
+		# The V is laid out in the flight frame: ranks fall BACK along the course and OUT to
+		# either side of it, so the tip of the V leads in the direction of travel.
+		var forward := Vector2.RIGHT.rotated(HEADING)
+		var beam := Vector2(-forward.y, forward.x)
 		for b in FLOCK:
 			# Rank 0 leads; the rest fall back alternately to either side.
 			var rank := int((b + 1) / 2)
 			var side := 1.0 if b % 2 == 1 else -1.0
-			var at := lead + Vector2(-float(rank) * SPAN * RANK_BACK,
-				side * float(rank) * SPAN * RANK_OUT)
+			var at := lead - forward * float(rank) * SPAN * RANK_BACK \
+				+ beam * side * float(rank) * SPAN * RANK_OUT
 			if not view.has_point(at):
 				continue
 			# Each bird beats slightly out of step with the one ahead.
 			var flap := sin((_clock + float(b) * 0.11 + float(s) * 0.37) * TAU * FLAP_RATE)
-			draw_polyline(_bird(at, flap), col, LINE_W, true)
+			draw_polyline(_bird(at, flap, forward, beam), col, LINE_W, true)
 
 
-## One bird: left tip, up over the body, out to the right tip. `flap` in [-1, 1] is the
-## stroke -- at the extremes the wings arch hard, at zero they are straight out.
-func _bird(at: Vector2, flap: float) -> PackedVector2Array:
+## One bird: one wingtip, in over the body, out to the other. `flap` in [-1, 1] is the stroke
+## -- at the extremes the wings arch hard, at zero they are straight out.
+##
+## Built in the FLIGHT FRAME, not in screen axes: the wings span `beam`, across the course, and
+## the arch bows along `forward`. Drawn on the screen axes instead, a bird flying east would
+## have its wings spread east-west and be travelling wingtip-first.
+func _bird(at: Vector2, flap: float, forward: Vector2, beam: Vector2) -> PackedVector2Array:
 	var half := SPAN * 0.5
 	var bow := half * ARCH * flap
+	var left := at - beam * half
+	var right := at + beam * half
 	var out := PackedVector2Array()
-	# Left wing, tip inward to the body.
+	# One wing, tip inward to the body.
 	for i in 5:
-		out.append(_arc(at + Vector2(-half, 0.0), at, bow, float(i) / 4.0))
-	# Right wing, body outward to the tip. Skips u=0, which is the body point just added.
+		out.append(_arc(left, at, bow, float(i) / 4.0, forward))
+	# The other, body outward to the tip. Skips u=0, which is the body point just added.
 	for i in range(1, 5):
-		out.append(_arc(at, at + Vector2(half, 0.0), bow, float(i) / 4.0))
+		out.append(_arc(at, right, bow, float(i) / 4.0, forward))
 	return out
 
 
-## Quadratic from `a` to `b`, bowed perpendicular by `bow` at its middle. That single control
-## point is the whole wing: positive bows the arch up, negative down, zero draws it straight.
-func _arc(a: Vector2, b: Vector2, bow: float, u: float) -> Vector2:
-	var mid := (a + b) * 0.5 + Vector2(0.0, -bow)
+## Quadratic from `a` to `b`, bowed along `bow_axis` by `bow` at its middle. That single
+## control point is the whole wing: positive bows the arch one way, negative the other, zero
+## draws it straight.
+func _arc(a: Vector2, b: Vector2, bow: float, u: float, bow_axis: Vector2) -> Vector2:
+	var mid := (a + b) * 0.5 + bow_axis * bow
 	return a.lerp(mid, u).lerp(mid.lerp(b, u), u)
