@@ -186,6 +186,7 @@ func _lp_draw_inner() -> void:
 	for settlement in ordered:
 		for area in _list(settlement, "forests"):
 			AuthoredFabricPainter.draw_forest(self, area)
+		AuthoredFabricPainter.draw_trees(self, _list(settlement, "trees"))
 
 
 ## Every baked tile whose texture contains `mass_id` needs repainting. A mass can straddle a

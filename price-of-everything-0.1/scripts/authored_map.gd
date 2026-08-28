@@ -175,6 +175,13 @@ static func data() -> Dictionary:
 ## True when the document has any authored content at all. Callers that suppress
 ## procedural systems should gate on this first: it is the cheap "is this feature even
 ## in use" test, and it keeps an empty install on exactly today's code paths.
+## True once tools/map_editor/import_forests has written the map's woods into the document as
+## `forests` areas. ForestVisuals reads it and stands down: the discs became areas, so drawing
+## both would draw every wood twice.
+static func forests_imported() -> bool:
+	return bool(data().get("forests_imported", false))
+
+
 static func is_active() -> bool:
 	return not settlements().is_empty()
 
@@ -312,6 +319,12 @@ static func slot_fits(wanted: String, offered: String) -> bool:
 
 
 ## An empty, valid document — what the editor starts from and what the game falls back to.
+## What a `trees` record may be. A single specimen in each of the two sizes the map's tree
+## vocabulary distinguishes at a glance, and a mixed clump -- mixed ONLY, because a clump of
+## identical trees reads as a texture error rather than as woodland (owner, 2026-08-28).
+const TREE_KINDS := ["small", "large", "mixed"]
+
+
 static func empty_document() -> Dictionary:
 	return {
 		"version": SCHEMA_VERSION,
@@ -355,12 +368,38 @@ static func validate(doc: Dictionary) -> PackedStringArray:
 					errors.append("settlement '%s' has a malformed %s entry" % [key, field])
 					continue
 				errors.append_array(_validate_area(key, field, area_value))
+		for tree_value in _array(settlement, "trees"):
+			if typeof(tree_value) != TYPE_DICTIONARY:
+				errors.append("settlement '%s' has a malformed tree" % key)
+				continue
+			errors.append_array(_validate_tree(key, tree_value))
 		errors.append_array(_validate_slots(key, settlement))
 		for zone_value in _array(settlement, "zones"):
 			if typeof(zone_value) != TYPE_DICTIONARY:
 				errors.append("settlement '%s' has a malformed zone" % key)
 				continue
 			errors.append_array(_validate_zone(key, zone_value))
+	return errors
+
+
+## A hand-placed tree: one specimen, or a mixed clump.
+##
+## Deliberately NOT tile-relative, unlike a slot pin. A slot is a promise about a tile and
+## adding one authors that tile; a tree is decoration standing at a point, and planting one
+## must not quietly take a tile's fabric, roads and accommodation away from the generator.
+static func _validate_tree(key: String, tree: Dictionary) -> PackedStringArray:
+	var errors := PackedStringArray()
+	var id := str(tree.get("id", ""))
+	if id == "":
+		errors.append("settlement '%s' has a tree with no id" % key)
+	if _array(tree, "position").size() != 2:
+		errors.append("tree '%s' needs a [x, y] position" % id)
+	var kind := str(tree.get("kind", ""))
+	if not TREE_KINDS.has(kind):
+		errors.append("tree '%s' has kind '%s' (expected one of %s)"
+			% [id, kind, ", ".join(TREE_KINDS)])
+	if kind == "mixed" and float(tree.get("radius", 0.0)) <= 0.0:
+		errors.append("mixed tree clump '%s' needs a radius" % id)
 	return errors
 
 

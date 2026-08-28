@@ -97,6 +97,9 @@ func _draw() -> void:
 			_mark(selected, special, special_polys)
 		for area in _entries(settlement, "forests"):
 			AuthoredFabricPainter.draw_forest(self, area)
+		# Planted trees, through the same painter the game uses — an editor that draws its own
+		# version of a record is an editor you cannot trust about what you are making.
+		AuthoredFabricPainter.draw_trees(self, _entries(settlement, "trees"))
 
 	if half == Half.GROUND:
 		return

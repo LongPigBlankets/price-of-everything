@@ -323,6 +323,7 @@ func _ready() -> void:
 	_test_stacks_sit_in_a_line()
 	_test_sea_path_goes_round_land()
 	_test_port_timetable()
+	_test_authored_trees()
 	_test_smoke_carbon_split()
 	_test_ship_manoeuvre_clears_the_arms()
 	await _test_crowded_tile_gentle_failure()
@@ -19615,3 +19616,56 @@ func _test_port_timetable() -> void:
 			_check(clash == 0,
 				"timetable %s quay %d: no two ships alongside at once (%d clashes, tightest %.1f s vs a %.1f s visit)"
 					% [tile, quay, clash, tightest, visit])
+
+
+## Hand-placed trees in the authored document (owner, 2026-08-28): two single sizes and a
+## MIXED clump. Three things worth pinning, each of which is a decision rather than an
+## accident: the schema refuses a clump with no radius, a clump's scatter is genuinely mixed
+## rather than a repeated stamp, and every tree of it lands inside the radius that was drawn.
+func _test_authored_trees() -> void:
+	var authored := preload("res://scripts/authored_map.gd")
+	var painter := preload("res://scripts/authored_fabric_painter.gd")
+
+	var doc := authored.empty_document()
+	doc["settlements"] = {"t": {
+		"tiles": ["tile_1_1"],
+		"trees": [
+			{"id": "t:t:1", "position": [10.0, 20.0], "kind": "small"},
+			{"id": "t:t:2", "position": [40.0, 20.0], "kind": "large"},
+			{"id": "t:t:3", "position": [90.0, 20.0], "kind": "mixed", "radius": 26.0},
+		],
+	}}
+	_check(authored.validate(doc).is_empty(),
+		"authored trees: a document with all three kinds validates")
+
+	# A clump with no radius has no size, so it would draw nothing and silently look like a
+	# tree that failed to place. The schema refuses it instead.
+	var bad := authored.empty_document()
+	bad["settlements"] = {"t": {"tiles": ["tile_1_1"],
+		"trees": [{"id": "t:t:9", "position": [0.0, 0.0], "kind": "mixed"}]}}
+	_check(not authored.validate(bad).is_empty(),
+		"authored trees: a mixed clump without a radius is refused")
+
+	var wrong := authored.empty_document()
+	wrong["settlements"] = {"t": {"tiles": ["tile_1_1"],
+		"trees": [{"id": "t:t:8", "position": [0.0, 0.0], "kind": "enormous"}]}}
+	_check(not authored.validate(wrong).is_empty(),
+		"authored trees: an unknown kind is refused")
+
+	# THE CLUMP IS MIXED. That is the whole reason it is its own kind, so it is the thing to
+	# assert: a stand of identical trees reads as a repeated stamp, not as woodland.
+	var clump := {"id": "t:t:3", "position": [90.0, 20.0], "kind": "mixed", "radius": 26.0}
+	var points := painter.clump_points(clump)
+	_check(points.size() >= 6, "authored trees: a clump plants several trees (%d)" % points.size())
+	var kinds: Dictionary = {}
+	var outside := 0
+	var centre := Vector2(90.0, 20.0)
+	for point in points:
+		if point.distance_to(centre) > 26.0 + 0.01:
+			outside += 1
+		kinds[painter.TreeShapesRef.pick_kind("t:t:3|%.0f|%.0f" % [point.x, point.y],
+			painter.CLUMP_MIX)] = true
+	_check(outside == 0, "authored trees: every tree of a clump is inside its radius (%d out)"
+		% outside)
+	_check(kinds.size() >= 2,
+		"authored trees: a clump mixes sizes rather than repeating one (%d kinds)" % kinds.size())
