@@ -6,7 +6,7 @@
 
 [node name="MarketPanel" type="PanelContainer" unique_id=964377119]
 visible = false
-offset_right = 400.0
+offset_right = 560.0
 offset_bottom = 500.0
 theme_override_styles/panel = ExtResource("1_0525w")
 script = ExtResource("2_knqdd")

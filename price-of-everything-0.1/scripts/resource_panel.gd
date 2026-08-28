@@ -19,7 +19,9 @@ const UIHelpers := preload("res://scripts/ui_helpers.gd")
 @onready var content_vbox: VBoxContainer = $MarginContainer/VBoxContainer/ScrollContainer/ContentVBox
 
 const HEADER_HEIGHT := 40.0
-const ICON_SIZE := 44
+## Good chips at 90 px (owner, 2026-08-28). They are the thing a player scans the table by,
+## and at 44 they were smaller than the numbers beside them.
+const ICON_SIZE := 90
 const COL_NUM := 104          # every numeric column
 const COL_NAME := 210
 const MODE_LABELS := {
@@ -71,14 +73,6 @@ func _build_header_row() -> void:
 	old.add_child(_head("Good", COL_NAME, HORIZONTAL_ALIGNMENT_LEFT, true))
 	for title: String in ["Stock", "Cost/unit", "Produced", "Consumed", "Carbon tax"]:
 		old.add_child(_head(title, COL_NUM, HORIZONTAL_ALIGNMENT_RIGHT, false))
-	# The one caption the whole panel needs, in the corner where a table's unit note goes.
-	var note := Label.new()
-	note.text = "All costs are per unit"
-	note.theme_type_variation = &"Caption"
-	note.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
-	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	note.custom_minimum_size = Vector2(190, 0)
-	old.add_child(note)
 
 
 func _head(text: String, width: int, align: int, expand: bool) -> Label:
@@ -147,10 +141,6 @@ func _add_good(good: Dictionary) -> void:
 		val.custom_minimum_size = Vector2(COL_NUM, 0)
 		val.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		line.add_child(val)
-	var tail := Control.new()
-	tail.custom_minimum_size = Vector2(190, 0)
-	tail.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	line.add_child(tail)
 
 	# The freight table is built when the row is first OPENED. Building all of them up
 	# front cost half a second of the load for panels nobody had asked for yet — every
