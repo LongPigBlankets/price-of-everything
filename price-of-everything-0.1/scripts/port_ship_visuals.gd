@@ -91,10 +91,27 @@ const SEA_SPEED := 62.0
 ## ever stops carrying this tile the callers simply do not spawn.
 const CAPITAL_TILE := "tile_24_7"
 const CALLERS_PER_DIRECTION := 5
+## The two smaller harbours get a lighter service each way.
+const CALLERS_MINOR_PORT := 3
+## How far downstream a departing caller rejoins the stream, so it merges in ahead of where
+## it left instead of retracing its own approach.
+const MERGE_RUN := 900.0
 ## Points sampled along each joining curve. Enough that the merge reads as a curve.
 const SPUR_SAMPLES := 22
 ## The outbound spur is nudged sideways so leaving does not exactly retrace arriving.
 const SPUR_SPLIT := 70.0
+## SEA ROUTING for the port spurs. A Bezier straight at the harbour cut corners across
+## headlands, so the run in is now A-STARRED over water (owner, 2026-08-27).
+## The grid is built from NAVGRID -- the baked terrain -- not from the tile map, and a cell
+## counts as navigable only if it is water AND every probe a clearance away is water too, so
+## a lane never shaves a shore.
+const SEA_CELL := 50.0
+## Minimum water between a hull and the beach (owner: at least 10 u). Probed in eight
+## directions, a shade over the asked-for distance.
+const SEA_CLEARANCE := 13.0
+## The search gives a staircase; this shortcuts it back to long straight legs wherever the
+## water allows, sampled at this spacing.
+const SEA_SIMPLIFY_STEP := 12.0
 
 ## Set by world_map when it builds the layer.
 var ports: Node = null
@@ -104,6 +121,9 @@ var _lanes: Array = []      # [{points, length}] one per direction
 var _callers: Array = []   # one baked route per direction, shared by its ships
 var _known := -1
 var _clock := 0.0
+## World extent, measured once by _ensure_lanes and reused by the sea grid.
+var _world_lo := Vector2.ZERO
+var _world_hi := Vector2.ZERO
 
 static var _hull_tris := PackedVector2Array()
 static var _hull_shape := PackedVector2Array()
@@ -209,6 +229,8 @@ func _ensure_lanes() -> void:
 			terrain.map_coord_for_tile_coord(coord as Vector2i))
 		lo = lo.min(world)
 		hi = hi.max(world)
+	_world_lo = lo
+	_world_hi = hi
 	var centre := PackedVector2Array()
 	for point in LANE:
 		centre.append(Vector2(lerpf(lo.x, hi.x, point.x), lerpf(lo.y, hi.y, point.y)))
@@ -227,6 +249,10 @@ func _ensure_lanes() -> void:
 				# Staggered along the route as well as across it, so a half is not a rank of
 				# ships sailing abreast.
 				"start": float(k) / float(LANE_SHIPS),
+				# FIXED cargo per ship. This used to be derived from the distance travelled,
+				# which changes every frame -- so every hull in the stream strobed through the
+				# container palette. A ship's colours are a property of the ship.
+				"seed": (direction * LANE_SHIPS + k) % 7,
 			})
 
 
@@ -267,57 +293,76 @@ func _along(pts: PackedVector2Array, total: float, dist: float) -> Array:
 	return [pts[0], 0.0]
 
 
-## Build the two port-call routes once, after the berths and lanes exist. Each is a list of
-## segments with durations; every caller on it is the same route at a different phase.
+## Build the port-call routes once, after the berths and lanes exist. Each is a list of legs
+## with durations; every caller on it is the same route at a different phase -- which is the
+## answer to "how do we do that without animating each single ship every time".
+##
+## EVERY harbour gets callers, not just the Capital (owner, 2026-08-27: "i'm not seeing ships
+## in most ports"). The Capital keeps the five-and-five it was asked for; the smaller harbours
+## get three a side, which is enough to look worked without crowding their approaches.
+##
+## The run between stream and harbour is a SEA PATH, not a Bezier: the old curve was drawn
+## straight at the port and cut across whatever headland lay between, which is why callers
+## were sailing overland. Inbound leaves the lane at the point nearest the harbour; outbound
+## rejoins it `MERGE_RUN` further downstream, so a ship merges into the stream ahead of where
+## it left rather than retracing its own wake.
 func _build_callers() -> void:
 	if not _callers.is_empty() or _berths.is_empty() or _lanes.is_empty():
 		return
-	var call_berth: Dictionary = {}
+	if not _build_sea_grid(_world_lo, _world_hi):
+		return   # terrain not baked yet; try again next frame
+	# One berth per harbour is enough to call at.
+	var by_tile: Dictionary = {}
 	for berth_value in _berths:
 		var berth: Dictionary = berth_value
-		if str(berth.get("tile_id", "")) == CAPITAL_TILE:
-			call_berth = berth
-			break
-	if call_berth.is_empty():
-		return   # no Capital Port on this map; the stream simply runs past
-	var seaward: Vector2 = call_berth["seaward"]
-	var standoff: Vector2 = (call_berth["berth"] as Vector2) + seaward * float(call_berth["away"])
-	for direction in 2:
-		# Callers ride the INSHORE edge of their half — they are the ones peeling off toward
-		# land, so they cross no through-traffic to get there.
-		var lane_index := direction * LANE_SHIPS
-		var lane: Dictionary = _lanes[lane_index]
-		var pts: PackedVector2Array = lane["points"]
-		var total: float = lane["length"]
-		var reverse: bool = lane["reverse"]
-		# Leave the lane at whatever point is nearest the harbour approach.
-		var best := 0.0
-		var best_d := INF
-		var steps := 240
-		for k in steps:
-			var d := total * float(k) / float(steps)
-			var probe: Array = _along(pts, total, total - d if reverse else d)
-			var gap: float = (probe[0] as Vector2).distance_to(standoff)
-			if gap < best_d:
-				best_d = gap
-				best = d
-		var at: Array = _along(pts, total, total - best if reverse else best)
-		var join: Vector2 = at[0]
-		var course := Vector2.RIGHT.rotated(float(at[1]) + (PI if reverse else 0.0))
-		var side := Vector2(-course.y, course.x) * SPUR_SPLIT
-		var spur_in := _spur(join, standoff, course, Vector2.ZERO)
-		var spur_out := _spur(standoff, join, -seaward, side)
-		var t_lane := total / SEA_SPEED
-		var t_in := _polyline_length(spur_in) / SEA_SPEED
-		var t_out := _polyline_length(spur_out) / SEA_SPEED
-		_callers.append({
-			"points": pts, "length": total, "reverse": reverse, "join": best,
-			"spur_in": spur_in, "spur_in_len": _polyline_length(spur_in),
-			"spur_out": spur_out, "spur_out_len": _polyline_length(spur_out),
-			"berth": call_berth,
-			"t_lane": t_lane, "t_in": t_in, "t_out": t_out,
-			"period": t_lane + t_in + CYCLE + t_out,
-		})
+		var tile := str(berth.get("tile_id", ""))
+		if tile != "" and not by_tile.has(tile):
+			by_tile[tile] = berth
+	for tile in by_tile:
+		var call_berth: Dictionary = by_tile[tile]
+		var count: int = CALLERS_PER_DIRECTION if tile == CAPITAL_TILE else CALLERS_MINOR_PORT
+		var seaward: Vector2 = call_berth["seaward"]
+		var standoff: Vector2 = (call_berth["berth"] as Vector2) 			+ seaward * float(call_berth["away"])
+		for direction in 2:
+			# Callers ride the INSHORE edge of their half -- they are the ones peeling off
+			# toward land, so they cross no through-traffic to get there.
+			var lane: Dictionary = _lanes[direction * LANE_SHIPS]
+			var pts: PackedVector2Array = lane["points"]
+			var total: float = lane["length"]
+			var reverse: bool = lane["reverse"]
+			# Leave the lane at whatever point is nearest the harbour approach.
+			var leave := 0.0
+			var best_d := INF
+			var steps := 240
+			for k in steps:
+				var d := total * float(k) / float(steps)
+				var probe: Array = _along(pts, total, total - d if reverse else d)
+				var gap: float = (probe[0] as Vector2).distance_to(standoff)
+				if gap < best_d:
+					best_d = gap
+					leave = d
+			var rejoin := fposmod(leave + MERGE_RUN, total)
+			var leave_at: Array = _along(pts, total, total - leave if reverse else leave)
+			var rejoin_at: Array = _along(pts, total, total - rejoin if reverse else rejoin)
+			var spur_in := _sea_path(leave_at[0] as Vector2, standoff)
+			var spur_out := _sea_path(standoff, rejoin_at[0] as Vector2)
+			if spur_in.size() < 2 or spur_out.size() < 2:
+				continue   # no water route: no callers, rather than callers over a hill
+			var in_len := _polyline_length(spur_in)
+			var out_len := _polyline_length(spur_out)
+			var lane_run := total - MERGE_RUN
+			var t_lane := lane_run / SEA_SPEED
+			var t_in := in_len / SEA_SPEED
+			var t_out := out_len / SEA_SPEED
+			_callers.append({
+				"points": pts, "length": total, "reverse": reverse,
+				"join": rejoin, "lane_run": lane_run, "count": count,
+				"spur_in": spur_in, "spur_in_len": in_len,
+				"spur_out": spur_out, "spur_out_len": out_len,
+				"berth": call_berth,
+				"t_lane": t_lane, "t_in": t_in, "t_out": t_out,
+				"period": t_lane + t_in + CYCLE + t_out,
+			})
 
 
 ## WHERE A CALLER IS AT LOCAL TIME `u`, as [position, heading]. This is the whole trick:
@@ -335,7 +380,7 @@ func _caller_at(route: Dictionary, u: float) -> Array:
 	if u < t_lane:
 		var pts: PackedVector2Array = route["points"]
 		var total: float = route["length"]
-		var d: float = float(route["join"]) + u * SEA_SPEED
+		var d: float = fposmod(float(route["join"]) + u * SEA_SPEED, total)
 		var at: Array = _along(pts, total, total - d if reverse else d)
 		return [at[0], float(at[1]) + (PI if reverse else 0.0)]
 	if u < t_lane + t_in:
@@ -436,7 +481,7 @@ func _draw() -> void:
 		for i in _hull_tris.size():
 			pts[b + i] = basis * _hull_tris[i]
 			cols[b + i] = HULL
-		topside.append({"basis": basis, "seed": int(d) % 7})
+		topside.append({"basis": basis, "seed": int(lane["seed"])})
 	# PORT CALLERS. Five per route, the same baked route at five phases -- the whole reason
 	# this costs one lookup each rather than one animation each.
 	for route_value in _callers:
@@ -444,8 +489,9 @@ func _draw() -> void:
 		var period: float = route["period"]
 		if period <= 0.0 or SEA_SHIP_LENGTH * ppu < MIN_SHIP_PX:
 			continue
-		for c in CALLERS_PER_DIRECTION:
-			var u := fposmod(_clock + period * float(c) / float(CALLERS_PER_DIRECTION), period)
+		var fleet: int = int(route.get("count", CALLERS_PER_DIRECTION))
+		for c in fleet:
+			var u := fposmod(_clock + period * float(c) / float(fleet), period)
 			var place: Array = _caller_at(route, u)
 			var cpos: Vector2 = place[0]
 			if not view.has_point(cpos):
@@ -581,3 +627,188 @@ func _visible_world_rect() -> Rect2:
 	if size.x <= 0.0:
 		return Rect2()
 	return (vp.get_canvas_transform().affine_inverse() * Rect2(Vector2.ZERO, size)).grow(CULL_MARGIN)
+
+
+# ── Sea routing ────────────────────────────────────────────────────────────────────
+#
+# The port spurs used to be Bezier curves straight at the harbour, which cut corners across
+# headlands. They are now shortest paths over open water, built once at load.
+
+var _sea_navigable := PackedByteArray()
+var _sea_cols := 0
+var _sea_rows := 0
+var _sea_origin := Vector2.ZERO
+
+
+## Mark every cell that is water AND has `SEA_CLEARANCE` of water around it. Built from
+## NavGrid -- the baked terrain -- rather than the tile map, because the tile map's coastline
+## is a coarser thing than the water the relief actually paints.
+func _build_sea_grid(lo: Vector2, hi: Vector2) -> bool:
+	if not _sea_navigable.is_empty():
+		return true
+	var nav := NavGrid.instance()
+	if nav == null or not nav.is_ready():
+		return false
+	_sea_origin = lo
+	_sea_cols = int((hi.x - lo.x) / SEA_CELL) + 1
+	_sea_rows = int((hi.y - lo.y) / SEA_CELL) + 1
+	_sea_navigable.resize(_sea_cols * _sea_rows)
+	var probes := PackedVector2Array()
+	for k in 8:
+		probes.append(Vector2.RIGHT.rotated(TAU * float(k) / 8.0) * SEA_CLEARANCE)
+	for r in _sea_rows:
+		for c in _sea_cols:
+			var world := _cell_centre(c, r)
+			var ok := 1
+			var centre := nav.cell_of(world)
+			if nav.water(centre.x, centre.y) == 0:
+				ok = 0
+			else:
+				for probe in probes:
+					var pc := nav.cell_of(world + probe)
+					if nav.water(pc.x, pc.y) == 0:
+						ok = 0
+						break
+			_sea_navigable[r * _sea_cols + c] = ok
+	return true
+
+
+## The world point a cell stands for: its CENTRE, not its corner. Sampling the corner makes a
+## cell's flag describe the wrong 50 units of map, which puts path vertices on the seam
+## between water and land.
+func _cell_centre(c: int, r: int) -> Vector2:
+	return _sea_origin + Vector2((float(c) + 0.5) * SEA_CELL, (float(r) + 0.5) * SEA_CELL)
+
+
+func _sea_ok(c: int, r: int) -> bool:
+	if c < 0 or r < 0 or c >= _sea_cols or r >= _sea_rows:
+		return false
+	return _sea_navigable[r * _sea_cols + c] != 0
+
+
+## The navigable cell nearest `world`, spiralling outward. Both ends of a route -- a lane
+## point and a harbour approach -- are in water, but not necessarily in a cell whose whole
+## clearance ring is, so the search has to be allowed to step off a little.
+func _nearest_sea(world: Vector2) -> Vector2i:
+	var base := Vector2i(int((world.x - _sea_origin.x) / SEA_CELL),
+		int((world.y - _sea_origin.y) / SEA_CELL))
+	if _sea_ok(base.x, base.y):
+		return base
+	for ring in range(1, 24):
+		for dx in range(-ring, ring + 1):
+			for dy in range(-ring, ring + 1):
+				if absi(dx) != ring and absi(dy) != ring:
+					continue
+				if _sea_ok(base.x + dx, base.y + dy):
+					return Vector2i(base.x + dx, base.y + dy)
+	return Vector2i(-1, -1)
+
+
+## Shortest water path between two world points, as a simplified polyline. Empty if the two
+## are not connected by navigable sea -- in which case the caller draws no route at all,
+## which is the honest outcome: better no skein of port traffic than one sailing over a hill.
+func _sea_path(from_world: Vector2, to_world: Vector2) -> PackedVector2Array:
+	var start := _nearest_sea(from_world)
+	var goal := _nearest_sea(to_world)
+	if start.x < 0 or goal.x < 0:
+		return PackedVector2Array()
+	var count := _sea_cols * _sea_rows
+	var came := PackedInt32Array()
+	came.resize(count)
+	came.fill(-1)
+	var start_i := start.y * _sea_cols + start.x
+	var goal_i := goal.y * _sea_cols + goal.x
+	# Uniform-cost BFS on the 8-connected grid, with an index-advancing queue. Dijkstra with a
+	# linear frontier scan over forty-odd thousand cells is minutes of GDScript at load; the
+	# shortcut pass below straightens the result into long legs regardless, so the difference
+	# between Chebyshev-shortest and Euclid-shortest does not survive to the drawn route.
+	var queue := PackedInt32Array()
+	queue.resize(count)
+	queue[0] = start_i
+	came[start_i] = start_i
+	var head := 0
+	var tail := 1
+	var found := start_i == goal_i
+	while head < tail and not found:
+		var here: int = queue[head]
+		head += 1
+		var hc: int = here % _sea_cols
+		var hr: int = here / _sea_cols
+		for dx in [-1, 0, 1]:
+			for dy in [-1, 0, 1]:
+				if dx == 0 and dy == 0:
+					continue
+				var nc: int = hc + dx
+				var nr: int = hr + dy
+				if not _sea_ok(nc, nr):
+					continue
+				# NO CORNER-CUTTING. Two water cells can touch at a corner with land on the
+				# other diagonal, and a step straight between them sails across the headland
+				# -- which is exactly the leg the synthetic test caught.
+				if dx != 0 and dy != 0:
+					if not _sea_ok(hc + dx, hr) or not _sea_ok(hc, hr + dy):
+						continue
+				var ni: int = nr * _sea_cols + nc
+				if came[ni] >= 0:
+					continue
+				came[ni] = here
+				queue[tail] = ni
+				tail += 1
+				if ni == goal_i:
+					found = true
+		if found:
+			break
+	if came[goal_i] < 0:
+		return PackedVector2Array()
+	var reversed_path := PackedVector2Array()
+	var cur := goal_i
+	while cur >= 0:
+		reversed_path.append(_cell_centre(cur % _sea_cols, cur / _sea_cols))
+		if cur == start_i:
+			break
+		cur = came[cur]
+	var path := PackedVector2Array()
+	for k in range(reversed_path.size() - 1, -1, -1):
+		path.append(reversed_path[k])
+	if path.size() >= 2:
+		path[0] = from_world
+		path[path.size() - 1] = to_world
+	return _simplify_sea(path)
+
+
+## Pull the staircase back to straight legs: keep a point only when the water will not take
+## the shortcut past it.
+func _simplify_sea(path: PackedVector2Array) -> PackedVector2Array:
+	if path.size() < 3:
+		return path
+	var out := PackedVector2Array([path[0]])
+	var anchor := 0
+	while anchor < path.size() - 1:
+		var furthest := anchor + 1
+		for probe in range(path.size() - 1, anchor, -1):
+			if _sea_clear_between(path[anchor], path[probe]):
+				furthest = probe
+				break
+		out.append(path[furthest])
+		anchor = furthest
+	return out
+
+
+## Is a straight leg from `a` to `b` clear water? Checked as a CORRIDOR half a cell wide,
+## not as a hairline: a diagonal between two free cells can still clip the corner of a blocked
+## one, and a sampled centre line walks straight past that.
+func _sea_clear_between(a: Vector2, b: Vector2) -> bool:
+	var span := a.distance_to(b)
+	if span < 0.001:
+		return true
+	var across := (b - a).orthogonal().normalized() * SEA_CELL * 0.5
+	var steps := int(span / SEA_SIMPLIFY_STEP) + 1
+	for k in range(steps + 1):
+		var at := a.lerp(b, float(k) / float(steps))
+		for side: Vector2 in [Vector2.ZERO, across, -across]:
+			var probe: Vector2 = at + side
+			var cell := Vector2i(int((probe.x - _sea_origin.x) / SEA_CELL),
+				int((probe.y - _sea_origin.y) / SEA_CELL))
+			if not _sea_ok(cell.x, cell.y):
+				return false
+	return true

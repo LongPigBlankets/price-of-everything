@@ -46,14 +46,20 @@ const CULL_MARGIN := 200.0
 ##
 ## Screen y runs DOWN, so south is +y: south-east is PI/4 and due south is PI/2.
 ## Three skeins run NORTH-WEST to SOUTH-EAST across the continent; two come down the eastern
-## side from the NORTH-EAST (owner, 2026-08-27). Starts sit over the landmass -- the southern
-## fifth of the map is open sea, and a skein there would be crossing water, not country.
+## side from the NORTH-EAST (owner, 2026-08-27).
+##
+## The courses are aimed to CROSS THE PORT TILES (owner, 2026-08-27: that is where players
+## spend their time, so that is where the sky should have something in it). The three harbours
+## sit at (0.36, 0.86), (0.75, 0.80) and (0.81, 0.36) of the world box, and each of the first,
+## second and fourth starts is the harbour MINUS half a run along its own heading, so the skein
+## is overhead partway through its crossing rather than at the end of it. Checked, not assumed,
+## by tools/bird_course_probe -- eyeballed starts put every skein thousands of units wide.
 const COURSES: Array[Vector3] = [
-	Vector3(0.05, 0.06, PI * 0.25),   # NW -> SE
-	Vector3(0.02, 0.30, PI * 0.25),
-	Vector3(0.22, 0.03, PI * 0.25),
-	Vector3(0.72, 0.04, PI * 0.50),   # NE -> SE, down the eastern side
-	Vector3(0.88, 0.02, PI * 0.50),
+	Vector3(0.183, 0.639, PI * 0.25),  # NW -> SE, over the south-western harbour at u~0.55
+	Vector3(0.562, 0.566, PI * 0.25),  # NW -> SE, over the south-eastern harbour at u~0.60
+	Vector3(0.220, 0.030, PI * 0.25),  # NW -> SE, inland
+	Vector3(0.815, 0.079, PI * 0.50),  # NE -> SE, straight down over the Capital Port at u~0.5
+	Vector3(0.880, 0.020, PI * 0.50),  # NE -> SE, further out
 ]
 
 var _clock := 0.0

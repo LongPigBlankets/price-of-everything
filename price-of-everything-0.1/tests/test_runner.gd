@@ -320,6 +320,8 @@ func _ready() -> void:
 	_test_smoke_stacks()
 	_test_construction_sites()
 	_test_dash_segments()
+	_test_stacks_sit_in_a_line()
+	_test_sea_path_goes_round_land()
 	_test_smoke_carbon_split()
 	_test_ship_manoeuvre_clears_the_arms()
 	await _test_crowded_tile_gentle_failure()
@@ -19449,3 +19451,96 @@ func _document_with(kind: String, record: Dictionary) -> Dictionary:
 	var doc: Dictionary = AuthoredMap.empty_document()
 	doc["settlements"] = {"test": {"tiles": ["tile_1_1"], kind: [record]}}
 	return doc
+
+
+## A building with more than one chimney gets them ADJACENT, IN A LINE (owner, 2026-08-27).
+## Three flues scattered round a footprint read as three separate works; a row reads as one
+## plant. This pins the row -- collinear, evenly spaced, and every stack still on the roof.
+func _test_stacks_sit_in_a_line() -> void:
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	var rect := PackedVector2Array([Vector2(0, 0), Vector2(120, 0),
+		Vector2(120, 60), Vector2(0, 60)])
+	var stacks: Array = bv._stack_points("petro_refinery", "inst_1", rect)
+	_check(stacks.size() == 3, "stacks: a refinery has three (%d)" % stacks.size())
+	if stacks.size() == 3:
+		var a: Vector2 = stacks[0]["pos"]
+		var b: Vector2 = stacks[1]["pos"]
+		var c: Vector2 = stacks[2]["pos"]
+		# Collinear: the cross product of the two gaps is zero for a straight row.
+		var cross: float = absf((b - a).cross(c - b))
+		_check(cross < 0.5, "stacks: the three are collinear (cross %.3f)" % cross)
+		# Adjacent: equal gaps, each no wider than a couple of stack diameters.
+		var g1 := a.distance_to(b)
+		var g2 := b.distance_to(c)
+		var r: float = float(stacks[0]["r"])
+		_check(absf(g1 - g2) < 0.01, "stacks: evenly spaced (%.2f vs %.2f)" % [g1, g2])
+		_check(g1 > r and g1 <= r * 2.5,
+			"stacks: adjacent, about a diameter apart (%.2f for r %.2f)" % [g1, r])
+		# On the roof, not straddling the outline.
+		var outside := 0
+		for stack_value in stacks:
+			if not Geometry2D.is_point_in_polygon(stack_value["pos"] as Vector2, rect):
+				outside += 1
+		_check(outside == 0, "stacks: all inside the footprint (%d outside)" % outside)
+	# A single-stack building is unaffected by the row logic.
+	var one: Array = bv._stack_points("furnace", "inst_2", rect)
+	_check(one.size() == 1, "stacks: a furnace still has exactly one (%d)" % one.size())
+	bv.free()
+
+
+## The port spurs used to be Bezier curves aimed straight at the harbour, so they cut across
+## headlands and callers sailed overland. They are sea paths now. Driven here on a SYNTHETIC
+## grid rather than the real map, so the test says something about the router itself: given a
+## wall of land between two points, does it go round, and does every step stay on water?
+func _test_sea_path_goes_round_land() -> void:
+	var ships := preload("res://scripts/port_ship_visuals.gd").new()
+	var cols := 40
+	var rows := 40
+	var grid := PackedByteArray()
+	grid.resize(cols * rows)
+	grid.fill(1)
+	# A peninsula reaching down from the top, leaving a gap along the bottom rows.
+	for r in 30:
+		for c in range(18, 23):
+			grid[r * cols + c] = 0
+	ships.set("_sea_navigable", grid)
+	ships.set("_sea_cols", cols)
+	ships.set("_sea_rows", rows)
+	ships.set("_sea_origin", Vector2.ZERO)
+	var cell: float = ships.SEA_CELL
+	var from_world := Vector2(5.0 * cell, 5.0 * cell)
+	var to_world := Vector2(35.0 * cell, 5.0 * cell)
+	var path: PackedVector2Array = ships._sea_path(from_world, to_world)
+	_check(path.size() >= 2, "sea path: a route exists round the peninsula (%d points)"
+		% path.size())
+	if path.size() >= 2:
+		_check(path[0].distance_to(from_world) < 0.01, "sea path: starts where asked")
+		_check(path[path.size() - 1].distance_to(to_world) < 0.01, "sea path: ends where asked")
+		# Every sample on land is a caller drawn over a hill.
+		var on_land := 0
+		var deepest := 0.0
+		for i in range(path.size() - 1):
+			var span := path[i].distance_to(path[i + 1])
+			var steps := maxi(int(span / 10.0), 1)
+			for k in range(steps + 1):
+				var at := path[i].lerp(path[i + 1], float(k) / float(steps))
+				deepest = maxf(deepest, at.y)
+				var gc := int(at.x / cell)
+				var gr := int(at.y / cell)
+				if gc >= 0 and gr >= 0 and gc < cols and gr < rows:
+					if grid[gr * cols + gc] == 0:
+						on_land += 1
+		_check(on_land == 0, "sea path: no sample crosses land (%d)" % on_land)
+		# It cannot have gone straight: the only water is south of the peninsula.
+		_check(deepest > 29.0 * cell,
+			"sea path: routes south round the headland (reached y %.0f)" % deepest)
+	# A goal walled off from the start yields no route at all, so the caller draws nothing
+	# rather than something wrong.
+	for r in rows:
+		for c in range(18, 23):
+			grid[r * cols + c] = 0
+	ships.set("_sea_navigable", grid)
+	var blocked: PackedVector2Array = ships._sea_path(from_world, to_world)
+	_check(blocked.is_empty(), "sea path: an unreachable harbour returns no route (%d)"
+		% blocked.size())
+	ships.free()

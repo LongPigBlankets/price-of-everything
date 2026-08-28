@@ -5674,33 +5674,61 @@ func construction_sites() -> Array:
 	return out
 
 
-## Where this building's chimneys stand, in world coordinates. Corners of the placement's
-## own polygon, seeded per instance so a stack never moves once placed, and pulled a little
-## way toward the centroid so the chimney sits ON the roof rather than straddling the
-## outline. Several stacks are spread around the ring instead of landing on adjacent
-## corners, which would read as one lumpy chimney rather than three.
+## Where this building's chimneys stand, in world coordinates.
 ##
-## Returns `[]` for every building with no entry in SMOKE_STACKS, which is most of them.
+## A building with more than one stack gets them ADJACENT, IN A LINE (owner, 2026-08-27) --
+## a refinery's three read as one plant with a row of flues, not as three separate works.
+## The line runs along the footprint's longest edge, anchored a little in from the corner and
+## stepped by just over a stack width, and it is pulled toward the centroid so the flues sit
+## on the roof rather than straddling the outline. If the edge is too short to hold the row
+## at full spacing, the spacing shrinks rather than the stacks marching off the building.
 func _stack_points(iname: String, iid: String, verts: PackedVector2Array) -> Array:
 	var spec: Dictionary = SMOKE_STACKS.get(iname, {})
 	if spec.is_empty() or verts.size() < 3:
 		return []
-	var n := verts.size()
-	var count: int = mini(int(spec["count"]), n)
+	var count: int = maxi(int(spec["count"]), 1)
 	var r := float(spec["r"])
 	var centroid := _poly_centroid(verts)
-	var start := RoadHash.pick("stack|%s" % iid, n)
-	var step: int = maxi(1, n / maxi(count, 1))
+
+	# The longest edge is the building's own axis; a row of flues follows it.
+	var n := verts.size()
+	var best := 0
+	var longest := 0.0
+	for i in n:
+		var span := verts[i].distance_to(verts[(i + 1) % n])
+		if span > longest:
+			longest = span
+			best = i
+	if longest < 0.001:
+		return []
+	var a: Vector2 = verts[best]
+	var b: Vector2 = verts[(best + 1) % n]
+	var along := (b - a) / longest
+
+	# Adjacent: a hair over one diameter apart, so they touch without overlapping.
+	var step := r * 2.2
+	var run := step * float(count - 1)
+	# Keep the whole row on the edge, with a stack's width of margin at each end.
+	var room := longest - r * 2.0
+	if run > room and count > 1:
+		step = maxf(room / float(count - 1), r * 1.15)
+		run = step * float(count - 1)
+	# Centre the row on the edge.
+	var start := a + along * ((longest - run) * 0.5)
+	# Step INWARD ALONG THE EDGE NORMAL, one shared direction for the whole row. Insetting each
+	# stack toward the centroid instead bows the row by a degree or so -- close enough to look
+	# right, not close enough to be the line that was asked for.
+	var normal := Vector2(-along.y, along.x)
+	var depth := (centroid - a).dot(normal)
+	if depth < 0.0:
+		normal = -normal
+		depth = -depth
+	# Proportional, so a shallow building does not shove its flues past its own middle.
+	var inset := minf(r + 2.5, depth * 0.5)
+
 	var out: Array = []
 	for i in count:
-		var corner := verts[(start + i * step) % n]
-		var toward := centroid - corner
-		var reach := toward.length()
-		if reach < 0.001:
-			continue
-		# Proportional, so a small building does not shove its chimney past its own middle.
-		var inset := minf(r + 2.5, reach * 0.35)
-		out.append({"pos": corner + toward / reach * inset, "r": r})
+		out.append({"pos": start + along * step * float(i) + normal * inset, "r": r})
 	return out
 
 

@@ -129,6 +129,14 @@ var _clock := 0.0
 
 
 func _ready() -> void:
+	# A build COMPLETING moves no footprint, so `footprint_version` never changes and the
+	# stack list would never be re-asked -- which is why a newly finished refinery stood there
+	# with no smoke. The lifecycle signals are the trigger; the version is only the backstop
+	# for a building appearing or going.
+	for signal_name in ["construction_completed", "construction_cancelled"]:
+		if Construction.has_signal(signal_name):
+			Construction.connect(signal_name,
+				func(_i: String, _t: String) -> void: _known_version = -1)
 	set_process(true)
 
 
