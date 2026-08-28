@@ -86,6 +86,10 @@ const _ALERT := Color(0.94, 0.24, 0.19)     # blocked-shipment red
 const _WHITE := Color(1.0, 1.0, 1.0)
 const _CREAM := Color(0.995234, 0.930806, 0.763265)   # DS ACCENT / recipe-card OFF_WHITE
 const _PILL_NAVY := Color(0.0, 0.119856, 0.243095)    # recipe-card BADGE_NAVY
+## Every edge (input, market, sell — dashed or not) carries a good-icon chip partway along its
+## routed path, reusing _LANE_CHIP's own cream-chip look (owner, 27 Aug). 0.4 = 40% of the way
+## from source to destination, by arc length along the actual (elbowed) route.
+const _EDGE_CHIP_T := 0.4
 var _focus_site: Dictionary = {}            # {} unless the selection is a construction site
 var _site_lane_n := 0                       # lane count, so _layout_bbox can frame them
 var _site_lane_pitch := _LANE_ROW           # widens when a lane carries a blocked message
@@ -288,6 +292,9 @@ func _reposition_panels() -> void:
 		var a := 1.0 if (_focus_t <= 0.0 or _focus_members.has(iid2)) else (1.0 - _focus_t)
 		ctrl.modulate.a = a
 		ctrl.visible = a > 0.01
+		# The focused building's own sell line (with its good-icon chip) now says "ships to
+		# market, and where" directly — its port badge would just repeat that.
+		ctrl.call("set_badge_hidden", iid2 == _focus_iid)
 
 
 ## A node's LAYOUT position, eased toward its focus-chart position while a mini-chart is open.
@@ -786,6 +793,7 @@ func _draw() -> void:
 		var ma := 0.85 * (1.0 if _focus_keeps(e) else off_a)
 		if ma > 0.01:
 			_draw_dashed_polyline(mpath, Color(_EDGE, ma), _EDGE_WIDTH * sc, sc)
+			_draw_edge_good_chip(mpath, str(e.get("good", "")), font, sc, ma)
 
 	# Sell-to-market lines (thick gold) routed down to the port row, beneath everything else.
 	var ports_top := INF
@@ -810,6 +818,7 @@ func _draw() -> void:
 			# Standing default, nothing actually shipping yet: dashed — "this is
 			# where sales WOULD leave" (goods are pooling in the tile stockpile).
 			_draw_dashed_polyline(path, Color(_SELL, 0.8 * sa), _SELL_WIDTH * sc, sc)
+		_draw_edge_good_chip(path, str(e.get("good", "")), font, sc, sa)
 
 	# Input lines (thin amber) routed left-to-right between columns.
 	for e in _edges:
@@ -820,6 +829,7 @@ func _draw() -> void:
 			continue
 		var path := _route_input(_box_by_iid[e["from"]], _box_by_iid[e["to"]], int(e.get("lane", 0)), int(e.get("lane_n", 1)), sc)
 		draw_polyline(path, Color(_EDGE, ea), _EDGE_WIDTH * sc, true)
+		_draw_edge_good_chip(path, str(e.get("good", "")), font, sc, ea)
 
 	# The construction-site delivery chart, under the port hexes so their gold sits on top of
 	# the lane ends (and under the panels, which are Controls and always above _draw).
@@ -1188,6 +1198,42 @@ func site_lane_geometry(lanes: Array, sc: float) -> Array:
 				Vector2(tx, y), Vector2(tx, sp.y), Vector2(feed_x, sp.y)]), _CHAMFER * sc),
 		})
 	return out
+
+
+## The point at fraction `t` (0..1) of the way along a polyline's total ARC LENGTH — used to
+## place a good-icon chip partway along a routed edge regardless of how many elbows the route
+## takes (a straight fraction of one segment would land wrong on anything but a 2-point path).
+## Degenerates to Vector2.ZERO for under 2 points; callers must not draw on that.
+func _point_along_polyline(pts: PackedVector2Array, t: float) -> Vector2:
+	if pts.size() < 2:
+		return Vector2.ZERO
+	var total := 0.0
+	for i in pts.size() - 1:
+		total += pts[i].distance_to(pts[i + 1])
+	if total <= 0.0:
+		return pts[0]
+	var target := clampf(t, 0.0, 1.0) * total
+	var walked := 0.0
+	for i in pts.size() - 1:
+		var seg := pts[i].distance_to(pts[i + 1])
+		if walked + seg >= target or i == pts.size() - 2:
+			var seg_t := 0.0 if seg <= 0.0 else clampf((target - walked) / seg, 0.0, 1.0)
+			return pts[i].lerp(pts[i + 1], seg_t)
+		walked += seg
+	return pts[pts.size() - 1]
+
+
+## The good-icon chip every edge carries at _EDGE_CHIP_T along its route (owner, 27 Aug — "any
+## line, dashed or not"). Reuses _draw_material_chip's exact cream-rounded-chip look with qty=0
+## so its quantity pill stays off — this chip says WHAT flows, not how much. Silent no-op for a
+## good with no icon art (nothing to put on the chip) or a path too short to have a "40% along".
+func _draw_edge_good_chip(path: PackedVector2Array, good_id: String, font: Font, sc: float, a: float) -> void:
+	if good_id == "" or a <= 0.01 or path.size() < 2:
+		return
+	var icon := GoodIcons.texture_for_size(good_id, str(Catalog.get_internal_name(good_id)), _LANE_CHIP * sc)
+	if icon == null:
+		return
+	_draw_material_chip(_point_along_polyline(path, _EDGE_CHIP_T), _LANE_CHIP * sc, icon, 0, font, sc, a)
 
 
 ## A material on its lane: the good's icon on the same ROUNDED cream chip the plates use, with

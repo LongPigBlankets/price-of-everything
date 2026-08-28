@@ -28,6 +28,19 @@ var lit := false:
 		lit = v
 		queue_redraw()
 
+## Flashes the lit colour on/off once a second (top bar v3.1: power's intermittency
+## lamp) instead of holding it steady. No-op while `lit` is false — a blinking lamp
+## that was never on would just read as a lamp with a stuck timer.
+var blink := false:
+	set(v):
+		if v == blink:
+			return
+		blink = v
+		_update_blink_timer()
+
+var _blink_on := true
+var _blink_timer: Timer
+
 
 func _init(lamp_color: Color = Color("#e2604a")) -> void:
 	color = lamp_color
@@ -37,9 +50,28 @@ func _init(lamp_color: Color = Color("#e2604a")) -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
+func _update_blink_timer() -> void:
+	if not blink:
+		if _blink_timer != null:
+			_blink_timer.stop()
+		_blink_on = true
+		queue_redraw()
+		return
+	if _blink_timer == null:
+		_blink_timer = Timer.new()
+		_blink_timer.wait_time = 0.5   # two ticks = one flash per second
+		_blink_timer.timeout.connect(func() -> void:
+			_blink_on = not _blink_on
+			queue_redraw())
+		add_child(_blink_timer)
+	_blink_on = true
+	queue_redraw()
+	_blink_timer.start()
+
+
 func _draw() -> void:
 	var c := size * 0.5
-	if not lit:
+	if not lit or (blink and not _blink_on):
 		draw_circle(c, R, GLASS)
 		draw_arc(c, R, 0.0, TAU, 16, Color(1, 1, 1, 0.10), 1.0, true)
 		return

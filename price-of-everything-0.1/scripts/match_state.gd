@@ -384,6 +384,15 @@ var demolish_queue: Dictionary = {}
 var paused_buildings: Dictionary = {}
 # Last turn's per-link flow ("tile|mode"->units) — drives this turn's congestion cost.
 var _last_link_flow: Dictionary = {}
+# Shallow snapshot of pending_transport_shipments from the same moment _last_link_flow
+# is captured (before advance_transport_shipments() removes arrivals / decrements the
+# rest). Shipment DICTS are shared with the live list — advance_transport_shipments()
+# only ever mutates turns_remaining in place, which nothing here reads — but the ARRAY
+# is this snapshot's own, so later arrivals falling out of pending_transport_shipments
+# don't fall out of this too. Read by tile_good_breakdown() for the infra building
+# detail panel's "Breakdown" table, so a tile still reports what transited it this turn
+# even after arrivals have been paid out and removed from the live list.
+var _last_transit_shipments: Array = []
 # Per-link congestion HISTORY, for the transport panel's "at cap N of last 10 turns"
 # column: "tile|mode" -> Array[bool], newest last, capped at LINK_HISTORY_TURNS.
 # Appended once per turn from the same snapshot that prices congestion, so the two
@@ -557,11 +566,19 @@ var use_empire_button_badge: bool = true
 # Session-only; the cheat only changes the active match.
 var use_construct_panel_v2: bool = true
 
-# Debug-only: `swap construct_panel_v3` progressively enables the confirm-screen
-# redesign (designer spec "Confirm Construction Panel v2", tracked as v3 here)
-# inside the V2 panel while it is built out band by band. Off by default;
-# session-only, never persisted.
-var use_construct_panel_v3: bool = false
+# Debug-only: `swap construct_panel_v3` keeps the pre-redesign confirm screen
+# available for comparison (designer spec "Confirm Construction Panel v2",
+# tracked as v3 here) inside the V2 panel. The redesigned confirm screen is
+# the normal default. Session-only, never persisted.
+var use_construct_panel_v3: bool = true
+
+# Debug-only: `swap topbar v3.1` keeps the pre-redesign top bar (Goods Graph,
+# Encyclopedia, Mission, Power, Victory, Rankings as text/vector-glyph faces)
+# available for comparison inside the existing top_bar.gd — same "render branch
+# behind a flag, not a second scene" shape as use_construct_panel_v3. The
+# icon-faced redesign (baked standalone icons in assets/icons/ui_icons/standalone/)
+# is the normal default. Session-only, never persisted.
+var use_topbar_v3_1: bool = true
 
 # Construct V2 defaults. They are match settings rather than panel-local state so
 # a construction captures the current choices when it begins, including after a
@@ -572,12 +589,27 @@ var construct_start_half_capacity: bool = false
 ## When on, confirming a build on a tile the player has too little land for buys exactly
 ## enough land patches to cover the shortfall first (see world_map._space_check_for_build).
 var construct_auto_buy_land: bool = false
+## Off = the browse list's recipe cards show the compact mini diagram (icons + "+" +
+## an arrow, no quantities); on = the full Building-Details-style diagram with qty
+## pills. Display-only — never read by BuildForecast/Production.
+var construct_expanded_recipe_mode: bool = false
 # Defaults captured by constructions when they are started. "ask" preserves the
 # existing delivery prompt; the other modes choose a source automatically.
 var construct_material_source: String = "ask"
 # New production defaults to market routing unless the player explicitly chooses
 # the building's own tile stockpile.
 var construct_output_destination: String = "market"
+# Power supply priority (owner, 28 Aug): "self" (this category's generation covers
+# local building demand before anything sells) or "grid" (this category's
+# generation always sells; local demand for it is bought from the grid instead).
+# Defaults avoid exposing buildings to intermittency: coal/gas (steady) self-
+# serves, wind/solar (intermittent) sells and buys firm grid power instead. A
+# match setting, read live every turn by Production/Power — applies to every
+# power_plant/wind/solar building that exists AND any built after the player
+# changes it, not captured per-instance at construction (contrast
+# construct_material_source above, which IS captured per-construction).
+var power_priority_coal_gas: String = "self"
+var power_priority_wind_solar: String = "grid"
 
 # --- Signals ---
 signal money_changed(new_amount: float) 
@@ -691,8 +723,12 @@ signal construct_panel_v2_changed(enabled: bool)
 # The confirm-screen v3 dev-toggle flipped (`swap construct_panel_v3` cheat); the V2
 # panel re-renders so the gated visuals apply immediately. Session-only.
 signal construct_panel_v3_changed(enabled: bool)
+# The top-bar icon redesign dev-toggle flipped (`swap topbar v3.1` cheat); top_bar.gd
+# re-renders the affected modules so the gated visuals apply immediately. Session-only.
+signal topbar_v3_1_changed(enabled: bool)
 signal empire_button_icon_changed(use_badge: bool)
 signal construct_settings_changed
+signal power_priority_changed
 ## A UI surface (notification deep-link, etc.) asks the map to focus a tile:
 ## centre the camera on it and open its tile panel. world_map handles it.
 signal focus_tile_requested(tile_id: String)
@@ -3403,8 +3439,11 @@ func reset() -> void:
 	construct_cost_display = "grid"
 	construct_start_half_capacity = false
 	construct_auto_buy_land = false
+	construct_expanded_recipe_mode = false
 	construct_material_source = "ask"
 	construct_output_destination = "market"
+	power_priority_coal_gas = "self"
+	power_priority_wind_solar = "grid"
 	buildings.clear()
 	tile_buildings.clear()
 	output_stockpile_destinations.clear()
@@ -3430,6 +3469,7 @@ func reset() -> void:
 	demolish_queue.clear()
 	paused_buildings.clear()
 	_last_link_flow.clear()
+	_last_transit_shipments.clear()
 	_link_over_history.clear()
 	_link_congestion_paid.clear()
 	overflow_shipments.clear()
@@ -3543,8 +3583,11 @@ func export_state() -> Dictionary:
 		"construct_cost_display": construct_cost_display,
 		"construct_start_half_capacity": construct_start_half_capacity,
 		"construct_auto_buy_land": construct_auto_buy_land,
+		"construct_expanded_recipe_mode": construct_expanded_recipe_mode,
 		"construct_material_source": construct_material_source,
 		"construct_output_destination": construct_output_destination,
+		"power_priority_coal_gas": power_priority_coal_gas,
+		"power_priority_wind_solar": power_priority_wind_solar,
 		"next_instance_counter": _next_instance_counter,
 		"shipment_id_counter": _shipment_id_counter,
 		"buildings": _buildings_for_save(),
@@ -3651,8 +3694,13 @@ func import_state(d: Dictionary) -> void:
 	set_construct_start_half_capacity(bool(d.get("construct_start_half_capacity", false)), false)
 	# Additive key: saves written before this setting existed simply default to off.
 	set_construct_auto_buy_land(bool(d.get("construct_auto_buy_land", false)), false)
+	set_construct_expanded_recipe_mode(bool(d.get("construct_expanded_recipe_mode", false)), false)
 	set_construct_material_source(str(d.get("construct_material_source", "ask")), false)
 	set_construct_output_destination(str(d.get("construct_output_destination", "market")), false)
+	# Additive key: saves written before this setting existed default to the same
+	# intermittency-avoiding defaults a fresh match starts with.
+	set_power_priority("coal_gas", str(d.get("power_priority_coal_gas", "self")), false)
+	set_power_priority("wind_solar", str(d.get("power_priority_wind_solar", "grid")), false)
 	_next_instance_counter = int(d.get("next_instance_counter", 0))
 	_shipment_id_counter = int(d.get("shipment_id_counter", 0))
 	buildings = _normalise_loaded_buildings(d.get("buildings", {}))
@@ -3897,6 +3945,16 @@ func set_use_construct_panel_v3(enabled: bool) -> bool:
 func toggle_use_construct_panel_v3() -> bool:
 	return set_use_construct_panel_v3(not use_construct_panel_v3)
 
+func set_use_topbar_v3_1(enabled: bool) -> bool:
+	if enabled == use_topbar_v3_1:
+		return use_topbar_v3_1
+	use_topbar_v3_1 = enabled
+	topbar_v3_1_changed.emit(use_topbar_v3_1)
+	return use_topbar_v3_1
+
+func toggle_use_topbar_v3_1() -> bool:
+	return set_use_topbar_v3_1(not use_topbar_v3_1)
+
 func set_construct_cost_display(value: String, emit_change: bool = true) -> void:
 	var resolved := value.to_lower()
 	if resolved not in ["grid", "compact", "list"]:
@@ -3921,6 +3979,13 @@ func set_construct_auto_buy_land(enabled: bool, emit_change: bool = true) -> voi
 	if emit_change:
 		construct_settings_changed.emit()
 
+func set_construct_expanded_recipe_mode(enabled: bool, emit_change: bool = true) -> void:
+	if construct_expanded_recipe_mode == enabled:
+		return
+	construct_expanded_recipe_mode = enabled
+	if emit_change:
+		construct_settings_changed.emit()
+
 
 func set_construct_material_source(value: String, emit_change: bool = true) -> void:
 	var resolved := value.to_lower().strip_edges()
@@ -3941,6 +4006,37 @@ func set_construct_output_destination(value: String, emit_change: bool = true) -
 	construct_output_destination = resolved
 	if emit_change:
 		construct_settings_changed.emit()
+
+## `category` is "coal_gas" or "wind_solar"; `priority` is "self" or "grid" — see
+## the vars' own comment. Applies live (no per-instance capture), so nothing else
+## needs to touch existing buildings when this changes.
+func set_power_priority(category: String, priority: String, emit_change: bool = true) -> void:
+	var resolved := priority.to_lower().strip_edges()
+	if resolved not in ["self", "grid"]:
+		return
+	if category == "coal_gas":
+		if power_priority_coal_gas == resolved:
+			return
+		power_priority_coal_gas = resolved
+	elif category == "wind_solar":
+		if power_priority_wind_solar == resolved:
+			return
+		power_priority_wind_solar = resolved
+	else:
+		return
+	if emit_change:
+		power_priority_changed.emit()
+
+## "self" or "grid" for the given category ("coal_gas" / "wind_solar"); "self" for
+## anything else (e.g. hydro, or a non-power building) — this feature's priority
+## only ever gates generation EconomyConfig.power_priority_category() actually
+## names, so "no category" must never be read as "sells to the grid".
+func power_priority_for(category: String) -> String:
+	if category == "coal_gas":
+		return power_priority_coal_gas
+	if category == "wind_solar":
+		return power_priority_wind_solar
+	return "self"
 
 ## Multiplier applied only to a new building's first successful operating turn.
 ## It is stored on the instance, so changing the default later cannot alter an
@@ -5264,7 +5360,18 @@ func transport_link_flow() -> Dictionary:
 		if qty <= 0:
 			continue
 		# Walk legs once; each leg owns the slice of `tiles` up to its `to` tile.
+		# `start := idx` reuses the previous leg's END index without advancing past
+		# it, so consecutive legs sharing the SAME mode would credit that boundary
+		# tile twice (once as the tail of leg N, once as the head of leg N+1) —
+		# `counted` guards against exactly that, scoped to this one shipment. A mode
+		# SWITCH at a boundary is not this bug: the tile legitimately draws on two
+		# separate capacity pools there, so it correctly gets a key per mode — this
+		# only dedupes repeat credit to the SAME (tile, mode) pair. _bfs_route()
+		# (catalog.gd) produces simple shortest paths, so a real route is not
+		# expected to revisit a (tile, mode) pair outside of this adjacent-leg
+		# overlap; if that ever changes, this dedupe would need to change with it.
 		var idx := 0
+		var counted := {}
 		for leg in legs:
 			var start := idx
 			while idx < tiles.size() - 1 and str(tiles[idx]) != str(leg.get("to", "")):
@@ -5273,6 +5380,9 @@ func transport_link_flow() -> Dictionary:
 			if mode in _CAPPED_MODES:
 				for i in range(start, idx + 1):
 					var key := "%s|%s" % [str(tiles[i]), mode]
+					if counted.has(key):
+						continue
+					counted[key] = true
 					flow[key] = int(flow.get(key, 0)) + qty
 	return flow
 
@@ -5365,6 +5475,101 @@ func _shipment_goods_dict(s: Dictionary) -> Dictionary:
 			g[gid] = int(s.get("qty", 0))
 	return g
 
+## Per-good units/cost/penalty for everything that touched one tile's infra of one
+## `mode` this turn — the infrastructure building detail panel's "Breakdown" table.
+## Same tile-touch rule as tile_mode_flow(): a shipment counts here if it crosses this
+## tile on a `mode` leg, or — when it has no leg data (a straight overland haul) — if
+## this tile is its source/destination and the good's transport class is one `mode`
+## tolerates. Reads _last_transit_shipments (this turn's pre-advance snapshot, same
+## moment as _last_link_flow), not the live pending_transport_shipments, so a tile
+## still reports what transited it even after arrivals there have since been paid out
+## and removed from the live list.
+##
+## cost/penalty are read-only RE-QUOTES of each touching shipment's own stored route,
+## via TransportService.transport_cost_for_route()/route_congestion() — never
+## land_cost_after_credit(), which CONSUMES the founder freight credit; a details panel
+## must never spend anything just by being opened. They therefore reflect what moving
+## these units would cost against THIS turn's congestion, not necessarily what was
+## actually charged when the shipment was first queued (possibly turns ago, against a
+## different flow) — the same "attribute the whole charge, don't split it per tile"
+## approximation route_congestion()'s own doc comment already accepts for its binding
+## link, applied here per shipment instead. Diagnostic only: nothing prices off this.
+func tile_good_breakdown(tile_id: String, mode: String) -> Array:
+	var by_good: Dictionary = {}   # good_id -> {qty:int, cost:float, penalty:float}
+	var tolerated: Array = Catalog.infra(mode).get("good_types_tolerated", [])
+	for s in _last_transit_shipments:
+		var tiles: Array = s.get("tiles", [])
+		var legs: Array = s.get("legs", [])
+		var overland := tiles.is_empty() or legs.is_empty()
+		var touches := false
+		if overland:
+			touches = str(s.get("source_tile", "")) == tile_id or str(s.get("destination_tile", "")) == tile_id
+		else:
+			var idx := 0
+			for leg in legs:
+				var start := idx
+				while idx < tiles.size() - 1 and str(tiles[idx]) != str(leg.get("to", "")):
+					idx += 1
+				if str(leg.get("mode", "")) == mode:
+					for i in range(start, idx + 1):
+						if str(tiles[i]) == tile_id:
+							touches = true
+							break
+				if touches:
+					break
+		if not touches:
+			continue
+		var route_data := {
+			"tile_distance": int(s.get("tile_distance", 0)),
+			"turns": int(s.get("transport_turns", 0)),
+			"reachable": true,
+			"path": s.get("path", []),
+			"legs": legs,
+			"tiles": tiles,
+		}
+		var cong := route_congestion(route_data)
+		var tier := int(cong.get("tier", 0))
+		var headroom := int(cong.get("headroom", 0))
+		for good_id in _shipment_goods_dict(s):
+			# The overland fallback has no leg to read a mode off, so — exactly like
+			# tile_mode_flow's first/last-mile rule — it's credited to THIS mode only
+			# when the good's transport class actually rides it; without this a
+			# leg-less fluid delivery would double up on both its pipe network and
+			# whatever overland mode this tile happens to be.
+			if overland:
+				if not tolerated.has(Catalog.get_transport_class(str(good_id))):
+					continue
+				if Catalog.requires_pipeline(str(good_id)) and not EconomyConfig.PIPE_MODES.has(mode):
+					continue
+			var qty := int(_shipment_goods_dict(s)[good_id])
+			if qty <= 0:
+				continue
+			var cost: float = TransportService.transport_cost_for_route(str(good_id), qty, route_data)
+			var penalty := 0.0
+			if tier > 0:
+				var over: int = maxi(0, qty - headroom)
+				var within: int = qty - over
+				var mult: float = 2.0 if tier == 1 else 3.0
+				var denom := float(within) + float(over) * mult
+				if denom > 0.0:
+					penalty = cost * (1.0 - float(qty) / denom)
+			var row: Dictionary = by_good.get(str(good_id), {"qty": 0, "cost": 0.0, "penalty": 0.0})
+			row.qty = int(row.qty) + qty
+			row.cost = float(row.cost) + cost
+			row.penalty = float(row.penalty) + penalty
+			by_good[str(good_id)] = row
+	var out: Array = []
+	for good_id in by_good:
+		var row: Dictionary = by_good[good_id]
+		out.append({
+			"good_id": good_id,
+			"qty": int(row.qty),
+			"cost": float(row.cost),
+			"penalty": float(row.penalty),
+		})
+	out.sort_custom(func(a, b): return int(a.qty) > int(b.qty))
+	return out
+
 func _shipment_sale_items(s: Dictionary) -> Array:
 	if not bool(s.get("is_sale", false)):
 		return []
@@ -5410,6 +5615,7 @@ func _queue_or_store_resolved_shipment(shipment: Dictionary) -> void:
 ## in TransportService.transport_cost_for_route via route_congestion_tier().
 func update_transport_congestion() -> void:
 	_last_link_flow = transport_link_flow()
+	_last_transit_shipments = pending_transport_shipments.duplicate()
 	_roll_link_history()
 
 ## Record, for every link carrying freight this turn, whether it was over capacity.

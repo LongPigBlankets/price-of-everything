@@ -40,7 +40,7 @@ const STOCKPILE_LEGEND_ROWS: Array = [
 	{"color": StockpileOverlay.LIGHT_GREEN, "text": "Holding stock"},
 	{"color": StockpileOverlay.AMBER, "text": "Over 80% full"},
 	{"color": StockpileOverlay.RED, "text": "95%+ full"},
-	{"color": StockpileOverlay.RED_FLASH, "text": "Flashing - goods turned away last turn"},
+	{"color": StockpileOverlay.RED_FLASH, "text": "Flashing. Goods turned away last turn"},
 ]
 
 # Ownership mode: each tile is 20 bands (MatchState.MAX_TILE_LAND / LAND_PATCH_SIZE) filled from

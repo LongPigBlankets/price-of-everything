@@ -345,15 +345,25 @@ func _process_production() -> void:
 				# already-capped figure, so nothing books power that never reached the wire.
 				var output_qty: int = Power.producible_amount(
 					str(building.get("tile_id", "")), _effective_power_output(building, recipe))
-				Power.record_produced(str(building.get("tile_id", "")), output_qty)
+				# Tag the actual (already cable-capped) generation by quality, and by
+				# supply-priority category (owner, 28 Aug: coal/gas vs wind/solar,
+				# defaulting respectively to self-serve vs sell-to-grid) — Power needs
+				# the grid_priority flag to settle correctly, and the derate allocator
+				# below needs the category to know whether this generation is even
+				# available to expose a consumer to intermittency (see the `pq !=
+				# "grey"` block: grid-priority generation is sold, never self-consumed,
+				# so it must not feed that allocator either).
+				var pq: String = _power_quality(building, recipe)
+				var internal_name: String = str(Catalog.get_building(str(building.get("building_id", ""))).get("internal_name", ""))
+				var prio_category := EconomyConfig.power_priority_category(internal_name, pq)
+				var grid_priority: bool = prio_category != "" and MatchState.power_priority_for(prio_category) == "grid"
+				Power.record_produced(str(building.get("tile_id", "")), output_qty, grid_priority)
 				summary.produced["power"] = summary.produced.get("power", 0) + output_qty
 				# Greenest victory track: attribute generation to its building type. The
 				# enclosing cascade loop is already player-only, so this shares the
 				# player-only scope of summary.power_supply (the green/total denominator).
 				if output_qty > 0:
 					_accumulate_by_type(summary.power_supply_by_type, str(building.get("building_id", "")), float(output_qty))
-					# Tag the actual (already cable-capped) generation by quality.
-					var pq: String = _power_quality(building, recipe)
 					summary.power_supply_by_quality[pq] = int(summary.power_supply_by_quality.get(pq, 0)) + output_qty
 					# Per-tile producer list (with building ids) for the on-demand "Power
 					# Source(s)" attribution shown in the building detail panel.
@@ -361,7 +371,7 @@ func _process_production() -> void:
 					var srcs: Array = _power_sources_by_tile.get(st_src, [])
 					srcs.append({"iid": instance_id, "building_id": str(building.get("building_id", "")), "qty": output_qty, "quality": pq})
 					_power_sources_by_tile[st_src] = srcs
-					if pq != "grey":
+					if pq != "grey" and not grid_priority:
 						var gt: String = str(building.get("tile_id", ""))
 						var ge: Dictionary = _green_supply_by_tile.get(gt, {"int": 0, "steady": 0})
 						if pq == "green_intermittent":

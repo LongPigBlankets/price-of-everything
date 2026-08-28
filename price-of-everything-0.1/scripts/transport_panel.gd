@@ -451,20 +451,36 @@ func _build_infra() -> void:
 	_clear(_infra_list)
 	var links: Array = []
 	var hidden := 0
+	var present_modes := {}
 	for link_v in MatchState.active_links():
 		var link: Dictionary = link_v
+		present_modes[str(link.mode)] = true
 		if bool(_infra_enabled.get(str(link.mode), true)):
 			links.append(link)
 		else:
 			hidden += 1
+	# Enabled filters with nothing "above 0%" this turn — named explicitly (owner,
+	# 27 Aug) rather than the column just quietly having no rows for that mode,
+	# which otherwise reads identically to a broken filter. Cables especially: it
+	# carries power, not freight, so it's ALWAYS in this list when enabled —
+	# INFRA_FILTERS' own comment already flags that as by design, not a bug.
+	var empty_enabled: Array[String] = []
+	for row: Dictionary in INFRA_FILTERS:
+		var mode := str(row.mode)
+		if bool(_infra_enabled.get(mode, true)) and not present_modes.has(mode):
+			empty_enabled.append(str(row.label))
 	if links.is_empty():
 		if hidden > 0:
 			_empty_note(_infra_list, "%d link%s hidden by the filters above." % [hidden, "" if hidden == 1 else "s"])
+		elif not empty_enabled.is_empty():
+			_empty_note(_infra_list, "No %s above 0%%." % ", ".join(empty_enabled))
 		else:
 			_empty_note(_infra_list, "Nothing is crossing a road, rail or pipe this turn.")
 		return
 	for link: Dictionary in links:
 		_infra_list.add_child(_infra_row(link))
+	if not empty_enabled.is_empty():
+		_empty_note(_infra_list, "No %s above 0%%." % ", ".join(empty_enabled))
 
 
 func _infra_row(link: Dictionary) -> Control:
@@ -596,24 +612,43 @@ func _infra_icon(mode: String) -> Control:
 	return chip
 
 
-## The filter chips above the infrastructure list. Every mode starts on, so the column
-## opens showing everything and the filters only ever narrow it.
+## The filter chips above the infrastructure list — single-select (owner, 27 Aug: "only
+## allow one to be selected at a time"), via a shared ButtonGroup so the engine itself
+## handles the exclusivity: clicking the already-selected chip does nothing rather than
+## clearing it (ButtonGroup.allow_unpress defaults false) — there is always exactly one
+## filter active, never zero. Roads starts selected, so the column opens already showing
+## one real filter instead of an unfiltered dump of every mode at once.
+##
+## The selected chip gets DS's "ChoiceSelected" variation (off-white fill, navy text) —
+## a genuinely different LOOK, not the old plain-Button pressed state, which was only a
+## shade darker within the same steel-blue family and read as barely-there.
 func _infra_filter_bar() -> Control:
 	var bar := HBoxContainer.new()
 	bar.add_theme_constant_override("separation", 4)
-	for row: Dictionary in INFRA_FILTERS:
+	var group := ButtonGroup.new()
+	var chips: Array[Button] = []
+	var restyle := func() -> void:
+		for c in chips:
+			c.theme_type_variation = "ChoiceSelected" if c.button_pressed else "Button"
+	for i in INFRA_FILTERS.size():
+		var row: Dictionary = INFRA_FILTERS[i]
 		var mode := str(row.mode)
-		_infra_enabled[mode] = true
+		var selected := i == 0
+		_infra_enabled[mode] = selected
 		var chip := Button.new()
 		chip.text = str(row.label)
 		chip.toggle_mode = true
-		chip.button_pressed = true
+		chip.button_group = group
+		chip.button_pressed = selected
+		chip.theme_type_variation = "ChoiceSelected" if selected else "Button"
 		chip.focus_mode = Control.FOCUS_NONE
 		chip.add_theme_font_size_override("font_size", DS.FS.CAPTION - 2)
 		chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		chip.toggled.connect(func(on: bool) -> void:
 			_infra_enabled[mode] = on
+			restyle.call()
 			_build_infra())
+		chips.append(chip)
 		bar.add_child(chip)
 	return bar
 

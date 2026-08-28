@@ -445,3 +445,114 @@ static func make_ruled_section_head(text: String, double_rule: bool = false) -> 
 	label.theme_type_variation = &"SectionRuled"
 	box.add_child(label)
 	return box
+
+
+# --- mini recipe diagram ---------------------------------------------------------------------
+# The compressed recipe glance shared between the Construct panel's browse-list recipe cards and
+# the building detail panel's "Change recipe" sheet, so both stay visually IDENTICAL rather than
+# drifting via two separate copies. Bare good icons only (no quantity pills, no power-cost badge)
+# — inputs joined by "+", a solid navy arrow, then outputs joined by "+": the SHAPE of a recipe,
+# not its numbers. These constants intentionally duplicate construct_panel_v2.gd's own
+# DIAGRAM_PAPER/DIAGRAM_NAVY values rather than reaching into that panel's locals — this family
+# needs to render correctly from either script, and the two colours are exceedingly unlikely to
+# ever drift independently.
+const MINI_DIAGRAM_PAPER := Color("#ffefc3")
+const MINI_DIAGRAM_NAVY := Color("#001e3f")
+const MINI_ICON_SIZE := 40
+const MINI_ARROW_SIZE := Vector2(48, 30)
+const MINI_RECIPE_POWER_ICON_PATH := "res://assets/icons/ui_icons/recipe_power_icon.png"
+
+## A SOLID navy arrow — same silhouette as recipe_arrow.png (a hollow outline) but
+## filled, for this compressed look. Drawn rather than a second baked asset, same
+## technique construct_panel_v2.gd's RecipePowerPentagon already uses for its shape.
+class MiniRecipeArrow extends Control:
+	func _draw() -> void:
+		var cy := size.y * 0.5
+		var half_shaft := size.y * 0.21
+		var shaft_w := size.x * 0.55
+		var poly := PackedVector2Array([
+			Vector2(0, cy - half_shaft), Vector2(shaft_w, cy - half_shaft), Vector2(shaft_w, 0),
+			Vector2(size.x, cy), Vector2(shaft_w, size.y), Vector2(shaft_w, cy + half_shaft),
+			Vector2(0, cy + half_shaft),
+		])
+		draw_colored_polygon(poly, MINI_DIAGRAM_NAVY)
+
+
+## Cream, rounded corners, one icon tall plus a little padding — full width of
+## whatever it's given (callers set size_flags_horizontal = EXPAND_FILL so every
+## card in a list renders at the same width, regardless of its own input/output
+## count; _recipe_diagram's internal row already centres a narrower icon group
+## within extra width, same idea as the full diagram).
+static func mini_recipe_diagram(recipe: Dictionary) -> PanelContainer:
+	var card := PanelContainer.new()
+	card.name = "MiniRecipeDiagramCard"   # test/tutorial spotlight handle
+	var card_style := StyleBoxFlat.new()
+	card_style.bg_color = MINI_DIAGRAM_PAPER
+	card_style.set_corner_radius_all(14)
+	card_style.set_content_margin_all(8)
+	card.add_theme_stylebox_override("panel", card_style)
+	var row := HBoxContainer.new()
+	row.custom_minimum_size = Vector2(0, MINI_ICON_SIZE)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 6)
+	card.add_child(row)
+
+	var inputs: Array = recipe.get("inputs", [])
+	if inputs.is_empty():
+		var raw := Label.new()
+		raw.text = "Raw"
+		raw.add_theme_font_size_override("font_size", 12)
+		raw.add_theme_color_override("font_color", MINI_DIAGRAM_NAVY)
+		row.add_child(raw)
+	else:
+		for i in inputs.size():
+			row.add_child(_mini_flow_icon(str((inputs[i] as Dictionary).get("good_id", ""))))
+			if i < inputs.size() - 1:
+				row.add_child(_mini_plus())
+
+	var arrow_art := MiniRecipeArrow.new()
+	arrow_art.name = "MiniRecipeArrow"   # test handle — an inner class's get_class() reports its base (Control), not its own name
+	arrow_art.custom_minimum_size = MINI_ARROW_SIZE
+	arrow_art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(arrow_art)
+
+	var outputs: Array = recipe.get("outputs", [])
+	if outputs.is_empty() and str(recipe.get("output_good_id", "")) != "":
+		outputs = [{"good_id": recipe.get("output_good_id", "")}]
+	for i in outputs.size():
+		row.add_child(_mini_flow_icon(str((outputs[i] as Dictionary).get("good_id", ""))))
+		if i < outputs.size() - 1:
+			row.add_child(_mini_plus())
+	return card
+
+
+## One bare good icon for the mini diagram — no plate, no pill, no bevel. Power
+## reuses the same lightning glyph the full diagram's energy badge uses (power has
+## no chroma good-icon art of its own to draw here).
+static func _mini_flow_icon(good_id: String) -> TextureRect:
+	var art := TextureRect.new()
+	if Catalog.get_internal_name(good_id) == "power":
+		art.texture = load(MINI_RECIPE_POWER_ICON_PATH) as Texture2D
+	else:
+		art.texture = GoodIcons.texture_for_size(good_id, Catalog.get_internal_name(good_id), float(MINI_ICON_SIZE))
+	art.custom_minimum_size = Vector2(MINI_ICON_SIZE, MINI_ICON_SIZE)
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	art.mouse_filter = Control.MOUSE_FILTER_PASS   # PASS, not IGNORE: this is the only thing carrying the good's name
+	if good_id != "":
+		art.tooltip_text = Catalog.get_display_name(good_id)
+	return art
+
+
+static func _mini_plus() -> Label:
+	var plus := Label.new()
+	plus.text = "+"
+	# "Numeric" for its bold cut (Plex SemiBold, the theme's one bold face) — size and
+	# colour below still override its own defaults, same as anywhere else this theme
+	# variation gets reused purely for weight.
+	plus.theme_type_variation = "Numeric"
+	plus.add_theme_font_size_override("font_size", 20)
+	plus.add_theme_color_override("font_color", MINI_DIAGRAM_NAVY)
+	plus.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	plus.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return plus

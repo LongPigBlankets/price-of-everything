@@ -216,6 +216,20 @@ const POWER_STEADY_BUILDINGS := ["hydro_power_plant"]
 # Generic power_plant recipes whose fuel is biomass/waste count as steady green.
 # (MVP good internal_names: biomass g_062, bio_waste g_073, carbonised_biomass g_076.)
 const POWER_STEADY_FUELS := ["biomass", "bio_waste", "carbonised_biomass"]
+
+## Supply-priority category (owner, 28 Aug) for a generator, given its building
+## internal_name and the SAME power-quality string Production._power_quality()
+## already computes ("grey" / "green_steady" / "green_intermittent") — reused
+## rather than a second classification list that could drift from it.
+## "coal_gas" | "wind_solar" | "" (neither — e.g. hydro, which this feature
+## deliberately leaves alone: the player was never asked about it, so it keeps
+## its pre-feature always-self-priority behaviour).
+static func power_priority_category(internal_name: String, quality: String) -> String:
+	if internal_name in POWER_INTERMITTENT_BUILDINGS:
+		return "wind_solar"
+	if quality == "grey":
+		return "coal_gas"
+	return ""
 # Recipes that take NO intermittency derate however unfirmed their supply is. A membraneless
 # electrolyser has no membrane to dry out or differentially pressurise, so it can follow a
 # ragged renewable input up and down instead of needing a steady load — which is the whole

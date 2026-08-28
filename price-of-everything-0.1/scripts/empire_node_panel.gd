@@ -36,6 +36,7 @@ var _level := 1
 var _bg_style: StyleBoxFlat
 var _rivet_inset := 13.0
 var _plate_rect := Rect2()      # metal-plate sub-rect (the whole Control in classic mode)
+var _badge: Control = null      # the port-badge Control itself, so set_badge_hidden can toggle it
 var _badge_rect := Rect2()      # port badge's box in panel coords; empty when there is no badge.
                                 # It can extend PAST the Control (a sprite that fills its frame
                                 # pushes the hex off the corner), which is what the overlap probe
@@ -126,6 +127,7 @@ func setup(node: Dictionary) -> void:
 			badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			badge.draw.connect(_draw_port_badge.bind(badge, bc, bh, badge_icon))
 			add_child(badge)
+			_badge = badge
 
 	var m := int(round(9.0 * cs))
 	var margin := MarginContainer.new()
@@ -383,6 +385,17 @@ func _grad_colors(pts: PackedVector2Array, light: Color, dark: Color) -> PackedC
 		var t := clampf(((p.x - bounds.position.x) + (p.y - bounds.position.y)) / denom, 0.0, 1.0)
 		cols.append(light.lerp(dark, t))
 	return cols
+
+
+## Hides the port badge while THIS building's own sell line is drawn directly (it is the
+## one being focused) — the badge's whole point is standing in for "ships to market, and
+## where" when nothing more precise is on screen; once the real line (with its own good-icon
+## chip) is showing, the badge just expands the same relationship a second time (owner, 27
+## Aug). No-op for a panel with no badge at all. Called every frame from
+## empire_graph_world.gd's _reposition_panels, alongside the panel's own fade/visibility.
+func set_badge_hidden(hidden: bool) -> void:
+	if _badge != null and is_instance_valid(_badge):
+		_badge.visible = not hidden
 
 
 ## The port badge: the SAME lit gold hex the port nodes use, at badge scale, so it reads as a
