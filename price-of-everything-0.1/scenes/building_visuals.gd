@@ -137,7 +137,9 @@ const CONSTRUCTION_BEIGE := Color("d0bc91")
 ## a finished pale building at a glance without relying on the fill alone. World units, so
 ## the dash pattern holds its proportions to the building at every zoom.
 const SITE_DASH := 3.6
-const SITE_GAP := 2.6
+## Gap DOUBLED from 2.6 (owner, 2026-08-27): at the tighter spacing the dashes read as a
+## broken line rather than as a deliberately provisional edge.
+const SITE_GAP := 5.2
 const STAMP_RECT_ASPECT := 1.7   # frontage : depth of the rectangle stamp
 const STAMP_L_DEPTH := 1.45      # L bbox depth as a multiple of the rectangle's depth
 const STAMP_L_WING := 0.45       # back-wing width as a fraction of the frontage
@@ -4133,6 +4135,10 @@ const ART_ROAD_PAD := 5.5    # art frontage: footprint edge ~1u off the carriage
 ## a rejected candidate costs four extra predicate calls, and the frontage
 ## search rejects a lot of candidates.
 static var DIAG := false
+## Perf measurement seam (tools/anim_perf_probe.gd), same shape as DIAG above. Chimneys are
+## drawn on the settle-repainted building canvas, so the only way to price them is to draw a
+## frame without them.
+static var DRAW_CHIMNEYS := true
 ## Hard bounds on the DRAWN sprite's long side, in world units (owner ruling
 ## 2026-07-23). Applied at draw time so it holds no matter which placement path
 ## sized the lot — block-template lots ignore the art lot area entirely.
@@ -4195,6 +4201,8 @@ const OFF_ROAD_NAMES := {
 	"mine": true, "solar_farm": true,
 	"onshore_wind_farm": true, "offshore_wind_farm": true,
 }
+## (variant, area) -> the built rectangle/L polygon. See _stamp_shape.
+var _stamp_cache: Dictionary = {}
 var _ink_art_iid: Dictionary = {}   # instance_id -> true (suppress procedural subcomponents)
 ## Decorative masses a placement demolished (mass_id -> true). Mirrors state held by
 ## AuthoredFabricVisuals; see _evict_fabric_under and _apply_evicted_masses.
@@ -5729,6 +5737,23 @@ func _stamp_count_on_tile(tile_id: String) -> int:
 ## Even stamps on a tile get the rectangle, odd ones the L; the L keeps the same
 ## frontage length but runs STAMP_L_DEPTH deeper, its back wing on alternating ends.
 func _stamp_shape(area: float, nth: int) -> PackedVector2Array:
+	# Cached per (variant, area). There are only two shapes and a handful of distinct areas —
+	# one per `tile_size_used` plus the two shrink rungs — so the whole table is a few dozen
+	# entries for a 557-building world, against ~1.7k constructions without it (three calls
+	# per building once the shrink ladder is counted).
+	#
+	# Returns a DUPLICATE: `_finalize` stores the local verts straight onto the placement as
+	# `lverts`, so handing out the cached array itself would alias one polygon across every
+	# building that shares its size.
+	var key := "%d|%.1f" % [nth % 4, area]
+	if _stamp_cache.has(key):
+		return (_stamp_cache[key] as PackedVector2Array).duplicate()
+	var built := _build_stamp_shape(area, nth)
+	_stamp_cache[key] = built
+	return built.duplicate()
+
+
+func _build_stamp_shape(area: float, nth: int) -> PackedVector2Array:
 	var a := maxf(area, BuildingShapes.MIN_AREA)
 	var w := sqrt(a * STAMP_RECT_ASPECT)
 	var h := a / w
@@ -5830,6 +5855,8 @@ func _draw_stamp(placement: Dictionary, verts: PackedVector2Array) -> void:
 	# building's own colour darkened (it is part of the building, not a separate object)
 	# under the same ink outline everything else on this layer carries. The smoke itself is
 	# NOT drawn here — it animates, and this canvas only repaints when the view settles.
+	if not DRAW_CHIMNEYS:
+		return
 	for sp_value in _stack_points(str(placement.get("iname", "")),
 			str(placement.instance_id), verts):
 		var sp: Dictionary = sp_value
