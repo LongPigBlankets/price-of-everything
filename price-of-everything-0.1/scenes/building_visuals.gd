@@ -566,6 +566,13 @@ func on_building_placed(tile_id: String, building_id: String, _recipe_id: String
 	# live against it, so an edited start list costs one building, not the whole map.
 	if claim_baked_placement(instance_id, building_id, tile_id):
 		return
+	# The bake may hold this id for a DIFFERENT building or tile: instance ids are minted
+	# per match by a counter, so they collide across start configs (the magnate's second
+	# mine drew the id another start's building carried at bake time). This match owns the
+	# id now — release the bake's claim on it, or reconcile_baked_layout will read the id
+	# as an unclaimed leftover and delete the live placement made just below. That was the
+	# invisible Snare Harbour iron mine (2026-08-29).
+	_baked_unclaimed.erase(instance_id)
 	# Re-placement (e.g. a load re-emitting building_placed) must not orphan the old
 	# footprint — drop it first so it frees its space and can't ghost.
 	if instance_id != "" and _placement_index.has(instance_id):

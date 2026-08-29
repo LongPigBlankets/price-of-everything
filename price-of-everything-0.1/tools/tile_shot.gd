@@ -18,6 +18,8 @@ extends Node2D
 ##   --tiles=a,b,c   tile ids (required). Ids are resolved through id_to_coord,
 ##                   never by arithmetic on the numbers in the id.
 ##   --zoom=1.15     larger = closer. 1.35 ~ one tile, 0.6 ~ a region.
+##   --start=<id>    seed a scripted start first (data/starts/<id>.json), so its
+##                   buildings are on the board in the frame. POE_SHOT_START works too.
 ##   --size=960x720  output crop, centred on the viewport.
 ##   --out=/tmp/poe_tile   prefix; each frame lands at <prefix>_<tile_id>.png
 ##   --style=midcentury|ink|classic|plate
@@ -55,6 +57,14 @@ func _ready() -> void:
 	print("[TILE SHOT] tiles=%s zoom=%.2f size=%dx%d style=%s offset=(%.0f,%.0f) out=%s" % [
 		",".join(PackedStringArray(tiles)), zoom, size.x, size.y, style,
 		offset.x, offset.y, out_prefix])
+
+	# Optional: seed a scripted start before booting, so a start's buildings are on the
+	# board in the frame (--start=metal_magnate or POE_SHOT_START).
+	var start_id := str(opt.get("start", ""))
+	if start_id != "":
+		SaveLoad.prepare_new_game("res://data/starts/%s.json" % start_id,
+			{"ruleset": {"start_id": "", "tutorial_enabled": false}})
+		print("[TILE SHOT] seeded start: %s" % start_id)
 
 	get_viewport().set_disable_input(true)
 	_wm = (load("res://scenes/main.tscn") as PackedScene).instantiate()
@@ -101,7 +111,8 @@ func _options() -> Dictionary:
 	var out := {}
 	for pair in [["tiles", "POE_SHOT_TILES"], ["zoom", "POE_SHOT_ZOOM"],
 			["size", "POE_SHOT_SIZE"], ["out", "POE_SHOT_OUT"],
-			["style", "POE_SHOT_STYLE"], ["offset", "POE_SHOT_OFFSET"]]:
+			["style", "POE_SHOT_STYLE"], ["offset", "POE_SHOT_OFFSET"],
+			["start", "POE_SHOT_START"]]:
 		var env := OS.get_environment(str(pair[1]))
 		if env != "":
 			out[str(pair[0])] = env
