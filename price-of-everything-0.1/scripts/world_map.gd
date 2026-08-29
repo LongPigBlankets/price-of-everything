@@ -353,6 +353,11 @@ func finish_build(animate: bool) -> void:
 	# roads. The buildings that used to follow here are deferred until after the roads exist.
 	if (not loaded_pending or pending_start) and not pending_tutorial:
 		_place_northern_old_growth_forests()
+	else:
+		# A loaded save seeds no woods — it restores its own — but the forest layer still has to
+		# be told which tiles the document draws, or it stands every canopy down and a wood the
+		# player planted before saving comes back invisible.
+		_index_authored_forests()
 	_prof("old-growth forests")
 
 	# roads-v2: the predetermined river crossings must exist before any runtime
@@ -2288,14 +2293,25 @@ func _drop_building_visual(instance_id: String) -> void:
 			wooded_tile = instance_id.trim_prefix(prefix)
 	if wooded_tile == "":
 		return
-	# An authored wood is the document's, not ForestVisuals' — and it only comes down if
-	# nothing else on the tile is still keeping it: two forests may share one canopy.
-	if _tile_has_forest_building(wooded_tile):
-		return
+	# An authored wood is the document's, not ForestVisuals'. WHICH of the tile's woods came
+	# down is answerable exactly for an imported one: the importer put the source building's
+	# own instance id in the area id, so a tile carrying two forests loses only the trees of
+	# the one that was felled. A wood with no such marker (hand-planted in the editor) has no
+	# owner to match, so it comes down only once nothing else on the tile is keeping it.
 	var area_ids: Array = _authored_forest_areas_by_tile.get(wooded_tile, [])
+	if area_ids.is_empty():
+		return
+	var mine: Array = []
+	for area_value in area_ids:
+		if str(area_value).ends_with(":%s" % instance_id):
+			mine.append(area_value)
+	if mine.is_empty():
+		if _tile_has_forest_building(wooded_tile):
+			return
+		mine = area_ids
 	var fabric := get_node_or_null("AuthoredFabricVisuals")
-	if not area_ids.is_empty() and fabric != null and fabric.has_method("forget_forests"):
-		fabric.call("forget_forests", area_ids)
+	if fabric != null and fabric.has_method("forget_forests"):
+		fabric.call("forget_forests", mine)
 
 func _get_building_display_name(building_id: String) -> String:
 	return Catalog.get_building_display_name(building_id)
@@ -2376,6 +2392,11 @@ func _index_authored_forests() -> void:
 			if not list.has(area_id):
 				list.append(area_id)
 			_authored_forest_areas_by_tile[tile_id] = list
+	# Hand the mapping to the forest layer, which needs to know WHICH tiles the document draws
+	# so it can stand down for those alone. Only this side can work it out: an authored wood is
+	# an outline, and turning one into a tile takes the hex geometry.
+	if forest_visuals != null and forest_visuals.has_method("set_authored_wood_tiles"):
+		forest_visuals.call("set_authored_wood_tiles", _authored_forest_areas_by_tile)
 
 
 func _outline_centroid(outline: Array) -> Vector2:

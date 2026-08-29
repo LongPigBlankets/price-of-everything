@@ -19174,15 +19174,35 @@ func _test_forest_felling_seams() -> void:
 		"forests: a removed wood is off the register")
 	forests.free()
 
-	# A building the player does not own refuses to demolish, WITH a reason — the supply-chain
-	# panel dropped that result on the floor, so the Demolish button on a land-owned wood
-	# closed the dialog and did nothing at all.
-	MatchState.buildings["t_owned"] = {"instance_id": "t_owned", "building_id": "b_016",
-		"tile_id": "tile_1_2", "owner": "tile_data"}
-	var refused: Dictionary = MatchState.start_demolish("t_owned")
+	# ALL FORESTS ARE DEMOLISHABLE (owner, 2026-08-29). A wood standing on the land belongs to
+	# nobody — there is no company to buy it from — so felling one is clearing ground.
+	MatchState.buildings["t_wood"] = {"instance_id": "t_wood", "building_id": "b_016",
+		"tile_id": "tile_1_2", "owner": MatchState.LAND_OWNER}
+	_check(MatchState.is_land_owned_wood(MatchState.buildings["t_wood"]),
+		"forests: a wood owned by the land is recognised as one")
+	_check(bool(MatchState.start_demolish("t_wood").get("ok", false)),
+		"forests: a wood the land owns can be demolished where it stands")
+	MatchState.demolish_queue.erase("t_wood")
+	MatchState.buildings.erase("t_wood")
+
+	# The allowance is for WOODS, not for anything the land happens to hold, and not for a
+	# company's forest — that still has to be bought, like any other building of theirs.
+	MatchState.buildings["t_plant"] = {"instance_id": "t_plant", "building_id": "b_002",
+		"tile_id": "tile_1_2", "owner": MatchState.LAND_OWNER}
+	MatchState.buildings["t_npc_wood"] = {"instance_id": "t_npc_wood", "building_id": "b_015",
+		"tile_id": "tile_1_2", "owner": "Some Company Ltd."}
+	var refused: Dictionary = MatchState.start_demolish("t_plant")
 	_check(not bool(refused.get("ok", false)) and str(refused.get("reason", "")) != "",
-		"forests: demolishing a wood you do not own is refused, with a reason to show")
-	MatchState.buildings.erase("t_owned")
+		"forests: the allowance does not extend to other buildings on the land")
+	var npc_refused: Dictionary = MatchState.start_demolish("t_npc_wood")
+	_check(not bool(npc_refused.get("ok", false)),
+		"forests: a company's wood must still be bought before it can be felled")
+	# ...and the refusal carries a reason, because the demolish panel now shows it instead of
+	# closing on a silent no-op.
+	_check(str(npc_refused.get("reason", "")) != "",
+		"forests: a refusal says why, for the panel to show")
+	MatchState.buildings.erase("t_plant")
+	MatchState.buildings.erase("t_npc_wood")
 
 
 ## The `enable procedural <region>` cheat's partition: the untouched landmap splits four

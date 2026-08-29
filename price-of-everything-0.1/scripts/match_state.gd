@@ -812,6 +812,18 @@ func is_player_owned(building: Dictionary) -> bool:
 	# player's to pay for. Buildings default to the local player when owner is unset.
 	return str(building.get("owner", LOCAL_PLAYER)) == LOCAL_PLAYER
 
+## The owner a wood standing on the land itself carries — no company holds it.
+const LAND_OWNER := "tile_data"
+
+## A wood that belongs to the LAND rather than to a company. Every authored wood the start
+## layout does not already cover is seeded as one of these, and there is no company to buy it
+## from — so felling one is clearing ground, not taking someone's property, and it is allowed
+## (owner, 2026-08-29: all forests should be demolishable). A wood a COMPANY owns still has to
+## be bought first, exactly like any other building of theirs.
+func is_land_owned_wood(building: Dictionary) -> bool:
+	return str(building.get("owner", LOCAL_PLAYER)) == LAND_OWNER \
+		and ForestFootprint.FOREST_BUILDING_IDS.has(str(building.get("building_id", "")))
+
 func add_building(
 	building_id: String,
 	recipe_id: String,
@@ -1916,7 +1928,7 @@ func demolish_turns_remaining(instance_id: String) -> int:
 func start_demolish(instance_id: String) -> Dictionary:
 	if not buildings.has(instance_id):
 		return {"ok": false, "reason": "No such building."}
-	if not is_player_owned(buildings[instance_id]):
+	if not is_player_owned(buildings[instance_id]) and not is_land_owned_wood(buildings[instance_id]):
 		return {"ok": false, "reason": "You don't own this building."}
 	if demolish_queue.has(instance_id):
 		return {"ok": false, "reason": "Already demolishing."}
