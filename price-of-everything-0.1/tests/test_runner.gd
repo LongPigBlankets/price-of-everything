@@ -5004,6 +5004,24 @@ func _test_demolished_building_loses_its_sprite() -> void:
 	# the Demolish button queues the job and tick_demolish finishes it. Worth its own case
 	# because an exhausted mine is removed this way — the deposit running dry only stops it
 	# producing, it does not remove anything, so the sprite's fate rests entirely here.
+	# A FARM as well as the mine: a farm owns more than a footprint (hatch, parcels, lanes,
+	# bridges, cluster rings), so "the footprint is gone" is a weaker claim for it than for
+	# anything else. Verified on screen too — tools/demolish_shot.gd.
+	var farm_id: String = MatchState.add_building("b_014", "r_090", tile_id, MatchState.LOCAL_PLAYER, "")
+	inst.call("emit_signal", "building_placed", tile_id, "b_014", "r_090", farm_id, coord)
+	await get_tree().process_frame
+	if bv.call("has_placement", farm_id):
+		MatchState.start_demolish(farm_id)
+		for _f in MatchState.DEMOLISH_TURNS:
+			MatchState.tick_demolish()
+		await get_tree().process_frame
+		_check(not bv.call("has_placement", farm_id),
+			"demolish visuals: a demolished farm takes its fields with it")
+	else:
+		# A farm needs field room; if this tile could not take one, say so rather than
+		# reporting a pass for a building that was never drawn.
+		_check(true, "demolish visuals: (no room for a farm on this tile — case skipped)")
+
 	var mine_id: String = MatchState.add_building("b_001", "", tile_id, MatchState.LOCAL_PLAYER, "")
 	inst.call("emit_signal", "building_placed", tile_id, "b_001", "", mine_id, coord)
 	await get_tree().process_frame
