@@ -16,14 +16,17 @@ const NAME_FS_MIN := 14
 # Kept in sync with market_panel.gd's COL_PRICE_W / COL_EST_W (separate containers — a
 # mismatch silently skews every column to the right of it).
 const COL_PRICE := 104.0
-const COL_EST := 104.0
-const COL_IMPACT := 110.0
 const COL_SOLD := 60.0
-const COL_BOUGHT := 64.0
 const COL_COST := 100.0
 const COL_PROFIT := 110.0
 const FIELD_FS := 19  # larger per-field text
-const FORECAST := 10  # "price in 10 turns"
+# The collapsible impact-ladder group: one narrow cell per EconomyConfig ladder
+# rung, packed in a nested HBox with its own tighter separation.
+const COL_RUNG := 48.0
+const RUNG_SEP := 4
+const RUNG_FS := 14
+const RUNG_ACTIVE_TINT := Color(0.95, 0.72, 0.22, 0.30)  # amber: the rung you are on
+const RUNG_IDLE_TINT := Color(0.50, 0.53, 0.58, 0.10)
 
 const COST_GREEN := Color(0.36, 0.82, 0.40)
 const COST_AMBER := Color(0.95, 0.72, 0.22)
@@ -38,12 +41,10 @@ var good_id: String = ""
 var internal_name: String = ""
 
 var _price_label: Label = null
-var _est_label: Label = null
 var _buy_price_label: Label = null
-var _buy_est_label: Label = null
-var _impact_label: Label = null
+var _impact_group: HBoxContainer = null
+var _rung_cells: Array[Label] = []
 var _sold_label: Label = null
-var _bought_label: Label = null
 var _cost_label: Label = null
 var _profit_label: Label = null
 var _expand_section: VBoxContainer = null
@@ -75,23 +76,20 @@ func setup(good_data: Dictionary) -> void:
 	main.add_child(name_btn)
 	name_btn.add_theme_font_size_override("font_size", _fit_name_font_size(name_btn))
 
-	_price_label = _make_col(COL_PRICE)
-	_est_label = _make_col(COL_EST)
+	# Base columns (owner ruling 2026-08-29): buy price, sale price, sold, cost,
+	# profit. The forecast columns are gone — with decay retired a forecast is
+	# identical to the current price for any good the player isn't pressuring —
+	# and the ladder detail lives in the collapsible impact group instead.
 	_buy_price_label = _make_col(COL_PRICE)
-	_buy_est_label = _make_col(COL_EST)
-	_impact_label = _make_col(COL_IMPACT)
+	_price_label = _make_col(COL_PRICE)
 	_sold_label = _make_col(COL_SOLD)
-	_bought_label = _make_col(COL_BOUGHT)
 	_cost_label = _make_col(COL_COST)
 	_profit_label = _make_col(COL_PROFIT)
-	# Sale pair (light grey) then purchase pair (medium grey).
-	_tint_col(_price_label, SALE_TINT)
-	_tint_col(_est_label, SALE_TINT)
 	_tint_col(_buy_price_label, BUY_TINT)
-	_tint_col(_buy_est_label, BUY_TINT)
-	_setup_impact_column()
-	for l in [_price_label, _est_label, _buy_price_label, _buy_est_label, _impact_label, _sold_label, _bought_label, _cost_label, _profit_label]:
+	_tint_col(_price_label, SALE_TINT)
+	for l in [_buy_price_label, _price_label, _sold_label, _cost_label, _profit_label]:
 		main.add_child(l)
+	_build_impact_group(main)
 
 	_expand_section = VBoxContainer.new()
 	_expand_section.visible = false
@@ -155,32 +153,109 @@ func _fit_name_font_size(btn: Button) -> int:
 	return fs
 
 
-## Per-good column: the first ladder threshold (today's units, inflation applied)
-## past which the player's net market volume starts moving this good's price.
-## "—" for goods no active recipe produces (they take no impact). Rates, rungs
-## and caps are read from EconomyConfig rather than written out — a hardcoded
-## tooltip drifted against the live model before.
-func _setup_impact_column() -> void:
-	var thresholds: PackedInt32Array = MarketState.impact_thresholds(good_id)
-	if thresholds.is_empty():
-		_impact_label.text = "—"
-		_impact_label.tooltip_text = "No production recipe — this good's price takes no volume impact."
+## The collapsible impact-ladder group: one cell per EconomyConfig ladder rung,
+## showing the %/turn at that step, with the rung the player's 10-turn average
+## net volume currently sits on highlighted in amber. Hidden until the panel's
+## "impact ladder" toggle expands it. Cell content is refreshed per turn — the
+## unit thresholds inflate as the world economy grows, and the highlight follows
+## the rolling average.
+func _build_impact_group(main: HBoxContainer) -> void:
+	_impact_group = HBoxContainer.new()
+	_impact_group.add_theme_constant_override("separation", RUNG_SEP)
+	_impact_group.visible = false
+	for i in EconomyConfig.PRICE_IMPACT_LADDER.size():
+		var cell := Label.new()
+		cell.custom_minimum_size = Vector2(COL_RUNG, ICON_SIZE)
+		cell.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cell.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		cell.add_theme_font_size_override("font_size", RUNG_FS)
+		cell.mouse_filter = Control.MOUSE_FILTER_STOP  # tooltips on a plain Label need this
+		_rung_cells.append(cell)
+		_impact_group.add_child(cell)
+	# Trailing clearance so the scroll bar doesn't sit over the last rung.
+	var tail := Control.new()
+	tail.custom_minimum_size = Vector2(14, 0)
+	_impact_group.add_child(tail)
+	main.add_child(_impact_group)
+
+## Show/hide the ladder columns (driven by the market panel's toggle).
+func set_impact_expanded(expanded: bool) -> void:
+	if _impact_group == null:
 		return
-	# The first rung is the headline figure: it is the one most players cross.
-	_impact_label.text = ">%d" % thresholds[0]
-	var rungs := PackedStringArray()
-	for i in thresholds.size():
-		rungs.append(">%d: %s%%/turn" % [thresholds[i], String.num(float(EconomyConfig.PRICE_IMPACT_LADDER[i][1]), 2)])
-	_impact_label.tooltip_text = (
-		"Net selling (or buying) more than these units in one turn moves the price:\n"
-		+ "\n".join(rungs)
-		+ "\nPrice is capped between %d%% and %d%% of base." % [
-			100 + int(EconomyConfig.PRICE_IMPACT_FLOOR_PCT), 100 + int(EconomyConfig.PRICE_IMPACT_CEILING_PCT)]
-		+ "\nOnce your %d-turn average volume falls back under the first threshold, the price returns to base over %d turns." % [
-			EconomyConfig.PRICE_IMPACT_RECOVERY_TURNS, EconomyConfig.PRICE_IMPACT_RECOVERY_TURNS]
-		+ "\nThresholds grow %d%% every %d turns as the world economy expands." % [
-			int(EconomyConfig.IMPACT_THRESHOLD_INFLATION_STEP * 100.0), EconomyConfig.IMPACT_THRESHOLD_INFLATION_TURNS]
-	)
+	_impact_group.visible = expanded
+	if expanded:
+		_refresh_impact_cells()
+
+## The rung index the player's 10-turn average net volume sits on, or -1.
+func _active_rung() -> int:
+	var base_out := Catalog.base_output_for_good(good_id)
+	if base_out <= 0:
+		return -1
+	var v: float = absf(MarketState.rolling_net_volume(good_id))
+	var scale: float = EconomyConfig.impact_threshold_scale(int(TurnManager.current_turn))
+	var active := -1
+	for i in EconomyConfig.PRICE_IMPACT_LADDER.size():
+		if v > float(EconomyConfig.PRICE_IMPACT_LADDER[i][0]) * float(base_out) * scale:
+			active = i
+		else:
+			break
+	return active
+
+func _refresh_impact_cells() -> void:
+	var thresholds: PackedInt32Array = MarketState.impact_thresholds(good_id)
+	var avg: float = MarketState.rolling_net_volume(good_id)
+	var active := _active_rung()
+	var scale: float = EconomyConfig.impact_threshold_scale(int(TurnManager.current_turn))
+	for i in _rung_cells.size():
+		var cell := _rung_cells[i]
+		var rate := float(EconomyConfig.PRICE_IMPACT_LADDER[i][1])
+		var mult := String.num(float(EconomyConfig.PRICE_IMPACT_LADDER[i][0]), 0)
+		if thresholds.is_empty():
+			cell.text = "—"
+			cell.tooltip_text = "No production recipe — this good has no base output and takes no impact."
+			_tint_col(cell, RUNG_IDLE_TINT)
+			continue
+		cell.text = "%s%%" % String.num(rate, 2)
+		var tip := "Past %d units net in one turn (>%s× base output, at today's ×%s threshold growth) the price moves %s%%/turn." % [
+			thresholds[i], mult, String.num(scale, 2), String.num(rate, 2)]
+		if i == active:
+			tip += "
+YOU ARE HERE — your 10-turn average net volume is %s %s/turn." % [
+				String.num(absf(avg), 1), "sold" if avg > 0.0 else "bought"]
+		cell.tooltip_text = tip
+		_tint_col(cell, RUNG_ACTIVE_TINT if i == active else RUNG_IDLE_TINT)
+
+## Which way this good's price is headed: -1 falling, +1 rising, 0 steady.
+## Mirrors MarketState's regime logic (accrue while the 10-turn average is over
+## the first rung; otherwise walk home to base) so the arrow can't disagree
+## with the simulation.
+func _price_direction() -> int:
+	var avg: float = MarketState.rolling_net_volume(good_id)
+	var scale: float = EconomyConfig.impact_threshold_scale(int(TurnManager.current_turn))
+	var rate: float = EconomyConfig.price_impact_rate(avg, Catalog.base_output_for_good(good_id), scale)
+	var a: float = MarketState.get_impact_pct(good_id)
+	if rate > 0.0:
+		return -1 if avg > 0.0 else 1
+	if absf(a) > 0.0005:
+		return 1 if a < 0.0 else -1
+	return 0
+
+func _direction_tooltip(dir: int) -> String:
+	var avg: float = MarketState.rolling_net_volume(good_id)
+	var a: float = MarketState.get_impact_pct(good_id)
+	if dir == 0:
+		if absf(avg) > 0.0:
+			return "Steady — your recent market volume is under the first impact threshold."
+		return "Steady — you are not moving this market."
+	var scale: float = EconomyConfig.impact_threshold_scale(int(TurnManager.current_turn))
+	var rate: float = EconomyConfig.price_impact_rate(avg, Catalog.base_output_for_good(good_id), scale)
+	if rate > 0.0:
+		return "%s %s%%/turn — your 10-turn average net volume (%s/turn %s) is over the impact threshold. Current impact: %s%%." % [
+			"Falling" if dir < 0 else "Rising", String.num(rate, 2),
+			String.num(absf(avg), 1), "sold" if avg > 0.0 else "bought",
+			String.num(a, 1)]
+	return "%s — your volume has eased off, so the price is walking back to base over %d turns (impact now %s%%)." % [
+		"Recovering" if dir > 0 else "Easing back down", EconomyConfig.PRICE_IMPACT_RECOVERY_TURNS, String.num(a, 1)]
 
 func _make_col(width: float) -> Label:
 	var l := Label.new()
@@ -237,19 +312,30 @@ func _refresh() -> void:
 	if _price_label == null:
 		return
 	# When glut/deficit impact is active, show the actual price with the
-	# impact-free base price of the turn in brackets underneath.
+	# impact-free base price of the turn in brackets underneath. A direction
+	# arrow says which way the price is headed (falling red / rising green),
+	# derived from the same regime logic the simulation runs on.
 	var impact: float = MarketState.get_impact_pct(good_id)
 	var has_impact := absf(impact) > 0.0005
 	var impact_mult := 1.0 + impact / 100.0
+	var dir := _price_direction()
+	var arrow := "" if dir == 0 else (" ▼" if dir < 0 else " ▲")
+	var dir_tip := _direction_tooltip(dir)
 	var sale_now: float = MarketState.get_price(good_id)
-	_price_label.text = ("£%.2f\n(£%.2f)" % [sale_now, MarketState.get_base_price_now(good_id)]) if has_impact \
-		else "£%.2f" % sale_now
-	_est_label.text = "£%.2f" % MarketState.get_estimated_price_in_n_turns(good_id, FORECAST)
-	var markup: float = 1.0 + EconomyConfig.MARKET_BUY_MARKUP
+	_price_label.text = ("£%.2f%s\n(£%.2f)" % [sale_now, arrow, MarketState.get_base_price_now(good_id)]) if has_impact \
+		else "£%.2f%s" % [sale_now, arrow]
+	_price_label.tooltip_text = dir_tip
 	var buy_now: float = MarketState.get_buy_price(good_id)
-	_buy_price_label.text = ("£%.2f\n(£%.2f)" % [buy_now, buy_now / impact_mult]) if has_impact \
-		else "£%.2f" % buy_now
-	_buy_est_label.text = "£%.2f" % (MarketState.get_estimated_price_in_n_turns(good_id, FORECAST) * markup)
+	_buy_price_label.text = ("£%.2f%s\n(£%.2f)" % [buy_now, arrow, buy_now / impact_mult]) if has_impact \
+		else "£%.2f%s" % [buy_now, arrow]
+	_buy_price_label.tooltip_text = dir_tip
+	for pl: Label in [_price_label, _buy_price_label]:
+		if dir < 0:
+			pl.add_theme_color_override("font_color", COST_RED)
+		elif dir > 0:
+			pl.add_theme_color_override("font_color", COST_GREEN)
+		else:
+			pl.remove_theme_color_override("font_color")
 
 	var summary: Dictionary = Production.last_turn_summary
 	var sold_entry: Dictionary = summary.get("sold", {}).get(good_id, {})
@@ -257,7 +343,10 @@ func _refresh() -> void:
 	var sold_rev := float(sold_entry.get("revenue", 0.0))
 	var bought_qty := int(summary.get("purchased", {}).get(good_id, 0))
 	_sold_label.text = str(sold_qty)
-	_bought_label.text = str(bought_qty)
+	_sold_label.tooltip_text = "Sold to market last turn: %d · Bought: %d\n10-turn average net volume: %s — the number the price impact model reads." % [
+		sold_qty, bought_qty, String.num(MarketState.rolling_net_volume(good_id), 1)]
+	if _impact_group != null and _impact_group.visible:
+		_refresh_impact_cells()
 
 	var uc: float = CostSolver.get_good_unit_cost(good_id)
 	var price: float = MarketState.get_price(good_id)

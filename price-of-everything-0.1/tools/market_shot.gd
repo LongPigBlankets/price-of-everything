@@ -1,28 +1,48 @@
 extends Node
-## Dev tool: render the real game, seed glut/deficit price impact on a few goods,
-## open the Market panel's Prices tab, and save a PNG for visual verification of
-## the impact-thresholds column and the actual/(base) two-line prices. Needs a
+## Dev tool: render the real game, seed price impact on a few goods, open the
+## Market panel and save PNGs of the goods table collapsed and expanded. Needs a
 ## window (NOT --headless):
-##   <godot> --path . res://tools/market_shot.tscn --quit-after 900
+##   <godot> --path . res://tools/market_shot.tscn --quit-after 1200
 
 func _ready() -> void:
 	var game: Node = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 	add_child(game)
 	await _settle(30)
 
-	# Seed accumulated impact so the bracketed base prices render: a glut
-	# discount on copper wiring and a deficit premium on coal.
-	var wiring := str(Catalog.get_good_by_internal_name("copper_wiring").get("id", ""))
-	var coal := str(Catalog.get_good_by_internal_name("coal").get("id", ""))
-	MarketState.impact_pct[wiring] = -2.4
-	MarketState.impact_pct[coal] = 1.2
+	# Seed impact states so arrows + rung highlights show a spread:
+	# coal: deep glut still accruing · steel: mild deficit · copper ore: recovering.
+	var coal: String = str(Catalog.get_good_by_internal_name("coal").get("id", ""))
+	var steel: String = str(Catalog.get_good_by_internal_name("steel").get("id", ""))
+	var copper: String = str(Catalog.get_good_by_internal_name("copper_ore").get("id", ""))
+	var coal_base: int = Catalog.base_output_for_good(coal)
+	var steel_base: int = Catalog.base_output_for_good(steel)
+	MarketState.impact_pct[coal] = -12.0
+	MarketState._net_history[coal] = []
+	for i in 10:
+		MarketState._net_history[coal].append(float(coal_base * 7))
+	MarketState.impact_pct[steel] = 3.0
+	MarketState._net_history[steel] = []
+	for i in 10:
+		MarketState._net_history[steel].append(float(-steel_base * 2))
+	MarketState.impact_pct[copper] = -6.0
+	MarketState._net_history[copper] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 	MarketState.prices_updated.emit()
 
-	var market: Control = game.get_node("UILayer/HUD/HUDContent/MarketPanel")
-	market.show()
-	await _settle(20)
+	var panel: Control = game.get_node("UILayer/HUD/HUDContent/MarketPanel")
+	panel.visible = true
+	await _settle(12)
+	for row in panel.rows:
+		if row.has_method("_refresh"):
+			row._refresh()
+	await _settle(6)
+	_shot("/tmp/poe_market_collapsed.png")
 
-	_shot("/tmp/poe_market.png")
+	panel._set_impact_expanded(true)
+	for row in panel.rows:
+		if row.has_method("_refresh"):
+			row._refresh()
+	await _settle(10)
+	_shot("/tmp/poe_market_expanded.png")
 	get_tree().quit(0)
 
 func _shot(path: String) -> void:
