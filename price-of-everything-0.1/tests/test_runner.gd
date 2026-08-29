@@ -83,6 +83,7 @@ func _ready() -> void:
 	_test_authored_area_buildings_exist()
 	await _test_authored_slot_claim_order()
 	_test_authored_zones()
+	_test_authored_bake_matches_its_document()
 	_test_forest_felling_seams()
 	_test_region_partition()
 	_test_region_import_settlement()
@@ -19154,6 +19155,28 @@ func _test_authored_slot_claim_order() -> void:
 ## The whole sequence — a wood bought, demolished, and the tile left clear — is checked in the
 ## real world by `tools/forest_demolish_check.tscn`; it needs a built map, which is exactly
 ## what this suite does not have. These pin the parts that can be tested in isolation.
+## A bake that has fallen behind its document is not a broken bake — the game notices and
+## draws vectors instead, which is correct and MUCH slower: the whole authored map, woods and
+## all, rebuilt on every redraw. That cost 4.5 seconds a frame and eight minutes of "Building
+## the world…" in the editor, and the only thing that ever said so was a warning nobody was
+## reading. Editing a document means re-running the bake; this is what says so.
+func _test_authored_bake_matches_its_document() -> void:
+	var bake := load("res://scripts/authored_bake.gd")
+	var manifest: Dictionary = bake.data()
+	if manifest.is_empty():
+		_check(true, "authored bake: no bake on disk (the vector path is the fallback, not a fault)")
+		return
+	var active := AuthoredMap.active_name()
+	_check(str(manifest.get("document", "")) == active,
+		"authored bake: the bake on disk is for the active document ('%s' vs '%s')"
+			% [str(manifest.get("document", "")), active])
+	_check(str(manifest.get("source_md5", "")) == FileAccess.get_md5(AuthoredMap.path_for(active)),
+		"authored bake: the bake is current with '%s' — re-run "
+			% active + "tools/map_editor/bake_authored_map.tscn after editing a document")
+	_check(bake.is_available(),
+		"authored bake: the game will use the textures rather than falling back to vectors")
+
+
 func _test_forest_felling_seams() -> void:
 	_check(ForestFootprint.FOREST_BUILDING_IDS.has("b_015")
 		and ForestFootprint.FOREST_BUILDING_IDS.has("b_016"),

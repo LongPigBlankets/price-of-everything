@@ -310,12 +310,23 @@ func _boot_world() -> void:
 	# Draw order: the overlay must sit above every world layer. The world map uses sibling
 	# order for layering and reserves z up to 90 (the parchment multiply), so the overlay
 	# rides its own CanvasLayer instead of competing for a z_index.
+	#
+	# STAND THE HEAVY LAYERS DOWN BEFORE THE WAIT, not after it. The world takes about a
+	# hundred frames to settle, and the layers the editor is about to hide anyway were
+	# rendering through every one of them. That is normally affordable and once was not: with
+	# the authored bake stale the game's own fabric layer falls back to drawing the whole
+	# document as vectors — 4.5 seconds a frame — and the editor sat on "Building the world…"
+	# for eight minutes. The editor draws its own preview of that document, so it never needs
+	# these on, and binding early means a slow layer can no longer hold the boot hostage.
+	_layers.bind(_world)
 	for _i in SETTLE_FRAMES:
 		await get_tree().process_frame
 	_hide_game_ui()
 	_silence_world_input(_world)
 	_mount_fabric_layer()
 	_take_camera()
+	# Again, now that the world has finished building: layers created DURING the build (the
+	# ports and the farm underlay are added at runtime) did not exist for the first pass.
 	_layers.bind(_world)
 	_panel.build(self, _layers)
 	_ready_to_edit = true
