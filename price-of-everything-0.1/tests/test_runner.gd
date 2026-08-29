@@ -244,6 +244,8 @@ func _ready() -> void:
 	_test_market_prices_tab_impact_columns()
 	_test_base_output_ignores_gated_recipes()
 	_test_politics_panel_entries()
+	_test_forest_canopy_variants()
+	_test_authored_forest_tiles()
 	_test_save_load_roundtrip()
 	await _test_pending_load_applies_on_scene_ready()
 	_test_start_config_expansion()
@@ -4853,6 +4855,97 @@ func _politics_titles(panel: Control) -> Array:
 	for e: Dictionary in (panel.call("_entries") as Array):
 		out.append(str(e.get("title", "")))
 	return out
+
+## Canopy types: the seven the editor offers must all exist in the painter, "current" must
+## still draw exactly what it drew before they were added, and each type must actually change
+## the wood — a variant that silently did nothing is the failure mode a look-dev tool cannot
+## catch once it stops being looked at.
+func _test_forest_canopy_variants() -> void:
+	var Painter := load("res://scripts/authored_fabric_painter.gd")
+	var MapEd := load("res://scripts/map_editor/map_editor.gd")
+
+	# The editor's list and the painter's knob table cannot drift apart.
+	_check(MapEd.FOREST_VARIANTS == Painter.FOREST_VARIANTS,
+		"canopy: the editor offers exactly the painter's types")
+	var missing: Array = []
+	for name in Painter.FOREST_VARIANTS:
+		if not Painter._VARIANT_KNOBS.has(str(name)):
+			missing.append(str(name))
+	_check(missing.is_empty(), "canopy: every type has knobs (%s)" % str(missing))
+	_check(str(Painter.FOREST_VARIANTS[0]) == "current",
+		"canopy: type 1 is the shipped look, so key 1 is always 'leave it alone'")
+
+	# A square wood, big enough that every knob has room to act but comfortably UNDER
+	# TREE_LIMIT (900). At density 4 a wood this size generates thousands of candidates and
+	# woodland_points returns early at the cap — every variant then truncates to exactly 900
+	# and looks identical, which is how this test first failed. The cap also truncates
+	# COLUMN-WISE rather than sampling, so on a capped wood a gradient is partly masked.
+	var area := {
+		"id": "fo:test:1",
+		"density": 1.0,
+		"outline": [[-160.0, -160.0], [160.0, -160.0], [160.0, 160.0], [-160.0, 160.0]],
+	}
+	var counts: Dictionary = {}
+	for name in Painter.FOREST_VARIANTS:
+		var probe: Dictionary = area.duplicate(true)
+		probe["variant"] = str(name)
+		counts[str(name)] = Painter.woodland_points(probe).size()
+	_check(int(counts["current"]) > 0, "canopy: the control wood actually has trees (%d)" % int(counts["current"]))
+
+	# No variant may leave the wood unchanged — that is the silent-no-op case.
+	var inert: Array = []
+	for name in Painter.FOREST_VARIANTS:
+		if str(name) == "current":
+			continue
+		if int(counts[str(name)]) == int(counts["current"]):
+			inert.append(str(name))
+	_check(inert.is_empty(), "canopy: no type is a silent no-op (%s)" % str(inert))
+	# The two the owner picked out by name, in the direction they were specified.
+	_check(int(counts["sparse"]) < int(counts["current"]),
+		"canopy: sparse is thinner than the shipped look (%d vs %d)" % [int(counts["sparse"]), int(counts["current"])])
+
+	# An area with NO variant must be byte-identical to an explicit "current" — that is what
+	# keeps every wood already in the document exactly as it was.
+	var bare: Dictionary = area.duplicate(true)
+	var explicit: Dictionary = area.duplicate(true)
+	explicit["variant"] = "current"
+	_check(Painter.woodland_points(bare) == Painter.woodland_points(explicit),
+		"canopy: a wood with no type set draws as it always did")
+
+	# "graded" thins across the wood rather than uniformly: far half well under the near half.
+	var graded: Dictionary = area.duplicate(true)
+	graded["variant"] = "graded"
+	var pts: PackedVector2Array = Painter.woodland_points(graded)
+	# Split along the wood's OWN gradient axis, derived exactly as the painter derives it —
+	# the axis is per-wood (so neighbouring woods do not all thin the same way), and measuring
+	# across a fixed diagonal reads a real gradient as almost uniform.
+	var RoadHashRef := load("res://scripts/road_hash.gd")
+	var salt: int = RoadHashRef.fnv1a(str(graded["id"])) & 0xFFFF
+	var wob_salt: float = float(salt % 977) * 0.031
+	var axis := Vector2(cos(wob_salt * 2.1), sin(wob_salt * 2.1))
+	var near := 0
+	var far := 0
+	for q in pts:
+		if q.dot(axis) < 0.0:
+			near += 1
+		else:
+			far += 1
+	_check(near > 0 and far > 0, "canopy: graded keeps trees at both ends")
+	_check(mini(near, far) * 2 < maxi(near, far),
+		"canopy: graded is genuinely dense-to-sparse, not uniform (%d vs %d)" % [near, far])
+
+
+## A wood drawn in the editor makes its tile wooded in the sim, not only in the picture.
+func _test_authored_forest_tiles() -> void:
+	var AM := load("res://scripts/authored_map.gd")
+	var tiles: Dictionary = AM.forest_tiles()
+	_check(tiles is Dictionary, "authored forests: forest_tiles returns a set")
+	# Every id it reports must be a real tile — a stale id would seed a building nowhere.
+	var bogus: Array = []
+	for tile_id in tiles:
+		if str(tile_id) == "":
+			bogus.append(str(tile_id))
+	_check(bogus.is_empty(), "authored forests: no blank tile ids (%s)" % str(bogus))
 
 func _special_order_goods(orders: Array) -> Array:
 	var out: Array = []

@@ -68,7 +68,16 @@ const TOOL_TREE := "tree"
 ## The three, in cycle order. "mixed" is the only clump: a stand of identical trees reads as a
 ## repeated stamp rather than as woodland (owner, 2026-08-28), so there is no small-clump or
 ## large-clump to choose by mistake.
-const TREE_KINDS := ["small", "large", "mixed"]
+## "forest" is the fourth: it plants a WOOD (an outline area of the current canopy type)
+## rather than an individual tree. Cycling reaches it, and any of the number keys jumps
+## straight to it (owner 2026-08-29).
+const TREE_KINDS := ["small", "large", "mixed", "forest"]
+## Canopy types, in the order the number keys select them. Read from the painter so the
+## editor and the renderer can never disagree about what types exist.
+const FOREST_VARIANTS := AuthoredFabricPainter.FOREST_VARIANTS
+## A planted wood's default outline: a rough octagon at roughly the footprint a procedural
+## forest had, which the designer then reshapes (right-drag in SELECT) or rotates ([ ]).
+const FOREST_PLANT_RADIUS := 78.0
 ## How wide a planted clump is, in world units.
 const TREE_CLUMP_RADIUS := 26.0
 
@@ -192,6 +201,7 @@ var _panel: MapEditorPanel
 var _tool := TOOL_PAN
 ## Which tree the tree tool plants next; cycled by pressing its key again.
 var _tree_kind := "small"
+var _forest_variant := "current"
 var _world: Node
 var _camera: Camera2D
 var _status: Label
@@ -457,7 +467,12 @@ func _refresh_status() -> void:
 	var counts := _document.counts()
 	# The tree tool's kind is cycled by re-pressing its key, so the status line has to say
 	# which one is loaded — otherwise the only way to find out is to plant one.
-	var tool_note := ("   |   planting %s (T cycles)" % _tree_label()) if _tool == TOOL_TREE else ""
+	var tool_note := ""
+	if _tool == TOOL_TREE:
+		tool_note = "   |   planting %s (T cycles" % _tree_label()
+		if _tree_kind == "forest":
+			tool_note += ", 1-%d picks type" % FOREST_VARIANTS.size()
+		tool_note += ")"
 	_set_status("%s   |   %d settlements · %d roads · %d masses   |   %s%s"
 		% [_document.display_name(), counts.settlements, counts.roads, counts.masses,
 			"UNSAVED" if _document.is_dirty() else "saved", tool_note])
@@ -560,7 +575,10 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 						_place_slot(world)
 				TOOL_TREE:
 					if event.pressed:
-						_place_tree(world)
+						if _tree_kind == "forest":
+							_place_forest(world)
+						else:
+							_place_tree(world)
 				TOOL_SELECT:
 					if event.pressed:
 						_select_press(world, event.position)
@@ -621,7 +639,10 @@ func _handle_key(event: InputEventKey) -> void:
 			set_tool(TOOL_PAN)
 		KEY_R:
 			set_tool(TOOL_ROAD)
-		KEY_T:
+		KEY_Y:
+			# Anchor moved off T (owner 2026-08-29): T had TWO branches in this match, and
+			# since the first wins, the tree tool below had been unreachable by keyboard
+			# since it was added. T is the tree/forest key; anchor is Y.
 			set_tool(TOOL_ANCHOR)
 		KEY_F:
 			set_tool(TOOL_TRACE)
@@ -646,8 +667,8 @@ func _handle_key(event: InputEventKey) -> void:
 				set_tool(TOOL_SLOT)
 
 		KEY_T:
-			# First press picks the tool; each one after cycles small -> large -> mixed clump,
-			# so planting a varied group never needs the pointer to leave the map.
+			# First press picks the tool; each one after cycles small -> large -> mixed clump
+			# -> forest, so planting a varied group never needs the pointer to leave the map.
 			if _tool == TOOL_TREE:
 				var at := TREE_KINDS.find(_tree_kind)
 				_tree_kind = str(TREE_KINDS[(at + 1) % TREE_KINDS.size()])
@@ -681,12 +702,22 @@ func _handle_key(event: InputEventKey) -> void:
 			_zoom_by(ZOOM_STEP)
 		KEY_Q:
 			_zoom_by(1.0 / ZOOM_STEP)
+		# The number keys are CONTEXTUAL: canopy types while planting, road classes otherwise.
+		# Road class only means anything in the road tools, so the two never collide in use.
 		KEY_1:
-			set_road_class("major")
+			_number_key(0, "major")
 		KEY_2:
-			set_road_class("mid")
+			_number_key(1, "mid")
 		KEY_3:
-			set_road_class("minor")
+			_number_key(2, "minor")
+		KEY_4:
+			_number_key(3, "")
+		KEY_5:
+			_number_key(4, "")
+		KEY_6:
+			_number_key(5, "")
+		KEY_7:
+			_number_key(6, "")
 		KEY_ENTER, KEY_KP_ENTER:
 			# Enter is "done" (owner, 2026-08-18). Mid-draw it commits the thing being drawn
 			# and STAYS on the tool, so the next primitive or field needs no re-pick; with
@@ -1631,6 +1662,66 @@ func _place_slot(world: Vector2) -> void:
 ## a tile and authoring it is the point; a tree is decoration standing at a point, and
 ## planting one must not quietly take a tile's fabric, roads and accommodation away from the
 ## generator (`AuthoredMap.covers` is that switch, and it is nothing to do with trees).
+## A number key means a canopy type while the tree tool is up, and a road class otherwise.
+## Picking a type also switches to planting FORESTS — pressing 3 to get "feather" and then
+## having to press T twice to reach the forest sub-mode would be a needless second step.
+func _number_key(variant_index: int, road_class: String) -> void:
+	if _tool == TOOL_TREE:
+		if variant_index >= FOREST_VARIANTS.size():
+			_set_status("No canopy type %d — there are %d." % [variant_index + 1, FOREST_VARIANTS.size()])
+			return
+		_forest_variant = str(FOREST_VARIANTS[variant_index])
+		_tree_kind = "forest"
+		_refresh_status()
+		_set_status("Planting %s woods." % _forest_variant)
+		return
+	if road_class != "":
+		set_road_class(road_class)
+
+
+## Plant a WOOD: an outline area of the current canopy type, plus the forest building that
+## makes the tile actually wooded in the sim. The two are placed together on purpose — a wood
+## the player can see but not harvest, or a forest building with no canopy drawn, are both
+## states the map should not be able to get into by hand (owner 2026-08-29).
+func _place_forest(world: Vector2) -> void:
+	var settlement := _ensure_settlement()
+	_document.begin_edit("plant wood")
+	settlement = _ensure_settlement()
+	var next_id := int(settlement.get("next_id", 1))
+	var forests: Array = settlement.get("forests", []) as Array
+	var record := {
+		"id": "fo:%s:%d" % [_settlement, next_id],
+		"outline": _forest_outline(world),
+		"density": 4.0,
+		"variant": _forest_variant,
+	}
+	# The tiles this wood covers, declared on the record — this is what turns a drawn wood
+	# into a forest BUILDING at world build (AuthoredMap.forest_tiles), and it mirrors how
+	# zones already declare their coverage rather than making the reader re-test polygons.
+	record["tiles"] = _tiles_under(record["outline"] as Array)
+	forests.append(record)
+	settlement["forests"] = forests
+	settlement["next_id"] = next_id + 1
+	_cover_tiles_of(settlement, record["outline"] as Array)
+	_fabric.queue_redraw()
+	_overlay.queue_redraw()
+	_set_status("Planted a %s wood (%d in this settlement)." % [_forest_variant, forests.size()])
+
+
+## The default outline a planted wood starts as: a rough octagon, jittered per-wood so two
+## woods planted side by side are not the same shape. Deliberately NOT a regular polygon —
+## the point of the exercise was to stop woods looking stamped.
+func _forest_outline(centre: Vector2) -> Array:
+	var out: Array = []
+	var salt := int(abs(centre.x) + abs(centre.y) * 7.0)
+	for i in 8:
+		var ang: float = TAU * float(i) / 8.0
+		var wob: float = 0.82 + 0.28 * absf(sin(float(i) * 2.3 + float(salt % 17) * 0.4))
+		var p: Vector2 = centre + Vector2(cos(ang), sin(ang)) * float(FOREST_PLANT_RADIUS) * wob
+		out.append([snappedf(p.x, 0.01), snappedf(p.y, 0.01)])
+	return out
+
+
 func _place_tree(world: Vector2) -> void:
 	var settlement := _ensure_settlement()
 	_document.begin_edit("plant tree")
@@ -1660,6 +1751,8 @@ func _tree_label() -> String:
 			return "a small tree"
 		"large":
 			return "a large tree"
+		"forest":
+			return "a %s wood" % _forest_variant
 		_:
 			return "a mixed clump"
 

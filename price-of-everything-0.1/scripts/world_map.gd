@@ -66,6 +66,7 @@ var goods_graph_view: GoodsGraphViewScript
 
 const DENSITY_SOFT_CAPACITY := 100.0
 const InfraIcons := preload("res://scripts/infra_icons.gd")
+const AuthoredMapRef := preload("res://scripts/authored_map.gd")
 const OLD_GROWTH_FOREST_BUILDING_ID := "b_016"
 const OLD_GROWTH_FOREST_OWNER := "tile_data"
 const NORTH_OLD_GROWTH_MAX_ROW := 6
@@ -2302,6 +2303,23 @@ func _on_hidden_buildings_enabled() -> void:
 		_place_ruins("tile_23_16")
 
 func _place_northern_old_growth_forests() -> void:
+	# A wood drawn in the map editor makes its tile wooded in the SIM too, wherever it is —
+	# the northern-rows rule below seeds the procedural old growth, and this seeds anything a
+	# designer planted by hand (owner 2026-08-29). Same building, same deterministic id, so a
+	# hand-planted wood is indistinguishable from an old-growth one to everything downstream.
+	var authored: Dictionary = AuthoredMapRef.forest_tiles() if AuthoredMapRef.is_active() else {}
+	for authored_tile in authored:
+		var authored_id := str(authored_tile)
+		if authored_id == "" or _tile_has_building(authored_id, OLD_GROWTH_FOREST_BUILDING_ID):
+			continue
+		var authored_coord: Vector2i = terrain_layer.id_to_coord(authored_id)
+		if authored_coord == Vector2i(-1, -1):
+			continue
+		var authored_iid: String = MatchState.add_building(
+			OLD_GROWTH_FOREST_BUILDING_ID, "", authored_id, OLD_GROWTH_FOREST_OWNER,
+			"forest_%s_%s" % [OLD_GROWTH_FOREST_BUILDING_ID, authored_id], false)
+		building_placed.emit(authored_id, OLD_GROWTH_FOREST_BUILDING_ID, "", authored_iid, authored_coord)
+
 	for coord_key in terrain_layer.tiles:
 		var coord: Vector2i = coord_key
 		var tile_data: Dictionary = terrain_layer.tiles[coord]
