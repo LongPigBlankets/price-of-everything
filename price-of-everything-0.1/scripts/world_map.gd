@@ -274,6 +274,10 @@ func _build_base() -> void:
 	building_placed.connect(forest_visuals.on_building_placed)
 	# A cancelled construction site removes its hex icon (it was never a real building).
 	Construction.construction_cancelled.connect(_on_construction_cancelled)
+	# A DEMOLISHED building must stop being drawn. The removal path existed but was only
+	# reached by cancelling a build — sell, demolish, liquidate and bankruptcy all emit
+	# building_removed and left the sprite standing (owner 2026-08-29).
+	MatchState.building_removed.connect(_on_building_removed_visuals)
 	Construction.building_tab_opened.connect(_show_building_credit_dialog)
 	# Deposit feedback: reveal/popup when a blind (unsurveyed) build finishes, and a
 	# centre-screen prompt when a deposit runs out under a working building.
@@ -2254,10 +2258,31 @@ func _on_construction_use_stockpile_requested(building_id: String, recipe_id: St
 	Audio.building_placed()
 
 func _on_construction_cancelled(instance_id: String, _tile_id: String) -> void:
+	_drop_building_visual(instance_id)
+
+
+## Stop drawing a building that no longer exists. Covers every removal route, not just the
+## cancelled build: farms and ordinary buildings own a footprint in BuildingVisuals, forests
+## own a canopy in ForestVisuals, and an AUTHORED wood is drawn from the map document instead
+## of either — so that last case is dropped by tile (AuthoredFabricVisuals.forget_forest).
+func _on_building_removed_visuals(instance_id: String) -> void:
+	_drop_building_visual(instance_id)
+
+
+func _drop_building_visual(instance_id: String) -> void:
 	if building_visuals.has_method("remove_instance"):
 		building_visuals.remove_instance(instance_id)
 	if forest_visuals.has_method("remove_instance"):
 		forest_visuals.remove_instance(instance_id)
+	# An authored wood is the document's, not ForestVisuals'. Its instance id is minted from
+	# the tile (see _place_northern_old_growth_forests), so the tile is recoverable from the
+	# id alone — which matters because the building record is already gone by now.
+	var prefix := "forest_%s_" % OLD_GROWTH_FOREST_BUILDING_ID
+	if instance_id.begins_with(prefix):
+		var tile_id := instance_id.trim_prefix(prefix)
+		var fabric := get_node_or_null("AuthoredFabricVisuals")
+		if fabric != null and fabric.has_method("forget_forest"):
+			fabric.call("forget_forest", tile_id)
 
 func _get_building_display_name(building_id: String) -> String:
 	return Catalog.get_building_display_name(building_id)

@@ -421,6 +421,7 @@ func _ready() -> void:
 	_test_building_diagnostics()
 	_test_infra_upgrade()
 	await _test_core_panels_open()
+	await _test_demolished_building_loses_its_sprite()
 	if not _failed_names.is_empty():
 		print("FAILED TESTS:")
 		for failed_name in _failed_names:
@@ -4946,6 +4947,59 @@ func _test_authored_forest_tiles() -> void:
 		if str(tile_id) == "":
 			bogus.append(str(tile_id))
 	_check(bogus.is_empty(), "authored forests: no blank tile ids (%s)" % str(bogus))
+
+## A demolished building stops being drawn. The removal path existed but was reachable only by
+## CANCELLING A BUILD — sell, demolish, liquidate and bankruptcy all emit building_removed and
+## left the footprint standing, which is a building the player has paid to remove and can still
+## see (owner 2026-08-29).
+func _test_demolished_building_loses_its_sprite() -> void:
+	var packed: PackedScene = load("res://scenes/main.tscn")
+	if packed == null:
+		_check(false, "demolish visuals: main.tscn instantiates")
+		return
+	var snapshot: Dictionary = SaveLoad.export_snapshot()
+	var inst: Node = packed.instantiate()
+	add_child(inst)
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	var bv: Node = inst.find_child("BuildingVisuals", true, false)
+	var terrain: Node = inst.find_child("TerrainLayer", true, false)
+	_check(bv != null and terrain != null, "demolish visuals: the visual layers exist")
+	if bv == null or terrain == null:
+		inst.queue_free()
+		SaveLoad.import_snapshot(snapshot)
+		return
+
+	# A real building on a real tile, placed the way the world places one.
+	var tile_id := ""
+	for coord_key in terrain.tiles:
+		var td: Dictionary = terrain.tiles[coord_key]
+		if str(td.get("type", "")).to_lower() in ["rural", "urban"]:
+			tile_id = str(td.get("id", ""))
+			break
+	_check(tile_id != "", "demolish visuals: found a buildable tile")
+	if tile_id == "":
+		inst.queue_free()
+		SaveLoad.import_snapshot(snapshot)
+		return
+	var coord: Vector2i = terrain.call("id_to_coord", tile_id)
+	var iid: String = MatchState.add_building("b_002", "", tile_id, MatchState.LOCAL_PLAYER, "")
+	inst.call("emit_signal", "building_placed", tile_id, "b_002", "", iid, coord)
+	await get_tree().process_frame
+	_check(bv.call("has_placement", iid),
+		"demolish visuals: a placed building has a drawn footprint")
+
+	# Remove it the way every removal route does, and the footprint must go with it.
+	MatchState.remove_building(iid)
+	await get_tree().process_frame
+	_check(not bv.call("has_placement", iid),
+		"demolish visuals: removing the building removes its footprint")
+
+	inst.queue_free()
+	await get_tree().process_frame
+	SaveLoad.import_snapshot(snapshot)
+	await get_tree().process_frame
 
 func _special_order_goods(orders: Array) -> Array:
 	var out: Array = []
