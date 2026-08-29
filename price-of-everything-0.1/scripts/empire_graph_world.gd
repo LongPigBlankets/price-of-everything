@@ -31,6 +31,18 @@ const _FIT_PAD := 120.0                                     # viewport margin le
 const _DETAIL_MIN := 0.05                                   # furniture tracks zoom all the way to _ZOOM_MIN
 const _SEP_ITERS := 28                                      # screen-space separation passes per frame
 
+# --- Carried from the coal-prohibition empire pass (owner, 2026-08-13..16) ---
+const _GLOW_HEIGHT_FRAC := 0.15             # selection halo reach as a fraction of sprite height
+const _GLOW_ALPHA := 0.55                   # peak alpha at the halo's centre
+const _PORT_BADGE_FRAC := 0.17              # corner hex size as a fraction of the port sprite box
+const _PORT_MIN_SEP_SPRITES := 3.0          # lane a charted port reserves, in sprite-widths
+const _PORT_SPRITE_MULT := 2.0              # port sprite box = NodePanelScript.SPRITE_PX * this
+const _SHIPMENT_LOOKAHEAD := 5              # "expected in N turns" window
+const _COST_OK := 2.0                       # £/turn at or under which a line is cheap
+const _COST_WARN := 8.0                     # ...and over which it is expensive
+const _CREAM_TEXT := Color(0.976, 0.945, 0.867, 1.0)
+const BuildingSprites := preload("res://scripts/building_sprites.gd")
+
 const NodePanelScript := preload("res://scripts/empire_node_panel.gd")
 const LaneOrder := preload("res://scripts/lane_order.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
@@ -45,6 +57,8 @@ var _box_by_iid: Dictionary = {}
 var _panels: Array = []                                     # [{ctrl, iid, pos}] real node Controls
 var _screen_by_iid: Dictionary = {}                         # iid -> current screen pos (panels separated, ports projected)
 
+var _edge_icon_rects: Array = []            # [{rect, edge, kind}] chip hit-boxes, rebuilt per draw
+var _hover_edge: Dictionary = {}            # the chip under the cursor (empty = none)
 var _buy_ports: Array = []                  # the top-edge BUY mirrors of the four ports
 var _market_edges: Array = []               # {from:"buy_<port>", to:iid, good, slot, slot_n}
 var _view_zoom: float = 1.0
@@ -228,11 +242,28 @@ func _reposition_panels() -> void:
 	# panels from each other only, so a sprite — which is 400px tall growing upward — happily
 	# sat on top of the buy-port row above it.
 	var port_rects: Array = []
-	for p2 in _ports:
-		port_rects.append({
-			"c": _world_to_screen(_focus_pos(str(p2["iid"]), p2["pos"] as Vector2)),
-			"h": (p2["half"] as Vector2) * sc + Vector2(_MIN_GAP * sc, _MIN_GAP * sc),
-		})
+	var port_sprite_half := NodePanelScript.SPRITE_PX * _PORT_SPRITE_MULT * 0.5 * sc
+	# Wider than the sprite on purpose: a charted port has to READ as its own place, so it
+	# reserves _PORT_MIN_SEP_SPRITES regular sprite-widths of lane and panels are pushed out.
+	var port_sep_half := NodePanelScript.SPRITE_PX * _PORT_MIN_SEP_SPRITES * 0.5 * sc
+	for arr2 in [_ports, _buy_ports]:
+		for p2 in arr2:
+			var pid2 := str(p2["iid"])
+			var in_chart: bool = _focus_target > 0.0 and _focus_members.has(pid2)
+			# Buy ports are NOT obstacles at rest (the resting layout is tuned around that).
+			# They become obstacles only inside a chart, where they stop being a small hex
+			# and start being a 2x building sprite.
+			if arr2 == _buy_ports and not in_chart:
+				continue
+			var ph: Vector2 = (p2["half"] as Vector2) * sc
+			# A port in an open chart is drawn as that big sprite, not as its hex, so the
+			# footprint the panels give way to has to be the sprite's or they sit on top of it.
+			if in_chart:
+				ph = Vector2(maxf(ph.x, port_sep_half), maxf(ph.y, port_sprite_half))
+			port_rects.append({
+				"c": _world_to_screen(_focus_pos(pid2, p2["pos"] as Vector2)),
+				"h": ph + Vector2(_MIN_GAP * sc, _MIN_GAP * sc),
+			})
 
 	for _it in range(_SEP_ITERS):
 		var moved := false
@@ -443,6 +474,12 @@ func _layout_bbox() -> Rect2:
 		for iid in _fpos:
 			var nn: Dictionary = _box_by_iid.get(iid, {})
 			var hh: Vector2 = (nn.get("half", Vector2(200.0, 290.0)) as Vector2)
+			# A charted port draws as a sprite twice the building box; framing on its hex
+			# left the port hanging half off the side of the view. Width uses the
+			# SEPARATION lane, not just the sprite — the pass pushes panels to that radius.
+			if bool(nn.get("is_port", false)):
+				hh = Vector2(maxf(hh.x, NodePanelScript.SPRITE_PX * _PORT_MIN_SEP_SPRITES * 0.5),
+					maxf(hh.y, NodePanelScript.SPRITE_PX * _PORT_SPRITE_MULT * 0.5))
 			var r2 := Rect2((_fpos[iid] as Vector2) - hh, hh * 2.0)
 			if f1:
 				fb = r2
@@ -499,6 +536,8 @@ func _gui_input(event: InputEvent) -> void:
 		_view_offset += event.relative
 		queue_redraw()
 		accept_event()
+	elif event is InputEventMouseMotion:
+		_update_edge_hover((event as InputEventMouseMotion).position)
 	elif event is InputEventMagnifyGesture:                      # trackpad pinch (macOS) / touch
 		_zoom_at(event.position, event.factor)
 		accept_event()
@@ -781,6 +820,10 @@ func _draw() -> void:
 	# Focus fades everything that is not part of the mini-chart. `_edge_a` multiplies the alpha
 	# of any edge the focus does not keep, so the web recedes on the same curve the panels do.
 	var off_a := 1.0 - _focus_t
+	_edge_icon_rects.clear()
+	# The gold light the selected building radiates — beneath every line and panel, so the
+	# lines lie over the halo the way lit smoke sits behind cables.
+	_draw_selection_glow(sc)
 
 	# Market-input lines (dashed amber) dropped from each top buy port to the buildings it
 	# feeds, beneath everything else. Always dashed: like the graph's other edges this is
@@ -793,7 +836,7 @@ func _draw() -> void:
 		var ma := 0.85 * (1.0 if _focus_keeps(e) else off_a)
 		if ma > 0.01:
 			_draw_dashed_polyline(mpath, Color(_EDGE, ma), _EDGE_WIDTH * sc, sc)
-			_draw_edge_good_chip(mpath, str(e.get("good", "")), font, sc, ma)
+			_draw_edge_good_chip(mpath, e, "market", font, sc, ma)
 
 	# Sell-to-market lines (thick gold) routed down to the port row, beneath everything else.
 	var ports_top := INF
@@ -818,7 +861,7 @@ func _draw() -> void:
 			# Standing default, nothing actually shipping yet: dashed — "this is
 			# where sales WOULD leave" (goods are pooling in the tile stockpile).
 			_draw_dashed_polyline(path, Color(_SELL, 0.8 * sa), _SELL_WIDTH * sc, sc)
-		_draw_edge_good_chip(path, str(e.get("good", "")), font, sc, sa)
+		_draw_edge_good_chip(path, e, "sell", font, sc, sa)
 
 	# Input lines (thin amber) routed left-to-right between columns.
 	for e in _edges:
@@ -829,20 +872,31 @@ func _draw() -> void:
 			continue
 		var path := _route_input(_box_by_iid[e["from"]], _box_by_iid[e["to"]], int(e.get("lane", 0)), int(e.get("lane_n", 1)), sc)
 		draw_polyline(path, Color(_EDGE, ea), _EDGE_WIDTH * sc, true)
-		_draw_edge_good_chip(path, str(e.get("good", "")), font, sc, ea)
+		_draw_edge_good_chip(path, e, "input", font, sc, ea)
 
 	# The construction-site delivery chart, under the port hexes so their gold sits on top of
 	# the lane ends (and under the panels, which are Controls and always above _draw).
 	if not _focus_site.is_empty() and _focus_t > 0.0:
 		_draw_site_lanes(font, sc)
 
-	# Building nodes are real Control panels (children, drawn on top); ports stay as drawn hexagons.
+	# Building nodes are real Control panels (children, drawn on top); ports are drawn here.
+	# With the port badges on, the resting empire no longer carries the bottom row of
+	# sell-port hexes (owner 2026-08-16): the badge on each selling building carries "this
+	# ships to market" at rest, and the port appears — as its 2x building sprite — only when
+	# a mini-chart opens on one. With badges off the hexes return, because then the sell
+	# lines need somewhere visible to land.
 	for p in _ports:
-		if _focus_t <= 0.0 or _focus_members.has(str(p["iid"])):
+		var pid := str(p["iid"])
+		if _focus_target > 0.0 and _focus_members.has(pid):
+			_draw_port(p, font, sc)
+		elif _focus_t <= 0.0 and not MatchState.show_port_badge:
 			_draw_port(p, font, sc)
 	for bp in _buy_ports:
 		if _focus_t <= 0.0 or _focus_members.has(str(bp["iid"])):
 			_draw_port(bp, font, sc)
+
+	# Last, so it sits over the lines and chips it explains.
+	_draw_edge_good_tooltip(font, sc)
 
 
 ## Orthogonal route producer-right -> vertical channel -> consumer-left. The channel x is the edge's
@@ -1227,13 +1281,19 @@ func _point_along_polyline(pts: PackedVector2Array, t: float) -> Vector2:
 ## line, dashed or not"). Reuses _draw_material_chip's exact cream-rounded-chip look with qty=0
 ## so its quantity pill stays off — this chip says WHAT flows, not how much. Silent no-op for a
 ## good with no icon art (nothing to put on the chip) or a path too short to have a "40% along".
-func _draw_edge_good_chip(path: PackedVector2Array, good_id: String, font: Font, sc: float, a: float) -> void:
+func _draw_edge_good_chip(path: PackedVector2Array, e: Dictionary, kind: String, font: Font, sc: float, a: float) -> void:
+	var good_id := str(e.get("good", ""))
 	if good_id == "" or a <= 0.01 or path.size() < 2:
 		return
 	var icon := GoodIcons.texture_for_size(good_id, str(Catalog.get_internal_name(good_id)), _LANE_CHIP * sc)
 	if icon == null:
 		return
-	_draw_material_chip(_point_along_polyline(path, _EDGE_CHIP_T), _LANE_CHIP * sc, icon, 0, font, sc, a)
+	var c := _point_along_polyline(path, _EDGE_CHIP_T)
+	var box := _LANE_CHIP * sc
+	_draw_material_chip(c, box, icon, 0, font, sc, a)
+	# Record the chip's hit-box so the hover readout can find it (cleared per draw).
+	_edge_icon_rects.append({"rect": Rect2(c - Vector2(box, box) * 0.5, Vector2(box, box)),
+		"edge": e, "kind": kind})
 
 
 ## A material on its lane: the good's icon on the same ROUNDED cream chip the plates use, with
@@ -1419,7 +1479,16 @@ func _draw_port(n: Dictionary, font: Font, sc: float) -> void:
 	var center: Vector2 = _screen_of(str(n["iid"]), n)
 	var half: Vector2 = (n["half"] as Vector2) * sc
 	var rect := Rect2(center - half, half * 2.0)
-	if not get_rect().grow(240.0).intersects(rect):
+	# The cull margin has to clear the SPRITE, not the hex: inside a chart the port draws at
+	# twice the building sprite box, so a flat 240px would drop a port whose centre has just
+	# left the viewport while most of its building is still on screen.
+	if not get_rect().grow(240.0 + NodePanelScript.SPRITE_PX * _PORT_SPRITE_MULT * 0.5 * sc).intersects(rect):
+		return
+	# Inside an open mini-chart the port is a PLACE, not a symbol, so it wears the same
+	# building sprite the rest of the chart does and keeps only a small gold hex in the
+	# bottom-right corner — the identical badge a building selling to market carries.
+	if _focus_target > 0.0 and _focus_members.has(str(n["iid"])):
+		_draw_port_sprite(n, center, half, font, sc)
 		return
 	var hex := rounded_polygon(hex_points(center, half), minf(half.x, half.y) * 0.22, 4)
 	# Lit gold gradient fill: top-left bright -> bottom-right dark (same metal lighting as the plates).
@@ -1443,6 +1512,276 @@ func _draw_port(n: Dictionary, font: Font, sc: float) -> void:
 
 	draw_string(font, Vector2(rect.position.x - 20.0 * sc, rect.end.y + 16.0 * sc), str(n.get("name", "")),
 		HORIZONTAL_ALIGNMENT_CENTER, rect.size.x + 40.0 * sc, maxi(6, int(round(13.0 * sc))), _GOLD)
+
+
+## The port as it appears INSIDE an open mini-chart: its building sprite, with the lit gold
+## hex shrunk to a corner badge. Mirrors empire_node_panel's port badge so a port and a
+## building that sells to one are visibly the same statement.
+func _draw_port_sprite(n: Dictionary, center: Vector2, half: Vector2, font: Font, sc: float) -> void:
+	var tex: Texture2D = BuildingSprites.texture_for("port", 1)
+	# TWICE the building sprite box (owner 2026-08-14). Sized off SPRITE_PX, not off the node's
+	# own half-extent: `half` is the footprint of the RESTING gold hex (86x78), which drew the
+	# port at 156px beside a building's 400px and made the place a whole chain ships through
+	# read as a stray icon rather than a destination.
+	var box := NodePanelScript.SPRITE_PX * _PORT_SPRITE_MULT * sc
+	var draw_sz := Vector2(box, box)
+	if tex != null:
+		var ts := Vector2(tex.get_width(), tex.get_height())
+		var fit := box / maxf(ts.x, ts.y)          # aspect-kept, same contract as the panels
+		draw_sz = ts * fit
+		draw_texture_rect(tex, Rect2(center - draw_sz * 0.5, draw_sz), false)
+	else:
+		# No sprite installed: fall back to the icon so the node is never blank.
+		var icon = n.get("icon")
+		if icon != null:
+			var isz := box * 0.6
+			draw_sz = Vector2(isz, isz)
+			draw_texture_rect(icon, Rect2(center - Vector2(isz, isz) * 0.5, Vector2(isz, isz)),
+				false, Color(0.02, 0.06, 0.11, 0.95))
+
+	# The corner badge: a lit gold hex at the sprite's bottom-right, overlapping it slightly so
+	# it reads as attached rather than floating. Anchored to the SPRITE's own corner rather than
+	# the node's layout half — the sprite is now far the larger of the two, and against `half`
+	# the badge would land in the middle of the building.
+	var bh := box * _PORT_BADGE_FRAC * 0.5
+	if bh < 2.0:
+		return  # far zoom: a sub-2px hex degenerates (rounded_polygon triangulation fails)
+	var bc := center + draw_sz * 0.5 - Vector2(bh, bh) * 0.85
+	var bhex := rounded_polygon(hex_points(bc, Vector2(bh, bh)), bh * 0.22, 4)
+	draw_polygon(bhex, grad_colors(bhex, Color(1.0, 0.93, 0.63), Color(0.46, 0.35, 0.13)))
+	var brim := PackedVector2Array(bhex)
+	brim.append(bhex[0])
+	draw_polyline(brim, Color(1.0, 0.95, 0.72, 0.9), 1.5 * sc, true)
+
+	draw_string(font, Vector2(center.x - draw_sz.x * 0.5 - 20.0 * sc,
+		center.y + draw_sz.y * 0.5 + 16.0 * sc),
+		str(n.get("name", "")), HORIZONTAL_ALIGNMENT_CENTER, draw_sz.x + 40.0 * sc,
+		maxi(6, int(round(13.0 * sc))), _GOLD)
+
+
+## The gold light a selected building radiates. The reach is a fraction of the building's own
+## drawn HEIGHT, so it grows and shrinks with the sprite under zoom instead of holding a fixed
+## pixel halo.
+func _draw_selection_glow(sc: float) -> void:
+	if _focus_iid == "" or _focus_target <= 0.0:
+		return
+	if not _screen_by_iid.has(_focus_iid):
+		return
+	var node: Dictionary = _box_by_iid.get(_focus_iid, {})
+	if node.is_empty():
+		return
+	var center: Vector2 = _screen_by_iid[_focus_iid]
+	var half: Vector2 = (node.get("half", Vector2(200.0, 290.0)) as Vector2) * sc
+	var reach: float = half.y * 2.0 * _GLOW_HEIGHT_FRAC
+	if reach <= 0.5:
+		return
+	# Fade the whole halo in with the focus tween so it arrives with the arrangement.
+	var lit: float = clampf(_focus_t, 0.0, 1.0)
+	# One stretched radial gradient rather than a stack of shapes. Concentric polygons —
+	# filled or outlined — band visibly at this size: filled ones accumulate into a flat
+	# slab and outlined ones read as rings. A gradient texture is smooth, and it is a
+	# single draw call besides.
+	var r := Rect2(center - half - Vector2(reach, reach), (half + Vector2(reach, reach)) * 2.0)
+	draw_texture_rect(_glow_texture(), r, false, Color(_GOLD.r, _GOLD.g, _GOLD.b, _GLOW_ALPHA * lit))
+
+
+## Radial falloff for the selection halo, built once. Opaque at the centre (where the
+## sprite covers it anyway) easing to nothing at the edge, so the light bleeds outward.
+static var _glow_tex: GradientTexture2D = null
+
+static func _glow_texture() -> GradientTexture2D:
+	if _glow_tex != null:
+		return _glow_tex
+	var g := Gradient.new()
+	g.set_offsets(PackedFloat32Array([0.0, 0.42, 0.72, 1.0]))
+	g.set_colors(PackedColorArray([
+		Color(1, 1, 1, 1.0), Color(1, 1, 1, 0.62), Color(1, 1, 1, 0.18), Color(1, 1, 1, 0.0),
+	]))
+	var t := GradientTexture2D.new()
+	t.gradient = g
+	t.width = 192
+	t.height = 192
+	t.fill = GradientTexture2D.FILL_RADIAL
+	t.fill_from = Vector2(0.5, 0.5)
+	t.fill_to = Vector2(1.0, 0.5)
+	_glow_tex = t
+	return _glow_tex
+
+
+## Which material chip (if any) the cursor is over. Only redraws when the answer changes,
+## so moving the mouse across an open chart is not a per-pixel repaint.
+func _update_edge_hover(pos: Vector2) -> void:
+	var found: Dictionary = {}
+	for entry in _edge_icon_rects:
+		if ((entry as Dictionary)["rect"] as Rect2).has_point(pos):
+			found = entry
+			break
+	var was := str((_hover_edge.get("edge", {}) as Dictionary).get("from", "")) \
+		+ ">" + str((_hover_edge.get("edge", {}) as Dictionary).get("to", "")) \
+		+ ":" + str((_hover_edge.get("edge", {}) as Dictionary).get("good", ""))
+	var now := str((found.get("edge", {}) as Dictionary).get("from", "")) \
+		+ ">" + str((found.get("edge", {}) as Dictionary).get("to", "")) \
+		+ ":" + str((found.get("edge", {}) as Dictionary).get("good", ""))
+	if was == now:
+		return
+	_hover_edge = found
+	queue_redraw()
+
+
+## The hovered chip's readout: a panel the same height as the chip, opening to its right,
+## carrying two right-aligned figures. Text is off-white; only the numbers carry colour, on
+## the same OK/WARN/DANGER scale the building diagnostics use.
+func _draw_edge_good_tooltip(font: Font, sc: float) -> void:
+	if _hover_edge.is_empty():
+		return
+	var e: Dictionary = _hover_edge.get("edge", {})
+	var plate: Rect2 = _hover_edge.get("rect", Rect2())
+	if e.is_empty() or plate.size.x <= 0.0:
+		return
+	var to_iid := str(e.get("to", ""))
+	var good := str(e.get("good", ""))
+	var tile := str((_box_by_iid.get(to_iid, {}) as Dictionary).get("tile_id", ""))
+	if tile == "":
+		tile = str((MatchState.buildings.get(to_iid, {}) as Dictionary).get("tile_id", ""))
+
+	# Row 1 — what this line costs to run, per turn. "no route" rather than £0.00 when there is
+	# nothing priceable: zero reads as free, and the case it actually covers is a haul the goods
+	# cannot make at all (a fluid with no pipe network to the destination, say).
+	var tc: Dictionary = _edge_transport_cost(e, str(_hover_edge.get("kind", "input")))
+	var known: bool = bool(tc.get("known", false))
+	var cost: float = float(tc.get("cost", 0.0))
+	var cost_txt: String = ("£%.2f" % cost) if known else "no route"
+	var cost_col: Color = _cost_colour(cost) if known else DS.PALETTE["DANGER"]
+	# Row 2 — what is already on its way, and how dependable the line has been. The
+	# colour is the CONSISTENCY verdict; a young building is not judged for silence.
+	var inbound := 0
+	for s in MatchState.get_inbound_transport_shipments(tile, good):
+		if int((s as Dictionary).get("turns_remaining", 99)) <= _SHIPMENT_LOOKAHEAD:
+			inbound += int((s as Dictionary).get("qty", 0))
+	var hits: int = MatchState.arrivals_in_window(tile, good)
+	var age := _building_age(to_iid)
+	var ship_col := _consistency_colour(hits, age)
+	var ship_txt := "%d" % inbound
+
+	var fs := maxi(9, int(round(13.0 * sc)))
+	var row_h := float(fs) + 6.0 * sc
+	var pad := 10.0 * sc
+	var label1 := "Transport cost per turn"
+	var label2 := "Shipments expected in %d turns" % _SHIPMENT_LOOKAHEAD
+	var w := maxf(font.get_string_size(label1, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x,
+		font.get_string_size(label2, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x) \
+		+ maxf(font.get_string_size(cost_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x,
+			font.get_string_size(ship_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x) \
+		+ pad * 3.0
+	var h := maxf(plate.size.y, row_h * 2.0 + pad * 1.4)
+	var panel := Rect2(Vector2(plate.end.x + 6.0 * sc, plate.position.y), Vector2(w, h))
+	# Flip to the left if it would leave the viewport.
+	if panel.end.x > get_rect().size.x - 8.0:
+		panel.position.x = plate.position.x - 6.0 * sc - w
+
+	var poly := rounded_polygon(PackedVector2Array([
+		panel.position, Vector2(panel.end.x, panel.position.y), panel.end,
+		Vector2(panel.position.x, panel.end.y),
+	]), 8.0 * sc, 5)
+	draw_colored_polygon(poly, Color(0.04, 0.08, 0.14, 0.96))
+	var rim := PackedVector2Array(poly)
+	rim.append(poly[0])
+	draw_polyline(rim, Color(_GOLD.r, _GOLD.g, _GOLD.b, 0.55), 1.5 * sc, true)
+
+	var y := panel.position.y + (h - row_h * 2.0) * 0.5 + float(fs)
+	_tooltip_row(font, panel, label1, cost_txt, cost_col, y, fs, pad)
+	_tooltip_row(font, panel, label2, ship_txt, ship_col, y + row_h, fs, pad)
+
+
+func _tooltip_row(font: Font, panel: Rect2, label: String, value: String, col: Color,
+		y: float, fs: int, pad: float) -> void:
+	draw_string(font, Vector2(panel.position.x + pad, y), label,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, fs, _CREAM_TEXT)
+	var vw := font.get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	# Drawn twice with a 1px offset: the numbers are the point of the panel, and there is
+	# no bold face in this font set to lean on.
+	draw_string(font, Vector2(panel.end.x - pad - vw + 1.0, y), value,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
+	draw_string(font, Vector2(panel.end.x - pad - vw, y), value,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
+
+
+## Per-turn transport cost of the movement THIS EDGE represents. Which route that is depends on
+## what kind of edge it is — quoting one route for all three is the bug the owner spotted as
+## "£0.00 on a haul that surely costs something" (2026-08-14):
+##   market  buy port -> building   a real market purchase; preview_buy is the right quote
+##   sell    building -> port       the haul out to the port the goods leave through
+##   input   building -> building   the INTERNAL haul, producer tile -> consumer tile
+## Returns {cost, known}. `known` false means no priceable route exists; the caller must not
+## print that as £0.00, which reads as "free" when it means "this cannot be shipped at all".
+func _edge_transport_cost(e: Dictionary, kind: String) -> Dictionary:
+	var good := str(e.get("good", ""))
+	var g: Dictionary = Catalog.get_good(good)
+	if g.is_empty():
+		g = Catalog.get_good_by_internal_name(good)
+	var gid := str(g.get("id", good))
+	var src := _tile_of(str(e.get("from", "")))
+	var dst := _tile_of(str(e.get("to", "")))
+	if kind == "market":
+		if dst == "":
+			return {"cost": 0.0, "known": false}
+		var quote: Dictionary = MatchState.preview_buy(dst, gid, 1)
+		if quote.is_empty():
+			return {"cost": 0.0, "known": false}   # refused or unroutable — NOT free
+		return {"cost": float(quote.get("transport_cost", 0.0)), "known": true}
+	return _route_leg_cost(gid, src, dst)
+
+
+## One unit over the real route between two tiles. Unreachable is deliberately NOT free: the
+## engine returns 0.0 there on purpose (the INF_TURNS sentinel once billed ~£1e9 for fluids with
+## no pipe network), so reachability is what decides `known` — never the number itself.
+func _route_leg_cost(gid: String, src: String, dst: String) -> Dictionary:
+	if src == "" or dst == "":
+		return {"cost": 0.0, "known": false}
+	if src == dst:
+		return {"cost": 0.0, "known": true}        # same tile: genuinely no haul to pay for
+	var route_data: Dictionary = TransportService.route(src, dst, gid)
+	if not TransportService.route_is_reachable(route_data):
+		return {"cost": 0.0, "known": false}
+	return {"cost": TransportService.transport_cost_for_route(gid, 1, route_data), "known": true}
+
+
+## The tile a graph node stands on. Nodes carry `tile_id` for buildings AND ports (buy ports are
+## copies of their port), so this resolves every endpoint an edge can have.
+func _tile_of(iid: String) -> String:
+	var t := str((_box_by_iid.get(iid, {}) as Dictionary).get("tile_id", ""))
+	if t == "":
+		t = str((MatchState.buildings.get(iid, {}) as Dictionary).get("tile_id", ""))
+	return t
+
+
+## Cheap is green, ordinary amber, dear red — the building diagnostics' own scale.
+func _cost_colour(cost: float) -> Color:
+	if cost <= _COST_OK:
+		return DS.PALETTE["OK"]
+	if cost <= _COST_WARN:
+		return DS.PALETTE["WARN"]
+	return DS.PALETTE["DANGER"]
+
+
+## Delivered every turn is green; patchy is amber; two or fewer of the last ten is red —
+## unless the building is younger than that, in which case there was nothing to deliver.
+func _consistency_colour(hits: int, age_turns: int) -> Color:
+	if hits >= MatchState.ARRIVAL_HISTORY_TURNS:
+		return DS.PALETTE["OK"]
+	if hits <= 2:
+		return DS.PALETTE["WARN"] if age_turns <= 2 else DS.PALETTE["DANGER"]
+	return DS.PALETTE["WARN"]
+
+
+func _building_age(iid: String) -> int:
+	var b: Dictionary = MatchState.buildings.get(iid, {})
+	if b.is_empty():
+		return 999
+	var built := int(b.get("built_turn", b.get("construction_turn", 0)))
+	if built <= 0:
+		return 999
+	return maxi(0, int(TurnManager.current_turn) - built)
 
 
 ## Flat-top hexagon (pointed left/right) filling the node's box.

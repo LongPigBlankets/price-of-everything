@@ -380,6 +380,14 @@ var auto_sell_keep: Dictionary = {}                  # tile_id -> { good_id -> u
 const IMPACT_ANY := -1                               # auto-sell tolerance sentinel: no per-turn volume cap
 var auto_sell_impact: Dictionary = {}                # tile_id -> max price-impact % tolerated per turn (or IMPACT_ANY)
 var pending_transport_shipments: Array = []
+
+# Which turns a (destination tile, good) actually RECEIVED a shipment. The empire view
+# reports how reliably a supply line delivers, and nothing else in the sim remembers a
+# delivery once its goods are in the stockpile — so this is recorded here rather than
+# derived. Storing the turn numbers (not a per-turn bitmask shift) means a quiet line
+# costs nothing per turn; the list is trimmed on write, so it stays tiny.
+const ARRIVAL_HISTORY_TURNS := 10
+var arrival_turns: Dictionary = {}          # "tile|good" -> PackedInt32Array of turn numbers
 # In-progress building upgrades (mirrors Construction's project queue). Each entry is a
 # dict — see start_upgrade() for the shape. While an upgrade is pending it reserves its
 # extra footprint and the building keeps producing at its CURRENT level until promotion.
@@ -3522,6 +3530,7 @@ func reset() -> void:
 	auto_sell_keep.clear()
 	auto_sell_impact.clear()
 	pending_transport_shipments.clear()
+	arrival_turns.clear()
 	_sea_shipping_turn = -1
 	_sea_port_usage_this_turn.clear()
 	_sea_port_charges_this_turn.clear()
@@ -3709,6 +3718,7 @@ func export_state() -> Dictionary:
 		"auto_sell_impact": auto_sell_impact.duplicate(true),
 		"queued_stockpile_market_sales": queued_stockpile_market_sales.duplicate(true),
 		"pending_transport_shipments": _shipments_for_save(),
+		"arrival_turns": _arrival_turns_for_save(),
 		# Additive (v3 transport panel): an older save has neither, and the empty
 		# default reads correctly as "no history yet" until turns accrue.
 		"link_over_history": _link_over_history.duplicate(true),
@@ -3845,6 +3855,9 @@ func import_state(d: Dictionary) -> void:
 	auto_sell_impact = (d.get("auto_sell_impact", {}) as Dictionary).duplicate(true)
 	queued_stockpile_market_sales = (d.get("queued_stockpile_market_sales", {}) as Dictionary).duplicate(true)
 	pending_transport_shipments = (d.get("pending_transport_shipments", []) as Array).duplicate(true)
+	# Pre-history saves simply start with no record — the readout says "no data yet"
+	# rather than lying, and fills in as deliveries land.
+	arrival_turns = _arrival_turns_from_save(d.get("arrival_turns", {}))
 	_link_over_history = (d.get("link_over_history", {}) as Dictionary).duplicate(true)
 	_link_congestion_paid = (d.get("link_congestion_paid", {}) as Dictionary).duplicate()
 	_recompute_unpaid_purchases()  # rebuilt from the shipments so the accumulator can't drift
@@ -3892,6 +3905,30 @@ func import_state(d: Dictionary) -> void:
 	pending_output_stockpile_selection.clear()
 	sales_by_tile.clear()
 	_requote_shipment_routes()
+
+## PackedInt32Array does not survive the JSON round trip, so the history saves as plain
+## arrays of ints and is rebuilt on load.
+func _arrival_turns_for_save() -> Dictionary:
+	var out: Dictionary = {}
+	for key in arrival_turns:
+		var plain: Array = []
+		for t in (arrival_turns[key] as PackedInt32Array):
+			plain.append(int(t))
+		out[key] = plain
+	return out
+
+
+func _arrival_turns_from_save(raw: Variant) -> Dictionary:
+	var out: Dictionary = {}
+	if not (raw is Dictionary):
+		return out
+	for key in (raw as Dictionary):
+		var packed := PackedInt32Array()
+		for t in ((raw as Dictionary)[key] as Array):
+			packed.append(int(t))
+		out[str(key)] = packed
+	return out
+
 
 func _shipments_for_save() -> Array:
 	var out: Array = []
@@ -5386,8 +5423,44 @@ func advance_transport_shipments() -> Array:
 			remaining.append(shipment)
 	pending_transport_shipments = remaining
 	if not arrived.is_empty():
+		for shipment in arrived:
+			_record_arrival(str((shipment as Dictionary).get("destination_tile", "")),
+				str((shipment as Dictionary).get("good_id", "")))
 		transport_shipments_changed.emit()
 	return arrived
+
+
+## Note that `good_id` reached `tile_id` this turn. Idempotent within a turn: several
+## shipments of the same good landing together are one delivering turn, which is what
+## "arrived 7 of the last 10 turns" has to mean.
+func _record_arrival(tile_id: String, good_id: String) -> void:
+	if tile_id == "" or good_id == "":
+		return
+	var key := "%s|%s" % [tile_id, good_id]
+	var turn := _ledger_turn()
+	var hist: PackedInt32Array = arrival_turns.get(key, PackedInt32Array())
+	if hist.size() > 0 and hist[hist.size() - 1] == turn:
+		return
+	hist.append(turn)
+	var cutoff := turn - ARRIVAL_HISTORY_TURNS
+	var trimmed := PackedInt32Array()
+	for t in hist:
+		if t > cutoff:
+			trimmed.append(t)
+	arrival_turns[key] = trimmed
+
+
+## How many of the last `window` turns delivered `good_id` to `tile_id` (0..window).
+func arrivals_in_window(tile_id: String, good_id: String, window: int = ARRIVAL_HISTORY_TURNS) -> int:
+	var hist: PackedInt32Array = arrival_turns.get("%s|%s" % [tile_id, good_id], PackedInt32Array())
+	if hist.is_empty():
+		return 0
+	var floor_turn := _ledger_turn() - window
+	var n := 0
+	for t in hist:
+		if t > floor_turn:
+			n += 1
+	return n
 
 # ── Transport throughput congestion (soft cap) ─────────────────────────────
 # A tile-link's per-turn flow on a mode = total units of in-transit shipments

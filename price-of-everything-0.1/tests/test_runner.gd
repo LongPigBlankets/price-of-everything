@@ -43,6 +43,7 @@ func _ready() -> void:
 	print("\n==== price-of-everything tests ====")
 	_test_scripts_parse()
 	_test_goods_graph_reopen_clears_focus()
+	_test_arrival_history()
 	_test_map_style_plate()
 	_test_midcentury_road_layout_fixture()
 	_test_midcentury_industry_landmark_tier()
@@ -16365,6 +16366,41 @@ func _test_goods_graph_reopen_clears_focus() -> void:
 ## constructions are the permanent regression surface: a future candidate that
 ## reopens one of these breaks fails here before it reaches a blind critic.
 ## Runnable narrative form: tools/instrument_attack.gd.
+
+## Arrival history: the empire view reports how reliably a line delivers, and nothing else
+## in the sim remembers a delivery once its goods are in the stockpile. Covers the window
+## query, that several shipments landing on one turn count as ONE delivering turn, and the
+## save round trip (PackedInt32Array does not survive JSON, so it is rebuilt on load).
+func _test_arrival_history() -> void:
+	var saved: Dictionary = MatchState.arrival_turns.duplicate(true)
+	MatchState.arrival_turns.clear()
+	var turn: int = TurnManager.current_turn
+	_check(MatchState.arrivals_in_window("tile_9_10", "coal") == 0, "arrivals: nothing recorded reads as zero")
+
+	MatchState.call("_record_arrival", "tile_9_10", "coal")
+	_check(MatchState.arrivals_in_window("tile_9_10", "coal") == 1, "arrivals: a delivery is recorded")
+	MatchState.call("_record_arrival", "tile_9_10", "coal")
+	_check(MatchState.arrivals_in_window("tile_9_10", "coal") == 1,
+		"arrivals: two shipments on the same turn are ONE delivering turn")
+	_check(MatchState.arrivals_in_window("tile_9_10", "iron_ore") == 0, "arrivals: kept per good")
+	_check(MatchState.arrivals_in_window("tile_7_9", "coal") == 0, "arrivals: kept per tile")
+
+	# Turns older than the window fall out of the count.
+	MatchState.arrival_turns["tile_9_10|coal"] = PackedInt32Array([turn - 50, turn])
+	_check(MatchState.arrivals_in_window("tile_9_10", "coal") == 1, "arrivals: stale turns leave the window")
+
+	# Save round trip.
+	var packed: Dictionary = MatchState.call("_arrival_turns_for_save")
+	_check((packed["tile_9_10|coal"] as Array).size() == 2, "arrivals: history serialises as plain ints")
+	var restored: Dictionary = MatchState.call("_arrival_turns_from_save", packed)
+	_check(restored["tile_9_10|coal"] is PackedInt32Array, "arrivals: history rebuilds as PackedInt32Array")
+	_check((restored["tile_9_10|coal"] as PackedInt32Array).size() == 2, "arrivals: round trip keeps every turn")
+	# A pre-history save must not crash or invent data.
+	_check((MatchState.call("_arrival_turns_from_save", null) as Dictionary).is_empty(),
+		"arrivals: a save with no history loads empty")
+
+	MatchState.arrival_turns = saved
+
 func _test_instrument_adversarial() -> void:
 	# ---- BREAK A1. Shattering scored a PERFECT articulation report: same ink,
 	# same footprint, four crumbs per building at 4.0u - one hair over the 3.8u
