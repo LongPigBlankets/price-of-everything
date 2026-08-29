@@ -56,10 +56,8 @@ func setup(recipe_data: Dictionary, parent_building_id: String) -> void:
 		gui_input.connect(_on_row_gui_input)
 
 	var output_gid: String = recipe_data.get("output_good_id", "")
-	if Catalog.get_internal_name(output_gid) == "power":
-		output_icon.texture = load(RECIPE_POWER_ICON)
-	else:
-		output_icon.texture = GoodIcons.texture_for(output_gid, recipe_data.get("output_name", ""))
+	# Power output shows its isometric goods icon like every other good (owner 2026-08-29).
+	output_icon.texture = GoodIcons.texture_for(output_gid, recipe_data.get("output_name", ""))
 
 	var parts: Array = []
 	for inp in recipe_data.get("inputs", []):

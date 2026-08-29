@@ -522,10 +522,6 @@ func _gui_input(event: InputEvent) -> void:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 			_zoom_at(event.position, _ZOOM_STEP)
 			accept_event()
-		elif event.button_index == MOUSE_BUTTON_LEFT and event.pressed and _focus_target > 0.0:
-			# The panels swallow their own clicks, so a left click that reaches the canvas is
-			# a click on empty space — which is how you leave the mini-chart.
-			clear_focus()
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
 			_zoom_at(event.position, 1.0 / _ZOOM_STEP)
 			accept_event()
@@ -1309,7 +1305,14 @@ func _draw_material_chip(c: Vector2, box: float, icon, qty: int, font: Font, sc:
 	_chip_style.set_corner_radius_all(maxi(2, int(round(box * 0.13))))
 	draw_style_box(_chip_style, r)
 	if icon != null:
-		draw_texture_rect(icon, r.grow(-box * 0.11), false, Color(1, 1, 1, a))
+		# Aspect-fit inside the chip: goods art is not all square (the isometric power
+		# icon was visibly squished by a plain square draw — owner 2026-08-29).
+		var inner := r.grow(-box * 0.11)
+		var ts := Vector2(icon.get_width(), icon.get_height())
+		if ts.x > 0.0 and ts.y > 0.0:
+			var fit: float = minf(inner.size.x / ts.x, inner.size.y / ts.y)
+			var dsz: Vector2 = ts * fit
+			draw_texture_rect(icon, Rect2(inner.position + (inner.size - dsz) * 0.5, dsz), false, Color(1, 1, 1, a))
 	if qty > 0:
 		_draw_qty_pill(r.end, qty, font, sc, a)
 
@@ -1552,6 +1555,13 @@ func _draw_port_sprite(n: Dictionary, center: Vector2, half: Vector2, font: Font
 	var brim := PackedVector2Array(bhex)
 	brim.append(bhex[0])
 	draw_polyline(brim, Color(1.0, 0.95, 0.72, 0.9), 1.5 * sc, true)
+	# The navy port icon embossed in the badge — the same mark the resting hex carries,
+	# so the badge reads as "port", not as a bare gold nugget (owner 2026-08-29).
+	var badge_icon = n.get("icon")
+	if badge_icon != null and bh >= 5.0:
+		var isz := bh * 1.5
+		draw_texture_rect(badge_icon, Rect2(bc - Vector2(isz, isz) * 0.5, Vector2(isz, isz)),
+			false, Color(0.02, 0.06, 0.11, 0.95))
 
 	draw_string(font, Vector2(center.x - draw_sz.x * 0.5 - 20.0 * sc,
 		center.y + draw_sz.y * 0.5 + 16.0 * sc),

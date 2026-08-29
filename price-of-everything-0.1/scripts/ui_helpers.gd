@@ -527,14 +527,11 @@ static func mini_recipe_diagram(recipe: Dictionary) -> PanelContainer:
 
 
 ## One bare good icon for the mini diagram — no plate, no pill, no bevel. Power
-## reuses the same lightning glyph the full diagram's energy badge uses (power has
-## no chroma good-icon art of its own to draw here).
+## included: it shows its isometric goods icon like every other good (owner 2026-08-29);
+## the lightning glyph belongs to the energy badge, not to power-as-a-good.
 static func _mini_flow_icon(good_id: String) -> TextureRect:
 	var art := TextureRect.new()
-	if Catalog.get_internal_name(good_id) == "power":
-		art.texture = load(MINI_RECIPE_POWER_ICON_PATH) as Texture2D
-	else:
-		art.texture = GoodIcons.texture_for_size(good_id, Catalog.get_internal_name(good_id), float(MINI_ICON_SIZE))
+	art.texture = GoodIcons.texture_for_size(good_id, Catalog.get_internal_name(good_id), float(MINI_ICON_SIZE))
 	art.custom_minimum_size = Vector2(MINI_ICON_SIZE, MINI_ICON_SIZE)
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
