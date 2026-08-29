@@ -600,7 +600,7 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 	# player's introduction to the council, and a hire beforehand pre-empts it.
 	if TurnManager.current_turn < DecisionState.FOUNDER_DECISION_TURN:
 		wrap.add_child(_tone_label(
-			"You have no board yet. An old friend of your father's is expected by turn %d."
+			"You have no board yet. A retired shipping director is expected by turn %d."
 				% DecisionState.FOUNDER_DECISION_TURN, _BAD, 12))
 		return wrap
 	row.add_child(_dim_label("Assign to", 12))

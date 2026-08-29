@@ -98,8 +98,8 @@ const DEMO_ENDINGS := {
 const START_ENDING_COPY := {
 	"glass_merchant": {
 		"bankruptcy": "The whispers have changed again. Vandel always knew, they will say now, that there was never money in sand. Let them. Every sheet you ever sold survived a thousand degrees before something broke it, and so will you. Pick the pieces up and start again.",
-		"sequel": "Not one of the doubters is left doubting. You kept the furnaces lit, then built well past them — Vandel knows you now for a good deal more than sand. They can still see straight through you, and what they see is someone who was right all along.",
-		"lukewarm": "Vandel stopped talking about you some time ago. The furnaces still run and the sheets still ship, and survival will have to do. The world moved faster than you did — but the quarry is yours, the trade is honest, and someone will take it further than this.",
+		"sequel": "No one doubts you anymore. You've kept the furnaces running and even built beyond them. Vandel sees you properly now, and though they'll never stop whispering, at least they have learned to never doubt you again.",
+		"lukewarm": "People in Vandel stopped talking about you long ago. Yes, the furnaces still work and the glass sells well and... surviving is already achievement enough in this town. But you'll never stop wondering if you could have taken it further. Perhaps someone else can.",
 	},
 }
 

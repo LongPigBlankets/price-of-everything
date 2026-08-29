@@ -267,8 +267,12 @@ Construct-panel setting, enabled by default. **Requires a seated CFO — any CFO
 
 - At game start only **CFO and COO** seats exist; all other roles disabled.
 - **Turn 3, always** (sandbox starts; suppressed under `tutorial_enabled`): a
-  DecisionState event shows **both advisor roles** and the family friend —
-  **Andrew Keeler** — offering to fill **one**. His line, verbatim:
+  DecisionState event shows **both advisor roles** and **Andrew Keeler** — a
+  retired director of a shipping firm — offering to fill **one**. (Owner ruling
+  2026-08-29: he was written as a friend of the player's father, which only fits
+  the inherited-company starts; the Glass Merchant inherited nothing. The
+  DecisionState def id stays `family_friend` — it is a saved key.) His line,
+  verbatim:
   *"I've negotiated lots of deals with suppliers and banks in the past. But my
   specialty will always be transporting goods cheap."*
 - **The benefits are shown per post in a scrollable accordion** — each seat expands
