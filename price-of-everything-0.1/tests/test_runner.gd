@@ -4996,6 +4996,26 @@ func _test_demolished_building_loses_its_sprite() -> void:
 	_check(not bv.call("has_placement", iid),
 		"demolish visuals: removing the building removes its footprint")
 
+	# And now the route a PLAYER actually takes, which is a turn longer than the call above:
+	# the Demolish button queues the job and tick_demolish finishes it. Worth its own case
+	# because an exhausted mine is removed this way — the deposit running dry only stops it
+	# producing, it does not remove anything, so the sprite's fate rests entirely here.
+	var mine_id: String = MatchState.add_building("b_001", "", tile_id, MatchState.LOCAL_PLAYER, "")
+	inst.call("emit_signal", "building_placed", tile_id, "b_001", "", mine_id, coord)
+	await get_tree().process_frame
+	_check(bv.call("has_placement", mine_id), "demolish visuals: the mine is drawn once placed")
+	var started: Dictionary = MatchState.start_demolish(mine_id)
+	_check(bool(started.get("ok", false)), "demolish visuals: demolition can be started (%s)"
+		% str(started.get("reason", "")))
+	_check(bv.call("has_placement", mine_id),
+		"demolish visuals: the mine is still drawn while the demolition is in progress")
+	for _turn in MatchState.DEMOLISH_TURNS:
+		MatchState.tick_demolish()
+	await get_tree().process_frame
+	_check(not MatchState.buildings.has(mine_id), "demolish visuals: the demolition completed")
+	_check(not bv.call("has_placement", mine_id),
+		"demolish visuals: pressing Demolish removes the sprite when the job finishes")
+
 	inst.queue_free()
 	await get_tree().process_frame
 	SaveLoad.import_snapshot(snapshot)
