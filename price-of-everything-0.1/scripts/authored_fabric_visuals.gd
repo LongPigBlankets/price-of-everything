@@ -87,52 +87,45 @@ func set_keep_out(regions: Array) -> void:
 	queue_redraw()
 
 
-## Tiles whose authored wood has been demolished. The canopy is the document's, so removing
-## the building cannot remove it — this is what stops it being drawn instead. Session-only and
-## deliberately not saved: a reloaded match re-seeds its forest buildings from the document, so
-## the felled set is derived again from what is standing.
-var _felled_forests: Dictionary = {}
+## Authored woods that have been felled, by AREA ID. Keyed by id rather than by tile because
+## most woods in the document predate the editor's `tiles` field — world_map owns the
+## tile->area mapping, since placing a wood on a tile needs the hex geometry.
+##
+## Session-only and deliberately unsaved: a reloaded match re-seeds its forest buildings from
+## the document, so the felled set is derived again from what is actually standing.
+## NOTE: the felled set itself lives on AuthoredFabricPainter, because BOTH painters (this
+## layer's vector path and the SubViewport that repaints a baked tile) have to honour it.
+## Keeping a second copy here is what let a repaint faithfully redraw a demolished wood.
 
 
-## Stop drawing the authored wood on this tile, and repaint the tiles its canopy reaches.
-func forget_forest(tile_id: String) -> void:
-	if tile_id == "" or _felled_forests.has(tile_id):
-		return
-	_felled_forests[tile_id] = true
-	# The bake blits a texture per tile, so the wood stays on screen until its tile repaints.
-	# A canopy can overhang its neighbours, so mark everything its outline reaches.
-	if AuthoredBake.is_available():
-		for area in _forest_areas_of_tile(tile_id):
-			var outline: Array = (area as Dictionary).get("outline", []) as Array
-			if outline.size() < 3:
-				continue
-			var bounds := Rect2(_point_of(outline[0]), Vector2.ZERO)
-			for entry in outline:
-				bounds = bounds.expand(_point_of(entry))
-			for touched in AuthoredBake.tiles_in_rect(bounds.grow(BakeLayout.CULL_MARGIN)):
-				_dirty_tiles[str(touched)] = true
-	queue_redraw()
+## Stop drawing these woods, and repaint the baked tiles their canopies reach.
+func forget_forests(area_ids: Array) -> void:
+	var changed := false
+	for area_value in area_ids:
+		var area_id := str(area_value)
+		if area_id == "" or AuthoredFabricPainter.felled_forests.has(area_id):
+			continue
+		AuthoredFabricPainter.felled_forests[area_id] = true
+		# The bake blits a texture per tile, so a felled wood stays on screen until its tiles
+		# repaint — and a canopy can overhang its neighbours, so mark everything it reaches.
+		if AuthoredBake.is_available():
+			var outline: Array = _outline_of_area(area_id)
+			if outline.size() >= 3:
+				var bounds := Rect2(_point_of(outline[0]), Vector2.ZERO)
+				for entry in outline:
+					bounds = bounds.expand(_point_of(entry))
+				for touched in AuthoredBake.tiles_in_rect(bounds.grow(BakeLayout.CULL_MARGIN)):
+					_dirty_tiles[str(touched)] = true
+	if changed:
+		queue_redraw()
 
 
-func _forest_felled(area: Dictionary) -> bool:
-	if _felled_forests.is_empty():
-		return false
-	for tile_value in (area.get("tiles", []) as Array):
-		if _felled_forests.has(str(tile_value)):
-			return true
-	return false
-
-
-func _forest_areas_of_tile(tile_id: String) -> Array:
-	var out: Array = []
-	var settlements: Dictionary = AuthoredMap.data().get("settlements", {}) as Dictionary
-	for key in settlements:
-		for area in _list(settlements[key] as Dictionary, "forests"):
-			for tile_value in ((area as Dictionary).get("tiles", []) as Array):
-				if str(tile_value) == tile_id:
-					out.append(area)
-					break
-	return out
+func _outline_of_area(area_id: String) -> Array:
+	for area_value in AuthoredMap.forest_areas():
+		var area: Dictionary = area_value
+		if str(area.get("id", "")) == area_id:
+			return area.get("outline", []) as Array
+	return []
 
 
 static func _point_of(entry: Variant) -> Vector2:
@@ -240,8 +233,6 @@ func _lp_draw_inner() -> void:
 				_collect_cranes(decor)
 	for settlement in ordered:
 		for area in _list(settlement, "forests"):
-			if _forest_felled(area):
-				continue
 			AuthoredFabricPainter.draw_forest(self, area)
 		AuthoredFabricPainter.draw_trees(self, _list(settlement, "trees"))
 

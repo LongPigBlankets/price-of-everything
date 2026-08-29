@@ -80,8 +80,21 @@ static func draw_farm(canvas: CanvasItem, area: Dictionary) -> void:
 ## A wood: individual trees, clipped to the outline. Crowns AND their shadows stay inside the
 ## polygon — the boundary is hard, because the whole point of authoring a wood is that it
 ## stops where the designer said it stops.
+## Woods felled this session, by area id. It lives HERE rather than on the fabric layer
+## because there are TWO painters: the live vector path and the SubViewport repaint that
+## re-renders a baked tile. Both call draw_forest, and when the felled set lived on the layer
+## the repaint faithfully redrew the wood the player had just demolished — the tile was
+## repainted, correctly, from a document that still had the wood in it.
+##
+## Session-only and deliberately unsaved: a reloaded match re-seeds forest buildings from the
+## document, so this is derived again from what is actually standing.
+static var felled_forests: Dictionary = {}
+
+
 static func draw_forest(canvas: CanvasItem, area: Dictionary) -> void:
 	var id := str(area.get("id", ""))
+	if felled_forests.has(id):
+		return
 	for point in woodland_points(area):
 		var key := "%s|tree|%.0f|%.0f" % [id, point.x, point.y]
 		TreeShapesRef.draw_tree(canvas, TreeShapesRef.pick_kind(key, [55, 25, 20]), point, key)

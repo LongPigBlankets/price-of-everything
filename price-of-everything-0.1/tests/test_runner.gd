@@ -245,7 +245,7 @@ func _ready() -> void:
 	_test_base_output_ignores_gated_recipes()
 	_test_politics_panel_entries()
 	_test_forest_canopy_variants()
-	_test_authored_forest_tiles()
+	_test_authored_forest_areas()
 	_test_save_load_roundtrip()
 	await _test_pending_load_applies_on_scene_ready()
 	_test_start_config_expansion()
@@ -4937,16 +4937,20 @@ func _test_forest_canopy_variants() -> void:
 
 
 ## A wood drawn in the editor makes its tile wooded in the sim, not only in the picture.
-func _test_authored_forest_tiles() -> void:
+## AuthoredMap hands over the AREAS; world_map maps them onto tiles, because placing a wood on
+## a tile needs the hex geometry and most woods in the document carry only an outline (they
+## were imported from the procedural discs before the editor could plant them).
+func _test_authored_forest_areas() -> void:
 	var AM := load("res://scripts/authored_map.gd")
-	var tiles: Dictionary = AM.forest_tiles()
-	_check(tiles is Dictionary, "authored forests: forest_tiles returns a set")
-	# Every id it reports must be a real tile — a stale id would seed a building nowhere.
-	var bogus: Array = []
-	for tile_id in tiles:
-		if str(tile_id) == "":
-			bogus.append(str(tile_id))
-	_check(bogus.is_empty(), "authored forests: no blank tile ids (%s)" % str(bogus))
+	var areas: Array = AM.forest_areas()
+	_check(areas is Array, "authored forests: forest_areas returns the records")
+	# Every record needs an id and a usable outline, or it can be neither drawn nor felled.
+	var broken: Array = []
+	for area_value in areas:
+		var area: Dictionary = area_value
+		if str(area.get("id", "")) == "" or (area.get("outline", []) as Array).size() < 3:
+			broken.append(str(area.get("id", "?")))
+	_check(broken.is_empty(), "authored forests: every wood has an id and an outline (%s)" % str(broken))
 
 ## A demolished building stops being drawn. The removal path existed but was reachable only by
 ## CANCELLING A BUILD — sell, demolish, liquidate and bankruptcy all emit building_removed and
@@ -5015,6 +5019,27 @@ func _test_demolished_building_loses_its_sprite() -> void:
 	_check(not MatchState.buildings.has(mine_id), "demolish visuals: the demolition completed")
 	_check(not bv.call("has_placement", mine_id),
 		"demolish visuals: pressing Demolish removes the sprite when the job finishes")
+
+	# AUTHORED woods are the document's, drawn by a painter rather than owned by a visual
+	# layer — and there are TWO painters: the live vector path, and the SubViewport that
+	# repaints a baked tile. The felled set must sit where BOTH see it. It first sat on the
+	# fabric layer, which meant the repaint faithfully redrew the wood the player had just
+	# demolished: correct code, painting from a document that still had the wood in it.
+	var FabricPainter := load("res://scripts/authored_fabric_painter.gd")
+	var fabric: Node = inst.find_child("AuthoredFabricVisuals", true, false)
+	if fabric != null and fabric.has_method("forget_forests"):
+		var felled_before: int = FabricPainter.felled_forests.size()
+		fabric.call("forget_forests", ["fo:test:felled"])
+		_check(FabricPainter.felled_forests.has("fo:test:felled"),
+			"demolish visuals: felling a wood records it where BOTH painters can see it")
+		_check(FabricPainter.felled_forests.size() == felled_before + 1,
+			"demolish visuals: felling the same wood twice records it once")
+		fabric.call("forget_forests", ["fo:test:felled"])
+		_check(FabricPainter.felled_forests.size() == felled_before + 1,
+			"demolish visuals: re-felling is idempotent")
+		FabricPainter.felled_forests.erase("fo:test:felled")
+	else:
+		_check(false, "demolish visuals: the fabric layer exposes forget_forests")
 
 	inst.queue_free()
 	await get_tree().process_frame

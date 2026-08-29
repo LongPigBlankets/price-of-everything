@@ -2280,9 +2280,10 @@ func _drop_building_visual(instance_id: String) -> void:
 	var prefix := "forest_%s_" % OLD_GROWTH_FOREST_BUILDING_ID
 	if instance_id.begins_with(prefix):
 		var tile_id := instance_id.trim_prefix(prefix)
+		var area_ids: Array = _authored_forest_areas_by_tile.get(tile_id, [])
 		var fabric := get_node_or_null("AuthoredFabricVisuals")
-		if fabric != null and fabric.has_method("forget_forest"):
-			fabric.call("forget_forest", tile_id)
+		if not area_ids.is_empty() and fabric != null and fabric.has_method("forget_forests"):
+			fabric.call("forget_forests", area_ids)
 
 func _get_building_display_name(building_id: String) -> String:
 	return Catalog.get_building_display_name(building_id)
@@ -2327,13 +2328,65 @@ func _on_hidden_buildings_enabled() -> void:
 	if terrain_layer != null:
 		_place_ruins("tile_23_16")
 
+## tile_id -> [authored forest area id]. Built once at world build, because it needs the hex
+## geometry to place a wood on a tile and most woods in the document predate the editor's
+## `tiles` field (they were imported from the procedural discs and carry only an outline).
+var _authored_forest_areas_by_tile: Dictionary = {}
+
+
+## Which tile each authored wood stands on, by its outline's centroid. A wood is ~10% of a
+## hex, so its centroid is inside its own tile; the declared `tiles` list is preferred when a
+## record has one, since a hand-drawn wood can legitimately straddle a seam.
+func _index_authored_forests() -> void:
+	_authored_forest_areas_by_tile.clear()
+	if not AuthoredMapRef.is_active():
+		return
+	for area_value in AuthoredMapRef.forest_areas():
+		var area: Dictionary = area_value
+		var area_id := str(area.get("id", ""))
+		if area_id == "":
+			continue
+		var tiles: Array = area.get("tiles", []) as Array
+		if tiles.is_empty():
+			var centre := _outline_centroid(area.get("outline", []) as Array)
+			if centre == Vector2.ZERO:
+				continue
+			var coord: Vector2i = terrain_layer.tile_coord_for_map_coord(
+				terrain_layer.local_to_map(terrain_layer.to_local(centre)))
+			if not terrain_layer.tiles.has(coord):
+				continue
+			tiles = [str((terrain_layer.tiles[coord] as Dictionary).get("id", ""))]
+		for tile_value in tiles:
+			var tile_id := str(tile_value)
+			if tile_id == "":
+				continue
+			var list: Array = _authored_forest_areas_by_tile.get(tile_id, [])
+			if not list.has(area_id):
+				list.append(area_id)
+			_authored_forest_areas_by_tile[tile_id] = list
+
+
+func _outline_centroid(outline: Array) -> Vector2:
+	if outline.size() < 3:
+		return Vector2.ZERO
+	var sum := Vector2.ZERO
+	var n := 0
+	for entry in outline:
+		var values: Array = entry as Array
+		if values == null or values.size() < 2:
+			continue
+		sum += Vector2(float(values[0]), float(values[1]))
+		n += 1
+	return Vector2.ZERO if n == 0 else sum / float(n)
+
+
 func _place_northern_old_growth_forests() -> void:
 	# A wood drawn in the map editor makes its tile wooded in the SIM too, wherever it is —
 	# the northern-rows rule below seeds the procedural old growth, and this seeds anything a
 	# designer planted by hand (owner 2026-08-29). Same building, same deterministic id, so a
 	# hand-planted wood is indistinguishable from an old-growth one to everything downstream.
-	var authored: Dictionary = AuthoredMapRef.forest_tiles() if AuthoredMapRef.is_active() else {}
-	for authored_tile in authored:
+	_index_authored_forests()
+	for authored_tile in _authored_forest_areas_by_tile:
 		var authored_id := str(authored_tile)
 		if authored_id == "" or _tile_has_building(authored_id, OLD_GROWTH_FOREST_BUILDING_ID):
 			continue

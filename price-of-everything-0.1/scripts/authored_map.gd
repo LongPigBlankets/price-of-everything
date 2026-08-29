@@ -178,24 +178,19 @@ static func data() -> Dictionary:
 ## True once tools/map_editor/import_forests has written the map's woods into the document as
 ## `forests` areas. ForestVisuals reads it and stands down: the discs became areas, so drawing
 ## both would draw every wood twice.
-## Every tile carrying an authored wood, as a set. A wood drawn in the editor makes its tile
-## genuinely wooded in the SIM (world_map seeds a forest building there), not just in the
-## picture — the owner's rule is that the two cannot disagree (2026-08-29).
-##
-## Falls back to testing the outline when a record predates the `tiles` field, so woods
-## imported before the editor could plant them still count.
-static func forest_tiles() -> Dictionary:
-	var out: Dictionary = {}
+## Every authored wood, as records. Deliberately NOT "every wooded tile": most woods in the
+## document were imported before the editor could plant them and carry no `tiles` field, so
+## the tile has to be derived from the outline — and that needs the hex geometry, which lives
+## with the terrain layer, not here. world_map does the mapping; this just hands over the
+## records (see _index_authored_forests).
+static func forest_areas() -> Array:
+	var out: Array = []
 	var settlements: Dictionary = data().get("settlements", {}) as Dictionary
 	for key in settlements:
 		var settlement: Dictionary = settlements[key] as Dictionary
 		for area_value in _array(settlement, "forests"):
-			if typeof(area_value) != TYPE_DICTIONARY:
-				continue
-			for tile_value in _array(area_value as Dictionary, "tiles"):
-				var tile_id := str(tile_value)
-				if tile_id != "":
-					out[tile_id] = true
+			if typeof(area_value) == TYPE_DICTIONARY:
+				out.append(area_value)
 	return out
 
 
