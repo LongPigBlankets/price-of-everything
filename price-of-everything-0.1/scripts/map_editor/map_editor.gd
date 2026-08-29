@@ -209,6 +209,9 @@ var _status: Label
 var _ready_to_edit := false
 var _panning := false
 var _settlement := DEFAULT_SETTLEMENT
+## Bumped by [method _repaint] whenever the drawn content changes; the fabric preview layers
+## redraw when it moves rather than every frame.
+var _preview_revision := 0
 
 
 ## SCRATCH MODE, for capture and input harnesses. They drive the editor with synthetic
@@ -287,7 +290,7 @@ func _nudge_selection(delta: float) -> void:
 		var pos: Array = slot.get("pos", [0, 0]) as Array
 		if pos.size() >= 2:
 			slot["pos"] = [float(pos[0]) + step.x, float(pos[1]) + step.y]
-	_overlay.queue_redraw()
+	_repaint()
 
 
 # ── Boot ────────────────────────────────────────────────────────────────────────
@@ -471,6 +474,28 @@ func _build_chrome() -> void:
 	_set_status("Starting…")
 
 
+## SOMETHING VISIBLE CHANGED — repaint the overlay and tell the fabric layers.
+##
+## The preview layers used to call `queue_redraw()` from `_process`, i.e. they redrew the
+## WHOLE document every frame. That is affordable for a settlement and ruinous for a map:
+## with the stoneshore document open the editor was measured at over nine SECONDS a frame,
+## because every repaint re-scattered and re-drew the trees of all 148 woods (a wood is up to
+## 900 trees, and a tree is three draw calls). The game never did this — its own authored
+## layer repaints only when the view moves — so the cost lived entirely in the editor.
+##
+## The stamp is the seam: every mutation, selection change and tool change already ended in a
+## repaint call, so bumping a counter here means the layers can sleep until one arrives.
+func _repaint() -> void:
+	_preview_revision += 1
+	if _overlay != null:
+		_overlay.queue_redraw()
+
+
+## What the preview layers watch. Changes exactly when the drawn content does.
+func preview_revision() -> int:
+	return _preview_revision
+
+
 func _set_status(text: String) -> void:
 	if _status != null:
 		_status.text = "MAP EDITOR   %s" % text
@@ -494,6 +519,11 @@ func _refresh_status() -> void:
 	if _panel != null:
 		_panel.refresh()
 		_panel.set_tile_report(tile_report(_hovered_tile()))
+	# Belt and braces for the preview stamp: picking a form, a road class or a slot size
+	# changes what the tools draw as a preview but mutates no record, and every one of those
+	# setters ends here. Nothing calls this per frame, so it cannot reintroduce the per-frame
+	# repaint this replaced.
+	_repaint()
 
 
 # ── Input ───────────────────────────────────────────────────────────────────────
@@ -510,7 +540,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_camera.position -= motion.relative / _camera.zoom.x
 		elif _tool == TOOL_TRACE and _trace_tool.is_tracing():
 			_trace_tool.extend_trace(_world_at(motion.position))
-			_overlay.queue_redraw()
+			_repaint()
 		elif _tool == TOOL_SELECT and _held_corner >= 0:
 			_move_corner(_world_at(motion.position))
 		elif _tool == TOOL_SELECT and not _grabbed.is_empty():
@@ -519,16 +549,16 @@ func _unhandled_input(event: InputEvent) -> void:
 			_drag_grabbed(motion.position)
 		elif _tool == TOOL_STAMP and _shape_tool.is_stamping():
 			_shape_tool.drag_stamp(_world_at(motion.position))
-			_overlay.queue_redraw()
+			_repaint()
 		elif _tool == TOOL_SELECT and _marquee_from != Vector2.INF:
 			_marquee_to = _world_at(motion.position)
-			_overlay.queue_redraw()
+			_repaint()
 		elif _tool == TOOL_ANCHOR and not _anchor_grab.is_empty():
 			# Live reshaping: the curve follows the pointer, so the bend is judged against
 			# the map rather than guessed and corrected.
 			MapEditorStrokeEdit.shape_anchor(_anchor_grab["stroke"] as Dictionary,
 				int(_anchor_grab["index"]), _world_at(motion.position))
-			_overlay.queue_redraw()
+			_repaint()
 	elif event is InputEventKey and event.pressed and not event.echo:
 		_handle_key(event as InputEventKey)
 
@@ -701,10 +731,10 @@ func _handle_key(event: InputEventKey) -> void:
 			_rotate_selection(ROTATE_STEP)
 		KEY_COMMA:
 			_set_status("Form: %s" % _shape_tool.cycle_form(-1))
-			_overlay.queue_redraw()
+			_repaint()
 		KEY_PERIOD:
 			_set_status("Form: %s" % _shape_tool.cycle_form(1))
-			_overlay.queue_redraw()
+			_repaint()
 		KEY_DELETE:
 			_ask_delete()
 		KEY_G:
@@ -757,20 +787,20 @@ func _handle_key(event: InputEventKey) -> void:
 				_ask_delete()
 			elif _tool == TOOL_SPECIAL and not _poly_points.is_empty():
 				_poly_points.remove_at(_poly_points.size() - 1)
-				_overlay.queue_redraw()
+				_repaint()
 			elif _tool == TOOL_AREA:
 				_shape_tool.undo_point()
 			elif _tool == TOOL_DOTS:
 				_trace_tool.undo_dot()
 			else:
 				_road_tool.undo_point()
-			_overlay.queue_redraw()
+			_repaint()
 		KEY_ESCAPE:
 			# Escape abandons work in progress first; only an idle Escape leaves. Dots count
 			# as work in progress: clearing them is what "cancel" means for that tool.
 			if not _selection.is_empty():
 				_selection = []
-				_overlay.queue_redraw()
+				_repaint()
 				_set_status("Selection cleared.")
 				_refresh_status()
 				return
@@ -779,7 +809,7 @@ func _handle_key(event: InputEventKey) -> void:
 				_road_tool.abandon()
 				_trace_tool.cancel_trace()
 				_trace_tool.clear_dots()
-				_overlay.queue_redraw()
+				_repaint()
 				_refresh_status()
 				return
 			_leave()
@@ -834,7 +864,7 @@ func _finish_stroke() -> void:
 	var stroke := _road_tool.finish(_settlement, next_id, terrain)
 	if stroke.is_empty():
 		_set_status("Stroke discarded — too short to keep.")
-		_overlay.queue_redraw()
+		_repaint()
 		return
 	# begin_edit snapshots first, so this is undoable like every other mutation.
 	_document.begin_edit("draw road")
@@ -851,7 +881,7 @@ func _finish_stroke() -> void:
 			tiles.append(tile_id)
 	tiles.sort()
 	settlement["tiles"] = tiles
-	_overlay.queue_redraw()
+	_repaint()
 	_report_stroke(stroke)
 
 
@@ -912,7 +942,7 @@ func _finish_marquee(world: Vector2) -> void:
 		# the natural way to drop a selection.
 		_selection = []
 		_set_status("Selection cleared.")
-		_overlay.queue_redraw()
+		_repaint()
 		return
 	_selection = MapEditorSelection.in_rect(_document.data(), rect)
 	# Exactly one outline-shaped thing selected: show its corners, since that is the only
@@ -922,7 +952,7 @@ func _finish_marquee(world: Vector2) -> void:
 	_set_status("%d selected%s — Delete to remove." % [_selection.size(),
 		" · drag its corners" if not single.is_empty() else ""] if not _selection.is_empty()
 		else "Nothing in the box.")
-	_overlay.queue_redraw()
+	_repaint()
 
 
 ## Remove the picked slot. No confirmation: a slot holds nothing, so deleting one costs a
@@ -941,7 +971,7 @@ func _delete_slot() -> void:
 		_document.begin_edit("delete slot")
 		pins.remove_at(index)
 		_slot_pick = {}
-		_overlay.queue_redraw()
+		_repaint()
 		_set_status("Slot removed.")
 		_refresh_status()
 		return
@@ -975,7 +1005,7 @@ func _delete_selection() -> void:
 	_document.begin_edit("delete selection")
 	var removed := MapEditorSelection.delete(_document.data(), _selection)
 	_selection = []
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("Deleted %d item%s." % [removed, "" if removed == 1 else "s"])
 
 
@@ -1024,7 +1054,7 @@ func _commit_points(points: Array, label: String) -> void:
 			tiles.append(tile_id)
 	tiles.sort()
 	settlement["tiles"] = tiles
-	_overlay.queue_redraw()
+	_repaint()
 	_report_stroke(stroke)
 
 
@@ -1070,7 +1100,7 @@ func _finish_area() -> void:
 	var record := _shape_tool.finish_polygon(_settlement, next_id)
 	if record.is_empty():
 		_set_status("Needs at least three corners.")
-		_overlay.queue_redraw()
+		_repaint()
 		return
 	_document.begin_edit("draw %s" % kind)
 	settlement = _ensure_settlement()
@@ -1092,7 +1122,7 @@ func _finish_area() -> void:
 	# re-testing every polygon on the map.
 	if list_key == "zones":
 		record["tiles"] = _tiles_under(record.get("outline", []) as Array)
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("%s placed (%d corners)." % [label,
 		(record.get("outline", []) as Array).size()])
 
@@ -1102,7 +1132,7 @@ func _finish_stamp() -> void:
 	var settlement := _ensure_settlement()
 	var next_id := int(settlement.get("next_id", 1))
 	var record := _shape_tool.finish_stamp(_settlement, next_id)
-	_overlay.queue_redraw()
+	_repaint()
 	if record.is_empty():
 		_set_status("Too small to stamp.")
 		return
@@ -1113,7 +1143,7 @@ func _finish_stamp() -> void:
 	items.append(record)
 	settlement["decor"] = items
 	_cover_tiles_of(settlement, [record.get("pos", [0, 0])])
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("Stamped %s." % str(record.get("form", "")))
 
 
@@ -1188,7 +1218,7 @@ func _place_special(world: Vector2) -> void:
 	_cover_tiles_of(settlement, record.get("outline", []) as Array)
 	# Laying one selects it, so its parameters and corners are immediately to hand.
 	_corner_target = record
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("Placed %s — switch to Select (X) to drag its corners." % _special_kind)
 
 
@@ -1217,7 +1247,7 @@ func _shape_press(world: Vector2) -> void:
 	_set_corner_target(hit["record"] as Dictionary)
 	_selection = [{"kind": str(hit["kind"]), "settlement": str(hit["settlement"]),
 		"index": int(hit["index"]), "id": str(hit["id"])}]
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("Shape mode: drag the dots to reshape. Left-click away or pick a tool to leave.")
 	_refresh_status()
 
@@ -1249,7 +1279,7 @@ func _select_press(world: Vector2, screen: Vector2) -> void:
 		_slot_pick = slot_hit
 		_selection = []
 		_set_corner_target({})
-		_overlay.queue_redraw()
+		_repaint()
 		_set_status("%s slot selected — arrows move, [ ] rotate, Bksp deletes."
 			% str(_selected_slot().get("size", "small")).capitalize())
 		_refresh_status()
@@ -1295,13 +1325,13 @@ func _drag_grabbed(screen: Vector2) -> void:
 	_grab_world = world
 	for record in _grabbed:
 		MapEditorSelection.translate(record as Dictionary, delta)
-	_overlay.queue_redraw()
+	_repaint()
 
 
 func _select_release(world: Vector2) -> void:
 	if _held_corner >= 0:
 		_held_corner = -1
-		_overlay.queue_redraw()
+		_repaint()
 		return
 	if not _grabbed.is_empty():
 		var moved := _grab_moved
@@ -1358,7 +1388,7 @@ func _snap_moved_to_roads() -> int:
 		MapEditorSelection.translate(record, target - MapEditorSelection.centre_of(record))
 		snapped += 1
 	_moved_records = []
-	_overlay.queue_redraw()
+	_repaint()
 	return snapped
 
 
@@ -1369,7 +1399,7 @@ func _rotate_selection(angle: float) -> void:
 	if not slot.is_empty():
 		_document.begin_edit("rotate slot")
 		slot["angle"] = float(slot.get("angle", 0.0)) + angle
-		_overlay.queue_redraw()
+		_repaint()
 		_set_status("Slot turned to %d°" % int(round(rad_to_deg(float(slot["angle"])))))
 		_refresh_status()
 		return
@@ -1381,7 +1411,7 @@ func _rotate_selection(angle: float) -> void:
 	for record_value in records:
 		var record: Dictionary = record_value
 		MapEditorSelection.rotate_about(record, MapEditorSelection.centre_of(record), angle)
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("Rotated %d item%s %s 5°." % [records.size(), "" if records.size() == 1 else "s",
 		"clockwise" if angle > 0.0 else "anticlockwise"])
 	_refresh_status()
@@ -1398,7 +1428,7 @@ func _resize_selection(factor: float) -> void:
 	for record_value in records:
 		if MapEditorSelection.scale_record(record_value as Dictionary, factor):
 			changed += 1
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("Resized %d item%s to %d%%%s." % [changed, "" if changed == 1 else "s",
 		int(round(factor * 100.0)),
 		"" if changed == records.size() else " (roads have a class, not a size)"])
@@ -1440,7 +1470,7 @@ func _toggle_hijack_selection() -> void:
 		else:
 			record["hijack"] = true
 			marked += 1
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("Hijack slots: %d marked, %d cleared." % [marked, cleared])
 	_refresh_status()
 
@@ -1544,7 +1574,7 @@ func _move_corner(world: Vector2) -> void:
 		return
 	corners[_held_corner] = [world.x, world.y]
 	_corner_target[field] = corners
-	_overlay.queue_redraw()
+	_repaint()
 
 
 ## Undo and redo REPLACE the document dictionary rather than editing it in place, so any
@@ -1578,7 +1608,7 @@ func _rebind_after_history() -> void:
 func _set_corner_target(record: Dictionary) -> void:
 	_corner_target = record
 	_held_corner = -1
-	_overlay.queue_redraw()
+	_repaint()
 
 
 ## Free polygon: up to six corners, then Enter to close it. Kept separate from the farm and
@@ -1590,7 +1620,7 @@ func _add_poly_point(world: Vector2) -> void:
 			% AuthoredSpecialShapes.POLY_MAX_POINTS)
 		return
 	_poly_points.append([world.x, world.y])
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("%d/%d corners — Enter closes, Bksp steps back."
 		% [_poly_points.size(), AuthoredSpecialShapes.POLY_MAX_POINTS])
 
@@ -1612,7 +1642,7 @@ func _finish_poly() -> void:
 	var placed: Dictionary = items[items.size() - 1]
 	_poly_points = []
 	_set_corner_target(placed)
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("Shape placed — drag its corners to reshape.")
 
 
@@ -1666,7 +1696,7 @@ func _place_slot(world: Vector2) -> void:
 		tile_list.append(tile_id)
 		tile_list.sort()
 		settlement["tiles"] = tile_list
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("%s slot on %s (%d there)."
 		% [_slot_class.replace("_", " ").capitalize(), tile_id, pins.size()])
 
@@ -1719,7 +1749,7 @@ func _place_forest(world: Vector2) -> void:
 	settlement["next_id"] = next_id + 1
 	_cover_tiles_of(settlement, record["outline"] as Array)
 	_fabric.queue_redraw()
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("Planted a %s wood (%d in this settlement)." % [_forest_variant, forests.size()])
 
 
@@ -1755,7 +1785,7 @@ func _place_tree(world: Vector2) -> void:
 	settlement["trees"] = trees
 	settlement["next_id"] = next_id + 1
 	_fabric.queue_redraw()
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("Planted %s (%d tree record%s)."
 		% [_tree_label(), trees.size(), "" if trees.size() == 1 else "s"])
 
@@ -1870,7 +1900,7 @@ func adjust_special_side(index: int, delta: float) -> void:
 	sides[index] = AuthoredSpecialShapes.clamp_side(float(sides[index]) + delta)
 	_corner_target["sides"] = sides
 	AuthoredSpecialShapes.rebuild(_corner_target)
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("%s = %d  (rebuilt from parameters — corner edits cleared)"
 		% [str(special_parameter_names()[index]), int(sides[index])])
 	_refresh_status()
@@ -1904,7 +1934,7 @@ func pick_form(value: String) -> void:
 
 func cycle_form(step: int) -> void:
 	_set_status("Form: %s" % _shape_tool.cycle_form(step))
-	_overlay.queue_redraw()
+	_repaint()
 	_refresh_status()
 
 
@@ -1991,7 +2021,7 @@ func set_tool(value: String) -> void:
 	_pending_hit = {}
 	_marquee_from = Vector2.INF
 	_marquee_to = Vector2.INF
-	_overlay.queue_redraw()
+	_repaint()
 	_tool = value
 	_panning = false
 	_refresh_status()
@@ -2225,7 +2255,7 @@ func convert_slots_to_zone(tile_id: String) -> String:
 		removed = ((slots[tile_id] as Dictionary).get("pins", []) as Array).size()
 		slots.erase(tile_id)
 		settlement["slots"] = slots
-	_overlay.queue_redraw()
+	_repaint()
 	return "%s: %d slot(s) became an industrial zone of %d corners." \
 		% [tile_id, removed, hull.size()]
 
@@ -2278,6 +2308,7 @@ func convert_focused_slots_to_zone() -> void:
 func toggle_deposit_marks() -> void:
 	if _overlay != null:
 		_overlay.show_deposit_marks = not _overlay.show_deposit_marks
+		_repaint()
 		_set_status("Extraction resources %s (%d tile(s))."
 			% ["shown" if _overlay.show_deposit_marks else "hidden", deposit_tiles().size()])
 		_refresh_status()
@@ -2290,14 +2321,14 @@ func deposit_marks_shown() -> bool:
 func toggle_water_mask() -> void:
 	if _overlay != null:
 		_overlay.show_water_mask = not _overlay.show_water_mask
-		_overlay.queue_redraw()
+		_repaint()
 	_refresh_status()
 
 
 func toggle_grid() -> void:
 	if _overlay != null:
 		_overlay.show_grid = not _overlay.show_grid
-		_overlay.queue_redraw()
+		_repaint()
 	_refresh_status()
 
 
@@ -2318,11 +2349,11 @@ func run_action(action: String) -> void:
 		"undo":
 			_set_status(_document.undo())
 			_rebind_after_history()
-			_overlay.queue_redraw()
+			_repaint()
 		"redo":
 			_set_status(_document.redo())
 			_rebind_after_history()
-			_overlay.queue_redraw()
+			_repaint()
 
 
 # ── Document ────────────────────────────────────────────────────────────────────
@@ -2359,7 +2390,7 @@ func _load_named(name: String) -> void:
 	_road_tool.abandon()
 	_trace_tool.cancel_trace()
 	_trace_tool.clear_dots()
-	_overlay.queue_redraw()
+	_repaint()
 	var counts := _document.counts()
 	_set_status("Opened '%s' — %d roads across %d settlement(s)."
 		% [name, counts.roads, counts.settlements])
@@ -2525,11 +2556,7 @@ func procedural_region_command(verb: String, region: String) -> String:
 
 
 func _after_region_change() -> void:
-	if _fabric != null:
-		_fabric.queue_redraw()
-	if _fabric_ground != null:
-		_fabric_ground.queue_redraw()
-	_overlay.queue_redraw()
+	_repaint()
 	_refresh_status()
 
 

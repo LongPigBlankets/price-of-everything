@@ -132,6 +132,9 @@ var show_water_mask := false
 var show_deposit_marks := false
 
 var _font: Font
+## The view and the content stamp the current picture was drawn for.
+var _drawn_transform := Transform2D()
+var _drawn_revision := -1
 
 
 func _ready() -> void:
@@ -140,8 +143,20 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	# The overlay follows the camera, so it must repaint whenever the view moves. The world
-	# layers redraw on their own signals; this one has no source of truth but the transform.
+	# The overlay follows the camera, so it must repaint whenever the view moves — it projects
+	# world points into screen space itself, and any lag would visibly detach the roads from
+	# the map under them. That is why this watches the transform EXACTLY rather than with the
+	# tolerance the world-space fabric layer can afford.
+	#
+	# What it no longer does is repaint a still view. Every stroke, zone and slot in the
+	# document is projected and stroked on each pass, and on a map-sized document that was
+	# several milliseconds a frame spent redrawing an identical picture.
+	var transform := get_viewport().get_canvas_transform()
+	var revision := int(editor.call("preview_revision")) if editor != null else 0
+	if transform == _drawn_transform and revision == _drawn_revision:
+		return
+	_drawn_transform = transform
+	_drawn_revision = revision
 	queue_redraw()
 
 
