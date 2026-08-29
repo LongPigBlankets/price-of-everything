@@ -243,6 +243,7 @@ func _ready() -> void:
 	_test_market_special_orders_tab()
 	_test_market_prices_tab_impact_columns()
 	_test_base_output_ignores_gated_recipes()
+	_test_politics_panel_entries()
 	_test_save_load_roundtrip()
 	await _test_pending_load_applies_on_scene_ready()
 	_test_start_config_expansion()
@@ -4681,6 +4682,7 @@ func _test_core_panels_open() -> void:
 	# picks (v2 when MatchState.use_construct_panel_v2), so asking for the v1 property finds a
 	# panel that legitimately stayed hidden. Checked separately, below.
 	var via_menu := [
+		["_on_politics_pressed", "politics_panel", "Politics"],
 		["_on_resources_pressed", "resource_panel", "Resources"],
 		["_on_mapmodes_pressed", "mapmodes_panel", "Mapmodes"],
 		["_on_market_pressed", "market_panel", "Market"],
@@ -4773,6 +4775,84 @@ func _test_core_panels_open() -> void:
 	# Put the sim back exactly as it was — opening these panels moved real state.
 	SaveLoad.import_snapshot(snapshot)
 	await get_tree().process_frame
+
+## The Politics panel is a RECORD of the decarbonisation arc: it repeats what the player was
+## already told, in one place they can re-read. So the rule under test is what it shows WHEN
+## — nothing before the election, each beat appearing on its turn, and the "ramping up until
+## turn X" line giving way to "in full effect" rather than standing there stating something
+## that stopped being true.
+func _test_politics_panel_entries() -> void:
+	var panel: Control = load("res://scripts/politics_panel.gd").new()
+	add_child(panel)
+	var saved_turn: int = TurnManager.current_turn
+
+	var election: int = PolicyState.beat("election_news")
+	var tax_notice: int = PolicyState.beat("tax_notice")
+	var ramp: int = PolicyState.beat("ramp_first")
+	var p1: int = PolicyState.beat("p1")
+	var subsidy: int = PolicyState.beat("subsidy")
+
+	TurnManager.current_turn = maxi(1, election - 1)
+	_check((panel.call("_entries") as Array).is_empty(),
+		"politics: nothing before the election — the panel says 'No Political Events yet'")
+
+	TurnManager.current_turn = election
+	var at_election: Array = panel.call("_entries")
+	_check(at_election.size() == 1
+			and str((at_election[0] as Dictionary).get("title", "")) == "A new government elected!",
+		"politics: the election is the first entry")
+
+	TurnManager.current_turn = tax_notice
+	var titles: Array = _politics_titles(panel)
+	_check(titles.has("Carbon Tax announced"), "politics: the tax announcement appears on its turn")
+
+	# Mid-ramp: the countdown entry is present and names the turn the levy tops out.
+	TurnManager.current_turn = maxi(ramp, mini(ramp, p1 - 1))
+	titles = _politics_titles(panel)
+	var ramping := false
+	for t in titles:
+		if str(t).begins_with("Carbon Tax ramping up until turn "):
+			ramping = true
+			_check(str(t).ends_with(str(p1)), "politics: the ramp entry names the turn it tops out (%d)" % p1)
+	_check(ramping, "politics: the ramp entry shows while the levy is still climbing")
+
+	# At full rate the countdown must be GONE, replaced by the standing entry.
+	TurnManager.current_turn = p1
+	titles = _politics_titles(panel)
+	var still_ramping := false
+	for t in titles:
+		if str(t).begins_with("Carbon Tax ramping up"):
+			still_ramping = true
+	_check(not still_ramping, "politics: the ramp entry gives way once the levy is at full rate")
+	_check(titles.has("Carbon Tax in full effect"), "politics: the levy's standing entry replaces it")
+
+	# The whole arc, once the subsidy has landed.
+	TurnManager.current_turn = maxi(subsidy, p1)
+	titles = _politics_titles(panel)
+	for expected in ["A new government elected!", "Carbon Tax announced",
+			"Carbon Tax in full effect", "Subsidy for Green energy",
+			"Green Power subsidy in full effect"]:
+		_check(titles.has(expected), "politics: '%s' is in the record" % expected)
+	# Only the six authored beats, ever — this panel is deliberately not a news feed.
+	_check(titles.size() <= 6, "politics: the record stays to the authored beats (%d)" % titles.size())
+	# Every entry carries one of the three icons and a body.
+	var well_formed := true
+	for e: Dictionary in (panel.call("_entries") as Array):
+		if not (str(e.get("icon", "")) in ["gavel", "coal_banned", "power"]):
+			well_formed = false
+		if str(e.get("body", "")) == "":
+			well_formed = false
+	_check(well_formed, "politics: every entry has one of the three icons and a body")
+
+	TurnManager.current_turn = saved_turn
+	panel.queue_free()
+
+
+func _politics_titles(panel: Control) -> Array:
+	var out: Array = []
+	for e: Dictionary in (panel.call("_entries") as Array):
+		out.append(str(e.get("title", "")))
+	return out
 
 func _special_order_goods(orders: Array) -> Array:
 	var out: Array = []
