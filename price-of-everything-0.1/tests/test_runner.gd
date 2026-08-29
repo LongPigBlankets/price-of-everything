@@ -417,6 +417,7 @@ func _ready() -> void:
 	_test_partial_power_dispatch()
 	_test_building_diagnostics()
 	_test_infra_upgrade()
+	await _test_core_panels_open()
 	if not _failed_names.is_empty():
 		print("FAILED TESTS:")
 		for failed_name in _failed_names:
@@ -4634,6 +4635,144 @@ func _test_base_output_ignores_gated_recipes() -> void:
 			_check(Catalog.base_output_for_good(gid2) > 0,
 				"base output: %s is gated-only and still takes impact" % str(good.get("internal_name", gid2)))
 	_check(gated_only > 0, "base output: the gated-only fallback is actually exercised (%d goods)" % gated_only)
+
+## OPEN EVERY CORE PANEL, through the entry points a player actually uses.
+##
+## Worth nothing until run_tests.py began failing on SCRIPT ERROR (2026-08-29): a GDScript
+## runtime error prints and CONTINUES, so a panel that threw on every open still left the
+## suite green — which is how the Market crash shipped. With that gate, merely BUILDING a
+## panel proves it raised nothing, and that is most of what a panel can get wrong: a null
+## @onready path, a renamed node, a bad dict key, a signal bound to a method that moved.
+##
+## ISOLATION. Driving these panels runs real sim code — the first attempt took a loan out of
+## LoanState and left roads, power and tutorial state altered, failing 17 unrelated tests
+## downstream. So the whole test runs between a SaveLoad snapshot and its restore, and it is
+## called LAST. Either alone would do; both together mean neither the ordering nor the
+## restore has to be perfect. If you add a test after this one, keep the snapshot working.
+##
+## The handlers live on the HUD node (bottom_menu.gd is attached there) — NOT on the child
+## HBoxContainer called "BottomMenu", which is a decoy that find_child hits first.
+func _test_core_panels_open() -> void:
+	var snapshot: Dictionary = SaveLoad.export_snapshot()
+	var packed: PackedScene = load("res://scenes/main.tscn")
+	if packed == null:
+		_check(false, "core panels: main.tscn instantiates")
+		return
+	var inst: Node = packed.instantiate()
+	add_child(inst)
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	var menu: Node = null
+	for candidate in [inst.find_child("HUD", true, false), inst.find_child("BottomMenu", true, false)]:
+		if candidate != null and candidate.has_method("_on_market_pressed"):
+			menu = candidate
+			break
+	_check(menu != null, "core panels: the bottom-menu handlers are reachable")
+	if menu == null:
+		inst.queue_free()
+		SaveLoad.import_snapshot(snapshot)
+		return
+
+	# [handler, the property holding the panel it opens, human name]. Politics is absent on
+	# purpose: _on_politics_pressed is a print stub, and asserting it opened something would
+	# be asserting a feature that does not exist.
+	# Construct is the exception: the handler opens whichever panel _active_construct_panel()
+	# picks (v2 when MatchState.use_construct_panel_v2), so asking for the v1 property finds a
+	# panel that legitimately stayed hidden. Checked separately, below.
+	var via_menu := [
+		["_on_resources_pressed", "resource_panel", "Resources"],
+		["_on_mapmodes_pressed", "mapmodes_panel", "Mapmodes"],
+		["_on_market_pressed", "market_panel", "Market"],
+		["_on_buildings_pressed", "building_ledger_panel", "Buildings ledger"],
+		["_on_research_pressed", "research_panel", "Research"],
+		["_on_people_pressed", "people_panel", "Labour"],
+	]
+	for entry: Array in via_menu:
+		menu.call(str(entry[0]))
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var panel = menu.get(str(entry[1]))
+		_check(panel != null and is_instance_valid(panel) and (panel as Control).visible,
+			"core panels: %s opens from its bottom-menu button" % str(entry[2]))
+		menu.call(str(entry[0]))          # toggle shut so the next opens on a clean HUD
+		await get_tree().process_frame
+
+	# Construct, against whichever panel version is live.
+	menu.call("_on_construct_pressed")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var construct: Control = menu.call("_active_construct_panel")
+	_check(construct != null and construct.visible,
+		"core panels: Construct opens from its bottom-menu button")
+	menu.call("_on_construct_pressed")
+	await get_tree().process_frame
+
+	# Money / Balance — the top bar's money widget, not the bottom menu.
+	menu.call("_on_money_widget_clicked")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var money = menu.get("money_panel")
+	_check(money != null and (money as Control).visible, "core panels: Money opens on Balance")
+	if money != null:
+		(money as Control).hide()
+
+	# The two full-screen views, through the signals the buttons emit.
+	MatchState.empire_view_requested.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var empire: Node = inst.find_child("EmpireView", true, false)
+	_check(empire != null and (empire as CanvasItem).visible, "core panels: the supply chain view opens")
+	if empire != null and empire.has_method("toggle"):
+		empire.call("toggle")
+		await get_tree().process_frame
+
+	MatchState.goods_graph_requested.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var graph: Node = inst.find_child("GoodsGraphView", true, false)
+	_check(graph != null and (graph as CanvasItem).visible, "core panels: the goods graph opens")
+	if graph != null and graph.has_method("toggle"):
+		graph.call("toggle")
+		await get_tree().process_frame
+
+	# Encyclopedia.
+	var overlay: Node = inst.find_child("SearchOverlay", true, false)
+	if overlay != null and overlay.has_method("open_encyclopedia"):
+		overlay.call("open_encyclopedia")
+		await get_tree().process_frame
+		await get_tree().process_frame
+		_check((overlay as CanvasItem).visible, "core panels: the Encyclopedia opens")
+		(overlay as CanvasItem).visible = false
+		await get_tree().process_frame
+	else:
+		_check(false, "core panels: the encyclopedia overlay exposes open_encyclopedia")
+
+	# Turn briefing (the "updates" hub behind the bell). It is NOT in main.tscn — the
+	# TurnBriefing autoload builds it lazily in its own CanvasLayer, and only shows it when
+	# there is something to report. Its items derive from live sim state (starvation, storage,
+	# deposits) with no push API, so this asserts what is assertable without faking a crisis:
+	# that expanding CONSTRUCTS the panel — the path where a build error would fire — and that
+	# it shows itself exactly when it has items.
+	# ...and it mounts NO UI under --headless: _sync_ui() returns early on
+	# DisplayServer.get_name() == "headless", deliberately. So the assertable contract here is
+	# the model half — expand() rebuilds the items and flips the flag without raising (the
+	# SCRIPT ERROR gate covers the "without raising" half) — plus the headless guard itself,
+	# which is worth pinning: if it ever stopped holding, every headless run would start
+	# building panels nobody can see.
+	TurnBriefing.expand()
+	await get_tree().process_frame
+	_check(TurnBriefing.expanded, "core panels: the briefing expands its model state")
+	_check(TurnBriefing.get("_panel") == null,
+		"core panels: the briefing mounts no UI headless (its documented guard)")
+	TurnBriefing.collapse()
+	await get_tree().process_frame
+
+	inst.queue_free()
+	await get_tree().process_frame
+	# Put the sim back exactly as it was — opening these panels moved real state.
+	SaveLoad.import_snapshot(snapshot)
+	await get_tree().process_frame
 
 func _special_order_goods(orders: Array) -> Array:
 	var out: Array = []
