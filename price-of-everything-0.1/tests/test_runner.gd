@@ -422,6 +422,7 @@ func _ready() -> void:
 	_test_infra_upgrade()
 	await _test_core_panels_open()
 	await _test_demolished_building_loses_its_sprite()
+	await _test_farm_on_a_crowded_tile()
 	if not _failed_names.is_empty():
 		print("FAILED TESTS:")
 		for failed_name in _failed_names:
@@ -5058,6 +5059,85 @@ func _test_demolished_building_loses_its_sprite() -> void:
 		FabricPainter.felled_forests.erase("fo:test:felled")
 	else:
 		_check(false, "demolish visuals: the fabric layer exposes forget_forests")
+
+	inst.queue_free()
+	await get_tree().process_frame
+	SaveLoad.import_snapshot(snapshot)
+	await get_tree().process_frame
+
+## Placing a FARM on a tile that is already full of buildings and roads must fail gently.
+##
+## Farms are the one category excluded from the gentle-failure fallback plot (_place_fallback_plot
+## takes "the nearest 50 u^2 beside a road", and a farm is a field, not a plot), so when the
+## packer finds nowhere a farm is the case that reaches the very end of _place_building with
+## nothing placed. That path has to warn and return, not throw — a player clicking Build on a
+## crowded tile is an ordinary thing to do, not an error.
+func _test_farm_on_a_crowded_tile() -> void:
+	var packed: PackedScene = load("res://scenes/main.tscn")
+	if packed == null:
+		_check(false, "crowded farm: main.tscn instantiates")
+		return
+	var snapshot: Dictionary = SaveLoad.export_snapshot()
+	var inst: Node = packed.instantiate()
+	add_child(inst)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var bv: Node = inst.find_child("BuildingVisuals", true, false)
+	var terrain: Node = inst.find_child("TerrainLayer", true, false)
+	if bv == null or terrain == null:
+		_check(false, "crowded farm: the visual layers exist")
+		inst.queue_free()
+		SaveLoad.import_snapshot(snapshot)
+		return
+
+	# The most built-up tile on the board: whatever already carries the most footprints, which
+	# is a far harsher test than a tile this test crowds itself.
+	var busiest := ""
+	var busiest_n := -1
+	for coord_key in terrain.tiles:
+		var td: Dictionary = terrain.tiles[coord_key]
+		var tid := str(td.get("id", ""))
+		if tid == "":
+			continue
+		var n: int = MatchState.get_buildings_on_tile(tid).size()
+		if n > busiest_n:
+			busiest_n = n
+			busiest = tid
+	_check(busiest != "", "crowded farm: found the busiest tile (%s, %d buildings)" % [busiest, busiest_n])
+	var coord: Vector2i = terrain.call("id_to_coord", busiest)
+
+	# Pack it further still, then ask for farms on top. Any of these may legitimately find no
+	# room — the assertion is that asking is SAFE, and that the sim and the visuals agree
+	# afterwards about what exists.
+	var ids: Array = []
+	for i in 6:
+		var iid: String = MatchState.add_building("b_002", "r_005", busiest, MatchState.LOCAL_PLAYER, "")
+		inst.call("emit_signal", "building_placed", busiest, "b_002", "r_005", iid, coord)
+		ids.append(iid)
+	await get_tree().process_frame
+	for i in 4:
+		var farm_id: String = MatchState.add_building("b_014", "r_090", busiest, MatchState.LOCAL_PLAYER, "")
+		inst.call("emit_signal", "building_placed", busiest, "b_014", "r_090", farm_id, coord)
+		ids.append(farm_id)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(true, "crowded farm: placing farms on a packed tile did not throw")
+
+	# Whatever DID get drawn must be a building that exists, and removing them all must leave
+	# no footprint behind — an undrawn farm must not leave a phantom either.
+	for iid_value in ids:
+		var iid := str(iid_value)
+		if bv.call("has_placement", iid):
+			_check(MatchState.buildings.has(iid),
+				"crowded farm: nothing is drawn for a building that does not exist")
+	for iid_value2 in ids:
+		MatchState.remove_building(str(iid_value2))
+	await get_tree().process_frame
+	var leftovers: Array = []
+	for iid_value3 in ids:
+		if bv.call("has_placement", str(iid_value3)):
+			leftovers.append(str(iid_value3))
+	_check(leftovers.is_empty(), "crowded farm: removing them all leaves no footprint (%s)" % str(leftovers))
 
 	inst.queue_free()
 	await get_tree().process_frame
