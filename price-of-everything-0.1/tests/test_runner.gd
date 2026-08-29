@@ -241,6 +241,7 @@ func _ready() -> void:
 	_test_pending_special_order_shipment_resolution()
 	await _test_special_order_resolution_dialog()
 	_test_market_special_orders_tab()
+	_test_market_prices_tab_impact_columns()
 	_test_save_load_roundtrip()
 	await _test_pending_load_applies_on_scene_ready()
 	_test_start_config_expansion()
@@ -4523,6 +4524,69 @@ func _test_market_special_orders_tab() -> void:
 	panel.queue_free()
 	SpecialOrderState.reset()
 	TurnManager.current_turn = saved_turn
+
+## The GOOD PRICES tab, which the special-orders test never builds — it jumps straight to
+## tab 2, which is how a null-deref in _build_prices_tab shipped unnoticed.
+##
+## HONEST SCOPE: this does NOT catch that class of bug, and it was checked against the
+## broken code to be sure. A GDScript runtime error prints and execution CONTINUES, so the
+## bad `_detach(null)` left no observable state difference — every assertion below passed
+## either way. What catches it is scanning a windowed run's output for "SCRIPT ERROR"
+## (tools/market_shot.tscn reproduces it in one line); state assertions cannot.
+##
+## What this DOES cover, both previously untested: that the prices tab builds and rebuilds
+## with the header wrapped in a zero-min-width clip (the fix that keeps the widened table
+## from forcing the panel off-screen), and the column contract the owner set — the rate is
+## the header, each cell carries that good's own quantity.
+func _test_market_prices_tab_impact_columns() -> void:
+	var panel: Control = load("res://scenes/market_panel.tscn").instantiate()
+	add_child(panel)
+	panel.call("_ensure_built")
+	var tabs: TabContainer = panel.get("_tabs")
+	tabs.current_tab = 0
+	panel.call("_ensure_current_tab_built")
+
+	# The header must live inside the clipping wrapper, and the wrapper must report NO
+	# minimum width — that is what stops the widened table forcing the panel off-screen.
+	var clip: Control = panel.get("_header_clip")
+	var header: Control = panel.get("header_static")
+	_check(clip != null and header != null and header.get_parent() == clip,
+		"market prices tab: the header is wrapped in its clipping container")
+	_check(clip != null and clip.custom_minimum_size.x == 0.0,
+		"market prices tab: the header clip reports no minimum width")
+	_check(header != null and header.get_combined_minimum_size().x > 0.0,
+		"market prices tab: the header itself still sizes to its columns")
+
+	# Toggling the ladder rebuilds the tab — the path that used to deref a null clip.
+	panel.call("_set_impact_expanded", true)
+	_check(panel.get("_impact_expanded"), "market prices tab: impact columns expand")
+	_check(header.get_parent() == panel.get("_header_clip"),
+		"market prices tab: the header survives an expand rebuild inside its clip")
+	panel.call("_set_impact_expanded", false)
+	_check(not panel.get("_impact_expanded"), "market prices tab: impact columns collapse again")
+	_check(header.get_parent() == panel.get("_header_clip"),
+		"market prices tab: the header survives a collapse rebuild inside its clip")
+
+	# Column contract (owner 2026-08-29): the RATE is the header, and each cell carries that
+	# good's own unit threshold — not the percentage.
+	panel.call("_set_impact_expanded", true)
+	var rows: Array = panel.get("rows")
+	var checked := false
+	for row in rows:
+		if not is_instance_valid(row) or str(row.get("good_id")) == "":
+			continue
+		var thresholds: PackedInt32Array = MarketState.impact_thresholds(str(row.get("good_id")))
+		if thresholds.is_empty():
+			continue
+		var cells: Array = row.get("_rung_cells")
+		_check(cells.size() == EconomyConfig.PRICE_IMPACT_LADDER.size(),
+			"market prices tab: one rung cell per ladder step")
+		_check(str((cells[0] as Label).text) == row.call("_thousands", thresholds[0]),
+			"market prices tab: a rung cell shows the good's quantity, not the rate")
+		checked = true
+		break
+	_check(checked, "market prices tab: at least one produced good exercised the rung cells")
+	panel.queue_free()
 
 func _special_order_goods(orders: Array) -> Array:
 	var out: Array = []

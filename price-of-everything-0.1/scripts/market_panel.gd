@@ -480,7 +480,11 @@ func _adopt_children(source: Control, target: Control) -> void:
 		target.add_child(child)
 	source.queue_free()
 
+## Null-tolerant: callers detach nodes that may not exist yet (the header clip is built
+## lazily on the first prices-tab build), and a guard here beats one at every call site.
 func _detach(node: Node) -> void:
+	if node == null:
+		return
 	var parent := node.get_parent()
 	if parent != null:
 		parent.remove_child(node)
