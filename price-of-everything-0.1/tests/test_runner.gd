@@ -30,6 +30,8 @@ const AuthoredRoadGeometry := preload("res://scripts/authored_road_geometry.gd")
 const AuthoredRoadStyle := preload("res://scripts/authored_road_style.gd")
 const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
 const MapEditorShapeToolScript := preload("res://scripts/map_editor/map_editor_shape_tool.gd")
+const MapEditorRegionImportScript := preload("res://scripts/map_editor/map_editor_region_import.gd")
+const ImportLiveMapScript := preload("res://tools/map_editor/import_live_map.gd")
 const WorldMapScript := preload("res://scripts/world_map.gd")
 const AuthoredRoadVisualsScript := preload("res://scripts/authored_road_visuals.gd")
 ## Editor-only, and excluded from exported builds alongside this suite. Held here because the
@@ -81,6 +83,9 @@ func _ready() -> void:
 	_test_authored_area_buildings_exist()
 	await _test_authored_slot_claim_order()
 	_test_authored_zones()
+	_test_region_partition()
+	_test_region_import_settlement()
+	_test_import_corner_cap()
 	await _test_zone_placement()
 	await _test_zone_priority()
 	await _test_zone_fabric_tiers()
@@ -19142,6 +19147,145 @@ func _test_authored_slot_claim_order() -> void:
 
 ## Industrial zones: the region a gameplay building may be placed IN, as opposed to a slot,
 ## which is a box reserved before anyone knows what will stand in it.
+## The `enable procedural <region>` cheat's partition: the untouched landmap splits four
+## ways by nearest city, deterministically, and covered tiles stay out.
+func _test_region_partition() -> void:
+	for region in MapEditorRegionImportScript.REGIONS:
+		var anchor := str(MapEditorRegionImportScript.REGION_ANCHORS[region])
+		_check(Catalog.is_land_tile(anchor),
+			"regions: anchor of '%s' (%s) is a land tile the catalog knows" % [region, anchor])
+	var centres := {
+		"tile_14_2": Vector2(0, 0),        # north (Port Lightning)
+		"tile_11_17": Vector2(1000, 0),    # arin
+		"tile_22_16": Vector2(0, 1000),    # vandel
+		"tile_25_9": Vector2(1000, 1000),  # capital
+		"near_north": Vector2(10, 10),
+		"near_arin": Vector2(980, 40),
+		"near_vandel": Vector2(30, 950),
+		"near_capital": Vector2(990, 990),
+		"already_authored": Vector2(5, 5),
+		"tie_tile": Vector2(500, 0),       # equidistant north/arin
+	}
+	var split: Dictionary = MapEditorRegionImportScript.partition(centres, {"already_authored": true})
+	_check(split.size() == centres.size() - 1, "regions: every uncovered land tile is assigned")
+	_check(not split.has("already_authored"), "regions: covered tiles stay out of the split")
+	_check(str(split.get("tile_14_2")) == "north" and str(split.get("tile_11_17")) == "arin"
+		and str(split.get("tile_22_16")) == "vandel" and str(split.get("tile_25_9")) == "capital",
+		"regions: each anchor lands in its own region")
+	_check(str(split.get("near_north")) == "north" and str(split.get("near_arin")) == "arin"
+		and str(split.get("near_vandel")) == "vandel" and str(split.get("near_capital")) == "capital",
+		"regions: proximity decides the region")
+	_check(str(split.get("tie_tile")) == "north", "regions: a tie goes to the earlier region")
+	_check(MapEditorRegionImportScript.partition({"tile_14_2": Vector2.ZERO}, {}).is_empty(),
+		"regions: a missing anchor refuses to partition")
+	var north_tiles: Dictionary = MapEditorRegionImportScript.region_tiles(split, "north")
+	_check(north_tiles.has("near_north") and north_tiles.has("tie_tile")
+		and not north_tiles.has("near_arin"), "regions: region_tiles filters one region")
+	var covered := MapEditorRegionImportScript.covered_tiles({"settlements": {
+		"untitled": {"tiles": ["a"]}, "procedural-north": {"tiles": ["b"]}}})
+	_check(covered.has("a") and not covered.has("b"),
+		"regions: a shown region does not count as authored coverage")
+	_check(MapEditorRegionImportScript.covered_tiles({"settlements": {
+		"procedural-north": {"tiles": ["b"]}}}, true).has("b"),
+		"regions: coverage can include the region imports when asked")
+
+
+## Cutting one region out of the whole-map import: ownership rules, renumbering, and a
+## settlement the validator accepts — and removing it restores the document exactly.
+func _test_region_import_settlement() -> void:
+	var centres := {
+		"tile_14_2": Vector2(0, 0), "tile_11_17": Vector2(1000, 0),
+		"tile_22_16": Vector2(0, 1000), "tile_25_9": Vector2(1000, 1000),
+	}
+	var tile_of := func(world: Vector2) -> String:
+		return "t_%d_%d" % [int(floor(world.x / 100.0)), int(floor(world.y / 100.0))]
+	var region_set := {"t_0_0": true, "t_0_1": true}
+	var covered := {"t_5_0": true}
+	var source := {"version": 1, "settlements": {
+		"b": {"tiles": ["t_0_1"], "specials": [
+			{"id": "s:x:9", "kind": "poly", "sides": [], "outline": [[20, 120], [40, 120], [40, 140]]}]},
+		"a": {"tiles": ["t_0_0"],
+			"roads": [
+				{"id": "r:x:0", "class": "mid", "points": [[0, 0], [50, 50]],
+					"tiles": ["t_0_0"], "unlockable": false},
+				{"id": "r:x:1", "class": "mid", "points": [[0, 0], [60, 10]],
+					"tiles": ["t_0_0", "t_5_0"], "unlockable": false},
+				{"id": "r:x:2", "class": "mid", "points": [[900, 0], [1000, 40]],
+					"tiles": ["t_9_0"], "unlockable": false},
+			],
+			"specials": [
+				{"id": "s:x:0", "kind": "poly", "sides": [], "outline": [[10, 10], [30, 10], [30, 30]]},
+				{"id": "s:x:1", "kind": "poly", "sides": [], "outline": [[910, 10], [930, 10], [930, 30]]},
+				{"id": "s:x:2", "kind": "poly", "sides": [], "outline": [[10, 10], [30, 10], [30, 30]],
+					"port": "t_7_7", "port_role": "quay"},
+			],
+			"parks": [{"id": "p:x:0", "kind": "green", "outline": [[5, 5], [25, 5], [25, 25]]}],
+			"plazas": [{"id": "pz:x:0", "outline": [[905, 5], [925, 5], [925, 25]]}],
+			"port_decor": [
+				{"kind": "container", "outline": [[1, 1], [2, 1], [2, 2]], "tile": "t_0_0"},
+				{"kind": "container", "outline": [[1, 1], [2, 1], [2, 2]], "tile": "t_9_9"},
+			],
+			"slots": {
+				"t_0_0": {"pins": [{"pos": [1, 2], "angle": 0.0, "size": "standard"}]},
+				"t_9_9": {"pins": [{"pos": [3, 4], "angle": 0.0, "size": "standard"}]},
+			}},
+	}}
+	var built: Dictionary = MapEditorRegionImportScript.build_settlement(
+		source, "north", region_set, covered, tile_of, centres)
+	var roads: Array = built.get("roads", [])
+	_check(roads.size() == 1 and str((roads[0] as Dictionary).get("id", "")) == "r:north:0",
+		"region cut: one road survives — in-region, renumbered")
+	var specials: Array = built.get("specials", [])
+	_check(specials.size() == 2, "region cut: the covered-touching road, the far road, the far"
+		+ " special, the far plaza and the port special all stay out (%d specials)" % specials.size())
+	var special_ids: Array = []
+	for special in specials:
+		special_ids.append(str((special as Dictionary).get("id", "")))
+	_check(special_ids == ["s:north:0", "s:north:1"],
+		"region cut: specials renumber deterministically across source settlements")
+	_check((built.get("parks", []) as Array).size() == 1
+		and str((built.get("parks", [])[0] as Dictionary).get("id", "")) == "p:north:0",
+		"region cut: the in-region park comes across")
+	_check((built.get("plazas", []) as Array).is_empty(), "region cut: the far plaza does not")
+	_check((built.get("port_decor", []) as Array).size() == 1, "region cut: port decor filters by tile")
+	_check((built.get("slots", {}) as Dictionary).keys() == ["t_0_0"],
+		"region cut: slots filter by tile")
+	_check(built.get("tiles", []) == ["t_0_0", "t_0_1"],
+		"region cut: the settlement claims the whole region")
+	_check(int(built.get("next_id", 0)) == 5, "region cut: next_id counts the records")
+
+	# The merged document must satisfy the game's own validator, and removing the
+	# settlement must restore the document byte-for-byte.
+	var doc := AuthoredMap.empty_document()
+	var before := AuthoredMap.to_text(doc)
+	var settlements: Dictionary = doc.get("settlements", {})
+	settlements[MapEditorRegionImportScript.settlement_key("north")] = built
+	doc["settlements"] = settlements
+	_check(AuthoredMap.validate(doc).is_empty(), "region cut: the merged document validates")
+	settlements.erase(MapEditorRegionImportScript.settlement_key("north"))
+	_check(AuthoredMap.to_text(doc) == before, "region cut: disabling restores the document exactly")
+	_check(MapEditorRegionImportScript.build_settlement(source, "north", {}, covered, tile_of, centres).is_empty(),
+		"region cut: an empty region imports nothing")
+
+
+## The importer's faithfulness contract: outlines keep up to TEN corners (owner, 2026-08-29)
+## and only simplify past that.
+func _test_import_corner_cap() -> void:
+	_check(int(ImportLiveMapScript.MAX_CORNERS) == 10, "import: the corner cap is ten")
+	var importer := ImportLiveMapScript.new()
+	var circle := PackedVector2Array()
+	for i in 43:
+		circle.append(Vector2(cos(TAU * float(i) / 43.0), sin(TAU * float(i) / 43.0)) * 90.0)
+	var shaped: PackedVector2Array = importer._simplify_to_cap(circle)
+	_check(shaped.size() <= 10 and shaped.size() >= 3,
+		"import: a 43-corner outline simplifies to at most ten corners (%d)" % shaped.size())
+	_check(shaped[0] == circle[0], "import: simplification keeps the first corner in place")
+	var square := PackedVector2Array([Vector2(0, 0), Vector2(80, 0), Vector2(80, 80), Vector2(0, 80)])
+	_check(importer._outline_list(square).size() == 4,
+		"import: an outline under the cap is untouched")
+	importer.free()
+
+
 func _test_authored_zones() -> void:
 	var base := {"version": AuthoredMap.SCHEMA_VERSION,
 		"settlements": {"s": {"tiles": ["tile_1_1"]}}}

@@ -25,6 +25,8 @@ extends CanvasLayer
 ##   unlock advisors                 open the full advisor roster, all seats + seat research
 ##   unlock demo                     lift the New Game demo locks (advanced settings + all starts/difficulties/speeds)
 ##   swap song                       advance to the next music track
+##   enable procedural <region>      (map editor only) show a region of the procedural map as editable records
+##   disable procedural <region>     (map editor only) remove that region's records again
 ##   help                             list commands
 
 ## Emitted when `debug CandC` unlocks this terminal. The main menu listens so it can
@@ -44,6 +46,8 @@ const MENU_SAFE_COMMANDS := {"swap": true, "help": true}
 const READ_ONLY_COMMANDS := {
 	"help": true, "logs": true, "saves": true, "save": true, "load": true,
 	"swap": true, "toggle": true, "anim": true,
+	# Map-editor document edits, not sim state: there is no run to taint.
+	"enable": true, "disable": true,
 }
 
 # Set true when this terminal is instantiated on the main menu (main_menu.gd).
@@ -411,8 +415,19 @@ func _run_command(text: String) -> String:
 				return "Coal prohibition LIFTED — mining and imports are legal again."
 			PolicyState.cheat_set_coal_ban(true, ban_turn)
 			return "Coal BANNED from turn %d: mining halts, imports refused on every route. 'ban coal off' to lift." % ban_turn
-		"help":
-			return "commands:  cash <int>   |   unlock <title>|all|hidden_buildings|advisors   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap construct_panel_v3   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink|plate|midcentury   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   ban coal [off]   |   save <name>   |   load <name>   |   saves   |   help"
+		"enable", "disable":
+			# Map-editor cheats: show/hide one city's region of the procedurally generated
+			# map (buildings, roads, parks, plazas) as editable records in the working
+			# document. Reached by GROUP + call(): the editor is export-excluded, so this
+			# shipped file must never preload it — outside the editor the group is empty
+			# and the cheat degrades to a pointer at where it works.
+			if parts.size() < 3 or parts[1].to_lower() != "procedural":
+				return "usage: %s procedural <north|arin|vandel|capital|all>" % cmd
+			var editor := get_tree().get_first_node_in_group("map_editor")
+			if editor == null:
+				return "'%s procedural' works only inside the map editor  (main menu -> Map Editor)" % cmd
+			return str(editor.call("procedural_region_command", cmd, parts[2].to_lower()))
+			return "commands:  cash <int>   |   unlock <title>|all|hidden_buildings|advisors   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap construct_panel_v3   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink|plate|midcentury   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   ban coal [off]   |   enable|disable procedural <north|arin|vandel|capital|all>  (map editor)   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 

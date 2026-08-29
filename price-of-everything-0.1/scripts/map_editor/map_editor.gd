@@ -38,6 +38,7 @@ const MapEditorSlotBoxes := preload("res://scripts/map_editor/map_editor_slot_bo
 const MapEditorFabric := preload("res://scripts/map_editor/map_editor_fabric.gd")
 const BuildingVisualsRef := preload("res://scenes/building_visuals.gd")
 const MapEditorPanel := preload("res://scripts/map_editor/map_editor_panel.gd")
+const MapEditorRegionImport := preload("res://scripts/map_editor/map_editor_region_import.gd")
 
 ## Tools. NAVIGATE is the default and does nothing but move the view: an editor whose idle
 ## state authors geometry cannot be explored, and every stray click becomes a road.
@@ -223,6 +224,9 @@ func _is_scratch() -> bool:
 
 
 func _ready() -> void:
+	# The debug terminal's cheats reach the editor through this group, by `call()` — the
+	# terminal is SHIPPED code and may not preload anything under scripts/map_editor/.
+	add_to_group("map_editor")
 	if _is_scratch():
 		# Point the loader at a name that does not exist, so nothing real is opened.
 		AuthoredMap.set_override(SCRATCH_NAME)
@@ -240,6 +244,11 @@ func _ready() -> void:
 ## setting, not a camera one.
 func _process(delta: float) -> void:
 	if not _ready_to_edit or _camera == null:
+		return
+	# While a text field has focus (the debug terminal, the save/load dialogs), letters are
+	# TYPING, not camera keys — polling Input here would pan the map on every W or A in a
+	# command or document name.
+	if get_viewport().gui_get_focus_owner() != null:
 		return
 	_nudge_selection(delta)
 	var direction := Vector2.ZERO
@@ -353,6 +362,12 @@ func _mount_fabric_layer() -> void:
 ## picking tiles and claiming keys underneath. Disabling their processing is far more
 ## honest than trying to out-order them, and it leaves this node the single owner of input.
 func _silence_world_input(node: Node) -> void:
+	# The debug terminal stays live: it is the editor's cheat surface (`enable procedural
+	# <region>`), it only acts when opened with the backtick key, and its chrome sits above
+	# the editor's (layer 128 vs 64) precisely so it can be used here.
+	var script: Variant = node.get_script()
+	if script != null and str(script.resource_path).ends_with("debug_terminal.gd"):
+		return
 	node.set_process_input(false)
 	node.set_process_unhandled_input(false)
 	node.set_process_unhandled_key_input(false)
@@ -2443,3 +2458,109 @@ func document() -> MapEditorDocument:
 
 func camera() -> Camera2D:
 	return _camera
+
+
+# ── Procedural region cheats ────────────────────────────────────────────────────
+
+## `enable|disable procedural <north|arin|vandel|capital|all>`, called by the debug
+## terminal through the "map_editor" group. Enabling cuts that city's share of the
+## whole-map import (`data/map_authored/procedural.json`) into the WORKING document as an
+## editable settlement — buildings as polygons, roads, parks, plazas; disabling removes
+## that settlement again. Both are ordinary edits: undoable, and on disk only after a save.
+## Returns the line the terminal prints.
+func procedural_region_command(verb: String, region: String) -> String:
+	if verb != "enable" and verb != "disable":
+		return "usage: enable|disable procedural <north|arin|vandel|capital|all>"
+	if not _ready_to_edit:
+		return "the editor is still building the world — try again in a moment"
+	if region == "all":
+		var lines := PackedStringArray()
+		for one in MapEditorRegionImport.REGIONS:
+			lines.append(procedural_region_command(verb, str(one)))
+		return "\n".join(lines)
+	if not MapEditorRegionImport.is_region(region):
+		return "usage: %s procedural <north|arin|vandel|capital|all>" % verb
+	var key: String = MapEditorRegionImport.settlement_key(region)
+	var settlements_value: Variant = _document.data().get("settlements", {})
+	var settlements: Dictionary = settlements_value if typeof(settlements_value) == TYPE_DICTIONARY else {}
+
+	if verb == "disable":
+		if not settlements.has(key):
+			return "procedural %s is not shown" % region
+		_document.begin_edit("hide procedural %s" % region)
+		(_document.data().get("settlements", {}) as Dictionary).erase(key)
+		_after_region_change()
+		return "procedural %s hidden — its records are out of the document" % region
+
+	if settlements.has(key):
+		return "procedural %s is already shown  ('disable procedural %s' removes it)" % [region, region]
+	var loaded: Dictionary = MapEditorRegionImport.load_source()
+	if loaded.has("problem"):
+		return str(loaded["problem"])
+	var centres := _land_tile_centres()
+	var covered: Dictionary = MapEditorRegionImport.covered_tiles(_document.data())
+	var partitioned: Dictionary = MapEditorRegionImport.partition(centres, covered)
+	if partitioned.is_empty():
+		return "could not split the map — a region anchor tile is missing from the terrain"
+	var tiles_of_region: Dictionary = MapEditorRegionImport.region_tiles(partitioned, region)
+	if tiles_of_region.is_empty():
+		return "nothing left near %s — every tile there is already authored" % region
+	var built: Dictionary = MapEditorRegionImport.build_settlement(
+		loaded["doc"] as Dictionary, region, tiles_of_region, covered,
+		_tile_id_at, centres)
+	if built.is_empty():
+		return "nothing to import near %s" % region
+	_document.begin_edit("show procedural %s" % region)
+	var live: Dictionary = _document.data()
+	var live_settlements: Dictionary = live.get("settlements", {}) as Dictionary
+	live_settlements[key] = built
+	live["settlements"] = live_settlements
+	_after_region_change()
+	focus_tile(str(MapEditorRegionImport.REGION_ANCHORS[region]), 0.35)
+	return ("procedural %s: %d building shapes, %d roads, %d parks, %d plazas over %d tiles"
+		+ " — editable like anything else; 'disable procedural %s' removes it") % [region,
+		(built.get("specials", []) as Array).size(), (built.get("roads", []) as Array).size(),
+		(built.get("parks", []) as Array).size(), (built.get("plazas", []) as Array).size(),
+		(built.get("tiles", []) as Array).size(), region]
+
+
+func _after_region_change() -> void:
+	if _fabric != null:
+		_fabric.queue_redraw()
+	if _fabric_ground != null:
+		_fabric_ground.queue_redraw()
+	_overlay.queue_redraw()
+	_refresh_status()
+
+
+## World-space centres of every LAND tile, {tile_id: Vector2} — the region partition's
+## input. Sea and deep-sea tiles are out: the split is of the LANDMAP.
+func _land_tile_centres() -> Dictionary:
+	var terrain := get_tree().get_first_node_in_group("hex_map")
+	if terrain == null:
+		return {}
+	var out: Dictionary = {}
+	var tiles: Dictionary = terrain.get("tiles")
+	for coord in tiles.keys():
+		var tile: Dictionary = tiles[coord]
+		var kind := str(tile.get("type", ""))
+		if kind == "" or kind == "sea" or kind == "deep_sea":
+			continue
+		var tile_id := str(tile.get("id", ""))
+		if tile_id == "":
+			continue
+		out[tile_id] = terrain.call("map_to_local",
+			terrain.call("map_coord_for_tile_coord", coord)) as Vector2
+	return out
+
+
+## The tile id under a world point, or "" — bound into the region importer as its anchor
+## test, and shaped like `_tiles_under` for a single point.
+func _tile_id_at(world: Vector2) -> String:
+	var terrain := get_tree().get_first_node_in_group("hex_map")
+	if terrain == null:
+		return ""
+	var tiles: Dictionary = terrain.get("tiles")
+	var coord: Vector2i = terrain.call("tile_coord_for_map_coord",
+		terrain.call("local_to_map", world))
+	return str((tiles[coord] as Dictionary).get("id", "")) if tiles.has(coord) else ""

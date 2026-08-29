@@ -17,18 +17,52 @@ It is a *choice*, not part of any document, which is why it lives outside all of
 
 ## What is NOT here (gitignored)
 
-`procedural.json` — the whole live map imported in one pass, ~2 MB. Regenerate with:
+`procedural.json` — the whole live map imported in one pass, ~2 MB: building masses,
+roads, ports, parks, plazas and building slots. It is the SOURCE the editor's
+`enable procedural <region>` cheats cut from (see below). Regenerate after any change to
+the procedural generators:
 
 ```bash
-godot --path . res://tools/map_editor/import_live_map.tscn --quit-after 6000 -- --name=procedural
+godot --path . res://tools/map_editor/import_live_map.tscn --quit-after 30000 -- --name=procedural
 ```
 
-Add `--tiles=tile_10_16,tile_23_8` to import a subset instead. Shapes over five corners are
-simplified on import (owner ruling, 2026-08-16).
+Add `--tiles=tile_10_16,tile_23_8` to import a subset instead. Shapes over TEN corners are
+simplified on import (owner ruling 2026-08-29, superseding the five-corner ruling: imports
+stay as faithful to the generated shape as an editable outline allows). The importer reads
+the world BLIND to the active document — without that, an active `stoneshore-procedural`
+stands the whole procedural fabric down and the import comes back empty. Trees are not
+imported: the map's woods are already authored (`forests_imported`), and no other
+procedural trees exist.
 
 `_*.json` — scratch documents written by `authored_unlock_check` and `authored_slot_check`.
 Both point `active.txt` at their own fixture and restore it afterwards. If you ever find
 `active.txt` naming a `_`-prefixed document, a check died mid-run; put the real name back.
+
+## Showing the rest of the map: `enable procedural <region>`
+
+The land the authored look has not touched yet is split FOUR WAYS by which city each tile
+is closest to: **north** (Port Lightning, `tile_14_2`), **arin** (Arin City,
+`tile_11_17`), **vandel** (Vandel Port, `tile_22_16`) and **capital** (Capital Port,
+`tile_25_9`). In the editor, open the debug terminal (the backtick ` key — cheats must be
+unlocked with `debug CandC`) and:
+
+```
+enable procedural north        # or arin | vandel | capital | all
+disable procedural north
+```
+
+`enable` cuts that region's share of `procedural.json` into the working document as a
+settlement named `procedural-<region>`: decorative buildings as up-to-ten-corner polygons,
+roads as strokes, parks and plazas as outlines, gameplay buildings as slots. Everything is
+then editable exactly like hand-drawn content (the map's trees are already there — every
+wood is an authored `forests` area). `disable` removes that settlement again. Both are
+ordinary edits: undoable, and nothing touches disk until you save.
+
+A road that crosses into tiles a real settlement already authors is NOT imported — the
+Stoneshore imports already took every edge touching their tiles, and a deletion made there
+stays deleted. Records land in exactly one region (by the tile under their centroid; roads
+by their centroid's nearest city), so enabling two neighbouring regions never doubles
+anything.
 
 ## Authoring the next settlement: Arin
 
