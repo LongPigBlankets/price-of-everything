@@ -17,9 +17,9 @@ signal back_requested
 const STARTS_INDEX := "res://data/starts/index.json"
 const DEFAULT_START := "res://data/starts/default.json"
 
-# Demo build: only Coal Baron, Normal difficulty and the 300-turn length are
-# playable; everything else is greyed with a "Locked in the Demo" tooltip. Flip
-# DEMO_LOCK to false to restore the full menu after the demo.
+# Demo build: only the DEMO_START_IDS starts, Normal difficulty and the 100-turn
+# demo_itch length are playable; everything else is greyed with a "Locked in the
+# Demo" tooltip. Flip DEMO_LOCK to false to restore the full menu after the demo.
 const DEMO_LOCK := true
 const DEMO_START_IDS: Array = ["metal_magnate", "glass_merchant"]   # the starts playable in the demo
 const DEMO_DIFFICULTY_ID := "normal"

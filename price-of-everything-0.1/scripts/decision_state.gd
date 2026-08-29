@@ -100,13 +100,16 @@ var _next_uid: int = 1
 # ---------------------------------------------------------------------------
 
 const DECISION_DEFINITIONS := {
-	# Turn 3, every sandbox start. An old friend of the player's father offers to fill ONE of the
-	# two posts that exist, pro bono, for 30 turns. The choice is cheap money versus cheap
+	# Turn 3, every sandbox start. A retired shipping director offers to fill ONE of the two
+	# posts that exist, pro bono, for 30 turns. The choice is cheap money versus cheap
 	# movement, and both are good — a new player cannot pick wrong, only differently.
+	# The def id stays `family_friend`: it is a saved key (_fired_once, reservations, the
+	# tutorial's suppression call), so renaming it would strand every existing save for
+	# nothing a player ever sees.
 	# Verbatim line and gifts are owner-locked. See docs/early-game-onboarding-spec.md §5.4.
 	"family_friend": {
-		"title": "An Old Friend of the Family",
-		"body": "Andrew Keeler knew your father for thirty years, and says he owes him more than he ever repaid. He is offering to sit on your board for nothing — but he will only take one chair.\n\n\"I've negotiated lots of deals with suppliers and banks in the past. But my specialty will always be transporting goods cheap.\"",
+		"title": "A Retired Man Who Misses the Work",
+		"body": "Andrew Keeler ran a shipping firm for thirty years and has been retired for two of them, which he reports is one and a half too many. He is offering to sit on your board for nothing — but he will only take one chair.\n\n\"I've negotiated lots of deals with suppliers and banks in the past. But my specialty will always be transporting goods cheap.\"",
 		"scope": "company", "category": "governance", "priority": PRIORITY_STORY,
 		"target_selector": "company",
 		"cooldown_turns": 9999, "weight": 0.0, "default_choice": "coo",
@@ -129,7 +132,7 @@ const DECISION_DEFINITIONS := {
 				"stance": "Moving things is most of what you do. I can make it cost less."},
 		],
 	},
-	# The other end of the family_friend arc, drawn by _retire_founder when his tenure runs
+	# The other end of the founder-advisor arc, drawn by _retire_founder when his tenure runs
 	# out. He used to leave with only a bell entry, so the owner watched him vanish from the
 	# council with no message at all. Same blocking "Understood" shape as the government
 	# notices: PRIORITY_STORY keeps it out of the random pool, so it is draw-only, and the
@@ -137,7 +140,7 @@ const DECISION_DEFINITIONS := {
 	# substitution only reaches {target_name}, which is the company.
 	"founder_departs": {
 		"title": "Andrew Keeler Stands Down",
-		"headline": "Andrew has served his thirty turns and is standing down, his debt to your family considered paid. He wishes you luck, and says he can see you are trying your best.",
+		"headline": "Andrew has served his thirty turns and is standing down, having got the working life out of his system for a second time. He wishes you luck, and says he can see you are trying your best.",
 		"body": "\"One last piece of advice, and it is the only one that matters: treat your people well. It always pays off in the long term.\"\n\nHe shakes your hand on the way out, and does not look back.",
 		"scope": "company", "category": "story", "priority": PRIORITY_STORY,
 		"target_selector": "company",

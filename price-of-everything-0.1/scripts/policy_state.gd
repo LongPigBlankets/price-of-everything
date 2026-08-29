@@ -355,9 +355,9 @@ func _seed_if_needed() -> void:
 			"kind": "policy_enacted",
 			"severity": str(e.get("severity", "warning")),
 			"title": "%s now in effect" % str(e.title),
-			"body": str(e.get("body", "")),                      # LOREM — owner lore pending
+			"body": str(e.get("body", "")),
 			"forewarn_turns": int(e.get("forewarn_turns", 0)),
-			"forewarn_body": str(e.get("forewarn_body", "")),    # LOREM — owner lore pending
+			"forewarn_body": str(e.get("forewarn_body", "")),
 			"source": "policy",
 			"deeplink": {"panel": "money"},
 			"persistent": true,

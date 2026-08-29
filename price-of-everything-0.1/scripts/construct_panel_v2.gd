@@ -3021,7 +3021,9 @@ func _recipe_flow_cell(good_id: String, qty: int, size_px: int) -> Panel:
 
 func _power_output_cell(qty: int, size_px: int = 62) -> Control:
 	# Power outputs use the same cream tile-view card treatment as the power
-	# cards, with the yellow lightning icon and navy quantity pill inset.
+	# cards, with the isometric power goods icon (owner 2026-08-29 — the flat
+	# lightning is the energy badge's mark, not power-as-a-good's) and navy
+	# quantity pill inset.
 	var holder := Control.new()
 	holder.custom_minimum_size = Vector2(size_px, size_px)
 	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -3038,7 +3040,8 @@ func _power_output_cell(qty: int, size_px: int = 62) -> Control:
 	plate.add_theme_stylebox_override("panel", style)
 	holder.add_child(plate)
 	var icon := TextureRect.new()
-	icon.texture = load(RECIPE_POWER_ICON_PATH) as Texture2D
+	var power_good: Dictionary = Catalog.get_good_by_internal_name("power")
+	icon.texture = GoodIcons.texture_for_size(str(power_good.get("id", "")), "power", float(size_px))
 	icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	icon.offset_left = 7
 	icon.offset_top = 7

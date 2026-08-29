@@ -19,6 +19,7 @@ extends Control
 # the player sees on the first frame is exactly as before.
 static var _ledger_scene: PackedScene = null
 static var _people_script: GDScript = null
+static var _politics_script: GDScript = null
 static var _end_screen_script: GDScript = null
 static var _end_game_data_script: GDScript = null
 
@@ -31,6 +32,11 @@ static func _people_panel_script() -> GDScript:
 	if _people_script == null:
 		_people_script = load("res://scripts/people_panel.gd") as GDScript
 	return _people_script
+
+static func _politics_panel_script() -> GDScript:
+	if _politics_script == null:
+		_politics_script = load("res://scripts/politics_panel.gd") as GDScript
+	return _politics_script
 
 ## Loaded only once the game has actually ended — see _show_end_screen, which is the only
 ## caller and is itself reached only from the victory and turn-cap paths.
@@ -100,6 +106,7 @@ var _hovered := {}        # button -> true while the mouse is over it
 # Building ledger is instantiated lazily on first open (no main.tscn edit needed).
 var building_ledger_panel: PanelContainer = null
 var people_panel: PanelContainer = null
+var politics_panel: PanelContainer = null
 var construct_panel_v2: PanelContainer = null
 
 func _ready() -> void:
@@ -342,6 +349,8 @@ func _hide_all_panels() -> void:
 		_set_panel_visible(building_ledger_panel, false)
 	if is_instance_valid(people_panel):
 		_set_panel_visible(people_panel, false)
+	if is_instance_valid(politics_panel):
+		_set_panel_visible(politics_panel, false)
 
 # Toggle a bottom-menu panel: if it's already open, close it; otherwise hide the siblings
 # and open it. Visibility is captured before _hide_all_panels() would clear it. Also drives
@@ -514,7 +523,21 @@ func _on_building_ledger_filter_requested(filter_key: String) -> void:
 		building_ledger_panel.set_filter_preset(filter_key)
 
 func _on_politics_pressed() -> void:
-	print("Politics panel not yet implemented")
+	# Lazy-create like the ledger and People: no main.tscn edit, and a player who never
+	# opens Politics never pays for it.
+	if is_instance_valid(politics_panel) and politics_panel.visible:
+		_set_panel_visible(politics_panel, false)
+		return
+	_hide_all_panels()
+	if not is_instance_valid(politics_panel):
+		politics_panel = _politics_panel_script().new()
+		construct_panel.get_parent().add_child(politics_panel)
+		politics_panel.hide()
+		politics_panel.close_requested.connect(
+			func(): _set_panel_visible(politics_panel, false)
+		)
+		_link_rise(politics_panel, %PoliticsButton)
+	_set_panel_visible(politics_panel, true)
 
 func _on_research_pressed() -> void:
 	_toggle_panel(research_panel)

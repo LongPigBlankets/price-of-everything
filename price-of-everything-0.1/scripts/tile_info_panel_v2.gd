@@ -1262,12 +1262,14 @@ func _make_recipe_arrow(energy_req: int) -> Control:
 		holder.add_child(badge)
 	return holder
 
-# Power output cell — the same lightning the building-detail flow diagram uses.
+# Power output cell — the isometric power goods icon, same as the empire plates
+# (owner 2026-08-29); the flat lightning stays on energy badges only.
 func _make_power_cell(qty: int, size: int = RECIPE_CELL) -> Control:
 	var slot := Control.new()
 	slot.custom_minimum_size = Vector2(size, size)
 	var tr := TextureRect.new()
-	tr.texture = load(RECIPE_POWER_ICON)
+	var power_good: Dictionary = Catalog.get_good_by_internal_name("power")
+	tr.texture = GoodIcons.texture_for_size(str(power_good.get("id", "")), "power", float(size))
 	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	tr.set_anchors_preset(Control.PRESET_FULL_RECT)

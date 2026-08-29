@@ -80,8 +80,21 @@ static func draw_farm(canvas: CanvasItem, area: Dictionary) -> void:
 ## A wood: individual trees, clipped to the outline. Crowns AND their shadows stay inside the
 ## polygon — the boundary is hard, because the whole point of authoring a wood is that it
 ## stops where the designer said it stops.
+## Woods felled this session, by area id. It lives HERE rather than on the fabric layer
+## because there are TWO painters: the live vector path and the SubViewport repaint that
+## re-renders a baked tile. Both call draw_forest, and when the felled set lived on the layer
+## the repaint faithfully redrew the wood the player had just demolished — the tile was
+## repainted, correctly, from a document that still had the wood in it.
+##
+## Session-only and deliberately unsaved: a reloaded match re-seeds forest buildings from the
+## document, so this is derived again from what is actually standing.
+static var felled_forests: Dictionary = {}
+
+
 static func draw_forest(canvas: CanvasItem, area: Dictionary) -> void:
 	var id := str(area.get("id", ""))
+	if felled_forests.has(id):
+		return
 	for point in woodland_points(area):
 		var key := "%s|tree|%.0f|%.0f" % [id, point.x, point.y]
 		TreeShapesRef.draw_tree(canvas, TreeShapesRef.pick_kind(key, [55, 25, 20]), point, key)
@@ -95,6 +108,31 @@ static func draw_forest(canvas: CanvasItem, area: Dictionary) -> void:
 ## landed within a unit of each other on a three-step cycle and a wood came out as two thin
 ## diagonal lines. A grid also gives even coverage, which random points do not — clumps and
 ## bare patches read as a mistake in a wood of a few dozen trees.
+## CANOPY TYPES (owner 2026-08-29). A wood's silhouette is its authored outline inset by the
+## crown radius, so a polygon of a few vertices gives a wood with straight sides and hard
+## corners. These types leave the authored polygon alone — designers keep drawing simple
+## shapes — and make the RENDERED tree line disagree with it: the edge wanders in and out, and
+## some types thin rather than stopping dead.
+##
+## Chosen per wood in the editor (`variant` on the record). "current" is the shipped behaviour
+## and stays the default, so every existing forest is untouched.
+##   spacing   <1 denser, >1 sparser
+##   wobble    world units the tree line may wander OUTSIDE (or inside) the polygon
+##   feather   how far in from the rim trees start being dropped (0 = hard edge)
+##   glades    0..1 low-frequency thinning across the interior
+##   gradient  0..1 dense-to-sparse fall-off ACROSS the wood, along a per-wood axis
+const FOREST_VARIANTS := ["current", "wiggle", "feather", "glades", "soft", "graded", "sparse"]
+const _VARIANT_KNOBS := {
+	"current": [1.0, 0.0, 0.0, 0.0, 0.0],
+	"wiggle": [1.0, 15.0, 0.0, 0.0, 0.0],
+	"feather": [1.0, 7.0, 26.0, 0.0, 0.0],
+	"glades": [0.92, 9.0, 12.0, 0.55, 0.0],
+	"soft": [1.0, 14.0, 22.0, 0.25, 0.0],
+	"graded": [0.74, 14.0, 18.0, 0.10, 0.88],
+	"sparse": [1.45, 16.0, 30.0, 0.35, 0.0],
+}
+
+
 static func woodland_points(area: Dictionary) -> PackedVector2Array:
 	var out := PackedVector2Array()
 	var outline := _outline_of(area)
@@ -107,7 +145,24 @@ static func woodland_points(area: Dictionary) -> PackedVector2Array:
 	# Raised so a wood can actually close its canopy; the floor is untouched, so a sparse
 	# copse is still available.
 	var spacing := TREE_SPACING / clampf(float(area.get("density", 1.0)), 0.25, MAX_DENSITY)
+	var knobs: Array = _VARIANT_KNOBS.get(str(area.get("variant", "current")), _VARIANT_KNOBS["current"])
+	spacing *= float(knobs[0])
+	var wob_amp := float(knobs[1])
+	var feather := float(knobs[2])
+	var glade := float(knobs[3])
+	var grad := float(knobs[4])
 	var salt := RoadHash.fnv1a(id) & 0xFFFF
+	var wob_salt := float(salt % 977) * 0.031
+	# The gradient runs along a per-wood axis so neighbouring woods do not all thin the same
+	# way; projections are normalised over the outline so it spans the whole wood.
+	var axis := Vector2(cos(wob_salt * 2.1), sin(wob_salt * 2.1))
+	var lo := INF
+	var hi := -INF
+	if grad > 0.0:
+		for p in outline:
+			var d: float = p.dot(axis)
+			lo = minf(lo, d)
+			hi = maxf(hi, d)
 	var columns := int(bounds.size.x / spacing) + 1
 	var rows := int(bounds.size.y / spacing) + 1
 	for ix in columns:
@@ -122,9 +177,54 @@ static func woodland_points(area: Dictionary) -> PackedVector2Array:
 			var key := "%s|tree|%.0f|%.0f" % [id, point.x, point.y]
 			var reach: float = TreeShapesRef.radius(
 				TreeShapesRef.pick_kind(key, [55, 25, 20])) + TREE_EDGE_INSET
-			if _inside_by(outline, point, reach):
-				out.append(point)
+			if wob_amp <= 0.0 and feather <= 0.0 and glade <= 0.0 and grad <= 0.0:
+				if _inside_by(outline, point, reach):
+					out.append(point)
+				continue
+			# Signed depth, not _inside_by's boolean: an organic edge has to be able to reach
+			# OUTSIDE the authored polygon, not only bite into it.
+			var sd := _signed_depth(outline, point)
+			var needed := reach + _wobble(point, wob_salt) * wob_amp
+			if sd <= needed:
+				continue
+			# NOTE on every probability below: RoadHash.jitter01 returns [-0.5, 0.5] despite
+			# the name, so each compare adds 0.5 first. Without that they all fire at about
+			# half strength, which is subtle enough to look like a tuning problem rather than
+			# a bug — it cost a round of look-dev to spot.
+			if feather > 0.0:
+				var edge_t: float = clampf((sd - needed) / feather, 0.0, 1.0)
+				if RoadHash.jitter01(ix, iy, salt + 5171) + 0.5 > 0.25 + 0.75 * edge_t:
+					continue
+			if glade > 0.0:
+				var g: float = 0.5 + 0.5 * sin(point.x * 0.021 + wob_salt) * sin(point.y * 0.018 - wob_salt)
+				if RoadHash.jitter01(ix, iy, salt + 811) + 0.5 > 1.0 - glade * (1.0 - g):
+					continue
+			# Dense end -> sparse end. Smoothstepped: a linear ramp across a dense wood still
+			# reads as uniform, because even the thin end keeps enough of a tight grid.
+			if grad > 0.0 and hi > lo:
+				var t: float = clampf((point.dot(axis) - lo) / (hi - lo), 0.0, 1.0)
+				if RoadHash.jitter01(ix, iy, salt + 3313) + 0.5 > 1.0 - grad * smoothstep(0.15, 0.85, t):
+					continue
+			out.append(point)
 	return out
+
+
+## Smooth, continuous along an edge — that is what makes the tree line meander rather than
+## dither tree by tree. Three incommensurate sines, roughly -1.6..1.6.
+static func _wobble(p: Vector2, salt: float) -> float:
+	return sin(p.x * 0.055 + salt) * 0.6 \
+		+ sin(p.y * 0.048 - salt * 1.7) * 0.6 \
+		+ sin((p.x + p.y) * 0.031 + salt * 0.5) * 0.4
+
+
+## Distance from `point` to the outline, positive inside and negative outside.
+static func _signed_depth(outline: PackedVector2Array, point: Vector2) -> float:
+	var best := INF
+	for i in outline.size():
+		var a := outline[i]
+		var b := outline[(i + 1) % outline.size()]
+		best = minf(best, point.distance_to(Geometry2D.get_closest_point_to_segment(point, a, b)))
+	return best if Geometry2D.is_point_in_polygon(point, outline) else -best
 
 
 ## A parametric primitive. Drawn like a mass — same wash, same SE micro-shadow, same ink —

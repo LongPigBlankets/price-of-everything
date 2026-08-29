@@ -96,6 +96,46 @@ func _apply_queued_refresh() -> void:
 	_refresh_special_orders()
 	_refresh_ledgers()
 
+## The goods table is wider than the panel once the impact ladder is expanded, and the
+## header lives OUTSIDE the rows' ScrollContainer so it stays put while the list scrolls
+## vertically. Left alone that has two costs: the header's full width becomes the panel's
+## minimum, so the window grows past the screen edge, and a horizontal scroll moves the rows
+## while the header stays behind, misaligning every column.
+##
+## So the header goes inside a clipping wrapper that reports NO minimum width, and its x is
+## driven by the rows' horizontal scroll — frozen vertically, synced horizontally, which is
+## what a spreadsheet header does.
+func _ensure_header_clip() -> Control:
+	if _header_clip == null:
+		_header_clip = Control.new()
+		_header_clip.name = "HeaderClip"
+		_header_clip.clip_contents = true
+		_header_clip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_header_clip.mouse_filter = Control.MOUSE_FILTER_PASS
+		header_static.minimum_size_changed.connect(_sync_header_metrics)
+		var bar := scroll.get_h_scroll_bar()
+		if bar != null:
+			bar.value_changed.connect(func(v: float) -> void:
+				if header_static != null:
+					header_static.position.x = -v)
+	_detach(header_static)
+	_header_clip.add_child(header_static)
+	header_static.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	header_static.position = Vector2.ZERO
+	_sync_header_metrics()
+	return _header_clip
+
+
+## Keep the clip as tall as the header and the header as wide as its columns. The header is
+## absolutely positioned inside the clip, so nothing else will size it.
+func _sync_header_metrics() -> void:
+	if _header_clip == null or header_static == null:
+		return
+	var want: Vector2 = header_static.get_combined_minimum_size()
+	header_static.size = want
+	_header_clip.custom_minimum_size = Vector2(0, want.y)
+
+
 func _rebuild_header() -> void:
 	for c in header_static.get_children():
 		header_static.remove_child(c)
@@ -103,18 +143,34 @@ func _rebuild_header() -> void:
 	header_static.add_theme_constant_override("separation", 10)
 	header_static.add_child(_header_spacer(98.0))             # framed icon column
 	header_static.add_child(_header_label("Product", 240.0, Color(0, 0, 0, 0), false))
-	# Two-line headings: the price cells already render "(£x.xx)" underneath when impact is
-	# active, and that bracket was unlabelled — a player had no way to learn what it was.
-	# "Impact" is a link into the Encyclopedia entry that explains the bands.
-	header_static.add_child(_impact_header("Price to sell", COL_PRICE_W, SALE_TINT))
-	header_static.add_child(_header_label("Price to sell\nin 10 turns", COL_EST_W, SALE_TINT))
+	# Base columns (owner ruling 2026-08-29): buy, sale, sold, cost, profit. The
+	# forecast columns are gone (decay is retired — see the ladder spec) and the
+	# ladder detail is a collapsible group toggled from the filter bar.
+	# Two-line headings: the price cells render "(£x.xx)" underneath when impact
+	# is active, and that bracket was unlabelled — a player had no way to learn
+	# what it was. "Impact" is a link into the Encyclopedia entry.
 	header_static.add_child(_impact_header("Price to buy", COL_PRICE_W, BUY_TINT))
-	header_static.add_child(_header_label("Price to buy\nin 10 turns", COL_EST_W, BUY_TINT))
-	header_static.add_child(_header_label("Impact\nthresholds", 110.0))
+	header_static.add_child(_impact_header("Price to sell", COL_PRICE_W, SALE_TINT))
 	header_static.add_child(_header_label("Sold", 60.0))
-	header_static.add_child(_header_label("Bought", 64.0))
 	header_static.add_child(_header_label("Cost/unit", 100.0))
 	header_static.add_child(_header_label("Profit/unit", 110.0))
+	if _impact_expanded:
+		# Mirrors market_row's _build_impact_group exactly: same widths, same
+		# nested-HBox separation — the header and rows are separate containers,
+		# so any mismatch skews every rung column.
+		var group := HBoxContainer.new()
+		group.add_theme_constant_override("separation", 4)
+		for i in EconomyConfig.PRICE_IMPACT_LADDER.size():
+			# The RATE is the column's identity (owner 2026-08-29) — it is the same for every
+			# good — while the cells below carry each good's own quantity for it.
+			var h := _header_label("%s%%\nprice impact\nper turn"
+					% String.num(float(EconomyConfig.PRICE_IMPACT_LADDER[i][1]), 2), 74.0)
+			h.add_theme_font_size_override("font_size", 11)
+			h.mouse_filter = Control.MOUSE_FILTER_STOP
+			h.tooltip_text = _rung_header_tooltip(i)
+			group.add_child(h)
+		group.add_child(_header_spacer(14.0))  # matches the rows' scroll-bar clearance
+		header_static.add_child(group)
 
 const SALE_TINT := Color(0.82, 0.85, 0.90, 0.10)
 const BUY_TINT := Color(0.50, 0.53, 0.58, 0.22)
@@ -135,12 +191,51 @@ const SPECIAL_ORDER_COLUMNS := [
 	{"key": "producer", "label": "Producer", "w": 180.0, "align": HORIZONTAL_ALIGNMENT_LEFT},
 ]
 
-## Column widths for the four price columns. Kept in sync with market_row.gd's COL_PRICE /
-## COL_EST — the header and the rows are separate containers, so a mismatch silently skews
-## every column to the right of it.
+## Column width for the two price columns. Kept in sync with market_row.gd's COL_PRICE —
+## the header and the rows are separate containers, so a mismatch silently skews every
+## column to the right of it (the rung group's 74px/4px must match COL_RUNG/RUNG_SEP too).
 const COL_PRICE_W := 104.0
-const COL_EST_W := 104.0
 
+
+# Collapsed by default: most decisions need the price and the arrow, not the
+# whole ladder. Session-local, toggled from the filter bar.
+var _impact_expanded := false
+var _impact_toggle_btn: Button = null
+var _header_clip: Control = null
+
+func _set_impact_expanded(expanded: bool) -> void:
+	_impact_expanded = expanded
+	if _impact_toggle_btn != null:
+		_impact_toggle_btn.text = "Hide impact columns" if expanded else "Show impact columns"
+	_rebuild_header()
+	_sync_header_metrics()
+	for row in rows:
+		if is_instance_valid(row) and row.has_method("set_impact_expanded"):
+			row.set_impact_expanded(expanded)
+
+## Tooltip for one ladder-rung header. It has to explain the whole mechanic, because the
+## column itself is now just a rate: what the number in the cells means, which direction it
+## moves the price, and that the quantities grow as the world economy does.
+func _rung_header_tooltip(idx: int) -> String:
+	var rate := float(EconomyConfig.PRICE_IMPACT_LADDER[idx][1])
+	var mult := String.num(float(EconomyConfig.PRICE_IMPACT_LADDER[idx][0]), 0)
+	var turn := int(TurnManager.current_turn)
+	var step := maxi(0, turn - 1) / EconomyConfig.IMPACT_THRESHOLD_INFLATION_TURNS
+	var now_scale := EconomyConfig.impact_threshold_scale(turn)
+	var next_turn := (step + 1) * EconomyConfig.IMPACT_THRESHOLD_INFLATION_TURNS + 1
+	var next_scale := 1.0 + EconomyConfig.IMPACT_THRESHOLD_INFLATION_STEP * float(step + 1)
+	return ("Each cell in this column is the quantity of that good which, moved NET in a single "
+		+ "turn, starts shifting its price by %s%% per turn.\n\n"
+		+ "Selling that much pushes the price DOWN; buying it pushes the price UP. The shift "
+		+ "keeps accruing every turn you keep the volume up, and stops when your 10-turn "
+		+ "average falls back under the first column.\n\n"
+		+ "The quantities are %s× each good's own base output, so they mean the same thing for "
+		+ "a good made 8 at a time as for one made 400 at a time — and they GROW as the world "
+		+ "economy expands: +%d%% of their original value every %d turns.\n"
+		+ "Today they stand at ×%s; they next rise on turn %d, to ×%s.") % [
+		String.num(rate, 2), mult,
+		int(EconomyConfig.IMPACT_THRESHOLD_INFLATION_STEP * 100.0), EconomyConfig.IMPACT_THRESHOLD_INFLATION_TURNS,
+		String.num(now_scale, 2), next_turn, String.num(next_scale, 2)]
 
 ## A price heading whose second line labels the "(£x.xx)" bracket the cell renders under an
 ## impacted price. RichTextLabel because only the word "Impact" is a link, not the whole line.
@@ -324,9 +419,13 @@ func _build_prices_tab(root: VBoxContainer) -> void:
 	_build_content()
 	_detach(header_static)
 	_detach(scroll)
+	_detach(_header_clip)
 	root.add_child(_build_filter_row())
-	root.add_child(header_static)
+	# The header goes in through its clipping wrapper (see _wrap_header_for_scrolling) —
+	# this tab is what actually owns the header's parentage, so the wrap has to happen here.
+	root.add_child(_ensure_header_clip())
 	root.add_child(scroll)
+	_sync_header_metrics()
 	_update_filter_availability()
 
 func _build_buildings_tab(root: VBoxContainer) -> void:
@@ -381,7 +480,11 @@ func _adopt_children(source: Control, target: Control) -> void:
 		target.add_child(child)
 	source.queue_free()
 
+## Null-tolerant: callers detach nodes that may not exist yet (the header clip is built
+## lazily on the first prices-tab build), and a guard here beats one at every call site.
 func _detach(node: Node) -> void:
+	if node == null:
+		return
 	var parent := node.get_parent()
 	if parent != null:
 		parent.remove_child(node)
@@ -1057,6 +1160,12 @@ func _build_filter_row() -> HBoxContainer:
 	row.add_child(_filter_profit_btn)
 	row.add_child(_filter_unprofit_btn)
 
+	# Expand/collapse the per-rung impact-ladder columns (not a row filter).
+	_impact_toggle_btn = _make_filter_button("Show impact columns")
+	_impact_toggle_btn.tooltip_text = "Show each good's price-impact ladder: the %/turn at every volume step, with the step your recent volume sits on highlighted."
+	_impact_toggle_btn.toggled.connect(func(pressed: bool) -> void: _set_impact_expanded(pressed))
+	row.add_child(_impact_toggle_btn)
+
 	_update_filter_availability()
 	return row
 
@@ -1171,6 +1280,7 @@ func _build_content() -> void:
 		var row := MarketRowScene.instantiate()
 		content_vbox.add_child(row)
 		row.setup(good_data)
+		row.set_impact_expanded(_impact_expanded)
 		rows.append(row)
 
 func _gui_input(event: InputEvent) -> void:

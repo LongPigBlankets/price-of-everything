@@ -149,10 +149,10 @@ static func _recipe_icon(good_id: String, internal: String, qty: int, size: int,
 	slot.clip_contents = false
 	if good_id != "":
 		slot.tooltip_text = Catalog.get_display_name(good_id)
-	# Power uses the flat recipe-diagram glyph everywhere a recipe flow is drawn, same as
-	# building_detail_panel_v2's own _recipe_icon this file was extracted from.
-	var tex: Texture2D = load(RECIPE_POWER_ICON_PATH) as Texture2D if internal == "power" \
-		else GoodIcons.texture_for_size(good_id, internal, float(size))
+	# Power drawn AS A GOOD (an output flowing somewhere) uses its isometric goods icon,
+	# the same art the empire plates show (owner 2026-08-29). The flat lightning glyph is
+	# reserved for the ENERGY badge on the arrow — the recipe grammar's cost marker.
+	var tex: Texture2D = GoodIcons.texture_for_size(good_id, internal, float(size))
 	if tex != null:
 		var tr := TextureRect.new()
 		tr.texture = tex

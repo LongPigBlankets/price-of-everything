@@ -86,6 +86,32 @@ const DEMO_ENDINGS := {
 	},
 }
 
+# Per-START copy overrides. Three of the endings above are written in the Metal Magnate's
+# voice — they invoke the father whose company you inherited — and that is simply not the
+# Glass Merchant's story: no inheritance, a town that thought sand was worthless, and
+# doubters who became believers the moment the furnaces paid. Only the endings that
+# actually name the father need replacing; "The Full Ledger" and "The Jack of All Trades"
+# are already start-agnostic and read correctly for either founder.
+#
+# Keyed by MatchState.scenario_name (the start config's `name`), then by ending id. A start
+# with no entry, or an ending with no override, falls through to DEMO_ENDINGS.
+const START_ENDING_COPY := {
+	"glass_merchant": {
+		"bankruptcy": "The whispers have changed again. Vandel always knew, they will say now, that there was never money in sand. Let them. Every sheet you ever sold survived a thousand degrees before something broke it, and so will you. Pick the pieces up and start again.",
+		"sequel": "No one doubts you anymore. You've kept the furnaces running and even built beyond them. Vandel sees you properly now, and though they'll never stop whispering, at least they have learned to never doubt you again.",
+		"lukewarm": "People in Vandel stopped talking about you long ago. Yes, the furnaces still work and the glass sells well and... surviving is already achievement enough in this town. But you'll never stop wondering if you could have taken it further. Perhaps someone else can.",
+	},
+}
+
+
+## The copy for `ending_id`, in the voice of the start this match began from. Falls back to
+## the authored default whenever a start has nothing of its own to say.
+static func ending_copy(ending_id: String) -> String:
+	var default: String = str((DEMO_ENDINGS.get(ending_id, {}) as Dictionary).get("copy", ""))
+	var per_start: Dictionary = START_ENDING_COPY.get(MatchState.scenario_name, {})
+	return str(per_start.get(ending_id, default))
+
+
 ## Is this match running the demo's victory set? The endings follow the tracks — a campaign
 ## scored against campaign tracks keeps the campaign's titles.
 static func demo_endings_apply() -> bool:
@@ -172,7 +198,7 @@ static func gather() -> Dictionary:
 			"ending_id": ending_id,
 			"title": str(ending.title),
 			"epithet": _demo_epithet(ending_id, secured, total, turn),
-			"copy": [str(ending.copy)],
+			"copy": [ending_copy(ending_id)],
 			"statline": _statline(),
 			"company": _company_highlights(),
 			"charts": _charts(),

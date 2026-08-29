@@ -87,6 +87,54 @@ func set_keep_out(regions: Array) -> void:
 	queue_redraw()
 
 
+## Authored woods that have been felled, by AREA ID. Keyed by id rather than by tile because
+## most woods in the document predate the editor's `tiles` field — world_map owns the
+## tile->area mapping, since placing a wood on a tile needs the hex geometry.
+##
+## Session-only and deliberately unsaved: a reloaded match re-seeds its forest buildings from
+## the document, so the felled set is derived again from what is actually standing.
+## NOTE: the felled set itself lives on AuthoredFabricPainter, because BOTH painters (this
+## layer's vector path and the SubViewport that repaints a baked tile) have to honour it.
+## Keeping a second copy here is what let a repaint faithfully redraw a demolished wood.
+
+
+## Stop drawing these woods, and repaint the baked tiles their canopies reach.
+func forget_forests(area_ids: Array) -> void:
+	var changed := false
+	for area_value in area_ids:
+		var area_id := str(area_value)
+		if area_id == "" or AuthoredFabricPainter.felled_forests.has(area_id):
+			continue
+		AuthoredFabricPainter.felled_forests[area_id] = true
+		# The bake blits a texture per tile, so a felled wood stays on screen until its tiles
+		# repaint — and a canopy can overhang its neighbours, so mark everything it reaches.
+		if AuthoredBake.is_available():
+			var outline: Array = _outline_of_area(area_id)
+			if outline.size() >= 3:
+				var bounds := Rect2(_point_of(outline[0]), Vector2.ZERO)
+				for entry in outline:
+					bounds = bounds.expand(_point_of(entry))
+				for touched in AuthoredBake.tiles_in_rect(bounds.grow(BakeLayout.CULL_MARGIN)):
+					_dirty_tiles[str(touched)] = true
+	if changed:
+		queue_redraw()
+
+
+func _outline_of_area(area_id: String) -> Array:
+	for area_value in AuthoredMap.forest_areas():
+		var area: Dictionary = area_value
+		if str(area.get("id", "")) == area_id:
+			return area.get("outline", []) as Array
+	return []
+
+
+static func _point_of(entry: Variant) -> Vector2:
+	var values: Array = entry as Array
+	if values == null or values.size() < 2:
+		return Vector2.ZERO
+	return Vector2(float(values[0]), float(values[1]))
+
+
 func restore_all() -> void:
 	if _sacrificed.is_empty():
 		return

@@ -796,7 +796,12 @@ func _apply_tax_and_dividends(summary: Dictionary) -> float:
 
 func _apply_profit_sharing(summary: Dictionary, pre_tax_profit: float) -> float:
 	summary.profit_sharing_paid = 0.0
-	if not MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
+	var share_rate := 0.0
+	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
+		share_rate = 0.05
+	elif MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_PROFIT_SHARE_10):
+		share_rate = 0.10
+	if share_rate <= 0.0:
 		return 0.0
 	var post_dividend_profit := maxf(
 		0.0,
@@ -804,7 +809,7 @@ func _apply_profit_sharing(summary: Dictionary, pre_tax_profit: float) -> float:
 	)
 	if post_dividend_profit <= 0.0:
 		return 0.0
-	var profit_sharing := post_dividend_profit * 0.05
+	var profit_sharing := post_dividend_profit * share_rate
 	MatchState.add_money(-profit_sharing)
 	summary.profit_sharing_paid = profit_sharing
 	summary.money_out += profit_sharing
@@ -2707,7 +2712,13 @@ func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictiona
 		# this is as close to per-building use as the sim records, and it is what lets a
 		# mission say "your ingots plant ate that coal" instead of "the empire ate coal".
 		if player_owned and qty > 0:
-			var tc: Dictionary = summary.tile_consumed
+			# Defensive read, matching mini_quest's own .get("tile_consumed", {}): callers
+			# build the summary from the template above, but a partial one (tests, and any
+			# future direct caller) must not throw here — the whole turn's consumption is
+			# downstream of this line.
+			if not summary.has("tile_consumed"):
+				summary["tile_consumed"] = {}
+			var tc: Dictionary = summary["tile_consumed"]
 			if not tc.has(tile_id):
 				tc[tile_id] = {}
 			var tcg: Dictionary = tc[tile_id]

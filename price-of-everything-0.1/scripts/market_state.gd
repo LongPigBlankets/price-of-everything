@@ -2,16 +2,24 @@ extends Node
 
 const FORECAST_TURNS := 10
 
-var prices: Dictionary = {}  # good_id -> impact-FREE base price (float), drifts by decay_rate
+var prices: Dictionary = {}  # good_id -> impact-FREE base price (float); STATIC since decay retired
 
 # --- Price impact (glut / deficit) ---
-# Accumulated impact in percent per good: negative = glut discount (net player
-# selling over threshold), positive = deficit premium (net buying). Capped at
-# ±EconomyConfig.PRICE_IMPACT_CAP_PCT; recovers by PRICE_IMPACT_RECOVERY_PCT per
-# turn while volume stays under the 2x threshold. `prices` stays the impact-free
-# base series; get_price() applies the impact multiplicatively, so the impact
-# stacks on top of the normal per-turn drift. Model spec in economy_config.gd.
-var impact_pct: Dictionary = {}   # good_id -> accumulated %
+# THE price model: per-good price decay is retired (owner ruling 2026-08-28,
+# docs/price-impact-ladder-spec.md), so accumulated glut/deficit impact is the
+# only thing that moves a price. Negative = glut discount (net player selling
+# over threshold), positive = deficit premium (net buying). Accrual is LINEAR —
+# percentage points of the static base price, applied once in get_price() —
+# clamped to [EconomyConfig.PRICE_IMPACT_FLOOR_PCT, PRICE_IMPACT_CEILING_PCT]
+# (price 40%..250% of base). The rolling window of the last
+# PRICE_IMPACT_RECOVERY_TURNS turns of net volume gates the regime: while its
+# average stays over the first ladder rung the market believes the pressure is
+# real (quiet turns HOLD — no pulsing exploit); once it falls back to or under
+# 1x, the price walks home to base over PRICE_IMPACT_RECOVERY_TURNS turns.
+# Ladder + inflation schedule in economy_config.gd.
+var impact_pct: Dictionary = {}     # good_id -> accumulated %
+var _net_history: Dictionary = {}   # good_id -> Array[float], recent per-turn net volume
+var _recovery_step: Dictionary = {} # good_id -> %-points/turn of the in-progress walk-back
 var _turn_sold: Dictionary = {}   # good_id -> units the player sold to market this turn
 var _turn_bought: Dictionary = {} # good_id -> units the player bought this turn
 var _lifetime_sold: Dictionary = {} # good_id -> units sold over the saved match
@@ -102,14 +110,19 @@ func record_market_buy_volume(good_id: String, qty: int) -> void:
 		return
 	_turn_bought[good_id] = int(_turn_bought.get(good_id, 0)) + qty
 
-## The 1x/2x/4x/10x per-turn volume thresholds for a good, or [] when the good has
-## no active producing recipe (no base output → no impact).
+## The ladder's per-turn volume thresholds for a good at the CURRENT turn
+## (threshold inflation applied), or [] when the good has no active producing
+## recipe (no base output → no impact). One entry per EconomyConfig ladder rung;
+## entry i is the largest net volume that does NOT yet accrue rung i's rate.
 func impact_thresholds(good_id: String) -> PackedInt32Array:
 	var base_out := Catalog.base_output_for_good(good_id)
 	if base_out <= 0:
 		return PackedInt32Array()
-	# Must track EconomyConfig.price_impact_rate's bands: 1x / 2x / 4x / 10x.
-	return PackedInt32Array([base_out, base_out * 2, base_out * 4, base_out * 10])
+	var scale: float = EconomyConfig.impact_threshold_scale(int(TurnManager.current_turn))
+	var out := PackedInt32Array()
+	for rung in EconomyConfig.PRICE_IMPACT_LADDER:
+		out.append(int(floorf(float(rung[0]) * float(base_out) * scale)))
+	return out
 
 func get_buy_price(good_id: String) -> float:
 	# The price you PAY to buy a unit from the market — the sale price plus the
@@ -128,73 +141,121 @@ func get_sale_price(good_id: String, ctx: Dictionary = {}) -> float:
 	return minf(lifted, get_buy_price(good_id))
 
 func get_estimated_price_in_n_turns(good_id: String, n: int) -> float:
-	# Forecast off the EFFECTIVE price (impact held constant): base decay is the
-	# only component we can extrapolate.
-	var current: float = get_price(good_id)
-	var good: Dictionary = Catalog.get_good(good_id)
-	var decay: float = good.get("decay_rate", 0.0)
-	return current * pow(1.0 - decay, n)
+	# Projects the SUSTAINED course — "if you keep doing what you have been doing".
+	# It reads the rolling window, NOT the per-turn trackers: tick_turn clears
+	# those at end of turn, so during DECIDE (when the player reads the market
+	# panel) they are always empty, and projecting off them told a player
+	# mid-glut that their price was about to recover while it was still falling.
+	# The regime logic here mirrors _tick_impact so the two cannot disagree.
+	var avg: float = rolling_net_volume(good_id)
+	var base_out: int = Catalog.base_output_for_good(good_id)
+	var scale: float = EconomyConfig.impact_threshold_scale(int(TurnManager.current_turn))
+	var rate: float = EconomyConfig.price_impact_rate(avg, base_out, scale)
+	var a: float = get_impact_pct(good_id)
+	var projected: float = a
+	if rate > 0.0:
+		projected = a + (-rate if avg > 0.0 else rate) * float(n)
+	elif absf(a) > 0.0:
+		projected = move_toward(a, 0.0, absf(a) / float(EconomyConfig.PRICE_IMPACT_RECOVERY_TURNS) * float(n))
+	projected = clampf(projected, EconomyConfig.PRICE_IMPACT_FLOOR_PCT, EconomyConfig.PRICE_IMPACT_CEILING_PCT)
+	return get_base_price_now(good_id) * (1.0 + projected / 100.0)
+
+## Mean net market volume over the rolling window (positive = net selling). This
+## is the number the impact model actually runs on, so UI should show it rather
+## than a single turn's figure.
+func rolling_net_volume(good_id: String) -> float:
+	var hist: Array = _net_history.get(good_id, [])
+	if hist.is_empty():
+		return 0.0
+	var total := 0.0
+	for v in hist:
+		total += float(v)
+	return total / float(hist.size())
 
 # --- Save/load (orchestrated by the SaveLoad autoload; docs/save_load_spec.md) ---
 
 func export_state() -> Dictionary:
 	# Per-turn volume trackers are transient (consumed by tick_turn the same
 	# frame the turn resolves; saving is DECIDE-only). Persist accumulated price
-	# impact and lifetime sale volume used by research conditions.
+	# impact, the rolling net-volume window it depends on, any in-progress
+	# walk-back step, and lifetime sale volume used by research conditions.
+	# Base prices are NOT saved: they are static catalog data now decay is
+	# retired (docs/price-impact-ladder-spec.md §7).
 	return {
-		"prices": prices.duplicate(true),
 		"impact_pct": impact_pct.duplicate(true),
+		"net_history": _net_history.duplicate(true),
+		"recovery_step": _recovery_step.duplicate(true),
 		"lifetime_sold": _lifetime_sold.duplicate(true),
 	}
 
 func import_state(d: Dictionary) -> void:
-	# Re-seed from the catalog first so goods added since the save keep their base
-	# price, then overlay the saved (decayed) prices. Silent: SaveLoad emits
+	# Re-seed every price from the catalog. Saved prices are deliberately NOT
+	# overlaid: with decay retired the base series is static, and a pre-change
+	# save carries decayed (lower) prices — re-anchoring moves them UP to base,
+	# never down (tolerant reader; no version bump). Silent: SaveLoad emits
 	# prices_updated once after every system imports.
 	for good in Catalog.all_goods():
 		prices[good.id] = good.base_price
-	var saved: Dictionary = d.get("prices", {})
-	for good_id in saved:
-		prices[good_id] = float(saved[good_id])
 	impact_pct = (d.get("impact_pct", {}) as Dictionary).duplicate(true)
+	_net_history = (d.get("net_history", {}) as Dictionary).duplicate(true)
+	_recovery_step = (d.get("recovery_step", {}) as Dictionary).duplicate(true)
 	_lifetime_sold = (d.get("lifetime_sold", {}) as Dictionary).duplicate(true)
 	_turn_sold.clear()
 	_turn_bought.clear()
 
-## Per-good price decay is suppressed until this turn (owner ruling 2026-07-27), then runs
-## the existing per-good path unchanged. The monotonic downward drift is deliberate design
-## pressure — this is a GRACE PERIOD, not mean-reversion: it gives the opening ~30 turns a
-## flat margin so a player learning the game doesn't watch their number rot while they read
-## the tutorial. Measured: the cluster's net moves only +16.00 -> +15.71 across t1..t20.
-const DECAY_FIRST_TURN := 30
-
 func tick_turn() -> void:
-	var decay_live: bool = int(TurnManager.current_turn) >= DECAY_FIRST_TURN
+	# Price decay is RETIRED (owner ruling 2026-08-28, reversing 2026-07-27's
+	# "prices always fall" — docs/price-impact-ladder-spec.md). Base prices are
+	# static; only glut/deficit impact moves what the player sees, and the
+	# downward squeeze rests on the carbon levy, port fees and input premia.
 	for good_id in prices.keys():
-		var good: Dictionary = Catalog.get_good(good_id)
-		var decay: float = float(good.get("decay_rate", 0.0)) if decay_live else 0.0
-		prices[good_id] = prices[good_id] * (1.0 - decay)
 		_tick_impact(str(good_id))
 	_turn_sold.clear()
 	_turn_bought.clear()
 	prices_updated.emit()
 
 ## Fold this turn's net player volume into the good's accumulated impact.
-## Over-threshold volume accrues at the band's rate (glut down / deficit up);
-## at-or-under-threshold turns recover toward 0. Cap ±PRICE_IMPACT_CAP_PCT.
+## Over-threshold volume accrues at the ladder rung's rate (glut down / deficit
+## up). The rolling window of the last PRICE_IMPACT_RECOVERY_TURNS turns of net
+## volume gates recovery: while its average stays over the first rung, quiet
+## turns HOLD the price where it is (pausing buys no forgiveness); once the
+## average falls to or under 1x, the impact walks linearly back to zero over
+## PRICE_IMPACT_RECOVERY_TURNS turns. Clamp to [floor, ceiling].
 func _tick_impact(good_id: String) -> void:
 	var net: int = int(_turn_sold.get(good_id, 0)) - int(_turn_bought.get(good_id, 0))
-	var rate: float = EconomyConfig.price_impact_rate(net, Catalog.base_output_for_good(good_id))
 	var a := get_impact_pct(good_id)
-	if rate > 0.0:
-		a += -rate if net > 0 else rate
-	else:
-		# Recovery scales with how deep the impact is, so the continuous curve can't
-		# ratchet a good to the floor and pin it there (see EconomyConfig).
-		a = move_toward(a, 0.0, EconomyConfig.price_impact_recovery(a))
-	a = clampf(a, -EconomyConfig.PRICE_IMPACT_CAP_PCT, EconomyConfig.PRICE_IMPACT_CAP_PCT)
+	if net == 0 and a == 0.0 and not _net_history.has(good_id):
+		return  # untouched good — keep the window dict (and the save) sparse
+	var hist: Array = _net_history.get(good_id, [])
+	hist.append(float(net))
+	while hist.size() > EconomyConfig.PRICE_IMPACT_RECOVERY_TURNS:
+		hist.pop_front()
+	_net_history[good_id] = hist
+	var avg := 0.0
+	for v in hist:
+		avg += float(v)
+	avg /= float(hist.size())
+	var base_out: int = Catalog.base_output_for_good(good_id)
+	var scale: float = EconomyConfig.impact_threshold_scale(int(TurnManager.current_turn))
+	if EconomyConfig.price_impact_rate(avg, base_out, scale) > 0.0:
+		# The window says the pressure is real: accrue this turn's rung. A quiet
+		# turn inside a loud window holds — it does not recover.
+		var rate: float = EconomyConfig.price_impact_rate(float(net), base_out, scale)
+		if rate > 0.0:
+			a += -rate if net > 0 else rate
+		_recovery_step.erase(good_id)
+	elif absf(a) > 0.0:
+		# The window has gone quiet: snapshot the gap once, close it linearly.
+		if not _recovery_step.has(good_id):
+			_recovery_step[good_id] = absf(a) / float(EconomyConfig.PRICE_IMPACT_RECOVERY_TURNS)
+		a = move_toward(a, 0.0, float(_recovery_step[good_id]))
+	a = clampf(a, EconomyConfig.PRICE_IMPACT_FLOOR_PCT, EconomyConfig.PRICE_IMPACT_CEILING_PCT)
 	if absf(a) < 0.0001:
 		impact_pct.erase(good_id)
+		_recovery_step.erase(good_id)
+		# A fully-recovered, currently-quiet good drops its window too.
+		if net == 0 and absf(avg) < 0.0001:
+			_net_history.erase(good_id)
 	else:
 		impact_pct[good_id] = a
 

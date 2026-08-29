@@ -43,6 +43,7 @@ func _ready() -> void:
 	print("\n==== price-of-everything tests ====")
 	_test_scripts_parse()
 	_test_goods_graph_reopen_clears_focus()
+	_test_arrival_history()
 	_test_map_style_plate()
 	_test_midcentury_road_layout_fixture()
 	_test_midcentury_industry_landmark_tier()
@@ -240,6 +241,11 @@ func _ready() -> void:
 	_test_pending_special_order_shipment_resolution()
 	await _test_special_order_resolution_dialog()
 	_test_market_special_orders_tab()
+	_test_market_prices_tab_impact_columns()
+	_test_base_output_ignores_gated_recipes()
+	_test_politics_panel_entries()
+	_test_forest_canopy_variants()
+	_test_authored_forest_areas()
 	_test_save_load_roundtrip()
 	await _test_pending_load_applies_on_scene_ready()
 	_test_start_config_expansion()
@@ -414,6 +420,9 @@ func _ready() -> void:
 	_test_partial_power_dispatch()
 	_test_building_diagnostics()
 	_test_infra_upgrade()
+	await _test_core_panels_open()
+	await _test_demolished_building_loses_its_sprite()
+	await _test_farm_on_a_crowded_tile()
 	if not _failed_names.is_empty():
 		print("FAILED TESTS:")
 		for failed_name in _failed_names:
@@ -4523,6 +4532,618 @@ func _test_market_special_orders_tab() -> void:
 	SpecialOrderState.reset()
 	TurnManager.current_turn = saved_turn
 
+## The GOOD PRICES tab, which the special-orders test never builds — it jumps straight to
+## tab 2, which is how a null-deref in _build_prices_tab shipped unnoticed.
+##
+## HONEST SCOPE: this does NOT catch that class of bug, and it was checked against the
+## broken code to be sure. A GDScript runtime error prints and execution CONTINUES, so the
+## bad `_detach(null)` left no observable state difference — every assertion below passed
+## either way. What catches it is scanning a windowed run's output for "SCRIPT ERROR"
+## (tools/market_shot.tscn reproduces it in one line); state assertions cannot.
+##
+## What this DOES cover, both previously untested: that the prices tab builds and rebuilds
+## with the header wrapped in a zero-min-width clip (the fix that keeps the widened table
+## from forcing the panel off-screen), and the column contract the owner set — the rate is
+## the header, each cell carries that good's own quantity.
+func _test_market_prices_tab_impact_columns() -> void:
+	var panel: Control = load("res://scenes/market_panel.tscn").instantiate()
+	add_child(panel)
+	panel.call("_ensure_built")
+	var tabs: TabContainer = panel.get("_tabs")
+	tabs.current_tab = 0
+	panel.call("_ensure_current_tab_built")
+
+	# The header must live inside the clipping wrapper, and the wrapper must report NO
+	# minimum width — that is what stops the widened table forcing the panel off-screen.
+	var clip: Control = panel.get("_header_clip")
+	var header: Control = panel.get("header_static")
+	_check(clip != null and header != null and header.get_parent() == clip,
+		"market prices tab: the header is wrapped in its clipping container")
+	_check(clip != null and clip.custom_minimum_size.x == 0.0,
+		"market prices tab: the header clip reports no minimum width")
+	_check(header != null and header.get_combined_minimum_size().x > 0.0,
+		"market prices tab: the header itself still sizes to its columns")
+
+	# Toggling the ladder rebuilds the tab — the path that used to deref a null clip.
+	panel.call("_set_impact_expanded", true)
+	_check(panel.get("_impact_expanded"), "market prices tab: impact columns expand")
+	_check(header.get_parent() == panel.get("_header_clip"),
+		"market prices tab: the header survives an expand rebuild inside its clip")
+	panel.call("_set_impact_expanded", false)
+	_check(not panel.get("_impact_expanded"), "market prices tab: impact columns collapse again")
+	_check(header.get_parent() == panel.get("_header_clip"),
+		"market prices tab: the header survives a collapse rebuild inside its clip")
+
+	# Column contract (owner 2026-08-29): the RATE is the header, and each cell carries that
+	# good's own unit threshold — not the percentage.
+	panel.call("_set_impact_expanded", true)
+	var rows: Array = panel.get("rows")
+	var checked := false
+	for row in rows:
+		if not is_instance_valid(row) or str(row.get("good_id")) == "":
+			continue
+		var thresholds: PackedInt32Array = MarketState.impact_thresholds(str(row.get("good_id")))
+		if thresholds.is_empty():
+			continue
+		var cells: Array = row.get("_rung_cells")
+		_check(cells.size() == EconomyConfig.PRICE_IMPACT_LADDER.size(),
+			"market prices tab: one rung cell per ladder step")
+		_check(str((cells[0] as Label).text) == row.call("_thousands", thresholds[0]),
+			"market prices tab: a rung cell shows the good's quantity, not the rate")
+		checked = true
+		break
+	_check(checked, "market prices tab: at least one produced good exercised the rung cells")
+	panel.queue_free()
+
+## Base output is the yardstick every price-impact threshold is a multiple of, so WHICH
+## recipe defines it is load-bearing. It is the good's best BASE recipe — one with an empty
+## tech_unlock_req — not the best recipe in the game (owner 2026-08-29): steel read 54/turn
+## off Electric Arc Steelmaking, behind research_metal_004, when the player starts with
+## Steelmaking at 44.
+func _test_base_output_ignores_gated_recipes() -> void:
+	var steel := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
+	_check(Catalog.base_output_for_good(steel) == 44,
+		"base output: steel is 44 (Steelmaking), not 54 (Electric Arc, tech-gated)")
+
+	# The rule, stated generally: no good may take its base output from a gated recipe while
+	# an ungated one exists. This is what stops a future recipe silently moving a threshold.
+	var offenders: Array = []
+	for good in Catalog.all_goods():
+		var gid := str(good.get("id", ""))
+		var base := Catalog.base_output_for_good(gid)
+		if base <= 0:
+			continue
+		var best_ungated := 0
+		for r in Catalog.recipes_producing(gid):
+			if str(r.get("tech_unlock_req", "")) == "":
+				best_ungated = maxi(best_ungated, Catalog.recipe_output_qty(r, gid))
+		if best_ungated > 0 and base != best_ungated:
+			offenders.append("%s (base %d, ungated best %d)" % [str(good.get("internal_name", gid)), base, best_ungated])
+	_check(offenders.is_empty(),
+		"base output: every good with an ungated recipe uses it as its yardstick (%s)"
+			% ("none" if offenders.is_empty() else ", ".join(PackedStringArray(offenders))))
+
+	# The fallback: a good whose every producer is gated still gets a real threshold, because
+	# a base output of 0 would exempt it from price impact altogether.
+	var gated_only := 0
+	for good in Catalog.all_goods():
+		var gid2 := str(good.get("id", ""))
+		var producers: Array = Catalog.recipes_producing(gid2)
+		if producers.is_empty():
+			continue
+		var has_ungated := false
+		for r in producers:
+			if str(r.get("tech_unlock_req", "")) == "":
+				has_ungated = true
+		if not has_ungated:
+			gated_only += 1
+			_check(Catalog.base_output_for_good(gid2) > 0,
+				"base output: %s is gated-only and still takes impact" % str(good.get("internal_name", gid2)))
+	_check(gated_only > 0, "base output: the gated-only fallback is actually exercised (%d goods)" % gated_only)
+
+## OPEN EVERY CORE PANEL, through the entry points a player actually uses.
+##
+## Worth nothing until run_tests.py began failing on SCRIPT ERROR (2026-08-29): a GDScript
+## runtime error prints and CONTINUES, so a panel that threw on every open still left the
+## suite green — which is how the Market crash shipped. With that gate, merely BUILDING a
+## panel proves it raised nothing, and that is most of what a panel can get wrong: a null
+## @onready path, a renamed node, a bad dict key, a signal bound to a method that moved.
+##
+## ISOLATION. Driving these panels runs real sim code — the first attempt took a loan out of
+## LoanState and left roads, power and tutorial state altered, failing 17 unrelated tests
+## downstream. So the whole test runs between a SaveLoad snapshot and its restore, and it is
+## called LAST. Either alone would do; both together mean neither the ordering nor the
+## restore has to be perfect. If you add a test after this one, keep the snapshot working.
+##
+## The handlers live on the HUD node (bottom_menu.gd is attached there) — NOT on the child
+## HBoxContainer called "BottomMenu", which is a decoy that find_child hits first.
+func _test_core_panels_open() -> void:
+	var snapshot: Dictionary = SaveLoad.export_snapshot()
+	var packed: PackedScene = load("res://scenes/main.tscn")
+	if packed == null:
+		_check(false, "core panels: main.tscn instantiates")
+		return
+	var inst: Node = packed.instantiate()
+	add_child(inst)
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	var menu: Node = null
+	for candidate in [inst.find_child("HUD", true, false), inst.find_child("BottomMenu", true, false)]:
+		if candidate != null and candidate.has_method("_on_market_pressed"):
+			menu = candidate
+			break
+	_check(menu != null, "core panels: the bottom-menu handlers are reachable")
+	if menu == null:
+		inst.queue_free()
+		SaveLoad.import_snapshot(snapshot)
+		return
+
+	# [handler, the property holding the panel it opens, human name]. Politics is absent on
+	# purpose: _on_politics_pressed is a print stub, and asserting it opened something would
+	# be asserting a feature that does not exist.
+	# Construct is the exception: the handler opens whichever panel _active_construct_panel()
+	# picks (v2 when MatchState.use_construct_panel_v2), so asking for the v1 property finds a
+	# panel that legitimately stayed hidden. Checked separately, below.
+	var via_menu := [
+		["_on_politics_pressed", "politics_panel", "Politics"],
+		["_on_resources_pressed", "resource_panel", "Resources"],
+		["_on_mapmodes_pressed", "mapmodes_panel", "Mapmodes"],
+		["_on_market_pressed", "market_panel", "Market"],
+		["_on_buildings_pressed", "building_ledger_panel", "Buildings ledger"],
+		["_on_research_pressed", "research_panel", "Research"],
+		["_on_people_pressed", "people_panel", "Labour"],
+	]
+	for entry: Array in via_menu:
+		menu.call(str(entry[0]))
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var panel = menu.get(str(entry[1]))
+		_check(panel != null and is_instance_valid(panel) and (panel as Control).visible,
+			"core panels: %s opens from its bottom-menu button" % str(entry[2]))
+		menu.call(str(entry[0]))          # toggle shut so the next opens on a clean HUD
+		await get_tree().process_frame
+
+	# Construct, against whichever panel version is live.
+	menu.call("_on_construct_pressed")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var construct: Control = menu.call("_active_construct_panel")
+	_check(construct != null and construct.visible,
+		"core panels: Construct opens from its bottom-menu button")
+	menu.call("_on_construct_pressed")
+	await get_tree().process_frame
+
+	# Money / Balance — the top bar's money widget, not the bottom menu.
+	menu.call("_on_money_widget_clicked")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var money = menu.get("money_panel")
+	_check(money != null and (money as Control).visible, "core panels: Money opens on Balance")
+	if money != null:
+		(money as Control).hide()
+
+	# The two full-screen views, through the signals the buttons emit.
+	MatchState.empire_view_requested.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var empire: Node = inst.find_child("EmpireView", true, false)
+	_check(empire != null and (empire as CanvasItem).visible, "core panels: the supply chain view opens")
+	if empire != null and empire.has_method("toggle"):
+		empire.call("toggle")
+		await get_tree().process_frame
+
+	MatchState.goods_graph_requested.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var graph: Node = inst.find_child("GoodsGraphView", true, false)
+	_check(graph != null and (graph as CanvasItem).visible, "core panels: the goods graph opens")
+	if graph != null and graph.has_method("toggle"):
+		graph.call("toggle")
+		await get_tree().process_frame
+
+	# Encyclopedia.
+	var overlay: Node = inst.find_child("SearchOverlay", true, false)
+	if overlay != null and overlay.has_method("open_encyclopedia"):
+		overlay.call("open_encyclopedia")
+		await get_tree().process_frame
+		await get_tree().process_frame
+		_check((overlay as CanvasItem).visible, "core panels: the Encyclopedia opens")
+		(overlay as CanvasItem).visible = false
+		await get_tree().process_frame
+	else:
+		_check(false, "core panels: the encyclopedia overlay exposes open_encyclopedia")
+
+	# Turn briefing (the "updates" hub behind the bell). It is NOT in main.tscn — the
+	# TurnBriefing autoload builds it lazily in its own CanvasLayer, and only shows it when
+	# there is something to report. Its items derive from live sim state (starvation, storage,
+	# deposits) with no push API, so this asserts what is assertable without faking a crisis:
+	# that expanding CONSTRUCTS the panel — the path where a build error would fire — and that
+	# it shows itself exactly when it has items.
+	# ...and it mounts NO UI under --headless: _sync_ui() returns early on
+	# DisplayServer.get_name() == "headless", deliberately. So the assertable contract here is
+	# the model half — expand() rebuilds the items and flips the flag without raising (the
+	# SCRIPT ERROR gate covers the "without raising" half) — plus the headless guard itself,
+	# which is worth pinning: if it ever stopped holding, every headless run would start
+	# building panels nobody can see.
+	TurnBriefing.expand()
+	await get_tree().process_frame
+	_check(TurnBriefing.expanded, "core panels: the briefing expands its model state")
+	_check(TurnBriefing.get("_panel") == null,
+		"core panels: the briefing mounts no UI headless (its documented guard)")
+	TurnBriefing.collapse()
+	await get_tree().process_frame
+
+	inst.queue_free()
+	await get_tree().process_frame
+	# Put the sim back exactly as it was — opening these panels moved real state.
+	SaveLoad.import_snapshot(snapshot)
+	await get_tree().process_frame
+
+## The Politics panel is a RECORD of the decarbonisation arc: it repeats what the player was
+## already told, in one place they can re-read. So the rule under test is what it shows WHEN
+## — nothing before the election, each beat appearing on its turn, and the "ramping up until
+## turn X" line giving way to "in full effect" rather than standing there stating something
+## that stopped being true.
+func _test_politics_panel_entries() -> void:
+	var panel: Control = load("res://scripts/politics_panel.gd").new()
+	add_child(panel)
+	var saved_turn: int = TurnManager.current_turn
+
+	var election: int = PolicyState.beat("election_news")
+	var tax_notice: int = PolicyState.beat("tax_notice")
+	var ramp: int = PolicyState.beat("ramp_first")
+	var p1: int = PolicyState.beat("p1")
+	var subsidy: int = PolicyState.beat("subsidy")
+
+	TurnManager.current_turn = maxi(1, election - 1)
+	_check((panel.call("_entries") as Array).is_empty(),
+		"politics: nothing before the election — the panel says 'No Political Events yet'")
+
+	TurnManager.current_turn = election
+	var at_election: Array = panel.call("_entries")
+	_check(at_election.size() == 1
+			and str((at_election[0] as Dictionary).get("title", "")) == "A new government elected!",
+		"politics: the election is the first entry")
+
+	TurnManager.current_turn = tax_notice
+	var titles: Array = _politics_titles(panel)
+	_check(titles.has("Carbon Tax announced"), "politics: the tax announcement appears on its turn")
+
+	# Mid-ramp: the countdown entry is present and names the turn the levy tops out.
+	TurnManager.current_turn = maxi(ramp, mini(ramp, p1 - 1))
+	titles = _politics_titles(panel)
+	var ramping := false
+	for t in titles:
+		if str(t).begins_with("Carbon Tax ramping up until turn "):
+			ramping = true
+			_check(str(t).ends_with(str(p1)), "politics: the ramp entry names the turn it tops out (%d)" % p1)
+	_check(ramping, "politics: the ramp entry shows while the levy is still climbing")
+
+	# At full rate the countdown must be GONE, replaced by the standing entry.
+	TurnManager.current_turn = p1
+	titles = _politics_titles(panel)
+	var still_ramping := false
+	for t in titles:
+		if str(t).begins_with("Carbon Tax ramping up"):
+			still_ramping = true
+	_check(not still_ramping, "politics: the ramp entry gives way once the levy is at full rate")
+	_check(titles.has("Carbon Tax in full effect"), "politics: the levy's standing entry replaces it")
+
+	# The whole arc, once the subsidy has landed.
+	TurnManager.current_turn = maxi(subsidy, p1)
+	titles = _politics_titles(panel)
+	for expected in ["A new government elected!", "Carbon Tax announced",
+			"Carbon Tax in full effect", "Subsidy for Green energy",
+			"Green Power subsidy in full effect"]:
+		_check(titles.has(expected), "politics: '%s' is in the record" % expected)
+	# Only the six authored beats, ever — this panel is deliberately not a news feed.
+	_check(titles.size() <= 6, "politics: the record stays to the authored beats (%d)" % titles.size())
+	# Every entry carries one of the three icons and a body.
+	var well_formed := true
+	for e: Dictionary in (panel.call("_entries") as Array):
+		if not (str(e.get("icon", "")) in ["gavel", "coal_banned", "power"]):
+			well_formed = false
+		if str(e.get("body", "")) == "":
+			well_formed = false
+	_check(well_formed, "politics: every entry has one of the three icons and a body")
+
+	TurnManager.current_turn = saved_turn
+	panel.queue_free()
+
+
+func _politics_titles(panel: Control) -> Array:
+	var out: Array = []
+	for e: Dictionary in (panel.call("_entries") as Array):
+		out.append(str(e.get("title", "")))
+	return out
+
+## Canopy types: the seven the editor offers must all exist in the painter, "current" must
+## still draw exactly what it drew before they were added, and each type must actually change
+## the wood — a variant that silently did nothing is the failure mode a look-dev tool cannot
+## catch once it stops being looked at.
+func _test_forest_canopy_variants() -> void:
+	var Painter := load("res://scripts/authored_fabric_painter.gd")
+	var MapEd := load("res://scripts/map_editor/map_editor.gd")
+
+	# The editor's list and the painter's knob table cannot drift apart.
+	_check(MapEd.FOREST_VARIANTS == Painter.FOREST_VARIANTS,
+		"canopy: the editor offers exactly the painter's types")
+	var missing: Array = []
+	for name in Painter.FOREST_VARIANTS:
+		if not Painter._VARIANT_KNOBS.has(str(name)):
+			missing.append(str(name))
+	_check(missing.is_empty(), "canopy: every type has knobs (%s)" % str(missing))
+	_check(str(Painter.FOREST_VARIANTS[0]) == "current",
+		"canopy: type 1 is the shipped look, so key 1 is always 'leave it alone'")
+
+	# A square wood, big enough that every knob has room to act but comfortably UNDER
+	# TREE_LIMIT (900). At density 4 a wood this size generates thousands of candidates and
+	# woodland_points returns early at the cap — every variant then truncates to exactly 900
+	# and looks identical, which is how this test first failed. The cap also truncates
+	# COLUMN-WISE rather than sampling, so on a capped wood a gradient is partly masked.
+	var area := {
+		"id": "fo:test:1",
+		"density": 1.0,
+		"outline": [[-160.0, -160.0], [160.0, -160.0], [160.0, 160.0], [-160.0, 160.0]],
+	}
+	var counts: Dictionary = {}
+	for name in Painter.FOREST_VARIANTS:
+		var probe: Dictionary = area.duplicate(true)
+		probe["variant"] = str(name)
+		counts[str(name)] = Painter.woodland_points(probe).size()
+	_check(int(counts["current"]) > 0, "canopy: the control wood actually has trees (%d)" % int(counts["current"]))
+
+	# No variant may leave the wood unchanged — that is the silent-no-op case.
+	var inert: Array = []
+	for name in Painter.FOREST_VARIANTS:
+		if str(name) == "current":
+			continue
+		if int(counts[str(name)]) == int(counts["current"]):
+			inert.append(str(name))
+	_check(inert.is_empty(), "canopy: no type is a silent no-op (%s)" % str(inert))
+	# The two the owner picked out by name, in the direction they were specified.
+	_check(int(counts["sparse"]) < int(counts["current"]),
+		"canopy: sparse is thinner than the shipped look (%d vs %d)" % [int(counts["sparse"]), int(counts["current"])])
+
+	# An area with NO variant must be byte-identical to an explicit "current" — that is what
+	# keeps every wood already in the document exactly as it was.
+	var bare: Dictionary = area.duplicate(true)
+	var explicit: Dictionary = area.duplicate(true)
+	explicit["variant"] = "current"
+	_check(Painter.woodland_points(bare) == Painter.woodland_points(explicit),
+		"canopy: a wood with no type set draws as it always did")
+
+	# "graded" thins across the wood rather than uniformly: far half well under the near half.
+	var graded: Dictionary = area.duplicate(true)
+	graded["variant"] = "graded"
+	var pts: PackedVector2Array = Painter.woodland_points(graded)
+	# Split along the wood's OWN gradient axis, derived exactly as the painter derives it —
+	# the axis is per-wood (so neighbouring woods do not all thin the same way), and measuring
+	# across a fixed diagonal reads a real gradient as almost uniform.
+	var RoadHashRef := load("res://scripts/road_hash.gd")
+	var salt: int = RoadHashRef.fnv1a(str(graded["id"])) & 0xFFFF
+	var wob_salt: float = float(salt % 977) * 0.031
+	var axis := Vector2(cos(wob_salt * 2.1), sin(wob_salt * 2.1))
+	var near := 0
+	var far := 0
+	for q in pts:
+		if q.dot(axis) < 0.0:
+			near += 1
+		else:
+			far += 1
+	_check(near > 0 and far > 0, "canopy: graded keeps trees at both ends")
+	_check(mini(near, far) * 2 < maxi(near, far),
+		"canopy: graded is genuinely dense-to-sparse, not uniform (%d vs %d)" % [near, far])
+
+
+## A wood drawn in the editor makes its tile wooded in the sim, not only in the picture.
+## AuthoredMap hands over the AREAS; world_map maps them onto tiles, because placing a wood on
+## a tile needs the hex geometry and most woods in the document carry only an outline (they
+## were imported from the procedural discs before the editor could plant them).
+func _test_authored_forest_areas() -> void:
+	var AM := load("res://scripts/authored_map.gd")
+	var areas: Array = AM.forest_areas()
+	_check(areas is Array, "authored forests: forest_areas returns the records")
+	# Every record needs an id and a usable outline, or it can be neither drawn nor felled.
+	var broken: Array = []
+	for area_value in areas:
+		var area: Dictionary = area_value
+		if str(area.get("id", "")) == "" or (area.get("outline", []) as Array).size() < 3:
+			broken.append(str(area.get("id", "?")))
+	_check(broken.is_empty(), "authored forests: every wood has an id and an outline (%s)" % str(broken))
+
+## A demolished building stops being drawn. The removal path existed but was reachable only by
+## CANCELLING A BUILD — sell, demolish, liquidate and bankruptcy all emit building_removed and
+## left the footprint standing, which is a building the player has paid to remove and can still
+## see (owner 2026-08-29).
+func _test_demolished_building_loses_its_sprite() -> void:
+	var packed: PackedScene = load("res://scenes/main.tscn")
+	if packed == null:
+		_check(false, "demolish visuals: main.tscn instantiates")
+		return
+	var snapshot: Dictionary = SaveLoad.export_snapshot()
+	var inst: Node = packed.instantiate()
+	add_child(inst)
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	var bv: Node = inst.find_child("BuildingVisuals", true, false)
+	var terrain: Node = inst.find_child("TerrainLayer", true, false)
+	_check(bv != null and terrain != null, "demolish visuals: the visual layers exist")
+	if bv == null or terrain == null:
+		inst.queue_free()
+		SaveLoad.import_snapshot(snapshot)
+		return
+
+	# A real building on a real tile, placed the way the world places one.
+	var tile_id := ""
+	for coord_key in terrain.tiles:
+		var td: Dictionary = terrain.tiles[coord_key]
+		if str(td.get("type", "")).to_lower() in ["rural", "urban"]:
+			tile_id = str(td.get("id", ""))
+			break
+	_check(tile_id != "", "demolish visuals: found a buildable tile")
+	if tile_id == "":
+		inst.queue_free()
+		SaveLoad.import_snapshot(snapshot)
+		return
+	var coord: Vector2i = terrain.call("id_to_coord", tile_id)
+	var iid: String = MatchState.add_building("b_002", "", tile_id, MatchState.LOCAL_PLAYER, "")
+	inst.call("emit_signal", "building_placed", tile_id, "b_002", "", iid, coord)
+	await get_tree().process_frame
+	_check(bv.call("has_placement", iid),
+		"demolish visuals: a placed building has a drawn footprint")
+
+	# Remove it the way every removal route does, and the footprint must go with it.
+	MatchState.remove_building(iid)
+	await get_tree().process_frame
+	_check(not bv.call("has_placement", iid),
+		"demolish visuals: removing the building removes its footprint")
+
+	# And now the route a PLAYER actually takes, which is a turn longer than the call above:
+	# the Demolish button queues the job and tick_demolish finishes it. Worth its own case
+	# because an exhausted mine is removed this way — the deposit running dry only stops it
+	# producing, it does not remove anything, so the sprite's fate rests entirely here.
+	# A FARM as well as the mine: a farm owns more than a footprint (hatch, parcels, lanes,
+	# bridges, cluster rings), so "the footprint is gone" is a weaker claim for it than for
+	# anything else. Verified on screen too — tools/demolish_shot.gd.
+	var farm_id: String = MatchState.add_building("b_014", "r_090", tile_id, MatchState.LOCAL_PLAYER, "")
+	inst.call("emit_signal", "building_placed", tile_id, "b_014", "r_090", farm_id, coord)
+	await get_tree().process_frame
+	if bv.call("has_placement", farm_id):
+		MatchState.start_demolish(farm_id)
+		for _f in MatchState.DEMOLISH_TURNS:
+			MatchState.tick_demolish()
+		await get_tree().process_frame
+		_check(not bv.call("has_placement", farm_id),
+			"demolish visuals: a demolished farm takes its fields with it")
+	else:
+		# A farm needs field room; if this tile could not take one, say so rather than
+		# reporting a pass for a building that was never drawn.
+		_check(true, "demolish visuals: (no room for a farm on this tile — case skipped)")
+
+	var mine_id: String = MatchState.add_building("b_001", "", tile_id, MatchState.LOCAL_PLAYER, "")
+	inst.call("emit_signal", "building_placed", tile_id, "b_001", "", mine_id, coord)
+	await get_tree().process_frame
+	_check(bv.call("has_placement", mine_id), "demolish visuals: the mine is drawn once placed")
+	var started: Dictionary = MatchState.start_demolish(mine_id)
+	_check(bool(started.get("ok", false)), "demolish visuals: demolition can be started (%s)"
+		% str(started.get("reason", "")))
+	_check(bv.call("has_placement", mine_id),
+		"demolish visuals: the mine is still drawn while the demolition is in progress")
+	for _turn in MatchState.DEMOLISH_TURNS:
+		MatchState.tick_demolish()
+	await get_tree().process_frame
+	_check(not MatchState.buildings.has(mine_id), "demolish visuals: the demolition completed")
+	_check(not bv.call("has_placement", mine_id),
+		"demolish visuals: pressing Demolish removes the sprite when the job finishes")
+
+	# AUTHORED woods are the document's, drawn by a painter rather than owned by a visual
+	# layer — and there are TWO painters: the live vector path, and the SubViewport that
+	# repaints a baked tile. The felled set must sit where BOTH see it. It first sat on the
+	# fabric layer, which meant the repaint faithfully redrew the wood the player had just
+	# demolished: correct code, painting from a document that still had the wood in it.
+	var FabricPainter := load("res://scripts/authored_fabric_painter.gd")
+	var fabric: Node = inst.find_child("AuthoredFabricVisuals", true, false)
+	if fabric != null and fabric.has_method("forget_forests"):
+		var felled_before: int = FabricPainter.felled_forests.size()
+		fabric.call("forget_forests", ["fo:test:felled"])
+		_check(FabricPainter.felled_forests.has("fo:test:felled"),
+			"demolish visuals: felling a wood records it where BOTH painters can see it")
+		_check(FabricPainter.felled_forests.size() == felled_before + 1,
+			"demolish visuals: felling the same wood twice records it once")
+		fabric.call("forget_forests", ["fo:test:felled"])
+		_check(FabricPainter.felled_forests.size() == felled_before + 1,
+			"demolish visuals: re-felling is idempotent")
+		FabricPainter.felled_forests.erase("fo:test:felled")
+	else:
+		_check(false, "demolish visuals: the fabric layer exposes forget_forests")
+
+	inst.queue_free()
+	await get_tree().process_frame
+	SaveLoad.import_snapshot(snapshot)
+	await get_tree().process_frame
+
+## Placing a FARM on a tile that is already full of buildings and roads must fail gently.
+##
+## Farms are the one category excluded from the gentle-failure fallback plot (_place_fallback_plot
+## takes "the nearest 50 u^2 beside a road", and a farm is a field, not a plot), so when the
+## packer finds nowhere a farm is the case that reaches the very end of _place_building with
+## nothing placed. That path has to warn and return, not throw — a player clicking Build on a
+## crowded tile is an ordinary thing to do, not an error.
+func _test_farm_on_a_crowded_tile() -> void:
+	var packed: PackedScene = load("res://scenes/main.tscn")
+	if packed == null:
+		_check(false, "crowded farm: main.tscn instantiates")
+		return
+	var snapshot: Dictionary = SaveLoad.export_snapshot()
+	var inst: Node = packed.instantiate()
+	add_child(inst)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var bv: Node = inst.find_child("BuildingVisuals", true, false)
+	var terrain: Node = inst.find_child("TerrainLayer", true, false)
+	if bv == null or terrain == null:
+		_check(false, "crowded farm: the visual layers exist")
+		inst.queue_free()
+		SaveLoad.import_snapshot(snapshot)
+		return
+
+	# The most built-up tile on the board: whatever already carries the most footprints, which
+	# is a far harsher test than a tile this test crowds itself.
+	var busiest := ""
+	var busiest_n := -1
+	for coord_key in terrain.tiles:
+		var td: Dictionary = terrain.tiles[coord_key]
+		var tid := str(td.get("id", ""))
+		if tid == "":
+			continue
+		var n: int = MatchState.get_buildings_on_tile(tid).size()
+		if n > busiest_n:
+			busiest_n = n
+			busiest = tid
+	_check(busiest != "", "crowded farm: found the busiest tile (%s, %d buildings)" % [busiest, busiest_n])
+	var coord: Vector2i = terrain.call("id_to_coord", busiest)
+
+	# Pack it further still, then ask for farms on top. Any of these may legitimately find no
+	# room — the assertion is that asking is SAFE, and that the sim and the visuals agree
+	# afterwards about what exists.
+	var ids: Array = []
+	for i in 6:
+		var iid: String = MatchState.add_building("b_002", "r_005", busiest, MatchState.LOCAL_PLAYER, "")
+		inst.call("emit_signal", "building_placed", busiest, "b_002", "r_005", iid, coord)
+		ids.append(iid)
+	await get_tree().process_frame
+	for i in 4:
+		var farm_id: String = MatchState.add_building("b_014", "r_090", busiest, MatchState.LOCAL_PLAYER, "")
+		inst.call("emit_signal", "building_placed", busiest, "b_014", "r_090", farm_id, coord)
+		ids.append(farm_id)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(true, "crowded farm: placing farms on a packed tile did not throw")
+
+	# Whatever DID get drawn must be a building that exists, and removing them all must leave
+	# no footprint behind — an undrawn farm must not leave a phantom either.
+	for iid_value in ids:
+		var iid := str(iid_value)
+		if bv.call("has_placement", iid):
+			_check(MatchState.buildings.has(iid),
+				"crowded farm: nothing is drawn for a building that does not exist")
+	for iid_value2 in ids:
+		MatchState.remove_building(str(iid_value2))
+	await get_tree().process_frame
+	var leftovers: Array = []
+	for iid_value3 in ids:
+		if bv.call("has_placement", str(iid_value3)):
+			leftovers.append(str(iid_value3))
+	_check(leftovers.is_empty(), "crowded farm: removing them all leaves no footprint (%s)" % str(leftovers))
+
+	inst.queue_free()
+	await get_tree().process_frame
+	SaveLoad.import_snapshot(snapshot)
+	await get_tree().process_frame
+
 func _special_order_goods(orders: Array) -> Array:
 	var out: Array = []
 	for order in orders:
@@ -7411,6 +8032,33 @@ func _test_demo_endings() -> void:
 		if not (str(e.get("result", "")) in ["victory", "continuity", "defeat"]):
 			complete = false
 	_check(complete, "demo ending: every ending has a title, a verdict and its copy")
+
+	# Per-start copy: three endings speak in the Metal Magnate's voice (the inherited
+	# father), which is not the Glass Merchant's story. Overrides swap those and only those.
+	var scenario_saved: String = MatchState.scenario_name
+	MatchState.scenario_name = "metal_magnate"
+	for id in EGD.DEMO_ENDINGS:
+		_check(EGD.ending_copy(str(id)) == str((EGD.DEMO_ENDINGS[id] as Dictionary).copy),
+			"ending copy: a start with no overrides gets the authored default (%s)" % str(id))
+	MatchState.scenario_name = "glass_merchant"
+	var glass_overrides: Dictionary = EGD.START_ENDING_COPY["glass_merchant"]
+	for id in EGD.DEMO_ENDINGS:
+		var copy: String = EGD.ending_copy(str(id))
+		_check(copy != "", "ending copy: the glass merchant has copy for every ending (%s)" % str(id))
+		if glass_overrides.has(id):
+			_check(copy == str(glass_overrides[id]),
+				"ending copy: the glass merchant's own words are used (%s)" % str(id))
+			_check(not ("father" in copy.to_lower()),
+				"ending copy: no inherited father in the glass merchant's ending (%s)" % str(id))
+		else:
+			_check(copy == str((EGD.DEMO_ENDINGS[id] as Dictionary).copy),
+				"ending copy: start-agnostic endings are left alone (%s)" % str(id))
+	# Every override must name an ending that actually exists, or it can never be shown.
+	for start_id in EGD.START_ENDING_COPY:
+		for id in (EGD.START_ENDING_COPY[start_id] as Dictionary):
+			_check(EGD.DEMO_ENDINGS.has(id),
+				"ending copy: override '%s' targets a real ending (%s)" % [str(start_id), str(id)])
+	MatchState.scenario_name = scenario_saved
 
 	# The endings follow the TRACKS. A campaign match keeps the campaign's titles.
 	MatchState.ruleset = {"name": "standard"}
@@ -11639,121 +12287,133 @@ func _test_price_impact() -> void:
 # impact, capped at ±50%, recovering 0.1%/turn under the threshold. The impact
 # multiplies the decayed base price; `prices` stays the impact-free series.
 func _test_price_impact_thresholds() -> void:
-	# BANDED response with SPACED thresholds (owner ruling): 1x / 2x / 4x / 10x.
-	# The 1x band (owner 2026-08-01) exists so a building pushed above its own base recipe
-	# output by modifiers starts to register at all.
+	# LADDER response (owner rulings 2026-08-28/29, docs/price-impact-ladder-spec.md):
+	# >1x 0.05, >3x 0.1, >5x 0.2, then 0.1-point steps to >11x 0.8 and a deliberate
+	# jump to 1.0 at >12x. Price decay is retired — this ladder is the whole price model.
 	_check(EconomyConfig.price_impact_rate(32, 32) == 0.0, "1x exactly is under the bite")
-	_check(EconomyConfig.price_impact_rate(33, 32) == EconomyConfig.PRICE_IMPACT_RATE_1X,
-		"just over 1x accrues the faintest band — a modified single building registers")
-	_check(EconomyConfig.price_impact_rate(-33, 32) == EconomyConfig.PRICE_IMPACT_RATE_1X,
-		"the 1x band applies to BUYING too, not only selling")
-	_check(EconomyConfig.PRICE_IMPACT_RATE_1X * 2.0 == EconomyConfig.PRICE_IMPACT_RATE_2X,
-		"the 1x band accrues at exactly half the band above it")
-	_check(EconomyConfig.price_impact_rate(64, 32) == EconomyConfig.PRICE_IMPACT_RATE_1X,
-		"2x exactly is the 1x band (bands are strictly-greater-than)")
-	_check(EconomyConfig.price_impact_rate(65, 32) == EconomyConfig.PRICE_IMPACT_RATE_2X,
-		"just over 2x accrues the gentle band")
-	_check(EconomyConfig.price_impact_rate(128, 32) == EconomyConfig.PRICE_IMPACT_RATE_2X,
-		"4x exactly is still the 2x band")
-	_check(EconomyConfig.price_impact_rate(129, 32) == EconomyConfig.PRICE_IMPACT_RATE_4X,
-		"just over 4x steps up")
-	_check(EconomyConfig.price_impact_rate(320, 32) == EconomyConfig.PRICE_IMPACT_RATE_4X,
-		"10x exactly is still the 4x band")
-	_check(EconomyConfig.price_impact_rate(321, 32) == EconomyConfig.PRICE_IMPACT_RATE_10X,
-		"over 10x is the flooding band")
-	_check(EconomyConfig.price_impact_rate(32000, 32) == EconomyConfig.PRICE_IMPACT_RATE_10X,
-		"the flooding band is the top — it saturates by design")
-	_check(EconomyConfig.price_impact_rate(-321, 32) == EconomyConfig.PRICE_IMPACT_RATE_10X,
-		"buying volume uses the same bands (deficit side)")
+	_check(EconomyConfig.price_impact_rate(33, 32) == 0.05,
+		"just over 1x accrues the faintest rung — a modified single building registers")
+	_check(EconomyConfig.price_impact_rate(-33, 32) == 0.05, "the 1x rung applies to BUYING too")
+	_check(EconomyConfig.price_impact_rate(96, 32) == 0.05, "3x exactly is still the 1x rung (strictly greater than)")
+	_check(EconomyConfig.price_impact_rate(97, 32) == 0.1, "just over 3x steps up")
+	_check(EconomyConfig.price_impact_rate(161, 32) == 0.2, "just over 5x steps up")
+	_check(EconomyConfig.price_impact_rate(193, 32) == 0.3, "just over 6x steps up")
+	_check(EconomyConfig.price_impact_rate(225, 32) == 0.4 and EconomyConfig.price_impact_rate(257, 32) == 0.5 \
+			and EconomyConfig.price_impact_rate(289, 32) == 0.6 and EconomyConfig.price_impact_rate(321, 32) == 0.7 \
+			and EconomyConfig.price_impact_rate(353, 32) == 0.8,
+		"the 6x-11x rungs step by exactly 0.1")
+	_check(EconomyConfig.price_impact_rate(384, 32) == 0.8, "12x exactly is still the 11x rung")
+	_check(EconomyConfig.price_impact_rate(385, 32) == 1.0, "over 12x jumps 0.8 -> 1.0 — flooding gets a step change")
+	_check(EconomyConfig.price_impact_rate(32000, 32) == 1.0, "the flooding rung is the top — it saturates by design")
 	_check(EconomyConfig.price_impact_rate(1000, 0) == 0.0, "no base output -> no impact")
 	# A NORMAL multi-building chain must not be punished: 3 factories of one good is 3x,
-	# which sits in the gentle band, not the flooding one. (The continuous curve charged
-	# 0.66%/turn here and crushed motors to the floor over 75 turns.)
-	_check(EconomyConfig.price_impact_rate(84, 28) == EconomyConfig.PRICE_IMPACT_RATE_2X,
-		"a 3-factory chain sits in the gentle band, not the flooding one")
-	_check(EconomyConfig.PRICE_IMPACT_CAP_PCT == 40.0, "impact is capped at 40% of base price")
-	# Recovery is FLAT — depth-scaling would outrun a 0.5%/turn accrual and reward pulsing.
-	_check(EconomyConfig.price_impact_recovery(0.0) == EconomyConfig.PRICE_IMPACT_RECOVERY_PCT
-		and EconomyConfig.price_impact_recovery(-40.0) == EconomyConfig.PRICE_IMPACT_RECOVERY_PCT,
-		"recovery is flat at every depth, so pulsing production can't out-earn the penalty")
-	_check(EconomyConfig.PRICE_IMPACT_RECOVERY_PCT < EconomyConfig.PRICE_IMPACT_RATE_2X + 0.0001,
-		"recovery never exceeds even the gentlest accrual band")
+	# which sits on the faintest rung, not the flooding one.
+	_check(EconomyConfig.price_impact_rate(84, 28) == 0.05, "a 3-factory chain sits on the faintest rung")
+	# Asymmetric cap: gluts bottom out at 40% of base price, deficits top out at 250%.
+	_check(EconomyConfig.PRICE_IMPACT_FLOOR_PCT == -60.0 and EconomyConfig.PRICE_IMPACT_CEILING_PCT == 150.0,
+		"price is capped between 40% and 250% of base")
+	# Threshold inflation is LINEAR (owner 2026-08-29): +25% of the ORIGINAL every 20 turns.
+	_check(EconomyConfig.impact_threshold_scale(1) == 1.0 and EconomyConfig.impact_threshold_scale(20) == 1.0,
+		"no threshold inflation in the first 20 turns")
+	_check(EconomyConfig.impact_threshold_scale(21) == 1.25 and EconomyConfig.impact_threshold_scale(40) == 1.25,
+		"turns 21-40 run at x1.25")
+	_check(EconomyConfig.impact_threshold_scale(41) == 1.5 and EconomyConfig.impact_threshold_scale(300) == 4.5,
+		"linear schedule: x1.50 from t41, x4.50 by t300 — NOT compounding")
+	_check(EconomyConfig.price_impact_rate(40, 32, 1.25) == 0.0 and EconomyConfig.price_impact_rate(41, 32, 1.25) == 0.05,
+		"an inflated threshold moves the bite point")
 
-	# Accrual, stacking on decay, recovery, and the cap — driven through the
-	# real per-turn pipeline on a scratch good id.
+	# Accrual, the rolling-window hold, walk-back recovery, and the caps — driven
+	# through the real per-turn pipeline on a scratch good id.
 	var gid := str(Catalog.get_good_by_internal_name("coal").get("id", ""))
 	var coal_base: int = Catalog.base_output_for_good(gid)
 	_check(coal_base > 0, "coal has a base building output")
+	var scale_now: float = EconomyConfig.impact_threshold_scale(int(TurnManager.current_turn))
 	# Flush any volume an earlier test left on the books BEFORE measuring — residue would
-	# push a sample into the wrong band and shift every expected value below.
+	# push a sample into the wrong rung and shift every expected value below.
 	MarketState._turn_sold.clear()
 	MarketState._turn_bought.clear()
 	MarketState.impact_pct.erase(gid)
-	# tick_turn decays every good's base price — restore the table afterwards so
-	# later market tests see untouched prices.
-	var prices_snapshot: Dictionary = MarketState.prices.duplicate(true)
+	MarketState._net_history.erase(gid)
+	MarketState._recovery_step.erase(gid)
 	var base_before: float = MarketState.get_base_price_now(gid)
-	# Sell in the FLOODING band (>10x) so the sample is unambiguous.
-	var rate_hi: float = EconomyConfig.price_impact_rate(coal_base * 11, coal_base)
-	MarketState.record_market_sale_volume(gid, coal_base * 11)
+	# Sell in the flooding rung (>12x even after inflation) so the sample is unambiguous.
+	var flood_units: int = int(ceilf(13.0 * float(coal_base) * scale_now))
+	MarketState.record_market_sale_volume(gid, flood_units)
 	MarketState.tick_turn()
-	var after_4x: float = -rate_hi
-	_check(absf(MarketState.get_impact_pct(gid) - after_4x) < 0.0001,
-		"one >10x sell turn accrues -%.2f%%" % rate_hi)
-	# Decay is suppressed until MarketState.DECAY_FIRST_TURN, so the effective rate at this
-	# turn may be 0 — read it the same way tick_turn() does rather than off the CSV.
-	var decay: float = float(Catalog.get_good(gid).get("decay_rate", 0.0)) \
-		if int(TurnManager.current_turn) >= MarketState.DECAY_FIRST_TURN else 0.0
-	var expected: float = base_before * (1.0 - decay) * (1.0 + after_4x / 100.0)
-	_check(absf(MarketState.get_price(gid) - expected) < 0.0001,
-		"impact multiplies the decayed base price (stacks on normal drift)")
-	var rate_3x: float = EconomyConfig.price_impact_rate(coal_base * 3, coal_base)
-	MarketState.record_market_sale_volume(gid, coal_base * 3)          # 3x sell -> gentle band
+	_check(absf(MarketState.get_impact_pct(gid) + 1.0) < 0.0001, "one flooding sell turn accrues -1.0%")
+	_check(absf(MarketState.get_price(gid) - base_before * (1.0 - 1.0 / 100.0)) < 0.0001,
+		"impact multiplies the STATIC base price — decay is retired, prices no longer drift")
+	# A quiet turn inside a loud window HOLDS: the rolling average is still over 1x.
 	MarketState.tick_turn()
-	var after_3x: float = after_4x - rate_3x
-	_check(absf(MarketState.get_impact_pct(gid) - after_3x) < 0.0001,
-		"a 3x turn adds only -%.2f%%" % rate_3x)
-	_check(rate_3x < rate_hi, "bands are monotonic: 3x bites less than >10x")
-	var recov: float = EconomyConfig.price_impact_recovery(after_3x)
-	MarketState.tick_turn()                                            # quiet turn
-	_check(absf(MarketState.get_impact_pct(gid) - (after_3x + recov)) < 0.0001,
-		"a quiet turn recovers by the flat rate")
-	var at_quiet: float = after_3x + recov
-	var rate_2x: float = EconomyConfig.price_impact_rate(coal_base * 3, coal_base)
-	MarketState.record_market_buy_volume(gid, coal_base * 3)           # >2x BUY
+	_check(absf(MarketState.get_impact_pct(gid) + 1.0) < 0.0001,
+		"a quiet turn does not recover while the rolling average stays loud — no pulsing exploit")
+	# Net buying pushes the impact UP at the same ladder rates (deficit side).
+	# Fresh window first: the signed rolling average NETS sells against buys, so a
+	# buy-flood straight after a sell-flood averages to quiet — by design (buying
+	# back what you sold is not a deficit).
+	MarketState.impact_pct.erase(gid)
+	MarketState._net_history.erase(gid)
+	MarketState._recovery_step.erase(gid)
+	MarketState.record_market_buy_volume(gid, flood_units)
 	MarketState.tick_turn()
-	_check(absf(MarketState.get_impact_pct(gid) - (at_quiet + rate_2x)) < 0.0001,
-		"net buying pushes impact UP by the same bands (deficit side)")
-	# Netting: equal buys and sells cancel to a quiet (recovery) turn.
-	var before_net: float = MarketState.get_impact_pct(gid)
-	var recov_net: float = EconomyConfig.price_impact_recovery(before_net)
-	MarketState.record_market_sale_volume(gid, coal_base * 4)
-	MarketState.record_market_buy_volume(gid, coal_base * 4)
+	_check(absf(MarketState.get_impact_pct(gid) - 1.0) < 0.0001,
+		"a flooding BUY turn accrues +1.0% — the same ladder, opposite sign")
+	# Walk-back: give the good a deep glut, then go quiet. The window drains first
+	# (holding), then the walk-back closes the whole gap in exactly 10 turns.
+	MarketState.impact_pct[gid] = -30.0
+	MarketState._net_history[gid] = [float(flood_units)]
+	MarketState._recovery_step.erase(gid)
+	var hold_turns := 0
+	var recover_turns := 0
+	var guard := 0
+	while MarketState.get_impact_pct(gid) != 0.0 and guard < 40:
+		var before: float = MarketState.get_impact_pct(gid)
+		MarketState.tick_turn()
+		if MarketState.get_impact_pct(gid) == before:
+			hold_turns += 1
+		else:
+			recover_turns += 1
+		guard += 1
+	_check(guard < 40, "a stopped glut recovers fully in bounded time")
+	_check(recover_turns == EconomyConfig.PRICE_IMPACT_RECOVERY_TURNS,
+		"the walk-back closes the gap in exactly 10 turns (-3.0/turn from -30)")
+	_check(hold_turns < EconomyConfig.PRICE_IMPACT_RECOVERY_TURNS,
+		"the hold lasts only until the rolling window drains")
+	# The glut floor: a deep impact plus a flooding turn clamps at -60 (price 40% of base).
+	MarketState.impact_pct[gid] = -59.5
+	MarketState._net_history.erase(gid)
+	MarketState._recovery_step.erase(gid)
+	MarketState.record_market_sale_volume(gid, flood_units)
 	MarketState.tick_turn()
-	_check(absf(MarketState.get_impact_pct(gid) - move_toward(before_net, 0.0, recov_net)) < 0.0001,
-		"offsetting buy+sell nets to recovery")
-	# Cap at ±PRICE_IMPACT_CAP_PCT.
-	var cap: float = EconomyConfig.PRICE_IMPACT_CAP_PCT
-	MarketState.impact_pct[gid] = -(cap - 0.1)
-	MarketState.record_market_sale_volume(gid, coal_base * 11)
-	MarketState.tick_turn()
-	_check(absf(MarketState.get_impact_pct(gid) + cap) < 0.0001, "impact caps at -%d%%" % int(cap))
-	# Save round-trip keeps the accumulated impact.
+	_check(absf(MarketState.get_impact_pct(gid) + 60.0) < 0.0001, "impact floors at -60%")
+	_check(absf(MarketState.get_price(gid) - base_before * 0.4) < 0.0001, "the floored price is 40% of base")
+	# Save round-trip keeps the impact AND the rolling window; prices re-anchor to catalog.
 	var snap: Dictionary = MarketState.export_state()
 	MarketState.impact_pct.clear()
+	MarketState._net_history.clear()
 	MarketState.import_state(snap)
-	_check(absf(MarketState.get_impact_pct(gid) + cap) < 0.0001, "impact survives save/load")
-	# Recovery clears it fully given time (and erases the entry near zero).
+	_check(absf(MarketState.get_impact_pct(gid) + 60.0) < 0.0001, "impact survives save/load")
+	_check(MarketState._net_history.has(gid), "the rolling window survives save/load")
+	_check(absf(float(MarketState.prices.get(gid, 0.0)) - float(Catalog.get_good(gid).get("base_price", 0.0))) < 0.0001,
+		"import re-anchors base prices to the catalog (decay retired; old decayed saves move UP)")
+	# The walk-back settles exactly to zero and erases its bookkeeping.
 	MarketState.impact_pct[gid] = -0.05
-	MarketState.tick_turn()
-	_check(MarketState.get_impact_pct(gid) == 0.0, "recovery settles exactly to zero")
-	# UI helper: thresholds surface as 1x|2x|4x|10x of the base output.
+	MarketState._net_history.erase(gid)
+	MarketState._recovery_step.erase(gid)
+	for i in EconomyConfig.PRICE_IMPACT_RECOVERY_TURNS:
+		MarketState.tick_turn()
+	_check(MarketState.get_impact_pct(gid) == 0.0 and not MarketState.impact_pct.has(gid) \
+			and not MarketState._net_history.has(gid),
+		"the walk-back settles exactly to zero and erases the entry and its window")
+	# UI helper: one threshold per ladder rung, at today's inflation multiplier.
 	var th: PackedInt32Array = MarketState.impact_thresholds(gid)
-	_check(th.size() == 4 and th[0] == coal_base and th[1] == coal_base * 2 \
-			and th[2] == coal_base * 4 and th[3] == coal_base * 10,
-		"impact_thresholds returns 1x/2x/4x/10x of base output, matching the live bands")
+	_check(th.size() == EconomyConfig.PRICE_IMPACT_LADDER.size(),
+		"impact_thresholds returns one entry per ladder rung")
+	_check(th[0] == int(floorf(float(coal_base) * scale_now)),
+		"the first threshold is 1x base output at today's inflation")
 	MarketState.impact_pct.erase(gid)
-	MarketState.prices = prices_snapshot
+	MarketState._net_history.erase(gid)
+	MarketState._recovery_step.erase(gid)
 	MarketState.prices_updated.emit()
 
 func _test_owner_costs() -> void:
@@ -16353,6 +17013,41 @@ func _test_goods_graph_reopen_clears_focus() -> void:
 ## constructions are the permanent regression surface: a future candidate that
 ## reopens one of these breaks fails here before it reaches a blind critic.
 ## Runnable narrative form: tools/instrument_attack.gd.
+
+## Arrival history: the empire view reports how reliably a line delivers, and nothing else
+## in the sim remembers a delivery once its goods are in the stockpile. Covers the window
+## query, that several shipments landing on one turn count as ONE delivering turn, and the
+## save round trip (PackedInt32Array does not survive JSON, so it is rebuilt on load).
+func _test_arrival_history() -> void:
+	var saved: Dictionary = MatchState.arrival_turns.duplicate(true)
+	MatchState.arrival_turns.clear()
+	var turn: int = TurnManager.current_turn
+	_check(MatchState.arrivals_in_window("tile_9_10", "coal") == 0, "arrivals: nothing recorded reads as zero")
+
+	MatchState.call("_record_arrival", "tile_9_10", "coal")
+	_check(MatchState.arrivals_in_window("tile_9_10", "coal") == 1, "arrivals: a delivery is recorded")
+	MatchState.call("_record_arrival", "tile_9_10", "coal")
+	_check(MatchState.arrivals_in_window("tile_9_10", "coal") == 1,
+		"arrivals: two shipments on the same turn are ONE delivering turn")
+	_check(MatchState.arrivals_in_window("tile_9_10", "iron_ore") == 0, "arrivals: kept per good")
+	_check(MatchState.arrivals_in_window("tile_7_9", "coal") == 0, "arrivals: kept per tile")
+
+	# Turns older than the window fall out of the count.
+	MatchState.arrival_turns["tile_9_10|coal"] = PackedInt32Array([turn - 50, turn])
+	_check(MatchState.arrivals_in_window("tile_9_10", "coal") == 1, "arrivals: stale turns leave the window")
+
+	# Save round trip.
+	var packed: Dictionary = MatchState.call("_arrival_turns_for_save")
+	_check((packed["tile_9_10|coal"] as Array).size() == 2, "arrivals: history serialises as plain ints")
+	var restored: Dictionary = MatchState.call("_arrival_turns_from_save", packed)
+	_check(restored["tile_9_10|coal"] is PackedInt32Array, "arrivals: history rebuilds as PackedInt32Array")
+	_check((restored["tile_9_10|coal"] as PackedInt32Array).size() == 2, "arrivals: round trip keeps every turn")
+	# A pre-history save must not crash or invent data.
+	_check((MatchState.call("_arrival_turns_from_save", null) as Dictionary).is_empty(),
+		"arrivals: a save with no history loads empty")
+
+	MatchState.arrival_turns = saved
+
 func _test_instrument_adversarial() -> void:
 	# ---- BREAK A1. Shattering scored a PERFECT articulation report: same ink,
 	# same footprint, four crumbs per building at 4.0u - one hair over the 3.8u

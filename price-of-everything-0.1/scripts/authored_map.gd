@@ -178,6 +178,22 @@ static func data() -> Dictionary:
 ## True once tools/map_editor/import_forests has written the map's woods into the document as
 ## `forests` areas. ForestVisuals reads it and stands down: the discs became areas, so drawing
 ## both would draw every wood twice.
+## Every authored wood, as records. Deliberately NOT "every wooded tile": most woods in the
+## document were imported before the editor could plant them and carry no `tiles` field, so
+## the tile has to be derived from the outline — and that needs the hex geometry, which lives
+## with the terrain layer, not here. world_map does the mapping; this just hands over the
+## records (see _index_authored_forests).
+static func forest_areas() -> Array:
+	var out: Array = []
+	var settlements: Dictionary = data().get("settlements", {}) as Dictionary
+	for key in settlements:
+		var settlement: Dictionary = settlements[key] as Dictionary
+		for area_value in _array(settlement, "forests"):
+			if typeof(area_value) == TYPE_DICTIONARY:
+				out.append(area_value)
+	return out
+
+
 static func forests_imported() -> bool:
 	return bool(data().get("forests_imported", false))
 

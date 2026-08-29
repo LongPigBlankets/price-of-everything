@@ -77,7 +77,38 @@ def main():
         godot, "--headless", "--path", PROJECT_DIR,
         "res://tests/test_runner.tscn", "--quit-after", "600",
     ]
-    sys.exit(subprocess.call(cmd))
+    sys.exit(run_and_gate(cmd))
+
+
+# A GDScript runtime error ("Cannot call method 'x' on a null value", a bad key, a bad cast)
+# PRINTS and then CONTINUES. It does not raise, does not abort the frame, and does not fail a
+# _check — so the suite reports 100% green while a panel is throwing on every open. That is
+# exactly how the 2026-08-29 Market crash reached the owner past a 3461/0 run.
+#
+# So the runner reads its own output and fails on any SCRIPT ERROR, which turns every
+# existing assertion into a real one: a test that merely walks code now also proves that code
+# raised nothing. Engine-level "ERROR:" lines are NOT gated — the suite legitimately emits
+# node-not-found and RID-leak-at-exit noise that is not a script fault.
+SCRIPT_ERROR_MARK = "SCRIPT ERROR"
+
+
+def run_and_gate(cmd):
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, bufsize=1)
+    script_errors = []
+    for line in proc.stdout:
+        sys.stdout.write(line)
+        if SCRIPT_ERROR_MARK in line:
+            script_errors.append(line.rstrip())
+    code = proc.wait()
+    if script_errors:
+        print("-" * 60)
+        print(f"FAILED: {len(script_errors)} GDScript runtime error(s) during the run.")
+        print("These do not fail an assertion on their own — see the note in this file.")
+        for line in script_errors:
+            print(f"  {line}")
+        return 1
+    return code
 
 
 if __name__ == "__main__":
