@@ -242,6 +242,7 @@ func _ready() -> void:
 	await _test_special_order_resolution_dialog()
 	_test_market_special_orders_tab()
 	_test_market_prices_tab_impact_columns()
+	_test_base_output_ignores_gated_recipes()
 	_test_save_load_roundtrip()
 	await _test_pending_load_applies_on_scene_ready()
 	_test_start_config_expansion()
@@ -4587,6 +4588,52 @@ func _test_market_prices_tab_impact_columns() -> void:
 		break
 	_check(checked, "market prices tab: at least one produced good exercised the rung cells")
 	panel.queue_free()
+
+## Base output is the yardstick every price-impact threshold is a multiple of, so WHICH
+## recipe defines it is load-bearing. It is the good's best BASE recipe — one with an empty
+## tech_unlock_req — not the best recipe in the game (owner 2026-08-29): steel read 54/turn
+## off Electric Arc Steelmaking, behind research_metal_004, when the player starts with
+## Steelmaking at 44.
+func _test_base_output_ignores_gated_recipes() -> void:
+	var steel := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
+	_check(Catalog.base_output_for_good(steel) == 44,
+		"base output: steel is 44 (Steelmaking), not 54 (Electric Arc, tech-gated)")
+
+	# The rule, stated generally: no good may take its base output from a gated recipe while
+	# an ungated one exists. This is what stops a future recipe silently moving a threshold.
+	var offenders: Array = []
+	for good in Catalog.all_goods():
+		var gid := str(good.get("id", ""))
+		var base := Catalog.base_output_for_good(gid)
+		if base <= 0:
+			continue
+		var best_ungated := 0
+		for r in Catalog.recipes_producing(gid):
+			if str(r.get("tech_unlock_req", "")) == "":
+				best_ungated = maxi(best_ungated, Catalog.recipe_output_qty(r, gid))
+		if best_ungated > 0 and base != best_ungated:
+			offenders.append("%s (base %d, ungated best %d)" % [str(good.get("internal_name", gid)), base, best_ungated])
+	_check(offenders.is_empty(),
+		"base output: every good with an ungated recipe uses it as its yardstick (%s)"
+			% ("none" if offenders.is_empty() else ", ".join(PackedStringArray(offenders))))
+
+	# The fallback: a good whose every producer is gated still gets a real threshold, because
+	# a base output of 0 would exempt it from price impact altogether.
+	var gated_only := 0
+	for good in Catalog.all_goods():
+		var gid2 := str(good.get("id", ""))
+		var producers: Array = Catalog.recipes_producing(gid2)
+		if producers.is_empty():
+			continue
+		var has_ungated := false
+		for r in producers:
+			if str(r.get("tech_unlock_req", "")) == "":
+				has_ungated = true
+		if not has_ungated:
+			gated_only += 1
+			_check(Catalog.base_output_for_good(gid2) > 0,
+				"base output: %s is gated-only and still takes impact" % str(good.get("internal_name", gid2)))
+	_check(gated_only > 0, "base output: the gated-only fallback is actually exercised (%d goods)" % gated_only)
 
 func _special_order_goods(orders: Array) -> Array:
 	var out: Array = []

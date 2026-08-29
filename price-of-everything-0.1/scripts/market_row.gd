@@ -223,7 +223,7 @@ func _refresh_impact_cells() -> void:
 		cell.text = _thousands(thresholds[i])
 		var tip := "%s: sell (or buy) more than %s in one turn and its price moves %s%%/turn.\n" % [
 			Catalog.get_display_name(good_id), _thousands(thresholds[i]), String.num(rate, 2)]
-		tip += "That is %s× its base output of %d/turn, at today's ×%s threshold growth." % [
+		tip += "That is %s× its base output of %d/turn (its best un-researched recipe), at today's ×%s threshold growth." % [
 			mult, base_out, String.num(scale, 2)]
 		if i == active:
 			tip += "\nYOU ARE HERE — your 10-turn average net volume is %s %s/turn." % [

@@ -1038,16 +1038,34 @@ func recipe_output_qty(recipe: Dictionary, good_id: String) -> int:
 
 var _base_output_cache: Dictionary = {}  # good_id -> int (recipes are fixed at load)
 
-## One "base building's" per-turn output of a good: the largest output qty among
-## active recipes producing it (L1, unmodified). The price-impact thresholds are
-## multiples of this (see EconomyConfig.price_impact_rate). 0 = no active
-## producer, which means the good takes no price impact.
+## One "base building's" per-turn output of a good: the largest output qty among the good's
+## BASE recipes (L1, unmodified) — base meaning an empty `tech_unlock_req`, the same sense
+## get_recipes_for_building already uses. The price-impact thresholds are multiples of this
+## (see EconomyConfig.price_impact_rate). 0 = no producer at all, so no price impact.
+##
+## Tech-gated recipes are excluded (owner 2026-08-29). Taking the max across EVERY recipe
+## measured the player against a capability they may not have: steel read 54/turn from
+## Electric Arc Steelmaking, which sits behind research_metal_004, when the Steelmaking
+## recipe they actually start with makes 44 — so the market tolerated a quarter more steel
+## than the yardstick implied, from turn 1, on the strength of a recipe nobody had yet.
+## Twenty of 102 goods were reading a gated recipe this way (crude oil 75 vs 20, fuels 85 vs
+## 21, pure water 120 vs 48).
+##
+## FALLBACK: eight goods (lithium_battery, ev_car, nitrogen, …) have no ungated producer at
+## all. They keep the max across every producer rather than dropping to 0 — a threshold of 0
+## would exempt a good from price impact entirely, which is a far worse answer than a
+## slightly generous one.
 func base_output_for_good(good_id: String) -> int:
 	if _base_output_cache.has(good_id):
 		return int(_base_output_cache[good_id])
-	var best := 0
+	var best_base := 0
+	var best_any := 0
 	for r in recipes_producing(good_id):
-		best = maxi(best, recipe_output_qty(r, good_id))
+		var qty := recipe_output_qty(r, good_id)
+		best_any = maxi(best_any, qty)
+		if str(r.get("tech_unlock_req", "")) == "":
+			best_base = maxi(best_base, qty)
+	var best: int = best_base if best_base > 0 else best_any
 	_base_output_cache[good_id] = best
 	return best
 

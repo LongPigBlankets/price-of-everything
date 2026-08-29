@@ -146,7 +146,7 @@ func _mechanic_body(entry_id: String) -> String:
 				mult, String.num(rate, 2), _turns_to(10.0, rate)]
 		table += "[/table]"
 		return ("Every good has a market price that reacts to how much YOU move through the market — and to nothing else. Prices no longer drift on their own: leave a market alone and its price holds at base.\n\n"
-			+ "What matters is your NET volume in one good in one turn — sales minus purchases — measured against that good's BASE OUTPUT: the largest single batch any active recipe producing it makes at level 1, unmodified. Measuring against production rather than a flat number means the thresholds mean the same thing for a good made 8 at a time as for one made 400 at a time.\n\n"
+			+ "What matters is your NET volume in one good in one turn — sales minus purchases — measured against that good's BASE OUTPUT: the largest single batch its BASE recipes make at level 1, unmodified — base meaning the ones available without research, so the yardstick is what you can build from the start rather than what a later technology could manage. Measuring against production rather than a flat number means the thresholds mean the same thing for a good made 8 at a time as for one made 400 at a time.\n\n"
 			+ "Cross a multiple of base output and the price moves that much per turn, for as long as you keep it up:\n\n"
 			+ bullets + "\n"
 			+ "The top step is deliberate: past 12x the market stops absorbing and the rate jumps to 1%%/turn.\n\n"
