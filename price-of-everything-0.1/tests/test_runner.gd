@@ -7413,6 +7413,33 @@ func _test_demo_endings() -> void:
 			complete = false
 	_check(complete, "demo ending: every ending has a title, a verdict and its copy")
 
+	# Per-start copy: three endings speak in the Metal Magnate's voice (the inherited
+	# father), which is not the Glass Merchant's story. Overrides swap those and only those.
+	var scenario_saved: String = MatchState.scenario_name
+	MatchState.scenario_name = "metal_magnate"
+	for id in EGD.DEMO_ENDINGS:
+		_check(EGD.ending_copy(str(id)) == str((EGD.DEMO_ENDINGS[id] as Dictionary).copy),
+			"ending copy: a start with no overrides gets the authored default (%s)" % str(id))
+	MatchState.scenario_name = "glass_merchant"
+	var glass_overrides: Dictionary = EGD.START_ENDING_COPY["glass_merchant"]
+	for id in EGD.DEMO_ENDINGS:
+		var copy: String = EGD.ending_copy(str(id))
+		_check(copy != "", "ending copy: the glass merchant has copy for every ending (%s)" % str(id))
+		if glass_overrides.has(id):
+			_check(copy == str(glass_overrides[id]),
+				"ending copy: the glass merchant's own words are used (%s)" % str(id))
+			_check(not ("father" in copy.to_lower()),
+				"ending copy: no inherited father in the glass merchant's ending (%s)" % str(id))
+		else:
+			_check(copy == str((EGD.DEMO_ENDINGS[id] as Dictionary).copy),
+				"ending copy: start-agnostic endings are left alone (%s)" % str(id))
+	# Every override must name an ending that actually exists, or it can never be shown.
+	for start_id in EGD.START_ENDING_COPY:
+		for id in (EGD.START_ENDING_COPY[start_id] as Dictionary):
+			_check(EGD.DEMO_ENDINGS.has(id),
+				"ending copy: override '%s' targets a real ending (%s)" % [str(start_id), str(id)])
+	MatchState.scenario_name = scenario_saved
+
 	# The endings follow the TRACKS. A campaign match keeps the campaign's titles.
 	MatchState.ruleset = {"name": "standard"}
 	VictoryState.apply_ruleset(MatchState.ruleset)

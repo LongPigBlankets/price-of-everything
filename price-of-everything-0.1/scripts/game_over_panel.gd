@@ -124,7 +124,7 @@ func _ending_title() -> String:
 
 func _ending_body() -> String:
 	if EndGameData.demo_endings_apply():
-		return str((EndGameData.DEMO_ENDINGS["bankruptcy"] as Dictionary).copy)
+		return EndGameData.ending_copy("bankruptcy")
 	return CAMPAIGN_BODY
 
 func _on_filter(key: String) -> void:

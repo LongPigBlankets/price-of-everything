@@ -10,13 +10,13 @@ const PipeFrame := preload("res://scripts/pipe_frame.gd")
 const TITLE_FONT := preload("res://assets/fonts/BebasNeue-Regular.ttf")
 const BONUS_FONT := preload("res://assets/fonts/IBMPlexSans-SemiBold.ttf")
 
-# Drafted copy (2026-08-29, matched to metal_magnate_intro's voice) — owner pass welcome.
+# Owner copy (2026-08-29).
 const LORE_PARAGRAPHS := [
-	"Nobody in Vandel thought there was money in sand. The dunes were where the town walked its dogs. But you stood in a furnace hall once and watched the greyest shore on the coast pour out clear and bright, and you never saw the beach the same way again.",
-	"So you borrowed. Heavily. The bank wanted collateral; you gave them certainty, and they pretended it was the same thing. The quarry went up in a season, then the furnaces — run hot, because interest doesn't wait for careful people.",
-	"Glass is an honest trade. It doesn't rust and it doesn't lie, and it doesn't forgive either. One flaw, and a sheet that survived a thousand degrees dies on a cart over a cobblestone. The town knows it. The bank knows it. Every merchant who signs for your crates holds them like they're already broken.",
-	"They've started calling you the Glass Merchant. In Vandel that isn't entirely a compliment — it means someone whose fortune you can see straight through. Fine. Let them look. The furnaces are lit, the first sheets are sold, and the debt comes due whether you flinch or not.",
-	"So — steady hands. What will you pour?",
+	"Nobody in Vandel thought there was money in sand. The dunes were where people walked dogs and dumped rubbish. But you stood in a furnace hall once and watched the harsh sand melt and turn red hot, then clear. You could never look at the sand dunes the same way again.",
+	"You saw what sand could become. So you borrowed. Heavily. Everyone doubted you. The quarry went up first, then the furnaces. Now they don't doubt you any longer. Now everyone you know whispers how they always saw the potential in you, how they knew you had it in you. You ignore the whispers and focus on the work.",
+	"Glass is an honest trade. It doesn't rust and it doesn't lie. But one flaw, and a sheet that survived a thousand degrees shatters into a thousand pieces. The weight of that work hangs heavy over you.",
+	"They've started calling you the Glass Merchant. In Vandel that isn't entirely a compliment. It means someone so plain you can see straight through. Fine. Let them look. The furnaces are lit and so are your eyes when you look to the future.",
+	"Where will you take this next? Will you stun everyone a second time?",
 ]
 const BONUS := "Vandel Glassworks Bonus: +5% glass output and +5% window output."
 
