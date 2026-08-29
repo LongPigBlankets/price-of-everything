@@ -83,6 +83,7 @@ func _ready() -> void:
 	_test_authored_area_buildings_exist()
 	await _test_authored_slot_claim_order()
 	_test_authored_zones()
+	_test_forest_felling_seams()
 	_test_region_partition()
 	_test_region_import_settlement()
 	_test_import_corner_cap()
@@ -19147,6 +19148,43 @@ func _test_authored_slot_claim_order() -> void:
 
 ## Industrial zones: the region a gameplay building may be placed IN, as opposed to a slot,
 ## which is a box reserved before anyone knows what will stand in it.
+## The two seams that let a felled wood take its canopy with it, and the refusal the demolish
+## panel now reports instead of swallowing.
+##
+## The whole sequence — a wood bought, demolished, and the tile left clear — is checked in the
+## real world by `tools/forest_demolish_check.tscn`; it needs a built map, which is exactly
+## what this suite does not have. These pin the parts that can be tested in isolation.
+func _test_forest_felling_seams() -> void:
+	_check(ForestFootprint.FOREST_BUILDING_IDS.has("b_015")
+		and ForestFootprint.FOREST_BUILDING_IDS.has("b_016"),
+		"forests: both growth stages count as forest buildings")
+
+	# The forest layer's registry outlives the building record, which is erased before
+	# `building_removed` reaches world_map — so this lookup is the only way it can still tell
+	# which authored canopy to fell. Parsing the tile out of the instance id worked for the
+	# seeded woods alone, and a bought New Growth Forest left its trees standing.
+	var forests: Node2D = load("res://scripts/forest_visuals.gd").new()
+	forests.on_building_placed("tile_6_9", "b_015", "", "start_b_015_tile_6_9", Vector2i(5, 8))
+	_check(forests.tile_of_instance("start_b_015_tile_6_9") == "tile_6_9",
+		"forests: the layer reports the tile a standing wood is on")
+	_check(forests.tile_of_instance("nobody") == "",
+		"forests: an unknown instance reports no tile")
+	forests.remove_instance("start_b_015_tile_6_9")
+	_check(forests.tile_of_instance("start_b_015_tile_6_9") == "",
+		"forests: a removed wood is off the register")
+	forests.free()
+
+	# A building the player does not own refuses to demolish, WITH a reason — the supply-chain
+	# panel dropped that result on the floor, so the Demolish button on a land-owned wood
+	# closed the dialog and did nothing at all.
+	MatchState.buildings["t_owned"] = {"instance_id": "t_owned", "building_id": "b_016",
+		"tile_id": "tile_1_2", "owner": "tile_data"}
+	var refused: Dictionary = MatchState.start_demolish("t_owned")
+	_check(not bool(refused.get("ok", false)) and str(refused.get("reason", "")) != "",
+		"forests: demolishing a wood you do not own is refused, with a reason to show")
+	MatchState.buildings.erase("t_owned")
+
+
 ## The `enable procedural <region>` cheat's partition: the untouched landmap splits four
 ## ways by nearest city, deterministically, and covered tiles stay out.
 func _test_region_partition() -> void:

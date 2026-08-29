@@ -153,6 +153,14 @@ func clear_all() -> void:
 func has_forest(instance_id: String) -> bool:
 	return _forests.has(instance_id)
 
+## The tile a registered forest stands on, or "". The registry outlives the building record —
+## which is erased before `building_removed` reaches its listeners — so this is how world_map
+## knows which authored canopy a felled wood was drawing (see `_drop_building_visual`).
+func tile_of_instance(instance_id: String) -> String:
+	var entry: Dictionary = _forests.get(instance_id, {})
+	return str(entry.get("tile_id", ""))
+
+
 func remove_instance(instance_id: String) -> void:
 	if not _forests.has(instance_id):
 		return

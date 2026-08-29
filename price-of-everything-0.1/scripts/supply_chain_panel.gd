@@ -235,7 +235,13 @@ func _on_confirm() -> void:
 	if _action == "sell":
 		MatchState.sell_building(_target_iid)
 	else:
-		MatchState.start_demolish(_target_iid)
+		# SAY SO WHEN IT IS REFUSED. The result was dropped, so a demolition the sim declined —
+		# most often "you don't own this" on a wood the land owns rather than a company — closed
+		# the panel and did nothing at all, which reads as the button being broken.
+		var outcome: Dictionary = MatchState.start_demolish(_target_iid)
+		if not bool(outcome.get("ok", false)):
+			MatchState.request_toast(str(outcome.get("reason", "That cannot be demolished.")),
+				"error")
 	_close(true)
 
 func _on_scrim_input(event: InputEvent) -> void:

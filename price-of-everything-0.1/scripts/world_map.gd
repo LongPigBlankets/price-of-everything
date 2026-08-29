@@ -2272,18 +2272,30 @@ func _on_building_removed_visuals(instance_id: String) -> void:
 func _drop_building_visual(instance_id: String) -> void:
 	if building_visuals.has_method("remove_instance"):
 		building_visuals.remove_instance(instance_id)
+	# WHERE DID IT STAND? The building record is erased before `building_removed` fires, so the
+	# forest layer's own registry is the last place that still knows — ask it BEFORE removing
+	# the instance from it. Parsing the tile out of the instance id worked only for the woods
+	# this file mints (`forest_b_016_<tile>`); a New Growth Forest is `start_b_015_<tile>`, and
+	# one bought and felled by a player left its authored canopy standing on the map.
+	var wooded_tile := ""
+	if forest_visuals.has_method("tile_of_instance"):
+		wooded_tile = str(forest_visuals.call("tile_of_instance", instance_id))
 	if forest_visuals.has_method("remove_instance"):
 		forest_visuals.remove_instance(instance_id)
-	# An authored wood is the document's, not ForestVisuals'. Its instance id is minted from
-	# the tile (see _place_northern_old_growth_forests), so the tile is recoverable from the
-	# id alone — which matters because the building record is already gone by now.
-	var prefix := "forest_%s_" % OLD_GROWTH_FOREST_BUILDING_ID
-	if instance_id.begins_with(prefix):
-		var tile_id := instance_id.trim_prefix(prefix)
-		var area_ids: Array = _authored_forest_areas_by_tile.get(tile_id, [])
-		var fabric := get_node_or_null("AuthoredFabricVisuals")
-		if not area_ids.is_empty() and fabric != null and fabric.has_method("forget_forests"):
-			fabric.call("forget_forests", area_ids)
+	if wooded_tile == "":
+		var prefix := "forest_%s_" % OLD_GROWTH_FOREST_BUILDING_ID
+		if instance_id.begins_with(prefix):
+			wooded_tile = instance_id.trim_prefix(prefix)
+	if wooded_tile == "":
+		return
+	# An authored wood is the document's, not ForestVisuals' — and it only comes down if
+	# nothing else on the tile is still keeping it: two forests may share one canopy.
+	if _tile_has_forest_building(wooded_tile):
+		return
+	var area_ids: Array = _authored_forest_areas_by_tile.get(wooded_tile, [])
+	var fabric := get_node_or_null("AuthoredFabricVisuals")
+	if not area_ids.is_empty() and fabric != null and fabric.has_method("forget_forests"):
+		fabric.call("forget_forests", area_ids)
 
 func _get_building_display_name(building_id: String) -> String:
 	return Catalog.get_building_display_name(building_id)
@@ -2386,9 +2398,17 @@ func _place_northern_old_growth_forests() -> void:
 	# designer planted by hand (owner 2026-08-29). Same building, same deterministic id, so a
 	# hand-planted wood is indistinguishable from an old-growth one to everything downstream.
 	_index_authored_forests()
+	var start_forests := _start_layout_forest_tiles()
 	for authored_tile in _authored_forest_areas_by_tile:
 		var authored_id := str(authored_tile)
-		if authored_id == "" or _tile_has_building(authored_id, OLD_GROWTH_FOREST_BUILDING_ID):
+		# ANY forest on this tile is reason enough to skip, not just an old-growth one — and
+		# the start layout counts, because most of the document's woods ARE the imported
+		# canopies of forests it places: 63 of 148 came from New Growth Forests. Seeding beside
+		# one put a second, unownable wood on the tile, and the player who bought the New
+		# Growth Forest and demolished it found an Old Growth Forest standing in its place,
+		# owned by nobody and refusing to be demolished in turn.
+		if authored_id == "" or _tile_has_forest_building(authored_id) \
+				or start_forests.has(authored_id):
 			continue
 		var authored_coord: Vector2i = terrain_layer.id_to_coord(authored_id)
 		if authored_coord == Vector2i(-1, -1):
@@ -2518,6 +2538,36 @@ func _audit_total(counts: Dictionary) -> int:
 	for k in counts:
 		n += int(counts[k])
 	return n
+
+## Tiles the START LAYOUT will put a forest on.
+##
+## Read from the layout rather than from what is standing because the authored woods are
+## seeded BEFORE any start building exists: forests are terrain — the land mask and the block
+## templates read them — so they are placed ahead of the roads that everything else is laid
+## out against. At that moment a New Growth Forest that has stood on the map since turn 0 of
+## every previous match is still only a line in `data/start_buildings.json`.
+##
+## Mirrors `_place_start_buildings`' own availability gate: a forest the ruleset does not
+## offer is never placed, and its tile really is bare.
+func _start_layout_forest_tiles() -> Dictionary:
+	var out: Dictionary = {}
+	for entry in StartBuildings.entries():
+		var building_id := str(entry.building)
+		if ForestFootprint.FOREST_BUILDING_IDS.has(building_id) \
+				and MatchState.is_building_available(building_id):
+			out[str(entry.tile)] = true
+	return out
+
+
+## Is any forest — new growth or old — already standing on this tile? Uses the footprint
+## helper's list rather than a fourth copy of the two ids.
+func _tile_has_forest_building(tile_id: String) -> bool:
+	for iid in MatchState.tile_buildings.get(tile_id, []):
+		var building_id := str(MatchState.get_building(str(iid)).get("building_id", ""))
+		if ForestFootprint.FOREST_BUILDING_IDS.has(building_id):
+			return true
+	return false
+
 
 func _tile_has_building(tile_id: String, building_id: String) -> bool:
 	for iid in MatchState.tile_buildings.get(tile_id, []):

@@ -106,6 +106,9 @@ func forget_forests(area_ids: Array) -> void:
 		if area_id == "" or AuthoredFabricPainter.felled_forests.has(area_id):
 			continue
 		AuthoredFabricPainter.felled_forests[area_id] = true
+		# The layer draws the felled set live as well as through the bake. Without this the
+		# flag was set, `changed` stayed false, and an unbaked map kept drawing the wood.
+		changed = true
 		# The bake blits a texture per tile, so a felled wood stays on screen until its tiles
 		# repaint — and a canopy can overhang its neighbours, so mark everything it reaches.
 		if AuthoredBake.is_available():
