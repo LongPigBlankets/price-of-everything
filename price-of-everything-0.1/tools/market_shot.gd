@@ -5,6 +5,10 @@ extends Node
 ##   <godot> --path . res://tools/market_shot.tscn --quit-after 1200
 
 func _ready() -> void:
+	# Shoot at the DESIGN viewport (project.godot 1920x1080) rather than whatever the dev
+	# window happens to be — the goods table is the widest thing in the game and has to be
+	# judged at the size players actually get.
+	DisplayServer.window_set_size(Vector2i(1920, 1080))
 	var game: Node = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 	add_child(game)
 	await _settle(30)

@@ -96,6 +96,46 @@ func _apply_queued_refresh() -> void:
 	_refresh_special_orders()
 	_refresh_ledgers()
 
+## The goods table is wider than the panel once the impact ladder is expanded, and the
+## header lives OUTSIDE the rows' ScrollContainer so it stays put while the list scrolls
+## vertically. Left alone that has two costs: the header's full width becomes the panel's
+## minimum, so the window grows past the screen edge, and a horizontal scroll moves the rows
+## while the header stays behind, misaligning every column.
+##
+## So the header goes inside a clipping wrapper that reports NO minimum width, and its x is
+## driven by the rows' horizontal scroll — frozen vertically, synced horizontally, which is
+## what a spreadsheet header does.
+func _ensure_header_clip() -> Control:
+	if _header_clip == null:
+		_header_clip = Control.new()
+		_header_clip.name = "HeaderClip"
+		_header_clip.clip_contents = true
+		_header_clip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_header_clip.mouse_filter = Control.MOUSE_FILTER_PASS
+		header_static.minimum_size_changed.connect(_sync_header_metrics)
+		var bar := scroll.get_h_scroll_bar()
+		if bar != null:
+			bar.value_changed.connect(func(v: float) -> void:
+				if header_static != null:
+					header_static.position.x = -v)
+	_detach(header_static)
+	_header_clip.add_child(header_static)
+	header_static.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	header_static.position = Vector2.ZERO
+	_sync_header_metrics()
+	return _header_clip
+
+
+## Keep the clip as tall as the header and the header as wide as its columns. The header is
+## absolutely positioned inside the clip, so nothing else will size it.
+func _sync_header_metrics() -> void:
+	if _header_clip == null or header_static == null:
+		return
+	var want: Vector2 = header_static.get_combined_minimum_size()
+	header_static.size = want
+	_header_clip.custom_minimum_size = Vector2(0, want.y)
+
+
 func _rebuild_header() -> void:
 	for c in header_static.get_children():
 		header_static.remove_child(c)
@@ -121,7 +161,11 @@ func _rebuild_header() -> void:
 		var group := HBoxContainer.new()
 		group.add_theme_constant_override("separation", 4)
 		for i in EconomyConfig.PRICE_IMPACT_LADDER.size():
-			var h := _header_label(">%s×" % String.num(float(EconomyConfig.PRICE_IMPACT_LADDER[i][0]), 0), 48.0)
+			# The RATE is the column's identity (owner 2026-08-29) — it is the same for every
+			# good — while the cells below carry each good's own quantity for it.
+			var h := _header_label("%s%%\nprice impact\nper turn"
+					% String.num(float(EconomyConfig.PRICE_IMPACT_LADDER[i][1]), 2), 74.0)
+			h.add_theme_font_size_override("font_size", 11)
 			h.mouse_filter = Control.MOUSE_FILTER_STOP
 			h.tooltip_text = _rung_header_tooltip(i)
 			group.add_child(h)
@@ -149,7 +193,7 @@ const SPECIAL_ORDER_COLUMNS := [
 
 ## Column width for the two price columns. Kept in sync with market_row.gd's COL_PRICE —
 ## the header and the rows are separate containers, so a mismatch silently skews every
-## column to the right of it (the rung group's 48px/4px must match COL_RUNG/RUNG_SEP too).
+## column to the right of it (the rung group's 74px/4px must match COL_RUNG/RUNG_SEP too).
 const COL_PRICE_W := 104.0
 
 
@@ -157,18 +201,21 @@ const COL_PRICE_W := 104.0
 # whole ladder. Session-local, toggled from the filter bar.
 var _impact_expanded := false
 var _impact_toggle_btn: Button = null
+var _header_clip: Control = null
 
 func _set_impact_expanded(expanded: bool) -> void:
 	_impact_expanded = expanded
 	if _impact_toggle_btn != null:
 		_impact_toggle_btn.text = "Hide impact columns" if expanded else "Show impact columns"
 	_rebuild_header()
+	_sync_header_metrics()
 	for row in rows:
 		if is_instance_valid(row) and row.has_method("set_impact_expanded"):
 			row.set_impact_expanded(expanded)
 
-## Tooltip for one ladder-rung header: the rate at that step plus the threshold
-## growth schedule — when the thresholds next rise and to what multiple.
+## Tooltip for one ladder-rung header. It has to explain the whole mechanic, because the
+## column itself is now just a rate: what the number in the cells means, which direction it
+## moves the price, and that the quantities grow as the world economy does.
 func _rung_header_tooltip(idx: int) -> String:
 	var rate := float(EconomyConfig.PRICE_IMPACT_LADDER[idx][1])
 	var mult := String.num(float(EconomyConfig.PRICE_IMPACT_LADDER[idx][0]), 0)
@@ -177,10 +224,16 @@ func _rung_header_tooltip(idx: int) -> String:
 	var now_scale := EconomyConfig.impact_threshold_scale(turn)
 	var next_turn := (step + 1) * EconomyConfig.IMPACT_THRESHOLD_INFLATION_TURNS + 1
 	var next_scale := 1.0 + EconomyConfig.IMPACT_THRESHOLD_INFLATION_STEP * float(step + 1)
-	return ("Net volume past %s× a good's base output moves its price %s%%/turn.\n" +
-		"Thresholds grow +%d%% of their original value every %d turns as the world economy expands.\n" +
-		"Today: ×%s · they next rise on turn %d, to ×%s.") % [
-		mult, String.num(rate, 2),
+	return ("Each cell in this column is the quantity of that good which, moved NET in a single "
+		+ "turn, starts shifting its price by %s%% per turn.\n\n"
+		+ "Selling that much pushes the price DOWN; buying it pushes the price UP. The shift "
+		+ "keeps accruing every turn you keep the volume up, and stops when your 10-turn "
+		+ "average falls back under the first column.\n\n"
+		+ "The quantities are %s× each good's own base output, so they mean the same thing for "
+		+ "a good made 8 at a time as for one made 400 at a time — and they GROW as the world "
+		+ "economy expands: +%d%% of their original value every %d turns.\n"
+		+ "Today they stand at ×%s; they next rise on turn %d, to ×%s.") % [
+		String.num(rate, 2), mult,
 		int(EconomyConfig.IMPACT_THRESHOLD_INFLATION_STEP * 100.0), EconomyConfig.IMPACT_THRESHOLD_INFLATION_TURNS,
 		String.num(now_scale, 2), next_turn, String.num(next_scale, 2)]
 
@@ -366,9 +419,13 @@ func _build_prices_tab(root: VBoxContainer) -> void:
 	_build_content()
 	_detach(header_static)
 	_detach(scroll)
+	_detach(_header_clip)
 	root.add_child(_build_filter_row())
-	root.add_child(header_static)
+	# The header goes in through its clipping wrapper (see _wrap_header_for_scrolling) —
+	# this tab is what actually owns the header's parentage, so the wrap has to happen here.
+	root.add_child(_ensure_header_clip())
 	root.add_child(scroll)
+	_sync_header_metrics()
 	_update_filter_availability()
 
 func _build_buildings_tab(root: VBoxContainer) -> void:

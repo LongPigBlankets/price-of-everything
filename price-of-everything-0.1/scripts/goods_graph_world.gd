@@ -1625,7 +1625,11 @@ func _draw_grid(font: Font) -> void:
 				Vector2(b.x - HEAD, a.y + band_h * 0.8)]), Color(_GOLD, 0.9))
 			var lw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, LFS).x
 			var cx := band.get_center().x - (BOLT_S + 6.0 + lw) * 0.5
-			var bolt: Texture2D = GoodIcons.texture_for("g_010", "power")
+			# CONSUMPTION, not a good: this is the MW an arrow draws, so it wears the flat
+			# lightning glyph. The isometric power icon is reserved for power as an OUTPUT
+			# or a good icon (owner 2026-08-29) — using it here read as "power flows along
+			# this arrow" when it means "this step costs power".
+			var bolt: Texture2D = load("res://assets/icons/ui_icons/recipe_power_icon.png") as Texture2D
 			if bolt != null:
 				draw_texture_rect(bolt, Rect2(Vector2(cx, a.y - BOLT_S * 0.5), Vector2(BOLT_S, BOLT_S)), false)
 			draw_string(font, Vector2(cx + BOLT_S + 6.0, a.y + LFS * 0.36), label,

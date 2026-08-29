@@ -22,9 +22,9 @@ const COL_PROFIT := 110.0
 const FIELD_FS := 19  # larger per-field text
 # The collapsible impact-ladder group: one narrow cell per EconomyConfig ladder
 # rung, packed in a nested HBox with its own tighter separation.
-const COL_RUNG := 48.0
+const COL_RUNG := 74.0     # holds a 5-digit quantity and the 3-line header above it
 const RUNG_SEP := 4
-const RUNG_FS := 14
+const RUNG_FS := 16
 const RUNG_ACTIVE_TINT := Color(0.95, 0.72, 0.22, 0.30)  # amber: the rung you are on
 const RUNG_IDLE_TINT := Color(0.50, 0.53, 0.58, 0.10)
 
@@ -201,11 +201,16 @@ func _active_rung() -> int:
 			break
 	return active
 
+## Each cell carries THIS GOOD'S quantity for that column's rate (owner 2026-08-29): the
+## rate is identical down a column and lives in the header, while the units that trigger it
+## differ per good and grow with the world economy — so the number in the table is the one
+## the player actually has to act on.
 func _refresh_impact_cells() -> void:
 	var thresholds: PackedInt32Array = MarketState.impact_thresholds(good_id)
 	var avg: float = MarketState.rolling_net_volume(good_id)
 	var active := _active_rung()
 	var scale: float = EconomyConfig.impact_threshold_scale(int(TurnManager.current_turn))
+	var base_out := Catalog.base_output_for_good(good_id)
 	for i in _rung_cells.size():
 		var cell := _rung_cells[i]
 		var rate := float(EconomyConfig.PRICE_IMPACT_LADDER[i][1])
@@ -215,15 +220,30 @@ func _refresh_impact_cells() -> void:
 			cell.tooltip_text = "No production recipe — this good has no base output and takes no impact."
 			_tint_col(cell, RUNG_IDLE_TINT)
 			continue
-		cell.text = "%s%%" % String.num(rate, 2)
-		var tip := "Past %d units net in one turn (>%s× base output, at today's ×%s threshold growth) the price moves %s%%/turn." % [
-			thresholds[i], mult, String.num(scale, 2), String.num(rate, 2)]
+		cell.text = _thousands(thresholds[i])
+		var tip := "%s: sell (or buy) more than %s in one turn and its price moves %s%%/turn.\n" % [
+			Catalog.get_display_name(good_id), _thousands(thresholds[i]), String.num(rate, 2)]
+		tip += "That is %s× its base output of %d/turn, at today's ×%s threshold growth." % [
+			mult, base_out, String.num(scale, 2)]
 		if i == active:
-			tip += "
-YOU ARE HERE — your 10-turn average net volume is %s %s/turn." % [
+			tip += "\nYOU ARE HERE — your 10-turn average net volume is %s %s/turn." % [
 				String.num(absf(avg), 1), "sold" if avg > 0.0 else "bought"]
 		cell.tooltip_text = tip
 		_tint_col(cell, RUNG_ACTIVE_TINT if i == active else RUNG_IDLE_TINT)
+
+
+## 1240 -> "1,240". These volumes run to five digits late game and read badly unseparated.
+static func _thousands(n: int) -> String:
+	var s := str(absi(n))
+	var out := ""
+	var c := 0
+	for i in range(s.length() - 1, -1, -1):
+		out = s[i] + out
+		c += 1
+		if c % 3 == 0 and i > 0:
+			out = "," + out
+	return ("-" + out) if n < 0 else out
+
 
 ## Which way this good's price is headed: -1 falling, +1 rising, 0 steady.
 ## Mirrors MarketState's regime logic (accrue while the 10-turn average is over
