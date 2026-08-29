@@ -1,6 +1,6 @@
 extends CanvasLayer
 ## One-time Glass Merchant start intro, mounted over the HUD by world_map on a fresh
-## glass_merchant start: a glass hero icon + the "Glass Merchant" title, placeholder lore,
+## glass_merchant start: a glass hero icon + the "Glass Merchant" title, the lore,
 ## the Vandel Glassworks bonus line, and a Begin button. Mirrors metal_magnate_intro.gd.
 
 signal begin_pressed
@@ -10,12 +10,13 @@ const PipeFrame := preload("res://scripts/pipe_frame.gd")
 const TITLE_FONT := preload("res://assets/fonts/BebasNeue-Regular.ttf")
 const BONUS_FONT := preload("res://assets/fonts/IBMPlexSans-SemiBold.ttf")
 
-# Placeholder (Lorem Ipsum) copy — to be replaced with the real Glass Merchant lore.
+# Drafted copy (2026-08-29, matched to metal_magnate_intro's voice) — owner pass welcome.
 const LORE_PARAGRAPHS := [
-	"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
-	"Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
-	"Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.",
-	"Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt.",
+	"Nobody in Vandel thought there was money in sand. The dunes were where the town walked its dogs. But you stood in a furnace hall once and watched the greyest shore on the coast pour out clear and bright, and you never saw the beach the same way again.",
+	"So you borrowed. Heavily. The bank wanted collateral; you gave them certainty, and they pretended it was the same thing. The quarry went up in a season, then the furnaces — run hot, because interest doesn't wait for careful people.",
+	"Glass is an honest trade. It doesn't rust and it doesn't lie, and it doesn't forgive either. One flaw, and a sheet that survived a thousand degrees dies on a cart over a cobblestone. The town knows it. The bank knows it. Every merchant who signs for your crates holds them like they're already broken.",
+	"They've started calling you the Glass Merchant. In Vandel that isn't entirely a compliment — it means someone whose fortune you can see straight through. Fine. Let them look. The furnaces are lit, the first sheets are sold, and the debt comes due whether you flinch or not.",
+	"So — steady hands. What will you pour?",
 ]
 const BONUS := "Vandel Glassworks Bonus: +5% glass output and +5% window output."
 

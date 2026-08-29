@@ -10,25 +10,12 @@ extends Control
 ##   Profit share   None | 5% | 10%
 ##   Automation     Push / Don't push (toggle)
 ##
-## Spectrum points marked "no effect yet" are UI placeholders awaiting balance
-## work — they persist as no-effect workforce_policies entries so the choice
-## survives save/load, but move no numbers. Read-only against the sim (rule #5):
-## every change goes through MatchState (set_labour_multiplier /
+## Every spectrum point moves real numbers through MatchState workforce policies
+## (the four former placeholder rungs were wired 2026-08). Read-only against the
+## sim (rule #5): every change goes through MatchState (set_labour_multiplier /
 ## set_workforce_policy_enabled).
 
-# Placeholder policy ids — stored in MatchState.workforce_policies with NO
-# effects wired yet. Balance work later attaches real numbers.
-const POLICY_PENSIONS_MINIMUM := "pensions_minimum_legal"
-const POLICY_BONUS_SMALL := "annual_bonus_small"
-const POLICY_PROFIT_SHARE_10 := "profit_share_10"
-const POLICY_PUSH_AUTOMATION := "push_automation"
-const NO_EFFECT := "No effect yet — placeholder for a later balance pass."
-
-const _ACCENT := Color("#D96AA0")
-const _CARD_BORDER := Color("#1C3149")
-const _GOOD := Color("#5FBF6B")
-const _BAD := Color("#E2604A")
-const _WARN := Color("#E6B34A")
+const _CARD_BORDER := Color("#1C3149")     # card chrome, mirrors advisor_council_tab
 
 var _root: HBoxContainer
 var _refresh_queued := false
@@ -73,21 +60,21 @@ func _safety_key() -> String:
 func _pensions_key() -> String:
 	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_GENEROUS_PENSIONS):
 		return "generous"
-	if MatchState.is_workforce_policy_enabled(POLICY_PENSIONS_MINIMUM):
+	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_PENSIONS_MINIMUM):
 		return "minimum"
 	return "average"
 
 func _bonus_key() -> String:
 	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_BONUS):
 		return "generous"
-	if MatchState.is_workforce_policy_enabled(POLICY_BONUS_SMALL):
+	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_SMALL_BONUS):
 		return "small"
 	return "none"
 
 func _profit_key() -> String:
 	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
 		return "five"
-	if MatchState.is_workforce_policy_enabled(POLICY_PROFIT_SHARE_10):
+	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_PROFIT_SHARE_10):
 		return "ten"
 	return "none"
 
@@ -186,11 +173,11 @@ func _build_safety(parent: Control) -> void:
 
 func _build_pensions(parent: Control) -> void:
 	var third := MatchState.workforce_policy_game_third_turns()
-	var group := [POLICY_PENSIONS_MINIMUM, MatchState.WORKFORCE_POLICY_GENEROUS_PENSIONS]
+	var group := [MatchState.WORKFORCE_POLICY_PENSIONS_MINIMUM, MatchState.WORKFORCE_POLICY_GENEROUS_PENSIONS]
 	parent.add_child(_spectrum("Pensions", [
 		{"key": "minimum", "label": "Minimum legal",
-			"caption": NO_EFFECT,
-			"pick": func() -> void: _pick_exclusive(group, POLICY_PENSIONS_MINIMUM)},
+			"caption": "Labour costs fall −0.1%/turn while active (max −5%) · output drifts −0.05%/turn as people leave (max −5%).",
+			"pick": func() -> void: _pick_exclusive(group, MatchState.WORKFORCE_POLICY_PENSIONS_MINIMUM)},
 		{"key": "average", "label": "Industry average",
 			"caption": "The baseline — no modifiers either way.",
 			"pick": func() -> void: _pick_exclusive(group, "")},
@@ -200,21 +187,21 @@ func _build_pensions(parent: Control) -> void:
 	], _pensions_key()))
 
 func _build_bonus(parent: Control) -> void:
-	var group := [POLICY_BONUS_SMALL, MatchState.WORKFORCE_POLICY_ANNUAL_BONUS]
+	var group := [MatchState.WORKFORCE_POLICY_SMALL_BONUS, MatchState.WORKFORCE_POLICY_ANNUAL_BONUS]
 	parent.add_child(_spectrum("Annual bonus", [
 		{"key": "none", "label": "No annual bonus",
 			"caption": "Nothing paid, nothing gained.",
 			"pick": func() -> void: _pick_exclusive(group, "")},
 		{"key": "small", "label": "Small annual bonus",
-			"caption": NO_EFFECT,
-			"pick": func() -> void: _pick_exclusive(group, POLICY_BONUS_SMALL)},
+			"caption": "Labour costs +2.5% · output +10% every 10th turn (the bonus month).",
+			"pick": func() -> void: _pick_exclusive(group, MatchState.WORKFORCE_POLICY_SMALL_BONUS)},
 		{"key": "generous", "label": "Generous annual bonus",
 			"caption": "Labour costs +5% · output +20% every 10th turn (the bonus month).",
 			"pick": func() -> void: _pick_exclusive(group, MatchState.WORKFORCE_POLICY_ANNUAL_BONUS)},
 	], _bonus_key()))
 
 func _build_profit_share(parent: Control) -> void:
-	var group := [MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, POLICY_PROFIT_SHARE_10]
+	var group := [MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, MatchState.WORKFORCE_POLICY_PROFIT_SHARE_10]
 	parent.add_child(_spectrum("Profit share", [
 		{"key": "none", "label": "No profit share",
 			"caption": "Profits stay with the company.",
@@ -223,19 +210,19 @@ func _build_profit_share(parent: Control) -> void:
 			"caption": "Pay 5% of post-tax, post-dividend profit to workers · output +10%.",
 			"pick": func() -> void: _pick_exclusive(group, MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE)},
 		{"key": "ten", "label": "10% profit share",
-			"caption": NO_EFFECT,
-			"pick": func() -> void: _pick_exclusive(group, POLICY_PROFIT_SHARE_10)},
+			"caption": "Pay 10% of post-tax, post-dividend profit to workers · output +15%.",
+			"pick": func() -> void: _pick_exclusive(group, MatchState.WORKFORCE_POLICY_PROFIT_SHARE_10)},
 	], _profit_key()))
 
 func _build_automation(parent: Control) -> void:
-	var on := MatchState.is_workforce_policy_enabled(POLICY_PUSH_AUTOMATION)
+	var on := MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_PUSH_AUTOMATION)
 	parent.add_child(_spectrum("Automation", [
 		{"key": "push", "label": "Push for automation",
-			"caption": NO_EFFECT,
-			"pick": func() -> void: MatchState.set_workforce_policy_enabled(POLICY_PUSH_AUTOMATION, true)},
+			"caption": "Labour costs fall −0.2%/turn while active (max −15%) · maintenance +2%/turn (max +10%).",
+			"pick": func() -> void: MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_PUSH_AUTOMATION, true)},
 		{"key": "no_push", "label": "Don't push for automation",
 			"caption": "Keep the current balance of hands and machines.",
-			"pick": func() -> void: MatchState.set_workforce_policy_enabled(POLICY_PUSH_AUTOMATION, false)},
+			"pick": func() -> void: MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_PUSH_AUTOMATION, false)},
 	], "push" if on else "no_push"))
 
 ## A titled row of mutually-exclusive segment buttons with the SELECTED
@@ -246,7 +233,7 @@ func _spectrum(title: String, options: Array, selected_key: String) -> Control:
 	var t := Label.new()
 	t.text = title
 	t.add_theme_font_size_override("font_size", 14)
-	t.add_theme_color_override("font_color", Color("#DBE6F2"))
+	t.add_theme_color_override("font_color", DS.PALETTE.TEXT)
 	box.add_child(t)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
@@ -264,17 +251,17 @@ func _spectrum(title: String, options: Array, selected_key: String) -> Control:
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.add_theme_font_size_override("font_size", 13)
 		if on:
-			# The design's selected segment: filled People-pink, dark text.
+			# Selected segment matches the DS selected-tab treatment: cream fill, navy text.
 			var sel := StyleBoxFlat.new()
-			sel.bg_color = _ACCENT
-			sel.border_color = _ACCENT.darkened(0.35)
+			sel.bg_color = DS.PALETTE.ACCENT
+			sel.border_color = DS.PALETTE.ACCENT_DIM
 			sel.set_border_width_all(1)
 			sel.set_corner_radius_all(8)
 			sel.set_content_margin_all(8)
 			for state in ["normal", "hover", "pressed", "focus"]:
 				b.add_theme_stylebox_override(state, sel)
 			for cname in ["font_color", "font_pressed_color", "font_hover_color", "font_focus_color"]:
-				b.add_theme_color_override(cname, Color("#12100A"))
+				b.add_theme_color_override(cname, DS.PALETTE.BG_PANEL)
 		var pick: Callable = o.get("pick", Callable())
 		b.pressed.connect(func() -> void:
 			if not pick.is_null():
@@ -285,8 +272,7 @@ func _spectrum(title: String, options: Array, selected_key: String) -> Control:
 	cap.text = caption
 	cap.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	cap.add_theme_font_size_override("font_size", 12)
-	cap.add_theme_color_override("font_color",
-		_WARN if caption == NO_EFFECT else DS.PALETTE.TEXT)
+	cap.add_theme_color_override("font_color", DS.PALETTE.TEXT)
 	box.add_child(cap)
 	return box
 
@@ -313,17 +299,17 @@ func _build_labour_costs(parent: Control) -> void:
 	amount.text = "£%.2f" % current
 	amount.theme_type_variation = &"Numeric"
 	amount.add_theme_font_size_override("font_size", 24)
-	amount.add_theme_color_override("font_color", Color("#F0584A") if pct > 100.0 else _GOOD)
+	amount.add_theme_color_override("font_color", DS.PALETTE.DANGER if pct > 100.0 else DS.PALETTE.OK)
 	now_row.add_child(amount)
 	now_row.add_child(_dim_label("%.0f%% of base" % pct, 13))
 	var trend := est - current
 	var trend_l := _dim_label("10-turn estimate £%.2f (%s%.2f)" % [est, "+" if trend >= 0.0 else "−", absf(trend)], 12)
-	trend_l.add_theme_color_override("font_color", _BAD if trend > 0.005 else (_GOOD if trend < -0.005 else DS.PALETTE.TEXT_MUTED))
+	trend_l.add_theme_color_override("font_color", DS.PALETTE.DANGER if trend > 0.005 else (DS.PALETTE.OK if trend < -0.005 else DS.PALETTE.TEXT_MUTED))
 	col.add_child(trend_l)
 	if bool(ov.get("at_floor", false)):
 		var floor_l := _dim_label("Maximum labour reduction reached — further bonuses will not stack below 40% of base.", 11)
 		floor_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		floor_l.add_theme_color_override("font_color", _WARN)
+		floor_l.add_theme_color_override("font_color", DS.PALETTE.WARN)
 		col.add_child(floor_l)
 
 func _build_other_policies(parent: Control) -> void:
@@ -357,7 +343,7 @@ func _build_other_policies(parent: Control) -> void:
 		row.tooltip_text = str(def.get("tip", ""))
 		col.add_child(row)
 		var name_l := _dim_label(str(def.get("name", pid)), 12.5)
-		name_l.add_theme_color_override("font_color", Color("#DBE6F2"))
+		name_l.add_theme_color_override("font_color", DS.PALETTE.TEXT)
 		name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(name_l)
 		var toggle := CheckButton.new()

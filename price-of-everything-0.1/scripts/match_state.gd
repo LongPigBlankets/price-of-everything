@@ -100,6 +100,12 @@ const WORKFORCE_POLICY_STANDARD_SAFETY := "standard_safety_procedures"
 const WORKFORCE_POLICY_LAX_SAFETY := "lax_safety_procedures"
 const WORKFORCE_POLICY_ANNUAL_BONUS := "annual_bonus"
 const WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE := "annual_profit_share"
+# The former Labour-tab placeholder rungs, now wired. Ids must stay exactly these
+# strings: saves from before the wiring already carry them as no-effect entries.
+const WORKFORCE_POLICY_PENSIONS_MINIMUM := "pensions_minimum_legal"
+const WORKFORCE_POLICY_SMALL_BONUS := "annual_bonus_small"
+const WORKFORCE_POLICY_PROFIT_SHARE_10 := "profit_share_10"
+const WORKFORCE_POLICY_PUSH_AUTOMATION := "push_automation"
 # HR Director unlocks: Long Tenure Awards (any HR Director) and Stock Options
 # (only a Leadership-3 HR Director).
 const WORKFORCE_POLICY_LONG_TENURE := "long_tenure_awards"
@@ -109,6 +115,14 @@ const WORKFORCE_SAFETY_POLICIES := [
 	WORKFORCE_POLICY_STRICT_SAFETY,
 	WORKFORCE_POLICY_STANDARD_SAFETY,
 	WORKFORCE_POLICY_LAX_SAFETY,
+]
+# Mutually-exclusive spectrum groups: enabling one member disables the others
+# sim-side, so a tampered or pre-wiring save can never double-dip a spectrum.
+const WORKFORCE_EXCLUSIVE_GROUPS := [
+	WORKFORCE_SAFETY_POLICIES,
+	[WORKFORCE_POLICY_PENSIONS_MINIMUM, WORKFORCE_POLICY_GENEROUS_PENSIONS],
+	[WORKFORCE_POLICY_SMALL_BONUS, WORKFORCE_POLICY_ANNUAL_BONUS],
+	[WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, WORKFORCE_POLICY_PROFIT_SHARE_10],
 ]
 var workforce_policies: Dictionary = {}
 var workforce_policy_effects: Dictionary = {}
@@ -5925,10 +5939,11 @@ func set_workforce_policy_enabled(policy_id: String, enabled: bool) -> void:
 	if was_enabled == enabled:
 		return
 	if enabled:
-		if WORKFORCE_SAFETY_POLICIES.has(policy_id):
-			for safety_id in WORKFORCE_SAFETY_POLICIES:
-				if str(safety_id) != policy_id:
-					workforce_policies.erase(str(safety_id))
+		for group in WORKFORCE_EXCLUSIVE_GROUPS:
+			if (group as Array).has(policy_id):
+				for member_id in (group as Array):
+					if str(member_id) != policy_id:
+						workforce_policies.erase(str(member_id))
 		workforce_policies[policy_id] = true
 		if not workforce_policy_effects.has(policy_id):
 			workforce_policy_effects[policy_id] = {}
@@ -6013,6 +6028,26 @@ func _advance_workforce_effect(policy_id: String, effect: Dictionary, active: bo
 				output_pct = maxf(0.0, output_pct - 0.001)
 				div_pct = maxf(0.0, div_pct - 0.001)
 			effect["dividend_pct"] = div_pct
+		WORKFORCE_POLICY_PENSIONS_MINIMUM:
+			# Cheapest legal cover: the wage bill thins while it runs, and people
+			# quietly leave for better shops, dragging output down until cover improves.
+			if active:
+				labour_pct = maxf(-0.05, labour_pct - 0.001)
+				output_pct = maxf(-0.05, output_pct - 0.0005)
+			else:
+				labour_pct = minf(0.0, labour_pct + 0.0025)
+				output_pct = minf(0.0, output_pct + 0.001)
+		WORKFORCE_POLICY_PUSH_AUTOMATION:
+			# Machines replace hands: labour falls (to −15%) while the extra plant
+			# pushes maintenance up (to +10%); both ease back when the push stops.
+			var auto_maint := float(effect.get("maint_pct", 0.0))
+			if active:
+				labour_pct = maxf(-0.15, labour_pct - 0.002)
+				auto_maint = minf(0.10, auto_maint + 0.02)
+			else:
+				labour_pct = minf(0.0, labour_pct + 0.0025)
+				auto_maint = maxf(0.0, auto_maint - 0.02)
+			effect["maint_pct"] = auto_maint
 
 	effect["output_pct"] = output_pct
 	effect["labour_pct"] = labour_pct
@@ -6032,6 +6067,9 @@ func workforce_output_multiplier(turn_number: int = -1) -> float:
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_GENEROUS_PENSIONS):
 		var pensions: Dictionary = workforce_policy_effects.get(WORKFORCE_POLICY_GENEROUS_PENSIONS, {})
 		multiplier *= 1.0 + float(pensions.get("output_pct", 0.0))
+	if is_workforce_policy_enabled(WORKFORCE_POLICY_PENSIONS_MINIMUM):
+		var min_pensions: Dictionary = workforce_policy_effects.get(WORKFORCE_POLICY_PENSIONS_MINIMUM, {})
+		multiplier *= 1.0 + float(min_pensions.get("output_pct", 0.0))
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_STOCK_OPTIONS):
 		var stock: Dictionary = workforce_policy_effects.get(WORKFORCE_POLICY_STOCK_OPTIONS, {})
 		multiplier *= 1.0 + float(stock.get("output_pct", 0.0))
@@ -6047,16 +6085,23 @@ func workforce_output_multiplier(turn_number: int = -1) -> float:
 		multiplier *= 1.05
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_ANNUAL_BONUS) and turn % 10 == 0:
 		multiplier *= 1.20
+	if is_workforce_policy_enabled(WORKFORCE_POLICY_SMALL_BONUS) and turn % 10 == 0:
+		multiplier *= 1.10
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
 		multiplier *= 1.10
+	if is_workforce_policy_enabled(WORKFORCE_POLICY_PROFIT_SHARE_10):
+		multiplier *= 1.15
 	return multiplier
 
-# Empire-wide maintenance multiplier from workforce policy (currently only Lax Safety,
-# whose neglect penalty ramps +5%/turn to +100%). Applied per building in the
-# maintenance_labour phase. 1.0 = no change.
+# Empire-wide maintenance multiplier from workforce policy: every effect's accrued
+# maint_pct sums (Lax Safety's neglect ramp to +100%, the automation push to +10%).
+# Applied per building in the maintenance_labour phase. 1.0 = no change.
 func workforce_maintenance_multiplier() -> float:
-	var lax: Dictionary = workforce_policy_effects.get(WORKFORCE_POLICY_LAX_SAFETY, {})
-	return 1.0 + maxf(0.0, float(lax.get("maint_pct", 0.0)))
+	var pct := 0.0
+	for effect in workforce_policy_effects.values():
+		if effect is Dictionary:
+			pct += maxf(0.0, float(effect.get("maint_pct", 0.0)))
+	return 1.0 + pct
 
 # ── CFO tax-loss carry-forward ───────────────────────────────────────────────
 func cfo_seated() -> bool:
@@ -6120,6 +6165,8 @@ func workforce_labour_cost_delta(turn_number: int = -1) -> float:
 			delta += float(effect.get("labour_pct", 0.0))
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_ANNUAL_BONUS):
 		delta += 0.05
+	if is_workforce_policy_enabled(WORKFORCE_POLICY_SMALL_BONUS):
+		delta += 0.025
 	# Long Tenure Awards: a payout spike of +10% labour one turn every 10th turn.
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_LONG_TENURE) and turn > 0 and turn % 10 == 0:
 		delta += 0.10
@@ -6161,6 +6208,8 @@ func projected_workforce_labour_delta(turns_ahead: int) -> float:
 			delta += float(effect.get("labour_pct", 0.0))
 	if is_workforce_policy_enabled(WORKFORCE_POLICY_ANNUAL_BONUS):
 		delta += 0.05
+	if is_workforce_policy_enabled(WORKFORCE_POLICY_SMALL_BONUS):
+		delta += 0.025
 	return delta
 
 # Combined labour multiplier from the slider + workforce policies, applied

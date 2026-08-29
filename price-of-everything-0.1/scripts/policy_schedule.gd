@@ -4,9 +4,9 @@ extends RefCounted
 ## seeds the forewarn + enactment announcements into EventScheduler once per match.
 ## (docs/co2-tax-and-green-subsidy-announcements-spec.md)
 ##
-## Owner lore is written for phases 1 and 2. The phase-3 pair is still LOREM —
-## search for LOREM. The two `forewarn_body` strings on the entries with
-## `forewarn_turns: 0` are never shown; they are kept in case a rumour beat is added.
+## Owner lore is written for phases 1 and 2; the phase-3 pair is drafted copy
+## (2026-08-29, owner pass welcome). The two `forewarn_body` strings on the entries
+## with `forewarn_turns: 0` are never shown; they are kept in case a rumour beat is added.
 ## Turns and levels are balance-volatile (rule #7): tune on the e2e harness.
 
 const SCHEDULE: Array = [
@@ -56,9 +56,9 @@ const SCHEDULE: Array = [
 		"id": "co2_tax_p3", "policy": "co2_tax", "level": 3,
 		"effective_turn": 230, "forewarn_turns": 8, "severity": "warning",
 		"title": "Carbon Levy — Phase 3",
-		# LOREM
-		"forewarn_body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ultimum incrementum vectigalis appropinquat; aetas carbonis finitur.",
-		# LOREM
-		"body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vectigal carbonis maximum est — qui adhuc urit, contra ventum urit.",
+		# Drafted copy — owner pass welcome. By this point coal is already banned (P2),
+		# so the copy targets what still burns: oil, gas, coke.
+		"forewarn_body": "The ministry is drafting what they call the final phase of the carbon programme. Our people have seen the annex: the levy goes to its ceiling, on everything that still burns — oil, gas, coke, the lot. There is no lobby left in the capital willing to argue against it. Whatever we still run on petroleum has a little time left to justify itself, and after that it had better be paying us for the privilege.",
+		"body": "The final phase is in force. The carbon levy stands at its ceiling, and the government has stopped pretending it is a tax at all — it is a closing notice for the age of carbon. The last holdouts are selling plants for scrap and calling it strategy. Whatever still burns in Taralia burns at a price no ledger carries for long. If we spent the years since the first levy building the other way, this is where it pays.",
 	},
 ]

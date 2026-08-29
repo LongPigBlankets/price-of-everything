@@ -796,7 +796,12 @@ func _apply_tax_and_dividends(summary: Dictionary) -> float:
 
 func _apply_profit_sharing(summary: Dictionary, pre_tax_profit: float) -> float:
 	summary.profit_sharing_paid = 0.0
-	if not MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
+	var share_rate := 0.0
+	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
+		share_rate = 0.05
+	elif MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_PROFIT_SHARE_10):
+		share_rate = 0.10
+	if share_rate <= 0.0:
 		return 0.0
 	var post_dividend_profit := maxf(
 		0.0,
@@ -804,7 +809,7 @@ func _apply_profit_sharing(summary: Dictionary, pre_tax_profit: float) -> float:
 	)
 	if post_dividend_profit <= 0.0:
 		return 0.0
-	var profit_sharing := post_dividend_profit * 0.05
+	var profit_sharing := post_dividend_profit * share_rate
 	MatchState.add_money(-profit_sharing)
 	summary.profit_sharing_paid = profit_sharing
 	summary.money_out += profit_sharing
