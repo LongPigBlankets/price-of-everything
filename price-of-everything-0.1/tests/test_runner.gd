@@ -11639,121 +11639,133 @@ func _test_price_impact() -> void:
 # impact, capped at ±50%, recovering 0.1%/turn under the threshold. The impact
 # multiplies the decayed base price; `prices` stays the impact-free series.
 func _test_price_impact_thresholds() -> void:
-	# BANDED response with SPACED thresholds (owner ruling): 1x / 2x / 4x / 10x.
-	# The 1x band (owner 2026-08-01) exists so a building pushed above its own base recipe
-	# output by modifiers starts to register at all.
+	# LADDER response (owner rulings 2026-08-28/29, docs/price-impact-ladder-spec.md):
+	# >1x 0.05, >3x 0.1, >5x 0.2, then 0.1-point steps to >11x 0.8 and a deliberate
+	# jump to 1.0 at >12x. Price decay is retired — this ladder is the whole price model.
 	_check(EconomyConfig.price_impact_rate(32, 32) == 0.0, "1x exactly is under the bite")
-	_check(EconomyConfig.price_impact_rate(33, 32) == EconomyConfig.PRICE_IMPACT_RATE_1X,
-		"just over 1x accrues the faintest band — a modified single building registers")
-	_check(EconomyConfig.price_impact_rate(-33, 32) == EconomyConfig.PRICE_IMPACT_RATE_1X,
-		"the 1x band applies to BUYING too, not only selling")
-	_check(EconomyConfig.PRICE_IMPACT_RATE_1X * 2.0 == EconomyConfig.PRICE_IMPACT_RATE_2X,
-		"the 1x band accrues at exactly half the band above it")
-	_check(EconomyConfig.price_impact_rate(64, 32) == EconomyConfig.PRICE_IMPACT_RATE_1X,
-		"2x exactly is the 1x band (bands are strictly-greater-than)")
-	_check(EconomyConfig.price_impact_rate(65, 32) == EconomyConfig.PRICE_IMPACT_RATE_2X,
-		"just over 2x accrues the gentle band")
-	_check(EconomyConfig.price_impact_rate(128, 32) == EconomyConfig.PRICE_IMPACT_RATE_2X,
-		"4x exactly is still the 2x band")
-	_check(EconomyConfig.price_impact_rate(129, 32) == EconomyConfig.PRICE_IMPACT_RATE_4X,
-		"just over 4x steps up")
-	_check(EconomyConfig.price_impact_rate(320, 32) == EconomyConfig.PRICE_IMPACT_RATE_4X,
-		"10x exactly is still the 4x band")
-	_check(EconomyConfig.price_impact_rate(321, 32) == EconomyConfig.PRICE_IMPACT_RATE_10X,
-		"over 10x is the flooding band")
-	_check(EconomyConfig.price_impact_rate(32000, 32) == EconomyConfig.PRICE_IMPACT_RATE_10X,
-		"the flooding band is the top — it saturates by design")
-	_check(EconomyConfig.price_impact_rate(-321, 32) == EconomyConfig.PRICE_IMPACT_RATE_10X,
-		"buying volume uses the same bands (deficit side)")
+	_check(EconomyConfig.price_impact_rate(33, 32) == 0.05,
+		"just over 1x accrues the faintest rung — a modified single building registers")
+	_check(EconomyConfig.price_impact_rate(-33, 32) == 0.05, "the 1x rung applies to BUYING too")
+	_check(EconomyConfig.price_impact_rate(96, 32) == 0.05, "3x exactly is still the 1x rung (strictly greater than)")
+	_check(EconomyConfig.price_impact_rate(97, 32) == 0.1, "just over 3x steps up")
+	_check(EconomyConfig.price_impact_rate(161, 32) == 0.2, "just over 5x steps up")
+	_check(EconomyConfig.price_impact_rate(193, 32) == 0.3, "just over 6x steps up")
+	_check(EconomyConfig.price_impact_rate(225, 32) == 0.4 and EconomyConfig.price_impact_rate(257, 32) == 0.5 \
+			and EconomyConfig.price_impact_rate(289, 32) == 0.6 and EconomyConfig.price_impact_rate(321, 32) == 0.7 \
+			and EconomyConfig.price_impact_rate(353, 32) == 0.8,
+		"the 6x-11x rungs step by exactly 0.1")
+	_check(EconomyConfig.price_impact_rate(384, 32) == 0.8, "12x exactly is still the 11x rung")
+	_check(EconomyConfig.price_impact_rate(385, 32) == 1.0, "over 12x jumps 0.8 -> 1.0 — flooding gets a step change")
+	_check(EconomyConfig.price_impact_rate(32000, 32) == 1.0, "the flooding rung is the top — it saturates by design")
 	_check(EconomyConfig.price_impact_rate(1000, 0) == 0.0, "no base output -> no impact")
 	# A NORMAL multi-building chain must not be punished: 3 factories of one good is 3x,
-	# which sits in the gentle band, not the flooding one. (The continuous curve charged
-	# 0.66%/turn here and crushed motors to the floor over 75 turns.)
-	_check(EconomyConfig.price_impact_rate(84, 28) == EconomyConfig.PRICE_IMPACT_RATE_2X,
-		"a 3-factory chain sits in the gentle band, not the flooding one")
-	_check(EconomyConfig.PRICE_IMPACT_CAP_PCT == 40.0, "impact is capped at 40% of base price")
-	# Recovery is FLAT — depth-scaling would outrun a 0.5%/turn accrual and reward pulsing.
-	_check(EconomyConfig.price_impact_recovery(0.0) == EconomyConfig.PRICE_IMPACT_RECOVERY_PCT
-		and EconomyConfig.price_impact_recovery(-40.0) == EconomyConfig.PRICE_IMPACT_RECOVERY_PCT,
-		"recovery is flat at every depth, so pulsing production can't out-earn the penalty")
-	_check(EconomyConfig.PRICE_IMPACT_RECOVERY_PCT < EconomyConfig.PRICE_IMPACT_RATE_2X + 0.0001,
-		"recovery never exceeds even the gentlest accrual band")
+	# which sits on the faintest rung, not the flooding one.
+	_check(EconomyConfig.price_impact_rate(84, 28) == 0.05, "a 3-factory chain sits on the faintest rung")
+	# Asymmetric cap: gluts bottom out at 40% of base price, deficits top out at 250%.
+	_check(EconomyConfig.PRICE_IMPACT_FLOOR_PCT == -60.0 and EconomyConfig.PRICE_IMPACT_CEILING_PCT == 150.0,
+		"price is capped between 40% and 250% of base")
+	# Threshold inflation is LINEAR (owner 2026-08-29): +25% of the ORIGINAL every 20 turns.
+	_check(EconomyConfig.impact_threshold_scale(1) == 1.0 and EconomyConfig.impact_threshold_scale(20) == 1.0,
+		"no threshold inflation in the first 20 turns")
+	_check(EconomyConfig.impact_threshold_scale(21) == 1.25 and EconomyConfig.impact_threshold_scale(40) == 1.25,
+		"turns 21-40 run at x1.25")
+	_check(EconomyConfig.impact_threshold_scale(41) == 1.5 and EconomyConfig.impact_threshold_scale(300) == 4.5,
+		"linear schedule: x1.50 from t41, x4.50 by t300 — NOT compounding")
+	_check(EconomyConfig.price_impact_rate(40, 32, 1.25) == 0.0 and EconomyConfig.price_impact_rate(41, 32, 1.25) == 0.05,
+		"an inflated threshold moves the bite point")
 
-	# Accrual, stacking on decay, recovery, and the cap — driven through the
-	# real per-turn pipeline on a scratch good id.
+	# Accrual, the rolling-window hold, walk-back recovery, and the caps — driven
+	# through the real per-turn pipeline on a scratch good id.
 	var gid := str(Catalog.get_good_by_internal_name("coal").get("id", ""))
 	var coal_base: int = Catalog.base_output_for_good(gid)
 	_check(coal_base > 0, "coal has a base building output")
+	var scale_now: float = EconomyConfig.impact_threshold_scale(int(TurnManager.current_turn))
 	# Flush any volume an earlier test left on the books BEFORE measuring — residue would
-	# push a sample into the wrong band and shift every expected value below.
+	# push a sample into the wrong rung and shift every expected value below.
 	MarketState._turn_sold.clear()
 	MarketState._turn_bought.clear()
 	MarketState.impact_pct.erase(gid)
-	# tick_turn decays every good's base price — restore the table afterwards so
-	# later market tests see untouched prices.
-	var prices_snapshot: Dictionary = MarketState.prices.duplicate(true)
+	MarketState._net_history.erase(gid)
+	MarketState._recovery_step.erase(gid)
 	var base_before: float = MarketState.get_base_price_now(gid)
-	# Sell in the FLOODING band (>10x) so the sample is unambiguous.
-	var rate_hi: float = EconomyConfig.price_impact_rate(coal_base * 11, coal_base)
-	MarketState.record_market_sale_volume(gid, coal_base * 11)
+	# Sell in the flooding rung (>12x even after inflation) so the sample is unambiguous.
+	var flood_units: int = int(ceilf(13.0 * float(coal_base) * scale_now))
+	MarketState.record_market_sale_volume(gid, flood_units)
 	MarketState.tick_turn()
-	var after_4x: float = -rate_hi
-	_check(absf(MarketState.get_impact_pct(gid) - after_4x) < 0.0001,
-		"one >10x sell turn accrues -%.2f%%" % rate_hi)
-	# Decay is suppressed until MarketState.DECAY_FIRST_TURN, so the effective rate at this
-	# turn may be 0 — read it the same way tick_turn() does rather than off the CSV.
-	var decay: float = float(Catalog.get_good(gid).get("decay_rate", 0.0)) \
-		if int(TurnManager.current_turn) >= MarketState.DECAY_FIRST_TURN else 0.0
-	var expected: float = base_before * (1.0 - decay) * (1.0 + after_4x / 100.0)
-	_check(absf(MarketState.get_price(gid) - expected) < 0.0001,
-		"impact multiplies the decayed base price (stacks on normal drift)")
-	var rate_3x: float = EconomyConfig.price_impact_rate(coal_base * 3, coal_base)
-	MarketState.record_market_sale_volume(gid, coal_base * 3)          # 3x sell -> gentle band
+	_check(absf(MarketState.get_impact_pct(gid) + 1.0) < 0.0001, "one flooding sell turn accrues -1.0%")
+	_check(absf(MarketState.get_price(gid) - base_before * (1.0 - 1.0 / 100.0)) < 0.0001,
+		"impact multiplies the STATIC base price — decay is retired, prices no longer drift")
+	# A quiet turn inside a loud window HOLDS: the rolling average is still over 1x.
 	MarketState.tick_turn()
-	var after_3x: float = after_4x - rate_3x
-	_check(absf(MarketState.get_impact_pct(gid) - after_3x) < 0.0001,
-		"a 3x turn adds only -%.2f%%" % rate_3x)
-	_check(rate_3x < rate_hi, "bands are monotonic: 3x bites less than >10x")
-	var recov: float = EconomyConfig.price_impact_recovery(after_3x)
-	MarketState.tick_turn()                                            # quiet turn
-	_check(absf(MarketState.get_impact_pct(gid) - (after_3x + recov)) < 0.0001,
-		"a quiet turn recovers by the flat rate")
-	var at_quiet: float = after_3x + recov
-	var rate_2x: float = EconomyConfig.price_impact_rate(coal_base * 3, coal_base)
-	MarketState.record_market_buy_volume(gid, coal_base * 3)           # >2x BUY
+	_check(absf(MarketState.get_impact_pct(gid) + 1.0) < 0.0001,
+		"a quiet turn does not recover while the rolling average stays loud — no pulsing exploit")
+	# Net buying pushes the impact UP at the same ladder rates (deficit side).
+	# Fresh window first: the signed rolling average NETS sells against buys, so a
+	# buy-flood straight after a sell-flood averages to quiet — by design (buying
+	# back what you sold is not a deficit).
+	MarketState.impact_pct.erase(gid)
+	MarketState._net_history.erase(gid)
+	MarketState._recovery_step.erase(gid)
+	MarketState.record_market_buy_volume(gid, flood_units)
 	MarketState.tick_turn()
-	_check(absf(MarketState.get_impact_pct(gid) - (at_quiet + rate_2x)) < 0.0001,
-		"net buying pushes impact UP by the same bands (deficit side)")
-	# Netting: equal buys and sells cancel to a quiet (recovery) turn.
-	var before_net: float = MarketState.get_impact_pct(gid)
-	var recov_net: float = EconomyConfig.price_impact_recovery(before_net)
-	MarketState.record_market_sale_volume(gid, coal_base * 4)
-	MarketState.record_market_buy_volume(gid, coal_base * 4)
+	_check(absf(MarketState.get_impact_pct(gid) - 1.0) < 0.0001,
+		"a flooding BUY turn accrues +1.0% — the same ladder, opposite sign")
+	# Walk-back: give the good a deep glut, then go quiet. The window drains first
+	# (holding), then the walk-back closes the whole gap in exactly 10 turns.
+	MarketState.impact_pct[gid] = -30.0
+	MarketState._net_history[gid] = [float(flood_units)]
+	MarketState._recovery_step.erase(gid)
+	var hold_turns := 0
+	var recover_turns := 0
+	var guard := 0
+	while MarketState.get_impact_pct(gid) != 0.0 and guard < 40:
+		var before: float = MarketState.get_impact_pct(gid)
+		MarketState.tick_turn()
+		if MarketState.get_impact_pct(gid) == before:
+			hold_turns += 1
+		else:
+			recover_turns += 1
+		guard += 1
+	_check(guard < 40, "a stopped glut recovers fully in bounded time")
+	_check(recover_turns == EconomyConfig.PRICE_IMPACT_RECOVERY_TURNS,
+		"the walk-back closes the gap in exactly 10 turns (-3.0/turn from -30)")
+	_check(hold_turns < EconomyConfig.PRICE_IMPACT_RECOVERY_TURNS,
+		"the hold lasts only until the rolling window drains")
+	# The glut floor: a deep impact plus a flooding turn clamps at -60 (price 40% of base).
+	MarketState.impact_pct[gid] = -59.5
+	MarketState._net_history.erase(gid)
+	MarketState._recovery_step.erase(gid)
+	MarketState.record_market_sale_volume(gid, flood_units)
 	MarketState.tick_turn()
-	_check(absf(MarketState.get_impact_pct(gid) - move_toward(before_net, 0.0, recov_net)) < 0.0001,
-		"offsetting buy+sell nets to recovery")
-	# Cap at ±PRICE_IMPACT_CAP_PCT.
-	var cap: float = EconomyConfig.PRICE_IMPACT_CAP_PCT
-	MarketState.impact_pct[gid] = -(cap - 0.1)
-	MarketState.record_market_sale_volume(gid, coal_base * 11)
-	MarketState.tick_turn()
-	_check(absf(MarketState.get_impact_pct(gid) + cap) < 0.0001, "impact caps at -%d%%" % int(cap))
-	# Save round-trip keeps the accumulated impact.
+	_check(absf(MarketState.get_impact_pct(gid) + 60.0) < 0.0001, "impact floors at -60%")
+	_check(absf(MarketState.get_price(gid) - base_before * 0.4) < 0.0001, "the floored price is 40% of base")
+	# Save round-trip keeps the impact AND the rolling window; prices re-anchor to catalog.
 	var snap: Dictionary = MarketState.export_state()
 	MarketState.impact_pct.clear()
+	MarketState._net_history.clear()
 	MarketState.import_state(snap)
-	_check(absf(MarketState.get_impact_pct(gid) + cap) < 0.0001, "impact survives save/load")
-	# Recovery clears it fully given time (and erases the entry near zero).
+	_check(absf(MarketState.get_impact_pct(gid) + 60.0) < 0.0001, "impact survives save/load")
+	_check(MarketState._net_history.has(gid), "the rolling window survives save/load")
+	_check(absf(float(MarketState.prices.get(gid, 0.0)) - float(Catalog.get_good(gid).get("base_price", 0.0))) < 0.0001,
+		"import re-anchors base prices to the catalog (decay retired; old decayed saves move UP)")
+	# The walk-back settles exactly to zero and erases its bookkeeping.
 	MarketState.impact_pct[gid] = -0.05
-	MarketState.tick_turn()
-	_check(MarketState.get_impact_pct(gid) == 0.0, "recovery settles exactly to zero")
-	# UI helper: thresholds surface as 1x|2x|4x|10x of the base output.
+	MarketState._net_history.erase(gid)
+	MarketState._recovery_step.erase(gid)
+	for i in EconomyConfig.PRICE_IMPACT_RECOVERY_TURNS:
+		MarketState.tick_turn()
+	_check(MarketState.get_impact_pct(gid) == 0.0 and not MarketState.impact_pct.has(gid) \
+			and not MarketState._net_history.has(gid),
+		"the walk-back settles exactly to zero and erases the entry and its window")
+	# UI helper: one threshold per ladder rung, at today's inflation multiplier.
 	var th: PackedInt32Array = MarketState.impact_thresholds(gid)
-	_check(th.size() == 4 and th[0] == coal_base and th[1] == coal_base * 2 \
-			and th[2] == coal_base * 4 and th[3] == coal_base * 10,
-		"impact_thresholds returns 1x/2x/4x/10x of base output, matching the live bands")
+	_check(th.size() == EconomyConfig.PRICE_IMPACT_LADDER.size(),
+		"impact_thresholds returns one entry per ladder rung")
+	_check(th[0] == int(floorf(float(coal_base) * scale_now)),
+		"the first threshold is 1x base output at today's inflation")
 	MarketState.impact_pct.erase(gid)
-	MarketState.prices = prices_snapshot
+	MarketState._net_history.erase(gid)
+	MarketState._recovery_step.erase(gid)
 	MarketState.prices_updated.emit()
 
 func _test_owner_costs() -> void:

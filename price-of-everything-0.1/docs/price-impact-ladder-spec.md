@@ -1,6 +1,17 @@
 # Price-Impact Ladder — decay removed, glut/deficit carries the market
 
-**Status:** SPEC — owner ruling 2026-08-28, not built.
+**Status:** BUILT 2026-08-29 (branch `price-impact-ladder-spec`) — engine, UI,
+tests. Evidence: unit suite **3430 passed / 0 failed**; e2e open_field_1 t100
+**786 passed / 0 failed**; parse check 513 scripts, 0 failed. Economy effect at
+t100: benchmark revenue 668 → 737 (**+10.3%**, in line with R7f's ≈+9%
+prediction), t100 profit −121 → −55, last-profitable-turn unchanged at t47 — no
+scoreboard flips.
+
+(Earlier runs in this session reported 11 unit / 7 e2e failures on BOTH this
+branch and unmodified main. Those were a cold Godot asset-import cache after the
+pull — new PNGs had no `.godot/imported/` entry, so `preload()` failed to parse
+`main_menu.gd` / `menu_chrome.gd`, which cascaded to `StatusLed` and every panel
+test. Re-running regenerated the cache; nothing was wrong with the code.)
 **Provenance:** the original write-up (2026-08-28) was lost uncommitted; this is a
 reconstruction (2026-08-29) from the owner's dictated summary. Everything the owner
 stated is marked plainly; details the summary did not pin down are marked
@@ -120,10 +131,11 @@ Owner ruling: the multiplier thresholds (in units, i.e. `multiple × base
 production`) increase by 25% every 20 turns — the world economy grows and absorbs
 more volume before your selling registers.
 
-- Schedule: t1–20 ×1.00, t21–40 ×1.25, t41–60 ×1.5625, … (×1.25 compounding per
-  step). ⚠ INTERPRETATION: "increase by 25%" is read as compounding; the linear
-  alternative (×1.25, ×1.50, ×1.75 … of the original) grows far slower by t300
-  (×4.75 vs ×28) and materially changes the late game. Needs a ruling.
+- Schedule — **LINEAR (owner ruling 2026-08-29)**: +25% of the *original*
+  threshold per 20-turn step. t1–20 ×1.00, t21–40 ×1.25, t41–60 ×1.50,
+  t61–80 ×1.75 … reaching ×4.50 for t281–300. Not compounding.
+  BUILT 2026-08-29: `EconomyConfig.impact_threshold_scale()`, indexed from t1
+  (the §9 calm-era question stays open — re-indexing to t31 is a one-line change).
 - The inflation applies to the unit thresholds only; the ladder rates and the cap
   do not scale.
 - This supersedes the "later they scale with expected output every 10 turns" note
@@ -166,16 +178,17 @@ touching the player's buildings.
 
 ## 9. Open questions (need owner rulings before build)
 
-1. Threshold inflation compounding vs linear (§6).
-2. Recovery shape (§5): linear gap/10 as specced, or asymptotic (10% of the
-   remaining gap per turn)?
-3. Does the *deficit* side share the identical ladder and rolling-average
-   recovery, or does buying warrant its own (the asymmetric cap suggests the
-   sides are not meant to feel the same)?
-4. Calm era t1–30: do thresholds start inflating from t1 or from t31 (the
-   onboarding spec's index-from-unfreeze rule for the port fee suggests t31)?
-5. Old-save migration: re-anchor prices to catalog base, or keep the decayed
-   snapshot?
+1. Calm era t1–30: should threshold inflation index from t31 instead of t1
+   (the onboarding spec's index-from-unfreeze rule for the port fee suggests
+   t31)? Built as t1 for now.
+2. Does the *deficit* side warrant its own ladder (the asymmetric cap suggests
+   the sides are not meant to feel the same)? Built symmetric for now.
 
-Resolved 2026-08-29: the 7x–11x rungs — 0.1 steps from 6x, with the deliberate
-0.8 → 1.0 jump at 12x (§3).
+Resolved 2026-08-29:
+- The 7x–11x rungs — 0.1 steps from 6x, with the deliberate 0.8 → 1.0 jump at
+  12x (§3).
+- Threshold inflation is LINEAR (§6).
+- Recovery shape: linear gap/10, snapshotted when the window goes quiet (§5) —
+  BUILT.
+- Old-save migration: prices re-anchor to catalog base on import (they move UP,
+  never down) — BUILT, no version bump needed.

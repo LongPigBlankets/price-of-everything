@@ -62,69 +62,68 @@ const BANKRUPTCY_FLOOR: float = -10.0
 const GLUT_UNITS: int = 100
 const MAX_PRICE_IMPACT_PCT: int = 10
 
-# --- Price impact (glut / deficit) — the live model ---
-# A player's NET market volume in one good in one turn moves that good's price
-# once it crosses multiples of the good's BASE OUTPUT (the largest per-turn
-# output among active recipes producing it, L1 unmodified —
-# Catalog.base_output_for_good). E.g. copper wiring, base output 32:
-#   33 units  (>1x)  → 0.05 %/turn
-#   65 units  (>2x)  → 0.1 %/turn
-#   129 units (>4x)  → 0.2 %/turn
-#   321 units (>10x) → 0.5 %/turn
-# Net selling pushes the price DOWN (glut), net buying UP (deficit). The
-# accumulated impact is capped at ±PRICE_IMPACT_CAP_PCT and, while volume stays
-# at or under 1x, recovers toward 0 by price_impact_recovery() per turn. The
-# impact multiplies the good's decayed base price, so it stacks on top of the
-# normal per-turn drift. Thresholds are STATIC for now; later they scale with
-# expected output every 10 turns. Goods with no active producing recipe have no
-# base output and take no impact.
-const PRICE_IMPACT_CAP_PCT: float = 40.0
-const PRICE_IMPACT_RECOVERY_PCT: float = 0.1
-# BANDED response, thresholds spaced out (owner ruling 2026-07-27). The bands are back —
-# the continuous curve bit far too early in practice: a normal 3-factory chain sells 3x one
-# building's batch, which crushed motors to the -48% floor over 75 turns purely for being
-# a normal size. Volume must be genuinely excessive before the market notices:
-#     > 1x  base output -> 0.05 %/turn  (the faintest touch — see below)
-#     > 2x               -> 0.1 %/turn   (a nudge — you are now moving this market)
-#     > 4x               -> 0.2 %/turn
-#     >10x               -> 0.5 %/turn  (flooding; hits the -40% cap in 80 turns)
+# --- Price impact (glut / deficit) — THE price model ---
+# Per-good price decay is RETIRED (owner ruling 2026-08-28,
+# docs/price-impact-ladder-spec.md) — the impact below is the only thing that
+# moves prices. A player's NET market volume in one good in one turn moves that
+# good's price once it crosses multiples of the good's BASE OUTPUT (the largest
+# per-turn output among active recipes producing it, L1 unmodified —
+# Catalog.base_output_for_good), scaled by impact_threshold_scale() as the world
+# economy grows. Net selling pushes the price DOWN (glut), net buying UP
+# (deficit), identical rates both ways.
 #
-# ⚠️ BALANCE CHANGE (rule #7), owner ruling 2026-08-01: the 1x band is new. It exists so that
-# a building pushed ABOVE its own base recipe output by modifiers starts to register — under
-# the old floor a single heavily-modified building could sell 1.9x its base batch every turn
-# forever and the market never noticed. It accrues at HALF the 2x band by the owner's ruling.
-# This widens who is affected more than any previous impact change: every good sold at all
-# briskly by one building now drifts, where before it took two buildings' worth. The 1x band
-# also moves the RECOVERY floor with it — _tick_impact recovers only when the rate is 0.0, so
-# a good sitting between 1x and 2x now accrues instead of bleeding off.
-# base_output is the largest per-turn batch among active recipes producing the good
-# (Catalog.base_output_for_good), so the thresholds rescale with any recipe rebalance.
-const PRICE_IMPACT_RATE_1X: float = 0.05
-const PRICE_IMPACT_RATE_2X: float = 0.1
-const PRICE_IMPACT_RATE_4X: float = 0.2
-const PRICE_IMPACT_RATE_10X: float = 0.5
+# Accrual is LINEAR: percentage points of the static base price, applied once in
+# MarketState.get_price() — never compounding. The accumulated impact is clamped
+# to [PRICE_IMPACT_FLOOR_PCT, PRICE_IMPACT_CEILING_PCT] — an ASYMMETRIC cap:
+# gluts bottom out at 40% of base price, deficits top out at 250%. Recovery
+# lives in MarketState._tick_impact: once the rolling average of the last
+# PRICE_IMPACT_RECOVERY_TURNS turns of net volume falls back to or under the
+# first rung, the price walks home to base over PRICE_IMPACT_RECOVERY_TURNS
+# turns; while the average stays loud, quiet turns HOLD (no pulsing exploit).
+#
+# The ladder (owner rulings 2026-08-28/29): 0.1-point steps 6x→11x, then a
+# deliberate jump to 1.0 at >12x — true flooding gets a step change, not a
+# smooth top-out. The 2x and 4x gaps are also deliberate: a second building's
+# worth of volume is tolerated more gently than the retired 2x band did.
+const PRICE_IMPACT_LADDER: Array = [
+	# [multiple of base output (strictly greater than), %-points per turn]
+	[1.0, 0.05],
+	[3.0, 0.1],
+	[5.0, 0.2],
+	[6.0, 0.3],
+	[7.0, 0.4],
+	[8.0, 0.5],
+	[9.0, 0.6],
+	[10.0, 0.7],
+	[11.0, 0.8],
+	[12.0, 1.0],
+]
+const PRICE_IMPACT_FLOOR_PCT: float = -60.0    # glut floor: price bottoms out at 40% of base
+const PRICE_IMPACT_CEILING_PCT: float = 150.0  # deficit ceiling: price tops out at 250% of base
+const PRICE_IMPACT_RECOVERY_TURNS: int = 10    # rolling-average window AND walk-back length
+# Thresholds inflate LINEARLY as the world economy grows (owner ruling
+# 2026-08-29): +25% of the ORIGINAL threshold every 20 turns — ×1.25 from t21,
+# ×1.50 from t41 … ×4.50 by t300. Linear, NOT compounding.
+const IMPACT_THRESHOLD_INFLATION_STEP: float = 0.25
+const IMPACT_THRESHOLD_INFLATION_TURNS: int = 20
 
-## %/turn accrual for one turn's net player market volume in one good.
-func price_impact_rate(net_volume: int, base_output: int) -> float:
+## Multiplier applied to every ladder threshold at `turn` (the linear schedule above).
+func impact_threshold_scale(turn: int) -> float:
+	return 1.0 + IMPACT_THRESHOLD_INFLATION_STEP * float(maxi(0, turn - 1) / IMPACT_THRESHOLD_INFLATION_TURNS)
+
+## %/turn accrual for one turn's net player market volume in one good, at the
+## given threshold inflation (impact_threshold_scale of the current turn).
+func price_impact_rate(net_volume: float, base_output: int, threshold_scale: float = 1.0) -> float:
 	if base_output <= 0:
 		return 0.0
-	var v := float(absi(net_volume))
-	if v > 10.0 * float(base_output):
-		return PRICE_IMPACT_RATE_10X
-	if v > 4.0 * float(base_output):
-		return PRICE_IMPACT_RATE_4X
-	if v > 2.0 * float(base_output):
-		return PRICE_IMPACT_RATE_2X
-	if v > 1.0 * float(base_output):
-		return PRICE_IMPACT_RATE_1X
-	return 0.0
-
-## %/turn a good's accumulated impact bleeds back toward 0 while its volume is under the
-## bite. FLAT: the depth-scaled recovery that guarded against a ratchet is unnecessary now
-## accrual tops out at 0.5%/turn, and at these rates scaling it would invert the incentive —
-## recovery would outrun accrual and reward pulsing production on and off.
-func price_impact_recovery(_current_pct: float) -> float:
-	return PRICE_IMPACT_RECOVERY_PCT
+	var v := absf(net_volume)
+	var rate := 0.0
+	for rung in PRICE_IMPACT_LADDER:
+		if v > float(rung[0]) * float(base_output) * threshold_scale:
+			rate = float(rung[1])
+		else:
+			break
+	return rate
 
 # Market spread: buying a unit costs the sale price plus this markup.
 const MARKET_BUY_MARKUP: float = 0.05

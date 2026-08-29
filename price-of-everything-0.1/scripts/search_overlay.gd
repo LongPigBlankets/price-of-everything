@@ -130,41 +130,36 @@ static func _turns_to(target: float, rate: float) -> int:
 
 func _mechanic_body(entry_id: String) -> String:
 	if entry_id == "market_price_mechanics":
-		# Reads the LIVE banded model. The previous body described the legacy GLUT_UNITS knobs
-		# (100 units, 1%% per further 100, 10%% cap) — those constants now feed only the auto-sell
-		# tolerance cap, so the page had been documenting a superseded model.
-		var r1 := String.num(EconomyConfig.PRICE_IMPACT_RATE_1X, 2)
-		var r2 := String.num(EconomyConfig.PRICE_IMPACT_RATE_2X, 1)
-		var r4 := String.num(EconomyConfig.PRICE_IMPACT_RATE_4X, 1)
-		var r10 := String.num(EconomyConfig.PRICE_IMPACT_RATE_10X, 1)
-		var cap := int(EconomyConfig.PRICE_IMPACT_CAP_PCT)
-		var rec := String.num(EconomyConfig.PRICE_IMPACT_RECOVERY_PCT, 1)
-		return ("Every good has a market price that drifts over time and reacts to how much YOU move through the market.\n\n"
+		# Reads the LIVE ladder model (docs/price-impact-ladder-spec.md). Price decay is
+		# retired: base prices are static, and only the player's market volume moves them.
+		var scale: float = EconomyConfig.impact_threshold_scale(int(TurnManager.current_turn))
+		var floor_price := 100 + int(EconomyConfig.PRICE_IMPACT_FLOOR_PCT)
+		var ceil_price := 100 + int(EconomyConfig.PRICE_IMPACT_CEILING_PCT)
+		var mem := EconomyConfig.PRICE_IMPACT_RECOVERY_TURNS
+		var bullets := ""
+		var table := "[table=3][cell][b]Net volume/turn[/b][/cell][cell][b]Price moves[/b][/cell][cell][b]To move 10%[/b][/cell]"
+		for rung in EconomyConfig.PRICE_IMPACT_LADDER:
+			var mult := String.num(float(rung[0]), 0)
+			var rate := float(rung[1])
+			bullets += "   over %sx base output — %s%%/turn\n" % [mult, String.num(rate, 2)]
+			table += "[cell]over %sx base[/cell][cell]%s%%/turn[/cell][cell]%d turns[/cell]" % [
+				mult, String.num(rate, 2), _turns_to(10.0, rate)]
+		table += "[/table]"
+		return ("Every good has a market price that reacts to how much YOU move through the market — and to nothing else. Prices no longer drift on their own: leave a market alone and its price holds at base.\n\n"
 			+ "What matters is your NET volume in one good in one turn — sales minus purchases — measured against that good's BASE OUTPUT: the largest single batch any active recipe producing it makes at level 1, unmodified. Measuring against production rather than a flat number means the thresholds mean the same thing for a good made 8 at a time as for one made 400 at a time.\n\n"
-			+ "There are four bands. Cross a multiple of base output and the price moves that much per turn, for as long as you keep it up:\n\n"
-			+ "   over 1x base output — %s%%/turn\n"
-			+ "   over 2x — %s%%/turn\n"
-			+ "   over 4x — %s%%/turn\n"
-			+ "   over 10x — %s%%/turn\n\n"
-			+ "The 1x band is the one most operations touch. A single building with production modifiers can out-produce its own base recipe batch, and once it does, selling that output every turn starts to move the price — gently, at half the rate of the band above, but it no longer passes unnoticed. Two buildings' worth reaches the second band.\n\n"
-			+ "SELLING pushes the price DOWN (a glut); BUYING pushes it UP (a deficit). The bands are identical in both directions, so a large standing purchase order walks its good's price up against you exactly as fast as dumping walks it down.\n\n"
-			+ "The accumulated impact is capped at plus or minus %d%%, and it is NOT permanent: hold your net volume at or under 1x base output and it bleeds back toward zero at %s%%/turn. Accrual and recovery never both happen in a turn — cross any threshold and you accrue, stay under it and you recover — so a good you are steadily working will not begin to recover until you ease off.\n\n"
-			+ "[table=4][cell][b]Net volume/turn[/b][/cell][cell][b]Price moves[/b][/cell][cell][b]To reach 10%%[/b][/cell][cell][b]To reach the %d%% cap[/b][/cell]"
-			+ "[cell]over 1x base[/cell][cell]%s%%/turn[/cell][cell]%d turns[/cell][cell]%d turns[/cell]"
-			+ "[cell]over 2x[/cell][cell]%s%%/turn[/cell][cell]%d turns[/cell][cell]%d turns[/cell]"
-			+ "[cell]over 4x[/cell][cell]%s%%/turn[/cell][cell]%d turns[/cell][cell]%d turns[/cell]"
-			+ "[cell]over 10x[/cell][cell]%s%%/turn[/cell][cell]%d turns[/cell][cell]%d turns[/cell][/table]\n\n"
-			+ "Those turn counts assume you hold that volume every single turn without pause. Ease off below 1x and the impact unwinds at %s%%/turn instead.\n\n"
-			+ "The market table's impact column lists the four thresholds for each good. The per-tile auto-sell control uses them: pick how much price impact you will tolerate each turn and it ships only enough to stay inside that band, stockpiling the rest.\n\n"
+			+ "Cross a multiple of base output and the price moves that much per turn, for as long as you keep it up:\n\n"
+			+ bullets + "\n"
+			+ "The top step is deliberate: past 12x the market stops absorbing and the rate jumps to 1%%/turn.\n\n"
+			+ "SELLING pushes the price DOWN (a glut); BUYING pushes it UP (a deficit). The rates are identical in both directions, but the caps are not: a glut can push a price down to %d%% of its base, while a deficit can drive it up to %d%%.\n\n"
+			+ "The impact is NOT permanent — but the market has a memory. It watches your average volume over the last %d turns: while that average stays over the first threshold, quiet turns just HOLD the price where it is, so pausing for a turn buys no forgiveness. Once the average falls back to or under 1x, the price returns to base over %d turns.\n\n"
+			+ "The thresholds are not fixed either: the world economy grows, and every threshold rises by %d%% of its original value every %d turns (today's multiplier: x%s).\n\n"
+			+ table + "\n\n"
+			+ "Those turn counts assume you hold that volume every single turn. The market table's impact column lists each good's thresholds at today's multiplier; the per-tile auto-sell control uses them — pick how much price impact you will tolerate each turn and it ships only enough to stay inside that band, stockpiling the rest.\n\n"
 			+ "Goods no active recipe produces have no base output and take no impact at all.") % [
-				r1, r2, r4, r10,                      # the four band bullets
-				cap, rec,                             # "capped at +/-N%" ... "recovers at N%/turn"
-				cap,                                  # table header: "To reach the N% cap"
-				r1, _turns_to(10.0, EconomyConfig.PRICE_IMPACT_RATE_1X), _turns_to(float(cap), EconomyConfig.PRICE_IMPACT_RATE_1X),
-				r2, _turns_to(10.0, EconomyConfig.PRICE_IMPACT_RATE_2X), _turns_to(float(cap), EconomyConfig.PRICE_IMPACT_RATE_2X),
-				r4, _turns_to(10.0, EconomyConfig.PRICE_IMPACT_RATE_4X), _turns_to(float(cap), EconomyConfig.PRICE_IMPACT_RATE_4X),
-				r10, _turns_to(10.0, EconomyConfig.PRICE_IMPACT_RATE_10X), _turns_to(float(cap), EconomyConfig.PRICE_IMPACT_RATE_10X),
-				rec]
+				floor_price, ceil_price,
+				mem, mem,
+				int(EconomyConfig.IMPACT_THRESHOLD_INFLATION_STEP * 100.0), EconomyConfig.IMPACT_THRESHOLD_INFLATION_TURNS,
+				String.num(scale, 2)]
 	if entry_id == "intermittency":
 		var derate_pct: int = int(round(EconomyConfig.INTERMITTENCY_DERATE * 100.0))
 		return ("Solar and wind power are GREEN but INTERMITTENT — the sun and wind aren't always there. "
@@ -1120,7 +1115,6 @@ func _good_facts(good: Dictionary) -> Array:
 		{"label": "Transport infrastructure", "value": str(Catalog.route_infra_for_good(good_id).get("name", "Transport"))},
 		{"label": "Buyable", "value": _yes_no(bool(good.get("is_buyable", false)))},
 		{"label": "Sellable", "value": _yes_no(bool(good.get("is_sellable", false)))},
-		{"label": "Decay rate", "value": _decimal_text(float(good.get("decay_rate", 0.0)))},
 		{"label": "Recipes producing it", "value": _recipe_name_list(producing)},
 		{"label": "Recipes using it", "value": _recipe_name_list(using)},
 	]
