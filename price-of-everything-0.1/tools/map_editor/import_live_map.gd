@@ -35,6 +35,10 @@ const SIMPLIFY_START := 1.0
 const SIMPLIFY_STEP := 1.0
 const SIMPLIFY_LIMIT := 60.0
 
+## Two corners closer than this (squared, world units) are the same corner. A repeated corner
+## is what a simplifier leaves when it keeps a shape's start point and a near-copy of it.
+const MIN_CORNER_GAP := 4.0
+
 const SETTLE_FRAMES := 240
 
 ## A document name that does not exist on disk. The importer reads the world BLIND to any
@@ -68,6 +72,8 @@ func _ready() -> void:
 	var roads: Array = _import_roads(terrain)
 	var specials: Array = []
 	var simplified := 0
+	## Shapes that could not be drawn at all and were left out — reported, never silent.
+	var dropped := 0
 	var corners_before := 0
 	var corners_after := 0
 	for record_value in (fabric.get("_decorative_mass_records") as Array):
@@ -77,14 +83,16 @@ func _ready() -> void:
 			continue
 		if not _wanted(_tile_of(terrain, _centre_of(poly))):
 			continue
+		var outline := _outline_list(poly)
+		if outline.is_empty():
+			dropped += 1
+			continue
 		corners_before += poly.size()
-		var shaped := poly
 		if poly.size() > MAX_CORNERS:
-			shaped = _simplify_to_cap(poly)
 			simplified += 1
-		corners_after += shaped.size()
+		corners_after += outline.size()
 		specials.append({"id": "s:procedural:%d" % specials.size(), "kind": "poly",
-			"sides": [], "outline": _points_to_list(shaped)})
+			"sides": [], "outline": outline})
 
 	# Ports come in as ordinary shapes so the harbour is editable like everything else.
 	specials.append_array(_import_ports(world, specials.size()))
@@ -99,8 +107,12 @@ func _ready() -> void:
 		var park_poly: PackedVector2Array = park.get("poly", PackedVector2Array())
 		if park_poly.size() < 3 or not _wanted(_tile_of(terrain, _centre_of(park_poly))):
 			continue
+		var park_outline := _outline_list(park_poly)
+		if park_outline.is_empty():
+			dropped += 1
+			continue
 		parks.append({"id": "p:procedural:%d" % parks.size(), "kind": "green",
-			"outline": _outline_list(park_poly)})
+			"outline": park_outline})
 	var plazas: Array = []
 	for parcel_value in (fabric.get("_render_parcel_entries") as Array):
 		var parcel: Dictionary = parcel_value
@@ -109,8 +121,11 @@ func _ready() -> void:
 		var parcel_poly: PackedVector2Array = parcel.get("poly", PackedVector2Array())
 		if parcel_poly.size() < 3 or not _wanted(_tile_of(terrain, _centre_of(parcel_poly))):
 			continue
-		plazas.append({"id": "pz:procedural:%d" % plazas.size(),
-			"outline": _outline_list(parcel_poly)})
+		var plaza_outline := _outline_list(parcel_poly)
+		if plaza_outline.is_empty():
+			dropped += 1
+			continue
+		plazas.append({"id": "pz:procedural:%d" % plazas.size(), "outline": plaza_outline})
 
 	var slots: Dictionary = _import_slots(terrain, visuals)
 	var tiles: Dictionary = {}
@@ -147,6 +162,9 @@ func _ready() -> void:
 	print("[LIVE] imported %d roads, %d shapes (%d simplified, %d corners -> %d), %d parks, %d plazas, %d tiles with slots"
 		% [roads.size(), specials.size(), simplified, corners_before, corners_after,
 			parks.size(), plazas.size(), slots.size()])
+	if dropped > 0:
+		print("[LIVE] dropped %d shape(s) that could not be drawn (crossed or degenerate outlines)"
+			% dropped)
 	print("[LIVE] %d tiles covered — saved as '%s' (NOT made active; open it from the editor)"
 		% [tile_list.size(), _name])
 	get_tree().quit(0)
@@ -188,8 +206,11 @@ func _import_ports(world: Node, id_offset: int) -> Array:
 				var poly: PackedVector2Array = poly_value
 				if poly.size() < 3:
 					continue
+				var outline := _outline_list(poly)
+				if outline.is_empty():
+					continue
 				out.append({"id": "s:port:%d" % (id_offset + out.size()), "kind": "poly",
-					"sides": [], "outline": _outline_list(poly), "port": tile_id, "port_role": role})
+					"sides": [], "outline": outline, "port": tile_id, "port_role": role})
 	return out
 
 
@@ -267,9 +288,39 @@ func _import_slots(terrain: Node, visuals: Node) -> Dictionary:
 	return out
 
 
-## An outline under the corner cap, as the [[x, y], …] list the document stores.
+## An outline under the corner cap, as the [[x, y], …] list the document stores. Empty when
+## the shape does not survive — see [method _sane].
 func _outline_list(points: PackedVector2Array) -> Array:
-	return _points_to_list(points if points.size() <= MAX_CORNERS else _simplify_to_cap(points))
+	var shaped := _dedupe(points if points.size() <= MAX_CORNERS else _simplify_to_cap(points))
+	if not _drawable(shaped):
+		# Simplifying can cross an outline over itself, and a crossed outline draws as NOTHING:
+		# Godot refuses to triangulate it and prints an error every time it is asked. The
+		# original is simple by construction, so keep it whole rather than import a building
+		# nobody will ever see — an extra handle costs a designer a moment, an invisible
+		# building costs them the building.
+		var whole := _dedupe(points)
+		shaped = whole if _drawable(whole) else PackedVector2Array()
+	return _points_to_list(shaped)
+
+
+## Drop corners that sit on top of the one before them, and a closing corner that sits on the
+## first. REPAIR, not rejection: a duplicate corner is what a simplifier leaves when it keeps
+## both a shape's start point and a near-copy of it, and that hairline is what crosses the
+## outline. The shape itself is fine once the stray corner is gone — which is exactly the
+## defect found in two Pepper Valley buildings, drawn as nothing since they were imported.
+func _dedupe(points: PackedVector2Array) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for point in points:
+		if out.is_empty() or out[out.size() - 1].distance_squared_to(point) >= MIN_CORNER_GAP:
+			out.append(point)
+	while out.size() > 3 and out[0].distance_squared_to(out[out.size() - 1]) < MIN_CORNER_GAP:
+		out.remove_at(out.size() - 1)
+	return out
+
+
+## Can this outline actually be drawn?
+func _drawable(points: PackedVector2Array) -> bool:
+	return points.size() >= 3 and not Geometry2D.triangulate_polygon(points).is_empty()
 
 
 func _points_to_list(points: PackedVector2Array) -> Array:
