@@ -376,7 +376,7 @@ func refresh() -> void:
 			area_kind == MapEditorShapeToolRef.ZONE_PREFIX + str(key) and tool_name == "area")
 	match tool_name:
 		"pan":
-			_hint.text = "WASD or drag to pan · wheel or Q/E to zoom"
+			_hint.text = "WASD, drag or two-finger scroll to pan · wheel, pinch or Q/E to zoom"
 		"road":
 			_hint.text = "Click a corner · drag for a curve · Enter ends · Bksp back"
 		"anchor":

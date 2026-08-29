@@ -138,6 +138,15 @@ const ZOOM_STEP := 1.12
 const PAN_SPEED := 900.0
 ## Held Shift multiplier, for crossing the map rather than nudging along a street.
 const PAN_FAST := 3.0
+
+## SCREEN pixels moved per unit of trackpad two-finger scroll. A pan gesture's delta is a
+## small step per event and they arrive in a stream, so this is a feel number: 22 is what the
+## empire graph settled on for the same gesture, and matching it means one scroll covers the
+## same ground in both views.
+const PAN_GESTURE_SPEED := 22.0
+## How hard Ctrl-scroll zooms. Deliberately gentle — a trackpad fires many events per flick,
+## and a per-event factor near 1 is what keeps the ramp smooth instead of jumping.
+const PAN_ZOOM_RATE := 0.03
 ## Physical scancodes, so the keys stay under the same fingers on a non-QWERTY layout —
 ## WASD is a position on the keyboard, not four letters.
 const PAN_KEYS := {
@@ -570,6 +579,24 @@ func _unhandled_input(event: InputEvent) -> void:
 			MapEditorStrokeEdit.shape_anchor(_anchor_grab["stroke"] as Dictionary,
 				int(_anchor_grab["index"]), _world_at(motion.position))
 			_repaint()
+	elif event is InputEventMagnifyGesture:
+		# TRACKPAD PINCH. On macOS a trackpad never sends the wheel events the zoom was bound
+		# to: a pinch arrives as this, and a two-finger scroll as the pan gesture below, so on
+		# a laptop the editor could not be zoomed at all. `factor` is relative to the last
+		# event — a stream of small numbers around 1.0 — which is exactly what `_zoom_by`
+		# takes, and anchoring on the gesture's own position zooms toward the fingers.
+		var pinch := event as InputEventMagnifyGesture
+		_zoom_by(pinch.factor, pinch.position)
+	elif event is InputEventPanGesture:
+		# TRACKPAD TWO-FINGER SCROLL: pans, or zooms while Ctrl (or Cmd) is held — the
+		# modifier convention every map and canvas app shares, and the way a Windows precision
+		# trackpad reports a pinch. Panning is the platform's own reading of the gesture, and
+		# the editor had no answer for it either, so a trackpad could not scroll the map.
+		var pan := event as InputEventPanGesture
+		if pan.ctrl_pressed or pan.meta_pressed:
+			_zoom_by(1.0 - pan.delta.y * PAN_ZOOM_RATE, pan.position)
+		elif _camera != null:
+			_camera.position += pan.delta * PAN_GESTURE_SPEED / _camera.zoom.x
 	elif event is InputEventKey and event.pressed and not event.echo:
 		_handle_key(event as InputEventKey)
 
