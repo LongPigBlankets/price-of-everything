@@ -141,22 +141,36 @@ func get_sale_price(good_id: String, ctx: Dictionary = {}) -> float:
 	return minf(lifted, get_buy_price(good_id))
 
 func get_estimated_price_in_n_turns(good_id: String, n: int) -> float:
-	# Forecast assumes this turn's net market volume repeats for n turns: the
-	# impact keeps accruing (or walking home) at the current per-turn step. The
-	# base price is static now decay is retired, so with no volume the forecast
-	# is flat.
-	var net: int = int(_turn_sold.get(good_id, 0)) - int(_turn_bought.get(good_id, 0))
+	# Projects the SUSTAINED course — "if you keep doing what you have been doing".
+	# It reads the rolling window, NOT the per-turn trackers: tick_turn clears
+	# those at end of turn, so during DECIDE (when the player reads the market
+	# panel) they are always empty, and projecting off them told a player
+	# mid-glut that their price was about to recover while it was still falling.
+	# The regime logic here mirrors _tick_impact so the two cannot disagree.
+	var avg: float = rolling_net_volume(good_id)
+	var base_out: int = Catalog.base_output_for_good(good_id)
 	var scale: float = EconomyConfig.impact_threshold_scale(int(TurnManager.current_turn))
-	var rate: float = EconomyConfig.price_impact_rate(float(net), Catalog.base_output_for_good(good_id), scale)
+	var rate: float = EconomyConfig.price_impact_rate(avg, base_out, scale)
 	var a: float = get_impact_pct(good_id)
 	var projected: float = a
 	if rate > 0.0:
-		projected = a + (-rate if net > 0 else rate) * float(n)
+		projected = a + (-rate if avg > 0.0 else rate) * float(n)
 	elif absf(a) > 0.0:
-		# Walk-back: the gap closes over PRICE_IMPACT_RECOVERY_TURNS, stopping at zero.
 		projected = move_toward(a, 0.0, absf(a) / float(EconomyConfig.PRICE_IMPACT_RECOVERY_TURNS) * float(n))
 	projected = clampf(projected, EconomyConfig.PRICE_IMPACT_FLOOR_PCT, EconomyConfig.PRICE_IMPACT_CEILING_PCT)
 	return get_base_price_now(good_id) * (1.0 + projected / 100.0)
+
+## Mean net market volume over the rolling window (positive = net selling). This
+## is the number the impact model actually runs on, so UI should show it rather
+## than a single turn's figure.
+func rolling_net_volume(good_id: String) -> float:
+	var hist: Array = _net_history.get(good_id, [])
+	if hist.is_empty():
+		return 0.0
+	var total := 0.0
+	for v in hist:
+		total += float(v)
+	return total / float(hist.size())
 
 # --- Save/load (orchestrated by the SaveLoad autoload; docs/save_load_spec.md) ---
 
