@@ -247,6 +247,11 @@ func build(editor: Node, layers: MapEditorLayers) -> void:
 
 	# ── Visibility, folded ──────────────────────────────────────────────────────
 	var visibility := _fold(column, "Visibility")
+	var fast_preview := _toggle_button("Fast building layout   (P)")
+	fast_preview.tooltip_text = "Keep building silhouettes and hijack marks; hide tree crowns only in the preview."
+	fast_preview.pressed.connect(func() -> void: _editor.call("toggle_fast_preview"))
+	_layer_buttons["__fast_preview"] = fast_preview
+	visibility.add_child(fast_preview)
 	for entry in MapEditorLayers.LAYERS:
 		var key := str(entry["key"])
 		var button := _toggle_button(str(entry["label"]))
@@ -345,6 +350,8 @@ func refresh() -> void:
 			_mark(_layer_buttons[key], bool(_editor.call("grid_shown")))
 		elif str(key) == "__water":
 			_mark(_layer_buttons[key], bool(_editor.call("water_mask_shown")))
+		elif str(key) == "__fast_preview":
+			_mark(_layer_buttons[key], bool(_editor.call("fast_preview")))
 		else:
 			_mark(_layer_buttons[key], _layers.is_on(str(key)))
 	# The pickers show what is selected whichever tool is live, so a glance at the panel says

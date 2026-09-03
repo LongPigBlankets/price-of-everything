@@ -56,6 +56,45 @@ const SETTLEMENT_PREFIX := "procedural-"
 
 const SOURCE_PATH := "res://data/map_authored/procedural.json"
 
+## Stoneshore's planted-tree layer is the reference for the four imported city regions.
+## It is deliberately a TEMPLATE, not another generated forest: the source is a loose
+## eleven-hex fringe of individual specimens and small mixed stands woven between streets.
+## Copying that visual grammar into every tile would both look tiled and recreate the editor
+## performance failure that prompted compact tree storage, so one transformed footprint is
+## fitted around each region anchor and clipped against the imported fabric.
+const TREE_PATTERN_SOURCE_ANCHOR := "tile_5_10"
+const TREE_PATTERN_SOURCE_RADIUS := 1500.0
+const TREE_ROAD_CLEARANCE := 8.0
+const TREE_MASS_CLEARANCE := 5.0
+const TREE_DUPLICATE_CLEARANCE := 4.0
+
+## North and Stoneshore use a second planting grammar beside the loose fringe: irregular
+## runs of individual trees tucked against the road edge. These measured defaults retain
+## deliberate gaps, so the result reads as incidental planting rather than a rigid avenue.
+const ROADSIDE_TREE_SPACING := 90.0
+const ROADSIDE_TREE_MIN_SEGMENT := 50.0
+const ROADSIDE_TREE_CHANCE := 22
+const ROADSIDE_TREE_MIN_OFFSET := 10.0
+const ROADSIDE_TREE_OFFSET_STEPS := 8
+const ROADSIDE_TREE_ROAD_CLEARANCE := 7.5
+const ROADSIDE_TREE_DUPLICATE_CLEARANCE := 3.0
+
+## Focused, removable review layer for Copperstown. The live procedural source already has
+## the desired polygon vocabulary; the active authored document simply predates this fabric.
+const CENTRAL_BUILDINGS_KEY := "procedural-central-buildings"
+const CENTRAL_BUILDING_FOCUS_TILE := "tile_13_9"
+const CENTRAL_BUILDING_TILES := ["tile_12_8", "tile_12_9", "tile_13_9", "tile_14_9"]
+
+## Tie-break order when several symmetries fit equally well. The best fit still wins (coasts
+## and city fabric decide that); different first choices keep the four cities from looking
+## like literal copies when their rejection masks happen to be similar.
+const TREE_TRANSFORM_ORDER := {
+	"north": [4, 5, 6, 7, 0, 1, 2, 3],
+	"arin": [2, 3, 0, 1, 6, 7, 4, 5],
+	"vandel": [1, 0, 3, 2, 5, 4, 7, 6],
+	"capital": [7, 6, 5, 4, 3, 2, 1, 0],
+}
+
 
 static func is_region(value: String) -> bool:
 	return REGIONS.has(value)
@@ -153,7 +192,8 @@ static func load_source() -> Dictionary:
 ## the region is the unit the owner toggles, and claiming it whole means the procedural
 ## systems stand down for exactly the ground the import replaces once the document is saved.
 static func build_settlement(source: Dictionary, region: String, tiles_of_region: Dictionary,
-		covered: Dictionary, tile_of: Callable, centres: Dictionary) -> Dictionary:
+		covered: Dictionary, tile_of: Callable, centres: Dictionary,
+		tree_template: Dictionary = {}, tree_blockers: Array = []) -> Dictionary:
 	if tiles_of_region.is_empty():
 		return {}
 	var roads: Array = []
@@ -232,9 +272,484 @@ static func build_settlement(source: Dictionary, region: String, tiles_of_region
 		"plazas": plazas,
 		"slots": slots,
 	}
+	var tree_points := patterned_tree_points(tree_template, region, tiles_of_region, tile_of,
+		centres, roads, specials, plazas, tree_blockers)
+	var patterned_records := AuthoredMap.tree_records(
+		{AuthoredMap.TREE_POINTS_FIELD: tree_points}, "pattern-%s" % region)
+	var roadside := roadside_tree_points(tiles_of_region, tile_of, roads,
+		specials + plazas, patterned_records, tree_blockers, region)
+	_merge_tree_groups(tree_points, roadside)
+	if not tree_points.is_empty():
+		out[AuthoredMap.TREE_POINTS_FIELD] = tree_points
 	if not port_decor.is_empty():
 		out["port_decor"] = port_decor
 	return out
+
+
+## Copy only Copperstown's decorative building polygons into a removable review layer.
+## Roads stay in the active settlement; this command is intentionally scoped to buildings.
+static func build_central_buildings(source: Dictionary, tile_of: Callable) -> Dictionary:
+	var wanted: Dictionary = {}
+	for tile_id in CENTRAL_BUILDING_TILES:
+		wanted[str(tile_id)] = true
+	var specials: Array = []
+	var settlements_value: Variant = source.get("settlements", {})
+	if typeof(settlements_value) != TYPE_DICTIONARY:
+		return {}
+	var settlements: Dictionary = settlements_value
+	var keys := settlements.keys()
+	keys.sort()
+	for key_value in keys:
+		var settlement_value: Variant = settlements[key_value]
+		if typeof(settlement_value) != TYPE_DICTIONARY:
+			continue
+		for special_value in ((settlement_value as Dictionary).get("specials", []) as Array):
+			var special: Dictionary = special_value
+			var tile_id := str(special.get("port", ""))
+			if tile_id == "":
+				tile_id = str(tile_of.call(_centroid(special.get("outline", []) as Array)))
+			if not wanted.has(tile_id):
+				continue
+			var copy := special.duplicate(true)
+			copy["id"] = "s:central:%d" % specials.size()
+			specials.append(copy)
+	if specials.is_empty():
+		return {}
+	return {
+		"tiles": CENTRAL_BUILDING_TILES.duplicate(),
+		"next_id": specials.size() + 1,
+		"roads": [],
+		"specials": specials,
+		"parks": [],
+		"plazas": [],
+		"slots": {},
+	}
+
+
+## Capture Stoneshore's current standalone planting as offsets from its city anchor. Only
+## points in the local fringe are used, so unrelated trees added elsewhere later cannot
+## silently change every procedural city on the next import.
+static func stoneshore_tree_template(doc: Dictionary, centres: Dictionary) -> Dictionary:
+	var anchor_value: Variant = centres.get(TREE_PATTERN_SOURCE_ANCHOR, null)
+	if typeof(anchor_value) != TYPE_VECTOR2:
+		return {}
+	var anchor: Vector2 = anchor_value
+	var points: Array = []
+	var settlements_value: Variant = doc.get("settlements", {})
+	if typeof(settlements_value) != TYPE_DICTIONARY:
+		return {}
+	var settlements: Dictionary = settlements_value
+	var keys := settlements.keys()
+	keys.sort()
+	for key_value in keys:
+		var key := str(key_value)
+		# A re-import must never learn from its own earlier output.
+		if key.begins_with(SETTLEMENT_PREFIX):
+			continue
+		var settlement_value: Variant = settlements[key_value]
+		if typeof(settlement_value) != TYPE_DICTIONARY:
+			continue
+		for record_value in AuthoredMap.tree_records(settlement_value as Dictionary, key):
+			var record: Dictionary = record_value
+			var pos := _point(record.get("position", null))
+			if pos.distance_to(anchor) > TREE_PATTERN_SOURCE_RADIUS:
+				continue
+			var item := {
+				"kind": str(record.get("kind", "small")),
+				"offset": pos - anchor,
+			}
+			if str(item.kind) == "mixed":
+				item["radius"] = float(record.get("radius", 0.0))
+			points.append(item)
+	return {"points": points} if not points.is_empty() else {}
+
+
+## Fit the Stoneshore footprint to one generated region. Eight rotations/reflections are
+## tried and the version retaining the most clear, on-land points wins. Output is already in
+## the compact on-disk representation used by AuthoredMap, grouped by visible kind.
+static func patterned_tree_points(tree_template: Dictionary, region: String,
+		tiles_of_region: Dictionary, tile_of: Callable, centres: Dictionary, roads: Array,
+		specials: Array, plazas: Array, tree_blockers: Array = []) -> Dictionary:
+	if tree_template.is_empty() or not REGION_ANCHORS.has(region):
+		return {}
+	var points_value: Variant = tree_template.get("points", [])
+	if typeof(points_value) != TYPE_ARRAY or (points_value as Array).is_empty():
+		return {}
+	var anchor_value: Variant = centres.get(str(REGION_ANCHORS[region]), null)
+	if typeof(anchor_value) != TYPE_VECTOR2:
+		return {}
+	var anchor: Vector2 = anchor_value
+	var polygon_blockers: Array = []
+	for record_value in specials + plazas:
+		var outline := _outline((record_value as Dictionary).get("outline", []))
+		if outline.size() >= 3:
+			polygon_blockers.append(outline)
+	for blocker_value in tree_blockers:
+		var blocker := _outline(blocker_value)
+		if blocker.size() >= 3:
+			polygon_blockers.append(blocker)
+
+	var best: Array = []
+	var order: Array = TREE_TRANSFORM_ORDER.get(region, [0, 1, 2, 3, 4, 5, 6, 7])
+	for transform_value in order:
+		var transform_index := int(transform_value)
+		var accepted: Array = []
+		for point_value in (points_value as Array):
+			if typeof(point_value) != TYPE_DICTIONARY:
+				continue
+			var source: Dictionary = point_value
+			var kind := str(source.get("kind", "small"))
+			if not AuthoredMap.TREE_KINDS.has(kind):
+				continue
+			var candidate := anchor + _tree_transform(
+				(source.get("offset", Vector2.ZERO) as Vector2), transform_index)
+			var radius := float(source.get("radius", 0.0))
+			var reach := _tree_reach(kind, radius)
+			if not _tree_clear(candidate, reach, tiles_of_region, tile_of, roads,
+					polygon_blockers, accepted):
+				continue
+			accepted.append({"kind": kind, "position": candidate, "radius": radius})
+		if accepted.size() > best.size():
+			best = accepted
+
+	var groups: Dictionary = {}
+	for record_value in best:
+		var record: Dictionary = record_value
+		var kind := str(record.kind)
+		if not groups.has(kind):
+			groups[kind] = []
+		var pos: Vector2 = record.position
+		var compact: Array = [snappedf(pos.x, 0.01), snappedf(pos.y, 0.01)]
+		if kind == "mixed":
+			compact.append(snappedf(float(record.radius), 0.01))
+		(groups[kind] as Array).append(compact)
+	return groups
+
+
+## Generate sparse, deterministic road-edge planting. Existing trees are blockers, which
+## makes this safe to run over hand-planted areas and makes a second pass a true no-op.
+static func roadside_tree_points(allowed_tiles: Dictionary, tile_of: Callable, roads: Array,
+		polygon_records: Array, occupied_records: Array = [], tree_blockers: Array = [],
+		salt: String = "roadside", keepout_centres: Array = []) -> Dictionary:
+	var polygon_blockers: Array = []
+	for record_value in polygon_records:
+		if typeof(record_value) != TYPE_DICTIONARY:
+			continue
+		var outline := _outline((record_value as Dictionary).get("outline", []))
+		if outline.size() >= 3:
+			polygon_blockers.append(outline)
+	for blocker_value in tree_blockers:
+		var blocker := _outline(blocker_value)
+		if blocker.size() >= 3:
+			polygon_blockers.append(blocker)
+
+	var occupied: Array = []
+	for record_value in occupied_records:
+		if typeof(record_value) != TYPE_DICTIONARY:
+			continue
+		var record: Dictionary = record_value
+		occupied.append({
+			"kind": str(record.get("kind", "small")),
+			"position": _point(record.get("position", null)),
+			"radius": float(record.get("radius", 0.0)),
+		})
+
+	var accepted: Array = []
+	for road_index in roads.size():
+		var road_value: Variant = roads[road_index]
+		if typeof(road_value) != TYPE_DICTIONARY:
+			continue
+		var road: Dictionary = road_value
+		var line := _polyline(road.get("points", []))
+		for segment_index in range(line.size() - 1):
+			var start := line[segment_index]
+			var finish := line[segment_index + 1]
+			var length := start.distance_to(finish)
+			if length < ROADSIDE_TREE_MIN_SEGMENT:
+				continue
+			var direction := (finish - start) / length
+			var normal := Vector2(-direction.y, direction.x)
+			var sample_count := maxi(1, int(floor(length / ROADSIDE_TREE_SPACING)))
+			for sample_index in sample_count:
+				var token := "%s:%s:%d:%d:%d" % [salt,
+					str(road.get("id", road_index)), segment_index, sample_index, sample_count]
+				var seed := _stable_tree_seed(token)
+				if seed % 100 >= ROADSIDE_TREE_CHANCE:
+					continue
+				var along := (float(sample_index) + 0.5) * length / float(sample_count)
+				along += float((seed / 101) % 17 - 8)
+				along = clampf(along, 0.2 * length, 0.8 * length)
+				var primary_side := -1.0 if (seed / 211) % 2 == 0 else 1.0
+				var sides := [primary_side]
+				if (seed / 307) % 11 == 0:
+					sides.append(-primary_side)
+				for side_value in sides:
+					var side := float(side_value)
+					var variant_seed := _stable_tree_seed("%s:%d" % [token, int(side)])
+					var kind := "small" if variant_seed % 5 < 3 else "large"
+					var offset := ROADSIDE_TREE_MIN_OFFSET \
+						+ float((variant_seed / 17) % ROADSIDE_TREE_OFFSET_STEPS)
+					var candidate := start + direction * along + normal * side * offset
+					if _roadside_tree_clear(candidate, kind, allowed_tiles, tile_of, roads,
+							polygon_blockers, occupied, accepted, keepout_centres):
+						accepted.append({"kind": kind, "position": candidate, "radius": 0.0})
+
+	var groups: Dictionary = {}
+	for record_value in accepted:
+		var record: Dictionary = record_value
+		var kind := str(record.kind)
+		if not groups.has(kind):
+			groups[kind] = []
+		var pos: Vector2 = record.position
+		(groups[kind] as Array).append([snappedf(pos.x, 0.01), snappedf(pos.y, 0.01)])
+	return groups
+
+
+static func _roadside_tree_clear(point: Vector2, kind: String, allowed_tiles: Dictionary,
+		tile_of: Callable, roads: Array, polygon_blockers: Array, occupied: Array,
+		accepted: Array, keepout_centres: Array) -> bool:
+	var tile_id := str(tile_of.call(point))
+	if tile_id == "" or not allowed_tiles.has(tile_id):
+		return false
+	for centre_value in keepout_centres:
+		if typeof(centre_value) == TYPE_VECTOR2 \
+				and point.distance_to(centre_value as Vector2) <= TREE_PATTERN_SOURCE_RADIUS:
+			return false
+	for road_value in roads:
+		var line := _polyline((road_value as Dictionary).get("points", []))
+		for i in range(line.size() - 1):
+			if point.distance_to(Geometry2D.get_closest_point_to_segment(
+					point, line[i], line[i + 1])) < ROADSIDE_TREE_ROAD_CLEARANCE:
+				return false
+	var reach := _tree_reach(kind, 0.0)
+	for polygon_value in polygon_blockers:
+		var polygon: PackedVector2Array = polygon_value
+		if Geometry2D.is_point_in_polygon(point, polygon):
+			return false
+		for i in polygon.size():
+			if point.distance_to(Geometry2D.get_closest_point_to_segment(
+					point, polygon[i], polygon[(i + 1) % polygon.size()])) < reach:
+				return false
+	for prior_value in occupied + accepted:
+		var prior: Dictionary = prior_value
+		var prior_reach := _tree_reach(str(prior.kind), float(prior.radius))
+		if point.distance_to(prior.position as Vector2) \
+				< minf(reach, prior_reach) + ROADSIDE_TREE_DUPLICATE_CLEARANCE:
+			return false
+	return true
+
+
+static func _stable_tree_seed(value: String) -> int:
+	var result := 17
+	for byte in value.to_utf8_buffer():
+		result = int((result * 131 + int(byte)) % 2147483647)
+	return result
+
+
+static func _merge_tree_groups(target: Dictionary, source: Dictionary) -> void:
+	for kind_value in source:
+		var kind := str(kind_value)
+		if not target.has(kind):
+			target[kind] = []
+		(target[kind] as Array).append_array(source[kind_value] as Array)
+
+
+## One-time/backfill path for generated areas that were already merged before patterned
+## planting existed. Points are routed into whichever settlement owns the land beneath them;
+## exact-coordinate de-duplication makes the operation idempotent without storing hidden ids
+## beside every compact point. Future `enable procedural` imports use build_settlement above.
+static func apply_pattern_to_existing(doc: Dictionary, regions: Array, centres: Dictionary,
+		tile_of: Callable) -> Dictionary:
+	var tree_template := stoneshore_tree_template(doc, centres)
+	if tree_template.is_empty():
+		return {"total": 0, "regions": {}}
+	var settlements_value: Variant = doc.get("settlements", {})
+	if typeof(settlements_value) != TYPE_DICTIONARY:
+		return {"total": 0, "regions": {}}
+	var settlements: Dictionary = settlements_value
+	var owner_of: Dictionary = {}
+	var roads: Array = []
+	var specials: Array = []
+	var plazas: Array = []
+	var forest_blockers: Array = []
+	var occupied: Array[Vector2] = []
+	var keys := settlements.keys()
+	keys.sort()
+	for key_value in keys:
+		var settlement_value: Variant = settlements[key_value]
+		if typeof(settlement_value) != TYPE_DICTIONARY:
+			continue
+		var settlement: Dictionary = settlement_value
+		for tile_value in (settlement.get("tiles", []) as Array):
+			owner_of[str(tile_value)] = str(key_value)
+		roads.append_array(settlement.get("roads", []) as Array)
+		specials.append_array(settlement.get("specials", []) as Array)
+		plazas.append_array(settlement.get("plazas", []) as Array)
+		for forest_value in (settlement.get("forests", []) as Array):
+			if typeof(forest_value) == TYPE_DICTIONARY:
+				forest_blockers.append((forest_value as Dictionary).get("outline", []))
+		for tree_value in AuthoredMap.tree_records(settlement, str(key_value)):
+			occupied.append(_point((tree_value as Dictionary).get("position", null)))
+
+	var allowed: Dictionary = {}
+	for tile_id in owner_of:
+		allowed[str(tile_id)] = true
+	var per_region: Dictionary = {}
+	var total := 0
+	for region_value in regions:
+		var region := str(region_value)
+		if not is_region(region):
+			continue
+		var generated := patterned_tree_points(tree_template, region, allowed, tile_of, centres,
+			roads, specials, plazas, forest_blockers)
+		var added := 0
+		var generated_settlement := {AuthoredMap.TREE_POINTS_FIELD: generated}
+		for record_value in AuthoredMap.tree_records(generated_settlement, "backfill-%s" % region):
+			var record: Dictionary = record_value
+			var pos := _point(record.get("position", null))
+			var duplicate := false
+			for old in occupied:
+				if pos.distance_to(old) <= 0.02:
+					duplicate = true
+					break
+			if duplicate:
+				continue
+			var owner := str(owner_of.get(str(tile_of.call(pos)), ""))
+			if owner == "" or not settlements.has(owner):
+				continue
+			if AuthoredMap.append_tree(settlements[owner] as Dictionary,
+					str(record.get("kind", "small")), pos, float(record.get("radius", 0.0))):
+				occupied.append(pos)
+				added += 1
+		per_region[region] = added
+		total += added
+	return {"total": total, "regions": per_region}
+
+
+## Fill road-edge gaps across the authored document while leaving the two reference areas
+## untouched. Points are routed to the settlement owning the tile beneath them, and compact
+## coordinate proximity makes the migration idempotent without adding persistent ids.
+static func apply_roadside_to_existing(doc: Dictionary, centres: Dictionary,
+		tile_of: Callable) -> Dictionary:
+	var settlements_value: Variant = doc.get("settlements", {})
+	if typeof(settlements_value) != TYPE_DICTIONARY:
+		return {"total": 0, "settlements": {}}
+	var settlements: Dictionary = settlements_value
+	var owner_of: Dictionary = {}
+	var roads: Array = []
+	var polygons: Array = []
+	var forest_blockers: Array = []
+	var occupied_records: Array = []
+	var keys := settlements.keys()
+	keys.sort()
+	for key_value in keys:
+		var key := str(key_value)
+		var settlement_value: Variant = settlements[key_value]
+		if typeof(settlement_value) != TYPE_DICTIONARY:
+			continue
+		var settlement: Dictionary = settlement_value
+		for tile_value in (settlement.get("tiles", []) as Array):
+			owner_of[str(tile_value)] = key
+		roads.append_array(settlement.get("roads", []) as Array)
+		polygons.append_array(settlement.get("specials", []) as Array)
+		polygons.append_array(settlement.get("plazas", []) as Array)
+		for forest_value in (settlement.get("forests", []) as Array):
+			if typeof(forest_value) == TYPE_DICTIONARY:
+				forest_blockers.append((forest_value as Dictionary).get("outline", []))
+		occupied_records.append_array(AuthoredMap.tree_records(settlement, key))
+
+	var allowed: Dictionary = {}
+	for tile_id in owner_of:
+		allowed[str(tile_id)] = true
+	var keepouts: Array = []
+	for anchor_id in [TREE_PATTERN_SOURCE_ANCHOR, str(REGION_ANCHORS.north)]:
+		var centre_value: Variant = centres.get(anchor_id, null)
+		if typeof(centre_value) == TYPE_VECTOR2:
+			keepouts.append(centre_value)
+	var generated := roadside_tree_points(allowed, tile_of, roads, polygons,
+		occupied_records, forest_blockers, "authored-roadside", keepouts)
+	var per_settlement: Dictionary = {}
+	var total := 0
+	var wrapper := {AuthoredMap.TREE_POINTS_FIELD: generated}
+	for record_value in AuthoredMap.tree_records(wrapper, "roadside-backfill"):
+		var record: Dictionary = record_value
+		var pos := _point(record.get("position", null))
+		var owner := str(owner_of.get(str(tile_of.call(pos)), ""))
+		if owner == "" or not settlements.has(owner):
+			continue
+		if AuthoredMap.append_tree(settlements[owner] as Dictionary,
+				str(record.get("kind", "small")), pos, float(record.get("radius", 0.0))):
+			per_settlement[owner] = int(per_settlement.get(owner, 0)) + 1
+			total += 1
+	return {"total": total, "settlements": per_settlement}
+
+
+static func _tree_transform(offset: Vector2, index: int) -> Vector2:
+	var transformed := Vector2(-offset.x, offset.y) if index >= 4 else offset
+	return transformed.rotated(float(index % 4) * PI * 0.5)
+
+
+static func _tree_reach(kind: String, radius: float) -> float:
+	match kind:
+		"large":
+			return 6.0 + TREE_MASS_CLEARANCE
+		"mixed":
+			return maxf(radius, 1.0) + 6.0 + TREE_MASS_CLEARANCE
+		_:
+			return 2.6 + TREE_MASS_CLEARANCE
+
+
+static func _tree_clear(point: Vector2, reach: float, tiles_of_region: Dictionary,
+		tile_of: Callable, roads: Array, polygon_blockers: Array, accepted: Array) -> bool:
+	var tile_id := str(tile_of.call(point))
+	if tile_id == "" or not tiles_of_region.has(tile_id):
+		return false
+	for road_value in roads:
+		var road: Dictionary = road_value
+		var line := _polyline(road.get("points", []))
+		for i in range(line.size() - 1):
+			if point.distance_to(Geometry2D.get_closest_point_to_segment(
+					point, line[i], line[i + 1])) < reach + TREE_ROAD_CLEARANCE:
+				return false
+	for polygon_value in polygon_blockers:
+		var polygon: PackedVector2Array = polygon_value
+		if Geometry2D.is_point_in_polygon(point, polygon):
+			return false
+		for i in polygon.size():
+			if point.distance_to(Geometry2D.get_closest_point_to_segment(
+					point, polygon[i], polygon[(i + 1) % polygon.size()])) < reach:
+				return false
+	for accepted_value in accepted:
+		var prior: Dictionary = accepted_value
+		var prior_reach := _tree_reach(str(prior.kind), float(prior.radius))
+		if point.distance_to(prior.position as Vector2) < minf(reach, prior_reach) \
+				+ TREE_DUPLICATE_CLEARANCE:
+			return false
+	return true
+
+
+static func _outline(value: Variant) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	if typeof(value) == TYPE_PACKED_VECTOR2_ARRAY:
+		return value as PackedVector2Array
+	if typeof(value) != TYPE_ARRAY:
+		return out
+	for point_value in (value as Array):
+		var point := _point(point_value)
+		out.append(point)
+	return out
+
+
+static func _polyline(value: Variant) -> PackedVector2Array:
+	return _outline(value)
+
+
+static func _point(value: Variant) -> Vector2:
+	if typeof(value) == TYPE_VECTOR2:
+		return value as Vector2
+	if typeof(value) == TYPE_ARRAY and (value as Array).size() >= 2:
+		return Vector2(float((value as Array)[0]), float((value as Array)[1]))
+	return Vector2.ZERO
 
 
 static func _touches(tiles: Array, covered: Dictionary) -> bool:

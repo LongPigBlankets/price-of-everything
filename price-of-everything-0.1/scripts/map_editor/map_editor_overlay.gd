@@ -20,6 +20,10 @@ const AuthoredRoadStyle := preload("res://scripts/authored_road_style.gd")
 const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
 const AuthoredSpecialShapesRef := preload("res://scripts/authored_special_shapes.gd")
 
+## Static scaffolding is retained separately from pointer/selection chrome. A click should
+## repaint a handful of handles and hatches, not every visible road, slot, zone and hex.
+enum DrawPass { ALL, STATIC, DYNAMIC }
+
 ## Tile ids stop being readable below this zoom, and drawing ~600 of them wastes the frame.
 const LABEL_MIN_ZOOM := 0.45
 ## Below this, per-tile borders turn into moire; the grid hides rather than lies.
@@ -123,6 +127,7 @@ const SLOT_PICKED_WIDTH := 4.0
 ## plain assignment beats a signal here). Untyped to avoid a preload cycle with the editor
 ## script, which preloads this one.
 var editor: Node = null
+var draw_pass: int = DrawPass.ALL
 
 var show_grid := true
 var show_labels := true
@@ -152,7 +157,10 @@ func _process(_delta: float) -> void:
 	# document is projected and stroked on each pass, and on a map-sized document that was
 	# several milliseconds a frame spent redrawing an identical picture.
 	var transform := get_viewport().get_canvas_transform()
-	var revision := int(editor.call("preview_revision")) if editor != null else 0
+	var revision := 0
+	if editor != null:
+		revision = int(editor.call("document_revision")) \
+			if draw_pass == DrawPass.STATIC else int(editor.call("preview_revision"))
 	if transform == _drawn_transform and revision == _drawn_revision:
 		return
 	_drawn_transform = transform
@@ -166,20 +174,52 @@ func _draw() -> void:
 	var camera: Camera2D = editor.call("camera")
 	if camera == null:
 		return
-	_draw_water_mask(camera)
-	_draw_authored_roads(camera)
-	_draw_pen(camera)
-	_draw_area_polygon(camera)
-	_draw_free_polygon(camera)
-	_draw_trace(camera)
-	_draw_dots(camera)
-	_draw_deposit_marks(camera)
-	_draw_zones(camera)
-	_draw_slots(camera)
-	# LAST, so tile boundaries stay visible over fabric, zones and buildings alike. It used
-	# to be first and was buried by everything drawn after it.
-	_draw_grid(camera)
-	_draw_marquee(camera)
+	if draw_pass != DrawPass.DYNAMIC:
+		_draw_water_mask(camera)
+		_draw_authored_roads(camera)
+		_draw_deposit_marks(camera)
+		_draw_zones(camera)
+		_draw_slots(camera)
+		# Last in the static pass, so tile boundaries stay visible over the map fabric.
+		_draw_grid(camera)
+	if draw_pass != DrawPass.STATIC:
+		_draw_pen(camera)
+		_draw_area_polygon(camera)
+		_draw_free_polygon(camera)
+		_draw_trace(camera)
+		_draw_dots(camera)
+		_draw_selected_shapes(camera)
+		_draw_selected_roads(camera)
+		_draw_selected_zones(camera)
+		_draw_marquee(camera)
+
+
+## Selection belongs in the cheap screen-space overlay, not in the retained fabric canvas.
+## Previously a click rebuilt every visible wood and building merely to add this hatch; with
+## dense Stoneshore woods that single architectural mistake made selecting feel like a hang.
+func _draw_selected_shapes(camera: Camera2D) -> void:
+	for entry_value in (editor.call("selected_records") as Array):
+		var entry: Dictionary = entry_value
+		var kind := str(entry.get("kind", ""))
+		if kind == "roads" or kind == "zones":
+			continue   # those render their own selection overline/wash above
+		var record_value: Variant = entry.get("record", {})
+		if typeof(record_value) != TYPE_DICTIONARY:
+			continue
+		var record: Dictionary = record_value
+		var polygons: Array = []
+		if kind == "decor":
+			polygons = AuthoredFabricPainter.mass_polygons(record)
+		elif kind == "specials":
+			polygons = [AuthoredSpecialShapesRef.render_polygon(record)]
+		elif record.has("outline"):
+			var outline := PackedVector2Array()
+			for point_value in (record.get("outline", []) as Array):
+				var point: Array = point_value
+				if point.size() >= 2:
+					outline.append(Vector2(float(point[0]), float(point[1])))
+			polygons = [outline]
+		_hatch(polygons, camera, bool(editor.call("is_shape_mode")))
 
 
 ## Authored roads, at their true world widths so what the designer sees is what the game
@@ -187,12 +227,17 @@ func _draw() -> void:
 ## visibility depends on play, and a designer needs to see at a glance which parts of a
 ## settlement will be missing at turn one.
 func _draw_authored_roads(camera: Camera2D) -> void:
+	# At the whole-map zoom the saved authored bake already carries the road network and a
+	# true-width editor overline is sub-pixel. Keeping 1,500 duplicate line commands retained
+	# there halved the overview frame rate for no visible information.
+	if camera.zoom.x < GRID_MIN_ZOOM:
+		return
 	var document: Dictionary = editor.call("document").call("data")
 	var settlements_value: Variant = document.get("settlements", {})
 	if typeof(settlements_value) != TYPE_DICTIONARY:
 		return
 	var settlements: Dictionary = settlements_value
-	var selected: Dictionary = editor.call("selected_ids")
+	var view := _visible_world_rect(camera).grow(40.0)
 	for key in settlements.keys():
 		var settlement_value: Variant = settlements[key]
 		if typeof(settlement_value) != TYPE_DICTIONARY:
@@ -204,6 +249,8 @@ func _draw_authored_roads(camera: Camera2D) -> void:
 			var world_points := AuthoredRoadGeometry.polyline(stroke)
 			if world_points.size() < 2:
 				continue
+			if not _points_visible(world_points, view):
+				continue
 			var stroke_class := str(stroke.get("class", "mid"))
 			var screen := _project(world_points, camera)
 			# World width scaled by zoom: the stroke is zoom-invariant world geometry, so
@@ -214,8 +261,21 @@ func _draw_authored_roads(camera: Camera2D) -> void:
 				AuthoredRoadStyle.bed_width(stroke_class) * camera.zoom.x, true)
 			if bool(stroke.get("unlockable", false)):
 				draw_polyline(screen, UNLOCKABLE_COLOR, 1.6, true)
-			if selected.has(str(stroke.get("id", ""))):
-				draw_polyline(screen, SELECTED_COLOR, 3.0, true)
+
+
+## Selected-road overlines live in the dynamic pass, so clicking never rebuilds the retained
+## base-road canvas. selected_records is already the tiny picked subset; do not rescan roads.
+func _draw_selected_roads(camera: Camera2D) -> void:
+	for entry_value in (editor.call("selected_records") as Array):
+		var entry: Dictionary = entry_value
+		if str(entry.get("kind", "")) != "roads":
+			continue
+		var stroke_value: Variant = entry.get("record", {})
+		if typeof(stroke_value) != TYPE_DICTIONARY:
+			continue
+		var world_points := AuthoredRoadGeometry.polyline(stroke_value as Dictionary)
+		if world_points.size() >= 2:
+			draw_polyline(_project(world_points, camera), SELECTED_COLOR, 3.0, true)
 
 
 ## The farm/wood/park/plaza/zone polygon being drawn: its corners and the ring so far. This
@@ -403,7 +463,7 @@ func _draw_corner_handles(camera: Camera2D) -> void:
 
 ## Industrial zones: the regions a gameplay building may be placed in.
 func _draw_zones(camera: Camera2D) -> void:
-	var selected: Dictionary = editor.call("selected_ids")
+	var view := _visible_world_rect(camera)
 	var document: Dictionary = editor.call("document").call("data")
 	var settlements_value: Variant = document.get("settlements", {})
 	if typeof(settlements_value) != TYPE_DICTIONARY:
@@ -416,7 +476,6 @@ func _draw_zones(camera: Camera2D) -> void:
 			if typeof(zone_value) != TYPE_DICTIONARY:
 				continue
 			var zone: Dictionary = zone_value
-			var picked: bool = selected.has(str(zone.get("id", "")))
 			# The blue `industrial` and red `industrial_reserve` washes no longer draw
 			# (owner, 2026-08-27): hijack-marked decorative buildings are what says where a
 			# gameplay building goes now, and two full-tile colour washes underneath them
@@ -429,7 +488,7 @@ func _draw_zones(camera: Camera2D) -> void:
 			# the existing blue and red regions in the document invisible, so a designer
 			# could neither find nor delete one — a marquee would be the only way to catch
 			# something they cannot see.
-			if str(zone.get("kind", "")) != "extraction" and not picked:
+			if str(zone.get("kind", "")) != "extraction":
 				continue
 			var world := PackedVector2Array()
 			for entry in (zone.get("outline", []) as Array):
@@ -438,23 +497,47 @@ func _draw_zones(camera: Camera2D) -> void:
 					world.append(Vector2(float(values[0]), float(values[1])))
 			if world.size() < 3:
 				continue
-			var colour: Color = ZONE_COLORS.get(str(zone.get("kind", "")),
-				ZONE_COLORS["industrial"])
-			var screen := _project(world, camera)
-			var fill := colour
-			fill.a = ZONE_FILL_ALPHA
-			draw_colored_polygon(screen, fill)
-			var ring := screen.duplicate()
-			ring.append(screen[0])
-			draw_polyline(ring, colour, ZONE_EDGE_WIDTH * (2.0 if picked else 1.0), true)
-			if picked:
-				# `_hatch` steps in WORLD units so its density is stable as a shape moves,
-				# and this function otherwise draws in screen space. Borrow the fabric
-				# layer's transform for the hatch alone, then hand the canvas back.
-				draw_set_transform(size * 0.5 - camera.get_screen_center_position()
-					* camera.zoom.x, 0.0, Vector2(camera.zoom.x, camera.zoom.x))
-				_hatch([world], camera, bool(editor.call("is_shape_mode")))
-				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			if not _points_visible(world, view):
+				continue
+			_draw_zone(world, zone, camera, false)
+
+
+## Selected zones—including normally hidden industrial/reserve zones—belong to the dynamic
+## pass. This preserves their find/delete affordance without invalidating all static chrome.
+func _draw_selected_zones(camera: Camera2D) -> void:
+	for entry_value in (editor.call("selected_records") as Array):
+		var entry: Dictionary = entry_value
+		if str(entry.get("kind", "")) != "zones":
+			continue
+		var zone_value: Variant = entry.get("record", {})
+		if typeof(zone_value) != TYPE_DICTIONARY:
+			continue
+		var zone: Dictionary = zone_value
+		var world := PackedVector2Array()
+		for point_value in (zone.get("outline", []) as Array):
+			var point: Array = point_value
+			if point.size() >= 2:
+				world.append(Vector2(float(point[0]), float(point[1])))
+		if world.size() >= 3:
+			_draw_zone(world, zone, camera, true)
+
+
+func _draw_zone(world: PackedVector2Array, zone: Dictionary, camera: Camera2D,
+		picked: bool) -> void:
+	var colour: Color = ZONE_COLORS.get(str(zone.get("kind", "")),
+		ZONE_COLORS["industrial"])
+	var screen := _project(world, camera)
+	var fill := colour
+	fill.a = ZONE_FILL_ALPHA
+	draw_colored_polygon(screen, fill)
+	var ring := screen.duplicate()
+	ring.append(screen[0])
+	draw_polyline(ring, colour, ZONE_EDGE_WIDTH * (2.0 if picked else 1.0), true)
+	if picked:
+		draw_set_transform(size * 0.5 - camera.get_screen_center_position()
+			* camera.zoom.x, 0.0, Vector2(camera.zoom.x, camera.zoom.x))
+		_hatch([world], camera, bool(editor.call("is_shape_mode")))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 ## Tiles carrying at least one non-water deposit, so extraction zones can be sited where the
@@ -494,11 +577,14 @@ func _draw_slots(camera: Camera2D) -> void:
 	if boxes.is_empty():
 		return
 	var picked: Dictionary = editor.call("picked_slot")
+	var view := _visible_world_rect(camera).grow(40.0)
 	for box_value in boxes:
 		var box: Dictionary = box_value
 		var colour: Color = SLOT_COLORS.get(str(box["class"]), SLOT_COLORS["standard"])
 		var centre: Vector2 = box["centre"]
 		var size: Vector2 = box["size"]
+		if not view.intersects(Rect2(centre - size * 0.55, size * 1.1)):
+			continue
 		var angle := float(box["angle"])
 		var corners := PackedVector2Array()
 		for corner in [Vector2(-0.5, -0.5), Vector2(0.5, -0.5), Vector2(0.5, 0.5), Vector2(-0.5, 0.5)]:
@@ -531,6 +617,15 @@ func _project(points: PackedVector2Array, camera: Camera2D) -> PackedVector2Arra
 	for point in points:
 		out.append(_to_screen(point, camera))
 	return out
+
+
+func _points_visible(points: PackedVector2Array, view: Rect2) -> bool:
+	if points.is_empty():
+		return false
+	var bounds := Rect2(points[0], Vector2.ZERO)
+	for point in points:
+		bounds = bounds.expand(point)
+	return view.intersects(bounds.grow(1.0))
 
 
 func _draw_grid(camera: Camera2D) -> void:

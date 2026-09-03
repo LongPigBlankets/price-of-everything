@@ -61,6 +61,7 @@ func _ready() -> void:
 		% [boot_ms / 1000.0, frames, slowest])
 
 	_report_document()
+	_stress_history()
 
 	# PHASE 2 — the cadence, attributed. Each label is measured twice, in a different
 	# neighbourhood of the run, so a one-off (a shader compile, a GC) cannot masquerade as
@@ -70,15 +71,18 @@ func _ready() -> void:
 	# as lambdas rather than `bind`, which appends its argument and so called these with the
 	# install flag first — the miscall that cost the first run's attribution windows.
 	var fabric_off := func(install: bool) -> void: _set_editor_fabric(install)
+	var full_detail := func(install: bool) -> void: _editor.call("set_fast_preview", not install)
 	var no_forests := func(install: bool) -> void: _strip("forests", install)
 	var no_content := func(install: bool) -> void: _strip("forests,specials,decor,parks,plazas", install)
-	await _measure("everything on")
+	await _measure("fast building layout (default)")
+	await _measure("full detail preview", full_detail)
+	await _measure_overlay_churn()
 	await _measure("editor fabric preview OFF", fabric_off)
-	await _measure("everything on (repeat)")
+	await _measure("fast building layout (repeat)")
 	await _measure("editor fabric preview OFF (repeat)", fabric_off)
 	await _measure("forests removed from the document", no_forests)
 	await _measure("forests+specials+decor+ground removed", no_content)
-	await _measure("everything on (final)")
+	await _measure("fast building layout (final)")
 	# The camera the owner navigates with: at the far end of the zoom range the whole map is
 	# in view, which is where culling stops helping and the far-zoom stand-in takes over.
 	# A NUMBER IS NOT A PICTURE. Culling and the far-zoom stand-in both change what is drawn,
@@ -93,6 +97,49 @@ func _ready() -> void:
 	await _shoot("far", 0.12)
 	print("[PERF] md5 after:  %s" % FileAccess.get_md5(doc_path))
 	get_tree().quit(0)
+
+
+## Fill the real undo ceiling without changing the document. This is the 20-minute-session
+## regression: the old parsed-Dictionary history sent this process toward 15 GB; compact JSON
+## snapshots should reach the same 128 undo points in roughly the document's bytes x 128.
+func _stress_history() -> void:
+	var document_ref: RefCounted = _editor.call("document")
+	var started := Time.get_ticks_msec()
+	for index in int(document_ref.call("history_limit")):
+		document_ref.call("begin_edit", "performance snapshot %d" % index)
+	# Exercise the lazy parser in both directions at the ceiling, then leave the in-memory
+	# document exactly as it began. Disk equality is checked again at the end of the run.
+	document_ref.call("begin_edit", "performance round trip")
+	var live: Dictionary = document_ref.call("data")
+	live["__perf_history_sentinel"] = true
+	document_ref.call("undo")
+	var undo_ok := not (document_ref.call("data") as Dictionary).has("__perf_history_sentinel")
+	document_ref.call("redo")
+	var redo_ok := bool((document_ref.call("data") as Dictionary).get("__perf_history_sentinel", false))
+	document_ref.call("undo")
+	print("[PERF] full undo history: %d snapshots / %.1f MB built in %d ms"
+		% [int(document_ref.call("history_size")),
+			float(document_ref.call("history_bytes")) / 1048576.0,
+			Time.get_ticks_msec() - started])
+	print("[PERF] lazy undo/redo round trip: %s" % ("PASS" if undo_ok and redo_ok else "FAIL"))
+
+
+## A click changes overlay selection but not document geometry. Churn that cheap stamp every
+## frame—much harsher than a human can click—to prove it no longer rebuilds the forest canvas.
+func _measure_overlay_churn() -> void:
+	var worst := 0
+	var total := 0
+	var previous := Time.get_ticks_msec()
+	for _i in WINDOW:
+		_editor.call("_repaint")
+		await get_tree().process_frame
+		var delta := Time.get_ticks_msec() - previous
+		previous = Time.get_ticks_msec()
+		total += delta
+		worst = maxi(worst, delta)
+	var mean := float(total) / float(WINDOW)
+	print("[PERF] %-38s mean %6.1f ms/frame  (%.1f fps)  worst %d ms"
+		% ["selection redraw every frame", mean, 1000.0 / maxf(mean, 0.001), worst])
 
 
 ## Frame the editor on a wooded stretch of the map at `zoom` and write a PNG. `force_draw`
@@ -150,7 +197,8 @@ var _stashed: Dictionary = {}
 
 
 func _strip(fields: String, off: bool = true) -> void:
-	var document: Dictionary = _editor.call("document").call("data")
+	var document_ref: RefCounted = _editor.call("document")
+	var document: Dictionary = document_ref.call("data")
 	var settlements: Dictionary = document.get("settlements", {})
 	for key in settlements.keys():
 		var settlement: Dictionary = settlements[key]
@@ -163,6 +211,7 @@ func _strip(fields: String, off: bool = true) -> void:
 				settlement[str(field)] = _stashed[slot]
 	if not off:
 		_stashed.clear()
+	document_ref.call("touch")
 	# Tell the editor the document changed. Without this the preview layers — which now redraw
 	# on the stamp rather than every frame — keep showing the picture from before the strip,
 	# and the window measures a stale drawing instead of the configuration it names.
@@ -175,13 +224,17 @@ func _report_document() -> void:
 	var counts: Dictionary = {}
 	for key in settlements.keys():
 		var settlement: Dictionary = settlements[key]
-		for field in ["roads", "specials", "decor", "parks", "plazas", "forests", "trees", "zones"]:
+		for field in ["roads", "specials", "decor", "parks", "plazas", "forests", "zones"]:
 			var value: Variant = settlement.get(field, [])
 			if typeof(value) == TYPE_ARRAY:
 				counts[field] = int(counts.get(field, 0)) + (value as Array).size()
+		counts["trees"] = int(counts.get("trees", 0)) + AuthoredMap.tree_count(settlement)
 	var camera: Camera2D = _editor.call("camera")
-	print("[PERF] document holds %s   (camera zoom %.3f)"
-		% [str(counts), camera.zoom.x if camera != null else -1.0])
+	var document_ref: RefCounted = _editor.call("document")
+	print("[PERF] document holds %s   history=%d snapshots / %.1f MB   (camera zoom %.3f)"
+		% [str(counts), int(document_ref.call("history_size")),
+			float(document_ref.call("history_bytes")) / 1048576.0,
+			camera.zoom.x if camera != null else -1.0])
 
 
 func _find(node: Node, node_name: String) -> Node:

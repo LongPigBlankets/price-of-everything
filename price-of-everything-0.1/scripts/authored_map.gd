@@ -168,7 +168,9 @@ static func data() -> Dictionary:
 	if str(doc.get("hills_hash", "")) != HillBaked.source_hash():
 		push_warning("AuthoredMap: authored map is STALE vs the terrain bake — "
 			+ "relief may have moved under the authored geometry.")
-	_cache = doc
+	# Keep the working/runtime copy in the same compact form the next save will write. This is
+	# what prevents undo snapshots and editor reloads from rebuilding hundreds of dictionaries.
+	_cache = canonical(doc)
 	return _cache
 
 
@@ -339,6 +341,11 @@ static func slot_fits(wanted: String, offered: String) -> bool:
 ## vocabulary distinguishes at a glance, and a mixed clump -- mixed ONLY, because a clump of
 ## identical trees reads as a texture error rather than as woodland (owner, 2026-08-28).
 const TREE_KINDS := ["small", "large", "mixed"]
+## Compact on-disk storage for hand-planted trees. Singles are coordinate pairs grouped by
+## visible size; mixed clumps add their radius as a third number. The old `trees` list of one
+## dictionary (and one redundant id/kind string) per specimen remains readable, and
+## [method canonical] migrates it whenever the document is loaded or saved.
+const TREE_POINTS_FIELD := "tree_points"
 
 
 static func empty_document() -> Dictionary:
@@ -389,6 +396,7 @@ static func validate(doc: Dictionary) -> PackedStringArray:
 				errors.append("settlement '%s' has a malformed tree" % key)
 				continue
 			errors.append_array(_validate_tree(key, tree_value))
+		errors.append_array(_validate_tree_points(key, settlement))
 		errors.append_array(_validate_slots(key, settlement))
 		for zone_value in _array(settlement, "zones"):
 			if typeof(zone_value) != TYPE_DICTIONARY:
@@ -416,6 +424,37 @@ static func _validate_tree(key: String, tree: Dictionary) -> PackedStringArray:
 			% [id, kind, ", ".join(TREE_KINDS)])
 	if kind == "mixed" and float(tree.get("radius", 0.0)) <= 0.0:
 		errors.append("mixed tree clump '%s' needs a radius" % id)
+	return errors
+
+
+## Preferred tree representation: one typed batch per visible kind. Keeping the arrays split
+## makes the eventual texture bake able to stream/draw one kind without decoding records.
+static func _validate_tree_points(key: String, settlement: Dictionary) -> PackedStringArray:
+	var errors := PackedStringArray()
+	if not settlement.has(TREE_POINTS_FIELD):
+		return errors
+	var groups_value: Variant = settlement.get(TREE_POINTS_FIELD, {})
+	if typeof(groups_value) != TYPE_DICTIONARY:
+		errors.append("settlement '%s' tree_points must be a dictionary" % key)
+		return errors
+	var groups: Dictionary = groups_value
+	for kind_value in groups.keys():
+		var kind := str(kind_value)
+		if not TREE_KINDS.has(kind):
+			errors.append("settlement '%s' has unknown tree_points kind '%s'" % [key, kind])
+			continue
+		var points_value: Variant = groups[kind_value]
+		if typeof(points_value) != TYPE_ARRAY:
+			errors.append("settlement '%s' tree_points.%s must be an array" % [key, kind])
+			continue
+		var expected := 3 if kind == "mixed" else 2
+		for point_value in (points_value as Array):
+			if typeof(point_value) != TYPE_ARRAY or (point_value as Array).size() != expected:
+				errors.append("settlement '%s' tree_points.%s entries need %d numbers"
+					% [key, kind, expected])
+				continue
+			if kind == "mixed" and float((point_value as Array)[2]) <= 0.0:
+				errors.append("settlement '%s' has a mixed tree point with no radius" % key)
 	return errors
 
 
@@ -527,7 +566,116 @@ static func _validate_area(key: String, field: String, area: Dictionary) -> Pack
 ## (Consumers must still not assume int types — read through `int()`/`float()`.)
 static func canonical(doc: Dictionary) -> Dictionary:
 	var parsed: Variant = JSON.parse_string(JSON.stringify(doc))
-	return parsed if typeof(parsed) == TYPE_DICTIONARY else {}
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return {}
+	var out: Dictionary = parsed
+	_compact_tree_storage(out)
+	return out
+
+
+## Turn legacy per-tree dictionaries into compact typed point batches. This runs on both load
+## and save: opening an old document is transparent, and the first save tidies it permanently.
+static func _compact_tree_storage(doc: Dictionary) -> void:
+	var settlements_value: Variant = doc.get("settlements", {})
+	if typeof(settlements_value) != TYPE_DICTIONARY:
+		return
+	for settlement_value in (settlements_value as Dictionary).values():
+		if typeof(settlement_value) != TYPE_DICTIONARY:
+			continue
+		var settlement: Dictionary = settlement_value
+		var groups: Dictionary = {}
+		var current_value: Variant = settlement.get(TREE_POINTS_FIELD, {})
+		if typeof(current_value) == TYPE_DICTIONARY:
+			groups = (current_value as Dictionary).duplicate(true)
+		for tree_value in _array(settlement, "trees"):
+			if typeof(tree_value) != TYPE_DICTIONARY:
+				continue
+			var tree: Dictionary = tree_value
+			var kind := str(tree.get("kind", ""))
+			var position := _array(tree, "position")
+			if not TREE_KINDS.has(kind) or position.size() != 2:
+				continue
+			if not groups.has(kind) or typeof(groups[kind]) != TYPE_ARRAY:
+				groups[kind] = []
+			var point: Array = [float(position[0]), float(position[1])]
+			if kind == "mixed":
+				point.append(float(tree.get("radius", 0.0)))
+			(groups[kind] as Array).append(point)
+		settlement.erase("trees")
+		for kind in TREE_KINDS:
+			if groups.has(kind) and typeof(groups[kind]) == TYPE_ARRAY \
+					and (groups[kind] as Array).is_empty():
+				groups.erase(kind)
+		if groups.is_empty():
+			settlement.erase(TREE_POINTS_FIELD)
+		else:
+			settlement[TREE_POINTS_FIELD] = groups
+
+
+## Runtime/editor compatibility view. Consumers that still want records get synthetic stable
+## ids derived from the settlement, kind and coordinates; the compact document keeps no ids.
+static func tree_records(settlement: Dictionary, settlement_key: String = "") -> Array:
+	var out: Array = []
+	for tree_value in _array(settlement, "trees"):
+		if typeof(tree_value) == TYPE_DICTIONARY:
+			out.append(tree_value)
+	var groups_value: Variant = settlement.get(TREE_POINTS_FIELD, {})
+	if typeof(groups_value) != TYPE_DICTIONARY:
+		return out
+	var groups: Dictionary = groups_value
+	for kind in TREE_KINDS:
+		var points_value: Variant = groups.get(kind, [])
+		if typeof(points_value) != TYPE_ARRAY:
+			continue
+		for point_value in (points_value as Array):
+			if typeof(point_value) != TYPE_ARRAY:
+				continue
+			var point: Array = point_value
+			var expected := 3 if kind == "mixed" else 2
+			if point.size() != expected:
+				continue
+			var record := {
+				"id": "tp:%s:%s:%.2f:%.2f" % [settlement_key, kind,
+					float(point[0]), float(point[1])],
+				"kind": kind,
+				"position": [float(point[0]), float(point[1])],
+			}
+			if kind == "mixed":
+				record["radius"] = float(point[2])
+			out.append(record)
+	return out
+
+
+static func tree_count(settlement: Dictionary) -> int:
+	var count := _array(settlement, "trees").size()
+	var groups_value: Variant = settlement.get(TREE_POINTS_FIELD, {})
+	if typeof(groups_value) != TYPE_DICTIONARY:
+		return count
+	var groups: Dictionary = groups_value
+	for kind in TREE_KINDS:
+		var points_value: Variant = groups.get(kind, [])
+		if typeof(points_value) == TYPE_ARRAY:
+			count += (points_value as Array).size()
+	return count
+
+
+## Add directly to the compact representation so a long editing session never grows the old
+## dictionary-heavy form only to compress it at the end.
+static func append_tree(settlement: Dictionary, kind: String, position: Vector2,
+		radius: float = 0.0) -> bool:
+	if not TREE_KINDS.has(kind) or (kind == "mixed" and radius <= 0.0):
+		return false
+	var groups_value: Variant = settlement.get(TREE_POINTS_FIELD, {})
+	var groups: Dictionary = groups_value if typeof(groups_value) == TYPE_DICTIONARY else {}
+	var points_value: Variant = groups.get(kind, [])
+	var points: Array = points_value if typeof(points_value) == TYPE_ARRAY else []
+	var point: Array = [snappedf(position.x, 0.01), snappedf(position.y, 0.01)]
+	if kind == "mixed":
+		point.append(radius)
+	points.append(point)
+	groups[kind] = points
+	settlement[TREE_POINTS_FIELD] = groups
+	return true
 
 
 ## Serialise exactly as [method save_to] writes: pretty-printed, sorted keys, canonical

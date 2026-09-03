@@ -160,6 +160,7 @@ const PAN_KEYS := {
 # return Variant, and `:=` inference then fails at parse time.
 var _document: MapEditorDocument
 var _overlay: MapEditorOverlay
+var _static_overlay: MapEditorOverlay
 var _road_tool: MapEditorRoadTool
 var _trace_tool: MapEditorTraceTool
 var _shape_mode := false
@@ -207,6 +208,10 @@ var _report_tile := ""
 ## The working document's fabric, drawn in the world (see `_mount_fabric_layer`).
 var _fabric: Node2D = null
 var _fabric_ground: Node2D = null
+## Default to the layout view: silhouettes retain selectable building footprints while tree
+## crowns and full-detail ink stay out of the retained CanvasItem command list. This is what
+## keeps a map-sized document interactive; P restores the exact preview for visual review.
+var _fast_preview := true
 var _panel: MapEditorPanel
 var _tool := TOOL_PAN
 ## Which tree the tree tool plants next; cycled by pressing its key again.
@@ -299,6 +304,7 @@ func _nudge_selection(delta: float) -> void:
 		var pos: Array = slot.get("pos", [0, 0]) as Array
 		if pos.size() >= 2:
 			slot["pos"] = [float(pos[0]) + step.x, float(pos[1]) + step.y]
+	_document.touch()
 	_repaint()
 
 
@@ -435,8 +441,18 @@ func _build_chrome() -> void:
 	layer.layer = 64   # above the world, below the debug terminal (128)
 	add_child(layer)
 
+	_static_overlay = MapEditorOverlay.new()
+	_static_overlay.editor = self
+	_static_overlay.draw_pass = MapEditorOverlay.DrawPass.STATIC
+	_static_overlay.name = "MapEditorStaticOverlay"
+	_static_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_static_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(_static_overlay)
+
 	_overlay = MapEditorOverlay.new()
 	_overlay.editor = self
+	_overlay.draw_pass = MapEditorOverlay.DrawPass.DYNAMIC
+	_overlay.name = "MapEditorDynamicOverlay"
 	_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(_overlay)
@@ -516,6 +532,12 @@ func preview_revision() -> int:
 	return _preview_revision
 
 
+## Geometry/content stamp. Unlike [method preview_revision], selection and tool chrome do not
+## change this, so the retained forest/building canvas can stay intact when the user clicks.
+func document_revision() -> int:
+	return _document.revision() if _document != null else 0
+
+
 func _set_status(text: String) -> void:
 	if _status != null:
 		_status.text = "MAP EDITOR   %s" % text
@@ -533,6 +555,8 @@ func _refresh_status() -> void:
 		if _tree_kind == "forest":
 			tool_note += ", 1-%d picks type" % FOREST_VARIANTS.size()
 		tool_note += ")"
+	if _fast_preview:
+		tool_note += "   |   FAST LAYOUT (P for full detail)"
 	_set_status("%s   |   %d settlements · %d roads · %d masses   |   %s%s"
 		% [_document.display_name(), counts.settlements, counts.roads, counts.masses,
 			"UNSAVED" if _document.is_dirty() else "saved", tool_note])
@@ -781,6 +805,8 @@ func _handle_key(event: InputEventKey) -> void:
 			toggle_water_mask()
 		KEY_J:
 			_toggle_hijack_selection()
+		KEY_P:
+			toggle_fast_preview()
 		KEY_E:
 			_zoom_by(ZOOM_STEP)
 		KEY_Q:
@@ -1363,6 +1389,7 @@ func _drag_grabbed(screen: Vector2) -> void:
 	_grab_world = world
 	for record in _grabbed:
 		MapEditorSelection.translate(record as Dictionary, delta)
+	_document.touch()
 	_repaint()
 
 
@@ -1426,6 +1453,8 @@ func _snap_moved_to_roads() -> int:
 		MapEditorSelection.translate(record, target - MapEditorSelection.centre_of(record))
 		snapped += 1
 	_moved_records = []
+	if snapped > 0:
+		_document.touch()
 	_repaint()
 	return snapped
 
@@ -1612,6 +1641,7 @@ func _move_corner(world: Vector2) -> void:
 		return
 	corners[_held_corner] = [world.x, world.y]
 	_corner_target[field] = corners
+	_document.touch()
 	_repaint()
 
 
@@ -1809,23 +1839,13 @@ func _place_tree(world: Vector2) -> void:
 	var settlement := _ensure_settlement()
 	_document.begin_edit("plant tree")
 	settlement = _ensure_settlement()
-	var next_id := int(settlement.get("next_id", 1))
-	var trees_value: Variant = settlement.get("trees", [])
-	var trees: Array = trees_value if typeof(trees_value) == TYPE_ARRAY else []
-	var record := {
-		"id": "t:%s:%d" % [_settlement, next_id],
-		"position": [snappedf(world.x, 0.01), snappedf(world.y, 0.01)],
-		"kind": _tree_kind,
-	}
-	if _tree_kind == "mixed":
-		record["radius"] = TREE_CLUMP_RADIUS
-	trees.append(record)
-	settlement["trees"] = trees
-	settlement["next_id"] = next_id + 1
+	AuthoredMap.append_tree(settlement, _tree_kind, world,
+		TREE_CLUMP_RADIUS if _tree_kind == "mixed" else 0.0)
+	var count := AuthoredMap.tree_count(settlement)
 	_fabric.queue_redraw()
 	_repaint()
 	_set_status("Planted %s (%d tree record%s)."
-		% [_tree_label(), trees.size(), "" if trees.size() == 1 else "s"])
+		% [_tree_label(), count, "" if count == 1 else "s"])
 
 
 func _tree_label() -> String:
@@ -1950,6 +1970,32 @@ func layers() -> MapEditorLayers:
 	return _layers
 
 
+## Cheap, lossless building-layout view. It changes only how the working document is
+## previewed; save output and hit-testing continue to use the full document.
+func fast_preview() -> bool:
+	return _fast_preview
+
+
+func set_fast_preview(value: bool) -> void:
+	if _fast_preview == value:
+		return
+	_fast_preview = value
+	if _fabric != null:
+		_fabric.queue_redraw()
+	if _fabric_ground != null:
+		_fabric_ground.queue_redraw()
+	_refresh_status()
+
+
+func toggle_fast_preview() -> bool:
+	set_fast_preview(not _fast_preview)
+	_set_status("Fast building layout: %s. %s" % [
+		"ON" if _fast_preview else "OFF",
+		"Trees are still saved; P restores full detail." if _fast_preview
+		else "Full tree and building detail is visible."])
+	return _fast_preview
+
+
 func shape_tool() -> MapEditorShapeTool:
 	return _shape_tool
 
@@ -2027,6 +2073,27 @@ func selected_ids() -> Dictionary:
 	return out
 
 
+## Live selected records for the cheap screen-space highlight layer. The expensive fabric
+## preview deliberately does not know about selection anymore.
+func selected_records() -> Array:
+	var out: Array = []
+	for entry_value in _selection:
+		var entry: Dictionary = entry_value
+		var settlements: Dictionary = _document.data().get("settlements", {})
+		var settlement_value: Variant = settlements.get(str(entry.get("settlement", "")), {})
+		if typeof(settlement_value) != TYPE_DICTIONARY:
+			continue
+		var kind := str(entry.get("kind", ""))
+		var items_value: Variant = (settlement_value as Dictionary).get(kind, [])
+		if typeof(items_value) != TYPE_ARRAY:
+			continue
+		var items: Array = items_value
+		var index := int(entry.get("index", -1))
+		if index >= 0 and index < items.size() and typeof(items[index]) == TYPE_DICTIONARY:
+			out.append({"kind": kind, "record": items[index]})
+	return out
+
+
 func selection_size() -> int:
 	return _selection.size()
 
@@ -2079,11 +2146,11 @@ func set_road_class(value: String) -> void:
 
 
 func grid_shown() -> bool:
-	return _overlay != null and _overlay.show_grid
+	return _static_overlay != null and _static_overlay.show_grid
 
 
 func water_mask_shown() -> bool:
-	return _overlay != null and _overlay.show_water_mask
+	return _static_overlay != null and _static_overlay.show_water_mask
 
 
 ## Tiles carrying at least one NON-WATER deposit, with the hex ring to draw and a short
@@ -2344,29 +2411,29 @@ func convert_focused_slots_to_zone() -> void:
 
 
 func toggle_deposit_marks() -> void:
-	if _overlay != null:
-		_overlay.show_deposit_marks = not _overlay.show_deposit_marks
-		_repaint()
+	if _static_overlay != null:
+		_static_overlay.show_deposit_marks = not _static_overlay.show_deposit_marks
+		_static_overlay.queue_redraw()
 		_set_status("Extraction resources %s (%d tile(s))."
-			% ["shown" if _overlay.show_deposit_marks else "hidden", deposit_tiles().size()])
+			% ["shown" if _static_overlay.show_deposit_marks else "hidden", deposit_tiles().size()])
 		_refresh_status()
 
 
 func deposit_marks_shown() -> bool:
-	return _overlay != null and _overlay.show_deposit_marks
+	return _static_overlay != null and _static_overlay.show_deposit_marks
 
 
 func toggle_water_mask() -> void:
-	if _overlay != null:
-		_overlay.show_water_mask = not _overlay.show_water_mask
-		_repaint()
+	if _static_overlay != null:
+		_static_overlay.show_water_mask = not _static_overlay.show_water_mask
+		_static_overlay.queue_redraw()
 	_refresh_status()
 
 
 func toggle_grid() -> void:
-	if _overlay != null:
-		_overlay.show_grid = not _overlay.show_grid
-		_repaint()
+	if _static_overlay != null:
+		_static_overlay.show_grid = not _static_overlay.show_grid
+		_static_overlay.queue_redraw()
 	_refresh_status()
 
 
@@ -2574,9 +2641,10 @@ func procedural_region_command(verb: String, region: String) -> String:
 	var tiles_of_region: Dictionary = MapEditorRegionImport.region_tiles(partitioned, region)
 	if tiles_of_region.is_empty():
 		return "nothing left near %s — every tile there is already authored" % region
+	var tree_template := MapEditorRegionImport.stoneshore_tree_template(_document.data(), centres)
 	var built: Dictionary = MapEditorRegionImport.build_settlement(
 		loaded["doc"] as Dictionary, region, tiles_of_region, covered,
-		_tile_id_at, centres)
+		_tile_id_at, centres, tree_template, _authored_forest_outlines())
 	if built.is_empty():
 		return "nothing to import near %s" % region
 	_document.begin_edit("show procedural %s" % region)
@@ -2586,11 +2654,117 @@ func procedural_region_command(verb: String, region: String) -> String:
 	live["settlements"] = live_settlements
 	_after_region_change()
 	focus_tile(str(MapEditorRegionImport.REGION_ANCHORS[region]), 0.35)
-	return ("procedural %s: %d building shapes, %d roads, %d parks, %d plazas over %d tiles"
+	return ("procedural %s: %d building shapes, %d roads, %d parks, %d plazas, %d planted trees over %d tiles"
 		+ " — editable like anything else; 'disable procedural %s' removes it") % [region,
 		(built.get("specials", []) as Array).size(), (built.get("roads", []) as Array).size(),
 		(built.get("parks", []) as Array).size(), (built.get("plazas", []) as Array).size(),
-		(built.get("tiles", []) as Array).size(), region]
+		AuthoredMap.tree_count(built), (built.get("tiles", []) as Array).size(), region]
+
+
+## `enable|disable procedural central buildings`: expose the refreshed Copperstown fabric
+## as one undoable, removable layer without replacing the roads already authored there.
+func procedural_central_buildings_command(verb: String) -> String:
+	if verb != "enable" and verb != "disable":
+		return "usage: enable|disable procedural central buildings"
+	if not _ready_to_edit:
+		return "the editor is still building the world — try again in a moment"
+	var key: String = MapEditorRegionImport.CENTRAL_BUILDINGS_KEY
+	var settlements_value: Variant = _document.data().get("settlements", {})
+	var settlements: Dictionary = settlements_value if typeof(settlements_value) == TYPE_DICTIONARY else {}
+	if verb == "disable":
+		if not settlements.has(key):
+			return "procedural central buildings are not shown"
+		_document.begin_edit("hide procedural central buildings")
+		(_document.data().get("settlements", {}) as Dictionary).erase(key)
+		_after_region_change()
+		return "procedural central buildings hidden — their records are out of the document"
+	if settlements.has(key):
+		return "procedural central buildings are already shown  ('disable procedural central buildings' removes them)"
+	var loaded: Dictionary = MapEditorRegionImport.load_source()
+	if loaded.has("problem"):
+		return str(loaded.problem)
+	var built := MapEditorRegionImport.build_central_buildings(
+		loaded.doc as Dictionary, _tile_id_at)
+	if built.is_empty():
+		return "no Copperstown building shapes were found in the procedural source"
+	_document.begin_edit("show procedural central buildings")
+	var live: Dictionary = _document.data()
+	var live_settlements: Dictionary = live.get("settlements", {}) as Dictionary
+	live_settlements[key] = built
+	live["settlements"] = live_settlements
+	_after_region_change()
+	focus_tile(MapEditorRegionImport.CENTRAL_BUILDING_FOCUS_TILE, 0.55)
+	return ("procedural central buildings: %d editable shapes over %d Copperstown tiles"
+		+ " — 'disable procedural central buildings' removes them") % [
+		(built.get("specials", []) as Array).size(), (built.get("tiles", []) as Array).size()]
+
+
+## One-time migration for documents saved before the road-edge planting pass existed.
+func apply_procedural_roadside_trees() -> String:
+	if not _ready_to_edit:
+		return "the editor is still building the world — try again in a moment"
+	var candidate := AuthoredMap.canonical(_document.data())
+	var result := MapEditorRegionImport.apply_roadside_to_existing(
+		candidate, _land_tile_centres(), _tile_id_at)
+	if int(result.get("total", 0)) > 0:
+		var live := _document.begin_edit("apply North/Stoneshore roadside trees")
+		live.clear()
+		live.merge(candidate, true)
+	_after_region_change()
+	var counts: Dictionary = result.get("settlements", {})
+	var names := counts.keys()
+	names.sort()
+	var parts := PackedStringArray()
+	for key_value in names:
+		parts.append("%s %d" % [str(key_value), int(counts[key_value])])
+	return "roadside trees: %d planted%s" % [int(result.get("total", 0)),
+		" (%s)" % ", ".join(parts) if not parts.is_empty() else ""]
+
+
+## Backfill the Stoneshore planting treatment into generated settlements that predate the
+## region import's tree pass. Kept as a callable editor operation so the migration tool and a
+## designer can use the exact same working document, terrain lookup and undo path.
+func apply_procedural_tree_pattern(region: String = "all") -> String:
+	if not _ready_to_edit:
+		return "the editor is still building the world — try again in a moment"
+	var regions: Array = MapEditorRegionImport.REGIONS.duplicate()
+	if region != "all":
+		if not MapEditorRegionImport.is_region(region):
+			return "usage: apply tree pattern <north|arin|vandel|capital|all>"
+		regions = [region]
+	# Preflight on an independent canonical copy. A second run that finds every exact point
+	# already present stays a true no-op: no empty undo entry and no dirty document.
+	var candidate := AuthoredMap.canonical(_document.data())
+	var result := MapEditorRegionImport.apply_pattern_to_existing(
+		candidate, regions, _land_tile_centres(), _tile_id_at)
+	if int(result.get("total", 0)) > 0:
+		var live := _document.begin_edit("apply Stoneshore tree pattern to %s" % region)
+		live.clear()
+		live.merge(candidate, true)
+	_after_region_change()
+	var counts: Dictionary = result.get("regions", {})
+	var parts := PackedStringArray()
+	for one in regions:
+		parts.append("%s %d" % [str(one), int(counts.get(str(one), 0))])
+	return "Stoneshore tree pattern: %d planted (%s)" % [
+		int(result.get("total", 0)), ", ".join(parts)]
+
+
+## Existing authored woods are keep-outs for the Stoneshore planting template. Without this,
+## a generated fringe can put decorative specimens straight through a closed canopy that was
+## imported earlier and stored in another settlement.
+func _authored_forest_outlines() -> Array:
+	var out: Array = []
+	var settlements_value: Variant = _document.data().get("settlements", {})
+	if typeof(settlements_value) != TYPE_DICTIONARY:
+		return out
+	for settlement_value in (settlements_value as Dictionary).values():
+		if typeof(settlement_value) != TYPE_DICTIONARY:
+			continue
+		for area_value in (settlement_value as Dictionary).get("forests", []):
+			if typeof(area_value) == TYPE_DICTIONARY:
+				out.append((area_value as Dictionary).get("outline", []))
+	return out
 
 
 func _after_region_change() -> void:

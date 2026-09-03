@@ -19,16 +19,11 @@ extends Node2D
 
 const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
 const AuthoredSpecialShapesRef := preload("res://scripts/authored_special_shapes.gd")
+const MidcenturyStyle := preload("res://scripts/map_midcentury_style.gd")
 ## The shipped layer's own view helpers, reused rather than re-derived: the editor culls to
 ## the same rect, with the same "has the view actually moved" test.
 const AuthoredBake := preload("res://scripts/authored_bake.gd")
 const ViewStream := preload("res://scripts/view_stream.gd")
-
-## Selected shapes are hatched rather than tinted: a tint changes the colour you are judging
-## the composition by. Matches the overlay's own treatment.
-const HATCH_COLOR := Color(0.99, 0.97, 0.90, 0.75)
-const HATCH_SPACING := 7.0
-const HATCH_WIDTH := 1.6
 
 ## Buildings marked as hijack slots (J): a BLUE ring + bbox cross (owner, 2026-08-27).
 ## An outline rather than a tint for the same reason the selection hatches — the fill
@@ -61,12 +56,23 @@ const VIEW_MARGIN := 300.0
 ## Below this zoom (px per world unit) a wood draws as its canopy outline instead of as
 ## individual trees. A small tree is 2.6 u across, so at 0.3 it is under a pixel.
 const TREE_ZOOM := 0.3
+## At a whole-map zoom, a building is a few pixels and its shadow + ink outline are no longer
+## legible. Retain one true polygon fill per building instead of three canvas commands.
+const FABRIC_DETAIL_ZOOM := 0.18
+## Retained CanvasItem commands are replayed every frame. At the normal 0.9 editing zoom,
+## full-density authored woods alone cost ~70 ms/frame; a canopy wash plus a deterministic
+## sample of their crowns reads as the same wood and brings the command list under the
+## 30-fps budget. Zooming in progressively restores every tree for close inspection.
+const FOREST_HALF_ZOOM := 1.15
+const FOREST_FULL_ZOOM := 1.60
+const FOREST_FAR_ZOOM := 0.75
 
 var editor: Node = null
 var half: int = Half.STANDING
 ## The view the current drawing was culled against, and the stamp it was drawn at.
 var _view_rect := Rect2()
 var _drawn_revision := -1
+var _drawn_preview_revision := -1
 
 
 func _ready() -> void:
@@ -86,11 +92,19 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if editor == null:
 		return
-	var revision := int(editor.call("preview_revision"))
+	var revision := int(editor.call("document_revision"))
+	# The stamp preview is fabric, but selection/tool chrome is not. Watch the broad preview
+	# stamp only while a real building stamp is visible; otherwise clicks leave this retained
+	# command list alone and the overlay changes selection cheaply above it.
+	var shape: RefCounted = editor.call("shape_tool")
+	var stamping := shape != null and bool(shape.call("is_stamping"))
+	var preview_revision := int(editor.call("preview_revision")) if stamping else -1
 	var view := AuthoredBake.visible_world_rect(self, VIEW_MARGIN)
-	if revision == _drawn_revision and ViewStream.settled(view, _view_rect, VIEW_MARGIN):
+	if revision == _drawn_revision and preview_revision == _drawn_preview_revision \
+			and ViewStream.settled(view, _view_rect, VIEW_MARGIN):
 		return
 	_drawn_revision = revision
+	_drawn_preview_revision = preview_revision
 	_view_rect = view
 	queue_redraw()
 
@@ -98,12 +112,16 @@ func _process(_delta: float) -> void:
 func _draw() -> void:
 	if editor == null:
 		return
+	# Building-layout mode keeps the geometry people need to place and select, but replaces
+	# foliage with cheap silhouettes. This is a VIEW choice only: the working document still
+	# contains every forest and compact tree point, and P restores the exact painter whenever
+	# the designer wants to judge the finished planting.
+	var fast_preview := bool(editor.call("fast_preview"))
 	var document: Dictionary = editor.call("document").call("data")
 	var settlements_value: Variant = document.get("settlements", {})
 	if typeof(settlements_value) != TYPE_DICTIONARY:
 		return
 	var settlements: Dictionary = settlements_value
-	var selected: Dictionary = editor.call("selected_ids")
 	# Woods are drawn as their canopy outline rather than as trees once a tree is about a
 	# pixel across. Below this the individual trees are not visible ANYWAY, and drawing them
 	# is what made a zoomed-out editor unusable: the whole map holds well over a hundred
@@ -111,6 +129,16 @@ func _draw() -> void:
 	# thing, which is the point of previewing with the game's own painter.
 	var camera: Camera2D = editor.call("camera")
 	var trees_readable := camera == null or camera.zoom.x >= TREE_ZOOM
+	var details_readable := not fast_preview \
+		and (camera == null or camera.zoom.x >= FABRIC_DETAIL_ZOOM)
+	var forest_stride := 1
+	if camera != null:
+		if camera.zoom.x < FOREST_FAR_ZOOM:
+			forest_stride = 8
+		elif camera.zoom.x < FOREST_HALF_ZOOM:
+			forest_stride = 6
+		elif camera.zoom.x < FOREST_FULL_ZOOM:
+			forest_stride = 2
 	var keys := settlements.keys()
 	keys.sort()   # stable draw order, so overlaps stack the same way every run
 	for key in keys:
@@ -125,43 +153,56 @@ func _draw() -> void:
 				if not _visible_now(_outline_of(plaza)):
 					continue
 				AuthoredFabricPainter.draw_plaza(self, plaza)
-				_mark(selected, plaza, [_outline_of(plaza)])
 			for park in _entries(settlement, "parks"):
 				if not _visible_now(_outline_of(park)):
 					continue
 				AuthoredFabricPainter.draw_park(self, park)
-				_mark(selected, park, [_outline_of(park)])
 			for area in _entries(settlement, "farms"):
 				if not _visible_now(_outline_of(area)):
 					continue
 				AuthoredFabricPainter.draw_farm(self, area)
-				_mark(selected, area, [_outline_of(area)])
 			continue
 		for mass in _entries(settlement, "decor"):
 			var mass_polys: Array = AuthoredFabricPainter.mass_polygons(mass)
 			if not _any_visible(mass_polys):
 				continue
-			AuthoredFabricPainter.draw_mass(self, mass)
-			_mark_hijack(mass, mass_polys)
-			_mark(selected, mass, mass_polys)
+			if details_readable:
+				AuthoredFabricPainter.draw_mass(self, mass)
+				_mark_hijack(mass, mass_polys)
+			else:
+				var colour := MidcenturyStyle.urban_block(str(mass.get("id", "")), 0.6)
+				for polygon in mass_polys:
+					draw_colored_polygon(polygon as PackedVector2Array, colour)
+				_mark_hijack(mass, mass_polys)
 		for special in _entries(settlement, "specials"):
 			var special_polys: Array = [AuthoredSpecialShapesRef.render_polygon(special)]
 			if not _any_visible(special_polys):
 				continue
-			AuthoredFabricPainter.draw_special(self, special)
-			_mark_hijack(special, special_polys)
-			_mark(selected, special, special_polys)
+			if details_readable:
+				AuthoredFabricPainter.draw_special(self, special)
+				_mark_hijack(special, special_polys)
+			else:
+				var colour := MidcenturyStyle.urban_block(str(special.get("id", "")), 0.6)
+				draw_colored_polygon(special_polys[0] as PackedVector2Array, colour)
+				_mark_hijack(special, special_polys)
 		for area in _entries(settlement, "forests"):
 			var canopy := _outline_of(area)
 			if not _visible_now(canopy):
 				continue
-			if trees_readable:
-				AuthoredFabricPainter.draw_forest(self, area)
+			if fast_preview:
+				if canopy.size() >= 3:
+					draw_colored_polygon(canopy, MapStyle.tree_fill(false))
+			elif trees_readable:
+				if forest_stride > 1 and canopy.size() >= 3:
+					draw_colored_polygon(canopy, MapStyle.tree_fill(false))
+				AuthoredFabricPainter.draw_forest(self, area, _view_rect, forest_stride)
 			elif canopy.size() >= 3:
 				draw_colored_polygon(canopy, MapStyle.tree_fill(false))
-		# Planted trees, through the same painter the game uses — an editor that draws its own
-		# version of a record is an editor you cannot trust about what you are making.
-		AuthoredFabricPainter.draw_trees(self, _entries(settlement, "trees"))
+		# Planted trees, through the same painter the game uses. At map zoom they are sub-pixel,
+		# so emitting hundreds of invisible crowns only bloats the retained canvas command list;
+		# at editing zoom the painter rejects points outside the camera's buffered view.
+		if trees_readable and not fast_preview:
+			AuthoredFabricPainter.draw_settlement_trees(self, settlement, str(key), _view_rect)
 
 	if half == Half.GROUND:
 		return
@@ -204,11 +245,6 @@ func _entries(settlement: Dictionary, key: String) -> Array:
 	return out
 
 
-func _mark(selected: Dictionary, record: Dictionary, polygons: Array) -> void:
-	if selected.has(str(record.get("id", ""))):
-		_hatch(polygons, bool(editor.call("is_shape_mode")))
-
-
 func _mark_hijack(record: Dictionary, polygons: Array) -> void:
 	if not bool(record.get("hijack", false)):
 		return
@@ -234,31 +270,3 @@ func _outline_of(record: Dictionary) -> PackedVector2Array:
 		if values != null and values.size() >= 2:
 			out.append(Vector2(float(values[0]), float(values[1])))
 	return out
-
-
-## Diagonal hatching clipped to a set of polygons, in world units — this node draws in world
-## space, so no camera transform is needed and the density is stable by construction.
-func _hatch(polygons: Array, horizontal: bool = false) -> void:
-	for polygon_value in polygons:
-		var polygon: PackedVector2Array = polygon_value
-		if polygon.size() < 3:
-			continue
-		var bounds := Rect2(polygon[0], Vector2.ZERO)
-		for point in polygon:
-			bounds = bounds.expand(point)
-		var reach := bounds.size.x + bounds.size.y
-		var steps := int(reach / HATCH_SPACING) + 1
-		for i in steps:
-			# Side-to-side while reshaping, 45 degrees otherwise — the hatch is what says
-			# which mode you are in.
-			var offset: Vector2
-			var line: PackedVector2Array
-			if horizontal:
-				offset = bounds.position + Vector2(0.0, float(i) * HATCH_SPACING)
-				line = PackedVector2Array([offset, offset + Vector2(bounds.size.x, 0.0)])
-			else:
-				offset = bounds.position + Vector2(float(i) * HATCH_SPACING - bounds.size.y, 0.0)
-				line = PackedVector2Array([offset, offset + Vector2(bounds.size.y, bounds.size.y)])
-			for piece in Geometry2D.intersect_polyline_with_polygon(line, polygon):
-				if (piece as PackedVector2Array).size() >= 2:
-					draw_polyline(piece, HATCH_COLOR, HATCH_WIDTH, true)

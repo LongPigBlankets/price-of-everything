@@ -15,6 +15,7 @@ extends RefCounted
 const MidcenturyStyle := preload("res://scripts/map_midcentury_style.gd")
 const MassFormShapes := preload("res://scripts/mass_form_shapes.gd")
 const TreeShapesRef := preload("res://scripts/tree_shapes.gd")
+const AuthoredMapRef := preload("res://scripts/authored_map.gd")
 const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
 const InkBuildingGen := preload("res://scripts/ink_building_gen.gd")
 
@@ -47,6 +48,8 @@ const TREE_LIMIT := 900
 ## buildings — the owner's rule for authored woodland. The canopy radius is included in the
 ## test, since a crown centred just inside the edge still overhangs it.
 const TREE_EDGE_INSET := 1.0
+## Conservative crown/shadow slack for point culling. Mixed clumps add their own radius.
+const TREE_CULL_REACH := 18.0
 
 ## Farm parcel strips, in world units. Mirrors the procedural farm fabric's proportions so an
 ## authored field sits beside a generated one without announcing itself.
@@ -91,11 +94,24 @@ static func draw_farm(canvas: CanvasItem, area: Dictionary) -> void:
 static var felled_forests: Dictionary = {}
 
 
-static func draw_forest(canvas: CanvasItem, area: Dictionary) -> void:
+static func draw_forest(canvas: CanvasItem, area: Dictionary,
+		visible_rect: Rect2 = Rect2(), point_stride: int = 1) -> void:
 	var id := str(area.get("id", ""))
 	if felled_forests.has(id):
 		return
+	point_stride = maxi(1, point_stride)
+	var cull := visible_rect.grow(TREE_CULL_REACH) if _has_view(visible_rect) else Rect2()
+	var point_index := 0
 	for point in woodland_points(area):
+		# Editor LOD samples the deterministic scatter; bake/runtime callers leave stride at
+		# one and retain the exact full forest. Increment before any camera rejection so the
+		# same trees survive as the camera moves.
+		var draw_point := point_index % point_stride == 0
+		point_index += 1
+		if not draw_point:
+			continue
+		if _has_view(cull) and not cull.has_point(point):
+			continue
 		var key := "%s|tree|%.0f|%.0f" % [id, point.x, point.y]
 		TreeShapesRef.draw_tree(canvas, TreeShapesRef.pick_kind(key, [55, 25, 20]), point, key)
 
@@ -319,10 +335,12 @@ static func draw_port_group(canvas: CanvasItem, records: Array, tile_id: String,
 ## The scatter is the same jittered grid `woodland_points` uses rather than random points, and
 ## for the same reason recorded there: successive RoadHash keys repeat in their low bits, so
 ## rejection sampling put trees on a three-step diagonal.
-static func draw_trees(canvas: CanvasItem, records: Array) -> void:
+static func draw_trees(canvas: CanvasItem, records: Array, visible_rect: Rect2 = Rect2()) -> void:
 	for record_value in records:
 		var record: Dictionary = record_value
 		var at := _vector_of(record.get("position", null))
+		if not _tree_in_view(record, at, visible_rect):
+			continue
 		var id := str(record.get("id", ""))
 		match str(record.get("kind", "")):
 			"small":
@@ -334,6 +352,27 @@ static func draw_trees(canvas: CanvasItem, records: Array) -> void:
 					var key := "%s|%.0f|%.0f" % [id, point.x, point.y]
 					TreeShapesRef.draw_tree(canvas,
 						TreeShapesRef.pick_kind(key, CLUMP_MIX), point, key)
+
+
+## Draw either compact `tree_points` or legacy `trees` without making the callers know which
+## document generation they opened. Expansion happens only on a redraw, and off-view records
+## are rejected before any tree geometry is emitted.
+static func draw_settlement_trees(canvas: CanvasItem, settlement: Dictionary,
+		settlement_key: String = "", visible_rect: Rect2 = Rect2()) -> void:
+	draw_trees(canvas, AuthoredMapRef.tree_records(settlement, settlement_key), visible_rect)
+
+
+static func _tree_in_view(record: Dictionary, at: Vector2, visible_rect: Rect2) -> bool:
+	if not _has_view(visible_rect):
+		return true
+	var reach := TREE_CULL_REACH
+	if str(record.get("kind", "")) == "mixed":
+		reach += float(record.get("radius", 0.0))
+	return visible_rect.grow(reach).has_point(at)
+
+
+static func _has_view(rect: Rect2) -> bool:
+	return rect.size.x > 0.0 and rect.size.y > 0.0
 
 
 ## Where a mixed clump's trees stand. Split out from the drawing so a test — and the editor's
