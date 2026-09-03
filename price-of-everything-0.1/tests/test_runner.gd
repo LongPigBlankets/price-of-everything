@@ -84,6 +84,7 @@ func _ready() -> void:
 	await _test_authored_slot_claim_order()
 	await _test_hijack_mass_claim()
 	_test_building_tab_repayment()
+	_test_bake_near_tier_geometry()
 	_test_forecast_own_supply_follows_production()
 	await _test_block_road_segments_include_authored_strokes()
 	_test_authored_zones()
@@ -20878,3 +20879,44 @@ func _test_forecast_own_supply_follows_production() -> void:
 	if before > 0:
 		Stockpile.add(tile_id, good_id, before)
 	MatchState.remove_building(iid)
+
+
+## The near bake tier exists to serve the camera's maximum zoom without magnifying a texture.
+## These are the two numbers that have to agree — the bake scale and the camera's tile count —
+## so changing `zoomed_in_tile_count` again fails HERE rather than as a soft picture in play.
+func _test_bake_near_tier_geometry() -> void:
+	const Layout := preload("res://scripts/authored_bake_layout.gd")
+	var far := Layout.texture_size_for(Layout.TIER_FAR)
+	var near := Layout.texture_size_for(Layout.TIER_NEAR)
+	_check(far == Layout.texture_size(), "near tier: the far tier is still the default size")
+	_check(near.x == far.x * 2 and near.y == far.y * 2,
+		"near tier: near is exactly twice the far texture (%s vs %s)" % [str(near), str(far)])
+	# Integer texel rects — the property 4/3 and 8/3 were chosen for.
+	_check(is_equal_approx(Layout.PITCH.x * Layout.NEAR_SCALE, float(near.x))
+		and is_equal_approx(Layout.PITCH.y * Layout.NEAR_SCALE, float(near.y)),
+		"near tier: the pitch rect lands on whole texels at NEAR_SCALE")
+	var transform := Layout.bake_transform_for(Rect2(Vector2(100.0, 50.0), Layout.PITCH), Layout.TIER_NEAR)
+	_check(is_equal_approx(transform.get_scale().x, Layout.NEAR_SCALE),
+		"near tier: the painter transform carries the near scale")
+	_check(is_equal_approx((transform * Vector2(100.0, 50.0)).length(), 0.0),
+		"near tier: the rect's origin maps to the texture's (0, 0)")
+
+	# THE AGREEMENT. A tile is tile_height world units tall and the camera fits
+	# `zoomed_in_tile_count` of them into the viewport height, so at maximum zoom the screen
+	# shows viewport.y / (tile_height * count) pixels per world unit — independent of the
+	# viewport, because both sides scale with it. The bake must sit at or above that.
+	# THE AGREEMENT, and it is resolution-dependent. A tile is 480 world units tall and the
+	# camera fits `zoomed_in_tile_count` of them into the viewport, so maximum zoom shows
+	# viewport_height / (480 * count) pixels per world unit — 1.8 at 1080p, 2.4 at 1440p,
+	# 3.6 at 2160p. NEAR_SCALE covers the first two outright; a 4K screen at full zoom
+	# magnifies the near texture about 1.35x, which is the documented limit of this tier
+	# (NEAR_SCALE 4.0 would cover it, at 9x the far tier's pixels instead of 4x).
+	var camera := preload("res://scripts/camera_controller.gd").new()
+	var tile_height := 480.0
+	var ppu_1440 := 1440.0 / (tile_height * camera.zoomed_in_tile_count)
+	_check(Layout.NEAR_SCALE >= ppu_1440,
+		"near tier: NEAR_SCALE %.3f covers the %.3f px/u a 1440p viewport reaches at full zoom"
+			% [Layout.NEAR_SCALE, ppu_1440])
+	_check(Layout.BAKE_SCALE < ppu_1440,
+		"near tier: the far tier alone WOULD be magnified there — which is why near exists")
+	camera.free()

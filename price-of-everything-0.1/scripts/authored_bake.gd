@@ -18,6 +18,7 @@ extends RefCounted
 ## so disk size is not the constraint here; VRAM is.
 
 const AuthoredMap := preload("res://scripts/authored_map.gd")
+const Layout := preload("res://scripts/authored_bake_layout.gd")
 
 const MANIFEST_PATH := "res://data/map_authored_bake.json"
 const REBAKE_HINT := "rerun tools/map_editor/bake_authored_map.tscn"
@@ -45,6 +46,18 @@ static var _wanted: Dictionary = {}
 const LANDINGS_PER_FRAME := 6
 ## Threaded requests issued per prefetch call (see prefetch).
 const PREFETCH_PER_CALL := 48
+## The tier currently being drawn, and the px/unit band that switches it. Entering at the far
+## tier's own resolution (BAKE_SCALE) means the near set is fetched exactly when the far one
+## would start to be magnified; leaving well below that keeps a camera nudged around the
+## threshold from repainting and re-streaming on alternate frames.
+static var _tier := Layout.TIER_FAR
+const NEAR_ENTER_PPU := 1.333
+const NEAR_EXIT_PPU := 1.05
+## -1 unknown, 0 no, 1 yes — whether this manifest carries near-tier textures at all.
+static var _near_available := -1
+## Harness override: "far" or "near" pins the tier; "" lets the zoom decide. See tier_for.
+static var force_tier := ""
+static var _force_env_read := false
 ## Bumped whenever a threaded request lands; the streaming layers repaint when it moves.
 static var texture_generation := 0
 ## How far beyond the rect a layer drew its textures are kept resident and prefetched. A
@@ -121,14 +134,8 @@ static func tile_rect(tile_id: String) -> Rect2:
 
 ## The texture for one layer of one tile, loaded on demand and held until `trim`. Returns null
 ## when this tile has nothing on this layer — a normal, common answer, not a failure.
-static func texture_for(tile_id: String, layer: String) -> Texture2D:
-	var entry: Variant = tiles().get(tile_id, null)
-	if typeof(entry) != TYPE_DICTIONARY:
-		return null
-	var layers: Variant = (entry as Dictionary).get("layers", {})
-	if typeof(layers) != TYPE_DICTIONARY:
-		return null
-	var path := str((layers as Dictionary).get(layer, ""))
+static func texture_for(tile_id: String, layer: String, tier: String = Layout.TIER_FAR) -> Texture2D:
+	var path := path_for(tile_id, layer, tier)
 	if path == "":
 		return null
 	if _textures.has(path):
@@ -215,7 +222,8 @@ static func settle_pending() -> bool:
 ## resident yet. Cheap when nothing is missing — a dictionary walk — so the streaming layers
 ## call it on every repaint with a ring beyond what they drew, and the band the camera is
 ## heading into is on the GPU before the next crossing asks for it.
-static func prefetch(world_rect: Rect2, layers: Array = ["fabric", "roads"]) -> void:
+static func prefetch(world_rect: Rect2, layers: Array = ["fabric", "roads"],
+		tier: String = Layout.TIER_FAR) -> void:
 	if not stream_async or world_rect.size.x <= 0.0:
 		return
 	# Bounded per call: a zoomed-out view's ring is the whole island, and asking for ~900
@@ -228,16 +236,98 @@ static func prefetch(world_rect: Rect2, layers: Array = ["fabric", "roads"]) -> 
 		var entry: Variant = tiles().get(str(tile_id), null)
 		if typeof(entry) != TYPE_DICTIONARY:
 			continue
-		var entry_layers: Variant = (entry as Dictionary).get("layers", {})
-		if typeof(entry_layers) != TYPE_DICTIONARY:
-			continue
 		for layer in layers:
-			var path := str((entry_layers as Dictionary).get(str(layer), ""))
+			var path := path_for(str(tile_id), str(layer), tier)
+			if path == "" and tier != Layout.TIER_FAR:
+				path = path_for(str(tile_id), str(layer))
 			if path != "" and not _textures.has(path) and not _pending.has(path) \
 					and ResourceLoader.exists(path):
 				ResourceLoader.load_threaded_request(path)
 				_pending[path] = true
 				requested += 1
+
+
+## Where one tier of one layer of one tile lives, or "" when the bake does not hold it. The
+## near tier is a separate map (`layers_near`) rather than a suffixed key, so a manifest
+## written before the tier existed reads correctly and simply has no near textures.
+static func path_for(tile_id: String, layer: String, tier: String = Layout.TIER_FAR) -> String:
+	var entry: Variant = tiles().get(tile_id, null)
+	if typeof(entry) != TYPE_DICTIONARY:
+		return ""
+	var key := "layers_near" if tier == Layout.TIER_NEAR else "layers"
+	var layers: Variant = (entry as Dictionary).get(key, {})
+	if typeof(layers) != TYPE_DICTIONARY:
+		return ""
+	return str((layers as Dictionary).get(layer, ""))
+
+
+## Every path this tile holds, across both tiers — what `trim` must keep resident for a tile
+## the camera can still see, whichever tier is being drawn.
+static func paths_for_tile(tile_id: String) -> Array:
+	var out: Array = []
+	var entry: Variant = tiles().get(tile_id, null)
+	if typeof(entry) != TYPE_DICTIONARY:
+		return out
+	for key in ["layers", "layers_near"]:
+		var layers: Variant = (entry as Dictionary).get(key, {})
+		if typeof(layers) != TYPE_DICTIONARY:
+			continue
+		for layer in (layers as Dictionary):
+			var path := str((layers as Dictionary)[layer])
+			if path != "":
+				out.append(path)
+	return out
+
+
+## Screen pixels per world unit right now, from the canvas transform the renderer is actually
+## using rather than whatever the camera node last stored.
+static func pixels_per_unit(canvas: CanvasItem) -> float:
+	return canvas.get_viewport_transform().get_scale().x * canvas.get_global_transform().get_scale().x
+
+
+## Which tier to draw, with hysteresis so a camera resting on the threshold does not swap
+## every frame — each swap is a repaint of the whole layer AND a band of texture loads.
+##
+## The near tier costs 4x the pixels of the far one, so it is entered only where the far
+## texture would actually be magnified (its 1.333 px/u), and left again well below that.
+static func tier_for(canvas: CanvasItem) -> String:
+	# A/B seam for the shot harness. Settable in-process (`force_tier`) as well as by
+	# POE_FORCE_TIER, because the honest comparison shoots BOTH tiers in ONE run: two runs get
+	# two window sizes out of this engine, and the canvas scale rides on the window, so a pair
+	# shot across two processes compares two framings while reporting one camera zoom.
+	if force_tier == "" and not _force_env_read:
+		_force_env_read = true
+		var env := OS.get_environment("POE_FORCE_TIER")
+		if Layout.TIERS.has(env):
+			force_tier = env
+	if force_tier != "" and Layout.TIERS.has(force_tier):
+		return force_tier
+	if not near_available():
+		return Layout.TIER_FAR
+	var ppu := pixels_per_unit(canvas)
+	if _tier == Layout.TIER_NEAR:
+		if ppu < NEAR_EXIT_PPU:
+			_tier = Layout.TIER_FAR
+	elif ppu >= NEAR_ENTER_PPU:
+		_tier = Layout.TIER_NEAR
+	return _tier
+
+
+## Does this bake carry near-tier textures at all? A manifest from before the tier — or a bake
+## run with `--tiers=far` — simply draws the far tier everywhere, which is the old behaviour.
+static func near_available() -> bool:
+	if _near_available >= 0:
+		return _near_available == 1
+	_near_available = 0
+	if is_available():
+		for tile_id in tiles():
+			var entry: Variant = tiles()[tile_id]
+			if typeof(entry) == TYPE_DICTIONARY \
+					and typeof((entry as Dictionary).get("layers_near", null)) == TYPE_DICTIONARY \
+					and not ((entry as Dictionary)["layers_near"] as Dictionary).is_empty():
+				_near_available = 1
+				break
+	return _near_available == 1
 
 
 ## Drop every held texture whose tile is not in `keep`. Called by the renderers after they have
@@ -246,16 +336,9 @@ static func trim(keep_tile_ids: Dictionary) -> void:
 	if _textures.is_empty():
 		return
 	var wanted: Dictionary = {}
-	var all := tiles()
 	for tile_id in keep_tile_ids:
-		var entry: Variant = all.get(tile_id, null)
-		if typeof(entry) != TYPE_DICTIONARY:
-			continue
-		var layers: Variant = (entry as Dictionary).get("layers", {})
-		if typeof(layers) != TYPE_DICTIONARY:
-			continue
-		for layer in (layers as Dictionary):
-			wanted[str((layers as Dictionary)[layer])] = true
+		for path in paths_for_tile(str(tile_id)):
+			wanted[str(path)] = true
 	for path in _textures.keys():
 		if not wanted.has(path):
 			_textures.erase(path)
@@ -326,19 +409,25 @@ static func visible_world_rect(canvas: CanvasItem, margin: float) -> Rect2:
 ## `overrides` (tile_id -> Texture2D) wins over the file for that tile: it is how a tile
 ## repainted in-match after an eviction replaces the one that shipped.
 static func draw_layer(canvas: CanvasItem, layer: String, view: Rect2,
-		overrides: Dictionary = {}) -> void:
+		overrides: Dictionary = {}, tier: String = Layout.TIER_FAR) -> void:
 	if view.size.x <= 0.0:
 		return
 	var visible := tiles_in_rect(view)
 	for tile_id in visible:
 		var id := str(tile_id)
-		var texture: Texture2D = overrides.get(id, null) if overrides.has(id) else texture_for(id, layer)
+		var texture: Texture2D = null
+		if overrides.has(id):
+			texture = overrides.get(id, null)   # a tile repainted in-match wins at either tier
+		else:
+			texture = texture_for(id, layer, tier)
+			if texture == null and tier != Layout.TIER_FAR:
+				texture = texture_for(id, layer)   # near not baked for this tile: far still reads
 		if texture != null:
 			canvas.draw_texture_rect(texture, tile_rect(id), false)
 	# Resident set = what was drawn plus a ring the camera is heading into; the ring is also
 	# what gets prefetched, so a crossing finds its new band already on the GPU.
 	var ring := view.grow(PREFETCH_RING)
-	prefetch(ring, [layer])
+	prefetch(ring, [layer], tier)
 	trim(tiles_in_rect(ring))
 
 
@@ -352,6 +441,10 @@ static func reset_for_tests() -> void:
 	_wanted = {}
 	stream_async = false
 	texture_generation = 0
+	_tier = Layout.TIER_FAR
+	_near_available = -1
+	force_tier = ""
+	_force_env_read = false
 
 
 ## One warning per run. A stale bake would otherwise print on every redraw of every layer.

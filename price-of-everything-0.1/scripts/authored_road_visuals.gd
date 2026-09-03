@@ -90,7 +90,8 @@ func _lp_draw_inner() -> void:
 		# live over them, because whether they are visible depends on flags that move during
 		# the match. Keeping them vector is what preserves the whole-stroke reveal with no
 		# overlay artifacts to bake, and at this count it costs nothing.
-		AuthoredBake.draw_layer(self, "roads", AuthoredBake.visible_world_rect(self, STREAM_MARGIN))
+		AuthoredBake.draw_layer(self, "roads", AuthoredBake.visible_world_rect(self, STREAM_MARGIN),
+			{}, AuthoredBake.tier_for(self))
 		AuthoredRoadPainter.draw_strokes(self, _unlockable_strokes(flagged), _geometry_cache)
 		return
 	AuthoredRoadPainter.draw_strokes(self, _visible_strokes(flagged), _geometry_cache)
@@ -139,6 +140,8 @@ func _unlockable_strokes(flagged: Dictionary) -> Array:
 ## Baked mode streams by camera, so the layer has to notice the camera moving.
 ## The AuthoredBake.texture_generation this layer last repainted at (threaded streaming).
 var _texture_generation := 0
+## The resolution tier this layer last drew (see AuthoredBake.tier_for).
+var _tier := AuthoredBake.Layout.TIER_FAR
 
 func _process(_delta: float) -> void:
 	if not visible or not AuthoredBake.is_available():
@@ -148,6 +151,11 @@ func _process(_delta: float) -> void:
 	AuthoredBake.settle_pending()
 	if AuthoredBake.texture_generation != _texture_generation:
 		_texture_generation = AuthoredBake.texture_generation
+		queue_redraw()
+	# The near/far swap changes the picture without moving the view (see the fabric layer).
+	var tier := AuthoredBake.tier_for(self)
+	if tier != _tier:
+		_tier = tier
 		queue_redraw()
 	var view := AuthoredBake.visible_world_rect(self, STREAM_MARGIN)
 	# Not `!=`: the picture already reaches STREAM_MARGIN past the view, so a few units of
