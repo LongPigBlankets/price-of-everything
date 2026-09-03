@@ -21,10 +21,19 @@ const AuthoredBake := preload("res://scripts/authored_bake.gd")
 const ViewStream := preload("res://scripts/view_stream.gd")
 const BakeLayout := preload("res://scripts/authored_bake_layout.gd")
 const BakePainter := preload("res://scripts/authored_bake_painter.gd")
+const TreeShapes := preload("res://scripts/tree_shapes.gd")
 
 ## How far beyond the camera to keep baked textures resident, world units — a little over one
 ## tile, so a tile is loaded before it scrolls in rather than popping.
 const STREAM_MARGIN := 600.0
+## The AuthoredBake.texture_generation this layer last repainted at (threaded streaming).
+var _texture_generation := 0
+## The authored point trees as three meshes — shadows, crowns, outlines — built ONCE from the
+## document and drawn with three calls. Empty until the first bake-path repaint asks, and
+## dropped on a style change (the colours are baked into the vertices). See _build_tree_meshes.
+var _tree_meshes: Array = []
+var _white_tex: Texture2D = null
+var _lp_tree_build_us := 0
 
 var _sacrificed: Dictionary = {}
 ## Regions the fabric is CUT AROUND rather than deleted inside — the harbours, each grown by a
@@ -45,7 +54,9 @@ func _ready() -> void:
 	# ground it stands on. Same shape as `building_footprints`, and the only coupling between
 	# the two — placement reads no fabric geometry from here, it measures the document.
 	add_to_group("authored_fabric")
-	MapStyle.style_changed.connect(func() -> void: queue_redraw())
+	MapStyle.style_changed.connect(func() -> void:
+		_tree_meshes = []   # tree colours are baked into the vertices — rebuild on the next repaint
+		queue_redraw())
 
 
 ## Hide a decorative mass because a gameplay building has taken its ground (the eviction rule
@@ -166,10 +177,21 @@ func _lp_draw_inner() -> void:
 	# below stays the reference picture — it is what the bake is rendered FROM and what the game
 	# falls back to when the bake is stale or missing.
 	if AuthoredBake.is_available():
-		AuthoredBake.draw_layer(self, "fabric",
-			AuthoredBake.visible_world_rect(self, STREAM_MARGIN), _repainted)
+		_view_rect = AuthoredBake.visible_world_rect(self, STREAM_MARGIN)
+		var _lp_t := Time.get_ticks_usec()
+		AuthoredBake.draw_layer(self, "fabric", _view_rect, _repainted)
+		var _lp_textures := Time.get_ticks_usec() - _lp_t
 		_draw_dynamic()
+		if OS.get_environment("LOAD_PROF") != "":
+			print("LOADPROF-FABRIC textures=%.1f ms  dynamic(harbours=%.1f trees=%.1f, of which one-time tree build=%.1f) ms  tiles=%d" % [
+				_lp_textures / 1000.0, _lp_harbours_us / 1000.0, _lp_trees_us / 1000.0,
+				_lp_tree_build_us / 1000.0, AuthoredBake.tiles_in_rect(_view_rect).size()])
+			_lp_tree_build_us = 0
 		return
+	# A stale/missing bake must remain usable: retain vector commands only for the buffered
+	# camera view, then recull after a meaningful pan. Previously this fallback retained the
+	# whole map (including every generated wood) and replayed it every frame.
+	_view_rect = AuthoredBake.visible_world_rect(self, STREAM_MARGIN)
 	var settlements := AuthoredMap.settlements()
 	var keys := settlements.keys()
 	keys.sort()   # stable draw order, so overlaps stack the same way every run
@@ -192,18 +214,24 @@ func _lp_draw_inner() -> void:
 	# GROUND: paving lowest, then greens, then worked land — surfaces everything stands on.
 	for settlement in ordered:
 		for plaza in _list(settlement, "plazas"):
+			if not _record_visible(plaza):
+				continue
 			AuthoredFabricPainter.draw_plaza(self, plaza)
 	for settlement in ordered:
 		for park in _list(settlement, "parks"):
+			if not _record_visible(park):
+				continue
 			AuthoredFabricPainter.draw_park(self, park)
 	for settlement in ordered:
 		for area in _list(settlement, "farms"):
+			if not _record_visible(area):
+				continue
 			AuthoredFabricPainter.draw_farm(self, area)
 	# STANDING: decorative masses, then specials. Woodland is drawn last of all (a canopy
 	# overhangs what it grows beside, so a tree under a mass would read as the mass in a hole).
 	for settlement in ordered:
 		for mass in _list(settlement, "decor"):
-			if not _sacrificed.has(str(mass.get("id", ""))):
+			if _record_visible(mass) and not _sacrificed.has(str(mass.get("id", ""))):
 				AuthoredFabricPainter.draw_mass(self, mass, _keep_out)
 	for settlement in ordered:
 		# Imported harbours draw as ONE grouped structure (draw_port_group): a dock and
@@ -212,6 +240,8 @@ func _lp_draw_inner() -> void:
 		var harbours: Dictionary = {}
 		for special in _list(settlement, "specials"):
 			if _sacrificed.has(str(special.get("id", ""))):
+				continue
+			if not _record_visible(special):
 				continue
 			var port_tile := str(special.get("port", ""))
 			if port_tile != "":
@@ -236,8 +266,16 @@ func _lp_draw_inner() -> void:
 				_collect_cranes(decor)
 	for settlement in ordered:
 		for area in _list(settlement, "forests"):
-			AuthoredFabricPainter.draw_forest(self, area)
-		AuthoredFabricPainter.draw_trees(self, _list(settlement, "trees"))
+			if not _record_visible(area):
+				continue
+			AuthoredFabricPainter.draw_forest(self, area, _view_rect)
+		AuthoredFabricPainter.draw_settlement_trees(self, settlement, "", _view_rect)
+
+
+func _record_visible(record: Dictionary) -> bool:
+	if _view_rect.size.x <= 0.0 or _view_rect.size.y <= 0.0:
+		return true
+	return BakeLayout.bounds_of(record).intersects(_view_rect)
 
 
 ## Every baked tile whose texture contains `mass_id` needs repainting. A mass can straddle a
@@ -327,19 +365,23 @@ func has_pending_repairs() -> bool:
 	return _repair_running or not _dirty_tiles.is_empty()
 
 
-## Baked mode streams by camera, so the layer has to notice the camera moving. Costs one rect
-## compare per frame when a bake is present, and nothing at all when it isn't.
+## Both paths stream by camera. The bake streams textures; the fallback reculls vector records
+## so saving (which temporarily makes the bake stale) never turns into a whole-map replay.
 func _process(_delta: float) -> void:
-	if not AuthoredBake.is_available():
-		return
 	# The repair renders into its OWN SubViewport, so it does not need this layer to be on
 	# screen — and it must not wait for that. The loading screen hides the world for the length
 	# of the build, and a repair that only started at the reveal would show the player a few
 	# frames of town standing where a factory has just been built, then pop.
-	if not _dirty_tiles.is_empty():
+	if AuthoredBake.is_available() and not _dirty_tiles.is_empty():
 		_repair_evicted_tiles()
 	if not visible:
 		return
+	# A tile skipped as "not loaded yet" (see AuthoredBake.texture_for) draws once its texture
+	# lands: settle the threaded requests, and repaint when the generation moves.
+	AuthoredBake.settle_pending()
+	if AuthoredBake.texture_generation != _texture_generation:
+		_texture_generation = AuthoredBake.texture_generation
+		queue_redraw()
 	var view := AuthoredBake.visible_world_rect(self, STREAM_MARGIN)
 	# Not `!=` — see view_stream.gd. This layer is the most expensive of the four.
 	if not ViewStream.settled(view, _view_rect, STREAM_MARGIN):
@@ -356,7 +398,13 @@ func _process(_delta: float) -> void:
 ## Baking either would freeze a thing that moves. Both are small — the current document marks
 ## no sacrificial masses and carries one authored harbour — so drawing them live costs nothing
 ## and keeps eviction and the harbour fit-out working exactly as they do unbaked.
+## Draw-time profile of the live pass, read by the LOADPROF-FABRIC line above.
+var _lp_harbours_us := 0
+var _lp_trees_us := 0
+
 func _draw_dynamic() -> void:
+	_lp_harbours_us = 0
+	_lp_trees_us = 0
 	var settlements := AuthoredMap.settlements()
 	var keys := settlements.keys()
 	keys.sort()
@@ -381,6 +429,7 @@ func _draw_dynamic() -> void:
 				AuthoredFabricPainter.draw_special(self, special, _keep_out)
 		var harbour_keys := harbours.keys()
 		harbour_keys.sort()
+		var _lp_h := Time.get_ticks_usec()
 		for port_tile in harbour_keys:
 			AuthoredFabricPainter.draw_port_group(self, harbours[port_tile],
 				str(port_tile), _keep_out)
@@ -391,6 +440,121 @@ func _draw_dynamic() -> void:
 			if not decor.is_empty():
 				AuthoredFabricPainter.draw_port_decor(self, decor, _keep_out, true)
 				_collect_cranes(decor)
+		_lp_harbours_us += Time.get_ticks_usec() - _lp_h
+	# Point trees remain live (not in the texture bake), but as geometry built ONCE: drawing
+	# the ~17,000 of them record by record — re-expanding the compact points, re-hashing every
+	# clump and re-seeding every crown — cost ~600 ms on EVERY repaint, which is the hitch a
+	# player felt on each stream crossing while panning. Three meshes, three draw calls, and
+	# the GPU clips what is off screen.
+	var _lp_tr := Time.get_ticks_usec()
+	if _tree_meshes.is_empty():
+		_build_tree_meshes()
+	for mesh in _tree_meshes:
+		draw_mesh(mesh as Mesh, _white_texture())
+	_lp_trees_us += Time.get_ticks_usec() - _lp_tr
+
+
+## Every authored point tree of every settlement — singles and expanded clumps, with the
+## same seed keys the record-by-record painter used, so the crowns are pixel-identical —
+## triangulated into a shadow mesh, a crown mesh and an outline line mesh. Colours ride the
+## vertices, so a style change drops the meshes (see _ready) and the next repaint rebuilds.
+func _build_tree_meshes() -> void:
+	var t0 := Time.get_ticks_usec()
+	var shadow_v := PackedVector3Array()
+	var shadow_c := PackedColorArray()
+	var shadow_i := PackedInt32Array()
+	var crown_v := PackedVector3Array()
+	var crown_c := PackedColorArray()
+	var crown_i := PackedInt32Array()
+	var line_v := PackedVector3Array()
+	var line_c := PackedColorArray()
+	var shadow_colour := MapStyle.tree_shadow()
+	var outline_colour := MapStyle.tree_outline()
+	var settlements := AuthoredMap.settlements()
+	var keys := settlements.keys()
+	keys.sort()
+	for key in keys:
+		var settlement_value: Variant = settlements[key]
+		if typeof(settlement_value) != TYPE_DICTIONARY:
+			continue
+		for record_value in AuthoredMap.tree_records(settlement_value as Dictionary, str(key)):
+			var record: Dictionary = record_value
+			var at := AuthoredFabricPainter._vector_of(record.get("position", null))
+			var id := str(record.get("id", ""))
+			match str(record.get("kind", "")):
+				"small":
+					_append_tree(TreeShapes.Kind.SMALL, at, id, shadow_colour, outline_colour,
+						shadow_v, shadow_c, shadow_i, crown_v, crown_c, crown_i, line_v, line_c)
+				"large":
+					_append_tree(TreeShapes.Kind.LARGE, at, id, shadow_colour, outline_colour,
+						shadow_v, shadow_c, shadow_i, crown_v, crown_c, crown_i, line_v, line_c)
+				"mixed":
+					for point in AuthoredFabricPainter.clump_points(record):
+						var seed_key := "%s|%.0f|%.0f" % [id, point.x, point.y]
+						_append_tree(TreeShapes.pick_kind(seed_key, AuthoredFabricPainter.CLUMP_MIX),
+							point, seed_key, shadow_colour, outline_colour,
+							shadow_v, shadow_c, shadow_i, crown_v, crown_c, crown_i, line_v, line_c)
+	_tree_meshes = []
+	if not shadow_i.is_empty():
+		_tree_meshes.append(_mesh_from(Mesh.PRIMITIVE_TRIANGLES, shadow_v, shadow_c, shadow_i))
+		_tree_meshes.append(_mesh_from(Mesh.PRIMITIVE_TRIANGLES, crown_v, crown_c, crown_i))
+	if not line_v.is_empty():
+		_tree_meshes.append(_mesh_from(Mesh.PRIMITIVE_LINES, line_v, line_c, PackedInt32Array()))
+	_lp_tree_build_us = Time.get_ticks_usec() - t0
+
+
+## One tree's shadow and crown triangles and its outline segments, appended to the buffers.
+func _append_tree(kind: int, centre: Vector2, seed_key: String, shadow_colour: Color,
+		outline_colour: Color, shadow_v: PackedVector3Array, shadow_c: PackedColorArray,
+		shadow_i: PackedInt32Array, crown_v: PackedVector3Array, crown_c: PackedColorArray,
+		crown_i: PackedInt32Array, line_v: PackedVector3Array, line_c: PackedColorArray) -> void:
+	var crown := TreeShapes.canopy(kind, centre, seed_key)
+	if crown.size() < 3:
+		return
+	var tris := Geometry2D.triangulate_polygon(crown)
+	if tris.is_empty():
+		return
+	var off := TreeShapes.shadow_offset(kind)
+	var fill := MapStyle.tree_fill(kind == TreeShapes.Kind.FIR)
+	var shadow_base := shadow_v.size()
+	var crown_base := crown_v.size()
+	for p in crown:
+		shadow_v.append(Vector3(p.x + off.x, p.y + off.y, 0.0))
+		shadow_c.append(shadow_colour)
+		crown_v.append(Vector3(p.x, p.y, 0.0))
+		crown_c.append(fill)
+	for idx in tris:
+		shadow_i.append(shadow_base + idx)
+		crown_i.append(crown_base + idx)
+	var n := crown.size()
+	for i in n:
+		var a := crown[i]
+		var b := crown[(i + 1) % n]
+		line_v.append(Vector3(a.x, a.y, 0.0))
+		line_v.append(Vector3(b.x, b.y, 0.0))
+		line_c.append(outline_colour)
+		line_c.append(outline_colour)
+
+
+func _mesh_from(primitive: int, verts: PackedVector3Array, colours: PackedColorArray,
+		indices: PackedInt32Array) -> ArrayMesh:
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_COLOR] = colours
+	if not indices.is_empty():
+		arrays[Mesh.ARRAY_INDEX] = indices
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(primitive, arrays)
+	return m
+
+
+func _white_texture() -> Texture2D:
+	if _white_tex == null:
+		var img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+		img.fill(Color.WHITE)
+		_white_tex = ImageTexture.create_from_image(img)
+	return _white_tex
 
 
 ## READ-ONLY SEAM FOR AUDITS. Every decorative mass and special this layer is CURRENTLY

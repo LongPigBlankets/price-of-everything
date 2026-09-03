@@ -137,9 +137,18 @@ func _unlockable_strokes(flagged: Dictionary) -> Array:
 
 
 ## Baked mode streams by camera, so the layer has to notice the camera moving.
+## The AuthoredBake.texture_generation this layer last repainted at (threaded streaming).
+var _texture_generation := 0
+
 func _process(_delta: float) -> void:
 	if not visible or not AuthoredBake.is_available():
 		return
+	# A tile skipped as "not loaded yet" (see AuthoredBake.texture_for) draws once its texture
+	# lands: settle the threaded requests, and repaint when the generation moves.
+	AuthoredBake.settle_pending()
+	if AuthoredBake.texture_generation != _texture_generation:
+		_texture_generation = AuthoredBake.texture_generation
+		queue_redraw()
 	var view := AuthoredBake.visible_world_rect(self, STREAM_MARGIN)
 	# Not `!=`: the picture already reaches STREAM_MARGIN past the view, so a few units of
 	# drift changes nothing on screen. See view_stream.gd.

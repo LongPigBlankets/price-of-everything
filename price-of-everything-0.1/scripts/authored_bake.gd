@@ -34,6 +34,23 @@ static var _available := -1   # -1 unknown, 0 no, 1 yes
 static var _textures: Dictionary = {}
 static var _lp_load_us := 0
 static var _lp_load_n := 0
+## Set by world_map once the world is revealed: from then on missing textures are requested
+## from the loader's worker threads rather than decoded on the render frame (see texture_for).
+static var stream_async := false
+## Threaded requests in flight (path -> true), drained by texture_for and settle_pending.
+static var _pending: Dictionary = {}
+## The subset of _pending a draw skipped a tile for: their landing repaints (prefetch alone does not).
+static var _wanted: Dictionary = {}
+## Textures handed to the GPU per settle_pending call — the upload cost stays inside a frame.
+const LANDINGS_PER_FRAME := 6
+## Threaded requests issued per prefetch call (see prefetch).
+const PREFETCH_PER_CALL := 48
+## Bumped whenever a threaded request lands; the streaming layers repaint when it moves.
+static var texture_generation := 0
+## How far beyond the rect a layer drew its textures are kept resident and prefetched. A
+## crossing repaints after a quarter of the layer's own margin, so a ring this wide has had
+## several crossings' worth of frames to land before it is asked to draw.
+const PREFETCH_RING := 900.0
 
 
 ## The parsed manifest, or an empty dictionary when there is no bake.
@@ -124,6 +141,32 @@ static func texture_for(tile_id: String, layer: String) -> Texture2D:
 		_available = 0
 		_warn("AuthoredBake: %s is in the manifest but not loadable — falling back to vectors. Run `--headless --import`, or %s." % [path, REBAKE_HINT])
 		return null
+	# IN PLAY, NEVER DECODE ON THE RENDER FRAME. A stream crossing (the camera drifting a
+	# quarter-margin) used to pull a whole band of new tiles through `load()` inside `_draw`
+	# — ~30 PNG decodes at once, an 850 ms hitch every few dozen frames of panning. Once the
+	# world is revealed the request goes to the loader's worker threads instead; the tile is
+	# skipped this frame and drawn when it lands (settle_pending below bumps the generation
+	# the streaming layers watch). The loading screen keeps the synchronous path: its first
+	# frame must be whole, and nobody is watching it decode.
+	if stream_async:
+		if _pending.has(path):
+			match ResourceLoader.load_threaded_get_status(path):
+				ResourceLoader.THREAD_LOAD_LOADED:
+					_pending.erase(path)
+					_wanted.erase(path)
+					var landed: Texture2D = ResourceLoader.load_threaded_get(path)
+					_textures[path] = landed
+					return landed
+				ResourceLoader.THREAD_LOAD_FAILED, ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
+					_pending.erase(path)   # fall through to the synchronous load below
+				_:
+					_wanted[path] = true   # a draw is waiting on it: its landing must repaint
+					return null
+		else:
+			ResourceLoader.load_threaded_request(path)
+			_pending[path] = true
+			_wanted[path] = true
+			return null
 	var _lpt := Time.get_ticks_usec()
 	var texture: Texture2D = load(path)
 	_lp_load_us += Time.get_ticks_usec() - _lpt
@@ -132,6 +175,69 @@ static func texture_for(tile_id: String, layer: String) -> Texture2D:
 		print("LOADPROF-BAKE %d textures loaded, %.0f ms total   abs=%d" % [_lp_load_n, _lp_load_us / 1000.0, Time.get_ticks_msec()])
 	_textures[path] = texture
 	return texture
+
+
+## Collect every threaded texture request that has landed since the last call, and bump
+## `texture_generation` when any did. The streaming layers call this once a frame and repaint
+## when the generation moves, which is how a tile skipped as "not yet loaded" appears.
+static func settle_pending() -> bool:
+	if _pending.is_empty():
+		return false
+	# Only a landing some draw actually WAITED for moves the generation. Prefetched tiles
+	# land silently — repainting both streaming layers for a texture nobody has asked to see
+	# yet turned a ring prefetch into a repaint every frame for as long as it kept landing.
+	# And at most LANDINGS_PER_FRAME are collected per call: load_threaded_get hands the
+	# texture to the GPU, and a burst of them is a hitch of its own.
+	var landed_wanted := false
+	var collected := 0
+	for path in _pending.keys():
+		if collected >= LANDINGS_PER_FRAME:
+			break
+		match ResourceLoader.load_threaded_get_status(path):
+			ResourceLoader.THREAD_LOAD_LOADED:
+				_pending.erase(path)
+				_textures[path] = ResourceLoader.load_threaded_get(path)
+				collected += 1
+				if _wanted.has(path):
+					_wanted.erase(path)
+					landed_wanted = true
+			ResourceLoader.THREAD_LOAD_FAILED, ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
+				_pending.erase(path)   # texture_for retries it synchronously next time it is asked
+				_wanted.erase(path)
+			_:
+				pass
+	if landed_wanted:
+		texture_generation += 1
+	return landed_wanted
+
+
+## Ask the worker threads for every texture of every tile inside `world_rect` that is not
+## resident yet. Cheap when nothing is missing — a dictionary walk — so the streaming layers
+## call it on every repaint with a ring beyond what they drew, and the band the camera is
+## heading into is on the GPU before the next crossing asks for it.
+static func prefetch(world_rect: Rect2, layers: Array = ["fabric", "roads"]) -> void:
+	if not stream_async or world_rect.size.x <= 0.0:
+		return
+	# Bounded per call: a zoomed-out view's ring is the whole island, and asking for ~900
+	# textures at once was measured as seconds of 5 fps while they streamed onto the GPU.
+	# The next repaint asks again, so a large ring fills over a few crossings instead.
+	var requested := 0
+	for tile_id in tiles_in_rect(world_rect):
+		if requested >= PREFETCH_PER_CALL:
+			break
+		var entry: Variant = tiles().get(str(tile_id), null)
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		var entry_layers: Variant = (entry as Dictionary).get("layers", {})
+		if typeof(entry_layers) != TYPE_DICTIONARY:
+			continue
+		for layer in layers:
+			var path := str((entry_layers as Dictionary).get(str(layer), ""))
+			if path != "" and not _textures.has(path) and not _pending.has(path) \
+					and ResourceLoader.exists(path):
+				ResourceLoader.load_threaded_request(path)
+				_pending[path] = true
+				requested += 1
 
 
 ## Drop every held texture whose tile is not in `keep`. Called by the renderers after they have
@@ -229,7 +335,11 @@ static func draw_layer(canvas: CanvasItem, layer: String, view: Rect2,
 		var texture: Texture2D = overrides.get(id, null) if overrides.has(id) else texture_for(id, layer)
 		if texture != null:
 			canvas.draw_texture_rect(texture, tile_rect(id), false)
-	trim(visible)
+	# Resident set = what was drawn plus a ring the camera is heading into; the ring is also
+	# what gets prefetched, so a crossing finds its new band already on the GPU.
+	var ring := view.grow(PREFETCH_RING)
+	prefetch(ring, [layer])
+	trim(tiles_in_rect(ring))
 
 
 static func reset_for_tests() -> void:
@@ -238,6 +348,10 @@ static func reset_for_tests() -> void:
 	_warned = false
 	_available = -1
 	_textures = {}
+	_pending = {}
+	_wanted = {}
+	stream_async = false
+	texture_generation = 0
 
 
 ## One warning per run. A stale bake would otherwise print on every redraw of every layer.

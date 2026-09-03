@@ -82,6 +82,8 @@ func _ready() -> void:
 	_test_authored_slot_box_holds_its_class()
 	_test_authored_area_buildings_exist()
 	await _test_authored_slot_claim_order()
+	await _test_hijack_mass_claim()
+	await _test_block_road_segments_include_authored_strokes()
 	_test_authored_zones()
 	_test_authored_bake_matches_its_document()
 	_test_forest_felling_seams()
@@ -3062,6 +3064,10 @@ func _test_farm_lanes() -> void:
 	add_child(terrain)
 	await get_tree().process_frame
 	RoadNetwork.reset()
+	# This exercises the PROCEDURAL packer's lanes against the road NETWORK. The authored
+	# document now covers tile_9_10 with its own permanent streets, which the mask rightly
+	# keeps buildings and tracks clear of — so it is stood down for the test and restored after.
+	AuthoredMap.set_document_for_tests({})
 	var bv := preload("res://scenes/building_visuals.gd").new()
 	add_child(bv)
 	await get_tree().process_frame
@@ -3070,6 +3076,7 @@ func _test_farm_lanes() -> void:
 	var coord: Vector2i = terrain.id_to_coord(tile_id)
 	if not terrain.tiles.has(coord):
 		_check(false, "farm-lanes: test tile exists")
+		AuthoredMap.reset_for_tests()
 		bv.queue_free(); terrain.queue_free(); return
 	# Two adjacent farms → they Voronoi-snap and a thin lane runs between them.
 	for i in 2:
@@ -3126,6 +3133,7 @@ func _test_farm_lanes() -> void:
 	bv.queue_free()
 	terrain.queue_free()
 	RoadNetwork.reset()
+	AuthoredMap.reset_for_tests()   # the real document comes back for the tests that need it
 	await get_tree().process_frame
 
 # Stage 1 of the farm→real-road integration: a player road settling on a farm tile PROMOTES that
@@ -19348,6 +19356,75 @@ func _test_region_import_settlement() -> void:
 	_check(MapEditorRegionImportScript.build_settlement(source, "north", {}, covered, tile_of, centres).is_empty(),
 		"region cut: an empty region imports nothing")
 
+	# The Stoneshore planting layer comes across as compact points, fitted to land and
+	# rejected around the imported road/building geometry. It is deterministic so toggling a
+	# region off and on cannot reshuffle the trees.
+	var tree_template := {"points": [
+		{"kind": "small", "offset": Vector2(80, 80)},
+		{"kind": "large", "offset": Vector2(20, 20)},
+		{"kind": "mixed", "offset": Vector2(42, 142), "radius": 12.0},
+	]}
+	var planted: Dictionary = MapEditorRegionImportScript.build_settlement(
+		source, "north", region_set, covered, tile_of, centres, tree_template)
+	var planted_again: Dictionary = MapEditorRegionImportScript.build_settlement(
+		source, "north", region_set, covered, tile_of, centres, tree_template)
+	_check(AuthoredMap.tree_count(planted) > 0,
+		"region cut: the Stoneshore template plants clear points in the generated city")
+	_check(planted.get("tree_points", {}) == planted_again.get("tree_points", {}),
+		"region cut: patterned trees are deterministic across regeneration")
+	_check(not planted.has("trees") and planted.has("tree_points"),
+		"region cut: generated planting uses compact typed point batches")
+	for record_value in AuthoredMap.tree_records(planted, "procedural-north"):
+		var record: Dictionary = record_value
+		var values: Array = record.get("position", [])
+		var at := Vector2(float(values[0]), float(values[1]))
+		_check(region_set.has(tile_of.call(at)),
+			"region cut: every planted tree remains on one of the region's land tiles")
+
+	var template_doc := {"settlements": {"source": {
+		"tiles": ["tile_5_10"],
+		"tree_points": {"small": [[10.0, 0.0], [2000.0, 0.0]]},
+	}}}
+	var extracted := MapEditorRegionImportScript.stoneshore_tree_template(template_doc,
+		{"tile_5_10": Vector2.ZERO})
+	_check((extracted.get("points", []) as Array).size() == 1,
+		"region cut: the reusable template only learns from Stoneshore's local tree fringe")
+
+	# Copperstown's focused command imports only central building polygons and gives them a
+	# removable id namespace; roads and out-of-region fabric never hitch a ride.
+	var central_source := {"settlements": {"live": {"specials": [
+		{"id": "old-in", "kind": "poly", "port": "tile_13_9",
+			"outline": [[0, 0], [20, 0], [20, 20]]},
+		{"id": "old-out", "kind": "poly", "port": "tile_2_2",
+			"outline": [[100, 100], [120, 100], [120, 120]]},
+	]}}}
+	var central := MapEditorRegionImportScript.build_central_buildings(central_source, tile_of)
+	_check((central.get("specials", []) as Array).size() == 1
+		and str((central.get("specials", [])[0] as Dictionary).get("id", "")) == "s:central:0",
+		"central buildings: only Copperstown fabric is copied and renumbered")
+	_check((central.get("roads", []) as Array).is_empty()
+		and central.get("tiles", []) == MapEditorRegionImportScript.CENTRAL_BUILDING_TILES,
+		"central buildings: the focused layer claims Copperstown but imports no roads")
+
+	# The road-edge layer is reproducible and remains a compact typed point batch. A bank of
+	# eligible roads makes the deterministic 22% sample exercise both the accept and gap paths.
+	var roadside_roads: Array = []
+	for i in 40:
+		roadside_roads.append({"id": "fixture-%d" % i,
+			"points": [[0, i * 40], [180, i * 40]], "class": "mid"})
+	var everywhere := func(_world: Vector2) -> String: return "land"
+	var roadside := MapEditorRegionImportScript.roadside_tree_points(
+		{"land": true}, everywhere, roadside_roads, [], [], [], "fixture")
+	var roadside_again := MapEditorRegionImportScript.roadside_tree_points(
+		{"land": true}, everywhere, roadside_roads, [], [], [], "fixture")
+	_check(AuthoredMap.tree_count({"tree_points": roadside}) > 0,
+		"roadside trees: the sparse deterministic pass plants eligible road edges")
+	_check(roadside == roadside_again,
+		"roadside trees: regeneration is deterministic")
+	_check(roadside.keys().all(func(kind: Variant) -> bool:
+		return str(kind) == "small" or str(kind) == "large"),
+		"roadside trees: output keeps the measured small/large vocabulary")
+
 
 ## The importer's faithfulness contract: outlines keep up to TEN corners (owner, 2026-08-29)
 ## and only simplify past that.
@@ -20558,6 +20635,28 @@ func _test_authored_trees() -> void:
 	_check(authored.validate(doc).is_empty(),
 		"authored trees: a document with all three kinds validates")
 
+	# Saving groups point specimens by kind and drops their redundant per-record ids. Loading
+	# through tree_records remains backward compatible, so painters do not care which form a
+	# document arrived in.
+	var compact: Dictionary = authored.canonical(doc)
+	var compact_settlement: Dictionary = compact["settlements"]["t"]
+	_check(not compact_settlement.has("trees") and compact_settlement.has("tree_points"),
+		"authored trees: canonical storage migrates legacy records into typed point batches")
+	_check((compact_settlement["tree_points"]["small"] as Array) == [[10.0, 20.0]]
+		and (compact_settlement["tree_points"]["large"] as Array) == [[40.0, 20.0]]
+		and (compact_settlement["tree_points"]["mixed"] as Array) == [[90.0, 20.0, 26.0]],
+		"authored trees: small, large and mixed coordinates stay separate and exact")
+	_check(authored.tree_records(compact_settlement, "t").size() == 3,
+		"authored trees: compact storage expands to the same three painter records")
+	_check(authored.to_text(compact) == authored.to_text(doc),
+		"authored trees: migration is idempotent on the next save")
+
+	var compact_bad := authored.empty_document()
+	compact_bad["settlements"] = {"t": {"tiles": ["tile_1_1"],
+		"tree_points": {"small": [[1.0, 2.0, 3.0]], "mixed": [[4.0, 5.0, 0.0]]}}}
+	_check(not authored.validate(compact_bad).is_empty(),
+		"authored trees: malformed typed points and radius-less compact clumps are refused")
+
 	# A clump with no radius has no size, so it would draw nothing and silently look like a
 	# tree that failed to place. The schema refuses it instead.
 	var bad := authored.empty_document()
@@ -20589,3 +20688,143 @@ func _test_authored_trees() -> void:
 		% outside)
 	_check(kinds.size() >= 2,
 		"authored trees: a clump mixes sizes rather than repeating one (%d kinds)" % kinds.size())
+
+
+## A rectangle as a document outline ([[x, y], ...]) centred on `c`.
+func _rect_outline(c: Vector2, w: float, h: float) -> Array:
+	return [[c.x - w / 2.0, c.y - h / 2.0], [c.x + w / 2.0, c.y - h / 2.0],
+		[c.x + w / 2.0, c.y + h / 2.0], [c.x - w / 2.0, c.y + h / 2.0]]
+
+
+## A stamped building on an authored tile takes over a mass the designer marked as a hijack
+## slot: the footprint IS the mass outline, the closest-area mass wins, a claimed mass is
+## never handed out twice, and an unmarked mass is never touched.
+func _test_hijack_mass_claim() -> void:
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		bv.queue_free(); terrain.queue_free(); return
+	var c: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+	var big := _rect_outline(c + Vector2(-120.0, 0.0), 60.0, 40.0)
+	var small := _rect_outline(c + Vector2(120.0, 0.0), 30.0, 30.0)
+	var plain := _rect_outline(c + Vector2(0.0, 100.0), 50.0, 50.0)
+	var doc := {
+		"version": AuthoredMap.SCHEMA_VERSION,
+		"settlements": {"s": {
+			"tiles": [tile_id],
+			"specials": [
+				{"id": "h_big", "kind": "poly", "outline": big, "sides": [], "hijack": true},
+				{"id": "h_small", "kind": "poly", "outline": small, "sides": [], "hijack": true},
+				{"id": "plain", "kind": "poly", "outline": plain, "sides": []},
+			],
+		}},
+	}
+	var problems := AuthoredMap.validate(doc)
+	_check(problems.is_empty(), "hijack: the fixture document is valid (%s)" % str(problems))
+	AuthoredMap.set_document_for_tests(doc)
+
+	var first: Dictionary = bv._claim_hijack_mass(tile_id, coord, 60.0 * 40.0)
+	_check(str(first.get("via", "")) == "hijack" and str(first.get("hijack_id", "")) == "h_big",
+		"hijack: a 2400 u2 building takes the mass nearest its own area (got '%s')" % str(first.get("hijack_id", "")))
+	if not first.is_empty():
+		var verts: PackedVector2Array = first.verts
+		var corner := Vector2(float(big[0][0]), float(big[0][1]))
+		_check(verts.size() == 4 and verts[0].distance_to(corner) < 0.01,
+			"hijack: the footprint IS the mass outline (first corner off by %.3f)"
+			% (verts[0].distance_to(corner) if verts.size() > 0 else INF))
+	bv._hijacked_masses["h_big"] = "iid_1"
+	var second: Dictionary = bv._claim_hijack_mass(tile_id, coord, 60.0 * 40.0)
+	_check(str(second.get("hijack_id", "")) == "h_small",
+		"hijack: a claimed mass is never handed out twice (got '%s')" % str(second.get("hijack_id", "")))
+	bv._hijacked_masses["h_small"] = "iid_2"
+	_check(bv._claim_hijack_mass(tile_id, coord, 900.0).is_empty(),
+		"hijack: an unmarked mass is never hijacked — with no marks left the claim is empty")
+
+	# A building wearing a mass draws nothing of its own; the overflow past the tile's marked
+	# masses is what a player sees appear (owner, 2026-08-30).
+	_check(not bv._draws_own_body({"hijack_id": "h_big"}),
+		"hijack: a building wearing a mass draws no body of its own")
+	_check(bv._draws_own_body({"hijack_id": ""}),
+		"hijack: a building past the tile's marked masses draws its own body")
+
+	AuthoredMap.set_document_for_tests({})
+	bv.queue_free()
+	terrain.queue_free()
+
+
+## The road-clearance segments include the AUTHORED carriageways, not just the network's
+## geometry — the street a player sees on a hand-drawn tile is the document's stroke.
+func _test_block_road_segments_include_authored_strokes() -> void:
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		bv.queue_free(); terrain.queue_free(); return
+	var c: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+	var doc := {
+		"version": AuthoredMap.SCHEMA_VERSION,
+		"settlements": {"s": {
+			"tiles": [tile_id],
+			"roads": [{"id": "r1", "class": "mid", "unlockable": true, "tiles": [tile_id],
+				"points": [[c.x - 200.0, c.y], [c.x + 200.0, c.y]]}],
+		}},
+	}
+	var problems := AuthoredMap.validate(doc)
+	_check(problems.is_empty(), "authored strokes: the fixture document is valid (%s)" % str(problems))
+	AuthoredMap.set_document_for_tests(doc)
+
+	# An UNLOCKABLE stroke on an unflagged tile is not drawn, so it must not fence off ground.
+	var td: Dictionary = terrain.tiles[coord]
+	var had_infra: Array = (td.get("infrastructure_present", []) as Array).duplicate()
+	td["infrastructure_present"] = []
+	_check(not _has_centre_stroke(bv._block_road_segments(coord)),
+		"authored strokes: an unlockable stroke on an unflagged tile is NOT a clearance segment")
+	# Flag the tile and the same stroke becomes a carriageway to keep clear of.
+	td["infrastructure_present"] = ["roads"]
+	var segs: Array = bv._block_road_segments(coord)
+	_check(_has_centre_stroke(segs),
+		"authored strokes: a visible document road across the tile centre is a clearance segment (%d segs)" % segs.size())
+	# The road-settle conflict test asks the network only: authored strokes never count there.
+	_check(not _has_centre_stroke(bv._block_road_segments(coord, false)),
+		"authored strokes: the settle-conflict query (include_authored=false) ignores them")
+	# A PERMANENT stroke is always drawn, so it fences ground whatever the flags say.
+	td["infrastructure_present"] = []
+	(doc["settlements"]["s"]["roads"][0] as Dictionary)["unlockable"] = false
+	AuthoredMap.set_document_for_tests(doc)
+	_check(_has_centre_stroke(bv._block_road_segments(coord)),
+		"authored strokes: a permanent stroke counts even on an unflagged tile")
+	td["infrastructure_present"] = had_infra
+
+	AuthoredMap.set_document_for_tests({})
+	bv.queue_free()
+	terrain.queue_free()
+
+
+## True when `segs` holds a level segment through the tile centre longer than 300 u — the
+## authored-stroke fixture's road.
+func _has_centre_stroke(segs: Array) -> bool:
+	for s in segs:
+		var a: Vector2 = s[0]
+		var b: Vector2 = s[1]
+		if absf(a.y) < 0.01 and absf(b.y) < 0.01 and absf(b.x - a.x) > 300.0:
+			return true
+	return false

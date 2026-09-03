@@ -624,6 +624,10 @@ func _install_baked_layout() -> void:
 	var t := Time.get_ticks_usec()
 	var baked := StartLayoutBakedScript.layout()
 	if baked.is_empty():
+		# Not a silent fallback: every start building is now placed live, and the fabric
+		# repaints each tile those placements evict at ~180 ms a frame — the reveal waits for
+		# only REPAIR_WAIT_FRAMES of that, so a stale bake plays as minutes at 5 fps.
+		push_warning("StartLayout: no fresh baked layout — placing live. Expect a slow reveal and a sluggish first minutes; re-run tools/bake_start_layout.tscn.")
 		return
 	if not building_visuals.import_layout_state(baked):
 		return
@@ -731,6 +735,13 @@ func reveal_for_play() -> void:
 			# Measured, interleaved: 1229 -> 496 ms and 1309 -> 519 ms on the worst frame
 			# after the click, with the resulting map pixel-for-pixel the same.
 	_hidden_for_load.clear()
+	# From here on the baked map streams off the loader's worker threads: the loading screen
+	# decoded the opening view synchronously (its first frame had to be whole), but nothing in
+	# play should pull a band of PNGs through `load()` on the render frame. The ring around the
+	# view is prefetched by each layer's own repaint (AuthoredBake.draw_layer), NOT here: at
+	# this moment the camera is still on its intro zoom, and priming a ring around the whole
+	# island was measured as several seconds of 5 fps right after the reveal.
+	AuthoredBakeScript.stream_async = true
 	# And start the one warm that is too big for a load. 8.6 s of contour triangulation, in
 	# slices small enough to disappear into a play frame, for a picture the player only needs
 	# if they zoom all the way in — and which _draw_fill will build on demand if they get there
