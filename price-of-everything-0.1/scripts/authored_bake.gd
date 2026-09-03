@@ -279,10 +279,20 @@ static func paths_for_tile(tile_id: String) -> Array:
 	return out
 
 
-## Screen pixels per world unit right now, from the canvas transform the renderer is actually
-## using rather than whatever the camera node last stored.
+## LOGICAL pixels per world unit — the camera's canvas scale, deliberately WITHOUT the
+## window stretch.
+##
+## `stretch/mode="canvas_items"` draws the whole canvas at the base viewport size and then
+## scales that image to the window, so a texture is magnified (or not) against the LOGICAL
+## resolution; the window stretch blurs the result equally whatever tier was chosen. Including
+## it here would have entered the near tier at roughly half the intended zoom on any window
+## bigger than the base — loading four times the texture for a mid-zoom view that cannot show
+## the detail.
 static func pixels_per_unit(canvas: CanvasItem) -> float:
-	return canvas.get_viewport_transform().get_scale().x * canvas.get_global_transform().get_scale().x
+	var viewport := canvas.get_viewport()
+	if viewport == null:
+		return 0.0
+	return viewport.get_canvas_transform().get_scale().x
 
 
 ## Which tier to draw, with hysteresis so a camera resting on the threshold does not swap

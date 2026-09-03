@@ -37,6 +37,18 @@ func _ready() -> void:
 		# Opened exactly once, as a click would: the first-open layout is the thing under test.
 		panel.call("show_tile", tiles_dict[coord])
 		await _settle(45)
+		# What the player actually sees, in WINDOW pixels: the canvas is drawn at the base
+		# viewport and then stretched to the window, so a control's on-screen size is its
+		# canvas size times that stretch. This is the number that says whether the UI is the
+		# right size, and it is what changing the base resolution moves.
+		var window := Vector2(DisplayServer.window_get_size())
+		var viewport := get_viewport().get_visible_rect().size
+		var stretch := window.x / maxf(viewport.x, 1.0)
+		var panel_size: Vector2 = (panel as Control).size
+		print("[UI SCALE] base_viewport=%s window=%s stretch=%.3f | panel=%.0fx%.0f canvas = %.0fx%.0f screen px (%.1f%% of window width)" % [
+			str(viewport), str(window), stretch, panel_size.x, panel_size.y,
+			panel_size.x * stretch, panel_size.y * stretch,
+			100.0 * panel_size.x * stretch / window.x])
 		var card := _first_card(panel)
 		if card != null:
 			print("[TILE PANEL] %s first card '%s' height=%.0f px" % [tile_id, card.name, (card as Control).size.y])
