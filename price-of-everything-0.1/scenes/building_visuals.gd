@@ -1108,18 +1108,6 @@ func _hijack_candidates(tile_id: String, coord: Vector2i) -> Array:
 	return out
 
 
-## Does this building draw a footprint of its own? (Owner, 2026-08-30.)
-##
-## A building that HIJACKED a marked decorative mass does not: the mass is already drawn by
-## the fabric layer, and that is the building's picture. So while a tile's gameplay buildings
-## — NPC and player together — still fit inside its marked masses, the town on screen does not
-## change at all; the first building past that limit is the first one to appear as new
-## construction. Everything else (footprint, clicks, occupancy, eviction rules, smoke) is
-## unchanged: this is a drawing decision, not a placement one.
-func _draws_own_body(placement: Dictionary) -> bool:
-	return str(placement.get("hijack_id", "")) == ""
-
-
 ## Does this tile carry hand-placed slots?
 func _has_authored_slots(tile_id: String) -> bool:
 	if not AuthoredMap.is_active() or not AuthoredMap.covers(tile_id):
@@ -5019,8 +5007,6 @@ func _draw_flat_buildings() -> void:
 			continue   # farms draw on the underlay, beneath the forest canopy
 		if (_massed_by_tile.get(str(placement.tile_id), {}) as Dictionary).has(str(placement.instance_id)):
 			continue   # a mass member: the welded mass above already carries its ground
-		if not _draws_own_body(placement):
-			continue   # wearing a decorative mass, which the fabric layer already draws
 		_add_silhouette(pts, cols, str(placement.instance_id), placement.verts,
 			_wash_for(str(placement.cat), str(placement.instance_id), bool(placement.is_npc)))
 	CanvasBatch.flush(self, pts, cols)
@@ -5509,15 +5495,6 @@ func _lp_draw_inner() -> void:
 		# site through the mass, which is what a cleared plot inside a terrace looks like.
 		if _is_under_construction(str(placement.instance_id)):
 			_draw_construction_site(verts)
-			continue
-		# HIJACKED: the decorative mass this building took over is already on screen, and that
-		# fabric IS its picture — so NOTHING of the building's own is drawn over it, chimneys
-		# and smoke included (they arrive with a building, and this one has not visibly
-		# arrived — owner, 2026-09-02; `smoke_stacks` drops it for the same reason). A tile
-		# therefore looks untouched until it runs out of marked masses; the buildings past
-		# that limit fall through to the ordinary stamp below, and they are the ones a player
-		# watches appear.
-		if not _draws_own_body(placement):
 			continue
 		if not in_mass:
 			_draw_midcentury_compound_apron(placement, verts)
@@ -6022,10 +5999,8 @@ func smoke_stacks() -> Array:
 		if not SMOKE_STACKS.has(iname):
 			continue
 		# A site has no chimney drawn on it yet (`_draw_construction_site` skips them), so it
-		# must not be puffing out of one either. Nor does a building wearing a decorative mass:
-		# stacks and their smoke arrive WITH a building, and that one has not visibly arrived
-		# (owner, 2026-09-02 — see _draws_own_body).
-		if _is_under_construction(str(placement.instance_id)) or not _draws_own_body(placement):
+		# must not be puffing out of one either.
+		if _is_under_construction(str(placement.instance_id)):
 			continue
 		for sp_value in _stack_points(iname, str(placement.instance_id), placement.verts):
 			var sp: Dictionary = sp_value
@@ -6174,9 +6149,6 @@ func _draw_stamp(placement: Dictionary, verts: PackedVector2Array) -> void:
 ## the same ink outline everything else on this layer carries. The smoke itself is NOT drawn
 ## here — it animates, and this canvas only repaints when the view settles.
 ##
-## Split from `_draw_stamp` because a building that hijacked a decorative mass draws no body
-## of its own but DOES still raise stacks: the massing stays the town's, and the smoke over it
-## is what says an industry has moved in (see _draws_own_body).
 func _draw_stacks(placement: Dictionary, verts: PackedVector2Array, top: Color) -> void:
 	if not DRAW_CHIMNEYS:
 		return

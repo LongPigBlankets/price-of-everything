@@ -83,6 +83,8 @@ func _ready() -> void:
 	_test_authored_area_buildings_exist()
 	await _test_authored_slot_claim_order()
 	await _test_hijack_mass_claim()
+	_test_building_tab_repayment()
+	_test_forecast_own_supply_follows_production()
 	await _test_block_road_segments_include_authored_strokes()
 	_test_authored_zones()
 	_test_authored_bake_matches_its_document()
@@ -20750,13 +20752,6 @@ func _test_hijack_mass_claim() -> void:
 	_check(bv._claim_hijack_mass(tile_id, coord, 900.0).is_empty(),
 		"hijack: an unmarked mass is never hijacked — with no marks left the claim is empty")
 
-	# A building wearing a mass draws nothing of its own; the overflow past the tile's marked
-	# masses is what a player sees appear (owner, 2026-08-30).
-	_check(not bv._draws_own_body({"hijack_id": "h_big"}),
-		"hijack: a building wearing a mass draws no body of its own")
-	_check(bv._draws_own_body({"hijack_id": ""}),
-		"hijack: a building past the tile's marked masses draws its own body")
-
 	AuthoredMap.set_document_for_tests({})
 	bv.queue_free()
 	terrain.queue_free()
@@ -20828,3 +20823,58 @@ func _has_centre_stroke(segs: Array) -> bool:
 		if absf(a.y) < 0.01 and absf(b.y) < 0.01 and absf(b.x - a.x) > 300.0:
 			return true
 	return false
+
+
+## The tab row a player reads is the REPAYMENT — per turn, and how many turns of it are left
+## — not the outstanding total (owner, 2026-09-03).
+func _test_building_tab_repayment() -> void:
+	var saved: Dictionary = MatchState.building_tabs.duplicate(true)
+	MatchState.building_tabs = {}
+	_check(MatchState.building_tab_repayment("nobody").get("per_turn", -1.0) == 0.0,
+		"tab repayment: a building with no tab owes nothing per turn")
+	# Still inside the interest-free window: quote the schedule it will run to, and the wait.
+	MatchState.building_tabs["b"] = {"turns_left": 3, "accrued": 120.0, "mode": "slices", "slices_left": 0}
+	var carrying: Dictionary = MatchState.building_tab_repayment("b")
+	_check(is_equal_approx(float(carrying.per_turn), 120.0 / float(MatchState.TAB_SLICES)),
+		"tab repayment: while carrying, the quoted slice is the total over TAB_SLICES (%.2f)" % float(carrying.per_turn))
+	_check(int(carrying.turns_left) == MatchState.TAB_SLICES and int(carrying.starts_in) == 3,
+		"tab repayment: while carrying, it says how many turns until the first slice")
+	# Repaying: the slice is the balance over the slices still to run.
+	MatchState.building_tabs["b"] = {"turns_left": 0, "accrued": 90.0, "mode": "slices", "slices_left": 9}
+	var paying: Dictionary = MatchState.building_tab_repayment("b")
+	_check(is_equal_approx(float(paying.per_turn), 10.0) and int(paying.turns_left) == 9,
+		"tab repayment: repaying quotes balance/slices and the slices left (%.2f x %d)"
+			% [float(paying.per_turn), int(paying.turns_left)])
+	_check(int(paying.starts_in) == 0, "tab repayment: a tab already paying is not waiting to start")
+	MatchState.building_tabs = saved
+
+
+## The forecast must price a good the player MAKES as their own, even when none is in stock —
+## a producer that sells or consumes its output every turn holds nothing between turns.
+func _test_forecast_own_supply_follows_production() -> void:
+	const Forecast := preload("res://scripts/build_forecast.gd")
+	var recipe_id := "r_005"                      # Pig Iron Smelting -> iron ingots
+	var recipe: Dictionary = Catalog.get_recipe(recipe_id)
+	if recipe.is_empty():
+		return
+	var good_id := ""
+	for item in Production._recipe_output_items(recipe):
+		good_id = str(item.get("good_id", ""))
+		if good_id == "" and str(item.get("internal_name", "")) != "":
+			good_id = str(Catalog.get_good_by_internal_name(str(item.get("internal_name", ""))).get("id", ""))
+		break
+	_check(Forecast._recipe_makes(recipe_id, good_id),
+		"forecast own supply: a recipe is recognised as making its own output")
+	_check(not Forecast._recipe_makes(recipe_id, "g_definitely_not_made"),
+		"forecast own supply: a recipe does not claim goods it never outputs")
+	var tile_id := "tile_5_10"
+	var iid: String = MatchState.add_building("b_002", recipe_id, tile_id, MatchState.LOCAL_PLAYER, "fc_own_probe")
+	if iid == "":
+		return
+	var before: int = Stockpile.get_at_tile(tile_id, good_id)
+	Stockpile.consume(tile_id, good_id, before)   # the between-turns state: nothing held
+	_check(Forecast._own_source_tile(tile_id, good_id) == tile_id,
+		"forecast own supply: a good the player makes on this tile is their own with zero stock")
+	if before > 0:
+		Stockpile.add(tile_id, good_id, before)
+	MatchState.remove_building(iid)

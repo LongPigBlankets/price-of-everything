@@ -6515,6 +6515,27 @@ func building_tab_debt(instance_id: String) -> float:
 	return float((building_tabs.get(instance_id, {}) as Dictionary).get("accrued", 0.0))
 
 
+## What a building's tab actually takes each turn, and for how many more turns — the pair the
+## detail panel shows, because "you owe £900" tells a player nothing about whether they can
+## afford it, while "£75 a turn for 12 turns" is the thing they budget against.
+##
+## Inside the interest-free window nothing is repaid yet, so the schedule quoted is the one it
+## WILL run to (the accrued total over TAB_SLICES) and `starts_in` counts the turns until the
+## first slice. Once repayment begins the slice is constant: each turn takes accrued/slices_left
+## and decrements both, which leaves the quotient where it was.
+func building_tab_repayment(instance_id: String) -> Dictionary:
+	var tab: Dictionary = building_tabs.get(instance_id, {})
+	var accrued := float(tab.get("accrued", 0.0))
+	if tab.is_empty() or accrued <= 0.0:
+		return {"accrued": 0.0, "per_turn": 0.0, "turns_left": 0, "starts_in": 0}
+	var slices := int(tab.get("slices_left", 0))
+	if slices > 0:
+		return {"accrued": accrued, "per_turn": accrued / float(slices),
+			"turns_left": slices, "starts_in": 0}
+	return {"accrued": accrued, "per_turn": accrued / float(TAB_SLICES),
+		"turns_left": TAB_SLICES, "starts_in": int(tab.get("turns_left", 0))}
+
+
 ## Everything the player still owes across every building tab — the money panel's row.
 func total_building_tab_debt() -> float:
 	var total := 0.0

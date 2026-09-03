@@ -2021,9 +2021,18 @@ func _build_economics(econ: Dictionary) -> PanelContainer:
 	# Carried costs and held stock: both are money or goods the player owns but cannot see on
 	# the tile, so they get a line here rather than living only in the sim.
 	var iid_econ := str(_current_building.get("instance_id", ""))
-	var tab_debt := MatchState.building_tab_debt(iid_econ)
-	if tab_debt > 0.0:
-		vb.add_child(_metric("Building debt", "−£%.2f" % tab_debt, DS.PALETTE["WARN"], false))
+	# The REPAYMENT, not the outstanding tab: what it takes a turn and how many turns are
+	# left to run (owner, 2026-09-03). The total is still there to read — it is this figure
+	# times the turns — but the per-turn cost is what a player plans around.
+	var tab_pay: Dictionary = MatchState.building_tab_repayment(iid_econ)
+	if float(tab_pay.get("accrued", 0.0)) > 0.0:
+		var per_turn := float(tab_pay.get("per_turn", 0.0))
+		var turns_left := int(tab_pay.get("turns_left", 0))
+		var starts_in := int(tab_pay.get("starts_in", 0))
+		var value := "−£%.2f  (%d turns)" % [per_turn, turns_left]
+		if starts_in > 0:
+			value = "−£%.2f  (%d turns, starts in %d)" % [per_turn, turns_left, starts_in]
+		vb.add_child(_metric("Loan repayment", value, DS.PALETTE["WARN"], false))
 	var held := MatchState.ghost_holding_units(iid_econ)
 	if held > 0:
 		vb.add_child(_metric("Stored for this building", "%d units" % held, DS.PALETTE["TEXT_MUTED"], false))

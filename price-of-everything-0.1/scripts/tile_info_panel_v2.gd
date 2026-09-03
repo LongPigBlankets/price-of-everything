@@ -2924,15 +2924,29 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	info.add_child(name_label)
 	# The header is ANCHORED inside a fixed-height Control (so the NPC banner can
 	# float), which means a wrapped 2-line name doesn't grow the plate — it spills
-	# out of the card bottom. Measure the real line count once laid out and grow
-	# the plate by the extra rows.
-	name_label.ready.connect(func() -> void:
-		await name_label.get_tree().process_frame
+	# out of the card bottom. So the plate grows by however many extra rows the name
+	# actually wraps to.
+	#
+	# Re-measured on every RESIZE, not once a frame after `ready`. On the first open
+	# the panel is still laying out at that point: the label has no width yet, and a
+	# wrapping label with no width reports one line PER WORD. That set a minimum height
+	# of several hundred pixels which nothing ever recomputed, so the first cards a
+	# player opened were absurdly tall (owner report, 2026-09-03). Recomputing on resize
+	# means a transient bad width corrects itself the moment a real one arrives; writing
+	# only on a CHANGE keeps it from bouncing the layout back and forth forever.
+	var fit_name_height := func() -> void:
 		if not is_instance_valid(name_label) or not is_instance_valid(overlay):
 			return
-		var extra_lines := name_label.get_line_count() - 1
-		if extra_lines > 0:
-			overlay.custom_minimum_size.y = (GROUP_CARD_H - 10) + float(extra_lines) * name_label.get_line_height())
+		if name_label.size.x < 1.0:
+			return   # not laid out yet — the resize that gives it a width will call back
+		var extra_lines := maxi(0, name_label.get_line_count() - 1)
+		var want := float(GROUP_CARD_H - 10) + float(extra_lines) * name_label.get_line_height()
+		if not is_equal_approx(overlay.custom_minimum_size.y, want):
+			overlay.custom_minimum_size.y = want
+	name_label.resized.connect(fit_name_height)
+	name_label.ready.connect(func() -> void:
+		await name_label.get_tree().process_frame
+		fit_name_height.call())
 	var pusher := Control.new()
 	pusher.size_flags_vertical = Control.SIZE_EXPAND_FILL  # pushes cost basis to the bottom
 	pusher.mouse_filter = Control.MOUSE_FILTER_IGNORE
