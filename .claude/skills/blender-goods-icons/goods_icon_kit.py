@@ -107,7 +107,7 @@ def setup_icon_rig(res=1024):
     sun.data.energy = 1.6
     sun.data.use_shadow = False
     sun.data.angle = 0.0
-    d = mathutils.Vector((-0.30, -0.62, 0.72)).normalized()
+    d = mathutils.Vector(SUN_DIR).normalized()
     sun.rotation_euler = (-d).to_track_quat('-Z', 'Y').to_euler()
     fs = scene.view_layers[0].freestyle_settings
     # a factory scene ships its own black "LineSet"; it drew every interior line black
@@ -160,7 +160,7 @@ def frame_collection(col, margin=0.06):
     return {"span": round(span, 3), "target": [round(t, 3) for t in target]}
 
 
-SUN_DIR = (-0.30, -0.62, 0.72)
+SUN_DIR = (0.06, -0.56, 0.83)   # overhead-front: top lit, upper flank mid, lower flank shadow (review v7)
 
 
 def shade_mask_material():
@@ -256,7 +256,6 @@ def build_motor():
     K.cyl("cover_face", 0.0, y_face - 0.10 - 0.28 - 0.02, 0.0, 0.36, 0.06, dark, axis='Y', segments=48, smooth=True)
     y_shaft0 = y_face - 0.42
     K.cyl("shaft", 0.0, y_shaft0 - 0.47, 0.0, 0.19, 0.96, steel, axis='Y', segments=32, smooth=True)
-    K.box("keyflat", 0.0, y_shaft0 - 0.52, 0.19 - 0.004, 0.08, 0.40, 0.012, silver)
     # REAR: fan cowl 1.3 D, larger than the barrel, with a flat grille cap
     K.cyl("cowl", 0.0, y_back + 0.30 - 0.04, 0.0, 1.15 * R, 0.68, dark, axis='Y', segments=48, smooth=True)
     K.cyl("cowl_cap", 0.0, y_back + 0.62, 0.0, 1.06 * R, 0.06, teal, axis='Y', segments=48, smooth=True)
@@ -265,7 +264,7 @@ def build_motor():
     # TERMINAL BOX: big (0.42 D wide, 0.45 D long, 0.5 D tall) and front-mounted on a pad
     bw, bl, bh = 0.57 * D, 0.60 * D, 0.32 * D
     by = y_front + 0.10 + bl / 2
-    pad_y0, pad_y1 = by - bl / 2 - 0.07, y_back + 0.02
+    pad_y0, pad_y1 = by - bl / 2 - 0.07, y_back - 0.09     # up to the rear face, not through its rim
     K.box("pad", 0.0, (pad_y0 + pad_y1) / 2, R - 0.08, bw + 0.14, pad_y1 - pad_y0, 0.34, dark)   # back to the rear face
     zb = R + 0.09
     K.box("tbox", 0.0, by, zb + bh / 2, bw, bl, bh, yel)
@@ -529,4 +528,158 @@ def build_diesel_car():
     K.rotbox("jbraceA", jx, jy - 0.34 * j / 2 - EPS, 0.62 * j, 0.05 * j, 0.03, 0.95 * j, red_lo, 'Y', 32)
     K.rotbox("jbraceB", jx, jy - 0.34 * j / 2 - EPS, 0.62 * j, 0.05 * j, 0.03, 0.95 * j, red_lo, 'Y', -32)
     print("\n".join(K.validate(ground=-0.05)))
+    return {"objects": len(col.objects)}
+
+
+# ---------------------------------------------------------------- CONTROL CAGE
+def cage_loft(K, name, sections, mat, levels=2, crease_rings=(), mirror=True, cap=True):
+    """Sectioned, MIRRORED control cage under a Subdivision Surface.
+
+    `sections` = [(y, [(x, z), ...]), ...] along Y, each a HALF profile (x >= 0) with the same
+    point count, ordered from the bottom seam (x=0, low z) round the outside to the top seam
+    (x=0, high z). Quads are laid between consecutive sections, the two ends are capped, a
+    Mirror modifier (across X, clipped and merged at the seam) gives the other half, and a
+    Subdivision Surface (`levels`) smooths the cage into the surface. `crease_rings` = indices
+    of sections whose ring edges stay HARD (crease 1.0): a windscreen base, a bumper line.
+    Freestyle inks the evaluated (subdivided) mesh, so the silhouette is the smooth one.
+    Use it for lofted bodies (car shells, tanks with domed ends, castings); never for things
+    that must stay faceted."""
+    import bmesh
+    me = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    rings = []
+    n = len(sections[0][1])
+    for (y, prof) in sections:
+        assert len(prof) == n, "every section needs the same point count"
+        rings.append([bm.verts.new((x, y, z)) for (x, z) in prof])
+    for a, b in zip(rings, rings[1:]):
+        for i in range(n - 1):
+            bm.faces.new((a[i], a[i + 1], b[i + 1], b[i]))
+    if cap:
+        bm.faces.new(list(reversed(rings[0])))
+        bm.faces.new(rings[-1])
+    bm.normal_update()
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(me); bm.free()
+    ob = K.obj(name, me, mat, smooth=True)
+    for pgon in ob.data.polygons:
+        pgon.use_smooth = True
+    if crease_rings:
+        attr = me.attributes.get("crease_edge") or me.attributes.new("crease_edge", 'FLOAT', 'EDGE')
+        ring_of = {}
+        for ri, ring in enumerate(sections):
+            for k in range(n):
+                ring_of[ri * n + k] = ri
+        for e in me.edges:
+            va, vb = e.vertices
+            if ring_of.get(va) == ring_of.get(vb) and ring_of.get(va) in crease_rings:
+                attr.data[e.index].value = 1.0
+    if mirror:
+        mm = ob.modifiers.new("Mirror", 'MIRROR')
+        mm.use_axis[0] = True; mm.use_axis[1] = False; mm.use_axis[2] = False
+        mm.use_clip = True; mm.use_mirror_merge = True; mm.merge_threshold = 0.002
+    sd = ob.modifiers.new("Subd", 'SUBSURF')
+    sd.levels = levels; sd.render_levels = levels
+    return ob
+
+
+def build_cage_test():
+    """Smoke test for cage_loft: a lofted rounded body (a car-shell-like loaf) with hard
+    crease rings at the windscreen base and the boot lip."""
+    setup_icon_rig()
+    col = open_collection("ICON_cage_test")
+    K = Kit(col)
+    body = toon_mat("tn_carbody", (0.16, 0.24, 0.36))
+    def prof(w, h, zb, r):
+        # half of a rounded rectangle: bottom seam -> outer side -> top seam
+        return [(0.0, zb), (w * 0.8, zb), (w, zb + r), (w, zb + h - r), (w * 0.85, zb + h), (w * 0.45, zb + h + r * 0.5), (0.0, zb + h + r * 0.6)]
+    sections = [
+        (-1.9, prof(0.55, 0.30, 0.25, 0.10)),
+        (-1.3, prof(0.62, 0.42, 0.22, 0.12)),
+        (-0.5, prof(0.66, 0.78, 0.20, 0.14)),
+        ( 0.4, prof(0.66, 0.82, 0.20, 0.14)),
+        ( 1.2, prof(0.62, 0.50, 0.22, 0.12)),
+        ( 1.8, prof(0.55, 0.34, 0.25, 0.10)),
+    ]
+    cage_loft(K, "shell", sections, body, levels=2, crease_rings=(2, 4))
+    return {"objects": len(col.objects)}
+
+
+# ---------------------------------------------------------------- IRON ORE
+def nugget(K, name, centre, r, seed, squash=(1.0, 0.92, 0.80), mats=(None, None), cuts=2, noise_amp=0.20, subdiv=2, planes=5):
+    """An ore nugget as a ROCK, not a die: an icosphere (level 3, 1280 facets) displaced by
+    seeded noise, then CLEAVED by `cuts` random planes whose fills become the grey fracture
+    faces the reference draws on every lump. Flat-shaded, so every small facet takes its own
+    tone step and the surface reads as rough; the ink only lands on the sharp cleavage rims
+    and the silhouette (crease angle 150), so the rock is not a wireframe. Seeded and
+    deterministic: bake twice, same rock."""
+    import bmesh, random
+    from mathutils import noise, Vector
+    rng = random.Random(seed)
+    bm = bmesh.new()
+    bmesh.ops.create_icosphere(bm, subdivisions=subdiv, radius=r)   # level 2 = 320 chunky facets
+    cx, cy, cz = centre
+    off = Vector((rng.random() * 50, rng.random() * 50, rng.random() * 50))
+    for v in bm.verts:
+        n = noise.noise((v.co * (1.1 / r)) + off)          # -1..1, low frequency: big lumps
+        n2 = noise.noise((v.co * (3.0 / r)) + off * 1.7)
+        v.co = v.co * (1.0 + noise_amp * n + 0.035 * n2)
+        v.co = Vector((v.co.x * squash[0], v.co.y * squash[1], v.co.z * squash[2]))
+    # cleave: each cut removes the outer cap beyond a plane at ~0.55-0.75 r, then fills it.
+    # Fill faces are TAGGED in a face layer, not kept as references: a later bisect may
+    # split or remove them and the stale BMFace handle then raises.
+    # `planes` flat cuts all round make the lump ANGULAR (the reference lumps are blocks, not
+    # balls); only the first `cuts` of them, biased toward the camera, are grey fracture faces
+    cut_layer = bm.faces.layers.int.new("cut")
+    for k in range(planes):
+        d = Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-0.6, 1.0))).normalized()
+        if k < cuts:
+            d = (d + Vector((0.6, -0.6, 0.5))).normalized()
+        dist = r * rng.uniform(0.62, 0.80)
+        res = bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:],
+                                     plane_co=d * dist, plane_no=d, clear_outer=True, clear_inner=False)
+        edges = [g for g in res["geom_cut"] if isinstance(g, bmesh.types.BMEdge)]
+        if edges:
+            fill = bmesh.ops.holes_fill(bm, edges=edges, sides=0)
+            for f in fill["faces"]:
+                f[cut_layer] = 1 if k < cuts else 0
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    for f in bm.faces:
+        f.material_index = 1 if f[cut_layer] else 0
+    # bake the centre into the vertices: an object `location` is not in matrix_world until the
+    # depsgraph runs, and frame_collection read every rock at the origin (span 1.6 for a heap)
+    for v in bm.verts:
+        v.co = v.co + Vector(centre)
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me); bm.free()
+    ob = K.obj(name, me, mats[0])
+    ob.data.materials.append(mats[1])
+    for p in ob.data.polygons:
+        p.use_smooth = False
+    return ob
+
+
+def build_iron_ore():
+    """A tight heap of iron-ore rocks: rust bodies, grey cleavage planes, ink on the sharp rims
+    only, halftone on the shadow facets. Reference g_002_iron_ore.png (six lumps, two layers,
+    overlapping)."""
+    setup_icon_rig()
+    fs = bpy.context.scene.view_layers[0].freestyle_settings
+    fs.crease_angle = math.radians(150)
+    col = open_collection("ICON_iron_ore")
+    K = Kit(col)
+    rust = toon_mat("tn_rust", (0.39, 0.066, 0.040))
+    grey = toon_mat("tn_fracture", (0.35, 0.39, 0.44))
+    lumps = [  # (centre, r, seed, cuts)  - bottom layer touching, two smaller on top
+        ((-1.05, -0.45, 0.00), 0.72, 21, 2),
+        (( 0.25, -0.70, 0.00), 0.66, 22, 1),
+        (( 1.32, -0.05, 0.00), 0.64, 23, 2),
+        ((-0.35,  0.70, 0.00), 0.68, 24, 2),
+        (( 0.95,  0.90, 0.00), 0.62, 25, 1),
+        ((-0.50,  0.05, 1.00), 0.60, 26, 2),
+        (( 0.70,  0.20, 1.00), 0.56, 27, 1),
+    ]
+    for i, (c, r, seed, cuts) in enumerate(lumps):
+        cz = r * 0.80 * 0.90 if c[2] == 0.0 else c[2]
+        nugget(K, "nugget%d" % i, (c[0], c[1], cz), r, seed, mats=(rust, grey), cuts=cuts)
     return {"objects": len(col.objects)}

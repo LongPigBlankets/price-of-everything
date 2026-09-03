@@ -138,3 +138,29 @@ render on 2026-09-03 (marked TRAP). Scripts: `goods_icon_kit.py`, `render_icons_
 46. Never install into `assets/icons/goods/` without the owner's eye on the 800² file.
 47. Every new icon is a `build_<good>()` in `goods_icon_kit.py` over `sprite_kit.Kit`; its
     dimensions in D, its accent named, its owner rulings in the docstring.
+
+## 7. Added 2026-09-03 (round six): cages, nuggets, light
+
+48. **Light is overhead-front** (0.06, −0.56, 0.83): top lit, UPPER flank mid, LOWER flank shadow.
+    A side-front light (the old −0.30, −0.62, 0.72) turned a barrel's whole flank into one
+    screened shadow mass; the reference barrel has three bands.
+49. **Sectioned, mirrored control cage** (`cage_loft`): half-profiles along Y, quads between
+    them, Mirror across X (clipped, merged), Subdivision Surface on top, crease rings for hard
+    edges. Use it for lofted bodies (car shells, domed tanks, castings). Freestyle inks the
+    subdivided surface, so the silhouette is the smooth one. Never for anything that must stay
+    faceted.
+50. **Nuggets are rocks, not dice** (`nugget`): an icosphere (level 2, 320 facets) displaced by
+    seeded low-frequency noise, then cut by ~5 planes so the lump is ANGULAR; the first one or
+    two cuts, biased to the camera, are the grey fracture faces. Flat-shaded so every facet
+    takes its own tone step; crease angle 150 so ink lands on the cleavage rims and silhouette,
+    not on every facet. Convex hulls of random points read as d20s (TRAP); level-3 spheres with
+    strong noise read as mush with no inked facets (TRAP). Tag fill faces in a face LAYER, not
+    by BMFace reference: a later bisect invalidates the handle (TRAP). Bake the centre into the
+    vertices: `ob.location` is not in `matrix_world` until the depsgraph runs and the framing
+    read every rock at the origin (TRAP).
+51. **Halftone protect is by distance to the ink colour**, not by luma: a dark rust shadow
+    step sits under 80 luma and still wants its dots (TRAP).
+52. **A pad runs UP TO a rear face, not through its rim** (the motor pad cut the cowl ring
+    into three arcs); stop it 0.09 short of the ring's front plane.
+53. Reviewer suggestions that contradict an owner ruling are dropped without debate: domed
+    motor face, no base plate, rectangular rod crib, vertical posts.

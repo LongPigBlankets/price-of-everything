@@ -42,7 +42,10 @@ def stipple(rgba: np.ndarray, lit: np.ndarray, spacing: float, dot_r: float, str
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
     rgb = rgba[..., :3].astype(np.float32)
     luma = rgb @ np.array([0.299, 0.587, 0.114], np.float32)
-    protect = (luma < 80) | (rgba[..., 3] < 200)
+    # protect the INK itself (by colour distance), not everything dark: a dark rust shadow
+    # step sits under 80 luma and still wants its halftone
+    dist_ink = np.sqrt(((rgb - np.array(INK, np.float32)) ** 2).sum(axis=-1))
+    protect = (dist_ink < 26) | (rgba[..., 3] < 200)
     def grid(sp, ox=0.0, oy=0.0):
         gx = np.abs(((xx + ox) % sp) - sp / 2)
         gy = np.abs(((yy + oy) % sp) - sp / 2)
