@@ -606,7 +606,7 @@ def build_cage_test():
 
 
 # ---------------------------------------------------------------- IRON ORE
-def nugget(K, name, centre, r, seed, squash=(1.0, 0.92, 0.80), mats=(None, None), cuts=2, noise_amp=0.20, subdiv=2, planes=5):
+def nugget(K, name, centre, r, seed, squash=(1.0, 0.92, 0.80), mats=(None, None), cuts=2, noise_amp=0.15, subdiv=2, planes=5):
     """An ore nugget as a ROCK, not a die: an icosphere (level 3, 1280 facets) displaced by
     seeded noise, then CLEAVED by `cuts` random planes whose fills become the grey fracture
     faces the reference draws on every lump. Flat-shaded, so every small facet takes its own
@@ -634,8 +634,8 @@ def nugget(K, name, centre, r, seed, squash=(1.0, 0.92, 0.80), mats=(None, None)
     for k in range(planes):
         d = Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-0.6, 1.0))).normalized()
         if k < cuts:
-            d = (d + Vector((0.6, -0.6, 0.5))).normalized()
-        dist = r * rng.uniform(0.62, 0.80)
+            d = (d + Vector((1.1, -1.1, 0.7))).normalized()     # grey cuts face the camera
+        dist = r * (rng.uniform(0.70, 0.80) if k < cuts else rng.uniform(0.56, 0.74))   # grey caps small, rust caps big
         res = bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:],
                                      plane_co=d * dist, plane_no=d, clear_outer=True, clear_inner=False)
         edges = [g for g in res["geom_cut"] if isinstance(g, bmesh.types.BMEdge)]
@@ -660,9 +660,10 @@ def nugget(K, name, centre, r, seed, squash=(1.0, 0.92, 0.80), mats=(None, None)
 
 
 def build_iron_ore():
-    """A tight heap of iron-ore rocks: rust bodies, grey cleavage planes, ink on the sharp rims
-    only, halftone on the shadow facets. Reference g_002_iron_ore.png (six lumps, two layers,
-    overlapping)."""
+    """Iron ore v5 (owner): FEWER, LARGER lumps that STAND TALL, for recognisability. One hero
+    chunk at the back, taller than it is wide, with two big grey cleavage planes; two smaller
+    lumps leaning on it in front. Same rust-and-grey language as the shipped icon (ranked the
+    most recognisable iron symbol; pellets, magnetite and carts all rank lower)."""
     setup_icon_rig()
     fs = bpy.context.scene.view_layers[0].freestyle_settings
     fs.crease_angle = math.radians(150)
@@ -670,16 +671,13 @@ def build_iron_ore():
     K = Kit(col)
     rust = toon_mat("tn_rust", (0.39, 0.066, 0.040))
     grey = toon_mat("tn_fracture", (0.35, 0.39, 0.44))
-    lumps = [  # (centre, r, seed, cuts)  - bottom layer touching, two smaller on top
-        ((-1.05, -0.45, 0.00), 0.72, 21, 2),
-        (( 0.25, -0.70, 0.00), 0.66, 22, 1),
-        (( 1.32, -0.05, 0.00), 0.64, 23, 2),
-        ((-0.35,  0.70, 0.00), 0.68, 24, 2),
-        (( 0.95,  0.90, 0.00), 0.62, 25, 1),
-        ((-0.50,  0.05, 1.00), 0.60, 26, 2),
-        (( 0.70,  0.20, 1.00), 0.56, 27, 1),
+    # (centre, r, seed, grey cuts, planes, squash)  - z is set from r so each sits on the ground
+    lumps = [
+        (( 0.15,  0.30), 1.05, 31, 2, 9, (0.82, 0.78, 1.30)),   # hero, tall, blocky
+        ((-0.58, -0.30), 0.64, 32, 1, 7, (1.00, 0.90, 0.95)),   # leaning on the hero
+        (( 0.74, -0.58), 0.58, 33, 1, 7, (1.00, 0.95, 0.85)),
     ]
-    for i, (c, r, seed, cuts) in enumerate(lumps):
-        cz = r * 0.80 * 0.90 if c[2] == 0.0 else c[2]
-        nugget(K, "nugget%d" % i, (c[0], c[1], cz), r, seed, mats=(rust, grey), cuts=cuts)
+    for i, ((cx, cy), r, seed, cuts, planes, sq) in enumerate(lumps):
+        cz = r * sq[2] * 0.72
+        nugget(K, "nugget%d" % i, (cx, cy, cz), r, seed, squash=sq, mats=(rust, grey), cuts=cuts, planes=planes)
     return {"objects": len(col.objects)}
