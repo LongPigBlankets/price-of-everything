@@ -127,6 +127,17 @@ def setup_icon_rig(res=1024):
         ls.select_by_face_marks = True
         ls.face_mark_negation = 'EXCLUSIVE'
         ls.face_mark_condition = 'ONE'
+        ls.select_edge_mark = False
+    # THIN facet ink: edges tagged `freestyle_edge` draw at ~half weight (owner: thin linework
+    # on every facet bounds the silvery cleavage faces the way the reference does)
+    if "ink_edge" not in fs.linesets:
+        le = fs.linesets.new("ink_edge")
+        le.select_silhouette = False; le.select_border = False; le.select_crease = False
+        le.select_edge_mark = True
+    le = fs.linesets["ink_edge"]
+    le.linestyle.color = INK
+    le.linestyle.thickness = 2.8
+    le.show_render = True
 
 
 def hide_other_icons(keep):
@@ -606,7 +617,7 @@ def build_cage_test():
 
 
 # ---------------------------------------------------------------- IRON ORE
-def nugget(K, name, centre, r, seed, squash=(1.0, 0.92, 0.80), mats=(None, None), cuts=2, noise_amp=0.15, subdiv=2, planes=5):
+def nugget(K, name, centre, r, seed, squash=(1.0, 0.92, 0.80), mats=(None, None), cuts=2, noise_amp=0.15, subdiv=2, planes=5, rust_depth=(0.66, 0.80)):
     """An ore nugget as a ROCK, not a die: an icosphere (level 3, 1280 facets) displaced by
     seeded noise, then CLEAVED by `cuts` random planes whose fills become the grey fracture
     faces the reference draws on every lump. Flat-shaded, so every small facet takes its own
@@ -631,11 +642,18 @@ def nugget(K, name, centre, r, seed, squash=(1.0, 0.92, 0.80), mats=(None, None)
     # `planes` flat cuts all round make the lump ANGULAR (the reference lumps are blocks, not
     # balls); only the first `cuts` of them, biased toward the camera, are grey fracture faces
     cut_layer = bm.faces.layers.int.new("cut")
+    grey_dirs = []
     for k in range(planes):
         d = Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-0.6, 1.0))).normalized()
         if k < cuts:
-            d = (d + Vector((1.1, -1.1, 0.7))).normalized()     # grey cuts face the camera
-        dist = r * (rng.uniform(0.70, 0.80) if k < cuts else rng.uniform(0.56, 0.74))   # grey caps small, rust caps big
+            # first grey cap faces up-and-toward the camera, the second the front-left flank
+            bias = Vector((0.7, -0.7, 1.1)) if k == 0 else Vector((-0.5, -1.0, 0.35))
+            d = (d * 0.5 + bias).normalized()
+            grey_dirs.append(d)
+        # depth relative to the ACTUAL extent along d (the noise pushes the surface past r):
+        # grey caps shallow, rust caps deep
+        ext = max(v.co.dot(d) for v in bm.verts)
+        dist = ext * (rng.uniform(0.87, 0.93) if k < cuts else rng.uniform(*rust_depth))
         res = bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:],
                                      plane_co=d * dist, plane_no=d, clear_outer=True, clear_inner=False)
         edges = [g for g in res["geom_cut"] if isinstance(g, bmesh.types.BMEdge)]
@@ -643,6 +661,24 @@ def nugget(K, name, centre, r, seed, squash=(1.0, 0.92, 0.80), mats=(None, None)
             fill = bmesh.ops.holes_fill(bm, edges=edges, sides=0)
             for f in fill["faces"]:
                 f[cut_layer] = 1 if k < cuts else 0
+    # CHAMFER the grey cleavage planes: one or two extra cuts tilted 14-24 degrees off each
+    # grey plane's normal, clipping a corner, so the plane becomes 2-3 large sub-planes at
+    # different angles. They take different tone steps and a thin line between them, which is
+    # how the reference's silver faces carry their light. (A poke fan read as a spider web.)
+    for gd in list(grey_dirs):
+        for _ in range(rng.choice((1, 2))):
+            axis = gd.cross(Vector((0, 0, 1)) if abs(gd.z) < 0.9 else Vector((1, 0, 0))).normalized()
+            from mathutils import Matrix
+            rot = Matrix.Rotation(math.radians(rng.uniform(28, 42)), 3, axis)   # steep: a bevel band, a different tone step
+            d2 = (rot @ gd).normalized()
+            dist2 = max(v.co.dot(d2) for v in bm.verts) * rng.uniform(0.90, 0.95)   # narrow: clips only the plane's edge
+            res = bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:],
+                                         plane_co=d2 * dist2, plane_no=d2, clear_outer=True, clear_inner=False)
+            edges = [g for g in res["geom_cut"] if isinstance(g, bmesh.types.BMEdge)]
+            if edges:
+                fill = bmesh.ops.holes_fill(bm, edges=edges, sides=0)
+                for f in fill["faces"]:
+                    f[cut_layer] = 1
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     for f in bm.faces:
         f.material_index = 1 if f[cut_layer] else 0
@@ -656,6 +692,19 @@ def nugget(K, name, centre, r, seed, squash=(1.0, 0.92, 0.80), mats=(None, None)
     ob.data.materials.append(mats[1])
     for p in ob.data.polygons:
         p.use_smooth = False
+    # thin ink on the REAL facet edges only (dihedral > 9 degrees): marking every micro-facet
+    # of the displaced sphere read as wire mesh
+    import bmesh as _bm
+    bm2 = _bm.new(); bm2.from_mesh(me)
+    bm2.edges.ensure_lookup_table()
+    sharp = set()
+    for e in bm2.edges:
+        if len(e.link_faces) == 2 and e.calc_face_angle(0.0) > math.radians(9):
+            sharp.add(e.index)
+    bm2.free()
+    em = me.attributes.get("freestyle_edge") or me.attributes.new("freestyle_edge", 'BOOLEAN', 'EDGE')
+    for i, d in enumerate(em.data):
+        d.value = i in sharp
     return ob
 
 
@@ -671,13 +720,13 @@ def build_iron_ore():
     K = Kit(col)
     rust = toon_mat("tn_rust", (0.39, 0.066, 0.040))
     grey = toon_mat("tn_fracture", (0.35, 0.39, 0.44))
-    # (centre, r, seed, grey cuts, planes, squash)  - z is set from r so each sits on the ground
+    # (centre, r, seed, grey cuts, planes, squash, rust cut depth)  - z from r so each sits on the ground
     lumps = [
-        (( 0.15,  0.30), 1.05, 31, 2, 9, (0.82, 0.78, 1.30)),   # hero, tall, blocky
-        ((-0.58, -0.30), 0.64, 32, 1, 7, (1.00, 0.90, 0.95)),   # leaning on the hero
-        (( 0.74, -0.58), 0.58, 33, 1, 7, (1.00, 0.95, 0.85)),
+        (( 0.15,  0.30), 1.02, 31, 2, 10, (1.00, 0.90, 1.06), (0.74, 0.86)),  # hero: as wide as tall, two shallow grey caps
+        ((-0.58, -0.30), 0.64, 32, 1, 7, (1.00, 0.90, 0.95), (0.66, 0.80)),   # leaning on the hero
+        (( 0.74, -0.58), 0.58, 33, 1, 7, (1.00, 0.95, 0.85), (0.66, 0.80)),
     ]
-    for i, ((cx, cy), r, seed, cuts, planes, sq) in enumerate(lumps):
+    for i, ((cx, cy), r, seed, cuts, planes, sq, rd) in enumerate(lumps):
         cz = r * sq[2] * 0.72
-        nugget(K, "nugget%d" % i, (cx, cy, cz), r, seed, squash=sq, mats=(rust, grey), cuts=cuts, planes=planes)
+        nugget(K, "nugget%d" % i, (cx, cy, cz), r, seed, squash=sq, mats=(rust, grey), cuts=cuts, planes=planes, rust_depth=rd)
     return {"objects": len(col.objects)}
