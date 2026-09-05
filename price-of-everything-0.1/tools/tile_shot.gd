@@ -29,6 +29,8 @@ extends Node2D
 ## Writes <prefix>_<tile>.png per tile and prints one line each, then quits 0.
 ## Prints the resolved settings first, so a set of frames is self-describing.
 
+## The window every shot is taken in, so two runs are comparable (see _ready).
+const WINDOW_SIZE := Vector2i(1920, 1080)
 const DEFAULT_ZOOM := 1.15
 const DEFAULT_SIZE := Vector2i(960, 720)
 const DEFAULT_OUT := "/tmp/poe_tile"
@@ -78,6 +80,13 @@ func _ready() -> void:
 	var ui := _wm.get_node_or_null("UILayer") as CanvasLayer
 	if ui != null:
 		ui.visible = false
+	# PIN THE WINDOW. Two runs of this tool got different window heights (1205 then 1080),
+	# which changes the canvas scale and therefore how much world lands inside a fixed centre
+	# crop — so an A/B pair shot in two runs compared two different framings while both
+	# honestly reported the same camera zoom. `--resolution` does not survive here; setting it
+	# explicitly does.
+	DisplayServer.window_set_size(WINDOW_SIZE)
+	await get_tree().process_frame
 	_cam = get_viewport().get_camera_2d()
 	if _cam == null:
 		push_error("tile_shot: no game camera")
@@ -85,6 +94,15 @@ func _ready() -> void:
 		return
 	_cam.set_process(false)
 	_cam.set_physics_process(false)
+	# Disabling _process stops the per-frame zoom smoothing but NOT the establishing-zoom
+	# TWEEN, which drives `zoom` on its own schedule. Two runs of this tool at the same
+	# --zoom therefore captured at two different zooms depending on how far that tween had
+	# got — which is exactly the sort of thing that makes an A/B comparison lie. Kill both
+	# camera tweens before the frame budget starts.
+	for field in ["_intro_tween", "_pan_tween"]:
+		var tween: Variant = _cam.get(field)
+		if tween is Tween and (tween as Tween).is_valid():
+			(tween as Tween).kill()
 	if "edge_pan_enabled" in _cam:
 		_cam.set("edge_pan_enabled", false)
 	_apply_style(style)
@@ -166,6 +184,11 @@ func _shot(pos: Vector2, zoom: float, size: Vector2i, path: String) -> void:
 	for _i in 18:
 		await get_tree().process_frame
 	RenderingServer.force_draw()
+	# The zoom AS CAPTURED, not as requested: the camera is reconfigured by the map build on
+	# its own schedule, so a run that shoots before or after that lands is a different picture.
+	# Two runs of an A/B pair silently differing here is worse than no comparison at all.
+	print("[TILE SHOT] captured at zoom=%.3f (asked %.3f), viewport=%s" % [
+		_cam.zoom.x, zoom, str(get_viewport().get_visible_rect().size)])
 	var image := get_viewport().get_texture().get_image()
 	var crop := Vector2i(mini(size.x, image.get_width()), mini(size.y, image.get_height()))
 	var origin := Vector2i((image.get_width() - crop.x) / 2, (image.get_height() - crop.y) / 2)
