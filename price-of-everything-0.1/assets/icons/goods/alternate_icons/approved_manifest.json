@@ -1,0 +1,107 @@
+{
+  "approved_goods": [
+    "limestone",
+    "ethylene",
+    "electrical_components",
+    "coal",
+    "iron_ore"
+  ],
+  "files": [
+    {
+      "good": "limestone",
+      "tier": "medium",
+      "source": "palette_refinement",
+      "sha256": "8c4f8eb3b5ed7ef20c5cc3e693fce7f61e8e362b5bf693b62dac6e9f93af1ce1"
+    },
+    {
+      "good": "limestone",
+      "tier": "small",
+      "source": "palette_refinement",
+      "sha256": "5b98ac5d434ff6b20c8b6b2f2ec866fcb6102eb08d3562c2edce8b92340e72a6"
+    },
+    {
+      "good": "limestone",
+      "tier": "very_small",
+      "source": "palette_refinement",
+      "sha256": "1a413e7a40e78d527700f81d179ea634909268b2051e2a3e176fbffa680d84ec"
+    },
+    {
+      "good": "ethylene",
+      "tier": "medium",
+      "source": "palette_refinement",
+      "sha256": "23c1ebb51a854c878003009e594c4f7a677c84ac392c9d93f3e0b3dd660c7b74"
+    },
+    {
+      "good": "ethylene",
+      "tier": "small",
+      "source": "palette_refinement",
+      "sha256": "7c26c769d49b23a73131cb7688f1447de36e90acd9279032ba482230cc76e107"
+    },
+    {
+      "good": "ethylene",
+      "tier": "very_small",
+      "source": "palette_refinement",
+      "sha256": "13bc93a30bb38098e78387ad44fdee0b8c4168831c4af3b84b172a6d82fbe2d6"
+    },
+    {
+      "good": "electrical_components",
+      "tier": "medium",
+      "source": "switch_reference_refinement",
+      "sha256": "de3f46512b36f4dfec3e5ec6b9b7e5ee8b204e2dfb740200a622a7311588c954"
+    },
+    {
+      "good": "electrical_components",
+      "tier": "small",
+      "source": "switch_reference_refinement",
+      "sha256": "ec82bfa3688f7d4405aee25f52d1c78932282c1bf96921b71e21ee38b4714b7a"
+    },
+    {
+      "good": "electrical_components",
+      "tier": "very_small",
+      "source": "switch_reference_refinement",
+      "sha256": "270d939ef61f1903c47e9ddebd727c9294de30068653b81cd9563cd030ad90b5"
+    },
+    {
+      "good": "coal",
+      "tier": "medium",
+      "source": "ores_bottom_heavy_v2",
+      "sha256": "3d96aaf99f103b5722c2687bbe929af1755c3dec8a5fa11fb4909e096150a4f9",
+      "installed_default": true
+    },
+    {
+      "good": "coal",
+      "tier": "small",
+      "source": "ores_bottom_heavy_v2",
+      "sha256": "22e51ce8e02efa27e7ae9b6526d045f05613aba08aecce5506c153afc0dd9300",
+      "installed_default": true
+    },
+    {
+      "good": "coal",
+      "tier": "very_small",
+      "source": "ores_bottom_heavy_v2",
+      "sha256": "d747f8724fe7d9caa5dfa69d51f860ff53864bb968114695ca5100b2e04fa3e0",
+      "installed_default": true
+    },
+    {
+      "good": "iron_ore",
+      "tier": "medium",
+      "source": "hematite_wider_left_seams",
+      "sha256": "f47896b027b0471c436e121ee04e8f190fb9a909fde033600638cacfbe321acb",
+      "installed_default": true
+    },
+    {
+      "good": "iron_ore",
+      "tier": "small",
+      "source": "hematite_wider_left_seams",
+      "sha256": "01082759680fee5658cf56b0863022eac046cb1a223f75c2e37d6d69834180df",
+      "installed_default": true
+    },
+    {
+      "good": "iron_ore",
+      "tier": "very_small",
+      "source": "hematite_wider_left_seams",
+      "sha256": "67bc67b917ccf9bbd0e568148d40a4d84e8c2e1b1e1e6714469aa63e5418301b",
+      "installed_default": true
+    }
+  ]
+}
