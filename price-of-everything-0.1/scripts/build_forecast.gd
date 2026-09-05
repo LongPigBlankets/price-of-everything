@@ -71,10 +71,19 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 	var revenue: float = 0.0
 	for item in Production._recipe_output_items(recipe):
 		var gid := str(item.get("good_id", ""))
-		if gid == "" and str(item.get("internal_name", "")) != "":
-			gid = str(Catalog.get_good_by_internal_name(str(item.get("internal_name", ""))).get("id", ""))
-		var qty := int(item.get("qty", 0))
-		if gid != "" and qty > 0:
+		var good_internal := str(item.get("internal_name", ""))
+		if gid == "" and good_internal != "":
+			gid = str(Catalog.get_good_by_internal_name(good_internal).get("id", ""))
+		if good_internal == "" and gid != "":
+			good_internal = str(Catalog.get_good(gid).get("internal_name", ""))
+		var base_qty := int(item.get("qty", 0))
+		if gid != "" and base_qty > 0:
+			# What the running building actually makes, not the raw recipe number: the base scaled
+			# by the PERMANENT output boosts it will run under -- permanent research yield and the
+			# standing workforce output multiplier. Timed event buffs and advisor bonuses are left
+			# out on purpose so the projection is the lasting margin (owner report 2026-09-05: a
+			# motor factory forecast -£0.74 but ran at ~+£31 with the empire's standing +10%).
+			var qty := _permanent_output_qty(recipe_id, gid, good_internal, base_qty)
 			outputs[gid] = qty
 			revenue += float(qty) * MarketState.get_price(gid)
 
@@ -308,6 +317,25 @@ static func _item_good_id(item: Dictionary) -> String:
 	if gid == "" and str(item.get("internal_name", "")) != "":
 		gid = str(Catalog.get_good_by_internal_name(str(item.get("internal_name", ""))).get("id", ""))
 	return gid
+
+
+## The output quantity a NEW building (level 1) will steadily produce: the recipe base scaled by
+## the PERMANENT output boosts it will run under -- permanent recipe_output modifiers (research
+## yield) and the standing workforce output multiplier. Mirrors BuildingStatus.effective_output_qty
+## but through Modifiers.apply_permanent, so timed event/research buffs and advisor bonuses are
+## excluded; level is 1 for a fresh build, so the level output multiplier is 1.0.
+static func _permanent_output_qty(recipe_id: String, good_id: String, good_internal: String, base_qty: int) -> int:
+	var recipe := Catalog.get_recipe(recipe_id)
+	var ctx := {
+		"recipe_id": recipe_id,
+		"recipe_type": str(recipe.get("recipe_type", "")).to_lower(),
+		"building_id": "",
+		"good_id": good_id,
+		"good_internal": good_internal,
+	}
+	var q := int(round(Modifiers.apply_permanent("recipe_output", recipe_id, float(base_qty), ctx)))
+	q = int(round(float(q) * MatchState.workforce_output_multiplier()))
+	return maxi(0, q)
 
 
 ## The empire's net per-turn surplus of a good: what every player building PRODUCES of it

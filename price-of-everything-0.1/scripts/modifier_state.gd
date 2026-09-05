@@ -548,6 +548,34 @@ func apply(domain: String, target: String, base: float, ctx: Dictionary = {}) ->
 		return base
 	return (base + add_sum) * mult * (1.0 + pct_sum / 100.0)
 
+## Like apply(), but counts ONLY permanent, non-advisor modifiers: skips anything with an
+## expiry (a timed event or fixed-duration research buff) and anything an advisor placed
+## (source contains "advisor"). The build forecast uses this so its projection reflects the
+## LASTING margin a new building will run at, not transient boosts (event buffs, advisor seats)
+## that may be gone by the time the building matters. Permanent research and standing effects
+## with expires_turn == 0 are kept.
+func apply_permanent(domain: String, target: String, base: float, ctx: Dictionary = {}) -> float:
+	if _modifiers.is_empty():
+		return base
+	var add_sum := 0.0
+	var mult := 1.0
+	var pct_sum := 0.0
+	for m in _modifiers.values():
+		if str(m.domain) != domain:
+			continue
+		if int(m.get("expires_turn", 0)) != 0:
+			continue   # timed / fixed-duration modifier
+		if str(m.get("source", "")).contains("advisor"):
+			continue   # advisor bonus
+		if not _target_matches(m, target, ctx):
+			continue
+		add_sum += float(m.add)
+		mult *= float(m.mult)
+		pct_sum += float(m.get("pct", 0.0))
+	if add_sum == 0.0 and mult == 1.0 and pct_sum == 0.0:
+		return base
+	return (base + add_sum) * mult * (1.0 + pct_sum / 100.0)
+
 ## Net percentage effect (the additive `pct` channel) of every modifier in
 ## `domain` matching `target`/`ctx`, plus a per-modifier breakdown — what the
 ## recipe card's net-modifier indicator shows and its hover tooltip lists. Pcts
