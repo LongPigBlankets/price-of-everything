@@ -9929,13 +9929,19 @@ func _test_build_forecast() -> void:
 	# unprofitable. Feeding the smelter from your own ore is the integrated chain metal_magnate
 	# actually opens with, and it must not be quoted as though it shopped for its own inputs.
 	var bought_in: float = float(smelter.get("steady_net", 0.0))
-	Stockpile.add("tile_5_10", "g_002", 200)
-	Stockpile.add("tile_5_10", "g_001", 200)
+	# Real integration is ongoing PRODUCTION, not a one-off pile: give the tile its own iron and
+	# coal mines so the smelter is fed by recurring surplus. The forecast then charges those inputs
+	# at the sale they displace (opportunity cost), which still beats buying at retail by the
+	# bid-ask markup — while a mere stockpile, which runs dry, correctly reverts to retail for the
+	# steady margin (it is not recurring supply).
+	var iron_mine: String = MatchState.add_building("b_001", "r_002", "tile_5_10")
+	var coal_mine: String = MatchState.add_building("b_001", "r_001", "tile_5_10")
 	var integrated: Dictionary = BuildForecast.project("b_002", "r_005", "tile_5_10")
 	var own_supply: float = float(integrated.get("steady_net", 0.0))
-	Stockpile.clear_all()
+	MatchState.remove_building(iron_mine)
+	MatchState.remove_building(coal_mine)
 	_check(own_supply > bought_in,
-		"forecast: own supply beats buying at retail (%.2f vs %.2f)" % [own_supply, bought_in])
+		"forecast: own production beats buying at retail (%.2f vs %.2f)" % [own_supply, bought_in])
 	_check(own_supply > 0.0,
 		"forecast: the integrated smelter projects a positive margin (%.2f)" % own_supply)
 

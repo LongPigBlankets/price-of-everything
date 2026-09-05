@@ -28,6 +28,8 @@ const PHASE_COMPLETES := "completes"
 const PHASE_SHIPPING := "shipping"
 const PHASE_SELLING := "selling"
 
+const BuildingLevels := preload("res://scripts/building_levels.gd")
+
 
 ## Returns:
 ##   phases       Array of {kind, label, range, per_turn, turns} in order
@@ -106,19 +108,32 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 			continue
 		var source_tile := _own_source_tile(tile_id, gid)
 		if source_tile != "":
-			# Own supply: charge what it actually COSTS the company to make it -- the CostSolver's
-			# imputed unit cost, the very figure the realized per-turn P&L uses -- not the market price
-			# it could fetch. Charging the sale price treats an internal transfer as a foregone external
-			# sale, so a vertically integrated chain (chlor-alkali fed by its own desalination) forecast
-			# a razor-thin/negative margin while its realized P&L was clearly positive (owner report,
-			# 2026-09-05: salt+water quoted at ~£64/turn opportunity cost vs ~£31 real production cost).
-			# Fall back to the market sell price when the good has no imputed cost yet (never cost-solved
-			# or a cyclic recipe the solver leaves blank).
-			var imputed := CostSolver.get_good_unit_cost(gid)
-			input_cost += float(qty) * (imputed if imputed >= 0.0 else MarketState.get_price(gid))
-			if source_tile != tile_id:
+			# Own supply is neither free nor unlimited. Whatever the company makes but does not
+			# already consume is being SOLD, so feeding it here forgoes that sale — the true cost
+			# of that portion is the SALE price (its opportunity cost). And it runs out: once this
+			# building's draw exceeds the leftover surplus (empire production minus what existing
+			# buildings already eat), the remainder is a genuine market PURCHASE at the retail buy
+			# price. Pricing all of it at production cost (as this once did) made a consumer of a
+			# good the company was profitably selling — or a SECOND consumer of an already-spoken-for
+			# good — look far cheaper than the cash the player actually sees: a motor factory fed by
+			# its own steel forecast +£35 but realised +£10–15, and a second one forecast +£45 with
+			# no steel left to feed it (owner report 2026-09-05).
+			var surplus := _empire_surplus(gid)
+			var from_surplus := mini(qty, surplus)
+			var from_market := qty - from_surplus
+			input_cost += float(from_surplus) * MarketState.get_price(gid)   # the sale we give up
+			if source_tile != tile_id and from_surplus > 0:
 				var leg: Dictionary = TransportService.route(source_tile, tile_id, gid)
-				inbound_freight += TransportService.transport_cost_for_route(gid, qty, leg)
+				inbound_freight += TransportService.transport_cost_for_route(gid, from_surplus, leg)
+			if from_market > 0:
+				# Beyond the surplus it is bought like any other market input (goods + inbound freight).
+				var short_quote: Dictionary = {} if tile_id == "" \
+						else TransportService.quote_market_buy(tile_id, gid, from_market)
+				if short_quote.is_empty():
+					input_cost += float(from_market) * MarketState.get_buy_price(gid)
+				else:
+					input_cost += float(short_quote.get("goods_cost", 0.0))
+					inbound_freight += float(short_quote.get("transport_cost", 0.0))
 			continue
 		var buy_quote: Dictionary = {} if tile_id == "" \
 				else TransportService.quote_market_buy(tile_id, gid, qty)
@@ -282,9 +297,41 @@ static func _recipe_makes(recipe_id: String, good_id: String) -> bool:
 	if recipe_id == "" or good_id == "":
 		return false
 	for item in Production._recipe_output_items(Catalog.get_recipe(recipe_id)):
-		var gid := str(item.get("good_id", ""))
-		if gid == "" and str(item.get("internal_name", "")) != "":
-			gid = str(Catalog.get_good_by_internal_name(str(item.get("internal_name", ""))).get("id", ""))
-		if gid == good_id:
+		if _item_good_id(item) == good_id:
 			return true
 	return false
+
+
+## The good id of a recipe input/output item, resolving an internal_name to its id.
+static func _item_good_id(item: Dictionary) -> String:
+	var gid := str(item.get("good_id", ""))
+	if gid == "" and str(item.get("internal_name", "")) != "":
+		gid = str(Catalog.get_good_by_internal_name(str(item.get("internal_name", ""))).get("id", ""))
+	return gid
+
+
+## The empire's net per-turn surplus of a good: what every player building PRODUCES of it
+## minus what every player building already CONSUMES of it, level-scaled, floored at 0. This is
+## the amount a new consumer can take by displacing market sales before it must buy any at
+## retail — the input to the forecast's opportunity-cost/contention split. A steady-state flow
+## figure, so it deliberately ignores one-off stockpiles.
+static func _empire_surplus(good_id: String) -> int:
+	if good_id == "":
+		return 0
+	var produced: int = 0
+	var consumed: int = 0
+	for iid in MatchState.buildings:
+		var b: Dictionary = MatchState.buildings[iid]
+		if not MatchState.is_player_owned(b):
+			continue
+		var rcp: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
+		if rcp.is_empty():
+			continue
+		var lvl: int = int(b.get("level", 1))
+		for item in Production._recipe_output_items(rcp):
+			if _item_good_id(item) == good_id:
+				produced += int(round(float(item.get("qty", 0)) * BuildingLevels.mult("output", lvl)))
+		for inp in rcp.get("inputs", []):
+			if str(inp.get("good_id", "")) == good_id:
+				consumed += int(round(float(inp.get("qty", 0)) * BuildingLevels.mult("input", lvl)))
+	return maxi(0, produced - consumed)
