@@ -58,6 +58,12 @@ static func run_state(building: Dictionary, recipe: Dictionary, is_infrastructur
 		return "running"  # a powered no-input source (renewable) always runs
 	if has_all_inputs(building, recipe):
 		return "restarting"
+	# Short on-tile RIGHT NOW, but in-transit units will cover every shortfall next turn — a timing
+	# gap (a linked producer on another tile, or a market delivery in flight), not a real shortage.
+	# Read it as amber "Starting", not red "Stalled". Same-tile 0-turn production is out of scope
+	# here (the input safety margin in production.gd handles that); this is the multi-tile case.
+	if inbound_covers_shortfall(building, recipe):
+		return "restarting"
 	return "stalled"
 
 static func has_all_inputs(building: Dictionary, recipe: Dictionary) -> bool:
@@ -66,6 +72,18 @@ static func has_all_inputs(building: Dictionary, recipe: Dictionary) -> bool:
 		if Stockpile.get_at_tile(tile, str(inp.get("good_id", ""))) < int(inp.get("qty", 0)):
 			return false
 	return true
+
+## True when the building is short of at least one input on-tile now, AND every such shortfall is
+## covered once its in-transit units land. Only reached after has_all_inputs() is already false, so
+## the shipments() scan runs on the rare short path, not every healthy building.
+static func inbound_covers_shortfall(building: Dictionary, recipe: Dictionary) -> bool:
+	var any_short := false
+	for s in shipments(building, recipe):
+		if int(s.get("stored", 0)) < int(s.get("need", 0)):
+			any_short = true
+			if int(s.get("stored", 0)) + int(s.get("inbound", 0)) < int(s.get("need", 0)):
+				return false
+	return any_short
 
 static func status(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Dictionary:
 	var producing := str(recipe.get("output_name", "")) == "power"
@@ -160,15 +178,18 @@ static func economics(building: Dictionary, recipe: Dictionary, building_data: D
 		var output_mode := str(_output_disposition(building, recipe, output_gid).get("mode", "held"))
 		if output_mode == "market" or output_mode == "tile_sales":
 			selling_outputs += 1
-	# Inputs valued at their COST TO PRODUCE — the CostSolver's imputed per-good cost, resolved over
-	# the whole chain (an internally-made input costs what it cost to make, not its market price).
-	# Falls back to market only for external inputs no player building produces — exactly mirroring
-	# the solver's own input pricing (cost_solver.gd: internal goods imputed, external leaves market).
+	# Inputs valued the way the cash actually leaves the company: an internally-made input costs
+	# what it cost to PRODUCE (the CostSolver's imputed per-good cost, resolved over the chain), but
+	# an input the building has no own source for is BOUGHT on the market — so it costs the retail
+	# BUY price (sale price + the ~5% bid-ask markup), not the sell price. Valuing bought inputs at
+	# the sell price understated running cost by that markup and made the per-turn net read rosier
+	# than the money that actually moves (owner report 2026-09-05). get_good_unit_cost returns −1
+	# for a good no player building makes, which is exactly the "bought from market" case.
 	var input_cost := 0.0
 	for inp in recipe.get("inputs", []):
 		var in_gid := str(inp.get("good_id", ""))
 		var imputed := CostSolver.get_good_unit_cost(in_gid)  # −1 when external / not yet solved
-		var unit_price := imputed if imputed >= 0.0 else MarketState.get_price(in_gid)
+		var unit_price := imputed if imputed >= 0.0 else MarketState.get_buy_price(in_gid)
 		if unit_price <= 0.0:
 			unit_price = Catalog.get_base_price(in_gid)
 		input_cost += float(inp.get("qty", 0)) * unit_price
@@ -305,6 +326,10 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 	var needs_power := BuildingStatus.effective_energy_req(building, recipe) > 0
 	var has_inputs := not (recipe.get("inputs", []) as Array).is_empty()
 	var rs := run_state(building, recipe, is_infrastructure)
+	# Two "not running yet" cases share run_state "restarting": inputs are all in stock (true
+	# restart next turn), or they are short on-tile but arriving (a timing gap). The messages differ.
+	var has_all := has_inputs and has_all_inputs(building, recipe)
+	var inbound_case := rs == "restarting" and has_inputs and not has_all
 	var tile_id := str(building.get("tile_id", ""))
 	var upgrade_progress := MatchState.upgrade_progress_snapshot(iid)
 	var upgrade_blocked := bool(upgrade_progress.get("blocked", false))
@@ -338,7 +363,11 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 		# throttled by the tile's cable capacity and would never start.
 		rows.append(_row("warn", "bolt", "Power output capped", _cable_cap_detail(building, recipe, tile_id)))
 	elif rs == "restarting":
-		rows.append(_row("warn", "clock", "Starting", "All inputs received and powered — production begins next turn."))
+		if inbound_case:
+			rows.append(_row("warn", "clock", "Starting",
+				"Insufficient inputs, but more are on the way — production begins once they land.  " + _missing_inputs_detail(building, recipe)))
+		else:
+			rows.append(_row("warn", "clock", "Starting", "All inputs received and powered — production begins next turn."))
 	elif needs_power and power_c == BuildingStatus.STATUS_RED:
 		rows.append(_row("bad", "warn", "Critical fault", "No power reaching this building — the recipe halts."))
 	elif has_inputs and input_c == BuildingStatus.STATUS_RED:
@@ -379,7 +408,9 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 
 	# 3) inputs
 	if has_inputs and not exhausted:
-		if rs == "restarting" or input_c == BuildingStatus.STATUS_GREEN:
+		if inbound_case:
+			rows.append(_row("warn", "box", "Inputs on the way", _missing_inputs_detail(building, recipe)))
+		elif rs == "restarting" or input_c == BuildingStatus.STATUS_GREEN:
 			rows.append(_row("ok", "box", "Inputs in stock" if rs == "restarting" else "Receiving inputs",
 				"All inputs are in stock, ready for the next run." if rs == "restarting" else "All inputs were in stock this turn."))
 		elif input_c == BuildingStatus.STATUS_RED:
@@ -654,13 +685,22 @@ static func _cable_cap_detail(building: Dictionary, recipe: Dictionary, tile_id:
 		on_wire, cap, blocked, advice]
 
 static func _missing_inputs_detail(building: Dictionary, recipe: Dictionary) -> String:
-	var tile_id := str(building.get("tile_id", ""))
+	# "have" counts what is ON THE TILE plus what is IN TRANSIT and will be pulled in next turn --
+	# so a timing gap reads as "18 on tile +88 arriving", not a bare shortage. Kept even when the
+	# inbound overshoots the requirement (owner: still count if there is more than needed).
 	var short: Array = []
-	for inp in recipe.get("inputs", []):
-		var need := int(inp.get("qty", 0))
-		var have := Stockpile.get_at_tile(tile_id, str(inp.get("good_id", "")))
-		if have < need:
-			short.append("%s %d/%d" % [BuildingStatus.good_display_from_internal(str(inp.get("internal_name", ""))), have, need])
+	for s in shipments(building, recipe):
+		var stored := int(s.get("stored", 0))
+		var need := int(s.get("need", 0))
+		if stored >= need:
+			continue
+		var inbound := int(s.get("inbound", 0))
+		if inbound > 0:
+			var eta := int(s.get("eta_turns", -1))
+			var eta_txt := "next turn" if eta <= 1 else "%d turns" % eta
+			short.append("%s %d on tile +%d arriving %s (need %d)" % [str(s.get("name", "")), stored, inbound, eta_txt, need])
+		else:
+			short.append("%s %d/%d" % [str(s.get("name", "")), stored, need])
 	return ("Short: " + ", ".join(short)) if not short.is_empty() else "Missing required inputs."
 
 # "Steel from Furnace · Coal from market" — where each input is sourced (linked supplier vs market).

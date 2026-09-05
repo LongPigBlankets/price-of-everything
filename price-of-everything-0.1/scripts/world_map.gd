@@ -2142,10 +2142,10 @@ func _on_build_attempted(building_id: String, tile_id: String) -> void:
 	var mat_check: Dictionary = Construction.check_tile(tile_id, building_id)
 	if not bool(mat_check.get("satisfied", false)):
 		print("[Build] materials missing on %s for %s: %s" % [tile_id, building_id, str(mat_check.get("missing", {}))])
-		match MatchState.construct_material_source:
-			"market":
-				_on_construction_buy_requested(building_id, recipe_id, tile_id)
-				return
+		# The material choice is made INLINE now (construct panel's materials accordion), not in a
+		# pop-up. consume_build_material_source() returns that choice (or the standing setting), and
+		# never "ask" — so this always resolves to a concrete source and never opens the old modal.
+		match MatchState.consume_build_material_source():
 			"same_tile":
 				MatchState.request_toast("There are no tiles with the required construction materials. Deliver the materials manually to the tile to begin construction.", "error")
 				return
@@ -2155,8 +2155,10 @@ func _on_build_attempted(building_id: String, tile_id: String) -> void:
 				else:
 					MatchState.request_toast("There are no tiles with the required construction materials. Deliver the materials manually to the tile to begin construction.", "error")
 				return
-		_show_construction_missing_dialog(building_id, recipe_id, tile_id, mat_check.get("missing", {}))
-		return
+			_:
+				# "market" (and any legacy value) — buy the kit in. Never blocks.
+				_on_construction_buy_requested(building_id, recipe_id, tile_id)
+				return
 
 	# Check + deduct money
 	if not MatchState.deduct_money(cost):
@@ -2245,6 +2247,9 @@ func _on_construction_credit_requested(building_id: String, recipe_id: String, t
 	if not MatchState.deduct_money(cost):
 		return
 	var instance_id := Construction.start_awaiting_market(building_id, recipe_id, tile_id, cost)
+	# Tie the construction loan just taken to this build, so its repayment lands in THIS
+	# building's economics (the BDP loan line + net) rather than only the company-wide total.
+	LoanState.tag_last_loan_building(instance_id)
 	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
 	Audio.building_placed()
 
@@ -2802,10 +2807,7 @@ func _on_infrastructure_attempted(infra_type: String, tile_id: String) -> void:
 		# consumed whatever happened to be there and silently began the project.
 		var mat_check: Dictionary = Construction.check_tile(tile_id, infra_building_id)
 		if not bool(mat_check.get("satisfied", false)):
-			match MatchState.construct_material_source:
-				"market":
-					_on_construction_buy_requested(infra_building_id, "", tile_id)
-					return
+			match MatchState.consume_build_material_source():
 				"same_tile":
 					MatchState.request_toast("There are no tiles with the required construction materials. Deliver the materials manually to the tile to begin construction.", "error")
 					return
@@ -2815,8 +2817,9 @@ func _on_infrastructure_attempted(infra_type: String, tile_id: String) -> void:
 					else:
 						MatchState.request_toast("There are no tiles with the required construction materials. Deliver the materials manually to the tile to begin construction.", "error")
 					return
-			_show_construction_missing_dialog(infra_building_id, "", tile_id, mat_check.get("missing", {}))
-			return
+				_:
+					_on_construction_buy_requested(infra_building_id, "", tile_id)
+					return
 		var cost_multiplier := float(space_check.get("cost_multiplier", 1.0))
 		cost *= cost_multiplier
 		_try_build_infrastructure(tile_id, coord, infra_type, infra_building_id, cost)

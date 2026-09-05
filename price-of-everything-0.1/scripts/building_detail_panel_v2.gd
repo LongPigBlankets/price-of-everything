@@ -2024,14 +2024,22 @@ func _build_economics(econ: Dictionary) -> PanelContainer:
 	# The REPAYMENT, not the outstanding tab: what it takes a turn and how many turns are
 	# left to run (owner, 2026-09-03). The total is still there to read — it is this figure
 	# times the turns — but the per-turn cost is what a player plans around.
+	# Financing this building carries per turn: the deferred build-cost tab AND any construction
+	# loan taken to build it (tag_last_loan_building tied it to this instance). Both are shown in
+	# the one "Loan repayment" line and — unlike before — folded into the Net below, so the bottom
+	# line is the cash this building actually leaves the company after servicing its own build debt.
+	# General empire loans are excluded on purpose; they live at the company level.
 	var tab_pay: Dictionary = MatchState.building_tab_repayment(iid_econ)
-	if float(tab_pay.get("accrued", 0.0)) > 0.0:
-		var per_turn := float(tab_pay.get("per_turn", 0.0))
-		var turns_left := int(tab_pay.get("turns_left", 0))
+	var tab_per := float(tab_pay.get("per_turn", 0.0)) if float(tab_pay.get("accrued", 0.0)) > 0.0 else 0.0
+	var loan_pay: Dictionary = LoanState.building_loan_repayment(iid_econ)
+	var loan_per := float(loan_pay.get("per_turn", 0.0))
+	var financing_per_turn := tab_per + loan_per
+	if financing_per_turn > 0.0:
+		var turns_left := maxi(int(tab_pay.get("turns_left", 0)), int(loan_pay.get("turns_left", 0)))
 		var starts_in := int(tab_pay.get("starts_in", 0))
-		var value := "−£%.2f  (%d turns)" % [per_turn, turns_left]
-		if starts_in > 0:
-			value = "−£%.2f  (%d turns, starts in %d)" % [per_turn, turns_left, starts_in]
+		var value := "−£%.2f  (%d turns)" % [financing_per_turn, turns_left]
+		if starts_in > 0 and loan_per <= 0.0:
+			value = "−£%.2f  (%d turns, starts in %d)" % [financing_per_turn, turns_left, starts_in]
 		vb.add_child(_metric("Loan repayment", value, DS.PALETTE["WARN"], false))
 	var held := MatchState.ghost_holding_units(iid_econ)
 	if held > 0:
@@ -2041,7 +2049,9 @@ func _build_economics(econ: Dictionary) -> PanelContainer:
 	if carbon_tax > 0.0:
 		vb.add_child(_metric("Carbon tax / turn", "−£%.2f" % carbon_tax, DS.PALETTE["DANGER"], false))
 	vb.add_child(HSeparator.new())
-	var net := float(econ.get("net", 0.0))
+	# Operations net (output − running costs) minus this building's own build financing, so the
+	# bottom line reflects the cash it actually contributes while its construction debt is live.
+	var net := float(econ.get("net", 0.0)) - financing_per_turn
 	vb.add_child(_metric("Net / turn", "%s£%.2f" % ["+" if net >= 0.0 else "−", absf(net)], DS.PALETTE["OK"] if net >= 0.0 else DS.PALETTE["DANGER"], true))
 	return card
 
@@ -2099,8 +2109,13 @@ func _build_shipments(ships: Array) -> PanelContainer:
 		var need := int(s.get("need", 0))
 		var top := Label.new()
 		top.theme_type_variation = "Body"
-		top.text = "%s — %d/%d stored" % [str(s.get("name", "")), stored, need]
-		top.add_theme_color_override("font_color", DS.PALETTE["OK"] if stored >= need else DS.PALETTE["WARN"])
+		var _inbound := int(s.get("inbound", 0))
+		var _available := stored + _inbound   # on tile + in transit; shown even if it exceeds need
+		if _inbound > 0:
+			top.text = "%s — %d on tile +%d arriving / %d needed" % [str(s.get("name", "")), stored, _inbound, need]
+		else:
+			top.text = "%s — %d/%d stored" % [str(s.get("name", "")), stored, need]
+		top.add_theme_color_override("font_color", DS.PALETTE["OK"] if _available >= need else DS.PALETTE["WARN"])
 		col.add_child(top)
 		var sub := Label.new()
 		sub.theme_type_variation = "Caption"

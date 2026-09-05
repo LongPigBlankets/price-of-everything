@@ -120,6 +120,11 @@ func _create_loan(amount: float, rate: float, term: int, grace: int = 0) -> bool
 		"interest_rate": rate,
 		"grace_remaining": grace,
 		"total_repayment": total_repayment,
+		# The building this loan financed, when it is a construction loan taken to build one
+		# specific site (set via tag_last_loan_building right after the site is placed). "" for
+		# a general empire loan — those stay a company-level cost and are not attributed to any
+		# building's economics. Saved with the loan (export_state deep-copies the dict).
+		"building_instance": "",
 	}
 	_next_loan_id += 1
 	loans.append(loan)
@@ -234,6 +239,28 @@ func total_per_turn_payment() -> float:
 	for loan in loans:
 		sum += loan.payment_per_turn
 	return sum
+
+# Attribute the most recently created loan to a specific building — called right after a
+# construction-credit build places its site, so that build's loan shows in ITS economics rather
+# than only in the company-wide total. Safe no-op when there is no loan or no instance to tag.
+func tag_last_loan_building(instance_id: String) -> void:
+	if instance_id == "" or loans.is_empty():
+		return
+	loans[loans.size() - 1]["building_instance"] = instance_id
+	loans_updated.emit()
+
+# The per-turn repayment (and turns left) of every active loan tied to this building — i.e. the
+# construction loan(s) that financed its build. {per_turn, turns_left}; zero when none. General
+# empire loans (building_instance == "") are deliberately excluded: they are not this building's cost.
+func building_loan_repayment(instance_id: String) -> Dictionary:
+	var per_turn: float = 0.0
+	var turns_left: int = 0
+	if instance_id != "":
+		for loan in loans:
+			if str(loan.get("building_instance", "")) == instance_id and float(loan.get("principal_remaining", 0.0)) > 0.0:
+				per_turn += float(loan.get("payment_per_turn", 0.0))
+				turns_left = maxi(turns_left, int(loan.get("turns_remaining", 0)))
+	return {"per_turn": per_turn, "turns_left": turns_left}
 
 func record_turn_economics(net_profit: float, revenue: float) -> void:
 	# Called once per turn by Production with the company's retained net profit and

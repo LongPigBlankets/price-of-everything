@@ -616,7 +616,11 @@ var construct_auto_buy_land: bool = false
 var construct_expanded_recipe_mode: bool = false
 # Defaults captured by constructions when they are started. "ask" preserves the
 # existing delivery prompt; the other modes choose a source automatically.
-var construct_material_source: String = "ask"
+var construct_material_source: String = "market"
+## A one-build override picked from the confirm panel's materials accordion (which retired the old
+## "construction materials missing" modal). NOT saved: it applies to the next build attempt only and
+## clears once consumed. Empty = fall back to the standing construct_material_source setting.
+var pending_build_material_source: String = ""
 # New production defaults to market routing unless the player explicitly chooses
 # the building's own tile stockpile.
 var construct_output_destination: String = "market"
@@ -4088,10 +4092,21 @@ func set_construct_expanded_recipe_mode(enabled: bool, emit_change: bool = true)
 		construct_settings_changed.emit()
 
 
+## The material source the NEXT build attempt should use: the one-build accordion override if the
+## player picked one, else the standing setting. Legacy "ask" resolves to "market" — the modal is
+## retired, so a build never blocks waiting for a choice (the accordion is where the choice is made
+## now). Clears the one-build override so it applies exactly once.
+func consume_build_material_source() -> String:
+	var src := pending_build_material_source if pending_build_material_source != "" else construct_material_source
+	pending_build_material_source = ""
+	if src == "ask" or src == "":
+		src = "market"
+	return src
+
 func set_construct_material_source(value: String, emit_change: bool = true) -> void:
 	var resolved := value.to_lower().strip_edges()
 	if resolved not in ["ask", "market", "same_tile", "any_tile"]:
-		resolved = "ask"
+		resolved = "market"
 	if construct_material_source == resolved:
 		return
 	construct_material_source = resolved

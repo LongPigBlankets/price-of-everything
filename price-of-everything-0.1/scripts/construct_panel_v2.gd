@@ -838,7 +838,6 @@ func _render_settings() -> void:
 	source_box.add_child(source_note)
 	var source_group := ButtonGroup.new()
 	for option in [
-		{"id": "ask", "title": "Ask every time", "detail": "Prompt on each delivery"},
 		{"id": "market", "title": "Market — always buy in", "detail": "Never blocks; costs money"},
 		{"id": "same_tile", "title": "Same tile — always", "detail": "Uses local stockpile only"},
 		{"id": "any_tile", "title": "Any tile with surplus", "detail": "Pulls spare goods network-wide"},
@@ -2219,6 +2218,77 @@ func _on_v3_priority_supply_selected(option_id: String) -> void:
 ## under it when blocked (§7) rather than folding the reason into the button
 ## label: the one line has to cover land, materials AND funds, which a short
 ## button caption can't hold uniformly the way V4's two-case version could.
+## Materials accordion — the inline replacement for the retired "construction materials missing"
+## modal. Collapsed by default; opening it exposes the three material-source modes plus a Remember
+## toggle. Picking a mode sets a one-build override (MatchState.pending_build_material_source); with
+## Remember on it also persists to the standing setting. Sits directly under the Confirm CTA.
+var _materials_accordion_open := false
+var _material_remember := true
+
+func _current_material_source() -> String:
+	var s := MatchState.pending_build_material_source if MatchState.pending_build_material_source != "" else MatchState.construct_material_source
+	return "market" if (s == "ask" or s == "") else s
+
+func _material_source_short(id: String) -> String:
+	match id:
+		"same_tile": return "this tile"
+		"any_tile": return "any surplus"
+		_: return "market"
+
+func _accordion_header_text(open: bool, src: String) -> String:
+	return "%s  Construction materials — %s" % ["−" if open else "+", _material_source_short(src)]
+
+func _on_accordion_source_picked(id: String, header: Button) -> void:
+	MatchState.pending_build_material_source = id
+	if _material_remember:
+		MatchState.set_construct_material_source(id)
+	header.text = _accordion_header_text(_materials_accordion_open, id)
+
+func _v3_materials_accordion() -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 3)
+	var cur := _current_material_source()
+	var header := Button.new()
+	header.toggle_mode = true
+	header.button_pressed = _materials_accordion_open
+	header.focus_mode = Control.FOCUS_NONE
+	header.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	header.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
+	_style_button(header, NAVY_FIELD, NAVY_LINE, _muted_tone())
+	header.text = _accordion_header_text(_materials_accordion_open, cur)
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 4)
+	body.visible = _materials_accordion_open
+	header.toggled.connect(func(pressed: bool) -> void:
+		_materials_accordion_open = pressed
+		body.visible = pressed
+		header.text = _accordion_header_text(pressed, _current_material_source()))
+	box.add_child(header)
+	var group := ButtonGroup.new()
+	for opt in [
+		{"id": "market", "label": "Buy from market"},
+		{"id": "same_tile", "label": "This tile's stockpile"},
+		{"id": "any_tile", "label": "Any tile with surplus"},
+	]:
+		var oid := str(opt.get("id", ""))
+		var b := _settings_choice_button(str(opt.get("label", "")), cur == oid, group)
+		b.pressed.connect(_on_accordion_source_picked.bind(oid, header))
+		body.add_child(b)
+	var remember := CheckBox.new()
+	remember.text = "Remember my selection"
+	remember.button_pressed = _material_remember
+	remember.focus_mode = Control.FOCUS_NONE
+	remember.tooltip_text = "You can always change this in the construct panel's settings."
+	remember.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
+	remember.add_theme_color_override("font_color", _muted_tone())
+	remember.toggled.connect(func(pressed: bool) -> void:
+		_material_remember = pressed
+		if pressed and MatchState.pending_build_material_source != "":
+			MatchState.set_construct_material_source(MatchState.pending_build_material_source))
+	body.add_child(remember)
+	box.add_child(body)
+	return box
+
 func _v3_build_footer() -> void:
 	_footer_panel.visible = true
 	_footer_rule.visible = true
@@ -2271,6 +2341,8 @@ func _v3_build_footer() -> void:
 		why.add_theme_color_override("font_color", RED)
 		cta_box.add_child(why)
 
+
+	cta_box.add_child(_v3_materials_accordion())
 
 ## The first fact that blocks this confirm, in words — or "" when nothing does.
 ## Order mirrors what the player can actually fix: land, then materials the site

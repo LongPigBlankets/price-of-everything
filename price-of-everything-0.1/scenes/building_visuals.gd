@@ -132,6 +132,12 @@ const FALLBACK_PLOT := Vector2(10.0, 5.0)
 ## How finely the fallback walks each road. Coarser than PACK_STEP: this path only runs once
 ## the real search has given up, and it has to be fast rather than thorough.
 const FALLBACK_STEP := 6.0
+## The smallest decorative mass a stamp industry may take over in the wider `decor` fallback
+## (owner, 2026-09-04: "larger than 20x20 units"). Below this a mass is too small to read as a
+## factory floor, so the building is better off packed onto ground than shrunk onto a cottage.
+## The hand-marked `hijack` pass has NO floor — the designer's explicit pick is honoured whatever
+## its size.
+const DECOR_HIJACK_MIN_AREA := 400.0
 const CONSTRUCTION_BEIGE := Color("d0bc91")
 ## A site is outlined in DASHES, not a solid ink edge (owner, 2026-08-27) — the drawing
 ## convention for something proposed rather than built, and the thing that tells a site from
@@ -703,6 +709,19 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	# out of marks before it runs out of buildings; everything below is the fallback.
 	elif use_stamp and AuthoredMap.is_active() and AuthoredMap.covers(tile_id):
 		placed = _claim_hijack_mass(tile_id, coord, area)
+		# Hand-marked masses are scarce on the procedural regions (Vandel: 15 of 207), so a busy
+		# tile runs out of marks long before it runs out of buildings. When it does, take over
+		# ANY large town mass before falling through to the ground packer — "hijackable > other
+		# decorative > empty land" (owner, 2026-09-04). Ranked BEFORE block/frontage so the
+		# decorative footprint always beats a fresh rectangle stamped on leftover ground.
+		#
+		# But it YIELDS to an explicit industrial zone: a hand-drawn zone is the designer saying
+		# "industry goes here, on clear ground, sparing the fabric", which outranks a loose mass.
+		# (Hand-marked `hijack` masses above do NOT yield — they ARE an explicit instruction.) No
+		# procedural region carries zones, so this only preserves the hand-authored Stoneshore
+		# core's behaviour; Vandel and the other imports get the wider claim.
+		if placed.is_empty() and not _tile_zoned_for(tile_id, iname_lot):
+			placed = _claim_decor_mass(tile_id, coord, area)
 		if _lp_on:
 			_lp_add("hijack_claim", Time.get_ticks_usec() - _lpt)
 			_lpt = Time.get_ticks_usec()
@@ -1042,11 +1061,29 @@ func _append_local_poly(out: Array, poly: PackedVector2Array, record: Dictionary
 ## footprint already overlaps is skipped rather than shared, and a ring (a courtyard band)
 ## is never a factory floor.
 func _claim_hijack_mass(tile_id: String, coord: Vector2i, area: float) -> Dictionary:
-	var pool: Array = _hijack_candidates(tile_id, coord)
+	return _claim_from_mass_pool(tile_id, coord, area, _hijack_candidates(tile_id, coord), "hijack")
+
+
+## The wider fallback to the marked-`hijack` pass. Too few masses are hand-marked on the
+## procedural regions for the marked pool to dress a busy tile, so when it comes back empty a
+## stamp industry may still take over ANY town mass at least DECOR_HIJACK_MIN_AREA large. Same
+## claim/evict/livery machinery as a marked claim — the mass polygon becomes the footprint, it
+## is recorded in `_hijacked_masses` so the fabric survives underneath, and the stamp draws over
+## it in the company's colour — only the candidate pool is wider. `via` is "decor" so the audit
+## can tell the two tiers apart.
+func _claim_decor_mass(tile_id: String, coord: Vector2i, area: float) -> Dictionary:
+	return _claim_from_mass_pool(tile_id, coord, area, _decor_candidates(tile_id, coord), "decor")
+
+
+## Rank a pool of decorative masses by how close each is in size to the building's own lot, then
+## take over the first that is neither already claimed nor overlapped by a standing footprint.
+## Shared by both claim tiers (marked `hijack` and wider `decor`); they differ only in the pool
+## passed in. Sorted per claim on a copy: the pool is a handful of masses per tile, and the
+## building's own area is what decides the order.
+func _claim_from_mass_pool(tile_id: String, coord: Vector2i, area: float, pool: Array, via: String) -> Dictionary:
 	if pool.is_empty():
 		return {}
-	# Closest area first, ties by id. Sorted per claim on a copy: the pool is a handful of
-	# masses per tile, and the building's own area is what decides the order.
+	# Closest area first, ties by id (so a re-derivation lands on the same mass).
 	var ranked: Array = pool.duplicate()
 	ranked.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		var da := absf(float(a.area) - area)
@@ -1076,7 +1113,7 @@ func _claim_hijack_mass(tile_id: String, coord: Vector2i, area: float) -> Dictio
 		for v in poly:
 			local.append(v - centre)
 		var out := _finalize(coord, centre - _tile_center_world_pos(coord), local, _aabb_half(local))
-		out["via"] = "hijack"
+		out["via"] = via
 		out["hijack_id"] = mass_id
 		return out
 	return {}
@@ -1105,6 +1142,35 @@ func _hijack_candidates(tile_id: String, coord: Vector2i) -> Array:
 			continue
 		out.append({"id": mass_id, "poly": poly, "centre": centre, "area": absf(_poly_area(poly))})
 	_hijack_pool[tile_id] = out
+	return out
+
+
+## The wider candidate pool for `_claim_decor_mass`: every mass on this tile big enough to wear
+## as a footprint, whether or not the designer marked it. Rings (courtyard bands) and masses
+## below DECOR_HIJACK_MIN_AREA are excluded; the centroid must fall in the tile hex. Cached per
+## tile like `_hijack_pool` — the document is static for a run — and cleared with it.
+var _decor_pool: Dictionary = {}
+func _decor_candidates(tile_id: String, coord: Vector2i) -> Array:
+	if _decor_pool.has(tile_id):
+		return _decor_pool[tile_id]
+	var out: Array = []
+	var center := _tile_center_world_pos(coord)
+	for entry_value in _authored_decor_world(tile_id):
+		var entry: Dictionary = entry_value
+		if str(entry.get("kind", "")) == "ring":
+			continue
+		var mass_id := str(entry.get("id", ""))
+		var poly: PackedVector2Array = entry["poly"]
+		if mass_id == "" or poly.size() < 3:
+			continue
+		var mass_area := absf(_poly_area(poly))
+		if mass_area < DECOR_HIJACK_MIN_AREA:
+			continue
+		var centre := _poly_centroid(poly)
+		if not _in_tile_hex(centre, center):
+			continue
+		out.append({"id": mass_id, "poly": poly, "centre": centre, "area": mass_area})
+	_decor_pool[tile_id] = out
 	return out
 
 
@@ -1173,6 +1239,18 @@ func _zone_preference(iname: String) -> Array:
 	if EXTRACTION_NAMES.has(iname):
 		return ["extraction", "industrial", "industrial_reserve"]
 	return ["industrial", "industrial_reserve"]
+
+
+## True when the designer drew an explicit zone on this tile for this building's kind. The
+## generic `decor` claim yields to that (see `_place_building`); the marked `hijack` pass does
+## not. No procedural region carries zones, so this is only ever true on the hand-authored core.
+func _tile_zoned_for(tile_id: String, iname: String) -> bool:
+	if not AuthoredMap.is_active() or not AuthoredMap.covers(tile_id):
+		return false
+	for kind in _zone_preference(iname):
+		if not AuthoredMap.zones_for_tile(tile_id, str(kind)).is_empty():
+			return true
+	return false
 
 
 ## The land mask restricted to zones of one kind, or an EMPTY array when this tile has no
@@ -1966,6 +2044,15 @@ func relayout() -> void:
 	_placements.clear()
 	_placement_index.clear()
 	_clear_tile_caches()
+	# Release EVERY hijack/decor mass claim before replaying: this pass re-derives all of them,
+	# and `_clear_tile_caches` does not touch `_hijacked_masses`. Left populated, every claimed
+	# mass reads as still-taken (by a now-dead instance) and NO building can re-wear it, so the
+	# whole map falls through to the ground packer — the "loaded save draws its factories as
+	# plain stamps" regression. `relayout_tile` already does this for its one tile (below); the
+	# global pass has to do it for all of them.
+	_hijacked_masses.clear()
+	_hijack_pool.clear()
+	_decor_pool.clear()
 	for s in src:
 		_place_building(str(s.iid), str(s.bid), str(s.tid), s.coord as Vector2i)
 	for p in _placements:
@@ -5393,6 +5480,7 @@ func clear_all() -> void:
 	_evicted_masses.clear()
 	_hijacked_masses.clear()
 	_hijack_pool.clear()
+	_decor_pool.clear()
 	footprint_version += 1
 	_queue_footprint_change_notification()
 	queue_redraw()

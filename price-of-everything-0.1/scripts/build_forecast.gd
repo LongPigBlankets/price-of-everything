@@ -106,7 +106,16 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 			continue
 		var source_tile := _own_source_tile(tile_id, gid)
 		if source_tile != "":
-			input_cost += float(qty) * MarketState.get_price(gid)
+			# Own supply: charge what it actually COSTS the company to make it -- the CostSolver's
+			# imputed unit cost, the very figure the realized per-turn P&L uses -- not the market price
+			# it could fetch. Charging the sale price treats an internal transfer as a foregone external
+			# sale, so a vertically integrated chain (chlor-alkali fed by its own desalination) forecast
+			# a razor-thin/negative margin while its realized P&L was clearly positive (owner report,
+			# 2026-09-05: salt+water quoted at ~£64/turn opportunity cost vs ~£31 real production cost).
+			# Fall back to the market sell price when the good has no imputed cost yet (never cost-solved
+			# or a cyclic recipe the solver leaves blank).
+			var imputed := CostSolver.get_good_unit_cost(gid)
+			input_cost += float(qty) * (imputed if imputed >= 0.0 else MarketState.get_price(gid))
 			if source_tile != tile_id:
 				var leg: Dictionary = TransportService.route(source_tile, tile_id, gid)
 				inbound_freight += TransportService.transport_cost_for_route(gid, qty, leg)
@@ -122,10 +131,15 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 			input_cost += float(buy_quote.get("goods_cost", 0.0))
 			inbound_freight += float(buy_quote.get("transport_cost", 0.0))
 
-	# --- Storage: inputs and outputs both sit in the tile stockpile for a turn ----------
+	# --- Storage: only the goods that actually SIT at turn's end pay the fee ------------
+	# The engine bills warehousing on the end-of-turn stockpile (production.gd: every unit in
+	# Stockpile.get_tile_totals). A market-selling building's outputs are produced and sold the
+	# SAME turn (production → flush → sell_phase), so they are gone by turn's end and pay nothing;
+	# its inputs, bought a turn ahead, do sit and do pay. Charging storage on the outputs too
+	# (as this did) invented a full turn of certified-tank fees on hazmat products that never
+	# stay — ~£11/turn on chlor-alkali's chlorine/NaOH/hydrogen — which alone flipped a plant the
+	# realized P&L runs clearly in profit to a "never pays back" forecast (owner report 2026-09-05).
 	var warehousing: float = 0.0
-	for gid in outputs:
-		warehousing += float(outputs[gid]) * EconomyConfig.warehousing_cost_per_unit(str(gid))
 	for item in recipe.get("inputs", []):
 		var gid := str(item.get("good_id", ""))
 		if gid != "":
