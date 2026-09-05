@@ -45,8 +45,16 @@ var _state: Dictionary = {}
 var _was_processing: Dictionary = {}
 
 
+## Bind to a world and push the default visibility. Safe to call TWICE on the same world, and
+## the editor does: once the moment the scene is added, so the layers it is going to hide
+## anyway are not rendering through the whole build, and again once the build has finished,
+## because the ports and the farm underlay are created DURING it and did not exist the first
+## time. The recorded processing state is dropped on each bind — recording it mid-build would
+## remember "was idle" for a layer that had simply not started yet, and restore that when the
+## designer later switched the layer on.
 func bind(world: Node) -> void:
 	_world = world
+	_was_processing.clear()
 	for entry in LAYERS:
 		_state[str(entry["key"])] = bool(entry["on"])
 	apply()

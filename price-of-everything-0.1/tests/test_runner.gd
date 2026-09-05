@@ -30,6 +30,8 @@ const AuthoredRoadGeometry := preload("res://scripts/authored_road_geometry.gd")
 const AuthoredRoadStyle := preload("res://scripts/authored_road_style.gd")
 const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
 const MapEditorShapeToolScript := preload("res://scripts/map_editor/map_editor_shape_tool.gd")
+const MapEditorRegionImportScript := preload("res://scripts/map_editor/map_editor_region_import.gd")
+const ImportLiveMapScript := preload("res://tools/map_editor/import_live_map.gd")
 const WorldMapScript := preload("res://scripts/world_map.gd")
 const AuthoredRoadVisualsScript := preload("res://scripts/authored_road_visuals.gd")
 ## Editor-only, and excluded from exported builds alongside this suite. Held here because the
@@ -80,7 +82,16 @@ func _ready() -> void:
 	_test_authored_slot_box_holds_its_class()
 	_test_authored_area_buildings_exist()
 	await _test_authored_slot_claim_order()
+	await _test_hijack_mass_claim()
+	_test_building_tab_repayment()
+	_test_forecast_own_supply_follows_production()
+	await _test_block_road_segments_include_authored_strokes()
 	_test_authored_zones()
+	_test_authored_bake_matches_its_document()
+	_test_forest_felling_seams()
+	_test_region_partition()
+	_test_region_import_settlement()
+	_test_import_corner_cap()
 	await _test_zone_placement()
 	await _test_zone_priority()
 	await _test_zone_fabric_tiers()
@@ -3055,6 +3066,10 @@ func _test_farm_lanes() -> void:
 	add_child(terrain)
 	await get_tree().process_frame
 	RoadNetwork.reset()
+	# This exercises the PROCEDURAL packer's lanes against the road NETWORK. The authored
+	# document now covers tile_9_10 with its own permanent streets, which the mask rightly
+	# keeps buildings and tracks clear of — so it is stood down for the test and restored after.
+	AuthoredMap.set_document_for_tests({})
 	var bv := preload("res://scenes/building_visuals.gd").new()
 	add_child(bv)
 	await get_tree().process_frame
@@ -3063,6 +3078,7 @@ func _test_farm_lanes() -> void:
 	var coord: Vector2i = terrain.id_to_coord(tile_id)
 	if not terrain.tiles.has(coord):
 		_check(false, "farm-lanes: test tile exists")
+		AuthoredMap.reset_for_tests()
 		bv.queue_free(); terrain.queue_free(); return
 	# Two adjacent farms → they Voronoi-snap and a thin lane runs between them.
 	for i in 2:
@@ -3119,6 +3135,7 @@ func _test_farm_lanes() -> void:
 	bv.queue_free()
 	terrain.queue_free()
 	RoadNetwork.reset()
+	AuthoredMap.reset_for_tests()   # the real document comes back for the tests that need it
 	await get_tree().process_frame
 
 # Stage 1 of the farm→real-road integration: a player road settling on a farm tile PROMOTES that
@@ -19142,6 +19159,293 @@ func _test_authored_slot_claim_order() -> void:
 
 ## Industrial zones: the region a gameplay building may be placed IN, as opposed to a slot,
 ## which is a box reserved before anyone knows what will stand in it.
+## The two seams that let a felled wood take its canopy with it, and the refusal the demolish
+## panel now reports instead of swallowing.
+##
+## The whole sequence — a wood bought, demolished, and the tile left clear — is checked in the
+## real world by `tools/forest_demolish_check.tscn`; it needs a built map, which is exactly
+## what this suite does not have. These pin the parts that can be tested in isolation.
+## A bake that has fallen behind its document is not a broken bake — the game notices and
+## draws vectors instead, which is correct and MUCH slower: the whole authored map, woods and
+## all, rebuilt on every redraw. That cost 4.5 seconds a frame and eight minutes of "Building
+## the world…" in the editor, and the only thing that ever said so was a warning nobody was
+## reading. Editing a document means re-running the bake; this is what says so.
+func _test_authored_bake_matches_its_document() -> void:
+	var bake := load("res://scripts/authored_bake.gd")
+	var manifest: Dictionary = bake.data()
+	if manifest.is_empty():
+		_check(true, "authored bake: no bake on disk (the vector path is the fallback, not a fault)")
+		return
+	var active := AuthoredMap.active_name()
+	_check(str(manifest.get("document", "")) == active,
+		"authored bake: the bake on disk is for the active document ('%s' vs '%s')"
+			% [str(manifest.get("document", "")), active])
+	_check(str(manifest.get("source_md5", "")) == FileAccess.get_md5(AuthoredMap.path_for(active)),
+		"authored bake: the bake is current with '%s' — re-run "
+			% active + "tools/map_editor/bake_authored_map.tscn after editing a document")
+	_check(bake.is_available(),
+		"authored bake: the game will use the textures rather than falling back to vectors")
+
+
+func _test_forest_felling_seams() -> void:
+	_check(ForestFootprint.FOREST_BUILDING_IDS.has("b_015")
+		and ForestFootprint.FOREST_BUILDING_IDS.has("b_016"),
+		"forests: both growth stages count as forest buildings")
+
+	# The forest layer's registry outlives the building record, which is erased before
+	# `building_removed` reaches world_map — so this lookup is the only way it can still tell
+	# which authored canopy to fell. Parsing the tile out of the instance id worked for the
+	# seeded woods alone, and a bought New Growth Forest left its trees standing.
+	var forests: Node2D = load("res://scripts/forest_visuals.gd").new()
+	forests.on_building_placed("tile_6_9", "b_015", "", "start_b_015_tile_6_9", Vector2i(5, 8))
+	_check(forests.tile_of_instance("start_b_015_tile_6_9") == "tile_6_9",
+		"forests: the layer reports the tile a standing wood is on")
+	_check(forests.tile_of_instance("nobody") == "",
+		"forests: an unknown instance reports no tile")
+	forests.remove_instance("start_b_015_tile_6_9")
+	_check(forests.tile_of_instance("start_b_015_tile_6_9") == "",
+		"forests: a removed wood is off the register")
+	forests.free()
+
+	# ALL FORESTS ARE DEMOLISHABLE (owner, 2026-08-29). A wood standing on the land belongs to
+	# nobody — there is no company to buy it from — so felling one is clearing ground.
+	MatchState.buildings["t_wood"] = {"instance_id": "t_wood", "building_id": "b_016",
+		"tile_id": "tile_1_2", "owner": MatchState.LAND_OWNER}
+	_check(MatchState.is_land_owned_wood(MatchState.buildings["t_wood"]),
+		"forests: a wood owned by the land is recognised as one")
+	_check(bool(MatchState.start_demolish("t_wood").get("ok", false)),
+		"forests: a wood the land owns can be demolished where it stands")
+	MatchState.demolish_queue.erase("t_wood")
+	MatchState.buildings.erase("t_wood")
+
+	# The allowance is for WOODS, not for anything the land happens to hold, and not for a
+	# company's forest — that still has to be bought, like any other building of theirs.
+	MatchState.buildings["t_plant"] = {"instance_id": "t_plant", "building_id": "b_002",
+		"tile_id": "tile_1_2", "owner": MatchState.LAND_OWNER}
+	MatchState.buildings["t_npc_wood"] = {"instance_id": "t_npc_wood", "building_id": "b_015",
+		"tile_id": "tile_1_2", "owner": "Some Company Ltd."}
+	var refused: Dictionary = MatchState.start_demolish("t_plant")
+	_check(not bool(refused.get("ok", false)) and str(refused.get("reason", "")) != "",
+		"forests: the allowance does not extend to other buildings on the land")
+	var npc_refused: Dictionary = MatchState.start_demolish("t_npc_wood")
+	_check(not bool(npc_refused.get("ok", false)),
+		"forests: a company's wood must still be bought before it can be felled")
+	# ...and the refusal carries a reason, because the demolish panel now shows it instead of
+	# closing on a silent no-op.
+	_check(str(npc_refused.get("reason", "")) != "",
+		"forests: a refusal says why, for the panel to show")
+	MatchState.buildings.erase("t_plant")
+	MatchState.buildings.erase("t_npc_wood")
+
+
+## The `enable procedural <region>` cheat's partition: the untouched landmap splits four
+## ways by nearest city, deterministically, and covered tiles stay out.
+func _test_region_partition() -> void:
+	for region in MapEditorRegionImportScript.REGIONS:
+		var anchor := str(MapEditorRegionImportScript.REGION_ANCHORS[region])
+		_check(Catalog.is_land_tile(anchor),
+			"regions: anchor of '%s' (%s) is a land tile the catalog knows" % [region, anchor])
+	var centres := {
+		"tile_14_2": Vector2(0, 0),        # north (Port Lightning)
+		"tile_11_17": Vector2(1000, 0),    # arin
+		"tile_22_16": Vector2(0, 1000),    # vandel
+		"tile_25_9": Vector2(1000, 1000),  # capital
+		"near_north": Vector2(10, 10),
+		"near_arin": Vector2(980, 40),
+		"near_vandel": Vector2(30, 950),
+		"near_capital": Vector2(990, 990),
+		"already_authored": Vector2(5, 5),
+		"tie_tile": Vector2(500, 0),       # equidistant north/arin
+	}
+	var split: Dictionary = MapEditorRegionImportScript.partition(centres, {"already_authored": true})
+	_check(split.size() == centres.size() - 1, "regions: every uncovered land tile is assigned")
+	_check(not split.has("already_authored"), "regions: covered tiles stay out of the split")
+	_check(str(split.get("tile_14_2")) == "north" and str(split.get("tile_11_17")) == "arin"
+		and str(split.get("tile_22_16")) == "vandel" and str(split.get("tile_25_9")) == "capital",
+		"regions: each anchor lands in its own region")
+	_check(str(split.get("near_north")) == "north" and str(split.get("near_arin")) == "arin"
+		and str(split.get("near_vandel")) == "vandel" and str(split.get("near_capital")) == "capital",
+		"regions: proximity decides the region")
+	_check(str(split.get("tie_tile")) == "north", "regions: a tie goes to the earlier region")
+	_check(MapEditorRegionImportScript.partition({"tile_14_2": Vector2.ZERO}, {}).is_empty(),
+		"regions: a missing anchor refuses to partition")
+	var north_tiles: Dictionary = MapEditorRegionImportScript.region_tiles(split, "north")
+	_check(north_tiles.has("near_north") and north_tiles.has("tie_tile")
+		and not north_tiles.has("near_arin"), "regions: region_tiles filters one region")
+	var covered := MapEditorRegionImportScript.covered_tiles({"settlements": {
+		"untitled": {"tiles": ["a"]}, "procedural-north": {"tiles": ["b"]}}})
+	_check(covered.has("a") and not covered.has("b"),
+		"regions: a shown region does not count as authored coverage")
+	_check(MapEditorRegionImportScript.covered_tiles({"settlements": {
+		"procedural-north": {"tiles": ["b"]}}}, true).has("b"),
+		"regions: coverage can include the region imports when asked")
+
+
+## Cutting one region out of the whole-map import: ownership rules, renumbering, and a
+## settlement the validator accepts — and removing it restores the document exactly.
+func _test_region_import_settlement() -> void:
+	var centres := {
+		"tile_14_2": Vector2(0, 0), "tile_11_17": Vector2(1000, 0),
+		"tile_22_16": Vector2(0, 1000), "tile_25_9": Vector2(1000, 1000),
+	}
+	var tile_of := func(world: Vector2) -> String:
+		return "t_%d_%d" % [int(floor(world.x / 100.0)), int(floor(world.y / 100.0))]
+	var region_set := {"t_0_0": true, "t_0_1": true}
+	var covered := {"t_5_0": true}
+	var source := {"version": 1, "settlements": {
+		"b": {"tiles": ["t_0_1"], "specials": [
+			{"id": "s:x:9", "kind": "poly", "sides": [], "outline": [[20, 120], [40, 120], [40, 140]]}]},
+		"a": {"tiles": ["t_0_0"],
+			"roads": [
+				{"id": "r:x:0", "class": "mid", "points": [[0, 0], [50, 50]],
+					"tiles": ["t_0_0"], "unlockable": false},
+				{"id": "r:x:1", "class": "mid", "points": [[0, 0], [60, 10]],
+					"tiles": ["t_0_0", "t_5_0"], "unlockable": false},
+				{"id": "r:x:2", "class": "mid", "points": [[900, 0], [1000, 40]],
+					"tiles": ["t_9_0"], "unlockable": false},
+			],
+			"specials": [
+				{"id": "s:x:0", "kind": "poly", "sides": [], "outline": [[10, 10], [30, 10], [30, 30]]},
+				{"id": "s:x:1", "kind": "poly", "sides": [], "outline": [[910, 10], [930, 10], [930, 30]]},
+				{"id": "s:x:2", "kind": "poly", "sides": [], "outline": [[10, 10], [30, 10], [30, 30]],
+					"port": "t_7_7", "port_role": "quay"},
+			],
+			"parks": [{"id": "p:x:0", "kind": "green", "outline": [[5, 5], [25, 5], [25, 25]]}],
+			"plazas": [{"id": "pz:x:0", "outline": [[905, 5], [925, 5], [925, 25]]}],
+			"port_decor": [
+				{"kind": "container", "outline": [[1, 1], [2, 1], [2, 2]], "tile": "t_0_0"},
+				{"kind": "container", "outline": [[1, 1], [2, 1], [2, 2]], "tile": "t_9_9"},
+			],
+			"slots": {
+				"t_0_0": {"pins": [{"pos": [1, 2], "angle": 0.0, "size": "standard"}]},
+				"t_9_9": {"pins": [{"pos": [3, 4], "angle": 0.0, "size": "standard"}]},
+			}},
+	}}
+	var built: Dictionary = MapEditorRegionImportScript.build_settlement(
+		source, "north", region_set, covered, tile_of, centres)
+	var roads: Array = built.get("roads", [])
+	_check(roads.size() == 1 and str((roads[0] as Dictionary).get("id", "")) == "r:north:0",
+		"region cut: one road survives — in-region, renumbered")
+	var specials: Array = built.get("specials", [])
+	_check(specials.size() == 2, "region cut: the covered-touching road, the far road, the far"
+		+ " special, the far plaza and the port special all stay out (%d specials)" % specials.size())
+	var special_ids: Array = []
+	for special in specials:
+		special_ids.append(str((special as Dictionary).get("id", "")))
+	_check(special_ids == ["s:north:0", "s:north:1"],
+		"region cut: specials renumber deterministically across source settlements")
+	_check((built.get("parks", []) as Array).size() == 1
+		and str((built.get("parks", [])[0] as Dictionary).get("id", "")) == "p:north:0",
+		"region cut: the in-region park comes across")
+	_check((built.get("plazas", []) as Array).is_empty(), "region cut: the far plaza does not")
+	_check((built.get("port_decor", []) as Array).size() == 1, "region cut: port decor filters by tile")
+	_check((built.get("slots", {}) as Dictionary).keys() == ["t_0_0"],
+		"region cut: slots filter by tile")
+	_check(built.get("tiles", []) == ["t_0_0", "t_0_1"],
+		"region cut: the settlement claims the whole region")
+	_check(int(built.get("next_id", 0)) == 5, "region cut: next_id counts the records")
+
+	# The merged document must satisfy the game's own validator, and removing the
+	# settlement must restore the document byte-for-byte.
+	var doc := AuthoredMap.empty_document()
+	var before := AuthoredMap.to_text(doc)
+	var settlements: Dictionary = doc.get("settlements", {})
+	settlements[MapEditorRegionImportScript.settlement_key("north")] = built
+	doc["settlements"] = settlements
+	_check(AuthoredMap.validate(doc).is_empty(), "region cut: the merged document validates")
+	settlements.erase(MapEditorRegionImportScript.settlement_key("north"))
+	_check(AuthoredMap.to_text(doc) == before, "region cut: disabling restores the document exactly")
+	_check(MapEditorRegionImportScript.build_settlement(source, "north", {}, covered, tile_of, centres).is_empty(),
+		"region cut: an empty region imports nothing")
+
+	# The Stoneshore planting layer comes across as compact points, fitted to land and
+	# rejected around the imported road/building geometry. It is deterministic so toggling a
+	# region off and on cannot reshuffle the trees.
+	var tree_template := {"points": [
+		{"kind": "small", "offset": Vector2(80, 80)},
+		{"kind": "large", "offset": Vector2(20, 20)},
+		{"kind": "mixed", "offset": Vector2(42, 142), "radius": 12.0},
+	]}
+	var planted: Dictionary = MapEditorRegionImportScript.build_settlement(
+		source, "north", region_set, covered, tile_of, centres, tree_template)
+	var planted_again: Dictionary = MapEditorRegionImportScript.build_settlement(
+		source, "north", region_set, covered, tile_of, centres, tree_template)
+	_check(AuthoredMap.tree_count(planted) > 0,
+		"region cut: the Stoneshore template plants clear points in the generated city")
+	_check(planted.get("tree_points", {}) == planted_again.get("tree_points", {}),
+		"region cut: patterned trees are deterministic across regeneration")
+	_check(not planted.has("trees") and planted.has("tree_points"),
+		"region cut: generated planting uses compact typed point batches")
+	for record_value in AuthoredMap.tree_records(planted, "procedural-north"):
+		var record: Dictionary = record_value
+		var values: Array = record.get("position", [])
+		var at := Vector2(float(values[0]), float(values[1]))
+		_check(region_set.has(tile_of.call(at)),
+			"region cut: every planted tree remains on one of the region's land tiles")
+
+	var template_doc := {"settlements": {"source": {
+		"tiles": ["tile_5_10"],
+		"tree_points": {"small": [[10.0, 0.0], [2000.0, 0.0]]},
+	}}}
+	var extracted := MapEditorRegionImportScript.stoneshore_tree_template(template_doc,
+		{"tile_5_10": Vector2.ZERO})
+	_check((extracted.get("points", []) as Array).size() == 1,
+		"region cut: the reusable template only learns from Stoneshore's local tree fringe")
+
+	# Copperstown's focused command imports only central building polygons and gives them a
+	# removable id namespace; roads and out-of-region fabric never hitch a ride.
+	var central_source := {"settlements": {"live": {"specials": [
+		{"id": "old-in", "kind": "poly", "port": "tile_13_9",
+			"outline": [[0, 0], [20, 0], [20, 20]]},
+		{"id": "old-out", "kind": "poly", "port": "tile_2_2",
+			"outline": [[100, 100], [120, 100], [120, 120]]},
+	]}}}
+	var central := MapEditorRegionImportScript.build_central_buildings(central_source, tile_of)
+	_check((central.get("specials", []) as Array).size() == 1
+		and str((central.get("specials", [])[0] as Dictionary).get("id", "")) == "s:central:0",
+		"central buildings: only Copperstown fabric is copied and renumbered")
+	_check((central.get("roads", []) as Array).is_empty()
+		and central.get("tiles", []) == MapEditorRegionImportScript.CENTRAL_BUILDING_TILES,
+		"central buildings: the focused layer claims Copperstown but imports no roads")
+
+	# The road-edge layer is reproducible and remains a compact typed point batch. A bank of
+	# eligible roads makes the deterministic 22% sample exercise both the accept and gap paths.
+	var roadside_roads: Array = []
+	for i in 40:
+		roadside_roads.append({"id": "fixture-%d" % i,
+			"points": [[0, i * 40], [180, i * 40]], "class": "mid"})
+	var everywhere := func(_world: Vector2) -> String: return "land"
+	var roadside := MapEditorRegionImportScript.roadside_tree_points(
+		{"land": true}, everywhere, roadside_roads, [], [], [], "fixture")
+	var roadside_again := MapEditorRegionImportScript.roadside_tree_points(
+		{"land": true}, everywhere, roadside_roads, [], [], [], "fixture")
+	_check(AuthoredMap.tree_count({"tree_points": roadside}) > 0,
+		"roadside trees: the sparse deterministic pass plants eligible road edges")
+	_check(roadside == roadside_again,
+		"roadside trees: regeneration is deterministic")
+	_check(roadside.keys().all(func(kind: Variant) -> bool:
+		return str(kind) == "small" or str(kind) == "large"),
+		"roadside trees: output keeps the measured small/large vocabulary")
+
+
+## The importer's faithfulness contract: outlines keep up to TEN corners (owner, 2026-08-29)
+## and only simplify past that.
+func _test_import_corner_cap() -> void:
+	_check(int(ImportLiveMapScript.MAX_CORNERS) == 10, "import: the corner cap is ten")
+	var importer := ImportLiveMapScript.new()
+	var circle := PackedVector2Array()
+	for i in 43:
+		circle.append(Vector2(cos(TAU * float(i) / 43.0), sin(TAU * float(i) / 43.0)) * 90.0)
+	var shaped: PackedVector2Array = importer._simplify_to_cap(circle)
+	_check(shaped.size() <= 10 and shaped.size() >= 3,
+		"import: a 43-corner outline simplifies to at most ten corners (%d)" % shaped.size())
+	_check(shaped[0] == circle[0], "import: simplification keeps the first corner in place")
+	var square := PackedVector2Array([Vector2(0, 0), Vector2(80, 0), Vector2(80, 80), Vector2(0, 80)])
+	_check(importer._outline_list(square).size() == 4,
+		"import: an outline under the cap is untouched")
+	importer.free()
+
+
 func _test_authored_zones() -> void:
 	var base := {"version": AuthoredMap.SCHEMA_VERSION,
 		"settlements": {"s": {"tiles": ["tile_1_1"]}}}
@@ -20333,6 +20637,28 @@ func _test_authored_trees() -> void:
 	_check(authored.validate(doc).is_empty(),
 		"authored trees: a document with all three kinds validates")
 
+	# Saving groups point specimens by kind and drops their redundant per-record ids. Loading
+	# through tree_records remains backward compatible, so painters do not care which form a
+	# document arrived in.
+	var compact: Dictionary = authored.canonical(doc)
+	var compact_settlement: Dictionary = compact["settlements"]["t"]
+	_check(not compact_settlement.has("trees") and compact_settlement.has("tree_points"),
+		"authored trees: canonical storage migrates legacy records into typed point batches")
+	_check((compact_settlement["tree_points"]["small"] as Array) == [[10.0, 20.0]]
+		and (compact_settlement["tree_points"]["large"] as Array) == [[40.0, 20.0]]
+		and (compact_settlement["tree_points"]["mixed"] as Array) == [[90.0, 20.0, 26.0]],
+		"authored trees: small, large and mixed coordinates stay separate and exact")
+	_check(authored.tree_records(compact_settlement, "t").size() == 3,
+		"authored trees: compact storage expands to the same three painter records")
+	_check(authored.to_text(compact) == authored.to_text(doc),
+		"authored trees: migration is idempotent on the next save")
+
+	var compact_bad := authored.empty_document()
+	compact_bad["settlements"] = {"t": {"tiles": ["tile_1_1"],
+		"tree_points": {"small": [[1.0, 2.0, 3.0]], "mixed": [[4.0, 5.0, 0.0]]}}}
+	_check(not authored.validate(compact_bad).is_empty(),
+		"authored trees: malformed typed points and radius-less compact clumps are refused")
+
 	# A clump with no radius has no size, so it would draw nothing and silently look like a
 	# tree that failed to place. The schema refuses it instead.
 	var bad := authored.empty_document()
@@ -20364,3 +20690,191 @@ func _test_authored_trees() -> void:
 		% outside)
 	_check(kinds.size() >= 2,
 		"authored trees: a clump mixes sizes rather than repeating one (%d kinds)" % kinds.size())
+
+
+## A rectangle as a document outline ([[x, y], ...]) centred on `c`.
+func _rect_outline(c: Vector2, w: float, h: float) -> Array:
+	return [[c.x - w / 2.0, c.y - h / 2.0], [c.x + w / 2.0, c.y - h / 2.0],
+		[c.x + w / 2.0, c.y + h / 2.0], [c.x - w / 2.0, c.y + h / 2.0]]
+
+
+## A stamped building on an authored tile takes over a mass the designer marked as a hijack
+## slot: the footprint IS the mass outline, the closest-area mass wins, a claimed mass is
+## never handed out twice, and an unmarked mass is never touched.
+func _test_hijack_mass_claim() -> void:
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		bv.queue_free(); terrain.queue_free(); return
+	var c: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+	var big := _rect_outline(c + Vector2(-120.0, 0.0), 60.0, 40.0)
+	var small := _rect_outline(c + Vector2(120.0, 0.0), 30.0, 30.0)
+	var plain := _rect_outline(c + Vector2(0.0, 100.0), 50.0, 50.0)
+	var doc := {
+		"version": AuthoredMap.SCHEMA_VERSION,
+		"settlements": {"s": {
+			"tiles": [tile_id],
+			"specials": [
+				{"id": "h_big", "kind": "poly", "outline": big, "sides": [], "hijack": true},
+				{"id": "h_small", "kind": "poly", "outline": small, "sides": [], "hijack": true},
+				{"id": "plain", "kind": "poly", "outline": plain, "sides": []},
+			],
+		}},
+	}
+	var problems := AuthoredMap.validate(doc)
+	_check(problems.is_empty(), "hijack: the fixture document is valid (%s)" % str(problems))
+	AuthoredMap.set_document_for_tests(doc)
+
+	var first: Dictionary = bv._claim_hijack_mass(tile_id, coord, 60.0 * 40.0)
+	_check(str(first.get("via", "")) == "hijack" and str(first.get("hijack_id", "")) == "h_big",
+		"hijack: a 2400 u2 building takes the mass nearest its own area (got '%s')" % str(first.get("hijack_id", "")))
+	if not first.is_empty():
+		var verts: PackedVector2Array = first.verts
+		var corner := Vector2(float(big[0][0]), float(big[0][1]))
+		_check(verts.size() == 4 and verts[0].distance_to(corner) < 0.01,
+			"hijack: the footprint IS the mass outline (first corner off by %.3f)"
+			% (verts[0].distance_to(corner) if verts.size() > 0 else INF))
+	bv._hijacked_masses["h_big"] = "iid_1"
+	var second: Dictionary = bv._claim_hijack_mass(tile_id, coord, 60.0 * 40.0)
+	_check(str(second.get("hijack_id", "")) == "h_small",
+		"hijack: a claimed mass is never handed out twice (got '%s')" % str(second.get("hijack_id", "")))
+	bv._hijacked_masses["h_small"] = "iid_2"
+	_check(bv._claim_hijack_mass(tile_id, coord, 900.0).is_empty(),
+		"hijack: an unmarked mass is never hijacked — with no marks left the claim is empty")
+
+	AuthoredMap.set_document_for_tests({})
+	bv.queue_free()
+	terrain.queue_free()
+
+
+## The road-clearance segments include the AUTHORED carriageways, not just the network's
+## geometry — the street a player sees on a hand-drawn tile is the document's stroke.
+func _test_block_road_segments_include_authored_strokes() -> void:
+	var terrain := TileMapLayer.new()
+	terrain.tile_set = load("res://assets/main_tileset.tres")
+	terrain.set_script(load("res://scripts/hex_map.gd"))
+	add_child(terrain)
+	await get_tree().process_frame
+	var bv := preload("res://scenes/building_visuals.gd").new()
+	add_child(bv)
+	await get_tree().process_frame
+	bv.terrain_layer = terrain
+
+	var tile_id := "tile_9_10"
+	var coord: Vector2i = terrain.id_to_coord(tile_id)
+	if not terrain.tiles.has(coord):
+		bv.queue_free(); terrain.queue_free(); return
+	var c: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+	var doc := {
+		"version": AuthoredMap.SCHEMA_VERSION,
+		"settlements": {"s": {
+			"tiles": [tile_id],
+			"roads": [{"id": "r1", "class": "mid", "unlockable": true, "tiles": [tile_id],
+				"points": [[c.x - 200.0, c.y], [c.x + 200.0, c.y]]}],
+		}},
+	}
+	var problems := AuthoredMap.validate(doc)
+	_check(problems.is_empty(), "authored strokes: the fixture document is valid (%s)" % str(problems))
+	AuthoredMap.set_document_for_tests(doc)
+
+	# An UNLOCKABLE stroke on an unflagged tile is not drawn, so it must not fence off ground.
+	var td: Dictionary = terrain.tiles[coord]
+	var had_infra: Array = (td.get("infrastructure_present", []) as Array).duplicate()
+	td["infrastructure_present"] = []
+	_check(not _has_centre_stroke(bv._block_road_segments(coord)),
+		"authored strokes: an unlockable stroke on an unflagged tile is NOT a clearance segment")
+	# Flag the tile and the same stroke becomes a carriageway to keep clear of.
+	td["infrastructure_present"] = ["roads"]
+	var segs: Array = bv._block_road_segments(coord)
+	_check(_has_centre_stroke(segs),
+		"authored strokes: a visible document road across the tile centre is a clearance segment (%d segs)" % segs.size())
+	# The road-settle conflict test asks the network only: authored strokes never count there.
+	_check(not _has_centre_stroke(bv._block_road_segments(coord, false)),
+		"authored strokes: the settle-conflict query (include_authored=false) ignores them")
+	# A PERMANENT stroke is always drawn, so it fences ground whatever the flags say.
+	td["infrastructure_present"] = []
+	(doc["settlements"]["s"]["roads"][0] as Dictionary)["unlockable"] = false
+	AuthoredMap.set_document_for_tests(doc)
+	_check(_has_centre_stroke(bv._block_road_segments(coord)),
+		"authored strokes: a permanent stroke counts even on an unflagged tile")
+	td["infrastructure_present"] = had_infra
+
+	AuthoredMap.set_document_for_tests({})
+	bv.queue_free()
+	terrain.queue_free()
+
+
+## True when `segs` holds a level segment through the tile centre longer than 300 u — the
+## authored-stroke fixture's road.
+func _has_centre_stroke(segs: Array) -> bool:
+	for s in segs:
+		var a: Vector2 = s[0]
+		var b: Vector2 = s[1]
+		if absf(a.y) < 0.01 and absf(b.y) < 0.01 and absf(b.x - a.x) > 300.0:
+			return true
+	return false
+
+
+## The tab row a player reads is the REPAYMENT — per turn, and how many turns of it are left
+## — not the outstanding total (owner, 2026-09-03).
+func _test_building_tab_repayment() -> void:
+	var saved: Dictionary = MatchState.building_tabs.duplicate(true)
+	MatchState.building_tabs = {}
+	_check(MatchState.building_tab_repayment("nobody").get("per_turn", -1.0) == 0.0,
+		"tab repayment: a building with no tab owes nothing per turn")
+	# Still inside the interest-free window: quote the schedule it will run to, and the wait.
+	MatchState.building_tabs["b"] = {"turns_left": 3, "accrued": 120.0, "mode": "slices", "slices_left": 0}
+	var carrying: Dictionary = MatchState.building_tab_repayment("b")
+	_check(is_equal_approx(float(carrying.per_turn), 120.0 / float(MatchState.TAB_SLICES)),
+		"tab repayment: while carrying, the quoted slice is the total over TAB_SLICES (%.2f)" % float(carrying.per_turn))
+	_check(int(carrying.turns_left) == MatchState.TAB_SLICES and int(carrying.starts_in) == 3,
+		"tab repayment: while carrying, it says how many turns until the first slice")
+	# Repaying: the slice is the balance over the slices still to run.
+	MatchState.building_tabs["b"] = {"turns_left": 0, "accrued": 90.0, "mode": "slices", "slices_left": 9}
+	var paying: Dictionary = MatchState.building_tab_repayment("b")
+	_check(is_equal_approx(float(paying.per_turn), 10.0) and int(paying.turns_left) == 9,
+		"tab repayment: repaying quotes balance/slices and the slices left (%.2f x %d)"
+			% [float(paying.per_turn), int(paying.turns_left)])
+	_check(int(paying.starts_in) == 0, "tab repayment: a tab already paying is not waiting to start")
+	MatchState.building_tabs = saved
+
+
+## The forecast must price a good the player MAKES as their own, even when none is in stock —
+## a producer that sells or consumes its output every turn holds nothing between turns.
+func _test_forecast_own_supply_follows_production() -> void:
+	const Forecast := preload("res://scripts/build_forecast.gd")
+	var recipe_id := "r_005"                      # Pig Iron Smelting -> iron ingots
+	var recipe: Dictionary = Catalog.get_recipe(recipe_id)
+	if recipe.is_empty():
+		return
+	var good_id := ""
+	for item in Production._recipe_output_items(recipe):
+		good_id = str(item.get("good_id", ""))
+		if good_id == "" and str(item.get("internal_name", "")) != "":
+			good_id = str(Catalog.get_good_by_internal_name(str(item.get("internal_name", ""))).get("id", ""))
+		break
+	_check(Forecast._recipe_makes(recipe_id, good_id),
+		"forecast own supply: a recipe is recognised as making its own output")
+	_check(not Forecast._recipe_makes(recipe_id, "g_definitely_not_made"),
+		"forecast own supply: a recipe does not claim goods it never outputs")
+	var tile_id := "tile_5_10"
+	var iid: String = MatchState.add_building("b_002", recipe_id, tile_id, MatchState.LOCAL_PLAYER, "fc_own_probe")
+	if iid == "":
+		return
+	var before: int = Stockpile.get_at_tile(tile_id, good_id)
+	Stockpile.consume(tile_id, good_id, before)   # the between-turns state: nothing held
+	_check(Forecast._own_source_tile(tile_id, good_id) == tile_id,
+		"forecast own supply: a good the player makes on this tile is their own with zero stock")
+	if before > 0:
+		Stockpile.add(tile_id, good_id, before)
+	MatchState.remove_building(iid)

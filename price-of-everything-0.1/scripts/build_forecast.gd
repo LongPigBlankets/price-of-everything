@@ -235,5 +235,42 @@ static func _own_source_tile(tile_id: String, good_id: String) -> String:
 		return ""
 	if Stockpile.get_at_tile(tile_id, good_id) > 0:
 		return tile_id
+	# PRODUCTION, not stock. `Construction.find_source_tile` answers "is there a pile of this
+	# somewhere" — the right question for a build kit, the wrong one here. A player who smelts
+	# iron every turn and sells or feeds it the same turn holds NONE at the instant the panel
+	# opens, so the stock-only test reported no own supply and this forecast priced their own
+	# ingots at retail: it quoted a vertically integrated build as though the company shopped
+	# for the metal it makes (owner report, 2026-09-03; metal_magnate makes 70 iron ingots a
+	# turn on the very tile the forecast called a market buy).
+	var best := ""
+	var best_turns := 1 << 30
+	for iid in MatchState.buildings:
+		var b: Dictionary = MatchState.buildings[iid]
+		if not MatchState.is_player_owned(b) or not _recipe_makes(str(b.get("recipe_id", "")), good_id):
+			continue
+		var src := str(b.get("tile_id", ""))
+		if src == tile_id:
+			return tile_id   # made right here: no freight, and no better source exists
+		var turns := int(TransportService.route(src, tile_id).get("turns", 1 << 30))
+		if turns < best_turns:
+			best_turns = turns
+			best = src
+	if best != "":
+		return best
+	# Nothing of the player's makes it, but a pile of it may still be lying about.
 	var source: Dictionary = Construction.find_source_tile(tile_id, {good_id: 1})
 	return str(source.get("tile_id", "")) if not source.is_empty() else ""
+
+
+## Does this recipe put `good_id` out? Byproducts count — a good the player makes as a
+## side-effect is still theirs and still not bought at retail.
+static func _recipe_makes(recipe_id: String, good_id: String) -> bool:
+	if recipe_id == "" or good_id == "":
+		return false
+	for item in Production._recipe_output_items(Catalog.get_recipe(recipe_id)):
+		var gid := str(item.get("good_id", ""))
+		if gid == "" and str(item.get("internal_name", "")) != "":
+			gid = str(Catalog.get_good_by_internal_name(str(item.get("internal_name", ""))).get("id", ""))
+		if gid == good_id:
+			return true
+	return false

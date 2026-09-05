@@ -99,6 +99,17 @@ func _ready() -> void:
 		editor.call("focus_tile", _tile, _zoom)
 		await get_tree().process_frame
 		await _demo_fabric(editor)
+	# POE_EDITOR_SHOT_REGION=<north|arin|vandel|capital|all> exercises the procedural
+	# region cheat before the capture — the same method the debug terminal calls. Also
+	# reports whether the terminal itself survived the editor's input silencing.
+	var region := OS.get_environment("POE_EDITOR_SHOT_REGION")
+	if region != "":
+		var terminal := _find_by_script(editor, "debug_terminal.gd")
+		print("[EDITOR-SHOT] debug terminal input: %s"
+			% ("LIVE" if terminal != null and terminal.is_processing_input() else "DEAD"))
+		print("[EDITOR-SHOT] enable procedural %s -> %s"
+			% [region, str(editor.call("procedural_region_command", "enable", region))])
+		await get_tree().process_frame
 	# POE_EDITOR_SHOT_SAVE=<name> also saves the result under that name, exercising the real
 	# save path (named file + active pointer) rather than only the drawing tools.
 	var save_as := OS.get_environment("POE_EDITOR_SHOT_SAVE")
@@ -149,6 +160,18 @@ func _ready() -> void:
 		return
 	print("[EDITOR-SHOT] wrote %s  (%dx%d)" % [path, image.get_width(), image.get_height()])
 	get_tree().quit(0)
+
+
+## A node under `root` carrying the named script, or null — the layers panel's idiom.
+func _find_by_script(root: Node, script_file: String) -> Node:
+	var script: Variant = root.get_script()
+	if script != null and str(script.resource_path).ends_with(script_file):
+		return root
+	for child in root.get_children():
+		var found := _find_by_script(child, script_file)
+		if found != null:
+			return found
+	return null
 
 
 ## Draw one stroke with each tool, so a capture shows the pen, the freehand trace, the

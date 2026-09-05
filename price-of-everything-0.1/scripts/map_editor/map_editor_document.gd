@@ -7,11 +7,12 @@ extends RefCounted
 ## the editing history, and delegates every question of "is this legal" to that validator
 ## so the editor cannot save something the game would refuse to load.
 ##
-## UNDO MODEL: whole-document snapshots, not deltas. The document is small (a settlement is
-## a few hundred records) and snapshots make every future tool undoable for free — no tool
-## has to describe its own inverse, which is where hand-rolled undo systems rot. If a
-## map-wide document ever makes this heavy, the fix is to snapshot per settlement, not to
-## start writing inverses.
+## UNDO MODEL: whole-document JSON snapshots, not nested Dictionary copies. Keeping parsed
+## copies was catastrophically expensive once Stoneshore reached a map-sized 1.2 MB document:
+## a long session peaked at 14.7 GB because every JSON number, point and record became another
+## heap-allocated Variant in each of 128 snapshots. The serialised form is the same undo data
+## at a small, predictable cost (about 150 MB at the hard limit), and is only parsed when the
+## user actually asks for undo/redo.
 
 const AuthoredMap := preload("res://scripts/authored_map.gd")
 
@@ -20,12 +21,13 @@ const AuthoredMap := preload("res://scripts/authored_map.gd")
 const HISTORY_LIMIT := 128
 
 var _doc: Dictionary = {}
-var _undo_stack: Array[Dictionary] = []
-var _redo_stack: Array[Dictionary] = []
+var _undo_stack: Array[String] = []
+var _redo_stack: Array[String] = []
 var _dirty := false
 var _discard_armed := false
 var _last_label := "edit"
 var _name := ""
+var _revision := 0
 
 
 func _init() -> void:
@@ -44,6 +46,7 @@ func reload() -> void:
 	_redo_stack.clear()
 	_dirty = false
 	_discard_armed = false
+	_revision += 1
 
 
 ## The live document. Callers must not mutate it directly — go through [method begin_edit]
@@ -55,32 +58,65 @@ func data() -> Dictionary:
 ## Snapshot the current state before a mutation, then mutate the dictionary this returns.
 ## `label` names the action for the status line ("draw road", "stamp mass").
 func begin_edit(label: String) -> Dictionary:
-	_undo_stack.append(_copy(_doc))
+	_undo_stack.append(_snapshot(_doc))
 	if _undo_stack.size() > HISTORY_LIMIT:
 		_undo_stack.remove_at(0)
 	_redo_stack.clear()
 	_dirty = true
 	_discard_armed = false
 	_last_label = label
+	_revision += 1
 	return _doc
 
 
 func undo() -> String:
 	if _undo_stack.is_empty():
 		return "Nothing to undo"
-	_redo_stack.append(_copy(_doc))
-	_doc = _undo_stack.pop_back()
+	_redo_stack.append(_snapshot(_doc))
+	_doc = _restore(_undo_stack.pop_back())
 	_dirty = true
+	_revision += 1
 	return "Undid %s" % _last_label
 
 
 func redo() -> String:
 	if _redo_stack.is_empty():
 		return "Nothing to redo"
-	_undo_stack.append(_copy(_doc))
-	_doc = _redo_stack.pop_back()
+	_undo_stack.append(_snapshot(_doc))
+	_doc = _restore(_redo_stack.pop_back())
 	_dirty = true
+	_revision += 1
 	return "Redid %s" % _last_label
+
+
+## Content stamp for preview layers. Selection and tool changes do not touch it, so they can
+## redraw their cheap overlay without rebuilding the forest/building command lists.
+func revision() -> int:
+	return _revision
+
+
+## A continuous drag/nudge takes one undo snapshot but mutates across several frames.
+func touch() -> void:
+	_revision += 1
+
+
+## Diagnostics for the performance probe and regression tests. This counts the compact text
+## retained by history, not allocator overhead, which is precisely the bound we care about.
+func history_bytes() -> int:
+	var total := 0
+	for snapshot in _undo_stack:
+		total += snapshot.length()
+	for snapshot in _redo_stack:
+		total += snapshot.length()
+	return total
+
+
+func history_size() -> int:
+	return _undo_stack.size() + _redo_stack.size()
+
+
+func history_limit() -> int:
+	return HISTORY_LIMIT
 
 
 func is_dirty() -> bool:
@@ -146,6 +182,13 @@ func _count(source: Dictionary, key: String) -> int:
 ## `duplicate(true)` would also work, but round-tripping proves the document stayed
 ## serialisable — a snapshot that cannot round-trip is one that could not have been saved.
 func _copy(source: Dictionary) -> Dictionary:
-	var text := JSON.stringify(source)
+	return _restore(_snapshot(source))
+
+
+func _snapshot(source: Dictionary) -> String:
+	return JSON.stringify(source)
+
+
+func _restore(text: String) -> Dictionary:
 	var parsed: Variant = JSON.parse_string(text)
 	return parsed if typeof(parsed) == TYPE_DICTIONARY else {}

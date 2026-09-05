@@ -146,8 +146,8 @@ func _ready() -> void:
 		v2p._close_sheet()
 
 	# v2 NPC — an NPC-owned building (recipe + "Owned by [company]" + Buy, no other info)
-	var npc_iid := MatchState.add_building("b_007", "r_009", "tile_5_10", "npc_2", "bdpshot_npc")
-	var npc_b := MatchState.get_building(npc_iid)
+	var npc_iid: String = MatchState.add_building("b_007", "r_009", "tile_5_10", "npc_2", "bdpshot_npc")
+	var npc_b: Dictionary = MatchState.get_building(npc_iid)
 	if not npc_b.is_empty():
 		_wm._open_building_detail(npc_b)
 		await _settle(20)
@@ -180,8 +180,8 @@ func _ready() -> void:
 		print("[BDP_V2_SHOT] construction did not start")
 
 	# v2 BATTERY
-	var batt_iid := MatchState.add_building("b_028", "", "tile_11_17", "player_1", "bdpshot_batt")
-	var batt_b := MatchState.get_building(batt_iid)
+	var batt_iid: String = MatchState.add_building("b_028", "", "tile_11_17", "player_1", "bdpshot_batt")
+	var batt_b: Dictionary = MatchState.get_building(batt_iid)
 	if not batt_b.is_empty():
 		_wm._open_building_detail(batt_b)
 		await _settle(18)
@@ -209,7 +209,7 @@ func _ready() -> void:
 
 	# v2 OWN-SUPPLY power line — a windmill on the factory's tile covers its draw (same-tile first),
 	# so the diagnostics read "Powered · your own supply" (per-cable-network settlement).
-	var wind_iid := MatchState.add_building("b_025", "r_037", "tile_5_10", "player_1", "bdpshot_wind")
+	var wind_iid: String = MatchState.add_building("b_025", "r_037", "tile_5_10", "player_1", "bdpshot_wind")
 	Power.reset_for_turn()
 	Power.record_produced("tile_5_10", 800)
 	Power.record_drawn("tile_5_10", 30)
@@ -228,7 +228,7 @@ func _ready() -> void:
 	# v2 INTERMITTENCY diagnostic — the windmill (unfirmed green source, no battery) shows the red
 	# "Intermittent generation" row; the factory (seeded as drawing that green power) shows the
 	# consumer row.
-	var wind_b := MatchState.get_building(wind_iid)
+	var wind_b: Dictionary = MatchState.get_building(wind_iid)
 	if not wind_b.is_empty():
 		_wm._open_building_detail(wind_b)
 		await _settle(12)

@@ -38,6 +38,7 @@ const MapEditorSlotBoxes := preload("res://scripts/map_editor/map_editor_slot_bo
 const MapEditorFabric := preload("res://scripts/map_editor/map_editor_fabric.gd")
 const BuildingVisualsRef := preload("res://scenes/building_visuals.gd")
 const MapEditorPanel := preload("res://scripts/map_editor/map_editor_panel.gd")
+const MapEditorRegionImport := preload("res://scripts/map_editor/map_editor_region_import.gd")
 
 ## Tools. NAVIGATE is the default and does nothing but move the view: an editor whose idle
 ## state authors geometry cannot be explored, and every stray click becomes a road.
@@ -137,6 +138,15 @@ const ZOOM_STEP := 1.12
 const PAN_SPEED := 900.0
 ## Held Shift multiplier, for crossing the map rather than nudging along a street.
 const PAN_FAST := 3.0
+
+## SCREEN pixels moved per unit of trackpad two-finger scroll. A pan gesture's delta is a
+## small step per event and they arrive in a stream, so this is a feel number: 22 is what the
+## empire graph settled on for the same gesture, and matching it means one scroll covers the
+## same ground in both views.
+const PAN_GESTURE_SPEED := 22.0
+## How hard Ctrl-scroll zooms. Deliberately gentle — a trackpad fires many events per flick,
+## and a per-event factor near 1 is what keeps the ramp smooth instead of jumping.
+const PAN_ZOOM_RATE := 0.03
 ## Physical scancodes, so the keys stay under the same fingers on a non-QWERTY layout —
 ## WASD is a position on the keyboard, not four letters.
 const PAN_KEYS := {
@@ -150,6 +160,7 @@ const PAN_KEYS := {
 # return Variant, and `:=` inference then fails at parse time.
 var _document: MapEditorDocument
 var _overlay: MapEditorOverlay
+var _static_overlay: MapEditorOverlay
 var _road_tool: MapEditorRoadTool
 var _trace_tool: MapEditorTraceTool
 var _shape_mode := false
@@ -197,6 +208,10 @@ var _report_tile := ""
 ## The working document's fabric, drawn in the world (see `_mount_fabric_layer`).
 var _fabric: Node2D = null
 var _fabric_ground: Node2D = null
+## Default to the layout view: silhouettes retain selectable building footprints while tree
+## crowns and full-detail ink stay out of the retained CanvasItem command list. This is what
+## keeps a map-sized document interactive; P restores the exact preview for visual review.
+var _fast_preview := true
 var _panel: MapEditorPanel
 var _tool := TOOL_PAN
 ## Which tree the tree tool plants next; cycled by pressing its key again.
@@ -208,6 +223,9 @@ var _status: Label
 var _ready_to_edit := false
 var _panning := false
 var _settlement := DEFAULT_SETTLEMENT
+## Bumped by [method _repaint] whenever the drawn content changes; the fabric preview layers
+## redraw when it moves rather than every frame.
+var _preview_revision := 0
 
 
 ## SCRATCH MODE, for capture and input harnesses. They drive the editor with synthetic
@@ -223,6 +241,9 @@ func _is_scratch() -> bool:
 
 
 func _ready() -> void:
+	# The debug terminal's cheats reach the editor through this group, by `call()` — the
+	# terminal is SHIPPED code and may not preload anything under scripts/map_editor/.
+	add_to_group("map_editor")
 	if _is_scratch():
 		# Point the loader at a name that does not exist, so nothing real is opened.
 		AuthoredMap.set_override(SCRATCH_NAME)
@@ -240,6 +261,11 @@ func _ready() -> void:
 ## setting, not a camera one.
 func _process(delta: float) -> void:
 	if not _ready_to_edit or _camera == null:
+		return
+	# While a text field has focus (the debug terminal, the save/load dialogs), letters are
+	# TYPING, not camera keys — polling Input here would pan the map on every W or A in a
+	# command or document name.
+	if get_viewport().gui_get_focus_owner() != null:
 		return
 	_nudge_selection(delta)
 	var direction := Vector2.ZERO
@@ -278,7 +304,8 @@ func _nudge_selection(delta: float) -> void:
 		var pos: Array = slot.get("pos", [0, 0]) as Array
 		if pos.size() >= 2:
 			slot["pos"] = [float(pos[0]) + step.x, float(pos[1]) + step.y]
-	_overlay.queue_redraw()
+	_document.touch()
+	_repaint()
 
 
 # ── Boot ────────────────────────────────────────────────────────────────────────
@@ -298,12 +325,23 @@ func _boot_world() -> void:
 	# Draw order: the overlay must sit above every world layer. The world map uses sibling
 	# order for layering and reserves z up to 90 (the parchment multiply), so the overlay
 	# rides its own CanvasLayer instead of competing for a z_index.
+	#
+	# STAND THE HEAVY LAYERS DOWN BEFORE THE WAIT, not after it. The world takes about a
+	# hundred frames to settle, and the layers the editor is about to hide anyway were
+	# rendering through every one of them. That is normally affordable and once was not: with
+	# the authored bake stale the game's own fabric layer falls back to drawing the whole
+	# document as vectors — 4.5 seconds a frame — and the editor sat on "Building the world…"
+	# for eight minutes. The editor draws its own preview of that document, so it never needs
+	# these on, and binding early means a slow layer can no longer hold the boot hostage.
+	_layers.bind(_world)
 	for _i in SETTLE_FRAMES:
 		await get_tree().process_frame
 	_hide_game_ui()
 	_silence_world_input(_world)
 	_mount_fabric_layer()
 	_take_camera()
+	# Again, now that the world has finished building: layers created DURING the build (the
+	# ports and the farm underlay are added at runtime) did not exist for the first pass.
 	_layers.bind(_world)
 	_panel.build(self, _layers)
 	_ready_to_edit = true
@@ -353,6 +391,12 @@ func _mount_fabric_layer() -> void:
 ## picking tiles and claiming keys underneath. Disabling their processing is far more
 ## honest than trying to out-order them, and it leaves this node the single owner of input.
 func _silence_world_input(node: Node) -> void:
+	# The debug terminal stays live: it is the editor's cheat surface (`enable procedural
+	# <region>`), it only acts when opened with the backtick key, and its chrome sits above
+	# the editor's (layer 128 vs 64) precisely so it can be used here.
+	var script: Variant = node.get_script()
+	if script != null and str(script.resource_path).ends_with("debug_terminal.gd"):
+		return
 	node.set_process_input(false)
 	node.set_process_unhandled_input(false)
 	node.set_process_unhandled_key_input(false)
@@ -397,8 +441,18 @@ func _build_chrome() -> void:
 	layer.layer = 64   # above the world, below the debug terminal (128)
 	add_child(layer)
 
+	_static_overlay = MapEditorOverlay.new()
+	_static_overlay.editor = self
+	_static_overlay.draw_pass = MapEditorOverlay.DrawPass.STATIC
+	_static_overlay.name = "MapEditorStaticOverlay"
+	_static_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_static_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(_static_overlay)
+
 	_overlay = MapEditorOverlay.new()
 	_overlay.editor = self
+	_overlay.draw_pass = MapEditorOverlay.DrawPass.DYNAMIC
+	_overlay.name = "MapEditorDynamicOverlay"
 	_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(_overlay)
@@ -456,6 +510,34 @@ func _build_chrome() -> void:
 	_set_status("Starting…")
 
 
+## SOMETHING VISIBLE CHANGED — repaint the overlay and tell the fabric layers.
+##
+## The preview layers used to call `queue_redraw()` from `_process`, i.e. they redrew the
+## WHOLE document every frame. That is affordable for a settlement and ruinous for a map:
+## with the stoneshore document open the editor was measured at over nine SECONDS a frame,
+## because every repaint re-scattered and re-drew the trees of all 148 woods (a wood is up to
+## 900 trees, and a tree is three draw calls). The game never did this — its own authored
+## layer repaints only when the view moves — so the cost lived entirely in the editor.
+##
+## The stamp is the seam: every mutation, selection change and tool change already ended in a
+## repaint call, so bumping a counter here means the layers can sleep until one arrives.
+func _repaint() -> void:
+	_preview_revision += 1
+	if _overlay != null:
+		_overlay.queue_redraw()
+
+
+## What the preview layers watch. Changes exactly when the drawn content does.
+func preview_revision() -> int:
+	return _preview_revision
+
+
+## Geometry/content stamp. Unlike [method preview_revision], selection and tool chrome do not
+## change this, so the retained forest/building canvas can stay intact when the user clicks.
+func document_revision() -> int:
+	return _document.revision() if _document != null else 0
+
+
 func _set_status(text: String) -> void:
 	if _status != null:
 		_status.text = "MAP EDITOR   %s" % text
@@ -473,12 +555,19 @@ func _refresh_status() -> void:
 		if _tree_kind == "forest":
 			tool_note += ", 1-%d picks type" % FOREST_VARIANTS.size()
 		tool_note += ")"
+	if _fast_preview:
+		tool_note += "   |   FAST LAYOUT (P for full detail)"
 	_set_status("%s   |   %d settlements · %d roads · %d masses   |   %s%s"
 		% [_document.display_name(), counts.settlements, counts.roads, counts.masses,
 			"UNSAVED" if _document.is_dirty() else "saved", tool_note])
 	if _panel != null:
 		_panel.refresh()
 		_panel.set_tile_report(tile_report(_hovered_tile()))
+	# Belt and braces for the preview stamp: picking a form, a road class or a slot size
+	# changes what the tools draw as a preview but mutates no record, and every one of those
+	# setters ends here. Nothing calls this per frame, so it cannot reintroduce the per-frame
+	# repaint this replaced.
+	_repaint()
 
 
 # ── Input ───────────────────────────────────────────────────────────────────────
@@ -495,7 +584,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_camera.position -= motion.relative / _camera.zoom.x
 		elif _tool == TOOL_TRACE and _trace_tool.is_tracing():
 			_trace_tool.extend_trace(_world_at(motion.position))
-			_overlay.queue_redraw()
+			_repaint()
 		elif _tool == TOOL_SELECT and _held_corner >= 0:
 			_move_corner(_world_at(motion.position))
 		elif _tool == TOOL_SELECT and not _grabbed.is_empty():
@@ -504,16 +593,34 @@ func _unhandled_input(event: InputEvent) -> void:
 			_drag_grabbed(motion.position)
 		elif _tool == TOOL_STAMP and _shape_tool.is_stamping():
 			_shape_tool.drag_stamp(_world_at(motion.position))
-			_overlay.queue_redraw()
+			_repaint()
 		elif _tool == TOOL_SELECT and _marquee_from != Vector2.INF:
 			_marquee_to = _world_at(motion.position)
-			_overlay.queue_redraw()
+			_repaint()
 		elif _tool == TOOL_ANCHOR and not _anchor_grab.is_empty():
 			# Live reshaping: the curve follows the pointer, so the bend is judged against
 			# the map rather than guessed and corrected.
 			MapEditorStrokeEdit.shape_anchor(_anchor_grab["stroke"] as Dictionary,
 				int(_anchor_grab["index"]), _world_at(motion.position))
-			_overlay.queue_redraw()
+			_repaint()
+	elif event is InputEventMagnifyGesture:
+		# TRACKPAD PINCH. On macOS a trackpad never sends the wheel events the zoom was bound
+		# to: a pinch arrives as this, and a two-finger scroll as the pan gesture below, so on
+		# a laptop the editor could not be zoomed at all. `factor` is relative to the last
+		# event — a stream of small numbers around 1.0 — which is exactly what `_zoom_by`
+		# takes, and anchoring on the gesture's own position zooms toward the fingers.
+		var pinch := event as InputEventMagnifyGesture
+		_zoom_by(pinch.factor, pinch.position)
+	elif event is InputEventPanGesture:
+		# TRACKPAD TWO-FINGER SCROLL: pans, or zooms while Ctrl (or Cmd) is held — the
+		# modifier convention every map and canvas app shares, and the way a Windows precision
+		# trackpad reports a pinch. Panning is the platform's own reading of the gesture, and
+		# the editor had no answer for it either, so a trackpad could not scroll the map.
+		var pan := event as InputEventPanGesture
+		if pan.ctrl_pressed or pan.meta_pressed:
+			_zoom_by(1.0 - pan.delta.y * PAN_ZOOM_RATE, pan.position)
+		elif _camera != null:
+			_camera.position += pan.delta * PAN_GESTURE_SPEED / _camera.zoom.x
 	elif event is InputEventKey and event.pressed and not event.echo:
 		_handle_key(event as InputEventKey)
 
@@ -686,10 +793,10 @@ func _handle_key(event: InputEventKey) -> void:
 			_rotate_selection(ROTATE_STEP)
 		KEY_COMMA:
 			_set_status("Form: %s" % _shape_tool.cycle_form(-1))
-			_overlay.queue_redraw()
+			_repaint()
 		KEY_PERIOD:
 			_set_status("Form: %s" % _shape_tool.cycle_form(1))
-			_overlay.queue_redraw()
+			_repaint()
 		KEY_DELETE:
 			_ask_delete()
 		KEY_G:
@@ -698,6 +805,8 @@ func _handle_key(event: InputEventKey) -> void:
 			toggle_water_mask()
 		KEY_J:
 			_toggle_hijack_selection()
+		KEY_P:
+			toggle_fast_preview()
 		KEY_E:
 			_zoom_by(ZOOM_STEP)
 		KEY_Q:
@@ -742,20 +851,20 @@ func _handle_key(event: InputEventKey) -> void:
 				_ask_delete()
 			elif _tool == TOOL_SPECIAL and not _poly_points.is_empty():
 				_poly_points.remove_at(_poly_points.size() - 1)
-				_overlay.queue_redraw()
+				_repaint()
 			elif _tool == TOOL_AREA:
 				_shape_tool.undo_point()
 			elif _tool == TOOL_DOTS:
 				_trace_tool.undo_dot()
 			else:
 				_road_tool.undo_point()
-			_overlay.queue_redraw()
+			_repaint()
 		KEY_ESCAPE:
 			# Escape abandons work in progress first; only an idle Escape leaves. Dots count
 			# as work in progress: clearing them is what "cancel" means for that tool.
 			if not _selection.is_empty():
 				_selection = []
-				_overlay.queue_redraw()
+				_repaint()
 				_set_status("Selection cleared.")
 				_refresh_status()
 				return
@@ -764,7 +873,7 @@ func _handle_key(event: InputEventKey) -> void:
 				_road_tool.abandon()
 				_trace_tool.cancel_trace()
 				_trace_tool.clear_dots()
-				_overlay.queue_redraw()
+				_repaint()
 				_refresh_status()
 				return
 			_leave()
@@ -819,7 +928,7 @@ func _finish_stroke() -> void:
 	var stroke := _road_tool.finish(_settlement, next_id, terrain)
 	if stroke.is_empty():
 		_set_status("Stroke discarded — too short to keep.")
-		_overlay.queue_redraw()
+		_repaint()
 		return
 	# begin_edit snapshots first, so this is undoable like every other mutation.
 	_document.begin_edit("draw road")
@@ -836,7 +945,7 @@ func _finish_stroke() -> void:
 			tiles.append(tile_id)
 	tiles.sort()
 	settlement["tiles"] = tiles
-	_overlay.queue_redraw()
+	_repaint()
 	_report_stroke(stroke)
 
 
@@ -897,7 +1006,7 @@ func _finish_marquee(world: Vector2) -> void:
 		# the natural way to drop a selection.
 		_selection = []
 		_set_status("Selection cleared.")
-		_overlay.queue_redraw()
+		_repaint()
 		return
 	_selection = MapEditorSelection.in_rect(_document.data(), rect)
 	# Exactly one outline-shaped thing selected: show its corners, since that is the only
@@ -907,7 +1016,7 @@ func _finish_marquee(world: Vector2) -> void:
 	_set_status("%d selected%s — Delete to remove." % [_selection.size(),
 		" · drag its corners" if not single.is_empty() else ""] if not _selection.is_empty()
 		else "Nothing in the box.")
-	_overlay.queue_redraw()
+	_repaint()
 
 
 ## Remove the picked slot. No confirmation: a slot holds nothing, so deleting one costs a
@@ -926,7 +1035,7 @@ func _delete_slot() -> void:
 		_document.begin_edit("delete slot")
 		pins.remove_at(index)
 		_slot_pick = {}
-		_overlay.queue_redraw()
+		_repaint()
 		_set_status("Slot removed.")
 		_refresh_status()
 		return
@@ -960,7 +1069,7 @@ func _delete_selection() -> void:
 	_document.begin_edit("delete selection")
 	var removed := MapEditorSelection.delete(_document.data(), _selection)
 	_selection = []
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("Deleted %d item%s." % [removed, "" if removed == 1 else "s"])
 
 
@@ -1009,7 +1118,7 @@ func _commit_points(points: Array, label: String) -> void:
 			tiles.append(tile_id)
 	tiles.sort()
 	settlement["tiles"] = tiles
-	_overlay.queue_redraw()
+	_repaint()
 	_report_stroke(stroke)
 
 
@@ -1055,7 +1164,7 @@ func _finish_area() -> void:
 	var record := _shape_tool.finish_polygon(_settlement, next_id)
 	if record.is_empty():
 		_set_status("Needs at least three corners.")
-		_overlay.queue_redraw()
+		_repaint()
 		return
 	_document.begin_edit("draw %s" % kind)
 	settlement = _ensure_settlement()
@@ -1077,7 +1186,7 @@ func _finish_area() -> void:
 	# re-testing every polygon on the map.
 	if list_key == "zones":
 		record["tiles"] = _tiles_under(record.get("outline", []) as Array)
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("%s placed (%d corners)." % [label,
 		(record.get("outline", []) as Array).size()])
 
@@ -1087,7 +1196,7 @@ func _finish_stamp() -> void:
 	var settlement := _ensure_settlement()
 	var next_id := int(settlement.get("next_id", 1))
 	var record := _shape_tool.finish_stamp(_settlement, next_id)
-	_overlay.queue_redraw()
+	_repaint()
 	if record.is_empty():
 		_set_status("Too small to stamp.")
 		return
@@ -1098,7 +1207,7 @@ func _finish_stamp() -> void:
 	items.append(record)
 	settlement["decor"] = items
 	_cover_tiles_of(settlement, [record.get("pos", [0, 0])])
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("Stamped %s." % str(record.get("form", "")))
 
 
@@ -1173,7 +1282,7 @@ func _place_special(world: Vector2) -> void:
 	_cover_tiles_of(settlement, record.get("outline", []) as Array)
 	# Laying one selects it, so its parameters and corners are immediately to hand.
 	_corner_target = record
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("Placed %s — switch to Select (X) to drag its corners." % _special_kind)
 
 
@@ -1202,7 +1311,7 @@ func _shape_press(world: Vector2) -> void:
 	_set_corner_target(hit["record"] as Dictionary)
 	_selection = [{"kind": str(hit["kind"]), "settlement": str(hit["settlement"]),
 		"index": int(hit["index"]), "id": str(hit["id"])}]
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("Shape mode: drag the dots to reshape. Left-click away or pick a tool to leave.")
 	_refresh_status()
 
@@ -1234,7 +1343,7 @@ func _select_press(world: Vector2, screen: Vector2) -> void:
 		_slot_pick = slot_hit
 		_selection = []
 		_set_corner_target({})
-		_overlay.queue_redraw()
+		_repaint()
 		_set_status("%s slot selected — arrows move, [ ] rotate, Bksp deletes."
 			% str(_selected_slot().get("size", "small")).capitalize())
 		_refresh_status()
@@ -1280,13 +1389,14 @@ func _drag_grabbed(screen: Vector2) -> void:
 	_grab_world = world
 	for record in _grabbed:
 		MapEditorSelection.translate(record as Dictionary, delta)
-	_overlay.queue_redraw()
+	_document.touch()
+	_repaint()
 
 
 func _select_release(world: Vector2) -> void:
 	if _held_corner >= 0:
 		_held_corner = -1
-		_overlay.queue_redraw()
+		_repaint()
 		return
 	if not _grabbed.is_empty():
 		var moved := _grab_moved
@@ -1343,7 +1453,9 @@ func _snap_moved_to_roads() -> int:
 		MapEditorSelection.translate(record, target - MapEditorSelection.centre_of(record))
 		snapped += 1
 	_moved_records = []
-	_overlay.queue_redraw()
+	if snapped > 0:
+		_document.touch()
+	_repaint()
 	return snapped
 
 
@@ -1354,7 +1466,7 @@ func _rotate_selection(angle: float) -> void:
 	if not slot.is_empty():
 		_document.begin_edit("rotate slot")
 		slot["angle"] = float(slot.get("angle", 0.0)) + angle
-		_overlay.queue_redraw()
+		_repaint()
 		_set_status("Slot turned to %d°" % int(round(rad_to_deg(float(slot["angle"])))))
 		_refresh_status()
 		return
@@ -1366,7 +1478,7 @@ func _rotate_selection(angle: float) -> void:
 	for record_value in records:
 		var record: Dictionary = record_value
 		MapEditorSelection.rotate_about(record, MapEditorSelection.centre_of(record), angle)
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("Rotated %d item%s %s 5°." % [records.size(), "" if records.size() == 1 else "s",
 		"clockwise" if angle > 0.0 else "anticlockwise"])
 	_refresh_status()
@@ -1383,7 +1495,7 @@ func _resize_selection(factor: float) -> void:
 	for record_value in records:
 		if MapEditorSelection.scale_record(record_value as Dictionary, factor):
 			changed += 1
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("Resized %d item%s to %d%%%s." % [changed, "" if changed == 1 else "s",
 		int(round(factor * 100.0)),
 		"" if changed == records.size() else " (roads have a class, not a size)"])
@@ -1425,7 +1537,7 @@ func _toggle_hijack_selection() -> void:
 		else:
 			record["hijack"] = true
 			marked += 1
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("Hijack slots: %d marked, %d cleared." % [marked, cleared])
 	_refresh_status()
 
@@ -1529,7 +1641,8 @@ func _move_corner(world: Vector2) -> void:
 		return
 	corners[_held_corner] = [world.x, world.y]
 	_corner_target[field] = corners
-	_overlay.queue_redraw()
+	_document.touch()
+	_repaint()
 
 
 ## Undo and redo REPLACE the document dictionary rather than editing it in place, so any
@@ -1563,7 +1676,7 @@ func _rebind_after_history() -> void:
 func _set_corner_target(record: Dictionary) -> void:
 	_corner_target = record
 	_held_corner = -1
-	_overlay.queue_redraw()
+	_repaint()
 
 
 ## Free polygon: up to six corners, then Enter to close it. Kept separate from the farm and
@@ -1575,7 +1688,7 @@ func _add_poly_point(world: Vector2) -> void:
 			% AuthoredSpecialShapes.POLY_MAX_POINTS)
 		return
 	_poly_points.append([world.x, world.y])
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("%d/%d corners — Enter closes, Bksp steps back."
 		% [_poly_points.size(), AuthoredSpecialShapes.POLY_MAX_POINTS])
 
@@ -1597,7 +1710,7 @@ func _finish_poly() -> void:
 	var placed: Dictionary = items[items.size() - 1]
 	_poly_points = []
 	_set_corner_target(placed)
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("Shape placed — drag its corners to reshape.")
 
 
@@ -1651,7 +1764,7 @@ func _place_slot(world: Vector2) -> void:
 		tile_list.append(tile_id)
 		tile_list.sort()
 		settlement["tiles"] = tile_list
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("%s slot on %s (%d there)."
 		% [_slot_class.replace("_", " ").capitalize(), tile_id, pins.size()])
 
@@ -1704,7 +1817,7 @@ func _place_forest(world: Vector2) -> void:
 	settlement["next_id"] = next_id + 1
 	_cover_tiles_of(settlement, record["outline"] as Array)
 	_fabric.queue_redraw()
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("Planted a %s wood (%d in this settlement)." % [_forest_variant, forests.size()])
 
 
@@ -1726,23 +1839,13 @@ func _place_tree(world: Vector2) -> void:
 	var settlement := _ensure_settlement()
 	_document.begin_edit("plant tree")
 	settlement = _ensure_settlement()
-	var next_id := int(settlement.get("next_id", 1))
-	var trees_value: Variant = settlement.get("trees", [])
-	var trees: Array = trees_value if typeof(trees_value) == TYPE_ARRAY else []
-	var record := {
-		"id": "t:%s:%d" % [_settlement, next_id],
-		"position": [snappedf(world.x, 0.01), snappedf(world.y, 0.01)],
-		"kind": _tree_kind,
-	}
-	if _tree_kind == "mixed":
-		record["radius"] = TREE_CLUMP_RADIUS
-	trees.append(record)
-	settlement["trees"] = trees
-	settlement["next_id"] = next_id + 1
+	AuthoredMap.append_tree(settlement, _tree_kind, world,
+		TREE_CLUMP_RADIUS if _tree_kind == "mixed" else 0.0)
+	var count := AuthoredMap.tree_count(settlement)
 	_fabric.queue_redraw()
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("Planted %s (%d tree record%s)."
-		% [_tree_label(), trees.size(), "" if trees.size() == 1 else "s"])
+		% [_tree_label(), count, "" if count == 1 else "s"])
 
 
 func _tree_label() -> String:
@@ -1855,7 +1958,7 @@ func adjust_special_side(index: int, delta: float) -> void:
 	sides[index] = AuthoredSpecialShapes.clamp_side(float(sides[index]) + delta)
 	_corner_target["sides"] = sides
 	AuthoredSpecialShapes.rebuild(_corner_target)
-	_overlay.queue_redraw()
+	_repaint()
 	_set_status("%s = %d  (rebuilt from parameters — corner edits cleared)"
 		% [str(special_parameter_names()[index]), int(sides[index])])
 	_refresh_status()
@@ -1865,6 +1968,32 @@ func adjust_special_side(index: int, delta: float) -> void:
 ## turn a world layer on without one.
 func layers() -> MapEditorLayers:
 	return _layers
+
+
+## Cheap, lossless building-layout view. It changes only how the working document is
+## previewed; save output and hit-testing continue to use the full document.
+func fast_preview() -> bool:
+	return _fast_preview
+
+
+func set_fast_preview(value: bool) -> void:
+	if _fast_preview == value:
+		return
+	_fast_preview = value
+	if _fabric != null:
+		_fabric.queue_redraw()
+	if _fabric_ground != null:
+		_fabric_ground.queue_redraw()
+	_refresh_status()
+
+
+func toggle_fast_preview() -> bool:
+	set_fast_preview(not _fast_preview)
+	_set_status("Fast building layout: %s. %s" % [
+		"ON" if _fast_preview else "OFF",
+		"Trees are still saved; P restores full detail." if _fast_preview
+		else "Full tree and building detail is visible."])
+	return _fast_preview
 
 
 func shape_tool() -> MapEditorShapeTool:
@@ -1889,7 +2018,7 @@ func pick_form(value: String) -> void:
 
 func cycle_form(step: int) -> void:
 	_set_status("Form: %s" % _shape_tool.cycle_form(step))
-	_overlay.queue_redraw()
+	_repaint()
 	_refresh_status()
 
 
@@ -1944,6 +2073,27 @@ func selected_ids() -> Dictionary:
 	return out
 
 
+## Live selected records for the cheap screen-space highlight layer. The expensive fabric
+## preview deliberately does not know about selection anymore.
+func selected_records() -> Array:
+	var out: Array = []
+	for entry_value in _selection:
+		var entry: Dictionary = entry_value
+		var settlements: Dictionary = _document.data().get("settlements", {})
+		var settlement_value: Variant = settlements.get(str(entry.get("settlement", "")), {})
+		if typeof(settlement_value) != TYPE_DICTIONARY:
+			continue
+		var kind := str(entry.get("kind", ""))
+		var items_value: Variant = (settlement_value as Dictionary).get(kind, [])
+		if typeof(items_value) != TYPE_ARRAY:
+			continue
+		var items: Array = items_value
+		var index := int(entry.get("index", -1))
+		if index >= 0 and index < items.size() and typeof(items[index]) == TYPE_DICTIONARY:
+			out.append({"kind": kind, "record": items[index]})
+	return out
+
+
 func selection_size() -> int:
 	return _selection.size()
 
@@ -1976,7 +2126,7 @@ func set_tool(value: String) -> void:
 	_pending_hit = {}
 	_marquee_from = Vector2.INF
 	_marquee_to = Vector2.INF
-	_overlay.queue_redraw()
+	_repaint()
 	_tool = value
 	_panning = false
 	_refresh_status()
@@ -1996,11 +2146,11 @@ func set_road_class(value: String) -> void:
 
 
 func grid_shown() -> bool:
-	return _overlay != null and _overlay.show_grid
+	return _static_overlay != null and _static_overlay.show_grid
 
 
 func water_mask_shown() -> bool:
-	return _overlay != null and _overlay.show_water_mask
+	return _static_overlay != null and _static_overlay.show_water_mask
 
 
 ## Tiles carrying at least one NON-WATER deposit, with the hex ring to draw and a short
@@ -2210,7 +2360,7 @@ func convert_slots_to_zone(tile_id: String) -> String:
 		removed = ((slots[tile_id] as Dictionary).get("pins", []) as Array).size()
 		slots.erase(tile_id)
 		settlement["slots"] = slots
-	_overlay.queue_redraw()
+	_repaint()
 	return "%s: %d slot(s) became an industrial zone of %d corners." \
 		% [tile_id, removed, hull.size()]
 
@@ -2261,28 +2411,29 @@ func convert_focused_slots_to_zone() -> void:
 
 
 func toggle_deposit_marks() -> void:
-	if _overlay != null:
-		_overlay.show_deposit_marks = not _overlay.show_deposit_marks
+	if _static_overlay != null:
+		_static_overlay.show_deposit_marks = not _static_overlay.show_deposit_marks
+		_static_overlay.queue_redraw()
 		_set_status("Extraction resources %s (%d tile(s))."
-			% ["shown" if _overlay.show_deposit_marks else "hidden", deposit_tiles().size()])
+			% ["shown" if _static_overlay.show_deposit_marks else "hidden", deposit_tiles().size()])
 		_refresh_status()
 
 
 func deposit_marks_shown() -> bool:
-	return _overlay != null and _overlay.show_deposit_marks
+	return _static_overlay != null and _static_overlay.show_deposit_marks
 
 
 func toggle_water_mask() -> void:
-	if _overlay != null:
-		_overlay.show_water_mask = not _overlay.show_water_mask
-		_overlay.queue_redraw()
+	if _static_overlay != null:
+		_static_overlay.show_water_mask = not _static_overlay.show_water_mask
+		_static_overlay.queue_redraw()
 	_refresh_status()
 
 
 func toggle_grid() -> void:
-	if _overlay != null:
-		_overlay.show_grid = not _overlay.show_grid
-		_overlay.queue_redraw()
+	if _static_overlay != null:
+		_static_overlay.show_grid = not _static_overlay.show_grid
+		_static_overlay.queue_redraw()
 	_refresh_status()
 
 
@@ -2303,11 +2454,11 @@ func run_action(action: String) -> void:
 		"undo":
 			_set_status(_document.undo())
 			_rebind_after_history()
-			_overlay.queue_redraw()
+			_repaint()
 		"redo":
 			_set_status(_document.redo())
 			_rebind_after_history()
-			_overlay.queue_redraw()
+			_repaint()
 
 
 # ── Document ────────────────────────────────────────────────────────────────────
@@ -2344,7 +2495,7 @@ func _load_named(name: String) -> void:
 	_road_tool.abandon()
 	_trace_tool.cancel_trace()
 	_trace_tool.clear_dots()
-	_overlay.queue_redraw()
+	_repaint()
 	var counts := _document.counts()
 	_set_status("Opened '%s' — %d roads across %d settlement(s)."
 		% [name, counts.roads, counts.settlements])
@@ -2443,3 +2594,212 @@ func document() -> MapEditorDocument:
 
 func camera() -> Camera2D:
 	return _camera
+
+
+# ── Procedural region cheats ────────────────────────────────────────────────────
+
+## `enable|disable procedural <north|arin|vandel|capital|all>`, called by the debug
+## terminal through the "map_editor" group. Enabling cuts that city's share of the
+## whole-map import (`data/map_authored/procedural.json`) into the WORKING document as an
+## editable settlement — buildings as polygons, roads, parks, plazas; disabling removes
+## that settlement again. Both are ordinary edits: undoable, and on disk only after a save.
+## Returns the line the terminal prints.
+func procedural_region_command(verb: String, region: String) -> String:
+	if verb != "enable" and verb != "disable":
+		return "usage: enable|disable procedural <north|arin|vandel|capital|all>"
+	if not _ready_to_edit:
+		return "the editor is still building the world — try again in a moment"
+	if region == "all":
+		var lines := PackedStringArray()
+		for one in MapEditorRegionImport.REGIONS:
+			lines.append(procedural_region_command(verb, str(one)))
+		return "\n".join(lines)
+	if not MapEditorRegionImport.is_region(region):
+		return "usage: %s procedural <north|arin|vandel|capital|all>" % verb
+	var key: String = MapEditorRegionImport.settlement_key(region)
+	var settlements_value: Variant = _document.data().get("settlements", {})
+	var settlements: Dictionary = settlements_value if typeof(settlements_value) == TYPE_DICTIONARY else {}
+
+	if verb == "disable":
+		if not settlements.has(key):
+			return "procedural %s is not shown" % region
+		_document.begin_edit("hide procedural %s" % region)
+		(_document.data().get("settlements", {}) as Dictionary).erase(key)
+		_after_region_change()
+		return "procedural %s hidden — its records are out of the document" % region
+
+	if settlements.has(key):
+		return "procedural %s is already shown  ('disable procedural %s' removes it)" % [region, region]
+	var loaded: Dictionary = MapEditorRegionImport.load_source()
+	if loaded.has("problem"):
+		return str(loaded["problem"])
+	var centres := _land_tile_centres()
+	var covered: Dictionary = MapEditorRegionImport.covered_tiles(_document.data())
+	var partitioned: Dictionary = MapEditorRegionImport.partition(centres, covered)
+	if partitioned.is_empty():
+		return "could not split the map — a region anchor tile is missing from the terrain"
+	var tiles_of_region: Dictionary = MapEditorRegionImport.region_tiles(partitioned, region)
+	if tiles_of_region.is_empty():
+		return "nothing left near %s — every tile there is already authored" % region
+	var tree_template := MapEditorRegionImport.stoneshore_tree_template(_document.data(), centres)
+	var built: Dictionary = MapEditorRegionImport.build_settlement(
+		loaded["doc"] as Dictionary, region, tiles_of_region, covered,
+		_tile_id_at, centres, tree_template, _authored_forest_outlines())
+	if built.is_empty():
+		return "nothing to import near %s" % region
+	_document.begin_edit("show procedural %s" % region)
+	var live: Dictionary = _document.data()
+	var live_settlements: Dictionary = live.get("settlements", {}) as Dictionary
+	live_settlements[key] = built
+	live["settlements"] = live_settlements
+	_after_region_change()
+	focus_tile(str(MapEditorRegionImport.REGION_ANCHORS[region]), 0.35)
+	return ("procedural %s: %d building shapes, %d roads, %d parks, %d plazas, %d planted trees over %d tiles"
+		+ " — editable like anything else; 'disable procedural %s' removes it") % [region,
+		(built.get("specials", []) as Array).size(), (built.get("roads", []) as Array).size(),
+		(built.get("parks", []) as Array).size(), (built.get("plazas", []) as Array).size(),
+		AuthoredMap.tree_count(built), (built.get("tiles", []) as Array).size(), region]
+
+
+## `enable|disable procedural central buildings`: expose the refreshed Copperstown fabric
+## as one undoable, removable layer without replacing the roads already authored there.
+func procedural_central_buildings_command(verb: String) -> String:
+	if verb != "enable" and verb != "disable":
+		return "usage: enable|disable procedural central buildings"
+	if not _ready_to_edit:
+		return "the editor is still building the world — try again in a moment"
+	var key: String = MapEditorRegionImport.CENTRAL_BUILDINGS_KEY
+	var settlements_value: Variant = _document.data().get("settlements", {})
+	var settlements: Dictionary = settlements_value if typeof(settlements_value) == TYPE_DICTIONARY else {}
+	if verb == "disable":
+		if not settlements.has(key):
+			return "procedural central buildings are not shown"
+		_document.begin_edit("hide procedural central buildings")
+		(_document.data().get("settlements", {}) as Dictionary).erase(key)
+		_after_region_change()
+		return "procedural central buildings hidden — their records are out of the document"
+	if settlements.has(key):
+		return "procedural central buildings are already shown  ('disable procedural central buildings' removes them)"
+	var loaded: Dictionary = MapEditorRegionImport.load_source()
+	if loaded.has("problem"):
+		return str(loaded.problem)
+	var built := MapEditorRegionImport.build_central_buildings(
+		loaded.doc as Dictionary, _tile_id_at)
+	if built.is_empty():
+		return "no Copperstown building shapes were found in the procedural source"
+	_document.begin_edit("show procedural central buildings")
+	var live: Dictionary = _document.data()
+	var live_settlements: Dictionary = live.get("settlements", {}) as Dictionary
+	live_settlements[key] = built
+	live["settlements"] = live_settlements
+	_after_region_change()
+	focus_tile(MapEditorRegionImport.CENTRAL_BUILDING_FOCUS_TILE, 0.55)
+	return ("procedural central buildings: %d editable shapes over %d Copperstown tiles"
+		+ " — 'disable procedural central buildings' removes them") % [
+		(built.get("specials", []) as Array).size(), (built.get("tiles", []) as Array).size()]
+
+
+## One-time migration for documents saved before the road-edge planting pass existed.
+func apply_procedural_roadside_trees() -> String:
+	if not _ready_to_edit:
+		return "the editor is still building the world — try again in a moment"
+	var candidate := AuthoredMap.canonical(_document.data())
+	var result := MapEditorRegionImport.apply_roadside_to_existing(
+		candidate, _land_tile_centres(), _tile_id_at)
+	if int(result.get("total", 0)) > 0:
+		var live := _document.begin_edit("apply North/Stoneshore roadside trees")
+		live.clear()
+		live.merge(candidate, true)
+	_after_region_change()
+	var counts: Dictionary = result.get("settlements", {})
+	var names := counts.keys()
+	names.sort()
+	var parts := PackedStringArray()
+	for key_value in names:
+		parts.append("%s %d" % [str(key_value), int(counts[key_value])])
+	return "roadside trees: %d planted%s" % [int(result.get("total", 0)),
+		" (%s)" % ", ".join(parts) if not parts.is_empty() else ""]
+
+
+## Backfill the Stoneshore planting treatment into generated settlements that predate the
+## region import's tree pass. Kept as a callable editor operation so the migration tool and a
+## designer can use the exact same working document, terrain lookup and undo path.
+func apply_procedural_tree_pattern(region: String = "all") -> String:
+	if not _ready_to_edit:
+		return "the editor is still building the world — try again in a moment"
+	var regions: Array = MapEditorRegionImport.REGIONS.duplicate()
+	if region != "all":
+		if not MapEditorRegionImport.is_region(region):
+			return "usage: apply tree pattern <north|arin|vandel|capital|all>"
+		regions = [region]
+	# Preflight on an independent canonical copy. A second run that finds every exact point
+	# already present stays a true no-op: no empty undo entry and no dirty document.
+	var candidate := AuthoredMap.canonical(_document.data())
+	var result := MapEditorRegionImport.apply_pattern_to_existing(
+		candidate, regions, _land_tile_centres(), _tile_id_at)
+	if int(result.get("total", 0)) > 0:
+		var live := _document.begin_edit("apply Stoneshore tree pattern to %s" % region)
+		live.clear()
+		live.merge(candidate, true)
+	_after_region_change()
+	var counts: Dictionary = result.get("regions", {})
+	var parts := PackedStringArray()
+	for one in regions:
+		parts.append("%s %d" % [str(one), int(counts.get(str(one), 0))])
+	return "Stoneshore tree pattern: %d planted (%s)" % [
+		int(result.get("total", 0)), ", ".join(parts)]
+
+
+## Existing authored woods are keep-outs for the Stoneshore planting template. Without this,
+## a generated fringe can put decorative specimens straight through a closed canopy that was
+## imported earlier and stored in another settlement.
+func _authored_forest_outlines() -> Array:
+	var out: Array = []
+	var settlements_value: Variant = _document.data().get("settlements", {})
+	if typeof(settlements_value) != TYPE_DICTIONARY:
+		return out
+	for settlement_value in (settlements_value as Dictionary).values():
+		if typeof(settlement_value) != TYPE_DICTIONARY:
+			continue
+		for area_value in (settlement_value as Dictionary).get("forests", []):
+			if typeof(area_value) == TYPE_DICTIONARY:
+				out.append((area_value as Dictionary).get("outline", []))
+	return out
+
+
+func _after_region_change() -> void:
+	_repaint()
+	_refresh_status()
+
+
+## World-space centres of every LAND tile, {tile_id: Vector2} — the region partition's
+## input. Sea and deep-sea tiles are out: the split is of the LANDMAP.
+func _land_tile_centres() -> Dictionary:
+	var terrain := get_tree().get_first_node_in_group("hex_map")
+	if terrain == null:
+		return {}
+	var out: Dictionary = {}
+	var tiles: Dictionary = terrain.get("tiles")
+	for coord in tiles.keys():
+		var tile: Dictionary = tiles[coord]
+		var kind := str(tile.get("type", ""))
+		if kind == "" or kind == "sea" or kind == "deep_sea":
+			continue
+		var tile_id := str(tile.get("id", ""))
+		if tile_id == "":
+			continue
+		out[tile_id] = terrain.call("map_to_local",
+			terrain.call("map_coord_for_tile_coord", coord)) as Vector2
+	return out
+
+
+## The tile id under a world point, or "" — bound into the region importer as its anchor
+## test, and shaped like `_tiles_under` for a single point.
+func _tile_id_at(world: Vector2) -> String:
+	var terrain := get_tree().get_first_node_in_group("hex_map")
+	if terrain == null:
+		return ""
+	var tiles: Dictionary = terrain.get("tiles")
+	var coord: Vector2i = terrain.call("tile_coord_for_map_coord",
+		terrain.call("local_to_map", world))
+	return str((tiles[coord] as Dictionary).get("id", "")) if tiles.has(coord) else ""

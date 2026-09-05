@@ -812,6 +812,18 @@ func is_player_owned(building: Dictionary) -> bool:
 	# player's to pay for. Buildings default to the local player when owner is unset.
 	return str(building.get("owner", LOCAL_PLAYER)) == LOCAL_PLAYER
 
+## The owner a wood standing on the land itself carries — no company holds it.
+const LAND_OWNER := "tile_data"
+
+## A wood that belongs to the LAND rather than to a company. Every authored wood the start
+## layout does not already cover is seeded as one of these, and there is no company to buy it
+## from — so felling one is clearing ground, not taking someone's property, and it is allowed
+## (owner, 2026-08-29: all forests should be demolishable). A wood a COMPANY owns still has to
+## be bought first, exactly like any other building of theirs.
+func is_land_owned_wood(building: Dictionary) -> bool:
+	return str(building.get("owner", LOCAL_PLAYER)) == LAND_OWNER \
+		and ForestFootprint.FOREST_BUILDING_IDS.has(str(building.get("building_id", "")))
+
 func add_building(
 	building_id: String,
 	recipe_id: String,
@@ -1916,7 +1928,7 @@ func demolish_turns_remaining(instance_id: String) -> int:
 func start_demolish(instance_id: String) -> Dictionary:
 	if not buildings.has(instance_id):
 		return {"ok": false, "reason": "No such building."}
-	if not is_player_owned(buildings[instance_id]):
+	if not is_player_owned(buildings[instance_id]) and not is_land_owned_wood(buildings[instance_id]):
 		return {"ok": false, "reason": "You don't own this building."}
 	if demolish_queue.has(instance_id):
 		return {"ok": false, "reason": "Already demolishing."}
@@ -6501,6 +6513,27 @@ func set_building_tab_mode(instance_id: String, mode: String) -> void:
 
 func building_tab_debt(instance_id: String) -> float:
 	return float((building_tabs.get(instance_id, {}) as Dictionary).get("accrued", 0.0))
+
+
+## What a building's tab actually takes each turn, and for how many more turns — the pair the
+## detail panel shows, because "you owe £900" tells a player nothing about whether they can
+## afford it, while "£75 a turn for 12 turns" is the thing they budget against.
+##
+## Inside the interest-free window nothing is repaid yet, so the schedule quoted is the one it
+## WILL run to (the accrued total over TAB_SLICES) and `starts_in` counts the turns until the
+## first slice. Once repayment begins the slice is constant: each turn takes accrued/slices_left
+## and decrements both, which leaves the quotient where it was.
+func building_tab_repayment(instance_id: String) -> Dictionary:
+	var tab: Dictionary = building_tabs.get(instance_id, {})
+	var accrued := float(tab.get("accrued", 0.0))
+	if tab.is_empty() or accrued <= 0.0:
+		return {"accrued": 0.0, "per_turn": 0.0, "turns_left": 0, "starts_in": 0}
+	var slices := int(tab.get("slices_left", 0))
+	if slices > 0:
+		return {"accrued": accrued, "per_turn": accrued / float(slices),
+			"turns_left": slices, "starts_in": 0}
+	return {"accrued": accrued, "per_turn": accrued / float(TAB_SLICES),
+		"turns_left": TAB_SLICES, "starts_in": int(tab.get("turns_left", 0))}
 
 
 ## Everything the player still owes across every building tab — the money panel's row.

@@ -109,6 +109,54 @@ func _ready() -> void:
 	await get_tree().process_frame
 	_check("Q zooms out", camera.zoom.x < key_zoom_from)
 
+	# TRACKPAD. A laptop never sends the wheel events every zoom check above relies on: macOS
+	# reports a pinch as a magnify gesture and a two-finger scroll as a pan gesture, so until
+	# these were handled the editor simply could not be zoomed without a mouse.
+	var pinch_from := camera.zoom.x
+	await _pinch(Vector2(700, 400), 1.1, 3)
+	_check("a trackpad pinch zooms in", camera.zoom.x > pinch_from)
+	await _pinch(Vector2(700, 400), 0.9, 3)
+	_check("a reverse pinch zooms out", camera.zoom.x < pinch_from + 0.0001)
+
+	# Pinch is anchored on the fingers, exactly as the wheel is on the cursor.
+	var pinch_probe := Vector2(980, 560)
+	var pinch_zoom_before := camera.zoom.x
+	var pinch_pos_before := camera.position
+	var pinch_world_before: Vector2 = _editor.call("_world_at", pinch_probe)
+	await _pinch(pinch_probe, 1.12, 3)
+	var pinch_drift: float = pinch_world_before.distance_to(_editor.call("_world_at", pinch_probe))
+	_check("a pinch stays anchored where the fingers are (%.1f u drift; zoom %.3f -> %.3f, camera moved %.1f u)"
+		% [pinch_drift, pinch_zoom_before, camera.zoom.x,
+			pinch_pos_before.distance_to(camera.position)],
+		pinch_drift < 1.0)
+
+	# Two-finger scroll pans; the same gesture with Ctrl held zooms, which is both the
+	# convention and how a Windows precision trackpad reports a pinch.
+	var scroll_from := camera.position
+	await _pan_gesture(Vector2(700, 400), Vector2(0, 4), false, 3)
+	_check("two-finger scroll pans the view (%.1f u)" % scroll_from.distance_to(camera.position),
+		camera.position != scroll_from)
+	# From a middle zoom, so neither direction is testing against a limit.
+	_editor.call("_zoom_by", 0.9 / camera.zoom.x)
+	await get_tree().process_frame
+	var ctrl_zoom_from := camera.zoom.x
+	await _pan_gesture(Vector2(700, 400), Vector2(0, -4), true, 3)
+	_check("ctrl and two-finger scroll zooms in (%.3f -> %.3f)" % [ctrl_zoom_from, camera.zoom.x],
+		camera.zoom.x > ctrl_zoom_from)
+	var ctrl_zoomed_in := camera.zoom.x
+	await _pan_gesture(Vector2(700, 400), Vector2(0, 4), true, 6)
+	_check("ctrl and two-finger scroll zooms back out (%.3f -> %.3f)"
+		% [ctrl_zoomed_in, camera.zoom.x], camera.zoom.x < ctrl_zoomed_in)
+
+	# A gesture must not author anything, whatever tool is loaded — a pinch while the pen is
+	# selected is someone looking closer, not drawing.
+	_editor.call("set_tool", "road")
+	var gesture_roads := _road_count()
+	await _pinch(Vector2(700, 400), 1.1, 2)
+	await _pan_gesture(Vector2(700, 400), Vector2(3, 3), false, 2)
+	_check("trackpad gestures author nothing", _road_count() == gesture_roads)
+	_editor.call("set_tool", "pan")
+
 	# 3. The pen draws when selected.
 	_editor.call("set_tool", "road")
 	_check("the pen can be selected", str(_editor.call("current_tool")) == "road")
@@ -1035,6 +1083,12 @@ func _world_of() -> Node:
 func _any_world_input_alive(node: Node) -> bool:
 	if node == null:
 		return false
+	# The debug terminal is DELIBERATELY left listening (map_editor._silence_world_input): it
+	# carries the editor's own cheats — `enable procedural <region>` — and it only acts when
+	# someone opens it with the backtick key. Everything else in the world must still be deaf.
+	var script: Variant = node.get_script()
+	if script != null and str(script.resource_path).ends_with("debug_terminal.gd"):
+		return false
 	if node.is_processing_input() or node.is_processing_unhandled_input():
 		return true
 	for child in node.get_children():
@@ -1283,6 +1337,27 @@ func _wheel(button: MouseButton, at: Vector2, times: int) -> void:
 		event.button_index = button
 		event.pressed = true
 		event.position = at
+		Input.parse_input_event(event)
+		await get_tree().process_frame
+
+
+## A trackpad pinch: a stream of small relative factors, which is how macOS reports one.
+func _pinch(at: Vector2, factor: float, times: int) -> void:
+	for _i in times:
+		var event := InputEventMagnifyGesture.new()
+		event.position = at
+		event.factor = factor
+		Input.parse_input_event(event)
+		await get_tree().process_frame
+
+
+## A trackpad two-finger scroll, optionally with Ctrl held for the zoom modifier.
+func _pan_gesture(at: Vector2, delta: Vector2, ctrl: bool, times: int) -> void:
+	for _i in times:
+		var event := InputEventPanGesture.new()
+		event.position = at
+		event.delta = delta
+		event.ctrl_pressed = ctrl
 		Input.parse_input_event(event)
 		await get_tree().process_frame
 

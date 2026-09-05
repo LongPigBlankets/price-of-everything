@@ -696,13 +696,23 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	var offshore := str(bd.get("internal_name", "")).to_lower().begins_with("offshore")
 	if offshore:
 		placed = _place_offshore(coord, area, placed_here)
+	# HIJACK FIRST (owner, 2026-08-27). On an authored tile a stamped industry takes over a
+	# decorative mass the designer marked as a hijack slot (J in the editor) instead of being
+	# packed into whatever ground is left. The mass was drawn off the street by hand, so the
+	# building inherits a footprint that can never straddle a carriageway. A busy tile runs
+	# out of marks before it runs out of buildings; everything below is the fallback.
+	elif use_stamp and AuthoredMap.is_active() and AuthoredMap.covers(tile_id):
+		placed = _claim_hijack_mass(tile_id, coord, area)
+		if _lp_on:
+			_lp_add("hijack_claim", Time.get_ticks_usec() - _lpt)
+			_lpt = Time.get_ticks_usec()
 	# Extraction normally seeks a tile edge and farms own a field, so both skip the block
 	# grid. An AUTHORED SLOT outranks that: the designer said where this building goes, and
 	# a mine that ignored its slot to go and sit in a corner would make the tool a
 	# suggestion. Farms still opt out — their footprint is an authored POLYGON, which is a
 	# different mechanism (not yet built).
-	elif (not is_edge or _has_authored_slots(tile_id)) and cat != "farm" \
-			and _use_block_mode(tile_id, coord):
+	if placed.is_empty() and not offshore and (not is_edge or _has_authored_slots(tile_id)) \
+			and cat != "farm" and _use_block_mode(tile_id, coord):
 		var tmpl := _ensure_block_template(tile_id, coord)
 		if not tmpl.is_empty():
 			placed = _claim_slot(tmpl, size_units, coord, tile_id, placed_here, iname_lot)
@@ -760,7 +770,15 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	# the final cropped footprint, rather than per-slot: a slot box is up to 84 u and the
 	# building inside it may be 50, so evicting by the box demolished terraces the building
 	# never touched.
-	_evict_fabric_under(tile_id, placed.verts)
+	#
+	# A HIJACKED mass is not demolished at all: the stamp IS the mass now, drawn over it on
+	# the identical footprint in the company's colour. Evicting by polygon would also take the
+	# terraces sharing its party walls (any sliver of overlap counts), for nothing gained.
+	var hijack_id := str(placed.get("hijack_id", ""))
+	if hijack_id == "":
+		_evict_fabric_under(tile_id, placed.verts)
+	else:
+		_hijacked_masses[hijack_id] = instance_id
 	var verts: PackedVector2Array = placed.verts
 	# Farms carry BOTH looks baked once (clipped to the — possibly hex-cut —
 	# field): the classic 45° green hatch and the ink-mode parcel fabric
@@ -794,6 +812,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		"iname": iname,
 		"size_units": size_units,
 		"via": str(placed.get("via", "block" if not offshore else "offshore")),
+		"hijack_id": hijack_id,
 		"shrink": float(placed.get("shrink", 1.0)),
 		"diag": placed.get("diag", {}),
 		"center_rel": placed.center_rel,
@@ -1011,7 +1030,82 @@ func _append_local_poly(out: Array, poly: PackedVector2Array, record: Dictionary
 	for v in poly:
 		moved.append(v + shift)
 	out.append({"id": str(record.get("id", "")), "poly": moved,
-		"sacrificial": bool(record.get("sacrificial", false))})
+		"sacrificial": bool(record.get("sacrificial", false)),
+		"hijack": bool(record.get("hijack", false)),
+		"kind": str(record.get("kind", "mass"))})
+
+
+## The designer's answer to "where does this building go": an unclaimed decorative mass
+## marked as a hijack slot on this tile, as a placement record — or {} when the tile has
+## none left. Of the candidates, the one whose area is closest to the building's own is
+## taken, ties by id, so a re-derivation lands on the same mass. A mass any standing
+## footprint already overlaps is skipped rather than shared, and a ring (a courtyard band)
+## is never a factory floor.
+func _claim_hijack_mass(tile_id: String, coord: Vector2i, area: float) -> Dictionary:
+	var pool: Array = _hijack_candidates(tile_id, coord)
+	if pool.is_empty():
+		return {}
+	# Closest area first, ties by id. Sorted per claim on a copy: the pool is a handful of
+	# masses per tile, and the building's own area is what decides the order.
+	var ranked: Array = pool.duplicate()
+	ranked.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var da := absf(float(a.area) - area)
+		var db := absf(float(b.area) - area)
+		if is_equal_approx(da, db):
+			return str(a.id) < str(b.id)
+		return da < db)
+	var standing: Array = []
+	for p in _placements:
+		if str(p.tile_id) == tile_id:
+			standing.append(p.verts as PackedVector2Array)
+	for cand_value in ranked:
+		var cand: Dictionary = cand_value
+		var mass_id := str(cand.id)
+		if _hijacked_masses.has(mass_id):
+			continue
+		var poly: PackedVector2Array = cand.poly
+		var taken := false
+		for verts in standing:
+			if not Geometry2D.intersect_polygons(poly, verts as PackedVector2Array).is_empty():
+				taken = true
+				break
+		if taken:
+			continue
+		var centre: Vector2 = cand.centre
+		var local := PackedVector2Array()
+		for v in poly:
+			local.append(v - centre)
+		var out := _finalize(coord, centre - _tile_center_world_pos(coord), local, _aabb_half(local))
+		out["via"] = "hijack"
+		out["hijack_id"] = mass_id
+		return out
+	return {}
+
+
+## The hijack-marked masses that stand ON this tile — centroid inside the hex — with their
+## area and centroid precomputed. Built once per tile: the settlement's record list is the
+## whole town (Stoneshore's runs to ~2,000 specials) and the document never changes during a
+## run, so a per-placement scan of it would have made a dense tile's load crawl.
+var _hijack_pool: Dictionary = {}
+func _hijack_candidates(tile_id: String, coord: Vector2i) -> Array:
+	if _hijack_pool.has(tile_id):
+		return _hijack_pool[tile_id]
+	var out: Array = []
+	var center := _tile_center_world_pos(coord)
+	for entry_value in _authored_decor_world(tile_id):
+		var entry: Dictionary = entry_value
+		if not bool(entry.get("hijack", false)) or str(entry.get("kind", "")) == "ring":
+			continue
+		var mass_id := str(entry.get("id", ""))
+		var poly: PackedVector2Array = entry["poly"]
+		if mass_id == "" or poly.size() < 3:
+			continue
+		var centre := _poly_centroid(poly)
+		if not _in_tile_hex(centre, center):
+			continue
+		out.append({"id": mass_id, "poly": poly, "centre": centre, "area": absf(_poly_area(poly))})
+	_hijack_pool[tile_id] = out
+	return out
 
 
 ## Does this tile carry hand-placed slots?
@@ -1580,26 +1674,80 @@ func _pocket_template(pocket: Dictionary, land: PackedByteArray, segs: Array, ri
 		claimed.append(false)
 	return {"angle": angle, "lots": lots, "claimed": claimed, "segs": segs}
 
-func _block_road_segments(coord: Vector2i) -> Array:
+## `include_authored` is false for the road-settle conflict test only: authored strokes are
+## static, and stamps front them within ART_ROAD_PAD, so counting them there would re-pack
+## every frontage building on every road settle. They belong in the MASK (placement keeps
+## clear of them), not in the "did a new road land on this building" question.
+func _block_road_segments(coord: Vector2i, include_authored: bool = true) -> Array:
 	var out: Array = []
-	var net := RoadNetwork.instance()
-	if net == null:
-		return out
 	var center := _tile_center_world_pos(coord)
 	var limx := 270.0 + ROAD_REACH
 	var limy := 240.0 + ROAD_REACH
-	for edge_id in net.edges_on_tile(coord):
-		var edge: Dictionary = net.edges.get(edge_id, {})
-		if str(edge.get("state", "")) != RoadNetwork.STATE_BUILT:
-			continue
-		var geo: PackedVector2Array = edge.get("geometry", PackedVector2Array())
-		for i in range(geo.size() - 1):
-			var a := geo[i] - center
-			var b := geo[i + 1] - center
-			if (absf(a.x) > limx and absf(b.x) > limx) or (absf(a.y) > limy and absf(b.y) > limy):
+	var net := RoadNetwork.instance()
+	if net != null:
+		for edge_id in net.edges_on_tile(coord):
+			var edge: Dictionary = net.edges.get(edge_id, {})
+			if str(edge.get("state", "")) != RoadNetwork.STATE_BUILT:
 				continue
-			out.append([a, b])
+			var geo: PackedVector2Array = edge.get("geometry", PackedVector2Array())
+			for i in range(geo.size() - 1):
+				var a := geo[i] - center
+				var b := geo[i + 1] - center
+				if (absf(a.x) > limx and absf(b.x) > limx) or (absf(a.y) > limy and absf(b.y) > limy):
+					continue
+				out.append([a, b])
+	# The AUTHORED carriageways too. On a hand-drawn tile the street the player sees is the
+	# document's stroke, not the network's geometry, so a footprint cleared only against the
+	# latter can sit squarely across the former — which is exactly where the stamps were
+	# found standing. Only the strokes the renderer DRAWS count (every tile they touch
+	# road-flagged — AuthoredMap.road_visible): a street the player cannot see must not fence
+	# off ground, and when a flag later reveals one, the road-settle resnap re-packs whatever
+	# stands on it, the same way it does for a network road.
+	var tile_id := _tile_id_for_coord(coord) if include_authored else ""
+	if tile_id != "" and AuthoredMap.is_active() and AuthoredMap.covers(tile_id):
+		var flagged := _road_flagged_tiles()
+		for road_value in (AuthoredMap.settlement_for_tile(tile_id).get("roads", []) as Array):
+			if typeof(road_value) != TYPE_DICTIONARY:
+				continue
+			var road: Dictionary = road_value
+			var touches: Array = road.get("tiles", []) as Array
+			if not touches.is_empty() and not touches.has(tile_id):
+				continue
+			if not AuthoredMap.road_visible(road, flagged):
+				continue
+			var pts: Array = road.get("points", []) as Array
+			for i in range(pts.size() - 1):
+				var pa: Array = pts[i] as Array
+				var pb: Array = pts[i + 1] as Array
+				if pa == null or pb == null or pa.size() < 2 or pb.size() < 2:
+					continue
+				var a := Vector2(float(pa[0]), float(pa[1])) - center
+				var b := Vector2(float(pb[0]), float(pb[1])) - center
+				if (absf(a.x) > limx and absf(b.x) > limx) or (absf(a.y) > limy and absf(b.y) > limy):
+					continue
+				out.append([a, b])
 	return out
+
+## `{tile_id: true}` for every tile carrying road infrastructure — the same set the authored
+## road renderer builds (authored_road_visuals._flagged_tile_ids), restated here because the
+## clearance rule and the drawing rule must agree on which strokes exist.
+func _road_flagged_tiles() -> Dictionary:
+	var flagged: Dictionary = {}
+	if terrain_layer == null:
+		return flagged
+	for coord in terrain_layer.tiles:
+		var tile: Dictionary = terrain_layer.tiles[coord]
+		if (tile.get("infrastructure_present", []) as Array).has("roads"):
+			flagged[str(tile.get("id", ""))] = true
+	return flagged
+
+## The tile id under a coord, or "" off the map — the terrain layer keys its tiles by coord
+## and carries the id inside the record.
+func _tile_id_for_coord(coord: Vector2i) -> String:
+	if terrain_layer == null:
+		return ""
+	var tile: Variant = terrain_layer.tiles.get(coord, null)
+	return str((tile as Dictionary).get("id", "")) if typeof(tile) == TYPE_DICTIONARY else ""
 
 func _in_tile_hex(p: Vector2, center: Vector2) -> bool:
 	var r := p - center
@@ -1846,7 +1994,7 @@ func relayout_tile(tile_id: String) -> void:
 	# the tile's caches so the road merges with the mask + farm lanes. (Stops the "buildings shuffle on every
 	# road" churn — they only move when a road truly lands on them.)
 	if terrain_layer != null:
-		var rsegs := _block_road_segments(terrain_layer.id_to_coord(tile_id))
+		var rsegs := _block_road_segments(terrain_layer.id_to_coord(tile_id), false)
 		var conflict := false
 		for p in _placements:
 			if str(p.tile_id) == tile_id and str(p.cat) != "farm" and _placement_hits_road(p, rsegs):
@@ -1922,6 +2070,14 @@ func relayout_tile(tile_id: String) -> void:
 		var claimed: Array = (_tile_block_templates[tile_id] as Dictionary).get("claimed", [])
 		for i in claimed.size():
 			claimed[i] = false
+	# The survivors re-run placement, so the masses they had hijacked go back in the pool
+	# first — otherwise each would find its own mass already spoken for and fall back.
+	var replaying: Dictionary = {}
+	for s in src:
+		replaying[str(s.iid)] = true
+	for mass_id in _hijacked_masses.keys():
+		if replaying.has(str(_hijacked_masses[mass_id])):
+			_hijacked_masses.erase(mass_id)
 	for s in src:
 		_place_building(str(s.iid), str(s.bid), str(s.tid), s.coord as Vector2i)
 	_mark_subcomp_dirty(tile_id)   # re-derive ancillaries against the now-settled road
@@ -4272,6 +4428,12 @@ var _ink_art_iid: Dictionary = {}   # instance_id -> true (suppress procedural s
 ## Decorative masses a placement demolished (mass_id -> true). Mirrors state held by
 ## AuthoredFabricVisuals; see _evict_fabric_under and _apply_evicted_masses.
 var _evicted_masses: Dictionary = {}
+## Decorative masses a stamped building has HIJACKED (mass_id -> instance_id): the marks the
+## designer set with J in the editor, honoured by _claim_hijack_mass. A hijacked mass stays in
+## the fabric — the stamp draws over it on the same footprint — so unlike _evicted_masses
+## nothing is re-told to the fabric. This is only the claim register: two buildings never
+## take one mass, and a claim survives the start-layout bake with the placement it belongs to.
+var _hijacked_masses: Dictionary = {}
 
 ## P3b (ink farms): subdivide the DRAWN field into an oriented seeded grid of
 ## rect/trapezoid parcels clipped at the field boundary; each parcel is inset
@@ -5120,7 +5282,7 @@ const EXPORTED_FIELDS := [
 	"_tile_block_mode", "_tile_block_templates",
 	"_block_masses", "_massed_by_tile",
 	"_farm_render", "_farm_lanes", "_farm_bridges", "_farm_promote", "_farm_cluster_rings",
-	"_ink_art_iid", "_evicted_masses",
+	"_ink_art_iid", "_evicted_masses", "_hijacked_masses",
 ]
 
 ## Instance ids the baked layout brought with it: on_building_placed skips these, because the
@@ -5229,6 +5391,8 @@ func clear_all() -> void:
 	_farm_promote.clear()
 	_farm_cluster_rings.clear()
 	_evicted_masses.clear()
+	_hijacked_masses.clear()
+	_hijack_pool.clear()
 	footprint_version += 1
 	_queue_footprint_change_notification()
 	queue_redraw()
@@ -5243,6 +5407,9 @@ func remove_instance(instance_id: String) -> void:
 	_placements.remove_at(idx)
 	_placement_index.erase(instance_id)
 	_farm_render.erase(instance_id)   # a demolished farm's cached render shape
+	for mass_id in _hijacked_masses.keys():
+		if str(_hijacked_masses[mass_id]) == instance_id:
+			_hijacked_masses.erase(mass_id)   # the mass goes back in the pool
 	for iid in _placement_index:
 		if _placement_index[iid] > idx:
 			_placement_index[iid] -= 1
@@ -5974,10 +6141,15 @@ func _draw_stamp(placement: Dictionary, verts: PackedVector2Array) -> void:
 	draw_colored_polygon(_offset_pts(verts, FabricPainter.SHADOW_OFFSET), MapMidcenturyStyle.SHADOW)
 	draw_colored_polygon(verts, top)
 	draw_polyline(_closed(verts), MapMidcenturyStyle.INK, 1.0, true)
-	# Chimneys. Seen from directly above a stack is a disc, so that is what it is: the
-	# building's own colour darkened (it is part of the building, not a separate object)
-	# under the same ink outline everything else on this layer carries. The smoke itself is
-	# NOT drawn here — it animates, and this canvas only repaints when the view settles.
+	_draw_stacks(placement, verts, top)
+
+
+## Chimneys. Seen from directly above a stack is a disc, so that is what it is: the
+## building's own colour darkened (it is part of the building, not a separate object) under
+## the same ink outline everything else on this layer carries. The smoke itself is NOT drawn
+## here — it animates, and this canvas only repaints when the view settles.
+##
+func _draw_stacks(placement: Dictionary, verts: PackedVector2Array, top: Color) -> void:
 	if not DRAW_CHIMNEYS:
 		return
 	for sp_value in _stack_points(str(placement.get("iname", "")),

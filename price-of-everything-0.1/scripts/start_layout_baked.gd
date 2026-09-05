@@ -33,7 +33,7 @@ const REBAKE_HINT := "rerun tools/bake_start_layout.tscn"
 ## Bumped when placement itself changes — the packer, the masks, the block grid, the
 ## subcomponent build, or the shape of the exported state. An old file is then refused rather
 ## than believed, which is the difference between a slow load and a wrong map.
-const BAKE_VERSION := 1
+const BAKE_VERSION := 2   # 2: the hijacked-mass claim register rides with the placements
 
 ## Files that decide WHERE a building can stand. A change to any of them invalidates the
 ## whole bake. (start_buildings.json / ports.csv are deliberately NOT here: they decide WHAT

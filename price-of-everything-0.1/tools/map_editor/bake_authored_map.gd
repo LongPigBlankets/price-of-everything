@@ -103,15 +103,25 @@ func _tile_centres(settlements: Dictionary) -> Dictionary:
 		# Offering all of them costs nothing in output: _bake_all already skips a tile whose
 		# layers all come back empty, so the manifest still holds exactly the tiles with
 		# content on them. It costs one records_for_rect per world tile at bake time.
-		# Straight off the terrain's own cells, which is the coordinate authority the plan
-		# names (docs/map-editor-plan.md §2) and is already in the scene file, so this still
-		# needs nothing built.
+		# Start with the terrain's stored cells, then supplement them from the complete catalog.
+		# A few legitimate bottom-row land cells (currently tile_3_19 and tile_16_19) are in
+		# tile_properties.csv but not serialized into the static TileMap layer. map_to_local is
+		# still the coordinate authority for both sets; it does not require a painted cell.
 		for cell_value: Variant in terrain.call("get_used_cells"):
 			var map_coord: Vector2i = cell_value
 			var coord: Vector2i = terrain.call("tile_coord_for_map_coord", map_coord)
 			var tile_id := "tile_%d_%d" % [coord.x + 1, coord.y + 1]
 			if out.has(tile_id):
 				continue
+			out[tile_id] = terrain.call("map_to_local", map_coord)
+		for tile_value in Catalog.all_tile_ids():
+			var tile_id := str(tile_value)
+			if out.has(tile_id):
+				continue
+			var coord: Vector2i = terrain.call("id_to_coord", tile_id)
+			if coord == Vector2i(-1, -1):
+				continue
+			var map_coord: Vector2i = terrain.call("map_coord_for_tile_coord", coord)
 			out[tile_id] = terrain.call("map_to_local", map_coord)
 	scene.free()
 	return out

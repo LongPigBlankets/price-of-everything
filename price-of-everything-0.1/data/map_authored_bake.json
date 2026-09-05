@@ -2,12 +2,23 @@
   "bake_scale": 1.33333333333333,
   "document": "stoneshore-procedural",
   "hills_hash": "9b5a8a106b53a5bffc3cafe73e0cf2c4",
-  "source_md5": "673100d876155cd2b5831dd144594231",
+  "source_md5": "01b44c0a31d1926d0a4c975607fbb474",
   "texture_size": [
     540,
     640
   ],
   "tiles": {
+    "tile_10_1": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_10_1.png"
+      },
+      "rect": [
+        4522.5,
+        1200.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_10_10": {
       "layers": {
         "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_10_10.png",
@@ -44,6 +55,76 @@
         480.0
       ]
     },
+    "tile_10_13": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_10_13.png"
+      },
+      "rect": [
+        4522.5,
+        6960.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_10_14": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_10_14.png"
+      },
+      "rect": [
+        4522.5,
+        7440.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_10_15": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_10_15.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_10_15.png"
+      },
+      "rect": [
+        4522.5,
+        7920.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_10_16": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_10_16.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_10_16.png"
+      },
+      "rect": [
+        4522.5,
+        8400.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_10_17": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_10_17.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_10_17.png"
+      },
+      "rect": [
+        4522.5,
+        8880.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_10_18": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_10_18.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_10_18.png"
+      },
+      "rect": [
+        4522.5,
+        9360.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_10_2": {
       "layers": {
         "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_10_2.png",
@@ -58,6 +139,7 @@
     },
     "tile_10_3": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_10_3.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_10_3.png"
       },
       "rect": [
@@ -69,6 +151,7 @@
     },
     "tile_10_4": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_10_4.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_10_4.png"
       },
       "rect": [
@@ -128,6 +211,7 @@
     },
     "tile_10_9": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_10_9.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_10_9.png"
       },
       "rect": [
@@ -151,6 +235,7 @@
     },
     "tile_11_11": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_11_11.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_11_11.png"
       },
       "rect": [
@@ -174,6 +259,7 @@
     },
     "tile_11_13": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_11_13.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_11_13.png"
       },
       "rect": [
@@ -183,9 +269,70 @@
         480.0
       ]
     },
+    "tile_11_15": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_11_15.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_11_15.png"
+      },
+      "rect": [
+        4927.5,
+        7680.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_11_16": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_11_16.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_11_16.png"
+      },
+      "rect": [
+        4927.5,
+        8160.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_11_17": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_11_17.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_11_17.png"
+      },
+      "rect": [
+        4927.5,
+        8640.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_11_18": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_11_18.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_11_18.png"
+      },
+      "rect": [
+        4927.5,
+        9120.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_11_19": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_11_19.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_11_19.png"
+      },
+      "rect": [
+        4927.5,
+        9600.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_11_2": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_11_2.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_11_2.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_11_2.png"
       },
       "rect": [
         4927.5,
@@ -208,6 +355,7 @@
     },
     "tile_11_4": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_11_4.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_11_4.png"
       },
       "rect": [
@@ -219,6 +367,7 @@
     },
     "tile_11_5": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_11_5.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_11_5.png"
       },
       "rect": [
@@ -266,6 +415,7 @@
     },
     "tile_11_9": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_11_9.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_11_9.png"
       },
       "rect": [
@@ -275,9 +425,128 @@
         480.0
       ]
     },
+    "tile_12_1": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_12_1.png"
+      },
+      "rect": [
+        5332.5,
+        1200.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_12_10": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_12_10.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_12_10.png"
+      },
+      "rect": [
+        5332.5,
+        5520.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_12_11": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_12_11.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_12_11.png"
+      },
+      "rect": [
+        5332.5,
+        6000.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_12_12": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_12_12.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_12_12.png"
+      },
+      "rect": [
+        5332.5,
+        6480.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_12_13": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_12_13.png"
+      },
+      "rect": [
+        5332.5,
+        6960.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_12_14": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_12_14.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_12_14.png"
+      },
+      "rect": [
+        5332.5,
+        7440.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_12_15": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_12_15.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_12_15.png"
+      },
+      "rect": [
+        5332.5,
+        7920.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_12_16": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_12_16.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_12_16.png"
+      },
+      "rect": [
+        5332.5,
+        8400.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_12_17": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_12_17.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_12_17.png"
+      },
+      "rect": [
+        5332.5,
+        8880.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_12_18": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_12_18.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_12_18.png"
+      },
+      "rect": [
+        5332.5,
+        9360.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_12_2": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_12_2.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_12_2.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_12_2.png"
       },
       "rect": [
         5332.5,
@@ -312,6 +581,7 @@
     },
     "tile_12_5": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_12_5.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_12_5.png"
       },
       "rect": [
@@ -323,6 +593,7 @@
     },
     "tile_12_6": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_12_6.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_12_6.png"
       },
       "rect": [
@@ -345,6 +616,7 @@
     },
     "tile_12_8": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_12_8.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_12_8.png"
       },
       "rect": [
@@ -356,11 +628,153 @@
     },
     "tile_12_9": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_12_9.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_12_9.png"
       },
       "rect": [
         5332.5,
         5040.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_13_1": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_13_1.png"
+      },
+      "rect": [
+        5737.5,
+        960.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_13_10": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_13_10.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_13_10.png"
+      },
+      "rect": [
+        5737.5,
+        5280.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_13_11": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_13_11.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_13_11.png"
+      },
+      "rect": [
+        5737.5,
+        5760.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_13_12": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_13_12.png"
+      },
+      "rect": [
+        5737.5,
+        6240.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_13_13": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_13_13.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_13_13.png"
+      },
+      "rect": [
+        5737.5,
+        6720.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_13_14": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_13_14.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_13_14.png"
+      },
+      "rect": [
+        5737.5,
+        7200.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_13_15": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_13_15.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_13_15.png"
+      },
+      "rect": [
+        5737.5,
+        7680.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_13_16": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_13_16.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_13_16.png"
+      },
+      "rect": [
+        5737.5,
+        8160.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_13_17": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_13_17.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_13_17.png"
+      },
+      "rect": [
+        5737.5,
+        8640.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_13_18": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_13_18.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_13_18.png"
+      },
+      "rect": [
+        5737.5,
+        9120.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_13_19": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_13_19.png"
+      },
+      "rect": [
+        5737.5,
+        9600.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_13_2": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_13_2.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_13_2.png"
+      },
+      "rect": [
+        5737.5,
+        1440.0,
         405.0,
         480.0
       ]
@@ -391,7 +805,8 @@
     },
     "tile_13_5": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_13_5.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_13_5.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_13_5.png"
       },
       "rect": [
         5737.5,
@@ -414,6 +829,7 @@
     },
     "tile_13_7": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_13_7.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_13_7.png"
       },
       "rect": [
@@ -425,6 +841,7 @@
     },
     "tile_13_8": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_13_8.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_13_8.png"
       },
       "rect": [
@@ -434,9 +851,34 @@
         480.0
       ]
     },
+    "tile_13_9": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_13_9.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_13_9.png"
+      },
+      "rect": [
+        5737.5,
+        4800.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_14_1": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_14_1.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_14_1.png"
+      },
+      "rect": [
+        6142.5,
+        1200.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_14_10": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_14_10.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_14_10.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_14_10.png"
       },
       "rect": [
         6142.5,
@@ -445,9 +887,140 @@
         480.0
       ]
     },
+    "tile_14_11": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_14_11.png"
+      },
+      "rect": [
+        6142.5,
+        6000.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_14_12": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_14_12.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_14_12.png"
+      },
+      "rect": [
+        6142.5,
+        6480.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_14_13": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_14_13.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_14_13.png"
+      },
+      "rect": [
+        6142.5,
+        6960.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_14_14": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_14_14.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_14_14.png"
+      },
+      "rect": [
+        6142.5,
+        7440.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_14_15": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_14_15.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_14_15.png"
+      },
+      "rect": [
+        6142.5,
+        7920.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_14_16": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_14_16.png"
+      },
+      "rect": [
+        6142.5,
+        8400.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_14_17": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_14_17.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_14_17.png"
+      },
+      "rect": [
+        6142.5,
+        8880.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_14_18": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_14_18.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_14_18.png"
+      },
+      "rect": [
+        6142.5,
+        9360.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_14_19": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_14_19.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_14_19.png"
+      },
+      "rect": [
+        6142.5,
+        9840.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_14_2": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_14_2.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_14_2.png"
+      },
+      "rect": [
+        6142.5,
+        1680.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_14_3": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_14_3.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_14_3.png"
+      },
+      "rect": [
+        6142.5,
+        2160.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_14_4": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_14_4.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_14_4.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_14_4.png"
       },
       "rect": [
         6142.5,
@@ -491,9 +1064,45 @@
         480.0
       ]
     },
+    "tile_14_8": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_14_8.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_14_8.png"
+      },
+      "rect": [
+        6142.5,
+        4560.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_14_9": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_14_9.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_14_9.png"
+      },
+      "rect": [
+        6142.5,
+        5040.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_15_1": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_1.png"
+      },
+      "rect": [
+        6547.5,
+        960.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_15_10": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_10.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_10.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_15_10.png"
       },
       "rect": [
         6547.5,
@@ -504,7 +1113,8 @@
     },
     "tile_15_11": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_11.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_11.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_15_11.png"
       },
       "rect": [
         6547.5,
@@ -515,7 +1125,8 @@
     },
     "tile_15_12": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_12.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_12.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_15_12.png"
       },
       "rect": [
         6547.5,
@@ -526,7 +1137,8 @@
     },
     "tile_15_13": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_13.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_13.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_15_13.png"
       },
       "rect": [
         6547.5,
@@ -535,9 +1147,106 @@
         480.0
       ]
     },
+    "tile_15_14": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_14.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_15_14.png"
+      },
+      "rect": [
+        6547.5,
+        7200.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_15_15": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_15.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_15_15.png"
+      },
+      "rect": [
+        6547.5,
+        7680.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_15_16": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_16.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_15_16.png"
+      },
+      "rect": [
+        6547.5,
+        8160.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_15_17": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_17.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_15_17.png"
+      },
+      "rect": [
+        6547.5,
+        8640.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_15_18": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_18.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_15_18.png"
+      },
+      "rect": [
+        6547.5,
+        9120.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_15_19": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_19.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_15_19.png"
+      },
+      "rect": [
+        6547.5,
+        9600.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_15_2": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_2.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_15_2.png"
+      },
+      "rect": [
+        6547.5,
+        1440.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_15_20": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_20.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_15_20.png"
+      },
+      "rect": [
+        6547.5,
+        10080.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_15_3": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_3.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_3.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_15_3.png"
       },
       "rect": [
         6547.5,
@@ -548,7 +1257,8 @@
     },
     "tile_15_4": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_4.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_4.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_15_4.png"
       },
       "rect": [
         6547.5,
@@ -559,7 +1269,8 @@
     },
     "tile_15_5": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_5.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_5.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_15_5.png"
       },
       "rect": [
         6547.5,
@@ -582,6 +1293,7 @@
     },
     "tile_15_7": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_15_7.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_15_7.png"
       },
       "rect": [
@@ -602,9 +1314,21 @@
         480.0
       ]
     },
+    "tile_15_9": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_15_9.png"
+      },
+      "rect": [
+        6547.5,
+        4800.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_16_1": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_16_1.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_16_1.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_16_1.png"
       },
       "rect": [
         6952.5,
@@ -615,7 +1339,8 @@
     },
     "tile_16_10": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_16_10.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_16_10.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_16_10.png"
       },
       "rect": [
         6952.5,
@@ -626,7 +1351,8 @@
     },
     "tile_16_11": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_16_11.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_16_11.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_16_11.png"
       },
       "rect": [
         6952.5,
@@ -637,7 +1363,8 @@
     },
     "tile_16_12": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_16_12.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_16_12.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_16_12.png"
       },
       "rect": [
         6952.5,
@@ -646,9 +1373,22 @@
         480.0
       ]
     },
+    "tile_16_13": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_16_13.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_16_13.png"
+      },
+      "rect": [
+        6952.5,
+        6960.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_16_14": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_16_14.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_16_14.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_16_14.png"
       },
       "rect": [
         6952.5,
@@ -657,9 +1397,69 @@
         480.0
       ]
     },
+    "tile_16_15": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_16_15.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_16_15.png"
+      },
+      "rect": [
+        6952.5,
+        7920.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_16_16": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_16_16.png"
+      },
+      "rect": [
+        6952.5,
+        8400.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_16_17": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_16_17.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_16_17.png"
+      },
+      "rect": [
+        6952.5,
+        8880.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_16_18": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_16_18.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_16_18.png"
+      },
+      "rect": [
+        6952.5,
+        9360.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_16_19": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_16_19.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_16_19.png"
+      },
+      "rect": [
+        6952.5,
+        9840.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_16_2": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_16_2.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_16_2.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_16_2.png"
       },
       "rect": [
         6952.5,
@@ -670,7 +1470,8 @@
     },
     "tile_16_3": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_16_3.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_16_3.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_16_3.png"
       },
       "rect": [
         6952.5,
@@ -681,7 +1482,8 @@
     },
     "tile_16_4": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_16_4.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_16_4.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_16_4.png"
       },
       "rect": [
         6952.5,
@@ -725,9 +1527,32 @@
         480.0
       ]
     },
+    "tile_16_8": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_16_8.png"
+      },
+      "rect": [
+        6952.5,
+        4560.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_16_9": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_16_9.png"
+      },
+      "rect": [
+        6952.5,
+        5040.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_17_1": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_1.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_1.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_17_1.png"
       },
       "rect": [
         7357.5,
@@ -738,7 +1563,8 @@
     },
     "tile_17_10": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_10.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_10.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_17_10.png"
       },
       "rect": [
         7357.5,
@@ -749,7 +1575,8 @@
     },
     "tile_17_11": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_11.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_11.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_17_11.png"
       },
       "rect": [
         7357.5,
@@ -760,7 +1587,8 @@
     },
     "tile_17_12": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_12.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_12.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_17_12.png"
       },
       "rect": [
         7357.5,
@@ -769,9 +1597,70 @@
         480.0
       ]
     },
+    "tile_17_15": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_15.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_17_15.png"
+      },
+      "rect": [
+        7357.5,
+        7680.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_17_16": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_16.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_17_16.png"
+      },
+      "rect": [
+        7357.5,
+        8160.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_17_17": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_17.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_17_17.png"
+      },
+      "rect": [
+        7357.5,
+        8640.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_17_18": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_18.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_17_18.png"
+      },
+      "rect": [
+        7357.5,
+        9120.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_17_19": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_19.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_17_19.png"
+      },
+      "rect": [
+        7357.5,
+        9600.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_17_2": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_2.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_2.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_17_2.png"
       },
       "rect": [
         7357.5,
@@ -780,9 +1669,22 @@
         480.0
       ]
     },
+    "tile_17_20": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_20.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_17_20.png"
+      },
+      "rect": [
+        7357.5,
+        10080.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_17_3": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_3.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_3.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_17_3.png"
       },
       "rect": [
         7357.5,
@@ -793,7 +1695,8 @@
     },
     "tile_17_4": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_4.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_4.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_17_4.png"
       },
       "rect": [
         7357.5,
@@ -804,7 +1707,8 @@
     },
     "tile_17_5": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_5.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_5.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_17_5.png"
       },
       "rect": [
         7357.5,
@@ -815,7 +1719,8 @@
     },
     "tile_17_6": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_6.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_6.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_17_6.png"
       },
       "rect": [
         7357.5,
@@ -826,7 +1731,8 @@
     },
     "tile_17_7": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_7.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_7.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_17_7.png"
       },
       "rect": [
         7357.5,
@@ -835,9 +1741,141 @@
         480.0
       ]
     },
+    "tile_17_8": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_8.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_17_8.png"
+      },
+      "rect": [
+        7357.5,
+        4320.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_17_9": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_17_9.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_17_9.png"
+      },
+      "rect": [
+        7357.5,
+        4800.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_18_1": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_18_1.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_18_1.png"
+      },
+      "rect": [
+        7762.5,
+        1200.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_18_10": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_18_10.png"
+      },
+      "rect": [
+        7762.5,
+        5520.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_18_11": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_18_11.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_18_11.png"
+      },
+      "rect": [
+        7762.5,
+        6000.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_18_12": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_18_12.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_18_12.png"
+      },
+      "rect": [
+        7762.5,
+        6480.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_18_13": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_18_13.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_18_13.png"
+      },
+      "rect": [
+        7762.5,
+        6960.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_18_14": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_18_14.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_18_14.png"
+      },
+      "rect": [
+        7762.5,
+        7440.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_18_15": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_18_15.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_18_15.png"
+      },
+      "rect": [
+        7762.5,
+        7920.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_18_16": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_18_16.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_18_16.png"
+      },
+      "rect": [
+        7762.5,
+        8400.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_18_17": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_18_17.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_18_17.png"
+      },
+      "rect": [
+        7762.5,
+        8880.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_18_18": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_18_18.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_18_18.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_18_18.png"
       },
       "rect": [
         7762.5,
@@ -846,9 +1884,21 @@
         480.0
       ]
     },
+    "tile_18_19": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_18_19.png"
+      },
+      "rect": [
+        7762.5,
+        9840.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_18_2": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_18_2.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_18_2.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_18_2.png"
       },
       "rect": [
         7762.5,
@@ -857,9 +1907,34 @@
         480.0
       ]
     },
+    "tile_18_3": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_18_3.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_18_3.png"
+      },
+      "rect": [
+        7762.5,
+        2160.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_18_4": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_18_4.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_18_4.png"
+      },
+      "rect": [
+        7762.5,
+        2640.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_18_5": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_18_5.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_18_5.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_18_5.png"
       },
       "rect": [
         7762.5,
@@ -868,9 +1943,162 @@
         480.0
       ]
     },
+    "tile_18_6": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_18_6.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_18_6.png"
+      },
+      "rect": [
+        7762.5,
+        3600.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_18_7": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_18_7.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_18_7.png"
+      },
+      "rect": [
+        7762.5,
+        4080.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_18_8": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_18_8.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_18_8.png"
+      },
+      "rect": [
+        7762.5,
+        4560.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_18_9": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_18_9.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_18_9.png"
+      },
+      "rect": [
+        7762.5,
+        5040.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_19_10": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_19_10.png"
+      },
+      "rect": [
+        8167.5,
+        5280.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_19_11": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_19_11.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_19_11.png"
+      },
+      "rect": [
+        8167.5,
+        5760.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_19_12": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_19_12.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_19_12.png"
+      },
+      "rect": [
+        8167.5,
+        6240.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_19_13": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_19_13.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_19_13.png"
+      },
+      "rect": [
+        8167.5,
+        6720.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_19_14": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_19_14.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_19_14.png"
+      },
+      "rect": [
+        8167.5,
+        7200.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_19_15": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_19_15.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_19_15.png"
+      },
+      "rect": [
+        8167.5,
+        7680.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_19_17": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_19_17.png"
+      },
+      "rect": [
+        8167.5,
+        8640.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_19_18": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_19_18.png"
+      },
+      "rect": [
+        8167.5,
+        9120.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_19_19": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_19_19.png"
+      },
+      "rect": [
+        8167.5,
+        9600.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_19_2": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_19_2.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_19_2.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_19_2.png"
       },
       "rect": [
         8167.5,
@@ -881,7 +2109,8 @@
     },
     "tile_19_3": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_19_3.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_19_3.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_19_3.png"
       },
       "rect": [
         8167.5,
@@ -890,9 +2119,22 @@
         480.0
       ]
     },
+    "tile_19_4": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_19_4.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_19_4.png"
+      },
+      "rect": [
+        8167.5,
+        2400.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_19_5": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_19_5.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_19_5.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_19_5.png"
       },
       "rect": [
         8167.5,
@@ -903,7 +2145,8 @@
     },
     "tile_19_6": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_19_6.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_19_6.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_19_6.png"
       },
       "rect": [
         8167.5,
@@ -912,8 +2155,43 @@
         480.0
       ]
     },
+    "tile_19_7": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_19_7.png"
+      },
+      "rect": [
+        8167.5,
+        3840.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_19_8": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_19_8.png"
+      },
+      "rect": [
+        8167.5,
+        4320.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_19_9": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_19_9.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_19_9.png"
+      },
+      "rect": [
+        8167.5,
+        4800.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_1_12": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_1_12.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_1_12.png"
       },
       "rect": [
@@ -925,6 +2203,7 @@
     },
     "tile_1_13": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_1_13.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_1_13.png"
       },
       "rect": [
@@ -947,6 +2226,7 @@
     },
     "tile_1_16": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_1_16.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_1_16.png"
       },
       "rect": [
@@ -958,6 +2238,7 @@
     },
     "tile_1_17": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_1_17.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_1_17.png"
       },
       "rect": [
@@ -991,9 +2272,46 @@
         480.0
       ]
     },
+    "tile_20_1": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_20_1.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_20_1.png"
+      },
+      "rect": [
+        8572.5,
+        1200.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_20_10": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_20_10.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_20_10.png"
+      },
+      "rect": [
+        8572.5,
+        5520.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_20_11": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_20_11.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_20_11.png"
+      },
+      "rect": [
+        8572.5,
+        6000.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_20_12": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_20_12.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_20_12.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_20_12.png"
       },
       "rect": [
         8572.5,
@@ -1002,9 +2320,70 @@
         480.0
       ]
     },
+    "tile_20_13": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_20_13.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_20_13.png"
+      },
+      "rect": [
+        8572.5,
+        6960.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_20_14": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_20_14.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_20_14.png"
+      },
+      "rect": [
+        8572.5,
+        7440.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_20_16": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_20_16.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_20_16.png"
+      },
+      "rect": [
+        8572.5,
+        8400.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_20_17": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_20_17.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_20_17.png"
+      },
+      "rect": [
+        8572.5,
+        8880.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_20_18": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_20_18.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_20_18.png"
+      },
+      "rect": [
+        8572.5,
+        9360.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_20_2": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_20_2.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_20_2.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_20_2.png"
       },
       "rect": [
         8572.5,
@@ -1013,9 +2392,22 @@
         480.0
       ]
     },
+    "tile_20_3": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_20_3.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_20_3.png"
+      },
+      "rect": [
+        8572.5,
+        2160.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_20_4": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_20_4.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_20_4.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_20_4.png"
       },
       "rect": [
         8572.5,
@@ -1026,7 +2418,8 @@
     },
     "tile_20_5": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_20_5.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_20_5.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_20_5.png"
       },
       "rect": [
         8572.5,
@@ -1035,9 +2428,91 @@
         480.0
       ]
     },
+    "tile_20_6": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_20_6.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_20_6.png"
+      },
+      "rect": [
+        8572.5,
+        3600.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_20_7": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_20_7.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_20_7.png"
+      },
+      "rect": [
+        8572.5,
+        4080.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_20_8": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_20_8.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_20_8.png"
+      },
+      "rect": [
+        8572.5,
+        4560.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_20_9": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_20_9.png"
+      },
+      "rect": [
+        8572.5,
+        5040.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_21_1": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_21_1.png"
+      },
+      "rect": [
+        8977.5,
+        960.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_21_10": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_21_10.png"
+      },
+      "rect": [
+        8977.5,
+        5280.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_21_11": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_21_11.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_21_11.png"
+      },
+      "rect": [
+        8977.5,
+        5760.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_21_12": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_21_12.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_21_12.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_21_12.png"
       },
       "rect": [
         8977.5,
@@ -1048,7 +2523,8 @@
     },
     "tile_21_13": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_21_13.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_21_13.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_21_13.png"
       },
       "rect": [
         8977.5,
@@ -1059,7 +2535,8 @@
     },
     "tile_21_14": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_21_14.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_21_14.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_21_14.png"
       },
       "rect": [
         8977.5,
@@ -1068,9 +2545,150 @@
         480.0
       ]
     },
+    "tile_21_15": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_21_15.png"
+      },
+      "rect": [
+        8977.5,
+        7680.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_21_16": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_21_16.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_21_16.png"
+      },
+      "rect": [
+        8977.5,
+        8160.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_21_17": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_21_17.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_21_17.png"
+      },
+      "rect": [
+        8977.5,
+        8640.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_21_18": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_21_18.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_21_18.png"
+      },
+      "rect": [
+        8977.5,
+        9120.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_21_19": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_21_19.png"
+      },
+      "rect": [
+        8977.5,
+        9600.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_21_2": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_21_2.png"
+      },
+      "rect": [
+        8977.5,
+        1440.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_21_3": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_21_3.png"
+      },
+      "rect": [
+        8977.5,
+        1920.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_21_4": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_21_4.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_21_4.png"
+      },
+      "rect": [
+        8977.5,
+        2400.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_21_5": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_21_5.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_21_5.png"
+      },
+      "rect": [
+        8977.5,
+        2880.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_21_6": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_21_6.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_21_6.png"
+      },
+      "rect": [
+        8977.5,
+        3360.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_21_7": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_21_7.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_21_7.png"
+      },
+      "rect": [
+        8977.5,
+        3840.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_21_8": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_21_8.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_21_8.png"
+      },
+      "rect": [
+        8977.5,
+        4320.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_21_9": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_21_9.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_21_9.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_21_9.png"
       },
       "rect": [
         8977.5,
@@ -1079,9 +2697,44 @@
         480.0
       ]
     },
+    "tile_22_1": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_22_1.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_22_1.png"
+      },
+      "rect": [
+        9382.5,
+        1200.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_22_10": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_22_10.png"
+      },
+      "rect": [
+        9382.5,
+        5520.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_22_11": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_22_11.png"
+      },
+      "rect": [
+        9382.5,
+        6000.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_22_12": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_22_12.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_22_12.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_22_12.png"
       },
       "rect": [
         9382.5,
@@ -1092,7 +2745,8 @@
     },
     "tile_22_13": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_22_13.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_22_13.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_22_13.png"
       },
       "rect": [
         9382.5,
@@ -1101,9 +2755,80 @@
         480.0
       ]
     },
+    "tile_22_14": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_22_14.png"
+      },
+      "rect": [
+        9382.5,
+        7440.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_22_15": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_22_15.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_22_15.png"
+      },
+      "rect": [
+        9382.5,
+        7920.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_22_16": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_22_16.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_22_16.png"
+      },
+      "rect": [
+        9382.5,
+        8400.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_22_17": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_22_17.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_22_17.png"
+      },
+      "rect": [
+        9382.5,
+        8880.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_22_18": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_22_18.png"
+      },
+      "rect": [
+        9382.5,
+        9360.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_22_2": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_22_2.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_22_2.png"
+      },
+      "rect": [
+        9382.5,
+        1680.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_22_3": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_22_3.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_22_3.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_22_3.png"
       },
       "rect": [
         9382.5,
@@ -1112,9 +2837,22 @@
         480.0
       ]
     },
+    "tile_22_4": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_22_4.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_22_4.png"
+      },
+      "rect": [
+        9382.5,
+        2640.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_22_5": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_22_5.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_22_5.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_22_5.png"
       },
       "rect": [
         9382.5,
@@ -1125,7 +2863,8 @@
     },
     "tile_22_6": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_22_6.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_22_6.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_22_6.png"
       },
       "rect": [
         9382.5,
@@ -1134,9 +2873,46 @@
         480.0
       ]
     },
+    "tile_22_7": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_22_7.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_22_7.png"
+      },
+      "rect": [
+        9382.5,
+        4080.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_22_8": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_22_8.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_22_8.png"
+      },
+      "rect": [
+        9382.5,
+        4560.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_22_9": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_22_9.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_22_9.png"
+      },
+      "rect": [
+        9382.5,
+        5040.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_23_1": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_1.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_1.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_23_1.png"
       },
       "rect": [
         9787.5,
@@ -1145,9 +2921,33 @@
         480.0
       ]
     },
+    "tile_23_10": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_10.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_23_10.png"
+      },
+      "rect": [
+        9787.5,
+        5280.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_23_11": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_23_11.png"
+      },
+      "rect": [
+        9787.5,
+        5760.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_23_13": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_13.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_13.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_23_13.png"
       },
       "rect": [
         9787.5,
@@ -1158,7 +2958,8 @@
     },
     "tile_23_14": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_14.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_14.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_23_14.png"
       },
       "rect": [
         9787.5,
@@ -1169,7 +2970,8 @@
     },
     "tile_23_15": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_15.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_15.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_23_15.png"
       },
       "rect": [
         9787.5,
@@ -1178,9 +2980,58 @@
         480.0
       ]
     },
+    "tile_23_16": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_16.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_23_16.png"
+      },
+      "rect": [
+        9787.5,
+        8160.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_23_17": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_17.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_23_17.png"
+      },
+      "rect": [
+        9787.5,
+        8640.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_23_18": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_18.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_23_18.png"
+      },
+      "rect": [
+        9787.5,
+        9120.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_23_2": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_2.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_23_2.png"
+      },
+      "rect": [
+        9787.5,
+        1440.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_23_3": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_3.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_3.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_23_3.png"
       },
       "rect": [
         9787.5,
@@ -1191,7 +3042,8 @@
     },
     "tile_23_4": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_4.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_4.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_23_4.png"
       },
       "rect": [
         9787.5,
@@ -1202,7 +3054,8 @@
     },
     "tile_23_5": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_5.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_5.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_23_5.png"
       },
       "rect": [
         9787.5,
@@ -1213,7 +3066,8 @@
     },
     "tile_23_6": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_6.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_6.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_23_6.png"
       },
       "rect": [
         9787.5,
@@ -1222,9 +3076,103 @@
         480.0
       ]
     },
+    "tile_23_7": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_7.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_23_7.png"
+      },
+      "rect": [
+        9787.5,
+        3840.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_23_8": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_8.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_23_8.png"
+      },
+      "rect": [
+        9787.5,
+        4320.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_23_9": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_23_9.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_23_9.png"
+      },
+      "rect": [
+        9787.5,
+        4800.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_24_0": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_0.png"
+      },
+      "rect": [
+        10192.5,
+        720.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_24_1": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_1.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_24_1.png"
+      },
+      "rect": [
+        10192.5,
+        1200.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_24_10": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_10.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_24_10.png"
+      },
+      "rect": [
+        10192.5,
+        5520.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_24_11": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_24_11.png"
+      },
+      "rect": [
+        10192.5,
+        6000.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_24_12": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_24_12.png"
+      },
+      "rect": [
+        10192.5,
+        6480.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_24_13": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_13.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_13.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_24_13.png"
       },
       "rect": [
         10192.5,
@@ -1235,7 +3183,8 @@
     },
     "tile_24_14": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_14.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_14.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_24_14.png"
       },
       "rect": [
         10192.5,
@@ -1244,9 +3193,58 @@
         480.0
       ]
     },
+    "tile_24_15": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_15.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_24_15.png"
+      },
+      "rect": [
+        10192.5,
+        7920.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_24_16": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_16.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_24_16.png"
+      },
+      "rect": [
+        10192.5,
+        8400.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_24_17": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_17.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_24_17.png"
+      },
+      "rect": [
+        10192.5,
+        8880.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_24_18": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_18.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_24_18.png"
+      },
+      "rect": [
+        10192.5,
+        9360.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_24_2": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_2.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_2.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_24_2.png"
       },
       "rect": [
         10192.5,
@@ -1255,9 +3253,22 @@
         480.0
       ]
     },
+    "tile_24_3": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_3.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_24_3.png"
+      },
+      "rect": [
+        10192.5,
+        2160.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_24_4": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_4.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_4.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_24_4.png"
       },
       "rect": [
         10192.5,
@@ -1268,7 +3279,8 @@
     },
     "tile_24_5": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_5.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_5.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_24_5.png"
       },
       "rect": [
         10192.5,
@@ -1277,9 +3289,93 @@
         480.0
       ]
     },
+    "tile_24_6": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_6.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_24_6.png"
+      },
+      "rect": [
+        10192.5,
+        3600.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_24_7": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_7.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_24_7.png"
+      },
+      "rect": [
+        10192.5,
+        4080.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_24_8": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_8.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_24_8.png"
+      },
+      "rect": [
+        10192.5,
+        4560.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_24_9": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_24_9.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_24_9.png"
+      },
+      "rect": [
+        10192.5,
+        5040.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_25_1": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_1.png"
+      },
+      "rect": [
+        10597.5,
+        960.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_25_10": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_10.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_25_10.png"
+      },
+      "rect": [
+        10597.5,
+        5280.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_25_11": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_11.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_25_11.png"
+      },
+      "rect": [
+        10597.5,
+        5760.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_25_12": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_12.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_12.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_25_12.png"
       },
       "rect": [
         10597.5,
@@ -1290,7 +3386,8 @@
     },
     "tile_25_13": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_13.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_13.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_25_13.png"
       },
       "rect": [
         10597.5,
@@ -1301,7 +3398,8 @@
     },
     "tile_25_14": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_14.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_14.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_25_14.png"
       },
       "rect": [
         10597.5,
@@ -1310,9 +3408,22 @@
         480.0
       ]
     },
+    "tile_25_15": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_15.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_25_15.png"
+      },
+      "rect": [
+        10597.5,
+        7680.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_25_2": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_2.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_2.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_25_2.png"
       },
       "rect": [
         10597.5,
@@ -1323,7 +3434,8 @@
     },
     "tile_25_3": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_3.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_3.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_25_3.png"
       },
       "rect": [
         10597.5,
@@ -1334,7 +3446,8 @@
     },
     "tile_25_4": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_4.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_4.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_25_4.png"
       },
       "rect": [
         10597.5,
@@ -1345,7 +3458,8 @@
     },
     "tile_25_5": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_5.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_5.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_25_5.png"
       },
       "rect": [
         10597.5,
@@ -1356,7 +3470,8 @@
     },
     "tile_25_6": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_6.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_6.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_25_6.png"
       },
       "rect": [
         10597.5,
@@ -1365,9 +3480,46 @@
         480.0
       ]
     },
+    "tile_25_7": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_7.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_25_7.png"
+      },
+      "rect": [
+        10597.5,
+        3840.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_25_8": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_8.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_25_8.png"
+      },
+      "rect": [
+        10597.5,
+        4320.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_25_9": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_25_9.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_25_9.png"
+      },
+      "rect": [
+        10597.5,
+        4800.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_26_1": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_1.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_1.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_26_1.png"
       },
       "rect": [
         11002.5,
@@ -1376,9 +3528,46 @@
         480.0
       ]
     },
+    "tile_26_10": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_10.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_26_10.png"
+      },
+      "rect": [
+        11002.5,
+        5520.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_26_11": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_11.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_26_11.png"
+      },
+      "rect": [
+        11002.5,
+        6000.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_26_12": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_12.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_26_12.png"
+      },
+      "rect": [
+        11002.5,
+        6480.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_26_13": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_13.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_13.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_26_13.png"
       },
       "rect": [
         11002.5,
@@ -1389,7 +3578,8 @@
     },
     "tile_26_14": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_14.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_14.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_26_14.png"
       },
       "rect": [
         11002.5,
@@ -1398,9 +3588,22 @@
         480.0
       ]
     },
+    "tile_26_15": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_15.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_26_15.png"
+      },
+      "rect": [
+        11002.5,
+        7920.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_26_2": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_2.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_2.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_26_2.png"
       },
       "rect": [
         11002.5,
@@ -1411,7 +3614,8 @@
     },
     "tile_26_3": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_3.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_3.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_26_3.png"
       },
       "rect": [
         11002.5,
@@ -1422,7 +3626,8 @@
     },
     "tile_26_4": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_4.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_4.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_26_4.png"
       },
       "rect": [
         11002.5,
@@ -1433,7 +3638,8 @@
     },
     "tile_26_5": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_5.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_5.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_26_5.png"
       },
       "rect": [
         11002.5,
@@ -1442,9 +3648,105 @@
         480.0
       ]
     },
+    "tile_26_6": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_6.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_26_6.png"
+      },
+      "rect": [
+        11002.5,
+        3600.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_26_7": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_7.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_26_7.png"
+      },
+      "rect": [
+        11002.5,
+        4080.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_26_8": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_8.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_26_8.png"
+      },
+      "rect": [
+        11002.5,
+        4560.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_26_9": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_26_9.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_26_9.png"
+      },
+      "rect": [
+        11002.5,
+        5040.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_27_10": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_27_10.png"
+      },
+      "rect": [
+        11407.5,
+        5280.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_27_11": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_27_11.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_27_11.png"
+      },
+      "rect": [
+        11407.5,
+        5760.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_27_12": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_27_12.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_27_12.png"
+      },
+      "rect": [
+        11407.5,
+        6240.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_27_13": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_27_13.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_27_13.png"
+      },
+      "rect": [
+        11407.5,
+        6720.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_27_14": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_27_14.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_27_14.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_27_14.png"
       },
       "rect": [
         11407.5,
@@ -1455,7 +3757,8 @@
     },
     "tile_27_15": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_27_15.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_27_15.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_27_15.png"
       },
       "rect": [
         11407.5,
@@ -1464,9 +3767,43 @@
         480.0
       ]
     },
+    "tile_27_16": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_27_16.png"
+      },
+      "rect": [
+        11407.5,
+        8160.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_27_17": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_27_17.png"
+      },
+      "rect": [
+        11407.5,
+        8640.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_27_18": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_27_18.png"
+      },
+      "rect": [
+        11407.5,
+        9120.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_27_2": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_27_2.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_27_2.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_27_2.png"
       },
       "rect": [
         11407.5,
@@ -1475,9 +3812,128 @@
         480.0
       ]
     },
+    "tile_27_3": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_27_3.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_27_3.png"
+      },
+      "rect": [
+        11407.5,
+        1920.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_27_4": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_27_4.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_27_4.png"
+      },
+      "rect": [
+        11407.5,
+        2400.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_27_5": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_27_5.png"
+      },
+      "rect": [
+        11407.5,
+        2880.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_27_6": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_27_6.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_27_6.png"
+      },
+      "rect": [
+        11407.5,
+        3360.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_27_7": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_27_7.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_27_7.png"
+      },
+      "rect": [
+        11407.5,
+        3840.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_27_8": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_27_8.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_27_8.png"
+      },
+      "rect": [
+        11407.5,
+        4320.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_27_9": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_27_9.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_27_9.png"
+      },
+      "rect": [
+        11407.5,
+        4800.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_28_11": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_28_11.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_28_11.png"
+      },
+      "rect": [
+        11812.5,
+        6000.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_28_12": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_28_12.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_28_12.png"
+      },
+      "rect": [
+        11812.5,
+        6480.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_28_13": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_28_13.png"
+      },
+      "rect": [
+        11812.5,
+        6960.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_28_14": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_28_14.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_28_14.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_28_14.png"
       },
       "rect": [
         11812.5,
@@ -1488,7 +3944,8 @@
     },
     "tile_28_15": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_28_15.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_28_15.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_28_15.png"
       },
       "rect": [
         11812.5,
@@ -1497,9 +3954,22 @@
         480.0
       ]
     },
+    "tile_28_16": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_28_16.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_28_16.png"
+      },
+      "rect": [
+        11812.5,
+        8400.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_28_17": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_28_17.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_28_17.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_28_17.png"
       },
       "rect": [
         11812.5,
@@ -1508,9 +3978,57 @@
         480.0
       ]
     },
+    "tile_28_18": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_28_18.png"
+      },
+      "rect": [
+        11812.5,
+        9360.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_28_2": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_28_2.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_28_2.png"
+      },
+      "rect": [
+        11812.5,
+        1680.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_28_3": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_28_3.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_28_3.png"
+      },
+      "rect": [
+        11812.5,
+        2160.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_28_4": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_28_4.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_28_4.png"
+      },
+      "rect": [
+        11812.5,
+        2640.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_28_6": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_28_6.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_28_6.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_28_6.png"
       },
       "rect": [
         11812.5,
@@ -1519,9 +4037,146 @@
         480.0
       ]
     },
+    "tile_28_7": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_28_7.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_28_7.png"
+      },
+      "rect": [
+        11812.5,
+        4080.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_28_8": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_28_8.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_28_8.png"
+      },
+      "rect": [
+        11812.5,
+        4560.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_28_9": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_28_9.png"
+      },
+      "rect": [
+        11812.5,
+        5040.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_29_11": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_29_11.png"
+      },
+      "rect": [
+        12217.5,
+        5760.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_29_12": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_29_12.png"
+      },
+      "rect": [
+        12217.5,
+        6240.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_29_15": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_29_15.png"
+      },
+      "rect": [
+        12217.5,
+        7680.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_29_16": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_29_16.png"
+      },
+      "rect": [
+        12217.5,
+        8160.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_29_17": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_29_17.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_29_17.png"
+      },
+      "rect": [
+        12217.5,
+        8640.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_29_18": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_29_18.png"
+      },
+      "rect": [
+        12217.5,
+        9120.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_29_3": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_29_3.png"
+      },
+      "rect": [
+        12217.5,
+        1920.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_29_4": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_29_4.png"
+      },
+      "rect": [
+        12217.5,
+        2400.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_29_7": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_29_7.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_29_7.png"
+      },
+      "rect": [
+        12217.5,
+        3840.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_29_8": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_29_8.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_29_8.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_29_8.png"
       },
       "rect": [
         12217.5,
@@ -1592,6 +4247,7 @@
     },
     "tile_2_16": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_2_16.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_2_16.png"
       },
       "rect": [
@@ -1603,6 +4259,7 @@
     },
     "tile_2_17": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_2_17.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_2_17.png"
       },
       "rect": [
@@ -1694,6 +4351,28 @@
         480.0
       ]
     },
+    "tile_30_11": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_30_11.png"
+      },
+      "rect": [
+        12622.5,
+        6000.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_30_12": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_30_12.png"
+      },
+      "rect": [
+        12622.5,
+        6480.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_3_10": {
       "layers": {
         "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_3_10.png",
@@ -1780,6 +4459,7 @@
     },
     "tile_3_17": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_3_17.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_3_17.png"
       },
       "rect": [
@@ -1797,6 +4477,18 @@
       "rect": [
         1687.5,
         9120.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_3_19": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_3_19.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_3_19.png"
+      },
+      "rect": [
+        1687.5,
+        9600.0,
         405.0,
         480.0
       ]
@@ -1862,6 +4554,7 @@
     },
     "tile_3_7": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_3_7.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_3_7.png"
       },
       "rect": [
@@ -1993,11 +4686,24 @@
     },
     "tile_4_18": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_4_18.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_4_18.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_4_18.png"
       },
       "rect": [
         2092.5,
         9360.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_4_19": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_4_19.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_4_19.png"
+      },
+      "rect": [
+        2092.5,
+        9840.0,
         405.0,
         480.0
       ]
@@ -2182,6 +4888,7 @@
     },
     "tile_5_16": {
       "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_5_16.png",
         "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_5_16.png"
       },
       "rect": [
@@ -2211,6 +4918,17 @@
       "rect": [
         2497.5,
         9120.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_5_19": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_5_19.png"
+      },
+      "rect": [
+        2497.5,
+        9600.0,
         405.0,
         480.0
       ]
@@ -2418,6 +5136,17 @@
         480.0
       ]
     },
+    "tile_6_19": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_6_19.png"
+      },
+      "rect": [
+        2902.5,
+        9840.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_6_2": {
       "layers": {
         "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_6_2.png",
@@ -2599,7 +5328,8 @@
     },
     "tile_7_16": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_7_16.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_7_16.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_7_16.png"
       },
       "rect": [
         3307.5,
@@ -2610,11 +5340,23 @@
     },
     "tile_7_17": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_7_17.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_7_17.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_7_17.png"
       },
       "rect": [
         3307.5,
         8640.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_7_18": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_7_18.png"
+      },
+      "rect": [
+        3307.5,
+        9120.0,
         405.0,
         480.0
       ]
@@ -2752,7 +5494,8 @@
     },
     "tile_8_14": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_8_14.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_8_14.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_8_14.png"
       },
       "rect": [
         3712.5,
@@ -2763,11 +5506,48 @@
     },
     "tile_8_15": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_8_15.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_8_15.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_8_15.png"
       },
       "rect": [
         3712.5,
         7920.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_8_16": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_8_16.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_8_16.png"
+      },
+      "rect": [
+        3712.5,
+        8400.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_8_17": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_8_17.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_8_17.png"
+      },
+      "rect": [
+        3712.5,
+        8880.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_8_18": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_8_18.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_8_18.png"
+      },
+      "rect": [
+        3712.5,
+        9360.0,
         405.0,
         480.0
       ]
@@ -2902,13 +5682,73 @@
         480.0
       ]
     },
+    "tile_9_14": {
+      "layers": {
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_9_14.png"
+      },
+      "rect": [
+        4117.5,
+        7200.0,
+        405.0,
+        480.0
+      ]
+    },
     "tile_9_15": {
       "layers": {
-        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_9_15.png"
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_9_15.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_9_15.png"
       },
       "rect": [
         4117.5,
         7680.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_9_16": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_9_16.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_9_16.png"
+      },
+      "rect": [
+        4117.5,
+        8160.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_9_17": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_9_17.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_9_17.png"
+      },
+      "rect": [
+        4117.5,
+        8640.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_9_18": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_9_18.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_9_18.png"
+      },
+      "rect": [
+        4117.5,
+        9120.0,
+        405.0,
+        480.0
+      ]
+    },
+    "tile_9_19": {
+      "layers": {
+        "fabric": "res://assets/authored_map/stoneshore-procedural/fabric/tile_9_19.png",
+        "roads": "res://assets/authored_map/stoneshore-procedural/roads/tile_9_19.png"
+      },
+      "rect": [
+        4117.5,
+        9600.0,
         405.0,
         480.0
       ]

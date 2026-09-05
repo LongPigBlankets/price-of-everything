@@ -2,6 +2,8 @@ extends Node2D
 ## Draws forest buildings as blobby terrain patches instead of small icon slots.
 
 const AuthoredMap := preload("res://scripts/authored_map.gd")
+## The felled set lives on the painter, shared by every path that draws a wood.
+const AuthoredFabricPainter := preload("res://scripts/authored_fabric_painter.gd")
 const FOREST_BUILDING_IDS := {"b_015": true, "b_016": true}
 const TILE_CENTER := Vector2(270, 240)
 const HEX_VERTS: Array[Vector2] = [
@@ -153,6 +155,36 @@ func clear_all() -> void:
 func has_forest(instance_id: String) -> bool:
 	return _forests.has(instance_id)
 
+## Tiles the DOCUMENT draws woods on, `tile_id -> [area_id, …]`. Pushed by world_map, which
+## owns the outline-to-tile mapping; keeping one copy of it there is why this is handed over
+## rather than derived again here.
+var _authored_wood_tiles: Dictionary = {}
+
+
+func set_authored_wood_tiles(tiles: Dictionary) -> void:
+	_authored_wood_tiles = tiles
+	_mm_dirty = true
+	queue_redraw()
+
+
+## Does the document draw this tile's trees? False once every authored wood on the tile has
+## been FELLED — so ground cleared of an authored wood and replanted draws its new canopy,
+## instead of staying bare because the document once had a wood there.
+func _document_draws(tile_id: String) -> bool:
+	for area_value in (_authored_wood_tiles.get(tile_id, []) as Array):
+		if not AuthoredFabricPainter.felled_forests.has(str(area_value)):
+			return true
+	return false
+
+
+## The tile a registered forest stands on, or "". The registry outlives the building record —
+## which is erased before `building_removed` reaches its listeners — so this is how world_map
+## knows which authored canopy a felled wood was drawing (see `_drop_building_visual`).
+func tile_of_instance(instance_id: String) -> String:
+	var entry: Dictionary = _forests.get(instance_id, {})
+	return str(entry.get("tile_id", ""))
+
+
 func remove_instance(instance_id: String) -> void:
 	if not _forests.has(instance_id):
 		return
@@ -197,7 +229,12 @@ func _ensure_canopy() -> void:
 	# function is the only description of where a wood is and how big, and the importer has to
 	# read it to do the conversion in the first place. Gating the data made the tool unable to
 	# see the very forests it had been asked to convert, the second time it was run.
-	if AuthoredMap.is_active() and AuthoredMap.forests_imported():
+	# PER TILE, not for the whole map. Standing every wood down meant a forest the PLAYER
+	# planted drew no trees either — the document has nothing to draw for a building that did
+	# not exist when it was written. The tile list comes from world_map, which owns the
+	# outline-to-tile mapping; until it arrives the old blanket stand-down holds, so a path
+	# that never pushes one cannot resurrect the doubled canopies this gate exists to prevent.
+	if AuthoredMap.is_active() and AuthoredMap.forests_imported() and _authored_wood_tiles.is_empty():
 		_canopy_mm = null
 		_arc_pts = PackedVector2Array()
 		return
@@ -218,6 +255,8 @@ func _ensure_canopy() -> void:
 		var entry: Dictionary = _forests[instance_id] as Dictionary
 		var coord: Vector2i = entry.get("coord", Vector2i(-1, -1))
 		if not terrain_layer.tiles.has(coord):
+			continue
+		if _document_draws(str(entry.get("tile_id", ""))):
 			continue
 		var data: Dictionary = _forest_draw_data(instance_id, str(entry.get("tile_id", "")), coord)
 		var circles: Array = data.circles
