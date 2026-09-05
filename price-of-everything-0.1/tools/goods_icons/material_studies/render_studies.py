@@ -1,5 +1,5 @@
 """Blender --background --factory-startup --python render_studies.py -- OUTPUT [goods...]."""
-import sys,json
+import sys,json,math
 from pathlib import Path
 here=Path(__file__).resolve().parent
 for src in ('sprite_kit.py','base_kit.py','goods_icon_kit.py','ore_builders.py'):
@@ -10,10 +10,18 @@ for name in args[1:] or ['limestone','electrical_components','ethylene']:
     built=globals()['build_'+name]()
     K=built if isinstance(built,Kit) else Kit(bpy.data.collections['ICON_'+name])
     print('VALIDATION',name,K.validate(),flush=True)
+    cam=bpy.context.scene.camera
+    expected=(math.radians(54.7356),0.0,math.radians(45.0))
+    if cam is None or cam.type!='CAMERA' or cam.data.type!='ORTHO':
+        raise RuntimeError('Goods icons require the shared orthographic Camera')
+    actual=tuple(cam.rotation_euler)
+    if any(abs(got-want)>math.radians(.01) for got,want in zip(actual,expected)):
+        raise RuntimeError('Goods camera left fixed isometric rotation: %r' % (actual,))
     depsgraph=bpy.context.evaluated_depsgraph_get()
     counts={ob.name:{'control_faces':len(ob.data.polygons),
                      'evaluated_faces':len(ob.evaluated_get(depsgraph).data.polygons)}
             for ob in K.col.objects if ob.type=='MESH'}
+    counts['_camera']={'type':'ORTHO','rotation_degrees':[round(math.degrees(v),4) for v in actual]}
     (out/(name+'_geometry.json')).write_text(json.dumps(counts,indent=2))
     hide_other_icons(K.col.name)
     frame_collection(K.col)

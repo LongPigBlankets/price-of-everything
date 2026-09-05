@@ -14,6 +14,10 @@ Each file is a transparent RGBA PNG. Tiers mirror the existing goods folder:
 `medium` = 800 px, `small` = 450 px, `very_small` = 256 px.
 Coal and iron ore are also installed in the default game tiers, as requested. Other alternates retain the existing default selection.
 
+Godot import sidecars are committed for every alternate. Their complete `[params]`
+blocks match established goods icons in the corresponding tier, including
+`mipmaps/generate=true`, `mipmaps/limit=-1` and alpha-border correction.
+
 Editable `.blend` sources, raw colour/mask renders, 128/64 px previews, comparison images
 and review evidence are in
 [palette_refinement](../../../../artifacts/goods_material_studies/palette_refinement/).

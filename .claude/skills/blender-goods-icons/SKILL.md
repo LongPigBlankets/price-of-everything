@@ -1,6 +1,6 @@
 ---
 name: blender-goods-icons
-description: Load this to create or revise a GOODS ICON for Carbon and Capital in Blender (the 74 AI placeholders under assets/icons/goods are being replaced one good at a time). Covers the measured style contract (three flat tone steps, navy ink weights, shadow-step halftone, one warm accent), the icon rig (Standard view transform, forced sun, disabled factory LineSet, toon materials, mask pass), the geometry rules the owner ruled on (flat faces, bold covers, splayed feet, 4-5-4 packs, convex-hull straps, faceted nuggets, control cages), the 2D export pass, and the mandatory adversarial-review loop. Scripts live in blender-assets/ (goods_icon_kit.py, render_icons_headless.py, icon_export.py); copies sit beside this file.
+description: Load this to create, revise, validate, or ship a GOODS ICON for Carbon and Capital in Blender. Covers the measured poster style, fixed true-isometric camera, shared rectilinear perspective, geometry rules, mipmapped Godot texture imports, the 2D export pass, and the mandatory adversarial-review loop.
 ---
 
 # Goods icons in Blender — the style rules
@@ -164,3 +164,105 @@ render on 2026-09-03 (marked TRAP). Scripts: `goods_icon_kit.py`, `render_icons_
     into three arcs); stop it 0.09 short of the ring's front plane.
 53. Reviewer suggestions that contradict an owner ruling are dropped without debate: domed
     motor face, no base plate, rectangular rod crib, vertical posts.
+
+## 8. Organic ores + multi-part linework (2026-09-04, iron ore FINISHED at v38)
+
+Iron ore reached "shapes look good" over v13→v38. The winning recipe for an **ore / rock good**
+(`build_iron_ore` + `nugget`), every point owner-ruled or paid for with a render:
+
+54. **A rock is a ROUNDED BOULDER, not a faceted crystal** (owner: "reach the look of the goods
+    icon"). Build the cut polyhedron (icosphere + gentle noise + planar cuts + limited dissolve),
+    then **SMOOTH-shade it and add a Subdivision Surface (levels 2)** so the silhouette and corners
+    round. A vertex/edge bevel only nibbles points and leaves a hard polygon — the owner rejected it.
+55. **Decouple line sharpness from surface roundness — the key trick.** The cleavage lines come
+    from Freestyle `freestyle_edge` MARKS, which draw crisp even where the surface is now smooth.
+    So subsurf can round the form freely while the inked facet lines stay sharp and hand-drawn.
+    Crease the marked rims (`crease_edge` ~0.7) so each facet stays a flat-ish cel field.
+56. **Silver/cleavage coverage = grey-cap DEPTH** (owner: "more surface in silver, esp. flanks").
+    The grey cap is a bisect fill; `dist = ext_along(d) * mult`. Smaller `mult` (deeper) = larger
+    exposed cleavage face. Per-nugget `grey_depth` varies it (hero 0.84–0.91 = modest, flanks
+    0.74–0.83 = big). One BIG cap beats two caps (two caps' bumpy grey/rust boundary re-inks as
+    hatching).
+57. **3-tone lit cleavage face**: a mid-grey cap (toon base so its LIT step ≈130, the reference's
+    dominant grey) + a NARROW highlight bevel tipped toward the sun (`hi_dir = normalize(0.45·capN
+    + 0.85·sun)`, grey_hi base LIT ≈176) whose seam with the cap is NOT inked (soft band, ~15% of
+    the face). The darker grey comes from the cap's own toon shading + recess halftone — do NOT add
+    a shadow bevel (its rim inks as a random dash on the silver).
+58. **Keep rust cuts AWAY from the cleavage-cap directions** (`d.dot(cap_dir) < 0.5`, re-roll):
+    a rust cut aimed near a grey cap clips a thin rust wedge into the silver, leaving a stray dash.
+59. **Fewer, larger faces for a BIG lump** (owner: the hero "has too many flat-ish sides"): the
+    hero uses ~6 planar cuts vs the flanks' 7 despite being bigger, so it reads as one boulder.
+60. **Separate touching parts with an OBJECT-ID PASS, not Freestyle** (owner: "clearer separation
+    between the nuggets using linework"). Interpenetrating meshes have no silhouette between them,
+    so Freestyle draws nothing. `render_icon` renders an `_id.png` (each mesh a flat unique
+    `ob.color` via an ObjectInfo→Emission `material_override`, Freestyle off); `icon_export.py` inks
+    a bold line wherever the ID label changes between two parts. Every rock ends up fully outlined,
+    overlaps included — the reference's structure.
+61. **Interior lines THINNER than the outlines, and FADED** (owner: "some lines need to fade / only
+    show half"). An ALONG_STROKE thickness modifier on `ink_edge` with a hump curve (ends ~0.45,
+    mid 1.0) fades line ends; keep the taper GENTLE or short lines wisp to a random-looking tip.
+62. **Skip inking SHORT rim edges** (`elen > 0.15–0.18 r` for dihedral rims, `> 0.10–0.12 r` for
+    material boundaries): short dihedral stubs near a junction ink as random forks (owner: "these
+    lines are a bit random"). Raising the limited-dissolve angle (→25°) merges the small facets so
+    fewer lines converge at a junction.
+63. **Cracks: don't fake them with mesh edges.** A mesh-edge crack always spans rim-to-rim, so it
+    reads as a broken facet stub, not a fracture. Owner rejected them; cracks are OFF. Proper cracks
+    would need a deliberate 2D stroke pass on the face interiors (UNBUILT — the next crack attempt
+    should go there, not into geometry).
+64. **Blender 5.2**: `World.use_nodes` / `Material.use_nodes` print DeprecationWarnings (removal in
+    6.0) — harmless, the kit still runs. `bmesh.ops.dissolve_limit(..., delimit={'MATERIAL','SHARP'})`
+    and `bmesh.ops.bevel(..., affect='VERTICES')` are the signatures that work.
+65. **VIBRANCE is an export lever, global** (owner 2026-09-05: "colours too washed out, punch them
+    up"). `icon_export.py --vib 1.45` expands chroma around each pixel's luma (`luma + (rgb-luma)·f`),
+    saturating every icon at once without re-tuning each material; the navy ink is left alone. It
+    can't colour a NEUTRAL grey (there's no chroma to expand) — a good that reads too grey needs an
+    actual coloured base first (crude-oil drum went neutral-grey → saturated blue steel, then vib).
+    Toon bases can be picked muted and let `--vib` do the saturation, or picked saturated up front.
+
+## 9. Fixed isometric perspective and orthogonal goods (OWNER, 2026-09-05)
+
+These rules apply to every future goods icon, including organic goods that contain manufactured
+parts such as crates, breakers, labels, pallets, meters or containers.
+
+66. **Use one camera for the whole goods set.** The camera is orthographic with Euler rotation
+    `(54.7356°, 0°, 45°)`. Do not tune azimuth, elevation, focal length or perspective per icon.
+    `setup_icon_rig()` owns the camera; a builder may only change orthographic scale and target via
+    projected-extents framing. Re-running a builder from `--factory-startup` must recreate this view.
+67. **World axes are the drawing grid.** In the fixed view, world Z projects vertically and world
+    X/Y project along the two shared isometric diagonals (approximately ±30° from screen horizontal).
+    Every edge intended to be vertical, parallel or perpendicular in the object must use those same
+    world or object-local axes. Do not move individual vertices in screen space to improve one icon.
+68. **A 90° object remains geometrically 90°.** Cubes, rectangular housings, cartons, ingots,
+    pallets and prisms use `K.box` or an equivalent orthogonal mesh. Their adjacent faces meet at
+    exact right angles in 3D even though the projected angle is not 90°. Never fake a rectangle as
+    an arbitrary screen-facing quadrilateral.
+69. **Share orientation across comparable goods.** The default front is −Y and the default right
+    side is +X. Rectangular goods should expose the same front/top/right relationship as existing
+    goods. If the reference requires a rotated object, rotate the complete assembly about world Z;
+    do not rotate lids, labels, switches or stacked boxes independently into conflicting vanishing
+    directions. Prefer 90° Z increments for alternate orthogonal orientations.
+70. **Parallel edges are a review gate.** At 800 px, compare at least one long X edge, one long Y
+    edge and one Z edge against an approved rectangular icon. Corresponding edges must be parallel
+    within one pixel over a 100 px run. A cube must show three internally consistent edge families.
+    If it does not, fix the geometry or camera rather than the rendered PNG.
+71. **Camera validation is fail-fast.** Before rendering, require an ORTHO camera and compare its
+    Euler angles to `(54.7356°, 0°, 45°)` within 0.01°. Treat a mismatch as a failed build. Save the
+    camera values with render metrics so a visually plausible off-angle asset cannot enter the set.
+
+## 10. Godot texture import contract (OWNER, 2026-09-05)
+
+72. **Every delivered PNG uses the established goods import settings.** The required Godot values
+    are `importer="texture"`, `compress/mode=0`, `mipmaps/generate=true`, `mipmaps/limit=-1`,
+    `process/fix_alpha_border=true`, `process/premult_alpha=false`, `process/size_limit=0`, and
+    `detect_3d/compress_to=1`. Keep the remaining channel-remap, HDR and normal-map values identical
+    to an existing icon in the same tier. UIDs and imported-cache paths are expected to differ.
+73. **Mipmaps are mandatory in all three tiers and in `alternate_icons`.** Run a Godot editor import
+    after adding or replacing PNGs, then inspect every corresponding `.png.import`. Do not infer
+    settings from the source image or from a successful `load()` call.
+74. **Compare parameter blocks, not whole sidecars.** For each new `.png.import`, compare everything
+    after `[params]` with an established goods icon from the same tier. Release only when every block
+    matches exactly and `mipmaps/generate=true` is present. Generated `.godot/imported/*.ctex` files
+    remain cache files and are not committed.
+75. **Runtime validation follows import validation.** Load the medium, small and very-small textures
+    in headless Godot and assert their dimensions are 800², 450² and 256². This proves the imported
+    resources resolve; the explicit sidecar audit proves mipmaps and filtering inputs match.
