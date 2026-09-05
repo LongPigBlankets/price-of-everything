@@ -145,12 +145,20 @@ static func flow(building: Dictionary, recipe: Dictionary) -> Dictionary:
 # --- Economics (real cash flows + the cost-to-produce RAG) ---------------------------------
 
 static func economics(building: Dictionary, recipe: Dictionary, building_data: Dictionary) -> Dictionary:
-	var lvl := int(building.get("level", 1))
-	var maint := BuildingStatus.maintenance_cost(building_data) * BuildingLevels.mult("maint", lvl)
-	var lab := labour(building_data)
-	# Power leg: the grid-price value of the energy drawn each turn (0 for generators / no-power
-	# recipes). Mirrors the CostSolver's imputed power_cost (energy × GRID_BUY_PRICE).
-	var power_cost := float(BuildingStatus.effective_energy_req(building, recipe)) * EconomyConfig.GRID_BUY_PRICE
+	# Maintenance, labour and power are priced through production.gd's OWN per-turn helpers — the
+	# exact functions that move the cash each turn — so the panel reflects real building
+	# performance: grown wages (not base rates), level multipliers, and every active modifier
+	# (research building_power/maintenance/labour_headcount, workforce policies, Lax Safety upkeep).
+	# The forecast already prices through these same helpers; the BDP now agrees with it and with
+	# the engine. (Earlier this line used base wages and a base maintenance figure, so a running
+	# building's net read rosier than the money it actually moved — owner report 2026-09-05.)
+	var maint := Production._calculate_maintenance_cost(building)
+	var lab_cost := Production._calculate_labour_cost(building, recipe)
+	# Power leg: the grid-price value of the energy actually drawn this turn (post power modifiers,
+	# level, and startup ramp; 0 for generators / no-power recipes). Priced at GRID_BUY_PRICE like
+	# the CostSolver — this is the imputed energy cost, which for a self-powered tile is dearer than
+	# the marginal cash (a known cost-model choice, not specific to this panel).
+	var power_cost := float(Production._effective_energy_req(building, recipe)) * EconomyConfig.GRID_BUY_PRICE
 	# Simplified per-turn worth: Output value − transport − inputs − maintenance − labour − power.
 	# Output value includes every product of the run. A co-product is genuine value
 	# added by the same building, so leaving it out made multi-output recipes (such
@@ -192,15 +200,16 @@ static func economics(building: Dictionary, recipe: Dictionary, building_data: D
 		var unit_price := imputed if imputed >= 0.0 else MarketState.get_buy_price(in_gid)
 		if unit_price <= 0.0:
 			unit_price = Catalog.get_base_price(in_gid)
-		input_cost += float(inp.get("qty", 0)) * unit_price
+		# Quantity actually consumed this turn: the recipe base scaled by level (a level-2 building
+		# eats 2x) and the startup-capacity ramp — the same _scaled_input_qty the engine draws.
+		input_cost += float(Production._scaled_input_qty(inp, building)) * unit_price
 	# Is the output actually sold this turn (market route, or a tile that auto-sells its surplus)?
 	# A generator / infrastructure has no sellable good (units_out == 0) — never treat it as selling.
 	var sells := selling_outputs > 0
 
-	# TODO(mid-August 2026): reconcile the remaining Economics lines with the
-	# settled per-building ledger. Transport is still primary-output-only and
-	# excludes sea charges; inputs, maintenance, labour, power, warehousing and
-	# carbon remain the existing illustrative estimates rather than full actuals.
+	# Inputs, labour, power, maintenance, warehousing and carbon are now priced through the engine's
+	# own per-turn helpers (see above / below), so they are actuals, not estimates. Transport
+	# remains primary-output-only and excludes sea charges — the one line still to reconcile.
 	# Transport cost of moving the output to its SET destination (nearest port for a market route,
 	# the target tile otherwise, 0 for same-tile / no destination).
 	var own_tile := str(building.get("tile_id", ""))
@@ -220,8 +229,8 @@ static func economics(building: Dictionary, recipe: Dictionary, building_data: D
 	var levy_turn := int(TurnManager.current_turn)
 	for inp in recipe.get("inputs", []):
 		carbon_tax += PolicyState.carbon_charge(str(inp.get("good_id", "")),
-			int(round(float(inp.get("qty", 0)) * BuildingLevels.mult("input", lvl))), levy_turn)
-	var running := maint + float(lab.get("cost", 0.0)) + power_cost + input_cost + transport_cost + warehousing + carbon_tax
+			Production._scaled_input_qty(inp, building), levy_turn)
+	var running := maint + lab_cost + power_cost + input_cost + transport_cost + warehousing + carbon_tax
 	var pc := BuildingStatus.produce_cost_status(building)
 	return {
 		"value": float(building_data.get("base_price", 0.0)),   # asset value (build/buy price), not per-turn
@@ -234,7 +243,7 @@ static func economics(building: Dictionary, recipe: Dictionary, building_data: D
 		"transport_cost": transport_cost,
 		"input_cost": input_cost,
 		"maintenance": maint,
-		"labour_cost": float(lab.get("cost", 0.0)),
+		"labour_cost": lab_cost,
 		"power_cost": power_cost,
 		"warehousing_cost": warehousing,
 		"carbon_tax": carbon_tax,

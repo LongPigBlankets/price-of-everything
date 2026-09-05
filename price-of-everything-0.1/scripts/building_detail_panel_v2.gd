@@ -293,7 +293,11 @@ func _rebuild(building: Dictionary) -> void:
 		_body.add_child(_build_shipments(ships))
 
 	_body.add_child(_make_section("Labour on this building"))
-	_body.add_child(_build_labour(BuildingReadout.labour(building_data, recipe)))
+	# Headcounts from the recipe/building; cost is the engine's actual grown-wage charge (level +
+	# labour modifiers included), the same figure the Economics card shows — not the base rate.
+	var lab_readout: Dictionary = BuildingReadout.labour(building_data, recipe)
+	lab_readout["cost"] = Production._calculate_labour_cost(building, recipe)
+	_body.add_child(_build_labour(lab_readout))
 
 	# sell / demolish (player-owned; the early NPC/construction returns skip this)
 	_body.add_child(_build_sell_demolish_row(building, building_data))
