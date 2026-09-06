@@ -1433,12 +1433,6 @@ func _render_confirm() -> void:
 # button is disabled — the reason in words. Site coordinates appear ONCE, in the
 # header subtitle, and nowhere else.
 
-const V3_PHASE_LABELS := {
-	"building": "Building", "completes": "Completes",
-	"shipping": "First production run", "selling": "Selling",
-}
-
-
 func _render_confirm_v3() -> void:
 	_set_panel_width(true)
 	_search_input.visible = false
@@ -1475,7 +1469,7 @@ func _render_confirm_v3() -> void:
 		_content.add_child(_v3_priority_supply_band())
 
 	if _locked_tile_id != "" and not (_v3_forecast.get("phases", []) as Array).is_empty():
-		_content.add_child(_section_label("WHAT IT DOES TO YOUR CASH"))
+		_content.add_child(_section_label("TIMELINE OF REVENUE"))
 		if bool(_v3_forecast.get("no_supply", false)):
 			var warn := Label.new()
 			warn.text = "No supply route on this tile for %s — it would sit idle." \
@@ -1485,11 +1479,6 @@ func _render_confirm_v3() -> void:
 			warn.add_theme_color_override("font_color", RED)
 			_content.add_child(warn)
 		_content.add_child(_v3_cash_timeline())
-		# Payback sits beside the timeline it explains (owner 2026-08-26: Buffer
-		# and Run rate removed) rather than crowding the always-visible verdict
-		# strip, which now carries only the total and the durations.
-		# "How is this calculated?" shares that same row, right-anchored (owner
-		# 2026-08-26 — was its own row underneath).
 		_content.add_child(_v3_cash_facts_row())
 
 	_content.add_child(_section_label("MATERIALS"))
@@ -1648,76 +1637,13 @@ func _v3_materials_arrival_turns() -> int:
 	return worst
 
 
-## Payback (owner 2026-08-26: Buffer and Run rate rows removed — the pre-revenue
-## cash story now lives entirely in the timeline + its per-phase figures, not
-## restated as separate facts beside it) plus "How is this calculated?",
-## right-anchored on the same row (owner 2026-08-26 — was its own row
-## underneath; see _v3_calculation_note()). Sits right after the cash timeline.
+## A single prominent outlook, shared with the map hover.
 func _v3_cash_facts_row() -> Control:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	var facts := _v3_cash_facts()
-	facts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(facts)
-	row.add_child(_v3_calculation_note())
-	return row
+	return _v3_cash_facts()
 
 
 func _v3_cash_facts() -> Control:
-	var facts := GridContainer.new()
-	facts.columns = 2
-	facts.add_theme_constant_override("h_separation", 14)
-	facts.add_theme_constant_override("v_separation", 5)
-	var steady := float(_v3_forecast.get("steady_net", 0.0))
-	var payback := BuildForecast.payback_turn(_v3_total_cost(),
-		float(_v3_forecast.get("cash_needed", 0.0)), steady,
-		int(_v3_forecast.get("first_selling_turn", 0)))
-	_v3_fact(facts, "Payback",
-		"Turn %d" % payback if payback > 0 else "Never at today's prices",
-		TEXT if payback > 0 else RED, "")
-	return facts
-
-
-## Owner 2026-08-26: text standardised — these are facts (turns, a turn number,
-## a rate), not "the amount", so they read at the same size/font as everything
-## else on the panel. Semantic tone (the colour argument) still varies; only
-## the size/weight distinction is gone.
-func _v3_fact(grid: GridContainer, key: String, value: String, tone: Color, tip: String) -> void:
-	var key_label := Label.new()
-	key_label.text = key
-	key_label.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
-	key_label.add_theme_color_override("font_color", _muted_tone())
-	grid.add_child(key_label)
-	var value_label := Label.new()
-	value_label.text = value
-	value_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	value_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	value_label.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
-	value_label.add_theme_color_override("font_color", tone)
-	if tip != "":
-		value_label.tooltip_text = tip
-		value_label.mouse_filter = Control.MOUSE_FILTER_PASS
-	grid.add_child(value_label)
-
-
-## Replaces the old always-visible assumptions caption (owner 2026-08-26): the
-## explanation is now a hover-only disclosure, so the always-on-screen space
-## cost is just one quiet line instead of two sentences of fine print. A thin
-## outline (owner 2026-08-26) marks it as its own small hoverable control, not
-## just another line of body text.
-func _v3_calculation_note() -> Control:
-	var tip := "Per turn, at market prices: goods, freight, port fees, storage, power, labour and upkeep. Assumes it sells straight to market with any pipework already built."
-	var pill := PanelContainer.new()
-	pill.add_theme_stylebox_override("panel", _panel_style(Color(0, 0, 0, 0), NAVY_LINE, 1, 8, 6))
-	pill.tooltip_text = tip
-	var note := Label.new()
-	note.text = "How is this calculated?"
-	note.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
-	note.add_theme_color_override("font_color", _muted_tone())
-	note.tooltip_text = tip
-	note.mouse_filter = Control.MOUSE_FILTER_PASS
-	pill.add_child(note)
-	return pill
+	return BuildForecastTable.payback(_v3_forecast)
 
 
 ## Three columns, at most two icon rows; each row discloses its selected requirement below.
@@ -1736,16 +1662,16 @@ class LandRequirementIcon extends Control:
 
 ## Fixed caption baseline keeps the status swatch and name aligned beneath the art.
 class RequirementCaption extends Control:
-	const FONT: Font = preload("res://assets/fonts/BarlowCondensed-SemiBold.ttf")
+	const FONT: Font = preload("res://assets/fonts/IBMPlexSans-Medium.ttf")
 	var text := ""
 	var tone := Color.WHITE
 	func _draw() -> void:
-		var font := FONT
-		var baseline := (12.0 + font.get_ascent(12) - font.get_descent(12)) * 0.5
-		var text_width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
-		var left := maxf(0.0, (size.x - text_width - 9.0) * 0.5)
-		draw_rect(Rect2(left, 2, 5, 8), tone)
-		draw_string(font, Vector2(left + 9, baseline), text, HORIZONTAL_ALIGNMENT_LEFT, size.x - left - 9, 12, TEXT)
+		var font_size: int = DS.FS.BODY
+		var baseline := (size.y + FONT.get_ascent(font_size) - FONT.get_descent(font_size)) * 0.5
+		var text_width := FONT.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		var left := maxf(0.0, (size.x - text_width - 20.0) * 0.5)
+		draw_rect(Rect2(left, (size.y - 12) * 0.5, 12, 12), tone)
+		draw_string(FONT, Vector2(left + 20, baseline), text, HORIZONTAL_ALIGNMENT_LEFT, size.x - left - 20, font_size, TEXT)
 
 
 func _v3_requirement_rows() -> Array:
@@ -1777,7 +1703,7 @@ func _v3_requirement_rows() -> Array:
 		for i in range(start, start + 3):
 			if i >= entries.size():
 				var spacer := Control.new()
-				spacer.custom_minimum_size = Vector2(80, 100)
+				spacer.custom_minimum_size = Vector2(116, 106)
 				row.add_child(spacer)
 				continue
 			var entry: Dictionary = entries[i]
@@ -1796,7 +1722,7 @@ func _v3_requirement_rows() -> Array:
 					detail.add_child(_infra_requirement_row(key, need.good_ids, bool(need.is_output)))
 			var button := Button.new()
 			button.name = "Requirement_" + key
-			button.custom_minimum_size = Vector2(80, 100)
+			button.custom_minimum_size = Vector2(116, 106)
 			button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 			button.toggle_mode = true
 			button.button_pressed = detail.visible
@@ -1821,13 +1747,14 @@ func _v3_requirement_rows() -> Array:
 			icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 			icon.name = "RequirementIcon"
 			icon.size = Vector2(80, 80)
+			icon.position.x = 18
 			content.add_child(icon)
 			var label := RequirementCaption.new()
 			label.name = "RequirementCaption"
 			label.text = str(entry.label)
 			label.tone = entry.tone
 			label.position = Vector2(0, 83)
-			label.size = Vector2(80, 12)
+			label.size = Vector2(116, 20)
 			label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			content.add_child(label)
 			button.pressed.connect(func():
@@ -2017,75 +1944,12 @@ func _v3_turn_marker(range_text: String) -> String:
 	return "Turn " + rest
 
 
-## Band 4 — the money story as a flowing timeline, not a table (§4): each phase is
-## turn-range · name · £/turn, chained left to right. "Making, not yet paid" reads
-## as "First production run" here.
-## Owner 2026-08-26: rebuilt as a row-major grid (matching BuildForecastTable's
-## established technique) instead of one VBox per phase — a per-column VBox let
-## a taller middle cell (e.g. "First production run" wrapping to 2 lines) push
-## that ONE column's money down, so the row no longer lined up with its
-## neighbours even though the code always added marker→name→money in the same
-## order. A GridContainer makes "turn always on top, name always in the middle,
-## money always on the bottom" a structural guarantee, not just an add-order
-## convention — every row's cells are true siblings sharing one shelf.
+## Both construction flows use the same qualitative forecast table.
 func _v3_cash_timeline() -> Control:
-	var plate := PanelContainer.new()
-	plate.name = "V3CashTimeline"
-	plate.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, NAVY_FIELD, 0, 9, 8))
-	var phases: Array = _v3_forecast.get("phases", [])
-	var grid := GridContainer.new()
-	grid.columns = maxi(1, phases.size())
-	grid.add_theme_constant_override("h_separation", 10)
-	grid.add_theme_constant_override("v_separation", 3)
-	plate.add_child(grid)
-
-	for phase in phases:
-		var marker := Label.new()
-		# No "· N turns" suffix (owner 2026-08-26, dropped alongside the
-		# t1-style -> Turn 1-style reword): the range already says how many
-		# turns it spans, so the suffix was pure repetition — and dropping it
-		# freed enough column width to stop "Completes"/"First production
-		# run" wrapping mid-word once "Turn " made the range/onwards markers
-		# longer than "t"-prefixed ones.
-		marker.text = _v3_turn_marker(str(phase.get("range", "")))
-		marker.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		marker.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		marker.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-		marker.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
-		marker.add_theme_color_override("font_color", _muted_tone())
-		grid.add_child(marker)
-	for phase in phases:
-		var name := Label.new()
-		name.text = str(V3_PHASE_LABELS.get(str(phase.get("kind", "")), str(phase.get("label", ""))))
-		name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		# Centre within the row (owner 2026-08-26), deliberately unlike the marker
-		# and money rows below: the name row is the one place text should sit ON
-		# a shared centre axis regardless of how many lines it wraps to — one
-		# line sits on the axis, two straddle it evenly, three put their middle
-		# line on it. A Label sized to its own natural (wrapped) height and
-		# shrink-centred within the row's shared height does exactly this: the
-		# tallest phase's own centre already sits on the row's centre by
-		# definition, so every shorter neighbour lands on the same line too.
-		name.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		name.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
-		name.add_theme_color_override("font_color", TEXT)
-		grid.add_child(name)
-	for phase in phases:
-		var per_turn := float(phase.get("per_turn", 0.0))
-		var money := Label.new()
-		money.text = _signed_money(per_turn) + ("/turn" if str(phase.get("kind", "")) == "selling" else "")
-		money.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		money.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		money.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-		money.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
-		if str(phase.get("kind", "")) == "building":
-			money.add_theme_color_override("font_color", _muted_tone())
-		else:
-			money.add_theme_color_override("font_color", GREEN if per_turn >= 0.0 else RED)
-		grid.add_child(money)
-	return plate
+	var table := BuildForecastTable.new()
+	table.name = "V3CashTimeline"
+	table.set_forecast(_v3_forecast)
+	return table
 
 
 ## 74px (owner 2026-08-26): sized so the icon ART inside the cream plate
@@ -3323,7 +3187,7 @@ func _add_forecast_section() -> void:
 	if phases.is_empty():
 		return
 
-	_content.add_child(_section_label("WHAT IT DOES TO YOUR CASH"))
+	_content.add_child(_section_label("TIMELINE OF REVENUE"))
 
 	# A tile with no route to an input is the run-D failure: the player builds, the building
 	# never runs, and nothing says why. Say it here, in red, before the money moves.
@@ -3341,30 +3205,7 @@ func _add_forecast_section() -> void:
 	table.set_forecast(data)
 	_content.add_child(table)
 
-	# The one number that decides whether this build is affordable: what the phases before
-	# revenue will take out of the bank. The playtester's failed expansion was exactly this —
-	# affordable to build, unaffordable to run until it sold anything.
-	var cash_needed := float(data.get("cash_needed", 0.0))
-	var steady := float(data.get("steady_net", 0.0))
-	var summary := Label.new()
-	if steady <= 0.0:
-		summary.text = "Costs %s before the first sale, then still loses %s a turn at today's prices." \
-			% [_money(cash_needed), _money(-steady)]
-		summary.add_theme_color_override("font_color", RED)
-	else:
-		summary.text = "Needs %s in the bank to reach the first sale, then earns %s a turn." \
-			% [_money(cash_needed), _money(steady)]
-		summary.add_theme_color_override("font_color", GREEN if MatchState.money >= cash_needed else RED)
-	summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	summary.add_theme_font_size_override("font_size", 12)
-	_content.add_child(summary)
-
-	var caption := Label.new()
-	caption.text = "Per turn, at today's prices: goods, freight, port fees, storage, power, labour and upkeep. Assumes it sells straight to market with any pipework already built."
-	caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	caption.add_theme_font_size_override("font_size", 10)
-	caption.add_theme_color_override("font_color", _muted_tone())
-	_content.add_child(caption)
+	_content.add_child(BuildForecastTable.payback(data))
 
 
 func _on_recipe_pressed(building_id: String, recipe_id: String) -> void:

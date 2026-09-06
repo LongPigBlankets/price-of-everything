@@ -10047,7 +10047,7 @@ func _test_build_forecast() -> void:
 
 	# cash_needed is what the player must survive before revenue: the idle turn plus the
 	# unpaid producing turns. It is the number the summary line quotes.
-	var expected_need: float = -completes + (-shipping * float(smelter.get("sale_delay", 1)))
+	var expected_need: float = -completes + (-shipping * float(smelter.get("sale_delay", 1))) + float(smelter.breakdown.startup_inventory)
 	_check(is_equal_approx(float(smelter.get("cash_needed", 0.0)), expected_need),
 		"forecast: cash_needed covers the completion turn plus every unpaid producing turn")
 
@@ -10096,6 +10096,59 @@ func _test_build_forecast() -> void:
 	var junk: Dictionary = BuildForecast.project("b_nope", "r_nope", "tile_5_10")
 	_check((junk.get("phases", []) as Array).is_empty(),
 		"forecast: unknown building/recipe yields no projection instead of crashing")
+
+	# Outlook thresholds include their boundary values and reject unroutable sites.
+	for sample in [[-16.0, "Unlikely", "DANGER"], [-15.0, "Unlikely", "DANGER"],
+		[-14.99, "50+ turns", "WARN"], [4.99, "50+ turns", "WARN"],
+		[5.0, "20–30 turns", "OK"], [20.0, "20–30 turns", "OK"], [20.01, "10–20 turns", "OK"]]:
+		var band: Dictionary = BuildForecast.payback_band(float(sample[0]))
+		_check(band.text == sample[1] and band.tone == sample[2], "forecast band boundary: " + str(sample[0]))
+	_check(BuildForecast.payback_band(50.0, true).text == "Unlikely", "unroutable sites never get a positive outlook")
+	var probe := {"instance_id": "", "building_id": "b_012", "recipe_id": "r_012", "tile_id": "tile_4_9", "level": 1}
+	MatchState.idle_labour_pay_share = 0.5
+	var chlor: Dictionary = BuildForecast.project("b_012", "r_012", "tile_4_9")
+	_check(is_equal_approx(float(chlor.breakdown.idle_standing),
+		Production._calculate_labour_cost(probe, Catalog.get_recipe("r_012")) * 0.5 + Production._calculate_maintenance_cost(probe)),
+		"forecast respects half-pay on the idle completion turn")
+	_check(float(chlor.breakdown.startup_inventory) > 0, "forecast reserves initial input pipeline inventory")
+	_check(chlor.first_selling_turn == chlor.build_turns + 1 + chlor.sale_delay,
+		"forecast completion is the final construction turn, not an extra turn")
+	_check((chlor.financing as Dictionary).is_empty(), "repayment is absent without a CFO")
+	MatchState.advisor_seats = {"cfo": "vera"}
+	for mode in ["ask", "slices", "loan", "none"]:
+		MatchState.construct_credit_default = mode
+		var funded: Dictionary = BuildForecast.project("b_012", "r_012", "tile_4_9")
+		_check(funded.financing.mode == mode, "forecast respects CFO credit choice: " + mode)
+		_check(is_equal_approx(float(chlor.steady_net), float(funded.steady_net)), "credit never increases ongoing profitability")
+		_check(float(funded.financing.net) <= float(funded.steady_net), "repayment lowers available cash")
+	MatchState.reset()
+	Modifiers.reset()
+	# Two disconnected cabled islands: only the local surplus offsets imports.
+	var fake := Node.new()
+	var src := GDScript.new()
+	src.source_code = "extends Node\nvar tiles := {}\nfunc id_to_coord(t): return Vector2i(int(t.split('_')[1])-1, int(t.split('_')[2])-1)\n"
+	src.reload()
+	fake.set_script(src)
+	fake.set("tiles", {Vector2i(0, 0): {"infrastructure_present": ["cables"]},
+		Vector2i(9, 9): {"infrastructure_present": ["cables"]}})
+	fake.add_to_group("hex_map")
+	get_tree().root.add_child(fake)
+	var generator := MatchState.add_building("b_003", "r_004", "tile_1_1")
+	var generation := Production._effective_power_output(MatchState.buildings[generator], Catalog.get_recipe("r_004"))
+	var power_gid := str(Catalog.get_good_by_internal_name("power").get("id", ""))
+	var retail := EconomyConfig.GRID_BUY_PRICE + MarketState.carbon_component(power_gid)
+	_check(is_equal_approx(BuildForecast.marginal_power_cost("tile_1_1", 100), 100 * EconomyConfig.GRID_SELL_PRICE),
+		"forecast values company surplus at forgone grid export revenue")
+	_check(is_equal_approx(BuildForecast.marginal_power_cost("tile_10_10", 100), 100 * retail),
+		"forecast never borrows surplus from a disconnected cable network")
+	_check(is_equal_approx(BuildForecast.marginal_power_cost("tile_1_1", generation + 100), generation * EconomyConfig.GRID_SELL_PRICE + 100 * retail),
+		"forecast splits marginal demand between own surplus and grid imports")
+	MatchState.power_priority_coal_gas = "grid"
+	_check(is_equal_approx(BuildForecast.marginal_power_cost("tile_1_1", 100), 100 * retail),
+		"grid-priority generation remains sold rather than covering the new building")
+	fake.free()
+
+	MatchState.reset()
 
 func _test_construct_v3_sim() -> void:
 	# Phase-1 sim layer for the Construct V3 confirm redesign (gated in the UI behind
@@ -10887,69 +10940,23 @@ func _test_construct_v3_2_iteration() -> void:
 			has_buffer = true
 		elif text == "Run rate":
 			has_run_rate = true
-		elif text.begins_with("Turn ") or text == "Never at today's prices":
+		elif text.begins_with("Payback: "):
 			payback_value = label as Label
 	_check(not has_buffer and not has_run_rate,
 		"v3.1 cash facts: Buffer and Run rate rows are gone")
 	_check(payback_value != null and not payback_value.text.to_lower().contains("pays back"),
-		"v3.1 cash facts: Payback reads \"Turn N\", not \"pays back ~turn N\"")
+		"cash facts: payback uses a broad outlook band")
 
-	# "How is this calculated?" replaces the old always-visible caption.
-	var calc_note: Label = null
-	for label in panel._content.find_children("*", "Label", true, false):
-		if (label as Label).text == "How is this calculated?":
-			calc_note = label as Label
-	_check(calc_note != null and calc_note.tooltip_text.contains("Per turn, at market prices"),
-		"v3.1 cash facts: \"How is this calculated?\" carries the explanation on hover")
-	var stray_caption := false
-	for label in panel._content.find_children("*", "Label", true, false):
-		if (label as Label).text.contains("Assumes it sells straight to market"):
-			stray_caption = true
-	_check(not stray_caption, "v3.1 cash facts: the old always-visible caption is gone")
-
-	# Cash timeline: turn markers, phase names and money are true row siblings —
-	# a GridContainer, not one VBox per phase — so a taller middle cell (a
-	# wrapped phase name) can never push just ITS OWN money row out of line with
-	# its neighbours. Phase count varies by fixture, so read it back live.
-	var forecast: Dictionary = panel.get("_v3_forecast")
-	var phase_count: int = (forecast.get("phases", []) as Array).size()
-	var timeline_grid: GridContainer = null
-	for grid in panel._content.find_children("*", "GridContainer", true, false):
-		if (grid as GridContainer).columns == phase_count and phase_count > 0:
-			var first_child := (grid as GridContainer).get_child(0)
-			# Marker text reads "Turn 1"/"Turn 1–3" now (owner 2026-08-26, was
-			# "t1"/"t1–t3") — identify the grid by that instead.
-			if first_child is Label and str((first_child as Label).text).begins_with("Turn "):
-				timeline_grid = grid as GridContainer
-	_check(timeline_grid != null and timeline_grid.get_child_count() == phase_count * 3,
-		"v3.1 cash timeline: one GridContainer cell per phase per row (3 rows)")
+	_check(payback_value != null and payback_value.get_theme_font_size("font_size") == 20,
+		"forecast payback is larger and carries its assumptions on hover")
+	_check(payback_value != null and payback_value.tooltip_text.contains("current prices"),
+		"forecast explains uncertainty in a tooltip")
+	var timeline_grid: GridContainer = panel._content.find_child("RevenueTimeline", true, false)
+	_check(timeline_grid != null and timeline_grid.columns == 3,
+		"forecast uses a compact three-column timeline")
 	if timeline_grid != null:
-		await get_tree().process_frame
-		var row0_y: float = (timeline_grid.get_child(0) as Control).get_global_rect().position.y
-		var row1_rect0: Rect2 = (timeline_grid.get_child(phase_count) as Control).get_global_rect()
-		var row1_center_y: float = row1_rect0.position.y + row1_rect0.size.y / 2.0
-		var row2_y: float = (timeline_grid.get_child(phase_count * 2) as Control).get_global_rect().position.y
-		var rows_distinct := row0_y < row1_center_y and row1_center_y < row2_y
-		var row0_aligned := true
-		var row2_aligned := true
-		for i in phase_count:
-			if not is_equal_approx((timeline_grid.get_child(i) as Control).get_global_rect().position.y, row0_y):
-				row0_aligned = false
-			if not is_equal_approx((timeline_grid.get_child(phase_count * 2 + i) as Control).get_global_rect().position.y, row2_y):
-				row2_aligned = false
-		_check(rows_distinct and row0_aligned and row2_aligned,
-			"v3.1 cash timeline: every turn-marker/money cell top-aligns with its own row, regardless of text wrapping")
-		# Owner 2026-08-26: the name row instead centres each cell on a shared
-		# axis — one line sits on it, two straddle it, three put their middle
-		# line on it — so the invariant here is centre-Y equality, not top-Y.
-		var row1_aligned := true
-		for i in phase_count:
-			var cell_rect: Rect2 = (timeline_grid.get_child(phase_count + i) as Control).get_global_rect()
-			var cell_center_y := cell_rect.position.y + cell_rect.size.y / 2.0
-			if not is_equal_approx(cell_center_y, row1_center_y):
-				row1_aligned = false
-		_check(row1_aligned,
-			"v3.1 cash timeline: every phase-name cell shares the same centre axis, regardless of line count")
+		for label in timeline_grid.get_children():
+			_check(not label.text.contains("£"), "forecast timeline has no money amounts")
 
 	# Verdict strip: cost separated from time. On tile_5_10 (the fixture used
 	# throughout — the player's own port) the "Build time" fact row is simply
@@ -11235,23 +11242,10 @@ func _test_construct_v3_4_iteration() -> void:
 	_check(not has_turns_suffix,
 		"v3.1 cash timeline: the redundant \"· N turns\" suffix is gone")
 
-	# "How is this calculated?" now shares Payback's row, right-anchored, with
-	# a thin outline (owner 2026-08-26 — was its own row underneath).
 	var facts_row: Control = panel._v3_cash_facts_row()
-	_check(facts_row is HBoxContainer and facts_row.get_child_count() == 2,
-		"v3.1 cash facts row: Payback and the calculation note share one HBox")
-	var note_pill: Control = null
-	if facts_row.get_child_count() == 2:
-		note_pill = facts_row.get_child(1) as Control
-	_check(note_pill is PanelContainer,
-		"v3.1 cash facts row: the calculation note sits in its own outlined container")
-	if note_pill is PanelContainer:
-		var note_style := note_pill.get_theme_stylebox("panel") as StyleBoxFlat
-		_check(note_style != null and note_style.border_width_left > 0,
-			"v3.1 cash facts row: the outline is a real (non-zero) border")
-		var note_label := note_pill.get_child(0) as Label
-		_check(note_label != null and note_label.text == "How is this calculated?",
-			"v3.1 cash facts row: the outlined control still reads \"How is this calculated?\"")
+	_check(facts_row is Label and facts_row.name == "ForecastPayback",
+		"forecast ends with just the prominent payback label")
+	facts_row.free()
 
 	remove_child(panel)
 	panel.free()

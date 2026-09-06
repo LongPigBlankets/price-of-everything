@@ -3,7 +3,7 @@ extends CanvasLayer
 ## Quotes refresh when the site, selection or economy changes, not every frame.
 
 const Forecast := preload("res://scripts/build_forecast.gd")
-const PHASE_NAMES := {"completes": "Build completes", "shipping": "First production", "selling": "Revenue arrives"}
+const ForecastTable := preload("res://scripts/build_forecast_table.gd")
 var terrain: HexMap
 var card: PanelContainer
 var _key := ""
@@ -29,6 +29,8 @@ func _ready() -> void:
 	BuildMode.mode_exited.connect(_on_exited)
 	Stockpile.stockpile_changed.connect(_invalidate)
 	MatchState.construct_settings_changed.connect(_invalidate)
+	MatchState.advisors_changed.connect(_invalidate)
+	MatchState.power_priority_changed.connect(_invalidate)
 	MatchState.money_changed.connect(func(_amount: float): _invalidate())
 	MatchState.tile_land_owned_changed.connect(func(_tile: String): _invalidate())
 	Construction.construction_started.connect(func(_id: String, _tile: String): _invalidate())
@@ -136,35 +138,8 @@ func show_preview(tile_id: String, building_id: String, recipe_id: String) -> vo
 	if not (forecast.get("phases", []) as Array).is_empty():
 		content.add_child(DS.section_rule())
 		content.add_child(_label("Timeline of Revenue", 17, DS.PALETTE.ACCENT))
-		var grid := GridContainer.new()
-		grid.name = "RevenueTimeline"
-		grid.columns = 3
-		grid.add_theme_constant_override("h_separation", 12)
-		grid.add_theme_constant_override("v_separation", 7)
-		content.add_child(grid)
-		for heading in ["Turn", "Stage", "Net cash / turn"]:
-			grid.add_child(_label(heading, 12, DS.PALETTE.ACCENT))
-		for phase in forecast.phases:
-			if str(phase.kind) == "building":
-				continue
-			grid.add_child(_label(str(phase.range).replace("t", ""), 13))
-			var stage := _label(str(PHASE_NAMES.get(str(phase.kind), phase.label)), 13)
-			stage.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			grid.add_child(stage)
-			var amount := float(phase.per_turn)
-			var value := _label(("+" if amount > 0 else ("−" if amount < 0 else "")) + _money(absf(amount)), 13,
-				DS.PALETTE.OK if amount >= 0 else DS.PALETTE.DANGER)
-			value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-			grid.add_child(value)
-		_note(content, "Turns from construction start · %d turns to build" % int(forecast.build_turns))
-		if int(data.arrival) > 0:
-			_note(content, "Allow %d turn%s for materials to arrive first." % [int(data.arrival), "" if int(data.arrival) == 1 else "s"])
-		if bool(forecast.no_supply):
-			_note(content, "No supply route for %s — would sit idle." % ", ".join(PackedStringArray(forecast.input_names)), DS.PALETTE.DANGER)
-		else:
-			var payback := Forecast.payback_turn(float(data.total), float(forecast.cash_needed), float(forecast.steady_net), int(forecast.first_selling_turn))
-			_note(content, "Payback: turn %d" % payback if payback > 0 else "No payback at today's prices.")
-		_note(content, "Estimate at today's prices; output sold to market.")
+		content.add_child(ForecastTable.timeline(forecast))
+		content.add_child(ForecastTable.payback(forecast))
 	_ignore_mouse(content)
 	card.reset_size()
 	card.show()

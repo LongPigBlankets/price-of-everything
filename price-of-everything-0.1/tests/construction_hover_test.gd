@@ -72,6 +72,17 @@ func _ready() -> void:
 	var timeline: GridContainer = hover.card.find_child("RevenueTimeline", true, false)
 	check(timeline != null and timeline.get_child_count() == 12, "Revenue table shows three columns and three post-construction phases")
 	check(hover.card.mouse_filter == Control.MOUSE_FILTER_IGNORE, "Preview does not intercept tile selection")
+	var payback: Label = hover.card.find_child("ForecastPayback", true, false)
+	check(payback != null and payback.get_theme_font_size("font_size") == 20, "Payback is prominent")
+	for label in timeline.get_children():
+		check(not label.text.contains("£"), "Forecast avoids money amounts")
+	MatchState.advisor_seats = {"cfo": "vera"}
+	MatchState.set_construct_credit_default("slices")
+	await settle()
+	timeline = hover.card.find_child("RevenueTimeline", true, false)
+	check(timeline.get_child_count() == 15 and timeline.get_child(13).text == "During repayment", "CFO adds one repayment row")
+	check(hover.card.size.y < 460, "CFO hover remains compact")
+
 	Stockpile.stockpile_changed.emit()
 	check(hover._key == "", "Material changes invalidate the site quote without moving the cursor")
 	await settle()

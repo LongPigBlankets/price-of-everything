@@ -1,94 +1,64 @@
 extends PanelContainer
-## The build forecast as four columns, one per phase of the building's first turns.
-##
-## This replaced a line chart. The chart was honest but unreadable: the pre-revenue hole is
-## several times deeper than the steady margin is tall, so any shared axis flattened the
-## number the player actually wants (the £/turn they end up with) into a hairline against a
-## huge red slab. Four columns give every phase its own space and exact figures, and they
-## carry what a line never did — how MANY turns each phase lasts.
-##
-## See docs/early-game-onboarding-spec.md §5.1.
-
-const NAVY_FIELD := Color("#0a1725")
-const NAVY_LINE := Color("#22384f")
-const TEXT := Color("#e6edf5")
-const MUTED := Color("#8da0b6")
-const GREEN := Color("#5fbf6b")
-const GREY := Color("#7f8fa3")
-
+## Shared compact, qualitative forecast for the confirm screen and map hover.
+const Forecast := preload("res://scripts/build_forecast.gd")
+const PHASE_NAMES := {"completes": "Build completes", "shipping": "First production", "selling": "Revenue arrives"}
 
 func set_forecast(data: Dictionary) -> void:
 	for child in get_children():
+		remove_child(child)
 		child.queue_free()
-	var phases: Array = data.get("phases", [])
-	if phases.is_empty():
-		return
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color.TRANSPARENT
+	add_theme_stylebox_override("panel", style)
+	add_child(timeline(data))
 
-	add_theme_stylebox_override("panel", _plate())
+static func timeline(data: Dictionary) -> GridContainer:
 	var grid := GridContainer.new()
-	grid.columns = phases.size()
-	grid.add_theme_constant_override("h_separation", 6)
-	grid.add_theme_constant_override("v_separation", 2)
-	add_child(grid)
+	grid.name = "RevenueTimeline"
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 12)
+	grid.add_theme_constant_override("v_separation", 5)
+	grid.tooltip_text = "Estimated turns from construction start, after materials arrive. At current prices and standing output, before company taxes. Credit is temporary; payback describes the ongoing outlook after repayment."
+	for heading in ["When", "Stage", "Cash flow"]:
+		grid.add_child(_cell(heading, DS.PALETTE.ACCENT))
+	for phase in data.get("phases", []):
+		if str(phase.kind) == "building":
+			continue
+		var marker := "Turn " + str(phase.range).replace("t", "")
+		grid.add_child(_cell(marker))
+		var stage := _cell(str(PHASE_NAMES.get(str(phase.kind), phase.label)))
+		stage.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		grid.add_child(stage)
+		var net := float(phase.per_turn)
+		grid.add_child(_cell("No supply" if bool(data.get("no_supply", false)) else _cash_direction(net),
+			DS.PALETTE.DANGER if bool(data.get("no_supply", false)) else _cash_tone(net)))
+	var finance: Dictionary = data.get("financing", {})
+	if not finance.is_empty():
+		var mode := str(finance.get("mode", "ask"))
+		var when := "If chosen" if mode == "ask" else ("—" if mode == "none" else "Turn %d–%d" % [finance.start, finance.end])
+		grid.add_child(_cell(when))
+		grid.add_child(_cell("During repayment"))
+		var net := float(finance.get("net", 0.0))
+		grid.add_child(_cell("No credit" if mode == "none" else _cash_direction(net), DS.PALETTE.TEXT if mode == "none" else _cash_tone(net)))
+	return grid
 
-	# Row 1 — what is happening.
-	for phase in phases:
-		grid.add_child(_cell(str(phase.get("label", "")), 10, MUTED, true))
-	# Row 2 — the money, which is the whole point.
-	for phase in phases:
-		var per_turn := float(phase.get("per_turn", 0.0))
-		var colour: Color = GREY
-		if str(phase.get("kind", "")) != "building":
-			colour = GREEN if per_turn >= 0.0 else DS.PALETTE["DANGER"]
-		grid.add_child(_cell(_money_per_turn(per_turn), 15, colour, true))
-	# Row 3 — when, and for how long.
-	for phase in phases:
-		var turns := int(phase.get("turns", 0))
-		var suffix := ""
-		if turns > 1:
-			suffix = "  ·  %d turns" % turns
-		grid.add_child(_cell("%s%s" % [str(phase.get("range", "")), suffix], 9, MUTED, true))
-
-
-func _cell(text: String, font_size: int, colour: Color, centred: bool) -> Control:
-	var label := Label.new()
-	label.text = text
-	label.add_theme_font_size_override("font_size", font_size)
-	label.add_theme_color_override("font_color", colour)
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER if centred else HORIZONTAL_ALIGNMENT_LEFT
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+static func payback(data: Dictionary) -> Label:
+	var band := Forecast.payback_band(float(data.get("steady_net", 0.0)), bool(data.get("no_supply", false)))
+	var label := _cell("Payback: " + str(band.text), DS.PALETTE[str(band.tone)])
+	label.name = "ForecastPayback"
+	label.add_theme_font_size_override("font_size", 20)
+	label.tooltip_text = "Broad outlook at current prices, after any credit is repaid. Prices, supply and company taxes can change the result."
 	return label
 
+static func _cash_direction(net: float) -> String:
+	return "Surplus" if net > 0.0 else ("Costs" if net < 0.0 else "Even")
 
-func _money_per_turn(value: float) -> String:
-	if is_zero_approx(value):
-		return "£0"
-	var sign_char := "+" if value > 0.0 else "−"
-	return "%s£%s" % [sign_char, _thousands(absf(value))]
+static func _cash_tone(net: float) -> Color:
+	return DS.PALETTE.OK if net > 0.0 else (DS.PALETTE.DANGER if net < 0.0 else DS.PALETTE.WARN)
 
-
-func _thousands(v: float) -> String:
-	var whole := int(round(v))
-	var s := str(whole)
-	var out := ""
-	var count := 0
-	for i in range(s.length() - 1, -1, -1):
-		out = s[i] + out
-		count += 1
-		if count % 3 == 0 and i > 0:
-			out = "," + out
-	return out
-
-
-func _plate() -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
-	style.bg_color = NAVY_FIELD
-	style.border_color = NAVY_LINE
-	style.set_border_width_all(1)
-	style.set_corner_radius_all(9)
-	style.content_margin_left = 10
-	style.content_margin_right = 10
-	style.content_margin_top = 8
-	style.content_margin_bottom = 8
-	return style
+static func _cell(text: String, tone: Color = Color("e8eef7")) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 14)
+	label.add_theme_color_override("font_color", tone)
+	return label
