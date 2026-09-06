@@ -1166,7 +1166,9 @@ func _test_tutorial_engine() -> void:
 		and str(carbo_unlock.get("object", "")) == "chlorine"
 		and int(carbo_unlock.get("qty", 0)) == 300,
 		"research: Bauxite Carbochlorination requires 300 Chlorine (chlorine is the reagent; no circular aluminium gate)")
-	_check(str(carbo_unlock.get("description", "")) == "Unlocks new recipe: Bauxite Carbochlorination (20 Aluminium).",
+	# Reward text names the recipe only — output quantities were dropped from every card
+	# (owner 2026-09-06) because they went stale against recipes_all.csv.
+	_check(str(carbo_unlock.get("description", "")) == "Unlocks new recipe: Bauxite Carbochlorination.",
 		"research: Bauxite Carbochlorination description describes its recipe, not its condition")
 	_check(TutorialSteps._recipe_input_qty("r_050", "alumina") == 20
 		and int(Catalog.get_recipe("r_050").get("labour_unskilled_required", 0)) == 505
@@ -7347,6 +7349,24 @@ func _test_live_unlock_conditions() -> void:
 	Production.last_turn_summary = {"produced": {steel_rate_gid: 300}}
 	_check(MatchState._live_condition_met({"action": "Produce Per Turn", "object": "steel", "qty": 300}),
 		"Produce Per Turn: 300 steel last turn satisfies 300/turn (a rate, not lifetime volume)")
+	# --- "Produce Per Turn Any" (rate on EITHER good), nested inside All Of with a "|" object ---
+	var coke_gid := str(Catalog.get_good_by_internal_name("pet_coke").get("id", ""))
+	var biomass_gid := str(Catalog.get_good_by_internal_name("carbonised_biomass").get("id", ""))
+	Production.last_turn_summary = {"produced": {coke_gid: 29, biomass_gid: 0}}
+	_check(not MatchState._live_condition_met({"action": "Produce Per Turn Any", "object": "pet_coke|carbonised_biomass", "qty": 30, "quantity_raw": "30"}),
+		"Produce Per Turn Any: 29 coke / 0 biomass last turn does not reach 30 of either")
+	Production.last_turn_summary = {"produced": {coke_gid: 0, biomass_gid: 30}}
+	_check(MatchState._live_condition_met({"action": "Produce Per Turn Any", "object": "pet_coke|carbonised_biomass", "qty": 30, "quantity_raw": "30"}),
+		"Produce Per Turn Any: 30 biomass alone satisfies the OR")
+	# The Carbon Substitution gate: 500 steel lifetime AND (30 coke/turn OR 30 biomass/turn).
+	var carbon_gate := {"action": "All Of", "object": "Produce|steel|500|units;Produce Per Turn Any|pet_coke|carbonised_biomass|30|units per turn", "qty": 1, "unit": "conditions"}
+	var nested := MatchState._parse_sub_condition("Produce Per Turn Any|pet_coke|carbonised_biomass|30|units per turn")
+	_check(str(nested.get("object", "")) == "pet_coke|carbonised_biomass" and int(nested.get("qty", 0)) == 30,
+		"All Of clause parser keeps a '|' good-list object intact (last two fields are qty/unit)")
+	_check(not MatchState._live_condition_met(carbon_gate), "Carbon Substitution: biomass rate alone (no steel) is not enough")
+	Production.produced_by_building["mill"] = {steel_rate_gid: 500}
+	_check(MatchState._live_condition_met(carbon_gate), "Carbon Substitution: 500 steel AND 30 biomass/turn unlocks it")
+	_check(MatchState._research_condition_issue(carbon_gate) == "", "Carbon Substitution gate passes the audit")
 	Production.last_turn_summary = {}
 	Production.produced_by_building.clear()
 	MatchState.reset()
@@ -8507,8 +8527,10 @@ func _test_petrochemistry_changes() -> void:
 			node = d
 	_check(str(node.get("category", "")) == "Chemistry" and str(node.get("rank", "")) == "I",
 		"petrochem: the pipelines node is a Tier I Chemistry node")
-	_check(str(node.get("action", "")) == "Run" and int(node.get("qty", 0)) == 10,
-		"petrochem: the pipelines node is earned by running a refinery for 10 turns")
+	# Owner 2026-09-06: pipelines are earned by breadth of refining — two refineries on
+	# different recipes — not by a run-streak that duplicated Fractional Distillation's.
+	_check(str(node.get("action", "")) == "Run Distinct Recipes" and int(node.get("qty", 0)) == 2,
+		"petrochem: the pipelines node is earned by running 2 refineries on different recipes")
 	_check(MatchState.research_condition_issues().is_empty(),
 		"petrochem: every research row still resolves to a live condition")
 

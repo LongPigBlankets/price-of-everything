@@ -2556,6 +2556,16 @@ func unlock_condition_text(title: String) -> String:
 					all_parts.append(_sub_condition_text(sub))
 			return _join_and(all_parts).capitalize() if all_parts.is_empty() else (_join_and(all_parts)[0].to_upper() + _join_and(all_parts).substr(1))
 		"Produce Per Turn": return "Produce at least %d %s in a single turn" % [qty, object_name.capitalize()]
+		"Produce Per Turn Any":
+			var rate_parts: Array = []
+			var rate_names := object_name.split("|", false)
+			var rate_raw := str(d.get("quantity_raw", "")).split("|", false)
+			for index in rate_names.size():
+				var rate_n := qty
+				if rate_raw.size() == rate_names.size() and str(rate_raw[index]).is_valid_int():
+					rate_n = int(str(rate_raw[index]))
+				rate_parts.append("%d %s" % [rate_n, str(rate_names[index]).capitalize()])
+			return "Produce at least %s in a single turn" % _join_or(rate_parts)
 		"Run Multiple": return _run_multiple_condition_text(d)
 		"Fulfil Special Orders": return "Fulfil at least %d special orders" % qty
 		"Run Recipe": return "Operate %d buildings using a %s recipe" % [qty, object_name]
@@ -2785,6 +2795,22 @@ func _live_condition_met(d: Dictionary) -> bool:
 			# ("produce at least 300 steel per turn").
 			var rate_good := _research_good_id(obj)
 			return rate_good != "" and int((Production.last_turn_summary.get("produced", {}) as Dictionary).get(rate_good, 0)) >= need
+		"Produce Per Turn Any":
+			# A rate on ANY of an "a|b" list: last turn's output of any listed good reached its
+			# threshold ("30 pet coke per turn OR 30 biomass per turn"). Shared qty, or per-good "x|y".
+			var rate_goods := obj.split("|", false)
+			var rate_qtys := str(d.get("quantity_raw", need)).split("|", false)
+			var produced_last: Dictionary = Production.last_turn_summary.get("produced", {})
+			for index in rate_goods.size():
+				var rg := _research_good_id(str(rate_goods[index]))
+				if rg == "":
+					continue
+				var want_rate := need
+				if rate_qtys.size() == rate_goods.size() and str(rate_qtys[index]).is_valid_int():
+					want_rate = int(str(rate_qtys[index]))
+				if int(produced_last.get(rg, 0)) >= want_rate:
+					return true
+			return false
 		"Run Recipe":
 			# "Run N player buildings currently set to a recipe of this category"
 			# (e.g. furnaces on a Glassmaking recipe). A leading int in Unit optionally
@@ -3012,6 +3038,14 @@ func _research_condition_issue(d: Dictionary) -> String:
 		return ""
 	if action == "Produce Per Turn":
 		return "" if _research_good_id(obj) != "" else "unknown good target"
+	if action == "Produce Per Turn Any":
+		var rate_goods := obj.split("|", false)
+		if rate_goods.is_empty():
+			return "invalid multi-good production condition"
+		for g in rate_goods:
+			if _research_good_id(str(g)) == "":
+				return "unknown good target"
+		return ""
 	if action == "Own All":
 		# "a|b" building types — every one must resolve.
 		var own_all_targets := obj.split("|", false)
@@ -3120,14 +3154,19 @@ func _max_same_tile_count(internal: String, min_streak: int) -> int:
 ## live check, the audit and the card text consume. Empty when malformed. (Clauses whose own
 ## Object needs "|" — Produce All, Own All — can't nest here; none do.)
 func _parse_sub_condition(spec: String) -> Dictionary:
+	# Action | Object… | Qty | Unit — the LAST two fields are qty and unit, so an Object that
+	# itself carries "|" (an a|b good list for the *Any / *All verbs) survives inside a clause.
 	var parts := spec.split("|", false)
-	if parts.size() < 3:
+	if parts.size() < 4:
 		return {}
-	var q := str(parts[2]).strip_edges()
+	var q := str(parts[parts.size() - 2]).strip_edges()
+	var object_parts: Array = []
+	for i in range(1, parts.size() - 2):
+		object_parts.append(str(parts[i]).strip_edges())
 	return {
-		"action": str(parts[0]).strip_edges(), "object": str(parts[1]).strip_edges(),
+		"action": str(parts[0]).strip_edges(), "object": "|".join(PackedStringArray(object_parts)),
 		"qty": int(q) if q.is_valid_int() else _leading_int(q, 0), "quantity_raw": q,
-		"unit": str(parts[3]).strip_edges() if parts.size() > 3 else "",
+		"unit": str(parts[parts.size() - 1]).strip_edges(),
 	}
 
 ## Card text for one All Of clause — the verbs that actually appear in compound gates.
