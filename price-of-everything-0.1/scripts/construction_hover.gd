@@ -14,7 +14,7 @@ func _ready() -> void:
 	card = PanelContainer.new()
 	card.name = "ConstructionHoverCard"
 	card.theme = DS.theme
-	card.custom_minimum_size.x = 380
+	card.custom_minimum_size.x = 440
 	# Logistics hover's navy plate, cream bevel and diagonal lighting, using DS's
 	# existing bevel generator so the card stays crisp at any camera zoom.
 	card.add_theme_stylebox_override("panel", DS._button_stylebox(

@@ -70,7 +70,13 @@ func _ready() -> void:
 	check(str(hover._key).begins_with("tile_5_10|"), "Preview follows the actual hovered tile: " + str(hover._key))
 	check(hover.card.size.y < 600, "Hover card fits its content without empty vertical space")
 	var timeline: GridContainer = hover.card.find_child("RevenueTimeline", true, false)
-	check(timeline != null and timeline.get_child_count() == 12, "Revenue table shows three columns and three post-construction phases")
+	check(timeline != null and timeline.get_child_count() == 15, "Revenue table ends with stable production after its three post-construction phases")
+	check(timeline.get_child(13).text == "Stable production", "Unfinanced forecast ends with stable production")
+	check(hover.card.size.x >= 440, "Hover panel has room for the longer cash-flow labels")
+	var table_script := preload("res://scripts/build_forecast_table.gd")
+	for sample in [[-15.0, "Deficit"], [-14.99, "Small Deficit"], [-0.01, "Small Deficit"],
+		[0.0, "Even"], [0.01, "Small Surplus"], [14.99, "Small Surplus"], [15.0, "Surplus"]]:
+		check(table_script._cash_direction(float(sample[0])) == sample[1], "Cash-flow threshold: " + str(sample[0]))
 	check(hover.card.mouse_filter == Control.MOUSE_FILTER_IGNORE, "Preview does not intercept tile selection")
 	var payback: Label = hover.card.find_child("ForecastPayback", true, false)
 	check(payback != null and payback.get_theme_font_size("font_size") == 20, "Payback is prominent")
@@ -80,8 +86,12 @@ func _ready() -> void:
 	MatchState.set_construct_credit_default("slices")
 	await settle()
 	timeline = hover.card.find_child("RevenueTimeline", true, false)
-	check(timeline.get_child_count() == 15 and timeline.get_child(13).text == "During repayment", "CFO adds one repayment row")
-	check(hover.card.size.y < 460, "CFO hover remains compact")
+	check(timeline.get_child_count() == 18 and timeline.get_child(13).text == "During repayment", "CFO adds one repayment row")
+	check(timeline.get_child(16).text == "Stable production\nafter repayment", "Stable production follows the CFO repayment row")
+	var forecast: Dictionary = Preview.preview("tile_5_10", "b_002", "r_005").forecast
+	check(timeline.get_child(15).text == "Turn %d onwards" % (int(forecast.financing.end) + 1), "Stable production starts after the last repayment")
+	check(timeline.get_child(17).text == table_script._cash_direction(float(forecast.steady_net)), "Final outlook excludes temporary repayment costs")
+	check(hover.card.size.y < 500, "CFO hover remains compact")
 
 	Stockpile.stockpile_changed.emit()
 	check(hover._key == "", "Material changes invalidate the site quote without moving the cursor")

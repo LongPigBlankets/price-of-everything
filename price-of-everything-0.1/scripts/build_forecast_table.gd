@@ -24,7 +24,7 @@ static func timeline(data: Dictionary) -> GridContainer:
 	for phase in data.get("phases", []):
 		if str(phase.kind) == "building":
 			continue
-		var marker := "Turn " + str(phase.range).replace("t", "")
+		var marker := "Turn " + str(phase.range).replace("t", "").trim_suffix(" onwards")
 		grid.add_child(_cell(marker))
 		var stage := _cell(str(PHASE_NAMES.get(str(phase.kind), phase.label)))
 		stage.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -40,6 +40,16 @@ static func timeline(data: Dictionary) -> GridContainer:
 		grid.add_child(_cell("During repayment"))
 		var net := float(finance.get("net", 0.0))
 		grid.add_child(_cell("No credit" if mode == "none" else _cash_direction(net), DS.PALETTE.TEXT if mode == "none" else _cash_tone(net)))
+	# Keep the lasting operating outlook last, separate from temporary repayments.
+	var financed := not finance.is_empty() and str(finance.get("mode", "none")) != "none"
+	var stable_turn := int(data.get("first_selling_turn", 0))
+	if financed:
+		stable_turn = maxi(stable_turn, int(finance.get("end", stable_turn - 1)) + 1)
+	grid.add_child(_cell("If chosen" if financed and str(finance.get("mode", "")) == "ask" else "Turn %d onwards" % stable_turn))
+	grid.add_child(_cell("Stable production\nafter repayment" if financed else "Stable production"))
+	var steady := float(data.get("steady_net", 0.0))
+	grid.add_child(_cell("No supply" if bool(data.get("no_supply", false)) else _cash_direction(steady),
+		DS.PALETTE.DANGER if bool(data.get("no_supply", false)) else _cash_tone(steady)))
 	return grid
 
 static func payback(data: Dictionary) -> Label:
@@ -51,7 +61,11 @@ static func payback(data: Dictionary) -> Label:
 	return label
 
 static func _cash_direction(net: float) -> String:
-	return "Surplus" if net > 0.0 else ("Costs" if net < 0.0 else "Even")
+	if net > 0.0:
+		return "Small Surplus" if net < 15.0 else "Surplus"
+	if net < 0.0:
+		return "Small Deficit" if net > -15.0 else "Deficit"
+	return "Even"
 
 static func _cash_tone(net: float) -> Color:
 	return DS.PALETTE.OK if net > 0.0 else (DS.PALETTE.DANGER if net < 0.0 else DS.PALETTE.WARN)
