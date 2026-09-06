@@ -11,7 +11,10 @@ extends Camera2D
 @export var zoom_max: float = 2.5              # zoomed in
 @export var zoom_step: float = 0.1
 @export var zoom_smoothing: float = 8.0
-@export var zoomed_in_tile_count: float = 2.5
+## How many tiles tall the viewport is at maximum zoom. 1.25 puts ONE tile at 80% of the
+## viewport height (owner, 2026-09-03) — twice the reach of the 2.5 it replaced, which is why
+## the authored bake grew a near tier: at this zoom the old textures would be magnified.
+@export var zoomed_in_tile_count: float = 1.25
 
 var _target_zoom: Vector2
 # Screen point the current zoom gesture is anchored on (the cursor), held fixed in world

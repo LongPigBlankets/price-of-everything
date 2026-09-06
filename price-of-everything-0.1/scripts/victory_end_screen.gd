@@ -1407,6 +1407,7 @@ class _RankChart extends Control:
 ## the edges need to know where the chips landed, and a container cannot tell them.
 class _ChainWeb extends Control:
 	const GoodIcons := preload("res://scripts/good_icons.gd")
+	const GoodHover := preload("res://scripts/good_icon_hover.gd")
 	const ROUTE_COLORS := [Color("#f2c14e"), Color("#6f9fd8"), Color("#7ec98a"), Color("#b48ad9")]
 	const CREAM := Color(0.995234, 0.930806, 0.763265)
 	const CHIP := 58.0
@@ -1421,6 +1422,7 @@ class _ChainWeb extends Control:
 		resized.connect(queue_redraw)
 
 	func _draw() -> void:
+		GoodHover.begin_draw(self)
 		if nodes.is_empty() or size.x < 40.0:
 			return
 		# Columns: the graph's own tier depths, squeezed to consecutive slots so a run that
@@ -1535,6 +1537,7 @@ class _ChainWeb extends Control:
 		var tex: Texture2D = GoodIcons.texture_for_size(gid, internal, WIRE_CHIP)
 		if tex == null:
 			return
+		GoodHover.drawn(self, r, gid)
 		var box := r.grow(-3.0)
 		var ts := tex.get_size()
 		if ts.x > 0.0 and ts.y > 0.0:
@@ -1573,6 +1576,7 @@ class _ChainWeb extends Control:
 		var tex: Texture2D = GoodIcons.texture_for_size(str(n.get("gid", "")),
 			str(n.get("id", "")), CHIP)
 		if tex != null:
+			GoodHover.drawn(self, r, str(n.get("gid", "")))
 			var box := r.grow(-5.0)
 			var ts := tex.get_size()
 			if ts.x > 0.0 and ts.y > 0.0:

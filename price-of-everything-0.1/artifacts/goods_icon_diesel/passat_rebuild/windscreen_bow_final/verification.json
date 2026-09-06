@@ -1,0 +1,54 @@
+{
+  "diesel_car_raw.png": {
+    "identical_clean_render": true,
+    "sha256": "4ac917b84868213570b18eecaa587726bddded6f0a2214b3be74ecd856071312"
+  },
+  "diesel_car_raw_mask.png": {
+    "identical_clean_render": true,
+    "sha256": "c550ab2f43c5566794bcd92d2ec12b6e6180cb5c9e6d1dfceb223621b37113ae"
+  },
+  "mask_extrema": [
+    [
+      0,
+      255
+    ],
+    [
+      0,
+      255
+    ],
+    [
+      0,
+      255
+    ]
+  ],
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "ground_validation": [
+    "bbox world 3.63 x 5.98 x 1.81"
+  ],
+  "sizes": {
+    "800": [
+      800,
+      800
+    ],
+    "450": [
+      450,
+      450
+    ],
+    "400": [
+      400,
+      400
+    ],
+    "256": [
+      256,
+      256
+    ],
+    "60": [
+      60,
+      60
+    ]
+  }
+}

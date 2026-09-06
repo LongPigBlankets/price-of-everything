@@ -84,6 +84,7 @@ func _ready() -> void:
 	await _test_authored_slot_claim_order()
 	await _test_hijack_mass_claim()
 	_test_building_tab_repayment()
+	_test_bake_near_tier_geometry()
 	_test_forecast_own_supply_follows_production()
 	await _test_block_road_segments_include_authored_strokes()
 	_test_authored_zones()
@@ -1159,11 +1160,15 @@ func _test_tutorial_engine() -> void:
 		and str(direct_bauxite.get("tech_unlock_req", "")) == "research_metal_012",
 		"tutorial: Bauxite Carbochlorination is the lower-energy gated furnace route with chlorine")
 	var carbo_unlock: Dictionary = MatchState.get_unlock_def("Bauxite Carbochlorination")
-	_check(str(carbo_unlock.get("action", "")) == "Produce All"
-		and str(carbo_unlock.get("object", "")) == "chlorine|aluminium"
-		and str(carbo_unlock.get("quantity_raw", "")) == "300|400",
-		"research: Bauxite Carbochlorination requires 300 Chlorine and 400 Aluminium")
-	_check(str(carbo_unlock.get("description", "")) == "Unlocks new recipe: Bauxite Carbochlorination (20 Aluminium).",
+	# Chlorine is the real reagent dependency; the old "and 400 aluminium" was circular
+	# (make aluminium to unlock an aluminium recipe) and was dropped (owner 2026-09-06).
+	_check(str(carbo_unlock.get("action", "")) == "Produce"
+		and str(carbo_unlock.get("object", "")) == "chlorine"
+		and int(carbo_unlock.get("qty", 0)) == 300,
+		"research: Bauxite Carbochlorination requires 300 Chlorine (chlorine is the reagent; no circular aluminium gate)")
+	# Reward text names the recipe only — output quantities were dropped from every card
+	# (owner 2026-09-06) because they went stale against recipes_all.csv.
+	_check(str(carbo_unlock.get("description", "")) == "Unlocks new recipe: Bauxite Carbochlorination.",
 		"research: Bauxite Carbochlorination description describes its recipe, not its condition")
 	_check(TutorialSteps._recipe_input_qty("r_050", "alumina") == 20
 		and int(Catalog.get_recipe("r_050").get("labour_unskilled_required", 0)) == 505
@@ -5839,6 +5844,10 @@ func _test_research_reference_integrity() -> void:
 	var missing_ids: Array = []
 	var dupe_ids: Array = []
 	for r in rows:
+		# Mirror the loader: demo-hidden rows stay in the CSV but are never loaded, so
+		# their titles must not be expected to resolve (see MatchState.HIDDEN_RESEARCH_IDS).
+		if MatchState.HIDDEN_RESEARCH_IDS.has(str(r.get("research_node_id", "")).strip_edges()):
+			continue
 		var t := str(r.get("title", "")).strip_edges()
 		if t != "":
 			titles[t] = true
@@ -5899,6 +5908,10 @@ func _test_research_reference_integrity() -> void:
 	var known_gaps := ["consumer", "hydro"]
 	var bad_gates: Array = []
 	for r in _csv_dicts("res://data/recipes_all.csv"):
+		# Mirror Catalog.is_recipe_visible: a demo-hidden recipe may legitimately gate on a
+		# demo-hidden node (both stay in the CSVs to return post-demo), so skip it here.
+		if Catalog.HIDDEN_RECIPE_IDS.has(str(r.get("recipe_id", "")).strip_edges()):
+			continue
 		var gate := str(r.get("tech_unlock_req", "")).strip_edges()
 		if gate == "" or node_ids.has(gate) or gate in known_gaps:
 			continue
@@ -7179,12 +7192,13 @@ func _test_flavor_nodes_wired() -> void:
 	MatchState.grant_unlock("Grid Synchronous Generation")
 	_check(absf(Modifiers.apply("maintenance", "b_024", 100.0, {"building_id": "b_024"}) - (maintenance_before_grid - 8.0)) < 0.001,
 		"Grid Synchronous Generation adds −8% maintenance on a power plant (solar)")
-	# market_price: Forward Contracts → +5% steel sale price, good-specific.
+	# market_price: Forward Contracts → +5% sale price on EVERY good (owner 2026-09-06;
+	# was steel-only for 20 turns). An empty target_match matches all goods.
 	MatchState.grant_unlock("Forward Contracts")
 	_check(absf(Modifiers.apply("market_price", "gid", 10.0, {"good_internal": "steel"}) - 10.5) < 0.001,
 		"Forward Contracts wires +5% steel sale price")
-	_check(absf(Modifiers.apply("market_price", "gid", 10.0, {"good_internal": "coal"}) - 10.0) < 0.001,
-		"the steel sale-price modifier does not touch other goods")
+	_check(absf(Modifiers.apply("market_price", "gid", 10.0, {"good_internal": "coal"}) - 10.5) < 0.001,
+		"Forward Contracts is empire-wide: coal gets the same +5%")
 	# transport_throughput: Route Optimization → +25% road capacity.
 	MatchState.grant_unlock("Route Optimization")
 	_check(absf(Modifiers.apply("transport_throughput", "roads", 100.0, {"mode": "roads"}) - 125.0) < 0.001,
@@ -7194,27 +7208,26 @@ func _test_flavor_nodes_wired() -> void:
 
 func _test_research_tier_gating() -> void:
 	MatchState.reset()
+	MatchState.recycling_unlocked = true # This fixture tests progression in enabled content.
 	# Tier I is always open; a higher tier opens on >= min(TIER_UNLOCK_THRESHOLD,
 	# prior-tier-count) unlocked in the prior tier of the SAME category. Written against the
 	# CONSTANT rather than a literal: the threshold moved 3 -> 2 (owner 2026-08-23) and this
 	# test was the only thing that had to change, which is the point of pinning it this way.
-	_check(MatchState.TIER_UNLOCK_THRESHOLD == 2,
-		"tier gate: a tier opens on two of the tier below")
+	_check(MatchState.TIER_UNLOCK_THRESHOLD == 1,
+		"tier gate: a tier opens on one of the tier below")
 	_check(MatchState.is_tier_available("Metallurgy", "I"), "tier gate: Tier I always open")
 	_check(not MatchState.is_tier_available("Metallurgy", "II"),
 		"tier gate: Metallurgy II locked with 0 Tier-I unlocked")
 	MatchState.grant_unlock("Basic Blast Furnaces")
-	_check(not MatchState.is_tier_available("Metallurgy", "II"),
-		"tier gate: Metallurgy II still locked at 1 Tier-I unlocked")
-	MatchState.grant_unlock("Continuous Casting")
 	_check(MatchState.is_tier_available("Metallurgy", "II"),
 		"tier gate: Metallurgy II opens at %d Tier-I unlocked" % MatchState.TIER_UNLOCK_THRESHOLD)
-	# Softlock clamp: Recycling has a single Tier-II node, so Tier III must open on just it.
+	# Softlock clamp: min(TIER_UNLOCK_THRESHOLD, prior-tier-count) — a category opens even with
+	# fewer prior-tier nodes than the threshold. Recycling III opens once a Tier-II node is unlocked.
 	_check(not MatchState.is_tier_available("Recycling", "III"),
-		"tier gate: Recycling III locked before its lone Tier-II node")
+		"tier gate: Recycling III locked before any Tier-II node")
 	MatchState.grant_unlock("Membrane Bioreactors")
 	_check(MatchState.is_tier_available("Recycling", "III"),
-		"tier gate: Recycling III opens after its single Tier-II (min(3,count) clamp avoids softlock)")
+		"tier gate: Recycling III opens after a Tier-II node")
 	MatchState.reset()
 
 func _test_live_unlock_conditions() -> void:
@@ -7256,6 +7269,131 @@ func _test_live_unlock_conditions() -> void:
 	Production.produced_by_building["generator"] = {"power": 250}
 	_check(MatchState._live_condition_met({"action": "Produce", "object": "Power", "qty": 250}),
 		"Produce condition resolves display-name casing and internal-key power output")
+
+	# --- "Produce Any" verb: 500 of EITHER good in an a|b list unlocks it (OR) ---
+	Production.produced_by_building.clear()
+	var sand_gid := str(Catalog.get_good_by_internal_name("sand").get("id", "sand"))
+	var produce_any := {"action": "Produce Any", "object": "limestone|sand", "qty": 500, "quantity_raw": "500"}
+	_check(not MatchState._live_condition_met(produce_any),
+		"Produce Any stays locked at 0 of both goods")
+	Production.produced_by_building["sandpit"] = {sand_gid: 500}
+	_check(MatchState._live_condition_met(produce_any),
+		"Produce Any fires on 500 sand alone (does not require limestone or both)")
+
+	# --- "Run Same Tile" / "Own On Tiles": co-location and reach, not fleet size ---
+	MatchState.reset()
+	Production.full_output_streak_by_building.clear()
+	var same_tile_ids: Array = []
+	for _i in range(3):
+		same_tile_ids.append(MatchState.add_building("b_001", "", "tile_same_1"))
+	MatchState.add_building("b_001", "", "tile_same_2")   # a 4th mine, but on another tile
+	for iid_s in same_tile_ids:
+		Production.full_output_streak_by_building[iid_s] = 15
+	var same_tile := {"action": "Run Same Tile", "object": "mine", "qty": 4, "unit": "15 turns"}
+	_check(not MatchState._live_condition_met(same_tile),
+		"Run Same Tile: 3 running mines on one tile + 1 elsewhere does not satisfy 4-on-a-tile")
+	var fourth := MatchState.add_building("b_001", "", "tile_same_1")
+	_check(not MatchState._live_condition_met(same_tile),
+		"Run Same Tile: a 4th mine on the tile with no run-streak does not count yet")
+	Production.full_output_streak_by_building[fourth] = 15
+	_check(MatchState._live_condition_met(same_tile),
+		"Run Same Tile: 4 mines on one tile all at full output for 15 turns satisfies it")
+	_check(MatchState._live_condition_met({"action": "Own On Tiles", "object": "mine", "qty": 2}),
+		"Own On Tiles: mines on 2 distinct tiles satisfies 2")
+	_check(not MatchState._live_condition_met({"action": "Own On Tiles", "object": "mine", "qty": 3}),
+		"Own On Tiles: 5 mines spread over only 2 tiles does not satisfy 3 (reach, not count)")
+	MatchState.reset()
+
+	# --- "Run Producing" (by output good) / "Run Distinct Recipes" / "Own All" ---
+	MatchState.reset()
+	Production.full_output_streak_by_building.clear()
+	var chlor := MatchState.add_building("b_012", "r_012", "tile_chem_1")   # chlor-alkali -> chlorine
+	Production.full_output_streak_by_building[chlor] = 15
+	_check(MatchState._live_condition_met({"action": "Run Producing", "object": "chlorine", "qty": 1, "unit": "15 turns"}),
+		"Run Producing: a chem plant on chlor-alkali at full output 15 turns counts as making chlorine")
+	_check(not MatchState._live_condition_met({"action": "Run Producing", "object": "chlorine", "qty": 1, "unit": "20 turns"}),
+		"Run Producing: the same plant does not yet satisfy a 20-turn streak")
+	_check(not MatchState._live_condition_met({"action": "Run Distinct Recipes", "object": "chem_plant", "qty": 3}),
+		"Run Distinct Recipes: one running chem plant is not three distinct recipes")
+	var air := MatchState.add_building("b_012", "r_086", "tile_chem_1")     # oxygen air separation
+	Production.full_output_streak_by_building[air] = 1
+	var chlor2 := MatchState.add_building("b_012", "r_012", "tile_chem_2")  # a second chlor-alkali
+	Production.full_output_streak_by_building[chlor2] = 1
+	_check(not MatchState._live_condition_met({"action": "Run Distinct Recipes", "object": "chem_plant", "qty": 3}),
+		"Run Distinct Recipes: three plants on only two recipes does not satisfy 3")
+	var calc := MatchState.add_building("b_012", "r_082", "tile_chem_2")    # electric calcination alumina
+	Production.full_output_streak_by_building[calc] = 1
+	_check(MatchState._live_condition_met({"action": "Run Distinct Recipes", "object": "chem_plant", "qty": 3}),
+		"Run Distinct Recipes: three different chem-plant recipes running satisfies 3")
+	var own_all := {"action": "Own All", "object": "chem_plant|power_plant", "qty": 1, "quantity_raw": "1|1"}
+	_check(not MatchState._live_condition_met(own_all),
+		"Own All: chem plants alone do not satisfy chem plant AND power plant")
+	MatchState.add_building("b_003", "", "tile_chem_3")
+	_check(MatchState._live_condition_met(own_all),
+		"Own All: one chem plant and one power plant satisfies it")
+	MatchState.reset()
+
+	# --- "All Of" (compound AND of clauses) / "Produce Per Turn" (a rate, not lifetime) ---
+	MatchState.reset()
+	Production.full_output_streak_by_building.clear()
+	Production.produced_by_building.clear()
+	var all_of := {"action": "All Of", "object": "Own|power_plant|1|units;Produce|steel|100|units", "qty": 1, "unit": "conditions"}
+	_check(not MatchState._live_condition_met(all_of), "All Of: neither clause met -> false")
+	MatchState.add_building("b_003", "", "tile_all_1")
+	_check(not MatchState._live_condition_met(all_of), "All Of: one clause met is not enough")
+	var steel_rate_gid := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
+	Production.produced_by_building["mill"] = {steel_rate_gid: 100}
+	_check(MatchState._live_condition_met(all_of), "All Of: both clauses met -> true")
+	_check(MatchState._research_condition_issue(all_of) == "", "All Of: the audit validates each clause")
+	Production.last_turn_summary = {"produced": {steel_rate_gid: 299}}
+	_check(not MatchState._live_condition_met({"action": "Produce Per Turn", "object": "steel", "qty": 300}),
+		"Produce Per Turn: 299 steel last turn does not satisfy 300/turn")
+	Production.last_turn_summary = {"produced": {steel_rate_gid: 300}}
+	_check(MatchState._live_condition_met({"action": "Produce Per Turn", "object": "steel", "qty": 300}),
+		"Produce Per Turn: 300 steel last turn satisfies 300/turn (a rate, not lifetime volume)")
+	# --- "Produce Per Turn Any" (rate on EITHER good), nested inside All Of with a "|" object ---
+	var coke_gid := str(Catalog.get_good_by_internal_name("pet_coke").get("id", ""))
+	var biomass_gid := str(Catalog.get_good_by_internal_name("carbonised_biomass").get("id", ""))
+	Production.last_turn_summary = {"produced": {coke_gid: 29, biomass_gid: 0}}
+	_check(not MatchState._live_condition_met({"action": "Produce Per Turn Any", "object": "pet_coke|carbonised_biomass", "qty": 30, "quantity_raw": "30"}),
+		"Produce Per Turn Any: 29 coke / 0 biomass last turn does not reach 30 of either")
+	Production.last_turn_summary = {"produced": {coke_gid: 0, biomass_gid: 30}}
+	_check(MatchState._live_condition_met({"action": "Produce Per Turn Any", "object": "pet_coke|carbonised_biomass", "qty": 30, "quantity_raw": "30"}),
+		"Produce Per Turn Any: 30 biomass alone satisfies the OR")
+	# The Carbon Substitution gate: 500 steel lifetime AND (30 coke/turn OR 30 biomass/turn).
+	var carbon_gate := {"action": "All Of", "object": "Produce|steel|500|units;Produce Per Turn Any|pet_coke|carbonised_biomass|30|units per turn", "qty": 1, "unit": "conditions"}
+	var nested := MatchState._parse_sub_condition("Produce Per Turn Any|pet_coke|carbonised_biomass|30|units per turn")
+	_check(str(nested.get("object", "")) == "pet_coke|carbonised_biomass" and int(nested.get("qty", 0)) == 30,
+		"All Of clause parser keeps a '|' good-list object intact (last two fields are qty/unit)")
+	_check(not MatchState._live_condition_met(carbon_gate), "Carbon Substitution: biomass rate alone (no steel) is not enough")
+	Production.produced_by_building["mill"] = {steel_rate_gid: 500}
+	_check(MatchState._live_condition_met(carbon_gate), "Carbon Substitution: 500 steel AND 30 biomass/turn unlocks it")
+	_check(MatchState._research_condition_issue(carbon_gate) == "", "Carbon Substitution gate passes the audit")
+	Production.last_turn_summary = {}
+	Production.produced_by_building.clear()
+	MatchState.reset()
+
+	# --- "Ship Multimodal": last turn's freight >= N AND carried by more than one mode ---
+	MatchState.reset()
+	var mm_gate := {"action": "Ship Multimodal", "object": "freight", "qty": 100}
+	MatchState._last_transit_shipments = [
+		{"qty": 70, "good_id": "g_001", "legs": [{"to": "t2", "mode": "roads"}]},
+		{"qty": 60, "good_id": "g_002", "legs": [{"to": "t3", "mode": "roads"}]},
+	]
+	_check(not MatchState._live_condition_met(mm_gate), "Ship Multimodal: 130 freight all by road is one mode — not multimodal")
+	MatchState._last_transit_shipments = [
+		{"qty": 40, "good_id": "g_001", "legs": [{"to": "t2", "mode": "roads"}]},
+		{"qty": 30, "good_id": "g_002", "legs": [{"to": "t3", "mode": "rail"}]},
+	]
+	_check(not MatchState._live_condition_met(mm_gate), "Ship Multimodal: two modes but only 70 freight does not reach 100")
+	MatchState._last_transit_shipments = [
+		{"qty": 70, "good_id": "g_001", "legs": [{"to": "t2", "mode": "roads"}, {"to": "t3", "mode": "rail"}]},
+		{"qty": 30, "good_id": "g_002", "legs": [{"to": "t4", "mode": "roads"}]},
+	]
+	_check(MatchState._live_condition_met(mm_gate), "Ship Multimodal: 100 freight with a road+rail route satisfies it (units count once per mode, never per link)")
+	_check(MatchState._research_condition_issue(mm_gate) == "", "Ship Multimodal gate passes the audit")
+	MatchState._last_transit_shipments = []
+	MatchState.reset()
 
 	# --- "Sell N units": saved lifetime volume across ordinary/special/grid paths ---
 	var steel_gid := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
@@ -7391,10 +7529,12 @@ const FREE_UNLOCK_OFFCADENCE := 1
 func _test_mining_mastery_free_unlock() -> void:
 	Modifiers.reset()
 	MatchState.reset()
-	_check(not Modifiers.has("mining_mastery_bonus"), "no bonus before free pick")
-	MatchState.grant_unlock("Mining Mastery", false)
-	_check(MatchState.is_unlocked("Mining Mastery"), "free pick unlocks the tech")
-	_check(Modifiers.has("mining_mastery_bonus"),
+	# Regular Shaft Draining (ex Mining Mastery) grants two permanent mine modifiers;
+	# the maintenance one is the sentinel here.
+	_check(not Modifiers.has("rn_shaft_draining_maint"), "no bonus before free pick")
+	MatchState.grant_unlock("Regular Shaft Draining", false)
+	_check(MatchState.is_unlocked("Regular Shaft Draining"), "free pick unlocks the tech")
+	_check(Modifiers.has("rn_shaft_draining_maint"),
 		"free-picking the tech also grants the modifier")
 	Modifiers.reset()
 	MatchState.reset()
@@ -8183,7 +8323,7 @@ func _test_research_link_is_exact() -> void:
 		if loose > 1:
 			ambiguous += 1
 
-	# The exact mode must return EXACTLY the named tech, for every tech there is.
+	# Exact links return the named tech only when its content flags permit it.
 	var exact_ok := true
 	var checked := 0
 	for row_variant: Variant in rows:
@@ -8194,7 +8334,10 @@ func _test_research_link_is_exact() -> void:
 		panel.set("_search_query", title)
 		panel.set("_search_exact_title", title)
 		var hits: Array = panel.call("_category_unlocks", "")
-		if hits.size() != 1 or str((hits[0] as Dictionary).get("title", "")) != title:
+		if not MatchState.is_research_visible(row_variant):
+			if not hits.is_empty():
+				exact_ok = false
+		elif hits.size() != 1 or str((hits[0] as Dictionary).get("title", "")) != title:
 			exact_ok = false
 	_check(checked > 20 and exact_ok,
 		"research link: an exact-title link returns that tech and nothing else (%d techs, %d of which are ambiguous under the loose search)" % [checked, ambiguous])
@@ -8403,18 +8546,18 @@ func _test_construct_land_tickbox() -> void:
 func _test_petrochemistry_changes() -> void:
 	MatchState.reset()
 	# A fourth Tier I node, so the tier is a CHOICE of two from four rather than a queue.
-	var tier1: Array = []
+	# Post-regroup the refining half of the old Petrochemistry tree lives under Chemistry.
 	var node: Dictionary = {}
 	for d_variant: Variant in MatchState._unlock_defs:
 		var d: Dictionary = d_variant
-		if str(d.get("category", "")) == "Petrochemistry" and str(d.get("rank", "")) == "I":
-			tier1.append(str(d.get("title", "")))
 		if str(d.get("title", "")) == "Specialised Petrochemical Pipelines":
 			node = d
-	_check(tier1.size() == 4 and "Specialised Petrochemical Pipelines" in tier1,
-		"petrochem: four Tier I nodes, including the new pipelines one")
-	_check(str(node.get("action", "")) == "Run" and int(node.get("qty", 0)) == 10,
-		"petrochem: the pipelines node is earned by running a refinery for 10 turns")
+	_check(str(node.get("category", "")) == "Chemistry" and str(node.get("rank", "")) == "I",
+		"petrochem: the pipelines node is a Tier I Chemistry node")
+	# Owner 2026-09-06: pipelines are earned by breadth of refining — two refineries on
+	# different recipes — not by a run-streak that duplicated Fractional Distillation's.
+	_check(str(node.get("action", "")) == "Run Distinct Recipes" and int(node.get("qty", 0)) == 2,
+		"petrochem: the pipelines node is earned by running 2 refineries on different recipes")
 	_check(MatchState.research_condition_issues().is_empty(),
 		"petrochem: every research row still resolves to a live condition")
 
@@ -9928,13 +10071,19 @@ func _test_build_forecast() -> void:
 	# unprofitable. Feeding the smelter from your own ore is the integrated chain metal_magnate
 	# actually opens with, and it must not be quoted as though it shopped for its own inputs.
 	var bought_in: float = float(smelter.get("steady_net", 0.0))
-	Stockpile.add("tile_5_10", "g_002", 200)
-	Stockpile.add("tile_5_10", "g_001", 200)
+	# Real integration is ongoing PRODUCTION, not a one-off pile: give the tile its own iron and
+	# coal mines so the smelter is fed by recurring surplus. The forecast then charges those inputs
+	# at the sale they displace (opportunity cost), which still beats buying at retail by the
+	# bid-ask markup — while a mere stockpile, which runs dry, correctly reverts to retail for the
+	# steady margin (it is not recurring supply).
+	var iron_mine: String = MatchState.add_building("b_001", "r_002", "tile_5_10")
+	var coal_mine: String = MatchState.add_building("b_001", "r_001", "tile_5_10")
 	var integrated: Dictionary = BuildForecast.project("b_002", "r_005", "tile_5_10")
 	var own_supply: float = float(integrated.get("steady_net", 0.0))
-	Stockpile.clear_all()
+	MatchState.remove_building(iron_mine)
+	MatchState.remove_building(coal_mine)
 	_check(own_supply > bought_in,
-		"forecast: own supply beats buying at retail (%.2f vs %.2f)" % [own_supply, bought_in])
+		"forecast: own production beats buying at retail (%.2f vs %.2f)" % [own_supply, bought_in])
 	_check(own_supply > 0.0,
 		"forecast: the integrated smelter projects a positive margin (%.2f)" % own_supply)
 
@@ -11488,6 +11637,7 @@ func _test_founder_advisor() -> void:
 	MatchState.permanent_advisor_ids = ["vera"]
 	_check(not MatchState.assign_advisor_to_seat("vp_logistics", "vera"),
 		"seats: a closed post refuses an appointment")
+	MatchState.advisors_unlocked = true # Executive Search is available only with the full roster.
 	MatchState.grant_unlock(MatchState.SEATS_UNLOCK_TITLE)
 	_check(MatchState.all_seats_unlocked,
 		"seats: %s opens the rest of the council" % MatchState.SEATS_UNLOCK_TITLE)
@@ -13974,6 +14124,8 @@ func _test_advisor_demo_gating() -> void:
 	MatchState._match_rng.state = saved_rng
 
 func _test_advisor_slot_progression() -> void:
+	var saved_advisors: bool = MatchState.advisors_unlocked
+	MatchState.advisors_unlocked = true # Full-roster progression; demo gating is tested separately.
 	var saved_slots: int = MatchState.max_advisor_slots
 	var saved_streak: int = MatchState._advisor_profit_streak
 	var saved_pu: bool = MatchState.advisor_slot_profit_unlocked
@@ -13990,9 +14142,10 @@ func _test_advisor_slot_progression() -> void:
 	_check(MatchState.advisor_slot_profit_unlocked and MatchState.max_advisor_slots == 3,
 		"slot progression: 1000 profit x3 unlocks a slot (2 -> 3)")
 	_check(MatchState.is_unlocked("Fifth Advisor Seat"),
-		"slot progression: 5th-seat unlock granted (shows under People Management)")
+		"slot progression: 5th-seat unlock granted (shows under People & Management)")
 	MatchState._update_advisor_slots(0.0)
 	_check(MatchState.max_advisor_slots == 3, "slot progression: a dip does not revoke the earned slot")
+	MatchState.advisors_unlocked = saved_advisors
 	MatchState.max_advisor_slots = saved_slots
 	MatchState._advisor_profit_streak = saved_streak
 	MatchState.advisor_slot_profit_unlocked = saved_pu
@@ -14116,10 +14269,12 @@ func _test_research_unlock_promotes_construct_panel_recipes() -> void:
 	# This fixture explicitly instantiates the legacy panel and calls its tile-open
 	# API, so do not let the live v2 routing toggle make that API return early.
 	MatchState.use_construct_panel_v2 = false
-	# Electric Arc Refining now has a functioning Own-land auto-condition. Keep
-	# that condition deliberately unmet while this test isolates panel filtering.
+	# r_020 is gated on Flash Copper Smelting (its own node since 2026-09-06), which
+	# auto-unlocks on Produce All 200 industrial acids + 300 copper ingots; a fresh fixture
+	# has produced neither, so it stays unmet while this test isolates panel filtering.
+	# (tile_land_owned cleared too, harmless, in case an owned-land gate returns.)
 	MatchState.tile_land_owned.clear()
-	MatchState.unlocked_titles.erase("Electric Arc Refining")
+	MatchState.unlocked_titles.erase("Flash Copper Smelting")
 	var packed: PackedScene = load("res://scenes/construct_panel.tscn")
 	if packed == null or recipe.is_empty() or building_id == "":
 		_check(false, "research unlock: construct panel fixture resolves")
@@ -14141,17 +14296,17 @@ func _test_research_unlock_promotes_construct_panel_recipes() -> void:
 	await get_tree().process_frame
 	_check(not _construct_panel_has_recipe(panel, building_id, "r_020"),
 		"construct panel hides recipe-gated research before unlock")
-	MatchState.grant_unlock("Electric Arc Refining")
+	MatchState.grant_unlock("Flash Copper Smelting")
 	await get_tree().process_frame
 	_check(_construct_panel_has_recipe(panel, building_id, "r_020"),
 		"construct panel promotes recipe when research unlocks")
 
-	MatchState.unlocked_titles.erase("Electric Arc Refining")
+	MatchState.unlocked_titles.erase("Flash Copper Smelting")
 	panel.call("open_for_tile", "tile_test_research_unlock", {})
 	await get_tree().process_frame
 	_check(not _construct_panel_has_recipe(panel, building_id, "r_020"),
 		"tile build panel hides recipe-gated research before unlock")
-	MatchState.grant_unlock("Electric Arc Refining")
+	MatchState.grant_unlock("Flash Copper Smelting")
 	await get_tree().process_frame
 	_check(_construct_panel_has_recipe(panel, building_id, "r_020"),
 		"tile build panel promotes recipe when research unlocks")
@@ -14719,8 +14874,8 @@ func _test_research_recipe_and_level_tiers() -> void:
 	var has_biomass_node := false
 	for unlock in MatchState._unlock_defs:
 		if str(unlock.get("title", "")) == "Biomass Cracking":
-			has_biomass_node = str(unlock.get("category", "")) == "Biochemistry"
-	_check(has_biomass_node, "Biomass Cracking belongs to the Biochemistry tree")
+			has_biomass_node = str(unlock.get("category", "")) == "Farming & Forestry"
+	_check(has_biomass_node, "Biomass Cracking belongs to the Farming & Forestry tree")
 
 	var file := FileAccess.open("res://data/research_unlocks.csv", FileAccess.READ)
 	var level2_ok := file != null
@@ -14737,16 +14892,22 @@ func _test_research_recipe_and_level_tiers() -> void:
 				continue
 			var icon_index: int = int(indices.get("icon", -1))
 			var rank_index: int = int(indices.get("rank", -1))
+			var title_index_l2: int = int(indices.get("title", -1))
 			if icon_index >= 0 and rank_index >= 0 and icon_index < row.size() and row[icon_index] == "level2":
 				level2_count += 1
-				if rank_index >= row.size() or row[rank_index] != "II":
+				var l2_title: String = row[title_index_l2] if (title_index_l2 >= 0 and title_index_l2 < row.size()) else ""
+				# Furnace Level 2 (Hot Blast Stoves) is a deliberate Tier-I unlock (owner 2026-09):
+				# owning 3 furnaces unlocks it with no steel prereq, so any furnace business —
+				# glass merchant included — can level its furnaces without a Metallurgy detour.
+				var l2_expected_rank: String = "I" if l2_title == "Hot Blast Stoves" else "II"
+				if rank_index >= row.size() or row[rank_index] != l2_expected_rank:
 					level2_ok = false
 			var title_index: int = int(indices.get("title", -1))
 			var description_index: int = int(indices.get("description", -1))
 			if title_index >= 0 and description_index >= 0 and title_index < row.size() and description_index < row.size() and row[title_index] == "Pallet Racking Systems" and "warehouse level 2" in row[description_index] and (rank_index < 0 or rank_index >= row.size() or row[rank_index] != "II"):
 				warehouse_level2_ok = false
 		file.close()
-	_check(level2_ok and level2_count == 21, "all 21 Level 2 building unlocks are Tier II")
+	_check(level2_ok and level2_count == 21, "all 21 Level 2 building unlocks are Tier II (bar Furnace's Hot Blast Stoves, a deliberate Tier-I unlock)")
 	_check(warehouse_level2_ok, "warehouse Level 2 unlock is Tier II")
 
 func _test_bottom_menu_default() -> void:
@@ -20878,3 +21039,44 @@ func _test_forecast_own_supply_follows_production() -> void:
 	if before > 0:
 		Stockpile.add(tile_id, good_id, before)
 	MatchState.remove_building(iid)
+
+
+## The near bake tier exists to serve the camera's maximum zoom without magnifying a texture.
+## These are the two numbers that have to agree — the bake scale and the camera's tile count —
+## so changing `zoomed_in_tile_count` again fails HERE rather than as a soft picture in play.
+func _test_bake_near_tier_geometry() -> void:
+	const Layout := preload("res://scripts/authored_bake_layout.gd")
+	var far := Layout.texture_size_for(Layout.TIER_FAR)
+	var near := Layout.texture_size_for(Layout.TIER_NEAR)
+	_check(far == Layout.texture_size(), "near tier: the far tier is still the default size")
+	_check(near.x == far.x * 2 and near.y == far.y * 2,
+		"near tier: near is exactly twice the far texture (%s vs %s)" % [str(near), str(far)])
+	# Integer texel rects — the property 4/3 and 8/3 were chosen for.
+	_check(is_equal_approx(Layout.PITCH.x * Layout.NEAR_SCALE, float(near.x))
+		and is_equal_approx(Layout.PITCH.y * Layout.NEAR_SCALE, float(near.y)),
+		"near tier: the pitch rect lands on whole texels at NEAR_SCALE")
+	var transform := Layout.bake_transform_for(Rect2(Vector2(100.0, 50.0), Layout.PITCH), Layout.TIER_NEAR)
+	_check(is_equal_approx(transform.get_scale().x, Layout.NEAR_SCALE),
+		"near tier: the painter transform carries the near scale")
+	_check(is_equal_approx((transform * Vector2(100.0, 50.0)).length(), 0.0),
+		"near tier: the rect's origin maps to the texture's (0, 0)")
+
+	# THE AGREEMENT. A tile is tile_height world units tall and the camera fits
+	# `zoomed_in_tile_count` of them into the viewport height, so at maximum zoom the screen
+	# shows viewport.y / (tile_height * count) pixels per world unit — independent of the
+	# viewport, because both sides scale with it. The bake must sit at or above that.
+	# THE AGREEMENT, and it is resolution-dependent. A tile is 480 world units tall and the
+	# camera fits `zoomed_in_tile_count` of them into the viewport, so maximum zoom shows
+	# viewport_height / (480 * count) pixels per world unit — 1.8 at 1080p, 2.4 at 1440p,
+	# 3.6 at 2160p. NEAR_SCALE covers the first two outright; a 4K screen at full zoom
+	# magnifies the near texture about 1.35x, which is the documented limit of this tier
+	# (NEAR_SCALE 4.0 would cover it, at 9x the far tier's pixels instead of 4x).
+	var camera := preload("res://scripts/camera_controller.gd").new()
+	var tile_height := 480.0
+	var ppu_1440 := 1440.0 / (tile_height * camera.zoomed_in_tile_count)
+	_check(Layout.NEAR_SCALE >= ppu_1440,
+		"near tier: NEAR_SCALE %.3f covers the %.3f px/u a 1440p viewport reaches at full zoom"
+			% [Layout.NEAR_SCALE, ppu_1440])
+	_check(Layout.BAKE_SCALE < ppu_1440,
+		"near tier: the far tier alone WOULD be magnified there — which is why near exists")
+	camera.free()

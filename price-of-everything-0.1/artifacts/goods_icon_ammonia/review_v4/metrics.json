@@ -1,0 +1,24 @@
+{
+  "v3": {
+    "bbox": [
+      190,
+      32,
+      609,
+      768
+    ],
+    "bbox_aspect_height_width": 1.756563245823389,
+    "yellow_pct_opaque": 25.135716682788164,
+    "pure_black": 0
+  },
+  "v4": {
+    "bbox": [
+      259,
+      32,
+      540,
+      768
+    ],
+    "bbox_aspect_height_width": 2.619217081850534,
+    "yellow_pct_opaque": 15.97920602696645,
+    "pure_black": 0
+  }
+}

@@ -28,6 +28,8 @@ const PHASE_COMPLETES := "completes"
 const PHASE_SHIPPING := "shipping"
 const PHASE_SELLING := "selling"
 
+const BuildingLevels := preload("res://scripts/building_levels.gd")
+
 
 ## Returns:
 ##   phases       Array of {kind, label, range, per_turn, turns} in order
@@ -69,10 +71,19 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 	var revenue: float = 0.0
 	for item in Production._recipe_output_items(recipe):
 		var gid := str(item.get("good_id", ""))
-		if gid == "" and str(item.get("internal_name", "")) != "":
-			gid = str(Catalog.get_good_by_internal_name(str(item.get("internal_name", ""))).get("id", ""))
-		var qty := int(item.get("qty", 0))
-		if gid != "" and qty > 0:
+		var good_internal := str(item.get("internal_name", ""))
+		if gid == "" and good_internal != "":
+			gid = str(Catalog.get_good_by_internal_name(good_internal).get("id", ""))
+		if good_internal == "" and gid != "":
+			good_internal = str(Catalog.get_good(gid).get("internal_name", ""))
+		var base_qty := int(item.get("qty", 0))
+		if gid != "" and base_qty > 0:
+			# What the running building actually makes, not the raw recipe number: the base scaled
+			# by the PERMANENT output boosts it will run under -- permanent research yield and the
+			# standing workforce output multiplier. Timed event buffs and advisor bonuses are left
+			# out on purpose so the projection is the lasting margin (owner report 2026-09-05: a
+			# motor factory forecast -£0.74 but ran at ~+£31 with the empire's standing +10%).
+			var qty := _permanent_output_qty(recipe_id, gid, good_internal, base_qty)
 			outputs[gid] = qty
 			revenue += float(qty) * MarketState.get_price(gid)
 
@@ -106,10 +117,32 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 			continue
 		var source_tile := _own_source_tile(tile_id, gid)
 		if source_tile != "":
-			input_cost += float(qty) * MarketState.get_price(gid)
-			if source_tile != tile_id:
+			# Own supply is neither free nor unlimited. Whatever the company makes but does not
+			# already consume is being SOLD, so feeding it here forgoes that sale — the true cost
+			# of that portion is the SALE price (its opportunity cost). And it runs out: once this
+			# building's draw exceeds the leftover surplus (empire production minus what existing
+			# buildings already eat), the remainder is a genuine market PURCHASE at the retail buy
+			# price. Pricing all of it at production cost (as this once did) made a consumer of a
+			# good the company was profitably selling — or a SECOND consumer of an already-spoken-for
+			# good — look far cheaper than the cash the player actually sees: a motor factory fed by
+			# its own steel forecast +£35 but realised +£10–15, and a second one forecast +£45 with
+			# no steel left to feed it (owner report 2026-09-05).
+			var surplus := _empire_surplus(gid)
+			var from_surplus := mini(qty, surplus)
+			var from_market := qty - from_surplus
+			input_cost += float(from_surplus) * MarketState.get_price(gid)   # the sale we give up
+			if source_tile != tile_id and from_surplus > 0:
 				var leg: Dictionary = TransportService.route(source_tile, tile_id, gid)
-				inbound_freight += TransportService.transport_cost_for_route(gid, qty, leg)
+				inbound_freight += TransportService.transport_cost_for_route(gid, from_surplus, leg)
+			if from_market > 0:
+				# Beyond the surplus it is bought like any other market input (goods + inbound freight).
+				var short_quote: Dictionary = {} if tile_id == "" \
+						else TransportService.quote_market_buy(tile_id, gid, from_market)
+				if short_quote.is_empty():
+					input_cost += float(from_market) * MarketState.get_buy_price(gid)
+				else:
+					input_cost += float(short_quote.get("goods_cost", 0.0))
+					inbound_freight += float(short_quote.get("transport_cost", 0.0))
 			continue
 		var buy_quote: Dictionary = {} if tile_id == "" \
 				else TransportService.quote_market_buy(tile_id, gid, qty)
@@ -122,10 +155,15 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 			input_cost += float(buy_quote.get("goods_cost", 0.0))
 			inbound_freight += float(buy_quote.get("transport_cost", 0.0))
 
-	# --- Storage: inputs and outputs both sit in the tile stockpile for a turn ----------
+	# --- Storage: only the goods that actually SIT at turn's end pay the fee ------------
+	# The engine bills warehousing on the end-of-turn stockpile (production.gd: every unit in
+	# Stockpile.get_tile_totals). A market-selling building's outputs are produced and sold the
+	# SAME turn (production → flush → sell_phase), so they are gone by turn's end and pay nothing;
+	# its inputs, bought a turn ahead, do sit and do pay. Charging storage on the outputs too
+	# (as this did) invented a full turn of certified-tank fees on hazmat products that never
+	# stay — ~£11/turn on chlor-alkali's chlorine/NaOH/hydrogen — which alone flipped a plant the
+	# realized P&L runs clearly in profit to a "never pays back" forecast (owner report 2026-09-05).
 	var warehousing: float = 0.0
-	for gid in outputs:
-		warehousing += float(outputs[gid]) * EconomyConfig.warehousing_cost_per_unit(str(gid))
 	for item in recipe.get("inputs", []):
 		var gid := str(item.get("good_id", ""))
 		if gid != "":
@@ -268,9 +306,60 @@ static func _recipe_makes(recipe_id: String, good_id: String) -> bool:
 	if recipe_id == "" or good_id == "":
 		return false
 	for item in Production._recipe_output_items(Catalog.get_recipe(recipe_id)):
-		var gid := str(item.get("good_id", ""))
-		if gid == "" and str(item.get("internal_name", "")) != "":
-			gid = str(Catalog.get_good_by_internal_name(str(item.get("internal_name", ""))).get("id", ""))
-		if gid == good_id:
+		if _item_good_id(item) == good_id:
 			return true
 	return false
+
+
+## The good id of a recipe input/output item, resolving an internal_name to its id.
+static func _item_good_id(item: Dictionary) -> String:
+	var gid := str(item.get("good_id", ""))
+	if gid == "" and str(item.get("internal_name", "")) != "":
+		gid = str(Catalog.get_good_by_internal_name(str(item.get("internal_name", ""))).get("id", ""))
+	return gid
+
+
+## The output quantity a NEW building (level 1) will steadily produce: the recipe base scaled by
+## the PERMANENT output boosts it will run under -- permanent recipe_output modifiers (research
+## yield) and the standing workforce output multiplier. Mirrors BuildingStatus.effective_output_qty
+## but through Modifiers.apply_permanent, so timed event/research buffs and advisor bonuses are
+## excluded; level is 1 for a fresh build, so the level output multiplier is 1.0.
+static func _permanent_output_qty(recipe_id: String, good_id: String, good_internal: String, base_qty: int) -> int:
+	var recipe := Catalog.get_recipe(recipe_id)
+	var ctx := {
+		"recipe_id": recipe_id,
+		"recipe_type": str(recipe.get("recipe_type", "")).to_lower(),
+		"building_id": "",
+		"good_id": good_id,
+		"good_internal": good_internal,
+	}
+	var q := int(round(Modifiers.apply_permanent("recipe_output", recipe_id, float(base_qty), ctx)))
+	q = int(round(float(q) * MatchState.workforce_output_multiplier()))
+	return maxi(0, q)
+
+
+## The empire's net per-turn surplus of a good: what every player building PRODUCES of it
+## minus what every player building already CONSUMES of it, level-scaled, floored at 0. This is
+## the amount a new consumer can take by displacing market sales before it must buy any at
+## retail — the input to the forecast's opportunity-cost/contention split. A steady-state flow
+## figure, so it deliberately ignores one-off stockpiles.
+static func _empire_surplus(good_id: String) -> int:
+	if good_id == "":
+		return 0
+	var produced: int = 0
+	var consumed: int = 0
+	for iid in MatchState.buildings:
+		var b: Dictionary = MatchState.buildings[iid]
+		if not MatchState.is_player_owned(b):
+			continue
+		var rcp: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
+		if rcp.is_empty():
+			continue
+		var lvl: int = int(b.get("level", 1))
+		for item in Production._recipe_output_items(rcp):
+			if _item_good_id(item) == good_id:
+				produced += int(round(float(item.get("qty", 0)) * BuildingLevels.mult("output", lvl)))
+		for inp in rcp.get("inputs", []):
+			if str(inp.get("good_id", "")) == good_id:
+				consumed += int(round(float(inp.get("qty", 0)) * BuildingLevels.mult("input", lvl)))
+	return maxi(0, produced - consumed)

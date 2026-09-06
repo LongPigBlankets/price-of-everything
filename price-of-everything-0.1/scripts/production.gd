@@ -1767,7 +1767,27 @@ func _effective_power_output(building: Dictionary, recipe: Dictionary) -> int:
 		"good_internal": "power",
 	}
 	var eff := Modifiers.apply("recipe_output", rid, float(output_qty), mod_ctx)
+	eff *= colocated_battery_power_multiplier(building)
 	return int(round(eff * BuildingLevels.mult("output", int(building.get("level", 1))) * MatchState.workforce_output_multiplier() * MatchState.startup_capacity_multiplier(building)))
+
+# Wind/solar plants and the battery types (solar b_024 · onshore wind b_025 · offshore wind b_026;
+# electric battery b_028 · thermal battery b_029).
+const _WIND_SOLAR_BUILDINGS := {"b_024": true, "b_025": true, "b_026": true}
+const _BATTERY_BUILDINGS := {"b_028": true, "b_029": true}
+
+## renew_014 "Fast Response Storage": once researched, a battery on the SAME tile lifts that tile's
+## wind/solar power output by 5%. A tile-local co-location bonus — there is no standard modifier hook
+## for "a sibling building on the tile", so it is applied here, gated on the unlock, and mirrored by
+## BuildingStatus.effective_power_output so the panel matches.
+func colocated_battery_power_multiplier(building: Dictionary) -> float:
+	if not _WIND_SOLAR_BUILDINGS.has(str(building.get("building_id", ""))):
+		return 1.0
+	if not MatchState.is_unlocked("Fast Response Storage"):
+		return 1.0
+	for other in MatchState.get_buildings_on_tile(str(building.get("tile_id", ""))):
+		if _BATTERY_BUILDINGS.has(str(other.get("building_id", ""))):
+			return 1.05
+	return 1.0
 
 ## Per-turn stat snapshot for a building instance evaluated AS IF it were `level`. Used by the
 ## upgrade dialog to show cur→new (energy / labour / maintenance / size / inputs / outputs) using
@@ -2434,6 +2454,19 @@ func _shipment_reserved_outside_input_pipeline(shipment: Dictionary) -> bool:
 	return str(shipment.get("construction_instance_id", "")) != "" \
 		or str(shipment.get("upgrade_instance_id", "")) != ""
 
+## Turns of locally-covered input to keep buffered against the intra-turn flush lag (see the
+## safety-margin note in _buy_market_inputs). Default 1.0 — one turn bridges the one-turn lag
+## between a same-tile producer's end-of-turn flush and its consumer's start-of-turn draw.
+## POE_INPUT_SAFETY_MARGIN overrides it (0 restores the pre-2026-09 behaviour) for A/B / rollback.
+const INPUT_SAFETY_MARGIN_TURNS_DEFAULT := 1.0
+var _safety_margin_cache: float = -1.0
+func _input_safety_margin_turns() -> float:
+	if _safety_margin_cache < 0.0:
+		var v := OS.get_environment("POE_INPUT_SAFETY_MARGIN")
+		_safety_margin_cache = maxf(0.0, float(v)) if v != "" else INPUT_SAFETY_MARGIN_TURNS_DEFAULT
+	return _safety_margin_cache
+
+
 func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 	# For every input a player has set to "Market", keep the pipeline topped up to
 	# (lead+1) turns of demand: order = target - on_tile - in_transit, shipped from the port.
@@ -2515,11 +2548,17 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 		# ROADMAP (docs/long-term-roadmap.md): extend this to cross-tile (1-turn+) linked producers
 		# too — needs a market-only inbound split + a ramp-up safety margin to avoid starvation.
 		var local_pool: Dictionary = {}
+		# Goods where same-tile production covers only PART of the demand — the "spliced" case
+		# that qualifies for the intra-turn flush-lag safety margin below. Purely same-tile
+		# (0-tile): local_rate is 0-turn same-tile output, so cross-tile producers never set it.
+		var under_supplied: Dictionary = {}
 		for good_id in goods_order:
 			var local_rate: int = int((_same_tile_supply.get(tile_id, {}) as Dictionary).get(good_id, 0))
 			local_pool[good_id] = local_rate
 			var net_need: int = maxi(0, int(total_need[good_id]) - local_rate)
-			if local_rate > 0 and net_need > 0 and str((leads[good_id] as Dictionary).get("port", "")) != "":
+			var spliced: bool = local_rate > 0 and net_need > 0 and str((leads[good_id] as Dictionary).get("port", "")) != ""
+			under_supplied[good_id] = spliced
+			if spliced:
 				# Spliced input: same-tile production covers part of the demand, the
 				# market pipeline tops up the rest. Worth surfacing — if the local
 				# producer dips, the top-up lags by the transport lead.
@@ -2561,6 +2600,17 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 				var covered_local: int = mini(need, int(local_pool.get(good_id, 0)))
 				local_pool[good_id] = int(local_pool.get(good_id, 0)) - covered_local
 				var want: int = (need - covered_local) * (int((leads[good_id] as Dictionary).get("lead", 1)) + 1)
+				# SAFETY MARGIN. Same-tile production lands at end of turn (flush_outputs), AFTER this
+				# consumer runs, so a SAME-TILE UNDER-SUPPLIED chain (local makes some but not all of the
+				# demand) starves on the intra-turn lag while the pipeline -- crediting that local output
+				# at full value -- buys too little. Keep ~1 turn of the locally-covered amount in the
+				# market pipeline to bridge it. Gated on `under_supplied`: a self-sufficient same-tile
+				# chain (local >= demand) never starves and needs no buffer; a cross-tile consumer has
+				# local_rate 0 so it already buys the full need. Measured +£21/turn (+30%) on the
+				# 2-desal/2-chem water chain, price impact <0.5%. POE_INPUT_SAFETY_MARGIN overrides the
+				# turn count (default 1) for A/B / rollback.
+				if covered_local > 0 and bool(under_supplied.get(good_id, false)):
+					want += int(ceil(float(covered_local) * _input_safety_margin_turns()))
 				var from_pool: int = mini(want, int(pool.get(good_id, 0)))
 				pool[good_id] = int(pool.get(good_id, 0)) - from_pool
 				var to_order: int = want - from_pool

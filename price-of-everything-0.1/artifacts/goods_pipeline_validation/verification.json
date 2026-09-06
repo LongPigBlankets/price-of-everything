@@ -1,0 +1,15 @@
+{
+  "pipeline_sha256": "3e91e7099a0b2af85751b29758a6b90cfd2a48fba39e09878a0323f4bc7eb345",
+  "baseline": "approved diesel_car source",
+  "fresh_render_matches_installed_master": true,
+  "repeat_color_mask_and_five_sizes_identical": true,
+  "three_column_proof_and_zero_change_delta": true,
+  "modified_and_added_frozen_input_rejected": true,
+  "workspace_path_escape_rejected": true,
+  "reference_outside_frozen_folder_rejected": true,
+  "existing_workspace_and_round_overwrite_rejected": true,
+  "local_document_links_resolve": true,
+  "skill_validation": "YAML/naming/description/placeholder checks passed with Ruby stdlib YAML; bundled quick_validate.py unavailable because both Python runtimes lack PyYAML.",
+  "scope": "Pipeline verification does not approve a new icon or alter installed assets.",
+  "duplicate_crop_names_rejected": true
+}

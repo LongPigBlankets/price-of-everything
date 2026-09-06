@@ -1,0 +1,27 @@
+{
+  "approved_goods": [
+    "limestone",
+    "ethylene",
+    "electrical_components",
+    "coal",
+    "iron_ore",
+    "ammonia",
+    "ice_car"
+  ],
+  "alternate_png_count": 21,
+  "tiers": {
+    "medium": 800,
+    "small": 450,
+    "very_small": 256
+  },
+  "all_approved_hashes_match": true,
+  "all_import_parameter_blocks_match_main_tier_reference": true,
+  "all_runtime_dimensions_and_mipmaps_pass": true,
+  "isolated_loader_checks_passed": 56,
+  "project_parse_check": {
+    "scripts": 537,
+    "failed": 0,
+    "skipped": 39
+  },
+  "selection": "All main tiers before all alternate tiers; same requested/bigger/smaller ordering within each family."
+}

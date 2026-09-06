@@ -25,7 +25,10 @@ const BUILDING_ALIAS := {
 
 # Recipes in active repair stay loadable for old saves, but must not be suggested by
 # construction, special orders, the goods graph, or the encyclopedia.
-const HIDDEN_RECIPE_IDS := {"r_107": true}  # E-Waste Recycling
+const HIDDEN_RECIPE_IDS := {
+	"r_107": true,  # E-Waste Recycling
+	"r_078": true,  # Methane Pyrolysis — no methane in the demo (owner 2026-09-06)
+}
 
 # --- Goods storage ---
 var _goods_by_id: Dictionary = {}

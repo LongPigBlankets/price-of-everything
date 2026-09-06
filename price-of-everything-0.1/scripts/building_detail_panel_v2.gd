@@ -1,4 +1,5 @@
 extends PanelContainer
+const EffectEmblem := preload("res://scripts/effect_emblem.gd")
 ## Building Detail v2 — the redesigned, scenario-adaptive detail panel (Phase 1).
 ## Code-instantiated by world_map. THE building detail panel: the classic v1 panel it was
 ## written to replace was deleted on 2026-08-28, along with the `swap bdp` seam.
@@ -293,7 +294,11 @@ func _rebuild(building: Dictionary) -> void:
 		_body.add_child(_build_shipments(ships))
 
 	_body.add_child(_make_section("Labour on this building"))
-	_body.add_child(_build_labour(BuildingReadout.labour(building_data, recipe)))
+	# Headcounts from the recipe/building; cost is the engine's actual grown-wage charge (level +
+	# labour modifiers included), the same figure the Economics card shows — not the base rate.
+	var lab_readout: Dictionary = BuildingReadout.labour(building_data, recipe)
+	lab_readout["cost"] = Production._calculate_labour_cost(building, recipe)
+	_body.add_child(_build_labour(lab_readout))
 
 	# sell / demolish (player-owned; the early NPC/construction returns skip this)
 	_body.add_child(_build_sell_demolish_row(building, building_data))
@@ -617,7 +622,7 @@ func _battery_type_row(gid: String, internal: String, subtitle: String, btn_text
 	cvb.add_child(hb)
 	var icon := UIHelpers.make_framed_good_icon(gid, internal, MARKET_ICON)
 	icon.custom_minimum_size = Vector2(MARKET_ICON, MARKET_ICON)
-	UIHelpers.link_good_icon_to_graph(icon, gid)
+	UIHelpers.link_good_icon_to_encyclopedia(icon, gid)
 	hb.add_child(icon)
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1582,7 +1587,7 @@ func _recipe_icon(good_id: String, internal: String, qty: int, size: int, bleed:
 func _plain_icon_pill(good_id: String, internal: String, qty: int, size: int) -> Control:
 	var holder := UIHelpers.make_plain_good_icon(good_id, internal, size)
 	holder.add_child(_qty_pill(qty, -1, 0))
-	UIHelpers.link_good_icon_to_graph(holder, good_id)
+	UIHelpers.link_good_icon_to_encyclopedia(holder, good_id)
 	return holder
 
 func _good_icon_pill(good_id: String, internal: String, qty: int, size: int, base_qty: int = -1, mod_pct: int = 0) -> Control:
@@ -1593,7 +1598,7 @@ func _good_icon_pill(good_id: String, internal: String, qty: int, size: int, bas
 	# is the next question. ALWAYS, not the deferring form — a recipe card is itself
 	# clickable, so the polite version handed every one of these clicks to the card and the
 	# graph never opened (owner 2026-08-25).
-	UIHelpers.link_good_icon_to_graph(holder, good_id, true)
+	UIHelpers.link_good_icon_to_encyclopedia(holder, good_id)
 	return holder
 
 # Back-compat name used by construction / shipments / demolish — now the pill icon.
@@ -2024,14 +2029,22 @@ func _build_economics(econ: Dictionary) -> PanelContainer:
 	# The REPAYMENT, not the outstanding tab: what it takes a turn and how many turns are
 	# left to run (owner, 2026-09-03). The total is still there to read — it is this figure
 	# times the turns — but the per-turn cost is what a player plans around.
+	# Financing this building carries per turn: the deferred build-cost tab AND any construction
+	# loan taken to build it (tag_last_loan_building tied it to this instance). Both are shown in
+	# the one "Loan repayment" line and — unlike before — folded into the Net below, so the bottom
+	# line is the cash this building actually leaves the company after servicing its own build debt.
+	# General empire loans are excluded on purpose; they live at the company level.
 	var tab_pay: Dictionary = MatchState.building_tab_repayment(iid_econ)
-	if float(tab_pay.get("accrued", 0.0)) > 0.0:
-		var per_turn := float(tab_pay.get("per_turn", 0.0))
-		var turns_left := int(tab_pay.get("turns_left", 0))
+	var tab_per := float(tab_pay.get("per_turn", 0.0)) if float(tab_pay.get("accrued", 0.0)) > 0.0 else 0.0
+	var loan_pay: Dictionary = LoanState.building_loan_repayment(iid_econ)
+	var loan_per := float(loan_pay.get("per_turn", 0.0))
+	var financing_per_turn := tab_per + loan_per
+	if financing_per_turn > 0.0:
+		var turns_left := maxi(int(tab_pay.get("turns_left", 0)), int(loan_pay.get("turns_left", 0)))
 		var starts_in := int(tab_pay.get("starts_in", 0))
-		var value := "−£%.2f  (%d turns)" % [per_turn, turns_left]
-		if starts_in > 0:
-			value = "−£%.2f  (%d turns, starts in %d)" % [per_turn, turns_left, starts_in]
+		var value := "−£%.2f  (%d turns)" % [financing_per_turn, turns_left]
+		if starts_in > 0 and loan_per <= 0.0:
+			value = "−£%.2f  (%d turns, starts in %d)" % [financing_per_turn, turns_left, starts_in]
 		vb.add_child(_metric("Loan repayment", value, DS.PALETTE["WARN"], false))
 	var held := MatchState.ghost_holding_units(iid_econ)
 	if held > 0:
@@ -2041,16 +2054,22 @@ func _build_economics(econ: Dictionary) -> PanelContainer:
 	if carbon_tax > 0.0:
 		vb.add_child(_metric("Carbon tax / turn", "−£%.2f" % carbon_tax, DS.PALETTE["DANGER"], false))
 	vb.add_child(HSeparator.new())
-	var net := float(econ.get("net", 0.0))
+	# Operations net (output − running costs) minus this building's own build financing, so the
+	# bottom line reflects the cash it actually contributes while its construction debt is live.
+	var net := float(econ.get("net", 0.0)) - financing_per_turn
 	vb.add_child(_metric("Net / turn", "%s£%.2f" % ["+" if net >= 0.0 else "−", absf(net)], DS.PALETTE["OK"] if net >= 0.0 else DS.PALETTE["DANGER"], true))
 	return card
 
 func _metric(key: String, value: String, value_color: Color, strong: bool) -> HBoxContainer:
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", DS.SP["SM"])
+	if key.begins_with("Maintenance") or key.begins_with("Labour"):
+		hb.add_child(EffectEmblem.make("gears" if key.begins_with("Maintenance") else "engineer", 26.0))
 	var k := Label.new()
 	k.theme_type_variation = "Body" if strong else "Caption"
 	k.text = key
+	k.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	k.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	k.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hb.add_child(k)
 	var v := Label.new()
@@ -2099,8 +2118,13 @@ func _build_shipments(ships: Array) -> PanelContainer:
 		var need := int(s.get("need", 0))
 		var top := Label.new()
 		top.theme_type_variation = "Body"
-		top.text = "%s — %d/%d stored" % [str(s.get("name", "")), stored, need]
-		top.add_theme_color_override("font_color", DS.PALETTE["OK"] if stored >= need else DS.PALETTE["WARN"])
+		var _inbound := int(s.get("inbound", 0))
+		var _available := stored + _inbound   # on tile + in transit; shown even if it exceeds need
+		if _inbound > 0:
+			top.text = "%s — %d on tile +%d arriving / %d needed" % [str(s.get("name", "")), stored, _inbound, need]
+		else:
+			top.text = "%s — %d/%d stored" % [str(s.get("name", "")), stored, need]
+		top.add_theme_color_override("font_color", DS.PALETTE["OK"] if _available >= need else DS.PALETTE["WARN"])
 		col.add_child(top)
 		var sub := Label.new()
 		sub.theme_type_variation = "Caption"
@@ -2490,6 +2514,7 @@ func _build_labour(lab: Dictionary) -> HBoxContainer:
 	var cv := VBoxContainer.new()
 	cv.alignment = BoxContainer.ALIGNMENT_CENTER
 	cost_card.add_child(cv)
+	cv.add_child(EffectEmblem.make("engineer", 28.0))
 	var cnum := Label.new()
 	cnum.theme_type_variation = "Numeric"
 	cnum.text = "£%.2f/turn" % float(lab.get("cost", 0.0))

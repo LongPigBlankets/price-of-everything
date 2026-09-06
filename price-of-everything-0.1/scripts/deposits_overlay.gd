@@ -1,4 +1,5 @@
 extends Node2D
+const GoodHover := preload("res://scripts/good_icon_hover.gd")
 # Deposits mapmode. While active it draws each surveyed tile's deposit as a
 # world-space icon (sized 150px when fully zoomed in, 450px when fully zoomed
 # out). Unsurveyed tiles instead show a question mark — navy on land, off-white
@@ -68,7 +69,7 @@ var _hovered_id := ""
 
 func _ready() -> void:
 	_pill_layer = CanvasLayer.new()
-	_pill_layer.layer = 50              # above the map, below nothing in particular
+	_pill_layer.layer = 0               # map layer; the HUD canvas (1) covers quantities
 	add_child(_pill_layer)
 	MapMode.selections_changed.connect(_on_selections_changed)
 	MapMode.mode_cleared.connect(_on_mode_cleared)
@@ -202,6 +203,7 @@ func _size_text(tile_id: String, tile_data: Dictionary, row: Dictionary, exhaust
 # ── Drawing the icons (world space, scales with zoom) ──────────────────────────
 
 func _draw() -> void:
+	GoodHover.begin_draw(self)
 	if not _active:
 		return
 	var icon := _icon_world_size()
@@ -226,6 +228,7 @@ func _draw() -> void:
 			if tex != null:
 				# Preserve the texture's aspect ratio inside the sz×sz box.
 				var rect := _fitted_rect(tex, pos, sz)
+				GoodHover.drawn(self, rect, good_id)
 				draw_texture_rect(tex, rect, false)
 				if str(dep.building) != "":
 					_draw_building_badge(str(dep.building), rect, exhausted)
@@ -369,7 +372,7 @@ func _mouse_over_blocking_panel() -> bool:
 		return false
 	var mp := get_viewport().get_mouse_position()
 	for child in _hud_content.get_children():
-		if child is PanelContainer and (child as Control).visible \
+		if child is Control and (child as Control).visible and (child as Control).mouse_filter != Control.MOUSE_FILTER_IGNORE \
 				and (child as Control).get_global_rect().has_point(mp):
 			return true
 	return false

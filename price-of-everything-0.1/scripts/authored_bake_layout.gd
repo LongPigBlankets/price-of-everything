@@ -27,9 +27,25 @@ extends RefCounted
 ## instead; that is strictly more artifacts for the same picture, and is only worth building
 ## if the live remainder ever grows big enough to measure.)
 
-## World units per bake pixel. 4/3 gives integer texel rects (405×480 u → 540×640 px) and sits
-## ~20% above the ~1.107 px/u maximum play zoom, so a baked tile is never magnified on screen.
+## World units per bake pixel, FAR tier. 4/3 gives integer texel rects (405×480 u → 540×640 px)
+## and sat ~20% above the ~1.107 px/u play zoom of the day, so a baked tile was never magnified.
 const BAKE_SCALE := 4.0 / 3.0
+
+## The NEAR tier, for the very-near zoom added when a tile came to fill 80% of the viewport
+## (camera_controller.zoomed_in_tile_count). Same rule as BAKE_SCALE one octave up: 8/3 keeps
+## the texel rect integer (405×480 u → 1080×1280 px) and sits ~20% above the ~2.21 px/u that
+## zoom now reaches, so neither tier is ever magnified on screen.
+##
+## It is a SECOND set of files, not a replacement: the far tier is what the whole map draws at
+## every other zoom, and it must stay small enough to hold a whole island of tiles resident.
+## The near tier is only ever asked for the handful of tiles a close camera can see.
+const NEAR_SCALE := 8.0 / 3.0
+
+## The two bake tiers, by name. These strings reach the manifest and the asset paths, so they
+## are a format, not a label — changing one is a rebake.
+const TIER_FAR := "far"
+const TIER_NEAR := "near"
+const TIERS: Array[String] = [TIER_FAR, TIER_NEAR]
 
 ## The pitch rect's size in world units: column pitch × row pitch.
 const PITCH := Vector2(405.0, 480.0)
@@ -61,14 +77,33 @@ static func pitch_rect(centre: Vector2) -> Rect2:
 
 ## Texture dimensions for one tile. Integer by construction at BAKE_SCALE = 4/3.
 static func texture_size() -> Vector2i:
-	return Vector2i(int(round(PITCH.x * BAKE_SCALE)), int(round(PITCH.y * BAKE_SCALE)))
+	return texture_size_for(TIER_FAR)
+
+
+## World units per bake pixel for a tier. An unknown name gets the far tier, because a stale
+## manifest naming a tier this build does not have must degrade to the picture everything
+## already draws rather than to nothing.
+static func scale_for(tier: String) -> float:
+	return NEAR_SCALE if tier == TIER_NEAR else BAKE_SCALE
+
+
+## Texture dimensions for one tile at a tier. Integer by construction at both 4/3 and 8/3.
+static func texture_size_for(tier: String) -> Vector2i:
+	var scale := scale_for(tier)
+	return Vector2i(int(round(PITCH.x * scale)), int(round(PITCH.y * scale)))
 
 
 ## World → texture transform for the painter node inside the export SubViewport: scale by the
 ## bake scale and shift the rect's origin to the texture's (0,0). Matches `HillPainter`'s
 ## recipe (docs/map-editor-plan.md §7).
 static func bake_transform(rect: Rect2) -> Transform2D:
-	return Transform2D(Vector2(BAKE_SCALE, 0.0), Vector2(0.0, BAKE_SCALE), -rect.position * BAKE_SCALE)
+	return bake_transform_for(rect, TIER_FAR)
+
+
+## The same transform at a chosen tier.
+static func bake_transform_for(rect: Rect2, tier: String) -> Transform2D:
+	var scale := scale_for(tier)
+	return Transform2D(Vector2(scale, 0.0), Vector2(0.0, scale), -rect.position * scale)
 
 
 ## Is this road stroke part of the permanent picture? Unlockable strokes appear mid-match when

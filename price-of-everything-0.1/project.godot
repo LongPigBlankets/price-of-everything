@@ -18,6 +18,8 @@ config/icon="res://scenes/icon.svg"
 
 [autoload]
 
+GoodHoverRegistry="*res://scripts/good_hover_registry.gd"
+
 DS="*res://scripts/ds.gd"
 MapStyle="*res://scripts/map_style.gd"
 Audio="*res://scripts/audio.gd"

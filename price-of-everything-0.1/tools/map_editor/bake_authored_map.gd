@@ -10,6 +10,8 @@ extends Node
 ##   --doc=<name>     document to bake (default: whichever `active.txt` names)
 ##   --tiles=a,b,c    bake only these tiles (incremental — everything else is left alone)
 ##   --layers=a,b     subset of {fabric,roads} (default: both)
+##   --tiers=a,b      subset of {far,near} (default: both). far is the whole-map picture;
+##                    near is the 4x-pixel set the very-near zoom draws.
 ##   --dry-run        report the partition and what WOULD be written, render nothing
 ##
 ## What it writes
@@ -29,6 +31,7 @@ const BakeLayout := preload("res://scripts/authored_bake_layout.gd")
 const FabricPainter := preload("res://scripts/authored_fabric_painter.gd")
 const RoadPainter := preload("res://scripts/authored_road_painter.gd")
 const BakePainter := preload("res://scripts/authored_bake_painter.gd")
+const AuthoredBake := preload("res://scripts/authored_bake.gd")
 
 const OUT_ROOT := "res://assets/authored_map"
 const MANIFEST_PATH := "res://data/map_authored_bake.json"
@@ -38,6 +41,8 @@ const ALL_LAYERS: Array[String] = ["fabric", "roads"]
 var _doc_name := ""
 var _only_tiles: Dictionary = {}
 var _layers: Array[String] = ALL_LAYERS.duplicate()
+## Which resolution tiers to write. Both by default; `--tiers=far` reproduces the old bake.
+var _tiers: Array[String] = BakeLayout.TIERS.duplicate()
 var _dry_run := false
 
 
@@ -128,20 +133,8 @@ func _tile_centres(settlements: Dictionary) -> Dictionary:
 
 
 func _bake_all(doc_name: String, settlements: Dictionary, centres: Dictionary) -> void:
-	var tex_size := BakeLayout.texture_size()
 	var tile_ids := centres.keys()
 	tile_ids.sort()   # deterministic order, so two runs write the same bytes in the same order
-
-	# One viewport reused for every render: creating 278 of them is pure overhead, and
-	# UPDATE_ONCE + an explicit frame handshake per tile keeps them independent anyway.
-	var viewport := SubViewport.new()
-	viewport.size = tex_size
-	viewport.transparent_bg = true
-	viewport.disable_3d = true
-	viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
-	add_child(viewport)
-	var painter := BakePainter.new()
-	viewport.add_child(painter)
 
 	# The harbours' keep-out is baked IN, straight from the document, so a fresh bake already
 	# shows the town stopping short of the quay instead of waiting for the runtime repaint.
@@ -153,31 +146,68 @@ func _bake_all(doc_name: String, settlements: Dictionary, centres: Dictionary) -
 	var written := 0
 	var skipped := 0
 	var bytes := 0
-	for tile_value in tile_ids:
-		var tile_id := str(tile_value)
-		if not _only_tiles.is_empty() and not _only_tiles.has(tile_id):
-			continue
-		var rect: Rect2 = BakeLayout.pitch_rect(centres[tile_id])
-		var records := BakeLayout.records_for_rect(settlements, rect)
-		var entry: Dictionary = {"rect": [rect.position.x, rect.position.y, rect.size.x, rect.size.y], "layers": {}}
-		for layer in _layers:
-			var layer_records := _records_for_layer(records, layer)
-			if BakeLayout.is_empty(layer_records):
-				skipped += 1
-				continue   # nothing static reaches this tile on this layer — no texture, no entry
-			var path := "%s/%s/%s/%s.png" % [OUT_ROOT, doc_name, layer, tile_id]
-			if not _dry_run:
-				var size := await _render(viewport, painter, layer, layer_records, rect, path,
-					keep_out)
-				if size < 0:
-					push_warning("[BAKE] %s failed to write" % path)
-					continue
-				bytes += size
-			(entry["layers"] as Dictionary)[layer] = path
-			written += 1
-		if not (entry["layers"] as Dictionary).is_empty():
+
+	# TIER OUTER, TILES INNER, and only ONE SubViewport alive at a time. Holding a viewport per
+	# tier and alternating between them died 46 tiles into a 493-tile run — no error, just an
+	# abort mid-bake — and one viewport per pass is the shape every bake before this one used.
+	# It also means the near tier's 1080x1280 target is not resident while the far tier renders.
+	for tier_value in _tiers:
+		var tier := str(tier_value)
+		var viewport := SubViewport.new()
+		viewport.size = BakeLayout.texture_size_for(tier)
+		viewport.transparent_bg = true
+		viewport.disable_3d = true
+		viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		add_child(viewport)
+		var painter := BakePainter.new()
+		viewport.add_child(painter)
+		print("[BAKE] tier '%s' at %s px/tile — %d tile(s)" % [tier, str(viewport.size), tile_ids.size()])
+		var key := "layers" if tier == BakeLayout.TIER_FAR else "layers_near"
+		var done := 0
+		for tile_value in tile_ids:
+			var tile_id := str(tile_value)
+			if not _only_tiles.is_empty() and not _only_tiles.has(tile_id):
+				continue
+			var rect: Rect2 = BakeLayout.pitch_rect(centres[tile_id])
+			var records := BakeLayout.records_for_rect(settlements, rect)
+			var entry: Dictionary = manifest_tiles.get(tile_id, {
+				"rect": [rect.position.x, rect.position.y, rect.size.x, rect.size.y],
+				"layers": {}, "layers_near": {},
+			})
+			for layer in _layers:
+				var layer_records := _records_for_layer(records, layer)
+				if BakeLayout.is_empty(layer_records):
+					skipped += 1
+					continue   # nothing static reaches this tile on this layer
+				# The far tier keeps the original paths, so an existing checkout's textures are
+				# the same files; the near tier lives beside it in a suffixed directory.
+				var dir := layer if tier == BakeLayout.TIER_FAR else "%s_%s" % [layer, tier]
+				var path := "%s/%s/%s/%s.png" % [OUT_ROOT, doc_name, dir, tile_id]
+				if not _dry_run:
+					var size := await _render(viewport, painter, layer, layer_records, rect,
+						path, keep_out, tier)
+					if size < 0:
+						push_warning("[BAKE] %s failed to write" % path)
+						continue
+					bytes += size
+				(entry[key] as Dictionary)[layer] = path
+				written += 1
 			manifest_tiles[tile_id] = entry
-	viewport.queue_free()
+			done += 1
+			# A long bake has to be observable: a silent one that dies leaves nothing to read.
+			if done % 100 == 0:
+				print("[BAKE] tier '%s': %d/%d tiles, %.1f MB so far"
+					% [tier, done, tile_ids.size(), float(bytes) / 1048576.0])
+		viewport.queue_free()
+		await get_tree().process_frame   # let the target go before the next tier claims one
+	for tile_id in manifest_tiles.keys():
+		var entry: Dictionary = manifest_tiles[tile_id]
+		if (entry.get("layers_near", {}) as Dictionary).is_empty():
+			entry.erase("layers_near")   # a far-only manifest stays shaped as it was before
+		if (entry.get("layers", {}) as Dictionary).is_empty():
+			manifest_tiles.erase(tile_id)   # nothing static here at all
+		else:
+			manifest_tiles[tile_id] = entry
 
 	print("[BAKE] %d texture(s) %s, %d empty layer(s) skipped, %.1f MB" % [
 		written, "planned" if _dry_run else "written", skipped, float(bytes) / 1048576.0])
@@ -189,8 +219,9 @@ func _bake_all(doc_name: String, settlements: Dictionary, centres: Dictionary) -
 
 ## Render one layer of one tile and save it. Returns the file size in bytes, or -1 on failure.
 func _render(viewport: SubViewport, painter: Node2D, layer: String, records: Dictionary,
-		rect: Rect2, path: String, keep_out: Array = []) -> int:
-	painter.configure(layer, records, BakeLayout.bake_transform(rect), keep_out)
+		rect: Rect2, path: String, keep_out: Array = [],
+		tier: String = BakeLayout.TIER_FAR) -> int:
+	painter.configure(layer, records, BakeLayout.bake_transform_for(rect, tier), keep_out)
 	viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 	# The handshake `hill_visuals._bake_to_texture` uses: let the viewport run its single
 	# frame, then take the pixels only after the draw has actually landed.
@@ -199,6 +230,10 @@ func _render(viewport: SubViewport, painter: Node2D, layer: String, records: Dic
 	var image := viewport.get_texture().get_image()
 	if image == null or image.is_empty():
 		return -1
+	if OS.get_environment("BAKE_DEBUG") != "":
+		print("[BAKE DEBUG] tier=%s viewport.size=%s image=%dx%d painter.scale=%.3f" % [
+			tier, str(viewport.size), image.get_width(), image.get_height(),
+			painter.transform.get_scale().x])
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	if image.save_png(path) != OK:
 		return -1
@@ -224,6 +259,19 @@ func _records_for_layer(records: Dictionary, layer: String) -> Dictionary:
 
 
 func _write_manifest(doc_name: String, tiles: Dictionary) -> void:
+	# A SUBSET BAKE MERGES. `--tiles=tile_10_11` used to write a manifest holding that one
+	# tile and silently drop the other 492, so the next run of the suite reported thousands of
+	# road points "not on a baked tile" and the only cure was a full rebake. A subset run is a
+	# targeted re-render, not a redefinition of what the bake covers.
+	if not _only_tiles.is_empty():
+		var previous: Dictionary = AuthoredBake.tiles()
+		if not previous.is_empty() and str(AuthoredBake.data().get("document", "")) == doc_name:
+			var merged: Dictionary = previous.duplicate(true)
+			for tile_id in tiles:
+				merged[tile_id] = tiles[tile_id]
+			print("[BAKE] subset run: merged %d re-rendered tile(s) into the %d already baked"
+				% [tiles.size(), previous.size()])
+			tiles = merged
 	var doc: Dictionary = {
 		"version": MANIFEST_VERSION,
 		"document": doc_name,
@@ -231,6 +279,10 @@ func _write_manifest(doc_name: String, tiles: Dictionary) -> void:
 		"hills_hash": HillBaked.source_hash(),
 		"bake_scale": BakeLayout.BAKE_SCALE,
 		"texture_size": [BakeLayout.texture_size().x, BakeLayout.texture_size().y],
+		"near_scale": BakeLayout.NEAR_SCALE,
+		"near_texture_size": [BakeLayout.texture_size_for(BakeLayout.TIER_NEAR).x,
+			BakeLayout.texture_size_for(BakeLayout.TIER_NEAR).y],
+		"tiers": _tiers,
 		"tiles": tiles,
 	}
 	var file := FileAccess.open(MANIFEST_PATH, FileAccess.WRITE)
@@ -247,6 +299,14 @@ func _parse_options() -> void:
 		var text := str(argument)
 		if text.begins_with("--doc="):
 			_doc_name = text.substr(6)
+		elif text.begins_with("--tiers="):
+			_tiers = []
+			for name in text.substr(8).split(",", false):
+				var tier := str(name).strip_edges()
+				if BakeLayout.TIERS.has(tier):
+					_tiers.append(tier)
+			if _tiers.is_empty():
+				_tiers = BakeLayout.TIERS.duplicate()
 		elif text.begins_with("--tiles="):
 			for tile in text.substr(8).split(",", false):
 				_only_tiles[str(tile).strip_edges()] = true

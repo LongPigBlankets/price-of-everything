@@ -265,7 +265,7 @@ const MISSION_TEMPLATES := {
 	"cfo": {
 		"temp": {"domain": "loan_interest", "pct": -50.0, "turns": 20, "label": "loan interest halved (20t)"},
 		"perm1": {"domain": "loan_interest", "pct": -8.0, "label": "permanent -8% loan interest"},
-		"research_category": "Markets and Operations",
+		"research_category": "People & Management",
 		"perm2": {"domain": "dividend_rate", "pct": -12.0, "label": "permanent -12% dividends"},
 		"capstone": {"domain": "loan_interest", "pct": -15.0, "label": "permanent -15% loan interest"},
 	},
@@ -280,21 +280,21 @@ const MISSION_TEMPLATES := {
 	"chief_markets": {
 		"temp": {"domain": "market_spread", "pct": -40.0, "turns": 10, "label": "-40% buy spread (10t)"},
 		"perm1": {"domain": "market_spread", "pct": -10.0, "label": "permanent -10% buy spread"},
-		"research_category": "Markets and Operations",
+		"research_category": "People & Management",
 		"perm2": {"domain": "market_price", "pct": 2.0, "label": "permanent +2% sale price"},
 		"capstone": {"domain": "market_price", "pct": 3.0, "label": "permanent +3% sale price"},
 	},
 	"chief_investment": {
 		"temp": {"domain": "purchase_cost", "pct": -20.0, "turns": 20, "label": "-20% land/building prices (20t)"},
 		"perm1": {"domain": "purchase_cost", "pct": -8.0, "label": "permanent -8% purchase cost"},
-		"research_category": "Markets and Operations",
+		"research_category": "People & Management",
 		"perm2": {"domain": "construction_rebate", "pct": 5.0, "label": "permanent +5% build rebate"},
 		"capstone": {"domain": "construction_rebate", "pct": 5.0, "label": "permanent +5% build rebate"},
 	},
 	"hr_director": {
 		"temp": {"domain": "labour_headcount", "pct": -15.0, "turns": 20, "label": "-15% labour (20t)"},
 		"perm1": {"domain": "labour_headcount", "pct": -6.0, "label": "permanent -6% labour"},
-		"research_category": "People Management",
+		"research_category": "People & Management",
 		"perm2": {"domain": "maintenance", "pct": -6.0, "label": "permanent -6% maintenance"},
 		"capstone": {"policy": "stock_options", "label": "unlocks the Stock Options policy"},
 	},
@@ -315,7 +315,7 @@ const MISSION_TEMPLATES := {
 	"government_affairs": {
 		"temp": {"domain": "tax_rate", "pct": -30.0, "turns": 20, "label": "-30% tax (20t)"},
 		"perm1": {"domain": "tax_rate", "pct": -8.0, "label": "permanent -8% tax"},
-		"research_category": "People Management",
+		"research_category": "People & Management",
 		"temp2": {"domain": "market_spread", "pct": -30.0, "turns": 20, "label": "-30% buy spread (20t)"},
 		"perm2": {"domain": "tax_rate", "pct": -8.0, "label": "permanent -8% tax"},
 		"capstone": {"domain": "tax_rate", "pct": -10.0, "label": "permanent -10% tax"},
@@ -616,7 +616,11 @@ var construct_auto_buy_land: bool = false
 var construct_expanded_recipe_mode: bool = false
 # Defaults captured by constructions when they are started. "ask" preserves the
 # existing delivery prompt; the other modes choose a source automatically.
-var construct_material_source: String = "ask"
+var construct_material_source: String = "market"
+## A one-build override picked from the confirm panel's materials accordion (which retired the old
+## "construction materials missing" modal). NOT saved: it applies to the next build attempt only and
+## clears once consumed. Empty = fall back to the standing construct_material_source setting.
+var pending_build_material_source: String = ""
 # New production defaults to market routing unless the player explicitly chooses
 # the building's own tile stockpile.
 var construct_output_destination: String = "market"
@@ -2105,9 +2109,9 @@ func _complete_survey(tile_id: String, reveal_nearby: bool) -> void:
 	request_toast(_survey_toast(tile_id, found), "info")
 	if not reveal_nearby:
 		return
-	# A full survey auto-(partially-)surveys a neighbour; Spectral Crystallography
+	# A full survey auto-(partially-)surveys a neighbour; Hyperspectral Remote Sensing
 	# reveals one extra ("+1 adjacent tile revealed when surveying").
-	var reveals := 2 if is_unlocked("Spectral Crystallography") else 1
+	var reveals := 2 if is_unlocked("Hyperspectral Remote Sensing") else 1
 	for _i in reveals:
 		var fresh: Array = []
 		for n in Catalog.tile_neighbours(tile_id):
@@ -2261,6 +2265,37 @@ func _join_and(parts: Array) -> String:
 	var head: Array = parts.slice(0, parts.size() - 1)
 	return "%s, and %s" % [", ".join(head), str(parts[parts.size() - 1])]
 
+func _join_or(parts: Array) -> String:
+	if parts.size() <= 1:
+		return str(parts[0]) if parts.size() == 1 else ""
+	if parts.size() == 2:
+		return "%s or %s" % [str(parts[0]), str(parts[1])]
+	var head: Array = parts.slice(0, parts.size() - 1)
+	return "%s, or %s" % [", ".join(head), str(parts[parts.size() - 1])]
+
+## Research nodes hidden for the demo (owner 2026-09-06). The CSV row is kept so the node
+## can return post-demo, but it never loads: no tab card, no condition, no prereq link.
+## Its recipe is hidden in step via Catalog.HIDDEN_RECIPE_IDS.
+const HIDDEN_RESEARCH_IDS := {
+	"research_petro_020": true,   # Methane Pyrolysis — no methane in the demo
+	"research_biochem_002": true, # Enzyme Screening — bioplastics chain not in the demo
+	"research_biochem_003": true, # Bioplastic Precursors — same
+	"research_inorg_023": true,   # Zero-Liquid Discharge — replaced by Novel Membrane Filtration (inorg_025)
+	"research_biochem_005": true, # Cell Culture Automation — bioplastics chain not in the demo
+}
+
+## Shared content gate, independent of tiers and prerequisites. Search and every
+## grant path must respect these flags, including exact-title links and free picks.
+func is_research_visible(definition: Dictionary) -> bool:
+	var node_id := str(definition.get("research_node_id", ""))
+	if HIDDEN_RESEARCH_IDS.has(node_id):
+		return false
+	if str(definition.get("category", "")) == "Recycling" and not recycling_unlocked:
+		return false
+	if node_id in ["research_people_008", "research_people_009", "research_people_010", "research_people_011"] and not advisors_unlocked:
+		return false
+	return true
+
 # --- Public API: research unlocks ---
 func _load_unlock_defs() -> void:
 	_unlock_defs.clear()
@@ -2280,6 +2315,8 @@ func _load_unlock_defs() -> void:
 		var row := f.get_csv_line()
 		if row.is_empty() or row[0].strip_edges() == "":
 			continue
+		if HIDDEN_RESEARCH_IDS.has(_csv_at(row, idx, "research_node_id")):
+			continue   # demo-hidden node: never loads, so nothing can link to it
 		var prereqs: Array = []
 		for col in ["prereq_1", "prereq_2", "prereq_3"]:
 			var p := _csv_at(row, idx, col)
@@ -2352,7 +2389,7 @@ func grant_first_locked_in_category(category: String) -> String:
 	for d in _unlock_defs:
 		if str(d.get("category", "")) == category:
 			var title := str(d.get("title", ""))
-			if title != "" and not is_unlocked(title):
+			if title != "" and not is_unlocked(title) and is_research_visible(d):
 				grant_unlock(title)
 				return title
 	return ""
@@ -2367,6 +2404,9 @@ func grant_first_locked_in_category(category: String) -> String:
 ## "Unlocked …" dialog); false => a free-chosen unlock (no dialog).
 func grant_unlock(title: String, via_condition: bool = false) -> void:
 	if title == "" or unlocked_titles.has(title):
+		return
+	var definition := get_unlock_def(title)
+	if definition.is_empty() or not is_research_visible(definition):
 		return
 	unlocked_titles[title] = true
 	# Opening the rest of the council is not a modifier, so it is applied here rather than
@@ -2400,7 +2440,7 @@ func get_unlock_def(title: String) -> Dictionary:
 ## Nodes of the prior tier needed to open the next one. Two, not three (owner 2026-08-23):
 ## Petrochemistry had exactly three Tier I nodes, so "three of the prior tier" meant ALL of
 ## them, and Tier II was gated behind clearing a whole tier rather than committing to it.
-const TIER_UNLOCK_THRESHOLD := 2
+const TIER_UNLOCK_THRESHOLD := 1
 const _TIER_ORDER := ["I", "II", "III"]
 
 ## True when `category`'s roman `tier` is open. Tier I is always open; a higher
@@ -2422,14 +2462,14 @@ func is_tier_available(category: String, tier: String) -> bool:
 func _tier_node_count(category: String, tier: String) -> int:
 	var n := 0
 	for d in _unlock_defs:
-		if str(d.get("category", "")) == category and str(d.get("rank", "I")) == tier:
+		if is_research_visible(d) and str(d.get("category", "")) == category and str(d.get("rank", "I")) == tier:
 			n += 1
 	return n
 
 func _tier_unlocked_count(category: String, tier: String) -> int:
 	var n := 0
 	for d in _unlock_defs:
-		if str(d.get("category", "")) == category and str(d.get("rank", "I")) == tier \
+		if is_research_visible(d) and str(d.get("category", "")) == category and str(d.get("rank", "I")) == tier \
 				and unlocked_titles.has(str(d.get("title", ""))):
 			n += 1
 	return n
@@ -2438,7 +2478,7 @@ func _tier_unlocked_count(category: String, tier: String) -> int:
 ## when its category tier is open AND every listed prereq is already unlocked.
 func is_node_available(title: String) -> bool:
 	var d := get_unlock_def(title)
-	if d.is_empty():
+	if d.is_empty() or not is_research_visible(d):
 		return false
 	if not is_tier_available(str(d.get("category", "")), str(d.get("rank", "I"))):
 		return false
@@ -2470,33 +2510,92 @@ func unlock_condition_text(title: String) -> String:
 		if goods.size() == quantities.size() and not goods.is_empty():
 			var parts: Array = []
 			for index in goods.size():
-				parts.append("%s %s" % [str(quantities[index]), str(goods[index]).capitalize()])
+				parts.append("%s %s" % [str(quantities[index]), _condition_good_label(str(goods[index]))])
 			return "Produce %s" % _join_and(parts)
+	if action == "Produce Any":
+		# OR across goods: 500 of EITHER good unlocks it. A single Quantity applies to
+		# every good; a "a|b" Quantity gives per-good thresholds like Produce All.
+		var any_goods := object_name.split("|", false)
+		var any_qtys := str(d.get("quantity_raw", "")).split("|", false)
+		if not any_goods.is_empty():
+			var parts: Array = []
+			for index in any_goods.size():
+				var want := qty
+				if any_qtys.size() == any_goods.size() and str(any_qtys[index]).is_valid_int():
+					want = int(str(any_qtys[index]))
+				parts.append("%d %s" % [want, _condition_good_label(str(any_goods[index]))])
+			return "Produce %s" % _join_or(parts)
 	match action:
-		"Produce": return "Produce %d %s" % [qty, object_name.capitalize()]
-		"Sell": return "Sell %d units through the market" % qty if _research_key(object_name) == "freight" else "Sell %d %s through the market" % [qty, object_name.capitalize()]
+		"Produce": return "Produce %d %s" % [qty, _condition_good_label(object_name)]
+		"Sell": return "Sell %d units through the market" % qty if _research_key(object_name) == "freight" else "Sell %d %s through the market" % [qty, _condition_good_label(object_name)]
 		"Sell Through Ports": return "Sell %d units through ports" % qty
 		"Sell Through Every Port": return "Export %d units through EVERY port" % qty
 		"Own Port At Level": return "Own a port upgraded to level %d" % qty
 		"Sell Through Ports Classes": return "Sell at least %d units of each weight class through ports" % qty
 		"Purchase Ports": return "Purchase all %d ports" % qty
-		"Build": return "Build %d %s" % [qty, object_name.capitalize()]
-		"Own": return "Own %d land plots" % qty if _research_key(object_name) == "land" else "Own %d %s" % [qty, object_name.capitalize()]
+		"Build": return "Build %d %s" % [qty, _condition_building_label(object_name, qty)]
+		"Own": return "Own %d land plots" % qty if _research_key(object_name) == "land" else "Own %d %s" % [qty, _condition_good_label(object_name)]
 		"Run":
 			var run_turns := _leading_int(unit, 0)
-			return "Operate at least %d %s at full capacity for %d consecutive turns" % [qty, _condition_building_label(object_name, qty), run_turns] if run_turns > 0 else "Operate %s at full capacity for %d consecutive turns" % [object_name, qty]
-		"Run L1": return "Operate %d Level 1 %s at full capacity for %s" % [qty, object_name.capitalize(), unit]
+			return "Operate at least %d %s at full capacity for %d consecutive turns" % [qty, _condition_building_label(object_name, qty), run_turns] if run_turns > 0 else "Operate 1 %s at full capacity for %d consecutive turns" % [_condition_building_label(object_name, 1), qty]
+		"Run L1": return "Operate %d Level 1 %s at full capacity for %s" % [qty, _condition_building_label(object_name, qty), unit]
 		"Run Profitable":
 			var profitable_turns := _leading_int(unit, 0)
 			return "Operate at least %d %s profitably for %d consecutive turns" % [qty, _condition_building_label(object_name, qty), profitable_turns] if profitable_turns > 0 else "Operate %d %s profitably" % [qty, _condition_building_label(object_name, qty)]
-		"Run Profitable L2": return "Operate %d Level 2 %s profitably" % [qty, object_name.capitalize()]
+		"Run Profitable L2": return "Operate %d Level 2 %s profitably" % [qty, _condition_building_label(object_name, qty)]
+		"Run Same Tile":
+			var same_turns := _leading_int(unit, 0)
+			return "Operate %d %s on the same tile at full capacity for %d consecutive turns" % [qty, _condition_building_label(object_name, qty), same_turns] if same_turns > 0 else "Operate %d %s on the same tile" % [qty, _condition_building_label(object_name, qty)]
+		"Own On Tiles": return "Own %s on at least %d different tiles" % [_condition_building_label(object_name, 2), qty]
+		"Run Distinct Recipes": return "Operate %d %s, each on a different recipe" % [qty, _condition_building_label(object_name, qty)]
+		"Own All":
+			var own_parts: Array = []
+			var own_names := object_name.split("|", false)
+			var own_qtys := str(d.get("quantity_raw", "")).split("|", false)
+			for index in own_names.size():
+				var own_n := qty
+				if own_qtys.size() == own_names.size() and str(own_qtys[index]).is_valid_int():
+					own_n = int(str(own_qtys[index]))
+				own_parts.append("%d %s" % [own_n, _condition_building_label(str(own_names[index]), own_n)])
+			return "Own %s" % _join_and(own_parts)
+		"Run Producing":
+			var prod_turns := _leading_int(unit, 0)
+			var prod_who := "a building" if qty <= 1 else "%d buildings" % qty
+			return "Operate %s making %s at full capacity for %d consecutive turns" % [prod_who, _condition_good_label(object_name), prod_turns] if prod_turns > 0 else "Operate %s making %s at full capacity" % [prod_who, _condition_good_label(object_name)]
+		"Run Profitable L1": return "Operate %d Level 1 %s profitably for %s" % [qty, _condition_building_label(object_name, qty), unit]
+		"All Of":
+			var all_parts: Array = []
+			for spec in object_name.split(";", false):
+				var sub := _parse_sub_condition(str(spec))
+				if not sub.is_empty():
+					all_parts.append(_sub_condition_text(sub))
+			return _join_and(all_parts).capitalize() if all_parts.is_empty() else (_join_and(all_parts)[0].to_upper() + _join_and(all_parts).substr(1))
+		"Ship Multimodal": return "Move at least %d freight in a single turn using more than one mode of transport" % qty
+		"Produce Per Turn": return "Produce at least %d %s in a single turn" % [qty, _condition_good_label(object_name)]
+		"Produce Per Turn Any":
+			var rate_parts: Array = []
+			var rate_names := object_name.split("|", false)
+			var rate_raw := str(d.get("quantity_raw", "")).split("|", false)
+			for index in rate_names.size():
+				var rate_n := qty
+				if rate_raw.size() == rate_names.size() and str(rate_raw[index]).is_valid_int():
+					rate_n = int(str(rate_raw[index]))
+				rate_parts.append("%d %s" % [rate_n, _condition_good_label(str(rate_names[index]))])
+			return "Produce at least %s in a single turn" % _join_or(rate_parts)
 		"Run Multiple": return _run_multiple_condition_text(d)
 		"Fulfil Special Orders": return "Fulfil at least %d special orders" % qty
-		"Run Recipe": return "Operate %d buildings using a %s recipe" % [qty, object_name]
+		"Run Recipe Profitable": return "Run %d buildings with %s recipes profitably" % [qty, "steelmaking" if _research_key(object_name) == "steel_production" else object_name.to_lower()]
+		"Run Recipe": return "Operate %d building%s using a %s recipe" % [qty, "" if qty == 1 else "s", object_name]
 		"Survey": return "Survey %d %s" % [qty, object_name]
 		"Stockpile filled": return "Supply one stockpile from %s for %d consecutive turns" % [object_name, qty]
 		"Sustain": return "Maintain %s for %d consecutive turns" % [object_name, qty]
-		"Use Infrastructure": return "Use at least %d %s at 80%% throughput or higher" % [qty, object_name.capitalize()] if not "for" in unit else "Use %d %s at 80%% capacity for %d consecutive turns" % [qty, object_name.capitalize(), _leading_int(unit.get_slice("for", 1), 5)]
+		"Use Infrastructure":
+			var use_turns := _leading_int(unit.get_slice("for", 1), 5) if "for" in unit else 0
+			if "of l1" in unit.to_lower():
+				# Absolute bar against Level-1 capacity (see _infrastructure_usage_met).
+				var use_pct := _leading_int(unit, 80)
+				return "Carry %d%% of Level-1 capacity on %d %s for %d consecutive turns" % [use_pct, qty, object_name.capitalize(), use_turns] if use_turns > 0 else "Carry %d%% of Level-1 capacity on %d %s" % [use_pct, qty, object_name.capitalize()]
+			return "Use at least %d %s at 80%% throughput or higher" % [qty, _condition_good_label(object_name)] if use_turns <= 0 else "Use %d %s at 80%% capacity for %d consecutive turns" % [qty, object_name.capitalize(), use_turns]
 		"Firm Intermittency": return "Firm at least %d power of intermittent generation" % qty
 	return "%s %s %d" % [action, object_name, qty]
 
@@ -2547,7 +2646,7 @@ func _refresh_research_progress() -> void:
 func _check_unlock_conditions() -> void:
 	for d in _unlock_defs:
 		var title := str(d.title)
-		if title == "" or unlocked_titles.has(title) or int(d.qty) <= 0:
+		if title == "" or unlocked_titles.has(title) or int(d.qty) <= 0 or not is_research_visible(d):
 			continue
 		var action := str(d.action)
 		if action == "" or str(d.object) == "":
@@ -2599,6 +2698,21 @@ func _live_condition_met(d: Dictionary) -> bool:
 				if good_id == "" or not quantity_text.is_valid_int() or Production.lifetime_total(good_id) < int(quantity_text):
 					return false
 			return true
+		"Produce Any":
+			# OR: producing `need` of ANY listed good satisfies it. A "a|b" Quantity
+			# gives per-good thresholds; a single Quantity applies to every good.
+			var any_goods := obj.split("|", false)
+			var any_qtys := str(d.get("quantity_raw", need)).split("|", false)
+			for index in any_goods.size():
+				var gid := _research_good_id(str(any_goods[index]))
+				if gid == "":
+					continue
+				var want := need
+				if any_qtys.size() == any_goods.size() and str(any_qtys[index]).is_valid_int():
+					want = int(str(any_qtys[index]))
+				if Production.lifetime_total(gid) >= want:
+					return true
+			return false
 		"Sell":
 			if _research_key(obj) == "freight":
 				return MarketState.lifetime_sold_total() >= need
@@ -2655,6 +2769,78 @@ func _live_condition_met(d: Dictionary) -> bool:
 			return _count_buildings(obj, 1, false, turns) >= need
 		"Run Profitable L2":
 			return _count_buildings(obj, 2, true, 0) >= need
+		"Run Same Tile":
+			# N running buildings of this type on ONE tile; a leading int in Unit adds a
+			# full-output streak ("4 mines on the same tile for 15 turns").
+			return _max_same_tile_count(obj, _leading_int(str(d.get("unit", "")), 0)) >= need
+		"Own On Tiles":
+			# This building type present on at least N distinct tiles (reach, not volume).
+			return _tiles_with_building(obj) >= need
+		"Run Distinct Recipes":
+			# N running buildings of this type each on a DIFFERENT recipe ("3 chem plants
+			# with different recipes") — breadth of process, not fleet size.
+			return _distinct_recipes_running(obj) >= need
+		"Own All":
+			# "a|b" building types with "x|y" counts: own at least each ("a chem plant AND
+			# a power plant"). Mirrors Produce All.
+			var own_targets := obj.split("|", false)
+			var own_counts := str(d.get("quantity_raw", need)).split("|", false)
+			if own_targets.is_empty():
+				return false
+			for index in own_targets.size():
+				var want_n := need
+				if own_counts.size() == own_targets.size() and str(own_counts[index]).is_valid_int():
+					want_n = int(str(own_counts[index]))
+				if _count_buildings(str(own_targets[index]), -1, false, 0) < want_n:
+					return false
+			return true
+		"Run Producing":
+			# N buildings whose CURRENT recipe outputs this good, at full output for the
+			# streak in Unit ("run a recipe producing chlorine for 15 turns") — by output,
+			# so it spans recipes in different categories.
+			return _count_running_producing(_research_good_id(obj), _leading_int(str(d.get("unit", "")), 0)) >= need
+		"Run Profitable L1":
+			# N Level-1 buildings profitable for the streak in Unit.
+			return _count_buildings(obj, 1, true, _leading_int(str(d.get("unit", "")), 0)) >= need
+		"All Of":
+			# Compound AND: Object is ";"-separated clauses, each "Action|Object|Qty|Unit"
+			# ("operate 5 refineries AND produce alloy metals"). Every clause must hold.
+			var clauses := obj.split(";", false)
+			if clauses.is_empty():
+				return false
+			for spec in clauses:
+				var sub := _parse_sub_condition(str(spec))
+				if sub.is_empty() or not _live_condition_met(sub):
+					return false
+			return true
+		"Produce Per Turn":
+			# A RATE: the last resolved turn's output of this good, not lifetime volume
+			# ("produce at least 300 steel per turn").
+			var rate_good := _research_good_id(obj)
+			return rate_good != "" and int((Production.last_turn_summary.get("produced", {}) as Dictionary).get(rate_good, 0)) >= need
+		"Ship Multimodal":
+			# Last turn's freight reached `need` units AND travelled by more than one transport
+			# mode ("100 freight per turn using more than 1 mode").
+			var mm := _multimodal_freight_last_turn()
+			return int(mm.get("total", 0)) >= need and (mm.get("modes", {}) as Dictionary).size() >= 2
+		"Produce Per Turn Any":
+			# A rate on ANY of an "a|b" list: last turn's output of any listed good reached its
+			# threshold ("30 pet coke per turn OR 30 biomass per turn"). Shared qty, or per-good "x|y".
+			var rate_goods := obj.split("|", false)
+			var rate_qtys := str(d.get("quantity_raw", need)).split("|", false)
+			var produced_last: Dictionary = Production.last_turn_summary.get("produced", {})
+			for index in rate_goods.size():
+				var rg := _research_good_id(str(rate_goods[index]))
+				if rg == "":
+					continue
+				var want_rate := need
+				if rate_qtys.size() == rate_goods.size() and str(rate_qtys[index]).is_valid_int():
+					want_rate = int(str(rate_qtys[index]))
+				if int(produced_last.get(rg, 0)) >= want_rate:
+					return true
+			return false
+		"Run Recipe Profitable":
+			return _count_buildings_running_recipe_type(obj, 1, true) >= need
 		"Run Recipe":
 			# "Run N player buildings currently set to a recipe of this category"
 			# (e.g. furnaces on a Glassmaking recipe). A leading int in Unit optionally
@@ -2705,6 +2891,10 @@ func _run_multiple_condition_text(d: Dictionary) -> String:
 	return "Operate at least %s at full capacity for %d consecutive turns" % [_join_and(parts), turns]
 
 
+func _condition_good_label(raw: String) -> String:
+	var good: Dictionary = Catalog.get_good(_research_good_id(raw))
+	return str(good.get("display_name", raw.capitalize()))
+
 func _condition_building_label(raw: String, quantity: int = 1) -> String:
 	var key := _research_key(raw)
 	if key == "high_tech_manufactory|assembly_plant":
@@ -2716,6 +2906,11 @@ func _condition_building_label(raw: String, quantity: int = 1) -> String:
 		"assembly_plant": "Assembly Plant",
 		"solar_farm": "Solar Farm",
 		"farm": "Farm",
+		"chem_plant": "Chemical Plant",
+		"petro_refinery": "Petrochemical Refinery",
+		"poly_plant": "Polymerisation Refinery",
+		"desal": "Desalination Plant",
+		"eaf": "Electric Arc Furnace",
 	}.get(key, raw.capitalize()))
 	if quantity != 1:
 		if label.ends_with("y"):
@@ -2738,6 +2933,11 @@ func _infrastructure_usage_met(d: Dictionary) -> bool:
 	var duration := 1
 	if "for" in unit:
 		duration = _leading_int(unit.get_slice("for", 1), 5)
+	# "N% of L1 for T turns": an ABSOLUTE bar — N% of the LEVEL-1 capacity — so upgrading a
+	# link never makes the gate harder, and 120%+ is reachable through congestion (owner
+	# 2026-09-06). Plain "80% for T turns" keeps the legacy meaning: 80% of CURRENT capacity.
+	var of_l1 := "of l1" in unit.to_lower()
+	var bar_fraction := float(_leading_int(unit, 80)) / 100.0
 	var turn := int(TurnManager.current_turn)
 	# Conditions are evaluated from several hooks. Only advance/reset the streak
 	# once per resolved turn, after the actual transport and power use has settled.
@@ -2754,13 +2954,15 @@ func _infrastructure_usage_met(d: Dictionary) -> bool:
 			var capacity := 0.0
 			var usage := 0.0
 			if internal == "cables":
-				capacity = float(Power.tile_power_cap(tile_id))
+				# L1 yardstick is the RAW table cap: throughput research must not move the bar.
+				capacity = float(EconomyConfig.CABLE_POWER_CAP.get(1, 0)) if of_l1 else float(Power.tile_power_cap(tile_id))
 				usage = float(maxi(int(Power.tile_drawn.get(tile_id, 0)), int(Power.tile_produced.get(tile_id, 0))))
 			else:
 				var mode := "rail" if internal == "rails" else internal
-				capacity = tile_mode_capacity(mode, _tile_infra_level(tile_id, mode))
+				capacity = float(TransportService.link_capacity(mode, 1)) if of_l1 else tile_mode_capacity(mode, _tile_infra_level(tile_id, mode))
 				usage = float(tile_mode_flow(tile_id, mode))
-			if capacity > 0.0 and usage >= capacity * 0.80:
+			var bar := capacity * (bar_fraction if of_l1 else 0.80)
+			if capacity > 0.0 and usage >= bar:
 				active_segments += 1
 		if active_segments >= need_segments:
 			_infrastructure_usage_streaks[title] = int(_infrastructure_usage_streaks.get(title, 0)) + 1
@@ -2867,7 +3069,43 @@ func _research_condition_issue(d: Dictionary) -> String:
 	var obj := str(d.get("object", ""))
 	if action == "Placeholder":
 		return ""
-	if action in ["Build", "Run", "Run Profitable", "Run L1", "Run Profitable L2", "Run Multiple", "Use Infrastructure"]:
+	if action == "All Of":
+		# Every ";"-separated clause must itself pass the audit.
+		var all_clauses := obj.split(";", false)
+		if all_clauses.is_empty():
+			return "empty All Of condition"
+		for spec in all_clauses:
+			var sub := _parse_sub_condition(str(spec))
+			if sub.is_empty():
+				return "malformed All Of clause"
+			var sub_issue := _research_condition_issue(sub)
+			if sub_issue != "":
+				return sub_issue
+		return ""
+	if action == "Ship Multimodal":
+		return "" if _research_key(obj) == "freight" else "unsupported multimodal target"
+	if action == "Produce Per Turn":
+		return "" if _research_good_id(obj) != "" else "unknown good target"
+	if action == "Produce Per Turn Any":
+		var rate_goods := obj.split("|", false)
+		if rate_goods.is_empty():
+			return "invalid multi-good production condition"
+		for g in rate_goods:
+			if _research_good_id(str(g)) == "":
+				return "unknown good target"
+		return ""
+	if action == "Own All":
+		# "a|b" building types — every one must resolve.
+		var own_all_targets := obj.split("|", false)
+		if own_all_targets.is_empty():
+			return "invalid multi-building ownership condition"
+		for t in own_all_targets:
+			if _research_building_targets(str(t)).is_empty():
+				return "unknown ownership target"
+		return ""
+	if action == "Run Producing":
+		return "" if _research_good_id(obj) != "" else "unknown good target"
+	if action in ["Build", "Run", "Run Profitable", "Run L1", "Run Profitable L2", "Run Multiple", "Use Infrastructure", "Run Same Tile", "Own On Tiles", "Run Distinct Recipes", "Run Profitable L1"]:
 		if _research_key(obj) != "any" and _research_building_targets(obj).is_empty():
 			return "unknown building target"
 		return ""
@@ -2902,13 +3140,27 @@ func _research_condition_issue(d: Dictionary) -> String:
 			if _research_good_id(str(goods[index])) == "" or not str(quantities[index]).is_valid_int():
 				return "unknown good target"
 		return ""
+	if action == "Produce Any":
+		# OR list "a|b": every listed good must resolve. A single Quantity applies to all;
+		# a per-good "a|b" Quantity must be all-integer.
+		var any_goods := obj.split("|", false)
+		if any_goods.is_empty():
+			return "invalid multi-good production condition"
+		var any_qtys := str(d.get("quantity_raw", "")).split("|", false)
+		var per_good := any_qtys.size() == any_goods.size()
+		for index in any_goods.size():
+			if _research_good_id(str(any_goods[index])) == "":
+				return "unknown good target"
+			if per_good and not str(any_qtys[index]).is_valid_int():
+				return "unknown good target"
+		return ""
 	if action in ["Produce", "Sell"]:
 		if action == "Sell" and _research_key(obj) == "freight":
 			return ""
 		if _research_good_id(obj) == "":
 			return "unknown good target"
 		return ""
-	if action == "Run Recipe":
+	if action in ["Run Recipe", "Run Recipe Profitable"]:
 		var wanted := _research_key(obj)
 		for recipe in Catalog.all_recipes():
 			if _research_key(str(recipe.get("recipe_type", ""))) == wanted:
@@ -2928,6 +3180,140 @@ func _research_condition_issue(d: Dictionary) -> String:
 # Count player-owned buildings resolved from an ID/internal/display/concept name,
 # optionally filtered by level (-1 = any), profitability, and a minimum consecutive
 # run-streak. `internal` == "any" (or "") matches every non-infrastructure building.
+## Largest number of player buildings of `internal` sharing ONE tile, counting only those
+## that (when `min_streak` > 0) have sustained full output for that many consecutive turns.
+## Backs the "Run Same Tile" verb — co-location is the ask, not fleet size.
+func _max_same_tile_count(internal: String, min_streak: int) -> int:
+	var any_type: bool = _research_key(internal) == "any" or internal == ""
+	var targets := _research_building_targets(internal)
+	var per_tile: Dictionary = {}
+	for inst in buildings.values():
+		if not is_player_owned(inst):
+			continue
+		if any_type:
+			if str(Catalog.get_building(str(inst.get("building_id", ""))).get("category", "")) == "infrastructure":
+				continue   # "any" means production buildings, as in _count_buildings
+		elif not targets.has(_building_internal(inst)):
+			continue
+		if min_streak > 0 and int(Production.full_output_streak_by_building.get(str(inst.get("instance_id", "")), 0)) < min_streak:
+			continue
+		var t := str(inst.get("tile_id", ""))
+		per_tile[t] = int(per_tile.get(t, 0)) + 1
+	var best := 0
+	for t in per_tile:
+		best = maxi(best, int(per_tile[t]))
+	return best
+
+## Last resolved turn's freight, by transport mode, from the same shipment snapshot the
+## congestion model uses (_last_transit_shipments). Each shipment's units count once per
+## mode it travels by — no inflation by route length. Leg-less overland moves count as
+## "overland". Backs "Ship Multimodal": {"total": units, "modes": {mode: units}}.
+func _multimodal_freight_last_turn() -> Dictionary:
+	var by_mode: Dictionary = {}
+	var total := 0
+	for s in _last_transit_shipments:
+		var units := _shipment_total_units(s as Dictionary)
+		if units <= 0:
+			continue
+		var modes: Dictionary = {}
+		for leg in (s as Dictionary).get("legs", []):
+			var mode := str((leg as Dictionary).get("mode", ""))
+			if mode != "":
+				modes[mode] = true
+		if modes.is_empty():
+			modes["overland"] = true
+		for mode in modes:
+			by_mode[mode] = int(by_mode.get(mode, 0)) + units
+		total += units
+	return {"total": total, "modes": by_mode}
+
+## One "Action|Object|Qty|Unit" clause of an "All Of" condition, as the condition dict the
+## live check, the audit and the card text consume. Empty when malformed. (Clauses whose own
+## Object needs "|" — Produce All, Own All — can't nest here; none do.)
+func _parse_sub_condition(spec: String) -> Dictionary:
+	# Action | Object… | Qty | Unit — the LAST two fields are qty and unit, so an Object that
+	# itself carries "|" (an a|b good list for the *Any / *All verbs) survives inside a clause.
+	var parts := spec.split("|", false)
+	if parts.size() < 4:
+		return {}
+	var q := str(parts[parts.size() - 2]).strip_edges()
+	var object_parts: Array = []
+	for i in range(1, parts.size() - 2):
+		object_parts.append(str(parts[i]).strip_edges())
+	return {
+		"action": str(parts[0]).strip_edges(), "object": "|".join(PackedStringArray(object_parts)),
+		"qty": int(q) if q.is_valid_int() else _leading_int(q, 0), "quantity_raw": q,
+		"unit": str(parts[parts.size() - 1]).strip_edges(),
+	}
+
+## Card text for one All Of clause — the verbs that actually appear in compound gates.
+func _sub_condition_text(sub: Dictionary) -> String:
+	var a := str(sub.get("action", "")); var o := str(sub.get("object", "")); var n := int(sub.get("qty", 0)); var u := str(sub.get("unit", ""))
+	var turns := _leading_int(u, 0)
+	match a:
+		"Produce": return "produce %d %s" % [n, _condition_good_label(o)]
+		"Produce Per Turn Any":
+			var choices: Array = []
+			for good in o.split("|", false):
+				choices.append("%d %s" % [n, _condition_good_label(str(good))])
+			return "produce %s in one turn" % _join_or(choices)
+		"Own On Tiles": return "own %s on at least %d different tiles" % [_condition_building_label(o, 2), n]
+		"Own": return "own %d %s" % [n, _condition_building_label(o, n)]
+		"Run": return "operate %d %s at full capacity for %d turns" % [n, _condition_building_label(o, n), turns] if turns > 0 else "operate a %s at full capacity for %d turns" % [_condition_building_label(o, 1), n]
+		"Run Profitable": return "operate %d %s profitably" % [n, _condition_building_label(o, n)]
+		"Run Producing": return "operate %s making %s at full capacity for %d turns" % ["a building" if n <= 1 else "%d buildings" % n, _condition_good_label(o), turns]
+	return "%s %s %d %s" % [a, o, n, u]
+
+## Number of DIFFERENT recipes currently running (full-output streak >= 1) across the
+## player's buildings of `internal`. Backs "Run Distinct Recipes" — breadth of process.
+func _distinct_recipes_running(internal: String) -> int:
+	var targets := _research_building_targets(internal)
+	var recipes: Dictionary = {}
+	for inst in buildings.values():
+		if not is_player_owned(inst) or not targets.has(_building_internal(inst)):
+			continue
+		if int(Production.full_output_streak_by_building.get(str(inst.get("instance_id", "")), 0)) < 1:
+			continue
+		var rid := str(inst.get("recipe_id", ""))
+		if rid != "":
+			recipes[rid] = true
+	return recipes.size()
+
+## Player buildings whose CURRENT recipe outputs `good_id`, at full output for at least
+## `min_streak` consecutive turns. Backs "Run Producing" — matched by output good, so a
+## condition like "make chlorine" spans recipes that live in different categories.
+func _count_running_producing(good_id: String, min_streak: int) -> int:
+	if good_id == "":
+		return 0
+	var n := 0
+	for inst in buildings.values():
+		if not is_player_owned(inst):
+			continue
+		var recipe: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))
+		if recipe.is_empty() or not Catalog.recipe_produces(recipe, good_id):
+			continue
+		if int(Production.full_output_streak_by_building.get(str(inst.get("instance_id", "")), 0)) < maxi(min_streak, 1):
+			continue
+		n += 1
+	return n
+
+## Number of distinct tiles carrying at least one player building of `internal`.
+## Backs the "Own On Tiles" verb — geographic reach, not building count.
+func _tiles_with_building(internal: String) -> int:
+	var any_type: bool = _research_key(internal) == "any" or internal == ""
+	var targets := _research_building_targets(internal)
+	var tiles: Dictionary = {}
+	for inst in buildings.values():
+		if not is_player_owned(inst):
+			continue
+		if any_type:
+			if str(Catalog.get_building(str(inst.get("building_id", ""))).get("category", "")) == "infrastructure":
+				continue   # "any" means production buildings, as in _count_buildings
+		elif not targets.has(_building_internal(inst)):
+			continue
+		tiles[str(inst.get("tile_id", ""))] = true
+	return tiles.size()
+
 func _count_buildings(internal: String, level: int, require_profitable: bool, min_streak: int) -> int:
 	var match_any: bool = _research_key(internal) == "any" or internal == ""
 	var targets := _research_building_targets(internal)
@@ -2954,7 +3340,7 @@ func _count_buildings(internal: String, level: int, require_profitable: bool, mi
 # run-streak. Powers recipe-specific research gates (e.g. "run furnaces on a
 # Glassmaking recipe"). Because glassmaking recipes only exist in the furnace,
 # matching recipe_type already means "a furnace running glassmaking".
-func _count_buildings_running_recipe_type(recipe_type: String, min_streak: int) -> int:
+func _count_buildings_running_recipe_type(recipe_type: String, min_streak: int, require_profitable: bool = false) -> int:
 	var want := recipe_type.strip_edges().to_lower()
 	if want == "":
 		return 0
@@ -2968,6 +3354,8 @@ func _count_buildings_running_recipe_type(recipe_type: String, min_streak: int) 
 		if str(recipe.get("recipe_type", "")).strip_edges().to_lower() != want:
 			continue
 		if min_streak > 0 and int(Production.full_output_streak_by_building.get(str(inst.get("instance_id", "")), 0)) < min_streak:
+			continue
+		if require_profitable and (is_building_paused(str(inst.get("instance_id", ""))) or not _is_building_profitable(inst)):
 			continue
 		n += 1
 	return n
@@ -4088,10 +4476,21 @@ func set_construct_expanded_recipe_mode(enabled: bool, emit_change: bool = true)
 		construct_settings_changed.emit()
 
 
+## The material source the NEXT build attempt should use: the one-build accordion override if the
+## player picked one, else the standing setting. Legacy "ask" resolves to "market" — the modal is
+## retired, so a build never blocks waiting for a choice (the accordion is where the choice is made
+## now). Clears the one-build override so it applies exactly once.
+func consume_build_material_source() -> String:
+	var src := pending_build_material_source if pending_build_material_source != "" else construct_material_source
+	pending_build_material_source = ""
+	if src == "ask" or src == "":
+		src = "market"
+	return src
+
 func set_construct_material_source(value: String, emit_change: bool = true) -> void:
 	var resolved := value.to_lower().strip_edges()
 	if resolved not in ["ask", "market", "same_tile", "any_tile"]:
-		resolved = "ask"
+		resolved = "market"
 	if construct_material_source == resolved:
 		return
 	construct_material_source = resolved

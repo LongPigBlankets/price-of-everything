@@ -78,6 +78,7 @@ static func effective_output_qty(building: Dictionary, recipe: Dictionary) -> in
 			"recipe_id": recipe_id,
 			"recipe_type": str(recipe.get("recipe_type", "")).to_lower(),
 			"building_id": str(building.get("building_id", "")),
+			"instance_id": str(building.get("instance_id", "")),   # lets on_infinite_deposit modifiers resolve in the panel too
 			"good_id": str(good.id),
 			"good_internal": internal_name,
 		}
@@ -113,6 +114,7 @@ static func effective_power_output(building: Dictionary, recipe: Dictionary) -> 
 		"good_internal": "power",
 	}
 	var eff := Modifiers.apply("recipe_output", rid, float(output_qty), ctx)
+	eff *= Production.colocated_battery_power_multiplier(building)   # renew_014 same-tile battery bonus
 	return int(round(eff * BuildingLevels.mult("output", int(building.get("level", 1))) * MatchState.workforce_output_multiplier()))
 
 static func good_display_from_internal(internal_name: String) -> String:
@@ -351,6 +353,7 @@ static func net_output_modifier(building: Dictionary, recipe: Dictionary) -> Dic
 		"recipe_id": recipe_id,
 		"recipe_type": str(recipe.get("recipe_type", "")).to_lower(),
 		"building_id": str(building.get("building_id", "")),
+		"instance_id": str(building.get("instance_id", "")),   # lets on_infinite_deposit modifiers resolve in the panel too
 		"good_id": primary_output_good_id(recipe),
 		"good_internal": primary_output_internal(recipe),
 	}

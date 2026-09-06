@@ -28,6 +28,8 @@ const TreeShapes := preload("res://scripts/tree_shapes.gd")
 const STREAM_MARGIN := 600.0
 ## The AuthoredBake.texture_generation this layer last repainted at (threaded streaming).
 var _texture_generation := 0
+## The resolution tier this layer last drew (see AuthoredBake.tier_for).
+var _tier := AuthoredBake.Layout.TIER_FAR
 ## The authored point trees as three meshes — shadows, crowns, outlines — built ONCE from the
 ## document and drawn with three calls. Empty until the first bake-path repaint asks, and
 ## dropped on a style change (the colours are baked into the vertices). See _build_tree_meshes.
@@ -179,7 +181,7 @@ func _lp_draw_inner() -> void:
 	if AuthoredBake.is_available():
 		_view_rect = AuthoredBake.visible_world_rect(self, STREAM_MARGIN)
 		var _lp_t := Time.get_ticks_usec()
-		AuthoredBake.draw_layer(self, "fabric", _view_rect, _repainted)
+		AuthoredBake.draw_layer(self, "fabric", _view_rect, _repainted, AuthoredBake.tier_for(self))
 		var _lp_textures := Time.get_ticks_usec() - _lp_t
 		_draw_dynamic()
 		if OS.get_environment("LOAD_PROF") != "":
@@ -381,6 +383,12 @@ func _process(_delta: float) -> void:
 	AuthoredBake.settle_pending()
 	if AuthoredBake.texture_generation != _texture_generation:
 		_texture_generation = AuthoredBake.texture_generation
+		queue_redraw()
+	# Crossing the near/far zoom band is a different picture, not a different view, so it has
+	# to force a repaint on its own — the view rect may not have moved at all.
+	var tier := AuthoredBake.tier_for(self)
+	if tier != _tier:
+		_tier = tier
 		queue_redraw()
 	var view := AuthoredBake.visible_world_rect(self, STREAM_MARGIN)
 	# Not `!=` — see view_stream.gd. This layer is the most expensive of the four.
