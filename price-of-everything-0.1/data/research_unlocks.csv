@@ -4,14 +4,14 @@ research_mining_002,Extraction,research_mining_001,,,,II,Produce,iron_ore,500,un
 research_mining_003,Extraction,research_mining_001,,,,II,Produce,limestone,500,units,Deep Seam Surveying,survey,"Increases limestone, sand and salt mining output by 15% permanently."
 research_mining_004,Extraction,research_mining_002,,,,II,Own,land,5,units,Copper Froth Flotation,copper,Increases copper ore mining output by 15% permanently.
 research_mining_005,Extraction,research_mining_003,,,,III,Run,Mine,15,turns,Automated Mine Dispatch,truck,"Increases coal, iron, copper, limestone, sand and salt mining output by a further 15% permanently."
-research_petro_001,Chemistry,,,,,I,Build,Oil Refinery,3,units,Fractional Distillation,oil,Increases Petrochemical Refinery output by 5% permanently.
+research_petro_001,Chemistry,,,,,I,Build,Petrochemical Refinery,3,units,Fractional Distillation,oil,Increases Petrochemical Refinery output by 5% permanently.
 research_petro_002,Chemistry,research_petro_001,,,,I,Sell,Processed Oil,250,units,Catalytic Cracking,catalyst,Reduces Petrochemical Refinery power consumption by 5% permanently.
-research_petro_003,Chemistry,research_petro_002,,,,II,Run,Oil Refinery,12,turns,Polymer Feedstocks,poly,Increases Polymerisation Refinery output by 5% permanently.
+research_petro_003,Chemistry,research_petro_002,,,,II,Run,Petrochemical Refinery,12,turns,Polymer Feedstocks,poly,Increases Polymerisation Refinery output by 5% permanently.
 research_petro_004,Chemistry,research_petro_001,,,,II,Own,land,5,units,Solvent Recovery,solvent,Reduces Petrochemical Refinery maintenance by 10% for 20 turns.
 research_petro_005,Chemistry,research_petro_003,,,,III,Run,Polymer Feedstocks,15,turns,Advanced Elastomers,rubber,Increases the sale price of rubber by 5% for 20 turns.
 research_metal_001,Metallurgy,,,,,I,Build,Furnace,3,units,Basic Blast Furnaces,furnace,Increases Furnace output by 5% permanently.
 research_metal_002,Metallurgy,research_metal_001,,,,I,Sell,Steel,250,units,Continuous Casting,cast,Refines continuous-casting practice (prerequisite tech).
-research_metal_003,Metallurgy,research_metal_002,,,,II,Run,Steel Mill,12,turns,Alloy Heat Treatment,alloy,Unlocks new recipes: HIsarna Steel Making (24 Steel); Copper Pipe Moulding (22 Copper Pipe).
+research_metal_003,Metallurgy,research_metal_002,,,,II,Produce,steel,500,units,Alloy Heat Treatment,alloy,Unlocks new recipes: HIsarna Steel Making (24 Steel); Copper Pipe Moulding (22 Copper Pipe).
 research_metal_004,Metallurgy,research_metal_003,,,,II,Own,land,5,units,Electric Arc Refining,eaf,Unlocks new recipes: Electric Arc Steelmaking (50 Steel); ELYSIS Aluminium (15 Aluminium); Flash Copper Smelting (36 Copper Ingots).
 research_inorg_001,"Glass, Silica & Concrete",,,,,I,Run Recipe,Glassmaking,3,furnaces,High Strength Glassmaking,glass,Unlocks new recipe: High Strength Glassmaking (28 Glass).
 research_inorg_002,"Glass, Silica & Concrete",research_inorg_001,,,,II,Produce,concrete,500,units,Pozzolanic Vitrification,cast,Increases Concrete output by 10% permanently.
@@ -75,7 +75,7 @@ research_mining_008,Extraction,,,,,I,Survey,deposits,2,deposits,Spectral Crystal
 research_mining_009,Extraction,research_mining_008,,,,II,Survey,tiles,5,tiles,Computer Assisted Geoscanning,svt,+1 Survey range (2 to 3)
 research_petro_006,Extraction,,,,,II,Build,oil_well,3,units,Directional & Horizontal Drilling,horizontal,Increases Oil Wells and Hydraulic Fracking Oil Wells output by 10% each permanently.
 research_petro_007,Extraction,,,,,II,Own,offshore_oil_land,50,units,Offshore Drilling Platforms,rig,Unlocks new recipe: Offshore Oil Extraction (10 Crude Oil).
-research_petro_008,Extraction,research_petro_007,,,,III,Run,Offshore Platform,15,turns,Deepwater Drilling,deepsea,Unlocks new recipe: Deepwater Oil Extraction (12 Crude Oil).
+research_petro_008,Extraction,research_petro_007,,,,III,Run,Offshore Platform,15,turns,Deepwater Drilling,deepsea,Increases offshore oil platform output by 10% permanently.
 research_petro_009,Extraction,research_petro_007,,,,III,Build,offshore_oil_platform,5,units,Subsea Tieback Systems,manifold,Increases Offshore Oil Platform crude oil output by 10% permanently.
 research_petro_010,Extraction,research_petro_006,,,,II,Run Profitable,oil_well,3,buildings,Microseismic Monitoring,survey,Increases Oil Wells and Hydraulic Fracking Oil Wells output by 5% and reduces their maintenance by 10% permanently.
 research_petro_011,Extraction,research_petro_010,,,,III,Produce,crude_oil,1000,units,Reservoir Stimulation,stim,Increases Oil Wells output by 20% for 30 turns.
@@ -107,10 +107,10 @@ research_mining_013,Extraction,,,,,I,Build,mine,3,units,Bench Blasting Expansion
 research_mining_014,Extraction,,,,,I,Build,mine,7,units,Bulk Haulage Fleets,truck,Increases Mine output by 5% permanently.
 research_mining_015,Extraction,,,,,I,Build,mine,12,units,Continuous Surface Miners,miner,Reduces Mine power consumption by 20% permanently.
 research_mining_016,Extraction,,,,,I,Build,mine,12,units,Block Caving,cave,Reduces Mine maintenance by 20% permanently.
-research_metal_010,Metallurgy,research_metal_003,,,,III,Run,Steel Mill,15,turns,Pulverised Carbon Injection,pci,Reduces Furnace power consumption by 20% permanently.
+research_metal_010,Metallurgy,research_metal_003,,,,III,Produce,steel,500,units,Pulverised Carbon Injection,pci,Reduces Furnace power consumption by 20% permanently.
 research_metal_011,Metallurgy,,,,,I,Build,furnace,7,units,Oxygen-Enriched Blast,furnace,Unlocks new recipe: Basic Oxygen Steelmaking (24 Steel).
 research_metal_012,Metallurgy,,,,,I,Produce All,chlorine|aluminium,300|400,units,Bauxite Carbochlorination,furnace,Unlocks new recipe: Bauxite Carbochlorination (20 Aluminium).
-research_metal_013,Metallurgy,research_metal_004,,,,III,Run,Steel Mill,15,turns,Scrap Preheating Towers,preheat,Reduces Electric Arc Furnace power consumption by 20% permanently.
+research_metal_013,Metallurgy,research_metal_004,,,,III,Produce,steel,500,units,Scrap Preheating Towers,preheat,Reduces Electric Arc Furnace power consumption by 20% permanently.
 research_metal_014,Metallurgy,,,,,I,Build,eaf,3,units,Foamy Slag Practice,slag,Increases Electric Arc Furnace output by 5% permanently.
 research_metal_015,Metallurgy,research_metal_014,,,,II,Run L1,eaf,3,20 turns,Twin-Shell Furnaces,level2,Unlocks upgrading Electric Arc Furnace to Level 2 for more output.
 research_metal_016,Metallurgy,,,,,I,Build,eaf,7,units,DC Arc Conversion,eaf,Reduces Electric Arc Furnace power consumption by 5% permanently.
@@ -159,7 +159,7 @@ research_infra_013,Infrastructure,research_infra_012,,,,III,Use Infrastructure,r
 research_infra_014,Infrastructure,,,,,II,Use Infrastructure,cables,3,80% for 5 turns,Reconductoring,level2,Unlocks upgrading Cables to Level 2 for more output.
 research_infra_015,Infrastructure,research_infra_014,,,,III,Use Infrastructure,cables,5,80% for 5 turns,Smart Grid Control,level3,Unlocks upgrading Cables to Level 3 for more output.
 research_renew_013,Power Production,research_renew_008,,,,III,Run,Wind Farm,12,turns,Floating Offshore Wind Farms,floatwind,Unlocks new recipe: Floating Offshore Wind Power (90 Power).
-research_renew_014,Power Production,research_renew_003,,,,II,Run,Battery,12,turns,Fast Response Storage,fastbat,Reduces power consumption for buildings sharing the tile by 5% permanently.
+research_renew_014,Power Production,research_renew_003,,,,II,Run,Battery,12,turns,Fast Response Storage,fastbat,Batteries on the same tile increase wind and solar power output by 5%.
 research_infra_016,Infrastructure,research_infra_004,,,,II,Build,Cables,5,units,High Voltage Cabling,hvdc1,Unlocks HVDC long-distance power transmission.
 research_infra_017,Infrastructure,research_infra_016,,,,III,Use Infrastructure,cables,10,80% for 5 turns,Undersea Current Doublers,hvdc2,Unlocks higher-capacity undersea HVDC power links.
 research_infra_018,Infrastructure,research_infra_017,,,,III,Own,Cables,6,units,SF6-free Switchgear,hvdc3,Unlocks high-capacity HVDC switchgear for power links.

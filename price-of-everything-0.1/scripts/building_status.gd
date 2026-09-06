@@ -113,6 +113,7 @@ static func effective_power_output(building: Dictionary, recipe: Dictionary) -> 
 		"good_internal": "power",
 	}
 	var eff := Modifiers.apply("recipe_output", rid, float(output_qty), ctx)
+	eff *= Production.colocated_battery_power_multiplier(building)   # renew_014 same-tile battery bonus
 	return int(round(eff * BuildingLevels.mult("output", int(building.get("level", 1))) * MatchState.workforce_output_multiplier()))
 
 static func good_display_from_internal(internal_name: String) -> String:

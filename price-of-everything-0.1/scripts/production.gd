@@ -1767,7 +1767,27 @@ func _effective_power_output(building: Dictionary, recipe: Dictionary) -> int:
 		"good_internal": "power",
 	}
 	var eff := Modifiers.apply("recipe_output", rid, float(output_qty), mod_ctx)
+	eff *= colocated_battery_power_multiplier(building)
 	return int(round(eff * BuildingLevels.mult("output", int(building.get("level", 1))) * MatchState.workforce_output_multiplier() * MatchState.startup_capacity_multiplier(building)))
+
+# Wind/solar plants and the battery types (solar b_024 · onshore wind b_025 · offshore wind b_026;
+# electric battery b_028 · thermal battery b_029).
+const _WIND_SOLAR_BUILDINGS := {"b_024": true, "b_025": true, "b_026": true}
+const _BATTERY_BUILDINGS := {"b_028": true, "b_029": true}
+
+## renew_014 "Fast Response Storage": once researched, a battery on the SAME tile lifts that tile's
+## wind/solar power output by 5%. A tile-local co-location bonus — there is no standard modifier hook
+## for "a sibling building on the tile", so it is applied here, gated on the unlock, and mirrored by
+## BuildingStatus.effective_power_output so the panel matches.
+func colocated_battery_power_multiplier(building: Dictionary) -> float:
+	if not _WIND_SOLAR_BUILDINGS.has(str(building.get("building_id", ""))):
+		return 1.0
+	if not MatchState.is_unlocked("Fast Response Storage"):
+		return 1.0
+	for other in MatchState.get_buildings_on_tile(str(building.get("tile_id", ""))):
+		if _BATTERY_BUILDINGS.has(str(other.get("building_id", ""))):
+			return 1.05
+	return 1.0
 
 ## Per-turn stat snapshot for a building instance evaluated AS IF it were `level`. Used by the
 ## upgrade dialog to show cur→new (energy / labour / maintenance / size / inputs / outputs) using

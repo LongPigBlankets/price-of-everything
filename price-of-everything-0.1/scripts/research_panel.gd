@@ -91,7 +91,8 @@ const CATEGORIES := [
 	"Manufacturing",
 	"Power Production",
 	"Farming & Forestry",
-	"Recycling",
+	# "Recycling" is hidden for the demo (recycling isn't shipping in it); its nodes still load
+	# from the CSV but have no tab, so they stay un-researchable until it returns.
 	"Infrastructure",
 	"Logistics",
 	"People & Management",

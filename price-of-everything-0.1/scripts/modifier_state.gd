@@ -194,6 +194,7 @@ const UNLOCK_MODIFIERS := {
 	"research_petro_011": {"id": "rn_reservoir_stimulation", "domain": "recipe_output", "target_match": {"building_id": "b_032"}, "pct": 20.0, "duration_turns": 30, "label": "Reservoir Stimulation", "source": "research_node"},  # Reservoir Stimulation
 	"research_petro_009": {"id": "rn_subsea_tieback", "domain": "recipe_output", "target_match": {"building_id": "b_033"}, "pct": 10.0, "label": "Subsea Tieback Systems", "source": "research_node"},  # Subsea Tieback Systems
 	"research_petro_012": {"id": "rn_multiphase_subsea_boosting", "domain": "recipe_output", "target_match": {"building_id": "b_033"}, "pct": 10.0, "label": "Multiphase Subsea Boosting", "source": "research_node"},  # Multiphase Subsea Boosting
+	"research_petro_008": {"id": "rn_deepwater_drilling", "domain": "recipe_output", "target_match": {"building_id": "b_033"}, "pct": 10.0, "label": "Deepwater Drilling: +10% offshore oil platform output", "source": "research_node"},  # Deepwater Drilling (was an orphaned recipe-unlock; now a real yield modifier)
 	"research_petro_013": {"id": "rn_enhanced_oil_recovery", "domain": "recipe_output", "target_match": {"good_internal": "crude_oil"}, "pct": 20.0, "duration_turns": 30, "label": "Enhanced Oil Recovery", "source": "research_node"},  # Enhanced Oil Recovery
 	"research_petro_014": [  # Remote Platform Operations
 		{"id": "rn_remote_platform_ops_well", "domain": "labour_headcount", "target_match": {"building_id": "b_032"}, "pct": -30.0, "label": "Remote Platform Operations", "source": "research_node"},
