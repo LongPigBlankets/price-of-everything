@@ -6,7 +6,7 @@ extends SceneTree
 # but for a single good, and it writes ALL THREE tiers. bake_new_icons emits medium + small
 # only, which is right for a NEW good: nothing stale exists below them, and good_icons.gd's
 # _TIER_ORDER falls back to small when very_small is missing. Power is not new. It already has
-# a 64 px very_small on disk, and a very_small left behind would keep serving the OLD bolt in
+# a very_small on disk, and a thumbnail left behind would keep serving the OLD bolt in
 # every list row and chip while the larger tiers showed the new one.
 #
 #   <godot> --headless --path . --script res://tools/bake_power_good_icon.gd -- <source.png>
@@ -19,7 +19,7 @@ const BN := preload("res://tools/bake_new_icons.gd")
 
 const STEM := "g_010_power"
 const TRIM_PAD_FRAC := 0.04
-## Tier caps, longest edge. Matched to what is already on disk for this good, and to
+## Tier caps, longest edge. A 256px thumbnail avoids upscaling at the 128px display limit. Matched to
 ## good_icons.gd's TIER_MAX_DISPLAY: very_small serves thumbnails, small is the working tier and
 ## is capped at 450 -- good_icons.gd names that as the largest size any good icon is drawn at,
 ## and 70 of the 74 icons already in that folder are built to it. bake_new_icons.gd uses 256,
@@ -28,7 +28,7 @@ const TRIM_PAD_FRAC := 0.04
 const TIERS := {
 	"res://assets/icons/goods/medium": 2048,
 	"res://assets/icons/goods/small": 450,
-	"res://assets/icons/goods/very_small": 64,
+	"res://assets/icons/goods/very_small": 256,
 }
 
 

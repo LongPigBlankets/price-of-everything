@@ -32,6 +32,8 @@ func _ready() -> void:
 	_build_ui()
 	_map_camera = get_tree().get_first_node_in_group("camera")
 	visibility_changed.connect(_on_visibility_changed)
+	MatchState.encyclopedia_good_requested.connect(func(_id: String) -> void:
+		if visible: hide())
 
 
 ## Toggle open/closed. Called from world_map on the `toggle_goods_graph` (G) action,
@@ -78,6 +80,10 @@ func _build_ui() -> void:
 	_graph_world.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_graph_world.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_graph_world)
+	_graph_world.research_requested.connect(func(title: String) -> void:
+		# Restore the map and release graph input before opening the research panel.
+		hide()
+		MatchState.research_search_requested.emit(title))
 
 	var hint := Label.new()
 	hint.name = "Hint"

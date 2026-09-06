@@ -1,4 +1,6 @@
 extends Control
+const GoodHover := preload("res://scripts/good_icon_hover.gd")
+const EffectEmblem := preload("res://scripts/effect_emblem.gd")
 ## Goods Graph — drawing layer.
 ##
 ## Draws the goods web (tier columns of good cards + orthogonal flow edges) entirely in
@@ -9,6 +11,8 @@ extends Control
 ## scroll / pinch to zoom, WASD to pan. Hovering a good highlights its direct flows;
 ## clicking selects it and lights its whole upstream supply cone plus the goods it
 ## feeds (click empty space or the good again to clear). No sim logic (CLAUDE.md #2/#5).
+
+signal research_requested(title: String)
 
 signal good_selected(internal_name: String)   # phase 2 hook (focus / recipe-swap mode)
 
@@ -432,6 +436,9 @@ func _node_at(screen_pos: Vector2) -> String:
 func _update_hover(screen_pos: Vector2) -> void:
 	if _mode == _Mode.GRID:
 		var w2 := _screen_to_world(screen_pos)
+		var link := _grid_research_at(w2)
+		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if link != "" else Control.CURSOR_ARROW
+		tooltip_text = "Open %s in Research" % link if link != "" else ""
 		var gh := -1
 		for i in range(_grid_islands.size()):
 			if ((_grid_islands[i] as Dictionary)["bicon_rect"] as Rect2).has_point(w2):
@@ -461,7 +468,9 @@ func _tray_button_at(world_pos: Vector2) -> int:
 
 func _click_at(screen_pos: Vector2) -> void:
 	if _mode == _Mode.GRID:
-		return   # grid clicks: only the Back button (a real Control) acts
+		var link := _grid_research_at(_screen_to_world(screen_pos))
+		if link != "": research_requested.emit(link)
+		return
 	var tray := _tray_button_at(_screen_to_world(screen_pos))
 	if tray >= 0:
 		var action := str((_tray_buttons[tray] as Dictionary)["action"])
@@ -890,6 +899,7 @@ func _collect_upstream(id: String) -> Dictionary:
 # --- drawing -----------------------------------------------------------------------
 
 func _draw() -> void:
+	GoodHover.begin_draw(self)
 	if _nodes.is_empty():
 		return
 	# Everything below is drawn in WORLD coordinates under the camera transform;
@@ -1236,6 +1246,7 @@ func _draw_card(node: Dictionary, font: Font, tracing: bool, alpha_mul: float = 
 	var pad := 6.0
 	var isz := rect.size.y - pad * 2.0
 	var chip := Rect2(rect.position + Vector2(13.0, pad), Vector2(isz, isz))
+	GoodHover.drawn(self, Rect2(chip.position * _view_zoom + _view_offset, chip.size * _view_zoom), str(node.get("good_id", "")))
 	var icon: Texture2D = GoodIcons.texture_for(str(node.get("good_id", "")), id)
 	draw_colored_polygon(_rounded_rect_points(chip, 8.0), Color(_CREAM, alpha))
 	if icon != null:
@@ -1387,9 +1398,11 @@ func _draw_card_tray(node: Dictionary, font: Font) -> void:
 		var br := _rounded_rect_points(btn, 8.0 * s)
 		br.append(br[0])
 		draw_polyline(br, Color(_CREAM, 1.0 if hovered else 0.7), 1.4 * s, true)
-		draw_string(font, Vector2(btn.position.x, btn.get_center().y + 6.0 * s),
+		var emblem_rect := Rect2(btn.position + Vector2(9.0 * s, (btn_h - 28.0 * s) * 0.5), Vector2(28, 28) * s)
+		EffectEmblem.draw_on(self, emblem_rect, "merge" if entries[i]["action"] == "alternates" else "encyclopedia")
+		draw_string(font, Vector2(btn.position.x + 43.0 * s, btn.get_center().y + 6.0 * s),
 			str((entries[i] as Dictionary)["label"]),
-			HORIZONTAL_ALIGNMENT_CENTER, btn.size.x, int(round(17.0 * s)),
+			HORIZONTAL_ALIGNMENT_CENTER, btn.size.x - 49.0 * s, int(round(17.0 * s)),
 			Color("#f3f8fd") if hovered else _CREAM)
 		_tray_buttons.append({"rect": btn, "action": str((entries[i] as Dictionary)["action"])})
 
@@ -1582,6 +1595,10 @@ func _draw_grid(font: Font) -> void:
 		var name := str(recipe.get("display_name", ""))
 		draw_string(_BEBAS, rect.position + Vector2(2.0, 34.0), name,
 			HORIZONTAL_ALIGNMENT_LEFT, rect.size.x, 30, _GOLD)
+		var research := _recipe_research_title(recipe)
+		if research != "":
+			var underline_w := minf(rect.size.x, _BEBAS.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x)
+			draw_line(rect.position + Vector2(2.0, 37.0), rect.position + Vector2(2.0 + underline_w, 37.0), _GOLD, 1.5, true)
 		if gated:
 			var name_w := _BEBAS.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x
 			_draw_lock_tag(rect.position + Vector2(name_w + 26.0, 24.0), 1.0)
@@ -1592,6 +1609,10 @@ func _draw_grid(font: Font) -> void:
 			draw_string(font, rect.position + Vector2(2.0, 54.0),
 				"requires research: %s" % (gate_name if gate_name != "" else gate_raw),
 				HORIZONTAL_ALIGNMENT_LEFT, rect.size.x, 14, Color("#f3f8fd"))
+			if research != "":
+				var caption := "requires research: " + research
+				var caption_w := minf(rect.size.x, font.get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x)
+				draw_line(rect.position + Vector2(2.0, 57.0), rect.position + Vector2(2.0 + caption_w, 57.0), Color("#f3f8fd"), 1.0, true)
 		# Inputs (or a note when the recipe takes none — wind, solar, hydro).
 		var inputs: Array = island["inputs"]
 		if inputs.is_empty():
@@ -1677,6 +1698,7 @@ func _draw_grid_good(rect: Rect2, good_id: String, internal: String, display: St
 	var isz := rect.size.y - pad * 2.0
 	var chip := Rect2(rect.position + Vector2(12.0, pad), Vector2(isz, isz))
 	draw_colored_polygon(_rounded_rect_points(chip, 8.0), _CREAM)
+	GoodHover.drawn(self, Rect2(chip.position * _view_zoom + _view_offset, chip.size * _view_zoom), good_id)
 	var icon: Texture2D = GoodIcons.texture_for_size(good_id, internal, isz)
 	if icon != null:
 		var tex_size := icon.get_size()
@@ -1715,3 +1737,23 @@ func _draw_grid_good(rect: Rect2, good_id: String, internal: String, display: St
 	else:
 		draw_string(font, Vector2(chip.end.x + 14.0, rect.get_center().y + fs * 0.36), display,
 			HORIZONTAL_ALIGNMENT_LEFT, text_right - chip.end.x - 14.0, fs, _TEXT)
+
+## Resolve only actual, visible research; base recipes and demo-hidden nodes have no link.
+func _recipe_research_title(recipe: Dictionary) -> String:
+	var id := str(recipe.get("tech_unlock_req", ""))
+	var title := MatchState.research_title_for_node_id(id)
+	if title == "": return ""
+	var definition := MatchState.get_unlock_def(title)
+	return title if not definition.is_empty() and MatchState.is_research_visible(definition) else ""
+
+func _grid_research_at(world_pos: Vector2) -> String:
+	for island in _grid_islands:
+		var recipe: Dictionary = island["recipe"]
+		var title := _recipe_research_title(recipe)
+		if title == "": continue
+		var rect: Rect2 = island["rect"]
+		var width := minf(rect.size.x, _BEBAS.get_string_size(str(recipe.get("display_name", "")), HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x)
+		var caption_width := minf(rect.size.x, get_theme_default_font().get_string_size("requires research: " + title, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x)
+		if Rect2(rect.position, Vector2(width + 4.0, 40.0)).has_point(world_pos) or Rect2(rect.position + Vector2(0, 40), Vector2(caption_width, 20)).has_point(world_pos):
+			return title
+	return ""

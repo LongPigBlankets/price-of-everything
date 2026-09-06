@@ -1,4 +1,5 @@
 extends PanelContainer
+const EffectEmblem := preload("res://scripts/effect_emblem.gd")
 ## Building Detail v2 — the redesigned, scenario-adaptive detail panel (Phase 1).
 ## Code-instantiated by world_map. THE building detail panel: the classic v1 panel it was
 ## written to replace was deleted on 2026-08-28, along with the `swap bdp` seam.
@@ -621,7 +622,7 @@ func _battery_type_row(gid: String, internal: String, subtitle: String, btn_text
 	cvb.add_child(hb)
 	var icon := UIHelpers.make_framed_good_icon(gid, internal, MARKET_ICON)
 	icon.custom_minimum_size = Vector2(MARKET_ICON, MARKET_ICON)
-	UIHelpers.link_good_icon_to_graph(icon, gid)
+	UIHelpers.link_good_icon_to_encyclopedia(icon, gid)
 	hb.add_child(icon)
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1586,7 +1587,7 @@ func _recipe_icon(good_id: String, internal: String, qty: int, size: int, bleed:
 func _plain_icon_pill(good_id: String, internal: String, qty: int, size: int) -> Control:
 	var holder := UIHelpers.make_plain_good_icon(good_id, internal, size)
 	holder.add_child(_qty_pill(qty, -1, 0))
-	UIHelpers.link_good_icon_to_graph(holder, good_id)
+	UIHelpers.link_good_icon_to_encyclopedia(holder, good_id)
 	return holder
 
 func _good_icon_pill(good_id: String, internal: String, qty: int, size: int, base_qty: int = -1, mod_pct: int = 0) -> Control:
@@ -1597,7 +1598,7 @@ func _good_icon_pill(good_id: String, internal: String, qty: int, size: int, bas
 	# is the next question. ALWAYS, not the deferring form — a recipe card is itself
 	# clickable, so the polite version handed every one of these clicks to the card and the
 	# graph never opened (owner 2026-08-25).
-	UIHelpers.link_good_icon_to_graph(holder, good_id, true)
+	UIHelpers.link_good_icon_to_encyclopedia(holder, good_id)
 	return holder
 
 # Back-compat name used by construction / shipments / demolish — now the pill icon.
@@ -2062,9 +2063,13 @@ func _build_economics(econ: Dictionary) -> PanelContainer:
 func _metric(key: String, value: String, value_color: Color, strong: bool) -> HBoxContainer:
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", DS.SP["SM"])
+	if key.begins_with("Maintenance") or key.begins_with("Labour"):
+		hb.add_child(EffectEmblem.make("gears" if key.begins_with("Maintenance") else "engineer", 26.0))
 	var k := Label.new()
 	k.theme_type_variation = "Body" if strong else "Caption"
 	k.text = key
+	k.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	k.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	k.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hb.add_child(k)
 	var v := Label.new()
@@ -2509,6 +2514,7 @@ func _build_labour(lab: Dictionary) -> HBoxContainer:
 	var cv := VBoxContainer.new()
 	cv.alignment = BoxContainer.ALIGNMENT_CENTER
 	cost_card.add_child(cv)
+	cv.add_child(EffectEmblem.make("engineer", 28.0))
 	var cnum := Label.new()
 	cnum.theme_type_variation = "Numeric"
 	cnum.text = "£%.2f/turn" % float(lab.get("cost", 0.0))

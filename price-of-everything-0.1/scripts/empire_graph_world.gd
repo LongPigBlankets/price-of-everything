@@ -1,4 +1,5 @@
 extends Control
+const GoodHover := preload("res://scripts/good_icon_hover.gd")
 ## Empire view — graph drawing layer (Milestone 3+: pan/zoom, orthogonal routing, sell lines).
 ##
 ## A manual camera (`_view_offset` + `_view_zoom`) pans/zooms the graph. Node POSITIONS scale and
@@ -809,6 +810,7 @@ func _process(delta: float) -> void:
 # --- drawing -----------------------------------------------------------------------------------
 
 func _draw() -> void:
+	GoodHover.begin_draw(self)
 	if _nodes.is_empty() and _ports.is_empty():
 		return
 	var font := get_theme_default_font()
@@ -1299,6 +1301,7 @@ func _draw_edge_good_chip(path: PackedVector2Array, e: Dictionary, kind: String,
 ## only canvas primitive with corner radii.
 func _draw_material_chip(c: Vector2, box: float, icon, qty: int, font: Font, sc: float, a: float) -> void:
 	var r := Rect2(c - Vector2(box, box) * 0.5, Vector2(box, box))
+	if icon != null: GoodHover.drawn(self, r, str(icon.get_meta("encyclopedia_good_id", "")))
 	if _chip_style == null:
 		_chip_style = StyleBoxFlat.new()
 	_chip_style.bg_color = Color(_CREAM.r, _CREAM.g, _CREAM.b, 0.95 * a)

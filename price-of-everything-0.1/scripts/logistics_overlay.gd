@@ -1,4 +1,5 @@
 extends Node2D
+const GoodHover := preload("res://scripts/good_icon_hover.gd")
 ## Logistics map overlay.
 ##
 ## When the Logistics mapmode is active: dim the map and draw every
@@ -255,6 +256,7 @@ func _draw_stock_bar_im(col_x: float, col_w: float, baseline: float, bar_max_h: 
 	if good_id != "":
 		var tex := GoodIcons.texture_for(good_id, Catalog.get_internal_name(good_id))
 		if tex != null:
+			GoodHover.drawn(self, Rect2(cx - icon_sz * 0.5, baseline + icon_sz * 0.05, icon_sz, icon_sz), good_id)
 			draw_texture_rect(tex, Rect2(cx - icon_sz * 0.5, baseline + icon_sz * 0.05, icon_sz, icon_sz), false)
 
 # Transparent cream mask over the hovered tile's hex.
@@ -568,6 +570,7 @@ func _build_segment_offsets() -> Dictionary:
 
 # --- drawing ---
 func _draw() -> void:
+	GoodHover.begin_draw(self)
 	var mapmode_on := MapMode.current_mode == MapMode.Mode.LOGISTICS
 	if not mapmode_on and not _resolving and _move_preview_source == "" and not _transfer_active:
 		return

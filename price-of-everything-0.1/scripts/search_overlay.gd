@@ -1402,7 +1402,7 @@ func _make_catalog_icon(result: Dictionary) -> Control:
 		good_id = str(payload.get("id", payload.get("good_id", "")))
 		var chip := UIHelpers.make_plain_good_icon(good_id,
 			str(payload.get("internal_name", "")), int(ACCORDION_ICON_SIZE.x))
-		UIHelpers.link_good_icon_to_graph(chip, good_id, true)
+		UIHelpers.link_good_icon_to_encyclopedia(chip, good_id)
 		return chip
 	elif result.get("type", "") == "building":
 		var building: Dictionary = result.get("payload", {})
@@ -1410,10 +1410,9 @@ func _make_catalog_icon(result: Dictionary) -> Control:
 	if texture == null:
 		return _make_empty_icon("No icon")
 	var icon := _make_texture_icon(texture)
-	# A good's icon in the encyclopedia is a way into the Goods Graph. The playtester
-	# lived in the encyclopedia and asked for exactly this: click a good, see its web.
+	# Good icons consistently open their encyclopedia entry.
 	if good_id != "":
-		UIHelpers.link_good_icon_to_graph(icon, good_id, true)   # row opens the article, icon opens the web
+		UIHelpers.link_good_icon_to_encyclopedia(icon, good_id)   # the icon opens the same encyclopedia entry
 	return icon
 
 func _make_texture_icon(texture: Texture2D) -> TextureRect:

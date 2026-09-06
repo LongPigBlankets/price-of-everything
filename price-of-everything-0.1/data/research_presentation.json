@@ -1,0 +1,3258 @@
+{
+  "research_mining_001": {
+    "kind": "good",
+    "base": "g_001",
+    "glyph": "binoculars",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Mining & surveying",
+    "order": 111
+  },
+  "research_mining_002": {
+    "kind": "good",
+    "base": "g_002",
+    "glyph": "binoculars",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Mining & surveying",
+    "order": 77
+  },
+  "research_mining_003": {
+    "kind": "good",
+    "base": "g_016",
+    "glyph": "binoculars",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Mining & surveying",
+    "order": 1
+  },
+  "research_mining_004": {
+    "kind": "good",
+    "base": "g_003",
+    "glyph": "binoculars",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Mining & surveying",
+    "order": 3
+  },
+  "research_mining_005": {
+    "kind": "good",
+    "base": "g_016",
+    "glyph": "binoculars",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Mining & surveying",
+    "order": 4
+  },
+  "research_petro_001": {
+    "kind": "building",
+    "base": "b_011",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Oil refining",
+    "order": 5
+  },
+  "research_petro_002": {
+    "kind": "building",
+    "base": "b_011",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Oil refining",
+    "order": 6
+  },
+  "research_petro_003": {
+    "kind": "building",
+    "base": "b_013",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Polymers",
+    "order": 232
+  },
+  "research_petro_004": {
+    "kind": "building",
+    "base": "b_011",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Oil refining",
+    "order": 8
+  },
+  "research_petro_005": {
+    "kind": "good",
+    "base": "g_028",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Polymers",
+    "order": 110
+  },
+  "research_metal_001": {
+    "kind": "building",
+    "base": "b_002",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Iron & steel",
+    "order": 18
+  },
+  "research_metal_002": {
+    "kind": "good",
+    "base": "g_006",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Iron & steel",
+    "order": 11
+  },
+  "research_metal_003": {
+    "kind": "good",
+    "base": "g_006",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Iron & steel",
+    "order": 13
+  },
+  "research_metal_004": {
+    "kind": "good",
+    "base": "g_006",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Iron & steel",
+    "order": 12
+  },
+  "research_metal_019": {
+    "kind": "good",
+    "base": "g_005",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Copper",
+    "order": 14
+  },
+  "research_metal_020": {
+    "kind": "good",
+    "base": "g_007",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Copper",
+    "order": 15
+  },
+  "research_metal_021": {
+    "kind": "good",
+    "base": "g_029",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Aluminium",
+    "order": 16
+  },
+  "research_metal_022": {
+    "kind": "good",
+    "base": "g_029",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Aluminium",
+    "order": 17
+  },
+  "research_metal_023": {
+    "kind": "good",
+    "base": "g_006",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Iron & steel",
+    "order": 119
+  },
+  "research_inorg_001": {
+    "kind": "good",
+    "base": "g_038",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Glass, Silica & Concrete",
+    "order": 19
+  },
+  "research_inorg_002": {
+    "kind": "good",
+    "base": "g_017",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Glass, Silica & Concrete",
+    "order": 20
+  },
+  "research_inorg_003": {
+    "kind": "good",
+    "base": "g_017",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Glass, Silica & Concrete",
+    "order": 21
+  },
+  "research_inorg_004": {
+    "kind": "building",
+    "base": "b_012",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Industrial chemistry",
+    "order": 22
+  },
+  "research_inorg_005": {
+    "kind": "building",
+    "base": "b_012",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Industrial chemistry",
+    "order": 23
+  },
+  "research_inorg_006": {
+    "kind": "good",
+    "base": "g_012",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Industrial chemistry",
+    "order": 24
+  },
+  "research_inorg_007": {
+    "kind": "building",
+    "base": "b_012",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "power",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Industrial chemistry",
+    "order": 105
+  },
+  "research_inorg_008": {
+    "kind": "building",
+    "base": "b_012",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Industrial chemistry",
+    "order": 26
+  },
+  "research_biochem_001": {
+    "kind": "building",
+    "base": "b_014",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Farming & Forestry",
+    "order": 27
+  },
+  "research_biochem_002": {
+    "kind": "good",
+    "base": "g_027",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "money",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Biochemistry",
+    "order": 28
+  },
+  "research_biochem_003": {
+    "kind": "building",
+    "base": "b_014",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Biochemistry",
+    "order": 29
+  },
+  "research_biochem_004": {
+    "kind": "good",
+    "base": "g_009",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Recycling",
+    "order": 30
+  },
+  "research_biochem_005": {
+    "kind": "building",
+    "base": "b_014",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "engineer",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Biochemistry",
+    "order": 31
+  },
+  "research_mfg_001": {
+    "kind": "building",
+    "base": "b_007",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "engineer",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Pipes & industrial goods",
+    "order": 129
+  },
+  "research_mfg_002": {
+    "kind": "good",
+    "base": "g_046",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Engines & motors",
+    "order": 33
+  },
+  "research_mfg_003": {
+    "kind": "good",
+    "base": "g_052",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Engines & motors",
+    "order": 34
+  },
+  "research_mfg_004": {
+    "kind": "good",
+    "base": "g_045",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Vehicles & bodies",
+    "order": 35
+  },
+  "research_mfg_005": {
+    "kind": "building",
+    "base": "b_009",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Assembly plants",
+    "order": 36
+  },
+  "research_hcpower_001": {
+    "kind": "building",
+    "base": "b_003",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Coal & steam",
+    "order": 37
+  },
+  "research_hcpower_002": {
+    "kind": "building",
+    "base": "b_003",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Coal & steam",
+    "order": 38
+  },
+  "research_hcpower_003": {
+    "kind": "building",
+    "base": "b_003",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "power",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Coal & steam",
+    "order": 39
+  },
+  "research_hcpower_004": {
+    "kind": "building",
+    "base": "b_003",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Turbines & cogeneration",
+    "order": 40
+  },
+  "research_renew_001": {
+    "kind": "building",
+    "base": "b_024",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Solar",
+    "order": 177
+  },
+  "research_renew_002": {
+    "kind": "building",
+    "base": "b_025",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Wind",
+    "order": 173
+  },
+  "research_renew_003": {
+    "kind": "building",
+    "base": "b_028",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Storage & dispatch",
+    "order": 43
+  },
+  "research_renew_004": {
+    "kind": "building",
+    "base": "b_027",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Hydro",
+    "order": 44
+  },
+  "research_renew_005": {
+    "kind": "building",
+    "base": "b_025",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Storage & dispatch",
+    "order": 149
+  },
+  "research_infra_001": {
+    "kind": "building",
+    "base": "b_005",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "lorry",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Roads",
+    "order": 47
+  },
+  "research_infra_002": {
+    "kind": "building",
+    "base": "b_017",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Pipes",
+    "order": 196
+  },
+  "research_infra_003": {
+    "kind": "building",
+    "base": "b_017",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "lorry",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Pipes",
+    "order": 160
+  },
+  "research_infra_004": {
+    "kind": "building",
+    "base": "b_006",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "lorry",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Cables & HVDC",
+    "order": 168
+  },
+  "research_infra_005": {
+    "kind": "building",
+    "base": "b_005",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Roads",
+    "order": 241
+  },
+  "research_logi_001": {
+    "kind": "building",
+    "base": "b_004",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "lorry",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Logistics",
+    "order": 244
+  },
+  "research_logi_011": {
+    "kind": "building",
+    "base": "b_004",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "plus",
+        ""
+      ]
+    ],
+    "subcategory": "Logistics",
+    "order": 52
+  },
+  "research_logi_002": {
+    "kind": "building",
+    "base": "b_004",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "plus",
+        ""
+      ]
+    ],
+    "subcategory": "Logistics",
+    "order": 53
+  },
+  "research_logi_003": {
+    "kind": "building",
+    "base": "b_005",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "lorry",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Roads",
+    "order": 54
+  },
+  "research_logi_004": {
+    "kind": "building",
+    "base": "b_004",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "lorry",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Logistics",
+    "order": 55
+  },
+  "research_logi_005": {
+    "kind": "building",
+    "base": "b_005",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "engineer",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Roads",
+    "order": 56
+  },
+  "research_markets_001": {
+    "kind": "system",
+    "base": "",
+    "glyph": "money",
+    "effects": [
+      [
+        "money",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Markets & planning",
+    "order": 57
+  },
+  "research_markets_002": {
+    "kind": "system",
+    "base": "",
+    "glyph": "candles",
+    "effects": [
+      [
+        "candles",
+        "plus"
+      ]
+    ],
+    "subcategory": "Markets & planning",
+    "order": 58
+  },
+  "research_markets_003": {
+    "kind": "system",
+    "base": "",
+    "glyph": "candles",
+    "effects": [
+      [
+        "candles",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Markets & planning",
+    "order": 59
+  },
+  "research_markets_004": {
+    "kind": "system",
+    "base": "",
+    "glyph": "gears",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Markets & planning",
+    "order": 60
+  },
+  "research_markets_005": {
+    "kind": "system",
+    "base": "",
+    "glyph": "output",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ],
+      [
+        "engineer",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Markets & planning",
+    "order": 61
+  },
+  "research_people_001": {
+    "kind": "building",
+    "base": "b_001",
+    "glyph": "engineer",
+    "effects": [
+      [
+        "engineer",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Workforce",
+    "order": 62
+  },
+  "research_people_002": {
+    "kind": "system",
+    "base": "",
+    "glyph": "engineer",
+    "effects": [
+      [
+        "engineer",
+        "arrow_down"
+      ],
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Workforce",
+    "order": 63
+  },
+  "research_people_003": {
+    "kind": "building",
+    "base": "b_009",
+    "glyph": "engineer",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Workforce",
+    "order": 64
+  },
+  "research_people_004": {
+    "kind": "system",
+    "base": "",
+    "glyph": "engineer",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Workforce",
+    "order": 65
+  },
+  "research_people_005": {
+    "kind": "system",
+    "base": "",
+    "glyph": "output",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Workforce",
+    "order": 66
+  },
+  "research_people_006": {
+    "kind": "system",
+    "base": "",
+    "glyph": "engineer",
+    "effects": [
+      [
+        "engineer",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Workforce",
+    "order": 67
+  },
+  "research_people_007": {
+    "kind": "system",
+    "base": "",
+    "glyph": "chevrons",
+    "effects": [
+      [
+        "engineer",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Workforce",
+    "order": 68
+  },
+  "research_people_008": {
+    "kind": "system",
+    "base": "",
+    "glyph": "engineer",
+    "effects": [
+      [
+        "engineer",
+        "plus"
+      ]
+    ],
+    "subcategory": "Advisor progression",
+    "order": 69
+  },
+  "research_people_009": {
+    "kind": "system",
+    "base": "",
+    "glyph": "engineer",
+    "effects": [
+      [
+        "engineer",
+        "plus"
+      ]
+    ],
+    "subcategory": "Advisor progression",
+    "order": 70
+  },
+  "research_people_010": {
+    "kind": "system",
+    "base": "",
+    "glyph": "engineer",
+    "effects": [
+      [
+        "engineer",
+        "plus"
+      ]
+    ],
+    "subcategory": "Advisor progression",
+    "order": 71
+  },
+  "research_people_011": {
+    "kind": "system",
+    "base": "",
+    "glyph": "binoculars",
+    "effects": [
+      [
+        "engineer",
+        "plus"
+      ]
+    ],
+    "subcategory": "Advisor progression",
+    "order": 72
+  },
+  "research_mining_006": {
+    "kind": "building",
+    "base": "b_001",
+    "glyph": "binoculars",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ],
+      [
+        "engineer",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Mining & surveying",
+    "order": 73
+  },
+  "research_mining_007": {
+    "kind": "good",
+    "base": "g_032",
+    "glyph": "binoculars",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Mining & surveying",
+    "order": 74
+  },
+  "research_mfg_006": {
+    "kind": "building",
+    "base": "b_007",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_2",
+        ""
+      ]
+    ],
+    "subcategory": "Pipes & industrial goods",
+    "order": 75
+  },
+  "research_renew_006": {
+    "kind": "building",
+    "base": "b_028",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Storage & dispatch",
+    "order": 76
+  },
+  "research_mining_008": {
+    "kind": "system",
+    "base": "",
+    "glyph": "binoculars",
+    "effects": [
+      [
+        "binoculars",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Mining & surveying",
+    "order": 0
+  },
+  "research_mining_009": {
+    "kind": "system",
+    "base": "b_001",
+    "glyph": "binoculars",
+    "effects": [
+      [
+        "plus",
+        ""
+      ]
+    ],
+    "subcategory": "Mining & surveying",
+    "order": 78
+  },
+  "research_petro_006": {
+    "kind": "building",
+    "base": "b_034",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Oil extraction",
+    "order": 79
+  },
+  "research_petro_007": {
+    "kind": "good",
+    "base": "g_026",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Oil extraction",
+    "order": 237
+  },
+  "research_petro_008": {
+    "kind": "building",
+    "base": "b_033",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Oil extraction",
+    "order": 238
+  },
+  "research_petro_009": {
+    "kind": "building",
+    "base": "b_033",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Oil extraction",
+    "order": 82
+  },
+  "research_petro_010": {
+    "kind": "building",
+    "base": "b_034",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ],
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Oil extraction",
+    "order": 83
+  },
+  "research_petro_011": {
+    "kind": "building",
+    "base": "b_032",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Oil extraction",
+    "order": 80
+  },
+  "research_petro_012": {
+    "kind": "building",
+    "base": "b_033",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Oil extraction",
+    "order": 85
+  },
+  "research_petro_013": {
+    "kind": "good",
+    "base": "g_026",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Oil extraction",
+    "order": 81
+  },
+  "research_petro_014": {
+    "kind": "building",
+    "base": "b_032",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "engineer",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Oil extraction",
+    "order": 87
+  },
+  "research_metal_005": {
+    "kind": "good",
+    "base": "g_004",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Iron & steel",
+    "order": 88
+  },
+  "research_mining_010": {
+    "kind": "good",
+    "base": "g_040",
+    "glyph": "binoculars",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Mining & surveying",
+    "order": 89
+  },
+  "research_mining_020": {
+    "kind": "good",
+    "base": "g_003",
+    "glyph": "binoculars",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Mining & surveying",
+    "order": 90
+  },
+  "research_biochem_006": {
+    "kind": "good",
+    "base": "g_062",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Farming & Forestry",
+    "order": 91
+  },
+  "research_mfg_007": {
+    "kind": "good",
+    "base": "g_021",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Pipes & industrial goods",
+    "order": 92
+  },
+  "research_mfg_040": {
+    "kind": "good",
+    "base": "g_021",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Pipes & industrial goods",
+    "order": 93
+  },
+  "research_mining_011": {
+    "kind": "building",
+    "base": "b_001",
+    "glyph": "binoculars",
+    "effects": [
+      [
+        "level_2",
+        ""
+      ]
+    ],
+    "subcategory": "Mining & surveying",
+    "order": 94
+  },
+  "research_mining_012": {
+    "kind": "building",
+    "base": "b_001",
+    "glyph": "binoculars",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Mining & surveying",
+    "order": 95
+  },
+  "research_metal_006": {
+    "kind": "building",
+    "base": "b_002",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_2",
+        ""
+      ]
+    ],
+    "subcategory": "Iron & steel",
+    "order": 10
+  },
+  "research_metal_007": {
+    "kind": "building",
+    "base": "b_002",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Iron & steel",
+    "order": 97
+  },
+  "research_metal_008": {
+    "kind": "building",
+    "base": "b_008",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Iron & steel",
+    "order": 98
+  },
+  "research_metal_009": {
+    "kind": "building",
+    "base": "b_008",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Iron & steel",
+    "order": 118
+  },
+  "research_mfg_008": {
+    "kind": "building",
+    "base": "b_007",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Pipes & industrial goods",
+    "order": 100
+  },
+  "research_mfg_009": {
+    "kind": "building",
+    "base": "b_009",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_2",
+        ""
+      ]
+    ],
+    "subcategory": "Assembly plants",
+    "order": 101
+  },
+  "research_mfg_010": {
+    "kind": "building",
+    "base": "b_009",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Assembly plants",
+    "order": 102
+  },
+  "research_mfg_011": {
+    "kind": "good",
+    "base": "g_043",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ],
+      [
+        "level_2",
+        ""
+      ]
+    ],
+    "subcategory": "Electronics & semiconductors",
+    "order": 131
+  },
+  "research_mfg_012": {
+    "kind": "building",
+    "base": "b_010",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Electronics & semiconductors",
+    "order": 104
+  },
+  "research_inorg_009": {
+    "kind": "building",
+    "base": "b_012",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_2",
+        ""
+      ]
+    ],
+    "subcategory": "Industrial chemistry",
+    "order": 25
+  },
+  "research_inorg_010": {
+    "kind": "building",
+    "base": "b_012",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Industrial chemistry",
+    "order": 106
+  },
+  "research_inorg_011": {
+    "kind": "building",
+    "base": "b_020",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_2",
+        ""
+      ]
+    ],
+    "subcategory": "Electrolysis",
+    "order": 107
+  },
+  "research_inorg_012": {
+    "kind": "good",
+    "base": "g_051",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ],
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Industrial chemistry",
+    "order": 108
+  },
+  "research_petro_015": {
+    "kind": "building",
+    "base": "b_011",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_2",
+        ""
+      ]
+    ],
+    "subcategory": "Oil refining",
+    "order": 109
+  },
+  "research_petro_016": {
+    "kind": "building",
+    "base": "b_011",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Oil refining",
+    "order": 9
+  },
+  "research_mining_013": {
+    "kind": "building",
+    "base": "b_001",
+    "glyph": "binoculars",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Mining & surveying",
+    "order": 2
+  },
+  "research_mining_014": {
+    "kind": "building",
+    "base": "b_001",
+    "glyph": "binoculars",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Mining & surveying",
+    "order": 112
+  },
+  "research_mining_015": {
+    "kind": "building",
+    "base": "b_001",
+    "glyph": "binoculars",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Mining & surveying",
+    "order": 113
+  },
+  "research_mining_016": {
+    "kind": "building",
+    "base": "b_001",
+    "glyph": "binoculars",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Mining & surveying",
+    "order": 114
+  },
+  "research_metal_010": {
+    "kind": "building",
+    "base": "b_002",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ],
+      [
+        "power",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Iron & steel",
+    "order": 115
+  },
+  "research_metal_011": {
+    "kind": "good",
+    "base": "g_006",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Iron & steel",
+    "order": 116
+  },
+  "research_metal_012": {
+    "kind": "good",
+    "base": "g_029",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Aluminium",
+    "order": 117
+  },
+  "research_metal_013": {
+    "kind": "building",
+    "base": "b_008",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "power",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Iron & steel",
+    "order": 99
+  },
+  "research_metal_014": {
+    "kind": "building",
+    "base": "b_008",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Iron & steel",
+    "order": 96
+  },
+  "research_metal_015": {
+    "kind": "building",
+    "base": "b_008",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_2",
+        ""
+      ]
+    ],
+    "subcategory": "Iron & steel",
+    "order": 120
+  },
+  "research_metal_016": {
+    "kind": "building",
+    "base": "b_008",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "power",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Iron & steel",
+    "order": 121
+  },
+  "research_mfg_013": {
+    "kind": "building",
+    "base": "b_007",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Pipes & industrial goods",
+    "order": 32
+  },
+  "research_mfg_014": {
+    "kind": "building",
+    "base": "b_007",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Pipes & industrial goods",
+    "order": 123
+  },
+  "research_mfg_015": {
+    "kind": "building",
+    "base": "b_009",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "engineer",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Factory operations",
+    "order": 125
+  },
+  "research_mfg_016": {
+    "kind": "building",
+    "base": "b_007",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "engineer",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Factory operations",
+    "order": 124
+  },
+  "research_mfg_017": {
+    "kind": "building",
+    "base": "b_007",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Factory operations",
+    "order": 126
+  },
+  "research_mfg_018": {
+    "kind": "building",
+    "base": "b_009",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Assembly plants",
+    "order": 127
+  },
+  "research_mfg_019": {
+    "kind": "building",
+    "base": "b_009",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "engineer",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Assembly plants",
+    "order": 128
+  },
+  "research_mfg_020": {
+    "kind": "building",
+    "base": "b_007",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "engineer",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Pipes & industrial goods",
+    "order": 122
+  },
+  "research_mfg_021": {
+    "kind": "good",
+    "base": "g_041",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Electronics & semiconductors",
+    "order": 133
+  },
+  "research_mfg_022": {
+    "kind": "good",
+    "base": "g_041",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Electronics & semiconductors",
+    "order": 220
+  },
+  "research_mfg_023": {
+    "kind": "good",
+    "base": "g_054",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ],
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Solar components",
+    "order": 222
+  },
+  "research_mfg_024": {
+    "kind": "building",
+    "base": "b_010",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Electronics & semiconductors",
+    "order": 130
+  },
+  "research_inorg_013": {
+    "kind": "building",
+    "base": "b_012",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Industrial chemistry",
+    "order": 134
+  },
+  "research_inorg_014": {
+    "kind": "good",
+    "base": "g_068",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Industrial chemistry",
+    "order": 135
+  },
+  "research_inorg_015": {
+    "kind": "building",
+    "base": "b_012",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "power",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Industrial chemistry",
+    "order": 136
+  },
+  "research_inorg_016": {
+    "kind": "building",
+    "base": "b_020",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "engineer",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Electrolysis",
+    "order": 137
+  },
+  "research_inorg_017": {
+    "kind": "building",
+    "base": "b_020",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "power",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Electrolysis",
+    "order": 138
+  },
+  "research_petro_017": {
+    "kind": "building",
+    "base": "b_013",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "power",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Polymers",
+    "order": 139
+  },
+  "research_petro_018": {
+    "kind": "building",
+    "base": "b_011",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Oil refining",
+    "order": 140
+  },
+  "research_hcpower_005": {
+    "kind": "building",
+    "base": "b_003",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Turbines & cogeneration",
+    "order": 141
+  },
+  "research_hcpower_006": {
+    "kind": "building",
+    "base": "b_003",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_2",
+        ""
+      ]
+    ],
+    "subcategory": "Coal & steam",
+    "order": 142
+  },
+  "research_hcpower_007": {
+    "kind": "building",
+    "base": "b_003",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Coal & steam",
+    "order": 143
+  },
+  "research_renew_007": {
+    "kind": "building",
+    "base": "b_025",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_2",
+        ""
+      ]
+    ],
+    "subcategory": "Wind",
+    "order": 206
+  },
+  "research_renew_008": {
+    "kind": "building",
+    "base": "b_025",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Wind",
+    "order": 145
+  },
+  "research_renew_009": {
+    "kind": "building",
+    "base": "b_024",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_2",
+        ""
+      ]
+    ],
+    "subcategory": "Solar",
+    "order": 205
+  },
+  "research_renew_010": {
+    "kind": "building",
+    "base": "b_024",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Solar",
+    "order": 147
+  },
+  "research_renew_011": {
+    "kind": "building",
+    "base": "b_028",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_2",
+        ""
+      ]
+    ],
+    "subcategory": "Storage & dispatch",
+    "order": 148
+  },
+  "research_renew_012": {
+    "kind": "building",
+    "base": "b_028",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Storage & dispatch",
+    "order": 45
+  },
+  "research_inorg_018": {
+    "kind": "building",
+    "base": "b_021",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_2",
+        ""
+      ]
+    ],
+    "subcategory": "Desalination",
+    "order": 150
+  },
+  "research_inorg_019": {
+    "kind": "building",
+    "base": "b_021",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Desalination",
+    "order": 151
+  },
+  "research_inorg_020": {
+    "kind": "building",
+    "base": "b_037",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Water pumping",
+    "order": 152
+  },
+  "research_recyc_001": {
+    "kind": "building",
+    "base": "b_022",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_2",
+        ""
+      ]
+    ],
+    "subcategory": "HVDC",
+    "order": 153
+  },
+  "research_recyc_002": {
+    "kind": "building",
+    "base": "b_022",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "HVDC",
+    "order": 154
+  },
+  "research_biochem_007": {
+    "kind": "building",
+    "base": "b_014",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Farming & Forestry",
+    "order": 155
+  },
+  "research_infra_006": {
+    "kind": "building",
+    "base": "b_005",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_2",
+        ""
+      ]
+    ],
+    "subcategory": "Roads",
+    "order": 156
+  },
+  "research_infra_007": {
+    "kind": "building",
+    "base": "b_005",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Roads",
+    "order": 161
+  },
+  "research_infra_008": {
+    "kind": "building",
+    "base": "b_019",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_2",
+        ""
+      ]
+    ],
+    "subcategory": "Rail",
+    "order": 49
+  },
+  "research_infra_009": {
+    "kind": "building",
+    "base": "b_019",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Rail",
+    "order": 50
+  },
+  "research_infra_010": {
+    "kind": "building",
+    "base": "b_017",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_2",
+        ""
+      ]
+    ],
+    "subcategory": "Pipes",
+    "order": 48
+  },
+  "research_infra_011": {
+    "kind": "building",
+    "base": "b_017",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Pipes",
+    "order": 157
+  },
+  "research_infra_012": {
+    "kind": "building",
+    "base": "b_018",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_2",
+        ""
+      ]
+    ],
+    "subcategory": "Reinforced pipes",
+    "order": 162
+  },
+  "research_infra_013": {
+    "kind": "building",
+    "base": "b_018",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Reinforced pipes",
+    "order": 163
+  },
+  "research_infra_014": {
+    "kind": "building",
+    "base": "b_006",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_2",
+        ""
+      ]
+    ],
+    "subcategory": "Cables & HVDC",
+    "order": 164
+  },
+  "research_infra_015": {
+    "kind": "building",
+    "base": "b_006",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Cables & HVDC",
+    "order": 165
+  },
+  "research_renew_013": {
+    "kind": "building",
+    "base": "b_026",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Wind",
+    "order": 166
+  },
+  "research_renew_014": {
+    "kind": "building",
+    "base": "b_028",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Storage & dispatch",
+    "order": 209
+  },
+  "research_infra_016": {
+    "kind": "building",
+    "base": "b_006",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "plus",
+        ""
+      ]
+    ],
+    "subcategory": "Cables & HVDC",
+    "order": 158
+  },
+  "research_infra_017": {
+    "kind": "building",
+    "base": "b_006",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "plus",
+        ""
+      ]
+    ],
+    "subcategory": "Cables & HVDC",
+    "order": 169
+  },
+  "research_infra_018": {
+    "kind": "building",
+    "base": "b_006",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "plus",
+        ""
+      ]
+    ],
+    "subcategory": "Cables & HVDC",
+    "order": 170
+  },
+  "research_hcpower_008": {
+    "kind": "building",
+    "base": "b_003",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Coal & steam",
+    "order": 171
+  },
+  "research_hcpower_009": {
+    "kind": "building",
+    "base": "b_003",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Turbines & cogeneration",
+    "order": 172
+  },
+  "research_renew_015": {
+    "kind": "building",
+    "base": "b_025",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Wind",
+    "order": 42
+  },
+  "research_renew_016": {
+    "kind": "building",
+    "base": "b_025",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Wind",
+    "order": 174
+  },
+  "research_renew_017": {
+    "kind": "building",
+    "base": "b_024",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Solar",
+    "order": 175
+  },
+  "research_renew_018": {
+    "kind": "building",
+    "base": "b_024",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Solar",
+    "order": 176
+  },
+  "research_renew_019": {
+    "kind": "building",
+    "base": "b_024",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Solar",
+    "order": 41
+  },
+  "research_renew_020": {
+    "kind": "building",
+    "base": "b_024",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Solar",
+    "order": 178
+  },
+  "research_renew_021": {
+    "kind": "building",
+    "base": "b_028",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Storage & dispatch",
+    "order": 179
+  },
+  "research_inorg_021": {
+    "kind": "building",
+    "base": "b_021",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Desalination",
+    "order": 180
+  },
+  "research_inorg_022": {
+    "kind": "building",
+    "base": "b_021",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "power",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Desalination",
+    "order": 181
+  },
+  "research_inorg_023": {
+    "kind": "building",
+    "base": "b_037",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Water pumping",
+    "order": 182
+  },
+  "research_inorg_025": {
+    "kind": "building",
+    "base": "b_037",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Water pumping",
+    "order": 183
+  },
+  "research_recyc_003": {
+    "kind": "building",
+    "base": "b_036",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Recycling",
+    "order": 184
+  },
+  "research_recyc_004": {
+    "kind": "good",
+    "base": "g_007",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Recycling",
+    "order": 185
+  },
+  "research_recyc_005": {
+    "kind": "building",
+    "base": "b_036",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "power",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Recycling",
+    "order": 186
+  },
+  "research_biochem_008": {
+    "kind": "building",
+    "base": "b_015",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "engineer",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Farming & Forestry",
+    "order": 187
+  },
+  "research_infra_019": {
+    "kind": "building",
+    "base": "b_019",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "lorry",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Rail",
+    "order": 188
+  },
+  "research_infra_020": {
+    "kind": "building",
+    "base": "b_005",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "lorry",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Roads",
+    "order": 189
+  },
+  "research_infra_021": {
+    "kind": "building",
+    "base": "b_019",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Rail",
+    "order": 190
+  },
+  "research_infra_022": {
+    "kind": "building",
+    "base": "b_019",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "lorry",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Rail",
+    "order": 191
+  },
+  "research_infra_023": {
+    "kind": "building",
+    "base": "b_019",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "lorry",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Rail",
+    "order": 159
+  },
+  "research_infra_024": {
+    "kind": "building",
+    "base": "b_019",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Rail",
+    "order": 193
+  },
+  "research_infra_025": {
+    "kind": "building",
+    "base": "b_019",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "lorry",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Rail",
+    "order": 194
+  },
+  "research_infra_026": {
+    "kind": "building",
+    "base": "b_018",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Reinforced pipes",
+    "order": 195
+  },
+  "research_infra_027": {
+    "kind": "building",
+    "base": "b_017",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Pipes",
+    "order": 46
+  },
+  "research_infra_028": {
+    "kind": "building",
+    "base": "b_017",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "lorry",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Pipes",
+    "order": 197
+  },
+  "research_infra_029": {
+    "kind": "building",
+    "base": "b_017",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "lorry",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Pipes",
+    "order": 198
+  },
+  "research_infra_030": {
+    "kind": "building",
+    "base": "b_018",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Reinforced pipes",
+    "order": 199
+  },
+  "research_infra_031": {
+    "kind": "building",
+    "base": "b_017",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "gears",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Pipes",
+    "order": 200
+  },
+  "research_infra_032": {
+    "kind": "building",
+    "base": "b_017",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "lorry",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Pipes",
+    "order": 201
+  },
+  "research_infra_033": {
+    "kind": "building",
+    "base": "b_018",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "lorry",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Reinforced pipes",
+    "order": 202
+  },
+  "research_mfg_025": {
+    "kind": "building",
+    "base": "b_009",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Assembly plants",
+    "order": 203
+  },
+  "research_infra_034": {
+    "kind": "building",
+    "base": "b_005",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "lorry",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Roads",
+    "order": 204
+  },
+  "research_renew_022": {
+    "kind": "building",
+    "base": "b_024",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Solar",
+    "order": 146
+  },
+  "research_renew_023": {
+    "kind": "building",
+    "base": "b_025",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Wind",
+    "order": 225
+  },
+  "research_renew_024": {
+    "kind": "building",
+    "base": "b_026",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Wind",
+    "order": 207
+  },
+  "research_renew_025": {
+    "kind": "good",
+    "base": "g_059",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "power",
+        "plus"
+      ]
+    ],
+    "subcategory": "Storage & dispatch",
+    "order": 208
+  },
+  "research_renew_026": {
+    "kind": "good",
+    "base": "g_060",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "power",
+        "plus"
+      ]
+    ],
+    "subcategory": "Storage & dispatch",
+    "order": 227
+  },
+  "research_renew_027": {
+    "kind": "good",
+    "base": "g_061",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "power",
+        "plus"
+      ]
+    ],
+    "subcategory": "Storage & dispatch",
+    "order": 210
+  },
+  "research_mfg_026": {
+    "kind": "good",
+    "base": "g_008",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Engines & motors",
+    "order": 211
+  },
+  "research_mfg_027": {
+    "kind": "good",
+    "base": "g_008",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Engines & motors",
+    "order": 212
+  },
+  "research_mfg_028": {
+    "kind": "good",
+    "base": "g_052",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Engines & motors",
+    "order": 213
+  },
+  "research_mfg_029": {
+    "kind": "good",
+    "base": "g_046",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Engines & motors",
+    "order": 214
+  },
+  "research_mfg_030": {
+    "kind": "good",
+    "base": "g_057",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Vehicles & bodies",
+    "order": 215
+  },
+  "research_mfg_031": {
+    "kind": "good",
+    "base": "g_055",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Vehicles & bodies",
+    "order": 216
+  },
+  "research_mfg_032": {
+    "kind": "good",
+    "base": "g_056",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Vehicles & bodies",
+    "order": 217
+  },
+  "research_mfg_033": {
+    "kind": "good",
+    "base": "g_055",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Vehicles & bodies",
+    "order": 218
+  },
+  "research_mfg_034": {
+    "kind": "good",
+    "base": "g_072",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Vehicles & bodies",
+    "order": 219
+  },
+  "research_mfg_035": {
+    "kind": "good",
+    "base": "g_036",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Electronics & semiconductors",
+    "order": 103
+  },
+  "research_mfg_036": {
+    "kind": "good",
+    "base": "g_008",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Engines & motors",
+    "order": 221
+  },
+  "research_mfg_037": {
+    "kind": "good",
+    "base": "g_054",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Solar components",
+    "order": 132
+  },
+  "research_mfg_038": {
+    "kind": "good",
+    "base": "g_054",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Solar components",
+    "order": 223
+  },
+  "research_mfg_039": {
+    "kind": "good",
+    "base": "g_041",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Electronics & semiconductors",
+    "order": 224
+  },
+  "research_renew_028": {
+    "kind": "good",
+    "base": "g_053",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Wind",
+    "order": 144
+  },
+  "research_renew_029": {
+    "kind": "building",
+    "base": "b_024",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Solar",
+    "order": 226
+  },
+  "research_renew_030": {
+    "kind": "good",
+    "base": "g_059",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Storage & dispatch",
+    "order": 167
+  },
+  "research_renew_031": {
+    "kind": "good",
+    "base": "g_061",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Storage & dispatch",
+    "order": 228
+  },
+  "research_metal_017": {
+    "kind": "good",
+    "base": "g_034",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Silicon & alloys",
+    "order": 229
+  },
+  "research_metal_018": {
+    "kind": "good",
+    "base": "g_048",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Silicon & alloys",
+    "order": 230
+  },
+  "research_inorg_024": {
+    "kind": "good",
+    "base": "g_014",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Electrolysis",
+    "order": 231
+  },
+  "research_petro_019": {
+    "kind": "good",
+    "base": "g_031",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Oil refining",
+    "order": 7
+  },
+  "research_petro_020": {
+    "kind": "good",
+    "base": "g_014",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Oil refining",
+    "order": 233
+  },
+  "research_petro_021": {
+    "kind": "building",
+    "base": "b_011",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "output",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Oil refining",
+    "order": 234
+  },
+  "research_biochem_009": {
+    "kind": "good",
+    "base": "g_062",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Farming & Forestry",
+    "order": 235
+  },
+  "research_mining_017": {
+    "kind": "good",
+    "base": "g_026",
+    "glyph": "binoculars",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Oil extraction",
+    "order": 236
+  },
+  "research_mining_018": {
+    "kind": "good",
+    "base": "g_026",
+    "glyph": "binoculars",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Oil extraction",
+    "order": 84
+  },
+  "research_mining_019": {
+    "kind": "good",
+    "base": "g_026",
+    "glyph": "binoculars",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Oil extraction",
+    "order": 86
+  },
+  "research_recyc_006": {
+    "kind": "good",
+    "base": "g_062",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Recycling",
+    "order": 239
+  },
+  "research_hcpower_010": {
+    "kind": "building",
+    "base": "b_003",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Turbines & cogeneration",
+    "order": 240
+  },
+  "research_infra_035": {
+    "kind": "building",
+    "base": "b_006",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "lorry",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Cables & HVDC",
+    "order": 192
+  },
+  "research_logi_006": {
+    "kind": "building",
+    "base": "b_004",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_2",
+        ""
+      ]
+    ],
+    "subcategory": "Logistics",
+    "order": 242
+  },
+  "research_logi_007": {
+    "kind": "building",
+    "base": "b_004",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "level_3",
+        ""
+      ]
+    ],
+    "subcategory": "Logistics",
+    "order": 243
+  },
+  "research_logi_008": {
+    "kind": "building",
+    "base": "b_004",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "plus",
+        ""
+      ]
+    ],
+    "subcategory": "Logistics",
+    "order": 51
+  },
+  "research_logi_009": {
+    "kind": "building",
+    "base": "b_004",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "lorry",
+        "arrow_up"
+      ]
+    ],
+    "subcategory": "Logistics",
+    "order": 245
+  },
+  "research_logi_010": {
+    "kind": "building",
+    "base": "b_004",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "plus",
+        ""
+      ]
+    ],
+    "subcategory": "Logistics",
+    "order": 246
+  },
+  "research_biochem_010": {
+    "kind": "good",
+    "base": "g_066",
+    "glyph": "lorry",
+    "effects": [
+      [
+        "merge",
+        ""
+      ]
+    ],
+    "subcategory": "Farming & Forestry",
+    "order": 247
+  }
+}

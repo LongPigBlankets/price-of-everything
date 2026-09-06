@@ -1,4 +1,5 @@
 extends Control
+const GoodHover := preload("res://scripts/good_icon_hover.gd")
 
 const HexStamp := preload("res://scripts/hex_stamp.gd")
 const BRASS_FRAME_TEXTURE: Texture2D = preload("res://assets/ui/brass_pipe_frame_transparent.png")
@@ -7,13 +8,13 @@ const TITLE_FONT: Font = preload("res://assets/fonts/BarlowCondensed-SemiBold.tt
 const BODY_FONT: Font = preload("res://assets/fonts/IBMPlexSans-Medium.ttf")
 
 const GoodIcons := preload("res://scripts/good_icons.gd")
-const BuildingIcon := preload("res://scripts/building_icon.gd")
+const BrushedCard := preload("res://scripts/brushed_card.gd")
+var _presentation_rows := {}
+const EffectEmblem := preload("res://scripts/effect_emblem.gd")
+
+const KeyedBuildingIcon := preload("res://scripts/keyed_building_icon.gd")
 
 const RESEARCH_UNLOCKS_PATH := "res://data/research_unlocks.csv"
-# The advisor-seat progression nodes stay hidden until MatchState.advisors_unlocked (the
-# `unlock advisors` cheat). Nothing else prereqs them, so hiding strands no chain.
-const _SEAT_RESEARCH := {"research_people_008": true, "research_people_009": true,
-	"research_people_010": true, "research_people_011": true}
 var _seat_research_shown := false
 const NAVY_TOP_LEFT := Color(0.025, 0.18, 0.34, 1.0)
 const NAVY_TOP_RIGHT := Color(0.0, 0.12156863, 0.24313726, 1.0)
@@ -43,18 +44,21 @@ const FREE_UNLOCK_BUTTON_HEIGHT := 30.0
 const TAB_GAP := 6.0
 const TAB_HEIGHT := 54.0
 const TAB_FONT_SIZE := 14
-const UNLOCK_SIZE := Vector2(320.0, 292.0)
+const RESEARCH_TEXT := Color("#f6eedc")
+const EMBLEM_CREAM := Color("#f6e8c6")
+const UNLOCK_SIZE := Vector2(350.0, 360.0)
 const UNLOCK_RADIUS := 12
 const UNLOCK_SLOT_SIZE := 80.0
+const UNLOCK_EMBLEM_GUTTER := 30.0
 const UNLOCK_TITLE_SIZE := 22
 const UNLOCK_DESC_SIZE := 12
 const UNLOCK_CONDITION_SIZE := 12
-const UNLOCK_LANE_GAP := 370.0
+const UNLOCK_LANE_GAP := 460.0
 const TREE_FIT_PADDING := 28.0
 const TREE_BOTTOM_PADDING := 42.0
 const ROOT_TO_RANK_GAP := 50.0
-const RANK_SEPARATOR_GAP := 70.0
-const RANK_VERTICAL_GAP := 50.0
+const RANK_SEPARATOR_GAP := 120.0
+const RANK_VERTICAL_GAP := 100.0
 const UNLOCK_MIN_GAP := 50.0
 const RANK_ROWS_PER_COLUMN := 2
 const RANK_COLUMNS_PER_ROW := 5
@@ -89,10 +93,12 @@ const CATEGORIES := [
 	"Chemistry",
 	"Glass, Silica & Concrete",
 	"Manufacturing",
-	"Power Production",
+	"Vehicle Production",
+	"Combustion Power",
+	"Renewable Power",
 	"Farming & Forestry",
 	# "Recycling" is hidden for the demo (recycling isn't shipping in it); its nodes still load
-	# from the CSV but have no tab, so they stay un-researchable until it returns.
+	# from the CSV; MatchState gates them in search and unlock actions too.
 	"Infrastructure",
 	"Logistics",
 	"People & Management",
@@ -172,6 +178,8 @@ func _ready() -> void:
 func _create_close_button() -> void:
 	_close_button = Button.new()
 	_close_button.text = "X"
+	for color_name in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+		_close_button.add_theme_color_override(color_name, RESEARCH_TEXT)
 	_close_button.focus_mode = Control.FOCUS_NONE
 	_close_button.custom_minimum_size = PANEL_CLOSE_MINIMUM_SIZE
 	_close_button.add_theme_font_size_override("font_size", PANEL_CLOSE_FONT_SIZE)
@@ -189,6 +197,9 @@ func _create_search_input() -> void:
 	_search_input.name = "ResearchSearchInput"
 	_search_input.placeholder_text = "Search research — name or reward"
 	_search_input.clear_button_enabled = true
+	_search_input.add_theme_color_override("font_color", RESEARCH_TEXT)
+	_search_input.add_theme_color_override("font_placeholder_color", RESEARCH_TEXT)
+	_search_input.add_theme_color_override("font_selected_color", Color.WHITE)
 	if DS.theme != null:
 		_search_input.theme = DS.theme
 	_search_input.text_changed.connect(_on_search_changed)
@@ -336,8 +347,7 @@ func _gui_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion:
 		var motion := event as InputEventMouseMotion
 		_update_hover_unlock(motion.position)
-		if not _update_impacted_tooltip(motion.position):
-			_update_profitability_tooltip(motion.position)
+		_update_profitability_tooltip(motion.position)
 
 	if event is InputEventMagnifyGesture:
 		var gesture := event as InputEventMagnifyGesture
@@ -352,6 +362,7 @@ func _gui_input(event: InputEvent) -> void:
 
 
 func _draw() -> void:
+	GoodHover.begin_draw(self)
 	if size.x <= 0.0 or size.y <= 0.0:
 		return
 
@@ -360,7 +371,6 @@ func _draw() -> void:
 	_draw_tabs()
 	_draw_panel_top_bar()
 	_draw_knowledge_panel()
-	_draw_impacted_panel()
 	_draw_panel_outline()
 
 func _draw_navy_fill() -> void:
@@ -409,7 +419,7 @@ func _draw_panel_top_bar() -> void:
 		"Research",
 		Rect2(title_position, Vector2(220.0, header.size.y - PANEL_HEADER_PADDING * 2.0)),
 		PANEL_TITLE_SIZE,
-		DS.PALETTE["TEXT"],
+		RESEARCH_TEXT,
 		HORIZONTAL_ALIGNMENT_LEFT
 	)
 	_sync_close_button_layout()
@@ -422,20 +432,19 @@ func _draw_knowledge_panel() -> void:
 
 	var padded := rect.grow(-10.0)
 	var message_rect := Rect2(padded.position, Vector2(padded.size.x, 38.0))
-	_draw_wrapped_lines(BODY_FONT, _knowledge_opportunity_text(), message_rect, KNOWLEDGE_PANEL_TEXT_SIZE, DS.PALETTE["ACCENT"], 2, HORIZONTAL_ALIGNMENT_LEFT, true)
+	_draw_wrapped_lines(BODY_FONT, _knowledge_opportunity_text(), message_rect, KNOWLEDGE_PANEL_TEXT_SIZE, RESEARCH_TEXT, 2, HORIZONTAL_ALIGNMENT_LEFT, true)
 
 	var separator_y := rect.position.y + 56.0
 	draw_line(Vector2(rect.position.x + 10.0, separator_y), Vector2(rect.end.x - 10.0, separator_y), DS.PALETTE["BORDER_SOFT"], 1.0)
-	_draw_text_fit(BODY_FONT, "Free Unlocks: %d" % _free_unlocks, Rect2(rect.position + Vector2(10.0, 62.0), Vector2(rect.size.x - 20.0, 24.0)), KNOWLEDGE_PANEL_TEXT_SIZE, DS.PALETTE["TEXT"], HORIZONTAL_ALIGNMENT_LEFT)
+	_draw_text_fit(BODY_FONT, "Free Unlocks: %d" % _free_unlocks, Rect2(rect.position + Vector2(10.0, 62.0), Vector2(rect.size.x - 20.0, 24.0)), KNOWLEDGE_PANEL_TEXT_SIZE, RESEARCH_TEXT, HORIZONTAL_ALIGNMENT_LEFT)
 
 	if _free_unlocks > 0:
 		var button_rect := _choose_free_unlock_button_rect()
 		var hovered := button_rect.has_point(get_local_mouse_position())
-		# Two states: SELECTED (mid-choice) keeps the filled accent look — cream fill,
-		# navy text. DEFAULT is the reverse — navy fill with cream/off-white text.
+		# Selected controls keep a lighter navy fill so off-white text stays readable.
 		var selected := _choosing_free_unlock
-		var fill_color: Color = DS.PALETTE["ACCENT"] if selected else DS.PALETTE["BG_PANEL"]
-		var text_color: Color = DS.PALETTE["BG_PANEL"] if selected else DS.PALETTE["ACCENT"]
+		var fill_color: Color = Color("#244967") if selected else DS.PALETTE["BG_PANEL"]
+		var text_color: Color = RESEARCH_TEXT
 		if hovered:
 			fill_color = fill_color.lightened(0.08)
 		var button_style := _make_stylebox(fill_color, DS.PALETTE["BORDER"], 8, 1)
@@ -534,7 +543,7 @@ func _build_styles() -> void:
 	_unlock_slot_style = _make_stylebox(DS.PALETTE["BG_PANEL"], DS.PALETTE["BORDER"], 10, 2)
 	_description_style = _make_stylebox(DS.PALETTE["BG_PANEL"], DS.PALETTE["BORDER_SOFT"], 7, 1)
 	_condition_style = _make_stylebox(DS.PALETTE["BG_PANEL"], DS.PALETTE["BORDER"], 8, 1)
-	_tab_selected_style = _make_stylebox(DS.PALETTE["ACCENT"], DS.PALETTE["BG_PANEL"], 9, 2)
+	_tab_selected_style = _make_stylebox(Color("#244967"), RESEARCH_TEXT, 9, 2)
 	_tab_unselected_style = _make_stylebox(DS.PALETTE["BG_PANEL"], DS.PALETTE["BORDER_SOFT"], 9, 1)
 
 func _make_stylebox(bg: Color, border: Color, radius: int, border_width: int) -> StyleBoxFlat:
@@ -571,7 +580,7 @@ func _load_unlock_rows() -> void:
 		var row := file.get_csv_line()
 		if row.is_empty() or row[0].strip_edges().is_empty():
 			continue
-		if _SEAT_RESEARCH.has(_csv_value(row, column_index, "research_node_id")) and not MatchState.advisors_unlocked:
+		if MatchState.HIDDEN_RESEARCH_IDS.has(_csv_value(row, column_index, "research_node_id")):
 			continue
 		_unlock_rows.append({
 			"research_node_id": _csv_value(row, column_index, "research_node_id"),
@@ -806,7 +815,7 @@ func _toggle_requirement_dropdown(position: Vector2) -> bool:
 		var title := str(unlock.get("title", ""))
 		if title == "" or not layout.has(title):
 			continue
-		if _requirement_row_rect(layout[title] as Rect2).has_point(world_position):
+		if _requirement_row_rect(layout[title] as Rect2, unlock).has_point(world_position):
 			if _expanded_requirement_titles.has(title):
 				_expanded_requirement_titles.erase(title)
 			else:
@@ -823,10 +832,10 @@ func _update_profitability_tooltip(position: Vector2) -> void:
 	var origin := _tree_origin() + (state["pan"] as Vector2)
 	var world_position := (position - origin) / float(state["zoom"])
 	for unlock in unlocks:
-		if str(unlock.get("action", "")) != "Run Profitable":
+		if str(unlock.get("action", "")) not in ["Run Profitable", "Run Recipe Profitable"]:
 			continue
 		var title := str(unlock.get("title", ""))
-		if title != "" and layout.has(title) and _requirement_row_rect(layout[title] as Rect2).has_point(world_position):
+		if title != "" and layout.has(title) and _requirement_row_rect(layout[title] as Rect2, unlock).has_point(world_position):
 			next_tooltip = "Profitably means its unit cost is lower than the current market price of what it produces."
 			break
 	if tooltip_text != next_tooltip:
@@ -895,6 +904,8 @@ func _category_unlocks(category: String) -> Array[Dictionary]:
 	if query != "":
 		var hits: Array[Dictionary] = []
 		for unlock in _unlock_rows:
+			if not MatchState.is_research_visible(unlock):
+				continue
 			if _search_exact_title != "":
 				if str(unlock.get("title", "")).to_lower() == _search_exact_title.to_lower():
 					hits.append(unlock)
@@ -903,7 +914,7 @@ func _category_unlocks(category: String) -> Array[Dictionary]:
 		return hits
 	var rows: Array[Dictionary] = [_category_root_unlock(category)]
 	for unlock in _unlock_rows:
-		if unlock.get("category", "") == category:
+		if unlock.get("category", "") == category and MatchState.is_research_visible(unlock):
 			rows.append(unlock)
 	return rows
 
@@ -938,31 +949,36 @@ func _category_root_unlock(category: String) -> Dictionary:
 
 func _layout_unlocks(unlocks: Array[Dictionary]) -> Dictionary:
 	var layout := {}
-	var root_title := _selected_category
-	layout[root_title] = Rect2(Vector2(-UNLOCK_SIZE.x * 0.5, -TREE_BOTTOM_PADDING - UNLOCK_SIZE.y), UNLOCK_SIZE)
-	var occupied := {}
-	var placements := {}
-	placements[root_title] = {"rank": "I", "row": -1, "column": 0}
-
-	var by_rank := {}
-	var dependent_titles: Array[String] = []
-	for rank in RANKS:
-		by_rank[rank] = []
+	layout[_selected_category] = Rect2(Vector2(-UNLOCK_SIZE.x * 0.5, -TREE_BOTTOM_PADDING - UNLOCK_SIZE.y), UNLOCK_SIZE)
+	var groups := {}
 	for unlock in unlocks:
-		if bool(unlock.get("is_category_root", false)):
-			continue
-		var title: String = unlock["title"]
-		var rank := _rank_value(unlock)
-		if _prereq_titles(unlock).is_empty():
-			by_rank[rank].append(title)
-		else:
-			dependent_titles.append(title)
-
+		if bool(unlock.get("is_category_root", false)): continue
+		var group := str(_presentation(unlock).get("subcategory", unlock.get("category", "")))
+		if not groups.has(group): groups[group] = {"I": [], "II": [], "III": []}
+		groups[group][_rank_value(unlock)].append(unlock)
+	var widths := {}
+	var total_columns := 0
+	for group in groups:
+		var width := 1
+		for rank in RANKS:
+			width = maxi(width, ceili(float(groups[group][rank].size()) / RANK_ROWS_PER_COLUMN))
+		widths[group] = width
+		total_columns += width
 	var bands := _rank_bands(unlocks)
-	for rank in RANKS:
-		_layout_rank_unlocks(by_rank[rank], rank, bands[rank], layout, occupied, placements)
-	_layout_dependency_unlocks(unlocks, dependent_titles, layout, bands, occupied, placements)
-	_compact_rank_columns(unlocks, layout, placements)
+	var offset := 0
+	for group in groups:
+		for rank in RANKS:
+			var nodes: Array = groups[group][rank]
+			nodes.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+				return int(_presentation(a).get("order", 0)) < int(_presentation(b).get("order", 0)))
+			for index in nodes.size():
+				# Column-major order stacks each chain before moving to the next lane.
+				var column := offset + int(index / RANK_ROWS_PER_COLUMN)
+				var row := index % RANK_ROWS_PER_COLUMN
+				var x := (float(column) - float(total_columns - 1) * 0.5) * UNLOCK_LANE_GAP
+				var bottom := float(bands[rank]["bottom"]) - row * (UNLOCK_SIZE.y + RANK_VERTICAL_GAP)
+				layout[nodes[index].title] = Rect2(Vector2(x - UNLOCK_SIZE.x * 0.5, bottom - UNLOCK_SIZE.y), UNLOCK_SIZE)
+		offset += int(widths[group])
 	return layout
 
 func _rank_value(unlock: Dictionary) -> String:
@@ -1210,7 +1226,15 @@ func _prereq_titles(unlock: Dictionary) -> Array[String]:
 		titles.append(resolved if resolved != "" else value)
 	return titles
 
+var _routed_layout := {}
+var _routed_paths := {}
+var _routing_used: Array = []
+
 func _draw_connections(unlocks: Array[Dictionary], layout: Dictionary, zoom: float) -> void:
+	if layout != _routed_layout:
+		_routed_layout = layout.duplicate(true)
+		_routed_paths.clear()
+	_routing_used.clear()
 	var cable_width := CABLE_WIDTH_AT_MAX_ZOOM / MAX_ZOOM
 	var stripe_width := CABLE_STRIPE_WIDTH_AT_MAX_ZOOM / MAX_ZOOM
 	for unlock in unlocks:
@@ -1297,7 +1321,7 @@ func _draw_rank_stamp(rank: String, rect: Rect2, zoom: float) -> void:
 	_draw_rounded_edge_lighting(inner, rect.grow(-outline), edge_width, Color(1.0, 1.0, 1.0, 0.14), Color(0.0, 0.0, 0.0, 0.18))
 
 	var text_rect := rect.grow(-outline - 8.0 * zoom)
-	var text_color := _with_alpha(DS.PALETTE["ACCENT"], 0.88)
+	var text_color := RESEARCH_TEXT
 	_draw_debossed_text_fit(_stamp_font, rank, text_rect, maxi(18, int(round(float(RANK_STAMP_FONT_SIZE) * zoom))), text_color, zoom)
 
 func _rank_stamp_color(rank: String) -> Color:
@@ -1345,10 +1369,15 @@ func _draw_cable_between_unlocks(parent_rect: Rect2, child_rect: Rect2, layout: 
 	var end := _cable_inner_endpoint(end_edge, end_normal)
 	var start_lead := start + start_normal * CABLE_CONNECTOR_LEAD
 	var end_lead := end + end_normal * CABLE_CONNECTOR_LEAD
-	var route := _direct_cable_route(start_lead, end_lead, start_normal, end_normal)
-	if _route_hits_unlock(route, layout, parent_rect, child_rect, cable_width):
-		route = _outside_cable_route(start_lead, end_lead, layout)
-	route = _clean_route_points([start] + route + [end])
+	var key := str(parent_rect) + ":" + str(child_rect)
+	var route: Array
+	if _routed_paths.has(key):
+		route = _routed_paths[key]
+	else:
+		route = _choose_cable_route(start_lead, end_lead, layout, parent_rect, child_rect, cable_width)
+		route = _clean_route_points([start] + route + [end])
+		_routed_paths[key] = route
+	_routing_used.append(route)
 
 	var points := _rounded_route_points(route, CABLE_BEND_RADIUS)
 	draw_polyline(points, Color(0.01, 0.011, 0.012, 0.95), cable_width + 2.0, true)
@@ -1356,6 +1385,45 @@ func _draw_cable_between_unlocks(parent_rect: Rect2, child_rect: Rect2, layout: 
 	draw_polyline(points, Color(0.92, 0.68, 0.14, 0.95), stripe_width, true)
 	_draw_copper_connector(start_edge, start_normal)
 	_draw_copper_connector(end_edge, end_normal)
+
+## Use the open gutters between columns before sending a wire around the whole tree.
+## Prefer routes that avoid cards and already-routed prerequisite wires.
+func _choose_cable_route(start: Vector2, end: Vector2, layout: Dictionary, parent: Rect2, child: Rect2, width: float) -> Array:
+	var candidates: Array = [_direct_cable_route(start, end, Vector2.UP, Vector2.DOWN)]
+	var columns: Array[float] = []
+	for value in layout.values():
+		var rect: Rect2 = value
+		if not columns.has(rect.get_center().x): columns.append(rect.get_center().x)
+	columns.sort()
+	for i in range(columns.size() - 1):
+		var x := (columns[i] + columns[i + 1]) * 0.5
+		candidates.append(_clean_route_points([start, Vector2(x, start.y), Vector2(x, end.y), end]))
+	var bounds := _layout_bounds(layout)
+	for x in [bounds.position.x - CABLE_ROUTE_MARGIN, bounds.end.x + CABLE_ROUTE_MARGIN]:
+		candidates.append(_clean_route_points([start, Vector2(x, start.y), Vector2(x, end.y), end]))
+	var best: Array = candidates[0]
+	var best_score := INF
+	for route in candidates:
+		var score := 1000000.0 if _route_hits_unlock(route, layout, parent, child, width) else 0.0
+		for i in range(route.size() - 1):
+			score += (route[i] as Vector2).distance_to(route[i + 1])
+		for previous in _routing_used:
+			score += 10000.0 * _route_crossings(route, previous)
+		if score < best_score:
+			best = route
+			best_score = score
+	return best
+
+func _route_crossings(a: Array, b: Array) -> int:
+	var count := 0
+	for i in range(a.size() - 1):
+		for j in range(b.size() - 1):
+			var crossing = Geometry2D.segment_intersects_segment(a[i], a[i + 1], b[j], b[j + 1])
+			if crossing == null: continue
+			# Branching at a shared endpoint is intentional, not a wire crossing.
+			if crossing.distance_squared_to(a[0]) < 1.0 or crossing.distance_squared_to(a[-1]) < 1.0 or crossing.distance_squared_to(b[0]) < 1.0 or crossing.distance_squared_to(b[-1]) < 1.0: continue
+			count += 1
+	return count
 
 func _cable_inner_endpoint(edge_point: Vector2, normal: Vector2) -> Vector2:
 	return edge_point + normal * (CABLE_CONNECTOR_SIZE.y * 0.5 + 2.0)
@@ -1518,27 +1586,48 @@ func _draw_unlock(unlock: Dictionary, rect: Rect2, brightness: float) -> void:
 	var title_rect := Rect2(rect.position + Vector2(12.0, 10.0), Vector2(rect.size.x - 24.0, 28.0))
 	_draw_unlock_title_text(TITLE_FONT, unlock["title"], title_rect, UNLOCK_TITLE_SIZE)
 
-	var slot_rect := Rect2(rect.position + Vector2(14.0, 44.0), Vector2(UNLOCK_SLOT_SIZE, UNLOCK_SLOT_SIZE))
-	draw_style_box(_unlock_slot_style, slot_rect)
-	_draw_text_fit(BODY_FONT, unlock.get("icon", ""), slot_rect.grow(-8.0), 15, DS.PALETTE["ACCENT"], HORIZONTAL_ALIGNMENT_CENTER)
+	var slot_rect := Rect2(rect.position + Vector2(14.0, 44.0), Vector2(UNLOCK_SLOT_SIZE + UNLOCK_EMBLEM_GUTTER, UNLOCK_SLOT_SIZE))
+	_draw_research_icon(unlock, slot_rect, locked)
 
-	var desc_rect := Rect2(rect.position + Vector2(106.0, 44.0), Vector2(rect.size.x - 120.0, UNLOCK_SLOT_SIZE))
+	var desc_rect := Rect2(rect.position + Vector2(136.0, 44.0), Vector2(rect.size.x - 150.0, UNLOCK_SLOT_SIZE))
 	draw_style_box(_description_style, desc_rect)
-	_draw_wrapped_lines(BODY_FONT, unlock["description"], desc_rect.grow(-7.0), UNLOCK_DESC_SIZE, DS.PALETTE["TEXT_MUTED"], 4)
+	_draw_wrapped_lines(BODY_FONT, unlock["description"], desc_rect.grow(-7.0), UNLOCK_DESC_SIZE, RESEARCH_TEXT, 4)
 
-	var requirement_rect := _requirement_row_rect(rect)
+	var requirement_rect := _requirement_row_rect(rect, unlock)
 	var expanded := _expanded_requirement_titles.has(title)
 	draw_style_box(_condition_style, requirement_rect)
-	var summary := "Unlocked" if free_unlocked else (_lock_reason(unlock) if locked else _condition_text(unlock))
-	_draw_wrapped_lines(BODY_FONT, summary, requirement_rect.grow_individual(-7.0, -5.0, -26.0, -5.0), UNLOCK_CONDITION_SIZE, DS.PALETTE["TEXT_MUTED"] if locked else DS.PALETTE["ACCENT"], 2, HORIZONTAL_ALIGNMENT_CENTER, true)
-	_draw_requirement_caret(requirement_rect, expanded, DS.PALETTE["ACCENT"] if not locked else DS.PALETTE["TEXT_MUTED"])
+	var summary := _collapsed_condition(unlock)
+	var condition_size := _condition_font_size(unlock, requirement_rect.size.x - 33.0)
+	_draw_wrapped_lines(BODY_FONT, summary, requirement_rect.grow_individual(-7.0, -5.0, -26.0, -5.0), condition_size, RESEARCH_TEXT, 2, HORIZONTAL_ALIGNMENT_CENTER, true)
+	_draw_requirement_caret(requirement_rect, expanded, RESEARCH_TEXT)
 	if expanded:
-		var details_rect := Rect2(rect.position + Vector2(14.0, 186.0), Vector2(rect.size.x - 28.0, rect.size.y - 200.0))
+		var details_top := requirement_rect.end.y + 6.0
+		var details_rect := Rect2(Vector2(rect.position.x + 14.0, details_top), Vector2(rect.size.x - 28.0, rect.end.y - details_top - 14.0))
 		draw_style_box(_description_style, details_rect)
-		_draw_wrapped_lines(BODY_FONT, _requirement_details(unlock), details_rect.grow( -7.0), UNLOCK_CONDITION_SIZE, DS.PALETTE["TEXT_MUTED"], 5, HORIZONTAL_ALIGNMENT_LEFT, true)
+		_draw_requirement_sections(unlock, details_rect.grow(-7.0))
 
-func _requirement_row_rect(card_rect: Rect2) -> Rect2:
-	return Rect2(card_rect.position + Vector2(14.0, 142.0), Vector2(card_rect.size.x - 28.0, 38.0))
+func _draw_requirement_sections(unlock: Dictionary, rect: Rect2) -> void:
+	var sections := _requirement_details(unlock).split("\n")
+	var font_size := UNLOCK_CONDITION_SIZE
+	var needed := 0.0
+	while font_size >= 9:
+		needed = float(maxi(0, sections.size() - 1)) * 6.0
+		for section in sections:
+			needed += _wrapped_text_lines(BODY_FONT, section, rect.size.x, font_size).size() * (font_size + 2)
+		if needed <= rect.size.y or font_size == 9: break
+		font_size -= 1
+	var y := rect.position.y
+	for section in sections:
+		var lines := _wrapped_text_lines(BODY_FONT, section, rect.size.x, font_size)
+		var height := float(lines.size() * (font_size + 2))
+		_draw_wrapped_lines(BODY_FONT, section, Rect2(Vector2(rect.position.x, y), Vector2(rect.size.x, height)), font_size, RESEARCH_TEXT, lines.size())
+		y += height + 6.0
+
+func _requirement_row_rect(card_rect: Rect2, unlock: Dictionary = {}) -> Rect2:
+	var width := card_rect.size.x - 28.0
+	var font_size := _condition_font_size(unlock, width - 33.0)
+	var line_count := mini(2, _wrapped_text_lines(BODY_FONT, _collapsed_condition(unlock), width - 33.0, font_size).size())
+	return Rect2(card_rect.position + Vector2(14.0, 142.0), Vector2(width, 24.0 + (14.0 if line_count > 1 else 0.0)))
 
 func _draw_requirement_caret(rect: Rect2, expanded: bool, color: Color) -> void:
 	var center := Vector2(rect.end.x - 15.0, rect.get_center().y)
@@ -1567,9 +1656,9 @@ func _requirement_details(unlock: Dictionary) -> String:
 		var category := str(unlock.get("category", ""))
 		var prior_tier_nodes := 0
 		for node in _unlock_rows:
-			if str(node.get("category", "")) == category and _rank_value(node) == previous:
+			if MatchState.is_research_visible(node) and str(node.get("category", "")) == category and _rank_value(node) == previous:
 				prior_tier_nodes += 1
-		# From the gate itself, not a literal 3 — the threshold moved to 2 and this line is
+		# Use the shared threshold and visible nodes; this line is
 		# what the player reads to know what a tier costs.
 		var required_nodes := mini(MatchState.TIER_UNLOCK_THRESHOLD, prior_tier_nodes)
 		lines.append("Tier %s: unlock %d Tier %s node%s in %s" % [rank, required_nodes, previous, "" if required_nodes == 1 else "s", category])
@@ -1636,7 +1725,7 @@ func _draw_unlock_title_text(font: Font, text: String, rect: Rect2, font_size: i
 	var shadow_offset := Vector2(UNLOCK_TITLE_SHADOW_OFFSET, UNLOCK_TITLE_SHADOW_OFFSET)
 	draw_string(font, position + shadow_offset, text, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, fitted_size, Color(0.0, 0.0, 0.0, 0.42))
 	draw_string(font, position + Vector2(-1.0, -1.0), text, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, fitted_size, Color(1.0, 1.0, 1.0, 0.12))
-	draw_string(font, position, text, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, fitted_size, DS.PALETTE["TEXT"])
+	draw_string(font, position, text, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, fitted_size, RESEARCH_TEXT)
 
 func _draw_free_unlock_bar(rect: Rect2) -> void:
 	var style := _make_stylebox(Color(0.02, 0.22, 0.08, 1.0), Color(0.46, 0.86, 0.30, 1.0), 8, 1)
@@ -1726,45 +1815,8 @@ func _shade_color(color: Color, brightness: float) -> Color:
 	return color
 
 func _condition_text(unlock: Dictionary) -> String:
-	var action := String(unlock.get("action", "")).strip_edges()
-	# Spare/unused nodes carry a "Placeholder" sentinel instead of a real condition.
-	if action == "Placeholder":
-		return "No activity requirement"
-	var object_name := String(unlock.get("object", "")).strip_edges()
-	var quantity := String(unlock.get("quantity", "")).strip_edges()
-	var unit := String(unlock.get("unit", "")).strip_edges()
-	if action.is_empty() or object_name.is_empty() or quantity.is_empty() or unit.is_empty():
-		return ""
-	if action == "Produce All":
-		var goods := object_name.split("|", false)
-		var quantities := quantity.split("|", false)
-		if goods.size() == quantities.size() and not goods.is_empty():
-			var parts: Array = []
-			for index in goods.size():
-				parts.append("%s %s" % [str(quantities[index]), str(goods[index]).capitalize()])
-			return "Produce %s" % _join_condition_parts(parts)
-	match action:
-		"Produce": return "Produce %s %s" % [quantity, object_name.capitalize()]
-		"Sell": return "Sell %s units through the market" % quantity if object_name.to_lower() == "freight" else "Sell %s %s through the market" % [quantity, object_name.capitalize()]
-		"Build": return "Build %s %s" % [quantity, object_name.capitalize()]
-		"Own": return "Own %s land plots" % quantity if object_name.to_lower() == "land" else "Own %s %s" % [quantity, object_name.capitalize()]
-		"Run":
-			var run_turns := _leading_condition_int(unit, 0)
-			return "Operate at least %s %s at full capacity for %s consecutive turns" % [quantity, _condition_building_label(object_name, int(quantity)), run_turns] if run_turns > 0 else "Operate %s at full capacity for %s consecutive turns" % [object_name, quantity]
-		"Run L1": return "Operate %s Level 1 %s at full capacity for %s" % [quantity, object_name.capitalize(), unit]
-		"Run Profitable":
-			var profitable_turns := _leading_condition_int(unit, 0)
-			return "Operate at least %s %s profitably for %s consecutive turns" % [quantity, _condition_building_label(object_name, int(quantity)), profitable_turns] if profitable_turns > 0 else "Operate %s %s profitably" % [quantity, _condition_building_label(object_name, int(quantity))]
-		"Run Profitable L2": return "Operate %s Level 2 %s profitably" % [quantity, object_name.capitalize()]
-		"Run Multiple": return _run_multiple_condition_text(unlock)
-		"Fulfil Special Orders": return "Fulfil at least %s special orders" % quantity
-		"Run Recipe": return "Operate %s buildings using a %s recipe" % [quantity, object_name]
-		"Survey": return "Survey %s %s" % [quantity, object_name]
-		"Stockpile filled": return "Supply one stockpile from %s for %s consecutive turns" % [object_name, quantity]
-		"Sustain": return "Maintain %s for %s consecutive turns" % [object_name, quantity]
-		"Use Infrastructure": return "Use at least %s %s at 80%% throughput or higher" % [quantity, object_name.capitalize()] if not "for" in unit else "Use %s %s at 80%% capacity for %s consecutive turns" % [quantity, object_name.capitalize(), _leading_condition_int(unit.get_slice("for", 1), 5)]
-		"Firm Intermittency": return "Firm at least %s power of intermittent generation" % quantity
-	return "%s %s %s" % [action, object_name, quantity]
+	var wording := MatchState.unlock_condition_text(str(unlock.get("title", "")))
+	return _display_condition(wording) if wording != "" else "No activity requirement"
 
 func _run_multiple_condition_text(unlock: Dictionary) -> String:
 	var targets := str(unlock.get("object", "")).split("|", false)
@@ -1823,12 +1875,12 @@ func _draw_tabs() -> void:
 		_tab_rects[category] = rect
 		var selected := category == _selected_category
 		draw_style_box(_tab_selected_style if selected else _tab_unselected_style, rect)
-		var text_color: Color = DS.PALETTE["BG_PANEL"] if selected else DS.PALETTE["ACCENT"]
+		var text_color: Color = RESEARCH_TEXT
 		if selected:
 			var shadow_rect := rect.grow(-8.0)
 			shadow_rect.position += Vector2(1.0, 1.0)
-			_draw_text_fit(BODY_FONT, category, shadow_rect, TAB_FONT_SIZE, Color(0, 0, 0, 0.26), HORIZONTAL_ALIGNMENT_CENTER)
-		_draw_text_fit(BODY_FONT, category, rect.grow(-8.0), TAB_FONT_SIZE, text_color, HORIZONTAL_ALIGNMENT_CENTER)
+			_draw_wrapped_lines(BODY_FONT, category, shadow_rect.grow(-5.0), TAB_FONT_SIZE, Color(0, 0, 0, 0.26), 3, HORIZONTAL_ALIGNMENT_CENTER, true)
+		_draw_wrapped_lines(BODY_FONT, category, rect.grow(-5.0), TAB_FONT_SIZE, text_color, 3, HORIZONTAL_ALIGNMENT_CENTER, true)
 
 func _draw_text_fit(font: Font, text: String, rect: Rect2, font_size: int, color: Color, alignment: HorizontalAlignment) -> void:
 	var fitted_size := _fitted_font_size(font, text, rect.size.x, font_size)
@@ -1920,198 +1972,115 @@ func _ellipsize(font: Font, text: String, max_width: float, font_size: int) -> S
 		output = output.left(output.length() - 1)
 	return "%s..." % output if not output.is_empty() else "..."
 
-# ── "Impacted by this research" panel (top-right) ─────────────────────────────────────────
-# For the SELECTED area, a compact card of the buildings and goods that area's research touches:
-# buildings whose recipes it unlocks or whose output/power/maintenance/labour its modifiers bend,
-# and the goods those recipes make or those modifiers boost. Buildings on their own row(s), goods
-# below; 60px icons, ≤6 per row, ≤2 rows per section; a 12th "…" slot spills the rest into a hover
-# tooltip. Max 4 rows.
-const IMPACT_BLD_ICON := 60.0       # buildings: bare icon, no plate
-const IMPACT_BLD_GAP := 8.0
-const IMPACT_GOOD_ICON := 55.0      # goods: slightly smaller, on cream plates, packed tighter
-const IMPACT_GOOD_GAP := 4.0
-const IMPACT_PAD := 14.0
-const IMPACT_PER_ROW := 6
-const IMPACT_MAX_ROWS := 2          # per section (buildings, then goods)
-const IMPACT_HEADER_H := 24.0
-const IMPACT_GOOD_PLATE := Color("#f4e6c0")   # cream, matching the game's goods icon plates
+func _presentation(unlock: Dictionary) -> Dictionary:
+	if _presentation_rows.is_empty():
+		_presentation_rows = JSON.parse_string(FileAccess.get_file_as_string("res://data/research_presentation.json"))
+	return _presentation_rows.get(str(unlock.get("research_node_id", "")), {})
 
-var _impacted_cache := {}           # category -> {"buildings": Array[String], "goods": Array[String]}
-var _impact_more_rects := {}        # "buildings"/"goods" -> Rect2 of the "…" slot (screen space)
-var _impact_more_names := {}        # "buildings"/"goods" -> Array[String] of overflow display names
+func _glyph_texture(name: String) -> Texture2D:
+	return EffectEmblem.texture(name)
 
-## The buildings and goods the given area's research touches, cached per category.
-func _impacted_for_category(category: String) -> Dictionary:
-	if _impacted_cache.has(category):
-		return _impacted_cache[category]
-	var node_ids := {}
-	for row in _unlock_rows:
-		if str(row.get("category", "")) == category:
-			var nid := str(row.get("research_node_id", ""))
-			if nid != "":
-				node_ids[nid] = true
-	var b_seen := {}
-	var g_seen := {}
-	var buildings: Array[String] = []
-	var goods: Array[String] = []
-	# Recipes this area unlocks -> their building + output goods.
-	for recipe in Catalog.all_recipes():
-		if node_ids.has(str(recipe.get("tech_unlock_req", ""))):
-			_collect_recipe(recipe, b_seen, g_seen, buildings, goods)
-	# Standing modifiers this area grants -> their building/good targets.
-	for nid in node_ids:
-		var entry = Modifiers.UNLOCK_MODIFIERS.get(nid, null)
-		if entry == null:
-			continue
-		var mods: Array = entry if entry is Array else [entry]
-		for m in mods:
-			var tm: Dictionary = (m as Dictionary).get("target_match", {})
-			var bid := str(tm.get("building_id", ""))
-			if bid != "" and not b_seen.has(bid):
-				b_seen[bid] = true
-				buildings.append(bid)
-			var gi := str(tm.get("good_internal", ""))
-			if gi != "":
-				var gid := str(Catalog.get_good_by_internal_name(gi).get("id", ""))
-				if gid != "" and not g_seen.has(gid):
-					g_seen[gid] = true
-					goods.append(gid)
-			var rt := str(tm.get("recipe_type", ""))
-			if rt != "":
-				for recipe in Catalog.all_recipes():
-					if str(recipe.get("recipe_type", "")).to_lower() == rt.to_lower():
-						_collect_recipe(recipe, b_seen, g_seen, buildings, goods)
-	var result := {"buildings": buildings, "goods": goods}
-	_impacted_cache[category] = result
-	return result
+func _draw_research_icon(unlock: Dictionary, slot: Rect2, locked: bool) -> void:
+	var spec := _presentation(unlock)
+	var kind := str(spec.get("kind", "system"))
+	var base := str(spec.get("base", ""))
+	var texture: Texture2D
+	var art_plate := Rect2(slot.position, Vector2(UNLOCK_SLOT_SIZE, UNLOCK_SLOT_SIZE))
+	draw_style_box(_make_stylebox(Color("#051a2e"), EMBLEM_CREAM, 5, 1), slot)
+	if kind == "good":
+		draw_style_box(_make_stylebox(Color("#f6e8c6"), Color("#baa984"), 5, 1), slot)
+		var state := _current_view_state()
+		var zoom: float = state["zoom"]
+		var hit := Rect2(_research_art_rect(slot).position * zoom + _tree_origin() + Vector2(state["pan"]), _research_art_rect(slot).size * zoom).intersection(_tree_rect())
+		GoodHover.drawn(self, hit, base)
+		var good: Dictionary = Catalog.get_good(base)
+		texture = GoodIcons.texture_for_size(base, str(good.get("internal_name", "")), 80.0)
+	elif kind == "building":
+		BrushedCard.draw_on(self, slot, 5.0)
+		var building: Dictionary = Catalog.get_building(base)
+		texture = KeyedBuildingIcon.keyed(building)
+	else:
+		draw_style_box(_make_stylebox(Color("#061b30"), Color("#ab9564"), 5, 1), slot)
+		texture = _glyph_texture(str(spec.get("glyph", "engineer")))
+	if texture != null:
+		var tint := Color.WHITE # Match tile-view lighting; do not grey out building artwork.
+		if kind == "system": tint = Color("#b0b2af") if locked else Color("#f6e8c6")
+		draw_texture_rect(texture, _fit_research_art(texture, _research_art_rect(slot)), false, tint)
+	else:
+		# Missing source artwork still has a recognisable subject fallback.
+		var fallback := _glyph_texture("output" if kind == "good" else "gears")
+		draw_texture_rect(fallback, art_plate.grow(-14.0), false, Color("#18334b") if kind == "good" else Color("#f6e8c6"))
+	var effects: Array = spec.get("effects", [])
+	for index in mini(effects.size(), 2):
+		var badge := _effect_badge_rect(slot, index, effects.size())
+		_draw_effect_badge(badge, effects[index], locked)
 
-## Adds a recipe's building and every output good to the running sets (deduped in place).
-func _collect_recipe(recipe: Dictionary, b_seen: Dictionary, g_seen: Dictionary, buildings: Array, goods: Array) -> void:
-	var bid := str(recipe.get("building_id", ""))
-	if bid != "" and not b_seen.has(bid):
-		b_seen[bid] = true
-		buildings.append(bid)
-	for item in Production._recipe_output_items(recipe):
-		var gid := str(item.get("good_id", ""))
-		if gid == "" and str(item.get("internal_name", "")) != "":
-			gid = str(Catalog.get_good_by_internal_name(str(item.get("internal_name", ""))).get("id", ""))
-		if gid != "" and not g_seen.has(gid):
-			g_seen[gid] = true
-			goods.append(gid)
+func _fit_research_art(texture: Texture2D, bounds: Rect2) -> Rect2:
+	var dimensions := texture.get_size()
+	var scale_factor := minf(bounds.size.x / dimensions.x, bounds.size.y / dimensions.y)
+	var fitted := dimensions * scale_factor
+	return Rect2(bounds.get_center() - fitted * 0.5, fitted)
 
-func _building_texture(building_id: String) -> Texture2D:
-	var b := Catalog.get_building(building_id)
-	return BuildingIcon.clean_texture(building_id, str(b.get("internal_name", "")))
+func _research_art_rect(slot: Rect2) -> Rect2:
+	return Rect2(slot.position + Vector2(7.0, 7.0), Vector2(66.0, 66.0))
 
-func _good_texture(good_id: String) -> Texture2D:
-	var g := Catalog.get_good(good_id)
-	return GoodIcons.texture_for_size(good_id, str(g.get("internal_name", "")), IMPACT_GOOD_ICON)
+func _effect_badge_rect(slot: Rect2, index: int, count: int) -> Rect2:
+	# The new width is reserved for emblems; the subject artwork stays square.
+	var y := slot.position.y + 3.0 if count > 1 and index == 0 else slot.end.y - 36.0
+	return Rect2(Vector2(slot.end.x - 32.0, y), Vector2(28.0, 28.0))
 
-func _building_name(building_id: String) -> String:
-	return str(Catalog.get_building(building_id).get("display_name", building_id))
+func _effect_overlay_rect(emblem: Rect2) -> Rect2:
+	# A small pill overlaps the lower-left corner, like recipe quantity pills, staying inside the slot.
+	return Rect2(Vector2(emblem.position.x - 4.0, emblem.end.y - 10.0), Vector2(16.0, 16.0))
 
-func _good_name(good_id: String) -> String:
-	return str(Catalog.get_good(good_id).get("display_name", good_id))
+func _draw_effect_badge(rect: Rect2, effect: Array, _locked: bool) -> void:
+	EffectEmblem.draw_on(self, rect, str(effect[0]), str(effect[1]))
 
-## Rows a section needs, capped at IMPACT_MAX_ROWS.
-func _impact_section_rows(count: int) -> int:
-	return clampi(int(ceil(float(count) / float(IMPACT_PER_ROW))), 0, IMPACT_MAX_ROWS)
+func _collapsed_condition(unlock: Dictionary) -> String:
+	var concise: Dictionary = {
+		"research_mfg_016": "Run 2 factories + 2 assembly + 2 high-tech plants for 10 turns",
+		"research_people_005": "Run 10 high-tech or assembly plants for 10 turns",
+		"research_petro_018": "Run 5 refineries for 10 turns; produce 100 alloy ingots",
+		"research_hcpower_001": "Run 3 power plants for 15 turns; produce 500 coal",
+		"research_metal_021": "Make aluminium for 30 turns in 1 building; own 1 power plant",
+		"research_metal_022": "Produce 600 aluminium; run 1 arc furnace for 20 turns",
+		"research_metal_023": "Produce 500 steel; make 30 pet coke OR carbonised biomass in one turn",
+		"research_people_002": "Run 5 buildings for 10 turns; own buildings on 3 tiles",
+	}
+	var node_id := str(unlock.get("research_node_id", ""))
+	if concise.has(node_id): return _display_condition(concise[node_id])
+	var full := _condition_text(unlock)
+	var text := full.replace("Operate at least ", "Run ").replace("Operate ", "Run ")
+	text = _display_condition(text)
+	text = text.replace("in a single turn", "in one turn").replace("on at least ", "on ")
+	text = text.replace("Industrial Goods Factories", "factories").replace("Industrial Factories", "factories")
+	text = text.replace("High Tech Manufactories", "high-tech plants").replace("High Tech Manufactory", "high-tech plant")
+	text = text.replace("Assembly Plants", "assembly plants").replace("and/or", "or")
+	text = text.replace("Petrochemical Refineries", "refineries").replace("Petrochemical Refinery", "refinery")
+	text = text.replace("Polymerisation Refinery", "polymer refinery").replace("Polymerisation Refineries", "polymer refineries")
+	text = text.replace("Desalination Plants", "desalination plants").replace("each on a different recipe", "each using a different recipe")
+	return text
 
-func _impacted_panel_rect() -> Rect2:
-	var impacted := _impacted_for_category(_selected_category)
-	var b_count := (impacted["buildings"] as Array).size()
-	var g_count := (impacted["goods"] as Array).size()
-	if b_count == 0 and g_count == 0:
-		return Rect2()
-	var b_rows := _impact_section_rows(b_count)
-	var g_rows := _impact_section_rows(g_count)
-	var bld_row_w := IMPACT_BLD_ICON * float(IMPACT_PER_ROW) + IMPACT_BLD_GAP * float(IMPACT_PER_ROW - 1)
-	var good_row_w := IMPACT_GOOD_ICON * float(IMPACT_PER_ROW) + IMPACT_GOOD_GAP * float(IMPACT_PER_ROW - 1)
-	var content_w := 0.0
-	if b_rows > 0:
-		content_w = maxf(content_w, bld_row_w)
-	if g_rows > 0:
-		content_w = maxf(content_w, good_row_w)
-	var width := IMPACT_PAD * 2.0 + content_w
-	var rows_h := 0.0
-	if b_rows > 0:
-		rows_h += float(b_rows) * (IMPACT_BLD_ICON + IMPACT_BLD_GAP)
-	if g_rows > 0:
-		rows_h += float(g_rows) * (IMPACT_GOOD_ICON + IMPACT_GOOD_GAP)
-	if b_rows > 0 and g_rows > 0:
-		rows_h += IMPACT_GOOD_GAP   # a little air between the two sections
-	var height := IMPACT_PAD * 2.0 + IMPACT_HEADER_H + rows_h
-	# Bottom-left corner, under the free-research (knowledge) panel and just above the tab bar.
-	var tree := _tree_rect()
-	var bottom := minf(tree.end.y, _tab_bar_rect().position.y - 8.0)
-	return Rect2(Vector2(tree.position.x, bottom - height), Vector2(width, height))
+func _display_condition(text: String) -> String:
+	return text.replace(" at full capacity", "").replace(" at 100%", "").replace("consecutive turns", "turns").replace("straight turns", "turns")
 
-func _draw_impacted_panel() -> void:
-	_impact_more_rects.clear()
-	_impact_more_names.clear()
-	var panel := _impacted_panel_rect()
-	if panel.size.x <= 0.0 or panel.size.y <= 0.0:
-		return
-	var impacted := _impacted_for_category(_selected_category)
-	draw_style_box(_make_stylebox(DS.PALETTE["BG_PANEL"], DS.PALETTE["BORDER_SOFT"], 8, 1), panel)
-	var header_y := panel.position.y + IMPACT_PAD
-	_draw_text_fit(TITLE_FONT, "Impacted by this research:",
-		Rect2(Vector2(panel.position.x + IMPACT_PAD, header_y), Vector2(panel.size.x - IMPACT_PAD * 2.0, IMPACT_HEADER_H)),
-		15, DS.PALETTE["TEXT"], HORIZONTAL_ALIGNMENT_LEFT)
-	var left := panel.position.x + IMPACT_PAD
-	var cursor_y := header_y + IMPACT_HEADER_H
-	cursor_y = _draw_impact_section(impacted["buildings"] as Array, "buildings", left, cursor_y)
-	if (impacted["buildings"] as Array).size() > 0 and (impacted["goods"] as Array).size() > 0:
-		cursor_y += IMPACT_GOOD_GAP
-	_draw_impact_section(impacted["goods"] as Array, "goods", left, cursor_y)
+func _condition_font_size(unlock: Dictionary, width: float) -> int:
+	var text := _collapsed_condition(unlock)
+	for font_size in range(UNLOCK_CONDITION_SIZE, 8, -1):
+		if _wrapped_text_lines(BODY_FONT, text, width, font_size).size() <= 2:
+			return font_size
+	return 9
 
-## Draws up to 2×6 icons for one section; the 12th slot becomes a "…" that spills the rest into a
-## hover tooltip. Returns the y just below the drawn section.
-func _draw_impact_section(ids: Array, kind: String, left: float, top: float) -> float:
-	if ids.is_empty():
-		return top
-	var is_goods := kind == "goods"
-	var icon := IMPACT_GOOD_ICON if is_goods else IMPACT_BLD_ICON
-	var gap := IMPACT_GOOD_GAP if is_goods else IMPACT_BLD_GAP
-	var plate := _make_stylebox(IMPACT_GOOD_PLATE, IMPACT_GOOD_PLATE, 6, 0) if is_goods else null
-	var capacity := IMPACT_PER_ROW * IMPACT_MAX_ROWS         # 12
-	var overflow := ids.size() > capacity
-	var shown := (capacity - 1) if overflow else mini(ids.size(), capacity)
-	var y := top
-	for slot in range(shown):
-		var rect := _impact_slot_rect(left, top, slot, icon, gap)
-		# No outline for either row; goods get a cream rounded plate, buildings sit bare on navy.
-		if is_goods:
-			draw_style_box(plate, rect)
-		var tex: Texture2D = _good_texture(str(ids[slot])) if is_goods else _building_texture(str(ids[slot]))
-		if tex != null:
-			draw_texture_rect(tex, rect.grow(-4.0 if is_goods else -2.0), false)
-		y = rect.end.y
-	if overflow:
-		var rect := _impact_slot_rect(left, top, shown, icon, gap)
-		if is_goods:
-			draw_style_box(plate, rect)
-		_draw_text_fit(TITLE_FONT, "…", rect.grow(-4.0), 28,
-			DS.PALETTE["BG_PANEL"] if is_goods else DS.PALETTE["ACCENT"], HORIZONTAL_ALIGNMENT_CENTER)
-		var names: Array[String] = []
-		for j in range(shown, ids.size()):
-			names.append(_good_name(str(ids[j])) if is_goods else _building_name(str(ids[j])))
-		_impact_more_rects[kind] = rect
-		_impact_more_names[kind] = names
-		y = rect.end.y
-	return y
-
-func _impact_slot_rect(left: float, top: float, slot: int, icon: float, gap: float) -> Rect2:
-	var col := slot % IMPACT_PER_ROW
-	var row := slot / IMPACT_PER_ROW
-	return Rect2(
-		Vector2(left + float(col) * (icon + gap), top + float(row) * (icon + gap)),
-		Vector2(icon, icon))
-
-## Tooltip for the "…" overflow slots; returns true when it set one (so profitability leaves it be).
-func _update_impacted_tooltip(position: Vector2) -> bool:
-	for kind in _impact_more_rects:
-		if (_impact_more_rects[kind] as Rect2).has_point(position):
-			tooltip_text = "Also: %s" % ", ".join(_impact_more_names.get(kind, []))
-			return true
-	return false
+func _wrapped_text_lines(font: Font, text: String, width: float, font_size: int) -> Array[String]:
+	var lines: Array[String] = []
+	for paragraph in text.split("\n"):
+		var current := ""
+		for word in paragraph.split(" ", false):
+			var candidate := word if current.is_empty() else current + " " + word
+			if not current.is_empty() and font.get_string_size(candidate, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > width:
+				lines.append(current)
+				current = word
+			else:
+				current = candidate
+		lines.append(current)
+	return lines

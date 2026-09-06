@@ -7208,6 +7208,7 @@ func _test_flavor_nodes_wired() -> void:
 
 func _test_research_tier_gating() -> void:
 	MatchState.reset()
+	MatchState.recycling_unlocked = true # This fixture tests progression in enabled content.
 	# Tier I is always open; a higher tier opens on >= min(TIER_UNLOCK_THRESHOLD,
 	# prior-tier-count) unlocked in the prior tier of the SAME category. Written against the
 	# CONSTANT rather than a literal: the threshold moved 3 -> 2 (owner 2026-08-23) and this
@@ -8322,7 +8323,7 @@ func _test_research_link_is_exact() -> void:
 		if loose > 1:
 			ambiguous += 1
 
-	# The exact mode must return EXACTLY the named tech, for every tech there is.
+	# Exact links return the named tech only when its content flags permit it.
 	var exact_ok := true
 	var checked := 0
 	for row_variant: Variant in rows:
@@ -8333,7 +8334,10 @@ func _test_research_link_is_exact() -> void:
 		panel.set("_search_query", title)
 		panel.set("_search_exact_title", title)
 		var hits: Array = panel.call("_category_unlocks", "")
-		if hits.size() != 1 or str((hits[0] as Dictionary).get("title", "")) != title:
+		if not MatchState.is_research_visible(row_variant):
+			if not hits.is_empty():
+				exact_ok = false
+		elif hits.size() != 1 or str((hits[0] as Dictionary).get("title", "")) != title:
 			exact_ok = false
 	_check(checked > 20 and exact_ok,
 		"research link: an exact-title link returns that tech and nothing else (%d techs, %d of which are ambiguous under the loose search)" % [checked, ambiguous])
@@ -11633,6 +11637,7 @@ func _test_founder_advisor() -> void:
 	MatchState.permanent_advisor_ids = ["vera"]
 	_check(not MatchState.assign_advisor_to_seat("vp_logistics", "vera"),
 		"seats: a closed post refuses an appointment")
+	MatchState.advisors_unlocked = true # Executive Search is available only with the full roster.
 	MatchState.grant_unlock(MatchState.SEATS_UNLOCK_TITLE)
 	_check(MatchState.all_seats_unlocked,
 		"seats: %s opens the rest of the council" % MatchState.SEATS_UNLOCK_TITLE)
@@ -14119,6 +14124,8 @@ func _test_advisor_demo_gating() -> void:
 	MatchState._match_rng.state = saved_rng
 
 func _test_advisor_slot_progression() -> void:
+	var saved_advisors: bool = MatchState.advisors_unlocked
+	MatchState.advisors_unlocked = true # Full-roster progression; demo gating is tested separately.
 	var saved_slots: int = MatchState.max_advisor_slots
 	var saved_streak: int = MatchState._advisor_profit_streak
 	var saved_pu: bool = MatchState.advisor_slot_profit_unlocked
@@ -14138,6 +14145,7 @@ func _test_advisor_slot_progression() -> void:
 		"slot progression: 5th-seat unlock granted (shows under People & Management)")
 	MatchState._update_advisor_slots(0.0)
 	_check(MatchState.max_advisor_slots == 3, "slot progression: a dip does not revoke the earned slot")
+	MatchState.advisors_unlocked = saved_advisors
 	MatchState.max_advisor_slots = saved_slots
 	MatchState._advisor_profit_streak = saved_streak
 	MatchState.advisor_slot_profit_unlocked = saved_pu

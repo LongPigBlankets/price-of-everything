@@ -323,7 +323,7 @@ const MISSION_TEMPLATES := {
 	"sustainability": {
 		"temp": {"domain": "recipe_output", "pct": 10.0, "turns": 20, "label": "+10% output (20t)"},
 		"perm1": {"domain": "recipe_output", "pct": 5.0, "label": "permanent +5% output"},
-		"research_category": "Power Production",
+		"research_category": "Renewable Power",
 		"temp2": {"domain": "market_price", "pct": 3.0, "turns": 20, "label": "+3% sale price (20t)"},
 		"perm2": {"domain": "market_price", "pct": 2.0, "label": "permanent +2% sale price"},
 		"capstone": {"domain": "market_price", "pct": 3.0, "label": "permanent +3% sale price"},
@@ -2284,6 +2284,18 @@ const HIDDEN_RESEARCH_IDS := {
 	"research_biochem_005": true, # Cell Culture Automation — bioplastics chain not in the demo
 }
 
+## Shared content gate, independent of tiers and prerequisites. Search and every
+## grant path must respect these flags, including exact-title links and free picks.
+func is_research_visible(definition: Dictionary) -> bool:
+	var node_id := str(definition.get("research_node_id", ""))
+	if HIDDEN_RESEARCH_IDS.has(node_id):
+		return false
+	if str(definition.get("category", "")) == "Recycling" and not recycling_unlocked:
+		return false
+	if node_id in ["research_people_008", "research_people_009", "research_people_010", "research_people_011"] and not advisors_unlocked:
+		return false
+	return true
+
 # --- Public API: research unlocks ---
 func _load_unlock_defs() -> void:
 	_unlock_defs.clear()
@@ -2377,7 +2389,7 @@ func grant_first_locked_in_category(category: String) -> String:
 	for d in _unlock_defs:
 		if str(d.get("category", "")) == category:
 			var title := str(d.get("title", ""))
-			if title != "" and not is_unlocked(title):
+			if title != "" and not is_unlocked(title) and is_research_visible(d):
 				grant_unlock(title)
 				return title
 	return ""
@@ -2392,6 +2404,9 @@ func grant_first_locked_in_category(category: String) -> String:
 ## "Unlocked …" dialog); false => a free-chosen unlock (no dialog).
 func grant_unlock(title: String, via_condition: bool = false) -> void:
 	if title == "" or unlocked_titles.has(title):
+		return
+	var definition := get_unlock_def(title)
+	if definition.is_empty() or not is_research_visible(definition):
 		return
 	unlocked_titles[title] = true
 	# Opening the rest of the council is not a modifier, so it is applied here rather than
@@ -2447,14 +2462,14 @@ func is_tier_available(category: String, tier: String) -> bool:
 func _tier_node_count(category: String, tier: String) -> int:
 	var n := 0
 	for d in _unlock_defs:
-		if str(d.get("category", "")) == category and str(d.get("rank", "I")) == tier:
+		if is_research_visible(d) and str(d.get("category", "")) == category and str(d.get("rank", "I")) == tier:
 			n += 1
 	return n
 
 func _tier_unlocked_count(category: String, tier: String) -> int:
 	var n := 0
 	for d in _unlock_defs:
-		if str(d.get("category", "")) == category and str(d.get("rank", "I")) == tier \
+		if is_research_visible(d) and str(d.get("category", "")) == category and str(d.get("rank", "I")) == tier \
 				and unlocked_titles.has(str(d.get("title", ""))):
 			n += 1
 	return n
@@ -2463,7 +2478,7 @@ func _tier_unlocked_count(category: String, tier: String) -> int:
 ## when its category tier is open AND every listed prereq is already unlocked.
 func is_node_available(title: String) -> bool:
 	var d := get_unlock_def(title)
-	if d.is_empty():
+	if d.is_empty() or not is_research_visible(d):
 		return false
 	if not is_tier_available(str(d.get("category", "")), str(d.get("rank", "I"))):
 		return false
@@ -2495,7 +2510,7 @@ func unlock_condition_text(title: String) -> String:
 		if goods.size() == quantities.size() and not goods.is_empty():
 			var parts: Array = []
 			for index in goods.size():
-				parts.append("%s %s" % [str(quantities[index]), str(goods[index]).capitalize()])
+				parts.append("%s %s" % [str(quantities[index]), _condition_good_label(str(goods[index]))])
 			return "Produce %s" % _join_and(parts)
 	if action == "Produce Any":
 		# OR across goods: 500 of EITHER good unlocks it. A single Quantity applies to
@@ -2508,26 +2523,26 @@ func unlock_condition_text(title: String) -> String:
 				var want := qty
 				if any_qtys.size() == any_goods.size() and str(any_qtys[index]).is_valid_int():
 					want = int(str(any_qtys[index]))
-				parts.append("%d %s" % [want, str(any_goods[index]).capitalize()])
+				parts.append("%d %s" % [want, _condition_good_label(str(any_goods[index]))])
 			return "Produce %s" % _join_or(parts)
 	match action:
-		"Produce": return "Produce %d %s" % [qty, object_name.capitalize()]
-		"Sell": return "Sell %d units through the market" % qty if _research_key(object_name) == "freight" else "Sell %d %s through the market" % [qty, object_name.capitalize()]
+		"Produce": return "Produce %d %s" % [qty, _condition_good_label(object_name)]
+		"Sell": return "Sell %d units through the market" % qty if _research_key(object_name) == "freight" else "Sell %d %s through the market" % [qty, _condition_good_label(object_name)]
 		"Sell Through Ports": return "Sell %d units through ports" % qty
 		"Sell Through Every Port": return "Export %d units through EVERY port" % qty
 		"Own Port At Level": return "Own a port upgraded to level %d" % qty
 		"Sell Through Ports Classes": return "Sell at least %d units of each weight class through ports" % qty
 		"Purchase Ports": return "Purchase all %d ports" % qty
-		"Build": return "Build %d %s" % [qty, object_name.capitalize()]
-		"Own": return "Own %d land plots" % qty if _research_key(object_name) == "land" else "Own %d %s" % [qty, object_name.capitalize()]
+		"Build": return "Build %d %s" % [qty, _condition_building_label(object_name, qty)]
+		"Own": return "Own %d land plots" % qty if _research_key(object_name) == "land" else "Own %d %s" % [qty, _condition_good_label(object_name)]
 		"Run":
 			var run_turns := _leading_int(unit, 0)
-			return "Operate at least %d %s at full capacity for %d consecutive turns" % [qty, _condition_building_label(object_name, qty), run_turns] if run_turns > 0 else "Operate %s at full capacity for %d consecutive turns" % [object_name, qty]
-		"Run L1": return "Operate %d Level 1 %s at full capacity for %s" % [qty, object_name.capitalize(), unit]
+			return "Operate at least %d %s at full capacity for %d consecutive turns" % [qty, _condition_building_label(object_name, qty), run_turns] if run_turns > 0 else "Operate 1 %s at full capacity for %d consecutive turns" % [_condition_building_label(object_name, 1), qty]
+		"Run L1": return "Operate %d Level 1 %s at full capacity for %s" % [qty, _condition_building_label(object_name, qty), unit]
 		"Run Profitable":
 			var profitable_turns := _leading_int(unit, 0)
 			return "Operate at least %d %s profitably for %d consecutive turns" % [qty, _condition_building_label(object_name, qty), profitable_turns] if profitable_turns > 0 else "Operate %d %s profitably" % [qty, _condition_building_label(object_name, qty)]
-		"Run Profitable L2": return "Operate %d Level 2 %s profitably" % [qty, object_name.capitalize()]
+		"Run Profitable L2": return "Operate %d Level 2 %s profitably" % [qty, _condition_building_label(object_name, qty)]
 		"Run Same Tile":
 			var same_turns := _leading_int(unit, 0)
 			return "Operate %d %s on the same tile at full capacity for %d consecutive turns" % [qty, _condition_building_label(object_name, qty), same_turns] if same_turns > 0 else "Operate %d %s on the same tile" % [qty, _condition_building_label(object_name, qty)]
@@ -2546,7 +2561,7 @@ func unlock_condition_text(title: String) -> String:
 		"Run Producing":
 			var prod_turns := _leading_int(unit, 0)
 			var prod_who := "a building" if qty <= 1 else "%d buildings" % qty
-			return "Operate %s making %s at full capacity for %d consecutive turns" % [prod_who, object_name.capitalize(), prod_turns] if prod_turns > 0 else "Operate %s making %s at full capacity" % [prod_who, object_name.capitalize()]
+			return "Operate %s making %s at full capacity for %d consecutive turns" % [prod_who, _condition_good_label(object_name), prod_turns] if prod_turns > 0 else "Operate %s making %s at full capacity" % [prod_who, _condition_good_label(object_name)]
 		"Run Profitable L1": return "Operate %d Level 1 %s profitably for %s" % [qty, _condition_building_label(object_name, qty), unit]
 		"All Of":
 			var all_parts: Array = []
@@ -2556,7 +2571,7 @@ func unlock_condition_text(title: String) -> String:
 					all_parts.append(_sub_condition_text(sub))
 			return _join_and(all_parts).capitalize() if all_parts.is_empty() else (_join_and(all_parts)[0].to_upper() + _join_and(all_parts).substr(1))
 		"Ship Multimodal": return "Move at least %d freight in a single turn using more than one mode of transport" % qty
-		"Produce Per Turn": return "Produce at least %d %s in a single turn" % [qty, object_name.capitalize()]
+		"Produce Per Turn": return "Produce at least %d %s in a single turn" % [qty, _condition_good_label(object_name)]
 		"Produce Per Turn Any":
 			var rate_parts: Array = []
 			var rate_names := object_name.split("|", false)
@@ -2565,11 +2580,12 @@ func unlock_condition_text(title: String) -> String:
 				var rate_n := qty
 				if rate_raw.size() == rate_names.size() and str(rate_raw[index]).is_valid_int():
 					rate_n = int(str(rate_raw[index]))
-				rate_parts.append("%d %s" % [rate_n, str(rate_names[index]).capitalize()])
+				rate_parts.append("%d %s" % [rate_n, _condition_good_label(str(rate_names[index]))])
 			return "Produce at least %s in a single turn" % _join_or(rate_parts)
 		"Run Multiple": return _run_multiple_condition_text(d)
 		"Fulfil Special Orders": return "Fulfil at least %d special orders" % qty
-		"Run Recipe": return "Operate %d buildings using a %s recipe" % [qty, object_name]
+		"Run Recipe Profitable": return "Run %d buildings with %s recipes profitably" % [qty, "steelmaking" if _research_key(object_name) == "steel_production" else object_name.to_lower()]
+		"Run Recipe": return "Operate %d building%s using a %s recipe" % [qty, "" if qty == 1 else "s", object_name]
 		"Survey": return "Survey %d %s" % [qty, object_name]
 		"Stockpile filled": return "Supply one stockpile from %s for %d consecutive turns" % [object_name, qty]
 		"Sustain": return "Maintain %s for %d consecutive turns" % [object_name, qty]
@@ -2579,7 +2595,7 @@ func unlock_condition_text(title: String) -> String:
 				# Absolute bar against Level-1 capacity (see _infrastructure_usage_met).
 				var use_pct := _leading_int(unit, 80)
 				return "Carry %d%% of Level-1 capacity on %d %s for %d consecutive turns" % [use_pct, qty, object_name.capitalize(), use_turns] if use_turns > 0 else "Carry %d%% of Level-1 capacity on %d %s" % [use_pct, qty, object_name.capitalize()]
-			return "Use at least %d %s at 80%% throughput or higher" % [qty, object_name.capitalize()] if use_turns <= 0 else "Use %d %s at 80%% capacity for %d consecutive turns" % [qty, object_name.capitalize(), use_turns]
+			return "Use at least %d %s at 80%% throughput or higher" % [qty, _condition_good_label(object_name)] if use_turns <= 0 else "Use %d %s at 80%% capacity for %d consecutive turns" % [qty, object_name.capitalize(), use_turns]
 		"Firm Intermittency": return "Firm at least %d power of intermittent generation" % qty
 	return "%s %s %d" % [action, object_name, qty]
 
@@ -2630,7 +2646,7 @@ func _refresh_research_progress() -> void:
 func _check_unlock_conditions() -> void:
 	for d in _unlock_defs:
 		var title := str(d.title)
-		if title == "" or unlocked_titles.has(title) or int(d.qty) <= 0:
+		if title == "" or unlocked_titles.has(title) or int(d.qty) <= 0 or not is_research_visible(d):
 			continue
 		var action := str(d.action)
 		if action == "" or str(d.object) == "":
@@ -2823,6 +2839,8 @@ func _live_condition_met(d: Dictionary) -> bool:
 				if int(produced_last.get(rg, 0)) >= want_rate:
 					return true
 			return false
+		"Run Recipe Profitable":
+			return _count_buildings_running_recipe_type(obj, 1, true) >= need
 		"Run Recipe":
 			# "Run N player buildings currently set to a recipe of this category"
 			# (e.g. furnaces on a Glassmaking recipe). A leading int in Unit optionally
@@ -2873,6 +2891,10 @@ func _run_multiple_condition_text(d: Dictionary) -> String:
 	return "Operate at least %s at full capacity for %d consecutive turns" % [_join_and(parts), turns]
 
 
+func _condition_good_label(raw: String) -> String:
+	var good: Dictionary = Catalog.get_good(_research_good_id(raw))
+	return str(good.get("display_name", raw.capitalize()))
+
 func _condition_building_label(raw: String, quantity: int = 1) -> String:
 	var key := _research_key(raw)
 	if key == "high_tech_manufactory|assembly_plant":
@@ -2884,6 +2906,11 @@ func _condition_building_label(raw: String, quantity: int = 1) -> String:
 		"assembly_plant": "Assembly Plant",
 		"solar_farm": "Solar Farm",
 		"farm": "Farm",
+		"chem_plant": "Chemical Plant",
+		"petro_refinery": "Petrochemical Refinery",
+		"poly_plant": "Polymerisation Refinery",
+		"desal": "Desalination Plant",
+		"eaf": "Electric Arc Furnace",
 	}.get(key, raw.capitalize()))
 	if quantity != 1:
 		if label.ends_with("y"):
@@ -3133,7 +3160,7 @@ func _research_condition_issue(d: Dictionary) -> String:
 		if _research_good_id(obj) == "":
 			return "unknown good target"
 		return ""
-	if action == "Run Recipe":
+	if action in ["Run Recipe", "Run Recipe Profitable"]:
 		var wanted := _research_key(obj)
 		for recipe in Catalog.all_recipes():
 			if _research_key(str(recipe.get("recipe_type", ""))) == wanted:
@@ -3224,11 +3251,17 @@ func _sub_condition_text(sub: Dictionary) -> String:
 	var a := str(sub.get("action", "")); var o := str(sub.get("object", "")); var n := int(sub.get("qty", 0)); var u := str(sub.get("unit", ""))
 	var turns := _leading_int(u, 0)
 	match a:
-		"Produce": return "produce %d %s" % [n, o.capitalize()]
+		"Produce": return "produce %d %s" % [n, _condition_good_label(o)]
+		"Produce Per Turn Any":
+			var choices: Array = []
+			for good in o.split("|", false):
+				choices.append("%d %s" % [n, _condition_good_label(str(good))])
+			return "produce %s in one turn" % _join_or(choices)
+		"Own On Tiles": return "own %s on at least %d different tiles" % [_condition_building_label(o, 2), n]
 		"Own": return "own %d %s" % [n, _condition_building_label(o, n)]
 		"Run": return "operate %d %s at full capacity for %d turns" % [n, _condition_building_label(o, n), turns] if turns > 0 else "operate a %s at full capacity for %d turns" % [_condition_building_label(o, 1), n]
 		"Run Profitable": return "operate %d %s profitably" % [n, _condition_building_label(o, n)]
-		"Run Producing": return "operate %s making %s at full capacity for %d turns" % ["a building" if n <= 1 else "%d buildings" % n, o.capitalize(), turns]
+		"Run Producing": return "operate %s making %s at full capacity for %d turns" % ["a building" if n <= 1 else "%d buildings" % n, _condition_good_label(o), turns]
 	return "%s %s %d %s" % [a, o, n, u]
 
 ## Number of DIFFERENT recipes currently running (full-output streak >= 1) across the
@@ -3307,7 +3340,7 @@ func _count_buildings(internal: String, level: int, require_profitable: bool, mi
 # run-streak. Powers recipe-specific research gates (e.g. "run furnaces on a
 # Glassmaking recipe"). Because glassmaking recipes only exist in the furnace,
 # matching recipe_type already means "a furnace running glassmaking".
-func _count_buildings_running_recipe_type(recipe_type: String, min_streak: int) -> int:
+func _count_buildings_running_recipe_type(recipe_type: String, min_streak: int, require_profitable: bool = false) -> int:
 	var want := recipe_type.strip_edges().to_lower()
 	if want == "":
 		return 0
@@ -3321,6 +3354,8 @@ func _count_buildings_running_recipe_type(recipe_type: String, min_streak: int) 
 		if str(recipe.get("recipe_type", "")).strip_edges().to_lower() != want:
 			continue
 		if min_streak > 0 and int(Production.full_output_streak_by_building.get(str(inst.get("instance_id", "")), 0)) < min_streak:
+			continue
+		if require_profitable and (is_building_paused(str(inst.get("instance_id", ""))) or not _is_building_profitable(inst)):
 			continue
 		n += 1
 	return n

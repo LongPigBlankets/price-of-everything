@@ -1,4 +1,5 @@
 extends Control
+const EffectEmblem := preload("res://scripts/effect_emblem.gd")
 ## The People panel's Labour tab, restyled to the "People Panel" design's lever
 ## language: policies grouped into 3-point SPECTRUMS with their effects spelled
 ## out under the selected option, instead of a flat checkbox grid.
@@ -234,7 +235,15 @@ func _spectrum(title: String, options: Array, selected_key: String) -> Control:
 	t.text = title
 	t.add_theme_font_size_override("font_size", 14)
 	t.add_theme_color_override("font_color", DS.PALETTE.TEXT)
-	box.add_child(t)
+	var heading := HBoxContainer.new()
+	heading.add_theme_constant_override("separation", 8)
+	heading.add_child(EffectEmblem.make("engineer", 26.0))
+	if title in ["Safety standards", "Automation"]:
+		heading.add_child(EffectEmblem.make("gears", 26.0))
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	heading.add_child(t)
+	box.add_child(heading)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
 	box.add_child(row)
@@ -278,7 +287,11 @@ func _spectrum(title: String, options: Array, selected_key: String) -> Control:
 
 # ── right column: live labour costs + the remaining toggles ─────────────────
 func _build_labour_costs(parent: Control) -> void:
-	parent.add_child(_sec_label("LABOUR COST · PER TURN"))
+	var heading := HBoxContainer.new()
+	heading.add_theme_constant_override("separation", 8)
+	heading.add_child(EffectEmblem.make("engineer", 28.0))
+	heading.add_child(_sec_label("LABOUR COST · PER TURN"))
+	parent.add_child(heading)
 	var card := _card_panel()
 	parent.add_child(card)
 	var col := VBoxContainer.new()

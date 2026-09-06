@@ -19,15 +19,11 @@ const ICON_INSET := 9           # icon sits this far in from the frame edge
 const ICON_ZOOM := 2            # icon overflows its slot by this many px each side (zoom)
 
 ## Give a directly-rendered good icon (a plain TextureRect, not the framed
-## helper) the same hover behaviour: show the good's name, then any tooltip an
-## ancestor row would have shown. Use at the direct GoodIcons.texture_for sites
+## helper) the shared two-row encyclopedia hover and click behavior. Use at the direct GoodIcons.texture_for sites
 ## (recipe flow diagrams, stockpile bars) so every good icon names itself.
 static func attach_good_name_tooltip(ctrl: Control, good_id: String) -> void:
-	if ctrl == null or good_id == "":
-		return
-	if ctrl.mouse_filter == Control.MOUSE_FILTER_IGNORE:
-		ctrl.mouse_filter = Control.MOUSE_FILTER_PASS
-	ctrl.tooltip_text = Catalog.get_display_name(good_id)
+	if ctrl != null and good_id != "":
+		GoodIconHover.attach(ctrl, good_id)
 
 ## The single source of truth for the framed + bevelled goods icon. Layers, all
 ## full-rect so the icon inset and the bevel rim are positioned independently of
@@ -213,62 +209,10 @@ static func make_overlaid_quantity_pill(text: String, height: int = 22) -> Contr
 	return pill
 
 
-## Make a good icon a LINK to that good in the Goods Graph.
-##
-## The icons are built by the helpers above and handed out all over the UI, so the click
-## behaviour is attached here rather than rebuilt at each site: one place decides what a
-## good icon does when you click it, and every panel that opts in agrees.
-##
-## AN ICON ON A CLICKABLE CARD DEFERS TO THE CARD. A building card, a construct row or a
-## ledger line is one target as far as the player is concerned; swallowing part of it so a
-## small picture inside can do something else makes the card feel broken exactly where it
-## looks most pressable. So the icon keeps MOUSE_FILTER_PASS, and on a click it walks up
-## for a clickable ancestor: if there is one it does nothing and the event carries on to
-## the card, and only a standing-alone icon acts as a link.
-##
-## `always` overrides that for the one place the split is deliberate: an encyclopedia
-## entry, where the row opens the article and the icon opens the web, which is what the
-## player asked for there.
-static func link_good_icon_to_graph(ctrl: Control, good_id: String, always := false) -> void:
-	if ctrl == null or good_id == "":
-		return
-	ctrl.mouse_filter = Control.MOUSE_FILTER_STOP if always else Control.MOUSE_FILTER_PASS
-	var name := Catalog.get_display_name(good_id)
-	if always:
-		ctrl.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		ctrl.tooltip_text = ("%s — click to see how it is made" % name) if name != "" else "Show in the Goods Graph"
-	ctrl.gui_input.connect(func(e: InputEvent) -> void:
-		if not (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT):
-			return
-		if not always and _clickable_ancestor(ctrl) != null:
-			return   # the card owns this click; let it through untouched
-		ctrl.accept_event()
-		MatchState.goods_graph_good_requested.emit(good_id))
-	if not always:
-		# The hand cursor and the hint can only be promised once the icon is in a tree and
-		# its ancestors are known, so they are settled on entry rather than here.
-		ctrl.tree_entered.connect(func() -> void:
-			if _clickable_ancestor(ctrl) != null:
-				return
-			ctrl.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-			ctrl.tooltip_text = ("%s — click to see how it is made" % name) if name != "" else "Show in the Goods Graph")
-
-
-## The nearest ancestor that is itself a click target — a button, or a card that has taken
-## the hand cursor. Stops at the first one; returns null when the icon stands alone.
-static func _clickable_ancestor(ctrl: Control) -> Control:
-	var n: Node = ctrl.get_parent()
-	while n != null:
-		if n is BaseButton:
-			return n as Control
-		if n is Control:
-			var c := n as Control
-			var clickable: bool = (c.mouse_default_cursor_shape == Control.CURSOR_POINTING_HAND
-					and c.mouse_filter != Control.MOUSE_FILTER_IGNORE)
-			if clickable:
-				return c
-		n = n.get_parent()
-	return null
+## All good icons link to their encyclopedia entry, matching their shared hover hint.
+static func link_good_icon_to_encyclopedia(ctrl: Control, good_id: String) -> void:
+	if ctrl != null and good_id != "":
+		GoodIconHover.attach(ctrl, good_id)
 
 
 static var _checked_tex: Texture2D = null

@@ -1,4 +1,5 @@
 extends Node2D
+const GoodHover := preload("res://scripts/good_icon_hover.gd")
 ## On-map animation played whenever a tile finishes being surveyed (in any view).
 ##
 ## - A thick off-white hex outline at the tile edge "shoots" a hexagon outline that
@@ -104,6 +105,7 @@ func _process(delta: float) -> void:
 		set_process(false)
 
 func _draw() -> void:
+	GoodHover.begin_draw(self)
 	for f in _fx:
 		_draw_collapse(f.centre, f.t)
 		_draw_icons(f)
@@ -154,6 +156,7 @@ func _draw_icons(f: Dictionary) -> void:
 		var pos := Vector2(centre.x + float(ic.x), y)
 		# Fit the texture in the sz×sz box keeping its aspect ratio (so portrait
 		# icons like crude oil aren't squashed square).
+		GoodHover.drawn(self, _fitted_rect(ic.tex, pos, sz), str(ic.tex.get_meta("encyclopedia_good_id", "")))
 		draw_texture_rect(ic.tex, _fitted_rect(ic.tex, pos, sz), false,
 			Color(1.0, 1.0, 1.0, _icon_alpha(t, bool(ic.get("infinite", false)))))
 

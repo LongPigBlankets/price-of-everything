@@ -58,11 +58,13 @@ static func texture_for(good_id: String, internal_name: String, tier := TIER_SMA
 		if good_id != "" and internal_name != "":
 			var t := _try(dir, "%s_%s" % [good_id, internal_name])
 			if t != null:
+				t.set_meta("encyclopedia_good_id", good_id if good_id != "" else str(Catalog.get_good_by_internal_name(internal_name).get("id", "")))
 				_texture_cache[cache_key] = t
 				return t
 		if good_id != "":
 			var t2 := _try(dir, good_id)
 			if t2 != null:
+				t2.set_meta("encyclopedia_good_id", good_id if good_id != "" else str(Catalog.get_good_by_internal_name(internal_name).get("id", "")))
 				_texture_cache[cache_key] = t2
 				return t2
 		# Internal name alone, the way the building icons resolve. Art often lands before
@@ -72,6 +74,7 @@ static func texture_for(good_id: String, internal_name: String, tier := TIER_SMA
 		if internal_name != "":
 			var t3 := _try(dir, internal_name)
 			if t3 != null:
+				t3.set_meta("encyclopedia_good_id", good_id if good_id != "" else str(Catalog.get_good_by_internal_name(internal_name).get("id", "")))
 				_texture_cache[cache_key] = t3
 				return t3
 	_texture_cache[cache_key] = null
