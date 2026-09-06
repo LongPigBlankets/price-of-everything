@@ -2273,6 +2273,13 @@ func _join_or(parts: Array) -> String:
 	var head: Array = parts.slice(0, parts.size() - 1)
 	return "%s, or %s" % [", ".join(head), str(parts[parts.size() - 1])]
 
+## Research nodes hidden for the demo (owner 2026-09-06). The CSV row is kept so the node
+## can return post-demo, but it never loads: no tab card, no condition, no prereq link.
+## Its recipe is hidden in step via Catalog.HIDDEN_RECIPE_IDS.
+const HIDDEN_RESEARCH_IDS := {
+	"research_petro_020": true,  # Methane Pyrolysis — no methane in the demo
+}
+
 # --- Public API: research unlocks ---
 func _load_unlock_defs() -> void:
 	_unlock_defs.clear()
@@ -2292,6 +2299,8 @@ func _load_unlock_defs() -> void:
 		var row := f.get_csv_line()
 		if row.is_empty() or row[0].strip_edges() == "":
 			continue
+		if HIDDEN_RESEARCH_IDS.has(_csv_at(row, idx, "research_node_id")):
+			continue   # demo-hidden node: never loads, so nothing can link to it
 		var prereqs: Array = []
 		for col in ["prereq_1", "prereq_2", "prereq_3"]:
 			var p := _csv_at(row, idx, col)

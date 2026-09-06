@@ -1160,10 +1160,12 @@ func _test_tutorial_engine() -> void:
 		and str(direct_bauxite.get("tech_unlock_req", "")) == "research_metal_012",
 		"tutorial: Bauxite Carbochlorination is the lower-energy gated furnace route with chlorine")
 	var carbo_unlock: Dictionary = MatchState.get_unlock_def("Bauxite Carbochlorination")
-	_check(str(carbo_unlock.get("action", "")) == "Produce All"
-		and str(carbo_unlock.get("object", "")) == "chlorine|aluminium"
-		and str(carbo_unlock.get("quantity_raw", "")) == "300|400",
-		"research: Bauxite Carbochlorination requires 300 Chlorine and 400 Aluminium")
+	# Chlorine is the real reagent dependency; the old "and 400 aluminium" was circular
+	# (make aluminium to unlock an aluminium recipe) and was dropped (owner 2026-09-06).
+	_check(str(carbo_unlock.get("action", "")) == "Produce"
+		and str(carbo_unlock.get("object", "")) == "chlorine"
+		and int(carbo_unlock.get("qty", 0)) == 300,
+		"research: Bauxite Carbochlorination requires 300 Chlorine (chlorine is the reagent; no circular aluminium gate)")
 	_check(str(carbo_unlock.get("description", "")) == "Unlocks new recipe: Bauxite Carbochlorination (20 Aluminium).",
 		"research: Bauxite Carbochlorination description describes its recipe, not its condition")
 	_check(TutorialSteps._recipe_input_qty("r_050", "alumina") == 20
@@ -5840,6 +5842,10 @@ func _test_research_reference_integrity() -> void:
 	var missing_ids: Array = []
 	var dupe_ids: Array = []
 	for r in rows:
+		# Mirror the loader: demo-hidden rows stay in the CSV but are never loaded, so
+		# their titles must not be expected to resolve (see MatchState.HIDDEN_RESEARCH_IDS).
+		if MatchState.HIDDEN_RESEARCH_IDS.has(str(r.get("research_node_id", "")).strip_edges()):
+			continue
 		var t := str(r.get("title", "")).strip_edges()
 		if t != "":
 			titles[t] = true
@@ -5900,6 +5906,10 @@ func _test_research_reference_integrity() -> void:
 	var known_gaps := ["consumer", "hydro"]
 	var bad_gates: Array = []
 	for r in _csv_dicts("res://data/recipes_all.csv"):
+		# Mirror Catalog.is_recipe_visible: a demo-hidden recipe may legitimately gate on a
+		# demo-hidden node (both stay in the CSVs to return post-demo), so skip it here.
+		if Catalog.HIDDEN_RECIPE_IDS.has(str(r.get("recipe_id", "")).strip_edges()):
+			continue
 		var gate := str(r.get("tech_unlock_req", "")).strip_edges()
 		if gate == "" or node_ids.has(gate) or gate in known_gaps:
 			continue

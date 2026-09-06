@@ -1,16 +1,16 @@
 research_node_id,category,prereq_1,prereq_2,prereq_3,prereq_othercategory,rank,Action,Object,Quantity,Unit,title,icon,description
 research_mining_001,Extraction,,,,,I,Produce,coal,500,units,Improved Coal Mining,coal,Increases coal mining output by 15% permanently.
-research_mining_002,Extraction,research_mining_001,,,,II,Produce,iron_ore,500,units,Beneficiated Iron Mining,iron,Increases iron ore mining output by 15% permanently.
-research_mining_003,Extraction,,,,,II,Produce Any,limestone|sand,500,units,Deep Seam Surveying,survey,"Increases limestone, sand and salt mining output by 15% permanently."
-research_mining_004,Extraction,research_mining_002,,,,II,Own,land,5,units,Copper Froth Flotation,copper,Increases copper ore mining output by 15% permanently.
+research_mining_002,Extraction,,,,,I,Produce,iron_ore,500,units,Beneficiated Iron Mining,iron,Increases iron ore mining output by 15% permanently.
+research_mining_003,Extraction,,,,,I,Produce Any,limestone|sand,500,units,Deep Seam Surveying,survey,"Increases limestone, sand and salt mining output by 15% permanently."
+research_mining_004,Extraction,,,,,I,Produce,copper_ore,500,units,Copper Froth Flotation,copper,Increases copper ore mining output by 15% permanently.
 research_mining_005,Extraction,research_mining_003,,,,III,Run,Mine,15,turns,Automated Mine Dispatch,truck,"Increases coal, iron, copper, limestone, sand and salt mining output by a further 15% permanently."
 research_petro_001,Chemistry,,,,,I,Build,Petrochemical Refinery,3,units,Fractional Distillation,oil,Increases Petrochemical Refinery output by 5% permanently.
 research_petro_002,Chemistry,research_petro_001,,,,I,Sell,Processed Oil,250,units,Catalytic Cracking,catalyst,Reduces Petrochemical Refinery power consumption by 5% permanently.
 research_petro_003,Chemistry,research_petro_002,,,,II,Run,Petrochemical Refinery,12,turns,Polymer Feedstocks,poly,Increases Polymerisation Refinery output by 5% permanently.
-research_petro_004,Chemistry,research_petro_001,,,,II,Own,land,5,units,Solvent Recovery,solvent,Reduces Petrochemical Refinery maintenance by 10% for 20 turns.
+research_petro_004,Chemistry,research_petro_001,,,,II,Produce,processed_oil,500,units,Solvent Recovery,solvent,Reduces Petrochemical Refinery maintenance by 10% for 20 turns.
 research_petro_005,Chemistry,research_petro_003,,,,III,Run,Polymer Feedstocks,15,turns,Advanced Elastomers,rubber,Increases the sale price of rubber by 5% for 20 turns.
 research_metal_001,Metallurgy,,,,,I,Build,Furnace,3,units,Basic Blast Furnaces,furnace,Increases Furnace output by 5% permanently.
-research_metal_002,Metallurgy,research_metal_001,,,,I,Sell,Steel,250,units,Continuous Casting,cast,Refines continuous-casting practice (prerequisite tech).
+research_metal_002,Metallurgy,research_metal_001,,,,I,Produce,steel,250,units,Continuous Casting,cast,Increases steel output by 5% permanently.
 research_metal_003,Metallurgy,research_metal_002,,,,II,Produce,steel,500,units,Alloy Heat Treatment,alloy,Unlocks new recipes: HIsarna Steel Making (24 Steel); Copper Pipe Moulding (22 Copper Pipe).
 research_metal_004,Metallurgy,research_metal_003,,,,II,Produce,steel,600,units,Electric Arc Refining,eaf,Unlocks new recipes: Electric Arc Steelmaking (50 Steel); ELYSIS Aluminium (15 Aluminium); Flash Copper Smelting (36 Copper Ingots).
 research_inorg_001,"Glass, Silica & Concrete",,,,,I,Run Recipe,Glassmaking,3,furnaces,High Strength Glassmaking,glass,Unlocks new recipe: High Strength Glassmaking (28 Glass).
@@ -19,37 +19,37 @@ research_inorg_003,"Glass, Silica & Concrete",research_inorg_001,,,,II,Produce,g
 research_inorg_004,Chemistry,,,,,I,Build,Chemical Plant,3,units,Chlor Alkali Cells,cell,Increases Electrolyser output by 5% permanently.
 research_inorg_005,Chemistry,research_inorg_004,,,,I,Sell,Chlorine,250,units,Acid Gas Scrubbing,scrub,Reduces Chemical Plant labour by 5% permanently.
 research_inorg_006,Chemistry,research_inorg_005,,,,II,Run,Chemical Plant,12,turns,Industrial Salt Purification,salt,Increases Chemical Plant output by 25% for 20 turns.
-research_inorg_007,Chemistry,research_inorg_004,,,,II,Own,land,5,units,Ceramic Catalyst Supports,ceramic,Reduces Chemical Plant power consumption by 5% permanently.
+research_inorg_007,Chemistry,research_inorg_004,,,,II,Produce,industrial_acids,300,units,Ceramic Catalyst Supports,ceramic,Reduces Chemical Plant power consumption by 5% permanently.
 research_inorg_008,Chemistry,research_inorg_006,,,,III,Run,Precision Reagent Handling,15,turns,Precision Reagent Handling,flask,Reduces Chemical Plant maintenance by 10% for 20 turns.
 research_biochem_001,Farming & Forestry,,,,,I,Build,Farm,3,units,Sterile Fermentation,ferment,Increases Farm output by 5% permanently.
 research_biochem_002,Chemistry,,,,,I,Sell,Bioplastics,250,units,Enzyme Screening,enzyme,Increases the sale price of plastics by 5% for 20 turns.
 research_biochem_003,Chemistry,research_biochem_002,,,,II,Run,Bioreactor,12,turns,Bioplastic Precursors,bio,Reduces Farm maintenance by 10% for 20 turns.
-research_biochem_004,Recycling,,,,,II,Own,land,5,units,Wastewater Bioreactors,water,Unlocks new recipe: Water Treatment (28 Pure Water).
+research_biochem_004,Recycling,,,,,II,Produce,pure_water,400,units,Wastewater Bioreactors,water,Unlocks new recipe: Water Treatment (28 Pure Water).
 research_biochem_005,Chemistry,research_biochem_003,,,,III,Run,Cell Culture Automation,15,turns,Cell Culture Automation,culture,Reduces Farm labour by 5% permanently.
 research_mfg_001,Manufacturing,,,,,I,Build,Factory,3,units,Interchangeable Tooling,tools,Reduces Assembly Plant labour by 5% permanently.
 research_mfg_002,Manufacturing,research_mfg_001,,,,I,Sell,Motors,250,units,Precision Assembly Lines,assembly,Unlocks new recipe: V8 Engine Manufacturing (6 Engine).
 research_mfg_003,Manufacturing,research_mfg_002,,,,II,Run,Factory,12,turns,Motor Winding Automation,motor,Unlocks new recipe: Heavy Electric Motor (6 Large Engine).
-research_mfg_004,Manufacturing,research_mfg_001,,,,II,Own,land,5,units,Composite Panel Pressing,press,Unlocks new recipe: Lightweight Car Bodies (10 Car Body).
+research_mfg_004,Manufacturing,research_mfg_001,,,,II,Produce,car_body,250,units,Composite Panel Pressing,press,Unlocks new recipe: Lightweight Car Bodies (10 Car Body).
 research_mfg_005,Manufacturing,research_mfg_003,,,,III,Run,Modular Factory Cells,15,turns,Modular Factory Cells,cell,Reorganises production into modular factory cells (prerequisite tech).
 research_hcpower_001,Power Production,,,,,I,Build,Coal Power Plant,3,units,Pulverized Coal Boilers,boiler,Increases Coal Power Plant output by 5% permanently.
 research_hcpower_002,Power Production,research_hcpower_001,,,,I,Sell,Power,3500,units,Steam Turbine Upgrades,turbine,Increases Coal Power Plant output by 25% for 25 turns.
-research_hcpower_003,Power Production,research_hcpower_001,,,,II,Own,land,5,units,Flue Heat Recovery,heat,Reduces Coal Power Plant power consumption by 10% permanently.
+research_hcpower_003,Power Production,research_hcpower_001,,,,II,Run,Coal Power Plant,12,turns,Flue Heat Recovery,heat,Reduces Coal Power Plant power consumption by 10% permanently.
 research_hcpower_004,Power Production,research_hcpower_005,,,,III,Run,Grid Synchronous Generation,15,turns,Grid Synchronous Generation,grid,Reduces all power plants maintenance by 8% for 20 turns.
 research_renew_001,Power Production,,,,,I,Build,Solar Farm,3,units,Utility Solar Arrays,solar,Increases Solar Farm output by 5% permanently.
 research_renew_002,Power Production,research_renew_001,,,,I,Sell,Power,5000,units,Onshore Wind Control,wind,Increases Onshore Wind Farm output by 5% permanently.
 research_renew_003,Power Production,research_renew_002,,,,II,Run,Wind Farm,12,turns,Battery Balancing,battery,Increases Battery Electric Storage output by 10% permanently.
-research_renew_004,Power Production,research_renew_001,,,,II,Own,land,5,units,Hydro Intake Design,hydro,Increases Hydroelectric Dam output by 10% permanently.
+research_renew_004,Power Production,research_renew_001,,,,II,Build,hydro_power_plant,2,units,Hydro Intake Design,hydro,Increases Hydroelectric Dam output by 10% permanently.
 research_renew_005,Power Production,research_renew_003,,,,III,Run,Renewable Dispatch Forecasting,15,turns,Renewable Dispatch Forecasting,forecast,Increases all renewable power plant output by 25% for 15 turns.
 research_infra_001,Infrastructure,,,,,I,Build,Roads,3,units,Reinforced Roadbeds,road,Increases road throughput by 25% permanently.
 research_infra_002,Infrastructure,research_infra_001,,,,I,Sell,Concrete,250,units,Pipe Trench Standards,pipe,Reduces Pipeworks maintenance by 10% for 20 turns.
 research_infra_003,Infrastructure,research_infra_002,,,,II,Use Infrastructure,pipes,3,80% for 5 turns,High Pressure Mains,main,Increases pipe throughput by 25% permanently.
-research_infra_004,Infrastructure,research_infra_001,,,,II,Own,land,5,units,Substation Layouts,substation,Increases cable throughput by 25% permanently.
+research_infra_004,Infrastructure,research_infra_001,,,,II,Build,Cables,3,units,Substation Layouts,substation,Increases cable throughput by 25% permanently.
 research_infra_005,Infrastructure,research_infra_003,,,,III,Use Infrastructure,Utility Corridor,10,80% for 5 turns,Integrated Utility Corridors,corridor,Reduces all buildings' maintenance by 5% for 20 turns.
 research_logi_001,Logistics,,,,,I,Sell Through Ports,ports,500,units,Depot Scheduling,depot,Reduces road and rail transport cost by 10% permanently.
 research_logi_011,Logistics,,,,,I,Sell Through Ports,ports,5000,units,Groupage Contracts,depot,Reduces the port ad valorem fee by 10% permanently.
 research_logi_002,Logistics,research_logi_011,,,,II,Sell Through Every Port,ports,500,units,Multimodal Containerized Freight,container,Reduces the port ad valorem fee by 10% permanently.
 research_logi_003,Logistics,research_logi_001,,,,II,Use Infrastructure,Roads,5,80% throughput,Route Optimization,route,Increases road throughput by 25% permanently.
-research_logi_004,Logistics,research_logi_001,,,,II,Own,land,5,units,Cold Chain Handling,cold,Reduces transport cost by 5% for 20 turns.
+research_logi_004,Logistics,research_logi_001,,,,II,Use Infrastructure,Roads,3,80% throughput,Cold Chain Handling,cold,Reduces transport cost by 5% for 20 turns.
 research_logi_005,Logistics,research_logi_003,,,,III,Build,Roads,5,units,Autonomous Dispatch Rooms,dispatch,Reduces Roads and Railways labour by 10% permanently.
 research_markets_001,People & Management,,,,,I,Fulfil Special Orders,special_order,3,orders,Spot Price Reporting,price,Increases special-order premiums by 25% of their current bonus permanently.
 research_markets_002,People & Management,research_markets_001,,,,I,Sell,Steel,250,units,Forward Contracts,contract,Increases the sale price of steel by 5% for 20 turns.
@@ -68,7 +68,7 @@ research_people_009,People & Management,,,,,III,Build,any,100,units,Fourth Advis
 research_people_010,People & Management,,,,,III,Sustain,1000+ profit/turn,3,turns,Fifth Advisor Seat,team,Unlocks a 5th advisor seat after 3 turns above 1000 profit/turn.
 research_people_011,People & Management,research_people_002,,,,II,Run Profitable,any,5,10 turns,Executive Search,search,Opens the remaining advisor posts for hire.
 research_mining_006,Extraction,,,,,I,Run Profitable,mine,3,buildings,Mining Mastery,+5%,Increases output of all mines by 5% for 30 turns.
-research_mining_007,Extraction,research_mining_004,,,,II,Produce,ree_ore,500,units,Rare Vein Prospecting,rare,Increases rare earth and alloy ore mining output by 15% permanently.
+research_mining_007,Extraction,,,,,I,Produce,ree_ore,500,units,Rare Vein Prospecting,rare,Increases rare earth and alloy ore mining output by 15% permanently.
 research_mfg_006,Manufacturing,research_mfg_013,,,,II,Run L1,industrial_factory,3,20 turns,Conveyor Mass Assembly,level2,Unlocks upgrading Industrial Goods Factory to Level 2 for more output.
 research_renew_006,Power Production,research_renew_003,,,,III,Run,Battery,15,turns,Long Duration Storage,storage,Reduces building maintenance by 15% for 30 turns.
 research_mining_008,Extraction,,,,,I,Survey,deposits,2,deposits,Spectral Crystallography,survey,+1 adjacent tile revealed when surveying
@@ -82,8 +82,8 @@ research_petro_011,Extraction,research_petro_010,,,,III,Produce,crude_oil,1000,u
 research_petro_012,Extraction,research_petro_007,,,,III,Run Profitable,offshore_oil_platform,3,buildings,Multiphase Subsea Boosting,pump,Increases Offshore Oil Platform output by 10% permanently.
 research_petro_013,Extraction,research_petro_010,,,,III,Produce,crude_oil,1000,units,Enhanced Oil Recovery,eor,Increases all oil extraction output by 20% for 30 turns.
 research_petro_014,Extraction,research_petro_007,,,,III,Run,Offshore Platform,12,turns,Remote Platform Operations,remote,Reduces oil extraction labour by 30% permanently.
-research_metal_005,Metallurgy,research_metal_004,,,,III,Run,Electrolyser,15,turns,Hydrogen Direct Reduction,h2steel,Pioneers hydrogen-based ironmaking (prerequisite tech).
-research_mining_010,Extraction,research_mining_007,,,,II,Produce,bauxite_ore,500,units,Composite Drill Bits,drill,"Increases rare earth, alloy, sulphur and bauxite mining output by 15% permanently."
+research_metal_005,Metallurgy,research_metal_004,,,,III,Produce All,hydrogen|iron_ingots,200|500,units,Hydrogen Direct Reduction,h2steel,Unlocks new recipe: Direct Reduced Iron Smelting (84 Iron Ingots).
+research_mining_010,Extraction,,,,,I,Produce,bauxite_ore,500,units,Composite Drill Bits,drill,"Increases rare earth, alloy, sulphur and bauxite mining output by 15% permanently."
 research_biochem_006,Farming & Forestry,,,,,II,Run,Forest,12,turns,Sustainable Forestry,forest,Unlocks new recipe: Sustainable Forestry - Biomass (24 Biomass).
 research_mfg_007,Manufacturing,research_mfg_002,,,,II,Sell,Copper Pipe,250,units,Precision Tube Drawing,tube,Unlocks new recipe: Copper Pipe Manufacturing (24 Copper Pipe).
 research_mining_011,Extraction,research_mining_013,,,,II,Run L1,mine,3,20 turns,In-Pit Crushing,level2,Unlocks upgrading Mine to Level 2 for more output.
@@ -108,8 +108,8 @@ research_mining_014,Extraction,,,,,I,Build,mine,7,units,Bulk Haulage Fleets,truc
 research_mining_015,Extraction,,,,,I,Build,mine,12,units,Continuous Surface Miners,miner,Reduces Mine power consumption by 20% permanently.
 research_mining_016,Extraction,,,,,I,Build,mine,12,units,Block Caving,cave,Reduces Mine maintenance by 20% permanently.
 research_metal_010,Metallurgy,research_metal_003,,,,III,Produce,steel,500,units,Pulverised Carbon Injection,pci,Reduces Furnace power consumption by 20% permanently.
-research_metal_011,Metallurgy,,,,,I,Build,furnace,7,units,Oxygen-Enriched Blast,furnace,Unlocks new recipe: Basic Oxygen Steelmaking (24 Steel).
-research_metal_012,Metallurgy,,,,,I,Produce All,chlorine|aluminium,300|400,units,Bauxite Carbochlorination,furnace,Unlocks new recipe: Bauxite Carbochlorination (20 Aluminium).
+research_metal_011,Metallurgy,,,,,I,Produce,oxygen,100,units,Oxygen-Enriched Blast,furnace,Unlocks new recipe: Basic Oxygen Steelmaking (24 Steel).
+research_metal_012,Metallurgy,,,,,I,Produce,chlorine,300,units,Bauxite Carbochlorination,furnace,Unlocks new recipe: Bauxite Carbochlorination (20 Aluminium).
 research_metal_013,Metallurgy,research_metal_004,,,,III,Produce,steel,500,units,Scrap Preheating Towers,preheat,Reduces Electric Arc Furnace power consumption by 20% permanently.
 research_metal_014,Metallurgy,,,,,I,Build,eaf,3,units,Foamy Slag Practice,slag,Increases Electric Arc Furnace output by 5% permanently.
 research_metal_015,Metallurgy,research_metal_014,,,,II,Run L1,eaf,3,20 turns,Twin-Shell Furnaces,level2,Unlocks upgrading Electric Arc Furnace to Level 2 for more output.
@@ -118,14 +118,14 @@ research_mfg_013,Manufacturing,,,,,I,Build,industrial_factory,3,units,High-Volum
 research_mfg_014,Manufacturing,,,,,I,Build,industrial_factory,7,units,Multi-Shift Production,shift,Increases Industrial Goods Factory output by 5% permanently.
 research_mfg_015,Manufacturing,research_mfg_005,,,,III,Run,Factory,15,turns,Lights-Out Automation,labour,Reduces High Tech Manufactory and Assembly Plant labour by 20% permanently.
 research_mfg_016,Manufacturing,research_mfg_002,,,,III,Build,high_tech_manufactory,3,units,Flexible Manufacturing Cells,fmc,"Reduces Industrial Goods Factory, Assembly Plant and High Tech Manufactory labour by 10% permanently."
-research_mfg_017,Manufacturing,,,,,I,Build,assembly_plant,3,units,Just-in-Time Sequencing,jit,"Reduces Industrial Goods Factory, Assembly Plant and High Tech Manufactory maintenance by 15% permanently."
+research_mfg_017,Manufacturing,,,,,I,Build,assembly_plant,3,units,Asset Integrity Management Cycle,jit,"Reduces Industrial Goods Factory, Assembly Plant and High Tech Manufactory maintenance by 15% permanently."
 research_mfg_018,Manufacturing,research_mfg_001,,,,II,Build,assembly_plant,3,units,Modular Sub-Assembly,module,Increases Assembly Plant output by 5% permanently.
 research_mfg_019,Manufacturing,,,,,I,Build,assembly_plant,7,units,Robotic Final Assembly,robot,Reduces Assembly Plant labour by 10% for 20 turns.
 research_mfg_020,Manufacturing,,,,,I,Build,industrial_factory,12,units,Automated Guided Assembly,agv,Reduces Industrial Goods Factory labour by 5% permanently.
-research_mfg_021,Manufacturing,,,,,I,Run,high_tech_manufactory,3,20 turns,Class-100 Cleanrooms,fab,Increases High Tech Manufactory output by 5% permanently.
+research_mfg_021,Manufacturing,,,,,I,Build,high_tech_manufactory,3,units,Class-100 Cleanrooms,fab,Unlocks new recipe: Semiconductor Fabbing (5 CPU).
 research_mfg_022,Manufacturing,research_mfg_001,,,,II,Build,high_tech_manufactory,3,units,Advanced Photolithography,litho,Unlocks new recipe: Fabless Semiconductors (3 CPU).
 research_mfg_023,Manufacturing,research_mfg_005,,,,III,Run Profitable,high_tech_manufactory,3,buildings,Atomic Layer Deposition,ald,Increases High Tech Manufactory output by 5% permanently. Unlocks new recipe: Durable Perovskite Solar Panels.
-research_mfg_024,Manufacturing,,,,,I,Build,high_tech_manufactory,3,units,Fully-Automated Fabs,fab,Increases High Tech Manufactory output by 10% permanently.
+research_mfg_024,Manufacturing,,,,,I,Run,high_tech_manufactory,3,20 turns,Fully-Automated Fabs,fab,Increases High Tech Manufactory output by 10% permanently.
 research_inorg_013,Chemistry,research_inorg_008,,,,III,Run Profitable,chem_plant,3,buildings,Continuous-Flow Reactors,cfr,Increases Chemical Plant output by 5% permanently.
 research_inorg_014,Chemistry,,,,,I,Build,chem_plant,3,units,Process Intensification,flask,Unlocks new recipe: Nitrogen Air Separation (30 Nitrogen).
 research_inorg_015,Chemistry,,,,,I,Build,chem_plant,7,units,Deep Catalytic Optimisation,catalyst,Reduces Chemical Plant power consumption by 10% permanently.
@@ -224,7 +224,7 @@ research_metal_017,Metallurgy,research_metal_001,,,,II,Produce,alloy_ingots,400,
 research_metal_018,Metallurgy,research_metal_004,,,,III,Produce,polysilicon,600,units,Czochralski Crystal Growth,glass,Unlocks new recipe: Fluidised Bed Reactor + CZ Silicon (6 Polysilicon).
 research_inorg_024,Chemistry,research_inorg_004,,,,II,Produce,hydrogen,400,units,Membraneless Electrolysis,cell,Unlocks new recipe: Membraneless Electrolysis (22 Hydrogen and 11 Oxygen).
 research_petro_019,Chemistry,research_petro_001,,,,II,Produce,fuels,400,units,Fischer-Tropsch Synthesis,oil,Unlocks new recipe: Coal Liquefaction (8 Fuels).
-research_petro_020,Chemistry,research_petro_001,,,,II,Produce,hydrogen,400,units,Methane Pyrolysis,gas,Unlocks new recipe: Methane Pyrolysis (16 Hydrogen).
+research_petro_020,Chemistry,,,,,II,Produce,hydrogen,400,units,Methane Pyrolysis,gas,Unlocks new recipe: Methane Pyrolysis (16 Hydrogen).
 research_petro_021,Chemistry,,,,,I,Run,Petrochemical Refinery,10,turns,Specialised Petrochemical Pipelines,manifold,Increases Petrochemical Refinery output by 5% permanently.
 research_biochem_009,Farming & Forestry,,,,,I,Produce,biomass,250,units,Energy Crop Cultivation,ferment,Unlocks new recipe: Sustainable Biomass Production (10 Biomass).
 research_mining_017,Extraction,,,,,I,Produce,crude_oil,250,units,Shale Oil Fracturing,frack,Unlocks new recipe: Shale Oil Fracking (12 Crude Oil).
