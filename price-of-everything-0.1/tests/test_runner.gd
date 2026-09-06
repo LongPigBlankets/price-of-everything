@@ -15470,6 +15470,26 @@ func _test_policy_state() -> void:
 		and str((sub_notice.get("choices", [])[0] as Dictionary).get("id", "")) == "understood",
 		"policy: subsidy notice has the single Understood choice")
 	_check(str(sub_notice.get("headline", "")).begins_with("The government wants"), "policy: subsidy notice carries the owner headline")
+	var saved_copy_rules := MatchState.ruleset.duplicate(true)
+	var saved_copy_pending := DecisionState.pending_queue.duplicate(true)
+	for timeline in ["campaign", "demo_itch"]:
+		MatchState.ruleset["policy_timeline"] = timeline
+		DecisionState.pending_queue = [{"uid": "copy_notice", "def_id": "carbon_tax_notice",
+			"target": {"scope": "company", "name": "Company"}}]
+		var copy_view := DecisionState.pending_view()
+		_check(str(copy_view.headline).contains("turn " + str(PolicyState.beat("ramp_first")))
+			and str(copy_view.headline).contains("turn " + str(PolicyState.beat("p1"))),
+			"policy copy uses the active levy dates: " + timeline)
+		_check(str(copy_view.choices[0].consequence).contains(str(PolicyState.beat("ramp_first")))
+			and not str(copy_view.choices[0].consequence).contains("{levy"),
+			"policy consequence resolves dates in both rulesets")
+		DecisionState.pending_queue[0].def_id = "green_subsidy_notice"
+		copy_view = DecisionState.pending_view()
+		_check(str(copy_view.headline).contains("turn " + str(PolicyState.beat("subsidy"))),
+			"subsidy copy uses the active start date: " + timeline)
+	MatchState.ruleset = saved_copy_rules
+	DecisionState.pending_queue = saved_copy_pending
+
 	var end_notice: Dictionary = DecisionState.DECISION_DEFINITIONS.get("green_subsidy_end_notice", {})
 	_check(not end_notice.is_empty() and int(end_notice.get("priority", 99)) == DecisionState.PRIORITY_STORY
 		and (end_notice.get("choices", []) as Array).size() == 1,

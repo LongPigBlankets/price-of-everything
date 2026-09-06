@@ -137,8 +137,9 @@ func show_preview(tile_id: String, building_id: String, recipe_id: String) -> vo
 	var forecast: Dictionary = data.forecast
 	if not (forecast.get("phases", []) as Array).is_empty():
 		content.add_child(DS.section_rule())
-		content.add_child(_label("Timeline of Revenue", 17, DS.PALETTE.ACCENT))
-		content.add_child(ForecastTable.timeline(forecast))
+		if ForecastTable.show_balance_impact():
+			content.add_child(_label("Timeline of Revenue", 17, DS.PALETTE.ACCENT))
+			content.add_child(ForecastTable.timeline(forecast))
 		content.add_child(ForecastTable.payback(forecast))
 	_ignore_mouse(content)
 	card.reset_size()

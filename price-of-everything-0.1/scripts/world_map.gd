@@ -2669,7 +2669,7 @@ func _on_construction_completed_deposit_check(instance_id: String, tile_id: Stri
 	else:
 		_show_deposit_dialog(
 			"No deposit found",
-			"This tile has no deposit of %s so it will not run. Surveying could have warned us this was the case." % _good_display_for_deposit(token),
+			"There is no %s deposit on this tile. This building cannot produce with its current recipe." % _good_display_for_deposit(token),
 			[{"id": "demolish", "label": "Demolish"}])
 
 func _on_deposit_exhausted(tile_id: String, token: String) -> void:
@@ -2680,7 +2680,7 @@ func _on_deposit_exhausted(tile_id: String, token: String) -> void:
 	_deposit_dialog_target = _building_with_deposit_token(tile_id, token)
 	_show_deposit_dialog(
 		"Deposit exhausted",
-		"The %s deposit here has run out — this building can no longer produce." % _good_display_for_deposit(token),
+		"The %s deposit is exhausted. This building cannot produce with its current recipe." % _good_display_for_deposit(token),
 		[{"id": "demolish", "label": "Demolish"}, {"id": "change", "label": "Change Recipe"}])
 
 # The player building on `tile_id` whose recipe draws on the given deposit token.

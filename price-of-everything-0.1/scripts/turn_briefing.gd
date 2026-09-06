@@ -231,7 +231,7 @@ func _bankruptcy_item() -> Dictionary:
 		"id": "alert:bankruptcy", "kind": "critical", "section": "alerts",
 		"severity": "critical", "dismissible": true, "magnitude": runway,
 		"title": "Bankruptcy looming", "icon": "warn",
-		"body": "Cash plus remaining borrowing capacity is nearly exhausted. A shortfall can no longer be bridged past this — if money and credit run out while profit stays negative, the company fails.",
+		"body": "Cash and borrowing capacity are nearly exhausted. Reduce losses or raise cash to avoid bankruptcy.",
 		"rows": [
 			["Cash on hand", "£%.0f" % MatchState.money, "bad" if MatchState.money < 0.0 else ""],
 			["Borrowing capacity left", "£%.0f" % LoanState.available_capacity(), ""],
@@ -287,22 +287,22 @@ func _power_capped_item() -> Dictionary:
 		var d2: Dictionary = capped[iid2]
 		listed.append({
 			"instance_id": str(iid2), "tile_id": str(d2["tile_id"]),
-			"why": "output blocked — tile cables full",
+			"why": "output blocked: cable capacity reached",
 		})
 	var total := capped.size()
 	if _alert_dismissed.has("alert:power_capped") and total <= int(_alert_dismissed["alert:power_capped"]):
 		return {}
 	var advice := "Upgrade the cables on those tiles to raise the export cap, or move generation to a tile with spare capacity."
 	if at_max == tiles.size():
-		advice = "Those tiles are already at the maximum cable level — further generation there cannot be exported at all."
+		advice = "These tiles already have maximum cable capacity. Move generation to another tile."
 	return {
 		"id": "alert:power_capped", "kind": "critical", "section": "alerts",
 		"severity": "warning", "dismissible": true, "magnitude": total, "icon": "bolt",
 		"title": "%d power plant%s capped by cables" % [total, "" if total == 1 else "s"],
-		"body": "These plants are not short of anything — their tile cannot export what they generate, so the power is thrown away while they still cost maintenance. " + advice,
+		"body": "Cable capacity is limiting these plants. They still incur maintenance costs. " + advice,
 		"rows": [
 			["Plants blocked", "%d" % total, "warn"],
-			["Generation going nowhere", "%d MW / turn" % mw_idle, "warn" if mw_idle > 0 else ""],
+			["Blocked generation", "%d MW / turn" % mw_idle, "warn" if mw_idle > 0 else ""],
 			["Tiles at maximum cable level", "%d of %d" % [at_max, tiles.size()], "bad" if at_max > 0 else ""],
 		],
 		"list": listed,
@@ -345,8 +345,7 @@ func _starved_item() -> Dictionary:
 		"severity": "critical" if not power_starved.is_empty() else "warning",
 		"dismissible": true, "magnitude": total, "icon": "box",
 		"title": "%d building%s starved" % [total, "" if total == 1 else "s"],
-		"body": "Starved buildings ran nothing this turn but still pay maintenance%s." % \
-			(" — %d lack power, %d are missing inputs" % [power_starved.size(), input_starved.size()] if power_starved.size() > 0 and input_starved.size() > 0 else ""),
+		"body": "These buildings could not produce this turn because power or inputs were missing. Maintenance costs still apply.",
 		"rows": [
 			["Starved of power", "%d building%s" % [power_starved.size(), "" if power_starved.size() == 1 else "s"], "bad" if power_starved.size() > 0 else ""],
 			["Starved of inputs", "%d building%s" % [input_starved.size(), "" if input_starved.size() == 1 else "s"], "warn" if input_starved.size() > 0 else ""],
@@ -414,7 +413,7 @@ func _storage_full_item() -> Dictionary:
 		"dismissible": true, "magnitude": magnitude, "icon": "gauge",
 		"tiles": tiles_affected.keys(),
 		"title": "Storage full on %d tile%s" % [tiles_affected.size(), "" if tiles_affected.size() == 1 else "s"],
-		"body": "Deliveries can't unload into a full stockpile — they wait outside and retry each turn while buildings starve. Free space (sell surplus, move goods) or expand the warehouse from the tile's Stockpile tab.",
+		"body": "Storage is full. Deliveries are waiting to unload. Sell or move goods, or expand storage from the Stockpile tab.",
 		"rows": [
 			["Goods waiting to unload", "%d unit%s" % [held_total, "" if held_total == 1 else "s"], "bad" if held_total > 0 else ""],
 			["Orders reduced to fit storage", "%d unit%s" % [capped_units, "" if capped_units == 1 else "s"], "warn" if capped_units > 0 else ""],
@@ -454,7 +453,7 @@ func _storage_undersized_item() -> Dictionary:
 		"id": "alert:storage_undersized", "kind": "critical", "section": "alerts",
 		"severity": "critical", "dismissible": true, "magnitude": shortfall, "icon": "box",
 		"title": title,
-		"body": body + " Input buffers, local intermediates and outputs need more room than the warehouse holds, so deliveries will jam. Expand the warehouse (Stockpile tab), enable Sell all Surplus, or split the chain across tiles.",
+		"body": body + " Expand storage from the Stockpile tab, sell surplus goods, or move some production to another tile.",
 		"rows": [
 			["Working set over capacity", "%d unit%s" % [shortfall, "" if shortfall == 1 else "s"], "bad"],
 			["Tiles affected", "%d" % rows.size(), ""],
@@ -500,9 +499,8 @@ func _deposit_running_out_item() -> Dictionary:
 		"severity": "warning", "dismissible": true, "magnitude": rows.size(),
 		"icon": "warn", "icon_good_id": str(soonest.get("good_id", "")),
 		"title": title,
-		"body": "%s has about %d turn%s of %s left (%d units at %d/turn). When it empties the mine stops and the chain starts BUYING what it used to dig, which lands as a step up in the input bill. Site a replacement mine on another deposit now — construction takes turns you won't have once this one is dry." % [
-			_tile_display(str(soonest.get("tile_id", ""))), turns, "" if turns == 1 else "s",
-			token, int(soonest.get("remaining", 0)), int(soonest.get("per_turn", 0))],
+		"body": "The %s deposit at %s is nearly exhausted. Build a replacement mine before production stops." % [
+			token, _tile_display(str(soonest.get("tile_id", "")))],
 		"rows": [
 			["Turns of ore left", "%d" % turns, "warn"],
 			["Remaining", "%d unit%s" % [int(soonest.get("remaining", 0)), "" if int(soonest.get("remaining", 0)) == 1 else "s"], ""],
@@ -514,7 +512,7 @@ func _deposit_running_out_item() -> Dictionary:
 
 func _tile_display(tile_id: String) -> String:
 	var label := str(Catalog.tile_name(tile_id))
-	return label if label != "" else tile_id
+	return label if label != "" else str(Catalog.tile_label(tile_id))
 
 ## Input orders the market pipeline could not fully place for CASH last turn
 ## (Production.last_turn_summary.input_orders_short). Silent before 2026-07-09:
@@ -546,7 +544,7 @@ func _input_cash_short_item() -> Dictionary:
 		"severity": "critical" if skipped > 0 else "warning",
 		"dismissible": true, "magnitude": short.size(), "icon": "coin",
 		"title": "%d input order%s short on cash" % [short.size(), "" if short.size() == 1 else "s"],
-		"body": "The market pipeline couldn't afford full input orders — remote tiles need (transport lead + 1) turns of inputs as working capital. Buildings will starve when the shortfall reaches them (≈£%d more needed)." % int(ceil(short_cost)),
+		"body": "There was not enough cash to buy all required inputs. Production may stop when stock runs out. About £%d more is needed." % int(ceil(short_cost)),
 		"rows": [
 			["Orders skipped entirely", "%d" % skipped, "bad" if skipped > 0 else ""],
 			["Extra cash needed", "£%d" % int(ceil(short_cost)), "warn"],
@@ -579,7 +577,7 @@ func _input_splice_item() -> Dictionary:
 		"severity": "info",
 		"dismissible": true, "magnitude": splices.size(), "icon": "truck",
 		"title": "%d input%s spliced: local production + market" % [splices.size(), "" if splices.size() == 1 else "s"],
-		"body": "These inputs are partly covered by same-tile production, with the market topping up the rest. If local output dips, the top-up takes the full transport lead to catch up.",
+		"body": "Local production supplies part of these inputs. The rest are bought from the market and take time to arrive.",
 		"rows": [],
 		"list": listed,
 		"list_more": maxi(0, splices.size() - listed.size()),

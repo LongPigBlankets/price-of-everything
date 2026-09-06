@@ -1469,16 +1469,17 @@ func _render_confirm_v3() -> void:
 		_content.add_child(_v3_priority_supply_band())
 
 	if _locked_tile_id != "" and not (_v3_forecast.get("phases", []) as Array).is_empty():
-		_content.add_child(_section_label("TIMELINE OF REVENUE"))
-		if bool(_v3_forecast.get("no_supply", false)):
-			var warn := Label.new()
-			warn.text = "No supply route on this tile for %s — it would sit idle." \
-				% ", ".join(PackedStringArray(_v3_forecast.get("input_names", [])))
-			warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			warn.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
-			warn.add_theme_color_override("font_color", RED)
-			_content.add_child(warn)
-		_content.add_child(_v3_cash_timeline())
+		if BuildForecastTable.show_balance_impact():
+			_content.add_child(_section_label("TIMELINE OF REVENUE"))
+			if bool(_v3_forecast.get("no_supply", false)):
+				var warn := Label.new()
+				warn.text = "No supply route on this tile for %s — it would sit idle." \
+					% ", ".join(PackedStringArray(_v3_forecast.get("input_names", [])))
+				warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+				warn.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
+				warn.add_theme_color_override("font_color", RED)
+				_content.add_child(warn)
+			_content.add_child(_v3_cash_timeline())
 		_content.add_child(_v3_cash_facts_row())
 
 	_content.add_child(_section_label("MATERIALS"))
@@ -2251,7 +2252,7 @@ func _v3_build_footer() -> void:
 	cash_box.custom_minimum_size = Vector2(112, 0)
 	cash_box.add_theme_constant_override("separation", 1)
 	_footer.add_child(cash_box)
-	cash_box.visible = _locked_tile_id != ""
+	cash_box.visible = _locked_tile_id != "" and BuildForecastTable.show_balance_impact()
 	var cash_caption := Label.new()
 	cash_caption.text = "CASH AFTER"
 	cash_caption.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
@@ -3185,6 +3186,10 @@ func _add_forecast_section() -> void:
 	var data: Dictionary = BuildForecast.project(building_id, recipe_id, _locked_tile_id)
 	var phases: Array = data.get("phases", [])
 	if phases.is_empty():
+		return
+
+	if not BuildForecastTable.show_balance_impact():
+		_content.add_child(BuildForecastTable.payback(data))
 		return
 
 	_content.add_child(_section_label("TIMELINE OF REVENUE"))

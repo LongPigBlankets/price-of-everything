@@ -353,7 +353,7 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 
 	# 1) critical fault / restarting / all-clear
 	if exhausted:
-		rows.append(_row("bad", "warn", "Deposit exhausted", "The deposit here is mined out — this building can no longer produce."))
+		rows.append(_row("bad", "warn", "Deposit exhausted", "The deposit is exhausted. This building cannot produce with its current recipe."))
 	elif not _deposit_runway(iid).is_empty():
 		# AMBER: the deposit is nearly gone. Warned rather than faulted — the mine is still
 		# producing normally today. Exhaustion used to arrive with no notice at all: the

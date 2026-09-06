@@ -107,5 +107,31 @@ func _ready() -> void:
 	check(hover.card.visible, "Preview returns when moving back to the map")
 	BuildMode.exit_build_mode()
 	check(not hover.card.visible and not hover.is_processing(), "Leaving build mode hides the preview and stops its updates")
+	# The saved demo flag hides forecasts in both construction flows, while the
+	# campaign keeps the full table. Construction price quotes remain visible.
+	var saved_rules := MatchState.ruleset.duplicate(true)
+	MatchState.ruleset["victory_set"] = "demo_itch"
+	hover.show_preview("tile_5_10", "b_002", "r_005")
+	await settle()
+	check(hover.card.find_child("RevenueTimeline", true, false) == null, "Demo hover hides balance impact")
+	check(hover.card.find_child("ForecastPayback", true, false) != null, "Demo hover retains payback")
+	if DisplayServer.get_name() != "headless":
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png("/tmp/construction_hover_demo.png")
+	hover.card.hide()
+	panel.open_for_tile("tile_5_10", {"type": "urban"})
+	panel._on_recipe_pressed("b_002", "r_005")
+	await settle()
+	check(panel.find_child("RevenueTimeline", true, false) == null, "Demo confirm hides balance impact")
+	check(panel.find_child("ForecastPayback", true, false) != null, "Demo confirm retains payback")
+	check(not panel.find_child("BuildCostValue", true, false).is_visible_in_tree(), "Demo confirm hides cash-after balance")
+	if DisplayServer.get_name() != "headless":
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png("/tmp/construction_confirm_demo.png")
+	panel.hide()
+	MatchState.ruleset = saved_rules
+	hover.show_preview("tile_5_10", "b_002", "r_005")
+	check(hover.card.find_child("RevenueTimeline", true, false) != null, "Campaign balance impact remains available")
+
 	print("[construction_hover] %d checks, %d failures" % [checks, failures])
 	get_tree().quit(0 if failures == 0 else 1)

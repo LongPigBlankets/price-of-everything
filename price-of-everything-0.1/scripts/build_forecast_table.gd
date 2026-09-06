@@ -3,6 +3,10 @@ extends PanelContainer
 const Forecast := preload("res://scripts/build_forecast.gd")
 const PHASE_NAMES := {"completes": "Build completes", "shipping": "First production", "selling": "Revenue arrives"}
 
+## Use the same saved demo flag as the other restricted UI surfaces.
+static func show_balance_impact() -> bool:
+	return str(MatchState.ruleset.get("victory_set", "")) != "demo_itch"
+
 func set_forecast(data: Dictionary) -> void:
 	for child in get_children():
 		remove_child(child)
