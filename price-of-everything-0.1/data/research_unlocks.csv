@@ -30,11 +30,11 @@ research_biochem_002,Chemistry,,,,,I,Sell,Bioplastics,250,units,Enzyme Screening
 research_biochem_003,Chemistry,,,,,II,Run,Bioreactor,12,turns,Bioplastic Precursors,bio,Reduces Farm maintenance by 10% for 20 turns.
 research_biochem_004,Recycling,,,,,II,Produce,pure_water,400,units,Wastewater Bioreactors,water,Unlocks new recipe: Water Treatment (28 Pure Water).
 research_biochem_005,Chemistry,,,,,III,Run,Cell Culture Automation,15,turns,Cell Culture Automation,culture,Reduces Farm labour by 5% permanently.
-research_mfg_001,Manufacturing,,,,,I,Build,Factory,3,units,Interchangeable Tooling,tools,Reduces Assembly Plant labour by 5% permanently.
-research_mfg_002,Manufacturing,research_mfg_001,,,,I,Sell,Motors,250,units,Precision Assembly Lines,assembly,Unlocks new recipe: V8 Engine Manufacturing (6 Engine).
-research_mfg_003,Manufacturing,research_mfg_002,,,,II,Run,Factory,12,turns,Motor Winding Automation,motor,Unlocks new recipe: Heavy Electric Motor (6 Large Engine).
+research_mfg_001,Manufacturing,,,,,I,Build,Factory,3,units,Interchangeable Tooling,tools,Reduces Factory labour by 5% permanently.
+research_mfg_002,Manufacturing,research_mfg_001,,,,I,Produce,engine,150,units,Precision Machining,assembly,Unlocks new recipe: V8 Engine Manufacturing (6 Engine).
+research_mfg_003,Manufacturing,research_mfg_002,,,,II,Produce Any,large_engine|ev_car,250|150,units,Motor Winding Automation,motor,Unlocks new recipe: Heavy Electric Motor (6 Large Engine).
 research_mfg_004,Manufacturing,research_mfg_001,,,,II,Produce,car_body,250,units,Composite Panel Pressing,press,Unlocks new recipe: Lightweight Car Bodies (10 Car Body).
-research_mfg_005,Manufacturing,research_mfg_003,,,,III,Run,Modular Factory Cells,15,turns,Modular Factory Cells,cell,Reorganises production into modular factory cells (prerequisite tech).
+research_mfg_005,Manufacturing,research_mfg_003,,,,III,Run Same Tile,assembly_plant,5,buildings,Modular Factory Cells,cell,Increases Assembly Plant output by 5% permanently.
 research_hcpower_001,Power Production,,,,,I,Build,Coal Power Plant,3,units,Pulverized Coal Boilers,boiler,Increases Coal Power Plant output by 5% permanently.
 research_hcpower_002,Power Production,research_hcpower_001,,,,I,Sell,Power,3500,units,Steam Turbine Upgrades,turbine,Increases Coal Power Plant output by 25% for 25 turns.
 research_hcpower_003,Power Production,research_hcpower_001,,,,II,Run,Coal Power Plant,12,turns,Flue Heat Recovery,heat,Reduces Coal Power Plant power consumption by 10% permanently.
@@ -90,7 +90,7 @@ research_metal_005,Metallurgy,research_metal_004,,,,III,Produce All,hydrogen|iro
 research_mining_010,Extraction,,,,,I,Produce,bauxite_ore,500,units,Composite Drill Bits,drill,"Increases rare earth, alloy, sulphur and bauxite mining output by 15% permanently."
 research_mining_020,Extraction,,,,,I,Produce,copper_ore,500,units,Copper Bioleaching,copper,Increases copper ore mining output by 15% permanently.
 research_biochem_006,Farming & Forestry,,,,,II,Run,Forest,12,turns,Sustainable Forestry,forest,Unlocks new recipe: Sustainable Forestry - Biomass (24 Biomass).
-research_mfg_007,Manufacturing,research_mfg_002,,,,II,Sell,Copper Pipe,250,units,Precision Tube Drawing,tube,Unlocks new recipe: Copper Pipe Manufacturing (24 Copper Pipe).
+research_mfg_007,Manufacturing,research_mfg_002,,,,II,Produce,copper_pipe,250,units,Precision Tube Drawing,tube,Unlocks new recipe: Copper Pipe Manufacturing (24 Copper Pipe).
 research_mfg_040,Manufacturing,,,,,I,Produce,copper_ingots,250,units,Copper Pipe Moulding,pipe,Unlocks new recipe: Copper Pipe Moulding (27 Copper Pipe).
 research_mining_011,Extraction,research_mining_013,,,,II,Run Profitable,mine,5,buildings,In-Pit Crushing,level2,Unlocks upgrading Mine to Level 2 for more output.
 research_mining_012,Extraction,research_mining_011,,,,III,Run Profitable L2,mine,3,buildings,Autonomous Haul Systems,level3,Unlocks upgrading Mine to Level 3 for more output.
@@ -122,15 +122,15 @@ research_metal_015,Metallurgy,research_metal_014,,,,II,Run L1,eaf,3,20 turns,Twi
 research_metal_016,Metallurgy,,,,,I,Build,eaf,7,units,DC Arc Conversion,eaf,Reduces Electric Arc Furnace power consumption by 10% permanently.
 research_mfg_013,Manufacturing,,,,,I,Build,industrial_factory,3,units,High-Volume Press Lines,press,Increases Industrial Goods Factory output by 5% permanently.
 research_mfg_014,Manufacturing,,,,,I,Build,industrial_factory,7,units,Multi-Shift Production,shift,Increases Industrial Goods Factory output by 5% permanently.
-research_mfg_015,Manufacturing,research_mfg_005,,,,III,Run,Factory,15,turns,Lights-Out Automation,labour,Reduces High Tech Manufactory and Assembly Plant labour by 20% permanently.
-research_mfg_016,Manufacturing,research_mfg_002,,,,III,Build,high_tech_manufactory,3,units,Flexible Manufacturing Cells,fmc,"Reduces Industrial Goods Factory, Assembly Plant and High Tech Manufactory labour by 10% permanently."
+research_mfg_015,Manufacturing,research_mfg_005,,,,III,Run Distinct Recipes,high_tech_manufactory,5,recipes,Lights-Out Automation,labour,Reduces High Tech Manufactory and Assembly Plant labour by 20% permanently.
+research_mfg_016,Manufacturing,research_mfg_024,,,,III,Run Multiple,industrial_factory|assembly_plant|high_tech_manufactory,2|2|2,10 turns,Flexible Manufacturing Cells,fmc,"Reduces Industrial Goods Factory, Assembly Plant and High Tech Manufactory labour by 10% permanently."
 research_mfg_017,Manufacturing,,,,,I,Build,assembly_plant,3,units,Asset Integrity Management Cycle,jit,"Reduces Industrial Goods Factory, Assembly Plant and High Tech Manufactory maintenance by 15% permanently."
-research_mfg_018,Manufacturing,research_mfg_001,,,,II,Build,assembly_plant,3,units,Modular Sub-Assembly,module,Increases Assembly Plant output by 5% permanently.
+research_mfg_018,Manufacturing,research_mfg_001,,,,II,Run Distinct Recipes,assembly_plant,3,recipes,Modular Sub-Assembly,module,Increases Assembly Plant output by 5% permanently.
 research_mfg_019,Manufacturing,,,,,I,Build,assembly_plant,7,units,Robotic Final Assembly,robot,Reduces Assembly Plant labour by 10% for 20 turns.
-research_mfg_020,Manufacturing,,,,,I,Build,industrial_factory,12,units,Automated Guided Assembly,agv,Reduces Industrial Goods Factory labour by 5% permanently.
+research_mfg_020,Manufacturing,,,,,I,Run,industrial_factory,12,10 turns,Automated Guided Assembly,agv,Reduces Industrial Goods Factory labour by 5% permanently.
 research_mfg_021,Manufacturing,,,,,I,Build,high_tech_manufactory,3,units,Class-100 Cleanrooms,fab,Unlocks new recipe: Semiconductor Fabbing (5 CPU).
-research_mfg_022,Manufacturing,research_mfg_001,,,,II,Build,high_tech_manufactory,3,units,Advanced Photolithography,litho,Unlocks new recipe: Fabless Semiconductors (3 CPU).
-research_mfg_023,Manufacturing,research_mfg_005,,,,III,Run Profitable,high_tech_manufactory,3,buildings,Atomic Layer Deposition,ald,Increases High Tech Manufactory output by 5% permanently. Unlocks new recipe: Durable Perovskite Solar Panels.
+research_mfg_022,Manufacturing,research_mfg_001,,,,II,Produce Per Turn,cpu,25,units per turn,Advanced Photolithography,litho,Unlocks new recipe: Fabless Semiconductors (3 CPU).
+research_mfg_023,Manufacturing,research_mfg_024,,,,III,Produce Per Turn,cpu,60,units per turn,Atomic Layer Deposition,ald,Increases High Tech Manufactory output by 5% permanently. Unlocks new recipe: Durable Perovskite Solar Panels.
 research_mfg_024,Manufacturing,,,,,I,Run,high_tech_manufactory,3,20 turns,Fully-Automated Fabs,fab,Increases High Tech Manufactory output by 10% permanently.
 research_inorg_013,Chemistry,research_inorg_008,,,,III,Run Distinct Recipes,chem_plant,5,recipes,Continuous-Flow Reactors,cfr,Increases Chemical Plant output by 5% permanently.
 research_inorg_014,Chemistry,,,,,I,Run Distinct Recipes,chem_plant,3,recipes,Process Intensification,flask,Unlocks new recipe: Nitrogen Air Separation (30 Nitrogen).
@@ -201,7 +201,7 @@ research_infra_030,Infrastructure,,,,,I,Build,reinf_pipes,7,units,Double-Walled 
 research_infra_031,Infrastructure,,,,,I,Build,pipes,12,units,Corrosion-Resistant Linings,pipe,Reduces Pipeworks maintenance by 10% permanently.
 research_infra_032,Infrastructure,research_infra_003,,,,III,Use Infrastructure,pipes,10,80% for 5 turns,Leak-Detection Networks,leak,Increases pipe throughput by 25% permanently.
 research_infra_033,Infrastructure,,,,,I,Use Infrastructure,reinf_pipes,3,80% for 5 turns,Ultra-High-Pressure Mains,manifold,Increases reinforced-pipe throughput by 25% permanently.
-research_mfg_025,Manufacturing,research_mfg_002,,,,III,Run Profitable,assembly_plant,3,buildings,Coordinated Robot Handoff,handoff,Increases Assembly Plant output by 5% permanently.
+research_mfg_025,Manufacturing,research_mfg_024,,,,III,Run Distinct Recipes,assembly_plant,7,recipes,Coordinated Robot Handoff,handoff,Increases Assembly Plant output by 5% permanently.
 research_infra_034,Infrastructure,research_infra_001,,,,III,Own,Roads,6,units,Electrified Road Haul,eroad,Increases road throughput by 25% permanently.
 research_renew_022,Power Production,research_renew_017,,,,II,Run,solar_farm,3,12 turns,Anti-Reflective Coatings,arc,Increases Solar Farm output by 5% permanently.
 research_renew_023,Power Production,research_renew_002,,,,II,Run,onshore_wind_farm,3,12 turns,Tall-Tower Wind Capture,onwind,Increases Onshore Wind Farm output by 5% permanently.
@@ -210,19 +210,19 @@ research_renew_025,Power Production,,,,,I,Produce,lithium_battery,30,units,Lithi
 research_renew_026,Power Production,research_renew_025,,,,II,Produce,sodium_battery,50,units,Sodium Battery Storage,battery,Unlocks loading Sodium Ion Battery cells — cheaper storage that avoids lithium/rare earths.
 research_renew_027,Power Production,research_renew_003,,,,III,Build,battery,10,buildings,Iron Air Long Duration Storage,storage,"Unlocks loading Iron Air Battery cells — the cheapest, long-duration bulk storage medium."
 research_mfg_026,Manufacturing,,,,,I,Produce,motor,250,units,Axial Flux Motor Lines,motor,Unlocks new recipe: Axial Flux Motors (15 Motor).
-research_mfg_027,Manufacturing,,,,,I,Produce,motor,250,units,Hairpin Stator Winding,motor,Unlocks new recipe: Hairpin Stator Motors (18 Motor).
-research_mfg_028,Manufacturing,,,,,I,Build,assembly_plant,12,units,Heavy Engine Casting,assembly,Unlocks new recipe: Large Vehicle Engine Manufacturing (5 Large Engine).
-research_mfg_029,Manufacturing,,,,,I,Produce,engine,250,units,Hybrid Powertrain Integration,assembly,Unlocks new recipe: Hybrid Engine Manufacturing (12 Engine).
-research_mfg_030,Manufacturing,,,,,I,Build,assembly_plant,12,units,Electric Vehicle Assembly,assembly,Unlocks new recipe: EV Assembly (5 Ev Car).
+research_mfg_027,Manufacturing,,,,,I,Produce,motor,400,units,Hairpin Stator Winding,motor,Unlocks new recipe: Hairpin Stator Motors (18 Motor).
+research_mfg_028,Manufacturing,,,,,I,Produce Per Turn,engine,50,units per turn,Heavy Engine Casting,assembly,Unlocks new recipe: Large Vehicle Engine Manufacturing (5 Large Engine).
+research_mfg_029,Manufacturing,,,,,I,Produce,engine,350,units,Hybrid Powertrain Integration,assembly,Unlocks new recipe: Hybrid Engine Manufacturing (12 Engine).
+research_mfg_030,Manufacturing,,,,,I,Produce All,lithium_battery|motor,200|300,units,Electric Vehicle Assembly,assembly,Unlocks new recipe: EV Assembly (5 Ev Car).
 research_mfg_031,Manufacturing,,,,,I,Produce,heavy_vehicle,250,units,Heavy Vehicle Assembly,assembly,Unlocks new recipe: Heavy Vehicles Automated Manufacturing (6 Heavy Vehicle).
 research_mfg_032,Manufacturing,research_mfg_001,,,,II,Produce,ice_car,400,units,Automated Body-in-White Lines,press,Unlocks new recipe: Automated ICE Car Assembly (6 Ice Car).
 research_mfg_033,Manufacturing,research_mfg_001,,,,II,Produce,heavy_vehicle,400,units,Electric Drivetrain Integration,motor,Unlocks new recipe: Electric Heavy Vehicles Manufacturing (5 Heavy Vehicle).
-research_mfg_034,Manufacturing,research_mfg_001,,,,II,Build,factory,3,units,Electric Plant & Machinery,tools,Unlocks new recipe: Construction Equipment Assembly (EV) (10 Construction Equipment Ev).
+research_mfg_034,Manufacturing,research_mfg_001,,,,II,Produce Any,ev_car|construction_equipment_ice,50|100,units,Electric Plant & Machinery,tools,Unlocks new recipe: Construction Equipment Assembly (EV) (10 Construction Equipment Ev).
 research_mfg_035,Manufacturing,research_mfg_001,,,,II,Produce,electrical_components,400,units,Precision Electronics Assembly,assembly,Unlocks new recipe: Precision Electrical Components (14 Electrical Components).
-research_mfg_036,Manufacturing,research_mfg_002,,,,III,Produce,motor,600,units,Synchronous Reluctance Drives,motor,Unlocks new recipe: SynRM Magnetless Motors (15 Motor).
-research_mfg_037,Manufacturing,research_mfg_002,,,,III,Produce,solar_panel,600,units,Heterojunction Cell Lines,solar,Unlocks new recipe: Heterojunction Solar Panels (5 Solar Panel).
-research_mfg_038,Manufacturing,research_mfg_002,,,,III,Produce,solar_panel,600,units,Tandem Cell Stacking,solar,Unlocks new recipe: Triple Tandem Solar Panels (6 Solar Panel).
-research_mfg_039,Manufacturing,research_mfg_002,,,,III,Produce,cpu,600,units,Additive Semiconductor Printing,assembly,Unlocks new recipe: Semiconductor 3D Printing (4 Cpu).
+research_mfg_036,Manufacturing,research_mfg_024,,,,III,Produce,motor,600,units,Synchronous Reluctance Drives,motor,Unlocks new recipe: SynRM Magnetless Motors (15 Motor).
+research_mfg_037,Manufacturing,research_mfg_024,,,,III,Produce,solar_panel,600,units,Heterojunction Cell Lines,solar,Unlocks new recipe: Heterojunction Solar Panels (5 Solar Panel).
+research_mfg_038,Manufacturing,research_mfg_024,,,,III,Produce,solar_panel,900,units,Tandem Cell Stacking,solar,Unlocks new recipe: Triple Tandem Solar Panels (6 Solar Panel).
+research_mfg_039,Manufacturing,research_mfg_023,,,,III,Produce,cpu,1000,units,Additive Semiconductor Printing,assembly,Unlocks new recipe: Semiconductor 3D Printing (4 Cpu).
 research_renew_028,Power Production,research_renew_001,,,,II,Produce,wind_turbine,400,units,Segmented Blade Assembly,wind,Unlocks new recipe: Segmented Assembly Wind Turbines (4 Wind Turbine).
 research_renew_029,Power Production,research_renew_001,,,,II,Run Multiple,farm|solar_farm,3|1,5 turns,Agrivoltaic Integration,solar,Unlocks new recipe: Agri Solar Farming (5 Food).
 research_renew_030,Power Production,research_renew_001,,,,II,Build,high_tech_manufactory,3,units,Lithium Iron Phosphate Cells,battery,Unlocks new recipe: Lithium Phosphate Batteries (8 Lithium Battery).
