@@ -265,7 +265,7 @@ const MISSION_TEMPLATES := {
 	"cfo": {
 		"temp": {"domain": "loan_interest", "pct": -50.0, "turns": 20, "label": "loan interest halved (20t)"},
 		"perm1": {"domain": "loan_interest", "pct": -8.0, "label": "permanent -8% loan interest"},
-		"research_category": "Markets and Operations",
+		"research_category": "People & Management",
 		"perm2": {"domain": "dividend_rate", "pct": -12.0, "label": "permanent -12% dividends"},
 		"capstone": {"domain": "loan_interest", "pct": -15.0, "label": "permanent -15% loan interest"},
 	},
@@ -280,21 +280,21 @@ const MISSION_TEMPLATES := {
 	"chief_markets": {
 		"temp": {"domain": "market_spread", "pct": -40.0, "turns": 10, "label": "-40% buy spread (10t)"},
 		"perm1": {"domain": "market_spread", "pct": -10.0, "label": "permanent -10% buy spread"},
-		"research_category": "Markets and Operations",
+		"research_category": "People & Management",
 		"perm2": {"domain": "market_price", "pct": 2.0, "label": "permanent +2% sale price"},
 		"capstone": {"domain": "market_price", "pct": 3.0, "label": "permanent +3% sale price"},
 	},
 	"chief_investment": {
 		"temp": {"domain": "purchase_cost", "pct": -20.0, "turns": 20, "label": "-20% land/building prices (20t)"},
 		"perm1": {"domain": "purchase_cost", "pct": -8.0, "label": "permanent -8% purchase cost"},
-		"research_category": "Markets and Operations",
+		"research_category": "People & Management",
 		"perm2": {"domain": "construction_rebate", "pct": 5.0, "label": "permanent +5% build rebate"},
 		"capstone": {"domain": "construction_rebate", "pct": 5.0, "label": "permanent +5% build rebate"},
 	},
 	"hr_director": {
 		"temp": {"domain": "labour_headcount", "pct": -15.0, "turns": 20, "label": "-15% labour (20t)"},
 		"perm1": {"domain": "labour_headcount", "pct": -6.0, "label": "permanent -6% labour"},
-		"research_category": "People Management",
+		"research_category": "People & Management",
 		"perm2": {"domain": "maintenance", "pct": -6.0, "label": "permanent -6% maintenance"},
 		"capstone": {"policy": "stock_options", "label": "unlocks the Stock Options policy"},
 	},
@@ -315,7 +315,7 @@ const MISSION_TEMPLATES := {
 	"government_affairs": {
 		"temp": {"domain": "tax_rate", "pct": -30.0, "turns": 20, "label": "-30% tax (20t)"},
 		"perm1": {"domain": "tax_rate", "pct": -8.0, "label": "permanent -8% tax"},
-		"research_category": "People Management",
+		"research_category": "People & Management",
 		"temp2": {"domain": "market_spread", "pct": -30.0, "turns": 20, "label": "-30% buy spread (20t)"},
 		"perm2": {"domain": "tax_rate", "pct": -8.0, "label": "permanent -8% tax"},
 		"capstone": {"domain": "tax_rate", "pct": -10.0, "label": "permanent -10% tax"},
@@ -323,7 +323,7 @@ const MISSION_TEMPLATES := {
 	"sustainability": {
 		"temp": {"domain": "recipe_output", "pct": 10.0, "turns": 20, "label": "+10% output (20t)"},
 		"perm1": {"domain": "recipe_output", "pct": 5.0, "label": "permanent +5% output"},
-		"research_category": "Renewable Power",
+		"research_category": "Power Production",
 		"temp2": {"domain": "market_price", "pct": 3.0, "turns": 20, "label": "+3% sale price (20t)"},
 		"perm2": {"domain": "market_price", "pct": 2.0, "label": "permanent +2% sale price"},
 		"capstone": {"domain": "market_price", "pct": 3.0, "label": "permanent +3% sale price"},
@@ -2404,7 +2404,7 @@ func get_unlock_def(title: String) -> Dictionary:
 ## Nodes of the prior tier needed to open the next one. Two, not three (owner 2026-08-23):
 ## Petrochemistry had exactly three Tier I nodes, so "three of the prior tier" meant ALL of
 ## them, and Tier II was gated behind clearing a whole tier rather than committing to it.
-const TIER_UNLOCK_THRESHOLD := 2
+const TIER_UNLOCK_THRESHOLD := 1
 const _TIER_ORDER := ["I", "II", "III"]
 
 ## True when `category`'s roman `tier` is open. Tier I is always open; a higher

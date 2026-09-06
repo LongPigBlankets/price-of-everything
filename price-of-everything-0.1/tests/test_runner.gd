@@ -7199,23 +7199,21 @@ func _test_research_tier_gating() -> void:
 	# prior-tier-count) unlocked in the prior tier of the SAME category. Written against the
 	# CONSTANT rather than a literal: the threshold moved 3 -> 2 (owner 2026-08-23) and this
 	# test was the only thing that had to change, which is the point of pinning it this way.
-	_check(MatchState.TIER_UNLOCK_THRESHOLD == 2,
-		"tier gate: a tier opens on two of the tier below")
+	_check(MatchState.TIER_UNLOCK_THRESHOLD == 1,
+		"tier gate: a tier opens on one of the tier below")
 	_check(MatchState.is_tier_available("Metallurgy", "I"), "tier gate: Tier I always open")
 	_check(not MatchState.is_tier_available("Metallurgy", "II"),
 		"tier gate: Metallurgy II locked with 0 Tier-I unlocked")
 	MatchState.grant_unlock("Basic Blast Furnaces")
-	_check(not MatchState.is_tier_available("Metallurgy", "II"),
-		"tier gate: Metallurgy II still locked at 1 Tier-I unlocked")
-	MatchState.grant_unlock("Continuous Casting")
 	_check(MatchState.is_tier_available("Metallurgy", "II"),
 		"tier gate: Metallurgy II opens at %d Tier-I unlocked" % MatchState.TIER_UNLOCK_THRESHOLD)
-	# Softlock clamp: Recycling has a single Tier-II node, so Tier III must open on just it.
+	# Softlock clamp: min(TIER_UNLOCK_THRESHOLD, prior-tier-count) — a category opens even with
+	# fewer prior-tier nodes than the threshold. Recycling III opens once a Tier-II node is unlocked.
 	_check(not MatchState.is_tier_available("Recycling", "III"),
-		"tier gate: Recycling III locked before its lone Tier-II node")
+		"tier gate: Recycling III locked before any Tier-II node")
 	MatchState.grant_unlock("Membrane Bioreactors")
 	_check(MatchState.is_tier_available("Recycling", "III"),
-		"tier gate: Recycling III opens after its single Tier-II (min(3,count) clamp avoids softlock)")
+		"tier gate: Recycling III opens after a Tier-II node")
 	MatchState.reset()
 
 func _test_live_unlock_conditions() -> void:
@@ -8404,16 +8402,14 @@ func _test_construct_land_tickbox() -> void:
 func _test_petrochemistry_changes() -> void:
 	MatchState.reset()
 	# A fourth Tier I node, so the tier is a CHOICE of two from four rather than a queue.
-	var tier1: Array = []
+	# Post-regroup the refining half of the old Petrochemistry tree lives under Chemistry.
 	var node: Dictionary = {}
 	for d_variant: Variant in MatchState._unlock_defs:
 		var d: Dictionary = d_variant
-		if str(d.get("category", "")) == "Petrochemistry" and str(d.get("rank", "")) == "I":
-			tier1.append(str(d.get("title", "")))
 		if str(d.get("title", "")) == "Specialised Petrochemical Pipelines":
 			node = d
-	_check(tier1.size() == 4 and "Specialised Petrochemical Pipelines" in tier1,
-		"petrochem: four Tier I nodes, including the new pipelines one")
+	_check(str(node.get("category", "")) == "Chemistry" and str(node.get("rank", "")) == "I",
+		"petrochem: the pipelines node is a Tier I Chemistry node")
 	_check(str(node.get("action", "")) == "Run" and int(node.get("qty", 0)) == 10,
 		"petrochem: the pipelines node is earned by running a refinery for 10 turns")
 	_check(MatchState.research_condition_issues().is_empty(),
@@ -13997,7 +13993,7 @@ func _test_advisor_slot_progression() -> void:
 	_check(MatchState.advisor_slot_profit_unlocked and MatchState.max_advisor_slots == 3,
 		"slot progression: 1000 profit x3 unlocks a slot (2 -> 3)")
 	_check(MatchState.is_unlocked("Fifth Advisor Seat"),
-		"slot progression: 5th-seat unlock granted (shows under People Management)")
+		"slot progression: 5th-seat unlock granted (shows under People & Management)")
 	MatchState._update_advisor_slots(0.0)
 	_check(MatchState.max_advisor_slots == 3, "slot progression: a dip does not revoke the earned slot")
 	MatchState.max_advisor_slots = saved_slots
@@ -14726,8 +14722,8 @@ func _test_research_recipe_and_level_tiers() -> void:
 	var has_biomass_node := false
 	for unlock in MatchState._unlock_defs:
 		if str(unlock.get("title", "")) == "Biomass Cracking":
-			has_biomass_node = str(unlock.get("category", "")) == "Biochemistry"
-	_check(has_biomass_node, "Biomass Cracking belongs to the Biochemistry tree")
+			has_biomass_node = str(unlock.get("category", "")) == "Farming & Forestry"
+	_check(has_biomass_node, "Biomass Cracking belongs to the Farming & Forestry tree")
 
 	var file := FileAccess.open("res://data/research_unlocks.csv", FileAccess.READ)
 	var level2_ok := file != null

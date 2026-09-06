@@ -84,23 +84,21 @@ const FREE_UNLOCK_RECUR_EVERY := 48
 const FREE_UNLOCK_RECUR_COUNT := 2
 const RANKS := ["I", "II", "III"]
 const CATEGORIES := [
-	"Mining and Surveying",
-	"Petrochemistry",
+	"Extraction",
 	"Metallurgy",
-	"Inorganic Chemistry",
-	"Biochemistry",
+	"Chemistry",
+	"Glass, Silica & Concrete",
 	"Manufacturing",
-	"Hydrocarbon Power",
-	"Renewable Power",
+	"Power Production",
+	"Farming & Forestry",
 	"Recycling",
 	"Infrastructure",
 	"Logistics",
-	"Markets and Operations",
-	"People Management",
+	"People & Management",
 ]
 
 var _unlock_rows: Array[Dictionary] = []
-var _selected_category := "Mining and Surveying"
+var _selected_category := "Extraction"
 var _category_view_state := {}
 var _tab_rects := {}
 var _unlock_style: StyleBoxFlat

@@ -151,8 +151,8 @@ const INFRA_UTIL_STREAK := 2
 # `techs`: grant every node in the branches an established industrial player would
 # realistically have finished — metallurgy, both power branches, operations, logistics and
 # people management. Left OFF by default so the other runs stay comparable.
-const TECH_CATEGORIES := ["Metallurgy", "Renewable Power", "Hydrocarbon Power",
-	"Markets and Operations", "Logistics", "People Management"]
+const TECH_CATEGORIES := ["Metallurgy", "Power Production", "Chemistry",
+	"Logistics", "People & Management"]
 var _grant_tech_categories := false
 var _auto_infra := false
 var _infra_streak := {}
