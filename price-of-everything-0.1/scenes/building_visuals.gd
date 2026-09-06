@@ -695,6 +695,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	# the fallback for every building the grid can't take (full / blocked). Edge-seekers
 	# (mines/recycling) skip the central block and keep their far-corner behaviour; farms
 	# never block-lot either — they own a polygonal field placed by _search's farm branch.
+	var assigned := _assigned_hijack_candidates(tile_id, coord, building_id)
 	var placed := {}
 	# Offshore structures (wind farm, oil platform) sit ON WATER — the land
 	# mask can't place them at all. Uniform spread, no roads/frontage rules
@@ -707,6 +708,8 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	# packed into whatever ground is left. The mass was drawn off the street by hand, so the
 	# building inherits a footprint that can never straddle a carriageway. A busy tile runs
 	# out of marks before it runs out of buildings; everything below is the fallback.
+	elif not assigned.is_empty():
+		placed = _claim_from_mass_pool(tile_id, coord, area, assigned, "assigned_hijack")
 	elif use_stamp and AuthoredMap.is_active() and AuthoredMap.covers(tile_id):
 		placed = _claim_hijack_mass(tile_id, coord, area)
 		# Hand-marked masses are scarce on the procedural regions (Vandel: 15 of 207), so a busy
@@ -832,6 +835,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		"size_units": size_units,
 		"via": str(placed.get("via", "block" if not offshore else "offshore")),
 		"hijack_id": hijack_id,
+		"assigned_hijack": str(placed.get("via", "")) == "assigned_hijack",
 		"shrink": float(placed.get("shrink", 1.0)),
 		"diag": placed.get("diag", {}),
 		"center_rel": placed.center_rel,
@@ -1051,8 +1055,24 @@ func _append_local_poly(out: Array, poly: PackedVector2Array, record: Dictionary
 	out.append({"id": str(record.get("id", "")), "poly": moved,
 		"sacrificial": bool(record.get("sacrificial", false)),
 		"hijack": bool(record.get("hijack", false)),
+		"hijack_for": str(record.get("hijack_for", "")),
 		"kind": str(record.get("kind", "mass"))})
 
+
+## An authored office may reserve a decorative footprint for one building type.
+## This also works for ports, whose bespoke harbour normally bypasses stamps.
+func _assigned_hijack_candidates(tile_id: String, coord: Vector2i, building_id: String) -> Array:
+	var out: Array = []
+	if not AuthoredMap.is_active() or not AuthoredMap.covers(tile_id):
+		return out
+	for entry: Dictionary in _authored_decor_world(tile_id):
+		if str(entry.get("hijack_for", "")) != building_id or not bool(entry.get("hijack", false)):
+			continue
+		var poly: PackedVector2Array = entry.poly
+		var centre := _poly_centroid(poly)
+		if _in_tile_hex(centre, _tile_center_world_pos(coord)):
+			out.append({"id": entry.id, "poly": poly, "centre": centre, "area": absf(_poly_area(poly))})
+	return out
 
 ## The designer's answer to "where does this building go": an unclaimed decorative mass
 ## marked as a hijack slot on this tile, as a placement record — or {} when the tile has
@@ -1145,6 +1165,8 @@ func _hijack_candidates(tile_id: String, coord: Vector2i) -> Array:
 	var center := _tile_center_world_pos(coord)
 	for entry_value in _authored_decor_world(tile_id):
 		var entry: Dictionary = entry_value
+		if str(entry.get("hijack_for", "")) != "":
+			continue
 		if not bool(entry.get("hijack", false)) or str(entry.get("kind", "")) == "ring":
 			continue
 		var mass_id := str(entry.get("id", ""))
@@ -1171,6 +1193,8 @@ func _decor_candidates(tile_id: String, coord: Vector2i) -> Array:
 	var center := _tile_center_world_pos(coord)
 	for entry_value in _authored_decor_world(tile_id):
 		var entry: Dictionary = entry_value
+		if str(entry.get("hijack_for", "")) != "":
+			continue
 		if str(entry.get("kind", "")) == "ring":
 			continue
 		var mass_id := str(entry.get("id", ""))
@@ -1214,6 +1238,8 @@ func _evict_fabric_under(tile_id: String, verts: PackedVector2Array) -> void:
 		return
 	for entry_value in decor:
 		var entry: Dictionary = entry_value
+		if str(entry.get("hijack_for", "")) != "":
+			continue
 		if Geometry2D.intersect_polygons(verts, entry["poly"] as PackedVector2Array).is_empty():
 			continue
 		# Recorded as well as applied: the eviction lives in the FABRIC node, not here, so a
@@ -2316,8 +2342,8 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 			var rverts: PackedVector2Array = _farm_render[iid].verts if _farm_render.has(iid) else (p.verts as PackedVector2Array)
 			_place_farm_outbuildings(tile_id, iid, rverts, is_npc, farm_snap)
 			continue
-		if bool(p.get("offshore", false)):
-			continue   # platforms at sea carry no annexes/wings/tanks
+		if bool(p.get("offshore", false)) or bool(p.get("assigned_hijack", false)):
+			continue   # authored offices and platforms carry no generated annexes/wings/tanks
 		var lvl := _enhanced_visual_level(iid)
 		# Levels ALWAYS show: L2/L3 stack rooftop storey blocks on the parent
 		# (wings depend on free ground and are skipped inside block-masses —

@@ -200,7 +200,9 @@ func _run_command(text: String) -> String:
 				return "All advisors and seats unlocked for this match."
 			if parts[1].to_lower() == "demo":
 				_demo_unlocked = true
-				return "Demo restrictions lifted: advanced settings + all starts/difficulties/speeds. Reopen New Game."
+				MatchState.advisors_changed.emit()
+				DecisionState.pending_changed.emit()
+				return "Demo restrictions lifted: advisor loyalty, advanced settings and all starts/difficulties/speeds. Reopen panels to refresh."
 			var title := " ".join(parts.slice(1))
 			MatchState.grant_unlock(title)
 			return "Unlocked '%s'." % title

@@ -192,7 +192,9 @@ func _on_advisor_walked(advisor_id: String) -> void:
 	if DS and DS.theme:
 		dlg.theme = DS.theme
 	dlg.title = "Advisor Resigned"
-	dlg.dialog_text = "%s has resigned.\n\nTheir loyalty stayed critically low for too long, so they've walked. Their seat is now vacant and they will sit out before they can be re-hired." % name_str
+	dlg.dialog_text = "%s has resigned. Their seat is now vacant. They will be available to hire again after a waiting period." % name_str
+	if preload("res://scripts/debug_terminal.gd").demo_is_unlocked():
+		dlg.dialog_text += " Their loyalty remained critically low."
 	_hud.add_child(dlg)
 	dlg.confirmed.connect(func() -> void: dlg.queue_free())
 	dlg.canceled.connect(func() -> void: dlg.queue_free())
@@ -3060,6 +3062,10 @@ func _on_turn_advanced(new_turn: int) -> void:
 
 
 func _expand_public_roads(turn: int) -> Array:
+	# Tutorial roads are revealed by its transport lessons, including slow runs
+	# that reach turn 20 before the player finishes learning infrastructure.
+	if bool(MatchState.ruleset.get("tutorial_enabled", false)):
+		return []
 	var expansion := preload("res://scripts/public_road_expansion.gd")
 	if turn > TurnManager.MAX_TURNS or expansion.batch_size(turn) == 0 or turn <= MatchState.public_roads_last_turn:
 		return []

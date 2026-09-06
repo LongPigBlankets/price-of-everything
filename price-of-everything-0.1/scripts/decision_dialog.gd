@@ -261,14 +261,15 @@ func _advocate_strip(advocate: Dictionary) -> Control:
 	stance.text = "“%s”" % str(advocate.stance)
 	col.add_child(stance)
 
-	var stakes := Label.new()
-	stakes.theme_type_variation = "Numeric"
-	stakes.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	stakes.add_theme_font_size_override("font_size", 12)
-	stakes.text = "Follow: %+.1f loyalty · Ignore: %+.1f" \
-		% [float(advocate.follow_delta), float(advocate.ignore_delta)]
-	stakes.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
-	col.add_child(stakes)
+	if preload("res://scripts/debug_terminal.gd").demo_is_unlocked():
+		var stakes := Label.new()
+		stakes.theme_type_variation = "Numeric"
+		stakes.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		stakes.add_theme_font_size_override("font_size", 12)
+		stakes.text = "Follow: %+.1f loyalty · Ignore: %+.1f" \
+			% [float(advocate.follow_delta), float(advocate.ignore_delta)]
+		stakes.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
+		col.add_child(stakes)
 	return col
 
 # Advisor portrait with the accent-coloured frame; several cast members have no

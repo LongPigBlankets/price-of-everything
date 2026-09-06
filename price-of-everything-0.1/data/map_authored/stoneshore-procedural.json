@@ -88274,6 +88274,8 @@
           "sides": []
         },
         {
+          "hijack": true,
+          "hijack_for": "b_004",
           "id": "s:vandel:130",
           "kind": "poly",
           "outline": [

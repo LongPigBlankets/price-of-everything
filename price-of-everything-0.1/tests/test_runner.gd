@@ -533,7 +533,7 @@ func _test_tutorial_engine() -> void:
 		var sid := str((s as Dictionary).get("id", ""))
 		ids.append(sid)
 		by_id[sid] = s
-	for expected in ["welcome", "ui_primer", "recipe_inputs_intro", "recipe_outputs_intro", "capital_motor_open", "capital_motor_watch", "capital_money_transport", "capital_road_install", "capital_road_watch", "capital_rail_build", "capital_rail_watch", "capital_fluids", "capital_port_open", "capital_port_costs", "goto_tile", "build_open", "build_pick_recipe", "build_cost", "build_close_buy", "buy_factory", "diagnose_factory", "lay_cable_factory", "run_until_running", "analyse_supply", "explore_encyclopedia", "close_encyclopedia", "revenue_settle", "choose_integration", "build_glass_open", "build_glass_recipe", "build_glass_source", "glass_sell", "glass_wait_built", "glass_diagnose_pipe", "glass_lay_pipe", "glass_run", "glass_profit", "glass_research", "glass_upgrade", "build_alu_open", "alu_run_base", "alu_output_check", "alu_base_settle", "alu_research", "alu_research_search", "alu_research_condition", "alu_research_unlock", "alu_upgrade", "alu_diagnose_pipe", "alu_lay_pipe", "alu_final_run", "alu_profit", "integration_done"]:
+	for expected in ["welcome", "ui_primer", "recipe_inputs_intro", "recipe_outputs_intro", "capital_motor_open", "capital_motor_watch", "capital_money_transport", "capital_road_install", "capital_road_watch", "capital_rail_build", "capital_rail_watch", "capital_fluids", "capital_port_open", "capital_port_costs", "goto_tile", "build_open", "build_pick_recipe", "build_cost", "build_close_buy", "buy_factory", "diagnose_factory", "lay_cable_factory", "run_until_running", "analyse_supply", "explore_encyclopedia", "close_encyclopedia", "revenue_settle", "choose_integration", "build_glass_open", "build_glass_recipe", "build_glass_confirm", "glass_sell", "glass_wait_built", "glass_diagnose_pipe", "glass_lay_pipe", "glass_run", "glass_profit", "glass_research", "glass_upgrade", "build_alu_open", "alu_run_base", "alu_output_check", "alu_base_settle", "alu_research", "alu_research_search", "alu_research_condition", "alu_research_unlock", "alu_upgrade", "alu_diagnose_pipe", "alu_lay_pipe", "alu_final_run", "alu_profit", "integration_done"]:
 		_check(expected in ids, "tutorial: step '%s' present" % expected)
 	for removed in ["open_mapmodes", "select_logistics", "view_shipment", "transport_ports"]:
 		_check(not (removed in ids), "tutorial: redundant old transport step '%s' removed" % removed)
@@ -972,7 +972,7 @@ func _test_tutorial_engine() -> void:
 	_check("build_glass_open" in gotos and "build_alu_open" in gotos, "tutorial: choice gotos target the two build flows")
 	# Glass branch now runs its own reinforced-pipe lesson (build furnace off-port -> diagnose the
 	# expensive road delivery -> lay a cheaper reinf pipe -> run) before reconverging.
-	_check(str((by_id.get("build_glass_source", {}) as Dictionary).get("goto", "")) == "",
+	_check(str((by_id.get("build_glass_confirm", {}) as Dictionary).get("goto", "")) == "",
 		"tutorial: glass branch does not reconverge early (runs the pipe lesson)")
 	var glass_inputs: Dictionary = by_id.get("glass_diagnose_pipe", {})
 	var glass_inputs_decide: Dictionary = (glass_inputs.get("done", {}) as Dictionary).get("decide", {})
@@ -6607,6 +6607,19 @@ func _test_power_network_settlement() -> void:
 		"same-tile draw is covered first; the network's residual shortfall falls on the far consumer")
 	_check(absf(float(grid.grid_sell_revenue) - 1040.0 * EconomyConfig.GRID_SELL_PRICE) < 0.001, "sell revenue priced at GRID_SELL_PRICE")
 	_check(absf(float(grid.grid_buy_cost) - 580.0 * EconomyConfig.GRID_BUY_PRICE) < 0.001, "buy cost priced at GRID_BUY_PRICE")
+	_check(is_equal_approx(Power.allocated_draw_cost("tile_2_3", 280), 280.0 * EconomyConfig.GRID_SELL_PRICE),
+		"cost solver: own network power uses export opportunity cost")
+	_check(is_equal_approx(Power.allocated_draw_cost("tile_9_9", 100), 100.0 * EconomyConfig.GRID_BUY_PRICE),
+		"cost solver: disconnected consumer pays the grid tariff")
+	_check(is_equal_approx(Power.allocated_draw_cost("tile_15_16", 50), 10.0 * EconomyConfig.GRID_SELL_PRICE + 40.0 * EconomyConfig.GRID_BUY_PRICE),
+		"cost solver: consumers share the tile's settled mix of own and imported power")
+	Power.reset_for_turn()
+	Power.record_produced("tile_12_12", 800, true)
+	Power.record_drawn("tile_12_12", 280)
+	Power.settle_grid_transactions()
+	_check(is_equal_approx(Power.allocated_draw_cost("tile_12_12", 280), 280.0 * EconomyConfig.GRID_BUY_PRICE),
+		"cost solver: grid-priority generation does not cover the tile's draw")
+
 
 	get_tree().root.remove_child(fake)
 	fake.free()
@@ -8306,6 +8319,9 @@ func _test_research_link_is_exact() -> void:
 		panel.call("_load_unlock_rows")
 		rows = panel.get("_unlock_rows")
 	_check(rows != null and rows.size() > 0, "research link: the unlock table loads")
+	for row: Dictionary in rows:
+		if str(row.get("title", "")) == "Bauxite Carbochlorination":
+			_check(panel._unlock_matches(row, "aluminium"), "tutorial research search finds processes by their output")
 
 	# The ORDINARY search matches title, description and category by substring, which is
 	# right for hunting and wrong for a link: several techs mention another tech in their
@@ -9689,6 +9705,14 @@ func _test_company_rankings() -> void:
 			player_row = row
 	_check(is_equal_approx(float(player_row.get("trend_average", 0.0)), 119.0),
 		"company rankings: player trend is the average of the last five revenues")
+	var bar := preload("res://scripts/top_bar.gd").new()
+	var risk_rows: Array[Dictionary] = [
+		{"is_player": true, "revenue": 100.0, "revenue_change": -5.0},
+		{"is_player": false, "revenue": 90.0, "revenue_change": 10.0}]
+	_check(bar._ranking_position_at_risk(risk_rows), "rankings warn when the next rival is on course to overtake")
+	risk_rows[1].revenue_change = 0.0
+	_check(not bar._ranking_position_at_risk(risk_rows), "rankings do not warn while the lead remains safe")
+	bar.free()
 	var growth_rng := RandomNumberGenerator.new()
 	growth_rng.seed = 97531
 	var growth_total := 0.0
@@ -14587,10 +14611,19 @@ func _test_widgets_instantiate() -> void:
 	if not permanent.is_empty():
 		pp.call("_open_advisor_detail", permanent[0])
 	var detail: Node = pp.get("_advisor_detail_panel")
-	_check(
-		detail != null and detail.visible
-		and _tree_has_label_text(detail, "Agenda") and _tree_has_label_text(detail, "Missions"),
+	_check(detail != null and detail.visible and _tree_has_label_text(detail, "Impact") and _tree_has_label_text(detail, "Seats"),
 		"PeoplePanel opens advisor detail shell")
+	var demo_terminal := preload("res://scripts/debug_terminal.gd")
+	var was_demo_unlocked: bool = demo_terminal._demo_unlocked
+	demo_terminal._demo_unlocked = false
+	pp.call("_open_advisor_detail", permanent[0])
+	_check(not _tree_has_label_text(detail, "Agenda") and not _tree_has_label_text(detail, "Missions"),
+		"demo advisor detail hides loyalty agenda and missions")
+	demo_terminal._demo_unlocked = true
+	pp.call("_open_advisor_detail", permanent[0])
+	_check(_tree_has_label_text(detail, "Agenda") and _tree_has_label_text(detail, "Missions"),
+		"unlock demo restores advisor loyalty concepts")
+	demo_terminal._demo_unlocked = was_demo_unlocked
 	pp.call("_close_advisor_detail")
 	if detail != null:
 		detail.queue_free()

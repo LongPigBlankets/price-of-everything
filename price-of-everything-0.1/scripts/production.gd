@@ -141,6 +141,7 @@ func _on_phase_started(phase: int) -> void:
 		_process_production()
 
 func _process_production() -> void:
+	var cash_before_process := MatchState.money
 	last_turn_run.clear()
 	missing_by_building.clear()
 	blocked_reason_by_building.clear()
@@ -613,7 +614,9 @@ func _process_production() -> void:
 	TurnProfiler.section_end("maintenance_labour")
 
 	TurnProfiler.section_begin("loan_payments")
+	var cash_before_tabs := MatchState.money
 	MatchState.tick_building_tabs()
+	var tab_repayments := cash_before_tabs - MatchState.money
 	var loan_payment: float = LoanState.process_payments()
 	if loan_payment > 0:
 		summary.interest_paid = loan_payment
@@ -651,6 +654,8 @@ func _process_production() -> void:
 			var rt2 := str(r2.get("tile_id", ""))
 			var fee: float = float(_warehousing_by_tile.get(rt2, 0.0))
 			r2["warehousing_cost"] = (fee / float(reports_per_tile[rt2])) if fee > 0.0 else 0.0
+	for report: Dictionary in _building_turn_reports:
+		report["power_cost"] = Power.allocated_draw_cost(str(report.get("tile_id", "")), int(report.get("power_draw", 0)))
 	CostSolver.solve(_building_turn_reports)
 	TurnProfiler.section_end("cost_solve")
 
@@ -676,7 +681,7 @@ func _process_production() -> void:
 			summary.produced, summary.consumed, summary.sold, summary.starved.size(),
 			summary.money_in - summary.money_out, pass_count
 		])
-		print("[Production] Cash breakdown: goods=£%.2f power_sold=£%.2f power_bought=£%.2f costs=£%.2f goods_bought=£%.2f interest=£%.2f tax=£%.2f div=£%.2f profit_share=£%.2f net=£%.2f" % [
+		print("[Production] Cash breakdown: goods=£%.2f power_sold=£%.2f power_bought=£%.2f costs=£%.2f goods_bought=£%.2f loan_payments=£%.2f tax=£%.2f div=£%.2f profit_share=£%.2f operational_credit=£%.2f carbon_tax=£%.2f green_subsidy=£%.2f reported_net=£%.2f tab_repayments=£%.2f cash_delta=£%.2f" % [
 			summary.goods_sales_revenue,
 			summary.power_sales_revenue,
 			summary.power_purchase_cost,
@@ -686,7 +691,12 @@ func _process_production() -> void:
 			summary.taxes_paid,
 			summary.dividends_paid,
 			summary.profit_sharing_paid,
-			summary.money_in - summary.money_out
+			summary.building_tab_carried,
+			summary.carbon_tax_paid,
+			summary.green_subsidy_received,
+			summary.money_in - summary.money_out,
+			tab_repayments,
+			MatchState.money - cash_before_process
 		])
 		# Diagnostic: goods sitting in pending shipments (sales + moves). If a produced good
 		# is neither stockpiled nor sold, it should show here as in-transit; if not, it's lost.
@@ -1601,6 +1611,7 @@ func _capture_turn_report(building: Dictionary, recipe: Dictionary) -> void:
 		"inputs_consumed":  inputs_consumed,
 		"outputs_produced": outputs_produced,
 		"power_cost":       power_cost,
+		"power_draw":       energy_req,
 		"labour_cost":      _calculate_labour_cost(building, recipe),
 		"maintenance_cost": _calculate_maintenance_cost(building),
 		"inbound_transport": inbound_transport,

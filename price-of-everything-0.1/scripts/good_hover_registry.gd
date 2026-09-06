@@ -7,9 +7,10 @@ func _ready() -> void:
 
 func _node_added(node: Node) -> void:
 	if node is TextureRect or node is Sprite2D:
-		_bind.call_deferred(node)
+		_bind.call_deferred(node.get_instance_id())
 
-func _bind(node: Node) -> void:
+func _bind(instance_id: int) -> void:
+	var node := instance_from_id(instance_id) as Node
 	if not is_instance_valid(node) or not node.is_inside_tree(): return
 	var texture: Texture2D = node.texture
 	if texture == null or not texture.has_meta("encyclopedia_good_id"): return

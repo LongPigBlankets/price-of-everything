@@ -2934,18 +2934,22 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	# player opened were absurdly tall (owner report, 2026-09-03). Recomputing on resize
 	# means a transient bad width corrects itself the moment a real one arrives; writing
 	# only on a CHANGE keeps it from bouncing the layout back and forth forever.
+	var name_ref: WeakRef = weakref(name_label)
+	var overlay_ref: WeakRef = weakref(overlay)
 	var fit_name_height := func() -> void:
-		if not is_instance_valid(name_label) or not is_instance_valid(overlay):
+		var live_name := name_ref.get_ref() as Label
+		var live_overlay := overlay_ref.get_ref() as Control
+		if live_name == null or live_overlay == null:
 			return
-		if name_label.size.x < 1.0:
+		if live_name.size.x < 1.0:
 			return   # not laid out yet — the resize that gives it a width will call back
-		var extra_lines := maxi(0, name_label.get_line_count() - 1)
-		var want := float(GROUP_CARD_H - 10) + float(extra_lines) * name_label.get_line_height()
-		if not is_equal_approx(overlay.custom_minimum_size.y, want):
-			overlay.custom_minimum_size.y = want
+		var extra_lines := maxi(0, live_name.get_line_count() - 1)
+		var want := float(GROUP_CARD_H - 10) + float(extra_lines) * live_name.get_line_height()
+		if not is_equal_approx(live_overlay.custom_minimum_size.y, want):
+			live_overlay.custom_minimum_size.y = want
 	name_label.resized.connect(fit_name_height)
 	name_label.ready.connect(func() -> void:
-		await name_label.get_tree().process_frame
+		await get_tree().process_frame
 		fit_name_height.call())
 	var pusher := Control.new()
 	pusher.size_flags_vertical = Control.SIZE_EXPAND_FILL  # pushes cost basis to the bottom

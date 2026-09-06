@@ -26,6 +26,8 @@ var tile_produced_grid_priority: Dictionary = {}
 # covered by its own cable network's generation (own supply), false when any of it was
 # imported from the national grid. Read by BuildingStatus.power_supply for the UI.
 var _tile_self_supplied: Dictionary = {}
+# Settled grid-import quantity per tile, shared by supply status and cost allocation.
+var _tile_grid_draw: Dictionary = {}
 
 func reset_for_turn() -> void:
 	supply_this_turn = 0
@@ -34,6 +36,7 @@ func reset_for_turn() -> void:
 	tile_produced_grid_priority.clear()
 	tile_drawn.clear()
 	_tile_self_supplied.clear()
+	_tile_grid_draw.clear()
 
 func add_supply(amount: int) -> void:
 	if amount > 0:
@@ -145,6 +148,7 @@ func settle_grid_transactions() -> Dictionary:
 	# aggregate. A network is a connected component of adjacent cabled tiles; a surplus network
 	# SELLS while a deficit network BUYS in the same turn (they don't cancel each other).
 	_tile_self_supplied.clear()
+	_tile_grid_draw.clear()
 	var grid_bought: int = 0
 	var grid_sold: int = 0
 	var cabled := _cabled_tile_set()
@@ -157,6 +161,9 @@ func settle_grid_transactions() -> Dictionary:
 		for t in tile_produced_grid_priority:
 			grid_sum += int(tile_produced_grid_priority[t])
 		var self_sum: int = supply_this_turn - grid_sum
+		var active_tiles := tile_produced.duplicate()
+		active_tiles.merge(tile_drawn)
+		_mark_network_supply(active_tiles.keys(), self_sum, demand_this_turn)
 		var local_covered_g: int = mini(self_sum, demand_this_turn)
 		var remaining_g: int = demand_this_turn - local_covered_g
 		var surplus_g: int = self_sum - local_covered_g
@@ -230,6 +237,21 @@ func settle_grid_transactions() -> Dictionary:
 func is_self_supplied(tile_id: String) -> bool:
 	return bool(_tile_self_supplied.get(tile_id, false))
 
+## Allocate the settled tile draw across its consumers. Owned power carries the
+## export revenue forgone; imported power carries the actual tariff and carbon levy.
+## Read after settle_grid_transactions(), so disconnected networks and grid-priority generation
+## use exactly the same attribution as the power supply diagnostic.
+func allocated_draw_cost(tile_id: String, amount: int) -> float:
+	if amount <= 0:
+		return 0.0
+	var draw := int(tile_drawn.get(tile_id, 0))
+	var imported_share := float(_tile_grid_draw.get(tile_id, draw)) / float(draw) if draw > 0 else 1.0
+	var buy_mult := maxf(0.0, 1.0 + float(Modifiers.resolve_pct("grid_buy_price", "*", {}).get("net", 0.0)) / 100.0)
+	var sell_mult := maxf(0.0, 1.0 + float(Modifiers.resolve_pct("grid_sell_price", "*", {}).get("net", 0.0)) / 100.0)
+	var carbon := MarketState.carbon_component(str(Catalog.get_good_by_internal_name("power").get("id", "")))
+	return float(amount) * ((1.0 - imported_share) * EconomyConfig.GRID_SELL_PRICE * sell_mult
+		+ imported_share * (EconomyConfig.GRID_BUY_PRICE * buy_mult + carbon))
+
 # --- Cable-network connectivity (physical adjacency) ---------------------------------------
 
 # Every cabled tile_id on the map. Empty when no hex_map is present (pure headless context).
@@ -272,6 +294,7 @@ func _mark_network_supply(comp: Array, gen: int, dem: int) -> void:
 	if gen >= dem:
 		for t in comp:
 			_tile_self_supplied[t] = true  # network self-sufficient → every draw is own supply
+			_tile_grid_draw[t] = 0
 		return
 	var pool: int = 0  # network residual generation after same-tile self-coverage
 	var residual_dem: Dictionary = {}
@@ -285,6 +308,7 @@ func _mark_network_supply(comp: Array, gen: int, dem: int) -> void:
 		pool += g - self_cov
 		var rd: int = d - self_cov
 		# Fully self-covered (or a pure generator / no draw) is own supply; residual decided below.
+		_tile_grid_draw[t] = rd
 		_tile_self_supplied[t] = rd == 0
 		if rd > 0:
 			residual_dem[t] = rd
@@ -294,6 +318,7 @@ func _mark_network_supply(comp: Array, gen: int, dem: int) -> void:
 		var rd: int = int(residual_dem[t])
 		var take: int = mini(rd, pool)
 		pool -= take
+		_tile_grid_draw[t] = rd - take
 		_tile_self_supplied[t] = take >= rd  # fully covered by the network → own supply, else grid
 
 # Hex (odd-q offset) neighbour coords — mirrors hex_map._neighbor_offset_for_hsm (pure).

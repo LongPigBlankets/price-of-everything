@@ -1181,11 +1181,25 @@ func _refresh_rankings() -> void:
 		_rankings_sub.visible = not v31
 		_rankings_icon.visible = v31
 		if _rankings_led != null:
-			# v3.1: green only outright leading the league — 2nd of 10 is not "bad", so
-			# unlit rather than amber/red for anything short of #1.
+			# Amber warns of an imminent lost place; green marks a safe league lead.
 			_rankings_led.visible = v31
-			(_rankings_led as StatusLed).lit = rank == 1
+			var at_risk := _ranking_position_at_risk(rows)
+			(_rankings_led as StatusLed).color = C_AMBER if at_risk else C_GOOD
+			(_rankings_led as StatusLed).lit = at_risk or rank == 1
 		return
+
+## Warn when the next rival would overtake if each company's latest revenue
+## change continued for one turn. An imminent lost place is amber, not a failure.
+func _ranking_position_at_risk(rows: Array[Dictionary]) -> bool:
+	for i in range(rows.size() - 1):
+		if not bool(rows[i].get("is_player", false)):
+			continue
+		var player: Dictionary = rows[i]
+		var rival: Dictionary = rows[i + 1]
+		var player_next := maxf(0.0, float(player.revenue) + float(player.get("revenue_change", 0.0)))
+		var rival_next := maxf(0.0, float(rival.revenue) + float(rival.get("revenue_change", 0.0)))
+		return rival_next > player_next
+	return false
 
 ## Goods where the player outproduces every rival. goods_standings() returns one row
 ## per GOOD, each carrying a nested `producers` league — the player is one entry in it.
@@ -1949,7 +1963,7 @@ func _build_council() -> void:
 	_hbox().add_child(_flex())
 	var mod := _ModuleBtn.new(self)
 	mod.name = "CouncilModule"
-	mod.tooltip_text = "Council — advisor loyalty"
+	mod.tooltip_text = "Council"
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
 	_council_led = StatusLed.new()
@@ -1991,6 +2005,8 @@ func _refresh_council() -> void:
 		if lv <= DISLOYAL_BELOW:
 			disloyal += 1
 		min_loyalty = minf(min_loyalty, lv)
+	if not preload("res://scripts/debug_terminal.gd").demo_is_unlocked():
+		disloyal = 0
 	(_council_btn as _ModuleBtn).warn = disloyal > 0
 	if seated.is_empty():
 		_council_status.text = "no seats filled"
@@ -2010,9 +2026,9 @@ func _refresh_council() -> void:
 	(_council_tag.get_parent() as Control).visible = not v31
 	_council_stack.visible = not v31
 	_council_icon.visible = v31
-	_council_btn.tooltip_text = ("Council — %s" % _council_status.text) if v31 else "Council — advisor loyalty"
+	_council_btn.tooltip_text = ("Council — %s" % _council_status.text) if v31 else "Council"
 	if _council_led != null:
-		_council_led.visible = v31
+		_council_led.visible = false
 		var led := _council_led as StatusLed
 		led.blink = false
 		led.lit = true
@@ -2056,15 +2072,16 @@ class _PortraitCircle extends Control:
 		draw_arc(c, r - 1.0, 0.0, TAU, SEGMENTS, ring, 2.0, true)
 
 func _portrait_chip(aid: String, size: float) -> Control:
+	var show_loyalty := preload("res://scripts/debug_terminal.gd").demo_is_unlocked()
 	var v := MatchState.advisor_loyalty_value(aid)
 	var tone := _loyalty_tone(v)
 	var adv: Dictionary = MatchState.get_advisor(aid)
 	var holder := Control.new()
 	holder.custom_minimum_size = Vector2(size + 4, size + 4)
 	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	holder.tooltip_text = "%s — %+.1f loyalty" % [str(adv.get("name", aid)), v]
+	holder.tooltip_text = "%s — %+.1f loyalty" % [str(adv.get("name", aid)), v] if show_loyalty else str(adv.get("name", aid))
 	var circle := _PortraitCircle.new(size)
-	circle.ring = tone
+	circle.ring = tone if show_loyalty else C_TEXT
 	var path := str(adv.get("portrait_path", ""))
 	if path != "" and ResourceLoader.exists(path):
 		circle.texture = load(path) as Texture2D
@@ -2097,6 +2114,7 @@ func _portrait_chip(aid: String, size: float) -> Control:
 	chip_holder.add_child(chip)
 	chip_holder.position = Vector2(size - 12, size - 8)
 	holder.add_child(chip_holder)
+	chip_holder.visible = show_loyalty
 	return holder
 
 
@@ -3491,8 +3509,10 @@ func _fly_council(vb: VBoxContainer) -> void:
 		fill.offset_right = -57.0 + 56.0 * frac
 		meter.add_child(fill)
 		row.add_child(meter)
+		meter.visible = preload("res://scripts/debug_terminal.gd").demo_is_unlocked()
 		var val := _mini("%+.1f" % v, tone, 11)
 		row.add_child(val)
+		val.visible = meter.visible
 		row_btn.pressed.connect(func() -> void:
 			_close_fly()
 			council_widget_clicked.emit())

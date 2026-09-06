@@ -138,16 +138,18 @@ func _build_roster() -> void:
 	var mood_col := VBoxContainer.new()
 	mood_col.add_theme_constant_override("separation", 2)
 	srow.add_child(mood_col)
-	mood_col.add_child(_sec_label("COUNCIL MOOD"))
+	var show_loyalty := preload("res://scripts/debug_terminal.gd").demo_is_unlocked()
+	mood_col.add_child(_sec_label("COUNCIL MOOD" if show_loyalty else "COUNCIL"))
 	var mood_row := HBoxContainer.new()
 	mood_row.add_theme_constant_override("separation", 8)
 	mood_col.add_child(mood_row)
-	mood_row.add_child(_big_number("%+.1f" % avg if seated > 0 else "—", tone.color, 26))
-	mood_row.add_child(_dim_label(("%s · " % tone.label if seated > 0 else "") + "%d / %d seats filled" % [seated, cap], 13))
+	if show_loyalty:
+		mood_row.add_child(_big_number("%+.1f" % avg if seated > 0 else "—", tone.color, 26))
+	mood_row.add_child(_dim_label(("%s · " % tone.label if seated > 0 and show_loyalty else "") + "%d / %d seats filled" % [seated, cap], 13))
 	var meter_holder := CenterContainer.new()
 	meter_holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	srow.add_child(meter_holder)
-	if seated > 0:
+	if seated > 0 and preload("res://scripts/debug_terminal.gd").demo_is_unlocked():
 		var m := _meter(_loyalty_frac(avg), tone.color, 260.0, 9.0)
 		meter_holder.add_child(m)
 	var add_btn := Button.new()
@@ -201,13 +203,14 @@ func _filled_seat_card(seat_id: String, advisor_id: String) -> Control:
 	names.add_child(_title_label(str(adv.get("name", advisor_id)), 19))
 	head.add_child(_role_chip(seat_id, scol))
 
-	var lrow := HBoxContainer.new()
-	col.add_child(lrow)
-	var ll := _dim_label("Loyalty", 11)
-	ll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	lrow.add_child(ll)
-	lrow.add_child(_tone_label("%+.1f · %s" % [loyalty, tone.label], tone.color, 12))
-	col.add_child(_meter(_loyalty_frac(loyalty), tone.color, 0.0, 8.0))
+	if preload("res://scripts/debug_terminal.gd").demo_is_unlocked():
+		var lrow := HBoxContainer.new()
+		col.add_child(lrow)
+		var ll := _dim_label("Loyalty", 11)
+		ll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		lrow.add_child(ll)
+		lrow.add_child(_tone_label("%+.1f · %s" % [loyalty, tone.label], tone.color, 12))
+		col.add_child(_meter(_loyalty_frac(loyalty), tone.color, 0.0, 8.0))
 
 	var frow := HBoxContainer.new()
 	frow.add_theme_constant_override("separation", 10)
@@ -372,8 +375,8 @@ func _build_detail() -> void:
 		fee.add_child(_tone_label(fee_text, _WARN, 17))
 		fee.add_child(_dim_label("family friend" if employed and not MatchState.advisor_is_payrolled(aid) else ("benched" if employed else "salary"), 11))
 
-	# Loyalty strip (employed only).
-	if employed:
+	# Loyalty and its missions are available after unlock demo.
+	if employed and preload("res://scripts/debug_terminal.gd").demo_is_unlocked():
 		var loyalty := MatchState.advisor_loyalty_value(aid)
 		var tone := _loyalty_tone(loyalty)
 		var strip := _card_panel()
@@ -461,6 +464,7 @@ func _build_detail() -> void:
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	right.size_flags_stretch_ratio = 1.0
 	body.add_child(right)
+	right.visible = preload("res://scripts/debug_terminal.gd").demo_is_unlocked()
 	right.add_child(_sec_label("AGENDA — SCORES LOYALTY EACH TURN"))
 	var agenda_box := _card_panel()
 	var acol := VBoxContainer.new()
@@ -638,7 +642,7 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 	if selected_seat == "":
 		confirm.tooltip_text = "Choose a position first."
 	elif _tutorial_bonus_inspection_required():
-		confirm.tooltip_text = "Inspect What They Bring before hiring."
+		confirm.tooltip_text = "Inspect the advisor bonuses before hiring."
 	confirm.pressed.connect(func() -> void:
 		if not MatchState.permanent_advisor_ids.has(advisor_id):
 			if not MatchState.hire_advisor(advisor_id):

@@ -50,7 +50,9 @@ func _ready() -> void:
 					area += BuildingShapes.polygon_area(piece)
 				check(area <= maxf(1.0, BuildingShapes.polygon_area(p.verts) * 0.01), "Vandel claim clears neighbouring decor")
 	check(farms == 2, "Both Stoneshore coast farms are retained")
-	check(vandel == 6, "All six Vandel industries use decorative footprints")
+	check(vandel == 7, "Six Vandel industries and the port office use separate decorative footprints")
+	for sc in layout.get("_subcomponents", []):
+		check(sc.get("iid", "") != "inst_b_004_0003f0", "Vandel port has no generated NPC wing over the town")
 	bv.free()
 	var panel := ConstructPanelScript.new()
 	panel._selected_recipe = {"inputs": [{"good_id": "g_010", "qty": 1}, {"good_id": "g_009", "qty": 1}, {"good_id": "g_012", "qty": 1}], "outputs": [{"good_id": "g_010", "qty": 1}], "energy_req": 1}

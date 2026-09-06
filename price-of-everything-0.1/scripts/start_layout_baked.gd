@@ -33,7 +33,8 @@ const REBAKE_HINT := "rerun tools/bake_start_layout.tscn"
 ## Bumped when placement itself changes — the packer, the masks, the block grid, the
 ## subcomponent build, or the shape of the exported state. An old file is then refused rather
 ## than believed, which is the difference between a slow load and a wrong map.
-const BAKE_VERSION := 4   # 4: coast-clipped farms and non-overlapping decorative claims.
+const BAKE_VERSION := 5   # 5: assigned port office replaces generated overlapping annexes.
+                          # 4: coast-clipped farms and non-overlapping decorative claims.
                           # 3: stamp industries take over any large town mass ("decor" claim),
                           #    not just hand-marked hijack masses — footprints moved, rebake.
                           # 2: the hijacked-mass claim register rides with the placements

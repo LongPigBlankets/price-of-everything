@@ -571,6 +571,18 @@ func _load_unlock_rows() -> void:
 		push_warning("Could not open research unlock CSV at %s" % RESEARCH_UNLOCKS_PATH)
 		return
 
+	# Index recipe outputs once, so a search for a product also finds processes
+	# named after their chemistry (for example aluminium / Bauxite Carbochlorination).
+	var output_terms: Dictionary = {}
+	for recipe: Dictionary in Catalog.all_recipes():
+		var requirement := str(recipe.get("tech_unlock_req", ""))
+		if requirement == "":
+			continue
+		var terms := str(output_terms.get(requirement, ""))
+		for output: Dictionary in recipe.get("outputs", []):
+			terms += " " + Catalog.get_display_name(str(output.get("good_id", "")))
+		output_terms[requirement] = terms
+
 	var header := file.get_csv_line()
 	var column_index := {}
 	for index in header.size():
@@ -584,6 +596,7 @@ func _load_unlock_rows() -> void:
 			continue
 		_unlock_rows.append({
 			"research_node_id": _csv_value(row, column_index, "research_node_id"),
+			"output_terms": str(output_terms.get(_csv_value(row, column_index, "research_node_id"), "")),
 			"category": _csv_value(row, column_index, "category"),
 			"prereq_1": _csv_value(row, column_index, "prereq_1"),
 			"prereq_2": _csv_value(row, column_index, "prereq_2"),
@@ -924,7 +937,7 @@ func _category_unlocks(category: String) -> Array[Dictionary]:
 ## what they DO, not just what they are called. Category is included too, so typing a
 ## tab name still gathers that tree.
 func _unlock_matches(unlock: Dictionary, query: String) -> bool:
-	for key in ["title", "description", "category"]:
+	for key in ["title", "description", "category", "output_terms"]:
 		if str(unlock.get(key, "")).to_lower().contains(query):
 			return true
 	return false
