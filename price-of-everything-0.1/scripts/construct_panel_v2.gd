@@ -1734,6 +1734,15 @@ class LandRequirementIcon extends Control:
 		hex.append(hex[0])
 		draw_polyline(hex, Color("e8eef7"), 2.0, true)
 
+## A 12px line box avoids Label's extra font leading enlarging the 78px control.
+class RequirementCaption extends Control:
+	var text := ""
+	func _draw() -> void:
+		var font := get_theme_default_font()
+		var baseline := (12.0 + font.get_ascent(12) - font.get_descent(12)) * 0.5
+		draw_string(font, Vector2(0, baseline), text, HORIZONTAL_ALIGNMENT_CENTER, 60, 12, TEXT)
+
+
 func _v3_requirement_rows() -> Array:
 	var entries: Array = []
 	# Input/output requirements share one icon but keep both existing explanations.
@@ -1743,7 +1752,7 @@ func _v3_requirement_rows() -> Array:
 			if str(need.infra_key) == infra_key:
 				details.append(need)
 		if not details.is_empty():
-			entries.append({"key": infra_key, "label": _infra_connection_name(infra_key),
+			entries.append({"key": infra_key, "label": {"cables": "Cable", "pipes": "Pipe", "reinf_pipes": "Reinf. pipe"}[infra_key],
 				"details": details, "tone": GREEN if _infra_satisfied(infra_key) else GOLD})
 	entries.append({"key": "land", "label": "%d Land" % int(_v3_land.get("needed", 0)),
 		"tone": GREEN if bool(_v3_land.get("covered", false)) else GOLD})
@@ -1763,7 +1772,7 @@ func _v3_requirement_rows() -> Array:
 		for i in range(start, start + 3):
 			if i >= entries.size():
 				var spacer := Control.new()
-				spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				spacer.custom_minimum_size = Vector2(60, 78)
 				row.add_child(spacer)
 				continue
 			var entry: Dictionary = entries[i]
@@ -1782,33 +1791,34 @@ func _v3_requirement_rows() -> Array:
 					detail.add_child(_infra_requirement_row(key, need.good_ids, bool(need.is_output)))
 			var button := Button.new()
 			button.name = "Requirement_" + key
-			button.custom_minimum_size = Vector2(0, 74)
-			button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			button.custom_minimum_size = Vector2(60, 78)
+			button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 			button.toggle_mode = true
 			button.button_pressed = detail.visible
 			button.tooltip_text = str(entry.label) + " — click for requirements"
 			_style_button(button, NAVY_FIELD, entry.tone, TEXT)
 			row.add_child(button)
 			buttons.append(button)
-			var content := VBoxContainer.new()
+			var content := Control.new()
 			content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			button.add_child(content)
 			content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-			content.add_theme_constant_override("separation", 0)
 			var icon: Control
 			if key == "land":
 				icon = LandRequirementIcon.new()
-				icon.custom_minimum_size = Vector2(40, 40)
+				icon.custom_minimum_size = Vector2(60, 60)
 			else:
-				icon = _building_icon(Catalog.get_building_by_internal_name(key), 40)
+				icon = _building_icon(Catalog.get_building_by_internal_name(key), 60)
 			icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+			icon.name = "RequirementIcon"
+			icon.size = Vector2(60, 60)
 			content.add_child(icon)
-			var label := Label.new()
+			var label := RequirementCaption.new()
+			label.name = "RequirementCaption"
 			label.text = str(entry.label)
-			label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			label.add_theme_font_size_override("font_size", 12)
-			label.add_theme_color_override("font_color", TEXT)
+			label.position = Vector2(0, 63)
+			label.size = Vector2(60, 12)
 			label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			content.add_child(label)
 			button.pressed.connect(func():

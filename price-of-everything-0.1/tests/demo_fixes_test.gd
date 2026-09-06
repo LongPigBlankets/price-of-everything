@@ -78,6 +78,12 @@ func _ready() -> void:
 	check(land_detail.get_parent() == grid.get_child(3), "Second-row requirement expands below the second row")
 	await get_tree().process_frame
 	await get_tree().process_frame
+	for button in grid.find_children("Requirement_*", "Button", true, false):
+		check(button.size == Vector2(60, 78), "Requirement control is 60px wide and 78px high")
+		var icon: Control = button.find_child("RequirementIcon", true, false)
+		var caption: Control = button.find_child("RequirementCaption", true, false)
+		check(icon.size == Vector2(60, 60), "Requirement icon uses the full 60px square")
+		check(caption.position.y == 63 and caption.size.y == 12, "Caption has a 3px gap and 3px bottom margin")
 	grid.queue_free()
 	panel.free()
 	await get_tree().process_frame

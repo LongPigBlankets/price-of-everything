@@ -3053,6 +3053,23 @@ func _on_phase_started(phase: int) -> void:
 
 func _on_turn_advanced(new_turn: int) -> void:
 	_update_turn_counter(new_turn)
+	_expand_public_roads(new_turn)
+
+
+func _expand_public_roads(turn: int) -> Array:
+	var expansion := preload("res://scripts/public_road_expansion.gd")
+	if turn > TurnManager.MAX_TURNS or expansion.batch_size(turn) == 0 or turn <= MatchState.public_roads_last_turn:
+		return []
+	var tile_ids := expansion.next_tiles(terrain_layer.tiles.values(), turn)
+	MatchState.public_roads_last_turn = turn
+	for tile_id in tile_ids:
+		_apply_built_infrastructure(terrain_layer.id_to_coord(tile_id), tile_id, "roads")
+		RoadWorks.add_roads_for_tile(tile_id)
+	if not tile_ids.is_empty():
+		var road_visuals := get_node_or_null("RoadNetworkVisuals") as CanvasItem
+		if road_visuals != null:
+			road_visuals.queue_redraw()
+	return tile_ids
 
 func _on_resolution_started() -> void:
 	end_turn_button.disabled = true

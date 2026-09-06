@@ -610,6 +610,8 @@ var construct_start_half_capacity: bool = false
 ## When on, confirming a build on a tile the player has too little land for buys exactly
 ## enough land patches to cover the shortfall first (see world_map._space_check_for_build).
 var construct_auto_buy_land: bool = true
+## Last public-road expansion batch applied; persisted so loading cannot repeat a batch.
+var public_roads_last_turn: int = 0
 ## Off = the browse list's recipe cards show the compact mini diagram (icons + "+" +
 ## an arrow, no quantities); on = the full Building-Details-style diagram with qty
 ## pills. Display-only — never read by BuildForecast/Production.
@@ -3912,6 +3914,7 @@ func reset() -> void:
 	construct_cost_display = "grid"
 	construct_start_half_capacity = false
 	construct_auto_buy_land = true
+	public_roads_last_turn = 0
 	construct_expanded_recipe_mode = false
 	construct_material_source = "ask"
 	construct_output_destination = "market"
@@ -4057,6 +4060,7 @@ func export_state() -> Dictionary:
 		"construct_cost_display": construct_cost_display,
 		"construct_start_half_capacity": construct_start_half_capacity,
 		"construct_auto_buy_land": construct_auto_buy_land,
+		"public_roads_last_turn": public_roads_last_turn,
 		"construct_expanded_recipe_mode": construct_expanded_recipe_mode,
 		"construct_material_source": construct_material_source,
 		"construct_output_destination": construct_output_destination,
@@ -4167,8 +4171,9 @@ func import_state(d: Dictionary) -> void:
 	cheats_used = bool(d.get("cheats_used", false))
 	set_construct_cost_display(str(d.get("construct_cost_display", "grid")), false)
 	set_construct_start_half_capacity(bool(d.get("construct_start_half_capacity", false)), false)
-	# Additive key: saves written before this setting existed simply default to off.
+	# Additive key: saves written before this setting existed use automatic land buying.
 	set_construct_auto_buy_land(bool(d.get("construct_auto_buy_land", true)), false)
+	public_roads_last_turn = int(d.get("public_roads_last_turn", 0))
 	set_construct_expanded_recipe_mode(bool(d.get("construct_expanded_recipe_mode", false)), false)
 	set_construct_material_source(str(d.get("construct_material_source", "ask")), false)
 	set_construct_output_destination(str(d.get("construct_output_destination", "market")), false)

@@ -105,16 +105,16 @@ func _on_construction_completed(instance_id: String, tile_id: String) -> void:
 	var building_id := str(MatchState.get_building(instance_id).get("building_id", ""))
 	var internal := str(Catalog.get_building(building_id).get("internal_name", ""))
 	if internal == "roads":
-		# A hand-authored tile already has its roads drawn, including the connectors that
-		# reveal the moment this flag lands. Planning a connect job and densify spurs here
-		# would grow procedural stubs alongside the authored linework — the same "inventing
-		# roads to suit something else is backwards" defect that got block service streets
-		# removed. Only the GEOMETRY is skipped: the infrastructure flag, the transport
-		# cost and everything else the simulation reads are set by the caller regardless.
-		if AuthoredMap.covers(tile_id):
-			return
-		enqueue_for_tile(tile_id)
-		_enqueue_densify(tile_id)
+		add_roads_for_tile(tile_id)
+
+
+## Shared completion path for purchased roads and public expansion. Authored tiles
+## reveal their designed roads from infrastructure flags; other tiles plan new geometry.
+func add_roads_for_tile(tile_id: String) -> void:
+	if AuthoredMap.covers(tile_id):
+		return
+	enqueue_for_tile(tile_id)
+	_enqueue_densify(tile_id)
 
 ## Queue a connect-to-network job for the tile (spec: road built on tile T
 ## plans jobs for T only). Returns the order id, or -1 when skipped.

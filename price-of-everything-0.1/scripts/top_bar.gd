@@ -275,6 +275,9 @@ var _v31_pairs: Array[Array] = []
 
 
 func _ready() -> void:
+	# Empty bar space belongs to the HUD too; PASS allowed it to arm map clicks/drags.
+	mouse_filter = Control.MOUSE_FILTER_STOP
+	mouse_force_pass_scroll_events = false
 	# Deferred so the flyout is rebuilt after the turn's numbers have settled, not mid-resolution.
 	TurnManager.turn_resolution_completed.connect(func() -> void: _refresh_open_fly.call_deferred())
 	_style_bar()
