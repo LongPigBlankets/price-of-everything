@@ -1,7 +1,7 @@
 research_node_id,category,prereq_1,prereq_2,prereq_3,prereq_othercategory,rank,Action,Object,Quantity,Unit,title,icon,description
 research_mining_001,Extraction,,,,,I,Produce,coal,500,units,Improved Coal Mining,coal,Increases coal mining output by 15% permanently.
 research_mining_002,Extraction,research_mining_001,,,,II,Produce,iron_ore,500,units,Beneficiated Iron Mining,iron,Increases iron ore mining output by 15% permanently.
-research_mining_003,Extraction,research_mining_001,,,,II,Produce Any,limestone|sand,500,units,Deep Seam Surveying,survey,"Increases limestone, sand and salt mining output by 15% permanently."
+research_mining_003,Extraction,,,,,II,Produce Any,limestone|sand,500,units,Deep Seam Surveying,survey,"Increases limestone, sand and salt mining output by 15% permanently."
 research_mining_004,Extraction,research_mining_002,,,,II,Own,land,5,units,Copper Froth Flotation,copper,Increases copper ore mining output by 15% permanently.
 research_mining_005,Extraction,research_mining_003,,,,III,Run,Mine,15,turns,Automated Mine Dispatch,truck,"Increases coal, iron, copper, limestone, sand and salt mining output by a further 15% permanently."
 research_petro_001,Chemistry,,,,,I,Build,Petrochemical Refinery,3,units,Fractional Distillation,oil,Increases Petrochemical Refinery output by 5% permanently.
