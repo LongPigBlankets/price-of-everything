@@ -117,7 +117,7 @@ def export(raw: str, out: str, size: int = 800, contour: float = 0.014, margin: 
     lum0 = (rgb0[..., 0] * 299 + rgb0[..., 1] * 587 + rgb0[..., 2] * 114) // 1000
     strap = neutral & (lum0 > 48) & (lum0 < 100) & (crop[..., 3] > 200) & ~ring
     strap = erode(dilate(dilate(erode(strap, 2), 2), 3), 3)   # drop slivers, then close notches
-    if strap.sum() > 400:
+    if False and strap.sum() > 400:  # ammonia has no straps; dark body tones must stay unoutlined
         ri = max(2, int(round(long_side * 0.0045)))
         sring = dilate(strap, ri) & ~strap & m
         crop[..., :3][sring] = INK

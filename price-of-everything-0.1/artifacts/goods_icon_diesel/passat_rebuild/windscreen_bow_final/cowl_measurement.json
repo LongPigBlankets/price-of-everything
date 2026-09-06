@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Reference",
+    "chord_px": 253.8,
+    "max_bow_px": 28.25,
+    "bow_chord": 0.1113
+  },
+  {
+    "name": "Previous",
+    "chord_px": 206.02,
+    "max_bow_px": 3.0,
+    "bow_chord": 0.0146
+  },
+  {
+    "name": "Final",
+    "chord_px": 206.02,
+    "max_bow_px": 23.75,
+    "bow_chord": 0.1153
+  }
+]

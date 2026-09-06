@@ -11,6 +11,12 @@ render on 2026-09-03 (marked TRAP). Scripts: `goods_icon_kit.py`, `render_icons_
 `icon_export.py` in this folder. Reference icons: `g_008_motor.png`, `g_029_aluminium.png`,
 `g_056_ice_car.png` under `assets/icons/goods/medium/`.
 
+For complex vehicles, equipment and engines, also read the
+[car/jerrycan case study](../blender-goods-build-review-loop/references/car-and-jerrycan.md)
+and use the [reproducible complex-goods pipeline](../../../price-of-everything-0.1/tools/goods_icons/complex_goods/README.md).
+It preserves the approved sedan/can source and pairs the original goods art with real-world
+geometry references. Keep the fixed production camera; side/front diagnostic views may differ.
+
 ## 1. What the style IS
 
 1. **An inked poster, not a render.** Form is described by flat tone steps and ink, never by a
@@ -266,3 +272,25 @@ parts such as crates, breakers, labels, pallets, meters or containers.
 75. **Runtime validation follows import validation.** Load the medium, small and very-small textures
     in headless Godot and assert their dimensions are 800², 450² and 256². This proves the imported
     resources resolve; the explicit sidecar audit proves mipmaps and filtering inputs match.
+
+## 11. Complex assemblies: lessons from the approved diesel car (2026-09-06)
+
+76. **Reference roles are complementary.** The original icon decides graphic outlines,
+    shared boundaries, accessory composition and intended occlusion. Real-object front,
+    profile and assembly views decide curvature, subtype and how parts connect. The owner's
+    requested subtype wins: the Touareg study did not make the final car an SUV or estate.
+77. **Curvature and joins belong to shared geometry.** Fit lens, reflector, amber region and
+    border to one host surface; mirror the canonical geometry and let it occlude naturally.
+    Derive cap axes from shoulder normals and connected seam endpoints from actual boundaries.
+78. **Corner rounding is not whole-edge bow.** Sample the intended curve and measure its
+    projected sag/chord. The accepted windscreen's lower edge is about0.115, reference0.111;
+    these are this drawing's proportions, not universal vehicle constants.
+79. **Solve structure before stroke symptoms.** A false shadow can be an intersecting bar;
+    an exposed far lamp can be a wrong nose/carrier; a heavy arch can combine cutter material,
+    face marks and alpha contour. Identify the generating geometry/pass before adjusting ink.
+80. **Snapshot the complete render contract.** Builder ordering, shared can functions,
+    semantic mask tags, exporter and reference inputs all matter. The complex pipeline checks
+    fresh color/mask output and identical selected rerenders without promoting visual approval.
+81. **Alternate policy is explicit.** Approved alternates live in `alternate_icons`; the
+    loader checks every main tier first and uses alternates only when main art is missing.
+    Do not replace main art or invent a selection setting from an alternate-install request.

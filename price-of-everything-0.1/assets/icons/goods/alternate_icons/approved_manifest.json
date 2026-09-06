@@ -4,7 +4,9 @@
     "ethylene",
     "electrical_components",
     "coal",
-    "iron_ore"
+    "iron_ore",
+    "ammonia",
+    "ice_car"
   ],
   "files": [
     {
@@ -102,6 +104,48 @@
       "source": "hematite_wider_left_seams",
       "sha256": "67bc67b917ccf9bbd0e568148d40a4d84e8c2e1b1e1e6714469aa63e5418301b",
       "installed_default": true
+    },
+    {
+      "good": "ammonia",
+      "tier": "medium",
+      "source": "goods_icon_ammonia/final_v4",
+      "sha256": "df62181fb56e58d4dac435385c431685471cd7f3e1809d7bc182df5a5f24eae5",
+      "installed_default": true
+    },
+    {
+      "good": "ammonia",
+      "tier": "small",
+      "source": "goods_icon_ammonia/final_v4",
+      "sha256": "be770982609603bfe06d33bcea9c62fafc692754bddbc532595a174efdf2c8dd",
+      "installed_default": true
+    },
+    {
+      "good": "ammonia",
+      "tier": "very_small",
+      "source": "goods_icon_ammonia/final_v4",
+      "sha256": "ce31d98863a59241071c92076a9c65dd718aad33869f2e36db878ef3ad2d5eaa",
+      "installed_default": true
+    },
+    {
+      "good": "ice_car",
+      "tier": "medium",
+      "source": "goods_icon_diesel/passat_rebuild/windscreen_bow_final",
+      "sha256": "c4ac7bdbc614739272cea4fe93d7eb9bd7835c774ba267b7a09e805ca4fc5ddf",
+      "installed_default": false
+    },
+    {
+      "good": "ice_car",
+      "tier": "small",
+      "source": "goods_icon_diesel/passat_rebuild/windscreen_bow_final",
+      "sha256": "916b6f57cd0dfa5994871e33f4b82f2cbc53a72bb7bac2cfac873e90bfe4f35e",
+      "installed_default": false
+    },
+    {
+      "good": "ice_car",
+      "tier": "very_small",
+      "source": "goods_icon_diesel/passat_rebuild/windscreen_bow_final",
+      "sha256": "25ccb41b7a88cd4b8539c05265b5f0f571b02aee024472bf5eca1456191a0e41",
+      "installed_default": false
     }
   ]
 }

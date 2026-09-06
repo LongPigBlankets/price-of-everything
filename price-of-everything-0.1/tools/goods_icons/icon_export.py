@@ -42,10 +42,7 @@ def stipple(rgba: np.ndarray, lit: np.ndarray, spacing: float, dot_r: float, str
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
     rgb = rgba[..., :3].astype(np.float32)
     luma = rgb @ np.array([0.299, 0.587, 0.114], np.float32)
-    # protect the INK itself (by colour distance), not everything dark: a dark rust shadow
-    # step sits under 80 luma and still wants its halftone
-    dist_ink = np.sqrt(((rgb - np.array(INK, np.float32)) ** 2).sum(axis=-1))
-    protect = (dist_ink < 26) | (rgba[..., 3] < 200)
+    protect = (luma < 80) | (rgba[..., 3] < 200)
     def grid(sp, ox=0.0, oy=0.0):
         gx = np.abs(((xx + ox) % sp) - sp / 2)
         gy = np.abs(((yy + oy) % sp) - sp / 2)
@@ -63,25 +60,8 @@ def stipple(rgba: np.ndarray, lit: np.ndarray, spacing: float, dot_r: float, str
     return rgba
 
 
-def vibrance(crop: np.ndarray, factor: float):
-    """Punch up colour vibrancy: expand chroma around each pixel's luma (owner: the icons read
-    too washed out). factor 1.0 = unchanged; ~1.4 = noticeably more saturated + a touch more
-    contrast. Applied to opaque non-ink pixels; the navy ink is left alone."""
-    if factor == 1.0:
-        return crop
-    rgb = crop[..., :3].astype(np.float32)
-    luma = (rgb @ np.array([0.299, 0.587, 0.114], np.float32))[..., None]
-    out = np.clip(luma + (rgb - luma) * factor, 0, 255)
-    opaque = crop[..., 3] > 40
-    ink = np.sqrt(((rgb - np.array(INK, np.float32)) ** 2).sum(-1)) < 40
-    keep = opaque & ~ink
-    crop = crop.copy()
-    crop[..., :3][keep] = out[keep].astype(np.uint8)
-    return crop
-
-
 def export(raw: str, out: str, size: int = 800, contour: float = 0.014, margin: float = 0.04,
-           strength: float = 0.42, vib: float = 1.0):
+           strength: float = 0.42):
     im = Image.open(raw).convert("RGBA")
     a = np.array(im)
     mask_path = raw[:-4] + "_mask.png"
@@ -121,31 +101,11 @@ def export(raw: str, out: str, size: int = 800, contour: float = 0.014, margin: 
         ri = max(2, int(round(long_side * 0.0045)))
         sring = dilate(strap, ri) & ~strap & m
         crop[..., :3][sring] = INK
-    # inter-part SEPARATION line: where two nuggets meet, the object-ID pass changes colour;
-    # ink a bold line there so each rock reads as a separate rock (Freestyle can't draw it -
-    # the meshes interpenetrate). Reference: every rock is fully outlined, overlaps included.
-    id_path = raw[:-4] + "_id.png"
-    if os.path.exists(id_path):
-        idimg = np.array(Image.open(id_path).convert("RGBA"))
-        idc = _crop_pad(idimg, x0, x1, y0, y1, pad)
-        ida = idc[..., 3] > 120
-        lab = np.argmax(idc[..., :3].astype(np.int32), axis=-1) + 1     # 1..3 by dominant channel
-        lab[~ida] = 0
-        seam = np.zeros_like(ida)
-        for ax, sh in ((0, 1), (0, -1), (1, 1), (1, -1)):
-            rolled = np.roll(lab, sh, axis=ax)
-            seam |= (lab > 0) & (rolled > 0) & (lab != rolled)
-        rs = max(2, int(round(long_side * contour * 0.62)))            # a touch under the outer contour
-        seam = dilate(seam, rs) & m
-        crop[..., :3][seam] = INK
-        crop[..., 3][seam] = 255
-        ring = ring | seam                                             # protect it from stipple
     if lit_full is not None:
         lit = _crop_pad(lit_full, x0, x1, y0, y1, pad)
         lit[ring] = 1.0
         crop = stipple(crop, lit, spacing=long_side * 0.015, dot_r=long_side * 0.0036,
                        strength=strength)
-    crop = vibrance(crop, vib)
     img = Image.fromarray(crop)
     img = img.crop(img.getbbox())
     target = int(size * (1 - 2 * margin))
@@ -164,6 +124,5 @@ if __name__ == "__main__":
     ap.add_argument("--size", type=int, default=800)
     ap.add_argument("--contour", type=float, default=0.014)
     ap.add_argument("--strength", type=float, default=0.42)
-    ap.add_argument("--vib", type=float, default=1.0, help="colour vibrance boost, e.g. 1.4")
     args = ap.parse_args()
-    print("exported", export(args.raw, args.out, args.size, args.contour, strength=args.strength, vib=args.vib))
+    print("exported", export(args.raw, args.out, args.size, args.contour, strength=args.strength))

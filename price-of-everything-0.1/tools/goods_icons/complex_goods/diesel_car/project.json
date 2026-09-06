@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "good": "diesel_car",
+  "good_id": "g_056",
+  "internal_name": "ice_car",
+  "entry": "render.py",
+  "exporter": "icon_export.py",
+  "reference": "references/goods_icon.png",
+  "real_references": [
+    {
+      "path": "references/passat_profile.png",
+      "role": "User-supplied real-world geometry reference; review only, not a shipped game asset."
+    },
+    {
+      "path": "references/passat_front.png",
+      "role": "User-supplied real-world geometry reference; review only, not a shipped game asset."
+    },
+    {
+      "path": "references/jerrycan_profile.png",
+      "role": "User-supplied real-world geometry reference; review only, not a shipped game asset."
+    }
+  ],
+  "contour": 0.013,
+  "vibrance": 1.15,
+  "owner_rulings": [
+    "2004 Passat-like sedan, not an estate or SUV.",
+    "Fixed isometric camera; original goods icon controls front, composition and ink language.",
+    "Can cap follows the shoulder plane; low handles and a rising rear corner.",
+    "Hood perimeter meets radiator top and lamps; separate interior pressing lines.",
+    "Windshield base bows outward toward hood.",
+    "Reduce upper wheel ink; retain bold lower silhouette.",
+    "Installed as alternate only; any main tier retains priority."
+  ],
+  "regions": [
+    {
+      "name": "windscreen",
+      "candidate": [
+        169,
+        216,
+        445,
+        440
+      ],
+      "reference": [
+        452,
+        356,
+        1108,
+        880
+      ]
+    },
+    {
+      "name": "front",
+      "candidate": [
+        28,
+        390,
+        289,
+        633
+      ],
+      "reference": [
+        30,
+        740,
+        750,
+        1340
+      ]
+    },
+    {
+      "name": "wheel",
+      "candidate": [
+        615,
+        301,
+        775,
+        430
+      ],
+      "reference": [
+        1460,
+        630,
+        1790,
+        1000
+      ]
+    },
+    {
+      "name": "can_top",
+      "candidate": [
+        306,
+        460,
+        467,
+        575
+      ],
+      "reference": [
+        910,
+        890,
+        1360,
+        1170
+      ]
+    }
+  ]
+}

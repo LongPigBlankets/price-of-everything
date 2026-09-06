@@ -1,12 +1,32 @@
 ---
 name: blender-goods-build-review-loop
-description: Load this to take over or continue a GOODS ICON or any complex 3D structure for Carbon and Capital in Blender — the method, not the style rules. Covers how to study the reference, rank the symbol, plan proportions, build with the kit, render headless, run the adversarial reviewer against a fixed criteria sheet, fold one consolidated fix per round, and gate on the owner. Includes four worked cases at different difficulty (aluminium = simple stack, motor = engineered assembly, iron ore = organic lumps, unfinished; diesel car = lofted body, hardest, unstarted) with what was tried, what failed and why. Style numbers live in the blender-goods-icons skill; this skill is the loop and the reviewer's contract.
+description: Build and refine Blender goods icons for Carbon and Capital using the original goods art and real-world geometry references. Covers structural diagnosis, measured comparisons, independent review, reproducible revisions and installation. Includes an approved sedan/jerrycan case and an executable pipeline for complex vehicles, equipment and engines.
 ---
 
 # Goods icons and complex structures in Blender — the build-review-iterate method
 
+## Complex goods: current workflow (September 2026)
+
+For vehicles, equipment, engines or difficult accessories, read the
+[car and jerrycan lessons](references/car-and-jerrycan.md). Use the executable
+[complex-goods pipeline](../../../price-of-everything-0.1/tools/goods_icons/complex_goods/README.md)
+to freeze revisions, render from their exact source, compare reference/previous/current,
+and verify the selected output. The approved diesel seed includes durable real-world
+references and the final reusable can construction.
+
+Assign reference roles explicitly: the goods icon supplies composition, graphic outlines,
+shared boundaries and intended visibility; real-world images/models supply subtype,
+profile, curvature and assembly. User corrections decide conflicts. Establish silhouette,
+support and negative space before decals and ink. For each requested refinement, write
+one observable criterion and measure that feature rather than relying on a generic PASS.
+
+Diesel is now approved and installed as an **alternate**. All main tiers retain priority.
+The older handoff and case histories below describe earlier work, not the current diesel
+state. A reviewer saying “ready for feedback” is not an approval to install; existing user
+approval is sufficient and must not be requested again.
+
 This is the process document. The style contract (tones, ink weights, rig traps, geometry
-rules 1–53) is the sibling skill `blender-goods-icons`; read that first, then this. The
+rules in that skill) is the sibling skill `blender-goods-icons`; read that first, then this. The
 building-sprite skill is a third sibling and shares the kit.
 
 Everything below was learned on 2026-09-03/04 over ~25 render rounds across four goods. The
@@ -20,11 +40,26 @@ than look for PNGs.
 |---|---|---|---|
 | Aluminium | `build_aluminium` | approved in spirit, 4-5-4 hex, tensioned straps | "looks good now" |
 | Motor | `build_motor` (v8) | approved | "motor is there" |
-| Iron ore | `build_iron_ore` (v13) | **open** | hero must be as wide as tall (done); "silver facets look less nice than the original — lighting missing; thin linework bounding the silvery side" (attempted, not yet accepted) |
-| Diesel car | `build_diesel_car` | **failed first pass, unstarted since** | never reviewed by owner; box-built sedan reads as a boxy limo |
+| Iron ore | `build_iron_ore` (v38) | **shapes accepted** ("shapes look good"); silver coverage tuned per owner | hero grey pulled back, flanks big; awaiting final eye / install |
+| Diesel car | approved `complex_goods/diesel_car/source` | **installed alternate** | Approved sedan, curved windshield base, fitted lamps/hood seams and low-handle sloped-shoulder can |
 | Cage loft | `cage_loft`, `build_cage_test` | tool proven on a smoke test | not yet used on a real good |
+| Coal | `build_coal` | **first pass** (v2): dark blue-black ANGULAR chunks (subsurf 1, hard crease) + small cubes; blue-grey lit / near-black shadow | owner reviewing |
+| Alloy ore | `build_alloy_ore` | **first pass** (v1): 4 different-coloured metal rocks (nugget cuts=0, one solid colour each) | owner reviewing |
+| Crude oil | `build_crude_oil` | **first pass** (v3): ribbed steel DRUM (body + washer rims/hoops so they don't cap the lid) + oil `blob` splash + bung washers; NOT in ID_SEPARATION_COLS | owner reviewing |
+| Copper ore | `build_copper_ore` | **first pass** (v2): `mottle_rock` - rounded rock, per-face green-malachite/brown patches by noise | owner reviewing |
+| Bauxite ore | `build_bauxite_ore` | **first pass** (v2): PISOLITIC - a fibonacci cluster of smooth pea-nodules (icosphere subdiv 2 so facets don't crease-ink; valleys between peas ink) | owner reviewing |
+| Lithium ore | `build_lithium_ore` | **first pass** (v1): pink prismatic CRYSTAL cluster (nugget, subsurf 1 hard crease, tall squash); a couple of stray apex lines to clean | owner reviewing |
+| Rare-earth ore | `build_ree_ore` | **first pass** (v1): `mottle_rock` - dark host + amber mineral patches (real-world look; shipped magnet omitted) | owner reviewing |
 
-Nothing is installed in `assets/icons/goods/`. Installing needs the owner's eye on the 800² file.
+New kit pieces this batch: `mottle_rock` (per-face 2-colour noise mottling for ores that show colour patches not cleavage); `blob` (smooth silhouette-only mass, for liquids); `nugget` gained `subsurf_levels`/`crease`/`grey_depth`/`crack_range` params; `ID_SEPARATION_COLS` gates the object-ID seam pass to rock-PILE icons only (a manufactured object like the drum must NOT get seams between its sub-parts). Bauxite's nodule cluster is inline in `build_bauxite_ore`.
+
+Old row: owner-requested 2026-09-04 - reference shipped icon AND real-world look, loop until it resembles one.
+
+Current installations are recorded in `assets/icons/goods/alternate_icons/approved_manifest.json`.
+Do not infer release status from these historical notes; honor the owner's current approval.
+The iron-ore recipe (subsurf boulder, grey-cap depth = silver coverage, object-ID separation
+pass, faded interior lines, short-edge filter) is documented as rules 54–64 in the sibling
+`blender-goods-icons` skill — read those before any rock/ore good.
 
 ## 1. The loop
 
@@ -66,7 +101,8 @@ Stop conditions: the owner says "there"; or three rounds moved no measurable met
 Spawn a general-purpose subagent. Give it, in this order: the style summary (one paragraph),
 the reference path, the candidate path, the previous candidate path, the owner's asks for the
 round, and the criteria sheet below. Require the method and the output format. Run it in the
-background while you prepare the next change set, never blocking on it.
+background while preparing proofs or validating the candidate. Fold its findings into one
+consolidated revision after reading the evidence; do not change the reviewed snapshot.
 
 **Method the reviewer must follow** (each step produced a finding a human missed):
 - Read all images. Build a same-region side-by-side sheet, reference left / candidate right,
@@ -154,54 +190,50 @@ wedge feet + skirt; thin base plate ending at the flange plane.
 - Review criteria that mattered: C1, C2, C6, C7, C8, C11.
 - Lesson: an assembly is won on tone structure and proportion, then anatomy. Detail last.
 
-### Iron ore — organic lumps (hard, UNFINISHED). Thirteen versions.
-Target: the shipped icon's rust chunks with grey cleavage faces, ranked the most
-recognisable iron symbol (pellets read as berries, magnetite as coal, a cart as mining).
-- Tried and rejected: convex hulls of random points (dice); level-3 icosphere with strong
-  noise (mush, no inked facets); six-lump heap (owner: fewer, larger); tall-skinny hero
-  (unbalanced); grey cuts aimed at the camera (hero went grey); poke-fanned grey planes
-  (spider web); deep chamfer cuts (grey again); marking every micro-facet with thin ink
-  (wire mesh).
-- Current v13: three lumps; hero r 1.02, squash (1.0, 0.9, 1.06), ten planar cuts of which
-  two shallow grey caps (up-front and front-left), cut depths relative to the actual extent
-  along the cut normal, rust cuts 0.74–0.86; two flank lumps r ≈ 0.6 with seven cuts and one
-  grey cap; grey planes chamfered by one or two narrow steep cuts into bevel bands; thin ink
-  (`ink_edge` lineset, 2.8 px) on edges with dihedral > 9°; halftone protect by ink distance
-  so dark rust shadow still takes dots.
-- Still open, in the owner's words: the silver facets look less nice than the original,
-  which they attribute to missing light. Candidate causes for the next agent to test, one
-  per round: (a) the reference's grey carries three tones on ONE plane (a soft highlight
-  band) — try a per-face two-tone split by a fake light gradient, or a second lighter grey
-  material on the bevel bands; (b) the reference draws short highlight strokes and a few
-  stray dots on the grey — an export-pass mark, not geometry; (c) the reference's ink on
-  grey planes is slightly heavier than on rust; (d) grey planes in the reference are
-  bounded on ALL sides by ink, ours sometimes share an edge with a same-tone rust facet.
-- Review criteria that mattered: C1 on the grey (single flat tone was the complaint), C9
-  (starburst, wire mesh), C10, C12.
-- Lesson: organic goods need the cut/tag/edge machinery to be right before taste enters;
-  every ruling here was about silhouette balance and the grey planes' light, never about
-  facet count.
+### Iron ore — organic lumps (hard). THIRTY-EIGHT versions; shapes accepted at v38.
+Target: the shipped icon's rust chunks with grey cleavage faces (ranked the most recognisable
+iron symbol; pellets read as berries, magnetite as coal, a cart as mining). This case is now the
+template for any ore/rock good — the winning recipe is rules 54–64 in `blender-goods-icons`.
+- The arc that worked: v13 (inherited: flat single-tone grey, wire-mesh, dull rust) → v14–15
+  gave the grey 3 toon tones + planarised the wire-mesh (limited dissolve) + brightened rust →
+  a v16–20 DETOUR chasing a dark-rust monolith that kept trading grey area against faceting
+  (grey collapsed / "egg" / too small — reverted) → **v24 the turning point: a Subdivision
+  Surface over the cut polyhedron** turned the crystalline gem into a rounded BOULDER, which is
+  what "reach the look of the goods icon" meant → v25–27 bold per-rock OUTLINES + an object-ID
+  separation pass + faded interior lines → v28–30 killed "random lines" (short rust rims wisped
+  by the taper; fixed by a stronger dissolve + gentler taper + a min-length filter) → v31–34
+  the owner's "middle nugget has too many flat-ish sides": fewer cuts on the hero + drop the grey
+  shadow bevel + keep rust cuts off the grey caps → v35–38 "more silver, esp. flanks": grey-cap
+  DEPTH per nugget (flanks deep, hero pulled back).
+- Tried and rejected across the run: convex hulls (dice); L3 icosphere + strong noise (mush);
+  six-lump heap and tall-skinny hero (owner: fewer/larger, as wide as tall); even-azimuth rust
+  cuts to break a monolith (ate the front grey); two grey caps per flank (bumpy boundary
+  hatching — one big cap is cleaner); mesh-edge cracks (read as broken facet stubs); a vertex
+  bevel for soft corners (only nibbles points — subsurf is the answer); an edge bevel (double- or
+  erased the facet lines).
+- What actually moved the needle, in order: (1) 3-step toon grey with a sun-ward highlight bevel;
+  (2) the Subdivision-Surface boulder (rule 54–55); (3) the object-ID separation line (rule 60);
+  (4) faded thin interior lines vs bold outlines (rule 61); (5) grey-cap depth for coverage
+  (rule 56). Detail/cracks never helped.
+- Review criteria that mattered: C1/C2 on the grey, C5 (outline vs interior hierarchy), C9
+  (wire-mesh, random stubs), C10, C12.
+- Lesson: an organic good is won by getting the FORM soft (subsurf) and the LINEWORK right
+  (bold outlines from an ID pass, thin faded interiors, no short stubs) — taste (silver amount,
+  which lump) is the last 10%. Every owner note was about form softness, silver coverage, or
+  stray lines; never about facet count directly.
 
-### Diesel car — a lofted body (hardest, UNSTARTED). One failed pass.
-- What exists: `build_diesel_car`, a box-built sedan lifted from the loading-film vehicle
-  kit (authored for 20 px street scale) plus a jerrycan. At 800 px it reads as a boxy
-  limousine with slab flanks; wheels tucked inside the body vanished; the jerrycan was first
-  too big, then too small and too far.
-- Why boxes cannot get there: the reference has rounded fenders, a raked glasshouse, a
-  nose that falls away, open wheel arches, and glass-to-body about 40/60. Boxes give
-  corners where the reference has curvature, and every chamfer is another coplanar seam.
-- The approach for the next agent: (1) body shell with `cage_loft` — six to eight half
-  profiles along the length (nose, bonnet, screen base, roof, rear screen base, boot, tail),
-  crease rings at the screen bases and the sills; subdivision level 2; (2) wheel arches as
-  real openings (bisect the shell with a cylinder-approximating set of planes, or model the
-  arch as part of the profile); wheels proud of the flanks by 0.05 D with silver rims;
-  (3) glasshouse as a second loft in the glass material, sunk 0.03 into the shell; (4) lamps,
-  grille and mirrors as small boxes seamed with navy; (5) jerrycan at about 0.55 of the roof
-  height, overlapping the front-right corner; (6) tones: the toon shader will band the loft
-  automatically; check C1 on the bonnet. Expect four rounds; the first review should be the
-  structural question, not a nit list.
-- Review criteria that will matter: C1 (the loft must band, not blend), C6 (glass/body
-  ratio, wheel diameter ≈ 0.28 of body length), C10, C12 ("is it a car or a van").
+### Diesel car and jerrycan — approved complex assembly
+
+The early box-built car and multiple cage/patch revisions failed on subtype, silhouette,
+negative space and surface relationships. A fresh profile-driven sedan shell, fitted
+lamp/glass patches, shared hood boundaries and an independently studied can finally
+converged. The last windshield correction was settled by bow/chord measurement:
+reference0.111, previous0.015, overcorrected0.177, accepted0.115.
+
+The full evidence, mistakes, final constraints and reusable engineering details are in
+[car-and-jerrycan.md](references/car-and-jerrycan.md). Read it for complex goods rather than
+restarting from the legacy box car. Use the paired icon/real-object reference brief and
+component-specific review gates in the linked pipeline.
 
 ## 5. Measurement toolkit (describe, then reuse)
 

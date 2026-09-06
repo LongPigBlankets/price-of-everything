@@ -1,6 +1,6 @@
 ## Shared goods-icon loader. Returns a Texture2D for a good at the right art TIER for the size it
 ## will be drawn at, or null if no icon exists yet. Most goods have no art, so callers must handle
-## null.
+## null. Approved alternates are used only when no main tier has an icon.
 ##
 ## Three tiers on disk, smallest first:
 ##
@@ -43,6 +43,8 @@ const _TIER_ORDER := {
 	TIER_MEDIUM: [TIER_MEDIUM, TIER_SMALL, TIER_VERY_SMALL],
 }
 const _EXTS := [".png", ".svg", ".PNG", ".SVG"]
+
+const _ALTERNATE_ROOT := "res://assets/icons/goods/alternate_icons"
 
 static var _texture_cache: Dictionary = {}
 
@@ -94,6 +96,9 @@ static func _dirs_for(tier: String) -> Array:
 	var out: Array = []
 	for t in order:
 		out.append(str(_TIER_DIR[t]))
+	# Prefer any main art, even in another tier, over an alternate.
+	for t in order:
+		out.append("%s/%s" % [_ALTERNATE_ROOT, t])
 	return out
 
 

@@ -1,0 +1,28 @@
+{
+  "objects": 14,
+  "D": 1.0,
+  "body_diameter": 0.9,
+  "height_ratio_vs_v3": 1.5120643431635388,
+  "camera_degrees": [
+    54.73599878198538,
+    0.0,
+    45.00000125223908
+  ],
+  "frame": {
+    "span": 2.975,
+    "target": [
+      0.144,
+      -0.144,
+      1.472
+    ]
+  },
+  "reproducible_pixels": true,
+  "alpha_bbox": [
+    259,
+    32,
+    540,
+    768
+  ],
+  "body_width_change_percent": -10,
+  "overall_height_change_percent": 51.2
+}

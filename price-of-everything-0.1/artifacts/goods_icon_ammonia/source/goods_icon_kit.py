@@ -1254,3 +1254,103 @@ def build_iron_ore():
         nugget(K, "nugget%d" % i, (cx, cy, cz), r, seed, squash=sq, mats=(rust, grey, grey_hi),
                cuts=cuts, planes=planes, rust_depth=rd, crack_range=cr, grey_depth=gd)
     return {"objects": len(col.objects)}
+
+
+# AMMONIA — owner-directed black/yellow/silver design
+"""Ammonia design extension, executed after the shared goods kit."""
+def build_ammonia():
+    """Ammonia v4: black pressure cylinder, yellow shoulders, silver valve; white/navy label.
+    Owner revision: "maybe 50% taller and a bit slimmer. The valve needs more detail"
+    D = original diameter. New diameter .90D; total height 2.82D versus 1.865D.
+    Straight body top 1.98D, label .72D tall; shoulder depth .31D.
+    Silver protective loop .56D wide; handwheel .26D diameter, bored side outlet.
+    The reference's guarded valve is simplified into bold connected parts for 60px.
+    Owner brief: chemical family resemblance, distinguishable at 60x60.
+    Shared fixed isometric camera, world-axis valve, three tones, navy ink.
+    Symbol ranking: (1) cylinder + NH3, strong silhouette versus chemical cans;
+    (2) shipped pouring bottle, specific label but fragile stream at 60px;
+    (3) teal handled can, consistent but duplicates chlorine/NaOH silhouettes.
+    """
+    setup_icon_rig()
+    col = open_collection('ICON_ammonia')
+    K = Kit(col)
+    D = 1.0
+    teal = toon_mat('ammonia_black', (0.055, 0.064, 0.080))
+    dark = toon_mat('ammonia_black_foot', (0.035, 0.043, 0.055))
+    white = toon_mat('ammonia_paper', (0.93, 0.94, 0.88), steps=((0.66,0.65),(0.92,0.92),(9.0,1.0)))
+    yellow = toon_mat('ammonia_yellow', (0.90, 0.66, 0.065))
+    silver = toon_mat('ammonia_silver', (0.65, 0.70, 0.74))
+    navy = K.mat('ic_navy')
+    # One smoothly revolved shell: no separate dome seam or horizontal facet ink.
+    profile = [(0.02,.50),(.04,.53),(.14,.53),(.18,.50),(1.98,.50),(2.06,.49),(2.13,.45),(2.20,.38),(2.26,.27),(2.29,.13),(2.35,.13)]
+    verts=[]; faces=[]; n=96
+    for z,r in profile:
+        verts.extend([(r*math.cos(2*math.pi*i/n),r*math.sin(2*math.pi*i/n),z) for i in range(n)])
+    for j in range(len(profile)-1):
+        for i in range(n):
+            a=j*n+i; b=j*n+(i+1)%n
+            faces.append((a,b,b+n,a+n))
+    faces.extend([tuple(reversed(range(n))), tuple((len(profile)-1)*n+i for i in range(n))])
+    me=bpy.data.meshes.new('ammonia_shell'); me.from_pydata(verts,[],faces); me.update()
+    shell=K.obj('ammonia_shell',me,teal,smooth=True)
+    me.materials.append(yellow)
+    me.materials.append(dark)
+    for poly in me.polygons:
+        if poly.center.z >= 1.98: poly.material_index=1
+        if poly.center.z < .18: poly.material_index=2
+    K.cyl('label_band',0,0,1.18,.503,.72,white,segments=96)
+    K.cyl('neck_seam',0,0,2.32,.15,.08,dark,segments=48)
+    K.cyl('valve_mount',0,0,2.375,.12,.09,silver,segments=48)
+    K.cyl('valve_body',0,0,2.48,.072,.23,silver,segments=48)
+    K.cyl('spindle',0,0,2.60,.035,.13,dark,segments=48)
+    K.washer('handwheel',(0,0,2.65),(0,0,1),.075,.145,.045,silver,seg=48)
+    K.box('wheel_spoke_x',0,0,2.65,.25,.035,.042,silver)
+    K.box('wheel_spoke_y',0,0,2.65,.035,.25,.042,silver)
+    K.cyl('outlet_neck',0,-.095,2.47,.065,.20,silver,axis='Y',segments=48)
+    K.washer('outlet_lip',(0,-.19,2.47),(0,1,0),.043,.09,.065,silver,seg=48)
+    noink(K.cyl('outlet_bore',0,-.19,2.47,.043,.035,navy,axis='Y',segments=48))
+    # A real solid loop with an open centre, behind the valve, in the shared X/Z grid.
+    outer=[(-.12,2.31),(-.28,2.50),(-.28,2.73),(-.18,2.82),(.18,2.82),(.28,2.73),(.28,2.50),(.12,2.31)]
+    inner=[(-.075,2.395),(-.205,2.52),(-.205,2.695),(-.15,2.745),(.15,2.745),(.205,2.695),(.205,2.52),(.075,2.395)]
+    vs=[(x,y,z) for y in (.035,.12) for loop in (outer,inner) for x,z in loop]
+    fs=[]
+    for i in range(8):
+        j=(i+1)%8
+        fs.extend([(i,j,8+j,8+i),(16+i,24+i,24+j,16+j),(i,16+i,16+j,j),(8+i,8+j,24+j,24+i)])
+    mesh=bpy.data.meshes.new('valve_guard');mesh.from_pydata(vs,[],fs);mesh.update()
+    bm=bmesh.new();bm.from_mesh(mesh);bmesh.ops.recalc_face_normals(bm,faces=bm.faces[:]);bm.to_mesh(mesh);bm.free()
+    K.obj('valve_guard',mesh,silver)
+    # Large actual geometry lettering, wrapped onto the cylinder. No screen-space overlay.
+    font=bpy.data.curves.new('NH3_formula','FONT'); font.body='NH3'
+    font.font=bpy.data.fonts.load('/System/Library/Fonts/Supplemental/Arial Bold.ttf')
+    font.align_x='CENTER'; font.align_y='CENTER'; font.size=.45; font.resolution_u=16
+    ob=bpy.data.objects.new('NH3_formula',font); col.objects.link(ob)
+    bpy.context.view_layer.objects.active=ob; ob.select_set(True)
+    bpy.ops.object.convert(target='MESH'); ob=bpy.context.object
+    # Subdivide text triangles so wrapping remains on the shell between glyph vertices.
+    bm=bmesh.new(); bm.from_mesh(ob.data)
+    bmesh.ops.triangulate(bm,faces=bm.faces[:])
+    bmesh.ops.subdivide_edges(bm,edges=bm.edges[:],cuts=5,use_grid_fill=True)
+    bm.to_mesh(ob.data); bm.free()
+    for v in ob.data.vertices:
+        x,y=v.co.x,v.co.y
+        if x > .14:  # last glyph: smaller and lowered to the common baseline
+            x=.14+(x-.14)*.73
+            y=y*.73-.043
+        theta=math.pi/4 + x/.507
+        v.co=(.507*math.sin(theta),-.507*math.cos(theta),1.18+y*1.35)
+    ob.data.materials.append(navy)
+    noink(ob)
+    ob.select_set(False)
+    for part in col.objects:
+        if part.type=='MESH':
+            for v in part.data.vertices:
+                v.co.x *= .90
+                v.co.y *= .90
+    bpy.context.view_layer.update()
+    checks=K.validate(); print('VALIDATION',checks)
+    assert not any('BELOW' in s or 'CROSSES' in s for s in checks)
+    cam=bpy.context.scene.camera
+    assert cam.data.type=='ORTHO'
+    assert all(abs(math.degrees(a)-b)<.01 for a,b in zip(cam.rotation_euler,(54.7356,0,45)))
+    return {'objects':len(col.objects),'D':D,'body_diameter':.90,'height_ratio_vs_v3':2.82/1.865,'camera_degrees':[math.degrees(x) for x in cam.rotation_euler]}
