@@ -11260,47 +11260,22 @@ func _test_construct_v3_4_iteration() -> void:
 
 
 func _test_build_cost_hover_preview() -> void:
-	# v3.1 feedback (owner 2026-08-26): while placing a building on the map,
-	# hovering a candidate tile shows building/transport/land cost — a pure,
-	# read-only re-derivation of the same pricing the confirm panel uses.
-	# _build_cost_rows() touches no @onready state (terrain_layer), so the
-	# script can be probed standalone without adding it to the scene tree —
-	# same pattern as probing construct_panel_v2.gd's private helpers.
 	MatchState.reset()
 	MarketState._init_prices_from_catalog()
-	var overlay: Node2D = (load("res://scripts/map_overlay.gd") as GDScript).new()
-
-	# b_002 (Furnace) on a fresh tile_5_10: real land + material shortfalls, so
-	# every row should carry a genuine non-placeholder figure.
-	BuildMode.enter_build_mode("b_002", "r_005")
-	var rows: Array = overlay._build_cost_rows("tile_5_10")
-	_check(rows.size() == 3, "build hover: three rows (building / transport / land)")
-	_check(str(rows[0]).begins_with("Building"), "build hover: row 1 is the building cost")
-	_check(str(rows[1]).begins_with("Transport"), "build hover: row 2 is the transport cost")
-	_check(str(rows[2]).begins_with("Land"), "build hover: row 3 is the land line")
-	_check(not str(rows[2]).contains("none needed"),
-		"build hover: land is genuinely short on a tile that owns none")
-	_check(str(rows[0]) != "Building  £0",
-		"build hover: building cost is a real, non-zero figure")
-
-	# No active BuildMode session (or no building selected) — no rows, no crash.
-	BuildMode.exit_build_mode()
-	_check(overlay._build_cost_rows("tile_5_10").is_empty(),
-		"build hover: nothing to show once BuildMode is inactive")
-
-	# Read-only: computing the preview must never mutate land ownership or any
-	# other sim state — it's a hover, not a purchase.
-	var owned_before: int = MatchState.get_tile_land_owned("tile_5_10")
-	var money_before: float = MatchState.money
-	BuildMode.enter_build_mode("b_002", "r_005")
-	overlay._build_cost_rows("tile_5_10")
-	overlay._build_cost_rows("tile_5_10")   # twice — a cache/memo bug would show on repeat
+	var preview := preload("res://scripts/construction_hover.gd")
+	var owned_before := MatchState.get_tile_land_owned("tile_5_10")
+	var money_before := MatchState.money
+	var data := preview.preview("tile_5_10", "b_002", "r_005")
+	_check(float(data.materials) > 0, "build hover: missing materials have a purchase cost")
+	_check(float(data.land) > 0, "build hover: unowned land has a purchase cost")
+	var ledger := Construction.materials_ledger("b_002", "tile_5_10")
+	_check(is_equal_approx(float(data.materials) + float(data.transport), float(ledger.subtotal)),
+		"build hover: separate goods and freight reconcile with the construction ledger")
+	_check(not (data.forecast.phases as Array).is_empty(), "build hover: recipe supplies a revenue timeline")
+	preview.preview("tile_5_10", "b_002", "r_005")
 	_check(MatchState.get_tile_land_owned("tile_5_10") == owned_before
 		and is_equal_approx(MatchState.money, money_before),
-		"build hover: computing the preview never mutates land or money")
-
-	BuildMode.exit_build_mode()
-	overlay.free()
+		"build hover: repeated previews never mutate land or money")
 	MatchState.reset()
 
 

@@ -79,11 +79,13 @@ func _ready() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	for button in grid.find_children("Requirement_*", "Button", true, false):
-		check(button.size == Vector2(60, 78), "Requirement control is 60px wide and 78px high")
+		check(button.size == Vector2(80, 100), "Requirement control is 80px wide and 100px high")
 		var icon: Control = button.find_child("RequirementIcon", true, false)
 		var caption: Control = button.find_child("RequirementCaption", true, false)
-		check(icon.size == Vector2(60, 60), "Requirement icon uses the full 60px square")
-		check(caption.position.y == 63 and caption.size.y == 12, "Caption has a 3px gap and 3px bottom margin")
+		check(icon.size == Vector2(80, 80), "Requirement icon uses the full 80px square")
+		check(caption.FONT.get_string_size(caption.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x + 9 <= caption.size.x, "Caption and status swatch fit without clipping")
+		check(button.get_theme_stylebox("normal").get_border_width(SIDE_LEFT) == 0, "Requirement control has no outline")
+		check(caption.position.y == 83 and caption.size.y == 12, "Caption has a 3px gap below the icon")
 	grid.queue_free()
 	panel.free()
 	await get_tree().process_frame

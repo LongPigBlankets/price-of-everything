@@ -1474,7 +1474,7 @@ func _render_confirm_v3() -> void:
 		_content.add_child(_section_label("SETTINGS"))
 		_content.add_child(_v3_priority_supply_band())
 
-	if not (_v3_forecast.get("phases", []) as Array).is_empty():
+	if _locked_tile_id != "" and not (_v3_forecast.get("phases", []) as Array).is_empty():
 		_content.add_child(_section_label("WHAT IT DOES TO YOUR CASH"))
 		if bool(_v3_forecast.get("no_supply", false)):
 			var warn := Label.new()
@@ -1603,17 +1603,17 @@ func _v3_verdict_strip() -> Control:
 	total.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	total.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_v3_verdict_total_label = total
-	row1.add_child(total)
+	var decision := VBoxContainer.new()
+	decision.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	decision.add_theme_constant_override("separation", 1)
+	row1.add_child(decision)
+	decision.add_child(total)
 
-	# Row 2: nothing on the left now that the site sits in band 1 with
-	# "< Recipe" — just duration, right-anchored under the total (up to two
-	# lines). duration_box defaults to SIZE_FILL horizontal as outer's direct
-	# child, so it spans the same width as row1 and its own right-aligned
-	# labels land on the same right edge as the total above them.
+	# Duration sits directly below the total in the same row as the identity.
 	var duration_box := VBoxContainer.new()
 	duration_box.name = "V3DurationBox"
 	duration_box.add_theme_constant_override("separation", 1)
-	outer.add_child(duration_box)
+	decision.add_child(duration_box)
 	# Materials arrival and build duration are two separate waits (§7 below) —
 	# the site can't start counting down build_duration until every required
 	# good is actually on it. Only knowable once a site is chosen.
@@ -1734,13 +1734,18 @@ class LandRequirementIcon extends Control:
 		hex.append(hex[0])
 		draw_polyline(hex, Color("e8eef7"), 2.0, true)
 
-## A 12px line box avoids Label's extra font leading enlarging the 78px control.
+## Fixed caption baseline keeps the status swatch and name aligned beneath the art.
 class RequirementCaption extends Control:
+	const FONT: Font = preload("res://assets/fonts/BarlowCondensed-SemiBold.ttf")
 	var text := ""
+	var tone := Color.WHITE
 	func _draw() -> void:
-		var font := get_theme_default_font()
+		var font := FONT
 		var baseline := (12.0 + font.get_ascent(12) - font.get_descent(12)) * 0.5
-		draw_string(font, Vector2(0, baseline), text, HORIZONTAL_ALIGNMENT_CENTER, 60, 12, TEXT)
+		var text_width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+		var left := maxf(0.0, (size.x - text_width - 9.0) * 0.5)
+		draw_rect(Rect2(left, 2, 5, 8), tone)
+		draw_string(font, Vector2(left + 9, baseline), text, HORIZONTAL_ALIGNMENT_LEFT, size.x - left - 9, 12, TEXT)
 
 
 func _v3_requirement_rows() -> Array:
@@ -1753,11 +1758,11 @@ func _v3_requirement_rows() -> Array:
 				details.append(need)
 		if not details.is_empty():
 			entries.append({"key": infra_key, "label": {"cables": "Cable", "pipes": "Pipe", "reinf_pipes": "Reinf. pipe"}[infra_key],
-				"details": details, "tone": GREEN if _infra_satisfied(infra_key) else GOLD})
+				"details": details, "tone": GREEN if _infra_satisfied(infra_key) else (GOLD if _locked_tile_id == "" else RED)})
 	entries.append({"key": "land", "label": "%d Land" % int(_v3_land.get("needed", 0)),
-		"tone": GREEN if bool(_v3_land.get("covered", false)) else GOLD})
+		"tone": GOLD if _locked_tile_id == "" else (GREEN if bool(_v3_land.get("covered", false)) else (GOLD if bool(_v3_land.get("purchasable", false)) else RED))})
 	if str(_selected_building.get("internal_name", "")) in EconomyConfig.POWER_INTERMITTENT_BUILDINGS:
-		entries.append({"key": "battery", "label": "Firming", "tone": GOLD})
+		entries.append({"key": "battery", "label": "Intermittency", "tone": GOLD})
 	var box := VBoxContainer.new()
 	box.name = "RequirementGrid"
 	box.add_theme_constant_override("separation", 6)
@@ -1772,7 +1777,7 @@ func _v3_requirement_rows() -> Array:
 		for i in range(start, start + 3):
 			if i >= entries.size():
 				var spacer := Control.new()
-				spacer.custom_minimum_size = Vector2(60, 78)
+				spacer.custom_minimum_size = Vector2(80, 100)
 				row.add_child(spacer)
 				continue
 			var entry: Dictionary = entries[i]
@@ -1791,12 +1796,15 @@ func _v3_requirement_rows() -> Array:
 					detail.add_child(_infra_requirement_row(key, need.good_ids, bool(need.is_output)))
 			var button := Button.new()
 			button.name = "Requirement_" + key
-			button.custom_minimum_size = Vector2(60, 78)
+			button.custom_minimum_size = Vector2(80, 100)
 			button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 			button.toggle_mode = true
 			button.button_pressed = detail.visible
 			button.tooltip_text = str(entry.label) + " — click for requirements"
-			_style_button(button, NAVY_FIELD, entry.tone, TEXT)
+			button.focus_mode = Control.FOCUS_NONE
+			for state in ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]:
+				var fill := Color.TRANSPARENT if state == "normal" else NAVY_RAISED.lightened(0.08)
+				button.add_theme_stylebox_override(state, _panel_style(fill, fill, 0, 8, 0))
 			row.add_child(button)
 			buttons.append(button)
 			var content := Control.new()
@@ -1806,19 +1814,20 @@ func _v3_requirement_rows() -> Array:
 			var icon: Control
 			if key == "land":
 				icon = LandRequirementIcon.new()
-				icon.custom_minimum_size = Vector2(60, 60)
+				icon.custom_minimum_size = Vector2(80, 80)
 			else:
-				icon = _building_icon(Catalog.get_building_by_internal_name(key), 60)
+				icon = _building_icon(Catalog.get_building_by_internal_name(key), 80)
 			icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 			icon.name = "RequirementIcon"
-			icon.size = Vector2(60, 60)
+			icon.size = Vector2(80, 80)
 			content.add_child(icon)
 			var label := RequirementCaption.new()
 			label.name = "RequirementCaption"
 			label.text = str(entry.label)
-			label.position = Vector2(0, 63)
-			label.size = Vector2(60, 12)
+			label.tone = entry.tone
+			label.position = Vector2(0, 83)
+			label.size = Vector2(80, 12)
 			label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			content.add_child(label)
 			button.pressed.connect(func():
@@ -2021,6 +2030,7 @@ func _v3_turn_marker(range_text: String) -> String:
 ## convention — every row's cells are true siblings sharing one shelf.
 func _v3_cash_timeline() -> Control:
 	var plate := PanelContainer.new()
+	plate.name = "V3CashTimeline"
 	plate.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, NAVY_FIELD, 0, 9, 8))
 	var phases: Array = _v3_forecast.get("phases", [])
 	var grid := GridContainer.new()
@@ -2377,6 +2387,7 @@ func _v3_build_footer() -> void:
 	cash_box.custom_minimum_size = Vector2(112, 0)
 	cash_box.add_theme_constant_override("separation", 1)
 	_footer.add_child(cash_box)
+	cash_box.visible = _locked_tile_id != ""
 	var cash_caption := Label.new()
 	cash_caption.text = "CASH AFTER"
 	cash_caption.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
@@ -2388,7 +2399,7 @@ func _v3_build_footer() -> void:
 	var total_cost := _v3_total_cost()
 	var after := MatchState.money - total_cost
 	var affordable := after >= -0.0001
-	var below_buffer := affordable and after < float(_v3_forecast.get("cash_needed", 0.0))
+	var below_buffer := _locked_tile_id != "" and affordable and after < float(_v3_forecast.get("cash_needed", 0.0))
 	total.text = _money(after)
 	total.theme_type_variation = "Numeric"
 	total.add_theme_font_size_override("font_size", 16)
@@ -3301,6 +3312,8 @@ func _on_building_pressed(building_id: String) -> void:
 ## before the first sale settles, then the steady margin. Added to the CONFIRM view because
 ## that is the last moment the decision is free. See docs/early-game-onboarding-spec.md §5.1.
 func _add_forecast_section() -> void:
+	if _locked_tile_id == "":
+		return
 	var building_id := str(_selected_building.get("id", ""))
 	var recipe_id := str(_selected_recipe.get("recipe_id", ""))
 	if building_id == "" or recipe_id == "":

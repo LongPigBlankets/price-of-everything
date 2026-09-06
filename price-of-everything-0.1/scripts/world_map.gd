@@ -207,6 +207,9 @@ func _build_base() -> void:
 	# Window's theme — so apply it to the HUD Control subtree (where every panel
 	# lives) for DS fonts / type variations / button styles to actually resolve.
 	_hud.theme = DS.theme
+	var build_preview := preload("res://scripts/construction_hover.gd").new()
+	build_preview.terrain = terrain_layer
+	add_child(build_preview)
 	river_layer.clear()
 	terrain_layer.tile_selected.connect(_on_tile_selected)
 	terrain_layer.stockpile_destination_selected.connect(_on_stockpile_destination_selected)
