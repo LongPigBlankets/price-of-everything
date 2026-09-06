@@ -7256,6 +7256,16 @@ func _test_live_unlock_conditions() -> void:
 	_check(MatchState._live_condition_met({"action": "Produce", "object": "Power", "qty": 250}),
 		"Produce condition resolves display-name casing and internal-key power output")
 
+	# --- "Produce Any" verb: 500 of EITHER good in an a|b list unlocks it (OR) ---
+	Production.produced_by_building.clear()
+	var sand_gid := str(Catalog.get_good_by_internal_name("sand").get("id", "sand"))
+	var produce_any := {"action": "Produce Any", "object": "limestone|sand", "qty": 500, "quantity_raw": "500"}
+	_check(not MatchState._live_condition_met(produce_any),
+		"Produce Any stays locked at 0 of both goods")
+	Production.produced_by_building["sandpit"] = {sand_gid: 500}
+	_check(MatchState._live_condition_met(produce_any),
+		"Produce Any fires on 500 sand alone (does not require limestone or both)")
+
 	# --- "Sell N units": saved lifetime volume across ordinary/special/grid paths ---
 	var steel_gid := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
 	MarketState.record_lifetime_sale_volume(steel_gid, 249)
@@ -14119,8 +14129,9 @@ func _test_research_unlock_promotes_construct_panel_recipes() -> void:
 	# This fixture explicitly instantiates the legacy panel and calls its tile-open
 	# API, so do not let the live v2 routing toggle make that API return early.
 	MatchState.use_construct_panel_v2 = false
-	# Electric Arc Refining now has a functioning Own-land auto-condition. Keep
-	# that condition deliberately unmet while this test isolates panel filtering.
+	# Electric Arc Refining auto-unlocks on a Produce-600-steel condition; a fresh
+	# fixture has produced no steel, so it stays unmet while this test isolates panel
+	# filtering. (tile_land_owned cleared too, harmless, in case an owned-land gate returns.)
 	MatchState.tile_land_owned.clear()
 	MatchState.unlocked_titles.erase("Electric Arc Refining")
 	var packed: PackedScene = load("res://scenes/construct_panel.tscn")
@@ -14740,16 +14751,22 @@ func _test_research_recipe_and_level_tiers() -> void:
 				continue
 			var icon_index: int = int(indices.get("icon", -1))
 			var rank_index: int = int(indices.get("rank", -1))
+			var title_index_l2: int = int(indices.get("title", -1))
 			if icon_index >= 0 and rank_index >= 0 and icon_index < row.size() and row[icon_index] == "level2":
 				level2_count += 1
-				if rank_index >= row.size() or row[rank_index] != "II":
+				var l2_title: String = row[title_index_l2] if (title_index_l2 >= 0 and title_index_l2 < row.size()) else ""
+				# Furnace Level 2 (Hot Blast Stoves) is a deliberate Tier-I unlock (owner 2026-09):
+				# owning 3 furnaces unlocks it with no steel prereq, so any furnace business —
+				# glass merchant included — can level its furnaces without a Metallurgy detour.
+				var l2_expected_rank: String = "I" if l2_title == "Hot Blast Stoves" else "II"
+				if rank_index >= row.size() or row[rank_index] != l2_expected_rank:
 					level2_ok = false
 			var title_index: int = int(indices.get("title", -1))
 			var description_index: int = int(indices.get("description", -1))
 			if title_index >= 0 and description_index >= 0 and title_index < row.size() and description_index < row.size() and row[title_index] == "Pallet Racking Systems" and "warehouse level 2" in row[description_index] and (rank_index < 0 or rank_index >= row.size() or row[rank_index] != "II"):
 				warehouse_level2_ok = false
 		file.close()
-	_check(level2_ok and level2_count == 21, "all 21 Level 2 building unlocks are Tier II")
+	_check(level2_ok and level2_count == 21, "all 21 Level 2 building unlocks are Tier II (bar Furnace's Hot Blast Stoves, a deliberate Tier-I unlock)")
 	_check(warehouse_level2_ok, "warehouse Level 2 unlock is Tier II")
 
 func _test_bottom_menu_default() -> void:

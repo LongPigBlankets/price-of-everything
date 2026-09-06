@@ -1,7 +1,7 @@
 research_node_id,category,prereq_1,prereq_2,prereq_3,prereq_othercategory,rank,Action,Object,Quantity,Unit,title,icon,description
 research_mining_001,Extraction,,,,,I,Produce,coal,500,units,Improved Coal Mining,coal,Increases coal mining output by 15% permanently.
 research_mining_002,Extraction,research_mining_001,,,,II,Produce,iron_ore,500,units,Beneficiated Iron Mining,iron,Increases iron ore mining output by 15% permanently.
-research_mining_003,Extraction,research_mining_001,,,,II,Produce,limestone,500,units,Deep Seam Surveying,survey,"Increases limestone, sand and salt mining output by 15% permanently."
+research_mining_003,Extraction,research_mining_001,,,,II,Produce Any,limestone|sand,500,units,Deep Seam Surveying,survey,"Increases limestone, sand and salt mining output by 15% permanently."
 research_mining_004,Extraction,research_mining_002,,,,II,Own,land,5,units,Copper Froth Flotation,copper,Increases copper ore mining output by 15% permanently.
 research_mining_005,Extraction,research_mining_003,,,,III,Run,Mine,15,turns,Automated Mine Dispatch,truck,"Increases coal, iron, copper, limestone, sand and salt mining output by a further 15% permanently."
 research_petro_001,Chemistry,,,,,I,Build,Petrochemical Refinery,3,units,Fractional Distillation,oil,Increases Petrochemical Refinery output by 5% permanently.
@@ -12,7 +12,7 @@ research_petro_005,Chemistry,research_petro_003,,,,III,Run,Polymer Feedstocks,15
 research_metal_001,Metallurgy,,,,,I,Build,Furnace,3,units,Basic Blast Furnaces,furnace,Increases Furnace output by 5% permanently.
 research_metal_002,Metallurgy,research_metal_001,,,,I,Sell,Steel,250,units,Continuous Casting,cast,Refines continuous-casting practice (prerequisite tech).
 research_metal_003,Metallurgy,research_metal_002,,,,II,Produce,steel,500,units,Alloy Heat Treatment,alloy,Unlocks new recipes: HIsarna Steel Making (24 Steel); Copper Pipe Moulding (22 Copper Pipe).
-research_metal_004,Metallurgy,research_metal_003,,,,II,Own,land,5,units,Electric Arc Refining,eaf,Unlocks new recipes: Electric Arc Steelmaking (50 Steel); ELYSIS Aluminium (15 Aluminium); Flash Copper Smelting (36 Copper Ingots).
+research_metal_004,Metallurgy,research_metal_003,,,,II,Produce,steel,600,units,Electric Arc Refining,eaf,Unlocks new recipes: Electric Arc Steelmaking (50 Steel); ELYSIS Aluminium (15 Aluminium); Flash Copper Smelting (36 Copper Ingots).
 research_inorg_001,"Glass, Silica & Concrete",,,,,I,Run Recipe,Glassmaking,3,furnaces,High Strength Glassmaking,glass,Unlocks new recipe: High Strength Glassmaking (28 Glass).
 research_inorg_002,"Glass, Silica & Concrete",research_inorg_001,,,,II,Produce,concrete,500,units,Pozzolanic Vitrification,cast,Increases Concrete output by 10% permanently.
 research_inorg_003,"Glass, Silica & Concrete",research_inorg_001,,,,II,Produce,glass,750,units,Micro Silica Synthesis,glass,Increases Concrete output by 5% and Glass output by 15% permanently.
@@ -88,7 +88,7 @@ research_biochem_006,Farming & Forestry,,,,,II,Run,Forest,12,turns,Sustainable F
 research_mfg_007,Manufacturing,research_mfg_002,,,,II,Sell,Copper Pipe,250,units,Precision Tube Drawing,tube,Unlocks new recipe: Copper Pipe Manufacturing (24 Copper Pipe).
 research_mining_011,Extraction,research_mining_013,,,,II,Run L1,mine,3,20 turns,In-Pit Crushing,level2,Unlocks upgrading Mine to Level 2 for more output.
 research_mining_012,Extraction,research_mining_011,,,,III,Run Profitable L2,mine,3,buildings,Autonomous Haul Systems,level3,Unlocks upgrading Mine to Level 3 for more output.
-research_metal_006,Metallurgy,research_metal_002,,,,II,Run L1,furnace,3,20 turns,Hot Blast Stoves,level2,Unlocks upgrading Furnace to Level 2 for more output.
+research_metal_006,Metallurgy,,,,,I,Build,Furnace,3,units,Hot Blast Stoves,level2,Unlocks upgrading Furnace to Level 2 for more output.
 research_metal_007,Metallurgy,research_metal_006,,,,III,Run Profitable L2,furnace,3,buildings,Top-Pressure Recovery Turbines,level3,Unlocks upgrading Furnace to Level 3 for more output.
 research_metal_008,Metallurgy,research_metal_014,,,,II,Run L1,eaf,3,20 turns,Ultra-High-Power Arcs,level2,Increases Electric Arc Furnace output by 10% permanently. Unlocks new recipe: Aluminium Direct Carbothermic Electrolysis.
 research_metal_009,Metallurgy,research_metal_015,,,,III,Run Profitable L2,eaf,3,buildings,Consteel Continuous Charging,level3,Unlocks upgrading Electric Arc Furnace to Level 3 for more output.
@@ -134,7 +134,7 @@ research_inorg_017,Chemistry,,,,,I,Build,electrolyser,7,units,Bipolar Cell Array
 research_petro_017,Chemistry,,,,,I,Build,poly_plant,3,units,Heat-Integrated Trains,heat,Reduces Polymerisation Refinery power consumption by 10% permanently.
 research_petro_018,Chemistry,research_petro_002,,,,III,Run Profitable,petro_refinery,3,buildings,Continuous Catalyst Regeneration,ccr,Increases Petrochemical Refinery output by 5% permanently.
 research_hcpower_005,Power Production,research_hcpower_002,,,,II,Run L1,power_plant,2,15 turns,Combined Cycle Turbines,turbine,Unlocks new recipes: Gas Combined Cycle Turbines and Petroleum Needle Coke Power.
-research_hcpower_006,Power Production,research_hcpower_002,,,,II,Run L1,power_plant,5,20 turns,Supercritical Boilers,level2,Unlocks upgrading Coal Power Plant to Level 2 for more output.
+research_hcpower_006,Power Production,research_hcpower_002,,,,II,Run L1,power_plant,3,20 turns,Supercritical Boilers,level2,Unlocks upgrading Coal Power Plant to Level 2 for more output.
 research_hcpower_007,Power Production,research_hcpower_006,,,,III,Run Profitable L2,power_plant,5,buildings,Ultra-Supercritical Units,level3,Unlocks upgrading Coal Power Plant to Level 3 for more output.
 research_renew_007,Power Production,research_renew_002,,,,II,Run L1,onshore_wind_farm,5,20 turns,Larger Rotor Diameters,level2,Unlocks upgrading Onshore Wind Farm to Level 2 for more output.
 research_renew_008,Power Production,research_renew_007,,,,III,Run Profitable L2,onshore_wind_farm,5,buildings,Direct-Drive Megaturbines,level3,Unlocks upgrading Onshore Wind Farm to Level 3 for more output.

@@ -2265,6 +2265,14 @@ func _join_and(parts: Array) -> String:
 	var head: Array = parts.slice(0, parts.size() - 1)
 	return "%s, and %s" % [", ".join(head), str(parts[parts.size() - 1])]
 
+func _join_or(parts: Array) -> String:
+	if parts.size() <= 1:
+		return str(parts[0]) if parts.size() == 1 else ""
+	if parts.size() == 2:
+		return "%s or %s" % [str(parts[0]), str(parts[1])]
+	var head: Array = parts.slice(0, parts.size() - 1)
+	return "%s, or %s" % [", ".join(head), str(parts[parts.size() - 1])]
+
 # --- Public API: research unlocks ---
 func _load_unlock_defs() -> void:
 	_unlock_defs.clear()
@@ -2476,6 +2484,19 @@ func unlock_condition_text(title: String) -> String:
 			for index in goods.size():
 				parts.append("%s %s" % [str(quantities[index]), str(goods[index]).capitalize()])
 			return "Produce %s" % _join_and(parts)
+	if action == "Produce Any":
+		# OR across goods: 500 of EITHER good unlocks it. A single Quantity applies to
+		# every good; a "a|b" Quantity gives per-good thresholds like Produce All.
+		var any_goods := object_name.split("|", false)
+		var any_qtys := str(d.get("quantity_raw", "")).split("|", false)
+		if not any_goods.is_empty():
+			var parts: Array = []
+			for index in any_goods.size():
+				var want := qty
+				if any_qtys.size() == any_goods.size() and str(any_qtys[index]).is_valid_int():
+					want = int(str(any_qtys[index]))
+				parts.append("%d %s" % [want, str(any_goods[index]).capitalize()])
+			return "Produce %s" % _join_or(parts)
 	match action:
 		"Produce": return "Produce %d %s" % [qty, object_name.capitalize()]
 		"Sell": return "Sell %d units through the market" % qty if _research_key(object_name) == "freight" else "Sell %d %s through the market" % [qty, object_name.capitalize()]
@@ -2603,6 +2624,21 @@ func _live_condition_met(d: Dictionary) -> bool:
 				if good_id == "" or not quantity_text.is_valid_int() or Production.lifetime_total(good_id) < int(quantity_text):
 					return false
 			return true
+		"Produce Any":
+			# OR: producing `need` of ANY listed good satisfies it. A "a|b" Quantity
+			# gives per-good thresholds; a single Quantity applies to every good.
+			var any_goods := obj.split("|", false)
+			var any_qtys := str(d.get("quantity_raw", need)).split("|", false)
+			for index in any_goods.size():
+				var gid := _research_good_id(str(any_goods[index]))
+				if gid == "":
+					continue
+				var want := need
+				if any_qtys.size() == any_goods.size() and str(any_qtys[index]).is_valid_int():
+					want = int(str(any_qtys[index]))
+				if Production.lifetime_total(gid) >= want:
+					return true
+			return false
 		"Sell":
 			if _research_key(obj) == "freight":
 				return MarketState.lifetime_sold_total() >= need
@@ -2904,6 +2940,20 @@ func _research_condition_issue(d: Dictionary) -> String:
 			return "invalid multi-good production condition"
 		for index in goods.size():
 			if _research_good_id(str(goods[index])) == "" or not str(quantities[index]).is_valid_int():
+				return "unknown good target"
+		return ""
+	if action == "Produce Any":
+		# OR list "a|b": every listed good must resolve. A single Quantity applies to all;
+		# a per-good "a|b" Quantity must be all-integer.
+		var any_goods := obj.split("|", false)
+		if any_goods.is_empty():
+			return "invalid multi-good production condition"
+		var any_qtys := str(d.get("quantity_raw", "")).split("|", false)
+		var per_good := any_qtys.size() == any_goods.size()
+		for index in any_goods.size():
+			if _research_good_id(str(any_goods[index])) == "":
+				return "unknown good target"
+			if per_good and not str(any_qtys[index]).is_valid_int():
 				return "unknown good target"
 		return ""
 	if action in ["Produce", "Sell"]:
