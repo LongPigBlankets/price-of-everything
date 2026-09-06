@@ -6,6 +6,9 @@ const PANEL_TITLE_FONT: Font = preload("res://assets/fonts/BebasNeue-Regular.ttf
 const TITLE_FONT: Font = preload("res://assets/fonts/BarlowCondensed-SemiBold.ttf")
 const BODY_FONT: Font = preload("res://assets/fonts/IBMPlexSans-Medium.ttf")
 
+const GoodIcons := preload("res://scripts/good_icons.gd")
+const BuildingIcon := preload("res://scripts/building_icon.gd")
+
 const RESEARCH_UNLOCKS_PATH := "res://data/research_unlocks.csv"
 # The advisor-seat progression nodes stay hidden until MatchState.advisors_unlocked (the
 # `unlock advisors` cheat). Nothing else prereqs them, so hiding strands no chain.
@@ -334,7 +337,8 @@ func _gui_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion:
 		var motion := event as InputEventMouseMotion
 		_update_hover_unlock(motion.position)
-		_update_profitability_tooltip(motion.position)
+		if not _update_impacted_tooltip(motion.position):
+			_update_profitability_tooltip(motion.position)
 
 	if event is InputEventMagnifyGesture:
 		var gesture := event as InputEventMagnifyGesture
@@ -357,6 +361,7 @@ func _draw() -> void:
 	_draw_tabs()
 	_draw_panel_top_bar()
 	_draw_knowledge_panel()
+	_draw_impacted_panel()
 	_draw_panel_outline()
 
 func _draw_navy_fill() -> void:
@@ -570,6 +575,7 @@ func _load_unlock_rows() -> void:
 		if _SEAT_RESEARCH.has(_csv_value(row, column_index, "research_node_id")) and not MatchState.advisors_unlocked:
 			continue
 		_unlock_rows.append({
+			"research_node_id": _csv_value(row, column_index, "research_node_id"),
 			"category": _csv_value(row, column_index, "category"),
 			"prereq_1": _csv_value(row, column_index, "prereq_1"),
 			"prereq_2": _csv_value(row, column_index, "prereq_2"),
@@ -1914,3 +1920,199 @@ func _ellipsize(font: Font, text: String, max_width: float, font_size: int) -> S
 	while not output.is_empty() and font.get_string_size("%s..." % output, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x > max_width:
 		output = output.left(output.length() - 1)
 	return "%s..." % output if not output.is_empty() else "..."
+
+# ── "Impacted by this research" panel (top-right) ─────────────────────────────────────────
+# For the SELECTED area, a compact card of the buildings and goods that area's research touches:
+# buildings whose recipes it unlocks or whose output/power/maintenance/labour its modifiers bend,
+# and the goods those recipes make or those modifiers boost. Buildings on their own row(s), goods
+# below; 60px icons, ≤6 per row, ≤2 rows per section; a 12th "…" slot spills the rest into a hover
+# tooltip. Max 4 rows.
+const IMPACT_BLD_ICON := 60.0       # buildings: bare icon, no plate
+const IMPACT_BLD_GAP := 8.0
+const IMPACT_GOOD_ICON := 55.0      # goods: slightly smaller, on cream plates, packed tighter
+const IMPACT_GOOD_GAP := 4.0
+const IMPACT_PAD := 14.0
+const IMPACT_PER_ROW := 6
+const IMPACT_MAX_ROWS := 2          # per section (buildings, then goods)
+const IMPACT_HEADER_H := 24.0
+const IMPACT_GOOD_PLATE := Color("#f4e6c0")   # cream, matching the game's goods icon plates
+
+var _impacted_cache := {}           # category -> {"buildings": Array[String], "goods": Array[String]}
+var _impact_more_rects := {}        # "buildings"/"goods" -> Rect2 of the "…" slot (screen space)
+var _impact_more_names := {}        # "buildings"/"goods" -> Array[String] of overflow display names
+
+## The buildings and goods the given area's research touches, cached per category.
+func _impacted_for_category(category: String) -> Dictionary:
+	if _impacted_cache.has(category):
+		return _impacted_cache[category]
+	var node_ids := {}
+	for row in _unlock_rows:
+		if str(row.get("category", "")) == category:
+			var nid := str(row.get("research_node_id", ""))
+			if nid != "":
+				node_ids[nid] = true
+	var b_seen := {}
+	var g_seen := {}
+	var buildings: Array[String] = []
+	var goods: Array[String] = []
+	# Recipes this area unlocks -> their building + output goods.
+	for recipe in Catalog.all_recipes():
+		if node_ids.has(str(recipe.get("tech_unlock_req", ""))):
+			_collect_recipe(recipe, b_seen, g_seen, buildings, goods)
+	# Standing modifiers this area grants -> their building/good targets.
+	for nid in node_ids:
+		var entry = Modifiers.UNLOCK_MODIFIERS.get(nid, null)
+		if entry == null:
+			continue
+		var mods: Array = entry if entry is Array else [entry]
+		for m in mods:
+			var tm: Dictionary = (m as Dictionary).get("target_match", {})
+			var bid := str(tm.get("building_id", ""))
+			if bid != "" and not b_seen.has(bid):
+				b_seen[bid] = true
+				buildings.append(bid)
+			var gi := str(tm.get("good_internal", ""))
+			if gi != "":
+				var gid := str(Catalog.get_good_by_internal_name(gi).get("id", ""))
+				if gid != "" and not g_seen.has(gid):
+					g_seen[gid] = true
+					goods.append(gid)
+			var rt := str(tm.get("recipe_type", ""))
+			if rt != "":
+				for recipe in Catalog.all_recipes():
+					if str(recipe.get("recipe_type", "")).to_lower() == rt.to_lower():
+						_collect_recipe(recipe, b_seen, g_seen, buildings, goods)
+	var result := {"buildings": buildings, "goods": goods}
+	_impacted_cache[category] = result
+	return result
+
+## Adds a recipe's building and every output good to the running sets (deduped in place).
+func _collect_recipe(recipe: Dictionary, b_seen: Dictionary, g_seen: Dictionary, buildings: Array, goods: Array) -> void:
+	var bid := str(recipe.get("building_id", ""))
+	if bid != "" and not b_seen.has(bid):
+		b_seen[bid] = true
+		buildings.append(bid)
+	for item in Production._recipe_output_items(recipe):
+		var gid := str(item.get("good_id", ""))
+		if gid == "" and str(item.get("internal_name", "")) != "":
+			gid = str(Catalog.get_good_by_internal_name(str(item.get("internal_name", ""))).get("id", ""))
+		if gid != "" and not g_seen.has(gid):
+			g_seen[gid] = true
+			goods.append(gid)
+
+func _building_texture(building_id: String) -> Texture2D:
+	var b := Catalog.get_building(building_id)
+	return BuildingIcon.clean_texture(building_id, str(b.get("internal_name", "")))
+
+func _good_texture(good_id: String) -> Texture2D:
+	var g := Catalog.get_good(good_id)
+	return GoodIcons.texture_for_size(good_id, str(g.get("internal_name", "")), IMPACT_GOOD_ICON)
+
+func _building_name(building_id: String) -> String:
+	return str(Catalog.get_building(building_id).get("display_name", building_id))
+
+func _good_name(good_id: String) -> String:
+	return str(Catalog.get_good(good_id).get("display_name", good_id))
+
+## Rows a section needs, capped at IMPACT_MAX_ROWS.
+func _impact_section_rows(count: int) -> int:
+	return clampi(int(ceil(float(count) / float(IMPACT_PER_ROW))), 0, IMPACT_MAX_ROWS)
+
+func _impacted_panel_rect() -> Rect2:
+	var impacted := _impacted_for_category(_selected_category)
+	var b_count := (impacted["buildings"] as Array).size()
+	var g_count := (impacted["goods"] as Array).size()
+	if b_count == 0 and g_count == 0:
+		return Rect2()
+	var b_rows := _impact_section_rows(b_count)
+	var g_rows := _impact_section_rows(g_count)
+	var bld_row_w := IMPACT_BLD_ICON * float(IMPACT_PER_ROW) + IMPACT_BLD_GAP * float(IMPACT_PER_ROW - 1)
+	var good_row_w := IMPACT_GOOD_ICON * float(IMPACT_PER_ROW) + IMPACT_GOOD_GAP * float(IMPACT_PER_ROW - 1)
+	var content_w := 0.0
+	if b_rows > 0:
+		content_w = maxf(content_w, bld_row_w)
+	if g_rows > 0:
+		content_w = maxf(content_w, good_row_w)
+	var width := IMPACT_PAD * 2.0 + content_w
+	var rows_h := 0.0
+	if b_rows > 0:
+		rows_h += float(b_rows) * (IMPACT_BLD_ICON + IMPACT_BLD_GAP)
+	if g_rows > 0:
+		rows_h += float(g_rows) * (IMPACT_GOOD_ICON + IMPACT_GOOD_GAP)
+	if b_rows > 0 and g_rows > 0:
+		rows_h += IMPACT_GOOD_GAP   # a little air between the two sections
+	var height := IMPACT_PAD * 2.0 + IMPACT_HEADER_H + rows_h
+	# Bottom-left corner, under the free-research (knowledge) panel and just above the tab bar.
+	var tree := _tree_rect()
+	var bottom := minf(tree.end.y, _tab_bar_rect().position.y - 8.0)
+	return Rect2(Vector2(tree.position.x, bottom - height), Vector2(width, height))
+
+func _draw_impacted_panel() -> void:
+	_impact_more_rects.clear()
+	_impact_more_names.clear()
+	var panel := _impacted_panel_rect()
+	if panel.size.x <= 0.0 or panel.size.y <= 0.0:
+		return
+	var impacted := _impacted_for_category(_selected_category)
+	draw_style_box(_make_stylebox(DS.PALETTE["BG_PANEL"], DS.PALETTE["BORDER_SOFT"], 8, 1), panel)
+	var header_y := panel.position.y + IMPACT_PAD
+	_draw_text_fit(TITLE_FONT, "Impacted by this research:",
+		Rect2(Vector2(panel.position.x + IMPACT_PAD, header_y), Vector2(panel.size.x - IMPACT_PAD * 2.0, IMPACT_HEADER_H)),
+		15, DS.PALETTE["TEXT"], HORIZONTAL_ALIGNMENT_LEFT)
+	var left := panel.position.x + IMPACT_PAD
+	var cursor_y := header_y + IMPACT_HEADER_H
+	cursor_y = _draw_impact_section(impacted["buildings"] as Array, "buildings", left, cursor_y)
+	if (impacted["buildings"] as Array).size() > 0 and (impacted["goods"] as Array).size() > 0:
+		cursor_y += IMPACT_GOOD_GAP
+	_draw_impact_section(impacted["goods"] as Array, "goods", left, cursor_y)
+
+## Draws up to 2×6 icons for one section; the 12th slot becomes a "…" that spills the rest into a
+## hover tooltip. Returns the y just below the drawn section.
+func _draw_impact_section(ids: Array, kind: String, left: float, top: float) -> float:
+	if ids.is_empty():
+		return top
+	var is_goods := kind == "goods"
+	var icon := IMPACT_GOOD_ICON if is_goods else IMPACT_BLD_ICON
+	var gap := IMPACT_GOOD_GAP if is_goods else IMPACT_BLD_GAP
+	var plate := _make_stylebox(IMPACT_GOOD_PLATE, IMPACT_GOOD_PLATE, 6, 0) if is_goods else null
+	var capacity := IMPACT_PER_ROW * IMPACT_MAX_ROWS         # 12
+	var overflow := ids.size() > capacity
+	var shown := (capacity - 1) if overflow else mini(ids.size(), capacity)
+	var y := top
+	for slot in range(shown):
+		var rect := _impact_slot_rect(left, top, slot, icon, gap)
+		# No outline for either row; goods get a cream rounded plate, buildings sit bare on navy.
+		if is_goods:
+			draw_style_box(plate, rect)
+		var tex: Texture2D = _good_texture(str(ids[slot])) if is_goods else _building_texture(str(ids[slot]))
+		if tex != null:
+			draw_texture_rect(tex, rect.grow(-4.0 if is_goods else -2.0), false)
+		y = rect.end.y
+	if overflow:
+		var rect := _impact_slot_rect(left, top, shown, icon, gap)
+		if is_goods:
+			draw_style_box(plate, rect)
+		_draw_text_fit(TITLE_FONT, "…", rect.grow(-4.0), 28,
+			DS.PALETTE["BG_PANEL"] if is_goods else DS.PALETTE["ACCENT"], HORIZONTAL_ALIGNMENT_CENTER)
+		var names: Array[String] = []
+		for j in range(shown, ids.size()):
+			names.append(_good_name(str(ids[j])) if is_goods else _building_name(str(ids[j])))
+		_impact_more_rects[kind] = rect
+		_impact_more_names[kind] = names
+		y = rect.end.y
+	return y
+
+func _impact_slot_rect(left: float, top: float, slot: int, icon: float, gap: float) -> Rect2:
+	var col := slot % IMPACT_PER_ROW
+	var row := slot / IMPACT_PER_ROW
+	return Rect2(
+		Vector2(left + float(col) * (icon + gap), top + float(row) * (icon + gap)),
+		Vector2(icon, icon))
+
+## Tooltip for the "…" overflow slots; returns true when it set one (so profitability leaves it be).
+func _update_impacted_tooltip(position: Vector2) -> bool:
+	for kind in _impact_more_rects:
+		if (_impact_more_rects[kind] as Rect2).has_point(position):
+			tooltip_text = "Also: %s" % ", ".join(_impact_more_names.get(kind, []))
+			return true
+	return false
