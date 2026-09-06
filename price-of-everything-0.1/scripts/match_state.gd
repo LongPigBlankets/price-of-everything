@@ -2109,9 +2109,9 @@ func _complete_survey(tile_id: String, reveal_nearby: bool) -> void:
 	request_toast(_survey_toast(tile_id, found), "info")
 	if not reveal_nearby:
 		return
-	# A full survey auto-(partially-)surveys a neighbour; Spectral Crystallography
+	# A full survey auto-(partially-)surveys a neighbour; Hyperspectral Remote Sensing
 	# reveals one extra ("+1 adjacent tile revealed when surveying").
-	var reveals := 2 if is_unlocked("Spectral Crystallography") else 1
+	var reveals := 2 if is_unlocked("Hyperspectral Remote Sensing") else 1
 	for _i in reveals:
 		var fresh: Array = []
 		for n in Catalog.tile_neighbours(tile_id):
@@ -2277,7 +2277,10 @@ func _join_or(parts: Array) -> String:
 ## can return post-demo, but it never loads: no tab card, no condition, no prereq link.
 ## Its recipe is hidden in step via Catalog.HIDDEN_RECIPE_IDS.
 const HIDDEN_RESEARCH_IDS := {
-	"research_petro_020": true,  # Methane Pyrolysis — no methane in the demo
+	"research_petro_020": true,   # Methane Pyrolysis — no methane in the demo
+	"research_biochem_002": true, # Enzyme Screening — bioplastics chain not in the demo
+	"research_biochem_003": true, # Bioplastic Precursors — same
+	"research_inorg_023": true,   # Zero-Liquid Discharge — replaced by Novel Membrane Filtration (inorg_025)
 }
 
 # --- Public API: research unlocks ---
@@ -2524,6 +2527,26 @@ func unlock_condition_text(title: String) -> String:
 			var profitable_turns := _leading_int(unit, 0)
 			return "Operate at least %d %s profitably for %d consecutive turns" % [qty, _condition_building_label(object_name, qty), profitable_turns] if profitable_turns > 0 else "Operate %d %s profitably" % [qty, _condition_building_label(object_name, qty)]
 		"Run Profitable L2": return "Operate %d Level 2 %s profitably" % [qty, object_name.capitalize()]
+		"Run Same Tile":
+			var same_turns := _leading_int(unit, 0)
+			return "Operate %d %s on the same tile at full capacity for %d consecutive turns" % [qty, _condition_building_label(object_name, qty), same_turns] if same_turns > 0 else "Operate %d %s on the same tile" % [qty, _condition_building_label(object_name, qty)]
+		"Own On Tiles": return "Own %s on at least %d different tiles" % [_condition_building_label(object_name, 2), qty]
+		"Run Distinct Recipes": return "Operate %d %s, each on a different recipe" % [qty, _condition_building_label(object_name, qty)]
+		"Own All":
+			var own_parts: Array = []
+			var own_names := object_name.split("|", false)
+			var own_qtys := str(d.get("quantity_raw", "")).split("|", false)
+			for index in own_names.size():
+				var own_n := qty
+				if own_qtys.size() == own_names.size() and str(own_qtys[index]).is_valid_int():
+					own_n = int(str(own_qtys[index]))
+				own_parts.append("%d %s" % [own_n, _condition_building_label(str(own_names[index]), own_n)])
+			return "Own %s" % _join_and(own_parts)
+		"Run Producing":
+			var prod_turns := _leading_int(unit, 0)
+			var prod_who := "a building" if qty <= 1 else "%d buildings" % qty
+			return "Operate %s making %s at full capacity for %d consecutive turns" % [prod_who, object_name.capitalize(), prod_turns] if prod_turns > 0 else "Operate %s making %s at full capacity" % [prod_who, object_name.capitalize()]
+		"Run Profitable L1": return "Operate %d Level 1 %s profitably for %s" % [qty, _condition_building_label(object_name, qty), unit]
 		"Run Multiple": return _run_multiple_condition_text(d)
 		"Fulfil Special Orders": return "Fulfil at least %d special orders" % qty
 		"Run Recipe": return "Operate %d buildings using a %s recipe" % [qty, object_name]
@@ -2704,6 +2727,39 @@ func _live_condition_met(d: Dictionary) -> bool:
 			return _count_buildings(obj, 1, false, turns) >= need
 		"Run Profitable L2":
 			return _count_buildings(obj, 2, true, 0) >= need
+		"Run Same Tile":
+			# N running buildings of this type on ONE tile; a leading int in Unit adds a
+			# full-output streak ("4 mines on the same tile for 15 turns").
+			return _max_same_tile_count(obj, _leading_int(str(d.get("unit", "")), 0)) >= need
+		"Own On Tiles":
+			# This building type present on at least N distinct tiles (reach, not volume).
+			return _tiles_with_building(obj) >= need
+		"Run Distinct Recipes":
+			# N running buildings of this type each on a DIFFERENT recipe ("3 chem plants
+			# with different recipes") — breadth of process, not fleet size.
+			return _distinct_recipes_running(obj) >= need
+		"Own All":
+			# "a|b" building types with "x|y" counts: own at least each ("a chem plant AND
+			# a power plant"). Mirrors Produce All.
+			var own_targets := obj.split("|", false)
+			var own_counts := str(d.get("quantity_raw", need)).split("|", false)
+			if own_targets.is_empty():
+				return false
+			for index in own_targets.size():
+				var want_n := need
+				if own_counts.size() == own_targets.size() and str(own_counts[index]).is_valid_int():
+					want_n = int(str(own_counts[index]))
+				if _count_buildings(str(own_targets[index]), -1, false, 0) < want_n:
+					return false
+			return true
+		"Run Producing":
+			# N buildings whose CURRENT recipe outputs this good, at full output for the
+			# streak in Unit ("run a recipe producing chlorine for 15 turns") — by output,
+			# so it spans recipes in different categories.
+			return _count_running_producing(_research_good_id(obj), _leading_int(str(d.get("unit", "")), 0)) >= need
+		"Run Profitable L1":
+			# N Level-1 buildings profitable for the streak in Unit.
+			return _count_buildings(obj, 1, true, _leading_int(str(d.get("unit", "")), 0)) >= need
 		"Run Recipe":
 			# "Run N player buildings currently set to a recipe of this category"
 			# (e.g. furnaces on a Glassmaking recipe). A leading int in Unit optionally
@@ -2916,7 +2972,18 @@ func _research_condition_issue(d: Dictionary) -> String:
 	var obj := str(d.get("object", ""))
 	if action == "Placeholder":
 		return ""
-	if action in ["Build", "Run", "Run Profitable", "Run L1", "Run Profitable L2", "Run Multiple", "Use Infrastructure"]:
+	if action == "Own All":
+		# "a|b" building types — every one must resolve.
+		var own_all_targets := obj.split("|", false)
+		if own_all_targets.is_empty():
+			return "invalid multi-building ownership condition"
+		for t in own_all_targets:
+			if _research_building_targets(str(t)).is_empty():
+				return "unknown ownership target"
+		return ""
+	if action == "Run Producing":
+		return "" if _research_good_id(obj) != "" else "unknown good target"
+	if action in ["Build", "Run", "Run Profitable", "Run L1", "Run Profitable L2", "Run Multiple", "Use Infrastructure", "Run Same Tile", "Own On Tiles", "Run Distinct Recipes", "Run Profitable L1"]:
 		if _research_key(obj) != "any" and _research_building_targets(obj).is_empty():
 			return "unknown building target"
 		return ""
@@ -2991,6 +3058,67 @@ func _research_condition_issue(d: Dictionary) -> String:
 # Count player-owned buildings resolved from an ID/internal/display/concept name,
 # optionally filtered by level (-1 = any), profitability, and a minimum consecutive
 # run-streak. `internal` == "any" (or "") matches every non-infrastructure building.
+## Largest number of player buildings of `internal` sharing ONE tile, counting only those
+## that (when `min_streak` > 0) have sustained full output for that many consecutive turns.
+## Backs the "Run Same Tile" verb — co-location is the ask, not fleet size.
+func _max_same_tile_count(internal: String, min_streak: int) -> int:
+	var targets := _research_building_targets(internal)
+	var per_tile: Dictionary = {}
+	for inst in buildings.values():
+		if not is_player_owned(inst) or not targets.has(_building_internal(inst)):
+			continue
+		if min_streak > 0 and int(Production.full_output_streak_by_building.get(str(inst.get("instance_id", "")), 0)) < min_streak:
+			continue
+		var t := str(inst.get("tile_id", ""))
+		per_tile[t] = int(per_tile.get(t, 0)) + 1
+	var best := 0
+	for t in per_tile:
+		best = maxi(best, int(per_tile[t]))
+	return best
+
+## Number of DIFFERENT recipes currently running (full-output streak >= 1) across the
+## player's buildings of `internal`. Backs "Run Distinct Recipes" — breadth of process.
+func _distinct_recipes_running(internal: String) -> int:
+	var targets := _research_building_targets(internal)
+	var recipes: Dictionary = {}
+	for inst in buildings.values():
+		if not is_player_owned(inst) or not targets.has(_building_internal(inst)):
+			continue
+		if int(Production.full_output_streak_by_building.get(str(inst.get("instance_id", "")), 0)) < 1:
+			continue
+		var rid := str(inst.get("recipe_id", ""))
+		if rid != "":
+			recipes[rid] = true
+	return recipes.size()
+
+## Player buildings whose CURRENT recipe outputs `good_id`, at full output for at least
+## `min_streak` consecutive turns. Backs "Run Producing" — matched by output good, so a
+## condition like "make chlorine" spans recipes that live in different categories.
+func _count_running_producing(good_id: String, min_streak: int) -> int:
+	if good_id == "":
+		return 0
+	var n := 0
+	for inst in buildings.values():
+		if not is_player_owned(inst):
+			continue
+		var recipe: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))
+		if recipe.is_empty() or not Catalog.recipe_produces(recipe, good_id):
+			continue
+		if int(Production.full_output_streak_by_building.get(str(inst.get("instance_id", "")), 0)) < maxi(min_streak, 1):
+			continue
+		n += 1
+	return n
+
+## Number of distinct tiles carrying at least one player building of `internal`.
+## Backs the "Own On Tiles" verb — geographic reach, not building count.
+func _tiles_with_building(internal: String) -> int:
+	var targets := _research_building_targets(internal)
+	var tiles: Dictionary = {}
+	for inst in buildings.values():
+		if is_player_owned(inst) and targets.has(_building_internal(inst)):
+			tiles[str(inst.get("tile_id", ""))] = true
+	return tiles.size()
+
 func _count_buildings(internal: String, level: int, require_profitable: bool, min_streak: int) -> int:
 	var match_any: bool = _research_key(internal) == "any" or internal == ""
 	var targets := _research_building_targets(internal)

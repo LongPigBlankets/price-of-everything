@@ -7276,6 +7276,59 @@ func _test_live_unlock_conditions() -> void:
 	_check(MatchState._live_condition_met(produce_any),
 		"Produce Any fires on 500 sand alone (does not require limestone or both)")
 
+	# --- "Run Same Tile" / "Own On Tiles": co-location and reach, not fleet size ---
+	MatchState.reset()
+	Production.full_output_streak_by_building.clear()
+	var same_tile_ids: Array = []
+	for _i in range(3):
+		same_tile_ids.append(MatchState.add_building("b_001", "", "tile_same_1"))
+	MatchState.add_building("b_001", "", "tile_same_2")   # a 4th mine, but on another tile
+	for iid_s in same_tile_ids:
+		Production.full_output_streak_by_building[iid_s] = 15
+	var same_tile := {"action": "Run Same Tile", "object": "mine", "qty": 4, "unit": "15 turns"}
+	_check(not MatchState._live_condition_met(same_tile),
+		"Run Same Tile: 3 running mines on one tile + 1 elsewhere does not satisfy 4-on-a-tile")
+	var fourth := MatchState.add_building("b_001", "", "tile_same_1")
+	_check(not MatchState._live_condition_met(same_tile),
+		"Run Same Tile: a 4th mine on the tile with no run-streak does not count yet")
+	Production.full_output_streak_by_building[fourth] = 15
+	_check(MatchState._live_condition_met(same_tile),
+		"Run Same Tile: 4 mines on one tile all at full output for 15 turns satisfies it")
+	_check(MatchState._live_condition_met({"action": "Own On Tiles", "object": "mine", "qty": 2}),
+		"Own On Tiles: mines on 2 distinct tiles satisfies 2")
+	_check(not MatchState._live_condition_met({"action": "Own On Tiles", "object": "mine", "qty": 3}),
+		"Own On Tiles: 5 mines spread over only 2 tiles does not satisfy 3 (reach, not count)")
+	MatchState.reset()
+
+	# --- "Run Producing" (by output good) / "Run Distinct Recipes" / "Own All" ---
+	MatchState.reset()
+	Production.full_output_streak_by_building.clear()
+	var chlor := MatchState.add_building("b_012", "r_012", "tile_chem_1")   # chlor-alkali -> chlorine
+	Production.full_output_streak_by_building[chlor] = 15
+	_check(MatchState._live_condition_met({"action": "Run Producing", "object": "chlorine", "qty": 1, "unit": "15 turns"}),
+		"Run Producing: a chem plant on chlor-alkali at full output 15 turns counts as making chlorine")
+	_check(not MatchState._live_condition_met({"action": "Run Producing", "object": "chlorine", "qty": 1, "unit": "20 turns"}),
+		"Run Producing: the same plant does not yet satisfy a 20-turn streak")
+	_check(not MatchState._live_condition_met({"action": "Run Distinct Recipes", "object": "chem_plant", "qty": 3}),
+		"Run Distinct Recipes: one running chem plant is not three distinct recipes")
+	var air := MatchState.add_building("b_012", "r_086", "tile_chem_1")     # oxygen air separation
+	Production.full_output_streak_by_building[air] = 1
+	var chlor2 := MatchState.add_building("b_012", "r_012", "tile_chem_2")  # a second chlor-alkali
+	Production.full_output_streak_by_building[chlor2] = 1
+	_check(not MatchState._live_condition_met({"action": "Run Distinct Recipes", "object": "chem_plant", "qty": 3}),
+		"Run Distinct Recipes: three plants on only two recipes does not satisfy 3")
+	var calc := MatchState.add_building("b_012", "r_082", "tile_chem_2")    # electric calcination alumina
+	Production.full_output_streak_by_building[calc] = 1
+	_check(MatchState._live_condition_met({"action": "Run Distinct Recipes", "object": "chem_plant", "qty": 3}),
+		"Run Distinct Recipes: three different chem-plant recipes running satisfies 3")
+	var own_all := {"action": "Own All", "object": "chem_plant|power_plant", "qty": 1, "quantity_raw": "1|1"}
+	_check(not MatchState._live_condition_met(own_all),
+		"Own All: chem plants alone do not satisfy chem plant AND power plant")
+	MatchState.add_building("b_003", "", "tile_chem_3")
+	_check(MatchState._live_condition_met(own_all),
+		"Own All: one chem plant and one power plant satisfies it")
+	MatchState.reset()
+
 	# --- "Sell N units": saved lifetime volume across ordinary/special/grid paths ---
 	var steel_gid := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
 	MarketState.record_lifetime_sale_volume(steel_gid, 249)
@@ -7410,10 +7463,12 @@ const FREE_UNLOCK_OFFCADENCE := 1
 func _test_mining_mastery_free_unlock() -> void:
 	Modifiers.reset()
 	MatchState.reset()
-	_check(not Modifiers.has("mining_mastery_bonus"), "no bonus before free pick")
-	MatchState.grant_unlock("Mining Mastery", false)
-	_check(MatchState.is_unlocked("Mining Mastery"), "free pick unlocks the tech")
-	_check(Modifiers.has("mining_mastery_bonus"),
+	# Regular Shaft Draining (ex Mining Mastery) grants two permanent mine modifiers;
+	# the maintenance one is the sentinel here.
+	_check(not Modifiers.has("rn_shaft_draining_maint"), "no bonus before free pick")
+	MatchState.grant_unlock("Regular Shaft Draining", false)
+	_check(MatchState.is_unlocked("Regular Shaft Draining"), "free pick unlocks the tech")
+	_check(Modifiers.has("rn_shaft_draining_maint"),
 		"free-picking the tech also grants the modifier")
 	Modifiers.reset()
 	MatchState.reset()

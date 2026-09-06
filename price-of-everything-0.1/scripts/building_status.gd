@@ -78,6 +78,7 @@ static func effective_output_qty(building: Dictionary, recipe: Dictionary) -> in
 			"recipe_id": recipe_id,
 			"recipe_type": str(recipe.get("recipe_type", "")).to_lower(),
 			"building_id": str(building.get("building_id", "")),
+			"instance_id": str(building.get("instance_id", "")),   # lets on_infinite_deposit modifiers resolve in the panel too
 			"good_id": str(good.id),
 			"good_internal": internal_name,
 		}
@@ -352,6 +353,7 @@ static func net_output_modifier(building: Dictionary, recipe: Dictionary) -> Dic
 		"recipe_id": recipe_id,
 		"recipe_type": str(recipe.get("recipe_type", "")).to_lower(),
 		"building_id": str(building.get("building_id", "")),
+		"instance_id": str(building.get("instance_id", "")),   # lets on_infinite_deposit modifiers resolve in the panel too
 		"good_id": primary_output_good_id(recipe),
 		"good_internal": primary_output_internal(recipe),
 	}
