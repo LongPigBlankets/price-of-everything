@@ -52,7 +52,7 @@ research_infra_004,Infrastructure,research_infra_001,,,,II,Build,Cables,3,units,
 research_infra_005,Infrastructure,research_infra_003,,,,III,Use Infrastructure,Utility Corridor,5,300% of L1 for 5 turns,Integrated Utility Corridors,corridor,Reduces all buildings' maintenance by 5% permanently.
 research_logi_001,Logistics,,,,,I,Sell Through Ports,ports,500,units,Depot Scheduling,depot,Reduces road and rail transport cost by 10% permanently.
 research_logi_011,Logistics,,,,,I,Sell Through Ports,ports,5000,units,Groupage Contracts,depot,Reduces the port ad valorem fee by 10% permanently.
-research_logi_002,Logistics,research_logi_011,,,,II,Ship Multimodal,freight,100,units per turn,Multimodal Containerized Freight,container,Reduces the port ad valorem fee by 10% permanently.
+research_logi_002,Logistics,research_logi_011,,,,II,Ship Multimodal,freight,300,units per turn,Multimodal Containerized Freight,container,Reduces the port ad valorem fee by 10% permanently.
 research_logi_003,Logistics,research_logi_001,,,,II,Use Infrastructure,Roads,5,80% throughput,Route Optimization,route,Increases road throughput by 25% permanently.
 research_logi_004,Logistics,research_logi_001,,,,II,Use Infrastructure,Roads,3,80% throughput,Cold Chain Handling,cold,Reduces transport cost by 5% for 20 turns.
 research_logi_005,Logistics,research_logi_003,,,,III,Build,Roads,5,units,Autonomous Dispatch Rooms,dispatch,Reduces Roads and Railways labour by 10% permanently.
