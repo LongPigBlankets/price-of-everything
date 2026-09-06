@@ -2555,6 +2555,7 @@ func unlock_condition_text(title: String) -> String:
 				if not sub.is_empty():
 					all_parts.append(_sub_condition_text(sub))
 			return _join_and(all_parts).capitalize() if all_parts.is_empty() else (_join_and(all_parts)[0].to_upper() + _join_and(all_parts).substr(1))
+		"Ship Multimodal": return "Move at least %d freight in a single turn using more than one mode of transport" % qty
 		"Produce Per Turn": return "Produce at least %d %s in a single turn" % [qty, object_name.capitalize()]
 		"Produce Per Turn Any":
 			var rate_parts: Array = []
@@ -2801,6 +2802,11 @@ func _live_condition_met(d: Dictionary) -> bool:
 			# ("produce at least 300 steel per turn").
 			var rate_good := _research_good_id(obj)
 			return rate_good != "" and int((Production.last_turn_summary.get("produced", {}) as Dictionary).get(rate_good, 0)) >= need
+		"Ship Multimodal":
+			# Last turn's freight reached `need` units AND travelled by more than one transport
+			# mode ("100 freight per turn using more than 1 mode").
+			var mm := _multimodal_freight_last_turn()
+			return int(mm.get("total", 0)) >= need and (mm.get("modes", {}) as Dictionary).size() >= 2
 		"Produce Per Turn Any":
 			# A rate on ANY of an "a|b" list: last turn's output of any listed good reached its
 			# threshold ("30 pet coke per turn OR 30 biomass per turn"). Shared qty, or per-good "x|y".
@@ -3049,6 +3055,8 @@ func _research_condition_issue(d: Dictionary) -> String:
 			if sub_issue != "":
 				return sub_issue
 		return ""
+	if action == "Ship Multimodal":
+		return "" if _research_key(obj) == "freight" else "unsupported multimodal target"
 	if action == "Produce Per Turn":
 		return "" if _research_good_id(obj) != "" else "unknown good target"
 	if action == "Produce Per Turn Any":
@@ -3168,6 +3176,29 @@ func _max_same_tile_count(internal: String, min_streak: int) -> int:
 	for t in per_tile:
 		best = maxi(best, int(per_tile[t]))
 	return best
+
+## Last resolved turn's freight, by transport mode, from the same shipment snapshot the
+## congestion model uses (_last_transit_shipments). Each shipment's units count once per
+## mode it travels by — no inflation by route length. Leg-less overland moves count as
+## "overland". Backs "Ship Multimodal": {"total": units, "modes": {mode: units}}.
+func _multimodal_freight_last_turn() -> Dictionary:
+	var by_mode: Dictionary = {}
+	var total := 0
+	for s in _last_transit_shipments:
+		var units := _shipment_total_units(s as Dictionary)
+		if units <= 0:
+			continue
+		var modes: Dictionary = {}
+		for leg in (s as Dictionary).get("legs", []):
+			var mode := str((leg as Dictionary).get("mode", ""))
+			if mode != "":
+				modes[mode] = true
+		if modes.is_empty():
+			modes["overland"] = true
+		for mode in modes:
+			by_mode[mode] = int(by_mode.get(mode, 0)) + units
+		total += units
+	return {"total": total, "modes": by_mode}
 
 ## One "Action|Object|Qty|Unit" clause of an "All Of" condition, as the condition dict the
 ## live check, the audit and the card text consume. Empty when malformed. (Clauses whose own

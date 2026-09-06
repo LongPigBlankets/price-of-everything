@@ -47,12 +47,12 @@ research_renew_004,Power Production,research_renew_001,,,,II,Build,hydro_power_p
 research_renew_005,Power Production,research_renew_003,,,,III,Run,Renewable Dispatch Forecasting,15,turns,Renewable Dispatch Forecasting,forecast,Increases all renewable power plant output by 25% for 15 turns.
 research_infra_001,Infrastructure,,,,,I,Build,Roads,3,units,Reinforced Roadbeds,road,Increases road throughput by 25% permanently.
 research_infra_002,Infrastructure,research_infra_001,,,,I,Produce,concrete,250,units,Pipe Trench Standards,pipe,Reduces Pipeworks maintenance by 5% permanently.
-research_infra_003,Infrastructure,research_infra_002,,,,II,Use Infrastructure,pipes,3,150% of L1 for 5 turns,High Pressure Mains,main,Increases pipe throughput by 25% permanently.
+research_infra_003,Infrastructure,research_infra_002,,,,II,Use Infrastructure,pipes,3,160% of L1 for 5 turns,High Pressure Mains,main,Increases pipe throughput by 25% permanently.
 research_infra_004,Infrastructure,research_infra_001,,,,II,Build,Cables,3,units,Substation Layouts,substation,Increases cable throughput by 25% permanently.
 research_infra_005,Infrastructure,research_infra_003,,,,III,Use Infrastructure,Utility Corridor,5,300% of L1 for 5 turns,Integrated Utility Corridors,corridor,Reduces all buildings' maintenance by 5% permanently.
 research_logi_001,Logistics,,,,,I,Sell Through Ports,ports,500,units,Depot Scheduling,depot,Reduces road and rail transport cost by 10% permanently.
 research_logi_011,Logistics,,,,,I,Sell Through Ports,ports,5000,units,Groupage Contracts,depot,Reduces the port ad valorem fee by 10% permanently.
-research_logi_002,Logistics,research_logi_011,,,,II,Sell Through Every Port,ports,500,units,Multimodal Containerized Freight,container,Reduces the port ad valorem fee by 10% permanently.
+research_logi_002,Logistics,research_logi_011,,,,II,Ship Multimodal,freight,100,units per turn,Multimodal Containerized Freight,container,Reduces the port ad valorem fee by 10% permanently.
 research_logi_003,Logistics,research_logi_001,,,,II,Use Infrastructure,Roads,5,80% throughput,Route Optimization,route,Increases road throughput by 25% permanently.
 research_logi_004,Logistics,research_logi_001,,,,II,Use Infrastructure,Roads,3,80% throughput,Cold Chain Handling,cold,Reduces transport cost by 5% for 20 turns.
 research_logi_005,Logistics,research_logi_003,,,,III,Build,Roads,5,units,Autonomous Dispatch Rooms,dispatch,Reduces Roads and Railways labour by 10% permanently.
@@ -193,7 +193,7 @@ research_infra_021,Infrastructure,,,,,I,Use Infrastructure,rails,3,50% of L1 for
 research_infra_022,Infrastructure,,,,,I,Build,rails,5,units,Heavy-Haul Bogies,rail,Increases rail throughput by 25% permanently.
 research_infra_023,Infrastructure,research_infra_008,,,,III,Use Infrastructure,rails,3,300% of L1 for 5 turns,Electrified Rolling Stock,erail,Increases rail throughput by 25% permanently.
 research_infra_024,Infrastructure,,,,,I,Use Infrastructure,rails,3,80% of L1 for 5 turns,Automated Rail Yards,rail,Reduces Railways maintenance by 10% permanently.
-research_infra_025,Infrastructure,,,,,I,Use Infrastructure,rails,3,150% of L1 for 5 turns,Distributed-Power Trains,rail,Reduces transport cost by 5% permanently.
+research_infra_025,Infrastructure,,,,,I,Use Infrastructure,rails,3,160% of L1 for 5 turns,Distributed-Power Trains,rail,Reduces transport cost by 5% permanently.
 research_infra_026,Infrastructure,,,,,I,Build,reinf_pipes,3,units,Large-Diameter Mains,pipe,Reduces Reinforced Pipeworks maintenance by 10% permanently.
 research_infra_027,Infrastructure,,,,,I,Build,pipes,3,units,Booster Pumping Stations,pipe,Reduces Pipeworks maintenance by 10% permanently.
 research_infra_028,Infrastructure,,,,,I,Use Infrastructure,pipes,3,50% of L1 for 5 turns,Trunk Pipeline Networks,pipe,Reduces transport cost by 5% permanently.

@@ -7372,6 +7372,28 @@ func _test_live_unlock_conditions() -> void:
 	Production.produced_by_building.clear()
 	MatchState.reset()
 
+	# --- "Ship Multimodal": last turn's freight >= N AND carried by more than one mode ---
+	MatchState.reset()
+	var mm_gate := {"action": "Ship Multimodal", "object": "freight", "qty": 100}
+	MatchState._last_transit_shipments = [
+		{"qty": 70, "good_id": "g_001", "legs": [{"to": "t2", "mode": "roads"}]},
+		{"qty": 60, "good_id": "g_002", "legs": [{"to": "t3", "mode": "roads"}]},
+	]
+	_check(not MatchState._live_condition_met(mm_gate), "Ship Multimodal: 130 freight all by road is one mode — not multimodal")
+	MatchState._last_transit_shipments = [
+		{"qty": 40, "good_id": "g_001", "legs": [{"to": "t2", "mode": "roads"}]},
+		{"qty": 30, "good_id": "g_002", "legs": [{"to": "t3", "mode": "rail"}]},
+	]
+	_check(not MatchState._live_condition_met(mm_gate), "Ship Multimodal: two modes but only 70 freight does not reach 100")
+	MatchState._last_transit_shipments = [
+		{"qty": 70, "good_id": "g_001", "legs": [{"to": "t2", "mode": "roads"}, {"to": "t3", "mode": "rail"}]},
+		{"qty": 30, "good_id": "g_002", "legs": [{"to": "t4", "mode": "roads"}]},
+	]
+	_check(MatchState._live_condition_met(mm_gate), "Ship Multimodal: 100 freight with a road+rail route satisfies it (units count once per mode, never per link)")
+	_check(MatchState._research_condition_issue(mm_gate) == "", "Ship Multimodal gate passes the audit")
+	MatchState._last_transit_shipments = []
+	MatchState.reset()
+
 	# --- "Sell N units": saved lifetime volume across ordinary/special/grid paths ---
 	var steel_gid := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
 	MarketState.record_lifetime_sale_volume(steel_gid, 249)
