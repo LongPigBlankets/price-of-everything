@@ -76,12 +76,9 @@ const UNLOCK_MODIFIERS := {
 		"source": "research:coordinated_robot_handoff",
 	},
 	# ── building power consumption ───────────────────────────────────────
-	"research_metal_010": {  # Pulverised Carbon Injection
-		"id": "pci_furnace_power", "domain": "building_power",
-		"target_match": {"building_id": "b_002"}, "pct": -20.0,
-		"label": "Pulverised Carbon Injection: −20% furnace power",
-		"source": "research:pulverised_carbon_injection",
-	},
+	# Pulverised Carbon Injection (metal_010) no longer carries a modifier: it unlocks the
+	# Steelmaking (Petro) / Steelmaking (Bio) recipes — needle coke or carbonised biomass in
+	# place of coal at matched market value (owner 2026-09-06). Was -20% furnace power.
 	"research_metal_013": {  # Scrap Preheating Towers
 		"id": "preheat_eaf_power", "domain": "building_power",
 		"target_match": {"building_id": "b_008"}, "pct": -20.0,
@@ -131,12 +128,16 @@ const UNLOCK_MODIFIERS := {
 		"target_match": {"good_internal": "iron_ore"}, "pct": 15.0,
 		"label": "Beneficiated Iron Mining", "source": "research:mining_yield",
 	},
-	"research_mining_004": [  # Copper Froth Flotation: recovers more ore AND a cleaner concentrate
-		# The +15% ore yield is one of copper ore's two deposit-penalty recovery steps (see the
-		# recovery test) and keeps that tag; the ingot bonus is a plain research effect.
-		{"id": "yield_copper_ore", "domain": "recipe_output", "target_match": {"good_internal": "copper_ore"}, "pct": 15.0, "label": "Copper Froth Flotation", "source": "research:mining_yield"},
-		{"id": "yield_copper_ingots", "domain": "recipe_output", "target_match": {"good_internal": "copper_ingots"}, "pct": 5.0, "label": "Copper Froth Flotation: +5% copper ingot output", "source": "research_node"},
-	],
+	"research_mining_004": {  # Copper Froth Flotation: a cleaner concentrate -> better ingot yield
+		"id": "yield_copper_ingots", "domain": "recipe_output",
+		"target_match": {"good_internal": "copper_ingots"}, "pct": 5.0,
+		"label": "Copper Froth Flotation: +5% copper ingot output", "source": "research_node",
+	},
+	"research_mining_020": {  # Copper Bioleaching: copper ore's first deposit-penalty recovery step (Automated Mine Dispatch is the second)
+		"id": "yield_copper_ore", "domain": "recipe_output",
+		"target_match": {"good_internal": "copper_ore"}, "pct": 15.0,
+		"label": "Copper Bioleaching", "source": "research:mining_yield",
+	},
 	"research_mining_003": [  # Reinforced Shaft Tunnels
 		{"id": "yield_limestone", "domain": "recipe_output", "target_match": {"good_internal": "limestone"}, "pct": 15.0, "label": "Reinforced Shaft Tunnels", "source": "research:mining_yield"},
 		{"id": "yield_sand", "domain": "recipe_output", "target_match": {"good_internal": "sand"}, "pct": 15.0, "label": "Reinforced Shaft Tunnels", "source": "research:mining_yield"},
@@ -204,8 +205,8 @@ const UNLOCK_MODIFIERS := {
 	"research_petro_005": {"id": "rn_advanced_elastomers", "domain": "recipe_output", "target_match": {"good_internal": "rubber"}, "pct": 10.0, "label": "Advanced Elastomers: +10% rubber output", "source": "research_node"},  # Advanced Elastomers (was a 20-turn +5% sale-price bump)
 	"research_metal_001": {"id": "rn_basic_blast_furnaces", "domain": "recipe_output", "target_match": {"building_id": "b_002"}, "pct": 5.0, "label": "Basic Blast Furnaces", "source": "research_node"},  # Basic Blast Furnaces
 	"research_metal_002": {"id": "rn_continuous_casting", "domain": "recipe_output", "target_match": {"good_internal": "steel"}, "pct": 5.0, "label": "Continuous Casting: +5% steel output", "source": "research_node"},  # Continuous Casting (was a do-nothing prereq; now a real steelmaking yield gain)
-	"research_inorg_004": {"id": "rn_chlor_alkali_cells", "domain": "recipe_output", "target_match": {"building_id": "b_020"}, "pct": 5.0, "label": "Chlor Alkali Cells", "source": "research_node"},  # Chlor Alkali Cells
-	"research_inorg_005": {"id": "rn_acid_gas_scrubbing", "domain": "labour_headcount", "target_match": {"building_id": "b_012"}, "pct": -5.0, "label": "Acid Gas Scrubbing", "source": "research_node"},  # Acid Gas Scrubbing
+	"research_inorg_004": {"id": "rn_chlor_alkali_cells", "domain": "recipe_output", "target_match": {"building_id": "b_012"}, "pct": 5.0, "label": "Chlor Alkali Cells: +5% chem plant output", "source": "research_node"},  # Chlor Alkali Cells (chlor-alkali is a chem-plant process; was mis-wired to the electrolyser b_020)
+	"research_inorg_005": {"id": "rn_acid_gas_scrubbing", "domain": "maintenance", "target_match": {"building_id": "b_012"}, "pct": -10.0, "label": "Acid Gas Scrubbing: -10% chem plant maintenance", "source": "research_node"},  # Acid Gas Scrubbing (emissions control protects the plant; was -5% labour)
 	"research_inorg_006": {"id": "rn_industrial_salt_purification", "domain": "recipe_output", "target_match": {"good_internal": "chlorine"}, "pct": 5.0, "label": "Industrial Salt Purification: +5% chlorine output", "source": "research_node"},  # Industrial Salt Purification (purer brine -> better chlor-alkali yield; was a 20-turn +25% chem-plant buff)
 	"research_inorg_007": {"id": "rn_ceramic_catalyst_supports", "domain": "building_power", "target_match": {"building_id": "b_012"}, "pct": -5.0, "label": "Ceramic Catalyst Supports", "source": "research_node"},  # Ceramic Catalyst Supports
 	"research_inorg_008": {"id": "rn_precision_reagent_handling", "domain": "maintenance", "target_match": {"building_id": "b_012"}, "pct": -5.0, "label": "Precision Reagent Handling: -5% chem plant maintenance", "source": "research_node"},  # Precision Reagent Handling (permanent; was -10% for 20 turns)
@@ -221,7 +222,7 @@ const UNLOCK_MODIFIERS := {
 	# Enzyme Screening (biochem_002) and Bioplastic Precursors (biochem_003) are demo-hidden
 	# (MatchState.HIDDEN_RESEARCH_IDS, owner 2026-09-06); their entries were removed so no
 	# modifier key points at a node that never loads.
-	"research_biochem_005": {"id": "rn_cell_culture_automation", "domain": "labour_headcount", "target_match": {"building_id": "b_014"}, "pct": -5.0, "label": "Cell Culture Automation", "source": "research_node"},  # Cell Culture Automation
+	# Cell Culture Automation (biochem_005) is demo-hidden; entry removed with the rest of the bioplastics chain.
 	"research_mfg_001": {"id": "rn_interchangeable_tooling", "domain": "labour_headcount", "target_match": {"building_id": "b_009"}, "pct": -5.0, "label": "Interchangeable Tooling", "source": "research_node"},  # Interchangeable Tooling
 	"research_hcpower_001": {"id": "rn_pulverized_coal_boilers", "domain": "recipe_output", "target_match": {"building_id": "b_003"}, "pct": 5.0, "label": "Pulverized Coal Boilers", "source": "research_node"},  # Pulverized Coal Boilers
 	"research_hcpower_002": {"id": "rn_steam_turbine_upgrades", "domain": "recipe_output", "target_match": {"building_id": "b_003"}, "pct": 25.0, "duration_turns": 25, "label": "Steam Turbine Upgrades", "source": "research_node"},  # Steam Turbine Upgrades
@@ -295,7 +296,7 @@ const UNLOCK_MODIFIERS := {
 	"research_renew_015": {"id": "rn_taller_turbine_towers", "domain": "recipe_output", "target_match": {"building_id": "b_025"}, "pct": 10.0, "label": "Taller Turbine Towers", "source": "research_node"},  # Taller Turbine Towers
 	"research_renew_016": {"id": "rn_variable_pitch_control", "domain": "maintenance", "target_match": {"building_id": "b_025"}, "pct": -10.0, "duration_turns": 20, "label": "Variable-Pitch Control", "source": "research_node"},  # Variable-Pitch Control
 	"research_renew_021": {"id": "rn_containerised_battery_racks", "domain": "maintenance", "target_match": {"building_id": "b_028"}, "pct": -10.0, "duration_turns": 20, "label": "Containerised Battery Racks", "source": "research_node"},  # Containerised Battery Racks
-	"research_metal_016": {"id": "rn_dc_arc_conversion", "domain": "building_power", "target_match": {"building_id": "b_008"}, "pct": -5.0, "label": "DC Arc Conversion", "source": "research_node"},  # DC Arc Conversion
+	"research_metal_016": {"id": "rn_dc_arc_conversion", "domain": "building_power", "target_match": {"building_id": "b_008"}, "pct": -10.0, "label": "DC Arc Conversion: -10% EAF power", "source": "research_node"},  # DC Arc Conversion (owner: 10%, was 5%)
 	"research_metal_014": {"id": "rn_foamy_slag_practice", "domain": "recipe_output", "target_match": {"building_id": "b_008"}, "pct": 5.0, "label": "Foamy Slag Practice", "source": "research_node"},  # Foamy Slag Practice
 	"research_metal_008": {"id": "rn_ultra_high_power_arcs", "domain": "recipe_output", "target_match": {"building_id": "b_008"}, "pct": 10.0, "label": "Ultra-High-Power Arcs", "source": "research_node"},  # Ultra-High-Power Arcs
 	"research_mining_013": {"id": "rn_bench_blasting", "domain": "recipe_output", "target_match": {"building_id": "b_001"}, "pct": 20.0, "duration_turns": 20, "label": "Bench Blasting Expansion", "source": "research_node"},  # Bench Blasting Expansion

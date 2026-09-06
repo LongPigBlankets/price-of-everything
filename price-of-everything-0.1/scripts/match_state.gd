@@ -2281,6 +2281,7 @@ const HIDDEN_RESEARCH_IDS := {
 	"research_biochem_002": true, # Enzyme Screening — bioplastics chain not in the demo
 	"research_biochem_003": true, # Bioplastic Precursors — same
 	"research_inorg_023": true,   # Zero-Liquid Discharge — replaced by Novel Membrane Filtration (inorg_025)
+	"research_biochem_005": true, # Cell Culture Automation — bioplastics chain not in the demo
 }
 
 # --- Public API: research unlocks ---
@@ -2547,6 +2548,14 @@ func unlock_condition_text(title: String) -> String:
 			var prod_who := "a building" if qty <= 1 else "%d buildings" % qty
 			return "Operate %s making %s at full capacity for %d consecutive turns" % [prod_who, object_name.capitalize(), prod_turns] if prod_turns > 0 else "Operate %s making %s at full capacity" % [prod_who, object_name.capitalize()]
 		"Run Profitable L1": return "Operate %d Level 1 %s profitably for %s" % [qty, _condition_building_label(object_name, qty), unit]
+		"All Of":
+			var all_parts: Array = []
+			for spec in object_name.split(";", false):
+				var sub := _parse_sub_condition(str(spec))
+				if not sub.is_empty():
+					all_parts.append(_sub_condition_text(sub))
+			return _join_and(all_parts).capitalize() if all_parts.is_empty() else (_join_and(all_parts)[0].to_upper() + _join_and(all_parts).substr(1))
+		"Produce Per Turn": return "Produce at least %d %s in a single turn" % [qty, object_name.capitalize()]
 		"Run Multiple": return _run_multiple_condition_text(d)
 		"Fulfil Special Orders": return "Fulfil at least %d special orders" % qty
 		"Run Recipe": return "Operate %d buildings using a %s recipe" % [qty, object_name]
@@ -2760,6 +2769,22 @@ func _live_condition_met(d: Dictionary) -> bool:
 		"Run Profitable L1":
 			# N Level-1 buildings profitable for the streak in Unit.
 			return _count_buildings(obj, 1, true, _leading_int(str(d.get("unit", "")), 0)) >= need
+		"All Of":
+			# Compound AND: Object is ";"-separated clauses, each "Action|Object|Qty|Unit"
+			# ("operate 5 refineries AND produce alloy metals"). Every clause must hold.
+			var clauses := obj.split(";", false)
+			if clauses.is_empty():
+				return false
+			for spec in clauses:
+				var sub := _parse_sub_condition(str(spec))
+				if sub.is_empty() or not _live_condition_met(sub):
+					return false
+			return true
+		"Produce Per Turn":
+			# A RATE: the last resolved turn's output of this good, not lifetime volume
+			# ("produce at least 300 steel per turn").
+			var rate_good := _research_good_id(obj)
+			return rate_good != "" and int((Production.last_turn_summary.get("produced", {}) as Dictionary).get(rate_good, 0)) >= need
 		"Run Recipe":
 			# "Run N player buildings currently set to a recipe of this category"
 			# (e.g. furnaces on a Glassmaking recipe). A leading int in Unit optionally
@@ -2972,6 +2997,21 @@ func _research_condition_issue(d: Dictionary) -> String:
 	var obj := str(d.get("object", ""))
 	if action == "Placeholder":
 		return ""
+	if action == "All Of":
+		# Every ";"-separated clause must itself pass the audit.
+		var all_clauses := obj.split(";", false)
+		if all_clauses.is_empty():
+			return "empty All Of condition"
+		for spec in all_clauses:
+			var sub := _parse_sub_condition(str(spec))
+			if sub.is_empty():
+				return "malformed All Of clause"
+			var sub_issue := _research_condition_issue(sub)
+			if sub_issue != "":
+				return sub_issue
+		return ""
+	if action == "Produce Per Turn":
+		return "" if _research_good_id(obj) != "" else "unknown good target"
 	if action == "Own All":
 		# "a|b" building types — every one must resolve.
 		var own_all_targets := obj.split("|", false)
@@ -3075,6 +3115,32 @@ func _max_same_tile_count(internal: String, min_streak: int) -> int:
 	for t in per_tile:
 		best = maxi(best, int(per_tile[t]))
 	return best
+
+## One "Action|Object|Qty|Unit" clause of an "All Of" condition, as the condition dict the
+## live check, the audit and the card text consume. Empty when malformed. (Clauses whose own
+## Object needs "|" — Produce All, Own All — can't nest here; none do.)
+func _parse_sub_condition(spec: String) -> Dictionary:
+	var parts := spec.split("|", false)
+	if parts.size() < 3:
+		return {}
+	var q := str(parts[2]).strip_edges()
+	return {
+		"action": str(parts[0]).strip_edges(), "object": str(parts[1]).strip_edges(),
+		"qty": int(q) if q.is_valid_int() else _leading_int(q, 0), "quantity_raw": q,
+		"unit": str(parts[3]).strip_edges() if parts.size() > 3 else "",
+	}
+
+## Card text for one All Of clause — the verbs that actually appear in compound gates.
+func _sub_condition_text(sub: Dictionary) -> String:
+	var a := str(sub.get("action", "")); var o := str(sub.get("object", "")); var n := int(sub.get("qty", 0)); var u := str(sub.get("unit", ""))
+	var turns := _leading_int(u, 0)
+	match a:
+		"Produce": return "produce %d %s" % [n, o.capitalize()]
+		"Own": return "own %d %s" % [n, _condition_building_label(o, n)]
+		"Run": return "operate %d %s at full capacity for %d turns" % [n, _condition_building_label(o, n), turns] if turns > 0 else "operate a %s at full capacity for %d turns" % [_condition_building_label(o, 1), n]
+		"Run Profitable": return "operate %d %s profitably" % [n, _condition_building_label(o, n)]
+		"Run Producing": return "operate %s making %s at full capacity for %d turns" % ["a building" if n <= 1 else "%d buildings" % n, o.capitalize(), turns]
+	return "%s %s %d %s" % [a, o, n, u]
 
 ## Number of DIFFERENT recipes currently running (full-output streak >= 1) across the
 ## player's buildings of `internal`. Backs "Run Distinct Recipes" — breadth of process.

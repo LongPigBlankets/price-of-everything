@@ -7329,6 +7329,28 @@ func _test_live_unlock_conditions() -> void:
 		"Own All: one chem plant and one power plant satisfies it")
 	MatchState.reset()
 
+	# --- "All Of" (compound AND of clauses) / "Produce Per Turn" (a rate, not lifetime) ---
+	MatchState.reset()
+	Production.full_output_streak_by_building.clear()
+	Production.produced_by_building.clear()
+	var all_of := {"action": "All Of", "object": "Own|power_plant|1|units;Produce|steel|100|units", "qty": 1, "unit": "conditions"}
+	_check(not MatchState._live_condition_met(all_of), "All Of: neither clause met -> false")
+	MatchState.add_building("b_003", "", "tile_all_1")
+	_check(not MatchState._live_condition_met(all_of), "All Of: one clause met is not enough")
+	var steel_rate_gid := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
+	Production.produced_by_building["mill"] = {steel_rate_gid: 100}
+	_check(MatchState._live_condition_met(all_of), "All Of: both clauses met -> true")
+	_check(MatchState._research_condition_issue(all_of) == "", "All Of: the audit validates each clause")
+	Production.last_turn_summary = {"produced": {steel_rate_gid: 299}}
+	_check(not MatchState._live_condition_met({"action": "Produce Per Turn", "object": "steel", "qty": 300}),
+		"Produce Per Turn: 299 steel last turn does not satisfy 300/turn")
+	Production.last_turn_summary = {"produced": {steel_rate_gid: 300}}
+	_check(MatchState._live_condition_met({"action": "Produce Per Turn", "object": "steel", "qty": 300}),
+		"Produce Per Turn: 300 steel last turn satisfies 300/turn (a rate, not lifetime volume)")
+	Production.last_turn_summary = {}
+	Production.produced_by_building.clear()
+	MatchState.reset()
+
 	# --- "Sell N units": saved lifetime volume across ordinary/special/grid paths ---
 	var steel_gid := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
 	MarketState.record_lifetime_sale_volume(steel_gid, 249)
@@ -14194,11 +14216,12 @@ func _test_research_unlock_promotes_construct_panel_recipes() -> void:
 	# This fixture explicitly instantiates the legacy panel and calls its tile-open
 	# API, so do not let the live v2 routing toggle make that API return early.
 	MatchState.use_construct_panel_v2 = false
-	# Electric Arc Refining auto-unlocks on a Produce-600-steel condition; a fresh
-	# fixture has produced no steel, so it stays unmet while this test isolates panel
-	# filtering. (tile_land_owned cleared too, harmless, in case an owned-land gate returns.)
+	# r_020 is gated on Flash Copper Smelting (its own node since 2026-09-06), which
+	# auto-unlocks on Produce All 200 industrial acids + 300 copper ingots; a fresh fixture
+	# has produced neither, so it stays unmet while this test isolates panel filtering.
+	# (tile_land_owned cleared too, harmless, in case an owned-land gate returns.)
 	MatchState.tile_land_owned.clear()
-	MatchState.unlocked_titles.erase("Electric Arc Refining")
+	MatchState.unlocked_titles.erase("Flash Copper Smelting")
 	var packed: PackedScene = load("res://scenes/construct_panel.tscn")
 	if packed == null or recipe.is_empty() or building_id == "":
 		_check(false, "research unlock: construct panel fixture resolves")
@@ -14220,17 +14243,17 @@ func _test_research_unlock_promotes_construct_panel_recipes() -> void:
 	await get_tree().process_frame
 	_check(not _construct_panel_has_recipe(panel, building_id, "r_020"),
 		"construct panel hides recipe-gated research before unlock")
-	MatchState.grant_unlock("Electric Arc Refining")
+	MatchState.grant_unlock("Flash Copper Smelting")
 	await get_tree().process_frame
 	_check(_construct_panel_has_recipe(panel, building_id, "r_020"),
 		"construct panel promotes recipe when research unlocks")
 
-	MatchState.unlocked_titles.erase("Electric Arc Refining")
+	MatchState.unlocked_titles.erase("Flash Copper Smelting")
 	panel.call("open_for_tile", "tile_test_research_unlock", {})
 	await get_tree().process_frame
 	_check(not _construct_panel_has_recipe(panel, building_id, "r_020"),
 		"tile build panel hides recipe-gated research before unlock")
-	MatchState.grant_unlock("Electric Arc Refining")
+	MatchState.grant_unlock("Flash Copper Smelting")
 	await get_tree().process_frame
 	_check(_construct_panel_has_recipe(panel, building_id, "r_020"),
 		"tile build panel promotes recipe when research unlocks")
