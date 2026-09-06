@@ -5949,7 +5949,7 @@ func _test_construct_settings_roundtrip() -> void:
 		"construct settings: auto-buy land is exported")
 
 	MatchState.reset()
-	_check(not MatchState.construct_auto_buy_land, "construct settings: reset clears auto-buy land")
+	_check(MatchState.construct_auto_buy_land, "construct settings: reset enables auto-buy land")
 	MatchState.import_state(snap)
 	_check(MatchState.construct_auto_buy_land, "construct settings: auto-buy land survives a round-trip")
 	_check(MatchState.construct_start_half_capacity, "construct settings: half-capacity survives a round-trip")
@@ -5959,8 +5959,8 @@ func _test_construct_settings_roundtrip() -> void:
 	legacy.erase("construct_auto_buy_land")
 	MatchState.reset()
 	MatchState.import_state(legacy)
-	_check(not MatchState.construct_auto_buy_land,
-		"construct settings: a save predating the setting loads with it OFF")
+	_check(MatchState.construct_auto_buy_land,
+		"construct settings: a save predating the setting defaults to auto-buy ON")
 	MatchState.reset()
 
 

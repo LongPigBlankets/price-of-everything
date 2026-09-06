@@ -549,6 +549,8 @@ func _draw_cubic_segment(
 	var segment_length: float = start.distance_to(end)
 	var control_a: Vector2 = start + start_tangent * segment_length * start_tension
 	var control_b: Vector2 = end - end_tangent * segment_length * end_tension
+	if clip_at_sea and _draw_mouth_segment(start, control_a, control_b, end, start_width, end_width):
+		return
 	var previous: Vector2 = start
 
 	for step in range(1, CURVE_STEPS + 1):
@@ -580,6 +582,65 @@ func _draw_cubic_segment(
 		if reached_sea:
 			return
 		previous = point
+
+## Fade bank ink before the shore and blend river water through the coast stroke
+## into transparent sea. Vertex colours keep the transition continuous, without a cap.
+func _draw_mouth_segment(start: Vector2, control_a: Vector2, control_b: Vector2,
+		end: Vector2, start_width: float, end_width: float) -> bool:
+	var points := PackedVector2Array()
+	var distances := PackedFloat32Array()
+	var coast_distance := -1.0
+	var total := 0.0
+	for i in range(CURVE_STEPS + 1):
+		var point := _cubic_bezier(start, control_a, control_b, end, float(i) / CURVE_STEPS)
+		if i > 0:
+			total += points[-1].distance_to(point)
+		points.append(point)
+		distances.append(total)
+		if coast_distance < 0.0 and _point_is_sea(point):
+			coast_distance = total
+	if coast_distance < 0.0:
+		return false
+	var blend_length := maxf(end_width * 1.5, 28.0)
+	var finish := coast_distance + end_width
+	# The authored endpoint may be right on the coast; give its fade enough water.
+	if total < finish:
+		var direction := (points[-1] - points[-2]).normalized()
+		points.append(points[-1] + direction * (finish - total))
+		distances.append(finish)
+	# Join the preceding bank segment without a hairline wedge at the bend.
+	if _pass == 0:
+		draw_circle(start, (start_width + MapStyle.river_casing_extra()) * 0.5, MapStyle.river_casing())
+	else:
+		draw_circle(start, start_width * 0.5, MapStyle.river_color())
+	var normals := PackedVector2Array()
+	for i in points.size():
+		var tangent := points[mini(i + 1, points.size() - 1)] - points[maxi(i - 1, 0)]
+		normals.append(Vector2(-tangent.y, tangent.x).normalized())
+	var sea := MapStyle.sea_colors()[3]
+	for i in range(points.size() - 1):
+		var a := points[i]
+		var b := points[i + 1]
+		var colors := PackedColorArray()
+		var widths := PackedFloat32Array()
+		for j in [i, i + 1]:
+			var d := float(distances[j])
+			var width := lerpf(start_width, end_width, clampf(d / maxf(total, 1.0), 0.0, 1.0))
+			var color := MapStyle.river_color()
+			if _pass == 0:
+				width += MapStyle.river_casing_extra()
+				color = MapStyle.river_casing()
+				color.a *= 1.0 - smoothstep(coast_distance - blend_length, coast_distance - end_width * 0.2, d)
+			else:
+				color = color.lerp(sea, smoothstep(coast_distance - blend_length, finish, d))
+				color.a = 1.0 - smoothstep(coast_distance + end_width * 0.15, finish, d)
+			colors.append(color)
+			widths.append(width * 0.5)
+		draw_polygon(PackedVector2Array([a - normals[i] * widths[0], a + normals[i] * widths[0],
+			b + normals[i + 1] * widths[1], b - normals[i + 1] * widths[1]]),
+			PackedColorArray([colors[0], colors[0], colors[1], colors[1]]))
+	return true
+
 
 ## One short darker-blue dash along the flow direction, seeded per location —
 ## the mockup's "water is moving" mark. Skips ~1/3 of candidates for rhythm.

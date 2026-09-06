@@ -609,7 +609,7 @@ var construct_cost_display: String = "grid"
 var construct_start_half_capacity: bool = false
 ## When on, confirming a build on a tile the player has too little land for buys exactly
 ## enough land patches to cover the shortfall first (see world_map._space_check_for_build).
-var construct_auto_buy_land: bool = false
+var construct_auto_buy_land: bool = true
 ## Off = the browse list's recipe cards show the compact mini diagram (icons + "+" +
 ## an arrow, no quantities); on = the full Building-Details-style diagram with qty
 ## pills. Display-only — never read by BuildForecast/Production.
@@ -3911,7 +3911,7 @@ func reset() -> void:
 	advisors_unlocked = false
 	construct_cost_display = "grid"
 	construct_start_half_capacity = false
-	construct_auto_buy_land = false
+	construct_auto_buy_land = true
 	construct_expanded_recipe_mode = false
 	construct_material_source = "ask"
 	construct_output_destination = "market"
@@ -4168,7 +4168,7 @@ func import_state(d: Dictionary) -> void:
 	set_construct_cost_display(str(d.get("construct_cost_display", "grid")), false)
 	set_construct_start_half_capacity(bool(d.get("construct_start_half_capacity", false)), false)
 	# Additive key: saves written before this setting existed simply default to off.
-	set_construct_auto_buy_land(bool(d.get("construct_auto_buy_land", false)), false)
+	set_construct_auto_buy_land(bool(d.get("construct_auto_buy_land", true)), false)
 	set_construct_expanded_recipe_mode(bool(d.get("construct_expanded_recipe_mode", false)), false)
 	set_construct_material_source(str(d.get("construct_material_source", "ask")), false)
 	set_construct_output_destination(str(d.get("construct_output_destination", "market")), false)

@@ -1720,33 +1720,104 @@ func _v3_calculation_note() -> Control:
 	return pill
 
 
-## Band 3 — requirements as a compact checklist (§3): passes collapse to one line
-## with no callout box, failures expand in a red-bordered row that states the fix.
-## Land is a requirement row here, not a checkbox (§7) — the purchase it includes
-## is itemised in the verdict total.
+## Three columns, at most two icon rows; each row discloses its selected requirement below.
+var _expanded_requirement := ""
+
+class LandRequirementIcon extends Control:
+	func _draw() -> void:
+		var c := size * 0.5
+		var r := minf(size.x, size.y) * 0.42
+		var hex := PackedVector2Array()
+		for i in 6:
+			hex.append(c + Vector2(cos(i * TAU / 6.0), sin(i * TAU / 6.0)) * r)
+		draw_colored_polygon(PackedVector2Array([hex[0], hex[1], hex[2], hex[3]]), Color("e8eef7"))
+		hex.append(hex[0])
+		draw_polyline(hex, Color("e8eef7"), 2.0, true)
+
 func _v3_requirement_rows() -> Array:
-	var rows: Array = []
-	var locked := _locked_tile_id != ""
-	for need in _site_requirement_needs():
-		var infra_key := str(need.get("infra_key", ""))
-		var infra_name := _infra_connection_name(infra_key)
-		var goods := _good_name_list(need.get("good_ids", []))
-		var is_output := bool(need.get("is_output", false))
-		if not locked:
-			rows.append(_v3_req_line("•", _muted_tone(),
-				"%s — needed for %s; make sure one reaches the site you choose" % [infra_name, goods]))
-		elif bool(need.get("satisfied", false)):
-			rows.append(_v3_req_line("✓", GREEN,
-				"%s — connected on this tile (%s)" % [infra_name, goods]))
-		else:
-			var fix := ("build one or its output of %s cannot be sold or shipped" % goods) \
-				if is_output else ("build one or its supply of %s cannot arrive" % goods)
-			rows.append(_v3_req_fail("%s — none on this tile; %s." % [infra_name, fix]))
-	rows.append(_v3_land_requirement_row())
-	# Intermittent power stays an amber attention row — marginal, not a failure.
+	var entries: Array = []
+	# Input/output requirements share one icon but keep both existing explanations.
+	for infra_key in INFRA_ROW_ORDER:
+		var details: Array = []
+		for need in _site_requirement_needs():
+			if str(need.infra_key) == infra_key:
+				details.append(need)
+		if not details.is_empty():
+			entries.append({"key": infra_key, "label": _infra_connection_name(infra_key),
+				"details": details, "tone": GREEN if _infra_satisfied(infra_key) else GOLD})
+	entries.append({"key": "land", "label": "%d Land" % int(_v3_land.get("needed", 0)),
+		"tone": GREEN if bool(_v3_land.get("covered", false)) else GOLD})
 	if str(_selected_building.get("internal_name", "")) in EconomyConfig.POWER_INTERMITTENT_BUILDINGS:
-		rows.append(_intermittent_power_row())
-	return rows
+		entries.append({"key": "battery", "label": "Firming", "tone": GOLD})
+	var box := VBoxContainer.new()
+	box.name = "RequirementGrid"
+	box.add_theme_constant_override("separation", 6)
+	var disclosures: Array = []
+	var buttons: Array = []
+	for start in range(0, entries.size(), 3):
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		box.add_child(row)
+		var disclosure := VBoxContainer.new()
+		box.add_child(disclosure)
+		for i in range(start, start + 3):
+			if i >= entries.size():
+				var spacer := Control.new()
+				spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				row.add_child(spacer)
+				continue
+			var entry: Dictionary = entries[i]
+			var key := str(entry.key)
+			var detail := VBoxContainer.new()
+			detail.name = "RequirementDetail_" + key
+			detail.visible = _expanded_requirement == key
+			disclosure.add_child(detail)
+			disclosures.append(detail)
+			if key == "land":
+				detail.add_child(_v3_land_requirement_row())
+			elif key == "battery":
+				detail.add_child(_intermittent_power_row())
+			else:
+				for need in entry.details:
+					detail.add_child(_infra_requirement_row(key, need.good_ids, bool(need.is_output)))
+			var button := Button.new()
+			button.name = "Requirement_" + key
+			button.custom_minimum_size = Vector2(0, 74)
+			button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			button.toggle_mode = true
+			button.button_pressed = detail.visible
+			button.tooltip_text = str(entry.label) + " — click for requirements"
+			_style_button(button, NAVY_FIELD, entry.tone, TEXT)
+			row.add_child(button)
+			buttons.append(button)
+			var content := VBoxContainer.new()
+			content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			button.add_child(content)
+			content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			content.add_theme_constant_override("separation", 0)
+			var icon: Control
+			if key == "land":
+				icon = LandRequirementIcon.new()
+				icon.custom_minimum_size = Vector2(40, 40)
+			else:
+				icon = _building_icon(Catalog.get_building_by_internal_name(key), 40)
+			icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+			content.add_child(icon)
+			var label := Label.new()
+			label.text = str(entry.label)
+			label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			label.add_theme_font_size_override("font_size", 12)
+			label.add_theme_color_override("font_color", TEXT)
+			label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			content.add_child(label)
+			button.pressed.connect(func():
+				_expanded_requirement = "" if _expanded_requirement == key else key
+				for d in disclosures:
+					d.visible = d.name == "RequirementDetail_" + _expanded_requirement
+				for btn in buttons:
+					btn.set_pressed_no_signal(btn.name == "Requirement_" + _expanded_requirement))
+	return [box]
 
 
 func _v3_req_line(mark: String, mark_tone: Color, text: String) -> Control:
