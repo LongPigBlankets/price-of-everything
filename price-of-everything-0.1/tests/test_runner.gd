@@ -7192,12 +7192,13 @@ func _test_flavor_nodes_wired() -> void:
 	MatchState.grant_unlock("Grid Synchronous Generation")
 	_check(absf(Modifiers.apply("maintenance", "b_024", 100.0, {"building_id": "b_024"}) - (maintenance_before_grid - 8.0)) < 0.001,
 		"Grid Synchronous Generation adds −8% maintenance on a power plant (solar)")
-	# market_price: Forward Contracts → +5% steel sale price, good-specific.
+	# market_price: Forward Contracts → +5% sale price on EVERY good (owner 2026-09-06;
+	# was steel-only for 20 turns). An empty target_match matches all goods.
 	MatchState.grant_unlock("Forward Contracts")
 	_check(absf(Modifiers.apply("market_price", "gid", 10.0, {"good_internal": "steel"}) - 10.5) < 0.001,
 		"Forward Contracts wires +5% steel sale price")
-	_check(absf(Modifiers.apply("market_price", "gid", 10.0, {"good_internal": "coal"}) - 10.0) < 0.001,
-		"the steel sale-price modifier does not touch other goods")
+	_check(absf(Modifiers.apply("market_price", "gid", 10.0, {"good_internal": "coal"}) - 10.5) < 0.001,
+		"Forward Contracts is empire-wide: coal gets the same +5%")
 	# transport_throughput: Route Optimization → +25% road capacity.
 	MatchState.grant_unlock("Route Optimization")
 	_check(absf(Modifiers.apply("transport_throughput", "roads", 100.0, {"mode": "roads"}) - 125.0) < 0.001,

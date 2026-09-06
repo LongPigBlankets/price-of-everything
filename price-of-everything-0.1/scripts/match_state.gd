@@ -2572,7 +2572,13 @@ func unlock_condition_text(title: String) -> String:
 		"Survey": return "Survey %d %s" % [qty, object_name]
 		"Stockpile filled": return "Supply one stockpile from %s for %d consecutive turns" % [object_name, qty]
 		"Sustain": return "Maintain %s for %d consecutive turns" % [object_name, qty]
-		"Use Infrastructure": return "Use at least %d %s at 80%% throughput or higher" % [qty, object_name.capitalize()] if not "for" in unit else "Use %d %s at 80%% capacity for %d consecutive turns" % [qty, object_name.capitalize(), _leading_int(unit.get_slice("for", 1), 5)]
+		"Use Infrastructure":
+			var use_turns := _leading_int(unit.get_slice("for", 1), 5) if "for" in unit else 0
+			if "of l1" in unit.to_lower():
+				# Absolute bar against Level-1 capacity (see _infrastructure_usage_met).
+				var use_pct := _leading_int(unit, 80)
+				return "Carry %d%% of Level-1 capacity on %d %s for %d consecutive turns" % [use_pct, qty, object_name.capitalize(), use_turns] if use_turns > 0 else "Carry %d%% of Level-1 capacity on %d %s" % [use_pct, qty, object_name.capitalize()]
+			return "Use at least %d %s at 80%% throughput or higher" % [qty, object_name.capitalize()] if use_turns <= 0 else "Use %d %s at 80%% capacity for %d consecutive turns" % [qty, object_name.capitalize(), use_turns]
 		"Firm Intermittency": return "Firm at least %d power of intermittent generation" % qty
 	return "%s %s %d" % [action, object_name, qty]
 
@@ -2894,6 +2900,11 @@ func _infrastructure_usage_met(d: Dictionary) -> bool:
 	var duration := 1
 	if "for" in unit:
 		duration = _leading_int(unit.get_slice("for", 1), 5)
+	# "N% of L1 for T turns": an ABSOLUTE bar — N% of the LEVEL-1 capacity — so upgrading a
+	# link never makes the gate harder, and 120%+ is reachable through congestion (owner
+	# 2026-09-06). Plain "80% for T turns" keeps the legacy meaning: 80% of CURRENT capacity.
+	var of_l1 := "of l1" in unit.to_lower()
+	var bar_fraction := float(_leading_int(unit, 80)) / 100.0
 	var turn := int(TurnManager.current_turn)
 	# Conditions are evaluated from several hooks. Only advance/reset the streak
 	# once per resolved turn, after the actual transport and power use has settled.
@@ -2910,13 +2921,15 @@ func _infrastructure_usage_met(d: Dictionary) -> bool:
 			var capacity := 0.0
 			var usage := 0.0
 			if internal == "cables":
-				capacity = float(Power.tile_power_cap(tile_id))
+				# L1 yardstick is the RAW table cap: throughput research must not move the bar.
+				capacity = float(EconomyConfig.CABLE_POWER_CAP.get(1, 0)) if of_l1 else float(Power.tile_power_cap(tile_id))
 				usage = float(maxi(int(Power.tile_drawn.get(tile_id, 0)), int(Power.tile_produced.get(tile_id, 0))))
 			else:
 				var mode := "rail" if internal == "rails" else internal
-				capacity = tile_mode_capacity(mode, _tile_infra_level(tile_id, mode))
+				capacity = float(TransportService.link_capacity(mode, 1)) if of_l1 else tile_mode_capacity(mode, _tile_infra_level(tile_id, mode))
 				usage = float(tile_mode_flow(tile_id, mode))
-			if capacity > 0.0 and usage >= capacity * 0.80:
+			var bar := capacity * (bar_fraction if of_l1 else 0.80)
+			if capacity > 0.0 and usage >= bar:
 				active_segments += 1
 		if active_segments >= need_segments:
 			_infrastructure_usage_streaks[title] = int(_infrastructure_usage_streaks.get(title, 0)) + 1
@@ -3136,10 +3149,16 @@ func _research_condition_issue(d: Dictionary) -> String:
 ## that (when `min_streak` > 0) have sustained full output for that many consecutive turns.
 ## Backs the "Run Same Tile" verb — co-location is the ask, not fleet size.
 func _max_same_tile_count(internal: String, min_streak: int) -> int:
+	var any_type: bool = _research_key(internal) == "any" or internal == ""
 	var targets := _research_building_targets(internal)
 	var per_tile: Dictionary = {}
 	for inst in buildings.values():
-		if not is_player_owned(inst) or not targets.has(_building_internal(inst)):
+		if not is_player_owned(inst):
+			continue
+		if any_type:
+			if str(Catalog.get_building(str(inst.get("building_id", ""))).get("category", "")) == "infrastructure":
+				continue   # "any" means production buildings, as in _count_buildings
+		elif not targets.has(_building_internal(inst)):
 			continue
 		if min_streak > 0 and int(Production.full_output_streak_by_building.get(str(inst.get("instance_id", "")), 0)) < min_streak:
 			continue
@@ -3217,11 +3236,18 @@ func _count_running_producing(good_id: String, min_streak: int) -> int:
 ## Number of distinct tiles carrying at least one player building of `internal`.
 ## Backs the "Own On Tiles" verb — geographic reach, not building count.
 func _tiles_with_building(internal: String) -> int:
+	var any_type: bool = _research_key(internal) == "any" or internal == ""
 	var targets := _research_building_targets(internal)
 	var tiles: Dictionary = {}
 	for inst in buildings.values():
-		if is_player_owned(inst) and targets.has(_building_internal(inst)):
-			tiles[str(inst.get("tile_id", ""))] = true
+		if not is_player_owned(inst):
+			continue
+		if any_type:
+			if str(Catalog.get_building(str(inst.get("building_id", ""))).get("category", "")) == "infrastructure":
+				continue   # "any" means production buildings, as in _count_buildings
+		elif not targets.has(_building_internal(inst)):
+			continue
+		tiles[str(inst.get("tile_id", ""))] = true
 	return tiles.size()
 
 func _count_buildings(internal: String, level: int, require_profitable: bool, min_streak: int) -> int:
