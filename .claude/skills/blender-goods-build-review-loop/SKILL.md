@@ -159,6 +159,9 @@ them verbatim.
 - Iron ore: fewer, larger nuggets; they stand tall; the hero about as wide as tall (not tall
   and skinny); silver facets need the reference's light; thin linework on every facet to
   bound the silvery side; rank alternatives against the shipped icon's confidence first.
+- Alumina: open sack with the label and visible pellets.
+- Glass: pane clean (no halftone) with the lighting streak on it; bottle in front.
+- Windows: lean on the isometric view; open the leaf perpendicular to the frame.
 - Process: adversarial review is wanted; the owner overrules the reviewer.
 
 ## 4. Four cases, by difficulty

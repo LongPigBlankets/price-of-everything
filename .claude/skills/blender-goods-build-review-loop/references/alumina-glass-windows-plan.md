@@ -56,15 +56,19 @@ stack > wall. The open leaf is the recognising cue and must stay.
 
 ### 3a. Windows — orthogonal assembly, rules 66–71 apply directly. Build this first.
 D = outer frame width. Reference ratios: height 1.16 D; frame member 0.055 D; frame depth
-0.10 D; leaf width 0.44 D; leaf height 0.98 D; pane rebate 0.025 D; 2 columns × 3 rows; open
-leaf rotated ~55° about its right-hand vertical hinge, toward the viewer.
+0.10 D; leaf width 0.44 D; leaf height 0.98 D; pane rebate 0.025 D; 2 columns × 3 rows.
+**OWNER (2026-09-07): open the leaf PERPENDICULAR to the frame and lean on the isometric
+view.** At 90° the open leaf lies along the other world diagonal, so every edge in the whole
+assembly belongs to one of the three axis families and the rule-70 parallel-edge gate applies
+to all of it, open leaf included. No rotated sub-assembly, no 55° compromise.
 
 - Everything is `K.box`: outer frame (four members), closed leaf (four members + one vertical
   and two horizontal mullions), six glass panes sunk 0.02 D into the leaf, handles (a box plus
-  a short `sweep_tube`). The open leaf is built as its own list of parts at the origin and the
-  whole list is rotated about world Z around the hinge line (rule 69: rotate the complete
-  assembly). Its edges will not be parallel to the frame's; that is physical and expected. The
-  review gate (rule 70) applies to the frame and the closed leaf only.
+  a short `sweep_tube`). The open leaf is the same leaf built with its long axis along −Y
+  instead of X (a 90° Z rotation about the hinge line, rule 69's "90° increments"), standing
+  proud of the frame toward the viewer from the right-hand hinge. Its panes then face −X, its
+  handle faces the camera's left; the frame's right jamb is partly hidden behind it. The
+  review gate (rule 70) applies to the whole assembly.
 - The sprite kit's `window()` assembly is for building faces (it adds a sill and sits proud of a
   wall face); do not use it. A dedicated `casement_leaf(K, name, origin, w, h, cols, rows, depth)`
   returning its parts is the helper to write.
@@ -84,10 +88,14 @@ leaf rotated ~55° about its right-hand vertical hinge, toward the viewer.
 - Likely traps: the open leaf's glass panes must stay inside their rebates after rotation
   (rotate the parts, not the finished positions); the handle on the open leaf is rotated with
   it; hinge side edges of the open leaf touch the frame (overlap 0.03, rule 33).
+- With the leaf at 90°, check that the open leaf's projected width (0.44 D along the −Y
+  diagonal, foreshortened to ~0.38 D of screen width) still reads as a leaf and not a slab: at
+  64 px this is ~20 px, enough for the 2×3 grid to survive as texture.
 - Rounds: two or three. Review emphasis: C5 (thin mullion ink), C8 (rebates closed), C10 (the
-  open leaf still reads at 64 px), the rule-70 parallel-edge check.
+  open leaf still reads at 64 px), the rule-70 parallel-edge check on ALL parts.
 
 ### 3b. Alumina — a lofted soft body full of spheres, with a text label. Hardest of the three.
+**OWNER (2026-09-07): open sack, label on it, pellets visible.** The sealed-sack shortcut is off.
 D = sack width at the cuff. Reference ratios: sack height 1.05 D to the cuff; cuff fold 0.12 D
 deep, rolled outward; body bulge 0.06 D per flank; base slightly narrower (0.92 D); label
 0.42 D wide × 0.25 D tall, centred at 0.45 D height on the front-left face; sphere radius
@@ -151,13 +159,13 @@ base.
   material so the level reads (the reference is opaque, so no transparency: avoid the BLENDED
   alpha route and its rule-21 traps; `glass_window_nodes` is optional and adds risk for no
   gain here).
-- Halftone on the pane: the reference screens the right half of the pane with a dot density
-  that increases toward the right edge — a screen-space gradient, not a lighting result. A flat
-  camera-facing face has one mask value, so today's export can only give all-or-nothing. This
-  is the one export feature these three goods need: a per-object gradient stipple, e.g. an
-  `object colour` tag read in the ID pass that tells `icon_export` to ramp dot density across
-  the object's bbox from a start fraction to 1.0. Without it the pane is either clean (poster,
-  acceptable) or fully dotted (wrong).
+- Halftone on the pane: **OWNER (2026-09-07): CLEAN pane, with the lighting streak on it.**
+  The reference's screen-gradient dots on the right half are dropped; the pane carries its
+  three tones (face, lighter return, white streaks) and no stipple. The pane object needs an
+  explicit mask exclusion (the wheel precedent: `pass_index` read by the mask override, or a
+  `noink`-style tag) so the flat face never crosses the stipple threshold. The per-object
+  gradient-stipple export feature is therefore NOT required for glass; it stays on the list
+  only as a future option.
 - ID pass: not needed; the bottle is in front and its silhouette closes.
 - Likely traps: the pane's top edge is a long straight ink line that must be exactly on the
   isometric diagonal (rule 67) — measure it against the aluminium pallet's edges; the bottle's
@@ -171,8 +179,8 @@ base.
 
 1. **Windows** first: it exercises rules 66–71 on a good that is 95% boxes, and its helper
    (`casement_leaf`) is reusable for building sprites later. Two to three rounds.
-2. **Glass** second: introduces the export gradient feature and the streak decal, both small.
-   Three to four rounds.
+2. **Glass** second: a clean pane with streak decals and a lathed bottle. Two to three rounds
+   now that the gradient halftone is off the table.
 3. **Alumina** last: needs `ring_loft`, `pellet_cluster`, the label with two text sizes, and a
    sub-collection ID pass. Four to five rounds.
 
@@ -184,7 +192,8 @@ base.
 | `ring_loft(K, name, rings, mat, levels=2, crease_rings=())` | alumina sack; later drums, jars, bags | closed rings at successive z; superellipse ring generator alongside |
 | `pellet_cluster(K, name, bounds, r, seed, jitter)` | alumina; reusable for pellets, gravel, balls | lift from `build_bauxite_ore` |
 | `decal_streak(K, name, face_plane, p0, p1, width, mat)` | glass pane highlights; later any glint | thin noink quad in the face plane, proud by EPS |
-| Export: per-object gradient stipple (tag by object colour, read in the ID pass) | glass pane; any screen-gradient halftone the references use | the one genuinely new export capability |
+| Mask exclusion tag for a whole object (pane) | glass; any flat face that must stay clean | reuse the diesel wheel `pass_index` contract |
+| (deferred) per-object gradient stipple | screen-gradient halftones | not needed now that the pane is ruled clean |
 | Text label with mixed glyph sizes (subscripts) | alumina; later any formula label | three FONT objects, ammonia precedent |
 | ID pass on a sub-collection | alumina pellets vs sack | today the gate is per collection name |
 
@@ -196,10 +205,10 @@ streaks carry no ink; (G2) bottle proportions in D within ±10%; (A1) sphere out
 thin class and the sack outline the bold class, measured; (A2) the formula reads at 256 px;
 (A3) at 64 px alumina and sand are distinguishable side by side.
 
-## 7. Owner questions to settle before building
+## 7. Owner rulings (2026-09-07) — the questions are settled
 
-- Alumina: sack open with visible pellets (reference) or a sealed sack with the label only?
-  The open sack is more work and more recognisable; the sealed one collides with sand.
-- Glass: is a clean pane (no gradient halftone) acceptable if the export feature is deferred?
-- Windows: keep the open leaf at the reference's ~55°, or a shallower angle so the leaf stays
-  within the frame's projected footprint at 64 px?
+- **Alumina:** open sack, with the label, pellets visible.
+- **Glass:** the pane carries the lighting streak; the pane is CLEAN (no halftone). The
+  gradient-stipple export feature is deferred.
+- **Windows:** lean on the isometric view; the open leaf is PERPENDICULAR to the frame (90°),
+  so every edge sits on a world-axis family and the parallel-edge gate covers the whole icon.
