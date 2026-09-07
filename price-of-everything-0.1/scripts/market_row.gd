@@ -47,7 +47,9 @@ var _rung_cells: Array[Label] = []
 var _sold_label: Label = null
 var _cost_label: Label = null
 var _profit_label: Label = null
-var _expand_section: VBoxContainer = null
+var _expand_section: Control = null
+var _actions: VBoxContainer = null
+var _price_chart: Control = null
 var _expanded := false
 
 func setup(good_data: Dictionary) -> void:
@@ -91,9 +93,20 @@ func setup(good_data: Dictionary) -> void:
 		main.add_child(l)
 	_build_impact_group(main)
 
-	_expand_section = VBoxContainer.new()
+	_expand_section = Control.new()
+	_expand_section.name = "MarketGoodDetails"
+	_expand_section.custom_minimum_size.y = 170
+	_actions = VBoxContainer.new()
+	_actions.name = "MarketActions"
+	_actions.add_theme_constant_override("separation", 4)
+	_expand_section.add_child(_actions)
+	_price_chart = preload("res://scripts/market_price_chart.gd").new()
+	_price_chart.name = "PriceHistoryChart"
+	_price_chart.good_id = good_id
+	_expand_section.add_child(_price_chart)
+	_expand_section.resized.connect(_layout_details)
+	_actions.minimum_size_changed.connect(_layout_details)
 	_expand_section.visible = false
-	_expand_section.add_theme_constant_override("separation", 4)
 	for action in ["Sell", "Purchase", "Move", "Expand"]:
 		var b := Button.new()
 		b.text = action
@@ -107,7 +120,7 @@ func setup(good_data: Dictionary) -> void:
 			if not Catalog.is_good_buyable(good_id):
 				b.disabled = true
 				b.tooltip_text = "This good can't be bought from the market."
-		_expand_section.add_child(b)
+		_actions.add_child(b)
 	add_child(_expand_section)
 
 	if not CostSolver.costs_updated.is_connected(_on_costs_updated):
@@ -292,9 +305,20 @@ func _tint_col(l: Label, tint: Color) -> void:
 	box.content_margin_right = 6
 	l.add_theme_stylebox_override("normal", box)
 
+func _layout_details() -> void:
+	_expand_section.custom_minimum_size.y = maxf(170, _actions.get_combined_minimum_size().y)
+	var quarter := _expand_section.size.x * 0.25
+	_actions.position = Vector2.ZERO
+	_actions.size = Vector2(maxf(0, quarter - 6), _expand_section.size.y)
+	_price_chart.position = Vector2(quarter + 6, 0)
+	_price_chart.size = Vector2(maxf(0, _expand_section.size.x - quarter - 6), _expand_section.size.y)
+
 func _toggle_expand() -> void:
 	_expanded = not _expanded
 	_expand_section.visible = _expanded
+	if _expanded:
+		_layout_details()
+		_price_chart.refresh()
 
 func _on_expand_to_construct() -> void:
 	MatchState.show_construct_for_good.emit(good_id)

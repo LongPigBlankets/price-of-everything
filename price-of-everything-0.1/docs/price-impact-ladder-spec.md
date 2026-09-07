@@ -1,3 +1,9 @@
+> Update 2026-09-07: all per-turn impact rates below are now doubled. Current
+> rates are 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6 and 2.0 percentage
+> points at the existing >1x, >3x, >5x through >12x thresholds. Inflation,
+> rolling window, recovery duration and price caps remain unchanged. Earlier
+> results below describe the previous balance.
+
 # Price-Impact Ladder — decay removed, glut/deficit carries the market
 
 **Status:** BUILT 2026-08-29 (branch `price-impact-ladder-spec`) — engine, UI,

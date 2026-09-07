@@ -117,6 +117,7 @@ func _ready() -> void:
 	_test_scene_loads()
 	await _test_main_scene_instantiates()
 	_test_catalog_loaded()
+	await _test_market_price_history_and_layout()
 	_test_encyclopedia_good_rubric()
 	_test_company_rankings()
 	_test_port_plan_cache_locality()
@@ -12443,33 +12444,27 @@ func _test_price_impact() -> void:
 	_check(MatchState.auto_sell_unit_cap("tile_4_5") > 1000000, "tile ANY tolerance is effectively uncapped")
 	_check(MatchState.get_auto_sell_impact("tile_unset_99") == MatchState.IMPACT_ANY, "default tolerance is ANY")
 
-# The LIVE threshold model: net per-turn volume over 2x/3x/4x of a good's base
-# building output accrues 0.1/0.2/0.4 %/turn of glut (sell) or deficit (buy)
-# impact, capped at ±50%, recovering 0.1%/turn under the threshold. The impact
-# multiplies the decayed base price; `prices` stays the impact-free series.
+# Net-volume thresholds accrue symmetric glut/deficit impact; rates doubled 2026-09-07.
 func _test_price_impact_thresholds() -> void:
-	# LADDER response (owner rulings 2026-08-28/29, docs/price-impact-ladder-spec.md):
-	# >1x 0.05, >3x 0.1, >5x 0.2, then 0.1-point steps to >11x 0.8 and a deliberate
-	# jump to 1.0 at >12x. Price decay is retired — this ladder is the whole price model.
 	_check(EconomyConfig.price_impact_rate(32, 32) == 0.0, "1x exactly is under the bite")
-	_check(EconomyConfig.price_impact_rate(33, 32) == 0.05,
+	_check(EconomyConfig.price_impact_rate(33, 32) == 0.1,
 		"just over 1x accrues the faintest rung — a modified single building registers")
-	_check(EconomyConfig.price_impact_rate(-33, 32) == 0.05, "the 1x rung applies to BUYING too")
-	_check(EconomyConfig.price_impact_rate(96, 32) == 0.05, "3x exactly is still the 1x rung (strictly greater than)")
-	_check(EconomyConfig.price_impact_rate(97, 32) == 0.1, "just over 3x steps up")
-	_check(EconomyConfig.price_impact_rate(161, 32) == 0.2, "just over 5x steps up")
-	_check(EconomyConfig.price_impact_rate(193, 32) == 0.3, "just over 6x steps up")
-	_check(EconomyConfig.price_impact_rate(225, 32) == 0.4 and EconomyConfig.price_impact_rate(257, 32) == 0.5 \
-			and EconomyConfig.price_impact_rate(289, 32) == 0.6 and EconomyConfig.price_impact_rate(321, 32) == 0.7 \
-			and EconomyConfig.price_impact_rate(353, 32) == 0.8,
-		"the 6x-11x rungs step by exactly 0.1")
-	_check(EconomyConfig.price_impact_rate(384, 32) == 0.8, "12x exactly is still the 11x rung")
-	_check(EconomyConfig.price_impact_rate(385, 32) == 1.0, "over 12x jumps 0.8 -> 1.0 — flooding gets a step change")
-	_check(EconomyConfig.price_impact_rate(32000, 32) == 1.0, "the flooding rung is the top — it saturates by design")
+	_check(EconomyConfig.price_impact_rate(-33, 32) == 0.1, "the 1x rung applies to BUYING too")
+	_check(EconomyConfig.price_impact_rate(96, 32) == 0.1, "3x exactly is still the 1x rung (strictly greater than)")
+	_check(EconomyConfig.price_impact_rate(97, 32) == 0.2, "just over 3x steps up")
+	_check(EconomyConfig.price_impact_rate(161, 32) == 0.4, "just over 5x steps up")
+	_check(EconomyConfig.price_impact_rate(193, 32) == 0.6, "just over 6x steps up")
+	_check(EconomyConfig.price_impact_rate(225, 32) == 0.8 and EconomyConfig.price_impact_rate(257, 32) == 1.0 \
+			and EconomyConfig.price_impact_rate(289, 32) == 1.2 and EconomyConfig.price_impact_rate(321, 32) == 1.4 \
+			and EconomyConfig.price_impact_rate(353, 32) == 1.6,
+		"the 6x-11x rungs step by exactly 0.2")
+	_check(EconomyConfig.price_impact_rate(384, 32) == 1.6, "12x exactly is still the 11x rung")
+	_check(EconomyConfig.price_impact_rate(385, 32) == 2.0, "over 12x jumps 1.6 -> 2.0 — flooding gets a step change")
+	_check(EconomyConfig.price_impact_rate(32000, 32) == 2.0, "the flooding rung is the top — it saturates by design")
 	_check(EconomyConfig.price_impact_rate(1000, 0) == 0.0, "no base output -> no impact")
 	# A NORMAL multi-building chain must not be punished: 3 factories of one good is 3x,
 	# which sits on the faintest rung, not the flooding one.
-	_check(EconomyConfig.price_impact_rate(84, 28) == 0.05, "a 3-factory chain sits on the faintest rung")
+	_check(EconomyConfig.price_impact_rate(84, 28) == 0.1, "a 3-factory chain sits on the faintest rung")
 	# Asymmetric cap: gluts bottom out at 40% of base price, deficits top out at 250%.
 	_check(EconomyConfig.PRICE_IMPACT_FLOOR_PCT == -60.0 and EconomyConfig.PRICE_IMPACT_CEILING_PCT == 150.0,
 		"price is capped between 40% and 250% of base")
@@ -12480,7 +12475,7 @@ func _test_price_impact_thresholds() -> void:
 		"turns 21-40 run at x1.25")
 	_check(EconomyConfig.impact_threshold_scale(41) == 1.5 and EconomyConfig.impact_threshold_scale(300) == 4.5,
 		"linear schedule: x1.50 from t41, x4.50 by t300 — NOT compounding")
-	_check(EconomyConfig.price_impact_rate(40, 32, 1.25) == 0.0 and EconomyConfig.price_impact_rate(41, 32, 1.25) == 0.05,
+	_check(EconomyConfig.price_impact_rate(40, 32, 1.25) == 0.0 and EconomyConfig.price_impact_rate(41, 32, 1.25) == 0.1,
 		"an inflated threshold moves the bite point")
 
 	# Accrual, the rolling-window hold, walk-back recovery, and the caps — driven
@@ -12501,12 +12496,12 @@ func _test_price_impact_thresholds() -> void:
 	var flood_units: int = int(ceilf(13.0 * float(coal_base) * scale_now))
 	MarketState.record_market_sale_volume(gid, flood_units)
 	MarketState.tick_turn()
-	_check(absf(MarketState.get_impact_pct(gid) + 1.0) < 0.0001, "one flooding sell turn accrues -1.0%")
-	_check(absf(MarketState.get_price(gid) - base_before * (1.0 - 1.0 / 100.0)) < 0.0001,
+	_check(absf(MarketState.get_impact_pct(gid) + 2.0) < 0.0001, "one flooding sell turn accrues -2.0%")
+	_check(absf(MarketState.get_price(gid) - base_before * (1.0 - 2.0 / 100.0)) < 0.0001,
 		"impact multiplies the STATIC base price — decay is retired, prices no longer drift")
 	# A quiet turn inside a loud window HOLDS: the rolling average is still over 1x.
 	MarketState.tick_turn()
-	_check(absf(MarketState.get_impact_pct(gid) + 1.0) < 0.0001,
+	_check(absf(MarketState.get_impact_pct(gid) + 2.0) < 0.0001,
 		"a quiet turn does not recover while the rolling average stays loud — no pulsing exploit")
 	# Net buying pushes the impact UP at the same ladder rates (deficit side).
 	# Fresh window first: the signed rolling average NETS sells against buys, so a
@@ -12517,8 +12512,8 @@ func _test_price_impact_thresholds() -> void:
 	MarketState._recovery_step.erase(gid)
 	MarketState.record_market_buy_volume(gid, flood_units)
 	MarketState.tick_turn()
-	_check(absf(MarketState.get_impact_pct(gid) - 1.0) < 0.0001,
-		"a flooding BUY turn accrues +1.0% — the same ladder, opposite sign")
+	_check(absf(MarketState.get_impact_pct(gid) - 2.0) < 0.0001,
+		"a flooding BUY turn accrues +2.0% — the same ladder, opposite sign")
 	# Walk-back: give the good a deep glut, then go quiet. The window drains first
 	# (holding), then the walk-back closes the whole gap in exactly 10 turns.
 	MarketState.impact_pct[gid] = -30.0
@@ -14802,7 +14797,7 @@ func _test_main_scene_instantiates() -> void:
 
 # Logic: the data CSVs load into the Catalog as expected.
 func _test_catalog_loaded() -> void:
-	_check(Catalog.all_goods().size() == 76, "Catalog has 76 goods")
+	_check(Catalog.all_goods().size() == 77, "Catalog has 77 goods")
 	var _all_classed := true
 	for g in Catalog.all_goods():
 		if str(g.get("transport_class", "")) == "":
@@ -21103,3 +21098,72 @@ func _test_bake_near_tier_geometry() -> void:
 	_check(Layout.BAKE_SCALE < ppu_1440,
 		"near tier: the far tier alone WOULD be magnified there — which is why near exists")
 	camera.free()
+
+func _test_market_price_history_and_layout() -> void:
+	var bar = load("res://scripts/metallic_bar.gd").new()
+	bar.max_value = 1.0
+	bar.value = 2.0 / 3.0
+	_check(is_equal_approx(bar.frac, 2.0 / 3.0), "metallic bar: fractional skills retain their exact fill")
+	bar.value = 0.0
+	_check(bar.frac == 0.0, "metallic bar: zero skill has no fill")
+	bar.free()
+	var saved: Dictionary = MarketState.export_state()
+	var saved_turn: int = int(TurnManager.current_turn)
+	var saved_costs: Dictionary = CostSolver.last_result.duplicate(true)
+	CostSolver.last_result = {"per_good": {"g_008": {"unit_cost": 1.25}}}
+	TurnManager.current_turn = 1
+	MarketState.import_state({})
+	var first: Array = MarketState.history_for("g_008")
+	_check(first.size() == 1 and int(first[0].turn) == 1, "market history: starts at turn one")
+	_check(is_equal_approx(float(first[0].cost_basis), 1.25), "market history: captures player average unit cost")
+	CostSolver.last_result = {"per_good": {"g_008": {"unit_cost": 1.75}}}
+	var base: float = float(first[0].price)
+	TurnManager.current_turn = 2
+	MarketState.impact_pct["g_008"] = 20.0
+	MarketState._record_price_history()
+	var observed: Array = MarketState.history_for("g_008")
+	_check(observed.size() == 2 and float(observed[1].price) > base, "market history: records actual impacted price")
+	_check(is_equal_approx(float(observed[0].cost_basis), 1.25) and is_equal_approx(float(observed[1].cost_basis), 1.75), "market history: costs retain their historical values")
+	CostSolver.last_result = saved_costs
+	observed[0].price = -99
+	_check(float(MarketState.history_for("g_008")[0].price) == base, "market history: readers cannot mutate observations")
+	var snapshot: Dictionary = MarketState.export_state()
+	MarketState.import_state(snapshot)
+	_check(MarketState.export_state().price_history == snapshot.price_history, "market history: save/load preserves observations")
+	MarketState._record_price_history()
+	_check(MarketState.history_for("g_008").size() == 2, "market history: duplicate refresh does not append a turn")
+	var chart = load("res://scripts/market_price_chart.gd").new()
+	chart.good_id = "g_008"
+	CostSolver.last_result = {"per_good": {}}
+	_check(chart._cost_for_sample({"cost_basis": 1.25}) < 0.0, "market chart: hides past costs for goods not produced")
+	CostSolver.last_result = {"per_good": {"g_008": {"unit_cost": 1.75}}}
+	_check(is_equal_approx(chart._cost_for_sample({"cost_basis": 1.25}), 1.25), "market chart: produced goods retain hovered historical cost")
+	CostSolver.last_result = saved_costs
+	CostSolver.last_result = {"per_good": {"g_008": {"unit_cost": 1.75}}}
+	chart.size = Vector2(600, 170)
+	add_child(chart)
+	_check(chart.sample_at_x(chart._plot_rect().position.x) == 0 and chart.sample_at_x(chart._plot_rect().end.x) == 1, "market chart: hover maps to first and last recorded turn")
+	_check(chart._hover_lines(0) == PackedStringArray(["Turn 1", "Price £%.2f" % base, "Your cost basis £1.25"]), "market chart: hover shows historical turn price and cost")
+	CostSolver.last_result = saved_costs
+	MarketState.price_history["g_008"].append({"turn": 3, "price": 999.0})
+	chart.refresh()
+	_check(chart._samples.size() == 2, "market chart: future observations never render")
+	chart.queue_free()
+	var row = load("res://scenes/market_row.tscn").instantiate()
+	row.setup(Catalog.get_good("g_008"))
+	add_child(row)
+	row.size.x = 1000
+	row._toggle_expand()
+	await get_tree().process_frame
+	row._layout_details()
+	var details: Control = row.find_child("MarketGoodDetails", true, false)
+	var actions: Control = row.find_child("MarketActions", true, false)
+	var graph: Control = row.find_child("PriceHistoryChart", true, false)
+	_check(absf(actions.size.x + 6 - details.size.x * 0.25) < 1.0, "market details: actions occupy one quarter")
+	_check(absf(graph.size.x + 6 - details.size.x * 0.75) < 1.0, "market details: chart occupies three quarters")
+	row.queue_free()
+	TurnManager.current_turn = 40
+	MarketState.import_state({})
+	_check(MarketState.history_for("g_008").size() == 1 and int(MarketState.history_for("g_008")[0].turn) == 40, "market history: old saves never invent earlier prices")
+	TurnManager.current_turn = saved_turn
+	MarketState.import_state(saved)

@@ -3,6 +3,7 @@ extends Node
 const FORECAST_TURNS := 10
 
 var prices: Dictionary = {}  # good_id -> impact-FREE base price (float); STATIC since decay retired
+var price_history: Dictionary = {}  # good_id -> [{turn, price}], observed market price at DECIDE
 
 # --- Price impact (glut / deficit) ---
 # THE price model: per-good price decay is retired (owner ruling 2026-08-28,
@@ -30,14 +31,35 @@ func _ready() -> void:
 	await get_tree().process_frame
 	_init_prices_from_catalog()
 	TurnManager.turn_advanced.connect(_on_turn_advanced)
+	TurnManager.turn_resolution_completed.connect(_record_price_history)
 
 func _on_turn_advanced(_new_turn: int) -> void:
 	tick_turn()
 
 func _init_prices_from_catalog() -> void:
+	price_history.clear()
 	for good in Catalog.all_goods():
 		prices[good.id] = good.base_price
+	_record_price_history()
 	prices_updated.emit()
+
+func _record_price_history(overwrite_current: bool = true) -> void:
+	var turn: int = int(TurnManager.current_turn)
+	if turn > TurnManager.MAX_TURNS:
+		return
+	for good in Catalog.all_goods():
+		var gid: String = str(good.id)
+		var samples: Array = price_history.get(gid, [])
+		var point := {"turn": turn, "price": get_price(gid), "cost_basis": CostSolver.get_good_unit_cost(gid)}
+		if not samples.is_empty() and int(samples[-1].turn) == turn:
+			if overwrite_current:
+				samples[-1] = point
+		else:
+			samples.append(point)
+		price_history[gid] = samples
+
+func history_for(good_id: String) -> Array:
+	return (price_history.get(good_id, []) as Array).duplicate(true)
 
 func get_price(good_id: String) -> float:
 	# The price you RECEIVE when selling a unit to the market: the impact-free
@@ -104,6 +126,7 @@ func lifetime_sold_total() -> int:
 
 func reset_lifetime_sales() -> void:
 	_lifetime_sold.clear()
+	price_history.clear()
 
 func record_market_buy_volume(good_id: String, qty: int) -> void:
 	if good_id == "" or qty <= 0:
@@ -182,6 +205,7 @@ func export_state() -> Dictionary:
 	# Base prices are NOT saved: they are static catalog data now decay is
 	# retired (docs/price-impact-ladder-spec.md §7).
 	return {
+		"price_history": price_history.duplicate(true),
 		"impact_pct": impact_pct.duplicate(true),
 		"net_history": _net_history.duplicate(true),
 		"recovery_step": _recovery_step.duplicate(true),
@@ -200,6 +224,10 @@ func import_state(d: Dictionary) -> void:
 	_net_history = (d.get("net_history", {}) as Dictionary).duplicate(true)
 	_recovery_step = (d.get("recovery_step", {}) as Dictionary).duplicate(true)
 	_lifetime_sold = (d.get("lifetime_sold", {}) as Dictionary).duplicate(true)
+	# Older saves have no observations: start at their actual loaded turn.
+	price_history = (d.get("price_history", {}) as Dictionary).duplicate(true)
+	if not d.has("price_history"):
+		_record_price_history(false)
 	_turn_sold.clear()
 	_turn_bought.clear()
 

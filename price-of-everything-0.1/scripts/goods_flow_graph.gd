@@ -94,7 +94,7 @@ const H_SEP := 12.0                 # min y between x-overlapping runs of differ
 const H_SEP_SIBLING := 6.0          # crowded card fans retain the 5px visible spacing floor
 const H_CLEAR := 4.0                # x clearance when testing two runs for overlap
 const H_GRID := 1.0                 # fine nudges can fit dense fans without losing clearance
-const PORT_LIMIT := CARD_H * 0.5 - 4.0    # nudged ports stay on the card edge (+/-52)
+const PORT_LIMIT := CARD_H * 0.5 - 1.0    # use the full card edge for crowded port fans
 const CORRIDOR_LIMIT := 30.0        # corridor nudges stay inside the DUMMY_ROW_H slot (+/-36)
 
 # Category -> accent colour, mirroring docs/goods_flow_chart.html. Goods with a blank
@@ -304,7 +304,10 @@ static func build(force := false, legacy_layout := false) -> Dictionary:
 	for c: int in range(maxd + 1):
 		if c > 0:
 			# pitch = card width + the gap AFTER this column's kind of boundary
-			running_x += CARD_W + (INTER_TIER_GAP if _boundary_cols.has(c) else INTRA_COL_GAP)
+			var gap: float = INTER_TIER_GAP if _boundary_cols.has(c) else INTRA_COL_GAP
+			# The legacy view draws all edges; compact card-only channels let
+			# dense risers spill into neighbouring channels and collide.
+			running_x += CARD_W + (maxf(gap, CHANNEL_W) if legacy_layout else gap)
 		_col_x.append(running_x)
 
 	# 6 · Sugiyama layout graph: real goods plus one invisible dummy vertex per
@@ -1128,7 +1131,7 @@ static func _deconflict_horizontals(edges: Array, chains: Dictionary, ldepth: Di
 		var best_worst := -INF
 		for k: int in range(2 * steps + 1):
 			var off := float((k + 1) >> 1) * H_GRID * (1.0 if k % 2 == 1 else -1.0)
-			var cand := base_y + off
+			var cand := roundf((base_y + off) / H_GRID) * H_GRID
 			if tag != 2 and absf(cand - float(s[9])) > PORT_LIMIT:
 				continue
 			var worst := INF

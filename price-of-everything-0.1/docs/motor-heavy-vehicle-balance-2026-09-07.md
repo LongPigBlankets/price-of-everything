@@ -75,3 +75,11 @@ The same 10-turn all-market test produced these results, after tax and dividends
 Both recipes produced on every sampled turn and reconciled all cash costs. The before-change snapshot is `data/balance_baselines/2026-09-07_pre-construction-equipment.csv`; raw results and summary export are under `reports/recipe_profitability/sd-construction-equipment-final/`. Previous benchmark exports are historical and have been preserved.
 
 Follow-up validation: 3,702 unit assertions and 723 end-to-end assertions passed, with a clean script parse check. The six-input change exposed a deferred-deletion minimum-width bug in the recipe sheet; detaching the closing sheet restores the panel from 560px to its original 501px, verified in a windowed capture. The legacy graph now refines port spacing using actual routed extents and finer candidate offsets, preserving the tested horizontal/vertical separation floors for the new connections.
+
+## Siemens polysilicon hydrogen input
+
+`r_045` had bare `hydrogen` in the site-requirements column, parsed as unsupported `other:hydrogen`; the real construction handler rejected it on every tile. Move hydrogen to a normal input at 3 units per production turn and clear that site requirement. The other input remains 6 metallurgical silicon; output remains 4 polysilicon with 240 power draw.
+
+The isolated Stoneshore Docks run now completes all ten production turns, consuming the expected 3 hydrogen each turn. Average sales are £107.81 and retained profit £8.90 per turn (final turn £8.82). The original N/A report is historical; corrected results are under `reports/recipe_profitability/sd-siemens-hydrogen/`. Baseline: `data/balance_baselines/2026-09-07_pre-siemens-hydrogen.csv`.
+
+Siemens validation: parse check clean, 3,702 unit checks and 723 end-to-end checks passed. The extra goods connection exposed legacy graph spacing constraints; legacy channels now retain the full routing width, and port candidates use an aligned grid and the full card edge. A windowed capture verified the resulting dense graph.

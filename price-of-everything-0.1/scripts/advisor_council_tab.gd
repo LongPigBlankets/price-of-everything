@@ -432,7 +432,7 @@ func _build_detail() -> void:
 		var nm := _dim_label(str(pair[0]), 12)
 		nm.custom_minimum_size = Vector2(90, 0)
 		row.add_child(nm)
-		var mtr := _meter(float(pair[1]) / 3.0, _DISC_COLORS.get(str(pair[2]), _WARN), 0.0, 7.0)
+		var mtr := _meter(float(pair[1]) / 3.0, _DISC_COLORS.get(str(pair[2]), _WARN), 0.0, 12.0)
 		mtr.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(mtr)
 		row.add_child(_tone_label("%d/3" % int(pair[1]), Color("#C7D4E3"), 12))
@@ -852,22 +852,12 @@ func _effect_chip(text: String, color: Color) -> Control:
 	return chip
 
 func _meter(frac: float, color: Color, width: float, height: float) -> Control:
-	var bar := ProgressBar.new()
+	var bar := preload("res://scripts/metallic_bar.gd").new()
 	bar.min_value = 0.0
 	bar.max_value = 1.0
 	bar.value = clampf(frac, 0.0, 1.0)
-	bar.show_percentage = false
+	bar.col = color
 	bar.custom_minimum_size = Vector2(width, height)
-	var bg := StyleBoxFlat.new()
-	bg.bg_color = Color("#0A1623")
-	bg.border_color = _CARD_BORDER
-	bg.set_border_width_all(1)
-	bg.set_corner_radius_all(int(height / 2.0))
-	var fill := StyleBoxFlat.new()
-	fill.bg_color = color
-	fill.set_corner_radius_all(int(height / 2.0))
-	bar.add_theme_stylebox_override("background", bg)
-	bar.add_theme_stylebox_override("fill", fill)
 	return bar
 
 func _sec_label(text: String) -> Label:

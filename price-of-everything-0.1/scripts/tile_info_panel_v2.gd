@@ -2671,32 +2671,13 @@ func _make_meter_row(label_text: String, value: int, denom: int, color: Color) -
 	label.theme_type_variation = &"Caption"
 	label.custom_minimum_size = Vector2(74, 0)
 	row.add_child(label)
-	var track := PanelContainer.new()
+	var track := preload("res://scripts/metallic_bar.gd").new()
 	track.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	track.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	track.custom_minimum_size = Vector2(0, 10)
-	var ts := StyleBoxFlat.new()
-	ts.bg_color = Color(1, 1, 1, 0.10)
-	ts.set_corner_radius_all(5)
-	track.add_theme_stylebox_override("panel", ts)
-	var track_row := HBoxContainer.new()
-	track_row.add_theme_constant_override("separation", 0)
-	track.add_child(track_row)
-	var ratio := clampf(float(value) / float(maxi(1, denom)), 0.0, 1.0)
-	if ratio > 0.0:
-		var fill := PanelContainer.new()
-		fill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		fill.size_flags_stretch_ratio = ratio
-		var fs := StyleBoxFlat.new()
-		fs.bg_color = color
-		fs.set_corner_radius_all(5)
-		fill.add_theme_stylebox_override("panel", fs)
-		track_row.add_child(fill)
-	if ratio < 1.0:
-		var spacer := Control.new()
-		spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		spacer.size_flags_stretch_ratio = 1.0 - ratio
-		track_row.add_child(spacer)
+	track.max_value = maxi(1, denom)
+	track.value = value
+	track.col = color
 	row.add_child(track)
 	var amount := Label.new()
 	amount.text = "%d/t" % value

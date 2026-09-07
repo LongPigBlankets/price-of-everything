@@ -15,8 +15,9 @@ const AppPaths := preload("res://scripts/app_paths.gd")
 # enclosure rings + urban anchor streets (encl:/urbanr: nodes and edges) from the
 # saved road network (RoadWorks' enclosure keys are simply ignored on import);
 # 7 = cosmetic company-rankings player revenue history; 8 = last-turn player
-# goods quantities for the rankings' Goods tab.
-const SAVE_VERSION := 8
+# goods quantities for the rankings' Goods tab; 9 = recorded market price history;
+# 10 = historical player unit costs alongside prices.
+const SAVE_VERSION := 10
 const MAIN_SCENE := "res://scenes/main.tscn"
 const DEFAULT_START := "res://data/starts/default.json"
 const BuildingLevels := preload("res://scripts/building_levels.gd")   # start-building levels
@@ -655,6 +656,10 @@ func _migrate(snap: Dictionary) -> Dictionary:
 				snap = _migrate_v6_to_v7(snap)
 			7:
 				snap = _migrate_v7_to_v8(snap)
+			8:
+				snap = _migrate_v8_to_v9(snap)
+			9:
+				snap = _migrate_v9_to_v10(snap)
 			_:
 				break
 		version += 1
@@ -743,6 +748,16 @@ func _migrate_v7_to_v8(snap: Dictionary) -> Dictionary:
 	if not rankings.has("player_goods_produced"):
 		rankings["player_goods_produced"] = {}
 	snap["company_rankings"] = rankings
+	return snap
+
+func _migrate_v8_to_v9(snap: Dictionary) -> Dictionary:
+	# Missing history is intentional: MarketState.import_state seeds the loaded
+	# turn after TurnManager is restored. Do not invent prices for earlier turns.
+	return snap
+
+func _migrate_v9_to_v10(snap: Dictionary) -> Dictionary:
+	# Older observations lack cost_basis; the chart treats this as unavailable.
+	# Never backfill historical costs with today's production economics.
 	return snap
 
 # --- JSON helpers ---

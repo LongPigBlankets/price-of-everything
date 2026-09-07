@@ -623,7 +623,7 @@ func _advisor_profit_track() -> Control:
 	header.add_child(title)
 	header.add_child(_label("£%s" % _fmt_amount(peak), "Numeric"))
 
-	var bar := ProgressBar.new()
+	var bar := preload("res://scripts/metallic_bar.gd").new()
 	bar.custom_minimum_size = Vector2(0, 12)
 	bar.show_percentage = false
 	if next_m > 0:
