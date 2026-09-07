@@ -105,6 +105,7 @@ func _on_visibility_changed() -> void:
 
 
 func _enter() -> void:
+	TelemetryState.track_interaction("goods_graph_opened", "goods_graph")
 	move_to_front()
 	_hide_world()
 	_set_camera_blocked(true)

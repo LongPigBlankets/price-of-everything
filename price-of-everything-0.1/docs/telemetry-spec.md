@@ -1,6 +1,7 @@
 # Spec — Playtest Telemetry (per-turn capture → end-of-run upload)
 
-Status: DESIGN — not built. Written 2026-07-20.
+Status: IMPLEMENTED; original design written 2026-07-20.
+Schema 4 interaction columns and receiver deployment: see [telemetry-interactions-demo.md](telemetry-interactions-demo.md).
 Scope: anonymous, consented capture of one row of economic data per turn, cached to disk
 every 10 turns and on every exit path, collated into one JSON envelope per run, and
 uploaded over HTTPS so the designer can analyse real playthroughs (friends demo → itch

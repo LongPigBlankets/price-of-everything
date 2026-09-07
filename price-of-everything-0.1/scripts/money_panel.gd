@@ -501,6 +501,7 @@ func _apply_refresh() -> void:
 func _on_panel_visibility_changed() -> void:
 	if not visible:
 		return
+	TelemetryState.track_interaction("balance_panel_opened", "balance")
 	# Re-fit on show: global_position is only meaningful once the panel has been laid out.
 	_apply_tab_size(_tab_container.current_tab)
 	if _dirty:

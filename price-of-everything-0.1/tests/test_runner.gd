@@ -204,6 +204,7 @@ func _ready() -> void:
 	_test_tutorial_rescue()
 	_test_start_labour_preset()
 	_test_telemetry_schema3_row()
+	_test_telemetry_interactions()
 	_test_build_forecast()
 	_test_construct_v3_sim()
 	_test_construct_v3_ds()
@@ -259,6 +260,8 @@ func _ready() -> void:
 	_test_politics_panel_entries()
 	_test_forest_canopy_variants()
 	_test_authored_forest_areas()
+	_test_recording_toasts()
+	_test_cost_save_isolation()
 	_test_save_load_roundtrip()
 	await _test_pending_load_applies_on_scene_ready()
 	_test_start_config_expansion()
@@ -5232,7 +5235,8 @@ func _test_save_load_roundtrip() -> void:
 
 	var snap1: Dictionary = SaveLoad.export_snapshot()
 	# Real file round-trip via the slot API (covers JSON I/O + slot listing too).
-	_check(SaveLoad.save_slot("__test_roundtrip") == "", "save_slot writes without error")
+	var save_error := SaveLoad.save_slot("__test_roundtrip")
+	_check(save_error == "", "save_slot writes without error (%s)" % save_error)
 	var found := false
 	for s in SaveLoad.list_slots():
 		if str(s.slot) == "__test_roundtrip":
@@ -5464,6 +5468,9 @@ func _test_autosave_rotation() -> void:
 	SaveLoad._autosave_index = 0
 	TurnManager.current_turn = SaveLoad.AUTOSAVE_EVERY_TURNS + 1  # turn N just finished
 	SaveLoad._on_turn_resolution_completed()
+	var auto_snapshot: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(AppPaths.saves_dir().path_join("autosave_1.json")))
+	var history: Array = auto_snapshot.market.price_history.get("g_008", [])
+	_check(not history.is_empty() and int(history[-1].turn) == TurnManager.current_turn, "autosave: serializes the current chart observation before the history listener")
 	_check(SaveLoad._autosave_index == 1 and FileAccess.file_exists(AppPaths.saves_dir().path_join("autosave_1.json")),
 		"autosave fires on the Nth finished turn into slot 1")
 	TurnManager.current_turn = SaveLoad.AUTOSAVE_EVERY_TURNS + 2  # off-cadence turn
@@ -21167,3 +21174,80 @@ func _test_market_price_history_and_layout() -> void:
 	_check(MarketState.history_for("g_008").size() == 1 and int(MarketState.history_for("g_008")[0].turn) == 40, "market history: old saves never invent earlier prices")
 	TurnManager.current_turn = saved_turn
 	MarketState.import_state(saved)
+
+func _test_cost_save_isolation() -> void:
+	var original: Dictionary = SaveLoad.export_snapshot()
+	var costs := {"per_building": {"test": {"unit_cost": 0.65}}, "per_good": {"g_008": {"unit_cost": 0.65}}}
+	CostSolver.import_state(costs)
+	var saved: Dictionary = SaveLoad.export_snapshot()
+	CostSolver.import_state({"per_good": {"g_008": {"unit_cost": 99.0}}})
+	SaveLoad.import_snapshot(saved)
+	_check(CostSolver.export_state() == costs, "save costs: restores per-building and per-good results across matches")
+	CostSolver.import_state({})
+	SaveLoad.import_snapshot(saved)
+	_check(is_equal_approx(CostSolver.get_good_unit_cost("g_008"), 0.65), "save costs: restores immediately with an empty initial cache")
+	saved.erase("cost_solver")
+	SaveLoad.import_snapshot(saved)
+	_check(CostSolver.get_good_unit_cost("g_008") < 0.0, "save costs: legacy snapshot never retains another match's costs")
+	var legacy := {"save_version": 10, "turn": {"current_turn": 30}, "market": {"price_history": {"g_008": [{"turn": 30, "cost_basis": 0.65, "price": 1.42}]}}}
+	var migrated: Dictionary = SaveLoad._migrate(legacy)
+	_check(is_equal_approx(float(migrated.cost_solver.per_good.g_008.unit_cost), 0.65), "save costs: migration recovers the recorded current cost")
+	CostSolver.import_state(costs)
+	MatchState.reset()
+	_check(CostSolver.get_good_unit_cost("g_008") < 0.0, "save costs: new match clears costs")
+	SaveLoad.import_snapshot(original)
+
+func _test_recording_toasts() -> void:
+	var toast = load("res://scripts/toast_manager.gd").new()
+	var first := {"items": [{"good_id": "g_008", "qty": 10, "revenue": 20.0}], "total_revenue": 20.0}
+	var second := {"items": [{"good_id": "g_008", "qty": 5, "revenue": 10.0}, {"good_id": "g_006", "qty": 4, "revenue": 8.0}], "total_revenue": 18.0}
+	_check(toast._format_sales_batch([first, second]) == "Last turn you sold 19 units of 2 goods, totalling £38.00.", "sales toasts: sums revenue and units, counts distinct goods")
+	_check(toast._format_sales_batch([first]) == toast._format_stockpile_sale_message(first), "sales toasts: preserves a single sale's existing copy")
+	var panel = toast._make_toast("Planning", "caution")
+	_check(panel.get_node("Countdown").mouse_filter == Control.MOUSE_FILTER_IGNORE, "toast countdown: overlay never intercepts input")
+	_check(panel.get_child(panel.get_child_count() - 1) is Label, "toast countdown: text renders above the countdown")
+	panel.free()
+	add_child(toast)
+	toast.show_caution("Planning")
+	toast.show_caution("Planning")
+	_check(toast._success_stack.get_child_count() == 1, "planning toasts: repeated amber message appears once")
+	toast._on_building_added({"building_id": "b_004", "owner": "Three Diamonds Shipping Corporation"})
+	_check(toast._success_stack.get_child_count() == 1, "building toasts: NPC ports create no notification")
+	toast.queue_free()
+	var snapshot: Dictionary = SaveLoad.export_snapshot()
+	DecisionState.pending = {"uid": "recording-test", "def_id": "planning_pushback", "target": {"scope": "building", "instance_id": "missing", "name": "Test"}, "turn_drawn": 30}
+	DecisionState.set_hide_updates(true)
+	_check(not DecisionState.has_pending(), "recording: resolves pending first choices")
+	_check(str(DecisionState._history[-1].choice_id) == "consult", "recording: selects the first displayed option")
+	TurnBriefing.expand()
+	_check(not TurnBriefing.expanded, "recording: update panel stays hidden")
+	DecisionState.set_hide_updates(false)
+	SaveLoad.import_snapshot(snapshot)
+
+func _test_telemetry_interactions() -> void:
+	var telemetry = load("res://scripts/telemetry_state.gd").new()
+	telemetry.enabled = true
+	telemetry._armed = true
+	telemetry._run_id = "interaction-test"
+	telemetry._session_id = "interaction-session"
+	telemetry._interaction_checkpoint_queued = true # pure capture test: no disk or network
+	telemetry._collect = false
+	telemetry.track_interaction("search_used", "market_panel")
+	_check(telemetry._events.is_empty(), "interaction telemetry: opt-out captures nothing")
+	telemetry._collect = true
+	telemetry.track_interaction("search_used", "market_panel")
+	telemetry.track_interaction("good_encyclopedia_opened", "encyclopedia", "g_008")
+	var event: Dictionary = telemetry._events[0]
+	_check(int(event.turn) == int(TurnManager.current_turn) and event.interface == "market_panel", "interaction telemetry: records the action turn and interface")
+	_check(not event.has("query") and not event.has("text"), "interaction telemetry: excludes search text")
+	_check(telemetry._events[0].event_id != telemetry._events[1].event_id, "interaction telemetry: unique event identities")
+	var counts: Dictionary = telemetry._interaction_counts(int(TurnManager.current_turn))
+	_check(counts.search_used == 1 and counts.good_encyclopedia_opened == 1 and counts.research_panel_opened == 0, "interaction telemetry: explicit per-turn counts including zeros")
+	_check(telemetry._interaction_counts(int(TurnManager.current_turn) + 1).search_used == 0, "interaction telemetry: does not move actions into the next turn")
+	var saved: Dictionary = telemetry.export_state()
+	_check(saved.events.size() == 2, "interaction telemetry: saves interactions for resumed runs")
+	telemetry._events.clear()
+	_check(saved.events.size() == 2, "interaction telemetry: save snapshot is independent")
+	telemetry.import_state(saved)
+	_check(telemetry._events.size() == 2, "interaction telemetry: restores interaction history")
+	telemetry.free()

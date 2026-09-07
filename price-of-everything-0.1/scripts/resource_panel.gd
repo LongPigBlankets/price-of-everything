@@ -51,12 +51,29 @@ func _ready() -> void:
 ## view of). Routed through MatchState so this panel needs no reference to the view.
 func _add_goods_graph_button() -> void:
 	var btn := Button.new()
-	btn.text = "Goods Graph"
+	btn.name = "GoodsGraphIconButton"
+	var graph_icon := TextureRect.new()
+	graph_icon.texture = preload("res://assets/icons/ui_icons/standalone/sankey.png")
+	graph_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	graph_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	graph_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	btn.add_child(graph_icon)
+	graph_icon.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	graph_icon.offset_left = -20
+	graph_icon.offset_top = -20
+	graph_icon.offset_right = 20
+	graph_icon.offset_bottom = 20
+	btn.custom_minimum_size = Vector2(48, 48)
 	btn.tooltip_text = "Open the goods production web (G)"
 	btn.focus_mode = Control.FOCUS_NONE
 	btn.theme_type_variation = &"Primary"
 	btn.pressed.connect(func() -> void: MatchState.goods_graph_requested.emit())
 	var header := close_button.get_parent()
+	var label := Label.new()
+	label.text = "Goods Graph"
+	label.theme_type_variation = &"Body"
+	header.add_child(label)
+	header.move_child(label, close_button.get_index())
 	header.add_child(btn)
 	header.move_child(btn, close_button.get_index())
 

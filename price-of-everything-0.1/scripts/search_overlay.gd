@@ -70,6 +70,8 @@ func _ready() -> void:
 	call_deferred("_layout_search_stack")
 
 func open_search() -> void:
+	if not visible:
+		TelemetryState.track_interaction("encyclopedia_opened", "encyclopedia")
 	show()
 	PanelStack.push(self)
 	move_to_front()
@@ -79,6 +81,8 @@ func open_search() -> void:
 	call_deferred("_focus_search_input")
 
 func open_encyclopedia() -> void:
+	if not visible:
+		TelemetryState.track_interaction("encyclopedia_opened", "encyclopedia")
 	show()
 	PanelStack.push(self)
 	move_to_front()
@@ -89,6 +93,8 @@ func open_encyclopedia() -> void:
 ## Deep-link straight to a GOOD's entry (the Produced by / Used in recipe view).
 ## Used by the Goods Graph's expanded-card "Encyclopedia entry" button.
 func open_encyclopedia_good(good_id: String) -> void:
+	if not visible:
+		TelemetryState.track_interaction("encyclopedia_opened", "encyclopedia")
 	var good: Dictionary = Catalog.get_good(good_id)
 	if good.is_empty():
 		open_encyclopedia()
@@ -102,6 +108,8 @@ func open_encyclopedia_good(good_id: String) -> void:
 		"title": str(good.get("display_name", good_id)), "payload": good})
 
 func open_encyclopedia_entry(entry_id: String) -> void:
+	if not visible:
+		TelemetryState.track_interaction("encyclopedia_opened", "encyclopedia")
 	# Deep-link straight to a Mechanics entry (used by in-game "More info" links).
 	show()
 	PanelStack.push(self)
@@ -654,6 +662,8 @@ func _start_recipe_build(recipe: Dictionary) -> void:
 	close_search()
 
 func _show_result_detail(result: Dictionary) -> void:
+	if str(result.get("type", "")) == "good":
+		TelemetryState.track_interaction("good_encyclopedia_opened", "encyclopedia", str(result.get("id", "")))
 	var result_type: String = result.get("type", "")
 	if result_type == "tile":
 		close_search()
@@ -818,12 +828,31 @@ func _make_good_recipes_entry(result: Dictionary) -> Control:
 	header.add_child(back_button)
 	var title := Label.new()
 	title.text = str(result.get("title", ""))
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title.clip_text = true
-	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	title.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	title.clip_text = false
 	title.add_theme_font_size_override("font_size", 24)
 	title.add_theme_color_override("font_color", OFF_WHITE)
 	header.add_child(title)
+	var graph_button := Button.new()
+	graph_button.name = "EncyclopediaGoodsGraphButton"
+	var graph_icon := TextureRect.new()
+	graph_icon.texture = preload("res://assets/icons/ui_icons/standalone/sankey.png")
+	graph_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	graph_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	graph_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	graph_button.add_child(graph_icon)
+	graph_icon.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	graph_icon.offset_left = -20
+	graph_icon.offset_top = -20
+	graph_icon.offset_right = 20
+	graph_icon.offset_bottom = 20
+	graph_button.custom_minimum_size = Vector2(48, 48)
+	graph_button.tooltip_text = "Open this good in the Goods Graph"
+	graph_button.pressed.connect(func() -> void: MatchState.goods_graph_good_requested.emit(good_id); hide())
+	header.add_child(graph_button)
+	var header_spacer := Control.new()
+	header_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(header_spacer)
 
 	# The good's authored balancing band ("Tier: Processed") — the same vocabulary
 	# as the Goods Graph's band headers.
@@ -843,6 +872,13 @@ func _make_good_recipes_entry(result: Dictionary) -> Control:
 	rubric_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var rubric_spacer := Control.new()
 	rubric_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var good_icon := TextureRect.new()
+	good_icon.name = "EncyclopediaGoodIcon"
+	good_icon.texture = _load_good_texture(Catalog.get_good(good_id))
+	good_icon.custom_minimum_size = Vector2(180, 180)
+	good_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	good_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	rubric_row.add_child(good_icon)
 	rubric_row.add_child(rubric_spacer)
 	rubric_row.add_child(_make_good_rubric(good_id))
 	root.add_child(rubric_row)

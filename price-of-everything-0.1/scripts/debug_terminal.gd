@@ -23,6 +23,7 @@ extends CanvasLayer
 ##   research all                     unlock every research node (alias of `unlock all`)
 ##   unlock hidden_buildings          enable the three hidden prototype buildings
 ##   unlock advisors                 open the full advisor roster, all seats + seat research
+##   hide updates / show updates     recording mode: first choices, no update popups
 ##   unlock demo                     lift the New Game demo locks (advanced settings + all starts/difficulties/speeds)
 ##   swap song                       advance to the next music track
 ##   enable procedural <region>      (map editor only) show a region of the procedural map as editable records
@@ -173,6 +174,11 @@ func _run_command(text: String) -> String:
 	if not READ_ONLY_COMMANDS.has(cmd):
 		MatchState.note_cheat_used()
 	match cmd:
+		"hide", "show":
+			if parts.size() == 2 and parts[1].to_lower() == "updates":
+				DecisionState.set_hide_updates(cmd == "hide")
+				return "Updates hidden; first choices selected automatically." if cmd == "hide" else "Updates restored."
+			return "usage: hide updates | show updates"
 		"cash":
 			if parts.size() < 2 or not parts[1].is_valid_int():
 				return "usage: cash <integer>"
@@ -434,7 +440,7 @@ func _run_command(text: String) -> String:
 				return str(editor.call("procedural_central_buildings_command", cmd))
 			return str(editor.call("procedural_region_command", cmd, parts[2].to_lower()))
 		"help":
-			return "commands:  cash <int>   |   unlock <title>|all|hidden_buildings|advisors   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap construct_panel_v3   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink|plate|midcentury   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   ban coal [off]   |   enable|disable procedural <north|arin|vandel|capital|all>   |   enable|disable procedural central buildings  (map editor)   |   save <name>   |   load <name>   |   saves   |   help"
+			return "commands:  hide updates | show updates   |   cash <int>   |   unlock <title>|all|hidden_buildings|advisors   |   research all   |   skip <turns>   |   win <track>|all   |   sellmode <stockpile|market|building>   |   logs   |   swap song   |   swap bdp   |   swap construct_panel   |   swap construct_panel_v3   |   swap loading_screen   |   swap goods_graph   |   swap empire button   |   swap empire view sprite   |   swap port badge   |   survey limit|all   |   p_survey limit|all   |   toggle logs|heightmap|roads|roadocc|ink|plate|midcentury   |   roads route <a> <b> | roads connect <tile>   |   anim [1-4]   |   labour   |   ban coal [off]   |   enable|disable procedural <north|arin|vandel|capital|all>   |   enable|disable procedural central buildings  (map editor)   |   save <name>   |   load <name>   |   saves   |   help"
 		_:
 			return "unknown command: '%s'  (try 'help')" % parts[0]
 

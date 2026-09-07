@@ -2696,6 +2696,15 @@ func _building_with_deposit_token(tile_id: String, token: String) -> Dictionary:
 	return {}
 
 func _show_deposit_dialog(title: String, body: String, buttons: Array) -> void:
+	if DecisionState.hide_updates:
+		if not buttons.is_empty():
+			# Capture each target separately; several deposits can expire in one turn.
+			var target: Dictionary = _deposit_dialog_target.duplicate(true)
+			var action: String = str(buttons[0].id)
+			(func() -> void:
+				_deposit_dialog_target = target
+				_on_deposit_dialog_action(action)).call_deferred()
+		return
 	if _deposit_dialog == null:
 		_deposit_dialog = load("res://scripts/deposit_dialog.gd").new()
 		_hud.add_child(_deposit_dialog)

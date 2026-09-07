@@ -60,6 +60,9 @@ func _ready() -> void:
 	visible = false
 
 func open() -> void:
+	if DecisionState.hide_updates:
+		hide()
+		return
 	# Safety valve: never show an inescapable modal with nothing to click. If the view
 	# is somehow empty, abort the decision (no effects) rather than soft-lock the game.
 	var view: Dictionary = DecisionState.pending_view()
@@ -72,6 +75,9 @@ func open() -> void:
 	move_to_front()
 
 func _on_pending_changed() -> void:
+	if DecisionState.hide_updates:
+		hide()
+		return
 	# Resolved (or reset/load) — the modal's job is done.
 	if not DecisionState.has_pending():
 		visible = false

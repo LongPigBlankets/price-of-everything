@@ -5,14 +5,14 @@ const GoodHover := preload("res://scripts/good_icon_hover.gd")
 ## A manual camera (`_view_offset` + `_view_zoom`) pans/zooms the graph. Node POSITIONS scale and
 ## translate with zoom; the FURNITURE (cards, port hexes, line widths, routing offsets) is drawn at
 ## a fixed pixel size times `_detail()` — it follows zoom out (so the zoom-out cap can be "the whole
-## empire fits") and is capped at 1.0 zooming in.
+## empire fits") and is capped at 1.5 zooming in.
 ## Input edges (thin amber) and sell-to-market edges (thick gold, building -> export port) are routed
 ## orthogonally with 45deg chamfered corners and lane separation so they avoid overlapping each other.
 ## Drag / two-finger pan, scroll / pinch to zoom, WASD to pan. No sim logic here (CLAUDE.md #2/#5).
 
 const _GOLD := Color(0.995, 0.931, 0.763, 1.0)             # port rim / name text
 const _EDGE := Color(0.995, 0.931, 0.763, 0.34)            # amber input lines, translucent
-const _SELL := Color(0.98, 0.80, 0.30, 0.95)               # thick gold sell-to-market lines
+const _SELL := Color("#B69A56")               # thick gold sell-to-market lines
 
 const _EDGE_WIDTH := 2.0
 const _SELL_WIDTH := 5.0
@@ -117,7 +117,60 @@ var _last_offset := Vector2.INF
 var _last_size := Vector2.ZERO
 
 
+class GoodsOverlay extends Control:
+	var chips: Array = []
+	func _draw() -> void:
+		for chip: Dictionary in chips:
+			var rect: Rect2 = chip.rect
+			var style := StyleBoxFlat.new()
+			style.bg_color = Color(0.995234, 0.930806, 0.763265, 0.95 * float(chip.alpha))
+			style.set_corner_radius_all(maxi(2, int(rect.size.x * 0.13)))
+			draw_style_box(style, rect)
+			var texture: Texture2D = chip.icon
+			var inner: Rect2 = rect.grow(-rect.size.x * 0.11)
+			var dimensions: Vector2 = texture.get_size()
+			var fitted: Vector2 = dimensions * minf(inner.size.x / dimensions.x, inner.size.y / dimensions.y)
+			draw_texture_rect(texture, Rect2(inner.get_center() - fitted * 0.5, fitted), false, Color(1, 1, 1, chip.alpha))
+
+class MarketGlow extends Control:
+	const PERIOD := 2.5
+	var phase: float = 0.0
+	var paths: Array = []
+	func _draw() -> void:
+		for route: Dictionary in paths:
+			var points: PackedVector2Array = route.path
+			var total: float = 0.0
+			for i in range(1, points.size()):
+				total += points[i - 1].distance_to(points[i])
+			if total <= 0.0:
+				continue
+			# Normalized distance makes every route complete one lap in 2.5 s.
+			for wrap in [0.0, 1.0]:
+				var start: float = maxf(0.0, phase - 0.12 + wrap) * total
+				var end: float = minf(1.0, phase + wrap) * total
+				var walked: float = 0.0
+				for i in range(1, points.size()):
+					var length: float = points[i - 1].distance_to(points[i])
+					var lo: float = maxf(start, walked)
+					var hi: float = minf(end, walked + length)
+					if hi > lo and length > 0.0:
+						var a: Vector2 = points[i - 1].lerp(points[i], (lo - walked) / length)
+						var b: Vector2 = points[i - 1].lerp(points[i], (hi - walked) / length)
+						for band in [[14.0, 0.08], [8.0, 0.22], [3.0, 0.95]]:
+							draw_line(a, b, Color(1, 1, 1, band[1] * route.alpha), band[0] * route.scale, true)
+					walked += length
+
+var _goods_overlay: GoodsOverlay
+var _market_glow: MarketGlow
+
 func _ready() -> void:
+	_market_glow = MarketGlow.new()
+	_market_glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_market_glow)
+	_goods_overlay = GoodsOverlay.new()
+	_goods_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_goods_overlay.z_index = 100
+	add_child(_goods_overlay)
 	set_process(true)
 	# The floor is a function of the viewport, so re-derive it on resize — otherwise a window
 	# change leaves you able to zoom out past the composition, or unable to reach it.
@@ -189,7 +242,7 @@ func _compute_zoom_floor() -> float:
 func _detail() -> float:
 	if not is_finite(_view_zoom):
 		return 1.0
-	return clampf(_view_zoom, _DETAIL_MIN, 1.0)
+	return clampf(_view_zoom, _DETAIL_MIN, 1.5)
 
 
 ## Build one real Control panel per building node (ports stay as drawn hexagons). Rebuilt on open.
@@ -566,6 +619,8 @@ func focus_on(iid: String, instant: bool = false) -> void:
 		return
 	if _focus_iid == iid and _focus_target > 0.0 and not instant:
 		return
+	if not instant:
+		TelemetryState.track_interaction("supply_chain_building_selected", "supply_chain", iid)
 	_focus_iid = iid
 	_build_focus_layout()
 	_focus_target = 1.0
@@ -577,6 +632,20 @@ func focus_on(iid: String, instant: bool = false) -> void:
 
 
 ## The building the mini-chart is open on ("" when at rest) — so a graph rebuild can put it back.
+func capture_camera() -> Dictionary:
+	return {"offset": _view_offset, "zoom": _view_zoom}
+
+func restore_camera(camera: Dictionary) -> void:
+	_view_offset = camera.offset
+	_view_zoom = camera.zoom
+	_mark_view_dirty()
+	_reposition_panels()
+	queue_redraw()
+
+func has_building(iid: String) -> bool:
+	return _pos_by_iid.has(iid)
+
+
 func focus_iid() -> String:
 	return _focus_iid if _focus_target > 0.0 else ""
 
@@ -771,6 +840,9 @@ func _block_message(cause: String, infra: String) -> String:
 func _process(delta: float) -> void:
 	if not is_visible_in_tree():
 		return
+	_market_glow.phase = fmod(_market_glow.phase + delta / MarketGlow.PERIOD, 1.0)
+	if not _market_glow.paths.is_empty():
+		_market_glow.queue_redraw()
 	# The blocked-shipment flash and the per-turn material positions both live in _draw, so a
 	# site chart redraws every frame. Only while one is open — at rest this costs nothing.
 	if not _focus_site.is_empty() and _focus_t > 0.0:
@@ -811,6 +883,10 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	GoodHover.begin_draw(self)
+	_goods_overlay.chips.clear()
+	_market_glow.paths.clear()
+	_goods_overlay.queue_redraw()
+	_market_glow.queue_redraw()
 	if _nodes.is_empty() and _ports.is_empty():
 		return
 	var font := get_theme_default_font()
@@ -859,6 +935,7 @@ func _draw() -> void:
 			# Standing default, nothing actually shipping yet: dashed — "this is
 			# where sales WOULD leave" (goods are pooling in the tile stockpile).
 			_draw_dashed_polyline(path, Color(_SELL, 0.8 * sa), _SELL_WIDTH * sc, sc)
+		_market_glow.paths.append({"path": path, "alpha": sa, "scale": sc})
 		_draw_edge_good_chip(path, e, "sell", font, sc, sa)
 
 	# Input lines (thin amber) routed left-to-right between columns.
@@ -1288,7 +1365,9 @@ func _draw_edge_good_chip(path: PackedVector2Array, e: Dictionary, kind: String,
 		return
 	var c := _point_along_polyline(path, _EDGE_CHIP_T)
 	var box := _LANE_CHIP * sc
-	_draw_material_chip(c, box, icon, 0, font, sc, a)
+	var rect := Rect2(c - Vector2.ONE * box * 0.5, Vector2.ONE * box)
+	_goods_overlay.chips.append({"rect": rect, "icon": icon, "alpha": a})
+	GoodHover.drawn(self, rect, good_id)
 	# Record the chip's hit-box so the hover readout can find it (cleared per draw).
 	_edge_icon_rects.append({"rect": Rect2(c - Vector2(box, box) * 0.5, Vector2(box, box)),
 		"edge": e, "kind": kind})

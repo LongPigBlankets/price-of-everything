@@ -1,4 +1,10 @@
-# Alumina, glass and windows — analysis and build plans (2026-09-07, nothing built)
+# Alumina, glass and windows — analysis and build plans (2026-09-07)
+
+> **STATUS: all three are now BUILT** and reproduce from code; none is installed. The record of
+> work, including where this plan turned out to be wrong, is in
+> [alumina-glass-windows-BUILT.md](alumina-glass-windows-BUILT.md). Read that first — in
+> particular, the open leaf hinges LEFT, not right, and the plan's frame ratios were measured
+> off a reference that is not true-isometric.
 
 Written after surveying the goods-icon tooling as it stands on 7 September. This is a plan for
 the next agent, not a record of work. References: `assets/icons/goods/medium/g_030_alumina.png`,

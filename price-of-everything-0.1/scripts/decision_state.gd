@@ -421,7 +421,32 @@ const DECISION_DEFINITIONS := {
 }
 
 
+signal recording_updates_changed(hidden: bool)
+var hide_updates: bool = false
+var _recording_resolving: bool = false
+
+func set_hide_updates(value: bool) -> void:
+	hide_updates = value
+	recording_updates_changed.emit(value)
+	if value:
+		_auto_select_recording_choices()
+		TurnBriefing.collapse()
+	TurnBriefing._queue_refresh()
+
+func _auto_select_recording_choices() -> void:
+	if not hide_updates or _recording_resolving:
+		return
+	_recording_resolving = true
+	for view: Dictionary in pending_views():
+		var choices: Array = view.get("choices", [])
+		if not choices.is_empty():
+			var error: String = resolve(str(choices[0].id), str(view.uid))
+			if error != "":
+				push_warning("Recording auto-choice failed: " + error)
+	_recording_resolving = false
+
 func _ready() -> void:
+	pending_changed.connect(_auto_select_recording_choices)
 	# Headless runs (unit suite, e2e harness) keep decisions off so the balance
 	# failure set never shifts under them; tests enable explicitly.
 	enabled = DisplayServer.get_name() != "headless"

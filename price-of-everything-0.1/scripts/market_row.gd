@@ -40,8 +40,8 @@ const BUY_TINT := Color(0.50, 0.53, 0.58, 0.22)
 var good_id: String = ""
 var internal_name: String = ""
 
-var _price_label: Label = null
-var _buy_price_label: Label = null
+var _price_label: RichTextLabel = null
+var _buy_price_label: RichTextLabel = null
 var _impact_group: HBoxContainer = null
 var _rung_cells: Array[Label] = []
 var _sold_label: Label = null
@@ -71,6 +71,7 @@ func setup(good_data: Dictionary) -> void:
 		disp = disp.substr(0, NAME_MAX_CHARS) + "…"
 	var name_btn := Button.new()
 	name_btn.text = disp
+	name_btn.focus_mode = Control.FOCUS_NONE
 	name_btn.clip_text = true
 	name_btn.custom_minimum_size = Vector2(NAME_W, ICON_SIZE)
 	name_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -82,8 +83,8 @@ func setup(good_data: Dictionary) -> void:
 	# profit. The forecast columns are gone — with decay retired a forecast is
 	# identical to the current price for any good the player isn't pressuring —
 	# and the ladder detail lives in the collapsible impact group instead.
-	_buy_price_label = _make_col(COL_PRICE)
-	_price_label = _make_col(COL_PRICE)
+	_buy_price_label = _make_price_col()
+	_price_label = _make_price_col()
 	_sold_label = _make_col(COL_SOLD)
 	_cost_label = _make_col(COL_COST)
 	_profit_label = _make_col(COL_PROFIT)
@@ -290,6 +291,16 @@ func _direction_tooltip(dir: int) -> String:
 	return "%s — your volume has eased off, so the price is walking back to base over %d turns (impact now %s%%)." % [
 		"Recovering" if dir > 0 else "Easing back down", EconomyConfig.PRICE_IMPACT_RECOVERY_TURNS, String.num(a, 1)]
 
+func _make_price_col() -> RichTextLabel:
+	var label := RichTextLabel.new()
+	label.custom_minimum_size = Vector2(COL_PRICE, ICON_SIZE)
+	label.bbcode_enabled = true
+	label.scroll_active = false
+	label.mouse_filter = Control.MOUSE_FILTER_PASS
+	label.add_theme_color_override("default_color", Color.WHITE)
+	label.add_theme_font_size_override("normal_font_size", FIELD_FS)
+	return label
+
 func _make_col(width: float) -> Label:
 	var l := Label.new()
 	l.custom_minimum_size = Vector2(width, ICON_SIZE)
@@ -298,11 +309,13 @@ func _make_col(width: float) -> Label:
 	l.add_theme_font_size_override("font_size", FIELD_FS)
 	return l
 
-func _tint_col(l: Label, tint: Color) -> void:
+func _tint_col(l: Control, tint: Color) -> void:
 	var box := StyleBoxFlat.new()
 	box.bg_color = tint
 	box.content_margin_left = 6
 	box.content_margin_right = 6
+	if l is RichTextLabel:
+		box.content_margin_top = 24
 	l.add_theme_stylebox_override("normal", box)
 
 func _layout_details() -> void:
@@ -363,7 +376,7 @@ func _refresh() -> void:
 	var has_impact := absf(impact) > 0.0005
 	var impact_mult := 1.0 + impact / 100.0
 	var dir := _price_direction()
-	var arrow := "" if dir == 0 else (" ▼" if dir < 0 else " ▲")
+	var arrow := "" if dir == 0 else " [color=#%s]%s[/color]" % [(COST_RED if dir < 0 else COST_GREEN).to_html(false), "▼" if dir < 0 else "▲"]
 	var dir_tip := _direction_tooltip(dir)
 	var sale_now: float = MarketState.get_price(good_id)
 	_price_label.text = ("£%.2f%s\n(£%.2f)" % [sale_now, arrow, MarketState.get_base_price_now(good_id)]) if has_impact \
@@ -373,13 +386,8 @@ func _refresh() -> void:
 	_buy_price_label.text = ("£%.2f%s\n(£%.2f)" % [buy_now, arrow, buy_now / impact_mult]) if has_impact \
 		else "£%.2f%s" % [buy_now, arrow]
 	_buy_price_label.tooltip_text = dir_tip
-	for pl: Label in [_price_label, _buy_price_label]:
-		if dir < 0:
-			pl.add_theme_color_override("font_color", COST_RED)
-		elif dir > 0:
-			pl.add_theme_color_override("font_color", COST_GREEN)
-		else:
-			pl.remove_theme_color_override("font_color")
+	for pl: RichTextLabel in [_price_label, _buy_price_label]:
+		pl.text = "[center]" + pl.text + "[/center]"
 
 	var summary: Dictionary = Production.last_turn_summary
 	var sold_entry: Dictionary = summary.get("sold", {}).get(good_id, {})

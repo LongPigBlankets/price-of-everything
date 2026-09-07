@@ -38,7 +38,7 @@ const AppPaths := preload("res://scripts/app_paths.gd")
 
 const ENDPOINT_URL := "https://script.google.com/macros/s/AKfycbw8dUX-A_dSKmI2GB4_2AbRXbGnOKTbP8mpEa17t6wBBAg4Y0LcCnS_xJNH3EeNRwdr/exec"
 const TOKEN := "d299f45324f48cce4b9257789dfc493e172d5ac657ba1641"
-const SCHEMA_VERSION := 3  # v3: + run.start, rescues, cheats_used, per-building arrays, cost breakdown
+const SCHEMA_VERSION := 4  # v4: per-turn interaction counts and identified UI events
 const QUIT_UPLOAD_WINDOW_MSEC := 6000  # Apps Script round trips run 1.5-4 s
 const CHECKPOINT_EVERY := 10
 const COMPLETE_REASONS: Array[String] = ["victory", "turn_cap", "bankruptcy"]
@@ -107,6 +107,87 @@ var _run_rescues := 0
 var _capture_max_usec := 0    # worst per-turn capture cost, for the perf gate
 
 
+const INTERACTION_COLUMNS: Array[String] = [
+	"encyclopedia_opened", "good_encyclopedia_opened", "goods_graph_opened",
+	"goods_graph_good_selected", "money_panel_opened", "balance_panel_opened",
+	"supply_chain_opened", "supply_chain_building_selected", "research_panel_opened", "search_used",
+]
+var _events: Array = []
+var _event_sequence: int = 0
+var _interaction_checkpoint_queued: bool = false
+
+func track_interaction(action: String, interface_name: String, target_id: String = "") -> void:
+	if not enabled or not _armed or _finalized or not _collect or action not in INTERACTION_COLUMNS:
+		return
+	if _run_start_id == "":
+		_run_start_id = str(MatchState.scenario_name)
+	_run_cheats = _run_cheats or bool(MatchState.cheats_used)
+	_event_sequence += 1
+	_events.append({"event_id": "%s:%d" % [_session_id, _event_sequence],
+		"session_id": _session_id, "turn": int(TurnManager.current_turn),
+		"playtime_s": _playtime_s(), "action": action, "interface": interface_name,
+		"target_id": target_id})
+	if not _interaction_checkpoint_queued:
+		_interaction_checkpoint_queued = true
+		_checkpoint_interactions.call_deferred()
+
+func _checkpoint_interactions() -> void:
+	_interaction_checkpoint_queued = false
+	_write_checkpoint()
+
+func _interaction_counts(turn: int) -> Dictionary:
+	var counts: Dictionary = {}
+	for action in INTERACTION_COLUMNS:
+		counts[action] = 0
+	for event: Dictionary in _events:
+		if int(event.turn) == turn:
+			counts[event.action] += 1
+	return counts
+
+# Discover search fields after their owner has configured their name and placeholder.
+# One event per nonempty editing burst (750ms), without collecting query text.
+func _watch_ui_node_id(id: int) -> void:
+	var node: Node = instance_from_id(id) as Node
+	if is_instance_valid(node): _watch_ui_node(node)
+
+func _watch_ui_node(node: Node) -> void:
+	if not is_instance_valid(node):
+		return
+	if node is Control and node.get_script() != null:
+		var script_name: String = node.get_script().resource_path.get_file()
+		if script_name == "research_panel.gd":
+			node.visibility_changed.connect(func() -> void:
+				if node.is_visible_in_tree(): track_interaction("research_panel_opened", "research"))
+	if not node is LineEdit or node.has_meta("telemetry_search"):
+		return
+	if not "search" in (str(node.name) + " " + node.placeholder_text).to_lower():
+		return
+	node.set_meta("telemetry_search", true)
+	var owner_node: Node = node.get_parent()
+	var interface_name := "unknown"
+	while owner_node != null:
+		if owner_node.get_script() != null:
+			interface_name = owner_node.get_script().resource_path.get_file().get_basename()
+			break
+		owner_node = owner_node.get_parent()
+	var timer := Timer.new()
+	timer.one_shot = true
+	timer.wait_time = 0.75
+	node.add_child(timer)
+	var context: String = interface_name
+	var report := func() -> void:
+		if not timer.is_stopped(): timer.stop()
+		if node.is_visible_in_tree() and not node.text.strip_edges().is_empty():
+			track_interaction("search_used", context)
+	timer.timeout.connect(report)
+	node.text_changed.connect(func(_value: String) -> void:
+		if node.has_focus(): timer.start())
+	node.text_submitted.connect(func(_value: String) -> void:
+		if not timer.is_stopped(): report.call())
+	node.focus_exited.connect(func() -> void:
+		if not timer.is_stopped(): report.call())
+
+
 func _ready() -> void:
 	# Headless (unit suite / e2e harness) is inert unless TELEMETRY_DEBUG=1
 	# forces it on — that override is how the phase-A verification runs work.
@@ -125,6 +206,7 @@ func _ready() -> void:
 	SolvencyState.bankruptcy_declared.connect(_on_bankruptcy)
 	print("[Telemetry] ready (phase A, session %s)" % _session_id.substr(0, 8))
 	_retry_outbox()
+	get_tree().node_added.connect(func(node: Node) -> void: _watch_ui_node_id.call_deferred(node.get_instance_id()))
 
 
 func _notification(what: int) -> void:
@@ -159,6 +241,7 @@ func _on_run_started() -> void:
 	_playtime_carried_s = 0
 	_session_ordinal = 1
 	_rows = []
+	_events = []
 	_delivered_through = 0
 	_run_start_id = ""
 	_run_cheats = false
@@ -187,7 +270,7 @@ func _on_turn_completed() -> void:
 
 
 func _write_checkpoint() -> void:
-	if not enabled or not _armed or _finalized:
+	if not enabled or not _armed or _finalized or not _collect:
 		return
 	_write_json(_checkpoint_path(), _build_envelope("crash"))
 
@@ -245,6 +328,7 @@ func _build_row(summary: Dictionary) -> Dictionary:
 		"buildings_list": empire.list,
 		"building_states": empire.states,
 	}
+	row["interactions"] = _interaction_counts(int(row.turn))
 	if _tier_available:
 		row["tiers"] = tiers
 	return row
@@ -342,6 +426,7 @@ func export_state() -> Dictionary:
 		"playtime_s": _playtime_s(),
 		"session": _session_ordinal,
 		"collect": _collect,
+		"events": _events.duplicate(true),
 	}
 
 
@@ -358,6 +443,7 @@ func import_state(d: Dictionary) -> void:
 	_collect = bool(d.get("collect", true))
 	_run_started_msec = Time.get_ticks_msec()
 	_rows = []
+	_events = (d.get("events", []) as Array).duplicate(true) if _collect else []
 	_delivered_through = _load_watermark()
 
 
@@ -460,6 +546,7 @@ func _build_envelope(reason: String) -> Dictionary:
 			"rescues": maxi(_run_rescues, SolvencyState.tutorial_rescues()),
 		},
 		"turns": _undelivered_rows(),
+		"events": _events.duplicate(true),
 	}
 
 

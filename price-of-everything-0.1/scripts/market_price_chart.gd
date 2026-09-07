@@ -16,7 +16,7 @@ func refresh() -> void:
 	if not is_visible_in_tree():
 		return
 	_samples = MarketState.history_for(good_id).filter(func(sample: Dictionary) -> bool: return int(sample.turn) <= int(TurnManager.current_turn))
-	_hover_index = mini(_hover_index, _samples.size() - 1)
+	_hover_index = sample_at_x(get_local_mouse_position().x) if Rect2(Vector2.ZERO, size).has_point(get_local_mouse_position()) else -1
 	queue_redraw()
 
 func _plot_rect() -> Rect2:
@@ -41,7 +41,26 @@ func sample_at_x(x: float) -> int:
 			best = i
 	return best
 
+func _input(event: InputEvent) -> void:
+	if not is_visible_in_tree() or not Rect2(Vector2.ZERO, size).has_point(get_local_mouse_position()):
+		return
+	if not event is InputEventKey or not event.pressed or event.echo or event.keycode != KEY_SPACE:
+		return
+	if event.ctrl_pressed or event.alt_pressed or event.meta_pressed or event.shift_pressed:
+		return
+	var focused := get_viewport().gui_get_focus_owner()
+	if focused is LineEdit or focused is TextEdit:
+		return
+	var scene := get_tree().current_scene
+	var button := scene.find_child("EndTurnButton", true, false) as Button if scene != null else null
+	if button != null and button.is_visible_in_tree() and not button.disabled:
+		button.pressed.emit()
+		get_viewport().set_input_as_handled()
+
+
 func _gui_input(event: InputEvent) -> void:
+	if event is InputEventKey:
+		return
 	if event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
 		return
 	if event is InputEventMouseMotion:

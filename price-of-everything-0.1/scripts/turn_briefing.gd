@@ -690,6 +690,8 @@ func _item_by_id(item_id: String) -> Dictionary:
 # ---------------------------------------------------------------------------
 
 func expand(item_id: String = "") -> void:
+	if DecisionState.hide_updates:
+		return
 	_rebuild_items()
 	_select_on_expand = item_id
 	expanded = true
@@ -764,6 +766,13 @@ func _apply_refresh() -> void:
 # ---------------------------------------------------------------------------
 
 func _sync_ui() -> void:
+	if DecisionState.hide_updates:
+		expanded = false
+		if is_instance_valid(_strip):
+			_strip.hide()
+		if is_instance_valid(_panel):
+			_panel.hide()
+		return
 	if not enabled or DisplayServer.get_name() == "headless":
 		return
 	if _layer == null:

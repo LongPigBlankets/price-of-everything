@@ -144,7 +144,7 @@ func _update_layout() -> void:
 	# screen's bottom edge; the phase roller sits to its right on the same centre-line.
 	var button_bottom := h - PAD
 	var button_top := button_bottom - BTN_H
-	var navy_top := button_top - PAD
+	var navy_top := button_top - PAD - 5.0
 	_r_base = Rect2(base_left, navy_top, (w + BASE_BLEED) - base_left, (h + BASE_BLEED) - navy_top)
 
 	_r_button = Rect2(navy_left + PAD, button_top, BTN_W, BTN_H)

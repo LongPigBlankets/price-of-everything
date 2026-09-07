@@ -28,6 +28,7 @@ const HexBgScript := preload("res://scripts/empire_hex_bg.gd")
 var _map_camera: Node = null                   # the map Camera2D (group "camera"); gated while we own the screen
 var _hidden_layers: Array[CanvasItem] = []     # world layers hidden on enter, restored on leave
 var _graph_world: Control                      # the node-graph drawing layer (empire_graph_world.gd)
+var _back_to_company: Button
 var _bg: Control                               # the animated hex-field background (empire_hex_bg.gd)
 
 
@@ -95,6 +96,22 @@ func _build_ui() -> void:
 	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	hint.offset_top = -36.0
 	add_child(hint)
+	_back_to_company = Button.new()
+	_back_to_company.text = "Back to entire company"
+	_back_to_company.theme_type_variation = &"Primary"
+	_back_to_company.z_index = 200
+	_back_to_company.focus_mode = Control.FOCUS_NONE
+	_back_to_company.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_back_to_company.offset_left = -140
+	_back_to_company.offset_right = 140
+	_back_to_company.offset_top = -100
+	_back_to_company.offset_bottom = -52
+	_back_to_company.pressed.connect(func() -> void: _graph_world.clear_focus())
+	add_child(_back_to_company)
+
+func _process(_delta: float) -> void:
+	if visible and _back_to_company != null:
+		_back_to_company.visible = _graph_world.focus_iid() != ""
 
 
 func _on_visibility_changed() -> void:
@@ -105,6 +122,7 @@ func _on_visibility_changed() -> void:
 
 
 func _enter() -> void:
+	TelemetryState.track_interaction("supply_chain_opened", "supply_chain")
 	move_to_front()
 	_hide_world()
 	_set_camera_blocked(true)
@@ -129,9 +147,13 @@ func _rebuild_graph() -> void:
 	# construction site keeps its id through promotion, so a build completing under an open
 	# chart simply becomes the finished building's chart.
 	var was_focused := str(_graph_world.call("focus_iid"))
+	var camera: Dictionary = _graph_world.capture_camera()
+	var had_graph: bool = not _graph_world._nodes.is_empty()
 	EmpireGraphScript.populate(_graph_world, terrain)
 	if was_focused != "":
 		_graph_world.call("focus_on", was_focused, true)
+	if had_graph and (was_focused == "" or _graph_world.has_building(was_focused)):
+		_graph_world.restore_camera(camera)
 
 
 func _leave() -> void:

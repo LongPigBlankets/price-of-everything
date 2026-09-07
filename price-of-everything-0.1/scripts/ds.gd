@@ -226,11 +226,11 @@ func _build_theme() -> Theme:
 	# ── Primary button (brighter steel-blue CTA) ───────────────────────
 	t.set_type_variation("Primary", "Button")
 	t.set_stylebox("normal", "Primary",
-		_button_stylebox(Color("#A7C8D3"), PALETTE["ACTION_BLUE_HOVER"], PALETTE["BORDER"], 8, 2, 21, 10, 0.46))
+		_button_stylebox(Color("#A7C8D3").darkened(0.15), Color(PALETTE["ACTION_BLUE_HOVER"]).darkened(0.15), PALETTE["BORDER"], 8, 2, 21, 10, 0.46))
 	t.set_stylebox("hover", "Primary",
-		_button_stylebox(Color("#BBD5DD"), Color("#81AFC0"), PALETTE["BORDER"], 8, 2, 21, 10, 0.50))
+		_button_stylebox(Color("#BBD5DD").darkened(0.15), Color("#81AFC0").darkened(0.15), PALETTE["BORDER"], 8, 2, 21, 10, 0.50))
 	t.set_stylebox("pressed", "Primary",
-		_button_stylebox(PALETTE["ACTION_BLUE"], PALETTE["ACTION_BLUE_PRESSED"], Color(PALETTE["BORDER"]).darkened(0.18), 8, 2, 21, 9, 0.20))
+		_button_stylebox(Color(PALETTE["ACTION_BLUE"]).darkened(0.15), Color(PALETTE["ACTION_BLUE_PRESSED"]).darkened(0.15), Color(PALETTE["BORDER"]).darkened(0.18), 8, 2, 21, 9, 0.20))
 	t.set_stylebox("focus", "Primary", t.get_stylebox("hover", "Primary"))
 	t.set_color("font_color", "Primary", PALETTE["ACCENT"])
 	t.set_color("font_hover_color", "Primary", PALETTE["ACCENT"])

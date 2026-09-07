@@ -2796,6 +2796,8 @@ func _close_fly() -> void:
 		(_power_btn as _ModuleBtn).active = false
 
 func _open_fly(id: String) -> void:
+	if id == "treasury" and _fly_open_id != id:
+		TelemetryState.track_interaction("money_panel_opened", "treasury")
 	_close_fly()
 	_fly_scroll = null
 	if TurnBriefing.expanded:
