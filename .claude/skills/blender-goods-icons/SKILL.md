@@ -291,6 +291,31 @@ parts such as crates, breakers, labels, pallets, meters or containers.
 80. **Snapshot the complete render contract.** Builder ordering, shared can functions,
     semantic mask tags, exporter and reference inputs all matter. The complex pipeline checks
     fresh color/mask output and identical selected rerenders without promoting visual approval.
-81. **Alternate policy is explicit.** Approved alternates live in `alternate_icons`; the
-    loader checks every main tier first and uses alternates only when main art is missing.
-    Do not replace main art or invent a selection setting from an alternate-install request.
+81. **Alternate policy is explicit.** Approved alternates live in `alternate_icons`.
+    On 2026-09-07 the owner explicitly requested all created goods use the new alternates
+    instead of the old art. Search all alternate tiers first, then all main tiers as fallback.
+    Preserve main artwork. This supersedes the earlier main-first preference; the release
+    inventory and runtime audit are in `artifacts/goods_recent_shipping/`.
+
+## 12. Batch 2 (2026-09-07): lathes, labels, straps detector trap
+
+82. **Neutral dark greys are a TRAP for the export's strap-outline detector.** `icon_export.py`
+    finds un-inked straps by colour (neutral, luma 48-100) and rings them in 2D; a cap, valve or
+    collar in a neutral grey gets every halftone dot ringed and renders as a scribble (the
+    light-oil cap, the methane valves). Every grey in a goods icon must carry a blue bias of at
+    least 0.06 between channels (e.g. steel (0.28, 0.33, 0.44), cap (0.07, 0.09, 0.16)).
+83. **A revolved rim must be a WASHER, not a cylinder.** A `K.cyl` rim is a solid disc and hides
+    the contents below it (the heavy-oil surface vanished under a tan lid). Use `K.washer` with
+    an axis vector, or an open lathe profile.
+84. **Swept tubes need a resampled centreline** (`smooth_path`, Catmull-Rom, 6-8 samples per
+    segment) or their silhouette flickers into stripes at the bends. Keep the tube inked: its
+    outline is what sells a fold or a drop.
+85. **Labels sit on a boss.** A flat plate tangent to a cylinder floats; sink a box boss into the
+    barrel and seat the plate on it. Subscripts are a second text object: with text up = +Y,
+    right is +X and lower is -Y.
+86. **Lathes** (`lathe`, batch 2): profile `[(z, r), ...]` revolved about Z under a Subdivision
+    Surface; `levels=0` for hard rims; rotate the whole object 90 degrees about X to lay a vessel
+    along Y (rule 69). Cap n-gons under subsurf go lumpy: use `cap_top=False` and a separate cap.
+87. **Faces the owner wants lit must face -Y or +Z.** The forged ring's broad face first faced +X
+    and rendered as one field of halftone; revolving it about X instead put the face in the lit
+    step.
