@@ -6085,12 +6085,13 @@ func _test_workforce_output_modifier_surfaces_in_building_status() -> void:
 		"level": 1,
 	}
 	var recipe: Dictionary = Catalog.get_recipe("r_009")
-	_check(BuildingStatus.effective_output_qty(building, recipe) == 28,
+	var base_output: int = int(recipe.get("output_qty", 0))
+	_check(BuildingStatus.effective_output_qty(building, recipe) == base_output,
 		"building status baseline output excludes inactive workforce policies")
 	MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, true)
 	var mod: Dictionary = BuildingStatus.net_output_modifier(building, recipe)
 	var workforce_parts: Array = mod.get("workforce_parts", [])
-	_check(BuildingStatus.effective_output_qty(building, recipe) == 31,
+	_check(BuildingStatus.effective_output_qty(building, recipe) == int(round(float(base_output) * 1.10)),
 		"building status output includes annual profit-share workforce multiplier")
 	_check(absf(float(mod.get("pct_f", 0.0)) - 10.0) < 0.001,
 		"building status net output modifier includes annual profit share")
@@ -10561,9 +10562,9 @@ func _test_construct_browse_mini_recipe_card() -> void:
 		# match — an inner class's get_class() reports its base (Control), not its
 		# own script class name.
 		var icons := mini.find_children("*", "TextureRect", true, false)
-		# r_033 has 5 inputs + 1 output = 6 icons, all the SAME mini size — no
+		# r_033 has 6 inputs + 1 output = 7 icons, all the SAME mini size — no
 		# hero/pair/grid tiering here, unlike the expanded diagram.
-		_check(icons.size() == 6, "mini recipe: one icon per input/output, 5+1=6 for r_033 (got %d)" % icons.size())
+		_check(icons.size() == 7, "mini recipe: one icon per input/output, 6+1=7 for r_033 (got %d)" % icons.size())
 		for icon in icons:
 			_check(absf((icon as TextureRect).custom_minimum_size.x - 40.0) < 0.5,
 				"mini recipe: every icon is the same 40px size regardless of item count")
@@ -10573,8 +10574,8 @@ func _test_construct_browse_mini_recipe_card() -> void:
 		for lbl in _all_labels(mini):
 			if lbl.text == "+":
 				plus_count += 1
-		# 5 inputs -> 4 "+" between them; 1 output -> 0 "+"; 4 total.
-		_check(plus_count == 4, "mini recipe: '+' separates each side's own items (4 for 5 inputs + 1 output, got %d)" % plus_count)
+		# 6 inputs -> 5 "+" between them; 1 output -> 0 "+"; 5 total.
+		_check(plus_count == 5, "mini recipe: '+' separates each side's own items (5 for 6 inputs + 1 output, got %d)" % plus_count)
 		var pills := 0
 		for child in _all_panel_containers(mini):
 			pills += 1
@@ -10591,13 +10592,13 @@ func _test_construct_browse_mini_recipe_card() -> void:
 ## way to claim more room than the panel's own normal width.
 func _test_recipe_choice_row_mini_diagram() -> void:
 	var detail_panel = load("res://scripts/building_detail_panel_v2.gd").new()
-	var recipe: Dictionary = Catalog.get_recipe("r_033")   # 5 inputs + 1 output
+	var recipe: Dictionary = Catalog.get_recipe("r_033")   # 6 inputs + 1 output
 	var row: Control = detail_panel.call("_recipe_choice_row", "probe_iid", recipe, false)
 	var diagram: Control = row.find_child("MiniRecipeDiagramCard", true, false)
 	_check(diagram != null, "recipe choice row: the mini diagram renders")
 	if diagram != null:
 		var icons := diagram.find_children("*", "TextureRect", true, false)
-		_check(icons.size() == 6, "recipe choice row: one icon per input/output, 5+1=6 for r_033 (got %d)" % icons.size())
+		_check(icons.size() == 7, "recipe choice row: one icon per input/output, 6+1=7 for r_033 (got %d)" % icons.size())
 		_check(diagram.find_child("MiniRecipeArrow", true, false) != null,
 			"recipe choice row: the filled navy arrow renders")
 	row.free()

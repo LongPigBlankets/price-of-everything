@@ -1247,6 +1247,7 @@ func _open_sheet(title: String, populate: Callable, extra_width: float = 0.0) ->
 
 func _close_sheet() -> void:
 	if _sheet != null and is_instance_valid(_sheet):
+		remove_child(_sheet)  # Release its minimum width before resizing the panel.
 		_sheet.queue_free()
 	_sheet = null
 	if _sheet_extra_width > 0.0:
