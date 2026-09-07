@@ -192,35 +192,78 @@ def build_phosphate():
 
 
 # ---------------------------------------------------------------- METHANE
+def wrap_text_on_cylinder(K, name, text, size, r, axis_len_pos, mat, angle_deg=0.0):
+    """Text lying ON a cylinder of radius r whose axis is local Z: built flat facing +X,
+    reading along the axis, then every vertex is wrapped around the barrel. Un-inked; the
+    cream band behind it makes it read. Returns the mesh object in LOCAL coordinates - apply
+    the tank's rotation and location to it afterwards."""
+    cu = bpy.data.curves.new(name, 'FONT'); cu.body = text
+    cu.align_x = 'CENTER'; cu.align_y = 'CENTER'; cu.size = size
+    ob = bpy.data.objects.new(name, cu); K.col.objects.link(ob)
+    # plane facing +X, text up = +Y (world +Z after the tank's 90-degree X rotation),
+    # reading toward -Z local (= world +Y, lower-left to upper-right on screen)
+    n = Vector((1, 0, 0)); u = Vector((0, 1, 0)); right = u.cross(n).normalized(); u = n.cross(right).normalized()
+    ob.rotation_euler = mathutils.Matrix((right, u, n)).transposed().to_euler()
+    cu.materials.append(mat)
+    bpy.context.view_layer.objects.active = ob; ob.select_set(True)
+    bpy.ops.object.convert(target='MESH'); ob.select_set(False)
+    import bmesh
+    bm = bmesh.new(); bm.from_mesh(ob.data)
+    bmesh.ops.triangulate(bm, faces=list(bm.faces))
+    bmesh.ops.subdivide_edges(bm, edges=list(bm.edges), cuts=2, use_grid_fill=True)
+    bm.to_mesh(ob.data); bm.free()
+    a0 = math.radians(angle_deg)
+    M = ob.matrix_world.copy()
+    for v in ob.data.vertices:
+        w = M @ v.co                      # flat glyph point in local tank space
+        ang = a0 + w.y / r                # wrap the across-text coordinate around the barrel
+        v.co = Vector((r * math.cos(ang), r * math.sin(ang), axis_len_pos + w.z))
+    ob.rotation_euler = (0, 0, 0); ob.location = (0, 0, 0)
+    noink(ob)
+    return ob
+
+
 def build_methane():
-    """OWNER: two horizontal pressure vessels held in a simple square transport cradle.
-    Desaturated white bodies, cream identification panel, compact valves at one end.
-    CH4 with the subscript on each of them.
-    Round five (flatness review): blue-grey bodies on the five-step ramp; dished ends with an
-    inked rim ring and a shoulder tone break; weld seam rings at thirds; valve stack with a
-    gauge on the front end; the label plate casts a shadow on the tube; saddle straps where the
-    tubes meet the cradle."""
+    """OWNER (photo, 2026-09-07): an ISO tank-container FRAME around each tank - a full box of
+    beams with corner castings and diagonal end braces - and ONLY the label on the tank, as a
+    band wrapped around the diameter with CH4 on it. The frame is the icon's warm accent.
+    Kept from earlier rounds: dished ends with inked rims, weld seams, valve stack + gauge at
+    the front end, blue-grey bodies on the five-step ramp."""
     setup_batch_rig()
     col = open_collection("ICON_methane")
     K = Kit(col)
     white = P("vessel_white", (0.56, 0.62, 0.72)); cream = P("cream", (0.74, 0.66, 0.44))
-    steel = P("cradle_steel", (0.22, 0.28, 0.40)); valve = P("valve", (0.30, 0.36, 0.48))
-    shadow = P("vessel_shadow", (0.30, 0.34, 0.42)); dial = P("dial", (0.86, 0.84, 0.74))
+    frame = P("frame_red", (0.56, 0.11, 0.08)); frame_lo = P("frame_red_lo", (0.40, 0.08, 0.06))
+    steel = P("cradle_steel", (0.22, 0.28, 0.40)); valve = P("valve", (0.30, 0.36, 0.48)); dial = P("dial", (0.86, 0.84, 0.74))
     navy = K.mat("ic_navy")
-    R, L = 0.42, 2.20
-    xs = (-0.50, 0.50)
-    zc = 0.60
+    R, L = 0.47, 2.20
+    beam = 0.10
+    fx, fz = R + 0.15, 2 * R + 0.30          # frame half-width and height
+    pitch = 2 * fx + beam + 0.04
+    xs = (-pitch / 2, pitch / 2)
+    zc = fz / 2
     for i, x in enumerate(xs):
-        # barrel: a plain smooth cylinder along Y; dished ends as shallow revolves with a rim
+        # ---- tank: barrel + dished ends + rims + seams, lying along Y
         K.cyl("barrel%d" % i, x, 0.0, zc, R, L - 0.30, white, axis='Y', segments=48, smooth=True)
         for sg, nm in ((-1, "front"), (1, "back")):
             end = lathe(K, "end_%s%d" % (nm, i), (0, 0, 0), [(0.0, 0.0), (0.02, 0.24), (0.10, 0.36), (0.16, R - 0.01)], white, levels=1, cap_top=False)
             end.rotation_euler = (math.radians(90 if sg < 0 else -90), 0, 0)
             end.location = (x, sg * (L / 2 - 0.15), zc)
             K.washer("rim_%s%d" % (nm, i), (x, sg * (L / 2 - 0.15), zc), (0.0, 1.0, 0.0), R - 0.02, R + 0.025, 0.05, steel, seg=48)
-        for j, y in enumerate((-L / 6, L / 6)):      # weld seams at thirds
+        for j, y in enumerate((-L / 3, L / 3)):
             K.washer("seam%d%d" % (i, j), (x, y, zc), (0.0, 1.0, 0.0), R - 0.01, R + 0.012, 0.03, navy, seg=48)
-        # valve stack + gauge on the front end
+        # ---- the wraparound identification band with CH4 on it (built local-upright, turned to Y)
+        K.cyl("band%d" % i, x, 0.0, zc, R + 0.012, 0.72, cream, axis='Y', segments=48, smooth=True)
+        K.washer("band_edge_a%d" % i, (x, -0.36, zc), (0.0, 1.0, 0.0), R + 0.005, R + 0.02, 0.02, navy, seg=48)
+        K.washer("band_edge_b%d" % i, (x, 0.36, zc), (0.0, 1.0, 0.0), R + 0.005, R + 0.02, 0.02, navy, seg=48)
+        # the label sits on the LIT upper-right quarter of the barrel (local angle ~42 deg =
+        # world (+X,+Z)); the 4 follows the H along the axis (world +Y) and drops a little
+        ch = wrap_text_on_cylinder(K, "ch%d" % i, "CH", 0.36, R + 0.03, 0.0, navy, angle_deg=82)   # above the rail (it covers 35-55 deg)
+        four = wrap_text_on_cylinder(K, "four%d" % i, "4", 0.21, R + 0.03, 0.0, navy, angle_deg=68)
+        for ob in (ch, four):
+            ob.rotation_euler = (math.radians(90), 0, 0)
+        ch.location = (x, -0.08, zc); four.location = (x, 0.30, zc)
+        # ---- valve stack + gauge on the front end
         yf = -L / 2 - 0.02
         K.cyl("neck%d" % i, x, yf - 0.05, zc, 0.11, 0.16, valve, axis='Y', segments=20, smooth=True)
         K.cyl("wheel%d" % i, x, yf - 0.17, zc, 0.16, 0.05, navy, axis='Y', segments=20, smooth=True)
@@ -228,22 +271,26 @@ def build_methane():
         K.cyl("gauge_stem%d" % i, x, yf - 0.06, zc + 0.16, 0.03, 0.14, valve, axis='Z', segments=10, smooth=True)
         K.cyl("gauge%d" % i, x, yf - 0.10, zc + 0.30, 0.10, 0.06, valve, axis='Y', segments=20, smooth=True)
         K.cyl("gauge_face%d" % i, x, yf - 0.135, zc + 0.30, 0.075, 0.01, dial, axis='Y', segments=20, smooth=True)
-        # label plate on a boss, with a cast-shadow strip on the tube below its shaded edges
-        K.box("boss%d" % i, x, 0.05, zc + R - 0.16, 0.60, 1.14, 0.30, valve)
-        K.box("plate_shadow%d" % i, x + 0.31, 0.05, zc + R - 0.06, 0.06, 1.14, 0.16, shadow)
-        K.box("panel%d" % i, x, 0.05, zc + R + 0.005, 0.56, 1.10, 0.05, cream)
-        text_face(K, "ch%d" % i, "CH", (x - 0.07, 0.05, zc + R + 0.035), 0.32, navy, (0, 0, 1), up=(0, 1, 0))
-        text_face(K, "four%d" % i, "4", (x + 0.19, -0.06, zc + R + 0.035), 0.19, navy, (0, 0, 1), up=(0, 1, 0))
-    rail_z = zc - R - 0.10
-    for i, x in enumerate(xs):
-        K.box("rail%d" % i, x, 0.0, rail_z, 0.16, L - 0.10, 0.12, steel)
-        for j, y in enumerate((-L / 2 + 0.25, L / 2 - 0.25)):   # saddle straps over the tubes
-            K.washer("strap%d%d" % (i, j), (x, y, zc), (0.0, 1.0, 0.0), R + 0.01, R + 0.05, 0.10, steel, seg=48)
-    for j, y in enumerate((-L / 2 + 0.25, L / 2 - 0.25)):
-        K.box("cross%d" % j, 0.0, y, rail_z - 0.02, 1.50, 0.14, 0.14, steel)
-        for i, x in enumerate((-0.72, 0.72)):
-            K.box("post%d%d" % (i, j), x, y, zc, 0.12, 0.12, 2 * R + 0.28, steel)
-        K.box("top%d" % j, 0.0, y, zc + R + 0.08, 1.50, 0.12, 0.12, steel)
+        # ---- ISO frame: 12 beams, 8 corner castings, 4 diagonal braces per end (octagon)
+        y0, y1 = -L / 2 - 0.16, L / 2 + 0.16
+        for cx in (x - fx, x + fx):
+            for cz in (beam / 2, fz - beam / 2):
+                K.box("rail_%.2f_%.2f" % (cx, cz), cx, 0.0, cz, beam, y1 - y0, beam, frame)      # long rails (Y)
+            for cy in (y0, y1):
+                K.box("post_%.2f_%.2f" % (cx, cy), cx, cy, fz / 2, beam, beam, fz, frame)          # posts (Z)
+        for cy in (y0, y1):
+            for cz in (beam / 2, fz - beam / 2):
+                K.box("cross_%.2f_%.2f" % (cy, cz), x, cy, cz, 2 * fx, beam, beam, frame)          # cross rails (X)
+        for cx in (x - fx, x + fx):
+            for cy in (y0, y1):
+                for cz in (beam / 2, fz - beam / 2):
+                    K.box("casting_%.2f_%.2f_%.2f" % (cx, cy, cz), cx, cy, cz, 0.17, 0.17, 0.17, frame_lo)
+        for cy in (y0, y1):
+            for sx in (-1, 1):
+                for sz in (-1, 1):
+                    # a brace cutting each corner of the end square, tangent to the tank's rim
+                    bx = x + sx * (fx - 0.34); bz = fz / 2 + sz * (fz / 2 - 0.34)
+                    K.rotbox("brace_%.2f_%d%d" % (cy, sx > 0, sz > 0), bx, cy, bz, 0.08, beam * 0.9, 0.78, frame, 'Y', 45 * sx * sz)
     return {"objects": len(col.objects)}
 
 
