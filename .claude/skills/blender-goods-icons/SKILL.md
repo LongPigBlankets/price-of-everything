@@ -319,3 +319,24 @@ parts such as crates, breakers, labels, pallets, meters or containers.
 87. **Faces the owner wants lit must face -Y or +Z.** The forged ring's broad face first faced +X
     and rendered as one field of halftone; revolving it about X instead put the face in the lit
     step.
+
+## 13. Flatness (owner, 2026-09-07: "these all look quite flat") — measured against the approved alternates
+
+88. **Five tone steps with a specular RIM step, not three.** The approved alternates describe a
+    cylinder as base → thin specular stripe near the lit edge → core shadow → halftone inside the
+    core shadow, with steps ~20 luma apart and a lit face at ~200. Three steps 46 luma apart read
+    as paper cut-outs. `toon5_mat` (batch 2): multipliers 0.45 / 0.59 / 0.79 / 1.00 / 1.26 at
+    s < 0.62 / 0.72 / 0.84 / 0.91 / above. The rim threshold 0.91 is chosen so an UPRIGHT cylinder
+    (best cos to the sun 0.69, s = 0.93) still gets a stripe 25–30% in from its lit edge.
+89. **Metal has a colour temperature.** A neutral grey (S 0.02) was the single biggest flatness
+    tell; every approved grey metal is blue-grey (hue ~205, S 0.11–0.18). Bases: vessel
+    (0.56, 0.62, 0.72), steel (0.22, 0.28, 0.40), pale metal (0.52, 0.58, 0.70).
+90. **Line hierarchy 2:1, not 4.6:1.** Outer contour 12 px at 800 (`--contour 0.009`), interior
+    7.5 px at 1024 (~6 px at 800), fine class 3.4 px for seams and bolts. An 18 px contour over
+    4 px interiors reads as a wireframe inside a sticker.
+91. **Halftone is a core-shadow BAND.** `--dot 0.0026 --pitch 0.016 --band 0.62 --strength 0.5`:
+    dots only where the linearised mask is below 0.62, i.e. the core and deep steps; 5 px dots at
+    10 px pitch everywhere on the shadow side read as texture, not tone.
+92. **Geometry carries tone breaks.** Dished ends with an inked rim ring, weld seam rings, a
+    valve stack with a gauge, a label plate with a cast-shadow strip on the tube, saddle straps
+    where a vessel meets its cradle. Each is a place the ramp can change step.

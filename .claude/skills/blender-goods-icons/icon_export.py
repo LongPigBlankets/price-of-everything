@@ -35,6 +35,9 @@ def _crop_pad(a: np.ndarray, x0, x1, y0, y1, pad):
     return out
 
 
+BAND = [0.56]
+
+
 def stipple(rgba: np.ndarray, lit: np.ndarray, spacing: float, dot_r: float, strength: float):
     """lit: 0..1 per pixel (1 = facing the light). Three bands, constant dot size, dots are
     the ink colour blended at `strength`. Ink lines and near-navy pixels are left alone."""
@@ -50,7 +53,7 @@ def stipple(rgba: np.ndarray, lit: np.ndarray, spacing: float, dot_r: float, str
         gx = np.abs(((xx + ox) % sp) - sp / 2)
         gy = np.abs(((yy + oy) % sp) - sp / 2)
         return np.hypot(gx, gy) <= dot_r
-    b1 = lit < 0.56                       # turned away from the light: sparse grid
+    b1 = lit < BAND[0]                       # turned away from the light: sparse grid
     b2 = lit < 0.05                       # + the dual grid  (2x)
     b3 = lit < 0.05                       # + a half-spacing grid (4x)
     dots = (b1 & grid(spacing)) | (b2 & grid(spacing, spacing / 2, spacing / 2)) \
@@ -81,7 +84,7 @@ def vibrance(crop: np.ndarray, factor: float):
 
 
 def export(raw: str, out: str, size: int = 800, contour: float = 0.014, margin: float = 0.04,
-           strength: float = 0.42, vib: float = 1.0):
+           strength: float = 0.42, dot: float = 0.0036, pitch: float = 0.015, band: float = 0.56, vib: float = 1.0):
     im = Image.open(raw).convert("RGBA")
     a = np.array(im)
     mask_path = raw[:-4] + "_mask.png"
@@ -140,10 +143,11 @@ def export(raw: str, out: str, size: int = 800, contour: float = 0.014, margin: 
         crop[..., :3][seam] = INK
         crop[..., 3][seam] = 255
         ring = ring | seam                                             # protect it from stipple
+    BAND[0] = band
     if lit_full is not None:
         lit = _crop_pad(lit_full, x0, x1, y0, y1, pad)
         lit[ring] = 1.0
-        crop = stipple(crop, lit, spacing=long_side * 0.015, dot_r=long_side * 0.0036,
+        crop = stipple(crop, lit, spacing=long_side * pitch, dot_r=long_side * dot,
                        strength=strength)
     crop = vibrance(crop, vib)
     img = Image.fromarray(crop)
@@ -165,5 +169,8 @@ if __name__ == "__main__":
     ap.add_argument("--contour", type=float, default=0.014)
     ap.add_argument("--strength", type=float, default=0.42)
     ap.add_argument("--vib", type=float, default=1.0, help="colour vibrance boost, e.g. 1.4")
+    ap.add_argument("--dot", type=float, default=0.0036, help="dot radius as a fraction of the long side")
+    ap.add_argument("--pitch", type=float, default=0.015, help="dot pitch as a fraction of the long side")
+    ap.add_argument("--band", type=float, default=0.56, help="stipple where linearised mask lit < band")
     args = ap.parse_args()
-    print("exported", export(args.raw, args.out, args.size, args.contour, strength=args.strength, vib=args.vib))
+    print("exported", export(args.raw, args.out, args.size, args.contour, strength=args.strength, vib=args.vib, dot=args.dot, pitch=args.pitch, band=args.band))

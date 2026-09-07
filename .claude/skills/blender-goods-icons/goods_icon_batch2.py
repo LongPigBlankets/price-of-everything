@@ -107,8 +107,52 @@ def torus(K, name, centre, R, r, mat, seg_major=48, seg_minor=16, axis='Z'):
 
 
 # ---------------------------------------------------------------- palette (toon bases)
+# FIVE steps (review 2026-09-07 vs the approved alternates): deep 0.45 / core 0.59 / base 0.79 /
+# lit 1.0 / RIM 1.26, on thresholds of the shading factor s = world + sun*cos/pi (0.58..1.09).
+# ~20 luma apart at a lit face of ~200, with headroom above the base for a specular stripe
+# that only the faces turned almost exactly to the sun receive.
+# Thresholds are set so a VERTICAL cylinder spans all five: its best-facing normal only reaches
+# s = 0.93 (cos 0.69 to the sun), so the rim step starts at 0.91 - a stripe ~25-30% in from the
+# lit edge on uprights (the approved oxygen cylinder's specular), and every top face.
+STEPS5 = ((0.62, 0.45), (0.72, 0.59), (0.84, 0.79), (0.91, 1.00), (9.0, 1.26))
+
+
+def toon5_mat(name, colour):
+    m = bpy.data.materials.get(name)
+    if m is None:
+        m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    nt = m.node_tree; nt.nodes.clear()
+    out = nt.nodes.new("ShaderNodeOutputMaterial"); emis = nt.nodes.new("ShaderNodeEmission")
+    diff = nt.nodes.new("ShaderNodeBsdfDiffuse"); diff.inputs["Color"].default_value = (1, 1, 1, 1)
+    s2r = nt.nodes.new("ShaderNodeShaderToRGB"); ramp = nt.nodes.new("ShaderNodeValToRGB")
+    ramp.color_ramp.interpolation = 'CONSTANT'
+    els = ramp.color_ramp.elements
+    els[0].position = 0.0; els[0].color = (STEPS5[0][1],) * 3 + (1,)
+    els[1].position = STEPS5[0][0]; els[1].color = (STEPS5[1][1],) * 3 + (1,)
+    for k in range(2, len(STEPS5)):
+        e = els.new(STEPS5[k - 1][0]); e.color = (STEPS5[k][1],) * 3 + (1,)
+    mix = nt.nodes.new("ShaderNodeMix"); mix.data_type = 'RGBA'; mix.blend_type = 'MULTIPLY'
+    mix.inputs["Factor"].default_value = 1.0; mix.inputs[6].default_value = (*colour, 1.0)
+    nt.links.new(diff.outputs[0], s2r.inputs[0]); nt.links.new(s2r.outputs["Color"], ramp.inputs["Fac"])
+    nt.links.new(ramp.outputs["Color"], mix.inputs[7]); nt.links.new(mix.outputs[2], emis.inputs["Color"])
+    emis.inputs["Strength"].default_value = 1.0; nt.links.new(emis.outputs[0], out.inputs[0])
+    return m
+
+
 def P(name, rgb):
-    return toon_mat("tn_" + name, rgb)
+    return toon5_mat("tn5_" + name, rgb)
+
+
+def setup_batch_rig():
+    """The icon rig, then the reviewed line hierarchy: interior 7.5 px at 1024 (~6 px at 800),
+    fine 3.4 px for seams and bolts; the export draws the outer contour at 0.009 (~12 px)."""
+    setup_icon_rig()
+    fs = bpy.context.scene.view_layers[0].freestyle_settings
+    fs.linesets["ink"].linestyle.thickness = 7.5
+    fs.linesets["ink_fine"].linestyle.thickness = 3.4
+    if "ink_edge" in fs.linesets:
+        fs.linesets["ink_edge"].linestyle.thickness = 3.4
 
 # ---------------------------------------------------------------- PHOSPHATE
 def build_phosphate():
@@ -116,10 +160,10 @@ def build_phosphate():
     grey and muted ochre; rounded granular forms distinguish it from jagged ores.
     Round two: a ROLLED CUFF and vertical creases so it reads as cloth, not a jar; fewer,
     larger grains; calmer nodules (the noise ticks read as stray lines)."""
-    setup_icon_rig()
+    setup_batch_rig()
     col = open_collection("ICON_phosphate")
     K = Kit(col)
-    buff = P("buff", (0.62, 0.50, 0.32)); buff_lo = P("buff_lo", (0.44, 0.35, 0.22))
+    buff = P("buff", (0.60, 0.46, 0.26)); buff_lo = P("buff_lo", (0.44, 0.35, 0.22))
     grey = P("warm_grey", (0.50, 0.45, 0.36)); ochre = P("ochre", (0.60, 0.42, 0.14))
     navy = K.mat("ic_navy")
     cx, cy = -0.35, 0.25
@@ -151,38 +195,50 @@ def build_phosphate():
 def build_methane():
     """OWNER: two horizontal pressure vessels held in a simple square transport cradle.
     Desaturated white bodies, cream identification panel, compact valves at one end.
-    CH4 with the subscript on each of them."""
-    setup_icon_rig()
+    CH4 with the subscript on each of them.
+    Round five (flatness review): blue-grey bodies on the five-step ramp; dished ends with an
+    inked rim ring and a shoulder tone break; weld seam rings at thirds; valve stack with a
+    gauge on the front end; the label plate casts a shadow on the tube; saddle straps where the
+    tubes meet the cradle."""
+    setup_batch_rig()
     col = open_collection("ICON_methane")
     K = Kit(col)
-    white = P("vessel_white", (0.80, 0.80, 0.78)); cream = P("cream", (0.82, 0.76, 0.58))
-    steel = P("cradle_steel", (0.28, 0.33, 0.44)); valve = P("valve", (0.34, 0.39, 0.50))
+    white = P("vessel_white", (0.56, 0.62, 0.72)); cream = P("cream", (0.74, 0.66, 0.44))
+    steel = P("cradle_steel", (0.22, 0.28, 0.40)); valve = P("valve", (0.30, 0.36, 0.48))
+    shadow = P("vessel_shadow", (0.30, 0.34, 0.42)); dial = P("dial", (0.86, 0.84, 0.74))
     navy = K.mat("ic_navy")
     R, L = 0.42, 2.20
     xs = (-0.50, 0.50)
     zc = 0.60
     for i, x in enumerate(xs):
-        # revolve about Z then lie along Y: domed ends, straight barrel
-        prof = [(-L / 2, 0.0), (-L / 2 + 0.02, 0.30), (-L / 2 + 0.16, R), (L / 2 - 0.16, R), (L / 2 - 0.02, 0.30), (L / 2, 0.0)]
-        ob = lathe(K, "vessel%d" % i, (0, 0, 0), prof, white, levels=1, cap_top=False, cap_bottom=False)
-        ob.rotation_euler = (math.radians(90), 0, 0)      # Z -> -Y: along the Y diagonal
-        ob.location = (x, 0.0, zc)
-        # valve stack at the front (-Y) end: neck, hand-wheel, outlet
+        # barrel: a plain smooth cylinder along Y; dished ends as shallow revolves with a rim
+        K.cyl("barrel%d" % i, x, 0.0, zc, R, L - 0.30, white, axis='Y', segments=48, smooth=True)
+        for sg, nm in ((-1, "front"), (1, "back")):
+            end = lathe(K, "end_%s%d" % (nm, i), (0, 0, 0), [(0.0, 0.0), (0.02, 0.24), (0.10, 0.36), (0.16, R - 0.01)], white, levels=1, cap_top=False)
+            end.rotation_euler = (math.radians(90 if sg < 0 else -90), 0, 0)
+            end.location = (x, sg * (L / 2 - 0.15), zc)
+            K.washer("rim_%s%d" % (nm, i), (x, sg * (L / 2 - 0.15), zc), (0.0, 1.0, 0.0), R - 0.02, R + 0.025, 0.05, steel, seg=48)
+        for j, y in enumerate((-L / 6, L / 6)):      # weld seams at thirds
+            K.washer("seam%d%d" % (i, j), (x, y, zc), (0.0, 1.0, 0.0), R - 0.01, R + 0.012, 0.03, navy, seg=48)
+        # valve stack + gauge on the front end
         yf = -L / 2 - 0.02
-        K.cyl("neck%d" % i, x, yf - 0.06, zc, 0.10, 0.14, valve, axis='Y', segments=20, smooth=True)
-        K.cyl("wheel%d" % i, x, yf - 0.16, zc, 0.15, 0.05, navy, axis='Y', segments=20, smooth=True)
-        K.cyl("outlet%d" % i, x + 0.13, yf - 0.06, zc, 0.045, 0.16, valve, axis='X', segments=12, smooth=True)
-        # cream identification panel on top, with CH4 (subscript 4)
-        # a flat boss sunk into the barrel carries the panel, so the panel sits on something
+        K.cyl("neck%d" % i, x, yf - 0.05, zc, 0.11, 0.16, valve, axis='Y', segments=20, smooth=True)
+        K.cyl("wheel%d" % i, x, yf - 0.17, zc, 0.16, 0.05, navy, axis='Y', segments=20, smooth=True)
+        K.cyl("outlet%d" % i, x + 0.14, yf - 0.06, zc, 0.045, 0.18, valve, axis='X', segments=12, smooth=True)
+        K.cyl("gauge_stem%d" % i, x, yf - 0.06, zc + 0.16, 0.03, 0.14, valve, axis='Z', segments=10, smooth=True)
+        K.cyl("gauge%d" % i, x, yf - 0.10, zc + 0.30, 0.10, 0.06, valve, axis='Y', segments=20, smooth=True)
+        K.cyl("gauge_face%d" % i, x, yf - 0.135, zc + 0.30, 0.075, 0.01, dial, axis='Y', segments=20, smooth=True)
+        # label plate on a boss, with a cast-shadow strip on the tube below its shaded edges
         K.box("boss%d" % i, x, 0.05, zc + R - 0.16, 0.60, 1.14, 0.30, valve)
+        K.box("plate_shadow%d" % i, x + 0.31, 0.05, zc + R - 0.06, 0.06, 1.14, 0.16, shadow)
         K.box("panel%d" % i, x, 0.05, zc + R + 0.005, 0.56, 1.10, 0.05, cream)
-        # CH with a subscript 4: text up = +Y, so "right" is +X and "lower" is -Y
         text_face(K, "ch%d" % i, "CH", (x - 0.07, 0.05, zc + R + 0.035), 0.32, navy, (0, 0, 1), up=(0, 1, 0))
         text_face(K, "four%d" % i, "4", (x + 0.19, -0.06, zc + R + 0.035), 0.19, navy, (0, 0, 1), up=(0, 1, 0))
-    # square cradle: two long rails along Y under the vessels, cross members, four corner posts
     rail_z = zc - R - 0.10
     for i, x in enumerate(xs):
         K.box("rail%d" % i, x, 0.0, rail_z, 0.16, L - 0.10, 0.12, steel)
+        for j, y in enumerate((-L / 2 + 0.25, L / 2 - 0.25)):   # saddle straps over the tubes
+            K.washer("strap%d%d" % (i, j), (x, y, zc), (0.0, 1.0, 0.0), R + 0.01, R + 0.05, 0.10, steel, seg=48)
     for j, y in enumerate((-L / 2 + 0.25, L / 2 - 0.25)):
         K.box("cross%d" % j, 0.0, y, rail_z - 0.02, 1.50, 0.14, 0.14, steel)
         for i, x in enumerate((-0.72, 0.72)):
@@ -195,10 +251,10 @@ def build_methane():
 def build_light_oil():
     """OWNER: a tall refinery sample bottle with a broad shoulder and short neck. Pale
     straw/amber contents, large light field and a restrained dark cap."""
-    setup_icon_rig()
+    setup_batch_rig()
     col = open_collection("ICON_light_oil")
     K = Kit(col)
-    straw = P("straw", (0.90, 0.74, 0.36)); cap = P("cap_dark", (0.07, 0.09, 0.16))
+    straw = P("straw", (0.82, 0.64, 0.24)); cap = P("cap_dark", (0.07, 0.09, 0.16))
     glass_rim = P("bottle_rim", (0.86, 0.82, 0.62))
     prof = [(0.00, 0.50), (0.04, 0.62), (0.30, 0.66), (1.45, 0.66), (1.70, 0.60), (1.86, 0.40), (1.98, 0.26), (2.10, 0.24)]
     lathe(K, "bottle", (0, 0, 0), prof, straw, levels=2, cap_top=False)
@@ -215,10 +271,10 @@ def build_heavy_oil():
     Deep brown, umber and near-navy; a thick rounded fold communicates viscosity.
     Round two: ribbon is a smooth resampled tube and KEEPS its ink (its outline is what sells
     the fold); one rim; tin lifted in value against a near-navy fill with a lighter meniscus."""
-    setup_icon_rig()
+    setup_batch_rig()
     col = open_collection("ICON_heavy_oil")
     K = Kit(col)
-    tin = P("tin_umber", (0.44, 0.25, 0.10)); oil = P("oil_dark", (0.07, 0.035, 0.02)); rim = P("tin_rim", (0.52, 0.34, 0.16))
+    tin = P("tin_umber", (0.46, 0.26, 0.10)); oil = P("oil_dark", (0.07, 0.035, 0.02)); rim = P("tin_rim", (0.52, 0.34, 0.16))
     meniscus = P("oil_sheen", (0.20, 0.10, 0.05))
     prof = [(0.00, 0.70), (0.03, 0.88), (0.62, 0.90), (0.70, 0.82), (0.74, 0.74)]
     lathe(K, "tin", (0, 0, 0), prof, tin, levels=2, cap_top=False)
@@ -237,10 +293,10 @@ def build_lubricants():
     Muted mustard or red-ochre body; pale metal spout and dark amber drop.
     Round two: bell-shaped body on a foot ring, the drop's apex ON the nozzle, navy seams at
     the spout root and the base."""
-    setup_icon_rig()
+    setup_batch_rig()
     col = open_collection("ICON_lubricants")
     K = Kit(col)
-    body = P("mustard", (0.62, 0.42, 0.08)); metal = P("pale_metal", (0.62, 0.66, 0.76)); amber = P("amber_dark", (0.36, 0.16, 0.03))
+    body = P("mustard", (0.60, 0.38, 0.06)); metal = P("pale_metal", (0.52, 0.58, 0.70)); amber = P("amber_dark", (0.36, 0.16, 0.03))
     navy = K.mat("ic_navy")
     K.cyl("foot", 0, 0, 0.05, 0.62, 0.10, metal, axis='Z', segments=32, smooth=True)
     K.cyl("foot_seam", 0, 0, 0.115, 0.64, 0.025, navy, axis='Z', segments=32, smooth=True)
@@ -264,10 +320,10 @@ def build_durable_alloys():
     """OWNER: a thick forged ring resting against two short cylindrical billets. Cool grey with
     slate-blue shadow planes; broad machined faces and a very substantial cross-section. And a
     dark drill bit leaning on the ring."""
-    setup_icon_rig()
+    setup_batch_rig()
     col = open_collection("ICON_durable_alloys")
     K = Kit(col)
-    grey = P("cool_grey", (0.44, 0.49, 0.60)); slate = P("slate_blue", (0.25, 0.31, 0.44)); bit = P("bit_dark", (0.07, 0.09, 0.17))
+    grey = P("cool_grey", (0.40, 0.46, 0.60)); slate = P("slate_blue", (0.25, 0.31, 0.44)); bit = P("bit_dark", (0.07, 0.09, 0.17))
     # ring: a thick annulus standing on edge, facing the camera's left (axis along X)
     R, t, w = 0.80, 0.24, 0.40
     # a forged ring: square-section annulus (four rings of verts, no centre caps)
@@ -295,10 +351,10 @@ def build_conductive_alloys():
     """OWNER: three broad, overlapping metal strips, one gently bent upward. Copper, pale
     silver and muted gold; large colour areas and clearly visible thickness. And a cable made
     of silver wires twined together."""
-    setup_icon_rig()
+    setup_batch_rig()
     col = open_collection("ICON_conductive_alloys")
     K = Kit(col)
-    copper = P("copper", (0.62, 0.30, 0.14)); silver = P("strip_silver", (0.64, 0.68, 0.78)); gold = P("muted_gold", (0.70, 0.52, 0.18))
+    copper = P("copper", (0.64, 0.28, 0.12)); silver = P("strip_silver", (0.54, 0.60, 0.72)); gold = P("muted_gold", (0.68, 0.48, 0.14))
     t, w, L = 0.14, 0.55, 1.90
     # flat strips: boxes along Y, staggered and stacked so they overlap
     K.box("strip_copper", -0.55, 0.10, t / 2, w, L, t, copper)
@@ -326,10 +382,10 @@ def build_propane():
     terracotta/red-orange, cream band and simple central valve.
     Round two: straight walls (subsurf level 1 with a long straight cage section), one arched
     carry handle across the collar instead of two bars."""
-    setup_icon_rig()
+    setup_batch_rig()
     col = open_collection("ICON_propane")
     K = Kit(col)
-    terra = P("terracotta", (0.58, 0.20, 0.09)); cream = P("cream_band", (0.82, 0.76, 0.58)); steel = P("lpg_steel", (0.28, 0.33, 0.44))
+    terra = P("terracotta", (0.60, 0.20, 0.08)); cream = P("cream_band", (0.82, 0.76, 0.58)); steel = P("lpg_steel", (0.22, 0.28, 0.40))
     navy = K.mat("ic_navy")
     R = 0.72
     K.cyl("wall", 0, 0, 0.62, R, 1.00, terra, axis='Z', segments=40, smooth=True)
