@@ -70,7 +70,9 @@ func _run() -> void:
 	check(Tutorial.active, "tutorial boots and displays its coach")
 	var notice_bar := node_named("TopBar")
 	notice_bar._pop_research_toasts(["High Strength Glassmaking"])
-	check(notice_bar._research_toasts.is_empty(), "tutorial suppresses top left research notices")
+	check(not notice_bar._research_toasts.is_empty(), "tutorial keeps research notices visible")
+	notice_bar._evaluate_anomalies({}, {})
+	check(notice_bar._anomaly_cards.is_empty(), "tutorial suppresses money and power anomaly popups")
 	check(get_tree().current_scene._expand_public_roads(20).is_empty(), "public road growth leaves tutorial infrastructure lessons in control")
 	check(not Terminal.demo_is_unlocked(), "demo loyalty starts locked")
 	Tutorial._jump_to("ui_primer")
@@ -201,7 +203,12 @@ func _run() -> void:
 				break
 			TurnManager.commit_turn()
 			await TurnManager.turn_resolution_completed
+			if Stockpile.get_at_tile(Steps.WINDOW_REDIRECT_TILE, windows) > 0:
+				check(Tutorial.is_active_step("transport_pentagon_revert"), "shipment arrival keeps the logistics view for the animation delay")
+				break
 			await settle()
+		await get_tree().create_timer(1.1).timeout
+		Tutorial._maybe_advance()
 		check(Stockpile.get_at_tile(Steps.WINDOW_REDIRECT_TILE, windows) > 0, "real production and transport deliver windows to the destination")
 		check(Tutorial.is_active_step("margin_motivation"), "arrival advances to the next lesson")
 	check(Detectors.poll({"kind": "output_routed_to_tile", "tile": Steps.WINDOW_TILE, "building_id": "b_007", "destination": Steps.WINDOW_REDIRECT_TILE}), "margin lesson preserves the player's coastal route")
@@ -257,7 +264,16 @@ func _run() -> void:
 		await TurnManager.turn_resolution_completed
 		await settle()
 		check(Tutorial.is_active_step("glass_run" if completed_turns < 3 else "glass_profit"), "glass profit waits for settling turn %d of 3" % completed_turns)
-	Tutorial._jump_to("alu_research")
+	Tutorial._jump_to("alu_base_settle")
+	await settle()
+	for completed_turns in range(1, 4):
+		TurnManager.commit_turn()
+		await TurnManager.turn_resolution_completed
+		await settle()
+		check(Tutorial.is_active_step("alu_base_settle" if completed_turns < 3 else "alu_base_profit"), "aluminium profit waits for settling turn %d of 3" % completed_turns)
+	check(Tutorial.is_active_step("alu_base_profit"), "aluminium profit stays visible until Next")
+	await shot("tutorial_regression_alu_base_profit")
+	Tutorial._advance()
 	await settle()
 	await tap("TechButton")
 	var research := node_named("ResearchPanel")
@@ -269,10 +285,16 @@ func _run() -> void:
 	if search != null:
 		search.text = "aluminium"
 		search.text_changed.emit(search.text)
+		var hidden_view: Dictionary = research._current_view_state()
+		hidden_view["pan"] = Vector2(100000, 100000)
+		await settle()
+		check(Tutorial.is_active_step("alu_research_search"), "typing aluminium cannot advance while the research card is off screen")
+		search.text = "Bauxite Carbochlorination"
+		search.text_changed.emit(search.text)
 	await settle()
 	Tutorial._maybe_advance()
 	await settle()
-	check(Tutorial.is_active_step("alu_research_condition"), "search advances to the research explanation")
+	check(Tutorial.is_active_step("alu_research_condition"), "finding the research card advances without requiring an aluminium search")
 	check(research.tutorial_unlock_rect("Bauxite Carbochlorination").has_area(), "renovated research panel exposes the unlock spotlight")
 	await shot("tutorial_regression_research")
 	Tutorial._run_setup([{"action": "close_research"}])

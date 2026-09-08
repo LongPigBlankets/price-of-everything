@@ -33,6 +33,7 @@ const SETUP_STEPS_FROM_END := 2
 var hard_gate: bool = false  # true while a lock_panel step is up: Esc is swallowed (world_map)
 var _steps: Array = []
 var _index: int = -1
+var _completion_ready_since_ms: int = -1
 var _entry_turn: int = 0     # turn number when the current step was entered (for turn-gated beats)
 var _market_sales_seen: int = 0 # completed sales observed during this tutorial run
 var _entry_market_sales_seen: int = 0 # snapshot at the active step's entry
@@ -118,6 +119,7 @@ func _enter(i: int) -> void:
 		return
 	if _index >= _steps.size() - SETUP_STEPS_FROM_END:
 		setup_reached = true
+	_completion_ready_since_ms = -1
 	_entry_turn = TurnManager.current_turn
 	_entry_market_sales_seen = _market_sales_seen
 	_entry_market_sale_counts = _market_sale_counts.duplicate()
@@ -824,8 +826,15 @@ func _maybe_advance() -> void:
 		else:
 			done = TutorialDetectors.poll(decide)
 		if done:
+			var delay_ms := int(float(step.get("completion_delay", 0.0)) * 1000.0)
+			if _completion_ready_since_ms < 0:
+				_completion_ready_since_ms = Time.get_ticks_msec()
+			if Time.get_ticks_msec() - _completion_ready_since_ms < delay_ms:
+				return
 			_advance()
 			return
+		else:
+			_completion_ready_since_ms = -1
 	# Not yet done: a locked step keeps its panel open (re-opens it if the player
 	# closed it — the mouse is already blocked outside the spotlight, Esc is swallowed).
 	if bool(step.get("lock_panel", false)) and not released:

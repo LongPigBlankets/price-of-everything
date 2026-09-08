@@ -63,6 +63,10 @@ static func poll(decide: Dictionary) -> bool:
 			return _building_recipe_on_tile(str(decide.get("tile", "")), str(decide.get("recipe_id", "")))
 		"research_unlocked":
 			return MatchState.is_unlocked(str(decide.get("title", "")))
+		"research_visible":
+			var tree := Engine.get_main_loop() as SceneTree
+			var panel := tree.current_scene.find_child("ResearchPanel", true, false) if tree != null and tree.current_scene != null else null
+			return panel != null and panel.tutorial_research_visible(str(decide.get("title", "")))
 		"research_search_contains":
 			return _research_search_contains(str(decide.get("text", "")))
 		"research_search_nonempty":

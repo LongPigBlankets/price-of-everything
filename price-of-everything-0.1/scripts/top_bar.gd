@@ -1660,8 +1660,6 @@ func _position_research_toasts() -> void:
 ## Capped at RESEARCH_TOAST_MAX with a "+N more" flyout on the end: a turn that unlocks eight
 ## techs would otherwise curtain the map, and the briefing already lists them all.
 func _pop_research_toasts(names: Array) -> void:
-	if Tutorial.active or bool(MatchState.ruleset.get("tutorial_enabled", false)):
-		return
 	var fresh: Array[PanelContainer] = []
 	var shown := 0
 	# The cap is on what is ON SCREEN, not on this pop. Flyouts hold for five seconds, so a
@@ -3807,6 +3805,8 @@ func _anomaly_ready(id: String) -> bool:
 
 func _evaluate_anomalies(current: Dictionary, s: Dictionary) -> void:
 	_clear_anomaly_cards()
+	if Tutorial.active:
+		return
 	var money := _money_anomalies(current, s)
 	# Priority order first, then the owner's cap of two.
 	var chosen: Array = []

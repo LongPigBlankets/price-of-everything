@@ -1039,6 +1039,13 @@ func _test_tutorial_engine() -> void:
 		"tutorial: glass branch reconverges to the advisor arc after the recipe upgrade")
 	var alu_research: Dictionary = by_id.get("alu_research", {})
 	var alu_research_decide: Dictionary = (alu_research.get("done", {}) as Dictionary).get("decide", {})
+	_check(float((by_id.get("transport_pentagon_revert", {}) as Dictionary).get("completion_delay", 0.0)) == 1.0,
+		"tutorial: coastal arrival holds its animation for one second")
+	var alu_review: Dictionary = by_id.get("alu_base_profit", {})
+	_check(str(alu_review.get("advance", "")) == "next" and str(alu_review.get("body_dynamic", "")) == "last_turn_profit",
+		"tutorial: aluminium shows settled profit and waits for acknowledgement before research")
+	_check(not str((by_id.get("alu_research_condition", {}) as Dictionary).get("body", "")).contains("400 Aluminium"),
+		"tutorial: aluminium research condition reflects the current chlorine gate")
 	var alu_base_settle: Dictionary = by_id.get("alu_base_settle", {})
 	var alu_base_settle_decide: Dictionary = (alu_base_settle.get("done", {}) as Dictionary).get("decide", {})
 	var alu_search: Dictionary = by_id.get("alu_research_search", {})
@@ -1048,17 +1055,17 @@ func _test_tutorial_engine() -> void:
 	var alu_upgrade: Dictionary = by_id.get("alu_upgrade", {})
 	var alu_upgrade_decide: Dictionary = (alu_upgrade.get("done", {}) as Dictionary).get("decide", {})
 	_check(str(alu_research_decide.get("kind", "")) == "node_visible"
-		and str(alu_search_decide.get("kind", "")) == "research_search_contains"
-		and str((alu_search.get("release_overlay_when", {}) as Dictionary).get("kind", "")) == "research_search_nonempty"
+		and str(alu_search_decide.get("kind", "")) == "research_visible"
+		and bool(alu_search.get("no_dim", false))
 		and str((alu_unlock.get("spotlight", {}) as Dictionary).get("kind", "")) == "research_unlock"
 		and str(alu_unlock_decide.get("title", "")) == "Bauxite Carbochlorination"
 		and str(((by_id.get("build_alu_recipe", {}) as Dictionary).get("spotlight", {}) as Dictionary).get("ref", "")) == "RecipeRow_r_050",
 		"tutorial: aluminium branch searches and free-unlocks Carbochlorination after building the base smelter")
 	_check(not bool(alu_base_settle.get("count_step", true))
 		and str(alu_base_settle_decide.get("kind", "")) == "turns_advanced"
-		and int(alu_base_settle_decide.get("count", 0)) == 2
+		and int(alu_base_settle_decide.get("count", 0)) == 3
 		and str((alu_base_settle.get("spotlight", {}) as Dictionary).get("ref", "")) == "EndTurnButton",
-		"tutorial: aluminium Step 45 waits two full turns after local routing before Research")
+		"tutorial: aluminium waits three full turns after local routing before the profit review")
 	_check(str(alu_upgrade_decide.get("recipe_id", "")) == "r_232",
 		"tutorial: aluminium branch waits until the existing smelter has finished retooling to Carbochlorination")
 	var alu_pipe_intro: Dictionary = by_id.get("alu_diagnose_pipe", {})

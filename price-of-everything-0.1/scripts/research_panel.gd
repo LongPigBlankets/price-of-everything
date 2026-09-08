@@ -250,6 +250,13 @@ func tutorial_unlock_rect(title: String) -> Rect2:
 	return Rect2(global_position + origin + local.position * zoom, local.size * zoom).grow(8.0)
 
 
+func tutorial_research_visible(title: String) -> bool:
+	var card := tutorial_unlock_rect(title)
+	var viewport_rect := Rect2(global_position + _tree_rect().position, _tree_rect().size)
+	return (card.has_area() and viewport_rect.has_point(card.get_center())
+		and viewport_rect.intersection(card).get_area() >= card.get_area() * 0.5)
+
+
 func _search_input_rect() -> Rect2:
 	var body := _body_rect()
 	var close := _close_button_rect()

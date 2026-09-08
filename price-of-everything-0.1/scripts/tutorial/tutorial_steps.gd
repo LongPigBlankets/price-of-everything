@@ -548,6 +548,7 @@ static func steps() -> Array:
 		},
 		{
 			"id": "transport_pentagon_revert",
+			"completion_delay": 1.0,
 			"chapter": "Transport",
 			"title": "End turns to deliver the windows",
 			"body": "Click End Turn until the windows reach the coastal tile east of the factory. This step will continue when the shipment arrives.",
@@ -723,7 +724,7 @@ static func steps() -> Array:
 			"id": "buy_land",
 			"chapter": "Integration",
 			"title": "Buy the land to build on",
-			"body": "One more thing before you build: every building needs land YOU own. Your factory came with its own plot, but a furnace or smelter needs room of its own. On the factory tile's land rail, click Buy Land and buy at least %d. Land is cheap (£%d per %d units), and the bracket on the size chart shows what you own." % [
+			"body": "One more thing before you build: every building needs land YOU own. Your factory came with its own plot, but a furnace or Furnace needs room of its own. On the factory tile's land rail, click Buy Land and buy at least %d. Land is cheap (£%d per %d units), and the bracket on the size chart shows what you own." % [
 				_land_lesson_shortfall(), int(MatchState.LAND_PATCH_COST), MatchState.LAND_PATCH_SIZE],
 			"setup": [
 				{ "action": "close_building_detail" },
@@ -916,8 +917,8 @@ static func steps() -> Array:
 		{
 			"id": "build_alu_open",
 			"chapter": "Integration · Revenue",
-			"title": "Build an aluminium smelter",
-			"body": "A smelter makes %d aluminium a turn. Your factory needs %d, and the surplus %d sells each turn. Build it right here on your factory's tile: its output feeds the factory on the same tile with no shipping. We will improve this base process once it is running. Open the build tile and click Build." % [
+			"title": "Build an aluminium Furnace",
+			"body": "A Furnace makes %d aluminium a turn. Your factory needs %d, and the surplus %d sells each turn. Build it right here on your factory's tile: its output feeds the factory on the same tile with no shipping. We will improve this base process once it is running. Open the build tile and click Build." % [
 				_recipe_output_qty("r_050"),
 				_recipe_input_qty("r_056", "aluminium"),
 				maxi(0, _recipe_output_qty("r_050") - _recipe_input_qty("r_056", "aluminium")),
@@ -978,8 +979,8 @@ static func steps() -> Array:
 		{
 			"id": "alu_wait_built",
 			"chapter": "Integration · Revenue",
-			"title": "End turns until the smelter is built",
-			"body": "Keep pressing End Turn while the smelter goes up. Once it is finished, we can get its base process running and feed the factory.",
+			"title": "End turns until the Furnace is built",
+			"body": "Keep pressing End Turn while the Furnace goes up. Once it is finished, we can get its base process running and feed the factory.",
 			"setup": [ { "action": "focus_tile", "tile": ALU_TILE } ],
 			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
 			"done": {
@@ -991,8 +992,8 @@ static func steps() -> Array:
 		{
 			"id": "alu_run_base",
 			"chapter": "Integration · Revenue",
-			"title": "Let the base smelter run",
-			"body": "Keep pressing End Turn until the smelter reads Running. The Hall Heroult process can now feed the factory and sell its surplus.",
+			"title": "Let the base Furnace run",
+			"body": "Keep pressing End Turn until the Furnace reads Running. The Hall Heroult process can now feed the factory and sell its surplus.",
 			"setup": [ { "action": "focus_building_on_tile", "tile": ALU_TILE, "building_id": "b_002" } ],
 			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
 			"done": {
@@ -1005,7 +1006,7 @@ static func steps() -> Array:
 			"id": "alu_output_check",
 			"chapter": "Integration · Revenue",
 			"title": "Feed the factory before selling the surplus",
-			"body": "New buildings send output to the Market by default. In the smelter panel, open Output destination and switch it to Tile stockpile. The window factory can then take its aluminium on the same tile; only the excess becomes surplus for sale. Once it is routed, we'll give the chain two turns to settle.",
+			"body": "New buildings send output to the Market by default. In the Furnace panel, open Output destination and switch it to Tile stockpile. The window factory can then take its aluminium on the same tile; only the excess becomes surplus for sale. Once it is routed, we'll give the chain three turns to settle.",
 			"setup": [ { "action": "clear_mapmode" }, { "action": "focus_building_on_tile", "tile": ALU_TILE, "building_id": "b_002" } ],
 			"spotlight": { "kind": "node_name", "ref": "BuildingDetailPanelV2" },
 			"lock_panel": true,
@@ -1019,7 +1020,7 @@ static func steps() -> Array:
 			"id": "alu_base_settle",
 			"chapter": "Integration · Revenue",
 			"title": "Let the supply chain settle",
-			"body": "Press End Turn twice so the smelter can feed the window factory and the new margin can stabilise. Then we'll look at Research.",
+			"body": "Press End Turn three times so the Furnace can feed the window factory and the new margin can stabilise. Then check the settled profit.",
 			# This is the second phase of Step 45. It begins only after the player routes
 			# aluminium locally and stays unnumbered so Research remains Step 46.
 			"count_step": false,
@@ -1027,16 +1028,28 @@ static func steps() -> Array:
 			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
 			"done": {
 				"wake": ["turn_processed", "turn_advanced"],
-				"decide": { "kind": "turns_advanced", "count": 2 },
+				"decide": { "kind": "turns_advanced", "count": 3 },
 			},
 			"advance": "auto",
+		},
+		{
+			"id": "alu_base_profit",
+			"chapter": "Integration · Revenue",
+			"title": "Result after integration: {profit}",
+			"body": "Your last settled turn made {profit}. Check the costs and the final total. Press Next when you are ready to look for a more efficient recipe.",
+			"body_dynamic": "last_turn_profit",
+			"count_step": false,
+			"setup": [{"action": "open_money_panel"}],
+			"spotlight": {"kind": "node_name", "ref": "Flyout_treasury"},
+			"done": {"wake": [], "decide": {}},
+			"advance": "next",
 		},
 		{
 			"id": "alu_research",
 			"chapter": "Integration · Research",
 			"title": "We can improve our margins",
 			"body": "Let's improve our margins. Open the Research panel. There has to be a better way to make Aluminium.",
-			"setup": [ { "action": "clear_mapmode" } ],
+			"setup": [ { "action": "close_money_panel" }, { "action": "clear_mapmode" } ],
 			"spotlight": { "kind": "node_name", "ref": "TechButton" },
 			"done": {
 				"wake": [],
@@ -1047,15 +1060,14 @@ static func steps() -> Array:
 		{
 			"id": "alu_research_search",
 			"chapter": "Integration · Research",
-			"title": "Search for aluminium",
-			"body": "Use the Research search box and type aluminium. The highlighted Bauxite Carbochlorination process is the lower temperature Furnace route we want.",
+			"title": "Find Bauxite Carbochlorination",
+			"body": "Find Bauxite Carbochlorination in Research. You can browse the tree or use search. Bring the research card into view to continue.",
 			"setup": [],
-			"spotlight": { "kind": "node_name", "ref": "ResearchSearchInput" },
-			"release_overlay_when": { "kind": "research_search_nonempty" },
-			"lock_panel": true,
+			"spotlight": { "kind": "none" },
+			"no_dim": true,
 			"done": {
 				"wake": [],
-				"decide": { "kind": "research_search_contains", "text": "aluminium" },
+				"decide": { "kind": "research_visible", "title": "Bauxite Carbochlorination" },
 			},
 			"advance": "auto",
 		},
@@ -1063,7 +1075,7 @@ static func steps() -> Array:
 			"id": "alu_research_condition",
 			"chapter": "Integration · Research",
 			"title": "Read the condition",
-			"body": "The normal unlock condition is Produce 300 Chlorine and 400 Aluminium. It replaces some of the Hall Heroult inputs with bauxite, graphite and chlorine, using less energy.",
+			"body": "The normal unlock condition is Produce 300 Chlorine. It replaces some of the Hall Heroult inputs with bauxite, graphite and chlorine, using less energy.",
 			"setup": [],
 			"spotlight": { "kind": "research_unlock", "ref": "Bauxite Carbochlorination" },
 			"lock_panel": true,
@@ -1088,7 +1100,7 @@ static func steps() -> Array:
 			"id": "alu_upgrade",
 			"chapter": "Integration · Research",
 			"title": "Change the recipe",
-			"body": "Unlocked! Close the Tech & Research panel (press T again, or Esc), find your smelter and press Change recipe. Pick Bauxite Carbochlorination, confirm the retool, then End Turn until the change completes. We will connect its chlorine supply next.",
+			"body": "Unlocked! Close the Tech & Research panel (press T again, or Esc), find your Furnace and press Change recipe. Pick Bauxite Carbochlorination, confirm the retool, then End Turn until the change completes. We will connect its chlorine supply next.",
 			"setup": [ { "action": "clear_mapmode" } ],
 			"spotlight": { "kind": "none", "ref": "" },
 			"no_dim": true,
@@ -1115,7 +1127,7 @@ static func steps() -> Array:
 			"id": "alu_lay_pipe",
 			"chapter": "Integration · Revenue",
 			"title": "Lay the reinforced pipe",
-			"body": "Connect the smelter to Stoneshore Docks: in the tile panel's Infrastructure row, click the Reinf. pipes \"+\" to lay a reinforced pipe on this tile.",
+			"body": "Connect the Furnace to Stoneshore Docks: in the tile panel's Infrastructure row, click the Reinf. pipes \"+\" to lay a reinforced pipe on this tile.",
 			"setup": [ { "action": "focus_tile", "tile": ALU_TILE } ],
 			"spotlight": { "kind": "node_name", "ref": "InfraCell_reinf_pipes" },
 			"lock_panel": true,
@@ -1319,7 +1331,7 @@ static func _footprint(building_id: String) -> int:
 	return int(round(maxf(0.0, float(Catalog.get_building(building_id).get("tile_size_used", 1.0)))))
 
 ## The buy_land step's owned-land target: everything the tutorial ever puts on the
-## factory tile (window factory + cable + furnace/smelter + reinforced pipe),
+## factory tile (window factory + cable + furnace/Furnace + reinforced pipe),
 ## rounded up to whole patches. Footprint rebalances move the wall automatically.
 static func _land_lesson_target() -> int:
 	var patch := MatchState.LAND_PATCH_SIZE
