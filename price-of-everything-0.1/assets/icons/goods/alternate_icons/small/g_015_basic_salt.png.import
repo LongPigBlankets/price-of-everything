@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://2qcijhj03np4"
-path="res://.godot/imported/g_075_pet_coke.png-87775cba28c4facb460d9e7bc073f2bf.ctex"
+uid="uid://cvgq7hg7giqvb"
+path="res://.godot/imported/g_015_basic_salt.png-20f168cfd656ff4db33cf0e465d49cf1.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/icons/goods/alternate_icons/very_small/g_075_pet_coke.png"
-dest_files=["res://.godot/imported/g_075_pet_coke.png-87775cba28c4facb460d9e7bc073f2bf.ctex"]
+source_file="res://assets/icons/goods/alternate_icons/small/g_015_basic_salt.png"
+dest_files=["res://.godot/imported/g_015_basic_salt.png-20f168cfd656ff4db33cf0e465d49cf1.ctex"]
 
 [params]
 

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c5m0bwdoae4h5"
-path="res://.godot/imported/g_075_pet_coke.png-9164046b46c237414303539597dd747d.ctex"
+uid="uid://bh1t7dconmcv4"
+path="res://.godot/imported/g_053_wind_turbine.png-6287b2c824a34b8763b15753fa655070.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/icons/goods/alternate_icons/medium/g_075_pet_coke.png"
-dest_files=["res://.godot/imported/g_075_pet_coke.png-9164046b46c237414303539597dd747d.ctex"]
+source_file="res://assets/icons/goods/alternate_icons/small/g_053_wind_turbine.png"
+dest_files=["res://.godot/imported/g_053_wind_turbine.png-6287b2c824a34b8763b15753fa655070.ctex"]
 
 [params]
 

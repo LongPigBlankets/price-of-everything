@@ -1,10 +1,15 @@
 {
   "approved_goods": [
     "alloy_ingots",
+    "alloy_ore",
     "alumina",
     "aluminium",
     "ammonia",
+    "basic_salt",
+    "chem_salts",
+    "chlorine",
     "coal",
+    "computer",
     "concrete",
     "copper_ingots",
     "copper_ore",
@@ -13,24 +18,32 @@
     "crude_oil",
     "electrical_components",
     "ethylene",
+    "fibreglass",
     "glass",
     "graphite",
+    "high_grade_silicon",
     "hydraulic_components",
     "hydrogen",
     "ice_car",
+    "industrial_acids",
     "iron_ingots",
     "iron_ore",
     "limestone",
+    "lithium_carbonate",
+    "lithium_ore",
     "motor",
     "oxygen",
-    "pet_coke",
+    "polysilicon",
     "processed_oil",
     "refined_ree",
     "sand",
     "silica",
+    "sodium_hydroxide",
+    "solar_panel",
     "steel",
     "sulphur",
     "tyres",
+    "wind_turbine",
     "windows"
   ],
   "selection": "Approved alternate tiers first, then all main tiers. User requested all created goods use the new alternate art on 2026-09-07.",
@@ -213,33 +226,6 @@
       "path": "assets/icons/goods/alternate_icons/medium/g_011_oxygen.png",
       "source": "blender-good-icons:artifacts/goods_gases/v8/oxygen_800.png",
       "sha256": "9c965a10707581af9ed5ea35085a7639db7f53d2117ec7f54de8d531bb64ef19",
-      "installed_default": true
-    },
-    {
-      "good": "pet_coke",
-      "good_id": "g_075",
-      "tier": "medium",
-      "path": "assets/icons/goods/alternate_icons/medium/g_075_pet_coke.png",
-      "source": "blender-good-icons:artifacts/goods_simple_batch/v24/pet_coke_800.png",
-      "sha256": "3b0deedb834603ba8f807127bc64fcb4c2971e5db493c0f2cb02bc562ef24179",
-      "installed_default": true
-    },
-    {
-      "good": "processed_oil",
-      "good_id": "g_025",
-      "tier": "medium",
-      "path": "assets/icons/goods/alternate_icons/medium/g_025_processed_oil.png",
-      "source": "blender-good-icons:artifacts/goods_simple_batch/v13/processed_oil_800.png",
-      "sha256": "89f688af9a0b0f05c57a7352db0eea1b164d774aabdc31f8f319798d02d02752",
-      "installed_default": true
-    },
-    {
-      "good": "refined_ree",
-      "good_id": "g_035",
-      "tier": "medium",
-      "path": "assets/icons/goods/alternate_icons/medium/g_035_refined_ree.png",
-      "source": "blender-good-icons:artifacts/goods_simple_batch/v13/refined_ree_800.png",
-      "sha256": "b858992454def6f15bce09b5fa99e0ebb44390c0c360deabf6e9d2a457b69459",
       "installed_default": true
     },
     {
@@ -468,33 +454,6 @@
       "installed_default": true
     },
     {
-      "good": "pet_coke",
-      "good_id": "g_075",
-      "tier": "small",
-      "path": "assets/icons/goods/alternate_icons/small/g_075_pet_coke.png",
-      "source": "blender-good-icons:artifacts/goods_simple_batch/v24/pet_coke_800.png",
-      "sha256": "3df20cae5a6dd83b9da2c20f43a22a25c7127e6356242d60b84b09604b620397",
-      "installed_default": true
-    },
-    {
-      "good": "processed_oil",
-      "good_id": "g_025",
-      "tier": "small",
-      "path": "assets/icons/goods/alternate_icons/small/g_025_processed_oil.png",
-      "source": "blender-good-icons:artifacts/goods_simple_batch/v13/processed_oil_800.png",
-      "sha256": "138de9da5b65e24e7ba097c4544b5a52a1af2a4f8fc8642a031ade8c683bcb05",
-      "installed_default": true
-    },
-    {
-      "good": "refined_ree",
-      "good_id": "g_035",
-      "tier": "small",
-      "path": "assets/icons/goods/alternate_icons/small/g_035_refined_ree.png",
-      "source": "blender-good-icons:artifacts/goods_simple_batch/v13/refined_ree_800.png",
-      "sha256": "d0071cbc714385458f29f02e1a3538ab3489912cac95138a7fe2a66de82fef56",
-      "installed_default": true
-    },
-    {
       "good": "sand",
       "good_id": "g_018",
       "tier": "small",
@@ -720,33 +679,6 @@
       "installed_default": true
     },
     {
-      "good": "pet_coke",
-      "good_id": "g_075",
-      "tier": "very_small",
-      "path": "assets/icons/goods/alternate_icons/very_small/g_075_pet_coke.png",
-      "source": "blender-good-icons:artifacts/goods_simple_batch/v24/pet_coke_800.png",
-      "sha256": "3b3361c6f0b8b569c3b46c39f0caab769fe2e7985732048d106ba6e770ed742c",
-      "installed_default": true
-    },
-    {
-      "good": "processed_oil",
-      "good_id": "g_025",
-      "tier": "very_small",
-      "path": "assets/icons/goods/alternate_icons/very_small/g_025_processed_oil.png",
-      "source": "blender-good-icons:artifacts/goods_simple_batch/v13/processed_oil_800.png",
-      "sha256": "d17d8a3bb8b8d401ba6323c9d835b372cbe37e6b0354f0d23ba700dedfc4b925",
-      "installed_default": true
-    },
-    {
-      "good": "refined_ree",
-      "good_id": "g_035",
-      "tier": "very_small",
-      "path": "assets/icons/goods/alternate_icons/very_small/g_035_refined_ree.png",
-      "source": "blender-good-icons:artifacts/goods_simple_batch/v13/refined_ree_800.png",
-      "sha256": "e6f2f2409bf53f16d2f6d3990db48f339cb99267a3056f8db13111081249d8e6",
-      "installed_default": true
-    },
-    {
       "good": "sand",
       "good_id": "g_018",
       "tier": "very_small",
@@ -897,6 +829,438 @@
       "path": "assets/icons/goods/alternate_icons/very_small/g_034_alloy_ingots.png",
       "source": "blender-good-icons:artifacts/goods_alloy_graphite/v2/alloy_ingots_256.png",
       "sha256": "1e745d60a51a22ac1976002f3960aad65af22a79e972983f83789bca461c295e",
+      "installed_default": true
+    },
+    {
+      "good": "chem_salts",
+      "good_id": "g_019",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_019_chem_salts.png",
+      "source": "blender-good-icons:artifacts/goods_salts/v4/chem_salts_800.png",
+      "sha256": "46b7ab31db2cb5e08599f4e0822a21c4d631f6ff5a8b8650ef81d4542ceadffb",
+      "installed_default": true
+    },
+    {
+      "good": "chem_salts",
+      "good_id": "g_019",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_019_chem_salts.png",
+      "source": "blender-good-icons:artifacts/goods_salts/v4/chem_salts_450.png",
+      "sha256": "f6da7c6a60c16edda3930e85bfe87ad0fb023480e8f4d7818b0cf67b0f7663e3",
+      "installed_default": true
+    },
+    {
+      "good": "chem_salts",
+      "good_id": "g_019",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_019_chem_salts.png",
+      "source": "blender-good-icons:artifacts/goods_salts/v4/chem_salts_256.png",
+      "sha256": "bee6fed9477262d505b95776c17ba751ae0c35c01b6d9f2961639ac0ca1d7c36",
+      "installed_default": true
+    },
+    {
+      "good": "basic_salt",
+      "good_id": "g_015",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_015_basic_salt.png",
+      "source": "blender-good-icons:artifacts/goods_salts/v12/basic_salt_800.png",
+      "sha256": "4f6ba05c4dbac0b707b482362efc5ac34979ed140a393fe3725b2e468ce738e4",
+      "installed_default": true
+    },
+    {
+      "good": "basic_salt",
+      "good_id": "g_015",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_015_basic_salt.png",
+      "source": "blender-good-icons:artifacts/goods_salts/v12/basic_salt_450.png",
+      "sha256": "6acbeb73d916324adc87abb79ab15b008f01ea378a519bf4b7390dc4d428d873",
+      "installed_default": true
+    },
+    {
+      "good": "basic_salt",
+      "good_id": "g_015",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_015_basic_salt.png",
+      "source": "blender-good-icons:artifacts/goods_salts/v12/basic_salt_256.png",
+      "sha256": "100d781dc94a9331579db4a4991250aed79d4beb71bdb4c3139ac70882f2bdb9",
+      "installed_default": true
+    },
+    {
+      "good": "chlorine",
+      "good_id": "g_012",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_012_chlorine.png",
+      "source": "blender-good-icons:artifacts/goods_chemical_cans/v9/chlorine_800.png",
+      "sha256": "f358c14ce3dc343eddc24d6f7a524df37bffc1e56919e8492a140ea4e18a147a",
+      "installed_default": true
+    },
+    {
+      "good": "chlorine",
+      "good_id": "g_012",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_012_chlorine.png",
+      "source": "blender-good-icons:artifacts/goods_chemical_cans/v9/chlorine_450.png",
+      "sha256": "80e7e819faf7c55d27d2e3bb5850c3bb28a7a9fc6b8314d472005473e1eada7f",
+      "installed_default": true
+    },
+    {
+      "good": "chlorine",
+      "good_id": "g_012",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_012_chlorine.png",
+      "source": "blender-good-icons:artifacts/goods_chemical_cans/v9/chlorine_256.png",
+      "sha256": "4e882d0ef21f0b1982c53e66013f85f0c9aef196e07e39b83562f597bef889bc",
+      "installed_default": true
+    },
+    {
+      "good": "processed_oil",
+      "good_id": "g_025",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_025_processed_oil.png",
+      "source": "blender-good-icons:artifacts/goods_processed_oil/v2/processed_oil_800.png",
+      "sha256": "fc6ee62c096b18f9c948a00274a8423773146f15776bc904272bc0f49d0213d7",
+      "installed_default": true
+    },
+    {
+      "good": "processed_oil",
+      "good_id": "g_025",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_025_processed_oil.png",
+      "source": "blender-good-icons:artifacts/goods_processed_oil/v2/processed_oil_450.png",
+      "sha256": "34e6d0b8d8eaaae872c9809102ff97b943b1f0998e6cc832897b50b38d5560a3",
+      "installed_default": true
+    },
+    {
+      "good": "processed_oil",
+      "good_id": "g_025",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_025_processed_oil.png",
+      "source": "blender-good-icons:artifacts/goods_processed_oil/v2/processed_oil_256.png",
+      "sha256": "1df9282398e25b000905819d5e96b2dd73dcdd286fc4634834eae7f7e90af22f",
+      "installed_default": true
+    },
+    {
+      "good": "sodium_hydroxide",
+      "good_id": "g_013",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_013_sodium_hydroxide.png",
+      "source": "blender-good-icons:artifacts/goods_chemical_cans/v19/sodium_hydroxide_800.png",
+      "sha256": "9477d0e37792fc51d2e7cf9db8a569b4249681103521c3cd10a79741cdd73007",
+      "installed_default": true
+    },
+    {
+      "good": "sodium_hydroxide",
+      "good_id": "g_013",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_013_sodium_hydroxide.png",
+      "source": "blender-good-icons:artifacts/goods_chemical_cans/v19/sodium_hydroxide_450.png",
+      "sha256": "003fa56036649f77496e734e6145c68c2dd9749f273e201af0f31b1a2eed79a1",
+      "installed_default": true
+    },
+    {
+      "good": "sodium_hydroxide",
+      "good_id": "g_013",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_013_sodium_hydroxide.png",
+      "source": "blender-good-icons:artifacts/goods_chemical_cans/v19/sodium_hydroxide_256.png",
+      "sha256": "ab20dd45cb415c6fedff11436db92aad3a3ae53d2d1e61782f68a23f2c184066",
+      "installed_default": true
+    },
+    {
+      "good": "industrial_acids",
+      "good_id": "g_065",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_065_industrial_acids.png",
+      "source": "blender-good-icons:artifacts/goods_industrial_acids/v3/industrial_acids_800.png",
+      "sha256": "0d08e52369e50a3f1e47699955db0988c8ccb9583cc3530460481c9ba8180a1d",
+      "installed_default": true
+    },
+    {
+      "good": "industrial_acids",
+      "good_id": "g_065",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_065_industrial_acids.png",
+      "source": "blender-good-icons:artifacts/goods_industrial_acids/v3/industrial_acids_450.png",
+      "sha256": "186babc02b29e8b1c63bae6d14cdabad73415aee2630d01e326c52d3c993ca2b",
+      "installed_default": true
+    },
+    {
+      "good": "industrial_acids",
+      "good_id": "g_065",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_065_industrial_acids.png",
+      "source": "blender-good-icons:artifacts/goods_industrial_acids/v3/industrial_acids_256.png",
+      "sha256": "15148bfc8c9b47405bbb59fde0a615ec589d0db0a1c18cd0ed2a77624a001fb7",
+      "installed_default": true
+    },
+    {
+      "good": "lithium_ore",
+      "good_id": "g_050",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_050_lithium_ore.png",
+      "source": "blender-good-icons:artifacts/goods_lithium_ore/v10/lithium_ore_800.png",
+      "sha256": "bfafc005823c728042fa7aacfbee19dcffaabdfb562e97d80eb86b3133d42045",
+      "installed_default": true
+    },
+    {
+      "good": "lithium_ore",
+      "good_id": "g_050",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_050_lithium_ore.png",
+      "source": "blender-good-icons:artifacts/goods_lithium_ore/v10/lithium_ore_450.png",
+      "sha256": "866b4bc3e356066d87b8215ac1c031a85e2d92a3f2100c03d2e847d598561f69",
+      "installed_default": true
+    },
+    {
+      "good": "lithium_ore",
+      "good_id": "g_050",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_050_lithium_ore.png",
+      "source": "blender-good-icons:artifacts/goods_lithium_ore/v10/lithium_ore_256.png",
+      "sha256": "7d58a433ff26330041e9907d75a953198d8e1ec0b15efc66acda343a66e9dbb2",
+      "installed_default": true
+    },
+    {
+      "good": "refined_ree",
+      "good_id": "g_035",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_035_refined_ree.png",
+      "source": "blender-good-icons:artifacts/goods_ree_solar_alloy/v5/refined_ree_800.png",
+      "sha256": "42b64aa398a9937075bc08a3047d2729fbd7a7a11b7b5dd76b34c93b461cd71d",
+      "installed_default": true
+    },
+    {
+      "good": "refined_ree",
+      "good_id": "g_035",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_035_refined_ree.png",
+      "source": "blender-good-icons:artifacts/goods_ree_solar_alloy/v5/refined_ree_450.png",
+      "sha256": "6e4c51a6f7d347855cf248688933073747ec137cb35c4af95e44437cfd2f90ed",
+      "installed_default": true
+    },
+    {
+      "good": "refined_ree",
+      "good_id": "g_035",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_035_refined_ree.png",
+      "source": "blender-good-icons:artifacts/goods_ree_solar_alloy/v5/refined_ree_256.png",
+      "sha256": "df59aece52c865e5b5269fc47eb65b9bf4cba67f867f9d6c2260a994ca8fba86",
+      "installed_default": true
+    },
+    {
+      "good": "solar_panel",
+      "good_id": "g_054",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_054_solar_panel.png",
+      "source": "blender-good-icons:artifacts/goods_ree_solar_alloy/v5/solar_panel_800.png",
+      "sha256": "62ad0706613bd447b027b5d9b9ac67a43568bf66d237ac3899afde1c80827f96",
+      "installed_default": true
+    },
+    {
+      "good": "solar_panel",
+      "good_id": "g_054",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_054_solar_panel.png",
+      "source": "blender-good-icons:artifacts/goods_ree_solar_alloy/v5/solar_panel_450.png",
+      "sha256": "d68456ae53d63b0266362f51272d40bdcd26741c015064d7b3f16f9b8bd16e50",
+      "installed_default": true
+    },
+    {
+      "good": "solar_panel",
+      "good_id": "g_054",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_054_solar_panel.png",
+      "source": "blender-good-icons:artifacts/goods_ree_solar_alloy/v5/solar_panel_256.png",
+      "sha256": "8063c2897a5c86d63504b7eb5fbd6a0895c51e53e0dd441fa62ec2284909c6bf",
+      "installed_default": true
+    },
+    {
+      "good": "alloy_ore",
+      "good_id": "g_037",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_037_alloy_ore.png",
+      "source": "blender-good-icons:artifacts/goods_ree_solar_alloy/v5/alloy_ore_800.png",
+      "sha256": "57f4ceb2071a81907f1a468104486accab490ac40f945ab63256ee8f20f3a2af",
+      "installed_default": true
+    },
+    {
+      "good": "alloy_ore",
+      "good_id": "g_037",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_037_alloy_ore.png",
+      "source": "blender-good-icons:artifacts/goods_ree_solar_alloy/v5/alloy_ore_450.png",
+      "sha256": "5e87133202a510eb2548edc86ffd2e31febbdf0c616cf9e450f8b8eb9f73085d",
+      "installed_default": true
+    },
+    {
+      "good": "alloy_ore",
+      "good_id": "g_037",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_037_alloy_ore.png",
+      "source": "blender-good-icons:artifacts/goods_ree_solar_alloy/v5/alloy_ore_256.png",
+      "sha256": "e36ad467f7726884647510c39f3bc5cb4799aff82feba40bb62cb9ff28b36222",
+      "installed_default": true
+    },
+    {
+      "good": "wind_turbine",
+      "good_id": "g_053",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_053_wind_turbine.png",
+      "source": "blender-good-icons:artifacts/goods_wind_turbine/v12/wind_turbine_800.png",
+      "sha256": "6b9699939cb51f4fdc7087cefd2735b71344df7c094c0b3ae73fe961abcf51b1",
+      "installed_default": true
+    },
+    {
+      "good": "wind_turbine",
+      "good_id": "g_053",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_053_wind_turbine.png",
+      "source": "blender-good-icons:artifacts/goods_wind_turbine/v12/wind_turbine_450.png",
+      "sha256": "0ae26fd3458193e35cc5f77c742462ba96cc95d85c5e4f882313710b104583d7",
+      "installed_default": true
+    },
+    {
+      "good": "wind_turbine",
+      "good_id": "g_053",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_053_wind_turbine.png",
+      "source": "blender-good-icons:artifacts/goods_wind_turbine/v12/wind_turbine_256.png",
+      "sha256": "2ef0950e3cd9db100c03e2927667e630a8b3f45a56eeac620e3467da9e2c0228",
+      "installed_default": true
+    },
+    {
+      "good": "computer",
+      "good_id": "g_042",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_042_computer.png",
+      "source": "blender-good-icons:artifacts/goods_computer/v8/computer_800.png",
+      "sha256": "0b5dc418ff32afb6f96817ab17bb0a4dbf7262547c4a988dd096e823ac3d713e",
+      "installed_default": true
+    },
+    {
+      "good": "computer",
+      "good_id": "g_042",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_042_computer.png",
+      "source": "blender-good-icons:artifacts/goods_computer/v8/computer_450.png",
+      "sha256": "db5cb67cacfca0f1cbdd72cc4fecbcb890f5e47106b4cf08d33606dc5b035a03",
+      "installed_default": true
+    },
+    {
+      "good": "computer",
+      "good_id": "g_042",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_042_computer.png",
+      "source": "blender-good-icons:artifacts/goods_computer/v8/computer_256.png",
+      "sha256": "6bc891d054b46b46aec119cd21ac0765c54780dba48691f6520f4b820ad40827",
+      "installed_default": true
+    },
+    {
+      "good": "polysilicon",
+      "good_id": "g_048",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_048_polysilicon.png",
+      "source": "blender-good-icons:artifacts/goods_silicon/v3/polysilicon_800.png",
+      "sha256": "e426a2fc54a1c63662ee9f38a54d2c112ecdfffb735314aecdefa92ffd184a97",
+      "installed_default": true
+    },
+    {
+      "good": "polysilicon",
+      "good_id": "g_048",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_048_polysilicon.png",
+      "source": "blender-good-icons:artifacts/goods_silicon/v3/polysilicon_450.png",
+      "sha256": "1da1560726ed503753913a12209222160db62e61ba9656b67eebc1d0a578d68f",
+      "installed_default": true
+    },
+    {
+      "good": "polysilicon",
+      "good_id": "g_048",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_048_polysilicon.png",
+      "source": "blender-good-icons:artifacts/goods_silicon/v3/polysilicon_256.png",
+      "sha256": "c63f3e2d49947b47230d2015c2406e825cc79706d1d2be865592593fe4e8bbc4",
+      "installed_default": true
+    },
+    {
+      "good": "high_grade_silicon",
+      "good_id": "g_049",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_049_high_grade_silicon.png",
+      "source": "blender-good-icons:artifacts/goods_silicon/v3/high_grade_silicon_800.png",
+      "sha256": "8e834030c6834e806bcb3ce840dfbbc03d258f5fcee8bf6fac7c6dca338d876f",
+      "installed_default": true
+    },
+    {
+      "good": "high_grade_silicon",
+      "good_id": "g_049",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_049_high_grade_silicon.png",
+      "source": "blender-good-icons:artifacts/goods_silicon/v3/high_grade_silicon_450.png",
+      "sha256": "22c305744e1aef3498c3ffbe54a2cec1ff953c6795649a362b77c2530038d4de",
+      "installed_default": true
+    },
+    {
+      "good": "high_grade_silicon",
+      "good_id": "g_049",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_049_high_grade_silicon.png",
+      "source": "blender-good-icons:artifacts/goods_silicon/v3/high_grade_silicon_256.png",
+      "sha256": "9a6e02757408e5055a1722f6818c87c46a77c31534c4ed9ddef2aa76907473b3",
+      "installed_default": true
+    },
+    {
+      "good": "fibreglass",
+      "good_id": "g_058",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_058_fibreglass.png",
+      "source": "blender-good-icons:artifacts/goods_fibreglass_lithium/v2/fibreglass_800.png",
+      "sha256": "a5682784e9d7bf30282ded75d80eacad601fb5babe461d3b4948370041e072ed",
+      "installed_default": true
+    },
+    {
+      "good": "fibreglass",
+      "good_id": "g_058",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_058_fibreglass.png",
+      "source": "blender-good-icons:artifacts/goods_fibreglass_lithium/v2/fibreglass_450.png",
+      "sha256": "a8130e4c44e53f66ee579bfddeed8ed7681c9ad2b5f2c77a02f714b86c365915",
+      "installed_default": true
+    },
+    {
+      "good": "fibreglass",
+      "good_id": "g_058",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_058_fibreglass.png",
+      "source": "blender-good-icons:artifacts/goods_fibreglass_lithium/v2/fibreglass_256.png",
+      "sha256": "f178e2c5986a0dfa327dc4e9fc258842f39e4be8d61229b9bcf322722371b94a",
+      "installed_default": true
+    },
+    {
+      "good": "lithium_carbonate",
+      "good_id": "g_051",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_051_lithium_carbonate.png",
+      "source": "blender-good-icons:artifacts/goods_fibreglass_lithium/v13/lithium_carbonate_800.png",
+      "sha256": "9b147cb5152f6ce03cb19bd526b0c693e7ab12770cd6cbe071fa35df2eceded0",
+      "installed_default": true
+    },
+    {
+      "good": "lithium_carbonate",
+      "good_id": "g_051",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_051_lithium_carbonate.png",
+      "source": "blender-good-icons:artifacts/goods_fibreglass_lithium/v13/lithium_carbonate_450.png",
+      "sha256": "93ebc80a30f6e51090e9daaae55632089b28bac57fe09e301454ed05adb1782d",
+      "installed_default": true
+    },
+    {
+      "good": "lithium_carbonate",
+      "good_id": "g_051",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_051_lithium_carbonate.png",
+      "source": "blender-good-icons:artifacts/goods_fibreglass_lithium/v13/lithium_carbonate_256.png",
+      "sha256": "2130593d03df65afb84a1d55fa4af09ff02366a4d17b38e1bda128cea033d9c5",
       "installed_default": true
     }
   ]

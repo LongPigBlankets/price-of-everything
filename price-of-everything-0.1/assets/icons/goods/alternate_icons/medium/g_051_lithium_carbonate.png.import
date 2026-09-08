@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dqs3cjmsa7koh"
-path="res://.godot/imported/g_075_pet_coke.png-ab6e89834b2021e590f7ed5a07f1230b.ctex"
+uid="uid://cjoeel6w86t3k"
+path="res://.godot/imported/g_051_lithium_carbonate.png-092e470f7cd3f707b39d36810292ef1b.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/icons/goods/alternate_icons/small/g_075_pet_coke.png"
-dest_files=["res://.godot/imported/g_075_pet_coke.png-ab6e89834b2021e590f7ed5a07f1230b.ctex"]
+source_file="res://assets/icons/goods/alternate_icons/medium/g_051_lithium_carbonate.png"
+dest_files=["res://.godot/imported/g_051_lithium_carbonate.png-092e470f7cd3f707b39d36810292ef1b.ctex"]
 
 [params]
 
