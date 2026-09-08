@@ -57,3 +57,25 @@ The completed coastal delivery lesson now clears its delivered windows after the
 Carbochlorination now requires 17 bauxite instead of 20. Its 3 graphite, 20 chlorine, 20 aluminium output, electricity demand and labour are unchanged. In the later ten-turn sample, its chain cash profit rises to £13.41 per turn against Hall Heroult's £6.98: an improvement of £6.43, meeting the requested £6 to £7 target. The harness asserts that band. Early-period retained cash is £25.07 versus £21.06 (about £4.01 more after taxes and dividends); the gross operating improvement is similar, but the earlier profitable company pays more tax and dividends. After the logged £7.34 loan repayment, the later clean chain would retain about £6.07 before any advisors.
 
 Port fee rates are unchanged. The pre-change snapshot is `data/balance_baselines/2026-09-08_pre-carbochlorination.csv`. The live `recipes_all.csv` is edited directly because `build_recipes_all.py` explicitly identifies itself as a retired bootstrap, refuses to run, and would remove this recipe and reset existing balance values.
+
+
+## Approved output increase
+
+| Recipe | Previous aluminium output | New output |
+| --- | ---: | ---: |
+| Hall Heroult | 20 | 22 |
+| Bauxite Carbochlorination | 20 | 22 |
+| ELYSIS Aluminium | 15 | 18 |
+| Direct Carbothermic Electrolysis | 24 | 26 |
+
+ELYSIS rounds its increase upward to an even output. Its three alloy ingots remain part of the recipe. These are the primary smelting routes and their later Metallurgy unlocks.
+
+The higher sales put both tutorial chains further into tax and dividend payments. With the preceding 17-bauxite Carbochlorination recipe, the retained cash advantage narrowed to £4.12. Reducing its bauxite input to 15 restores the previous £6 to £7 improvement target. The final later-period comparison is £20.98 per turn for Hall Heroult and £27.53 for Carbochlorination, a £6.55 improvement. In the earlier period the figures are £30.64 and £37.02, a £6.38 improvement. These include operating costs, pipe upkeep, market freight, taxes and dividends, but exclude loans, advisors and construction finance, as in the controlled comparison above.
+
+Both later recipes also completed the normal UI build-handler path headlessly and ten sampled production turns at Stoneshore Docks with market inputs and grid power. ELYSIS averaged £143.87 sales and £35.80 cash profit per sampled turn; Direct Carbothermic averaged £197.17 sales and £32.93 cash profit. These samples begin with first production and include startup effects, so they are not steady-state rankings against the tutorial chain.
+
+Snapshot: `data/balance_baselines/2026-09-08_pre-aluminium-output.csv`. The economic harness still checks the £6 to £7 advantage and now exits with failure rather than leaving a process running when that condition fails.
+
+Output follow-up verification: 3,834 Godot unit checks passed and 557 scripts passed the parse sweep. The separate Python validator reports 16 existing issues in the untouched legacy root `data/goods.csv` and `data/recipes.csv`; it does not validate the live Godot recipe pool changed here.
+
+The final 100-turn simulation passed all 723 checks.

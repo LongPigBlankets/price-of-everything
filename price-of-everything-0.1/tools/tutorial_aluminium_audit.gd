@@ -18,7 +18,10 @@ func _ready() -> void:
 	var hall: Dictionary = results[4].totals
 	var carbo: Dictionary = results[5].totals
 	var improvement := float(carbo.money_in) - float(carbo.money_out) - (float(hall.money_in) - float(hall.money_out))
-	assert(improvement >= 6.0 and improvement <= 7.0, "Carbochlorination should add £6 to £7 after chain overhead at tutorial-era fees")
+	if improvement < 6.0 or improvement > 7.0:
+		push_error("Carbochlorination should add £6 to £7 after chain overhead at tutorial-era fees; got %.2f" % improvement)
+		get_tree().quit(1)
+		return
 	print("[aluminium audit] upgrade improvement: £%.2f per turn" % improvement)
 	var file := FileAccess.open("/tmp/tutorial-aluminium-audit.json", FileAccess.WRITE)
 	file.store_string(JSON.stringify(results, "\t"))
