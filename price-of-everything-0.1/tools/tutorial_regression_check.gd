@@ -73,6 +73,45 @@ func _run() -> void:
 	await settle()
 	check(node_named("ConstructButton") != null and node_named("PeopleButton") != null, "top and bottom bar tutorial targets survive")
 	await shot("tutorial_regression_primer")
+	for target in ["TransportModule", "PowerModule", "RankingsModule", "GoodsGraphModule", "EncyclopediaButton"]:
+		check(node_named(target) != null, target + " tutorial annotation resolves")
+	Tutorial._advance()
+	await settle()
+	check(Tutorial.is_active_step("tile_basics_select"), "tile lesson waits for a selection")
+	MatchState.focus_tile_requested.emit(Steps.MOTOR_TILE)
+	await settle()
+	check(Tutorial.is_active_step("tile_basics_land"), "opening a tile advances to its Land Chart")
+	check(Tutorial._overlay.spotlight_ok(), "Land Chart spotlight resolves")
+	Tutorial._advance()
+	await settle()
+	check(Tutorial.is_active_step("tile_basics_features") and Tutorial._overlay.spotlight_ok(), "tile features lesson highlights the panel")
+	Tutorial._advance()
+	await settle()
+	check(Tutorial.is_active_step("recipe_inputs_intro"), "tile lessons return to the recipe introduction")
+	Tutorial._jump_to("capital_motor_route")
+	await settle()
+	check(Tutorial._overlay.spotlight_ok(), "motor recipe spotlight resolves at top of building panel")
+	Tutorial._jump_to("capital_port_costs")
+	await settle()
+	check(Tutorial._overlay.spotlight_ok(), "port terms spotlight resolves")
+	# Inspect actual displayed rows, including every sea-freight class in both tables.
+	var throughput_rows := 0
+	for label: Label in get_tree().current_scene.find_children("*", "Label", true, false):
+		if label.is_visible_in_tree() and label.text.begins_with("Throughput:"):
+			throughput_rows += 1
+			check(label.size.x >= 100.0, "port throughput label keeps a readable width")
+	check(throughput_rows == 12, "port shows six freight classes in current terms and rate card")
+	Tutorial._jump_to("goto_tile")
+	await settle()
+	MatchState.focus_tile_requested.emit(Steps.WINDOW_TILE)
+	await settle()
+	check(Tutorial.is_active_step("build_open"), "factory tile selection opens the next construction lesson")
+	await tap("BLBuildButton")
+	await tap("RecipeRow_r_056")
+	check(Tutorial.is_active_step("build_cost") and Tutorial._overlay.spotlight_ok(), "window recipe highlights construction materials")
+	await shot("tutorial_regression_materials")
+	Tutorial._run_setup([{"action": "close_construct"}, {"action": "close_building_detail"}])
+	BuildMode.exit_build_mode()
 	# Fixture: completed early purchase and loan lessons, with enough cash to check
 	# both alternative construction branches in one run.
 	MatchState.money = 5000.0

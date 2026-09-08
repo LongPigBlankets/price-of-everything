@@ -205,6 +205,7 @@ func _ready() -> void:
 	_test_start_labour_preset()
 	_test_telemetry_schema3_row()
 	_test_telemetry_interactions()
+	_test_demo_tutorial_diagnostic_lights()
 	_test_build_forecast()
 	_test_construct_v3_sim()
 	_test_construct_v3_ds()
@@ -548,7 +549,7 @@ func _test_tutorial_engine() -> void:
 	for i in range(ids.find("ui_primer") + 1, ids.find("goto_tile")):
 		if bool((steps[i] as Dictionary).get("count_step", true)):
 			opening_beats += 1
-	_check(opening_beats == 9, "tutorial: two recipe diagrams and seven counted Capital beats precede the old tutorial")
+	_check(opening_beats == 12, "tutorial: three tile lessons, two recipe diagrams and seven counted Capital beats precede the factory lesson")
 	var output_route_step: Dictionary = by_id.get("capital_motor_route", {})
 	_check(ids.find("capital_motor_route") == ids.find("capital_motor_open") + 1
 		and ids.find("capital_motor_watch") == ids.find("capital_motor_route") + 1
@@ -10818,7 +10819,7 @@ func _test_construct_v3_1_iteration() -> void:
 	# every header/value column centred (owner 2026-08-26).
 	var mat_icon: Control = diagram.get_parent().find_child("*", false, false)   # placeholder, replaced below
 	var icon_row: HBoxContainer = null
-	for child in panel._content.get_children():
+	for child in panel.find_child("ConstructionMaterialsSection", true, false).get_children():
 		if child is HBoxContainer and (child as HBoxContainer).get_child_count() >= 4 \
 				and (child as HBoxContainer).get_child(0) is Control \
 				and not ((child as HBoxContainer).get_child(0) is Label):
@@ -21251,3 +21252,13 @@ func _test_telemetry_interactions() -> void:
 	telemetry.import_state(saved)
 	_check(telemetry._events.size() == 2, "interaction telemetry: restores interaction history")
 	telemetry.free()
+
+func _test_demo_tutorial_diagnostic_lights() -> void:
+	var readout = load("res://scripts/building_readout.gd")
+	_check(readout.diagnostic_led_tone([{"tone": "ok"}, {"tone": "warn"}]) == "ok", "tile LED: green tolerates one amber alongside green")
+	_check(readout.diagnostic_led_tone([{"tone": "ok"}, {"tone": "warn"}, {"tone": "warn"}]) == "warn", "tile LED: multiple amber diagnostics need attention")
+	_check(readout.diagnostic_led_tone([{"tone": "warn"}]) == "warn", "tile LED: all amber stays amber")
+	_check(readout.diagnostic_led_tone([{"tone": "ok"}, {"tone": "warn"}, {"tone": "bad"}]) == "bad", "tile LED: any red diagnostic wins")
+	var steps: Array = load("res://scripts/tutorial/tutorial_steps.gd").steps()
+	var ids: Array = steps.map(func(step: Dictionary) -> String: return str(step.id))
+	_check(ids.find("tile_basics_select") == ids.find("ui_primer") + 1 and ids.find("recipe_inputs_intro") == ids.find("tile_basics_features") + 1, "tutorial: tile lessons lead back into the existing recipe flow")

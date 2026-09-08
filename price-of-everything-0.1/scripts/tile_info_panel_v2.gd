@@ -262,6 +262,7 @@ func _populate_land_rail() -> void:
 
 	# Chart fills all leftover space. Expanded: pushed to the left (less padding).
 	_land_chart = LAND_CHART.new()
+	_land_chart.name = "TileLandChart"
 	_land_chart.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN if _rail_expanded else Control.SIZE_SHRINK_CENTER
 	_land_chart.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_land_chart.segment_clicked.connect(_on_chart_segment_clicked)
@@ -2945,7 +2946,7 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 		cost_header.add_theme_font_size_override("font_size", 13)
 		cost_header.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
 		info.add_child(cost_header)
-		# Bottom row: cost per unit, with the two status pills to its right (solo only —
+		# Bottom row: cost per unit, with the diagnostic lamp to its right (solo only —
 		# a group aggregates buildings whose statuses can differ).
 		var bottom_row := HBoxContainer.new()
 		bottom_row.add_theme_constant_override("separation", 8)
@@ -3227,86 +3228,24 @@ const _BrushedCard := preload("res://scripts/brushed_card.gd")
 # ── Status pills: Running/Stalled/Starting + power source (owner 2026-07-10,
 # replacing the 5-dot RAG strip on building cards) ──────────────────────────────
 
-## Vector plug (two prongs, body, cable) for the power pill.
-class _PlugIcon extends Control:
-	var color := Color.WHITE
-	func _init(c: Color) -> void:
-		color = c
-		custom_minimum_size = Vector2(16, 19)
-		size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-	func _draw() -> void:
-		var w := size.x
-		var h := size.y
-		draw_line(Vector2(w * 0.34, 0.5), Vector2(w * 0.34, h * 0.29), color, 2.2, true)
-		draw_line(Vector2(w * 0.66, 0.5), Vector2(w * 0.66, h * 0.29), color, 2.2, true)
-		draw_rect(Rect2(w * 0.15, h * 0.29, w * 0.70, h * 0.37), color)
-		draw_line(Vector2(w * 0.5, h * 0.66), Vector2(w * 0.5, h * 0.85), color, 2.2, true)
-		draw_line(Vector2(w * 0.5, h * 0.85), Vector2(w * 0.18, h * 0.97), color, 2.2, true)
-
-func _pill(tint: Color, tip: String) -> PanelContainer:
-	var p := PanelContainer.new()
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(tint, 0.13)
-	sb.border_color = Color(tint, 0.55)
-	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(10)
-	sb.content_margin_left = 9
-	sb.content_margin_right = 9
-	sb.content_margin_top = 2
-	sb.content_margin_bottom = 2
-	p.add_theme_stylebox_override("panel", sb)
-	p.tooltip_text = tip
-	# PASS: hover tooltips work while clicks still reach the card underneath.
-	p.mouse_filter = Control.MOUSE_FILTER_PASS
-	p.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	return p
-
-func _pill_label(text: String, tint: Color) -> Label:
-	var l := Label.new()
-	l.text = text
-	l.add_theme_font_size_override("font_size", 11)
-	l.add_theme_color_override("font_color", tint)
-	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return l
-
-## The two-pill status row: Running/Stalled/Starting + how the building is
-## powered (green ⚡ own network / amber plug grid / red plug unpowered).
-## NPC-owned buildings get no pills — a rival's operations aren't yours to read.
+## One lamp summarises the BDP diagnostic rows for player-owned buildings.
 func _make_status_pills(b: Dictionary) -> Control:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var holder := HBoxContainer.new()
+	holder.mouse_filter = Control.MOUSE_FILTER_PASS
 	var inst := MatchState.get_building(str(b.get("instance_id", "")))
-	if not inst.is_empty() and not MatchState.is_player_owned(inst):
-		return row
-	var act := str(b.get("activity", ""))
-	if act != "":
-		var spec: Array = {
-			"running": [DS.PALETTE.OK, "Running", "Produced last turn"],
-			"stalled": [DS.PALETTE.DANGER, "Stalled", "Didn't run — starved, paused or mined out"],
-			"starting": [DS.PALETTE.WARN, "Starting", "No production yet — first run pending"],
-		}.get(act, [])
-		if not spec.is_empty():
-			var pill := _pill(spec[0], str(spec[2]))
-			pill.add_child(_pill_label(str(spec[1]), spec[0]))
-			row.add_child(pill)
-	match str(b.get("power_status", "muted")):
-		"ok":
-			var pill := _pill(DS.PALETTE.OK, "Powered by your own network")
-			var bolt := _pill_label("⚡", DS.PALETTE.OK)
-			bolt.add_theme_font_size_override("font_size", 12)
-			pill.add_child(bolt)
-			row.add_child(pill)
-		"warn":
-			var pill := _pill(DS.PALETTE.WARN, "Powered from the grid")
-			pill.add_child(_PlugIcon.new(DS.PALETTE.WARN))
-			row.add_child(pill)
-		"problem":
-			var pill := _pill(DS.PALETTE.DANGER, "Unpowered")
-			pill.add_child(_PlugIcon.new(DS.PALETTE.DANGER))
-			row.add_child(pill)
-	return row
+	if inst.is_empty() or not MatchState.is_player_owned(inst):
+		return holder
+	var recipe := Catalog.get_recipe(str(inst.get("recipe_id", "")))
+	var data := Catalog.get_building(str(inst.get("building_id", "")))
+	var rows := BuildingReadout.diagnostics(inst, recipe, data, str(data.get("category", "")).to_lower() == "infrastructure")
+	var tone := BuildingReadout.diagnostic_led_tone(rows)
+	var led := StatusLed.new()
+	led.name = "BuildingDiagnosticsLed"
+	led.lit = true
+	led.color = DS.PALETTE.DANGER if tone == "bad" else (DS.PALETTE.WARN if tone == "warn" else DS.PALETTE.OK)
+	holder.tooltip_text = "Building diagnostics: " + {"bad": "critical issue", "warn": "needs attention", "ok": "healthy"}[tone]
+	holder.add_child(led)
+	return holder
 
 func _make_metric_line(label_text: String, value: String, value_color: Color) -> HBoxContainer:
 	var row := HBoxContainer.new()

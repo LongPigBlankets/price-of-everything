@@ -378,7 +378,7 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 		else:
 			rows.append(_row("warn", "clock", "Starting", "All inputs received and powered — production begins next turn."))
 	elif needs_power and power_c == BuildingStatus.STATUS_RED:
-		rows.append(_row("bad", "warn", "Critical fault", "No power reaching this building — the recipe halts."))
+		rows.append(_row("bad", "warn", "Critical fault", "This building doesn't have power. It can't run."))
 	elif has_inputs and input_c == BuildingStatus.STATUS_RED:
 		rows.append(_row("bad", "warn", "Cannot run", "Not enough inputs to run the recipe this turn."))
 	elif missing:
@@ -403,7 +403,7 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 		var st := str(pw.get("state", "none"))
 		var amt := int(pw.get("amount", 0))
 		if st == "none":
-			rows.append(_row("bad", "bolt", "Unpowered", "No power reaching this building — the recipe halts."))
+			rows.append(_row("bad", "bolt", "Unpowered", "This building doesn't have power. It can't run."))
 		elif st == "ready":
 			rows.append(_row("warn", "bolt", "Ready to draw power", "%d MW ready to draw from the grid once it runs." % amt))
 		else:
@@ -1088,3 +1088,16 @@ static func _routes_to_tile(producer: Dictionary, output: Dictionary, tile_id: S
 			and MatchState.sell_mode == MatchState.SellMode.STOCKPILE_ALL:
 		return true
 	return false
+
+## Roll up the same diagnostic rows the BDP displays into a tile-card lamp.
+static func diagnostic_led_tone(rows: Array) -> String:
+	var amber := 0
+	var green := 0
+	for row: Dictionary in rows:
+		match str(row.get("tone", "info")):
+			"bad": return "bad"
+			"warn": amber += 1
+			"ok": green += 1
+	if amber > 1 or (amber > 0 and green == 0):
+		return "warn"
+	return "ok"

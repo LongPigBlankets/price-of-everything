@@ -1482,10 +1482,13 @@ func _render_confirm_v3() -> void:
 			_content.add_child(_v3_cash_timeline())
 		_content.add_child(_v3_cash_facts_row())
 
-	_content.add_child(_section_label("MATERIALS"))
+	var materials := VBoxContainer.new()
+	materials.name = "ConstructionMaterialsSection"
+	_content.add_child(materials)
+	materials.add_child(_section_label("MATERIALS"))
 	for row in _v3_material_rows():
-		_content.add_child(row)
-	_content.add_child(_v3_materials_totals())
+		materials.add_child(row)
+	materials.add_child(_v3_materials_totals())
 
 	# The recipe survives, demoted below the decision bands: reference material,
 	# not part of the verdict (owner 2026-08-26: shown open, not behind a tap —
