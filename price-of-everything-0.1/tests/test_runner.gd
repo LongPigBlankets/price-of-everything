@@ -1087,8 +1087,8 @@ func _test_tutorial_engine() -> void:
 		alu_profit_actions.append(str((alu_profit_action as Dictionary).get("action", "")))
 	_check(not bool(alu_settle.get("count_step", true))
 		and str(alu_settle_decide.get("kind", "")) == "turns_advanced"
-		and int(alu_settle_decide.get("count", 0)) == 2,
-		"tutorial: after Step 52 the aluminium recipe gets exactly two unnumbered settling turns")
+		and int(alu_settle_decide.get("count", 0)) == 3,
+		"tutorial: after Step 52 the aluminium recipe gets exactly three unnumbered settling turns")
 	_check(str(alu_profit.get("body_dynamic", "")) == "last_turn_profit"
 		and str(alu_profit.get("mode", "")) == "annotate"
 		and not alu_profit_targets.is_empty()
