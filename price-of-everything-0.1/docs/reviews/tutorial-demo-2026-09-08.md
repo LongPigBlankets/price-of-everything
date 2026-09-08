@@ -11,7 +11,7 @@ Port metric columns both wrap within their allocated width, avoiding the long va
 Validation:
 - Parse sweep: 556 scripts, zero failures.
 - Unit suite: 3,748 passed, zero failed, including the LED aggregation rules and lesson ordering.
-- Expanded live tutorial regression: 91 checks, zero failures, including the new tile lessons, spotlights, six freight classes in both tables, both construction branches, research and advisor flow.
+- Expanded live tutorial regression: 100 checks, zero failures, including the new tile lessons, spotlights, six freight classes in both tables, both construction branches, research and advisor flow.
 - Standard end-to-end scenario through turn 100: 723 assertions passed, zero failed.
 - Visual review: HUD annotations, Land Chart, tile overview, motor recipe, port terms and construction-materials highlight.
 
@@ -20,3 +20,5 @@ The existing authored-map staleness and shutdown resource-leak warnings still ap
 Cable-step follow-up: `lay_cable_factory` previously waited for `SourcingBuyButton` to appear, but infrastructure now sources materials directly from the construction setting. It now checks for a cable construction project or completed cables on the factory tile and routes directly to `run_until_running`. The live regression clicks the real cable button, verifies rejection with insufficient funds does not advance, verifies a successful order advances, and verifies re-entering the step with an existing order recovers automatically.
 
 Routing follow-up: output-destination cards consume mouse-down before calling actions that can hide the panel. This prevents the opening click from selecting the map tile underneath. The destination lesson ends on routing to the named coastal tile, followed by a separate End Turn spotlight that waits for windows in that destination stockpile. Step 25 splits its dash-separated sentence with a full stop. The live regression uses press/release input for both the destination option and the map tile, then runs actual production and transport through arrival. Test telemetry is disabled in the harness.
+
+Integration and encyclopedia follow-up: the diagram names Polymerisation Refinery, and the margin, cost, supply-chain and encyclopedia lessons use the requested shorter copy without dash-separated sentences. Encyclopedia prose and captions use the shared 14px body size and off-white text on dark surfaces. The margin lesson no longer changes the output route silently. After browsing the encyclopedia, the player must select Global market before the separate shipment-sale lesson begins. Its completion filters for windows from the factory tile while allowing any travel duration, so another factory or good cannot complete it. The live regression verifies the unchanged coastal route, actual Market selection, unrelated-sale rejection, actual window sale, and encyclopedia body style. Unit suite: 3,748 passed; parse sweep: 556 scripts with zero failures.

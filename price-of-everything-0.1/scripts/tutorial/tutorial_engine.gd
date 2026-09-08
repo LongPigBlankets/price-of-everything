@@ -774,6 +774,8 @@ func _on_market_sale_completed(sale: Dictionary) -> void:
 	for item in sale.get("items", []):
 		var key := _sale_key(tile_id, str(item.get("good_id", "")), turns)
 		_market_sale_counts[key] = int(_market_sale_counts.get(key, 0)) + 1
+		var any_duration := _sale_key(tile_id, str(item.get("good_id", "")), -1)
+		_market_sale_counts[any_duration] = int(_market_sale_counts.get(any_duration, 0)) + 1
 	_maybe_advance()
 
 
@@ -817,7 +819,7 @@ func _maybe_advance() -> void:
 			done = _market_sales_seen > _entry_market_sales_seen
 		elif str(decide.get("kind", "")) == "filtered_market_sale_since_entry":
 			var good := Catalog.get_good_by_internal_name(str(decide.get("good", "")))
-			var key := _sale_key(str(decide.get("tile", "")), str(good.get("id", "")), int(decide.get("turns", 0)))
+			var key := _sale_key(str(decide.get("tile", "")), str(good.get("id", "")), int(decide.get("turns", -1)))
 			done = int(_market_sale_counts.get(key, 0)) > int(_entry_market_sale_counts.get(key, 0))
 		else:
 			done = TutorialDetectors.poll(decide)

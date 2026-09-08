@@ -790,8 +790,8 @@ func _test_tutorial_engine() -> void:
 	var margin_action_names: Array = []
 	for margin_action in margin_setup_actions:
 		margin_action_names.append(str((margin_action as Dictionary).get("action", "")))
-	_check("route_building_outputs_to_market" in margin_action_names,
-		"tutorial: Step 26 restores market routing after the completed delivery lesson")
+	_check("route_building_outputs_to_market" not in margin_action_names,
+		"tutorial: integration lesson leaves the output route for the player to change")
 	var port_tile_ids: Array = []
 	for tutorial_port in Catalog.all_ports():
 		port_tile_ids.append(str((tutorial_port as Dictionary).get("tile_id", "")))
@@ -1142,9 +1142,8 @@ func _test_tutorial_engine() -> void:
 	_check(kit_cost == panel_cost,
 		"tutorial: build_cost matches the Build confirm panel figure (£%d vs £%d)" % [kit_cost, panel_cost])
 	_check(kit_cost > 0, "tutorial: live factory build cost remains available to tutorial references")
-	var win_price: String = TutorialSteps._good_price_text("windows")
-	_check(str((by_id.get("margin_motivation", {}) as Dictionary).get("body", "")).contains("£%s" % win_price),
-		"tutorial: margin_motivation quotes the live window price (£%s)" % win_price)
+	_check(str((by_id.get("margin_motivation", {}) as Dictionary).get("body", "")).contains("The solution is vertical integration."),
+		"tutorial: margin lesson explains integration without a precise price claim")
 	var glass_qty: int = TutorialSteps._recipe_input_qty("r_056", "glass")
 	_check(glass_qty > 0 and str((by_id.get("choose_integration", {}) as Dictionary).get("body", "")).contains("%d units" % glass_qty),
 		"tutorial: choose_integration quotes the live glass quantity (%d)" % glass_qty)
@@ -1185,7 +1184,7 @@ func _test_tutorial_engine() -> void:
 		"tutorial: alu_lay_pipe spotlights the reinforced-pipe cell")
 	var settle_done: Dictionary = ((by_id.get("revenue_settle", {}) as Dictionary).get("done", {}) as Dictionary)
 	var settle_decide: Dictionary = settle_done.get("decide", {})
-	_check(str(settle_decide.get("kind", "")) == "market_sale_completed_since_entry",
+	_check(str(settle_decide.get("kind", "")) == "filtered_market_sale_since_entry" and str(settle_decide.get("good", "")) == "windows" and str(settle_decide.get("tile", "")) == TutorialSteps.WINDOW_TILE,
 		"tutorial: money lesson waits for a shipment to reach market, not a hard-coded turn")
 	_check(bool((by_id.get("revenue_settle", {}) as Dictionary).get("no_dim", false)),
 		"tutorial: shipment wait keeps the map unobstructed")

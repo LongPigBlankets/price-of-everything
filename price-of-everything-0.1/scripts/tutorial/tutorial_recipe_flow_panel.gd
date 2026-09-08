@@ -210,7 +210,7 @@ func _build() -> void:
 	buttons.add_child(_next)
 
 func _build_recipe_items() -> void:
-	_recipe_items["refinery"] = _make_icon_item("Petrochemical Refinery",
+	_recipe_items["refinery"] = _make_icon_item("Polymerisation Refinery",
 		BuildingIcon.clean_texture("b_013", "poly_plant"), 100, 100, 210, false, true)
 	_recipe_items["ethylene"] = _make_icon_item("Ethylene",
 		GoodIcons.texture_for("g_024", "ethylene"), 60, 70)

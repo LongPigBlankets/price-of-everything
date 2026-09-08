@@ -62,7 +62,7 @@ func tap(id: String) -> void:
 
 func shot(name: String) -> void:
 	if DisplayServer.get_name() != "headless":
-		await RenderingServer.frame_post_draw
+		RenderingServer.force_draw()
 		get_viewport().get_texture().get_image().save_png("/tmp/" + name + ".png")
 
 func _run() -> void:
@@ -196,6 +196,43 @@ func _run() -> void:
 			await settle()
 		check(Stockpile.get_at_tile(Steps.WINDOW_REDIRECT_TILE, windows) > 0, "real production and transport deliver windows to the destination")
 		check(Tutorial.is_active_step("margin_motivation"), "arrival advances to the next lesson")
+	check(Detectors.poll({"kind": "output_routed_to_tile", "tile": Steps.WINDOW_TILE, "building_id": "b_007", "destination": Steps.WINDOW_REDIRECT_TILE}), "margin lesson preserves the player's coastal route")
+	Tutorial._jump_to("explore_encyclopedia")
+	await settle()
+	var encyclopedia := node_named("SearchOverlay")
+	encyclopedia.open_encyclopedia_good(str(Catalog.get_good_by_internal_name("glass").get("id", "")))
+	await settle()
+	await shot("tutorial_regression_encyclopedia_glass")
+	encyclopedia.open_encyclopedia_entry("building_economics")
+	await settle()
+	for body: RichTextLabel in encyclopedia.find_children("*", "RichTextLabel", true, false):
+		if body.is_visible_in_tree():
+			check(body.get_theme_color("default_color") == DS.PALETTE["TEXT"], "encyclopedia body uses off-white text")
+			check(body.get_theme_font_size("normal_font_size") == DS.FS["CAPTION"], "encyclopedia body matches tutorial and diagnostic size")
+	await shot("tutorial_regression_encyclopedia_body")
+	encyclopedia.hide()
+	Tutorial._jump_to("revenue_route_market")
+	await settle()
+	check(Tutorial.is_active_step("revenue_route_market"), "market lesson waits for the player to change the route")
+	await tap("OutputDestCard")
+	var market_card: Control = null
+	for label: Label in node_named("ActionSheet").find_children("*", "Label", true, false):
+		if label.text == "Global market":
+			market_card = label.get_parent().get_parent().get_parent()
+	check(market_card != null, "Global market option is available")
+	if market_card != null:
+		await click_at(market_card.get_global_rect().get_center())
+	check(Tutorial.is_active_step("revenue_settle"), "selecting Market advances to the sale wait")
+	Tutorial._on_market_sale_completed({"tile_id": Steps.MOTOR_TILE, "items": [{"good_id": str(Catalog.get_good_by_internal_name("windows").get("id", ""))}]})
+	Tutorial._on_market_sale_completed({"tile_id": Steps.WINDOW_TILE, "items": [{"good_id": str(Catalog.get_good_by_internal_name("motor").get("id", ""))}]})
+	check(Tutorial.is_active_step("revenue_settle"), "unrelated goods or factories cannot complete the window sale lesson")
+	for turn in range(8):
+		if not Tutorial.is_active_step("revenue_settle"):
+			break
+		TurnManager.commit_turn()
+		await TurnManager.turn_resolution_completed
+		await settle()
+	check(Tutorial.is_active_step("money_open"), "a real window sale completes the market arrival lesson")
 	Tutorial._jump_to("alu_research")
 	await settle()
 	await tap("TechButton")
