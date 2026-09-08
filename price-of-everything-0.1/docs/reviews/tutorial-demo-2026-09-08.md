@@ -11,10 +11,12 @@ Port metric columns both wrap within their allocated width, avoiding the long va
 Validation:
 - Parse sweep: 556 scripts, zero failures.
 - Unit suite: 3,748 passed, zero failed, including the LED aggregation rules and lesson ordering.
-- Expanded live tutorial regression: 80 checks, zero failures, including the new tile lessons, spotlights, six freight classes in both tables, both construction branches, research and advisor flow.
+- Expanded live tutorial regression: 91 checks, zero failures, including the new tile lessons, spotlights, six freight classes in both tables, both construction branches, research and advisor flow.
 - Standard end-to-end scenario through turn 100: 723 assertions passed, zero failed.
 - Visual review: HUD annotations, Land Chart, tile overview, motor recipe, port terms and construction-materials highlight.
 
 The existing authored-map staleness and shutdown resource-leak warnings still appear in the live harness; this follow-up does not alter map bakes or rendering resource lifetimes.
 
 Cable-step follow-up: `lay_cable_factory` previously waited for `SourcingBuyButton` to appear, but infrastructure now sources materials directly from the construction setting. It now checks for a cable construction project or completed cables on the factory tile and routes directly to `run_until_running`. The live regression clicks the real cable button, verifies rejection with insufficient funds does not advance, verifies a successful order advances, and verifies re-entering the step with an existing order recovers automatically.
+
+Routing follow-up: output-destination cards consume mouse-down before calling actions that can hide the panel. This prevents the opening click from selecting the map tile underneath. The destination lesson ends on routing to the named coastal tile, followed by a separate End Turn spotlight that waits for windows in that destination stockpile. Step 25 splits its dash-separated sentence with a full stop. The live regression uses press/release input for both the destination option and the map tile, then runs actual production and transport through arrival. Test telemetry is disabled in the harness.

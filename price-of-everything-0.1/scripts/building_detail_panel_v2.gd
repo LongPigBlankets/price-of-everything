@@ -2491,6 +2491,8 @@ func _dest_option(title: String, detail: String, active: bool, on_press: Callabl
 	card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	card.gui_input.connect(func(e: InputEvent) -> void:
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			# The callback can hide this sheet and expose the map during this event.
+			card.accept_event()
 			on_press.call())
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", DS.SP["SM"])

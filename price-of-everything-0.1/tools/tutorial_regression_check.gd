@@ -16,6 +16,7 @@ func _ready() -> void:
 		_capper = true
 		return
 	Paths._base = "/tmp/poe-tutorial-regression"
+	TelemetryState.enabled = false
 	var cap: Node = (load("res://tools/tutorial_regression_check.gd") as GDScript).new()
 	get_tree().root.add_child.call_deferred(cap)
 	SaveLoad.prepare_new_game("res://data/starts/tutorial.json")
@@ -160,6 +161,41 @@ func _run() -> void:
 		for iid in Construction.construction_projects.keys():
 			Construction.cancel(str(iid))
 		await settle()
+	# Start routing through the actual input pipeline: the card closes on mouse-down,
+	# so its release must not select the map tile underneath the dismissed panel.
+	get_tree().current_scene.tutorial_install_infrastructure([Steps.WINDOW_TILE], "cables")
+	for input in Catalog.get_recipe("r_056").get("inputs", []):
+		Stockpile.add(Steps.WINDOW_TILE, str(input.get("good_id", "")), int(input.get("qty", 0)) * 8)
+	Tutorial._jump_to("transport_redirect_open")
+	await settle()
+	await tap("OutputDestCard")
+	check(Tutorial.is_active_step("transport_redirect_pick"), "output sheet advances to destination selection")
+	var ship_card: Control = null
+	for label: Label in node_named("ActionSheet").find_children("*", "Label", true, false):
+		if label.text == "Ship to another tile":
+			ship_card = label.get_parent().get_parent().get_parent()
+	check(ship_card != null, "ship-to-tile choice exists")
+	if ship_card != null:
+		await click_at(ship_card.get_global_rect().get_center())
+		check(not MatchState.pending_output_stockpile_selection.is_empty(), "opening map picker does not automatically choose the tile underneath")
+		check(Tutorial.is_active_step("transport_redirect_pick"), "selection step waits for a separate map click")
+		var terrain: Node2D = get_tree().current_scene.terrain_layer
+		var coord: Vector2i = terrain.id_to_coord(Steps.WINDOW_REDIRECT_TILE)
+		var destination: Vector2 = terrain.get_global_transform_with_canvas() * terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))
+		await click_at(destination)
+		check(Detectors.poll({"kind": "output_routed_to_tile", "tile": Steps.WINDOW_TILE, "building_id": "b_007", "destination": Steps.WINDOW_REDIRECT_TILE}), "map click routes windows to the named coastal tile")
+		check(Tutorial.is_active_step("transport_pentagon_revert"), "destination click advances immediately to the delivery step")
+		check(Tutorial._overlay.spotlight_ok(), "delivery lesson highlights End Turn")
+		var windows := str(Catalog.get_good_by_internal_name("windows").get("id", ""))
+		check(Stockpile.get_at_tile(Steps.WINDOW_REDIRECT_TILE, windows) == 0, "delivery lesson starts before any windows arrive")
+		for turn in range(8):
+			if not Tutorial.is_active_step("transport_pentagon_revert"):
+				break
+			TurnManager.commit_turn()
+			await TurnManager.turn_resolution_completed
+			await settle()
+		check(Stockpile.get_at_tile(Steps.WINDOW_REDIRECT_TILE, windows) > 0, "real production and transport deliver windows to the destination")
+		check(Tutorial.is_active_step("margin_motivation"), "arrival advances to the next lesson")
 	Tutorial._jump_to("alu_research")
 	await settle()
 	await tap("TechButton")
@@ -227,3 +263,15 @@ func _run() -> void:
 
 	print("[tutorial regression] %d checks, %d failures" % [checks, failures])
 	get_tree().quit(0 if failures == 0 else 1)
+
+func click_at(position: Vector2) -> void:
+	get_viewport().warp_mouse(position)
+	for pressed in [true, false]:
+		var event := InputEventMouseButton.new()
+		event.button_index = MOUSE_BUTTON_LEFT
+		event.position = position
+		event.global_position = position
+		event.pressed = pressed
+		get_viewport().push_input(event, true)
+		await get_tree().process_frame
+	await settle()

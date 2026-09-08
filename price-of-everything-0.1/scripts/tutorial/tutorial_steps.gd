@@ -507,7 +507,7 @@ static func steps() -> Array:
 			"id": "transport_redirect_open",
 			"chapter": "Transport",
 			"title": "You choose where output goes",
-			"body": "Selling to the market is only the default. A building can ship its output anywhere you own a stockpile — that's how you'll feed factories from your own mines later. Open your factory's Output destination.",
+			"body": "Selling to the market is only the default. A building can ship its output anywhere you own a stockpile. That's how you'll feed factories from your own mines later. Open your factory's Output destination.",
 			"setup": [
 				{ "action": "close_empire_view" },
 				{ "action": "focus_building_on_tile", "tile": WINDOW_TILE, "building_id": "b_007" },
@@ -549,11 +549,10 @@ static func steps() -> Array:
 		{
 			"id": "transport_pentagon_revert",
 			"chapter": "Transport",
-			"title": "Watch the windows arrive",
+			"title": "End turns to deliver the windows",
 			"body": "Click End Turn until the windows reach the coastal tile east of the factory. This step will continue when the shipment arrives.",
 			"setup": [ { "action": "open_logistics" } ],
-			"spotlight": { "kind": "none", "ref": "" },
-			"no_dim": true,
+			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
 			"done": {
 				"wake": ["turn_advanced", "turn_processed", "transport_shipments_changed", "stockpile_changed"],
 				"decide": {
