@@ -723,7 +723,7 @@ static func steps() -> Array:
 			"id": "buy_land",
 			"chapter": "Integration",
 			"title": "Buy the land to build on",
-			"body": "One more thing before you build: every building needs land YOU own. Your factory came with its own plot, but a furnace or smelter needs room of its own. On the factory tile's land rail, click Buy Land and buy at least %d — land is cheap (£%d per %d units), and the bracket on the size chart shows what you own." % [
+			"body": "One more thing before you build: every building needs land YOU own. Your factory came with its own plot, but a furnace or smelter needs room of its own. On the factory tile's land rail, click Buy Land and buy at least %d. Land is cheap (£%d per %d units), and the bracket on the size chart shows what you own." % [
 				_land_lesson_shortfall(), int(MatchState.LAND_PATCH_COST), MatchState.LAND_PATCH_SIZE],
 			"setup": [
 				{ "action": "close_building_detail" },
@@ -799,7 +799,7 @@ static func steps() -> Array:
 			"id": "glass_sell",
 			"chapter": "Integration · Margin",
 			"title": "Turn windows into cash",
-			"body": "Your furnace takes a couple of turns to build, and until it feeds the factory your margin stays wafer-thin. Don't let finished windows pile up — switch on 'Sell all Surplus every turn' on the factory tile. Each turn it ships them to market for cash while you integrate.",
+			"body": "It takes a few turns. But while we wait, let's sell the surplus accumulating in the tile stockpile. This will only sell unreserved units that buildings aren't consuming so there's no harm in it.",
 			"setup": [ { "action": "focus_tile_stock", "tile": WINDOW_TILE } ],
 			"spotlight": { "kind": "node_name", "ref": "SellSurplusToggle" },
 			"lock_panel": true,
@@ -813,7 +813,7 @@ static func steps() -> Array:
 			"id": "glass_wait_built",
 			"chapter": "Integration · Margin",
 			"title": "End turns until the furnace is built",
-			"body": "Keep pressing End Turn while the furnace goes up — a couple of turns. Once it's finished, we'll see why it still can't make a single sheet of glass.",
+			"body": "Keep pressing End Turn until the Furnace is built. Materials need to arrive on tile and then construction will take 3 turns.",
 			"setup": [ { "action": "focus_tile", "tile": GLASS_TILE } ],
 			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
 			"done": {
@@ -854,7 +854,7 @@ static func steps() -> Array:
 			"id": "glass_run",
 			"chapter": "Integration · Margin",
 			"title": "Let the profit settle",
-			"body": "The pipe is being laid, and the furnace will now send its glass to the tile stockpile for the window factory. Press End Turn twice so the new supply chain has two full turns to settle.",
+			"body": "The pipe is being laid, and the furnace will now send its glass to the tile stockpile for the window factory. Press End Turn three times so the new supply chain has three full turns to settle.",
 			"setup": [
 				{ "action": "close_building_detail" },
 				{
@@ -865,7 +865,7 @@ static func steps() -> Array:
 			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
 			"done": {
 				"wake": ["turn_processed", "turn_advanced"],
-				"decide": { "kind": "turns_advanced", "count": 2 },
+				"decide": { "kind": "turns_advanced", "count": 3 },
 			},
 			"advance": "auto",
 		},
@@ -875,7 +875,7 @@ static func steps() -> Array:
 			"title": "Profit after integration: {profit}",
 			"body": "Your last settled turn made {profit}. Bringing glass in-house improved the margin, but we can do better. Next, unlock a more efficient glass recipe.",
 			"body_dynamic": "last_turn_profit",
-			# This is the result phase of Step 46, after its two required turns. Keeping it
+			# This is the result phase of Step 46, after its three required turns. Keeping it
 			# unnumbered makes the following Research instruction Step 47.
 			"count_step": false,
 			"setup": [ { "action": "close_building_detail" } ],
@@ -899,9 +899,9 @@ static func steps() -> Array:
 		{
 			"id": "glass_upgrade",
 			"chapter": "Integration · Research",
-			"title": "Switch recipes — your turn",
-			"body": "Unlocked! Now do it yourself, no hand-holding. Close the Tech & Research panel (press T again, or Esc), then find your factory tile and click it, select the Furnace, press 'Change recipe' and pick High Strength Glassmaking. Confirm the retool — it pauses the furnace a few turns — then End Turn until it's running the new recipe. Watch the profit jump.",
-			"setup": [ { "action": "clear_mapmode" } ],
+			"title": "Change the recipe",
+			"body": "Now select the Furnace and change the recipe to High Strength Glassmaking.",
+			"setup": [ { "action": "clear_mapmode" }, { "action": "close_research" }, { "action": "focus_tile", "tile": GLASS_TILE } ],
 			"spotlight": { "kind": "none", "ref": "" },
 			"no_dim": true,
 			# Rejoin at the Advisors chapter, not the finale — jumping straight to
@@ -1087,7 +1087,7 @@ static func steps() -> Array:
 		{
 			"id": "alu_upgrade",
 			"chapter": "Integration · Research",
-			"title": "Switch recipes — your turn",
+			"title": "Change the recipe",
 			"body": "Unlocked! Close the Tech & Research panel (press T again, or Esc), find your smelter and press Change recipe. Pick Bauxite Carbochlorination, confirm the retool, then End Turn until the change completes. We will connect its chlorine supply next.",
 			"setup": [ { "action": "clear_mapmode" } ],
 			"spotlight": { "kind": "none", "ref": "" },
@@ -1174,7 +1174,7 @@ static func steps() -> Array:
 			"id": "advisors_explain",
 			"chapter": "Advisors",
 			"title": "These are the positions, not the people",
-			"body": "Every row here is a SEAT you can fill, and each seat pulls on a different part of the business. A CFO wants someone good with numbers — they manage your loans and your tax bill better than you will. A COO wants someone process-driven — they bring down labour and maintenance, the two costs you cannot integrate away. The same person is rarely right for both, so read the seat first and the candidate second. Look through the rest of the positions after the tutorial to see what each one governs.",
+			"body": "These are the seats you can fill. Seats can be filled by any advisor but some advisors will be more suited to a role than others. Select an advisor to check their skills.",
 			"setup": [ { "action": "open_people_panel" } ],
 			"spotlight": { "kind": "node_name", "ref": "PeoplePanel" },
 			"lock_panel": true,

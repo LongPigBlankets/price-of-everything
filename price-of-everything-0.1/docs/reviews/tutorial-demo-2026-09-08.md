@@ -11,7 +11,7 @@ Port metric columns both wrap within their allocated width, avoiding the long va
 Validation:
 - Parse sweep: 556 scripts, zero failures.
 - Unit suite: 3,750 passed, zero failed, including the LED aggregation rules and lesson ordering.
-- Expanded live tutorial regression: 104 checks, zero failures, including the new tile lessons, spotlights, six freight classes in both tables, both construction branches, research and advisor flow.
+- Expanded live tutorial regression: 107 checks, zero failures, including the new tile lessons, spotlights, six freight classes in both tables, both construction branches, research and advisor flow.
 - Standard end-to-end scenario through turn 100: 723 assertions passed, zero failed.
 - Visual review: HUD annotations, Land Chart, tile overview, motor recipe, port terms and construction-materials highlight.
 
@@ -26,3 +26,5 @@ Integration and encyclopedia follow-up: the diagram names Polymerisation Refiner
 Finance and glass-selection follow-up: the books lesson uses the requested operating-cost and power copy, with the gross-profit and net-profit equations on separate rows. Expansion loans now require any principal strictly above £200, with unit checks at £200 and £200.50; a real £250 loan advances the live tutorial. Loan terms and integration/glass lessons use the requested concise copy. The glass recipe spotlight waits for expanded-card layout and centres its row in the scroll viewport. The live regression verifies that the entire row is visible before clicking and captures the revised books panel.
 
 Final finance follow-up validation: 3,750 unit checks passed; 104 live tutorial checks passed; 556 scripts passed the parse sweep.
+
+Surplus, settling and advisor follow-up: the land lesson uses a full stop, and the surplus, furnace construction, recipe-change and advisor-seat lessons use the requested copy. Glass integration waits three turns rather than two before displaying the profit result. The live regression checks that the result remains hidden after turns one and two and appears after turn three. The recipe-change lesson closes Research and returns to the factory tile so the Furnace can be selected. Live tutorial regression: 107 checks, zero failures.

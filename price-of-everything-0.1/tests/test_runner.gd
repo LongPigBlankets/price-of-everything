@@ -999,9 +999,9 @@ func _test_tutorial_engine() -> void:
 		glass_settle_action_names.append(str((glass_settle_action as Dictionary).get("action", "")))
 	_check(bool(glass_settle.get("count_step", true))
 		and str(glass_settle_decide.get("kind", "")) == "turns_advanced"
-		and int(glass_settle_decide.get("count", 0)) == 2
+		and int(glass_settle_decide.get("count", 0)) == 3
 		and "route_building_outputs_to_tile" in glass_settle_action_names,
-		"tutorial: Step 46 locally routes glass and waits exactly two turns for profit to settle")
+		"tutorial: Step 46 locally routes glass and waits exactly three turns for profit to settle")
 	var profit_step: Dictionary = by_id.get("glass_profit", {})
 	var summary_before_profit_copy: Dictionary = Production.last_turn_summary.duplicate(true)
 	Production.last_turn_summary = {"money_in": 73.5, "money_out": 28.25}

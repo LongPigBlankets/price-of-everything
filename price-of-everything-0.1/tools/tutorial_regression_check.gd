@@ -247,6 +247,13 @@ func _run() -> void:
 	check(LoanState.take_loan(250.0), "player can choose a loan above 200")
 	await settle()
 	check(Tutorial.is_active_step("money_loan_terms"), "chosen loan advances to its terms")
+	Tutorial._jump_to("glass_run")
+	await settle()
+	for completed_turns in range(1, 4):
+		TurnManager.commit_turn()
+		await TurnManager.turn_resolution_completed
+		await settle()
+		check(Tutorial.is_active_step("glass_run" if completed_turns < 3 else "glass_profit"), "glass profit waits for settling turn %d of 3" % completed_turns)
 	Tutorial._jump_to("alu_research")
 	await settle()
 	await tap("TechButton")
