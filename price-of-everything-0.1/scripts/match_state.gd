@@ -5197,10 +5197,13 @@ func seaport_base_fee(port_tile: String) -> float:
 		return 0.0
 	return maxf(0.0, Modifiers.apply("port_per_turn_fee", "port", EconomyConfig.SEAPORT_BASE_FEE_PER_GOOD))
 
+func keeps_introductory_port_rate() -> bool:
+	# The saved origin survives completing the coach, which clears tutorial_enabled.
+	return str(ruleset.get("name", "")) == "tutorial" or bool(ruleset.get("tutorial_enabled", false))
+
 func seaport_insurance_rate(port_tile: String) -> float:
-	# Turn-scheduled ad valorem: cheap while the player is learning, real from t31. Owning the
-	# port still halves it. Research relief rides the same port_ad_valorem_fee domain.
-	var base := EconomyConfig.seaport_ad_valorem_rate(TurnManager.current_turn)
+	# Tutorial games retain the introductory rate permanently. Ownership and research apply.
+	var base := EconomyConfig.seaport_ad_valorem_rate(TurnManager.current_turn, keeps_introductory_port_rate())
 	if is_seaport_player_owned(port_tile):
 		base *= EconomyConfig.OWNED_SEAPORT_AD_VALOREM_SHARE
 	return maxf(0.0, Modifiers.apply("port_ad_valorem_fee", "port", base))

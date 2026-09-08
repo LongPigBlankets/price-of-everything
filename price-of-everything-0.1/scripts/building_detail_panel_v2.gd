@@ -812,8 +812,11 @@ func _build_port_card(building: Dictionary) -> PanelContainer:
 			vb.add_child(_port_activity_row(row, used_by_class))
 
 	_port_section(vb, "THE RATE CARD", false)
-	vb.add_child(_port_metric("Ad valorem · turns 1–30", "0.5% of market buy value"))
-	vb.add_child(_port_metric("Ad valorem · turn 31 onward", "3% of market buy value"))
+	if MatchState.keeps_introductory_port_rate():
+		vb.add_child(_port_metric("Ad valorem · all turns", "0.5% of market buy value"))
+	else:
+		vb.add_child(_port_metric("Ad valorem · turns 1–30", "0.5% of market buy value"))
+		vb.add_child(_port_metric("Ad valorem · turn 31 onward", "3% of market buy value"))
 	vb.add_child(_port_metric("Annual drift", "+0.1% to the fee each turn"))
 	_add_port_throughput_rows(vb, false)
 	vb.add_child(_port_metric("At the throughput cap", "Sea fees double for that shipment"))

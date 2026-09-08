@@ -189,7 +189,7 @@ func _mechanic_body(entry_id: String) -> String:
 	if entry_id == "port_transport":
 		return ("Ports connect eligible goods to the world market. Port charges are ad valorem: they are based on the market value crossing the docks, for both imports and exports. Owning a port halves that rate; the port's maintenance and labour then apply as operating costs.\n\n"
 			+ "A port normally carries 1,500 units of each transport class per turn. Hazardous liquids, gases and ultra-heavy solids each have a 300-unit limit. Traffic may exceed those limits, but that shipment pays double port fees.\n\n"
-			+ "The standard ad valorem rate is 0.5% in turns 1–30 and 3% from turn 31. It also drifts upward by 0.1% each turn, and relevant research or events can change the live rate or throughput. The port panel lists default terms, current terms and recent shipments, so check it before assuming an import or export cost.")
+			+ "The standard ad valorem rate is 0.5% in turns 1–30 and 3% from turn 31. Games started from the tutorial keep the 0.5% base rate permanently. It also drifts upward by 0.1% each turn, and relevant research or events can change the live rate or throughput. The port panel lists default terms, current terms and recent shipments, so check it before assuming an import or export cost.")
 	if entry_id == "advisors":
 		# Read the live model rather than restating it — an encyclopedia page that quotes hardcoded
 		# numbers is a page that silently goes wrong the first time the constants are tuned.

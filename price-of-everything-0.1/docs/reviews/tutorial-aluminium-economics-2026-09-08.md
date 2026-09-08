@@ -79,3 +79,21 @@ Snapshot: `data/balance_baselines/2026-09-08_pre-aluminium-output.csv`. The econ
 Output follow-up verification: 3,834 Godot unit checks passed and 557 scripts passed the parse sweep. The separate Python validator reports 16 existing issues in the untouched legacy root `data/goods.csv` and `data/recipes.csv`; it does not validate the live Godot recipe pool changed here.
 
 The final 100-turn simulation passed all 723 checks.
+
+### Permanent introductory port rate for tutorial games
+
+Tutorial-origin games now retain the 0.5% base ad valorem rate for every turn,
+including after completing the coach and save/reload. The saved tutorial ruleset
+name identifies the origin. Normal games still switch to 3% at turn 31. Fee drift,
+ownership discounts, research modifiers and throughput surcharges still apply.
+The port rate card and encyclopedia explain this exception.
+
+Rerunning the controlled comparison over turns 36–45 gives £30.12 per turn for
+Hall Heroult and £36.48 for Carbochlorination, a £6.35 improvement (unrounded
+difference). These figures include taxes and dividends but exclude loans and
+advisors. The supplied playthrough also contains £7.43 loan repayments and later
+advisor costs, so its cash totals should not be compared directly to this control.
+
+Validation: parse check 557 scripts, zero failures; unit suite 3837 passed,
+including turn 31, post-tutorial save/reload at turn 300 and normal-game fee checks.
+The real-turn aluminium audit passes its £6–£7 upgrade target.

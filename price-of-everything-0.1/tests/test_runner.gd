@@ -11805,6 +11805,7 @@ func _test_logistics_shipping_line() -> void:
 	TurnManager.current_turn = 1
 
 func _test_port_ad_valorem_schedule() -> void:
+	MatchState.reset()
 	# Port charging is ad valorem only, on a turn schedule: 0.5% while learning, 3% from t31.
 	# The flat per-good fee is retired — it made quantity free, which is why freight collapsed
 	# to 0.3% of revenue late. See docs/early-game-onboarding-spec.md §4.2b.
@@ -11820,6 +11821,22 @@ func _test_port_ad_valorem_schedule() -> void:
 			% (100.0 * EconomyConfig.SEAPORT_AD_VALOREM_LATE))
 	_check(EconomyConfig.SEAPORT_AD_VALOREM_LATE > EconomyConfig.SEAPORT_AD_VALOREM_EARLY,
 		"port: the rate rises rather than falls at the step")
+
+	MatchState.ruleset = {"name": "tutorial", "tutorial_enabled": true}
+	TurnManager.current_turn = 31
+	_check(is_equal_approx(MatchState.seaport_insurance_rate(""), EconomyConfig.SEAPORT_AD_VALOREM_EARLY),
+		"tutorial port: no fee jump at turn 31")
+	MatchState.ruleset["tutorial_enabled"] = false
+	var saved: Dictionary = MatchState.export_state()
+	MatchState.reset()
+	MatchState.import_state(saved)
+	TurnManager.current_turn = 300
+	_check(is_equal_approx(MatchState.seaport_insurance_rate(""), EconomyConfig.SEAPORT_AD_VALOREM_EARLY),
+		"tutorial port: introductory rate survives completion and save reload at turn 300")
+	MatchState.reset()
+	_check(is_equal_approx(MatchState.seaport_insurance_rate(""), EconomyConfig.SEAPORT_AD_VALOREM_LATE),
+		"campaign port: standard late rate restored in a new game")
+	TurnManager.current_turn = 1
 
 func _test_tutorial_rescue() -> void:
 	# Tutorial matches top a negative balance back up to £2500, three times, then stop.

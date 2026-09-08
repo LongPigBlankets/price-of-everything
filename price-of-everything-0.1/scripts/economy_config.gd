@@ -158,8 +158,8 @@ const SEAPORT_INSURANCE_RATE: float = 0.0005 # Legacy; superseded by the schedul
 const OWNED_SEAPORT_INSURANCE_RATE: float = 0.00025 # Legacy; superseded.
 
 ## The ad valorem charged on value crossing a port this turn, before modifiers.
-func seaport_ad_valorem_rate(turn: int) -> float:
-	return SEAPORT_AD_VALOREM_EARLY if turn < SEAPORT_AD_VALOREM_STEP_TURN else SEAPORT_AD_VALOREM_LATE
+func seaport_ad_valorem_rate(turn: int, tutorial_match: bool = false) -> float:
+	return SEAPORT_AD_VALOREM_EARLY if tutorial_match or turn < SEAPORT_AD_VALOREM_STEP_TURN else SEAPORT_AD_VALOREM_LATE
 const SEAPORT_FEE_GROWTH_PER_TURN: float = 0.001 # Both components rise 0.1% per turn.
 const SEAPORT_THROUGHPUT_STANDARD: int = 1500
 const SEAPORT_THROUGHPUT_RESTRICTED: int = 300
