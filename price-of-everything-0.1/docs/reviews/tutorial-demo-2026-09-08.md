@@ -11,7 +11,7 @@ Port metric columns both wrap within their allocated width, avoiding the long va
 Validation:
 - Parse sweep: 556 scripts, zero failures.
 - Unit suite: 3,750 passed, zero failed, including the LED aggregation rules and lesson ordering.
-- Expanded live tutorial regression: 107 checks, zero failures, including the new tile lessons, spotlights, six freight classes in both tables, both construction branches, research and advisor flow.
+- Expanded live tutorial regression: 120 checks, zero failures, including the new tile lessons, spotlights, six freight classes in both tables, both construction branches, research and advisor flow.
 - Standard end-to-end scenario through turn 100: 723 assertions passed, zero failed.
 - Visual review: HUD annotations, Land Chart, tile overview, motor recipe, port terms and construction-materials highlight.
 
@@ -27,4 +27,6 @@ Finance and glass-selection follow-up: the books lesson uses the requested opera
 
 Final finance follow-up validation: 3,750 unit checks passed; 104 live tutorial checks passed; 556 scripts passed the parse sweep.
 
-Surplus, settling and advisor follow-up: the land lesson uses a full stop, and the surplus, furnace construction, recipe-change and advisor-seat lessons use the requested copy. Glass integration waits three turns rather than two before displaying the profit result. The live regression checks that the result remains hidden after turns one and two and appears after turn three. The recipe-change lesson closes Research and returns to the factory tile so the Furnace can be selected. Live tutorial regression: 107 checks, zero failures.
+Surplus, settling and advisor follow-up: the land lesson uses a full stop, and the surplus, furnace construction, recipe-change and advisor-seat lessons use the requested copy. Glass integration waits three turns rather than two before displaying the profit result. The live regression checks that the result remains hidden after turns one and two and appears after turn three. The recipe-change lesson closes Research and returns to the factory tile so the Furnace can be selected. Live tutorial regression: 120 checks, zero failures.
+
+Advisor comparison follow-up: comparison and hiring have no spotlight or dimming and close stale money/building panels on entry. Viewing profiles and changing seats leave comparison active; the new Choose this advisor action explicitly advances to hiring. Both stages allow returning to other candidates. Financial previews show bonuses minus salary as a net-benefit line. Negative values warn but do not block choice: the completed-glass test fixture offered no candidate whose current benefits covered salary, so a hard positive-value requirement would soft-lock the lesson. The live regression compares multiple candidates and confirms explicit choice and hiring.

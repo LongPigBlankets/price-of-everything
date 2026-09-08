@@ -1185,13 +1185,13 @@ static func steps() -> Array:
 			"id": "advisors_inspect",
 			"chapter": "Advisors",
 			"title": "Inspect what a candidate brings",
-			"body": "Click + Add new advisor, then open a candidate's profile and choose a position. Read the bonuses below. They change with the position you select and show how the advisor can help your business.",
-			"setup": [ { "action": "open_people_panel" } ],
-			"spotlight": { "kind": "node_name", "ref": "AdvisorAddNewButton" },
-			"lock_panel": true,
+			"body": "Click + Add new advisor and compare candidates. Choose a position to see each advisor's benefits and salary. You can go back and inspect other candidates. Look for benefits above salary, then click Choose this advisor when you are ready.",
+			"setup": [ { "action": "close_money_panel" }, { "action": "close_building_detail" }, { "action": "open_people_panel" } ],
+			"spotlight": { "kind": "none", "ref": "" },
+			"no_dim": true,
 			"done": {
 				"wake": [],
-				"decide": { "kind": "node_visible", "ref": "AdvisorBonusSection" },
+				"decide": {},
 			},
 			"advance": "auto",
 		},
@@ -1199,10 +1199,10 @@ static func steps() -> Array:
 			"id": "advisors_hire",
 			"chapter": "Advisors",
 			"title": "Choose any seat and hire them",
-			"body": "Now choose whichever available seat you want in the Assign to row, then Hire & assign. There is no prescribed answer: the seat determines the bonus, and the candidate determines how strongly they deliver it. Their effect starts next turn.",
-			"setup": [ { "action": "open_people_panel" } ],
-			"spotlight": { "kind": "node_name", "ref": "PeoplePanel" },
-			"lock_panel": true,
+			"body": "Click Hire & assign for your chosen advisor and position. You can still compare other candidates. Look for a combination whose benefits exceed the salary. Their effect starts next turn.",
+			"setup": [ { "action": "close_money_panel" }, { "action": "close_building_detail" }, { "action": "open_people_panel" } ],
+			"spotlight": { "kind": "none", "ref": "" },
+			"no_dim": true,
 			"done": {
 				# No seat-change signal exists; the engine's 0.25s poll re-evaluates the
 				# state anyway, and every available seat is a valid tutorial outcome.

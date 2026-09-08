@@ -273,6 +273,18 @@ func _run() -> void:
 	check(research.tutorial_unlock_rect("Bauxite Carbochlorination").has_area(), "renovated research panel exposes the unlock spotlight")
 	await shot("tutorial_regression_research")
 	Tutorial._run_setup([{"action": "close_research"}])
+	# The branch smoke checks cancel their projects; complete the glass branch fixture
+	# before judging advisor value against the resulting operating business.
+	var furnace_id := MatchState.add_building("b_002", "r_054", Steps.GLASS_TILE)
+	var glass_id := str(Catalog.get_good_by_internal_name("glass").get("id", ""))
+	MatchState.set_output_stockpile_destination(furnace_id, Steps.WINDOW_TILE, glass_id)
+	get_tree().current_scene.tutorial_install_infrastructure([Steps.GLASS_TILE], "reinf_pipes")
+	for input: Dictionary in Catalog.get_recipe("r_054").get("inputs", []):
+		Stockpile.add(Steps.GLASS_TILE, str(input.get("good_id", "")), int(input.get("qty", 0)) * 5)
+	for settling_turn in range(4):
+		TurnManager.commit_turn()
+		await TurnManager.turn_resolution_completed
+		await settle()
 	Tutorial._jump_to("advisors_inspect")
 	await settle()
 	await tap("AdvisorAddNewButton")
@@ -285,15 +297,38 @@ func _run() -> void:
 	if council != null:
 		var candidates: Array = council._picker_candidates()
 		check(not candidates.is_empty(), "demo has a hireable advisor")
-		if not candidates.is_empty():
-			council._set_view({"mode": "detail", "sel_id": str(candidates[0].get("id", "")), "back": "picker"})
+		var chosen_id := ""
+		var chosen_seat := ""
+		var best_net := -INF
+		for candidate: Dictionary in candidates:
+			var aid := str(candidate.get("id", ""))
+			for seat in MatchState.SEAT_DEFINITIONS:
+				if MatchState.is_seat_available(str(seat)):
+					var net: float = MatchState.advisor_bonus_preview_per_turn(aid, str(seat)) - council._salary(aid)
+					if net > best_net:
+						best_net = net
+						chosen_id = aid
+						chosen_seat = seat
+		for index in range(mini(2, candidates.size())):
+			var aid := str(candidates[index].get("id", ""))
+			council._set_view({"mode": "detail", "sel_id": aid, "back": "picker"})
 			await settle()
 			await tap("AdvisorSeatChoice_coo")
 			check(node_named("AdvisorBonusSection") != null, "What They Bring remains available without loyalty")
-			check(Tutorial.is_active_step("advisors_hire"), "bonus inspection advances to hiring")
-			await shot("tutorial_regression_advisor")
+			check(Tutorial.is_active_step("advisors_inspect"), "previewing candidate %d does not end comparison" % (index + 1))
+			check(Tutorial._overlay._no_dim and not Tutorial._overlay._hole.has_area(), "candidate comparison leaves the entire screen visible and interactive")
+			var choose := node_named("AdvisorChooseCandidateButton") as Button
+			check(not choose.disabled and node_named("AdvisorNetBenefitValue") != null, "candidate comparison shows net benefit and does not trap a company without profitable hires")
+		check(chosen_id != "", "the live tutorial offers candidates and seats to compare")
+		if chosen_id != "":
+			council._set_view({"mode": "detail", "sel_id": chosen_id, "selected_seat": chosen_seat, "back": "picker"})
+			await settle()
+			await shot("tutorial_regression_advisor_comparison")
+			await tap("AdvisorChooseCandidateButton")
+			check(Tutorial.is_active_step("advisors_hire"), "explicit candidate choice advances to hiring")
+			check(Tutorial._overlay._no_dim and not Tutorial._overlay._hole.has_area(), "hiring also leaves the whole screen undimmed")
 			await tap("AdvisorHireAssignButton")
-			check(MatchState.advisor_seats.has("coo"), "advisor can be hired and assigned in the locked demo")
+			check(MatchState.advisor_seats.get(chosen_seat, "") == chosen_id, "the chosen candidate is hired into the selected seat")
 	Tutorial._jump_to("integration_done")
 	await settle()
 	check(Tutorial.setup_reached, "completion hook remains reachable")

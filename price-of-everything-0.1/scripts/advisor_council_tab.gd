@@ -548,6 +548,11 @@ func _financial_preview(advisor_id: String, seat_id: String, compact: bool = fal
 	salary_label.tooltip_text = explanation
 	box.add_child(bonus_label)
 	box.add_child(salary_label)
+	var net := bonus - salary
+	var net_label := _tone_label("Net benefit: %s£%.2f per turn" % ["+" if net >= 0.0 else "−", absf(net)], _GOOD if net > 0.0 else _BAD, font_size)
+	net_label.name = "AdvisorNetBenefitValue"
+	net_label.tooltip_text = "Preview bonuses minus salary, based on the latest turn. This can change as your business grows."
+	box.add_child(net_label)
 	return box
 
 
@@ -635,15 +640,24 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 			_set_view(next_view))
 		chip_holder.add_child(b)
 	var employed := MatchState.permanent_advisor_ids.has(advisor_id)
-	confirm.name = "AdvisorHireAssignButton"
-	confirm.text = "Assign to seat" if employed else "Hire & assign"
+	var inspecting := _tutorial_bonus_inspection_required()
+	var comparing := inspecting or (typeof(Tutorial) != TYPE_NIL and Tutorial.is_active_step("advisors_hire"))
+	var worthwhile := selected_seat != "" and tutorial_candidate_worthwhile(advisor_id, selected_seat)
+	confirm.name = "AdvisorChooseCandidateButton" if inspecting else "AdvisorHireAssignButton"
+	confirm.text = "Choose this advisor" if inspecting else ("Assign to seat" if employed else "Hire & assign")
 	confirm.theme_type_variation = &"Primary"
-	confirm.disabled = selected_seat == "" or _tutorial_bonus_inspection_required()
+	confirm.disabled = selected_seat == ""
 	if selected_seat == "":
 		confirm.tooltip_text = "Choose a position first."
-	elif _tutorial_bonus_inspection_required():
-		confirm.tooltip_text = "Inspect the advisor bonuses before hiring."
+	elif comparing and not worthwhile:
+		confirm.tooltip_text = "Benefits are below salary in the latest turn. Compare other candidates or choose this advisor anyway."
 	confirm.pressed.connect(func() -> void:
+		if selected_seat == "":
+			return
+		if inspecting:
+			if Tutorial.is_active_step("advisors_inspect"):
+				Tutorial._advance()
+			return
 		if not MatchState.permanent_advisor_ids.has(advisor_id):
 			if not MatchState.hire_advisor(advisor_id):
 				MatchState.request_toast("Could not hire — council is full or they refuse to return.", "warning")
@@ -665,6 +679,10 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 		cost.name = "AdvisorHireCostLine"
 		wrap.add_child(cost)
 	return wrap
+
+
+func tutorial_candidate_worthwhile(advisor_id: String, seat_id: String) -> bool:
+	return MatchState.advisor_bonus_preview_per_turn(advisor_id, seat_id) > _salary(advisor_id)
 
 
 func _tutorial_bonus_inspection_required() -> bool:

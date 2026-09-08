@@ -926,9 +926,9 @@ func _test_tutorial_engine() -> void:
 	var advisor_inspect: Dictionary = by_id.get("advisors_inspect", {})
 	var advisor_inspect_done: Dictionary = advisor_inspect.get("done", {})
 	var advisor_inspect_decide: Dictionary = advisor_inspect_done.get("decide", {})
-	_check(str(advisor_inspect_decide.get("kind", "")) == "node_visible"
-		and str(advisor_inspect_decide.get("ref", "")) == "AdvisorBonusSection",
-		"tutorial: advisor flow requires inspecting a candidate's bonuses before hiring")
+	_check(advisor_inspect_decide.is_empty() and bool(advisor_inspect.get("no_dim", false))
+		and str(advisor_inspect.get("spotlight", {}).get("kind", "")) == "none",
+		"tutorial: advisor comparison stays open and undimmed until explicit candidate choice")
 	_check(Tutorial.is_active_step("not_a_real_step") == false,
 		"tutorial: inactive step guard is false outside an active tutorial")
 	var tutorial_active_saved := Tutorial.active
@@ -1070,8 +1070,8 @@ func _test_tutorial_engine() -> void:
 		and str((alu_profit_targets[0] as Dictionary).get("ref", "")) == "FlyRowNet"
 		and "open_money_panel" in alu_profit_actions,
 		"tutorial: aluminium Step 53 opens the treasury and calls out live net profit")
-	_check(str((advisor_inspect.get("spotlight", {}) as Dictionary).get("ref", "")) == "AdvisorAddNewButton",
-		"tutorial: Step 56 points directly to Add new advisor")
+	_check(str((advisor_inspect.get("spotlight", {}) as Dictionary).get("kind", "")) == "none",
+		"tutorial: candidate comparison does not restrict clicks to Add new advisor")
 	var gr_done: Dictionary = (by_id.get("glass_research", {}) as Dictionary).get("done", {})
 	var gr_decide: Dictionary = gr_done.get("decide", {})
 	_check(str(gr_decide.get("kind", "")) == "research_unlocked",
