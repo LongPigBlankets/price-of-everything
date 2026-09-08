@@ -467,14 +467,50 @@ func _on_bankruptcy() -> void:
 ## App-wide quit entry point (main-menu Quit, pause-menu Exit to Desktop):
 ## same spool → hide window → bounded upload drain → quit as the window X.
 ## Safe to call whether or not telemetry is enabled.
+const ExitFeedbackDialog := preload("res://scripts/exit_feedback_dialog.gd")
+var _exit_feedback_dialog: ExitFeedbackDialog
+
 func request_app_quit() -> void:
-	_handle_window_close("quit_to_desktop")
+	if _closing or is_instance_valid(_exit_feedback_dialog):
+		return
+	if PlayerProfile.exit_feedback_submitted or DisplayServer.get_name() == "headless":
+		_handle_window_close("quit_to_desktop")
+		return
+	_exit_feedback_dialog = preload("res://scripts/exit_feedback_dialog.gd").new()
+	get_tree().root.add_child(_exit_feedback_dialog)
+	_exit_feedback_dialog.skipped.connect(func() -> void: _handle_window_close("quit_to_desktop"))
+	_exit_feedback_dialog.submitted.connect(func(rating: String, comment: String) -> void:
+		if queue_exit_feedback(rating, comment):
+			PlayerProfile.mark_exit_feedback_submitted()
+			_handle_window_close("quit_to_desktop")
+		else:
+			_exit_feedback_dialog.show_save_error())
+
+## Submission is explicit consent for this response even when run metrics are opted out.
+## Save first; only remove the outbox file after the receiver confirms feedback storage.
+func queue_exit_feedback(rating: String, comment: String) -> bool:
+	if rating not in ["Great", "Good", "Average", "Bad", "Terrible"]:
+		return false
+	var feedback_id := _uuid()
+	var payload := {
+		"token": TOKEN, "kind": "feedback", "feedback_id": feedback_id,
+		"player_id": PlayerProfile.get_telemetry_player_id(),
+		"client": {"version": str(ProjectSettings.get_setting("application/config/version", "dev")), "os": OS.get_name()},
+		"rating": rating, "comment": comment.strip_edges().left(4000),
+		"turn": TurnManager.current_turn, "start": _run_start_id,
+		"sent_at": int(Time.get_unix_time_from_system()),
+	}
+	var path := AppPaths.telemetry_outbox_dir().path_join("feedback_%s.json" % feedback_id)
+	_write_json(path, payload)
+	return FileAccess.file_exists(path)
+
 
 
 func _handle_window_close(reason: String = "window_close") -> void:
 	if _closing:
 		return
 	_closing = true
+	get_tree().paused = false
 	# Disk before network: even if the upload stalls, the envelope is spooled.
 	_finalize_run(reason)
 	if not enabled:
@@ -583,6 +619,8 @@ func _watermark_of(body: String) -> int:
 	var parsed: Variant = JSON.parse_string(body)
 	if not (parsed is Dictionary) or str((parsed as Dictionary).get("run_id", "")) != _run_id:
 		return -1
+	if str((parsed as Dictionary).get("kind", "")) == "feedback":
+		return -1
 	var top := 0
 	for r in ((parsed as Dictionary).get("turns", []) as Array):
 		top = maxi(top, int((r as Dictionary).get("turn", 0)))
@@ -622,7 +660,7 @@ func _upload_file(path: String) -> void:
 	var http := HTTPRequest.new()
 	http.use_threads = true
 	http.timeout = 15.0
-	http.max_redirects = 0  # Apps Script answers 302; the redirect IS success
+	http.max_redirects = 8 if path.get_file().begins_with("feedback_") else 0
 	add_child(http)
 	http.request_completed.connect(_on_upload_done.bind(http, path))
 	var err := http.request(ENDPOINT_URL, ["Content-Type: application/json"],
@@ -639,7 +677,9 @@ func _on_upload_done(result: int, code: int, _headers: PackedStringArray,
 	http.queue_free()
 	# With max_redirects = 0 the 302 arrives as RESULT_REDIRECT_LIMIT_REACHED,
 	# not RESULT_SUCCESS — the response code is the success signal.
-	if code == 302 or (result == HTTPRequest.RESULT_SUCCESS and code == 200):
+	var feedback := path.get_file().begins_with("feedback_")
+	var accepted := result == HTTPRequest.RESULT_SUCCESS and code == 200 and _body.get_string_from_utf8().strip_edges() == "feedback_ok"
+	if (accepted if feedback else (code == 302 or (result == HTTPRequest.RESULT_SUCCESS and code == 200))):
 		DirAccess.remove_absolute(path)
 		if delivered > _delivered_through:
 			_delivered_through = delivered

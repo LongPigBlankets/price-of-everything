@@ -71,6 +71,18 @@ function doPost(e) {
   try {
   const ss = SpreadsheetApp.getActive();
 
+  if (p.kind === "feedback") {
+    const ratings = ["Great", "Good", "Average", "Bad", "Terrible"];
+    if (!p.feedback_id || !ratings.includes(p.rating)) return ContentService.createTextOutput("bad feedback");
+    const sheet = sheetWithHeader_(ss, "feedback", ["received_at", "feedback_id", "player_id", "version", "os", "start", "turn", "rating", "comment"]);
+    const ids = sheet.getLastRow() > 1 ? sheet.getRange(2, 2, sheet.getLastRow() - 1, 1).getValues().flat() : [];
+    if (!ids.includes(p.feedback_id)) {
+      // Store user text literally so leading '=' cannot become a spreadsheet formula.
+      const comment = String(p.comment || "").slice(0, 4000);
+      sheet.appendRow([new Date(), p.feedback_id, p.player_id || "", (p.client || {}).version || "", (p.client || {}).os || "", p.start || "", p.turn || 0, p.rating, comment ? "'" + comment : ""]);
+    }
+    return ContentService.createTextOutput("feedback_ok");
+  }
   const run = p.run || {};
   const runs = sheetWithHeader_(ss, "runs", RUNS_HEADER);
   runs.appendRow([new Date(), p.player_id, p.run_id, p.session_id,

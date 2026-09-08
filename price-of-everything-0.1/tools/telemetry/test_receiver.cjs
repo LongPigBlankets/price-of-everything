@@ -28,3 +28,15 @@ assert.equal(sheets.events.rows.length,2);
 assert.equal(sheets.turns.rows.length,2);
 assert.equal(sheets.turns.rows[0][0],'received_at');
 console.log('Receiver tests passed: additive headers, counts, pending-turn events, retry deduplication.');
+
+const feedback = {token, kind:'feedback', feedback_id:'f1', player_id:'p', rating:'Good', comment:'=SUM(1,2)', client:{version:'test', os:'Windows'}, turn:10};
+const runsBefore = sheets.runs.rows.length;
+assert.equal(ctx.doPost({postData:{contents:JSON.stringify(feedback)}}), 'feedback_ok');
+assert.equal(ctx.doPost({postData:{contents:JSON.stringify(feedback)}}), 'feedback_ok');
+assert.equal(sheets.feedback.rows.length, 2);
+assert.equal(sheets.feedback.rows[1][7], 'Good');
+assert.equal(sheets.feedback.rows[1][8], "'=SUM(1,2)");
+assert.equal(sheets.runs.rows.length, runsBefore);
+assert.equal(ctx.doPost({postData:{contents:JSON.stringify({...feedback, feedback_id:'f2', rating:'invalid'})}}), 'bad feedback');
+assert.equal(sheets.feedback.rows.length, 2);
+console.log('Feedback tests passed: storage, deduplication, literal free text, validation, separate from runs.');
