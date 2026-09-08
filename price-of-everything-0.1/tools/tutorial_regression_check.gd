@@ -121,6 +121,27 @@ func _run() -> void:
 	for iid in MatchState.tile_buildings.get(Steps.WINDOW_TILE, []):
 		if str(MatchState.get_building(str(iid)).get("building_id", "")) == "b_007":
 			MatchState.set_building_owner(str(iid), MatchState.LOCAL_PLAYER)
+	# Exercise the real cable button: insufficient funds must not complete the step,
+	# while a successful materials order must advance without the retired sourcing dialog.
+	Tutorial._jump_to("lay_cable_factory")
+	await settle()
+	MatchState.money = 0.0
+	var cable_cell := node_named("InfraCell_cables")
+	var cable_button := cable_cell.find_children("*", "Button", true, false)[0] as Button
+	cable_button.pressed.emit()
+	await settle()
+	check(Tutorial.is_active_step("lay_cable_factory"), "rejected cable purchase does not advance the tutorial")
+	MatchState.money = 5000.0
+	cable_button.pressed.emit()
+	await settle()
+	check(Detectors.poll({"kind": "tile_cabled_or_ordered", "tile": Steps.WINDOW_TILE}), "cable button creates a real construction order")
+	check(Tutorial.is_active_step("run_until_running"), "cable order advances straight to ending turns")
+	check(Tutorial._overlay.spotlight_ok(), "End Turn becomes the active cable lesson target")
+	Tutorial._jump_to("lay_cable_factory")
+	await settle()
+	check(Tutorial.is_active_step("run_until_running"), "re-entering with a pending cable order recovers automatically")
+	for iid in Construction.construction_projects.keys():
+		Construction.cancel(str(iid))
 	for branch in ["glass", "alu"]:
 		var tile: String = Steps.GLASS_TILE if branch == "glass" else Steps.ALU_TILE
 		var recipe := "r_053" if branch == "glass" else "r_050"

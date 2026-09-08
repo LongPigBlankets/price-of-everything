@@ -470,10 +470,12 @@ static func steps() -> Array:
 			"spotlight": { "kind": "node_name", "ref": "InfraCell_cables" },
 			"lock_panel": true,
 			"done": {
-				"wake": ["construction_started", "infrastructure_attempted"],
-				"decide": { "kind": "node_visible", "ref": "SourcingBuyButton" },
+				"wake": ["construction_started", "infrastructure_attempted", "materials_ordered"],
+				"decide": { "kind": "tile_cabled_or_ordered", "tile": WINDOW_TILE },
 			},
 			"advance": "auto",
+			# Infrastructure now sources materials directly from the construction setting.
+			"goto": "run_until_running",
 		},
 		{
 			"id": "lay_cable_source",
