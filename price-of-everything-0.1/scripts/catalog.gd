@@ -26,7 +26,6 @@ const BUILDING_ALIAS := {
 # Recipes in active repair stay loadable for old saves, but must not be suggested by
 # construction, special orders, the goods graph, or the encyclopedia.
 const HIDDEN_RECIPE_IDS := {
-	"r_107": true,  # E-Waste Recycling
 	"r_078": true,  # Methane Pyrolysis — no methane in the demo (owner 2026-09-06)
 }
 
@@ -680,16 +679,16 @@ func get_good(good_id: String) -> Dictionary:
 	return _goods_by_id.get(good_id, {})
 
 func buyable_goods() -> Array:
-	return _all_goods.filter(func(g: Dictionary) -> bool: return bool(g.get("is_buyable", false)))
+	return _all_goods.filter(func(g: Dictionary) -> bool: return is_good_buyable(str(g.get("id", ""))))
 
 func sellable_goods() -> Array:
-	return _all_goods.filter(func(g: Dictionary) -> bool: return bool(g.get("is_sellable", false)))
+	return _all_goods.filter(func(g: Dictionary) -> bool: return is_good_sellable(str(g.get("id", ""))))
 
 func is_good_buyable(good_id: String) -> bool:
-	return bool(get_good(good_id).get("is_buyable", false))
+	return MatchState.is_good_available(good_id) and bool(get_good(good_id).get("is_buyable", false))
 
 func is_good_sellable(good_id: String) -> bool:
-	return bool(get_good(good_id).get("is_sellable", false))
+	return MatchState.is_good_available(good_id) and bool(get_good(good_id).get("is_sellable", false))
 
 func get_good_by_internal_name(internal_name: String) -> Dictionary:
 	return _goods_by_internal_name.get(internal_name, {})
@@ -981,13 +980,36 @@ func _parse_requirements(raw_str: String) -> Array:
 
 # Public API: recipes
 func all_recipes() -> Array:
-	return _all_recipes.filter(func(recipe: Dictionary) -> bool: return is_recipe_visible(recipe))
+	return _all_recipes.filter(func(recipe: Dictionary) -> bool: return is_recipe_visible(recipe)).map(_recipe_for_demo)
 
 func is_recipe_visible(recipe: Dictionary) -> bool:
-	return not HIDDEN_RECIPE_IDS.has(str(recipe.get("recipe_id", "")))
+	return not HIDDEN_RECIPE_IDS.has(str(recipe.get("recipe_id", ""))) and is_recipe_demo_available(recipe)
+
+func is_recipe_demo_available(recipe: Dictionary) -> bool:
+	if MatchState.is_recycling_available():
+		return true
+	if MatchState.RECYCLING_BUILDING_IDS.has(str(recipe.get("building_id", ""))):
+		return false
+	if not MatchState.is_good_available(str(recipe.get("output_good_id", ""))):
+		return false
+	for item: Dictionary in recipe.get("inputs", []):
+		if not MatchState.is_good_available(str(item.get("good_id", ""))):
+			return false
+	return true
+
+func _recipe_for_demo(recipe: Dictionary) -> Dictionary:
+	if MatchState.is_recycling_available():
+		return recipe
+	var outputs: Array = recipe.get("outputs", [])
+	var visible_outputs := outputs.filter(func(item: Dictionary) -> bool: return MatchState.is_good_available(str(item.get("good_id", ""))))
+	if outputs.size() == visible_outputs.size():
+		return recipe
+	var visible := recipe.duplicate(true)
+	visible["outputs"] = visible_outputs
+	return visible
 
 func get_recipe(recipe_id: String) -> Dictionary:
-	return _recipes_by_id.get(recipe_id, {})
+	return _recipe_for_demo(_recipes_by_id.get(recipe_id, {}))
 
 func get_recipes_for_building(building_id: String) -> Array:
 	# Feature 1: hide recipes gated behind un-researched tech (tech_unlock_req
@@ -1003,7 +1025,7 @@ func get_recipes_for_building(building_id: String) -> Array:
 			continue
 		var req: String = str(r.get("tech_unlock_req", ""))
 		if req == "" or MatchState.is_unlocked(req):
-			out.append(r)
+			out.append(_recipe_for_demo(r))
 	return out
 
 ## True when government policy prohibits producing anything this recipe outputs.
@@ -1029,7 +1051,7 @@ func recipe_produces(recipe: Dictionary, good_id: String) -> bool:
 func recipes_producing(good_id: String) -> Array:
 	if good_id == "":
 		return []
-	return _all_recipes.filter(func(r: Dictionary) -> bool: return is_recipe_visible(r) and recipe_produces(r, good_id))
+	return all_recipes().filter(func(r: Dictionary) -> bool: return recipe_produces(r, good_id))
 
 func recipe_output_qty(recipe: Dictionary, good_id: String) -> int:
 	for o in recipe.get("outputs", []):

@@ -1037,6 +1037,8 @@ func start_retrofit(instance_id: String, new_recipe_id: String) -> Dictionary:
 	var new_recipe: Dictionary = Catalog.get_recipe(new_recipe_id)
 	if new_recipe.is_empty() or str(new_recipe.get("building_id", "")) != str(inst.get("building_id", "")):
 		return {"ok": false, "reason": "That recipe can't run in this building."}
+	if not Catalog.is_recipe_demo_available(new_recipe):
+		return {"ok": false, "reason": "Recycling is not available in the demo."}
 	if new_recipe_id == str(inst.get("recipe_id", "")):
 		return {"ok": false, "reason": "Already running that recipe."}
 	var tier: Dictionary = retrofit_cost_tier()
@@ -2292,7 +2294,7 @@ func is_research_visible(definition: Dictionary) -> bool:
 	var node_id := str(definition.get("research_node_id", ""))
 	if HIDDEN_RESEARCH_IDS.has(node_id):
 		return false
-	if str(definition.get("category", "")) == "Recycling" and not recycling_unlocked:
+	if str(definition.get("category", "")) == "Recycling" and not is_recycling_available():
 		return false
 	if node_id in ["research_people_008", "research_people_009", "research_people_010", "research_people_011"] and not advisors_unlocked:
 		return false
@@ -3843,19 +3845,22 @@ func is_building_available(building_id: String) -> bool:
 	# Ports are map infrastructure that may be bought from their existing owner, never built.
 	if building_id == "b_004":
 		return false
-	if RECYCLING_BUILDING_IDS.has(building_id) and not recycling_unlocked:
+	if RECYCLING_BUILDING_IDS.has(building_id) and not is_recycling_available():
 		return false
 	return hidden_buildings_unlocked or not HIDDEN_BUILDING_IDS.has(building_id)
 
 ## Is this good shown to the player at all? Only the recycling chain is ever hidden today.
+func is_recycling_available() -> bool:
+	return recycling_unlocked or preload("res://scripts/debug_terminal.gd").demo_is_unlocked()
+
 func is_good_available(good_id: String) -> bool:
-	return recycling_unlocked or not RECYCLING_GOOD_IDS.has(good_id)
+	return is_recycling_available() or not RECYCLING_GOOD_IDS.has(good_id)
 
 ## Every good the player may see, in catalogue order. The one place the gate is applied, so
 ## a panel opts in by calling this instead of Catalog.all_goods() — the market and telemetry
 ## deliberately keep the full set (a price for a hidden good is harmless; a gap is not).
 func visible_goods() -> Array:
-	if recycling_unlocked:
+	if is_recycling_available():
 		return Catalog.all_goods()
 	var out: Array = []
 	for good_variant: Variant in Catalog.all_goods():

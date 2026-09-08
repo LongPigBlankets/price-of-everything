@@ -1299,7 +1299,8 @@ func _make_encyclopedia_landing() -> Control:
 
 	_add_accordion_section(sections, "Goods", MatchState.visible_goods(), "good")
 	_add_accordion_section(sections, "Recipes", Catalog.all_recipes(), "recipe")
-	_add_accordion_section(sections, "Buildings", Catalog.all_buildings(), "building")
+	_add_accordion_section(sections, "Buildings", Catalog.all_buildings().filter(func(building: Dictionary) -> bool:
+		return MatchState.is_recycling_available() or not MatchState.RECYCLING_BUILDING_IDS.has(str(building.get("id", "")))), "building")
 	_add_accordion_section(sections, "Game mechanics", MECHANIC_ENTRIES, "mechanic")
 	return root
 

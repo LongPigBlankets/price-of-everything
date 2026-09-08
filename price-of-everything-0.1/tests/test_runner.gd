@@ -8662,6 +8662,9 @@ func _test_petrochemistry_changes() -> void:
 # ── Recycling gate (owner 2026-08-23: out of the demo, behind `unlock recycling`) ──
 
 func _test_recycling_gate() -> void:
+	var terminal := preload("res://scripts/debug_terminal.gd")
+	var demo_was_unlocked: bool = terminal._demo_unlocked
+	terminal._demo_unlocked = false
 	var was_unlocked: bool = MatchState.recycling_unlocked
 	MatchState.recycling_unlocked = false
 	var visible: Dictionary = {}
@@ -8685,6 +8688,23 @@ func _test_recycling_gate() -> void:
 	_check(MatchState.visible_goods().size() == Catalog.all_goods().size()
 		and MatchState.is_building_available("b_036"),
 		"recycling: `unlock recycling` puts the chain and its plants back")
+	MatchState.recycling_unlocked = false
+	for gid: String in MatchState.RECYCLING_GOOD_IDS:
+		_check(not Catalog.is_good_buyable(gid) and not Catalog.is_good_sellable(gid), "demo waste cannot be traded: " + gid)
+		_check(not Catalog.is_recipe_visible({"inputs": [{"good_id": gid}]}), "demo hides recipes consuming " + gid)
+		_check(not Catalog.is_recipe_visible({"output_good_id": gid}), "demo hides recipes producing " + gid)
+	_check(Catalog.get_recipe("r_209").get("outputs", []).all(func(item: Dictionary) -> bool: return str(item.get("good_id")) != "g_063"), "demo farming omits wastewater byproduct")
+	var blocked: Array = []
+	for recipe: Dictionary in Catalog._all_recipes:
+		if not Catalog.is_recipe_demo_available(recipe):
+			blocked.append(recipe)
+	_check(not blocked.is_empty(), "demo gate covers loaded recycling recipes")
+	terminal._demo_unlocked = true
+	_check(MatchState.is_building_available("b_036") and MatchState.is_building_available("b_022"), "unlock demo restores both recycling plants")
+	for recipe: Dictionary in blocked:
+		_check(Catalog.is_recipe_visible(recipe), "unlock demo restores waste recipe " + str(recipe.get("recipe_id")))
+	_check(MatchState.visible_goods().size() == Catalog.all_goods().size(), "unlock demo restores waste goods")
+	terminal._demo_unlocked = demo_was_unlocked
 	MatchState.recycling_unlocked = was_unlocked
 
 # ── Victory system (scripts/victory_state.gd; docs/victory-system-spec.md §12) ──

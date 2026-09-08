@@ -2190,6 +2190,9 @@ func _can_run_recipe(building: Dictionary, recipe: Dictionary) -> Dictionary:
 	var missing: Array = []
 	var tile_id: String = building.get("tile_id", "")
 	
+	if not Catalog.is_recipe_demo_available(recipe):
+		return {"can_run": false, "missing": [{"good_id": "demo_locked", "internal_name": "demo_locked", "need": 1, "have": 0}]}
+
 	# Check inputs (the JIT direct feed counts — it's real goods staged for this tile)
 	for input in inputs:
 		var have: int = Stockpile.get_at_tile(tile_id, input.good_id) + _feed_available(tile_id, str(input.good_id))
