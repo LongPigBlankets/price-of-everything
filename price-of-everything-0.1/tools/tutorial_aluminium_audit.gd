@@ -15,6 +15,11 @@ func _ready() -> void:
 		for recipe: String in ["", "r_050", "r_232"]:
 			results.append(await run_case(recipe, start_turn))
 	results.append(await run_case("r_232", 30, true))
+	var hall: Dictionary = results[4].totals
+	var carbo: Dictionary = results[5].totals
+	var improvement := float(carbo.money_in) - float(carbo.money_out) - (float(hall.money_in) - float(hall.money_out))
+	assert(improvement >= 6.0 and improvement <= 7.0, "Carbochlorination should add £6 to £7 after chain overhead at tutorial-era fees")
+	print("[aluminium audit] upgrade improvement: £%.2f per turn" % improvement)
 	var file := FileAccess.open("/tmp/tutorial-aluminium-audit.json", FileAccess.WRITE)
 	file.store_string(JSON.stringify(results, "\t"))
 	get_tree().quit()

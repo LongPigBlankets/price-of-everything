@@ -202,7 +202,7 @@ r_228,Bio Ethylene,chem_plant,biomass,35,,,,,,,,,,,100,ethylene,28,,,,,,,,,,,,Bi
 r_229,CZ Monocrystal Growth,chem_plant,polysilicon,3,,,,,,,,,,,240,high_grade_silicon,3,,,,,,,,,,,,Chemistry,,,2408,903,91,
 r_230,Monocrystal CPU Fabbing,assembly_plant,high_grade_silicon,3,circuit_board,9,refined_ree,3,,,,,,,20,cpu,5,,,,,,,,,,,,Electronics,,,3863,3434,1157,
 r_231,Anthracite Graphitisation,eaf,coal,45,,,,,,,,,,,160,graphite,6,,,,,,,,,,,,Carbon,,,1162,441,50,
-r_232,Bauxite Carbochlorination,furnace,bauxite_ore,20,graphite,3,chlorine,20,,,,,,,180,aluminium,20,,,,,,,,,,,,Aluminium Smelting,,research_metal_012,851,319,50,
+r_232,Bauxite Carbochlorination,furnace,bauxite_ore,17,graphite,3,chlorine,20,,,,,,,180,aluminium,20,,,,,,,,,,,,Aluminium Smelting,,research_metal_012,851,319,50,
 r_233,Copper Electrowinning,chem_plant,copper_ore,16,industrial_acids,4,,,,,,,,,150,copper_wiring,33,,,,,,,,,,,,Copper Products,,research_metal_020,900,300,50,
 r_234,Steelmaking (Petro),furnace,iron_ingots,37,pet_coke,3,,,,,,,,,140,steel,44,,,,,,,,,,,,Steel Production,,research_metal_023,1144,429,50,
 r_235,Steelmaking (Bio),furnace,iron_ingots,37,carbonised_biomass,2,,,,,,,,,140,steel,44,,,,,,,,,,,,Steel Production,,research_metal_023,1144,429,50,

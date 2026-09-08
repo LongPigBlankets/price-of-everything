@@ -48,3 +48,12 @@ The supplied log groups labour, maintenance, advisor salaries, transport and sto
 4. Judge the tutorial outcome after the £7.34 repayment and advisor salary. A recipe-only cost ratio below market is insufficient evidence that the company earns an attractive return.
 
 Reproduce: run `res://tools/tutorial_aluminium_audit.tscn` headlessly. It writes full turn-by-turn accounting to `/tmp/tutorial-aluminium-audit.json`.
+
+
+## Approved follow-up: coastal cleanup and recipe improvement
+
+The completed coastal delivery lesson now clears its delivered windows after the one-second animation hold. It also clears subsequent window arrivals there while the tutorial continues, since the factory route deliberately stays unchanged until the later Market lesson. No sale or cash reward is created by this cleanup. Other goods and the window factory stockpile are unaffected.
+
+Carbochlorination now requires 17 bauxite instead of 20. Its 3 graphite, 20 chlorine, 20 aluminium output, electricity demand and labour are unchanged. In the later ten-turn sample, its chain cash profit rises to £13.41 per turn against Hall Heroult's £6.98: an improvement of £6.43, meeting the requested £6 to £7 target. The harness asserts that band. Early-period retained cash is £25.07 versus £21.06 (about £4.01 more after taxes and dividends); the gross operating improvement is similar, but the earlier profitable company pays more tax and dividends. After the logged £7.34 loan repayment, the later clean chain would retain about £6.07 before any advisors.
+
+Port fee rates are unchanged. The pre-change snapshot is `data/balance_baselines/2026-09-08_pre-carbochlorination.csv`. The live `recipes_all.csv` is edited directly because `build_recipes_all.py` explicitly identifies itself as a retired bootstrap, refuses to run, and would remove this recipe and reset existing balance values.

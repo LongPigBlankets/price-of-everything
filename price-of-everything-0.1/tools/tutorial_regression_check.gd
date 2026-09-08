@@ -209,7 +209,10 @@ func _run() -> void:
 			await settle()
 		await get_tree().create_timer(1.1).timeout
 		Tutorial._maybe_advance()
-		check(Stockpile.get_at_tile(Steps.WINDOW_REDIRECT_TILE, windows) > 0, "real production and transport deliver windows to the destination")
+		check(Stockpile.get_at_tile(Steps.WINDOW_REDIRECT_TILE, windows) == 0, "completed delivery lesson clears its coastal inventory")
+		Stockpile.add(Steps.WINDOW_REDIRECT_TILE, windows, 16)
+		await settle()
+		check(Stockpile.get_at_tile(Steps.WINDOW_REDIRECT_TILE, windows) == 0, "later tutorial shipments cannot rebuild the coastal storage bill")
 		check(Tutorial.is_active_step("margin_motivation"), "arrival advances to the next lesson")
 	check(Detectors.poll({"kind": "output_routed_to_tile", "tile": Steps.WINDOW_TILE, "building_id": "b_007", "destination": Steps.WINDOW_REDIRECT_TILE}), "margin lesson preserves the player's coastal route")
 	Tutorial._jump_to("explore_encyclopedia")

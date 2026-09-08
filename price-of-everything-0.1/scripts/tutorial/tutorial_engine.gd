@@ -33,6 +33,7 @@ const SETUP_STEPS_FROM_END := 2
 var hard_gate: bool = false  # true while a lock_panel step is up: Esc is swallowed (world_map)
 var _steps: Array = []
 var _index: int = -1
+var _coastal_delivery_finished: bool = false
 var _completion_ready_since_ms: int = -1
 var _entry_turn: int = 0     # turn number when the current step was entered (for turn-gated beats)
 var _market_sales_seen: int = 0 # completed sales observed during this tutorial run
@@ -81,6 +82,7 @@ func _await_world_ready() -> void:
 # ── Lifecycle ──────────────────────────────────────────────────────────────────────
 
 func _start() -> void:
+	_coastal_delivery_finished = false
 	# Reset any prior run (autoload persists across scene changes).
 	_teardown_overlay()
 	setup_reached = false
@@ -146,6 +148,9 @@ func _enter(i: int) -> void:
 
 
 func _advance() -> void:
+	if is_active_step("transport_pentagon_revert"):
+		_coastal_delivery_finished = true
+		_clear_coastal_lesson_inventory()
 	# A step may reroute to a labelled step (branch reconvergence); else go to the next.
 	var goto := ""
 	if _index >= 0 and _index < _steps.size():
@@ -154,6 +159,16 @@ func _advance() -> void:
 		_jump_to(goto)
 	else:
 		_enter(_index + 1)
+
+
+func _clear_coastal_lesson_inventory() -> void:
+	if not active or not _coastal_delivery_finished:
+		return
+	# The completed delivery lesson must not leave storage costs behind. The factory
+	# keeps its chosen route until the later Market lesson, so clear later arrivals too.
+	var good_id := str(Catalog.get_good_by_internal_name("windows").get("id", ""))
+	Stockpile.consume(TutorialSteps.WINDOW_REDIRECT_TILE, good_id,
+		Stockpile.get_at_tile(TutorialSteps.WINDOW_REDIRECT_TILE, good_id))
 
 
 func _jump_to(id: String) -> void:
@@ -807,6 +822,7 @@ func _ensure_poll() -> void:
 func _maybe_advance() -> void:
 	if not active or _index < 0 or _index >= _steps.size():
 		return
+	_clear_coastal_lesson_inventory()
 	var step: Dictionary = _steps[_index]
 	var released := _release_overlay_if_ready(step)
 	var decide: Dictionary = (step.get("done", {}) as Dictionary).get("decide", {})
