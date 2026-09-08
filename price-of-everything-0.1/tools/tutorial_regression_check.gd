@@ -149,6 +149,11 @@ func _run() -> void:
 		Tutorial._jump_to("build_" + branch + "_open")
 		await settle()
 		await tap("BLBuildButton")
+		if branch == "glass":
+			var glass_row := node_named("RecipeRow_r_053") as Control
+			var recipe_scroll := Tutorial._overlay._find_scroll_ancestor(glass_row) as ScrollContainer
+			check(recipe_scroll.get_global_rect().encloses(glass_row.get_global_rect()), "glass recipe is fully inside the scroll viewport before clicking")
+			await shot("tutorial_regression_glass_recipe_visible")
 		await tap("RecipeRow_" + recipe)
 		check(Tutorial.is_active_step("build_" + branch + "_confirm"), branch + " recipe advances to confirm")
 		check(Tutorial._overlay.spotlight_ok(), branch + " confirm spotlight resolves")
@@ -233,6 +238,15 @@ func _run() -> void:
 		await TurnManager.turn_resolution_completed
 		await settle()
 	check(Tutorial.is_active_step("money_open"), "a real window sale completes the market arrival lesson")
+	Tutorial._jump_to("money_primer")
+	await settle()
+	await shot("tutorial_regression_money_primer")
+	Tutorial._jump_to("money_take_loan")
+	await settle()
+	check(Tutorial.is_active_step("money_take_loan"), "loan lesson waits for an expansion loan")
+	check(LoanState.take_loan(250.0), "player can choose a loan above 200")
+	await settle()
+	check(Tutorial.is_active_step("money_loan_terms"), "chosen loan advances to its terms")
 	Tutorial._jump_to("alu_research")
 	await settle()
 	await tap("TechButton")

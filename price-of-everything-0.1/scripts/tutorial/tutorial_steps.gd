@@ -17,7 +17,7 @@ extends RefCounted
 
 ## The loan the Money chapter asks the player to take. Small on purpose: the lesson is the
 ## grace period and the repayment tail, not the sum.
-const TUTORIAL_LOAN_AMOUNT := 100
+const TUTORIAL_LOAN_AMOUNT := 200
 const WEST_COAST_HANDOFF_CASH := 99999
 
 # Opening transport lesson in Capital City. The motor factory is exactly five
@@ -666,15 +666,17 @@ static func steps() -> Array:
 			"chapter": "Money",
 			"title": "Reading the books",
 			"mode": "annotate",
-			"body": "Every pound in and out, each turn. Revenue is what your goods sold for. OPERATING COSTS is your maintenance plus wages — the standing cost of simply owning the place, which you pay whether it produces or not. Everything below that is itemised: power bought, transport, goods purchased, warehousing, interest, tax and dividends. Net last turn is the whole lot netted off. For the full ledger, open Balance.",
+			"body": "Familiarise yourself with these numbers. OPERATING COSTS is labour wages + maintenance. You can make profit if you sell power to the grid and if you buy more than you sell it can still cost you.\nNet Last Turn is the final total after all costs were deducted.\n\nTo see the full ledger, click on Balance.",
 			"targets": [
 				{ "ref": "FlyRowCash", "label": "Everything you have to spend right now", "side": "left" },
 				{ "ref": "FlyRowNet", "label": "Last turn's profit — revenue minus every cost below", "side": "left" },
 				{ "ref": "FlyBalanceButton", "label": "Full itemised ledger, if you want the detail", "side": "left" },
 				{ "ref": "FlyTakeLoanButton", "label": "Borrow against future earnings", "side": "left" },
 			],
+			"hint_width": 440,
 			"hints": [
-				"Revenue minus costs is the number that decides whether you're winning",
+				"Revenue - Cost = Gross Profit",
+				"Gross Profit - Taxes, Interest and Dividends = Net Profit",
 				"Press Esc to close any panel",
 			],
 			"setup": [ { "action": "open_money_panel" } ],
@@ -689,7 +691,7 @@ static func steps() -> Array:
 			"id": "money_take_loan",
 			"chapter": "Money",
 			"title": "Borrow to grow",
-			"body": "Waiting to save up is the slowest way to play. Borrow £%d for the integration you are about to build. Press Take loan — that opens the Loans tab — then set the amount to £%d and confirm. Nothing is locked while you do it, so take your time." % [TUTORIAL_LOAN_AMOUNT, TUTORIAL_LOAN_AMOUNT],
+			"body": "Press 'Take loan' and select any amount over 200 for your next expansion.\n(Ignore the large amount of money already in your bank account)",
 			"setup": [ { "action": "open_money_panel" } ],
 			# The previous annotated step has already shown the Take loan button.  Do
 			# not retain a spotlight here: once the button opens the Loans tab, the old
@@ -698,7 +700,7 @@ static func steps() -> Array:
 			"no_dim": true,
 			"done": {
 				"wake": ["money_changed"],
-				"decide": { "kind": "loan_taken", "amount": TUTORIAL_LOAN_AMOUNT },
+				"decide": { "kind": "loan_taken", "amount": TUTORIAL_LOAN_AMOUNT, "exclusive": true },
 			},
 			"advance": "auto",
 		},
@@ -706,7 +708,7 @@ static func steps() -> Array:
 			"id": "money_loan_terms",
 			"chapter": "Money",
 			"title": "The terms of the loan",
-			"body": "Nothing is due for the first %d turns — that's your grace period, and it's the window to turn the money into something that earns. After it, the loan converts and you repay over %d turns, with interest of %d%% across the term. Plan for the repayment landing before it starts, not after." % [
+			"body": "Nothing is due for the first %d turns. This is your grace period. After that, you repay the loan over %d turns, with interest of %d%% across the term." % [
 				EconomyConfig.LOAN_GRACE_TURNS, EconomyConfig.LOAN_TERM_TURNS,
 				int(round(EconomyConfig.LOAN_INTEREST_RATE * 100.0))],
 			"setup": [ { "action": "open_money_panel" } ],
@@ -739,7 +741,7 @@ static func steps() -> Array:
 			"id": "choose_integration",
 			"chapter": "Integration",
 			"title": "Two ways integration pays",
-			"body": "Pick one to make yourself. GLASS is your biggest input — %d units per window run — and cheaper to make than to buy, so integrating it flips you into profit. That's the play, and research can push it further. Or ALUMINIUM, the smaller input: a smelter makes more than you need and the surplus sells each turn — a taste of a new revenue line, though glass is where the real money is." % _recipe_input_qty("r_056", "glass"),
+			"body": "Your choice. GLASS or ALUMINIUM. Either can make you more profitable, but this is how you decide where you specialise.",
 			"setup": [ { "action": "focus_building_on_tile", "tile": WINDOW_TILE, "building_id": "b_007" } ],
 			"spotlight": { "kind": "none", "ref": "" },
 			"choices": [
@@ -753,7 +755,7 @@ static func steps() -> Array:
 			"id": "build_glass_open",
 			"chapter": "Integration · Margin",
 			"title": "Build a glass furnace",
-			"body": "Build the furnace right here, on your factory's own tile. Making glass on-site means it's consumed where it's made — no shipping, no wobbling market top-up, a flat input bill. One catch: glassmaking needs a hazardous liquid the docks pipe in — we'll sort that out. Open the build tile and click Build.",
+			"body": "Click on your tile's Build button and add a Glass Furnace.",
 			"setup": [
 				{ "action": "close_building_detail" },
 				{ "action": "focus_tile", "tile": GLASS_TILE },
@@ -769,10 +771,10 @@ static func steps() -> Array:
 			"id": "build_glass_recipe",
 			"chapter": "Integration · Margin",
 			"title": "Pick Industrial Glassmaking",
-			"body": "A Furnace can make lots of things — click the highlighted Industrial Glassmaking recipe.",
+			"body": "A Furnace can make lots of things. Click the highlighted Industrial Glassmaking recipe.",
 			"card_side": "center_top",
 			"setup": [ { "action": "expand_construct_building", "building_id": "b_002" } ],
-			"spotlight": { "kind": "node_name", "ref": "RecipeRow_r_053" },
+			"spotlight": { "kind": "node_name", "ref": "RecipeRow_r_053", "center": true },
 			"done": {
 				"wake": [],
 				"decide": { "kind": "node_visible", "ref": "BuildConfirmButton" },

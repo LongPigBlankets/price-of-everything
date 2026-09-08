@@ -10,8 +10,8 @@ Port metric columns both wrap within their allocated width, avoiding the long va
 
 Validation:
 - Parse sweep: 556 scripts, zero failures.
-- Unit suite: 3,748 passed, zero failed, including the LED aggregation rules and lesson ordering.
-- Expanded live tutorial regression: 100 checks, zero failures, including the new tile lessons, spotlights, six freight classes in both tables, both construction branches, research and advisor flow.
+- Unit suite: 3,750 passed, zero failed, including the LED aggregation rules and lesson ordering.
+- Expanded live tutorial regression: 104 checks, zero failures, including the new tile lessons, spotlights, six freight classes in both tables, both construction branches, research and advisor flow.
 - Standard end-to-end scenario through turn 100: 723 assertions passed, zero failed.
 - Visual review: HUD annotations, Land Chart, tile overview, motor recipe, port terms and construction-materials highlight.
 
@@ -22,3 +22,7 @@ Cable-step follow-up: `lay_cable_factory` previously waited for `SourcingBuyButt
 Routing follow-up: output-destination cards consume mouse-down before calling actions that can hide the panel. This prevents the opening click from selecting the map tile underneath. The destination lesson ends on routing to the named coastal tile, followed by a separate End Turn spotlight that waits for windows in that destination stockpile. Step 25 splits its dash-separated sentence with a full stop. The live regression uses press/release input for both the destination option and the map tile, then runs actual production and transport through arrival. Test telemetry is disabled in the harness.
 
 Integration and encyclopedia follow-up: the diagram names Polymerisation Refinery, and the margin, cost, supply-chain and encyclopedia lessons use the requested shorter copy without dash-separated sentences. Encyclopedia prose and captions use the shared 14px body size and off-white text on dark surfaces. The margin lesson no longer changes the output route silently. After browsing the encyclopedia, the player must select Global market before the separate shipment-sale lesson begins. Its completion filters for windows from the factory tile while allowing any travel duration, so another factory or good cannot complete it. The live regression verifies the unchanged coastal route, actual Market selection, unrelated-sale rejection, actual window sale, and encyclopedia body style. Unit suite: 3,748 passed; parse sweep: 556 scripts with zero failures.
+
+Finance and glass-selection follow-up: the books lesson uses the requested operating-cost and power copy, with the gross-profit and net-profit equations on separate rows. Expansion loans now require any principal strictly above £200, with unit checks at £200 and £200.50; a real £250 loan advances the live tutorial. Loan terms and integration/glass lessons use the requested concise copy. The glass recipe spotlight waits for expanded-card layout and centres its row in the scroll viewport. The live regression verifies that the entire row is visible before clicking and captures the revised books panel.
+
+Final finance follow-up validation: 3,750 unit checks passed; 104 live tutorial checks passed; 556 scripts passed the parse sweep.

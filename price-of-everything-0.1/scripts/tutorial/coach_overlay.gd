@@ -223,11 +223,16 @@ func _scroll_target_into_view(target: Control) -> void:
 	var scroll := _find_scroll_ancestor(target)
 	if scroll == null:
 		return
-	scroll.ensure_control_visible(target)
-	await get_tree().process_frame
-	if not is_instance_valid(self) or not is_instance_valid(target):
-		return
-	scroll.ensure_control_visible(target)
+	# Expanded recipe cards need several container-layout passes before their final
+	# bounds are known. Only do this on entry, so later player scrolling is preserved.
+	for pass_index in range(3):
+		await get_tree().process_frame
+		if not is_instance_valid(target) or not is_instance_valid(scroll) or _scrolled_node != target:
+			return
+		scroll.ensure_control_visible(target)
+		if bool(_spot.get("center", false)):
+			var offset := target.get_global_rect().get_center().y - scroll.get_global_rect().get_center().y
+			scroll.scroll_vertical += int(round(offset))
 	if _target_node == target:
 		_hole = _node_rect(target)
 		_reposition_card()
@@ -836,7 +841,7 @@ func _build_annotations(step: Dictionary) -> void:
 		hl.text = str(h)
 		hl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		hl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		hl.custom_minimum_size = Vector2(250, 0)
+		hl.custom_minimum_size = Vector2(float(step.get("hint_width", 250)), 0)
 		hl.add_theme_color_override("font_color", _col("ACCENT", GLOW))
 		add_child(hl)
 		_hint_items.append(hl)

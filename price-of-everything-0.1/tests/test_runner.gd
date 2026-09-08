@@ -1145,8 +1145,8 @@ func _test_tutorial_engine() -> void:
 	_check(str((by_id.get("margin_motivation", {}) as Dictionary).get("body", "")).contains("The solution is vertical integration."),
 		"tutorial: margin lesson explains integration without a precise price claim")
 	var glass_qty: int = TutorialSteps._recipe_input_qty("r_056", "glass")
-	_check(glass_qty > 0 and str((by_id.get("choose_integration", {}) as Dictionary).get("body", "")).contains("%d units" % glass_qty),
-		"tutorial: choose_integration quotes the live glass quantity (%d)" % glass_qty)
+	_check(glass_qty > 0 and str((by_id.get("choose_integration", {}) as Dictionary).get("body", "")).begins_with("Your choice. GLASS or ALUMINIUM."),
+		"tutorial: integration choice presents both specialisations")
 	var alu_out: int = TutorialSteps._recipe_output_qty("r_232")
 	_check(alu_out > 0 and str((by_id.get("build_alu_open", {}) as Dictionary).get("body", "")).contains("%d aluminium" % alu_out),
 		"tutorial: build_alu_open quotes the live smelter output (%d)" % alu_out)
@@ -1200,6 +1200,13 @@ func _test_tutorial_engine() -> void:
 		and str(loan_terms_step.get("body", "")).begins_with("Nothing is due"),
 		"tutorial: Step 35 introduces the loan terms without the redundant Borrowed lead-in")
 
+	var previous_loans := LoanState.loans.duplicate(true)
+	var loan_decide: Dictionary = by_id["money_take_loan"]["done"]["decide"]
+	LoanState.loans = [{"principal_initial": 200.0}]
+	_check(not TutorialDetectors.poll(loan_decide), "tutorial: a loan of exactly 200 does not satisfy over 200")
+	LoanState.loans = [{"principal_initial": 200.5}]
+	_check(TutorialDetectors.poll(loan_decide), "tutorial: any loan above 200 satisfies the expansion lesson")
+	LoanState.loans = previous_loans
 	# Transport arc: output-route detectors read the explicit per-good destinations.
 	var saved2: Dictionary = MatchState.buildings
 	var saved_routes: Dictionary = MatchState.output_stockpile_destinations.duplicate(true)
