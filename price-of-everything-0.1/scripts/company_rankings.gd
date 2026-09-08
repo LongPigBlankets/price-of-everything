@@ -181,11 +181,14 @@ func standings_for(match_seed: int, completed_turn: int, player_revenues: Array[
 		previous_player_revenues = player_revenues.slice(0, player_revenues.size() - 1)
 	var previous := _rows_for_previous_turn(match_seed, completed_turn, previous_player_revenues)
 	var previous_rank_by_id: Dictionary = {}
+	var previous_revenue_by_id: Dictionary = {}
 	for previous_row: Dictionary in previous:
 		previous_rank_by_id[str(previous_row["id"])] = int(previous_row["rank"])
+		previous_revenue_by_id[str(previous_row["id"])] = float(previous_row["revenue"])
 	for row: Dictionary in rows:
 		var old_rank: int = int(previous_rank_by_id.get(str(row["id"]), int(row["rank"])))
 		row["rank_change"] = old_rank - int(row["rank"])
+		row["revenue_change"] = float(row["revenue"]) - float(previous_revenue_by_id.get(str(row["id"]), row["revenue"]))
 	return rows
 
 ## Per-good production table. Rival output is cosmetic and derived from the

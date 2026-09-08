@@ -480,18 +480,19 @@ func _choice_card(view: Dictionary, choice: Dictionary) -> Control:
 		vb.add_child(lrow)
 
 	# Loyalty chips: follow this advocate, snub every other advocate (spec §6.2).
-	var chips := HFlowContainer.new()
-	chips.add_theme_constant_override("h_separation", 4)
-	if not advocate.is_empty():
-		chips.add_child(_loyalty_chip(str(advocate.name), float(advocate.follow_delta), true))
-	for other: Dictionary in view.get("choices", []):
-		if str(other.id) == str(choice.id):
-			continue
-		var oadv: Dictionary = other.get("advocate", {})
-		if not oadv.is_empty():
-			chips.add_child(_loyalty_chip(str(oadv.name), -0.5, false))
-	if chips.get_child_count() > 0:
-		vb.add_child(chips)
+	if preload("res://scripts/debug_terminal.gd").demo_is_unlocked():
+		var chips := HFlowContainer.new()
+		chips.add_theme_constant_override("h_separation", 4)
+		if not advocate.is_empty():
+			chips.add_child(_loyalty_chip(str(advocate.name), float(advocate.follow_delta), true))
+		for other: Dictionary in view.get("choices", []):
+			if str(other.id) == str(choice.id):
+				continue
+			var oadv: Dictionary = other.get("advocate", {})
+			if not oadv.is_empty():
+				chips.add_child(_loyalty_chip(str(oadv.name), -0.5, false))
+		if chips.get_child_count() > 0:
+			vb.add_child(chips)
 
 	var shortfall := float(choice.get("loan_shortfall", 0.0))
 	if available and shortfall > 0.0:
@@ -552,7 +553,7 @@ func _loyalty_chip(advisor_name: String, delta: float, up: bool) -> Control:
 	chip.theme_type_variation = "Caption"
 	chip.add_theme_font_size_override("font_size", 10)
 	var last := advisor_name.split(" ")
-	chip.text = "%s %s%.1f %s" % ["▲" if up else "▼", "+" if delta > 0.0 else "", delta, last[last.size() - 1]]
+	chip.text = "%s%.1f %s" % ["+" if delta > 0.0 else "", delta, last[last.size() - 1]]
 	chip.add_theme_color_override("font_color", DS.PALETTE["OK"] if up else DS.PALETTE["DANGER"])
 	return chip
 

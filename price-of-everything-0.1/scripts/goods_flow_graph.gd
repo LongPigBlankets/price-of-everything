@@ -91,10 +91,10 @@ const BACK_GAP := 28.0              # spacing between below-web corridors
 # vertical lanes: runs of different edges that would overlap collinearly are nudged
 # onto distinct y offsets, so a dim edge is never overdrawn by another edge's run.
 const H_SEP := 12.0                 # min y between x-overlapping runs of different cards
-const H_SEP_SIBLING := 9.0          # min y between stubs fanning from the SAME card side
+const H_SEP_SIBLING := 6.0          # crowded card fans retain the 5px visible spacing floor
 const H_CLEAR := 4.0                # x clearance when testing two runs for overlap
-const H_GRID := 4.0                 # candidate nudges walk out in this quantum
-const PORT_LIMIT := CARD_H * 0.5 - 4.0    # nudged ports stay on the card edge (+/-52)
+const H_GRID := 1.0                 # fine nudges can fit dense fans without losing clearance
+const PORT_LIMIT := CARD_H * 0.5 - 1.0    # use the full card edge for crowded port fans
 const CORRIDOR_LIMIT := 30.0        # corridor nudges stay inside the DUMMY_ROW_H slot (+/-36)
 
 # Category -> accent colour, mirroring docs/goods_flow_chart.html. Goods with a blank
@@ -304,7 +304,10 @@ static func build(force := false, legacy_layout := false) -> Dictionary:
 	for c: int in range(maxd + 1):
 		if c > 0:
 			# pitch = card width + the gap AFTER this column's kind of boundary
-			running_x += CARD_W + (INTER_TIER_GAP if _boundary_cols.has(c) else INTRA_COL_GAP)
+			var gap: float = INTER_TIER_GAP if _boundary_cols.has(c) else INTRA_COL_GAP
+			# The legacy view draws all edges; compact card-only channels let
+			# dense risers spill into neighbouring channels and collide.
+			running_x += CARD_W + (maxf(gap, CHANNEL_W) if legacy_layout else gap)
 		_col_x.append(running_x)
 
 	# 6 · Sugiyama layout graph: real goods plus one invisible dummy vertex per
@@ -860,7 +863,7 @@ static func _channel_crossings(left: Array, ladj: Dictionary, pos: Dictionary) -
 ##   before the vertical colouring sees them. Back-edges (span <= 0) dive below the
 ##   web, run along a private corridor, and climb back up.
 static func _route_edges(edges: Array, chains: Dictionary, backs: Array,
-		ldepth: Dictionary, ypos: Dictionary, web_bottom: float) -> void:
+		ldepth: Dictionary, ypos: Dictionary, web_bottom: float, refine: bool = true) -> void:
 	# Below-web corridors for back-edges, deterministically stacked. `web_bottom`
 	# is the tallest column's slot bottom (columns span y 0 .. web_bottom).
 	var bottom := web_bottom + BACK_MARGIN
@@ -1030,6 +1033,10 @@ static func _route_edges(edges: Array, chains: Dictionary, backs: Array,
 			pts.append(Vector2(lx_in, ty))
 		pts.append(Vector2(col_x(int(ldepth[v])) - CARD_W * 0.5, ty))
 		e["waypoints"] = _collapse(pts)
+	# Crowded channels can exceed their nominal width at the minimum lane gap.
+	# Recheck port spacing against those actual extents before finalising routes.
+	if refine:
+		_route_edges(edges, chains, backs, ldepth, ypos, web_bottom, false)
 
 
 static func _edge_key(e: Dictionary) -> String:
@@ -1059,10 +1066,16 @@ static func _deconflict_horizontals(edges: Array, chains: Dictionary, ldepth: Di
 		var v := str(e["to"])
 		var du := float(int(ldepth[u]))
 		var dv := float(int(ldepth[v]))
+		var previous: PackedVector2Array = e.get("waypoints", PackedVector2Array())
+		var exit_end := col_x(int(du) + 1) - CARD_W * 0.5
+		var entry_end := col_x(int(dv) - 1) + CARD_W * 0.5
+		if previous.size() >= 2:
+			exit_end = maxf(exit_end, previous[1].x)
+			entry_end = minf(entry_end, previous[previous.size() - 2].x)
 		segs.append([1, float(exit_y[ei]), col_x(int(du)) + CARD_W * 0.5,
-			col_x(int(du) + 1) - CARD_W * 0.5, u, v, 0, ei, -1, float(ypos[u]), u])
-		segs.append([1, float(entry_y[ei]), col_x(int(dv) - 1) + CARD_W * 0.5,
-			col_x(int(dv)) - CARD_W * 0.5, u, v, 1, ei, -2, float(ypos[v]), v])
+			exit_end, u, v, 0, ei, -1, float(ypos[u]), u])
+		segs.append([1, float(entry_y[ei]), entry_end,
+			maxf(col_x(int(dv)) - CARD_W * 0.5, previous[previous.size() - 2].x if previous.size() >= 2 else entry_end), u, v, 1, ei, -2, float(ypos[v]), v])
 		if chains.has(ei):
 			var chain: Array = chains[ei]
 			for j: int in range(1, chain.size() - 1):
@@ -1092,11 +1105,10 @@ static func _deconflict_horizontals(edges: Array, chains: Dictionary, ldepth: Di
 				near.append(j)
 		conflicts.append(near)
 
-	# Greedy placement: walk candidate offsets outward (0, +-4, +-8, ...) until the
-	# run clears every conflicting segment's CURRENT y — final y for already placed
-	# segments, base y for pending ones (so a nudge never lands on a spot a later
-	# segment starts from). Fallback on exhaustion (never hit on the live catalog) is
-	# the base y. Stubs may use the full port band (+-PORT_LIMIT of the card centre);
+	# Greedy placement: walk candidate offsets outward until the run clears
+	# previously placed segments. Pending segments will avoid these final positions;
+	# reserving their initial positions needlessly crowds dense port fans.
+	# Stubs may use the full port band (+-PORT_LIMIT of the card centre);
 	# corridors stay within +-CORRIDOR_LIMIT of their empty row slot's centre.
 	var final_y: Array = []
 	for s: Array in segs:
@@ -1107,7 +1119,9 @@ static func _deconflict_horizontals(edges: Array, chains: Dictionary, ldepth: Di
 		var tag := int(s[6])
 		var base_y := float(s[1])
 		var limit: float = CORRIDOR_LIMIT if tag == 2 else PORT_LIMIT
-		var steps := int(limit / H_GRID)
+		# A port can start at either edge of its band. Search across the whole
+		# band, not just one half-width around that initial position.
+		var steps := int(ceil((limit if tag == 2 else 2.0 * limit) / H_GRID))
 		# Walk candidates outward; accept the first fully clear one. If the band is
 		# genuinely too crowded, take the LEAST-BAD candidate (the one maximising the
 		# worst clearance deficit) rather than the base y — a near-miss beats a
@@ -1117,11 +1131,13 @@ static func _deconflict_horizontals(edges: Array, chains: Dictionary, ldepth: Di
 		var best_worst := -INF
 		for k: int in range(2 * steps + 1):
 			var off := float((k + 1) >> 1) * H_GRID * (1.0 if k % 2 == 1 else -1.0)
-			var cand := base_y + off
+			var cand := roundf((base_y + off) / H_GRID) * H_GRID
 			if tag != 2 and absf(cand - float(s[9])) > PORT_LIMIT:
 				continue
 			var worst := INF
 			for j: int in conflicts[i]:
+				if j >= i:
+					continue  # Later segments will avoid this segment's final position.
 				var b: Array = segs[j]
 				var sibling: bool = tag != 2 and int(b[6]) == tag and str(b[10]) == str(s[10])
 				var need: float = H_SEP_SIBLING if sibling else H_SEP

@@ -21,7 +21,7 @@ const GoodIcons := preload("res://scripts/good_icons.gd")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 
 # Palette aligned to the DS navy theme (was bespoke pure-black). Dark surfaces use
-# DS navy (#040F1B) / highlight (#002E54); muted text uses DS TEXT_MUTED; the build
+# DS navy (#040F1B) / highlight (#002E54); body text uses DS TEXT; the build
 # button uses DS ACTION_BLUE. The cream accent already matches DS ACCENT. Kept as
 # consts (DS.PALETTE is a runtime autoload, not a compile-time constant).
 const OFF_WHITE := Color(0.995234, 0.930806, 0.763265, 1.0)
@@ -30,7 +30,6 @@ const BAR_BLACK := Color(0.015686, 0.058824, 0.105882, 1.0)
 const RESULT_BLACK := Color(0.015686, 0.058824, 0.105882, 0.98)
 const RESULT_HOVER := Color(0.0, 0.180392, 0.329412, 0.98)
 const RESULT_BORDER := Color(0.995234, 0.930806, 0.763265, 0.22)
-const SUBTITLE_COLOR := Color(0.760784, 0.823529, 0.898039, 1.0)
 const MUTED_PANEL := Color(0.015686, 0.058824, 0.105882, 0.96)
 const BUILD_BUTTON_BLUE := Color(0.176471, 0.439216, 0.658824, 1.0)
 const BUILD_BUTTON_HOVER_BLUE := Color(0.250980, 0.529412, 0.749020, 1.0)
@@ -70,6 +69,8 @@ func _ready() -> void:
 	call_deferred("_layout_search_stack")
 
 func open_search() -> void:
+	if not visible:
+		TelemetryState.track_interaction("encyclopedia_opened", "encyclopedia")
 	show()
 	PanelStack.push(self)
 	move_to_front()
@@ -79,6 +80,8 @@ func open_search() -> void:
 	call_deferred("_focus_search_input")
 
 func open_encyclopedia() -> void:
+	if not visible:
+		TelemetryState.track_interaction("encyclopedia_opened", "encyclopedia")
 	show()
 	PanelStack.push(self)
 	move_to_front()
@@ -89,6 +92,8 @@ func open_encyclopedia() -> void:
 ## Deep-link straight to a GOOD's entry (the Produced by / Used in recipe view).
 ## Used by the Goods Graph's expanded-card "Encyclopedia entry" button.
 func open_encyclopedia_good(good_id: String) -> void:
+	if not visible:
+		TelemetryState.track_interaction("encyclopedia_opened", "encyclopedia")
 	var good: Dictionary = Catalog.get_good(good_id)
 	if good.is_empty():
 		open_encyclopedia()
@@ -102,6 +107,8 @@ func open_encyclopedia_good(good_id: String) -> void:
 		"title": str(good.get("display_name", good_id)), "payload": good})
 
 func open_encyclopedia_entry(entry_id: String) -> void:
+	if not visible:
+		TelemetryState.track_interaction("encyclopedia_opened", "encyclopedia")
 	# Deep-link straight to a Mechanics entry (used by in-game "More info" links).
 	show()
 	PanelStack.push(self)
@@ -182,7 +189,7 @@ func _mechanic_body(entry_id: String) -> String:
 	if entry_id == "port_transport":
 		return ("Ports connect eligible goods to the world market. Port charges are ad valorem: they are based on the market value crossing the docks, for both imports and exports. Owning a port halves that rate; the port's maintenance and labour then apply as operating costs.\n\n"
 			+ "A port normally carries 1,500 units of each transport class per turn. Hazardous liquids, gases and ultra-heavy solids each have a 300-unit limit. Traffic may exceed those limits, but that shipment pays double port fees.\n\n"
-			+ "The standard ad valorem rate is 0.5% in turns 1–30 and 3% from turn 31. It also drifts upward by 0.1% each turn, and relevant research or events can change the live rate or throughput. The port panel lists default terms, current terms and recent shipments, so check it before assuming an import or export cost.")
+			+ "The standard ad valorem rate is 0.5% in turns 1–30 and 3% from turn 31. Games started from the tutorial keep the 0.5% base rate permanently. It also drifts upward by 0.1% each turn, and relevant research or events can change the live rate or throughput. The port panel lists default terms, current terms and recent shipments, so check it before assuming an import or export cost.")
 	if entry_id == "advisors":
 		# Read the live model rather than restating it — an encyclopedia page that quotes hardcoded
 		# numbers is a page that silently goes wrong the first time the constants are tuned.
@@ -537,8 +544,8 @@ func _make_result_column(title: String, results: Array) -> VBoxContainer:
 	if results.is_empty():
 		var empty := Label.new()
 		empty.text = "No matches"
-		empty.add_theme_font_size_override("font_size", 12)
-		empty.add_theme_color_override("font_color", SUBTITLE_COLOR)
+		empty.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
+		empty.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 		column.add_child(empty)
 		return column
 
@@ -593,8 +600,8 @@ func _make_result_row(result: Dictionary) -> PanelContainer:
 	subtitle.text = result.get("subtitle", "")
 	subtitle.clip_text = true
 	subtitle.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	subtitle.add_theme_font_size_override("font_size", 12)
-	subtitle.add_theme_color_override("font_color", SUBTITLE_COLOR)
+	subtitle.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
+	subtitle.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 	text_stack.add_child(subtitle)
 
 	if _result_has_build_action(result):
@@ -654,6 +661,8 @@ func _start_recipe_build(recipe: Dictionary) -> void:
 	close_search()
 
 func _show_result_detail(result: Dictionary) -> void:
+	if str(result.get("type", "")) == "good":
+		TelemetryState.track_interaction("good_encyclopedia_opened", "encyclopedia", str(result.get("id", "")))
 	var result_type: String = result.get("type", "")
 	if result_type == "tile":
 		close_search()
@@ -721,8 +730,8 @@ func _make_encyclopedia_entry(result: Dictionary) -> Control:
 
 	var type_label := Label.new()
 	type_label.text = _result_type_label(result)
-	type_label.add_theme_font_size_override("font_size", 12)
-	type_label.add_theme_color_override("font_color", SUBTITLE_COLOR)
+	type_label.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
+	type_label.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 	body_stack.add_child(type_label)
 
 	# Mechanics bodies may carry BBCode (the price-impact entry renders a rate table); goods and
@@ -736,15 +745,16 @@ func _make_encyclopedia_entry(result: Dictionary) -> Control:
 	body.scroll_active = false
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	body.add_theme_font_size_override("normal_font_size", 15)
-	body.add_theme_color_override("default_color", OFF_WHITE)
+	body.add_theme_font_size_override("normal_font_size", DS.FS["CAPTION"])
+	body.add_theme_font_override("normal_font", DS.theme.get_font("font", "Caption"))
+	body.add_theme_color_override("default_color", DS.PALETTE["TEXT"])
 	body_stack.add_child(body)
 
 	var note := Label.new()
 	note.text = "Detailed encyclopedia copy will live here in a later content pass."
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	note.add_theme_font_size_override("font_size", 13)
-	note.add_theme_color_override("font_color", SUBTITLE_COLOR)
+	note.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
+	note.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 	main.add_child(note)
 
 	var facts_panel := PanelContainer.new()
@@ -818,12 +828,31 @@ func _make_good_recipes_entry(result: Dictionary) -> Control:
 	header.add_child(back_button)
 	var title := Label.new()
 	title.text = str(result.get("title", ""))
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title.clip_text = true
-	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	title.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	title.clip_text = false
 	title.add_theme_font_size_override("font_size", 24)
 	title.add_theme_color_override("font_color", OFF_WHITE)
 	header.add_child(title)
+	var graph_button := Button.new()
+	graph_button.name = "EncyclopediaGoodsGraphButton"
+	var graph_icon := TextureRect.new()
+	graph_icon.texture = preload("res://assets/icons/ui_icons/standalone/sankey.png")
+	graph_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	graph_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	graph_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	graph_button.add_child(graph_icon)
+	graph_icon.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	graph_icon.offset_left = -20
+	graph_icon.offset_top = -20
+	graph_icon.offset_right = 20
+	graph_icon.offset_bottom = 20
+	graph_button.custom_minimum_size = Vector2(48, 48)
+	graph_button.tooltip_text = "Open this good in the Goods Graph"
+	graph_button.pressed.connect(func() -> void: MatchState.goods_graph_good_requested.emit(good_id); hide())
+	header.add_child(graph_button)
+	var header_spacer := Control.new()
+	header_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(header_spacer)
 
 	# The good's authored balancing band ("Tier: Processed") — the same vocabulary
 	# as the Goods Graph's band headers.
@@ -831,8 +860,8 @@ func _make_good_recipes_entry(result: Dictionary) -> Control:
 	if tier_value != "":
 		var tier_label := Label.new()
 		tier_label.text = "Tier: %s" % tier_value.capitalize()
-		tier_label.add_theme_font_size_override("font_size", 14)
-		tier_label.add_theme_color_override("font_color", SUBTITLE_COLOR)
+		tier_label.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
+		tier_label.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 		header.add_child(tier_label)
 
 	# Keep the live good data close to the recipes without taking width away from
@@ -843,6 +872,13 @@ func _make_good_recipes_entry(result: Dictionary) -> Control:
 	rubric_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var rubric_spacer := Control.new()
 	rubric_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var good_icon := TextureRect.new()
+	good_icon.name = "EncyclopediaGoodIcon"
+	good_icon.texture = _load_good_texture(Catalog.get_good(good_id))
+	good_icon.custom_minimum_size = Vector2(180, 180)
+	good_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	good_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	rubric_row.add_child(good_icon)
 	rubric_row.add_child(rubric_spacer)
 	rubric_row.add_child(_make_good_rubric(good_id))
 	root.add_child(rubric_row)
@@ -892,8 +928,8 @@ func _make_good_rubric(good_id: String) -> PanelContainer:
 
 	var transport_heading := Label.new()
 	transport_heading.text = "Transport cost per unit / turn"
-	transport_heading.add_theme_font_size_override("font_size", 12)
-	transport_heading.add_theme_color_override("font_color", SUBTITLE_COLOR)
+	transport_heading.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
+	transport_heading.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 	content.add_child(transport_heading)
 
 	var transport_row := HBoxContainer.new()
@@ -910,8 +946,8 @@ func _add_rubric_fact(grid: GridContainer, label_text: String, value_text: Strin
 	var label := Label.new()
 	label.text = label_text
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	label.add_theme_font_size_override("font_size", 12)
-	label.add_theme_color_override("font_color", SUBTITLE_COLOR)
+	label.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
+	label.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 	grid.add_child(label)
 	var value := Label.new()
 	value.text = value_text
@@ -929,8 +965,8 @@ func _make_good_transport_cell(good_id: String, mode: String) -> VBoxContainer:
 	var mode_label := Label.new()
 	mode_label.text = _good_transport_mode_name(mode)
 	mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	mode_label.add_theme_font_size_override("font_size", 11)
-	mode_label.add_theme_color_override("font_color", SUBTITLE_COLOR)
+	mode_label.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
+	mode_label.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 	cell.add_child(mode_label)
 
 	var supported := _good_supports_transport_mode(good_id, mode)
@@ -938,7 +974,7 @@ func _make_good_transport_cell(good_id: String, mode: String) -> VBoxContainer:
 	cost.text = ("£%.3f" % _good_transport_unit_cost(good_id, mode)) if supported else "Not supported"
 	cost.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	cost.add_theme_font_size_override("font_size", 11)
-	cost.add_theme_color_override("font_color", OFF_WHITE if supported else Color(SUBTITLE_COLOR, 0.62))
+	cost.add_theme_color_override("font_color", OFF_WHITE if supported else DS.PALETTE["TEXT_DISABLED"])
 	cell.add_child(cost)
 	return cell
 
@@ -997,8 +1033,8 @@ func _make_recipe_column(heading_text: String, recipes: Array) -> Control:
 	if recipes.is_empty():
 		var none := Label.new()
 		none.text = "No recipes."
-		none.add_theme_font_size_override("font_size", 13)
-		none.add_theme_color_override("font_color", SUBTITLE_COLOR)
+		none.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
+		none.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 		list.add_child(none)
 	else:
 		for recipe in recipes:
@@ -1011,8 +1047,8 @@ func _recipe_caption(recipe: Dictionary) -> Label:
 	var rname := str(recipe.get("display_name", recipe.get("recipe_id", "")))
 	var bname := Catalog.get_building_display_name(recipe.get("building_id", ""))
 	l.text = ("%s  ·  %s" % [rname, bname]) if bname != "" else rname
-	l.add_theme_font_size_override("font_size", 13)
-	l.add_theme_color_override("font_color", SUBTITLE_COLOR)
+	l.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
+	l.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	return l
 
@@ -1027,8 +1063,8 @@ func _make_entry_image(result: Dictionary) -> PanelContainer:
 		empty.text = "No image"
 		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		empty.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		empty.add_theme_font_size_override("font_size", 13)
-		empty.add_theme_color_override("font_color", SUBTITLE_COLOR)
+		empty.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
+		empty.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 		image_panel.add_child(empty)
 		return image_panel
 
@@ -1158,7 +1194,7 @@ func _make_fact_label(fact: Dictionary) -> Label:
 	var label := Label.new()
 	label.text = "%s: %s" % [fact.get("label", ""), fact.get("value", "-")]
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	label.add_theme_font_size_override("font_size", 13)
+	label.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
 	label.add_theme_color_override("font_color", OFF_WHITE)
 	return label
 
@@ -1263,7 +1299,8 @@ func _make_encyclopedia_landing() -> Control:
 
 	_add_accordion_section(sections, "Goods", MatchState.visible_goods(), "good")
 	_add_accordion_section(sections, "Recipes", Catalog.all_recipes(), "recipe")
-	_add_accordion_section(sections, "Buildings", Catalog.all_buildings(), "building")
+	_add_accordion_section(sections, "Buildings", Catalog.all_buildings().filter(func(building: Dictionary) -> bool:
+		return MatchState.is_recycling_available() or not MatchState.RECYCLING_BUILDING_IDS.has(str(building.get("id", "")))), "building")
 	_add_accordion_section(sections, "Game mechanics", MECHANIC_ENTRIES, "mechanic")
 	return root
 
@@ -1286,7 +1323,7 @@ func _add_accordion_section(parent: VBoxContainer, title: String, items: Array, 
 	header.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	header.add_theme_font_size_override("font_size", 16)
 	header.add_theme_color_override("font_color", OFF_WHITE)
-	header.add_theme_color_override("font_disabled_color", SUBTITLE_COLOR)
+	header.add_theme_color_override("font_disabled_color", DS.PALETTE["TEXT"])
 	header.add_theme_stylebox_override("normal", _make_panel_style(RESULT_BLACK, RESULT_BORDER, 1.0, 5, 8))
 	header.add_theme_stylebox_override("hover", _make_panel_style(RESULT_HOVER, RESULT_BORDER, 1.0, 5, 8))
 	if locked:
@@ -1379,8 +1416,8 @@ func _make_accordion_item(result: Dictionary) -> PanelContainer:
 	var subtitle := Label.new()
 	subtitle.text = _catalog_item_subtitle(result)
 	subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	subtitle.add_theme_font_size_override("font_size", 12)
-	subtitle.add_theme_color_override("font_color", SUBTITLE_COLOR)
+	subtitle.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
+	subtitle.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 	labels.add_child(subtitle)
 
 	if _result_has_build_action(result):
@@ -1438,8 +1475,8 @@ func _make_empty_icon(text: String) -> PanelContainer:
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	label.add_theme_font_size_override("font_size", 11)
-	label.add_theme_color_override("font_color", SUBTITLE_COLOR)
+	label.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
+	label.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 	icon.add_child(label)
 	return icon
 
@@ -1531,8 +1568,8 @@ func _make_mini_construct_panel(building: Dictionary) -> Control:
 	copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	copy.text = "Choose one of this building's recipes to enter build mode for that building and recipe combination."
-	copy.add_theme_font_size_override("font_size", 15)
-	copy.add_theme_color_override("font_color", OFF_WHITE)
+	copy.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
+	copy.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 	summary.add_child(copy)
 
 	var recipes_title := Label.new()
@@ -1544,8 +1581,8 @@ func _make_mini_construct_panel(building: Dictionary) -> Control:
 	if recipes.is_empty():
 		var empty := Label.new()
 		empty.text = "No recipes are currently available for this building."
-		empty.add_theme_font_size_override("font_size", 14)
-		empty.add_theme_color_override("font_color", SUBTITLE_COLOR)
+		empty.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
+		empty.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 		root.add_child(empty)
 		return root
 
@@ -1602,8 +1639,8 @@ func _make_mini_recipe_row(recipe: Dictionary) -> PanelContainer:
 	]
 	subtitle.clip_text = true
 	subtitle.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	subtitle.add_theme_font_size_override("font_size", 12)
-	subtitle.add_theme_color_override("font_color", SUBTITLE_COLOR)
+	subtitle.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
+	subtitle.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
 	labels.add_child(subtitle)
 
 	if _result_has_build_action(result):

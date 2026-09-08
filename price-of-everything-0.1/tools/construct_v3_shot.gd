@@ -41,6 +41,16 @@ func _ready() -> void:
 	get_viewport().get_texture().get_image().save_png("res://construct_v3_shot_top.png")
 	print("SAVED construct_v3_shot_top.png")
 
+	# Exercise disclosure on the real confirm view before scrolling it.
+	var requirement := panel.find_child("Requirement_cables", true, false) as Button
+	if requirement != null:
+		requirement.pressed.emit()
+		await _settle(4)
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png("/tmp/demo_requirements_expanded.png")
+		requirement.pressed.emit()
+		await _settle(2)
+
 	if panel._scroll != null:
 		panel._scroll.scroll_vertical = 10000
 		await _settle(6)

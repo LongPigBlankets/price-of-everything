@@ -15,6 +15,9 @@ os.makedirs(out_dir, exist_ok=True)
 
 exec(open(os.path.join(here, "sprite_kit.py")).read())
 exec(open(os.path.join(here, "goods_icon_kit.py")).read())
+import glob as _glob
+for _b in sorted(_glob.glob(os.path.join(here, "goods_icon_batch*.py"))):
+    exec(open(_b).read())
 
 for nm in names:
     fn = globals().get("build_" + nm)

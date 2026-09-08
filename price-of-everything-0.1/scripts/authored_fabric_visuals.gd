@@ -49,9 +49,22 @@ var _view_rect := Rect2()
 var _dirty_tiles: Dictionary = {}
 var _repainted: Dictionary = {}
 var _repair_running := false
+var _port_deck: Node2D
+
+class PortDeck extends Node2D:
+	var source: Node2D
+	func _draw() -> void:
+		if is_instance_valid(source):
+			source._draw_ports(self)
+
 
 
 func _ready() -> void:
+	_port_deck = PortDeck.new()
+	_port_deck.name = "HarbourDecks"
+	_port_deck.source = self
+	_port_deck.z_index = 1
+	add_child(_port_deck)
 	# Findable by the placement path, which evicts a mass when a gameplay building takes the
 	# ground it stands on. Same shape as `building_footprints`, and the only coupling between
 	# the two — placement reads no fabric geometry from here, it measures the document.
@@ -83,12 +96,13 @@ func set_keep_out(regions: Array) -> void:
 				break
 		if same:
 			return
+	var old_regions := _keep_out
 	_keep_out = regions.duplicate()
 	# The cut is baked INTO the textures, so changing where a harbour stands makes every tile
 	# the old and new regions touch stale. Repainting them is what keeps a baked map agreeing
 	# with a vector one about where the town stops.
 	if AuthoredBake.is_available():
-		for region_value in (regions + _keep_out):
+		for region_value in (regions + old_regions):
 			var region: PackedVector2Array = region_value
 			if region.size() < 3:
 				continue
@@ -162,11 +176,10 @@ func restore_all() -> void:
 
 func _draw() -> void:
 	var _lpd := Time.get_ticks_usec()
-	_cranes_this_pass = []
+	_port_deck.queue_redraw()
 	_lp_draw_inner()
 	# The cranes gathered during the pass go to their own layer, above the ships. Deferred
 	# because set_cranes queues a redraw on a sibling and this one is mid-draw.
-	_publish_cranes.call_deferred()
 	var _lpms := float(Time.get_ticks_usec() - _lpd) / 1000.0
 	if _lpms > 50.0 and OS.get_environment("LOAD_PROF") != "":
 		print("LOADPROF-DRAW %s %.0f ms   abs=%d" % [name, _lpms, Time.get_ticks_msec()])
@@ -236,36 +249,9 @@ func _lp_draw_inner() -> void:
 			if _record_visible(mass) and not _sacrificed.has(str(mass.get("id", ""))):
 				AuthoredFabricPainter.draw_mass(self, mass, _keep_out)
 	for settlement in ordered:
-		# Imported harbours draw as ONE grouped structure (draw_port_group): a dock and
-		# its arms are one deck, so outlining each imported shape on its own would put
-		# an ink seam across every junction. Everything else draws on its own.
-		var harbours: Dictionary = {}
 		for special in _list(settlement, "specials"):
-			if _sacrificed.has(str(special.get("id", ""))):
-				continue
-			if not _record_visible(special):
-				continue
-			var port_tile := str(special.get("port", ""))
-			if port_tile != "":
-				if not harbours.has(port_tile):
-					harbours[port_tile] = []
-				(harbours[port_tile] as Array).append(special)
-				continue
-			AuthoredFabricPainter.draw_special(self, special, _keep_out)
-		var harbour_keys := harbours.keys()
-		harbour_keys.sort()
-		for port_tile in harbour_keys:
-			AuthoredFabricPainter.draw_port_group(self, harbours[port_tile],
-				str(port_tile), _keep_out)
-			# Containers and cranes ride in the document with the quay they belong to, and
-			# draw over it — the planner stacks its own harbours the same way.
-			var decor: Array = []
-			for record in _list(settlement, "port_decor"):
-				if str(record.get("tile", "")) == str(port_tile):
-					decor.append(record)
-			if not decor.is_empty():
-				AuthoredFabricPainter.draw_port_decor(self, decor, _keep_out, true)
-				_collect_cranes(decor)
+			if str(special.get("port", "")) == "" and _record_visible(special) and not _sacrificed.has(str(special.get("id", ""))):
+				AuthoredFabricPainter.draw_special(self, special, _keep_out)
 	for settlement in ordered:
 		for area in _list(settlement, "forests"):
 			if not _record_visible(area):
@@ -312,7 +298,7 @@ func _record_by_id(mass_id: String) -> Dictionary:
 ## Repaint the tiles an eviction (or a moved harbour) invalidated, through the SAME painter the
 ## export tool uses, so a repaired tile is indistinguishable from a freshly baked one. This is
 ## why a mass can be evicted at all under a bake: the texture is re-rendered without it rather
-## than patched. One 540x640 render per affected tile, only when something actually changes.
+## than patched. One near-resolution render per affected tile, shared by both zoom tiers, only on changes.
 func _repair_evicted_tiles() -> void:
 	if _repair_running or _dirty_tiles.is_empty() or not AuthoredBake.is_available():
 		return
@@ -326,7 +312,7 @@ func _repair_evicted_tiles() -> void:
 	var pending := _dirty_tiles.keys()
 	_dirty_tiles.clear()
 	var viewport := SubViewport.new()
-	viewport.size = BakeLayout.texture_size()
+	viewport.size = BakeLayout.texture_size_for(BakeLayout.TIER_NEAR)
 	viewport.transparent_bg = true
 	viewport.disable_3d = true
 	viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
@@ -348,7 +334,7 @@ func _repair_evicted_tiles() -> void:
 			records[kind] = kept
 		# The repaint must apply the SAME cut the bake applied, or a repaired tile would put
 		# the town back against the quay while its neighbours still stand clear of it.
-		painter.configure("fabric", records, BakeLayout.bake_transform(rect), _keep_out)
+		painter.configure("fabric", records, BakeLayout.bake_transform_for(rect, BakeLayout.TIER_NEAR), _keep_out)
 		viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 		await get_tree().process_frame
 		await RenderingServer.frame_post_draw
@@ -424,31 +410,9 @@ func _draw_dynamic() -> void:
 		for mass in _list(settlement, "decor"):
 			if bool(mass.get("sacrificial", false)) and not _sacrificed.has(str(mass.get("id", ""))):
 				AuthoredFabricPainter.draw_mass(self, mass, _keep_out)
-		var harbours: Dictionary = {}
 		for special in _list(settlement, "specials"):
-			if _sacrificed.has(str(special.get("id", ""))):
-				continue
-			var port_tile := str(special.get("port", ""))
-			if port_tile != "":
-				if not harbours.has(port_tile):
-					harbours[port_tile] = []
-				(harbours[port_tile] as Array).append(special)
-			elif bool(special.get("sacrificial", false)):
+			if str(special.get("port", "")) == "" and bool(special.get("sacrificial", false)) and not _sacrificed.has(str(special.get("id", ""))):
 				AuthoredFabricPainter.draw_special(self, special, _keep_out)
-		var harbour_keys := harbours.keys()
-		harbour_keys.sort()
-		var _lp_h := Time.get_ticks_usec()
-		for port_tile in harbour_keys:
-			AuthoredFabricPainter.draw_port_group(self, harbours[port_tile],
-				str(port_tile), _keep_out)
-			var decor: Array = []
-			for record in _list(settlement, "port_decor"):
-				if str(record.get("tile", "")) == str(port_tile):
-					decor.append(record)
-			if not decor.is_empty():
-				AuthoredFabricPainter.draw_port_decor(self, decor, _keep_out, true)
-				_collect_cranes(decor)
-		_lp_harbours_us += Time.get_ticks_usec() - _lp_h
 	# Point trees remain live (not in the texture bake), but as geometry built ONCE: drawing
 	# the ~17,000 of them record by record — re-expanding the compact points, re-hashing every
 	# clump and re-seeding every crown — cost ~600 ms on EVERY repaint, which is the hitch a
@@ -460,6 +424,27 @@ func _draw_dynamic() -> void:
 	for mesh in _tree_meshes:
 		draw_mesh(mesh as Mesh, _white_texture())
 	_lp_trees_us += Time.get_ticks_usec() - _lp_tr
+
+
+func _draw_ports(canvas: CanvasItem) -> void:
+	_cranes_this_pass = []
+	for settlement in AuthoredMap.settlements().values():
+		var harbours: Dictionary = {}
+		for special in _list(settlement, "specials"):
+			var tid := str(special.get("port", ""))
+			if tid != "" and not _sacrificed.has(str(special.get("id", ""))):
+				if not harbours.has(tid):
+					harbours[tid] = []
+				harbours[tid].append(special)
+		for tid in harbours:
+			AuthoredFabricPainter.draw_port_group(canvas, harbours[tid], tid, _keep_out)
+			var decor: Array = []
+			for record in _list(settlement, "port_decor"):
+				if str(record.get("tile", "")) == tid:
+					decor.append(record)
+			AuthoredFabricPainter.draw_port_decor(canvas, decor, _keep_out, true)
+			_collect_cranes(decor)
+	_publish_cranes.call_deferred()
 
 
 ## Every authored point tree of every settlement — singles and expanded clumps, with the

@@ -4,7 +4,7 @@ extends Control
 # - Top stack: "building placed" success toasts (one per building_added).
 # - Bottom stack: red warning when cash crosses below 0.
 # Up to MAX_TOASTS per stack; oldest is dropped immediately when exceeded.
-# Each toast auto-dismisses (with fade) after TOAST_DURATION seconds.
+# Each toast dismisses when its countdown overlay reaches the left edge.
 
 # Cap per stack. Raised from 4 (owner, 23 Aug): the oldest toast is dropped the INSTANT
 # the cap is exceeded, whatever is left of its timer, so on a busy turn — several
@@ -13,7 +13,6 @@ extends Control
 # stack simply rises higher now.
 const MAX_TOASTS := 6
 const TOAST_DURATION := 5.0   # owner, 23 Aug
-const FADE_DURATION := 0.35
 const TOAST_WIDTH := 380.0
 # Bottom-left stack for success toasts, sitting under the Construct panel.
 # Right edge is anchored to the left side; toasts grow upward.
@@ -24,20 +23,32 @@ const WARNING_BOTTOM_OFFSET := -140.0
 # Insufficient-money errors (can't afford a build OR a building purchase) share the bottom-left
 # success stack so they sit where the other left-side toasts are, stacking instead of overlapping.
 
-const SUCCESS_BG := Color(0.05, 0.18, 0.32, 0.94)
+const SUCCESS_BG := Color(0.015, 0.045, 0.075, 0.98)
 const SUCCESS_BORDER := Color(0.4, 0.85, 0.4, 0.9)
 const SUCCESS_TEXT := Color(0.92, 0.97, 1.0)
 
-const WARNING_BG := Color(0.35, 0.05, 0.05, 0.95)
+const WARNING_BG := Color(0.10, 0.015, 0.015, 0.98)
 const WARNING_BORDER := Color(1.0, 0.35, 0.35, 0.95)
 const WARNING_TEXT := Color(1.0, 0.92, 0.92)
-const CAUTION_BG := Color(0.22, 0.16, 0.03, 0.95)
+const CAUTION_BG := Color(0.075, 0.045, 0.01, 0.98)
 const CAUTION_BORDER := Color(1.0, 0.78, 0.18, 0.95)
 const CAUTION_TEXT := Color(1.0, 0.96, 0.84)
 const TOAST_SUCCESS := "success"
 const TOAST_WARNING := "warning"
 const TOAST_CAUTION := "caution"
 const TOAST_ERROR := "error"
+
+class ToastCountdown extends Control:
+	var remaining: float = 1.0:
+		set(value): remaining = value; queue_redraw()
+	func _draw() -> void:
+		if remaining <= 0.0:
+			return
+		var right: float = size.x * remaining
+		draw_polygon(PackedVector2Array([Vector2.ZERO, Vector2(right, 0), Vector2(right, size.y), Vector2(0, size.y)]),
+			PackedColorArray([Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.12), Color(1, 1, 1, 0.12), Color(1, 1, 1, 0.0)]))
+
+var _pending_sales: Array = []
 
 var _success_stack: VBoxContainer
 var _warning_stack: VBoxContainer
@@ -47,6 +58,14 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_build_stacks()
+	DecisionState.recording_updates_changed.connect(func(hidden: bool) -> void:
+		if hidden:
+			_pending_sales.clear()
+			for stack in [_success_stack, _warning_stack]:
+				for child in stack.get_children():
+					child.queue_free())
+	TurnManager.turn_resolution_completed.connect(_flush_sales)
+	MatchState.state_reset.connect(func() -> void: _pending_sales.clear())
 	_prev_money = MatchState.money
 	MatchState.building_added.connect(_on_building_added)
 	Construction.construction_started.connect(_on_construction_started)
@@ -101,6 +120,8 @@ func _build_stacks() -> void:
 	add_child(_warning_stack)
 
 func _on_building_added(instance: Dictionary) -> void:
+	if not MatchState.is_player_owned(instance):
+		return
 	# building_added now fires at completion (promotion), so this is the "built" toast.
 	var msg: String = _format_building_message(instance)
 	_push_toast(_success_stack, msg, TOAST_SUCCESS)
@@ -184,9 +205,30 @@ func _format_building_message(instance: Dictionary) -> String:
 	return line
 
 func _on_stockpile_market_sale_completed(sale_record: Dictionary) -> void:
-	var msg := _format_stockpile_sale_message(sale_record)
-	if msg != "":
-		_push_toast(_success_stack, msg, TOAST_SUCCESS)
+	_pending_sales.append(sale_record.duplicate(true))
+	if not TurnManager.is_resolving:
+		_flush_sales.call_deferred()
+
+func _flush_sales() -> void:
+	if _pending_sales.is_empty():
+		return
+	var message: String = _format_sales_batch(_pending_sales)
+	_pending_sales.clear()
+	if message != "":
+		_push_toast(_success_stack, message, TOAST_SUCCESS)
+
+func _format_sales_batch(records: Array) -> String:
+	if records.size() == 1:
+		return _format_stockpile_sale_message(records[0])
+	var units: int = 0
+	var goods: Dictionary = {}
+	var revenue: float = 0.0
+	for record: Dictionary in records:
+		revenue += float(record.get("total_revenue", 0.0))
+		for item: Dictionary in record.get("items", []):
+			units += int(item.get("qty", 0))
+			goods[str(item.get("good_id", ""))] = true
+	return "Last turn you sold %d units of %d goods, totalling £%.2f." % [units, goods.size(), revenue]
 
 func _format_stockpile_sale_message(sale_record: Dictionary) -> String:
 	var items: Array = sale_record.get("items", [])
@@ -223,6 +265,8 @@ func _format_stockpile_sale_message(sale_record: Dictionary) -> String:
 	return message
 
 func _push_toast(stack: VBoxContainer, message: String, toast_type: String) -> void:
+	if DecisionState.hide_updates:
+		return
 	# Nothing that fires while the world is still building behind the loading screen
 	# is player-initiated — it is the match-start seeding (NPC ports, start companies,
 	# their material orders). Those toasts used to expire unseen under a ~60 s load;
@@ -230,7 +274,12 @@ func _push_toast(stack: VBoxContainer, message: String, toast_type: String) -> v
 	# (The `swap loading_screen` cheat keeps them, to reproduce the old load faithfully.)
 	if LoadPacing.is_background_build() and not LoadPacing.legacy_load:
 		return
+	if toast_type == TOAST_CAUTION:
+		for existing: Node in stack.get_children():
+			if str(existing.get_meta("toast_message", "")) == message:
+				return
 	var toast: PanelContainer = _make_toast(message, toast_type)
+	toast.set_meta("toast_message", message)
 	stack.add_child(toast)
 	# Detach the oldest BEFORE queue_free — queue_free is deferred until
 	# end-of-frame, so it does NOT decrement get_child_count(). Without the
@@ -240,14 +289,10 @@ func _push_toast(stack: VBoxContainer, message: String, toast_type: String) -> v
 		var oldest: Node = stack.get_child(0)
 		stack.remove_child(oldest)
 		oldest.queue_free()
-	# Timer is a child of the toast — if the toast is force-removed (cap
-	# exceeded), the timer is freed with it and no orphaned callback fires.
-	var timer := Timer.new()
-	timer.one_shot = true
-	timer.wait_time = TOAST_DURATION
-	toast.add_child(timer)
-	timer.timeout.connect(_dismiss_toast.bind(toast))
-	timer.start()
+	var countdown: Control = toast.get_node("Countdown")
+	var tween: Tween = toast.create_tween()
+	tween.tween_property(countdown, "remaining", 0.0, TOAST_DURATION)
+	tween.tween_callback(toast.queue_free)
 
 func _make_toast(message: String, toast_type: String) -> PanelContainer:
 	var panel := PanelContainer.new()
@@ -271,6 +316,10 @@ func _make_toast(message: String, toast_type: String) -> PanelContainer:
 	sb.content_margin_bottom = 8
 	panel.add_theme_stylebox_override("panel", sb)
 
+	var countdown := ToastCountdown.new()
+	countdown.name = "Countdown"
+	countdown.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(countdown)
 	var label := Label.new()
 	label.text = message
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -309,13 +358,3 @@ func _toast_text_color(toast_type: String) -> Color:
 			return CAUTION_TEXT
 		_:
 			return SUCCESS_TEXT
-
-func _dismiss_toast(toast: Node) -> void:
-	if not is_instance_valid(toast):
-		return
-	if toast.has_meta("_dismissing"):
-		return
-	toast.set_meta("_dismissing", true)
-	var tween: Tween = toast.create_tween()
-	tween.tween_property(toast, "modulate:a", 0.0, FADE_DURATION)
-	tween.tween_callback(toast.queue_free)

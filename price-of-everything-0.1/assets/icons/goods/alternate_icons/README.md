@@ -10,13 +10,19 @@ User-requested alternate representations, September 2026.
 | `g_036_electrical_components` | Yellow breaker with distinct top/front tones, recessed constant-width folded switch matching the reference, copper strands, thin inset frames and cable-base seams, bulb and lowered voltmeter. |
 | `g_025_ammonia` | Approved tall black cylinder, yellow shoulders, silver guarded valve and white/navy NH3 band; also installed as default in all tiers. |
 | `g_056_ice_car` | Approved Passat-style diesel sedan and red jerrycan, with rounded windshield base, fitted headlamps and hood seams. |
+| `g_018_sand` | Sand v15 from the Blender checkpoint: heap and tied sacks with granular shading; installed as default in all tiers. |
+| `g_029_aluminium` | Bundled aluminium billets on a pallet, recovered from the local Blender exports; installed as default in all tiers. |
+| `g_008_motor` | Finned motor with yellow terminal box, latest local Blender export; installed as default in all tiers. |
 | `g_024_ethylene` | Glass flask, continuous liquid volume with coloured top surface, curved formula label. |
+| `g_030_alumina` | Approved upright kraft sack, single folded-over flap, brim-full of outlined white pellets, Al₂O₃ label conformed to the skin. Alternate only. |
+| `g_038_glass` | Approved standing pane (clean, two glints, far-edge lines) with a corked olive bottle in front. Alternate only. |
+| `g_039_windows` | Approved double casement, one leaf swung a true 90°, leaves set in from the frame against a rebate ring, handles a mirror pair on the front faces. Alternate only. |
 
 Each file is a transparent RGBA PNG. Tiers mirror the existing goods folder:
 `medium` = 800 px, `small` = 450 px, `very_small` = 256 px.
-Ammonia, coal and iron ore are also installed in the default game tiers, as requested. The loader searches all main tiers first, then alternate tiers in the same size order.
+Ammonia, coal, iron ore, electrical components, ethylene, limestone, sand, aluminium and motors are also installed in the default game tiers, as requested. The loader searches all main tiers first, then alternate tiers in the same size order.
 An alternate appears automatically only when no main icon exists in any tier.
-Diesel, electrical components, ethylene and limestone retain their existing main icons.
+Diesel retains its existing main icon.
 
 Godot import sidecars are committed for every alternate. Their complete `[params]`
 blocks match established goods icons in the corresponding tier, including
@@ -29,6 +35,10 @@ The latest electrical model, PNGs and original-switch close-up comparison are in
 [switch_reference_refinement](../../../../artifacts/goods_material_studies/switch_reference_refinement/).
 The build workflow is documented in
 [material_studies](../../../../tools/goods_icons/material_studies/README.md).
+
+The alumina, glass and windows sources, renders and review evidence are in
+[goods_icon_wga](../../../../artifacts/goods_icon_wga/) (approved 2026-09-07; alternates only,
+main tiers keep priority).
 
 The approved diesel source is
 [windshield final](../../../../artifacts/goods_icon_diesel/passat_rebuild/windscreen_bow_final/).

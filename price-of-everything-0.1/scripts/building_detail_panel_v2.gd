@@ -793,10 +793,8 @@ func _build_port_card(building: Dictionary) -> PanelContainer:
 
 	_port_section(vb, "WHAT YOU PAY NOW", true)
 	vb.add_child(_port_metric("Flat fee", "£%.2f per active good" % (float(sea.get("base_fee", 0.0)) * growth)))
-	vb.add_child(_port_metric("Ad valorem", "%.4f%% of market buy value" % rate_pct))
-	vb.add_child(_port_metric("Throughput", "%s per class · %s each for hazardous liquids, gases and ultra-heavy solids" % [
-		_fmt_int(sea_port_cap("g_018")), _fmt_int(sea_port_cap("g_017"))
-	]))
+	vb.add_child(_port_metric("Ad valorem", "%s%% of market buy value" % String.num(rate_pct, 4)))
+	_add_port_throughput_rows(vb, true)
 	if owned:
 		vb.add_child(_port_metric("Owned-port upkeep", "£20.00 maintenance · about £15 labour / turn"))
 
@@ -814,10 +812,13 @@ func _build_port_card(building: Dictionary) -> PanelContainer:
 			vb.add_child(_port_activity_row(row, used_by_class))
 
 	_port_section(vb, "THE RATE CARD", false)
-	vb.add_child(_port_metric("Ad valorem · turns 1–30", "0.5000% of market buy value"))
-	vb.add_child(_port_metric("Ad valorem · turn 31 onward", "3.0000% of market buy value"))
+	if MatchState.keeps_introductory_port_rate():
+		vb.add_child(_port_metric("Ad valorem · all turns", "0.5% of market buy value"))
+	else:
+		vb.add_child(_port_metric("Ad valorem · turns 1–30", "0.5% of market buy value"))
+		vb.add_child(_port_metric("Ad valorem · turn 31 onward", "3% of market buy value"))
 	vb.add_child(_port_metric("Annual drift", "+0.1% to the fee each turn"))
-	vb.add_child(_port_metric("Throughput", "1,500 per class · 300 hazardous liquids, gases and ultra-heavy solids"))
+	_add_port_throughput_rows(vb, false)
 	vb.add_child(_port_metric("At the throughput cap", "Sea fees double for that shipment"))
 	vb.add_child(_port_metric("Owned port", "Ad valorem rate is halved; upkeep and labour apply"))
 	return card
@@ -869,7 +870,15 @@ func _port_activity_row(row_data: Dictionary, used_by_class: Dictionary) -> HBox
 	cost.add_theme_font_size_override("font_size", 12)
 	cost.tooltip_text = "Per-turn fee | ad valorem"
 	cost.text = "£%.2f | £%.2f" % [float(row_data.get("base_fee", 0.0)), float(row_data.get("insurance_fee", 0.0))]
-	row.add_child(cost)
+	var fees := VBoxContainer.new()
+	fees.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var fee_label := Label.new()
+	fee_label.text = "Fee paid"
+	fee_label.theme_type_variation = &"Caption"
+	fee_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	fees.add_child(fee_label)
+	fees.add_child(cost)
+	row.add_child(fees)
 	var transport_class := str(row_data.get("transport_class", ""))
 	var capacity := int(row_data.get("capacity", 0))
 	var used := int(used_by_class.get(transport_class, 0))
@@ -881,7 +890,21 @@ func _port_metric(key: String, value: String) -> HBoxContainer:
 	var key_label := row.get_child(0) as Label
 	if key_label != null:
 		key_label.add_theme_color_override("font_color", Color.WHITE)
+	var value_label := row.get_child(1) as Label
+	if value_label != null:
+		value_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		value_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		value_label.size_flags_stretch_ratio = 1.4
 	return row
+
+func _add_port_throughput_rows(vb: VBoxContainer, live: bool) -> void:
+	for spec in [["solid_light", "Light solids"], ["solid_heavy", "Heavy solids"],
+		["ultra_heavy", "Ultra-heavy solids"], ["safe_liquid", "Safe liquids"],
+		["hazard_liquid", "Hazardous liquids"], ["gas", "Gases"]]:
+		var kind: String = spec[0]
+		var base: int = EconomyConfig.SEAPORT_THROUGHPUT_RESTRICTED if kind in EconomyConfig.SEAPORT_RESTRICTED_TRANSPORT_CLASSES else EconomyConfig.SEAPORT_THROUGHPUT_STANDARD
+		var capacity: int = maxi(1, int(round(Modifiers.apply("port_throughput", "port", float(base), {"transport_class": kind})))) if live else base
+		vb.add_child(_port_metric("Throughput: " + str(spec[1]), _fmt_int(capacity) + " units / turn"))
 
 func sea_port_cap(good_id: String) -> int:
 	return MatchState.seaport_throughput_cap(good_id)
@@ -1247,6 +1270,7 @@ func _open_sheet(title: String, populate: Callable, extra_width: float = 0.0) ->
 
 func _close_sheet() -> void:
 	if _sheet != null and is_instance_valid(_sheet):
+		remove_child(_sheet)  # Release its minimum width before resizing the panel.
 		_sheet.queue_free()
 	_sheet = null
 	if _sheet_extra_width > 0.0:
@@ -1454,6 +1478,7 @@ class _RadioDot extends Control:
 
 func _build_recipe_strip(flow: Dictionary) -> PanelContainer:
 	var card := PanelContainer.new()
+	card.name = "BuildingRecipeStrip"
 	var style := StyleBoxFlat.new()
 	style.bg_color = CREAM
 	style.set_corner_radius_all(0)  # squared corners
@@ -2469,6 +2494,8 @@ func _dest_option(title: String, detail: String, active: bool, on_press: Callabl
 	card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	card.gui_input.connect(func(e: InputEvent) -> void:
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			# The callback can hide this sheet and expose the map during this event.
+			card.accept_event()
 			on_press.call())
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", DS.SP["SM"])

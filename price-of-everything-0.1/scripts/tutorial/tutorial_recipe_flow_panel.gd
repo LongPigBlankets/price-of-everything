@@ -154,7 +154,7 @@ func _process(delta: float) -> void:
 func _build() -> void:
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 28)
+		margin.add_theme_constant_override("margin_" + side, 38 if side in ["top", "bottom"] else 28)
 	add_child(margin)
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 8)
@@ -167,7 +167,8 @@ func _build() -> void:
 	_title.theme_type_variation = &"Title"
 	column.add_child(_title)
 	_body = Label.new()
-	_body.theme_type_variation = &"Body"
+	_body.theme_type_variation = &"Caption"
+	_body.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
 	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_body.custom_minimum_size = Vector2(0, 48)
 	column.add_child(_body)
@@ -209,7 +210,7 @@ func _build() -> void:
 	buttons.add_child(_next)
 
 func _build_recipe_items() -> void:
-	_recipe_items["refinery"] = _make_icon_item("Petrochemical Refinery",
+	_recipe_items["refinery"] = _make_icon_item("Polymerisation Refinery",
 		BuildingIcon.clean_texture("b_013", "poly_plant"), 100, 100, 210, false, true)
 	_recipe_items["ethylene"] = _make_icon_item("Ethylene",
 		GoodIcons.texture_for("g_024", "ethylene"), 60, 70)

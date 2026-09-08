@@ -33,6 +33,8 @@ const SETUP_STEPS_FROM_END := 2
 var hard_gate: bool = false  # true while a lock_panel step is up: Esc is swallowed (world_map)
 var _steps: Array = []
 var _index: int = -1
+var _coastal_delivery_finished: bool = false
+var _completion_ready_since_ms: int = -1
 var _entry_turn: int = 0     # turn number when the current step was entered (for turn-gated beats)
 var _market_sales_seen: int = 0 # completed sales observed during this tutorial run
 var _entry_market_sales_seen: int = 0 # snapshot at the active step's entry
@@ -80,6 +82,7 @@ func _await_world_ready() -> void:
 # ── Lifecycle ──────────────────────────────────────────────────────────────────────
 
 func _start() -> void:
+	_coastal_delivery_finished = false
 	# Reset any prior run (autoload persists across scene changes).
 	_teardown_overlay()
 	setup_reached = false
@@ -118,6 +121,7 @@ func _enter(i: int) -> void:
 		return
 	if _index >= _steps.size() - SETUP_STEPS_FROM_END:
 		setup_reached = true
+	_completion_ready_since_ms = -1
 	_entry_turn = TurnManager.current_turn
 	_entry_market_sales_seen = _market_sales_seen
 	_entry_market_sale_counts = _market_sale_counts.duplicate()
@@ -144,6 +148,9 @@ func _enter(i: int) -> void:
 
 
 func _advance() -> void:
+	if is_active_step("transport_pentagon_revert"):
+		_coastal_delivery_finished = true
+		_clear_coastal_lesson_inventory()
 	# A step may reroute to a labelled step (branch reconvergence); else go to the next.
 	var goto := ""
 	if _index >= 0 and _index < _steps.size():
@@ -152,6 +159,16 @@ func _advance() -> void:
 		_jump_to(goto)
 	else:
 		_enter(_index + 1)
+
+
+func _clear_coastal_lesson_inventory() -> void:
+	if not active or not _coastal_delivery_finished:
+		return
+	# The completed delivery lesson must not leave storage costs behind. The factory
+	# keeps its chosen route until the later Market lesson, so clear later arrivals too.
+	var good_id := str(Catalog.get_good_by_internal_name("windows").get("id", ""))
+	Stockpile.consume(TutorialSteps.WINDOW_REDIRECT_TILE, good_id,
+		Stockpile.get_at_tile(TutorialSteps.WINDOW_REDIRECT_TILE, good_id))
 
 
 func _jump_to(id: String) -> void:
@@ -774,6 +791,8 @@ func _on_market_sale_completed(sale: Dictionary) -> void:
 	for item in sale.get("items", []):
 		var key := _sale_key(tile_id, str(item.get("good_id", "")), turns)
 		_market_sale_counts[key] = int(_market_sale_counts.get(key, 0)) + 1
+		var any_duration := _sale_key(tile_id, str(item.get("good_id", "")), -1)
+		_market_sale_counts[any_duration] = int(_market_sale_counts.get(any_duration, 0)) + 1
 	_maybe_advance()
 
 
@@ -803,6 +822,7 @@ func _ensure_poll() -> void:
 func _maybe_advance() -> void:
 	if not active or _index < 0 or _index >= _steps.size():
 		return
+	_clear_coastal_lesson_inventory()
 	var step: Dictionary = _steps[_index]
 	var released := _release_overlay_if_ready(step)
 	var decide: Dictionary = (step.get("done", {}) as Dictionary).get("decide", {})
@@ -817,13 +837,20 @@ func _maybe_advance() -> void:
 			done = _market_sales_seen > _entry_market_sales_seen
 		elif str(decide.get("kind", "")) == "filtered_market_sale_since_entry":
 			var good := Catalog.get_good_by_internal_name(str(decide.get("good", "")))
-			var key := _sale_key(str(decide.get("tile", "")), str(good.get("id", "")), int(decide.get("turns", 0)))
+			var key := _sale_key(str(decide.get("tile", "")), str(good.get("id", "")), int(decide.get("turns", -1)))
 			done = int(_market_sale_counts.get(key, 0)) > int(_entry_market_sale_counts.get(key, 0))
 		else:
 			done = TutorialDetectors.poll(decide)
 		if done:
+			var delay_ms := int(float(step.get("completion_delay", 0.0)) * 1000.0)
+			if _completion_ready_since_ms < 0:
+				_completion_ready_since_ms = Time.get_ticks_msec()
+			if Time.get_ticks_msec() - _completion_ready_since_ms < delay_ms:
+				return
 			_advance()
 			return
+		else:
+			_completion_ready_since_ms = -1
 	# Not yet done: a locked step keeps its panel open (re-opens it if the player
 	# closed it — the mouse is already blocked outside the spotlight, Esc is swallowed).
 	if bool(step.get("lock_panel", false)) and not released:

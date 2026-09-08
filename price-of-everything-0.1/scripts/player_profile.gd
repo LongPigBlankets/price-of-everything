@@ -12,6 +12,12 @@ const AppPaths := preload("res://scripts/app_paths.gd")
 static func _path() -> String:
 	return AppPaths.saves_dir().path_join("profile.json")
 
+var exit_feedback_submitted: bool = false
+
+func mark_exit_feedback_submitted() -> void:
+	exit_feedback_submitted = true
+	_save()
+
 var games_completed: int = 0
 # True once the player has reached the END of the tutorial (the integration_done step),
 # not merely started or skipped it. Gates the "play without the tutorial?" prompt on
@@ -180,6 +186,7 @@ func _load() -> void:
 	var parsed: Variant = JSON.parse_string(f.get_as_text())
 	f.close()
 	if parsed is Dictionary:
+		exit_feedback_submitted = bool((parsed as Dictionary).get("exit_feedback_submitted", false))
 		games_completed = int((parsed as Dictionary).get("games_completed", 0))
 		tutorial_completed = bool((parsed as Dictionary).get("tutorial_completed", false))
 		var recorded: Variant = (parsed as Dictionary).get("wins", [])
@@ -203,7 +210,7 @@ func _save() -> void:
 	if f == null:
 		push_warning("[PlayerProfile] could not write %s" % tmp_path)
 		return
-	f.store_string(JSON.stringify({"games_completed": games_completed, "tutorial_completed": tutorial_completed, "wins": wins, "window_w": window_size.x, "window_h": window_size.y, "fullscreen": fullscreen, "screen_index": screen_index, "audio_levels": audio_levels, "keybinds": keybinds, "telemetry_opt_out": telemetry_opt_out, "telemetry_player_id": telemetry_player_id}, "\t"))
+	f.store_string(JSON.stringify({"exit_feedback_submitted": exit_feedback_submitted, "games_completed": games_completed, "tutorial_completed": tutorial_completed, "wins": wins, "window_w": window_size.x, "window_h": window_size.y, "fullscreen": fullscreen, "screen_index": screen_index, "audio_levels": audio_levels, "keybinds": keybinds, "telemetry_opt_out": telemetry_opt_out, "telemetry_player_id": telemetry_player_id}, "\t"))
 	f.close()
 	var err := DirAccess.rename_absolute(tmp_path, _path())
 	if err != OK:

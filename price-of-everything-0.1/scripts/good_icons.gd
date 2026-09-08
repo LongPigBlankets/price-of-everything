@@ -1,6 +1,6 @@
 ## Shared goods-icon loader. Returns a Texture2D for a good at the right art TIER for the size it
 ## will be drawn at, or null if no icon exists yet. Most goods have no art, so callers must handle
-## null. Approved alternates are used only when no main tier has an icon.
+## null. Approved alternate tiers take priority; main art remains the fallback.
 ##
 ## Three tiers on disk, smallest first:
 ##
@@ -97,11 +97,11 @@ static func texture_for_size(good_id: String, internal_name: String, display_siz
 static func _dirs_for(tier: String) -> Array:
 	var order: Array = _TIER_ORDER.get(tier, _TIER_ORDER[TIER_SMALL])
 	var out: Array = []
-	for t in order:
-		out.append(str(_TIER_DIR[t]))
-	# Prefer any main art, even in another tier, over an alternate.
+	# Owner-selected Blender art takes priority, including when only another tier exists.
 	for t in order:
 		out.append("%s/%s" % [_ALTERNATE_ROOT, t])
+	for t in order:
+		out.append(str(_TIER_DIR[t]))
 	return out
 
 

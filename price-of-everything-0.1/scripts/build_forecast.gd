@@ -1,27 +1,8 @@
 extends RefCounted
-## Projects what a building the player is about to construct will do to their cash, broken
-## into the four phases they will actually live through.
-##
-## The first playtest (2026-08-08) had a player double their smelting capacity and go from
-## +£27/turn to −£106/turn in a single turn, with nothing in the UI to warn them. That is the
-## failure this exists to prevent — see docs/early-game-onboarding-spec.md §5.1.
-##
-## The phases, because the money behaves completely differently in each:
-##   1 BUILDING      site under construction. Nothing produced, nothing owed.
-##   2 COMPLETES     the build lands but cannot run for one turn ("just_constructed").
-##                   It still pays labour and maintenance — production.gd charges those over
-##                   ALL buildings, not just the running ones.
-##   3 SHIPPING      producing and paying for everything, while the first output is still in
-##                   transit to the port. The deepest hole, and the one players fall into.
-##   4 SELLING       revenue lands and keeps landing. The steady margin.
-##
-## Everything charged here is charged by the engine too, through the same helpers, so the
-## forecast and the real turn cannot silently diverge: recipe costs from production.gd,
-## freight from TransportService quotes (live transport class, `transport_cost` modifiers and
-## congestion included), port fees from MatchState, storage from EconomyConfig.
-##
-## Stated assumptions, held constant: output sells straight to market at today's price, inputs
-## are bought from the market every producing turn, and prices do not move over the window.
+## Estimates a new building's operating cash and startup buffer using current
+## prices and standing output. UI presents broad payback bands; internal amounts
+## remain available for affordability checks and regression comparisons.
+## Company taxes, future price changes and player credit decisions are uncertain.
 
 const PHASE_BUILDING := "building"
 const PHASE_COMPLETES := "completes"
@@ -137,7 +118,7 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 			if from_market > 0:
 				# Beyond the surplus it is bought like any other market input (goods + inbound freight).
 				var short_quote: Dictionary = {} if tile_id == "" \
-						else TransportService.quote_market_buy(tile_id, gid, from_market)
+						else MatchState.preview_buy(tile_id, gid, from_market)
 				if short_quote.is_empty():
 					input_cost += float(from_market) * MarketState.get_buy_price(gid)
 				else:
@@ -145,7 +126,7 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 					inbound_freight += float(short_quote.get("transport_cost", 0.0))
 			continue
 		var buy_quote: Dictionary = {} if tile_id == "" \
-				else TransportService.quote_market_buy(tile_id, gid, qty)
+				else MatchState.preview_buy(tile_id, gid, qty)
 		if buy_quote.is_empty():
 			# No own supply and no market route — the building would sit idle. Still price the
 			# goods so the phase numbers stay meaningful next to the warning.
@@ -169,28 +150,28 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 		if gid != "":
 			warehousing += float(item.get("qty", 0)) * EconomyConfig.warehousing_cost_per_unit(gid)
 
-	var power_cost := float(Production._effective_energy_req(probe, recipe)) * EconomyConfig.GRID_BUY_PRICE
+	var power_cost := marginal_power_cost(tile_id, Production._effective_energy_req(probe, recipe))
 	var labour := Production._calculate_labour_cost(probe, recipe)
 	var maintenance := Production._calculate_maintenance_cost(probe)
 
 	# Standing costs are owed the moment the building exists, running or not.
-	var standing: float = labour + maintenance
-	# A producing turn adds everything it takes to make and hold the goods.
-	var producing_cost: float = standing + input_cost + inbound_freight + power_cost + warehousing
-	# A selling turn also pays to move them and to use the port.
-	var selling_cost: float = producing_cost + outbound_freight + port_fee
+	var standing: float = labour * MatchState.idle_labour_pay_share + maintenance
+	# A producing turn also dispatches output and pays its freight immediately.
+	var producing_cost: float = labour + maintenance + input_cost + inbound_freight + power_cost + warehousing + outbound_freight
+	# Port fees are withheld when the sale settles.
+	var selling_cost: float = producing_cost + port_fee
 
 	var build_turns: int = maxi(0, MatchState.effective_build_duration(building_id))
 	# Turn numbers as the player counts them: turn 1 is the next turn they end.
-	var completes_turn: int = build_turns + 1
+	var completes_turn: int = maxi(1, build_turns)
 	var first_producing: int = completes_turn + 1
 	var first_selling: int = first_producing + sale_delay
 
 	var phases: Array = []
-	if build_turns > 0:
+	if build_turns > 1:
 		phases.append({
 			"kind": PHASE_BUILDING, "label": "Building",
-			"range": _turn_range(1, build_turns), "per_turn": 0.0, "turns": build_turns,
+			"range": _turn_range(1, build_turns - 1), "per_turn": 0.0, "turns": build_turns - 1,
 		})
 	phases.append({
 		"kind": PHASE_COMPLETES, "label": "Completes",
@@ -207,8 +188,10 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 		"per_turn": revenue - selling_cost, "turns": -1,
 	})
 
-	var cash_needed: float = standing + producing_cost * float(sale_delay)
+	var startup_inventory := _startup_inventory_cost(tile_id, recipe)
+	var cash_needed: float = standing + producing_cost * float(sale_delay) + startup_inventory
 
+	out.financing = _financing(recipe, labour, maintenance, standing, revenue - selling_cost, build_turns)
 	out.phases = phases
 	out.cash_needed = cash_needed
 	out.steady_net = revenue - selling_cost
@@ -228,6 +211,7 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 		"revenue": revenue, "inputs": input_cost, "inbound_freight": inbound_freight,
 		"outbound_freight": outbound_freight, "port_fee": port_fee, "power": power_cost,
 		"labour": labour, "maintenance": maintenance, "warehousing": warehousing,
+		"idle_standing": standing, "startup_inventory": startup_inventory,
 	}
 	return out
 
@@ -363,3 +347,93 @@ static func _empire_surplus(good_id: String) -> int:
 			if str(inp.get("good_id", "")) == good_id:
 				consumed += int(round(float(inp.get("qty", 0)) * BuildingLevels.mult("input", lvl)))
 	return maxi(0, produced - consumed)
+
+
+## Deliberately broad outlook bands, not an exact ROI calculation. Boundaries are
+## inclusive at -15 and 20; 5 begins the 20–30 band. Unroutable sites cannot pay back.
+static func payback_band(net: float, no_supply: bool = false) -> Dictionary:
+	if no_supply or net <= -15.0:
+		return {"text": "Unlikely", "tone": "DANGER"}
+	if net < 5.0:
+		return {"text": "50+ turns", "tone": "WARN"}
+	if net <= 20.0:
+		return {"text": "20–30 turns", "tone": "OK"}
+	return {"text": "10–20 turns", "tone": "OK"}
+
+
+## Incremental company cash cost: consume available self-priority surplus at the
+## export revenue forgone, then import the remainder. Rebuild the network balance
+## from buildings so opening a save does not depend on transient last-turn caches.
+static func marginal_power_cost(tile_id: String, demand: int) -> float:
+	if demand <= 0:
+		return 0.0
+	var cabled: Dictionary = Power._cabled_tile_set()
+	var network: Array = Power._cable_component(tile_id, cabled, {}) if not cabled.is_empty() else []
+	var generated := 0
+	var consumed := 0
+	var generation_by_tile: Dictionary = {}
+	var ids: Array = MatchState.buildings.keys()
+	ids.sort()
+	for iid in ids:
+		var b: Dictionary = MatchState.buildings[iid]
+		var tile := str(b.get("tile_id", ""))
+		if not MatchState.is_player_owned(b) or MatchState.is_building_paused(str(iid)) or MatchState.is_retooling(str(iid)):
+			continue
+		if not cabled.is_empty() and not network.has(tile):
+			continue
+		var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
+		consumed += Production._effective_energy_req(b, recipe)
+		if str(recipe.get("output_name", "")) != "power":
+			continue
+		var qty := Production._effective_power_output(b, recipe)
+		var room := maxi(0, Power.tile_power_cap(tile) - int(generation_by_tile.get(tile, 0)))
+		qty = Power.dispatchable(qty, room)
+		generation_by_tile[tile] = int(generation_by_tile.get(tile, 0)) + qty
+		var name := str(Catalog.get_building(str(b.get("building_id", ""))).get("internal_name", ""))
+		var category := EconomyConfig.power_priority_category(name, Production._power_quality(b, recipe))
+		if category == "" or MatchState.power_priority_for(category) != "grid":
+			generated += qty
+	var own := mini(demand, maxi(0, generated - consumed))
+	var buy_mult := maxf(0.0, 1.0 + float(Modifiers.resolve_pct("grid_buy_price", "*", {}).get("net", 0.0)) / 100.0)
+	var sell_mult := maxf(0.0, 1.0 + float(Modifiers.resolve_pct("grid_sell_price", "*", {}).get("net", 0.0)) / 100.0)
+	var carbon := MarketState.carbon_component(str(Catalog.get_good_by_internal_name("power").get("id", "")))
+	return own * EconomyConfig.GRID_SELL_PRICE * sell_mult + (demand - own) * (EconomyConfig.GRID_BUY_PRICE * buy_mult + carbon)
+
+
+## Production orders lead+1 runs of market inputs. One run is already in the
+## operating estimate; the extra lead-time inventory is a one-off cash requirement.
+static func _startup_inventory_cost(tile_id: String, recipe: Dictionary) -> float:
+	var total := 0.0
+	for item in recipe.get("inputs", []):
+		var gid := str(item.get("good_id", ""))
+		var need := int(item.get("qty", 0))
+		if _own_source_tile(tile_id, gid) == tile_id:
+			need = maxi(0, need - _empire_surplus(gid))
+		var quote: Dictionary = MatchState.preview_buy(tile_id, gid, need)
+		if not quote.is_empty():
+			total += float(quote.get("cost", 0.0)) * maxi(1, int(quote.get("turns", 1)))
+	return total
+
+
+## Operational credit is temporary cash relief, never recurring profit. The tab
+## opens one turn before completion; the idle turn and three production turns
+## accrue costs. Unknown (Ask) choices remain explicitly conditional in the UI.
+static func _financing(recipe: Dictionary, labour: float, maintenance: float, idle: float, steady: float, build_turns: int) -> Dictionary:
+	if not MatchState.cfo_seated():
+		return {}
+	var mode := MatchState.construct_credit_default
+	if mode == "none":
+		return {"mode": mode, "per_turn": 0.0, "net": steady}
+	var inputs := 0.0
+	for item in recipe.get("inputs", []):
+		inputs += int(item.get("qty", 0)) * MarketState.get_buy_price(str(item.get("good_id", "")))
+	var carried := idle + inputs + (labour + maintenance + inputs) * (MatchState.TAB_WINDOW_TURNS - 2)
+	var turns := MatchState.TAB_SLICES
+	var start := build_turns + MatchState.TAB_WINDOW_TURNS - 1
+	var payment := carried / float(turns)
+	if mode == "loan":
+		turns = EconomyConfig.LOAN_TERM_TURNS
+		start += EconomyConfig.LOAN_GRACE_TURNS - 1
+		payment = maxf(carried, EconomyConfig.LOAN_MINIMUM) * (1.0 + LoanState.effective_loan_interest_rate() * float(turns + EconomyConfig.LOAN_GRACE_TURNS) / turns) / turns
+	return {"mode": mode, "per_turn": payment, "net": steady - payment,
+		"start": start, "end": start + turns - 1}

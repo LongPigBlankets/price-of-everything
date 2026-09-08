@@ -58,7 +58,7 @@ const _LEGACY_EDGE_DIM := Color(0.995, 0.931, 0.763, 0.08)
 const _EDGE_WIDTH := 2.5                                  # world units (scales with zoom)
 const _ZOOM_MIN := 0.07                                   # absolute fallback; the live floor is _zoom_floor (swimlane chart is tall)
 const _LANE_GUTTER := 840.0                               # left room for swimlane labels (2-line names)
-const _ZOOM_MAX := 1.0                                    # icon chips are 100 world units -> 100 px at max zoom-in
+const _ZOOM_MAX := 1.5                                    # shared by focused and full views
 const _ZOOM_STEP := 1.12
 const _PAN_SPEED := 900.0
 const _CLICK_SLOP := 6.0                                  # px of drag that still counts as a click
@@ -493,6 +493,7 @@ func _click_at(screen_pos: Vector2) -> void:
 func select_good(id: String) -> void:
 	if (_mode != _Mode.WEB and _mode != _Mode.FOCUS) or not _by_id.has(id):
 		return
+	TelemetryState.track_interaction("goods_graph_good_selected", "goods_graph", id)
 	_selected_id = id
 	_upstream = _collect_upstream(id)
 	_feeds.clear()
@@ -1241,8 +1242,8 @@ func _draw_card(node: Dictionary, font: Font, tracing: bool, alpha_mul: float = 
 	draw_rect(Rect2(rect.position + Vector2(2.0, 4.0), Vector2(5.0, rect.size.y - 8.0)),
 		Color(accent, accent.a * alpha))
 
-	# Good icon on a cream chip — 100x100 world units, so it reads 100 px at max
-	# zoom-in (_ZOOM_MAX 1.0). Medium art: these chips are far above thumbnail size.
+	# Good icon on a cream chip — 100x100 world units, reaching 150 px at max
+	# zoom-in (_ZOOM_MAX 1.5). Medium art: these chips are far above thumbnail size.
 	var pad := 6.0
 	var isz := rect.size.y - pad * 2.0
 	var chip := Rect2(rect.position + Vector2(13.0, pad), Vector2(isz, isz))

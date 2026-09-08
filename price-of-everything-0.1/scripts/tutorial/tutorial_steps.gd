@@ -17,7 +17,7 @@ extends RefCounted
 
 ## The loan the Money chapter asks the player to take. Small on purpose: the lesson is the
 ## grace period and the repayment tail, not the sum.
-const TUTORIAL_LOAN_AMOUNT := 100
+const TUTORIAL_LOAN_AMOUNT := 200
 const WEST_COAST_HANDOFF_CASH := 99999
 
 # Opening transport lesson in Capital City. The motor factory is exactly five
@@ -109,7 +109,7 @@ static func steps() -> Array:
 			"title": "Your control panel",
 			"mode": "annotate",
 			"card_side": "left",
-			"body": "A quick tour of the screen. The bar along the bottom is your toolkit — each tool has a keyboard shortcut (the letter in brackets). The top bar is your dashboard: money, victory tracks, the briefing with updates and decisions, your advisors and the menu. You end each turn from the bottom-right. Have a look, then press Next.",
+			"body": "A quick tour of the screen. The bar along the bottom is your toolkit. Each tool has a keyboard shortcut (the letter in brackets). The top bar is your dashboard: money, victory tracks, the briefing with updates and decisions, your advisors and the menu. You end each turn from the bottom right. Have a look, then press Next.",
 			"targets": [
 				{ "ref": "ConstructButton", "label": "Build (C)", "side": "above" },
 				{ "ref": "ResourcesButton", "label": "Goods list (R)", "side": "above" },
@@ -119,13 +119,16 @@ static func steps() -> Array:
 				{ "ref": "PoliticsButton", "label": "Narrative & Politics (N)", "side": "above", "lift": 1 },
 				{ "ref": "TechButton", "label": "Tech & Research (T)", "side": "above" },
 				{ "ref": "PeopleButton", "label": "People (P)", "side": "above" },
-				{ "ref": "EmpireButton", "label": "Empire view (Tab)", "side": "above" },
+				{ "ref": "EmpireButton", "label": "Supply chain view (Tab)", "side": "above" },
 				{ "ref": "MoneyWidget", "label": "Budgets, charts & loans", "side": "below" },
-				{ "ref": "VictoryModule", "label": "Victory tracks — five ways to win", "side": "below" },
-				{ "ref": "BriefingModule", "label": "Briefing — updates & decisions", "side": "below" },
+				{ "ref": "VictoryModule", "label": "Victory tracks: five ways to win", "side": "below" },
+				{ "ref": "BriefingModule", "label": "Briefing: updates & decisions", "side": "below" },
 				{ "ref": "CouncilModule", "label": "Advisors", "side": "below" },
-				{ "ref": "EncyclopediaButton", "label": "Encyclopedia (X)", "side": "below" },
+				{ "ref": "EncyclopediaButton", "label": "Encyclopedia (X)", "side": "below", "lift": 2 },
 				{ "ref": "GoodsGraphModule", "label": "Goods Graph (G)", "side": "below" },
+				{ "ref": "TransportModule", "label": "Shipments and Stockpiles", "side": "below", "lift": 2 },
+				{ "ref": "PowerModule", "label": "Power", "side": "below", "lift": 1 },
+				{ "ref": "RankingsModule", "label": "Ranking", "side": "below", "lift": 1 },
 				{ "ref": "MenuModule", "label": "Main menu", "side": "below" },
 				{ "ref": "EndTurnButton", "label": "End turn", "side": "above" },
 			],
@@ -134,6 +137,32 @@ static func steps() -> Array:
 			"done": { "wake": [], "decide": {} },
 			"advance": "next",
 		},
+		{
+			"id": "tile_basics_select", "chapter": "Your tiles",
+			"title": "Buildings belong to tiles",
+			"body": "In Carbon and Capital, buildings exist on tiles. That's where your stockpile is and where buildings draw inputs from, then push outputs to. Select any tile.",
+			"setup": [{"action": "close_tile_panel"}],
+			"spotlight": {"kind": "none", "ref": ""}, "no_dim": true,
+			"done": {"wake": [], "decide": {"kind": "node_visible", "ref": "TileInfoPanel"}},
+			"advance": "auto",
+		},
+		{
+			"id": "tile_basics_land", "chapter": "Your tiles",
+			"title": "The Land Chart",
+			"body": "Here you see how much room there is on this tile. Once you cross into the red hatched section, building will become more expensive due to local opposition. Rural tiles have more space than others.",
+			"setup": [], "spotlight": {"kind": "node_name", "ref": "TileLandChart"},
+			"lock_panel": true, "spotlight_passthrough": false,
+			"done": {"wake": [], "decide": {}}, "advance": "next",
+		},
+		{
+			"id": "tile_basics_features", "chapter": "Your tiles",
+			"title": "Inside the tile panel",
+			"body": "The tile panel is where you can see and select the buildings on that tile, as well as power generation, the goods produced on this tile by YOUR BUILDINGS ONLY, and the stockpile.",
+			"setup": [], "spotlight": {"kind": "node_name", "ref": "TileInfoPanel"},
+			"lock_panel": true, "spotlight_passthrough": false,
+			"done": {"wake": [], "decide": {}}, "advance": "next",
+		},
+
 		{
 			"id": "recipe_inputs_intro",
 			"chapter": "Production",
@@ -174,10 +203,10 @@ static func steps() -> Array:
 		{
 			"id": "capital_motor_route",
 			"chapter": "Moving Goods",
-			"title": "Choose where output goes",
-			"body": "You can send output to a stockpile, where other buildings may use it, to other tiles, or to the market for sale. Press Next.",
+			"title": "Your motor recipe",
+			"body": "This building runs a recipe making motors out of Steel and Copper Wiring. The Inputs section tells you where those inputs come from and where the output goes to. You can always change this.\n\nWe'll come back to that.",
 			"setup": [ { "action": "focus_building_on_tile", "tile": MOTOR_TILE, "building_id": "b_007" } ],
-			"spotlight": { "kind": "node_name", "ref": "OutputDestCard" },
+			"spotlight": { "kind": "node_name", "ref": "BuildingRecipeStrip" },
 			"spotlight_passthrough": false,
 			"lock_panel": true,
 			"done": { "wake": [], "decide": {} },
@@ -245,7 +274,7 @@ static func steps() -> Array:
 		{
 			"id": "capital_rail_build",
 			"chapter": "Moving Goods",
-			"title": "Build rail along the route",
+			"title": "Build Rails along the route",
 			"body": "Rail is faster and cheaper for heavy solid goods such as motors. The port terminal is ready. Build Rail on the factory tile and the four amber tiles between it and the port, then End Turn to complete the route.",
 			"setup": [
 				{ "action": "close_tile_panel" },
@@ -266,7 +295,7 @@ static func steps() -> Array:
 			"id": "capital_rail_watch",
 			"chapter": "Moving Goods",
 			"title": "Rail cuts it to two turns",
-			"body": "The rail route is complete. End Turn up to two times and watch: rail covers four tiles per turn, so the five-tile journey now takes only two turns. Its per-unit transport price is lower than the road shipment too.",
+			"body": "The rail route is complete. End Turn up to two times and watch: rail covers four tiles per turn, so the five tile journey now takes only two turns. Its per unit transport price is lower than the road shipment too.",
 			"count_step": false,
 			"setup": [ { "action": "exit_build_mode" }, { "action": "transfer_capital_transport_infrastructure" }, { "action": "clear_capital_motor_shipments" }, { "action": "restock_motor_inputs", "turns": 3 }, { "action": "open_logistics" } ],
 			"spotlight": { "kind": "none", "ref": "" },
@@ -318,7 +347,7 @@ static func steps() -> Array:
 			"id": "goto_tile",
 			"chapter": "First Factory",
 			"title": "Find the factory inland",
-			"body": "Let's begin with your first building. Pan (drag) and zoom (scroll) inland a little to find it — look for the white building; white means an NPC owns it, and this one is up for sale. Click it (the Industrial Goods Factory, the one Vandel Glassworks is selling) to open its tile.",
+			"body": "First, select the tile the window factory is on. Pan (drag) and zoom (scroll) inland to find the white Industrial Goods Factory owned by Vandel Glassworks. White buildings belong to NPCs. Click its tile to open the tile panel.",
 			"board_tiles": BOARD_TILES,
 			"setup": [
 				{ "action": "handoff_from_capital_lesson" },
@@ -337,7 +366,7 @@ static func steps() -> Array:
 			"id": "build_open",
 			"chapter": "First Factory",
 			"title": "What would it cost to build one?",
-			"body": "Before you buy, look at the alternative — building a window factory here from scratch. Open the tile's Build menu.",
+			"body": "Before you buy, look at the alternative: building a window factory here from scratch. Open the tile's Build menu.",
 			"setup": [ { "action": "focus_tile", "tile": WINDOW_TILE } ],
 			"spotlight": { "kind": "node_name", "ref": "BLBuildButton" },
 			"done": {
@@ -350,7 +379,7 @@ static func steps() -> Array:
 			"id": "build_pick_recipe",
 			"chapter": "First Factory",
 			"title": "Pick what it will build",
-			"body": "This is the Build menu. Every building you construct also runs a recipe — you choose it now, and can always change it later. Here's the Industrial Goods Factory: glass + aluminium in, windows out. Click its recipe to price up a build.",
+			"body": "Here you can select what buildings to add to the tile and what recipes they should start with. You can always change the recipes later.",
 			"card_side": "center_top",
 			"setup": [ { "action": "expand_construct_building", "building_id": "b_007" } ],
 			"spotlight": { "kind": "node_name", "ref": "RecipeRow_r_056" },
@@ -363,10 +392,10 @@ static func steps() -> Array:
 		{
 			"id": "build_cost",
 			"chapter": "First Factory",
-			"title": "Building costs more than buying — for now",
+			"title": "Building costs more than buying. For now",
 			"body": "Constructing the factory costs more because we would have to import materials and pay for their transport.\n\nBut purchasing it might be cheaper at the start. If you produce the steel, concrete and frames you need you can make construction dramatically cheaper.",
 			"setup": [],
-			"spotlight": { "kind": "node_name", "ref": "BuildCostValue" },
+			"spotlight": { "kind": "node_name", "ref": "ConstructionMaterialsSection" },
 			"done": { "wake": [], "decide": {} },
 			"advance": "next",
 		},
@@ -434,17 +463,19 @@ static func steps() -> Array:
 			"id": "lay_cable_factory",
 			"chapter": "Power",
 			"title": "Lay a cable to power it",
-			"body": "Power reaches a building over a physical cable network. In the tile panel's Infrastructure row, click the Cables “+” to lay a cable on this tile.",
+			"body": "Power reaches buildings through a physical network at the tile level. If the tile has cables, the building will connect to the national grid.\n\nClick the Cables “+” to lay a cable on this tile.",
 			"setup": [
 				{ "action": "focus_tile", "tile": WINDOW_TILE },
 			],
 			"spotlight": { "kind": "node_name", "ref": "InfraCell_cables" },
 			"lock_panel": true,
 			"done": {
-				"wake": ["construction_started", "infrastructure_attempted"],
-				"decide": { "kind": "node_visible", "ref": "SourcingBuyButton" },
+				"wake": ["construction_started", "infrastructure_attempted", "materials_ordered"],
+				"decide": { "kind": "tile_cabled_or_ordered", "tile": WINDOW_TILE },
 			},
 			"advance": "auto",
+			# Infrastructure now sources materials directly from the construction setting.
+			"goto": "run_until_running",
 		},
 		{
 			"id": "lay_cable_source",
@@ -476,7 +507,7 @@ static func steps() -> Array:
 			"id": "transport_redirect_open",
 			"chapter": "Transport",
 			"title": "You choose where output goes",
-			"body": "Selling to the market is only the default. A building can ship its output anywhere you own a stockpile — that's how you'll feed factories from your own mines later. Open your factory's Output destination.",
+			"body": "Selling to the market is only the default. A building can ship its output anywhere you own a stockpile. That's how you'll feed factories from your own mines later. Open your factory's Output destination.",
 			"setup": [
 				{ "action": "close_empire_view" },
 				{ "action": "focus_building_on_tile", "tile": WINDOW_TILE, "building_id": "b_007" },
@@ -493,7 +524,7 @@ static func steps() -> Array:
 			"id": "transport_redirect_pick",
 			"chapter": "Transport",
 			"title": "Ship the windows overland",
-			"body": "Choose 'Ship to another tile', then click Stoneshore Coast, the non-port tile immediately east of the factory.",
+			"body": "Choose 'Ship to another tile', then click Stoneshore Coast, the tile without a port immediately east of the factory.",
 			"board_tiles": BOARD_TILES + [WINDOW_REDIRECT_TILE],
 			"setup": [
 				{
@@ -517,12 +548,12 @@ static func steps() -> Array:
 		},
 		{
 			"id": "transport_pentagon_revert",
+			"completion_delay": 1.0,
 			"chapter": "Transport",
-			"title": "Watch the windows arrive",
+			"title": "End turns to deliver the windows",
 			"body": "Click End Turn until the windows reach the coastal tile east of the factory. This step will continue when the shipment arrives.",
 			"setup": [ { "action": "open_logistics" } ],
-			"spotlight": { "kind": "none", "ref": "" },
-			"no_dim": true,
+			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
 			"done": {
 				"wake": ["turn_advanced", "turn_processed", "transport_shipments_changed", "stockpile_changed"],
 				"decide": {
@@ -535,11 +566,10 @@ static func steps() -> Array:
 		{
 			"id": "margin_motivation",
 			"chapter": "Integration",
-			"title": "A wafer-thin margin",
-			"body": "Open Cost to Produce. Making windows from bought-in glass and aluminium costs you close to the £%s the market pays per window — a wafer-thin margin, about as good as if you'd simply bought the finished windows instead. That won't outrun the loan sharks. Integration — making your own inputs so your cost per window drops well BELOW £%s — is how you turn that sliver into a real profit and expand." % [_good_price_text("windows"), _good_price_text("windows")],
+			"title": "A narrow margin",
+			"body": "You might be 10% cheaper than the market, but that isn't enough. Transport, warehousing, port fees, taxes and shareholder dividends all eat away at your profit so we need to make windows much cheaper to keep growing. The solution is vertical integration. We'll stop buying our inputs and make them ourselves.",
 			"setup": [
 				{ "action": "clear_mapmode" },
-				{ "action": "route_building_outputs_to_market", "tile": WINDOW_TILE, "building_id": "b_007" },
 				{ "action": "focus_building_on_tile", "tile": WINDOW_TILE, "building_id": "b_007" },
 			],
 			"spotlight": { "kind": "node_name", "ref": "BuildingDetailPanelV2" },
@@ -551,7 +581,7 @@ static func steps() -> Array:
 			"id": "cost_lesson",
 			"chapter": "Integration",
 			"title": "Where the cost goes",
-			"body": "Your cost per unit has a few parts: materials, power, labour, maintenance, transport. Two of them you can INTEGRATE — make your own materials and your own power instead of buying them. Labour and maintenance are fixed per building; only modifiers (research, advisors, labour policies) trim those — you can't build them away.",
+			"body": "Maintenance and Labour costs can't be integrated, but modifiers from missions, research or labour policies can bring those down.\n\nPower, inputs and transport are the main levers for integration.",
 			"setup": [ { "action": "focus_building_on_tile", "tile": WINDOW_TILE, "building_id": "b_007" } ],
 			"spotlight": { "kind": "node_name", "ref": "BuildingDetailPanelV2" },
 			"lock_panel": true,
@@ -562,7 +592,7 @@ static func steps() -> Array:
 			"id": "analyse_supply",
 			"chapter": "Integration",
 			"title": "Know your supply chain",
-			"body": "Before you build, understand the chain. This factory needs GLASS and ALUMINIUM. To integrate, you'll make one of those yourself — but first, let's look up how they're made.",
+			"body": "Before you build, understand the chain. This factory needs GLASS and ALUMINIUM. To integrate, you'll make one of those yourself. First, let's look up how they're made.",
 			"setup": [ { "action": "focus_building_on_tile", "tile": WINDOW_TILE, "building_id": "b_007" } ],
 			"spotlight": { "kind": "node_name", "ref": "BuildingDetailPanelV2" },
 			"lock_panel": true,
@@ -573,7 +603,7 @@ static func steps() -> Array:
 			"id": "explore_encyclopedia",
 			"chapter": "Integration",
 			"title": "Look it up in the Encyclopedia",
-			"body": "This is the Encyclopedia — press X any time to open it. Search 'glass' (made in a Furnace from sand, and there's sand on your board) and 'aluminium' (smelted in a Furnace). Have a look, then press Next.",
+			"body": "Press X anytime to see the Encyclopedia. Search for GLASS to see its recipes and details. Then search for ALUMINIUM. Press next when done.",
 			"setup": [ { "action": "open_encyclopedia" } ],
 			"spotlight": { "kind": "node_name", "ref": "SearchOverlay" },
 			"no_dim": true,
@@ -584,7 +614,7 @@ static func steps() -> Array:
 			"id": "close_encyclopedia",
 			"chapter": "Integration",
 			"title": "Close the Encyclopedia",
-			"body": "Press Esc to close any panel — like the Encyclopedia. That clears the map so you can build.",
+			"body": "Press Esc to close the Encyclopedia. That clears the map so you can build.",
 			"setup": [],
 			"spotlight": { "kind": "node_name", "ref": "SearchOverlay" },
 			"no_dim": true,
@@ -592,6 +622,17 @@ static func steps() -> Array:
 				"wake": [],
 				"decide": { "kind": "node_hidden", "ref": "SearchOverlay" },
 			},
+			"advance": "auto",
+		},
+		{
+			"id": "revenue_route_market",
+			"chapter": "Money",
+			"title": "Send your windows back to market",
+			"body": "Open Output destination and select Global market. This sends your factory's future output to market instead of the coastal stockpile.",
+			"setup": [ { "action": "focus_building_on_tile", "tile": WINDOW_TILE, "building_id": "b_007" } ],
+			"spotlight": { "kind": "node_name", "ref": "BuildingDetailPanelV2" },
+			"lock_panel": true,
+			"done": { "wake": [], "decide": { "kind": "output_routed_market", "tile": WINDOW_TILE, "building_id": "b_007" } },
 			"advance": "auto",
 		},
 		{
@@ -604,7 +645,7 @@ static func steps() -> Array:
 			"no_dim": true,
 			"done": {
 				"wake": ["turn_advanced", "turn_processed", "stockpile_market_sale_completed"],
-				"decide": { "kind": "market_sale_completed_since_entry" },
+				"decide": { "kind": "filtered_market_sale_since_entry", "tile": WINDOW_TILE, "good": "windows" },
 			},
 			"advance": "auto",
 		},
@@ -612,7 +653,7 @@ static func steps() -> Array:
 			"id": "money_open",
 			"chapter": "Money",
 			"title": "Where the money actually goes",
-			"body": "Your factory is earning. Before you spend any of it, learn to read the books — every decision from here is really a question about this panel. Click your balance in the top-left corner to open it.",
+			"body": "Your factory is earning. Before you spend any of it, learn to read the books. Every decision from here is really a question about this panel. Click your balance in the top left corner to open it.",
 			"setup": [ { "action": "close_building_detail" } ],
 			"spotlight": { "kind": "node_name", "ref": "MoneyWidget" },
 			"done": {
@@ -626,15 +667,17 @@ static func steps() -> Array:
 			"chapter": "Money",
 			"title": "Reading the books",
 			"mode": "annotate",
-			"body": "Every pound in and out, each turn. Revenue is what your goods sold for. OPERATING COSTS is your maintenance plus wages — the standing cost of simply owning the place, which you pay whether it produces or not. Everything below that is itemised: power bought, transport, goods purchased, warehousing, interest, tax and dividends. Net last turn is the whole lot netted off. For the full ledger, open Balance.",
+			"body": "Familiarise yourself with these numbers. OPERATING COSTS is labour wages + maintenance. You can make profit if you sell power to the grid and if you buy more than you sell it can still cost you.\nNet Last Turn is the final total after all costs were deducted.\n\nTo see the full ledger, click on Balance.",
 			"targets": [
 				{ "ref": "FlyRowCash", "label": "Everything you have to spend right now", "side": "left" },
-				{ "ref": "FlyRowNet", "label": "Last turn's profit — revenue minus every cost below", "side": "left" },
+				{ "ref": "FlyRowNet", "label": "Last turn's profit: revenue minus every cost below", "side": "left" },
 				{ "ref": "FlyBalanceButton", "label": "Full itemised ledger, if you want the detail", "side": "left" },
 				{ "ref": "FlyTakeLoanButton", "label": "Borrow against future earnings", "side": "left" },
 			],
+			"hint_width": 440,
 			"hints": [
-				"Revenue minus costs is the number that decides whether you're winning",
+				"Revenue minus Cost = Gross Profit",
+				"Gross Profit minus Taxes, Interest and Dividends = Net Profit",
 				"Press Esc to close any panel",
 			],
 			"setup": [ { "action": "open_money_panel" } ],
@@ -649,7 +692,7 @@ static func steps() -> Array:
 			"id": "money_take_loan",
 			"chapter": "Money",
 			"title": "Borrow to grow",
-			"body": "Waiting to save up is the slowest way to play. Borrow £%d for the integration you are about to build. Press Take loan — that opens the Loans tab — then set the amount to £%d and confirm. Nothing is locked while you do it, so take your time." % [TUTORIAL_LOAN_AMOUNT, TUTORIAL_LOAN_AMOUNT],
+			"body": "Press 'Take loan' and select any amount over 200 for your next expansion.\n(Ignore the large amount of money already in your bank account)",
 			"setup": [ { "action": "open_money_panel" } ],
 			# The previous annotated step has already shown the Take loan button.  Do
 			# not retain a spotlight here: once the button opens the Loans tab, the old
@@ -658,7 +701,7 @@ static func steps() -> Array:
 			"no_dim": true,
 			"done": {
 				"wake": ["money_changed"],
-				"decide": { "kind": "loan_taken", "amount": TUTORIAL_LOAN_AMOUNT },
+				"decide": { "kind": "loan_taken", "amount": TUTORIAL_LOAN_AMOUNT, "exclusive": true },
 			},
 			"advance": "auto",
 		},
@@ -666,7 +709,7 @@ static func steps() -> Array:
 			"id": "money_loan_terms",
 			"chapter": "Money",
 			"title": "The terms of the loan",
-			"body": "Nothing is due for the first %d turns — that's your grace period, and it's the window to turn the money into something that earns. After it, the loan converts and you repay over %d turns, with interest of %d%% across the term. Plan for the repayment landing before it starts, not after." % [
+			"body": "Nothing is due for the first %d turns. This is your grace period. After that, you repay the loan over %d turns, with interest of %d%% across the term." % [
 				EconomyConfig.LOAN_GRACE_TURNS, EconomyConfig.LOAN_TERM_TURNS,
 				int(round(EconomyConfig.LOAN_INTEREST_RATE * 100.0))],
 			"setup": [ { "action": "open_money_panel" } ],
@@ -681,7 +724,7 @@ static func steps() -> Array:
 			"id": "buy_land",
 			"chapter": "Integration",
 			"title": "Buy the land to build on",
-			"body": "One more thing before you build: every building needs land YOU own. Your factory came with its own plot, but a furnace or smelter needs room of its own. On the factory tile's land rail, click Buy Land and buy at least %d — land is cheap (£%d per %d units), and the bracket on the size chart shows what you own." % [
+			"body": "One more thing before you build: every building needs land YOU own. Your factory came with its own plot, but a furnace or Furnace needs room of its own. On the factory tile's land rail, click Buy Land and buy at least %d. Land is cheap (£%d per %d units), and the bracket on the size chart shows what you own." % [
 				_land_lesson_shortfall(), int(MatchState.LAND_PATCH_COST), MatchState.LAND_PATCH_SIZE],
 			"setup": [
 				{ "action": "close_building_detail" },
@@ -699,7 +742,7 @@ static func steps() -> Array:
 			"id": "choose_integration",
 			"chapter": "Integration",
 			"title": "Two ways integration pays",
-			"body": "Pick one to make yourself. GLASS is your biggest input — %d units per window run — and cheaper to make than to buy, so integrating it flips you into profit. That's the play, and research can push it further. Or ALUMINIUM, the smaller input: a smelter makes more than you need and the surplus sells each turn — a taste of a new revenue line, though glass is where the real money is." % _recipe_input_qty("r_056", "glass"),
+			"body": "Your choice. GLASS or ALUMINIUM. Either can make you more profitable, but this is how you decide where you specialise.",
 			"setup": [ { "action": "focus_building_on_tile", "tile": WINDOW_TILE, "building_id": "b_007" } ],
 			"spotlight": { "kind": "none", "ref": "" },
 			"choices": [
@@ -713,7 +756,7 @@ static func steps() -> Array:
 			"id": "build_glass_open",
 			"chapter": "Integration · Margin",
 			"title": "Build a glass furnace",
-			"body": "Build the furnace right here, on your factory's own tile. Making glass on-site means it's consumed where it's made — no shipping, no wobbling market top-up, a flat input bill. One catch: glassmaking needs a hazardous liquid the docks pipe in — we'll sort that out. Open the build tile and click Build.",
+			"body": "Click on your tile's Build button and add a Glass Furnace.",
 			"setup": [
 				{ "action": "close_building_detail" },
 				{ "action": "focus_tile", "tile": GLASS_TILE },
@@ -729,10 +772,10 @@ static func steps() -> Array:
 			"id": "build_glass_recipe",
 			"chapter": "Integration · Margin",
 			"title": "Pick Industrial Glassmaking",
-			"body": "A Furnace can make lots of things — click the highlighted Industrial Glassmaking recipe.",
+			"body": "A Furnace can make lots of things. Click the highlighted Industrial Glassmaking recipe.",
 			"card_side": "center_top",
 			"setup": [ { "action": "expand_construct_building", "building_id": "b_002" } ],
-			"spotlight": { "kind": "node_name", "ref": "RecipeRow_r_053" },
+			"spotlight": { "kind": "node_name", "ref": "RecipeRow_r_053", "center": true },
 			"done": {
 				"wake": [],
 				"decide": { "kind": "node_visible", "ref": "BuildConfirmButton" },
@@ -743,33 +786,21 @@ static func steps() -> Array:
 			"id": "build_glass_confirm",
 			"chapter": "Integration · Margin",
 			"title": "Confirm the build",
-			"body": "The panel prices the furnace up on this tile. Press Confirm to start construction right here.",
+			"body": "The Materials section shows the build kit and its source. Leave Buy from market selected, then press Confirm to order the materials and start construction on this tile.",
 			"setup": [],
 			"spotlight": { "kind": "node_name", "ref": "BuildConfirmButton" },
-			"done": {
-				"wake": [],
-				"decide": { "kind": "node_visible", "ref": "SourcingBuyButton" },
-			},
-			"advance": "auto",
-		},
-		{
-			"id": "build_glass_source",
-			"chapter": "Integration · Margin",
-			"title": "Buy the build materials",
-			"body": "You don't have the furnace's build kit on this tile yet. Choose Buy from market and construct — later, you could produce these materials yourself too.",
-			"setup": [],
-			"spotlight": { "kind": "node_name", "ref": "SourcingBuyButton" },
 			"done": {
 				"wake": ["construction_started", "materials_ordered"],
 				"decide": { "kind": "building_or_project_on_tile", "tile": GLASS_TILE, "building_id": "b_002" },
 			},
 			"advance": "auto",
 		},
+
 		{
 			"id": "glass_sell",
 			"chapter": "Integration · Margin",
 			"title": "Turn windows into cash",
-			"body": "Your furnace takes a couple of turns to build, and until it feeds the factory your margin stays wafer-thin. Don't let finished windows pile up — switch on 'Sell all Surplus every turn' on the factory tile. Each turn it ships them to market for cash while you integrate.",
+			"body": "It takes a few turns. But while we wait, let's sell the surplus accumulating in the tile stockpile. This will only sell unreserved units that buildings aren't consuming so there's no harm in it.",
 			"setup": [ { "action": "focus_tile_stock", "tile": WINDOW_TILE } ],
 			"spotlight": { "kind": "node_name", "ref": "SellSurplusToggle" },
 			"lock_panel": true,
@@ -783,7 +814,7 @@ static func steps() -> Array:
 			"id": "glass_wait_built",
 			"chapter": "Integration · Margin",
 			"title": "End turns until the furnace is built",
-			"body": "Keep pressing End Turn while the furnace goes up — a couple of turns. Once it's finished, we'll see why it still can't make a single sheet of glass.",
+			"body": "Keep pressing End Turn until the Furnace is built. Materials need to arrive on tile and then construction will take 3 turns.",
 			"setup": [ { "action": "focus_tile", "tile": GLASS_TILE } ],
 			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
 			"done": {
@@ -796,7 +827,7 @@ static func steps() -> Array:
 			"id": "glass_diagnose_pipe",
 			"chapter": "Integration · Margin",
 			"title": "Inputs are on their way",
-			"body": "The building shows red because it lacks inputs. Don't worry — they're on their way from the port. Click End Turn a couple of times. In future, consider building a reinforced pipeline: sodium hydroxide is a hazardous liquid, and it travels more cheaply that way.",
+			"body": "The building shows red because it lacks inputs. The inputs are on their way from the port. Click End Turn a couple of times. In future, consider building a reinforced pipeline: sodium hydroxide is a hazardous liquid, and it travels more cheaply that way.",
 			"setup": [ { "action": "focus_building_on_tile", "tile": GLASS_TILE, "building_id": "b_002" } ],
 			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
 			"lock_panel": true,
@@ -810,7 +841,7 @@ static func steps() -> Array:
 			"id": "glass_lay_pipe",
 			"chapter": "Integration · Margin",
 			"title": "Lay a reinforced pipe",
-			"body": "Stoneshore Docks already has a reinforced-pipe terminal where hazardous liquids come ashore. Connect your furnace to it: in the tile panel's Infrastructure row, click the Reinf. pipes \"+\" to lay a reinforced pipe on this tile.",
+			"body": "Stoneshore Docks already has a reinforced pipe terminal where hazardous liquids come ashore. Connect your furnace to it: in the tile panel's Infrastructure row, click the Reinf. pipes \"+\" to lay a reinforced pipe on this tile.",
 			"setup": [ { "action": "focus_tile", "tile": GLASS_TILE } ],
 			"spotlight": { "kind": "node_name", "ref": "InfraCell_reinf_pipes" },
 			"lock_panel": true,
@@ -824,7 +855,7 @@ static func steps() -> Array:
 			"id": "glass_run",
 			"chapter": "Integration · Margin",
 			"title": "Let the profit settle",
-			"body": "The pipe is being laid, and the furnace will now send its glass to the tile stockpile for the window factory. Press End Turn twice so the new supply chain has two full turns to settle.",
+			"body": "The pipe is being laid, and the furnace will now send its glass to the tile stockpile for the window factory. Press End Turn three times so the new supply chain has three full turns to settle.",
 			"setup": [
 				{ "action": "close_building_detail" },
 				{
@@ -835,7 +866,7 @@ static func steps() -> Array:
 			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
 			"done": {
 				"wake": ["turn_processed", "turn_advanced"],
-				"decide": { "kind": "turns_advanced", "count": 2 },
+				"decide": { "kind": "turns_advanced", "count": 3 },
 			},
 			"advance": "auto",
 		},
@@ -843,9 +874,9 @@ static func steps() -> Array:
 			"id": "glass_profit",
 			"chapter": "Integration · Margin",
 			"title": "Profit after integration: {profit}",
-			"body": "Your last settled turn made {profit}. Bringing glass in-house improved the margin, but we can do better. Next, unlock a more efficient glass recipe.",
+			"body": "Your last settled turn made {profit}. Making glass here improved the margin, but we can do better. Next, unlock a more efficient glass recipe.",
 			"body_dynamic": "last_turn_profit",
-			# This is the result phase of Step 46, after its two required turns. Keeping it
+			# This is the result phase of Step 46, after its three required turns. Keeping it
 			# unnumbered makes the following Research instruction Step 47.
 			"count_step": false,
 			"setup": [ { "action": "close_building_detail" } ],
@@ -857,7 +888,7 @@ static func steps() -> Array:
 			"id": "glass_research",
 			"chapter": "Integration · Research",
 			"title": "Unlock High Strength Glassmaking",
-			"body": "Open Tech & Research (the microscope on the bottom bar — shortcut T), click 'Choose Free Unlocks', then find and unlock 'High Strength Glassmaking' (under Inorganic Chemistry — it has no prerequisites).",
+			"body": "Open Tech & Research (the microscope on the bottom bar, shortcut T), click 'Choose Free Unlocks', then find and unlock 'High Strength Glassmaking' (under Inorganic Chemistry). It has no prerequisites.",
 			"setup": [ { "action": "clear_mapmode" }, { "action": "open_research" } ],
 			"spotlight": { "kind": "node_name", "ref": "ResearchPanel" },
 			"done": {
@@ -869,9 +900,9 @@ static func steps() -> Array:
 		{
 			"id": "glass_upgrade",
 			"chapter": "Integration · Research",
-			"title": "Switch recipes — your turn",
-			"body": "Unlocked! Now do it yourself, no hand-holding. Close the Tech & Research panel (press T again, or Esc), then find your factory tile and click it, select the Furnace, press 'Change recipe' and pick High Strength Glassmaking. Confirm the retool — it pauses the furnace a few turns — then End Turn until it's running the new recipe. Watch the profit jump.",
-			"setup": [ { "action": "clear_mapmode" } ],
+			"title": "Change the recipe",
+			"body": "Now select the Furnace and change the recipe to High Strength Glassmaking.",
+			"setup": [ { "action": "clear_mapmode" }, { "action": "close_research" }, { "action": "focus_tile", "tile": GLASS_TILE } ],
 			"spotlight": { "kind": "none", "ref": "" },
 			"no_dim": true,
 			# Rejoin at the Advisors chapter, not the finale — jumping straight to
@@ -886,8 +917,8 @@ static func steps() -> Array:
 		{
 			"id": "build_alu_open",
 			"chapter": "Integration · Revenue",
-			"title": "Build an aluminium smelter",
-			"body": "A smelter makes %d aluminium a turn — your factory needs %d, and the surplus %d sells each turn. Build it right here on your factory's tile: co-located, its output feeds the factory on-site with no shipping. We will improve this base process once it is running. Open the build tile and click Build." % [
+			"title": "Build an aluminium Furnace",
+			"body": "A Furnace makes %d aluminium a turn. Your factory needs %d, and the surplus %d sells each turn. Build it right here on your factory's tile: its output feeds the factory on the same tile with no shipping. We will improve this base process once it is running. Open the build tile and click Build." % [
 				_recipe_output_qty("r_050"),
 				_recipe_input_qty("r_056", "aluminium"),
 				maxi(0, _recipe_output_qty("r_050") - _recipe_input_qty("r_056", "aluminium")),
@@ -921,33 +952,21 @@ static func steps() -> Array:
 			"id": "build_alu_confirm",
 			"chapter": "Integration · Revenue",
 			"title": "Confirm the build",
-			"body": "Press Confirm to start the smelter on this tile.",
+			"body": "The Materials section shows the build kit and its source. Leave Buy from market selected, then press Confirm to order the materials and start construction on this tile.",
 			"setup": [],
 			"spotlight": { "kind": "node_name", "ref": "BuildConfirmButton" },
-			"done": {
-				"wake": [],
-				"decide": { "kind": "node_visible", "ref": "SourcingBuyButton" },
-			},
-			"advance": "auto",
-		},
-		{
-			"id": "build_alu_source",
-			"chapter": "Integration · Revenue",
-			"title": "Buy the build materials",
-			"body": "Choose Buy from market and construct. Once it runs, it smelts more aluminium than the factory needs — the surplus sells each turn. (Aluminium's the smaller input, though: glass is where the real profit lives.)",
-			"setup": [],
-			"spotlight": { "kind": "node_name", "ref": "SourcingBuyButton" },
 			"done": {
 				"wake": ["construction_started", "materials_ordered"],
 				"decide": { "kind": "building_or_project_on_tile", "tile": ALU_TILE, "building_id": "b_002" },
 			},
 			"advance": "auto",
 		},
+
 		{
 			"id": "sell_windows",
 			"chapter": "Integration · Margin",
 			"title": "Turn windows into cash",
-			"body": "Your new building takes a few turns to construct, and until it helps your margin stays wafer-thin. Don't let finished windows pile up — switch on 'Sell all Surplus every turn' on the factory tile. Each turn it ships them to market, turning them into cash while you integrate.",
+			"body": "Your new building takes a few turns to construct, and until it helps your margin stays small. To sell finished windows, switch on 'Sell all Surplus every turn' on the factory tile. Each turn it ships them to market, turning them into cash while you integrate.",
 			"setup": [ { "action": "focus_tile_stock", "tile": WINDOW_TILE } ],
 			"spotlight": { "kind": "node_name", "ref": "SellSurplusToggle" },
 			"lock_panel": true,
@@ -960,8 +979,8 @@ static func steps() -> Array:
 		{
 			"id": "alu_wait_built",
 			"chapter": "Integration · Revenue",
-			"title": "End turns until the smelter is built",
-			"body": "Keep pressing End Turn while the smelter goes up. Once it is finished, we can get its base process running and feed the factory.",
+			"title": "End turns until the Furnace is built",
+			"body": "Keep pressing End Turn while the Furnace goes up. Once it is finished, we can get its base process running and feed the factory.",
 			"setup": [ { "action": "focus_tile", "tile": ALU_TILE } ],
 			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
 			"done": {
@@ -973,8 +992,8 @@ static func steps() -> Array:
 		{
 			"id": "alu_run_base",
 			"chapter": "Integration · Revenue",
-			"title": "Let the base smelter run",
-			"body": "Keep pressing End Turn until the smelter reads Running. The Hall Heroult process can now feed the factory and sell its surplus.",
+			"title": "Let the base Furnace run",
+			"body": "Keep pressing End Turn until the Furnace reads Running. The Hall Heroult process can now feed the factory and sell its surplus.",
 			"setup": [ { "action": "focus_building_on_tile", "tile": ALU_TILE, "building_id": "b_002" } ],
 			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
 			"done": {
@@ -987,7 +1006,7 @@ static func steps() -> Array:
 			"id": "alu_output_check",
 			"chapter": "Integration · Revenue",
 			"title": "Feed the factory before selling the surplus",
-			"body": "New buildings send output to the Market by default. In the smelter panel, open Output destination and switch it to Tile stockpile. The window factory can then take its aluminium on-site; only the excess becomes surplus for sale. Once it is routed, we'll give the chain two turns to settle.",
+			"body": "New buildings send output to the Market by default. In the Furnace panel, open Output destination and switch it to Tile stockpile. The window factory can then take its aluminium on the same tile; only the excess becomes surplus for sale. Once it is routed, we'll give the chain three turns to settle.",
 			"setup": [ { "action": "clear_mapmode" }, { "action": "focus_building_on_tile", "tile": ALU_TILE, "building_id": "b_002" } ],
 			"spotlight": { "kind": "node_name", "ref": "BuildingDetailPanelV2" },
 			"lock_panel": true,
@@ -1001,7 +1020,7 @@ static func steps() -> Array:
 			"id": "alu_base_settle",
 			"chapter": "Integration · Revenue",
 			"title": "Let the supply chain settle",
-			"body": "Press End Turn twice so the smelter can feed the window factory and the new margin can stabilise. Then we'll look at Research.",
+			"body": "Press End Turn three times so the Furnace can feed the window factory and the new margin can stabilise. Then check the settled profit.",
 			# This is the second phase of Step 45. It begins only after the player routes
 			# aluminium locally and stays unnumbered so Research remains Step 46.
 			"count_step": false,
@@ -1009,16 +1028,28 @@ static func steps() -> Array:
 			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
 			"done": {
 				"wake": ["turn_processed", "turn_advanced"],
-				"decide": { "kind": "turns_advanced", "count": 2 },
+				"decide": { "kind": "turns_advanced", "count": 3 },
 			},
 			"advance": "auto",
+		},
+		{
+			"id": "alu_base_profit",
+			"chapter": "Integration · Revenue",
+			"title": "Result after integration: {profit}",
+			"body": "Your last settled turn made {profit}. Check the costs and the final total. Press Next when you are ready to look for a more efficient recipe.",
+			"body_dynamic": "last_turn_profit",
+			"count_step": false,
+			"setup": [{"action": "open_money_panel"}],
+			"spotlight": {"kind": "node_name", "ref": "Flyout_treasury"},
+			"done": {"wake": [], "decide": {}},
+			"advance": "next",
 		},
 		{
 			"id": "alu_research",
 			"chapter": "Integration · Research",
 			"title": "We can improve our margins",
 			"body": "Let's improve our margins. Open the Research panel. There has to be a better way to make Aluminium.",
-			"setup": [ { "action": "clear_mapmode" } ],
+			"setup": [ { "action": "close_money_panel" }, { "action": "clear_mapmode" } ],
 			"spotlight": { "kind": "node_name", "ref": "TechButton" },
 			"done": {
 				"wake": [],
@@ -1029,15 +1060,14 @@ static func steps() -> Array:
 		{
 			"id": "alu_research_search",
 			"chapter": "Integration · Research",
-			"title": "Search for aluminium",
-			"body": "Use the Research search box and type aluminium. The highlighted Bauxite Carbochlorination process is the lower-temperature Furnace route we want.",
+			"title": "Find Bauxite Carbochlorination",
+			"body": "Find Bauxite Carbochlorination in Research. You can browse the tree or use search. Bring the research card into view to continue.",
 			"setup": [],
-			"spotlight": { "kind": "node_name", "ref": "ResearchSearchInput" },
-			"release_overlay_when": { "kind": "research_search_nonempty" },
-			"lock_panel": true,
+			"spotlight": { "kind": "none" },
+			"no_dim": true,
 			"done": {
 				"wake": [],
-				"decide": { "kind": "research_search_contains", "text": "aluminium" },
+				"decide": { "kind": "research_visible", "title": "Bauxite Carbochlorination" },
 			},
 			"advance": "auto",
 		},
@@ -1045,7 +1075,7 @@ static func steps() -> Array:
 			"id": "alu_research_condition",
 			"chapter": "Integration · Research",
 			"title": "Read the condition",
-			"body": "The normal unlock condition is Produce 300 Chlorine and 400 Aluminium. It replaces some of the Hall Heroult inputs with bauxite, graphite and chlorine, using less energy.",
+			"body": "The normal unlock condition is Produce 300 Chlorine. It replaces some of the Hall Heroult inputs with bauxite, graphite and chlorine, using less energy.",
 			"setup": [],
 			"spotlight": { "kind": "research_unlock", "ref": "Bauxite Carbochlorination" },
 			"lock_panel": true,
@@ -1069,8 +1099,8 @@ static func steps() -> Array:
 		{
 			"id": "alu_upgrade",
 			"chapter": "Integration · Research",
-			"title": "Switch recipes — your turn",
-			"body": "Unlocked! Close the Tech & Research panel (press T again, or Esc), find your smelter and press Change recipe. Pick Bauxite Carbochlorination, confirm the retool, then End Turn until the change completes. We will connect its chlorine supply next.",
+			"title": "Change the recipe",
+			"body": "Unlocked! Close the Tech & Research panel (press T again, or Esc), find your Furnace and press Change recipe. Pick Bauxite Carbochlorination, confirm the retool, then End Turn until the change completes. We will connect its chlorine supply next.",
 			"setup": [ { "action": "clear_mapmode" } ],
 			"spotlight": { "kind": "none", "ref": "" },
 			"no_dim": true,
@@ -1097,7 +1127,7 @@ static func steps() -> Array:
 			"id": "alu_lay_pipe",
 			"chapter": "Integration · Revenue",
 			"title": "Lay the reinforced pipe",
-			"body": "Connect the smelter to Stoneshore Docks: in the tile panel's Infrastructure row, click the Reinf. pipes \"+\" to lay a reinforced pipe on this tile.",
+			"body": "Connect the Furnace to Stoneshore Docks: in the tile panel's Infrastructure row, click the Reinf. pipes \"+\" to lay a reinforced pipe on this tile.",
 			"setup": [ { "action": "focus_tile", "tile": ALU_TILE } ],
 			"spotlight": { "kind": "node_name", "ref": "InfraCell_reinf_pipes" },
 			"lock_panel": true,
@@ -1111,13 +1141,13 @@ static func steps() -> Array:
 			"id": "alu_final_run",
 			"chapter": "Integration · Revenue",
 			"title": "Let the lower cost feed through",
-			"body": "Press End Turn twice. The first turn finishes the pipe and starts the new recipe; the second lets its lower cost feed through the chain.",
+			"body": "Press End Turn three times. The pipe needs to finish, then the new recipe and its lower transport costs need time to feed through the chain.",
 			"count_step": false,
 			"setup": [ { "action": "close_building_detail" } ],
 			"spotlight": { "kind": "node_name", "ref": "EndTurnButton" },
 			"done": {
 				"wake": ["turn_processed", "turn_advanced"],
-				"decide": { "kind": "turns_advanced", "count": 2 },
+				"decide": { "kind": "turns_advanced", "count": 3 },
 			},
 			"advance": "auto",
 		},
@@ -1156,7 +1186,7 @@ static func steps() -> Array:
 			"id": "advisors_explain",
 			"chapter": "Advisors",
 			"title": "These are the positions, not the people",
-			"body": "Every row here is a SEAT you can fill, and each seat pulls on a different part of the business. A CFO wants someone good with numbers — they manage your loans and your tax bill better than you will. A COO wants someone process-driven — they bring down labour and maintenance, the two costs you cannot integrate away. The same person is rarely right for both, so read the seat first and the candidate second. Look through the rest of the positions after the tutorial to see what each one governs.",
+			"body": "These are the seats you can fill. Seats can be filled by any advisor but some advisors will be more suited to a role than others. Select an advisor to check their skills.",
 			"setup": [ { "action": "open_people_panel" } ],
 			"spotlight": { "kind": "node_name", "ref": "PeoplePanel" },
 			"lock_panel": true,
@@ -1167,13 +1197,13 @@ static func steps() -> Array:
 			"id": "advisors_inspect",
 			"chapter": "Advisors",
 			"title": "Inspect what a candidate brings",
-			"body": "Click + Add new advisor, then open a candidate's profile and choose a position. Read the WHAT THEY BRING bonuses — they change with the position you select, so this is where you decide which lever to improve.",
-			"setup": [ { "action": "open_people_panel" } ],
-			"spotlight": { "kind": "node_name", "ref": "AdvisorAddNewButton" },
-			"lock_panel": true,
+			"body": "Click + Add new advisor and compare candidates. Choose a position to see each advisor's benefits and salary. You can go back and inspect other candidates. Look for benefits above salary, then click Choose this advisor when you are ready.",
+			"setup": [ { "action": "close_money_panel" }, { "action": "close_building_detail" }, { "action": "open_people_panel" } ],
+			"spotlight": { "kind": "none", "ref": "" },
+			"no_dim": true,
 			"done": {
 				"wake": [],
-				"decide": { "kind": "node_visible", "ref": "AdvisorBonusSection" },
+				"decide": {},
 			},
 			"advance": "auto",
 		},
@@ -1181,10 +1211,10 @@ static func steps() -> Array:
 			"id": "advisors_hire",
 			"chapter": "Advisors",
 			"title": "Choose any seat and hire them",
-			"body": "Now choose whichever available seat you want in the Assign to row, then Hire & assign. There is no prescribed answer: the seat determines the bonus, and the candidate determines how strongly they deliver it. Their effect starts next turn.",
-			"setup": [ { "action": "open_people_panel" } ],
-			"spotlight": { "kind": "node_name", "ref": "PeoplePanel" },
-			"lock_panel": true,
+			"body": "Click Hire & assign for your chosen advisor and position. You can still compare other candidates. Look for a combination whose benefits exceed the salary. Their effect starts next turn.",
+			"setup": [ { "action": "close_money_panel" }, { "action": "close_building_detail" }, { "action": "open_people_panel" } ],
+			"spotlight": { "kind": "none", "ref": "" },
+			"no_dim": true,
 			"done": {
 				# No seat-change signal exists; the engine's 0.25s poll re-evaluates the
 				# state anyway, and every available seat is a valid tutorial outcome.
@@ -1197,7 +1227,7 @@ static func steps() -> Array:
 			"id": "advisors_effect",
 			"chapter": "Advisors",
 			"title": "Watch what it moves",
-			"body": "Seated. End a turn and open the money panel again — the line their seat governs will have shifted. That's the whole game in one habit: change something, then go and read the number it was supposed to move. You know how to buy, build, connect, integrate, research, borrow and staff. The rest is yours.",
+			"body": "Seated. End a turn and open the money panel again. The line their seat governs will have shifted. That's the whole game in one habit: change something, then go and read the number it was supposed to move. You know how to buy, build, connect, integrate, research, borrow and staff. The rest is yours.",
 			"setup": [],
 			"spotlight": { "kind": "none", "ref": "" },
 			"no_dim": true,
@@ -1301,7 +1331,7 @@ static func _footprint(building_id: String) -> int:
 	return int(round(maxf(0.0, float(Catalog.get_building(building_id).get("tile_size_used", 1.0)))))
 
 ## The buy_land step's owned-land target: everything the tutorial ever puts on the
-## factory tile (window factory + cable + furnace/smelter + reinforced pipe),
+## factory tile (window factory + cable + furnace/Furnace + reinforced pipe),
 ## rounded up to whole patches. Footprint rebalances move the wall automatically.
 static func _land_lesson_target() -> int:
 	var patch := MatchState.LAND_PATCH_SIZE
@@ -1329,7 +1359,7 @@ const TUTORIAL_SEED_LAND := 15
 
 
 ## DEEPER INTEGRATION — deferred. Mining your own coal + pumping your own water to feed
-## the power plant (so even the plant's fuel is in-house), and reading the falling cost/unit.
+## the power plant (so even the plant's fuel is made locally), and reading the falling cost/unit.
 ## Authored and kept ready but NOT yet returned by steps(); when added they slot after
 ## build_own_power and get reworked to the tile-Build + search + sourcing-dialog flow.
 static func _integration_steps() -> Array:
@@ -1338,7 +1368,7 @@ static func _integration_steps() -> Array:
 			"id": "build_own_power",
 			"chapter": "Integration · Power",
 			"title": "Build your own power plant",
-			"body": "Renting grid power costs money every turn. Build a Coal Power Plant on the highlighted tile and generate your own — flipping the factory from grid power to your own supply. (Deeper still: mine your own coal + pump your own water below so even the plant's fuel is in-house.)",
+			"body": "Renting grid power costs money every turn. Build a Coal Power Plant on the highlighted tile and generate your own, switching the factory from grid power to your own supply. (Deeper still: mine your own coal + pump your own water below so even the plant's fuel is made locally.)",
 			"setup": [
 				{ "action": "enter_build", "building_id": "b_003", "recipe_id": "r_004" },
 				{ "action": "focus_tile", "tile": POWER_TILE },
@@ -1354,7 +1384,7 @@ static func _integration_steps() -> Array:
 			"id": "survey_stub",
 			"chapter": "Integration · Fuel",
 			"title": "Survey for coal",
-			"body": "That hill is unsurveyed — you can't see what's under it. Enter Surveying and survey it. (A survey takes 2 turns.)",
+			"body": "That hill is unsurveyed. You can't see what's under it. Enter Surveying and survey it. (A survey takes 2 turns.)",
 			"setup": [
 				{ "action": "open_survey" },
 				{ "action": "focus_tile", "tile": STUB_TILE },
@@ -1370,7 +1400,7 @@ static func _integration_steps() -> Array:
 			"id": "build_coal_mine",
 			"chapter": "Integration · Fuel",
 			"title": "Mine your own coal",
-			"body": "Coal! Build a Mine on the hill to dig your own fuel for the power plant — cheaper than buying it off the market every turn.",
+			"body": "Coal! Build a Mine on the hill to dig your own fuel for the power plant. This is cheaper than buying it off the market every turn.",
 			"setup": [
 				{ "action": "enter_build", "building_id": "b_001", "recipe_id": "r_001" },
 				{ "action": "focus_tile", "tile": STUB_TILE },

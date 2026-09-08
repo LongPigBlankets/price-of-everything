@@ -117,6 +117,7 @@ func _ready() -> void:
 	_test_scene_loads()
 	await _test_main_scene_instantiates()
 	_test_catalog_loaded()
+	await _test_market_price_history_and_layout()
 	_test_encyclopedia_good_rubric()
 	_test_company_rankings()
 	_test_port_plan_cache_locality()
@@ -203,6 +204,8 @@ func _ready() -> void:
 	_test_tutorial_rescue()
 	_test_start_labour_preset()
 	_test_telemetry_schema3_row()
+	_test_telemetry_interactions()
+	_test_demo_tutorial_diagnostic_lights()
 	_test_build_forecast()
 	_test_construct_v3_sim()
 	_test_construct_v3_ds()
@@ -258,6 +261,8 @@ func _ready() -> void:
 	_test_politics_panel_entries()
 	_test_forest_canopy_variants()
 	_test_authored_forest_areas()
+	_test_recording_toasts()
+	_test_cost_save_isolation()
 	_test_save_load_roundtrip()
 	await _test_pending_load_applies_on_scene_ready()
 	_test_start_config_expansion()
@@ -298,6 +303,7 @@ func _ready() -> void:
 	_test_transport_flow_no_double_count()
 	_test_tile_good_breakdown()
 	_test_tile_mode_flow_endpoints()
+	_test_public_infrastructure_usage()
 	_test_cable_power_cap()
 	_test_power_network_settlement()
 	_test_power_output_modifier()
@@ -445,8 +451,26 @@ func _ready() -> void:
 # Tutorial "Coach" engine (Wave 1). The engine itself is signal-driven and confined to
 # a live scene, so here we cover the two pure surfaces: the authored step list and the
 # state-verified detectors (the only logic that decides step completion).
+func _tutorial_copy_has_dash(value: Variant) -> bool:
+	if value is String:
+		for mark: String in ["-", "–", "—", "‑", "‐"]:
+			if value.contains(mark):
+				return true
+	elif value is Array:
+		for item: Variant in value:
+			if _tutorial_copy_has_dash(item):
+				return true
+	elif value is Dictionary:
+		for item: Variant in value.values():
+			if _tutorial_copy_has_dash(item):
+				return true
+	return false
+
+
 func _test_tutorial_engine() -> void:
 	var steps: Array = TutorialSteps.steps()
+	for step: Dictionary in steps:
+		_check(not _tutorial_copy_has_dash(step), "tutorial copy has no hyphens or dashes: " + str(step.id))
 	_check(not steps.is_empty(), "tutorial: steps() returns content")
 	_check(str((steps[0] as Dictionary).get("id", "")) == "welcome", "tutorial: first step is the welcome panel")
 	_check(str((steps[0] as Dictionary).get("mode", "")) == "welcome", "tutorial: first step uses welcome render mode")
@@ -533,7 +557,7 @@ func _test_tutorial_engine() -> void:
 		var sid := str((s as Dictionary).get("id", ""))
 		ids.append(sid)
 		by_id[sid] = s
-	for expected in ["welcome", "ui_primer", "recipe_inputs_intro", "recipe_outputs_intro", "capital_motor_open", "capital_motor_watch", "capital_money_transport", "capital_road_install", "capital_road_watch", "capital_rail_build", "capital_rail_watch", "capital_fluids", "capital_port_open", "capital_port_costs", "goto_tile", "build_open", "build_pick_recipe", "build_cost", "build_close_buy", "buy_factory", "diagnose_factory", "lay_cable_factory", "run_until_running", "analyse_supply", "explore_encyclopedia", "close_encyclopedia", "revenue_settle", "choose_integration", "build_glass_open", "build_glass_recipe", "build_glass_source", "glass_sell", "glass_wait_built", "glass_diagnose_pipe", "glass_lay_pipe", "glass_run", "glass_profit", "glass_research", "glass_upgrade", "build_alu_open", "alu_run_base", "alu_output_check", "alu_base_settle", "alu_research", "alu_research_search", "alu_research_condition", "alu_research_unlock", "alu_upgrade", "alu_diagnose_pipe", "alu_lay_pipe", "alu_final_run", "alu_profit", "integration_done"]:
+	for expected in ["welcome", "ui_primer", "recipe_inputs_intro", "recipe_outputs_intro", "capital_motor_open", "capital_motor_watch", "capital_money_transport", "capital_road_install", "capital_road_watch", "capital_rail_build", "capital_rail_watch", "capital_fluids", "capital_port_open", "capital_port_costs", "goto_tile", "build_open", "build_pick_recipe", "build_cost", "build_close_buy", "buy_factory", "diagnose_factory", "lay_cable_factory", "run_until_running", "analyse_supply", "explore_encyclopedia", "close_encyclopedia", "revenue_settle", "choose_integration", "build_glass_open", "build_glass_recipe", "build_glass_confirm", "glass_sell", "glass_wait_built", "glass_diagnose_pipe", "glass_lay_pipe", "glass_run", "glass_profit", "glass_research", "glass_upgrade", "build_alu_open", "alu_run_base", "alu_output_check", "alu_base_settle", "alu_research", "alu_research_search", "alu_research_condition", "alu_research_unlock", "alu_upgrade", "alu_diagnose_pipe", "alu_lay_pipe", "alu_final_run", "alu_profit", "integration_done"]:
 		_check(expected in ids, "tutorial: step '%s' present" % expected)
 	for removed in ["open_mapmodes", "select_logistics", "view_shipment", "transport_ports"]:
 		_check(not (removed in ids), "tutorial: redundant old transport step '%s' removed" % removed)
@@ -544,7 +568,7 @@ func _test_tutorial_engine() -> void:
 	for i in range(ids.find("ui_primer") + 1, ids.find("goto_tile")):
 		if bool((steps[i] as Dictionary).get("count_step", true)):
 			opening_beats += 1
-	_check(opening_beats == 9, "tutorial: two recipe diagrams and seven counted Capital beats precede the old tutorial")
+	_check(opening_beats == 12, "tutorial: three tile lessons, two recipe diagrams and seven counted Capital beats precede the factory lesson")
 	var output_route_step: Dictionary = by_id.get("capital_motor_route", {})
 	_check(ids.find("capital_motor_route") == ids.find("capital_motor_open") + 1
 		and ids.find("capital_motor_watch") == ids.find("capital_motor_route") + 1
@@ -785,8 +809,8 @@ func _test_tutorial_engine() -> void:
 	var margin_action_names: Array = []
 	for margin_action in margin_setup_actions:
 		margin_action_names.append(str((margin_action as Dictionary).get("action", "")))
-	_check("route_building_outputs_to_market" in margin_action_names,
-		"tutorial: Step 26 restores market routing after the completed delivery lesson")
+	_check("route_building_outputs_to_market" not in margin_action_names,
+		"tutorial: integration lesson leaves the output route for the player to change")
 	var port_tile_ids: Array = []
 	for tutorial_port in Catalog.all_ports():
 		port_tile_ids.append(str((tutorial_port as Dictionary).get("tile_id", "")))
@@ -921,9 +945,9 @@ func _test_tutorial_engine() -> void:
 	var advisor_inspect: Dictionary = by_id.get("advisors_inspect", {})
 	var advisor_inspect_done: Dictionary = advisor_inspect.get("done", {})
 	var advisor_inspect_decide: Dictionary = advisor_inspect_done.get("decide", {})
-	_check(str(advisor_inspect_decide.get("kind", "")) == "node_visible"
-		and str(advisor_inspect_decide.get("ref", "")) == "AdvisorBonusSection",
-		"tutorial: advisor flow requires inspecting a candidate's bonuses before hiring")
+	_check(advisor_inspect_decide.is_empty() and bool(advisor_inspect.get("no_dim", false))
+		and str(advisor_inspect.get("spotlight", {}).get("kind", "")) == "none",
+		"tutorial: advisor comparison stays open and undimmed until explicit candidate choice")
 	_check(Tutorial.is_active_step("not_a_real_step") == false,
 		"tutorial: inactive step guard is false outside an active tutorial")
 	var tutorial_active_saved := Tutorial.active
@@ -972,12 +996,12 @@ func _test_tutorial_engine() -> void:
 	_check("build_glass_open" in gotos and "build_alu_open" in gotos, "tutorial: choice gotos target the two build flows")
 	# Glass branch now runs its own reinforced-pipe lesson (build furnace off-port -> diagnose the
 	# expensive road delivery -> lay a cheaper reinf pipe -> run) before reconverging.
-	_check(str((by_id.get("build_glass_source", {}) as Dictionary).get("goto", "")) == "",
+	_check(str((by_id.get("build_glass_confirm", {}) as Dictionary).get("goto", "")) == "",
 		"tutorial: glass branch does not reconverge early (runs the pipe lesson)")
 	var glass_inputs: Dictionary = by_id.get("glass_diagnose_pipe", {})
 	var glass_inputs_decide: Dictionary = (glass_inputs.get("done", {}) as Dictionary).get("decide", {})
 	_check(str(glass_inputs.get("title", "")) == "Inputs are on their way"
-		and str(glass_inputs.get("body", "")).contains("they're on their way from the port")
+		and str(glass_inputs.get("body", "")).contains("The inputs are on their way from the port")
 		and str((glass_inputs.get("spotlight", {}) as Dictionary).get("ref", "")) == "EndTurnButton"
 		and str(glass_inputs_decide.get("kind", "")) == "turns_advanced"
 		and int(glass_inputs_decide.get("count", 0)) == 2
@@ -994,9 +1018,9 @@ func _test_tutorial_engine() -> void:
 		glass_settle_action_names.append(str((glass_settle_action as Dictionary).get("action", "")))
 	_check(bool(glass_settle.get("count_step", true))
 		and str(glass_settle_decide.get("kind", "")) == "turns_advanced"
-		and int(glass_settle_decide.get("count", 0)) == 2
+		and int(glass_settle_decide.get("count", 0)) == 3
 		and "route_building_outputs_to_tile" in glass_settle_action_names,
-		"tutorial: Step 46 locally routes glass and waits exactly two turns for profit to settle")
+		"tutorial: Step 46 locally routes glass and waits exactly three turns for profit to settle")
 	var profit_step: Dictionary = by_id.get("glass_profit", {})
 	var summary_before_profit_copy: Dictionary = Production.last_turn_summary.duplicate(true)
 	Production.last_turn_summary = {"money_in": 73.5, "money_out": 28.25}
@@ -1016,6 +1040,13 @@ func _test_tutorial_engine() -> void:
 		"tutorial: glass branch reconverges to the advisor arc after the recipe upgrade")
 	var alu_research: Dictionary = by_id.get("alu_research", {})
 	var alu_research_decide: Dictionary = (alu_research.get("done", {}) as Dictionary).get("decide", {})
+	_check(float((by_id.get("transport_pentagon_revert", {}) as Dictionary).get("completion_delay", 0.0)) == 1.0,
+		"tutorial: coastal arrival holds its animation for one second")
+	var alu_review: Dictionary = by_id.get("alu_base_profit", {})
+	_check(str(alu_review.get("advance", "")) == "next" and str(alu_review.get("body_dynamic", "")) == "last_turn_profit",
+		"tutorial: aluminium shows settled profit and waits for acknowledgement before research")
+	_check(not str((by_id.get("alu_research_condition", {}) as Dictionary).get("body", "")).contains("400 Aluminium"),
+		"tutorial: aluminium research condition reflects the current chlorine gate")
 	var alu_base_settle: Dictionary = by_id.get("alu_base_settle", {})
 	var alu_base_settle_decide: Dictionary = (alu_base_settle.get("done", {}) as Dictionary).get("decide", {})
 	var alu_search: Dictionary = by_id.get("alu_research_search", {})
@@ -1025,17 +1056,17 @@ func _test_tutorial_engine() -> void:
 	var alu_upgrade: Dictionary = by_id.get("alu_upgrade", {})
 	var alu_upgrade_decide: Dictionary = (alu_upgrade.get("done", {}) as Dictionary).get("decide", {})
 	_check(str(alu_research_decide.get("kind", "")) == "node_visible"
-		and str(alu_search_decide.get("kind", "")) == "research_search_contains"
-		and str((alu_search.get("release_overlay_when", {}) as Dictionary).get("kind", "")) == "research_search_nonempty"
+		and str(alu_search_decide.get("kind", "")) == "research_visible"
+		and bool(alu_search.get("no_dim", false))
 		and str((alu_unlock.get("spotlight", {}) as Dictionary).get("kind", "")) == "research_unlock"
 		and str(alu_unlock_decide.get("title", "")) == "Bauxite Carbochlorination"
 		and str(((by_id.get("build_alu_recipe", {}) as Dictionary).get("spotlight", {}) as Dictionary).get("ref", "")) == "RecipeRow_r_050",
 		"tutorial: aluminium branch searches and free-unlocks Carbochlorination after building the base smelter")
 	_check(not bool(alu_base_settle.get("count_step", true))
 		and str(alu_base_settle_decide.get("kind", "")) == "turns_advanced"
-		and int(alu_base_settle_decide.get("count", 0)) == 2
+		and int(alu_base_settle_decide.get("count", 0)) == 3
 		and str((alu_base_settle.get("spotlight", {}) as Dictionary).get("ref", "")) == "EndTurnButton",
-		"tutorial: aluminium Step 45 waits two full turns after local routing before Research")
+		"tutorial: aluminium waits three full turns after local routing before the profit review")
 	_check(str(alu_upgrade_decide.get("recipe_id", "")) == "r_232",
 		"tutorial: aluminium branch waits until the existing smelter has finished retooling to Carbochlorination")
 	var alu_pipe_intro: Dictionary = by_id.get("alu_diagnose_pipe", {})
@@ -1057,16 +1088,16 @@ func _test_tutorial_engine() -> void:
 		alu_profit_actions.append(str((alu_profit_action as Dictionary).get("action", "")))
 	_check(not bool(alu_settle.get("count_step", true))
 		and str(alu_settle_decide.get("kind", "")) == "turns_advanced"
-		and int(alu_settle_decide.get("count", 0)) == 2,
-		"tutorial: after Step 52 the aluminium recipe gets exactly two unnumbered settling turns")
+		and int(alu_settle_decide.get("count", 0)) == 3,
+		"tutorial: after Step 52 the aluminium recipe gets exactly three unnumbered settling turns")
 	_check(str(alu_profit.get("body_dynamic", "")) == "last_turn_profit"
 		and str(alu_profit.get("mode", "")) == "annotate"
 		and not alu_profit_targets.is_empty()
 		and str((alu_profit_targets[0] as Dictionary).get("ref", "")) == "FlyRowNet"
 		and "open_money_panel" in alu_profit_actions,
 		"tutorial: aluminium Step 53 opens the treasury and calls out live net profit")
-	_check(str((advisor_inspect.get("spotlight", {}) as Dictionary).get("ref", "")) == "AdvisorAddNewButton",
-		"tutorial: Step 56 points directly to Add new advisor")
+	_check(str((advisor_inspect.get("spotlight", {}) as Dictionary).get("kind", "")) == "none",
+		"tutorial: candidate comparison does not restrict clicks to Add new advisor")
 	var gr_done: Dictionary = (by_id.get("glass_research", {}) as Dictionary).get("done", {})
 	var gr_decide: Dictionary = gr_done.get("decide", {})
 	_check(str(gr_decide.get("kind", "")) == "research_unlocked",
@@ -1137,12 +1168,11 @@ func _test_tutorial_engine() -> void:
 	_check(kit_cost == panel_cost,
 		"tutorial: build_cost matches the Build confirm panel figure (£%d vs £%d)" % [kit_cost, panel_cost])
 	_check(kit_cost > 0, "tutorial: live factory build cost remains available to tutorial references")
-	var win_price: String = TutorialSteps._good_price_text("windows")
-	_check(str((by_id.get("margin_motivation", {}) as Dictionary).get("body", "")).contains("£%s" % win_price),
-		"tutorial: margin_motivation quotes the live window price (£%s)" % win_price)
+	_check(str((by_id.get("margin_motivation", {}) as Dictionary).get("body", "")).contains("The solution is vertical integration."),
+		"tutorial: margin lesson explains integration without a precise price claim")
 	var glass_qty: int = TutorialSteps._recipe_input_qty("r_056", "glass")
-	_check(glass_qty > 0 and str((by_id.get("choose_integration", {}) as Dictionary).get("body", "")).contains("%d units" % glass_qty),
-		"tutorial: choose_integration quotes the live glass quantity (%d)" % glass_qty)
+	_check(glass_qty > 0 and str((by_id.get("choose_integration", {}) as Dictionary).get("body", "")).begins_with("Your choice. GLASS or ALUMINIUM."),
+		"tutorial: integration choice presents both specialisations")
 	var alu_out: int = TutorialSteps._recipe_output_qty("r_232")
 	_check(alu_out > 0 and str((by_id.get("build_alu_open", {}) as Dictionary).get("body", "")).contains("%d aluminium" % alu_out),
 		"tutorial: build_alu_open quotes the live smelter output (%d)" % alu_out)
@@ -1180,7 +1210,7 @@ func _test_tutorial_engine() -> void:
 		"tutorial: alu_lay_pipe spotlights the reinforced-pipe cell")
 	var settle_done: Dictionary = ((by_id.get("revenue_settle", {}) as Dictionary).get("done", {}) as Dictionary)
 	var settle_decide: Dictionary = settle_done.get("decide", {})
-	_check(str(settle_decide.get("kind", "")) == "market_sale_completed_since_entry",
+	_check(str(settle_decide.get("kind", "")) == "filtered_market_sale_since_entry" and str(settle_decide.get("good", "")) == "windows" and str(settle_decide.get("tile", "")) == TutorialSteps.WINDOW_TILE,
 		"tutorial: money lesson waits for a shipment to reach market, not a hard-coded turn")
 	_check(bool((by_id.get("revenue_settle", {}) as Dictionary).get("no_dim", false)),
 		"tutorial: shipment wait keeps the map unobstructed")
@@ -1196,6 +1226,13 @@ func _test_tutorial_engine() -> void:
 		and str(loan_terms_step.get("body", "")).begins_with("Nothing is due"),
 		"tutorial: Step 35 introduces the loan terms without the redundant Borrowed lead-in")
 
+	var previous_loans := LoanState.loans.duplicate(true)
+	var loan_decide: Dictionary = by_id["money_take_loan"]["done"]["decide"]
+	LoanState.loans = [{"principal_initial": 200.0}]
+	_check(not TutorialDetectors.poll(loan_decide), "tutorial: a loan of exactly 200 does not satisfy over 200")
+	LoanState.loans = [{"principal_initial": 200.5}]
+	_check(TutorialDetectors.poll(loan_decide), "tutorial: any loan above 200 satisfies the expansion lesson")
+	LoanState.loans = previous_loans
 	# Transport arc: output-route detectors read the explicit per-good destinations.
 	var saved2: Dictionary = MatchState.buildings
 	var saved_routes: Dictionary = MatchState.output_stockpile_destinations.duplicate(true)
@@ -5231,7 +5268,8 @@ func _test_save_load_roundtrip() -> void:
 
 	var snap1: Dictionary = SaveLoad.export_snapshot()
 	# Real file round-trip via the slot API (covers JSON I/O + slot listing too).
-	_check(SaveLoad.save_slot("__test_roundtrip") == "", "save_slot writes without error")
+	var save_error := SaveLoad.save_slot("__test_roundtrip")
+	_check(save_error == "", "save_slot writes without error (%s)" % save_error)
 	var found := false
 	for s in SaveLoad.list_slots():
 		if str(s.slot) == "__test_roundtrip":
@@ -5463,6 +5501,9 @@ func _test_autosave_rotation() -> void:
 	SaveLoad._autosave_index = 0
 	TurnManager.current_turn = SaveLoad.AUTOSAVE_EVERY_TURNS + 1  # turn N just finished
 	SaveLoad._on_turn_resolution_completed()
+	var auto_snapshot: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(AppPaths.saves_dir().path_join("autosave_1.json")))
+	var history: Array = auto_snapshot.market.price_history.get("g_008", [])
+	_check(not history.is_empty() and int(history[-1].turn) == TurnManager.current_turn, "autosave: serializes the current chart observation before the history listener")
 	_check(SaveLoad._autosave_index == 1 and FileAccess.file_exists(AppPaths.saves_dir().path_join("autosave_1.json")),
 		"autosave fires on the Nth finished turn into slot 1")
 	TurnManager.current_turn = SaveLoad.AUTOSAVE_EVERY_TURNS + 2  # off-cadence turn
@@ -5949,7 +5990,7 @@ func _test_construct_settings_roundtrip() -> void:
 		"construct settings: auto-buy land is exported")
 
 	MatchState.reset()
-	_check(not MatchState.construct_auto_buy_land, "construct settings: reset clears auto-buy land")
+	_check(MatchState.construct_auto_buy_land, "construct settings: reset enables auto-buy land")
 	MatchState.import_state(snap)
 	_check(MatchState.construct_auto_buy_land, "construct settings: auto-buy land survives a round-trip")
 	_check(MatchState.construct_start_half_capacity, "construct settings: half-capacity survives a round-trip")
@@ -5959,8 +6000,8 @@ func _test_construct_settings_roundtrip() -> void:
 	legacy.erase("construct_auto_buy_land")
 	MatchState.reset()
 	MatchState.import_state(legacy)
-	_check(not MatchState.construct_auto_buy_land,
-		"construct settings: a save predating the setting loads with it OFF")
+	_check(MatchState.construct_auto_buy_land,
+		"construct settings: a save predating the setting defaults to auto-buy ON")
 	MatchState.reset()
 
 
@@ -6085,12 +6126,13 @@ func _test_workforce_output_modifier_surfaces_in_building_status() -> void:
 		"level": 1,
 	}
 	var recipe: Dictionary = Catalog.get_recipe("r_009")
-	_check(BuildingStatus.effective_output_qty(building, recipe) == 28,
+	var base_output: int = int(recipe.get("output_qty", 0))
+	_check(BuildingStatus.effective_output_qty(building, recipe) == base_output,
 		"building status baseline output excludes inactive workforce policies")
 	MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, true)
 	var mod: Dictionary = BuildingStatus.net_output_modifier(building, recipe)
 	var workforce_parts: Array = mod.get("workforce_parts", [])
-	_check(BuildingStatus.effective_output_qty(building, recipe) == 31,
+	_check(BuildingStatus.effective_output_qty(building, recipe) == int(round(float(base_output) * 1.10)),
 		"building status output includes annual profit-share workforce multiplier")
 	_check(absf(float(mod.get("pct_f", 0.0)) - 10.0) < 0.001,
 		"building status net output modifier includes annual profit share")
@@ -6522,6 +6564,33 @@ func _test_tile_mode_flow_endpoints() -> void:
 	_check(MatchState.tile_mode_flow("tile_a", "roads") == 0, "crude oil (liquid) does not count toward roads")
 	MatchState.pending_transport_shipments.clear()
 
+func _test_public_infrastructure_usage() -> void:
+	MatchState.reset()
+	var saved_infra := Catalog._tile_infra.duplicate(true)
+	for tile: String in ["tile_5_10", "tile_4_10"]:
+		Catalog._tile_infra[tile] = ["rail", "roads"]
+	Catalog._route_cache.clear()
+	var route := Catalog.route("tile_5_10", "tile_4_10", "g_001")
+	var legs: Array = route.get("legs", [])
+	_check(not legs.is_empty() and str(legs[0].get("mode")) == "rail", "public rail wins a one-turn tie against bare ground")
+	_check(MatchState.buildings.is_empty(), "public infra fixture has no owned buildings")
+	MatchState.queue_transport_shipment({"good_id": "g_001", "qty": 75, "source_tile": "tile_5_10", "destination_tile": "tile_4_10", "turns_remaining": 1, "tiles": route.get("tiles", []), "legs": legs})
+	MatchState.update_transport_congestion()
+	MatchState.advance_transport_shipments()
+	_check(MatchState.pending_transport_shipments.is_empty(), "one-turn freight has arrived")
+	_check(MatchState.tile_mode_flow("tile_4_10", "rail", true) == 75, "settled public rail usage survives arrival")
+	_check(MatchState.active_links().size() == 2, "overview includes both unowned rail endpoints")
+	var state := MatchState.export_state()
+	MatchState.reset()
+	MatchState.import_state(state)
+	_check(MatchState.tile_mode_flow("tile_4_10", "rail", true) == 75 and MatchState.active_links().size() == 2, "settled public infra usage survives save reload")
+	MatchState.update_transport_congestion()
+	_check(MatchState.tile_mode_flow("tile_4_10", "rail", true) == 0 and MatchState.active_links().is_empty(), "idle next turn clears throughput")
+	MatchState.reset()
+	Catalog._tile_infra = saved_infra
+	Catalog._route_cache.clear()
+
+
 func _test_cable_power_cap() -> void:
 	# Cables hard-cap a tile's power per turn by cable level — produce + draw separately.
 	Modifiers.reset()
@@ -6607,6 +6676,19 @@ func _test_power_network_settlement() -> void:
 		"same-tile draw is covered first; the network's residual shortfall falls on the far consumer")
 	_check(absf(float(grid.grid_sell_revenue) - 1040.0 * EconomyConfig.GRID_SELL_PRICE) < 0.001, "sell revenue priced at GRID_SELL_PRICE")
 	_check(absf(float(grid.grid_buy_cost) - 580.0 * EconomyConfig.GRID_BUY_PRICE) < 0.001, "buy cost priced at GRID_BUY_PRICE")
+	_check(is_equal_approx(Power.allocated_draw_cost("tile_2_3", 280), 280.0 * EconomyConfig.GRID_SELL_PRICE),
+		"cost solver: own network power uses export opportunity cost")
+	_check(is_equal_approx(Power.allocated_draw_cost("tile_9_9", 100), 100.0 * EconomyConfig.GRID_BUY_PRICE),
+		"cost solver: disconnected consumer pays the grid tariff")
+	_check(is_equal_approx(Power.allocated_draw_cost("tile_15_16", 50), 10.0 * EconomyConfig.GRID_SELL_PRICE + 40.0 * EconomyConfig.GRID_BUY_PRICE),
+		"cost solver: consumers share the tile's settled mix of own and imported power")
+	Power.reset_for_turn()
+	Power.record_produced("tile_12_12", 800, true)
+	Power.record_drawn("tile_12_12", 280)
+	Power.settle_grid_transactions()
+	_check(is_equal_approx(Power.allocated_draw_cost("tile_12_12", 280), 280.0 * EconomyConfig.GRID_BUY_PRICE),
+		"cost solver: grid-priority generation does not cover the tile's draw")
+
 
 	get_tree().root.remove_child(fake)
 	fake.free()
@@ -8306,6 +8388,9 @@ func _test_research_link_is_exact() -> void:
 		panel.call("_load_unlock_rows")
 		rows = panel.get("_unlock_rows")
 	_check(rows != null and rows.size() > 0, "research link: the unlock table loads")
+	for row: Dictionary in rows:
+		if str(row.get("title", "")) == "Bauxite Carbochlorination":
+			_check(panel._unlock_matches(row, "aluminium"), "tutorial research search finds processes by their output")
 
 	# The ORDINARY search matches title, description and category by substring, which is
 	# right for hunting and wrong for a link: several techs mention another tech in their
@@ -8605,6 +8690,9 @@ func _test_petrochemistry_changes() -> void:
 # ── Recycling gate (owner 2026-08-23: out of the demo, behind `unlock recycling`) ──
 
 func _test_recycling_gate() -> void:
+	var terminal := preload("res://scripts/debug_terminal.gd")
+	var demo_was_unlocked: bool = terminal._demo_unlocked
+	terminal._demo_unlocked = false
 	var was_unlocked: bool = MatchState.recycling_unlocked
 	MatchState.recycling_unlocked = false
 	var visible: Dictionary = {}
@@ -8628,6 +8716,23 @@ func _test_recycling_gate() -> void:
 	_check(MatchState.visible_goods().size() == Catalog.all_goods().size()
 		and MatchState.is_building_available("b_036"),
 		"recycling: `unlock recycling` puts the chain and its plants back")
+	MatchState.recycling_unlocked = false
+	for gid: String in MatchState.RECYCLING_GOOD_IDS:
+		_check(not Catalog.is_good_buyable(gid) and not Catalog.is_good_sellable(gid), "demo waste cannot be traded: " + gid)
+		_check(not Catalog.is_recipe_visible({"inputs": [{"good_id": gid}]}), "demo hides recipes consuming " + gid)
+		_check(not Catalog.is_recipe_visible({"output_good_id": gid}), "demo hides recipes producing " + gid)
+	_check(Catalog.get_recipe("r_209").get("outputs", []).all(func(item: Dictionary) -> bool: return str(item.get("good_id")) != "g_063"), "demo farming omits wastewater byproduct")
+	var blocked: Array = []
+	for recipe: Dictionary in Catalog._all_recipes:
+		if not Catalog.is_recipe_demo_available(recipe):
+			blocked.append(recipe)
+	_check(not blocked.is_empty(), "demo gate covers loaded recycling recipes")
+	terminal._demo_unlocked = true
+	_check(MatchState.is_building_available("b_036") and MatchState.is_building_available("b_022"), "unlock demo restores both recycling plants")
+	for recipe: Dictionary in blocked:
+		_check(Catalog.is_recipe_visible(recipe), "unlock demo restores waste recipe " + str(recipe.get("recipe_id")))
+	_check(MatchState.visible_goods().size() == Catalog.all_goods().size(), "unlock demo restores waste goods")
+	terminal._demo_unlocked = demo_was_unlocked
 	MatchState.recycling_unlocked = was_unlocked
 
 # ── Victory system (scripts/victory_state.gd; docs/victory-system-spec.md §12) ──
@@ -9689,6 +9794,14 @@ func _test_company_rankings() -> void:
 			player_row = row
 	_check(is_equal_approx(float(player_row.get("trend_average", 0.0)), 119.0),
 		"company rankings: player trend is the average of the last five revenues")
+	var bar := preload("res://scripts/top_bar.gd").new()
+	var risk_rows: Array[Dictionary] = [
+		{"is_player": true, "revenue": 100.0, "revenue_change": -5.0},
+		{"is_player": false, "revenue": 90.0, "revenue_change": 10.0}]
+	_check(bar._ranking_position_at_risk(risk_rows), "rankings warn when the next rival is on course to overtake")
+	risk_rows[1].revenue_change = 0.0
+	_check(not bar._ranking_position_at_risk(risk_rows), "rankings do not warn while the lead remains safe")
+	bar.free()
 	var growth_rng := RandomNumberGenerator.new()
 	growth_rng.seed = 97531
 	var growth_total := 0.0
@@ -10047,7 +10160,7 @@ func _test_build_forecast() -> void:
 
 	# cash_needed is what the player must survive before revenue: the idle turn plus the
 	# unpaid producing turns. It is the number the summary line quotes.
-	var expected_need: float = -completes + (-shipping * float(smelter.get("sale_delay", 1)))
+	var expected_need: float = -completes + (-shipping * float(smelter.get("sale_delay", 1))) + float(smelter.breakdown.startup_inventory)
 	_check(is_equal_approx(float(smelter.get("cash_needed", 0.0)), expected_need),
 		"forecast: cash_needed covers the completion turn plus every unpaid producing turn")
 
@@ -10096,6 +10209,59 @@ func _test_build_forecast() -> void:
 	var junk: Dictionary = BuildForecast.project("b_nope", "r_nope", "tile_5_10")
 	_check((junk.get("phases", []) as Array).is_empty(),
 		"forecast: unknown building/recipe yields no projection instead of crashing")
+
+	# Outlook thresholds include their boundary values and reject unroutable sites.
+	for sample in [[-16.0, "Unlikely", "DANGER"], [-15.0, "Unlikely", "DANGER"],
+		[-14.99, "50+ turns", "WARN"], [4.99, "50+ turns", "WARN"],
+		[5.0, "20–30 turns", "OK"], [20.0, "20–30 turns", "OK"], [20.01, "10–20 turns", "OK"]]:
+		var band: Dictionary = BuildForecast.payback_band(float(sample[0]))
+		_check(band.text == sample[1] and band.tone == sample[2], "forecast band boundary: " + str(sample[0]))
+	_check(BuildForecast.payback_band(50.0, true).text == "Unlikely", "unroutable sites never get a positive outlook")
+	var probe := {"instance_id": "", "building_id": "b_012", "recipe_id": "r_012", "tile_id": "tile_4_9", "level": 1}
+	MatchState.idle_labour_pay_share = 0.5
+	var chlor: Dictionary = BuildForecast.project("b_012", "r_012", "tile_4_9")
+	_check(is_equal_approx(float(chlor.breakdown.idle_standing),
+		Production._calculate_labour_cost(probe, Catalog.get_recipe("r_012")) * 0.5 + Production._calculate_maintenance_cost(probe)),
+		"forecast respects half-pay on the idle completion turn")
+	_check(float(chlor.breakdown.startup_inventory) > 0, "forecast reserves initial input pipeline inventory")
+	_check(chlor.first_selling_turn == chlor.build_turns + 1 + chlor.sale_delay,
+		"forecast completion is the final construction turn, not an extra turn")
+	_check((chlor.financing as Dictionary).is_empty(), "repayment is absent without a CFO")
+	MatchState.advisor_seats = {"cfo": "vera"}
+	for mode in ["ask", "slices", "loan", "none"]:
+		MatchState.construct_credit_default = mode
+		var funded: Dictionary = BuildForecast.project("b_012", "r_012", "tile_4_9")
+		_check(funded.financing.mode == mode, "forecast respects CFO credit choice: " + mode)
+		_check(is_equal_approx(float(chlor.steady_net), float(funded.steady_net)), "credit never increases ongoing profitability")
+		_check(float(funded.financing.net) <= float(funded.steady_net), "repayment lowers available cash")
+	MatchState.reset()
+	Modifiers.reset()
+	# Two disconnected cabled islands: only the local surplus offsets imports.
+	var fake := Node.new()
+	var src := GDScript.new()
+	src.source_code = "extends Node\nvar tiles := {}\nfunc id_to_coord(t): return Vector2i(int(t.split('_')[1])-1, int(t.split('_')[2])-1)\n"
+	src.reload()
+	fake.set_script(src)
+	fake.set("tiles", {Vector2i(0, 0): {"infrastructure_present": ["cables"]},
+		Vector2i(9, 9): {"infrastructure_present": ["cables"]}})
+	fake.add_to_group("hex_map")
+	get_tree().root.add_child(fake)
+	var generator := MatchState.add_building("b_003", "r_004", "tile_1_1")
+	var generation := Production._effective_power_output(MatchState.buildings[generator], Catalog.get_recipe("r_004"))
+	var power_gid := str(Catalog.get_good_by_internal_name("power").get("id", ""))
+	var retail := EconomyConfig.GRID_BUY_PRICE + MarketState.carbon_component(power_gid)
+	_check(is_equal_approx(BuildForecast.marginal_power_cost("tile_1_1", 100), 100 * EconomyConfig.GRID_SELL_PRICE),
+		"forecast values company surplus at forgone grid export revenue")
+	_check(is_equal_approx(BuildForecast.marginal_power_cost("tile_10_10", 100), 100 * retail),
+		"forecast never borrows surplus from a disconnected cable network")
+	_check(is_equal_approx(BuildForecast.marginal_power_cost("tile_1_1", generation + 100), generation * EconomyConfig.GRID_SELL_PRICE + 100 * retail),
+		"forecast splits marginal demand between own surplus and grid imports")
+	MatchState.power_priority_coal_gas = "grid"
+	_check(is_equal_approx(BuildForecast.marginal_power_cost("tile_1_1", 100), 100 * retail),
+		"grid-priority generation remains sold rather than covering the new building")
+	fake.free()
+
+	MatchState.reset()
 
 func _test_construct_v3_sim() -> void:
 	# Phase-1 sim layer for the Construct V3 confirm redesign (gated in the UI behind
@@ -10484,9 +10650,9 @@ func _test_construct_browse_mini_recipe_card() -> void:
 		# match — an inner class's get_class() reports its base (Control), not its
 		# own script class name.
 		var icons := mini.find_children("*", "TextureRect", true, false)
-		# r_033 has 5 inputs + 1 output = 6 icons, all the SAME mini size — no
+		# r_033 has 6 inputs + 1 output = 7 icons, all the SAME mini size — no
 		# hero/pair/grid tiering here, unlike the expanded diagram.
-		_check(icons.size() == 6, "mini recipe: one icon per input/output, 5+1=6 for r_033 (got %d)" % icons.size())
+		_check(icons.size() == 7, "mini recipe: one icon per input/output, 6+1=7 for r_033 (got %d)" % icons.size())
 		for icon in icons:
 			_check(absf((icon as TextureRect).custom_minimum_size.x - 40.0) < 0.5,
 				"mini recipe: every icon is the same 40px size regardless of item count")
@@ -10496,8 +10662,8 @@ func _test_construct_browse_mini_recipe_card() -> void:
 		for lbl in _all_labels(mini):
 			if lbl.text == "+":
 				plus_count += 1
-		# 5 inputs -> 4 "+" between them; 1 output -> 0 "+"; 4 total.
-		_check(plus_count == 4, "mini recipe: '+' separates each side's own items (4 for 5 inputs + 1 output, got %d)" % plus_count)
+		# 6 inputs -> 5 "+" between them; 1 output -> 0 "+"; 5 total.
+		_check(plus_count == 5, "mini recipe: '+' separates each side's own items (5 for 6 inputs + 1 output, got %d)" % plus_count)
 		var pills := 0
 		for child in _all_panel_containers(mini):
 			pills += 1
@@ -10514,13 +10680,13 @@ func _test_construct_browse_mini_recipe_card() -> void:
 ## way to claim more room than the panel's own normal width.
 func _test_recipe_choice_row_mini_diagram() -> void:
 	var detail_panel = load("res://scripts/building_detail_panel_v2.gd").new()
-	var recipe: Dictionary = Catalog.get_recipe("r_033")   # 5 inputs + 1 output
+	var recipe: Dictionary = Catalog.get_recipe("r_033")   # 6 inputs + 1 output
 	var row: Control = detail_panel.call("_recipe_choice_row", "probe_iid", recipe, false)
 	var diagram: Control = row.find_child("MiniRecipeDiagramCard", true, false)
 	_check(diagram != null, "recipe choice row: the mini diagram renders")
 	if diagram != null:
 		var icons := diagram.find_children("*", "TextureRect", true, false)
-		_check(icons.size() == 6, "recipe choice row: one icon per input/output, 5+1=6 for r_033 (got %d)" % icons.size())
+		_check(icons.size() == 7, "recipe choice row: one icon per input/output, 6+1=7 for r_033 (got %d)" % icons.size())
 		_check(diagram.find_child("MiniRecipeArrow", true, false) != null,
 			"recipe choice row: the filled navy arrow renders")
 	row.free()
@@ -10732,7 +10898,7 @@ func _test_construct_v3_1_iteration() -> void:
 	# every header/value column centred (owner 2026-08-26).
 	var mat_icon: Control = diagram.get_parent().find_child("*", false, false)   # placeholder, replaced below
 	var icon_row: HBoxContainer = null
-	for child in panel._content.get_children():
+	for child in panel.find_child("ConstructionMaterialsSection", true, false).get_children():
 		if child is HBoxContainer and (child as HBoxContainer).get_child_count() >= 4 \
 				and (child as HBoxContainer).get_child(0) is Control \
 				and not ((child as HBoxContainer).get_child(0) is Label):
@@ -10887,69 +11053,23 @@ func _test_construct_v3_2_iteration() -> void:
 			has_buffer = true
 		elif text == "Run rate":
 			has_run_rate = true
-		elif text.begins_with("Turn ") or text == "Never at today's prices":
+		elif text.begins_with("Payback: "):
 			payback_value = label as Label
 	_check(not has_buffer and not has_run_rate,
 		"v3.1 cash facts: Buffer and Run rate rows are gone")
 	_check(payback_value != null and not payback_value.text.to_lower().contains("pays back"),
-		"v3.1 cash facts: Payback reads \"Turn N\", not \"pays back ~turn N\"")
+		"cash facts: payback uses a broad outlook band")
 
-	# "How is this calculated?" replaces the old always-visible caption.
-	var calc_note: Label = null
-	for label in panel._content.find_children("*", "Label", true, false):
-		if (label as Label).text == "How is this calculated?":
-			calc_note = label as Label
-	_check(calc_note != null and calc_note.tooltip_text.contains("Per turn, at market prices"),
-		"v3.1 cash facts: \"How is this calculated?\" carries the explanation on hover")
-	var stray_caption := false
-	for label in panel._content.find_children("*", "Label", true, false):
-		if (label as Label).text.contains("Assumes it sells straight to market"):
-			stray_caption = true
-	_check(not stray_caption, "v3.1 cash facts: the old always-visible caption is gone")
-
-	# Cash timeline: turn markers, phase names and money are true row siblings —
-	# a GridContainer, not one VBox per phase — so a taller middle cell (a
-	# wrapped phase name) can never push just ITS OWN money row out of line with
-	# its neighbours. Phase count varies by fixture, so read it back live.
-	var forecast: Dictionary = panel.get("_v3_forecast")
-	var phase_count: int = (forecast.get("phases", []) as Array).size()
-	var timeline_grid: GridContainer = null
-	for grid in panel._content.find_children("*", "GridContainer", true, false):
-		if (grid as GridContainer).columns == phase_count and phase_count > 0:
-			var first_child := (grid as GridContainer).get_child(0)
-			# Marker text reads "Turn 1"/"Turn 1–3" now (owner 2026-08-26, was
-			# "t1"/"t1–t3") — identify the grid by that instead.
-			if first_child is Label and str((first_child as Label).text).begins_with("Turn "):
-				timeline_grid = grid as GridContainer
-	_check(timeline_grid != null and timeline_grid.get_child_count() == phase_count * 3,
-		"v3.1 cash timeline: one GridContainer cell per phase per row (3 rows)")
+	_check(payback_value != null and payback_value.get_theme_font_size("font_size") == 20,
+		"forecast payback is larger and carries its assumptions on hover")
+	_check(payback_value != null and payback_value.tooltip_text.contains("current prices"),
+		"forecast explains uncertainty in a tooltip")
+	var timeline_grid: GridContainer = panel._content.find_child("RevenueTimeline", true, false)
+	_check(timeline_grid != null and timeline_grid.columns == 3,
+		"forecast uses a compact three-column timeline")
 	if timeline_grid != null:
-		await get_tree().process_frame
-		var row0_y: float = (timeline_grid.get_child(0) as Control).get_global_rect().position.y
-		var row1_rect0: Rect2 = (timeline_grid.get_child(phase_count) as Control).get_global_rect()
-		var row1_center_y: float = row1_rect0.position.y + row1_rect0.size.y / 2.0
-		var row2_y: float = (timeline_grid.get_child(phase_count * 2) as Control).get_global_rect().position.y
-		var rows_distinct := row0_y < row1_center_y and row1_center_y < row2_y
-		var row0_aligned := true
-		var row2_aligned := true
-		for i in phase_count:
-			if not is_equal_approx((timeline_grid.get_child(i) as Control).get_global_rect().position.y, row0_y):
-				row0_aligned = false
-			if not is_equal_approx((timeline_grid.get_child(phase_count * 2 + i) as Control).get_global_rect().position.y, row2_y):
-				row2_aligned = false
-		_check(rows_distinct and row0_aligned and row2_aligned,
-			"v3.1 cash timeline: every turn-marker/money cell top-aligns with its own row, regardless of text wrapping")
-		# Owner 2026-08-26: the name row instead centres each cell on a shared
-		# axis — one line sits on it, two straddle it, three put their middle
-		# line on it — so the invariant here is centre-Y equality, not top-Y.
-		var row1_aligned := true
-		for i in phase_count:
-			var cell_rect: Rect2 = (timeline_grid.get_child(phase_count + i) as Control).get_global_rect()
-			var cell_center_y := cell_rect.position.y + cell_rect.size.y / 2.0
-			if not is_equal_approx(cell_center_y, row1_center_y):
-				row1_aligned = false
-		_check(row1_aligned,
-			"v3.1 cash timeline: every phase-name cell shares the same centre axis, regardless of line count")
+		for label in timeline_grid.get_children():
+			_check(not label.text.contains("£"), "forecast timeline has no money amounts")
 
 	# Verdict strip: cost separated from time. On tile_5_10 (the fixture used
 	# throughout — the player's own port) the "Build time" fact row is simply
@@ -11235,23 +11355,10 @@ func _test_construct_v3_4_iteration() -> void:
 	_check(not has_turns_suffix,
 		"v3.1 cash timeline: the redundant \"· N turns\" suffix is gone")
 
-	# "How is this calculated?" now shares Payback's row, right-anchored, with
-	# a thin outline (owner 2026-08-26 — was its own row underneath).
 	var facts_row: Control = panel._v3_cash_facts_row()
-	_check(facts_row is HBoxContainer and facts_row.get_child_count() == 2,
-		"v3.1 cash facts row: Payback and the calculation note share one HBox")
-	var note_pill: Control = null
-	if facts_row.get_child_count() == 2:
-		note_pill = facts_row.get_child(1) as Control
-	_check(note_pill is PanelContainer,
-		"v3.1 cash facts row: the calculation note sits in its own outlined container")
-	if note_pill is PanelContainer:
-		var note_style := note_pill.get_theme_stylebox("panel") as StyleBoxFlat
-		_check(note_style != null and note_style.border_width_left > 0,
-			"v3.1 cash facts row: the outline is a real (non-zero) border")
-		var note_label := note_pill.get_child(0) as Label
-		_check(note_label != null and note_label.text == "How is this calculated?",
-			"v3.1 cash facts row: the outlined control still reads \"How is this calculated?\"")
+	_check(facts_row is Label and facts_row.name == "ForecastPayback",
+		"forecast ends with just the prominent payback label")
+	facts_row.free()
 
 	remove_child(panel)
 	panel.free()
@@ -11260,47 +11367,22 @@ func _test_construct_v3_4_iteration() -> void:
 
 
 func _test_build_cost_hover_preview() -> void:
-	# v3.1 feedback (owner 2026-08-26): while placing a building on the map,
-	# hovering a candidate tile shows building/transport/land cost — a pure,
-	# read-only re-derivation of the same pricing the confirm panel uses.
-	# _build_cost_rows() touches no @onready state (terrain_layer), so the
-	# script can be probed standalone without adding it to the scene tree —
-	# same pattern as probing construct_panel_v2.gd's private helpers.
 	MatchState.reset()
 	MarketState._init_prices_from_catalog()
-	var overlay: Node2D = (load("res://scripts/map_overlay.gd") as GDScript).new()
-
-	# b_002 (Furnace) on a fresh tile_5_10: real land + material shortfalls, so
-	# every row should carry a genuine non-placeholder figure.
-	BuildMode.enter_build_mode("b_002", "r_005")
-	var rows: Array = overlay._build_cost_rows("tile_5_10")
-	_check(rows.size() == 3, "build hover: three rows (building / transport / land)")
-	_check(str(rows[0]).begins_with("Building"), "build hover: row 1 is the building cost")
-	_check(str(rows[1]).begins_with("Transport"), "build hover: row 2 is the transport cost")
-	_check(str(rows[2]).begins_with("Land"), "build hover: row 3 is the land line")
-	_check(not str(rows[2]).contains("none needed"),
-		"build hover: land is genuinely short on a tile that owns none")
-	_check(str(rows[0]) != "Building  £0",
-		"build hover: building cost is a real, non-zero figure")
-
-	# No active BuildMode session (or no building selected) — no rows, no crash.
-	BuildMode.exit_build_mode()
-	_check(overlay._build_cost_rows("tile_5_10").is_empty(),
-		"build hover: nothing to show once BuildMode is inactive")
-
-	# Read-only: computing the preview must never mutate land ownership or any
-	# other sim state — it's a hover, not a purchase.
-	var owned_before: int = MatchState.get_tile_land_owned("tile_5_10")
-	var money_before: float = MatchState.money
-	BuildMode.enter_build_mode("b_002", "r_005")
-	overlay._build_cost_rows("tile_5_10")
-	overlay._build_cost_rows("tile_5_10")   # twice — a cache/memo bug would show on repeat
+	var preview := preload("res://scripts/construction_hover.gd")
+	var owned_before := MatchState.get_tile_land_owned("tile_5_10")
+	var money_before := MatchState.money
+	var data := preview.preview("tile_5_10", "b_002", "r_005")
+	_check(float(data.materials) > 0, "build hover: missing materials have a purchase cost")
+	_check(float(data.land) > 0, "build hover: unowned land has a purchase cost")
+	var ledger := Construction.materials_ledger("b_002", "tile_5_10")
+	_check(is_equal_approx(float(data.materials) + float(data.transport), float(ledger.subtotal)),
+		"build hover: separate goods and freight reconcile with the construction ledger")
+	_check(not (data.forecast.phases as Array).is_empty(), "build hover: recipe supplies a revenue timeline")
+	preview.preview("tile_5_10", "b_002", "r_005")
 	_check(MatchState.get_tile_land_owned("tile_5_10") == owned_before
 		and is_equal_approx(MatchState.money, money_before),
-		"build hover: computing the preview never mutates land or money")
-
-	BuildMode.exit_build_mode()
-	overlay.free()
+		"build hover: repeated previews never mutate land or money")
 	MatchState.reset()
 
 
@@ -11771,6 +11853,7 @@ func _test_logistics_shipping_line() -> void:
 	TurnManager.current_turn = 1
 
 func _test_port_ad_valorem_schedule() -> void:
+	MatchState.reset()
 	# Port charging is ad valorem only, on a turn schedule: 0.5% while learning, 3% from t31.
 	# The flat per-good fee is retired — it made quantity free, which is why freight collapsed
 	# to 0.3% of revenue late. See docs/early-game-onboarding-spec.md §4.2b.
@@ -11786,6 +11869,22 @@ func _test_port_ad_valorem_schedule() -> void:
 			% (100.0 * EconomyConfig.SEAPORT_AD_VALOREM_LATE))
 	_check(EconomyConfig.SEAPORT_AD_VALOREM_LATE > EconomyConfig.SEAPORT_AD_VALOREM_EARLY,
 		"port: the rate rises rather than falls at the step")
+
+	MatchState.ruleset = {"name": "tutorial", "tutorial_enabled": true}
+	TurnManager.current_turn = 31
+	_check(is_equal_approx(MatchState.seaport_insurance_rate(""), EconomyConfig.SEAPORT_AD_VALOREM_EARLY),
+		"tutorial port: no fee jump at turn 31")
+	MatchState.ruleset["tutorial_enabled"] = false
+	var saved: Dictionary = MatchState.export_state()
+	MatchState.reset()
+	MatchState.import_state(saved)
+	TurnManager.current_turn = 300
+	_check(is_equal_approx(MatchState.seaport_insurance_rate(""), EconomyConfig.SEAPORT_AD_VALOREM_EARLY),
+		"tutorial port: introductory rate survives completion and save reload at turn 300")
+	MatchState.reset()
+	_check(is_equal_approx(MatchState.seaport_insurance_rate(""), EconomyConfig.SEAPORT_AD_VALOREM_LATE),
+		"campaign port: standard late rate restored in a new game")
+	TurnManager.current_turn = 1
 
 func _test_tutorial_rescue() -> void:
 	# Tutorial matches top a negative balance back up to £2500, three times, then stop.
@@ -12449,33 +12548,27 @@ func _test_price_impact() -> void:
 	_check(MatchState.auto_sell_unit_cap("tile_4_5") > 1000000, "tile ANY tolerance is effectively uncapped")
 	_check(MatchState.get_auto_sell_impact("tile_unset_99") == MatchState.IMPACT_ANY, "default tolerance is ANY")
 
-# The LIVE threshold model: net per-turn volume over 2x/3x/4x of a good's base
-# building output accrues 0.1/0.2/0.4 %/turn of glut (sell) or deficit (buy)
-# impact, capped at ±50%, recovering 0.1%/turn under the threshold. The impact
-# multiplies the decayed base price; `prices` stays the impact-free series.
+# Net-volume thresholds accrue symmetric glut/deficit impact; rates doubled 2026-09-07.
 func _test_price_impact_thresholds() -> void:
-	# LADDER response (owner rulings 2026-08-28/29, docs/price-impact-ladder-spec.md):
-	# >1x 0.05, >3x 0.1, >5x 0.2, then 0.1-point steps to >11x 0.8 and a deliberate
-	# jump to 1.0 at >12x. Price decay is retired — this ladder is the whole price model.
 	_check(EconomyConfig.price_impact_rate(32, 32) == 0.0, "1x exactly is under the bite")
-	_check(EconomyConfig.price_impact_rate(33, 32) == 0.05,
+	_check(EconomyConfig.price_impact_rate(33, 32) == 0.1,
 		"just over 1x accrues the faintest rung — a modified single building registers")
-	_check(EconomyConfig.price_impact_rate(-33, 32) == 0.05, "the 1x rung applies to BUYING too")
-	_check(EconomyConfig.price_impact_rate(96, 32) == 0.05, "3x exactly is still the 1x rung (strictly greater than)")
-	_check(EconomyConfig.price_impact_rate(97, 32) == 0.1, "just over 3x steps up")
-	_check(EconomyConfig.price_impact_rate(161, 32) == 0.2, "just over 5x steps up")
-	_check(EconomyConfig.price_impact_rate(193, 32) == 0.3, "just over 6x steps up")
-	_check(EconomyConfig.price_impact_rate(225, 32) == 0.4 and EconomyConfig.price_impact_rate(257, 32) == 0.5 \
-			and EconomyConfig.price_impact_rate(289, 32) == 0.6 and EconomyConfig.price_impact_rate(321, 32) == 0.7 \
-			and EconomyConfig.price_impact_rate(353, 32) == 0.8,
-		"the 6x-11x rungs step by exactly 0.1")
-	_check(EconomyConfig.price_impact_rate(384, 32) == 0.8, "12x exactly is still the 11x rung")
-	_check(EconomyConfig.price_impact_rate(385, 32) == 1.0, "over 12x jumps 0.8 -> 1.0 — flooding gets a step change")
-	_check(EconomyConfig.price_impact_rate(32000, 32) == 1.0, "the flooding rung is the top — it saturates by design")
+	_check(EconomyConfig.price_impact_rate(-33, 32) == 0.1, "the 1x rung applies to BUYING too")
+	_check(EconomyConfig.price_impact_rate(96, 32) == 0.1, "3x exactly is still the 1x rung (strictly greater than)")
+	_check(EconomyConfig.price_impact_rate(97, 32) == 0.2, "just over 3x steps up")
+	_check(EconomyConfig.price_impact_rate(161, 32) == 0.4, "just over 5x steps up")
+	_check(EconomyConfig.price_impact_rate(193, 32) == 0.6, "just over 6x steps up")
+	_check(EconomyConfig.price_impact_rate(225, 32) == 0.8 and EconomyConfig.price_impact_rate(257, 32) == 1.0 \
+			and EconomyConfig.price_impact_rate(289, 32) == 1.2 and EconomyConfig.price_impact_rate(321, 32) == 1.4 \
+			and EconomyConfig.price_impact_rate(353, 32) == 1.6,
+		"the 6x-11x rungs step by exactly 0.2")
+	_check(EconomyConfig.price_impact_rate(384, 32) == 1.6, "12x exactly is still the 11x rung")
+	_check(EconomyConfig.price_impact_rate(385, 32) == 2.0, "over 12x jumps 1.6 -> 2.0 — flooding gets a step change")
+	_check(EconomyConfig.price_impact_rate(32000, 32) == 2.0, "the flooding rung is the top — it saturates by design")
 	_check(EconomyConfig.price_impact_rate(1000, 0) == 0.0, "no base output -> no impact")
 	# A NORMAL multi-building chain must not be punished: 3 factories of one good is 3x,
 	# which sits on the faintest rung, not the flooding one.
-	_check(EconomyConfig.price_impact_rate(84, 28) == 0.05, "a 3-factory chain sits on the faintest rung")
+	_check(EconomyConfig.price_impact_rate(84, 28) == 0.1, "a 3-factory chain sits on the faintest rung")
 	# Asymmetric cap: gluts bottom out at 40% of base price, deficits top out at 250%.
 	_check(EconomyConfig.PRICE_IMPACT_FLOOR_PCT == -60.0 and EconomyConfig.PRICE_IMPACT_CEILING_PCT == 150.0,
 		"price is capped between 40% and 250% of base")
@@ -12486,7 +12579,7 @@ func _test_price_impact_thresholds() -> void:
 		"turns 21-40 run at x1.25")
 	_check(EconomyConfig.impact_threshold_scale(41) == 1.5 and EconomyConfig.impact_threshold_scale(300) == 4.5,
 		"linear schedule: x1.50 from t41, x4.50 by t300 — NOT compounding")
-	_check(EconomyConfig.price_impact_rate(40, 32, 1.25) == 0.0 and EconomyConfig.price_impact_rate(41, 32, 1.25) == 0.05,
+	_check(EconomyConfig.price_impact_rate(40, 32, 1.25) == 0.0 and EconomyConfig.price_impact_rate(41, 32, 1.25) == 0.1,
 		"an inflated threshold moves the bite point")
 
 	# Accrual, the rolling-window hold, walk-back recovery, and the caps — driven
@@ -12507,12 +12600,12 @@ func _test_price_impact_thresholds() -> void:
 	var flood_units: int = int(ceilf(13.0 * float(coal_base) * scale_now))
 	MarketState.record_market_sale_volume(gid, flood_units)
 	MarketState.tick_turn()
-	_check(absf(MarketState.get_impact_pct(gid) + 1.0) < 0.0001, "one flooding sell turn accrues -1.0%")
-	_check(absf(MarketState.get_price(gid) - base_before * (1.0 - 1.0 / 100.0)) < 0.0001,
+	_check(absf(MarketState.get_impact_pct(gid) + 2.0) < 0.0001, "one flooding sell turn accrues -2.0%")
+	_check(absf(MarketState.get_price(gid) - base_before * (1.0 - 2.0 / 100.0)) < 0.0001,
 		"impact multiplies the STATIC base price — decay is retired, prices no longer drift")
 	# A quiet turn inside a loud window HOLDS: the rolling average is still over 1x.
 	MarketState.tick_turn()
-	_check(absf(MarketState.get_impact_pct(gid) + 1.0) < 0.0001,
+	_check(absf(MarketState.get_impact_pct(gid) + 2.0) < 0.0001,
 		"a quiet turn does not recover while the rolling average stays loud — no pulsing exploit")
 	# Net buying pushes the impact UP at the same ladder rates (deficit side).
 	# Fresh window first: the signed rolling average NETS sells against buys, so a
@@ -12523,8 +12616,8 @@ func _test_price_impact_thresholds() -> void:
 	MarketState._recovery_step.erase(gid)
 	MarketState.record_market_buy_volume(gid, flood_units)
 	MarketState.tick_turn()
-	_check(absf(MarketState.get_impact_pct(gid) - 1.0) < 0.0001,
-		"a flooding BUY turn accrues +1.0% — the same ladder, opposite sign")
+	_check(absf(MarketState.get_impact_pct(gid) - 2.0) < 0.0001,
+		"a flooding BUY turn accrues +2.0% — the same ladder, opposite sign")
 	# Walk-back: give the good a deep glut, then go quiet. The window drains first
 	# (holding), then the walk-back closes the whole gap in exactly 10 turns.
 	MarketState.impact_pct[gid] = -30.0
@@ -13852,6 +13945,9 @@ func _test_advisor_loyalty() -> void:
 	MatchState._agenda_flags = {}
 
 func _test_advisor_missions() -> void:
+	var demo_terminal := preload("res://scripts/debug_terminal.gd")
+	var saved_demo: bool = demo_terminal._demo_unlocked
+	demo_terminal._demo_unlocked = true
 	var saved_perm := MatchState.permanent_advisor_ids.duplicate(true)
 	var saved_rec := MatchState.recruited_advisor_ids.duplicate(true)
 	var saved_loyal := MatchState.advisor_loyalty.duplicate(true)
@@ -13866,6 +13962,11 @@ func _test_advisor_missions() -> void:
 	MatchState.advisor_missions_completed = {}
 	MatchState._advisor_mission5_streak = {}
 	MatchState.advisor_mission_policies = []
+
+	demo_terminal._demo_unlocked = false
+	MatchState.advisor_loyalty["vera"] = 9.0
+	_check(not MatchState._check_mission_progress("vera") and MatchState.advisor_missions_done("vera") == 0, "demo: advisor missions cannot progress or grant rewards")
+	demo_terminal._demo_unlocked = true
 
 	# Missions I-IV complete the first turn loyalty reaches 2 / 5 / 7 / 9.
 	MatchState.advisor_loyalty["vera"] = 3.0
@@ -13926,8 +14027,13 @@ func _test_advisor_missions() -> void:
 	MatchState.advisor_mission_policies = saved_pol
 	MatchState.unlocked_titles = saved_unlocked
 	MatchState.reconcile_advisor_modifiers()
+	demo_terminal._demo_unlocked = saved_demo
+
 
 func _test_advisor_mission_update_signals() -> void:
+	var demo_terminal := preload("res://scripts/debug_terminal.gd")
+	var saved_demo: bool = demo_terminal._demo_unlocked
+	demo_terminal._demo_unlocked = true
 	var saved_perm := MatchState.permanent_advisor_ids.duplicate(true)
 	var saved_rec := MatchState.recruited_advisor_ids.duplicate(true)
 	var saved_loyal := MatchState.advisor_loyalty.duplicate(true)
@@ -13967,6 +14073,8 @@ func _test_advisor_mission_update_signals() -> void:
 	MatchState.advisor_missions_completed = saved_done
 	MatchState._advisor_mission5_streak = saved_streak
 	MatchState.reconcile_advisor_modifiers()
+	demo_terminal._demo_unlocked = saved_demo
+
 
 func _test_people_panel_mission_ui() -> void:
 	var pp: Node = load("res://scripts/people_panel.gd").new()
@@ -14618,10 +14726,19 @@ func _test_widgets_instantiate() -> void:
 	if not permanent.is_empty():
 		pp.call("_open_advisor_detail", permanent[0])
 	var detail: Node = pp.get("_advisor_detail_panel")
-	_check(
-		detail != null and detail.visible
-		and _tree_has_label_text(detail, "Agenda") and _tree_has_label_text(detail, "Missions"),
+	_check(detail != null and detail.visible and _tree_has_label_text(detail, "Impact") and _tree_has_label_text(detail, "Seats"),
 		"PeoplePanel opens advisor detail shell")
+	var demo_terminal := preload("res://scripts/debug_terminal.gd")
+	var was_demo_unlocked: bool = demo_terminal._demo_unlocked
+	demo_terminal._demo_unlocked = false
+	pp.call("_open_advisor_detail", permanent[0])
+	_check(not _tree_has_label_text(detail, "Agenda") and not _tree_has_label_text(detail, "Missions"),
+		"demo advisor detail hides loyalty agenda and missions")
+	demo_terminal._demo_unlocked = true
+	pp.call("_open_advisor_detail", permanent[0])
+	_check(_tree_has_label_text(detail, "Agenda") and _tree_has_label_text(detail, "Missions"),
+		"unlock demo restores advisor loyalty concepts")
+	demo_terminal._demo_unlocked = was_demo_unlocked
 	pp.call("_close_advisor_detail")
 	if detail != null:
 		detail.queue_free()
@@ -14799,7 +14916,7 @@ func _test_main_scene_instantiates() -> void:
 
 # Logic: the data CSVs load into the Catalog as expected.
 func _test_catalog_loaded() -> void:
-	_check(Catalog.all_goods().size() == 76, "Catalog has 76 goods")
+	_check(Catalog.all_goods().size() == 77, "Catalog has 77 goods")
 	var _all_classed := true
 	for g in Catalog.all_goods():
 		if str(g.get("transport_class", "")) == "":
@@ -15501,6 +15618,26 @@ func _test_policy_state() -> void:
 		and str((sub_notice.get("choices", [])[0] as Dictionary).get("id", "")) == "understood",
 		"policy: subsidy notice has the single Understood choice")
 	_check(str(sub_notice.get("headline", "")).begins_with("The government wants"), "policy: subsidy notice carries the owner headline")
+	var saved_copy_rules := MatchState.ruleset.duplicate(true)
+	var saved_copy_pending := DecisionState.pending_queue.duplicate(true)
+	for timeline in ["campaign", "demo_itch"]:
+		MatchState.ruleset["policy_timeline"] = timeline
+		DecisionState.pending_queue = [{"uid": "copy_notice", "def_id": "carbon_tax_notice",
+			"target": {"scope": "company", "name": "Company"}}]
+		var copy_view := DecisionState.pending_view()
+		_check(str(copy_view.headline).contains("turn " + str(PolicyState.beat("ramp_first")))
+			and str(copy_view.headline).contains("turn " + str(PolicyState.beat("p1"))),
+			"policy copy uses the active levy dates: " + timeline)
+		_check(str(copy_view.choices[0].consequence).contains(str(PolicyState.beat("ramp_first")))
+			and not str(copy_view.choices[0].consequence).contains("{levy"),
+			"policy consequence resolves dates in both rulesets")
+		DecisionState.pending_queue[0].def_id = "green_subsidy_notice"
+		copy_view = DecisionState.pending_view()
+		_check(str(copy_view.headline).contains("turn " + str(PolicyState.beat("subsidy"))),
+			"subsidy copy uses the active start date: " + timeline)
+	MatchState.ruleset = saved_copy_rules
+	DecisionState.pending_queue = saved_copy_pending
+
 	var end_notice: Dictionary = DecisionState.DECISION_DEFINITIONS.get("green_subsidy_end_notice", {})
 	_check(not end_notice.is_empty() and int(end_notice.get("priority", 99)) == DecisionState.PRIORITY_STORY
 		and (end_notice.get("choices", []) as Array).size() == 1,
@@ -16043,8 +16180,7 @@ func _test_fluids_by_road_and_rail() -> void:
 		if not EconomyConfig.PIPE_MODES.has(str((leg as Dictionary).get("mode", ""))):
 			all_piped = false
 	_check(all_piped, "fluids overland: with pipe and rail side by side, a fluid still takes the pipe")
-	# A solid's mode list leads with ROUTE_MODE_NONE, which claims the single-tile hop, so the
-	# control is not "every leg is rail" — it is that a solid never goes down the pipe.
+	# Solids prefer rail over bare ground on equal-time routes, and never use pipes.
 	var coal_legs: Array = Catalog.route(src, dst, coal).get("legs", [])
 	var coal_off_pipe := not coal_legs.is_empty()
 	for leg in coal_legs:
@@ -21080,3 +21216,159 @@ func _test_bake_near_tier_geometry() -> void:
 	_check(Layout.BAKE_SCALE < ppu_1440,
 		"near tier: the far tier alone WOULD be magnified there — which is why near exists")
 	camera.free()
+
+func _test_market_price_history_and_layout() -> void:
+	var bar = load("res://scripts/metallic_bar.gd").new()
+	bar.max_value = 1.0
+	bar.value = 2.0 / 3.0
+	_check(is_equal_approx(bar.frac, 2.0 / 3.0), "metallic bar: fractional skills retain their exact fill")
+	bar.value = 0.0
+	_check(bar.frac == 0.0, "metallic bar: zero skill has no fill")
+	bar.free()
+	var saved: Dictionary = MarketState.export_state()
+	var saved_turn: int = int(TurnManager.current_turn)
+	var saved_costs: Dictionary = CostSolver.last_result.duplicate(true)
+	CostSolver.last_result = {"per_good": {"g_008": {"unit_cost": 1.25}}}
+	TurnManager.current_turn = 1
+	MarketState.import_state({})
+	var first: Array = MarketState.history_for("g_008")
+	_check(first.size() == 1 and int(first[0].turn) == 1, "market history: starts at turn one")
+	_check(is_equal_approx(float(first[0].cost_basis), 1.25), "market history: captures player average unit cost")
+	CostSolver.last_result = {"per_good": {"g_008": {"unit_cost": 1.75}}}
+	var base: float = float(first[0].price)
+	TurnManager.current_turn = 2
+	MarketState.impact_pct["g_008"] = 20.0
+	MarketState._record_price_history()
+	var observed: Array = MarketState.history_for("g_008")
+	_check(observed.size() == 2 and float(observed[1].price) > base, "market history: records actual impacted price")
+	_check(is_equal_approx(float(observed[0].cost_basis), 1.25) and is_equal_approx(float(observed[1].cost_basis), 1.75), "market history: costs retain their historical values")
+	CostSolver.last_result = saved_costs
+	observed[0].price = -99
+	_check(float(MarketState.history_for("g_008")[0].price) == base, "market history: readers cannot mutate observations")
+	var snapshot: Dictionary = MarketState.export_state()
+	MarketState.import_state(snapshot)
+	_check(MarketState.export_state().price_history == snapshot.price_history, "market history: save/load preserves observations")
+	MarketState._record_price_history()
+	_check(MarketState.history_for("g_008").size() == 2, "market history: duplicate refresh does not append a turn")
+	var chart = load("res://scripts/market_price_chart.gd").new()
+	chart.good_id = "g_008"
+	CostSolver.last_result = {"per_good": {}}
+	_check(chart._cost_for_sample({"cost_basis": 1.25}) < 0.0, "market chart: hides past costs for goods not produced")
+	CostSolver.last_result = {"per_good": {"g_008": {"unit_cost": 1.75}}}
+	_check(is_equal_approx(chart._cost_for_sample({"cost_basis": 1.25}), 1.25), "market chart: produced goods retain hovered historical cost")
+	CostSolver.last_result = saved_costs
+	CostSolver.last_result = {"per_good": {"g_008": {"unit_cost": 1.75}}}
+	chart.size = Vector2(600, 170)
+	add_child(chart)
+	_check(chart.sample_at_x(chart._plot_rect().position.x) == 0 and chart.sample_at_x(chart._plot_rect().end.x) == 1, "market chart: hover maps to first and last recorded turn")
+	_check(chart._hover_lines(0) == PackedStringArray(["Turn 1", "Price £%.2f" % base, "Your cost basis £1.25"]), "market chart: hover shows historical turn price and cost")
+	CostSolver.last_result = saved_costs
+	MarketState.price_history["g_008"].append({"turn": 3, "price": 999.0})
+	chart.refresh()
+	_check(chart._samples.size() == 2, "market chart: future observations never render")
+	chart.queue_free()
+	var row = load("res://scenes/market_row.tscn").instantiate()
+	row.setup(Catalog.get_good("g_008"))
+	add_child(row)
+	row.size.x = 1000
+	row._toggle_expand()
+	await get_tree().process_frame
+	row._layout_details()
+	var details: Control = row.find_child("MarketGoodDetails", true, false)
+	var actions: Control = row.find_child("MarketActions", true, false)
+	var graph: Control = row.find_child("PriceHistoryChart", true, false)
+	_check(absf(actions.size.x + 6 - details.size.x * 0.25) < 1.0, "market details: actions occupy one quarter")
+	_check(absf(graph.size.x + 6 - details.size.x * 0.75) < 1.0, "market details: chart occupies three quarters")
+	row.queue_free()
+	TurnManager.current_turn = 40
+	MarketState.import_state({})
+	_check(MarketState.history_for("g_008").size() == 1 and int(MarketState.history_for("g_008")[0].turn) == 40, "market history: old saves never invent earlier prices")
+	TurnManager.current_turn = saved_turn
+	MarketState.import_state(saved)
+
+func _test_cost_save_isolation() -> void:
+	var original: Dictionary = SaveLoad.export_snapshot()
+	var costs := {"per_building": {"test": {"unit_cost": 0.65}}, "per_good": {"g_008": {"unit_cost": 0.65}}}
+	CostSolver.import_state(costs)
+	var saved: Dictionary = SaveLoad.export_snapshot()
+	CostSolver.import_state({"per_good": {"g_008": {"unit_cost": 99.0}}})
+	SaveLoad.import_snapshot(saved)
+	_check(CostSolver.export_state() == costs, "save costs: restores per-building and per-good results across matches")
+	CostSolver.import_state({})
+	SaveLoad.import_snapshot(saved)
+	_check(is_equal_approx(CostSolver.get_good_unit_cost("g_008"), 0.65), "save costs: restores immediately with an empty initial cache")
+	saved.erase("cost_solver")
+	SaveLoad.import_snapshot(saved)
+	_check(CostSolver.get_good_unit_cost("g_008") < 0.0, "save costs: legacy snapshot never retains another match's costs")
+	var legacy := {"save_version": 10, "turn": {"current_turn": 30}, "market": {"price_history": {"g_008": [{"turn": 30, "cost_basis": 0.65, "price": 1.42}]}}}
+	var migrated: Dictionary = SaveLoad._migrate(legacy)
+	_check(is_equal_approx(float(migrated.cost_solver.per_good.g_008.unit_cost), 0.65), "save costs: migration recovers the recorded current cost")
+	CostSolver.import_state(costs)
+	MatchState.reset()
+	_check(CostSolver.get_good_unit_cost("g_008") < 0.0, "save costs: new match clears costs")
+	SaveLoad.import_snapshot(original)
+
+func _test_recording_toasts() -> void:
+	var toast = load("res://scripts/toast_manager.gd").new()
+	var first := {"items": [{"good_id": "g_008", "qty": 10, "revenue": 20.0}], "total_revenue": 20.0}
+	var second := {"items": [{"good_id": "g_008", "qty": 5, "revenue": 10.0}, {"good_id": "g_006", "qty": 4, "revenue": 8.0}], "total_revenue": 18.0}
+	_check(toast._format_sales_batch([first, second]) == "Last turn you sold 19 units of 2 goods, totalling £38.00.", "sales toasts: sums revenue and units, counts distinct goods")
+	_check(toast._format_sales_batch([first]) == toast._format_stockpile_sale_message(first), "sales toasts: preserves a single sale's existing copy")
+	var panel = toast._make_toast("Planning", "caution")
+	_check(panel.get_node("Countdown").mouse_filter == Control.MOUSE_FILTER_IGNORE, "toast countdown: overlay never intercepts input")
+	_check(panel.get_child(panel.get_child_count() - 1) is Label, "toast countdown: text renders above the countdown")
+	panel.free()
+	add_child(toast)
+	toast.show_caution("Planning")
+	toast.show_caution("Planning")
+	_check(toast._success_stack.get_child_count() == 1, "planning toasts: repeated amber message appears once")
+	toast._on_building_added({"building_id": "b_004", "owner": "Three Diamonds Shipping Corporation"})
+	_check(toast._success_stack.get_child_count() == 1, "building toasts: NPC ports create no notification")
+	toast.queue_free()
+	var snapshot: Dictionary = SaveLoad.export_snapshot()
+	DecisionState.pending = {"uid": "recording-test", "def_id": "planning_pushback", "target": {"scope": "building", "instance_id": "missing", "name": "Test"}, "turn_drawn": 30}
+	DecisionState.set_hide_updates(true)
+	_check(not DecisionState.has_pending(), "recording: resolves pending first choices")
+	_check(str(DecisionState._history[-1].choice_id) == "consult", "recording: selects the first displayed option")
+	TurnBriefing.expand()
+	_check(not TurnBriefing.expanded, "recording: update panel stays hidden")
+	DecisionState.set_hide_updates(false)
+	SaveLoad.import_snapshot(snapshot)
+
+func _test_telemetry_interactions() -> void:
+	var telemetry = load("res://scripts/telemetry_state.gd").new()
+	telemetry.enabled = true
+	telemetry._armed = true
+	telemetry._run_id = "interaction-test"
+	telemetry._session_id = "interaction-session"
+	telemetry._interaction_checkpoint_queued = true # pure capture test: no disk or network
+	telemetry._collect = false
+	telemetry.track_interaction("search_used", "market_panel")
+	_check(telemetry._events.is_empty(), "interaction telemetry: opt-out captures nothing")
+	telemetry._collect = true
+	telemetry.track_interaction("search_used", "market_panel")
+	telemetry.track_interaction("good_encyclopedia_opened", "encyclopedia", "g_008")
+	var event: Dictionary = telemetry._events[0]
+	_check(int(event.turn) == int(TurnManager.current_turn) and event.interface == "market_panel", "interaction telemetry: records the action turn and interface")
+	_check(not event.has("query") and not event.has("text"), "interaction telemetry: excludes search text")
+	_check(telemetry._events[0].event_id != telemetry._events[1].event_id, "interaction telemetry: unique event identities")
+	var counts: Dictionary = telemetry._interaction_counts(int(TurnManager.current_turn))
+	_check(counts.search_used == 1 and counts.good_encyclopedia_opened == 1 and counts.research_panel_opened == 0, "interaction telemetry: explicit per-turn counts including zeros")
+	_check(telemetry._interaction_counts(int(TurnManager.current_turn) + 1).search_used == 0, "interaction telemetry: does not move actions into the next turn")
+	var saved: Dictionary = telemetry.export_state()
+	_check(saved.events.size() == 2, "interaction telemetry: saves interactions for resumed runs")
+	telemetry._events.clear()
+	_check(saved.events.size() == 2, "interaction telemetry: save snapshot is independent")
+	telemetry.import_state(saved)
+	_check(telemetry._events.size() == 2, "interaction telemetry: restores interaction history")
+	telemetry.free()
+
+func _test_demo_tutorial_diagnostic_lights() -> void:
+	var readout = load("res://scripts/building_readout.gd")
+	_check(readout.diagnostic_led_tone([{"tone": "ok"}, {"tone": "warn"}]) == "ok", "tile LED: green tolerates one amber alongside green")
+	_check(readout.diagnostic_led_tone([{"tone": "ok"}, {"tone": "warn"}, {"tone": "warn"}]) == "warn", "tile LED: multiple amber diagnostics need attention")
+	_check(readout.diagnostic_led_tone([{"tone": "warn"}]) == "warn", "tile LED: all amber stays amber")
+	_check(readout.diagnostic_led_tone([{"tone": "ok"}, {"tone": "warn"}, {"tone": "bad"}]) == "bad", "tile LED: any red diagnostic wins")
+	var steps: Array = load("res://scripts/tutorial/tutorial_steps.gd").steps()
+	var ids: Array = steps.map(func(step: Dictionary) -> String: return str(step.id))
+	_check(ids.find("tile_basics_select") == ids.find("ui_primer") + 1 and ids.find("recipe_inputs_intro") == ids.find("tile_basics_features") + 1, "tutorial: tile lessons lead back into the existing recipe flow")

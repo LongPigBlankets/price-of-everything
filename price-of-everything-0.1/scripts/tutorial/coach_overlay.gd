@@ -223,11 +223,16 @@ func _scroll_target_into_view(target: Control) -> void:
 	var scroll := _find_scroll_ancestor(target)
 	if scroll == null:
 		return
-	scroll.ensure_control_visible(target)
-	await get_tree().process_frame
-	if not is_instance_valid(self) or not is_instance_valid(target):
-		return
-	scroll.ensure_control_visible(target)
+	# Expanded recipe cards need several container-layout passes before their final
+	# bounds are known. Only do this on entry, so later player scrolling is preserved.
+	for pass_index in range(3):
+		await get_tree().process_frame
+		if not is_instance_valid(target) or not is_instance_valid(scroll) or _scrolled_node != target:
+			return
+		scroll.ensure_control_visible(target)
+		if bool(_spot.get("center", false)):
+			var offset := target.get_global_rect().get_center().y - scroll.get_global_rect().get_center().y
+			scroll.scroll_vertical += int(round(offset))
 	if _target_node == target:
 		_hole = _node_rect(target)
 		_reposition_card()
@@ -515,9 +520,10 @@ func _build_card() -> void:
 	add_child(_card)
 
 	# CoachCard already supplies 24px horizontal / 20px vertical padding. Keep another
-	# 10px below the footer so its navigation sits 30px above the panel edge.
+	# 10px above the content and 20px below the footer for a roomier tutorial card.
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_bottom", 10)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_bottom", 20)
 	_card.add_child(margin)
 
 	var col := VBoxContainer.new()
@@ -541,7 +547,8 @@ func _build_card() -> void:
 	title_row.add_child(_title)
 
 	_body = Label.new()
-	_body.theme_type_variation = &"Body"
+	_body.theme_type_variation = &"Caption"
+	_body.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
 	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_body.custom_minimum_size = Vector2(430, 0)
 	col.add_child(_body)
@@ -591,6 +598,10 @@ func _build_card() -> void:
 func _build_welcome_panel() -> void:
 	_welcome_card = PanelContainer.new()
 	_welcome_card.theme_type_variation = &"CoachCard"
+	var welcome_style := DS.theme.get_stylebox("panel", "CoachCard").duplicate() as StyleBox
+	welcome_style.content_margin_top = 30
+	welcome_style.content_margin_bottom = 30
+	_welcome_card.add_theme_stylebox_override("panel", welcome_style)
 	_welcome_card.mouse_filter = Control.MOUSE_FILTER_STOP
 	_welcome_card.custom_minimum_size = Vector2(600, 0)
 	_welcome_card.visible = false
@@ -761,7 +772,7 @@ func _show_welcome(step: Dictionary) -> void:
 	for p in paras:
 		var pl := Label.new()
 		pl.theme_type_variation = &"Body"
-		pl.add_theme_font_size_override("font_size", DS.FS["BODY"] + 2)
+		pl.add_theme_font_size_override("font_size", DS.FS["CAPTION"])
 		pl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		pl.custom_minimum_size = Vector2(540, 0)
 		pl.text = str(p)
@@ -830,7 +841,7 @@ func _build_annotations(step: Dictionary) -> void:
 		hl.text = str(h)
 		hl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		hl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		hl.custom_minimum_size = Vector2(250, 0)
+		hl.custom_minimum_size = Vector2(float(step.get("hint_width", 250)), 0)
 		hl.add_theme_color_override("font_color", _col("ACCENT", GLOW))
 		add_child(hl)
 		_hint_items.append(hl)
@@ -838,6 +849,7 @@ func _build_annotations(step: Dictionary) -> void:
 
 
 func _position_annotations() -> void:
+	var placed: Array[Rect2] = []
 	var scene := get_tree().current_scene
 	for it in _annot_items:
 		var lbl: Label = it["label"]
@@ -865,6 +877,17 @@ func _position_annotations() -> void:
 				pos = Vector2(r.get_center().x - ls.x * 0.5, r.position.y - gap - ls.y - lift)
 		pos.x = clampf(pos.x, 4.0, maxf(size.x - ls.x - 4.0, 4.0))
 		pos.y = clampf(pos.y, 4.0, maxf(size.y - ls.y - 4.0, 4.0))
+		# Give neighbouring HUD labels separate rows while keeping their leader targets.
+		for attempt in range(_annot_items.size()):
+			var collision := false
+			for occupied: Rect2 in placed:
+				if Rect2(pos, ls).grow(4).intersects(occupied):
+					pos.y += (ls.y + 8.0) * (1.0 if str(it["side"]) == "below" else -1.0)
+					collision = true
+					break
+			if not collision:
+				break
+		placed.append(Rect2(pos, ls))
 		lbl.position = pos - global_position
 		lbl.size = ls
 		it["trect"] = Rect2(r.position - global_position, r.size)

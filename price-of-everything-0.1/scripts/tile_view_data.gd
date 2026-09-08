@@ -924,7 +924,7 @@ static func infrastructure_summary(tile_id: String, tile_data: Dictionary) -> Ar
 		var mode: String = CAPPED_MODES[key]
 		var level := int(tile_data.get("infrastructure_levels", {}).get(key, 1))
 		var cap := int(round(MatchState.tile_mode_capacity(mode, level)))
-		var used := MatchState.tile_mode_flow(tile_id, mode)
+		var used := MatchState.tile_mode_flow(tile_id, mode, true)
 		var pct := (float(used) / float(cap)) if cap > 0 else 0.0
 		slot["cap"] = cap
 		var tip := "%s: %d / %d per turn  (Level %d)" % [slot.label, used, cap, level]

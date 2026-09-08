@@ -139,6 +139,7 @@ func materials_ledger(building_id: String, tile_id: String) -> Dictionary:
 		var market_qty := 0
 		var market_cost := 0.0
 		var market_turns := 0
+		var transport_cost := 0.0
 		var short := 0
 		if gap > 0:
 			if same_tile_only:
@@ -148,11 +149,13 @@ func materials_ledger(building_id: String, tile_id: String) -> Dictionary:
 				var quote := _market_gap_quote(tile_id, str(good_id), gap)
 				market_cost = float(quote.get("cost", 0.0))
 				market_turns = int(quote.get("turns", 0))
+				transport_cost = float(quote.get("transport_cost", 0.0))
 		rows.append({
 			"good_id": str(good_id),
 			"name": Catalog.get_display_name(str(good_id)),
 			"need": need, "have": have, "from_stock": from_stock,
 			"market_qty": market_qty, "market_cost": market_cost,
+			"transport_cost": transport_cost, "goods_cost": market_cost - transport_cost,
 			"short": short, "line_cost": market_cost, "market_turns": market_turns,
 			"elsewhere": network_surplus_for_good(str(good_id), tile_id),
 			"market_price": _reference_market_price(str(good_id), need),
@@ -196,7 +199,8 @@ func _market_gap_quote(tile_id: String, good_id: String, qty: int) -> Dictionary
 	if tile_id != "":
 		var preview: Dictionary = MatchState.preview_buy(tile_id, good_id, qty)
 		if not preview.is_empty():
-			return {"cost": float(preview.get("cost", 0.0)), "turns": int(preview.get("turns", 0))}
+			return {"cost": float(preview.get("cost", 0.0)), "turns": int(preview.get("turns", 0)),
+				"transport_cost": float(preview.get("transport_cost", 0.0))}
 	var unit_price := MarketState.get_buy_price(good_id)
 	if unit_price <= 0.0:
 		unit_price = Catalog.get_base_price(good_id)

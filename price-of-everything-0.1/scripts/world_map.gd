@@ -192,7 +192,9 @@ func _on_advisor_walked(advisor_id: String) -> void:
 	if DS and DS.theme:
 		dlg.theme = DS.theme
 	dlg.title = "Advisor Resigned"
-	dlg.dialog_text = "%s has resigned.\n\nTheir loyalty stayed critically low for too long, so they've walked. Their seat is now vacant and they will sit out before they can be re-hired." % name_str
+	dlg.dialog_text = "%s has resigned. Their seat is now vacant. They will be available to hire again after a waiting period." % name_str
+	if preload("res://scripts/debug_terminal.gd").demo_is_unlocked():
+		dlg.dialog_text += " Their loyalty remained critically low."
 	_hud.add_child(dlg)
 	dlg.confirmed.connect(func() -> void: dlg.queue_free())
 	dlg.canceled.connect(func() -> void: dlg.queue_free())
@@ -207,6 +209,9 @@ func _build_base() -> void:
 	# Window's theme — so apply it to the HUD Control subtree (where every panel
 	# lives) for DS fonts / type variations / button styles to actually resolve.
 	_hud.theme = DS.theme
+	var build_preview := preload("res://scripts/construction_hover.gd").new()
+	build_preview.terrain = terrain_layer
+	add_child(build_preview)
 	river_layer.clear()
 	terrain_layer.tile_selected.connect(_on_tile_selected)
 	terrain_layer.stockpile_destination_selected.connect(_on_stockpile_destination_selected)
@@ -2666,7 +2671,7 @@ func _on_construction_completed_deposit_check(instance_id: String, tile_id: Stri
 	else:
 		_show_deposit_dialog(
 			"No deposit found",
-			"This tile has no deposit of %s so it will not run. Surveying could have warned us this was the case." % _good_display_for_deposit(token),
+			"There is no %s deposit on this tile. This building cannot produce with its current recipe." % _good_display_for_deposit(token),
 			[{"id": "demolish", "label": "Demolish"}])
 
 func _on_deposit_exhausted(tile_id: String, token: String) -> void:
@@ -2677,7 +2682,7 @@ func _on_deposit_exhausted(tile_id: String, token: String) -> void:
 	_deposit_dialog_target = _building_with_deposit_token(tile_id, token)
 	_show_deposit_dialog(
 		"Deposit exhausted",
-		"The %s deposit here has run out — this building can no longer produce." % _good_display_for_deposit(token),
+		"The %s deposit is exhausted. This building cannot produce with its current recipe." % _good_display_for_deposit(token),
 		[{"id": "demolish", "label": "Demolish"}, {"id": "change", "label": "Change Recipe"}])
 
 # The player building on `tile_id` whose recipe draws on the given deposit token.
@@ -2691,6 +2696,15 @@ func _building_with_deposit_token(tile_id: String, token: String) -> Dictionary:
 	return {}
 
 func _show_deposit_dialog(title: String, body: String, buttons: Array) -> void:
+	if DecisionState.hide_updates:
+		if not buttons.is_empty():
+			# Capture each target separately; several deposits can expire in one turn.
+			var target: Dictionary = _deposit_dialog_target.duplicate(true)
+			var action: String = str(buttons[0].id)
+			(func() -> void:
+				_deposit_dialog_target = target
+				_on_deposit_dialog_action(action)).call_deferred()
+		return
 	if _deposit_dialog == null:
 		_deposit_dialog = load("res://scripts/deposit_dialog.gd").new()
 		_hud.add_child(_deposit_dialog)
@@ -3053,6 +3067,27 @@ func _on_phase_started(phase: int) -> void:
 
 func _on_turn_advanced(new_turn: int) -> void:
 	_update_turn_counter(new_turn)
+	_expand_public_roads(new_turn)
+
+
+func _expand_public_roads(turn: int) -> Array:
+	# Tutorial roads are revealed by its transport lessons, including slow runs
+	# that reach turn 20 before the player finishes learning infrastructure.
+	if bool(MatchState.ruleset.get("tutorial_enabled", false)):
+		return []
+	var expansion := preload("res://scripts/public_road_expansion.gd")
+	if turn > TurnManager.MAX_TURNS or expansion.batch_size(turn) == 0 or turn <= MatchState.public_roads_last_turn:
+		return []
+	var tile_ids := expansion.next_tiles(terrain_layer.tiles.values(), turn)
+	MatchState.public_roads_last_turn = turn
+	for tile_id in tile_ids:
+		_apply_built_infrastructure(terrain_layer.id_to_coord(tile_id), tile_id, "roads")
+		RoadWorks.add_roads_for_tile(tile_id)
+	if not tile_ids.is_empty():
+		var road_visuals := get_node_or_null("RoadNetworkVisuals") as CanvasItem
+		if road_visuals != null:
+			road_visuals.queue_redraw()
+	return tile_ids
 
 func _on_resolution_started() -> void:
 	end_turn_button.disabled = true

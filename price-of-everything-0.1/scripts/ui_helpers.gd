@@ -321,7 +321,7 @@ static func make_telemetry_consent_row(checked: bool) -> Dictionary:
 	hint.text = "      What kind of metrics do you send?"
 	hint.theme_type_variation = &"Caption"
 	hint.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
-	hint.tooltip_text = "Revenue, profit, goods produced per turn, buildings count, loans.\nNothing outside the game is collected."
+	hint.tooltip_text = "Revenue, profit, goods produced per turn, buildings count, loans, and which in-game panels, goods and searches you use, with their turn. Search text is not collected.\nNothing outside the game is collected."
 	# Labels default to MOUSE_FILTER_IGNORE, which suppresses tooltips.
 	hint.mouse_filter = Control.MOUSE_FILTER_PASS
 	row.add_child(hint)

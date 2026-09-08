@@ -623,7 +623,7 @@ func _advisor_profit_track() -> Control:
 	header.add_child(title)
 	header.add_child(_label("£%s" % _fmt_amount(peak), "Numeric"))
 
-	var bar := ProgressBar.new()
+	var bar := preload("res://scripts/metallic_bar.gd").new()
 	bar.custom_minimum_size = Vector2(0, 12)
 	bar.show_percentage = false
 	if next_m > 0:
@@ -860,7 +860,7 @@ func _advisor_card(advisor: Dictionary, permanent: bool, add_slot: bool) -> Cont
 		_make_click_through(root)
 		return card
 
-	if not add_slot:
+	if not add_slot and preload("res://scripts/debug_terminal.gd").demo_is_unlocked():
 		# Hired advisors show live loyalty (-10..+10); the pool/detail use the static value.
 		var loyalty_val: int = int(round(MatchState.advisor_loyalty_value(str(advisor.get("id", ""))))) if permanent else int(advisor.get("happiness", 0))
 		root.add_child(_happiness_row(loyalty_val))
@@ -1214,14 +1214,16 @@ func _build_advisor_detail(advisor: Dictionary) -> void:
 	info.add_child(bio)
 
 	# Collapsible sections — scroll down to reach Seats and Missions.
-	_advisor_detail_body.add_child(_collapsible("Agenda", _agenda_block(advisor)))
+	if preload("res://scripts/debug_terminal.gd").demo_is_unlocked():
+		_advisor_detail_body.add_child(_collapsible("Agenda", _agenda_block(advisor)))
 	_advisor_detail_body.add_child(_collapsible("Impact", _advisor_impact_block(advisor)))
 	_advisor_detail_body.add_child(_collapsible("Seats", _seat_assignment_section(advisor, false)))
-	_advisor_missions_content = VBoxContainer.new()
-	_advisor_missions_content.name = "AdvisorMissionsContent"
-	_advisor_missions_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_refresh_advisor_missions_detail(advisor_id)
-	_advisor_detail_body.add_child(_collapsible("Missions", _advisor_missions_content, false))
+	if preload("res://scripts/debug_terminal.gd").demo_is_unlocked():
+		_advisor_missions_content = VBoxContainer.new()
+		_advisor_missions_content.name = "AdvisorMissionsContent"
+		_advisor_missions_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_refresh_advisor_missions_detail(advisor_id)
+		_advisor_detail_body.add_child(_collapsible("Missions", _advisor_missions_content, false))
 
 	outer.add_child(_advisor_detail_footer(advisor, is_hired, is_fired))
 

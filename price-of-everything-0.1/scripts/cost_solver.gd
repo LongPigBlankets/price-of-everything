@@ -9,6 +9,19 @@ signal costs_updated
 
 var last_result: Dictionary = {"per_building": {}, "per_good": {}}
 
+func _ready() -> void:
+	MatchState.state_reset.connect(func() -> void: import_state({}))
+
+func export_state() -> Dictionary:
+	return last_result.duplicate(true)
+
+func import_state(state: Dictionary) -> void:
+	last_result = {
+		"per_building": (state.get("per_building", {}) as Dictionary).duplicate(true),
+		"per_good": (state.get("per_good", {}) as Dictionary).duplicate(true),
+	}
+	costs_updated.emit()
+
 func _debug_logs_enabled() -> bool:
 	return bool(MatchState.debug_turn_logs_enabled)
 

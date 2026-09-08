@@ -81,22 +81,20 @@ const MAX_PRICE_IMPACT_PCT: int = 10
 # first rung, the price walks home to base over PRICE_IMPACT_RECOVERY_TURNS
 # turns; while the average stays loud, quiet turns HOLD (no pulsing exploit).
 #
-# The ladder (owner rulings 2026-08-28/29): 0.1-point steps 6x→11x, then a
-# deliberate jump to 1.0 at >12x — true flooding gets a step change, not a
-# smooth top-out. The 2x and 4x gaps are also deliberate: a second building's
-# worth of volume is tolerated more gently than the retired 2x band did.
+# Impact rates doubled on 2026-09-07: faster glut/deficit response at every
+# existing threshold. Threshold inflation, recovery length and caps are unchanged.
 const PRICE_IMPACT_LADDER: Array = [
 	# [multiple of base output (strictly greater than), %-points per turn]
-	[1.0, 0.05],
-	[3.0, 0.1],
-	[5.0, 0.2],
-	[6.0, 0.3],
-	[7.0, 0.4],
-	[8.0, 0.5],
-	[9.0, 0.6],
-	[10.0, 0.7],
-	[11.0, 0.8],
-	[12.0, 1.0],
+	[1.0, 0.1],
+	[3.0, 0.2],
+	[5.0, 0.4],
+	[6.0, 0.6],
+	[7.0, 0.8],
+	[8.0, 1.0],
+	[9.0, 1.2],
+	[10.0, 1.4],
+	[11.0, 1.6],
+	[12.0, 2.0],
 ]
 const PRICE_IMPACT_FLOOR_PCT: float = -60.0    # glut floor: price bottoms out at 40% of base
 const PRICE_IMPACT_CEILING_PCT: float = 150.0  # deficit ceiling: price tops out at 250% of base
@@ -160,8 +158,8 @@ const SEAPORT_INSURANCE_RATE: float = 0.0005 # Legacy; superseded by the schedul
 const OWNED_SEAPORT_INSURANCE_RATE: float = 0.00025 # Legacy; superseded.
 
 ## The ad valorem charged on value crossing a port this turn, before modifiers.
-func seaport_ad_valorem_rate(turn: int) -> float:
-	return SEAPORT_AD_VALOREM_EARLY if turn < SEAPORT_AD_VALOREM_STEP_TURN else SEAPORT_AD_VALOREM_LATE
+func seaport_ad_valorem_rate(turn: int, tutorial_match: bool = false) -> float:
+	return SEAPORT_AD_VALOREM_EARLY if tutorial_match or turn < SEAPORT_AD_VALOREM_STEP_TURN else SEAPORT_AD_VALOREM_LATE
 const SEAPORT_FEE_GROWTH_PER_TURN: float = 0.001 # Both components rise 0.1% per turn.
 const SEAPORT_THROUGHPUT_STANDARD: int = 1500
 const SEAPORT_THROUGHPUT_RESTRICTED: int = 300

@@ -1,6 +1,7 @@
 # Spec — Playtest Telemetry (per-turn capture → end-of-run upload)
 
-Status: DESIGN — not built. Written 2026-07-20.
+Status: IMPLEMENTED; original design written 2026-07-20.
+Schema 4 interaction columns and receiver deployment: see [telemetry-interactions-demo.md](telemetry-interactions-demo.md).
 Scope: anonymous, consented capture of one row of economic data per turn, cached to disk
 every 10 turns and on every exit path, collated into one JSON envelope per run, and
 uploaded over HTTPS so the designer can analyse real playthroughs (friends demo → itch
@@ -469,3 +470,30 @@ Exported-build gotchas — **all verified live 2026-07-20** against the real end
   row growth is the sheet's 10 M-cell budget (§6.1), not processing.
 - **Consent re-prompt** when `telemetry_consent_version` bumps: silently treat as
   `unset` again, or show a "what changed" dialog? Current lean: treat as unset.
+
+### Exit feedback
+
+The explicit desktop-exit buttons now open a DS feedback dialog until the local
+player profile has `exit_feedback_submitted: true`. The five ratings are Great,
+Good, Average, Bad and Terrible. A rating is required; the three-row comment field
+is optional (up to 4,000 characters sent). Closing without submitting leaves the
+prompt eligible for the next exit. Window-manager close remains an immediate exit.
+Gameplay is paused while the dialog is open.
+
+Submitting is explicit consent to send this response independently of passive
+run-metrics consent. The client writes a `feedback_<id>.json` outbox envelope before
+marking the profile and quitting. Offline responses retry on a later launch. Only
+an HTTP 200 response containing `feedback_ok` removes this file; redirects and the
+old receiver's generic response do not discard feedback. Feedback never advances
+the turn-delivery watermark. Retries are deduplicated by feedback_id server-side.
+
+Update Apps Script with the complete `tools/telemetry/Code.gs`, then deploy a new
+version of the existing deployment. The `feedback` tab is created automatically
+on its first submission with received_at, feedback_id, player_id, version, os,
+start, turn, rating and comment. Existing runs/turns/events tabs remain intact.
+User comments are stored literally, including text beginning with '='.
+
+Checks: `tools/exit_feedback_check.tscn` exercises selection, queuing, receiver
+acknowledgement and profile reload using isolated /tmp storage and no test uploads;
+a windowed run writes `/tmp/exit-feedback.png`. `tools/telemetry/test_receiver.cjs`
+tests server validation, deduplication and literal text storage.

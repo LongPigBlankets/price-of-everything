@@ -60,7 +60,7 @@ func _build() -> void:
 	col.add_child(banner)
 
 	var blurb := Label.new()
-	blurb.text = "A guided first game on a small stretch of coast. Learn how the economy fits together, one building at a time — then drop into a real game."
+	blurb.text = "A guided first game on a small stretch of coast. Learn how the economy fits together, one building at a time. Then drop into a real game."
 	blurb.theme_type_variation = &"Body"
 	blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	blurb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

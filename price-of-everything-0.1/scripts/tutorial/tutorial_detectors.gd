@@ -34,7 +34,7 @@ static func poll(decide: Dictionary) -> bool:
 		"loan_taken":
 			# Any live loan of at least `amount`. Reads LoanState rather than watching a
 			# signal, so the step still completes if the player borrowed before reaching it.
-			return _loan_taken(float(decide.get("amount", 1.0)))
+			return _loan_taken(float(decide.get("amount", 1.0)), bool(decide.get("exclusive", false)))
 		"advisor_seated":
 			# `count` advisors sitting in seats. Hiring alone is not enough — the lesson is
 			# that a seated advisor changes the numbers.
@@ -63,6 +63,10 @@ static func poll(decide: Dictionary) -> bool:
 			return _building_recipe_on_tile(str(decide.get("tile", "")), str(decide.get("recipe_id", "")))
 		"research_unlocked":
 			return MatchState.is_unlocked(str(decide.get("title", "")))
+		"research_visible":
+			var tree := Engine.get_main_loop() as SceneTree
+			var panel := tree.current_scene.find_child("ResearchPanel", true, false) if tree != null and tree.current_scene != null else null
+			return panel != null and panel.tutorial_research_visible(str(decide.get("title", "")))
 		"research_search_contains":
 			return _research_search_contains(str(decide.get("text", "")))
 		"research_search_nonempty":
@@ -263,12 +267,12 @@ static func _tile_infra_or_ordered(tile_id: String, infra: String, building_id: 
 ## True when the player holds a live loan of at least `amount`. Checks each loan's
 ## ORIGINAL principal, not the outstanding balance, so a repayment tick between the
 ## borrow and the poll can't un-complete the step.
-static func _loan_taken(amount: float) -> bool:
+static func _loan_taken(amount: float, exclusive: bool = false) -> bool:
 	for loan in LoanState.loans:
 		if not (loan is Dictionary):
 			continue
 		var principal := float((loan as Dictionary).get("principal_initial", 0.0))
-		if principal >= amount - 0.001:
+		if (exclusive and principal > amount) or (not exclusive and principal >= amount - 0.001):
 			return true
 	return false
 

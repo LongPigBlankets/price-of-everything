@@ -15,8 +15,9 @@ const AppPaths := preload("res://scripts/app_paths.gd")
 # enclosure rings + urban anchor streets (encl:/urbanr: nodes and edges) from the
 # saved road network (RoadWorks' enclosure keys are simply ignored on import);
 # 7 = cosmetic company-rankings player revenue history; 8 = last-turn player
-# goods quantities for the rankings' Goods tab.
-const SAVE_VERSION := 8
+# goods quantities for the rankings' Goods tab; 9 = recorded market price history;
+# 10 = historical player unit costs alongside prices; 11 = saved cost results.
+const SAVE_VERSION := 11
 const MAIN_SCENE := "res://scenes/main.tscn"
 const DEFAULT_START := "res://data/starts/default.json"
 const BuildingLevels := preload("res://scripts/building_levels.gd")   # start-building levels
@@ -51,6 +52,9 @@ func _on_turn_resolution_completed() -> void:
 	var finished_turn: int = TurnManager.current_turn - 1
 	if finished_turn < AUTOSAVE_EVERY_TURNS or finished_turn % AUTOSAVE_EVERY_TURNS != 0:
 		return
+	# Autosave can run before MarketState's completion listener. Capture this
+	# completed turn before serializing; the later capture replaces the same point.
+	MarketState._record_price_history()
 	_autosave_index = (_autosave_index % AUTOSAVE_SLOTS) + 1
 	if save_slot("autosave_%d" % _autosave_index) == "":
 		MatchState.request_toast("Autosaved.", "info")
@@ -74,6 +78,7 @@ func export_snapshot() -> Dictionary:
 		"market": MarketState.export_state(),
 		"special_orders": SpecialOrderState.export_state(),
 		"production": Production.export_state(),
+		"cost_solver": CostSolver.export_state(),
 		"company_rankings": CompanyRankings.export_state(),
 		"events": EventScheduler.export_state(),
 		"modifiers": Modifiers.export_state(),
@@ -104,6 +109,7 @@ func import_snapshot(snap: Dictionary) -> void:
 	MarketState.import_state(snap.get("market", {}))
 	SpecialOrderState.import_state(snap.get("special_orders", {}))
 	Production.import_state(snap.get("production", {}))
+	CostSolver.import_state(snap.get("cost_solver", {}))
 	CompanyRankings.import_state(snap.get("company_rankings", {}))
 	EventScheduler.import_state(snap.get("events", {}))
 	Modifiers.import_state(snap.get("modifiers", {}))
@@ -655,6 +661,12 @@ func _migrate(snap: Dictionary) -> Dictionary:
 				snap = _migrate_v6_to_v7(snap)
 			7:
 				snap = _migrate_v7_to_v8(snap)
+			8:
+				snap = _migrate_v8_to_v9(snap)
+			9:
+				snap = _migrate_v9_to_v10(snap)
+			10:
+				snap = _migrate_v10_to_v11(snap)
 			_:
 				break
 		version += 1
@@ -743,6 +755,34 @@ func _migrate_v7_to_v8(snap: Dictionary) -> Dictionary:
 	if not rankings.has("player_goods_produced"):
 		rankings["player_goods_produced"] = {}
 	snap["company_rankings"] = rankings
+	return snap
+
+func _migrate_v8_to_v9(snap: Dictionary) -> Dictionary:
+	# Missing history is intentional: MarketState.import_state seeds the loaded
+	# turn after TurnManager is restored. Do not invent prices for earlier turns.
+	return snap
+
+func _migrate_v9_to_v10(snap: Dictionary) -> Dictionary:
+	# Older observations lack cost_basis; the chart treats this as unavailable.
+	# Never backfill historical costs with today's production economics.
+	return snap
+
+func _migrate_v10_to_v11(snap: Dictionary) -> Dictionary:
+	# Recover per-good costs from the loaded turn where recorded. Older saves
+	# without costs stay unknown until production runs; never reuse another match.
+	var per_good: Dictionary = {}
+	var turn: int = int((snap.get("turn", {}) as Dictionary).get("current_turn", 1))
+	var history: Dictionary = (snap.get("market", {}) as Dictionary).get("price_history", {})
+	for gid in history:
+		var samples: Array = history[gid]
+		if samples.is_empty():
+			continue
+		var last: Dictionary = samples[-1]
+		var cost: float = float(last.get("cost_basis", -1.0))
+		if int(last.get("turn", -1)) == turn and cost >= 0.0:
+			per_good[gid] = {"unit_cost": cost}
+	if not snap.has("cost_solver"):
+		snap["cost_solver"] = {"per_building": {}, "per_good": per_good}
 	return snap
 
 # --- JSON helpers ---

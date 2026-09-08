@@ -415,6 +415,7 @@ var _last_link_flow: Dictionary = {}
 # detail panel's "Breakdown" table, so a tile still reports what transited it this turn
 # even after arrivals have been paid out and removed from the live list.
 var _last_transit_shipments: Array = []
+var _has_transport_snapshot: bool = false
 # Per-link congestion HISTORY, for the transport panel's "at cap N of last 10 turns"
 # column: "tile|mode" -> Array[bool], newest last, capped at LINK_HISTORY_TURNS.
 # Appended once per turn from the same snapshot that prices congestion, so the two
@@ -609,7 +610,9 @@ var construct_cost_display: String = "grid"
 var construct_start_half_capacity: bool = false
 ## When on, confirming a build on a tile the player has too little land for buys exactly
 ## enough land patches to cover the shortfall first (see world_map._space_check_for_build).
-var construct_auto_buy_land: bool = false
+var construct_auto_buy_land: bool = true
+## Last public-road expansion batch applied; persisted so loading cannot repeat a batch.
+var public_roads_last_turn: int = 0
 ## Off = the browse list's recipe cards show the compact mini diagram (icons + "+" +
 ## an arrow, no quantities); on = the full Building-Details-style diagram with qty
 ## pills. Display-only — never read by BuildForecast/Production.
@@ -1035,6 +1038,8 @@ func start_retrofit(instance_id: String, new_recipe_id: String) -> Dictionary:
 	var new_recipe: Dictionary = Catalog.get_recipe(new_recipe_id)
 	if new_recipe.is_empty() or str(new_recipe.get("building_id", "")) != str(inst.get("building_id", "")):
 		return {"ok": false, "reason": "That recipe can't run in this building."}
+	if not Catalog.is_recipe_demo_available(new_recipe):
+		return {"ok": false, "reason": "Recycling is not available in the demo."}
 	if new_recipe_id == str(inst.get("recipe_id", "")):
 		return {"ok": false, "reason": "Already running that recipe."}
 	var tier: Dictionary = retrofit_cost_tier()
@@ -2290,7 +2295,7 @@ func is_research_visible(definition: Dictionary) -> bool:
 	var node_id := str(definition.get("research_node_id", ""))
 	if HIDDEN_RESEARCH_IDS.has(node_id):
 		return false
-	if str(definition.get("category", "")) == "Recycling" and not recycling_unlocked:
+	if str(definition.get("category", "")) == "Recycling" and not is_recycling_available():
 		return false
 	if node_id in ["research_people_008", "research_people_009", "research_people_010", "research_people_011"] and not advisors_unlocked:
 		return false
@@ -3841,19 +3846,22 @@ func is_building_available(building_id: String) -> bool:
 	# Ports are map infrastructure that may be bought from their existing owner, never built.
 	if building_id == "b_004":
 		return false
-	if RECYCLING_BUILDING_IDS.has(building_id) and not recycling_unlocked:
+	if RECYCLING_BUILDING_IDS.has(building_id) and not is_recycling_available():
 		return false
 	return hidden_buildings_unlocked or not HIDDEN_BUILDING_IDS.has(building_id)
 
 ## Is this good shown to the player at all? Only the recycling chain is ever hidden today.
+func is_recycling_available() -> bool:
+	return recycling_unlocked or preload("res://scripts/debug_terminal.gd").demo_is_unlocked()
+
 func is_good_available(good_id: String) -> bool:
-	return recycling_unlocked or not RECYCLING_GOOD_IDS.has(good_id)
+	return is_recycling_available() or not RECYCLING_GOOD_IDS.has(good_id)
 
 ## Every good the player may see, in catalogue order. The one place the gate is applied, so
 ## a panel opts in by calling this instead of Catalog.all_goods() — the market and telemetry
 ## deliberately keep the full set (a price for a hidden good is harmless; a gap is not).
 func visible_goods() -> Array:
-	if recycling_unlocked:
+	if is_recycling_available():
 		return Catalog.all_goods()
 	var out: Array = []
 	for good_variant: Variant in Catalog.all_goods():
@@ -3911,7 +3919,8 @@ func reset() -> void:
 	advisors_unlocked = false
 	construct_cost_display = "grid"
 	construct_start_half_capacity = false
-	construct_auto_buy_land = false
+	construct_auto_buy_land = true
+	public_roads_last_turn = 0
 	construct_expanded_recipe_mode = false
 	construct_material_source = "ask"
 	construct_output_destination = "market"
@@ -3944,6 +3953,7 @@ func reset() -> void:
 	paused_buildings.clear()
 	_last_link_flow.clear()
 	_last_transit_shipments.clear()
+	_has_transport_snapshot = false
 	_link_over_history.clear()
 	_link_congestion_paid.clear()
 	overflow_shipments.clear()
@@ -4057,6 +4067,7 @@ func export_state() -> Dictionary:
 		"construct_cost_display": construct_cost_display,
 		"construct_start_half_capacity": construct_start_half_capacity,
 		"construct_auto_buy_land": construct_auto_buy_land,
+		"public_roads_last_turn": public_roads_last_turn,
 		"construct_expanded_recipe_mode": construct_expanded_recipe_mode,
 		"construct_material_source": construct_material_source,
 		"construct_output_destination": construct_output_destination,
@@ -4118,6 +4129,7 @@ func export_state() -> Dictionary:
 		"auto_sell_impact": auto_sell_impact.duplicate(true),
 		"queued_stockpile_market_sales": queued_stockpile_market_sales.duplicate(true),
 		"pending_transport_shipments": _shipments_for_save(),
+		"transport_usage_snapshot": {"flow": _last_link_flow.duplicate(), "shipments": _last_transit_shipments.duplicate(true)} if _has_transport_snapshot else {},
 		"arrival_turns": _arrival_turns_for_save(),
 		# Additive (v3 transport panel): an older save has neither, and the empty
 		# default reads correctly as "no history yet" until turns accrue.
@@ -4167,8 +4179,9 @@ func import_state(d: Dictionary) -> void:
 	cheats_used = bool(d.get("cheats_used", false))
 	set_construct_cost_display(str(d.get("construct_cost_display", "grid")), false)
 	set_construct_start_half_capacity(bool(d.get("construct_start_half_capacity", false)), false)
-	# Additive key: saves written before this setting existed simply default to off.
-	set_construct_auto_buy_land(bool(d.get("construct_auto_buy_land", false)), false)
+	# Additive key: saves written before this setting existed use automatic land buying.
+	set_construct_auto_buy_land(bool(d.get("construct_auto_buy_land", true)), false)
+	public_roads_last_turn = int(d.get("public_roads_last_turn", 0))
 	set_construct_expanded_recipe_mode(bool(d.get("construct_expanded_recipe_mode", false)), false)
 	set_construct_material_source(str(d.get("construct_material_source", "ask")), false)
 	set_construct_output_destination(str(d.get("construct_output_destination", "market")), false)
@@ -4255,6 +4268,10 @@ func import_state(d: Dictionary) -> void:
 	auto_sell_impact = (d.get("auto_sell_impact", {}) as Dictionary).duplicate(true)
 	queued_stockpile_market_sales = (d.get("queued_stockpile_market_sales", {}) as Dictionary).duplicate(true)
 	pending_transport_shipments = (d.get("pending_transport_shipments", []) as Array).duplicate(true)
+	var usage: Dictionary = d.get("transport_usage_snapshot", {})
+	_has_transport_snapshot = usage.has("flow")
+	_last_link_flow = (usage.get("flow", {}) as Dictionary).duplicate()
+	_last_transit_shipments = (usage.get("shipments", []) as Array).duplicate(true)
 	# Pre-history saves simply start with no record — the readout says "no data yet"
 	# rather than lying, and fills in as deliveries land.
 	arrival_turns = _arrival_turns_from_save(d.get("arrival_turns", {}))
@@ -5192,10 +5209,13 @@ func seaport_base_fee(port_tile: String) -> float:
 		return 0.0
 	return maxf(0.0, Modifiers.apply("port_per_turn_fee", "port", EconomyConfig.SEAPORT_BASE_FEE_PER_GOOD))
 
+func keeps_introductory_port_rate() -> bool:
+	# The saved origin survives completing the coach, which clears tutorial_enabled.
+	return str(ruleset.get("name", "")) == "tutorial" or bool(ruleset.get("tutorial_enabled", false))
+
 func seaport_insurance_rate(port_tile: String) -> float:
-	# Turn-scheduled ad valorem: cheap while the player is learning, real from t31. Owning the
-	# port still halves it. Research relief rides the same port_ad_valorem_fee domain.
-	var base := EconomyConfig.seaport_ad_valorem_rate(TurnManager.current_turn)
+	# Tutorial games retain the introductory rate permanently. Ownership and research apply.
+	var base := EconomyConfig.seaport_ad_valorem_rate(TurnManager.current_turn, keeps_introductory_port_rate())
 	if is_seaport_player_owned(port_tile):
 		base *= EconomyConfig.OWNED_SEAPORT_AD_VALOREM_SHARE
 	return maxf(0.0, Modifiers.apply("port_ad_valorem_fee", "port", base))
@@ -5958,10 +5978,13 @@ func _tile_infra_level(tile_id: String, mode: String) -> int:
 ## tile-view infra readout shows. Counts both pass-through on a networked leg AND goods
 ## that originate/terminate on the tile (their first/last mile uses the tile's infra,
 ## even when the long haul is overland), matched by the good's transport class.
-func tile_mode_flow(tile_id: String, mode: String) -> int:
+func settled_transport_shipments() -> Array:
+	return _last_transit_shipments if _has_transport_snapshot else pending_transport_shipments
+
+func tile_mode_flow(tile_id: String, mode: String, settled: bool = false) -> int:
 	var total := 0
 	var tolerated: Array = Catalog.infra(mode).get("good_types_tolerated", [])
-	for s in pending_transport_shipments:
+	for s in (settled_transport_shipments() if settled else pending_transport_shipments):
 		var tiles: Array = s.get("tiles", [])
 		var legs: Array = s.get("legs", [])
 		if not tiles.is_empty() and not legs.is_empty():
@@ -6033,7 +6056,7 @@ func _shipment_goods_dict(s: Dictionary) -> Dictionary:
 func tile_good_breakdown(tile_id: String, mode: String) -> Array:
 	var by_good: Dictionary = {}   # good_id -> {qty:int, cost:float, penalty:float}
 	var tolerated: Array = Catalog.infra(mode).get("good_types_tolerated", [])
-	for s in _last_transit_shipments:
+	for s in settled_transport_shipments():
 		var tiles: Array = s.get("tiles", [])
 		var legs: Array = s.get("legs", [])
 		var overland := tiles.is_empty() or legs.is_empty()
@@ -6150,6 +6173,7 @@ func _queue_or_store_resolved_shipment(shipment: Dictionary) -> void:
 ## Called each PROCESS turn. The penalty itself is a transport-cost surcharge applied
 ## in TransportService.transport_cost_for_route via route_congestion_tier().
 func update_transport_congestion() -> void:
+	_has_transport_snapshot = true
 	_last_link_flow = transport_link_flow()
 	_last_transit_shipments = pending_transport_shipments.duplicate()
 	_roll_link_history()
@@ -6202,11 +6226,12 @@ func congested_links() -> Array:
 ## just the ones past capacity.
 func active_links(only_over: bool = false) -> Array:
 	var rows: Array = []
-	for key in _last_link_flow.keys():
+	var visible_flow := _last_link_flow if _has_transport_snapshot or not _last_link_flow.is_empty() else transport_link_flow()
+	for key in visible_flow.keys():
 		var parts := str(key).split("|")
 		if parts.size() != 2:
 			continue
-		var flow := float(_last_link_flow[key])
+		var flow := float(visible_flow[key])
 		if flow <= 0.0:
 			continue
 		var level := _tile_infra_level(parts[0], parts[1])
@@ -7618,6 +7643,8 @@ func advisor_missions_done(advisor_id: String) -> int:
 # Advance missions once per turn. I–IV complete the first turn loyalty reaches their
 # threshold; V requires loyalty to hold at/above MISSION5_LOYALTY for MISSION5_STREAK_TURNS.
 func _check_mission_progress(advisor_id: String) -> bool:
+	if not preload("res://scripts/debug_terminal.gd").demo_is_unlocked():
+		return false
 	if MISSION_TEMPLATES.get(str(_roster_entry(advisor_id).get("role", "")), {}).is_empty():
 		return false
 	var done := advisor_missions_done(advisor_id)
@@ -7715,6 +7742,8 @@ func _apply_mission_policy(policy_id: String, label: String) -> String:
 # Re-apply the PERMANENT mission rewards (perm slices + the capstone) after a load,
 # based on how many missions each advisor has completed. Temp bonuses aren't restored.
 func reapply_mission_modifiers() -> void:
+	if not preload("res://scripts/debug_terminal.gd").demo_is_unlocked():
+		return
 	for advisor_id in advisor_missions_completed:
 		var tmpl: Dictionary = MISSION_TEMPLATES.get(str(_roster_entry(str(advisor_id)).get("role", "")), {})
 		if tmpl.is_empty():

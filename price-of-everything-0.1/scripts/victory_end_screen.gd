@@ -2028,62 +2028,10 @@ class _StackChart extends Control:
 
 
 # A single horizontal ranked bar (rank 0 gold + glow).
-class _RankBar extends Control:
-	## Brushed metal, the way the panels do it (owner 2026-08-24): a solid body under a
-	## top-left light, a fine horizontal grain, a machined rim and a bevel just inside the
-	## top edge. Square ends with a small corner radius -- the old pill's h/2 radius put a
-	## circle on both ends of every bar.
-	const RAD := 4.0
-	var frac: float = 0.0
-	var rank: int = 0
-	var col: Color = Color.WHITE
-	func _draw() -> void:
-		var w := size.x
-		var h := size.y
-		DrawUtil.round_rect(self, Rect2(Vector2.ZERO, Vector2(w, h)), RAD, Color("#08131F"))
-		draw_polyline(_ring(Rect2(Vector2(0.5, 0.5), Vector2(w - 1.0, h - 1.0))),
-			Color(1, 1, 1, 0.06), 1.0, true)
-		var bw := maxf(h, frac * w)
-		var body: Color = Color("#C9A75C") if rank == 0 else col
-		DrawUtil.round_rect(self, Rect2(Vector2.ZERO, Vector2(bw, h)), RAD, body.darkened(0.32))
-		# Light from the top-left, shade to the bottom-right -- on a 4-vertex quad, never a
-		# per-vertex ramp around the rounded outline (that fans into artifacts in GL compat).
-		var q := PackedVector2Array([Vector2(1.5, 1.5), Vector2(bw - 1.5, 1.5),
-			Vector2(bw - 1.5, h - 1.5), Vector2(1.5, h - 1.5)])
-		var lt := body.lightened(0.34)
-		draw_polygon(q, PackedColorArray([Color(lt, 0.95), Color(lt, 0.45),
-			Color(lt, 0.05), Color(lt, 0.45)]))
-		draw_polygon(q, PackedColorArray([Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.10),
-			Color(0, 0, 0, 0.34), Color(0, 0, 0, 0.10)]))
-		# Brushed grain: fine horizontal streaks at a deterministic alpha.
-		var y := 3.0
-		var i := 0
-		while y < h - 2.0:
-			draw_line(Vector2(2.5, y), Vector2(bw - 2.5, y),
-				Color(1, 1, 1, 0.025 + 0.022 * absf(sin(float(i) * 12.9898))), 1.0)
-			y += 3.0
-			i += 1
-		# Machined rim, and the bevel just inside the top edge.
-		draw_polyline(_ring(Rect2(Vector2(0.75, 0.75), Vector2(bw - 1.5, h - 1.5))),
-			Color(body.lightened(0.55), 0.75), 1.4, true)
-		draw_line(Vector2(RAD + 1.0, 2.2), Vector2(bw - RAD - 1.0, 2.2),
-			Color(1, 1, 1, 0.28), 1.2, true)
-
-	func _ring(r: Rect2) -> PackedVector2Array:
-		var rad: float = minf(RAD, minf(r.size.x, r.size.y) * 0.5)
-		var pts := PackedVector2Array()
-		var centres: Array[Vector2] = [
-			Vector2(r.position.x + rad, r.position.y + rad),
-			Vector2(r.end.x - rad, r.position.y + rad),
-			Vector2(r.end.x - rad, r.end.y - rad),
-			Vector2(r.position.x + rad, r.end.y - rad)]
-		var starts: Array[float] = [PI, PI * 1.5, 0.0, PI * 0.5]
-		for c in 4:
-			for j in 5:
-				var a: float = starts[c] + (PI * 0.5) * float(j) / 4.0
-				pts.append(centres[c] + Vector2(cos(a), sin(a)) * rad)
-		pts.append(pts[0])
-		return pts
+class _RankBar extends "res://scripts/metallic_bar.gd":
+	func _init() -> void:
+		super()
+		rank = 0
 
 
 # The empire production-network map: four node columns, connectors, gold ports.

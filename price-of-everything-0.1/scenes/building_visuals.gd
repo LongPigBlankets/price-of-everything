@@ -695,6 +695,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	# the fallback for every building the grid can't take (full / blocked). Edge-seekers
 	# (mines/recycling) skip the central block and keep their far-corner behaviour; farms
 	# never block-lot either — they own a polygonal field placed by _search's farm branch.
+	var assigned := _assigned_hijack_candidates(tile_id, coord, building_id)
 	var placed := {}
 	# Offshore structures (wind farm, oil platform) sit ON WATER — the land
 	# mask can't place them at all. Uniform spread, no roads/frontage rules
@@ -707,6 +708,8 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	# packed into whatever ground is left. The mass was drawn off the street by hand, so the
 	# building inherits a footprint that can never straddle a carriageway. A busy tile runs
 	# out of marks before it runs out of buildings; everything below is the fallback.
+	elif not assigned.is_empty():
+		placed = _claim_from_mass_pool(tile_id, coord, area, assigned, "assigned_hijack")
 	elif use_stamp and AuthoredMap.is_active() and AuthoredMap.covers(tile_id):
 		placed = _claim_hijack_mass(tile_id, coord, area)
 		# Hand-marked masses are scarce on the procedural regions (Vandel: 15 of 207), so a busy
@@ -832,6 +835,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		"size_units": size_units,
 		"via": str(placed.get("via", "block" if not offshore else "offshore")),
 		"hijack_id": hijack_id,
+		"assigned_hijack": str(placed.get("via", "")) == "assigned_hijack",
 		"shrink": float(placed.get("shrink", 1.0)),
 		"diag": placed.get("diag", {}),
 		"center_rel": placed.center_rel,
@@ -1051,8 +1055,24 @@ func _append_local_poly(out: Array, poly: PackedVector2Array, record: Dictionary
 	out.append({"id": str(record.get("id", "")), "poly": moved,
 		"sacrificial": bool(record.get("sacrificial", false)),
 		"hijack": bool(record.get("hijack", false)),
+		"hijack_for": str(record.get("hijack_for", "")),
 		"kind": str(record.get("kind", "mass"))})
 
+
+## An authored office may reserve a decorative footprint for one building type.
+## This also works for ports, whose bespoke harbour normally bypasses stamps.
+func _assigned_hijack_candidates(tile_id: String, coord: Vector2i, building_id: String) -> Array:
+	var out: Array = []
+	if not AuthoredMap.is_active() or not AuthoredMap.covers(tile_id):
+		return out
+	for entry: Dictionary in _authored_decor_world(tile_id):
+		if str(entry.get("hijack_for", "")) != building_id or not bool(entry.get("hijack", false)):
+			continue
+		var poly: PackedVector2Array = entry.poly
+		var centre := _poly_centroid(poly)
+		if _in_tile_hex(centre, _tile_center_world_pos(coord)):
+			out.append({"id": entry.id, "poly": poly, "centre": centre, "area": absf(_poly_area(poly))})
+	return out
 
 ## The designer's answer to "where does this building go": an unclaimed decorative mass
 ## marked as a hijack slot on this tile, as a placement record — or {} when the tile has
@@ -1093,14 +1113,28 @@ func _claim_from_mass_pool(tile_id: String, coord: Vector2i, area: float, pool: 
 		return da < db)
 	var standing: Array = []
 	for p in _placements:
-		if str(p.tile_id) == tile_id:
-			standing.append(p.verts as PackedVector2Array)
+		standing.append(p.verts as PackedVector2Array)
 	for cand_value in ranked:
 		var cand: Dictionary = cand_value
 		var mass_id := str(cand.id)
 		if _hijacked_masses.has(mass_id):
 			continue
 		var poly: PackedVector2Array = cand.poly
+		# Some authored slots overlap another decorative building (Vandel's 132/275
+		# cross 272). Recolouring that slot leaves a white building over a grey one.
+		# Prefer a separate, intact footprint instead of demolishing its neighbour.
+		var fabric_overlap := false
+		for other in _authored_decor_world(tile_id):
+			if str(other.id) == mass_id:
+				continue
+			var overlap_area := 0.0
+			for piece in Geometry2D.intersect_polygons(poly, other.poly):
+				overlap_area += absf(_poly_area(piece))
+			if overlap_area > maxf(1.0, float(cand.area) * 0.01):
+				fabric_overlap = true
+				break
+		if fabric_overlap:
+			continue
 		var taken := false
 		for verts in standing:
 			if not Geometry2D.intersect_polygons(poly, verts as PackedVector2Array).is_empty():
@@ -1131,6 +1165,8 @@ func _hijack_candidates(tile_id: String, coord: Vector2i) -> Array:
 	var center := _tile_center_world_pos(coord)
 	for entry_value in _authored_decor_world(tile_id):
 		var entry: Dictionary = entry_value
+		if str(entry.get("hijack_for", "")) != "":
+			continue
 		if not bool(entry.get("hijack", false)) or str(entry.get("kind", "")) == "ring":
 			continue
 		var mass_id := str(entry.get("id", ""))
@@ -1157,6 +1193,8 @@ func _decor_candidates(tile_id: String, coord: Vector2i) -> Array:
 	var center := _tile_center_world_pos(coord)
 	for entry_value in _authored_decor_world(tile_id):
 		var entry: Dictionary = entry_value
+		if str(entry.get("hijack_for", "")) != "":
+			continue
 		if str(entry.get("kind", "")) == "ring":
 			continue
 		var mass_id := str(entry.get("id", ""))
@@ -1200,6 +1238,8 @@ func _evict_fabric_under(tile_id: String, verts: PackedVector2Array) -> void:
 		return
 	for entry_value in decor:
 		var entry: Dictionary = entry_value
+		if str(entry.get("hijack_for", "")) != "":
+			continue
 		if Geometry2D.intersect_polygons(verts, entry["poly"] as PackedVector2Array).is_empty():
 			continue
 		# Recorded as well as applied: the eviction lives in the FABRIC node, not here, so a
@@ -2302,8 +2342,8 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 			var rverts: PackedVector2Array = _farm_render[iid].verts if _farm_render.has(iid) else (p.verts as PackedVector2Array)
 			_place_farm_outbuildings(tile_id, iid, rverts, is_npc, farm_snap)
 			continue
-		if bool(p.get("offshore", false)):
-			continue   # platforms at sea carry no annexes/wings/tanks
+		if bool(p.get("offshore", false)) or bool(p.get("assigned_hijack", false)):
+			continue   # authored offices and platforms carry no generated annexes/wings/tanks
 		var lvl := _enhanced_visual_level(iid)
 		# Levels ALWAYS show: L2/L3 stack rooftop storey blocks on the parent
 		# (wings depend on free ground and are skipped inside block-masses —
@@ -2748,6 +2788,22 @@ func _append_farm_world_sub(tile_id: String, verts: PackedVector2Array, c: Vecto
 		"kind": kind, "is_npc": is_npc, "bb": _verts_bb(wverts),
 	})
 
+## Coast polygons are stable for the lifetime of the map.
+var _farm_coast_polygons: Array = []
+
+func _farm_on_land(field: PackedVector2Array) -> PackedVector2Array:
+	if _farm_coast_polygons.is_empty():
+		for entry in HillBaked.sea():
+			if int(entry.b) == 5:
+				_farm_coast_polygons.append(entry.p)
+	if _farm_coast_polygons.is_empty():
+		return field
+	var pieces: Array = []
+	for land in _farm_coast_polygons:
+		pieces.append_array(Geometry2D.intersect_polygons(field, land))
+	return _largest_ccw(pieces, PackedVector2Array())
+
+
 ## Build the per-tile farm layout: clip each field to its Voronoi cell (so it "snaps" to the lanes),
 ## re-bake its hatch, and collect the lanes — Voronoi edges trimmed to within FARM_LANE_REACH of the
 ## fields, routed AROUND forests (heptagon rings, cut at rivers), crossing rivers only at bridges.
@@ -2780,6 +2836,7 @@ func _build_farm_layout(tile_id: String, coord: Vector2i, center: Vector2, farms
 			if cell.size() >= 3:
 				var parts := Geometry2D.intersect_polygons(farms[i].verts, cell)
 				render = _largest_ccw(parts, farms[i].verts)
+		render = _farm_on_land(render)
 		_farm_render[str(farms[i].instance_id)] = {"verts": render, "hatch": _bake_farm_hatch(render), "parcels": _bake_farm_parcels(render)}
 		fields_w.append(render)
 	# Group farms into webs by FIELD ADJACENCY (touching = share a side) so distant farms never share a
@@ -3803,11 +3860,11 @@ func _search(tile_id: String, coord: Vector2i, kind: String, area: float, seed_v
 				var zoned_farm := _place_farm(tile_id, coord, fverts, placed_here, zone_mask,
 					toward_river)
 				if not zoned_farm.is_empty():
-					zoned_farm.verts = _clip_to_hex(zoned_farm.verts, coord)
+					zoned_farm.verts = _farm_on_land(_clip_to_hex(zoned_farm.verts, coord))
 					return zoned_farm
 		var placed := _place_farm(tile_id, coord, fverts, placed_here, farm_mask, toward_river)
 		if not placed.is_empty():
-			placed.verts = _clip_to_hex(placed.verts, coord)
+			placed.verts = _farm_on_land(_clip_to_hex(placed.verts, coord))
 		return placed
 	# Shape-language buildings supply their own lot (the sprite's box); everyone
 	# else gets the seeded plate shape sized from `area`.
@@ -5064,12 +5121,12 @@ func _typical_width() -> float:
 func _add_silhouette(pts: PackedVector2Array, cols: PackedColorArray, key: String,
 		poly: PackedVector2Array, color: Color) -> void:
 	var e: Array = _silhouette.get(key, [])
-	if e.is_empty() or int(e[2]) != poly.size() or Color(e[3]) != color:
+	if e.is_empty() or (e[2] as PackedVector2Array) != poly or Color(e[3]) != color:
 		var tris := CanvasBatch.polygon_soup(poly)
 		var cc := PackedColorArray()
 		cc.resize(tris.size())
 		cc.fill(color)
-		e = [tris, cc, poly.size(), color]
+		e = [tris, cc, poly.duplicate(), color]
 		_silhouette[key] = e
 	pts.append_array(e[0])
 	cols.append_array(e[1])
@@ -5671,9 +5728,10 @@ func draw_farm_layer(c: CanvasItem) -> void:
 			var fext := MapStyle.extrude_offset(MapStyle.Extrude.FULL)
 			var fedge := MapStyle.extrude_outline() if fext != Vector2.ZERO else MapStyle.ink_color()
 			var fedge_w := MapStyle.extrude_outline_width() if fext != Vector2.ZERO else 1.0
+			var farm_colour := PlayerColours.NPC if bool(placement.is_npc) else PlayerColours.active_color()
 			var barn: PackedVector2Array = parcel_src.get("barn", PackedVector2Array())
 			if barn.size() == 4:
-				_draw_prism_on(c, barn, MapStyle.farm_barn_color(), fext, fedge, fedge_w)
+				_draw_prism_on(c, barn, farm_colour, fext, fedge, fedge_w)
 				var bl := barn.duplicate()
 				bl.append(barn[0])
 				c.draw_polyline(bl, fedge, fedge_w, true)
@@ -5681,8 +5739,8 @@ func draw_farm_layer(c: CanvasItem) -> void:
 			if silo_c.is_finite():
 				var sr3 := float(parcel_src.get("silo_r", 8.4))
 				if fext != Vector2.ZERO:
-					c.draw_circle(silo_c + fext, sr3, MapStyle.extrude_side(MapStyle.farm_silo_color(), MapStyle.Extrude.FULL))
-				c.draw_circle(silo_c, sr3, MapStyle.farm_silo_color())
+					c.draw_circle(silo_c + fext, sr3, MapStyle.extrude_side(farm_colour, MapStyle.Extrude.FULL))
+				c.draw_circle(silo_c, sr3, farm_colour)
 				c.draw_arc(silo_c, sr3, 0.0, TAU, 20, fedge, fedge_w, true)
 				c.draw_circle(silo_c, 1.2, MapStyle.ink_color())
 		else:
@@ -5728,8 +5786,7 @@ func draw_farm_layer(c: CanvasItem) -> void:
 		if k == "farm_barn" or k == "farm_silo":
 			_draw_subcomponent(sc, c)
 
-## Draw one ancillary (tank/annex) in the parent's wash + ink; farm outbuildings
-## keep their brown barn/silo look (farms are outside the plate restyle).
+## Draw ancillary buildings in the parent's wash; farm outbuildings carry ownership colour.
 func _draw_subcomponent(sc: Dictionary, canvas: CanvasItem = null) -> void:
 	if _cull and not _view.intersects(sc.bb):
 		return
@@ -5776,11 +5833,10 @@ func _draw_subcomponent(sc: Dictionary, canvas: CanvasItem = null) -> void:
 		if kind == "tank":
 			c.draw_circle(_poly_centroid(sv), 1.4, dink)   # reference: tank = ink circle + centre dot
 		return
-	# Farm barn/silo fall through to here. Ink: brick barn / mustard silo + ink
-	# outline; classic keeps the brown + white/grey look.
+	# Only farm buildings carry ownership colour; the field keeps its crop palette.
 	var fb_fill: Color = sc.color
-	if MapStyle.uses_ink_linework():
-		fb_fill = MapStyle.farm_silo_color() if kind == "farm_silo" else MapStyle.farm_barn_color()
+	if kind == "farm_barn" or kind == "farm_silo":
+		fb_fill = PlayerColours.NPC if bool(sc.is_npc) else PlayerColours.active_color()
 	_draw_prism_on(c, sv, fb_fill, ext, edge, edge_w)
 	var sl := sv.duplicate()
 	sl.append(sv[0])

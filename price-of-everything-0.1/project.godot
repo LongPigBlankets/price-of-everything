@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Price of Everything 0.1"
-config/version="0.3.0"
+config/version="0.4.0"
 run/main_scene="res://scenes/main_menu.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://scenes/icon.svg"
@@ -19,7 +19,6 @@ config/icon="res://scenes/icon.svg"
 [autoload]
 
 GoodHoverRegistry="*res://scripts/good_hover_registry.gd"
-
 DS="*res://scripts/ds.gd"
 MapStyle="*res://scripts/map_style.gd"
 Audio="*res://scripts/audio.gd"

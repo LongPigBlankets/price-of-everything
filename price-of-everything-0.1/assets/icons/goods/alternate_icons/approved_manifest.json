@@ -1,151 +1,903 @@
 {
   "approved_goods": [
-    "limestone",
-    "ethylene",
-    "electrical_components",
-    "coal",
-    "iron_ore",
+    "alloy_ingots",
+    "alumina",
+    "aluminium",
     "ammonia",
-    "ice_car"
+    "coal",
+    "concrete",
+    "copper_ingots",
+    "copper_ore",
+    "copper_pipe",
+    "copper_wiring",
+    "crude_oil",
+    "electrical_components",
+    "ethylene",
+    "glass",
+    "graphite",
+    "hydraulic_components",
+    "hydrogen",
+    "ice_car",
+    "iron_ingots",
+    "iron_ore",
+    "limestone",
+    "motor",
+    "oxygen",
+    "pet_coke",
+    "processed_oil",
+    "refined_ree",
+    "sand",
+    "silica",
+    "steel",
+    "sulphur",
+    "tyres",
+    "windows"
   ],
+  "selection": "Approved alternate tiers first, then all main tiers. User requested all created goods use the new alternate art on 2026-09-07.",
   "files": [
     {
-      "good": "limestone",
+      "good": "alumina",
+      "good_id": "g_030",
       "tier": "medium",
-      "source": "palette_refinement",
-      "sha256": "8c4f8eb3b5ed7ef20c5cc3e693fce7f61e8e362b5bf693b62dac6e9f93af1ce1"
-    },
-    {
-      "good": "limestone",
-      "tier": "small",
-      "source": "palette_refinement",
-      "sha256": "5b98ac5d434ff6b20c8b6b2f2ec866fcb6102eb08d3562c2edce8b92340e72a6"
-    },
-    {
-      "good": "limestone",
-      "tier": "very_small",
-      "source": "palette_refinement",
-      "sha256": "1a413e7a40e78d527700f81d179ea634909268b2051e2a3e176fbffa680d84ec"
-    },
-    {
-      "good": "ethylene",
-      "tier": "medium",
-      "source": "palette_refinement",
-      "sha256": "23c1ebb51a854c878003009e594c4f7a677c84ac392c9d93f3e0b3dd660c7b74"
-    },
-    {
-      "good": "ethylene",
-      "tier": "small",
-      "source": "palette_refinement",
-      "sha256": "7c26c769d49b23a73131cb7688f1447de36e90acd9279032ba482230cc76e107"
-    },
-    {
-      "good": "ethylene",
-      "tier": "very_small",
-      "source": "palette_refinement",
-      "sha256": "13bc93a30bb38098e78387ad44fdee0b8c4168831c4af3b84b172a6d82fbe2d6"
-    },
-    {
-      "good": "electrical_components",
-      "tier": "medium",
-      "source": "switch_reference_refinement",
-      "sha256": "de3f46512b36f4dfec3e5ec6b9b7e5ee8b204e2dfb740200a622a7311588c954"
-    },
-    {
-      "good": "electrical_components",
-      "tier": "small",
-      "source": "switch_reference_refinement",
-      "sha256": "ec82bfa3688f7d4405aee25f52d1c78932282c1bf96921b71e21ee38b4714b7a"
-    },
-    {
-      "good": "electrical_components",
-      "tier": "very_small",
-      "source": "switch_reference_refinement",
-      "sha256": "270d939ef61f1903c47e9ddebd727c9294de30068653b81cd9563cd030ad90b5"
-    },
-    {
-      "good": "coal",
-      "tier": "medium",
-      "source": "ores_bottom_heavy_v2",
-      "sha256": "3d96aaf99f103b5722c2687bbe929af1755c3dec8a5fa11fb4909e096150a4f9",
+      "path": "assets/icons/goods/alternate_icons/medium/g_030_alumina.png",
+      "source": "blender-good-icons:artifacts/goods_wga_ink/v9/alumina_800.png",
+      "sha256": "707b273c3691ed24eecc9ef8c75f340b1d8bc51ce251dce45902c13d51718dbf",
       "installed_default": true
     },
     {
-      "good": "coal",
-      "tier": "small",
-      "source": "ores_bottom_heavy_v2",
-      "sha256": "22e51ce8e02efa27e7ae9b6526d045f05613aba08aecce5506c153afc0dd9300",
-      "installed_default": true
-    },
-    {
-      "good": "coal",
-      "tier": "very_small",
-      "source": "ores_bottom_heavy_v2",
-      "sha256": "d747f8724fe7d9caa5dfa69d51f860ff53864bb968114695ca5100b2e04fa3e0",
-      "installed_default": true
-    },
-    {
-      "good": "iron_ore",
+      "good": "aluminium",
+      "good_id": "g_029",
       "tier": "medium",
-      "source": "hematite_wider_left_seams",
-      "sha256": "f47896b027b0471c436e121ee04e8f190fb9a909fde033600638cacfbe321acb",
-      "installed_default": true
-    },
-    {
-      "good": "iron_ore",
-      "tier": "small",
-      "source": "hematite_wider_left_seams",
-      "sha256": "01082759680fee5658cf56b0863022eac046cb1a223f75c2e37d6d69834180df",
-      "installed_default": true
-    },
-    {
-      "good": "iron_ore",
-      "tier": "very_small",
-      "source": "hematite_wider_left_seams",
-      "sha256": "67bc67b917ccf9bbd0e568148d40a4d84e8c2e1b1e1e6714469aa63e5418301b",
+      "path": "assets/icons/goods/alternate_icons/medium/g_029_aluminium.png",
+      "source": "local Blender scratchpad b45e20b5-ae68-48fe-8daf-f7119653637f/icon_aluminium_800.png",
+      "sha256": "857b1fa324f8597c6fdece42ce26ad8168fd5184dcbd23b49b9131fd9836671a",
       "installed_default": true
     },
     {
       "good": "ammonia",
+      "good_id": "g_069",
       "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_069_ammonia.png",
       "source": "goods_icon_ammonia/final_v4",
       "sha256": "df62181fb56e58d4dac435385c431685471cd7f3e1809d7bc182df5a5f24eae5",
       "installed_default": true
     },
     {
-      "good": "ammonia",
+      "good": "coal",
+      "good_id": "g_001",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_001_coal.png",
+      "source": "ores_bottom_heavy_v2",
+      "sha256": "3d96aaf99f103b5722c2687bbe929af1755c3dec8a5fa11fb4909e096150a4f9",
+      "installed_default": true
+    },
+    {
+      "good": "copper_ingots",
+      "good_id": "g_005",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_005_copper_ingots.png",
+      "source": "blender-good-icons:artifacts/goods_copper_ingots/v2/copper_ingots_800.png",
+      "sha256": "63771684dd04b7c47fe1f23c67ad23730315c146edb81816e69be7b6b1caf95a",
+      "installed_default": true
+    },
+    {
+      "good": "copper_pipe",
+      "good_id": "g_021",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_021_copper_pipe.png",
+      "source": "blender-good-icons:artifacts/goods_copper_products/v6/copper_pipe_800.png",
+      "sha256": "862708ebd96677a9b8beb32e8516fe6042b9a86d4fba21615e04de1078995943",
+      "installed_default": true
+    },
+    {
+      "good": "copper_wiring",
+      "good_id": "g_007",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_007_copper_wiring.png",
+      "source": "blender-good-icons:artifacts/goods_copper_products/v7/copper_wiring_800.png",
+      "sha256": "ac898d319b609112ba44ff72c4e1b5eb96c87eaac2a40cb62484ed548219781e",
+      "installed_default": true
+    },
+    {
+      "good": "crude_oil",
+      "good_id": "g_026",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_026_crude_oil.png",
+      "source": "blender-good-icons:artifacts/goods_simple_batch/v34/crude_oil_800.png",
+      "sha256": "08f968ecd75df4e34bd9de50f22b5488faa3062b0ba1df5108549d48250cff0f",
+      "installed_default": true
+    },
+    {
+      "good": "electrical_components",
+      "good_id": "g_036",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_036_electrical_components.png",
+      "source": "switch_reference_refinement",
+      "sha256": "de3f46512b36f4dfec3e5ec6b9b7e5ee8b204e2dfb740200a622a7311588c954",
+      "installed_default": true
+    },
+    {
+      "good": "ethylene",
+      "good_id": "g_024",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_024_ethylene.png",
+      "source": "palette_refinement",
+      "sha256": "23c1ebb51a854c878003009e594c4f7a677c84ac392c9d93f3e0b3dd660c7b74",
+      "installed_default": true
+    },
+    {
+      "good": "glass",
+      "good_id": "g_038",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_038_glass.png",
+      "source": "blender-good-icons:artifacts/goods_wga_ink/v1/glass_800.png",
+      "sha256": "1819f61362dbab076954272eb27445a1804e1f4464ffa1e45ddb3d5b51d5b87e",
+      "installed_default": true
+    },
+    {
+      "good": "graphite",
+      "good_id": "g_066",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_066_graphite.png",
+      "source": "blender-good-icons:artifacts/goods_alloy_graphite/v5/graphite_800.png",
+      "sha256": "53c9a62735e11f040583b8c65e3ef39867ee8e699d36ec0904223e7aa2276a45",
+      "installed_default": true
+    },
+    {
+      "good": "hydraulic_components",
+      "good_id": "g_077",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_077_hydraulic_components.png",
+      "source": "blender-good-icons:artifacts/goods_hydraulic_components/v12/hydraulic_components_800.png",
+      "sha256": "a4ebcf96cfb2e2c9cae70534f6e66c5e1fa782925c92de40447a9afe2fefa66c",
+      "installed_default": true
+    },
+    {
+      "good": "hydrogen",
+      "good_id": "g_014",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_014_hydrogen.png",
+      "source": "blender-good-icons:artifacts/goods_gases/v7/hydrogen_800.png",
+      "sha256": "854292d9d315718c5a02f34864ed38ad48b2f273a45d8e4fb2ef6318ea48defa",
+      "installed_default": true
+    },
+    {
+      "good": "ice_car",
+      "good_id": "g_056",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_056_ice_car.png",
+      "source": "goods_icon_diesel/passat_rebuild/windscreen_bow_final",
+      "sha256": "c4ac7bdbc614739272cea4fe93d7eb9bd7835c774ba267b7a09e805ca4fc5ddf",
+      "installed_default": true
+    },
+    {
+      "good": "iron_ingots",
+      "good_id": "g_004",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_004_iron_ingots.png",
+      "source": "blender-good-icons:artifacts/goods_simple_batch/v34/iron_ingots_800.png",
+      "sha256": "045d9b2bdcb10c70083bddc2de287fad9236e78682b6278e282c263290d4bd46",
+      "installed_default": true
+    },
+    {
+      "good": "iron_ore",
+      "good_id": "g_002",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_002_iron_ore.png",
+      "source": "hematite_wider_left_seams",
+      "sha256": "f47896b027b0471c436e121ee04e8f190fb9a909fde033600638cacfbe321acb",
+      "installed_default": true
+    },
+    {
+      "good": "limestone",
+      "good_id": "g_016",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_016_limestone.png",
+      "source": "palette_refinement",
+      "sha256": "8c4f8eb3b5ed7ef20c5cc3e693fce7f61e8e362b5bf693b62dac6e9f93af1ce1",
+      "installed_default": true
+    },
+    {
+      "good": "motor",
+      "good_id": "g_008",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_008_motor.png",
+      "source": "local Blender scratchpad b45e20b5-ae68-48fe-8daf-f7119653637f/icon_motor_800.png",
+      "sha256": "7e82010886cd17aa528da3cda4cac1f2220dbd086188b4a25e38223c12c636bb",
+      "installed_default": true
+    },
+    {
+      "good": "oxygen",
+      "good_id": "g_011",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_011_oxygen.png",
+      "source": "blender-good-icons:artifacts/goods_gases/v8/oxygen_800.png",
+      "sha256": "9c965a10707581af9ed5ea35085a7639db7f53d2117ec7f54de8d531bb64ef19",
+      "installed_default": true
+    },
+    {
+      "good": "pet_coke",
+      "good_id": "g_075",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_075_pet_coke.png",
+      "source": "blender-good-icons:artifacts/goods_simple_batch/v24/pet_coke_800.png",
+      "sha256": "3b0deedb834603ba8f807127bc64fcb4c2971e5db493c0f2cb02bc562ef24179",
+      "installed_default": true
+    },
+    {
+      "good": "processed_oil",
+      "good_id": "g_025",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_025_processed_oil.png",
+      "source": "blender-good-icons:artifacts/goods_simple_batch/v13/processed_oil_800.png",
+      "sha256": "89f688af9a0b0f05c57a7352db0eea1b164d774aabdc31f8f319798d02d02752",
+      "installed_default": true
+    },
+    {
+      "good": "refined_ree",
+      "good_id": "g_035",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_035_refined_ree.png",
+      "source": "blender-good-icons:artifacts/goods_simple_batch/v13/refined_ree_800.png",
+      "sha256": "b858992454def6f15bce09b5fa99e0ebb44390c0c360deabf6e9d2a457b69459",
+      "installed_default": true
+    },
+    {
+      "good": "sand",
+      "good_id": "g_018",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_018_sand.png",
+      "source": "blender-good-icons:artifacts/goods_simple_batch/v15/sand_800.png",
+      "sha256": "167326d00151b1eb6f3aa2df32f06546c59b445a14b2174ade5924591f00c992",
+      "installed_default": true
+    },
+    {
+      "good": "steel",
+      "good_id": "g_006",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_006_steel.png",
+      "source": "blender-good-icons:artifacts/goods_simple_batch/v34/steel_800.png",
+      "sha256": "0e7ed683e80c0b02d16308525f31ee88bb53118e98c04173344070d2694fcb78",
+      "installed_default": true
+    },
+    {
+      "good": "sulphur",
+      "good_id": "g_040",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_040_sulphur.png",
+      "source": "blender-good-icons:artifacts/goods_tyres_sulphur/v9/sulphur_800.png",
+      "sha256": "71b4013fd103d90b1f7c7f531783d9303f9875870f321adc6aae3504bfae035e",
+      "installed_default": true
+    },
+    {
+      "good": "tyres",
+      "good_id": "g_044",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_044_tyres.png",
+      "source": "blender-good-icons:artifacts/goods_tyres_sulphur/v10/tyres_800.png",
+      "sha256": "96958a69a4de90f617f8ae68e93f73dbcb4d56ff651433e315b9976bd2b497bc",
+      "installed_default": true
+    },
+    {
+      "good": "windows",
+      "good_id": "g_039",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_039_windows.png",
+      "source": "blender-good-icons:artifacts/goods_wga_ink/v1/windows_800.png",
+      "sha256": "c2ea4cba8da7a005bc74e8f47a0830f070bc9911f37f4c76f1f9a2f063b553a0",
+      "installed_default": true
+    },
+    {
+      "good": "alumina",
+      "good_id": "g_030",
       "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_030_alumina.png",
+      "source": "blender-good-icons:artifacts/goods_wga_ink/v9/alumina_800.png",
+      "sha256": "0d0bca95c89171c70714ce79ccf45edf654ffa0ed4672c570ab949330498dd7e",
+      "installed_default": true
+    },
+    {
+      "good": "aluminium",
+      "good_id": "g_029",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_029_aluminium.png",
+      "source": "local Blender scratchpad b45e20b5-ae68-48fe-8daf-f7119653637f/icon_aluminium_800.png",
+      "sha256": "1bf52329a64e22ab62b42e51a21af6afa69cf920e0f9d971c6079b42d1a3345b",
+      "installed_default": true
+    },
+    {
+      "good": "ammonia",
+      "good_id": "g_069",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_069_ammonia.png",
       "source": "goods_icon_ammonia/final_v4",
       "sha256": "be770982609603bfe06d33bcea9c62fafc692754bddbc532595a174efdf2c8dd",
       "installed_default": true
     },
     {
-      "good": "ammonia",
+      "good": "coal",
+      "good_id": "g_001",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_001_coal.png",
+      "source": "ores_bottom_heavy_v2",
+      "sha256": "22e51ce8e02efa27e7ae9b6526d045f05613aba08aecce5506c153afc0dd9300",
+      "installed_default": true
+    },
+    {
+      "good": "copper_ingots",
+      "good_id": "g_005",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_005_copper_ingots.png",
+      "source": "blender-good-icons:artifacts/goods_copper_ingots/v2/copper_ingots_800.png",
+      "sha256": "654eea4cb042cc2092273a88327fc00bd5c00dea2b4f416905cf30073c36e3e9",
+      "installed_default": true
+    },
+    {
+      "good": "copper_pipe",
+      "good_id": "g_021",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_021_copper_pipe.png",
+      "source": "blender-good-icons:artifacts/goods_copper_products/v6/copper_pipe_800.png",
+      "sha256": "27427fa7e2245e966dfbf076693f05b218e52d7fcc18b618e17bc09c498fa819",
+      "installed_default": true
+    },
+    {
+      "good": "copper_wiring",
+      "good_id": "g_007",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_007_copper_wiring.png",
+      "source": "blender-good-icons:artifacts/goods_copper_products/v7/copper_wiring_800.png",
+      "sha256": "6498e2b06f028da38675c71ac36cafd395d6d837f693901cef1c42f1abd9ea14",
+      "installed_default": true
+    },
+    {
+      "good": "crude_oil",
+      "good_id": "g_026",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_026_crude_oil.png",
+      "source": "blender-good-icons:artifacts/goods_simple_batch/v34/crude_oil_800.png",
+      "sha256": "75e7c9421788a6e7755f66d368cc6aaa9bb2798123c0ad6b71f0c8ccd4dca2e8",
+      "installed_default": true
+    },
+    {
+      "good": "electrical_components",
+      "good_id": "g_036",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_036_electrical_components.png",
+      "source": "switch_reference_refinement",
+      "sha256": "ec82bfa3688f7d4405aee25f52d1c78932282c1bf96921b71e21ee38b4714b7a",
+      "installed_default": true
+    },
+    {
+      "good": "ethylene",
+      "good_id": "g_024",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_024_ethylene.png",
+      "source": "palette_refinement",
+      "sha256": "7c26c769d49b23a73131cb7688f1447de36e90acd9279032ba482230cc76e107",
+      "installed_default": true
+    },
+    {
+      "good": "glass",
+      "good_id": "g_038",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_038_glass.png",
+      "source": "blender-good-icons:artifacts/goods_wga_ink/v1/glass_800.png",
+      "sha256": "5a787e3d48866834197d8cd1b92a9c4038e881332eab7b36b740fd8e63047840",
+      "installed_default": true
+    },
+    {
+      "good": "graphite",
+      "good_id": "g_066",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_066_graphite.png",
+      "source": "blender-good-icons:artifacts/goods_alloy_graphite/v5/graphite_800.png",
+      "sha256": "00a7aa4213cb6ef6161e5d8e56b79edb6ed3f68d0b1a9e6a4116f9df4fa4d4aa",
+      "installed_default": true
+    },
+    {
+      "good": "hydraulic_components",
+      "good_id": "g_077",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_077_hydraulic_components.png",
+      "source": "blender-good-icons:artifacts/goods_hydraulic_components/v12/hydraulic_components_800.png",
+      "sha256": "bf3f30cbb37c25687d6726cdfb2eb737d24ec6e744828eac6500b1c1b8f9f619",
+      "installed_default": true
+    },
+    {
+      "good": "hydrogen",
+      "good_id": "g_014",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_014_hydrogen.png",
+      "source": "blender-good-icons:artifacts/goods_gases/v7/hydrogen_800.png",
+      "sha256": "efcd11a03e47a02a32f5f29016b4638a393eba5f47909bed32cfd7bfba874674",
+      "installed_default": true
+    },
+    {
+      "good": "ice_car",
+      "good_id": "g_056",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_056_ice_car.png",
+      "source": "goods_icon_diesel/passat_rebuild/windscreen_bow_final",
+      "sha256": "916b6f57cd0dfa5994871e33f4b82f2cbc53a72bb7bac2cfac873e90bfe4f35e",
+      "installed_default": true
+    },
+    {
+      "good": "iron_ingots",
+      "good_id": "g_004",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_004_iron_ingots.png",
+      "source": "blender-good-icons:artifacts/goods_simple_batch/v34/iron_ingots_800.png",
+      "sha256": "7199c3702ed3f6ae9fc88d009d8c9f0f1fbed2d27b92ce9d71dfaa72d469e252",
+      "installed_default": true
+    },
+    {
+      "good": "iron_ore",
+      "good_id": "g_002",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_002_iron_ore.png",
+      "source": "hematite_wider_left_seams",
+      "sha256": "01082759680fee5658cf56b0863022eac046cb1a223f75c2e37d6d69834180df",
+      "installed_default": true
+    },
+    {
+      "good": "limestone",
+      "good_id": "g_016",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_016_limestone.png",
+      "source": "palette_refinement",
+      "sha256": "5b98ac5d434ff6b20c8b6b2f2ec866fcb6102eb08d3562c2edce8b92340e72a6",
+      "installed_default": true
+    },
+    {
+      "good": "motor",
+      "good_id": "g_008",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_008_motor.png",
+      "source": "local Blender scratchpad b45e20b5-ae68-48fe-8daf-f7119653637f/icon_motor_800.png",
+      "sha256": "cc8c3a87a2914a9d2c0f9fd26556eb0d4127ff916a41892caab04cb46aa26fc9",
+      "installed_default": true
+    },
+    {
+      "good": "oxygen",
+      "good_id": "g_011",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_011_oxygen.png",
+      "source": "blender-good-icons:artifacts/goods_gases/v8/oxygen_800.png",
+      "sha256": "b06d65e2879e78c5098871b02aa2b1ff14d14e7c56323b3f556448cd0cac0874",
+      "installed_default": true
+    },
+    {
+      "good": "pet_coke",
+      "good_id": "g_075",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_075_pet_coke.png",
+      "source": "blender-good-icons:artifacts/goods_simple_batch/v24/pet_coke_800.png",
+      "sha256": "3df20cae5a6dd83b9da2c20f43a22a25c7127e6356242d60b84b09604b620397",
+      "installed_default": true
+    },
+    {
+      "good": "processed_oil",
+      "good_id": "g_025",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_025_processed_oil.png",
+      "source": "blender-good-icons:artifacts/goods_simple_batch/v13/processed_oil_800.png",
+      "sha256": "138de9da5b65e24e7ba097c4544b5a52a1af2a4f8fc8642a031ade8c683bcb05",
+      "installed_default": true
+    },
+    {
+      "good": "refined_ree",
+      "good_id": "g_035",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_035_refined_ree.png",
+      "source": "blender-good-icons:artifacts/goods_simple_batch/v13/refined_ree_800.png",
+      "sha256": "d0071cbc714385458f29f02e1a3538ab3489912cac95138a7fe2a66de82fef56",
+      "installed_default": true
+    },
+    {
+      "good": "sand",
+      "good_id": "g_018",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_018_sand.png",
+      "source": "blender-good-icons:artifacts/goods_simple_batch/v15/sand_800.png",
+      "sha256": "0b78c2318965e0a8a783dcb51dbbac4e2cf6d8e3046a3621002cf71914fa1173",
+      "installed_default": true
+    },
+    {
+      "good": "steel",
+      "good_id": "g_006",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_006_steel.png",
+      "source": "blender-good-icons:artifacts/goods_simple_batch/v34/steel_800.png",
+      "sha256": "0b93db56599450a46a89485ebf7d95a9f84cf475477efd8c965dbc97cf23b888",
+      "installed_default": true
+    },
+    {
+      "good": "sulphur",
+      "good_id": "g_040",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_040_sulphur.png",
+      "source": "blender-good-icons:artifacts/goods_tyres_sulphur/v9/sulphur_800.png",
+      "sha256": "fc54daff1aab11bb744c6e4755a66070c9f2d61d8f58a129e5bfee407f32a9df",
+      "installed_default": true
+    },
+    {
+      "good": "tyres",
+      "good_id": "g_044",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_044_tyres.png",
+      "source": "blender-good-icons:artifacts/goods_tyres_sulphur/v10/tyres_800.png",
+      "sha256": "a1b2d327f126e1967e1cb51ed301f77bdc7df13ebdb9b499a5d511afd4f699c4",
+      "installed_default": true
+    },
+    {
+      "good": "windows",
+      "good_id": "g_039",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_039_windows.png",
+      "source": "blender-good-icons:artifacts/goods_wga_ink/v1/windows_800.png",
+      "sha256": "ffa470c69cc825a308526526475896d256d9d421e921bc16e5fa1a83ed953924",
+      "installed_default": true
+    },
+    {
+      "good": "alumina",
+      "good_id": "g_030",
       "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_030_alumina.png",
+      "source": "blender-good-icons:artifacts/goods_wga_ink/v9/alumina_800.png",
+      "sha256": "c46c05b27566469c073a1eb8b067e49e850dc75e3270e8292326125ac5b55b26",
+      "installed_default": true
+    },
+    {
+      "good": "aluminium",
+      "good_id": "g_029",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_029_aluminium.png",
+      "source": "local Blender scratchpad b45e20b5-ae68-48fe-8daf-f7119653637f/icon_aluminium_800.png",
+      "sha256": "d56f25ae397163539d229007b025f690b3b23ac7293fed9e0b29ea87f3106634",
+      "installed_default": true
+    },
+    {
+      "good": "ammonia",
+      "good_id": "g_069",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_069_ammonia.png",
       "source": "goods_icon_ammonia/final_v4",
       "sha256": "ce31d98863a59241071c92076a9c65dd718aad33869f2e36db878ef3ad2d5eaa",
       "installed_default": true
     },
     {
-      "good": "ice_car",
-      "tier": "medium",
-      "source": "goods_icon_diesel/passat_rebuild/windscreen_bow_final",
-      "sha256": "c4ac7bdbc614739272cea4fe93d7eb9bd7835c774ba267b7a09e805ca4fc5ddf",
-      "installed_default": false
-    },
-    {
-      "good": "ice_car",
-      "tier": "small",
-      "source": "goods_icon_diesel/passat_rebuild/windscreen_bow_final",
-      "sha256": "916b6f57cd0dfa5994871e33f4b82f2cbc53a72bb7bac2cfac873e90bfe4f35e",
-      "installed_default": false
-    },
-    {
-      "good": "ice_car",
+      "good": "coal",
+      "good_id": "g_001",
       "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_001_coal.png",
+      "source": "ores_bottom_heavy_v2",
+      "sha256": "d747f8724fe7d9caa5dfa69d51f860ff53864bb968114695ca5100b2e04fa3e0",
+      "installed_default": true
+    },
+    {
+      "good": "copper_ingots",
+      "good_id": "g_005",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_005_copper_ingots.png",
+      "source": "blender-good-icons:artifacts/goods_copper_ingots/v2/copper_ingots_800.png",
+      "sha256": "37925f2e3e14ad087195d54e3774998a70a595006fceb6d8c2459100c16e33e2",
+      "installed_default": true
+    },
+    {
+      "good": "copper_pipe",
+      "good_id": "g_021",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_021_copper_pipe.png",
+      "source": "blender-good-icons:artifacts/goods_copper_products/v6/copper_pipe_800.png",
+      "sha256": "8e9d7e4fb0d4e7602b3565422e1837839d303533e973021e371e10ac0068d810",
+      "installed_default": true
+    },
+    {
+      "good": "copper_wiring",
+      "good_id": "g_007",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_007_copper_wiring.png",
+      "source": "blender-good-icons:artifacts/goods_copper_products/v7/copper_wiring_800.png",
+      "sha256": "ef7bcfaa67df4f84a1eb09439e47d1277b349b11703215bc8e3cb0c30688879c",
+      "installed_default": true
+    },
+    {
+      "good": "crude_oil",
+      "good_id": "g_026",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_026_crude_oil.png",
+      "source": "blender-good-icons:artifacts/goods_simple_batch/v34/crude_oil_800.png",
+      "sha256": "8c639437ca97ab55f8578ce69de06086c9a16ef4a04bf0e6a7d0b3dd6628b563",
+      "installed_default": true
+    },
+    {
+      "good": "electrical_components",
+      "good_id": "g_036",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_036_electrical_components.png",
+      "source": "switch_reference_refinement",
+      "sha256": "270d939ef61f1903c47e9ddebd727c9294de30068653b81cd9563cd030ad90b5",
+      "installed_default": true
+    },
+    {
+      "good": "ethylene",
+      "good_id": "g_024",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_024_ethylene.png",
+      "source": "palette_refinement",
+      "sha256": "13bc93a30bb38098e78387ad44fdee0b8c4168831c4af3b84b172a6d82fbe2d6",
+      "installed_default": true
+    },
+    {
+      "good": "glass",
+      "good_id": "g_038",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_038_glass.png",
+      "source": "blender-good-icons:artifacts/goods_wga_ink/v1/glass_800.png",
+      "sha256": "d70a2deeb59483c5132f13d660584d4253569fd87d4735e219224380c3143f91",
+      "installed_default": true
+    },
+    {
+      "good": "graphite",
+      "good_id": "g_066",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_066_graphite.png",
+      "source": "blender-good-icons:artifacts/goods_alloy_graphite/v5/graphite_800.png",
+      "sha256": "86369fa5e55c1caf8cb91cdd135f6f0ef323d991fd1bc829a947f820a8dd0561",
+      "installed_default": true
+    },
+    {
+      "good": "hydraulic_components",
+      "good_id": "g_077",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_077_hydraulic_components.png",
+      "source": "blender-good-icons:artifacts/goods_hydraulic_components/v12/hydraulic_components_800.png",
+      "sha256": "fffdfc525768725f118ca12e5e83ac9b0949571114dae57dbb70b76a1f212063",
+      "installed_default": true
+    },
+    {
+      "good": "hydrogen",
+      "good_id": "g_014",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_014_hydrogen.png",
+      "source": "blender-good-icons:artifacts/goods_gases/v7/hydrogen_800.png",
+      "sha256": "514d3ca787ece4867a6be3459770ebeafa5c04d112eb6ffafa26190e0c15905a",
+      "installed_default": true
+    },
+    {
+      "good": "ice_car",
+      "good_id": "g_056",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_056_ice_car.png",
       "source": "goods_icon_diesel/passat_rebuild/windscreen_bow_final",
       "sha256": "25ccb41b7a88cd4b8539c05265b5f0f571b02aee024472bf5eca1456191a0e41",
-      "installed_default": false
+      "installed_default": true
+    },
+    {
+      "good": "iron_ingots",
+      "good_id": "g_004",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_004_iron_ingots.png",
+      "source": "blender-good-icons:artifacts/goods_simple_batch/v34/iron_ingots_800.png",
+      "sha256": "541fea844e8d95396a2ee02e3a42741ad53f0a798968f0c40600947c55f12734",
+      "installed_default": true
+    },
+    {
+      "good": "iron_ore",
+      "good_id": "g_002",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_002_iron_ore.png",
+      "source": "hematite_wider_left_seams",
+      "sha256": "67bc67b917ccf9bbd0e568148d40a4d84e8c2e1b1e1e6714469aa63e5418301b",
+      "installed_default": true
+    },
+    {
+      "good": "limestone",
+      "good_id": "g_016",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_016_limestone.png",
+      "source": "palette_refinement",
+      "sha256": "1a413e7a40e78d527700f81d179ea634909268b2051e2a3e176fbffa680d84ec",
+      "installed_default": true
+    },
+    {
+      "good": "motor",
+      "good_id": "g_008",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_008_motor.png",
+      "source": "local Blender scratchpad b45e20b5-ae68-48fe-8daf-f7119653637f/icon_motor_800.png",
+      "sha256": "fc9dd1d7756c9458a9f1f865a7389c70de19c4e9a59287d78ba20dd0f2aa7e9e",
+      "installed_default": true
+    },
+    {
+      "good": "oxygen",
+      "good_id": "g_011",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_011_oxygen.png",
+      "source": "blender-good-icons:artifacts/goods_gases/v8/oxygen_800.png",
+      "sha256": "ae0f054a302d09da5328b80f010b302abe90af28ca984629c488d50841437778",
+      "installed_default": true
+    },
+    {
+      "good": "pet_coke",
+      "good_id": "g_075",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_075_pet_coke.png",
+      "source": "blender-good-icons:artifacts/goods_simple_batch/v24/pet_coke_800.png",
+      "sha256": "3b3361c6f0b8b569c3b46c39f0caab769fe2e7985732048d106ba6e770ed742c",
+      "installed_default": true
+    },
+    {
+      "good": "processed_oil",
+      "good_id": "g_025",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_025_processed_oil.png",
+      "source": "blender-good-icons:artifacts/goods_simple_batch/v13/processed_oil_800.png",
+      "sha256": "d17d8a3bb8b8d401ba6323c9d835b372cbe37e6b0354f0d23ba700dedfc4b925",
+      "installed_default": true
+    },
+    {
+      "good": "refined_ree",
+      "good_id": "g_035",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_035_refined_ree.png",
+      "source": "blender-good-icons:artifacts/goods_simple_batch/v13/refined_ree_800.png",
+      "sha256": "e6f2f2409bf53f16d2f6d3990db48f339cb99267a3056f8db13111081249d8e6",
+      "installed_default": true
+    },
+    {
+      "good": "sand",
+      "good_id": "g_018",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_018_sand.png",
+      "source": "blender-good-icons:artifacts/goods_simple_batch/v15/sand_800.png",
+      "sha256": "23a6248203a0994dd369781011b9345d712bb42e7130f195ad5ea1c1f344ca52",
+      "installed_default": true
+    },
+    {
+      "good": "steel",
+      "good_id": "g_006",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_006_steel.png",
+      "source": "blender-good-icons:artifacts/goods_simple_batch/v34/steel_800.png",
+      "sha256": "44c7c9e17d014004b2990d8c5a6f5c797a6573327cc719cef899b4ebcf33b442",
+      "installed_default": true
+    },
+    {
+      "good": "sulphur",
+      "good_id": "g_040",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_040_sulphur.png",
+      "source": "blender-good-icons:artifacts/goods_tyres_sulphur/v9/sulphur_800.png",
+      "sha256": "1b68f774c0311619c788a4f42cc7d00bc714ae4b92d5a822536c0b29fbdd2b11",
+      "installed_default": true
+    },
+    {
+      "good": "tyres",
+      "good_id": "g_044",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_044_tyres.png",
+      "source": "blender-good-icons:artifacts/goods_tyres_sulphur/v10/tyres_800.png",
+      "sha256": "0c0e63c839e784308746b2cd93f090b63b68280a3ffa67bbc0fe1220c23cb878",
+      "installed_default": true
+    },
+    {
+      "good": "windows",
+      "good_id": "g_039",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_039_windows.png",
+      "source": "blender-good-icons:artifacts/goods_wga_ink/v1/windows_800.png",
+      "sha256": "d9a4f3b2d7fb3f91fd7c9d477f2907fe89c8bbda53f5e9ee2b910870e081c257",
+      "installed_default": true
+    },
+    {
+      "good": "silica",
+      "good_id": "g_020",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_020_silica.png",
+      "source": "blender-good-icons:artifacts/goods_silica/v4/silica_800.png",
+      "sha256": "7ecd24a72c114980c685fefd410b3a6fa11e1e5cae3b9eff6459dcc78a02fc2c",
+      "installed_default": true
+    },
+    {
+      "good": "silica",
+      "good_id": "g_020",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_020_silica.png",
+      "source": "blender-good-icons:artifacts/goods_silica/v4/silica_800.png",
+      "sha256": "fb259a8956f8231d8518e782f6db3ccf7a42266ded1909c5cac0aceb301becae",
+      "installed_default": true
+    },
+    {
+      "good": "silica",
+      "good_id": "g_020",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_020_silica.png",
+      "source": "blender-good-icons:artifacts/goods_silica/v4/silica_800.png",
+      "sha256": "02714e44e71ed8c293641205b963d1d9b742e0ed3f54a9b537119f9aff729d16",
+      "installed_default": true
+    },
+    {
+      "good": "concrete",
+      "good_id": "g_017",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_017_concrete.png",
+      "source": "blender-good-icons:artifacts/goods_concrete/v15/concrete_800.png",
+      "sha256": "1624536e6587cc70c6933c3f69915c606fd2a25d863dcba06057031ef97f2e4a",
+      "installed_default": true
+    },
+    {
+      "good": "concrete",
+      "good_id": "g_017",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_017_concrete.png",
+      "source": "blender-good-icons:artifacts/goods_concrete/v15/concrete_800.png",
+      "sha256": "23c67701d8f38a5d7e7908bcc682a83187eb24da23e3d6a7f7e66effc396afe9",
+      "installed_default": true
+    },
+    {
+      "good": "concrete",
+      "good_id": "g_017",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_017_concrete.png",
+      "source": "blender-good-icons:artifacts/goods_concrete/v15/concrete_800.png",
+      "sha256": "4ec4eda47b9744abb764d468eb3637eb71a4dc2dd194978c12ca1bfcb1280a34",
+      "installed_default": true
+    },
+    {
+      "good": "copper_ore",
+      "good_id": "g_003",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_003_copper_ore.png",
+      "source": "blender-good-icons:artifacts/goods_copper_ore/v11/copper_ore_800.png",
+      "sha256": "1b0ae4e7eb620a266fc0e5b4d9e60954c32adbaccbd7ce51c4f404334b6c3694",
+      "installed_default": true
+    },
+    {
+      "good": "copper_ore",
+      "good_id": "g_003",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_003_copper_ore.png",
+      "source": "blender-good-icons:artifacts/goods_copper_ore/v11/copper_ore_450.png",
+      "sha256": "c44cb3e658453ec9440d3384ea1bf54662c306316a99fddff5c5391fe5852725",
+      "installed_default": true
+    },
+    {
+      "good": "copper_ore",
+      "good_id": "g_003",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_003_copper_ore.png",
+      "source": "blender-good-icons:artifacts/goods_copper_ore/v11/copper_ore_256.png",
+      "sha256": "6596326e611e4db816aa776c2c2e88c9456784e73a37292e465d94735ae7973f",
+      "installed_default": true
+    },
+    {
+      "good": "alloy_ingots",
+      "good_id": "g_034",
+      "tier": "medium",
+      "path": "assets/icons/goods/alternate_icons/medium/g_034_alloy_ingots.png",
+      "source": "blender-good-icons:artifacts/goods_alloy_graphite/v2/alloy_ingots_800.png",
+      "sha256": "dd6de719ef8353231131602c78f7532870e784649093e43f7761e41a33aef09a",
+      "installed_default": true
+    },
+    {
+      "good": "alloy_ingots",
+      "good_id": "g_034",
+      "tier": "small",
+      "path": "assets/icons/goods/alternate_icons/small/g_034_alloy_ingots.png",
+      "source": "blender-good-icons:artifacts/goods_alloy_graphite/v2/alloy_ingots_450.png",
+      "sha256": "ccc6e8c6e8b6e106f851d3c729e2dadecb95faeed9298166a9192e560d3a57b3",
+      "installed_default": true
+    },
+    {
+      "good": "alloy_ingots",
+      "good_id": "g_034",
+      "tier": "very_small",
+      "path": "assets/icons/goods/alternate_icons/very_small/g_034_alloy_ingots.png",
+      "source": "blender-good-icons:artifacts/goods_alloy_graphite/v2/alloy_ingots_256.png",
+      "sha256": "1e745d60a51a22ac1976002f3960aad65af22a79e972983f83789bca461c295e",
+      "installed_default": true
     }
   ]
 }
