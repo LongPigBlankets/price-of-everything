@@ -475,11 +475,14 @@ func _modes_for_good(good_id: String) -> Array:
 	# Fluids have no bare-ground fallback, but may use road tankers or rail tank wagons
 	# as well as suitable pipework. Solids may also move one tile/turn with no built infra.
 	# Rail first (longer range) wins ties; _route_uncached explicitly prefers pipe for fluids.
-	var modes: Array = [] if FLUID_CLASSES.has(tclass) else [ROUTE_MODE_NONE]
+	var modes: Array = []
 	for m in ["rail", "roads", "pipes", "reinf_pipes"]:
 		var tolerated: Array = _infra_by_type.get(m, {}).get("good_types_tolerated", [])
 		if good_id == "" or tclass == "" or tolerated.has(tclass):
 			modes.append(m)
+	# Infrastructure wins equal-time trips; bare ground remains the fallback.
+	if not FLUID_CLASSES.has(tclass):
+		modes.append(ROUTE_MODE_NONE)
 	return modes
 
 func _turn_move_neighbours(tile_id: String, modes: Array) -> Array:

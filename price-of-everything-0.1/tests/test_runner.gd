@@ -303,6 +303,7 @@ func _ready() -> void:
 	_test_transport_flow_no_double_count()
 	_test_tile_good_breakdown()
 	_test_tile_mode_flow_endpoints()
+	_test_public_infrastructure_usage()
 	_test_cable_power_cap()
 	_test_power_network_settlement()
 	_test_power_output_modifier()
@@ -6562,6 +6563,33 @@ func _test_tile_mode_flow_endpoints() -> void:
 	_check(MatchState.tile_mode_flow("tile_a", "pipes") == 50, "overland crude oil counts toward the source tile's pipes")
 	_check(MatchState.tile_mode_flow("tile_a", "roads") == 0, "crude oil (liquid) does not count toward roads")
 	MatchState.pending_transport_shipments.clear()
+
+func _test_public_infrastructure_usage() -> void:
+	MatchState.reset()
+	var saved_infra := Catalog._tile_infra.duplicate(true)
+	for tile: String in ["tile_5_10", "tile_4_10"]:
+		Catalog._tile_infra[tile] = ["rail", "roads"]
+	Catalog._route_cache.clear()
+	var route := Catalog.route("tile_5_10", "tile_4_10", "g_001")
+	var legs: Array = route.get("legs", [])
+	_check(not legs.is_empty() and str(legs[0].get("mode")) == "rail", "public rail wins a one-turn tie against bare ground")
+	_check(MatchState.buildings.is_empty(), "public infra fixture has no owned buildings")
+	MatchState.queue_transport_shipment({"good_id": "g_001", "qty": 75, "source_tile": "tile_5_10", "destination_tile": "tile_4_10", "turns_remaining": 1, "tiles": route.get("tiles", []), "legs": legs})
+	MatchState.update_transport_congestion()
+	MatchState.advance_transport_shipments()
+	_check(MatchState.pending_transport_shipments.is_empty(), "one-turn freight has arrived")
+	_check(MatchState.tile_mode_flow("tile_4_10", "rail", true) == 75, "settled public rail usage survives arrival")
+	_check(MatchState.active_links().size() == 2, "overview includes both unowned rail endpoints")
+	var state := MatchState.export_state()
+	MatchState.reset()
+	MatchState.import_state(state)
+	_check(MatchState.tile_mode_flow("tile_4_10", "rail", true) == 75 and MatchState.active_links().size() == 2, "settled public infra usage survives save reload")
+	MatchState.update_transport_congestion()
+	_check(MatchState.tile_mode_flow("tile_4_10", "rail", true) == 0 and MatchState.active_links().is_empty(), "idle next turn clears throughput")
+	MatchState.reset()
+	Catalog._tile_infra = saved_infra
+	Catalog._route_cache.clear()
+
 
 func _test_cable_power_cap() -> void:
 	# Cables hard-cap a tile's power per turn by cable level — produce + draw separately.
@@ -16152,8 +16180,7 @@ func _test_fluids_by_road_and_rail() -> void:
 		if not EconomyConfig.PIPE_MODES.has(str((leg as Dictionary).get("mode", ""))):
 			all_piped = false
 	_check(all_piped, "fluids overland: with pipe and rail side by side, a fluid still takes the pipe")
-	# A solid's mode list leads with ROUTE_MODE_NONE, which claims the single-tile hop, so the
-	# control is not "every leg is rail" — it is that a solid never goes down the pipe.
+	# Solids prefer rail over bare ground on equal-time routes, and never use pipes.
 	var coal_legs: Array = Catalog.route(src, dst, coal).get("legs", [])
 	var coal_off_pipe := not coal_legs.is_empty()
 	for leg in coal_legs:

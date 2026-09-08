@@ -653,7 +653,7 @@ func _infra_hover_lines(tile_id: String, infra_key: String) -> Array:
 		_:
 			var mode: String = INFRA_ROUTE_MODES.get(infra_key, "")
 			# Same flow the tile-view uses: networked pass-through + first/last-mile.
-			var total := MatchState.tile_mode_flow(tile_id, mode) if mode != "" else 0
+			var total := MatchState.tile_mode_flow(tile_id, mode, true) if mode != "" else 0
 			var cap: float = MatchState.tile_mode_capacity(mode, _infra_level(terrain_layer.id_to_coord(tile_id), infra_key))
 			if cap > 0.0:
 				lines.append("Transit units: %d / %d" % [total, int(round(cap))])
@@ -671,7 +671,7 @@ func _infra_slot_label(infra_key: String) -> String:
 # bucketed by the good's transport class.
 func _tile_mode_throughput(tile_id: String, mode: String) -> Dictionary:
 	var totals: Dictionary = {}
-	for s in MatchState.get_pending_transport_shipments():
+	for s in MatchState.settled_transport_shipments():
 		var tiles: Array = s.get("tiles", [])
 		var legs: Array = s.get("legs", [])
 		if tiles.is_empty() or legs.is_empty():

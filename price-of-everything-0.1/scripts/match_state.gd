@@ -415,6 +415,7 @@ var _last_link_flow: Dictionary = {}
 # detail panel's "Breakdown" table, so a tile still reports what transited it this turn
 # even after arrivals have been paid out and removed from the live list.
 var _last_transit_shipments: Array = []
+var _has_transport_snapshot: bool = false
 # Per-link congestion HISTORY, for the transport panel's "at cap N of last 10 turns"
 # column: "tile|mode" -> Array[bool], newest last, capped at LINK_HISTORY_TURNS.
 # Appended once per turn from the same snapshot that prices congestion, so the two
@@ -3952,6 +3953,7 @@ func reset() -> void:
 	paused_buildings.clear()
 	_last_link_flow.clear()
 	_last_transit_shipments.clear()
+	_has_transport_snapshot = false
 	_link_over_history.clear()
 	_link_congestion_paid.clear()
 	overflow_shipments.clear()
@@ -4127,6 +4129,7 @@ func export_state() -> Dictionary:
 		"auto_sell_impact": auto_sell_impact.duplicate(true),
 		"queued_stockpile_market_sales": queued_stockpile_market_sales.duplicate(true),
 		"pending_transport_shipments": _shipments_for_save(),
+		"transport_usage_snapshot": {"flow": _last_link_flow.duplicate(), "shipments": _last_transit_shipments.duplicate(true)} if _has_transport_snapshot else {},
 		"arrival_turns": _arrival_turns_for_save(),
 		# Additive (v3 transport panel): an older save has neither, and the empty
 		# default reads correctly as "no history yet" until turns accrue.
@@ -4265,6 +4268,10 @@ func import_state(d: Dictionary) -> void:
 	auto_sell_impact = (d.get("auto_sell_impact", {}) as Dictionary).duplicate(true)
 	queued_stockpile_market_sales = (d.get("queued_stockpile_market_sales", {}) as Dictionary).duplicate(true)
 	pending_transport_shipments = (d.get("pending_transport_shipments", []) as Array).duplicate(true)
+	var usage: Dictionary = d.get("transport_usage_snapshot", {})
+	_has_transport_snapshot = usage.has("flow")
+	_last_link_flow = (usage.get("flow", {}) as Dictionary).duplicate()
+	_last_transit_shipments = (usage.get("shipments", []) as Array).duplicate(true)
 	# Pre-history saves simply start with no record — the readout says "no data yet"
 	# rather than lying, and fills in as deliveries land.
 	arrival_turns = _arrival_turns_from_save(d.get("arrival_turns", {}))
@@ -5971,10 +5978,13 @@ func _tile_infra_level(tile_id: String, mode: String) -> int:
 ## tile-view infra readout shows. Counts both pass-through on a networked leg AND goods
 ## that originate/terminate on the tile (their first/last mile uses the tile's infra,
 ## even when the long haul is overland), matched by the good's transport class.
-func tile_mode_flow(tile_id: String, mode: String) -> int:
+func settled_transport_shipments() -> Array:
+	return _last_transit_shipments if _has_transport_snapshot else pending_transport_shipments
+
+func tile_mode_flow(tile_id: String, mode: String, settled: bool = false) -> int:
 	var total := 0
 	var tolerated: Array = Catalog.infra(mode).get("good_types_tolerated", [])
-	for s in pending_transport_shipments:
+	for s in (settled_transport_shipments() if settled else pending_transport_shipments):
 		var tiles: Array = s.get("tiles", [])
 		var legs: Array = s.get("legs", [])
 		if not tiles.is_empty() and not legs.is_empty():
@@ -6046,7 +6056,7 @@ func _shipment_goods_dict(s: Dictionary) -> Dictionary:
 func tile_good_breakdown(tile_id: String, mode: String) -> Array:
 	var by_good: Dictionary = {}   # good_id -> {qty:int, cost:float, penalty:float}
 	var tolerated: Array = Catalog.infra(mode).get("good_types_tolerated", [])
-	for s in _last_transit_shipments:
+	for s in settled_transport_shipments():
 		var tiles: Array = s.get("tiles", [])
 		var legs: Array = s.get("legs", [])
 		var overland := tiles.is_empty() or legs.is_empty()
@@ -6163,6 +6173,7 @@ func _queue_or_store_resolved_shipment(shipment: Dictionary) -> void:
 ## Called each PROCESS turn. The penalty itself is a transport-cost surcharge applied
 ## in TransportService.transport_cost_for_route via route_congestion_tier().
 func update_transport_congestion() -> void:
+	_has_transport_snapshot = true
 	_last_link_flow = transport_link_flow()
 	_last_transit_shipments = pending_transport_shipments.duplicate()
 	_roll_link_history()
@@ -6215,11 +6226,12 @@ func congested_links() -> Array:
 ## just the ones past capacity.
 func active_links(only_over: bool = false) -> Array:
 	var rows: Array = []
-	for key in _last_link_flow.keys():
+	var visible_flow := _last_link_flow if _has_transport_snapshot or not _last_link_flow.is_empty() else transport_link_flow()
+	for key in visible_flow.keys():
 		var parts := str(key).split("|")
 		if parts.size() != 2:
 			continue
-		var flow := float(_last_link_flow[key])
+		var flow := float(visible_flow[key])
 		if flow <= 0.0:
 			continue
 		var level := _tile_infra_level(parts[0], parts[1])
