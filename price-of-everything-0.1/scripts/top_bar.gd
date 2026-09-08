@@ -1660,6 +1660,8 @@ func _position_research_toasts() -> void:
 ## Capped at RESEARCH_TOAST_MAX with a "+N more" flyout on the end: a turn that unlocks eight
 ## techs would otherwise curtain the map, and the briefing already lists them all.
 func _pop_research_toasts(names: Array) -> void:
+	if Tutorial.active or bool(MatchState.ruleset.get("tutorial_enabled", false)):
+		return
 	var fresh: Array[PanelContainer] = []
 	var shown := 0
 	# The cap is on what is ON SCREEN, not on this pop. Flyouts hold for five seconds, so a

@@ -450,8 +450,26 @@ func _ready() -> void:
 # Tutorial "Coach" engine (Wave 1). The engine itself is signal-driven and confined to
 # a live scene, so here we cover the two pure surfaces: the authored step list and the
 # state-verified detectors (the only logic that decides step completion).
+func _tutorial_copy_has_dash(value: Variant) -> bool:
+	if value is String:
+		for mark: String in ["-", "–", "—", "‑", "‐"]:
+			if value.contains(mark):
+				return true
+	elif value is Array:
+		for item: Variant in value:
+			if _tutorial_copy_has_dash(item):
+				return true
+	elif value is Dictionary:
+		for item: Variant in value.values():
+			if _tutorial_copy_has_dash(item):
+				return true
+	return false
+
+
 func _test_tutorial_engine() -> void:
 	var steps: Array = TutorialSteps.steps()
+	for step: Dictionary in steps:
+		_check(not _tutorial_copy_has_dash(step), "tutorial copy has no hyphens or dashes: " + str(step.id))
 	_check(not steps.is_empty(), "tutorial: steps() returns content")
 	_check(str((steps[0] as Dictionary).get("id", "")) == "welcome", "tutorial: first step is the welcome panel")
 	_check(str((steps[0] as Dictionary).get("mode", "")) == "welcome", "tutorial: first step uses welcome render mode")
@@ -982,7 +1000,7 @@ func _test_tutorial_engine() -> void:
 	var glass_inputs: Dictionary = by_id.get("glass_diagnose_pipe", {})
 	var glass_inputs_decide: Dictionary = (glass_inputs.get("done", {}) as Dictionary).get("decide", {})
 	_check(str(glass_inputs.get("title", "")) == "Inputs are on their way"
-		and str(glass_inputs.get("body", "")).contains("they're on their way from the port")
+		and str(glass_inputs.get("body", "")).contains("The inputs are on their way from the port")
 		and str((glass_inputs.get("spotlight", {}) as Dictionary).get("ref", "")) == "EndTurnButton"
 		and str(glass_inputs_decide.get("kind", "")) == "turns_advanced"
 		and int(glass_inputs_decide.get("count", 0)) == 2
@@ -13855,6 +13873,9 @@ func _test_advisor_loyalty() -> void:
 	MatchState._agenda_flags = {}
 
 func _test_advisor_missions() -> void:
+	var demo_terminal := preload("res://scripts/debug_terminal.gd")
+	var saved_demo: bool = demo_terminal._demo_unlocked
+	demo_terminal._demo_unlocked = true
 	var saved_perm := MatchState.permanent_advisor_ids.duplicate(true)
 	var saved_rec := MatchState.recruited_advisor_ids.duplicate(true)
 	var saved_loyal := MatchState.advisor_loyalty.duplicate(true)
@@ -13869,6 +13890,11 @@ func _test_advisor_missions() -> void:
 	MatchState.advisor_missions_completed = {}
 	MatchState._advisor_mission5_streak = {}
 	MatchState.advisor_mission_policies = []
+
+	demo_terminal._demo_unlocked = false
+	MatchState.advisor_loyalty["vera"] = 9.0
+	_check(not MatchState._check_mission_progress("vera") and MatchState.advisor_missions_done("vera") == 0, "demo: advisor missions cannot progress or grant rewards")
+	demo_terminal._demo_unlocked = true
 
 	# Missions I-IV complete the first turn loyalty reaches 2 / 5 / 7 / 9.
 	MatchState.advisor_loyalty["vera"] = 3.0
@@ -13929,8 +13955,13 @@ func _test_advisor_missions() -> void:
 	MatchState.advisor_mission_policies = saved_pol
 	MatchState.unlocked_titles = saved_unlocked
 	MatchState.reconcile_advisor_modifiers()
+	demo_terminal._demo_unlocked = saved_demo
+
 
 func _test_advisor_mission_update_signals() -> void:
+	var demo_terminal := preload("res://scripts/debug_terminal.gd")
+	var saved_demo: bool = demo_terminal._demo_unlocked
+	demo_terminal._demo_unlocked = true
 	var saved_perm := MatchState.permanent_advisor_ids.duplicate(true)
 	var saved_rec := MatchState.recruited_advisor_ids.duplicate(true)
 	var saved_loyal := MatchState.advisor_loyalty.duplicate(true)
@@ -13970,6 +14001,8 @@ func _test_advisor_mission_update_signals() -> void:
 	MatchState.advisor_missions_completed = saved_done
 	MatchState._advisor_mission5_streak = saved_streak
 	MatchState.reconcile_advisor_modifiers()
+	demo_terminal._demo_unlocked = saved_demo
+
 
 func _test_people_panel_mission_ui() -> void:
 	var pp: Node = load("res://scripts/people_panel.gd").new()

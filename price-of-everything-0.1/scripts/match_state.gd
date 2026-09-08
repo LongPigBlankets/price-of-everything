@@ -7623,6 +7623,8 @@ func advisor_missions_done(advisor_id: String) -> int:
 # Advance missions once per turn. I–IV complete the first turn loyalty reaches their
 # threshold; V requires loyalty to hold at/above MISSION5_LOYALTY for MISSION5_STREAK_TURNS.
 func _check_mission_progress(advisor_id: String) -> bool:
+	if not preload("res://scripts/debug_terminal.gd").demo_is_unlocked():
+		return false
 	if MISSION_TEMPLATES.get(str(_roster_entry(advisor_id).get("role", "")), {}).is_empty():
 		return false
 	var done := advisor_missions_done(advisor_id)
@@ -7720,6 +7722,8 @@ func _apply_mission_policy(policy_id: String, label: String) -> String:
 # Re-apply the PERMANENT mission rewards (perm slices + the capstone) after a load,
 # based on how many missions each advisor has completed. Temp bonuses aren't restored.
 func reapply_mission_modifiers() -> void:
+	if not preload("res://scripts/debug_terminal.gd").demo_is_unlocked():
+		return
 	for advisor_id in advisor_missions_completed:
 		var tmpl: Dictionary = MISSION_TEMPLATES.get(str(_roster_entry(str(advisor_id)).get("role", "")), {})
 		if tmpl.is_empty():

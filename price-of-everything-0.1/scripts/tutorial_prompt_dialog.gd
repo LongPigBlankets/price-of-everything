@@ -76,7 +76,7 @@ func _build() -> void:
 	col.add_child(title)
 
 	var blurb := Label.new()
-	blurb.text = "The tutorial takes about ten minutes and teaches the basics — buying a building, powering it, and integrating your first supply chain. It's the fastest way to get your bearings."
+	blurb.text = "The tutorial takes about ten minutes and teaches the basics: buying a building, powering it, and integrating your first supply chain. It's the fastest way to get your bearings."
 	blurb.theme_type_variation = &"Body"
 	blurb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

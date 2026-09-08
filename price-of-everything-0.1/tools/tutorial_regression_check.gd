@@ -68,6 +68,9 @@ func shot(name: String) -> void:
 func _run() -> void:
 	await settle()
 	check(Tutorial.active, "tutorial boots and displays its coach")
+	var notice_bar := node_named("TopBar")
+	notice_bar._pop_research_toasts(["High Strength Glassmaking"])
+	check(notice_bar._research_toasts.is_empty(), "tutorial suppresses top left research notices")
 	check(get_tree().current_scene._expand_public_roads(20).is_empty(), "public road growth leaves tutorial infrastructure lessons in control")
 	check(not Terminal.demo_is_unlocked(), "demo loyalty starts locked")
 	Tutorial._jump_to("ui_primer")
