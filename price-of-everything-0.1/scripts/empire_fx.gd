@@ -32,8 +32,8 @@ const ANCHORS := {
 	"furnace": {
 		1: {"stacks": [{"x": 450, "y": 175, "r": 30, "kind": "auto"}, {"x": 560, "y": 165, "r": 30, "kind": "auto"}],
 			"fires": [{"x": 430, "y": 360, "rx": 50, "ry": 22}, {"x": 300, "y": 605, "rx": 22, "ry": 16}]},
-		2: {"stacks": [{"x": 215, "y": 95, "r": 30, "kind": "auto"}, {"x": 275, "y": 90, "r": 30, "kind": "auto"}],
-			"fires": [{"x": 235, "y": 345, "rx": 60, "ry": 30}, {"x": 145, "y": 565, "rx": 24, "ry": 18}]},
+		2: {"stacks": [{"x": 415, "y": 150, "r": 36, "kind": "auto"}, {"x": 560, "y": 140, "r": 36, "kind": "auto"}],
+			"fires": [{"x": 430, "y": 360, "rx": 60, "ry": 26}, {"x": 290, "y": 650, "rx": 22, "ry": 16}]},
 		3: {"stacks": [{"x": 455, "y": 80, "r": 40, "kind": "auto"}],
 			"fires": [{"x": 385, "y": 330, "rx": 60, "ry": 28}, {"x": 545, "y": 650, "rx": 42, "ry": 30}, {"x": 280, "y": 610, "rx": 22, "ry": 16}]},
 	},
@@ -65,23 +65,23 @@ const ANCHORS := {
 	"petro_refinery": {
 		1: {"stacks": [{"x": 150, "y": 185, "r": 18, "kind": "steam"}],
 			"fires": [{"x": 300, "y": 185, "rx": 14, "ry": 36}]},
-		2: {"stacks": [{"x": 150, "y": 120, "r": 22, "kind": "steam"}, {"x": 210, "y": 110, "r": 22, "kind": "steam"}],
-			"fires": [{"x": 300, "y": 178, "rx": 16, "ry": 40}, {"x": 330, "y": 168, "rx": 16, "ry": 40}]},
+		2: {"stacks": [{"x": 370, "y": 120, "r": 22, "kind": "steam"}, {"x": 440, "y": 128, "r": 22, "kind": "steam"}],
+			"fires": [{"x": 600, "y": 175, "rx": 16, "ry": 40}, {"x": 650, "y": 160, "rx": 16, "ry": 40}]},
 		3: {"stacks": [{"x": 380, "y": 96, "r": 18, "kind": "steam"}, {"x": 460, "y": 66, "r": 18, "kind": "steam"}],
 			"fires": [{"x": 620, "y": 215, "rx": 14, "ry": 36}, {"x": 700, "y": 200, "rx": 14, "ry": 36}, {"x": 760, "y": 185, "rx": 14, "ry": 36}]},
 	},
 	"poly_plant": {
 		1: {"stacks": [{"x": 570, "y": 206, "r": 12, "kind": "steam"}], "fires": []},
-		2: {"stacks": [{"x": 310, "y": 115, "r": 16, "kind": "steam"}, {"x": 280, "y": 105, "r": 16, "kind": "steam"}], "fires": []},
+		2: {"stacks": [{"x": 630, "y": 120, "r": 16, "kind": "steam"}, {"x": 700, "y": 135, "r": 16, "kind": "steam"}], "fires": []},
 		3: {"stacks": [{"x": 550, "y": 160, "r": 16, "kind": "steam"}, {"x": 630, "y": 200, "r": 16, "kind": "steam"}], "fires": []},
 	},
 	"chem_plant": {
 		1: {"stacks": [{"x": 310, "y": 296, "r": 16, "kind": "steam"}], "fires": []},
-		2: {"stacks": [{"x": 250, "y": 220, "r": 20, "kind": "steam"}, {"x": 300, "y": 240, "r": 20, "kind": "steam"}], "fires": []},
+		2: {"stacks": [{"x": 480, "y": 300, "r": 16, "kind": "steam"}, {"x": 385, "y": 480, "r": 14, "kind": "steam"}], "fires": []},
 		3: {"stacks": [{"x": 310, "y": 46, "r": 16, "kind": "steam"}, {"x": 480, "y": 380, "r": 16, "kind": "steam"}], "fires": []},
 	},
 	"assembly_plant": {
-		2: {"stacks": [{"x": 120, "y": 80, "r": 22, "kind": "steam"}], "fires": []},
+		2: {"stacks": [{"x": 200, "y": 110, "r": 22, "kind": "steam"}], "fires": []},
 		3: {"stacks": [{"x": 210, "y": 126, "r": 20, "kind": "steam"}], "fires": []},
 	},
 }
