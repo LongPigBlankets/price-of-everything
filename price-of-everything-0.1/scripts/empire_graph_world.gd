@@ -470,12 +470,12 @@ func _layout_frame(sc: float) -> void:
 				_occ.add_rect(kind, iid, Rect2(ctrl.position + r.position * sc, r.size * sc))
 	for p in _ports:
 		var pid := str(p["iid"])
-		if (_focus_target > 0.0 and _focus_members.has(pid)) or (_focus_t <= 0.0 and not MatchState.show_port_badge):
+		if (_focus_target > 0.0 and _focus_members.has(pid)) or (_focus_t <= 0.0 and _port_used(p)):
 			var half: Vector2 = (p["half"] as Vector2) * sc
 			_occ.add_rect("port", pid, Rect2(_screen_of(pid, p) - half, half * 2.0))
 	for bp in _buy_ports:
 		var bid := str(bp["iid"])
-		if _focus_t <= 0.0 or _focus_members.has(bid):
+		if _focus_members.has(bid) or (_focus_t <= 0.0 and _port_used(bp)):
 			var half2: Vector2 = (bp["half"] as Vector2) * sc
 			_occ.add_rect("port", bid, Rect2(_screen_of(bid, bp) - half2, half2 * 2.0))
 	# Routes. Market lines first (they dive the full height), then sells, then inputs — the
@@ -493,9 +493,6 @@ func _layout_frame(sc: float) -> void:
 		ports_top = minf(ports_top, _world_to_screen(p2["pos"] as Vector2).y - (p2["half"] as Vector2).y * sc)
 	for e2 in _sell_edges:
 		if not (_box_by_iid.has(e2["from"]) and _box_by_iid.has(e2["to"])):
-			continue
-		# With the badge on, an unfocused sell line is not drawn at all — it takes no space.
-		if MatchState.show_port_badge and not _focus_keeps(e2):
 			continue
 		var spath := _route_sell(_box_by_iid[e2["from"]], _box_by_iid[e2["to"]],
 			int(e2.get("bus", 0)), int(e2.get("bus_n", 1)),
@@ -681,7 +678,14 @@ func _assign_lanes() -> void:
 			var ei: int = int((ordered[li] as Array)[0])
 			arr[ei]["lane"] = li
 			arr[ei]["lane_n"] = ordered.size()
-	_sell_edges.sort_custom(func(x, y): return (_pos_by_iid[x["from"]] as Vector2).x < (_pos_by_iid[y["from"]] as Vector2).x)
+	# Sell buses: one lane each in the gutter before the sell-port column, ordered by the
+	# port's y then the source's y so the fan into each port never crosses itself.
+	_sell_edges.sort_custom(func(x, y):
+		var px: float = (_pos_by_iid.get(str(x["to"]), Vector2.ZERO) as Vector2).y
+		var py: float = (_pos_by_iid.get(str(y["to"]), Vector2.ZERO) as Vector2).y
+		if px != py:
+			return px < py
+		return (_pos_by_iid[x["from"]] as Vector2).y < (_pos_by_iid[y["from"]] as Vector2).y)
 	for i in range(_sell_edges.size()):
 		_sell_edges[i]["bus"] = i
 		_sell_edges[i]["bus_n"] = _sell_edges.size()
@@ -731,28 +735,22 @@ func _assign_lanes() -> void:
 		for i in range(marr.size()):
 			marr[i]["slot"] = (i * mn) / marr.size()
 			marr[i]["slot_n"] = mn
-	# Gutter lanes for the drops: every buy line into the same COLUMN gets its own lane in the
-	# gutter left of that column (a lane pitch apart, so a chip on one clears the others),
-	# whichever port it comes from. Ordered by port x, then target y — no self-crossing.
-	var by_col: Dictionary = {}
+	# Buy lines: one lane each in the port gutter (between the buy-port column and column 0),
+	# ordered by the port's y then the target's y so the fan out of each port never crosses
+	# itself; a line bound past column 0 also takes a lane in every gutter it crosses.
+	var marr2: Array = []
 	for e in _market_edges:
-		if not _pos_by_iid.has(str(e["to"])):
-			continue
-		var ck := str(int(round((_pos_by_iid[str(e["to"])] as Vector2).x / 10.0)))
-		if not by_col.has(ck):
-			by_col[ck] = []
-		by_col[ck].append(e)
-	for ck in by_col:
-		var carr: Array = by_col[ck]
-		carr.sort_custom(func(x, y):
-			var hx: float = (_pos_by_iid.get(str(x["from"]), Vector2.ZERO) as Vector2).x
-			var hy: float = (_pos_by_iid.get(str(y["from"]), Vector2.ZERO) as Vector2).x
-			if hx != hy:
-				return hx < hy
-			return (_pos_by_iid[str(x["to"])] as Vector2).y < (_pos_by_iid[str(y["to"])] as Vector2).y)
-		for i in range(carr.size()):
-			carr[i]["glane"] = i
-			carr[i]["glane_n"] = carr.size()
+		if _pos_by_iid.has(str(e["to"])):
+			marr2.append(e)
+	marr2.sort_custom(func(x, y):
+		var hx: float = (_pos_by_iid.get(str(x["from"]), Vector2.ZERO) as Vector2).y
+		var hy: float = (_pos_by_iid.get(str(y["from"]), Vector2.ZERO) as Vector2).y
+		if hx != hy:
+			return hx < hy
+		return (_pos_by_iid[str(x["to"])] as Vector2).y < (_pos_by_iid[str(y["to"])] as Vector2).y)
+	for i in range(marr2.size()):
+		marr2[i]["glane"] = i
+		marr2[i]["glane_n"] = marr2.size()
 
 
 func _reset_view() -> void:
@@ -809,6 +807,8 @@ func _layout_bbox() -> Rect2:
 	var first := true
 	for arr in [_nodes, _ports, _buy_ports]:
 		for n in arr:
+			if arr != _nodes and not _port_used(n):
+				continue
 			var r := Rect2((n["pos"] as Vector2) - (n["half"] as Vector2), (n["half"] as Vector2) * 2.0)
 			if first:
 				bb = r
@@ -816,6 +816,12 @@ func _layout_bbox() -> Rect2:
 			else:
 				bb = bb.merge(r)
 	return bb
+
+
+## A port is shown on a side only when that side uses it (owner 2026-09-10: "checked
+## independently — we could have 3 buying ports and 2 selling ports").
+func _port_used(p: Dictionary) -> bool:
+	return bool(p.get("used", true))
 
 
 func _world_to_screen(p: Vector2) -> Vector2:
@@ -1177,7 +1183,7 @@ func _draw() -> void:
 	for r2 in _frame["sell"]:
 		var e2: Dictionary = r2["e"]
 		var path: PackedVector2Array = r2["path"]
-		var sa := 1.0 if _focus_keeps(e2) else (0.0 if MatchState.show_port_badge else off_a)
+		var sa := 1.0 if _focus_keeps(e2) else off_a
 		if sa <= 0.01:
 			continue
 		if bool(e2.get("actual", true)):
@@ -1216,14 +1222,16 @@ func _draw() -> void:
 	# ships to market" at rest, and the port appears — as its 2x building sprite — only when
 	# a mini-chart opens on one. With badges off the hexes return, because then the sell
 	# lines need somewhere visible to land.
+	# Ports are TERMINALS of the flow now (owner 2026-09-10): the sell column on the right
+	# always shows the ports in use, badges or not; a port unused on a side is hidden there.
 	for p in _ports:
 		var pid := str(p["iid"])
 		if _focus_target > 0.0 and _focus_members.has(pid):
 			_draw_port(p, font, sc)
-		elif _focus_t <= 0.0 and not MatchState.show_port_badge:
+		elif _focus_t <= 0.0 and _port_used(p):
 			_draw_port(p, font, sc)
 	for bp in _buy_ports:
-		if _focus_t <= 0.0 or _focus_members.has(str(bp["iid"])):
+		if _focus_members.has(str(bp["iid"])) or (_focus_t <= 0.0 and _port_used(bp)):
 			_draw_port(bp, font, sc)
 
 	# Last, so it sits over the lines and chips it explains.
@@ -1356,75 +1364,82 @@ func _iso_route_v(start: Vector2, end: Vector2, stub: float, bias: float,
 ## Orthogonal route building-bottom -> horizontal bus lane -> one of the port's <=5 top-edge entry
 ## slots (spaced 2-1-2). Lines that share a slot (when a port has >5 feeders) converge on the same
 ## entry point, so they visually merge into the port.
-func _route_sell(a: Dictionary, b: Dictionary, bus: int, bus_n: int, slot: int, slot_n: int, ports_top: float, sc: float) -> PackedVector2Array:
+func _route_sell(a: Dictionary, b: Dictionary, bus: int, _bus_n: int, _slot: int, _slot_n: int, _ports_top: float, sc: float) -> PackedVector2Array:
+	# FLOW layout: the sell port is a terminal on the RIGHT. Out of the plate's right side,
+	# along its bus lane in the gutter before the port column to the port's row, then into
+	# the port's left edge. A source short of the last column has buildings in its way at its
+	# row, so the cross-run then goes through a row gap via the gutter right of its column.
 	var ca := _plate_screen_of(str(a["iid"]), a)
-	var cb := _plate_screen_of(str(b["iid"]), b)
-	# PLATE extents, not layout extents — see `plate_half` in empire_graph.gd.
+	var cb := _screen_of(str(b["iid"]), b)
 	var ha: Vector2 = (a.get("plate_half", a["half"]) as Vector2) * sc
-	var hb: Vector2 = (b.get("plate_half", b["half"]) as Vector2) * sc
-	var start := Vector2(ca.x, ca.y + ha.y)
-	# Entry point along the port hex's flat top edge (which spans cb.x +/- hb.x*0.5).
-	var frac := float(slot + 1) / float(slot_n + 1)
-	var entry_x := cb.x - hb.x * 0.5 + frac * hb.x
-	var entry := Vector2(entry_x, cb.y - hb.y)
-	# The old horizontal bus lane is gone: with a 45-degree run the stagger comes from WHERE the
-	# diagonal starts, which keeps neighbours apart without a shared horizontal rail that had to
-	# be squeezed above the port row.
-	var bias := float(bus + 1) / float(maxi(bus_n, 1) + 1)
+	var hb: Vector2 = (b["half"] as Vector2) * sc
+	var start := Vector2(ca.x + ha.x, ca.y)
+	var end := Vector2(cb.x - hb.x, cb.y)
+	var lane_x := cb.x - hb.x - (_GUTTER_INSET + float(bus) * _GUTTER_LANE) * sc
 	var obs := _sprite_obstacles(str(a["iid"]), str(b["iid"]), sc)
-	var best := _iso_route_v(start, entry, 26.0 * sc, bias, sc)
+	var best := _route_via(start, end, lane_x, end.y, lane_x, sc)
 	if not _blocked(best, obs):
 		return best
-	for k in range(1, 8):
-		var alt := _iso_route_v(start, entry, 26.0 * sc, float(k) / 8.0, sc)
-		if not _blocked(alt, obs):
-			return alt
+	var node_h: float = (a["half"] as Vector2).y * sc
+	var gx := start.x + (48.0 + _GUTTER_INSET + float(bus) * _GUTTER_LANE) * sc
+	for k in range(0, 7):
+		for sgn_value in [-1.0, 1.0]:
+			var sgn: float = sgn_value
+			var yf: float = ca.y + sgn * (node_h + (30.0 + float(k) * 70.0) * sc)
+			var alt := _route_via(start, end, gx, yf, lane_x, sc)
+			if not _blocked(alt, obs):
+				return alt
 	return best
 
 
-## Orthogonal route market-hub-bottom -> horizontal bus lane -> building top. The exact mirror
-## of _route_sell: exits spread across the hub's flat BOTTOM edge, one shared bus lane hangs
-## below the hub, and each line drops vertically into its building's top edge.
-func _route_market(hub: Dictionary, b: Dictionary, slot: int, slot_n: int, sc: float) -> PackedVector2Array:
+func _route_market(hub: Dictionary, b: Dictionary, _slot: int, _slot_n: int, sc: float) -> PackedVector2Array:
+	# FLOW layout: the buy port is a terminal on the LEFT. Out of its right edge, along its
+	# lane in the port gutter to the target's row, then in through the plate's left side —
+	# an input line like any other. A target past column 0 has column-0 buildings in the way
+	# at its row, so the cross-run then goes through a row gap and the last drop takes a lane
+	# in the gutter left of the target's column.
 	var ch := _screen_of(str(hub["iid"]), hub)
 	var cb := _plate_screen_of(str(b["iid"]), b)
 	var hh: Vector2 = (hub.get("plate_half", hub["half"]) as Vector2) * sc
 	var hb: Vector2 = (b.get("plate_half", b["half"]) as Vector2) * sc
-	var frac := float(slot + 1) / float(slot_n + 1)
-	var exit_x := ch.x - hh.x * 0.5 + frac * hh.x
-	var exit := Vector2(exit_x, ch.y + hh.y)
-	# Buy lines dive the full height of the composition. Dropped straight onto the plate's
-	# top they ran through every sprite stacked above the target in its column (measured:
-	# all six route|sprite collisions in the audit were these), so the drop now runs in the
-	# GUTTER beside the column and turns into the plate's side — the way input lines arrive.
-	var obs := _sprite_obstacles(str(hub["iid"]), str(b["iid"]), sc)
-	var end := Vector2(cb.x - hb.x, cb.y)
 	var glane := int(b_edge_glane(hub, b))
-	var stub := (26.0 + float(slot) * 14.0) * sc
-	# The plate sits 48px inside the sprite box; the first lane clears the box by a margin,
-	# the rest step out a lane pitch each (empire_layout.LANE_PITCH — the gutter was sized for it).
-	var lane_x := cb.x - hb.x - (48.0 + _GUTTER_INSET + float(glane) * _GUTTER_LANE) * sc
-	var best := _gutter_route(exit, end, stub, lane_x, sc)
+	var start := Vector2(ch.x + hh.x, ch.y)
+	var end := Vector2(cb.x - hb.x, cb.y)
+	var lane_x := ch.x + hh.x + (_GUTTER_INSET + float(glane) * _GUTTER_LANE) * sc
+	var obs := _sprite_obstacles(str(hub["iid"]), str(b["iid"]), sc)
+	var best := _route_via(start, end, lane_x, end.y, end.x - (48.0 + _GUTTER_INSET) * sc, sc)
 	if not _blocked(best, obs):
 		return best
-	# Blocked: first move the cross-run lower (it is usually the run under the port that
-	# cuts the top building), keeping the lane; only then step the lane out, by half
-	# pitches so it never lands exactly on another line's lane.
-	for j in range(1, 7):
-		var alt0 := _gutter_route(exit, end, stub + float(j) * 34.0 * sc, lane_x, sc)
-		if not _blocked(alt0, obs):
-			return alt0
-	for k in range(1, 8):
-		var alt := _gutter_route(exit, end, stub, lane_x - (float(k) + 0.5) * _GUTTER_LANE * sc, sc)
-		if not _blocked(alt, obs):
-			return alt
-	# The far side of the plate, when the near gutter is full.
-	for k2 in range(0, 6):
-		var end_r := Vector2(cb.x + hb.x, cb.y)
-		var alt2 := _gutter_route(exit, end_r, stub, cb.x + hb.x + (48.0 + _GUTTER_INSET + float(k2) * _GUTTER_LANE) * sc, sc)
-		if not _blocked(alt2, obs):
-			return alt2
+	# Through a row gap: the target's own top/bottom gap first, then further out.
+	var node_h: float = (b["half"] as Vector2).y * sc
+	var gx := end.x - (48.0 + _GUTTER_INSET + float(glane) * _GUTTER_LANE) * sc
+	for k in range(0, 7):
+		for sgn_value in [-1.0, 1.0]:
+			var sgn: float = sgn_value
+			var yf: float = cb.y + sgn * (node_h + (30.0 + float(k) * 70.0) * sc)
+			var alt := _route_via(start, end, lane_x, yf, gx, sc)
+			if not _blocked(alt, obs):
+				return alt
 	return best
+
+
+## start -> (x1, start.y) -> (x1, y_mid) -> (x2, y_mid) -> (x2, end.y) -> end, chamfered, with
+## the degenerate legs dropped (y_mid == end.y collapses it to the plain three-bend route).
+func _route_via(start: Vector2, end: Vector2, x1: float, y_mid: float, x2: float, sc: float) -> PackedVector2Array:
+	var pts := PackedVector2Array([start, Vector2(x1, start.y)])
+	if absf(y_mid - end.y) < 1.0:
+		pts.append(Vector2(x1, end.y))
+	else:
+		pts.append(Vector2(x1, y_mid))
+		pts.append(Vector2(x2, y_mid))
+		pts.append(Vector2(x2, end.y))
+	pts.append(end)
+	# drop repeated points
+	var clean := PackedVector2Array()
+	for p in pts:
+		if clean.is_empty() or clean[clean.size() - 1].distance_to(p) > 0.5:
+			clean.append(p)
+	return _chamfer(clean, _CHAMFER * sc)
 
 
 ## The gutter lane `_assign_lanes` gave the buy line hub -> b (0 when unknown).
@@ -1659,8 +1674,6 @@ func _draw_edge_good_chip(ch: Dictionary, _sc: float) -> void:
 	var a := 1.0 if _focus_keeps(e) else off_a
 	if kind == "market":
 		a *= 0.85
-	elif kind == "sell" and not _focus_keeps(e) and MatchState.show_port_badge:
-		a = 0.0
 	if a <= 0.01:
 		return
 	var rect: Rect2 = ch["rect"]

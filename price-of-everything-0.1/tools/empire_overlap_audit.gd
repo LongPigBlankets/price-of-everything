@@ -9,16 +9,15 @@ extends Node
 ## Exit 0 = within baseline, 1 = a class regressed (or the view could not be built).
 
 ## Frozen counts (kind pairs sorted alphabetically, "a|b"). Missing key = 0 allowed.
-## 2026-09-10 freeze, 13 nodes / 28 routes / 13 chips: 9 collisions, all chips that found
-## no free slot on their line (a buy line's runs near its port are short and crowded) and
-## fell back to 40% along it. Started at 39 before the occupancy model. Item 3 of the
-## overlap plan (every run confined to a gutter) is what retires these.
+## 2026-09-10 freeze after the FLOW layout (buy ports left, sell ports right): 13 nodes /
+## 38 routes / 23 chips, 2 collisions — two buy-line chips with no free slot in the port
+## gutter. Was 39 before the occupancy model and 9 with the top/bottom port rows.
 const BASELINE := {
-	"chip|chip": 1,
+	"chip|chip": 0,
 	"chip|sprite": 0,
 	"chip|plate": 0,
-	"chip|port": 1,
-	"chip|route": 7,
+	"chip|port": 0,
+	"chip|route": 2,
 	"plate|plate": 0,
 	"sprite|sprite": 0,
 	"plate|sprite": 0,

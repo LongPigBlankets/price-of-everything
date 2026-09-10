@@ -35,12 +35,11 @@ static func populate(world: Object, terrain: Node, trading: bool = true) -> Dict
 	var g: Dictionary = build(terrain)
 	if (g.get("nodes", []) as Array).is_empty():
 		return g
-	# Solved with the sell edges and ports in every case: they are what groups the buildings
-	# into columns per destination port, which is the layout worth sharing.
-	EmpireLayout.solve(g["nodes"], g["edges"], g["sell_edges"], g["ports"])
-	var area: Rect2 = EmpireLayout.bbox_of(g["nodes"])
-	EmpireLayout.place_ports(g["ports"], area)
-	EmpireLayout.place_buy_ports(g["buy_ports"], g["ports"], area)
+	# The FLOW layout (owner 2026-09-10): buy ports left, bands per sell port, sell ports
+	# right; ports not used for that side are placed but flagged unused (the world hides them
+	# at rest and a mini-chart can still bring one in).
+	EmpireLayout.solve_flow(g["nodes"], g["edges"], g["sell_edges"], g["ports"],
+		g["buy_ports"], g["market_edges"])
 	if world != null and world.has_method("set_graph"):
 		world.call("set_graph", g["nodes"], g["edges"],
 			g["ports"] if trading else [],
