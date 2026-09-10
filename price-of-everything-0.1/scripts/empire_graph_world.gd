@@ -24,7 +24,7 @@ const _ZOOM_MIN := 0.05                                     # absolute floor; th
                                                             # empire (7.6 viewports tall) puts at ~0.12 —
                                                             # the old 0.2 clamped above it and broke
                                                             # "see the entire empire at a glance"
-const _ZOOM_MAX := 2.5
+const _ZOOM_MAX := 3.75                                     # owner 2026-09-10: 50% deeper than 2.5
 const _ZOOM_STEP := 1.12
 const _PAN_SPEED := 900.0
 const _MIN_GAP := 20.0                                      # hard minimum screen gap between panels, at any zoom
@@ -82,7 +82,7 @@ var _zoom_floor: float = _ZOOM_MIN
 # from their web position to a focus position, everyone else fades out. Depth ONE only — the
 # selection, whatever feeds its inputs, and whatever it feeds (buildings or ports). Nothing
 # beyond that: a second ring is what turns the goods graph's focus into a second web.
-const _FOCUS_SECS := 0.28
+const _FOCUS_SECS := 0.84                   # owner 2026-09-10: three times the original 0.28
 const _FOCUS_COL := 620.0                   # column spacing (sprite panel is 400 wide)
 const _FOCUS_ROW := 660.0                   # row spacing (sprite panel is 580 tall)
 var _focus_iid := ""
@@ -367,6 +367,9 @@ func _reposition_panels() -> void:
 		# footprint is the panel PLUS its effects envelope (a plume rising above the sprite,
 		# the lorry's run), so a neighbour is pushed clear of the smoke, not just the card.
 		var ctrl: Control = pan["ctrl"]
+		# Past the furniture cap the card holds its size and only the SPRITE keeps growing.
+		if ctrl.has_method("set_sprite_boost"):
+			ctrl.call("set_sprite_boost", maxf(1.0, _view_zoom / maxf(sc, 0.0001)))
 		var fp := Rect2(Vector2.ZERO, ctrl.size)
 		var fps: Dictionary = ctrl.call("footprints")
 		var fxr: Rect2 = fps.get("fx", Rect2())

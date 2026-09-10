@@ -44,6 +44,15 @@ func _ready() -> void:
 				_shot("/tmp/poe_mass_hover_%s.png" % variant)
 				ctrl.call("_on_hover", false)
 				break
+	# POE_EMPIRE_ZOOM: zoom all the way in on the first panel and shoot — the card must hold
+	# its size while the sprite keeps growing.
+	if gw != null and OS.has_environment("POE_EMPIRE_ZOOM"):
+		var first: Control = (gw.get("_panels") as Array)[0]["ctrl"]
+		var at: Vector2 = first.global_position + first.size * first.scale * 0.5
+		gw.call("_zoom_at", at, 1000.0)
+		await _settle(12)
+		print("ZOOM: ", gw.get("_view_zoom"))
+		_shot("/tmp/poe_mass_zoom_%s.png" % variant)
 	if OS.has_environment("POE_EMPIRE_THRESHOLD"):
 		get_tree().quit(0)
 		return

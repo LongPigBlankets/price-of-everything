@@ -43,6 +43,9 @@ var _sprite_content := Rect2()  # the sprite's OPAQUE box in panel coords (sprit
 var _fx_rect := Rect2()         # the animated effects' reach in panel coords (empire_fx envelope)
 var _full: Control = null       # the hover-only full card (sprite view); null in classic mode
 var _full_rect := Rect2()       # the reserve the full card fills (sprite view)
+var _hover_on := false
+var _sprite_root: Control = null   # sprite + effects + badge; scaled by the zoom boost
+var _sprite_boost := 1.0
                                 # It can extend PAST the Control (a sprite that fills its frame
                                 # pushes the hex off the corner), which is what the overlap probe
                                 # checks against neighbours.
@@ -100,7 +103,17 @@ func setup(node: Dictionary) -> void:
 	_bg_style.shadow_color = Color(0, 0, 0, 0.45)
 	_bg_style.shadow_size = int(round(7.0 * cs))
 
-	# The big free-floating sprite, top-centred, with the plate attached beneath it.
+	# The big free-floating sprite, top-centred, with the plate attached beneath it. The
+	# sprite, its effects and its badge live under one root that the world scales past the
+	# furniture cap (owner 2026-09-10: zooming further grows the sprite, never the card),
+	# pivoting on the sprite's bottom-centre so it stays seated on its plate.
+	_sprite_root = Control.new()
+	_sprite_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_sprite_root.position = Vector2.ZERO
+	_sprite_root.size = total
+	_sprite_root.pivot_offset = Vector2(total.x * 0.5, SPRITE_PX)
+	add_child(_sprite_root)
+	_sprite_boost = 1.0
 	if sprite_mode:
 		var spr := TextureRect.new()
 		spr.texture = sprite_tex
@@ -116,7 +129,7 @@ func setup(node: Dictionary) -> void:
 		# unnecessary: the sprite's padding is TRANSPARENT, so a line crossing the margin was
 		# always visible through it. The only lines that were ever lost were the ones crossing
 		# the opaque building, and the router now refuses to cross that (see `sprite_rect`).
-		add_child(spr)
+		_sprite_root.add_child(spr)
 
 		# CHIMNEY SMOKE / STEAM + FURNACE FLICKER over the sprite (owner, 2026-09-10). A site
 		# has no chimney yet and no fire, so nothing is added while under construction. Sits
@@ -127,7 +140,7 @@ func setup(node: Dictionary) -> void:
 				var fx := EmpireFx.new()
 				fx.position = spr.position
 				fx.size = spr.size
-				add_child(fx)
+				_sprite_root.add_child(fx)
 				fx.setup(iname, _level, EmpireFx.recipe_emits_carbon(instance_id), instance_id, SPRITE_PX)
 				# The effects' reach, for the occupancy registry: the plume's whole rise, the
 				# lorry's whole run — so the space they use is the building's, not its neighbour's.
@@ -161,7 +174,7 @@ func setup(node: Dictionary) -> void:
 			var badge := Control.new()
 			badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			badge.draw.connect(_draw_port_badge.bind(badge, bc, bh, badge_icon))
-			add_child(badge)
+			_sprite_root.add_child(badge)
 			_badge = badge
 
 	if sprite_mode:
@@ -172,7 +185,10 @@ func setup(node: Dictionary) -> void:
 		_build_content(self, _plate_rect, cs, node, true)
 		_full = Control.new()
 		_full.visible = false
-		_full.mouse_filter = Control.MOUSE_FILTER_STOP
+		# The card never takes the pointer (owner 2026-09-10: a card that catches the mouse
+		# flickers between the two states as it appears under it). The PANEL's rect — sprite
+		# plus the full-card reserve — is the hover area, and the card only shows inside it.
+		_full.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_full.position = _full_rect.position
 		_full.size = _full_rect.size
 		_full.draw.connect(_draw_plate_on.bind(_full, Rect2(Vector2.ZERO, _full_rect.size)))
@@ -283,13 +299,21 @@ func _build_content(host: Control, rect: Rect2, cs: float, node: Dictionary, com
 		host.add_child(lt)
 
 
-## The full card comes and goes with the pointer; raised so it draws over the neighbours.
+## The full card comes and goes with the pointer; raised (by z_index, which does not reorder
+## the tree and so cannot re-fire hover events) so it draws over the neighbours. Hiding
+## waits a beat so a pointer skimming the plate's edge does not flicker the card.
 func _on_hover(on: bool) -> void:
 	if _full == null:
 		return
-	_full.visible = on
+	_hover_on = on
 	if on:
-		move_to_front()
+		_full.visible = true
+		z_index = 5
+		return
+	await get_tree().create_timer(0.15).timeout
+	if not _hover_on and is_instance_valid(_full):
+		_full.visible = false
+		z_index = 0
 
 
 ## Open this building's detail panel on click (reuses the existing deep-link path in world_map).
@@ -470,16 +494,33 @@ func _grad_colors(pts: PackedVector2Array, light: Color, dark: Color) -> PackedC
 ## chip) is showing, the badge just expands the same relationship a second time (owner, 27
 ## Aug). No-op for a panel with no badge at all. Called every frame from
 ## empire_graph_world.gd's _reposition_panels, alongside the panel's own fade/visibility.
+## Past the furniture cap the world grows the sprite alone: `k` = zoom / cap, about the
+## sprite's bottom-centre. 1.0 = the plain layout.
+func set_sprite_boost(k: float) -> void:
+	if _sprite_root == null or is_equal_approx(k, _sprite_boost):
+		return
+	_sprite_boost = k
+	_sprite_root.scale = Vector2(k, k)
+
+
 ## What this panel occupies, in its own (unscaled) coordinates, by kind — the occupancy
-## registry's input. Empty rects mean "nothing of that kind".
+## registry's input. Empty rects mean "nothing of that kind". Sprite, effects and badge
+## carry the zoom boost; the plate is the RESERVE, not the compact plate, so the hover card
+## finds its space free.
 func footprints() -> Dictionary:
 	return {
-		"sprite": _sprite_content,
-		# The RESERVE, not the compact plate: the hover card must find its space free.
+		"sprite": _boosted(_sprite_content),
 		"plate": _full_rect if _full_rect.size.x > 0.0 else _plate_rect,
-		"badge": _badge_rect if (_badge != null and _badge.visible) else Rect2(),
-		"fx": _fx_rect,
+		"badge": _boosted(_badge_rect) if (_badge != null and _badge.visible) else Rect2(),
+		"fx": _boosted(_fx_rect),
 	}
+
+
+func _boosted(r: Rect2) -> Rect2:
+	if r.size.x <= 0.0 or _sprite_root == null or is_equal_approx(_sprite_boost, 1.0):
+		return r
+	var pivot := _sprite_root.pivot_offset
+	return Rect2(pivot + (r.position - pivot) * _sprite_boost, r.size * _sprite_boost)
 
 
 func set_badge_hidden(hidden: bool) -> void:
