@@ -232,7 +232,7 @@ const LORRY_REAR := Vector2(28.3, 97.8)    # rear-bottom-centre, lorry texture p
 const LORRY_LIGHTS := [Vector2(12.7, 79.7)]
 const CRATE_FOOT := Vector2(27.8, 40.9)    # bottom-centre, crate texture px
 const BAY_PERIOD := 26.0
-const BAY_FAR := 3.4                       # world units the lorry starts/ends away from `stop`
+const BAY_FAR := 2.4                       # world units the lorry starts/ends away from `stop`
 const BAY_TIMES := {"open": 2.0, "reverse": 3.5, "crates": 7.5, "close": 11.5, "leave": 18.0, "gone": 21.5}
 const BAY_CRATES := 3
 const DOOR_INTERIOR := Color(0.06, 0.08, 0.13)
@@ -321,6 +321,64 @@ static func recipe_emits_carbon(instance_id: String) -> bool:
 
 static func has_effects(internal_name: String, level: int) -> bool:
 	return not anchors_for(internal_name, level).is_empty()
+
+
+## The screen space the effects can reach, in SPRITE px (800 space), as one rect: the plume's
+## full drift and growth, a flame lick's height, the cable polylines, the lorry's whole run,
+## the arm frames' box. The empire view's occupancy registry and the layout's row gaps read
+## this so a plume is part of a building's footprint, not a surprise on the node above.
+static func envelope_for(internal_name: String, level: int) -> Rect2:
+	var spec: Dictionary = anchors_for(internal_name, level)
+	if spec.is_empty():
+		return Rect2()
+	var env := Rect2()
+	var first := true
+	var grow := func(r: Rect2) -> void:
+		if first:
+			env = r
+			first = false
+		else:
+			env = env.merge(r)
+	for st_value in spec.get("stacks", []):
+		var st: Dictionary = st_value
+		var r := float(st["r"])
+		var c0 := Vector2(float(st["x"]), float(st["y"]) - PUFF_LIFT * r)
+		var c1 := c0 + DRIFT_DIR.normalized() * DRIFT_R * r
+		var rad := END_SCALE * PUFF_TEX_SPAN * r
+		grow.call(Rect2(c0 - Vector2(rad, rad), Vector2(rad, rad) * 2.0))
+		grow.call(Rect2(c1 - Vector2(rad, rad), Vector2(rad, rad) * 2.0))
+	for f_value in spec.get("fires", []):
+		var f: Dictionary = f_value
+		if f.has("w"):
+			grow.call(Rect2(float(f["x"]), float(f["y"]), float(f["w"]), float(f["h"])))
+			continue
+		var rx := float(f["rx"]); var ry := float(f["ry"])
+		grow.call(Rect2(float(f["x"]) - rx * 1.45, float(f["y"]) - ry * 1.45, rx * 2.9, ry * 2.9))
+		var h := float(f.get("lick", 0.0))
+		if h > 0.0:
+			var root := Vector2(float(f["x"]), float(f["y"]) + ry * 0.7)
+			grow.call(Rect2(root.x - h * 0.4, root.y - h * 1.12, h * 0.8, h * 1.12))
+	for c_value in spec.get("cables", []):
+		for xy in c_value:
+			grow.call(Rect2(float(xy[0]) - 4.0, float(xy[1]) - 4.0, 8.0, 8.0))
+	if spec.has("bay"):
+		var b: Dictionary = spec["bay"]
+		var mirror := str(b["axis"]) == "y"
+		var dir := Vector2(0.8660, 0.5) if not mirror else Vector2(-0.8660, 0.5)
+		var stop := Vector2(float(b["stop"][0]), float(b["stop"][1]))
+		var size := LORRY_TEX.get_size() * BAY_FACTOR
+		var rear := LORRY_REAR * BAY_FACTOR
+		for dist_value in [0.0, BAY_FAR]:
+			var dist: float = dist_value
+			var pos: Vector2 = stop + dir * dist * BAY_UNIT_PX
+			var left: float = pos.x - (size.x - rear.x if mirror else rear.x)
+			grow.call(Rect2(left, pos.y - rear.y, size.x, size.y))
+		for xy2 in b["door"]:
+			grow.call(Rect2(float(xy2[0]), float(xy2[1]), 1.0, 1.0))
+	if spec.has("arms"):
+		var r2: Array = spec["arms"]["rect"]
+		grow.call(Rect2(float(r2[0]), float(r2[1]), float(r2[2]), float(r2[3])))
+	return env
 
 
 ## `box_px` is the size this Control draws the 800px sprite at (the empire view: 400).

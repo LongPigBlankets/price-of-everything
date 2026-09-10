@@ -21,8 +21,19 @@ const MAX_ITERS := 80
 const ANCHOR_PULL := 0.02                          # per-iter fraction pulling a node back to its seed
 
 # Layered (supply-chain) layout spacing. Generous so panels read as airy columns.
-const COL_SPACING := 470.0                         # horizontal distance between supply layers (columns)
+const COL_SPACING := 470.0                         # legacy column pitch (kept for callers/tests)
 const ROW_GAP := 90.0                              # vertical gap between stacked nodes in a column
+# GUTTERS SIZED FROM DEMAND (owner 2026-09-10). The gap between two adjacent columns is not a
+# constant: it holds every line whose vertical run crosses it, a lane apart, plus the good-icon
+# chip those lines carry and a margin each side. A column pair with no lines keeps MIN_GUTTER;
+# six lanes get 6*LANE_PITCH + CHIP_W + 2*GUTTER_MARGIN. The row gap likewise grows by the
+# lower node's `top_extra` — how far its animated effects (a chimney plume) reach above its
+# box — so a plume never rises into the plate of the node above it.
+const LANE_PITCH := 42.0                           # lane-to-lane distance: half a chip + a gap, so a
+                                                   # chip centred on its lane clears the lanes beside it
+const CHIP_W := 74.0                               # the edge good-icon chip (empire_graph_world._LANE_CHIP)
+const GUTTER_MARGIN := 24.0                        # clear space between a lane and the sprite beside it
+const MIN_GUTTER := 70.0                           # column gap with no lines at all (the old 470-400)
 const COMP_GAP := 230.0                            # gap between separate chains / isolated nodes
 const FLOW_WIDTH := 3400.0                         # legacy wrap width (no-sector path only)
 const BARY_SWEEPS := 4                             # crossing-reduction passes
@@ -59,7 +70,11 @@ static func bbox_of(nodes: Array) -> Rect2:
 	var bb := Rect2()
 	var first := true
 	for n in nodes:
-		var r := Rect2((n["pos"] as Vector2) - (n["half"] as Vector2), (n["half"] as Vector2) * 2.0)
+		# The box includes the node's effects headroom (a plume above a chimney), so the port
+		# row placed above the block clears the smoke too.
+		var te := float(n.get("top_extra", 0.0))
+		var r := Rect2((n["pos"] as Vector2) - (n["half"] as Vector2) - Vector2(0.0, te),
+			(n["half"] as Vector2) * 2.0 + Vector2(0.0, te))
 		if first:
 			bb = r
 			first = false
@@ -432,26 +447,69 @@ static func _layout_component(ids: Array, by_iid: Dictionary, in_e: Dictionary, 
 		_cluster_by_tile(cols[c], by_iid)
 	_reindex(cols, col_keys, order)
 
-	# Assign positions: x by column, y stacked (accounting for box heights), each column centred on 0.
+	# Gutter demand: how many lines cross the gap after each column (an edge from column f to
+	# column t runs through every gutter f..t-1). Column widths are the widest node in them.
+	var col_of: Dictionary = {}
+	for ci in range(col_keys.size()):
+		for iid in cols[col_keys[ci]]:
+			col_of[iid] = ci
+	var lanes: Array = []
+	var col_half_w: Array = []
+	for ci in range(col_keys.size()):
+		lanes.append(0)
+		var w := 0.0
+		for iid in cols[col_keys[ci]]:
+			w = maxf(w, (by_iid[iid]["half"] as Vector2).x)
+		col_half_w.append(w)
+	for iid in ids:
+		for t in out_e[iid]:
+			if not col_of.has(t):
+				continue
+			for g in range(int(col_of[iid]), int(col_of[t])):
+				lanes[g] = int(lanes[g]) + 1
+	# Buy lines drop down the gutter LEFT of their target's column (one lane each); the
+	# leftmost column's drops need a gutter of their own, kept as the component's left margin.
+	var left_lanes := 0
+	for ci in range(col_keys.size()):
+		for iid in cols[col_keys[ci]]:
+			var m := int(by_iid[iid].get("market_inputs", 0))
+			if ci == 0:
+				left_lanes += m
+			else:
+				lanes[ci - 1] = int(lanes[ci - 1]) + m
+	var left_margin := gutter_width(left_lanes) - MIN_GUTTER
+	var col_x: Array = [left_margin]
+	for ci in range(1, col_keys.size()):
+		col_x.append(float(col_x[ci - 1]) + float(col_half_w[ci - 1]) + gutter_width(int(lanes[ci - 1]))
+			+ float(col_half_w[ci]))
+
+	# Assign positions: x by column, y stacked (box heights plus each lower node's effects
+	# headroom), each column centred on 0.
 	var local: Dictionary = {}
 	for ci in range(col_keys.size()):
 		var c = col_keys[ci]
 		var col: Array = cols[c]
 		var total_h := 0.0
-		for iid in col:
-			total_h += (by_iid[iid]["half"] as Vector2).y * 2.0 + ROW_GAP
-		total_h -= ROW_GAP
+		for k in range(col.size()):
+			total_h += (by_iid[col[k]]["half"] as Vector2).y * 2.0 + (row_gap_before(by_iid[col[k]]) if k > 0 else 0.0)
 		var y := -total_h * 0.5
-		for iid in col:
+		for k in range(col.size()):
+			var iid = col[k]
 			var h := (by_iid[iid]["half"] as Vector2).y * 2.0
-			local[iid] = Vector2(float(ci) * COL_SPACING, y + h * 0.5)
-			y += h + ROW_GAP
+			if k > 0:
+				y += row_gap_before(by_iid[iid])
+			local[iid] = Vector2(float(col_x[ci]), y + h * 0.5)
+			y += h
 
 	# Normalize so the component's bounding box starts at the origin; return its size for packing.
+	# The box includes each node's effects headroom, so packed rows clear the plumes too.
 	var bb := Rect2()
 	var first := true
 	for iid in local:
-		var r := Rect2((local[iid] as Vector2) - (by_iid[iid]["half"] as Vector2), (by_iid[iid]["half"] as Vector2) * 2.0)
+		var te := float(by_iid[iid].get("top_extra", 0.0))
+		var lm := left_margin if int(col_of[iid]) == 0 else 0.0
+		var r := Rect2((local[iid] as Vector2) - (by_iid[iid]["half"] as Vector2) - Vector2(lm, te),
+			(by_iid[iid]["half"] as Vector2) * 2.0 + Vector2(lm, te))
 		if first:
 			bb = r
 			first = false
@@ -460,6 +518,19 @@ static func _layout_component(ids: Array, by_iid: Dictionary, in_e: Dictionary, 
 	for iid in local:
 		local[iid] = (local[iid] as Vector2) - bb.position
 	return {"local": local, "size": bb.size}
+
+
+## The clear gap a column pair needs for `n` lines: lanes, one chip, a margin each side.
+static func gutter_width(n: int) -> float:
+	if n <= 0:
+		return MIN_GUTTER
+	return maxf(MIN_GUTTER, float(n) * LANE_PITCH + CHIP_W + 2.0 * GUTTER_MARGIN)
+
+
+## The vertical gap above a node stacked under another: the base row gap, or the node's
+## effects headroom plus a margin when that reaches further.
+static func row_gap_before(node: Dictionary) -> float:
+	return maxf(ROW_GAP, float(node.get("top_extra", 0.0)) + GUTTER_MARGIN)
 
 
 ## Reorder one column so tile-mates sit together: groups keyed by tile_id, each group placed

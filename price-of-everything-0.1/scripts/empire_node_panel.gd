@@ -39,6 +39,8 @@ var _rivet_inset := 13.0
 var _plate_rect := Rect2()      # metal-plate sub-rect (the whole Control in classic mode)
 var _badge: Control = null      # the port-badge Control itself, so set_badge_hidden can toggle it
 var _badge_rect := Rect2()      # port badge's box in panel coords; empty when there is no badge.
+var _sprite_content := Rect2()  # the sprite's OPAQUE box in panel coords (sprite view)
+var _fx_rect := Rect2()         # the animated effects' reach in panel coords (empire_fx envelope)
                                 # It can extend PAST the Control (a sprite that fills its frame
                                 # pushes the hex off the corner), which is what the overlap probe
                                 # checks against neighbours.
@@ -69,6 +71,13 @@ func setup(node: Dictionary) -> void:
 	custom_minimum_size = total
 	size = total
 	_plate_rect = Rect2(Vector2((total.x - plate_sz.x) / 2.0, total.y - plate_sz.y), plate_sz)
+	_sprite_content = Rect2()
+	_fx_rect = Rect2()
+	_badge_rect = Rect2()
+	if sprite_mode:
+		var sr0: Rect2 = node.get("sprite_rect", Rect2())
+		if sr0.size.x > 0.0:
+			_sprite_content = Rect2(sr0.position + total * 0.5, sr0.size)
 	mouse_filter = Control.MOUSE_FILTER_STOP          # clickable → opens the building detail panel
 	clip_contents = false
 	_rivet_inset = 13.0 * cs
@@ -112,6 +121,12 @@ func setup(node: Dictionary) -> void:
 				fx.size = spr.size
 				add_child(fx)
 				fx.setup(iname, _level, EmpireFx.recipe_emits_carbon(instance_id), instance_id, SPRITE_PX)
+				# The effects' reach, for the occupancy registry: the plume's whole rise, the
+				# lorry's whole run — so the space they use is the building's, not its neighbour's.
+				var env: Rect2 = EmpireFx.envelope_for(iname, _level)
+				if env.size.x > 0.0:
+					var k := SPRITE_PX / EmpireFx.SPRITE_PX
+					_fx_rect = Rect2(spr.position + env.position * k, env.size * k)
 
 		# PORT BADGE — only on buildings that ship to market, and only when enabled. Added
 		# AFTER the sprite so it sits on top of it: a Control's own _draw() renders beneath
@@ -406,6 +421,17 @@ func _grad_colors(pts: PackedVector2Array, light: Color, dark: Color) -> PackedC
 ## chip) is showing, the badge just expands the same relationship a second time (owner, 27
 ## Aug). No-op for a panel with no badge at all. Called every frame from
 ## empire_graph_world.gd's _reposition_panels, alongside the panel's own fade/visibility.
+## What this panel occupies, in its own (unscaled) coordinates, by kind — the occupancy
+## registry's input. Empty rects mean "nothing of that kind".
+func footprints() -> Dictionary:
+	return {
+		"sprite": _sprite_content,
+		"plate": _plate_rect,
+		"badge": _badge_rect if (_badge != null and _badge.visible) else Rect2(),
+		"fx": _fx_rect,
+	}
+
+
 func set_badge_hidden(hidden: bool) -> void:
 	if _badge != null and is_instance_valid(_badge):
 		_badge.visible = not hidden

@@ -54,6 +54,7 @@ const BuildingSprites := preload("res://scripts/building_sprites.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
 const NodePanel := preload("res://scripts/empire_node_panel.gd")
+const EmpireFx := preload("res://scripts/empire_fx.gd")
 
 const PORT_BUILDING_ID := "b_004"
 # 90 -> 74: the RAG row under the icons is gone and its figures moved inline, so the plate
@@ -74,6 +75,17 @@ static func _sprite_content_offset(sprite_tex) -> Rect2:
 	var centre := Vector2(NodePanel.SPRITE_PX * 0.5,
 			(NodePanel.SPRITE_PX + BASE_HALF.y * 2.0) * 0.5)
 	return Rect2(used.position * k - centre, used.size * k)
+
+
+## Effects headroom: the part of the empire_fx envelope that rises above the panel's top edge
+## (the sprite is drawn from the panel's top, so panel y = sprite y * SPRITE_PX/800).
+static func _fx_headroom(internal_name: String, level: int, sprite_tex) -> float:
+	if not (MatchState.use_empire_sprite_view and sprite_tex != null):
+		return 0.0
+	var env: Rect2 = EmpireFx.envelope_for(internal_name, level)
+	if env.size.x <= 0.0:
+		return 0.0
+	return maxf(0.0, -env.position.y * NodePanel.SPRITE_PX / EmpireFx.SPRITE_PX)
 
 
 ## Half-extent of a node as the layout must see it. Classic: the level-scaled plate. Sprite
@@ -153,6 +165,10 @@ static func build(terrain: Object) -> Dictionary:
 			# Routing may cross a sprite's transparent padding — that is the whole point of
 			# dropping the sprite behind the lines — but never the building itself.
 			"sprite_rect": _sprite_content_offset(sprite_tex),
+			"internal_name": str(bdata.get("internal_name", "")),
+			# How far the building's animated effects (plume, flame) reach ABOVE its layout
+			# box, in layout px: the layout adds it to the row gap under the node above.
+			"top_extra": _fx_headroom(str(bdata.get("internal_name", "")), level, sprite_tex),
 			# Set below once the sell edges are known: the icon of the port this building
 			# ships to, which the plate wears as a gold hex badge instead of drawing a line
 			# across the whole view. Null on buildings that do not sell to market.
@@ -394,6 +410,14 @@ static func _build_market_edges(nodes: Array, ports: Array, consumers: Dictionar
 				src = "buy_" + str(port_by_tile[ptile])
 		if src != "":
 			out.append({"from": src, "to": iid, "good": fed[iid]})
+	# The layout sizes the gutter LEFT of a column by the lines that drop into it, and a buy
+	# line drops down that gutter (empire_graph_world._route_market) — so each fed node
+	# carries its count for empire_layout to add to the demand.
+	var fed_count: Dictionary = {}
+	for e in out:
+		fed_count[str(e["to"])] = int(fed_count.get(str(e["to"]), 0)) + 1
+	for n in nodes:
+		n["market_inputs"] = int(fed_count.get(str(n["iid"]), 0))
 	return out
 
 

@@ -391,6 +391,7 @@ func _ready() -> void:
 	_test_main_menu_grid_unique()
 	_test_empire_layout()
 	_test_empire_layered()
+	_test_empire_occupancy()
 	_test_empire_ports()
 	_test_empire_rag()
 	_test_audio_service()
@@ -4788,6 +4789,14 @@ func _test_core_panels_open() -> void:
 	await get_tree().process_frame
 	var empire: Node = inst.find_child("EmpireView", true, false)
 	_check(empire != null and (empire as CanvasItem).visible, "core panels: the supply chain view opens")
+	# The overlap audit on whatever the test game holds: the hard classes are always zero.
+	var gw: Node = empire.get_node_or_null("GraphWorld") if empire != null else null
+	if gw != null:
+		gw.call("_reposition_panels")
+		var rep: Dictionary = gw.call("audit")
+		var counts: Dictionary = rep["counts"]
+		for hard in ["sprite|sprite", "chip|chip", "chip|sprite", "plate|sprite", "fx|plate", "fx|sprite"]:
+			_check(int(counts.get(hard, 0)) == 0, "empire audit: no %s collisions in the test game (%d)" % [hard, int(counts.get(hard, 0))])
 	if empire != null and empire.has_method("toggle"):
 		empire.call("toggle")
 		await get_tree().process_frame
@@ -9968,6 +9977,46 @@ func _test_empire_layered() -> void:
 	_check(px["a"] < px["b"] and px["b"] < px["c"], "empire layered: input sources sit left of their consumers")
 	_check(EL.gap_satisfied(nodes), "empire layered: >=30px gap held after layered solve")
 	_check(nodes.size() == 4, "empire layered: isolated node retained alongside the chain")
+
+# The occupancy registry (scripts/empire_occupancy.gd): what counts as a collision. A route
+# may touch the two nodes it connects and nothing else; chips and sprites never share space;
+# two routes never count against each other; the layout's gutters grow with lane demand.
+func _test_empire_occupancy() -> void:
+	var EO := load("res://scripts/empire_occupancy.gd")
+	var occ = EO.new()
+	occ.add_rect("sprite", "a", Rect2(0, 0, 100, 100))
+	occ.add_rect("plate", "a", Rect2(0, 100, 100, 40))
+	occ.add_rect("sprite", "b", Rect2(300, 0, 100, 100))
+	occ.add_rect("plate", "b", Rect2(300, 100, 100, 40))
+	occ.add_path("route", "a|b", PackedVector2Array([Vector2(100, 120), Vector2(300, 120)]), 2.0, ["a", "b"])
+	occ.add_rect("chip", "chip|input|a|g", Rect2(180, 100, 40, 40), ["a", "b", "a|b"])
+	var rep: Dictionary = occ.report()
+	_check(int(rep["total"]) == 0, "empire occupancy: a route between its own endpoints and a chip on it are not collisions")
+	occ.add_rect("sprite", "c", Rect2(150, 80, 60, 60))
+	rep = occ.report()
+	_check(int((rep["counts"] as Dictionary).get("route|sprite", 0)) == 1, "empire occupancy: a line through a third node's sprite is one route|sprite collision")
+	_check(int((rep["counts"] as Dictionary).get("chip|sprite", 0)) == 1, "empire occupancy: a chip on that sprite is one chip|sprite collision")
+	occ.add_path("route", "b|c", PackedVector2Array([Vector2(200, 0), Vector2(200, 200)]), 2.0, ["b", "c"])
+	rep = occ.report()
+	_check(int((rep["counts"] as Dictionary).get("route|route", 0)) == 0, "empire occupancy: crossing lines are not counted (that is the lane solver's metric)")
+	_check(EO.seg_hits_rect(Vector2(-10, 50), Vector2(110, 50), Rect2(0, 0, 100, 100)), "empire occupancy: a segment through a rect hits")
+	_check(not EO.seg_hits_rect(Vector2(-10, 150), Vector2(110, 150), Rect2(0, 0, 100, 100)), "empire occupancy: a segment past a rect misses")
+	var EL := load("res://scripts/empire_layout.gd")
+	_check(EL.gutter_width(0) == EL.MIN_GUTTER, "empire gutters: no lines = the minimum gutter")
+	_check(EL.gutter_width(6) > EL.gutter_width(1) and EL.gutter_width(1) > EL.MIN_GUTTER, "empire gutters: the gutter grows with the lines crossing it")
+	_check(EL.row_gap_before({"top_extra": 300.0}) > EL.ROW_GAP, "empire gutters: a plume above a node widens the row gap under its neighbour")
+	# Demand shows in the layout: two producers feeding one consumer put more gutter between
+	# the columns than a lone pair does.
+	var mk := func(iid: String) -> Dictionary:
+		return {"iid": iid, "seed": Vector2.ZERO, "half": Vector2(80, 46), "level": 1}
+	var lone: Array = [mk.call("p"), mk.call("q")]
+	EL.solve(lone, [{"from": "p", "to": "q"}])
+	var busy: Array = [mk.call("p"), mk.call("p2"), mk.call("p3"), mk.call("p4"), mk.call("q")]
+	EL.solve(busy, [{"from": "p", "to": "q"}, {"from": "p2", "to": "q"}, {"from": "p3", "to": "q"}, {"from": "p4", "to": "q"}])
+	var gap_lone: float = (lone[1]["pos"] as Vector2).x - (lone[0]["pos"] as Vector2).x
+	var gap_busy: float = (busy[4]["pos"] as Vector2).x - (busy[0]["pos"] as Vector2).x
+	_check(gap_busy > gap_lone, "empire gutters: four lines into one consumer open a wider column gap than one line (%.0f vs %.0f)" % [gap_busy, gap_lone])
+
 
 # Ports always read left -> right as Stoneshore, Arin, Vandel, Capital (scripts/empire_graph.gd).
 func _test_empire_ports() -> void:

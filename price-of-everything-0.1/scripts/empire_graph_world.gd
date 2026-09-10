@@ -47,6 +47,7 @@ const BuildingSprites := preload("res://scripts/building_sprites.gd")
 const NodePanelScript := preload("res://scripts/empire_node_panel.gd")
 const LaneOrder := preload("res://scripts/lane_order.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
+const EmpireOccupancy := preload("res://scripts/empire_occupancy.gd")
 const BuildingIcon := preload("res://scripts/building_icon.gd")
 
 var _nodes: Array = []
@@ -110,6 +111,16 @@ var _site_lane_n := 0                       # lane count, so _layout_bbox can fr
 var _site_lane_pitch := _LANE_ROW           # widens when a lane carries a blocked message
 var _pulse := 0.0                           # 0..1 sawtooth driving the blocked-shipment flash
 var _chip_style: StyleBoxFlat = null        # reused per draw (draw_rect has no corner radius)
+## THE FRAME MODEL (owner 2026-09-10). `_layout_frame` computes every piece of geometry the
+## view paints — routes, chip positions, footprints — into `_frame` and registers each in the
+## occupancy registry `_occ`; `_draw` only paints what is there. Geometry runs whenever the
+## positions change (same gate as the separation pass) and also headless, which is what lets
+## the overlap audit (`audit()`) run as a test without a renderer.
+var _occ := EmpireOccupancy.new()
+var _frame: Dictionary = {"input": [], "sell": [], "market": [], "chips": []}
+const _CHIP_GAP := 8.0                       # clear space between chips in a gutter
+const _GUTTER_LANE := 42.0                   # = empire_layout.LANE_PITCH (the gutter was sized for it)
+const _GUTTER_INSET := 24.0                  # = empire_layout.GUTTER_MARGIN
 var _pill_style: StyleBoxFlat = null
 
 var _last_zoom := -1.0
@@ -331,14 +342,23 @@ func _reposition_panels() -> void:
 	var sc := _detail()
 	var ids: Array = []
 	var pos: Dictionary = {}
-	var half: Dictionary = {}
+	var ext: Dictionary = {}     # iid -> Rect2 footprint relative to the panel CENTRE (screen px)
 	for pan in _panels:
 		var iid: String = pan["iid"]
 		ids.append(iid)
 		pos[iid] = _world_to_screen(_focus_pos(iid, pan["pos"] as Vector2))
 		# Footprint AND gap scale with the card, or the separation pass fights the zoom: an
-		# unscaled gap dominates once cards are small and re-creates the jostling.
-		half[iid] = (pan["ctrl"] as Control).size * (0.5 * sc) + Vector2(_MIN_GAP * sc * 0.5, _MIN_GAP * sc * 0.5)
+		# unscaled gap dominates once cards are small and re-creates the jostling. The
+		# footprint is the panel PLUS its effects envelope (a plume rising above the sprite,
+		# the lorry's run), so a neighbour is pushed clear of the smoke, not just the card.
+		var ctrl: Control = pan["ctrl"]
+		var fp := Rect2(Vector2.ZERO, ctrl.size)
+		var fps: Dictionary = ctrl.call("footprints")
+		var fxr: Rect2 = fps.get("fx", Rect2())
+		if fxr.size.x > 0.0:
+			fp = fp.merge(fxr)
+		fp = fp.grow(_MIN_GAP * 0.5)
+		ext[iid] = Rect2((fp.position - ctrl.size * 0.5) * sc, fp.size * sc)
 
 	# Port hexes are OBSTACLES, not participants: they hold the positions the layout gave them
 	# (their x carries the sector meaning) and panels give way. Without this the pass separated
@@ -372,40 +392,39 @@ func _reposition_panels() -> void:
 		var moved := false
 		for i in range(ids.size()):
 			var pid: String = ids[i]
+			var rp := Rect2((pos[pid] as Vector2) + (ext[pid] as Rect2).position, (ext[pid] as Rect2).size)
 			for pr in port_rects:
-				var dp: Vector2 = (pos[pid] as Vector2) - (pr["c"] as Vector2)
-				var hp: Vector2 = half[pid]
-				var hh: Vector2 = pr["h"]
-				var px := hp.x + hh.x - absf(dp.x)
-				var py := hp.y + hh.y - absf(dp.y)
-				if px <= 0.0 or py <= 0.0:
+				var rr := Rect2((pr["c"] as Vector2) - (pr["h"] as Vector2), (pr["h"] as Vector2) * 2.0)
+				var ov := rp.intersection(rr)
+				if ov.size.x <= 0.0 or ov.size.y <= 0.0:
 					continue
 				moved = true
+				var dp: Vector2 = rp.get_center() - rr.get_center()
 				# Resolve on the SHALLOWER axis, and move the panel only.
-				if px <= py:
-					pos[pid] = (pos[pid] as Vector2) + Vector2(px * (1.0 if dp.x >= 0.0 else -1.0), 0.0)
+				if ov.size.x <= ov.size.y:
+					pos[pid] = (pos[pid] as Vector2) + Vector2(ov.size.x * (1.0 if dp.x >= 0.0 else -1.0), 0.0)
 				else:
-					pos[pid] = (pos[pid] as Vector2) + Vector2(0.0, py * (1.0 if dp.y >= 0.0 else -1.0))
+					pos[pid] = (pos[pid] as Vector2) + Vector2(0.0, ov.size.y * (1.0 if dp.y >= 0.0 else -1.0))
+				rp = Rect2((pos[pid] as Vector2) + (ext[pid] as Rect2).position, (ext[pid] as Rect2).size)
 		for i in range(ids.size()):
 			for j in range(i + 1, ids.size()):
 				var a: String = ids[i]
 				var b: String = ids[j]
-				var d: Vector2 = (pos[b] as Vector2) - (pos[a] as Vector2)
-				var ha: Vector2 = half[a]
-				var hb: Vector2 = half[b]
-				var ox := ha.x + hb.x - absf(d.x)
-				var oy := ha.y + hb.y - absf(d.y)
-				if ox <= 0.0 or oy <= 0.0:
+				var ra := Rect2((pos[a] as Vector2) + (ext[a] as Rect2).position, (ext[a] as Rect2).size)
+				var rb := Rect2((pos[b] as Vector2) + (ext[b] as Rect2).position, (ext[b] as Rect2).size)
+				var ov2 := ra.intersection(rb)
+				if ov2.size.x <= 0.0 or ov2.size.y <= 0.0:
 					continue
 				moved = true
-				if ox <= oy:
-					var s := 0.5 * ox * (1.0 if d.x >= 0.0 else -1.0)
+				var d: Vector2 = rb.get_center() - ra.get_center()
+				if ov2.size.x <= ov2.size.y:
+					var s := 0.5 * ov2.size.x * (1.0 if d.x >= 0.0 else -1.0)
 					if absf(d.x) < 0.01:
 						s = 0.5
 					pos[a] = (pos[a] as Vector2) - Vector2(s, 0.0)
 					pos[b] = (pos[b] as Vector2) + Vector2(s, 0.0)
 				else:
-					var s2 := 0.5 * oy * (1.0 if d.y >= 0.0 else -1.0)
+					var s2 := 0.5 * ov2.size.y * (1.0 if d.y >= 0.0 else -1.0)
 					if absf(d.y) < 0.01:
 						s2 = 0.5
 					pos[a] = (pos[a] as Vector2) - Vector2(0.0, s2)
@@ -429,6 +448,169 @@ func _reposition_panels() -> void:
 		# The focused building's own sell line (with its good-icon chip) now says "ships to
 		# market, and where" directly — its port badge would just repeat that.
 		ctrl.call("set_badge_hidden", iid2 == _focus_iid)
+	_layout_frame(sc)
+
+
+## Compute every piece of geometry the view paints and register it in the occupancy registry:
+## node footprints (sprite, effects, plate, badge), port hexes, the three route families, and
+## the good-icon chips — which are PLACED here, in free slots along their lines, instead of at
+## a fixed 40% of the route where eight coal chips used to land on one another.
+func _layout_frame(sc: float) -> void:
+	_occ.clear()
+	_frame = {"input": [], "sell": [], "market": [], "chips": []}
+	for pan in _panels:
+		var iid: String = pan["iid"]
+		var ctrl: Control = pan["ctrl"]
+		if not ctrl.visible:
+			continue
+		var fps: Dictionary = ctrl.call("footprints")
+		for kind in ["sprite", "fx", "plate", "badge"]:
+			var r: Rect2 = fps.get(kind, Rect2())
+			if r.size.x > 0.0 and r.size.y > 0.0:
+				_occ.add_rect(kind, iid, Rect2(ctrl.position + r.position * sc, r.size * sc))
+	for p in _ports:
+		var pid := str(p["iid"])
+		if (_focus_target > 0.0 and _focus_members.has(pid)) or (_focus_t <= 0.0 and not MatchState.show_port_badge):
+			var half: Vector2 = (p["half"] as Vector2) * sc
+			_occ.add_rect("port", pid, Rect2(_screen_of(pid, p) - half, half * 2.0))
+	for bp in _buy_ports:
+		var bid := str(bp["iid"])
+		if _focus_t <= 0.0 or _focus_members.has(bid):
+			var half2: Vector2 = (bp["half"] as Vector2) * sc
+			_occ.add_rect("port", bid, Rect2(_screen_of(bid, bp) - half2, half2 * 2.0))
+	# Routes. Market lines first (they dive the full height), then sells, then inputs — the
+	# same order they are painted, so a later family sees the earlier ones as obstacles-to-be.
+	for e in _market_edges:
+		if not (_box_by_iid.has(str(e["to"])) and _box_by_iid.has(str(e["from"]))):
+			continue
+		var mpath := _route_market(_box_by_iid[str(e["from"])], _box_by_iid[str(e["to"])],
+			int(e.get("slot", 0)), int(e.get("slot_n", 1)), sc)
+		(_frame["market"] as Array).append({"e": e, "path": mpath})
+		_occ.add_path("route", "%s|%s" % [str(e["from"]), str(e["to"])], mpath, _EDGE_WIDTH * sc,
+			[str(e["from"]), str(e["to"])])
+	var ports_top := INF
+	for p2 in _ports:
+		ports_top = minf(ports_top, _world_to_screen(p2["pos"] as Vector2).y - (p2["half"] as Vector2).y * sc)
+	for e2 in _sell_edges:
+		if not (_box_by_iid.has(e2["from"]) and _box_by_iid.has(e2["to"])):
+			continue
+		# With the badge on, an unfocused sell line is not drawn at all — it takes no space.
+		if MatchState.show_port_badge and not _focus_keeps(e2):
+			continue
+		var spath := _route_sell(_box_by_iid[e2["from"]], _box_by_iid[e2["to"]],
+			int(e2.get("bus", 0)), int(e2.get("bus_n", 1)),
+			int(e2.get("slot", 0)), int(e2.get("slot_n", 1)), ports_top, sc)
+		(_frame["sell"] as Array).append({"e": e2, "path": spath})
+		_occ.add_path("route", "%s|%s" % [str(e2["from"]), str(e2["to"])], spath, _SELL_WIDTH * sc,
+			[str(e2["from"]), str(e2["to"])])
+	for e3 in _edges:
+		if not (_box_by_iid.has(e3["from"]) and _box_by_iid.has(e3["to"])):
+			continue
+		var ipath := _route_input(_box_by_iid[e3["from"]], _box_by_iid[e3["to"]], int(e3.get("lane", 0)), int(e3.get("lane_n", 1)), sc)
+		(_frame["input"] as Array).append({"e": e3, "path": ipath})
+		_occ.add_path("route", "%s|%s" % [str(e3["from"]), str(e3["to"])], ipath, _EDGE_WIDTH * sc,
+			[str(e3["from"]), str(e3["to"])])
+	_allocate_chips(sc)
+
+
+## THE CHIP SLOT ALLOCATOR. One chip per (family, source, good): parallel lines carrying the
+## same good out of the same building share a chip (three coal lines out of one mine used to
+## stack three chips). Each chip wants the middle of its route's longest run — the vertical in
+## the gutter for an input line — and takes the nearest free slot along that run, stepping a
+## chip-and-a-gap at a time, never on a sprite, plate, port or another chip; failing every run
+## it falls back to 40% along the line (and the audit counts the collision).
+func _allocate_chips(sc: float) -> void:
+	var box := _LANE_CHIP * sc
+	var pitch := box + _CHIP_GAP * sc
+	var wanted: Dictionary = {}
+	var order: Array = []
+	for kind in ["input", "sell", "market"]:
+		for r in _frame[kind]:
+			var e: Dictionary = r["e"]
+			var good_id := str(e.get("good", ""))
+			if good_id == "" or (r["path"] as PackedVector2Array).size() < 2:
+				continue
+			var src := str(e["to"]) if kind == "market" else str(e["from"])
+			var key := "%s|%s|%s" % [kind, src, good_id]
+			if not wanted.has(key):
+				wanted[key] = {"kind": kind, "path": r["path"], "e": e, "edges": [e], "good": good_id, "key": key}
+				order.append(key)
+			else:
+				(wanted[key]["edges"] as Array).append(e)
+	for key in order:
+		var w: Dictionary = wanted[key]
+		var icon := GoodIcons.texture_for_size(str(w["good"]), str(Catalog.get_internal_name(str(w["good"]))), box)
+		if icon == null:
+			continue
+		var path: PackedVector2Array = w["path"]
+		var e0: Dictionary = w["e"]
+		var ends := [str(e0["from"]), str(e0["to"])]
+		var rect := _find_chip_slot(path, box, pitch, ends, w["kind"] == "market")
+		if rect.size.x <= 0.0:
+			var c := _point_along_polyline(path, _EDGE_CHIP_T)
+			rect = Rect2(c - Vector2.ONE * box * 0.5, Vector2.ONE * box)
+		_occ.add_rect("chip", "chip|" + key, rect, ends + ["%s|%s" % [str(e0["from"]), str(e0["to"])]])
+		(_frame["chips"] as Array).append({"rect": rect, "icon": icon, "kind": w["kind"], "e": e0,
+			"edges": w["edges"], "good": w["good"]})
+
+
+## Runs of `path` longest first (verticals preferred: they are the gutter runs), each searched
+## outward from its midpoint. Empty rect when no run has a free slot.
+func _find_chip_slot(path: PackedVector2Array, box: float, pitch: float, ends: Array, near_end: bool = false) -> Rect2:
+	var segs: Array = []
+	for i in range(path.size() - 1):
+		var d: Vector2 = path[i + 1] - path[i]
+		if d.length() < box:
+			continue
+		segs.append({"a": path[i], "b": path[i + 1], "len": d.length(), "vert": absf(d.y) > absf(d.x), "i": i})
+	if near_end:
+		# A buy line leaves its port in a tight fan of five drops; its own run is the gutter
+		# drop by the building, so try the runs from the building end first.
+		segs.sort_custom(func(x, y): return x["i"] > y["i"])
+	else:
+		segs.sort_custom(func(x, y):
+			if x["vert"] != y["vert"]:
+				return x["vert"]
+			return x["len"] > y["len"])
+	# Other lines too: a chip that lands where another lane crosses hides which line it
+	# labels. Its own route is in `ends`, so it may (must) sit on that one.
+	var avoid := ["sprite", "plate", "port", "chip", "badge", "route"]
+	for sg in segs:
+		var a: Vector2 = sg["a"]
+		var b: Vector2 = sg["b"]
+		var mid := (a + b) * 0.5
+		var dir: Vector2 = (b - a) / float(sg["len"])
+		var reach: float = float(sg["len"]) * 0.5 - box * 0.5
+		var step := 0
+		while true:
+			var off := float((step + 1) / 2) * pitch * (1.0 if step % 2 == 1 else -1.0)
+			if absf(off) > reach:
+				if step > 0 and float(step / 2) * pitch > reach:
+					break
+				step += 1
+				if step > 64:
+					break
+				continue
+			var c := mid + dir * off
+			var rect := Rect2(c - Vector2.ONE * box * 0.5, Vector2.ONE * box)
+			if not _occ.rect_hits(rect, avoid, ends):
+				return rect
+			step += 1
+			if step > 64:
+				break
+	return Rect2()
+
+
+## The overlap audit: what collides with what this frame, by kind pair, plus the pairs
+## themselves (`describe(i)` names an item). Headless-safe: it reads the frame model, not
+## the renderer. `tools/empire_overlap_audit.tscn` runs it on a seeded game and gates on it.
+func audit() -> Dictionary:
+	var rep: Dictionary = _occ.report()
+	var named: Array = []
+	for p in rep["pairs"]:
+		named.append("%s x %s" % [_occ.describe(int(p["a"])), _occ.describe(int(p["b"]))])
+	rep["named"] = named
+	return rep
 
 
 ## A node's LAYOUT position, eased toward its focus-chart position while a mini-chart is open.
@@ -549,6 +731,28 @@ func _assign_lanes() -> void:
 		for i in range(marr.size()):
 			marr[i]["slot"] = (i * mn) / marr.size()
 			marr[i]["slot_n"] = mn
+	# Gutter lanes for the drops: every buy line into the same COLUMN gets its own lane in the
+	# gutter left of that column (a lane pitch apart, so a chip on one clears the others),
+	# whichever port it comes from. Ordered by port x, then target y — no self-crossing.
+	var by_col: Dictionary = {}
+	for e in _market_edges:
+		if not _pos_by_iid.has(str(e["to"])):
+			continue
+		var ck := str(int(round((_pos_by_iid[str(e["to"])] as Vector2).x / 10.0)))
+		if not by_col.has(ck):
+			by_col[ck] = []
+		by_col[ck].append(e)
+	for ck in by_col:
+		var carr: Array = by_col[ck]
+		carr.sort_custom(func(x, y):
+			var hx: float = (_pos_by_iid.get(str(x["from"]), Vector2.ZERO) as Vector2).x
+			var hy: float = (_pos_by_iid.get(str(y["from"]), Vector2.ZERO) as Vector2).x
+			if hx != hy:
+				return hx < hy
+			return (_pos_by_iid[str(x["to"])] as Vector2).y < (_pos_by_iid[str(y["to"])] as Vector2).y)
+		for i in range(carr.size()):
+			carr[i]["glane"] = i
+			carr[i]["glane_n"] = carr.size()
 
 
 func _reset_view() -> void:
@@ -953,61 +1157,53 @@ func _draw() -> void:
 	# lines lie over the halo the way lit smoke sits behind cables.
 	_draw_selection_glow(sc)
 
+	# Geometry comes from the frame model (`_layout_frame`); this pass only paints it.
 	# Market-input lines (dashed amber) dropped from each top buy port to the buildings it
 	# feeds, beneath everything else. Always dashed: like the graph's other edges this is
 	# inferred capability — the sim keeps no per-building market-buy record to promote them.
-	for e in _market_edges:
-		if not (_box_by_iid.has(str(e["to"])) and _box_by_iid.has(str(e["from"]))):
-			continue
-		var mpath := _route_market(_box_by_iid[str(e["from"])], _box_by_iid[str(e["to"])],
-			int(e.get("slot", 0)), int(e.get("slot_n", 1)), sc)
+	for r in _frame["market"]:
+		var e: Dictionary = r["e"]
+		var mpath: PackedVector2Array = r["path"]
 		var ma := 0.85 * (1.0 if _focus_keeps(e) else off_a)
 		if ma > 0.01:
 			_draw_dashed_polyline(mpath, Color(_EDGE, ma), _EDGE_WIDTH * sc, sc)
-			_draw_edge_good_chip(mpath, e, "market", font, sc, ma)
 			if _is_power_good(str(e.get("good", ""))):
 				_power_pulses.paths.append({"path": mpath, "alpha": ma, "scale": sc})
 
 	# Sell-to-market lines (thick gold) routed down to the port row, beneath everything else.
-	var ports_top := INF
-	for p in _ports:
-		ports_top = minf(ports_top, _world_to_screen(p["pos"] as Vector2).y - (p["half"] as Vector2).y * sc)
-	for e in _sell_edges:
-		if not (_box_by_iid.has(e["from"]) and _box_by_iid.has(e["to"])):
-			continue
-		var path := _route_sell(_box_by_iid[e["from"]], _box_by_iid[e["to"]],
-			int(e.get("bus", 0)), int(e.get("bus_n", 1)),
-			int(e.get("slot", 0)), int(e.get("slot_n", 1)), ports_top, sc)
-		# With the badge on, sell lines are drawn ONLY for the focused building: the badge
-		# carries "this ships to market, and to which port" at rest, and the line answers
-		# "which one" on demand. That is what takes 22 of the view's 30 edges out of the
-		# resting picture.
-		var sa := 1.0 if _focus_keeps(e) else (0.0 if MatchState.show_port_badge else off_a)
+	# With the badge on, sell lines are drawn ONLY for the focused building (the frame pass
+	# already left the others out): the badge carries "this ships to market, and to which
+	# port" at rest, and the line answers "which one" on demand.
+	for r2 in _frame["sell"]:
+		var e2: Dictionary = r2["e"]
+		var path: PackedVector2Array = r2["path"]
+		var sa := 1.0 if _focus_keeps(e2) else (0.0 if MatchState.show_port_badge else off_a)
 		if sa <= 0.01:
 			continue
-		if bool(e.get("actual", true)):
+		if bool(e2.get("actual", true)):
 			draw_polyline(path, Color(_SELL, sa), _SELL_WIDTH * sc, true)
 		else:
 			# Standing default, nothing actually shipping yet: dashed — "this is
 			# where sales WOULD leave" (goods are pooling in the tile stockpile).
 			_draw_dashed_polyline(path, Color(_SELL, 0.8 * sa), _SELL_WIDTH * sc, sc)
 		_market_glow.paths.append({"path": path, "alpha": sa, "scale": sc})
-		if _is_power_good(str(e.get("good", ""))):
+		if _is_power_good(str(e2.get("good", ""))):
 			_power_pulses.paths.append({"path": path, "alpha": sa, "scale": sc})
-		_draw_edge_good_chip(path, e, "sell", font, sc, sa)
 
 	# Input lines (thin amber) routed left-to-right between columns.
-	for e in _edges:
-		if not (_box_by_iid.has(e["from"]) and _box_by_iid.has(e["to"])):
-			continue
-		var ea := 1.0 if _focus_keeps(e) else off_a
+	for r3 in _frame["input"]:
+		var e3: Dictionary = r3["e"]
+		var ipath: PackedVector2Array = r3["path"]
+		var ea := 1.0 if _focus_keeps(e3) else off_a
 		if ea <= 0.01:
 			continue
-		var path := _route_input(_box_by_iid[e["from"]], _box_by_iid[e["to"]], int(e.get("lane", 0)), int(e.get("lane_n", 1)), sc)
-		draw_polyline(path, Color(_EDGE, ea), _EDGE_WIDTH * sc, true)
-		if _is_power_good(str(e.get("good", ""))):
-			_power_pulses.paths.append({"path": path, "alpha": ea, "scale": sc})
-		_draw_edge_good_chip(path, e, "input", font, sc, ea)
+		draw_polyline(ipath, Color(_EDGE, ea), _EDGE_WIDTH * sc, true)
+		if _is_power_good(str(e3.get("good", ""))):
+			_power_pulses.paths.append({"path": ipath, "alpha": ea, "scale": sc})
+
+	# The good-icon chips, in the slots the frame pass found for them.
+	for ch in _frame["chips"]:
+		_draw_edge_good_chip(ch, sc)
 
 	# The construction-site delivery chart, under the port hexes so their gold sits on top of
 	# the lane ends (and under the panels, which are Controls and always above _draw).
@@ -1051,18 +1247,11 @@ func _is_power_good(good_id: String) -> bool:
 ## Screen-space OPAQUE sprite boxes for every panel except the two an edge belongs to. Lines
 ## are allowed to cross a sprite's transparent padding (that is why the sprite sits behind
 ## them) but never the building art, so this is what the router has to miss.
-func _sprite_obstacles(skip_a: String, skip_b: String, sc: float) -> Array:
-	var out: Array = []
-	for n in _nodes:
-		var iid: String = str(n["iid"])
-		if iid == skip_a or iid == skip_b or not _screen_by_iid.has(iid):
-			continue
-		var r: Rect2 = n.get("sprite_rect", Rect2())
-		if r.size.x <= 0.0 or r.size.y <= 0.0:
-			continue
-		var c: Vector2 = _screen_by_iid[iid]
-		out.append(Rect2(c + r.position * sc, r.size * sc))
-	return out
+func _sprite_obstacles(skip_a: String, skip_b: String, _sc: float) -> Array:
+	# Sprites AND plates of every other node, from the registry (the frame pass registers the
+	# footprints before it routes). A line may cross a sprite's transparent padding, never
+	# the building or a caption.
+	return _occ.rects_of(["sprite", "plate"], [skip_a, skip_b])
 
 
 ## Does any segment of `pts` cut through any of `rects`? Rect2.intersects on the segment's own
@@ -1204,20 +1393,56 @@ func _route_market(hub: Dictionary, b: Dictionary, slot: int, slot_n: int, sc: f
 	var frac := float(slot + 1) / float(slot_n + 1)
 	var exit_x := ch.x - hh.x * 0.5 + frac * hh.x
 	var exit := Vector2(exit_x, ch.y + hh.y)
-	var end := Vector2(cb.x, cb.y - hb.y)
-	# Buy lines dive the full height of the composition, so they meet more sprites than any
-	# other family — and they were the ONLY family with no avoidance at all, which is where
-	# most measured "line disappears under a building" cases came from.
+	# Buy lines dive the full height of the composition. Dropped straight onto the plate's
+	# top they ran through every sprite stacked above the target in its column (measured:
+	# all six route|sprite collisions in the audit were these), so the drop now runs in the
+	# GUTTER beside the column and turns into the plate's side — the way input lines arrive.
 	var obs := _sprite_obstacles(str(hub["iid"]), str(b["iid"]), sc)
-	var bias := float(slot + 1) / float(maxi(slot_n, 1) + 1)
-	var best := _iso_route_v(exit, end, 26.0 * sc, bias, sc)
+	var end := Vector2(cb.x - hb.x, cb.y)
+	var glane := int(b_edge_glane(hub, b))
+	var stub := (26.0 + float(slot) * 14.0) * sc
+	# The plate sits 48px inside the sprite box; the first lane clears the box by a margin,
+	# the rest step out a lane pitch each (empire_layout.LANE_PITCH — the gutter was sized for it).
+	var lane_x := cb.x - hb.x - (48.0 + _GUTTER_INSET + float(glane) * _GUTTER_LANE) * sc
+	var best := _gutter_route(exit, end, stub, lane_x, sc)
 	if not _blocked(best, obs):
 		return best
+	# Blocked: first move the cross-run lower (it is usually the run under the port that
+	# cuts the top building), keeping the lane; only then step the lane out, by half
+	# pitches so it never lands exactly on another line's lane.
+	for j in range(1, 7):
+		var alt0 := _gutter_route(exit, end, stub + float(j) * 34.0 * sc, lane_x, sc)
+		if not _blocked(alt0, obs):
+			return alt0
 	for k in range(1, 8):
-		var alt := _iso_route_v(exit, end, 26.0 * sc, float(k) / 8.0, sc)
+		var alt := _gutter_route(exit, end, stub, lane_x - (float(k) + 0.5) * _GUTTER_LANE * sc, sc)
 		if not _blocked(alt, obs):
 			return alt
+	# The far side of the plate, when the near gutter is full.
+	for k2 in range(0, 6):
+		var end_r := Vector2(cb.x + hb.x, cb.y)
+		var alt2 := _gutter_route(exit, end_r, stub, cb.x + hb.x + (48.0 + _GUTTER_INSET + float(k2) * _GUTTER_LANE) * sc, sc)
+		if not _blocked(alt2, obs):
+			return alt2
 	return best
+
+
+## The gutter lane `_assign_lanes` gave the buy line hub -> b (0 when unknown).
+func b_edge_glane(hub: Dictionary, b: Dictionary) -> int:
+	for e in _market_edges:
+		if str(e["from"]) == str(hub["iid"]) and str(e["to"]) == str(b["iid"]):
+			return int(e.get("glane", 0))
+	return 0
+
+
+## Down out of the hub by `stub`, across to the gutter x, down the gutter to the plate's
+## centre line, and in through the plate's side. Chamfered like every other route.
+func _gutter_route(exit: Vector2, end: Vector2, stub: float, gx: float, sc: float) -> PackedVector2Array:
+	var y1 := exit.y + stub
+	if end.y <= y1 + 1.0:
+		y1 = exit.y + (end.y - exit.y) * 0.5
+	return _chamfer(PackedVector2Array([
+		exit, Vector2(exit.x, y1), Vector2(gx, y1), Vector2(gx, end.y), end]), _CHAMFER * sc)
 
 
 # --- construction-site delivery chart -----------------------------------------------------
@@ -1427,21 +1652,22 @@ func _point_along_polyline(pts: PackedVector2Array, t: float) -> Vector2:
 ## line, dashed or not"). Reuses _draw_material_chip's exact cream-rounded-chip look with qty=0
 ## so its quantity pill stays off — this chip says WHAT flows, not how much. Silent no-op for a
 ## good with no icon art (nothing to put on the chip) or a path too short to have a "40% along".
-func _draw_edge_good_chip(path: PackedVector2Array, e: Dictionary, kind: String, font: Font, sc: float, a: float) -> void:
-	var good_id := str(e.get("good", ""))
-	if good_id == "" or a <= 0.01 or path.size() < 2:
+func _draw_edge_good_chip(ch: Dictionary, _sc: float) -> void:
+	var e: Dictionary = ch["e"]
+	var kind: String = ch["kind"]
+	var off_a := 1.0 - _focus_t
+	var a := 1.0 if _focus_keeps(e) else off_a
+	if kind == "market":
+		a *= 0.85
+	elif kind == "sell" and not _focus_keeps(e) and MatchState.show_port_badge:
+		a = 0.0
+	if a <= 0.01:
 		return
-	var icon := GoodIcons.texture_for_size(good_id, str(Catalog.get_internal_name(good_id)), _LANE_CHIP * sc)
-	if icon == null:
-		return
-	var c := _point_along_polyline(path, _EDGE_CHIP_T)
-	var box := _LANE_CHIP * sc
-	var rect := Rect2(c - Vector2.ONE * box * 0.5, Vector2.ONE * box)
-	_goods_overlay.chips.append({"rect": rect, "icon": icon, "alpha": a})
-	GoodHover.drawn(self, rect, good_id)
+	var rect: Rect2 = ch["rect"]
+	_goods_overlay.chips.append({"rect": rect, "icon": ch["icon"], "alpha": a})
+	GoodHover.drawn(self, rect, str(ch["good"]))
 	# Record the chip's hit-box so the hover readout can find it (cleared per draw).
-	_edge_icon_rects.append({"rect": Rect2(c - Vector2(box, box) * 0.5, Vector2(box, box)),
-		"edge": e, "kind": kind})
+	_edge_icon_rects.append({"rect": rect, "edge": e, "kind": kind})
 
 
 ## A material on its lane: the good's icon on the same ROUNDED cream chip the plates use, with
