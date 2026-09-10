@@ -11,7 +11,7 @@ const BuildingSprites := preload("res://scripts/building_sprites.gd")
 const BOX := 400.0
 const FRAME_GAP := 0.3
 const FRAMES := 4
-const SET := [["assembly_plant", 1], ["assembly_plant", 2], ["assembly_plant", 3], ["industrial_factory", 2]]
+const SET := [["industrial_factory", 2], ["furnace", 2], ["power_plant", 2], ["industrial_factory", 1]]
 
 
 func _ready() -> void:

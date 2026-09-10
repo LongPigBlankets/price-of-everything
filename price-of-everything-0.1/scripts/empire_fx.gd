@@ -57,6 +57,8 @@ const ANCHORS := {
 		# +X and the lorry comes from screen down-right; "y": the door faces -Y, it comes from
 		# down-left and the lorry sprite is mirrored); stop = the lorry's rear-bottom-centre
 		# when docked; crate_from/to = a crate's bottom-centre leaving the lorry / at the door.
+		# clip (L2/L3): the canopy's front-bottom edge — the door is painted only BELOW this
+		# line, since the canopy hides its top (owner: the opening clipped through the roof).
 		# Every number here was PROJECTED through the builder's camera (project_points.py) and
 		# mapped with the export's crop/scale/placement — not read off a grid.
 		1: {"stacks": [], "fires": [],
@@ -64,9 +66,11 @@ const ANCHORS := {
 				"stop": [199.8, 593.0], "crate_from": [206.0, 589.5], "crate_to": [223.5, 579.3]}},
 		2: {"stacks": [{"x": 700, "y": 110, "r": 26, "kind": "auto"}], "fires": [],
 			"bay": {"axis": "x", "door": [[190.4, 623.1], [248.0, 589.8], [248.0, 638.4], [190.4, 671.6]],
+				"clip": [[203.6, 638.6], [281.6, 593.5]],
 				"stop": [258.9, 701.4], "crate_from": [254.8, 675.6], "crate_to": [219.6, 655.2]}},
 		3: {"stacks": [{"x": 655, "y": 90, "r": 26, "kind": "auto"}], "fires": [],
 			"bay": {"axis": "x", "door": [[144.4, 623.1], [202.0, 589.8], [202.0, 638.4], [144.4, 671.6]],
+				"clip": [[157.6, 638.6], [235.6, 593.5]],
 				"stop": [212.9, 701.4], "crate_from": [208.8, 675.6], "crate_to": [173.6, 655.2]}},
 	},
 	"power_plant": {
@@ -96,21 +100,16 @@ const ANCHORS := {
 		2: {"stacks": [{"x": 630, "y": 120, "r": 16, "kind": "steam"}, {"x": 700, "y": 135, "r": 16, "kind": "steam"}], "fires": []},
 		3: {"stacks": [{"x": 550, "y": 160, "r": 16, "kind": "steam"}, {"x": 630, "y": 200, "r": 16, "kind": "steam"}], "fires": []},
 	},
-	"chem_plant": {
-		1: {"stacks": [{"x": 310, "y": 296, "r": 16, "kind": "steam"}], "fires": []},
-		2: {"stacks": [{"x": 480, "y": 300, "r": 16, "kind": "steam"}, {"x": 385, "y": 480, "r": 14, "kind": "steam"}], "fires": []},
-		3: {"stacks": [{"x": 310, "y": 46, "r": 16, "kind": "steam"}, {"x": 480, "y": 380, "r": 16, "kind": "steam"}], "fires": []},
-	},
+	# chem_plant, electrolyser, assembly_plant: process vessels, NOT furnaces — no plume (owner
+	# 2026-09-10). The chem plant keeps no entry at all.
 	"assembly_plant": {
 		# arms: the robot-arm FRAMES (assets/fx/arms/assembly_plant_lvlN_p<lift>_c<carry>.png,
 		# render_arms.py: the arms alone with the rest of the plant as a holdout, mapped into
 		# sprite space with the export's crop/scale/placement) and the sprite-px rect they
 		# cover. All the robots of a level move together in one frame.
 		1: {"stacks": [], "fires": [], "arms": {"rect": [232, 317, 165, 170]}},
-		2: {"stacks": [{"x": 200, "y": 110, "r": 22, "kind": "steam"}], "fires": [],
-			"arms": {"rect": [240, 349, 292, 202]}},
-		3: {"stacks": [{"x": 210, "y": 126, "r": 20, "kind": "steam"}], "fires": [],
-			"arms": {"rect": [240, 176, 274, 438]}},
+		2: {"stacks": [], "fires": [], "arms": {"rect": [240, 349, 292, 202]}},
+		3: {"stacks": [], "fires": [], "arms": {"rect": [240, 176, 274, 438]}},
 	},
 }
 
@@ -170,6 +169,9 @@ const END_SCALE := 3.6
 ## Drift in chimney radii over a puff's life, and its direction in SPRITE space: up, leaning
 ## north-east the way the map's smoke does (the sprites share the map's isometric).
 const DRIFT_R := 5.5
+## The first puff is centred this many chimney radii ABOVE the anchor (the mouth), so the
+## plume appears out of the mouth rather than straddling it (owner: "starts a little low").
+const PUFF_LIFT := 1.0
 const DRIFT_DIR := Vector2(0.28, -1.0)
 const SPIN := PI * 0.4
 
@@ -225,7 +227,9 @@ const CRATE_TEX: Texture2D = preload("res://assets/fx/vehicles/crate.png")
 const BAY_FACTOR := 1.0301                 # the factory sprites' export factor
 const BAY_UNIT_PX := 93.09 * 0.8165 * BAY_FACTOR   # sprite px per world unit along a ground axis
 const LORRY_REAR := Vector2(28.3, 97.8)    # rear-bottom-centre, lorry texture px
-const LORRY_LIGHTS := [Vector2(12.7, 79.7), Vector2(44.3, 61.5)]
+## Rear lights are on the hidden (-X) face; only the one at the near (-Y) corner shows, as a
+## glow wrapping the corner — the far one would shine through the body (owner).
+const LORRY_LIGHTS := [Vector2(12.7, 79.7)]
 const CRATE_FOOT := Vector2(27.8, 40.9)    # bottom-centre, crate texture px
 const BAY_PERIOD := 26.0
 const BAY_FAR := 3.4                       # world units the lorry starts/ends away from `stop`
@@ -374,8 +378,12 @@ func setup(internal_name: String, level: int, carbon: bool, seed_text: String, b
 		for xy in b["door"]:
 			door.append(Vector2(float(xy[0]), float(xy[1])) * k)
 		var axis_dir := Vector2(0.8660, 0.5) if str(b["axis"]) == "x" else Vector2(-0.8660, 0.5)
+		var clip := PackedVector2Array()
+		for xy in b.get("clip", []):
+			clip.append(Vector2(float(xy[0]), float(xy[1])) * k)
 		_bay = {
 			"door": door,
+			"clip": clip,
 			"dir": axis_dir,                      # screen direction AWAY from the door
 			"mirror": str(b["axis"]) == "y",
 			"stop": Vector2(float(b["stop"][0]), float(b["stop"][1])) * k,
@@ -535,9 +543,13 @@ func _draw_bay() -> void:
 		var tl: Vector2 = d[0]; var tr: Vector2 = d[1]; var br: Vector2 = d[2]; var bl: Vector2 = d[3]
 		var el := bl + (tl - bl) * o
 		var er := br + (tr - br) * o
-		draw_colored_polygon(PackedVector2Array([bl, br, er, el]), DOOR_INTERIOR)
+		var opening := _clip_below(PackedVector2Array([bl, br, er, el]), _bay["clip"])
+		if opening.size() >= 3:
+			draw_colored_polygon(opening, DOOR_INTERIOR)
 		var roll_h := 0.10 * o
-		draw_colored_polygon(PackedVector2Array([el, er, er + (tr - br) * roll_h, el + (tl - bl) * roll_h]), DOOR_ROLL)
+		var roll := _clip_below(PackedVector2Array([el, er, er + (tr - br) * roll_h, el + (tl - bl) * roll_h]), _bay["clip"])
+		if roll.size() >= 3:
+			draw_colored_polygon(roll, DOOR_ROLL)
 	# crates: each slides from the lorry's rear into the bay in its own slot
 	var t_crates: float = BAY_TIMES["crates"]; var t_close: float = BAY_TIMES["close"]
 	if p >= t_crates and p < t_close:
@@ -560,6 +572,29 @@ func _draw_bay() -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
+## Sutherland-Hodgman against one line (a, b): keeps the part of `poly` on the screen-DOWN
+## side of it. An empty `line` keeps everything.
+static func _clip_below(poly: PackedVector2Array, line: PackedVector2Array) -> PackedVector2Array:
+	if line.size() < 2:
+		return poly
+	var a: Vector2 = line[0]
+	var ab: Vector2 = line[1] - a
+	var out := PackedVector2Array()
+	var n := poly.size()
+	for i in n:
+		var p: Vector2 = poly[i]
+		var q: Vector2 = poly[(i + 1) % n]
+		var dp := ab.cross(p - a)
+		var dq := ab.cross(q - a)
+		var p_in := dp >= 0.0
+		var q_in := dq >= 0.0
+		if p_in:
+			out.append(p)
+		if p_in != q_in:
+			out.append(p + (q - p) * (dp / (dp - dq)))
+	return out
+
+
 ## The lorry's rear lights, flashing once a second while it reverses (additive layer).
 func _draw_bay_lights(pts: PackedVector2Array, cols: PackedColorArray) -> void:
 	if _bay.is_empty():
@@ -575,8 +610,8 @@ func _draw_bay_lights(pts: PackedVector2Array, cols: PackedColorArray) -> void:
 	for l_value in LORRY_LIGHTS:
 		var off: Vector2 = (l_value as Vector2) - LORRY_REAR
 		var at := pos + Vector2(off.x * flip, off.y) * s
-		_ellipse(pts, cols, at, 5.0 * s, 4.0 * s, Color(LIGHT_RED.r, LIGHT_RED.g, LIGHT_RED.b, 0.55))
-		_ellipse(pts, cols, at, 2.4 * s, 2.0 * s, Color(1.0, 0.75, 0.6, 0.8))
+		_ellipse(pts, cols, at, 3.2 * s, 2.6 * s, Color(LIGHT_RED.r, LIGHT_RED.g, LIGHT_RED.b, 0.6))
+		_ellipse(pts, cols, at, 1.6 * s, 1.3 * s, Color(1.0, 0.75, 0.6, 0.85))
 
 
 ## One textured flame per lick anchor, rooted at the anchor and re-rolled FLAME_FPS times a
@@ -608,7 +643,7 @@ func _draw_licks() -> void:
 
 func _draw_puff(origin: Vector2, base_r: float, p: float, smoke: bool, spin_dir: float, variant: int) -> void:
 	var travelled := 1.0 - pow(1.0 - p, 1.7)
-	var centre := origin + DRIFT_DIR.normalized() * (DRIFT_R * base_r) * travelled
+	var centre := origin + Vector2(0.0, -PUFF_LIFT * base_r) + DRIFT_DIR.normalized() * (DRIFT_R * base_r) * travelled
 	var radius := base_r * lerpf(START_SCALE, END_SCALE, pow(p, 0.75))
 	var alpha := PEAK_ALPHA * pow(1.0 - p, 1.15)
 	if alpha <= 0.004:
