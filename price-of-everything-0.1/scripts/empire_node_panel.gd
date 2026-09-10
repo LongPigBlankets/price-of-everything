@@ -24,6 +24,7 @@ const _LEVEL_SCALE := [1.0, 1.0, 1.5, 2.25]
 # empire_graph_world.gd depends on the same value. One constant, three consumers.
 const SPRITE_PX := 400.0
 const GraphWorld := preload("res://scripts/empire_graph_world.gd")
+const EmpireFx := preload("res://scripts/empire_fx.gd")
 # Badge area as a fraction of the sprite box. A hex inscribed in a 2h x 2h square covers ~3h^2,
 # so h = sqrt(frac * SPRITE_PX^2 / 3) — 5% works out at about 52px on the 400px sprite.
 const _BADGE_AREA_FRAC := 0.05
@@ -99,6 +100,18 @@ func setup(node: Dictionary) -> void:
 		# always visible through it. The only lines that were ever lost were the ones crossing
 		# the opaque building, and the router now refuses to cross that (see `sprite_rect`).
 		add_child(spr)
+
+		# CHIMNEY SMOKE / STEAM + FURNACE FLICKER over the sprite (owner, 2026-09-10). A site
+		# has no chimney yet and no fire, so nothing is added while under construction. Sits
+		# after the sprite so it draws over it, before the badge so the badge stays on top.
+		if not bool(node.get("under_construction", false)):
+			var iname := str(Catalog.get_building(str(node.get("building_id", ""))).get("internal_name", ""))
+			if EmpireFx.has_effects(iname, _level):
+				var fx := EmpireFx.new()
+				fx.position = spr.position
+				fx.size = spr.size
+				add_child(fx)
+				fx.setup(iname, _level, EmpireFx.recipe_emits_carbon(instance_id), instance_id, SPRITE_PX)
 
 		# PORT BADGE — only on buildings that ship to market, and only when enabled. Added
 		# AFTER the sprite so it sits on top of it: a Control's own _draw() renders beneath

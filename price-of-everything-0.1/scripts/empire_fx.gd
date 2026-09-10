@@ -1,0 +1,284 @@
+extends Control
+## Animated effects laid over a building SPRITE in the empire (supply-chain) view: chimney
+## smoke / steam plumes and a furnace fire flicker. Owner spec 2026-09-10 — the plumes are
+## continuous, the plume asset is tied to a chimney ANCHOR and sized by that chimney's radius
+## so it can be reused on any building, and there are two colourways: STEAM (light grey with
+## white tinges) and SMOKE (medium grey with darker patches).
+##
+## Purely visual. No sim state is touched; the only sim READ is at setup (does this
+## building's recipe burn something the levy bites — same rule as the map's smoke layer,
+## `building_visuals._recipe_emits_carbon`), so the map and the empire view cannot disagree
+## about which chimneys are dirty.
+##
+## Animation runs on the wall clock in `_process` (visual only — architecture rule 2 bans sim
+## logic there, not animation) and stands down while hidden.
+##
+## ANCHORS are in the 800x800 SPRITE's pixel space (the PNGs in assets/icons/buildings/sprites)
+## and are scaled to whatever box this Control is given (the empire view draws sprites at
+## 400 px). Read off `tools/…sprites_grid` sheets; refine per level as the sprites change.
+
+const CanvasBatch := preload("res://scripts/canvas_batch.gd")
+const SmokeVisuals := preload("res://scripts/smoke_visuals.gd")
+
+const SPRITE_PX := 800.0
+
+## kind: "auto" = smoke when the recipe emits carbon, else steam. "smoke"/"steam" force it.
+## r is the chimney's radius in sprite px — it sizes the puffs, so a fat cooling tower breathes
+## a big cloud and a thin flue a thin one.
+## Keyed by internal name, then by LEVEL (the L1/L2/L3 sprites move their chimneys: the
+## factory has no chimney at L1, the furnace merges its two stacks into one at L3). A level
+## without its own entry falls back to the nearest lower one.
+const ANCHORS := {
+	"furnace": {
+		1: {"stacks": [{"x": 450, "y": 175, "r": 30, "kind": "auto"}, {"x": 560, "y": 165, "r": 30, "kind": "auto"}],
+			"fires": [{"x": 430, "y": 360, "rx": 50, "ry": 22}, {"x": 300, "y": 605, "rx": 22, "ry": 16}]},
+		2: {"stacks": [{"x": 215, "y": 95, "r": 30, "kind": "auto"}, {"x": 275, "y": 90, "r": 30, "kind": "auto"}],
+			"fires": [{"x": 235, "y": 345, "rx": 60, "ry": 30}, {"x": 145, "y": 565, "rx": 24, "ry": 18}]},
+		3: {"stacks": [{"x": 455, "y": 80, "r": 40, "kind": "auto"}],
+			"fires": [{"x": 385, "y": 330, "rx": 60, "ry": 28}, {"x": 545, "y": 650, "rx": 42, "ry": 30}, {"x": 280, "y": 610, "rx": 22, "ry": 16}]},
+	},
+	"eaf": {
+		1: {"stacks": [{"x": 480, "y": 76, "r": 18, "kind": "auto"}, {"x": 550, "y": 96, "r": 18, "kind": "auto"}],
+			"fires": [{"x": 300, "y": 555, "rx": 60, "ry": 26}, {"x": 300, "y": 598, "rx": 40, "ry": 14}]},
+		2: {"stacks": [{"x": 555, "y": 45, "r": 18, "kind": "auto"}, {"x": 600, "y": 55, "r": 18, "kind": "auto"}],
+			"fires": [{"x": 605, "y": 640, "rx": 62, "ry": 30}, {"x": 600, "y": 692, "rx": 40, "ry": 14}]},
+		3: {"stacks": [{"x": 540, "y": 45, "r": 18, "kind": "auto"}, {"x": 590, "y": 50, "r": 18, "kind": "auto"}],
+			"fires": [{"x": 595, "y": 505, "rx": 62, "ry": 30}, {"x": 600, "y": 560, "rx": 40, "ry": 14}]},
+	},
+	"industrial_factory": {
+		2: {"stacks": [{"x": 700, "y": 110, "r": 26, "kind": "auto"}], "fires": []},
+		3: {"stacks": [{"x": 655, "y": 90, "r": 26, "kind": "auto"}], "fires": []},
+	},
+	"power_plant": {
+		1: {"stacks": [{"x": 400, "y": 55, "r": 30, "kind": "auto"}], "fires": []},
+		2: {"stacks": [{"x": 395, "y": 40, "r": 30, "kind": "auto"}, {"x": 545, "y": 135, "r": 95, "kind": "steam"}], "fires": []},
+		3: {"stacks": [{"x": 395, "y": 45, "r": 30, "kind": "auto"}, {"x": 545, "y": 120, "r": 95, "kind": "steam"}], "fires": []},
+	},
+	"petro_refinery": {
+		1: {"stacks": [{"x": 150, "y": 185, "r": 18, "kind": "steam"}],
+			"fires": [{"x": 300, "y": 185, "rx": 14, "ry": 36}]},
+		2: {"stacks": [{"x": 150, "y": 120, "r": 22, "kind": "steam"}, {"x": 210, "y": 110, "r": 22, "kind": "steam"}],
+			"fires": [{"x": 300, "y": 178, "rx": 16, "ry": 40}, {"x": 330, "y": 168, "rx": 16, "ry": 40}]},
+		3: {"stacks": [{"x": 380, "y": 96, "r": 18, "kind": "steam"}, {"x": 460, "y": 66, "r": 18, "kind": "steam"}],
+			"fires": [{"x": 620, "y": 215, "rx": 14, "ry": 36}, {"x": 700, "y": 200, "rx": 14, "ry": 36}, {"x": 760, "y": 185, "rx": 14, "ry": 36}]},
+	},
+	"poly_plant": {
+		1: {"stacks": [{"x": 570, "y": 206, "r": 12, "kind": "steam"}], "fires": []},
+		2: {"stacks": [{"x": 310, "y": 115, "r": 16, "kind": "steam"}, {"x": 280, "y": 105, "r": 16, "kind": "steam"}], "fires": []},
+		3: {"stacks": [{"x": 550, "y": 160, "r": 16, "kind": "steam"}, {"x": 630, "y": 200, "r": 16, "kind": "steam"}], "fires": []},
+	},
+	"chem_plant": {
+		1: {"stacks": [{"x": 310, "y": 296, "r": 16, "kind": "steam"}], "fires": []},
+		2: {"stacks": [{"x": 250, "y": 220, "r": 20, "kind": "steam"}, {"x": 300, "y": 240, "r": 20, "kind": "steam"}], "fires": []},
+		3: {"stacks": [{"x": 310, "y": 46, "r": 16, "kind": "steam"}, {"x": 480, "y": 380, "r": 16, "kind": "steam"}], "fires": []},
+	},
+	"assembly_plant": {
+		2: {"stacks": [{"x": 120, "y": 80, "r": 22, "kind": "steam"}], "fires": []},
+		3: {"stacks": [{"x": 210, "y": 126, "r": 20, "kind": "steam"}], "fires": []},
+	},
+}
+
+
+## The anchor set for a building at a level: its own, else the nearest LOWER level's, else
+## empty (a factory at L1 has no chimney and gets nothing).
+static func anchors_for(internal_name: String, level: int) -> Dictionary:
+	var by_level: Dictionary = ANCHORS.get(internal_name, {})
+	var lv := level
+	while lv >= 1:
+		if by_level.has(lv):
+			return by_level[lv]
+		lv -= 1
+	return {}
+
+
+## Plume model (the map's `smoke_visuals` numbers, in chimney radii). PUFFS overlapping
+## puffs per stack, each living PERIOD seconds, staggered evenly — so a new puff is always
+## rising while the last is fading and the plume never breaks (owner: continuous).
+const PERIOD := 2.6
+const PUFFS := 3
+const START_SCALE := 1.3
+const END_SCALE := 3.6
+## Drift in chimney radii over a puff's life, and its direction in SPRITE space: up, leaning
+## north-east the way the map's smoke does (the sprites share the map's isometric).
+const DRIFT_R := 5.5
+const DRIFT_DIR := Vector2(0.28, -1.0)
+const SPIN := PI * 0.4
+
+## Two colourways (owner spec). Each puff is a base disc plus two smaller PATCHES offset
+## inside it: darker for smoke, white-tinged for steam.
+const SMOKE_BASE := Color(0.46, 0.45, 0.44)
+const SMOKE_PATCH := Color(0.30, 0.29, 0.29)
+const STEAM_BASE := Color(0.84, 0.86, 0.87)
+const STEAM_PATCH := Color(0.97, 0.98, 0.98)
+const PEAK_ALPHA := 0.92
+
+## Fire: an additive warm glow that flickers. Two sines at unrelated rates read as flame,
+## one reads as a lamp on a dimmer.
+const FIRE_CORE := Color(1.0, 0.72, 0.30)
+const FIRE_HALO := Color(1.0, 0.42, 0.10)
+
+static var _puff_tris := PackedVector2Array()
+static var _disc_tris := PackedVector2Array()
+
+var _stacks: Array = []      # [{pos: Vector2 (local px), r: float, smoke: bool, seed: float}]
+var _fires: Array = []       # [{pos, rx, ry, seed}]
+var _clock := 0.0
+var _fire_layer: Control = null
+
+
+## Same rule as the map's smoke layer: the recipe burns something the carbon levy bites.
+static func recipe_emits_carbon(instance_id: String) -> bool:
+	var inst: Dictionary = MatchState.get_building(instance_id)
+	if inst.is_empty():
+		return false
+	var recipe: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))
+	for input_value in recipe.get("inputs", []):
+		var gid := str((input_value as Dictionary).get("good_id", ""))
+		if gid != "" and float(Catalog.get_good(gid).get("co2_tax_multiplier", 0.0)) > 0.0:
+			return true
+	return false
+
+
+static func has_effects(internal_name: String, level: int) -> bool:
+	return not anchors_for(internal_name, level).is_empty()
+
+
+## `box_px` is the size this Control draws the 800px sprite at (the empire view: 400).
+func setup(internal_name: String, level: int, carbon: bool, seed_text: String, box_px: float) -> void:
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var spec: Dictionary = anchors_for(internal_name, level)
+	var k := box_px / SPRITE_PX
+	var i := 0
+	for st_value in spec.get("stacks", []):
+		var st: Dictionary = st_value
+		var kind := str(st.get("kind", "auto"))
+		var smoke := carbon if kind == "auto" else kind == "smoke"
+		_stacks.append({
+			"pos": Vector2(float(st["x"]), float(st["y"])) * k,
+			"r": float(st["r"]) * k,
+			"smoke": smoke,
+			"seed": float((hash(seed_text + "|s%d" % i) % 1000)) / 1000.0,
+		})
+		i += 1
+	for f_value in spec.get("fires", []):
+		var f: Dictionary = f_value
+		_fires.append({
+			"pos": Vector2(float(f["x"]), float(f["y"])) * k,
+			"rx": float(f["rx"]) * k, "ry": float(f["ry"]) * k,
+			"seed": float((hash(seed_text + "|f%d" % i) % 1000)) / 1000.0,
+		})
+		i += 1
+	if not _fires.is_empty():
+		# Fire is ADDITIVE (it lights the sprite around it); smoke is not. Separate canvas item.
+		_fire_layer = Control.new()
+		_fire_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_fire_layer.position = Vector2.ZERO
+		_fire_layer.size = size
+		var mat := CanvasItemMaterial.new()
+		mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+		_fire_layer.material = mat
+		_fire_layer.draw.connect(_draw_fires)
+		add_child(_fire_layer)
+	set_process(not _stacks.is_empty() or not _fires.is_empty())
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_VISIBILITY_CHANGED:
+		set_process(is_visible_in_tree() and (not _stacks.is_empty() or not _fires.is_empty()))
+
+
+func _process(delta: float) -> void:
+	_clock += delta
+	if _clock > 86400.0:
+		_clock = 0.0
+	queue_redraw()
+	if _fire_layer != null:
+		_fire_layer.queue_redraw()
+
+
+func _draw() -> void:
+	if _stacks.is_empty():
+		return
+	if _puff_tris.is_empty():
+		_puff_tris = CanvasBatch.polygon_soup(SmokeVisuals.PUFF_SHAPE)
+		if _puff_tris.is_empty():
+			return
+	var pts := PackedVector2Array()
+	var cols := PackedColorArray()
+	for st_value in _stacks:
+		var st: Dictionary = st_value
+		var seed_val: float = st["seed"]
+		var spin_dir := 1.0 if seed_val < 0.5 else -1.0
+		for j in PUFFS:
+			# Evenly staggered ages: one puff is always young while another is old.
+			var p := fposmod(_clock / PERIOD + seed_val + float(j) / float(PUFFS), 1.0)
+			_append_puff(pts, cols, st["pos"], st["r"], p, bool(st["smoke"]), spin_dir, seed_val + j)
+	CanvasBatch.flush(self, pts, cols)
+
+
+func _append_puff(pts: PackedVector2Array, cols: PackedColorArray, origin: Vector2,
+		base_r: float, p: float, smoke: bool, spin_dir: float, patch_seed: float) -> void:
+	var travelled := 1.0 - pow(1.0 - p, 1.7)
+	var centre := origin + DRIFT_DIR.normalized() * (DRIFT_R * base_r) * travelled
+	var radius := base_r * lerpf(START_SCALE, END_SCALE, pow(p, 0.75))
+	var alpha := PEAK_ALPHA * pow(1.0 - p, 1.15)
+	if alpha <= 0.004:
+		return
+	var spin := p * SPIN * spin_dir
+	var base_col := SMOKE_BASE if smoke else STEAM_BASE
+	var patch_col := SMOKE_PATCH if smoke else STEAM_PATCH
+	_push(pts, cols, centre, radius, spin, Color(base_col.r, base_col.g, base_col.b, alpha))
+	# Two patches inside the puff, offset by the seed so no two puffs are stamps of each other.
+	var a1 := patch_seed * 6.2832
+	var a2 := a1 + 2.4
+	var pr := radius * 0.42
+	_push(pts, cols, centre + Vector2(cos(a1), sin(a1)) * radius * 0.38, pr, spin + 1.1,
+		Color(patch_col.r, patch_col.g, patch_col.b, alpha * 0.85))
+	_push(pts, cols, centre + Vector2(cos(a2), sin(a2)) * radius * 0.30, pr * 0.8, spin - 0.7,
+		Color(patch_col.r, patch_col.g, patch_col.b, alpha * 0.7))
+
+
+func _push(pts: PackedVector2Array, cols: PackedColorArray, centre: Vector2, radius: float,
+		spin: float, col: Color) -> void:
+	var base := pts.size()
+	pts.resize(base + _puff_tris.size())
+	cols.resize(base + _puff_tris.size())
+	for i in _puff_tris.size():
+		pts[base + i] = centre + _puff_tris[i].rotated(spin) * radius
+		cols[base + i] = col
+
+
+func _draw_fires() -> void:
+	if _fire_layer == null or _fires.is_empty():
+		return
+	if _disc_tris.is_empty():
+		var disc := PackedVector2Array()
+		for i in 24:
+			var a := TAU * float(i) / 24.0
+			disc.append(Vector2(cos(a), sin(a)))
+		_disc_tris = CanvasBatch.polygon_soup(disc)
+	var pts := PackedVector2Array()
+	var cols := PackedColorArray()
+	for f_value in _fires:
+		var f: Dictionary = f_value
+		var s: float = f["seed"]
+		var t := _clock * 1.0 + s * 37.0
+		# Irregular flicker: two incommensurate rates plus a slow breath.
+		var flick := 0.55 + 0.25 * sin(t * 11.3) * sin(t * 7.1 + 1.3) + 0.20 * sin(t * 2.3)
+		flick = clampf(flick, 0.15, 1.0)
+		var pos: Vector2 = f["pos"]
+		var rx: float = f["rx"]; var ry: float = f["ry"]
+		_ellipse(pts, cols, pos, rx * 1.35, ry * 1.35, Color(FIRE_HALO.r, FIRE_HALO.g, FIRE_HALO.b, 0.22 * flick))
+		_ellipse(pts, cols, pos, rx, ry, Color(FIRE_CORE.r, FIRE_CORE.g, FIRE_CORE.b, 0.34 * flick))
+		_ellipse(pts, cols, pos + Vector2(rx * 0.1 * sin(t * 5.0), 0.0), rx * 0.5, ry * 0.55,
+			Color(1.0, 0.92, 0.70, 0.30 * flick))
+	CanvasBatch.flush(_fire_layer, pts, cols)
+
+
+func _ellipse(pts: PackedVector2Array, cols: PackedColorArray, centre: Vector2, rx: float, ry: float, col: Color) -> void:
+	var base := pts.size()
+	pts.resize(base + _disc_tris.size())
+	cols.resize(base + _disc_tris.size())
+	for i in _disc_tris.size():
+		pts[base + i] = centre + Vector2(_disc_tris[i].x * rx, _disc_tris[i].y * ry)
+		cols[base + i] = col
