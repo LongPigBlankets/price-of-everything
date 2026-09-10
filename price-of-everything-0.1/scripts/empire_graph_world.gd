@@ -629,6 +629,7 @@ func audit() -> Dictionary:
 	for p in rep["pairs"]:
 		named.append("%s x %s" % [_occ.describe(int(p["a"])), _occ.describe(int(p["b"]))])
 	rep["named"] = named
+	rep["crossings"] = _occ.crossings()
 	return rep
 
 

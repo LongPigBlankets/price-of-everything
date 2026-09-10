@@ -100,7 +100,15 @@ func _phase(gw: Node, label: String, baseline: Dictionary) -> int:
 		if int(counts[k]) > allowed:
 			print("AUDIT[%s] REGRESSION %s: %d > baseline %d" % [label, k, int(counts[k]), allowed])
 			failed += 1
-	print("AUDIT[%s] total collisions: %d" % [label, int(rep["total"])])
+	print("AUDIT[%s] total collisions: %d   line crossings: %d" % [label, int(rep["total"]), int((rep["crossings"] as Dictionary)["total"])])
+	var cr: Dictionary = (rep["crossings"] as Dictionary)["pairs"]
+	var fam: Dictionary = {}
+	for k in cr:
+		var f := ("buy" if str(k).begins_with("buy_") else "sell" if str(k).find("|port_") >= 0 else "input")
+		var g := ("buy" if str(k).find(" x buy_") >= 0 else "sell" if str(k).split(" x ")[1].find("|port_") >= 0 else "input")
+		var fk := f + "/" + g if f <= g else g + "/" + f
+		fam[fk] = int(fam.get(fk, 0)) + int(cr[k])
+	print("AUDIT[%s] crossings by family: %s" % [label, JSON.stringify(fam)])
 	return failed
 
 

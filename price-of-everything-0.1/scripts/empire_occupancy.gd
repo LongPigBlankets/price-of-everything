@@ -91,6 +91,51 @@ func report() -> Dictionary:
 	return {"counts": counts, "pairs": pairs, "items": by_kind, "total": pairs.size()}
 
 
+## Line crossings: segment pairs of two different routes that intersect away from a shared
+## endpoint. Not a collision (lines may cross), but the number the layout is judged by.
+func crossings() -> Dictionary:
+	var routes: Array = []
+	for it in items:
+		if it["kind"] == "route" and (it["path"] as PackedVector2Array).size() >= 2:
+			routes.append(it)
+	var n := 0
+	var by_family: Dictionary = {}
+	for i in routes.size():
+		var a: Dictionary = routes[i]
+		for j in range(i + 1, routes.size()):
+			var b: Dictionary = routes[j]
+			var pa: PackedVector2Array = a["path"]
+			var pb: PackedVector2Array = b["path"]
+			var shared: Array = []
+			for e in a["ends"]:
+				if (b["ends"] as Array).has(e):
+					shared.append(e)
+			var c := 0
+			for x in range(pa.size() - 1):
+				for y in range(pb.size() - 1):
+					if _segs_cross(pa[x], pa[x + 1], pb[y], pb[y + 1]):
+						c += 1
+			if c > 0:
+				# Lines out of the same plate touch at the stub; that is a junction, not a crossing.
+				if not shared.is_empty() and pa[0].distance_to(pb[0]) < 40.0:
+					c -= 1
+				if not shared.is_empty() and pa[pa.size() - 1].distance_to(pb[pb.size() - 1]) < 40.0:
+					c -= 1
+			if c > 0:
+				n += c
+				var key := "%s x %s" % [a["owner"], b["owner"]]
+				by_family[key] = c
+	return {"total": n, "pairs": by_family}
+
+
+static func _segs_cross(p1: Vector2, p2: Vector2, q1: Vector2, q2: Vector2) -> bool:
+	var d1 := (p2 - p1).cross(q1 - p1)
+	var d2 := (p2 - p1).cross(q2 - p1)
+	var d3 := (q2 - q1).cross(p1 - q1)
+	var d4 := (q2 - q1).cross(p2 - q1)
+	return ((d1 > 0.0) != (d2 > 0.0)) and ((d3 > 0.0) != (d4 > 0.0)) and absf(d1) > 0.01 and absf(d2) > 0.01 and absf(d3) > 0.01 and absf(d4) > 0.01
+
+
 func describe(i: int) -> String:
 	var it: Dictionary = items[i]
 	return "%s(%s)" % [it["kind"], it["owner"]]
