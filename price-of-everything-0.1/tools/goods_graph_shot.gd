@@ -23,6 +23,46 @@ func _ready() -> void:
 	for _i in range(20):
 		await get_tree().process_frame
 
+	# Live states to photograph (2026-09-10): one player building running a NON-BASE steel
+	# recipe (the focus shows it as an in-use route) and one research unlocked so a
+	# catalog-gated good shows its open padlock.
+	var GFG := preload("res://scripts/goods_flow_graph.gd")
+	var routes: Array = GFG.routes_for_good(TRACE_GOOD)
+	var tiles: Array = []
+	for b in MatchState.buildings.values():
+		var t := str(b.get("tile_id", ""))
+		if t != "" and not tiles.has(t):
+			tiles.append(t)
+	tiles.sort()
+	for r in routes:
+		var recipe: Dictionary = (r as Dictionary).get("recipe", {})
+		if r == routes[0]:
+			continue
+		var bid := str(recipe.get("building_id", ""))
+		if bid == "" or tiles.is_empty():
+			continue
+		# A gated alternate is unlocked first: an in-use recipe is by definition buildable.
+		var raw0 := str(recipe.get("tech_unlock_req", ""))
+		if raw0 != "":
+			var t0 := MatchState.research_title_for_node_id(raw0)
+			if t0 != "":
+				MatchState.grant_unlock(t0)
+		MatchState.add_building(bid, str(recipe.get("recipe_id", "")), tiles[0], "player_1", "gg_alt")
+		print("[SHOT] seeded alt recipe ", recipe.get("recipe_id", ""), " (", recipe.get("display_name", ""), ") in ", bid)
+		break
+	var graph: Dictionary = GFG.build()
+	for n in graph.get("nodes", []):
+		if bool((n as Dictionary).get("gated", false)):
+			for r2 in GFG.routes_for_good(str((n as Dictionary)["id"])):
+				var raw := str(((r2 as Dictionary)["recipe"] as Dictionary).get("tech_unlock_req", ""))
+				var title := MatchState.research_title_for_node_id(raw)
+				if title != "":
+					MatchState.grant_unlock(title)
+					print("[SHOT] unlocked ", title, " for ", (n as Dictionary)["id"])
+					break
+			if MatchState.unlocked_titles.size() > 0:
+				break
+
 	var view: Node = main.find_child("GoodsGraphView", true, false)
 	if view == null:
 		push_error("no GoodsGraphView found")

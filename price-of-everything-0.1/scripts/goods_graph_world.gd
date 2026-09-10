@@ -93,6 +93,14 @@ var _selected_id := ""
 var _upstream: Dictionary = {}     # internal -> true, transitive input cone of the selection
 var _feeds: Dictionary = {}        # internal -> true, direct consumers of the selection
 var _legacy_presentation := false  # session-only; false keeps the current presentation default
+## LIVE unlock state (owner 2026-09-10): a good whose every producer is research-gated in the
+## catalog is UNLOCKED once any of those researches is done — its card drops the lock (an open
+## padlock marks it), its edges draw solid. Recomputed on every open (set_graph).
+var _unlocked: Dictionary = {}     # internal -> true
+## Non-base recipes the player's estate is RUNNING for the selected good (owner 2026-09-10):
+## [{recipe, count}] — shown on focus as blue in-use edges from that recipe's inputs and a
+## caption on the selected card.
+var _in_use: Array = []
 
 # --- alternate-recipes focus grid (owner UX 2026-07-19) ------------------------------
 # WEB shows the base chain; selecting a good expands its card with its supported
@@ -109,8 +117,8 @@ var _mode := _Mode.WEB
 # keep >= _F_CLEAR from cards, and no two edges share a collinear run — ports
 # fan along card edges, verticals take per-channel lanes, column-skipping edges
 # cross through card-free corridors.
-const _FCOL_W := 720.0
-const _FROW_H := 200.0
+const _FCOL_W := 860.0            # CARD_W 520 + a 340 channel
+const _FROW_H := 260.0            # CARD_H 224 + air
 const _F_PORT_STEP := 24.0
 const _F_LANE_PAD := 24.0
 const _F_LANE_STEP := 14.0
@@ -219,6 +227,8 @@ func set_graph(graph: Dictionary) -> void:
 	_bands = graph.get("bands", [])
 	_lanes = graph.get("lanes", [])
 	_legacy_presentation = bool(graph.get("legacy_layout", false))
+	_refresh_unlocked()
+	_in_use.clear()
 	_hover_id = ""
 	_selected_id = ""
 	_upstream.clear()
@@ -247,6 +257,68 @@ func set_graph(graph: Dictionary) -> void:
 		_search_hits.clear()
 	_reset_view()
 	queue_redraw()
+
+
+## Which catalog-gated goods are unlocked NOW: any producing recipe whose research is done.
+func _refresh_unlocked() -> void:
+	_unlocked.clear()
+	for n in _nodes:
+		if not bool(n.get("gated", false)):
+			continue
+		var id := str(n["id"])
+		for route in GoodsFlowGraph.routes_for_good(id):
+			var recipe: Dictionary = (route as Dictionary).get("recipe", {})
+			if _recipe_unlocked(recipe):
+				_unlocked[id] = true
+				break
+
+
+## A recipe the player may build today: ungated, or its research is done.
+func _recipe_unlocked(recipe: Dictionary) -> bool:
+	var raw := str(recipe.get("tech_unlock_req", ""))
+	if raw == "":
+		return true
+	var title := MatchState.research_title_for_node_id(raw)
+	return MatchState.is_unlocked(title if title != "" else raw)
+
+
+## Locked as the player sees it: gated in the catalog and not yet unlocked by research.
+func _gated_now(id: String) -> bool:
+	var n: Dictionary = _by_id.get(id, {})
+	return bool(n.get("gated", false)) and not _unlocked.has(id)
+
+
+## The estate's non-base recipes for a good: every player building whose recipe outputs
+## it with a recipe other than the graph's defining one, grouped by recipe with a count.
+func _in_use_alternates(id: String) -> Array:
+	var node: Dictionary = _by_id.get(id, {})
+	if node.is_empty():
+		return []
+	var base_rid := str(node.get("recipe_id", ""))
+	var counts: Dictionary = {}
+	var recipes: Dictionary = {}
+	for b in MatchState.buildings.values():
+		if not MatchState.is_player_owned(b) or bool(b.get("under_construction", false)):
+			continue
+		var rid := str(b.get("recipe_id", ""))
+		if rid == "" or rid == base_rid:
+			continue
+		var recipe: Dictionary = Catalog.get_recipe(rid)
+		var makes := false
+		for o in recipe.get("outputs", []):
+			if str((o as Dictionary).get("internal_name", "")) == id:
+				makes = true
+				break
+		if not makes:
+			continue
+		counts[rid] = int(counts.get(rid, 0)) + 1
+		recipes[rid] = recipe
+	var out: Array = []
+	var rids: Array = counts.keys()
+	rids.sort()
+	for rid2 in rids:
+		out.append({"recipe": recipes[rid2], "count": int(counts[rid2])})
+	return out
 
 
 ## Current screen-space card centres — the hex-field background ripples its
@@ -496,6 +568,7 @@ func select_good(id: String) -> void:
 	TelemetryState.track_interaction("goods_graph_good_selected", "goods_graph", id)
 	_selected_id = id
 	_upstream = _collect_upstream(id)
+	_in_use = _in_use_alternates(id)
 	_feeds.clear()
 	for f in (_by_id.get(id, {}) as Dictionary).get("feeds", []):
 		_feeds[f] = true
@@ -564,7 +637,17 @@ func _build_focus_layout() -> void:
 		if not keep:
 			continue
 		_focus_edges.append({"from": ef, "to": et, "route": route,
-			"gated": bool(e.get("route_gated", false))})
+			"gated": bool(e.get("route_gated", false)) and _gated_now(et)})
+	# The estate's in-use alternate(s): their inputs join the chart one column left of the
+	# selection and feed it with blue IN-USE edges (owner 2026-09-10).
+	var in_use_inputs: Dictionary = {}
+	for iu in _in_use:
+		for inp in ((iu as Dictionary)["recipe"] as Dictionary).get("inputs", []):
+			var src := str((inp as Dictionary).get("internal_name", ""))
+			if src == "" or src == sel or not _by_id.has(src) or in_use_inputs.has(src):
+				continue
+			in_use_inputs[src] = true
+			_focus_edges.append({"from": src, "to": sel, "route": 1, "gated": false, "in_use": true})
 	# 2 · Focus columns by TIER BAND (owner 2026-07-22): same-band members share
 	# one column and stack vertically — iron ore + coal sit up-down, not in a
 	# row — UNLESS a kept edge links two members of the band (a within-band
@@ -579,6 +662,10 @@ func _build_focus_layout() -> void:
 	var members: Dictionary = {sel: 0.0}   # id -> sortable column key (band*100+sub)
 	for id in _upstream:
 		if _by_id.has(str(id)):
+			var bd := int(col_band.get(_col_of(str(id)), 0)) - sel_band
+			members[str(id)] = float(mini(-1, bd)) * 100.0
+	for id in in_use_inputs:
+		if not members.has(str(id)):
 			var bd := int(col_band.get(_col_of(str(id)), 0)) - sel_band
 			members[str(id)] = float(mini(-1, bd)) * 100.0
 	for id in _feeds:
@@ -1115,7 +1202,7 @@ func _draw_edge(e: Dictionary, tracing: bool, alpha_mul: float = 1.0) -> void:
 	color.a *= alpha_mul
 
 	var pts := _fillet_polyline(wp)
-	if bool(e.get("route_gated", false)):
+	if bool(e.get("route_gated", false)) and _gated_now(str(e["to"])):
 		# Research-gated route: dashed — "this way of making it exists, but is locked".
 		_draw_dashed_polyline(pts, color, width)
 	else:
@@ -1195,10 +1282,11 @@ func _draw_focus_edge(fe: Dictionary, alpha_mul: float) -> void:
 	var route := clampi(int(fe.get("route", 0)), 0, _ROUTE_COLORS.size() - 1)
 	var color := Color(_ROUTE_COLORS[route], alpha_mul)
 	var pts := _fillet_polyline(wp)
+	var w := _EDGE_WIDTH * (2.0 if bool(fe.get("in_use", false)) else 1.3)
 	if bool(fe.get("gated", false)):
-		_draw_dashed_polyline(pts, color, _EDGE_WIDTH * 1.3)
+		_draw_dashed_polyline(pts, color, w)
 	else:
-		draw_polyline(pts, color, _EDGE_WIDTH * 1.3, true)
+		draw_polyline(pts, color, w, true)
 	var tip := wp[wp.size() - 1]
 	var tip_dir := (pts[pts.size() - 1] - pts[pts.size() - 2]).normalized()
 	var nrm := Vector2(-tip_dir.y, tip_dir.x)
@@ -1220,7 +1308,8 @@ func _draw_card(node: Dictionary, font: Font, tracing: bool, alpha_mul: float = 
 
 	var id := str(node["id"])
 	var accent: Color = GoodsFlowGraph.accent_for(node)
-	var gated: bool = node.get("gated", false)
+	var gated: bool = _gated_now(id)
+	var unlocked_now: bool = bool(node.get("gated", false)) and not gated
 	var related := not tracing \
 		or id == _selected_id or _upstream.has(id) or _feeds.has(id)
 	var alpha := (1.0 if related else 0.38) * alpha_mul
@@ -1262,36 +1351,65 @@ func _draw_card(node: Dictionary, font: Font, tracing: bool, alpha_mul: float = 
 	# Right-hand column: the lock (research-gated) sits at the card's right edge,
 	# vertically centred; the alt-recipe pill sits just left of it.
 	var alt_count: int = (node.get("alt_recipe_ids", []) as Array).size()
-	var right_x := rect.end.x - 14.0
+	var right_x := rect.end.x - 18.0
 	if gated:
-		_draw_lock_tag(Vector2(rect.end.x - 26.0, rect.get_center().y - 2.0), alpha)
-		right_x = rect.end.x - 48.0
-	var pill_w := 34.0
+		_draw_lock_tag(Vector2(rect.end.x - 36.0, rect.get_center().y - 4.0), alpha, 1.7)
+		right_x = rect.end.x - 70.0
+	elif unlocked_now:
+		# Unlocked by research since the catalog was written: an OPEN padlock says so.
+		_draw_lock_tag(Vector2(rect.end.x - 36.0, rect.get_center().y - 4.0), alpha, 1.7, true)
+		right_x = rect.end.x - 70.0
+	var pill_w := 52.0
 	if alt_count > 0:
-		var pill := Rect2(Vector2(right_x - pill_w, rect.get_center().y - 13.0), Vector2(pill_w, 26.0))
-		draw_colored_polygon(_rounded_rect_points(pill, 12.0), Color(_PILL_NAVY, alpha))
-		var pr := _rounded_rect_points(pill, 12.0)
+		var pill := Rect2(Vector2(right_x - pill_w, rect.get_center().y - 18.0), Vector2(pill_w, 36.0))
+		draw_colored_polygon(_rounded_rect_points(pill, 18.0), Color(_PILL_NAVY, alpha))
+		var pr := _rounded_rect_points(pill, 18.0)
 		pr.append(pr[0])
-		draw_polyline(pr, Color(_CREAM, 0.8 * alpha), 1.4, true)
-		draw_string(font, Vector2(pill.position.x, pill.get_center().y + 5.0), "+%d" % alt_count,
-			HORIZONTAL_ALIGNMENT_CENTER, pill.size.x, 14, Color(_CREAM, alpha))
+		draw_polyline(pr, Color(_CREAM, 0.8 * alpha), 1.6, true)
+		draw_string(font, Vector2(pill.position.x, pill.get_center().y + 7.0), "+%d" % alt_count,
+			HORIZONTAL_ALIGNMENT_CENTER, pill.size.x, 20, Color(_CREAM, alpha))
 		right_x = pill.position.x
-	var text_x := chip.end.x + 14.0
-	var text_w := right_x - 10.0 - text_x
-	var fs := 20 if str(node["display"]).length() <= 24 else 17
-	draw_string(font, Vector2(text_x, rect.get_center().y + fs * 0.36), str(node["display"]),
-		HORIZONTAL_ALIGNMENT_LEFT, text_w, fs, Color(_TEXT, alpha))
+	# Name beside the chip, up to two lines, vertically centred (the icon is the hero;
+	# the name reads at 34 px and wraps rather than shrinking).
+	var text_x := chip.end.x + 18.0
+	var text_w := right_x - 12.0 - text_x
+	var name := str(node["display"])
+	var fs := 34 if name.length() <= 26 else 28
+	var caption := ""
+	if id == _selected_id and not _in_use.is_empty():
+		var iu: Dictionary = _in_use[0]
+		caption = "USING %s" % str((iu["recipe"] as Dictionary).get("display_name", "")).to_upper()
+		if int(iu["count"]) > 1:
+			caption += " x%d" % int(iu["count"])
+		if _in_use.size() > 1:
+			caption += " +%d" % (_in_use.size() - 1)
+	var name_h := font.get_multiline_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, text_w, fs,
+		2, TextServer.BREAK_WORD_BOUND).y
+	# The in-use caption runs under the name across the card's full text width (the pill
+	# and lock sit on the centre line, so a two-line caption clears them), 2 lines max.
+	var cap_w := rect.end.x - 18.0 - text_x
+	var cap_fs := 15
+	var cap_h := (font.get_multiline_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, cap_w, cap_fs,
+		2, TextServer.BREAK_WORD_BOUND).y + 6.0) if caption != "" else 0.0
+	var top := rect.get_center().y - (name_h + cap_h) * 0.5
+	draw_multiline_string(font, Vector2(text_x, top + font.get_ascent(fs)), name,
+		HORIZONTAL_ALIGNMENT_LEFT, text_w, fs, 2, Color(_TEXT, alpha))
+	if caption != "":
+		draw_multiline_string(font, Vector2(text_x, top + name_h + 6.0 + font.get_ascent(cap_fs)), caption,
+			HORIZONTAL_ALIGNMENT_LEFT, cap_w, cap_fs, 2, Color(_ROUTE_COLORS[1], alpha))
 
 
-## Small padlock tag: "this good's every producer is research-gated at game start".
-func _draw_lock_tag(at: Vector2, alpha: float) -> void:
-	var gold := Color(_GOLD, alpha)
-	# Shackle: upper half-circle arc.
-	draw_arc(at + Vector2(0.0, -2.0), 6.0, PI, TAU, 10, gold, 2.0, true)
+## Small padlock tag: "this good's every producer is research-gated at game start". `open`
+## draws the shackle swung aside in the OK green: gated in the catalog, unlocked by research.
+func _draw_lock_tag(at: Vector2, alpha: float, k: float = 1.0, open: bool = false) -> void:
+	var gold := Color(DS.PALETTE.OK if open else _GOLD, alpha)
+	# Shackle: upper half-circle arc (shifted and lifted when open).
+	var sh := at + (Vector2(6.0, -6.0) * k if open else Vector2(0.0, -2.0 * k))
+	draw_arc(sh, 6.0 * k, PI, TAU, 10, gold, 2.0 * k, true)
 	# Body: filled rounded rect below the shackle.
-	var body := Rect2(at + Vector2(-8.0, -2.0), Vector2(16.0, 12.0))
-	draw_colored_polygon(_rounded_rect_points(body, 3.0), gold)
-	draw_circle(body.get_center() + Vector2(0.0, 1.0), 2.0, Color(_PILL_NAVY, alpha))
+	var body := Rect2(at + Vector2(-8.0, -2.0) * k, Vector2(16.0, 12.0) * k)
+	draw_colored_polygon(_rounded_rect_points(body, 3.0 * k), gold)
+	draw_circle(body.get_center() + Vector2(0.0, 1.0) * k, 2.0 * k, Color(_PILL_NAVY, alpha))
 
 
 ## Per-vertex colours for a top-left (light) -> bottom-right (dark) gradient
@@ -1437,7 +1555,7 @@ const _ISL_GAP_X := 280.0
 const _ISL_GAP_Y := 170.0
 const _GRID_MAX_ISLANDS := 5
 const _OUT_EXTRA_H := 30.0    # output card is taller: it carries the building too
-const _OUT_W := 533.0         # (CARD_W + 30) * 1.3 — room for both icons + the name
+const _OUT_W := 715.0         # (CARD_W + 30) * 1.3 — room for both icons + the name
 const _BuildingIcon := preload("res://scripts/building_icon.gd")
 
 ## Enter the per-recipe minigraph grid for a good: one island per producing recipe
@@ -1571,7 +1689,7 @@ func _layout_grid(internal: String, routes: Array) -> void:
 		var bisz := out_rect.size.y - bpad * 2.0
 		_grid_islands.append({
 			"recipe": recipe,
-			"gated": bool(route["gated"]),
+			"gated": bool(route["gated"]) and not _recipe_unlocked(route["recipe"]),
 			"rect": rect,
 			"inputs": in_rects,
 			"out_rect": out_rect,
@@ -1600,6 +1718,10 @@ func _draw_grid(font: Font) -> void:
 		if research != "":
 			var underline_w := minf(rect.size.x, _BEBAS.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x)
 			draw_line(rect.position + Vector2(2.0, 37.0), rect.position + Vector2(2.0 + underline_w, 37.0), _GOLD, 1.5, true)
+		if not gated and research != "" and str(recipe.get("tech_unlock_req", "")) != "":
+			# Gated in the catalog, unlocked by research: the open padlock beside the name.
+			var name_w0 := _BEBAS.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x
+			_draw_lock_tag(rect.position + Vector2(name_w0 + 26.0, 24.0), 1.0, 1.0, true)
 		if gated:
 			var name_w := _BEBAS.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x
 			_draw_lock_tag(rect.position + Vector2(name_w + 26.0, 24.0), 1.0)
