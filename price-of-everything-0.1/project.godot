@@ -10,8 +10,8 @@ config_version=5
 
 [application]
 
-config/name="Carbon and Capital V0.4.0"
-config/version="0.4.0"
+config/name="Carbon and Capital V0.4.1"
+config/version="0.4.1"
 run/main_scene="res://scenes/main_menu.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://scenes/icon.svg"
