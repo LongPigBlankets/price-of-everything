@@ -2278,8 +2278,8 @@ func _draw_port(n: Dictionary, font: Font, sc: float) -> void:
 		HORIZONTAL_ALIGNMENT_CENTER, rect.size.x + 40.0 * sc, maxi(6, int(round(13.0 * sc))), _GOLD)
 
 
-## The port as it appears INSIDE an open mini-chart: its building sprite, with the lit gold
-## hex shrunk to a corner badge. Mirrors empire_node_panel's port badge so a port and a
+## The port as it appears INSIDE an open mini-chart: its building sprite and its name — no
+## gold hex (owner 2026-09-10). Mirrors empire_node_panel's port badge so a port and a
 ## building that sells to one are visibly the same statement.
 func _draw_port_sprite(n: Dictionary, center: Vector2, half: Vector2, font: Font, sc: float) -> void:
 	var tex: Texture2D = BuildingSprites.texture_for("port", 1)
@@ -2303,26 +2303,9 @@ func _draw_port_sprite(n: Dictionary, center: Vector2, half: Vector2, font: Font
 			draw_texture_rect(icon, Rect2(center - Vector2(isz, isz) * 0.5, Vector2(isz, isz)),
 				false, Color(0.02, 0.06, 0.11, 0.95))
 
-	# The corner badge: a lit gold hex at the sprite's bottom-right, overlapping it slightly so
-	# it reads as attached rather than floating. Anchored to the SPRITE's own corner rather than
-	# the node's layout half — the sprite is now far the larger of the two, and against `half`
-	# the badge would land in the middle of the building.
-	var bh := box * _PORT_BADGE_FRAC * 0.5
-	if bh < 2.0:
-		return  # far zoom: a sub-2px hex degenerates (rounded_polygon triangulation fails)
-	var bc := center + draw_sz * 0.5 - Vector2(bh, bh) * 0.85
-	var bhex := rounded_polygon(hex_points(bc, Vector2(bh, bh)), bh * 0.22, 4)
-	draw_polygon(bhex, grad_colors(bhex, Color(1.0, 0.93, 0.63), Color(0.46, 0.35, 0.13)))
-	var brim := PackedVector2Array(bhex)
-	brim.append(bhex[0])
-	draw_polyline(brim, Color(1.0, 0.95, 0.72, 0.9), 1.5 * sc, true)
-	# The navy port icon embossed in the badge — the same mark the resting hex carries,
-	# so the badge reads as "port", not as a bare gold nugget (owner 2026-08-29).
-	var badge_icon = n.get("icon")
-	if badge_icon != null and bh >= 5.0:
-		var isz := bh * 1.5
-		draw_texture_rect(badge_icon, Rect2(bc - Vector2(isz, isz) * 0.5, Vector2(isz, isz)),
-			false, Color(0.02, 0.06, 0.11, 0.95))
+	# No corner hex (owner 2026-09-10): once the port shows as its full sprite, the sprite IS
+	# the port — the gold hex is the resting symbol, and repeating it on the corner read as
+	# a badge stuck on a building. The name under the sprite carries the identity.
 
 	draw_string(font, Vector2(center.x - draw_sz.x * 0.5 - 20.0 * sc,
 		center.y + draw_sz.y * 0.5 + 16.0 * sc),
