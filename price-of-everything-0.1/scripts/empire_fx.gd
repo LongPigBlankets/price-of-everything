@@ -32,13 +32,16 @@ const ANCHORS := {
 	"furnace": {
 		1: {"stacks": [{"x": 450, "y": 175, "r": 30, "kind": "auto"}, {"x": 560, "y": 165, "r": 30, "kind": "auto"}],
 			"fires": [{"x": 286, "y": 583, "w": 48, "h": 56, "mode": "breathe"}, {"x": 470, "y": 600, "w": 32, "h": 29, "mode": "window"},
-				{"x": 543, "y": 558, "w": 32, "h": 28, "mode": "window"}]},
+				{"x": 543, "y": 558, "w": 32, "h": 28, "mode": "window"},
+				{"x": 344, "y": 542, "w": 47, "h": 54, "mode": "pane"}, {"x": 424, "y": 534, "w": 54, "h": 58, "mode": "pane"}, {"x": 451, "y": 437, "w": 54, "h": 36, "mode": "pane"}, {"x": 497, "y": 492, "w": 54, "h": 57, "mode": "pane"}, {"x": 570, "y": 450, "w": 55, "h": 57, "mode": "pane"}]},
 		2: {"stacks": [{"x": 415, "y": 150, "r": 36, "kind": "auto"}, {"x": 560, "y": 140, "r": 36, "kind": "auto"}],
 			"fires": [{"x": 266, "y": 590, "w": 48, "h": 56, "mode": "breathe"}, {"x": 450, "y": 607, "w": 31, "h": 29, "mode": "window"},
-				{"x": 523, "y": 565, "w": 31, "h": 28, "mode": "window"}]},
+				{"x": 523, "y": 565, "w": 31, "h": 28, "mode": "window"},
+				{"x": 323, "y": 550, "w": 48, "h": 52, "mode": "pane"}, {"x": 404, "y": 541, "w": 54, "h": 58, "mode": "pane"}, {"x": 421, "y": 438, "w": 67, "h": 46, "mode": "pane"}, {"x": 477, "y": 499, "w": 54, "h": 58, "mode": "pane"}, {"x": 550, "y": 457, "w": 55, "h": 57, "mode": "pane"}]},
 		3: {"stacks": [{"x": 455, "y": 80, "r": 40, "kind": "auto"}],
 			"fires": [{"x": 243, "y": 660, "w": 48, "h": 55, "mode": "breathe"}, {"x": 427, "y": 677, "w": 32, "h": 28, "mode": "window"},
-				{"x": 487, "y": 626, "w": 77, "h": 115, "mode": "breathe"}]},
+				{"x": 487, "y": 626, "w": 77, "h": 115, "mode": "breathe"},
+				{"x": 301, "y": 619, "w": 47, "h": 53, "mode": "pane"}, {"x": 314, "y": 458, "w": 59, "h": 39, "mode": "pane"}, {"x": 381, "y": 611, "w": 54, "h": 57, "mode": "pane"}, {"x": 399, "y": 508, "w": 65, "h": 42, "mode": "pane"}]},
 	},
 	"eaf": {
 		1: {"stacks": [{"x": 480, "y": 76, "r": 18, "kind": "auto"}, {"x": 550, "y": 96, "r": 18, "kind": "auto"}],
@@ -146,7 +149,9 @@ const PEAK_ALPHA := 0.92
 ##   molten surface with the three electrodes cut out (owner 2026-09-10: "the glow shows
 ##   through the walls"; "light from the molten liquid only, partially blocked by the rods").
 ##     "breathe" — a doorway: brightness GROWS and RECEDES on two slow sines, never off.
-##     "window"  — a small window: a FAINT flickering light.
+##     "window"  — a small lit window: a FAINT flickering light.
+##     "pane"    — a thick navy glazed window: some of the yellow light inside shows through,
+##                 reduced (the mask holds these at half alpha) and slowly varying.
 ##     "arc"     — the crucible: a hot spot that SHIFTS about the surface (its own canvas item
 ##                 with a small additive shader) under an arc's irregular flicker.
 ##   Chimney rings are lit in the art but are NOT light sources (owner) — not listed.
@@ -431,6 +436,9 @@ func _draw_fires() -> void:
 			var a: float
 			if mode == "window":
 				a = 0.12 + 0.16 * flick
+			elif mode == "pane":
+				var glow := 0.5 + 0.5 * sin(t * 0.9) * sin(t * 0.37 + 1.0)
+				a = 0.22 + 0.20 * glow + 0.06 * flick
 			else:
 				# Grow and recede: a slow swell with a slower one under it, never off.
 				var swell := 0.6 * (0.5 + 0.5 * sin(t * 1.7)) + 0.4 * (0.5 + 0.5 * sin(t * 0.61 + 2.0))
