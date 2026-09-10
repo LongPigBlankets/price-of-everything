@@ -111,7 +111,10 @@ func setup(node: Dictionary) -> void:
 	_sprite_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_sprite_root.position = Vector2.ZERO
 	_sprite_root.size = total
-	_sprite_root.pivot_offset = Vector2(total.x * 0.5, SPRITE_PX)
+	# Pivot on the BUILDING's base (the opaque content's bottom-centre), not the box's: sprites
+	# carry transparent padding, and a box pivot lifted the building off its plate as it grew.
+	_sprite_root.pivot_offset = (Vector2(_sprite_content.get_center().x, _sprite_content.end.y)
+			if _sprite_content.size.x > 0.0 else Vector2(total.x * 0.5, SPRITE_PX))
 	add_child(_sprite_root)
 	_sprite_boost = 1.0
 	if sprite_mode:

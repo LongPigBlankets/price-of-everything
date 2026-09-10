@@ -48,8 +48,15 @@ func _ready() -> void:
 	# its size while the sprite keeps growing.
 	if gw != null and OS.has_environment("POE_EMPIRE_ZOOM"):
 		var first: Control = (gw.get("_panels") as Array)[0]["ctrl"]
-		var at: Vector2 = first.global_position + first.size * first.scale * 0.5
-		gw.call("_zoom_at", at, 1000.0)
+		var target := float(OS.get_environment("POE_EMPIRE_ZOOM"))
+		var at: Vector2 = first.global_position + Vector2(first.size.x * 0.5, first.size.y * 0.72) * first.scale
+		gw.call("_zoom_at", at, target / float(gw.get("_view_zoom")))
+		await _settle(12)
+		# re-centre on the panel after the zoom moved it
+		first = (gw.get("_panels") as Array)[0]["ctrl"]
+		var c: Vector2 = first.global_position + Vector2(first.size.x * 0.5, first.size.y * 0.72) * first.scale
+		gw.set("_view_offset", (gw.get("_view_offset") as Vector2) + (get_viewport().get_visible_rect().size * 0.5 - c))
+		gw.call("_mark_view_dirty")
 		await _settle(12)
 		print("ZOOM: ", gw.get("_view_zoom"))
 		_shot("/tmp/poe_mass_zoom_%s.png" % variant)
