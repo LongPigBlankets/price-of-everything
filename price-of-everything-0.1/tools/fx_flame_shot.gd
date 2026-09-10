@@ -11,7 +11,7 @@ const BuildingSprites := preload("res://scripts/building_sprites.gd")
 const BOX := 400.0
 const FRAME_GAP := 0.3
 const FRAMES := 4
-const SET := [["furnace", 1], ["furnace", 3], ["eaf", 1], ["eaf", 3]]
+const SET := [["assembly_plant", 1], ["assembly_plant", 2], ["assembly_plant", 3], ["industrial_factory", 2]]
 
 
 func _ready() -> void:
@@ -42,13 +42,20 @@ func _ready() -> void:
 		fx.size = spr.size
 		root.add_child(fx)
 		fx.setup(iname, level, true, "shot_%d" % i, BOX)
+		if not fx._bay.is_empty():
+			fx._bay["t0"] = 0.0          # lock the loading-bay loop's phase for the shot
+		if not fx._arms.is_empty():
+			fx._arms["t0"] = 0.0
+		fx._clock = float(OS.get_environment("POE_FX_T0")) if OS.has_environment("POE_FX_T0") else 0.0
 		var lbl := Label.new()
 		lbl.text = "%s L%d" % [iname, level]
 		lbl.position = spr.position + Vector2(0.0, BOX + 10.0)
 		root.add_child(lbl)
 	await _settle(20)
-	for f in FRAMES:
-		await _settle(int(round(FRAME_GAP * 60.0)))
+	var gap := float(OS.get_environment("POE_FX_GAP")) if OS.has_environment("POE_FX_GAP") else FRAME_GAP
+	var frames := int(OS.get_environment("POE_FX_FRAMES")) if OS.has_environment("POE_FX_FRAMES") else FRAMES
+	for f in frames:
+		await _settle(int(round(gap * 60.0)))
 		var img := get_viewport().get_texture().get_image()
 		img.save_png("/tmp/poe_flame_f%d.png" % f)
 		print("FRAME %d saved" % f)

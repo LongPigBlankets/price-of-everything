@@ -52,8 +52,22 @@ const ANCHORS := {
 			"fires": [{"x": 272, "y": 483, "w": 137, "h": 74, "mode": "arc"}]},
 	},
 	"industrial_factory": {
-		2: {"stacks": [{"x": 700, "y": 110, "r": 26, "kind": "auto"}], "fires": []},
-		3: {"stacks": [{"x": 655, "y": 90, "r": 26, "kind": "auto"}], "fires": []},
+		# bay: the loading-bay choreography (see _draw_bay). door = TL,TR,BR,BL of the roller
+		# door in sprite px; axis = the ground axis the lorry drives along ("x": the door faces
+		# +X and the lorry comes from screen down-right; "y": the door faces -Y, it comes from
+		# down-left and the lorry sprite is mirrored); stop = the lorry's rear-bottom-centre
+		# when docked; crate_from/to = a crate's bottom-centre leaving the lorry / at the door.
+		# Every number here was PROJECTED through the builder's camera (project_points.py) and
+		# mapped with the export's crop/scale/placement — not read off a grid.
+		1: {"stacks": [], "fires": [],
+			"bay": {"axis": "y", "door": [[179.4, 481.7], [267.6, 532.6], [267.6, 604.7], [179.4, 553.8]],
+				"stop": [199.8, 593.0], "crate_from": [206.0, 589.5], "crate_to": [223.5, 579.3]}},
+		2: {"stacks": [{"x": 700, "y": 110, "r": 26, "kind": "auto"}], "fires": [],
+			"bay": {"axis": "x", "door": [[190.4, 623.1], [248.0, 589.8], [248.0, 638.4], [190.4, 671.6]],
+				"stop": [258.9, 701.4], "crate_from": [254.8, 675.6], "crate_to": [219.6, 655.2]}},
+		3: {"stacks": [{"x": 655, "y": 90, "r": 26, "kind": "auto"}], "fires": [],
+			"bay": {"axis": "x", "door": [[144.4, 623.1], [202.0, 589.8], [202.0, 638.4], [144.4, 671.6]],
+				"stop": [212.9, 701.4], "crate_from": [208.8, 675.6], "crate_to": [173.6, 655.2]}},
 	},
 	"power_plant": {
 		1: {"stacks": [{"x": 400, "y": 55, "r": 30, "kind": "auto"}], "fires": [],
@@ -88,8 +102,15 @@ const ANCHORS := {
 		3: {"stacks": [{"x": 310, "y": 46, "r": 16, "kind": "steam"}, {"x": 480, "y": 380, "r": 16, "kind": "steam"}], "fires": []},
 	},
 	"assembly_plant": {
-		2: {"stacks": [{"x": 200, "y": 110, "r": 22, "kind": "steam"}], "fires": []},
-		3: {"stacks": [{"x": 210, "y": 126, "r": 20, "kind": "steam"}], "fires": []},
+		# arms: the robot-arm FRAMES (assets/fx/arms/assembly_plant_lvlN_p<lift>_c<carry>.png,
+		# render_arms.py: the arms alone with the rest of the plant as a holdout, mapped into
+		# sprite space with the export's crop/scale/placement) and the sprite-px rect they
+		# cover. All the robots of a level move together in one frame.
+		1: {"stacks": [], "fires": [], "arms": {"rect": [232, 317, 165, 170]}},
+		2: {"stacks": [{"x": 200, "y": 110, "r": 22, "kind": "steam"}], "fires": [],
+			"arms": {"rect": [240, 349, 292, 202]}},
+		3: {"stacks": [{"x": 210, "y": 126, "r": 20, "kind": "steam"}], "fires": [],
+			"arms": {"rect": [240, 176, 274, 438]}},
 	},
 }
 
@@ -110,6 +131,25 @@ static func anchor_level(internal_name: String, level: int) -> int:
 			return lv
 		lv -= 1
 	return 0
+
+
+## The eight arm frames for a level (lift 0..3 x carry 0/1, index lift*2 + carry), or []
+## when the set is incomplete.
+static func arm_frames_for(internal_name: String, level: int) -> Array:
+	var key := "%s_lvl%d" % [internal_name, level]
+	if not _arm_frames.has(key):
+		var frames: Array = []
+		for lift in ARM_LIFTS:
+			for carry in 2:
+				var path := "%s%s_p%d_c%d.png" % [ARM_DIR, key, lift, carry]
+				if not ResourceLoader.exists(path):
+					frames.clear()
+					break
+				frames.append(load(path))
+			if frames.is_empty():
+				break
+		_arm_frames[key] = frames
+	return _arm_frames[key]
 
 
 static func light_mask_for(internal_name: String, level: int) -> Texture2D:
@@ -174,6 +214,36 @@ void fragment() {
 	COLOR = vec4(tint.rgb * g, m.a * tint.a);
 }
 """
+## LOADING BAY (owner 2026-09-10): the roller door rolls up, a lorry reverses to the dock with
+## its rear lights flashing once a second, crates come out of it and slide into the bay, the
+## door rolls down, and five seconds later the lorry leaves the way it came. Pieces come from
+## `vehicle_builder.py` rendered with the building rig (93.09 raw px per world unit), so a
+## piece is drawn at the building's export factor (BAY_FACTOR, the factory's) — same scale as
+## the sprite it parks beside. Texture anchors are projected world points (bake notes).
+const LORRY_TEX: Texture2D = preload("res://assets/fx/vehicles/lorry.png")
+const CRATE_TEX: Texture2D = preload("res://assets/fx/vehicles/crate.png")
+const BAY_FACTOR := 1.0301                 # the factory sprites' export factor
+const BAY_UNIT_PX := 93.09 * 0.8165 * BAY_FACTOR   # sprite px per world unit along a ground axis
+const LORRY_REAR := Vector2(28.3, 97.8)    # rear-bottom-centre, lorry texture px
+const LORRY_LIGHTS := [Vector2(12.7, 79.7), Vector2(44.3, 61.5)]
+const CRATE_FOOT := Vector2(27.8, 40.9)    # bottom-centre, crate texture px
+const BAY_PERIOD := 26.0
+const BAY_FAR := 3.4                       # world units the lorry starts/ends away from `stop`
+const BAY_TIMES := {"open": 2.0, "reverse": 3.5, "crates": 7.5, "close": 11.5, "leave": 18.0, "gone": 21.5}
+const BAY_CRATES := 3
+const DOOR_INTERIOR := Color(0.06, 0.08, 0.13)
+const DOOR_ROLL := Color(0.42, 0.46, 0.52)
+const LIGHT_RED := Color(1.0, 0.18, 0.10)
+
+## ROBOT ARMS (owner 2026-09-10): lower the arm, pick a carton off the belt, raise it, put it
+## down, loop. Four lift steps x empty/carrying = eight frames per level, cycled through
+## `ARM_CYCLE` (frame index = lift*2 + carry) with a hold at each end of the stroke.
+const ARM_LIFTS := 4
+const ARM_CYCLE: Array = [0, 2, 4, 6, 6, 7, 7, 5, 3, 1, 1, 1, 3, 5, 7, 7, 6, 6, 4, 2, 0, 0]
+const ARM_STEP := 0.22             # seconds per cycle entry
+const ARM_DIR := "res://assets/fx/arms/"
+static var _arm_frames: Dictionary = {}     # "assembly_plant_lvl2" -> [8 textures]
+
 static var _arc_shader: Shader = null
 static var _light_masks: Dictionary = {}
 
@@ -225,6 +295,8 @@ var _stacks: Array = []      # [{pos: Vector2 (local px), r: float, smoke: bool,
 var _fires: Array = []       # ellipse: {pos, rx, ry, lick, lean, seed}; masked: {rect, region, mode, seed}
 var _arcs: Array = []        # [{item: Control, mat: ShaderMaterial, region: Rect2, seed}]
 var _light_mask: Texture2D = null
+var _bay: Dictionary = {}    # local-px bay spec (see ANCHORS) + "t0" phase offset, "k"
+var _arms: Dictionary = {}   # {rect: Rect2 local px, frames: Array[Texture2D], t0}
 var _cables: Array = []      # [PackedVector2Array] local px, the traced catenaries
 var _clock := 0.0
 var _fire_layer: Control = null
@@ -287,13 +359,38 @@ func setup(internal_name: String, level: int, carbon: bool, seed_text: String, b
 			"lean": deg_to_rad(float(f.get("lean", 0.0))),
 			"seed": seed_val,
 		})
+	if spec.has("arms"):
+		var frames := arm_frames_for(internal_name, anchor_level(internal_name, level))
+		if not frames.is_empty():
+			var r: Array = spec["arms"]["rect"]
+			_arms = {
+				"rect": Rect2(float(r[0]) * k, float(r[1]) * k, float(r[2]) * k, float(r[3]) * k),
+				"frames": frames,
+				"t0": float((hash(seed_text + "|arms") % 1000)) / 1000.0 * ARM_STEP * float(ARM_CYCLE.size()),
+			}
+	if spec.has("bay"):
+		var b: Dictionary = spec["bay"]
+		var door := PackedVector2Array()
+		for xy in b["door"]:
+			door.append(Vector2(float(xy[0]), float(xy[1])) * k)
+		var axis_dir := Vector2(0.8660, 0.5) if str(b["axis"]) == "x" else Vector2(-0.8660, 0.5)
+		_bay = {
+			"door": door,
+			"dir": axis_dir,                      # screen direction AWAY from the door
+			"mirror": str(b["axis"]) == "y",
+			"stop": Vector2(float(b["stop"][0]), float(b["stop"][1])) * k,
+			"crate_from": Vector2(float(b["crate_from"][0]), float(b["crate_from"][1])) * k,
+			"crate_to": Vector2(float(b["crate_to"][0]), float(b["crate_to"][1])) * k,
+			"k": k,
+			"t0": float((hash(seed_text + "|bay") % 1000)) / 1000.0 * BAY_PERIOD,
+		}
 	for c_value in spec.get("cables", []):
 		var pts := PackedVector2Array()
 		for xy in c_value:
 			pts.append(Vector2(float(xy[0]), float(xy[1])) * k)
 		if pts.size() >= 2:
 			_cables.append(pts)
-	if not _fires.is_empty() or not _cables.is_empty():
+	if not _fires.is_empty() or not _cables.is_empty() or not _bay.is_empty():
 		# Fire and the electricity pulses are ADDITIVE (they light the sprite around them);
 		# smoke is not. Separate canvas item.
 		_fire_layer = Control.new()
@@ -309,7 +406,11 @@ func setup(internal_name: String, level: int, carbon: bool, seed_text: String, b
 		var f: Dictionary = f_value
 		if f.has("region") and f["mode"] == "arc":
 			_add_arc(f)
-	set_process(not _stacks.is_empty() or not _fires.is_empty() or not _cables.is_empty())
+	set_process(_animates())
+
+
+func _animates() -> bool:
+	return not _stacks.is_empty() or not _fires.is_empty() or not _cables.is_empty() or not _bay.is_empty() or not _arms.is_empty()
 
 
 ## The crucible's shifting light: its own canvas item, because the hot spot is a shader
@@ -335,7 +436,7 @@ func _add_arc(f: Dictionary) -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_VISIBILITY_CHANGED:
-		set_process(is_visible_in_tree() and (not _stacks.is_empty() or not _fires.is_empty() or not _cables.is_empty()))
+		set_process(is_visible_in_tree() and _animates())
 
 
 func _process(delta: float) -> void:
@@ -361,6 +462,8 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
+	_draw_bay()
+	_draw_arms()
 	_draw_licks()
 	for st_value in _stacks:
 		var st: Dictionary = st_value
@@ -371,6 +474,109 @@ func _draw() -> void:
 			var p := fposmod(_clock / PERIOD + seed_val + float(j) / float(PUFFS), 1.0)
 			_draw_puff(st["pos"], st["r"], p, bool(st["smoke"]), spin_dir, int(seed_val * 97.0) + j)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## The robots' current frame, laid over the sprite in the rect the frames were cut to.
+func _draw_arms() -> void:
+	if _arms.is_empty():
+		return
+	var n := ARM_CYCLE.size()
+	var step := int(floor(fposmod(_clock + float(_arms["t0"]), ARM_STEP * float(n)) / ARM_STEP))
+	var frames: Array = _arms["frames"]
+	draw_texture_rect(frames[int(ARM_CYCLE[step])], _arms["rect"], false)
+
+
+## Where the loading-bay loop is right now: phase seconds in [0, BAY_PERIOD).
+func _bay_phase() -> float:
+	return fposmod(_clock + float(_bay["t0"]), BAY_PERIOD)
+
+
+## 0 = closed, 1 = fully rolled up.
+func _bay_door_open(p: float) -> float:
+	var t_open: float = BAY_TIMES["open"]; var t_rev: float = BAY_TIMES["reverse"]; var t_close: float = BAY_TIMES["close"]
+	if p < t_open:
+		return 0.0
+	if p < t_rev:
+		return smoothstep(0.0, 1.0, (p - t_open) / (t_rev - t_open))
+	if p < t_close:
+		return 1.0
+	if p < t_close + 1.5:
+		return 1.0 - smoothstep(0.0, 1.0, (p - t_close) / 1.5)
+	return 0.0
+
+
+## The lorry's distance from `stop` along `dir`, in world units; -1 = not on screen.
+func _bay_lorry_dist(p: float) -> float:
+	var t_rev: float = BAY_TIMES["reverse"]; var t_crates: float = BAY_TIMES["crates"]
+	var t_leave: float = BAY_TIMES["leave"]; var t_gone: float = BAY_TIMES["gone"]
+	if p < t_rev:
+		return -1.0
+	if p < t_crates:
+		var u: float = (p - t_rev) / (t_crates - t_rev)
+		return BAY_FAR * (1.0 - u) * (1.0 - u)        # eases in to the dock
+	if p < t_leave:
+		return 0.0
+	if p < t_gone:
+		var u2: float = (p - t_leave) / (t_gone - t_leave)
+		return BAY_FAR * u2 * u2                       # pulls away
+	return -1.0
+
+
+func _draw_bay() -> void:
+	if _bay.is_empty():
+		return
+	var p := _bay_phase()
+	var k: float = _bay["k"]
+	var s := BAY_FACTOR * k
+	# the roller door: the interior shows from the sill up to the shutter's edge, the roll above
+	var o := _bay_door_open(p)
+	var d: PackedVector2Array = _bay["door"]
+	if o > 0.001:
+		var tl: Vector2 = d[0]; var tr: Vector2 = d[1]; var br: Vector2 = d[2]; var bl: Vector2 = d[3]
+		var el := bl + (tl - bl) * o
+		var er := br + (tr - br) * o
+		draw_colored_polygon(PackedVector2Array([bl, br, er, el]), DOOR_INTERIOR)
+		var roll_h := 0.10 * o
+		draw_colored_polygon(PackedVector2Array([el, er, er + (tr - br) * roll_h, el + (tl - bl) * roll_h]), DOOR_ROLL)
+	# crates: each slides from the lorry's rear into the bay in its own slot
+	var t_crates: float = BAY_TIMES["crates"]; var t_close: float = BAY_TIMES["close"]
+	if p >= t_crates and p < t_close:
+		for j in BAY_CRATES:
+			var u: float = (p - t_crates - float(j) * 1.0) / 1.2
+			if u < 0.0 or u >= 1.0:
+				continue
+			var pos: Vector2 = (_bay["crate_from"] as Vector2).lerp(_bay["crate_to"], smoothstep(0.0, 1.0, u))
+			var alpha: float = 1.0 if u < 0.82 else 1.0 - (u - 0.82) / 0.18
+			var size := CRATE_TEX.get_size() * s
+			draw_texture_rect(CRATE_TEX, Rect2(pos - CRATE_FOOT * s, size), false, Color(1, 1, 1, alpha))
+	# the lorry
+	var dist := _bay_lorry_dist(p)
+	if dist >= 0.0:
+		var pos2: Vector2 = _bay["stop"] + (_bay["dir"] as Vector2) * dist * BAY_UNIT_PX * k
+		var size2 := LORRY_TEX.get_size() * s
+		var flip := -1.0 if bool(_bay["mirror"]) else 1.0
+		draw_set_transform(pos2, 0.0, Vector2(flip, 1.0))
+		draw_texture_rect(LORRY_TEX, Rect2(-LORRY_REAR * s, size2), false)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## The lorry's rear lights, flashing once a second while it reverses (additive layer).
+func _draw_bay_lights(pts: PackedVector2Array, cols: PackedColorArray) -> void:
+	if _bay.is_empty():
+		return
+	var p := _bay_phase()
+	if p < float(BAY_TIMES["reverse"]) or p >= float(BAY_TIMES["crates"]) or fposmod(p, 1.0) >= 0.5:
+		return
+	var k: float = _bay["k"]
+	var s := BAY_FACTOR * k
+	var dist := _bay_lorry_dist(p)
+	var pos: Vector2 = _bay["stop"] + (_bay["dir"] as Vector2) * dist * BAY_UNIT_PX * k
+	var flip := -1.0 if bool(_bay["mirror"]) else 1.0
+	for l_value in LORRY_LIGHTS:
+		var off: Vector2 = (l_value as Vector2) - LORRY_REAR
+		var at := pos + Vector2(off.x * flip, off.y) * s
+		_ellipse(pts, cols, at, 5.0 * s, 4.0 * s, Color(LIGHT_RED.r, LIGHT_RED.g, LIGHT_RED.b, 0.55))
+		_ellipse(pts, cols, at, 2.4 * s, 2.0 * s, Color(1.0, 0.75, 0.6, 0.8))
 
 
 ## One textured flame per lick anchor, rooted at the anchor and re-rolled FLAME_FPS times a
@@ -419,10 +625,17 @@ func _draw_fires() -> void:
 	if _fire_layer == null:
 		return
 	_draw_pulses()
-	if _fires.is_empty():
+	if _fires.is_empty() and _bay.is_empty():
 		return
+	if _disc_tris.is_empty():
+		var disc := PackedVector2Array()
+		for i in 24:
+			var ang := TAU * float(i) / 24.0
+			disc.append(Vector2(cos(ang), sin(ang)))
+		_disc_tris = CanvasBatch.polygon_soup(disc)
 	var pts := PackedVector2Array()
 	var cols := PackedColorArray()
+	_draw_bay_lights(pts, cols)
 	for f_value in _fires:
 		var f: Dictionary = f_value
 		var s: float = f["seed"]
@@ -446,12 +659,6 @@ func _draw_fires() -> void:
 			_fire_layer.draw_texture_rect_region(_light_mask, f["rect"], f["region"],
 				Color(FIRE_CORE.r, FIRE_CORE.g, FIRE_CORE.b, a))
 			continue
-		if _disc_tris.is_empty():
-			var disc := PackedVector2Array()
-			for i in 24:
-				var ang := TAU * float(i) / 24.0
-				disc.append(Vector2(cos(ang), sin(ang)))
-			_disc_tris = CanvasBatch.polygon_soup(disc)
 		var pos: Vector2 = f["pos"]
 		var rx: float = f["rx"]; var ry: float = f["ry"]
 		_ellipse(pts, cols, pos, rx * 1.45, ry * 1.45, Color(FIRE_HALO.r, FIRE_HALO.g, FIRE_HALO.b, 0.22 * flick))
