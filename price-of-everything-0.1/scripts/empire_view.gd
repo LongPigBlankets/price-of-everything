@@ -59,8 +59,7 @@ func refresh_graph() -> void:
 
 
 func _build_ui() -> void:
-	# Flat navy backing behind the hex field. In sprite view the hex pattern is hidden
-	# and this alone remains, so the sprites sit on a plain dark field (not the grey
+	# Flat navy backing: the cards and sprites sit on a plain dark field (not the grey
 	# default-clear of the hidden world).
 	var flat := ColorRect.new()
 	flat.name = "FlatBg"
@@ -69,11 +68,11 @@ func _build_ui() -> void:
 	flat.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(flat)
 
-	_bg = HexBgScript.new()
-	_bg.name = "HexFieldBg"
-	_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(_bg)
+	# The animated hex field (`empire_hex_bg.gd`) is RETIRED from this view (owner,
+	# 2026-09-10: the supply-chain view has no background hexes; the goods graph never had
+	# them). The script stays — the loading screen and the website carry the same lattice —
+	# but it is not mounted here in either card style, so `_bg` stays null.
+	_bg = null
 
 	# The node-graph drawing layer (drawn above the backdrop, below the hint).
 	# MOUSE_FILTER_STOP so it receives drag-pan / scroll-zoom input.
@@ -83,8 +82,8 @@ func _build_ui() -> void:
 	_graph_world.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_graph_world)
 
-	# Let the background's building-origin pulse (anim 1) ripple out of the live building positions.
-	_bg.call("set_graph_world", _graph_world)
+	if _bg != null:
+		_bg.call("set_graph_world", _graph_world)
 
 	var hint := Label.new()
 	hint.name = "Hint"
