@@ -57,6 +57,9 @@ const PORT_HALF := Vector2(86.0, 78.0)             # the port hex (= empire_grap
 # MASS mode (owner 2026-09-10): past this many finished buildings the resting view is a grid
 # of buildings with no lines; selecting one opens its whole chain as a flow chart.
 static var mass_threshold := 10
+## OPTION 2 (crossing study 2026-09-10): within a column, group buildings by the port they
+## sell through (and buy from) before the barycentre order, so a port's fan never crosses.
+static var opt_port_order := false
 const GRID_PAD := 70.0                             # clear space between grid cells
 const GRID_ASPECT := 1.7                           # columns/rows ratio the grid aims for (16:9-ish)
 const PORT_GUTTER_MIN := 320.0                     # the empty column between a port column and the block
@@ -141,6 +144,25 @@ static func solve_flow(nodes: Array, edges: Array, sell_edges: Array, ports: Arr
 	for c in range(1, ncol):
 		col_x.append(float(col_x[c - 1]) + float(col_half_w[c - 1]) + gutter_width(int(lanes[c - 1]))
 			+ float(col_half_w[c]))
+
+	# Port ranks per node, for the port-ordered columns (option 2).
+	var sell_rank: Dictionary = {}
+	for i in range(ports.size()):
+		sell_rank[str((ports[i] as Dictionary)["iid"])] = i
+	var buy_rank: Dictionary = {}
+	for i in range(buy_ports.size()):
+		buy_rank[str((buy_ports[i] as Dictionary)["iid"])] = i
+	for n in nodes:
+		n["_sell_rank"] = 99
+		n["_buy_rank"] = 99
+	for se3 in sell_edges:
+		var f3 := str((se3 as Dictionary)["from"])
+		if by_iid.has(f3):
+			by_iid[f3]["_sell_rank"] = mini(int(by_iid[f3]["_sell_rank"]), int(sell_rank.get(str((se3 as Dictionary)["to"]), 99)))
+	for me3 in market_edges:
+		var t4 := str((me3 as Dictionary)["to"])
+		if by_iid.has(t4):
+			by_iid[t4]["_buy_rank"] = mini(int(by_iid[t4]["_buy_rank"]), int(buy_rank.get(str((me3 as Dictionary)["from"]), 99)))
 
 	# ---- bands ----
 	var comp_of: Dictionary = {}
@@ -417,6 +439,17 @@ static func _layout_component_flow(ids: Array, by_iid: Dictionary, in_e: Diction
 		_reindex(cols, col_keys, order)
 	for c in col_keys:
 		_cluster_by_tile(cols[c], by_iid)
+	if opt_port_order:
+		# Stable: keep the barycentre order inside each port group.
+		for c in col_keys:
+			var col2: Array = cols[c]
+			var idx: Dictionary = {}
+			for i in range(col2.size()):
+				idx[col2[i]] = i
+			col2.sort_custom(func(a, b):
+				var ka := [int(by_iid[a].get("_sell_rank", 99)), int(by_iid[a].get("_buy_rank", 99)), int(idx[a])]
+				var kb := [int(by_iid[b].get("_sell_rank", 99)), int(by_iid[b].get("_buy_rank", 99)), int(idx[b])]
+				return ka < kb)
 	_reindex(cols, col_keys, order)
 	var local: Dictionary = {}
 	var height := 0.0

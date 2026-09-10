@@ -122,6 +122,14 @@ var _occ := EmpireOccupancy.new()
 ## MASS mode (owner 2026-09-10): more than EmpireLayout.mass_threshold finished buildings. At
 ## rest: a grid of buildings, no lines, chips or ports. Selecting one opens its whole chain.
 var _mass := false
+## CROSSING STUDY options (2026-09-10). 1: one TRUNK per good in a gutter, sources join it
+## and consumers tap it (eighteen coal lines become one bus). 3: one BUS per port — buy lines
+## share their port's vertical in the port gutter, sell lines share their port's vertical
+## in the sell gutter. Option 2 (port-ordered columns) lives in empire_layout.
+static var opt_trunks := false
+static var opt_port_buses := false
+const _TRUNK_WIDTH := 3.6
+const _JUNCTION_R := 4.0
 var _chain_focus := false     # the open chart is a whole-chain chart (mass mode), not one hop
 var _frame: Dictionary = {"input": [], "sell": [], "market": [], "chips": []}
 const _CHIP_GAP := 8.0                       # clear space between chips in a gutter
@@ -492,40 +500,276 @@ func _layout_frame(sc: float) -> void:
 	var chart_open := _focus_target > 0.0
 	# Routes. Market lines first (they dive the full height), then sells, then inputs — the
 	# same order they are painted, so a later family sees the earlier ones as obstacles-to-be.
+	var live_market: Array = []
 	for e in _market_edges:
-		if not (_box_by_iid.has(str(e["to"])) and _box_by_iid.has(str(e["from"]))):
-			continue
-		if chart_open and not _focus_keeps(e):
-			continue
-		var mpath := _route_market(_box_by_iid[str(e["from"])], _box_by_iid[str(e["to"])],
-			int(e.get("slot", 0)), int(e.get("slot_n", 1)), sc)
-		(_frame["market"] as Array).append({"e": e, "path": mpath})
-		_occ.add_path("route", "%s|%s" % [str(e["from"]), str(e["to"])], mpath, _EDGE_WIDTH * sc,
-			[str(e["from"]), str(e["to"])])
-	var ports_top := INF
-	for p2 in _ports:
-		ports_top = minf(ports_top, _world_to_screen(p2["pos"] as Vector2).y - (p2["half"] as Vector2).y * sc)
+		if (_box_by_iid.has(str(e["to"])) and _box_by_iid.has(str(e["from"]))) and not (chart_open and not _focus_keeps(e)):
+			live_market.append(e)
+	var live_sell: Array = []
 	for e2 in _sell_edges:
-		if not (_box_by_iid.has(e2["from"]) and _box_by_iid.has(e2["to"])):
-			continue
-		if chart_open and not _focus_keeps(e2):
-			continue
-		var spath := _route_sell(_box_by_iid[e2["from"]], _box_by_iid[e2["to"]],
-			int(e2.get("bus", 0)), int(e2.get("bus_n", 1)),
-			int(e2.get("slot", 0)), int(e2.get("slot_n", 1)), ports_top, sc)
-		(_frame["sell"] as Array).append({"e": e2, "path": spath})
-		_occ.add_path("route", "%s|%s" % [str(e2["from"]), str(e2["to"])], spath, _SELL_WIDTH * sc,
-			[str(e2["from"]), str(e2["to"])])
+		if (_box_by_iid.has(e2["from"]) and _box_by_iid.has(e2["to"])) and not (chart_open and not _focus_keeps(e2)):
+			live_sell.append(e2)
+	var live_input: Array = []
 	for e3 in _edges:
-		if not (_box_by_iid.has(e3["from"]) and _box_by_iid.has(e3["to"])):
-			continue
-		if chart_open and not _focus_keeps(e3):
-			continue
-		var ipath := _route_input(_box_by_iid[e3["from"]], _box_by_iid[e3["to"]], int(e3.get("lane", 0)), int(e3.get("lane_n", 1)), sc)
-		(_frame["input"] as Array).append({"e": e3, "path": ipath})
-		_occ.add_path("route", "%s|%s" % [str(e3["from"]), str(e3["to"])], ipath, _EDGE_WIDTH * sc,
-			[str(e3["from"]), str(e3["to"])])
+		if (_box_by_iid.has(e3["from"]) and _box_by_iid.has(e3["to"])) and not (chart_open and not _focus_keeps(e3)):
+			live_input.append(e3)
+	# Lanes are re-indexed over the LIVE edges each frame: inside a chart only the chart's
+	# lines exist, and a global index would push a lane past the gutter the chart was sized for.
+	live_sell.sort_custom(func(x, y):
+		var px: float = (_focus_pos(str(x["to"]), _pos_by_iid.get(str(x["to"]), Vector2.ZERO)) as Vector2).y
+		var py: float = (_focus_pos(str(y["to"]), _pos_by_iid.get(str(y["to"]), Vector2.ZERO)) as Vector2).y
+		if px != py:
+			return px < py
+		return (_focus_pos(str(x["from"]), _pos_by_iid[x["from"]]) as Vector2).y < (_focus_pos(str(y["from"]), _pos_by_iid[y["from"]]) as Vector2).y)
+	for i in range(live_sell.size()):
+		live_sell[i]["bus"] = i
+		live_sell[i]["bus_n"] = live_sell.size()
+	live_market.sort_custom(func(x, y):
+		var hx: float = (_focus_pos(str(x["from"]), _pos_by_iid.get(str(x["from"]), Vector2.ZERO)) as Vector2).y
+		var hy: float = (_focus_pos(str(y["from"]), _pos_by_iid.get(str(y["from"]), Vector2.ZERO)) as Vector2).y
+		if hx != hy:
+			return hx < hy
+		return (_focus_pos(str(x["to"]), _pos_by_iid[str(x["to"])]) as Vector2).y < (_focus_pos(str(y["to"]), _pos_by_iid[str(y["to"])]) as Vector2).y)
+	for i in range(live_market.size()):
+		live_market[i]["glane"] = i
+		live_market[i]["glane_n"] = live_market.size()
+	if opt_port_buses:
+		_frame_buy_buses(live_market, sc)
+	else:
+		for e4 in live_market:
+			var mpath := _route_market(_box_by_iid[str(e4["from"])], _box_by_iid[str(e4["to"])],
+				int(e4.get("slot", 0)), int(e4.get("slot_n", 1)), sc)
+			_add_route("market", e4, mpath, _EDGE_WIDTH * sc)
+	if opt_port_buses:
+		_frame_sell_buses(live_sell, sc)
+	else:
+		for e5 in live_sell:
+			var spath := _route_sell(_box_by_iid[e5["from"]], _box_by_iid[e5["to"]],
+				int(e5.get("bus", 0)), int(e5.get("bus_n", 1)),
+				int(e5.get("slot", 0)), int(e5.get("slot_n", 1)), INF, sc)
+			_add_route("sell", e5, spath, _SELL_WIDTH * sc)
+	if opt_trunks:
+		_frame_input_trunks(live_input, sc)
+	else:
+		for e6 in live_input:
+			var ipath := _route_input(_box_by_iid[e6["from"]], _box_by_iid[e6["to"]], int(e6.get("lane", 0)), int(e6.get("lane_n", 1)), sc)
+			_add_route("input", e6, ipath, _EDGE_WIDTH * sc)
 	_allocate_chips(sc)
+
+
+## One plain route into the frame and the registry.
+func _add_route(kind: String, e: Dictionary, path: PackedVector2Array, width: float, extra: Dictionary = {}) -> void:
+	var entry := {"e": e, "path": path, "width": width}
+	for k in extra:
+		entry[k] = extra[k]
+	(_frame[kind] as Array).append(entry)
+	var owner: String = str(extra.get("owner", "%s|%s" % [str(e["from"]), str(e["to"])]))
+	var ends: Array = extra.get("ends", [str(e["from"]), str(e["to"])])
+	_occ.add_path("route", owner, path, width, ends)
+
+
+## OPTION 1 — trunks. Input edges grouped by (source column, target column, good): a group of
+## two or more becomes ONE vertical in the gutter that every source joins with a stub at its
+## row and every consumer taps at its row. Singles keep the ordinary route. Lanes in a gutter
+## are shared between trunks and singles, ordered by mean row.
+func _frame_input_trunks(edges: Array, sc: float) -> void:
+	var groups: Dictionary = {}          # channel key -> {group key -> [edges]}
+	for e in edges:
+		# CURRENT positions (a chart moves its members): the channel is the pair of columns
+		# the line runs between, in layout units, rounded to a column's worth.
+		var pa: Vector2 = _focus_pos(str(e["from"]), _pos_by_iid[e["from"]])
+		var pb: Vector2 = _focus_pos(str(e["to"]), _pos_by_iid[e["to"]])
+		var ch := "%d_%d" % [int(round(pa.x / 100.0)), int(round(pb.x / 100.0))]
+		var gk := "%s|%s" % [ch, str(e.get("good", ""))]
+		if not groups.has(ch):
+			groups[ch] = {}
+		if not (groups[ch] as Dictionary).has(gk):
+			groups[ch][gk] = []
+		(groups[ch][gk] as Array).append(e)
+	for ch in groups:
+		var items: Array = []
+		for gk in groups[ch]:
+			var arr: Array = groups[ch][gk]
+			if arr.size() >= 2:
+				var my := 0.0
+				for e in arr:
+					my += _plate_screen_of(str(e["from"]), _box_by_iid[e["from"]]).y + _plate_screen_of(str(e["to"]), _box_by_iid[e["to"]]).y
+				items.append({"y": my / float(arr.size() * 2), "edges": arr, "good": str(gk).split("|")[1]})
+			else:
+				for e in arr:
+					items.append({"y": _plate_screen_of(str(e["from"]), _box_by_iid[e["from"]]).y, "edges": [e], "good": str(e.get("good", ""))})
+		items.sort_custom(func(a, b): return a["y"] < b["y"])
+		var n := items.size()
+		for li in range(n):
+			var it: Dictionary = items[li]
+			var arr2: Array = it["edges"]
+			if arr2.size() == 1:
+				var e1: Dictionary = arr2[0]
+				_add_route("input", e1, _route_input(_box_by_iid[e1["from"]], _box_by_iid[e1["to"]], li, n, sc), _EDGE_WIDTH * sc)
+				continue
+			var e0: Dictionary = arr2[0]
+			var ca := _plate_screen_of(str(e0["from"]), _box_by_iid[e0["from"]])
+			var cb := _plate_screen_of(str(e0["to"]), _box_by_iid[e0["to"]])
+			var ha: Vector2 = (_box_by_iid[e0["from"]].get("plate_half", _box_by_iid[e0["from"]]["half"]) as Vector2) * sc
+			var hb: Vector2 = (_box_by_iid[e0["to"]].get("plate_half", _box_by_iid[e0["to"]]["half"]) as Vector2) * sc
+			var lane_x := lerpf(ca.x + ha.x, cb.x - hb.x, float(li + 1) / float(n + 1))
+			var members: Array = []
+			var y_min := INF
+			var y_max := -INF
+			var stubs: Array = []
+			var srcs: Dictionary = {}
+			var dsts: Dictionary = {}
+			for e in arr2:
+				srcs[str(e["from"])] = true
+				dsts[str(e["to"])] = true
+				if not members.has(str(e["from"])):
+					members.append(str(e["from"]))
+				if not members.has(str(e["to"])):
+					members.append(str(e["to"]))
+			var owner := "trunk|%s|%s" % [ch, str(it["good"])]
+			for sid in srcs:
+				var cs := _plate_screen_of(sid, _box_by_iid[sid])
+				var hs: Vector2 = (_box_by_iid[sid].get("plate_half", _box_by_iid[sid]["half"]) as Vector2) * sc
+				stubs.append({"iid": sid, "path": PackedVector2Array([Vector2(cs.x + hs.x, cs.y), Vector2(lane_x, cs.y)]), "join": Vector2(lane_x, cs.y)})
+				y_min = minf(y_min, cs.y); y_max = maxf(y_max, cs.y)
+			for did in dsts:
+				var cd := _plate_screen_of(did, _box_by_iid[did])
+				var hd: Vector2 = (_box_by_iid[did].get("plate_half", _box_by_iid[did]["half"]) as Vector2) * sc
+				stubs.append({"iid": did, "path": PackedVector2Array([Vector2(lane_x, cd.y), Vector2(cd.x - hd.x, cd.y)]), "join": Vector2(lane_x, cd.y)})
+				y_min = minf(y_min, cd.y); y_max = maxf(y_max, cd.y)
+			var dots := PackedVector2Array()
+			var stub_owners: Array = []
+			for st in stubs:
+				dots.append(st["join"])
+				var so := "%s|stub|%s" % [owner, str(st["iid"])]
+				stub_owners.append(so)
+				_add_route("input", e0, st["path"], _EDGE_WIDTH * sc, {"owner": so,
+					"ends": [str(st["iid"]), owner], "no_chip": true})
+			var trunk := PackedVector2Array([Vector2(lane_x, y_min), Vector2(lane_x, y_max)])
+			_add_route("input", e0, trunk, _TRUNK_WIDTH * sc, {"owner": owner, "ends": members + stub_owners,
+				"edges": arr2, "chip_key": "input|" + owner, "dots": dots, "extra_ends": stub_owners})
+
+
+## OPTION 3 — port buses. Every buy line out of a port shares that port's vertical in the
+## port gutter (one lane per port in use); each consumer taps it at its row, detouring
+## through a row gap when a column-0 building blocks the way.
+func _frame_buy_buses(edges: Array, sc: float) -> void:
+	var by_port: Dictionary = {}
+	for e in edges:
+		var pid := str(e["from"])
+		if not by_port.has(pid):
+			by_port[pid] = []
+		(by_port[pid] as Array).append(e)
+	var pids: Array = by_port.keys()
+	pids.sort_custom(func(a, b): return (_pos_by_iid[a] as Vector2).y < (_pos_by_iid[b] as Vector2).y)
+	for li in range(pids.size()):
+		var pid: String = pids[li]
+		var hub: Dictionary = _box_by_iid[pid]
+		var ch := _screen_of(pid, hub)
+		var hh: Vector2 = _port_half_drawn(hub, sc)
+		var lane_x := ch.x + hh.x + (_GUTTER_INSET + float(li) * _GUTTER_LANE) * sc
+		var owner := "bus|" + pid
+		var y_min := ch.y
+		var y_max := ch.y
+		var dots := PackedVector2Array()
+		var members: Array = [pid]
+		var arr: Array = by_port[pid]
+		for e in arr:
+			var b: Dictionary = _box_by_iid[str(e["to"])]
+			var cb := _plate_screen_of(str(e["to"]), b)
+			var hb: Vector2 = (b.get("plate_half", b["half"]) as Vector2) * sc
+			var end := Vector2(cb.x - hb.x, cb.y)
+			var obs := _sprite_obstacles(pid, str(e["to"]), sc)
+			var tap := _chamfer(PackedVector2Array([Vector2(lane_x, cb.y), end]), _CHAMFER * sc)
+			var start_y := cb.y
+			if _blocked(tap, obs):
+				var node_h: float = (b["half"] as Vector2).y * sc
+				var gx := end.x - (48.0 + _GUTTER_INSET + float(li) * _GUTTER_LANE) * sc
+				var found := false
+				for k in range(0, 7):
+					for sgn_value in [-1.0, 1.0]:
+						var yf: float = cb.y + float(sgn_value) * (node_h + (30.0 + float(k) * 70.0) * sc)
+						var alt := _chamfer(PackedVector2Array([Vector2(lane_x, yf), Vector2(gx, yf), Vector2(gx, cb.y), end]), _CHAMFER * sc)
+						if not _blocked(alt, obs):
+							tap = alt
+							start_y = yf
+							found = true
+							break
+					if found:
+						break
+			y_min = minf(y_min, start_y); y_max = maxf(y_max, start_y)
+			dots.append(Vector2(lane_x, start_y))
+			members.append(str(e["to"]))
+			_add_route("market", e, tap, _EDGE_WIDTH * sc, {"owner": "%s|%s" % [pid, str(e["to"])],
+				"ends": [pid, str(e["to"]), owner]})
+		var stub := PackedVector2Array([Vector2(ch.x + hh.x, ch.y), Vector2(lane_x, ch.y)])
+		_add_route("market", arr[0], stub, _EDGE_WIDTH * sc, {"owner": owner + "|stub", "ends": [pid, owner], "no_chip": true})
+		var taps: Array = []
+		for e7 in arr:
+			taps.append("%s|%s" % [pid, str(e7["to"])])
+		var vert := PackedVector2Array([Vector2(lane_x, minf(y_min, ch.y)), Vector2(lane_x, maxf(y_max, ch.y))])
+		_add_route("market", arr[0], vert, _TRUNK_WIDTH * sc, {"owner": owner, "ends": members + taps + [owner + "|stub"], "edges": arr,
+			"chip_key": "market|" + owner, "dots": dots, "extra_ends": taps + [owner + "|stub"]})
+
+
+## OPTION 3 — sell buses: every sale into a port shares that port's vertical in the sell
+## gutter; each seller's line runs to the bus at its row (through a row gap when blocked).
+func _frame_sell_buses(edges: Array, sc: float) -> void:
+	var by_port: Dictionary = {}
+	for e in edges:
+		var pid := str(e["to"])
+		if not by_port.has(pid):
+			by_port[pid] = []
+		(by_port[pid] as Array).append(e)
+	var pids: Array = by_port.keys()
+	pids.sort_custom(func(a, b): return (_pos_by_iid[a] as Vector2).y < (_pos_by_iid[b] as Vector2).y)
+	for li in range(pids.size()):
+		var pid: String = pids[li]
+		var port: Dictionary = _box_by_iid[pid]
+		var cp := _screen_of(pid, port)
+		var hp: Vector2 = _port_half_drawn(port, sc)
+		var lane_x := cp.x - hp.x - (_GUTTER_INSET + float(li) * _GUTTER_LANE) * sc
+		var owner := "bus|" + pid
+		var y_min := cp.y
+		var y_max := cp.y
+		var dots := PackedVector2Array()
+		var members: Array = [pid]
+		var arr: Array = by_port[pid]
+		for e in arr:
+			var a: Dictionary = _box_by_iid[e["from"]]
+			var ca := _plate_screen_of(str(e["from"]), a)
+			var ha: Vector2 = (a.get("plate_half", a["half"]) as Vector2) * sc
+			var start := Vector2(ca.x + ha.x, ca.y)
+			var obs := _sprite_obstacles(str(e["from"]), pid, sc)
+			var run := _chamfer(PackedVector2Array([start, Vector2(lane_x, ca.y)]), _CHAMFER * sc)
+			var end_y := ca.y
+			if _blocked(run, obs):
+				var node_h: float = (a["half"] as Vector2).y * sc
+				var gx := start.x + (48.0 + _GUTTER_INSET + float(li) * _GUTTER_LANE) * sc
+				var found := false
+				for k in range(0, 7):
+					for sgn_value in [-1.0, 1.0]:
+						var yf: float = ca.y + float(sgn_value) * (node_h + (30.0 + float(k) * 70.0) * sc)
+						var alt := _chamfer(PackedVector2Array([start, Vector2(gx, ca.y), Vector2(gx, yf), Vector2(lane_x, yf)]), _CHAMFER * sc)
+						if not _blocked(alt, obs):
+							run = alt
+							end_y = yf
+							found = true
+							break
+					if found:
+						break
+			y_min = minf(y_min, end_y); y_max = maxf(y_max, end_y)
+			dots.append(Vector2(lane_x, end_y))
+			members.append(str(e["from"]))
+			_add_route("sell", e, run, _SELL_WIDTH * sc, {"owner": "%s|%s" % [str(e["from"]), pid],
+				"ends": [str(e["from"]), pid, owner]})
+		var stub := PackedVector2Array([Vector2(lane_x, cp.y), Vector2(cp.x - hp.x, cp.y)])
+		_add_route("sell", arr[0], stub, _SELL_WIDTH * sc, {"owner": owner + "|stub", "ends": [pid, owner], "no_chip": true})
+		var runs: Array = []
+		for e8 in arr:
+			runs.append("%s|%s" % [str(e8["from"]), pid])
+		var vert := PackedVector2Array([Vector2(lane_x, minf(y_min, cp.y)), Vector2(lane_x, maxf(y_max, cp.y))])
+		_add_route("sell", arr[0], vert, _SELL_WIDTH * 1.3 * sc, {"owner": owner, "ends": members + runs + [owner + "|stub"], "edges": arr,
+			"chip_key": "sell|" + owner, "dots": dots, "extra_ends": runs + [owner + "|stub"]})
 
 
 ## THE CHIP SLOT ALLOCATOR. One chip per (family, source, good): parallel lines carrying the
@@ -541,14 +785,17 @@ func _allocate_chips(sc: float) -> void:
 	var order: Array = []
 	for kind in ["input", "sell", "market"]:
 		for r in _frame[kind]:
+			if bool(r.get("no_chip", false)):
+				continue
 			var e: Dictionary = r["e"]
 			var good_id := str(e.get("good", ""))
 			if good_id == "" or (r["path"] as PackedVector2Array).size() < 2:
 				continue
 			var src := str(e["to"]) if kind == "market" else str(e["from"])
-			var key := "%s|%s|%s" % [kind, src, good_id]
+			var key := str(r.get("chip_key", "%s|%s|%s" % [kind, src, good_id]))
 			if not wanted.has(key):
-				wanted[key] = {"kind": kind, "path": r["path"], "e": e, "edges": [e], "good": good_id, "key": key}
+				wanted[key] = {"kind": kind, "path": r["path"], "e": e, "edges": (r.get("edges", [e]) as Array).duplicate(),
+					"good": good_id, "key": key, "owner": str(r.get("owner", "")), "extra_ends": r.get("extra_ends", [])}
 				order.append(key)
 			else:
 				(wanted[key]["edges"] as Array).append(e)
@@ -564,6 +811,11 @@ func _allocate_chips(sc: float) -> void:
 		var ends := [str(e0["from"]), str(e0["to"])]
 		for me in w["edges"]:
 			ends.append("%s|%s" % [str(me["from"]), str(me["to"])])
+			ends.append(str(me["from"]))
+			ends.append(str(me["to"]))
+		if str(w.get("owner", "")) != "":
+			ends.append(str(w["owner"]))
+		ends.append_array(w.get("extra_ends", []))
 		var rect := _find_chip_slot(path, box, pitch, ends, w["kind"] == "market")
 		if rect.size.x <= 0.0:
 			var c := _point_along_polyline(path, _EDGE_CHIP_T)
@@ -618,6 +870,14 @@ func _find_chip_slot(path: PackedVector2Array, box: float, pitch: float, ends: A
 			if step > 64:
 				break
 	return Rect2()
+
+
+## Junction dots where stubs join a trunk or bus.
+func _draw_junctions(r: Dictionary, col: Color, sc: float) -> void:
+	if not r.has("dots"):
+		return
+	for d in (r["dots"] as PackedVector2Array):
+		draw_circle(d, _JUNCTION_R * sc, col)
 
 
 ## The overlap audit: what collides with what this frame, by kind pair, plus the pairs
@@ -1270,7 +1530,8 @@ func _draw() -> void:
 		var mpath: PackedVector2Array = r["path"]
 		var ma := 0.85 * (1.0 if _focus_keeps(e) else off_a)
 		if ma > 0.01:
-			_draw_dashed_polyline(mpath, Color(_EDGE, ma), _EDGE_WIDTH * sc, sc)
+			_draw_dashed_polyline(mpath, Color(_EDGE, ma), float(r.get("width", _EDGE_WIDTH * sc)), sc)
+			_draw_junctions(r, Color(_EDGE, ma), sc)
 			if _is_power_good(str(e.get("good", ""))):
 				_power_pulses.paths.append({"path": mpath, "alpha": ma, "scale": sc})
 
@@ -1285,11 +1546,12 @@ func _draw() -> void:
 		if sa <= 0.01:
 			continue
 		if bool(e2.get("actual", true)):
-			draw_polyline(path, Color(_SELL, sa), _SELL_WIDTH * sc, true)
+			draw_polyline(path, Color(_SELL, sa), float(r2.get("width", _SELL_WIDTH * sc)), true)
 		else:
 			# Standing default, nothing actually shipping yet: dashed — "this is
 			# where sales WOULD leave" (goods are pooling in the tile stockpile).
-			_draw_dashed_polyline(path, Color(_SELL, 0.8 * sa), _SELL_WIDTH * sc, sc)
+			_draw_dashed_polyline(path, Color(_SELL, 0.8 * sa), float(r2.get("width", _SELL_WIDTH * sc)), sc)
+		_draw_junctions(r2, Color(_SELL, sa), sc)
 		_market_glow.paths.append({"path": path, "alpha": sa, "scale": sc})
 		if _is_power_good(str(e2.get("good", ""))):
 			_power_pulses.paths.append({"path": path, "alpha": sa, "scale": sc})
@@ -1301,7 +1563,8 @@ func _draw() -> void:
 		var ea := 1.0 if _focus_keeps(e3) else off_a
 		if ea <= 0.01:
 			continue
-		draw_polyline(ipath, Color(_EDGE, ea), _EDGE_WIDTH * sc, true)
+		draw_polyline(ipath, Color(_EDGE, ea), float(r3.get("width", _EDGE_WIDTH * sc)), true)
+		_draw_junctions(r3, Color(_EDGE, ea), sc)
 		if _is_power_good(str(e3.get("good", ""))):
 			_power_pulses.paths.append({"path": ipath, "alpha": ea, "scale": sc})
 
@@ -1470,7 +1733,7 @@ func _route_sell(a: Dictionary, b: Dictionary, bus: int, _bus_n: int, _slot: int
 	var ca := _plate_screen_of(str(a["iid"]), a)
 	var cb := _screen_of(str(b["iid"]), b)
 	var ha: Vector2 = (a.get("plate_half", a["half"]) as Vector2) * sc
-	var hb: Vector2 = (b["half"] as Vector2) * sc
+	var hb: Vector2 = _port_half_drawn(b, sc)
 	var start := Vector2(ca.x + ha.x, ca.y)
 	var end := Vector2(cb.x - hb.x, cb.y)
 	var lane_x := cb.x - hb.x - (_GUTTER_INSET + float(bus) * _GUTTER_LANE) * sc
@@ -1498,7 +1761,7 @@ func _route_market(hub: Dictionary, b: Dictionary, _slot: int, _slot_n: int, sc:
 	# in the gutter left of the target's column.
 	var ch := _screen_of(str(hub["iid"]), hub)
 	var cb := _plate_screen_of(str(b["iid"]), b)
-	var hh: Vector2 = (hub.get("plate_half", hub["half"]) as Vector2) * sc
+	var hh: Vector2 = _port_half_drawn(hub, sc)
 	var hb: Vector2 = (b.get("plate_half", b["half"]) as Vector2) * sc
 	var glane := int(b_edge_glane(hub, b))
 	var start := Vector2(ch.x + hh.x, ch.y)
@@ -1538,6 +1801,14 @@ func _route_via(start: Vector2, end: Vector2, x1: float, y_mid: float, x2: float
 		if clean.is_empty() or clean[clean.size() - 1].distance_to(p) > 0.5:
 			clean.append(p)
 	return _chamfer(clean, _CHAMFER * sc)
+
+
+## A port's half-extent as DRAWN: its hex at rest, the 2x building sprite inside a chart.
+func _port_half_drawn(p: Dictionary, sc: float) -> Vector2:
+	var pid := str(p["iid"])
+	if _focus_target > 0.0 and _focus_members.has(pid):
+		return Vector2.ONE * NodePanelScript.SPRITE_PX * _PORT_SPRITE_MULT * 0.5 * sc
+	return (p["half"] as Vector2) * sc
 
 
 ## The gutter lane `_assign_lanes` gave the buy line hub -> b (0 when unknown).

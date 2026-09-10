@@ -18,16 +18,32 @@ func _ready() -> void:
 		push_error("EmpireView not found")
 		get_tree().quit(1)
 		return
+	# POE_EMPIRE_VARIANT (crossing study): base | 1 (trunks) | 2 (port order) | 3 (trunks + port buses) | all
+	var variant := OS.get_environment("POE_EMPIRE_VARIANT") if OS.has_environment("POE_EMPIRE_VARIANT") else "base"
+	var EL := load("res://scripts/empire_layout.gd")
+	var GW := load("res://scripts/empire_graph_world.gd")
+	GW.opt_trunks = variant in ["1", "3", "all"]
+	EL.opt_port_order = variant in ["2", "all"]
+	GW.opt_port_buses = variant in ["3", "all"]
 	ev.call("toggle")
 	await _settle(20)
 	var gw: Node = ev.get_node_or_null("GraphWorld")
-	print("MASS: ", gw.get("_mass") if gw != null else "?")
+	print("MASS: ", gw.get("_mass") if gw != null else "?", " variant ", variant)
 	_shot("/tmp/poe_mass_rest.png")
 	if gw != null:
 		gw.call("focus_on", "mass_6", true)
 		await _settle(40)
-		print("CHAIN members: ", (gw.get("_focus_members") as Dictionary).size())
-	_shot("/tmp/poe_mass_chain.png")
+		gw.call("_reposition_panels")
+		var rep: Dictionary = gw.call("audit")
+		print("CHAIN members: ", (gw.get("_focus_members") as Dictionary).size(),
+			"  collisions: ", int(rep["total"]), "  crossings: ", int((rep["crossings"] as Dictionary)["total"]))
+		print("CHAIN collision counts: ", JSON.stringify(rep["counts"]))
+		for line in rep["named"]:
+			print("CHAIN pair: ", line)
+		var cr: Dictionary = (rep["crossings"] as Dictionary)["pairs"]
+		for k in cr:
+			print("CHAIN crossing: ", k, " x", int(cr[k]))
+	_shot("/tmp/poe_mass_chain_%s.png" % variant)
 	get_tree().quit(0)
 
 
