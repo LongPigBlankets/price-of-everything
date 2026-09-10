@@ -68,6 +68,9 @@ const PORT_BUILDING_ID := "b_004"
 # 90 -> 74: the RAG row under the icons is gone and its figures moved inline, so the plate
 # no longer needs the band it occupied (owner 2026-08-24).
 const BASE_HALF := Vector2(152.0, 74.0)           # L1 panel half-extent in layout px; level-scaled per node
+## Sprite view (owner 2026-09-10): the plate at rest is COMPACT — the building glyph and the
+## output good only — and the full card (name, figures, level) appears on hover as an overlay.
+const COMPACT_HALF := Vector2(110.0, 48.0)
 
 
 ## The sprite's opaque content as a rect measured from the PANEL CENTRE, in unscaled panel px.
@@ -81,7 +84,7 @@ static func _sprite_content_offset(sprite_tex) -> Rect2:
 		return Rect2()
 	var k: float = NodePanel.SPRITE_PX / maxf(1.0, float(sprite_tex.get_width()))
 	var centre := Vector2(NodePanel.SPRITE_PX * 0.5,
-			(NodePanel.SPRITE_PX + BASE_HALF.y * 2.0) * 0.5)
+			(NodePanel.SPRITE_PX + COMPACT_HALF.y * 2.0) * 0.5)
 	return Rect2(used.position * k - centre, used.size * k)
 
 
@@ -112,8 +115,8 @@ static func _node_half(level: int, sprite_tex) -> Vector2:
 	var plate: Vector2 = BASE_HALF * EmpireLayout.level_scale(level)
 	if not (MatchState.use_empire_sprite_view and sprite_tex != null):
 		return plate
-	return Vector2(maxf(BASE_HALF.x, NodePanel.SPRITE_PX * 0.5),
-			(NodePanel.SPRITE_PX + BASE_HALF.y * 2.0) * 0.5)
+	return Vector2(maxf(COMPACT_HALF.x, NodePanel.SPRITE_PX * 0.5),
+			(NodePanel.SPRITE_PX + COMPACT_HALF.y * 2.0) * 0.5)
 const PORT_HALF := Vector2(86.0, 78.0)            # gold port hexagon half-extent
 
 # Ports always read left -> right in this order. Matched as case-insensitive substrings of the name.
@@ -176,8 +179,9 @@ static func build(terrain: Object) -> Dictionary:
 			# is the layout footprint: in sprite view those differ by the whole 400px sprite,
 			# and anchoring to `half` puts every arrow out in open space beside the plate.
 			# Plates stay L1-sized in sprite view, so this does not level-scale there either.
-			"plate_half": (BASE_HALF if (MatchState.use_empire_sprite_view and sprite_tex != null)
+			"plate_half": (COMPACT_HALF if (MatchState.use_empire_sprite_view and sprite_tex != null)
 					else BASE_HALF * EmpireLayout.level_scale(level)),
+			"full_half": BASE_HALF,
 			# The sprite's OPAQUE box, as an offset rect from the panel centre (unscaled px).
 			# Routing may cross a sprite's transparent padding — that is the whole point of
 			# dropping the sprite behind the lines — but never the building itself.
@@ -321,8 +325,9 @@ static func _append_construction_nodes(nodes: Array, ports: Array, terrain: Obje
 			"tile_id": tile,
 			"seed": seed_pos,
 			"half": _node_half(1, site_tex),
-			"plate_half": (BASE_HALF if (MatchState.use_empire_sprite_view and site_tex != null)
+			"plate_half": (COMPACT_HALF if (MatchState.use_empire_sprite_view and site_tex != null)
 					else BASE_HALF),
+			"full_half": BASE_HALF,
 			"sprite_rect": _sprite_content_offset(site_tex),
 			"port_badge": null,
 			"is_port": false,

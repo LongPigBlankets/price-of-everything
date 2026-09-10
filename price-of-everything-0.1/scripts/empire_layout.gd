@@ -29,8 +29,8 @@ const ROW_GAP := 90.0                              # vertical gap between stacke
 # six lanes get 6*LANE_PITCH + CHIP_W + 2*GUTTER_MARGIN. The row gap likewise grows by the
 # lower node's `top_extra` — how far its animated effects (a chimney plume) reach above its
 # box — so a plume never rises into the plate of the node above it.
-const LANE_PITCH := 42.0                           # lane-to-lane distance: half a chip + a gap, so a
-                                                   # chip centred on its lane clears the lanes beside it
+const LANE_PITCH := 84.0                           # lane-to-lane distance: DOUBLE the room a chip needs
+                                                   # (owner 2026-09-10: "double the room for each channel")
 const CHIP_W := 74.0                               # the edge good-icon chip (empire_graph_world._LANE_CHIP)
 const GUTTER_MARGIN := 24.0                        # clear space between a lane and the sprite beside it
 const MIN_GUTTER := 70.0                           # column gap with no lines at all (the old 470-400)
@@ -59,7 +59,11 @@ const PORT_HALF := Vector2(86.0, 78.0)             # the port hex (= empire_grap
 static var mass_threshold := 10
 ## OPTION 2 (crossing study 2026-09-10): within a column, group buildings by the port they
 ## sell through (and buy from) before the barycentre order, so a port's fan never crosses.
-static var opt_port_order := false
+static var opt_port_order := true
+## Gutter demand counts CHANNELS, not lines, when the world merges lines: one trunk per
+## (source column, target column, good) and one bus per port (empire_graph_world's
+## opt_trunks / opt_port_buses — mirrored here so the layout and the router agree).
+static var opt_channels := true
 const GRID_PAD := 70.0                             # clear space between grid cells
 const GRID_ASPECT := 1.7                           # columns/rows ratio the grid aims for (16:9-ish)
 const PORT_GUTTER_MIN := 320.0                     # the empty column between a port column and the block
@@ -120,26 +124,54 @@ static func solve_flow(nodes: Array, edges: Array, sell_edges: Array, ports: Arr
 	for n in nodes:
 		var c := int(layer[str(n["iid"])])
 		col_half_w[c] = maxf(float(col_half_w[c]), (n["half"] as Vector2).x)
-	for pair in pr["real_edges"]:
-		for g in range(int(layer[pair[0]]), int(layer[pair[1]])):
+	# Input demand per gutter: one lane per CHANNEL (a trunk = one good between two columns)
+	# when lines are merged, else one per line.
+	var chan_seen: Dictionary = {}
+	for e in edges:
+		var f0 := str(e["from"])
+		var t0 := str(e["to"])
+		if not (layer.has(f0) and layer.has(t0)) or f0 == t0:
+			continue
+		var ck := "%d_%d_%s" % [int(layer[f0]), int(layer[t0]), str(e.get("good", ""))] if opt_channels else "%s_%s" % [f0, t0]
+		if chan_seen.has(ck):
+			continue
+		chan_seen[ck] = true
+		for g in range(int(layer[f0]), int(layer[t0])):
 			lanes[g] = int(lanes[g]) + 1
-	# a buy line runs across the port gutter and then the gutters left of its target's column
+	# Buy lines: one lane per port (bus) or per line, across the port gutter and every gutter
+	# left of their target's column; sell lines likewise toward the right.
 	var n_market := 0
+	var buy_seen: Dictionary = {}
 	for me in market_edges:
 		var t := str((me as Dictionary)["to"])
 		if not layer.has(t):
 			continue
-		n_market += 1
+		var bk := str((me as Dictionary)["from"]) if opt_channels else str((me as Dictionary)["from"]) + "|" + t
+		var first := not buy_seen.has(bk)
+		buy_seen[bk] = true
+		if first:
+			n_market += 1
 		for g in range(0, int(layer[t])):
-			lanes[g] = int(lanes[g]) + 1
+			var gk := bk + "@" + str(g)
+			if not buy_seen.has(gk):
+				buy_seen[gk] = true
+				lanes[g] = int(lanes[g]) + 1
 	var n_sell := 0
+	var sell_seen: Dictionary = {}
 	for se in sell_edges:
 		var f := str((se as Dictionary)["from"])
 		if not layer.has(f):
 			continue
-		n_sell += 1
+		var sk := str((se as Dictionary)["to"]) if opt_channels else f + "|" + str((se as Dictionary)["to"])
+		var first2 := not sell_seen.has(sk)
+		sell_seen[sk] = true
+		if first2:
+			n_sell += 1
 		for g in range(int(layer[f]), ncol - 1):
-			lanes[g] = int(lanes[g]) + 1
+			var gk2 := sk + "@" + str(g)
+			if not sell_seen.has(gk2):
+				sell_seen[gk2] = true
+				lanes[g] = int(lanes[g]) + 1
 	var col_x: Array = [0.0]
 	for c in range(1, ncol):
 		col_x.append(float(col_x[c - 1]) + float(col_half_w[c - 1]) + gutter_width(int(lanes[c - 1]))

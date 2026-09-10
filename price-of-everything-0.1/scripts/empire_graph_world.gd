@@ -126,14 +126,14 @@ var _mass := false
 ## and consumers tap it (eighteen coal lines become one bus). 3: one BUS per port — buy lines
 ## share their port's vertical in the port gutter, sell lines share their port's vertical
 ## in the sell gutter. Option 2 (port-ordered columns) lives in empire_layout.
-static var opt_trunks := false
-static var opt_port_buses := false
+static var opt_trunks := true
+static var opt_port_buses := true
 const _TRUNK_WIDTH := 3.6
 const _JUNCTION_R := 4.0
 var _chain_focus := false     # the open chart is a whole-chain chart (mass mode), not one hop
 var _frame: Dictionary = {"input": [], "sell": [], "market": [], "chips": []}
 const _CHIP_GAP := 8.0                       # clear space between chips in a gutter
-const _GUTTER_LANE := 42.0                   # = empire_layout.LANE_PITCH (the gutter was sized for it)
+const _GUTTER_LANE := 84.0                   # = empire_layout.LANE_PITCH (the gutter was sized for it)
 const _GUTTER_INSET := 24.0                  # = empire_layout.GUTTER_MARGIN
 var _pill_style: StyleBoxFlat = null
 

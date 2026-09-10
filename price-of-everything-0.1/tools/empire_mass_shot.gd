@@ -22,14 +22,31 @@ func _ready() -> void:
 	var variant := OS.get_environment("POE_EMPIRE_VARIANT") if OS.has_environment("POE_EMPIRE_VARIANT") else "base"
 	var EL := load("res://scripts/empire_layout.gd")
 	var GW := load("res://scripts/empire_graph_world.gd")
-	GW.opt_trunks = variant in ["1", "3", "all"]
-	EL.opt_port_order = variant in ["2", "all"]
-	GW.opt_port_buses = variant in ["3", "all"]
+	GW.opt_trunks = variant in ["1", "3", "all", "default"]
+	EL.opt_port_order = variant in ["2", "all", "default"]
+	GW.opt_port_buses = variant in ["3", "all", "default"]
+	EL.opt_channels = variant in ["1", "3", "all", "default"]
+	# POE_EMPIRE_THRESHOLD lifts the mass threshold so the resting shot is the full FLOW view.
+	if OS.has_environment("POE_EMPIRE_THRESHOLD"):
+		EL.mass_threshold = int(OS.get_environment("POE_EMPIRE_THRESHOLD"))
 	ev.call("toggle")
 	await _settle(20)
 	var gw: Node = ev.get_node_or_null("GraphWorld")
 	print("MASS: ", gw.get("_mass") if gw != null else "?", " variant ", variant)
-	_shot("/tmp/poe_mass_rest.png")
+	_shot("/tmp/poe_mass_rest_%s.png" % variant)
+	# Hover the first panel: the full card should appear over the compact plate.
+	if gw != null:
+		for pan in (gw.get("_panels") as Array):
+			var ctrl: Control = pan["ctrl"]
+			if ctrl.has_method("_on_hover"):
+				ctrl.call("_on_hover", true)
+				await _settle(4)
+				_shot("/tmp/poe_mass_hover_%s.png" % variant)
+				ctrl.call("_on_hover", false)
+				break
+	if OS.has_environment("POE_EMPIRE_THRESHOLD"):
+		get_tree().quit(0)
+		return
 	if gw != null:
 		gw.call("focus_on", "mass_6", true)
 		await _settle(40)
