@@ -1,5 +1,5 @@
 extends Node
-## Dev tool: the supply-chain view's FLAME LICKS in isolation — furnace L1 + L3 and the
+## Dev tool: the supply-chain view's FLAME LICKS in isolation — furnace L3, EAF L2 and the
 ## refinery L1 + L3 at the view's 400 px with the `EmpireFx` layer over each, then four
 ## frames a few tenths of a second apart. Needs a window (NOT --headless):
 ##   <godot> --path . res://tools/fx_flame_shot.tscn --quit-after 900
@@ -11,7 +11,7 @@ const BuildingSprites := preload("res://scripts/building_sprites.gd")
 const BOX := 400.0
 const FRAME_GAP := 0.3
 const FRAMES := 4
-const SET := [["furnace", 1], ["furnace", 3], ["petro_refinery", 1], ["petro_refinery", 3]]
+const SET := [["furnace", 3], ["eaf", 2], ["petro_refinery", 1], ["petro_refinery", 3]]
 
 
 func _ready() -> void:

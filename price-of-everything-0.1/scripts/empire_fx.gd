@@ -31,22 +31,22 @@ const SPRITE_PX := 800.0
 const ANCHORS := {
 	"furnace": {
 		1: {"stacks": [{"x": 450, "y": 175, "r": 30, "kind": "auto"}, {"x": 560, "y": 165, "r": 30, "kind": "auto"}],
-			"fires": [{"x": 435, "y": 337, "rx": 44, "ry": 18}, {"x": 569, "y": 337, "rx": 44, "ry": 18},
-				{"x": 309, "y": 610, "rx": 22, "ry": 24, "lick": 74}]},
+			"fires": [{"x": 435, "y": 337, "rx": 46, "ry": 18}, {"x": 569, "y": 337, "rx": 46, "ry": 18},
+				{"x": 309, "y": 610, "rx": 24, "ry": 28}, {"x": 558, "y": 571, "rx": 15, "ry": 13}, {"x": 485, "y": 613, "rx": 15, "ry": 13}]},
 		2: {"stacks": [{"x": 415, "y": 150, "r": 36, "kind": "auto"}, {"x": 560, "y": 140, "r": 36, "kind": "auto"}],
-			"fires": [{"x": 549, "y": 345, "rx": 44, "ry": 18}, {"x": 415, "y": 345, "rx": 40, "ry": 16},
-				{"x": 289, "y": 617, "rx": 22, "ry": 24, "lick": 74}]},
+			"fires": [{"x": 549, "y": 345, "rx": 46, "ry": 18}, {"x": 415, "y": 345, "rx": 38, "ry": 15},
+				{"x": 289, "y": 617, "rx": 24, "ry": 28}, {"x": 538, "y": 578, "rx": 15, "ry": 13}, {"x": 464, "y": 620, "rx": 15, "ry": 13}]},
 		3: {"stacks": [{"x": 455, "y": 80, "r": 40, "kind": "auto"}],
-			"fires": [{"x": 527, "y": 414, "rx": 44, "ry": 18}, {"x": 388, "y": 415, "rx": 38, "ry": 16},
-				{"x": 524, "y": 683, "rx": 36, "ry": 54, "lick": 118}, {"x": 266, "y": 686, "rx": 22, "ry": 24, "lick": 66}]},
+			"fires": [{"x": 527, "y": 414, "rx": 46, "ry": 18}, {"x": 395, "y": 415, "rx": 38, "ry": 15},
+				{"x": 524, "y": 683, "rx": 38, "ry": 58}, {"x": 266, "y": 686, "rx": 24, "ry": 28}, {"x": 442, "y": 690, "rx": 15, "ry": 13}]},
 	},
 	"eaf": {
 		1: {"stacks": [{"x": 480, "y": 76, "r": 18, "kind": "auto"}, {"x": 550, "y": 96, "r": 18, "kind": "auto"}],
-			"fires": [{"x": 300, "y": 555, "rx": 60, "ry": 26}, {"x": 300, "y": 598, "rx": 40, "ry": 14}]},
+			"fires": [{"x": 305, "y": 550, "rx": 66, "ry": 34, "mode": "arc"}, {"x": 304, "y": 604, "rx": 36, "ry": 10}]},
 		2: {"stacks": [{"x": 555, "y": 45, "r": 18, "kind": "auto"}, {"x": 600, "y": 55, "r": 18, "kind": "auto"}],
-			"fires": [{"x": 605, "y": 640, "rx": 62, "ry": 30}, {"x": 600, "y": 692, "rx": 40, "ry": 14}]},
+			"fires": [{"x": 382, "y": 523, "rx": 66, "ry": 34, "mode": "arc"}, {"x": 374, "y": 626, "rx": 30, "ry": 18}]},
 		3: {"stacks": [{"x": 540, "y": 45, "r": 18, "kind": "auto"}, {"x": 590, "y": 50, "r": 18, "kind": "auto"}],
-			"fires": [{"x": 595, "y": 505, "rx": 62, "ry": 30}, {"x": 600, "y": 560, "rx": 40, "ry": 14}]},
+			"fires": [{"x": 339, "y": 523, "rx": 66, "ry": 34, "mode": "arc"}, {"x": 331, "y": 626, "rx": 30, "ry": 18}]},
 	},
 	"industrial_factory": {
 		2: {"stacks": [{"x": 700, "y": 110, "r": 26, "kind": "auto"}], "fires": []},
@@ -66,13 +66,13 @@ const ANCHORS := {
 			"cables": [[[330, 147], [303, 245], [262, 340]], [[322, 182], [296, 288], [258, 380]]]},
 	},
 	"petro_refinery": {
-		1: {"stacks": [{"x": 364, "y": 200, "r": 18, "kind": "steam"}],
-			"fires": [{"x": 608, "y": 220, "rx": 16, "ry": 14, "lick": 64, "lean": 10}]},
-		2: {"stacks": [{"x": 359, "y": 138, "r": 22, "kind": "steam"}, {"x": 445, "y": 188, "r": 22, "kind": "steam"}],
-			"fires": [{"x": 605, "y": 265, "rx": 16, "ry": 14, "lick": 64, "lean": 10}, {"x": 658, "y": 243, "rx": 16, "ry": 14, "lick": 64, "lean": 10}]},
-		3: {"stacks": [{"x": 393, "y": 100, "r": 18, "kind": "steam"}, {"x": 474, "y": 176, "r": 18, "kind": "steam"}],
-			"fires": [{"x": 633, "y": 254, "rx": 16, "ry": 14, "lick": 64, "lean": 10}, {"x": 692, "y": 235, "rx": 16, "ry": 14, "lick": 64, "lean": 10},
-				{"x": 758, "y": 192, "rx": 16, "ry": 14, "lick": 64, "lean": 10}]},
+		1: {"stacks": [],
+			"fires": [{"x": 608, "y": 220, "rx": 16, "ry": 14, "lick": 72, "lean": 10}]},
+		2: {"stacks": [],
+			"fires": [{"x": 605, "y": 265, "rx": 16, "ry": 14, "lick": 72, "lean": 10}, {"x": 658, "y": 243, "rx": 16, "ry": 14, "lick": 72, "lean": 10}]},
+		3: {"stacks": [],
+			"fires": [{"x": 633, "y": 254, "rx": 16, "ry": 14, "lick": 72, "lean": 10}, {"x": 692, "y": 235, "rx": 16, "ry": 14, "lick": 72, "lean": 10},
+				{"x": 758, "y": 192, "rx": 16, "ry": 14, "lick": 72, "lean": 10}]},
 	},
 	"poly_plant": {
 		1: {"stacks": [{"x": 570, "y": 206, "r": 12, "kind": "steam"}], "fires": []},
@@ -124,8 +124,12 @@ const STEAM_BASE := Color(0.84, 0.86, 0.87)
 const STEAM_PATCH := Color(0.97, 0.98, 0.98)
 const PEAK_ALPHA := 0.92
 
-## Fire: an additive warm glow that flickers. Two sines at unrelated rates read as flame,
-## one reads as a lamp on a dimmer.
+## Fire: an additive warm glow on a lit opening. `mode` (owner 2026-09-10):
+##   "breathe" (default) — the furnace's windows, doorways and hot bands GROW and RECEDE on
+##       two slow sines: no flicker, no flame (owner: "the furnace doesn't need flames").
+##   "arc"  — the EAF crucible: a glow that SHIFTS about inside the crucible (the arc wanders
+##       between the electrodes) with the fast irregular flicker of an arc.
+##   licks — a fire with `lick` also draws a textured flame (refinery heaters only).
 const FIRE_CORE := Color(1.0, 0.72, 0.30)
 const FIRE_HALO := Color(1.0, 0.42, 0.10)
 
@@ -137,7 +141,7 @@ const FIRE_HALO := Color(1.0, 0.42, 0.10)
 ## repeat and no cycle shows; height and width breathe on two sines; the whole thing leans
 ## `lean` degrees (screen-right positive, the refinery's wind) plus a small sway, and now and
 ## then it is mirrored. The additive glow stays underneath: it is what lights the sprite.
-## Furnace doors and the refinery's fired heaters have licks; the EAF keeps its arc glow only.
+## Only the refinery's fired heaters have licks (owner: no fires at furnace doorways).
 const FLAME_TEX: Array = [
 	preload("res://assets/fx/flames/flame_0.png"), preload("res://assets/fx/flames/flame_1.png"),
 	preload("res://assets/fx/flames/flame_2.png"), preload("res://assets/fx/flames/flame_3.png"),
@@ -221,6 +225,7 @@ func setup(internal_name: String, level: int, carbon: bool, seed_text: String, b
 			"rx": float(f["rx"]) * k, "ry": float(f["ry"]) * k,
 			"lick": float(f.get("lick", 0.0)) * k,
 			"lean": deg_to_rad(float(f.get("lean", 0.0))),
+			"mode": str(f.get("mode", "breathe")),
 			"seed": float((hash(seed_text + "|f%d" % i) % 1000)) / 1000.0,
 		})
 		i += 1
@@ -332,15 +337,32 @@ func _draw_fires() -> void:
 		var f: Dictionary = f_value
 		var s: float = f["seed"]
 		var t := _clock * 1.0 + s * 37.0
-		# Irregular flicker: two incommensurate rates plus a slow breath.
-		var flick := 0.55 + 0.25 * sin(t * 11.3) * sin(t * 7.1 + 1.3) + 0.20 * sin(t * 2.3)
-		flick = clampf(flick, 0.15, 1.0)
 		var pos: Vector2 = f["pos"]
 		var rx: float = f["rx"]; var ry: float = f["ry"]
-		_ellipse(pts, cols, pos, rx * 1.35, ry * 1.35, Color(FIRE_HALO.r, FIRE_HALO.g, FIRE_HALO.b, 0.22 * flick))
-		_ellipse(pts, cols, pos, rx, ry, Color(FIRE_CORE.r, FIRE_CORE.g, FIRE_CORE.b, 0.34 * flick))
-		_ellipse(pts, cols, pos + Vector2(rx * 0.1 * sin(t * 5.0), 0.0), rx * 0.5, ry * 0.55,
-			Color(1.0, 0.92, 0.70, 0.30 * flick))
+		var mode: String = f["mode"]
+		var flick := 1.0     # brightness
+		var grow := 1.0      # size
+		var hot := pos       # where the brightest spot sits
+		if mode == "arc" or float(f["lick"]) > 0.0:
+			# Irregular flicker: two incommensurate rates plus a slow breath.
+			flick = clampf(0.55 + 0.25 * sin(t * 11.3) * sin(t * 7.1 + 1.3) + 0.20 * sin(t * 2.3), 0.15, 1.0)
+			if mode == "arc":
+				# The arc wanders about the crucible on two slow, unrelated orbits.
+				hot = pos + Vector2(rx * 0.38 * sin(t * 1.9) * cos(t * 0.7 + 0.4), ry * 0.30 * sin(t * 2.6 + 1.1))
+				grow = 0.9 + 0.2 * sin(t * 3.7)
+		else:
+			# Grow and recede: a slow swell with a slower one under it, never off.
+			var swell := 0.6 * (0.5 + 0.5 * sin(t * 1.7)) + 0.4 * (0.5 + 0.5 * sin(t * 0.61 + 2.0))
+			flick = 0.35 + 0.65 * swell
+			grow = 0.82 + 0.5 * swell
+		var hx := rx * grow; var hy := ry * grow
+		_ellipse(pts, cols, pos, hx * 1.45, hy * 1.45, Color(FIRE_HALO.r, FIRE_HALO.g, FIRE_HALO.b, 0.22 * flick))
+		_ellipse(pts, cols, pos, hx, hy, Color(FIRE_CORE.r, FIRE_CORE.g, FIRE_CORE.b, 0.34 * flick))
+		_ellipse(pts, cols, hot, hx * 0.5, hy * 0.55, Color(1.0, 0.92, 0.70, 0.32 * flick))
+		if mode == "arc":
+			# A second, harder spot: the arc itself, tighter and brighter, on its own orbit.
+			var arc := pos + Vector2(rx * 0.45 * sin(t * 2.3 + 0.9), ry * 0.35 * cos(t * 1.4))
+			_ellipse(pts, cols, arc, hx * 0.22, hy * 0.28, Color(1.0, 0.97, 0.85, 0.45 * flick))
 	CanvasBatch.flush(_fire_layer, pts, cols)
 
 
