@@ -12,7 +12,7 @@ Run AFTER sprite_kit.py, goods_icon_kit.py and goods_icon_batch2.py (uses P/toon
 import bpy, math, random
 from mathutils import Vector
 
-PUFF_SMOKE = ((0.30, 0.29, 0.28), (0.16, 0.15, 0.15))
+PUFF_SMOKE = ((0.20, 0.195, 0.19), (0.10, 0.095, 0.095))
 PUFF_STEAM = ((0.90, 0.92, 0.93), (1.0, 1.0, 1.0))
 
 

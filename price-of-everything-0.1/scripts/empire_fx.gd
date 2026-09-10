@@ -31,11 +31,14 @@ const SPRITE_PX := 800.0
 const ANCHORS := {
 	"furnace": {
 		1: {"stacks": [{"x": 450, "y": 175, "r": 30, "kind": "auto"}, {"x": 560, "y": 165, "r": 30, "kind": "auto"}],
-			"fires": [{"x": 430, "y": 360, "rx": 50, "ry": 22}, {"x": 300, "y": 605, "rx": 22, "ry": 16}]},
+			"fires": [{"x": 435, "y": 337, "rx": 44, "ry": 18}, {"x": 569, "y": 337, "rx": 44, "ry": 18},
+				{"x": 309, "y": 610, "rx": 22, "ry": 24, "lick": 74}]},
 		2: {"stacks": [{"x": 415, "y": 150, "r": 36, "kind": "auto"}, {"x": 560, "y": 140, "r": 36, "kind": "auto"}],
-			"fires": [{"x": 430, "y": 360, "rx": 60, "ry": 26}, {"x": 290, "y": 650, "rx": 22, "ry": 16}]},
+			"fires": [{"x": 549, "y": 345, "rx": 44, "ry": 18}, {"x": 415, "y": 345, "rx": 40, "ry": 16},
+				{"x": 289, "y": 617, "rx": 22, "ry": 24, "lick": 74}]},
 		3: {"stacks": [{"x": 455, "y": 80, "r": 40, "kind": "auto"}],
-			"fires": [{"x": 385, "y": 330, "rx": 60, "ry": 28}, {"x": 545, "y": 650, "rx": 42, "ry": 30}, {"x": 280, "y": 610, "rx": 22, "ry": 16}]},
+			"fires": [{"x": 527, "y": 414, "rx": 44, "ry": 18}, {"x": 388, "y": 415, "rx": 38, "ry": 16},
+				{"x": 524, "y": 683, "rx": 36, "ry": 54, "lick": 118}, {"x": 266, "y": 686, "rx": 22, "ry": 24, "lick": 66}]},
 	},
 	"eaf": {
 		1: {"stacks": [{"x": 480, "y": 76, "r": 18, "kind": "auto"}, {"x": 550, "y": 96, "r": 18, "kind": "auto"}],
@@ -63,12 +66,13 @@ const ANCHORS := {
 			"cables": [[[330, 147], [303, 245], [262, 340]], [[322, 182], [296, 288], [258, 380]]]},
 	},
 	"petro_refinery": {
-		1: {"stacks": [{"x": 150, "y": 185, "r": 18, "kind": "steam"}],
-			"fires": [{"x": 300, "y": 185, "rx": 14, "ry": 36}]},
-		2: {"stacks": [{"x": 370, "y": 120, "r": 22, "kind": "steam"}, {"x": 440, "y": 128, "r": 22, "kind": "steam"}],
-			"fires": [{"x": 600, "y": 175, "rx": 16, "ry": 40}, {"x": 650, "y": 160, "rx": 16, "ry": 40}]},
-		3: {"stacks": [{"x": 380, "y": 96, "r": 18, "kind": "steam"}, {"x": 460, "y": 66, "r": 18, "kind": "steam"}],
-			"fires": [{"x": 620, "y": 215, "rx": 14, "ry": 36}, {"x": 700, "y": 200, "rx": 14, "ry": 36}, {"x": 760, "y": 185, "rx": 14, "ry": 36}]},
+		1: {"stacks": [{"x": 364, "y": 200, "r": 18, "kind": "steam"}],
+			"fires": [{"x": 608, "y": 220, "rx": 16, "ry": 14, "lick": 64, "lean": 10}]},
+		2: {"stacks": [{"x": 359, "y": 138, "r": 22, "kind": "steam"}, {"x": 445, "y": 188, "r": 22, "kind": "steam"}],
+			"fires": [{"x": 605, "y": 265, "rx": 16, "ry": 14, "lick": 64, "lean": 10}, {"x": 658, "y": 243, "rx": 16, "ry": 14, "lick": 64, "lean": 10}]},
+		3: {"stacks": [{"x": 393, "y": 100, "r": 18, "kind": "steam"}, {"x": 474, "y": 176, "r": 18, "kind": "steam"}],
+			"fires": [{"x": 633, "y": 254, "rx": 16, "ry": 14, "lick": 64, "lean": 10}, {"x": 692, "y": 235, "rx": 16, "ry": 14, "lick": 64, "lean": 10},
+				{"x": 758, "y": 192, "rx": 16, "ry": 14, "lick": 64, "lean": 10}]},
 	},
 	"poly_plant": {
 		1: {"stacks": [{"x": 570, "y": 206, "r": 12, "kind": "steam"}], "fires": []},
@@ -124,6 +128,22 @@ const PEAK_ALPHA := 0.92
 ## one reads as a lamp on a dimmer.
 const FIRE_CORE := Color(1.0, 0.72, 0.30)
 const FIRE_HALO := Color(1.0, 0.42, 0.10)
+
+## FLAME LICKS (owner 2026-09-10: "actual fire in the style we've been using"). A fire anchor
+## with `lick: h` also draws a Blender-authored flame — a cluster of inked tongues
+## (`blender-assets/goods_icon_batch4_flames.py`, four seeds, 256 px) — h SPRITE px tall,
+## rooted just below the glow's centre (`ry` * 0.7 down: the door sill, the heater tip). The
+## variant hops FLAME_FPS times a second on a golden-ratio walk so consecutive frames never
+## repeat and no cycle shows; height and width breathe on two sines; the whole thing leans
+## `lean` degrees (screen-right positive, the refinery's wind) plus a small sway, and now and
+## then it is mirrored. The additive glow stays underneath: it is what lights the sprite.
+## Furnace doors and the refinery's fired heaters have licks; the EAF keeps its arc glow only.
+const FLAME_TEX: Array = [
+	preload("res://assets/fx/flames/flame_0.png"), preload("res://assets/fx/flames/flame_1.png"),
+	preload("res://assets/fx/flames/flame_2.png"), preload("res://assets/fx/flames/flame_3.png"),
+]
+const FLAME_TEX_BASE := 245.0 / 256.0   # the flame's root sits this far down its canvas
+const FLAME_FPS := 9.0
 
 ## ELECTRICITY PULSES along the traced cables (owner, 2026-09-10): short bright charges
 ## sliding along each catenary at a constant speed, sag and all — the polyline IS the cable
@@ -199,6 +219,8 @@ func setup(internal_name: String, level: int, carbon: bool, seed_text: String, b
 		_fires.append({
 			"pos": Vector2(float(f["x"]), float(f["y"])) * k,
 			"rx": float(f["rx"]) * k, "ry": float(f["ry"]) * k,
+			"lick": float(f.get("lick", 0.0)) * k,
+			"lean": deg_to_rad(float(f.get("lean", 0.0))),
 			"seed": float((hash(seed_text + "|f%d" % i) % 1000)) / 1000.0,
 		})
 		i += 1
@@ -238,8 +260,7 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
-	if _stacks.is_empty():
-		return
+	_draw_licks()
 	for st_value in _stacks:
 		var st: Dictionary = st_value
 		var seed_val: float = st["seed"]
@@ -248,6 +269,33 @@ func _draw() -> void:
 			# Evenly staggered ages: one puff is always young while another is old.
 			var p := fposmod(_clock / PERIOD + seed_val + float(j) / float(PUFFS), 1.0)
 			_draw_puff(st["pos"], st["r"], p, bool(st["smoke"]), spin_dir, int(seed_val * 97.0) + j)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## One textured flame per lick anchor, rooted at the anchor and re-rolled FLAME_FPS times a
+## second. Drawn on THIS (normal-blend) item so the ink outline stays ink; the glow layer
+## above adds the light.
+func _draw_licks() -> void:
+	for f_value in _fires:
+		var f: Dictionary = f_value
+		var h: float = f["lick"]
+		if h <= 0.0:
+			continue
+		var s: float = f["seed"]
+		var t := _clock + s * 53.0
+		var frame := int(floor(t * FLAME_FPS))
+		# Golden-ratio walk through the four seeds: never the same frame twice running.
+		var variant := int(fmod(float(frame) * 2.618034 + s * 4.0, 4.0))
+		var flip := -1.0 if (frame * 7 + int(s * 11.0)) % 5 == 0 else 1.0
+		var breathe := 0.88 + 0.24 * (0.5 + 0.5 * sin(t * 9.7) * sin(t * 6.1 + 0.7))
+		var widen := 0.94 + 0.12 * (0.5 + 0.5 * sin(t * 7.9 + 2.0))
+		var rot: float = f["lean"] + 0.07 * sin(t * 8.3) * sin(t * 3.1)
+		var tall := h * breathe
+		var wide := h * widen
+		var root: Vector2 = f["pos"] + Vector2(0.0, float(f["ry"]) * 0.7)
+		draw_set_transform(root, rot, Vector2(flip, 1.0))
+		draw_texture_rect(FLAME_TEX[variant], Rect2(-wide * 0.5, -tall * FLAME_TEX_BASE, wide, tall),
+			false, Color(1.0, 1.0, 1.0, 0.97))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 

@@ -1924,14 +1924,19 @@ class Kit:
                             self.mat("scaffold"), segments=6)
         self._fine_mode = _fm
 
-    def flare_tip(self, name, cx, cy, top, r=0.13):
+    def flare_tip(self, name, cx, cy, top, r=0.13, flame=True):
         """Flare burner and flame — THE petroleum landmark and the plant's one warm accent.
         The plume is stacked cones leaning toward screen-right; a single cone reads as a
-        traffic cone, and anything fussier turns to mush under the 7px contour."""
+        traffic cone, and anything fussier turns to mush under the 7px contour.
+        `flame=False` bakes the burner only (2026-09-10): the supply-chain view draws an
+        ANIMATED flame (assets/fx/flames, scripts/empire_fx.gd) at the burner's tip, so the
+        painted plume would double up."""
         self.cyl("%s_shield" % name, cx, cy, top + 0.10, r + 0.075, 0.30,
                  self.mat("scaffold"))
         for tag, dz in (("lo", -0.14), ("hi", 0.14)):
             self.seam("%s_shieldseam_%s" % (name, tag), cx, cy, top + 0.10 + dz, r + 0.088)
+        if not flame:
+            return
         em = self.M["ember"]
         lean = 0.085                                   # per stage, along +x+y = screen right
         z = top + 0.26
