@@ -134,7 +134,23 @@ const PULSE_SPACING := 70.0       # between pulses along one cable
 const PULSE_LEN := 22.0
 const PULSE_TINT := Color(1.0, 0.92, 0.55)
 
-static var _puff_tris := PackedVector2Array()
+## Blender-authored puff sprites (owner 2026-09-10: the LOOK comes from Blender, the motion
+## stays here). Five seeds per colourway, house ink + halftone baked in, 256 px, mipmapped.
+## `blender-assets/goods_icon_batch3_fx.py` makes them.
+const PUFF_SMOKE_TEX: Array = [
+	preload("res://assets/fx/puffs/puff_smoke_0.png"), preload("res://assets/fx/puffs/puff_smoke_1.png"),
+	preload("res://assets/fx/puffs/puff_smoke_2.png"), preload("res://assets/fx/puffs/puff_smoke_3.png"),
+	preload("res://assets/fx/puffs/puff_smoke_4.png"),
+]
+const PUFF_STEAM_TEX: Array = [
+	preload("res://assets/fx/puffs/puff_steam_0.png"), preload("res://assets/fx/puffs/puff_steam_1.png"),
+	preload("res://assets/fx/puffs/puff_steam_2.png"), preload("res://assets/fx/puffs/puff_steam_3.png"),
+	preload("res://assets/fx/puffs/puff_steam_4.png"),
+]
+## The cloud fills ~92% of its 256 canvas; a puff of "radius" r is drawn as a square of side
+## 2 r * this, so the visible cloud spans about 2 r like the polygon puff did.
+const PUFF_TEX_SPAN := 1.12
+
 static var _disc_tris := PackedVector2Array()
 
 var _stacks: Array = []      # [{pos: Vector2 (local px), r: float, smoke: bool, seed: float}]
@@ -224,12 +240,6 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	if _stacks.is_empty():
 		return
-	if _puff_tris.is_empty():
-		_puff_tris = CanvasBatch.polygon_soup(SmokeVisuals.PUFF_SHAPE)
-		if _puff_tris.is_empty():
-			return
-	var pts := PackedVector2Array()
-	var cols := PackedColorArray()
 	for st_value in _stacks:
 		var st: Dictionary = st_value
 		var seed_val: float = st["seed"]
@@ -237,12 +247,11 @@ func _draw() -> void:
 		for j in PUFFS:
 			# Evenly staggered ages: one puff is always young while another is old.
 			var p := fposmod(_clock / PERIOD + seed_val + float(j) / float(PUFFS), 1.0)
-			_append_puff(pts, cols, st["pos"], st["r"], p, bool(st["smoke"]), spin_dir, seed_val + j)
-	CanvasBatch.flush(self, pts, cols)
+			_draw_puff(st["pos"], st["r"], p, bool(st["smoke"]), spin_dir, int(seed_val * 97.0) + j)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
-func _append_puff(pts: PackedVector2Array, cols: PackedColorArray, origin: Vector2,
-		base_r: float, p: float, smoke: bool, spin_dir: float, patch_seed: float) -> void:
+func _draw_puff(origin: Vector2, base_r: float, p: float, smoke: bool, spin_dir: float, variant: int) -> void:
 	var travelled := 1.0 - pow(1.0 - p, 1.7)
 	var centre := origin + DRIFT_DIR.normalized() * (DRIFT_R * base_r) * travelled
 	var radius := base_r * lerpf(START_SCALE, END_SCALE, pow(p, 0.75))
@@ -250,27 +259,11 @@ func _append_puff(pts: PackedVector2Array, cols: PackedColorArray, origin: Vecto
 	if alpha <= 0.004:
 		return
 	var spin := p * SPIN * spin_dir
-	var base_col := SMOKE_BASE if smoke else STEAM_BASE
-	var patch_col := SMOKE_PATCH if smoke else STEAM_PATCH
-	_push(pts, cols, centre, radius, spin, Color(base_col.r, base_col.g, base_col.b, alpha))
-	# Two patches inside the puff, offset by the seed so no two puffs are stamps of each other.
-	var a1 := patch_seed * 6.2832
-	var a2 := a1 + 2.4
-	var pr := radius * 0.42
-	_push(pts, cols, centre + Vector2(cos(a1), sin(a1)) * radius * 0.38, pr, spin + 1.1,
-		Color(patch_col.r, patch_col.g, patch_col.b, alpha * 0.85))
-	_push(pts, cols, centre + Vector2(cos(a2), sin(a2)) * radius * 0.30, pr * 0.8, spin - 0.7,
-		Color(patch_col.r, patch_col.g, patch_col.b, alpha * 0.7))
-
-
-func _push(pts: PackedVector2Array, cols: PackedColorArray, centre: Vector2, radius: float,
-		spin: float, col: Color) -> void:
-	var base := pts.size()
-	pts.resize(base + _puff_tris.size())
-	cols.resize(base + _puff_tris.size())
-	for i in _puff_tris.size():
-		pts[base + i] = centre + _puff_tris[i].rotated(spin) * radius
-		cols[base + i] = col
+	var texs: Array = PUFF_SMOKE_TEX if smoke else PUFF_STEAM_TEX
+	var tex: Texture2D = texs[variant % texs.size()]
+	var half := radius * PUFF_TEX_SPAN
+	draw_set_transform(centre, spin, Vector2.ONE)
+	draw_texture_rect(tex, Rect2(-half, -half, 2.0 * half, 2.0 * half), false, Color(1, 1, 1, alpha))
 
 
 func _draw_fires() -> void:
