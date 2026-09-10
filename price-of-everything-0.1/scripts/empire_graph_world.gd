@@ -160,13 +160,62 @@ class MarketGlow extends Control:
 							draw_line(a, b, Color(1, 1, 1, band[1] * route.alpha), band[0] * route.scale, true)
 					walked += length
 
+## ELECTRICITY PULSES (owner, 2026-09-10): short bright charges running along every power
+## edge — input, grid purchase or grid export — following the edge's EXACT routed polyline,
+## elbows included, at a constant screen speed so a long cable and a short one both read as
+## live current. Paths are recorded by `_draw` each time the graph redraws (the same contract
+## as MarketGlow); only this overlay repaints per frame.
+class PowerPulses extends Control:
+	const SPEED_PX := 170.0          # screen px per second, at scale 1
+	const SPACING_PX := 96.0         # between pulses along one cable, at scale 1
+	const LEN_PX := 22.0             # pulse length, at scale 1
+	const TINT := Color(1.0, 0.90, 0.50)     # the game's power yellow, lifted toward white
+	var travelled: float = 0.0       # px along every cable, wraps by SPACING
+	var paths: Array = []
+	func _draw() -> void:
+		for route: Dictionary in paths:
+			var points: PackedVector2Array = route.path
+			var sc: float = route.scale
+			var total: float = 0.0
+			for i in range(1, points.size()):
+				total += points[i - 1].distance_to(points[i])
+			if total <= 0.0:
+				continue
+			var spacing := SPACING_PX * sc
+			var plen := LEN_PX * sc
+			# The train of pulses: heads every `spacing` px, offset by the shared travel so
+			# they slide along together; each one is clipped to the polyline's arc.
+			var head := fmod(travelled * sc, spacing)
+			while head - plen < total:
+				var lo_d := maxf(0.0, head - plen)
+				var hi_d := minf(total, head)
+				if hi_d > lo_d:
+					_draw_arc_segment(points, lo_d, hi_d, float(route.alpha), sc)
+				head += spacing
+	func _draw_arc_segment(points: PackedVector2Array, start: float, end: float, alpha: float, sc: float) -> void:
+		var walked: float = 0.0
+		for i in range(1, points.size()):
+			var length: float = points[i - 1].distance_to(points[i])
+			var lo: float = maxf(start, walked)
+			var hi: float = minf(end, walked + length)
+			if hi > lo and length > 0.0:
+				var a: Vector2 = points[i - 1].lerp(points[i], (lo - walked) / length)
+				var b: Vector2 = points[i - 1].lerp(points[i], (hi - walked) / length)
+				for band in [[10.0, 0.10], [5.0, 0.30], [2.2, 0.95]]:
+					draw_line(a, b, Color(TINT.r, TINT.g, TINT.b, band[1] * alpha), band[0] * sc, true)
+			walked += length
+
 var _goods_overlay: GoodsOverlay
 var _market_glow: MarketGlow
+var _power_pulses: PowerPulses
 
 func _ready() -> void:
 	_market_glow = MarketGlow.new()
 	_market_glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_market_glow)
+	_power_pulses = PowerPulses.new()
+	_power_pulses.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_power_pulses)
 	_goods_overlay = GoodsOverlay.new()
 	_goods_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_goods_overlay.z_index = 100
@@ -843,6 +892,9 @@ func _process(delta: float) -> void:
 	_market_glow.phase = fmod(_market_glow.phase + delta / MarketGlow.PERIOD, 1.0)
 	if not _market_glow.paths.is_empty():
 		_market_glow.queue_redraw()
+	_power_pulses.travelled = fmod(_power_pulses.travelled + delta * PowerPulses.SPEED_PX, PowerPulses.SPACING_PX)
+	if not _power_pulses.paths.is_empty():
+		_power_pulses.queue_redraw()
 	# The blocked-shipment flash and the per-turn material positions both live in _draw, so a
 	# site chart redraws every frame. Only while one is open — at rest this costs nothing.
 	if not _focus_site.is_empty() and _focus_t > 0.0:
@@ -885,8 +937,10 @@ func _draw() -> void:
 	GoodHover.begin_draw(self)
 	_goods_overlay.chips.clear()
 	_market_glow.paths.clear()
+	_power_pulses.paths.clear()
 	_goods_overlay.queue_redraw()
 	_market_glow.queue_redraw()
+	_power_pulses.queue_redraw()
 	if _nodes.is_empty() and _ports.is_empty():
 		return
 	var font := get_theme_default_font()
@@ -911,6 +965,8 @@ func _draw() -> void:
 		if ma > 0.01:
 			_draw_dashed_polyline(mpath, Color(_EDGE, ma), _EDGE_WIDTH * sc, sc)
 			_draw_edge_good_chip(mpath, e, "market", font, sc, ma)
+			if _is_power_good(str(e.get("good", ""))):
+				_power_pulses.paths.append({"path": mpath, "alpha": ma, "scale": sc})
 
 	# Sell-to-market lines (thick gold) routed down to the port row, beneath everything else.
 	var ports_top := INF
@@ -936,6 +992,8 @@ func _draw() -> void:
 			# where sales WOULD leave" (goods are pooling in the tile stockpile).
 			_draw_dashed_polyline(path, Color(_SELL, 0.8 * sa), _SELL_WIDTH * sc, sc)
 		_market_glow.paths.append({"path": path, "alpha": sa, "scale": sc})
+		if _is_power_good(str(e.get("good", ""))):
+			_power_pulses.paths.append({"path": path, "alpha": sa, "scale": sc})
 		_draw_edge_good_chip(path, e, "sell", font, sc, sa)
 
 	# Input lines (thin amber) routed left-to-right between columns.
@@ -947,6 +1005,8 @@ func _draw() -> void:
 			continue
 		var path := _route_input(_box_by_iid[e["from"]], _box_by_iid[e["to"]], int(e.get("lane", 0)), int(e.get("lane_n", 1)), sc)
 		draw_polyline(path, Color(_EDGE, ea), _EDGE_WIDTH * sc, true)
+		if _is_power_good(str(e.get("good", ""))):
+			_power_pulses.paths.append({"path": path, "alpha": ea, "scale": sc})
 		_draw_edge_good_chip(path, e, "input", font, sc, ea)
 
 	# The construction-site delivery chart, under the port hexes so their gold sits on top of
@@ -972,6 +1032,17 @@ func _draw() -> void:
 
 	# Last, so it sits over the lines and chips it explains.
 	_draw_edge_good_tooltip(font, sc)
+
+
+## Is this edge carrying electricity? Resolved through the catalog so the check survives a
+## renamed or renumbered good; cached per id.
+var _power_good_cache: Dictionary = {}
+func _is_power_good(good_id: String) -> bool:
+	if good_id == "":
+		return false
+	if not _power_good_cache.has(good_id):
+		_power_good_cache[good_id] = str(Catalog.get_good(good_id).get("internal_name", "")) == "power"
+	return bool(_power_good_cache[good_id])
 
 
 ## Orthogonal route producer-right -> vertical channel -> consumer-left. The channel x is the edge's

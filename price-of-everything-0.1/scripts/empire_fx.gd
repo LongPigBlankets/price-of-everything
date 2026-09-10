@@ -50,9 +50,17 @@ const ANCHORS := {
 		3: {"stacks": [{"x": 655, "y": 90, "r": 26, "kind": "auto"}], "fires": []},
 	},
 	"power_plant": {
-		1: {"stacks": [{"x": 400, "y": 55, "r": 30, "kind": "auto"}], "fires": []},
-		2: {"stacks": [{"x": 395, "y": 40, "r": 30, "kind": "auto"}, {"x": 545, "y": 135, "r": 95, "kind": "steam"}], "fires": []},
-		3: {"stacks": [{"x": 395, "y": 45, "r": 30, "kind": "auto"}, {"x": 545, "y": 120, "r": 95, "kind": "steam"}], "fires": []},
+		1: {"stacks": [{"x": 400, "y": 55, "r": 30, "kind": "auto"}], "fires": [],
+			"cables": [[[625, 558], [592, 571], [560, 582]]]},
+		2: {"stacks": [{"x": 395, "y": 40, "r": 30, "kind": "auto"}, {"x": 545, "y": 135, "r": 95, "kind": "steam"}], "fires": [],
+			# pylon arm insulators -> the switchyard gantry, with the catenary sag the art draws
+			"cables": [[[627, 507], [583, 536], [532, 555]], [[635, 542], [586, 574], [520, 598]]]},
+		3: {"stacks": [{"x": 395, "y": 45, "r": 30, "kind": "auto"}, {"x": 545, "y": 120, "r": 95, "kind": "steam"}], "fires": [],
+			"cables": [[[652, 447], [596, 490], [535, 515]], [[665, 490], [603, 538], [522, 567]], [[677, 537], [612, 585], [540, 610]]]},
+	},
+	"electrolyser": {
+		2: {"stacks": [], "fires": [],
+			"cables": [[[330, 147], [303, 245], [262, 340]], [[322, 182], [296, 288], [258, 380]]]},
 	},
 	"petro_refinery": {
 		1: {"stacks": [{"x": 150, "y": 185, "r": 18, "kind": "steam"}],
@@ -117,11 +125,21 @@ const PEAK_ALPHA := 0.92
 const FIRE_CORE := Color(1.0, 0.72, 0.30)
 const FIRE_HALO := Color(1.0, 0.42, 0.10)
 
+## ELECTRICITY PULSES along the traced cables (owner, 2026-09-10): short bright charges
+## sliding along each catenary at a constant speed, sag and all — the polyline IS the cable
+## the art draws, so a pulse follows its exact shape. Sizes are in SPRITE px and scale with
+## the box like everything else here.
+const PULSE_SPEED := 130.0        # sprite px per second
+const PULSE_SPACING := 70.0       # between pulses along one cable
+const PULSE_LEN := 22.0
+const PULSE_TINT := Color(1.0, 0.92, 0.55)
+
 static var _puff_tris := PackedVector2Array()
 static var _disc_tris := PackedVector2Array()
 
 var _stacks: Array = []      # [{pos: Vector2 (local px), r: float, smoke: bool, seed: float}]
 var _fires: Array = []       # [{pos, rx, ry, seed}]
+var _cables: Array = []      # [PackedVector2Array] local px, the traced catenaries
 var _clock := 0.0
 var _fire_layer: Control = null
 
@@ -168,8 +186,15 @@ func setup(internal_name: String, level: int, carbon: bool, seed_text: String, b
 			"seed": float((hash(seed_text + "|f%d" % i) % 1000)) / 1000.0,
 		})
 		i += 1
-	if not _fires.is_empty():
-		# Fire is ADDITIVE (it lights the sprite around it); smoke is not. Separate canvas item.
+	for c_value in spec.get("cables", []):
+		var pts := PackedVector2Array()
+		for xy in c_value:
+			pts.append(Vector2(float(xy[0]), float(xy[1])) * k)
+		if pts.size() >= 2:
+			_cables.append(pts)
+	if not _fires.is_empty() or not _cables.is_empty():
+		# Fire and the electricity pulses are ADDITIVE (they light the sprite around them);
+		# smoke is not. Separate canvas item.
 		_fire_layer = Control.new()
 		_fire_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_fire_layer.position = Vector2.ZERO
@@ -179,12 +204,12 @@ func setup(internal_name: String, level: int, carbon: bool, seed_text: String, b
 		_fire_layer.material = mat
 		_fire_layer.draw.connect(_draw_fires)
 		add_child(_fire_layer)
-	set_process(not _stacks.is_empty() or not _fires.is_empty())
+	set_process(not _stacks.is_empty() or not _fires.is_empty() or not _cables.is_empty())
 
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_VISIBILITY_CHANGED:
-		set_process(is_visible_in_tree() and (not _stacks.is_empty() or not _fires.is_empty()))
+		set_process(is_visible_in_tree() and (not _stacks.is_empty() or not _fires.is_empty() or not _cables.is_empty()))
 
 
 func _process(delta: float) -> void:
@@ -249,7 +274,10 @@ func _push(pts: PackedVector2Array, cols: PackedColorArray, centre: Vector2, rad
 
 
 func _draw_fires() -> void:
-	if _fire_layer == null or _fires.is_empty():
+	if _fire_layer == null:
+		return
+	_draw_pulses()
+	if _fires.is_empty():
 		return
 	if _disc_tris.is_empty():
 		var disc := PackedVector2Array()
@@ -273,6 +301,43 @@ func _draw_fires() -> void:
 		_ellipse(pts, cols, pos + Vector2(rx * 0.1 * sin(t * 5.0), 0.0), rx * 0.5, ry * 0.55,
 			Color(1.0, 0.92, 0.70, 0.30 * flick))
 	CanvasBatch.flush(_fire_layer, pts, cols)
+
+
+func _draw_pulses() -> void:
+	if _cables.is_empty():
+		return
+	var k: float = size.x / SPRITE_PX
+	var spacing := PULSE_SPACING * k
+	var plen := PULSE_LEN * k
+	var travelled := fmod(_clock * PULSE_SPEED * k, spacing)
+	for pts in _cables:
+		var total := 0.0
+		for i in range(1, pts.size()):
+			total += pts[i - 1].distance_to(pts[i])
+		if total <= 0.0:
+			continue
+		var head := travelled
+		while head - plen < total:
+			var lo_d := maxf(0.0, head - plen)
+			var hi_d := minf(total, head)
+			if hi_d > lo_d:
+				_draw_arc_segment(pts, lo_d, hi_d, k)
+			head += spacing
+
+
+## Draw the part of a polyline between arc lengths `start` and `end`, as a glowing line.
+func _draw_arc_segment(pts: PackedVector2Array, start: float, end: float, k: float) -> void:
+	var walked := 0.0
+	for i in range(1, pts.size()):
+		var length := pts[i - 1].distance_to(pts[i])
+		var lo := maxf(start, walked)
+		var hi := minf(end, walked + length)
+		if hi > lo and length > 0.0:
+			var a := pts[i - 1].lerp(pts[i], (lo - walked) / length)
+			var b := pts[i - 1].lerp(pts[i], (hi - walked) / length)
+			for band in [[18.0, 0.12], [9.0, 0.32], [3.8, 1.0]]:
+				_fire_layer.draw_line(a, b, Color(PULSE_TINT.r, PULSE_TINT.g, PULSE_TINT.b, float(band[1])), float(band[0]) * k, true)
+		walked += length
 
 
 func _ellipse(pts: PackedVector2Array, cols: PackedColorArray, centre: Vector2, rx: float, ry: float, col: Color) -> void:
