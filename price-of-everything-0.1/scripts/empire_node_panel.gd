@@ -42,6 +42,7 @@ var _badge_rect := Rect2()      # port badge's box in panel coords; empty when t
 var _sprite_content := Rect2()  # the sprite's OPAQUE box in panel coords (sprite view)
 var _fx_rect := Rect2()         # the animated effects' reach in panel coords (empire_fx envelope)
 var _full: Control = null       # the hover-only full card (sprite view); null in classic mode
+var _full_rect := Rect2()       # the reserve the full card fills (sprite view)
                                 # It can extend PAST the Control (a sprite that fills its frame
                                 # pushes the hex off the corner), which is what the overlap probe
                                 # checks against neighbours.
@@ -62,16 +63,22 @@ func setup(node: Dictionary) -> void:
 	var sprite_tex = node.get("sprite")
 	var sprite_mode: bool = MatchState.use_empire_sprite_view and sprite_tex != null
 	var total := plate_sz
+	var full_sz: Vector2 = (node.get("full_half", node["half"]) as Vector2) * 2.0
+	_full_rect = Rect2()
 	if sprite_mode:
 		# Plates stay at L1 size in sprite view: the sprite carries the building's scale (and
 		# the L-tag names the level), so level-scaling the caption plate too made the row of
 		# captions ragged. `plate_half` is ALREADY the L1 plate here, so no /cs rescale — that
 		# only existed to undo the level-scaling that used to be baked into `half`.
 		cs = 1.0
-		total = Vector2(maxf(plate_sz.x, SPRITE_PX), SPRITE_PX + plate_sz.y)
+		# The panel reserves the FULL card under the sprite (owner 2026-09-10); the compact
+		# plate sits at the top of that reserve and the hover card fills it exactly.
+		total = Vector2(maxf(full_sz.x, SPRITE_PX), SPRITE_PX + full_sz.y)
+		_full_rect = Rect2(Vector2((total.x - full_sz.x) / 2.0, SPRITE_PX), full_sz)
 	custom_minimum_size = total
 	size = total
-	_plate_rect = Rect2(Vector2((total.x - plate_sz.x) / 2.0, total.y - plate_sz.y), plate_sz)
+	_plate_rect = (Rect2(Vector2((total.x - plate_sz.x) / 2.0, SPRITE_PX), plate_sz) if sprite_mode
+			else Rect2(Vector2((total.x - plate_sz.x) / 2.0, total.y - plate_sz.y), plate_sz))
 	_sprite_content = Rect2()
 	_fx_rect = Rect2()
 	_badge_rect = Rect2()
@@ -141,8 +148,7 @@ func setup(node: Dictionary) -> void:
 			var content: Rect2 = Rect2(Vector2.ZERO, Vector2(SPRITE_PX, SPRITE_PX))
 			var sr: Rect2 = node.get("sprite_rect", Rect2())
 			if sr.size.x > 0.0:
-				content = Rect2(sr.position + Vector2(SPRITE_PX * 0.5,
-						(SPRITE_PX + plate_sz.y) * 0.5), sr.size)
+				content = Rect2(sr.position + total * 0.5, sr.size)
 			# The badge sits AT the sprite's bottom-right corner, not inside it (owner 2026-08-01):
 			# its centre goes just below and right of the content's corner, so only its top-left
 			# quadrant lands on the building instead of most of the hex sitting on it. Clamped to
@@ -164,15 +170,14 @@ func setup(node: Dictionary) -> void:
 		# hover, top-aligned with the plate and raised above its neighbours, and takes no
 		# layout space (the panel's size is the compact one).
 		_build_content(self, _plate_rect, cs, node, true)
-		var fh: Vector2 = (node.get("full_half", node["half"]) as Vector2) * 2.0
 		_full = Control.new()
 		_full.visible = false
 		_full.mouse_filter = Control.MOUSE_FILTER_STOP
-		_full.position = Vector2(_plate_rect.get_center().x - fh.x * 0.5, _plate_rect.position.y)
-		_full.size = fh
-		_full.draw.connect(_draw_plate_on.bind(_full, Rect2(Vector2.ZERO, fh)))
+		_full.position = _full_rect.position
+		_full.size = _full_rect.size
+		_full.draw.connect(_draw_plate_on.bind(_full, Rect2(Vector2.ZERO, _full_rect.size)))
 		add_child(_full)
-		_build_content(_full, Rect2(Vector2.ZERO, fh), cs, node, false)
+		_build_content(_full, Rect2(Vector2.ZERO, _full_rect.size), cs, node, false)
 		mouse_entered.connect(_on_hover.bind(true))
 		mouse_exited.connect(_on_hover.bind(false))
 	else:
@@ -470,7 +475,8 @@ func _grad_colors(pts: PackedVector2Array, light: Color, dark: Color) -> PackedC
 func footprints() -> Dictionary:
 	return {
 		"sprite": _sprite_content,
-		"plate": _plate_rect,
+		# The RESERVE, not the compact plate: the hover card must find its space free.
+		"plate": _full_rect if _full_rect.size.x > 0.0 else _plate_rect,
 		"badge": _badge_rect if (_badge != null and _badge.visible) else Rect2(),
 		"fx": _fx_rect,
 	}

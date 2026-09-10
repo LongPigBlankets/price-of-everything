@@ -84,7 +84,7 @@ static func _sprite_content_offset(sprite_tex) -> Rect2:
 		return Rect2()
 	var k: float = NodePanel.SPRITE_PX / maxf(1.0, float(sprite_tex.get_width()))
 	var centre := Vector2(NodePanel.SPRITE_PX * 0.5,
-			(NodePanel.SPRITE_PX + COMPACT_HALF.y * 2.0) * 0.5)
+			(NodePanel.SPRITE_PX + BASE_HALF.y * 2.0) * 0.5)
 	return Rect2(used.position * k - centre, used.size * k)
 
 
@@ -115,8 +115,11 @@ static func _node_half(level: int, sprite_tex) -> Vector2:
 	var plate: Vector2 = BASE_HALF * EmpireLayout.level_scale(level)
 	if not (MatchState.use_empire_sprite_view and sprite_tex != null):
 		return plate
-	return Vector2(maxf(COMPACT_HALF.x, NodePanel.SPRITE_PX * 0.5),
-			(NodePanel.SPRITE_PX + COMPACT_HALF.y * 2.0) * 0.5)
+	# The box reserves the FULL card's height under the sprite (owner 2026-09-10): the compact
+	# plate sits at the top of that reserve and the hover card fills it, so hovering never
+	# covers a neighbour or a chip.
+	return Vector2(maxf(BASE_HALF.x, NodePanel.SPRITE_PX * 0.5),
+			(NodePanel.SPRITE_PX + BASE_HALF.y * 2.0) * 0.5)
 const PORT_HALF := Vector2(86.0, 78.0)            # gold port hexagon half-extent
 
 # Ports always read left -> right in this order. Matched as case-insensitive substrings of the name.
@@ -203,7 +206,9 @@ static func build(terrain: Object) -> Dictionary:
 			# the Control grows upward by the 400px sprite, so the plate centre sits half the
 			# sprite height below the Control centre; edges anchor to the plate via this
 			# (empire_graph_world._plate_screen_of). Zero in classic mode / unsprited.
-			"plate_dy": ((NodePanel.SPRITE_PX * 0.5)
+			# The compact plate is top-aligned under the sprite inside the full-card reserve, so
+			# its centre is COMPACT_HALF.y below the sprite's bottom, not half the reserve.
+			"plate_dy": ((NodePanel.SPRITE_PX + COMPACT_HALF.y - (NodePanel.SPRITE_PX + BASE_HALF.y * 2.0) * 0.5)
 					if (MatchState.use_empire_sprite_view and sprite_tex != null) else 0.0),
 			"good_icon": good_icon,
 			# The six RAG indicators as DATA, computed once here (single source: building_status.gd).
@@ -340,7 +345,7 @@ static func _append_construction_nodes(nodes: Array, ports: Array, terrain: Obje
 			"icon": BuildingIcon.clean_texture(bid,
 					str(Catalog.get_building(bid).get("internal_name", ""))),
 			"sprite": site_tex,
-			"plate_dy": ((NodePanel.SPRITE_PX * 0.5)
+			"plate_dy": ((NodePanel.SPRITE_PX + COMPACT_HALF.y - (NodePanel.SPRITE_PX + BASE_HALF.y * 2.0) * 0.5)
 					if (MatchState.use_empire_sprite_view and site_tex != null) else 0.0),
 			"good_icon": null,
 			"rag": [],
