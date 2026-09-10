@@ -31,22 +31,22 @@ const SPRITE_PX := 800.0
 const ANCHORS := {
 	"furnace": {
 		1: {"stacks": [{"x": 450, "y": 175, "r": 30, "kind": "auto"}, {"x": 560, "y": 165, "r": 30, "kind": "auto"}],
-			"fires": [{"x": 435, "y": 337, "rx": 46, "ry": 18}, {"x": 569, "y": 337, "rx": 46, "ry": 18},
-				{"x": 309, "y": 610, "rx": 24, "ry": 28}, {"x": 558, "y": 571, "rx": 15, "ry": 13}, {"x": 485, "y": 613, "rx": 15, "ry": 13}]},
+			"fires": [{"x": 286, "y": 583, "w": 48, "h": 56, "mode": "breathe"}, {"x": 470, "y": 600, "w": 32, "h": 29, "mode": "window"},
+				{"x": 543, "y": 558, "w": 32, "h": 28, "mode": "window"}]},
 		2: {"stacks": [{"x": 415, "y": 150, "r": 36, "kind": "auto"}, {"x": 560, "y": 140, "r": 36, "kind": "auto"}],
-			"fires": [{"x": 549, "y": 345, "rx": 46, "ry": 18}, {"x": 415, "y": 345, "rx": 38, "ry": 15},
-				{"x": 289, "y": 617, "rx": 24, "ry": 28}, {"x": 538, "y": 578, "rx": 15, "ry": 13}, {"x": 464, "y": 620, "rx": 15, "ry": 13}]},
+			"fires": [{"x": 266, "y": 590, "w": 48, "h": 56, "mode": "breathe"}, {"x": 450, "y": 607, "w": 31, "h": 29, "mode": "window"},
+				{"x": 523, "y": 565, "w": 31, "h": 28, "mode": "window"}]},
 		3: {"stacks": [{"x": 455, "y": 80, "r": 40, "kind": "auto"}],
-			"fires": [{"x": 527, "y": 414, "rx": 46, "ry": 18}, {"x": 395, "y": 415, "rx": 38, "ry": 15},
-				{"x": 524, "y": 683, "rx": 38, "ry": 58}, {"x": 266, "y": 686, "rx": 24, "ry": 28}, {"x": 442, "y": 690, "rx": 15, "ry": 13}]},
+			"fires": [{"x": 243, "y": 660, "w": 48, "h": 55, "mode": "breathe"}, {"x": 427, "y": 677, "w": 32, "h": 28, "mode": "window"},
+				{"x": 487, "y": 626, "w": 77, "h": 115, "mode": "breathe"}]},
 	},
 	"eaf": {
 		1: {"stacks": [{"x": 480, "y": 76, "r": 18, "kind": "auto"}, {"x": 550, "y": 96, "r": 18, "kind": "auto"}],
-			"fires": [{"x": 305, "y": 550, "rx": 66, "ry": 34, "mode": "arc"}, {"x": 304, "y": 604, "rx": 36, "ry": 10}]},
+			"fires": [{"x": 238, "y": 510, "w": 137, "h": 74, "mode": "arc"}]},
 		2: {"stacks": [{"x": 555, "y": 45, "r": 18, "kind": "auto"}, {"x": 600, "y": 55, "r": 18, "kind": "auto"}],
-			"fires": [{"x": 382, "y": 523, "rx": 66, "ry": 34, "mode": "arc"}, {"x": 374, "y": 626, "rx": 30, "ry": 18}]},
+			"fires": [{"x": 315, "y": 483, "w": 137, "h": 74, "mode": "arc"}]},
 		3: {"stacks": [{"x": 540, "y": 45, "r": 18, "kind": "auto"}, {"x": 590, "y": 50, "r": 18, "kind": "auto"}],
-			"fires": [{"x": 339, "y": 523, "rx": 66, "ry": 34, "mode": "arc"}, {"x": 331, "y": 626, "rx": 30, "ry": 18}]},
+			"fires": [{"x": 272, "y": 483, "w": 137, "h": 74, "mode": "arc"}]},
 	},
 	"industrial_factory": {
 		2: {"stacks": [{"x": 700, "y": 110, "r": 26, "kind": "auto"}], "fires": []},
@@ -94,13 +94,27 @@ const ANCHORS := {
 ## The anchor set for a building at a level: its own, else the nearest LOWER level's, else
 ## empty (a factory at L1 has no chimney and gets nothing).
 static func anchors_for(internal_name: String, level: int) -> Dictionary:
+	var lv := anchor_level(internal_name, level)
+	return ANCHORS[internal_name][lv] if lv > 0 else {}
+
+
+## The level whose anchor set (and light mask) a building at `level` uses; 0 = none.
+static func anchor_level(internal_name: String, level: int) -> int:
 	var by_level: Dictionary = ANCHORS.get(internal_name, {})
 	var lv := level
 	while lv >= 1:
 		if by_level.has(lv):
-			return by_level[lv]
+			return lv
 		lv -= 1
-	return {}
+	return 0
+
+
+static func light_mask_for(internal_name: String, level: int) -> Texture2D:
+	var key := "%s_lvl%d" % [internal_name, level]
+	if not _light_masks.has(key):
+		var path := LIGHT_MASK_DIR + key + ".png"
+		_light_masks[key] = load(path) if ResourceLoader.exists(path) else null
+	return _light_masks[key]
 
 
 ## Plume model (the map's `smoke_visuals` numbers, in chimney radii). PUFFS overlapping
@@ -124,14 +138,39 @@ const STEAM_BASE := Color(0.84, 0.86, 0.87)
 const STEAM_PATCH := Color(0.97, 0.98, 0.98)
 const PEAK_ALPHA := 0.92
 
-## Fire: an additive warm glow on a lit opening. `mode` (owner 2026-09-10):
-##   "breathe" (default) — the furnace's windows, doorways and hot bands GROW and RECEDE on
-##       two slow sines: no flicker, no flame (owner: "the furnace doesn't need flames").
-##   "arc"  — the EAF crucible: a glow that SHIFTS about inside the crucible (the arc wanders
-##       between the electrodes) with the fast irregular flicker of an arc.
-##   licks — a fire with `lick` also draws a textured flame (refinery heaters only).
+## Fire. Two kinds of entry:
+##   MASKED (`x,y,w,h` = a box in sprite px, `mode`): the light source is the sprite's own lit
+##   pixels inside that box, read from a LIGHT MASK cut from the sprite (assets/fx/light/
+##   <building>_lvl<N>.png, white with the orange pixels' alpha — `tools/…` recipe in memory).
+##   So a doorway lights exactly its doorway shape, a window its pane, and the EAF crucible its
+##   molten surface with the three electrodes cut out (owner 2026-09-10: "the glow shows
+##   through the walls"; "light from the molten liquid only, partially blocked by the rods").
+##     "breathe" — a doorway: brightness GROWS and RECEDES on two slow sines, never off.
+##     "window"  — a small window: a FAINT flickering light.
+##     "arc"     — the crucible: a hot spot that SHIFTS about the surface (its own canvas item
+##                 with a small additive shader) under an arc's irregular flicker.
+##   Chimney rings are lit in the art but are NOT light sources (owner) — not listed.
+##   ELLIPSE (`x,y,rx,ry`): a soft additive glow, used only under the refinery flame licks.
 const FIRE_CORE := Color(1.0, 0.72, 0.30)
 const FIRE_HALO := Color(1.0, 0.42, 0.10)
+const LIGHT_MASK_DIR := "res://assets/fx/light/"
+const ARC_SHADER := """
+shader_type canvas_item;
+render_mode blend_add;
+uniform vec2 hot = vec2(0.5, 0.5);
+uniform float hot_r = 0.05;
+uniform float base = 0.4;
+uniform float peak = 0.8;
+uniform vec4 tint : source_color = vec4(1.0, 0.72, 0.30, 1.0);
+void fragment() {
+	vec4 m = texture(TEXTURE, UV);
+	float d = distance(UV, hot) / hot_r;
+	float g = base + peak * exp(-d * d);
+	COLOR = vec4(tint.rgb * g, m.a * tint.a);
+}
+"""
+static var _arc_shader: Shader = null
+static var _light_masks: Dictionary = {}
 
 ## FLAME LICKS (owner 2026-09-10: "actual fire in the style we've been using"). A fire anchor
 ## with `lick: h` also draws a Blender-authored flame — a cluster of inked tongues
@@ -178,7 +217,9 @@ const PUFF_TEX_SPAN := 1.12
 static var _disc_tris := PackedVector2Array()
 
 var _stacks: Array = []      # [{pos: Vector2 (local px), r: float, smoke: bool, seed: float}]
-var _fires: Array = []       # [{pos, rx, ry, seed}]
+var _fires: Array = []       # ellipse: {pos, rx, ry, lick, lean, seed}; masked: {rect, region, mode, seed}
+var _arcs: Array = []        # [{item: Control, mat: ShaderMaterial, region: Rect2, seed}]
+var _light_mask: Texture2D = null
 var _cables: Array = []      # [PackedVector2Array] local px, the traced catenaries
 var _clock := 0.0
 var _fire_layer: Control = null
@@ -218,17 +259,29 @@ func setup(internal_name: String, level: int, carbon: bool, seed_text: String, b
 			"seed": float((hash(seed_text + "|s%d" % i) % 1000)) / 1000.0,
 		})
 		i += 1
+	_light_mask = light_mask_for(internal_name, anchor_level(internal_name, level))
 	for f_value in spec.get("fires", []):
 		var f: Dictionary = f_value
+		var seed_val := float((hash(seed_text + "|f%d" % i) % 1000)) / 1000.0
+		i += 1
+		if f.has("w"):
+			if _light_mask == null:
+				continue
+			var region := Rect2(float(f["x"]), float(f["y"]), float(f["w"]), float(f["h"]))
+			_fires.append({
+				"rect": Rect2(region.position * k, region.size * k),
+				"region": region,
+				"mode": str(f.get("mode", "breathe")),
+				"seed": seed_val,
+			})
+			continue
 		_fires.append({
 			"pos": Vector2(float(f["x"]), float(f["y"])) * k,
 			"rx": float(f["rx"]) * k, "ry": float(f["ry"]) * k,
 			"lick": float(f.get("lick", 0.0)) * k,
 			"lean": deg_to_rad(float(f.get("lean", 0.0))),
-			"mode": str(f.get("mode", "breathe")),
-			"seed": float((hash(seed_text + "|f%d" % i) % 1000)) / 1000.0,
+			"seed": seed_val,
 		})
-		i += 1
 	for c_value in spec.get("cables", []):
 		var pts := PackedVector2Array()
 		for xy in c_value:
@@ -247,7 +300,32 @@ func setup(internal_name: String, level: int, carbon: bool, seed_text: String, b
 		_fire_layer.material = mat
 		_fire_layer.draw.connect(_draw_fires)
 		add_child(_fire_layer)
+	for f_value in _fires:
+		var f: Dictionary = f_value
+		if f.has("region") and f["mode"] == "arc":
+			_add_arc(f)
 	set_process(not _stacks.is_empty() or not _fires.is_empty() or not _cables.is_empty())
+
+
+## The crucible's shifting light: its own canvas item, because the hot spot is a shader
+## uniform (a gaussian in the mask's UV) and a material is per item.
+func _add_arc(f: Dictionary) -> void:
+	if _arc_shader == null:
+		_arc_shader = Shader.new()
+		_arc_shader.code = ARC_SHADER
+	var item := Control.new()
+	item.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	item.position = Vector2.ZERO
+	item.size = size
+	var mat := ShaderMaterial.new()
+	mat.shader = _arc_shader
+	mat.set_shader_parameter("tint", Color(FIRE_CORE.r, FIRE_CORE.g, FIRE_CORE.b, 1.0))
+	item.material = mat
+	var rect: Rect2 = f["rect"]
+	var region: Rect2 = f["region"]
+	item.draw.connect(func() -> void: item.draw_texture_rect_region(_light_mask, rect, region))
+	add_child(item)
+	_arcs.append({"item": item, "mat": mat, "region": region, "seed": f["seed"]})
 
 
 func _notification(what: int) -> void:
@@ -262,6 +340,19 @@ func _process(delta: float) -> void:
 	queue_redraw()
 	if _fire_layer != null:
 		_fire_layer.queue_redraw()
+	for a_value in _arcs:
+		var a: Dictionary = a_value
+		var t := _clock + float(a["seed"]) * 37.0
+		var flick := clampf(0.55 + 0.25 * sin(t * 11.3) * sin(t * 7.1 + 1.3) + 0.20 * sin(t * 2.3), 0.15, 1.0)
+		var region: Rect2 = a["region"]
+		# The arc wanders about the molten surface on two slow, unrelated orbits.
+		var hot := region.get_center() + Vector2(region.size.x * 0.34 * sin(t * 1.9) * cos(t * 0.7 + 0.4),
+			region.size.y * 0.26 * sin(t * 2.6 + 1.1))
+		var mat: ShaderMaterial = a["mat"]
+		mat.set_shader_parameter("hot", hot / SPRITE_PX)
+		mat.set_shader_parameter("hot_r", region.size.x * 0.24 / SPRITE_PX)
+		mat.set_shader_parameter("base", 0.10 + 0.12 * flick)
+		mat.set_shader_parameter("peak", 0.45 + 0.35 * flick)
 
 
 func _draw() -> void:
@@ -283,7 +374,7 @@ func _draw() -> void:
 func _draw_licks() -> void:
 	for f_value in _fires:
 		var f: Dictionary = f_value
-		var h: float = f["lick"]
+		var h: float = float(f.get("lick", 0.0))
 		if h <= 0.0:
 			continue
 		var s: float = f["seed"]
@@ -325,45 +416,41 @@ func _draw_fires() -> void:
 	_draw_pulses()
 	if _fires.is_empty():
 		return
-	if _disc_tris.is_empty():
-		var disc := PackedVector2Array()
-		for i in 24:
-			var a := TAU * float(i) / 24.0
-			disc.append(Vector2(cos(a), sin(a)))
-		_disc_tris = CanvasBatch.polygon_soup(disc)
 	var pts := PackedVector2Array()
 	var cols := PackedColorArray()
 	for f_value in _fires:
 		var f: Dictionary = f_value
 		var s: float = f["seed"]
 		var t := _clock * 1.0 + s * 37.0
+		# Irregular flicker: two incommensurate rates plus a slow breath.
+		var flick := clampf(0.55 + 0.25 * sin(t * 11.3) * sin(t * 7.1 + 1.3) + 0.20 * sin(t * 2.3), 0.15, 1.0)
+		if f.has("region"):
+			var mode: String = f["mode"]
+			if mode == "arc":
+				continue   # its own item, see _add_arc
+			var a: float
+			if mode == "window":
+				a = 0.12 + 0.16 * flick
+			else:
+				# Grow and recede: a slow swell with a slower one under it, never off.
+				var swell := 0.6 * (0.5 + 0.5 * sin(t * 1.7)) + 0.4 * (0.5 + 0.5 * sin(t * 0.61 + 2.0))
+				a = 0.15 + 0.55 * swell
+			_fire_layer.draw_texture_rect_region(_light_mask, f["rect"], f["region"],
+				Color(FIRE_CORE.r, FIRE_CORE.g, FIRE_CORE.b, a))
+			continue
+		if _disc_tris.is_empty():
+			var disc := PackedVector2Array()
+			for i in 24:
+				var ang := TAU * float(i) / 24.0
+				disc.append(Vector2(cos(ang), sin(ang)))
+			_disc_tris = CanvasBatch.polygon_soup(disc)
 		var pos: Vector2 = f["pos"]
 		var rx: float = f["rx"]; var ry: float = f["ry"]
-		var mode: String = f["mode"]
-		var flick := 1.0     # brightness
-		var grow := 1.0      # size
-		var hot := pos       # where the brightest spot sits
-		if mode == "arc" or float(f["lick"]) > 0.0:
-			# Irregular flicker: two incommensurate rates plus a slow breath.
-			flick = clampf(0.55 + 0.25 * sin(t * 11.3) * sin(t * 7.1 + 1.3) + 0.20 * sin(t * 2.3), 0.15, 1.0)
-			if mode == "arc":
-				# The arc wanders about the crucible on two slow, unrelated orbits.
-				hot = pos + Vector2(rx * 0.38 * sin(t * 1.9) * cos(t * 0.7 + 0.4), ry * 0.30 * sin(t * 2.6 + 1.1))
-				grow = 0.9 + 0.2 * sin(t * 3.7)
-		else:
-			# Grow and recede: a slow swell with a slower one under it, never off.
-			var swell := 0.6 * (0.5 + 0.5 * sin(t * 1.7)) + 0.4 * (0.5 + 0.5 * sin(t * 0.61 + 2.0))
-			flick = 0.35 + 0.65 * swell
-			grow = 0.82 + 0.5 * swell
-		var hx := rx * grow; var hy := ry * grow
-		_ellipse(pts, cols, pos, hx * 1.45, hy * 1.45, Color(FIRE_HALO.r, FIRE_HALO.g, FIRE_HALO.b, 0.22 * flick))
-		_ellipse(pts, cols, pos, hx, hy, Color(FIRE_CORE.r, FIRE_CORE.g, FIRE_CORE.b, 0.34 * flick))
-		_ellipse(pts, cols, hot, hx * 0.5, hy * 0.55, Color(1.0, 0.92, 0.70, 0.32 * flick))
-		if mode == "arc":
-			# A second, harder spot: the arc itself, tighter and brighter, on its own orbit.
-			var arc := pos + Vector2(rx * 0.45 * sin(t * 2.3 + 0.9), ry * 0.35 * cos(t * 1.4))
-			_ellipse(pts, cols, arc, hx * 0.22, hy * 0.28, Color(1.0, 0.97, 0.85, 0.45 * flick))
-	CanvasBatch.flush(_fire_layer, pts, cols)
+		_ellipse(pts, cols, pos, rx * 1.45, ry * 1.45, Color(FIRE_HALO.r, FIRE_HALO.g, FIRE_HALO.b, 0.22 * flick))
+		_ellipse(pts, cols, pos, rx, ry, Color(FIRE_CORE.r, FIRE_CORE.g, FIRE_CORE.b, 0.34 * flick))
+		_ellipse(pts, cols, pos, rx * 0.5, ry * 0.55, Color(1.0, 0.92, 0.70, 0.32 * flick))
+	if not pts.is_empty():
+		CanvasBatch.flush(_fire_layer, pts, cols)
 
 
 func _draw_pulses() -> void:
