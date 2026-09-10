@@ -54,6 +54,11 @@ const RoadHash := preload("res://scripts/road_hash.gd")
 # building columns (column 0 = extraction that takes nothing from the market), the sell ports
 # in a column on the RIGHT. Bands = one per sell port, stacked top to bottom in port order.
 const PORT_HALF := Vector2(86.0, 78.0)             # the port hex (= empire_graph.PORT_HALF)
+# MASS mode (owner 2026-09-10): past this many finished buildings the resting view is a grid
+# of buildings with no lines; selecting one opens its whole chain as a flow chart.
+static var mass_threshold := 10
+const GRID_PAD := 70.0                             # clear space between grid cells
+const GRID_ASPECT := 1.7                           # columns/rows ratio the grid aims for (16:9-ish)
 const PORT_GUTTER_MIN := 320.0                     # the empty column between a port column and the block
 const BAND_GAP := 260.0                            # vertical gap between two ports' bands
 const PORT_SPACING := 380.0                        # horizontal gap between ports in the bottom row
@@ -174,8 +179,11 @@ static func solve_flow(nodes: Array, edges: Array, sell_edges: Array, ports: Arr
 		_place_site_band([{"cx": (float(col_x[0]) + float(col_x[ncol - 1])) * 0.5, "ids": sites}], by_iid)
 
 	# ---- ports as terminals ----
-	var left_x := float(col_x[0]) - float(col_half_w[0]) - maxf(PORT_GUTTER_MIN, gutter_width(n_market)) - PORT_HALF.x
-	var right_x := float(col_x[ncol - 1]) + float(col_half_w[ncol - 1]) + maxf(PORT_GUTTER_MIN, gutter_width(n_sell)) + PORT_HALF.x
+	# A port's own `half` — the hex at rest, a 2x building sprite inside a chart.
+	var buy_half := _max_half(buy_ports)
+	var sell_half := _max_half(ports)
+	var left_x := float(col_x[0]) - float(col_half_w[0]) - maxf(PORT_GUTTER_MIN, gutter_width(n_market)) - buy_half.x
+	var right_x := float(col_x[ncol - 1]) + float(col_half_w[ncol - 1]) + maxf(PORT_GUTTER_MIN, gutter_width(n_sell)) + sell_half.x
 	var block_bottom := y - BAND_GAP
 	var fed_y: Dictionary = {}                       # buy port iid -> [y of fed nodes]
 	for me2 in market_edges:
@@ -221,13 +229,53 @@ static func solve_flow(nodes: Array, edges: Array, sell_edges: Array, ports: Arr
 	relax(nodes)
 
 
+## The MASS grid: every building in a cell, cells a padding apart, in reading order of the
+## flow layout (call after solve_flow so `pos` is set) — a mass that still loosely reads
+## left to right by chain depth. Cell = the largest footprint (plus effects headroom), so no
+## cell holds anything but its own building. Writes `pos`.
+static func solve_grid(nodes: Array) -> void:
+	if nodes.is_empty():
+		return
+	var order: Array = nodes.duplicate()
+	order.sort_custom(func(a, b):
+		var pa: Vector2 = a.get("pos", a.get("seed", Vector2.ZERO))
+		var pb: Vector2 = b.get("pos", b.get("seed", Vector2.ZERO))
+		if absf(pa.y - pb.y) > 1.0:
+			return pa.y < pb.y
+		if absf(pa.x - pb.x) > 1.0:
+			return pa.x < pb.x
+		return str(a["iid"]) < str(b["iid"]))
+	var cell := Vector2.ZERO
+	var head := 0.0
+	for n in order:
+		cell.x = maxf(cell.x, (n["half"] as Vector2).x * 2.0)
+		cell.y = maxf(cell.y, (n["half"] as Vector2).y * 2.0)
+		head = maxf(head, float(n.get("top_extra", 0.0)))
+	cell += Vector2(GRID_PAD, GRID_PAD + head)
+	var n_cols := maxi(1, int(ceil(sqrt(float(order.size()) * GRID_ASPECT))))
+	for i in range(order.size()):
+		var c := i % n_cols
+		var r := i / n_cols
+		order[i]["pos"] = Vector2(float(c) * cell.x, float(r) * cell.y + head)
+		order[i]["seed"] = order[i]["pos"]
+
+
 ## Ports in a column keep their fixed order top to bottom and never sit closer than
 ## MIN_PORT_SEP; unused ones are pushed below the last used one.
 static func _settle_column(ys: Array, ports: Array) -> void:
+	var half := _max_half(ports)
 	for i in range(1, ys.size()):
 		var prev_used := bool((ports[i - 1] as Dictionary).get("used", true))
-		var sep := MIN_PORT_SEP if (prev_used and bool((ports[i] as Dictionary).get("used", true))) else PORT_HALF.y * 2.2
+		var sep := maxf(MIN_PORT_SEP, half.y * 2.2) if (prev_used and bool((ports[i] as Dictionary).get("used", true))) else half.y * 2.2
 		ys[i] = maxf(float(ys[i]), float(ys[i - 1]) + sep)
+
+
+static func _max_half(ports: Array) -> Vector2:
+	var h := PORT_HALF
+	for p in ports:
+		var ph: Vector2 = (p as Dictionary).get("half", PORT_HALF)
+		h = Vector2(maxf(h.x, ph.x), maxf(h.y, ph.y))
+	return h
 
 
 static func _mean(vals: Array) -> float:

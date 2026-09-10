@@ -9,15 +9,22 @@ extends Node
 ## Exit 0 = within baseline, 1 = a class regressed (or the view could not be built).
 
 ## Frozen counts (kind pairs sorted alphabetically, "a|b"). Missing key = 0 allowed.
-## 2026-09-10 freeze after the FLOW layout (buy ports left, sell ports right): 13 nodes /
-## 38 routes / 23 chips, 2 collisions — two buy-line chips with no free slot in the port
-## gutter. Was 39 before the occupancy model and 9 with the top/bottom port rows.
+## 2026-09-10 freeze after the FLOW layout (buy ports left, sell ports right) and merged
+## chips that may sit on any of their own lines: 13 nodes / 38 routes / 23 chips, ZERO
+## collisions. Was 39 before the occupancy model and 9 with the top/bottom port rows.
+## The resting MASS grid: nothing but buildings, so nothing may touch.
+const BASELINE_MASS := {}
+## A whole-chain chart opened from the mass (the seed's coal chain: 3 mines, 3 furnaces,
+## 3 power plants, their ports drawn as 2x sprites). 2026-09-10 freeze: three chips with no
+## free slot and one buy line that found no clear row past the selected mine.
+const BASELINE_CHAIN := {"route|sprite": 1}
+
 const BASELINE := {
 	"chip|chip": 0,
 	"chip|sprite": 0,
 	"chip|plate": 0,
 	"chip|port": 0,
-	"chip|route": 2,
+	"chip|route": 0,
 	"plate|plate": 0,
 	"sprite|sprite": 0,
 	"plate|sprite": 0,
@@ -50,6 +57,10 @@ func _ready() -> void:
 		push_error("EmpireView not found")
 		get_tree().quit(1)
 		return
+	var failed := 0
+	# Phase 1: the FLOW layout (threshold lifted so the 13-building seed lays out in full).
+	var EL := load("res://scripts/empire_layout.gd")
+	EL.mass_threshold = 999
 	ev.call("toggle")
 	await _settle(16)
 	var gw: Node = ev.get_node_or_null("GraphWorld")
@@ -57,21 +68,40 @@ func _ready() -> void:
 		push_error("GraphWorld not found")
 		get_tree().quit(1)
 		return
+	failed += _phase(gw, "flow", BASELINE)
+	ev.call("toggle")
+	await _settle(4)
+	# Phase 2: MASS mode at rest (threshold back to the real one) — buildings only.
+	EL.mass_threshold = 10
+	ev.call("toggle")
+	await _settle(16)
+	gw = ev.get_node_or_null("GraphWorld")
+	failed += _phase(gw, "mass", BASELINE_MASS)
+	# Phase 3: a whole-chain chart opened on the first mine (aud_6).
+	gw.call("focus_on", "aud_6", true)
+	await _settle(16)
+	failed += _phase(gw, "chain", BASELINE_CHAIN)
+	print("AUDIT regressed classes: ", failed)
+	get_tree().quit(1 if failed > 0 else 0)
+
+
+## Run the frame pass, print the report, compare with a baseline; returns regressed classes.
+func _phase(gw: Node, label: String, baseline: Dictionary) -> int:
 	gw.call("_reposition_panels")
 	var rep: Dictionary = gw.call("audit")
-	print("AUDIT items: ", JSON.stringify(rep["items"]))
-	print("AUDIT counts: ", JSON.stringify(rep["counts"]))
+	print("AUDIT[%s] items: %s" % [label, JSON.stringify(rep["items"])])
+	print("AUDIT[%s] counts: %s" % [label, JSON.stringify(rep["counts"])])
 	for line in rep["named"]:
-		print("AUDIT pair: ", line)
+		print("AUDIT[%s] pair: %s" % [label, line])
 	var failed := 0
 	var counts: Dictionary = rep["counts"]
 	for k in counts:
-		var allowed := int(BASELINE.get(k, 0))
+		var allowed := int(baseline.get(k, 0))
 		if int(counts[k]) > allowed:
-			print("AUDIT REGRESSION %s: %d > baseline %d" % [k, int(counts[k]), allowed])
+			print("AUDIT[%s] REGRESSION %s: %d > baseline %d" % [label, k, int(counts[k]), allowed])
 			failed += 1
-	print("AUDIT total collisions: ", int(rep["total"]), "  regressed classes: ", failed)
-	get_tree().quit(1 if failed > 0 else 0)
+	print("AUDIT[%s] total collisions: %d" % [label, int(rep["total"])])
+	return failed
 
 
 ## The sprite-swap shot's seed: factories, furnaces, mines and power plants at L1/L2/L3 plus

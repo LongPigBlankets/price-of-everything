@@ -48,6 +48,8 @@ const NodePanelScript := preload("res://scripts/empire_node_panel.gd")
 const LaneOrder := preload("res://scripts/lane_order.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const EmpireOccupancy := preload("res://scripts/empire_occupancy.gd")
+const EmpireGraphScript := preload("res://scripts/empire_graph.gd")
+const EmpireLayoutScript := preload("res://scripts/empire_layout.gd")
 const BuildingIcon := preload("res://scripts/building_icon.gd")
 
 var _nodes: Array = []
@@ -117,6 +119,10 @@ var _chip_style: StyleBoxFlat = null        # reused per draw (draw_rect has no 
 ## positions change (same gate as the separation pass) and also headless, which is what lets
 ## the overlap audit (`audit()`) run as a test without a renderer.
 var _occ := EmpireOccupancy.new()
+## MASS mode (owner 2026-09-10): more than EmpireLayout.mass_threshold finished buildings. At
+## rest: a grid of buildings, no lines, chips or ports. Selecting one opens its whole chain.
+var _mass := false
+var _chain_focus := false     # the open chart is a whole-chain chart (mass mode), not one hop
 var _frame: Dictionary = {"input": [], "sell": [], "market": [], "chips": []}
 const _CHIP_GAP := 8.0                       # clear space between chips in a gutter
 const _GUTTER_LANE := 42.0                   # = empire_layout.LANE_PITCH (the gutter was sized for it)
@@ -258,6 +264,7 @@ func set_graph(nodes: Array, edges: Array, ports: Array, sell_edges: Array = [],
 	# The buy row always draws, fed or not — the two aligned rows frame the composition,
 	# and a port with no dashed lines correctly reads as "nothing bought through here".
 	_buy_ports = buy_ports
+	_mass = EmpireGraphScript.is_mass(_nodes)
 	_pos_by_iid.clear()
 	_box_by_iid.clear()
 	for arr in [_nodes, _ports, _buy_ports]:
@@ -478,10 +485,17 @@ func _layout_frame(sc: float) -> void:
 		if _focus_members.has(bid) or (_focus_t <= 0.0 and _port_used(bp)):
 			var half2: Vector2 = (bp["half"] as Vector2) * sc
 			_occ.add_rect("port", bid, Rect2(_screen_of(bid, bp) - half2, half2 * 2.0))
+	if _mass and _focus_target <= 0.0 and _focus_t <= 0.0:
+		return                     # the resting mass: buildings only, no lines, no chips
+	# With a chart open, only the chart's own lines exist: a hidden non-member's line would
+	# still take space and be counted against the members' sprites.
+	var chart_open := _focus_target > 0.0
 	# Routes. Market lines first (they dive the full height), then sells, then inputs — the
 	# same order they are painted, so a later family sees the earlier ones as obstacles-to-be.
 	for e in _market_edges:
 		if not (_box_by_iid.has(str(e["to"])) and _box_by_iid.has(str(e["from"]))):
+			continue
+		if chart_open and not _focus_keeps(e):
 			continue
 		var mpath := _route_market(_box_by_iid[str(e["from"])], _box_by_iid[str(e["to"])],
 			int(e.get("slot", 0)), int(e.get("slot_n", 1)), sc)
@@ -494,6 +508,8 @@ func _layout_frame(sc: float) -> void:
 	for e2 in _sell_edges:
 		if not (_box_by_iid.has(e2["from"]) and _box_by_iid.has(e2["to"])):
 			continue
+		if chart_open and not _focus_keeps(e2):
+			continue
 		var spath := _route_sell(_box_by_iid[e2["from"]], _box_by_iid[e2["to"]],
 			int(e2.get("bus", 0)), int(e2.get("bus_n", 1)),
 			int(e2.get("slot", 0)), int(e2.get("slot_n", 1)), ports_top, sc)
@@ -502,6 +518,8 @@ func _layout_frame(sc: float) -> void:
 			[str(e2["from"]), str(e2["to"])])
 	for e3 in _edges:
 		if not (_box_by_iid.has(e3["from"]) and _box_by_iid.has(e3["to"])):
+			continue
+		if chart_open and not _focus_keeps(e3):
 			continue
 		var ipath := _route_input(_box_by_iid[e3["from"]], _box_by_iid[e3["to"]], int(e3.get("lane", 0)), int(e3.get("lane_n", 1)), sc)
 		(_frame["input"] as Array).append({"e": e3, "path": ipath})
@@ -541,12 +559,16 @@ func _allocate_chips(sc: float) -> void:
 			continue
 		var path: PackedVector2Array = w["path"]
 		var e0: Dictionary = w["e"]
+		# The chip labels every line it was merged from (same good, same source), so it may
+		# sit on any of them — they share the stub out of the plate.
 		var ends := [str(e0["from"]), str(e0["to"])]
+		for me in w["edges"]:
+			ends.append("%s|%s" % [str(me["from"]), str(me["to"])])
 		var rect := _find_chip_slot(path, box, pitch, ends, w["kind"] == "market")
 		if rect.size.x <= 0.0:
 			var c := _point_along_polyline(path, _EDGE_CHIP_T)
 			rect = Rect2(c - Vector2.ONE * box * 0.5, Vector2.ONE * box)
-		_occ.add_rect("chip", "chip|" + key, rect, ends + ["%s|%s" % [str(e0["from"]), str(e0["to"])]])
+		_occ.add_rect("chip", "chip|" + key, rect, ends)
 		(_frame["chips"] as Array).append({"rect": rect, "icon": icon, "kind": w["kind"], "e": e0,
 			"edges": w["edges"], "good": w["good"]})
 
@@ -821,6 +843,8 @@ func _layout_bbox() -> Rect2:
 ## A port is shown on a side only when that side uses it (owner 2026-09-10: "checked
 ## independently — we could have 3 buying ports and 2 selling ports").
 func _port_used(p: Dictionary) -> bool:
+	if _mass:
+		return false
 	return bool(p.get("used", true))
 
 
@@ -926,8 +950,12 @@ func _build_focus_layout() -> void:
 	_focus_site.clear()
 	_site_lane_n = 0
 	var sel := _focus_iid
+	_chain_focus = false
 	if bool((_box_by_iid.get(sel, {}) as Dictionary).get("under_construction", false)):
 		_build_site_focus_layout(_box_by_iid[sel] as Dictionary)
+		return
+	if _mass:
+		_build_chain_focus_layout(sel)
 		return
 	var ins: Array = []
 	var outs: Array = []
@@ -956,6 +984,72 @@ func _build_focus_layout() -> void:
 					(float(i) - (ids.size() - 1) * 0.5) * _FOCUS_ROW)
 
 
+## MASS mode's chart: the selection's WHOLE chain — every building reachable through input
+## edges in either direction — plus the buy ports feeding it and the sell ports it ships to,
+## laid out as the flow layout would lay out that chain on its own (solve_flow on copies of
+## the member dicts), centred on the selection's resting cell.
+func _build_chain_focus_layout(sel: String) -> void:
+	_chain_focus = true
+	var members: Dictionary = {sel: true}
+	var frontier: Array = [sel]
+	while not frontier.is_empty():
+		var cur: String = frontier.pop_back()
+		for e in _edges:
+			for other in [str(e["from"]), str(e["to"])]:
+				if (str(e["from"]) == cur or str(e["to"]) == cur) and not members.has(other) and _box_by_iid.has(other):
+					members[other] = true
+					frontier.append(other)
+	var node_copies: Array = []
+	var by_copy: Dictionary = {}
+	for iid in members:
+		var c: Dictionary = (_box_by_iid[iid] as Dictionary).duplicate()
+		node_copies.append(c)
+		by_copy[iid] = c
+	var edges: Array = []
+	for e2 in _edges:
+		if members.has(str(e2["from"])) and members.has(str(e2["to"])):
+			edges.append(e2)
+	var sells: Array = []
+	var port_copies: Array = []
+	var port_by_copy: Dictionary = {}
+	# In a chart a port draws as a building sprite twice the box, not as its hex, so the
+	# layout copies carry that footprint or the port column lands on the first building column.
+	var chart_port_half := Vector2.ONE * NodePanelScript.SPRITE_PX * _PORT_SPRITE_MULT * 0.5
+	for p in _ports:
+		var pc: Dictionary = (p as Dictionary).duplicate()
+		pc["half"] = chart_port_half
+		port_copies.append(pc)
+		port_by_copy[str(p["iid"])] = pc
+	for se in _sell_edges:
+		if members.has(str(se["from"])) and port_by_copy.has(str(se["to"])):
+			sells.append(se)
+	var buys: Array = []
+	var buy_copies: Array = []
+	var buy_by_copy: Dictionary = {}
+	for bp in _buy_ports:
+		var bc: Dictionary = (bp as Dictionary).duplicate()
+		bc["half"] = chart_port_half
+		buy_copies.append(bc)
+		buy_by_copy[str(bp["iid"])] = bc
+	for me in _market_edges:
+		if members.has(str(me["to"])) and buy_by_copy.has(str(me["from"])):
+			buys.append(me)
+	EmpireLayoutScript.solve_flow(node_copies, edges, sells, port_copies, buy_copies, buys)
+	var origin: Vector2 = _pos_by_iid[sel]
+	var shift: Vector2 = origin - (by_copy[sel]["pos"] as Vector2)
+	for iid2 in members:
+		_focus_members[iid2] = true
+		_fpos[iid2] = (by_copy[iid2]["pos"] as Vector2) + shift
+	for pid in port_by_copy:
+		if bool(port_by_copy[pid].get("used", false)):
+			_focus_members[pid] = true
+			_fpos[pid] = (port_by_copy[pid]["pos"] as Vector2) + shift
+	for bid in buy_by_copy:
+		if bool(buy_by_copy[bid].get("used", false)):
+			_focus_members[bid] = true
+			_fpos[bid] = (buy_by_copy[bid]["pos"] as Vector2) + shift
+
+
 ## A construction site's chart is a DELIVERY, not a supply web: the port its materials come
 ## through, the site, and nothing else. The wide run between them is the working area — the
 ## material lanes are drawn into it from live sim state (`_draw_site_lanes`), so the two nodes
@@ -980,8 +1074,11 @@ func _build_site_focus_layout(seln: Dictionary) -> void:
 ## Is this edge part of the focus chart? Only edges that TOUCH the selection survive — a link
 ## between two of its neighbours is depth-1 geometry but not depth-1 meaning.
 func _focus_keeps(e: Dictionary) -> bool:
-	return _focus_iid != "" and (str(e.get("from", "")) == _focus_iid
-			or str(e.get("to", "")) == _focus_iid)
+	if _focus_iid == "":
+		return false
+	if _chain_focus:
+		return _focus_members.has(str(e.get("from", ""))) and _focus_members.has(str(e.get("to", "")))
+	return str(e.get("from", "")) == _focus_iid or str(e.get("to", "")) == _focus_iid
 
 
 ## LIVE per-material delivery state for a focused construction site — one entry per required
@@ -1157,7 +1254,7 @@ func _draw() -> void:
 	var sc := _detail()
 	# Focus fades everything that is not part of the mini-chart. `_edge_a` multiplies the alpha
 	# of any edge the focus does not keep, so the web recedes on the same curve the panels do.
-	var off_a := 1.0 - _focus_t
+	var off_a := 0.0 if _mass else 1.0 - _focus_t
 	_edge_icon_rects.clear()
 	# The gold light the selected building radiates — beneath every line and panel, so the
 	# lines lie over the halo the way lit smoke sits behind cables.
@@ -1259,7 +1356,7 @@ func _sprite_obstacles(skip_a: String, skip_b: String, _sc: float) -> Array:
 	# Sprites AND plates of every other node, from the registry (the frame pass registers the
 	# footprints before it routes). A line may cross a sprite's transparent padding, never
 	# the building or a caption.
-	return _occ.rects_of(["sprite", "plate"], [skip_a, skip_b])
+	return _occ.rects_of(["sprite", "plate", "badge"], [skip_a, skip_b])
 
 
 ## Does any segment of `pts` cut through any of `rects`? Rect2.intersects on the segment's own
@@ -1670,7 +1767,7 @@ func _point_along_polyline(pts: PackedVector2Array, t: float) -> Vector2:
 func _draw_edge_good_chip(ch: Dictionary, _sc: float) -> void:
 	var e: Dictionary = ch["e"]
 	var kind: String = ch["kind"]
-	var off_a := 1.0 - _focus_t
+	var off_a := 0.0 if _mass else 1.0 - _focus_t
 	var a := 1.0 if _focus_keeps(e) else off_a
 	if kind == "market":
 		a *= 0.85

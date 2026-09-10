@@ -40,6 +40,15 @@ static func populate(world: Object, terrain: Node, trading: bool = true) -> Dict
 	# at rest and a mini-chart can still bring one in).
 	EmpireLayout.solve_flow(g["nodes"], g["edges"], g["sell_edges"], g["ports"],
 		g["buy_ports"], g["market_edges"])
+	# MASS mode (owner 2026-09-10): past the threshold the resting view is a padded grid of
+	# buildings, no lines, no ports; a selected building opens its whole chain (the world
+	# lays that chart out with solve_flow on the chain's members).
+	g["mass"] = is_mass(g["nodes"])
+	if g["mass"]:
+		EmpireLayout.solve_grid(g["nodes"])
+		for arr in [g["ports"], g["buy_ports"]]:
+			for p in arr:
+				p["used"] = false
 	if world != null and world.has_method("set_graph"):
 		world.call("set_graph", g["nodes"], g["edges"],
 			g["ports"] if trading else [],
@@ -74,6 +83,15 @@ static func _sprite_content_offset(sprite_tex) -> Rect2:
 	var centre := Vector2(NodePanel.SPRITE_PX * 0.5,
 			(NodePanel.SPRITE_PX + BASE_HALF.y * 2.0) * 0.5)
 	return Rect2(used.position * k - centre, used.size * k)
+
+
+## More finished buildings than the mass threshold? (Ports and construction sites do not count.)
+static func is_mass(nodes: Array) -> bool:
+	var n := 0
+	for nd in nodes:
+		if not bool((nd as Dictionary).get("under_construction", false)) and not bool((nd as Dictionary).get("is_port", false)):
+			n += 1
+	return n > EmpireLayout.mass_threshold
 
 
 ## Effects headroom: the part of the empire_fx envelope that rises above the panel's top edge
