@@ -24,6 +24,7 @@ const _LEVEL_SCALE := [1.0, 1.0, 1.5, 2.25]
 # empire_graph_world.gd depends on the same value. One constant, three consumers.
 const SPRITE_PX := 400.0
 const GraphWorld := preload("res://scripts/empire_graph_world.gd")
+const EmpireFx := preload("res://scripts/empire_fx.gd")
 # Badge area as a fraction of the sprite box. A hex inscribed in a 2h x 2h square covers ~3h^2,
 # so h = sqrt(frac * SPRITE_PX^2 / 3) — 5% works out at about 52px on the 400px sprite.
 const _BADGE_AREA_FRAC := 0.05
@@ -38,6 +39,13 @@ var _rivet_inset := 13.0
 var _plate_rect := Rect2()      # metal-plate sub-rect (the whole Control in classic mode)
 var _badge: Control = null      # the port-badge Control itself, so set_badge_hidden can toggle it
 var _badge_rect := Rect2()      # port badge's box in panel coords; empty when there is no badge.
+var _sprite_content := Rect2()  # the sprite's OPAQUE box in panel coords (sprite view)
+var _fx_rect := Rect2()         # the animated effects' reach in panel coords (empire_fx envelope)
+var _full: Control = null       # the hover-only full card (sprite view); null in classic mode
+var _full_rect := Rect2()       # the reserve the full card fills (sprite view)
+var _hover_on := false
+var _sprite_root: Control = null   # sprite + effects + badge; scaled by the zoom boost
+var _sprite_boost := 1.0
                                 # It can extend PAST the Control (a sprite that fills its frame
                                 # pushes the hex off the corner), which is what the overlap probe
                                 # checks against neighbours.
@@ -58,16 +66,29 @@ func setup(node: Dictionary) -> void:
 	var sprite_tex = node.get("sprite")
 	var sprite_mode: bool = MatchState.use_empire_sprite_view and sprite_tex != null
 	var total := plate_sz
+	var full_sz: Vector2 = (node.get("full_half", node["half"]) as Vector2) * 2.0
+	_full_rect = Rect2()
 	if sprite_mode:
 		# Plates stay at L1 size in sprite view: the sprite carries the building's scale (and
 		# the L-tag names the level), so level-scaling the caption plate too made the row of
 		# captions ragged. `plate_half` is ALREADY the L1 plate here, so no /cs rescale — that
 		# only existed to undo the level-scaling that used to be baked into `half`.
 		cs = 1.0
-		total = Vector2(maxf(plate_sz.x, SPRITE_PX), SPRITE_PX + plate_sz.y)
+		# The panel reserves the FULL card under the sprite (owner 2026-09-10); the compact
+		# plate sits at the top of that reserve and the hover card fills it exactly.
+		total = Vector2(maxf(full_sz.x, SPRITE_PX), SPRITE_PX + full_sz.y)
+		_full_rect = Rect2(Vector2((total.x - full_sz.x) / 2.0, SPRITE_PX), full_sz)
 	custom_minimum_size = total
 	size = total
-	_plate_rect = Rect2(Vector2((total.x - plate_sz.x) / 2.0, total.y - plate_sz.y), plate_sz)
+	_plate_rect = (Rect2(Vector2((total.x - plate_sz.x) / 2.0, SPRITE_PX), plate_sz) if sprite_mode
+			else Rect2(Vector2((total.x - plate_sz.x) / 2.0, total.y - plate_sz.y), plate_sz))
+	_sprite_content = Rect2()
+	_fx_rect = Rect2()
+	_badge_rect = Rect2()
+	if sprite_mode:
+		var sr0: Rect2 = node.get("sprite_rect", Rect2())
+		if sr0.size.x > 0.0:
+			_sprite_content = Rect2(sr0.position + total * 0.5, sr0.size)
 	mouse_filter = Control.MOUSE_FILTER_STOP          # clickable → opens the building detail panel
 	clip_contents = false
 	_rivet_inset = 13.0 * cs
@@ -82,7 +103,20 @@ func setup(node: Dictionary) -> void:
 	_bg_style.shadow_color = Color(0, 0, 0, 0.45)
 	_bg_style.shadow_size = int(round(7.0 * cs))
 
-	# The big free-floating sprite, top-centred, with the plate attached beneath it.
+	# The big free-floating sprite, top-centred, with the plate attached beneath it. The
+	# sprite, its effects and its badge live under one root that the world scales past the
+	# furniture cap (owner 2026-09-10: zooming further grows the sprite, never the card),
+	# pivoting on the sprite's bottom-centre so it stays seated on its plate.
+	_sprite_root = Control.new()
+	_sprite_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_sprite_root.position = Vector2.ZERO
+	_sprite_root.size = total
+	# Pivot on the BUILDING's base (the opaque content's bottom-centre), not the box's: sprites
+	# carry transparent padding, and a box pivot lifted the building off its plate as it grew.
+	_sprite_root.pivot_offset = (Vector2(_sprite_content.get_center().x, _sprite_content.end.y)
+			if _sprite_content.size.x > 0.0 else Vector2(total.x * 0.5, SPRITE_PX))
+	add_child(_sprite_root)
+	_sprite_boost = 1.0
 	if sprite_mode:
 		var spr := TextureRect.new()
 		spr.texture = sprite_tex
@@ -98,7 +132,25 @@ func setup(node: Dictionary) -> void:
 		# unnecessary: the sprite's padding is TRANSPARENT, so a line crossing the margin was
 		# always visible through it. The only lines that were ever lost were the ones crossing
 		# the opaque building, and the router now refuses to cross that (see `sprite_rect`).
-		add_child(spr)
+		_sprite_root.add_child(spr)
+
+		# CHIMNEY SMOKE / STEAM + FURNACE FLICKER over the sprite (owner, 2026-09-10). A site
+		# has no chimney yet and no fire, so nothing is added while under construction. Sits
+		# after the sprite so it draws over it, before the badge so the badge stays on top.
+		if not bool(node.get("under_construction", false)):
+			var iname := str(Catalog.get_building(str(node.get("building_id", ""))).get("internal_name", ""))
+			if EmpireFx.has_effects(iname, _level):
+				var fx := EmpireFx.new()
+				fx.position = spr.position
+				fx.size = spr.size
+				_sprite_root.add_child(fx)
+				fx.setup(iname, _level, EmpireFx.recipe_emits_carbon(instance_id), instance_id, SPRITE_PX)
+				# The effects' reach, for the occupancy registry: the plume's whole rise, the
+				# lorry's whole run — so the space they use is the building's, not its neighbour's.
+				var env: Rect2 = EmpireFx.envelope_for(iname, _level)
+				if env.size.x > 0.0:
+					var k := SPRITE_PX / EmpireFx.SPRITE_PX
+					_fx_rect = Rect2(spr.position + env.position * k, env.size * k)
 
 		# PORT BADGE — only on buildings that ship to market, and only when enabled. Added
 		# AFTER the sprite so it sits on top of it: a Control's own _draw() renders beneath
@@ -112,8 +164,7 @@ func setup(node: Dictionary) -> void:
 			var content: Rect2 = Rect2(Vector2.ZERO, Vector2(SPRITE_PX, SPRITE_PX))
 			var sr: Rect2 = node.get("sprite_rect", Rect2())
 			if sr.size.x > 0.0:
-				content = Rect2(sr.position + Vector2(SPRITE_PX * 0.5,
-						(SPRITE_PX + plate_sz.y) * 0.5), sr.size)
+				content = Rect2(sr.position + total * 0.5, sr.size)
 			# The badge sits AT the sprite's bottom-right corner, not inside it (owner 2026-08-01):
 			# its centre goes just below and right of the content's corner, so only its top-left
 			# quadrant lands on the building instead of most of the hex sitting on it. Clamped to
@@ -126,17 +177,44 @@ func setup(node: Dictionary) -> void:
 			var badge := Control.new()
 			badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			badge.draw.connect(_draw_port_badge.bind(badge, bc, bh, badge_icon))
-			add_child(badge)
+			_sprite_root.add_child(badge)
 			_badge = badge
 
+	if sprite_mode:
+		# COMPACT plate at rest (owner 2026-09-10): the building glyph and the output good,
+		# nothing else. The FULL card — name, figures, level tag — is an overlay that appears on
+		# hover, top-aligned with the plate and raised above its neighbours, and takes no
+		# layout space (the panel's size is the compact one).
+		_build_content(self, _plate_rect, cs, node, true)
+		_full = Control.new()
+		_full.visible = false
+		# The card never takes the pointer (owner 2026-09-10: a card that catches the mouse
+		# flickers between the two states as it appears under it). The PANEL's rect — sprite
+		# plus the full-card reserve — is the hover area, and the card only shows inside it.
+		_full.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_full.position = _full_rect.position
+		_full.size = _full_rect.size
+		_full.draw.connect(_draw_plate_on.bind(_full, Rect2(Vector2.ZERO, _full_rect.size)))
+		add_child(_full)
+		_build_content(_full, Rect2(Vector2.ZERO, _full_rect.size), cs, node, false)
+		mouse_entered.connect(_on_hover.bind(true))
+		mouse_exited.connect(_on_hover.bind(false))
+	else:
+		_build_content(self, _plate_rect, cs, node, false)
+	queue_redraw()
+
+
+## The plate's content into `host` inside `rect`: compact = the two icons only; full = title,
+## status line, icons with the two figures beside them, and the level tag.
+func _build_content(host: Control, rect: Rect2, cs: float, node: Dictionary, compact: bool) -> void:
 	var m := int(round(9.0 * cs))
 	var margin := MarginContainer.new()
-	margin.position = _plate_rect.position
-	margin.size = _plate_rect.size
+	margin.position = rect.position
+	margin.size = rect.size
 	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
 		margin.add_theme_constant_override(side, m)
-	add_child(margin)
+	host.add_child(margin)
 
 	var vb := VBoxContainer.new()
 	vb.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -144,35 +222,37 @@ func setup(node: Dictionary) -> void:
 	vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margin.add_child(vb)
 
-	# Title — full public name, centred.
-	var title := Label.new()
-	title.text = str(node.get("name", ""))
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.clip_text = true
-	title.add_theme_font_size_override("font_size", int(round(15.0 * cs)))
-	title.add_theme_color_override("font_color", _TEXT)
-	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	# A construction site's plate carries no icons and no RAG row, so the name gets the room to
-	# wrap instead of being clipped down to a fragment on the one plate with space to spare.
-	if bool(node.get("under_construction", false)):
-		title.clip_text = false
-		title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	vb.add_child(title)
+	if not compact:
+		# Title — full public name, centred.
+		var title := Label.new()
+		title.text = str(node.get("name", ""))
+		title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		title.clip_text = true
+		title.add_theme_font_size_override("font_size", int(round(15.0 * cs)))
+		title.add_theme_color_override("font_color", _TEXT)
+		title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		# A construction site's plate carries no icons and no RAG row, so the name gets the room
+		# to wrap instead of being clipped down to a fragment on the one plate with space to spare.
+		if bool(node.get("under_construction", false)):
+			title.clip_text = false
+			title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		vb.add_child(title)
 
-	# Status line (construction sites): the countdown, or "awaiting materials".
-	if str(node.get("status_line", "")) != "":
-		var status := Label.new()
-		status.text = str(node.get("status_line", ""))
-		status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		status.add_theme_font_size_override("font_size", int(round(14.0 * cs)))
-		status.add_theme_color_override("font_color", _GOLD)
-		status.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		vb.add_child(status)
+		# Status line (construction sites): the countdown, or "awaiting materials".
+		if str(node.get("status_line", "")) != "":
+			var status := Label.new()
+			status.text = str(node.get("status_line", ""))
+			status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			status.add_theme_font_size_override("font_size", int(round(14.0 * cs)))
+			status.add_theme_color_override("font_color", _GOLD)
+			status.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			vb.add_child(status)
 
-	# Icon pair — building icon + good icon, same size (100px at full zoom), centred, tight.
-	var isz := 100.0 * cs
+	# Icon pair — building icon + good icon, same size (100px at full zoom; 72 on the compact
+	# plate), centred, tight.
+	var isz := (72.0 if compact else 100.0) * cs
 	var icons := HBoxContainer.new()
 	icons.alignment = BoxContainer.ALIGNMENT_CENTER
 	icons.add_theme_constant_override("separation", int(round(10.0 * cs)))
@@ -188,6 +268,9 @@ func setup(node: Dictionary) -> void:
 		icons.add_child(_make_icon(node.get("icon"), isz))
 	if str(node.get("output_good", "")) != "":
 		icons.add_child(_make_good_icon(node.get("good_icon"), int(node.get("output_qty", 0)), isz, cs))
+
+	if compact:
+		return
 
 	# The two FIGURES sit inline, right of the good icon: cost per unit (with its share of
 	# the market price) over the net output modifier. The four colour indicators that used
@@ -214,11 +297,26 @@ func setup(node: Dictionary) -> void:
 		lt.add_theme_color_override("font_color", _GOLD)
 		lt.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		lt.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		lt.position = Vector2(_plate_rect.end.x - 38.0 * cs, _plate_rect.position.y + 6.0 * cs)
+		lt.position = Vector2(rect.end.x - 38.0 * cs, rect.position.y + 6.0 * cs)
 		lt.size = Vector2(30.0 * cs, 18.0 * cs)
-		add_child(lt)
+		host.add_child(lt)
 
-	queue_redraw()
+
+## The full card comes and goes with the pointer; raised (by z_index, which does not reorder
+## the tree and so cannot re-fire hover events) so it draws over the neighbours. Hiding
+## waits a beat so a pointer skimming the plate's edge does not flicker the card.
+func _on_hover(on: bool) -> void:
+	if _full == null:
+		return
+	_hover_on = on
+	if on:
+		_full.visible = true
+		z_index = 5
+		return
+	await get_tree().create_timer(0.15).timeout
+	if not _hover_on and is_instance_valid(_full):
+		_full.visible = false
+		z_index = 0
 
 
 ## Open this building's detail panel on click (reuses the existing deep-link path in world_map).
@@ -351,27 +449,33 @@ func _draw() -> void:
 	# The metal plate covers only _plate_rect — the whole Control in classic mode, the
 	# bottom strip under the sprite in sprite view.
 	var r := _plate_rect if _plate_rect.size.x > 0.0 else Rect2(Vector2.ZERO, size)
+	_draw_plate_on(self, r)
+
+
+## The brushed navy plate with its sheen, bevel and rivets, painted onto any canvas item
+## (the panel itself, or the hover-only full card).
+func _draw_plate_on(ci: CanvasItem, r: Rect2) -> void:
 	if _bg_style != null:
-		draw_style_box(_bg_style, r)
+		ci.draw_style_box(_bg_style, r)
 	# TL→BR lit gradient sheen (inset to stay within the rounded corners).
 	var ir := r.grow(-5.0)
 	var pts := PackedVector2Array([
 		ir.position, Vector2(ir.end.x, ir.position.y), ir.end, Vector2(ir.position.x, ir.end.y)])
-	draw_polygon(pts, _grad_colors(pts, Color(1, 1, 1, 0.10), Color(0, 0, 0, 0.16)))
+	ci.draw_polygon(pts, _grad_colors(pts, Color(1, 1, 1, 0.10), Color(0, 0, 0, 0.16)))
 	# Machined bevel lip: light top/left, shadow bottom/right.
 	var b := r.grow(-3.0)
-	draw_line(b.position, Vector2(b.end.x, b.position.y), Color(1, 1, 1, 0.18), 1.5)
-	draw_line(b.position, Vector2(b.position.x, b.end.y), Color(1, 1, 1, 0.12), 1.5)
-	draw_line(Vector2(b.position.x, b.end.y), b.end, Color(0, 0, 0, 0.30), 1.5)
-	draw_line(Vector2(b.end.x, b.position.y), b.end, Color(0, 0, 0, 0.22), 1.5)
+	ci.draw_line(b.position, Vector2(b.end.x, b.position.y), Color(1, 1, 1, 0.18), 1.5)
+	ci.draw_line(b.position, Vector2(b.position.x, b.end.y), Color(1, 1, 1, 0.12), 1.5)
+	ci.draw_line(Vector2(b.position.x, b.end.y), b.end, Color(0, 0, 0, 0.30), 1.5)
+	ci.draw_line(Vector2(b.end.x, b.position.y), b.end, Color(0, 0, 0, 0.22), 1.5)
 	# Corner rivets.
 	var rad := maxf(3.0, 3.5 * (r.size.x / 304.0))
 	for c in [Vector2(r.position.x + _rivet_inset, r.position.y + _rivet_inset),
 			Vector2(r.end.x - _rivet_inset, r.position.y + _rivet_inset),
 			Vector2(r.position.x + _rivet_inset, r.end.y - _rivet_inset),
 			Vector2(r.end.x - _rivet_inset, r.end.y - _rivet_inset)]:
-		draw_circle(c, rad, Color(0.58, 0.61, 0.62, 1.0))
-		draw_circle(c + Vector2(-1.0, -1.0) * rad * 0.4, rad * 0.5, Color(1, 1, 1, 0.18))
+		ci.draw_circle(c, rad, Color(0.58, 0.61, 0.62, 1.0))
+		ci.draw_circle(c + Vector2(-1.0, -1.0) * rad * 0.4, rad * 0.5, Color(1, 1, 1, 0.18))
 
 
 ## Per-vertex colours for a TOP-LEFT (light) → BOTTOM-RIGHT (dark) gradient (research-panel math).
@@ -393,6 +497,35 @@ func _grad_colors(pts: PackedVector2Array, light: Color, dark: Color) -> PackedC
 ## chip) is showing, the badge just expands the same relationship a second time (owner, 27
 ## Aug). No-op for a panel with no badge at all. Called every frame from
 ## empire_graph_world.gd's _reposition_panels, alongside the panel's own fade/visibility.
+## Past the furniture cap the world grows the sprite alone: `k` = zoom / cap, about the
+## sprite's bottom-centre. 1.0 = the plain layout.
+func set_sprite_boost(k: float) -> void:
+	if _sprite_root == null or is_equal_approx(k, _sprite_boost):
+		return
+	_sprite_boost = k
+	_sprite_root.scale = Vector2(k, k)
+
+
+## What this panel occupies, in its own (unscaled) coordinates, by kind — the occupancy
+## registry's input. Empty rects mean "nothing of that kind". Sprite, effects and badge
+## carry the zoom boost; the plate is the RESERVE, not the compact plate, so the hover card
+## finds its space free.
+func footprints() -> Dictionary:
+	return {
+		"sprite": _boosted(_sprite_content),
+		"plate": _full_rect if _full_rect.size.x > 0.0 else _plate_rect,
+		"badge": _boosted(_badge_rect) if (_badge != null and _badge.visible) else Rect2(),
+		"fx": _boosted(_fx_rect),
+	}
+
+
+func _boosted(r: Rect2) -> Rect2:
+	if r.size.x <= 0.0 or _sprite_root == null or is_equal_approx(_sprite_boost, 1.0):
+		return r
+	var pivot := _sprite_root.pivot_offset
+	return Rect2(pivot + (r.position - pivot) * _sprite_boost, r.size * _sprite_boost)
+
+
 func set_badge_hidden(hidden: bool) -> void:
 	if _badge != null and is_instance_valid(_badge):
 		_badge.visible = not hidden

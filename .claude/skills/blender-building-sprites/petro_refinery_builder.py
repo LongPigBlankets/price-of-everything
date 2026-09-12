@@ -49,6 +49,10 @@ FLARE_XY = (2.18, 1.72)
 HALL = (-2.05, -1.62)               # control block centre (front-left)
 
 
+# FLAMES (2026-09-10): the fired heaters bake WITHOUT their droplet flame (flame=False below).
+# The supply-chain view animates a Blender flame-lick sprite at each heater tip instead
+# (scripts/empire_fx.gd ANCHORS petro_refinery fires, assets/fx/flames); a baked flame under
+# an animated one doubled up. The map layer draws the same sprites and shows no flame there.
 def build_petro_refinery(level: int = 1) -> dict:
     if level == 1:
         return _build_l1()
@@ -265,7 +269,7 @@ def _build_l1() -> dict:
 
     # ---------------- fired heater on the far right ----------------
     ux, uy, ur, uh, urt = L1_FURN
-    K.furnace_stack("furn", ux, uy, ur, uh, r_top=urt)
+    K.furnace_stack("furn", ux, uy, ur, uh, r_top=urt, flame=False)
 
     # ---------------- corner plant box, and THREE ties from the furnace base ----------------
     # The box sits ON the building's front-right corner: its -X face is the building's +X wall
@@ -427,7 +431,7 @@ def _build_l2() -> dict:
 
     # ---------------- two fired heaters on the right ----------------
     for i, (ux, uy, uh) in enumerate(L2_FURN):
-        K.furnace_stack("furn%d" % i, ux, uy, L2_FURN_R, uh, r_top=L2_FURN_RT)
+        K.furnace_stack("furn%d" % i, ux, uy, L2_FURN_R, uh, r_top=L2_FURN_RT, flame=False)
 
     # ---------------- corner plant box, and ties from BOTH heaters ----------------
     qx, qy, qsx, qsy, qh = L2_BOX
@@ -639,7 +643,7 @@ def _build_l3() -> dict:
 
     # ---------------- three fired heaters ----------------
     for i, (ux, uy, uh, ur, urt) in enumerate(L3_FURN):
-        K.furnace_stack("furn%d" % i, ux, uy, ur, uh, r_top=urt)
+        K.furnace_stack("furn%d" % i, ux, uy, ur, uh, r_top=urt, flame=False)
 
     # ---------------- corner plant box, and ties from all three heaters -------------------
     qx, qy, qsx, qsy, qh = L3_BOX

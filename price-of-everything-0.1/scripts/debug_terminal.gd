@@ -382,7 +382,7 @@ func _run_command(text: String) -> String:
 			# Cheat: cycle the Empire-view hex-field animation (1->2->3->4->1), or set it with `anim <n>`.
 			var bg := get_tree().get_first_node_in_group("empire_hex_bg")
 			if bg == null:
-				return "empire view not open (press Tab first)"
+				return "hex field is not mounted in the supply-chain view any more (retired 2026-09-10)"
 			if parts.size() >= 2 and parts[1].is_valid_int():
 				return "empire animation → %s" % bg.call("set_animation", int(parts[1]))
 			return "empire animation → %s" % bg.call("cycle_animation")

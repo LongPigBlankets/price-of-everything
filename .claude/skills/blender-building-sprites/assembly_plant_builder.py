@@ -242,6 +242,21 @@ def _gable(K, name, arc, axis, at, mat):
         K.prism(name, (0.0, at, 0.0), (1.0, 0.0, 0.0), arc.profile(), GABLE_T, K.mat(mat))
 
 
+# ROBOT POSE (2026-09-10, supply-chain view animation). The arms are baked into the sprite in
+# the RAISED pose; the empire view lays animated arm FRAMES over the sprite (render_arms.py
+# renders the plant with only the "rb*" objects visible and the rest as a holdout, at each
+# pose below, so a pillar still hides the arm behind it). `ROBOT_POSE = (lift, carry)`:
+# lift 0 = raised (the baked pose), 1 = wrist down on the belt over a carton; carry = a
+# carton held in the fingers. The runtime sequence: down empty, up with carton, down with
+# carton, up empty.
+ROBOT_POSE = (0.0, False)
+ROBOT_NAMES = []               # every object the arm frames must show
+# The SHIPPED sprite carries only the pedestal and turret of each robot: the moving arm is
+# drawn by the empire view from the frames, so a baked arm would show under the animated one.
+# render_arms.py sets this True to render the arms themselves.
+ROBOT_ARMS = False
+
+
 def _robot(K, tag, x, y0, reach):
     """Six-axis arm on a pedestal at (x, y0), standing on the floor and reaching over the belt
     in the horizontal direction `reach` = (dx, dy), a unit vector."""
@@ -249,11 +264,20 @@ def _robot(K, tag, x, y0, reach):
     z = FLOOR
     fm = K._fine_mode
     K._fine_mode = True
+    before = {o.name for o in K.col.objects}
     K.cyl("rb%s_ped" % tag, x, y0, z + 0.14, 0.13, 0.28, K.mat("gear"), segments=14)
     K.box("rb%s_tur" % tag, x, y0, z + 0.36, 0.24, 0.22, 0.16, K.mat("robot"))
+    if not ROBOT_ARMS:
+        K._fine_mode = fm
+        return
+    lift, carry = ROBOT_POSE
     sh = (x, y0, z + 0.44)
-    el = (x + dx * 0.36, y0 + dy * 0.36, z + 0.99)
-    wr = (x + dx * 0.78, y0 + dy * 0.78, z + 0.69)
+    # raised: elbow high, wrist over the belt at hand height; lowered: elbow forward and
+    # down, wrist on the carton (belt top + carton + finger reach)
+    el_up, el_dn = (x + dx * 0.36, y0 + dy * 0.36, z + 0.99), (x + dx * 0.52, y0 + dy * 0.52, z + 0.80)
+    wr_up, wr_dn = (x + dx * 0.78, y0 + dy * 0.78, z + 0.69), (x + dx * 0.55, y0 + dy * 0.55, FLOOR + BELT_H + BOX[2] + 0.16)
+    el = tuple(a + (b - a) * lift for a, b in zip(el_up, el_dn))
+    wr = tuple(a + (b - a) * lift for a, b in zip(wr_up, wr_dn))
     K.dirbox("rb%s_ua" % tag, sh, el, 0.12, 0.14, K.mat("robot"))
     K.cyl("rb%s_elb" % tag, el[0], el[1], el[2], 0.085, 0.15, K.mat("gear"),
           axis='Y' if dx else 'X', segments=12)
@@ -263,6 +287,10 @@ def _robot(K, tag, x, y0, reach):
         K.box("rb%s_f%d" % (tag, d > 0), wr[0] + d * abs(dy), wr[1] + d * abs(dx),
               wr[2] - 0.15, 0.022 + 0.038 * abs(dx), 0.022 + 0.038 * abs(dy), 0.10,
               K.mat("gear"))
+    if carry:
+        K.box("rb%s_load" % tag, wr[0], wr[1], wr[2] - 0.16 - BOX[2] / 2 + 0.02, BOX[0] * 0.8,
+              BOX[1] * 0.8, BOX[2], K.mat("carton"))
+    ROBOT_NAMES.extend(o.name for o in K.col.objects if o.name not in before)
     K._fine_mode = fm
 
 

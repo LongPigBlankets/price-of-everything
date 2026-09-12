@@ -24,7 +24,7 @@ extends RefCounted
 # document units, not screen pixels). Card size per owner 2026-07-18: doubled height /
 # +30% width so the icon chip reads ~100 px at maximum zoom-in (view _ZOOM_MAX = 1.0),
 # with a wider channel (COL_W - CARD_W = 180) to relax the edge routing.
-const COL_W := 820.0
+const COL_W := 960.0        # CARD_W + the 440 channel (cards widened 2026-09-10)
 # Column x-spacing is NOT uniform: within a tier the step is tightened, and each
 # tier boundary adds an extra gap (owner 2026-07-21). All column->x mapping goes
 # through col_x(); COL_W remains the base for card/channel geometry.
@@ -66,10 +66,10 @@ static var _col_x: PackedFloat32Array = PackedFloat32Array()
 # somewhere to run. At rest no line is drawn any more, so every one of them was spending
 # 72u of the player's screen on nothing. They still have to EXIST, because a selected
 # good's chain is routed through them, but they can be a good deal thinner than a card.
-const ROW_H := 132.0
+const ROW_H := 248.0        # clears the 224 card with air (owner 2026-09-10: cards doubled)
 const DUMMY_ROW_H := 34.0
-const CARD_W := 380.0
-const CARD_H := 112.0
+const CARD_W := 520.0       # owner 2026-09-10: taller cards, bigger icon and name
+const CARD_H := 224.0
 const BARY_SWEEPS := 2     # barycentre sweeps per ordering round
 const ORDER_ROUNDS := 16   # sweeps+transpose rounds; stops early when crossings stall
 

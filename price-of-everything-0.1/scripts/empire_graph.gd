@@ -35,12 +35,20 @@ static func populate(world: Object, terrain: Node, trading: bool = true) -> Dict
 	var g: Dictionary = build(terrain)
 	if (g.get("nodes", []) as Array).is_empty():
 		return g
-	# Solved with the sell edges and ports in every case: they are what groups the buildings
-	# into columns per destination port, which is the layout worth sharing.
-	EmpireLayout.solve(g["nodes"], g["edges"], g["sell_edges"], g["ports"])
-	var area: Rect2 = EmpireLayout.bbox_of(g["nodes"])
-	EmpireLayout.place_ports(g["ports"], area)
-	EmpireLayout.place_buy_ports(g["buy_ports"], g["ports"], area)
+	# The FLOW layout (owner 2026-09-10): buy ports left, bands per sell port, sell ports
+	# right; ports not used for that side are placed but flagged unused (the world hides them
+	# at rest and a mini-chart can still bring one in).
+	EmpireLayout.solve_flow(g["nodes"], g["edges"], g["sell_edges"], g["ports"],
+		g["buy_ports"], g["market_edges"])
+	# MASS mode (owner 2026-09-10): past the threshold the resting view is a padded grid of
+	# buildings, no lines, no ports; a selected building opens its whole chain (the world
+	# lays that chart out with solve_flow on the chain's members).
+	g["mass"] = is_mass(g["nodes"])
+	if g["mass"]:
+		EmpireLayout.solve_grid(g["nodes"])
+		for arr in [g["ports"], g["buy_ports"]]:
+			for p in arr:
+				p["used"] = false
 	if world != null and world.has_method("set_graph"):
 		world.call("set_graph", g["nodes"], g["edges"],
 			g["ports"] if trading else [],
@@ -54,11 +62,15 @@ const BuildingSprites := preload("res://scripts/building_sprites.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const BuildingNaming := preload("res://scripts/building_naming.gd")
 const NodePanel := preload("res://scripts/empire_node_panel.gd")
+const EmpireFx := preload("res://scripts/empire_fx.gd")
 
 const PORT_BUILDING_ID := "b_004"
 # 90 -> 74: the RAG row under the icons is gone and its figures moved inline, so the plate
 # no longer needs the band it occupied (owner 2026-08-24).
 const BASE_HALF := Vector2(152.0, 74.0)           # L1 panel half-extent in layout px; level-scaled per node
+## Sprite view (owner 2026-09-10): the plate at rest is COMPACT — the building glyph and the
+## output good only — and the full card (name, figures, level) appears on hover as an overlay.
+const COMPACT_HALF := Vector2(110.0, 48.0)
 
 
 ## The sprite's opaque content as a rect measured from the PANEL CENTRE, in unscaled panel px.
@@ -76,6 +88,26 @@ static func _sprite_content_offset(sprite_tex) -> Rect2:
 	return Rect2(used.position * k - centre, used.size * k)
 
 
+## More finished buildings than the mass threshold? (Ports and construction sites do not count.)
+static func is_mass(nodes: Array) -> bool:
+	var n := 0
+	for nd in nodes:
+		if not bool((nd as Dictionary).get("under_construction", false)) and not bool((nd as Dictionary).get("is_port", false)):
+			n += 1
+	return n > EmpireLayout.mass_threshold
+
+
+## Effects headroom: the part of the empire_fx envelope that rises above the panel's top edge
+## (the sprite is drawn from the panel's top, so panel y = sprite y * SPRITE_PX/800).
+static func _fx_headroom(internal_name: String, level: int, sprite_tex) -> float:
+	if not (MatchState.use_empire_sprite_view and sprite_tex != null):
+		return 0.0
+	var env: Rect2 = EmpireFx.envelope_for(internal_name, level)
+	if env.size.x <= 0.0:
+		return 0.0
+	return maxf(0.0, -env.position.y * NodePanel.SPRITE_PX / EmpireFx.SPRITE_PX)
+
+
 ## Half-extent of a node as the layout must see it. Classic: the level-scaled plate. Sprite
 ## view: a box wide enough for the sprite and tall enough for sprite + plate, centred on the
 ## Control (which is why `plate_dy` is exactly half the sprite height).
@@ -83,6 +115,9 @@ static func _node_half(level: int, sprite_tex) -> Vector2:
 	var plate: Vector2 = BASE_HALF * EmpireLayout.level_scale(level)
 	if not (MatchState.use_empire_sprite_view and sprite_tex != null):
 		return plate
+	# The box reserves the FULL card's height under the sprite (owner 2026-09-10): the compact
+	# plate sits at the top of that reserve and the hover card fills it, so hovering never
+	# covers a neighbour or a chip.
 	return Vector2(maxf(BASE_HALF.x, NodePanel.SPRITE_PX * 0.5),
 			(NodePanel.SPRITE_PX + BASE_HALF.y * 2.0) * 0.5)
 const PORT_HALF := Vector2(86.0, 78.0)            # gold port hexagon half-extent
@@ -147,12 +182,17 @@ static func build(terrain: Object) -> Dictionary:
 			# is the layout footprint: in sprite view those differ by the whole 400px sprite,
 			# and anchoring to `half` puts every arrow out in open space beside the plate.
 			# Plates stay L1-sized in sprite view, so this does not level-scale there either.
-			"plate_half": (BASE_HALF if (MatchState.use_empire_sprite_view and sprite_tex != null)
+			"plate_half": (COMPACT_HALF if (MatchState.use_empire_sprite_view and sprite_tex != null)
 					else BASE_HALF * EmpireLayout.level_scale(level)),
+			"full_half": BASE_HALF,
 			# The sprite's OPAQUE box, as an offset rect from the panel centre (unscaled px).
 			# Routing may cross a sprite's transparent padding — that is the whole point of
 			# dropping the sprite behind the lines — but never the building itself.
 			"sprite_rect": _sprite_content_offset(sprite_tex),
+			"internal_name": str(bdata.get("internal_name", "")),
+			# How far the building's animated effects (plume, flame) reach ABOVE its layout
+			# box, in layout px: the layout adds it to the row gap under the node above.
+			"top_extra": _fx_headroom(str(bdata.get("internal_name", "")), level, sprite_tex),
 			# Set below once the sell edges are known: the icon of the port this building
 			# ships to, which the plate wears as a gold hex badge instead of drawing a line
 			# across the whole view. Null on buildings that do not sell to market.
@@ -166,7 +206,9 @@ static func build(terrain: Object) -> Dictionary:
 			# the Control grows upward by the 400px sprite, so the plate centre sits half the
 			# sprite height below the Control centre; edges anchor to the plate via this
 			# (empire_graph_world._plate_screen_of). Zero in classic mode / unsprited.
-			"plate_dy": ((NodePanel.SPRITE_PX * 0.5)
+			# The compact plate is top-aligned under the sprite inside the full-card reserve, so
+			# its centre is COMPACT_HALF.y below the sprite's bottom, not half the reserve.
+			"plate_dy": ((NodePanel.SPRITE_PX + COMPACT_HALF.y - (NodePanel.SPRITE_PX + BASE_HALF.y * 2.0) * 0.5)
 					if (MatchState.use_empire_sprite_view and sprite_tex != null) else 0.0),
 			"good_icon": good_icon,
 			# The six RAG indicators as DATA, computed once here (single source: building_status.gd).
@@ -288,8 +330,9 @@ static func _append_construction_nodes(nodes: Array, ports: Array, terrain: Obje
 			"tile_id": tile,
 			"seed": seed_pos,
 			"half": _node_half(1, site_tex),
-			"plate_half": (BASE_HALF if (MatchState.use_empire_sprite_view and site_tex != null)
+			"plate_half": (COMPACT_HALF if (MatchState.use_empire_sprite_view and site_tex != null)
 					else BASE_HALF),
+			"full_half": BASE_HALF,
 			"sprite_rect": _sprite_content_offset(site_tex),
 			"port_badge": null,
 			"is_port": false,
@@ -302,7 +345,7 @@ static func _append_construction_nodes(nodes: Array, ports: Array, terrain: Obje
 			"icon": BuildingIcon.clean_texture(bid,
 					str(Catalog.get_building(bid).get("internal_name", ""))),
 			"sprite": site_tex,
-			"plate_dy": ((NodePanel.SPRITE_PX * 0.5)
+			"plate_dy": ((NodePanel.SPRITE_PX + COMPACT_HALF.y - (NodePanel.SPRITE_PX + BASE_HALF.y * 2.0) * 0.5)
 					if (MatchState.use_empire_sprite_view and site_tex != null) else 0.0),
 			"good_icon": null,
 			"rag": [],
@@ -394,6 +437,14 @@ static func _build_market_edges(nodes: Array, ports: Array, consumers: Dictionar
 				src = "buy_" + str(port_by_tile[ptile])
 		if src != "":
 			out.append({"from": src, "to": iid, "good": fed[iid]})
+	# The layout sizes the gutter LEFT of a column by the lines that drop into it, and a buy
+	# line drops down that gutter (empire_graph_world._route_market) — so each fed node
+	# carries its count for empire_layout to add to the demand.
+	var fed_count: Dictionary = {}
+	for e in out:
+		fed_count[str(e["to"])] = int(fed_count.get(str(e["to"]), 0)) + 1
+	for n in nodes:
+		n["market_inputs"] = int(fed_count.get(str(n["iid"]), 0))
 	return out
 
 

@@ -21,8 +21,19 @@ const MAX_ITERS := 80
 const ANCHOR_PULL := 0.02                          # per-iter fraction pulling a node back to its seed
 
 # Layered (supply-chain) layout spacing. Generous so panels read as airy columns.
-const COL_SPACING := 470.0                         # horizontal distance between supply layers (columns)
+const COL_SPACING := 470.0                         # legacy column pitch (kept for callers/tests)
 const ROW_GAP := 90.0                              # vertical gap between stacked nodes in a column
+# GUTTERS SIZED FROM DEMAND (owner 2026-09-10). The gap between two adjacent columns is not a
+# constant: it holds every line whose vertical run crosses it, a lane apart, plus the good-icon
+# chip those lines carry and a margin each side. A column pair with no lines keeps MIN_GUTTER;
+# six lanes get 6*LANE_PITCH + CHIP_W + 2*GUTTER_MARGIN. The row gap likewise grows by the
+# lower node's `top_extra` — how far its animated effects (a chimney plume) reach above its
+# box — so a plume never rises into the plate of the node above it.
+const LANE_PITCH := 84.0                           # lane-to-lane distance: DOUBLE the room a chip needs
+                                                   # (owner 2026-09-10: "double the room for each channel")
+const CHIP_W := 74.0                               # the edge good-icon chip (empire_graph_world._LANE_CHIP)
+const GUTTER_MARGIN := 24.0                        # clear space between a lane and the sprite beside it
+const MIN_GUTTER := 70.0                           # column gap with no lines at all (the old 470-400)
 const COMP_GAP := 230.0                            # gap between separate chains / isolated nodes
 const FLOW_WIDTH := 3400.0                         # legacy wrap width (no-sector path only)
 const BARY_SWEEPS := 4                             # crossing-reduction passes
@@ -39,6 +50,24 @@ const SITE_BAND_GAP := 200.0                       # clear band between the bloc
 const RoadHash := preload("res://scripts/road_hash.gd")
 
 
+# FLOW layout (owner 2026-09-10): buy ports in a column on the LEFT, an empty port gutter, the
+# building columns (column 0 = extraction that takes nothing from the market), the sell ports
+# in a column on the RIGHT. Bands = one per sell port, stacked top to bottom in port order.
+const PORT_HALF := Vector2(86.0, 78.0)             # the port hex (= empire_graph.PORT_HALF)
+# MASS mode (owner 2026-09-10): past this many finished buildings the resting view is a grid
+# of buildings with no lines; selecting one opens its whole chain as a flow chart.
+static var mass_threshold := 10
+## OPTION 2 (crossing study 2026-09-10): within a column, group buildings by the port they
+## sell through (and buy from) before the barycentre order, so a port's fan never crosses.
+static var opt_port_order := true
+## Gutter demand counts CHANNELS, not lines, when the world merges lines: one trunk per
+## (source column, target column, good) and one bus per port (empire_graph_world's
+## opt_trunks / opt_port_buses — mirrored here so the layout and the router agree).
+static var opt_channels := true
+const GRID_PAD := 70.0                             # clear space between grid cells
+const GRID_ASPECT := 1.7                           # columns/rows ratio the grid aims for (16:9-ish)
+const PORT_GUTTER_MIN := 320.0                     # the empty column between a port column and the block
+const BAND_GAP := 260.0                            # vertical gap between two ports' bands
 const PORT_SPACING := 380.0                        # horizontal gap between ports in the bottom row
 const PORT_ROW_GAP := 260.0                         # vertical gap from the building block to the port row
 
@@ -54,12 +83,436 @@ static func solve(nodes: Array, edges: Array, sell_edges: Array = [], ports: Arr
 	relax(nodes)
 
 
+## FLOW layout entry point (owner 2026-09-10): "buy ports on the left, then a column left empty,
+## then the first building column — mines and extraction that require no inputs from the
+## market — then other buildings and on the far right the sale ports. A port not in use for
+## buying or selling (checked independently) is not shown in that column."
+##
+## Columns are GLOBAL: every band shares the same column x positions, so the view reads as a
+## grid and every vertical run has a gutter. A node's column is its longest-path layer, with
+## nodes that buy from the market starting at column 1 (column 0 is for buildings that take
+## nothing in). Bands are one per sell port (majority vote of the component's sell edges, as
+## the sector layout did), then an "internal" band for chains that sell nowhere, then the
+## construction-site band. Writes `pos` on nodes, `pos` + `used` on every port.
+static func solve_flow(nodes: Array, edges: Array, sell_edges: Array, ports: Array,
+		buy_ports: Array, market_edges: Array) -> void:
+	if nodes.is_empty():
+		return
+	var pr := _prepare(nodes, edges)
+	var by_iid: Dictionary = pr["by_iid"]
+	var out_e: Dictionary = pr["out_e"]
+	var in_e: Dictionary = pr["in_e"]
+	var layer: Dictionary = pr["layer"]
+	var comps: Dictionary = pr["comps"]
+	var comp_keys: Array = pr["comp_keys"]
+	# Market buyers start one column in: column 0 is extraction only.
+	for n in nodes:
+		var iid := str(n["iid"])
+		if int(n.get("market_inputs", 0)) > 0 and int(layer[iid]) == 0:
+			layer[iid] = 1
+	_propagate_layers(layer, pr["real_edges"], nodes.size() + 2)
+
+	# ---- global columns: widths and gutters from every band's demand ----
+	var ncol := 0
+	for iid in layer:
+		ncol = maxi(ncol, int(layer[iid]) + 1)
+	var col_half_w: Array = []
+	var lanes: Array = []
+	for _c in range(ncol):
+		col_half_w.append(0.0)
+		lanes.append(0)
+	for n in nodes:
+		var c := int(layer[str(n["iid"])])
+		col_half_w[c] = maxf(float(col_half_w[c]), (n["half"] as Vector2).x)
+	# Input demand per gutter: one lane per CHANNEL (a trunk = one good between two columns)
+	# when lines are merged, else one per line.
+	var chan_seen: Dictionary = {}
+	for e in edges:
+		var f0 := str(e["from"])
+		var t0 := str(e["to"])
+		if not (layer.has(f0) and layer.has(t0)) or f0 == t0:
+			continue
+		var ck := "%d_%d_%s" % [int(layer[f0]), int(layer[t0]), str(e.get("good", ""))] if opt_channels else "%s_%s" % [f0, t0]
+		if chan_seen.has(ck):
+			continue
+		chan_seen[ck] = true
+		for g in range(int(layer[f0]), int(layer[t0])):
+			lanes[g] = int(lanes[g]) + 1
+	# Buy lines: one lane per port (bus) or per line, across the port gutter and every gutter
+	# left of their target's column; sell lines likewise toward the right.
+	var n_market := 0
+	var buy_seen: Dictionary = {}
+	for me in market_edges:
+		var t := str((me as Dictionary)["to"])
+		if not layer.has(t):
+			continue
+		var bk := str((me as Dictionary)["from"]) if opt_channels else str((me as Dictionary)["from"]) + "|" + t
+		var first := not buy_seen.has(bk)
+		buy_seen[bk] = true
+		if first:
+			n_market += 1
+		for g in range(0, int(layer[t])):
+			var gk := bk + "@" + str(g)
+			if not buy_seen.has(gk):
+				buy_seen[gk] = true
+				lanes[g] = int(lanes[g]) + 1
+	var n_sell := 0
+	var sell_seen: Dictionary = {}
+	for se in sell_edges:
+		var f := str((se as Dictionary)["from"])
+		if not layer.has(f):
+			continue
+		var sk := str((se as Dictionary)["to"]) if opt_channels else f + "|" + str((se as Dictionary)["to"])
+		var first2 := not sell_seen.has(sk)
+		sell_seen[sk] = true
+		if first2:
+			n_sell += 1
+		for g in range(int(layer[f]), ncol - 1):
+			var gk2 := sk + "@" + str(g)
+			if not sell_seen.has(gk2):
+				sell_seen[gk2] = true
+				lanes[g] = int(lanes[g]) + 1
+	var col_x: Array = [0.0]
+	for c in range(1, ncol):
+		col_x.append(float(col_x[c - 1]) + float(col_half_w[c - 1]) + gutter_width(int(lanes[c - 1]))
+			+ float(col_half_w[c]))
+
+	# Port ranks per node, for the port-ordered columns (option 2).
+	var sell_rank: Dictionary = {}
+	for i in range(ports.size()):
+		sell_rank[str((ports[i] as Dictionary)["iid"])] = i
+	var buy_rank: Dictionary = {}
+	for i in range(buy_ports.size()):
+		buy_rank[str((buy_ports[i] as Dictionary)["iid"])] = i
+	for n in nodes:
+		n["_sell_rank"] = 99
+		n["_buy_rank"] = 99
+	for se3 in sell_edges:
+		var f3 := str((se3 as Dictionary)["from"])
+		if by_iid.has(f3):
+			by_iid[f3]["_sell_rank"] = mini(int(by_iid[f3]["_sell_rank"]), int(sell_rank.get(str((se3 as Dictionary)["to"]), 99)))
+	for me3 in market_edges:
+		var t4 := str((me3 as Dictionary)["to"])
+		if by_iid.has(t4):
+			by_iid[t4]["_buy_rank"] = mini(int(by_iid[t4]["_buy_rank"]), int(buy_rank.get(str((me3 as Dictionary)["from"]), 99)))
+
+	# ---- bands ----
+	var comp_of: Dictionary = {}
+	for r in comps:
+		for iid in comps[r]:
+			comp_of[iid] = r
+	var owner: Dictionary = _vote_owner(comps, comp_of, by_iid, sell_edges, ports)
+	var y := 0.0
+	var band_centre: Dictionary = {}                 # port index -> band centre y
+	var sites: Array = []
+	for bi in range(ports.size() + 1):
+		var mine: Array = comp_keys.filter(func(r): return int(owner[r]) == bi)
+		var flow: Array = []
+		for r in mine:
+			if _is_site_comp(comps[r], by_iid):
+				sites.append_array(comps[r] as Array)
+			else:
+				flow.append(r)
+		if flow.is_empty():
+			continue
+		var band_top := y
+		for r in flow:
+			var ids: Array = comps[r]
+			ids.sort()
+			var comp := _layout_component_flow(ids, by_iid, in_e, out_e, layer, col_x)
+			var h: float = comp["height"]
+			var local: Dictionary = comp["local"]
+			for iid in local:
+				by_iid[iid]["seed"] = (local[iid] as Vector2) + Vector2(0.0, y + h * 0.5)
+			y += h + COMP_GAP
+		y -= COMP_GAP
+		band_centre[bi] = (band_top + y) * 0.5
+		y += BAND_GAP
+	if not sites.is_empty():
+		sites.sort()
+		_place_site_band([{"cx": (float(col_x[0]) + float(col_x[ncol - 1])) * 0.5, "ids": sites}], by_iid)
+
+	# ---- ports as terminals ----
+	# A port's own `half` — the hex at rest, a 2x building sprite inside a chart.
+	var buy_half := _max_half(buy_ports)
+	var sell_half := _max_half(ports)
+	var left_x := float(col_x[0]) - float(col_half_w[0]) - maxf(PORT_GUTTER_MIN, gutter_width(n_market)) - buy_half.x
+	var right_x := float(col_x[ncol - 1]) + float(col_half_w[ncol - 1]) + maxf(PORT_GUTTER_MIN, gutter_width(n_sell)) + sell_half.x
+	var block_bottom := y - BAND_GAP
+	var fed_y: Dictionary = {}                       # buy port iid -> [y of fed nodes]
+	for me2 in market_edges:
+		var bp := str((me2 as Dictionary)["from"])
+		var t2 := str((me2 as Dictionary)["to"])
+		if not by_iid.has(t2):
+			continue
+		if not fed_y.has(bp):
+			fed_y[bp] = []
+		(fed_y[bp] as Array).append((by_iid[t2]["seed"] as Vector2).y)
+	var sold_y: Dictionary = {}                      # sell port iid -> [y of selling nodes]
+	for se2 in sell_edges:
+		var f2 := str((se2 as Dictionary)["from"])
+		var t3 := str((se2 as Dictionary)["to"])
+		if not by_iid.has(f2):
+			continue
+		if not sold_y.has(t3):
+			sold_y[t3] = []
+		(sold_y[t3] as Array).append((by_iid[f2]["seed"] as Vector2).y)
+	var buy_ys: Array = []
+	for bp2 in buy_ports:
+		var pid := str((bp2 as Dictionary)["iid"])
+		var used := fed_y.has(pid)
+		bp2["used"] = used
+		buy_ys.append(_mean(fed_y.get(pid, [])) if used else block_bottom + BAND_GAP)
+	_settle_column(buy_ys, buy_ports)
+	for i in range(buy_ports.size()):
+		buy_ports[i]["pos"] = Vector2(left_x, float(buy_ys[i]))
+	var sell_ys: Array = []
+	for i2 in range(ports.size()):
+		var sp: Dictionary = ports[i2]
+		var spid := str(sp["iid"])
+		var used2 := sold_y.has(spid)
+		sp["used"] = used2
+		if band_centre.has(i2):
+			sell_ys.append(float(band_centre[i2]))
+		else:
+			sell_ys.append(_mean(sold_y.get(spid, [])) if used2 else block_bottom + BAND_GAP)
+	_settle_column(sell_ys, ports)
+	for i3 in range(ports.size()):
+		ports[i3]["pos"] = Vector2(right_x, float(sell_ys[i3]))
+
+	relax(nodes)
+
+
+## The MASS grid: every building in a cell, cells a padding apart, in reading order of the
+## flow layout (call after solve_flow so `pos` is set) — a mass that still loosely reads
+## left to right by chain depth. Cell = the largest footprint (plus effects headroom), so no
+## cell holds anything but its own building. Writes `pos`.
+static func solve_grid(nodes: Array) -> void:
+	if nodes.is_empty():
+		return
+	var order: Array = nodes.duplicate()
+	order.sort_custom(func(a, b):
+		var pa: Vector2 = a.get("pos", a.get("seed", Vector2.ZERO))
+		var pb: Vector2 = b.get("pos", b.get("seed", Vector2.ZERO))
+		if absf(pa.y - pb.y) > 1.0:
+			return pa.y < pb.y
+		if absf(pa.x - pb.x) > 1.0:
+			return pa.x < pb.x
+		return str(a["iid"]) < str(b["iid"]))
+	var cell := Vector2.ZERO
+	var head := 0.0
+	for n in order:
+		cell.x = maxf(cell.x, (n["half"] as Vector2).x * 2.0)
+		cell.y = maxf(cell.y, (n["half"] as Vector2).y * 2.0)
+		head = maxf(head, float(n.get("top_extra", 0.0)))
+	cell += Vector2(GRID_PAD, GRID_PAD + head)
+	var n_cols := maxi(1, int(ceil(sqrt(float(order.size()) * GRID_ASPECT))))
+	for i in range(order.size()):
+		var c := i % n_cols
+		var r := i / n_cols
+		order[i]["pos"] = Vector2(float(c) * cell.x, float(r) * cell.y + head)
+		order[i]["seed"] = order[i]["pos"]
+
+
+## Ports in a column keep their fixed order top to bottom and never sit closer than
+## MIN_PORT_SEP; unused ones are pushed below the last used one.
+static func _settle_column(ys: Array, ports: Array) -> void:
+	var half := _max_half(ports)
+	for i in range(1, ys.size()):
+		var prev_used := bool((ports[i - 1] as Dictionary).get("used", true))
+		var sep := maxf(MIN_PORT_SEP, half.y * 2.2) if (prev_used and bool((ports[i] as Dictionary).get("used", true))) else half.y * 2.2
+		ys[i] = maxf(float(ys[i]), float(ys[i - 1]) + sep)
+
+
+static func _max_half(ports: Array) -> Vector2:
+	var h := PORT_HALF
+	for p in ports:
+		var ph: Vector2 = (p as Dictionary).get("half", PORT_HALF)
+		h = Vector2(maxf(h.x, ph.x), maxf(h.y, ph.y))
+	return h
+
+
+static func _mean(vals: Array) -> float:
+	if vals.is_empty():
+		return 0.0
+	var t := 0.0
+	for v in vals:
+		t += float(v)
+	return t / float(vals.size())
+
+
+## Longest-path layering; the iteration cap makes a cyclic supply graph safe.
+static func _propagate_layers(layer: Dictionary, real_edges: Array, guard: int) -> void:
+	var changed := true
+	while changed and guard > 0:
+		changed = false
+		guard -= 1
+		for pair in real_edges:
+			if layer[pair[1]] <= layer[pair[0]]:
+				layer[pair[1]] = layer[pair[0]] + 1
+				changed = true
+
+
+## Adjacency, layers and connected components — shared by both solvers.
+static func _prepare(nodes: Array, edges: Array) -> Dictionary:
+	var by_iid: Dictionary = {}
+	for n in nodes:
+		by_iid[str(n["iid"])] = n
+	var out_e: Dictionary = {}
+	var in_e: Dictionary = {}
+	for n in nodes:
+		out_e[str(n["iid"])] = []
+		in_e[str(n["iid"])] = []
+	var real_edges: Array = []
+	for e in edges:
+		var f := str(e["from"])
+		var t := str(e["to"])
+		if f != t and by_iid.has(f) and by_iid.has(t):
+			out_e[f].append(t)
+			in_e[t].append(f)
+			real_edges.append([f, t])
+	var layer: Dictionary = {}
+	for n in nodes:
+		layer[str(n["iid"])] = 0
+	_propagate_layers(layer, real_edges, nodes.size() + 2)
+	var parent: Dictionary = {}
+	for n in nodes:
+		parent[str(n["iid"])] = str(n["iid"])
+	for pair in real_edges:
+		var ra := _uf_find(parent, pair[0])
+		var rb := _uf_find(parent, pair[1])
+		if ra != rb:
+			parent[ra] = rb
+	var comps: Dictionary = {}
+	for n in nodes:
+		var r := _uf_find(parent, str(n["iid"]))
+		if not comps.has(r):
+			comps[r] = []
+		comps[r].append(str(n["iid"]))
+	var comp_keys: Array = comps.keys()
+	comp_keys.sort_custom(func(a, b):
+		var ca: Array = comps[a]
+		var cb: Array = comps[b]
+		if ca.size() != cb.size():
+			return ca.size() > cb.size()
+		return _min_str(ca) < _min_str(cb))
+	return {"by_iid": by_iid, "out_e": out_e, "in_e": in_e, "real_edges": real_edges,
+		"layer": layer, "comps": comps, "comp_keys": comp_keys}
+
+
+## Which port (index; ports.size() = none) owns each component: majority of its sell edges,
+## ties to the earlier port; edge-less components (construction sites) use their port_hint.
+static func _vote_owner(comps: Dictionary, comp_of: Dictionary, by_iid: Dictionary,
+		sell_edges: Array, ports: Array) -> Dictionary:
+	var port_rank: Dictionary = {}
+	for i in range(ports.size()):
+		port_rank[str((ports[i] as Dictionary)["iid"])] = i
+	var votes: Dictionary = {}
+	for se in sell_edges:
+		var f := str((se as Dictionary)["from"])
+		var t := str((se as Dictionary)["to"])
+		if not (comp_of.has(f) and port_rank.has(t)):
+			continue
+		var root: String = comp_of[f]
+		if not votes.has(root):
+			votes[root] = {}
+		var pi := int(port_rank[t])
+		votes[root][pi] = int((votes[root] as Dictionary).get(pi, 0)) + 1
+	for r in comps:
+		if votes.has(r):
+			continue
+		for iid in comps[r]:
+			var nd: Dictionary = by_iid.get(iid, {})
+			var hint := str(nd.get("port_hint", ""))
+			if hint == "" or not port_rank.has(hint):
+				continue
+			if not votes.has(r):
+				votes[r] = {}
+			var hp := int(port_rank[hint])
+			votes[r][hp] = int((votes[r] as Dictionary).get(hp, 0)) + 1
+	var owner: Dictionary = {}
+	for r in comps:
+		var best := ports.size()
+		var best_n := 0
+		if votes.has(r):
+			var vr: Dictionary = votes[r]
+			var pis: Array = vr.keys()
+			pis.sort()
+			for pi in pis:
+				if int(vr[pi]) > best_n:
+					best_n = int(vr[pi])
+					best = int(pi)
+		owner[r] = best
+	return owner
+
+
+## One component on the GLOBAL column grid: x from `col_x` by layer, rows stacked per column
+## (with effects headroom), the whole thing centred on y = 0. Returns {local, height}.
+static func _layout_component_flow(ids: Array, by_iid: Dictionary, in_e: Dictionary, out_e: Dictionary,
+		layer: Dictionary, col_x: Array) -> Dictionary:
+	var cols: Dictionary = {}
+	for iid in ids:
+		var c := int(layer[iid])
+		if not cols.has(c):
+			cols[c] = []
+		cols[c].append(iid)
+	var col_keys: Array = cols.keys()
+	col_keys.sort()
+	for c in col_keys:
+		(cols[c] as Array).sort()
+	var order: Dictionary = {}
+	_reindex(cols, col_keys, order)
+	for _sweep in BARY_SWEEPS:
+		for ci in range(1, col_keys.size()):
+			_sort_by_bary(cols[col_keys[ci]], in_e, order)
+		_reindex(cols, col_keys, order)
+		for ci in range(col_keys.size() - 2, -1, -1):
+			_sort_by_bary(cols[col_keys[ci]], out_e, order)
+		_reindex(cols, col_keys, order)
+	for c in col_keys:
+		_cluster_by_tile(cols[c], by_iid)
+	if opt_port_order:
+		# Stable: keep the barycentre order inside each port group.
+		for c in col_keys:
+			var col2: Array = cols[c]
+			var idx: Dictionary = {}
+			for i in range(col2.size()):
+				idx[col2[i]] = i
+			col2.sort_custom(func(a, b):
+				var ka := [int(by_iid[a].get("_sell_rank", 99)), int(by_iid[a].get("_buy_rank", 99)), int(idx[a])]
+				var kb := [int(by_iid[b].get("_sell_rank", 99)), int(by_iid[b].get("_buy_rank", 99)), int(idx[b])]
+				return ka < kb)
+	_reindex(cols, col_keys, order)
+	var local: Dictionary = {}
+	var height := 0.0
+	for c in col_keys:
+		var col: Array = cols[c]
+		var total_h := 0.0
+		for k in range(col.size()):
+			total_h += (by_iid[col[k]]["half"] as Vector2).y * 2.0 + (row_gap_before(by_iid[col[k]]) if k > 0 else 0.0)
+		total_h += float(by_iid[col[0]].get("top_extra", 0.0))
+		height = maxf(height, total_h)
+		var yy := -total_h * 0.5 + float(by_iid[col[0]].get("top_extra", 0.0))
+		for k in range(col.size()):
+			var iid = col[k]
+			var h := (by_iid[iid]["half"] as Vector2).y * 2.0
+			if k > 0:
+				yy += row_gap_before(by_iid[iid])
+			local[iid] = Vector2(float(col_x[c]), yy + h * 0.5)
+			yy += h
+	return {"local": local, "height": height}
+
+
 ## Bounding box over a set of laid-out nodes (using each node's pos +/- half).
 static func bbox_of(nodes: Array) -> Rect2:
 	var bb := Rect2()
 	var first := true
 	for n in nodes:
-		var r := Rect2((n["pos"] as Vector2) - (n["half"] as Vector2), (n["half"] as Vector2) * 2.0)
+		# The box includes the node's effects headroom (a plume above a chimney), so the port
+		# row placed above the block clears the smoke too.
+		var te := float(n.get("top_extra", 0.0))
+		var r := Rect2((n["pos"] as Vector2) - (n["half"] as Vector2) - Vector2(0.0, te),
+			(n["half"] as Vector2) * 2.0 + Vector2(0.0, te))
 		if first:
 			bb = r
 			first = false
@@ -432,26 +885,69 @@ static func _layout_component(ids: Array, by_iid: Dictionary, in_e: Dictionary, 
 		_cluster_by_tile(cols[c], by_iid)
 	_reindex(cols, col_keys, order)
 
-	# Assign positions: x by column, y stacked (accounting for box heights), each column centred on 0.
+	# Gutter demand: how many lines cross the gap after each column (an edge from column f to
+	# column t runs through every gutter f..t-1). Column widths are the widest node in them.
+	var col_of: Dictionary = {}
+	for ci in range(col_keys.size()):
+		for iid in cols[col_keys[ci]]:
+			col_of[iid] = ci
+	var lanes: Array = []
+	var col_half_w: Array = []
+	for ci in range(col_keys.size()):
+		lanes.append(0)
+		var w := 0.0
+		for iid in cols[col_keys[ci]]:
+			w = maxf(w, (by_iid[iid]["half"] as Vector2).x)
+		col_half_w.append(w)
+	for iid in ids:
+		for t in out_e[iid]:
+			if not col_of.has(t):
+				continue
+			for g in range(int(col_of[iid]), int(col_of[t])):
+				lanes[g] = int(lanes[g]) + 1
+	# Buy lines drop down the gutter LEFT of their target's column (one lane each); the
+	# leftmost column's drops need a gutter of their own, kept as the component's left margin.
+	var left_lanes := 0
+	for ci in range(col_keys.size()):
+		for iid in cols[col_keys[ci]]:
+			var m := int(by_iid[iid].get("market_inputs", 0))
+			if ci == 0:
+				left_lanes += m
+			else:
+				lanes[ci - 1] = int(lanes[ci - 1]) + m
+	var left_margin := gutter_width(left_lanes) - MIN_GUTTER
+	var col_x: Array = [left_margin]
+	for ci in range(1, col_keys.size()):
+		col_x.append(float(col_x[ci - 1]) + float(col_half_w[ci - 1]) + gutter_width(int(lanes[ci - 1]))
+			+ float(col_half_w[ci]))
+
+	# Assign positions: x by column, y stacked (box heights plus each lower node's effects
+	# headroom), each column centred on 0.
 	var local: Dictionary = {}
 	for ci in range(col_keys.size()):
 		var c = col_keys[ci]
 		var col: Array = cols[c]
 		var total_h := 0.0
-		for iid in col:
-			total_h += (by_iid[iid]["half"] as Vector2).y * 2.0 + ROW_GAP
-		total_h -= ROW_GAP
+		for k in range(col.size()):
+			total_h += (by_iid[col[k]]["half"] as Vector2).y * 2.0 + (row_gap_before(by_iid[col[k]]) if k > 0 else 0.0)
 		var y := -total_h * 0.5
-		for iid in col:
+		for k in range(col.size()):
+			var iid = col[k]
 			var h := (by_iid[iid]["half"] as Vector2).y * 2.0
-			local[iid] = Vector2(float(ci) * COL_SPACING, y + h * 0.5)
-			y += h + ROW_GAP
+			if k > 0:
+				y += row_gap_before(by_iid[iid])
+			local[iid] = Vector2(float(col_x[ci]), y + h * 0.5)
+			y += h
 
 	# Normalize so the component's bounding box starts at the origin; return its size for packing.
+	# The box includes each node's effects headroom, so packed rows clear the plumes too.
 	var bb := Rect2()
 	var first := true
 	for iid in local:
-		var r := Rect2((local[iid] as Vector2) - (by_iid[iid]["half"] as Vector2), (by_iid[iid]["half"] as Vector2) * 2.0)
+		var te := float(by_iid[iid].get("top_extra", 0.0))
+		var lm := left_margin if int(col_of[iid]) == 0 else 0.0
+		var r := Rect2((local[iid] as Vector2) - (by_iid[iid]["half"] as Vector2) - Vector2(lm, te),
+			(by_iid[iid]["half"] as Vector2) * 2.0 + Vector2(lm, te))
 		if first:
 			bb = r
 			first = false
@@ -460,6 +956,19 @@ static func _layout_component(ids: Array, by_iid: Dictionary, in_e: Dictionary, 
 	for iid in local:
 		local[iid] = (local[iid] as Vector2) - bb.position
 	return {"local": local, "size": bb.size}
+
+
+## The clear gap a column pair needs for `n` lines: lanes, one chip, a margin each side.
+static func gutter_width(n: int) -> float:
+	if n <= 0:
+		return MIN_GUTTER
+	return maxf(MIN_GUTTER, float(n) * LANE_PITCH + CHIP_W + 2.0 * GUTTER_MARGIN)
+
+
+## The vertical gap above a node stacked under another: the base row gap, or the node's
+## effects headroom plus a margin when that reaches further.
+static func row_gap_before(node: Dictionary) -> float:
+	return maxf(ROW_GAP, float(node.get("top_extra", 0.0)) + GUTTER_MARGIN)
 
 
 ## Reorder one column so tile-mates sit together: groups keyed by tile_id, each group placed
