@@ -32,7 +32,10 @@ func _on_done(result: int, code: int, _headers: PackedStringArray, body: PackedB
 	var text := body.get_string_from_utf8().strip_edges()
 	# With max_redirects = 0 Godot reports RESULT_REDIRECT_LIMIT_REACHED (12) on a
 	# 302, not RESULT_SUCCESS — the response code is the success signal, not the enum.
-	var passed := code == 302 or (result == HTTPRequest.RESULT_SUCCESS and code == 200)
+	# A CLEAN return redirects; a THROWN doPost answers 200 with an HTML error page, so a bare
+	# 200 would have this probe report PASS on exactly the failure it exists to catch.
+	var passed := code == 302 or (result == HTTPRequest.RESULT_SUCCESS and code == 200
+			and not text.begins_with("<"))
 	print("TELEMETRY POC ", "PASS" if passed else "FAIL",
 			": result=", result, " http=", code, " body=", text.left(80))
 	get_tree().quit(0 if passed else 1)
