@@ -169,9 +169,9 @@ func _ready() -> void:
 	_free_unlocks = free_unlocks_earned_by(TurnManager.current_turn, TurnManager.MAX_TURNS)
 	if not TurnManager.turn_advanced.is_connected(_on_turn_advanced):
 		TurnManager.turn_advanced.connect(_on_turn_advanced)
-	_seat_research_shown = MatchState.advisors_unlocked
-	if not MatchState.advisors_changed.is_connected(_on_advisors_changed):
-		MatchState.advisors_changed.connect(_on_advisors_changed)
+	_seat_research_shown = AdvisorState.advisors_unlocked
+	if not AdvisorState.advisors_changed.is_connected(_on_advisors_changed):
+		AdvisorState.advisors_changed.connect(_on_advisors_changed)
 	resized.connect(_on_resized)
 	call_deferred("_sync_close_button_layout")
 
@@ -599,7 +599,7 @@ func _load_unlock_rows() -> void:
 		var row := file.get_csv_line()
 		if row.is_empty() or row[0].strip_edges().is_empty():
 			continue
-		if MatchState.HIDDEN_RESEARCH_IDS.has(_csv_value(row, column_index, "research_node_id")):
+		if ResearchState.HIDDEN_RESEARCH_IDS.has(_csv_value(row, column_index, "research_node_id")):
 			continue
 		_unlock_rows.append({
 			"research_node_id": _csv_value(row, column_index, "research_node_id"),
@@ -629,9 +629,9 @@ func _on_resized() -> void:
 ## Reload the tree only when the seat-research visibility actually flips (the `unlock
 ## advisors` cheat) — not on every hire/fire, which also emit advisors_changed.
 func _on_advisors_changed() -> void:
-	if _seat_research_shown == MatchState.advisors_unlocked:
+	if _seat_research_shown == AdvisorState.advisors_unlocked:
 		return
-	_seat_research_shown = MatchState.advisors_unlocked
+	_seat_research_shown = AdvisorState.advisors_unlocked
 	_load_unlock_rows()
 	queue_redraw()
 
@@ -789,10 +789,10 @@ func _try_choose_free_unlock(position: Vector2) -> bool:
 	var title := _unlock_title_at_position(position)
 	if title.is_empty():
 		return false
-	if not MatchState.is_node_available(title):
+	if not ResearchState.is_node_available(title):
 		return false   # greyed (tier- or prereq-locked) node — can't be free-picked either
 	_free_unlocked_titles[title] = true
-	MatchState.grant_unlock(title, false)  # free choice — unlocked, but no "Unlocked …" dialog
+	ResearchState.grant_unlock(title, false)  # free choice — unlocked, but no "Unlocked …" dialog
 	_free_unlocks = maxi(0, _free_unlocks - 1)
 	_hover_unlock_title = ""
 	if _free_unlocks <= 0:
@@ -924,7 +924,7 @@ func _category_unlocks(category: String) -> Array[Dictionary]:
 	if query != "":
 		var hits: Array[Dictionary] = []
 		for unlock in _unlock_rows:
-			if not MatchState.is_research_visible(unlock):
+			if not ResearchState.is_research_visible(unlock):
 				continue
 			if _search_exact_title != "":
 				if str(unlock.get("title", "")).to_lower() == _search_exact_title.to_lower():
@@ -934,7 +934,7 @@ func _category_unlocks(category: String) -> Array[Dictionary]:
 		return hits
 	var rows: Array[Dictionary] = [_category_root_unlock(category)]
 	for unlock in _unlock_rows:
-		if unlock.get("category", "") == category and MatchState.is_research_visible(unlock):
+		if unlock.get("category", "") == category and ResearchState.is_research_visible(unlock):
 			rows.append(unlock)
 	return rows
 
@@ -1242,7 +1242,7 @@ func _prereq_titles(unlock: Dictionary) -> Array[String]:
 		var value: String = unlock.get(key, "")
 		if value.is_empty():
 			continue
-		var resolved := MatchState.research_title_for_node_id(value)
+		var resolved := ResearchState.research_title_for_node_id(value)
 		titles.append(resolved if resolved != "" else value)
 	return titles
 
@@ -1594,8 +1594,8 @@ func _unlock_brightness(rect: Rect2, bounds: Rect2) -> float:
 func _draw_unlock(unlock: Dictionary, rect: Rect2, brightness: float) -> void:
 	var title: String = unlock["title"]
 	var is_root := bool(unlock.get("is_category_root", false))
-	var free_unlocked := _free_unlocked_titles.has(title) or MatchState.is_unlocked(title)
-	var locked := not free_unlocked and not is_root and not MatchState.is_node_available(title)
+	var free_unlocked := _free_unlocked_titles.has(title) or ResearchState.is_unlocked(title)
+	var locked := not free_unlocked and not is_root and not ResearchState.is_node_available(title)
 	var hovered_for_free := _choosing_free_unlock and _hover_unlock_title == title and not free_unlocked and not is_root and not locked
 	_draw_unlock_shell(rect, brightness, unlock, free_unlocked, hovered_for_free, locked)
 	_draw_unlock_rivets(rect, brightness)
@@ -1676,11 +1676,11 @@ func _requirement_details(unlock: Dictionary) -> String:
 		var category := str(unlock.get("category", ""))
 		var prior_tier_nodes := 0
 		for node in _unlock_rows:
-			if MatchState.is_research_visible(node) and str(node.get("category", "")) == category and _rank_value(node) == previous:
+			if ResearchState.is_research_visible(node) and str(node.get("category", "")) == category and _rank_value(node) == previous:
 				prior_tier_nodes += 1
 		# Use the shared threshold and visible nodes; this line is
 		# what the player reads to know what a tier costs.
-		var required_nodes := mini(MatchState.TIER_UNLOCK_THRESHOLD, prior_tier_nodes)
+		var required_nodes := mini(ResearchState.TIER_UNLOCK_THRESHOLD, prior_tier_nodes)
 		lines.append("Tier %s: unlock %d Tier %s node%s in %s" % [rank, required_nodes, previous, "" if required_nodes == 1 else "s", category])
 	return "\n".join(lines)
 
@@ -1728,11 +1728,11 @@ func _draw_unlock_shell(rect: Rect2, brightness: float, unlock: Dictionary, free
 func _lock_reason(unlock: Dictionary) -> String:
 	var rank := _rank_value(unlock)
 	var category := String(unlock.get("category", ""))
-	if not MatchState.is_tier_available(category, rank):
+	if not ResearchState.is_tier_available(category, rank):
 		var prev_i: int = maxi(0, RANKS.find(rank) - 1)
 		return "Locked — unlock more Tier %s research first" % RANKS[prev_i]
 	for p in _prereq_titles(unlock):
-		if not MatchState.is_unlocked(str(p)):
+		if not ResearchState.is_unlocked(str(p)):
 			return "Requires: %s" % str(p)
 	return "Locked"
 
@@ -1835,7 +1835,7 @@ func _shade_color(color: Color, brightness: float) -> Color:
 	return color
 
 func _condition_text(unlock: Dictionary) -> String:
-	var wording := MatchState.unlock_condition_text(str(unlock.get("title", "")))
+	var wording := ResearchState.unlock_condition_text(str(unlock.get("title", "")))
 	return _display_condition(wording) if wording != "" else "No activity requirement"
 
 func _run_multiple_condition_text(unlock: Dictionary) -> String:

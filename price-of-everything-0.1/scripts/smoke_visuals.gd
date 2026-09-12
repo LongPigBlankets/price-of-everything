@@ -17,14 +17,14 @@ const CanvasBatch := preload("res://scripts/canvas_batch.gd")
 
 const NE := Vector2(0.70710678, -0.70710678)   # +x east, -y north (y is down in 2D)
 
-## One puff every 2 s, each puff living exactly as long (owner spec). Life == period means
+## One puff every 2 s, each puff living exactly as long. Life == period means
 ## precisely one puff is alive per stack at any moment: the next is born as the last dies,
 ## which is what keeps this cheap. The alpha envelope below hides that seam.
 const PERIOD := 2.0
 ## How far a puff travels over its life, world units.
 const DRIFT := 100.0
 
-## Two plumes (owner, 2026-08-27). GREY where the recipe burns something the carbon levy
+## Two plumes. GREY where the recipe burns something the carbon levy
 ## bites; near-white STEAM where it does not. The classification comes from BuildingVisuals,
 ## which reads the same `co2_tax_multiplier` production levies on — so the map and the ledger
 ## cannot disagree about which chimneys are dirty.
@@ -36,15 +36,15 @@ const SMOKE := Color(0.44, 0.435, 0.42)
 const STEAM := Color(0.93, 0.945, 0.95)
 ## Steam is thinner than smoke — it is water, and at the grey's opacity a white plume reads
 ## as a solid cloud sitting on the map rather than as something you can see through.
-## FULLY OPAQUE at birth, gone by the end (owner, 2026-08-27). Because a puff lives exactly
+## FULLY OPAQUE at birth, gone by the end. Because a puff lives exactly
 ## as long as the gap between puffs, the new one appears at full strength the instant the old
 ## one reaches zero -- which reads as a fresh burst out of the stack rather than a seam.
 const PEAK_ALPHA := 1.0
-## Steam is left at full strength too, per the same instruction. Drop this if white vapour
+## Steam is left at full strength too. Drop this if white vapour
 ## ends up reading heavier than the grey.
 const STEAM_ALPHA_SCALE := 1.0
 
-## THE PUFF SILHOUETTE, traced from the owner's own drawing (`puff smoke.PNG`,
+## THE PUFF SILHOUETTE, traced from a hand drawing (`puff smoke.PNG`,
 ## `tools/trace_puff_smoke.py`). The drawing carries two thin stem lines below the cloud that
 ## are not part of the shape; a morphological OPENING removes anything narrower than its
 ## kernel, which takes the stems and leaves the body untouched. What is left is sampled by
@@ -106,12 +106,11 @@ static var PUFF_SHAPE := PackedVector2Array([
 ## the size of its chimney would be a speck lost against that journey. At these numbers a
 ## furnace (r 3.2) ends about 29 u across and a power plant (r 4.6) about 41 — a plume that
 ## reads as weather over the building rather than a dot beside it.
-## Raised 25% twice (owner, 2026-08-27): 1.4 / 9.0 -> 1.75 / 11.25 -> these.
 const START_SCALE := 2.19
 const END_SCALE := 14.06
 ## Below this many pixels across, a puff is a smudge nobody can read and every one of its
 ## six discs still costs a draw call — so the whole layer stands down when zoomed out.
-## A puff rolls a QUARTER TURN over its life (owner, 2026-08-27), left or right depending on
+## A puff rolls a QUARTER TURN over its life, left or right depending on
 ## the stack's own seed -- so neighbouring chimneys do not all wind the same way.
 const SPIN := PI * 0.5
 const MIN_PUFF_PX := 3.0

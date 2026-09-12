@@ -33,7 +33,7 @@ func install(tile: String, kind: String) -> void:
 
 func add_recipe(recipe: String, tile: String, destination: String = "") -> String:
 	var rec := Catalog.get_recipe(recipe)
-	var iid := MatchState.add_building(str(rec.building_id), recipe, tile)
+	var iid := BuildingState.add_building(str(rec.building_id), recipe, tile)
 	if destination != "":
 		for good: Dictionary in rec.outputs:
 			MatchState.set_output_stockpile_destination(iid, destination, str(good.good_id))
@@ -51,11 +51,11 @@ func run_stage(label: String, milestone: int) -> Dictionary:
 	MatchState.seed_deposits(_map)
 	TurnManager.current_turn = milestone
 	MatchState.money = 100000.0
-	MatchState.debug_turn_logs_enabled = false
-	MatchState._unlock_defs.clear()
+	UiPrefs.debug_turn_logs_enabled = false
+	ResearchState._unlock_defs.clear()
 	DecisionState.enabled = false
 	# Keep shipped start bonuses, but no unrecorded advisor or research choices.
-	MatchState.seaport_auto_subscribe = false
+	TransportState.seaport_auto_subscribe = false
 	for tile: String in ["tile_5_10", "tile_4_10", "tile_6_8", "tile_7_10"]:
 		install(tile, "cables")
 	install("tile_5_10", "pipes")
@@ -68,7 +68,7 @@ func run_stage(label: String, milestone: int) -> Dictionary:
 	if milestone >= 32:
 		add_recipe("r_033", "tile_5_10")
 	if milestone >= 38:
-		MatchState.remove_building("inst_b_001_0003e9")
+		BuildingState.remove_building("inst_b_001_0003e9")
 		add_recipe("r_009", "tile_5_10")
 	if milestone >= 55:
 		add_recipe("r_203", "tile_4_10")
@@ -84,8 +84,8 @@ func run_stage(label: String, milestone: int) -> Dictionary:
 	if milestone >= 92:
 		add_recipe("r_059", "tile_4_10")
 	# Route local intermediates to tile inventory; surplus and finished goods go to market.
-	for iid: String in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[iid]
+	for iid: String in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[iid]
 		if b.owner == MatchState.LOCAL_PLAYER and str(b.recipe_id) == "r_005":
 			MatchState.set_output_stockpile_destination(iid, "tile_5_10", "g_004")
 	MatchState.enable_sell_surplus("tile_5_10")
@@ -101,16 +101,16 @@ func run_stage(label: String, milestone: int) -> Dictionary:
 		row["running"] = Production.last_turn_run.duplicate()
 		row["blocked"] = Production.blocked_reason_by_building.duplicate(true)
 		if index >= 10:
-			assert(MatchState.advisor_seats.is_empty(), "Controlled stages must not acquire advisors")
-			for iid: String in MatchState.buildings:
-				var b: Dictionary = MatchState.buildings[iid]
+			assert(AdvisorState.advisor_seats.is_empty(), "Controlled stages must not acquire advisors")
+			for iid: String in BuildingState.buildings:
+				var b: Dictionary = BuildingState.buildings[iid]
 				assert(bool(Production.last_turn_run.get(iid, false)), "Every staged building must run in every sampled turn: " + str(b))
 		rows.append(row)
 	var net: float = 0.0
 	for row: Dictionary in rows.slice(10):
 		net += float(row.reported_net) / 10.0
 	print("[buildout audit] ", label, " average=", net)
-	var result: Dictionary = {"stage": label, "milestone": milestone, "net": net, "rows": rows, "buildings": MatchState.buildings.duplicate(true)}
+	var result: Dictionary = {"stage": label, "milestone": milestone, "net": net, "rows": rows, "buildings": BuildingState.buildings.duplicate(true)}
 	_map.queue_free()
 	await get_tree().process_frame
 	return result

@@ -25,12 +25,16 @@ DECIDE (player acts) ──commit_turn()──▶ PROCESS → SEND → AI → NA
   state; this was a real corruption bug, fixed 2026-07).
 - **Listener order is explicit**: `TurnManager._wire_sim_listeners()` connects
   `phase_started` in this fixed order — do not add sim listeners any other way:
-  1. `MatchState._on_survey_phase_started` — PROCESS: labour-pressure tick, survey
-     ticks, battery fills (firming capacity must exist before production);
-     NARRATIVE: `_check_unlock_conditions()` (after production settled).
-  2. `Production._on_phase_started` — PROCESS: the big `_process_production()`.
-  3. `EventScheduler._on_phase_started` — NARRATIVE: deterministic event tick.
-  4. `Modifiers._on_phase_started` — NARRATIVE: prune expired modifiers.
+  1. `LabourState._on_phase_started` — PROCESS: labour output-pressure tick.
+  2. `MatchState._on_survey_phase_started` — PROCESS: survey ticks, battery fills
+     (firming capacity must exist before production).
+  3. `ResearchState._on_phase_started` — NARRATIVE: profitable-run streaks, then
+     `_refresh_research_progress()` / `_check_unlock_conditions()` (after production settled).
+  4. `Production._on_phase_started` — PROCESS: the big `_process_production()` (which also
+     calls `LabourState.tick_workforce_policies` and
+     `BuildingWorks.tick_upgrades/tick_retrofits/tick_demolish` at their fixed points).
+  5. `EventScheduler._on_phase_started` — NARRATIVE: deterministic event tick.
+  6. `Modifiers._on_phase_started` — NARRATIVE: prune expired modifiers.
 - Tests/tools may drive phases by emitting `TurnManager.phase_started` directly —
   that's a supported contract (see `tests/test_runner.gd`, `tools/ledger_shot.gd`).
 

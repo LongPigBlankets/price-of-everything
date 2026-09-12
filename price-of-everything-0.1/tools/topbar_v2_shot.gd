@@ -17,9 +17,9 @@ func _ready() -> void:
 	var bar: Control = game.get_node("UILayer/HUD/TopBar")
 
 	# Seat a council + take a loan so every module has content.
-	MatchState.advisor_seats = {"cfo": "vera", "coo": "gerald", "government_affairs": "rufus"}
-	MatchState.advisor_loyalty = {"vera": 7.2, "gerald": 1.5, "rufus": -5.0}
-	MatchState.advisors_changed.emit()
+	AdvisorState.advisor_seats = {"cfo": "vera", "coo": "gerald", "government_affairs": "rufus"}
+	AdvisorState.advisor_loyalty = {"vera": 7.2, "gerald": 1.5, "rufus": -5.0}
+	AdvisorState.advisors_changed.emit()
 	LoanState.take_loan(300.0)
 	EventScheduler.emit_event({
 		"kind": "research_unlocked", "severity": "info",

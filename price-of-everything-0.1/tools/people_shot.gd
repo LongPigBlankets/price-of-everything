@@ -9,15 +9,15 @@ func _ready() -> void:
 	MatchState.reset()
 	TurnManager.current_turn = 20
 	# A few player-owned buildings so the labour indicator has real numbers.
-	MatchState.add_building("b_007", "r_009", "tile_5_10", MatchState.LOCAL_PLAYER, "shot_a1")
-	MatchState.add_building("b_009", "", "tile_5_10", MatchState.LOCAL_PLAYER, "shot_a2")
-	MatchState.add_building("b_001", "r_001", "tile_6_8", MatchState.LOCAL_PLAYER, "shot_a3")
-	MatchState.add_building("b_010", "", "tile_5_10", MatchState.LOCAL_PLAYER, "shot_a4")
+	BuildingState.add_building("b_007", "r_009", "tile_5_10", MatchState.LOCAL_PLAYER, "shot_a1")
+	BuildingState.add_building("b_009", "", "tile_5_10", MatchState.LOCAL_PLAYER, "shot_a2")
+	BuildingState.add_building("b_001", "r_001", "tile_6_8", MatchState.LOCAL_PLAYER, "shot_a3")
+	BuildingState.add_building("b_010", "", "tile_5_10", MatchState.LOCAL_PLAYER, "shot_a4")
 	# Slider up + a creeping pensions policy so the trend arrow lights up.
-	MatchState.set_labour_multiplier(1.2)
-	MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_GENEROUS_PENSIONS, true)
+	LabourState.set_labour_multiplier(1.2)
+	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_GENEROUS_PENSIONS, true)
 	for i in 12:
-		MatchState.tick_workforce_policies()
+		LabourState.tick_workforce_policies()
 
 	var layer := CanvasLayer.new()
 	add_child(layer)

@@ -97,7 +97,7 @@ func freight_per_tile(good_id: String, mode: String, level: int) -> float:
 func port_ad_valorem_per_unit(good_id: String) -> Dictionary:
 	var base := EconomyConfig.seaport_ad_valorem_rate(int(TurnManager.current_turn))
 	var rate: float = maxf(0.0, Modifiers.apply("port_ad_valorem_fee", "port", base))
-	rate *= MatchState.sea_shipping_growth_factor()
+	rate *= TransportState.sea_shipping_growth_factor()
 	return {"rate": rate, "cost": rate * MarketState.get_price(good_id)}
 
 
@@ -120,7 +120,7 @@ func transport_cost_for_route(good_id: String, qty: int, route_data: Dictionary,
 	# remaining capacity pay the surcharge (+100% over cap, +200% over cap + L1 buffer).
 	# The units that still fit ride at the base rate, so upgrading infra pays back by
 	# moving quantity out of the penalised band rather than by discounting the whole haul.
-	var cong: Dictionary = MatchState.route_congestion(route_data)
+	var cong: Dictionary = TransportState.route_congestion(route_data)
 	var tier: int = int(cong.get("tier", 0))
 	if tier > 0 and qty > 0:
 		var mult: float = 2.0 if tier == 1 else 3.0
@@ -139,9 +139,9 @@ func transport_cost_for_route(good_id: String, qty: int, route_data: Dictionary,
 ## the gift drains every time something is merely looked at.
 func land_cost_after_credit(good_id: String, qty: int, route_data: Dictionary, commit: bool) -> float:
 	var gross := transport_cost_for_route(good_id, qty, route_data)
-	if gross <= 0.0 or qty <= 0 or MatchState.freight_credit_units <= 0:
+	if gross <= 0.0 or qty <= 0 or TransportState.freight_credit_units <= 0:
 		return gross
-	var covered := MatchState.consume_freight_credit(qty) if commit else MatchState.peek_freight_credit(qty)
+	var covered := TransportState.consume_freight_credit(qty) if commit else TransportState.peek_freight_credit(qty)
 	if covered <= 0:
 		return gross
 	if covered >= qty:
@@ -273,7 +273,7 @@ func quote_market_buy(dest_tile: String, good_id: String, qty: int, covered: boo
 	route_breakdown = scale_transport_breakdown(route_breakdown, route_transport)
 	# Sea freight replaces the old standing subscription charge. It is deliberately
 	# quoted without mutating port usage; MatchState commits it only after the buy clears funds.
-	var sea_transport := MatchState.preview_sea_shipping(port, good_id, qty)
+	var sea_transport := TransportState.preview_sea_shipping(port, good_id, qty)
 	var sea_cost := float(sea_transport.get("total", 0.0))
 	var transport := route_transport + sea_cost
 	return {

@@ -113,8 +113,8 @@ func clear_hover_good() -> void:
 
 func _hover_tile_production_per_turn(tile_id: String, good_id: String) -> int:
 	var total := 0
-	for iid in MatchState.tile_buildings.get(tile_id, []):
-		var b: Dictionary = MatchState.get_building(str(iid))
+	for iid in BuildingState.tile_buildings.get(tile_id, []):
+		var b: Dictionary = BuildingState.get_building(str(iid))
 		var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
 		total += Catalog.recipe_output_qty(recipe, good_id)
 	return total
@@ -369,7 +369,7 @@ func _draw_move_preview() -> void:
 	var pos := _tile_pos(hovered)
 	if pos == Vector2.INF:
 		return
-	var preview: Dictionary = MatchState.preview_move(_move_preview_source, hovered, _move_preview_goods)
+	var preview: Dictionary = TransportState.preview_move(_move_preview_source, hovered, _move_preview_goods)
 	var turns := int(preview.get("turns", 0))
 	var text := "£%.2f/turn · %d turn%s" % [float(preview.get("per_turn", 0.0)), turns, "" if turns == 1 else "s"]
 	var tile_w: float = terrain_layer.tile_set.tile_size.x
@@ -416,7 +416,7 @@ func _snapshot_shipments() -> void:
 	_anim_snapshot.clear()
 	var colors := _route_color_map()
 	var by_key: Dictionary = {}
-	for s in MatchState.get_pending_transport_shipments():
+	for s in TransportState.get_pending_transport_shipments():
 		var path: Array = s.get("path", [])
 		if path.is_empty():
 			continue
@@ -463,7 +463,7 @@ func _route_color_map() -> Dictionary:
 func _rebuild_routes() -> void:
 	_routes.clear()
 	var by_route: Dictionary = {}
-	for s in MatchState.get_pending_transport_shipments():
+	for s in TransportState.get_pending_transport_shipments():
 		var src := str(s.get("source_tile", ""))
 		var dst := str(s.get("destination_tile", ""))
 		if src == "" or dst == "":
@@ -661,7 +661,7 @@ func _draw_route_line(r: Dictionary, seg_offsets: Dictionary) -> void:
 func _build_shipment_tags(route_colors: Dictionary) -> void:
 	_tag_hits.clear()
 	var tsz: float = terrain_layer.tile_set.tile_size.x
-	for s in MatchState.get_pending_transport_shipments():
+	for s in TransportState.get_pending_transport_shipments():
 		var src := str(s.get("source_tile", ""))
 		var dst := str(s.get("destination_tile", ""))
 		var path: Array = s.get("path", [])

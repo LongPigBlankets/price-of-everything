@@ -69,7 +69,7 @@ func _report(tid: String) -> void:
 	print("[AUTO] %s lots=%d cell=%s road_edges=%d buildings=%d" % [tid,
 		(tmpl.get("lots", []) as Array).size(), str(tmpl.get("cell", Vector2.ZERO)),
 		RoadNetwork.instance().edges_on_tile(coord).size(),
-		MatchState.get_buildings_on_tile(tid).size()])
+		BuildingState.get_buildings_on_tile(tid).size()])
 
 func _tile_pos(tile_id: String) -> Vector2:
 	var coord: Vector2i = _terrain.id_to_coord(tile_id)

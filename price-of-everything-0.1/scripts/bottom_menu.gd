@@ -113,8 +113,8 @@ func _ready() -> void:
 	construct_panel_v2 = load("res://scripts/construct_panel_v2.gd").new()
 	construct_panel.get_parent().add_child(construct_panel_v2)
 	construct_panel_v2.hide()
-	MatchState.construct_panel_v2_changed.connect(_on_construct_panel_v2_changed)
-	MatchState.empire_button_icon_changed.connect(_on_empire_button_icon_changed)
+	UiPrefs.construct_panel_v2_changed.connect(_on_construct_panel_v2_changed)
+	UiPrefs.empire_button_icon_changed.connect(_on_empire_button_icon_changed)
 	_apply_menu_icons()
 	%ConstructButton.pressed.connect(_on_construct_pressed)
 	%ResourcesButton.pressed.connect(_on_resources_pressed)
@@ -131,7 +131,6 @@ func _ready() -> void:
 	take_loan_dialog.loan_confirmed.connect(_on_loan_confirmed)
 	take_loan_dialog.hide()
 
-	# All panels start hidden
 	construct_panel.hide()
 	construct_panel_v2.hide()
 	resource_panel.hide()
@@ -255,7 +254,7 @@ func _apply_menu_icons() -> void:
 		_apply_alt_button_style(button_name)
 
 func _icon_key_for_button(button_name: String) -> String:
-	if button_name == "EmpireButton" and MatchState.use_empire_button_badge:
+	if button_name == "EmpireButton" and UiPrefs.use_empire_button_badge:
 		return EMPIRE_BUTTON_BADGE_ICON
 	return ALT_MENU_ICONS.get(button_name, "")
 
@@ -278,9 +277,8 @@ func _apply_alt_button_style(button_name: String) -> void:
 		return
 	var bg := Color(ALT_COLORS[button_name][0])
 	var fg := Color(ALT_COLORS[button_name][1])
-	# Every button takes the same path now — no per-button inset, no clipping. The Empire
-	# artwork used to need both because it was drawn as child TextureRects rather than as the
-	# button's icon; its PNG now carries the shared disc and emboss like all the others.
+	# Every button takes the same path — no per-button inset, no clipping: each PNG carries
+	# the shared disc and emboss.
 	button.add_theme_stylebox_override("normal", _make_alt_button_style(fg, bg))
 	button.add_theme_stylebox_override("hover", _make_alt_button_style(fg, bg))
 	button.add_theme_stylebox_override("pressed", _make_alt_button_style(fg, bg.darkened(0.08)))
@@ -457,7 +455,7 @@ func _on_construct_pressed() -> void:
 		_set_panel_visible(panel, true)
 
 func _active_construct_panel() -> PanelContainer:
-	if MatchState.use_construct_panel_v2 and is_instance_valid(construct_panel_v2):
+	if UiPrefs.use_construct_panel_v2 and is_instance_valid(construct_panel_v2):
 		return construct_panel_v2
 	return construct_panel
 
@@ -592,7 +590,7 @@ func _on_victory_widget_clicked() -> void:
 
 ## Does crossing the win bar END the run, or only bank the win?
 ##
-## The campaign ends on the win (owner 2026-07-11). The DEMO does not: its bar is flat at
+## The campaign ends on the win. The DEMO does not: its bar is flat at
 ## 2,500 from turn 1, so a good player clears it around turn 40 — before the election, the
 ## carbon levy and the green subsidy, which are the whole reason the demo exists. Ending
 ## there would show a player none of it. The demo always plays its 100 turns, and the

@@ -1130,8 +1130,8 @@ func _forest_discs_in(nav: NavGrid, c0: Vector2i, lw: int, lh: int) -> Array:
 ## Order-independent mutation key over the forest instance set.
 func _forest_key() -> int:
 	var key := 1
-	for instance_id in MatchState.buildings:
-		if ForestFootprint.is_forest(str(MatchState.buildings[instance_id].get("building_id", ""))):
+	for instance_id in BuildingState.buildings:
+		if ForestFootprint.is_forest(str(BuildingState.buildings[instance_id].get("building_id", ""))):
 			key = (key + hash(instance_id)) & 0x7FFFFFFF
 	return key
 
@@ -1145,8 +1145,8 @@ func _ensure_forest_discs(terrain: HexMap) -> void:
 	# disc lands on the same clumped centre the visual draws.
 	var centers: Array = []
 	var forests: Array = []   # [instance_id, tile_id, coord, center]
-	for instance_id in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[instance_id]
+	for instance_id in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[instance_id]
 		if not ForestFootprint.is_forest(str(b.get("building_id", ""))):
 			continue
 		var tile_id := str(b.get("tile_id", ""))

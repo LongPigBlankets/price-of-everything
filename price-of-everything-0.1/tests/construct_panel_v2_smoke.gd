@@ -7,7 +7,7 @@ func _ready() -> void:
 	for _i in 8:
 		await get_tree().process_frame
 
-	assert(MatchState.use_construct_panel_v2, "Construct Panel V2 should be the default")
+	assert(UiPrefs.use_construct_panel_v2, "Construct Panel V2 should be the default")
 	var top_bar := get_tree().root.find_child("TopBar", true, false)
 	assert(top_bar != null, "Top bar was not instantiated")
 	top_bar.call("_open_fly", "treasury")
@@ -99,11 +99,11 @@ func _ready() -> void:
 	panel.call("_on_settings_pressed")
 	await get_tree().process_frame
 	assert(str((panel.get("_header_title") as Label).text) == "CONSTRUCT SETTINGS", "Settings gear opens construct settings")
-	MatchState.set_construct_cost_display("list")
+	UiPrefs.set_construct_cost_display("list")
 	MatchState.set_construct_start_half_capacity(true)
 	MatchState.set_construct_material_source("any_tile")
 	MatchState.set_construct_output_destination("same_tile")
-	assert(MatchState.construct_cost_display == "list" and MatchState.construct_start_half_capacity,
+	assert(UiPrefs.construct_cost_display == "list" and MatchState.construct_start_half_capacity,
 		"Construct settings update the match defaults")
 	var startup_project := Construction.start_on_tile("b_001", "r_001", "tile_construct_setting_probe")
 	var startup_data: Dictionary = Construction.construction_projects.get(startup_project, {})
@@ -112,7 +112,7 @@ func _ready() -> void:
 	assert(str(startup_data.get("output_destination", "")) == "same_tile",
 		"New construction captures the output destination default")
 	Construction.cancel(startup_project)
-	MatchState.set_construct_cost_display("grid")
+	UiPrefs.set_construct_cost_display("grid")
 	MatchState.set_construct_start_half_capacity(false)
 	MatchState.set_construct_material_source("ask")
 	MatchState.set_construct_output_destination("market")

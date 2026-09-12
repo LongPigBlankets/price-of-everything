@@ -12,12 +12,11 @@ extends Control
 const GoodIcons := preload("res://scripts/good_icons.gd")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
 
-## Each material is its OWN cream chip at 80 px with the count in bold underneath (owner,
-## 2026-08-28), instead of four icons sharing one framed strip with a black corner badge.
+## Each material is its OWN cream chip at 80 px with the count in bold underneath.
 const CELL_SIZE := 80.0
 ## Ordinary copy at 14; the figures stay a step larger, so a row still reads label-then-number
-## at a glance. Panel-scoped overrides rather than a DS change -- the owner sized this one
-## dialog by eye, and the variations are shared with every other panel.
+## at a glance. Panel-scoped overrides rather than a DS change -- this one dialog is sized
+## by eye, and the variations are shared with every other panel.
 const TEXT_PX := 14
 const NUMBER_PX := 17
 
@@ -35,15 +34,15 @@ func _ready() -> void:
 	_build_shell()
 	visible = false
 	# Keep the dialog live while it's open as the upgrade is queued, advances, and completes.
-	MatchState.building_upgrade_progress.connect(_on_upgrade_signal)
-	MatchState.building_upgraded.connect(_on_upgrade_signal)
-	MatchState.building_upgrade_cancelled.connect(_on_upgrade_signal)
+	BuildingWorks.building_upgrade_progress.connect(_on_upgrade_signal)
+	BuildingWorks.building_upgraded.connect(_on_upgrade_signal)
+	BuildingWorks.building_upgrade_cancelled.connect(_on_upgrade_signal)
 
 
 # Open for a building instance, rebuilding the card from a fresh preview.
 func open(instance_id: String) -> void:
 	_instance_id = instance_id
-	_preview = MatchState.preview_upgrade(instance_id)
+	_preview = BuildingWorks.preview_upgrade(instance_id)
 	_rebuild()
 	visible = true
 	move_to_front()
@@ -57,7 +56,7 @@ func close() -> void:
 # A turn advanced this building's upgrade — refresh the open card so the countdown/state is live.
 func _on_upgrade_signal(instance_id: String, _arg = 0) -> void:
 	if visible and instance_id == _instance_id:
-		_preview = MatchState.preview_upgrade(_instance_id)
+		_preview = BuildingWorks.preview_upgrade(_instance_id)
 		_rebuild()
 
 
@@ -140,7 +139,7 @@ func _rebuild() -> void:
 		var status := str(_preview.get("pending_status", ""))
 		var left := int(_preview.get("pending_turns_left", 0))
 		var msg := "Upgrade in progress — %d turn%s left." % [left, "" if left == 1 else "s"]
-		if status == MatchState.UPGRADE_STATUS_AWAITING:
+		if status == BuildingWorks.UPGRADE_STATUS_AWAITING:
 			msg = "Waiting on materials to arrive, then %d turn%s to upgrade." % [left, "" if left == 1 else "s"]
 		_content.add_child(_sep())
 		_content.add_child(_dlabel(msg, "Numeric", DS.PALETTE.OK))
@@ -200,7 +199,7 @@ func _rebuild() -> void:
 	_content.add_child(_make_action_buttons())
 
 
-## The action row. "Use materials on tile" is ALWAYS present (owner, 2026-08-28) rather than
+## The action row. "Use materials on tile" is ALWAYS present rather than
 ## swapping in and out with the market button: a CTA that appears only when it would work
 ## tells the player nothing about why it is not there. It is enabled exactly when every good
 ## in the kit is on the tile AND unclaimed by another awaiting job -- see
@@ -242,16 +241,16 @@ func _make_action_buttons() -> Control:
 
 func _cancel() -> void:
 	# MatchState emits building_upgrade_cancelled, which the detail panel listens for to refresh.
-	if MatchState.cancel_upgrade(_instance_id):
+	if BuildingWorks.cancel_upgrade(_instance_id):
 		_toast("Upgrade cancelled — materials returned to the tile.", "show_caution")
 	close()
 
 
 func _commit(mode: String) -> void:
-	var result: Dictionary = MatchState.start_upgrade(_instance_id, mode)
+	var result: Dictionary = BuildingWorks.start_upgrade(_instance_id, mode)
 	if bool(result.get("ok", false)):
 		var status := str(result.get("status", ""))
-		if status == MatchState.UPGRADE_STATUS_AWAITING:
+		if status == BuildingWorks.UPGRADE_STATUS_AWAITING:
 			_toast("Upgrade queued — sourcing materials, then %d turns." % int(_preview.get("duration", 3)), "show_caution")
 		else:
 			_toast("Upgrade started — ready in %d turns." % int(_preview.get("duration", 3)), "show_caution")
@@ -302,7 +301,7 @@ func _delta_row(label_text: String, cur: float, new_v: float, color: Color, deci
 	row.add_theme_constant_override("separation", DS.SP.SM)
 	# The label stays TEXT even on the bold summary row: green-on-navy for a heading is the
 	# contrast rule's grey-on-navy in another hue, and the colour belongs to the number that
-	# earned it (owner, 2026-08-28).
+	# earned it.
 	var name := _dlabel(label_text, "Numeric" if bold else "Body", DS.PALETTE.TEXT)
 	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(name)
@@ -362,7 +361,7 @@ func _dlabel(text: String, variation: String = "Body", color = null) -> Label:
 	if color != null:
 		l.add_theme_color_override("font_color", color)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	# Sizes are set HERE rather than in DS: the owner sized this one dialog by eye, and the
+	# Sizes are set HERE rather than in DS: this one dialog is sized by eye, and the
 	# variations are shared with every other panel. Titles and section heads keep theirs.
 	if variation == "Body" or variation == "Caption":
 		l.add_theme_font_size_override("font_size", TEXT_PX)

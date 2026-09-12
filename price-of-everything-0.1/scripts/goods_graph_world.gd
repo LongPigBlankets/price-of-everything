@@ -14,7 +14,7 @@ const EffectEmblem := preload("res://scripts/effect_emblem.gd")
 
 signal research_requested(title: String)
 
-signal good_selected(internal_name: String)   # phase 2 hook (focus / recipe-swap mode)
+signal good_selected(internal_name: String)   # focus / recipe-swap mode
 
 const LaneOrder := preload("res://scripts/lane_order.gd")
 const GoodsFlowGraph := preload("res://scripts/goods_flow_graph.gd")
@@ -28,7 +28,7 @@ const _MUTED := Color(0.384, 0.471, 0.561, 1.0)          # tier headers (#62788f
 const _CARD_BG := Color(0.055, 0.125, 0.204, 0.92)
 const _CARD_BG_GATED := Color(0.045, 0.095, 0.15, 0.85)
 const _PILL_NAVY := Color(0.0, 0.119856, 0.243095)
-# Recipe-route palette (owner 2026-07-18): yellow = the base recipe's inputs, then
+# Recipe-route palette: yellow = the base recipe's inputs, then
 # blue/green/purple for up to three alternate routes; research-gated routes dash.
 const _ROUTE_COLORS: Array[Color] = [
 	Color("#f2c14e"),   # 0 · base
@@ -36,21 +36,16 @@ const _ROUTE_COLORS: Array[Color] = [
 	Color("#7ec98a"),   # 2 · second alternate
 	Color("#b48ad9"),   # 3 · third alternate
 ]
-# Resting/unrelated web alpha (owner 2026-07-21): the always-on web at 0.6 alpha
-# was the screen's dominant noise, and nobody traces a line through 638 crossings
-# without selecting anyway. At rest the web is a faint ghost (0.0 = none at all);
-# hover lights a card's direct edges, click lights the full chain.
 ## Resting edges are NOT DRAWN. The web at rest is a table of goods, and 600-odd ghost
 ## lines behind it read as noise rather than as information nobody asked for yet. Select,
 ## click, hover or search a good and its chain lights up — which is the moment the lines
 ## are an answer to something. 0.0 takes the early-out in _draw_edge; the lit and hovered
 ## branches above it are untouched.
 ##
-## This is also what pays for the tighter columns in goods_flow_graph: the old 200u gap
-## existed so that a full web of risers stayed readable, and a full web is no longer drawn.
+## This is also what allows the tighter columns in goods_flow_graph: a full web of risers
+## is never drawn, so the column gap need not keep one readable.
 const _REST_GHOST_ALPHA := 0.0
-# Legacy resting web, retained behind the `swap goods_graph` cheat for screenshots
-# and A/B comparison with the pre-ghost implementation.
+# Legacy always-on resting web (_legacy_presentation), kept for A/B comparison.
 const _LEGACY_REST_ALPHA_BASE := 0.60
 const _LEGACY_REST_ALPHA_ALT := 0.48
 const _LEGACY_EDGE_DIM := Color(0.995, 0.931, 0.763, 0.08)
@@ -73,7 +68,7 @@ const _PLATE_LT := Color("#b3bcc6")
 const _PLATE_DK := Color("#5b636e")
 const _PLATE_TEXT := Color(0.035, 0.085, 0.15, 1.0)       # embossed navy
 const _HEADER_GAP := 52.0                                 # clearance between plate and first card row
-const _PLATE_H := 124.0                                   # tier-header plate at 2x (owner 2026-07-21)
+const _PLATE_H := 124.0                                   # tier-header plate at 2x
 
 var _nodes: Array = []
 var _by_id: Dictionary = {}
@@ -93,27 +88,27 @@ var _selected_id := ""
 var _upstream: Dictionary = {}     # internal -> true, transitive input cone of the selection
 var _feeds: Dictionary = {}        # internal -> true, direct consumers of the selection
 var _legacy_presentation := false  # session-only; false keeps the current presentation default
-## LIVE unlock state (owner 2026-09-10): a good whose every producer is research-gated in the
+## LIVE unlock state: a good whose every producer is research-gated in the
 ## catalog is UNLOCKED once any of those researches is done — its card drops the lock (an open
 ## padlock marks it), its edges draw solid. Recomputed on every open (set_graph).
 var _unlocked: Dictionary = {}     # internal -> true
-## Non-base recipes the player's estate is RUNNING for the selected good (owner 2026-09-10):
+## Non-base recipes the player's estate is RUNNING for the selected good:
 ## [{recipe, count}] — shown on focus as blue in-use edges from that recipe's inputs and a
 ## caption on the selected card.
 var _in_use: Array = []
 
-# --- alternate-recipes focus grid (owner UX 2026-07-19) ------------------------------
+# --- alternate-recipes focus grid ----------------------------------------------------
 # WEB shows the base chain; selecting a good expands its card with its supported
 # transport infrastructure plus two actions (alternate recipes -> GRID of per-recipe
 # minigraph islands, Encyclopedia -> deep-link). GRID keeps the same pan/zoom camera.
 enum _Mode { WEB, GRID, FOCUS }
 var _mode := _Mode.WEB
 
-# --- focus reorg (owner UX 2026-07-21) ----------------------------------------------
+# --- focus reorg --------------------------------------------------------------------
 # Clicking a good REORGANISES the view around it: the selection + its upstream cone
 # + direct feeds tween from their web positions into a compact relative-depth
 # arrangement; everything else fades out in place. Click empty space to tween back.
-# Focus-view routing (owner 2026-07-22): no run may cross a card, passing runs
+# Focus-view routing: no run may cross a card, passing runs
 # keep >= _F_CLEAR from cards, and no two edges share a collinear run — ports
 # fan along card edges, verticals take per-channel lanes, column-skipping edges
 # cross through card-free corridors.
@@ -160,7 +155,7 @@ func _ready() -> void:
 	_back_btn.add_theme_font_size_override("font_size", 20)
 	# Top-LEFT: the top-centre slot belongs to the briefing notch. This control's
 	# rect starts under HUDContent (screen y ~36) while the top bar is ~78 px tall,
-	# so clear the remaining ~42 px of bar plus the owner's 20 px of air.
+	# so clear the remaining ~42 px of bar plus 20 px of air.
 	_back_btn.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	_back_btn.offset_left = 24.0
 	_back_btn.offset_right = 304.0
@@ -235,12 +230,9 @@ func set_graph(graph: Dictionary) -> void:
 	_feeds.clear()
 	_mode = _Mode.WEB
 	# The focus reorg is an ANIMATED state (_focus_t) that is separate from _mode, so
-	# resetting _mode alone is not enough. Reopening the view after closing it while
-	# focused used to leave _focus_t at 1: every card drew at its focus position while
-	# _reset_view framed the camera on the WEB bbox, so the graph appeared far off to
-	# one side and nothing was clickable. _focus_target was stale too, so _process saw
-	# no delta to animate and never ran its _fpos cleanup — it stayed stuck until a
-	# search re-entered focus and re-synced the two.
+	# resetting _mode alone is not enough: a stale _focus_t of 1 draws every card at its
+	# focus position while _reset_view frames the camera on the WEB bbox, and a stale
+	# _focus_target gives _process no delta to animate, so its _fpos cleanup never runs.
 	_focus_t = 0.0
 	_focus_target = 0.0
 	_fpos.clear()
@@ -278,8 +270,8 @@ func _recipe_unlocked(recipe: Dictionary) -> bool:
 	var raw := str(recipe.get("tech_unlock_req", ""))
 	if raw == "":
 		return true
-	var title := MatchState.research_title_for_node_id(raw)
-	return MatchState.is_unlocked(title if title != "" else raw)
+	var title := ResearchState.research_title_for_node_id(raw)
+	return ResearchState.is_unlocked(title if title != "" else raw)
 
 
 ## Locked as the player sees it: gated in the catalog and not yet unlocked by research.
@@ -297,8 +289,8 @@ func _in_use_alternates(id: String) -> Array:
 	var base_rid := str(node.get("recipe_id", ""))
 	var counts: Dictionary = {}
 	var recipes: Dictionary = {}
-	for b in MatchState.buildings.values():
-		if not MatchState.is_player_owned(b) or bool(b.get("under_construction", false)):
+	for b in BuildingState.buildings.values():
+		if not BuildingState.is_player_owned(b) or bool(b.get("under_construction", false)):
 			continue
 		var rid := str(b.get("recipe_id", ""))
 		if rid == "" or rid == base_rid:
@@ -335,7 +327,7 @@ func building_screen_points() -> PackedVector2Array:
 
 
 ## The zoom at which the whole graph (whichever dimension binds) fits the viewport —
-## this is also the zoom-OUT cap (owner: "can't zoom out more than that").
+## this is also the zoom-OUT cap.
 func _fit_zoom() -> float:
 	var bb := _layout_bbox()
 	var view := get_rect().size
@@ -639,7 +631,7 @@ func _build_focus_layout() -> void:
 		_focus_edges.append({"from": ef, "to": et, "route": route,
 			"gated": bool(e.get("route_gated", false)) and _gated_now(et)})
 	# The estate's in-use alternate(s): their inputs join the chart one column left of the
-	# selection and feed it with blue IN-USE edges (owner 2026-09-10).
+	# selection and feed it with blue IN-USE edges.
 	var in_use_inputs: Dictionary = {}
 	for iu in _in_use:
 		for inp in ((iu as Dictionary)["recipe"] as Dictionary).get("inputs", []):
@@ -648,7 +640,7 @@ func _build_focus_layout() -> void:
 				continue
 			in_use_inputs[src] = true
 			_focus_edges.append({"from": src, "to": sel, "route": 1, "gated": false, "in_use": true})
-	# 2 · Focus columns by TIER BAND (owner 2026-07-22): same-band members share
+	# 2 · Focus columns by TIER BAND: same-band members share
 	# one column and stack vertically — iron ore + coal sit up-down, not in a
 	# row — UNLESS a kept edge links two members of the band (a within-band
 	# chain), which splits that band into web-order sub-columns.
@@ -741,7 +733,7 @@ func _build_focus_layout() -> void:
 	_focus_bbox = _focus_bbox.grow(220.0)
 
 
-## Orthogonal routes for the focus edges (owner 2026-07-22): no run crosses a
+## Orthogonal routes for the focus edges: no run crosses a
 ## card rect; runs that don't touch a card keep >= _F_CLEAR of clearance; no two
 ## edges share a collinear run (distinct ports, lanes and corridors).
 func _route_focus_edges(members: Dictionary) -> void:
@@ -765,8 +757,8 @@ func _route_focus_edges(members: Dictionary) -> void:
 		anchors["%d:i" % ei] = (_fpos[str(fe["from"])] as Vector2).y
 	var port_y := _assign_focus_ports(anchors)
 	# 3 · Corridors for column-skipping edges, chosen by MINIMUM TOTAL VERTICAL
-	# TRAVEL (owner 2026-07-22: coal->steel must go over the top of iron ingots,
-	# not dive below — the general rule, not a special case). Corridors also keep
+	# TRAVEL (coal->steel goes over the top of iron ingots, not below — the
+	# general rule, not a special case). Corridors also keep
 	# clear of each other and of every port-stub run.
 	var used_transit: Array = []
 	var all_port_ys: Array = port_y.values()
@@ -789,10 +781,10 @@ func _route_focus_edges(members: Dictionary) -> void:
 			anchors["%d:o" % ei] = float(fe["ty"])
 			anchors["%d:i" % ei] = float(fe["ty"])
 	port_y = _assign_focus_ports(anchors)
-	# 5 · Lane ordering per channel by MINIMUM PAIRWISE CROSSINGS (owner
-	# 2026-07-22b: coal->ingots cut through coal->steel's corridor run —
-	# shortest-span nesting only prevents riser braiding and is blind to the
-	# horizontal runs that continue past a lane). Each leg in a channel is a Z:
+	# 5 · Lane ordering per channel by MINIMUM PAIRWISE CROSSINGS (shortest-span
+	# nesting only prevents riser braiding and is blind to the horizontal runs
+	# that continue past a lane, so coal->ingots would cut through coal->steel's
+	# corridor run). Each leg in a channel is a Z:
 	# entry stub at ys, vertical to ye, exit run at ye, with both horizontals
 	# reaching past every other lane. For any two legs the crossing count
 	# depends ONLY on which lane sits left of the other, so the best order is a
@@ -1056,12 +1048,12 @@ func _draw() -> void:
 
 ## Band headers (RAW / PROCESSED / INTERMEDIATE / FINISHED / APEX) as octagonal
 ## brushed-metal plates with embossed Bebas Neue titles — ONE plate per authored
-## band, centred over its invisible sub-columns (owner 2026-07-19).
+## band, centred over its invisible sub-columns.
 func _draw_tier_headers(_font: Font) -> void:
 	var top := INF
 	for n in _nodes:
 		top = minf(top, (n["pos"] as Vector2).y - (n["half"] as Vector2).y)
-	const FS := 76   # tier labels at 2x (owner 2026-07-21)
+	const FS := 76   # tier labels at 2x
 	for band in _bands:
 		var label := str((band as Dictionary).get("label", ""))
 		var first := float(int((band as Dictionary).get("first", 0)))
@@ -1079,7 +1071,7 @@ func _draw_tier_headers(_font: Font) -> void:
 			HORIZONTAL_ALIGNMENT_CENTER, plate.size.x, FS, _PLATE_TEXT)
 
 
-## Category swimlanes (owner 2026-07-21): each lane gets a left-gutter label in
+## Category swimlanes: each lane gets a left-gutter label in
 ## its category colour and a faint separator hairline in the gap below it, so
 ## the vertical axis reads as taxonomy without competing with the cards.
 func _draw_lanes() -> void:
@@ -1728,7 +1720,7 @@ func _draw_grid(font: Font) -> void:
 			# tech_unlock_req stores a research_node_id — show the node's TITLE, or the
 			# raw value when it has no node (bare cheat tokens like "hydro").
 			var gate_raw := str(recipe.get("tech_unlock_req", ""))
-			var gate_name := MatchState.research_title_for_node_id(gate_raw)
+			var gate_name := ResearchState.research_title_for_node_id(gate_raw)
 			draw_string(font, rect.position + Vector2(2.0, 54.0),
 				"requires research: %s" % (gate_name if gate_name != "" else gate_raw),
 				HORIZONTAL_ALIGNMENT_LEFT, rect.size.x, 14, Color("#f3f8fd"))
@@ -1771,7 +1763,7 @@ func _draw_grid(font: Font) -> void:
 			var cx := band.get_center().x - (BOLT_S + 6.0 + lw) * 0.5
 			# CONSUMPTION, not a good: this is the MW an arrow draws, so it wears the flat
 			# lightning glyph. The isometric power icon is reserved for power as an OUTPUT
-			# or a good icon (owner 2026-08-29) — using it here read as "power flows along
+			# or a good icon — using it here reads as "power flows along
 			# this arrow" when it means "this step costs power".
 			var bolt: Texture2D = load("res://assets/icons/ui_icons/recipe_power_icon.png") as Texture2D
 			if bolt != null:
@@ -1864,10 +1856,10 @@ func _draw_grid_good(rect: Rect2, good_id: String, internal: String, display: St
 ## Resolve only actual, visible research; base recipes and demo-hidden nodes have no link.
 func _recipe_research_title(recipe: Dictionary) -> String:
 	var id := str(recipe.get("tech_unlock_req", ""))
-	var title := MatchState.research_title_for_node_id(id)
+	var title := ResearchState.research_title_for_node_id(id)
 	if title == "": return ""
-	var definition := MatchState.get_unlock_def(title)
-	return title if not definition.is_empty() and MatchState.is_research_visible(definition) else ""
+	var definition := ResearchState.get_unlock_def(title)
+	return title if not definition.is_empty() and ResearchState.is_research_visible(definition) else ""
 
 func _grid_research_at(world_pos: Vector2) -> String:
 	for island in _grid_islands:

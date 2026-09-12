@@ -100,7 +100,7 @@ func _rebuild() -> void:
 		if str(key).begins_with("tile_"):
 			candidates[str(key)] = true
 	var blocked_tiles := {}
-	for shipment in MatchState.overflow_shipments:
+	for shipment in TransportState.overflow_shipments:
 		var dest := str((shipment as Dictionary).get("destination_tile", ""))
 		if dest != "":
 			blocked_tiles[dest] = true

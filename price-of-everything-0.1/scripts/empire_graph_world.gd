@@ -24,7 +24,7 @@ const _ZOOM_MIN := 0.05                                     # absolute floor; th
                                                             # empire (7.6 viewports tall) puts at ~0.12 —
                                                             # the old 0.2 clamped above it and broke
                                                             # "see the entire empire at a glance"
-const _ZOOM_MAX := 3.75                                     # owner 2026-09-10: 50% deeper than 2.5
+const _ZOOM_MAX := 3.75
 const _ZOOM_STEP := 1.12
 const _PAN_SPEED := 900.0
 const _MIN_GAP := 20.0                                      # hard minimum screen gap between panels, at any zoom
@@ -32,7 +32,7 @@ const _FIT_PAD := 120.0                                     # viewport margin le
 const _DETAIL_MIN := 0.05                                   # furniture tracks zoom all the way to _ZOOM_MIN
 const _SEP_ITERS := 28                                      # screen-space separation passes per frame
 
-# --- Carried from the coal-prohibition empire pass (owner, 2026-08-13..16) ---
+# --- Selection halo, port badge and port sprite sizing ---
 const _GLOW_HEIGHT_FRAC := 0.15             # selection halo reach as a fraction of sprite height
 const _GLOW_ALPHA := 0.55                   # peak alpha at the halo's centre
 const _PORT_BADGE_FRAC := 0.17              # corner hex size as a fraction of the port sprite box
@@ -82,7 +82,7 @@ var _zoom_floor: float = _ZOOM_MIN
 # from their web position to a focus position, everyone else fades out. Depth ONE only — the
 # selection, whatever feeds its inputs, and whatever it feeds (buildings or ports). Nothing
 # beyond that: a second ring is what turns the goods graph's focus into a second web.
-const _FOCUS_SECS := 0.84                   # owner 2026-09-10: three times the original 0.28
+const _FOCUS_SECS := 0.84                   # focus-chart ease, seconds
 const _FOCUS_COL := 620.0                   # column spacing (sprite panel is 400 wide)
 const _FOCUS_ROW := 660.0                   # row spacing (sprite panel is 580 tall)
 var _focus_iid := ""
@@ -105,7 +105,7 @@ const _WHITE := Color(1.0, 1.0, 1.0)
 const _CREAM := Color(0.995234, 0.930806, 0.763265)   # DS ACCENT / recipe-card OFF_WHITE
 const _PILL_NAVY := Color(0.0, 0.119856, 0.243095)    # recipe-card BADGE_NAVY
 ## Every edge (input, market, sell — dashed or not) carries a good-icon chip partway along its
-## routed path, reusing _LANE_CHIP's own cream-chip look (owner, 27 Aug). 0.4 = 40% of the way
+## routed path, reusing _LANE_CHIP's own cream-chip look. 0.4 = 40% of the way
 ## from source to destination, by arc length along the actual (elbowed) route.
 const _EDGE_CHIP_T := 0.4
 var _focus_site: Dictionary = {}            # {} unless the selection is a construction site
@@ -113,16 +113,16 @@ var _site_lane_n := 0                       # lane count, so _layout_bbox can fr
 var _site_lane_pitch := _LANE_ROW           # widens when a lane carries a blocked message
 var _pulse := 0.0                           # 0..1 sawtooth driving the blocked-shipment flash
 var _chip_style: StyleBoxFlat = null        # reused per draw (draw_rect has no corner radius)
-## THE FRAME MODEL (owner 2026-09-10). `_layout_frame` computes every piece of geometry the
+## THE FRAME MODEL. `_layout_frame` computes every piece of geometry the
 ## view paints — routes, chip positions, footprints — into `_frame` and registers each in the
 ## occupancy registry `_occ`; `_draw` only paints what is there. Geometry runs whenever the
 ## positions change (same gate as the separation pass) and also headless, which is what lets
 ## the overlap audit (`audit()`) run as a test without a renderer.
 var _occ := EmpireOccupancy.new()
-## MASS mode (owner 2026-09-10): more than EmpireLayout.mass_threshold finished buildings. At
+## MASS mode: more than EmpireLayout.mass_threshold finished buildings. At
 ## rest: a grid of buildings, no lines, chips or ports. Selecting one opens its whole chain.
 var _mass := false
-## CROSSING STUDY options (2026-09-10). 1: one TRUNK per good in a gutter, sources join it
+## ROUTING OPTIONS. 1: one TRUNK per good in a gutter, sources join it
 ## and consumers tap it (eighteen coal lines become one bus). 3: one BUS per port — buy lines
 ## share their port's vertical in the port gutter, sell lines share their port's vertical
 ## in the sell gutter. Option 2 (port-ordered columns) lives in empire_layout.
@@ -185,7 +185,7 @@ class MarketGlow extends Control:
 							draw_line(a, b, Color(1, 1, 1, band[1] * route.alpha), band[0] * route.scale, true)
 					walked += length
 
-## ELECTRICITY PULSES (owner, 2026-09-10): short bright charges running along every power
+## ELECTRICITY PULSES: short bright charges running along every power
 ## edge — input, grid purchase or grid export — following the edge's EXACT routed polyline,
 ## elbows included, at a constant screen speed so a long cable and a short one both read as
 ## live current. Paths are recorded by `_draw` each time the graph redraws (the same contract
@@ -290,9 +290,8 @@ func set_graph(nodes: Array, edges: Array, ports: Array, sell_edges: Array = [],
 
 ## Zoom-out stops when the ENTIRE composition fits the viewport — bounded by whichever of its
 ## dimensions is the more constraining one, so you can never zoom out into empty space.
-## Owner decision 2026-07-30: seeing the whole empire at once beats crisp text; the furniture
-## (cards, ports, lines) scales down with zoom via _detail() rather than holding its pixels,
-## which is what retires the old median-spacing "jostling" floor.
+## Seeing the whole empire at once beats crisp text: the furniture
+## (cards, ports, lines) scales down with zoom via _detail() rather than holding its pixels.
 func _compute_zoom_floor() -> float:
 	var bb := _layout_bbox()
 	if not (is_finite(bb.size.x) and is_finite(bb.size.y)):
@@ -471,8 +470,8 @@ func _reposition_panels() -> void:
 
 ## Compute every piece of geometry the view paints and register it in the occupancy registry:
 ## node footprints (sprite, effects, plate, badge), port hexes, the three route families, and
-## the good-icon chips — which are PLACED here, in free slots along their lines, instead of at
-## a fixed 40% of the route where eight coal chips used to land on one another.
+## the good-icon chips — which are PLACED here, in free slots along their lines rather than
+## at a fixed fraction of the route, so chips on parallel lines do not land on one another.
 func _layout_frame(sc: float) -> void:
 	_occ.clear()
 	_frame = {"input": [], "sell": [], "market": [], "chips": []}
@@ -776,8 +775,8 @@ func _frame_sell_buses(edges: Array, sc: float) -> void:
 
 
 ## THE CHIP SLOT ALLOCATOR. One chip per (family, source, good): parallel lines carrying the
-## same good out of the same building share a chip (three coal lines out of one mine used to
-## stack three chips). Each chip wants the middle of its route's longest run — the vertical in
+## same good out of the same building share a chip (three coal lines out of one mine, one
+## chip). Each chip wants the middle of its route's longest run — the vertical in
 ## the gutter for an input line — and takes the nearest free slot along that run, stepping a
 ## chip-and-a-gap at a time, never on a sprite, plate, port or another chip; failing every run
 ## it falls back to 40% along the line (and the audit counts the collision).
@@ -898,9 +897,9 @@ func audit() -> Dictionary:
 
 ## A node's LAYOUT position, eased toward its focus-chart position while a mini-chart is open.
 ## PORTS go through this too, and that is the point: they are chart members (the export port of
-## the selection, and the port a construction site's materials come through), but they used to
-## keep drawing in their resting row while the panels gathered around the selection — so every
-## focus line ran off to the bottom of the composition instead of into the chart.
+## the selection, and the port a construction site's materials come through), so they gather
+## with the panels rather than staying in their resting row, where every focus line would run
+## off to the bottom of the composition instead of into the chart.
 func _focus_pos(iid: String, base: Vector2) -> Vector2:
 	if _focus_t > 0.0 and _fpos.has(iid):
 		return base.lerp(_fpos[iid] as Vector2, _focus_t)
@@ -1104,8 +1103,8 @@ func _layout_bbox() -> Rect2:
 	return bb
 
 
-## A port is shown on a side only when that side uses it (owner 2026-09-10: "checked
-## independently — we could have 3 buying ports and 2 selling ports").
+## A port is shown on a side only when that side uses it — the two sides are checked
+## independently, so a run can have three buying ports and two selling ports.
 func _port_used(p: Dictionary) -> bool:
 	if _mass:
 		return false
@@ -1384,7 +1383,7 @@ func _site_lanes(iid: String) -> Array:
 		var outstanding := int(missing.get(gid, 0))
 		var eta := -1
 		var total := 1
-		for s in MatchState.get_inbound_transport_shipments(tile, gid):
+		for s in TransportState.get_inbound_transport_shipments(tile, gid):
 			# Only OUR freight: a neighbour importing the same good is not this build's kit.
 			if str((s as Dictionary).get("construction_instance_id", "")) != iid:
 				continue
@@ -1393,7 +1392,7 @@ func _site_lanes(iid: String) -> Array:
 				eta = t
 				total = int((s as Dictionary).get("transport_turns", t))
 		var held := 0
-		for h in MatchState.get_overflow_shipments_for_tile(tile):
+		for h in TransportState.get_overflow_shipments_for_tile(tile):
 			if str((h as Dictionary).get("construction_instance_id", "")) == iid \
 					and str((h as Dictionary).get("good_id", "")) == gid:
 				held += int((h as Dictionary).get("qty", 0))
@@ -1443,7 +1442,7 @@ func _site_lanes(iid: String) -> Array:
 	return out
 
 
-## Why a material is not moving, in the owner's sentence shape. The infrastructure name is
+## Why a material is not moving, as one short sentence. The infrastructure name is
 ## data-driven (Catalog.route_infra_for_good reads infrastructure.csv), so it says exactly
 ## "Pipework" / "Reinforced Pipework" / "Rail or Roads" rather than a hardcoded guess.
 func _block_message(cause: String, infra: String) -> String:
@@ -1581,13 +1580,9 @@ func _draw() -> void:
 		_draw_site_lanes(font, sc)
 
 	# Building nodes are real Control panels (children, drawn on top); ports are drawn here.
-	# With the port badges on, the resting empire no longer carries the bottom row of
-	# sell-port hexes (owner 2026-08-16): the badge on each selling building carries "this
-	# ships to market" at rest, and the port appears — as its 2x building sprite — only when
-	# a mini-chart opens on one. With badges off the hexes return, because then the sell
-	# lines need somewhere visible to land.
-	# Ports are TERMINALS of the flow now (owner 2026-09-10): the sell column on the right
-	# always shows the ports in use, badges or not; a port unused on a side is hidden there.
+	# Ports are TERMINALS of the flow: the sell column on the right always shows the ports
+	# in use, badges or not; a port unused on a side is hidden there. In a mini-chart the
+	# port appears as its 2x building sprite.
 	for p in _ports:
 		var pid := str(p["iid"])
 		if _focus_target > 0.0 and _focus_members.has(pid):
@@ -2035,8 +2030,8 @@ func _point_along_polyline(pts: PackedVector2Array, t: float) -> Vector2:
 	return pts[pts.size() - 1]
 
 
-## The good-icon chip every edge carries at _EDGE_CHIP_T along its route (owner, 27 Aug — "any
-## line, dashed or not"). Reuses _draw_material_chip's exact cream-rounded-chip look with qty=0
+## The good-icon chip every edge carries at _EDGE_CHIP_T along its route, dashed or not.
+## Reuses _draw_material_chip's exact cream-rounded-chip look with qty=0
 ## so its quantity pill stays off — this chip says WHAT flows, not how much. Silent no-op for a
 ## good with no icon art (nothing to put on the chip) or a path too short to have a "40% along".
 func _draw_edge_good_chip(ch: Dictionary, _sc: float) -> void:
@@ -2070,7 +2065,7 @@ func _draw_material_chip(c: Vector2, box: float, icon, qty: int, font: Font, sc:
 	draw_style_box(_chip_style, r)
 	if icon != null:
 		# Aspect-fit inside the chip: goods art is not all square (the isometric power
-		# icon was visibly squished by a plain square draw — owner 2026-08-29).
+		# icon is visibly squished by a plain square draw).
 		var inner := r.grow(-box * 0.11)
 		var ts := Vector2(icon.get_width(), icon.get_height())
 		if ts.x > 0.0 and ts.y > 0.0:
@@ -2103,7 +2098,7 @@ func _draw_qty_pill(anchor: Vector2, qty: int, font: Font, sc: float, a: float) 
 
 ## Split a polyline into the pieces lying OUTSIDE every rect in `holes`, so a line stops at an
 ## icon and resumes past it. Drawing the icon on top is not the same thing — the line still
-## reads as passing behind it, which is exactly what the owner ruled out.
+## reads as passing behind it.
 func _polyline_minus(pts: PackedVector2Array, holes: Array) -> Array:
 	if holes.is_empty() or pts.size() < 2:
 		return ([pts] if pts.size() >= 2 else [])
@@ -2146,7 +2141,7 @@ func _add_pt(arr: Array, p: Vector2) -> void:
 
 ## The blocked-shipment alert: the MISSING infrastructure's own icon, ringed by a red pulse that
 ## radiates OUTWARD from the icon's edge. Every ring starts outside the art and only grows away
-## from it, so the flash never covers the icon (owner's ask) — the message sits underneath.
+## from it, so the flash never covers the icon — the message sits underneath.
 ## `base` is what the pulse radiates from: the missing-infrastructure icon's box when the fault
 ## is the network, or the outstanding goods chip itself when the cargo is what cannot move
 ## (no cash, nowhere to unload). Rings only ever grow AWAY from `base`, so whatever sits inside
@@ -2282,14 +2277,14 @@ func _draw_port(n: Dictionary, font: Font, sc: float) -> void:
 
 
 ## The port as it appears INSIDE an open mini-chart: its building sprite and its name — no
-## gold hex (owner 2026-09-10). Mirrors empire_node_panel's port badge so a port and a
+## gold hex. Mirrors empire_node_panel's port badge so a port and a
 ## building that sells to one are visibly the same statement.
 func _draw_port_sprite(n: Dictionary, center: Vector2, half: Vector2, font: Font, sc: float) -> void:
 	var tex: Texture2D = BuildingSprites.texture_for("port", 1)
-	# TWICE the building sprite box (owner 2026-08-14). Sized off SPRITE_PX, not off the node's
-	# own half-extent: `half` is the footprint of the RESTING gold hex (86x78), which drew the
-	# port at 156px beside a building's 400px and made the place a whole chain ships through
-	# read as a stray icon rather than a destination.
+	# TWICE the building sprite box. Sized off SPRITE_PX, not off the node's own half-extent:
+	# `half` is the footprint of the RESTING gold hex (86x78), which would draw the port at
+	# 156px beside a building's 400px and make the place a whole chain ships through read as
+	# a stray icon rather than a destination.
 	var box := NodePanelScript.SPRITE_PX * _PORT_SPRITE_MULT * sc
 	var draw_sz := Vector2(box, box)
 	if tex != null:
@@ -2306,7 +2301,7 @@ func _draw_port_sprite(n: Dictionary, center: Vector2, half: Vector2, font: Font
 			draw_texture_rect(icon, Rect2(center - Vector2(isz, isz) * 0.5, Vector2(isz, isz)),
 				false, Color(0.02, 0.06, 0.11, 0.95))
 
-	# No corner hex (owner 2026-09-10): once the port shows as its full sprite, the sprite IS
+	# No corner hex: once the port shows as its full sprite, the sprite IS
 	# the port — the gold hex is the resting symbol, and repeating it on the corner read as
 	# a badge stuck on a building. The name under the sprite carries the identity.
 
@@ -2399,7 +2394,7 @@ func _draw_edge_good_tooltip(font: Font, sc: float) -> void:
 	var good := str(e.get("good", ""))
 	var tile := str((_box_by_iid.get(to_iid, {}) as Dictionary).get("tile_id", ""))
 	if tile == "":
-		tile = str((MatchState.buildings.get(to_iid, {}) as Dictionary).get("tile_id", ""))
+		tile = str((BuildingState.buildings.get(to_iid, {}) as Dictionary).get("tile_id", ""))
 
 	# Row 1 — what this line costs to run, per turn. "no route" rather than £0.00 when there is
 	# nothing priceable: zero reads as free, and the case it actually covers is a haul the goods
@@ -2412,10 +2407,10 @@ func _draw_edge_good_tooltip(font: Font, sc: float) -> void:
 	# Row 2 — what is already on its way, and how dependable the line has been. The
 	# colour is the CONSISTENCY verdict; a young building is not judged for silence.
 	var inbound := 0
-	for s in MatchState.get_inbound_transport_shipments(tile, good):
+	for s in TransportState.get_inbound_transport_shipments(tile, good):
 		if int((s as Dictionary).get("turns_remaining", 99)) <= _SHIPMENT_LOOKAHEAD:
 			inbound += int((s as Dictionary).get("qty", 0))
-	var hits: int = MatchState.arrivals_in_window(tile, good)
+	var hits: int = TransportState.arrivals_in_window(tile, good)
 	var age := _building_age(to_iid)
 	var ship_col := _consistency_colour(hits, age)
 	var ship_txt := "%d" % inbound
@@ -2464,8 +2459,7 @@ func _tooltip_row(font: Font, panel: Rect2, label: String, value: String, col: C
 
 
 ## Per-turn transport cost of the movement THIS EDGE represents. Which route that is depends on
-## what kind of edge it is — quoting one route for all three is the bug the owner spotted as
-## "£0.00 on a haul that surely costs something" (2026-08-14):
+## what kind of edge it is — quoting one route for all three prices a real haul at £0.00:
 ##   market  buy port -> building   a real market purchase; preview_buy is the right quote
 ##   sell    building -> port       the haul out to the port the goods leave through
 ##   input   building -> building   the INTERNAL haul, producer tile -> consumer tile
@@ -2508,7 +2502,7 @@ func _route_leg_cost(gid: String, src: String, dst: String) -> Dictionary:
 func _tile_of(iid: String) -> String:
 	var t := str((_box_by_iid.get(iid, {}) as Dictionary).get("tile_id", ""))
 	if t == "":
-		t = str((MatchState.buildings.get(iid, {}) as Dictionary).get("tile_id", ""))
+		t = str((BuildingState.buildings.get(iid, {}) as Dictionary).get("tile_id", ""))
 	return t
 
 
@@ -2524,7 +2518,7 @@ func _cost_colour(cost: float) -> Color:
 ## Delivered every turn is green; patchy is amber; two or fewer of the last ten is red —
 ## unless the building is younger than that, in which case there was nothing to deliver.
 func _consistency_colour(hits: int, age_turns: int) -> Color:
-	if hits >= MatchState.ARRIVAL_HISTORY_TURNS:
+	if hits >= TransportState.ARRIVAL_HISTORY_TURNS:
 		return DS.PALETTE["OK"]
 	if hits <= 2:
 		return DS.PALETTE["WARN"] if age_turns <= 2 else DS.PALETTE["DANGER"]
@@ -2532,7 +2526,7 @@ func _consistency_colour(hits: int, age_turns: int) -> Color:
 
 
 func _building_age(iid: String) -> int:
-	var b: Dictionary = MatchState.buildings.get(iid, {})
+	var b: Dictionary = BuildingState.buildings.get(iid, {})
 	if b.is_empty():
 		return 999
 	var built := int(b.get("built_turn", b.get("construction_turn", 0)))

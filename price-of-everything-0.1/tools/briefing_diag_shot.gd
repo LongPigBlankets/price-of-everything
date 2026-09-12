@@ -16,7 +16,7 @@ func _ready() -> void:
 	var bv = wm.get_node("%BuildingVisuals")
 	var specs := [["tile_15_5", "r_008"], ["tile_16_4", "r_009"], ["tile_16_4", "r_008"], ["tile_16_4", "r_009"]]
 	for si in specs.size():
-		var iid: String = MatchState.add_building("b_007", str(specs[si][1]), str(specs[si][0]), "player_1", "shot_%d" % si)
+		var iid: String = BuildingState.add_building("b_007", str(specs[si][1]), str(specs[si][0]), "player_1", "shot_%d" % si)
 		bv.on_building_placed(str(specs[si][0]), "b_007", str(specs[si][1]), iid, terrain.id_to_coord(str(specs[si][0])))
 	MatchState.money = 500.0
 	for _t in 2:

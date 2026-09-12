@@ -123,7 +123,7 @@ func _evaluate(money: float, profit: float) -> void:
 		_declare_bankruptcy()
 
 func _cfo_seated() -> bool:
-	return MatchState.get_advisor_in_seat("cfo") != ""
+	return AdvisorState.get_advisor_in_seat("cfo") != ""
 
 
 # --- Tutorial rescue -----------------------------------------------------------------
@@ -209,7 +209,7 @@ func _auto_bridge_negative_cash() -> void:
 ## Investors buy every building at 1.5x sale value, and a £500 grace loan lands
 ## (interest-free for 10 turns, then normal). Returns a summary for the toast/log.
 func accept_distressed_program() -> Dictionary:
-	var res: Dictionary = MatchState.liquidate_all_buildings(DISTRESSED_BUYOUT_MULT)
+	var res: Dictionary = BuildingState.liquidate_all_buildings(DISTRESSED_BUYOUT_MULT)
 	LoanState.take_grace_loan(DISTRESSED_LOAN, DISTRESSED_GRACE_TURNS)
 	_bad_streak = 0   # the cash injection is the escape
 	return res
@@ -273,8 +273,8 @@ func _post_tax_profit(summary: Dictionary) -> float:
 # Empire value = what every player building would sell for right now.
 func _empire_sale_value() -> float:
 	var total: float = 0.0
-	for b in MatchState.buildings.values():
-		if MatchState.is_player_owned(b):
+	for b in BuildingState.buildings.values():
+		if BuildingState.is_player_owned(b):
 			total += float(BuildingPrice.sale_price(b))
 	return total
 

@@ -82,15 +82,15 @@ func _ready() -> void:
 	# Refresh wiring: structural changes + per-turn. The status/power/cost columns are
 	# recomputed on every rebuild, and turn_resolution_completed fires once per turn — so
 	# the power column is rechecked every turn against the latest production/cabling state.
-	MatchState.building_added.connect(func(_i: Dictionary) -> void: _request_refresh())
-	MatchState.building_removed.connect(func(_i: String) -> void: _request_refresh())
+	BuildingState.building_added.connect(func(_i: Dictionary) -> void: _request_refresh())
+	BuildingState.building_removed.connect(func(_i: String) -> void: _request_refresh())
 	# A bought NPC building becomes player-owned → it should appear in the ledger right away.
-	MatchState.building_owner_changed.connect(func(_i: String) -> void: _request_refresh())
-	MatchState.building_upgraded.connect(func(_i: String, _l: int) -> void: _request_refresh())
-	MatchState.building_upgrade_started.connect(func(_i: String, _l: int) -> void: _request_refresh())
-	MatchState.building_upgrade_progress.connect(func(_i: String) -> void: _request_refresh())
-	MatchState.building_upgrade_cancelled.connect(func(_i: String) -> void: _request_refresh())
-	MatchState.workforce_policies_changed.connect(_request_refresh)
+	BuildingState.building_owner_changed.connect(func(_i: String) -> void: _request_refresh())
+	BuildingWorks.building_upgraded.connect(func(_i: String, _l: int) -> void: _request_refresh())
+	BuildingWorks.building_upgrade_started.connect(func(_i: String, _l: int) -> void: _request_refresh())
+	BuildingWorks.building_upgrade_progress.connect(func(_i: String) -> void: _request_refresh())
+	BuildingWorks.building_upgrade_cancelled.connect(func(_i: String) -> void: _request_refresh())
+	LabourState.workforce_policies_changed.connect(_request_refresh)
 	TurnManager.turn_resolution_completed.connect(_request_refresh)
 	Construction.construction_completed.connect(func(_i: String, _t: String) -> void: _request_refresh())
 	Construction.construction_cancelled.connect(func(_i: String, _t: String) -> void: _request_refresh())
@@ -400,9 +400,9 @@ func _render() -> void:
 
 func _collect_vms() -> Array:
 	var out: Array = []
-	for instance_id in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[instance_id]
-		if not MatchState.is_player_owned(b):
+	for instance_id in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[instance_id]
+		if not BuildingState.is_player_owned(b):
 			continue
 		out.append(_row_vm(b))
 	return out

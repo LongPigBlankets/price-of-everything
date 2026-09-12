@@ -25,13 +25,13 @@ func _ready() -> void:
 		tile["infrastructure_present"] = present
 		Catalog.add_tile_infrastructure(tile_id, "cables")
 	hm.tiles[coord] = tile
-	var iid: String = MatchState.add_building("b_006", "", tile_id, "player_1", "shot_cables")
+	var iid: String = BuildingState.add_building("b_006", "", tile_id, "player_1", "shot_cables")
 	MatchState.money = 1000.0
 	print("[infra_shot] cap before: %d  money: £%.0f" % [Power.tile_power_cap(tile_id), MatchState.money])
 
 	# Open the BDP on the cables — the panel body itself must show the Upgrade button
 	# (regression: the infra layout branch used to skip the actions row entirely).
-	game._open_building_detail(MatchState.buildings[iid])
+	game._open_building_detail(BuildingState.buildings[iid])
 	await _settle(16)
 	var v2p: Control = game.building_panel_v2
 	var up_btn: Button = null
@@ -61,7 +61,7 @@ func _ready() -> void:
 		return
 	pay_btn.pressed.emit()
 	await _settle(10)
-	print("[infra_shot] money after pay: £%.0f  pending=%s" % [MatchState.money, str(not MatchState.pending_upgrade(iid).is_empty())])
+	print("[infra_shot] money after pay: £%.0f  pending=%s" % [MatchState.money, str(not BuildingWorks.pending_upgrade(iid).is_empty())])
 	TurnManager.fast_mode = true
 	game._hide_building_detail()
 	for _i in 3:
@@ -70,7 +70,7 @@ func _ready() -> void:
 			await TurnManager.turn_resolution_completed
 	await _settle(10)
 	print("[infra_shot] cap after 3 turns: %d (expect 4000)  instance level: %d" % [
-		Power.tile_power_cap(tile_id), int(MatchState.buildings[iid].get("level", 1))])
+		Power.tile_power_cap(tile_id), int(BuildingState.buildings[iid].get("level", 1))])
 	get_tree().quit(0)
 
 func _find_buttons(node: Node) -> Array:

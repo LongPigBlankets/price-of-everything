@@ -31,7 +31,7 @@ func _ready() -> void:
 	for si in SPECS.size():
 		var s: Dictionary = SPECS[si]
 		var coord: Vector2i = terrain.id_to_coord(str(s.tile))
-		var iid: String = MatchState.add_building(str(s.building), str(s.recipe), str(s.tile), "player_1", "diag_%d" % si)
+		var iid: String = BuildingState.add_building(str(s.building), str(s.recipe), str(s.tile), "player_1", "diag_%d" % si)
 		bv.on_building_placed(str(s.tile), str(s.building), str(s.recipe), iid, coord)
 	if OS.get_environment("DIAG_SELL") == "1":
 		for s4 in SPECS:
@@ -61,7 +61,7 @@ func _ready() -> void:
 			for pair in (inputs_by_tile[tile] as Array):
 				var gid := str(pair[0])
 				var stock: int = maxi(Stockpile.get_at_tile(tile, gid), Stockpile.get_at_tile(tile, str(pair[1])))
-				var ships := MatchState.get_inbound_transport_shipments(tile, gid)
+				var ships := TransportState.get_inbound_transport_shipments(tile, gid)
 				var inbound := 0
 				var ship_desc := ""
 				for sh in ships:

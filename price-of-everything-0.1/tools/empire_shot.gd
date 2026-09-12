@@ -99,7 +99,7 @@ func _ready() -> void:
 	# Verify the refactored building detail panel still renders its 6 RAG indicators (now sharing
 	# building_status.gd with the Empire view).
 	var detail: Node = game.get_node_or_null("UILayer/HUD/HUDContent/BuildingDetailPanel")
-	var b: Dictionary = MatchState.get_building("emp_0")
+	var b: Dictionary = BuildingState.get_building("emp_0")
 	if detail != null and not b.is_empty():
 		detail.call("show_building", b)
 		await _settle(10)
@@ -114,7 +114,7 @@ func _ready() -> void:
 ## match already seeded so they are guaranteed valid.
 func _seed_empire() -> void:
 	var tiles: Array = []
-	for b in MatchState.buildings.values():
+	for b in BuildingState.buildings.values():
 		var t := str(b.get("tile_id", ""))
 		if t != "" and not tiles.has(t):
 			tiles.append(t)
@@ -135,9 +135,9 @@ func _seed_empire() -> void:
 		var rid := str((recs[0] as Dictionary).get("recipe_id", ""))
 		var tid: String = tiles[(k * 3) % tiles.size()]
 		var iid := "emp_%d" % k
-		MatchState.add_building(bid, rid, tid, "player_1", iid)
-		if MatchState.buildings.has(iid):
-			MatchState.buildings[iid]["level"] = levels[k]
+		BuildingState.add_building(bid, rid, tid, "player_1", iid)
+		if BuildingState.buildings.has(iid):
+			BuildingState.buildings[iid]["level"] = levels[k]
 		placed += 1
 	print("seeded ", placed, " player buildings across ", tiles.size(), " candidate tiles")
 

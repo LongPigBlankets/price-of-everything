@@ -248,7 +248,7 @@ func _alloc_branch(branch: Dictionary, land: float, reserved: Dictionary) -> Str
 	for t in cands:
 		if t == PORT or not Catalog.is_land_tile(str(t)):
 			continue
-		var occ: float = MatchState.get_tile_space_used(str(t)) + float(reserved.get(t, 0.0))
+		var occ: float = BuildingState.get_tile_space_used(str(t)) + float(reserved.get(t, 0.0))
 		if occ + land <= MAX_TILE_LAND:
 			return str(t)
 	return ""
@@ -330,7 +330,7 @@ func _ensure_corridor(src: String, dst: String, infra: String) -> void:
 
 func _place_on(building_id: String, recipe_id: String, tile: String) -> String:
 	var size: float = float(Catalog.get_building(building_id).get("tile_size_used", 1.0))
-	var projected: float = MatchState.get_tile_space_used(tile) + size
+	var projected: float = BuildingState.get_tile_space_used(tile) + size
 	var owned: float = float(_land_owned.get(tile, FREE_LAND))
 	if projected > owned:
 		var patches: int = int(ceil((projected - owned) / LAND_PATCH))
@@ -341,7 +341,7 @@ func _place_on(building_id: String, recipe_id: String, tile: String) -> String:
 	var cost: float = float(Catalog.get_building(building_id).get("base_price", 0.0)) * mult
 	MatchState.add_money(-cost)
 	_total_build += cost
-	return MatchState.add_building(building_id, recipe_id, tile)
+	return BuildingState.add_building(building_id, recipe_id, tile)
 
 
 func _build_chain() -> bool:
@@ -448,7 +448,7 @@ func _equity() -> float:
 		if qty > 0:
 			stock += float(qty) * MarketState.get_price(str(gid))
 	var bval := 0.0
-	for inst in MatchState.buildings.values():
+	for inst in BuildingState.buildings.values():
 		bval += float(Catalog.get_building(str(inst.get("building_id", ""))).get("base_price", 0.0))
 	var debt := float(LoanState.total_outstanding()) if LoanState.has_method("total_outstanding") else 0.0
 	return cash + stock + bval - debt - _construction_debt
@@ -464,7 +464,7 @@ func _initialize() -> void:
 	_stub = _HexMapStub.new()
 	get_root().add_child(_stub)
 	TurnManager.fast_mode = true
-	MatchState.seaport_auto_subscribe = true   # seaports transfer any volume in 1 turn for a flat per-good fee
+	TransportState.seaport_auto_subscribe = true   # seaports transfer any volume in 1 turn for a flat per-good fee
 	await process_frame
 	await process_frame
 	await process_frame
@@ -487,7 +487,7 @@ func _initialize() -> void:
 	_finance()
 	await process_frame
 	await process_frame
-	print("[sim] seed: cash=%.0f buildings=%d cost=%.0f" % [MatchState.money, MatchState.buildings.size(), _last_chain_cost])
+	print("[sim] seed: cash=%.0f buildings=%d cost=%.0f" % [MatchState.money, BuildingState.buildings.size(), _last_chain_cost])
 
 	for t in range(TURNS):
 		TurnManager.commit_turn()
@@ -585,13 +585,13 @@ func _tile_metrics() -> Array:
 	var eighty := 0
 	var transit := 0
 	var maxflow := 0.0
-	for tid in MatchState.tile_buildings.keys():
+	for tid in BuildingState.tile_buildings.keys():
 		present += 1
-		if MatchState.get_tile_space_used(tid) >= 0.8 * MAX_TILE_LAND:
+		if BuildingState.get_tile_space_used(tid) >= 0.8 * MAX_TILE_LAND:
 			eighty += 1
 		var outflow := 0.0
-		for inst_id in MatchState.tile_buildings[tid]:
-			var inst: Dictionary = MatchState.get_building(inst_id)
+		for inst_id in BuildingState.tile_buildings[tid]:
+			var inst: Dictionary = BuildingState.get_building(inst_id)
 			for o in Catalog.get_recipe(str(inst.get("recipe_id", ""))).get("outputs", []):
 				var gid: String = str(o.get("good_id", ""))
 				if MatchState.is_output_market(inst_id, gid) or MatchState.get_output_stockpile_destination(inst_id, gid) != "":

@@ -49,13 +49,13 @@ func _ready() -> void:
 		TurnManager.commit_turn()
 		await TurnManager.turn_resolution_completed
 		print("[DIAG] ---- end of turn %d ----" % TurnManager.current_turn)
-		for s in MatchState.pending_transport_shipments:
+		for s in TransportState.pending_transport_shipments:
 			if bool(s.get("is_sale", false)):
 				continue
 			print("[DIAG]   pending %s x%d dest=%s eta=%d (of %d) src=%s" % [
 				str(s.get("good_id", "")), int(s.get("qty", 0)), str(s.get("destination_tile", "")),
 				int(s.get("turns_remaining", 0)), int(s.get("transport_turns", 0)), str(s.get("source_tile", ""))])
-		for r in MatchState.overflow_shipments:
+		for r in TransportState.overflow_shipments:
 			print("[DIAG]   OVERFLOW %s x%d dest=%s waiting=%d" % [
 				str(r.get("good_id", "")), int(r.get("qty", 0)), str(r.get("destination_tile", "")), int(r.get("turns_waiting", 0))])
 		var stock_desc := ""

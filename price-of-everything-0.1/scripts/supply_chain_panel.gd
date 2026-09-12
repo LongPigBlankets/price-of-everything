@@ -220,11 +220,11 @@ func _arrow(glyph: String) -> Control:
 	return l
 
 func _summary_text() -> String:
-	var b: Dictionary = MatchState.get_building(_target_iid)
+	var b: Dictionary = BuildingState.get_building(_target_iid)
 	if _action == "sell":
 		return "Selling transfers this building to an NPC operator for £%d — it keeps standing but stops running for you. Instant." \
 			% int(round(float(BuildingPrice.sale_price(b))))
-	var refund: Dictionary = MatchState.refund_cost(_target_iid)
+	var refund: Dictionary = BuildingWorks.refund_cost(_target_iid)
 	return "Demolishing removes it over 1 turn and frees its land. You get back ~£%d of materials (overflow as cash); no money is returned." \
 		% int(round(float(refund.get("materials_value", 0.0))))
 
@@ -233,12 +233,12 @@ func _summary_text() -> String:
 func _on_confirm() -> void:
 	SupplyChain.apply(_feeders, _dependents, _modes)
 	if _action == "sell":
-		MatchState.sell_building(_target_iid)
+		BuildingState.sell_building(_target_iid)
 	else:
 		# SAY SO WHEN IT IS REFUSED. The result was dropped, so a demolition the sim declined —
 		# most often "you don't own this" on a wood the land owns rather than a company — closed
 		# the panel and did nothing at all, which reads as the button being broken.
-		var outcome: Dictionary = MatchState.start_demolish(_target_iid)
+		var outcome: Dictionary = BuildingWorks.start_demolish(_target_iid)
 		if not bool(outcome.get("ok", false)):
 			MatchState.request_toast(str(outcome.get("reason", "That cannot be demolished.")),
 				"error")

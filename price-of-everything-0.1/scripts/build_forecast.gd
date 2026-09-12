@@ -79,7 +79,7 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 			# Port charging is ad valorem on the value crossing the quay, so it scales with
 			# what the building actually sells and steps up at SEAPORT_AD_VALOREM_STEP_TURN.
 			# Owned ports charge half. (The flat per-good fee is retired — §4.2b.)
-			port_fee = revenue * MatchState.seaport_insurance_rate(str(sell_quote.get("port", "")))
+			port_fee = revenue * TransportState.seaport_insurance_rate(str(sell_quote.get("port", "")))
 
 	# --- Inputs: delivered cost (goods + inbound freight), and whether they can arrive ---
 	# An input the player already produces is NOT bought at retail. Charging the market buy
@@ -155,7 +155,7 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 	var maintenance := Production._calculate_maintenance_cost(probe)
 
 	# Standing costs are owed the moment the building exists, running or not.
-	var standing: float = labour * MatchState.idle_labour_pay_share + maintenance
+	var standing: float = labour * LabourState.idle_labour_pay_share + maintenance
 	# A producing turn also dispatches output and pays its freight immediately.
 	var producing_cost: float = labour + maintenance + input_cost + inbound_freight + power_cost + warehousing + outbound_freight
 	# Port fees are withheld when the sale settles.
@@ -266,9 +266,9 @@ static func _own_source_tile(tile_id: String, good_id: String) -> String:
 	# turn on the very tile the forecast called a market buy).
 	var best := ""
 	var best_turns := 1 << 30
-	for iid in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[iid]
-		if not MatchState.is_player_owned(b) or not _recipe_makes(str(b.get("recipe_id", "")), good_id):
+	for iid in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[iid]
+		if not BuildingState.is_player_owned(b) or not _recipe_makes(str(b.get("recipe_id", "")), good_id):
 			continue
 		var src := str(b.get("tile_id", ""))
 		if src == tile_id:
@@ -318,7 +318,7 @@ static func _permanent_output_qty(recipe_id: String, good_id: String, good_inter
 		"good_internal": good_internal,
 	}
 	var q := int(round(Modifiers.apply_permanent("recipe_output", recipe_id, float(base_qty), ctx)))
-	q = int(round(float(q) * MatchState.workforce_output_multiplier()))
+	q = int(round(float(q) * LabourState.workforce_output_multiplier()))
 	return maxi(0, q)
 
 
@@ -332,9 +332,9 @@ static func _empire_surplus(good_id: String) -> int:
 		return 0
 	var produced: int = 0
 	var consumed: int = 0
-	for iid in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[iid]
-		if not MatchState.is_player_owned(b):
+	for iid in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[iid]
+		if not BuildingState.is_player_owned(b):
 			continue
 		var rcp: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
 		if rcp.is_empty():
@@ -372,12 +372,12 @@ static func marginal_power_cost(tile_id: String, demand: int) -> float:
 	var generated := 0
 	var consumed := 0
 	var generation_by_tile: Dictionary = {}
-	var ids: Array = MatchState.buildings.keys()
+	var ids: Array = BuildingState.buildings.keys()
 	ids.sort()
 	for iid in ids:
-		var b: Dictionary = MatchState.buildings[iid]
+		var b: Dictionary = BuildingState.buildings[iid]
 		var tile := str(b.get("tile_id", ""))
-		if not MatchState.is_player_owned(b) or MatchState.is_building_paused(str(iid)) or MatchState.is_retooling(str(iid)):
+		if not BuildingState.is_player_owned(b) or BuildingWorks.is_building_paused(str(iid)) or BuildingWorks.is_retooling(str(iid)):
 			continue
 		if not cabled.is_empty() and not network.has(tile):
 			continue

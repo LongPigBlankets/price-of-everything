@@ -20,7 +20,7 @@ func _ready() -> void:
 	var tile_id := "tile_9_10"   # tile_7_9 has a river through it (per-bank split); 9_10 is a clean cluster
 	var coord: Vector2i = terrain.id_to_coord(tile_id)
 	for i in 10:
-		var iid: String = MatchState.add_building("b_014", "", tile_id, "npc", "shot_%d" % i)
+		var iid: String = BuildingState.add_building("b_014", "", tile_id, "npc", "shot_%d" % i)
 		_bv.on_building_placed(tile_id, "b_014", "", iid, coord)
 	_bv._rebuild_subcomponents(tile_id)
 	var c: Vector2 = terrain.map_to_local(terrain.map_coord_for_tile_coord(coord))

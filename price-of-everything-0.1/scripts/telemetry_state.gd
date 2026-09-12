@@ -367,8 +367,8 @@ func _empire_snapshot() -> Dictionary:
 	var ran: Dictionary = Production.last_turn_run
 	var missing: Dictionary = Production.missing_by_building
 	var blocked: Dictionary = Production.blocked_reason_by_building
-	for b in MatchState.buildings.values():
-		if not (b is Dictionary) or not MatchState.is_player_owned(b):
+	for b in BuildingState.buildings.values():
+		if not (b is Dictionary) or not BuildingState.is_player_owned(b):
 			continue
 		var bid := str(b.get("building_id", ""))
 		names.append("%s(l%d)" % [_building_names.get(bid, bid), int(b.get("level", 1))])

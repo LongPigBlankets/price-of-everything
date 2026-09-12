@@ -34,8 +34,8 @@ func _ready() -> void:
 	var target_iid := ""
 	for tile_id in index:
 		var tid := str(tile_id)
-		for iid in MatchState.buildings:
-			var b: Dictionary = MatchState.buildings[iid]
+		for iid in BuildingState.buildings:
+			var b: Dictionary = BuildingState.buildings[iid]
 			if str(b.get("tile_id", "")) == tid and str(b.get("building_id", "")) == "b_016":
 				target = tid
 				target_iid = str(iid)
@@ -68,7 +68,7 @@ func _ready() -> void:
 	_shot("/tmp/poe_wood_before.png")
 
 	# Fell it exactly as the demolish job does.
-	MatchState.remove_building(target_iid)
+	BuildingState.remove_building(target_iid)
 	await _settle(6)
 	var guard := 0
 	while fabric.call("has_pending_repairs") and guard < 600:

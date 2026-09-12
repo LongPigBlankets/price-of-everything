@@ -16,8 +16,8 @@ func _ready() -> void:
 	# Find a power-producing building and mark its tile as generating intermittent power.
 	var tile := ""
 	var iid := ""
-	for id in MatchState.buildings.keys():
-		var b: Dictionary = MatchState.buildings[id]
+	for id in BuildingState.buildings.keys():
+		var b: Dictionary = BuildingState.buildings[id]
 		var r: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
 		if str(r.get("output_name", "")) == "power":
 			tile = str(b.get("tile_id", ""))

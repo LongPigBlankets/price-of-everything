@@ -31,7 +31,7 @@ func _seed_victory() -> void:
 	v._resolve_green_ids()
 	# Widest: 140 distinct player non-infra tiles -> live 0.55.
 	for i in range(140):
-		MatchState.buildings["vshot%d" % i] = {"building_id": "b_001", "tile_id": "vshot_t%d" % i, "owner": "player_1"}
+		BuildingState.buildings["vshot%d" % i] = {"building_id": "b_001", "tile_id": "vshot_t%d" % i, "owner": "player_1"}
 	# Best-ever per track. Richest's best (0.62) sits above its live (0.54) to show
 	# the ghosted "locked-in but now lower" meter segment.
 	v.track_best = {"autarkic": 0.60, "logistics": 0.50, "richest": 0.62, "widest": 0.55, "greenest": 0.2625}

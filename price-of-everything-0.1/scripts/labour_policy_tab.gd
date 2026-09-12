@@ -32,9 +32,9 @@ func _ready() -> void:
 	_root.add_theme_constant_override("separation", 22)
 	_root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(_root)
-	MatchState.workforce_policies_changed.connect(_queue_refresh)
-	MatchState.labour_multiplier_changed.connect(func(_v: float) -> void: _queue_refresh())
-	MatchState.advisors_changed.connect(_queue_refresh)   # HR gating on Other policies
+	LabourState.workforce_policies_changed.connect(_queue_refresh)
+	LabourState.labour_multiplier_changed.connect(func(_v: float) -> void: _queue_refresh())
+	AdvisorState.advisors_changed.connect(_queue_refresh)   # HR gating on Other policies
 	TurnManager.turn_resolution_completed.connect(_queue_refresh)
 	visibility_changed.connect(_queue_refresh)
 	_rebuild()
@@ -52,30 +52,30 @@ func _apply_refresh() -> void:
 
 # ── current selections derived from sim state ───────────────────────────────
 func _safety_key() -> String:
-	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_STRICT_SAFETY):
+	if LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_STRICT_SAFETY):
 		return "high"
-	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_LAX_SAFETY):
+	if LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_LAX_SAFETY):
 		return "minimal"
 	return "standard"
 
 func _pensions_key() -> String:
-	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_GENEROUS_PENSIONS):
+	if LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_GENEROUS_PENSIONS):
 		return "generous"
-	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_PENSIONS_MINIMUM):
+	if LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_PENSIONS_MINIMUM):
 		return "minimum"
 	return "average"
 
 func _bonus_key() -> String:
-	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_BONUS):
+	if LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_BONUS):
 		return "generous"
-	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_SMALL_BONUS):
+	if LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_SMALL_BONUS):
 		return "small"
 	return "none"
 
 func _profit_key() -> String:
-	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
+	if LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
 		return "five"
-	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_PROFIT_SHARE_10):
+	if LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_PROFIT_SHARE_10):
 		return "ten"
 	return "none"
 
@@ -83,9 +83,9 @@ func _profit_key() -> String:
 func _pick_exclusive(group: Array, chosen: String) -> void:
 	for pid in group:
 		if str(pid) != chosen:
-			MatchState.set_workforce_policy_enabled(str(pid), false)
+			LabourState.set_workforce_policy_enabled(str(pid), false)
 	if chosen != "":
-		MatchState.set_workforce_policy_enabled(chosen, true)
+		LabourState.set_workforce_policy_enabled(chosen, true)
 
 # ── rebuild ─────────────────────────────────────────────────────────────────
 func _rebuild() -> void:
@@ -118,7 +118,7 @@ func _rebuild() -> void:
 
 # ── left column: the spectrums ───────────────────────────────────────────────
 func _build_effort(parent: Control) -> void:
-	var v := MatchState.labour_multiplier
+	var v := LabourState.labour_multiplier
 	var key := "std"
 	if v < 0.999:
 		key = "lean"
@@ -127,20 +127,20 @@ func _build_effort(parent: Control) -> void:
 	parent.add_child(_spectrum("Work effort", [
 		{"key": "lean", "label": "0.8x Lean",
 			"caption": "Salary cost −20% · output pressure −2%/turn, down to −30%.",
-			"pick": func() -> void: MatchState.set_labour_multiplier(0.8)},
+			"pick": func() -> void: LabourState.set_labour_multiplier(0.8)},
 		{"key": "std", "label": "1.0x Standard",
 			"caption": "Salary cost ±0% · output pressure recovers 1%/turn toward 0%.",
-			"pick": func() -> void: MatchState.set_labour_multiplier(1.0)},
+			"pick": func() -> void: LabourState.set_labour_multiplier(1.0)},
 		{"key": "over", "label": "1.2x Overtime",
 			"caption": "Salary cost +20% · output momentum +1%/turn, up to +10%.",
-			"pick": func() -> void: MatchState.set_labour_multiplier(1.2)},
+			"pick": func() -> void: LabourState.set_labour_multiplier(1.2)},
 	], key))
 
 ## "Worker pay while not running" — what a workforce is owed on a turn its building produced
 ## nothing. Sits beside Work effort because both price the same people, just in opposite
 ## directions: one buys more output, this one stops paying for output that never came.
 func _build_idle_pay(parent: Control) -> void:
-	var share := MatchState.idle_labour_pay_share
+	var share := LabourState.idle_labour_pay_share
 	var key := "full"
 	if share < 0.6:
 		key = "half"
@@ -149,81 +149,81 @@ func _build_idle_pay(parent: Control) -> void:
 	parent.add_child(_spectrum("Worker pay while building not running", [
 		{"key": "half", "label": "50%",
 			"caption": "A building that made nothing this turn pays half its wage bill. Cheapest, and hardest on the workforce.",
-			"pick": func() -> void: MatchState.set_idle_labour_pay_share(0.5)},
+			"pick": func() -> void: LabourState.set_idle_labour_pay_share(0.5)},
 		{"key": "most", "label": "75%",
 			"caption": "Most of the wage bill is paid through an idle turn.",
-			"pick": func() -> void: MatchState.set_idle_labour_pay_share(0.75)},
+			"pick": func() -> void: LabourState.set_idle_labour_pay_share(0.75)},
 		{"key": "full", "label": "100%",
 			"caption": "Workers are paid in full whether the line runs or not.",
-			"pick": func() -> void: MatchState.set_idle_labour_pay_share(1.0)},
+			"pick": func() -> void: LabourState.set_idle_labour_pay_share(1.0)},
 	], key))
 
 func _build_safety(parent: Control) -> void:
-	var group := [MatchState.WORKFORCE_POLICY_LAX_SAFETY, MatchState.WORKFORCE_POLICY_STANDARD_SAFETY, MatchState.WORKFORCE_POLICY_STRICT_SAFETY]
+	var group := [LabourState.WORKFORCE_POLICY_LAX_SAFETY, LabourState.WORKFORCE_POLICY_STANDARD_SAFETY, LabourState.WORKFORCE_POLICY_STRICT_SAFETY]
 	parent.add_child(_spectrum("Safety standards", [
 		{"key": "minimal", "label": "Minimal",
 			"caption": "Output +5% · labour +0.5%/turn (max +15%) · maintenance +5%/turn while active, up to +100%.",
-			"pick": func() -> void: _pick_exclusive(group, MatchState.WORKFORCE_POLICY_LAX_SAFETY)},
+			"pick": func() -> void: _pick_exclusive(group, LabourState.WORKFORCE_POLICY_LAX_SAFETY)},
 		{"key": "standard", "label": "Standard",
 			"caption": "Regulation compliance — no output or labour cost change.",
-			"pick": func() -> void: _pick_exclusive(group, MatchState.WORKFORCE_POLICY_STANDARD_SAFETY)},
+			"pick": func() -> void: _pick_exclusive(group, LabourState.WORKFORCE_POLICY_STANDARD_SAFETY)},
 		{"key": "high", "label": "High",
 			"caption": "Output −10% · labour costs fall −0.5%/turn while active, down to −15%.",
-			"pick": func() -> void: _pick_exclusive(group, MatchState.WORKFORCE_POLICY_STRICT_SAFETY)},
+			"pick": func() -> void: _pick_exclusive(group, LabourState.WORKFORCE_POLICY_STRICT_SAFETY)},
 	], _safety_key()))
 
 func _build_pensions(parent: Control) -> void:
-	var third := MatchState.workforce_policy_game_third_turns()
-	var group := [MatchState.WORKFORCE_POLICY_PENSIONS_MINIMUM, MatchState.WORKFORCE_POLICY_GENEROUS_PENSIONS]
+	var third := LabourState.workforce_policy_game_third_turns()
+	var group := [LabourState.WORKFORCE_POLICY_PENSIONS_MINIMUM, LabourState.WORKFORCE_POLICY_GENEROUS_PENSIONS]
 	parent.add_child(_spectrum("Pensions", [
 		{"key": "minimum", "label": "Minimum legal",
 			"caption": "Labour costs fall −0.1%/turn while active (max −5%) · output drifts −0.05%/turn as people leave (max −5%).",
-			"pick": func() -> void: _pick_exclusive(group, MatchState.WORKFORCE_POLICY_PENSIONS_MINIMUM)},
+			"pick": func() -> void: _pick_exclusive(group, LabourState.WORKFORCE_POLICY_PENSIONS_MINIMUM)},
 		{"key": "average", "label": "Industry average",
 			"caption": "The baseline — no modifiers either way.",
 			"pick": func() -> void: _pick_exclusive(group, "")},
 		{"key": "generous", "label": "Generous",
 			"caption": "Output +0.05%%/turn (max +5%%) · labour costs ramp +0.1%%→+0.4%%/turn as the game ages (thirds of %d turns)." % (third * 3),
-			"pick": func() -> void: _pick_exclusive(group, MatchState.WORKFORCE_POLICY_GENEROUS_PENSIONS)},
+			"pick": func() -> void: _pick_exclusive(group, LabourState.WORKFORCE_POLICY_GENEROUS_PENSIONS)},
 	], _pensions_key()))
 
 func _build_bonus(parent: Control) -> void:
-	var group := [MatchState.WORKFORCE_POLICY_SMALL_BONUS, MatchState.WORKFORCE_POLICY_ANNUAL_BONUS]
+	var group := [LabourState.WORKFORCE_POLICY_SMALL_BONUS, LabourState.WORKFORCE_POLICY_ANNUAL_BONUS]
 	parent.add_child(_spectrum("Annual bonus", [
 		{"key": "none", "label": "No annual bonus",
 			"caption": "Nothing paid, nothing gained.",
 			"pick": func() -> void: _pick_exclusive(group, "")},
 		{"key": "small", "label": "Small annual bonus",
 			"caption": "Labour costs +2.5% · output +10% every 10th turn (the bonus month).",
-			"pick": func() -> void: _pick_exclusive(group, MatchState.WORKFORCE_POLICY_SMALL_BONUS)},
+			"pick": func() -> void: _pick_exclusive(group, LabourState.WORKFORCE_POLICY_SMALL_BONUS)},
 		{"key": "generous", "label": "Generous annual bonus",
 			"caption": "Labour costs +5% · output +20% every 10th turn (the bonus month).",
-			"pick": func() -> void: _pick_exclusive(group, MatchState.WORKFORCE_POLICY_ANNUAL_BONUS)},
+			"pick": func() -> void: _pick_exclusive(group, LabourState.WORKFORCE_POLICY_ANNUAL_BONUS)},
 	], _bonus_key()))
 
 func _build_profit_share(parent: Control) -> void:
-	var group := [MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, MatchState.WORKFORCE_POLICY_PROFIT_SHARE_10]
+	var group := [LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, LabourState.WORKFORCE_POLICY_PROFIT_SHARE_10]
 	parent.add_child(_spectrum("Profit share", [
 		{"key": "none", "label": "No profit share",
 			"caption": "Profits stay with the company.",
 			"pick": func() -> void: _pick_exclusive(group, "")},
 		{"key": "five", "label": "5% profit share",
 			"caption": "Pay 5% of post-tax, post-dividend profit to workers · output +10%.",
-			"pick": func() -> void: _pick_exclusive(group, MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE)},
+			"pick": func() -> void: _pick_exclusive(group, LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE)},
 		{"key": "ten", "label": "10% profit share",
 			"caption": "Pay 10% of post-tax, post-dividend profit to workers · output +15%.",
-			"pick": func() -> void: _pick_exclusive(group, MatchState.WORKFORCE_POLICY_PROFIT_SHARE_10)},
+			"pick": func() -> void: _pick_exclusive(group, LabourState.WORKFORCE_POLICY_PROFIT_SHARE_10)},
 	], _profit_key()))
 
 func _build_automation(parent: Control) -> void:
-	var on := MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_PUSH_AUTOMATION)
+	var on := LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_PUSH_AUTOMATION)
 	parent.add_child(_spectrum("Automation", [
 		{"key": "push", "label": "Push for automation",
 			"caption": "Labour costs fall −0.2%/turn while active (max −15%) · maintenance +2%/turn (max +10%).",
-			"pick": func() -> void: MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_PUSH_AUTOMATION, true)},
+			"pick": func() -> void: LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_PUSH_AUTOMATION, true)},
 		{"key": "no_push", "label": "Don't push for automation",
 			"caption": "Keep the current balance of hands and machines.",
-			"pick": func() -> void: MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_PUSH_AUTOMATION, false)},
+			"pick": func() -> void: LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_PUSH_AUTOMATION, false)},
 	], "push" if on else "no_push"))
 
 ## A titled row of mutually-exclusive segment buttons with the SELECTED
@@ -333,13 +333,13 @@ func _build_other_policies(parent: Control) -> void:
 	col.add_theme_constant_override("separation", 4)
 	card.add_child(col)
 	var defs := [
-		{"id": MatchState.WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE, "name": "Extended Annual Leave",
+		{"id": LabourState.WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE, "name": "Extended Annual Leave",
 			"tip": "Output −5% every 10th turn · labour −0.1%/turn while active (max −5%)."},
-		{"id": MatchState.WORKFORCE_POLICY_GENEROUS_PARENTAL_LEAVE, "name": "Generous Parental Leave",
+		{"id": LabourState.WORKFORCE_POLICY_GENEROUS_PARENTAL_LEAVE, "name": "Generous Parental Leave",
 			"tip": "Output −5% for 10 turns every other 10 · labour −0.1%/turn while active (max −5%)."},
-		{"id": MatchState.WORKFORCE_POLICY_LONG_TENURE, "name": "Long Tenure Awards",
+		{"id": LabourState.WORKFORCE_POLICY_LONG_TENURE, "name": "Long Tenure Awards",
 			"tip": "Labour +10% every 10th turn (payout) · labour −0.1%/turn while active (max −10%). Requires an HR Director."},
-		{"id": MatchState.WORKFORCE_POLICY_STOCK_OPTIONS, "name": "Stock Options",
+		{"id": LabourState.WORKFORCE_POLICY_STOCK_OPTIONS, "name": "Stock Options",
 			"tip": "Dividends grow +0.05%/turn (max +10%) · output +0.1%/turn while active (max +5%). Unlocked by an HR advisor's mission."},
 	]
 	var first := true
@@ -360,13 +360,13 @@ func _build_other_policies(parent: Control) -> void:
 		name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(name_l)
 		var toggle := CheckButton.new()
-		toggle.set_pressed_no_signal(MatchState.is_workforce_policy_enabled(pid))
-		var available: bool = MatchState.is_workforce_policy_available(pid)
+		toggle.set_pressed_no_signal(LabourState.is_workforce_policy_enabled(pid))
+		var available: bool = LabourState.is_workforce_policy_available(pid)
 		toggle.disabled = not available
 		if not available:
 			row.tooltip_text += "  (locked)"
 		toggle.toggled.connect(func(pressed: bool) -> void:
-			MatchState.set_workforce_policy_enabled(pid, pressed))
+			LabourState.set_workforce_policy_enabled(pid, pressed))
 		row.add_child(toggle)
 
 # ── atoms (mirrors advisor_council_tab's look) ───────────────────────────────

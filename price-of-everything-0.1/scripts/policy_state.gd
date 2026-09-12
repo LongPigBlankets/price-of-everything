@@ -220,8 +220,8 @@ func _enforce_new_prohibitions() -> void:
 
 	# Buildings whose current recipe is now illegal (they halt in _can_run_recipe).
 	var halted: int = 0
-	for iid in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[iid]
+	for iid in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[iid]
 		var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
 		if recipe.is_empty():
 			continue
@@ -404,7 +404,7 @@ func _maybe_fire_insider_tip() -> void:
 	if aid == "":
 		return
 	_insider_tip_fired = true
-	var officer_name := str(MatchState.get_advisor(aid).get("name", "Your Government Affairs officer"))
+	var officer_name := str(AdvisorState.get_advisor(aid).get("name", "Your Government Affairs officer"))
 	EventScheduler.emit_event({
 		"kind": "advisor_tip",
 		"severity": "critical",
@@ -418,10 +418,10 @@ func _maybe_fire_insider_tip() -> void:
 ## The seated Government Affairs advisor id, if their Influencing is maxed (3/3); else "".
 ## Raw discipline stats live on ADVISOR_ROSTER (the display dicts don't carry them).
 func get_insider_tip_officer() -> String:
-	var aid := MatchState.get_advisor_in_seat(INSIDER_TIP_SEAT)
+	var aid := AdvisorState.get_advisor_in_seat(INSIDER_TIP_SEAT)
 	if aid == "":
 		return ""
-	if int(MatchState._roster_entry(aid).get("inf", 0)) < INSIDER_TIP_MIN_INF:
+	if int(AdvisorState._roster_entry(aid).get("inf", 0)) < INSIDER_TIP_MIN_INF:
 		return ""
 	return aid
 

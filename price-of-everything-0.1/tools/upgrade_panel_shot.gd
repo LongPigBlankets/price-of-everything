@@ -16,8 +16,8 @@ func _ready() -> void:
 	# Any player-owned building with an upgrade path will do; the dialog's layout is the
 	# subject, not the particular building.
 	var target := ""
-	for instance_id in MatchState.buildings:
-		var preview: Dictionary = MatchState.preview_upgrade(str(instance_id))
+	for instance_id in BuildingState.buildings:
+		var preview: Dictionary = BuildingWorks.preview_upgrade(str(instance_id))
 		if not preview.is_empty():
 			target = str(instance_id)
 			print("[UPG] %s -> %s" % [target, str(preview.get("to_name", preview.keys()))])

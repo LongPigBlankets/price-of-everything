@@ -1,14 +1,13 @@
 extends Node2D
-## Debug renderer for the roads-v2 network. Two layers (spec Phase 3):
+## Renderer for the road network. Two layers (spec Phase 3):
 ## - STATIC (this node): every BUILT edge, redrawn only when an order settles
 ##   or the edge count changes — never per frame.
 ## - ACTIVE (child node): edges mid-reveal, redrawn per frame while any order
 ##   is revealing. The reveal grows network-outward: geometry is routed
 ##   tile -> attachment, so it's drawn from the attachment (goal) end back
 ##   toward the tile by the order's reveal fraction.
-## Only active while the 'toggle roadsv2' cheat has v2 enabled.
 
-# Road colors AND widths live in MapStyle ('toggle ink' swaps them). Ink mode
+# Road colors AND widths live in MapStyle. Ink mode
 # additionally restyles the DRAWN geometry per run (RDP simplify + seeded
 # wobble — spec §3c Class 2; logic geometry untouched) and replaces the solid
 # casing with dash segments batched into ONE draw_multiline per tier
@@ -22,7 +21,7 @@ const ViewStream := preload("res://scripts/view_stream.gd")
 
 ## THE SAME BUG THE RIVERS HAD (see river_visuals.gd). _draw walked EVERY edge of the whole
 ## 728-edge network — twice, casing under bed — and the renderer replays that command buffer
-## every frame whether or not _draw runs again. Measured 25 Aug with tools/pan_profile.tscn:
+## every frame whether or not _draw runs again. Measured with tools/pan_profile.tscn:
 ## 2,466 draw calls and ~43 ms of a 59 ms frame at MAXIMUM ZOOM, on a camera that was not even
 ## moving. The proof it was not culling: the layer cost 2,466 draw calls zoomed all the way in
 ## and 2,482 zoomed all the way out — the same network, for a screen showing three hexes and a
@@ -87,7 +86,7 @@ func _on_style_changed() -> void:
 	_active_layer.queue_redraw()
 
 func _process(_delta: float) -> void:
-	# 'toggle roads' hides the whole layer; drawing is skipped while hidden.
+	# Drawing is skipped while the layer is hidden.
 	if visible != RoadNetwork.roads_visible:
 		visible = RoadNetwork.roads_visible
 		_active_layer.visible = RoadNetwork.roads_visible
@@ -146,7 +145,7 @@ func _point_in_view(p: Vector2) -> bool:
 
 
 ## The bbox of an edge's geometry, cached. Empty `_view` means "no opinion" — the layer has not
-## polled a viewport yet (tests never do), and then every edge draws exactly as it used to.
+## polled a viewport yet (tests never do), and then every edge draws.
 func _edge_visible(edge_id: Variant, geometry: PackedVector2Array) -> bool:
 	if _view.size.x <= 0.0 or geometry.is_empty():
 		return true
@@ -187,8 +186,8 @@ func _lp_draw_inner() -> void:
 	var terrain := _terrain()
 	var flagged := _flagged_tiles(terrain)
 	# Roads show ONLY where roads are built: clip every edge to tiles whose
-	# infrastructure carries "roads", dropping spans over roadless tiles. Since
-	# roads-v3 the bake flags every tile its network crosses, so for baked
+	# infrastructure carries "roads", dropping spans over roadless tiles. The
+	# bake flags every tile its network crosses, so for baked
 	# geometry this clip is a no-op safety net (geometry == gameplay).
 	_culled = 0
 	var runs_by_edge: Dictionary = {}
@@ -245,10 +244,9 @@ func _lp_draw_inner() -> void:
 	_drew_whole_network = _culled == 0
 	_drawn_view_size = _view.size
 
-## The deck used to be a FIXED 42u bar (point +/- tangent * 21). A bridge over a
-## narrow river therefore ran on well past both banks, and a crossing near a
-## coast put a tan plank out in open water — the "roads on the sea" the owner
-## spotted. Probe outward for the far bank instead: the deck reaches land, or it
+## The deck is NOT a fixed-length bar: that runs a bridge over a narrow river on
+## well past both banks, and puts a tan plank out in open water at a crossing near
+## a coast. Probe outward for the far bank instead: the deck reaches land, or it
 ## is not a crossing and is not drawn. Roads never appear on lakes or sea.
 const BRIDGE_HALF_MAX := 21.0
 const BRIDGE_HALF_MIN := 6.0
@@ -511,10 +509,10 @@ const TERMINUS_MERGE_CLEAR := 14.0
 ## Two (or more) dead-end tips within this range of each other are a CONVERGENCE
 ## (e.g. the stitched fan at a busy bridge gate), not isolated terminuses — arms
 ## reach up to TERMINUS_ARM_MAX, so nearby tips would draw overlapping bars
-## (owner screenshot 2026-07-09). The whole cluster stays plain cut ends.
+## on top of each other. The whole cluster stays plain cut ends.
 const TERMINUS_CLUSTER_CLEAR := 60.0
 
-## Dead-end treatment (roads-v3, replaces the deleted Y-stubs): a road tip that
+## Dead-end treatment: a road tip that
 ## is genuinely alone — degree-1 JUNCTION node AND clear of every other edge's
 ## geometry — gets a small turning-loop glyph, purely draw-time (no edges, no
 ## saved state). The moment a later road reaches it the glyph vanishes by
@@ -811,7 +809,7 @@ const RIBBON_MITER_LIMIT := 2.5
 ##
 ## `draw_polyline(antialiased = true)` is the most expensive command in the gl_compatibility
 ## canvas: each call is its own dynamic vertex upload, and the antialiasing splits it further —
-## measured 25 Aug at ~3 draw calls and ~30 us PER EDGE, so 728 edges cost ~2,180 draw calls and
+## measured at ~3 draw calls and ~30 us PER EDGE, so 728 edges cost ~2,180 draw calls and
 ## ~43 ms of a 59 ms frame. Culling fixed that close in and could not fix it at all zoomed out,
 ## where every edge genuinely is on screen.
 ##
@@ -821,7 +819,7 @@ const RIBBON_MITER_LIMIT := 2.5
 ## only DRAW ORDER forces a second one, for the casing that goes under them.
 ##
 ## THE GEOMETRY IS CACHED, AND THAT IS NOT OPTIONAL. Building the ribbons is work draw_polyline
-## used to do in C++, and GDScript is not the place to redo it 39 times in six seconds: measured
+## does in C++, and GDScript is not the place to redo it 39 times in six seconds: measured
 ## uncached at 38-86 ms per repaint for ~100 strokes, which turned a 10 ms panning frame into a
 ## 46 ms one — a worse layer than the one it replaced. Cached, a repaint is `append_array` over
 ## a handful of PackedArrays, which is a memcpy. An edge's ribbon depends only on its geometry
@@ -873,7 +871,7 @@ static func _sequence(n: int) -> PackedInt32Array:
 
 ## One stroke as a flat triangle list: four offsets per point — outer, core, core, outer — woven
 ## into three bands per segment, so the two outer bands fade to alpha 0 and carry the
-## antialiasing that draw_polyline's `antialiased` argument used to.
+## antialiasing that draw_polyline's `antialiased` argument would.
 static func _ribbon_soup(p_in: PackedVector2Array, width: float, color: Color) -> Array:
 	# A repeated point has no direction to take a normal from, and the wobble can emit one.
 	var p := PackedVector2Array()

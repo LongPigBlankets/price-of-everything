@@ -11,9 +11,9 @@ func _ready() -> void:
 	await _settle(150)
 	var hex: Node = get_tree().get_first_node_in_group("hex_map")
 	var by_tile: Dictionary = {}
-	for iid in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[iid]
-		if MatchState.is_player_owned(b):
+	for iid in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[iid]
+		if BuildingState.is_player_owned(b):
 			continue
 		var t: String = str(b.get("tile_id", ""))
 		if t == "":

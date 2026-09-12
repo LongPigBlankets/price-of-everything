@@ -1,14 +1,13 @@
 extends PanelContainer
 const EffectEmblem := preload("res://scripts/effect_emblem.gd")
-## Building Detail v2 — the redesigned, scenario-adaptive detail panel (Phase 1).
-## Code-instantiated by world_map. THE building detail panel: the classic v1 panel it was
-## written to replace was deleted on 2026-08-28, along with the `swap bdp` seam.
+## Building Detail — the scenario-adaptive detail panel.
+## Code-instantiated by world_map. THE building detail panel.
 ## Renders a shared, UI-agnostic readout (building_readout.gd): header + status badge → adaptive
 ## recipe/flow strip (frameless good icons in independent input/output grids) → always-open
 ## diagnostics checklist → emphasised per-output cost-to-produce → economics → inbound shipments →
 ## routing (with the map-highlight signal) → labour. Live via coalesced refresh. Upgrade/recipe/
 ## sell/demolish sheets, banners and battery/infra/port variants land in later phases.
-## See docs/building-detail-v2-plan.md. Mirrors the tile_info_panel v1→v2 swap.
+## See docs/building-detail-v2-plan.md.
 
 const BuildingReadout := preload("res://scripts/building_readout.gd")
 const BuildingStatus := preload("res://scripts/building_status.gd")
@@ -20,7 +19,7 @@ const InfrastructureInfo := preload("res://scripts/infrastructure_info.gd")
 
 const HEADER_HEIGHT := 44.0
 const PANEL_EDGE_MARGIN := 20.0
-const TOP_BAR_CLEARANCE := 114.0   # clears the top bar AND the briefing notch hang + shadow (owner 2026-07-11)
+const TOP_BAR_CLEARANCE := 114.0   # clears the top bar AND the briefing notch hang + shadow
 const BOTTOM_CLEARANCE := 110.0  # fallback: keep clear of the bottom menu when no tile panel to match
 const PANEL_WIDTH := 460.0
 
@@ -172,7 +171,7 @@ func _apply_refresh() -> void:
 		return  # hidden: stay dirty, catch up on show
 	_dirty = false
 	var iid := str(_current_building.get("instance_id", ""))
-	var live: Dictionary = MatchState.get_building(iid) if iid != "" else {}
+	var live: Dictionary = BuildingState.get_building(iid) if iid != "" else {}
 	if not live.is_empty():
 		_current_building = live
 	_rebuild(_current_building)
@@ -214,8 +213,8 @@ func _rebuild(building: Dictionary) -> void:
 	# "tile_5_9" at the player instead of "Stoneshore Fields - (5, 9)".
 	var _tile := str(building.get("tile_id", ""))
 	var display_level := int(building.get("level", 1))
-	if MatchState.INFRA_UPGRADABLE.has(str(building_data.get("internal_name", ""))):
-		display_level = MatchState.infra_tile_level(building)
+	if BuildingWorks.INFRA_UPGRADABLE.has(str(building_data.get("internal_name", ""))):
+		display_level = BuildingWorks.infra_tile_level(building)
 	_subtitle_label.text = "Level %d · %s" % [
 		display_level, Catalog.tile_label(_tile) if _tile != "" else "—"]
 
@@ -247,7 +246,7 @@ func _rebuild(building: Dictionary) -> void:
 		_body.add_child(_build_infra_card())
 		# Levellable infra (roads/rails/pipes/reinf_pipes/cables) gets the same Upgrade
 		# button as production buildings — it opens the cash-only upgrade sheet.
-		if MatchState.INFRA_UPGRADABLE.has(str(building_data.get("internal_name", ""))):
+		if BuildingWorks.INFRA_UPGRADABLE.has(str(building_data.get("internal_name", ""))):
 			_body.add_child(_build_primary_actions(building, building_data))
 	elif BuildingReadout.is_recipe_kind(kind) and (not (fl.get("output", {}) as Dictionary).is_empty() or not (fl.get("inputs", []) as Array).is_empty()):
 		_body.add_child(_build_recipe_strip(fl))
@@ -268,7 +267,7 @@ func _rebuild(building: Dictionary) -> void:
 			_body.add_child(_make_section("Cost to produce"))
 			_body.add_child(_build_cost_to_produce(cost_rows))
 
-	# Modifiers (owner 2026-07-10): everything currently bending this building's
+	# Modifiers: everything currently bending this building's
 	# numbers, in an accordion whose chevroned section header expands on click.
 	if not is_infra and kind != "battery":
 		_add_modifiers_accordion(building, recipe)
@@ -380,7 +379,7 @@ func _fmt_int(n: int) -> String:
 	return ("-" if n < 0 else "") + out
 
 func _open_buy_dialog(iid: String, building_name: String, price: int) -> void:
-	var building: Dictionary = MatchState.get_building(iid)
+	var building: Dictionary = BuildingState.get_building(iid)
 	if Tutorial.port_purchase_disabled(str(building.get("building_id", ""))):
 		return
 	if _buy_layer == null or not is_instance_valid(_buy_layer):
@@ -398,15 +397,15 @@ func _on_buy_confirmed(_dont_ask: bool) -> void:
 	var iid := str(_pending_buy.get("iid", ""))
 	var building_name := str(_pending_buy.get("name", ""))
 	var price := int(_pending_buy.get("price", 0))
-	var building: Dictionary = MatchState.get_building(iid)
+	var building: Dictionary = BuildingState.get_building(iid)
 	if Tutorial.port_purchase_disabled(str(building.get("building_id", ""))):
 		return
-	if iid == "" or not MatchState.buildings.has(iid):
+	if iid == "" or not BuildingState.buildings.has(iid):
 		return
 	if not MatchState.deduct_money(float(price)):
 		MatchState.build_rejected_no_funds.emit("Not enough money to buy %s — need £%d, you have £%.0f" % [building_name, price, MatchState.money])
 		return
-	MatchState.set_building_owner(iid, MatchState.LOCAL_PLAYER)
+	BuildingState.set_building_owner(iid, MatchState.LOCAL_PLAYER)
 	MatchState.request_toast("Purchased %s for £%d" % [building_name, price], "success")
 	Audio.transaction()
 	# building_owner_changed → coalesced refresh re-reads the now-owned building → full panel.
@@ -506,8 +505,8 @@ func _build_storage_card(building: Dictionary) -> PanelContainer:
 	card.add_child(vb)
 	var head := Label.new()
 	head.add_theme_color_override("font_color", CREAM_INK)
-	# "36 / 2000" was cells over MEGAWATTS — a count divided by a capacity (owner 2026-08-01).
-	# The pair that shares a unit is power stabilised vs the tile's firming capacity.
+	# The pair that shares a unit is power stabilised vs the tile's firming capacity — never
+	# cells over MEGAWATTS, a count divided by a capacity.
 	head.text = "Power stabilised — %d / %d MW" % [int(b.get("firming_cap", 0)), int(b.get("slots", 0))]
 	vb.add_child(head)
 	var note := Label.new()
@@ -550,8 +549,8 @@ func _open_battery_source_sheet(building: Dictionary, recipe: Dictionary) -> voi
 			var gid := str(Catalog.get_good_by_internal_name(str(internal)).get("id", ""))
 			if gid == "":
 				continue
-			var unlocked := MatchState.battery_type_loadable(gid)
-			var fill := MatchState.battery_cells_to_fill(tile, gid, str(building.get("instance_id", "")))
+			var unlocked := Power.battery_type_loadable(gid)
+			var fill := Power.battery_cells_to_fill(tile, gid, str(building.get("instance_id", "")))
 			var stock := Stockpile.get_at_tile(tile, gid)
 			var loadable := mini(fill, stock)
 			var subtitle := ""
@@ -568,7 +567,7 @@ func _open_battery_source_sheet(building: Dictionary, recipe: Dictionary) -> voi
 				btn_text = "Load %d" % loadable
 				enabled = loadable > 0
 			vb.add_child(_battery_type_row(gid, str(internal), subtitle, btn_text, enabled, func() -> void:
-				var n := MatchState.load_battery_cells(tile, gid, loadable)
+				var n := Power.load_battery_cells(tile, gid, loadable)
 				MatchState.request_toast(("Loaded %d %s cells" % [n, Catalog.get_display_name(gid)]) if n > 0 else "Nothing available to load", "success" if n > 0 else "warning")
 				_queue_refresh()
 				_open_battery_source_sheet(building, recipe))))
@@ -586,8 +585,8 @@ func _open_battery_order_sheet(building: Dictionary, recipe: Dictionary) -> void
 			var gid := str(Catalog.get_good_by_internal_name(str(internal)).get("id", ""))
 			if gid == "":
 				continue
-			var unlocked := MatchState.battery_type_loadable(gid)
-			var fill := MatchState.battery_cells_to_fill(tile, gid, str(building.get("instance_id", "")))
+			var unlocked := Power.battery_type_loadable(gid)
+			var fill := Power.battery_cells_to_fill(tile, gid, str(building.get("instance_id", "")))
 			var subtitle := ""
 			var btn_text := ""
 			var enabled := false
@@ -598,13 +597,13 @@ func _open_battery_order_sheet(building: Dictionary, recipe: Dictionary) -> void
 				subtitle = "Housing full"
 				btn_text = "Full"
 			else:
-				var quote := TransportService.quote_market_buy(tile, gid, fill, MatchState.seaport_would_cover(gid))
+				var quote := TransportService.quote_market_buy(tile, gid, fill, TransportState.seaport_would_cover(gid))
 				var cost := float(quote.get("cost", 0.0))
 				subtitle = ("fills %d cells · £%.2f" % [fill, cost]) if not quote.is_empty() else "no market route to this tile"
 				btn_text = "Order %d" % fill
 				enabled = not quote.is_empty()
 			vb.add_child(_battery_type_row(gid, str(internal), subtitle, btn_text, enabled, func() -> void:
-				var r := MatchState.order_battery_fill_market(tile, gid, fill)
+				var r := Power.order_battery_fill_market(tile, gid, fill)
 				if bool(r.get("ok", false)):
 					var t := int(r.get("turns", 1))
 					MatchState.request_toast("Ordered %d cells — £%.2f, arriving in %d turn%s" % [fill, float(r.get("cost", 0.0)), t, "" if t == 1 else "s"], "success")
@@ -709,7 +708,7 @@ func _infrastructure_level_accordion(key: String, level: int) -> VBoxContainer:
 ## empty check here rather than a separate mode allow-list to keep in sync with it.
 func _build_infra_breakdown(building: Dictionary, building_data: Dictionary) -> Control:
 	var mode := InfrastructureInfo.key_for(building_data)
-	var rows := MatchState.tile_good_breakdown(str(building.get("tile_id", "")), mode)
+	var rows := TransportState.tile_good_breakdown(str(building.get("tile_id", "")), mode)
 	if rows.is_empty():
 		return null
 	var card := _make_card()
@@ -780,12 +779,12 @@ func _build_port_card(building: Dictionary) -> PanelContainer:
 	sub.text = "Inputs arrive from, and outputs ship to, the world market through this port. Sea freight is booked under Transport."
 	vb.add_child(sub)
 	var tile := str(building.get("tile_id", ""))
-	var sea := MatchState.seaport_shipping_summary(tile)
+	var sea := TransportState.seaport_shipping_summary(tile)
 	var owned := bool(sea.get("owned", false))
 	var growth := float(sea.get("growth", 1.0))
 	var rate_pct := float(sea.get("insurance_rate", 0.0)) * 100.0 * growth
 	# Three sections, ordered by what each is WORTH to the player rather than by what is
-	# easiest to explain (owner, 25 Aug). What you are paying right now comes first, the goods
+	# easiest to explain. What you are paying right now comes first, the goods
 	# that actually moved this turn second, and the rate card — reference you read once — last.
 	# Eleven metrics one separation apart read as a single undifferentiated wall; the air
 	# between the sections is what does the separating, so the rows inside one stay tight.
@@ -812,7 +811,7 @@ func _build_port_card(building: Dictionary) -> PanelContainer:
 			vb.add_child(_port_activity_row(row, used_by_class))
 
 	_port_section(vb, "THE RATE CARD", false)
-	if MatchState.keeps_introductory_port_rate():
+	if TransportState.keeps_introductory_port_rate():
 		vb.add_child(_port_metric("Ad valorem · all turns", "0.5% of market buy value"))
 	else:
 		vb.add_child(_port_metric("Ad valorem · turns 1–30", "0.5% of market buy value"))
@@ -907,7 +906,7 @@ func _add_port_throughput_rows(vb: VBoxContainer, live: bool) -> void:
 		vb.add_child(_port_metric("Throughput: " + str(spec[1]), _fmt_int(capacity) + " units / turn"))
 
 func sea_port_cap(good_id: String) -> int:
-	return MatchState.seaport_throughput_cap(good_id)
+	return TransportState.seaport_throughput_cap(good_id)
 
 # --- primary actions (upgrade · change recipe) ---------------------------------------------
 
@@ -918,14 +917,14 @@ func _build_primary_actions(building: Dictionary, _building_data: Dictionary) ->
 	var lvl := int(building.get("level", 1))
 	# Infra levels live on the TILE (the instance copy can lag) — label from the truth.
 	var b_internal := str(Catalog.get_building(str(building.get("building_id", ""))).get("internal_name", ""))
-	if MatchState.INFRA_UPGRADABLE.has(b_internal):
-		lvl = MatchState.infra_tile_level(building)
+	if BuildingWorks.INFRA_UPGRADABLE.has(b_internal):
+		lvl = BuildingWorks.infra_tile_level(building)
 
 	var up := Button.new()
 	up.name = "UpgradeButton"
 	up.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	up.custom_minimum_size = Vector2(0, 40)
-	var upgrade_progress := MatchState.upgrade_progress_snapshot(iid)
+	var upgrade_progress := BuildingWorks.upgrade_progress_snapshot(iid)
 	if not upgrade_progress.is_empty():
 		up.text = "Upgrading…"
 		up.disabled = true
@@ -945,8 +944,8 @@ func _build_primary_actions(building: Dictionary, _building_data: Dictionary) ->
 		rc.name = "ChangeRecipeButton"   # stable target for the tutorial coach spotlight
 		rc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		rc.custom_minimum_size = Vector2(0, 40)
-		if MatchState.is_retooling(iid):
-			var t := MatchState.retrofit_turns_remaining(iid)
+		if BuildingWorks.is_retooling(iid):
+			var t := BuildingWorks.retrofit_turns_remaining(iid)
 			rc.text = "Retooling — %d turn%s" % [t, "" if t == 1 else "s"]
 		else:
 			rc.text = "Change recipe (%d)" % alt_count
@@ -957,11 +956,9 @@ func _build_primary_actions(building: Dictionary, _building_data: Dictionary) ->
 # In-panel upgrade action sheet — the upgrade_dialog.gd content (level stat deltas, material
 # sourcing modes) rendered as one of the BDP's own sheets. Driven by MatchState.preview_upgrade /
 # start_upgrade / cancel_upgrade.
-## The material upgrade opens THE SHARED DIALOG (scripts/upgrade_dialog.gd), which is what
-## the v1 panel has always done. This panel grew its own in-sheet copy of the same screen, and
-## the two then drifted: every improvement made to the dialog -- the cream material chips, the
-## "use materials on tile" CTA, the trimmed copy -- landed in a screen the default panel never
-## opened, which is why the owner saw none of it (2026-08-28). One screen, one implementation.
+## The material upgrade opens THE SHARED DIALOG (scripts/upgrade_dialog.gd). An in-sheet
+## copy of the same screen drifts from the dialog as soon as either is improved. One screen,
+## one implementation.
 ##
 ## The full-height action sheet stays for the CASH-ONLY INFRASTRUCTURE upgrade and for the
 ## already-upgrading countdown, which the dialog does not model; those are genuinely different
@@ -969,7 +966,7 @@ func _build_primary_actions(building: Dictionary, _building_data: Dictionary) ->
 ## its buttons: a sheet fills the panel by design, and a card sizes to its content.
 func _open_upgrade_sheet(building: Dictionary) -> void:
 	var iid := str(building.get("instance_id", ""))
-	var preview: Dictionary = MatchState.preview_upgrade(iid)
+	var preview: Dictionary = BuildingWorks.preview_upgrade(iid)
 	if bool(preview.get("ok", false)) and not bool(preview.get("at_max", false)) \
 			and not bool(preview.get("infra", false)) \
 			and not bool(preview.get("already_upgrading", false)):
@@ -977,7 +974,7 @@ func _open_upgrade_sheet(building: Dictionary) -> void:
 		_upgrade_dialog.call("open", iid)
 		return
 	_open_sheet("Upgrade", func(vb: VBoxContainer) -> void:
-		var pv := MatchState.preview_upgrade(iid)
+		var pv := BuildingWorks.preview_upgrade(iid)
 		if pv.is_empty() or not bool(pv.get("ok", false)):
 			var msg := Label.new()
 			msg.theme_type_variation = "Body"
@@ -1001,8 +998,8 @@ func _open_upgrade_sheet(building: Dictionary) -> void:
 		# Already upgrading → countdown + cancel only.
 		if bool(pv.get("already_upgrading", false)):
 			var left := int(pv.get("pending_turns_left", 0))
-			var awaiting := str(pv.get("pending_status", "")) == MatchState.UPGRADE_STATUS_AWAITING
-			var progress := MatchState.upgrade_progress_snapshot(iid)
+			var awaiting := str(pv.get("pending_status", "")) == BuildingWorks.UPGRADE_STATUS_AWAITING
+			var progress := BuildingWorks.upgrade_progress_snapshot(iid)
 			var note := Label.new()
 			note.theme_type_variation = "Body"
 			note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1018,7 +1015,7 @@ func _open_upgrade_sheet(building: Dictionary) -> void:
 			cancel.text = "Cancel upgrade"
 			cancel.custom_minimum_size = Vector2(0, 40)
 			cancel.pressed.connect(func() -> void:
-				MatchState.cancel_upgrade(iid)
+				BuildingWorks.cancel_upgrade(iid)
 				MatchState.request_toast("Upgrade cancelled — %s." % ("cash refunded" if is_infra_pending else "materials returned to the tile"), "caution")
 				_close_sheet()
 				_queue_refresh())
@@ -1041,7 +1038,7 @@ func _open_upgrade_sheet(building: Dictionary) -> void:
 				pay.text = "Upgrade to Lv %d — £%d (not enough money)" % [target, int(cost)]
 				pay.disabled = true
 			pay.pressed.connect(func() -> void:
-				var res := MatchState.start_upgrade(iid)
+				var res := BuildingWorks.start_upgrade(iid)
 				if bool(res.get("ok", false)):
 					MatchState.request_toast("Upgrade started — level %d in %d turns" % [target, duration], "success")
 					_close_sheet()
@@ -1092,7 +1089,7 @@ func _open_upgrade_sheet(building: Dictionary) -> void:
 		# Blockers
 		if bool(pv.get("research_locked", false)):
 			# The tech name is a link into the Research tree — it is the most actionable thing
-			# on this sheet, and used to be flat text the player had to go and find by hand.
+			# on this sheet, so it is not flat text the player has to go and find by hand.
 			vb.add_child(UIHelpers.make_research_requirement_link(
 				str(pv.get("research_gate", "")), DS.PALETTE["DANGER"]))
 		if not bool(pv.get("fits", true)):
@@ -1141,9 +1138,9 @@ func _open_upgrade_sheet(building: Dictionary) -> void:
 				vb.add_child(tr))
 
 func _commit_upgrade(iid: String, mode: String, duration: int) -> void:
-	var res := MatchState.start_upgrade(iid, mode)
+	var res := BuildingWorks.start_upgrade(iid, mode)
 	if bool(res.get("ok", false)):
-		var awaiting := str(res.get("status", "")) == MatchState.UPGRADE_STATUS_AWAITING
+		var awaiting := str(res.get("status", "")) == BuildingWorks.UPGRADE_STATUS_AWAITING
 		MatchState.request_toast(("Upgrade queued — sourcing materials, then %d turns." % duration) if awaiting else ("Upgrade started — ready in %d turns." % duration), "success")
 		_close_sheet()
 		_queue_refresh()
@@ -1151,7 +1148,7 @@ func _commit_upgrade(iid: String, mode: String, duration: int) -> void:
 		MatchState.request_toast(str(res.get("reason", "Cannot upgrade.")), "warning")
 
 ## Good-icon size on the upgrade sheet. Frameless: the metal bevel ate a 52 px cell and
-## left the good barely readable (owner 2026-08-23).
+## left the good barely readable.
 const UPGRADE_MAT_ICON := 56
 
 # A material cell for the upgrade sheet: plain good icon (need pill) + have/need caption.
@@ -1284,8 +1281,8 @@ func _open_recipe_sheet(building: Dictionary) -> void:
 	var building_id := str(building.get("building_id", ""))
 	var current := str(building.get("recipe_id", ""))
 	var populate := func(vb: VBoxContainer) -> void:
-		if MatchState.is_retooling(iid):
-			var t := MatchState.retrofit_turns_remaining(iid)
+		if BuildingWorks.is_retooling(iid):
+			var t := BuildingWorks.retrofit_turns_remaining(iid)
 			var note := Label.new()
 			note.theme_type_variation = "Body"
 			note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1295,12 +1292,12 @@ func _open_recipe_sheet(building: Dictionary) -> void:
 			cancel.text = "Cancel retooling"
 			cancel.custom_minimum_size = Vector2(0, 40)
 			cancel.pressed.connect(func() -> void:
-				MatchState.cancel_retrofit(iid)
+				BuildingWorks.cancel_retrofit(iid)
 				_close_sheet()
 				_queue_refresh())
 			vb.add_child(cancel)
 			return
-		var tier := MatchState.retrofit_cost_tier()
+		var tier := BuildingWorks.retrofit_cost_tier()
 		var info := Label.new()
 		info.theme_type_variation = "Caption"
 		info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1359,7 +1356,7 @@ func _recipe_choice_row(iid: String, recipe: Dictionary, is_current: bool) -> Co
 	return card
 
 func _apply_retrofit(iid: String, recipe: Dictionary) -> void:
-	var res := MatchState.start_retrofit(iid, str(recipe.get("recipe_id", "")))
+	var res := BuildingWorks.start_retrofit(iid, str(recipe.get("recipe_id", "")))
 	if not bool(res.get("ok", false)):
 		MatchState.request_toast(str(res.get("reason", "Could not retool.")), "warning")
 	else:
@@ -1371,10 +1368,10 @@ func _apply_retrofit(iid: String, recipe: Dictionary) -> void:
 
 func _build_sell_demolish_row(building: Dictionary, building_data: Dictionary) -> Control:
 	var iid := str(building.get("instance_id", ""))
-	if MatchState.is_demolishing(iid):
+	if BuildingWorks.is_demolishing(iid):
 		var col := VBoxContainer.new()
 		col.add_theme_constant_override("separation", DS.SP["SM"])
-		var t := MatchState.demolish_turns_remaining(iid)
+		var t := BuildingWorks.demolish_turns_remaining(iid)
 		var note := Label.new()
 		note.theme_type_variation = "Body"
 		note.add_theme_color_override("font_color", DS.PALETTE["DANGER"])
@@ -1384,7 +1381,7 @@ func _build_sell_demolish_row(building: Dictionary, building_data: Dictionary) -
 		cancel.text = "Cancel demolition"
 		cancel.custom_minimum_size = Vector2(0, 40)
 		cancel.pressed.connect(func() -> void:
-			MatchState.cancel_demolish(iid)
+			BuildingWorks.cancel_demolish(iid)
 			_queue_refresh())
 		col.add_child(cancel)
 		return col
@@ -1518,7 +1515,7 @@ func _build_recipe_strip(flow: Dictionary) -> PanelContainer:
 	row.add_child(_recipe_arrow(int(flow.get("power_in", 0))))
 
 	# outputs — one hero icon, or a grid when the recipe has CO-PRODUCTS (chlor-alkali yields
-	# chlorine + sodium hydroxide + hydrogen; only the chlorine used to be drawn). The pill on
+	# chlorine + sodium hydroxide + hydrogen). The pill on
 	# each carries the base→modified delta.
 	var outputs: Array = flow.get("outputs", [])
 	if outputs.is_empty() and not (flow.get("output", {}) as Dictionary).is_empty():
@@ -1577,8 +1574,8 @@ func _recipe_icon(good_id: String, internal: String, qty: int, size: int, bleed:
 	slot.clip_contents = false
 	if good_id != "":
 		slot.tooltip_text = Catalog.get_display_name(good_id)  # hover shows the good's name
-	# Power drawn AS A GOOD uses its isometric goods icon, matching the empire plates
-	# (owner 2026-08-29); the flat lightning stays on the arrow's energy badge only.
+	# Power drawn AS A GOOD uses its isometric goods icon, matching the empire plates;
+	# the flat lightning stays on the arrow's energy badge only.
 	var tex: Texture2D = GoodIcons.texture_for_size(good_id, internal, float(size))
 	if tex != null:
 		var tr := TextureRect.new()
@@ -1622,7 +1619,7 @@ func _good_icon_pill(good_id: String, internal: String, qty: int, size: int, bas
 	# already looking at what this building eats and makes, and 'how else is that made'
 	# is the next question. ALWAYS, not the deferring form — a recipe card is itself
 	# clickable, so the polite version handed every one of these clicks to the card and the
-	# graph never opened (owner 2026-08-25).
+	# graph never opens.
 	UIHelpers.link_good_icon_to_encyclopedia(holder, good_id)
 	return holder
 
@@ -1730,7 +1727,7 @@ var _diagnostics_open := false
 
 # --- diagnostics ---------------------------------------------------------------------------
 
-## The checklist, folded to one line when there is nothing wrong (owner 2026-08-25).
+## The checklist, folded to one line when there is nothing wrong.
 ## A building that is running fine still spent six rows saying so, above the numbers the
 ## player opened the panel for. Nothing is hidden — the fold opens — but "all green" is a
 ## one-line answer and it should take one line.
@@ -1880,7 +1877,7 @@ func _build_cost_to_produce(rows: Array) -> PanelContainer:
 ## The sign convention each category reads by. Output and workforce are EARNINGS, so more is
 ## better. Power draw and maintenance are COSTS, so less is better and a negative there is
 ## green, not red — a research node that cuts a furnace's draw by 10% was being painted as
-## damage (owner, 25 Aug).
+## damage.
 const MOD_CATEGORIES: Array = [
 	{"cat": "Output", "good_up": true},
 	{"cat": "Workforce", "good_up": true},
@@ -1892,9 +1889,9 @@ const MOD_CATEGORIES: Array = [
 ## and maintenance — behind a chevroned section header that expands on click (collapsed by
 ## default).
 ##
-## Collapsed, the header carries the ONE number worth a glance: the net effect on OUTPUT. It
-## used to read "3 active", which counted power and maintenance modifiers into a figure the
-## player reads as production, and told them nothing about which way any of it went.
+## Collapsed, the header carries the ONE number worth a glance: the net effect on OUTPUT. A
+## bare count like "3 active" would fold power and maintenance modifiers into a figure the
+## player reads as production, and say nothing about which way any of it went.
 ##
 ## Expanded, only the per-category summaries carry colour. Painting all fourteen individual
 ## rows green and red made a wall of traffic lights out of what is really four numbers.
@@ -2052,7 +2049,7 @@ func _build_economics(econ: Dictionary) -> PanelContainer:
 	# the tile, so they get a line here rather than living only in the sim.
 	var iid_econ := str(_current_building.get("instance_id", ""))
 	# The REPAYMENT, not the outstanding tab: what it takes a turn and how many turns are
-	# left to run (owner, 2026-09-03). The total is still there to read — it is this figure
+	# left to run. The total is still there to read — it is this figure
 	# times the turns — but the per-turn cost is what a player plans around.
 	# Financing this building carries per turn: the deferred build-cost tab AND any construction
 	# loan taken to build it (tag_last_loan_building tied it to this instance). Both are shown in

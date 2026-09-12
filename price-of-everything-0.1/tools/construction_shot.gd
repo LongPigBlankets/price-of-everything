@@ -124,7 +124,7 @@ func _ready() -> void:
 	# And prove a site stops being a site: promote everything, then shoot once more.
 	for iid in started:
 		Construction.construction_projects.erase(iid)
-		MatchState.add_building("b_002", "", tile_id, MatchState.LOCAL_PLAYER, str(iid))
+		BuildingState.add_building("b_002", "", tile_id, MatchState.LOCAL_PLAYER, str(iid))
 	Construction.construction_completed.emit(str(started[0]) if not started.is_empty() else "", tile_id)
 	(visuals as CanvasItem).queue_redraw()
 	(cranes as CanvasItem).queue_redraw()

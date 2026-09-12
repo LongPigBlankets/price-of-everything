@@ -38,21 +38,21 @@ func _run() -> void:
 	var td: Dictionary = _main._tile_data_by_id(TILE)
 	var panel = _main.info_panel
 
-	print("[SHOT] owned before: ", MatchState.get_tile_land_owned(TILE),
-		" npc: ", MatchState.get_tile_npc_footprint(TILE))
+	print("[SHOT] owned before: ", BuildingState.get_tile_land_owned(TILE),
+		" npc: ", BuildingState.get_tile_npc_footprint(TILE))
 	panel.show_tile(td)
 	for _i in 6:
 		await get_tree().process_frame
 	_capture("bugfix_shot_no_land.png")   # owned 0 → no bracket
 
-	MatchState.purchase_tile_land(TILE, 6)   # 60 owned → bracket appears
+	BuildingState.purchase_tile_land(TILE, 6)   # 60 owned → bracket appears
 	# Buy one NPC building: it should move to the top of the pile + grant its land.
-	for b in MatchState.get_buildings_on_tile(TILE):
-		if not MatchState.is_player_owned(b):
-			MatchState.set_building_owner(str(b.get("instance_id", "")), MatchState.LOCAL_PLAYER)
+	for b in BuildingState.get_buildings_on_tile(TILE):
+		if not BuildingState.is_player_owned(b):
+			BuildingState.set_building_owner(str(b.get("instance_id", "")), MatchState.LOCAL_PLAYER)
 			break
-	print("[SHOT] owned after: ", MatchState.get_tile_land_owned(TILE),
-		" npc: ", MatchState.get_tile_npc_footprint(TILE))
+	print("[SHOT] owned after: ", BuildingState.get_tile_land_owned(TILE),
+		" npc: ", BuildingState.get_tile_npc_footprint(TILE))
 	for _i in 6:
 		await get_tree().process_frame
 	_capture("bugfix_shot_collapsed.png")

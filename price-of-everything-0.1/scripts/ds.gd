@@ -49,15 +49,14 @@ const PALETTE := {
 	# the off-white-on-navy rule the same way they are. Reads 8.4:1 on the panel navies.
 	"BRASS": Color("#D9B24C"),
 	"TEXT": Color("#E8EEF7"),
-	"TEXT_MUTED": Color("#C2D2E5"),       # was #9BB1CC — bumped much closer to white for legibility
+	"TEXT_MUTED": Color("#C2D2E5"),       # close to white so it stays legible on the navies
 	# Secondary label text. NOT a way to make text quieter on a dark panel: on the navies
-	# this palette actually uses it reads as grey-on-grey at 11–14 px, which is where the
-	# owner keeps finding it. THE RULE (see CLAUDE.md): text on BG_PANEL / BG_CARD /
+	# this palette actually uses it reads as grey-on-grey at 11–14 px. THE RULE (see
+	# CLAUDE.md): text on BG_PANEL / BG_CARD /
 	# BG_INSET / the top bar navy is TEXT unless it is saying something semantic. To make a
 	# label feel secondary on a dark surface, drop its SIZE or weight, not its contrast.
-	# Was #6B7F98, which measured 4.69:1 against BG_PANEL — over
-	# the WCAG AA line by a hair, and at 11-14px it read as grey-on-grey. Now 9.92:1.
-	# Owner rule, 9 Aug: the dark grey never goes on a navy or dark background.
+	# 9.92:1 against BG_PANEL. The dark grey (TEXT_DISABLED) never goes on a navy or dark
+	# background.
 	"TEXT_DIM": Color("#A9BCD2"),
 	# DISABLED controls, and only those: low contrast IS the signal there, so this keeps the
 	# old dim value. Never use it for text the player is meant to read.
@@ -159,8 +158,7 @@ func _build_theme() -> Theme:
 	_label_var(t, fonts, "Section",      "BARLOW_BOLD", FS["SECTION"],  PALETTE["ACCENT"], 0.08)
 	_label_var(t, fonts, "BuildingName", "BARLOW_SEMI", FS["BUILDING"], PALETTE["TEXT"])
 	_label_var(t, fonts, "Body",         "PLEX_MED",    FS["BODY"],     PALETTE["TEXT"])
-	# Caption is MEDIUM, not Regular (owner 2026-08-24: "stop using the thin font
-	# altogether"). Regular at caption sizes on the panel navies reads as low contrast even
+	# Caption is MEDIUM, not Regular. Regular at caption sizes on the panel navies reads as low contrast even
 	# in the off-white — the weight was doing what a greyer colour would have, and the
 	# standing rule already forbids that. Nothing in the UI uses PLEX Regular now: the
 	# ladder is MEDIUM for body and caption, SEMIBOLD for emphasis and every numeral.
@@ -172,10 +170,8 @@ func _build_theme() -> Theme:
 	# Ledger section head (Construct V3, spec §4): small-caps at ~1.1x body, off-white,
 	# paired with the fine rule that ruled_section_head() draws above it. The head is
 	# quieter than "Section" because the rule carries the separation, not size or colour.
-	# Plex SemiBold (owner 2026-08-26: one font family throughout Construct V3 —
-	# Bebas Neue for the panel title only — with bold vs not-bold as the sole other
-	# differentiator; this was the one label still on a second family, Barlow
-	# Condensed, purely by inheriting the older "Section" variation's choice).
+	# Plex SemiBold: one font family throughout Construct V3 — Bebas Neue for the panel
+	# title only — with bold vs not-bold as the sole other differentiator.
 	_label_var(t, fonts, "SectionRuled", "PLEX_SEMI",   15,             PALETTE["TEXT"], 0.08)
 
 	# ── PanelContainer base + variations ───────────────────────────────
@@ -268,9 +264,8 @@ func _build_theme() -> Theme:
 	_apply_button_font(t, fonts, "Silver")
 
 	# ── Brass button (the copper/bronze research-panel family) ──────────────────
-	# Brass fill, dark navy text, dimmed-brass disabled state. Built for the V3
-	# confirm CTA, then benched: commit buttons stay steel-blue for consistency
-	# (owner 2026-08-26). Kept as an available accent variation.
+	# Brass fill, dark navy text, dimmed-brass disabled state. Commit buttons stay
+	# steel-blue for consistency; this is an available accent variation.
 	t.set_type_variation("Brass", "Button")
 	t.set_stylebox("normal", "Brass",
 		_button_stylebox(Color("#EFC96B"), Color("#C6963A"), Color("#54401C"), 8, 2, 21, 10, 0.50))

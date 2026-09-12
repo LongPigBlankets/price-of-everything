@@ -243,8 +243,8 @@ func _run_candidate(candidate: Dictionary, turns: int) -> Dictionary:
 		_set_tile_only(inst, [ids.steel, ids.copper_wiring])
 		MatchState.route_output_to_market(inst, ids.motor)
 
-	for inst in MatchState.get_buildings_on_tile(coal_tile):
-		var b: Dictionary = MatchState.get_building(str(inst))
+	for inst in BuildingState.get_buildings_on_tile(coal_tile):
+		var b: Dictionary = BuildingState.get_building(str(inst))
 		if str(b.get("recipe_id", "")) == ids.coal_mining:
 			_route(str(inst), ids.coal, iron_tile)
 	for tile_id in [coal_tile, iron_tile, copper_tile, motor_tile]:
@@ -269,7 +269,7 @@ func _run_candidate(candidate: Dictionary, turns: int) -> Dictionary:
 		"cash_delta_after_build": snappedf(MatchState.money - cash_after_build, 0.01),
 		"build_spend": snappedf(build_spend, 0.01),
 		"infra_spend": snappedf(infra_spend, 0.01),
-		"building_count": MatchState.buildings.size(),
+		"building_count": BuildingState.buildings.size(),
 		"coal": coal_tile,
 		"iron": iron_tile,
 		"copper": copper_tile,
@@ -310,7 +310,7 @@ func _recipe_for(building_id: String, output_id: String) -> String:
 func _place(building_id: String, recipe_id: String, tile_id: String, return_id: bool = false):
 	var cost := float(Catalog.get_building(building_id).get("base_price", 0.0))
 	MatchState.add_money(-cost)
-	var inst: String = str(MatchState.add_building(building_id, recipe_id, tile_id))
+	var inst: String = str(BuildingState.add_building(building_id, recipe_id, tile_id))
 	return inst if return_id else cost
 
 
@@ -324,7 +324,7 @@ func _set_tile_only(instance_id: String, goods: Array) -> void:
 
 
 func _route(instance_id: String, good_id: String, tile_id: String) -> void:
-	if tile_id != str(MatchState.get_building(instance_id).get("tile_id", "")):
+	if tile_id != str(BuildingState.get_building(instance_id).get("tile_id", "")):
 		MatchState.set_output_stockpile_destination(instance_id, tile_id, good_id)
 
 

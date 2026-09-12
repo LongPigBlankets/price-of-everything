@@ -1,6 +1,6 @@
 extends CanvasLayer
 ## The end-of-game Victory / Defeat screen — a full-screen overlay (layer 150)
-## porting the owner's "Victory Screen.html" design into Godot. It renders the ONE
+## porting the "Victory Screen.html" design into Godot. It renders the ONE
 ## dict assembled by scripts/end_game_data.gd (EndGameData.gather()); see that file
 ## and show_end() below for the contract. UI is read-only against the sim (rule #5):
 ## nothing here mutates state; only the footer button emits back_to_menu_pressed.
@@ -22,19 +22,17 @@ const FRAME_CLEAR := 22   # content inset clearing the brass pipe frame (transpo
 const SEC_PAD_H := 44
 
 # ── Design palette ─────────────────────────────────────────────────────────────
-# DS tokens, inlined by value (a const block cannot read the DS autoload). This screen was
-# ported from a "Victory Screen.html" mock and carried the mock's own palette — a lighter
-# blue navy, slate-grey secondary text and a silver bezel that existed nowhere else in the
-# game. Re-tokened 2026-08-24: the token each value mirrors is named beside it, and the few
-# NON-token colours left are the screen's own semantics (continuity amber, medal golds).
+# DS tokens, inlined by value (a const block cannot read the DS autoload). The token each
+# value mirrors is named beside it, and the few NON-token colours left are the screen's own
+# semantics (continuity amber, medal golds).
 const C_NAVY_TOP := Color("#040F1B")      # DS.BG_PANEL — every real panel's near-black
 const C_NAVY_BOT := Color("#02090F")      # a step deeper, for gradient feet
 const C_ACCENT_WIN := Color("#E6B85C")    # DS.WARN — the gold the menus pair with brass
 const C_ACCENT_LOSE := Color("#E66060")   # DS.DANGER
 ## "Continuity" — survived to the bell with no track but still in profit. Amber: neither the
-## gold of a win nor the red of receivership (owner 2026-08-01).
+## gold of a win nor the red of receivership.
 const C_ACCENT_CONT := Color("#e0932c")
-## The big word is amber TOO, not a pale sand (owner 2026-08-01) — victory pairs a near-white
+## The big word is amber TOO, not a pale sand — victory pairs a near-white
 ## word with a gold accent, but continuity reads as one amber verdict rather than two tones.
 const C_DISPLAY_CONT := Color("#e0932c")
 const C_TOTAL_CONT := Color("#e0932c")
@@ -56,8 +54,8 @@ const C_GLYPH_LIT := Color("#141d29")
 const C_GLYPH_UNLIT := Color("#31465c")
 const C_NAME_LIT := Color("#E8EEF7")     # DS.TEXT
 # An unsecured track is still a NAME the player reads, so it stays legible; the unlit
-# crest and the missing gold badge already say it was not won (owner 2026-08-24: "no dark
-# grey text"). TEXT_DISABLED is for controls you cannot press, not for words.
+# crest and the missing gold badge already say it was not won. TEXT_DISABLED is for
+# controls you cannot press, not for words.
 const C_NAME_UNLIT := Color("#C2D2E5")   # DS.TEXT_MUTED
 const C_COPY := Color("#E8EEF7")         # DS.TEXT (body copy the player is meant to read)
 const C_CARD_BORDER := Color(0.995, 0.93, 0.76, 0.55)   # DS.BORDER_SOFT — cream, not slate
@@ -135,11 +133,10 @@ func _grow() -> Control:
 
 # ── Brass frame + navy panel shell ───────────────────────────────────────────
 func _build_bezel(data: Dictionary) -> Control:
-	# The COPPER pipe the tile view wears (owner 2026-08-24). pipe_frame's stylebox is a
+	# The COPPER pipe the tile view wears. pipe_frame's stylebox is a
 	# single 9-slice carrying both the pipe and the opaque navy centre, so it supplies the
-	# ground as well as the border — no separate background and no overlay child. This
-	# replaced first the mock's silver bezel, then the brass overlay: brass is now spent
-	# sparingly INSIDE the panel, and the outer chrome is the game's copper.
+	# ground as well as the border — no separate background and no overlay child. Brass is
+	# spent sparingly INSIDE the panel; the outer chrome is the game's copper.
 	var bezel := PanelContainer.new()
 	bezel.custom_minimum_size = Vector2(PANEL_W, 0)
 	bezel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -181,8 +178,7 @@ func _build_bezel(data: Dictionary) -> Control:
 
 
 func _hborder() -> Control:
-	# The mock's 1px section rules are gone (owner 2026-08-24: "remove them, keep the
-	# space") — the sections separate by breathing room and their own plates now.
+	# No section rules — the sections separate by breathing room and their own plates.
 	var r := Control.new()
 	r.custom_minimum_size = Vector2(0, 10)
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -288,11 +284,6 @@ func _build_header(data: Dictionary) -> Control:
 	l_right.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	l_right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	labels.add_child(l_right)
-
-	# (The radial accent glow that used to sit behind the header — red, amber or green by
-	# result — is gone: owner 2026-08-24. On the copper plate it read as a smudge in the
-	# gradient rather than as light, and the result already has a colour everywhere it
-	# matters: the pill, the total, and the score bar.)
 	return sec
 
 
@@ -343,13 +334,11 @@ func _build_pennant(t: Dictionary, result: String) -> Control:
 	var card := _CutPlate.new(0, 0, _CutPlate.STEEL)
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.size_flags_vertical = Control.SIZE_FILL
-	# How the points were earned moved to HOVER (owner 2026-08-24). The card carries the
-	# crest, the name and the score; the working — what the track measures, where the run
-	# got to, what it needed — is one hover away and no longer four lines of small type
-	# under every hexagon.
+	# The card carries the crest, the name and the score; the working — what the track
+	# measures, where the run got to, what it needed — lives in the hover tooltip.
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
 	card.tooltip_text = _track_tooltip(t)
-	# No colour bar across the top (owner 2026-08-24) — the crest below is the track's
+	# No colour bar across the top — the crest below is the track's
 	# colour, struck in the research panel's metal, and a flat swatch over it was the one
 	# undesigned element on the card.
 	if done:
@@ -417,7 +406,7 @@ func _build_pennant(t: Dictionary, result: String) -> Control:
 	return card
 
 
-## What the card no longer says out loud: the track's rule, where the run got to, and what
+## The card's working, shown on hover: the track's rule, where the run got to, and what
 ## that was measured against.
 func _track_tooltip(t: Dictionary) -> String:
 	var lines: Array[String] = [str(t.get("name", "")).to_upper()]
@@ -479,7 +468,7 @@ func _build_copy(data: Dictionary) -> Control:
 
 func _copy_para(text: String) -> Control:
 	# The verdict is the one piece of writing on the screen; at 15 it sat below the chart
-	# captions in weight and got skipped (owner 2026-08-24).
+	# captions in weight and got skipped.
 	var l := _lbl(text, _UIFonts.PLEX_MED, 24, C_COPY)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.add_theme_constant_override("line_spacing", 12)
@@ -516,7 +505,7 @@ func _stat_card(value: String, label: String) -> Control:
 
 
 # ── Section 3b: THE COMPANY — the run's own artefacts, in the game's own art ──
-# Owner 2026-08-24: use the assets the game already has — good icons on the Goods Graph's
+# Uses the assets the game already has — good icons on the Goods Graph's
 # cream chips, building icons, advisor portraits — and pack them four to a row.
 func _build_company(data: Dictionary) -> Control:
 	var co: Dictionary = data.get("company", {})
@@ -526,8 +515,7 @@ func _build_company(data: Dictionary) -> Control:
 
 	# A FLOW row, not a fixed one: "Most sold" now carries a ranked five and is wider than the
 	# single-figure plates beside it, so the last plate drops to a second line rather than all
-	# four being squeezed (owner, 25 Aug — "expand that section up to 5, maybe sideways which
-	# kicks another panel onto the next row").
+	# four being squeezed.
 	var row := HFlowContainer.new()
 	row.add_theme_constant_override("h_separation", 14)
 	row.add_theme_constant_override("v_separation", 14)
@@ -579,9 +567,9 @@ func _good_showcase(caption: String, d: Dictionary) -> Control:
 		Catalog.get_display_name(gid))
 
 
-## The five goods the company sold most of, ranked — the plate that replaced a single winner.
-## One good said almost nothing about a run: a company that sold five things in quantity and
-## one that sold only one read identically (owner, 25 Aug).
+## The five goods the company sold most of, ranked. One good alone says almost nothing about
+## a run: a company that sold five things in quantity and one that sold only one would read
+## identically.
 const TOP_SOLD_PLATE_W := 430
 
 func _top_sold_showcase(list: Array) -> Control:
@@ -654,8 +642,8 @@ func _advisor_showcase(d: Dictionary) -> Control:
 		"seated since Year %d" % int(d.get("since_year", 1)), false)
 
 
-## The supply chain the run actually established, drawn as the GOODS GRAPH'S FOCUSED VIEW
-## (owner 2026-08-24): the goods this company made, in the flow chart's own columns, wired
+## The supply chain the run actually established, drawn as the GOODS GRAPH'S FOCUSED VIEW:
+## the goods this company made, in the flow chart's own columns, wired
 ## to each other by the real recipe links — not a row of five tier slots with one good in
 ## each. What the shape shows is how deep and how wide the business actually went.
 func _chain_row(chain: Dictionary) -> Control:
@@ -734,9 +722,8 @@ func _build_charts(data: Dictionary) -> Control:
 	# Biggest outputs — five ranked bar rows.
 	grid.add_child(_build_biggest(charts))
 
-	# The empire used to run the full width with most of the plate empty around a
-	# stamp-sized network (owner 2026-08-24). It is half now, and the other half is the
-	# league: where the company stood, and what it led — a quarter of the row each.
+	# The empire takes half the row; the other half is the league: where the company stood,
+	# and what it led — a quarter of the row each.
 	var bottom := HBoxContainer.new()
 	bottom.add_theme_constant_override("separation", 16)
 	box.add_child(bottom)
@@ -933,7 +920,7 @@ func _biggest_row(g: Dictionary, rank: int, maxu: int) -> Control:
 	row.custom_minimum_size = Vector2(0, 54)
 
 	# The Goods Graph's plain chip — cream ground, rounded corners, no metal frame, at the
-	# size the rest of the game shows a good (owner 2026-08-24: these were 26px and tiny).
+	# size the rest of the game shows a good.
 	var icon: Control = _UIHelpers.make_plain_good_icon(str(g.get("good_id", "")),
 		str(g.get("internal", "")), 50)
 	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -1023,11 +1010,9 @@ func _make_empire_graph(interactive: bool) -> Control:
 		if applied[0] or world.size.x <= 1.0:
 			return
 		applied[0] = true
-		# The SAME setup the empire view uses (EmpireGraph.populate). This used to solve the
-		# layout with two arguments instead of four and pass an empty port list beside a full
-		# buy-port list, which is why it read as an older sibling with a stray bottom row.
-		# `trading: false` still drops the sell row — the company has stopped selling — but the
-		# columns are now solved exactly as they are in the live view.
+		# The SAME setup the empire view uses (EmpireGraph.populate), so the columns are solved
+		# exactly as they are in the live view. `trading: false` drops the sell row — the
+		# company has stopped selling.
 		_EmpireGraph.populate(world, get_tree().get_first_node_in_group("hex_map"), false)
 		if interactive:
 			return
@@ -1045,9 +1030,6 @@ func _build_footer() -> Control:
 	var box: VBoxContainer = sec.get_child(0)
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 16)
-
-	# (The 120px hairline that used to sit here went with the section rules — owner
-	# 2026-08-24, "stop using the fading line". The button carries the section on its own.)
 
 	var btn := Button.new()
 	btn.text = "   Back to Main Menu"
@@ -1146,8 +1128,8 @@ func _section_head(text: String) -> Control:
 	var lbl := _lbl(text, _BEBAS, 26, C_SECTION_HEAD)
 	lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(lbl)
-	# No trailing rule (owner 2026-08-24: "stop using the fading line"). The heading stands
-	# on its own; the plates below it already say where the section starts.
+	# No trailing rule: the heading stands on its own; the plates below it already say where
+	# the section starts.
 	return row
 
 
@@ -1264,10 +1246,10 @@ class DrawUtil:
 ## The game's skeuomorphic plate, replacing the mock's thin-lined rounded cards: a
 ## cut-corner (octagonal) navy slab with machined relief — brass rim, light catching the
 ## inner top edges, shadow pooling below — the same material language as the research
-## stamps and the menus' brass chrome (owner 2026-08-24).
+## stamps and the menus' brass chrome.
 class _CutPlate extends PanelContainer:
-	# Three metals, so a screenful of plates is not a screenful of gold (owner 2026-08-24:
-	# "some coppery, others silver-steel, only 1-2 gold-brass"). Each is [under, body,
+	# Three metals, so a screenful of plates is not a screenful of gold: mostly copper and
+	# silver-steel, only one or two gold-brass. Each is [under, body,
 	# glint] — the rim is struck three times, dark first, to read as a turned edge.
 	const BRASS := 0
 	const COPPER := 1
@@ -1505,10 +1487,9 @@ class _ChainWeb extends Control:
 		var nrm := Vector2(-dir.y, dir.x)
 		draw_colored_polygon(PackedVector2Array([tip, tip - dir * 9.0 + nrm * 5.4,
 			tip - dir * 9.0 - nrm * 5.4]), Color(col, 0.9))
-		# The good itself, riding the line — the main supply chain's own treatment, which this
-		# panel never picked up (owner, 25 Aug). Without it a wire says only THAT two goods are
-		# linked, never WHICH good moves along it, and on a web with four route colours that is
-		# the question the reader actually has.
+		# The good itself, riding the line — the main supply chain's own treatment. Without it a
+		# wire says only THAT two goods are linked, never WHICH good moves along it, and on a web
+		# with four route colours that is the question the reader actually has.
 		if gid != "":
 			_wire_good(_along(pts, 0.5), gid, internal)
 
@@ -1565,7 +1546,7 @@ class _ChainWeb extends Control:
 		return out
 
 	## The Goods Graph's chip: the good's icon on cream, and the name underneath. NO
-	## coloured rim (owner 2026-08-25) — the category accent read as a status light around
+	## coloured rim — the category accent read as a status light around
 	## every good, and the goods already say what they are. The art is drawn at its OWN
 	## ASPECT inside the chip: stretching it to the square squashed the tall ones, which is
 	## why Ethylene's flask came out short and fat.
@@ -1663,8 +1644,7 @@ class _ScoreBar extends Control:
 		draw_rect(Rect2(Vector2(mx - 1.0, -2.0), Vector2(2.0, h + 4.0)), Color("#f2e6c8"))
 
 
-## The track crest, struck as the RESEARCH PANEL'S TIER STAMP (owner 2026-08-24: "use the
-## rounded hex corner style hexes... reuse the same metallic raised effect"): a rounded-corner
+## The track crest, struck as the RESEARCH PANEL'S TIER STAMP: a rounded-corner
 ## hexagon with a dropped shadow, a diagonal gradient face inside a lighter outline shell, and
 ## per-edge lighting from the top-left. Geometry and metal are HexStamp's, shared with the
 ## panel itself. A secured track is struck in gold; an unsecured one in cold navy.
@@ -1706,14 +1686,14 @@ class _Crest extends Control:
 			return
 		# 0.82 of the stamp's height overran the flat top and bottom runs — a hexagon is only
 		# full width across its middle, and the wider glyphs (the coin stack, the estate
-		# arrows) touched the rim (owner 2026-08-24).
+		# arrows) touched the rim.
 		var gs := inner.size.y * 0.66
 		var tint := Color("#141d29") if done else Color(color, 0.55)
 		draw_texture_rect(tex, Rect2(inner.get_center() - Vector2(gs, gs) * 0.5,
 			Vector2(gs, gs)), false, tint)
 
 
-## Revenue as a CIRCUIT BOARD (owner 2026-08-24): the area under the line is the green
+## Revenue as a CIRCUIT BOARD: the area under the line is the green
 ## board, the line itself the gold edge trace, and the board is laid out with gold runs
 ## between solder pads across its whole surface. Runs are laid on a lattice and kept only
 ## where BOTH pads sit under the curve, so the etching fills the shape exactly and stops
@@ -1770,7 +1750,7 @@ class _LineChart extends Control:
 
 	## The board itself: a CPU seated in the middle of the copper, and BUSES running to it —
 	## bundles of parallel traces that go straight for a run, break to 45 degrees together,
-	## and go straight again (owner 2026-08-24). Every trace in a bundle breaks one pitch
+	## and go straight again. Every trace in a bundle breaks one pitch
 	## further along than the one beside it, which is what keeps the diagonals parallel and
 	## the spacing even; it is also how a real board fans a bus into a pin row.
 	##
@@ -1892,9 +1872,8 @@ class _LineChart extends Control:
 
 ## Output as a rack of BEAKERS: flat-bottomed glass tubes with light-blue liquid to the
 ## turn's level, a meniscus glint on the surface and a brushed highlight up the wall. The
-## biggest turn's beaker holds cream. The feet used to be drawn as half-circles, which
-## read as bubbles under the liquid rather than as the bottom of a tube (owner
-## 2026-08-24) — they are square now, with the corners eased by a short chamfer.
+## biggest turn's beaker holds cream. The feet are square, with the corners eased by a short
+## chamfer: half-circle feet read as bubbles under the liquid rather than the bottom of a tube.
 class _BarChart extends Control:
 	const GLASS := Color(0.72, 0.78, 0.85, 0.45)
 	const LIQUID := Color(0.45, 0.68, 0.92, 0.8)
@@ -1946,8 +1925,8 @@ class _BarChart extends Control:
 				Color(1, 1, 1, 0.10), 1.0, true)
 
 
-## Buildings standing, STACKED FROM THE ESTATE'S OWN EMBLEM (owner 2026-08-24: "a furnace
-## or some other building the player built — stack that same icon over and over per bar").
+## Buildings standing, STACKED FROM THE ESTATE'S OWN EMBLEM: a building the player built,
+## repeated up each bar.
 ## The unit is decided up front: one sprite is `step` buildings, chosen so the tallest
 ## column runs about five sprites, and the card's footer says so. A column 1.5 units high
 ## draws a whole sprite with half a sprite standing on it — and the half shown is the
@@ -1981,7 +1960,7 @@ class _StackChart extends Control:
 		sp = maxf(sp, 8.0)
 		# The left axis: one rule per sprite, each labelled with the count it stands for.
 		# The sprite IS the unit, so the axis is the legend — no "one sprite = N buildings"
-		# note under the chart (owner 2026-08-24: "just label the axes clearly").
+		# note under the chart.
 		var shelf := h - sp
 		var tick := 1
 		while shelf > 0.0:

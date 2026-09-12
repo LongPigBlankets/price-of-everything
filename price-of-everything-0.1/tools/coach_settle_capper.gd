@@ -62,8 +62,8 @@ func _sample() -> void:
 	# Opening step sampled — hand ownership over and jump to a spotlight step so the
 	# NEXT batch shows the light travelling onto a real HUD target.
 	if _phase == "opening":
-		for iid in MatchState.buildings:
-			var inst: Dictionary = MatchState.buildings[iid]
+		for iid in BuildingState.buildings:
+			var inst: Dictionary = BuildingState.buildings[iid]
 			if str(inst.get("tile_id", "")) == "tile_5_9" and str(inst.get("building_id", "")) == "b_007":
 				inst["owner"] = MatchState.LOCAL_PLAYER
 		_phase = "spotlight"

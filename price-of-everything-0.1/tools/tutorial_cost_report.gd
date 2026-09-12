@@ -37,8 +37,8 @@ func _run() -> void:
 	var total := 0.0
 
 	# 1. The NPC window factory on tile_5_9
-	for iid in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[iid]
+	for iid in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[iid]
 		if str(inst.get("tile_id", "")) == TILE and str(inst.get("building_id", "")) == "b_007":
 			var p := BuildingPrice.sale_price(inst)
 			print("buy b_007 factory     £%d   (base %.1f, variation %.2f, near_port %s)" % [
@@ -47,8 +47,8 @@ func _run() -> void:
 			total += float(p)
 
 	# 2. Land the buy_land step demands
-	var patch: int = MatchState.LAND_PATCH_SIZE
-	var patch_cost: int = MatchState.LAND_PATCH_COST
+	var patch: int = BuildingState.LAND_PATCH_SIZE
+	var patch_cost: int = BuildingState.LAND_PATCH_COST
 	var shortfall: int = TutorialSteps._land_lesson_shortfall()
 	var land_cost := float(shortfall) / float(patch) * float(patch_cost)
 	print("buy land              £%.0f   (%d units, £%d per %d)" % [land_cost, shortfall, patch_cost, patch])

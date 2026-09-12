@@ -32,7 +32,7 @@ func _ready() -> void:
 		drawn[str((p as Dictionary).get("instance_id", ""))] = true
 	var total := 0
 	var undrawn: Array = []
-	for instance in MatchState.buildings.values():
+	for instance in BuildingState.buildings.values():
 		var iid := str((instance as Dictionary).get("instance_id", ""))
 		var bid := str((instance as Dictionary).get("building_id", ""))
 		if bid == "b_005" or bid == "b_015" or bid == "b_016":

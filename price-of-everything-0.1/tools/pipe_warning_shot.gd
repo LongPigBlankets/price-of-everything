@@ -14,14 +14,14 @@ func _ready() -> void:
 	# routed to market. Its liquid input (processed oil) can't be piped in and its
 	# liquid output can't be piped out → "Cannot procure inputs."
 	var tile := "tile_7_10"
-	var iid: String = MatchState.add_building("b_011", "r_022", tile, MatchState.LOCAL_PLAYER, "")
+	var iid: String = BuildingState.add_building("b_011", "r_022", tile, MatchState.LOCAL_PLAYER, "")
 	MatchState.set_output_stockpile_destination(iid, MatchState.MARKET_DESTINATION, "fuels")
 	await _settle(6)
 
 	var bdp: Control = game.find_child("BuildingDetailPanel", true, false)
 	if bdp == null:
 		print("no BDP found"); get_tree().quit(1); return
-	bdp.call("show_building", MatchState.get_building(iid))
+	bdp.call("show_building", BuildingState.get_building(iid))
 	await _settle(20)
 	(bdp as Control).position = Vector2(560, 80)
 	await _settle(20)

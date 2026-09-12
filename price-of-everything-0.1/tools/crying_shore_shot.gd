@@ -28,7 +28,7 @@ func _ready() -> void:
 
 	# Road segments crossing the tile, in tile-local coords (same space the mask uses).
 	var segs: Array = _bv._block_road_segments(coord)
-	print("[CS] road segments on tile: %d   buildings: %d" % [segs.size(), MatchState.get_buildings_on_tile(TARGET).size()])
+	print("[CS] road segments on tile: %d   buildings: %d" % [segs.size(), BuildingState.get_buildings_on_tile(TARGET).size()])
 
 	# Measure each placed footprint against every road segment.
 	var worst := 1.0e9

@@ -193,7 +193,7 @@ func _mechanic_body(entry_id: String) -> String:
 	if entry_id == "advisors":
 		# Read the live model rather than restating it — an encyclopedia page that quotes hardcoded
 		# numbers is a page that silently goes wrong the first time the constants are tuned.
-		var seats: int = MatchState.max_advisor_slots
+		var seats: int = AdvisorState.max_advisor_slots
 		var base: float = EconomyConfig.ADVISOR_BASE_COST_PER_TURN
 		var growth_pct: float = EconomyConfig.ADVISOR_COST_GROWTH * 100.0
 		var share_pct: float = EconomyConfig.ADVISOR_REVENUE_SHARE * 100.0
@@ -253,7 +253,7 @@ func _build_ui() -> void:
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	# Clicking the dimmed area outside the search bar / entry panel closes the
-	# overlay (owner 2026-07-19). Panels above the dim still swallow their clicks.
+	# overlay. Panels above the dim still swallow their clicks.
 	dim.gui_input.connect(func(e: InputEvent) -> void:
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 			close_search())
@@ -375,7 +375,7 @@ func _goods_results(query: String) -> Array:
 		})
 	return _sorted_limited_results(results)
 
-## Tiles by their map name (owner 2026-08-24). A tile result is not an article — picking
+## Tiles by their map name. A tile result is not an article — picking
 ## one takes you to the place, which is the only thing a player wants from "where is
 ## Fort Silversworth".
 func _tile_results(query: String) -> Array:
@@ -619,17 +619,17 @@ func _result_has_build_action(result: Dictionary) -> bool:
 		return _recipe_buildable(result.get("payload", {}))
 	if result_type == "building":
 		var req := str((result.get("payload", {}) as Dictionary).get("required_research", ""))
-		return req == "" or MatchState.is_unlocked(req)
+		return req == "" or ResearchState.is_unlocked(req)
 	return false
 
 func _recipe_buildable(recipe: Dictionary) -> bool:
 	var rec_req := str(recipe.get("tech_unlock_req", ""))
-	if rec_req != "" and not MatchState.is_unlocked(rec_req):
+	if rec_req != "" and not ResearchState.is_unlocked(rec_req):
 		return false
 	# The recipe's building can be gated independently (e.g. hydro).
 	var building: Dictionary = Catalog.get_building(str(recipe.get("building_id", "")))
 	var bld_req := str(building.get("required_research", ""))
-	return bld_req == "" or MatchState.is_unlocked(bld_req)
+	return bld_req == "" or ResearchState.is_unlocked(bld_req)
 
 func _make_build_button(result: Dictionary) -> Button:
 	var button := Button.new()
@@ -1305,7 +1305,7 @@ func _make_encyclopedia_landing() -> Control:
 	return root
 
 
-## The long-form concept articles are cut from the demo (owner 2026-08-24): the section is
+## The long-form concept articles are cut from the demo: the section is
 ## greyed and says so on hover rather than being hidden, because a reader who goes looking
 ## for it should learn it exists in the full game, not that it does not exist.
 func _mechanics_locked() -> bool:
@@ -1350,7 +1350,7 @@ func _add_accordion_section(parent: VBoxContainer, title: String, items: Array, 
 
 	var scroll := ScrollContainer.new()
 	# Two and a half rows, so the half-row showing at the fold says "this scrolls" without
-	# needing a scrollbar to be noticed (owner 2026-08-24).
+	# needing a scrollbar to be noticed.
 	scroll.custom_minimum_size = Vector2(0, 260)
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -1433,8 +1433,7 @@ func _make_catalog_icon(result: Dictionary) -> Control:
 	var good_id := ""
 	if result.get("type", "") == "good":
 		# A good wears the same cream chip it wears everywhere else — rounded corners, no
-		# metal frame (owner 2026-08-24). It was a bare texture on the panel navy here,
-		# which is the one place in the game a good did not look like itself.
+		# metal frame — so it looks like itself here too.
 		var payload: Dictionary = result.get("payload", {})
 		good_id = str(payload.get("id", payload.get("good_id", "")))
 		var chip := UIHelpers.make_plain_good_icon(good_id,

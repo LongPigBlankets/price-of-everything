@@ -58,8 +58,8 @@ func _ready() -> void:
 		BuildMode.mode_exited.connect(_on_build_mode_exited)
 	if not MatchState.money_changed.is_connected(_on_money_changed):
 		MatchState.money_changed.connect(_on_money_changed)
-	if not MatchState.unlock_granted.is_connected(_on_unlock_granted):
-		MatchState.unlock_granted.connect(_on_unlock_granted)
+	if not ResearchState.unlock_granted.is_connected(_on_unlock_granted):
+		ResearchState.unlock_granted.connect(_on_unlock_granted)
 	title_label.text = "Construct Building"
 	if not MatchState.show_construct_for_good.is_connected(open_for_output_good):
 		MatchState.show_construct_for_good.connect(open_for_output_good)
@@ -76,7 +76,7 @@ func _reset_position() -> void:
 ## Open from the TVP "Build" button: only buildings/recipes valid for this tile,
 ## and selecting a recipe builds it directly on this tile.
 func open_for_tile(tile_id: String, tile_data: Dictionary) -> void:
-	if MatchState.use_construct_panel_v2:
+	if UiPrefs.use_construct_panel_v2:
 		return
 	_opened_for_tile = true
 	_tile_filter = tile_id
@@ -95,7 +95,7 @@ func open_for_tile(tile_id: String, tile_data: Dictionary) -> void:
 	_opened_for_tile = false
 
 func open_for_output_good(good_id: String) -> void:
-	if MatchState.use_construct_panel_v2:
+	if UiPrefs.use_construct_panel_v2:
 		return
 	# Open the panel showing only buildings/recipes that produce good_id, with the
 	# search/filter/sort controls hidden.
@@ -176,7 +176,7 @@ func _load_data() -> void:
 		if not MatchState.is_building_available(str(building.get("id", ""))):
 			continue
 		var bld_req: String = str(building.get("required_research", ""))
-		if bld_req != "" and not MatchState.is_unlocked(bld_req):
+		if bld_req != "" and not ResearchState.is_unlocked(bld_req):
 			continue  # research/cheat-gated building (e.g. hydro via 'unlock hydro')
 		var category: String = building.get("category", "production")
 		if not buildings_by_category.has(category):
@@ -187,7 +187,7 @@ func _load_data() -> void:
 		if building_id == "":
 			continue
 		var rec_req: String = str(recipe.get("tech_unlock_req", ""))
-		if rec_req != "" and not MatchState.is_unlocked(rec_req):
+		if rec_req != "" and not ResearchState.is_unlocked(rec_req):
 			continue  # research/cheat-gated recipe — hidden until its tech is unlocked
 		if not recipes_by_building.has(building_id):
 			recipes_by_building[building_id] = []
@@ -248,7 +248,7 @@ func _build_panel_content() -> void:
 			if bid == "":
 				continue
 			var rec_req2: String = str(r.get("tech_unlock_req", ""))
-			if rec_req2 != "" and not MatchState.is_unlocked(rec_req2):
+			if rec_req2 != "" and not ResearchState.is_unlocked(rec_req2):
 				continue  # research/cheat-gated recipe
 			if not by_building.has(bid):
 				by_building[bid] = []

@@ -29,7 +29,7 @@ func _ready() -> void:
 	var GFG := preload("res://scripts/goods_flow_graph.gd")
 	var routes: Array = GFG.routes_for_good(TRACE_GOOD)
 	var tiles: Array = []
-	for b in MatchState.buildings.values():
+	for b in BuildingState.buildings.values():
 		var t := str(b.get("tile_id", ""))
 		if t != "" and not tiles.has(t):
 			tiles.append(t)
@@ -44,10 +44,10 @@ func _ready() -> void:
 		# A gated alternate is unlocked first: an in-use recipe is by definition buildable.
 		var raw0 := str(recipe.get("tech_unlock_req", ""))
 		if raw0 != "":
-			var t0 := MatchState.research_title_for_node_id(raw0)
+			var t0 := ResearchState.research_title_for_node_id(raw0)
 			if t0 != "":
-				MatchState.grant_unlock(t0)
-		MatchState.add_building(bid, str(recipe.get("recipe_id", "")), tiles[0], "player_1", "gg_alt")
+				ResearchState.grant_unlock(t0)
+		BuildingState.add_building(bid, str(recipe.get("recipe_id", "")), tiles[0], "player_1", "gg_alt")
 		print("[SHOT] seeded alt recipe ", recipe.get("recipe_id", ""), " (", recipe.get("display_name", ""), ") in ", bid)
 		break
 	var graph: Dictionary = GFG.build()
@@ -55,12 +55,12 @@ func _ready() -> void:
 		if bool((n as Dictionary).get("gated", false)):
 			for r2 in GFG.routes_for_good(str((n as Dictionary)["id"])):
 				var raw := str(((r2 as Dictionary)["recipe"] as Dictionary).get("tech_unlock_req", ""))
-				var title := MatchState.research_title_for_node_id(raw)
+				var title := ResearchState.research_title_for_node_id(raw)
 				if title != "":
-					MatchState.grant_unlock(title)
+					ResearchState.grant_unlock(title)
 					print("[SHOT] unlocked ", title, " for ", (n as Dictionary)["id"])
 					break
-			if MatchState.unlocked_titles.size() > 0:
+			if ResearchState.unlocked_titles.size() > 0:
 				break
 
 	var view: Node = main.find_child("GoodsGraphView", true, false)

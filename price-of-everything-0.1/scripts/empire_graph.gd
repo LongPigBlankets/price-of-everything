@@ -23,8 +23,7 @@ const EmpireLayout := preload("res://scripts/empire_layout.gd")
 ## `solve()` with two arguments instead of four, so its buildings were never grouped into
 ## supply-chain columns under their destination port, and it passed an empty port list while
 ## still passing the BUY ports — leaving a stray row along the bottom with nothing to sit
-## under. It read as an older sibling of the empire view because that is exactly what it was
-## (owner 2026-08-23: "use a helper so we are not reinventing the wheel").
+## under. It read as an older sibling of the empire view because that is exactly what it was.
 ##
 ## `trading` false is the end-of-game view: the company has stopped selling, so the sell ports
 ## and their edges are dropped — but the LAYOUT is still solved with them, so the columns stand
@@ -35,12 +34,12 @@ static func populate(world: Object, terrain: Node, trading: bool = true) -> Dict
 	var g: Dictionary = build(terrain)
 	if (g.get("nodes", []) as Array).is_empty():
 		return g
-	# The FLOW layout (owner 2026-09-10): buy ports left, bands per sell port, sell ports
+	# The FLOW layout: buy ports left, bands per sell port, sell ports
 	# right; ports not used for that side are placed but flagged unused (the world hides them
 	# at rest and a mini-chart can still bring one in).
 	EmpireLayout.solve_flow(g["nodes"], g["edges"], g["sell_edges"], g["ports"],
 		g["buy_ports"], g["market_edges"])
-	# MASS mode (owner 2026-09-10): past the threshold the resting view is a padded grid of
+	# MASS mode: past the threshold the resting view is a padded grid of
 	# buildings, no lines, no ports; a selected building opens its whole chain (the world
 	# lays that chart out with solve_flow on the chain's members).
 	g["mass"] = is_mass(g["nodes"])
@@ -65,10 +64,8 @@ const NodePanel := preload("res://scripts/empire_node_panel.gd")
 const EmpireFx := preload("res://scripts/empire_fx.gd")
 
 const PORT_BUILDING_ID := "b_004"
-# 90 -> 74: the RAG row under the icons is gone and its figures moved inline, so the plate
-# no longer needs the band it occupied (owner 2026-08-24).
 const BASE_HALF := Vector2(152.0, 74.0)           # L1 panel half-extent in layout px; level-scaled per node
-## Sprite view (owner 2026-09-10): the plate at rest is COMPACT — the building glyph and the
+## Sprite view: the plate at rest is COMPACT — the building glyph and the
 ## output good only — and the full card (name, figures, level) appears on hover as an overlay.
 const COMPACT_HALF := Vector2(110.0, 48.0)
 
@@ -77,7 +74,7 @@ const COMPACT_HALF := Vector2(110.0, 48.0)
 ## The 800px texture is drawn into a SPRITE_PX box (aspect-kept, so a uniform half scale) at the
 ## top of the panel, and the panel centre sits SPRITE_PX/2 above the plate — hence the offset.
 static func _sprite_content_offset(sprite_tex) -> Rect2:
-	if not (MatchState.use_empire_sprite_view and sprite_tex != null):
+	if not (UiPrefs.use_empire_sprite_view and sprite_tex != null):
 		return Rect2()
 	var used: Rect2 = BuildingSprites.content_rect(sprite_tex)
 	if used.size.x <= 0.0 or used.size.y <= 0.0:
@@ -100,7 +97,7 @@ static func is_mass(nodes: Array) -> bool:
 ## Effects headroom: the part of the empire_fx envelope that rises above the panel's top edge
 ## (the sprite is drawn from the panel's top, so panel y = sprite y * SPRITE_PX/800).
 static func _fx_headroom(internal_name: String, level: int, sprite_tex) -> float:
-	if not (MatchState.use_empire_sprite_view and sprite_tex != null):
+	if not (UiPrefs.use_empire_sprite_view and sprite_tex != null):
 		return 0.0
 	var env: Rect2 = EmpireFx.envelope_for(internal_name, level)
 	if env.size.x <= 0.0:
@@ -113,9 +110,9 @@ static func _fx_headroom(internal_name: String, level: int, sprite_tex) -> float
 ## Control (which is why `plate_dy` is exactly half the sprite height).
 static func _node_half(level: int, sprite_tex) -> Vector2:
 	var plate: Vector2 = BASE_HALF * EmpireLayout.level_scale(level)
-	if not (MatchState.use_empire_sprite_view and sprite_tex != null):
+	if not (UiPrefs.use_empire_sprite_view and sprite_tex != null):
 		return plate
-	# The box reserves the FULL card's height under the sprite (owner 2026-09-10): the compact
+	# The box reserves the FULL card's height under the sprite: the compact
 	# plate sits at the top of that reserve and the hover card fills it, so hovering never
 	# covers a neighbour or a chip.
 	return Vector2(maxf(BASE_HALF.x, NodePanel.SPRITE_PX * 0.5),
@@ -133,9 +130,9 @@ static func build(terrain: Object) -> Dictionary:
 	var consumers: Dictionary = {}                # good_id -> [iid]
 	var idx := 0
 
-	for b in MatchState.buildings.values():
+	for b in BuildingState.buildings.values():
 		idx += 1
-		if not MatchState.is_player_owned(b):
+		if not BuildingState.is_player_owned(b):
 			continue
 		var bid := str(b.get("building_id", ""))
 		if bid == PORT_BUILDING_ID:
@@ -182,7 +179,7 @@ static func build(terrain: Object) -> Dictionary:
 			# is the layout footprint: in sprite view those differ by the whole 400px sprite,
 			# and anchoring to `half` puts every arrow out in open space beside the plate.
 			# Plates stay L1-sized in sprite view, so this does not level-scale there either.
-			"plate_half": (COMPACT_HALF if (MatchState.use_empire_sprite_view and sprite_tex != null)
+			"plate_half": (COMPACT_HALF if (UiPrefs.use_empire_sprite_view and sprite_tex != null)
 					else BASE_HALF * EmpireLayout.level_scale(level)),
 			"full_half": BASE_HALF,
 			# The sprite's OPAQUE box, as an offset rect from the panel centre (unscaled px).
@@ -200,7 +197,7 @@ static func build(terrain: Object) -> Dictionary:
 			"is_port": false,
 			"icon": BuildingIcon.clean_texture(bid, str(bdata.get("internal_name", ""))),
 			# 2.5D isometric sprite (null while unsprited) — drawn large above the plate
-			# when `swap empire view sprite` is on; see building_sprites.gd.
+			# in sprite view (MatchState.use_empire_sprite_view); see building_sprites.gd.
 			"sprite": sprite_tex,
 			# Screen-px offset from the panel CENTRE down to the PLATE centre. In sprite view
 			# the Control grows upward by the 400px sprite, so the plate centre sits half the
@@ -209,7 +206,7 @@ static func build(terrain: Object) -> Dictionary:
 			# The compact plate is top-aligned under the sprite inside the full-card reserve, so
 			# its centre is COMPACT_HALF.y below the sprite's bottom, not half the reserve.
 			"plate_dy": ((NodePanel.SPRITE_PX + COMPACT_HALF.y - (NodePanel.SPRITE_PX + BASE_HALF.y * 2.0) * 0.5)
-					if (MatchState.use_empire_sprite_view and sprite_tex != null) else 0.0),
+					if (UiPrefs.use_empire_sprite_view and sprite_tex != null) else 0.0),
 			"good_icon": good_icon,
 			# The six RAG indicators as DATA, computed once here (single source: building_status.gd).
 			"rag": BuildingStatus.rag_indicators(b, recipe, false),
@@ -330,7 +327,7 @@ static func _append_construction_nodes(nodes: Array, ports: Array, terrain: Obje
 			"tile_id": tile,
 			"seed": seed_pos,
 			"half": _node_half(1, site_tex),
-			"plate_half": (COMPACT_HALF if (MatchState.use_empire_sprite_view and site_tex != null)
+			"plate_half": (COMPACT_HALF if (UiPrefs.use_empire_sprite_view and site_tex != null)
 					else BASE_HALF),
 			"full_half": BASE_HALF,
 			"sprite_rect": _sprite_content_offset(site_tex),
@@ -346,7 +343,7 @@ static func _append_construction_nodes(nodes: Array, ports: Array, terrain: Obje
 					str(Catalog.get_building(bid).get("internal_name", ""))),
 			"sprite": site_tex,
 			"plate_dy": ((NodePanel.SPRITE_PX + COMPACT_HALF.y - (NodePanel.SPRITE_PX + BASE_HALF.y * 2.0) * 0.5)
-					if (MatchState.use_empire_sprite_view and site_tex != null) else 0.0),
+					if (UiPrefs.use_empire_sprite_view and site_tex != null) else 0.0),
 			"good_icon": null,
 			"rag": [],
 		})

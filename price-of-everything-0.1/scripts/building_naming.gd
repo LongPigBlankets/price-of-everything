@@ -31,7 +31,7 @@ static func label(building_id: String, recipe_id: String, letter_index: int) -> 
 ## among the tile's buildings (built first, then under-construction projects).
 static func label_for_tile(tile_id: String, instance_id: String, building_id: String, recipe_id: String) -> String:
 	var idx := -1
-	var blds: Array = MatchState.get_buildings_on_tile(tile_id)
+	var blds: Array = BuildingState.get_buildings_on_tile(tile_id)
 	for i in blds.size():
 		if str(blds[i].get("instance_id", "")) == instance_id:
 			idx = i

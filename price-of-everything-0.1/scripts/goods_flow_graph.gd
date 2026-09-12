@@ -21,32 +21,29 @@ extends RefCounted
 ## parallel edges separated into vertical lanes per channel).
 
 # World-space layout geometry (the view scales everything with zoom, so these are
-# document units, not screen pixels). Card size per owner 2026-07-18: doubled height /
-# +30% width so the icon chip reads ~100 px at maximum zoom-in (view _ZOOM_MAX = 1.0),
-# with a wider channel (COL_W - CARD_W = 180) to relax the edge routing.
-const COL_W := 960.0        # CARD_W + the 440 channel (cards widened 2026-09-10)
+# document units, not screen pixels). Cards are sized so the icon chip reads ~100 px at
+# maximum zoom-in (view _ZOOM_MAX = 1.0), with a wide channel to relax the edge routing.
+const COL_W := 960.0        # CARD_W + the 440 channel
 # Column x-spacing is NOT uniform: within a tier the step is tightened, and each
-# tier boundary adds an extra gap (owner 2026-07-21). All column->x mapping goes
+# tier boundary adds an extra gap. All column->x mapping goes
 # through col_x(); COL_W remains the base for card/channel geometry.
-# Column spacing. The 200u floor below was measured against a web that drew EVERY edge at
-# rest: ~180u was the point where y-overlapping risers crowded past the 11.9u readability
-# floor. Resting edges are no longer drawn (goods_graph_world._REST_GHOST_ALPHA), so the
-# constraint that set that floor is gone — only a selected good's own chain is ever drawn
-# over these columns, which is a fraction of the density the 200u was protecting.
-# Tightened accordingly, then halved again at the owner's request. The tier boundary is
-# now only a little wider than an ordinary column gap (140 vs 110), so the tiers are read
+# Column spacing. With every edge drawn at rest, ~180u is the gap below which y-overlapping
+# risers crowd past the 11.9u readability floor. Resting edges are not drawn
+# (goods_graph_world._REST_GHOST_ALPHA) — only a selected good's own chain is ever drawn
+# over these columns — so the gaps can sit well under that. The tier boundary is
+# only a little wider than an ordinary column gap (140 vs 110), so the tiers are read
 # from the header plates above them rather than from the spacing — worth knowing before
 # anyone tightens INTRA_COL_GAP further and closes the difference completely.
 const INTRA_COL_GAP := 110.0
 const INTER_TIER_GAP := 140.0
 
-# Swimlanes (owner 2026-07-21): the resting view groups goods into CATEGORY
+# Swimlanes: the resting view groups goods into CATEGORY
 # lanes that run horizontally across every tier — the vertical axis reads as
 # taxonomy. Crossing-minimisation still runs, but only WITHIN a (column, lane)
 # cell; a lane's band height is its tallest cell and cells centre in the band.
 const LANE_ORDER: Array[String] = ["energy", "petrochem", "metals", "construction",
 	"vehicles", "electronics", "chems", "agribio", "waste"]
-# Display names where the CSV slug isn't the full lane title (owner 2026-07-22).
+# Display names where the CSV slug isn't the full lane title.
 # " & " splits into stacked label lines in the renderer.
 const LANE_LABELS := {
 	"petrochem": "HYDROCARBONS & PETROCHEM",
@@ -66,9 +63,9 @@ static var _col_x: PackedFloat32Array = PackedFloat32Array()
 # somewhere to run. At rest no line is drawn any more, so every one of them was spending
 # 72u of the player's screen on nothing. They still have to EXIST, because a selected
 # good's chain is routed through them, but they can be a good deal thinner than a card.
-const ROW_H := 248.0        # clears the 224 card with air (owner 2026-09-10: cards doubled)
+const ROW_H := 248.0        # clears the 224 card with air
 const DUMMY_ROW_H := 34.0
-const CARD_W := 520.0       # owner 2026-09-10: taller cards, bigger icon and name
+const CARD_W := 520.0
 const CARD_H := 224.0
 const BARY_SWEEPS := 2     # barycentre sweeps per ordering round
 const ORDER_ROUNDS := 16   # sweeps+transpose rounds; stops early when crossings stall
@@ -77,7 +74,7 @@ const ORDER_ROUNDS := 16   # sweeps+transpose rounds; stops early when crossings
 # the channel (the CHANNEL_W gap between card edges); spans whose y-intervals overlap
 # are forced onto different lanes (greedy interval colouring), so parallel edges keep
 # clear separation instead of overdrawing.
-const CHANNEL_W := COL_W - CARD_W   # 440.0 (owner: double the inter-column space)
+const CHANNEL_W := COL_W - CARD_W   # 440.0
 const LANE_PAD := 24.0              # channel inset before the first lane
 const LANE_GAP_MIN := 12.0
 const LANE_GAP_MAX := 26.0
@@ -106,7 +103,7 @@ const CAT_COLOR := {
 	"consumer": Color("#c98ad9"), "hightech": Color("#e0c44f"),
 	"component": Color("#b0b0c0"), "power": Color("#f2c14e"),
 	"waste": Color("#8a8a8a"),
-	# Owner re-taxonomy 2026-07-22: the three lanes carved out of construction.
+	# The three lanes carved out of construction.
 	"petrochem": Color("#c2703e"), "vehicles": Color("#c98ad9"),
 	"electronics": Color("#4fc7d4"),
 }
@@ -182,8 +179,8 @@ static func build(force := false, legacy_layout := false) -> Dictionary:
 		for o in outs:
 			_index_append(anyout, str(o.get("internal_name", "")), r)
 
-	# 3 · Defining recipe per good (simplest game-start, gated fallback). Owner
-	# rule 2026-07-22: a Recycling (waste-to-good) recipe can NEVER be the base —
+	# 3 · Defining recipe per good (simplest game-start, gated fallback). Rule:
+	# a Recycling (waste-to-good) recipe can NEVER be the base —
 	# scrap->steel may be the simplest route, but coal+iron IS steel. Recycling
 	# routes stay as alternates; a recycling base is allowed only when no other
 	# producer exists at all (even a gated non-recycling route outranks it).
@@ -202,8 +199,8 @@ static func build(force := false, legacy_layout := false) -> Dictionary:
 		else:
 			chosen[internal] = {"recipe": _simplest(base), "gated": false}
 
-	# 4 · Edges: the BASE web only (owner 2026-07-19: "base chain, all yellow, no
-	# alternative recipes" — alternates moved to the per-good minigraph focus view).
+	# 4 · Edges: the BASE web only — base chain, all yellow; alternate recipes live in
+	# the per-good minigraph focus view.
 	# Each good draws its defining recipe's inputs; a gated-only good's edges render
 	# dashed (route_gated). POWER is the one deliberate exception: its "simplest"
 	# recipe is fuel-less wind, which would erase the coal/oil/pet-coke flows that
@@ -236,8 +233,8 @@ static func build(force := false, legacy_layout := false) -> Dictionary:
 				_index_append(adj, src, internal)
 				_index_append(radj, internal, src)
 
-	# 5 · Columns come from the authored goods_graph_tier bands (owner 2026-07-19:
-	# RAW / PROCESSED / INTERMEDIATE / FINISHED / APEX regions), not computed depth —
+	# 5 · Columns come from the authored goods_graph_tier bands (RAW / PROCESSED /
+	# INTERMEDIATE / FINISHED / APEX regions), not computed depth —
 	# stable positions, headers in game vocabulary. Within a band, 1-3 INVISIBLE
 	# sub-columns (no headers) resolve the band's internal flow: sub-column = the
 	# good's longest same-band chain depth, so every within-band edge still runs
@@ -385,8 +382,8 @@ static func build(force := false, legacy_layout := false) -> Dictionary:
 		# the band. Bands stack with LANE_GAP_Y of air; empty lanes take no space.
 		#
 		# DUMMY ROWS ARE NOT SIZED IN. A dummy is an edge corridor, not a card, and counting
-		# them did two visible things: it inflated every band to fit corridors nobody can see,
-		# and it pushed a cell's cards apart so they no longer read as a group sitting in the
+		# them does two visible things: it inflates every band to fit corridors nobody can see,
+		# and it pushes a cell's cards apart so they stop reading as a group sitting in the
 		# middle of their lane. They still get a y — the routing code expects one for every
 		# layout vertex — taken from the cards they sit between, so a corridor stays where its
 		# edge would want it without spending a row on it.
@@ -489,8 +486,8 @@ static func routes_for_good(internal: String) -> Array:
 	return _ranked_producers(primary if not primary.is_empty() else anyout)
 
 
-## Case-insensitive substring search over the goods' display names (owner 2026-07-19:
-## plain string match, any part of the string, no fuzzy matching; caller enforces the
+## Case-insensitive substring search over the goods' display names (plain string
+## match, any part of the string, no fuzzy matching; caller enforces the
 ## 3-letter minimum shown to the player). Returns ALL matching node dicts ranked by
 ## match position, then name length, then name — the caller caps the display at 3
 ## and auto-picks on Enter only when exactly one match exists.
@@ -580,7 +577,7 @@ static func _simplest(recipes: Array) -> Dictionary:
 ## Element shape: {recipe: Dictionary, gated: bool}. routes[0] always equals the
 ## good's defining recipe (same ordering as _simplest / the chosen fallback).
 static func _ranked_producers(producers: Array) -> Array:
-	# Mirrors the base-recipe chooser exactly (owner 2026-07-22: Recycling can
+	# Mirrors the base-recipe chooser exactly (Recycling can
 	# never be the base), so the grid always leads with the defining recipe:
 	# non-recycling ungated > non-recycling gated > recycling ungated > gated.
 	var by_key := func(a: Dictionary, b: Dictionary) -> bool:
@@ -1251,11 +1248,11 @@ static func _node_record(internal: String, good: Dictionary, choice: Dictionary,
 		"recipe_id": str(recipe.get("recipe_id", "")),
 		"recipe_name": str(recipe.get("display_name", "")),
 		"building_id": str(recipe.get("building_id", "")),
-		"alt_recipe_ids": alt_ids,          # phase 2: the zoom/swap candidates
+		"alt_recipe_ids": alt_ids,          # the zoom/swap candidates
 		"inputs": (radj.get(internal, []) as Array).duplicate(),
 		# Base-recipe inputs only — the trace's upstream cone walks THESE, so
 		# selecting a good lights its canonical chain, not the transitive closure of
-		# every alternate route (which pulled in "unrelated" goods, owner 2026-07-18).
+		# every alternate route (which would pull in "unrelated" goods).
 		"base_inputs": (radj_base.get(internal, []) as Array).duplicate(),
 		"feeds": (adj.get(internal, []) as Array).duplicate(),
 	}

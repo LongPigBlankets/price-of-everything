@@ -23,7 +23,7 @@ func import_state(state: Dictionary) -> void:
 	costs_updated.emit()
 
 func _debug_logs_enabled() -> bool:
-	return bool(MatchState.debug_turn_logs_enabled)
+	return bool(UiPrefs.debug_turn_logs_enabled)
 
 func get_building_unit_cost(instance_id: String) -> float:
 	var bd: Dictionary = last_result.get("per_building", {}).get(instance_id, {})

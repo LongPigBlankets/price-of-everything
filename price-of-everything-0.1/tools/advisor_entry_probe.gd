@@ -24,8 +24,8 @@ func _ready() -> void:
 	print("--- %s BODY (%d chars) ---" % [which.to_upper(), body.length()])
 	print(body)
 	print("--- seats=%d  per-advisor now=%.2f  payroll@rev1000=%.2f ---" % [
-		MatchState.max_advisor_slots, MatchState.advisor_cost_per_advisor(0.0),
-		MatchState.advisor_payroll_per_turn(1000.0)])
+		AdvisorState.max_advisor_slots, AdvisorState.advisor_cost_per_advisor(0.0),
+		AdvisorState.advisor_payroll_per_turn(1000.0)])
 	get_tree().quit(0)
 
 func _find(n: Node, script_tail: String) -> Node:

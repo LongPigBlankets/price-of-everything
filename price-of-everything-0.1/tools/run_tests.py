@@ -5,8 +5,17 @@ Detects the OS, locates the Godot 4 binary, and runs res://tests/test_runner.tsc
 The runner exits 0 if all tests pass, 1 if any fail (get_tree().quit in test_runner.gd).
 
 Usage:
-    python3 tools/run_tests.py
+    python3 tools/run_tests.py                       # whole suite
+    python3 tools/run_tests.py --tags production     # one feature (any of a,b: --tags a,b)
+    python3 tools/run_tests.py --tags production+stockpile   # tests carrying ALL of these
+    python3 tools/run_tests.py --test market_buy     # tests whose name contains this
+    python3 tools/run_tests.py --list                # list files, tests and tags; run nothing
     GODOT_BIN=/path/to/godot python3 tools/run_tests.py   # explicit override
+
+Tests live in tests/unit/test_<feature>.gd (one file per feature, extending tests/test_base.gd).
+A test carries its file's FEATURE tag unless the file's TAGS map lists it; a test with NO tags
+is a wildcard and runs under every --tags filter. Any argument after the script name is passed
+through to the Godot runner unchanged.
 
 To locate Godot it tries, in order: $GODOT_BIN, anything named godot/godot4 on PATH,
 then OS-specific install locations (macOS .app bundles / Windows download folders).
@@ -75,8 +84,11 @@ def main():
 
     cmd = [
         godot, "--headless", "--path", PROJECT_DIR,
-        "res://tests/test_runner.tscn", "--quit-after", "600",
+        "res://tests/test_runner.tscn", "--quit-after", "100000",
     ]
+    user_args = sys.argv[1:]
+    if user_args:
+        cmd += ["--"] + user_args
     sys.exit(run_and_gate(cmd))
 
 

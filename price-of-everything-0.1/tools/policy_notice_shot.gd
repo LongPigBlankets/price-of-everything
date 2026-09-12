@@ -21,7 +21,7 @@ func _ready() -> void:
 
 	# 0a. Election news at turn 84, then the insider tip at 86 (Rufus, 3/3 Influencing,
 	# seated in Government Affairs).
-	MatchState.advisor_seats["government_affairs"] = "rufus"
+	AdvisorState.advisor_seats["government_affairs"] = "rufus"
 	TurnManager.current_turn = 83
 	TurnManager.commit_turn()
 	if TurnManager.is_resolving:
