@@ -182,10 +182,10 @@ func _build_overlay_state(tile_data: Dictionary, reqs: Array, input_names: Array
 	var tile_id: String = tile_data.get("id", "")
 	if MatchState.survey_status(tile_id, str(tile_data.get("type", ""))) == "unsurveyed":
 		return "none"
-	# No physical room = blocked, whatever the inputs say. The overlay used to answer only
-	# "are the ingredients here", so a tile with nowhere to put the building still shone
-	# green and the click was refused (owner 2026-08-23). Checked FIRST, because a tile that
-	# cannot hold the building is not a candidate however good its deposits are.
+	# No physical room = blocked, whatever the inputs say: answering only "are the
+	# ingredients here" leaves a tile with nowhere to put the building shining green while
+	# the click is refused. Checked FIRST, because a tile that cannot hold the building is
+	# not a candidate however good its deposits are.
 	if not _tile_has_physical_room(tile_id):
 		return "blocked"
 	var matched_input_count := _tile_input_match_count(tile_data, input_names)
@@ -216,7 +216,7 @@ func _tile_has_physical_room(tile_id: String, building_id: String = "") -> bool:
 	if building_id == "":
 		return true
 	var needed := maxf(0.0, float(Catalog.get_building(building_id).get("tile_size_used", 1.0)))
-	return MatchState.get_tile_space_used(tile_id) + needed <= float(MatchState.max_tile_land(tile_id))
+	return BuildingState.get_tile_space_used(tile_id) + needed <= float(BuildingState.max_tile_land(tile_id))
 
 func _tile_meets_all_build_reqs(tile_data: Dictionary, reqs: Array) -> bool:
 	for req in reqs:
@@ -241,9 +241,8 @@ func _tile_meets_build_req(tile_data: Dictionary, req: Dictionary) -> bool:
 		_:
 			return false
 
-## A refused placement, said WHERE it was refused. A build that cannot go ahead used to
-## fail with a toast in the corner and nothing at all on the tile the player just clicked,
-## so the placement icon simply appeared to do nothing (owner 2026-08-23).
+## A refused placement, said WHERE it was refused. A toast in the corner with nothing on
+## the tile the player just clicked makes the placement icon appear to do nothing.
 ##
 ## The tile flashes red and the reason sits under it in red for REFUSAL_SECONDS, then both
 ## clear themselves. Any earlier refusal is dropped first, so rapid clicking on a tile that
@@ -254,8 +253,8 @@ const REFUSAL_LABEL_WIDTH := 320.0
 const REFUSAL_LABEL_DROP := 34.0
 const REFUSAL_RED := Color("#E66060")
 ## A SOLID red, not the BUILD_RED tile mask. The mask carries TILE_MASK_ALPHA so it can sit
-## under the map art; a flash that has to be noticed cannot also be see-through, and the
-## first attempt at this was invisible on screen at ~0.08 effective alpha.
+## under the map art; a flash that has to be noticed cannot also be see-through (at ~0.08
+## effective alpha it is invisible on screen).
 const REFUSAL_FILL := Color(0.72, 0.10, 0.10, 0.62)
 const REFUSAL_FLASHES := 3
 const REFUSAL_FLASH_TIME := 0.18
@@ -267,9 +266,7 @@ var _refusal_world := Vector2.ZERO
 
 ## Flash `coord` red and print `reason` under it in red for REFUSAL_SECONDS.
 ##
-## A build that cannot go ahead used to fail with a toast in the corner and nothing at all on
-## the tile just clicked, so the placement icon simply appeared to do nothing (owner
-## 2026-08-23). Any earlier refusal is dropped first, so clicking repeatedly on a tile that
+## Any earlier refusal is dropped first, so clicking repeatedly on a tile that
 ## cannot take a building shows one message rather than a stack of them.
 func flash_build_refusal(coord: Vector2i, reason: String) -> void:
 	_clear_build_refusal()
@@ -390,9 +387,9 @@ func _tile_produces_good(tile_data: Dictionary, internal_name: String) -> bool:
 	var tile_id: String = tile_data.get("id", "")
 	if tile_id == "":
 		return false
-	var instance_ids: Array = MatchState.tile_buildings.get(tile_id, [])
+	var instance_ids: Array = BuildingState.tile_buildings.get(tile_id, [])
 	for inst_id in instance_ids:
-		var building: Dictionary = MatchState.buildings.get(inst_id, {})
+		var building: Dictionary = BuildingState.buildings.get(inst_id, {})
 		if building.is_empty():
 			continue
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
@@ -499,9 +496,9 @@ func _infrastructure_label(infra_key: String) -> String:
 func _tile_needs_infrastructure(tile_id: String, infra_key: String) -> bool:
 	if not _infrastructure_can_be_needed(infra_key):
 		return false
-	for instance_id in MatchState.tile_buildings.get(tile_id, []):
-		var building: Dictionary = MatchState.get_building(str(instance_id))
-		if building.is_empty() or not MatchState.is_player_owned(building):
+	for instance_id in BuildingState.tile_buildings.get(tile_id, []):
+		var building: Dictionary = BuildingState.get_building(str(instance_id))
+		if building.is_empty() or not BuildingState.is_player_owned(building):
 			continue
 		var recipe: Dictionary = Catalog.get_recipe(str(building.get("recipe_id", "")))
 		if recipe.is_empty():
@@ -653,8 +650,8 @@ func _infra_hover_lines(tile_id: String, infra_key: String) -> Array:
 		_:
 			var mode: String = INFRA_ROUTE_MODES.get(infra_key, "")
 			# Same flow the tile-view uses: networked pass-through + first/last-mile.
-			var total := MatchState.tile_mode_flow(tile_id, mode, true) if mode != "" else 0
-			var cap: float = MatchState.tile_mode_capacity(mode, _infra_level(terrain_layer.id_to_coord(tile_id), infra_key))
+			var total := TransportState.tile_mode_flow(tile_id, mode, true) if mode != "" else 0
+			var cap: float = TransportState.tile_mode_capacity(mode, _infra_level(terrain_layer.id_to_coord(tile_id), infra_key))
 			if cap > 0.0:
 				lines.append("Transit units: %d / %d" % [total, int(round(cap))])
 			else:
@@ -671,7 +668,7 @@ func _infra_slot_label(infra_key: String) -> String:
 # bucketed by the good's transport class.
 func _tile_mode_throughput(tile_id: String, mode: String) -> Dictionary:
 	var totals: Dictionary = {}
-	for s in MatchState.settled_transport_shipments():
+	for s in TransportState.settled_transport_shipments():
 		var tiles: Array = s.get("tiles", [])
 		var legs: Array = s.get("legs", [])
 		if tiles.is_empty() or legs.is_empty():
@@ -802,7 +799,7 @@ func _tile_produces(tile_data: Dictionary, good_id: String) -> bool:
 	if tile_id == "":
 		return false
 	
-	var instance_ids: Array = MatchState.tile_buildings.get(tile_id, [])
+	var instance_ids: Array = BuildingState.tile_buildings.get(tile_id, [])
 	if instance_ids.is_empty():
 		return false
 	
@@ -814,7 +811,7 @@ func _tile_produces(tile_data: Dictionary, good_id: String) -> bool:
 		if not Production.last_turn_run.get(inst_id, false):
 			continue
 		
-		var building: Dictionary = MatchState.buildings.get(inst_id, {})
+		var building: Dictionary = BuildingState.buildings.get(inst_id, {})
 		if building.is_empty():
 			continue
 		
@@ -859,7 +856,7 @@ func _tile_consumes(tile_data: Dictionary, good_id: String) -> bool:
 	if tile_id == "":
 		return false
 	
-	var instance_ids: Array = MatchState.tile_buildings.get(tile_id, [])
+	var instance_ids: Array = BuildingState.tile_buildings.get(tile_id, [])
 	if instance_ids.is_empty():
 		return false
 	
@@ -871,7 +868,7 @@ func _tile_consumes(tile_data: Dictionary, good_id: String) -> bool:
 		if not Production.last_turn_run.get(inst_id, false):
 			continue
 		
-		var building: Dictionary = MatchState.buildings.get(inst_id, {})
+		var building: Dictionary = BuildingState.buildings.get(inst_id, {})
 		if building.is_empty():
 			continue
 		
@@ -996,7 +993,7 @@ func _get_power_status_for_tile(tile_data: Dictionary) -> Dictionary:
 	if tile_id == "":
 		return {"state": "none"}
 	
-	var instance_ids: Array = MatchState.tile_buildings.get(tile_id, [])
+	var instance_ids: Array = BuildingState.tile_buildings.get(tile_id, [])
 	var has_cables: bool = tile_data.get("infrastructure_present", []).has("cables")
 	
 	var power_produced: int = 0
@@ -1005,7 +1002,7 @@ func _get_power_status_for_tile(tile_data: Dictionary) -> Dictionary:
 	var has_power_buildings: bool = false
 	
 	for inst_id in instance_ids:
-		var building: Dictionary = MatchState.buildings.get(inst_id, {})
+		var building: Dictionary = BuildingState.buildings.get(inst_id, {})
 		if building.is_empty():
 			continue
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
@@ -1033,9 +1030,9 @@ func _get_power_status_for_tile(tile_data: Dictionary) -> Dictionary:
 		# The amber/green barber-pole is a WARNING — "intermittent generation here is not firmed"
 		# — so it keys on the unfirmed share, not on the mere presence of a solar panel.
 		#
-		# It used to fire on green_intermittent_produced, which is what the tile GENERATES. That
-		# never falls, so a tile stayed striped after batteries had firmed it and there was
-		# nothing left to warn about (owner, 25 Aug). unfirmed_consumed is the same number the
+		# NOT green_intermittent_produced, which is what the tile GENERATES: that never falls,
+		# so a tile would stay striped after batteries had firmed it and there was nothing left
+		# to warn about. unfirmed_consumed is the same number the
 		# derate and firmed_intermittent_power() are computed from: batteries firm it, it drops
 		# to zero, and the tile falls through to its ordinary surplus/deficit colour.
 		var unfirmed: float = float(Production.get_tile_intermittency(tile_id).get("unfirmed_consumed", 0.0))

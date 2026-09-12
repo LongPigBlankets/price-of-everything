@@ -443,7 +443,7 @@ static func _closest_on_segment(p: Vector2, a: Vector2, b: Vector2) -> Vector2:
 	return a + ab * t
 
 static func _tile_has_any_building(tile_id: String, building_ids: Array) -> bool:
-	for iid in MatchState.tile_buildings.get(tile_id, []):
-		if str(MatchState.get_building(str(iid)).get("building_id", "")) in building_ids:
+	for iid in BuildingState.tile_buildings.get(tile_id, []):
+		if str(BuildingState.get_building(str(iid)).get("building_id", "")) in building_ids:
 			return true
 	return false

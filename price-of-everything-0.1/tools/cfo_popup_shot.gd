@@ -25,7 +25,7 @@ func _ready() -> void:
 	await _settle(6)
 
 	# Seat a CFO with a portrait, then bank the first tax credit → fires the explainer.
-	MatchState.advisor_seats = {"cfo": "vera"}
+	AdvisorState.advisor_seats = {"cfo": "vera"}
 	MatchState.cfo_tax_credit_intro_shown = false
 	MatchState.cfo_bank_tax_credit(1200.0)
 	await _settle(30)

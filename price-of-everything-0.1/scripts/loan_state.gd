@@ -91,7 +91,7 @@ func take_grace_loan(amount: float, grace_turns: int) -> bool:
 	}
 	_next_loan_id += 1
 	loans.append(loan)
-	MatchState.flag_agenda_event(MatchState.AGENDA_TOOK_LOAN)
+	AdvisorState.flag_agenda_event(AdvisorState.AGENDA_TOOK_LOAN)
 	MatchState.add_money(amount)
 	print("[LoanState] Grace loan #%d: £%.2f, %d interest-free turns then %.1f%% over %d" % [
 		loan.id, amount, grace_turns, rate * 100.0, EconomyConfig.LOAN_TERM_TURNS])
@@ -128,7 +128,7 @@ func _create_loan(amount: float, rate: float, term: int, grace: int = 0) -> bool
 	}
 	_next_loan_id += 1
 	loans.append(loan)
-	MatchState.flag_agenda_event(MatchState.AGENDA_TOOK_LOAN)
+	AdvisorState.flag_agenda_event(AdvisorState.AGENDA_TOOK_LOAN)
 	MatchState.add_money(amount)   # disburse principal
 	if grace > 0:
 		print("[LoanState] Loan #%d taken: £%.2f (%d grace turns, then £%.4f/turn for %d @ %.1f%%, total £%.2f)" % [
@@ -154,8 +154,8 @@ func repay_loan(loan_id: int) -> bool:
 		return false
 	
 	loans.remove_at(idx)
-	MatchState.flag_agenda_event(MatchState.AGENDA_EARLY_LOAN_PAYOFF)
-	MatchState.flag_agenda_event(MatchState.AGENDA_PAID_OFF_LOAN)
+	AdvisorState.flag_agenda_event(AdvisorState.AGENDA_EARLY_LOAN_PAYOFF)
+	AdvisorState.flag_agenda_event(AdvisorState.AGENDA_PAID_OFF_LOAN)
 	print("[LoanState] Loan #%d repaid in full: £%.2f" % [loan_id, amount])
 	loan_repaid.emit(loan_id)
 	loans_updated.emit()
@@ -200,7 +200,7 @@ func process_payments() -> float:
 		
 		if loan.principal_remaining <= 0.001 or loan.turns_remaining <= 0:
 			loans_to_remove.append(loan.id)
-			MatchState.flag_agenda_event(MatchState.AGENDA_PAID_OFF_LOAN)
+			AdvisorState.flag_agenda_event(AdvisorState.AGENDA_PAID_OFF_LOAN)
 	
 	# Clean up paid-off loans
 	for loan_id in loans_to_remove:
@@ -280,8 +280,8 @@ const BuildingPrice := preload("res://scripts/building_price.gd")
 # valuation the building market lists at), summed.
 func collateral_value() -> float:
 	var total: float = 0.0
-	for b in MatchState.buildings.values():
-		if not MatchState.is_player_owned(b):
+	for b in BuildingState.buildings.values():
+		if not BuildingState.is_player_owned(b):
 			continue
 		total += float(BuildingPrice.sale_price(b))
 	return total
@@ -289,8 +289,8 @@ func collateral_value() -> float:
 # Loan-to-value on that collateral: 0.75, lifted to 1.0 by a seated CFO or Chief
 # Investment (the expansion/capex seat). The two don't stack — either presence maxes it.
 func collateral_ltv() -> float:
-	var has_expander := MatchState.get_advisor_in_seat("cfo") != "" \
-		or MatchState.get_advisor_in_seat("chief_investment") != ""
+	var has_expander := AdvisorState.get_advisor_in_seat("cfo") != "" \
+		or AdvisorState.get_advisor_in_seat("chief_investment") != ""
 	return EconomyConfig.LOAN_COLLATERAL_LTV_MAX if has_expander else EconomyConfig.LOAN_COLLATERAL_LTV_BASE
 
 func capacity_total() -> float:

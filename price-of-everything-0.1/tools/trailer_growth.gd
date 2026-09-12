@@ -107,7 +107,7 @@ func tile_position(tid: String) -> Vector2:
 
 func place(tile: Dictionary, n: int) -> void:
 	var bid: String = ["b_007","b_002","b_009","b_011","b_012","b_007"][n]
-	var iid: String = MatchState.add_building(bid,"",tile.id,"player_1","trailer_%s_%d" % [tile.id,n],false)
+	var iid: String = BuildingState.add_building(bid,"",tile.id,"player_1","trailer_%s_%d" % [tile.id,n],false)
 	buildings.on_building_placed(tile.id,bid,"",iid,tile.coord)
 
 func settle() -> void:
@@ -122,7 +122,7 @@ func snap(name: String) -> void:
 func capture_upgrades() -> void:
 	# Capture actual level-dependent building art; no costs, turns or saves.
 	DirAccess.make_dir_recursive_absolute(OUT + "/upgrade-stills")
-	MatchState.use_empire_sprite_view = true
+	UiPrefs.use_empire_sprite_view = true
 	var overlay: CanvasLayer = CanvasLayer.new()
 	add_child(overlay)
 	var backdrop: Control = load("res://scripts/empire_hex_bg.gd").new()
@@ -133,8 +133,8 @@ func capture_upgrades() -> void:
 	for bid: String in ["b_002", "b_007"]:
 		var iid: String = ""
 		var nearest: float = INF
-		for key: String in MatchState.buildings:
-			var candidate: Dictionary = MatchState.buildings[key]
+		for key: String in BuildingState.buildings:
+			var candidate: Dictionary = BuildingState.buildings[key]
 			if str(candidate.get("building_id", "")) != bid or not buildings.has_placement(key):
 				continue
 			var distance: float = tile_position(str(candidate.tile_id)).distance_to(tile_position("tile_5_10"))
@@ -142,10 +142,10 @@ func capture_upgrades() -> void:
 				iid = key
 				nearest = distance
 		assert(iid != "", "No placed upgrade subject")
-		MatchState.set_building_owner(iid, "player_1")
+		BuildingState.set_building_owner(iid, "player_1")
 		for level: int in [1, 2, 3]:
-			MatchState.buildings[iid]["level"] = level
-			MatchState.building_upgraded.emit(iid, level)
+			BuildingState.buildings[iid]["level"] = level
+			BuildingWorks.building_upgraded.emit(iid, level)
 			var graph: Dictionary = preload("res://scripts/empire_graph.gd").build(terrain)
 			var subject: Dictionary = {}
 			for node: Dictionary in graph.nodes:

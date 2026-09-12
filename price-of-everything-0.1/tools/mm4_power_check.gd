@@ -16,16 +16,16 @@ func _ready() -> void:
 
 	var plant_iid := ""
 	var furn_iid := ""
-	for iid in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[iid]
-		if not MatchState.is_player_owned(b):
+	for iid in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[iid]
+		if not BuildingState.is_player_owned(b):
 			continue
 		if str(b.get("building_id", "")) == "b_003":
 			plant_iid = str(iid)
 		elif str(b.get("building_id", "")) == "b_002":
 			furn_iid = str(iid)
 	print("[CHK] power plant present: ", plant_iid != "", " on tile_6_9=",
-		str(MatchState.buildings.get(plant_iid, {}).get("tile_id", "")))
+		str(BuildingState.buildings.get(plant_iid, {}).get("tile_id", "")))
 	print("[CHK] tile_6_9 has pipes: ", Catalog.tile_has_infrastructure("tile_6_9", "pipes"),
 		"  port tile_5_10 has pipes: ", Catalog.tile_has_infrastructure("tile_5_10", "pipes"))
 

@@ -39,8 +39,8 @@ const FabricPainter := preload("res://scripts/authored_fabric_painter.gd")
 const PlayerColours := preload("res://scripts/player_colours.gd")
 
 # Network infrastructure drawn by its own layer, NOT as a building footprint:
-# b_005 roads (RoadNetworkVisuals). b_006 cables regained a footprint
-# 2026-07-23 — it draws as the shape-language transformer station.
+# b_005 roads (RoadNetworkVisuals). b_006 cables keep a footprint — it draws
+# as the shape-language transformer station.
 const NON_FOOTPRINT_IDS := {"b_005": true}
 const FOREST_BUILDING_IDS := {"b_015": true, "b_016": true}
 
@@ -65,7 +65,7 @@ const BUILDABLE_MIN_AREA := 400.0    # never size a footprint below ~1 cell
 # footprint. Tune to taste — the ≤50%-of-hex ceiling is the constraint.
 const SIZE_UNIT_AREA := 100.0
 
-# ── Hijack-look stamps (decor-hijack plan, owner direction 2026-08-27) ─────────────
+# ── Hijack-look stamps (decor-hijack plan) ─────────────────────────────────────────
 # Every building outside STAMP_EXEMPT draws as a plain rectangle or L in the decorative
 # fabric's own block treatment (SE shadow, flat fill, one ink outline) instead of ink
 # art / wobbled quads — at map sizes the detailed art carries no detail anyway, and
@@ -73,24 +73,24 @@ const SIZE_UNIT_AREA := 100.0
 # hijack-marked decorative mass without a style seam. Shapes alternate rectangle / L
 # per building on a tile; the L keeps the rectangle's frontage length but runs deeper.
 const STAMP_EXEMPT := {
-	# Bespoke silhouettes that cannot read as town masses (owner-approved list; farms
+	# Bespoke silhouettes that cannot read as town masses (farms
 	# are excluded by category — they own a field, not a mass). Wind and solar are here
 	# because a turbine row and a panel array are not building-shaped at all: squashing
 	# either into a rectangle would say "shed" where the whole point is the array.
 	"port": true, "offshore_oil_platform": true,
 	"onshore_wind_farm": true, "offshore_wind_farm": true, "solar_farm": true,
-	# MINE (owner, 2026-08-27): keeps its art because the pit IS the building. The
-	# InkBuildingGen wash remap already does exactly what was asked — the headframe and
-	# sheds are neutral greys and take the owner's wash, while the quarry's PIT_BENCH
+	# MINE: keeps its art because the pit IS the building. The
+	# InkBuildingGen wash remap already does the right thing — the headframe and
+	# sheds are neutral greys and take the ownership wash, while the quarry's PIT_BENCH
 	# earth tones are material colours that fall through unrecoloured, so the pit stays
 	# brown whoever owns it. Its black extraction ground is the zone underneath, not the
 	# building, and is likewise untouched.
 	"mine": true,
 	# Linear/network infra: a pipe run or a transformer drawn as a townhouse would lose
-	# its meaning entirely. Trim these if the owner disagrees.
+	# its meaning entirely.
 	"pipes": true, "reinf_pipes": true, "cables": true, "rails": true,
 }
-## CHIMNEY STACKS (owner spec, 2026-08-27). How many stacks each industry carries, and how
+## CHIMNEY STACKS. How many stacks each industry carries, and how
 ## fat each one is in world units. A stack sits on a CORNER of the building's polygon — the
 ## rectangle or L of a stamp today, and the claimed mass of a hijacked decorative building
 ## once claiming lands, since `_stack_points` works off whatever polygon the placement ends
@@ -104,28 +104,26 @@ const SMOKE_STACKS := {
 	"chem_plant": {"count": 2, "r": 2.8},
 	"power_plant": {"count": 1, "r": 4.6},   # one larger
 	"eaf": {"count": 1, "r": 2.1},           # one small
-	"industrial_factory": {"count": 1, "r": 3.0},   # owner, 2026-08-28: a factory smokes too
+	"industrial_factory": {"count": 1, "r": 3.0},   # a factory smokes too
 }
-## CONSTRUCTION SITES (owner spec, 2026-08-27). `building_placed` fires when a build is
+## CONSTRUCTION SITES. `building_placed` fires when a build is
 ## QUEUED, not when it finishes (world_map.gd:2163 and the awaiting-market paths), so a
 ## project already owns its final footprint from day one. A site is therefore just that
-## polygon painted differently — which is exactly the ask, "the shape of the soon to set up
-## building", and it also means the finished building never jumps when it completes.
+## polygon painted differently — the shape of the building to come — and it also means the
+## finished building never jumps when it completes.
 ##
 ## Bare, hoarded ground: warmer and dirtier than NPC paper-white (#efe9db) so a site beside
 ## a rival's building is not mistaken for one, and darker than the road cream (#eadfbe) it
-## would otherwise sit flush against — a first pass at #d9c9a2 was close enough to the
-## carriageway that a site fronting a road read as a wide spot in the road.
-## PLACEMENT TIME BUDGET (owner, 2026-08-27). A dense tile makes the frontage packer walk
+## would otherwise sit flush against — anything as light as #d9c9a2 is close enough to the
+## carriageway that a site fronting a road reads as a wide spot in the road.
+## PLACEMENT TIME BUDGET. A dense tile makes the frontage packer walk
 ## every road segment at PACK_STEP against every neighbour's SAT box, and the shrink ladder
 ## does that up to three times over. At 100+ buildings on a tile that is seconds of frozen
-## frame, which reads as the game having crashed -- it was reported as exactly that. The
-## search gets this long in total; past it we stop looking and take the fallback plot.
-##
-## Widened by my own change: the ladder used to run only for the 16 ink-art buildings, and
-## putting every stamped industry through it multiplied the worst case.
+## frame, which reads as the game having crashed. The search gets this long in total; past
+## it we stop looking and take the fallback plot. Every stamped industry goes through the
+## ladder, not only the ink-art buildings, which multiplies the worst case.
 const PLACE_BUDGET_MS := 2000
-## The guaranteed fallback plot: 50 u^2 of ground beside a road (owner spec), drawn as a
+## The guaranteed fallback plot: 50 u^2 of ground beside a road, drawn as a
 ## 10x5 rectangle. Deliberately tiny -- this is the "somewhere sensible rather than nowhere"
 ## case, not a real lot.
 const FALLBACK_PLOT := Vector2(10.0, 5.0)
@@ -133,19 +131,19 @@ const FALLBACK_PLOT := Vector2(10.0, 5.0)
 ## the real search has given up, and it has to be fast rather than thorough.
 const FALLBACK_STEP := 6.0
 ## The smallest decorative mass a stamp industry may take over in the wider `decor` fallback
-## (owner, 2026-09-04: "larger than 20x20 units"). Below this a mass is too small to read as a
+## (20x20 units). Below this a mass is too small to read as a
 ## factory floor, so the building is better off packed onto ground than shrunk onto a cottage.
 ## The hand-marked `hijack` pass has NO floor — the designer's explicit pick is honoured whatever
 ## its size.
 const DECOR_HIJACK_MIN_AREA := 400.0
 const CONSTRUCTION_BEIGE := Color("d0bc91")
-## A site is outlined in DASHES, not a solid ink edge (owner, 2026-08-27) — the drawing
+## A site is outlined in DASHES, not a solid ink edge — the drawing
 ## convention for something proposed rather than built, and the thing that tells a site from
 ## a finished pale building at a glance without relying on the fill alone. World units, so
 ## the dash pattern holds its proportions to the building at every zoom.
 const SITE_DASH := 3.6
-## Gap DOUBLED from 2.6 (owner, 2026-08-27): at the tighter spacing the dashes read as a
-## broken line rather than as a deliberately provisional edge.
+## A wide gap: at a tighter spacing the dashes read as a broken line rather than as a
+## deliberately provisional edge.
 const SITE_GAP := 5.2
 const STAMP_RECT_ASPECT := 1.7   # frontage : depth of the rectangle stamp
 const STAMP_L_DEPTH := 1.45      # L bbox depth as a multiple of the rectangle's depth
@@ -163,7 +161,7 @@ const BLOCK_PROB := 100              # % of eligible tiles using block mode; low
 const BLOCK_PERIMETER := true        # block = an irregular quad packed on EVERY side, not one-sided rows
 const BLOCK_PERIM_JITTER := 0.22     # corner drift as a fraction of BLOCK_LOT — surveyed, not stamped
 const BLOCK_MIN_ROAD := 70.0         # need a straight road segment ≥ this (~7u) to anchor a block
-const BLOCK_MAX_COLS := 3            # lots along the road (owner: 2x2 or 3x2 blocks only)
+const BLOCK_MAX_COLS := 3            # lots along the road (2x2 or 3x2 blocks only)
 const BLOCK_ROWS := 1                # lots deep at first: FRONTAGE ONLY. A second row exists in
 									 # the template the moment the block is created, and _claim_slot
 									 # takes lots in order, so a block buried 2-3 buildings 53u back
@@ -234,7 +232,7 @@ const SERVICE_RIVER_COST := 2.5      # bump near a river arm — the lane runs a
 ## pre-existing footprint.
 const SERVICE_BUILD_PAD := 8.0
 const SERVICE_SIMPLIFY := 3.0        # RDP epsilon on the routed grid path
-## NOTE (audit, 2026-07-23): block-placed buildings sit ~65u from their road and
+## NOTE: block-placed buildings sit ~65u from their road and
 ## cannot currently do better. The block's own frontage row is never buildable:
 ## _rasterize_seg_clearance stamps whole 20u CELLS around a road, so a footprint
 ## whose near edge is BLOCK_ROAD_PAD (7u) out still overlaps blocked cells and
@@ -242,9 +240,9 @@ const SERVICE_SIMPLIFY := 3.0        # RDP epsilon on the routed grid path
 ## road-proximity gate therefore just starves blocks of lots (0-2 usable, below
 ## BLOCK_MIN_LOTS) rather than pulling them closer.
 ##
-## Service streets were tried and REMOVED (owner): inventing roads to suit
-## buildings is backwards, a one-building block got a street to nowhere, and
-## unvalidated street geometry drew over the sea. If interior access is ever
+## No service streets: inventing roads to suit buildings is backwards, a
+## one-building block gets a street to nowhere, and unvalidated street
+## geometry draws over the sea. If interior access is ever
 ## wanted it should grow out of the fronting road along the block's sides, gated
 ## on the block actually being full.
 const ROAD_OVERLAP := 5.0            # relayout: a building is only re-packed if a new road comes THIS close to its footprint (an actual overlap, well inside ROAD_CLEAR) — otherwise it stays put
@@ -271,12 +269,12 @@ const WASH_RED := Color("#b0483a")            # urban production / default
 const WASH_MUSTARD := Color("#c9992e")        # storage / logistics / infrastructure
 const WASH_YELLOW := Color("#E3C84A")         # power — matches tile size chart CAT_POWER
 const WASH_RUINS := Color("#7a5f43")
-# Owner 2026-07-10: restore the pre-ink colour FAMILIES in muted plate shades.
-const WASH_NAVY := Color("#5d7285")           # metallurgy (furnaces) — washed steel navy (was #4A7A9B)
-const WASH_BLUE := Color("#7ba7bc")           # water — lighter powder blue (was #3A7BD5)
-const WASH_PINK := Color("#b57f97")           # refinery — dusty plum-pink (was purple #8E5BC0)
-const WASH_ORANGE := Color("#c9803d")         # manufacturing — muted terracotta (was #E08A3C)
-const WASH_LIME := Color("#9fae5a")           # electrochemistry (chem plants) — olive lime (was #A6E22E)
+# The classic colour FAMILIES in muted plate shades.
+const WASH_NAVY := Color("#5d7285")           # metallurgy (furnaces) — washed steel navy
+const WASH_BLUE := Color("#7ba7bc")           # water — lighter powder blue
+const WASH_PINK := Color("#b57f97")           # refinery — dusty plum-pink
+const WASH_ORANGE := Color("#c9803d")         # manufacturing — muted terracotta
+const WASH_LIME := Color("#9fae5a")           # electrochemistry (chem plants) — olive lime
 const NPC_WHITE := Color("#efe9db")           # NPC fill: warm paper white (sits in the parchment)
 const SAWTOOTH_PITCH := 12.0                  # factory shed-roof line spacing (u)
 const TERRACE_PITCH := 14.0                   # urban party-wall slice spacing (u)
@@ -289,7 +287,7 @@ const WOBBLE_STEP := 16.0                     # subdivide footprint edges every 
 const WOBBLE_AMP := 1.1                       # perpendicular jitter (u); logic polygon never wobbles
 const WOBBLE_MIN_PERIM := 36.0                # tiny shapes stay crisp (jitter reads as noise)
 const OFFSHORE_MIN_SEP := 120.0               # sea structures spread at a uniform distance
-# Courtyard block-masses (owner rules 2026-07-10): bunches of 5+ adjacent
+# Courtyard block-masses: bunches of 5+ adjacent
 # same-owner buildings draw as ONE mass; deep masses get an inner courtyard.
 # Urban tiles always mass; rural/hill a seeded third; mountains never.
 const COURT_MIN_BUNCH := 5
@@ -316,7 +314,7 @@ const MASK_DEBUG := false            # set true to log tiles where the road gate
 # Farms (b_014, cat "farm"): irregular polygonal fields that gravitate to the river (or to the
 # tile edge if non-farm buildings already crowd the tile), clipped to the hex, hatched dark-green,
 # with a brown barn (rect) + silo (circle). Field = light green + 3px dark-green diagonal hatching.
-# Field fill + hatch colors live in MapStyle ('toggle ink' swaps them).
+# Field fill + hatch colors live in MapStyle.
 const FARM_HATCH_W := 3.0
 const FARM_HATCH_SPACING := 12.0                     # gap between hatch lines (u)
 const FARM_BARN := Vector2(10.0, 6.0)                # brown barn rect (~size-60 by area, pre-scale)
@@ -351,7 +349,7 @@ const CanvasBatch := preload("res://scripts/canvas_batch.gd")
 
 ## FAR LOD. Below this many screen pixels across a typical footprint, its drop shadow, prism
 ## sides, ink outline, roof motifs and shape-language art are all sub-pixel — about 19.5 draw
-## calls each, buying nothing a player can see. Measured 25 Aug with tools/pan_profile.tscn:
+## calls each, buying nothing a player can see. Measured with tools/pan_profile.tscn:
 ## zoomed fully out this layer submitted 10,913 draw calls and the farm layer another 9,612,
 ## together 92.5% of a 260 ms frame at 3.9 fps. Below the threshold every footprint collapses to
 ## its flat silhouette and the whole screenful goes out as ONE triangle array.
@@ -442,10 +440,10 @@ func _ready() -> void:
 	RoadWorks.order_settled.connect(_on_road_settled)
 	# An upgraded building grows annex wings (level-driven compound massing) —
 	# re-derive its tile's subcomponents when the new level lands.
-	MatchState.building_upgraded.connect(_on_building_upgraded)
+	BuildingWorks.building_upgraded.connect(_on_building_upgraded)
 	# A bought NPC building swaps to the player's wash (and leaves any NPC
 	# block-mass it sat in) the moment ownership changes.
-	MatchState.building_owner_changed.connect(_on_building_owner_changed)
+	BuildingState.building_owner_changed.connect(_on_building_owner_changed)
 	# A finished or abandoned build must stop looking like a building site. Nothing else
 	# would repaint this canvas for it: completion moves no footprint, so `_process`'s
 	# view/LOD tests all come back unchanged and the beige would sit there until the player
@@ -458,7 +456,7 @@ func _ready() -> void:
 	# brown tracks (the yellow road now represents them).
 	if RoadWorks.has_signal("farm_roads_promoted"):
 		RoadWorks.farm_roads_promoted.connect(_on_farm_roads_promoted)
-	# 'toggle ink' map restyle: farm field/hatch colors come from MapStyle.
+	# Farm field/hatch colors come from MapStyle.
 	MapStyle.style_changed.connect(func() -> void:
 		_silhouette.clear()   # colours are baked per vertex
 		queue_redraw())
@@ -507,9 +505,9 @@ func farm_promote_candidates_for_coord(coord: Vector2i) -> Dictionary:
 	return {}
 
 ## Farm tracks offered to the road realizer's follow-the-web cost bias.
-## The cluster's OUTER RING only — not the interior lane web (owner
-## 2026-07-23). The realizer discounts these cells, so offering the interior
-## threaded roads straight through a farm grouping; offering just the ring keeps
+## The cluster's OUTER RING only — not the interior lane web. The realizer
+## discounts these cells, so offering the interior would thread roads straight
+## through a farm grouping; offering just the ring keeps
 ## the pull TOWARD the grouping while roads stop at its edge. Falls back to the
 ## lane web on a tile whose ring hasn't been derived yet.
 func farm_lane_segments(tile_id: String) -> Array:
@@ -576,8 +574,8 @@ func on_building_placed(tile_id: String, building_id: String, _recipe_id: String
 	# per match by a counter, so they collide across start configs (the magnate's second
 	# mine drew the id another start's building carried at bake time). This match owns the
 	# id now — release the bake's claim on it, or reconcile_baked_layout will read the id
-	# as an unclaimed leftover and delete the live placement made just below. That was the
-	# invisible Snare Harbour iron mine (2026-08-29).
+	# as an unclaimed leftover and delete the live placement made just below (an invisible
+	# mine).
 	_baked_unclaimed.erase(instance_id)
 	# Re-placement (e.g. a load re-emitting building_placed) must not orphan the old
 	# footprint — drop it first so it frees its space and can't ghost.
@@ -675,7 +673,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		area = maxf(area, side * side)
 	# Art buildings keep QUAD footprints: the composition is rect-framed, and
 	# an L/C footprint's notch — legally occupied by a neighbour — would sit
-	# under the art (the residual start-tile overlap the owner reported).
+	# under the art (a residual overlap).
 	var kind: String = BuildingShapes.KINDS[RoadHash.pick("poly|%s|%s|kind" % [tile_id, instance_id], 2 if has_art else BuildingShapes.KINDS.size())]
 	var seed_v := RoadHash.pick("poly|%s|%s|var" % [tile_id, instance_id], 9)
 	# The alternation counter is read ONCE, before this building lands, so its shrink
@@ -699,11 +697,11 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	var placed := {}
 	# Offshore structures (wind farm, oil platform) sit ON WATER — the land
 	# mask can't place them at all. Uniform spread, no roads/frontage rules
-	# (owner 2026-07-10: sea buildings keep a uniform distance apart).
+	# (sea buildings keep a uniform distance apart).
 	var offshore := str(bd.get("internal_name", "")).to_lower().begins_with("offshore")
 	if offshore:
 		placed = _place_offshore(coord, area, placed_here)
-	# HIJACK FIRST (owner, 2026-08-27). On an authored tile a stamped industry takes over a
+	# HIJACK FIRST. On an authored tile a stamped industry takes over a
 	# decorative mass the designer marked as a hijack slot (J in the editor) instead of being
 	# packed into whatever ground is left. The mass was drawn off the street by hand, so the
 	# building inherits a footprint that can never straddle a carriageway. A busy tile runs
@@ -715,7 +713,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		# Hand-marked masses are scarce on the procedural regions (Vandel: 15 of 207), so a busy
 		# tile runs out of marks long before it runs out of buildings. When it does, take over
 		# ANY large town mass before falling through to the ground packer — "hijackable > other
-		# decorative > empty land" (owner, 2026-09-04). Ranked BEFORE block/frontage so the
+		# decorative > empty land". Ranked BEFORE block/frontage so the
 		# decorative footprint always beats a fresh rectangle stamped on leftover ground.
 		#
 		# But it YIELDS to an explicit industrial zone: a hand-drawn zone is the designer saying
@@ -773,14 +771,14 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	if _lp_on:
 		_lp_add("search_pack", Time.get_ticks_usec() - _lpt)
 		_lpt = Time.get_ticks_usec()
-	# GENTLE FAILURE (owner spec, 2026-08-27). Everything above has either found nowhere or
+	# GENTLE FAILURE. Everything above has either found nowhere or
 	# run out of budget; rather than the building vanishing, take the nearest 50 u^2 beside a
 	# road. Farms are excluded — a farm is a field, not a plot — and offshore is not on land.
 	if placed.is_empty() and not offshore and cat != "farm":
 		placed = _place_fallback_plot(tile_id, coord, placed_here)
 	if placed.is_empty():
-		# Genuinely nowhere left, even for 50 u^2. Still undrawn rather than overlapping (the
-		# owner's standing ruling on footprints), but it now SAYS so — a building the player
+		# Genuinely nowhere left, even for 50 u^2. Still undrawn rather than overlapping
+		# (footprints never overlap), but it SAYS so — a building the player
 		# paid for and cannot find is worth one line in the log.
 		push_warning("BuildingVisuals: no room on %s for %s (%s) — left undrawn."
 			% [tile_id, building_id, instance_id])
@@ -804,18 +802,17 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 	var verts: PackedVector2Array = placed.verts
 	# Farms carry BOTH looks baked once (clipped to the — possibly hex-cut —
 	# field): the classic 45° green hatch and the ink-mode parcel fabric
-	# (P3b). The style toggle just picks which set to draw — no re-bake.
+	# (P3b). The style just picks which set to draw — no re-bake.
 	var hatch: Array = _bake_farm_hatch(verts) if cat == "farm" else []
 	var parcels: Dictionary = _bake_farm_parcels(verts) if cat == "farm" else {}
 	var iname := str(bd.get("internal_name", ""))
 	# Both the shape-language art and the hijack-look stamp carry the WHOLE building, so
 	# neither wants procedural tanks, annexes, wings or storeys scattered around it.
 	#
-	# This gate used to read `INK_ART_KEY.has(iname)`. Moving the stamped industries off the
-	# art path silently un-suppressed their subcomponents, and the little circles and
-	# rectangles that reappeared were landing on top of the decorative fabric — nothing in
-	# `_wing_valid` tests against it, and subcomponents never run the eviction the main
-	# footprint does. Suppressing on `use_stamp` too restores the old, quiet map.
+	# Gating on `INK_ART_KEY.has(iname)` alone would leave the stamped industries'
+	# subcomponents un-suppressed, and the little circles and rectangles would land on top
+	# of the decorative fabric — nothing in `_wing_valid` tests against it, and
+	# subcomponents never run the eviction the main footprint does. Hence `use_stamp` too.
 	#
 	# Farms are deliberately NOT covered: a barn and a silo are the farm's own look, not
 	# clutter, and a farm is neither art nor stamp.
@@ -828,7 +825,7 @@ func _place_building(instance_id: String, building_id: String, tile_id: String, 
 		"coord": coord,
 		"verts": verts,
 		"color": TileViewData.category_color(bd),
-		"is_npc": not MatchState.is_player_owned(MatchState.get_building(instance_id)),
+		"is_npc": not BuildingState.is_player_owned(BuildingState.get_building(instance_id)),
 		"bb": _verts_bb(verts).grow(NPC_OUTLINE_W),
 		"cat": cat,
 		"iname": iname,
@@ -870,7 +867,7 @@ func _use_block_mode(tile_id: String, _coord: Vector2i) -> bool:
 	if not bool(_tile_block_mode[tile_id]):
 		return false
 	# Farmland reads as fields with steadings among them, not as a factory
-	# grid dropped between the fields (owner). Once a tile carries more than
+	# grid dropped between the fields. Once a tile carries more than
 	# one farm, its non-farm buildings go back to the continuous packer, which
 	# tucks them along the roads instead of laying a block. Counted live rather
 	# than cached: the first building on a tile usually predates its farms.
@@ -949,7 +946,7 @@ func _authored_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 		"segs": _tile_segs.get(tile_id, []), "rows": [], "authored": true}
 
 
-## WHICH SLOT GETS USED FIRST (owner, 2026-08-17).
+## WHICH SLOT GETS USED FIRST.
 ##
 ## Slots are filled least-destructive first: a slot standing on empty ground is taken before
 ## one standing on a decorative building, so the fabric survives until the tile genuinely runs
@@ -1264,8 +1261,8 @@ func _evict_fabric_under(tile_id: String, verts: PackedVector2Array) -> void:
 # placer, validator and overlap test downstream behaves identically — they only ever saw a mask.
 
 
-## Buildings an `extraction` zone is for. WATER PUMPS ARE NOT ON THIS LIST (owner,
-## 2026-08-17): a pump is an industrial building whatever its recipe reads like, and the name
+## Buildings an `extraction` zone is for. WATER PUMPS ARE NOT ON THIS LIST:
+## a pump is an industrial building whatever its recipe reads like, and the name
 ## invites the opposite assumption every time.
 const EXTRACTION_NAMES := {
 	"mine": true, "oil_well": true, "fracking_oil_well": true,
@@ -1424,7 +1421,7 @@ func _build_block_template(tile_id: String, coord: Vector2i) -> Dictionary:
 	var segs: Array = _block_road_segments(coord)   # ungated: any road crossing the tile (validation + adjacency)
 	var rivers: Array = _tile_rivers.get(tile_id, [])
 	var lanes: Array = _service_segs.get(tile_id, [])   # lanes are cleared at their own 4u, not road_clear
-	# Road-ENCLOSED pockets get first claim (owner 2026-07-10): when the
+	# Road-ENCLOSED pockets get first claim: when the
 	# streets already bound an interior area, the lot grid anchors INSIDE it,
 	# so the tile's buildings fill the block the roads drew — without touching
 	# the roads (lots keep the same clearance validation as everywhere else).
@@ -2007,7 +2004,7 @@ func _claim_slot(tmpl: Dictionary, size_units: int, coord: Vector2i, tile_id: St
 
 ## Add another row of lots behind the block once the existing ones are (nearly)
 ## all taken, so a tile that keeps building keeps packing into its block instead
-## of scattering the overflow across the tile (owner report, tile_6_12). Rows
+## of scattering the overflow across the tile. Rows
 ## are added one at a time and only where they validate, so the block grows into
 ## the space it actually has.
 func _grow_block_rows(tmpl: Dictionary, tile_id: String, coord: Vector2i) -> void:
@@ -2233,7 +2230,7 @@ func _on_building_owner_changed(instance_id: String) -> void:
 	if not _placement_index.has(instance_id):
 		return
 	var p: Dictionary = _placements[_placement_index[instance_id]]
-	p["is_npc"] = not MatchState.is_player_owned(MatchState.get_building(instance_id))
+	p["is_npc"] = not BuildingState.is_player_owned(BuildingState.get_building(instance_id))
 	_mark_subcomp_dirty(str(p.tile_id))
 	queue_redraw()
 
@@ -2243,12 +2240,12 @@ func _on_building_upgraded(instance_id: String, _new_level: int) -> void:
 	# until dedicated infrastructure upgrade art is approved.
 	if _is_infrastructure_instance(instance_id):
 		return
-	var tid := str(MatchState.get_building(instance_id).get("tile_id", ""))
+	var tid := str(BuildingState.get_building(instance_id).get("tile_id", ""))
 	if tid != "":
 		_mark_subcomp_dirty(tid)
 
 func _is_infrastructure_instance(instance_id: String) -> bool:
-	var inst: Dictionary = MatchState.get_building(instance_id)
+	var inst: Dictionary = BuildingState.get_building(instance_id)
 	if inst.is_empty():
 		return false
 	return str(Catalog.get_building(str(inst.get("building_id", ""))).get("category", "")).to_lower() == "infrastructure"
@@ -2256,7 +2253,7 @@ func _is_infrastructure_instance(instance_id: String) -> bool:
 func _enhanced_visual_level(instance_id: String) -> int:
 	if _is_infrastructure_instance(instance_id):
 		return 1
-	return clampi(int(MatchState.get_building(instance_id).get("level", 1)), 1, 3)
+	return clampi(int(BuildingState.get_building(instance_id).get("level", 1)), 1, 3)
 
 func _mark_subcomp_dirty(tile_id: String) -> void:
 	_subcomp_dirty[tile_id] = true
@@ -2375,16 +2372,15 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 		var parent_area := 4.0 * bhalf.x * bhalf.y
 		var pverts: PackedVector2Array = p.verts
 		# Wing count: big grey/mustard halls start with 1-2 seeded wings; every
-		# level above 1 adds one more, ANY family (owner 2026-07-10: buildings
-		# visibly expand with annexes when they upgrade to L2/L3).
+		# level above 1 adds one more, ANY family (buildings visibly expand with
+		# annexes when they upgrade to L2/L3).
 		var base_wings := 0
 		if (fam == "grey" or fam == "navy" or fam == "lime" or fam == "mustard") and parent_area >= WING_MIN_PARENT_AREA:
 			base_wings = 1 + RoadHash.pick("wing|%s|n" % iid, 2)
 		var wing_total := mini(base_wings + (lvl - 1), 4)
 		if wing_total > 0 and pverts.size() >= 3:
 			# Axes from the footprint's LONGEST edge, extents by projection —
-			# works for quads AND the L/C shapes, which previously never grew
-			# wings at all (owner 2026-07-10: an upgraded building must expand
+			# works for quads AND the L/C shapes (an upgraded building must expand
 			# even if only a bit). World-axis offsets on rotated halls would
 			# corner-touch and draw a bowtie.
 			var longest := Vector2.RIGHT
@@ -2452,8 +2448,8 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 					break
 				if not wing_done and lvl >= 2:
 					# Hemmed in on every side? UPGRADED buildings expand ACROSS
-					# the road (owner trigger rule 2026-07-10: no space around
-					# + space across + upgraded): the wing lands on the far
+					# the road (trigger: no space around + space across +
+					# upgraded): the wing lands on the far
 					# side of the carriageway, tethered back by a narrow
 					# covered corridor drawn over the road (5-10u wide).
 					for j1 in wdirs.size():
@@ -2497,7 +2493,7 @@ func _rebuild_subcomponents(tile_id: String) -> void:
 							})
 							wing_done = true
 							break
-		# Tank farm (owner 2026-07-10): chemical works (chem plants lime,
+		# Tank farm: chemical works (chem plants lime,
 		# petro/poly refineries pink) carry their cylinders OUTSIDE the hall
 		# as ONE battery block — 2 side by side, 3 in a triangle, 4 in a grid.
 		if fam == "lime" or fam == "pink":
@@ -2571,7 +2567,7 @@ func _tile_type(coord: Vector2i) -> String:
 		return ""
 	return str((terrain_layer.tiles.get(coord, {}) as Dictionary).get("type", ""))
 
-## Courtyard block-masses (ink spec I2 + owner rules 2026-07-10): bunches of
+## Courtyard block-masses (ink spec I2): bunches of
 ## COURT_MIN_BUNCH+ adjacent same-owner quad buildings draw as ONE merged mass
 ## (inflate-merge-deflate closes the terrace gaps; L-shapes emerge naturally
 ## from the union). Masses deep enough get an inner COURTYARD (inset hole).
@@ -2593,7 +2589,7 @@ func _build_block_masses(tile_id: String, coord: Vector2i, blds: Array) -> void:
 		# Shape-language buildings draw their own compound, and a mass member
 		# skips its fill and contributes only party-wall ink — which is why a
 		# cluster of 5+ factories reverted to plate outlines and then to
-		# apparently transparent shapes (owner report, tile_6_12).
+		# apparently transparent shapes.
 		if INK_ART_KEY.has(str(p.get("iname", ""))):
 			continue
 		cands.append(p)
@@ -2885,7 +2881,7 @@ func _build_farm_layout(tile_id: String, coord: Vector2i, center: Vector2, farms
 					lanes.append(sub)
 	# Outer ring: the per-component ring polygons (computed above), cut at rivers, routed around forests,
 	# and clipped just 1u inside the hex (a tiny inset stops two adjacent tiles' rings from overlapping ON
-	# the shared edge, but — unlike the old 3u — no longer severs the loop wherever the cluster reaches the
+	# the shared edge, but — unlike a wider inset — does not sever the loop wherever the cluster reaches the
 	# tile edge). The full ring polygon still drives the snap's inside-cluster test.
 	var inset_hex := _largest_ccw(Geometry2D.offset_polygon(hex, -1.0), hex)
 	var cluster_rings: Array = []
@@ -3498,15 +3494,15 @@ func _ensure_tile(tile_id: String, coord: Vector2i) -> void:
 	# (~12u) polylines on most tiles, so the old 648-cells × all-segs scan was
 	# ~150k _pt_seg_dist calls per tile (~25 s of world build across the map).
 	# Carve the mask at the TIGHTEST clearance any caller may ask for, not at
-	# ROAD_CLEAR. The mask used to forbid everything within 18u of a road, which
-	# made the 5.5u art frontage structurally impossible — the audit showed
-	# 99.9% of rejected frontage candidates failing here rather than on the
-	# road-clearance test. Each caller still enforces its own distance through
+	# ROAD_CLEAR. Forbidding everything within 18u of a road would make the
+	# 5.5u art frontage structurally impossible — nearly every rejected frontage
+	# candidate would fail here rather than on the road-clearance test. Each
+	# caller still enforces its own distance through
 	# _valid/_farm_valid/_wing_valid, so nothing gets closer than it should.
 	var road_block := _rasterize_seg_clearance(segs, MASK_ROAD_CLEAR)
 	# Port quay/pier strip: the dock composition is drawn decoration with no
 	# placement footprint — without this carve, buildings legally packed under
-	# it and the port (z=60) drew over them (owner report, Stoneshore Docks).
+	# it and the port (z=60) would draw over them.
 	var port_blocks := _port_block_frames(coord, center)
 	var keys := PackedInt32Array()
 	var farm_keys := PackedInt32Array()
@@ -3728,7 +3724,7 @@ func _ensure_service_lane(tile_id: String, coord: Vector2i, building_count: int)
 	var wobbled := ServiceLanes.wobble(line, tile_id)
 	# The routed path honours the water-blocked mask cell by cell, but (exactly as
 	# with the building gate below) RDP can cut a corner and the wobble can lean
-	# further — out over the shoreline. Owner rule 2026-08-16: no road on sea or
+	# further — out over the shoreline. No road on sea or
 	# lake. Pull any wet vertex back onto land before anything measures off it.
 	wobbled = _declamp_lane_water(wobbled, center)
 	var out: Array = []
@@ -4152,15 +4148,14 @@ func _place_edge(tile_id: String, coord: Vector2i, base_verts: PackedVector2Arra
 	er["via"] = "edge"
 	return er
 
-## LAST RESORT (owner spec, 2026-08-27): the nearest road-adjacent spot with 50 u^2 free,
+## LAST RESORT: the nearest road-adjacent spot with 50 u^2 free,
 ## drawn as a 10x5 rectangle. Runs only when the real packer has failed or run out of budget.
 ##
 ## "Nearest" is measured to the TILE CENTRE, matching the packer's own last fallback, so a
 ## squeezed-in building appears among its neighbours rather than out on the rim.
 ##
-## Deliberately still refuses to OVERLAP: the owner ruled overlapping footprints out when the
-## polygon buildings were designed, and a plot that sat on top of a neighbour would be a worse
-## answer than a small one tucked beside a road. If even 50 u^2 will not fit, this returns {}
+## Deliberately still refuses to OVERLAP: footprints never overlap, and a plot that sat on
+## top of a neighbour would be a worse answer than a small one tucked beside a road. If even 50 u^2 will not fit, this returns {}
 ## and the caller leaves the building undrawn -- gently, with a warning, and no freeze.
 func _place_fallback_plot(tile_id: String, coord: Vector2i, placed_here: Array) -> Dictionary:
 	if not _tile_land.has(tile_id):
@@ -4231,7 +4226,7 @@ func _place_fallback_plot(tile_id: String, coord: Vector2i, placed_here: Array) 
 ## Point-wise water test over a footprint. The buildable mask is a grid and the
 ## edge-seeker deliberately heads for the tile rim, where a corner can hang over
 ## the coast between sampled cells — an onshore wind farm ended up on water
-## (owner report). Offshore structures are exempt; they belong there.
+## Offshore structures are exempt; they belong there.
 func _footprint_dry(center: Vector2, local_verts: PackedVector2Array, coord: Vector2i) -> bool:
 	var nav := NavGrid.instance()
 	if nav == null or not nav.is_ready():
@@ -4465,13 +4460,13 @@ const PARCEL_CUT_MAX := 80.0
 const PARCEL_SHEAR_DEG := 3.0    # per-cut tilt so cells are trapezoids, not graph paper
 const PARCEL_INSET := 2.2        # gap: the base path-tan shows through = the little roads
 const PARCEL_MIN_AREA := 250.0   # drop boundary slivers (base shows = path widening)
-const FURROW_SPACING := 7.0      # ink furrow pitch (owner: denser than the classic 12u hatch)
+const FURROW_SPACING := 7.0      # ink furrow pitch (denser than the classic 12u hatch)
 
 # ── Ink building art (procedural shape language — DEFAULT in both styles) ──────
 ## internal_name -> InkBuildingGen recipe key (aliases collapse variants).
-## Owner 2026-07-23: the shape-language art is the default building look in
-## BOTH map styles, and its lot is reserved at ART size so the packer
-## separates what is actually drawn (plate-sized lots caused overlap).
+## The shape-language art is the default building look in BOTH map styles,
+## and its lot is reserved at ART size so the packer separates what is
+## actually drawn (plate-sized lots would overlap).
 const INK_ART_KEY := {
 	"furnace": "furnace", "eaf": "eaf", "industrial_factory": "industrial_factory",
 	"consumer_factory": "consumer_factory", "assembly_plant": "assembly_plant",
@@ -4489,10 +4484,10 @@ const MIDCENTURY_COMPOUND_ART := {
 	"electrolyser": true, "power_plant": true, "water_pump": true, "mine": true,
 }
 ## Lot side scales with tile_size_used from the smallest class to 3x for the
-## biggest (owner's 10:30 ratio); levels never rescale the art — the L3 frame
+## biggest (a 10:30 ratio); levels never rescale the art — the L3 frame
 ## is the lot and upgrades annex into it.
 ## Lot sides match the drawn bounds, so a lot reserves exactly what gets drawn
-## — no wasted ground (which was crowding buildings off dense tiles).
+## — no wasted ground (which would crowd buildings off dense tiles).
 const ART_SIDE_MIN := 40.0
 const ART_SIDE_MAX := 90.0
 const ART_ROAD_PAD := 5.5    # art frontage: footprint edge ~1u off the carriageway edge
@@ -4504,17 +4499,16 @@ static var DIAG := false
 ## drawn on the settle-repainted building canvas, so the only way to price them is to draw a
 ## frame without them.
 static var DRAW_CHIMNEYS := true
-## Hard bounds on the DRAWN sprite's long side, in world units (owner ruling
-## 2026-07-23). Applied at draw time so it holds no matter which placement path
+## Hard bounds on the DRAWN sprite's long side, in world units.
+## Applied at draw time so it holds no matter which placement path
 ## sized the lot — block-template lots ignore the art lot area entirely.
 ## Scaled by tile_size_used, whose real range in the buildings CSV is 1..30
 ## (1-2 = tiny infra, 10 = the bulk, 30 = mine, the largest).
-## ART SIZE — BALANCE/ART CONSTANTS (owner ruling, 2026-08-17).
+## ART SIZE — BALANCE/ART CONSTANTS.
 ##
-## Were 40 / 90. Scaled by 0.75 because the ground an authored slot reserves is derived from
-## these, and the slots read as too large on a 540x480 tile. Everything else about the split
-## is unchanged: the class ceilings moved by the same factor, so exactly the same buildings
-## land in each class.
+## The ground an authored slot reserves is derived from these, so they are held small
+## enough that slots do not read as too large on a 540x480 tile. The class ceilings scale
+## with them, so the same buildings land in each class.
 ##
 ## Knock-on worth knowing before retuning: smaller gameplay art frees ground, and the
 ## decorative packer fills it — so lowering these makes towns DENSER, not just smaller. Below
@@ -4523,10 +4517,10 @@ static var DRAW_CHIMNEYS := true
 const ART_DRAWN_MIN := 30.0
 const ART_DRAWN_MAX := 68.0
 const ART_SIZE_UNITS_MAX := 30.0
-## Boxes an authored slot reserves per class, world units. DERIVED, never typed in: these were
-## hand-written as 62/96 and were wrong in both directions — they applied ART_BLOCK_MARGIN once
-## per AXIS where the game blocks it once per SIDE, so 13 of the 20 buildings with ink art were
-## silently drawn 10-14% small to fit. A slot must hold its class's largest member exactly as
+## Boxes an authored slot reserves per class, world units. DERIVED, never typed in: a
+## hand-written value that applies ART_BLOCK_MARGIN once per AXIS where the game blocks it
+## once per SIDE leaves most buildings with ink art silently drawn 10-14% small to fit. A
+## slot must hold its class's largest member exactly as
 ## _crop_to_sprite will size it: the art extent, plus the margin on both sides.
 ##
 ## Square, not rectangular, and that is not laziness: a class holds both wide-and-shallow art
@@ -4542,24 +4536,18 @@ const AUTHORED_SLOT_BOXES := {
 	"standard": Vector2.ONE * (AuthoredMap.SLOT_CLASS_CEILINGS["standard"]
 		+ ART_BLOCK_MARGIN * 2.0 + CHUNK_GAP),
 }
-## Per-recipe drawn-size overrides. Wind sites sprawl — at the size-10 default
-## they read as a cramped cluster rather than machines spread over open ground
-## (owner). Visual only: it moves the lot too, so reservation stays honest.
-## Wind sites sprawl, so they were pinned to the largest drawn size. That override was
-## written when they were tile_size_used 10 and would otherwise have drawn at 40 — a cramped
-## cluster rather than machines over open ground. They are size 25 now and lerp to 61.4 on
-## their own, so the pin was buying 10% of extra sprawl while setting the STANDARD SLOT BOX
-## for every building on the map, since the box is the class ceiling plus margins.
-##
-## 0.7 (owner, 2026-08-17) compresses them into 70% of that space, which takes them below the
-## mine and lets the ceiling come down with them.
+## Per-recipe drawn-size overrides. Visual only: it moves the lot too, so reservation stays
+## honest. Wind sites are compressed into 70% of the largest drawn size, which takes them
+## below the mine and lets the STANDARD SLOT BOX ceiling (class ceiling plus margins) come
+## down with them; pinning them to the full size would set that box for every building on
+## the map.
 const ART_SIZE_OVERRIDE := {"wind_farm": ART_DRAWN_MAX * 0.7}
 ## Blocked space is the DRAWN sprite plus this margin, not the lot the packer
 ## reserved — a lot is sized for the biggest thing that could stand on it, and
 ## treating all of it as solid wasted ground and pushed neighbours away.
 const ART_BLOCK_MARGIN := 6.0
-## Sprawling sites that belong on open ground rather than fronting a street
-## (owner): pits and renewable farms. They take the edge-seeker path — the same
+## Sprawling sites that belong on open ground rather than fronting a street:
+## pits and renewable farms. They take the edge-seeker path — the same
 ## one extraction uses — so they head for an empty corner of the tile, and the
 ## frontage audit counts them as off-road by design rather than as failures.
 const OFF_ROAD_NAMES := {
@@ -4811,14 +4799,14 @@ func _sat_separated(pa: PackedVector2Array, oa: Vector2, pb: PackedVector2Array,
 
 ## Does a candidate footprint collide with anything already placed, keeping DESIGN_GAP?
 ##
-## The upright-box comparison is now only a PREFILTER. It used to BE the whole test, and
-## that made terraces impossible on any street not near axis-aligned: `half` is an upright
+## The upright-box comparison is only a PREFILTER. As the whole test it would make terraces
+## impossible on any street not near axis-aligned: `half` is an upright
 ## box around a ROTATED footprint, so a 30x19u unit turned 45 degrees claims a 35x35u box
 ## that is mostly empty air at the corners, and two neighbours a true DESIGN_GAP apart
-## rejected each other on that air alone — see docs/arc-districts-and-packing-spec.md §1,
+## would reject each other on that air alone — see docs/arc-districts-and-packing-spec.md §1,
 ## which is also where the header's "1-2u Sanborn terrace look" went.
 ## Boxes that already clear still exit early: cheap, and a clear box proves a clear shape.
-## Boxes that touch now go to SAT on the real oriented quads. Entries carrying no `lverts`
+## Boxes that touch go to SAT on the real oriented quads. Entries carrying no `lverts`
 ## (wings, tanks, storeys) keep the old box behaviour, so ancillary packing is unchanged.
 func _overlaps(center: Vector2, half: Vector2, placed_here: Array, local_verts: PackedVector2Array = PackedVector2Array()) -> bool:
 	var lo := center - half - Vector2(DESIGN_GAP, DESIGN_GAP)
@@ -4844,7 +4832,7 @@ func _valid(center: Vector2, local_verts: PackedVector2Array, half: Vector2, pla
 		and _footprint_clears(center, local_verts, rivers, RIVER_CLEAR) \
 		and _footprint_clears(center, local_verts, lanes, SERVICE_CLEAR)
 
-## PRECISE wing validation (owner 2026-07-10: the buildable mask is 20u-cell
+## PRECISE wing validation (the buildable mask is 20u-cell
 ## chunky and reserves the 28u river bank corridor — a cosmetic wing only
 ## needs the real clearances). Checks hex, water, elevation and forest discs
 ## point-wise, exact 18u road / 16u river distances, and building overlaps.
@@ -5757,7 +5745,7 @@ func draw_farm_layer(c: CanvasItem) -> void:
 	# forests). A promoted tile's _farm_lanes already excludes the ring + trunk (now real yellow roads).
 	# A filled disc (radius = half the track width) at each segment end JOINS the corners + junctions so
 	# the network reads as continuous instead of broken butt-capped segments.
-	# Ink mode draws NO grey lane web (owner ruling 2026-07-23): the mockup's
+	# Ink mode draws NO grey lane web: the mockup's
 	# farms are parcel blocks sitting beside the roads, not lane-connected
 	# blobs. Classic keeps the dirt tracks + their river bridge decks.
 	if not MapStyle.uses_ink_linework():
@@ -5876,7 +5864,7 @@ func _draw_midcentury_compound_apron(placement: Dictionary,
 ## compound centered on the footprint, rotated to its first edge, long side
 ## scaled to INK_ART_SCALE x the footprint extent. The generator computes facet
 ## tones from WORLD normals, offsets shadows in world SE and aims highlights
-## world NW — so rotation keeps the light source top-left (owner requirement).
+## world NW — so rotation keeps the light source top-left.
 ## Returns false when no recipe applies — caller falls back to the plate look.
 func _draw_ink_art(placement: Dictionary, verts: PackedVector2Array) -> bool:
 	# Mid-century ports are drawn once by PortVisuals from the shared b_004
@@ -5887,10 +5875,9 @@ func _draw_ink_art(placement: Dictionary, verts: PackedVector2Array) -> bool:
 		# vanish, so this only stands down where a harbour is ACTUALLY drawn; otherwise the
 		# footprint remains as the honest bounded fallback.
 		#
-		# ASKED, NOT BUILT. This used to call MidcenturyPortPlan.build() and test the result
-		# for emptiness -- a whole harbour search to answer a yes/no, from inside _draw. It
-		# was dormant while midcentury was off by default; the moment midcentury shipped it
-		# became a multi-second coastline search per port on the load path.
+		# ASKED, NOT BUILT. Calling MidcenturyPortPlan.build() and testing the result for
+		# emptiness would be a whole harbour search to answer a yes/no, from inside _draw --
+		# a multi-second coastline search per port on the load path.
 		if _port_compound_drawn(str(placement.get("tile_id", ""))):
 			return true
 	var art_key: String = INK_ART_KEY.get(str(placement.get("iname", "")), "")
@@ -6022,7 +6009,7 @@ func _inside_point(verts: PackedVector2Array) -> Vector2:
 
 
 ## Every construction site on the map, for the animated crane layer. The per-tile index is
-## what staggers the cranes: two sites on one tile swing a second apart (owner spec), so a
+## what staggers the cranes: two sites on one tile swing a second apart, so a
 ## developing tile reads as several independent machines rather than one clockwork.
 func construction_sites() -> Array:
 	var out: Array = []
@@ -6057,7 +6044,7 @@ func construction_sites() -> Array:
 
 ## Where this building's chimneys stand, in world coordinates.
 ##
-## A building with more than one stack gets them ADJACENT, IN A LINE (owner, 2026-08-27) --
+## A building with more than one stack gets them ADJACENT, IN A LINE --
 ## a refinery's three read as one plant with a row of flues, not as three separate works.
 ## The line runs along the footprint's longest edge, anchored a little in from the corner and
 ## stepped by just over a stack width, and it is pulled toward the centroid so the flues sit
@@ -6123,7 +6110,7 @@ func _stack_points(iname: String, iid: String, verts: PackedVector2Array) -> Arr
 ## The levy's turn ramp (`co2_tax_scale`) is deliberately NOT consulted: the plume is about
 ## what is being burnt, not about when the Treasury started charging for it.
 func _recipe_emits_carbon(iid: String) -> bool:
-	var inst := MatchState.get_building(iid)
+	var inst := BuildingState.get_building(iid)
 	if inst.is_empty():
 		return false
 	var recipe := Catalog.get_recipe(str(inst.get("recipe_id", "")))
@@ -6378,7 +6365,7 @@ func _wobble_poly(seed_key: String, verts: PackedVector2Array) -> PackedVector2A
 	return out
 
 ## Wash family for a building category. The pre-ink scheme's colour families
-## survive in muted plate shades (owner 2026-07-10): furnaces keep their blue,
+## survive in muted plate shades: furnaces keep their blue,
 ## refineries their purple-turned-pink, manufacturing its orange.
 func _wash_family(cat: String) -> String:
 	match cat:
@@ -6405,14 +6392,14 @@ func _wash_family(cat: String) -> String:
 
 ## Wash fill: PLAYER buildings carry the muted triad (+seeded ±5% value jitter
 ## so repeated blocks don't clone); NPC buildings are PAPER WHITE with ink
-## outlines (owner ruling 2026-07-10) — ownership reads instantly, like the
+## outlines — ownership reads instantly, like the
 ## uncoloured lots on a vintage plate. Ruins keep their brown either way
 ## (decay, not ownership).
 func _wash_for(cat: String, iid: String, is_npc: bool) -> Color:
 	var fam := _wash_family(cat)
 	var jitter := (float(RoadHash.pick("ink|%s|val" % iid, 100)) / 100.0 - 0.5) * 2.0 * MapStyle.plate_wash_jitter()
-	# COMPANY LIVERY (owner, 2026-08-27). A player building's fill is the colour chosen on
-	# the New Game screen rather than its category triad: no player was reading colour as
+	# COMPANY LIVERY. A player building's fill is the colour chosen on
+	# the New Game screen rather than its category triad: players do not read colour as
 	# building type, and ownership is what the map actually needs to say. NPC paper-white is
 	# untouched — white IS the rival cue — and ruins stay brown either way, because a ruin is
 	# decay, not ownership.
@@ -6428,9 +6415,7 @@ func _wash_for(cat: String, iid: String, is_npc: bool) -> Color:
 		# Block tops. Ruins first: an NPC-owned ruin must stay brown, matching the
 		# `is_npc and fam != "ruins"` carve-out below — decay, not ownership.
 		#
-		# NPCs ARE WHITE IN EVERY STYLE (owner, 2026-08-28). Midcentury used to colour real
-		# gameplay industries by category regardless of owner, which was defensible while it
-		# was an opt-in look and is not now that it ships: white is the rival cue, and the
+		# NPCs ARE WHITE IN EVERY STYLE, midcentury included: white is the rival cue, and the
 		# player's livery is the only colour on the map that means ownership. Plate keeps its
 		# own frozen NPC-grey convention.
 		var key := fam if fam == "ruins" or not is_npc else "npc"

@@ -25,8 +25,8 @@ func _ready() -> void:
 	# Main scene setup loads the fixed prototype-world buildings. Snapshot only
 	# after that legitimate initialization, then prove this probe performs no
 	# placement or save-state mutation of its own.
-	var buildings_before := JSON.stringify(MatchState.buildings)
-	var building_count_before := MatchState.buildings.size()
+	var buildings_before := JSON.stringify(BuildingState.buildings)
+	var building_count_before := BuildingState.buildings.size()
 	var ui := game.get_node_or_null("UILayer") as CanvasLayer
 	if ui != null:
 		ui.visible = false
@@ -89,8 +89,8 @@ func _ready() -> void:
 	var signature_off := _site_signature(snapshot_off.sites)
 	if signature_on != signature_off:
 		errors.append("planning snapshot changed when mid-century style was disabled")
-	if buildings_before != JSON.stringify(MatchState.buildings) or \
-			building_count_before != MatchState.buildings.size():
+	if buildings_before != JSON.stringify(BuildingState.buildings) or \
+			building_count_before != BuildingState.buildings.size():
 		errors.append("non-saving probe mutated MatchState buildings")
 	var record := {
 		"site_count": (snapshot.sites as Array).size(),
@@ -98,7 +98,7 @@ func _ready() -> void:
 		"style_on_signature": signature_on,
 		"style_off_signature": signature_off,
 		"style_independent": signature_on == signature_off,
-		"match_state_unchanged": buildings_before == JSON.stringify(MatchState.buildings),
+		"match_state_unchanged": buildings_before == JSON.stringify(BuildingState.buildings),
 		"errors": Array(errors),
 	}
 	var file := FileAccess.open("/tmp/poe_accommodation_probe.json", FileAccess.WRITE)

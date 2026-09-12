@@ -1,5 +1,5 @@
 extends PanelContainer
-## Top Bar v2 — implemented from the owner's React prototype "Top Bar (offline).html".
+## Top Bar — built from the React prototype "Top Bar (offline).html".
 ## Modules left→right:
 ##   Treasury (cash + net/turn + runway) · Power net · Victory (5 track meters + score)
 ##   · [flex] · Briefing (merged bell: decisions + updates) · [flex]
@@ -32,24 +32,20 @@ const BANKRUPTCY_IMMINENT_RUNWAY := 100.0
 const NEAR_FULL_FRACTION := 0.95
 
 # ── Prototype palette (top-bar local; the DS navy family, tuned per the design) ──
-# v3 (docs/top-bar-v3-spec.md §1.1): the bar lost its per-module boxes, so the
-# padding those boxes needed went with them — 4 top + 38 module + 4 bottom + the
-# 7px bezel. Module chrome is flat now; see _module_box.
-# v3.1 (owner, 27 Aug): +12px overall, same 4/4/7 budget so MOD_H absorbs all of it —
+# docs/top-bar-v3-spec.md §1.1: modules have no boxes, so the budget is 4 top + 50 module
+# + 4 bottom + the 7px bezel. Module chrome is flat; see _module_box.
 # content_margin_top/bottom in _style_bar reference BAR_H's own EDGE_H term, not a
-# literal number, so nothing else needed to change for the bar to grow around this.
+# literal number, so the bar grows around MOD_H without anything else changing.
 const BAR_H := 65.0
 const MOD_H := 50.0
 # Briefing notch: taller than the bar, hanging below it as a two-row centre notch.
-# Derived from BAR_H rather than fixed — it was authored to drop NOTCH_DROP px past a
-# 69px bar, and v3's shorter bar would otherwise leave a notch nearly as deep as the
-# bar is tall. NOTCH_DROP also clears the 60px research badge plus its margins.
+# Derived from BAR_H rather than fixed, so a shorter bar cannot leave a notch nearly as
+# deep as the bar is tall. NOTCH_DROP also clears the 60px research badge plus its margins.
 const NOTCH_DROP := 33.0
 const NOTCH_H := BAR_H + NOTCH_DROP
 const NOTCH_MIN_W := 300.0
 const NOTCH_RADIUS := 16.0
-# Research-unlock toast timing (owner, 27 Aug — replaces the teal microscope badge that used
-# to live in the notch): a small banner slides down under the notch, holds, then fades.
+# Research-unlock toast timing: a small banner slides down under the notch, holds, then fades.
 const RESEARCH_TOAST_GAP := 8.0
 ## Between one flyout and the next in the stack.
 const RESEARCH_TOAST_STACK_GAP := 6.0
@@ -64,7 +60,7 @@ const RESEARCH_OVERFLOW_TECH := "__overflow__"
 const RESEARCH_TOAST_SLIDE_SEC := 0.35
 const RESEARCH_TOAST_HOLD_SEC := 5.0
 const RESEARCH_TOAST_FADE_OUT_SEC := 0.3
-# v3.1 (cheat: `swap topbar v3.1`) — Goods Graph / Encyclopedia / Mission / Power /
+# v3.1 icon faces — Goods Graph / Encyclopedia / Mission / Power /
 # Victory / Rankings swap their text/vector-glyph faces for these baked standalone
 # icons: the bottom-menu button treatment (cream emboss + bevel + drop shadow) minus
 # the round disc and outer ring, since these sit flat on the bar rather than in a
@@ -72,13 +68,13 @@ const RESEARCH_TOAST_FADE_OUT_SEC := 0.3
 # display time — they are already coloured to the building-icon off-white and
 # re-tinting would pull them off that match.
 const ICON_GOODS_GRAPH: Texture2D = preload("res://assets/icons/ui_icons/standalone/sankey.png")
-## The menu glyph, baked by tools/bake_menu_icon.py. It used to be the text "☰", which is why
-## it was the one control on the bar with no cream tint, no sheen and no hover glow -- those
-## are applied to a texture, and a glyph is not one (owner, 2026-08-28).
+## The menu glyph, baked by tools/bake_menu_icon.py. A texture rather than the text "☰", so it
+## takes the cream tint, sheen and hover glow like every other control on the bar -- those
+## are applied to a texture, and a glyph is not one.
 const ICON_MENU: Texture2D = preload("res://assets/icons/ui_icons/standalone/menu.png")
 ## The sankey is all thin strokes and no solid mass, so at the shared 44 px it reads smaller
 ## than the council table and the book either side of it. Drawn larger to weigh the same
-## (owner, 2026-08-28) -- the art is unchanged; only the box it is given is.
+## -- the art is unchanged; only the box it is given is.
 const SANKEY_ICON_PX := 56.0
 const ICON_ENCYCLOPEDIA: Texture2D = preload("res://assets/icons/ui_icons/standalone/open-book.png")
 const ICON_QUEST: Texture2D = preload("res://assets/icons/ui_icons/standalone/target.png")
@@ -96,12 +92,11 @@ const SPECULAR_TEX: Texture2D = preload("res://assets/icons/ui_icons/alt/_specul
 const GLOW_TEX: Texture2D = preload("res://assets/icons/ui_icons/standalone/_glow.png")
 const GLOW_SCALE := 2.0   # glow diameter relative to the icon's own px size
 const GLOW_TINT := Color(1.0, 0.92, 0.75, 0.6)
-# v3.1 (owner, 27 Aug): grown with MOD_H (38->50px), bottom-aligned in their row
-# instead of centred — see _v31_icon — with a fixed gap off the row's bottom edge.
+# v3.1 icons: bottom-aligned in their row instead of centred — see _v31_icon — with a
+# fixed gap off the row's bottom edge.
 const V31_ICON_PX := 44.0
 const V31_ICON_BOTTOM_PAD := 8.0
-# The two Briefing bells: 28px original -> +50% (27 Aug) -> +25% again on TOP of
-# that (28*1.5*1.25=52.5), per the owner.
+# The two Briefing bells: bigger than the module icons so they read at a glance.
 const BELL_PX := 52.5
 # v3.1: the notch hugs just the bells instead of the classic text's much wider
 # NOTCH_MIN_W floor — see _recenter_notch.
@@ -130,9 +125,9 @@ const C_MOD_BORDER := Color("#22384f")
 const C_ACTIVE_BG := Color("#15304a")
 const C_ACTIVE_BORDER := Color("#2f5578")
 const C_WARN_BORDER := Color(0.886, 0.376, 0.29, 0.55) # rgba(226,96,74,.55)
-# v3 (spec §1.5): the bar's body text is the SAME off-white the panels use. The old
-# #cdd9e6 and the module labels' #8ea3ba both read as grey on this navy — the owner's
-# standing rule (ds.gd:50) is that grey never goes on a dark ground. Colour that carries
+# Spec §1.5: the bar's body text is the SAME off-white the panels use — anything greyer
+# reads as grey on this navy, and the standing rule (ds.gd:50) is that grey never goes
+# on a dark ground. Colour that carries
 # MEANING is untouched: good/bad green and red, amber warnings, the cream victory score.
 const C_TEXT := Color("#E8EEF7")        # = DS.PALETTE.TEXT
 # Resting colour for the icon-and-label modules (Encyclopedia, Goods Graph, Menu).
@@ -167,13 +162,13 @@ var _money_glyph: Label      # the classic "£"
 var _money_coin_icon: Control   # v3.1
 
 # Status LEDs (spec §1.3): Treasury / Power / Transport only. Rankings,
-# Encyclopedia and the Goods Graph carry none by owner ruling, and Victory /
+# Encyclopedia and the Goods Graph carry none, and Victory /
 # Council / Briefing have no defined red condition — a lamp that can never light
 # is noise, so those modules simply have none.
 var _treasury_led: Control
 var _power_led: Control
-# v3.1 only — Victory/Rankings have no lamp in the classic bar (no red condition was
-# ever defined for either), so these exist only once the icon face is built.
+# v3.1 only — Victory/Rankings have no lamp in the classic bar (no red condition is
+# defined for either), so these exist only once the icon face is built.
 var _victory_led: Control
 var _rankings_led: Control
 
@@ -217,19 +212,18 @@ var _rankings_icon: Control   # v3.1
 # Briefing notch (top_level: centred on the viewport, hangs below the bar)
 var _briefing_btn: Control
 var _briefing_glyph: Control   # _BellIcon (vector — the font has no bell glyph)
-# Research-unlock toast (replaces the teal microscope badge, 27 Aug): a small two-row banner
-# that slides down under the notch, rather than a persistent badge living in it.
-## ONE FLYOUT PER UNLOCK, stacked (owner, 2026-08-28). Several techs landing on one turn used
-## to collapse into a single "N research unlocked" banner, which named none of them and made
-## the player open the briefing to find out what they had got.
+# Research-unlock toast: a small two-row banner that slides down under the notch.
+## ONE FLYOUT PER UNLOCK, stacked. A single "N research unlocked" banner for several techs
+## landing on one turn would name none of them and make the player open the briefing to
+## find out what they had got.
 var _research_toasts: Array[PanelContainer] = []
 ## Tech names already toasted THIS MATCH -- deliberately not this turn.
 ##
 ## Two things make it a match-long gate. TurnBriefing rebuilds its items several times as
 ## unlocks land, so it has to be per tech rather than a count. And its window is
 ## [current_turn - 1, current_turn], so an unlock is in the briefing for TWO turns running:
-## a gate cleared on turn change therefore popped every research a second time, one turn
-## later (owner, 2026-08-28: "it appears twice"). A tech unlocks once, so the set only ever
+## a gate cleared on turn change would pop every research a second time, one turn
+## later. A tech unlocks once, so the set only ever
 ## needs emptying when a new match starts.
 var _research_toasted: Dictionary = {}
 ## The single "+N more this turn" flyout, and its running total. It is UPDATED rather than
@@ -267,7 +261,7 @@ var _rankings_tab := "revenue"
 # deferred refresh per frame updates every module label.
 var _refresh_queued := false
 
-# v3.1 (cheat: `swap topbar v3.1`): [classic_node, icon_node] pairs for modules with
+# v3.1: [classic_node, icon_node] pairs for modules with
 # no refresh cycle of their own (Goods Graph, Encyclopedia) — toggled on build and
 # again whenever the flag flips. Power/Victory/Rankings/Quest instead toggle inline
 # in their own _refresh_* since they already run one every _apply_refresh.
@@ -298,9 +292,9 @@ func _ready() -> void:
 	MatchState.money_changed.connect(_on_money_changed)
 	MatchState.build_rejected_no_funds.connect(_on_build_rejected_no_funds)
 	MatchState.cfo_tax_credit_filed.connect(_on_cfo_tax_credit_filed)
-	MatchState.topbar_v3_1_changed.connect(_on_topbar_v3_1_changed)
-	MatchState.advisors_changed.connect(_queue_refresh)
-	MatchState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _queue_refresh())
+	UiPrefs.topbar_v3_1_changed.connect(_on_topbar_v3_1_changed)
+	AdvisorState.advisors_changed.connect(_queue_refresh)
+	AdvisorState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _queue_refresh())
 	Production.turn_processed.connect(func(_s: Dictionary) -> void: _queue_refresh())
 	CompanyRankings.rankings_updated.connect(_queue_refresh)
 	# The research gate is NOT reset here -- see _research_toasted. Only the overflow tally is,
@@ -313,7 +307,7 @@ func _ready() -> void:
 	TurnManager.turn_resolution_completed.connect(_on_turn_resolved_anomalies)
 	VictoryState.score_changed.connect(func(_t: int, _b: Dictionary) -> void: _queue_refresh())
 	TurnBriefing.items_changed.connect(_queue_refresh)
-	# The v2 briefing notch replaces the collapsed strip.
+	# The briefing notch replaces the collapsed strip.
 	TurnBriefing.strip_enabled = false
 	get_viewport().size_changed.connect(_recenter_notch)
 	resized.connect(queue_redraw)   # the metallic edge spans the live width
@@ -326,18 +320,18 @@ func _style_bar() -> void:
 	custom_minimum_size = Vector2(0, BAR_H)
 	offset_bottom = BAR_H
 	var sb := StyleBoxFlat.new()
-	# v3: the ground is PAINTED in _draw (the dock's 4-corner navy, stretched across the
+	# The ground is PAINTED in _draw (the dock's 4-corner navy, stretched across the
 	# bar), so the stylebox carries padding and shadow only — a fill here would sit on top
 	# of the gradient and flatten it straight back out.
 	#
-	# The old opaque fill also bled TOP_BLEED px above y=0 to bury a shimmering 1–3px seam
+	# _draw also paints TOP_BLEED px above y=0 to bury a shimmering 1–3px seam
 	# along the very top row (the window is stretched by a non-integer factor — canvas_items
-	# + expand, monitor px / 1920×1080 — with pixel-snap off, so the camera nudged that edge
-	# sub-pixel every frame). _draw paints the gradient over the same bleed, keeping the fix.
+	# + expand, monitor px / 1920×1080 — with pixel-snap off, so the camera nudges that edge
+	# sub-pixel every frame).
 	sb.bg_color = Color(0, 0, 0, 0)
 	sb.content_margin_left = 12
 	sb.content_margin_right = 12
-	sb.content_margin_top = 4   # v3: modules lost their boxes, so they need less room
+	sb.content_margin_top = 4   # modules have no boxes, so they need little room
 	sb.content_margin_bottom = 4 + EDGE_H   # keep modules off the metallic rim
 	sb.shadow_color = Color(0, 0, 0, 0.35)
 	sb.shadow_size = 8
@@ -366,9 +360,8 @@ func _draw() -> void:
 	var y1 := size.y
 	var y0 := y1 - EDGE_H
 	# GROUND: the END TURN dock's container navy, spread over the bar's full span — the
-	# gradient that covers the dock's small face now travels the whole width, so the two
-	# surfaces read as one material (spec §1.4). Replaces both the old flat stylebox fill
-	# and the ambient left→right sweeps that used to fake its light.
+	# gradient that covers the dock's small face travels the whole width, so the two
+	# surfaces read as one material (spec §1.4).
 	#
 	# Drawn from -TOP_BLEED, not 0: _draw is unclipped (clip_contents is false), so the
 	# gradient covers the same few pixels above the bar that the old opaque fill's
@@ -393,9 +386,9 @@ func _draw() -> void:
 		PackedColorArray([Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.45), Color(0, 0, 0, 0.38)]))
 	draw_line(Vector2(0, y1 - 0.5), Vector2(w, y1 - 0.5), Color(0.05, 0.07, 0.10, 0.9), 1.0)
 
-## v3: modules are flat text on the bar — no outline, no shading (spec §1.2).
+## Modules are flat text on the bar — no outline, no shading (spec §1.2).
 ## `active` (an open flyout) keeps a fill so the player can see which module the
-## panel belongs to; hover gets a fainter one. The old `warn` red border is gone —
+## panel belongs to; hover gets a fainter one. There is no `warn` red border —
 ## a module in trouble lights its LED instead (StatusLed, §1.3) — so the argument is
 ## accepted and ignored, which keeps every existing call site valid.
 func _module_box(active: bool, _warn: bool = false) -> StyleBoxFlat:
@@ -443,7 +436,7 @@ class _ModuleBtn extends PanelContainer:
 			rim = v
 			_restyle()
 	## Completion glow, 0–1. Washes the fill brass and lifts a brass shadow — the mission-done
-	## flash the owner wants to happen HERE, on the bar, rather than down in the flyout.
+	## flash happens HERE, on the bar, rather than down in the flyout.
 	var glow := 0.0:
 		set(v):
 			glow = v
@@ -498,7 +491,7 @@ class _ModuleBtn extends PanelContainer:
 	##
 	## It is a single FILLED outline, not two strokes. Two draw_line segments met at the bottom
 	## vertex with square end-caps that left a notch — "two lines that don't quite meet" — so the
-	## shape is built as one polygon whose bottom is a short flat edge (owner, 26 Aug). It reveals
+	## shape is built as one polygon whose bottom is a short flat edge. It reveals
 	## left to right: x rises monotonically along the stroke, so a vertical wipe reads as drawing.
 	func _draw() -> void:
 		if tick_progress <= 0.0 or tick_color.a <= 0.0:
@@ -602,24 +595,23 @@ func _hbox() -> HBoxContainer:
 	return money_widget.get_parent() as HBoxContainer
 
 
-# ── v3.1 (cheat: `swap topbar v3.1`) — shared icon-face helpers ─────────────────
+# ── v3.1 — shared icon-face helpers ────────────────────────────────────────────
 
 ## A compact module-face icon. The baked standalone PNGs already carry their own
 ## cream fill + bevel + drop shadow, so unlike _freight_cell this does NOT modulate
 ## them — that would pull them off the building-icon off-white they were colour-
 ## matched to.
 ## A v3.1 module-face icon. Bottom-aligned within its row with a fixed gap off the
-## row's bottom edge (owner, 27 Aug) rather than vertically centred: the texture is
+## row's bottom edge rather than vertically centred: the texture is
 ## pinned to a fixed-height TOP slice of a slightly taller wrapper, and the WRAPPER
 ## is what bottom-aligns (SIZE_SHRINK_END) — so the icon's own bottom edge ends up
 ## V31_ICON_BOTTOM_PAD above the row's. .modulate/.visible on the returned Control
 ## reach the texture underneath (modulate cascades to children), so every existing
-## fade/tint/toggle call site keeps working unchanged even though this now returns
+## fade/tint/toggle call site keeps working unchanged even though this returns
 ## the wrapper, not the TextureRect itself.
 ## `hover_source` — pass the module button (or whatever Control raises the relevant
 ## mouse_entered/exited) to get a soft diagonal sheen over the icon on hover: the
-## SAME _specular.png the bottom-menu buttons flash while lifted (owner, 27 Aug:
-## "more like the bottom bar buttons"). Omit it for icons with no natural hover
+## SAME _specular.png the bottom-menu buttons flash while lifted. Omit it for icons with no natural hover
 ## owner to wire against.
 func _v31_icon(tex: Texture2D, hover_source: Control = null, px: float = V31_ICON_PX) -> Control:
 	var wrap := Control.new()
@@ -687,9 +679,9 @@ func _v31_glow(px: float) -> TextureRect:
 	glow.visible = false
 	return glow
 
-## A small clipped bell (see the single-bell v3.1 comment this superseded — a bare
-## TextureRect.size under a non-Container parent kept reverting to the bell's native
-## crop) PLUS a full-rect sibling "pill_slot" a caller can anchor a corner badge to —
+## A small clipped bell (a bare TextureRect.size under a non-Container parent keeps
+## reverting to the bell's native crop, hence the clip) PLUS a full-rect sibling
+## "pill_slot" a caller can anchor a corner badge to —
 ## a generalised corner-badge shape so _refresh_briefing can rebuild the count pill
 ## (see _overhang_bottom_right/_notice_pill) without touching the bell underneath it.
 ## `hover_source` — see _v31_icon's own doc — usually the notch, so both bells catch
@@ -780,11 +772,11 @@ func _register_v31_pair(classic: Control, v31: Control) -> void:
 	_apply_v31_pair(classic, v31)
 
 func _apply_v31_pair(classic: Control, v31: Control) -> void:
-	var on: bool = MatchState.use_topbar_v3_1
+	var on: bool = UiPrefs.use_topbar_v3_1
 	classic.visible = not on
 	v31.visible = on
 
-## `swap topbar v3.1` flipped. Static modules swap their face pair directly; Quest
+## The v3.1 flag flipped. Static modules swap their face pair directly; Quest
 ## has its own refresh already; everything else re-reads the flag inside the
 ## coalesced _apply_refresh pass.
 func _on_topbar_v3_1_changed(_enabled: bool) -> void:
@@ -819,9 +811,8 @@ func _build_treasury() -> void:
 	_money_coin_icon = _v31_icon(ICON_COIN, money_widget)
 	_money_coin_icon.visible = false
 	_money_inner.add_child(_money_coin_icon)
-	# v3.1: brighten the coin on hover — Treasury never had icon-level hover feedback
-	# of its own (only the Button's native stylebox swap), unlike Goods Graph/
-	# Encyclopedia's icon+label brighten-on-hover (owner, 27 Aug: "add a hover state").
+	# v3.1: brighten the coin on hover, matching Goods Graph/Encyclopedia's icon+label
+	# brighten-on-hover — the Button's native stylebox swap alone is not icon-level feedback.
 	money_widget.mouse_entered.connect(func() -> void:
 		_money_coin_icon.modulate = Color(1.18, 1.18, 1.05))
 	money_widget.mouse_exited.connect(func() -> void:
@@ -884,10 +875,9 @@ func _build_power() -> void:
 	col.add_child(_power_sub)
 	_hbox().add_child(mod)
 	_power_btn = mod
-	# v3.1 (owner, 28 Aug): opens the new Supply Priority flyout instead of
-	# jumping straight to the map overlay — matches every other module now
-	# (Treasury/Victory/Rankings/Council all open a flyout on click). The old
-	# direct behaviour survives as a button inside the flyout, see _fly_power.
+	# Opens the Supply Priority flyout rather than jumping straight to the map overlay —
+	# matches every other module (Treasury/Victory/Rankings/Council all open a flyout on
+	# click). The direct overlay toggle survives as a button inside the flyout, see _fly_power.
 	mod.pressed.connect(func() -> void: _toggle_fly("power"))
 
 func _on_power_pressed() -> void:
@@ -901,8 +891,8 @@ func _power_stats() -> Dictionary:
 	var s: Dictionary = Production.last_turn_summary
 	var unpowered := 0
 	for iid in Production.missing_by_building:
-		var b: Dictionary = MatchState.buildings.get(iid, {})
-		if b.is_empty() or not MatchState.is_player_owned(b):
+		var b: Dictionary = BuildingState.buildings.get(iid, {})
+		if b.is_empty() or not BuildingState.is_player_owned(b):
 			continue
 		var recipe := Catalog.get_recipe(str(b.get("recipe_id", "")))
 		if str(recipe.get("output_name", "")) == "power":
@@ -970,7 +960,7 @@ func _track_color(entry: Dictionary) -> Color:
 ## trend (last sample vs ~3 turns back). VictoryState has no "on track to win"
 ## concept to read instead — the spec's own explicit ruling was "no red condition
 ## defined" for this module — so this is a momentum read, not a distance-to-bar one
-## (owner direction, 26 Aug). No red/amber state: unlit simply means "no clear trend
+## No red/amber state: unlit simply means "no clear trend
 ## yet", not "losing".
 func _victory_trending_up(bd: Dictionary) -> bool:
 	var tracks: Array = bd.get("tracks", [])
@@ -988,13 +978,13 @@ func _victory_trending_up(bd: Dictionary) -> bool:
 	return improving * 2 > tracks.size()
 
 
-# ── 3b · Transport: what is moving, and what is choking (v3) ──────────────
+# ── 3b · Transport: what is moving, and what is choking ───────────────────
 
 ## The three things that can go wrong with logistics, each with its own lamp: storage
 ## (tiles refusing goods), infrastructure (links over capacity) and freight (shipments
-## stuck with nowhere to unload). Splitting them is the point — the single count this
-## replaced read '0 units → market' in any game shipping tile-to-tile, which is most of
-## them, so the module spent the early game reporting nothing at all.
+## stuck with nowhere to unload). Splitting them is the point — a single count reads
+## '0 units → market' in any game shipping tile-to-tile, which is most of them, and
+## would spend the early game reporting nothing at all.
 ##
 ## The art is the game's OWN icons, run through the same cleaner the Construct menu uses:
 ## the navy is keyed out, the artwork trimmed and centred, so they sit on the bar as
@@ -1004,7 +994,7 @@ const BuildingIcon := preload("res://scripts/building_icon.gd")
 const WAREHOUSE_ICON: Texture2D = preload("res://assets/icons/ui_icons/warehouse.png")
 ## The same 44 px every other indicator on the bar uses, and placed through the same
 ## `_v31_icon` wrap so these three sit on the module row's shared baseline instead of a
-## centre of their own (owner, 2026-08-28: larger, and centred like the others).
+## centre of their own.
 const FREIGHT_ICON_PX := V31_ICON_PX
 ## Gap between an icon and its own lamp, and between one pair and the next. The pair gap
 ## is the wider of the two on purpose: it is what makes three icon-and-lamp units read as
@@ -1033,9 +1023,8 @@ func _freight_cell(texture: Texture2D, tip: String, hover_source: Control) -> Di
 	pair.alignment = BoxContainer.ALIGNMENT_CENTER
 	pair.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pair.tooltip_text = tip
-	# LED before the icon (owner, 27 Aug) — every other module (Power, Victory,
-	# Rankings, Council) leads with its lamp; these three were the one place that
-	# read icon-then-LED.
+	# LED before the icon — every other module (Power, Victory,
+	# Rankings, Council) leads with its lamp, so these three do too.
 	var led := StatusLed.new()
 	var led_slot := Control.new()
 	led_slot.custom_minimum_size = Vector2(led.get_combined_minimum_size().x,
@@ -1082,13 +1071,13 @@ func _build_transport() -> void:
 ## Every figure is derived from state the sim already keeps — nothing new is simulated.
 func _transport_stats() -> Dictionary:
 	var to_market := 0
-	for s in MatchState.pending_transport_shipments:
+	for s in TransportState.pending_transport_shipments:
 		var ship: Dictionary = s
 		if not bool(ship.get("is_sale", false)):
 			continue
 		for it in (ship.get("sale_record", {}) as Dictionary).get("items", []):
 			to_market += int((it as Dictionary).get("qty", 0))
-	var over := MatchState.congested_links().size()
+	var over := TransportState.congested_links().size()
 	var full := 0
 	var rejecting := 0
 	for tile_key in Stockpile.tiles_with_stock():
@@ -1113,14 +1102,14 @@ func _refresh_transport() -> void:
 	# Freight that arrived somewhere with no room and is stuck waiting for space. It is the
 	# one thing that can go wrong with a shipment AFTER it set off, so it is what the port
 	# lamp watches rather than the healthy count of goods in motion.
-	(_port_led as StatusLed).lit = MatchState.overflow_shipments.size() > 0
+	(_port_led as StatusLed).lit = TransportState.overflow_shipments.size() > 0
 	_transport_btn.tooltip_text = "Transport — %d tile%s at 95%%+ storage (%d refusing), %d link%s over capacity, %s unit%s riding to market" % [
 		int(t.full), "" if int(t.full) == 1 else "s", int(t.rejecting),
 		int(t.over), "" if int(t.over) == 1 else "s",
 		_thousands(int(t.to_market)), "" if int(t.to_market) == 1 else "s"]
-	if MatchState.overflow_shipments.size() > 0:
+	if TransportState.overflow_shipments.size() > 0:
 		_transport_btn.tooltip_text += "
-%d shipment(s) stuck with nowhere to unload" % MatchState.overflow_shipments.size()
+%d shipment(s) stuck with nowhere to unload" % TransportState.overflow_shipments.size()
 
 
 # ── 4 · Rankings: player position in the cosmetic company league ────────────
@@ -1134,7 +1123,7 @@ func _build_rankings() -> void:
 	# Classic: no leading glyph — the head line carries its own movement arrow, and a
 	# second static triangle beside it read as a claim about the goods line
 	# underneath. v3.1 trades the text-only face for the podium icon, so that
-	# objection no longer applies: the icon reads as "rankings", not as a second
+	# objection does not apply: the icon reads as "rankings", not as a second
 	# movement claim.
 	_rankings_led = StatusLed.new()
 	_rankings_led.visible = false   # v3.1 only — no lamp in the classic bar
@@ -1147,7 +1136,7 @@ func _build_rankings() -> void:
 	col.add_theme_constant_override("separation", 2)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(col)
-	# Two lines only (v3): the "RANKINGS" tag row went with the module boxes.
+	# Two lines only: no "RANKINGS" tag row, since modules have no boxes.
 	_rankings_head = _mini("10TH OF 10", C_BRIGHT, 14)
 	col.add_child(_rankings_head)
 	_rankings_sub = _mini("", DS.PALETTE.TEXT, 11)
@@ -1165,10 +1154,10 @@ func _refresh_rankings() -> void:
 			continue
 		var movement: int = int(row.get("rank_change", 0))
 		var rank: int = int(row.get("rank", 10))
-		var v31: bool = MatchState.use_topbar_v3_1
+		var v31: bool = UiPrefs.use_topbar_v3_1
 		if v31:
 			# v3.1: position only — no movement arrow (nothing else on the face carries
-			# a movement claim any more) and no "OF N".
+			# a movement claim) and no "OF N".
 			_rankings_head.text = _ordinal(rank)
 			_rankings_head.add_theme_color_override("font_color", C_BRIGHT)
 		else:
@@ -1284,7 +1273,7 @@ func _refresh_victory() -> void:
 	if _victory_target != null:
 		_victory_target.text = "of %s to win" % _thousands(int(bd.get("win_threshold", 4000)))
 		_victory_target.tooltip_text = _victory_bar_tip(bd)
-	var v31: bool = MatchState.use_topbar_v3_1
+	var v31: bool = UiPrefs.use_topbar_v3_1
 	_victory_glyph.visible = not v31
 	_victory_icon.visible = v31
 	_victory_meters.visible = not v31
@@ -1307,14 +1296,13 @@ func _victory_bar_tip(bd: Dictionary) -> String:
 	return "Points needed to win rise over the game — 1 track from turn %d up to 4 tracks by turn %d." % [
 		VictoryState.WIN_START_TURN, max_turns]
 
-## NO TURN FORECAST HERE, DELIBERATELY (owner, 25 Aug). The module used to extrapolate a
-## points-per-turn rate from the last six resolved turns and print "N turns until victory".
-## Victory has no rate of its own — the tracks report where they ARE, not how fast they are
-## moving — so the estimate was a straight-line guess over a curve, and the win threshold
-## itself RISES with the turn (see _victory_bar_tip), which the extrapolation never modelled.
-## It read as a promise and was routinely wrong. The second line now states the threshold and
-## nothing else; the score above it is the progress. Do not reintroduce an ETA without a real
-## model of the tracks.
+## NO TURN FORECAST HERE, DELIBERATELY. Extrapolating a points-per-turn rate from recent
+## turns into "N turns until victory" is wrong: Victory has no rate of its own — the tracks
+## report where they ARE, not how fast they are moving — so the estimate is a straight-line
+## guess over a curve, and the win threshold itself RISES with the turn (see _victory_bar_tip),
+## which such an extrapolation never models. It reads as a promise and is routinely wrong.
+## The second line states the threshold and nothing else; the score above it is the progress.
+## Do not introduce an ETA without a real model of the tracks.
 
 
 func _thousands(n: int) -> String:
@@ -1477,8 +1465,8 @@ func _build_briefing() -> void:
 	_briefing_icon_v31.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_briefing_icon_v31.visible = false
 	# top_level + manually centred on the notch's own midline, in _place_briefing_bells
-	# (owner, 27 Aug): as an ordinary `row` child it centred as a GROUP together with
-	# the research badge, so the bells visibly shifted right whenever the badge
+	# — as an ordinary `row` child it would centre as a GROUP together with
+	# the research badge, so the bells would shift right whenever the badge
 	# showed. Independent placement keeps them on the notch's axis regardless.
 	_briefing_icon_v31.top_level = true
 	var decision_bell := _bell_unit(notch)
@@ -1501,7 +1489,7 @@ func _recenter_notch() -> void:
 	if _briefing_btn == null or not is_instance_valid(_briefing_btn):
 		return
 	var vw := get_viewport_rect().size.x
-	# v3.1: `row` has nothing left to show at all — the bells are top_level now, so they
+	# v3.1: `row` has nothing left to show at all — the bells are top_level, so they
 	# don't feed row's content width — so the classic text's much wider NOTCH_MIN_W floor
 	# would leave the bells looking lost in a wide box. Hug the bells instead.
 	#
@@ -1511,7 +1499,7 @@ func _recenter_notch() -> void:
 	# classic 300, silently no-opping any narrower v3.1 floor_w below. Override
 	# custom_minimum_size.x first so the read afterwards actually reflects it.
 	var floor_w := NOTCH_MIN_W
-	if MatchState.use_topbar_v3_1 and _briefing_icon_v31 != null and is_instance_valid(_briefing_icon_v31):
+	if UiPrefs.use_topbar_v3_1 and _briefing_icon_v31 != null and is_instance_valid(_briefing_icon_v31):
 		floor_w = _briefing_icon_v31.get_combined_minimum_size().x + NOTCH_V31_SIDE_PAD * 2.0
 	_briefing_btn.custom_minimum_size.x = floor_w
 	# maxf against the (now correctly floored) min_size still lets real content — the
@@ -1552,7 +1540,7 @@ func _refresh_briefing() -> void:
 			research_agg = it
 	# Pop a fresh toast only when the aggregate grows past what was already toasted this turn —
 	# TurnBriefing can rebuild its items more than once as unlocks land, and this must not
-	# re-pop for unlocks it has already shown (owner, 27 Aug).
+	# re-pop for unlocks it has already shown.
 	if research_count > 0:
 		var fresh: Array[String] = []
 		for entry in (research_agg.get("research", []) as Array):
@@ -1570,7 +1558,7 @@ func _refresh_briefing() -> void:
 	_briefing_head.add_theme_color_override("font_color", Color("#f0a496") if hot else C_BRIGHT)
 	_briefing_sub.text = "%d update%s" % [updates, "" if updates == 1 else "s"]
 	_briefing_sub.add_theme_color_override("font_color", C_TEXT)
-	var v31: bool = MatchState.use_topbar_v3_1
+	var v31: bool = UiPrefs.use_topbar_v3_1
 	_briefing_dot.visible = decisions + updates > 0 and not v31
 	var dsb := _briefing_dot.get_theme_stylebox("panel") as StyleBoxFlat
 	if dsb != null:
@@ -1637,7 +1625,7 @@ func _build_research_toast(tech: String) -> PanelContainer:
 	return panel
 
 
-## Lay the stack out under the notch: the first where the single banner used to hang, each
+## Lay the stack out under the notch: the first just below it, each
 ## next one below the one before it. Sized to content every time — the names vary, so the
 ## flyouts' widths do.
 func _position_research_toasts() -> void:
@@ -1753,8 +1741,7 @@ func _build_quest() -> void:
 	var mod := _ModuleBtn.new(self)
 	mod.name = "QuestModule"
 	mod.tooltip_text = "Mini quest"
-	# No rim (owner, 27 Aug — was a thin gold outline; the fixed 120 px resting width now does
-	# the "marks this out from its neighbours" job the rim used to do).
+	# No rim: the fixed 120 px resting width does the "marks this out from its neighbours" job.
 	# v3.1: the collapse-to-icon animation shrinks mod.size.x with the full-width text
 	# still visible underneath (see _quest_v31_collapse_to_icon) — clip so the text
 	# is cropped by the shrinking edge instead of overflowing it.
@@ -1830,7 +1817,7 @@ func _on_quest_mission_completed(kind: String, _mission_title: String, _reward: 
 ## both change the rect this is measured against.
 const QUEST_GAP := 10.0
 
-## v3.1: the module's fixed resting width while showing icon-only (owner, 27 Aug). Wider than
+## v3.1: the module's fixed resting width while showing icon-only. Wider than
 ## the icon+padding would size to on their own (~68 px) — see _build_quest's SHRINK_CENTER note.
 const QUEST_ICON_MODULE_W := 120.0
 
@@ -1846,7 +1833,7 @@ func _place_quest() -> void:
 	if _quest_v31_animating:
 		return   # a width tween owns .size right now (see _quest_v31_collapse_to_icon)
 	var want_size := _quest_btn.get_combined_minimum_size()
-	if MatchState.use_topbar_v3_1 and not _quest_v31_wide:
+	if UiPrefs.use_topbar_v3_1 and not _quest_v31_wide:
 		want_size.x = maxf(want_size.x, QUEST_ICON_MODULE_W)
 	_quest_btn.size = want_size
 	_quest_btn.position = Vector2(
@@ -1861,7 +1848,7 @@ func _refresh_quest() -> void:
 	var on: bool = MiniQuest.is_available()
 	# v3.1: the FIRST turn the module has anything to show at all — game start, or the
 	# tutorial finishing and handing off to a real mission — gets the intro reveal
-	# (owner, 27 Aug). Latched once per session; never replayed for a later cheat toggle.
+	# Latched once per session; never replayed when the flag flips later.
 	var just_appeared := on and not _quest_shown_before
 	_quest_shown_before = _quest_shown_before or on
 	_quest_btn.visible = on
@@ -1879,7 +1866,7 @@ func _refresh_quest() -> void:
 	var kind: String = _quest_celebrating_kind if _quest_celebrating else MiniQuest.active_mission()
 	_quest_title.text = MiniQuest.title(kind)
 	_quest_sub.text = MiniQuest.subtitle(kind)
-	var v31: bool = MatchState.use_topbar_v3_1
+	var v31: bool = UiPrefs.use_topbar_v3_1
 	# The tooltip carries the mission text once the label itself is hidden (mirrors
 	# the Transport module's icon+LED-with-tooltip pattern).
 	_quest_btn.tooltip_text = ("%s — %s" % [_quest_title.text, _quest_sub.text]) if v31 else "Mini quest"
@@ -1929,7 +1916,7 @@ func _quest_v31_reveal_then_collapse() -> void:
 	# completion landing mid-hold replaces this with its own sequence instead.
 	var expected_kind := (_quest_celebrating_kind if _quest_celebrating else MiniQuest.active_mission())
 	get_tree().create_timer(QUEST_V31_HOLD_SEC).timeout.connect(func() -> void:
-		if MatchState.use_topbar_v3_1 and not _quest_celebrating \
+		if UiPrefs.use_topbar_v3_1 and not _quest_celebrating \
 				and MiniQuest.active_mission() == expected_kind:
 			_quest_v31_collapse_to_icon())
 
@@ -1997,11 +1984,11 @@ func _loyalty_tone(v: float) -> Color:
 	return _COUNCIL_BAD
 
 func _refresh_council() -> void:
-	var seated: Array = MatchState.advisor_seats.values()
+	var seated: Array = AdvisorState.advisor_seats.values()
 	var disloyal := 0
 	var min_loyalty := 999.0
 	for aid in seated:
-		var lv: float = MatchState.advisor_loyalty_value(str(aid))
+		var lv: float = AdvisorState.advisor_loyalty_value(str(aid))
 		if lv <= DISLOYAL_BELOW:
 			disloyal += 1
 		min_loyalty = minf(min_loyalty, lv)
@@ -2020,7 +2007,7 @@ func _refresh_council() -> void:
 	_clear_now(_council_stack)
 	for aid in seated:
 		_council_stack.add_child(_portrait_chip(str(aid), 36))
-	var v31: bool = MatchState.use_topbar_v3_1
+	var v31: bool = UiPrefs.use_topbar_v3_1
 	# v3.1: icon + light only — the tag/status text and the portrait stack both go,
 	# with the status line folded into the tooltip instead.
 	(_council_tag.get_parent() as Control).visible = not v31
@@ -2073,9 +2060,9 @@ class _PortraitCircle extends Control:
 
 func _portrait_chip(aid: String, size: float) -> Control:
 	var show_loyalty := preload("res://scripts/debug_terminal.gd").demo_is_unlocked()
-	var v := MatchState.advisor_loyalty_value(aid)
+	var v := AdvisorState.advisor_loyalty_value(aid)
 	var tone := _loyalty_tone(v)
-	var adv: Dictionary = MatchState.get_advisor(aid)
+	var adv: Dictionary = AdvisorState.get_advisor(aid)
 	var holder := Control.new()
 	holder.custom_minimum_size = Vector2(size + 4, size + 4)
 	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -2280,9 +2267,9 @@ func _adopt_encyclopedia_and_turn() -> void:
 		hitbox.visible = false
 
 ## Turn → month + year. One month per turn, but the year is the COMPANY'S year, not a
-## calendar one (owner 2026-08-24): "January Year 1" through "December Year 25" over a
-## 300-turn campaign, and into Year 9 by the demo's turn 100. A real calendar year kept
-## implying a period the sim does not simulate.
+## calendar one: "January Year 1" through "December Year 25" over a
+## 300-turn campaign, and into Year 9 by the demo's turn 100. A real calendar year would
+## imply a period the sim does not simulate.
 const _MONTHS: Array[String] = ["January", "February", "March", "April", "May", "June",
 	"July", "August", "September", "October", "November", "December"]
 
@@ -2314,9 +2301,9 @@ func _build_menu() -> void:
 ## An ACCORDION of every mission in the chain, not just the live one. One section open at a
 ## time; opening one closes the rest.
 ##
-## WIDTH IS THE MODULE'S, not the text's. This measured its own longest line for a while and
-## the result was correct in isolation and visibly misaligned in place — the panel hangs off
-## the module and the two have to read as one object (owner, 26 Aug). Steps wrap to fit;
+## WIDTH IS THE MODULE'S, not the text's: measuring its own longest line is correct in
+## isolation and visibly misaligned in place — the panel hangs off
+## the module and the two have to read as one object. Steps wrap to fit;
 ## the module is the ruler.
 const QUEST_FLY_FALLBACK_W := 320   # only if the module has not been laid out yet
 const QUEST_FLY_PAD := 20           # this panel's left+right margins, which the text cannot use
@@ -2328,8 +2315,8 @@ const QUEST_STEP_PT := 13
 const QUEST_HINT_PT := 12
 const QUEST_BOX := 12.0             # the per-step tickbox, per spec
 
-## Completion sequence, in seconds (owner, 27 Aug — gold fill, then a tick wipes across it as a
-## navy hole cut through the plate; sequential, not the old concurrent double-flash-with-wipe).
+## Completion sequence, in seconds: gold fill, then a tick wipes across it as a navy hole cut
+## through the plate — sequential, never concurrent.
 ## The label fades away first, then: fill → hold → tick → hold, then the next mission pops open
 ## (classic: the flyout; v3.1: the module itself expands — see QUEST_V31_* below).
 const QUEST_FILL_SEC := 0.35        # stage 1: gold fill
@@ -2342,7 +2329,7 @@ const QUEST_NEXT_OPEN_SEC := 3.0
 ## with text.
 const QUEST_TEXT_FADE := 0.18
 
-## v3.1 (cheat: `swap topbar v3.1`): the module's own expand/collapse, independent of the
+## v3.1: the module's own expand/collapse, independent of the
 ## flyout — first appearance and each post-celebration handoff hold the full mission text
 ## for QUEST_V31_HOLD_SEC, then animate down to the icon over QUEST_V31_COLLAPSE_SEC.
 const QUEST_V31_HOLD_SEC := 3.0
@@ -2364,9 +2351,9 @@ var _quest_celebrating_kind := ""
 var _quest_fly_w := 0
 
 
-## ONE WIDTH, ALWAYS (owner, 2026-08-28). The module's width ANIMATES -- it opens at the full
+## ONE WIDTH, ALWAYS. The module's width ANIMATES -- it opens at the full
 ## mission readout and collapses to the icon a few seconds later -- so following its current
-## size made the flyout a different width depending on when you happened to open it. The FULL
+## size would make the flyout a different width depending on when you happened to open it. The FULL
 ## readout is the ruler, and the value only ever grows, so a longer mission later never makes
 ## the panel jump back and forth.
 func _quest_fly_width() -> int:
@@ -2405,7 +2392,7 @@ func _fly_quest(vb: VBoxContainer) -> void:
 		_quest_sections[kind] = section
 		col.add_child(section)
 	# The chain has an end, and the panel should say so rather than just showing a column of
-	# ticks and leaving the player to work out there is nothing left (owner, 2026-08-28).
+	# ticks and leaving the player to work out there is nothing left.
 	if all_done:
 		var done_row := _mini("All missions completed!", C_BRIGHT, 13)
 		done_row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -2514,15 +2501,15 @@ func _toggle_quest_section(kind: String) -> void:
 		_refresh_open_fly()
 
 
-## The completion sequence, and it happens ON THE BAR (owner, 26 Aug; resequenced to fill-then-
-## tick 27 Aug). The module itself fills solid gold, then a tick wipes across it as a navy hole
+## The completion sequence, and it happens ON THE BAR. The module itself fills solid gold,
+## then a tick wipes across it as a navy hole
 ## cut through the plate; the flyout stays SHUT through all of that. Only when the tick's hold is
 ## done does the module hand off to the next mission — v3.1 expands the module itself to reveal
 ## it (see _finish_celebration_v31); classic pops the flyout open for three seconds instead.
 ##
 ## Driving the module rather than a flyout section is also what makes the timing trustworthy:
 ## the module is a permanent node, so nothing the turn-resolution does can free the tween's
-## target mid-flight — which is exactly what used to collapse the whole sequence into an instant.
+## target mid-flight — which would collapse the whole sequence into an instant.
 func _celebrate_mission(kind: String) -> void:
 	if _quest_btn == null or not is_instance_valid(_quest_btn) or not _quest_btn.visible:
 		return
@@ -2541,7 +2528,7 @@ func _celebrate_mission(kind: String) -> void:
 	mod.tick_color = _bar_navy_at(mod.position + mod.size * 0.5)
 	_kill_quest_anim()
 	# Stage 0: the label (or v3.1 icon) fades away first, so the fill has the module to itself
-	# (owner, 26 Aug). Both are tweened — whichever is currently hidden just no-ops.
+	# Both are tweened — whichever is currently hidden just no-ops.
 	_quest_text_anim = create_tween()
 	if _quest_text_col != null and is_instance_valid(_quest_text_col):
 		_quest_text_anim.tween_property(_quest_text_col, "modulate:a", 0.0, QUEST_TEXT_FADE)
@@ -2559,7 +2546,7 @@ func _celebrate_mission(kind: String) -> void:
 
 
 ## Stage 1 of the completion sequence: the module's plate fills gold. No rim to touch — the
-## module has none (removed 27 Aug); the fill alone carries the beat.
+## module has none; the fill alone carries the beat.
 func _set_quest_glow(t: float) -> void:
 	if _quest_btn == null or not is_instance_valid(_quest_btn):
 		return
@@ -2599,7 +2586,7 @@ func _finish_celebration(finished_kind: String) -> void:
 	var idx: int = list.find(finished_kind)
 	var next := str(list[idx + 1]) if idx >= 0 and idx + 1 < list.size() else ""
 	_quest_open = next
-	var v31: bool = MatchState.use_topbar_v3_1
+	var v31: bool = UiPrefs.use_topbar_v3_1
 	if v31:
 		_quest_v31_animating = true   # hold _refresh_quest's steady-state branch off below
 	_refresh_quest()   # the module now reads the next mission (or hides, if the chain is done)
@@ -2663,7 +2650,7 @@ func _collapse_quest_accordion(expected: String) -> void:
 
 
 ## One accordion section: the whole block is the click target that toggles it. It still holds a
-## `tick` for the reward line's static checkmark, but the completion FLASH is no longer here —
+## `tick` for the reward line's static checkmark, but the completion FLASH is not here —
 ## that plays on the module up on the bar (see _celebrate_mission), where the eye already is.
 class _QuestSection extends PanelContainer:
 	signal pressed
@@ -3116,7 +3103,7 @@ func _goods_ranking_card(good: Dictionary) -> Control:
 	body.add_theme_constant_override("separation", 12)
 	card.add_child(body)
 	# Unframed: the plate-and-bevel treatment is the market shelf's, and a scrolling column of it
-	# read as chrome (owner, 26 Aug). Same art, same cream, rounded corners, no rim.
+	# read as chrome. Same art, same cream, rounded corners, no rim.
 	body.add_child(DS.good_icon_plain(
 		str(good.get("good_id", "")), str(good.get("internal_name", "")), GOOD_CARD_ICON))
 	var details := VBoxContainer.new()
@@ -3398,9 +3385,8 @@ func _fly_victory(vb: VBoxContainer) -> void:
 	frow.add_child(full)
 	foot.add_child(frow)
 
-# Power: two Supply Priority toggles (owner, 28 Aug), then the old direct map-
-# overlay shortcut as a CTA button, so that behaviour survives the module moving
-# to a flyout like every other one.
+# Power: two Supply Priority toggles, then the direct map-overlay shortcut as a CTA
+# button, so that behaviour survives the module living in a flyout like every other one.
 func _fly_power(vb: VBoxContainer) -> void:
 	var inner := _fly_pad(vb, 14)
 	_fly_priority_row(inner, "Supply Priority — Coal & Gas",
@@ -3469,14 +3455,14 @@ func _fly_priority_row(vb: VBoxContainer, title: String, self_tip: String, grid_
 # Council: one row per seated advisor (portrait · name/seat · loyalty bar · value).
 func _fly_council(vb: VBoxContainer) -> void:
 	var inner := _fly_pad(vb, 3)
-	var seats: Dictionary = MatchState.advisor_seats
+	var seats: Dictionary = AdvisorState.advisor_seats
 	if seats.is_empty():
 		inner.add_child(_mini("No advisors seated — open People to hire.", DS.PALETTE.TEXT_DIM, 11))
 	for seat_id in seats:
 		var aid := str(seats[seat_id])
-		var v := MatchState.advisor_loyalty_value(aid)
+		var v := AdvisorState.advisor_loyalty_value(aid)
 		var tone := _loyalty_tone(v)
-		var adv: Dictionary = MatchState.get_advisor(aid)
+		var adv: Dictionary = AdvisorState.get_advisor(aid)
 		var row_btn := _ModuleBtn.new(self)
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
@@ -3489,7 +3475,7 @@ func _fly_council(vb: VBoxContainer) -> void:
 		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row.add_child(col)
 		col.add_child(_mini(str(adv.get("name", aid)), Color("#eef4fb"), 12))
-		col.add_child(_mini(MatchState._seat_display_name(str(seat_id)), DS.PALETTE.TEXT_DIM, 10))
+		col.add_child(_mini(AdvisorState._seat_display_name(str(seat_id)), DS.PALETTE.TEXT_DIM, 10))
 		var meter := Panel.new()
 		meter.custom_minimum_size = Vector2(58, 5)
 		meter.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -3543,7 +3529,7 @@ func _apply_refresh() -> void:
 	if _date_label != null:
 		_date_label.text = _turn_date(int(TurnManager.current_turn))
 	if _enc_button != null and _enc_inner != null:
-		var enc_face: Control = _enc_v31_inner if (MatchState.use_topbar_v3_1 and _enc_v31_inner != null) else _enc_inner
+		var enc_face: Control = _enc_v31_inner if (UiPrefs.use_topbar_v3_1 and _enc_v31_inner != null) else _enc_inner
 		_enc_button.custom_minimum_size = Vector2(enc_face.get_combined_minimum_size().x + 28.0, MOD_H)
 	_refresh_bankruptcy_warning()
 
@@ -3559,7 +3545,7 @@ func _refresh_treasury() -> void:
 	# balance with a profitable turn is climbing out, and a loss with cash in hand is
 	# affordable. Together they are the shape that ends runs (spec §1.3).
 	(_treasury_led as StatusLed).lit = MatchState.money < 0.0 and net < 0.0
-	var v31: bool = MatchState.use_topbar_v3_1
+	var v31: bool = UiPrefs.use_topbar_v3_1
 	_money_glyph.visible = not v31
 	_money_coin_icon.visible = v31
 	var runway := _runway_turns()
@@ -3577,7 +3563,7 @@ func _refresh_power() -> void:
 	var derated: bool = Production.intermittency_derated_count() > 0
 	var c := C_RED if starved else (C_AMBER if gridding else C_GOOD)
 	(_power_btn as _ModuleBtn).warn = starved
-	var v31: bool = MatchState.use_topbar_v3_1
+	var v31: bool = UiPrefs.use_topbar_v3_1
 	_power_glyph.visible = not v31
 	_power_icon.visible = v31
 	var led := _power_led as StatusLed
@@ -3603,9 +3589,8 @@ func _refresh_power() -> void:
 			led.lit = false
 	else:
 		# Classic: buildings actually derated by intermittency, or the player buying
-		# grid power while losing money. The second is the case the owner singled
-		# out — the lamp lights HERE and not on the treasury, because power is the
-		# thing to go and fix.
+		# grid power while losing money. The second lights the lamp HERE and not on the
+		# treasury, because power is the thing to go and fix.
 		var net: float = float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0))
 		led.color = C_RED
 		led.blink = false
@@ -3627,8 +3612,8 @@ func _refresh_power() -> void:
 func _on_cfo_tax_credit_filed(_amount: float) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
-	var cfo_id: String = MatchState.get_advisor_in_seat("cfo")
-	var cfo: Dictionary = MatchState.get_advisor(cfo_id) if cfo_id != "" else {}
+	var cfo_id: String = AdvisorState.get_advisor_in_seat("cfo")
+	var cfo: Dictionary = AdvisorState.get_advisor(cfo_id) if cfo_id != "" else {}
 	var popup := CFOIntroPopup.new()
 	add_child(popup)
 	popup.show_for(cfo, CFO_INTRO_BODY)
@@ -3727,7 +3712,7 @@ const ANOMALY_POWER_RATIO := 0.8
 const ANOMALY_DEMAND_RATIO := 1.2
 ## Turns before the same trigger may fire again, so a long plateau does not nag.
 const ANOMALY_COOLDOWN := 5
-## At most two money cards at once (owner ruling), this far apart.
+## At most two money cards at once, this far apart.
 const ANOMALY_MAX_STACK := 2
 const ANOMALY_STACK_GAP := 15.0
 ## Priority when more than ANOMALY_MAX_STACK money triggers fire in one turn.
@@ -3757,7 +3742,7 @@ var _intermittency_taught := false
 
 func _on_loan_taken(loan: Dictionary) -> void:
 	# Every path lands here — the silent auto-bridge as much as a deliberate draw, and
-	# spread financing too (owner: 48 turns = 12 grace + 36 repaying IS a loan at
+	# spread financing too (48 turns = 12 grace + 36 repaying IS a loan at
 	# standard interest). Cleared once the turn's popups have been evaluated.
 	_loan_taken_this_turn += float(loan.get("amount", 0.0))
 
@@ -3808,7 +3793,7 @@ func _evaluate_anomalies(current: Dictionary, s: Dictionary) -> void:
 	if Tutorial.active:
 		return
 	var money := _money_anomalies(current, s)
-	# Priority order first, then the owner's cap of two.
+	# Priority order first, then the ANOMALY_MAX_STACK cap.
 	var chosen: Array = []
 	for id: String in ANOMALY_MONEY_ORDER:
 		for hit: Dictionary in money:
@@ -3839,7 +3824,7 @@ func _money_anomalies(current: Dictionary, s: Dictionary) -> Array:
 			"text": str(pay.get("text", "")), "word": str(pay.get("word", ""))})
 
 	# Each running-cost line is judged against its OWN baseline, so a labour jump is not
-	# hidden by a quiet turn for inputs. One generic sentence covers them all (owner).
+	# hidden by a quiet turn for inputs. One generic sentence covers them all.
 	for line: String in ANOMALY_COST_LINES:
 		var base := _anomaly_baseline(line)
 		if base <= 0.0 or float(current.get(line, 0.0)) < base * ANOMALY_SPIKE_RATIO:
@@ -3892,7 +3877,7 @@ func _cost_culprit(s: Dictionary, by_type_key: String) -> String:
 ## The sale that made the turn, as {text, word}. Names the good when one dominates the
 ## payout, because "you sold 40 units of steel for £900" is actionable where "revenue was
 ## up" is not. `word` is the span the card colours: the MONEY, which is what the player is
-## looking for, rather than the verb that got it there (owner 2026-08-24).
+## looking for, rather than the verb that got it there.
 func _big_payment_text(s: Dictionary) -> Dictionary:
 	var sold: Dictionary = s.get("sold", {})
 	var top_id := ""
@@ -3930,8 +3915,8 @@ func _power_anomalies(current: Dictionary) -> Array:
 			"text": "Our power plants are going dark!"})
 
 	# Taught once, the first turn intermittent green is actually GENERATED — when the
-	# player has just built the wind or solar, not when it first bites (owner ruling:
-	# that is the teachable moment, ahead of the first derate).
+	# player has just built the wind or solar, not when it first bites — that is the
+	# teachable moment, ahead of the first derate.
 	if not _intermittency_taught:
 		var quality: Dictionary = Production.last_turn_summary.get("power_supply_by_quality", {})
 		if float(quality.get("green_intermittent", 0)) > 0.0:

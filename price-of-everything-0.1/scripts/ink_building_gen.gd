@@ -1,12 +1,11 @@
 class_name InkBuildingGen
-## Procedural ink-mode industrial buildings — the owner's shape language v3
-## (2026-07-23), ported from the in-chat prototype. Ten building types compose
+## Procedural ink-mode industrial buildings. Ten building types compose
 ## from primitives (flat roofs, seamless flat polygons, sawtooth bays, gables,
 ## tanks, spheres, stacks, EAF vessels with electrode rods, capsules, apses,
 ## pipes, cables, pads, battery units, corridors) at three levels that read as
 ## build-out.
 ##
-## LIGHTING IS WORLD-FIXED (owner requirement): recipes are authored in a
+## LIGHTING IS WORLD-FIXED: recipes are authored in a
 ## local y-down design space, but every tone is computed from the face's
 ## WORLD normal against the NW light — so a rotated building keeps its lit
 ## faces toward the top-left of the screen. Shadows offset in world SE
@@ -52,10 +51,10 @@ static var _wash_base := Color(0, 0, 0, 0)
 
 ## Draw one building. `target` = the world size of the FULL (L3) compound's
 ## long side — every level draws at the same scale anchored to the L3 frame,
-## so upgrades grow by annexation, never by inflating the core (owner rule).
+## so upgrades grow by annexation, never by inflating the core.
 ## Ink strokes, pipes, cables and highlights render at CONSTANT world widths
-## regardless of building size (owner: consistent linework; also the port-blur
-## fix). `anchor` (optional, design space) pins that local point at `ctr`.
+## regardless of building size (consistent linework; also keeps the port from
+## blurring). `anchor` (optional, design space) pins that local point at `ctr`.
 ## Returns false when the type has no recipe.
 static func draw(c: CanvasItem, iname: String, lvl: int, ctr: Vector2, ang: float, target: float, npc: bool, anchor: Vector2 = Vector2.INF, wash: Color = Color(0, 0, 0, 0)) -> bool:
 	var entry := _entry(iname, clampi(lvl, 1, 3))
@@ -177,7 +176,7 @@ static func _lit_side(rot: float) -> float:
 static func _rect_poly(r: Rect2) -> PackedVector2Array:
 	return PackedVector2Array([r.position, r.position + Vector2(r.size.x, 0), r.end, r.position + Vector2(0, r.size.y)])
 
-## ── recipes (design space ~200x150, y-down; v3 coordinates verbatim) ────────
+## ── recipes (design space ~200x150, y-down) ─────────────────────────────────
 
 static func _recipe(iname: String, l: int) -> Array:
 	match iname:
@@ -304,7 +303,7 @@ static func _recipe(iname: String, l: int) -> Array:
 				p.append(_capsule(88, 26, 40, 12))
 			return p
 		"solar_farm":
-			# 3 panels wide; rows 3 -> 4 -> 6 (owner). The L3 frame is 3x6, so
+			# 3 panels wide; rows 3 -> 4 -> 6. The L3 frame is 3x6, so
 			# lower levels fill the near rows and upgrades extend the array
 			# instead of rescaling it.
 			var rows := [3, 4, 6][l - 1] as int
@@ -319,8 +318,8 @@ static func _recipe(iname: String, l: int) -> Array:
 		"wind_farm":
 			# 2 turbines wide; rows 2 -> 4 -> 6. Each is a small triangle
 			# (nacelle) with a thin line for the rotor arms.
-			# Turbines doubled in size with much wider spacing (owner) — a wind
-			# site should read as sparse machines over open ground.
+			# Large turbines with wide spacing — a wind site should read as sparse
+			# machines over open ground.
 			var wrows := [2, 4, 6][l - 1] as int
 			var p := []
 			for r in wrows:
@@ -345,7 +344,7 @@ static func _recipe(iname: String, l: int) -> Array:
 		"power_plant":
 			# Two big wide chimneys from L1; the base halls grow with level;
 			# transformers + power towers appear nearby; one grey apron slab
-			# sits under the whole compound (owner spec).
+			# sits under the whole compound.
 			var p := [_gpad(40, 36, 112, 84)]
 			p.append(_flat(56, 76, 60, 26, 2))
 			if l >= 2:
@@ -429,8 +428,8 @@ static func _recipe(iname: String, l: int) -> Array:
 			p.append(_dot(130, 64, 1.3))
 			return p
 		"electrolyser":
-			# Compact frame (owner: electrolysers read too small) — the L1
-			# core fills ~2/3 of the L3 frame so small lots still read.
+			# Compact frame — the L1 core fills ~2/3 of the L3 frame so small
+			# lots still read.
 			var p := [_pad(56, 54, 44, 40)]
 			for r in 3:
 				for cc in 3:
@@ -960,7 +959,7 @@ static func _rd_panel(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: 
 static func _rd_turbine(c: CanvasItem, pr: Dictionary, rot: float, npc: bool, iw: float) -> void:
 	var ctr: Vector2 = pr.c
 	var r := float(pr.r)
-	# Every turbine in a farm faces the same way (owner) — real sites yaw into
+	# Every turbine in a farm faces the same way — real sites yaw into
 	# a common wind. Fixed local angle, so they rotate together with the site.
 	var arm := Vector2(cos(TURBINE_YAW), sin(TURBINE_YAW)) * r * 1.7
 	c.draw_line(ctr - arm, ctr + arm, _ink(), 1.0 * iw, true)

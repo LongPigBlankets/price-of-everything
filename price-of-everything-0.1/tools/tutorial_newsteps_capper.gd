@@ -18,8 +18,8 @@ func _process(delta: float) -> void:
 		if scene != null and bool(scene.get("build_complete")):
 			_built = true
 			_next = _t + 1.5
-			for iid in MatchState.buildings:   # own the seeded factory so panels open
-				var inst: Dictionary = MatchState.buildings[iid]
+			for iid in BuildingState.buildings:   # own the seeded factory so panels open
+				var inst: Dictionary = BuildingState.buildings[iid]
 				if str(inst.get("tile_id", "")) == "tile_5_9":
 					inst["owner"] = MatchState.LOCAL_PLAYER
 		return

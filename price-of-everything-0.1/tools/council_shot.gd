@@ -14,14 +14,14 @@ func _ready() -> void:
 	# empty, and (if capped) locked cards all render. Force-recruit first —
 	# hire_advisor refuses ids outside recruited_advisor_ids.
 	for id in ["vera", "gerald", "eleanor", "sloane", "marcus", "hitomi"]:
-		if not MatchState.recruited_advisor_ids.has(id):
-			MatchState.recruited_advisor_ids.append(id)
-	print("hire vera: ", MatchState.hire_advisor("vera"))
-	print("seat vera: ", MatchState.assign_advisor_to_seat("cfo", "vera"))
-	MatchState.cheat_set_loyalty("vera", 6.0)
-	print("hire gerald: ", MatchState.hire_advisor("gerald"))
-	print("seat gerald: ", MatchState.assign_advisor_to_seat("coo", "gerald"))
-	MatchState.cheat_set_loyalty("gerald", -4.5)
+		if not AdvisorState.recruited_advisor_ids.has(id):
+			AdvisorState.recruited_advisor_ids.append(id)
+	print("hire vera: ", AdvisorState.hire_advisor("vera"))
+	print("seat vera: ", AdvisorState.assign_advisor_to_seat("cfo", "vera"))
+	AdvisorState.cheat_set_loyalty("vera", 6.0)
+	print("hire gerald: ", AdvisorState.hire_advisor("gerald"))
+	print("seat gerald: ", AdvisorState.assign_advisor_to_seat("coo", "gerald"))
+	AdvisorState.cheat_set_loyalty("gerald", -4.5)
 	await _settle(5)
 
 	var hud: Control = game.get_node("UILayer/HUD")
@@ -40,9 +40,9 @@ func _ready() -> void:
 		_shot("/tmp/poe_council_picker.png")
 
 	# Labour tab: enable a spread of policies so spectrums show mixed states.
-	MatchState.set_labour_multiplier(1.2)
-	MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_STRICT_SAFETY, true)
-	MatchState.set_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, true)
+	LabourState.set_labour_multiplier(1.2)
+	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_STRICT_SAFETY, true)
+	LabourState.set_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE, true)
 	var tabs: TabContainer = _find_tab_container(people)
 	if tabs != null:
 		tabs.current_tab = 1

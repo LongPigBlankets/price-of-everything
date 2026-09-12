@@ -120,10 +120,10 @@ func _ready() -> void:
 	# on the same tile so the output-destination sheet lists it with a Go To button.
 	var motor_gid := str(Catalog.get_good_by_internal_name("motor").get("id", ""))
 	MatchState.set_output_stockpile_destination(str(building.get("instance_id", "")), "tile_5_10", motor_gid)
-	MatchState.add_building("b_007", "r_033", "tile_5_10", "player_1", "bdpshot_consumer")
+	BuildingState.add_building("b_007", "r_033", "tile_5_10", "player_1", "bdpshot_consumer")
 	# A steel furnace (r_003: iron_ingots → steel) on the SAME tile, output unrouted → feeds the shared
 	# tile stockpile. Proves the factory's "steel" input now lists this furnace as a same-tile supplier.
-	MatchState.add_building("b_007", "r_003", "tile_5_10", "player_1", "bdpshot_steel")
+	BuildingState.add_building("b_007", "r_003", "tile_5_10", "player_1", "bdpshot_steel")
 	await _settle(6)
 	_dismiss_unlock()  # building several factories pops a build-count unlock dialog — get it out of frame
 
@@ -146,8 +146,8 @@ func _ready() -> void:
 		v2p._close_sheet()
 
 	# v2 NPC — an NPC-owned building (recipe + "Owned by [company]" + Buy, no other info)
-	var npc_iid: String = MatchState.add_building("b_007", "r_009", "tile_5_10", "npc_2", "bdpshot_npc")
-	var npc_b: Dictionary = MatchState.get_building(npc_iid)
+	var npc_iid: String = BuildingState.add_building("b_007", "r_009", "tile_5_10", "npc_2", "bdpshot_npc")
+	var npc_b: Dictionary = BuildingState.get_building(npc_iid)
 	if not npc_b.is_empty():
 		_wm._open_building_detail(npc_b)
 		await _settle(20)
@@ -156,7 +156,7 @@ func _ready() -> void:
 
 	# v2 PORT — the NPC-owned seaport (b_004) on this tile: port variant + Owned by + Buy
 	var port_b: Dictionary = {}
-	for b in MatchState.get_buildings_on_tile("tile_5_10"):
+	for b in BuildingState.get_buildings_on_tile("tile_5_10"):
 		if str(b.get("building_id", "")) == "b_004":
 			port_b = b
 			break
@@ -180,15 +180,15 @@ func _ready() -> void:
 		print("[BDP_V2_SHOT] construction did not start")
 
 	# v2 BATTERY
-	var batt_iid: String = MatchState.add_building("b_028", "", "tile_11_17", "player_1", "bdpshot_batt")
-	var batt_b: Dictionary = MatchState.get_building(batt_iid)
+	var batt_iid: String = BuildingState.add_building("b_028", "", "tile_11_17", "player_1", "bdpshot_batt")
+	var batt_b: Dictionary = BuildingState.get_building(batt_iid)
 	if not batt_b.is_empty():
 		_wm._open_building_detail(batt_b)
 		await _settle(18)
 		get_viewport().get_texture().get_image().save_png("/tmp/poe_bdp_v2_battery.png")
 		print("[BDP_V2_SHOT] saved /tmp/poe_bdp_v2_battery.png")
 		# Unlock lithium + seed cells so the battery source/order sheets show functional rows.
-		MatchState.grant_unlock("Lithium Battery Storage")
+		ResearchState.grant_unlock("Lithium Battery Storage")
 		var lith := str(Catalog.get_good_by_internal_name("lithium_battery").get("id", ""))
 		Stockpile.add("tile_11_17", lith, 40)
 		var v2b = _wm.building_panel_v2
@@ -209,7 +209,7 @@ func _ready() -> void:
 
 	# v2 OWN-SUPPLY power line — a windmill on the factory's tile covers its draw (same-tile first),
 	# so the diagnostics read "Powered · your own supply" (per-cable-network settlement).
-	var wind_iid: String = MatchState.add_building("b_025", "r_037", "tile_5_10", "player_1", "bdpshot_wind")
+	var wind_iid: String = BuildingState.add_building("b_025", "r_037", "tile_5_10", "player_1", "bdpshot_wind")
 	Power.reset_for_turn()
 	Power.record_produced("tile_5_10", 800)
 	Power.record_drawn("tile_5_10", 30)
@@ -228,7 +228,7 @@ func _ready() -> void:
 	# v2 INTERMITTENCY diagnostic — the windmill (unfirmed green source, no battery) shows the red
 	# "Intermittent generation" row; the factory (seeded as drawing that green power) shows the
 	# consumer row.
-	var wind_b: Dictionary = MatchState.get_building(wind_iid)
+	var wind_b: Dictionary = BuildingState.get_building(wind_iid)
 	if not wind_b.is_empty():
 		_wm._open_building_detail(wind_b)
 		await _settle(12)
@@ -256,13 +256,13 @@ func _ready() -> void:
 	get_tree().quit(0)
 
 func _pick_building() -> Dictionary:
-	for b in MatchState.buildings.values():
+	for b in BuildingState.buildings.values():
 		if str(b.get("owner", "player_1")) == "player_1" and str(b.get("recipe_id", "")) != "":
 			return b
 	# Bare main scene seeds no match → place a factory running r_009 (steel + copper_wiring +
 	# power → motor), seed its inputs, and seed a synthetic CostSolver result for two outputs
 	# (one below market → green, one above → red) so the cost-to-produce block renders.
-	var iid: String = MatchState.add_building("b_007", "r_009", "tile_5_10", "player_1", "bdpshot_1")
+	var iid: String = BuildingState.add_building("b_007", "r_009", "tile_5_10", "player_1", "bdpshot_1")
 	var steel_id := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
 	var wiring_id := str(Catalog.get_good_by_internal_name("copper_wiring").get("id", ""))
 	var motor_id := str(Catalog.get_good_by_internal_name("motor").get("id", ""))
@@ -288,7 +288,7 @@ func _pick_building() -> Dictionary:
 			wiring_id: {"unit_cost": wiring_mkt * 0.70, "pct_of_market": 70.0},
 		},
 	}
-	return MatchState.get_building(iid)
+	return BuildingState.get_building(iid)
 
 func _dismiss_unlock() -> void:
 	# Research unlocks no longer pop a dialog — they aggregate into the Turn Briefing

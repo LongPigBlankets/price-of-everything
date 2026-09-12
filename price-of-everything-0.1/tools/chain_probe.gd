@@ -59,9 +59,9 @@ func _run() -> void:
 
 
 func _becon(rid: String) -> float:
-	for iid in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[iid]
-		if str(inst.get("recipe_id", "")) == rid and MatchState.is_player_owned(inst):
+	for iid in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[iid]
+		if str(inst.get("recipe_id", "")) == rid and BuildingState.is_player_owned(inst):
 			var rec: Dictionary = Catalog.get_recipe(rid)
 			var bd: Dictionary = Catalog.get_building(str(inst.get("building_id", "")))
 			return float(BuildingReadout.economics(inst, rec, bd).get("net", 0.0))
@@ -69,9 +69,9 @@ func _becon(rid: String) -> float:
 
 
 func _bstate(rid: String) -> String:
-	for iid in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[iid]
-		if str(inst.get("recipe_id", "")) == rid and MatchState.is_player_owned(inst):
+	for iid in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[iid]
+		if str(inst.get("recipe_id", "")) == rid and BuildingState.is_player_owned(inst):
 			var rec: Dictionary = Catalog.get_recipe(rid)
 			return BuildingReadout.run_state(inst, rec, false)
 	return "?"

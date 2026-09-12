@@ -80,9 +80,9 @@ func _ready() -> void:
 	add_theme_constant_override("separation", 6)
 	_build_chrome()
 	# NPC buildings change rarely; rebuild lazily on next show after a structural change.
-	MatchState.building_added.connect(func(_i: Dictionary) -> void: _mark_dirty())
-	MatchState.building_removed.connect(func(_i: String) -> void: _mark_dirty())
-	MatchState.building_owner_changed.connect(_on_owner_changed)
+	BuildingState.building_added.connect(func(_i: Dictionary) -> void: _mark_dirty())
+	BuildingState.building_removed.connect(func(_i: String) -> void: _mark_dirty())
+	BuildingState.building_owner_changed.connect(_on_owner_changed)
 	visibility_changed.connect(_on_visibility_changed)
 
 func _on_visibility_changed() -> void:
@@ -272,11 +272,11 @@ func _rebuild() -> void:
 
 func _collect_npc_buildings() -> Array:
 	var out: Array = []
-	for instance_id in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[instance_id]
+	for instance_id in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[instance_id]
 		if _tile_filter != "" and str(b.get("tile_id", "")) != _tile_filter:
 			continue
-		if MatchState.is_player_owned(b):
+		if BuildingState.is_player_owned(b):
 			continue
 		if _is_infrastructure(b):
 			continue  # ports / airports etc. aren't productive buildings for sale
@@ -572,7 +572,7 @@ func _on_dialog_confirmed(dont_ask_again: bool) -> void:
 	_do_buy(_pending_instance_id, _pending_name, _pending_price)
 
 func _do_buy(instance_id: String, building_name: String, price: int) -> void:
-	if instance_id == "" or not MatchState.buildings.has(instance_id):
+	if instance_id == "" or not BuildingState.buildings.has(instance_id):
 		return
 	# Pay for it. deduct_money is atomic — false means the player can't afford it, so reuse the
 	# same insufficient-money toast as building (now on the left), with buy-specific text.
@@ -582,15 +582,15 @@ func _do_buy(instance_id: String, building_name: String, price: int) -> void:
 		return
 	# Ownership transfer is immediate; production picks it up next turn. building_owner_changed
 	# drives the ledger refresh + drops this row from the for-sale list (_on_owner_changed).
-	MatchState.set_building_owner(instance_id, MatchState.LOCAL_PLAYER)
+	BuildingState.set_building_owner(instance_id, MatchState.LOCAL_PLAYER)
 	MatchState.request_toast("Purchased %s for £%d" % [building_name, price], "success")
 	Audio.transaction()
 
 # A building changed owner — if it's now the player's, drop it from the for-sale list at once.
 func _on_owner_changed(instance_id: String) -> void:
-	if not MatchState.buildings.has(instance_id):
+	if not BuildingState.buildings.has(instance_id):
 		return
-	if not MatchState.is_player_owned(MatchState.buildings[instance_id]):
+	if not BuildingState.is_player_owned(BuildingState.buildings[instance_id]):
 		return  # transferred to another NPC (not via the market) → keep it listed
 	for i in range(_rows.size() - 1, -1, -1):
 		if str(_rows[i].get("instance_id", "")) == instance_id:

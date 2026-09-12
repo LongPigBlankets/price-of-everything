@@ -13,9 +13,9 @@ func _ready() -> void:
 		cam.edge_pan_enabled = false
 
 	# Feeder (iron_ingots) → target furnace (steel) → dependent factory (needs steel).
-	MatchState.add_building("b_002", "r_005", "tile_6_9", MatchState.LOCAL_PLAYER)   # feeder
-	var target_iid := MatchState.add_building("b_002", "r_003", "tile_7_9", MatchState.LOCAL_PLAYER)  # target
-	MatchState.add_building("b_007", "r_009", "tile_8_9", MatchState.LOCAL_PLAYER)   # dependent
+	BuildingState.add_building("b_002", "r_005", "tile_6_9", MatchState.LOCAL_PLAYER)   # feeder
+	var target_iid := BuildingState.add_building("b_002", "r_003", "tile_7_9", MatchState.LOCAL_PLAYER)  # target
+	BuildingState.add_building("b_007", "r_009", "tile_8_9", MatchState.LOCAL_PLAYER)   # dependent
 
 	var layer := CanvasLayer.new()
 	layer.layer = 130

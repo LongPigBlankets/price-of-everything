@@ -1,6 +1,5 @@
 extends PanelContainer
-## Experimental construct-panel redesign, reached only through
-## `swap construct_panel`.
+## Experimental construct-panel redesign, reached only through a dev toggle.
 ##
 ## The sequence is intentionally independent of a tile:
 ##   browse building → choose recipe → confirm → choose tile on the map.
@@ -47,23 +46,22 @@ const FILTER_TYPES: Array = ["extraction", "refinery", "metallurgy", "electroche
 	"farm_forests", "power", "infrastructure", "water", "manufacturing"]
 
 # Panel width: normal for BROWSE/SETTINGS/V2 confirm; the V3 confirm runs 20%
-# narrower (owner 2026-08-26). Scoped to the V3 confirm specifically rather than
-# the whole panel — BROWSE's recipe-row layout wasn't part of this review and
-# narrowing it too is untested risk this ask didn't ask for.
+# narrower. Scoped to the V3 confirm specifically rather than the whole panel —
+# BROWSE's recipe-row layout is untested at the narrower width.
 const PANEL_WIDTH_NORMAL := 560.0
 const PANEL_MIN_WIDTH_NORMAL := 510.0
 const PANEL_WIDTH_V3_CONFIRM := 448.0        # 560 * 0.8
 const PANEL_MIN_WIDTH_V3_CONFIRM := 408.0    # 510 * 0.8
 
-# V3 confirm text (owner 2026-08-26): one size, the DS default body font,
+# V3 confirm text: one size, the DS default body font,
 # everywhere EXCEPT the three call-outs that earn their own treatment — the
 # grand-total/Cash-after/materials-Total "amount" figures (Numeric/bold), the
 # header band's building/recipe name, and the ruled section headers. Semantic
 # colour (green/red/gold/muted) still varies per the standing contrast rule —
-# only size and weight are being unified here, not meaning. Owner 2026-08-26:
-# bumped 12 -> 14, and DS.SectionRuled moved off Barlow Condensed onto the same
-# Plex Sans family this uses, so the panel is down to one font (Bebas Neue for
-# the panel title only) with bold/not-bold as the only other differentiator.
+# only size and weight are being unified here, not meaning. DS.SectionRuled
+# shares the Plex Sans family this uses, so the panel is down to one font
+# (Bebas Neue for the panel title only) with bold/not-bold as the only other
+# differentiator.
 const V3_TEXT_SIZE := 14
 
 # --- Site requirements (confirm screen) -------------------------------------
@@ -331,7 +329,7 @@ var _confirm_flash_pending := false
 var _semibold_cache: Font = null
 var _semibold_looked_up := false
 
-# ── Confirm V3 state (`swap construct_panel_v3`) ─────────────────────────────
+# ── Confirm V3 state ─────────────────────────────────────────────────────────
 # The sim projections are computed once per render and cached here so every band
 # (verdict strip, requirements, timeline, materials, footer reason) reads the
 # same numbers — the reconciliation the spec asks for is structural.
@@ -341,13 +339,13 @@ var _v3_land: Dictionary = {}          # _v3_compute_land() facts for this rende
 var _v3_last_total := -1.0             # previous grand total, for the change tick
 var _v3_verdict_total_label: Label = null
 # Whether the player has touched the land-purchase toggle THIS confirm session
-# (v3.1, owner 2026-08-26: the toggle is back, ticked by default). Once true,
+# (ticked by default). Once true,
 # _v3_compute_land() stops defaulting _buy_land_wanted back to true on every
 # re-render — a live money/price recompute must not silently re-tick a box the
 # player just unticked. Reset whenever a fresh confirm opens.
 var _land_toggle_touched := false
-# Priority-supply choice for intermittent-power buildings (v3.1 preview, owner
-# 2026-08-26: stub the control, no sim wiring). "grid" | "buildings". Panel-local
+# Priority-supply choice for intermittent-power buildings (a stub control, no
+# sim wiring). "grid" | "buildings". Panel-local
 # only — never read by BuildForecast or Production. Reset per confirm session.
 var _v3_priority_supply := "grid"
 
@@ -365,8 +363,8 @@ func _ready() -> void:
 	add_theme_stylebox_override("panel", preload("res://scripts/pipe_frame.gd").dark_brown_stylebox(8.0))
 	_build_shell()
 	_load_data()
-	if not MatchState.unlock_granted.is_connected(_on_unlock_granted):
-		MatchState.unlock_granted.connect(_on_unlock_granted)
+	if not ResearchState.unlock_granted.is_connected(_on_unlock_granted):
+		ResearchState.unlock_granted.connect(_on_unlock_granted)
 	if not MatchState.show_construct_for_good.is_connected(open_for_output_good):
 		MatchState.show_construct_for_good.connect(open_for_output_good)
 	if not MarketState.prices_updated.is_connected(_on_prices_updated):
@@ -375,15 +373,15 @@ func _ready() -> void:
 		MatchState.money_changed.connect(_on_money_changed)
 	if not MatchState.construct_settings_changed.is_connected(_on_construct_settings_changed):
 		MatchState.construct_settings_changed.connect(_on_construct_settings_changed)
-	if not MatchState.construct_panel_v3_changed.is_connected(_on_construct_panel_v3_changed):
-		MatchState.construct_panel_v3_changed.connect(_on_construct_panel_v3_changed)
+	if not UiPrefs.construct_panel_v3_changed.is_connected(_on_construct_panel_v3_changed):
+		UiPrefs.construct_panel_v3_changed.connect(_on_construct_panel_v3_changed)
 	if not BuildMode.mode_exited_with_selection.is_connected(_on_build_mode_exited_with_selection):
 		BuildMode.mode_exited_with_selection.connect(_on_build_mode_exited_with_selection)
 	visibility_changed.connect(_on_visibility_changed)
 
 
 func open_for_output_good(good_id: String) -> void:
-	if not MatchState.use_construct_panel_v2:
+	if not UiPrefs.use_construct_panel_v2:
 		return
 	_output_good_filter = good_id
 	_reset_to_browse()
@@ -393,7 +391,7 @@ func open_for_output_good(good_id: String) -> void:
 
 
 func open_browser() -> void:
-	if not MatchState.use_construct_panel_v2:
+	if not UiPrefs.use_construct_panel_v2:
 		return
 	_output_good_filter = ""
 	_reset_to_browse()
@@ -406,7 +404,7 @@ func open_browser() -> void:
 ## the catalogue is filtered to what the tile's terrain/deposits/potential allow,
 ## and Confirm builds directly here — no map pick.
 func open_for_tile(tile_id: String, tile_data: Dictionary) -> void:
-	if not MatchState.use_construct_panel_v2:
+	if not UiPrefs.use_construct_panel_v2:
 		return
 	_output_good_filter = ""
 	_reset_to_browse()
@@ -449,13 +447,11 @@ func _on_visibility_changed() -> void:
 	if not visible:
 		PanelStack.remove(self)
 		return
-	if not MatchState.use_construct_panel_v2:
+	if not UiPrefs.use_construct_panel_v2:
 		hide()
 		return
-	# Owner 2026-08-26: Esc didn't close this panel — remove() was already here,
-	# but push() never was, so world_map's Esc handler (PanelStack.close_top())
-	# never found it registered. Every other panel pairs the two; this one was
-	# missing half the contract.
+	# push() pairs with the remove() above so world_map's Esc handler
+	# (PanelStack.close_top()) finds this panel registered.
 	PanelStack.push(self)
 	_load_data()
 	_render()
@@ -485,7 +481,7 @@ func _on_money_changed(_new_amount: float) -> void:
 ## on money/price changes. Infrastructure confirms keep the V2 layout and its
 ## static behaviour.
 func _v3_confirm_live() -> bool:
-	return _view == View.CONFIRM and MatchState.use_construct_panel_v3 \
+	return _view == View.CONFIRM and UiPrefs.use_construct_panel_v3 \
 		and not _selected_recipe.is_empty()
 
 func _on_construct_settings_changed() -> void:
@@ -493,7 +489,7 @@ func _on_construct_settings_changed() -> void:
 		_render()
 
 
-## The `swap construct_panel_v3` cheat flipped: re-render so the V3-gated visuals
+## The confirm-V3 dev toggle flipped: re-render so the V3-gated visuals
 ## (icon-plate keyline, confirm redesign as it lands) apply without reopening.
 func _on_construct_panel_v3_changed(_enabled: bool) -> void:
 	if visible:
@@ -501,7 +497,7 @@ func _on_construct_panel_v3_changed(_enabled: bool) -> void:
 
 
 func _on_build_mode_exited_with_selection(building_id: String, recipe_id: String, infra_type: String, return_to_construct_v2: bool) -> void:
-	if not return_to_construct_v2 or not MatchState.use_construct_panel_v2:
+	if not return_to_construct_v2 or not UiPrefs.use_construct_panel_v2:
 		return
 	if building_id == "":
 		building_id = str(Catalog.get_building_by_internal_name(infra_type).get("id", ""))
@@ -669,7 +665,7 @@ func _load_data() -> void:
 	_recipes_by_building.clear()
 	for recipe in Catalog.all_recipes():
 		var recipe_req := str(recipe.get("tech_unlock_req", ""))
-		if recipe_req != "" and not MatchState.is_unlocked(recipe_req):
+		if recipe_req != "" and not ResearchState.is_unlocked(recipe_req):
 			continue
 		# Tile-locked: drop recipes the terrain/deposits/potential forbid here.
 		if _locked_tile_id != "" and not _recipe_valid_for_tile(recipe, _locked_tile_data):
@@ -684,7 +680,7 @@ func _load_data() -> void:
 		if not MatchState.is_building_available(str(building.get("id", ""))):
 			continue
 		var building_req := str(building.get("required_research", ""))
-		if building_req != "" and not MatchState.is_unlocked(building_req):
+		if building_req != "" and not ResearchState.is_unlocked(building_req):
 			continue
 		# Tile-locked: hide any building left with no tile-permitted recipe (this
 		# also drops infrastructure, which has no recipes) so only actually-buildable
@@ -906,7 +902,7 @@ func _render_settings() -> void:
 	_content.add_child(_settings_toggle_card(
 		"Expanded mode",
 		"Recipe cards show the full diagram with quantities, sized to what's actually in the recipe. Off shows a compact icons-only row instead.",
-		MatchState.construct_expanded_recipe_mode, _on_expanded_recipe_mode_toggled))
+		UiPrefs.construct_expanded_recipe_mode, _on_expanded_recipe_mode_toggled))
 
 
 ## A settings row: title + explanatory note on the left, ON/OFF toggle on the right.
@@ -954,7 +950,7 @@ func _on_auto_buy_land_toggled(enabled: bool) -> void:
 
 
 func _on_expanded_recipe_mode_toggled(enabled: bool) -> void:
-	MatchState.set_construct_expanded_recipe_mode(enabled)
+	UiPrefs.set_construct_expanded_recipe_mode(enabled)
 	_render()
 
 
@@ -966,7 +962,7 @@ func _on_back_from_settings() -> void:
 func _on_cost_display_selected(display: String) -> void:
 	# Kept as a compatibility hook for older save/tests; the V2 settings no
 	# longer expose the grid/compact/list presentation choice.
-	MatchState.set_construct_cost_display(display)
+	UiPrefs.set_construct_cost_display(display)
 
 
 func _settings_choice_button(label_text: String, selected: bool, group: ButtonGroup, multiline: bool = false) -> Button:
@@ -1194,9 +1190,8 @@ func _make_building_card(building: Dictionary) -> Control:
 		var recipe_branch := VBoxContainer.new()
 		recipe_branch.add_theme_constant_override("separation", 0)
 		box.add_child(recipe_branch)
-		# Just the tree-line lead-in now — no "N recipes" count (owner: the number is
-		# redundant with the header's own removed count, and the branch below it now
-		# shows every recipe in full anyway).
+		# Just the tree-line lead-in — no "N recipes" count (the number would be
+		# redundant: the branch below it shows every recipe in full anyway).
 		var branch_heading := HBoxContainer.new()
 		branch_heading.add_theme_constant_override("separation", 0)
 		recipe_branch.add_child(branch_heading)
@@ -1205,7 +1200,7 @@ func _make_building_card(building: Dictionary) -> Control:
 			var recipe_row := HBoxContainer.new()
 			recipe_row.add_theme_constant_override("separation", 0)
 			recipe_branch.add_child(recipe_row)
-			var branch_row_h := RECIPE_ROW_HEIGHT if MatchState.construct_expanded_recipe_mode else MINI_RECIPE_ROW_HEIGHT
+			var branch_row_h := RECIPE_ROW_HEIGHT if UiPrefs.construct_expanded_recipe_mode else MINI_RECIPE_ROW_HEIGHT
 			recipe_row.add_child(RecipeBranchConnector.new(recipe_index == 0, recipe_index == recipe_count.size() - 1, branch_row_h))
 			var recipe_button := _make_recipe_button(building_id, recipe_count[recipe_index], affordable)
 			recipe_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1214,7 +1209,7 @@ func _make_building_card(building: Dictionary) -> Control:
 
 
 func _make_recipe_button(building_id: String, recipe: Dictionary, affordable: bool = true) -> Button:
-	var expanded := MatchState.construct_expanded_recipe_mode
+	var expanded := UiPrefs.construct_expanded_recipe_mode
 	var button := MetalRecipeRow.new()
 	button.name = "RecipeRow_%s" % str(recipe.get("recipe_id", ""))   # tutorial spotlight target
 	button.custom_minimum_size = Vector2(0, RECIPE_ROW_HEIGHT if expanded else MINI_RECIPE_ROW_HEIGHT)
@@ -1237,10 +1232,10 @@ func _make_recipe_button(building_id: String, recipe: Dictionary, affordable: bo
 	# left (recipe_row in _make_building_card) — button's own right edge has no
 	# matching reservation, so a name/diagram that fills 100% of button's width
 	# sits visibly closer to the panel's right frame than to the connector on the
-	# left. Owner ask (2026-08-27, re-check): +10px left / +20px right on top of
-	# the previous 5/15. Applied to MINI only: mini's own worst case (5 inputs + 1
+	# left. Inset +10px left / +20px right on top of
+	# the base 5/15. Applied to MINI only: mini's own worst case (5 inputs + 1
 	# output) has a measured 412px minimum, so a 12/30 (42px total) inset — close
-	# to the ask's own ~1:2 split, capped so 454-42=412 still fits it exactly —
+	# to that ~1:2 split, capped so 454-42=412 still fits it exactly —
 	# keeps every mini card, including the widest real one, at the same width
 	# (custom_minimum_size floors, doesn't cap, so overshooting the cap would make
 	# just that one card wider than its neighbours). Expanded's OWN worst case
@@ -1288,7 +1283,7 @@ func _make_recipe_button(building_id: String, recipe: Dictionary, affordable: bo
 	return button
 
 
-## Panel width for the current view (owner 2026-08-26: the V3 confirm runs 20%
+## Panel width for the current view (the V3 confirm runs 20%
 ## narrower than everything else). Idempotent — safe to call on every render.
 func _set_panel_width(narrow: bool) -> void:
 	offset_right = offset_left + (PANEL_WIDTH_V3_CONFIRM if narrow else PANEL_WIDTH_NORMAL)
@@ -1299,7 +1294,7 @@ func _render_confirm() -> void:
 	# V3 gets its own confirm layout (bands in decision order, spec §1). The
 	# infrastructure confirm — no recipe, no cash story — keeps the V2 layout
 	# (and the normal panel width — only the V3 confirm runs narrower).
-	if MatchState.use_construct_panel_v3 and not _selected_recipe.is_empty():
+	if UiPrefs.use_construct_panel_v3 and not _selected_recipe.is_empty():
 		_render_confirm_v3()
 		return
 	_set_panel_width(false)
@@ -1400,7 +1395,7 @@ func _render_confirm() -> void:
 
 	# Land sits with the Confirm button, not up with the material kit: buying it is a
 	# DECISION the player makes at the moment of committing, and it costs money the total
-	# below has to include (owner 2026-08-23).
+	# below has to include.
 	_content.add_child(_land_row(_selected_building))
 
 	_footer_panel.visible = true
@@ -1417,7 +1412,7 @@ func _render_confirm() -> void:
 	confirm.name = "BuildConfirmButton"   # tutorial spotlight target
 	confirm.text = "Confirm" if _locked_tile_id != "" else "Confirm · select tile"
 	confirm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	# The CTA stays the steel-blue Primary in V3 too (owner 2026-08-26): every
+	# The CTA stays the steel-blue Primary in V3 too: every
 	# commit button in the game is steel blue, and consistency beats the spec's
 	# brass here. The DS "Brass" variation remains available for accents.
 	confirm.theme_type_variation = "Primary"
@@ -1426,7 +1421,7 @@ func _render_confirm() -> void:
 	_footer.add_child(confirm)
 
 
-# ── Confirm V3 (spec "Confirm Construction Panel v2"; `swap construct_panel_v3`) ──
+# ── Confirm V3 (spec "Confirm Construction Panel v2") ────────────────────────
 # Five bands in decision order: identity and the verdict strip pin above the
 # scroll; requirements, the cash timeline and the materials ledger scroll under
 # them; the sticky footer carries the grand total, Confirm, and — whenever the
@@ -1445,8 +1440,8 @@ func _render_confirm_v3() -> void:
 
 	var building_id := str(_selected_building.get("id", ""))
 	_header_title.text = "CONFIRM CONSTRUCTION"
-	# The hero band below now names the site itself (owner 2026-08-26 — it
-	# used to live here); keep the title line uncluttered, same as V2 confirm.
+	# The hero band below names the site itself; keep the title line
+	# uncluttered, same as V2 confirm.
 	_header_subtitle.text = ""
 
 	_v3_land = _v3_compute_land()
@@ -1462,7 +1457,7 @@ func _render_confirm_v3() -> void:
 	for row in _v3_requirement_rows():
 		_content.add_child(row)
 
-	# Priority supply (v3.1 preview, owner 2026-08-26: stub only, no sim wiring —
+	# Priority supply (stub only, no sim wiring —
 	# every intermittent building still prices as fully grid-sold).
 	if str(_selected_building.get("internal_name", "")) in EconomyConfig.POWER_INTERMITTENT_BUILDINGS:
 		_content.add_child(_section_label("SETTINGS"))
@@ -1491,8 +1486,8 @@ func _render_confirm_v3() -> void:
 	materials.add_child(_v3_materials_totals())
 
 	# The recipe survives, demoted below the decision bands: reference material,
-	# not part of the verdict (owner 2026-08-26: shown open, not behind a tap —
-	# the v3.1 collapse-by-default read as hiding it, not demoting it).
+	# not part of the verdict (shown open, not behind a tap —
+	# collapsed-by-default reads as hiding it, not demoting it).
 	_content.add_child(_section_label("RECIPE"))
 	_content.add_child(_recipe_diagram(_selected_recipe))
 
@@ -1528,7 +1523,7 @@ func _v3_header_band() -> Control:
 
 
 ## Band 2 — the hero band: identity and the decision, together. Left column: a
-## large icon plate (owner 2026-08-26: nearly fills the strip's height now),
+## large icon plate (nearly fills the strip's height),
 ## then building name (big) + recipe (small) beside it — top-aligned so the
 ## name lines up with the total on the right. Right column, right-anchored:
 ## the grand total, then how long it takes. Cost and time stay two different
@@ -1537,10 +1532,9 @@ func _v3_header_band() -> Control:
 ## in Materials, where Land's cost also moved), no affordability chip
 ## (dropped — it read the future, and the space cost wasn't earning it). Fill
 ## only, no border — borders carry semantics, and the strip is structure. A
-## single rule above it is the ledger's mark for a totals band (owner
-## 2026-08-26: single, not double — the site sits with "< Recipe" in band 1
-## now, so this band carries less than it used to and doesn't need the
-## heavier two-line emphasis).
+## single rule above it is the ledger's mark for a totals band (single, not
+## double — the site sits with "< Recipe" in band 1, so this band carries
+## little enough not to need the heavier two-line emphasis).
 func _v3_verdict_strip() -> Control:
 	var box := VBoxContainer.new()
 	box.name = "V3VerdictStrip"
@@ -1555,7 +1549,7 @@ func _v3_verdict_strip() -> Control:
 	strip.add_child(outer)
 
 	# Row 1: icon + identity (left) … the grand total (right). Both text_box
-	# and total top-align (owner 2026-08-26, was centred) so the building name
+	# and total top-align so the building name
 	# — the top line — lines up with the total, regardless of how tall the
 	# icon makes this row.
 	var row1 := HBoxContainer.new()
@@ -1563,9 +1557,9 @@ func _v3_verdict_strip() -> Control:
 	outer.add_child(row1)
 	# Same brushed-navy + silver-bezel metal plate as the Tile View building
 	# cards — _building_icon alone is just the emboss layers, with no plate
-	# beneath it; TileBuildingCard IS the plate. Icon 40->60px (owner
-	# 2026-08-26: nearly fills the strip's height) — margins/radius scale with
-	# it (was 6/6/8) to keep the same plate proportions, not just a bigger
+	# beneath it; TileBuildingCard IS the plate. Icon 60px (nearly fills
+	# the strip's height) — margins/radius scale with
+	# it to keep the same plate proportions, not just a bigger
 	# icon in the same bezel.
 	var icon_card := TileBuildingCard.new(10, 10, 13)
 	icon_card.add_child(_building_icon(_selected_building, 60))
@@ -1575,8 +1569,7 @@ func _v3_verdict_strip() -> Control:
 	text_box.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	text_box.add_theme_constant_override("separation", 1)
 	row1.add_child(text_box)
-	# Building name is the big text, recipe the small line under it (owner
-	# 2026-08-26 — was the other way round: recipe big, building name small).
+	# Building name is the big text, recipe the small line under it.
 	var title := Label.new()
 	title.text = str(_selected_building.get("display_name", ""))
 	title.add_theme_font_size_override("font_size", 17)
@@ -1809,14 +1802,14 @@ func _v3_land_requirement_row() -> Control:
 			return _v3_req_fail("Land — needs %d, %d available, and no more is for sale on this tile." % [needed, free])
 		return _v3_req_fail("Land — needs %d, %d available; only %d more can be bought here — still short."
 			% [needed, free, int(_v3_land.get("units", 0))])
-	# A real, reversible choice (v3.1, owner 2026-08-26: the toggle is back — the
+	# A real, reversible choice (the
 	# shortfall CAN be covered by a purchase, so whether to make it is genuinely
 	# the player's call, not an auto-included fact).
 	return _v3_land_toggle_row(needed, free)
 
 
-## The land-purchase toggle (v3.1): ticked by default, so leaving it alone
-## behaves exactly like the old auto-include. Unticking is a deliberate
+## The land-purchase toggle: ticked by default, so leaving it alone
+## behaves like an auto-include. Unticking is a deliberate
 ## "build without this room" choice — it blocks Confirm with a stated reason,
 ## the same as any other requirement failure, never a silent dead end.
 func _v3_land_toggle_row(needed: int, free: int) -> Control:
@@ -1844,8 +1837,8 @@ func _v3_land_toggle_row(needed: int, free: int) -> Control:
 	toggle.add_child(line)
 
 	# Same tickbox glyph as the rest of the DS theme (tile-panel setting rows,
-	# telemetry consent) — UIHelpers.checkbox_icon — instead of a bespoke one
-	# (owner 2026-08-26). The outer row's gold/red border already carries the
+	# telemetry consent) — UIHelpers.checkbox_icon — instead of a bespoke one.
+	# The outer row's gold/red border already carries the
 	# ticked/blocking state; the icon itself stays exactly as it renders
 	# everywhere else (plain white, no extra tint).
 	var glyph := TextureRect.new()
@@ -1898,8 +1891,8 @@ func _v3_compute_land() -> Dictionary:
 	if _locked_tile_id == "":
 		_buy_land_wanted = false
 		return out
-	var owned := MatchState.get_tile_land_owned(_locked_tile_id)
-	var used := int(round(MatchState.get_tile_player_space_used(_locked_tile_id)))
+	var owned := BuildingState.get_tile_land_owned(_locked_tile_id)
+	var used := int(round(BuildingState.get_tile_player_space_used(_locked_tile_id)))
 	var free := maxi(0, owned - used)
 	out.free = free
 	if free >= needed:
@@ -1908,15 +1901,15 @@ func _v3_compute_land() -> Dictionary:
 	var short := needed - free
 	out.short = short
 	out.covered = false
-	var for_sale := MatchState.get_tile_land_patches_available(_locked_tile_id)
+	var for_sale := BuildingState.get_tile_land_patches_available(_locked_tile_id)
 	out.for_sale = for_sale
 	if for_sale <= 0:
 		_buy_land_wanted = false
 		return out
-	var patches := mini(int(ceil(float(short) / float(MatchState.LAND_PATCH_SIZE))), for_sale)
-	var units := patches * MatchState.LAND_PATCH_SIZE
-	var cost := MatchState.purchase_cost_after_advisor(
-		float(patches) * MatchState.LAND_PATCH_COST, {"tile_id": _locked_tile_id})
+	var patches := mini(int(ceil(float(short) / float(BuildingState.LAND_PATCH_SIZE))), for_sale)
+	var units := patches * BuildingState.LAND_PATCH_SIZE
+	var cost := AdvisorState.purchase_cost_after_advisor(
+		float(patches) * BuildingState.LAND_PATCH_COST, {"tile_id": _locked_tile_id})
 	out.units = units
 	out.cost = cost
 	if free + units < needed:
@@ -1936,7 +1929,7 @@ func _v3_compute_land() -> Dictionary:
 
 ## build_forecast.gd's phase.range is the sim-layer's own short form — "t1",
 ## "t1–t3", "t6 onwards" — shared with V2, so left alone there. V3 reads
-## friendlier: "Turn 1", "Turn 1–3", "Turn 6 onwards" (owner 2026-08-26) — a
+## friendlier: "Turn 1", "Turn 1–3", "Turn 6 onwards" — a
 ## display-only transform, not a change to the sim string itself.
 func _v3_turn_marker(range_text: String) -> String:
 	if not range_text.begins_with("t"):
@@ -1956,7 +1949,7 @@ func _v3_cash_timeline() -> Control:
 	return table
 
 
-## 74px (owner 2026-08-26): sized so the icon ART inside the cream plate
+## 74px: sized so the icon ART inside the cream plate
 ## matches the recipe diagram's ~56px icons (_recipe_flow_cell's 62px cell,
 ## 3px inset each side) — _good_icon's inset is proportional (12% of size, 4px
 ## floor), so the plate itself has to grow to keep the ART that big, not just
@@ -1966,7 +1959,7 @@ const V3_MAT_COL_ONTILE := 58
 const V3_MAT_COL_ELSEWHERE := 70
 const V3_MAT_COL_MARKET := 92
 
-## Band 5 — the bill of materials as a table (v3.1, from the V4 iteration): icon ·
+## Band 5 — the bill of materials as a table: icon ·
 ## name · on tile · elsewhere · market price, header row first. "Elsewhere" is
 ## uncommitted surplus on every OTHER tile (Construction.network_surplus_for_good)
 ## — informational regardless of the active material-sourcing setting. Shortfall
@@ -1991,7 +1984,7 @@ func _v3_material_rows() -> Array:
 func _v3_material_header() -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
-	var lead := Label.new()   # header for the icon column — centred over it (owner 2026-08-26)
+	var lead := Label.new()   # header for the icon column — centred over it
 	lead.text = "GOOD"
 	lead.custom_minimum_size = Vector2(V3_MAT_ICON_SIZE, 0)
 	lead.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -2076,7 +2069,7 @@ func _v3_mat_figure(qty: int, col_width: int) -> Label:
 
 ## Materials subtotal, the flat cash fee (base_price — what construction costs
 ## regardless of the kit), and a Total that reconciles to the verdict strip's
-## construction figure (owner 2026-08-26): the materials band is now
+## construction figure: the materials band is
 ## self-contained — it explains its own total instead of leaving the player to
 ## do (construction total) − (materials subtotal) = "what's the rest?" in their head.
 func _v3_materials_totals() -> Control:
@@ -2086,9 +2079,8 @@ func _v3_materials_totals() -> Control:
 		"V3MaterialsSubtotal", false))
 	box.add_child(_v3_totals_row("Cash fee", maxf(0.0, float(_selected_building.get("base_price", 0.0))),
 		"", false))
-	# Land's cost moved down here (owner 2026-08-26; was itemised in the verdict
-	# strip) — Total below now includes it, so it still reconciles to the big
-	# number at the top of the panel.
+	# Land's cost is itemised here, not in the verdict strip — Total below
+	# includes it, so it still reconciles to the big number at the top of the panel.
 	if _buy_land_wanted and _land_purchase_cost > 0.0:
 		box.add_child(_v3_totals_row("Land", _land_purchase_cost, "V3MaterialsLand", false))
 	box.add_child(DS.section_rule())
@@ -2096,8 +2088,8 @@ func _v3_materials_totals() -> Control:
 	return box
 
 
-## "Total" (emphasize=true) is one of the panel's three call-outs (owner
-## 2026-08-26: "the amount") and keeps the larger, bold Numeric treatment.
+## "Total" (emphasize=true) is one of the panel's three call-outs ("the
+## amount") and keeps the larger, bold Numeric treatment.
 ## Materials subtotal / Cash fee are supporting figures on the way to it, not
 ## the amount itself, so they read at the standard size like everything else.
 func _v3_totals_row(label_text: String, amount: float, node_name: String, emphasize: bool) -> Control:
@@ -2122,8 +2114,8 @@ func _v3_totals_row(label_text: String, amount: float, node_name: String, emphas
 	return row
 
 
-## Priority-supply preview (v3.1 stub, owner 2026-08-26): "stub the control, no
-## sim wiring". Shown only for buildings in EconomyConfig.POWER_INTERMITTENT_
+## Priority-supply preview: a stub control, no sim wiring.
+## Shown only for buildings in EconomyConfig.POWER_INTERMITTENT_
 ## BUILDINGS. _v3_priority_supply is panel-local state ONLY — BuildForecast and
 ## Production never read it. Every intermittent building is still priced (and
 ## will run) as fully grid-sold; the copy says so, so the preview can't mislead.
@@ -2147,8 +2139,8 @@ func _v3_priority_supply_band() -> Control:
 		btn.focus_mode = Control.FOCUS_NONE
 		btn.custom_minimum_size = Vector2(0, 30)
 		btn.add_theme_font_size_override("font_size", V3_TEXT_SIZE)
-		# Cream + navy for the selected state (owner 2026-08-26, was gold +
-		# navy) — the same off-white-plate/navy-type pairing the good-icon
+		# Cream + navy for the selected state — the same
+		# off-white-plate/navy-type pairing the good-icon
 		# plates and Tile View ownership banner already use, not an accent
 		# colour spent on a segmented control.
 		_style_button(btn, CREAM if on else NAVY_FIELD, CREAM_SHADOW if on else NAVY_LINE,
@@ -2171,7 +2163,7 @@ func _on_v3_priority_supply_selected(option_id: String) -> void:
 	_render()
 
 
-## Sticky footer (v3.1, from the V4 iteration): "Cash after" replaces a second
+## Sticky footer: "Cash after" replaces a second
 ## restatement of the grand total — the verdict strip already shows the spend, so
 ## the footer answers the next question, what's left. Confirm keeps a reason line
 ## under it when blocked (§7) rather than folding the reason into the button
@@ -2400,8 +2392,8 @@ func _land_row(building: Dictionary) -> Control:
 		_land_purchase_units = 0
 		_land_purchase_cost = 0.0
 		return _land_required_row(building)
-	var owned := MatchState.get_tile_land_owned(_locked_tile_id)
-	var used := int(round(MatchState.get_tile_player_space_used(_locked_tile_id)))
+	var owned := BuildingState.get_tile_land_owned(_locked_tile_id)
+	var used := int(round(BuildingState.get_tile_player_space_used(_locked_tile_id)))
 	var free := maxi(0, owned - used)
 	if free >= needed:
 		_land_purchase_units = 0
@@ -2410,8 +2402,8 @@ func _land_row(building: Dictionary) -> Control:
 
 	# Land is sold in whole patches, so round the shortfall up to one.
 	var short := needed - free
-	var patches := int(ceil(float(short) / float(MatchState.LAND_PATCH_SIZE)))
-	var for_sale := MatchState.get_tile_land_patches_available(_locked_tile_id)
+	var patches := int(ceil(float(short) / float(BuildingState.LAND_PATCH_SIZE)))
+	var for_sale := BuildingState.get_tile_land_patches_available(_locked_tile_id)
 	var row := PanelContainer.new()
 	row.add_theme_stylebox_override("panel", _panel_style(NAVY_FIELD, GOLD_DARK, 1, 9, 8))
 	var box := VBoxContainer.new()
@@ -2432,9 +2424,9 @@ func _land_row(building: Dictionary) -> Control:
 		return row
 
 	patches = mini(patches, for_sale)
-	_land_purchase_units = patches * MatchState.LAND_PATCH_SIZE
-	_land_purchase_cost = MatchState.purchase_cost_after_advisor(
-		float(patches) * MatchState.LAND_PATCH_COST, {"tile_id": _locked_tile_id})
+	_land_purchase_units = patches * BuildingState.LAND_PATCH_SIZE
+	_land_purchase_cost = AdvisorState.purchase_cost_after_advisor(
+		float(patches) * BuildingState.LAND_PATCH_COST, {"tile_id": _locked_tile_id})
 
 	var check := CheckBox.new()
 	check.text = "Buy %d land on %s  ·  %s" % [
@@ -2468,8 +2460,8 @@ func _land_required_row(building: Dictionary) -> Control:
 	var text := "Land required: %d" % needed
 	var tint := _muted_tone()
 	if _locked_tile_id != "":
-		var owned := MatchState.get_tile_land_owned(_locked_tile_id)
-		var used := int(round(MatchState.get_tile_player_space_used(_locked_tile_id)))
+		var owned := BuildingState.get_tile_land_owned(_locked_tile_id)
+		var used := int(round(BuildingState.get_tile_player_space_used(_locked_tile_id)))
 		var free := maxi(0, owned - used)
 		text += "  ·  %d free on %s" % [free, Catalog.tile_label(_locked_tile_id)]
 		if free < needed:
@@ -2720,13 +2712,13 @@ func _flash_row(row: Control) -> void:
 ## the pattern the standing contrast rule in CLAUDE.md forbids. DS.TEXT_MUTED is
 ## the blessed quiet tone; V2 keeps its original grey untouched.
 func _muted_tone() -> Color:
-	return DS.PALETTE.TEXT_MUTED if MatchState.use_construct_panel_v3 else MUTED
+	return DS.PALETTE.TEXT_MUTED if UiPrefs.use_construct_panel_v3 else MUTED
 
 
 func _section_label(text: String, double_rule: bool = false) -> Control:
 	# V3 (spec §4): fine ruled lines replace the gold tick-bar — ledger grammar,
 	# no status colour spent on furniture. double_rule marks the verdict band.
-	if MatchState.use_construct_panel_v3:
+	if UiPrefs.use_construct_panel_v3:
 		return DS.ruled_section_head(text, double_rule)
 	# Matches the Tile View's compact section heading: a clear uppercase title,
 	# off-white type and a restrained accent rule rather than plain body text.
@@ -2795,7 +2787,7 @@ func _good_icon(good_id: String, icon_size: int, plate_width: int = -1, qty: int
 	plate_style.bg_color = CREAM
 	# V3 drops the darker keyline around the cream plate — the plate reads as one
 	# clean pedestal instead of an outlined chip.
-	if not MatchState.use_construct_panel_v3:
+	if not UiPrefs.use_construct_panel_v3:
 		plate_style.border_color = CREAM_SHADOW
 		plate_style.set_border_width_all(2)
 	plate_style.set_corner_radius_all(maxi(7, int(round(float(icon_size) * 0.16))))
@@ -2937,7 +2929,7 @@ func _recipe_diagram(recipe: Dictionary, cell_size: int = 62, arrow_size: Vector
 		output_side_w = float(cell_size)
 	else:
 		# The recipe's FULL output list (co-products) — chlor-alkali yields chlorine +
-		# sodium hydroxide + hydrogen, and only the primary used to be drawn here —
+		# sodium hydroxide + hydrogen, not just the primary —
 		# sized off its own count, independent of whatever the input side worked out to.
 		var outs: Array = recipe.get("outputs", [])
 		if outs.is_empty() and str(recipe.get("output_good_id", "")) != "":
@@ -3053,7 +3045,7 @@ func _recipe_flow_cell(good_id: String, qty: int, size_px: int) -> Panel:
 
 func _power_output_cell(qty: int, size_px: int = 62) -> Control:
 	# Power outputs use the same cream tile-view card treatment as the power
-	# cards, with the isometric power goods icon (owner 2026-08-29 — the flat
+	# cards, with the isometric power goods icon (the flat
 	# lightning is the energy badge's mark, not power-as-a-good's) and navy
 	# quantity pill inset.
 	var holder := Control.new()
@@ -3065,7 +3057,7 @@ func _power_output_cell(qty: int, size_px: int = 62) -> Control:
 	var style := StyleBoxFlat.new()
 	style.bg_color = CREAM
 	# Same V3 keyline removal as _good_icon — the power plate is the same pedestal.
-	if not MatchState.use_construct_panel_v3:
+	if not UiPrefs.use_construct_panel_v3:
 		style.border_color = CREAM_SHADOW
 		style.set_border_width_all(2)
 	style.set_corner_radius_all(8)
@@ -3237,8 +3229,8 @@ func _on_unaffordable_recipe_pressed(building_id: String) -> void:
 
 
 ## What the Confirm button is about to spend: the build, plus the land if the player left
-## the box ticked. The footer used to show the build alone, which understated a confirm that
-## was about to buy land as well. On the V3 confirm the ledger-based total is the truth
+## the box ticked — the build alone would understate a confirm that is about to buy land
+## as well. On the V3 confirm the ledger-based total is the truth
 ## (on-site stock already free, land always itemised in).
 func _confirm_total_cost() -> float:
 	if _v3_confirm_live() and not _v3_ledger.is_empty():
@@ -3305,10 +3297,10 @@ func _on_confirm_pressed() -> void:
 		# and is filtered out of the locked list — but guard defensively anyway.
 		if _selected_recipe.is_empty():
 			return
-		if MatchState.use_construct_panel_v3:
+		if UiPrefs.use_construct_panel_v3:
 			# V3: one intent. The land shortfall is bought inside the build attempt's own
 			# space gate (world_map._space_check_for_build via BuildMode.attempt_buy_land),
-			# so a build refused upstream of that gate can no longer leave the player
+			# so a build refused upstream of that gate cannot leave the player
 			# owning land they bought for nothing.
 			if not BuildMode.attempt_direct_build(building_id,
 					str(_selected_recipe.get("recipe_id", "")), _locked_tile_id,
@@ -3318,8 +3310,8 @@ func _on_confirm_pressed() -> void:
 		else:
 			# Buy the land FIRST, or the build is refused for the room it was about to have.
 			if _buy_land_wanted and _land_purchase_units > 0:
-				var patches := int(ceil(float(_land_purchase_units) / float(MatchState.LAND_PATCH_SIZE)))
-				if not MatchState.purchase_tile_land(_locked_tile_id, patches):
+				var patches := int(ceil(float(_land_purchase_units) / float(BuildingState.LAND_PATCH_SIZE)))
+				if not BuildingState.purchase_tile_land(_locked_tile_id, patches):
 					MatchState.request_toast(
 						"Could not buy the land on %s — the build needs it first."
 							% Catalog.tile_label(_locked_tile_id), "warning")

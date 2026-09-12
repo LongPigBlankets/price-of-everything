@@ -81,5 +81,5 @@ static func _good_price(internal_name: String) -> float:
 
 static func _land_cost(bdata: Dictionary, level: int) -> float:
 	var footprint := float(bdata.get("tile_size_used", 1)) * BuildingLevels.mult("size", level)
-	var patches := ceilf(footprint / float(MatchState.LAND_PATCH_SIZE))
-	return patches * MatchState.LAND_PATCH_COST
+	var patches := ceilf(footprint / float(BuildingState.LAND_PATCH_SIZE))
+	return patches * BuildingState.LAND_PATCH_COST

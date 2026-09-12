@@ -473,9 +473,9 @@ const FOUNDER_DECISION_TURN := 3
 ## Andrew's tenure ends: he vacates, the post opens, and the player is told plainly so the
 ## sudden loss of his modifier is legible rather than mysterious.
 func _retire_founder() -> void:
-	var seat := MatchState.founder_seat
-	var seat_name := str(MatchState.SEAT_DEFINITIONS.get(seat, {}).get("seat_name", seat))
-	MatchState.release_founder()
+	var seat := AdvisorState.founder_seat
+	var seat_name := str(AdvisorState.SEAT_DEFINITIONS.get(seat, {}).get("seat_name", seat))
+	AdvisorState.release_founder()
 	EventScheduler.emit_event({
 		"kind": "founder_departs",
 		"severity": "info",
@@ -589,7 +589,7 @@ func _tick_narrative() -> void:
 	# The founder's pro bono tenure runs out — he vacates and the post opens for a real hire.
 	# Held while the board is full (same guard as a story reservation) so his farewell notice
 	# always has a slot: a dropped draw would put him back to leaving silently.
-	if MatchState.founder_seat != "" and turn >= MatchState.founder_leaves_turn \
+	if AdvisorState.founder_seat != "" and turn >= AdvisorState.founder_leaves_turn \
 			and pending_queue.size() < PENDING_QUEUE_CAP:
 		_retire_founder()
 	# C) Pulse: only into a QUIET board — no pending decision, nothing in flight, and
@@ -616,8 +616,8 @@ func _tick_narrative() -> void:
 ## count toward "this company is a going concern".
 func _productive_building_count() -> int:
 	var n := 0
-	for b in MatchState.buildings.values():
-		if not (b is Dictionary) or not MatchState.is_player_owned(b):
+	for b in BuildingState.buildings.values():
+		if not (b is Dictionary) or not BuildingState.is_player_owned(b):
 			continue
 		var bd: Dictionary = Catalog.get_building(str((b as Dictionary).get("building_id", "")))
 		if str(bd.get("category", "")).to_lower() == "infrastructure":
@@ -765,10 +765,10 @@ func _target_still_valid(def: Dictionary, target: Dictionary) -> bool:
 		return false
 	var iid := str(target.get("instance_id", ""))
 	if iid != "":
-		return MatchState.buildings.has(iid) and MatchState.is_player_owned(MatchState.get_building(iid))
+		return BuildingState.buildings.has(iid) and BuildingState.is_player_owned(BuildingState.get_building(iid))
 	var tid := str(target.get("tile_id", ""))
 	if tid != "" and str(def.get("scope", "")) == "tile":
-		return MatchState.tile_buildings.has(tid) and not (MatchState.tile_buildings.get(tid, []) as Array).is_empty()
+		return BuildingState.tile_buildings.has(tid) and not (BuildingState.tile_buildings.get(tid, []) as Array).is_empty()
 	return true
 
 ## Clear every pending/scheduled decision with no effects — the presentation layer's
@@ -845,8 +845,8 @@ func _select_target(selector: String, def: Dictionary) -> Dictionary:
 			# Building type with the largest labour bill proxy: instance count x
 			# catalog labour headcount. Ties break to the lexicographically first id.
 			var bills: Dictionary = {}
-			for b in MatchState.buildings.values():
-				if not MatchState.is_player_owned(b):
+			for b in BuildingState.buildings.values():
+				if not BuildingState.is_player_owned(b):
 					continue
 				var bid := str(b.get("building_id", ""))
 				var cat: Dictionary = Catalog.get_building(bid)
@@ -873,19 +873,19 @@ func _select_target(selector: String, def: Dictionary) -> Dictionary:
 			var ids2: Array = []
 			for r in reports:
 				var iid2 := str(r.get("instance_id", ""))
-				if iid2 != "" and MatchState.is_player_owned(MatchState.get_building(iid2)):
+				if iid2 != "" and BuildingState.is_player_owned(BuildingState.get_building(iid2)):
 					ids2.append(iid2)
 			ids2.sort()
 			if ids2.is_empty():
 				return {}
 			var picked := str(ids2[_rng.randi() % ids2.size()])
 			return {"scope": scope, "instance_id": picked,
-				"tile_id": str(MatchState.get_building(picked).get("tile_id", "")),
+				"tile_id": str(BuildingState.get_building(picked).get("tile_id", "")),
 				"name": _building_label(picked)}
 		"multi_building_tile":
 			var per_tile: Dictionary = {}
-			for b in MatchState.buildings.values():
-				if MatchState.is_player_owned(b):
+			for b in BuildingState.buildings.values():
+				if BuildingState.is_player_owned(b):
 					var tid := str(b.get("tile_id", ""))
 					per_tile[tid] = int(per_tile.get(tid, 0)) + 1
 			var tiles: Array = []
@@ -918,8 +918,8 @@ func _select_target(selector: String, def: Dictionary) -> Dictionary:
 				"name": str(Catalog.get_good(best_gid).get("display_name", best_gid))}
 		"fossil_building":
 			var ids3: Array = []
-			for b in MatchState.buildings.values():
-				if not MatchState.is_player_owned(b):
+			for b in BuildingState.buildings.values():
+				if not BuildingState.is_player_owned(b):
 					continue
 				var iid3 := str(b.get("instance_id", ""))
 				if flags.has("env_exempt:%s" % iid3):
@@ -932,21 +932,21 @@ func _select_target(selector: String, def: Dictionary) -> Dictionary:
 				return {}
 			var picked3 := str(ids3[_rng.randi() % ids3.size()])
 			return {"scope": scope, "instance_id": picked3,
-				"tile_id": str(MatchState.get_building(picked3).get("tile_id", "")),
+				"tile_id": str(BuildingState.get_building(picked3).get("tile_id", "")),
 				"name": _building_label(picked3)}
 		"landbank_tile":
 			# Empty landbank tiles only: bought patches with no player buildings or
 			# projects on them, so a sale can never undercut a footprint.
 			var occupied: Dictionary = {}
-			for b in MatchState.buildings.values():
+			for b in BuildingState.buildings.values():
 				occupied[str(b.get("tile_id", ""))] = true
 			for p2 in Construction.construction_projects.values():
 				occupied[str(p2.get("tile_id", ""))] = true
 			var tiles2: Array = []
-			for tid: String in MatchState.tile_land_owned.keys():
+			for tid: String in BuildingState.tile_land_owned.keys():
 				if occupied.has(tid):
 					continue
-				if MatchState.get_tile_land_owned(tid) >= MatchState.DEFAULT_TILE_LAND_OWNED + 2 * MatchState.LAND_PATCH_SIZE:
+				if BuildingState.get_tile_land_owned(tid) >= BuildingState.DEFAULT_TILE_LAND_OWNED + 2 * BuildingState.LAND_PATCH_SIZE:
 					tiles2.append(tid)
 			tiles2.sort()
 			if tiles2.is_empty():
@@ -956,7 +956,7 @@ func _select_target(selector: String, def: Dictionary) -> Dictionary:
 	return {}
 
 func _building_label(instance_id: String) -> String:
-	var b: Dictionary = MatchState.get_building(instance_id)
+	var b: Dictionary = BuildingState.get_building(instance_id)
 	return BuildingNaming.label_for_tile(str(b.get("tile_id", "")), instance_id,
 		str(b.get("building_id", "")), str(b.get("recipe_id", "")))
 
@@ -1032,7 +1032,7 @@ func _advocate_view(choice: Dictionary, follow_delta: float) -> Dictionary:
 	var aid := _tenured_advisor_in_seat(seat)
 	if aid == "":
 		return {}
-	var advisor: Dictionary = MatchState.get_advisor(aid)
+	var advisor: Dictionary = AdvisorState.get_advisor(aid)
 	var stance := str(choice.get("stance", ""))
 	var overrides: Dictionary = choice.get("stance_overrides", {})
 	stance = str(overrides.get(aid, stance))
@@ -1050,7 +1050,7 @@ func _advocate_view(choice: Dictionary, follow_delta: float) -> Dictionary:
 	}
 
 func _seat_name(seat_id: String) -> String:
-	return str((MatchState.SEAT_DEFINITIONS.get(seat_id, {}) as Dictionary).get("seat_name", seat_id))
+	return str((AdvisorState.SEAT_DEFINITIONS.get(seat_id, {}) as Dictionary).get("seat_name", seat_id))
 
 # Gate + advocacy eligibility: the seat is filled AND its occupant was hired on an
 # earlier turn (the 1-turn tenure rule — you can't panic-hire through a dilemma).
@@ -1058,8 +1058,8 @@ func _seat_tenured(seat_id: String) -> bool:
 	return _tenured_advisor_in_seat(seat_id) != ""
 
 func _tenured_advisor_in_seat(seat_id: String) -> String:
-	var aid := MatchState.get_advisor_in_seat(seat_id)
-	if aid == "" or not MatchState.is_advisor_tenured(aid):
+	var aid := AdvisorState.get_advisor_in_seat(seat_id)
+	if aid == "" or not AdvisorState.is_advisor_tenured(aid):
 		return ""
 	return aid
 
@@ -1145,7 +1145,7 @@ func _apply_decision_loyalty(view: Dictionary, choice_id: String) -> void:
 		if adv.is_empty():
 			continue
 		var delta := float(adv.follow_delta) if str(c.id) == choice_id else LOYALTY_IGNORE
-		MatchState.apply_decision_loyalty(str(adv.advisor_id), delta, str(view.get("title", "")))
+		AdvisorState.apply_decision_loyalty(str(adv.advisor_id), delta, str(view.get("title", "")))
 
 
 # ---------------------------------------------------------------------------
@@ -1169,9 +1169,9 @@ func _execute_effects(effects: Array, target: Dictionary) -> void:
 			"grant_unlock":
 				var title := _pick_free_tech(target)
 				if title != "":
-					MatchState.grant_unlock(title)
+					ResearchState.grant_unlock(title)
 			"agenda_tag":
-				MatchState.flag_agenda_event(str(eff.get("tag", "")))
+				AdvisorState.flag_agenda_event(str(eff.get("tag", "")))
 			"schedule_event":
 				var event: Dictionary = (eff.get("event", {}) as Dictionary).duplicate(true)
 				_substitute_target(event, target)
@@ -1179,16 +1179,16 @@ func _execute_effects(effects: Array, target: Dictionary) -> void:
 			"set_flag":
 				flags["%s:%s" % [str(eff.get("key", "")), str(target.get("instance_id", target.get("tile_id", "")))]] = true
 			"sell_land":
-				var patches := MatchState.sellable_land_patches(str(target.get("tile_id", "")))
-				MatchState.sell_tile_land(str(target.get("tile_id", "")), patches,
-					MatchState.LAND_PATCH_COST * float(eff.get("price_mult", 1.0)))
+				var patches := BuildingState.sellable_land_patches(str(target.get("tile_id", "")))
+				BuildingState.sell_tile_land(str(target.get("tile_id", "")), patches,
+					BuildingState.LAND_PATCH_COST * float(eff.get("price_mult", 1.0)))
 			"seat_founder":
-				MatchState.seat_founder(str(eff.get("seat", "coo")))
+				AdvisorState.seat_founder(str(eff.get("seat", "coo")))
 			"founder_loan":
 				# A one-off cheap loan on signing: the CFO's gift. Standard life, half rate.
 				LoanState.take_founder_loan(float(eff.get("amount", 0.0)), float(eff.get("rate", 0.05)))
 			"freight_credit":
-				MatchState.add_freight_credit(int(eff.get("units", 0)))
+				TransportState.add_freight_credit(int(eff.get("units", 0)))
 			"distressed_program":
 				SolvencyState.accept_distressed_program()
 			"none":
@@ -1262,8 +1262,8 @@ func _build_modifiers(eff: Dictionary, target: Dictionary) -> Array:
 			m2["target_match"] = {"building_id": str(target.get("building_id", ""))}
 			out.append(m2)
 		"tile":
-			for b in MatchState.buildings.values():
-				if MatchState.is_player_owned(b) and str(b.get("tile_id", "")) == str(target.get("tile_id", "")):
+			for b in BuildingState.buildings.values():
+				if BuildingState.is_player_owned(b) and str(b.get("tile_id", "")) == str(target.get("tile_id", "")):
 					var m3: Dictionary = base.duplicate(true)
 					m3["target_match"] = {"instance_id": str(b.get("instance_id", ""))}
 					out.append(m3)
@@ -1279,7 +1279,7 @@ func _build_modifiers(eff: Dictionary, target: Dictionary) -> Array:
 ## resolves to the deterministic first title (alphabetical) within each preference
 ## band: building_id match beats recipe_type match beats good match.
 func _pick_free_tech(target: Dictionary) -> String:
-	var b: Dictionary = MatchState.get_building(str(target.get("instance_id", "")))
+	var b: Dictionary = BuildingState.get_building(str(target.get("instance_id", "")))
 	var bid := str(b.get("building_id", ""))
 	var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
 	var rtype := str(recipe.get("recipe_type", "")).to_lower()
@@ -1290,7 +1290,7 @@ func _pick_free_tech(target: Dictionary) -> String:
 	var titles: Array = Modifiers.UNLOCK_MODIFIERS.keys()
 	titles.sort()
 	for title: String in titles:
-		if MatchState.unlocked_titles.has(title):
+		if ResearchState.unlocked_titles.has(title):
 			continue
 		var spec: Variant = Modifiers.UNLOCK_MODIFIERS[title]
 		var specs: Array = spec if spec is Array else [spec]
@@ -1351,7 +1351,7 @@ func _describe_effects(effects: Array, target: Dictionary) -> String:
 				parts.append("free research unlock: %s" % (title if title != "" else "none available"))
 			"seat_founder":
 				parts.append("he takes the %s's chair for %d turns, unpaid" % [
-					str(eff.get("seat", "")).to_upper(), MatchState.FOUNDER_TENURE_TURNS])
+					str(eff.get("seat", "")).to_upper(), AdvisorState.FOUNDER_TENURE_TURNS])
 			"founder_loan":
 				parts.append("a one-off £%.0f loan at %.0f%% as a signing gift" % [
 					float(eff.get("amount", 0.0)), float(eff.get("rate", 0.0)) * 100.0])
@@ -1364,9 +1364,9 @@ func _describe_effects(effects: Array, target: Dictionary) -> String:
 			"set_flag":
 				parts.append("%s becomes exempt from environmental events" % str(target.get("name", "it")))
 			"sell_land":
-				var patches := MatchState.sellable_land_patches(str(target.get("tile_id", "")))
+				var patches := BuildingState.sellable_land_patches(str(target.get("tile_id", "")))
 				parts.append("+£%.0f now (sell %d land patches at %.0fx)"
-					% [float(patches) * MatchState.LAND_PATCH_COST * float(eff.get("price_mult", 1.0)),
+					% [float(patches) * BuildingState.LAND_PATCH_COST * float(eff.get("price_mult", 1.0)),
 						patches, float(eff.get("price_mult", 1.0))])
 	if parts.is_empty():
 		return "No direct effect."

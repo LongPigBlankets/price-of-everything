@@ -10,7 +10,7 @@ const STARTING_MONEY: float = 600.0
 # Share of a demolished building's MATERIAL kits returned to the player on demolish (the
 # construction kit + each completed upgrade level's kit), rounded down; overflow that won't
 # fit the tile stockpile is paid as cash. NO build money is returned on demolish (that's what
-# Sell is for). 0.5 = half the materials back (owner spec 2026-07-05). This base is the lever a
+# Sell is for). 0.5 = half the materials back. This base is the lever a
 # future advisor modifies — read it through MatchState so an advisor bonus can stack on top.
 # A `var` (not const) so it can be tuned live. See MatchState.refund_cost / refund_plan / tick_demolish.
 var demolish_refund_share: float = 0.5
@@ -35,7 +35,7 @@ const LABOUR_UNSKILLED_GROWTH: float = 0.0005    # +0.05%/turn
 const LABOUR_SKILLED_GROWTH: float = 0.001       # +0.10%/turn
 const LABOUR_HIGH_SKILLED_GROWTH: float = 0.002  # +0.20%/turn
 
-# --- Advisor payroll (owner spec 2026-08-01) ---
+# --- Advisor payroll ---
 # Each seated advisor costs a flat base per turn that inflates at DOUBLE the rate of labour,
 # plus a share of company revenue. The revenue share is what makes a council expensive to a
 # large empire and cheap to a small one — five advisors take 5% of turnover, so the board has
@@ -63,7 +63,7 @@ const GLUT_UNITS: int = 100
 const MAX_PRICE_IMPACT_PCT: int = 10
 
 # --- Price impact (glut / deficit) — THE price model ---
-# Per-good price decay is RETIRED (owner ruling 2026-08-28,
+# Per-good price decay is RETIRED (see
 # docs/price-impact-ladder-spec.md) — the impact below is the only thing that
 # moves prices. A player's NET market volume in one good in one turn moves that
 # good's price once it crosses multiples of the good's BASE OUTPUT (the largest
@@ -81,8 +81,8 @@ const MAX_PRICE_IMPACT_PCT: int = 10
 # first rung, the price walks home to base over PRICE_IMPACT_RECOVERY_TURNS
 # turns; while the average stays loud, quiet turns HOLD (no pulsing exploit).
 #
-# Impact rates doubled on 2026-09-07: faster glut/deficit response at every
-# existing threshold. Threshold inflation, recovery length and caps are unchanged.
+# The rates are set for a fast glut/deficit response at every threshold;
+# threshold inflation, recovery length and caps are tuned separately.
 const PRICE_IMPACT_LADDER: Array = [
 	# [multiple of base output (strictly greater than), %-points per turn]
 	[1.0, 0.1],
@@ -99,8 +99,7 @@ const PRICE_IMPACT_LADDER: Array = [
 const PRICE_IMPACT_FLOOR_PCT: float = -60.0    # glut floor: price bottoms out at 40% of base
 const PRICE_IMPACT_CEILING_PCT: float = 150.0  # deficit ceiling: price tops out at 250% of base
 const PRICE_IMPACT_RECOVERY_TURNS: int = 10    # rolling-average window AND walk-back length
-# Thresholds inflate LINEARLY as the world economy grows (owner ruling
-# 2026-08-29): +25% of the ORIGINAL threshold every 20 turns — ×1.25 from t21,
+# Thresholds inflate LINEARLY as the world economy grows: +25% of the ORIGINAL threshold every 20 turns — ×1.25 from t21,
 # ×1.50 from t41 … ×4.50 by t300. Linear, NOT compounding.
 const IMPACT_THRESHOLD_INFLATION_STEP: float = 0.25
 const IMPACT_THRESHOLD_INFLATION_TURNS: int = 20
@@ -142,7 +141,7 @@ func units_cap_for_impact(max_pct: int) -> int:
 # A subscription gives a good the one-turn sea link. The charge itself is only paid when
 # that good ships. Insurance uses the market BUY price for both imports and exports.
 const SEAPORT_SUBSCRIPTION_COST_PER_GOOD: float = 0.0 # Legacy standing fee; retained for saves.
-# Port charging is AD VALOREM ONLY (owner ruling 2026-08-09). The flat per-good fee is
+# Port charging is AD VALOREM ONLY. The flat per-good fee is
 # retired: it was charged once per GOOD per turn, so quantity shipped was effectively free,
 # and freight collapsed from 11.3% of revenue to 0.3% as an empire grew. An ad valorem scales
 # with what actually moves, and is glut-immune — charge and revenue fall together, so the
@@ -214,7 +213,7 @@ const POWER_STEADY_BUILDINGS := ["hydro_power_plant"]
 # (MVP good internal_names: biomass g_062, bio_waste g_073, carbonised_biomass g_076.)
 const POWER_STEADY_FUELS := ["biomass", "bio_waste", "carbonised_biomass"]
 
-## Supply-priority category (owner, 28 Aug) for a generator, given its building
+## Supply-priority category for a generator, given its building
 ## internal_name and the SAME power-quality string Production._power_quality()
 ## already computes ("grey" / "green_steady" / "green_intermittent") — reused
 ## rather than a second classification list that could drift from it.
@@ -272,7 +271,7 @@ const TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS := {
 	"safe_liquid": 0.03,
 	"hazard_liquid": 0.03,
 	"liquid": 0.03,
-	"gas": 0.30,        # ~10x safe_liquid — compression/cryogenics (owner ruling 2026-07-27)
+	"gas": 0.30,        # ~10x safe_liquid — compression/cryogenics
 	"electricity": 0.02,
 }
 # AD-VALOREM component of the freight tariff: £/unit/turn per £1 of the good's value.
@@ -282,7 +281,7 @@ const TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS := {
 # the class rates only span 3x while prices span 2280x. solid_light is deliberately 0.0 so
 # electronics stay near-free to ship, as they are in reality (CPUs go by air).
 # Valued at MarketState.get_base_price_now() — this turn's DECAYED base price, with no
-# buy-side markup and no glut/deficit impact (owner ruling 2026-07-27). Impact is excluded
+# buy-side markup and no glut/deficit impact. Impact is excluded
 # on purpose: market-linking freight would make a flooded good cheaper to haul, partly
 # cancelling the price-impact penalty, and would make the quote unpredictable to plan against.
 const TRANSPORT_ADVALOREM_BY_WEIGHT_CLASS := {
@@ -293,7 +292,7 @@ const TRANSPORT_ADVALOREM_BY_WEIGHT_CLASS := {
 	"safe_liquid": 0.004,
 	"hazard_liquid": 0.006,
 	"liquid": 0.005,
-	"gas": 0.04,    # ~10x safe_liquid (owner ruling 2026-07-27). Gases ride NORMAL pipework
+	"gas": 0.04,    # ~10x safe_liquid. Gases ride NORMAL pipework
 	                # — they do not need the reinforced line — but compression and cryogenic
 	                # handling make them an order of magnitude dearer to move and hold. This
 					# is why real air-separation units sit ON the customer's site rather than
@@ -311,7 +310,7 @@ const TRANSPORT_MODE_COST_MULT := {
 	"nothing": 1.0,
 }
 # Liquids and gases hauled OVERLAND — road tankers and rail tank wagons instead of a line
-# that just flows. Owner ruling 2026-08-09: fluids may now leave the pipe network, but the
+# that just flows. Fluids may leave the pipe network, but the
 # convenience is priced. Multipliers are against the PIPE cost for the same good (pipes are
 # 1.0 above), rail is half of road exactly as it is for solids, and the hazard split that
 # separates pipes from reinforced pipes carries over — a hazardous load needs a certified
@@ -334,7 +333,7 @@ func fluid_overland_mult(good_id: String, mode: String) -> float:
 		return 0.0
 	var hazard := Catalog.get_transport_class(good_id) == "hazard_liquid"
 	return float(by_mode.get("hazard" if hazard else "safe", 1.0))
-# How far one turn-move reaches, by mode and infrastructure LEVEL (owner ruling 2026-08-09).
+# How far one turn-move reaches, by mode and infrastructure LEVEL.
 # Level 1 must match the `range` column in infrastructure.csv, which stays the fallback for any
 # mode not listed here.
 #
@@ -384,8 +383,8 @@ const TRANSPORT_LINK_CAP_BY_MODE_LEVEL := {
 # (export) and draw (import). A tile can both produce AND draw up to this. Power above
 # the cap simply doesn't generate / isn't supplied.
 const CABLE_POWER_CAP := {1: 2000, 2: 4000, 3: 7000}
-# Infrastructure upgrades (roads/rails/pipes/reinf_pipes/cables) are CASH-ONLY for now
-# (owner ruling 2026-07-10): a flat £ price per target level, no material kit, no
+# Infrastructure upgrades (roads/rails/pipes/reinf_pipes/cables) are CASH-ONLY for now:
+# a flat £ price per target level, no material kit, no
 # research gate. Capacity still scales by the mode tier table / CABLE_POWER_CAP.
 # (Balance data — rule #7.)
 const INFRA_UPGRADE_CASH_COST := {2: 150.0, 3: 350.0}
@@ -396,7 +395,7 @@ const INFRA_UPGRADE_CASH_COST := {2: 150.0, 3: 350.0}
 # both = 2500. A building's storage_boost (a Port adds +600) is added on top. Rule #7.
 const WAREHOUSE_STORAGE_CAP := {1: 800, 2: 1600, 3: 2500}
 const WAREHOUSE_UPGRADE_RESEARCH := ["Pallet Racking Systems", "Automated Storage & Retrieval"]
-# Per-tile warehouse expansion, paid in MATERIALS (owner spec 2026-07-09): the target
+# Per-tile warehouse expansion, paid in MATERIALS: the target
 # level keys the bill. Materials come either from the market (charged at ask + freight
 # to the tile) or pulled from stock across the player's tiles.
 # g_023 building_frame · g_071 construction_equipment_ice · g_027 plastics ·
@@ -406,11 +405,11 @@ const WAREHOUSE_UPGRADE_COSTS := {
 	3: {"g_023": 5, "g_071": 2, "g_042": 2, "g_036": 5},
 }
 # Warehousing fee: per-turn storage cost per STOCKPILED unit, by transport class
-# (owner spec 2026-07-09, part of the recipes-vs-overheads rebalance). Solids rack
+# (part of the recipes-vs-overheads rebalance). Solids rack
 # cheaply; liquids need tankage; hazardous liquids and gases need certified
 # pressure storage. Goods in transit, overflow-hold or JIT feed pay nothing.
 #
-# TWO-PART TARIFF (owner ruling 2026-07-27): flat + ad-valorem, the same shape as freight.
+# TWO-PART TARIFF: flat + ad-valorem, the same shape as freight.
 # A flat-only rate can only be correct at ONE price point — at 0.03 flat, coal pays for its
 # own value in 13 turns while an ice_car takes 3410, so a hoarder sitting on £56k of CPUs
 # paid the same as one sitting on £320 of coal. Real inventory carrying cost is 15-25%/yr
@@ -443,7 +442,7 @@ func good_value_basis(good_id: String) -> float:
 	return MarketState.get_base_price_now(good_id)
 
 # --- Loans ---
-# Capacity is no longer a flat ceiling. It STARTS at the base below and scales with
+# Capacity is not a flat ceiling. It STARTS at the base below and scales with
 # the company's recent performance so you can borrow against a growing business and
 # outgrow debt (see LoanState.capacity_total). The cap is sized so the per-turn loan
 # repayment (principal + interest, amortised over LOAN_TERM_TURNS) stays within
@@ -462,7 +461,7 @@ const LOAN_MINIMUM: float = 20.0
 const LOAN_GRACE_TURNS: int = 12
 const LOAN_PROFIT_WINDOW: int = 5          # Rolling window (turns) for the profit/revenue average
 const LOAN_REVENUE_BUFFER: float = 0.02    # Extra serviceable debt = this share of avg revenue
-# Asset-backed leg (2026-07-08): plant is collateral, so a loss-making trough never
+# Asset-backed leg: plant is collateral, so a loss-making trough never
 # zeroes the credit line — capacity = max(base, profit-scaled) + LTV x plant SALE value.
 # The basis is what the buildings would SELL for (BuildingPrice.sale_price — level-aware
 # via upgrade kits), so a levelled empire borrows against its real market worth.

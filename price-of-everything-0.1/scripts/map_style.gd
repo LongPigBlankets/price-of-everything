@@ -1,14 +1,14 @@
 extends Node
 ## MapStyle — the map-restyle seam (docs/map_ink_wash_restyle_spec.md, P0).
-## THE SHIPPED LOOK IS MIDCENTURY (owner, 2026-08-28), with ink underneath it.
+## THE SHIPPED LOOK IS MIDCENTURY, with ink underneath it.
 ## Style tables for every base-map color the restyles touch: `classic` mirrors
 ## the pre-restyle constants byte-for-byte; `ink` is the vintage board-game
 ## grade; `plate` is the city-plate sub-variant of ink (docs/map_city_plate_spec.md).
 ## Layers read through the getters below and rebuild on `style_changed`; the
-## `toggle ink` / `toggle plate` debug cheats flip at runtime, which doubles as
-## the classic-mode regression check. Purely visual — never sim state, never saved.
+## styles flip at runtime, which doubles as the classic-mode regression check.
+## Purely visual — never sim state, never saved.
 ##
-## CITY PLATE (2026-08-10): a denser downtown plate by the same cartographer —
+## CITY PLATE: a denser downtown plate by the same cartographer —
 ## near-uniform cream ground, light sky-blue water, and every solid mass drawn as
 ## an opaque prism (NW light, SE side-face silhouette under the top fill). It is a
 ## sub-variant: `plate` only takes effect while `ink` is true, so leaving ink also
@@ -17,19 +17,17 @@ extends Node
 
 signal style_changed
 
-## Ink & wash, the default until 2026-08-28 and now the layer UNDER midcentury: turning
-## midcentury off reveals this. `classic` is kept as the A/B reference — `toggle ink` flips
-## back to it, which is still the regression check that every layer reads its colours through
-## this seam rather than hardcoding them.
+## Ink & wash, the layer UNDER midcentury: turning midcentury off reveals this. `classic`
+## is kept as the A/B reference — flipping back to it is the regression check that every
+## layer reads its colours through this seam rather than hardcoding them.
 var ink := true
 ## "City plate" sub-variant; only active while `ink` is true. Never saved.
 var plate := false
-## The inhabited mid-century renderer, and the DEFAULT look since 2026-08-28: playtesters
-## picked it out for its colour and its lighter grunge. It is orthogonal to the three legacy
-## modes -- it masks (but never mutates) the current legacy choice, and disabling it reveals
-## that exact choice again, which is why `ink` below stays true underneath it. `toggle
-## midcentury` in the debug terminal therefore drops to ink & wash, and `toggle ink` from
-## there to classic; both remain the A/B reference they always were.
+## The inhabited mid-century renderer, and the DEFAULT look. It is orthogonal to the three
+## legacy modes -- it masks (but never mutates) the current legacy choice, and disabling it
+## reveals that exact choice again, which is why `ink` below stays true underneath it.
+## Disabling midcentury therefore drops to ink & wash, and disabling ink from there to
+## classic; both remain the A/B reference.
 var midcentury := true
 
 func set_ink(on: bool) -> void:
@@ -99,17 +97,15 @@ const _BAND_CLASSIC: Array[Color] = [
 	Color("7e955c"), Color("9aa771"), Color("bebd8b"), Color("c9b384"),
 	Color("bd9c69"), Color("a17e50"), Color("7d5c3a"), Color(1.0, 1.0, 1.0),
 ]
-## Lowland bands [2..4] deepened 2026-07-23 (owner: "too pastel") toward the
-## richer olive of the reference plate; uplands keep the straw→sienna climb.
+## Lowland bands [2..4] sit at the richer olive of the reference plate rather than
+## pastel; uplands keep the straw→sienna climb.
 const _BAND_INK: Array[Color] = [
 	Color("55603c"), Color("ddd0a6"), Color("9aa465"), Color("a3ad6e"),
 	Color("adb377"), Color("c1bd85"), Color("c9c287"), Color("cdb47e"),
 	Color("bf9a6a"), Color("a98156"), Color("8d6a47"), Color("efe6ce"),
 ]
-## Plate SHARES ink's land ramp (owner ruling 2026-08-11: "I preferred the old
-## green colour for the landmass"). Two earlier cuts regraded it — first to the
-## reference's cream, then to a pale sage — and both were rejected. The plate is
-## not a re-grade of the ground; it is a re-treatment of what STANDS on it.
+## Plate SHARES ink's land ramp. The plate is not a re-grade of the ground; it is
+## a re-treatment of what STANDS on it.
 ## Consequence, and it is the reason several values below are ink's too: on a
 ## mid-value green ground the figure/ground relationship inverts back to ink's,
 ## so buildings and canopy have to read LIGHT-on-dark, not dark-on-light.
@@ -123,10 +119,8 @@ const _SEA_INK: Array[Color] = [
 	Color("2e4468"), Color("35507a"), Color("46648c"), Color("4f6f99"),
 	Color("6b8fb5"), Color("ddd0a6"),
 ]
-## Plate water returns TOWARD the pre-ink blue (owner 2026-08-11): the ink
-## restyle washed the sea out to slate and the first plate cut took it further,
-## to a pale sky. This sits between the two — the saturation and depth of the
-## classic ramp, held a step lighter and warmer so it still belongs on paper.
+## Plate water sits between ink's slate and a pale sky — the saturation and depth
+## of the classic ramp, held a step lighter and warmer so it still belongs on paper.
 ## [5] is the sandy LAND BASE and must track band[1], which is ink's now.
 const _SEA_PLATE: Array[Color] = [
 	Color("13387f"), Color("18428e"), Color("2354a1"), Color("2c62ae"),
@@ -229,8 +223,8 @@ func port_art_wash() -> Color:
 ## ── Farms (building_visuals farm branch) ────────────────────────────────────
 
 ## Classic: one flat green. Ink: a seeded patchwork variant per parcel —
-## owner's mix (2026-07-23): pastel yellowish-green, pastel green, pastel
-## greenish-brown, plus a light yellow-green.
+## pastel yellowish-green, pastel green, pastel greenish-brown, plus a light
+## yellow-green.
 const _FARM_VARIANTS: Array[Color] = [
 	Color("b9c47f"), Color("a2b87c"), Color("a89e6a"), Color("c3c98b"),
 ]
@@ -343,9 +337,8 @@ const _PLATE_BLOCK_TOPS := {
 	"blue": Color("77a0b4"),      # water
 	"red": Color("c2b08a"),       # urban family default — khaki, NOT red
 	"red_mass": Color("b0483a"),  # the brick accent, courtyard masses only
-	## Three-way ownership read (owner 2026-08-11), which is also the reference's
-	## own block fabric: DECOR is cream, NPC is grey, the player is coloured.
-	## Cream took over the paper-white the NPC used to hold.
+	## Three-way ownership read, which is also the reference's own block fabric:
+	## DECOR is cream, NPC is grey, the player is coloured.
 	"npc": Color("8f8d85"),
 	"decor": Color("efe9db"),
 	"ruins": Color("7a5f43"),     # decay, not ownership — player AND NPC ruins
@@ -494,7 +487,7 @@ func contour_width(band: int) -> float:
 		return 1.6 if band % 2 == 0 else 1.0
 	return 2.0 if band % 2 == 0 else 1.2
 
-## Coastline stroke where the landmass meets the sea (owner: keep it bold).
+## Coastline stroke where the landmass meets the sea; kept bold.
 ## Transparent in classic = skip drawing.
 func coast_color() -> Color:
 	if is_midcentury():
@@ -627,7 +620,7 @@ func extrude_offset(tier: int) -> Vector2:
 
 ## Side faces are always derived from the top face — never hand-picked.
 ## `deep` is the NPC treatment: a heavier side face so a grey NPC block sits
-## visibly lower than the cream decor around it (owner 2026-08-11).
+## visibly lower than the cream decor around it.
 func extrude_side(fill: Color, tier: int, deep: bool = false) -> Color:
 	var f := (0.27 if tier == Extrude.FULL else 0.17) if is_midcentury() else (0.32 if tier == Extrude.FULL else 0.20)
 	if deep:

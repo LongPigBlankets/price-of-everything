@@ -83,7 +83,7 @@ var _acked: Dictionary = {}            # event id -> true (session-scoped ack fo
 var _last_alert_ids: Dictionary = {}   # alert ids present last evaluation (new-alert detect)
 var _layer: CanvasLayer = null
 var _strip: Control = null
-## Top Bar v2 replaces the collapsed strip with its Briefing module; the bar
+## The top bar's Briefing module replaces the collapsed strip; the bar
 ## sets this false at ready so the strip never mounts alongside it.
 var strip_enabled := true
 var _panel: Control = null
@@ -137,7 +137,7 @@ func _tutorial_active() -> bool:
 
 func _rebuild_items() -> void:
 	var out: Array = []
-	# 1. Decisions — queue order; blocking; never dismissible (owner ruling).
+	# 1. Decisions — queue order; blocking; never dismissible.
 	for view: Dictionary in DecisionState.pending_views():
 		var def: Dictionary = DecisionState.DECISION_DEFINITIONS.get(_def_id_for_uid(str(view.uid)), {})
 		out.append({
@@ -248,8 +248,8 @@ func _bankruptcy_item() -> Dictionary:
 func _cable_capped_producers() -> Dictionary:
 	var out: Dictionary = {}
 	for iid in Production.missing_by_building.keys():
-		var b: Dictionary = MatchState.get_building(str(iid))
-		if b.is_empty() or not MatchState.is_player_owned(b):
+		var b: Dictionary = BuildingState.get_building(str(iid))
+		if b.is_empty() or not BuildingState.is_player_owned(b):
 			continue
 		var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
 		if recipe.is_empty() or str(recipe.get("output_name", "")) != "power":
@@ -318,8 +318,8 @@ func _starved_item() -> Dictionary:
 	# tells the player to find power for a building that is drowning in it.
 	var cable_capped := _cable_capped_producers()
 	for iid in Production.missing_by_building.keys():
-		var b: Dictionary = MatchState.get_building(str(iid))
-		if b.is_empty() or not MatchState.is_player_owned(b) or cable_capped.has(str(iid)):
+		var b: Dictionary = BuildingState.get_building(str(iid))
+		if b.is_empty() or not BuildingState.is_player_owned(b) or cable_capped.has(str(iid)):
 			continue
 		var lacks_power := false
 		var missing: Array = Production.missing_by_building[iid]
@@ -356,13 +356,13 @@ func _starved_item() -> Dictionary:
 
 ## Tile storage full: arrived shipments waiting in overflow-hold (they retry each
 ## turn but occupy no stockpile until space frees) and/or pipeline orders clipped
-## because the tile can't physically hold its input buffers. This was THE silent
-## deadlock diagnosed 2026-07-09: a jammed tile starves its buildings while goods
+## because the tile can't physically hold its input buffers. This is THE silent
+## deadlock: a jammed tile starves its buildings while goods
 ## bounce outside. Fix: sell surplus, expand the warehouse, or spread buildings.
 func _storage_full_item() -> Dictionary:
 	var held_by_tile: Dictionary = {}   # tile_id -> units waiting
 	var held_total := 0
-	for r in MatchState.overflow_shipments:
+	for r in TransportState.overflow_shipments:
 		var tile := str(r.get("destination_tile", ""))
 		var qty := int(r.get("qty", 0))
 		held_by_tile[tile] = int(held_by_tile.get(tile, 0)) + qty
@@ -515,9 +515,9 @@ func _tile_display(tile_id: String) -> String:
 	return label if label != "" else str(Catalog.tile_label(tile_id))
 
 ## Input orders the market pipeline could not fully place for CASH last turn
-## (Production.last_turn_summary.input_orders_short). Silent before 2026-07-09:
-## a remote building's (lead+1)-turn pipeline order was clipped or skipped and
-## the player only saw the starvation days later.
+## (Production.last_turn_summary.input_orders_short). Without this item
+## a remote building's (lead+1)-turn pipeline order is clipped or skipped silently and
+## the player only sees the starvation days later.
 func _input_cash_short_item() -> Dictionary:
 	var short: Array = Production.last_turn_summary.get("input_orders_short", [])
 	if short.is_empty():
@@ -660,7 +660,7 @@ func _research_aggregate_item(events: Array) -> Dictionary:
 func dismiss(item_id: String) -> void:
 	var item := _item_by_id(item_id)
 	if item.is_empty() or not bool(item.get("dismissible", false)):
-		return   # decisions land here too — never dismissible (owner ruling)
+		return   # decisions land here too — never dismissible
 	if item.has("magnitude"):
 		_alert_dismissed[item_id] = item.magnitude   # quiet until it worsens
 		if item_id == "alert:storage_full":

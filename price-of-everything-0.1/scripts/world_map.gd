@@ -1,7 +1,7 @@
 extends Node2D
 
 @onready var terrain_layer: HexMap = %TerrainLayer
-## Redesigned Building Detail v2 — toggled by `swap bdp`. Built ON FIRST USE, not during
+## Redesigned Building Detail v2. Built ON FIRST USE, not during
 ## the load: a 2,400-line panel whose shell cost ~330 ms of the build to construct something
 ## the player cannot see until they click a building. Read it through the
 ## `building_panel_v2` property, which builds it; test whether it EXISTS with `_bdp_v2`.
@@ -174,8 +174,8 @@ func _ready() -> void:
 	# Advisor agenda: any building placement/completion counts as "a building built".
 	building_placed.connect(func(_t: String, _b: String, _r: String, _i: String, _c: Vector2i) -> void:
 		MatchState.note_building_built())
-	if not MatchState.advisor_walked.is_connected(_on_advisor_walked):
-		MatchState.advisor_walked.connect(_on_advisor_walked)
+	if not AdvisorState.advisor_walked.is_connected(_on_advisor_walked):
+		AdvisorState.advisor_walked.connect(_on_advisor_walked)
 	await _build_base()
 	_hide_world_for_load()   # _build_base parents a couple of effect layers onto us
 	_prof("_build_base (HUD scaffold)")
@@ -187,7 +187,7 @@ func _ready() -> void:
 func _on_advisor_walked(advisor_id: String) -> void:
 	if _hud == null:
 		return
-	var name_str := str(MatchState.get_advisor(advisor_id).get("name", advisor_id))
+	var name_str := str(AdvisorState.get_advisor(advisor_id).get("name", advisor_id))
 	var dlg := AcceptDialog.new()
 	if DS and DS.theme:
 		dlg.theme = DS.theme
@@ -279,10 +279,9 @@ func _build_base() -> void:
 	building_placed.connect(forest_visuals.on_building_placed)
 	# A cancelled construction site removes its hex icon (it was never a real building).
 	Construction.construction_cancelled.connect(_on_construction_cancelled)
-	# A DEMOLISHED building must stop being drawn. The removal path existed but was only
-	# reached by cancelling a build — sell, demolish, liquidate and bankruptcy all emit
-	# building_removed and left the sprite standing (owner 2026-08-29).
-	MatchState.building_removed.connect(_on_building_removed_visuals)
+	# A DEMOLISHED building must stop being drawn: sell, demolish, liquidate and bankruptcy
+	# all emit building_removed, not just a cancelled build.
+	BuildingState.building_removed.connect(_on_building_removed_visuals)
 	Construction.building_tab_opened.connect(_show_building_credit_dialog)
 	# Deposit feedback: reveal/popup when a blind (unsurveyed) build finishes, and a
 	# centre-screen prompt when a deposit runs out under a working building.
@@ -295,7 +294,7 @@ func _build_base() -> void:
 	# connection-visual wiring happens there, at construction, rather than here: there is no
 	# panel to wire until something asks for one.
 
-	# Research unlocks no longer pop a dialog — they are aggregated into a single
+	# Research unlocks do not pop a dialog — they are aggregated into a single
 	# Turn Briefing "Research unlocked" update (see turn_briefing._research_aggregate_item).
 	#
 	# The dialogs, the debug terminal and the two effect layers are built AFTER the build,
@@ -355,7 +354,7 @@ func finish_build(animate: bool) -> void:
 		MatchState.mark_tiles_surveyed(all_ids)
 	await _build_yield()
 	# Forests are a TERRAIN feature (the land mask + block templates read them), so they come before
-	# roads. The buildings that used to follow here are deferred until after the roads exist.
+	# roads. Buildings are deferred until after the roads exist.
 	if (not loaded_pending or pending_start) and not pending_tutorial:
 		_place_northern_old_growth_forests()
 	else:
@@ -401,7 +400,7 @@ func finish_build(animate: bool) -> void:
 			_apply_baked_road_flags()
 		await _build_yield()
 		# The bulk window coalesces the per-placement redraws (the fast path). The
-		# `swap loading_screen` cheat leaves it off so each placement redraws the whole
+		# Legacy load leaves it off so each placement redraws the whole
 		# layer, reproducing the old slow build for a recording.
 		var bulk_place := not LoadPacing.legacy_load
 		if bulk_place:
@@ -544,14 +543,14 @@ func finish_build(animate: bool) -> void:
 	# looking at because the screen is fading out over it.
 	_hide_world_after_warm()
 
-	# EVERYTHING ELSE ALSO HAPPENS BEFORE "Begin" IS OFFERED. It used to run after, on the
-	# theory that the player's read-and-click was dead time — but with the load down to ~10 s
-	# the button now arrives while they are still watching, they click straight through, and
+	# EVERYTHING ELSE ALSO HAPPENS BEFORE "Begin" IS OFFERED. Running it after would treat
+	# the player's read-and-click as dead time — but with the load at ~10 s the button
+	# arrives while they are still watching, they click straight through, and
 	# the work lands on the map instead. "Ready" has to mean ready.
 	await _warm_deferred_ui()
 	build_complete = true   # the loading screen may now offer "Begin"
 	print("WorldMap ready, signals connected")
-	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", MatchState.buildings.size())
+	print("MatchState ready. Money: ", MatchState.money, ". Buildings: ", BuildingState.buildings.size())
 
 	# Fresh scripted start: pin the camera on the start's hub and show the once-only founding
 	# intro. Gated on pending_start so a loaded save (which keeps ruleset.start_id) never re-shows it.
@@ -793,12 +792,12 @@ func _warm_deferred_ui() -> void:
 	t = Time.get_ticks_usec()
 	GoodIconsScript.warm(Catalog.all_goods())
 	_prof_us("warm good icons join", t)
-	# The hill contours ARE pre-warmed here now, on worker threads.
+	# The hill contours ARE pre-warmed here, on worker threads.
 	#
-	# They used to be left until after Begin, on the reasoning that the zoomed-in LOD is only
-	# needed if the player zooms in. It is not: _on_begin_pressed starts the camera intro
-	# zoom, which crosses the LOD threshold on its own, so _draw_fill triangulated every
-	# visible contour inside a single draw call and the map opened on a 7.1 s frozen frame —
+	# Leaving them until after Begin (on the reasoning that the zoomed-in LOD is only
+	# needed if the player zooms in) does not work: _on_begin_pressed starts the camera intro
+	# zoom, which crosses the LOD threshold on its own, so _draw_fill would triangulate every
+	# visible contour inside a single draw call and the map would open on a 7.1 s frozen frame —
 	# 11.3 s of stall across the two frames after the click. Measured, before and after, with
 	# tools/begin_click_probe.tscn.
 	#
@@ -851,7 +850,7 @@ func _place_yield(animate: bool) -> void:
 	if not animate:
 		return
 	if LoadPacing.legacy_load:
-		await get_tree().process_frame   # cheat: the slow pre-optimization one-per-frame build
+		await get_tree().process_frame   # legacy load: the slow one-per-frame build
 		return
 	if Time.get_ticks_msec() - _place_slice_t0 < PLACE_SLICE_MS:
 		return
@@ -886,8 +885,8 @@ func _rebuild_after_load() -> void:
 		building_visuals.clear_all()
 	if forest_visuals.has_method("clear_all"):
 		forest_visuals.clear_all()
-	for instance_id in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[instance_id]
+	for instance_id in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[instance_id]
 		var tile_id := str(inst.get("tile_id", ""))
 		building_placed.emit(tile_id, str(inst.get("building_id", "")),
 			str(inst.get("recipe_id", "")), str(instance_id), terrain_layer.id_to_coord(tile_id))
@@ -1133,7 +1132,7 @@ func _on_transfer_tile_picked(tile_data: Dictionary) -> void:
 
 func _relevant_transfer_tiles() -> Array:
 	var s: Dictionary = {}
-	for t in MatchState.tile_buildings.keys():
+	for t in BuildingState.tile_buildings.keys():
 		s[str(t)] = true
 	for t in Stockpile.tiles_with_stock():
 		if str(t).begins_with("tile_"):
@@ -1182,7 +1181,7 @@ func _update_transfer_cost() -> void:
 	var qty := int(_transfer.get("qty", 0))
 	var recurring: bool = _tr_recurring != null and _tr_recurring.button_pressed
 	if origin != "" and dest != "" and qty > 0:
-		var prev: Dictionary = MatchState.preview_move(origin, dest, {good: qty})
+		var prev: Dictionary = TransportState.preview_move(origin, dest, {good: qty})
 		var cost := float(prev.get("cost", 0.0))
 		_tr_cost.text = ("Transport cost: £%.2f every turn" % cost) if recurring else ("Transport cost: £%.2f, one off" % cost)
 	else:
@@ -1211,12 +1210,12 @@ func _on_transfer_confirm() -> void:
 	var qty := int(_transfer.get("qty", 0))
 	if origin == "" or dest == "" or qty <= 0:
 		return
-	var summary: Dictionary = MatchState.queue_move(origin, dest, {good: qty})
+	var summary: Dictionary = TransportState.queue_move(origin, dest, {good: qty})
 	if not summary.is_empty():
 		MatchState.request_toast("Transferring %d %s from %s to %s" % [
 			qty, Catalog.get_display_name(good), Catalog.tile_label(origin), Catalog.tile_label(dest)], "success")
 	if _tr_recurring != null and _tr_recurring.button_pressed:
-		MatchState.add_recurring_move(origin, dest, {good: qty})
+		TransportState.add_recurring_move(origin, dest, {good: qty})
 	_close_transfer()
 
 func _close_transfer() -> void:
@@ -1333,8 +1332,8 @@ func _build_transfer_dialog() -> void:
 
 func _tile_production_per_turn(tile: String, good: String) -> int:
 	var total := 0
-	for iid in MatchState.tile_buildings.get(tile, []):
-		var b: Dictionary = MatchState.get_building(str(iid))
+	for iid in BuildingState.tile_buildings.get(tile, []):
+		var b: Dictionary = BuildingState.get_building(str(iid))
 		var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
 		total += Catalog.recipe_output_qty(recipe, good)
 	return total
@@ -1766,9 +1765,9 @@ func _on_focus_tile_requested(tile_id: String) -> void:
 ## From INSIDE the Empire view the map is hidden, so the pan and the tile panel
 ## would both happen invisibly behind the overlay — and the pan would leave the
 ## map somewhere else on Tab-out. There, ONLY the building detail panel opens,
-## docked where the tile view panel normally sits (owner 2026-07-31).
+## docked where the tile view panel normally sits.
 func _on_focus_building_requested(instance_id: String) -> void:
-	var building: Dictionary = MatchState.get_building(instance_id)
+	var building: Dictionary = BuildingState.get_building(instance_id)
 	if building.is_empty():
 		return
 	if empire_view != null and empire_view.visible:
@@ -1874,7 +1873,7 @@ func _on_stockpile_destination_selected(tile_data: Dictionary, ctrl: bool = fals
 			_hide_stockpile_select_prompt()
 			terrain_layer.end_stockpile_destination_selection()
 			_exit_stockpile_ui_mode()
-			_open_building_detail(MatchState.get_building(instance_id))
+			_open_building_detail(BuildingState.get_building(instance_id))
 		else:
 			MatchState.request_toast("%d destination%s selected — Shift-click another, or release Shift and click to finish" % [count, "" if count == 1 else "s"], "info")
 		return
@@ -1884,7 +1883,7 @@ func _on_stockpile_destination_selected(tile_data: Dictionary, ctrl: bool = fals
 		_pending_stockpile_selection.clear()
 		_hide_stockpile_select_prompt()
 		_exit_stockpile_ui_mode()
-		_open_building_detail(MatchState.get_building(instance_id))
+		_open_building_detail(BuildingState.get_building(instance_id))
 		return
 	if ctrl:
 		# CTRL+click: don't route yet — highlight the pick green and open the
@@ -2194,7 +2193,7 @@ func _show_building_credit_dialog(instance_id: String) -> void:
 	if preset != "ask":
 		MatchState.set_building_tab_mode(instance_id, preset)
 		return
-	var building: Dictionary = MatchState.get_building(instance_id)
+	var building: Dictionary = BuildingState.get_building(instance_id)
 	var label := str(Catalog.get_building(str(building.get("building_id", ""))).get("display_name", "this building"))
 	_credit_dialog.open(instance_id, label)
 
@@ -2272,7 +2271,7 @@ func _on_construction_use_stockpile_requested(building_id: String, recipe_id: St
 	if source.is_empty():
 		MatchState.build_rejected_no_funds.emit("No tile has the spare materials to build this here")
 		return
-	var move_cost: float = float(MatchState.preview_move(str(source.get("tile_id", "")), tile_id, missing).get("cost", 0.0))
+	var move_cost: float = float(TransportState.preview_move(str(source.get("tile_id", "")), tile_id, missing).get("cost", 0.0))
 	if MatchState.money < cost + move_cost:
 		MatchState.build_rejected_no_funds.emit(
 			"Not enough money — build £%.0f + transport £%.0f, you have £%.0f" % [cost, move_cost, MatchState.money])
@@ -2349,13 +2348,13 @@ func _place_npc_ports(animate: bool = false) -> void:
 		if coord == Vector2i(-1, -1):
 			continue
 		var already := false
-		for iid in MatchState.tile_buildings.get(tile_id, []):
-			if str(MatchState.get_building(iid).get("building_id", "")) == "b_004":
+		for iid in BuildingState.tile_buildings.get(tile_id, []):
+			if str(BuildingState.get_building(iid).get("building_id", "")) == "b_004":
 				already = true
 				break
 		if already:
 			continue
-		var instance_id := MatchState.add_building("b_004", "", tile_id, "Three Diamonds Shipping Corporation")
+		var instance_id := BuildingState.add_building("b_004", "", tile_id, "Three Diamonds Shipping Corporation")
 		building_placed.emit(tile_id, "b_004", "", instance_id, coord)
 		await _place_yield(animate)   # keeps the loading screen animating between slices
 
@@ -2364,10 +2363,10 @@ func _place_ruins(tile_id: String, animate: bool = false) -> void:
 	var coord: Vector2i = terrain_layer.id_to_coord(tile_id)
 	if coord == Vector2i(-1, -1):
 		return
-	for iid in MatchState.tile_buildings.get(tile_id, []):
-		if str(MatchState.get_building(iid).get("building_id", "")) == "b_031":
+	for iid in BuildingState.tile_buildings.get(tile_id, []):
+		if str(BuildingState.get_building(iid).get("building_id", "")) == "b_031":
 			return
-	var instance_id := MatchState.add_building("b_031", "", tile_id, "Abandoned Holdings")
+	var instance_id := BuildingState.add_building("b_031", "", tile_id, "Abandoned Holdings")
 	building_placed.emit(tile_id, "b_031", "", instance_id, coord)
 	await _place_yield(animate)
 
@@ -2437,7 +2436,7 @@ func _outline_centroid(outline: Array) -> Vector2:
 func _place_northern_old_growth_forests() -> void:
 	# A wood drawn in the map editor makes its tile wooded in the SIM too, wherever it is —
 	# the northern-rows rule below seeds the procedural old growth, and this seeds anything a
-	# designer planted by hand (owner 2026-08-29). Same building, same deterministic id, so a
+	# designer planted by hand. Same building, same deterministic id, so a
 	# hand-planted wood is indistinguishable from an old-growth one to everything downstream.
 	_index_authored_forests()
 	var start_forests := _start_layout_forest_tiles()
@@ -2455,7 +2454,7 @@ func _place_northern_old_growth_forests() -> void:
 		var authored_coord: Vector2i = terrain_layer.id_to_coord(authored_id)
 		if authored_coord == Vector2i(-1, -1):
 			continue
-		var authored_iid: String = MatchState.add_building(
+		var authored_iid: String = BuildingState.add_building(
 			OLD_GROWTH_FOREST_BUILDING_ID, "", authored_id, OLD_GROWTH_FOREST_OWNER,
 			"forest_%s_%s" % [OLD_GROWTH_FOREST_BUILDING_ID, authored_id], false)
 		building_placed.emit(authored_id, OLD_GROWTH_FOREST_BUILDING_ID, "", authored_iid, authored_coord)
@@ -2476,7 +2475,7 @@ func _place_northern_old_growth_forests() -> void:
 		# (instance_id, tile_id), and the roads-v2 starting-network bake must
 		# reproduce the exact discs a fresh match creates. One old-growth per
 		# tile (guarded above), so the id cannot collide.
-		var instance_id: String = MatchState.add_building(
+		var instance_id: String = BuildingState.add_building(
 			OLD_GROWTH_FOREST_BUILDING_ID,
 			"",
 			tile_id,
@@ -2499,10 +2498,10 @@ func _place_start_buildings(animate: bool = false) -> void:
 		if coord == Vector2i(-1, -1):
 			continue
 		var instance_id := str(entry.instance_id)
-		if MatchState.buildings.has(instance_id):
+		if BuildingState.buildings.has(instance_id):
 			continue
 		var t_add := Time.get_ticks_usec()
-		MatchState.add_building(
+		BuildingState.add_building(
 			str(entry.building), str(entry.recipe), tile_id,
 			str(entry.owner), instance_id, false)
 		_place_add_us += Time.get_ticks_usec() - t_add
@@ -2515,13 +2514,13 @@ func _place_start_buildings(animate: bool = false) -> void:
 ## the deferred visual pass that gives them the same road-aware layout as ports,
 ## ruins and the pre-placed NPC companies.
 func _place_pending_start_buildings(animate: bool = false) -> void:
-	for instance_id in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[instance_id]
+	for instance_id in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[instance_id]
 		var building_id := str(inst.get("building_id", ""))
 		if LoadPacing.legacy_load:
 			# Cheat: reproduce the old procedure — the original skip re-emits every start
 			# forest one per frame (the ~11 s tail), which is exactly what we want to record.
-			if not MatchState.is_player_owned(inst) and building_visuals.has_placement(str(instance_id)):
+			if not BuildingState.is_player_owned(inst) and building_visuals.has_placement(str(instance_id)):
 				continue
 		# Forests draw in ForestVisuals and never get a building_visuals footprint, so
 		# has_placement() is false for them forever — without this check every start
@@ -2537,7 +2536,7 @@ func _place_pending_start_buildings(animate: bool = false) -> void:
 		# pass drew them: ports/ruins/companies already have footprints, but a snapshot-
 		# seeded NPC building (e.g. the tutorial's Vandel window factory) does not and
 		# would otherwise never render.
-		elif not MatchState.is_player_owned(inst) and building_visuals.has_placement(str(instance_id)):
+		elif not BuildingState.is_player_owned(inst) and building_visuals.has_placement(str(instance_id)):
 			continue
 		var tile_id := str(inst.get("tile_id", ""))
 		var coord: Vector2i = terrain_layer.id_to_coord(tile_id)
@@ -2555,8 +2554,8 @@ func _place_pending_start_buildings(animate: bool = false) -> void:
 func _audit_start_visuals() -> void:
 	var no_footprint: Dictionary = {}   # building_id -> count without a drawn footprint
 	var no_forest: Dictionary = {}      # forest building_id -> count missing from ForestVisuals
-	for iid in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[iid]
+	for iid in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[iid]
 		var bid := str(inst.get("building_id", ""))
 		if building_visuals.FOREST_BUILDING_IDS.has(bid):
 			if not forest_visuals.has_forest(str(iid)):
@@ -2604,16 +2603,16 @@ func _start_layout_forest_tiles() -> Dictionary:
 ## Is any forest — new growth or old — already standing on this tile? Uses the footprint
 ## helper's list rather than a fourth copy of the two ids.
 func _tile_has_forest_building(tile_id: String) -> bool:
-	for iid in MatchState.tile_buildings.get(tile_id, []):
-		var building_id := str(MatchState.get_building(str(iid)).get("building_id", ""))
+	for iid in BuildingState.tile_buildings.get(tile_id, []):
+		var building_id := str(BuildingState.get_building(str(iid)).get("building_id", ""))
 		if ForestFootprint.FOREST_BUILDING_IDS.has(building_id):
 			return true
 	return false
 
 
 func _tile_has_building(tile_id: String, building_id: String) -> bool:
-	for iid in MatchState.tile_buildings.get(tile_id, []):
-		if str(MatchState.get_building(str(iid)).get("building_id", "")) == building_id:
+	for iid in BuildingState.tile_buildings.get(tile_id, []):
+		if str(BuildingState.get_building(str(iid)).get("building_id", "")) == building_id:
 			return true
 	return false
 
@@ -2653,7 +2652,7 @@ func _good_display_for_deposit(token: String) -> String:
 # there, otherwise warn the player it will not run. Partial/surveyed tiles are
 # skipped (the player already knew the ground).
 func _on_construction_completed_deposit_check(instance_id: String, tile_id: String) -> void:
-	var building: Dictionary = MatchState.get_building(instance_id)
+	var building: Dictionary = BuildingState.get_building(instance_id)
 	if building.is_empty():
 		return
 	var recipe: Dictionary = Catalog.get_recipe(str(building.get("recipe_id", "")))
@@ -2687,9 +2686,9 @@ func _on_deposit_exhausted(tile_id: String, token: String) -> void:
 
 # The player building on `tile_id` whose recipe draws on the given deposit token.
 func _building_with_deposit_token(tile_id: String, token: String) -> Dictionary:
-	for iid in MatchState.tile_buildings.get(tile_id, []):
-		var b: Dictionary = MatchState.get_building(str(iid))
-		if b.is_empty() or not MatchState.is_player_owned(b):
+	for iid in BuildingState.tile_buildings.get(tile_id, []):
+		var b: Dictionary = BuildingState.get_building(str(iid))
+		if b.is_empty() or not BuildingState.is_player_owned(b):
 			continue
 		if _recipe_nonwater_deposit_token(Catalog.get_recipe(str(b.get("recipe_id", "")))) == token:
 			return b
@@ -2772,9 +2771,9 @@ func _tile_produces_good(tile_data: Dictionary, internal_name: String) -> bool:
 	var tile_id: String = tile_data.get("id", "")
 	if tile_id == "":
 		return false
-	var instance_ids: Array = MatchState.tile_buildings.get(tile_id, [])
+	var instance_ids: Array = BuildingState.tile_buildings.get(tile_id, [])
 	for inst_id in instance_ids:
-		var building: Dictionary = MatchState.buildings.get(inst_id, {})
+		var building: Dictionary = BuildingState.buildings.get(inst_id, {})
 		if building.is_empty():
 			continue
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
@@ -2812,13 +2811,13 @@ func _on_infrastructure_attempted(infra_type: String, tile_id: String) -> void:
 				return
 		var space_check := _space_check_for_build(tile_id, infra_building_id)
 		if not bool(space_check.get("allowed", false)):
-			# Say it ON THE TILE. This used to return silently, so the placement icon simply
-			# appeared to do nothing and the corner toast went unread (owner 2026-08-23).
+			# Say it ON THE TILE: returning silently makes the placement icon appear to do
+			# nothing, and the corner toast goes unread.
 			_flash_build_refusal(coord, str(space_check.get("reason", "Cannot build here")))
 			return
 		# Infrastructure uses the same construction-material lifecycle as every
-		# other building. Previously it skipped this check, then start_on_tile()
-		# consumed whatever happened to be there and silently began the project.
+		# other building; without this check start_on_tile() would consume whatever
+		# happened to be there and silently begin the project.
 		var mat_check: Dictionary = Construction.check_tile(tile_id, infra_building_id)
 		if not bool(mat_check.get("satisfied", false)):
 			match MatchState.consume_build_material_source():
@@ -2904,21 +2903,21 @@ func tutorial_install_infrastructure(tile_ids: Array, infra_type: String) -> voi
 func tutorial_spawn_building(building_id: String, recipe_id: String, tile_id: String) -> String:
 	if not bool(MatchState.ruleset.get("tutorial_enabled", false)):
 		return ""
-	for iid in MatchState.tile_buildings.get(tile_id, []):
-		var existing: Dictionary = MatchState.get_building(str(iid))
-		if MatchState.is_player_owned(existing) \
+	for iid in BuildingState.tile_buildings.get(tile_id, []):
+		var existing: Dictionary = BuildingState.get_building(str(iid))
+		if BuildingState.is_player_owned(existing) \
 				and str(existing.get("building_id", "")) == building_id \
 				and str(existing.get("recipe_id", "")) == recipe_id:
 			return str(iid)
 	var coord := terrain_layer.id_to_coord(tile_id)
 	if coord == Vector2i(-1, -1):
 		return ""
-	var instance_id := MatchState.add_building(building_id, recipe_id, tile_id)
+	var instance_id := BuildingState.add_building(building_id, recipe_id, tile_id)
 	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
 	return instance_id
 
 func _on_construction_completed_infra(instance_id: String, tile_id: String) -> void:
-	var building_id := str(MatchState.get_building(instance_id).get("building_id", ""))
+	var building_id := str(BuildingState.get_building(instance_id).get("building_id", ""))
 	var internal_name := str(Catalog.get_building(building_id).get("internal_name", ""))
 	if not _is_tile_infra_type(internal_name):
 		return
@@ -2944,7 +2943,7 @@ func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
 	# Overland infrastructure cannot be laid on water, and saying so comes FIRST: a sea
 	# tile also has no land to own, so the land gate below would otherwise answer "buy more
 	# land here" for a road across open water — advice the player cannot act on and which
-	# hides the real reason (owner 2026-08-25).
+	# hides the real reason.
 	var internal := str(building_data.get("internal_name", ""))
 	if OVERLAND_INFRA.has(internal):
 		var ttype := Catalog.tile_type(tile_id)
@@ -2954,9 +2953,9 @@ func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
 			_show_tile_space_error(sea_msg)
 			return {"allowed": false, "cost_multiplier": 1.0, "reason": sea_msg}
 	var added_space := maxf(0.0, float(building_data.get("tile_size_used", 1.0)))
-	var current_space := MatchState.get_tile_space_used(tile_id)
+	var current_space := BuildingState.get_tile_space_used(tile_id)
 	var projected_space := current_space + added_space
-	var tile_cap := MatchState.max_tile_land(tile_id)
+	var tile_cap := BuildingState.max_tile_land(tile_id)
 	if projected_space > float(tile_cap):
 		print("[Build] FAILED: tile %s is full (need %s, max %s)" % [tile_id, str(projected_space), str(tile_cap)])
 		var full_msg := "There is no more room on that tile. Demolish buildings to make room."
@@ -2964,8 +2963,8 @@ func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
 		return {"allowed": false, "cost_multiplier": 1.0, "reason": "No room on this tile"}
 	# The owned-land gate only counts the player's estate — NPC buildings sit on
 	# their own land and must not eat the land the player has bought.
-	var projected_player := MatchState.get_tile_player_space_used(tile_id) + added_space
-	var land_owned := MatchState.get_tile_land_owned(tile_id)
+	var projected_player := BuildingState.get_tile_player_space_used(tile_id) + added_space
+	var land_owned := BuildingState.get_tile_land_owned(tile_id)
 	# Auto-buy land (construct setting, or this one attempt's buy-land intent from the
 	# V3 confirm — BuildMode.attempt_buy_land): cover ONLY the shortfall, rounded up to whole
 	# patches, and only when there genuinely isn't room already — a tile that can already
@@ -2975,10 +2974,10 @@ func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
 	if projected_player > float(land_owned) \
 			and (MatchState.construct_auto_buy_land or BuildMode.attempt_buy_land):
 		var shortfall := projected_player - float(land_owned)
-		var patches := int(ceil(shortfall / float(MatchState.LAND_PATCH_SIZE)))
+		var patches := int(ceil(shortfall / float(BuildingState.LAND_PATCH_SIZE)))
 		var before := land_owned
-		if MatchState.purchase_tile_land(tile_id, patches):
-			land_owned = MatchState.get_tile_land_owned(tile_id)
+		if BuildingState.purchase_tile_land(tile_id, patches):
+			land_owned = BuildingState.get_tile_land_owned(tile_id)
 			MatchState.request_toast("Bought %d land on %s to fit this building." % [
 				land_owned - before, Catalog.tile_label(tile_id)], "info")
 		else:

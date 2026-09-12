@@ -18,10 +18,10 @@ const SHORE_SHIFTS := [-18.0, 18.0]
 const APPROACH_ANGLES_DEG := [-22.0, -8.0, 8.0, 22.0]
 ## How far SEAWARD of the sampled shore point the quay face — the shared edge
 ## between the dry head and the harbour water — is pushed. THE HEAD IS A STRAIGHT
-## BLOCK AND IS NEVER CLIPPED TO THE COASTLINE (owner, 2026-08-21). A dock is
+## BLOCK AND IS NEVER CLIPPED TO THE COASTLINE. A dock is
 ## reclaimed ground: its quay face is a straight edge cut across the shore, not a
-## tracing of every cove and spit. Clipping produced a ragged apron whose outline
-## wandered with the beach and left the arms meeting it at odd angles.
+## tracing of every cove and spit. Clipping would give a ragged apron whose outline
+## wanders with the beach and leaves the arms meeting it at odd angles.
 ## Squaring the basin (parallel arms, 90 degrees to the head) makes the seating
 ## fussier on a curved shore: the rectangle's root corners must both be wet. Two
 ## further shifts let the existing search find a wetter seat rather than us
@@ -30,7 +30,7 @@ const APPROACH_ANGLES_DEG := [-22.0, -8.0, 8.0, 22.0]
 const QUAY_SHIFTS := [10.0, 22.0, 34.0, 46.0, 58.0]
 ## Rungs the harbour width may step down through to find a seat where BOTH root
 ## corners are wet. The arms are parallel at every rung — only the gap between
-## them narrows — so the owner's ruling holds whichever one is taken.
+## them narrows — so the straight-block rule holds whichever one is taken.
 const BASIN_WIDTH_LADDER := [1.0, 0.88, 0.76, 0.64]
 ## Rendered coastline = the boundary of the baked band-5 "land base" polygon.
 ## Probed against NavGrid over 789,496 coastal-band cells: 99.470% agreement.
@@ -87,12 +87,12 @@ static func build(hex_map: TileMapLayer, tile_id: String,
 		return {}
 	var river_exclusions := _river_exclusions(hex_map, center)
 	# The exclusions have to be gathered BEFORE the cache is consulted, because they are what
-	# the key is made of. The key used to carry the global `footprint_version` instead, which
-	# every building placed anywhere on the map increments — so a harbour on the far side of
-	# the continent missed its cache the moment you built a shed, and re-ran a 1,440-candidate
-	# coastline search to arrive at the identical plan. That, three ports at a time, is the
-	# 3–4 s freeze on pressing Build (owner, 25 Aug). What a plan actually depends on is the
-	# obstacles NEAR THIS PORT, so that is what it is keyed on now.
+	# the key is made of. Keying on the global `footprint_version` instead — which every
+	# building placed anywhere on the map increments — makes a harbour on the far side of
+	# the continent miss its cache the moment a shed is built, and re-run a 1,440-candidate
+	# coastline search to arrive at the identical plan: three ports at a time, that is a
+	# multi-second freeze on pressing Build. What a plan actually depends on is the
+	# obstacles NEAR THIS PORT, so that is what it is keyed on.
 	var gameplay_exclusions := _gameplay_exclusions(hex_map, instance_id, center)
 	var cache_key := _cache_key(hex_map, tile_id, coord, gameplay_exclusions)
 	if _plan_cache.has(cache_key):
@@ -174,11 +174,11 @@ static func build(hex_map: TileMapLayer, tile_id: String,
 		collision_rejects, access_rejects, pruned])
 	return plan
 
-## Everything one harbour's plan actually depends on, and nothing else. Both halves used to be
-## GLOBAL counters — RoadNetwork's total edge count and the map-wide footprint version — so a
-## lane laid, or a shed placed, anywhere on the continent missed the cache for every port and
-## re-ran a 1,440-candidate coastline search per harbour to arrive at the identical drawing.
-## Three of those is the 3–4 s freeze the owner saw after pressing Build (25 Aug).
+## Everything one harbour's plan actually depends on, and nothing else. Keying on GLOBAL
+## counters (RoadNetwork's total edge count, the map-wide footprint version) would mean a
+## lane laid, or a shed placed, anywhere on the continent misses the cache for every port and
+## re-runs a 1,440-candidate coastline search per harbour to arrive at the identical drawing —
+## a multi-second freeze after pressing Build.
 static func _cache_key(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 		gameplay_exclusions: Array) -> String:
 	return "%d|%s|%d|%d" % [hex_map.get_instance_id(), tile_id,
@@ -241,7 +241,7 @@ static func _candidate(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 	var arm_width := float(spec.arm_width)
 	# The QUAY FACE is one shared edge: dry head landward of it, harbour water
 	# seaward of it. L1 left an unvalidated throat between the head and the basin
-	# and that throat is the land the owner can see inside the U.
+	# and that throat is land visible inside the U.
 	var head_front := shore + seaward * quay_shift
 	# Three-point early-out before any polygon work: the harbour throat has to be
 	# open water or this whole candidate is dead.
@@ -251,9 +251,9 @@ static func _candidate(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 			_water_at(throat_probe + tangent * throat_half * 0.85) != NavGrid.WATER_SEA or \
 			_water_at(throat_probe - tangent * throat_half * 0.85) != NavGrid.WATER_SEA:
 		return {"basin_valid": false}
-	# RECTANGULAR basin (owner ruling): the two edges the arms lie on run exactly
+	# RECTANGULAR basin: the two edges the arms lie on run exactly
 	# seaward, so the arms are PARALLEL to each other and meet the landside head
-	# at 90 degrees. The earlier asymmetric trapezoid splayed them by construction.
+	# at 90 degrees. An asymmetric trapezoid would splay them by construction.
 	# Per-site variation now comes from the coastline sample, orientation, head
 	# size, arm length and arm width — not from bending the harbour.
 	# Width = the quay-face half-width that already validated at 100% face water.
@@ -417,7 +417,7 @@ static func _candidate(hex_map: TileMapLayer, tile_id: String, coord: Vector2i,
 	var access_length := _polyline_length(road_access)
 	var compactness := shore.distance_to(tile_center)
 	# The apron inset is the width of the terrain sliver left between the quay and
-	# the water, so it is exactly the residual the owner would still see inside
+	# the water, so it is exactly the residual still visible inside
 	# the U. Score against it, or the search happily buys basin area with land.
 	var score := _poly_area(basin) * 0.012 + mouth_run * 0.42 - \
 		access_length * 0.30 - compactness * 0.035 + \
@@ -776,7 +776,7 @@ static func _plumbing(head: PackedVector2Array, left_points: PackedVector2Array,
 	var south_arm := left_points if left_points[0].y > right_points[0].y else right_points
 	var root: Vector2 = south_arm[0]
 	var tip: Vector2 = south_arm[south_arm.size() - 1]
-	# AT THE FOOT OF THE SOUTHERN ARM (owner, 2026-08-21). The tank belongs where the line
+	# AT THE FOOT OF THE SOUTHERN ARM. The tank belongs where the line
 	# leaves the land — beside the point the lower arm meets the block — not parked in the
 	# middle of the apron. Seated just inboard of that root so the whole circle stands on the
 	# quay rather than half over the basin, with fallbacks that walk it back toward the centre
@@ -893,10 +893,10 @@ static func _land_polygons() -> Array:
 
 ## Accept or reject the head AS DRAWN — a straight block, kept exactly as built.
 ##
-## This used to intersect the block with the land polygons and then erode it along
-## an inset ladder, which is what made the apron follow the coastline. A dock does
-## not follow a coastline; it reclaims one. So the shape is now untouched and only
-## its SEAT is judged: enough of the block must be real ground that the quay reads
+## Intersecting the block with the land polygons and eroding it along an inset
+## ladder would make the apron follow the coastline. A dock does not follow a
+## coastline; it reclaims one. So the shape is untouched and only its SEAT is
+## judged: enough of the block must be real ground that the quay reads
 ## as built on the shore rather than floating off it, with the remainder being the
 ## reclaimed apron in front. Candidates that cannot meet that move on — the search
 ## already sweeps shore shifts, approach angles, quay shifts and a width ladder, so
@@ -970,7 +970,7 @@ const ENCLOSURE_SAMPLE_STEP := 4.0
 
 ## Area-true land/sea split of the OPEN space inside the ring — every lattice
 ## point inside the ring that no opaque port element covers. This is the region
-## the owner reads as "between the arms".
+## that reads as "between the arms".
 static func _enclosure_stats(ring: PackedVector2Array,
 		opaque: Array) -> Dictionary:
 	if ring.size() < 3:

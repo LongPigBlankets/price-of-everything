@@ -13,8 +13,8 @@ func _ready() -> void:
 
 	# A solar farm (green producer) + a few consumers on the tile so the Power pane is real.
 	for s in [["b_024", "r_146", 2], ["b_008", "r_030", 1], ["b_012", "r_012", 2], ["b_007", "r_008", 1]]:
-		var id: String = MatchState.add_building(str(s[0]), str(s[1]), TILE, MatchState.LOCAL_PLAYER, "")
-		MatchState.buildings[id]["level"] = int(s[2])
+		var id: String = BuildingState.add_building(str(s[0]), str(s[1]), TILE, MatchState.LOCAL_PLAYER, "")
+		BuildingState.buildings[id]["level"] = int(s[2])
 
 	# Inject a representative per-tile intermittency aggregate (the Power pane reads this via
 	# Production.get_tile_intermittency). 45% of draw derated, 82% of generation intermittent.

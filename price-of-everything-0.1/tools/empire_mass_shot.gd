@@ -82,7 +82,7 @@ func _ready() -> void:
 
 func _seed() -> void:
 	var tiles: Array = []
-	for b in MatchState.buildings.values():
+	for b in BuildingState.buildings.values():
 		var t := str(b.get("tile_id", ""))
 		if t != "" and not tiles.has(t):
 			tiles.append(t)
@@ -96,9 +96,9 @@ func _seed() -> void:
 			continue
 		var rid := str((recs[0] as Dictionary).get("recipe_id", ""))
 		var iid := "mass_%d" % k
-		MatchState.add_building(bids[k], rid, tiles[(k * 3) % tiles.size()], "player_1", iid)
-		if MatchState.buildings.has(iid):
-			MatchState.buildings[iid]["level"] = levels[k]
+		BuildingState.add_building(bids[k], rid, tiles[(k * 3) % tiles.size()], "player_1", iid)
+		if BuildingState.buildings.has(iid):
+			BuildingState.buildings[iid]["level"] = levels[k]
 
 
 func _settle(frames: int) -> void:

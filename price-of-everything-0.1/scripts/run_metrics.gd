@@ -208,7 +208,7 @@ func _capture_row() -> void:
 	var profit_post_tax: float = profit_pre_tax - cost_taxes - cost_dividends - cost_profit_sharing
 
 	# --- Operational ---
-	var building_count: int = MatchState.buildings.size()
+	var building_count: int = BuildingState.buildings.size()
 	var starved_records: Array = _starved_records(summary)
 	var starved_count: int = starved_records.size()
 	var most_missing_input: String = _most_missing_input(starved_records)
@@ -299,8 +299,8 @@ func _stockpile_value() -> float:
 func _building_value() -> float:
 	# Σ over placed player buildings of their build cost (base_price proxy).
 	var total: float = 0.0
-	for inst in MatchState.buildings.values():
-		if not MatchState.is_player_owned(inst):
+	for inst in BuildingState.buildings.values():
+		if not BuildingState.is_player_owned(inst):
 			continue
 		var bd: Dictionary = Catalog.get_building(str(inst.get("building_id", "")))
 		total += float(bd.get("base_price", 0.0))

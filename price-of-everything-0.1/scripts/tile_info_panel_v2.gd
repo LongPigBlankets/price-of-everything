@@ -111,10 +111,10 @@ func _ready() -> void:
 	_apply_token_theme()
 	_build_ui()
 	# Live data refresh while open.
-	MatchState.building_added.connect(func(_i): _refresh_if_visible())
-	MatchState.building_removed.connect(func(_i): _refresh_if_visible())
-	MatchState.building_owner_changed.connect(func(_i): _refresh_if_visible())
-	MatchState.tile_land_owned_changed.connect(func(_t): _refresh_if_visible())
+	BuildingState.building_added.connect(func(_i): _refresh_if_visible())
+	BuildingState.building_removed.connect(func(_i): _refresh_if_visible())
+	BuildingState.building_owner_changed.connect(func(_i): _refresh_if_visible())
+	BuildingState.tile_land_owned_changed.connect(func(_t): _refresh_if_visible())
 	Stockpile.stockpile_changed.connect(_refresh_if_visible)
 	Production.turn_processed.connect(func(_summary): _refresh_if_visible())
 	SpecialOrderState.orders_changed.connect(func(): _refresh_if_visible())
@@ -128,7 +128,7 @@ func _ready() -> void:
 	Construction.materials_ordered.connect(func(_a = null, _b = null): _refresh_if_visible())
 	if Construction.has_signal("construction_materials_updated"):
 		Construction.construction_materials_updated.connect(func(_a = null, _b = null): _refresh_if_visible())
-	MatchState.transport_shipments_changed.connect(_refresh_if_visible)
+	TransportState.transport_shipments_changed.connect(_refresh_if_visible)
 	# Money changing (loan taken, building sold, etc.) can move a build above/below
 	# its affordability threshold — refresh so power build buttons re-enable.
 	MatchState.money_changed.connect(func(_m): _refresh_if_visible())
@@ -144,7 +144,7 @@ func _apply_anchors() -> void:
 	anchor_right = 1.0
 	offset_left = -(panel_w + 30.0) + _drag_delta.x
 	# Clears the top bar AND the briefing notch's downward hang + shadow (~114px);
-	# aligns with the left-slot panels (owner 2026-07-11).
+	# aligns with the left-slot panels.
 	offset_top = 78.0 + _drag_delta.y
 	offset_right = -30.0 + _drag_delta.x
 	offset_bottom = 948.0 + _drag_delta.y  # taller panel (top pinned near the screen top, so it grows down)
@@ -252,7 +252,6 @@ func _populate_land_rail() -> void:
 	_rail_total_label = null
 	_land_rail.custom_minimum_size = Vector2(216 if _rail_expanded else 75, 0)
 
-	# Expand / Collapse toggle (top row).
 	var toggle := Button.new()
 	toggle.text = "Collapse ›" if _rail_expanded else "‹ Expand"
 	toggle.focus_mode = Control.FOCUS_NONE
@@ -323,8 +322,8 @@ func _refresh_land_rail() -> void:
 	if _land_chart == null or _current_tile_id == "":
 		return
 	var data := TileViewData.land_chart_data(_current_tile_id, _current_tile_data)
-	# land_totals is the single source of owned/buyable — the collapsed rail used to
-	# compute its own buyable off MAX_TILE_LAND and drift from the expanded figures.
+	# land_totals is the single source of owned/buyable, so the collapsed rail cannot
+	# drift from the expanded figures.
 	var totals := TileViewData.land_totals(_current_tile_id, _current_tile_data)
 	if _rail_expanded:
 		if _rail_total_label != null:
@@ -460,9 +459,9 @@ func _make_tile(tab_id: String, label_text: String) -> PanelContainer:
 	var name_row := HBoxContainer.new()
 	name_row.add_theme_constant_override("separation", 4)
 	name_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	# The status lamp. The status USED to tint the whole tab, and since a healthy tile is the
-	# normal case every tab read green all the time — colour that is always on says nothing
-	# (owner 2026-08-23). One small lamp carries it now; the plate is metal either way.
+	# The status lamp. Tinting the whole tab by status would leave every tab green all the
+	# time, since a healthy tile is the normal case — colour that is always on says nothing.
+	# One small lamp carries it; the plate is metal either way.
 	var led := StatusLed.new(DS.PALETTE["OK"])
 	name_row.add_child(led)
 	var name_label := Label.new()
@@ -536,7 +535,7 @@ func _notification(what: int) -> void:
 
 # Coalesced (notification_bell pattern): money_changed/stockpile_changed fire
 # per transaction during PROCESS — dozens to hundreds of times in one burst —
-# and each used to tear down and rebuild the entire pane. Signals now defer ONE
+# far too many to tear down and rebuild the entire pane on each. Signals defer ONE
 # rebuild per frame; deferring also means a rebuild can never free a row button
 # mid-`pressed` dispatch.
 var _refresh_queued := false
@@ -855,7 +854,7 @@ func _build_intermittency_rows(pane: VBoxContainer) -> void:
 		for i in mini(3, affected.size()):
 			var a: Dictionary = affected[i]
 			var iid := str(a.get("iid", ""))
-			var live: Dictionary = MatchState.get_building(iid)
+			var live: Dictionary = BuildingState.get_building(iid)
 			var full_name := BuildingNaming.label_for_tile(_current_tile_id, iid, str(a.get("building_id", "")), str(live.get("recipe_id", "")))
 			pane.add_child(_make_power_affected_row(full_name, iid))
 		pane.add_child(_make_power_see_more("see more →", "green_intermittent"))
@@ -876,7 +875,7 @@ func _make_battery_table(tile_id: String, prod: int, cons: int) -> VBoxContainer
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 2)
 	box.add_child(_make_section_header("Battery storage", "", "ok"))
-	var slots := MatchState.tile_battery_slots(tile_id)
+	var slots := Power.tile_battery_slots(tile_id)
 	var grid := GridContainer.new()
 	grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 24)
@@ -886,7 +885,7 @@ func _make_battery_table(tile_id: String, prod: int, cons: int) -> VBoxContainer
 		hl.theme_type_variation = &"Caption"
 		hl.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
 		grid.add_child(hl)
-	for v in [prod, cons, MatchState.tile_firming_cap(tile_id)]:
+	for v in [prod, cons, Power.tile_firming_cap(tile_id)]:
 		var vl := Label.new()
 		vl.text = "%d ⚡" % int(v)
 		vl.theme_type_variation = &"Numeric"
@@ -894,7 +893,7 @@ func _make_battery_table(tile_id: String, prod: int, cons: int) -> VBoxContainer
 		grid.add_child(vl)
 	box.add_child(grid)
 	if slots > 0:
-		box.add_child(_make_power_subrow("Storage in use: %d / %d ⚡" % [int(MatchState.tile_loaded_firming(tile_id)), slots], ""))
+		box.add_child(_make_power_subrow("Storage in use: %d / %d ⚡" % [int(Power.tile_loaded_firming(tile_id)), slots], ""))
 		for internal in ["lithium_battery", "sodium_battery", "iron_battery"]:
 			box.add_child(_make_battery_load_row(tile_id, internal))
 	return box
@@ -911,14 +910,14 @@ func _make_battery_load_row(tile_id: String, internal: String) -> HBoxContainer:
 	var lbl := Label.new()
 	lbl.theme_type_variation = &"Body"
 	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	if not MatchState.is_unlocked(str(EconomyConfig.BATTERY_TYPE_UNLOCK.get(internal, ""))):
+	if not ResearchState.is_unlocked(str(EconomyConfig.BATTERY_TYPE_UNLOCK.get(internal, ""))):
 		lbl.text = "🔒 %s — %s" % [gname, str(EconomyConfig.BATTERY_TYPE_UNLOCK.get(internal, "locked"))]
 		lbl.add_theme_color_override("font_color", DS.PALETTE.TEXT_DIM)
 		row.add_child(lbl)
 		return row
-	var loaded := int(MatchState.get_tile_battery_cells(tile_id).get(gid, 0))
+	var loaded := int(Power.get_tile_battery_cells(tile_id).get(gid, 0))
 	var stock := Stockpile.get_at_tile(tile_id, gid)
-	var free_firming := float(MatchState.tile_battery_slots(tile_id)) - MatchState.tile_loaded_firming(tile_id)
+	var free_firming := float(Power.tile_battery_slots(tile_id)) - Power.tile_loaded_firming(tile_id)
 	lbl.text = "%s: %d loaded · %d in stock" % [gname, loaded, stock]
 	lbl.add_theme_color_override("font_color", DS.PALETTE.TEXT)
 	row.add_child(lbl)
@@ -927,13 +926,13 @@ func _make_battery_load_row(tile_id: String, internal: String) -> HBoxContainer:
 	var load_btn := _make_inline_link("Load", DS.PALETTE.ACCENT if can_load else DS.PALETTE.TEXT_DIM)
 	if can_load:
 		load_btn.pressed.connect(func() -> void:
-			MatchState.load_battery_cells(tile_id, gid, stock)
+			Power.load_battery_cells(tile_id, gid, stock)
 			_refresh_pane("power"))
 	row.add_child(load_btn)
 	var unload_btn := _make_inline_link("Unload", DS.PALETTE.ACCENT if loaded > 0 else DS.PALETTE.TEXT_DIM)
 	if loaded > 0:
 		unload_btn.pressed.connect(func() -> void:
-			MatchState.unload_battery_cells(tile_id, gid, loaded)
+			Power.unload_battery_cells(tile_id, gid, loaded)
 			_refresh_pane("power"))
 	row.add_child(unload_btn)
 	return row
@@ -1263,8 +1262,8 @@ func _make_recipe_arrow(energy_req: int) -> Control:
 		holder.add_child(badge)
 	return holder
 
-# Power output cell — the isometric power goods icon, same as the empire plates
-# (owner 2026-08-29); the flat lightning stays on energy badges only.
+# Power output cell — the isometric power goods icon, same as the empire plates;
+# the flat lightning stays on energy badges only.
 func _make_power_cell(qty: int, size: int = RECIPE_CELL) -> Control:
 	var slot := Control.new()
 	slot.custom_minimum_size = Vector2(size, size)
@@ -1450,13 +1449,13 @@ func _build_bl_pane(pane: VBoxContainer) -> void:
 	for b in bl.buildings:
 		if not bool(b.is_infra):
 			built_rows.append(b)
-	# Split by ownership (owner 2026-07-11): your buildings and NPC buildings each
+	# Split by ownership: your buildings and NPC buildings each
 	# get their own subheader + card list, never mixed in a group card.
 	var player_rows: Array = []
 	var npc_rows: Array = []
 	for b in built_rows:
-		var inst := MatchState.get_building(str(b.get("instance_id", "")))
-		if not inst.is_empty() and not MatchState.is_player_owned(inst):
+		var inst := BuildingState.get_building(str(b.get("instance_id", "")))
+		if not inst.is_empty() and not BuildingState.is_player_owned(inst):
 			npc_rows.append(b)
 		else:
 			player_rows.append(b)
@@ -1483,13 +1482,13 @@ func _build_bl_pane(pane: VBoxContainer) -> void:
 # ownership (same flow as the Buildings market).
 func _maybe_add_port_card(pane: VBoxContainer) -> void:
 	var port_b: Dictionary = {}
-	for b in MatchState.get_buildings_on_tile(_current_tile_id):
+	for b in BuildingState.get_buildings_on_tile(_current_tile_id):
 		if str(b.get("building_id", "")) == PORT_BUILDING_ID:
 			port_b = b
 			break
 	if port_b.is_empty():
 		return
-	var is_player := MatchState.is_player_owned(port_b)
+	var is_player := BuildingState.is_player_owned(port_b)
 	var card := PanelContainer.new()
 	card.name = "PortBuildingCard"
 	var st := StyleBoxFlat.new()
@@ -1557,12 +1556,12 @@ func _on_port_buy_confirmed(_dont_ask: bool) -> void:
 	var price := int(_pending_port_buy.get("price", 0))
 	if Tutorial.port_purchase_disabled(PORT_BUILDING_ID):
 		return
-	if iid == "" or not MatchState.buildings.has(iid):
+	if iid == "" or not BuildingState.buildings.has(iid):
 		return
 	if not MatchState.deduct_money(float(price)):
 		MatchState.build_rejected_no_funds.emit("Not enough money to buy the Port — need £%d, you have £%.0f" % [price, MatchState.money])
 		return
-	MatchState.set_building_owner(iid, MatchState.LOCAL_PLAYER)
+	BuildingState.set_building_owner(iid, MatchState.LOCAL_PLAYER)
 	MatchState.request_toast("Purchased the Port for £%d" % price, "success")
 	Audio.transaction()  # building_owner_changed → _refresh_if_visible re-renders the card as owned
 
@@ -1619,8 +1618,8 @@ func _make_buildings_header(title: String, right_text: String, with_filter: bool
 func _player_owned_building_rows(rows: Array) -> Array:
 	var filtered: Array = []
 	for row in rows:
-		var inst := MatchState.get_building(str((row as Dictionary).get("instance_id", "")))
-		if not inst.is_empty() and MatchState.is_player_owned(inst):
+		var inst := BuildingState.get_building(str((row as Dictionary).get("instance_id", "")))
+		if not inst.is_empty() and BuildingState.is_player_owned(inst):
 			filtered.append(row)
 	return filtered
 
@@ -1634,10 +1633,10 @@ func _on_player_buildings_only_toggled(pressed: bool) -> void:
 ## plus a "Buy maximum (N)" option. Increments above the max are omitted, so a
 ## small remaining cap collapses to just the maximum.
 func _on_buy_land_pressed(anchor: Control) -> void:
-	var patch := MatchState.LAND_PATCH_SIZE
+	var patch := BuildingState.LAND_PATCH_SIZE
 	var cap := TileViewData.tile_max_capacity(_current_tile_data)
 	# Exact purchasable units (the last patch may be a clipped sliver next to NPC land).
-	var max_land := MatchState.get_tile_land_units_available(_current_tile_id, cap)
+	var max_land := BuildingState.get_tile_land_units_available(_current_tile_id, cap)
 	if max_land <= 0:
 		MatchState.request_toast("No more land available to buy on this tile", "caution")
 		return
@@ -1655,7 +1654,7 @@ func _on_buy_land_pressed(anchor: Control) -> void:
 	popup.add_child(vb)
 	for e in entries:
 		var land := int(e[1])
-		var cost := int(round(float(land) / float(patch) * MatchState.LAND_PATCH_COST))
+		var cost := int(round(float(land) / float(patch) * BuildingState.LAND_PATCH_COST))
 		var affordable := MatchState.money >= float(cost)
 		var b := Button.new()
 		b.text = "%s — £%d" % [str(e[0]), cost]
@@ -1686,16 +1685,16 @@ func _on_buy_land_pressed(anchor: Control) -> void:
 	popup.popup(Rect2i(Vector2i(anchor.global_position) + Vector2i(0, int(anchor.size.y)), Vector2i(260, 0)))
 
 func _buy_land_amount(land_amount: int) -> void:
-	var patches := ceili(float(land_amount) / float(MatchState.LAND_PATCH_SIZE))
+	var patches := ceili(float(land_amount) / float(BuildingState.LAND_PATCH_SIZE))
 	if patches > 0:
 		var cap := TileViewData.tile_max_capacity(_current_tile_data)
-		if MatchState.purchase_tile_land(_current_tile_id, patches, cap):
+		if BuildingState.purchase_tile_land(_current_tile_id, patches, cap):
 			Audio.transaction()
 
 func _on_bl_build_pressed() -> void:
 	# Both panels lock to this tile: the catalogue is filtered to what the terrain
 	# allows and Confirm builds directly here (no map pick).
-	var cp_name := "ConstructPanelV2" if MatchState.use_construct_panel_v2 else "ConstructPanel"
+	var cp_name := "ConstructPanelV2" if UiPrefs.use_construct_panel_v2 else "ConstructPanel"
 	var cp := get_tree().root.find_child(cp_name, true, false)
 	if cp != null and cp.has_method("open_for_tile"):
 		cp.open_for_tile(_current_tile_id, _current_tile_data)
@@ -1947,7 +1946,7 @@ func _build_deposit_option(opt: Dictionary) -> void:
 	BuildMode.attempt_direct_build(str(opt.building_id), str(opt.recipe_id), _current_tile_id)
 
 func _go_to_building(instance_id: String) -> void:
-	var inst := MatchState.get_building(instance_id)
+	var inst := BuildingState.get_building(instance_id)
 	if not inst.is_empty():
 		building_clicked.emit(inst)
 
@@ -1959,7 +1958,7 @@ func _build_stock_pane(pane: VBoxContainer) -> void:
 	# line further down reports them in their own right.
 	pane.add_child(_make_stock_utilisation_row())
 	# Warehouse level + expansion offer — a full tile's fix is right where the
-	# player is looking (owner spec 2026-07-09).
+	# player is looking.
 	pane.add_child(_make_warehouse_section())
 	# Just-in-Time Logistics readout: goods routed producer→consumer without
 	# touching the warehouse this turn (only shown once the unlock is doing work).
@@ -1985,7 +1984,7 @@ func _build_stock_pane(pane: VBoxContainer) -> void:
 		pane.add_child(_make_stock_context_menu())
 
 	# Overflow shipments: arrived at this tile but can't unload (stockpile full).
-	var overflow := MatchState.get_overflow_shipments_for_tile(_current_tile_id)
+	var overflow := TransportState.get_overflow_shipments_for_tile(_current_tile_id)
 	if not overflow.is_empty():
 		pane.add_child(_make_section_header("Overflow Shipments", "can't unload", "problem"))
 		for r in overflow:
@@ -1996,7 +1995,7 @@ func _build_stock_pane(pane: VBoxContainer) -> void:
 # Stockpile tab button shows. The button shows what is on the tile NOW — the residue after the
 # turn drained through production and sales — so a tile that filled to the brim on arrivals and
 # turned goods away can end the turn reading comfortable. That mismatch is the whole point of
-# this row: it was previously computed from the same current level, so the two always agreed
+# this row: computed from the same current level the two would always agree,
 # and it could never explain a "cannot receive more goods" alert.
 func _make_stock_utilisation_row() -> Control:
 	var capacity := maxi(1, Stockpile.get_capacity(_current_tile_id))
@@ -2458,9 +2457,9 @@ func _confirm_stock_action() -> void:
 			return
 		MatchState.request_toast("Sending %d %s to special order" % [int(result.get("total_qty", qty)), good_name], "success")
 	else:
-		MatchState.queue_move(_current_tile_id, _stock_dest, goods)
+		TransportState.queue_move(_current_tile_id, _stock_dest, goods)
 		if recurring:
-			MatchState.add_recurring_move(_current_tile_id, _stock_dest, goods)
+			TransportState.add_recurring_move(_current_tile_id, _stock_dest, goods)
 		MatchState.request_toast("%s %d %s to %s" % ["Recurring move of" if recurring else "Moving", qty, good_name, Catalog.tile_label(_stock_dest)], "success")
 	_stock_sel = {}
 	_stock_dest = ""
@@ -2580,7 +2579,7 @@ func _make_stock_bar(name: String, good_id: String, qty: int, max_qty: int, colo
 	bar.add_theme_stylebox_override("panel", bs)
 	col.add_child(bar)
 	# Hover: the bar lights up and throws its own colour as a soft halo, so the column under
-	# the cursor is obvious before it is clicked (owner, 25 Aug). The whole COLUMN is the hit
+	# the cursor is obvious before it is clicked. The whole COLUMN is the hit
 	# target — the bar itself ignores the mouse — so the glow follows the thing you can click.
 	var glow := StyleBoxFlat.new()
 	glow.bg_color = color.lightened(0.22)
@@ -2827,8 +2826,8 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	var bd: Dictionary = Catalog.get_building(building_id)
 	var count := members.size()
 	var solo := count == 1
-	var inst := MatchState.get_building(str(first.get("instance_id", "")))
-	var is_npc := not inst.is_empty() and not MatchState.is_player_owned(inst)
+	var inst := BuildingState.get_building(str(first.get("instance_id", "")))
+	var is_npc := not inst.is_empty() and not BuildingState.is_player_owned(inst)
 
 	var card := VBoxContainer.new()
 	card.name = "BuildingCard_%s_%s" % [building_id, recipe_id]
@@ -2913,7 +2912,7 @@ func _make_building_group_card(members: Array) -> VBoxContainer:
 	# the panel is still laying out at that point: the label has no width yet, and a
 	# wrapping label with no width reports one line PER WORD. That set a minimum height
 	# of several hundred pixels which nothing ever recomputed, so the first cards a
-	# player opened were absurdly tall (owner report, 2026-09-03). Recomputing on resize
+	# player opened were absurdly tall. Recomputing on resize
 	# means a transient bad width corrects itself the moment a real one arrives; writing
 	# only on a CHANGE keeps it from bouncing the layout back and forth forever.
 	var name_ref: WeakRef = weakref(name_label)
@@ -3103,7 +3102,7 @@ func _make_output_goods_frame(recipe: Dictionary, building_id: String = "", buil
 
 # The dominant battery chemistry loaded on a tile {good_id, qty} (or {} if none).
 func _primary_battery_chem(tile_id: String) -> Dictionary:
-	var cells: Dictionary = MatchState.get_tile_battery_cells(tile_id)
+	var cells: Dictionary = Power.get_tile_battery_cells(tile_id)
 	var best_gid := ""
 	var best_qty := 0
 	for gid in cells:
@@ -3173,8 +3172,8 @@ func _make_building_row(b: Dictionary) -> HBoxContainer:
 	title_row.add_child(name_label)
 	# NPC buildings (a rival company's, not yours) are tagged so they're distinguishable
 	# from your own in a shared type+recipe group; the owner is in the tooltip.
-	var inst := MatchState.get_building(str(b.get("instance_id", "")))
-	if not inst.is_empty() and not MatchState.is_player_owned(inst):
+	var inst := BuildingState.get_building(str(b.get("instance_id", "")))
+	if not inst.is_empty() and not BuildingState.is_player_owned(inst):
 		var npc_tag := Label.new()
 		npc_tag.text = "NPC"
 		npc_tag.theme_type_variation = &"BuildingName"
@@ -3217,7 +3216,6 @@ func _make_building_row(b: Dictionary) -> HBoxContainer:
 	return row
 
 # ── Building-card chrome: brushed navy metal plate with a machined silver edge ──
-# (owner 2026-07-10 — replaces the flat BG_CARD/ACCENT-outline styleboxes).
 
 ## PanelContainer that paints its own plate: diagonal navy gradient (light
 ## top-left), fine brushed streaks, and a silver rim lit top-left → shadowed
@@ -3225,15 +3223,14 @@ func _make_building_row(b: Dictionary) -> HBoxContainer:
 ## The brushed navy building card, now shared with the transport panel.
 const _BrushedCard := preload("res://scripts/brushed_card.gd")
 
-# ── Status pills: Running/Stalled/Starting + power source (owner 2026-07-10,
-# replacing the 5-dot RAG strip on building cards) ──────────────────────────────
+# ── Status pills: Running/Stalled/Starting + power source ──────────────────────
 
 ## One lamp summarises the BDP diagnostic rows for player-owned buildings.
 func _make_status_pills(b: Dictionary) -> Control:
 	var holder := HBoxContainer.new()
 	holder.mouse_filter = Control.MOUSE_FILTER_PASS
-	var inst := MatchState.get_building(str(b.get("instance_id", "")))
-	if inst.is_empty() or not MatchState.is_player_owned(inst):
+	var inst := BuildingState.get_building(str(b.get("instance_id", "")))
+	if inst.is_empty() or not BuildingState.is_player_owned(inst):
 		return holder
 	var recipe := Catalog.get_recipe(str(inst.get("recipe_id", "")))
 	var data := Catalog.get_building(str(inst.get("building_id", "")))
@@ -3304,7 +3301,7 @@ func _on_chart_segment_clicked(instance_id: String) -> void:
 func _open_building_or_construction(instance_id: String) -> void:
 	if instance_id == "":
 		return
-	var inst := MatchState.get_building(instance_id)
+	var inst := BuildingState.get_building(instance_id)
 	if not inst.is_empty():
 		building_clicked.emit(inst)
 		return
@@ -3397,7 +3394,7 @@ func _make_construction_row(project: Dictionary) -> HBoxContainer:
 func _keyed_building_texture(bd: Dictionary) -> Texture2D:
 	return KeyedBuildingIcon.keyed(bd)
 
-# Building icon, embossed / raised off the card's metal (owner 2026-07-10): the
+# Building icon, embossed / raised off the card's metal: the
 # keyed off-white glyph only (no navy tile), with a shadow cast to the right and
 # bottom and a light catch on the top-left — light from the top-left. All the
 # lighting is pre-baked into the cached texture (see _keyed_building_texture).

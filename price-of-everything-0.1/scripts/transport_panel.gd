@@ -1,7 +1,7 @@
 extends PanelContainer
 ## Transport panel — the logistics dashboard behind the top bar's Transport module.
 ##
-## Three columns, each answering a question the player could not previously ask:
+## Three columns, each answering one question:
 ##   Stockpiles       — which tiles are about to run out of room, and how soon
 ##   Infrastructure   — which links are over capacity, how often, and what it has cost
 ##   Units in transit — what is actually moving, and when it lands
@@ -89,7 +89,7 @@ func _ready() -> void:
 	# fires per transaction during PROCESS — hundreds of times in one burst — and each
 	# would otherwise tear down and rebuild all three columns.
 	Stockpile.stockpile_changed.connect(_refresh_if_visible)
-	MatchState.transport_shipments_changed.connect(_refresh_if_visible)
+	TransportState.transport_shipments_changed.connect(_refresh_if_visible)
 	TurnManager.turn_resolution_completed.connect(_refresh_if_visible)
 
 
@@ -452,15 +452,15 @@ func _build_infra() -> void:
 	var links: Array = []
 	var hidden := 0
 	var present_modes := {}
-	for link_v in MatchState.active_links():
+	for link_v in TransportState.active_links():
 		var link: Dictionary = link_v
 		present_modes[str(link.mode)] = true
 		if bool(_infra_enabled.get(str(link.mode), true)):
 			links.append(link)
 		else:
 			hidden += 1
-	# Enabled filters with nothing "above 0%" this turn — named explicitly (owner,
-	# 27 Aug) rather than the column just quietly having no rows for that mode,
+	# Enabled filters with nothing "above 0%" this turn — named explicitly
+	# rather than the column just quietly having no rows for that mode,
 	# which otherwise reads identically to a broken filter. Cables especially: it
 	# carries power, not freight, so it's ALWAYS in this list when enabled —
 	# INFRA_FILTERS' own comment already flags that as by design, not a bug.
@@ -535,13 +535,13 @@ func _infra_row(link: Dictionary) -> Control:
 	var gap := Control.new()
 	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bottom.add_child(gap)
-	var over_turns := MatchState.link_turns_over(str(link.key))
-	bottom.add_child(_label("at cap %d of last %d" % [over_turns, MatchState.LINK_HISTORY_TURNS],
+	var over_turns := TransportState.link_turns_over(str(link.key))
+	bottom.add_child(_label("at cap %d of last %d" % [over_turns, TransportState.LINK_HISTORY_TURNS],
 		DS.FS.CAPTION - 1, DS.PALETTE.WARN if over_turns > 0 else DS.PALETTE.TEXT))
 
 	# Shown only once congestion has actually cost money — a £0 line on every clear
 	# link would bury the ones that are really billing.
-	var paid := MatchState.link_congestion_paid(str(link.key))
+	var paid := TransportState.link_congestion_paid(str(link.key))
 	if paid > 0.0:
 		col.add_child(_label("congestion has added £%s so far" % _money(paid),
 			DS.FS.CAPTION - 1, DS.PALETTE.DANGER))
@@ -561,7 +561,7 @@ func _open_infra_building(tile_id: String, mode: String) -> void:
 	# not build — the map ships with infrastructure, and rivals build their own — and the
 	# row is about the LINK the player's freight is crossing, whoever owns it. Filtering
 	# to player-owned buildings sent exactly those rows to the tile view instead.
-	for b in MatchState.buildings.values():
+	for b in BuildingState.buildings.values():
 		if not (b is Dictionary):
 			continue
 		var building: Dictionary = b
@@ -605,15 +605,14 @@ func _infra_icon(mode: String) -> Control:
 	# CLEANED, not the raw source: the raw building PNGs carry an opaque navy block, which on a
 	# card of its own navy read as a slightly-wrong square behind every icon. And on the SAME
 	# cream chip the goods in this panel wear — pipes and reinforced pipes were the only art
-	# here sitting bare on the navy, so they read as a different class of thing (owner, 25 Aug).
+	# here sitting bare on the navy, so they read as a different class of thing.
 	var texture: Texture2D = BuildingIcon.clean_texture(str(building.get("id", "")), key)
 	var chip := UIHelpers.make_plain_texture_icon(texture, INFRA_ICON)
 	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	return chip
 
 
-## The filter chips above the infrastructure list — single-select (owner, 27 Aug: "only
-## allow one to be selected at a time"), via a shared ButtonGroup so the engine itself
+## The filter chips above the infrastructure list — single-select, via a shared ButtonGroup so the engine itself
 ## handles the exclusivity: clicking the already-selected chip does nothing rather than
 ## clearing it (ButtonGroup.allow_unpress defaults false) — there is always exactly one
 ## filter active, never zero. Roads starts selected, so the column opens already showing
@@ -658,7 +657,7 @@ func _infra_filter_bar() -> Control:
 func _build_transit() -> void:
 	_clear(_transit_list)
 	var rows: Array = []
-	for s in MatchState.pending_transport_shipments:
+	for s in TransportState.pending_transport_shipments:
 		var ship: Dictionary = s
 		var manifest := _manifest(ship)
 		var units := 0

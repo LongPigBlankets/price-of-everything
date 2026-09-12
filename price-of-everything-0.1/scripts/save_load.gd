@@ -120,15 +120,15 @@ func import_snapshot(snap: Dictionary) -> void:
 	# Advisor-seat modifiers are derived, not saved: re-register them AFTER
 	# Modifiers.import_state (which replaces the registry wholesale and would
 	# otherwise wipe an earlier reconcile). See advisor-system-spec.md §12.1.
-	MatchState.reconcile_advisor_modifiers()
+	AdvisorState.reconcile_advisor_modifiers()
 	# Permanent advisor-mission rewards (perm slices + capstones) are also derived from
 	# advisor_missions_completed, so re-apply them after the Modifiers registry reload.
-	MatchState.reapply_mission_modifiers()
+	AdvisorState.reapply_mission_modifiers()
 	# Scale/condition research unlocks (e.g. Operational Team Managers at 3 buildings)
 	# add their modifier when the unlock fires — but a start/save building import fires
 	# it BEFORE Modifiers.import_state above wipes the registry, and grant_unlock is
 	# one-shot so it never re-fires. Re-apply the permanent ones from unlocked_titles.
-	Modifiers.reapply_unlock_modifiers(MatchState.unlocked_titles)
+	Modifiers.reapply_unlock_modifiers(ResearchState.unlocked_titles)
 	# Missing "victory" key (old saves) -> import_state({}) leaves a fresh zero state.
 	VictoryState.import_state(snap.get("victory", {}))
 	# Additive key (tolerant reader): pre-feature saves seed the policy schedule fresh.
@@ -157,8 +157,8 @@ func _emit_refresh() -> void:
 	MatchState.money_changed.emit(MatchState.money)
 	MatchState.surveyed_tiles_changed.emit()
 	MatchState.surveying_in_progress_changed.emit()
-	MatchState.transport_shipments_changed.emit()
-	MatchState.labour_multiplier_changed.emit(MatchState.labour_multiplier)
+	TransportState.transport_shipments_changed.emit()
+	LabourState.labour_multiplier_changed.emit(LabourState.labour_multiplier)
 	MatchState.sell_mode_changed.emit(MatchState.sell_mode)
 	MatchState.route_objective_changed.emit(MatchState.route_objective)
 	Stockpile.stockpile_changed.emit()
@@ -258,9 +258,9 @@ func apply_pending() -> bool:
 func _merge_npc_buildings(snap: Dictionary) -> void:
 	var match_d: Dictionary = snap.get("match", {})
 	var bld: Dictionary = match_d.get("buildings", {})
-	for instance_id in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[instance_id]
-		if not MatchState.is_player_owned(inst):
+	for instance_id in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[instance_id]
+		if not BuildingState.is_player_owned(inst):
 			bld[instance_id] = inst.duplicate(true)
 	match_d["buildings"] = bld
 	snap["match"] = match_d

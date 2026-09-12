@@ -25,8 +25,8 @@ func _ready() -> void:
 	if SpecialOrderState != null and not SpecialOrderState.order_closed.is_connected(_on_order_closed):
 		SpecialOrderState.order_closed.connect(_on_order_closed)
 	if MatchState != null and MatchState.has_signal("special_order_overflow_ready"):
-		if not MatchState.special_order_overflow_ready.is_connected(_on_overflow_ready):
-			MatchState.special_order_overflow_ready.connect(_on_overflow_ready)
+		if not TransportState.special_order_overflow_ready.is_connected(_on_overflow_ready):
+			TransportState.special_order_overflow_ready.connect(_on_overflow_ready)
 
 func _build_ui() -> void:
 	anchor_left = 0.5
@@ -91,7 +91,7 @@ func _make_action_button(text: String) -> Button:
 
 func _on_order_closed(order: Dictionary, _reason: String) -> void:
 	var order_id := str(order.get("id", ""))
-	var shipments := MatchState.take_pending_special_order_shipments(order_id)
+	var shipments := TransportState.take_pending_special_order_shipments(order_id)
 	if shipments.is_empty():
 		return
 	_enqueue({
@@ -155,7 +155,7 @@ func _update_content() -> void:
 			good_name,
 			Catalog.tile_label(str(record.get("port_tile", ""))),
 		]
-		var can_stockpile := MatchState.special_order_overflow_can_stockpile(record)
+		var can_stockpile := TransportState.special_order_overflow_can_stockpile(record)
 		_stockpile_button.disabled = not can_stockpile
 		_stockpile_button.tooltip_text = "" if can_stockpile else "The port stockpile needs room for the entire overflow shipment."
 	else:
@@ -168,18 +168,18 @@ func _update_content() -> void:
 			summary,
 			"is" if _shipments_total_qty(shipments) == 1 else "are",
 		]
-		var can_store := MatchState.can_store_special_order_shipments_at_ports(shipments)
+		var can_store := TransportState.can_store_special_order_shipments_at_ports(shipments)
 		_stockpile_button.disabled = not can_store
 		_stockpile_button.tooltip_text = "" if can_store else "The port stockpile needs room for all of these shipments."
 
 func _on_sell_pressed() -> void:
 	var kind := str(_current_entry.get("kind", ""))
 	if kind == "overflow":
-		var sold := MatchState.sell_special_order_overflow(_current_entry.get("record", {}))
+		var sold := TransportState.sell_special_order_overflow(_current_entry.get("record", {}))
 		if not sold.is_empty():
 			MatchState.request_toast("Special-order overflow sold at the normal market price", "success")
 	else:
-		var result := MatchState.resolve_special_order_shipments(_current_entry.get("shipments", []), "sell")
+		var result := TransportState.resolve_special_order_shipments(_current_entry.get("shipments", []), "sell")
 		if bool(result.get("ok", false)):
 			MatchState.request_toast("Special-order shipments will sell normally when they arrive", "success")
 	_finish_current()
@@ -187,13 +187,13 @@ func _on_sell_pressed() -> void:
 func _on_stockpile_pressed() -> void:
 	var kind := str(_current_entry.get("kind", ""))
 	if kind == "overflow":
-		if not MatchState.stockpile_special_order_overflow(_current_entry.get("record", {})):
+		if not TransportState.stockpile_special_order_overflow(_current_entry.get("record", {})):
 			MatchState.request_toast("The port stockpile does not have room for the whole overflow shipment", "warning")
 			_update_content()
 			return
 		MatchState.request_toast("Special-order overflow stored at the port", "success")
 	else:
-		var result := MatchState.resolve_special_order_shipments(_current_entry.get("shipments", []), "stockpile_port")
+		var result := TransportState.resolve_special_order_shipments(_current_entry.get("shipments", []), "stockpile_port")
 		if not bool(result.get("ok", false)):
 			MatchState.request_toast("The port stockpile does not have room for all remaining shipments", "warning")
 			_update_content()
@@ -214,7 +214,7 @@ func _on_reroute_pressed() -> void:
 func reroute_current_to(tile_id: String) -> void:
 	if str(_current_entry.get("kind", "")) != "pending":
 		return
-	var result := MatchState.resolve_special_order_shipments(_current_entry.get("shipments", []), "reroute", tile_id)
+	var result := TransportState.resolve_special_order_shipments(_current_entry.get("shipments", []), "reroute", tile_id)
 	if not bool(result.get("ok", false)):
 		MatchState.request_toast("Could not reroute those shipments", "warning")
 		cancel_reroute()
@@ -258,7 +258,7 @@ func _order_label(order: Dictionary) -> String:
 	return Catalog.get_display_name(str(order.get("good_id", "")))
 
 func _shipments_summary(shipments: Array) -> String:
-	var manifest := MatchState.special_order_shipments_manifest(shipments)
+	var manifest := TransportState.special_order_shipments_manifest(shipments)
 	var parts: Array = []
 	for good_id in manifest.keys():
 		parts.append("%d %s" % [int(manifest[good_id]), Catalog.get_display_name(str(good_id))])
@@ -268,6 +268,6 @@ func _shipments_summary(shipments: Array) -> String:
 
 func _shipments_total_qty(shipments: Array) -> int:
 	var total := 0
-	for qty in MatchState.special_order_shipments_manifest(shipments).values():
+	for qty in TransportState.special_order_shipments_manifest(shipments).values():
 		total += int(qty)
 	return total

@@ -5,17 +5,17 @@ const BuildingLevels := preload("res://scripts/building_levels.gd")
 
 ## Room a building actually occupies, INCLUDING its level. A levelled-up building is bigger
 ## (BuildingLevels "size" mult) and MatchState.get_tile_space_used — the figure the build and
-## upgrade gates test against — has always counted it that way. The land chart and its
-## built|buyable|max readout did not: they drew every building at its level-1 footprint, so a
-## tile of upgraded buildings looked far emptier than it was and an upgrade could be refused
-## for want of room the player could see going spare (owner 2026-08-01).
+## upgrade gates test against — counts it that way, so the land chart and its
+## built|buyable|max readout must too: drawing every building at its level-1 footprint makes a
+## tile of upgraded buildings look far emptier than it is, and an upgrade gets refused
+## for want of room the player can see going spare.
 static func footprint_of(building: Dictionary, bd: Dictionary) -> float:
 	var base := maxf(0.0, float(bd.get("tile_size_used", 1)))
 	return base * BuildingLevels.mult("size", int(building.get("level", 1)))
 ## Stateless data helpers for the Tile View Panels. Pure functions that read the
 ## canonical autoloads (MatchState, Production, Stockpile, Catalog, MarketState,
 ## CostSolver) and return plain dictionaries the UI can render. Keeping the maths
-## here means TVP v1 and v2 can derive identical numbers.
+## here means every Tile View Panel derives identical numbers.
 ##
 ## Status strings used throughout: "ok" (green), "warn" (amber), "problem" (red),
 ## "muted" (no activity / neutral).
@@ -28,7 +28,7 @@ static func power_summary(tile_id: String) -> Dictionary:
 	var consumed := 0
 	var drawing: Array = []        # [{name, amount}]
 	var producers: Array = []      # [{name, amount}]
-	for building in MatchState.get_buildings_on_tile(tile_id):
+	for building in BuildingState.get_buildings_on_tile(tile_id):
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
 		if recipe.is_empty():
 			continue
@@ -72,8 +72,8 @@ static func power_summary(tile_id: String) -> Dictionary:
 # Any solar/wind generation anywhere on the (national) grid — gates the
 # "Reduce intermittency" battery options.
 static func grid_has_intermittent() -> bool:
-	for iid in MatchState.buildings:
-		var internal := str(Catalog.get_building(MatchState.buildings[iid].get("building_id", "")).get("internal_name", ""))
+	for iid in BuildingState.buildings:
+		var internal := str(Catalog.get_building(BuildingState.buildings[iid].get("building_id", "")).get("internal_name", ""))
 		if internal in ["solar_farm", "onshore_wind_farm", "offshore_wind_farm"]:
 			return true
 	return false
@@ -110,10 +110,10 @@ static func power_build_option(internal: String, hint: String, tile_id: String, 
 	# Land / money checks (mirrors world_map._space_check_for_build): physical room
 	# counts every building; the owned-land gate only the player's estate.
 	var footprint := maxf(0.0, float(bd.get("tile_size_used", 1)))
-	var projected := MatchState.get_tile_space_used(tile_id) + footprint
-	var player_used := MatchState.get_tile_player_space_used(tile_id)
-	var owned := MatchState.get_tile_land_owned(tile_id)
-	if projected > float(MatchState.MAX_TILE_LAND) or player_used + footprint > float(owned):
+	var projected := BuildingState.get_tile_space_used(tile_id) + footprint
+	var player_used := BuildingState.get_tile_player_space_used(tile_id)
+	var owned := BuildingState.get_tile_land_owned(tile_id)
+	if projected > float(BuildingState.MAX_TILE_LAND) or player_used + footprint > float(owned):
 		var free := maxi(0, owned - int(round(player_used)))
 		return {"enabled": false, "building_id": bid, "recipe_id": rid, "reason": "Not enough land on this tile — needs %d, %d free" % [int(round(footprint)), free]}
 	var mult := 1.5 if projected > 100.0 else 1.0
@@ -134,13 +134,13 @@ static func buildings_land_summary(tile_id: String, tile_data: Dictionary) -> Di
 	var npc_size := 0.0
 	var stalled := 0
 	var problems := 0
-	for building in MatchState.get_buildings_on_tile(tile_id):
+	for building in BuildingState.get_buildings_on_tile(tile_id):
 		var bd: Dictionary = Catalog.get_building(building.get("building_id", ""))
 		var is_infra := str(bd.get("category", "")) == "infrastructure"
 		var size := maxf(0.0, float(bd.get("tile_size_used", 1)))
 		# NPC buildings sit on their own land — kept out of the player's built/used
 		# figures so the land readouts track what the player actually owns.
-		if not MatchState.is_player_owned(building):
+		if not BuildingState.is_player_owned(building):
 			npc_size += size
 		elif is_infra:
 			infra_size += size
@@ -177,7 +177,7 @@ static func buildings_land_summary(tile_id: String, tile_data: Dictionary) -> Di
 			"produce_cost_status": _produce_cost_status_for(instance_id, is_infra),
 			"route_label": _output_route_label(instance_id, tile_id, recipe, is_infra),
 		})
-	var owned := MatchState.get_tile_land_owned(tile_id)
+	var owned := BuildingState.get_tile_land_owned(tile_id)
 	var max_land := int(maxf(1.0, float(_tile_max_capacity(tile_data)) - npc_size))
 	var total_used := built_size + infra_size
 	var tile_status := "ok"
@@ -221,7 +221,7 @@ static func land_chart_data(tile_id: String, tile_data: Dictionary) -> Dictionar
 	var bought_segments: Array = []  # ex-NPC purchases → top of the pile
 	var other_footprint := 0.0
 	var built := 0.0   # player-owned building footprint
-	for building in MatchState.get_buildings_on_tile(tile_id):
+	for building in BuildingState.get_buildings_on_tile(tile_id):
 		var bd: Dictionary = Catalog.get_building(building.get("building_id", ""))
 		var size := footprint_of(building, bd)
 		if size <= 0.0:
@@ -264,10 +264,10 @@ static func land_chart_data(tile_id: String, tile_data: Dictionary) -> Dictionar
 		})
 
 	# Room an IN-PROGRESS upgrade has already reserved on this tile. The gate counts it and
-	# so does land_totals (the BUILT caption) — but the BAR did not, so it drew empty space
-	# that was already spoken for. A player looking at a tile with a big gap under the cap
-	# line was told there was room, and then refused (owner 2026-08-23).
-	var reserved := MatchState.reserved_upgrade_space_on_tile(tile_id)
+	# so does land_totals (the BUILT caption), so the BAR must too — otherwise it draws empty
+	# space that is already spoken for, and a player looking at a big gap under the cap line
+	# is told there is room, then refused.
+	var reserved := BuildingWorks.reserved_upgrade_space_on_tile(tile_id)
 	if reserved > 0.0:
 		built += reserved
 		player_segments.append({
@@ -277,7 +277,7 @@ static func land_chart_data(tile_id: String, tile_data: Dictionary) -> Dictionar
 			"icon": null, "stalled": false,
 			"tooltip": "Reserved by an upgrade in progress on this tile",
 		})
-	var owned := MatchState.get_tile_land_owned(tile_id)
+	var owned := BuildingState.get_tile_land_owned(tile_id)
 	var type_cap := _tile_max_capacity(tile_data)
 	# One axis for both chart modes: the terrain-adjusted cap the game actually
 	# enforces. Land under not-for-sale (other-player) buildings can't be purchased.
@@ -298,7 +298,7 @@ static func land_chart_data(tile_id: String, tile_data: Dictionary) -> Dictionar
 static func land_totals(tile_id: String, tile_data: Dictionary) -> Dictionary:
 	var built := 0.0
 	var npc := 0.0
-	for building in MatchState.get_buildings_on_tile(tile_id):
+	for building in BuildingState.get_buildings_on_tile(tile_id):
 		var bd: Dictionary = Catalog.get_building(building.get("building_id", ""))
 		var size := footprint_of(building, bd)
 		if str(building.get("owner", MatchState.LOCAL_PLAYER)) != MatchState.LOCAL_PLAYER:
@@ -309,13 +309,13 @@ static func land_totals(tile_id: String, tile_data: Dictionary) -> Dictionary:
 		built += maxf(0.0, float(project.get("reserved_space", 1)))
 	# In-progress upgrades have already reserved the room they are growing into — the gate
 	# counts it, so the readout must too or the two disagree while an upgrade is running.
-	built += MatchState.reserved_upgrade_space_on_tile(tile_id)
+	built += BuildingWorks.reserved_upgrade_space_on_tile(tile_id)
 	var max_cap := int(maxf(1.0, float(_tile_max_capacity(tile_data)) - npc))
-	var owned := MatchState.get_tile_land_owned(tile_id)
+	var owned := BuildingState.get_tile_land_owned(tile_id)
 	var buyable := maxi(0, max_cap - owned)
-	# FREE is the figure that decides whether anything can go up, and it was the one the
-	# readout made the player derive: a tile showing "BUILT 114 | BUYABLE 0 | MAX 122" reads
-	# as having room, when it has 8 (owner 2026-08-23). Two gates bound it — the land you own
+	# FREE is the figure that decides whether anything can go up, and the player should not
+	# have to derive it: a tile showing "BUILT 114 | BUYABLE 0 | MAX 122" reads
+	# as having room, when it has 8. Two gates bound it — the land you own
 	# and the tile's physical space, which the NPC buildings are already sitting in — so the
 	# smaller of the two is the honest answer.
 	var free := maxi(0, mini(owned, max_cap) - int(round(built)))
@@ -388,18 +388,16 @@ static func _category_color(bd: Dictionary) -> Color:
 		_: return CAT_DEFAULT
 
 # Max tile space capacity for a tile, by terrain. The table itself lives in MatchState,
-# because the BUILD GATE reads it — this used to be a private copy here expressed as bonuses
-# on a base of 200, which the clamp to MAX_TILE_LAND then erased for every terrain but
-# mountain, and which nothing outside the panel ever consulted.
+# because the BUILD GATE reads it.
 const BASE_TILE_CAPACITY := 200
 static func _tile_max_capacity(tile_data: Dictionary) -> int:
 	var tile_id := str(tile_data.get("id", ""))
 	if tile_id != "":
-		return MatchState.max_tile_land(tile_id)
+		return BuildingState.max_tile_land(tile_id)
 	# No id (a preview row): fall back to the terrain string the row carries.
 	var terrain := str(tile_data.get("type", "")).strip_edges().to_lower()
-	return clampi(int(MatchState.TILE_LAND_BY_TERRAIN.get(terrain, MatchState.MAX_TILE_LAND)),
-		1, MatchState.MAX_TILE_LAND)
+	return clampi(int(BuildingState.TILE_LAND_BY_TERRAIN.get(terrain, BuildingState.MAX_TILE_LAND)),
+		1, BuildingState.MAX_TILE_LAND)
 
 ## Public wrapper so panels can hand the terrain-adjusted cap to MatchState land calls.
 static func tile_max_capacity(tile_data: Dictionary) -> int:
@@ -522,7 +520,7 @@ static func _produce_cost_status_for(instance_id: String, is_infra: bool) -> Str
 	if is_infra:
 		return "muted"
 	# Exhausted deposit → not producing → no cost to compute (match the BDP).
-	var b: Dictionary = MatchState.get_building(instance_id)
+	var b: Dictionary = BuildingState.get_building(instance_id)
 	if deposit_exhausted_for(str(b.get("tile_id", "")), Catalog.get_recipe(str(b.get("recipe_id", "")))):
 		return "muted"
 	var uc := CostSolver.get_building_unit_cost(instance_id)
@@ -563,7 +561,7 @@ static func _inbound_transport(instance_id: String) -> float:
 static func _activity_for(instance_id: String, tile_id: String, recipe: Dictionary, is_infra: bool) -> String:
 	if is_infra or recipe.is_empty():
 		return ""
-	if MatchState.paused_buildings.has(instance_id):
+	if BuildingWorks.paused_buildings.has(instance_id):
 		return "stalled"
 	if Production.last_turn_run.has(instance_id):
 		return "running"
@@ -621,7 +619,7 @@ static func _inputs_status_for(instance_id: String, tile_id: String, recipe: Dic
 # ─────────────────────────────────────────────────────────────────────────────
 static func production_summary(tile_id: String) -> Dictionary:
 	var by_good: Dictionary = {}
-	for building in MatchState.get_buildings_on_tile(tile_id):
+	for building in BuildingState.get_buildings_on_tile(tile_id):
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
 		if recipe.is_empty():
 			continue
@@ -823,7 +821,7 @@ static func deposit_build_options(deposit_token: String) -> Array:
 	var opts: Array = []
 	for recipe in Catalog.all_recipes():
 		var rec_req := str(recipe.get("tech_unlock_req", ""))
-		if rec_req != "" and not MatchState.is_unlocked(rec_req):
+		if rec_req != "" and not ResearchState.is_unlocked(rec_req):
 			continue
 		var bid := str(recipe.get("building_id", ""))
 		if bid == "":
@@ -832,7 +830,7 @@ static func deposit_build_options(deposit_token: String) -> Array:
 		if building.is_empty():
 			continue
 		var bld_req := str(building.get("required_research", ""))
-		if bld_req != "" and not MatchState.is_unlocked(bld_req):
+		if bld_req != "" and not ResearchState.is_unlocked(bld_req):
 			continue
 		for req in recipe.get("requirements", []):
 			if str(req.get("type", "")).to_lower() != "deposit":
@@ -848,7 +846,7 @@ static func deposit_build_options(deposit_token: String) -> Array:
 	return opts
 
 static func _building_extracting_good(tile_id: String, good_id: String, internal: String) -> String:
-	for building in MatchState.get_buildings_on_tile(tile_id):
+	for building in BuildingState.get_buildings_on_tile(tile_id):
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
 		for output in _recipe_outputs(recipe):
 			if _output_good_id(output) == good_id or _output_internal(output) == internal:
@@ -923,8 +921,8 @@ static func infrastructure_summary(tile_id: String, tile_data: Dictionary) -> Ar
 			continue
 		var mode: String = CAPPED_MODES[key]
 		var level := int(tile_data.get("infrastructure_levels", {}).get(key, 1))
-		var cap := int(round(MatchState.tile_mode_capacity(mode, level)))
-		var used := MatchState.tile_mode_flow(tile_id, mode, true)
+		var cap := int(round(TransportState.tile_mode_capacity(mode, level)))
+		var used := TransportState.tile_mode_flow(tile_id, mode, true)
 		var pct := (float(used) / float(cap)) if cap > 0 else 0.0
 		slot["cap"] = cap
 		var tip := "%s: %d / %d per turn  (Level %d)" % [slot.label, used, cap, level]
@@ -943,7 +941,7 @@ static func infrastructure_summary(tile_id: String, tile_data: Dictionary) -> Ar
 
 static func _through_units(tile_id: String) -> int:
 	var total := 0
-	for shipment in MatchState.pending_transport_shipments:
+	for shipment in TransportState.pending_transport_shipments:
 		var tiles: Array = shipment.get("tiles", [])
 		if tiles.has(tile_id):
 			total += int(shipment.get("qty", 0))
@@ -969,7 +967,7 @@ static func _infra_building_data_for_key(key: String) -> Dictionary:
 	return {}
 
 static func _infra_instance_for_tile(tile_id: String, tile_data: Dictionary, key: String, building_data: Dictionary) -> Dictionary:
-	for building in MatchState.get_buildings_on_tile(tile_id):
+	for building in BuildingState.get_buildings_on_tile(tile_id):
 		var bd: Dictionary = Catalog.get_building(building.get("building_id", ""))
 		if str(bd.get("category", "")) != "infrastructure":
 			continue

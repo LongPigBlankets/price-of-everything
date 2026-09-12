@@ -31,12 +31,12 @@ func _ready() -> void:
 		print("[AUTO] %s template=%d lots cell=%s roads_on_tile=%d buildings=%d infra=%s" % [tid,
 			(t.get("lots", []) as Array).size(), str(t.get("cell", Vector2.ZERO)),
 			RoadNetwork.instance().edges_on_tile(coord).size(),
-			MatchState.get_buildings_on_tile(tid).size(), str(td2.get("infrastructure_present", []))])
+			BuildingState.get_buildings_on_tile(tid).size(), str(td2.get("infrastructure_present", []))])
 		if tid == RENDER:
 			render_center = _terrain.map_to_local(_terrain.map_coord_for_tile_coord(coord))
 			# Simulate player buildings at game start — they should line the baked streets.
 			for i in 6:
-				var iid: String = MatchState.add_building("b_007", "", tid, "player_1", "pf_%s_%d" % [tid, i])
+				var iid: String = BuildingState.add_building("b_007", "", tid, "player_1", "pf_%s_%d" % [tid, i])
 				_bv.on_building_placed(tid, "b_007", "", iid, coord)
 	var cam := Camera2D.new()
 	cam.position = render_center

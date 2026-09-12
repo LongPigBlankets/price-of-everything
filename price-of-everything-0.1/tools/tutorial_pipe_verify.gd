@@ -94,9 +94,9 @@ func _run() -> void:
 	# --- Research sub-flow: the better glass recipe r_054 is gated behind High Strength Glassmaking.
 	# Gates store research_node_ids since the id migration — resolve the title to its id.
 	_check(str(Catalog.get_recipe("r_054").get("tech_unlock_req", ""))
-			== MatchState.research_node_id_for_title("High Strength Glassmaking"),
+			== ResearchState.research_node_id_for_title("High Strength Glassmaking"),
 		"r_054 (better glass) is gated behind the High Strength Glassmaking research node")
-	_check(not MatchState.is_unlocked("High Strength Glassmaking"),
+	_check(not ResearchState.is_unlocked("High Strength Glassmaking"),
 		"High Strength Glassmaking starts locked (player unlocks it via a free unlock)")
 	_check(not TutorialDetectors.poll({"kind": "research_unlocked", "title": "High Strength Glassmaking"}),
 		"research_unlocked detector false before the node is unlocked")
@@ -114,7 +114,7 @@ func _run() -> void:
 
 	# --- Bottom-menu buttons TOGGLE their panel (open on first press, close on the second).
 	var cbtn := _main.find_child("ConstructButton", true, false) as BaseButton
-	var cpanel_name := "ConstructPanelV2" if MatchState.use_construct_panel_v2 else "ConstructPanel"
+	var cpanel_name := "ConstructPanelV2" if UiPrefs.use_construct_panel_v2 else "ConstructPanel"
 	var cpanel := _main.find_child(cpanel_name, true, false) as Control
 	if cbtn != null and cpanel != null:
 		if cpanel.visible:
@@ -172,39 +172,39 @@ func _run() -> void:
 	var fp_cable: int = TutorialSteps._footprint("b_006")
 	var fp_furnace: int = TutorialSteps._footprint("b_002")
 	var fp_pipe: int = TutorialSteps._footprint("b_018")
-	_check(MatchState.get_tile_land_owned(WINDOW_TILE) == seed,
-		"tutorial start seeds %d land on the factory tile (got %d)" % [seed, MatchState.get_tile_land_owned(WINDOW_TILE)])
-	_check(MatchState.get_tile_land_owned("tile_6_6") == 0,
+	_check(BuildingState.get_tile_land_owned(WINDOW_TILE) == seed,
+		"tutorial start seeds %d land on the factory tile (got %d)" % [seed, BuildingState.get_tile_land_owned(WINDOW_TILE)])
+	_check(BuildingState.get_tile_land_owned("tile_6_6") == 0,
 		"other board tiles start with no land owned")
 	# The step-5 costing click (window factory footprint) fits the seeded plot.
-	_check(MatchState.get_tile_player_space_used(WINDOW_TILE) + float(fp_factory) <= float(seed),
+	_check(BuildingState.get_tile_player_space_used(WINDOW_TILE) + float(fp_factory) <= float(seed),
 		"pricing up the window factory fits the seeded plot (the sourcing dialog can open)")
 	# Buy the NPC factory as the buy_factory step does: its footprint lands as owned land.
 	var fac_iid := ""
-	for iid in MatchState.tile_buildings.get(WINDOW_TILE, []):
-		if str(MatchState.get_building(str(iid)).get("building_id", "")) == "b_007":
+	for iid in BuildingState.tile_buildings.get(WINDOW_TILE, []):
+		if str(BuildingState.get_building(str(iid)).get("building_id", "")) == "b_007":
 			fac_iid = str(iid)
 	_check(fac_iid != "", "window factory instance resolves on the co-location tile")
-	MatchState.set_building_owner(fac_iid, MatchState.LOCAL_PLAYER)
+	BuildingState.set_building_owner(fac_iid, MatchState.LOCAL_PLAYER)
 	var owned_after_buy := seed + fp_factory
-	_check(MatchState.get_tile_land_owned(WINDOW_TILE) == owned_after_buy,
+	_check(BuildingState.get_tile_land_owned(WINDOW_TILE) == owned_after_buy,
 		"buying the factory grants its footprint (owned %d)" % owned_after_buy)
 	# The cable fits; WITH the cable laid (the power lesson precedes integration)
 	# the furnace does not — that's the buy_land step's wall.
-	var used := MatchState.get_tile_player_space_used(WINDOW_TILE)
+	var used := BuildingState.get_tile_player_space_used(WINDOW_TILE)
 	_check(used + float(fp_cable) <= float(owned_after_buy), "the power-lesson cable fits the granted land")
-	MatchState.add_building("b_006", "", WINDOW_TILE)   # the cable the power lesson lays
-	used = MatchState.get_tile_player_space_used(WINDOW_TILE)
+	BuildingState.add_building("b_006", "", WINDOW_TILE)   # the cable the power lesson lays
+	used = BuildingState.get_tile_player_space_used(WINDOW_TILE)
 	_check(used + float(fp_furnace) > float(owned_after_buy),
 		"the furnace does NOT fit before the buy_land step (%d + %d > %d)" % [int(used), fp_furnace, owned_after_buy])
 	_check(not TutorialDetectors.poll({"kind": "tile_land_at_least", "tile": WINDOW_TILE, "amount": target}),
 		"tile_land_at_least(%d) false before the purchase" % target)
-	var patches := ceili(float(target - owned_after_buy) / float(MatchState.LAND_PATCH_SIZE))
-	_check(MatchState.purchase_tile_land(WINDOW_TILE, patches),
+	var patches := ceili(float(target - owned_after_buy) / float(BuildingState.LAND_PATCH_SIZE))
+	_check(BuildingState.purchase_tile_land(WINDOW_TILE, patches),
 		"buying %d land patch(es) on the factory tile succeeds" % patches)
 	_check(TutorialDetectors.poll({"kind": "tile_land_at_least", "tile": WINDOW_TILE, "amount": target}),
 		"tile_land_at_least(%d) true after the purchase — buy_land advances" % target)
-	_check(MatchState.get_tile_player_space_used(WINDOW_TILE) + float(fp_furnace + fp_pipe) <= float(target),
+	_check(BuildingState.get_tile_player_space_used(WINDOW_TILE) + float(fp_furnace + fp_pipe) <= float(target),
 		"furnace + reinforced pipe fit the purchased land (both branches unblocked)")
 
 	# --- Transport lesson: the building panel's output card opens the routing sheet,
@@ -260,8 +260,8 @@ func _await_build_complete() -> void:
 
 
 func _npc_building_on(tile: String, bid: String) -> bool:
-	for iid in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[iid]
+	for iid in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[iid]
 		if str(inst.get("tile_id", "")) == tile and str(inst.get("building_id", "")) == bid:
 			return true
 	return false

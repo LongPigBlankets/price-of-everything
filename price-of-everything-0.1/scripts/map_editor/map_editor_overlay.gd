@@ -30,8 +30,8 @@ const LABEL_MIN_ZOOM := 0.45
 const GRID_MIN_ZOOM := 0.16
 
 const GRID_COLOR := Color(0.45, 0.85, 0.6, 0.30)
-## Twice the old 1.0 (owner, 2026-08-17). The grid is the frame a designer composes against,
-## and a hairline vanished under the fabric it was meant to measure.
+## The grid is the frame a designer composes against, and a hairline vanishes under the
+## fabric it is meant to measure.
 const GRID_WIDTH := 2.0
 const LABEL_COLOR := Color(0.60, 0.95, 0.75, 0.55)
 const LABEL_SIZE := 11
@@ -44,7 +44,7 @@ const HANDLE_COLOR := Color(0.55, 0.85, 1.0, 0.9)
 const UNLOCKABLE_COLOR := Color(0.45, 0.8, 1.0, 0.85)
 const POINT_RADIUS := 3.0
 
-## Connect-the-dots markers. The owner asked for BIG WHITE DOTS, and big is the point: they
+## Connect-the-dots markers. BIG WHITE DOTS, and big is the point: they
 ## are click targets before they are anything else, and a 3px dot at a working zoom is a
 ## test of aim rather than of judgement.
 const DOT_RADIUS := 7.0
@@ -153,8 +153,8 @@ func _process(_delta: float) -> void:
 	# the map under them. That is why this watches the transform EXACTLY rather than with the
 	# tolerance the world-space fabric layer can afford.
 	#
-	# What it no longer does is repaint a still view. Every stroke, zone and slot in the
-	# document is projected and stroked on each pass, and on a map-sized document that was
+	# It never repaints a still view. Every stroke, zone and slot in the
+	# document is projected and stroked on each pass, and on a map-sized document that is
 	# several milliseconds a frame spent redrawing an identical picture.
 	var transform := get_viewport().get_canvas_transform()
 	var revision := 0
@@ -194,9 +194,9 @@ func _draw() -> void:
 		_draw_marquee(camera)
 
 
-## Selection belongs in the cheap screen-space overlay, not in the retained fabric canvas.
-## Previously a click rebuilt every visible wood and building merely to add this hatch; with
-## dense Stoneshore woods that single architectural mistake made selecting feel like a hang.
+## Selection belongs in the cheap screen-space overlay, not in the retained fabric canvas:
+## rebuilding every visible wood and building merely to add this hatch makes selecting feel
+## like a hang in the dense Stoneshore woods.
 func _draw_selected_shapes(camera: Camera2D) -> void:
 	for entry_value in (editor.call("selected_records") as Array):
 		var entry: Dictionary = entry_value
@@ -476,10 +476,10 @@ func _draw_zones(camera: Camera2D) -> void:
 			if typeof(zone_value) != TYPE_DICTIONARY:
 				continue
 			var zone: Dictionary = zone_value
-			# The blue `industrial` and red `industrial_reserve` washes no longer draw
-			# (owner, 2026-08-27): hijack-marked decorative buildings are what says where a
-			# gameplay building goes now, and two full-tile colour washes underneath them
-			# buried the marks. EXTRACTION still draws — mines and wells are sited against
+			# The blue `industrial` and red `industrial_reserve` washes do not draw:
+			# hijack-marked decorative buildings are what says where a gameplay building
+			# goes, and two full-tile colour washes underneath them would bury the marks.
+			# EXTRACTION still draws — mines and wells are sited against
 			# the deposits, not against the fabric, so its black region is still the only
 			# thing saying where a mine may stand. The zones themselves are untouched in the
 			# document and still drive placement; only the passive wash is gone.

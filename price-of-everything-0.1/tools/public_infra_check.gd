@@ -10,16 +10,16 @@ func _ready() -> void:
 		Catalog._tile_infra[tile] = ["rail"]
 	Catalog._route_cache.clear()
 	var route := Catalog.route(source, destination, "g_001")
-	MatchState.queue_transport_shipment({"good_id": "g_001", "qty": 75, "source_tile": source, "destination_tile": destination, "turns_remaining": 1, "tiles": route.get("tiles", []), "legs": route.get("legs", [])})
-	MatchState.update_transport_congestion()
-	MatchState.advance_transport_shipments()
+	TransportState.queue_transport_shipment({"good_id": "g_001", "qty": 75, "source_tile": source, "destination_tile": destination, "turns_remaining": 1, "tiles": route.get("tiles", []), "legs": route.get("legs", [])})
+	TransportState.update_transport_congestion()
+	TransportState.advance_transport_shipments()
 	var slots := preload("res://scripts/tile_view_data.gd").infrastructure_summary(destination, {"infrastructure_present": ["rails"], "infrastructure_levels": {"rails": 1}})
 	var used := 0
 	for slot: Dictionary in slots:
 		if str(slot.get("key", "")) == "rails":
 			used = int((slot.get("transit", {}) as Dictionary).get("used", 0))
-	print("[public infra] tile readout: ", used, "; overview rows: ", MatchState.active_links().size())
-	if used != 75 or MatchState.active_links().size() != 2 or not MatchState.buildings.is_empty():
+	print("[public infra] tile readout: ", used, "; overview rows: ", TransportState.active_links().size())
+	if used != 75 or TransportState.active_links().size() != 2 or not BuildingState.buildings.is_empty():
 		get_tree().quit(1)
 		return
 	var panel := preload("res://scripts/transport_panel.gd").new()

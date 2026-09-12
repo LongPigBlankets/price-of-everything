@@ -20,7 +20,7 @@ func _ready() -> void:
 	_build_ui()
 	visible = false
 	if MatchState.has_signal("overflow_shipment_held"):
-		MatchState.overflow_shipment_held.connect(_on_overflow_held)
+		TransportState.overflow_shipment_held.connect(_on_overflow_held)
 
 func _build_ui() -> void:
 	anchor_left = 0.5

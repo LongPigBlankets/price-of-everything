@@ -44,9 +44,9 @@ func _ready() -> void:
 	# silently skips exactly the panels most likely to overflow.
 	var iid := ""
 	var tid := ""
-	for k: Variant in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[k]
-		if MatchState.is_player_owned(b):
+	for k: Variant in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[k]
+		if BuildingState.is_player_owned(b):
 			iid = str(k)
 			tid = str(b.get("tile_id", ""))
 			break

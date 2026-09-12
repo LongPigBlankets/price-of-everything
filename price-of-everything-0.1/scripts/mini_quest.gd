@@ -381,7 +381,7 @@ func _deposits_wants_coal_steel() -> bool:
 func _steel_recipe_needs_coal() -> bool:
 	var coal := _good_id("coal")
 	for iid in _producers_of(_good_id("steel")):
-		var recipe: Dictionary = Catalog.get_recipe(str((MatchState.buildings[iid] as Dictionary).get("recipe_id", "")))
+		var recipe: Dictionary = Catalog.get_recipe(str((BuildingState.buildings[iid] as Dictionary).get("recipe_id", "")))
 		for entry in (recipe.get("inputs", []) as Array):
 			if str((entry as Dictionary).get("good_id", "")) == coal:
 				return true
@@ -432,9 +432,9 @@ func _producers_of(good_id: String) -> Array:
 	var out: Array = []
 	if good_id == "":
 		return out
-	for iid in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[iid]
-		if not MatchState.is_player_owned(inst):
+	for iid in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[iid]
+		if not BuildingState.is_player_owned(inst):
 			continue
 		var recipe: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))
 		if not recipe.is_empty() and str(recipe.get("output_good_id", "")) == good_id:
@@ -455,7 +455,7 @@ func _tiles_consuming(produces: String, eats: String) -> Dictionary:
 	if eats == "":
 		return out
 	for iid in _producers_of(produces):
-		var inst: Dictionary = MatchState.buildings[iid]
+		var inst: Dictionary = BuildingState.buildings[iid]
 		var recipe: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))
 		var takes := false
 		for entry in (recipe.get("inputs", []) as Array):
@@ -472,7 +472,7 @@ func _tiles_consuming(produces: String, eats: String) -> Dictionary:
 func _mines_on_infinite(good_id: String, token: String) -> Array:
 	var out: Array = []
 	for iid in _producers_of(good_id):
-		var tid := str((MatchState.buildings[iid] as Dictionary).get("tile_id", ""))
+		var tid := str((BuildingState.buildings[iid] as Dictionary).get("tile_id", ""))
 		if tid != "" and MatchState.has_infinite_deposit(tid, token):
 			out.append(iid)
 	return out
@@ -521,9 +521,9 @@ func _new_consumer_output() -> String:
 	if surplus == "":
 		return ""
 	var own := _good_id(str(spec().get("made", "")))
-	for iid in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[iid]
-		if not MatchState.is_player_owned(inst):
+	for iid in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[iid]
+		if not BuildingState.is_player_owned(inst):
 			continue
 		var recipe: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))
 		if recipe.is_empty():

@@ -62,8 +62,8 @@ func _ready() -> void:
 	if not authored.is_empty():
 		# The owner's own sequence: a wood a COMPANY owns is bought first, exactly as the Buy
 		# button does it. Only the woods the LAND owns are demolished where they stand.
-		if str(authored.get("owner", "")) != MatchState.LAND_OWNER:
-			MatchState.set_building_owner(str(authored["iid"]), MatchState.LOCAL_PLAYER)
+		if str(authored.get("owner", "")) != BuildingState.LAND_OWNER:
+			BuildingState.set_building_owner(str(authored["iid"]), MatchState.LOCAL_PLAYER)
 		await _fell_and_measure(authored, "bought")
 	else:
 		print("[SPRITE] no authored wood found to test")
@@ -83,7 +83,7 @@ func _ready() -> void:
 	else:
 		# The same ground with nothing on it, to compare the planted wood against.
 		_bare_frame = await _shoot(bare, "bare")
-		var iid: String = MatchState.add_building(NEW_GROWTH, "", bare, MatchState.LOCAL_PLAYER,
+		var iid: String = BuildingState.add_building(NEW_GROWTH, "", bare, MatchState.LOCAL_PLAYER,
 			"planted_%s" % bare, false)
 		_world.building_placed.emit(bare, NEW_GROWTH, "", iid,
 			_world.terrain_layer.id_to_coord(bare))
@@ -117,13 +117,13 @@ func _fell_and_measure(wood: Dictionary, label: String) -> void:
 	var iid := str(wood["iid"])
 	var tile_id := str(wood["tile"])
 	var before := await _shoot(tile_id, "%s_before" % label)
-	var started: Dictionary = MatchState.start_demolish(iid)
+	var started: Dictionary = BuildingWorks.start_demolish(iid)
 	if not bool(started.get("ok", false)):
 		print("[SPRITE] FAILED: %s wood %s (%s) refuses to demolish — %s"
 			% [label, iid, str(wood.get("owner", "")), str(started.get("reason", ""))])
 		_failures += 1
 		return
-	MatchState.tick_demolish()
+	BuildingWorks.tick_demolish()
 	var after := await _shoot(tile_id, "%s_after" % label)
 	var lost := _lost_canopy(before, after)
 	var footprint: Rect2i = lost["bounds"]
@@ -212,16 +212,16 @@ func _is_tree(colour: Color) -> bool:
 
 ## A standing wood, optionally restricted to the ones the LAND owns.
 func _find_wood(building_id: String, land_owned: bool = false) -> Dictionary:
-	var ids := MatchState.buildings.keys()
+	var ids := BuildingState.buildings.keys()
 	ids.sort()   # same subject every run
 	for iid in ids:
-		var building: Dictionary = MatchState.buildings[iid]
+		var building: Dictionary = BuildingState.buildings[iid]
 		if str(building.get("building_id", "")) != building_id:
 			continue
 		var owner := str(building.get("owner", ""))
-		if land_owned != (owner == MatchState.LAND_OWNER):
+		if land_owned != (owner == BuildingState.LAND_OWNER):
 			continue
-		if MatchState.demolish_queue.has(str(iid)):
+		if BuildingWorks.demolish_queue.has(str(iid)):
 			continue
 		return {"iid": str(iid), "tile": str(building.get("tile_id", "")),
 			"building": building_id, "owner": owner}
@@ -241,7 +241,7 @@ func _bare_tile() -> String:
 		var tile_id := str(tile.get("id", ""))
 		if tile_id == "" or authored.has(tile_id):
 			continue
-		if not (MatchState.tile_buildings.get(tile_id, []) as Array).is_empty():
+		if not (BuildingState.tile_buildings.get(tile_id, []) as Array).is_empty():
 			continue
 		return tile_id
 	return ""

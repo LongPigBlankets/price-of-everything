@@ -77,7 +77,7 @@ func _run(recipe_id: String) -> void:
 	MatchState.reset()
 	TurnManager.reset_for_test()
 	TurnManager.fast_mode = true
-	MatchState.debug_turn_logs_enabled = false
+	UiPrefs.debug_turn_logs_enabled = false
 	MarketState.import_state({})
 	Stockpile.import_state({})
 	Production.import_state({})
@@ -85,14 +85,14 @@ func _run(recipe_id: String) -> void:
 	DecisionState.enabled = false
 	# Prevent unlock-by-doing from adding bonuses while measuring a fixed baseline.
 	# This fixture-only change never modifies the catalogue or gameplay code.
-	MatchState._unlock_defs.clear()
+	ResearchState._unlock_defs.clear()
 	MatchState.money = INITIAL_EQUITY
 	MatchState.construct_material_source = "market"
 	MatchState.construct_output_destination = "market"
 	MatchState.set_construct_credit_default("none")
 	MatchState.power_priority_coal_gas = "grid"
 	MatchState.power_priority_wind_solar = "grid"
-	MatchState.seaport_auto_subscribe = false
+	TransportState.seaport_auto_subscribe = false
 	_map = DataMap.new()
 	add_child(_map)
 	MatchState.seed_surveyed_ports()
@@ -142,8 +142,8 @@ func _run(recipe_id: String) -> void:
 			result["cash_spent_before_first_run"] = INITIAL_EQUITY - cash_before
 		row["in_sample"] = first_running >= 0
 		_rows.append(row)
-		assert(MatchState.unlocked_titles.is_empty() and MatchState.advisor_seats.is_empty())
-		assert(MatchState.buildings.size() <= 1 and MatchState.building_tabs.is_empty())
+		assert(ResearchState.unlocked_titles.is_empty() and AdvisorState.advisor_seats.is_empty())
+		assert(BuildingState.buildings.size() <= 1 and MatchState.building_tabs.is_empty())
 		if first_running >= 0:
 			sample_count += 1
 			if sample_count == SAMPLE_TURNS:

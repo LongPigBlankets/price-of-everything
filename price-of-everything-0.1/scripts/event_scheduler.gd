@@ -98,8 +98,8 @@ func _ready() -> void:
 		Production.building_starved.connect(_on_building_starved)
 	if MatchState.has_signal("deposit_exhausted"):
 		MatchState.deposit_exhausted.connect(_on_deposit_exhausted)
-	if MatchState.has_signal("unlock_granted"):
-		MatchState.unlock_granted.connect(_on_unlock_granted)
+	if ResearchState.has_signal("unlock_granted"):
+		ResearchState.unlock_granted.connect(_on_unlock_granted)
 	if MatchState.has_signal("market_sale_arrived_at_port"):
 		MatchState.market_sale_arrived_at_port.connect(_on_sale_arrived)
 	if MatchState.has_signal("tile_survey_completed"):
@@ -393,7 +393,7 @@ func _check_condition(c: Dictionary) -> bool:
 		"building_count_at_least":
 			var owner_filter := str(c.get("owner", ""))
 			var n := 0
-			for inst in MatchState.buildings.values():
+			for inst in BuildingState.buildings.values():
 				if owner_filter == "" or str(inst.get("owner", "")) == owner_filter:
 					n += 1
 			return n >= int(c.get("value", 0))
@@ -438,7 +438,7 @@ func _on_building_starved(record: Dictionary) -> void:
 	# The building's name exactly as the detail panel shows it (codified
 	# "<Type> - <Output> - <Letter>"), plus the tile nickname (or the tile id
 	# when it has none) for the bracketed location.
-	var recipe_id := str(MatchState.get_building(inst_id).get("recipe_id", ""))
+	var recipe_id := str(BuildingState.get_building(inst_id).get("recipe_id", ""))
 	var building_name := BuildingNaming.label_for_tile(tile_id, inst_id, building_id, recipe_id)
 	var nick := Catalog.tile_name(tile_id)
 	var where := nick if nick != "" else tile_id
@@ -503,7 +503,7 @@ func _on_unlock_granted(title: String, description: String, via_condition: bool)
 		# Carried so the Turn Briefing can render name / reward / condition per unlock.
 		"research_name": title,
 		"research_reward": description,
-		"research_condition": MatchState.unlock_condition_text(title),
+		"research_condition": ResearchState.unlock_condition_text(title),
 	})
 
 func _on_sale_arrived(_port_tile_id: String, revenue: float) -> void:

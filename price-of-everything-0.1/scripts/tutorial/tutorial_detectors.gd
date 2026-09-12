@@ -38,7 +38,7 @@ static func poll(decide: Dictionary) -> bool:
 		"advisor_seated":
 			# `count` advisors sitting in seats. Hiring alone is not enough — the lesson is
 			# that a seated advisor changes the numbers.
-			return MatchState.advisor_seats.size() >= int(decide.get("count", 1))
+			return AdvisorState.advisor_seats.size() >= int(decide.get("count", 1))
 		"tile_cabled_or_ordered":
 			# True the instant the player CLICKS the Cables cell (a b_006 construction
 			# project appears) OR once it finishes (tile_has_infra). Advancing on the
@@ -62,7 +62,7 @@ static func poll(decide: Dictionary) -> bool:
 			# completed recipe change / retool (e.g. the glass furnace switched to r_054).
 			return _building_recipe_on_tile(str(decide.get("tile", "")), str(decide.get("recipe_id", "")))
 		"research_unlocked":
-			return MatchState.is_unlocked(str(decide.get("title", "")))
+			return ResearchState.is_unlocked(str(decide.get("title", "")))
 		"research_visible":
 			var tree := Engine.get_main_loop() as SceneTree
 			var panel := tree.current_scene.find_child("ResearchPanel", true, false) if tree != null and tree.current_scene != null else null
@@ -92,7 +92,7 @@ static func poll(decide: Dictionary) -> bool:
 		"tile_land_at_least":
 			# True once the player owns at least `amount` land on the tile — the Buy Land
 			# lesson (poll-driven; land purchases apply instantly on the popup click).
-			return MatchState.get_tile_land_owned(str(decide.get("tile", ""))) >= int(decide.get("amount", 0))
+			return BuildingState.get_tile_land_owned(str(decide.get("tile", ""))) >= int(decide.get("amount", 0))
 		"output_routed_offtile":
 			# True once the player's building on the tile has an output explicitly routed
 			# to ANOTHER tile's stockpile — the transport-cost redirect lesson.
@@ -188,13 +188,13 @@ static func _research_search_nonempty() -> bool:
 static func _building_running_on_tile(tile_id: String, building_id: String) -> bool:
 	if tile_id == "":
 		return false
-	for iid in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[iid]
+	for iid in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[iid]
 		if str(inst.get("tile_id", "")) != tile_id:
 			continue
 		if building_id != "" and str(inst.get("building_id", "")) != building_id:
 			continue
-		if not MatchState.is_player_owned(inst):
+		if not BuildingState.is_player_owned(inst):
 			continue
 		var recipe: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))
 		if BuildingReadout.run_state(inst, recipe, false) == "running":
@@ -207,11 +207,11 @@ static func _building_running_on_tile(tile_id: String, building_id: String) -> b
 static func _building_recipe_on_tile(tile_id: String, recipe_id: String) -> bool:
 	if tile_id == "" or recipe_id == "":
 		return false
-	for iid in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[iid]
+	for iid in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[iid]
 		if str(inst.get("tile_id", "")) != tile_id:
 			continue
-		if str(inst.get("recipe_id", "")) == recipe_id and MatchState.is_player_owned(inst):
+		if str(inst.get("recipe_id", "")) == recipe_id and BuildingState.is_player_owned(inst):
 			return true
 	return false
 
@@ -295,13 +295,13 @@ static func _output_route_state(tile_id: String, building_id: String) -> Diction
 	var state := {"market": false, "offtile": false, "ontile": false}
 	if tile_id == "":
 		return state
-	for iid in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[iid]
+	for iid in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[iid]
 		if str(inst.get("tile_id", "")) != tile_id:
 			continue
 		if building_id != "" and str(inst.get("building_id", "")) != building_id:
 			continue
-		if not MatchState.is_player_owned(inst):
+		if not BuildingState.is_player_owned(inst):
 			continue
 		var per_good: Dictionary = MatchState.output_stockpile_destinations.get(str(iid), {})
 		for gid in per_good:
@@ -318,13 +318,13 @@ static func _output_route_state(tile_id: String, building_id: String) -> Diction
 static func _output_routed_to_tile(tile_id: String, building_id: String, destination: String) -> bool:
 	if tile_id == "" or destination == "":
 		return false
-	for iid in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[iid]
+	for iid in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[iid]
 		if str(inst.get("tile_id", "")) != tile_id:
 			continue
 		if building_id != "" and str(inst.get("building_id", "")) != building_id:
 			continue
-		if not MatchState.is_player_owned(inst):
+		if not BuildingState.is_player_owned(inst):
 			continue
 		for routed_tile in (MatchState.output_stockpile_destinations.get(str(iid), {}) as Dictionary).values():
 			if str(routed_tile) == destination:
@@ -348,12 +348,12 @@ static func _stockpile_good_at_least(tile_id: String, good_name_or_id: String, a
 static func _building_owned_on_tile(tile_id: String, building_id: String) -> bool:
 	if tile_id == "":
 		return false
-	for iid in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[iid]
+	for iid in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[iid]
 		if str(inst.get("tile_id", "")) != tile_id:
 			continue
 		if building_id != "" and str(inst.get("building_id", "")) != building_id:
 			continue
-		if MatchState.is_player_owned(inst):
+		if BuildingState.is_player_owned(inst):
 			return true
 	return false

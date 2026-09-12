@@ -10,7 +10,7 @@ func _ready() -> void:
 	await _settle(120)
 
 	var tile := "tile_5_10"
-	MatchState.add_building("b_001", "r_001", tile, "player_1", "cap_probe", false)
+	BuildingState.add_building("b_001", "r_001", tile, "player_1", "cap_probe", false)
 	# Something on the tile to overflow with, in unequal amounts so the sort is visible.
 	for row: Array in [["g_001", 220], ["g_002", 140], ["g_004", 90], ["g_005", 55], ["g_003", 20]]:
 		Stockpile.add(tile, str(row[0]), int(row[1]))
