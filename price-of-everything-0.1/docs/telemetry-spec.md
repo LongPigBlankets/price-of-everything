@@ -368,18 +368,62 @@ stays for the next retry. No retry loops, no backoff — the outbox *is* the ret
 Exported-build gotchas — **all verified live 2026-07-20** against the real endpoint
 (`tools/telemetry/poc_send.tscn`, curl cross-check):
 
-- **Apps Script answers a POST with a 302 redirect** (to `script.googleusercontent.com`,
-  where the `ContentService` response body lives). `doPost` has *already executed* by
-  the time the redirect is issued, so the 302 itself is the success signal. Set
-  `max_redirects = 0` and don't fetch the body — the one-time response URL is flaky
-  for non-browser clients (curl following it intermittently got a Google error page
-  even though the write had succeeded).
+- **⚠️ HTTP 200 MEANS THE SERVER THREW. It is a FAILURE, not a success.** Re-measured
+  2026-09-12 against the live endpoint, three payloads:
+
+  | `doPost` outcome | HTTP | body |
+  |---|---|---|
+  | clean return (`ok`, `feedback_ok`, `launch_ok`, even a rejection like `no`) | **302** | parked at a `script.googleusercontent.com` URL |
+  | **thrown exception** (e.g. a `sheetWithHeader_` header mismatch) | **200** | `text/html` stack-trace page |
+
+  An earlier revision of this section said to key on `302` "(or a plain 200)". That
+  parenthesis accepted precisely the failure case: when `transport` was inserted into
+  the middle of the turns header, `sheetWithHeader_` threw on every POST and the client
+  deleted each envelope as delivered. **A month of turn rows (7 Sep – 12 Sep 2026) was
+  destroyed**, while the `runs` tab kept filling, because `runs.appendRow` executes
+  before the throw. Accept a 302, or a 200 whose body is short plain text; an HTML body
+  is a stack trace and the envelope must survive for the next boot.
 - **With `max_redirects = 0`, Godot reports the completion `result` as
   `RESULT_REDIRECT_LIMIT_REACHED` (12), NOT `RESULT_SUCCESS`** — the success check
-  must key on `response_code == 302` (or a plain 200), never on the result enum.
+  must key on `response_code`, never on the result enum.
+- **Never let `HTTPRequest` follow the 302.** The parked `googleusercontent` URL is
+  **GET-only**, and Godot preserves the request method across a redirect, so a followed
+  POST arrives there as a POST and returns 400/405. (`curl -L` downgrades POST→GET, which
+  is why it appears to work from the shell and not from the engine.) An earlier revision
+  called that URL "flaky for non-browser clients" and said never to fetch it; it is not
+  flaky — it simply requires an explicit **GET**, which is how the endpoint's real reply
+  is read. To diagnose by hand: POST without following, take the `Location` header, GET it.
 - **TLS just works:** Godot's bundled Mozilla CA store handshakes with
   `script.google.com` with no certificate setup (verified from the headless engine on
   macOS).
+- **⚠️ New sheet columns go at the END of the header array in `Code.gs`.**
+  `sheetWithHeader_` validates the live header against its array and only ever *appends*
+  the missing tail. A column inserted in the MIDDLE therefore throws
+  `Unexpected header in <tab>` on every POST, forever, and (per the 200 rule above) that
+  throw used to look like success. This is exactly how the turns tab died. If a column
+  genuinely must sit mid-header, insert it by hand in the spreadsheet FIRST, then deploy.
+  `tutorial_step` / `tutorial_visited` are appended after `raw_json` for this reason,
+  even though they would read more naturally beside the other run fields.
+- **Deploying:** Deploy → Manage deployments → ✏️ → Version: **New version** → Deploy.
+  Leaving the dropdown on the existing version silently redeploys the OLD code, and
+  "New deployment" mints a NEW `/exec` URL that the client does not know about.
+
+### 6.2b Launch rows (`launches` tab)
+
+One row per app start, sent before any run exists — the only signal that counts players
+who open the game and never finish a run, who otherwise produce no envelope at all.
+
+`TelemetryState._queue_launch()` runs in `_ready`, *before* the outbox sweep, so the row
+uploads in the same pass; an offline launch simply lands on a later boot. Payload is
+`kind: "launch"` with `launch_id`, `player_id`, `session_id`, `client.version`,
+`client.os` and `launched_at`; the server replies `launch_ok`.
+
+`launched_at` is the **client's** clock. A queued launch can be received days later, so
+read `launched_at` for activity and `received_at` only for delivery lag.
+
+Because no run exists yet there is no per-run consent to read, so this honours the
+persistent `telemetry_opt_out` only while `SHOW_CONSENT_CHECKBOX` is true. Any envelope
+carrying a `kind` (`launch`, `feedback`) is excluded from the turn-delivery watermark.
 
 ### 6.3 Outbox spool
 
@@ -490,10 +534,14 @@ Gameplay is paused while the dialog is open.
 
 Submitting is explicit consent to send this response independently of passive
 run-metrics consent. The client writes a `feedback_<id>.json` outbox envelope before
-marking the profile and quitting. Offline responses retry on a later launch. Only
-an HTTP 200 response containing `feedback_ok` removes this file; redirects and the
-old receiver's generic response do not discard feedback. Feedback never advances
-the turn-delivery watermark. Retries are deduplicated by feedback_id server-side.
+marking the profile and quitting. Offline responses retry on a later launch. Only a
+body reading `feedback_ok` removes this file — a player's exit feedback cannot be
+asked for twice, so it is never discarded on a guess. That confirmation lives behind
+the 302 on a GET-only URL, so the client posts with `max_redirects = 0`, reads the
+`Location` header, and fetches it with an explicit GET (`_confirm_feedback`). Letting
+`HTTPRequest` follow the redirect re-POSTs and returns 400, which made feedback
+permanently undeliverable until 2026-09-12. Feedback never advances the turn-delivery
+watermark. Retries are deduplicated by feedback_id server-side.
 
 Update Apps Script with the complete `tools/telemetry/Code.gs`, then deploy a new
 version of the existing deployment. The `feedback` tab is created automatically
