@@ -39,6 +39,12 @@ const AppPaths := preload("res://scripts/app_paths.gd")
 const ENDPOINT_URL := "https://script.google.com/macros/s/AKfycbw8dUX-A_dSKmI2GB4_2AbRXbGnOKTbP8mpEa17t6wBBAg4Y0LcCnS_xJNH3EeNRwdr/exec"
 const TOKEN := "d299f45324f48cce4b9257789dfc493e172d5ac657ba1641"
 const SCHEMA_VERSION := 4  # v4: per-turn interaction counts and identified UI events
+## Whether the New Game and Tutorial screens offer the "send metrics" checkbox. The demo
+## ships with it HIDDEN so every run reports: an opt-out box left the developer unable to
+## tell whether anyone had opened the game at all. When hidden, consent is forced on and
+## any remembered opt-out in profile.json is cleared on the next start. Flip to true to
+## restore the visible opt-out (the rows and PlayerProfile plumbing are untouched).
+const SHOW_CONSENT_CHECKBOX := false
 const QUIT_UPLOAD_WINDOW_MSEC := 6000  # Apps Script round trips run 1.5-4 s
 const CHECKPOINT_EVERY := 10
 const COMPLETE_REASONS: Array[String] = ["victory", "turn_cap", "bankruptcy"]

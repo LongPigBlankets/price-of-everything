@@ -84,12 +84,15 @@ function doPost(e) {
     return ContentService.createTextOutput("feedback_ok");
   }
   const run = p.run || {};
-  const runs = sheetWithHeader_(ss, "runs", RUNS_HEADER);
+  // Web (itch.io browser) builds report OS.get_name() == "Web"; keep their rows on their
+  // own tabs so desktop and browser play can be read side by side.
+  const isWeb = String((p.client || {}).os || "") === "Web";
+  const runs = sheetWithHeader_(ss, isWeb ? "WB Runs" : "runs", RUNS_HEADER);
   runs.appendRow([new Date(), p.player_id, p.run_id, p.session_id,
       p.client.version, p.client.os, run.start || "", p.end.reason, p.end.run_complete,
       p.end.turn, run.cheats_used === true, p.end.rescues || 0, JSON.stringify(p)]);
 
-  const sh = sheetWithHeader_(ss, "turns", FIXED);
+  const sh = sheetWithHeader_(ss, isWeb ? "WB Turns" : "turns", FIXED);
   const stamped = new Date();
   const turnKeys = new Set(sh.getLastRow() > 1
     ? sh.getRange(2, 2, sh.getLastRow() - 1, 3).getValues().map(r => r[0] + ":" + r[2]) : []);

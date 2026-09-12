@@ -130,6 +130,14 @@ up as `ended_at` ≫ `received_at`).
 
 ## 2. Consent — per-run opt-out at the start screens (BUILT 2026-07-21)
 
+> **Demo builds (0.4.2+): the checkbox is hidden.** `TelemetryState.SHOW_CONSENT_CHECKBOX`
+> is `false`, so neither run-start screen offers the opt-out, consent is forced on for every
+> run, and a remembered opt-out in `profile.json` is cleared on the next start. Rationale: with
+> an opt-out available the developer could not tell whether anyone had opened the demo at all.
+> The rows, `PlayerProfile.telemetry_opt_out` and `send_metrics_enabled()` are unchanged and
+> return when the constant is flipped back. Disclose the always-on collection on the itch page.
+> Browser builds (`OS.get_name() == "Web"`) land on their own `WB Runs` / `WB Turns` tabs.
+
 **Owner decision (supersedes the earlier opt-in-popup draft):** consent is a
 default-ticked **opt-out checkbox on the two run-start surfaces** — the New Game
 settings panel and the Tutorial intro panel — fixed for the run's lifetime the

@@ -94,11 +94,13 @@ func _build() -> void:
 
 	# Telemetry consent (opt-out, docs/telemetry-spec.md §2) — same row as the
 	# New Game screen; main_menu reads send_metrics_enabled() on Begin.
-	var consent := UIHelpers.make_telemetry_consent_row(not PlayerProfile.telemetry_opt_out)
-	_consent_cb = consent["checkbox"] as CheckBox
-	var consent_center := CenterContainer.new()
-	consent_center.add_child(consent["row"])
-	col.add_child(consent_center)
+	if TelemetryState.SHOW_CONSENT_CHECKBOX:
+		var consent := UIHelpers.make_telemetry_consent_row(not PlayerProfile.telemetry_opt_out)
+		_consent_cb = consent["checkbox"] as CheckBox
+		var consent_center := CenterContainer.new()
+		consent_center.add_child(consent["row"])
+		col.add_child(consent_center)
+	# Otherwise no row: send_metrics_enabled() reads true while _consent_cb is null.
 
 	# Back button, top-right — added LAST so it renders on top of the full-rect content
 	# container and actually receives the click (a CenterContainer defaults to MOUSE_FILTER_STOP
