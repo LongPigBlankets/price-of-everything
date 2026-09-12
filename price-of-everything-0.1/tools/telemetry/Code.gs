@@ -1,4 +1,4 @@
-// Carbon and Capital — telemetry endpoint (v2: single pipe-joined goods column)
+// Carbon and Capital — telemetry endpoint (v5: tutorial progress in runs)
 // See docs/telemetry-spec.md §6.
 //
 // Setup (once, signed in as carbon.capital.data@gmail.com):
@@ -27,7 +27,8 @@ const TOKEN = "d299f45324f48cce4b9257789dfc493e172d5ac657ba1641";
 // finalize, because a quit-to-menu envelope is built after the match is torn down.
 const RUNS_HEADER = ["received_at", "player_id", "run_id", "session_id", "version",
                      "os", "start", "end_reason", "run_complete", "end_turn",
-                     "cheats_used", "rescues", "raw_json"];
+                     "cheats_used", "rescues", "raw_json",
+                     "tutorial_step", "tutorial_visited"];
 // One row per turn. "goods" is the sparse per-good production pipe-joined as
 // name:qty (e.g. "coal:51|iron_ore:28|steel:53") — zero-production goods are
 // absent by construction. tiers/victory are pipe-joined arrays.
@@ -42,7 +43,7 @@ const RUNS_HEADER = ["received_at", "player_id", "run_id", "session_id", "versio
 //                     (missing_inputs, no_power, starting, market_input_cash, …)
 const FIXED = ["received_at", "run_id", "session_id", "turn", "money", "revenue", "profit", "loans",
                "buildings", "power_gen", "power_use", "tiers", "victory",
-//   transport       — this turn's freight split, seven pipe-joined values in FIXED order:
+//   transport       — this turn's freight split, six pipe-joined values in FIXED order:
 //                     port_inbound|port_outbound|roads|rail|pipes|reinf_pipes
 //                     They sum to the `transport` entry inside `costs`.
                "playtime_s", "goods", "costs", "transport", "buildings_list", "building_states"];
@@ -54,6 +55,12 @@ const INTERACTIONS = ["encyclopedia_opened", "good_encyclopedia_opened", "goods_
 FIXED.push(...INTERACTIONS);
 const EVENTS_HEADER = ["received_at", "player_id", "run_id", "session_id", "event_id",
   "turn", "playtime_s", "action", "interface", "target_id", "version"];
+// One row per app start, sent before any run exists. This is the only signal that counts
+// players who open the game and never finish a run — they produce no envelope at all, and
+// they are exactly the population worth measuring. `os` carries Web vs desktop, so browser
+// launches share this tab rather than splitting off like WB Runs / WB Turns.
+const LAUNCHES_HEADER = ["received_at", "launch_id", "player_id", "session_id",
+  "version", "os", "launched_at"];
 
 
 function doGet() {
@@ -71,6 +78,15 @@ function doPost(e) {
   try {
   const ss = SpreadsheetApp.getActive();
 
+  if (p.kind === "launch") {
+    const sheet = sheetWithHeader_(ss, "launches", LAUNCHES_HEADER);
+    // launched_at is the CLIENT's clock: an offline launch uploads on a later boot, so
+    // received_at can trail it by days. Compare launched_at, not received_at, for activity.
+    sheet.appendRow([new Date(), p.launch_id || "", p.player_id || "", p.session_id || "",
+      (p.client || {}).version || "", (p.client || {}).os || "",
+      p.launched_at ? new Date(p.launched_at * 1000) : ""]);
+    return ContentService.createTextOutput("launch_ok");
+  }
   if (p.kind === "feedback") {
     const ratings = ["Great", "Good", "Average", "Bad", "Terrible"];
     if (!p.feedback_id || !ratings.includes(p.rating)) return ContentService.createTextOutput("bad feedback");
@@ -84,12 +100,16 @@ function doPost(e) {
     return ContentService.createTextOutput("feedback_ok");
   }
   const run = p.run || {};
-  const runs = sheetWithHeader_(ss, "runs", RUNS_HEADER);
+  // Web (itch.io browser) builds report OS.get_name() == "Web"; keep their rows on their
+  // own tabs so desktop and browser play can be read side by side.
+  const isWeb = String((p.client || {}).os || "") === "Web";
+  const runs = sheetWithHeader_(ss, isWeb ? "WB Runs" : "runs", RUNS_HEADER);
   runs.appendRow([new Date(), p.player_id, p.run_id, p.session_id,
       p.client.version, p.client.os, run.start || "", p.end.reason, p.end.run_complete,
-      p.end.turn, run.cheats_used === true, p.end.rescues || 0, JSON.stringify(p)]);
+      p.end.turn, run.cheats_used === true, p.end.rescues || 0, JSON.stringify(p),
+      run.tutorial_step || "", run.tutorial_visited || 0]);
 
-  const sh = sheetWithHeader_(ss, "turns", FIXED);
+  const sh = sheetWithHeader_(ss, isWeb ? "WB Turns" : "turns", FIXED);
   const stamped = new Date();
   const turnKeys = new Set(sh.getLastRow() > 1
     ? sh.getRange(2, 2, sh.getLastRow() - 1, 3).getValues().map(r => r[0] + ":" + r[2]) : []);

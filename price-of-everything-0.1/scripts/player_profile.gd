@@ -117,7 +117,10 @@ func set_telemetry_opt_out(v: bool) -> void:
 
 
 ## Anonymous per-install telemetry id, minted on first use.
+## Editor and dev-machine runs are tagged "Developer" instead of a random UUID.
 func get_telemetry_player_id() -> String:
+	if OS.has_feature("editor"):
+		return "Developer"
 	if telemetry_player_id == "":
 		telemetry_player_id = Crypto.new().generate_random_bytes(16).hex_encode()
 		if DisplayServer.get_name() != "headless":
