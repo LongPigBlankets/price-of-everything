@@ -1220,3 +1220,30 @@ func _test_research_link_is_exact() -> void:
 	_check(checked > 20 and exact_ok,
 		"research link: an exact-title link returns that tech and nothing else (%d techs, %d of which are ambiguous under the loose search)" % [checked, ambiguous])
 	panel.free()
+
+
+func _test_upgrade_gates_resolve_and_refinery_level_two_unlocks() -> void:
+	var levels := preload("res://scripts/building_levels.gd")
+	for building: String in levels._RESEARCH_GATE:
+		for level: int in levels._RESEARCH_GATE[building]:
+			var title: String = levels.research_gate(building, level)
+			_check(ResearchState.research_node_id_for_title(title) != "", "%s L%d gate resolves to authored research" % [building, level])
+	MatchState.reset()
+	Stockpile.clear_all()
+	var tile := "refinery_gate_test"
+	BuildingState.tile_land_owned[tile] = 200
+	var iid := BuildingState.add_building("b_011", "", tile)
+	var blocked := BuildingWorks.start_upgrade(iid)
+	_check(str(blocked.get("research", "")) == "Hydrocracking Units", "refinery L2 points to the existing Hydrocracking research")
+	ResearchState.grant_unlock(ResearchState.research_title_for_node_id("research_petro_015"))
+	var kit: Dictionary = levels.upgrade_materials("petro_refinery", 2)
+	for good: String in kit:
+		Stockpile.add(tile, str(Catalog.get_good_by_internal_name(good).get("id", "")), int(kit[good]))
+	_check(not bool(BuildingWorks.preview_upgrade(iid).research_locked), "refinery preview recognises Hydrocracking unlock")
+	_check(bool(BuildingWorks.start_upgrade(iid).get("ok", false)), "Hydrocracking allows the actual refinery upgrade")
+	for tick in range(levels.UPGRADE_DURATION):
+		BuildingWorks.tick_upgrades()
+	_check(int(BuildingState.get_building(iid).level) == 2, "refinery upgrade completes to L2")
+	_check(str(BuildingWorks.preview_upgrade(iid).research_gate) == "Deep Conversion Units", "refinery L3 retains its existing research requirement")
+	MatchState.reset()
+	Stockpile.clear_all()

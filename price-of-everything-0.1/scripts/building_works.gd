@@ -189,6 +189,7 @@ func tick_retrofits() -> Array:
 		p["turns_remaining"] = int(p.get("turns_remaining", 0)) - 1
 		if int(p["turns_remaining"]) <= 0:
 			BuildingState.buildings[iid]["recipe_id"] = str(p.get("to_recipe", ""))
+			BuildingState.buildings[iid]["startup_inputs_pending"] = true
 			completed.append(iid)
 			building_retrofitted.emit(iid, str(p.get("to_recipe", "")))
 		else:
@@ -1002,6 +1003,8 @@ func set_building_paused(instance_id: String, paused: bool) -> void:
 	if paused:
 		paused_buildings[instance_id] = true
 	else:
+		if is_building_paused(instance_id):
+			BuildingState.buildings[instance_id]["startup_inputs_pending"] = true
 		paused_buildings.erase(instance_id)
 	building_paused_changed.emit(instance_id)
 

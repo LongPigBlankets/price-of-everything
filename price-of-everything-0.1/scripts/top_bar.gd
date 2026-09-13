@@ -290,6 +290,17 @@ func _ready() -> void:
 	_add_bankruptcy_warning()
 
 	MatchState.money_changed.connect(_on_money_changed)
+	MatchState.state_reset.connect(_stockpile_guidance.reset)
+	SaveLoad.match_loaded.connect(_stockpile_guidance.reset)
+	MatchState.state_reset.connect(_reset_upcoming_notice)
+	SaveLoad.match_loaded.connect(_reset_upcoming_notice)
+	for event: Signal in [Stockpile.stockpile_changed, TransportState.transport_shipments_changed,
+		MatchState.recurring_orders_changed, MatchState.money_changed, LoanState.loans_updated,
+		Construction.construction_started, Construction.construction_cancelled, Construction.construction_materials_updated,
+		BuildingWorks.building_upgrade_started, BuildingWorks.building_upgrade_cancelled,
+		BuildingWorks.building_paused_changed, MatchState.output_stockpile_destination_changed]:
+		event.connect(_queue_upcoming_notice)
+
 	MatchState.build_rejected_no_funds.connect(_on_build_rejected_no_funds)
 	MatchState.cfo_tax_credit_filed.connect(_on_cfo_tax_credit_filed)
 	UiPrefs.topbar_v3_1_changed.connect(_on_topbar_v3_1_changed)
@@ -309,6 +320,8 @@ func _ready() -> void:
 	TurnBriefing.items_changed.connect(_queue_refresh)
 	# The briefing notch replaces the collapsed strip.
 	TurnBriefing.strip_enabled = false
+	get_tree().root.child_entered_tree.connect(_on_notice_root_child_entered)
+	call_deferred("_refresh_notices_after_loading")
 	get_viewport().size_changed.connect(_recenter_notch)
 	resized.connect(queue_redraw)   # the metallic edge spans the live width
 	_queue_refresh()
@@ -3189,9 +3202,13 @@ func _fly_btn(text: String, primary: bool) -> Button:
 func _fly_treasury(vb: VBoxContainer) -> void:
 	var inner := _fly_pad(vb)
 	var s: Dictionary = Production.last_turn_summary
-	var net := float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0))
+	var net := Production.cash_change_of(s)
 	inner.add_child(_fly_row("Cash on hand", _money_text(MatchState.money), C_BRIGHT, C_BRIGHT, "FlyRowCash"))
-	inner.add_child(_fly_row("Net last turn", _fly_signed_money(net), C_BRIGHT, C_BRIGHT, "FlyRowNet"))
+	var upcoming := preload("res://scripts/cash_commitments_view.gd").make_link(func() -> void: _open_money_panel_tab("Upcoming"))
+	upcoming.name = "FlyUpcomingButton"
+	preload("res://scripts/cash_commitments_view.gd").update_link(upcoming, preload("res://scripts/cash_commitments.gd").snapshot())
+	inner.add_child(upcoming)
+	inner.add_child(_fly_row("Cash change last turn", _fly_signed_money(net), C_BRIGHT, C_BRIGHT, "FlyRowNet"))
 	var runway := _runway_turns()
 	if runway > 0:
 		inner.add_child(_fly_row("Runway at current burn", "≈ %d turns" % runway, C_BRIGHT, C_BRIGHT, "FlyRowRunway"))
@@ -3203,16 +3220,19 @@ func _fly_treasury(vb: VBoxContainer) -> void:
 		["Goods sold", float(s.get("goods_sales_revenue", 0.0))],
 		["Power sold", float(s.get("power_sales_revenue", 0.0))],
 		["Green subsidy", float(s.get("green_subsidy_received", 0.0))],
+		["Put on building credit", float(s.get("building_tab_carried", 0.0))],
+		["Loan proceeds from building credit", float(s.get("building_credit_loan_received", 0.0))],
 	]
 	var operating_costs := float(s.get("maintenance_paid", 0.0)) + float(s.get("labour_paid", 0.0)) + float(s.get("advisor_paid", 0.0))
 	var taxes_and_dividends := float(s.get("taxes_paid", 0.0)) + float(s.get("dividends_paid", 0.0))
 	var costs := [
 		["Operating costs", operating_costs],
+		["Building credit repaid", float(s.get("building_credit_repaid", 0.0))],
 		["Power bought", float(s.get("power_purchase_cost", 0.0))],
 		["Transport costs", float(s.get("transport_paid", 0.0))],
 		["Goods purchased", float(s.get("goods_purchased_cost", 0.0))],
 		["Warehousing", float(s.get("warehousing_paid", 0.0))],
-		["Interest", float(s.get("interest_paid", 0.0))],
+		["Loan repayments", float(s.get("interest_paid", 0.0))],
 		["Taxes & dividends", taxes_and_dividends],
 		["Carbon tax", float(s.get("carbon_tax_paid", 0.0))],
 		["Profit sharing", float(s.get("profit_sharing_paid", 0.0))],
@@ -3238,11 +3258,15 @@ func _fly_treasury(vb: VBoxContainer) -> void:
 		card.add_theme_stylebox_override("panel", csb)
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
-		var nm := _mini("Loan #%d" % int(l.get("id", 0)), C_BRIGHT, 12)
+		var nm := _mini(LoanState.loan_label(l), C_BRIGHT, 12)
 		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(nm)
-		row.add_child(_mini("%s @ %.0f%%" % [_money_text(float(l.get("principal_remaining", 0.0))), float(l.get("interest_rate", 0.0)) * 100.0], C_BRIGHT, 12))
-		card.add_child(row)
+		row.add_child(_mini(_money_text(float(l.get("principal_remaining", 0.0))), C_BRIGHT, 12))
+		var info := VBoxContainer.new()
+		info.add_theme_constant_override("separation", 4)
+		info.add_child(row)
+		info.add_child(_mini(LoanState.repayment_label(l), C_BRIGHT, 12))
+		card.add_child(info)
 		loans.add_child(card)
 	if LoanState.loans.is_empty():
 		loans.add_child(_mini("No loans outstanding.", C_BRIGHT, 11))
@@ -3273,7 +3297,7 @@ func _open_money_panel_tab(tab_name: String) -> void:
 func _fly_money_breakdown(revenue: Array, costs: Array) -> Control:
 	var columns := HBoxContainer.new()
 	columns.add_theme_constant_override("separation", 12)
-	columns.add_child(_fly_money_column("Revenue", revenue, true))
+	columns.add_child(_fly_money_column("Cash in & credits", revenue, true))
 	var divider := Panel.new()
 	divider.custom_minimum_size = Vector2(1, 0)
 	var divider_box := StyleBoxFlat.new()
@@ -3311,6 +3335,7 @@ func _fly_money_column_header(text: String) -> Label:
 func _fly_money_row(label: String, amount: float, is_revenue: bool) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
+	row.set_meta("cash_amount", amount if is_revenue else -amount)
 	var name := _mini(label, C_BRIGHT, 11)
 	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -3328,7 +3353,7 @@ func _fly_signed_money(amount: float) -> String:
 
 func _runway_turns() -> int:
 	var s: Dictionary = Production.last_turn_summary
-	var net := float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0))
+	var net := Production.cash_change_of(s)
 	if net >= 0.0 or s.is_empty():
 		return 0
 	var turns := int(floor((MatchState.money + LoanState.available_capacity()) / -net))
@@ -3532,14 +3557,17 @@ func _apply_refresh() -> void:
 		var enc_face: Control = _enc_v31_inner if (UiPrefs.use_topbar_v3_1 and _enc_v31_inner != null) else _enc_inner
 		_enc_button.custom_minimum_size = Vector2(enc_face.get_combined_minimum_size().x + 28.0, MOD_H)
 	_refresh_bankruptcy_warning()
+	if _upcoming_notice_dirty and not TurnManager.is_resolving and not Tutorial.active:
+		_refresh_money_notices()
 
 func _refresh_treasury() -> void:
 	_cash_label.text = _money_text(MatchState.money)
 	if not _flashing:
 		_cash_label.add_theme_color_override("font_color", _base_money_color())
 	var s: Dictionary = Production.last_turn_summary
-	var net := float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0))
-	_net_label.text = ("+" if net >= 0.0 else "−") + _money_text(absf(net)) + " / turn"
+	var net := Production.cash_change_of(s)
+	_net_label.text = ("+" if net >= 0.0 else "−") + _money_text(absf(net)) + " last turn"
+	_net_label.tooltip_text = "Last production settlement, including building-credit repayments and conversion loan proceeds. Purchases and borrowing between turns and later events are separate."
 	_net_label.add_theme_color_override("font_color", C_GOOD if net >= 0.0 else C_BAD)
 	# LED: overdrawn AND still losing money. Either alone is survivable — a negative
 	# balance with a profitable turn is climbing out, and a loss with cash in hand is
@@ -3591,7 +3619,7 @@ func _refresh_power() -> void:
 		# Classic: buildings actually derated by intermittency, or the player buying
 		# grid power while losing money. The second lights the lamp HERE and not on the
 		# treasury, because power is the thing to go and fix.
-		var net: float = float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0))
+		var net: float = Production.cash_change_of(s)
 		led.color = C_RED
 		led.blink = false
 		led.lit = (derated or (int(p.grid_draw) > 0 and net < 0.0))
@@ -3716,7 +3744,7 @@ const ANOMALY_COOLDOWN := 5
 const ANOMALY_MAX_STACK := 2
 const ANOMALY_STACK_GAP := 15.0
 ## Priority when more than ANOMALY_MAX_STACK money triggers fire in one turn.
-const ANOMALY_MONEY_ORDER: Array[String] = ["loan", "spend", "transport", "payment"]
+const ANOMALY_MONEY_ORDER: Array[String] = ["upcoming", "loan", "spend", "transport", "payment"]
 ## Running-cost lines the spend trigger watches, each against its OWN baseline, mapped
 ## to the summary breakdown that says which buildings ran it up.
 const ANOMALY_COST_LINES := {
@@ -3727,6 +3755,8 @@ const ANOMALY_COST_LINES := {
 }
 
 const AnomalyPopup := preload("res://scripts/anomaly_popup.gd")
+const StockpileGuidance := preload("res://scripts/stockpile_guidance.gd")
+var _stockpile_guidance := StockpileGuidance.new()
 
 # Rolling history of the figures the triggers compare against: one entry per resolved
 # turn, newest last, at most ANOMALY_BASELINE_TURNS long.
@@ -3735,6 +3765,9 @@ var _anomaly_cooldown := {}          # trigger id -> turn it last fired
 var _anomaly_cards: Array = []       # live popups, money and power together
 var _anomaly_scrim: Control = null
 var _loan_taken_this_turn := 0.0
+var _money_notice_hits: Array = []
+var _upcoming_notice_dirty := true
+var _upcoming_notice_stamp := ""
 ## Latched once per run: the intermittency lesson is taught the first time the player
 ## actually generates intermittent green power, and never again.
 var _intermittency_taught := false
@@ -3754,6 +3787,15 @@ func _on_turn_resolved_anomalies() -> void:
 		return
 	var current := _anomaly_snapshot(s)
 	_evaluate_anomalies(current, s)
+	var stock_hits := _stockpile_guidance.sample(int(TurnManager.current_turn) - 1)
+	if not Tutorial.active:
+		for hit: Dictionary in stock_hits:
+			var tile := str(hit.tile)
+			var good := str(hit.good)
+			var message := "%s accumulating at %s (+%d/turn). Open stockpile to move or sell." % [Catalog.get_display_name(good), Catalog.tile_label(tile), roundi(float(hit.growth))]
+			if MatchState.should_auto_sell_good(tile, good):
+				message = "%s accumulating at %s despite surplus selling. Open stockpile to check sales." % [Catalog.get_display_name(good), Catalog.tile_label(tile)]
+			_show_anomaly_stack([{"text": message, "word": "accumulating", "tone": "warn", "stock_tile": tile, "stock_good": good}], _transport_btn)
 	_anomaly_history.append(current)
 	if _anomaly_history.size() > ANOMALY_BASELINE_TURNS:
 		_anomaly_history = _anomaly_history.slice(_anomaly_history.size() - ANOMALY_BASELINE_TURNS)
@@ -3792,21 +3834,97 @@ func _evaluate_anomalies(current: Dictionary, s: Dictionary) -> void:
 	_clear_anomaly_cards()
 	if Tutorial.active:
 		return
-	var money := _money_anomalies(current, s)
-	# Priority order first, then the ANOMALY_MAX_STACK cap.
-	var chosen: Array = []
-	for id: String in ANOMALY_MONEY_ORDER:
-		for hit: Dictionary in money:
-			if str(hit.id) == id and chosen.size() < ANOMALY_MAX_STACK:
-				chosen.append(hit)
-	for hit: Dictionary in chosen:
-		_anomaly_cooldown[str(hit.id)] = int(TurnManager.current_turn)
-	_show_anomaly_stack(chosen, money_widget)
+	_money_notice_hits = _money_anomalies(current, s)
+	_refresh_money_notices(true)
 
 	var power := _power_anomalies(current)
 	if not power.is_empty():
 		_anomaly_cooldown[str(power[0].id)] = int(TurnManager.current_turn)
 		_show_anomaly_stack([power[0]], _power_btn)
+
+
+func _queue_upcoming_notice(_a: Variant = null, _b: Variant = null, _c: Variant = null) -> void:
+	_upcoming_notice_dirty = true
+	_queue_refresh()
+
+func _reset_upcoming_notice() -> void:
+	_upcoming_notice_stamp = ""
+	_money_notice_hits.clear()
+	_clear_anomaly_cards()
+	_queue_upcoming_notice()
+
+
+func _notice_world() -> Node:
+	var node := get_parent()
+	while node != null:
+		if node.has_method("reveal_for_play"):
+			return node
+		node = node.get_parent()
+	return null
+
+func _notice_loading_active() -> bool:
+	for node: Node in get_tree().root.get_children():
+		if node is LoadingScreen:
+			return true # Includes the fade after Begin, until the screen leaves the tree.
+	return false
+
+func _notices_can_show() -> bool:
+	if TurnManager.current_turn <= 1 or Tutorial.active or TurnManager.is_resolving:
+		return false
+	var world := _notice_world()
+	return world != null and world.get("build_complete") == true and not _notice_loading_active()
+
+func _on_notice_root_child_entered(node: Node) -> void:
+	if node is LoadingScreen:
+		_clear_anomaly_cards()
+		_upcoming_notice_stamp = ""
+		node.tree_exited.connect(_queue_upcoming_notice)
+
+func _refresh_notices_after_loading() -> void:
+	var world := _notice_world()
+	if world == null:
+		return
+	while is_instance_valid(world) and (world.get("build_complete") != true or _notice_loading_active()):
+		await get_tree().process_frame
+	if is_instance_valid(world):
+		_queue_upcoming_notice()
+
+func _refresh_money_notices(force: bool = false) -> void:
+	if not _notices_can_show():
+		_clear_anomaly_cards()
+		return
+	_upcoming_notice_dirty = false
+	var forecast := preload("res://scripts/cash_commitments.gd")
+	var costs := forecast.attention_costs(forecast.snapshot(), forecast.last_comparison)
+	var stamp := str(TurnManager.current_turn) + "|" + JSON.stringify(costs)
+	if not force and stamp == _upcoming_notice_stamp:
+		return # A dismissed notice stays dismissed until the turn or its costs change.
+	_upcoming_notice_stamp = stamp
+	var hits := _money_notice_hits.duplicate()
+	# Apply the notice threshold to the actual bill, before rounding its buffer.
+	if float(costs.total) >= 100.0:
+		var amount := "£%d" % forecast.recommended_buffer(float(costs.total))
+		var bill := "Input bill"
+		for row: Dictionary in (costs.payments as Array) + (costs.order_rows as Array):
+			if str(row.get("source_kind", row.get("kind", ""))) in ["construction", "upgrade"]:
+				bill = "Materials bill"
+				break
+		hits.append({"id": "upcoming", "text": "%s coming next turn.\nRecommended buffer: %s" % [bill, amount], "word": amount, "tone": "warn", "upcoming": true})
+
+	for card in _anomaly_cards.duplicate():
+		if is_instance_valid(card) and bool(card.get_meta("money_notice", false)):
+			_anomaly_cards.erase(card)
+			card.queue_free()
+	var chosen: Array = []
+	for id: String in ANOMALY_MONEY_ORDER:
+		for hit: Dictionary in hits:
+			if str(hit.id) == id and chosen.size() < ANOMALY_MAX_STACK:
+				chosen.append(hit)
+				if id != "upcoming":
+					_anomaly_cooldown[id] = int(TurnManager.current_turn)
+	_show_anomaly_stack(chosen, money_widget)
+	if _anomaly_cards.is_empty() and is_instance_valid(_anomaly_scrim):
+		_anomaly_scrim.hide()
 
 
 ## Money triggers that fired this turn, unordered. Each is {id, text}.
@@ -3938,17 +4056,41 @@ func _power_anomalies(current: Dictionary) -> Array:
 # ── Anomaly presentation ──────────────────────────────────────────────────────
 
 func _show_anomaly_stack(hits: Array, anchor: Control) -> void:
-	if hits.is_empty() or anchor == null or DisplayServer.get_name() == "headless":
+	if hits.is_empty() or anchor == null or DisplayServer.get_name() == "headless" or not _notices_can_show():
 		return
 	_ensure_anomaly_scrim()
 	var offset := 0.0
 	for hit: Dictionary in hits:
 		var card := AnomalyPopup.new()
 		_fly_layer.add_child(card)
+		card.set_meta("money_notice", anchor == money_widget)
+		card.set_meta("notice_id", str(hit.get("id", "")))
 		# Width first: the stack offset below is measured off the card's wrapped height,
 		# which is only correct once the width its text wraps at is settled.
-		card.set_width(anchor.size.x)
-		card.set_message(str(hit.text), str(hit.get("word", "")), str(hit.get("tone", "warn")))
+		card.horizontal_overhang = 10.0 if bool(hit.get("upcoming", false)) else 0.0
+		card.set_width(anchor.get_global_rect().size.x + card.horizontal_overhang * 2.0)
+		if bool(hit.get("upcoming", false)):
+			card.name = "UpcomingCostsNotice"
+			card.set_action("Review upcoming payments", func() -> void:
+				_clear_anomaly_cards()
+				_open_money_panel_tab("Upcoming"))
+		card.tooltip_text = str(hit.text)
+		card.set_message(str(hit.text), str(hit.get("word", "")), str(hit.get("tone", "warn")), not bool(hit.get("upcoming", false)))
+		if bool(hit.get("upcoming", false)):
+			card.fit_message_lines(str(hit.text))
+		if hit.has("stock_tile"):
+			card.tooltip_text = str(hit.text)
+			card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+			var stock_tile := str(hit.stock_tile)
+			var stock_good := str(hit.stock_good)
+			card.gui_input.connect(func(event: InputEvent) -> void:
+				if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+					card.accept_event()
+					_clear_anomaly_cards()
+					MatchState.tile_stockpile_requested.emit(stock_tile)
+					for panel in get_tree().get_nodes_in_group("tile_view_panel"):
+						if panel.has_method("select_stock_good") and str(panel.get("_current_tile_id")) == stock_tile:
+							panel.call("select_stock_good", stock_good))
 		_anomaly_cards.append(card)
 		# Placed after layout: the card has no height until its wrapped label is measured.
 		card.call_deferred("place_under", anchor, offset)

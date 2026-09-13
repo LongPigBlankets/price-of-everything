@@ -243,7 +243,7 @@ func quote_manifest(source_tile: String, destination_tile: String, goods_qtys: D
 	}
 
 
-func quote_market_buy(dest_tile: String, good_id: String, qty: int, covered: bool = false) -> Dictionary:
+func quote_market_buy(dest_tile: String, good_id: String, qty: int, covered: bool = false, reservations: Array = []) -> Dictionary:
 	var port := nearest_port_tile(dest_tile)
 	if dest_tile == "" or good_id == "" or qty <= 0 or port == "":
 		return {}
@@ -273,7 +273,7 @@ func quote_market_buy(dest_tile: String, good_id: String, qty: int, covered: boo
 	route_breakdown = scale_transport_breakdown(route_breakdown, route_transport)
 	# Sea freight replaces the old standing subscription charge. It is deliberately
 	# quoted without mutating port usage; MatchState commits it only after the buy clears funds.
-	var sea_transport := TransportState.preview_sea_shipping(port, good_id, qty)
+	var sea_transport := TransportState.preview_sea_shipping(port, good_id, qty, reservations)
 	var sea_cost := float(sea_transport.get("total", 0.0))
 	var transport := route_transport + sea_cost
 	return {

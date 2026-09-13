@@ -1410,6 +1410,7 @@ func _render_confirm() -> void:
 	_footer.add_child(total)
 	var confirm := Button.new()
 	confirm.name = "BuildConfirmButton"   # tutorial spotlight target
+	confirm.tooltip_text = "Charge construction costs now. Cancel before End Turn to refund the fee and reserved materials/freight."
 	confirm.text = "Confirm" if _locked_tile_id != "" else "Confirm · select tile"
 	confirm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	# The CTA stays the steel-blue Primary in V3 too: every
@@ -1476,6 +1477,7 @@ func _render_confirm_v3() -> void:
 				_content.add_child(warn)
 			_content.add_child(_v3_cash_timeline())
 		_content.add_child(_v3_cash_facts_row())
+		_content.add_child(preload("res://scripts/cash_commitments_view.gd").build_card(_v3_ledger, _v3_total_cost(), _v3_forecast))
 
 	var materials := VBoxContainer.new()
 	materials.name = "ConstructionMaterialsSection"
@@ -2277,6 +2279,7 @@ func _v3_build_footer() -> void:
 	_footer.add_child(cta_box)
 	var confirm := Button.new()
 	confirm.name = "BuildConfirmButton"   # tutorial spotlight target
+	confirm.tooltip_text = "Charge construction costs now. Cancel before End Turn to refund the fee and reserved materials/freight."
 	confirm.text = "Confirm" if _locked_tile_id != "" else "Confirm · select tile"
 	confirm.theme_type_variation = "Primary"
 	confirm.focus_mode = Control.FOCUS_NONE
@@ -3183,6 +3186,7 @@ func _add_forecast_section() -> void:
 	if phases.is_empty():
 		return
 
+	_content.add_child(preload("res://scripts/cash_commitments_view.gd").build_card(Construction.materials_ledger(building_id, _locked_tile_id), _confirm_total_cost(), data))
 	if not BuildForecastTable.show_balance_impact():
 		_content.add_child(BuildForecastTable.payback(data))
 		return

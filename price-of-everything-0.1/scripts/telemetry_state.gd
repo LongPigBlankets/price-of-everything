@@ -124,11 +124,16 @@ var _events: Array = []
 var _event_sequence: int = 0
 var _interaction_checkpoint_queued: bool = false
 
+## Capture only while the loaded match is alive. Finalization can happen after
+## state_reset has erased scenario_name, so envelopes must use this latched value.
+func _capture_start_id() -> void:
+	if _armed and not _finalized and _run_start_id == "":
+		_run_start_id = str(MatchState.scenario_name).strip_edges()
+
 func track_interaction(action: String, interface_name: String, target_id: String = "") -> void:
 	if not enabled or not _armed or _finalized or not _collect or action not in INTERACTION_COLUMNS:
 		return
-	if _run_start_id == "":
-		_run_start_id = str(MatchState.scenario_name)
+	_capture_start_id()
 	_run_cheats = _run_cheats or bool(MatchState.cheats_used)
 	_event_sequence += 1
 	_events.append({"event_id": "%s:%d" % [_session_id, _event_sequence],
@@ -197,6 +202,9 @@ func _watch_ui_node(node: Node) -> void:
 
 
 func _ready() -> void:
+	# Windowed capture/test harnesses opt out before any launch envelope is queued.
+	if OS.get_cmdline_user_args().has("--no-telemetry"):
+		return
 	# Headless (unit suite / e2e harness) is inert unless TELEMETRY_DEBUG=1
 	# forces it on — that override is how the phase-A verification runs work.
 	enabled = DisplayServer.get_name() != "headless" \
@@ -208,6 +216,7 @@ func _ready() -> void:
 	get_tree().set_auto_accept_quit(false)
 	_session_id = _uuid()
 	MatchState.state_reset.connect(_on_run_started)
+	SaveLoad.match_loaded.connect(_capture_start_id)
 	TurnManager.turn_resolution_completed.connect(_on_turn_completed)
 	VictoryState.victory_achieved.connect(_on_victory)
 	TurnManager.game_ended_signal.connect(_on_game_ended)
@@ -350,8 +359,7 @@ func _build_row(summary: Dictionary) -> Dictionary:
 			costs[COST_LINES[key]] = snappedf(amount, 0.01)
 	var empire := _empire_snapshot()
 	# Run-level facts, latched while the match is still alive (see _run_start_id).
-	if _run_start_id == "":
-		_run_start_id = str(MatchState.scenario_name)
+	_capture_start_id()
 	_run_cheats = _run_cheats or bool(MatchState.cheats_used)
 	_run_rescues = maxi(_run_rescues, SolvencyState.tutorial_rescues())
 	var row := {
@@ -464,8 +472,10 @@ func _ensure_tier_index() -> void:
 func export_state() -> Dictionary:
 	if not enabled or not _armed:
 		return {}
+	_capture_start_id()
 	return {
 		"run_id": _run_id,
+		"start": _run_start_id,
 		"started_at": _run_started_unix,
 		"playtime_s": _playtime_s(),
 		"session": _session_ordinal,
@@ -477,7 +487,13 @@ func export_state() -> Dictionary:
 ## Runs AFTER state_reset has re-armed with a fresh identity; a saved run_id
 ## overrides it so the resumed run keeps its identity across sessions.
 func import_state(d: Dictionary) -> void:
-	if not enabled or str(d.get("run_id", "")) == "":
+	if not enabled:
+		return
+	# MatchState has already been imported. New starts have no telemetry block;
+	# older saves have no start field, so both recover it from the loaded scenario.
+	_run_start_id = str(d.get("start", "")).strip_edges()
+	_capture_start_id()
+	if str(d.get("run_id", "")) == "":
 		return
 	_run_id = str(d["run_id"])
 	_run_started_unix = int(d.get("started_at", _run_started_unix))

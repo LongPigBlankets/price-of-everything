@@ -82,6 +82,7 @@ var move_log: Array = []
 var seaport_auto_subscribe: bool = false
 var seaport_subscribed: Dictionary = {}
 var _sea_shipping_turn: int = -1
+var _construction_reservations: Array = [] # Undispatched subset; rebuilt on load.
 var _sea_port_usage_this_turn: Dictionary = {} # port tile -> transport class -> units
 var _sea_port_charges_this_turn: Dictionary = {} # port tile -> good -> charge breakdown
 # The port panel shows the latest completed traffic when a fresh turn has no
@@ -108,6 +109,7 @@ func reset() -> void:
 	recurring_moves.clear()
 	scheduled_moves.clear()
 	move_log.clear()
+	_construction_reservations.clear()
 	_sea_shipping_turn = -1
 	_sea_port_usage_this_turn.clear()
 	_sea_port_charges_this_turn.clear()
@@ -144,6 +146,10 @@ func import_fields(d: Dictionary) -> void:
 	recurring_moves = (d.get("recurring_moves", []) as Array).duplicate(true)
 	scheduled_moves = (d.get("scheduled_moves", []) as Array).duplicate(true)
 	pending_transport_shipments = (d.get("pending_transport_shipments", []) as Array).duplicate(true)
+	_construction_reservations.clear()
+	for shipment: Dictionary in pending_transport_shipments:
+		if bool(shipment.get("construction_order_pending", false)):
+			_construction_reservations.append(shipment)
 	var usage: Dictionary = d.get("transport_usage_snapshot", {})
 	_has_transport_snapshot = usage.has("flow")
 	_last_link_flow = (usage.get("flow", {}) as Dictionary).duplicate()
@@ -212,7 +218,10 @@ func queue_transport_shipment(shipment: Dictionary) -> void:
 		_shipment_id_counter += 1
 		s["id"] = _shipment_id_counter  # stable id so the overlay can track it across turns
 	pending_transport_shipments.append(s)
-	_note_shipment_congestion(s)
+	if bool(s.get("construction_order_pending", false)):
+		_construction_reservations.append(s)
+	else:
+		_note_shipment_congestion(s)
 	transport_shipments_changed.emit()
 
 ## Book the congestion share of a real shipment's freight against the link that caused
@@ -293,7 +302,7 @@ func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary, 
 	for it in items:
 		var item_route: Dictionary = it.get("route", quote.get("route", {}))
 		var item_turns := int(it.get("turns", turns))
-		if item_turns >= 1:
+		if item_turns >= 1 or bool(extra.get("reserve_construction", false)):
 			var shipment: Dictionary = {
 				"source_tile": source_tile,
 				"destination_tile": dest_tile,
@@ -307,6 +316,9 @@ func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary, 
 				"legs": item_route.get("legs", []),
 			}
 			shipment.merge(extra, true)  # optional tags, e.g. construction_instance_id
+			if bool(extra.get("reserve_construction", false)):
+				shipment["construction_order_pending"] = true
+				shipment["construction_prepaid"] = float(it.cost)
 			queue_transport_shipment(shipment)
 		else:
 			Stockpile.add(dest_tile, it.good_id, it.qty)
@@ -315,7 +327,8 @@ func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary, 
 			log_move_shipment(source_tile, dest_tile, str(it.good_id), int(it.qty), turns)
 	# Victory feed: a tile-to-tile move is one goods movement (manifest counts once).
 	# Moves never break the Autarkic streak (you may relocate your own goods freely).
-	MatchState.goods_movement_recorded.emit("move", "", turns)
+	if not bool(extra.get("reserve_construction", false)):
+		MatchState.goods_movement_recorded.emit("move", "", turns)
 	return {"items": items, "total_qty": total_qty, "turns": turns,
 		"cost": total_cost, "source": source_tile, "dest": dest_tile, "surcharged": surcharge > 1.0}
 
@@ -585,6 +598,39 @@ func get_inbound_transport_shipments(destination_tile: String, good_id: String =
 		# per building, per market input, every turn).
 		result.append(shipment.duplicate())
 	return result
+
+## Called before the turn's transport snapshot. Reservations have already been paid.
+func dispatch_construction_orders() -> void:
+	for shipment: Dictionary in _construction_reservations:
+		if not bool(shipment.get("construction_order_pending", false)):
+			continue
+		shipment.erase("construction_order_pending")
+		_note_shipment_congestion(shipment)
+		var turns := int(shipment.get("transport_turns", 0))
+		if bool(shipment.get("is_purchase", false)):
+			_book_sea_charge(shipment.get("reserved_sea_charge", {}), "buy")
+			MarketState.record_market_buy_volume(str(shipment.good_id), int(shipment.qty))
+			MatchState.goods_movement_recorded.emit("buy", "building", turns)
+		else:
+			MatchState.goods_movement_recorded.emit("move", "", turns)
+		shipment.erase("reserved_sea_charge")
+	_construction_reservations.clear()
+
+## Undo only orders which have not dispatched. Unrelated shipments are untouched.
+func cancel_construction_reservations(instance_id: String) -> float:
+	var refund := 0.0
+	for shipment: Dictionary in pending_transport_shipments.duplicate():
+		if str(shipment.get("construction_instance_id", "")) != instance_id or not bool(shipment.get("construction_order_pending", false)):
+			continue
+		refund += float(shipment.get("construction_prepaid", 0.0))
+		if not bool(shipment.get("is_purchase", false)):
+			Stockpile.add(str(shipment.source_tile), str(shipment.good_id), int(shipment.qty))
+		pending_transport_shipments.erase(shipment)
+		_construction_reservations.erase(shipment)
+	if refund > 0.0:
+		MatchState.add_money(refund)
+	transport_shipments_changed.emit()
+	return refund
 
 func advance_transport_shipments() -> Array:
 	var arrived: Array = []
@@ -1104,21 +1150,30 @@ func _owned_port_count() -> int:
 			count += 1
 	return count
 
-func preview_sea_shipping(port_tile: String, good_id: String, qty: int) -> Dictionary:
+func preview_sea_shipping(port_tile: String, good_id: String, qty: int, additional_reservations: Array = []) -> Dictionary:
 	if port_tile == "" or good_id == "" or qty <= 0:
 		return {}
-	_ensure_sea_shipping_turn()
+	# Quotes must not rotate the shipping ledger merely because a UI opened.
+	var current := _sea_shipping_turn == TurnManager.current_turn
 	var transport_class := Catalog.get_transport_class(good_id)
 	var cap := seaport_throughput_cap(good_id)
-	var usage: Dictionary = _sea_port_usage_this_turn.get(port_tile, {})
+	var usage: Dictionary = _sea_port_usage_this_turn.get(port_tile, {}) if current else {}
 	var used_before := int(usage.get(transport_class, 0))
+	var reserved_good := false
+	for pending: Dictionary in _construction_reservations + additional_reservations:
+		if not bool(pending.get("construction_order_pending", false)) or not bool(pending.get("is_purchase", false)) or str(pending.get("source_tile", "")) != port_tile:
+			continue
+		var pending_good := str(pending.get("good_id", ""))
+		if Catalog.get_transport_class(pending_good) == transport_class:
+			used_before += int(pending.get("qty", 0))
+		reserved_good = reserved_good or pending_good == good_id
 	var projected := used_before + qty
 	# This is a soft throughput cap: traffic can still pass, but the whole shipment costs double.
 	var at_cap := projected >= cap
 	var surcharge := 2.0 if at_cap else 1.0
 	var owned := is_seaport_player_owned(port_tile)
-	var existing_goods: Dictionary = _sea_port_charges_this_turn.get(port_tile, {})
-	var first_shipment_of_good := not existing_goods.has(good_id)
+	var existing_goods: Dictionary = _sea_port_charges_this_turn.get(port_tile, {}) if current else {}
+	var first_shipment_of_good := not existing_goods.has(good_id) and not reserved_good
 	var growth := sea_shipping_growth_factor()
 	var fixed_fee := seaport_base_fee(port_tile) * growth * surcharge if (not owned and first_shipment_of_good) else 0.0
 	var insurance_rate := seaport_insurance_rate(port_tile)
@@ -1132,12 +1187,23 @@ func preview_sea_shipping(port_tile: String, good_id: String, qty: int) -> Dicti
 	}
 
 func commit_sea_shipping(port_tile: String, good_id: String, qty: int, direction: String) -> Dictionary:
+	_ensure_sea_shipping_turn()
 	var charge := preview_sea_shipping(port_tile, good_id, qty)
 	if charge.is_empty():
 		return charge
+	_book_sea_charge(charge, direction)
+	return charge
+
+func _book_sea_charge(charge: Dictionary, direction: String) -> void:
+	if charge.is_empty():
+		return
+	_ensure_sea_shipping_turn()
+	var port_tile := str(charge.port)
+	var good_id := str(charge.good_id)
+	var qty := int(charge.qty)
 	var transport_class := str(charge.get("transport_class", ""))
 	var usage: Dictionary = _sea_port_usage_this_turn.get(port_tile, {}).duplicate()
-	usage[transport_class] = int(charge.get("projected_usage", qty))
+	usage[transport_class] = int(usage.get(transport_class, 0)) + qty
 	_sea_port_usage_this_turn[port_tile] = usage
 	var by_good: Dictionary = _sea_port_charges_this_turn.get(port_tile, {}).duplicate(true)
 	var row: Dictionary = by_good.get(good_id, {
@@ -1162,7 +1228,6 @@ func commit_sea_shipping(port_tile: String, good_id: String, qty: int, direction
 		# accumulated immediately, but research reads them once in NARRATIVE.
 		ResearchState._mark_research_progress_dirty()
 	TransportState.transport_shipments_changed.emit() # Refresh the open port readout after a shipment is booked.
-	return charge
 
 func seaport_shipping_summary(port_tile: String) -> Dictionary:
 	_ensure_sea_shipping_turn()

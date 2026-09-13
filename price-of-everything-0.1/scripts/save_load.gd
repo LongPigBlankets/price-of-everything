@@ -148,6 +148,7 @@ func import_snapshot(snap: Dictionary) -> void:
 		RoadNetwork.instance().import_state(roads.get("network", {}))
 	RoadWorks.import_state(roads.get("works", {}))
 	_emit_refresh()
+	preload("res://scripts/cash_commitments.gd").reset()
 	match_loaded.emit()
 
 # Imports run silently; the UI is told once, here, at the end. Per-building

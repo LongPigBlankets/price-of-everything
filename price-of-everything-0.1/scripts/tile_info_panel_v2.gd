@@ -66,6 +66,9 @@ var _stock_sel: Dictionary = {}   # {good_id, name, qty} of the selected good, o
 var _stock_qty: int = 0
 var _stock_dest: String = ""      # "" = none, MARKET_DEST, SPECIAL_ORDER_DEST, or a tile_id
 var _stock_recurring: bool = false
+var _goods_drawer_layer: CanvasLayer = null
+var _goods_drawer: PanelContainer = null
+var _goods_drawer_list: VBoxContainer = null
 # Warehouse-expansion inline confirmation open? (Persists across pane rebuilds,
 # resets when a different tile is shown.)
 var _warehouse_expand: bool = false
@@ -132,6 +135,7 @@ func _ready() -> void:
 	# Money changing (loan taken, building sold, etc.) can move a build above/below
 	# its affordability threshold — refresh so power build buttons re-enable.
 	MatchState.money_changed.connect(func(_m): _refresh_if_visible())
+	MatchState.sell_surplus_changed.connect(func(_t): _refresh_if_visible())
 	visible = false
 
 func _apply_anchors() -> void:
@@ -505,6 +509,8 @@ func _on_tile_input(event: InputEvent, tab_id: String) -> void:
 		accept_event()
 
 func _select_tab(tab_id: String) -> void:
+	if tab_id != "stock":
+		_close_goods_drawer()
 	_active_tab = tab_id
 	for tab in TABS:
 		var id: String = tab.id
@@ -516,6 +522,9 @@ func _select_tab(tab_id: String) -> void:
 # Public entry point
 # ─────────────────────────────────────────────────────────────────────────────
 func show_tile(tile_data: Dictionary) -> void:
+	_close_goods_drawer()
+	_stock_sel.clear()
+	_stock_dest = ""
 	_current_tile_data = tile_data
 	_current_tile_id = str(tile_data.get("id", ""))
 	Audio.tile_ambience(str(tile_data.get("type", "")))  # looping terrain ambience while this panel is open
@@ -530,6 +539,7 @@ func show_tile(tile_data: Dictionary) -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_VISIBILITY_CHANGED and not visible:
+		_close_goods_drawer()
 		Audio.stop_tile_ambience()  # silence terrain ambience when the panel closes
 		PanelStack.remove(self)
 
@@ -741,6 +751,8 @@ func _refresh_pane(tab_id: String) -> void:
 		"bl": _build_bl_pane(pane)
 		"prod": _build_prod_pane(pane)
 		"stock": _build_stock_pane(pane)
+	if tab_id == "stock" and is_instance_valid(_goods_drawer):
+		_refresh_goods_drawer()
 
 const POWER_BUILDS := [
 	["Power plant", "power_plant", "coal"],
@@ -2246,6 +2258,7 @@ func _make_overflow_row(r: Dictionary) -> HBoxContainer:
 # Contextual "Move or Sell <good>" menu shown under the chart when a good is picked.
 func _make_stock_context_menu() -> PanelContainer:
 	var card := PanelContainer.new()
+	card.name = "StockGoodActions"
 	var cs := StyleBoxFlat.new()
 	cs.bg_color = DS.PALETTE.BG_CARD
 	cs.border_color = DS.PALETTE.BORDER_SOFT
@@ -2410,11 +2423,140 @@ func _stock_dest_text() -> String:
 
 func _on_stock_bar_input(event: InputEvent, good_id: String, good_name: String, qty: int) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		_stock_sel = {"good_id": good_id, "name": good_name, "qty": qty}
-		_stock_qty = qty
-		_stock_dest = ""
-		_stock_recurring = false
-		_refresh_pane("stock")
+		select_stock_good(good_id)
+		accept_event()
+
+## Shared entry point for bars, the all-goods drawer and stockpile notifications.
+func select_stock_good(good_id: String) -> void:
+	var qty := int(Stockpile.get_tile_totals(_current_tile_id).get(good_id, 0))
+	if qty <= 0:
+		return
+	_stock_sel = {"good_id": good_id, "name": Catalog.get_display_name(good_id), "qty": qty}
+	_stock_qty = qty
+	_stock_dest = ""
+	_stock_recurring = false
+	_select_tab("stock")
+	_reveal_stock_actions.call_deferred()
+
+func _reveal_stock_actions() -> void:
+	await get_tree().process_frame
+	if not visible or _active_tab != "stock":
+		return
+	var card := _pane_host.find_child("StockGoodActions", true, false) as Control
+	var scroll := _pane_host.get_parent() as ScrollContainer
+	if is_instance_valid(card) and is_instance_valid(scroll):
+		scroll.ensure_control_visible(card)
+
+func _toggle_goods_drawer() -> void:
+	if is_instance_valid(_goods_drawer):
+		_close_goods_drawer()
+		return
+	_goods_drawer_layer = CanvasLayer.new()
+	_goods_drawer_layer.layer = 105
+	add_child(_goods_drawer_layer)
+	_goods_drawer = PanelContainer.new()
+	_goods_drawer.name = "StockpileAllGoods"
+	_goods_drawer.theme = theme
+	_goods_drawer.theme_type_variation = &"Card"
+	_goods_drawer.clip_contents = true
+	_goods_drawer_layer.add_child(_goods_drawer)
+	var margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 12)
+	_goods_drawer.add_child(margin)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 10)
+	margin.add_child(col)
+	var header := HBoxContainer.new()
+	col.add_child(header)
+	var title := Label.new()
+	title.text = "All stored goods"
+	title.theme_type_variation = &"Section"
+	title.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	var close := Button.new()
+	close.text = "×"
+	close.tooltip_text = "Close all goods"
+	close.pressed.connect(_close_goods_drawer)
+	header.add_child(close)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(scroll)
+	_goods_drawer_list = VBoxContainer.new()
+	_goods_drawer_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(_goods_drawer_list)
+	_goods_drawer.visibility_changed.connect(func() -> void:
+		if is_instance_valid(_goods_drawer) and not _goods_drawer.visible:
+			_close_goods_drawer())
+	PanelStack.push(_goods_drawer)
+	_refresh_goods_drawer()
+	_place_goods_drawer()
+	_goods_drawer.modulate.a = 0.0
+	create_tween().tween_property(_goods_drawer, "modulate:a", 1.0, 0.15)
+
+func _refresh_goods_drawer() -> void:
+	if not is_instance_valid(_goods_drawer_list):
+		return
+	for child in _goods_drawer_list.get_children():
+		_goods_drawer_list.remove_child(child)
+		child.queue_free()
+	var goods: Array = TileViewData.stockpile_summary(_current_tile_id).goods
+	for good: Dictionary in goods:
+		var gid := str(good.good_id)
+		var button := Button.new()
+		button.name = "StoredGood_" + gid
+		button.tooltip_text = "%s: %d — move or sell" % [good.display_name, int(good.qty)]
+		var row := HBoxContainer.new()
+		row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		row.offset_left = 10
+		row.offset_right = -10
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.add_child(row)
+		var label := Label.new()
+		label.text = str(good.display_name)
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		label.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(label)
+		var quantity := Label.new()
+		quantity.text = str(int(good.qty))
+		quantity.theme_type_variation = &"Numeric"
+		quantity.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+		quantity.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(quantity)
+		button.toggle_mode = true
+		button.set_pressed_no_signal(str(_stock_sel.get("good_id", "")) == gid)
+		button.custom_minimum_size.y = 38
+		button.pressed.connect(func() -> void: select_stock_good(gid))
+		_goods_drawer_list.add_child(button)
+
+func _process(_delta: float) -> void:
+	if is_instance_valid(_goods_drawer):
+		_place_goods_drawer()
+
+func _place_goods_drawer() -> void:
+	if not is_instance_valid(_goods_drawer):
+		return
+	var rect := get_global_rect()
+	var width := 310.0
+	var left := rect.position.x - width - 12.0
+	if left < 8.0:
+		left = rect.end.x + 12.0
+	left = clampf(left, 8.0, maxf(8.0, get_viewport_rect().size.x - width - 8.0))
+	_goods_drawer.position = Vector2(left, rect.position.y)
+	_goods_drawer.size = Vector2(width, rect.size.y)
+
+func _close_goods_drawer() -> void:
+	if is_instance_valid(_goods_drawer):
+		PanelStack.remove(_goods_drawer)
+	if is_instance_valid(_goods_drawer_layer):
+		_goods_drawer_layer.queue_free()
+	_goods_drawer_layer = null
+	_goods_drawer = null
+	_goods_drawer_list = null
 
 ## Called by world_map once the player picks a destination tile (or "" to cancel).
 func on_destination_picked(tile_id: String) -> void:
@@ -2550,6 +2692,15 @@ func _make_stock_bar(name: String, good_id: String, qty: int, max_qty: int, colo
 		col.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		col.gui_input.connect(func(e): _on_stock_bar_input(e, good_id, name, qty))
 		selected = str(_stock_sel.get("good_id", "")) == good_id
+	elif name == "Other goods":
+		col.name = "OtherGoodsBar"
+		col.tooltip_text = "Show all goods and quantities on this tile"
+		col.mouse_filter = Control.MOUSE_FILTER_STOP
+		col.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		col.gui_input.connect(func(event: InputEvent) -> void:
+			if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+				_toggle_goods_drawer()
+				accept_event())
 
 	# Selection marker at the very top of the column.
 	var marker := ColorRect.new()
@@ -3381,6 +3532,7 @@ func _make_construction_row(project: Dictionary) -> HBoxContainer:
 	cancel.add_theme_stylebox_override("pressed", cs)
 	cancel.add_theme_color_override("font_color", DS.PALETTE.DANGER)
 	var inst_id := str(project.get("instance_id", ""))
+	cancel.tooltip_text = "Refunds the construction fee. Before End Turn, also refunds reserved materials and freight. Land remains owned."
 	cancel.pressed.connect(func(): Construction.cancel(inst_id))
 	row.add_child(cancel)
 	return row

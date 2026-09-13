@@ -33,6 +33,7 @@ const SETUP_STEPS_FROM_END := 2
 var hard_gate: bool = false  # true while a lock_panel step is up: Esc is swallowed (world_map)
 var _steps: Array = []
 var _index: int = -1
+var _entry_generation: int = 0 # Invalidates delayed cues on leaving/re-entering a step.
 var _coastal_delivery_finished: bool = false
 var _completion_ready_since_ms: int = -1
 var _entry_turn: int = 0     # turn number when the current step was entered (for turn-gated beats)
@@ -109,12 +110,15 @@ func _start() -> void:
 
 
 func _enter(i: int) -> void:
+	_entry_generation += 1
 	# A held rail guide normally clears one tile at a time as the player builds. Also
 	# clear it when a debug jump or tutorial exit leaves the step early.
 	if _index >= 0 and _index < _steps.size() and i != _index:
 		var previous_id := str((_steps[_index] as Dictionary).get("id", ""))
 		if previous_id == "capital_rail_build":
 			_clear_held_route_highlight()
+		if previous_id == "goto_tile" and is_instance_valid(_route_highlight):
+			_route_highlight.clear()
 	_index = i
 	if _index < 0 or _index >= _steps.size():
 		_finish()
@@ -259,6 +263,7 @@ func _index_of_id(id: String) -> int:
 
 
 func _finish() -> void:
+	_entry_generation += 1
 	active = false
 	hard_gate = false
 	_index = -1
@@ -286,9 +291,21 @@ func _complete_tutorial() -> void:
 
 # ── Setup dispatch (drives via existing sim intent signals / API) ────────────────────
 
+func _run_delayed_setup(action: Dictionary, generation: int) -> void:
+	await get_tree().create_timer(float(action.delay)).timeout
+	if not active or generation != _entry_generation:
+		return
+	var cue := action.duplicate(true)
+	cue.erase("delay")
+	_run_setup([cue])
+
+
 func _run_setup(actions: Array) -> void:
 	for a in actions:
 		if not (a is Dictionary):
+			continue
+		if float(a.get("delay", 0.0)) > 0.0:
+			_run_delayed_setup(a, _entry_generation)
 			continue
 		match str(a.get("action", "")):
 			"focus_tile":
