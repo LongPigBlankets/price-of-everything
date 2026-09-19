@@ -1038,3 +1038,8 @@ func _on_overlay_choice(goto: String) -> void:
 func is_active_step(id: String) -> bool:
 	return active and _index >= 0 and _index < _steps.size() \
 		and str((_steps[_index] as Dictionary).get("id", "")) == id
+
+
+## How many countable steps the player has entered this run (the "Step N" display number).
+func steps_visited() -> int:
+	return _visited

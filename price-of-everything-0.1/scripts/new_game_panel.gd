@@ -485,11 +485,14 @@ func _build_settings_columns(parent: Node) -> void:
 
 	# Telemetry consent (opt-out, docs/telemetry-spec.md §2): defaults to the player's
 	# remembered choice; consumed by main_menu on Start. OUTSIDE the accordion (always visible).
-	_send_metrics = not PlayerProfile.telemetry_opt_out
-	var consent := UIHelpers.make_telemetry_consent_row(_send_metrics)
-	(consent["checkbox"] as CheckBox).toggled.connect(
-			func(on: bool) -> void: _send_metrics = on)
-	parent.add_child(consent["row"])
+	if TelemetryState.SHOW_CONSENT_CHECKBOX:
+		_send_metrics = not PlayerProfile.telemetry_opt_out
+		var consent := UIHelpers.make_telemetry_consent_row(_send_metrics)
+		(consent["checkbox"] as CheckBox).toggled.connect(
+				func(on: bool) -> void: _send_metrics = on)
+		parent.add_child(consent["row"])
+	else:
+		_send_metrics = true   # demo: the row is hidden and every run reports
 
 
 ## Accordion header: a flat, left-aligned toggle in large Bebas Neue cream (the DS Title font),
