@@ -1,4 +1,5 @@
 extends RefCounted
+const Middleman := preload("res://scripts/middleman_service.gd")
 ## Shared, UI-agnostic READOUT of a building for the building detail panel.
 ## Aggregates the existing single-source-of-truth helpers (BuildingStatus, CostSolver,
 ## Modifiers, Catalog, EconomyConfig, MatchState) into plain data the panel renders — so the panel
@@ -52,6 +53,10 @@ static func run_state(building: Dictionary, recipe: Dictionary, is_infrastructur
 	if BuildingStatus.power_status_color(building, recipe, is_infrastructure) == BuildingStatus.STATUS_RED:
 		return "stalled"
 	var iid := str(building.get("instance_id", ""))
+	if Middleman.uses_inputs(iid):
+		var p := Middleman.preview(iid)
+		if not bool(p.get("can_run",false)): return "stalled"
+		return "running" if Production.last_turn_run.has(iid) else "restarting"
 	if iid != "" and Production.last_turn_run.has(iid):
 		return "running"
 	if (recipe.get("inputs", []) as Array).is_empty():
@@ -145,6 +150,16 @@ static func flow(building: Dictionary, recipe: Dictionary) -> Dictionary:
 # --- Economics (real cash flows + the cost-to-produce RAG) ---------------------------------
 
 static func economics(building: Dictionary, recipe: Dictionary, building_data: Dictionary) -> Dictionary:
+	if Middleman.fully_managed(str(building.get("instance_id",""))):
+		var p := Middleman.preview(str(building.instance_id))
+		if bool(p.ok):
+			var output_units := 0
+			for item: Dictionary in p.sale.items: output_units += int(item.quantity)
+			return {"middleman":true,"value":float(building_data.get("base_price",0.0)),"output_value":float(p.sale.goods_value),
+				"output_values":[],"sells":true,"selling_output_count":1,"units_out":output_units,"sale_price":0.0,
+				"transport_cost":float(p.fee),"input_cost":float(p.buy.goods_value),"maintenance":float(p.maintenance),
+				"labour_cost":float(p.labour),"power_cost":float(p.power),"warehousing_cost":0.0,"carbon_tax":float(p.carbon_tax),
+				"running_cost":float(p.buy.goods_value)+float(p.fee)+float(p.maintenance)+float(p.labour)+float(p.power)+float(p.carbon_tax),"net":float(p.net)}
 	# Maintenance, labour and power are priced through production.gd's OWN per-turn helpers — the
 	# exact functions that move the cash each turn — so the panel reflects real building
 	# performance: grown wages (not base rates), level multipliers, and every active modifier
@@ -228,7 +243,22 @@ static func economics(building: Dictionary, recipe: Dictionary, building_data: D
 	for inp in recipe.get("inputs", []):
 		carbon_tax += PolicyState.carbon_charge(str(inp.get("good_id", "")),
 			Production._scaled_input_qty(inp, building), levy_turn)
-	var running := maint + lab_cost + power_cost + input_cost + transport_cost + warehousing + carbon_tax
+	var service_fee := 0.0
+	var iid := str(building.get("instance_id",""))
+	if Middleman.enabled(iid):
+		var quote := Middleman.preview(iid)
+		service_fee = float(quote.fee)
+		if Middleman.uses_inputs(iid): input_cost = float(quote.buy.goods_value)
+		if str(recipe.get("output_name", "")) == "power":
+			output_value = float(quote.grid_value)
+			sells = true
+			transport_cost = 0.0
+		if Middleman.uses_outputs(iid):
+			output_value = float(quote.sale.goods_value)
+			sells = true
+			selling_outputs = output_values.size()
+			transport_cost = 0.0
+	var running := service_fee + maint + lab_cost + power_cost + input_cost + transport_cost + warehousing + carbon_tax
 	var pc := BuildingStatus.produce_cost_status(building)
 	return {
 		"value": float(building_data.get("base_price", 0.0)),   # asset value (build/buy price), not per-turn
@@ -238,6 +268,7 @@ static func economics(building: Dictionary, recipe: Dictionary, building_data: D
 		"selling_output_count": selling_outputs,
 		"units_out": units_out,
 		"sale_price": price,
+		"middleman_fee": service_fee,
 		"transport_cost": transport_cost,
 		"input_cost": input_cost,
 		"maintenance": maint,
@@ -324,6 +355,9 @@ static func power_state_text(state: String) -> String:
 static func diagnostics(building: Dictionary, recipe: Dictionary, building_data: Dictionary, is_infrastructure: bool) -> Array:
 	var rows: Array = []
 	var iid := str(building.get("instance_id", ""))
+	if Middleman.uses_inputs(iid):
+		var p := Middleman.preview(iid)
+		return [_row("ok" if bool(p.get("can_run",false)) else "warn","truck","Middleman service",str(p.get("reason","Unavailable")))]
 	var exhausted := BuildingStatus.recipe_deposit_exhausted(building, recipe)
 	var ran := iid != "" and Production.last_turn_run.has(iid)
 	var missing := iid != "" and Production.missing_by_building.has(iid)
@@ -824,6 +858,7 @@ static func input_sources(building: Dictionary, recipe: Dictionary) -> Array:
 	var iid := str(building.get("instance_id", ""))
 	var tile_id := str(building.get("tile_id", ""))
 	for inp in recipe.get("inputs", []):
+		if Middleman.supplies_good(iid, str(inp.get("good_id", ""))): continue
 		for producer in _producers_for_input(inp, iid, tile_id):
 			var prod_data := Catalog.get_building(str(producer.get("building_id", "")))
 			rows.append({
@@ -838,6 +873,7 @@ static func input_sources(building: Dictionary, recipe: Dictionary) -> Array:
 
 # Player buildings that consume this building's primary output, fed from its routed destination tile.
 static func output_consumers(building: Dictionary, recipe: Dictionary) -> Array:
+	if Middleman.uses_outputs(str(building.get("instance_id",""))): return []
 	var out_gid := BuildingStatus.primary_output_good_id(recipe)
 	var iid := str(building.get("instance_id", ""))
 	if out_gid == "":
@@ -863,6 +899,7 @@ static func output_consumers(building: Dictionary, recipe: Dictionary) -> Array:
 	for b in BuildingState.buildings.values():
 		if str(b.get("instance_id", "")) == iid or not destination_tiles.has(str(b.get("tile_id", ""))):
 			continue
+		if Middleman.uses_inputs(str(b.get("instance_id",""))): continue
 		if not BuildingState.is_player_owned(b):
 			continue
 		var r := Catalog.get_recipe(str(b.get("recipe_id", "")))
@@ -878,6 +915,8 @@ static func output_consumers(building: Dictionary, recipe: Dictionary) -> Array:
 	return rows
 
 static func output_route(building: Dictionary, recipe: Dictionary) -> Dictionary:
+	if Middleman.uses_outputs(str(building.get("instance_id",""))):
+		return {"destination":"Middleman","target":"","has_market":true,"cost":0.0,"turns":0}
 	var source_tile := str(building.get("tile_id", ""))
 	var gid := BuildingStatus.primary_output_good_id(recipe)
 	var qty := BuildingStatus.primary_output_qty(recipe)
@@ -915,6 +954,8 @@ static func output_route(building: Dictionary, recipe: Dictionary) -> Dictionary
 	return {"destination": destination, "cost": cost, "turns": turns, "reachable": reachable, "has_market": has_market, "target": target}
 
 static func connections(building: Dictionary, recipe: Dictionary) -> Dictionary:
+	if Middleman.fully_managed(str(building.get("instance_id",""))):
+		return {"origin":str(building.get("tile_id","")),"input_tiles":[],"output_tiles":[],"has_market":false}
 	var origin := str(building.get("tile_id", ""))
 	var iid := str(building.get("instance_id", ""))
 	var input_tiles: Array = []
@@ -925,6 +966,7 @@ static func connections(building: Dictionary, recipe: Dictionary) -> Dictionary:
 	var output_tiles: Array = []
 	var has_market := false
 	for o in BuildingStatus.flow_output_items(recipe):
+		if Middleman.uses_outputs(iid): continue
 		var gid := str(o.get("good_id", ""))
 		if gid == "":
 			gid = str(Catalog.get_good_by_internal_name(str(o.get("internal_name", ""))).get("id", ""))
@@ -1063,6 +1105,7 @@ static func battery(building: Dictionary) -> Dictionary:
 	}
 
 static func _routes_to_tile(producer: Dictionary, output: Dictionary, tile_id: String) -> bool:
+	if Middleman.buys_output(str(producer.get("instance_id","")), str(output.get("good_id", ""))): return false
 	if tile_id == "":
 		return false
 	var gid := str(output.get("good_id", ""))

@@ -1,0 +1,15 @@
+{
+  "benchmark_id": "pepper_valley_motors_rail_three_owned",
+  "version": 1,
+  "base_contract": "res://tests/scenarios/pepper_valley_motors_benchmark.json",
+  "corridor": "shortest_adjacent_land_path_from_tile_5_4_to_catalog_selected_port",
+  "mode": "rail",
+  "level": 1,
+  "ownership": "player_owned_b_019_on_first_three_corridor_tiles_from_factory_remaining_tiles_public",
+  "player_owned_tiles": ["tile_5_4", "tile_5_5", "tile_5_6"],
+  "setup": "already_completed_player_and_government_infrastructure_with_actual_player_recurring_maintenance",
+  "government_build_timing": "not_simulated_steady_state_after_corridor_completion",
+  "capital_cost": "excluded_from_operating_comparison",
+  "port": "same_NPC_port_as_road_baseline",
+  "measurement": "same_full_batches_controlled_prices_and_turn_40_to_49_window_as_road_baseline"
+}

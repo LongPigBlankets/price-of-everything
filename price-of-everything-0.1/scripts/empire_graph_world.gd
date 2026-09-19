@@ -1280,7 +1280,7 @@ func _build_chain_focus_layout(sel: String) -> void:
 	var chart_port_half := Vector2.ONE * NodePanelScript.SPRITE_PX * _PORT_SPRITE_MULT * 0.5
 	for p in _ports:
 		var pc: Dictionary = (p as Dictionary).duplicate()
-		pc["half"] = chart_port_half
+		pc["half"] = p["half"] if bool(p.get("is_middleman",false)) else chart_port_half
 		port_copies.append(pc)
 		port_by_copy[str(p["iid"])] = pc
 	for se in _sell_edges:
@@ -1291,7 +1291,7 @@ func _build_chain_focus_layout(sel: String) -> void:
 	var buy_by_copy: Dictionary = {}
 	for bp in _buy_ports:
 		var bc: Dictionary = (bp as Dictionary).duplicate()
-		bc["half"] = chart_port_half
+		bc["half"] = bp["half"] if bool(bp.get("is_middleman",false)) else chart_port_half
 		buy_copies.append(bc)
 		buy_by_copy[str(bp["iid"])] = bc
 	for me in _market_edges:
@@ -1804,7 +1804,7 @@ func _route_via(start: Vector2, end: Vector2, x1: float, y_mid: float, x2: float
 ## A port's half-extent as DRAWN: its hex at rest, the 2x building sprite inside a chart.
 func _port_half_drawn(p: Dictionary, sc: float) -> Vector2:
 	var pid := str(p["iid"])
-	if _focus_target > 0.0 and _focus_members.has(pid):
+	if _focus_target > 0.0 and _focus_members.has(pid) and not bool(p.get("is_middleman",false)):
 		return Vector2.ONE * NodePanelScript.SPRITE_PX * _PORT_SPRITE_MULT * 0.5 * sc
 	return (p["half"] as Vector2) * sc
 
@@ -2249,7 +2249,7 @@ func _draw_port(n: Dictionary, font: Font, sc: float) -> void:
 	# Inside an open mini-chart the port is a PLACE, not a symbol, so it wears the same
 	# building sprite the rest of the chart does and keeps only a small gold hex in the
 	# bottom-right corner — the identical badge a building selling to market carries.
-	if _focus_target > 0.0 and _focus_members.has(str(n["iid"])):
+	if _focus_target > 0.0 and _focus_members.has(str(n["iid"])) and not bool(n.get("is_middleman",false)):
 		_draw_port_sprite(n, center, half, font, sc)
 		return
 	var hex := rounded_polygon(hex_points(center, half), minf(half.x, half.y) * 0.22, 4)

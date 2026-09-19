@@ -120,6 +120,8 @@ static func snapshot() -> Dictionary:
 			var tile := str(upgrade.get("tile_id", ""))
 			for gid: String in upgrade.get("missing", {}):
 				_add(stock, tile, gid, -mini(_quantity(stock, tile, gid), int(upgrade.missing[gid])))
+	var completing_service: Array = buildings.filter(func(b: Dictionary) -> bool: return bool(b.get("forecast_new",false)) and preload("res://scripts/middleman_service.gd").default_for(str(b.get("recipe_id","")),str(b.get("tile_id",""))))
+	var service_previews := preload("res://scripts/middleman_service.gd").company_previews(completing_service)
 	var local_supply: Dictionary = {}
 	var outputs: Array = []
 	var ran: Dictionary = {}
@@ -129,16 +131,21 @@ static func snapshot() -> Dictionary:
 		var tile := str(b.get("tile_id", ""))
 		var iid := str(b.get("instance_id", ""))
 		var recipe := Catalog.get_recipe(str(b.get("recipe_id", "")))
-		var run := not BuildingWorks.is_building_paused(iid) and (not BuildingWorks.is_retooling(iid) or bool(b.get("forecast_retooled", false)))
-		run = run and _power_available(tile, recipe) and not Status.recipe_deposit_exhausted(b, recipe)
-		for input: Dictionary in recipe.get("inputs", []):
-			if _quantity(stock, tile, str(input.get("good_id", ""))) < Production._scaled_input_qty(input, b):
-				run = false
+		var private_inputs := service_previews.has(iid) and (preload("res://scripts/middleman_service.gd").uses_inputs(iid) or bool(b.get("forecast_new",false)))
+		var run := not BuildingWorks.is_building_paused(iid) and (not BuildingWorks.is_retooling(iid) or bool(b.get("forecast_retooled",false)))
+		run = run and _power_available(tile,recipe) and not Status.recipe_deposit_exhausted(b,recipe)
+		if private_inputs:
+			run = bool(service_previews[iid].get("can_run",false))
+		else:
+			for input: Dictionary in recipe.get("inputs",[]):
+				if _quantity(stock,tile,str(input.get("good_id",""))) < Production._scaled_input_qty(input,b): run=false
 		if run:
-			ran[iid] = true
-			for input: Dictionary in recipe.get("inputs", []):
-				_add(stock, tile, str(input.get("good_id", "")), -Production._scaled_input_qty(input, b))
+			ran[iid]=true
+			if not private_inputs:
+				for input: Dictionary in recipe.get("inputs",[]):
+					_add(stock,tile,str(input.get("good_id","")),-Production._scaled_input_qty(input,b))
 			for item: Dictionary in Status.flow_output_items(recipe):
+				if preload("res://scripts/middleman_service.gd").uses_outputs(iid) or (bool(b.get("forecast_new",false)) and service_previews.has(iid)): continue
 				var gid := str(item.get("good_id", ""))
 				if gid == "":
 					gid = str(Catalog.get_good_by_internal_name(str(item.get("internal_name", ""))).get("id", ""))
@@ -164,8 +171,9 @@ static func snapshot() -> Dictionary:
 		_land(stock, transit, {"good_id": item.good, "qty": item.qty}, str(item.tile))
 	for move: Dictionary in TransportState.recurring_moves:
 		var source := str(move.get("source", ""))
-		for gid: String in move.get("goods", {}):
-			var qty := mini(_quantity(stock, source, gid), int(move.goods[gid]))
+		var move_goods := preload("res://scripts/middleman_service.gd").managed_move_goods(move)
+		for gid: String in move_goods:
+			var qty := mini(_quantity(stock, source, gid), int(move_goods[gid]))
 			_add(stock, source, gid, -qty)
 			transit.append({"destination_tile": str(move.get("dest", "")), "good_id": gid, "qty": qty})
 	var demand: Dictionary = {}
@@ -173,6 +181,7 @@ static func snapshot() -> Dictionary:
 	var new_inputs: Dictionary = {}
 	for b: Dictionary in buildings:
 		var iid := str(b.get("instance_id", ""))
+		if service_previews.has(iid) and (preload("res://scripts/middleman_service.gd").uses_inputs(iid) or bool(b.get("forecast_new",false))): continue
 		var tile := str(b.get("tile_id", ""))
 		var recipe := Catalog.get_recipe(str(b.get("recipe_id", "")))
 		if not _power_available(tile, recipe):
@@ -241,11 +250,18 @@ static func snapshot() -> Dictionary:
 		row["payment_in"] = 1 + maxi(0, int(quote.get("turns", 0)))
 		row["limited"] = int(row.qty) < int(row.wanted)
 		headroom = maxf(0.0, headroom - float(row.amount))
+	for b: Dictionary in buildings:
+		var iid := str(b.get("instance_id",""))
+		if not service_previews.has(iid): continue
+		var p: Dictionary = service_previews.get(iid,{})
+		if not bool(p.get("can_run",false)): continue
+		for item: Dictionary in p.buy.items:
+			requests.append({"tile":str(b.tile_id),"good":str(item.good),"qty":int(item.quantity),"wanted":int(item.quantity),"kind":"middleman","instance_id":iid,"amount":float(item.goods_value)+float(item.fee),"payment_in":1,"limited":false})
 	var order_total := 0.0
 	for row: Dictionary in requests:
 		order_total += float(row.amount)
 	return {"turn": TurnManager.current_turn, "cash": MatchState.money, "payments": committed,
-		"due": due_total(committed), "orders": requests, "orders_total": order_total,
+		"middleman":service_previews, "due": due_total(committed), "orders": requests, "orders_total": order_total,
 		"labour": labour, "maintenance": maintenance, "ms": float(Time.get_ticks_usec() - started) / 1000.0}
 
 static func _request(tile: String, good: String, qty: int, wanted: int, kind: String, iid: String) -> Dictionary:

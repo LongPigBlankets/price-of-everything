@@ -1,3 +1,5 @@
+> Middleman prototype update, 19 September 2026: `ruleset.logistics_model = "middleman_v1"` removes the introductory port discount and uses the normal 3% base rate from turn one. Its £40 provider fee (£16 inputs / £16 outputs / £8 storage) supplies the opening simplification instead. Legacy/tutorial games keep the schedule below until explicitly migrated. See [progression review](reviews/middleman-fee40-progression-2026-09-19.md).
+
 # Early-Game Onboarding & Kindness — Design Spec
 
 *v2, 2026-08-09 — updated after the owner's second review round (Andrew Keeler, the

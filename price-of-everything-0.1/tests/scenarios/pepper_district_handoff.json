@@ -1,0 +1,65 @@
+{
+  "hub": "tile_5_5",
+  "port": "tile_5_10",
+  "area": [
+    "tile_4_4",
+    "tile_4_5",
+    "tile_5_4",
+    "tile_5_5",
+    "tile_5_6",
+    "tile_6_4",
+    "tile_6_5"
+  ],
+  "layout": [
+    {
+      "tile": "tile_5_5",
+      "recipe": "r_009"
+    },
+    {
+      "tile": "tile_5_5",
+      "recipe": "r_009"
+    },
+    {
+      "tile": "tile_5_4",
+      "recipe": "r_003"
+    },
+    {
+      "tile": "tile_5_4",
+      "recipe": "r_003"
+    },
+    {
+      "tile": "tile_6_5",
+      "recipe": "r_008"
+    },
+    {
+      "tile": "tile_6_5",
+      "recipe": "r_008"
+    },
+    {
+      "tile": "tile_6_4",
+      "recipe": "r_005"
+    },
+    {
+      "tile": "tile_6_4",
+      "recipe": "r_005"
+    },
+    {
+      "tile": "tile_6_4",
+      "recipe": "r_007"
+    },
+    {
+      "tile": "tile_6_4",
+      "recipe": "r_007"
+    }
+  ],
+  "status": "candidate tested; shared handoff alone does not meet desired hub crossover",
+  "report": "reports/balance/pepper_district_handoff_2026-09-19.json",
+  "assumptions": {
+    "infrastructure": "Road L3 versus rail L2, with local hub road L3 in either case, to test service substitution; concentrated road handoffs still overload and retain engine carrier surcharges. No hard shipment cap is assumed. Three owned L2 rail tiles; all other infrastructure public; construction excluded.",
+    "handoff": "Explicit aggregation at each of seven reachable covered tiles; generic carrier requoted only between gateway and port. Local distribution uses covered road edges only, one edge per turn, charged in hub LC. No generic invoices for owned local movements.",
+    "timing": "Recurring phase-aligned dispatch; no extra handoff dwell. Actual local travel duration is retained, so end-to-end delivery can differ from direct rail. Inventory effect not simulated.",
+    "storage": "Same two-chain inventory carrying cost in both models; no assumed savings from warehousing, handling fees or bulk discounts. Additional gateway inventory/land/handling overhead, empty repositioning and fleet amortization not priced.",
+    "controls": "Recipes, prices, middleman tariffs, payload, rounding and operating recipe unchanged. Earlier small-building controls unchanged but not rerun under a new tariff, since no tariff introduced."
+  },
+  "target": "10 buildings on four tiles, comparing direct carrier with all seven covered shared handoff sites"
+}

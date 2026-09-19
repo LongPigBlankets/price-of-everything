@@ -121,7 +121,7 @@ func _test_tile_good_breakdown() -> void:
 	var route := {"tiles": ["t0", "t1"], "legs": [{"mode": "roads", "from": "t0", "to": "t1"}],
 		"reachable": true, "turns": 1}
 	TransportState.pending_transport_shipments.append({
-		"good_id": "g_001", "qty": 100, "turns_remaining": 2,
+		"good_id": "g_001", "qty": 100, "turns_remaining": 1,
 		"tile_distance": 1, "transport_turns": 1,
 		"tiles": route.tiles, "legs": route.legs,
 	})
@@ -144,7 +144,7 @@ func _test_tile_good_breakdown() -> void:
 	# re-deriving the tier/headroom formula a second time in the test. -----------------
 	TransportState.pending_transport_shipments.clear()
 	TransportState.pending_transport_shipments.append({
-		"good_id": "g_001", "qty": 450, "turns_remaining": 2,
+		"good_id": "g_001", "qty": 450, "turns_remaining": 1,
 		"tile_distance": 1, "transport_turns": 1,
 		"tiles": route.tiles, "legs": route.legs,
 	})
@@ -168,7 +168,7 @@ func _test_tile_good_breakdown() -> void:
 	# --- sale shipment: multiple goods, split per item, same route -------------------
 	TransportState.pending_transport_shipments.clear()
 	TransportState.pending_transport_shipments.append({
-		"is_sale": true, "turns_remaining": 2,
+		"is_sale": true, "turns_remaining": 1,
 		"tile_distance": 1, "transport_turns": 1,
 		"tiles": route.tiles, "legs": route.legs,
 		"sale_record": {"tile_id": "t0", "items": [

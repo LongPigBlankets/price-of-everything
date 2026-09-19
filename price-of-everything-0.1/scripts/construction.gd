@@ -553,7 +553,8 @@ func tick_turn() -> Array:
 		# offering the facility for a stretch of rail was simply wrong. Purchases never reach
 		# here at all (they are not construction projects); they get seeded stock instead.
 		if int(project["turns_remaining"]) == 1 and MatchState.can_open_building_tab() \
-				and not Catalog.get_recipe(str(project.get("recipe_id", ""))).get("inputs", []).is_empty():
+				and not Catalog.get_recipe(str(project.get("recipe_id", ""))).get("inputs", []).is_empty() \
+				and not preload("res://scripts/middleman_service.gd").default_for(str(project.get("recipe_id","")),str(project.get("tile_id",""))):
 			if MatchState.open_building_tab(str(instance_id)):
 				building_tab_opened.emit(str(instance_id))
 		if int(project["turns_remaining"]) <= 0:
@@ -623,6 +624,7 @@ func _complete_build(building_id: String, recipe_id: String, tile_id: String, in
 			MatchState.set_output_stockpile_destination(completed_id, tile_id, good_id)
 		else:
 			MatchState.route_output_to_market(completed_id, good_id)
+	preload("res://scripts/middleman_service.gd").enroll_completed(completed_id)
 	return completed_id
 
 

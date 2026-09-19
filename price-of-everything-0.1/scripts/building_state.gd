@@ -137,10 +137,13 @@ func add_building(
 # production pass rebuilds its player-owned set each turn, so a bought building runs from next
 # turn. Emits building_owner_changed so ownership-filtered UI refreshes immediately.
 func set_building_owner(instance_id: String, owner: String) -> void:
+	if owner != MatchState.LOCAL_PLAYER and preload("res://scripts/middleman_service.gd").has_assets(instance_id): return
 	if not buildings.has(instance_id):
 		return
 	if str(buildings[instance_id].get("owner", MatchState.LOCAL_PLAYER)) == owner:
 		return
+	if owner != MatchState.LOCAL_PLAYER and preload("res://scripts/middleman_service.gd").enabled(instance_id):
+		MatchState.middleman_service.buildings.erase(instance_id)
 	buildings[instance_id]["owner"] = owner
 	# Buying bundles the land under the building: grant its footprint as owned land on the tile.
 	if owner == MatchState.LOCAL_PLAYER:
@@ -161,6 +164,8 @@ func set_building_owner(instance_id: String, owner: String) -> void:
 # at), flip ownership to the NPC — the building keeps standing and its land stays occupied, but it
 # stops running for you (production rebuilds the player-owned set each turn). Instantaneous.
 func sell_building(instance_id: String) -> Dictionary:
+	if preload("res://scripts/middleman_service.gd").has_assets(instance_id):
+		return {"ok":false,"reason":"Settle or release middleman holdings first."}
 	if not buildings.has(instance_id):
 		return {"ok": false, "reason": "No such building."}
 	if not is_player_owned(buildings[instance_id]):
@@ -180,6 +185,8 @@ func liquidate_all_buildings(price_mult: float) -> Dictionary:
 	for instance_id in buildings.keys().duplicate():
 		var b: Dictionary = buildings[instance_id]
 		if not is_player_owned(b):
+			continue
+		if preload("res://scripts/middleman_service.gd").has_assets(str(instance_id)):
 			continue
 		var price: int = int(round(float(BuildingPrice.sale_price(b)) * price_mult))
 		MatchState.add_money(float(price))
@@ -225,6 +232,7 @@ func _grant_building_land(instance_id: String) -> void:
 		tile_land_owned_changed.emit(tile_id)
 
 func remove_building(instance_id: String) -> bool:
+	if preload("res://scripts/middleman_service.gd").has_assets(instance_id): return false
 	if not buildings.has(instance_id):
 		return false
 
@@ -241,6 +249,8 @@ func remove_building(instance_id: String) -> bool:
 		if tile_buildings[tile_id].is_empty():
 			tile_buildings.erase(tile_id)
 	
+	if preload("res://scripts/middleman_service.gd").enabled(instance_id):
+		MatchState.middleman_service.buildings.erase(instance_id)
 	buildings.erase(instance_id)
 	BuildingWorks.paused_buildings.erase(instance_id)
 	MatchState.output_stockpile_destinations.erase(instance_id)

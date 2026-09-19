@@ -356,6 +356,20 @@ func _build_header() -> HBoxContainer:
 	_title_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE  # let the header get the drag
 	header.add_child(_title_label)
+	var logistics := Button.new()
+	logistics.name = "TileLogisticsButton"
+	logistics.custom_minimum_size = Vector2(44,40)
+	logistics.draw.connect(func() -> void:
+		var center := logistics.size*0.5
+		var polygon := PackedVector2Array()
+		for index in 6:
+			var angle := TAU*float(index)/6.0
+			polygon.append(center+Vector2(cos(angle),sin(angle))*18.0)
+		logistics.draw_colored_polygon(polygon,Color(0.91,0.77,0.44))
+		logistics.draw_texture_rect(preload("res://assets/icons/research/glyph/lorry.png"),Rect2(center-Vector2(13,13),Vector2(26,26)),false))
+	logistics.tooltip_text = "Tile logistics and warehousing"
+	logistics.pressed.connect(_open_tile_logistics)
+	header.add_child(logistics)
 	var close_button := Button.new()
 	close_button.text = "✕"
 	close_button.focus_mode = Control.FOCUS_NONE
@@ -745,6 +759,7 @@ func _refresh_active_pane() -> void:
 func _refresh_pane(tab_id: String) -> void:
 	var pane: VBoxContainer = _panes[tab_id]
 	for child in pane.get_children():
+		pane.remove_child(child)
 		child.queue_free()
 	match tab_id:
 		"power": _build_power_pane(pane)
@@ -1964,6 +1979,49 @@ func _go_to_building(instance_id: String) -> void:
 
 # --- Stockpile pane (vertical bar chart) ------------------------------------
 func _build_stock_pane(pane: VBoxContainer) -> void:
+	var service = preload("res://scripts/middleman_service.gd")
+	var logistics: Dictionary = service.tile_sides(_current_tile_id)
+	if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1" and (not logistics.input.is_empty() or not logistics.output.is_empty()):
+		if logistics.physical:
+			var manage := Button.new()
+			manage.name = "ManageTileLogistics"
+			manage.text = "Manage Logistics"
+			manage.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+			manage.pressed.connect(func() -> void: MatchState.building_ledger_filter_requested.emit(""))
+			pane.add_child(manage)
+		var center := CenterContainer.new()
+		center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if not logistics.physical:
+			center.size_flags_vertical = Control.SIZE_EXPAND_FILL
+			center.custom_minimum_size.y = 260
+		pane.add_child(center)
+		var rows := VBoxContainer.new()
+		rows.add_theme_constant_override("separation", 20)
+		center.add_child(rows)
+		for side in ["input", "output"]:
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 12)
+			var check := UIHelpers.make_custom_checkbox()
+			check.name = "TileLogistics"+side.capitalize()
+			check.button_pressed = bool(logistics["all_"+side]) and not logistics[side].is_empty()
+			check.disabled = logistics[side].is_empty()
+			check.tooltip_text = "Changes this side for all player-owned buildings with tradeable materials. Electricity stays on the grid."
+			var label := Label.new()
+			label.text = "%s through Logistics Intermediary for all Buildings on this tile" % ("Inputs" if side == "input" else "Outputs")
+			label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			label.custom_minimum_size.x = 280
+			row.add_child(check)
+			row.add_child(label)
+			rows.add_child(row)
+			var tile_id := _current_tile_id
+			check.toggled.connect(func(selected: bool) -> void:
+				var mode := "middleman" if selected else "managed"
+				preload("res://scripts/logistics_confirmation.gd").request(self, mode, func() -> bool:
+					var result: Dictionary = service.set_tile_mode(tile_id, side, mode)
+					if not result.ok: MatchState.request_toast(str(result.reason), "warning")
+					_refresh_active_pane()
+					return bool(result.ok), _refresh_active_pane))
+		if not logistics.physical: return
 	# Peak utilisation last turn — first row of the pane, and deliberately NOT the same figure
 	# as the tab button (see _make_stock_utilisation_row). Goods that only transited via the
 	# JIT feed are excluded: they never took a slot, so they are not storage used — the JIT
@@ -3875,3 +3933,47 @@ func _survey_status_for_tile(tile_data: Dictionary) -> String:
 		"surveyed": return "Surveyed"
 		"partial": return "Partially surveyed"
 		_: return "Unsurveyed"
+
+# Tile storage is shared player inventory. Provider-private holdings never count here.
+func _open_tile_logistics() -> void:
+	var dialog := AcceptDialog.new()
+	dialog.title = "Tile logistics and warehousing"
+	var vb := VBoxContainer.new()
+	vb.custom_minimum_size = Vector2(580,0)
+	vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vb.add_theme_constant_override("separation",12)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(620,340)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	dialog.add_child(scroll)
+	scroll.add_child(vb)
+	var note := Label.new()
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.text = "Owned storage: %d / %d units. Managed inputs share this stock; intermediary goods remain private to each building. Surplus sales reserve the tile's managed production inputs first." % [Stockpile.get_used_capacity(_current_tile_id),Stockpile.get_capacity(_current_tile_id)]
+	vb.add_child(note)
+	var storage_fee := 0.0
+	for gid in Stockpile.get_tile_totals(_current_tile_id):
+		storage_fee += Stockpile.get_at_tile(_current_tile_id,str(gid))*EconomyConfig.warehousing_cost_per_unit(str(gid))
+	var fee_note := Label.new()
+	fee_note.text = "Storage at current holdings: £%.2f / turn" % storage_fee
+	vb.add_child(fee_note)
+	var storage := Button.new()
+	storage.text = "Warehousing · capacity, expansion and surplus rules"
+	storage.pressed.connect(func() -> void:
+		_select_tab("stock")
+		dialog.queue_free())
+	vb.add_child(storage)
+	var service = preload("res://scripts/middleman_service.gd")
+	for b: Dictionary in BuildingState.get_buildings_on_tile(_current_tile_id):
+		if not BuildingState.is_player_owned(b) or str(b.get("recipe_id","")) == "": continue
+		var iid := str(b.instance_id)
+		var button := Button.new()
+		button.text = "%s — In: %s · Out: %s" % [Catalog.get_building_display_name(str(b.building_id)),"Intermediary" if service.uses_inputs(iid) else "Managed","Intermediary" if service.uses_outputs(iid) else "Managed"]
+		button.pressed.connect(func() -> void:
+			MatchState.focus_building_requested.emit(iid)
+			dialog.queue_free())
+		vb.add_child(button)
+	dialog.confirmed.connect(dialog.queue_free)
+	dialog.canceled.connect(dialog.queue_free)
+	add_child(dialog)
+	dialog.popup_centered(Vector2i(660,410))

@@ -140,6 +140,8 @@ func _on_phase_started(phase: int) -> void:
 	if phase == TurnManager.Phase.PROCESS:
 		_process_production()
 
+const Middleman := preload("res://scripts/middleman_service.gd")
+
 func _process_production() -> void:
 	preload("res://scripts/cash_commitments.gd").begin_turn()
 	var cash_before_process := MatchState.money
@@ -286,6 +288,9 @@ func _process_production() -> void:
 	for b in BuildingState.buildings.values():
 		if BuildingState.is_player_owned(b):
 			all_buildings.append(b)
+	TurnProfiler.section_begin("middleman_supply")
+	Middleman.prepare(all_buildings, summary)
+	TurnProfiler.section_end("middleman_supply")
 	var has_run: Dictionary = {}
 
 	# === CASCADING PRODUCTION PHASE ===
@@ -315,6 +320,9 @@ func _process_production() -> void:
 				has_run[instance_id] = true
 				continue
 			
+			if Middleman.enabled(instance_id) and (not Middleman.ready(instance_id) if Middleman.uses_inputs(instance_id) else not Middleman.entry(instance_id).get("outputs",{}).is_empty()):
+				blocked_reason_by_building[instance_id] = _run_warning("middleman", str(Middleman.entry(instance_id).get("reason", "Service batch unavailable.")))
+				continue
 			var check: Dictionary = _can_run_recipe(building, recipe)
 			if not check.can_run:
 				missing_by_building[instance_id] = check.missing
@@ -409,6 +417,10 @@ func _process_production() -> void:
 	TurnProfiler.section_end("production_passes")
 	TurnProfiler.note_scale("production_passes", pass_count)
 
+	TurnProfiler.section_begin("middleman_settlement")
+	Middleman.settle(all_buildings, summary)
+	TurnProfiler.section_end("middleman_settlement")
+
 	# === STARVATION REPORTING ===
 	TurnProfiler.section_begin("starvation_report")
 	for building in all_buildings:
@@ -495,7 +507,11 @@ func _process_production() -> void:
 
 	# Recurring + scheduled (split) tile-to-tile moves fire here, on the merged stock.
 	TurnProfiler.section_begin("recurring_moves")
-	MatchState.run_recurring_and_scheduled_moves()
+	for move: Dictionary in MatchState.run_recurring_and_scheduled_moves():
+		var freight := float(move.get("cost",0.0))
+		summary.transport_paid += freight
+		summary.money_out += freight
+		_record_transport_breakdown(summary,move.get("transport_breakdown",{}),freight)
 	TurnProfiler.section_end("recurring_moves")
 
 	# Top up market-sourced building inputs (bought from the nearest port, arrive in N turns).
@@ -652,13 +668,27 @@ func _process_production() -> void:
 	if not _warehousing_by_tile.is_empty():
 		var reports_per_tile: Dictionary = {}
 		for r in _building_turn_reports:
+			if Middleman.fully_managed(str(r.get("instance_id",""))): continue
 			var rt := str(r.get("tile_id", ""))
 			reports_per_tile[rt] = int(reports_per_tile.get(rt, 0)) + 1
 		for r2 in _building_turn_reports:
+			if Middleman.fully_managed(str(r2.get("instance_id",""))): continue
 			var rt2 := str(r2.get("tile_id", ""))
 			var fee: float = float(_warehousing_by_tile.get(rt2, 0.0))
 			r2["warehousing_cost"] = (fee / float(reports_per_tile[rt2])) if fee > 0.0 else 0.0
 	for report: Dictionary in _building_turn_reports:
+		if Middleman.enabled(str(report.get("instance_id",""))):
+			var service_entry := Middleman.entry(str(report.instance_id))
+			var material := 0.0
+			var input_fees := 0.0
+			for origin: Dictionary in service_entry.receipts.get("input_origins",[]):
+				material += float(origin.purchase.goods_value)
+				input_fees += float(origin.purchase.fee)
+			if Middleman.uses_inputs(str(report.instance_id)):
+				report["market_input_cost"] = material
+				report["inbound_transport"] = input_fees
+			report["inbound_transport"] = float(report.get("inbound_transport",0.0))+float(service_entry.receipts.get("output_fee",0.0))
+			if Middleman.fully_managed(str(report.instance_id)): report["warehousing_cost"] = 0.0
 		report["power_cost"] = Power.allocated_draw_cost(str(report.get("tile_id", "")), int(report.get("power_draw", 0)))
 	CostSolver.solve(_building_turn_reports)
 	TurnProfiler.section_end("cost_solve")
@@ -728,7 +758,8 @@ func _process_production() -> void:
 static func cash_change_of(summary: Dictionary) -> float:
 	return float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0)) \
 		- float(summary.get("building_credit_repaid", 0.0)) \
-		+ float(summary.get("building_credit_loan_received", 0.0))
+		+ float(summary.get("building_credit_loan_received", 0.0)) \
+		+ float(summary.get("middleman_financing", 0.0))
 
 func _apply_advisor_costs(summary: Dictionary) -> float:
 	# Charge against THIS turn's revenue, not last turn's: the sell phase has already run by
@@ -1128,6 +1159,9 @@ func _sell_output_to_market(building: Dictionary, good: Dictionary, qty: int, su
 			_add_summary_sale(summary, str(it.good_id), int(it.qty), float(it.revenue))
 
 func _dispatch_output_to_stockpile(building: Dictionary, good: Dictionary, qty: int, summary: Dictionary) -> void:
+	if Middleman.buys_output(str(building.instance_id), str(good.id)):
+		Middleman.produce(str(building.instance_id),str(good.id),qty)
+		return
 	var split := MatchState.get_output_split_destinations(str(building.get("instance_id", "")), good.id)
 	if split.size() >= 2:
 		var remaining := qty
@@ -1304,6 +1338,7 @@ func _player_committed_for_tile(tile_id: String) -> Dictionary:
 			continue
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
 		for input in recipe.get("inputs", []):
+			if Middleman.supplies_good(str(building.get("instance_id", "")), str(input.good_id)): continue
 			var good_id: String = input.get("good_id", "")
 			var qty: int = _scaled_input_qty(input, building)
 			if good_id != "" and qty > 0:
@@ -1334,6 +1369,8 @@ func get_jit_fed_for_tile(tile_id: String) -> int:
 	return int(_jit_fed_this_turn.get(tile_id, 0))
 
 func _output_stockpile_coord(building: Dictionary, good_id: String):
+	if not bool(Catalog.get_good(good_id).get("is_sellable", true)): return str(building.get("tile_id", ""))
+	if Middleman.buys_output(str(building.get("instance_id","")), good_id): return null
 	var instance_id: String = building.get("instance_id", "")
 	if MatchState.is_output_market(instance_id, good_id):
 		return null  # explicit per-building market route — sell to nearest port
@@ -2202,7 +2239,7 @@ func _accumulate_by_type(target: Dictionary, building_id: String, amount: float,
 	entry["amount"] = float(entry.get("amount", 0.0)) + amount
 	target[building_id] = entry
 
-func _can_run_recipe(building: Dictionary, recipe: Dictionary) -> Dictionary:
+func _can_run_recipe(building: Dictionary, recipe: Dictionary, service_preflight: bool = false) -> Dictionary:
 	var inputs: Array = recipe.get("inputs", [])
 	var missing: Array = []
 	var tile_id: String = building.get("tile_id", "")
@@ -2213,6 +2250,8 @@ func _can_run_recipe(building: Dictionary, recipe: Dictionary) -> Dictionary:
 	# Check inputs (the JIT direct feed counts — it's real goods staged for this tile)
 	for input in inputs:
 		var have: int = Stockpile.get_at_tile(tile_id, input.good_id) + _feed_available(tile_id, str(input.good_id))
+		if Middleman.supplies_good(str(building.instance_id), str(input.good_id)) or (service_preflight and Middleman.material_tradeable(str(input.good_id), "input")):
+			have = _scaled_input_qty(input,building) if service_preflight else int(Middleman.entry(str(building.instance_id)).get("inputs",{}).get(str(input.good_id),0))
 		var need := _scaled_input_qty(input, building)
 		if have < need:
 			missing.append({
@@ -2405,6 +2444,7 @@ func compute_committed_for_tile(tile_id: String) -> Dictionary:
 	for building in BuildingState.get_buildings_on_tile(tile_id):
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
 		for input in recipe.get("inputs", []):
+			if Middleman.supplies_good(str(building.get("instance_id", "")), str(input.good_id)): continue
 			var good_id: String = input.get("good_id", "")
 			var qty: int = _scaled_input_qty(input, building)
 			if good_id != "" and qty > 0:
@@ -2428,6 +2468,7 @@ func compute_sell_reserve_for_tile(tile_id: String) -> Dictionary:
 			continue
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
 		for input in recipe.get("inputs", []):
+			if Middleman.supplies_good(str(building.get("instance_id", "")), str(input.good_id)): continue
 			var good_id: String = input.get("good_id", "")
 			var qty: int = _scaled_input_qty(input, building)
 			if good_id == "" or qty <= 0:
@@ -2516,6 +2557,7 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 	# {tile_id -> Array[{instance_id, building_id, inputs: {good_id -> need/turn}}]}
 	var demand_by_tile: Dictionary = {}
 	for building in all_buildings:
+		if Middleman.uses_inputs(str(building.instance_id)): continue
 		var recipe: Dictionary = Catalog.get_recipe(building.recipe_id)
 		if recipe.is_empty():
 			continue
@@ -2725,6 +2767,7 @@ func _input_source_exhausted_for(building: Dictionary, input: Dictionary) -> boo
 			continue
 		if not BuildingState.is_player_owned(producer):
 			continue
+		if Middleman.buys_output(str(producer.get("instance_id","")), input_good_id): continue
 		var producer_recipe: Dictionary = Catalog.get_recipe(str(producer.get("recipe_id", "")))
 		if producer_recipe.is_empty():
 			continue
@@ -2761,10 +2804,13 @@ func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictiona
 	for input in inputs:
 		var qty := _scaled_input_qty(input, building)
 		# JIT feed first (goods staged building-to-building), warehouse for the rest.
-		var from_feed := _feed_consume(tile_id, str(input.good_id), qty)
-		if qty - from_feed > 0:
-			Stockpile.consume(tile_id, input.good_id, qty - from_feed)
-		if qty > 0:
+		if Middleman.supplies_good(iid, str(input.good_id)):
+			Middleman.consume(iid,str(input.good_id),qty)
+		else:
+			var from_feed := _feed_consume(tile_id, str(input.good_id), qty)
+			if qty - from_feed > 0:
+				Stockpile.consume(tile_id, input.good_id, qty - from_feed)
+		if qty > 0 and not Middleman.supplies_good(iid, str(input.good_id)):
 			AdvisorState.flag_agenda_event(AdvisorState.AGENDA_USED_STOCKPILE)
 		summary.consumed[input.good_id] = summary.consumed.get(input.good_id, 0) + qty
 		# The same figure, kept per TILE. A building consumes from the tile it stands on, so

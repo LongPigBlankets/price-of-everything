@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "status": "P4 provisional construction and overhead parameters; not balance-approved",
+  "construction": {
+    "money": 50.0,
+    "materials": {"concrete": 10, "building_frame": 7, "construction_equipment_ice": 3},
+    "turns": 2,
+    "tile_size": 15
+  },
+  "fixed_overhead_per_turn": 3.0,
+  "installed_vehicle_good": "heavy_vehicle",
+  "loaded_lc_per_vehicle": 10,
+  "handling_and_return": "included",
+  "weighted_payload": 100,
+  "road_lc_per_recipe": 125,
+  "default_fallback_budget_per_turn": 0.0,
+  "shortfall": "queue unless a funded carrier budget is explicitly enabled"
+}

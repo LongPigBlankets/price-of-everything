@@ -1,0 +1,38 @@
+{
+  "save_version": 2,
+  "start": true,
+  "name": "pepper_valley_motors_middleman",
+  "_comment": "Phase-1 playable internal benchmark: real building-private middleman service; not yet in the public start selector. Cash isolates operating economics.",
+  "ruleset": {
+    "name": "standard",
+    "start_id": "pepper_valley_motors_middleman",
+    "tutorial_enabled": false,
+    "logistics_model": "middleman_v1"
+  },
+  "money": 10000,
+  "loans": [],
+  "buildings": [
+    {
+      "building_id": "b_007",
+      "recipe_id": "r_009",
+      "tile_id": "tile_5_4",
+      "level": 1,
+      "output_to": "market",
+      "logistics_mode": "middleman"
+    }
+  ],
+  "land": {
+    "tile_5_4": 200
+  },
+  "stockpile": {},
+  "infrastructure": {
+    "tile_5_4": {
+      "present": [
+        "cables"
+      ],
+      "levels": {
+        "cables": 1
+      }
+    }
+  }
+}

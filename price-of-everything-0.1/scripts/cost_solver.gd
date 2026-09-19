@@ -96,7 +96,7 @@ func solve(reports: Array) -> Dictionary:
 			var inputs: Dictionary = report.get("inputs_consumed", {})
 			var ready := true
 			for gid in inputs:
-				if not priced_goods.has(gid):
+				if not report.has("market_input_cost") and not priced_goods.has(gid):
 					ready = false
 					break
 			if not ready:
@@ -105,8 +105,11 @@ func solve(reports: Array) -> Dictionary:
 
 			# Gross cost components
 			var input_material_cost: float = 0.0
-			for gid in inputs:
-				input_material_cost += priced_goods[gid] * float(inputs[gid])
+			if report.has("market_input_cost"):
+				input_material_cost = float(report.market_input_cost)
+			else:
+				for gid in inputs:
+					input_material_cost += priced_goods[gid] * float(inputs[gid])
 
 			var power_cost: float     = report.get("power_cost", 0.0)
 			var labour_cost: float    = report.get("labour_cost", 0.0)

@@ -1,0 +1,70 @@
+{
+  "status": "generic-carrier columns use real recorded steady turns; middleman and owned-hub columns are arithmetic models",
+  "assumptions": {
+    "turns": "40-49",
+    "production": "one L1 building per listed recipe at full output, no mines, no JIT/research upgrades",
+    "surplus": "all intermediate output goes to consuming tile stockpile; tile sells surplus after reserving inputs; motor output goes to port",
+    "layout": "motors/steel/wiring tile_5_4; iron/copper ingots tile_6_4; hub tile_5_5 covers both; whole ingot batches go to consuming tile, which exports excess",
+    "generic_supplier": "interpreted as existing public-road carrier plus port, not rail",
+    "middleman": "independent building buys/sales, .5% price + .05 heavy/.50 ultra * location, storage included; coefficients 1.5 at city and 1.75 at adjacent rural",
+    "hub": "local coverage and handoffs, 10 LC per vehicle, user-selected weights, 125 LC per diesel recipe, half-up/min-one per active hub input, zero idle",
+    "limits": "hub building/wages/power/maintenance and financing/capital recovery omitted; vehicle capex shown separately; external prices controlled; no market-demand forecast"
+  },
+  "rows": {
+    "motors": [
+      [
+        "r_009",
+        "tile_5_4"
+      ]
+    ],
+    "motors_steel": [
+      [
+        "r_009",
+        "tile_5_4"
+      ],
+      [
+        "r_003",
+        "tile_5_4"
+      ]
+    ],
+    "five_factories": [
+      [
+        "r_009",
+        "tile_5_4"
+      ],
+      [
+        "r_003",
+        "tile_5_4"
+      ],
+      [
+        "r_008",
+        "tile_5_4"
+      ],
+      [
+        "r_007",
+        "tile_6_4"
+      ],
+      [
+        "r_005",
+        "tile_6_4"
+      ]
+    ]
+  },
+  "source_snapshot": "tests/snapshots/pepper_valley_five_factories_v1.json",
+  "report": "reports/balance/pepper_three_by_three_2026-09-19.json",
+  "fourth_scenario": {
+    "copies_of_five_factory_chain": 2,
+    "same_two_tiles": true,
+    "status": "selected by recurring operating profit using engine quotes at full throughput; production qualification and capital payback remain unverified",
+    "report": "reports/balance/pepper_infrastructure_two_chains_2026-09-19.json",
+    "selected_infrastructure": "rail_l1",
+    "player_owned_rail_tiles": [
+      "tile_5_4",
+      "tile_5_5",
+      "tile_5_6"
+    ],
+    "hub_costs_identical_across_infrastructure_variants": true
+  },
+  "current_comparison": "reports/balance/pepper_four_by_three_consolidated_2026-09-19.json",
+  "default_hub_contract": "tests/scenarios/logistics_hub_lc_weights.json"
+}

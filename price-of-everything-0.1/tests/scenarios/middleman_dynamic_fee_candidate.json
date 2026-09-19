@@ -1,0 +1,36 @@
+{
+  "status": "Implemented for the phase-1 Pepper Valley motor prototype; broader goods/city rollout deferred. Replaces historical fixed-fee and 0.4% profiles.",
+  "ad_valorem": 0.005,
+  "weight_rates": {
+    "solid_heavy": 0.05,
+    "ultra_heavy": 0.5
+  },
+  "other_weight_rates": "not yet selected; do not infer production defaults from this two-class benchmark",
+  "location_coefficients": {
+    "large_city_near_port": 1.05,
+    "medium_city_4_or_more_urban_tiles": 1.25,
+    "small_city_1_to_3_urban_tiles": 1.5,
+    "rural_hill_adjacent_city": 1.75,
+    "rural_hill_other": 2.0,
+    "mountain_always": 2.5
+  },
+  "formula": "quantity * (ad_valorem * market_reference_price + weight_rate * location_coefficient)",
+  "scope": "independent building purchases and sales; storage included; no local transfers",
+  "large_city_and_near_port_definition": "requires explicit authored eligibility",
+  "benchmark_report": "reports/balance/middleman_dynamic_fee_2026-09-19_av0.005_heavy0.05_ultra0.5.json",
+  "historical_ad_valorem": 0.004,
+  "runtime_price_basis": "Confirmed: snapshot MarketState.get_price including market impact/carbon, before buy markup; goods use ordinary get_buy_price/get_sale_price. Float ledger, UI rounding only.",
+  "prototype_scope": {
+    "tile": "tile_5_4",
+    "location_coefficient": 1.5,
+    "inputs": {
+      "g_006": 32,
+      "g_007": 32
+    },
+    "outputs": {
+      "g_008": 33
+    },
+    "grid_power": 30,
+    "other_classes": "unsupported until rates and eligibility are explicitly defined"
+  }
+}

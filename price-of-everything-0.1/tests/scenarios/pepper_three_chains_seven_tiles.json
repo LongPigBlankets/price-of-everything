@@ -1,0 +1,310 @@
+{
+  "hub": "tile_5_5",
+  "port": "tile_5_10",
+  "layout": [
+    {
+      "tile": "tile_5_5",
+      "recipe": "r_009"
+    },
+    {
+      "tile": "tile_5_5",
+      "recipe": "r_009"
+    },
+    {
+      "tile": "tile_5_5",
+      "recipe": "r_009"
+    },
+    {
+      "tile": "tile_5_4",
+      "recipe": "r_003"
+    },
+    {
+      "tile": "tile_5_4",
+      "recipe": "r_008"
+    },
+    {
+      "tile": "tile_6_4",
+      "recipe": "r_005"
+    },
+    {
+      "tile": "tile_6_4",
+      "recipe": "r_007"
+    },
+    {
+      "tile": "tile_6_5",
+      "recipe": "r_003"
+    },
+    {
+      "tile": "tile_6_5",
+      "recipe": "r_008"
+    },
+    {
+      "tile": "tile_5_6",
+      "recipe": "r_005"
+    },
+    {
+      "tile": "tile_5_6",
+      "recipe": "r_007"
+    },
+    {
+      "tile": "tile_4_4",
+      "recipe": "r_003"
+    },
+    {
+      "tile": "tile_4_4",
+      "recipe": "r_008"
+    },
+    {
+      "tile": "tile_4_5",
+      "recipe": "r_005"
+    },
+    {
+      "tile": "tile_4_5",
+      "recipe": "r_007"
+    }
+  ],
+  "pairs": [
+    [
+      "tile_5_4",
+      "tile_6_4"
+    ],
+    [
+      "tile_6_5",
+      "tile_5_6"
+    ],
+    [
+      "tile_4_4",
+      "tile_4_5"
+    ]
+  ],
+  "streams": [
+    {
+      "good": "g_001",
+      "quantity": 20,
+      "source": "tile_5_10",
+      "destination": "tile_5_4",
+      "direction": "import"
+    },
+    {
+      "good": "g_001",
+      "quantity": 20,
+      "source": "tile_5_10",
+      "destination": "tile_6_4",
+      "direction": "import"
+    },
+    {
+      "good": "g_002",
+      "quantity": 40,
+      "source": "tile_5_10",
+      "destination": "tile_6_4",
+      "direction": "import"
+    },
+    {
+      "good": "g_003",
+      "quantity": 36,
+      "source": "tile_5_10",
+      "destination": "tile_6_4",
+      "direction": "import"
+    },
+    {
+      "good": "g_004",
+      "quantity": 70,
+      "source": "tile_6_4",
+      "destination": "tile_5_4",
+      "direction": "internal"
+    },
+    {
+      "good": "g_005",
+      "quantity": 25,
+      "source": "tile_6_4",
+      "destination": "tile_5_4",
+      "direction": "internal"
+    },
+    {
+      "good": "g_006",
+      "quantity": 44,
+      "source": "tile_5_4",
+      "destination": "tile_5_5",
+      "direction": "internal"
+    },
+    {
+      "good": "g_007",
+      "quantity": 33,
+      "source": "tile_5_4",
+      "destination": "tile_5_5",
+      "direction": "internal"
+    },
+    {
+      "good": "g_004",
+      "quantity": 33,
+      "source": "tile_5_4",
+      "destination": "tile_5_10",
+      "direction": "export"
+    },
+    {
+      "good": "g_001",
+      "quantity": 20,
+      "source": "tile_5_10",
+      "destination": "tile_6_5",
+      "direction": "import"
+    },
+    {
+      "good": "g_001",
+      "quantity": 20,
+      "source": "tile_5_10",
+      "destination": "tile_5_6",
+      "direction": "import"
+    },
+    {
+      "good": "g_002",
+      "quantity": 40,
+      "source": "tile_5_10",
+      "destination": "tile_5_6",
+      "direction": "import"
+    },
+    {
+      "good": "g_003",
+      "quantity": 36,
+      "source": "tile_5_10",
+      "destination": "tile_5_6",
+      "direction": "import"
+    },
+    {
+      "good": "g_004",
+      "quantity": 70,
+      "source": "tile_5_6",
+      "destination": "tile_6_5",
+      "direction": "internal"
+    },
+    {
+      "good": "g_005",
+      "quantity": 25,
+      "source": "tile_5_6",
+      "destination": "tile_6_5",
+      "direction": "internal"
+    },
+    {
+      "good": "g_006",
+      "quantity": 44,
+      "source": "tile_6_5",
+      "destination": "tile_5_5",
+      "direction": "internal"
+    },
+    {
+      "good": "g_007",
+      "quantity": 33,
+      "source": "tile_6_5",
+      "destination": "tile_5_5",
+      "direction": "internal"
+    },
+    {
+      "good": "g_004",
+      "quantity": 33,
+      "source": "tile_6_5",
+      "destination": "tile_5_10",
+      "direction": "export"
+    },
+    {
+      "good": "g_001",
+      "quantity": 20,
+      "source": "tile_5_10",
+      "destination": "tile_4_4",
+      "direction": "import"
+    },
+    {
+      "good": "g_001",
+      "quantity": 20,
+      "source": "tile_5_10",
+      "destination": "tile_4_5",
+      "direction": "import"
+    },
+    {
+      "good": "g_002",
+      "quantity": 40,
+      "source": "tile_5_10",
+      "destination": "tile_4_5",
+      "direction": "import"
+    },
+    {
+      "good": "g_003",
+      "quantity": 36,
+      "source": "tile_5_10",
+      "destination": "tile_4_5",
+      "direction": "import"
+    },
+    {
+      "good": "g_004",
+      "quantity": 70,
+      "source": "tile_4_5",
+      "destination": "tile_4_4",
+      "direction": "internal"
+    },
+    {
+      "good": "g_005",
+      "quantity": 25,
+      "source": "tile_4_5",
+      "destination": "tile_4_4",
+      "direction": "internal"
+    },
+    {
+      "good": "g_006",
+      "quantity": 44,
+      "source": "tile_4_4",
+      "destination": "tile_5_5",
+      "direction": "internal"
+    },
+    {
+      "good": "g_007",
+      "quantity": 33,
+      "source": "tile_4_4",
+      "destination": "tile_5_5",
+      "direction": "internal"
+    },
+    {
+      "good": "g_004",
+      "quantity": 33,
+      "source": "tile_4_4",
+      "destination": "tile_5_10",
+      "direction": "export"
+    },
+    {
+      "good": "g_006",
+      "quantity": 36,
+      "source": "tile_5_5",
+      "destination": "tile_5_10",
+      "direction": "export"
+    },
+    {
+      "good": "g_007",
+      "quantity": 3,
+      "source": "tile_5_5",
+      "destination": "tile_5_10",
+      "direction": "export"
+    },
+    {
+      "good": "g_008",
+      "quantity": 99,
+      "source": "tile_5_5",
+      "destination": "tile_5_10",
+      "direction": "export"
+    }
+  ],
+  "owned_rail_tiles": [
+    "tile_5_4",
+    "tile_5_5",
+    "tile_5_6"
+  ],
+  "name": "Three chains on seven hub-covered tiles, L2 rail",
+  "infrastructure_level": 2,
+  "working_payload_weighted_units": 100,
+  "lc_per_vehicle": 10,
+  "report": "reports/balance/pepper_three_chains_seven_tiles_2026-09-19.json",
+  "status": "Full-output periodic model with actual engine rail routes, congestion quotes and factory/rail costs; not a validated production simulation.",
+  "assumptions": {
+    "storage": "Controlled aggregate stock carrying cost: three times prior five-factory baseline. Not measured seven-tile occupancy; add/subtract any actual storage-cost difference equally to carrier/hub.",
+    "transfers": "Whole ingot batches to steel/wiring tile, whole steel/wiring outputs to motor tile, surplus sold at receiving tile. No mines. Same policy as previous comparisons.",
+    "middleman": "Independent building trades; location coefficients recomputed for each site. The two local urban tiles use existing Pepper Valley small-city coefficient 1.5.",
+    "hub": "Existing 100 weighted units/load and 10 LC/vehicle; diesel recipe per125 LC rounded half-up/min-one. Workload recomputed for three chains. Phase-aligned recurring arrivals, local consolidation, no extra travel. Entire network congestion charge retained.",
+    "rail": "L2 shortest land corridors for all required streams, actual router chooses among installed and existing network. Three player-owned rail tiles, rest government. Construction and hub overhead excluded."
+  }
+}

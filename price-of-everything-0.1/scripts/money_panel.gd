@@ -105,6 +105,7 @@ const MIN_BALANCE_PANEL_HEIGHT := 360.0
 const BALANCE_ROW_FONT := 18
 const BALANCE_HEADER_FONT := 22
 const TRANSPORT_BREAKDOWN_ROWS := [
+	["middleman", "Middleman fee (transport and storage)"],
 	["port_inbound", "Port Charges — Imports"],
 	["port_outbound", "Port Charges — Exports"],
 	["nothing", "No infrastructure"],
@@ -383,7 +384,7 @@ func _ready() -> void:
 	_profit_sharing_value = _insert_finance_row(_balance_content, "DividendsRow", "Profit Sharing", "-£0.00")
 	_credit_repaid_value = _insert_finance_row(_balance_content, _profit_sharing_value.get_parent().name, "Building credit repaid", "-£0.00")
 	_credit_repaid_value.name = "BuildingCreditRepaidValue"
-	_credit_loan_value = _insert_finance_row(_balance_content, _credit_repaid_value.get_parent().name, "Loan proceeds from building credit", "+£0.00")
+	_credit_loan_value = _insert_finance_row(_balance_content, _credit_repaid_value.get_parent().name, "Operating loan proceeds", "+£0.00")
 	_credit_loan_value.name = "BuildingCreditLoanValue"
 	_proj_profit_sharing_value = _insert_finance_row(projection_content, "Proj_DividendsRow", "Profit Sharing", "-£0.00")
 	# After every row exists, not before: both passes walk the finished sheet.
@@ -596,7 +597,7 @@ static func net_cash_of(s: Dictionary) -> float:
 	return total_revenue_of(s) - operating_costs_of(s) - float(s.get("interest_paid", 0.0)) \
 		- float(s.get("taxes_paid", 0.0)) - float(s.get("dividends_paid", 0.0)) \
 		- float(s.get("profit_sharing_paid", 0.0)) - float(s.get("building_credit_repaid", 0.0)) \
-		+ float(s.get("building_credit_loan_received", 0.0))
+		+ float(s.get("building_credit_loan_received", 0.0)) + float(s.get("middleman_financing", 0.0))
 
 
 func _refresh_balance_sheet() -> void:
@@ -673,11 +674,11 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	dividends_value.text = "-£%.2f" % dividends
 	_profit_sharing_value.text = "-£%.2f" % profit_sharing
 	_credit_repaid_value.text = "-£%.2f" % float(summary.get("building_credit_repaid", 0.0))
-	_credit_loan_value.text = "+£%.2f" % float(summary.get("building_credit_loan_received", 0.0))
-	_credit_loan_value.get_parent().visible = float(summary.get("building_credit_loan_received", 0.0)) > 0.0
+	_credit_loan_value.text = "+£%.2f" % (float(summary.get("building_credit_loan_received", 0.0)) + float(summary.get("middleman_financing", 0.0)))
+	_credit_loan_value.get_parent().visible = (float(summary.get("building_credit_loan_received", 0.0)) + float(summary.get("middleman_financing", 0.0))) > 0.0
 	
 	net_cashflow_value.text = _format_signed(net_cashflow)
-	net_cashflow_value.get_parent().tooltip_text = "Cash movement from the last production settlement, including building-credit repayments and conversion loan proceeds. Player purchases, loans taken between turns and later events are separate."
+	net_cashflow_value.get_parent().tooltip_text = "Cash movement from the last production settlement, including building-credit repayments and operating loan proceeds. Player purchases, loans taken between turns and later events are separate."
 	_color_for_value(net_cashflow_value, net_cashflow)
 
 	# Per-building-type breakdown tooltips.

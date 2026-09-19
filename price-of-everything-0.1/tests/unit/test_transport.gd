@@ -422,6 +422,23 @@ func _test_port_ad_valorem_schedule() -> void:
 		"campaign port: standard late rate restored in a new game")
 	TurnManager.current_turn = 1
 
+func _test_middleman_port_rate_from_start() -> void:
+	MatchState.reset()
+	MatchState.ruleset["logistics_model"] = "middleman_v1"
+	for turn in [1, 10, 30, 31, 100]:
+		_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(turn), 0.03), "middleman port rate is normal from turn %d" % turn)
+	_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(1, true), 0.03), "middleman ruleset supersedes tutorial port relief")
+	TurnManager.current_turn = 1
+	_check(is_equal_approx(TransportState.seaport_insurance_rate(""), 0.03), "actual port billing uses normal opening rate")
+	_check(is_equal_approx(float(TransportService.port_ad_valorem_per_unit("g_006").rate), 0.03), "port quote agrees with billing")
+	var saved := MatchState.export_state()
+	MatchState.reset()
+	MatchState.import_state(saved)
+	_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(1), 0.03), "middleman port rule survives save/load")
+	MatchState.reset()
+	_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(1), 0.005), "legacy games keep introductory relief")
+	_check(is_equal_approx(EconomyConfig.seaport_ad_valorem_rate(100, true), 0.005), "legacy tutorials keep their current rate")
+
 func _test_transport_congestion() -> void:
 	# Throughput soft cap: routes over a link's capacity pay a transport-cost penalty.
 	Modifiers.reset()
@@ -453,7 +470,7 @@ func _test_transport_congestion() -> void:
 	var load_flow := func(units: int) -> void:
 		TransportState.pending_transport_shipments.clear()
 		TransportState.pending_transport_shipments.append({"qty": units, "good_id": "coal",
-			"turns_remaining": 2, "tiles": ["tile_a", "tile_b"],
+			"transport_turns": 1, "turns_remaining": 1, "tiles": ["tile_a", "tile_b"],
 			"legs": [{"mode": "roads", "from": "tile_a", "to": "tile_b"}]})
 		TransportState.update_transport_congestion()
 	# roads L1 cap = 300; tier-2 threshold = cap + base L1 cap = 600.
@@ -483,69 +500,105 @@ func _test_transport_congestion() -> void:
 	TransportState.pending_transport_shipments.clear()
 	TransportState._last_link_flow.clear()
 
-## transport_link_flow() must count a shipment's units against a (tile, mode) link
-## exactly ONCE, no matter how many consecutive legs of the SAME mode share that
-## tile as a boundary. A 4-tile, 4-leg same-mode route touches its 3 internal tiles
-## (pass-through: goods enter AND exit) from TWO adjacent legs each, and its two end
-## tiles (origin: goods exiting; destination: goods landing) from one leg each — all
-## five positions must read the same qty, not doubled at the internal ones.
+## Same-mode boundaries count once over a shipment's journey, including when
+## several legs are completed in one turn. Transfers use both mode pools.
 func _test_transport_flow_no_double_count() -> void:
 	Modifiers.reset()
 	MatchState.reset()
-	TransportState.pending_transport_shipments.clear()
-	TransportState._last_link_flow.clear()
-
-	var qty := 50
-	var same_mode_route := func(mode: String) -> void:
-		TransportState.pending_transport_shipments.clear()
-		TransportState.pending_transport_shipments.append({
-			"qty": qty, "good_id": "coal", "turns_remaining": 3,
-			"tiles": ["t0", "t1", "t2", "t3", "t4"],
-			"legs": [
-				{"mode": mode, "from": "t0", "to": "t1"},
-				{"mode": mode, "from": "t1", "to": "t2"},
-				{"mode": mode, "from": "t2", "to": "t3"},
-				{"mode": mode, "from": "t3", "to": "t4"},
-			],
-		})
-		var flow := TransportState.transport_link_flow()
-		_check(int(flow.get("t0|%s" % mode, -1)) == qty,
-			"%s: origin tile (goods exiting) counts %d once" % [mode, qty])
-		_check(int(flow.get("t1|%s" % mode, -1)) == qty,
-			"%s: pass-through tile counts %d once, not doubled (enters + exits)" % [mode, qty])
-		_check(int(flow.get("t2|%s" % mode, -1)) == qty,
-			"%s: pass-through tile counts %d once, not doubled (enters + exits)" % [mode, qty])
-		_check(int(flow.get("t3|%s" % mode, -1)) == qty,
-			"%s: pass-through tile counts %d once, not doubled (enters + exits)" % [mode, qty])
-		_check(int(flow.get("t4|%s" % mode, -1)) == qty,
-			"%s: destination tile (goods landing) counts %d once" % [mode, qty])
-
-	same_mode_route.call("roads")
-	same_mode_route.call("pipes")
-	same_mode_route.call("reinf_pipes")
-
-	# A mode SWITCH mid-route (roads -> rail at t1) is NOT this bug: the transfer
-	# tile legitimately draws on two separate capacity pools, so it should
-	# correctly appear under BOTH keys, each at the full qty — not deduped away.
-	TransportState.pending_transport_shipments.clear()
-	TransportState.pending_transport_shipments.append({
-		"qty": qty, "good_id": "coal", "turns_remaining": 2,
-		"tiles": ["t0", "t1", "t2"],
-		"legs": [
+	for mode in ["roads", "rail", "pipes", "reinf_pipes"]:
+		var shipment := _flow_test_shipment(mode, 50, 4)
+		var totals := {}
+		for remaining in [4, 3, 2, 1]:
+			shipment.turns_remaining = remaining
+			TransportState.pending_transport_shipments = [shipment]
+			for key in TransportState.transport_link_flow():
+				totals[key] = int(totals.get(key, 0)) + int(TransportState.transport_link_flow()[key])
+		for tile in ["t0", "t1", "t2", "t3", "t4"]:
+			_check(int(totals.get("%s|%s" % [tile, mode], 0)) == 50, "%s %s: batch crosses once over journey" % [mode, tile])
+		shipment.transport_turns = 1
+		shipment.turns_remaining = 1
+		var fast_flow := TransportState.transport_link_flow()
+		_check(fast_flow.size() == 5 and fast_flow.values().all(func(q): return q == 50), "accelerated route counts every tile once")
+	var mixed := {"qty": 50, "good_id": "g_001", "transport_turns": 2, "turns_remaining": 2,
+		"tiles": ["t0", "t1", "t2"], "legs": [
 			{"mode": "roads", "from": "t0", "to": "t1"},
-			{"mode": "rail", "from": "t1", "to": "t2"},
-		],
-	})
-	var mixed_flow := TransportState.transport_link_flow()
-	_check(int(mixed_flow.get("t1|roads", -1)) == qty,
-		"mode switch: the transfer tile's roads leg still counts %d" % qty)
-	_check(int(mixed_flow.get("t1|rail", -1)) == qty,
-		"mode switch: the transfer tile's rail leg ALSO counts %d — separate capacity pool, correctly not deduped" % qty)
+			{"mode": "rail", "from": "t1", "to": "t2"}]}
+	TransportState.pending_transport_shipments = [mixed]
+	_check(TransportState.transport_link_flow() == {"t0|roads": 50, "t1|roads": 50}, "first turn uses roads only")
+	mixed.turns_remaining = 1
+	_check(TransportState.transport_link_flow() == {"t1|rail": 50, "t2|rail": 50}, "second turn transfers onto rail")
+	mixed.transport_turns = 1
+	_check(TransportState.transport_link_flow().size() == 4, "one-turn mixed route credits both capacity pools at transfer")
+	MatchState.reset()
 
+func _flow_test_shipment(mode: String, qty: int, remaining: int, reverse: bool = false) -> Dictionary:
+	var tiles := ["t0", "t1", "t2", "t3", "t4"]
+	if reverse:
+		tiles.reverse()
+	var legs := []
+	for i in 4:
+		legs.append({"mode": mode, "from": tiles[i], "to": tiles[i + 1]})
+	return {"qty": qty, "good_id": "g_001", "transport_turns": 4, "turns_remaining": remaining,
+		"tiles": tiles, "legs": legs}
+
+func _test_transport_flow_staggered_pipeline() -> void:
 	Modifiers.reset()
 	MatchState.reset()
-	TransportState.pending_transport_shipments.clear()
-	TransportState._last_link_flow.clear()
+	# Four concurrent inbound steel/wiring batches and outbound motor batches.
+	# A tile must see one batch per direction, not all four cohorts at once.
+	for mode in ["roads", "rail"]:
+		TransportState.pending_transport_shipments.clear()
+		for remaining in [4, 3, 2, 1]:
+			TransportState.pending_transport_shipments.append(_flow_test_shipment(mode, 32, remaining))
+			TransportState.pending_transport_shipments.append(_flow_test_shipment(mode, 32, remaining))
+			var sale := _flow_test_shipment(mode, 30, remaining, true)
+			sale.is_sale = true
+			sale.sale_record = {"items": [{"good_id": "g_008", "qty": 30}]}
+			TransportState.pending_transport_shipments.append(sale)
+		TransportState.update_transport_congestion()
+		_check(TransportState._last_link_flow.size() == 5, "pipeline uses all five tiles")
+		for tile in ["t0", "t1", "t2", "t3", "t4"]:
+			_check(TransportState._last_link_flow.get("%s|%s" % [tile, mode], 0) == 94, "steady bidirectional flow is 94 on %s %s" % [tile, mode])
+			_check(TransportState.tile_mode_flow(tile, mode, true) == 94, "settled tile readout agrees with congestion")
+		_check(TransportState.congested_links().is_empty(), "regular pipeline below capacity")
+	# A true 450-unit burst must still cause congestion only where it moves.
+	TransportState.pending_transport_shipments = [_flow_test_shipment("roads", 450, 3)]
+	TransportState.update_transport_congestion()
+	_check(TransportState._last_link_flow == {"t2|roads": 450}, "burst counted at current traversal only")
+	_check(TransportState.congested_links().size() == 1, "burst really exceeds road capacity")
+	var before := TransportState.tile_good_breakdown("t2", "roads")
+	TransportState.advance_transport_shipments()
+	_check(TransportState.tile_mode_flow("t2", "roads", true) == 450, "settled progress survives live advance")
+	_check(TransportState.tile_mode_flow("t3", "roads") == 450, "live progress moves to next tile")
+	_check(TransportState.tile_good_breakdown("t2", "roads") == before, "breakdown freezes the same progress as congestion")
+	var saved := TransportState.export_fields()
+	MatchState.reset()
+	TransportState.import_fields(saved)
+	_check(TransportState.tile_mode_flow("t2", "roads", true) == 450, "snapshot progress survives save/load")
+	_check(TransportState.tile_good_breakdown("t3", "roads").is_empty(), "save/load does not shift settled usage forward")
+	# Live geometry is normally re-quoted by MatchState after import. These synthetic
+	# tiles are not in Catalog, so restore the test route explicitly.
+	TransportState.pending_transport_shipments = [_flow_test_shipment("roads", 450, 2)]
+	TransportState.update_transport_congestion()
+	_check(TransportState._last_link_flow == {"t3|roads": 450}, "next snapshot advances usage exactly once")
+	var legacy := saved.duplicate(true)
+	legacy.transport_usage_snapshot.erase("accounting_version")
+	TransportState.import_fields(legacy)
+	_check(not TransportState._has_transport_snapshot and TransportState._last_link_flow.is_empty() and TransportState._link_over_history.is_empty(), "legacy pipeline snapshots do not reinstate false congestion")
+	# Pending construction orders have not dispatched yet.
+	var pending := _flow_test_shipment("roads", 450, 4)
+	pending.construction_order_pending = true
+	TransportState.pending_transport_shipments = [pending]
+	_check(TransportState.transport_link_flow().is_empty(), "unreleased construction reservations do not move")
+	# An overland shipment uses endpoints only at departure and arrival.
+	TransportState.pending_transport_shipments = [{"good_id": "g_001", "qty": 50,
+		"source_tile": "start", "destination_tile": "end", "transport_turns": 3, "turns_remaining": 3}]
+	_check(TransportState.tile_mode_flow("start", "roads") == 50 and TransportState.tile_mode_flow("end", "roads") == 0, "overland departure only")
+	TransportState.pending_transport_shipments[0].turns_remaining = 2
+	_check(TransportState.tile_mode_flow("start", "roads") == 0 and TransportState.tile_mode_flow("end", "roads") == 0, "overland in transit does not occupy endpoints")
+	TransportState.pending_transport_shipments[0].turns_remaining = 1
+	_check(TransportState.tile_mode_flow("end", "roads") == 50, "overland arrival counts destination")
+	MatchState.reset()
 
 # A starvation event deep-links to the BUILDING panel (not the tile panel): its
 # deeplink names the building instance, and the bell's _go_to routes it to

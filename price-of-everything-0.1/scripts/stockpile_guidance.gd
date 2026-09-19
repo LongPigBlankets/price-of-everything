@@ -57,7 +57,7 @@ static func estimate(tile: String, good: String) -> Dictionary:
 		var recipe := Catalog.get_recipe(str(building.get("recipe_id", "")))
 		if str(building.get("tile_id", "")) == tile:
 			for item: Dictionary in recipe.get("inputs", []):
-				if str(item.get("good_id", "")) == good:
+				if str(item.get("good_id", "")) == good and not preload("res://scripts/middleman_service.gd").supplies_good(str(building.instance_id), good):
 					consumed += Production._scaled_input_qty(item, building)
 		for item: Dictionary in Status.flow_output_items(recipe):
 			var gid := str(item.get("good_id", ""))

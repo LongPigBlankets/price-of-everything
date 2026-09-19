@@ -223,6 +223,7 @@ signal focus_tile_requested(tile_id: String)
 ## building instance (centring the camera on its tile). Used by starvation
 ## notifications' "Go to".
 signal focus_building_requested(instance_id: String)
+signal building_logistics_requested(instance_id: String)
 ## The top bar's Transport module asks world_map to open the logistics panel.
 signal transport_panel_requested
 ## A transport-panel stockpile row asks the map to open that tile's Stockpile tab.
@@ -789,7 +790,10 @@ func cheat_unlock_advisors() -> void:
 
 
 # --- Reset (useful for new game / testing) ---
+var middleman_service: Dictionary = {}
+
 func reset() -> void:
+	middleman_service.clear()
 	preload("res://scripts/cash_commitments.gd").reset()
 	money = 1000
 	hidden_buildings_unlocked = false
@@ -871,6 +875,7 @@ func export_state() -> Dictionary:
 	var d := {
 		"money": money,
 		"ruleset": ruleset.duplicate(true),
+		"middleman_service": middleman_service.duplicate(true),
 		"scenario_name": scenario_name,
 		"cheats_used": cheats_used,
 		"construct_start_half_capacity": construct_start_half_capacity,
@@ -922,6 +927,7 @@ func export_state() -> Dictionary:
 	return d
 
 func import_state(d: Dictionary) -> void:
+	middleman_service = (d.get("middleman_service", {}) as Dictionary).duplicate(true)
 	# Silent full overwrite of every exported field — SaveLoad emits the refresh
 	# signals once after every system has imported. Missing keys fall back to the
 	# new-game default, so older/partial snapshots (and Phase 3 start configs) load.
@@ -1404,18 +1410,20 @@ func remove_recurring_bulk_sell(entry: Dictionary) -> bool:
 	return true
 
 
-func run_recurring_and_scheduled_moves() -> void:
+func run_recurring_and_scheduled_moves() -> Array:
+	var moves: Array = []
 	# Fire one-shot scheduled moves (e.g. the split second half) then re-issue recurring moves.
 	var due: Array = TransportState.scheduled_moves
 	TransportState.scheduled_moves = []
 	for m in due:
-		TransportState.queue_move(str(m.source), str(m.dest), m.goods, true)  # split second-half = a one-off
+		moves.append(TransportState.queue_move(str(m.source), str(m.dest), m.goods, true)) # split second-half = a one-off
 	for m in TransportState.recurring_moves:
-		TransportState.queue_move(str(m.source), str(m.dest), m.goods, false)
+		moves.append(TransportState.queue_move(str(m.source), str(m.dest), preload("res://scripts/middleman_service.gd").managed_move_goods(m), false))
 	for m in recurring_sells:
 		_run_recurring_sell(m)
 	for r in recurring_bulk_sells:
 		sell_all_to_market(r.get("params", {}), false)
+	return moves
 
 func _run_recurring_sell(entry: Dictionary) -> void:
 	# Sell the configured qty of each good every turn, drawing from the bound source

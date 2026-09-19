@@ -1464,6 +1464,11 @@ func _render_confirm_v3() -> void:
 		_content.add_child(_section_label("SETTINGS"))
 		_content.add_child(_v3_priority_supply_band())
 
+	if bool(_v3_forecast.get("middleman",false)):
+		var service_note := Label.new()
+		service_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		service_note.text = "After completion: middleman inputs and sales, with transport and operating storage included. Construction materials still use normal delivery and its quoted costs. Keep £%.2f for the first operating batch; anticipated sales cannot fund it." % float(_v3_forecast.cash_needed)
+		_content.add_child(service_note)
 	if _locked_tile_id != "" and not (_v3_forecast.get("phases", []) as Array).is_empty():
 		if BuildForecastTable.show_balance_impact():
 			_content.add_child(_section_label("TIMELINE OF REVENUE"))

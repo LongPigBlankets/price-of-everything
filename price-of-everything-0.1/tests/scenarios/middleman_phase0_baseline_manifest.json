@@ -1,0 +1,10 @@
+{
+  "status": "phase0 preserved baseline digests; intentional future balance updates require a new version",
+  "sha256": {
+    "tests/snapshots/pepper_valley_motors_v5.json": "04690f197120e6e261405a8e3488a7a9ad906587ddef11da1160a4a776e79923",
+    "tests/snapshots/pepper_valley_motors_rail_three_owned_v5.json": "091f53c20051042af52f8ca8464d0a07495a04d48931543d6814e8de56c80a35",
+    "tests/snapshots/pepper_valley_five_factories_v1.json": "6bee66cac8a4238ac9fa64b61996b1c129ee564fb133985ba4313623ae285b09",
+    "data/Goods - goodsMVP.csv": "5f97d631e0a09f765e54ca5f512131ee61b15b9750cd06cf7f0cd813027bf9f1",
+    "data/recipes_all.csv": "9e6da19df79e62ef69eb9662c0328a53e69d7b000d0963942489922e9dded20b"
+  }
+}

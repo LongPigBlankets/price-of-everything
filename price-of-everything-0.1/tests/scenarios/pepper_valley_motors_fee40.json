@@ -1,0 +1,53 @@
+{
+  "benchmark_id": "pepper_valley_motors",
+  "version": 3,
+  "start_file": "res://data/starts/pepper_valley_motors.json",
+  "tile_id": "tile_5_4",
+  "tile_name": "Pepper Valley",
+  "building_id": "b_007",
+  "recipe_id": "r_009",
+  "level": 1,
+  "inputs": {
+    "steel": 32,
+    "copper_wiring": 32
+  },
+  "outputs": {
+    "motor": 33
+  },
+  "energy_req": 30,
+  "middleman": {
+    "status": "reference_calculation_until_simulation_implemented",
+    "purchase_fee_per_factory_batch": 16.0,
+    "sale_fee_per_factory_batch": 16.0,
+    "percentage_fee": 0.0,
+    "distance_surcharge": 0.0,
+    "separate_logistics_charges": false,
+    "purchase_fee_scope": "whole_input_basket_not_per_good",
+    "settlement": "same_turn_funded_inputs_then_production_then_sales",
+    "zero_activity_fee": 0.0,
+    "warehousing_fee_per_factory_cycle": 8.0,
+    "total_fee_per_full_cycle": 40.0,
+    "display": "Middleman fee with Inputs, Outputs and Warehousing breakdown items",
+    "warehousing_fee_scope": "once per factory turn using provider storage, including operating buffer; not per good, direction or inventory unit",
+    "scaling": "fixed fees per factory cycle; output modifiers do not multiply fees",
+    "warehousing_funding": "reserve alongside input funding before production"
+  },
+  "direct": {
+    "status": "real_simulation",
+    "route": "existing_public_roads_to_catalog_selected_port",
+    "required_land_mode": "roads",
+    "initial_stock": "empty",
+    "initial_shipments": "empty"
+  },
+  "measurement": {
+    "max_turns": 80,
+    "consecutive_regular_turns": 10,
+    "minimum_sample_turn": 40,
+    "prices": "reset_to_initial_catalogue_prices_each_turn_in_benchmark_only",
+    "disable_research_events_decisions_public_road_growth": true,
+    "steady_state": "full_production_orders_arrivals_and_paid_sales_each_turn_with_stable_stock_and_transit_quantities",
+    "note": "Monetary costs may still change with scheduled labour/port inflation. Compare both modes at each sampled turn's common prices and factory costs. Report startup separately. Do not compare early empty pipelines against instant trade."
+  },
+  "balance_preset": "targeted-output-gains-2026-09-19",
+  "previous_contract": "res://tests/scenarios/pepper_valley_motors_targeted_gains.json"
+}

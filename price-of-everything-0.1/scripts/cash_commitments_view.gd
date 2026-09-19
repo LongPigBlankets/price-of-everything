@@ -28,6 +28,13 @@ func refresh() -> void:
 	if is_zero_approx(float(costs.total)):
 		text_line(hero, "No extra costs to plan for.")
 	text_line(hero, "Routine running costs, restocking and loan repayments are excluded.", "Caption")
+	if not (data.get("middleman",{}) as Dictionary).is_empty():
+		var service := section("middleman","Routine middleman operation","Next turn",RUNNING)
+		for iid in data.middleman:
+			var p: Dictionary = data.middleman[iid]
+			line(service,Forecast._building_name(str(iid)),"Upfront £%.2f · fee £%.2f" % [float(p.get("upfront",0.0)),float(p.get("fee",0.0))])
+			text_line(service,str(p.get("reason","Unavailable")),"Caption")
+		text_line(service,"Sales arrive after production. These routine costs are excluded from extra-cost alerts.","Caption")
 	if not (costs.payments as Array).is_empty():
 		var bills := section("bills", "Materials and initial inputs on the way", "£%.2f" % (float(costs.bills) + float(costs.later)), BILLS)
 		for row: Dictionary in costs.payments:

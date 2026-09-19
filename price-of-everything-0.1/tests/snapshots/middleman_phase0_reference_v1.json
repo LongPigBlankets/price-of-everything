@@ -1,0 +1,86 @@
+{
+  "kind": "phase0 reference contract trace; not an actual middleman simulation",
+  "prices": {
+    "g_006": {
+      "reference": 2.3679,
+      "buy": 2.486295,
+      "sale": 2.3679,
+      "transport_class": "solid_heavy"
+    },
+    "g_007": {
+      "reference": 4.7361,
+      "buy": 4.972905000000001,
+      "sale": 4.7361,
+      "transport_class": "solid_heavy"
+    },
+    "g_008": {
+      "reference": 11.0451,
+      "buy": 11.597355,
+      "sale": 11.0451,
+      "transport_class": "ultra_heavy"
+    }
+  },
+  "required": {
+    "g_006": 32,
+    "g_007": 32
+  },
+  "output": {
+    "g_008": 33
+  },
+  "coefficient": 1.5,
+  "running_reserve": 70.5689624574075,
+  "expected": {
+    "input_goods": 238.69440000000003,
+    "input_fee": 5.936640000000001,
+    "input_cash_out": 244.63104000000004,
+    "running_reserve": 70.5689624574075,
+    "required_starting_funding": 315.20000245740755,
+    "sales_gross": 364.4883,
+    "output_fee": 26.5724415,
+    "sales_net": 337.91585849999996,
+    "total_middleman_fee": 32.5090815,
+    "contribution": 22.715856042592463
+  },
+  "funding_trace": {
+    "opening_cash": 1000,
+    "loan_draw": 0,
+    "after_acquisition": 755.3689599999999,
+    "after_sale": 1093.2848184999998,
+    "closing_after_operating_costs": 1022.7158560425926
+  },
+  "failure_trace": {
+    "before_purchase_failure": {
+      "cash_delta": 0,
+      "private_inputs": {},
+      "market_volume": {}
+    },
+    "after_purchase_failure": {
+      "cash_delta": -244.63104000000004,
+      "private_inputs": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "market_buy_volume": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "additional_retry_goods_cash": 0,
+      "additional_retry_fee": 0
+    }
+  },
+  "legacy_compatibility_cases": [
+    {
+      "name": "missing_ruleset",
+      "ruleset": {},
+      "expected_service": "disabled"
+    },
+    {
+      "name": "port_only_middleman_flag",
+      "ruleset": {
+        "logistics_model": "middleman_v1"
+      },
+      "expected_service": "disabled without explicit middleman_service payload"
+    }
+  ],
+  "funding_reference_note": "Required starting funding is a controlled fixture using steady-state mean running costs, not a measured actual turn-one minimum. Phase 1 must estimate the current batch operating reserve through the real production path."
+}

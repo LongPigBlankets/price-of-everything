@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "name": "Targeted motor/equipment output and terminal car price trial, 19 September 2026",
+  "status": "trial",
+  "scope": "six output yields and two terminal-good prices; all inputs, energy, staffing, maintenance and construction requirements held",
+  "notes": [
+    "SynRM 29 to 32 is 10.34% after integer rounding",
+    "Heavy vehicle price held: used in rail and road upgrade kits",
+    "No construction material compensation needed for selected car prices"
+  ],
+  "files": [
+    {
+      "path": "data/recipes_all.csv",
+      "key_column": "recipe_id",
+      "before_sha256": "25ec86f62454c167d8913553d52404247643a86bff7844956453f4863ac5be8c",
+      "changes": [
+        {
+          "key": "r_009",
+          "name": "Motor Manufacture",
+          "fields": {
+            "output_qty_1": {
+              "old": "30",
+              "new": "33"
+            }
+          }
+        },
+        {
+          "key": "r_065",
+          "name": "SynRM Magnetless Motors",
+          "fields": {
+            "output_qty_1": {
+              "old": "29",
+              "new": "32"
+            }
+          }
+        },
+        {
+          "key": "r_066",
+          "name": "Axial Flux Motors",
+          "fields": {
+            "output_qty_1": {
+              "old": "30",
+              "new": "33"
+            }
+          }
+        },
+        {
+          "key": "r_203",
+          "name": "Hairpin Stator Motors",
+          "fields": {
+            "output_qty_1": {
+              "old": "30",
+              "new": "33"
+            }
+          }
+        },
+        {
+          "key": "r_033",
+          "name": "Construction Equiment Assembly (ICE)",
+          "fields": {
+            "output_qty_1": {
+              "old": "12",
+              "new": "13"
+            }
+          }
+        },
+        {
+          "key": "r_034",
+          "name": "Construction Equipment Assembly (EV)",
+          "fields": {
+            "output_qty_1": {
+              "old": "12",
+              "new": "13"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "path": "data/Goods - goodsMVP.csv",
+      "key_column": "ID",
+      "before_sha256": "4cc63952fed0b170504540cf422a3a772769f665a5feca76b94091ce2fb00c63",
+      "changes": [
+        {
+          "key": "g_056",
+          "name": "ice_car",
+          "fields": {
+            "base_price": {
+              "old": "123.897",
+              "new": "135.0477"
+            }
+          }
+        },
+        {
+          "key": "g_057",
+          "name": "ev_car",
+          "fields": {
+            "base_price": {
+              "old": "267.722",
+              "new": "291.8170"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "preset": "targeted-output-gains-2026-09-19"
+}

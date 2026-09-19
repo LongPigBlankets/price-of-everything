@@ -87,7 +87,8 @@ func _start() -> void:
 	# Reset any prior run (autoload persists across scene changes).
 	_teardown_overlay()
 	setup_reached = false
-	_steps = TutorialSteps.steps()
+	var middleman_intro := str(MatchState.ruleset.get("tutorial_track","")) == "middleman"
+	_steps = preload("res://scripts/tutorial/middleman_steps.gd").steps() if middleman_intro else TutorialSteps.steps()
 	if _steps.is_empty():
 		return
 	# This opening sandbox event is deliberately absent from tutorial-started matches,
@@ -96,17 +97,17 @@ func _start() -> void:
 	DecisionState.suppress_family_friend_for_match()
 	active = true
 	_index = -1
-	_visited = 0
+	_visited = clampi(int(MatchState.middleman_service.get("intro_step",0)),0,_steps.size()-1) if middleman_intro else 0
 	_market_sales_seen = 0
 	_market_sale_counts.clear()
 	_integration_branch = ""
-	_active_board_tiles = TutorialSteps.CAPITAL_BOARD_TILES.duplicate()
-	_prepare_capital_motor_lesson()
+	_active_board_tiles = ["tile_5_4","tile_5_3","tile_5_5","tile_4_4","tile_4_5","tile_6_4","tile_6_5"] if middleman_intro else TutorialSteps.CAPITAL_BOARD_TILES.duplicate()
+	if not middleman_intro: _prepare_capital_motor_lesson()
 	_ensure_overlay()
 	_wire_signals()
 	_ensure_poll()
 	_apply_board_bounds()
-	_enter(0)
+	_enter(clampi(int(MatchState.middleman_service.get("intro_step",0)),0,_steps.size()-1) if middleman_intro else 0)
 
 
 func _enter(i: int) -> void:
@@ -120,6 +121,7 @@ func _enter(i: int) -> void:
 		if previous_id == "goto_tile" and is_instance_valid(_route_highlight):
 			_route_highlight.clear()
 	_index = i
+	if str(MatchState.ruleset.get("tutorial_track","")) == "middleman": MatchState.middleman_service["intro_step"] = i
 	if _index < 0 or _index >= _steps.size():
 		_finish()
 		return
@@ -277,6 +279,11 @@ func _finish() -> void:
 ## The final End tutorial button is deliberately the only exit that changes the match.
 ## Every earlier Skip tutorial link merely closes the coach and leaves tutorial rules on.
 func _complete_tutorial() -> void:
+	if str(MatchState.ruleset.get("tutorial_track","")) == "middleman":
+		MatchState.ruleset["tutorial_enabled"] = false
+		MatchState.middleman_service["intro_completed"] = true
+		_finish()
+		return
 	PlayerProfile.mark_tutorial_completed()
 	# Belt-and-braces for legacy in-progress saves: consume the event before changing
 	# tutorial_enabled, otherwise a turn-30 hand-off immediately draws its turn-3 offer.
@@ -1031,14 +1038,17 @@ func _teardown_overlay() -> void:
 func _on_overlay_advanced() -> void:
 	# Next pressed on an info card.
 	if active and _index >= 0 and _index < _steps.size():
-		if str((_steps[_index] as Dictionary).get("id", "")) == "integration_done":
+		if str((_steps[_index] as Dictionary).get("id", "")) in ["integration_done","middleman_done"]:
 			_complete_tutorial()
 		else:
 			_advance()
 
 
 func _on_overlay_skipped() -> void:
-	_finish()
+	if str(MatchState.ruleset.get("tutorial_track","")) == "middleman":
+		_complete_tutorial()
+	else:
+		_finish()
 
 
 func _on_overlay_choice(goto: String) -> void:

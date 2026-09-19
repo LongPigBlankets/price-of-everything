@@ -6,7 +6,8 @@ extends PanelContainer
 ##   Infrastructure   — which links are over capacity, how often, and what it has cost
 ##   Units in transit — what is actually moving, and when it lands
 ##
-## Everything here is a READ. The sim already knew all of it: freight has always
+## The dashboard reads existing simulation state; its footer applies bulk logistics choices.
+## The sim already knew all of it: freight has always
 ## carried its route and its arrival turn, tiles have always had a fill level — it
 ## simply had nowhere to be seen. The only genuinely new state is HISTORY (Stockpile's
 ## fill ring, MatchState's per-link over-capacity ring), because a trend and an ETA
@@ -55,6 +56,7 @@ const NEAR_FULL := 0.95
 ## Fill trend and the turns-until-full estimate look back this many turns (spec §3.2).
 const TREND_TURNS := 3
 
+var _global_logistics: HBoxContainer
 var _stock_list: VBoxContainer
 var _infra_list: VBoxContainer
 var _transit_list: VBoxContainer
@@ -91,6 +93,9 @@ func _ready() -> void:
 	Stockpile.stockpile_changed.connect(_refresh_if_visible)
 	TransportState.transport_shipments_changed.connect(_refresh_if_visible)
 	TurnManager.turn_resolution_completed.connect(_refresh_if_visible)
+	BuildingState.building_added.connect(_refresh_if_visible)
+	BuildingState.building_removed.connect(_refresh_if_visible)
+	BuildingState.building_owner_changed.connect(_refresh_if_visible)
 
 
 func open() -> void:
@@ -147,6 +152,9 @@ func _build() -> void:
 	_stock_list = _column(columns, "Stockpiles", "Fullest first")
 	_infra_list = _column(columns, "Infrastructure", "Most congested first", _infra_filter_bar())
 	_transit_list = _column(columns, "Units in transit", "Largest shipment first")
+	_global_logistics = HBoxContainer.new()
+	_global_logistics.add_theme_constant_override("separation", 24)
+	root.add_child(_global_logistics)
 
 
 func _header() -> Control:
@@ -263,6 +271,7 @@ func _refresh() -> void:
 	_build_stockpiles()
 	_build_infra()
 	_build_transit()
+	_build_global_logistics()
 	_fit_height()
 
 
@@ -286,6 +295,7 @@ func _fit_height() -> void:
 
 func _build_stockpiles() -> void:
 	_clear(_stock_list)
+	_build_logistics_overview(_stock_list)
 	var rows: Array = []
 	for tile_key in Stockpile.tiles_with_stock():
 		var tile_id := str(tile_key)
@@ -797,3 +807,100 @@ func _gui_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion and _dragging:
 		global_position = get_global_mouse_position() + _drag_offset
 		accept_event()
+
+func _build_logistics_overview(list: VBoxContainer) -> void:
+	if str(MatchState.ruleset.get("logistics_model","")) != "middleman_v1": return
+	var service = preload("res://scripts/middleman_service.gd")
+	list.add_child(_label("Building logistics"))
+	for b: Dictionary in BuildingState.buildings.values():
+		if not service.eligible(b): continue
+		var iid := str(b.instance_id)
+		var button := Button.new()
+		button.text = "%s · In: %s / Out: %s" % [Catalog.get_building_display_name(str(b.building_id)),"Intermediary" if service.uses_inputs(iid) else "Managed","Intermediary" if service.uses_outputs(iid) else "Managed"]
+		button.tooltip_text = "Open building details to change logistics. Managed deliveries use generic carriers."
+		button.pressed.connect(func() -> void:
+			hide()
+			MatchState.focus_building_requested.emit(iid))
+		list.add_child(button)
+
+func _build_global_logistics() -> void:
+	_clear(_global_logistics)
+	_global_logistics.visible = str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1"
+	if not _global_logistics.visible: return
+	var service = preload("res://scripts/middleman_service.gd")
+	for side in ["input", "output"]:
+		var state: Dictionary = service.global_side(side)
+		var title := "Inputs" if side == "input" else "Outputs"
+		var column := VBoxContainer.new()
+		column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_global_logistics.add_child(column)
+		var heading := HBoxContainer.new()
+		heading.alignment = BoxContainer.ALIGNMENT_CENTER
+		column.add_child(heading)
+		heading.add_child(_label("Source of %s:" % title))
+		if int(state.intermediary) > 0: heading.add_child(_global_source_icon(true))
+		if int(state.managed) > 0: heading.add_child(_global_source_icon(false))
+		if state.ids.is_empty(): heading.add_child(_label("—"))
+		elif int(state.intermediary) > 0 and int(state.managed) > 0: heading.add_child(_label("Mixed", DS.FS.CAPTION))
+		var mode := "managed" if int(state.managed) == 0 else "middleman"
+		var button := Button.new()
+		button.name = "GlobalLogistics"+title
+		button.text = "Switch %s to %s" % [title, "Logistics Intermediary" if mode == "middleman" else "your own source"]
+		button.disabled = state.ids.is_empty()
+		button.pressed.connect(func() -> void: _confirm_global_logistics(side, mode))
+		column.add_child(button)
+
+func _global_source_icon(intermediary: bool) -> TextureRect:
+	var icon := TextureRect.new()
+	icon.custom_minimum_size = Vector2(30, 30)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.tooltip_text = "Logistics Intermediary" if intermediary else "Your own source"
+	if intermediary:
+		icon.texture = preload("res://assets/icons/research/glyph/lorry.png")
+		var shader := Shader.new()
+		shader.code = "shader_type canvas_item; void fragment(){ COLOR = vec4(0.94, 0.89, 0.76, texture(TEXTURE, UV).a); }"
+		var ink := ShaderMaterial.new()
+		ink.shader = shader
+		icon.material = ink
+	else: icon.texture = BuildingIcon.clean_texture("b_004", "port")
+	return icon
+
+func _confirm_global_logistics(side: String, mode: String) -> void:
+	if get_node_or_null("GlobalLogisticsConfirmation") != null: return
+	var service = preload("res://scripts/middleman_service.gd")
+	var ids: Array = service.changed_ids(service.global_side(side).ids, side, mode)
+	if ids.is_empty(): return
+	var title := "Inputs" if side == "input" else "Outputs"
+	var target := "Logistics Intermediary" if mode == "middleman" else "your own source"
+	var dialog := ConfirmationDialog.new()
+	dialog.name = "GlobalLogisticsConfirmation"
+	dialog.theme = DS.theme
+	dialog.title = "Switch %s to %s" % [title, target]
+	dialog.get_ok_button().text = "Confirm"
+	dialog.get_cancel_button().text = "Cancel"
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 16)
+	var message := _label("This will affect %d building%s. Buildings already using this setting are unchanged." % [ids.size(), "s" if ids.size() != 1 else ""])
+	message.custom_minimum_size.x = 560
+	message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	content.add_child(message)
+	var warning := _label(("When using your own source: " if mode == "middleman" else "") + "Your shipments will need to reach the port for you to be paid. This may take several turns, during which you will receive no revenue. This may be more advantageous in the long term but be prepared for the high expense.")
+	warning.custom_minimum_size.x = 560
+	warning.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	content.add_child(warning)
+	if mode == "managed" and side == "output":
+		var retained := _label("Outputs will initially be retained in each tile stockpile. Choose Global Market in building logistics to dispatch them to a port.", DS.FS.CAPTION)
+		retained.custom_minimum_size.x = 560
+		retained.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		content.add_child(retained)
+	dialog.add_child(content)
+	dialog.confirmed.connect(func() -> void:
+		# Apply only the buildings included in the displayed count, revalidating on Confirm.
+		var result: Dictionary = service.set_modes(ids, side, mode)
+		if not result.ok: MatchState.request_toast(str(result.reason), "warning")
+		_refresh_if_visible()
+		dialog.queue_free())
+	dialog.canceled.connect(dialog.queue_free)
+	add_child(dialog)
+	dialog.popup_centered(Vector2i(610, 320))

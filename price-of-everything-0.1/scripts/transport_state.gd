@@ -23,17 +23,18 @@ const ARRIVAL_HISTORY_TURNS := 10
 const LARGE_SHIPMENT_THRESHOLD := 500
 const LARGE_SHIPMENT_SURCHARGE := 2.0   # >500 units in one move costs 2x transport (tunable)
 # Route geometry (tiles/path/legs) is stripped from shipments on save — it can hold
-# Vector2s (not JSON-safe) and is purely visual; it is re-quoted from the live route
+# Vector2s (not JSON-safe); it is re-quoted from the live route
 # graph on import so paths stay valid even if infrastructure changed.
 const _SHIPMENT_ROUTE_KEYS: Array = ["tiles", "path", "legs"]
 # ── Transport throughput congestion (soft cap) ─────────────────────────────
-# A tile-link's per-turn flow on a mode = total units of in-transit shipments
-# crossing that tile on that mode (same convention as the infra hover readout).
+# A tile-link's per-turn flow counts only the legs traversed during this advance,
+# with each same-mode boundary credited once (also used by infra readouts).
 # When flow exceeds the link's capacity (base mode cap × infra level × throughput
 # research), goods still move but pay a transport-cost penalty: +100% over capacity,
 # +200% once over capacity plus the base L1 cap. Last turn's flow drives this turn's
 # costs (route_congestion_tier), so it's stable rather than self-referential.
 const _CAPPED_MODES := ["roads", "rail", "pipes", "reinf_pipes"]
+const FLOW_ACCOUNTING_VERSION := 2
 ## How many turns of over-capacity history the transport panel reports on.
 const LINK_HISTORY_TURNS := 10
 
@@ -48,14 +49,9 @@ var pending_transport_shipments: Array = []
 var arrival_turns: Dictionary = {}          # "tile|good" -> PackedInt32Array of turn numbers
 # Last turn's per-link flow ("tile|mode"->units) — drives this turn's congestion cost.
 var _last_link_flow: Dictionary = {}
-# Shallow snapshot of pending_transport_shipments from the same moment _last_link_flow
-# is captured (before advance_transport_shipments() removes arrivals / decrements the
-# rest). Shipment DICTS are shared with the live list — advance_transport_shipments()
-# only ever mutates turns_remaining in place, which nothing here reads — but the ARRAY
-# is this snapshot's own, so later arrivals falling out of pending_transport_shipments
-# don't fall out of this too. Read by tile_good_breakdown() for the infra building
-# detail panel's "Breakdown" table, so a tile still reports what transited it this turn
-# even after arrivals have been paid out and removed from the live list.
+# Pre-advance snapshot with independent shipment dictionaries so saved progress and
+# settled UI usage remain stable after live shipments advance or arrive. Read-only
+# route arrays are shared; duplicating all geometry every turn is unnecessary.
 var _last_transit_shipments: Array = []
 var _has_transport_snapshot: bool = false
 # Per-link congestion HISTORY, for the transport panel's "at cap N of last 10 turns"
@@ -126,7 +122,7 @@ func export_fields() -> Dictionary:
 		"recurring_moves": recurring_moves.duplicate(true),
 		"scheduled_moves": scheduled_moves.duplicate(true),
 		"pending_transport_shipments": _shipments_for_save(),
-		"transport_usage_snapshot": {"flow": _last_link_flow.duplicate(), "shipments": _last_transit_shipments.duplicate(true)} if _has_transport_snapshot else {},
+		"transport_usage_snapshot": {"accounting_version": FLOW_ACCOUNTING_VERSION, "flow": _last_link_flow.duplicate(), "shipments": _last_transit_shipments.duplicate(true)} if _has_transport_snapshot else {},
 		"arrival_turns": _arrival_turns_for_save(),
 		"link_over_history": _link_over_history.duplicate(true),
 		"link_congestion_paid": _link_congestion_paid.duplicate(),
@@ -158,6 +154,13 @@ func import_fields(d: Dictionary) -> void:
 	# rather than lying, and fills in as deliveries land.
 	arrival_turns = _arrival_turns_from_save(d.get("arrival_turns", {}))
 	_link_over_history = (d.get("link_over_history", {}) as Dictionary).duplicate(true)
+	if int(usage.get("accounting_version", 0)) < FLOW_ACCOUNTING_VERSION:
+		# Old snapshots counted whole pipelines and did not freeze progress. Their
+		# per-turn usage cannot be recovered reliably; rebuild on the next advance.
+		_has_transport_snapshot = false
+		_last_link_flow.clear()
+		_last_transit_shipments.clear()
+		_link_over_history.clear()
 	_link_congestion_paid = (d.get("link_congestion_paid", {}) as Dictionary).duplicate()
 	overflow_shipments = (d.get("overflow_shipments", []) as Array).duplicate(true)
 	move_log = (d.get("move_log", []) as Array).duplicate(true)
@@ -329,8 +332,12 @@ func queue_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary, 
 	# Moves never break the Autarkic streak (you may relocate your own goods freely).
 	if not bool(extra.get("reserve_construction", false)):
 		MatchState.goods_movement_recorded.emit("move", "", turns)
+	var breakdown := {}
+	for item: Dictionary in items:
+		var parts := TransportService.transport_cost_breakdown_for_route(str(item.good_id),int(item.qty),item.get("route",quote.get("route",{})),surcharge)
+		for key in parts: breakdown[key]=float(breakdown.get(key,0.0))+float(parts[key])
 	return {"items": items, "total_qty": total_qty, "turns": turns,
-		"cost": total_cost, "source": source_tile, "dest": dest_tile, "surcharged": surcharge > 1.0}
+		"cost": total_cost, "transport_breakdown":breakdown,"source": source_tile, "dest": dest_tile, "surcharged": surcharge > 1.0}
 
 func preview_move(source_tile: String, dest_tile: String, goods_qtys: Dictionary) -> Dictionary:
 	# Cost/turns for a move WITHOUT consuming — used to populate the large-shipment dialog.
@@ -392,8 +399,9 @@ func get_oneoff_move_rows() -> Array:
 func get_recurring_move_rows() -> Array:
 	var rows: Array = []
 	for m in recurring_moves:
-		for gid in m.get("goods", {}).keys():
-			rows.append(MatchState._move_row(Catalog.get_display_name(str(gid)), int(m.goods[gid]),
+		var goods := preload("res://scripts/middleman_service.gd").managed_move_goods(m)
+		for gid in goods:
+			rows.append(MatchState._move_row(Catalog.get_display_name(str(gid)), int(goods[gid]),
 				str(m.get("source", "")), str(m.get("dest", "")), int(m.get("turn_started", 0)), -1))
 	return rows
 
@@ -684,42 +692,60 @@ func arrivals_in_window(tile_id: String, good_id: String, window: int = ARRIVAL_
 			n += 1
 	return n
 
+## Tile/mode links traversed during the upcoming advance, not the whole pipeline.
+## Routing legs each take one turn normally. Preserve the saved delivery clock when
+## coverage or a re-quoted route changes the leg count: distribute whole legs across
+## that clock, never divide a shipment's quantity (bursts must remain bursts).
+func _shipment_turn_links(s: Dictionary) -> Dictionary:
+	var links := {}
+	if bool(s.get("construction_order_pending", false)):
+		return links
+	var tiles: Array = s.get("tiles", [])
+	var legs: Array = s.get("legs", [])
+	if tiles.is_empty() or legs.is_empty():
+		return links
+	var duration := maxi(1, int(s.get("transport_turns", legs.size())))
+	var remaining := int(s.get("turns_remaining", duration))
+	if remaining <= 0 or remaining > duration:
+		return links
+	var elapsed := duration - remaining
+	var first_leg := int(floor(float(elapsed * legs.size()) / duration))
+	var after_leg := int(floor(float((elapsed + 1) * legs.size()) / duration))
+	var idx := 0
+	for leg_index in legs.size():
+		var leg: Dictionary = legs[leg_index]
+		var start := idx
+		while idx < tiles.size() - 1 and str(tiles[idx]) != str(leg.get("to", "")):
+			idx += 1
+		if leg_index < first_leg or leg_index >= after_leg:
+			continue
+		var mode := str(leg.get("mode", ""))
+		# A same-mode boundary belongs to the arriving leg only. Crediting the next
+		# leg's start as well would double steady flow from staggered batches there.
+		# A transfer between modes legitimately uses each mode's separate capacity.
+		if leg_index > 0 and str(legs[leg_index - 1].get("mode", "")) == mode:
+			start += 1
+		for i in range(start, idx + 1):
+			links["%s|%s" % [str(tiles[i]), mode]] = true
+	return links
+
+func _shipment_overland_touches(s: Dictionary, tile_id: String) -> bool:
+	if bool(s.get("construction_order_pending", false)):
+		return false
+	var duration := maxi(1, int(s.get("transport_turns", s.get("turns_remaining", 1))))
+	var remaining := int(s.get("turns_remaining", duration))
+	return (remaining == duration and str(s.get("source_tile", "")) == tile_id) or (remaining == 1 and str(s.get("destination_tile", "")) == tile_id)
+
 ## "tile_id|mode" -> total units crossing it this turn (capped modes only).
 func transport_link_flow() -> Dictionary:
 	var flow: Dictionary = {}
-	for s in pending_transport_shipments:
-		var tiles: Array = s.get("tiles", [])
-		var legs: Array = s.get("legs", [])
-		if tiles.is_empty() or legs.is_empty():
-			continue
+	for s: Dictionary in pending_transport_shipments:
 		var qty := _shipment_total_units(s)
 		if qty <= 0:
 			continue
-		# Walk legs once; each leg owns the slice of `tiles` up to its `to` tile.
-		# `start := idx` reuses the previous leg's END index without advancing past
-		# it, so consecutive legs sharing the SAME mode would credit that boundary
-		# tile twice (once as the tail of leg N, once as the head of leg N+1) —
-		# `counted` guards against exactly that, scoped to this one shipment. A mode
-		# SWITCH at a boundary is not this bug: the tile legitimately draws on two
-		# separate capacity pools there, so it correctly gets a key per mode — this
-		# only dedupes repeat credit to the SAME (tile, mode) pair. _bfs_route()
-		# (catalog.gd) produces simple shortest paths, so a real route is not
-		# expected to revisit a (tile, mode) pair outside of this adjacent-leg
-		# overlap; if that ever changes, this dedupe would need to change with it.
-		var idx := 0
-		var counted := {}
-		for leg in legs:
-			var start := idx
-			while idx < tiles.size() - 1 and str(tiles[idx]) != str(leg.get("to", "")):
-				idx += 1
-			var mode := str(leg.get("mode", ""))
-			if mode in _CAPPED_MODES:
-				for i in range(start, idx + 1):
-					var key := "%s|%s" % [str(tiles[i]), mode]
-					if counted.has(key):
-						continue
-					counted[key] = true
-					flow[key] = int(flow.get(key, 0)) + qty
+		for key: String in _shipment_turn_links(s):
+			if key.get_slice("|", 1) in _CAPPED_MODES:
+				flow[key] = int(flow.get(key, 0)) + qty
 	return flow
 
 func _shipment_total_units(s: Dictionary) -> int:
@@ -768,26 +794,11 @@ func tile_mode_flow(tile_id: String, mode: String, settled: bool = false) -> int
 		var tiles: Array = s.get("tiles", [])
 		var legs: Array = s.get("legs", [])
 		if not tiles.is_empty() and not legs.is_empty():
-			# Networked route: count where it crosses this tile on a leg of `mode`.
-			var idx := 0
-			var hit := false
-			for leg in legs:
-				var start := idx
-				while idx < tiles.size() - 1 and str(tiles[idx]) != str(leg.get("to", "")):
-					idx += 1
-				if str(leg.get("mode", "")) == mode:
-					for i in range(start, idx + 1):
-						if str(tiles[i]) == tile_id:
-							hit = true
-							break
-				if hit:
-					break
-			if hit:
+			if _shipment_turn_links(s).has("%s|%s" % [tile_id, mode]):
 				total += _shipment_total_units(s)
 			continue
-		# Overland (no leg data): goods still enter/leave via THIS tile's infra for
-		# their first/last mile — count those whose class this mode carries.
-		if str(s.get("source_tile", "")) == tile_id or str(s.get("destination_tile", "")) == tile_id:
+		# With no route geometry only departure/arrival endpoint usage is known.
+		if _shipment_overland_touches(s, tile_id):
 			var goods := _shipment_goods_dict(s)
 			for good_id in goods:
 				if not tolerated.has(Catalog.get_transport_class(str(good_id))):
@@ -840,22 +851,7 @@ func tile_good_breakdown(tile_id: String, mode: String) -> Array:
 		var tiles: Array = s.get("tiles", [])
 		var legs: Array = s.get("legs", [])
 		var overland := tiles.is_empty() or legs.is_empty()
-		var touches := false
-		if overland:
-			touches = str(s.get("source_tile", "")) == tile_id or str(s.get("destination_tile", "")) == tile_id
-		else:
-			var idx := 0
-			for leg in legs:
-				var start := idx
-				while idx < tiles.size() - 1 and str(tiles[idx]) != str(leg.get("to", "")):
-					idx += 1
-				if str(leg.get("mode", "")) == mode:
-					for i in range(start, idx + 1):
-						if str(tiles[i]) == tile_id:
-							touches = true
-							break
-				if touches:
-					break
+		var touches := _shipment_overland_touches(s, tile_id) if overland else _shipment_turn_links(s).has("%s|%s" % [tile_id, mode])
 		if not touches:
 			continue
 		var route_data := {
@@ -955,7 +951,10 @@ func _queue_or_store_resolved_shipment(shipment: Dictionary) -> void:
 func update_transport_congestion() -> void:
 	_has_transport_snapshot = true
 	_last_link_flow = transport_link_flow()
-	_last_transit_shipments = pending_transport_shipments.duplicate()
+	_last_transit_shipments = []
+	for shipment: Dictionary in pending_transport_shipments:
+		# Freeze progress; advance mutates the live countdown. Route arrays are read-only.
+		_last_transit_shipments.append(shipment.duplicate())
 	_roll_link_history()
 
 ## Record, for every link carrying freight this turn, whether it was over capacity.

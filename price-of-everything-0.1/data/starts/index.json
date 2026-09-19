@@ -1,69 +1,86 @@
 {
-	"_comment": "Selectable starts for the New Game screen, shown as a single row of 7 cards in display order. Each: id, file (res:// start config), title, blurb, description (expanded), tier (green|amber|red -> Beginner-friendly|Average|Challenging badge + hex colour), good_id+good_internal (the goods icon shown on the hex), optional recommended:true for the default. Fact bullets (cash/buildings/loans) are DERIVED from the start config file.",
-	"starts": [
-		{
-			"id": "metal_magnate",
-			"file": "res://data/starts/metal_magnate.json",
-			"title": "Metal Magnate",
-			"tier": "green",
-			"good_id": "g_004", "good_internal": "iron_ingots",
-			"blurb": "Ore into iron, on Stoneshore's coast.",
-			"description": "Your father swore there was truth in metal, then sold the mill before he could prove it. He left you the mines, the furnace, and a name that lifts every ingot you cast. Strike while the iron's hot."
-		},
-		{
-			"id": "glass_merchant",
-			"file": "res://data/starts/glass_merchant.json",
-			"title": "Glass Merchant",
-			"tier": "green",
-			"good_id": "g_038", "good_internal": "glass",
-			"blurb": "Sand into glass, on Vandel's doorstep.",
-			"description": "You borrowed heavy to turn Vandel's sand into glass, and fast. Now the debt's due, and glass and fortune crack the same way."
-		},
-		{
-			"id": "open_field",
-			"file": "res://data/starts/open_field.json",
-			"title": "Open Field",
-			"tier": "amber",
-			"good_id": "g_062", "good_internal": "biomass",
-			"blurb": "A clean slate with a healthy float.",
-			"description": "£1,500 and nothing else. Survey the map, read the markets, and build exactly the supply chain you want from the ground up. The purest test of an industrialist.",
-			"recommended": true
-		},
-		{
-			"id": "troubled_carmaker",
-			"file": "res://data/starts/troubled_carmaker.json",
-			"title": "Troubled Carmaker",
-			"tier": "amber",
-			"good_id": "g_056", "good_internal": "ice_car",
-			"blurb": "An over-extended auto empire.",
-			"description": "An auto business sprawled around Capital Port: two car plants, an engine works, a tyre line, £200 cash, and £500 of debt. Streamline the supply chain or sink under the financing."
-		},
-		{
-			"id": "semiconductor_turnaround",
-			"file": "res://data/starts/semiconductor_turnaround.json",
-			"title": "Semiconductor Turnaround",
-			"tier": "amber",
-			"good_id": "g_041", "good_internal": "cpu",
-			"blurb": "One chip fab, one crushing loan.",
-			"description": "A single upgraded chip fab, £200 in cash, and a brutal £1,000 loan. A high-stakes turnaround: ride the value of silicon and outrun the interest, or be buried by it."
-		},
-		{
-			"id": "too_many_acquisitions",
-			"file": "res://data/starts/too_many_acquisitions.json",
-			"title": "Too Many Acquisitions",
-			"tier": "red",
-			"good_id": "g_043", "good_internal": "circuit_board",
-			"blurb": "A grab-bag bought on debt.",
-			"description": "Unrelated plants scattered across the whole map — electrolysers, car lines, circuit boards, windows, a bauxite mine — bought on £1,000 of debt with £200 cash and no plan. Find the focus your predecessor never did."
-		},
-		{
-			"id": "ambitious_start",
-			"file": "res://data/starts/ambitious_start.json",
-			"title": "Ambitious Start",
-			"tier": "red",
-			"good_id": "g_057", "good_internal": "ev_car",
-			"blurb": "£300 and a dream.",
-			"description": "The leanest possible beginning: £300 and nothing else. Every single decision counts from turn one. For players who want the game on hard mode before the difficulty is even set."
-		}
-	]
+  "_comment": "Selectable starts for the New Game screen, shown as a single row of cards in display order. Each: id, file (res:// start config), title, blurb, description (expanded), tier (green|amber|red -> Beginner-friendly|Average|Challenging badge + hex colour), good_id+good_internal (the goods icon shown on the hex), optional recommended:true for the default. Fact bullets (cash/buildings/loans) are DERIVED from the start config file.",
+  "starts": [
+    {
+      "id": "pepper_valley_motors",
+      "file": "res://data/starts/pepper_valley_motors_playable.json",
+      "title": "Pepper Valley Motors",
+      "tier": "green",
+      "good_id": "g_008",
+      "good_internal": "motor",
+      "blurb": "Make motors. Let the middleman handle delivery.",
+      "description": "One powered inland motor factory and \u00a31,500. Buy steel and copper wiring, sell motors, and pay one fee for transport and operating storage. Expand with another factory when your cash can fund it."
+    },
+    {
+      "id": "metal_magnate",
+      "file": "res://data/starts/metal_magnate.json",
+      "title": "Metal Magnate",
+      "tier": "green",
+      "good_id": "g_004",
+      "good_internal": "iron_ingots",
+      "blurb": "Ore into iron, on Stoneshore's coast.",
+      "description": "Your father swore there was truth in metal, then sold the mill before he could prove it. He left you the mines, the furnace, and a name that lifts every ingot you cast. Strike while the iron's hot."
+    },
+    {
+      "id": "glass_merchant",
+      "file": "res://data/starts/glass_merchant.json",
+      "title": "Glass Merchant",
+      "tier": "green",
+      "good_id": "g_038",
+      "good_internal": "glass",
+      "blurb": "Sand into glass, on Vandel's doorstep.",
+      "description": "You borrowed heavy to turn Vandel's sand into glass, and fast. Now the debt's due, and glass and fortune crack the same way."
+    },
+    {
+      "id": "open_field",
+      "file": "res://data/starts/open_field.json",
+      "title": "Open Field",
+      "tier": "amber",
+      "good_id": "g_062",
+      "good_internal": "biomass",
+      "blurb": "A clean slate with a healthy float.",
+      "description": "\u00a31,500 and nothing else. Survey the map, read the markets, and build exactly the supply chain you want from the ground up. The purest test of an industrialist.",
+      "recommended": true
+    },
+    {
+      "id": "troubled_carmaker",
+      "file": "res://data/starts/troubled_carmaker.json",
+      "title": "Troubled Carmaker",
+      "tier": "amber",
+      "good_id": "g_056",
+      "good_internal": "ice_car",
+      "blurb": "An over-extended auto empire.",
+      "description": "An auto business sprawled around Capital Port: two car plants, an engine works, a tyre line, \u00a3200 cash, and \u00a3500 of debt. Streamline the supply chain or sink under the financing."
+    },
+    {
+      "id": "semiconductor_turnaround",
+      "file": "res://data/starts/semiconductor_turnaround.json",
+      "title": "Semiconductor Turnaround",
+      "tier": "amber",
+      "good_id": "g_041",
+      "good_internal": "cpu",
+      "blurb": "One chip fab, one crushing loan.",
+      "description": "A single upgraded chip fab, \u00a3200 in cash, and a brutal \u00a31,000 loan. A high-stakes turnaround: ride the value of silicon and outrun the interest, or be buried by it."
+    },
+    {
+      "id": "too_many_acquisitions",
+      "file": "res://data/starts/too_many_acquisitions.json",
+      "title": "Too Many Acquisitions",
+      "tier": "red",
+      "good_id": "g_043",
+      "good_internal": "circuit_board",
+      "blurb": "A grab-bag bought on debt.",
+      "description": "Unrelated plants scattered across the whole map \u2014 electrolysers, car lines, circuit boards, windows, a bauxite mine \u2014 bought on \u00a31,000 of debt with \u00a3200 cash and no plan. Find the focus your predecessor never did."
+    },
+    {
+      "id": "ambitious_start",
+      "file": "res://data/starts/ambitious_start.json",
+      "title": "Ambitious Start",
+      "tier": "red",
+      "good_id": "g_057",
+      "good_internal": "ev_car",
+      "blurb": "\u00a3300 and a dream.",
+      "description": "The leanest possible beginning: \u00a3300 and nothing else. Every single decision counts from turn one. For players who want the game on hard mode before the difficulty is even set."
+    }
+  ]
 }

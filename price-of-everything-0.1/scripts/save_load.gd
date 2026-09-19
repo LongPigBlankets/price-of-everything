@@ -17,7 +17,8 @@ const AppPaths := preload("res://scripts/app_paths.gd")
 # 7 = cosmetic company-rankings player revenue history; 8 = last-turn player
 # goods quantities for the rankings' Goods tab; 9 = recorded market price history;
 # 10 = historical player unit costs alongside prices; 11 = saved cost results.
-const SAVE_VERSION := 11
+# 12 = private middleman service; 13 = independent input/output modes and managed source orders.
+const SAVE_VERSION := 14
 const MAIN_SCENE := "res://scenes/main.tscn"
 const DEFAULT_START := "res://data/starts/default.json"
 const BuildingLevels := preload("res://scripts/building_levels.gd")   # start-building levels
@@ -308,6 +309,7 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 	# or "market"). Keyed by the instance_id we mint here, so it's robust to array
 	# reordering — no fragile predicted ids. Shape: instance_id -> {good_id -> dest}.
 	var output_routes: Dictionary = {}
+	var service_buildings: Dictionary = {}
 	var counter := START_COUNTER_BASE
 	for entry in cfg.get("buildings", []):
 		var building_id := str(entry.get("building_id", ""))
@@ -326,6 +328,8 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 			# Optional starting upgrade level (1..3); production reads building.level.
 			"level": clampi(int(entry.get("level", 1)), 1, BuildingLevels.MAX_LEVEL),
 		}
+		if str(entry.get("logistics_mode", "")) == "middleman" and tile_id == "tile_5_4" and recipe_id == "r_009":
+			service_buildings[instance_id] = {"coefficient":1.5,"recipe_id":recipe_id,"inputs":{},"outputs":{},"turn":-1,"state":"idle","receipts":{}}
 		var out_to := str(entry.get("output_to", ""))
 		if out_to != "":
 			var dest: String = MatchState.MARKET_DESTINATION if out_to == "market" else out_to
@@ -392,6 +396,7 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 			"scenario_name": str(cfg.get("name", "")),
 			"next_instance_counter": counter,
 			"buildings": buildings,
+			"middleman_service": {"schema":1,"match_id":str(Time.get_unix_time_from_system())+":"+str(Time.get_ticks_usec()),"buildings":service_buildings} if not service_buildings.is_empty() and str(ruleset.get("logistics_model","")) == "middleman_v1" else {},
 			"tile_land_owned": (cfg.get("land", {}) as Dictionary).duplicate(true),
 			"surveyed_tiles": surveyed,
 			"unlocked_titles": unlocked,
@@ -668,6 +673,19 @@ func _migrate(snap: Dictionary) -> Dictionary:
 				snap = _migrate_v9_to_v10(snap)
 			10:
 				snap = _migrate_v10_to_v11(snap)
+			11:
+				# Missing provider payload stays disabled, including port-only middleman_v1.
+				snap["save_version"] = 12
+			12:
+				# Old service buildings covered both sides. Missing service remains disabled.
+				for service: Dictionary in snap.get("match",{}).get("middleman_service",{}).get("buildings",{}).values():
+					if not service.has("input_mode"): service["input_mode"]="middleman"
+					if not service.has("output_mode"): service["output_mode"]="middleman"
+				snap["save_version"]=13
+			13:
+				# Expanded material classes/sites: old clients cannot safely execute these batches.
+				# No automatic enrollment or other-start policy changes.
+				snap["save_version"] = 14
 			_:
 				break
 		version += 1

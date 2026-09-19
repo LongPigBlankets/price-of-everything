@@ -1,0 +1,27 @@
+{
+  "fixture_kind": "proposed service payload; not a loadable full game save",
+  "ruleset": {
+    "logistics_model": "middleman_v1"
+  },
+  "middleman_service": {
+    "schema": 1,
+    "tariff_id": "middleman_dynamic_v1",
+    "buildings": {
+      "motor_a": {
+        "mode": "middleman",
+        "recipe": "r_009",
+        "state": "blocked_with_private_inputs",
+        "originating_operation": "[\"phase0-match\",7,\"motor_a\"]",
+        "input_holdings": {
+          "g_006": 32,
+          "g_007": 32
+        },
+        "output_holdings": {}
+      }
+    },
+    "settled_ids": [
+      "[\"phase0-match\",7,\"motor_a\"]:purchase",
+      "[\"phase0-match\",7,\"motor_a\"]:input_fee"
+    ]
+  }
+}

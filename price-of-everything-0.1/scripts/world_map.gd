@@ -232,6 +232,7 @@ func _build_base() -> void:
 	MatchState.encyclopedia_good_requested.connect(_on_encyclopedia_good_requested)
 	MatchState.focus_tile_requested.connect(_on_focus_tile_requested)
 	MatchState.focus_building_requested.connect(_on_focus_building_requested)
+	MatchState.building_logistics_requested.connect(_on_building_logistics_requested)
 	MatchState.transport_panel_requested.connect(_on_transport_panel_requested)
 	MatchState.tile_stockpile_requested.connect(_on_go_to_tile_stockpile)
 	MatchState.research_search_requested.connect(_on_research_search_requested)
@@ -3252,3 +3253,9 @@ func _should_open_search(event: InputEventKey) -> bool:
 func _is_text_entry_focused() -> bool:
 	var focus_owner := get_viewport().gui_get_focus_owner()
 	return focus_owner is LineEdit or focus_owner is TextEdit
+
+func _on_building_logistics_requested(instance_id: String) -> void:
+	_on_focus_building_requested(instance_id)
+	var building := BuildingState.get_building(instance_id)
+	if not building.is_empty() and is_instance_valid(_bdp_v2):
+		_bdp_v2._open_logistics_sheet(building)

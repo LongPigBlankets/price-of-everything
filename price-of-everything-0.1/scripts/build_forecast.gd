@@ -47,6 +47,32 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 		"tile_id": tile_id, "level": 1,
 	}
 
+	if preload("res://scripts/middleman_service.gd").default_for(recipe_id,tile_id):
+		var p := preload("res://scripts/middleman_service.gd").preview_building(probe)
+		var duration := maxi(1,MatchState.effective_build_duration(building_id))
+		var materials := Construction.materials_ledger(building_id,tile_id)
+		var lead := 0
+		var missing := false
+		for row: Dictionary in materials.rows:
+			lead = maxi(lead,int(row.market_turns))
+			missing = missing or int(row.short)>0
+		var first_sale := duration+lead
+		out.cash_needed = float(p.upfront)
+		out.steady_net = float(p.net)
+		out.capex = float(Construction.estimate_market_cost(tile_id,building_id))
+		out.capex_total = maxf(0.0,float(building_def.get("base_price",0.0)))+float(materials.subtotal)
+		out.build_turns = duration
+		out.first_selling_turn = first_sale
+		out.sale_delay = 0
+		out.payback_turn = payback_turn(float(out.capex_total),float(p.upfront),float(p.net),first_sale)
+		out.no_supply = missing or not bool(p.feasible)
+		out["middleman"] = true
+		out.phases = [{"kind":PHASE_BUILDING,"label":"Construction materials use normal delivery","range":"Until materials arrive and construction finishes","per_turn":0.0,"turns":first_sale},
+			{"kind":PHASE_SELLING,"label":"Middleman: buy, produce and sell","range":"Each operating turn after completion","per_turn":float(p.net),"turns":-1}]
+		out.breakdown={"revenue":float(p.sale.goods_value)+float(p.grid_value),"inputs":float(p.buy.goods_value),"inbound_freight":float(p.buy.fee),"outbound_freight":float(p.sale.fee),"port_fee":0.0,"power":float(p.power),"carbon_tax":float(p.carbon_tax),"labour":float(p.labour),"maintenance":float(p.maintenance),"warehousing":0.0,"idle_standing":float(p.labour)+float(p.maintenance),"startup_inventory":float(p.buy.cash_out),"middleman_fee":float(p.fee)}
+		out.financing = {} # Middleman funding uses explicit company loans, never building tabs.
+		return out
+
 	# --- Outputs: what it sells, what the freight and port cost to sell it ---------------
 	var outputs := {}          # good_id -> qty
 	var revenue: float = 0.0

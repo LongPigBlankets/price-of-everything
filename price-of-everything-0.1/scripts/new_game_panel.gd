@@ -21,7 +21,7 @@ const DEFAULT_START := "res://data/starts/default.json"
 # demo_itch length are playable; everything else is greyed with a "Locked in the
 # Demo" tooltip. Flip DEMO_LOCK to false to restore the full menu after the demo.
 const DEMO_LOCK := true
-const DEMO_START_IDS: Array = ["metal_magnate", "glass_merchant"]   # the starts playable in the demo
+const DEMO_START_IDS: Array = ["metal_magnate", "glass_merchant", "pepper_valley_motors"]   # the starts playable in the demo
 const DEMO_DIFFICULTY_ID := "normal"
 ## The length a demo build is pinned to. Now the Itch.io demo itself: 100 turns with its
 ## own policy timeline, rather than a 300-turn campaign the player could never finish.
@@ -609,7 +609,7 @@ func _populate_start_detail(start: Dictionary) -> void:
 	var profit := float(cfg.get("steady_profit_per_turn", _profit_estimate(cfg)))
 	var loss := profit < 0.0
 	var profit_txt := ("−£%s" % _fmt_money(absf(profit))) if loss else ("+£%s" % _fmt_money(profit))
-	fcol.add_child(_fin_row("Avg. profit / turn", profit_txt, Color(0.85, 0.36, 0.32) if loss else null))
+	fcol.add_child(_fin_row("Est. profit / turn" if str(cfg.get("name",""))=="pepper_valley_motors" else "Avg. profit / turn", profit_txt, Color(0.85, 0.36, 0.32) if loss else null))
 
 	# Column 3 — Company colour: the livery every building this company owns is painted in.
 	_start_detail_box.add_child(_colour_column())
@@ -914,7 +914,7 @@ func _on_start_pressed() -> void:
 			# falls back to, so only the demo has to say anything.
 			"policy_timeline": _policy_timeline,
 			"victory_set": _victory_set,
-			"tutorial_enabled": _tutorial_on,
+			"tutorial_enabled": _tutorial_on or _start_id == "pepper_valley_motors",
 			# Advanced Settings: force every land tile surveyed at game start (this
 			# overrides whatever the difficulty's survey config would otherwise do).
 			"survey_all_tiles": _survey_all,

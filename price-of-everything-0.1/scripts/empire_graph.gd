@@ -56,6 +56,9 @@ static func populate(world: Object, terrain: Node, trading: bool = true) -> Dict
 	return g
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const BuildingStatus := preload("res://scripts/building_status.gd")
+const Middleman := preload("res://scripts/middleman_service.gd")
+const TRUCK_ICON := preload("res://assets/icons/research/glyph/lorry.png")
+
 const BuildingIcon := preload("res://scripts/building_icon.gd")
 const BuildingSprites := preload("res://scripts/building_sprites.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
@@ -194,6 +197,7 @@ static func build(terrain: Object) -> Dictionary:
 			# ships to, which the plate wears as a gold hex badge instead of drawing a line
 			# across the whole view. Null on buildings that do not sell to market.
 			"port_badge": null,
+			"middleman": Middleman.enabled(iid),
 			"is_port": false,
 			"icon": BuildingIcon.clean_texture(bid, str(bdata.get("internal_name", ""))),
 			# 2.5D isometric sprite (null while unsprited) — drawn large above the plate
@@ -247,6 +251,14 @@ static func build(terrain: Object) -> Dictionary:
 		if int(a["order"]) != int(b["order"]):
 			return int(a["order"]) < int(b["order"])
 		return str(a["name"]) < str(b["name"]))
+
+	# A shared market endpoint is an operator, never a link between its customers.
+	var service_nodes := nodes.filter(func(n: Dictionary) -> bool: return Middleman.enabled(str(n.iid)))
+	if not service_nodes.is_empty():
+		ports.append({"iid":"middleman","building_id":"","name":"Middleman","level":1,
+			"output_good":"","output_qty":0,"tile_id":"","order":4,
+			"seed":service_nodes[0].seed,"half":PORT_HALF,"plate_half":PORT_HALF,
+			"is_port":true,"is_middleman":true,"icon":TRUCK_ICON})
 
 	# The BUY row: the same four ports mirrored on the TOP edge — market inputs arrive
 	# through them, market sales leave through the bottom row. One mirror per port, same
@@ -384,7 +396,10 @@ static func _build_sell_edges(nodes: Array, ports: Array, consumers: Dictionary)
 		var og := str(n["output_good"])
 		if og == "":
 			continue
-		if consumers.has(og) and not (consumers[og] as Array).is_empty():
+		if Middleman.uses_outputs(str(n.iid)):
+			sell.append({"from":str(n.iid),"to":"middleman","good":og,"actual":true})
+			continue
+		if consumers.has(og) and (consumers[og] as Array).any(func(id) -> bool: return not Middleman.uses_inputs(str(id))):
 			continue                                  # consumed internally -> not a market sale
 		if not Catalog.has_method("nearest_port_tile"):
 			continue
@@ -411,9 +426,9 @@ static func _build_market_edges(nodes: Array, ports: Array, consumers: Dictionar
 	var goods: Array = consumers.keys()
 	goods.sort()                                      # deterministic pick of the "first" good
 	for g in goods:
-		if producers.has(g) and not (producers[g] as Array).is_empty():
-			continue
+		var direct_producers: Array = (producers.get(g,[]) as Array).filter(func(id) -> bool: return not Middleman.uses_outputs(str(id)))
 		for iid in consumers[g]:
+			if not Middleman.uses_inputs(str(iid)) and not direct_producers.is_empty(): continue
 			if not fed.has(iid):
 				fed[iid] = g
 	var tile_of: Dictionary = {}
@@ -428,6 +443,9 @@ static func _build_market_edges(nodes: Array, ports: Array, consumers: Dictionar
 	iids.sort()
 	for iid in iids:
 		var src := fallback
+		if Middleman.uses_inputs(str(iid)):
+			out.append({"from":"buy_middleman","to":iid,"good":fed[iid]})
+			continue
 		if Catalog.has_method("nearest_port_tile") and tile_of.has(iid):
 			var ptile := str(Catalog.nearest_port_tile(tile_of[iid]))
 			if port_by_tile.has(ptile):
@@ -461,6 +479,7 @@ static func _build_edges(producers: Dictionary, consumers: Dictionary) -> Array:
 			continue
 		for a in producers[g]:
 			for b in consumers[g]:
+				if Middleman.uses_outputs(str(a)) or Middleman.uses_inputs(str(b)): continue
 				if a == b:
 					continue
 				var key: String = str(a) + "|" + str(b)
@@ -503,6 +522,6 @@ static func _tile_world_pos(terrain: Object, tile_id: String, fallback_index: in
 static func _signature(nodes: Array) -> String:
 	var parts: Array = []
 	for n in nodes:
-		parts.append("%s:%d:%s" % [n["iid"], int(n["level"]), str(n["output_good"])])
+		parts.append("%s:%d:%s:%s" % [n["iid"], int(n["level"]), str(n["output_good"]),str([Middleman.uses_inputs(str(n.iid)),Middleman.uses_outputs(str(n.iid))])])
 	parts.sort()
 	return "|".join(parts)
