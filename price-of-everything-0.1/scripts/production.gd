@@ -141,6 +141,7 @@ func _on_phase_started(phase: int) -> void:
 		_process_production()
 
 func _process_production() -> void:
+	preload("res://scripts/cash_commitments.gd").begin_turn()
 	var cash_before_process := MatchState.money
 	last_turn_run.clear()
 	missing_by_building.clear()
@@ -389,6 +390,8 @@ func _process_production() -> void:
 
 			has_run[instance_id] = true
 			last_turn_run[instance_id] = true
+			if BuildingState.buildings.has(instance_id):
+				BuildingState.buildings[instance_id].erase("startup_inputs_pending")
 			# A new building stays in its selected half-capacity start until it has
 			# actually completed one operating turn; starvation does not consume it.
 			MatchState.consume_startup_capacity(instance_id)
@@ -614,9 +617,10 @@ func _process_production() -> void:
 	TurnProfiler.section_end("maintenance_labour")
 
 	TurnProfiler.section_begin("loan_payments")
-	var cash_before_tabs := MatchState.money
-	MatchState.tick_building_tabs()
-	var tab_repayments := cash_before_tabs - MatchState.money
+	var credit_movements := MatchState.tick_building_tabs()
+	var tab_repayments := float(credit_movements.repaid)
+	summary["building_credit_repaid"] = tab_repayments
+	summary["building_credit_loan_received"] = float(credit_movements.loan_received)
 	var loan_payment: float = LoanState.process_payments()
 	if loan_payment > 0:
 		summary.interest_paid = loan_payment
@@ -664,6 +668,7 @@ func _process_production() -> void:
 	# of money_in so it doesn't count toward advisor profit unlocks (it's a cheat).
 	summary["fake_money"] = MatchState.fake_money_this_turn
 	MatchState.fake_money_this_turn = 0.0
+	preload("res://scripts/cash_commitments.gd").finish_turn(summary, tab_repayments)
 	last_turn_summary = summary
 	_active_turn_summary = {}
 	summary.tile_supplied = _own_delivery_this_turn.duplicate(true)
@@ -679,7 +684,7 @@ func _process_production() -> void:
 		])
 		print("[Production] Turn summary: produced=%s consumed=%s sold=%s starved=%d net=£%.2f passes=%d" % [
 			summary.produced, summary.consumed, summary.sold, summary.starved.size(),
-			summary.money_in - summary.money_out, pass_count
+			cash_change_of(summary), pass_count
 		])
 		print("[Production] Cash breakdown: goods=£%.2f power_sold=£%.2f power_bought=£%.2f costs=£%.2f goods_bought=£%.2f loan_payments=£%.2f tax=£%.2f div=£%.2f profit_share=£%.2f operational_credit=£%.2f carbon_tax=£%.2f green_subsidy=£%.2f reported_net=£%.2f tab_repayments=£%.2f cash_delta=£%.2f" % [
 			summary.goods_sales_revenue,
@@ -694,7 +699,7 @@ func _process_production() -> void:
 			summary.building_tab_carried,
 			summary.carbon_tax_paid,
 			summary.green_subsidy_received,
-			summary.money_in - summary.money_out,
+			cash_change_of(summary),
 			tab_repayments,
 			MatchState.money - cash_before_process
 		])
@@ -717,6 +722,13 @@ func _process_production() -> void:
 	
 
 # --- Helpers ---
+
+## Cash reporting includes financing movements excluded from the established profit/tax
+## calculation. Keep money_in/money_out semantics unchanged for economic consumers.
+static func cash_change_of(summary: Dictionary) -> float:
+	return float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0)) \
+		- float(summary.get("building_credit_repaid", 0.0)) \
+		+ float(summary.get("building_credit_loan_received", 0.0))
 
 func _apply_advisor_costs(summary: Dictionary) -> float:
 	# Charge against THIS turn's revenue, not last turn's: the sell phase has already run by
@@ -759,7 +771,8 @@ func _apply_tax_and_dividends(summary: Dictionary) -> float:
 	# Use actual pre-tax cashflow, not just sales minus a narrow operating-cost
 	# subset. Market input buys are real expenses and must prevent loss-making turns
 	# from paying tax or dividends.
-	var pre_tax_profit := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0))
+	var pre_tax_profit := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0)) \
+		- float(summary.get("prepaid_construction_arrived", 0.0))
 	# The first TAX_FREE_PROFIT_FLOOR of profit each turn is assessed at nothing, for tax
 	# and dividends alike. Only the slice above the floor is assessable.
 	var taxable_profit := maxf(0.0, pre_tax_profit - EconomyConfig.TAX_FREE_PROFIT_FLOOR)
@@ -941,6 +954,7 @@ func _recipe_deposit_token(recipe: Dictionary) -> String:
 	return ""
 
 func _process_transport_arrivals(summary: Dictionary) -> void:
+	TransportState.dispatch_construction_orders()
 	# Snapshot this turn's in-transit per-link flow (before shipments advance) so the
 	# next turn's transport costs carry the right congestion penalty.
 	TransportState.update_transport_congestion()
@@ -963,6 +977,7 @@ func _process_transport_arrivals(summary: Dictionary) -> void:
 		var purchase_cost: float = float(shipment.get("purchase_cost", 0.0))
 		if purchase_cost > 0.0:
 			MatchState.settle_arrived_purchase(purchase_cost)
+			preload("res://scripts/cash_commitments.gd").record_arrival(purchase_cost)
 			var goods_cost: float = float(shipment.get("purchase_goods_cost", purchase_cost))
 			var freight: float = purchase_cost - goods_cost
 			summary.goods_purchased_cost += goods_cost
@@ -971,12 +986,14 @@ func _process_transport_arrivals(summary: Dictionary) -> void:
 			summary.money_out += purchase_cost
 			summary.purchased_cost[good_id] = float(summary.purchased_cost.get(good_id, 0.0)) + goods_cost
 			_accumulate_by_type(summary.goods_purchased_by_type, str(shipment.get("buy_building_id", "")), goods_cost, 0)
+		# Keep the existing arrival-date tax deduction, without reporting cash paid twice.
+		summary["prepaid_construction_arrived"] = float(summary.get("prepaid_construction_arrived", 0.0)) + float(shipment.get("construction_prepaid", 0.0)) if bool(shipment.get("is_purchase", false)) else float(summary.get("prepaid_construction_arrived", 0.0))
 		var added := Stockpile.add(destination_tile, good_id, qty)
 		var per_unit_transport: float = float(shipment.get("transport_cost", 0.0)) / float(qty)
 		_record_inbound_delivery(destination_tile, good_id, added, per_unit_transport)
 		# Nothing bought and nothing sold: this is one of the player's buildings shipping to
 		# another of their tiles, which is the only kind of arrival a mission may count.
-		if purchase_cost <= 0.0:
+		if purchase_cost <= 0.0 and not bool(shipment.get("is_purchase", false)):
 			_note_own_delivery(destination_tile, good_id, added)
 		if added < qty:
 			# Tile is full: hold the remainder instead of losing it. It waits on the
@@ -2604,37 +2621,9 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 		var budget: int = maxi(0, Stockpile.get_capacity(tile_id) - Stockpile.get_used_capacity(tile_id) - inbound_all - held_all)
 		# Building-first allocation: walk buildings in order; each claims local supply,
 		# then the shared pool, then orders the remainder while budget lasts.
-		var orders: Dictionary = {}   # good_id -> units to order this turn
-		var wanted: Dictionary = {}   # good_id -> units we WOULD order uncapped
-		for e2 in entries:
-			for good_id in (e2.inputs as Dictionary):
-				if str((leads[good_id] as Dictionary).get("port", "")) == "":
-					continue
-				var need: int = int(e2.inputs[good_id])
-				var covered_local: int = mini(need, int(local_pool.get(good_id, 0)))
-				local_pool[good_id] = int(local_pool.get(good_id, 0)) - covered_local
-				var want: int = (need - covered_local) * (int((leads[good_id] as Dictionary).get("lead", 1)) + 1)
-				# SAFETY MARGIN. Same-tile production lands at end of turn (flush_outputs), AFTER this
-				# consumer runs, so a SAME-TILE UNDER-SUPPLIED chain (local makes some but not all of the
-				# demand) starves on the intra-turn lag while the pipeline -- crediting that local output
-				# at full value -- buys too little. Keep ~1 turn of the locally-covered amount in the
-				# market pipeline to bridge it. Gated on `under_supplied`: a self-sufficient same-tile
-				# chain (local >= demand) never starves and needs no buffer; a cross-tile consumer has
-				# local_rate 0 so it already buys the full need. Measured +£21/turn (+30%) on the
-				# 2-desal/2-chem water chain, price impact <0.5%. POE_INPUT_SAFETY_MARGIN overrides the
-				# turn count (default 1) for A/B / rollback.
-				if covered_local > 0 and bool(under_supplied.get(good_id, false)):
-					want += int(ceil(float(covered_local) * _input_safety_margin_turns()))
-				var from_pool: int = mini(want, int(pool.get(good_id, 0)))
-				pool[good_id] = int(pool.get(good_id, 0)) - from_pool
-				var to_order: int = want - from_pool
-				if to_order <= 0:
-					continue
-				wanted[good_id] = int(wanted.get(good_id, 0)) + to_order
-				var placed: int = mini(to_order, budget)
-				budget -= placed
-				if placed > 0:
-					orders[good_id] = int(orders.get(good_id, 0)) + placed
+		var allocation := preload("res://scripts/input_order_planner.gd").allocate(entries, leads, local_pool, pool, under_supplied, budget, _input_safety_margin_turns(), true)
+		var orders: Dictionary = allocation.orders
+		var wanted: Dictionary = allocation.wanted
 		# Structural check: can this tile's warehouse hold the buildings' working set
 		# at all? Import buffers are (lead+1) turns of net need; locally-made
 		# intermediates and outputs each need ~2 turns of room between flush and
@@ -2675,9 +2664,15 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 				})
 			var order: int = int(orders.get(good_id, 0))
 			if order > 0:
+				var startup_qty := 0
+				for iid: String in allocation.by_instance:
+					var source := BuildingState.get_building(iid)
+					if bool(source.get("startup_inputs_pending", false)) and not BuildingWorks.is_building_paused(iid):
+						startup_qty += int(allocation.by_instance[iid].get(good_id, 0))
 				var bought: Dictionary = MatchState.queue_buy(tile_id, good_id, order, true, {
 					"buy_kind": "input",
 					"auto_input_pipeline": true,
+					"startup_input_share": clampf(float(startup_qty) / float(order), 0.0, 1.0),
 					"buy_building_id": str(rep_building[good_id]),
 				})
 				var got: int = int(bought.get("qty", 0))

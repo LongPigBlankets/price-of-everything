@@ -281,7 +281,7 @@ size_flags_vertical = 3
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Loan Interest"
+text = "Loan repayments"
 
 [node name="InterestValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/InterestRow" unique_id=730497790]
 custom_minimum_size = Vector2(80, 0)
@@ -359,7 +359,7 @@ size_flags_vertical = 3
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Net Cash Flow per turn"
+text = "Cash change last turn"
 
 [node name="NetCashflowValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Balance/MarginContainer/BalanceScroll/BalanceContent/NetCashflowRow" unique_id=2143023728]
 custom_minimum_size = Vector2(80, 0)
@@ -599,7 +599,7 @@ size_flags_vertical = 3
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Loan Interest"
+text = "Loan repayments"
 
 [node name="InterestValue" type="Label" parent="MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent/Proj_InterestRow" unique_id=1666979602]
 custom_minimum_size = Vector2(80, 0)

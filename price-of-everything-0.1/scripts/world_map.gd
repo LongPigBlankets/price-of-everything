@@ -1874,6 +1874,7 @@ func _on_stockpile_destination_selected(tile_data: Dictionary, ctrl: bool = fals
 			terrain_layer.end_stockpile_destination_selection()
 			_exit_stockpile_ui_mode()
 			_open_building_detail(BuildingState.get_building(instance_id))
+			preload("res://scripts/stockpile_route_prompt.gd").offer_split(_hud, instance_id, good_id)
 		else:
 			MatchState.request_toast("%d destination%s selected — Shift-click another, or release Shift and click to finish" % [count, "" if count == 1 else "s"], "info")
 		return
@@ -1884,6 +1885,7 @@ func _on_stockpile_destination_selected(tile_data: Dictionary, ctrl: bool = fals
 		_hide_stockpile_select_prompt()
 		_exit_stockpile_ui_mode()
 		_open_building_detail(BuildingState.get_building(instance_id))
+		preload("res://scripts/stockpile_route_prompt.gd").offer_split(_hud, instance_id, good_id)
 		return
 	if ctrl:
 		# CTRL+click: don't route yet — highlight the pick green and open the
@@ -1896,6 +1898,7 @@ func _on_stockpile_destination_selected(tile_data: Dictionary, ctrl: bool = fals
 	_pending_stockpile_selection.clear()
 	_hide_stockpile_select_prompt()
 	_exit_stockpile_ui_mode()
+	preload("res://scripts/stockpile_route_prompt.gd").offer(_hud, tile_id, good_id)
 
 # ----- CTRL+click ship-quantity flow -----
 
@@ -1922,6 +1925,7 @@ func _on_ship_qty_confirmed(qty: int) -> void:
 		MatchState.set_output_stockpile_destination(iid, _ship_qty_tile, gid)
 		MatchState.set_output_ship_quantity(iid, gid, qty)
 		MatchState.request_toast("Sending %d %s to %s every turn" % [qty, Catalog.get_display_name(gid), Catalog.tile_label(_ship_qty_tile)], "success")
+		preload("res://scripts/stockpile_route_prompt.gd").offer(_hud, _ship_qty_tile, gid)
 	_close_ship_quantity_flow()
 
 func _on_ship_qty_cancelled() -> void:
@@ -2228,6 +2232,10 @@ func _on_construction_buy_requested(building_id: String, recipe_id: String, tile
 	if not MatchState.deduct_money(cost):
 		return
 	var instance_id := Construction.start_awaiting_market(building_id, recipe_id, tile_id, cost)
+	if instance_id.is_empty():
+		MatchState.add_money(cost)
+		MatchState.build_rejected_no_funds.emit("Could not reserve the complete material order. No construction costs were charged.")
+		return
 	building_placed.emit(tile_id, building_id, recipe_id, instance_id, coord)
 	Audio.building_placed()
 
@@ -2251,6 +2259,10 @@ func _on_construction_credit_requested(building_id: String, recipe_id: String, t
 	if not MatchState.deduct_money(cost):
 		return
 	var instance_id := Construction.start_awaiting_market(building_id, recipe_id, tile_id, cost)
+	if instance_id.is_empty():
+		MatchState.add_money(cost)
+		MatchState.build_rejected_no_funds.emit("Could not reserve the complete material order. No construction costs were charged.")
+		return
 	# Tie the construction loan just taken to this build, so its repayment lands in THIS
 	# building's economics (the BDP loan line + net) rather than only the company-wide total.
 	LoanState.tag_last_loan_building(instance_id)

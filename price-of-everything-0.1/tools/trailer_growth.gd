@@ -13,6 +13,9 @@ func _ready() -> void:
 	ShotHarness.arm_watchdog(self, 240.0)
 	get_viewport().set_disable_input(true)
 	AudioServer.set_bus_mute(0, true)
+	if "--launch-20260910" in OS.get_cmdline_user_args():
+		TelemetryState.set_next_run_consent(false, false)
+		SaveLoad.prepare_new_game("res://data/starts/metal_magnate.json", {})
 	world = load("res://scenes/main.tscn").instantiate()
 	add_child(world)
 	for i in 150:
@@ -30,6 +33,11 @@ func _ready() -> void:
 	camera.set_process(false)
 	camera.set_physics_process(false)
 	camera.position_smoothing_enabled = false
+	if "--launch-20260910" in OS.get_cmdline_user_args():
+		var launch_capture: RefCounted = load("res://tools/trailer_launch_capture.gd").new()
+		await launch_capture.run(self)
+		get_tree().quit()
+		return
 	if "--sales" in OS.get_cmdline_user_args():
 		await capture_sales()
 		get_tree().quit()

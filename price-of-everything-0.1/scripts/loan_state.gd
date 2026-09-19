@@ -13,6 +13,36 @@ var _next_loan_id: int = 1
 
 # Set during process_payments(); read by Production.
 var last_payment_total: float = 0.0
+var _last_payments_turn: int = -1
+
+func _ready() -> void:
+	MatchState.state_reset.connect(func() -> void: _last_payments_turn = -1)
+
+## Absolute schedule from the saved amortisation amounts. No new save fields needed.
+## current_turn names the next turn to resolve in DECIDE, not the last completed turn.
+func repayment_turns(loan: Dictionary) -> Vector2i:
+	var next_turn := TurnManager.current_turn + (1 if _last_payments_turn == TurnManager.current_turn else 0)
+	var grace := int(loan.get("grace_remaining", 0))
+	if grace > 0:
+		var first := next_turn + grace
+		return Vector2i(first, first + EconomyConfig.LOAN_TERM_TURNS - 1)
+	var payment := float(loan.get("payment_per_turn", 0.0))
+	if payment <= 0.0:
+		return Vector2i.ZERO
+	var total := float(loan.get("total_repayment", float(loan.get("principal_initial", 0.0)) * (1.0 + float(loan.get("interest_rate", EconomyConfig.LOAN_INTEREST_RATE)))))
+	var original_count := ceili(total / payment - 0.000001)
+	var remaining_count := mini(int(loan.get("turns_remaining", 0)), ceili(float(loan.get("principal_remaining", 0.0)) / payment - 0.000001))
+	if remaining_count <= 0:
+		return Vector2i.ZERO
+	return Vector2i(next_turn - maxi(0, original_count - remaining_count), next_turn + remaining_count - 1)
+
+func repayment_label(loan: Dictionary) -> String:
+	var span := repayment_turns(loan)
+	return "Repay Turn %d–%d" % [span.x, span.y] if span != Vector2i.ZERO else "Repaid"
+
+func loan_label(loan: Dictionary) -> String:
+	var rate := ("%.2f" % (float(loan.get("interest_rate", EconomyConfig.LOAN_INTEREST_RATE)) * 100.0)).trim_suffix("0").trim_suffix("0").trim_suffix(".")
+	return "Loan #%d (%s%%)" % [int(loan.get("id", 0)), rate]
 
 # Rolling per-turn economics that drive the dynamic borrowing capacity. Production
 # pushes (net_profit, revenue) here each turn via record_turn_economics(); only the
@@ -166,6 +196,7 @@ func repay_loan(loan_id: int) -> bool:
 # Returns the total amount paid this turn.
 
 func process_payments() -> float:
+	_last_payments_turn = TurnManager.current_turn
 	last_payment_total = 0.0
 	if loans.is_empty():
 		return 0.0
@@ -352,6 +383,7 @@ func export_state() -> Dictionary:
 	}
 
 func import_state(d: Dictionary) -> void:
+	_last_payments_turn = -1
 	# Silent: SaveLoad emits loans_updated once after every system imports.
 	loans = (d.get("loans", []) as Array).duplicate(true)
 	_next_loan_id = int(d.get("next_loan_id", 1))

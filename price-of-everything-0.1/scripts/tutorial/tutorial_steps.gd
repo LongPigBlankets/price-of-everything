@@ -352,6 +352,10 @@ static func steps() -> Array:
 			"setup": [
 				{ "action": "handoff_from_capital_lesson" },
 				{ "action": "close_building_detail" },
+				{
+					"action": "flash_tiles", "tiles": [WINDOW_TILE], "delay": 5.0,
+					"color": "white", "pulse_count": 10, "pulse_seconds": 0.7,
+				},
 			],
 			"spotlight": { "kind": "none", "ref": "" },
 			"no_dim": true,

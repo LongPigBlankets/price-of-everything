@@ -426,12 +426,22 @@ func _draw_dynamic() -> void:
 	_lp_trees_us += Time.get_ticks_usec() - _lp_tr
 
 
+## These two red dock sheds resemble player factories during the white-building lesson.
+## Ports are drawn live over the bake, so this tutorial-only omission needs no rebake.
+func _tutorial_hides_port_warehouse(record: Dictionary) -> bool:
+	return bool(MatchState.ruleset.get("tutorial_enabled", false)) \
+		and str(record.get("port", "")) == "tile_5_10" \
+		and str(record.get("port_role", "")) == "warehouse"
+
+
 func _draw_ports(canvas: CanvasItem) -> void:
 	_cranes_this_pass = []
 	for settlement in AuthoredMap.settlements().values():
 		var harbours: Dictionary = {}
 		for special in _list(settlement, "specials"):
 			var tid := str(special.get("port", ""))
+			if _tutorial_hides_port_warehouse(special):
+				continue
 			if tid != "" and not _sacrificed.has(str(special.get("id", ""))):
 				if not harbours.has(tid):
 					harbours[tid] = []
@@ -575,7 +585,7 @@ func visible_mass_polygons() -> Array:
 						poly_value as PackedVector2Array, _keep_out):
 					_append_visible(out, piece as PackedVector2Array, record)
 		for record in _list(settlement, "specials"):
-			if _sacrificed.has(str(record.get("id", ""))):
+			if _sacrificed.has(str(record.get("id", ""))) or _tutorial_hides_port_warehouse(record):
 				continue
 			for piece in AuthoredFabricPainter.surviving_pieces(
 					AuthoredSpecialShapes.render_polygon(record), _keep_out):

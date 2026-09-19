@@ -790,6 +790,7 @@ func cheat_unlock_advisors() -> void:
 
 # --- Reset (useful for new game / testing) ---
 func reset() -> void:
+	preload("res://scripts/cash_commitments.gd").reset()
 	money = 1000
 	hidden_buildings_unlocked = false
 	recycling_unlocked = false
@@ -1529,6 +1530,8 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 	# and upgrade materials, and the manual buy. One guard closes all of them.
 	if PolicyState.import_banned(good_id, TurnManager.current_turn):
 		return {}
+	if bool(extra.get("reserve_construction", false)) and not TurnManager.is_resolving:
+		return _reserve_construction_purchase(dest_tile, good_id, qty, extra)
 	var covered := TransportState.seaport_covers(good_id)
 	var quote := TransportService.quote_market_buy(dest_tile, good_id, qty, covered)
 	if quote.is_empty():
@@ -1617,11 +1620,36 @@ func queue_buy(dest_tile: String, good_id: String, qty: int, log_oneoff: bool = 
 	elif str(extra.get("buy_kind", "")) != "":
 		buy_category = str(extra.get("buy_kind", ""))
 	goods_movement_recorded.emit("buy", buy_category, turns)
+	preload("res://scripts/cash_commitments.gd").record_order(dest_tile, good_id, qty, total, turns, extra)
 	# `deferred` tells the caller the cash has NOT left yet — Production books a deferred
 	# purchase into the summary when it arrives, not here, so money_out tracks real cash.
 	return {"qty": qty, "turns": turns, "cost": total, "deferred": turns >= 1,
 		"goods_cost": float(qty) * unit_price, "transport_cost": transport,
 		"transport_breakdown": transport_breakdown, "port": port}
+
+## Prepaid, cancellable construction order. Dispatch effects wait for End Turn;
+## the quoted cost leaves spendable cash now and cannot be charged again on arrival.
+func _reserve_construction_purchase(tile: String, good: String, qty: int, tags: Dictionary) -> Dictionary:
+	var quote := TransportService.quote_market_buy(tile, good, qty, TransportState.seaport_would_cover(good))
+	if quote.is_empty():
+		return {}
+	var cost := float(quote.get("cost", 0.0))
+	if cost > minf(money, purchase_headroom()) + 0.0001:
+		return {} # Construction confirmation is all-or-nothing, not a partial order.
+	var port := str(quote.get("port", ""))
+	var sea := TransportState.preview_sea_shipping(port, good, qty)
+	var route: Dictionary = quote.get("route", {})
+	var turns := int(quote.get("turns", 0))
+	var shipment := {"source_tile": port, "destination_tile": tile, "good_id": good, "qty": qty,
+		"turns_remaining": turns, "transport_turns": turns, "transport_cost": float(quote.get("transport_cost", 0.0)),
+		"is_purchase": true, "purchase_cost": 0.0, "construction_prepaid": cost,
+		"construction_order_pending": true, "reserved_sea_charge": sea,
+		"tiles": route.get("tiles", []), "path": route.get("path", []), "legs": route.get("legs", [])}
+	shipment.merge(tags, true)
+	add_money(-cost)
+	TransportState.queue_transport_shipment(shipment)
+	return {"qty": qty, "cost": cost, "turns": turns, "deferred": false,
+		"goods_cost": float(quote.get("goods_cost", 0.0)), "transport_cost": float(quote.get("transport_cost", 0.0))}
 
 func tiles_producing(good_id: String) -> Dictionary:
 	var out: Dictionary = {}
@@ -1639,7 +1667,7 @@ func tiles_consuming(good_id: String) -> Dictionary:
 				break
 	return out
 
-func preview_buy(dest_tile: String, good_id: String, qty: int) -> Dictionary:
+func preview_buy(dest_tile: String, good_id: String, qty: int, reservations: Array = []) -> Dictionary:
 	# Cost/turns for a buy WITHOUT executing — for the Purchases "Cost to buy" line.
 	if dest_tile == "" or good_id == "" or qty <= 0:
 		return {}
@@ -1647,7 +1675,7 @@ func preview_buy(dest_tile: String, good_id: String, qty: int) -> Dictionary:
 	# would be refused.
 	if PolicyState.import_banned(good_id, TurnManager.current_turn):
 		return {}
-	var quote := TransportService.quote_market_buy(dest_tile, good_id, qty, TransportState.seaport_would_cover(good_id))
+	var quote := TransportService.quote_market_buy(dest_tile, good_id, qty, TransportState.seaport_would_cover(good_id), reservations)
 	if quote.is_empty():
 		return {}
 	return {"cost": float(quote.get("cost", 0.0)), "goods_cost": float(quote.get("goods_cost", 0.0)),
@@ -2024,14 +2052,17 @@ func accrue_building_tab(instance_id: String, amount: float) -> float:
 
 
 ## End of turn: wind the window down and settle any tab that has run its course.
-func tick_building_tabs() -> void:
+func tick_building_tabs() -> Dictionary:
+	var movements := {"repaid": 0.0, "loan_received": 0.0}
 	for iid in building_tabs.keys():
 		var tab: Dictionary = building_tabs[iid]
 		var left := int(tab.get("turns_left", 0))
 		if left > 0:
 			tab["turns_left"] = left - 1
 			if tab["turns_left"] == 0:
+				var cash_before := money
 				_settle_building_tab(str(iid), tab)
+				movements.loan_received += money - cash_before
 				# Settling may have closed the tab outright (the loan route converts and
 				# erases). Writing it back unconditionally would resurrect it.
 				if not building_tabs.has(iid):
@@ -2042,11 +2073,13 @@ func tick_building_tabs() -> void:
 		if str(tab.get("mode", "slices")) == "slices" and int(tab.get("slices_left", 0)) > 0:
 			var slice: float = float(tab.get("accrued", 0.0)) / float(tab.get("slices_left", 1))
 			add_money(-slice)
+			movements.repaid += slice
 			tab["accrued"] = maxf(0.0, float(tab.get("accrued", 0.0)) - slice)
 			tab["slices_left"] = int(tab.get("slices_left", 0)) - 1
 			building_tabs[iid] = tab
 			if int(tab["slices_left"]) <= 0 or float(tab["accrued"]) <= 0.01:
 				building_tabs.erase(iid)
+	return movements
 
 
 func _settle_building_tab(instance_id: String, tab: Dictionary) -> void:
@@ -2210,4 +2243,3 @@ func _roman(n: int) -> String:
 func _signed_percent_text(value: float) -> String:
 	var sign := "+" if value > 0.0 else ""
 	return "%s%.0f%%" % [sign, value]
-

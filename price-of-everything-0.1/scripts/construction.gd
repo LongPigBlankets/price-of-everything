@@ -130,6 +130,7 @@ func materials_ledger(building_id: String, tile_id: String) -> Dictionary:
 	var rows: Array = []
 	var subtotal := 0.0
 	var same_tile_only := MatchState.construct_material_source == "same_tile"
+	var reservations: Array = []
 	var requirements := requirements_for(building_id)
 	for good_id in requirements:
 		var need: int = int(requirements[good_id])
@@ -146,7 +147,8 @@ func materials_ledger(building_id: String, tile_id: String) -> Dictionary:
 				short = gap
 			else:
 				market_qty = gap
-				var quote := _market_gap_quote(tile_id, str(good_id), gap)
+				var quote := _market_gap_quote(tile_id, str(good_id), gap, reservations)
+				reservations.append(_quote_reservation(quote, str(good_id), gap))
 				market_cost = float(quote.get("cost", 0.0))
 				market_turns = int(quote.get("turns", 0))
 				transport_cost = float(quote.get("transport_cost", 0.0))
@@ -195,17 +197,21 @@ func network_surplus_for_good(good_id: String, exclude_tile_id: String) -> int:
 ## Market quote for buying `qty` of one good for a build: {cost, turns}. Cost is
 ## the tile-aware buy preview (goods + freight) when a site is chosen, else the
 ## plain buy price with turns 0 (no route to quote a lead time from yet).
-func _market_gap_quote(tile_id: String, good_id: String, qty: int) -> Dictionary:
+func _market_gap_quote(tile_id: String, good_id: String, qty: int, reservations: Array = []) -> Dictionary:
 	if tile_id != "":
-		var preview: Dictionary = MatchState.preview_buy(tile_id, good_id, qty)
+		var preview: Dictionary = MatchState.preview_buy(tile_id, good_id, qty, reservations)
 		if not preview.is_empty():
-			return {"cost": float(preview.get("cost", 0.0)), "turns": int(preview.get("turns", 0)),
+			return {"port": str(preview.get("port", "")), "cost": float(preview.get("cost", 0.0)), "turns": int(preview.get("turns", 0)),
 				"transport_cost": float(preview.get("transport_cost", 0.0))}
 	var unit_price := MarketState.get_buy_price(good_id)
 	if unit_price <= 0.0:
 		unit_price = Catalog.get_base_price(good_id)
 	return {"cost": float(qty) * unit_price, "turns": 0}
 
+
+func _quote_reservation(quote: Dictionary, good: String, qty: int) -> Dictionary:
+	return {"source_tile": str(quote.get("port", "")), "good_id": good, "qty": qty,
+		"construction_order_pending": true, "is_purchase": true}
 
 # Whether the target tile holds every required material, and what's short.
 # Returns {satisfied: bool, missing: {good_id: qty_short}, required: {good_id: qty}}.
@@ -271,8 +277,10 @@ func start_on_tile(building_id: String, recipe_id: String, tile_id: String, buil
 func estimate_market_cost(tile_id: String, building_id: String) -> float:
 	var missing: Dictionary = check_tile(tile_id, building_id).get("missing", {})
 	var total: float = 0.0
+	var reservations: Array = []
 	for good_id in missing:
-		var preview: Dictionary = MatchState.preview_buy(tile_id, good_id, int(missing[good_id]))
+		var preview: Dictionary = MatchState.preview_buy(tile_id, good_id, int(missing[good_id]), reservations)
+		reservations.append(_quote_reservation(preview, str(good_id), int(missing[good_id])))
 		total += float(preview.get("cost", 0.0))
 	return total
 
@@ -289,17 +297,18 @@ func start_awaiting_market(building_id: String, recipe_id: String, tile_id: Stri
 	var instance_id: String = BuildingState.reserve_instance_id(building_id)
 	var output_destination := MatchState.construct_output_destination
 
-	# Reserve the in-place portion of every material RIGHT NOW, so co-located production
-	# buildings can't consume it before claim_materials runs. Only the shortfall is then
-	# bought and remains to be claimed on arrival. (Previously the in-place goods were
-	# left on the tile to be claimed "next PROCESS", which let production eat them first
-	# and stalled the build.)
+	# Reserve all market orders before taking local stock. A failed quote rolls
+	# back only this project's reservations, so confirmation cannot partly spend.
+	for good_id in missing:
+		var bought := MatchState.queue_buy(tile_id, good_id, int(missing[good_id]), false,
+			{"construction_instance_id": instance_id, "reserve_construction": true})
+		if int(bought.get("qty", 0)) != int(missing[good_id]) and not TurnManager.is_resolving:
+			TransportState.cancel_construction_reservations(instance_id)
+			return ""
 	for good_id in reqs:
 		var on_tile_part: int = int(reqs[good_id]) - int(missing.get(good_id, 0))
 		if on_tile_part > 0:
 			Stockpile.consume(tile_id, good_id, on_tile_part)
-	for good_id in missing:
-		MatchState.queue_buy(tile_id, good_id, int(missing[good_id]), false, {"construction_instance_id": instance_id})
 
 	construction_projects[instance_id] = {
 		"instance_id": instance_id,
@@ -368,7 +377,7 @@ func start_awaiting_from_tile(building_id: String, recipe_id: String, dest_tile:
 		var on_tile_part: int = int(reqs[good_id]) - int(missing.get(good_id, 0))
 		if on_tile_part > 0:
 			Stockpile.consume(dest_tile, good_id, on_tile_part)
-	TransportState.queue_move(source_tile, dest_tile, missing, false, {"construction_instance_id": instance_id})
+	TransportState.queue_move(source_tile, dest_tile, missing, false, {"construction_instance_id": instance_id, "reserve_construction": not TurnManager.is_resolving})
 
 	construction_projects[instance_id] = {
 		"instance_id": instance_id,
@@ -475,14 +484,15 @@ func claim_materials() -> void:
 
 # Cancel a project in either state. Refunds the full build cost, returns every material the
 # project has already secured to its tile, and frees the reserved space. Materials still in
-# transit are left to arrive as ordinary stockpile goods (with the project gone, claim_materials
-# ignores them) — no transport surgery, no goods refund. Returns true if a project was cancelled.
+# transit after End Turn are left to arrive as ordinary stock. Undispatched orders
+# are cancelled and their prepayments refunded. Returns true if a project was cancelled.
 func cancel(instance_id: String) -> bool:
 	if not construction_projects.has(instance_id):
 		return false
 	var project: Dictionary = construction_projects[instance_id]
 	var tile_id: String = str(project.get("tile_id", ""))
 
+	TransportState.cancel_construction_reservations(instance_id)
 	var refund: float = float(project.get("build_cost", 0.0))
 	if refund > 0.0:
 		MatchState.add_money(refund)
@@ -590,6 +600,9 @@ func _promote(instance_id: String) -> void:
 # Promotion seam: turn a (pending) construction into a live building, reusing the stable id.
 func _complete_build(building_id: String, recipe_id: String, tile_id: String, instance_id: String, startup_half_capacity: bool = false, output_destination: String = "") -> String:
 	var completed_id := BuildingState.add_building(building_id, recipe_id, tile_id, MatchState.LOCAL_PLAYER, instance_id)
+	if BuildingState.buildings.has(completed_id):
+		# Optional saved planning marker; authored starting businesses default to online.
+		BuildingState.buildings[completed_id]["startup_inputs_pending"] = true
 	if startup_half_capacity and BuildingState.buildings.has(completed_id):
 		BuildingState.buildings[completed_id]["startup_half_capacity"] = true
 	var destination := output_destination if output_destination in ["market", "same_tile"] else MatchState.construct_output_destination

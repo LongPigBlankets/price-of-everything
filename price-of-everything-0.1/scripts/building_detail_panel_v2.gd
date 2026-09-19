@@ -483,6 +483,7 @@ func _render_construction(building: Dictionary, recipe: Dictionary, constr: Dict
 
 	var cancel := Button.new()
 	cancel.text = "Cancel construction"
+	cancel.tooltip_text = "Before End Turn, also refunds and cancels reserved material orders. Dispatched materials remain yours."
 	cancel.custom_minimum_size = Vector2(0, 44)
 	var iid := str(building.get("instance_id", ""))
 	cancel.pressed.connect(func() -> void:
@@ -2358,7 +2359,8 @@ func _open_output_sheet(building: Dictionary, recipe: Dictionary) -> void:
 		vb.add_child(_dest_option("Tile stockpile", "Store the output on this tile for later use.", on_tile, func() -> void:
 			MatchState.set_output_stockpile_destination(iid, tile_id, good_id)
 			_queue_refresh()
-			_open_output_sheet(building, recipe)))
+			_open_output_sheet(building, recipe)
+			preload("res://scripts/stockpile_route_prompt.gd").offer(get_parent(), tile_id, good_id)))
 		vb.add_child(_dest_option("Ship to another tile", "Pick a tile on the shipping map to feed a downstream building you own.", other, func() -> void:
 			MatchState.begin_output_stockpile_selection(iid, good_id, true)
 			_close_sheet()))

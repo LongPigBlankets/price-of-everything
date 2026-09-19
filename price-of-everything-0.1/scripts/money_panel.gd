@@ -2,6 +2,8 @@ extends PanelContainer
 
 const LoanRowScene: PackedScene = preload("res://scenes/loan_row.tscn")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
+var _upcoming_link: LinkButton
+var _upcoming_view: VBoxContainer
 const HEADER_HEIGHT := 40.0
 
 @onready var title_label: Label = $MarginContainer/ModalLayout/HeaderRow/TitleLabel
@@ -66,6 +68,8 @@ var _proj_goods_purchased_value: Label
 var _warehousing_value: Label
 var _advisor_value: Label
 var _building_tab_value: Label
+var _credit_repaid_value: Label
+var _credit_loan_value: Label
 var _proj_warehousing_value: Label
 var _profit_sharing_value: Label
 var _proj_profit_sharing_value: Label
@@ -343,6 +347,16 @@ func _insert_finance_row(section: VBoxContainer, after_node_name: String, label_
 	return value_label
 
 func _ready() -> void:
+	_build_upcoming_tab()
+	_upcoming_link = preload("res://scripts/cash_commitments_view.gd").make_link(func() -> void: open_tab("Upcoming"))
+	_balance_content.add_child(_upcoming_link)
+	_balance_content.move_child(_upcoming_link, 0)
+	TurnManager.turn_resolution_completed.connect(_queue_refresh)
+	Stockpile.stockpile_changed.connect(_queue_refresh)
+	MatchState.recurring_orders_changed.connect(_queue_refresh)
+	TransportState.transport_shipments_changed.connect(_queue_refresh)
+	MatchState.output_stockpile_destination_changed.connect(func(_i: String, _t: String, _g: String) -> void: _queue_refresh())
+	BuildingWorks.building_paused_changed.connect(_queue_refresh)
 	_transport_value = _insert_transport_accordion(_costs_section, "PowerPurchaseRow")
 	_proj_transport_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Transport")
 	_goods_purchased_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Goods purchased")
@@ -367,6 +381,10 @@ func _ready() -> void:
 	_proj_green_subsidy_value = _insert_finance_row(proj_revenue_section, "Proj_PowerSalesRow", "Green subsidy", "+£0.00")
 	var projection_content := $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent as VBoxContainer
 	_profit_sharing_value = _insert_finance_row(_balance_content, "DividendsRow", "Profit Sharing", "-£0.00")
+	_credit_repaid_value = _insert_finance_row(_balance_content, _profit_sharing_value.get_parent().name, "Building credit repaid", "-£0.00")
+	_credit_repaid_value.name = "BuildingCreditRepaidValue"
+	_credit_loan_value = _insert_finance_row(_balance_content, _credit_repaid_value.get_parent().name, "Loan proceeds from building credit", "+£0.00")
+	_credit_loan_value.name = "BuildingCreditLoanValue"
 	_proj_profit_sharing_value = _insert_finance_row(projection_content, "Proj_DividendsRow", "Profit Sharing", "-£0.00")
 	# After every row exists, not before: both passes walk the finished sheet.
 	_normalise_balance_rows()
@@ -496,6 +514,9 @@ func _apply_refresh() -> void:
 	_refresh_chart()
 	_refresh_sales()
 	_refresh_purchases()
+	_refresh_upcoming()
+	if not TurnManager.is_resolving:
+		preload("res://scripts/cash_commitments_view.gd").update_link(_upcoming_link, preload("res://scripts/cash_commitments.gd").snapshot())
 
 func _on_panel_visibility_changed() -> void:
 	if not visible:
@@ -554,7 +575,7 @@ func _on_buildings_changed(_arg = null) -> void:
 
 # ── The balance sheet's arithmetic, as pure functions of the turn summary ───────────────────
 # Static and summary-only so the test suite can hold the bottom line against the top bar's
-# money_in − money_out without instantiating the panel. They diverged silently twice: advisor
+# Production.cash_change_of without instantiating the panel. They diverged silently twice: advisor
 # salaries were charged to cash with no row here at all, and building-tab deferrals were shown
 # as a debt total while the deferred running costs were still charged as if paid. Any new cash
 # movement in production.gd needs a line here, or the two numbers part again.
@@ -570,12 +591,12 @@ static func operating_costs_of(s: Dictionary) -> float:
 		+ float(s.get("warehousing_paid", 0.0)) + float(s.get("carbon_tax_paid", 0.0)) \
 		- float(s.get("building_tab_carried", 0.0))
 
-## MUST equal money_in − money_out for the same turn — that is what the row promises and what
-## the top bar and the Treasury mini-panel both show.
+## Must equal Production.cash_change_of: operating flows plus credit financing movements.
 static func net_cash_of(s: Dictionary) -> float:
 	return total_revenue_of(s) - operating_costs_of(s) - float(s.get("interest_paid", 0.0)) \
 		- float(s.get("taxes_paid", 0.0)) - float(s.get("dividends_paid", 0.0)) \
-		- float(s.get("profit_sharing_paid", 0.0))
+		- float(s.get("profit_sharing_paid", 0.0)) - float(s.get("building_credit_repaid", 0.0)) \
+		+ float(s.get("building_credit_loan_received", 0.0))
 
 
 func _refresh_balance_sheet() -> void:
@@ -651,8 +672,12 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	
 	dividends_value.text = "-£%.2f" % dividends
 	_profit_sharing_value.text = "-£%.2f" % profit_sharing
+	_credit_repaid_value.text = "-£%.2f" % float(summary.get("building_credit_repaid", 0.0))
+	_credit_loan_value.text = "+£%.2f" % float(summary.get("building_credit_loan_received", 0.0))
+	_credit_loan_value.get_parent().visible = float(summary.get("building_credit_loan_received", 0.0)) > 0.0
 	
 	net_cashflow_value.text = _format_signed(net_cashflow)
+	net_cashflow_value.get_parent().tooltip_text = "Cash movement from the last production settlement, including building-credit repayments and conversion loan proceeds. Player purchases, loans taken between turns and later events are separate."
 	_color_for_value(net_cashflow_value, net_cashflow)
 
 	# Per-building-type breakdown tooltips.
@@ -1001,6 +1026,7 @@ func _recipe_output_items(recipe: Dictionary) -> Array:
 # --- Charts tab ---
 
 func _on_tab_changed(idx: int) -> void:
+	_refresh_upcoming()
 	_apply_tab_size(idx)
 	if _tab_container.get_tab_title(idx) == "Charts":
 		_refresh_chart()
@@ -1010,7 +1036,7 @@ func _apply_tab_size(idx: int) -> void:
 	# every other tab uses the compact panel size.
 	custom_minimum_size = Vector2.ZERO
 	match _tab_container.get_tab_title(idx):
-		"Charts":
+		"Charts", "Upcoming":
 			# Capped to the screen like the Balance tab — a fixed height taller than the
 			# viewport puts the legend's buttons under the bottom dock.
 			var avail: float = get_viewport_rect().size.y - global_position.y - PANEL_SCREEN_MARGIN
@@ -1334,3 +1360,21 @@ func _gui_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion and _dragging:
 		global_position = get_global_mouse_position() + _drag_offset
 		accept_event()
+
+func _build_upcoming_tab() -> void:
+	var scroll := ScrollContainer.new()
+	scroll.name = "Upcoming"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_tab_container.add_child(scroll)
+	var margin := MarginContainer.new()
+	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 14)
+	scroll.add_child(margin)
+	_upcoming_view = preload("res://scripts/cash_commitments_view.gd").new()
+	_upcoming_view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	margin.add_child(_upcoming_view)
+
+func _refresh_upcoming() -> void:
+	if is_instance_valid(_upcoming_view) and visible and not TurnManager.is_resolving and _tab_container.get_tab_title(_tab_container.current_tab) == "Upcoming":
+		_upcoming_view.refresh()

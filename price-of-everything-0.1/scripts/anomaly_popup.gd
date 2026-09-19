@@ -40,8 +40,11 @@ const FLASH_BEAT_TIME := 0.28
 
 signal dismissed
 
+var horizontal_overhang := 0.0
 var _body: RichTextLabel
 var _width: float = WIDTH
+var _row: HBoxContainer
+var _action: Button
 
 
 func _ready() -> void:
@@ -67,6 +70,9 @@ func _build() -> void:
 	for side: String in ["left", "right", "top", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, PAD)
 	add_child(margin)
+	_row = HBoxContainer.new()
+	_row.add_theme_constant_override("separation", 6)
+	margin.add_child(_row)
 
 	# A RichTextLabel, because one word in the sentence is bold and coloured and a Label
 	# cannot do that. The three-line trim is therefore done by MEASUREMENT below rather
@@ -85,7 +91,29 @@ func _build() -> void:
 	_body.add_theme_font_override("bold_font", _UIFonts.PLEX_SEMI)
 	_body.add_theme_font_size_override("normal_font_size", FONT_SIZE)
 	_body.add_theme_font_size_override("bold_font_size", FONT_SIZE)
-	margin.add_child(_body)
+	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_row.add_child(_body)
+
+func set_action(description: String, action: Callable) -> void:
+	_action = Button.new()
+	_action.theme = DS.theme
+	_action.name = "NoticeAction"
+	_action.theme_type_variation = "Primary"
+	_action.text = "›"
+	_action.tooltip_text = description
+	_action.add_theme_font_size_override("font_size", 28)
+	_action.custom_minimum_size = Vector2(40, 40)
+	_action.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	for state in ["normal", "hover", "pressed", "focus"]:
+		var box := _action.get_theme_stylebox(state, "Primary").duplicate() as StyleBox
+		box.content_margin_left = 6
+		box.content_margin_right = 6
+		box.content_margin_top = 2
+		box.content_margin_bottom = 2
+		_action.add_theme_stylebox_override(state, box)
+	_action.pressed.connect(action)
+	_row.add_child(_action)
+	set_width(_width)
 
 
 ## Match the module this card belongs to. Called BEFORE set_message, because the wrapped
@@ -94,17 +122,31 @@ func set_width(w: float) -> void:
 	_width = maxf(MIN_WIDTH, w)
 	custom_minimum_size = Vector2(_width, 0)
 	if _body != null:
-		_body.custom_minimum_size = Vector2(_width - PAD * 2, 0)
+		_body.custom_minimum_size = Vector2(_width - PAD * 2 - (46 if _action != null else 0), 0)
 	reset_size()
 
 
 ## `word` is the one term the card is about and `tone` how to read it — "bad" for a cost
 ## running away, "good" for money arriving, "warn" for something merely worth knowing.
-func set_message(text: String, word: String = "", tone: String = "warn") -> void:
-	var shown := _trim_to_lines(text)
+func set_message(text: String, word: String = "", tone: String = "warn", trim: bool = true) -> void:
+	var shown := _trim_to_lines(text) if trim else text
 	_body.text = _mark(shown, word, tone)
 	reset_size()
 	_flash()
+
+
+## Keep explicit notice lines intact within the module's compact width.
+func fit_message_lines(text: String) -> void:
+	var font: Font = _body.get_theme_font("bold_font")
+	var available := _width - PAD * 2 - (46 if _action != null else 0)
+	var font_size := FONT_SIZE
+	for line: String in text.split("\n"):
+		var measured := font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
+		if measured > available:
+			font_size = mini(font_size, maxi(1, floori(FONT_SIZE * available / measured)))
+	_body.add_theme_font_size_override("normal_font_size", font_size)
+	_body.add_theme_font_size_override("bold_font_size", font_size)
+	reset_size()
 
 
 ## Cut `text` down to MAX_LINES at the card's width, ending on an ellipsis when it had to.
@@ -114,7 +156,7 @@ func _trim_to_lines(text: String) -> String:
 	var font: Font = _body.get_theme_font("normal_font")
 	if font == null:
 		return text
-	var avail: float = maxf(40.0, _width - PAD * 2)
+	var avail: float = maxf(40.0, _width - PAD * 2 - (46 if _action != null else 0))
 	var line_h: float = font.get_height(FONT_SIZE)
 	var budget: float = line_h * float(MAX_LINES) + 1.0
 	if font.get_multiline_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, avail, FONT_SIZE).y <= budget:
@@ -154,12 +196,14 @@ func _mark(text: String, word: String, tone: String) -> String:
 func place_under(anchor: Control, stack_offset: float = 0.0) -> void:
 	if anchor == null or not is_instance_valid(anchor):
 		return
-	if anchor.size.x > 1.0:
-		set_width(anchor.size.x)
+	var bounds := anchor.get_global_rect()
+	if bounds.size.x > 1.0:
+		set_width(bounds.size.x + horizontal_overhang * 2.0)
 	reset_size()
 	var vw := get_viewport_rect().size.x
-	var x: float = clampf(anchor.global_position.x, 8.0, maxf(8.0, vw - size.x - 8.0))
-	var y: float = anchor.global_position.y + anchor.size.y + ANCHOR_GAP + stack_offset
+	var edge := maxf(0.0, 8.0 - horizontal_overhang)
+	var x: float = clampf(bounds.position.x - horizontal_overhang, edge, maxf(edge, vw - size.x - edge))
+	var y: float = bounds.end.y + ANCHOR_GAP + stack_offset
 	global_position = Vector2(x, y)
 
 

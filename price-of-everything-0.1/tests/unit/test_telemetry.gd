@@ -114,3 +114,44 @@ func _test_telemetry_interactions() -> void:
 	telemetry.import_state(saved)
 	_check(telemetry._events.size() == 2, "interaction telemetry: restores interaction history")
 	telemetry.free()
+
+func _test_start_label_captured_before_first_turn_or_interaction() -> void:
+	for start: String in ["tutorial", "metal_magnate", "glass_merchant"]:
+		SaveLoad.prepare_new_game("res://data/starts/" + start + ".json", {})
+		MatchState.scenario_name = str(SaveLoad._pending_snapshot.match.scenario_name)
+		var telemetry := preload("res://scripts/telemetry_state.gd").new()
+		telemetry.enabled = true
+		telemetry._armed = true
+		telemetry.import_state({}) # Same path as a new start: no saved telemetry identity.
+		var envelope: Dictionary = telemetry._build_envelope("quit_to_desktop")
+		_check(envelope.run.start == start, "telemetry: %s early exit has its start label" % start)
+		_check(telemetry._rows.is_empty() and telemetry._events.is_empty(), "telemetry: start label requires no turn or UI interaction")
+		MatchState.scenario_name = ""
+		_check(telemetry._build_envelope("quit_to_menu").run.start == start, "telemetry: reset before finalization preserves %s" % start)
+		telemetry.free()
+	SaveLoad._pending_snapshot = {}
+	MatchState.reset()
+
+func _test_saved_start_label_and_legacy_fallback() -> void:
+	var telemetry := preload("res://scripts/telemetry_state.gd").new()
+	telemetry.enabled = true
+	telemetry._armed = true
+	telemetry._run_id = "local-start-label-test"
+	telemetry._run_start_id = "glass_merchant"
+	var saved: Dictionary = telemetry.export_state()
+	_check(saved.start == "glass_merchant", "telemetry: save persists the captured start")
+	MatchState.scenario_name = ""
+	telemetry._run_start_id = ""
+	telemetry.import_state(saved)
+	_check(telemetry._build_envelope("quit_to_desktop").run.start == "glass_merchant", "telemetry: resume then immediate exit preserves the saved label")
+	_check(telemetry._run_id == saved.run_id, "telemetry: restoring start preserves the run identity")
+	var legacy := saved.duplicate(true)
+	legacy.erase("start")
+	MatchState.scenario_name = "metal_magnate"
+	telemetry.import_state(legacy)
+	_check(telemetry._run_start_id == "metal_magnate", "telemetry: legacy save recovers start from loaded MatchState, not the previous run")
+	MatchState.scenario_name = ""
+	telemetry.import_state(legacy)
+	_check(telemetry._run_start_id == "", "telemetry: genuinely unknown legacy scenario is not invented as Glass Merchant")
+	telemetry.free()
+	MatchState.reset()
