@@ -27,7 +27,11 @@ const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const SellSurplusDialog := preload("res://scripts/sell_surplus_dialog.gd")
 const GOODS_FRAME := preload("res://assets/ui/goods_frame.tres")
 const KeyedBuildingIcon := preload("res://scripts/keyed_building_icon.gd")
+const BuildingIcon := preload("res://scripts/building_icon.gd")
 const PLUS_ICON_PATH := "res://assets/icons/ui_icons/plus_off_white.png"
+const ROUTE_STOCKPILE_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_stockpile.png")
+const ROUTE_MARKET_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_port.png")
+const ROUTE_MIDDLEMAN_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_lorry.png")
 # Classic TileInfoPanel footprint is 760×630; this is 120px narrower, 100px taller.
 const TABS := [
 	{"id": "bl", "label": "Buildings"},
@@ -48,6 +52,7 @@ const STOCK_MAX_BARS := 7
 const STOCK_NAME_MAX_CHARS := 15
 
 var _plus_icon: Texture2D = null
+static var _route_icon_cache: Dictionary = {}
 
 # Seaport special-building card (top of the Buildings tab) + its NPC buy-confirm dialog.
 const PORT_BUILDING_ID := "b_004"
@@ -72,6 +77,7 @@ var _goods_drawer_list: VBoxContainer = null
 # Warehouse-expansion inline confirmation open? (Persists across pane rebuilds,
 # resets when a different tile is shown.)
 var _warehouse_expand: bool = false
+var _stock_manage_expanded := false
 
 # "Sell all Surplus" confirmation. The suppress flag is session-wide (static) so
 # "Do not show again for other tiles" carries across every tile's panel.
@@ -511,6 +517,7 @@ func _on_tile_input(event: InputEvent, tab_id: String) -> void:
 func _select_tab(tab_id: String) -> void:
 	if tab_id != "stock":
 		_close_goods_drawer()
+		_stock_manage_expanded = false
 	_active_tab = tab_id
 	for tab in TABS:
 		var id: String = tab.id
@@ -1970,47 +1977,26 @@ func _go_to_building(instance_id: String) -> void:
 func _build_stock_pane(pane: VBoxContainer) -> void:
 	var service = preload("res://scripts/middleman_service.gd")
 	var logistics: Dictionary = service.tile_sides(_current_tile_id)
-	if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1" and (not logistics.input.is_empty() or not logistics.output.is_empty()):
-		if logistics.physical and ResearchState.open_logistics_contracts_available():
-			var manage := Button.new()
+	var has_logistics: bool = str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1" \
+		and (not logistics.input.is_empty() or not logistics.output.is_empty()) \
+		and ResearchState.open_logistics_contracts_available()
+	# The two controls at the top of this pane are deliberately independent from the
+	# goods chart below: surplus is a tile-wide standing order, while Manage Logistics
+	# changes the input/output policy for every eligible building on this tile.
+	if has_logistics and _stock_manage_expanded:
+		pane.add_child(_make_stockpile_back_button())
+	pane.add_child(_make_surplus_controls())
+	if has_logistics:
+		if _stock_manage_expanded:
+			pane.add_child(_make_tile_logistics_controls(logistics))
+		else:
+			var manage := _make_action_button("Manage Logistics")
 			manage.name = "ManageTileLogistics"
-			manage.text = "Manage Logistics"
 			manage.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-			manage.pressed.connect(func() -> void: MatchState.building_ledger_filter_requested.emit(""))
+			manage.pressed.connect(func() -> void:
+				_stock_manage_expanded = true
+				_refresh_pane("stock"))
 			pane.add_child(manage)
-		var center := CenterContainer.new()
-		center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		if not logistics.physical:
-			center.size_flags_vertical = Control.SIZE_EXPAND_FILL
-			center.custom_minimum_size.y = 260
-		pane.add_child(center)
-		var rows := VBoxContainer.new()
-		rows.add_theme_constant_override("separation", 20)
-		center.add_child(rows)
-		for side in ["input", "output"]:
-			var row := HBoxContainer.new()
-			row.add_theme_constant_override("separation", 12)
-			var check := UIHelpers.make_custom_checkbox()
-			check.name = "TileLogistics"+side.capitalize()
-			check.button_pressed = bool(logistics["all_"+side]) and not logistics[side].is_empty()
-			check.disabled = logistics[side].is_empty()
-			check.tooltip_text = "Changes this side for all player-owned buildings with tradeable materials. Electricity stays on the grid."
-			var label := Label.new()
-			label.text = "%s through Logistics Intermediary for all Buildings on this tile" % ("Inputs" if side == "input" else "Outputs")
-			label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			label.custom_minimum_size.x = 280
-			row.add_child(check)
-			row.add_child(label)
-			rows.add_child(row)
-			var tile_id := _current_tile_id
-			check.toggled.connect(func(selected: bool) -> void:
-				var mode := "middleman" if selected else "managed"
-				preload("res://scripts/logistics_confirmation.gd").request(self, mode, func() -> bool:
-					var result: Dictionary = service.set_tile_mode(tile_id, side, mode)
-					if not result.ok: MatchState.request_toast(str(result.reason), "warning")
-					_refresh_active_pane()
-					return bool(result.ok), _refresh_active_pane))
-		if not logistics.physical: return
 	# Peak utilisation last turn — first row of the pane, and deliberately NOT the same figure
 	# as the tab button (see _make_stock_utilisation_row). Goods that only transited via the
 	# JIT feed are excluded: they never took a slot, so they are not storage used — the JIT
@@ -2032,10 +2018,6 @@ func _build_stock_pane(pane: VBoxContainer) -> void:
 	var pct_text := "FULL · %d/%d" % [stock.used, stock.capacity] if stock.is_full else "%d/%d · %d%%" % [stock.used, stock.capacity, roundi(float(stock.pct) * 100.0)]
 	# The "Stockpile" heading now lives inside the chart's outline.
 	pane.add_child(_make_stock_chart(stock.goods, pct_text, str(stock.status)))
-
-	# Whole-tile "Sell all Surplus" — applies to every good, so it sits under the
-	# chart, outside the per-good "select a good" flow.
-	pane.add_child(_make_surplus_destination_select())
 
 	if _stock_sel.is_empty():
 		pane.add_child(_make_muted_label("Select a good above to move or sell it"))
@@ -2219,6 +2201,248 @@ func _commit_warehouse_upgrade(source: String) -> void:
 	else:
 		MatchState.request_toast("Warehouse expansion failed: %s" % str(res.get("reason", "unknown")), "warning")
 	_refresh_pane("stock")
+
+# --- Tile-wide surplus and logistics controls -------------------------------
+#
+# Surplus is a standing order for goods that remain after this tile's production
+# commitments are reserved.  The logistics controls below it are deliberately
+# hidden behind one button: most visits to the Stockpile tab are about storage,
+# while changing every building on a tile is an occasional management action.
+func _make_surplus_controls() -> Control:
+	var box := VBoxContainer.new()
+	box.name = "SurplusControls"
+	box.add_theme_constant_override("separation", 5)
+	box.add_child(_make_section_title("Surplus", "", "ok"))
+	var row := HBoxContainer.new()
+	row.name = "SurplusDestinations"
+	row.add_theme_constant_override("separation", 6)
+	var selected := MatchState.get_sell_surplus_destination(_current_tile_id)
+	var options := [
+		{"id":"none", "label":"Keep here", "icon":ROUTE_STOCKPILE_ICON, "tip":"Keep unused goods in this tile's stockpile."},
+		{"id":"middleman", "label":"Sell to Logistics Intermediary", "icon":ROUTE_MIDDLEMAN_ICON, "tip":"Offer unused goods to the local Logistics Intermediary."},
+		{"id":"market", "label":"Sell to Global Market via nearest Port", "icon":ROUTE_MARKET_ICON, "tip":"Sell unused goods through the nearest port."},
+	]
+	for option: Dictionary in options:
+		var destination := str(option.id)
+		var button := _make_route_choice_button(str(option.label), option.icon as Texture2D, destination == selected, str(option.tip))
+		button.name = "Surplus_%s" % destination.capitalize()
+		if destination == "market" and not ResearchState.global_trade_license_available():
+			button.disabled = true
+			button.tooltip_text = "Global Trade License required to sell surplus through a port."
+		elif destination == "middleman" and not ResearchState.open_logistics_contracts_available():
+			button.disabled = true
+			button.tooltip_text = "Open Logistics Contracts research required."
+		if not button.disabled:
+			button.pressed.connect(func() -> void:
+				MatchState.set_sell_surplus_destination(_current_tile_id, destination)
+				_refresh_active_pane())
+		row.add_child(button)
+	box.add_child(row)
+	return box
+
+func _make_stockpile_back_button() -> Control:
+	var row := HBoxContainer.new()
+	row.name = "TileLogisticsHeader"
+	row.add_theme_constant_override("separation", 8)
+	var back := _make_action_button("Back")
+	back.name = "BackFromTileLogistics"
+	back.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	back.custom_minimum_size = Vector2(76, 34)
+	back.pressed.connect(func() -> void:
+		_stock_manage_expanded = false
+		_refresh_pane("stock"))
+	row.add_child(back)
+	var title := Label.new()
+	title.text = "Manage Logistics"
+	title.theme_type_variation = &"BuildingName"
+	title.add_theme_color_override("font_color", DS.PALETTE.ACCENT)
+	title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(title)
+	return row
+
+func _make_tile_logistics_controls(logistics: Dictionary) -> Control:
+	var box := VBoxContainer.new()
+	box.name = "TileLogisticsControls"
+	box.add_theme_constant_override("separation", 7)
+	if not (logistics.input as Array).is_empty():
+		box.add_child(_make_section_header("Inputs for all buildings:", "", "ok"))
+		box.add_child(_make_tile_logistics_choice_row("input", logistics))
+	if not (logistics.output as Array).is_empty():
+		box.add_child(_make_section_header("Outputs for all buildings:", "", "ok"))
+		box.add_child(_make_tile_logistics_choice_row("output", logistics))
+	return box
+
+func _make_tile_logistics_choice_row(side: String, logistics: Dictionary) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.name = "%sLogisticsChoices" % side.capitalize()
+	row.add_theme_constant_override("separation", 8)
+	var ids: Array = logistics.get(side, []) as Array
+	var choices := [
+		{"id":"managed", "tip":"Per Building", "texture":BuildingIcon.clean_texture("b_007", "industrial_factory")},
+		{"id":"middleman", "tip":"Logistics Intermediary", "texture":ROUTE_MIDDLEMAN_ICON},
+		{"id":"market", "tip":"Global Market", "texture":ROUTE_MARKET_ICON},
+		{"id":"stockpile", "tip":"Tile Stockpile", "texture":ROUTE_STOCKPILE_ICON},
+	]
+	for choice: Dictionary in choices:
+		var mode := str(choice.id)
+		var button := _make_tile_logistics_icon_button(mode, side, ids, choice.texture as Texture2D, str(choice.tip))
+		button.name = "%s_%s" % [side.capitalize(), mode.capitalize()]
+		if mode == "market" and not ResearchState.global_trade_license_available():
+			button.disabled = true
+			button.tooltip_text = "Global Trade License required to use the global market."
+		elif mode == "middleman" and not ResearchState.open_logistics_contracts_available():
+			button.disabled = true
+			button.tooltip_text = "Open Logistics Contracts research required."
+		if not button.disabled:
+			button.pressed.connect(func() -> void:
+				_apply_tile_logistics_policy(side, mode, logistics))
+		row.add_child(button)
+	return row
+
+func _make_route_choice_button(text: String, texture: Texture2D, selected: bool, tooltip: String) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.icon = _off_white_route_icon(texture)
+	button.tooltip_text = tooltip
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.custom_minimum_size = Vector2(0, 46)
+	button.add_theme_constant_override("icon_max_width", 24)
+	button.add_theme_font_size_override("font_size", 11)
+	button.add_theme_color_override("font_color", DS.PALETTE.ACCENT)
+	button.add_theme_color_override("font_hover_color", DS.PALETTE.ACCENT)
+	button.add_theme_color_override("font_pressed_color", DS.PALETTE.ACCENT)
+	button.add_theme_stylebox_override("normal", _logistics_button_style(selected, false))
+	button.add_theme_stylebox_override("hover", _logistics_button_style(selected, true))
+	button.add_theme_stylebox_override("pressed", _logistics_button_style(true, true))
+	button.add_theme_stylebox_override("disabled", _logistics_button_style(false, false))
+	return button
+
+func _make_tile_logistics_icon_button(mode: String, side: String, ids: Array, texture: Texture2D, tooltip: String) -> Button:
+	var button := Button.new()
+	button.icon = _off_white_route_icon(texture)
+	button.tooltip_text = tooltip
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	button.custom_minimum_size = Vector2(58, 52)
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.expand_icon = true
+	button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	button.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
+	button.add_theme_constant_override("icon_max_width", 34)
+	button.add_theme_stylebox_override("normal", _logistics_button_style(_tile_logistics_choice_active(mode, side, ids), false))
+	button.add_theme_stylebox_override("hover", _logistics_button_style(_tile_logistics_choice_active(mode, side, ids), true))
+	button.add_theme_stylebox_override("pressed", _logistics_button_style(true, true))
+	button.add_theme_stylebox_override("disabled", _logistics_button_style(false, false))
+	return button
+
+func _off_white_route_icon(texture: Texture2D) -> Texture2D:
+	if texture == null:
+		return texture
+	var key := texture.resource_path
+	if key == "":
+		return texture
+	if _route_icon_cache.has(key):
+		return _route_icon_cache[key] as Texture2D
+	var image := texture.get_image()
+	if image == null:
+		return texture
+	image = image.duplicate()
+	if image.is_compressed():
+		image.decompress()
+	image.convert(Image.FORMAT_RGBA8)
+	image.clear_mipmaps()
+	var data := image.get_data()
+	var cream := Color(0.995234, 0.930806, 0.763265, 1.0)
+	for offset in range(0, data.size(), 4):
+		if data[offset + 3] > 0:
+			data[offset] = int(round(cream.r * 255.0))
+			data[offset + 1] = int(round(cream.g * 255.0))
+			data[offset + 2] = int(round(cream.b * 255.0))
+	var recoloured := Image.create_from_data(image.get_width(), image.get_height(), false, Image.FORMAT_RGBA8, data)
+	recoloured.generate_mipmaps()
+	var result := ImageTexture.create_from_image(recoloured)
+	_route_icon_cache[key] = result
+	return result
+
+func _logistics_button_style(selected: bool, hovered: bool) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = DS.PALETTE.BG_HIGHLIGHT if hovered else DS.PALETTE.BG_INSET
+	style.border_color = DS.PALETTE.ACCENT if selected else DS.PALETTE.BORDER_SOFT
+	style.set_border_width_all(2 if selected else 1)
+	style.set_corner_radius_all(7)
+	style.set_content_margin_all(6)
+	return style
+
+func _tile_logistics_choice_active(mode: String, side: String, ids: Array) -> bool:
+	if ids.is_empty():
+		return false
+	var service = preload("res://scripts/middleman_service.gd")
+	if mode == "middleman":
+		return ids.all(func(iid: String) -> bool: return service.side_all_middleman(iid, side))
+	if mode == "managed":
+		return not ids.all(func(iid: String) -> bool: return service.side_all_middleman(iid, side))
+	for iid: String in ids:
+		var items: Array = service._side_items(iid, side)
+		for item: Dictionary in items:
+			var gid := str(item.get("good_id", ""))
+			if not service.material_tradeable(gid, side):
+				continue
+			if side == "input":
+				var route := service.input_source_route(iid, gid)
+				if mode == "market" and str(route.get("primary", "")) != "market": return false
+				if mode == "stockpile" and (str(route.get("primary", "")) != "stockpile" or str(route.get("fallback", "")) != "middleman"): return false
+			else:
+				var destination := MatchState.get_output_stockpile_destination(iid, gid)
+				if mode == "market" and not MatchState.is_output_market(iid, gid): return false
+				if mode == "stockpile" and destination != _current_tile_id: return false
+	return true
+
+func _apply_tile_logistics_policy(side: String, mode: String, logistics: Dictionary) -> void:
+	var ids: Array = logistics.get(side, []) as Array
+	if ids.is_empty():
+		return
+	var apply := func() -> bool:
+		var service = preload("res://scripts/middleman_service.gd")
+		var broad_mode := "middleman" if mode == "middleman" else "managed"
+		var result: Dictionary = service.set_tile_mode(_current_tile_id, side, broad_mode)
+		if not bool(result.get("ok", false)):
+			MatchState.request_toast(str(result.get("reason", "Unable to change tile logistics.")), "warning")
+			return false
+		if side == "input":
+			if mode == "market" or mode == "stockpile":
+				var source := "market" if mode == "market" else "stockpile"
+				for iid: String in ids:
+					for item: Dictionary in service._side_items(iid, "input"):
+						var gid := str(item.get("good_id", ""))
+						if not service.material_tradeable(gid, "input"):
+							continue
+						var primary := service.set_input_route(iid, gid, "primary", source)
+						if not bool(primary.get("ok", false)):
+							MatchState.request_toast(str(primary.get("reason", "Unable to set input source.")), "warning")
+							return false
+						# Every physical route keeps the intermediary as its fallback. The
+						# fallback is a visible route choice, not a hidden "none" state.
+						var fallback := service.set_input_route(iid, gid, "fallback", "middleman")
+						if not bool(fallback.get("ok", false)):
+							MatchState.request_toast(str(fallback.get("reason", "Unable to set input fallback.")), "warning")
+							return false
+		elif side == "output" and (mode == "market" or mode == "stockpile"):
+			var tile_id := _current_tile_id
+			for iid: String in ids:
+				for item: Dictionary in service._side_items(iid, "output"):
+					var gid := str(item.get("good_id", ""))
+					if not service.material_tradeable(gid, "output"):
+						continue
+					if mode == "market":
+						MatchState.route_output_to_market(iid, gid)
+					else:
+						MatchState.set_output_stockpile_destination(iid, tile_id, gid)
+		_refresh_pane("stock")
+		return true
+	var confirmation := preload("res://scripts/logistics_confirmation.gd")
+	confirmation.request(self, "middleman" if mode == "middleman" else "managed", apply, func() -> void: _refresh_pane("stock"))
 
 # Whole-tile surplus destination. This is deliberately separate from per-good
 # stockpile moves: it controls the standing destination for goods left after
