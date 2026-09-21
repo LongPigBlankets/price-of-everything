@@ -29,16 +29,16 @@ signal close_requested
 # key → VM field; label; column width (px); text alignment; sortable?
 const COLUMNS := [
 	{"key": "bicon",   "label": "",         "w": 86.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": false},  # == BICON_CELL_W
-	{"key": "name",    "label": "Building", "w": 196.0, "align": HORIZONTAL_ALIGNMENT_LEFT,   "sort": true},
-	{"key": "tile",    "label": "Tile",     "w": 90.0,  "align": HORIZONTAL_ALIGNMENT_LEFT,   "sort": true},
+	{"key": "name",    "label": "Building", "w": 196.0, "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
+	{"key": "tile",    "label": "Tile",     "w": 90.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
 	{"key": "output",  "label": "Produces",   "w": 76.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
 	{"key": "logistics_inputs", "label": "Inputs", "w": 80.0, "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": false},
 	{"key": "logistics_outputs", "label": "Outputs", "w": 80.0, "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": false},
-	{"key": "power",   "label": "Power",    "w": 110.0, "align": HORIZONTAL_ALIGNMENT_LEFT,   "sort": true},
-	{"key": "status",  "label": "Status",   "w": 90.0,  "align": HORIZONTAL_ALIGNMENT_LEFT,   "sort": true},
-	{"key": "cost",    "label": "Cost/u",   "w": 82.0,  "align": HORIZONTAL_ALIGNMENT_RIGHT,  "sort": true},
-	{"key": "net",     "label": "Net/t",    "w": 92.0,  "align": HORIZONTAL_ALIGNMENT_RIGHT,  "sort": true},
-	{"key": "land",    "label": "Land",     "w": 50.0,  "align": HORIZONTAL_ALIGNMENT_RIGHT,  "sort": true},
+	{"key": "power",   "label": "Power",    "w": 110.0, "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
+	{"key": "status",  "label": "Status",   "w": 90.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
+	{"key": "cost",    "label": "Cost/u",   "w": 82.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
+	{"key": "net",     "label": "Net/t",    "w": 92.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
+	{"key": "land",    "label": "Land",     "w": 50.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
 	{"key": "upgrade", "label": "Upg",      "w": 52.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": false},
 ]
 

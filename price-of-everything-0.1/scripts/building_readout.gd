@@ -524,7 +524,9 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 			rows.append(_row(reach_tone, "truck", "Output destination %s" % reach, "%d turn%s to %s." % [turns, "" if turns == 1 else "s", dest_name]))
 			var per_unit := cost / float(qty)
 			var band := "cheap" if per_unit < 0.15 else ("average" if per_unit < 0.4 else "expensive")
-			var band_tone := "ok" if per_unit < 0.15 else ("warn" if per_unit < 0.4 else "bad")
+			# Expensive freight needs attention, but it is still a viable route. Reserve
+			# red for a route that cannot reach the destination at all.
+			var band_tone := "ok" if per_unit < 0.15 else "warn"
 			rows.append(_row(band_tone, "truck", "Transport to destination is %s" % band, "£%s / unit shipped · £%.2f / turn." % [_num(per_unit), cost]))
 
 	# 5) cost to produce vs market (the engine's profitability signal)

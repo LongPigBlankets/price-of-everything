@@ -2276,10 +2276,14 @@ func _build_routing_buttons(building: Dictionary, recipe: Dictionary) -> HBoxCon
 func _logistics_side_control(building: Dictionary, recipe: Dictionary, side: String) -> Control:
 	var service = preload("res://scripts/middleman_service.gd")
 	var active: bool = service.side_all_middleman(str(building.instance_id), side)
+	# Until Open Logistics Contracts is unlocked, keep the original Inputs / Outputs
+	# route cards as the primary actions. The Manage Logistics CTA is only meaningful
+	# once the alternative route choices can actually be opened.
+	var manage_unlocked := service.eligible(building) and ResearchState.open_logistics_contracts_available()
 	var open := func() -> void:
 		if side == "input": _open_input_sources_sheet(building, recipe)
 		else: _open_output_sheet(building, recipe)
-	if not active or not ResearchState.open_logistics_contracts_available():
+	if not active or not manage_unlocked:
 		return _route_card("Inputs" if side == "input" else "Outputs", _input_summary(building, recipe) if side == "input" else _output_summary(building, recipe), open)
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
