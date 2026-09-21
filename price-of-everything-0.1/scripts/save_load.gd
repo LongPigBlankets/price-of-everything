@@ -8,6 +8,8 @@ extends Node
 ## scene-reload sequencing (main-menu Load Game) and on-map visual rebuild.
 
 const AppPaths := preload("res://scripts/app_paths.gd")
+const MiddlemanLocations := preload("res://scripts/middleman_locations.gd")
+const MiddlemanService := preload("res://scripts/middleman_service.gd")
 # Version history (migrations in _migrate): 1 = initial format; 2 = adds `ruleset`
 # (match.ruleset + meta.ruleset) so future rule variants can key off saves;
 # 3 = adds special order state; 4 = advisor seats/acquisition; 5 = structured
@@ -17,8 +19,9 @@ const AppPaths := preload("res://scripts/app_paths.gd")
 # 7 = cosmetic company-rankings player revenue history; 8 = last-turn player
 # goods quantities for the rankings' Goods tab; 9 = recorded market price history;
 # 10 = historical player unit costs alongside prices; 11 = saved cost results.
-# 12 = private middleman service; 13 = independent input/output modes and managed source orders.
-const SAVE_VERSION := 14
+# 12 = private middleman service; 13 = independent input/output modes and managed source orders;
+# 14 = expanded material classes/sites; 15 = per-good middleman routes and tile surplus destinations.
+const SAVE_VERSION := 15
 const MAIN_SCENE := "res://scenes/main.tscn"
 const DEFAULT_START := "res://data/starts/default.json"
 const BuildingLevels := preload("res://scripts/building_levels.gd")   # start-building levels
@@ -378,6 +381,25 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 	var override_rules: Dictionary = overrides.get("ruleset", {})
 	for k in override_rules:
 		ruleset[str(k)] = override_rules[k]
+	# Fresh middleman starts enrol every player-owned tradeable building unless the
+	# start explicitly opts out by omitting the new-building flag.  This keeps the
+	# service genuinely building-wide while preserving old saves' rule that a
+	# missing provider payload does not silently activate logistics on load.
+	if str(ruleset.get("logistics_model", "")) == "middleman_v1" and bool(ruleset.get("middleman_new_buildings", false)):
+		for iid in buildings:
+			var start_building: Dictionary = buildings[iid]
+			if str(start_building.get("owner", MatchState.LOCAL_PLAYER)) != MatchState.LOCAL_PLAYER:
+				continue
+			var recipe := Catalog.get_recipe(str(start_building.get("recipe_id", "")))
+			if not (MiddlemanService.recipe_side(recipe, "input") or MiddlemanService.recipe_side(recipe, "output")):
+				continue
+			service_buildings[iid] = {
+				"coefficient": MiddlemanLocations.coefficient(str(start_building.get("tile_id", ""))),
+				"recipe_id": str(start_building.get("recipe_id", "")), "inputs": {}, "outputs": {},
+				"turn": -1, "state": "idle", "receipts": {},
+				"input_mode": "middleman", "output_mode": "middleman",
+				"input_modes": {}, "output_modes": {},
+			}
 	return {
 		"save_version": SAVE_VERSION,
 		"start": true,
@@ -686,6 +708,16 @@ func _migrate(snap: Dictionary) -> Dictionary:
 				# Expanded material classes/sites: old clients cannot safely execute these batches.
 				# No automatic enrollment or other-start policy changes.
 				snap["save_version"] = 14
+			14:
+				# Per-good route maps inherit each building's former side-wide choice.
+				var services: Dictionary = snap.get("match",{}).get("middleman_service",{}).get("buildings",{})
+				for service: Dictionary in services.values():
+					if not service.has("input_modes"): service["input_modes"] = {}
+					if not service.has("output_modes"): service["output_modes"] = {}
+					for gid in service.get("inputs", {}).keys(): service["input_modes"][str(gid)] = str(service.get("input_mode", "middleman"))
+					for gid in service.get("outputs", {}).keys(): service["output_modes"][str(gid)] = str(service.get("output_mode", "middleman"))
+				snap.get("match",{}).get("middleman_service",{})["buildings"] = services
+				snap["save_version"] = 15
 			_:
 				break
 		version += 1

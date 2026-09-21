@@ -2,6 +2,7 @@ extends "res://tests/test_base.gd"
 ## Construction sim, build costs, refunds, upgrades and the construct panel.
 
 const FEATURE := "construction"
+const InfrastructureInfo := preload("res://scripts/infrastructure_info.gd")
 ## Tests that also belong to other features (run under any of their tags).
 const TAGS := {
 	"_test_build_forecast": ["construction", "market", "production", "research"],
@@ -2347,6 +2348,17 @@ func _test_infra_level_ranges() -> void:
 		if EconomyConfig.infra_range_for_level(str(mode), 1) != Catalog.infra_range(str(mode)):
 			l1_matches = false
 	_check(l1_matches, "infra levels: level 1 still equals the flat CSV range")
+
+	# The player-facing accordions use InfrastructureInfo, so they must expose the same
+	# per-level ranges as routing rather than repeating the level-1 value for every row.
+	var panel_ranges_ok := true
+	for mode in expected:
+		for i in 3:
+			var shown := str(InfrastructureInfo.level_stats(str(mode), i + 1).get("tiles", ""))
+			var want := "%d tiles / turn" % int((expected[mode] as Array)[i])
+			if shown != want:
+				panel_ranges_ok = false
+	_check(panel_ranges_ok, "infra levels: building details shows each level's range")
 
 	# A real route over a rail chain: 9 tiles is 3 turn-moves at L1 and 1 at L3.
 	var saved_infra: Dictionary = Catalog._tile_infra.duplicate(true)

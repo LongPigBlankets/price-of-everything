@@ -1,5 +1,43 @@
 extends "res://tests/unit/test_middleman_service.gd"
 const Routes := preload("res://scripts/logistics_routes_view.gd")
+const Readout := preload("res://scripts/building_readout.gd")
+const TileViewData := preload("res://scripts/tile_view_data.gd")
+
+func _test_intermediary_output_is_not_rendered_as_tile_stockpile() -> void:
+	var iid := str(setup()[0])
+	var building := BuildingState.get_building(iid)
+	var recipe := Catalog.get_recipe(str(building.get("recipe_id", "")))
+	var label := TileViewData._output_route_label(iid, str(building.get("tile_id", "")), recipe, false)
+	var destination := TileViewData._destination_text(building, "g_008")
+	_check("logistics intermediary" in label and destination == "logistics intermediary",
+		"active intermediary output stays private in tile route labels")
+	cleanup()
+
+func _test_input_source_list_contains_endpoints_not_transit_tiles() -> void:
+	setup()
+	var consumer := BuildingState.add_building("b_007", "r_009", "tile_6_4", MatchState.LOCAL_PLAYER)
+	Stockpile.add("tile_8_8", "g_007", 32)
+	TransportState.pending_transport_shipments = [{
+		"good_id": "g_007", "qty": 32, "source_tile": "tile_1_1",
+		"destination_tile": "tile_9_9", "path_tiles": ["tile_5_5", "tile_7_7"],
+		"turns_remaining": 2,
+	}]
+	var sources := Readout.stockpile_source_tiles(BuildingState.get_building(consumer), "g_007")
+	_check(sources.has("tile_8_8") and sources.has("tile_9_9"), "source list includes stored and arriving endpoints")
+	_check(not sources.has("tile_1_1") and not sources.has("tile_5_5") and not sources.has("tile_7_7"), "source list excludes shipment origin and transit path tiles")
+	cleanup()
+
+func _test_tile_surplus_destination_round_trips() -> void:
+	setup()
+	MatchState.set_sell_surplus_destination("tile_5_4", "middleman")
+	_check(MatchState.get_sell_surplus_destination("tile_5_4") == "middleman", "tile surplus can be sold to the local intermediary")
+	_check(MatchState.is_sell_surplus_enabled("tile_5_4"), "local intermediary surplus destination enables the standing order")
+	var snapshot := SaveLoad.export_snapshot()
+	SaveLoad.import_snapshot(JSON.parse_string(JSON.stringify(snapshot)))
+	_check(MatchState.get_sell_surplus_destination("tile_5_4") == "middleman", "surplus destination survives save/load")
+	MatchState.set_sell_surplus_destination("tile_5_4", "none")
+	_check(not MatchState.is_sell_surplus_enabled("tile_5_4") and MatchState.get_sell_surplus_destination("tile_5_4") == "none", "disabling surplus clears the standing order")
+	cleanup()
 
 func _test_tile_switch_is_atomic_and_sides_independent() -> void:
 	var ids := setup(2)

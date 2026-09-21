@@ -834,6 +834,7 @@ func _render_settings() -> void:
 	source_box.add_child(source_note)
 	var source_group := ButtonGroup.new()
 	for option in [
+		{"id": "middleman", "title": "Logistics Intermediary — default", "detail": "Delivered to the site on the next turn"},
 		{"id": "market", "title": "Market — always buy in", "detail": "Never blocks; costs money"},
 		{"id": "same_tile", "title": "Same tile — always", "detail": "Uses local stockpile only"},
 		{"id": "any_tile", "title": "Any tile with surplus", "detail": "Pulls spare goods network-wide"},
@@ -844,6 +845,13 @@ func _render_settings() -> void:
 		var choice := _settings_choice_button(
 			"%s  %s\n    %s" % [radio_text, str(option.get("title", "")), str(option.get("detail", ""))],
 			selected, source_group, true)
+		if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1":
+			if option_id == "market" and not ResearchState.global_trade_license_available():
+				choice.disabled = true
+				choice.tooltip_text = "Government Import/Export License is required for direct global-market construction purchases."
+			elif option_id in ["same_tile", "any_tile"] and not ResearchState.open_logistics_contracts_available():
+				choice.disabled = true
+				choice.tooltip_text = "Open Logistics Contracts is required to use tile stockpiles for construction."
 		choice.pressed.connect(_on_material_source_selected.bind(option_id))
 		source_box.add_child(choice)
 
@@ -1467,7 +1475,7 @@ func _render_confirm_v3() -> void:
 	if bool(_v3_forecast.get("middleman",false)):
 		var service_note := Label.new()
 		service_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		service_note.text = "After completion: middleman inputs and sales, with transport and operating storage included. Construction materials still use normal delivery and its quoted costs. Keep £%.2f for the first operating batch; anticipated sales cannot fund it." % float(_v3_forecast.cash_needed)
+		service_note.text = "After completion: middleman inputs and sales, with transport and operating storage included. Construction materials use the Logistics Intermediary and arrive on the next turn. Keep £%.2f for the first operating batch; anticipated sales cannot fund it." % float(_v3_forecast.cash_needed)
 		_content.add_child(service_note)
 	if _locked_tile_id != "" and not (_v3_forecast.get("phases", []) as Array).is_empty():
 		if BuildForecastTable.show_balance_impact():
@@ -2185,13 +2193,14 @@ var _material_remember := true
 
 func _current_material_source() -> String:
 	var s := MatchState.pending_build_material_source if MatchState.pending_build_material_source != "" else MatchState.construct_material_source
-	return "market" if (s == "ask" or s == "") else s
+	return "middleman" if (s == "ask" or s == "") else s
 
 func _material_source_short(id: String) -> String:
 	match id:
+		"middleman": return "Logistics Intermediary"
 		"same_tile": return "this tile"
 		"any_tile": return "any surplus"
-		_: return "market"
+		_: return "global market"
 
 func _accordion_header_text(open: bool, src: String) -> String:
 	return "%s  Construction materials — %s" % ["−" if open else "+", _material_source_short(src)]
@@ -2224,12 +2233,20 @@ func _v3_materials_accordion() -> Control:
 	box.add_child(header)
 	var group := ButtonGroup.new()
 	for opt in [
-		{"id": "market", "label": "Buy from market"},
+		{"id": "middleman", "label": "Logistics Intermediary"},
+		{"id": "market", "label": "Buy from global market"},
 		{"id": "same_tile", "label": "This tile's stockpile"},
 		{"id": "any_tile", "label": "Any tile with surplus"},
 	]:
 		var oid := str(opt.get("id", ""))
 		var b := _settings_choice_button(str(opt.get("label", "")), cur == oid, group)
+		if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1":
+			if oid == "market" and not ResearchState.global_trade_license_available():
+				b.disabled = true
+				b.tooltip_text = "Government Import/Export License is required for direct global-market construction purchases."
+			elif oid in ["same_tile", "any_tile"] and not ResearchState.open_logistics_contracts_available():
+				b.disabled = true
+				b.tooltip_text = "Open Logistics Contracts is required to use tile stockpiles for construction."
 		b.pressed.connect(_on_accordion_source_picked.bind(oid, header))
 		body.add_child(b)
 	var remember := CheckBox.new()
@@ -3359,6 +3376,8 @@ func _material_source_note() -> String:
 	# "the tile you select next".
 	var where := Catalog.tile_label(_locked_tile_id) if _locked_tile_id != "" else "the tile you select next"
 	match MatchState.construct_material_source:
+		"middleman":
+			return "Materials will be bought through the Logistics Intermediary and delivered to %s on the next turn." % where
 		"market":
 			return "Materials will be bought from the market when needed at %s." % where
 		"same_tile":

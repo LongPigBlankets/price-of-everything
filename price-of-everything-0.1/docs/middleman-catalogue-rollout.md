@@ -16,18 +16,18 @@ Non-tradeable goods such as wastewater cannot be fabricated as purchases or sold
 
 | Cargo class | Tariff |
 |---|---:|
-| Light solid | £0.02 |
-| Heavy solid | £0.05 |
-| Ultra-heavy | £0.50 |
-| Safe liquid | £0.05 |
-| Hazardous liquid | £0.10 |
-| Gas | £0.125 |
+| Light solid | £0.025 |
+| Heavy solid | £0.08 |
+| Ultra-heavy | £0.60 |
+| Safe liquid | £0.08 |
+| Hazardous liquid | £0.15 |
+| Gas | £0.20 |
 
 Buy and sell transactions remain independent. Transport and provider storage are included; factory costs, electricity and applicable carbon charges remain separate. The reference price is the ordinary current market price before purchase markup.
 
-The user explicitly retained £0.125 for gases after reviewing oxygen: at base price £0.275, its fee ranges from £0.132625 in an urban port area to £0.313875 in mountains. The latter exceeds sale value. Existing negative-net settlement protection retains the paid output and prevents another batch until it can be sold or released to owned storage; it does not silently reduce the tariff. This is not a claim that every recipe/location is profitable.
+The user explicitly retained a high gas rate after reviewing oxygen: at base price £0.275, its fee is about £0.211375 in an urban port area and £0.501375 in mountains. The latter exceeds sale value. Existing negative-net settlement protection retains the paid output and prevents another batch until it can be sold or released to owned storage; it does not silently reduce the tariff. This is not a claim that every recipe/location is profitable.
 
-At coefficient 1.5, fees as a percentage of base value are approximately 0.53–0.66% for current light solids, 2.55–13.70% for safe liquids, 2.49–14.93% for hazardous liquids, 14.99% for nitrogen and 68.68% for oxygen. These are per-side material-fee checks, not a broader balance study. Full per-good evidence is in `reports/balance/middleman_full_catalogue_tariffs_2026-09-19.json`.
+At coefficient 1.5, fees as a percentage of base value are approximately 0.63–0.79% for current light solids, 4.05–21.95% for safe liquids, 3.74–22.40% for hazardous liquids, 23.32% for nitrogen and 109.50% for oxygen. These are per-side material-fee checks, not a broader balance study. The authoritative current schedule and Pepper Valley check are in [the current benchmark review](reviews/pepper-three-chain-integrated-vs-middleman-2026-09-20.md); the older full-catalogue report retains the previous-rate sensitivity run.
 
 ## Geography
 

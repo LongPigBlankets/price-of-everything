@@ -22,6 +22,9 @@ signal construction_materials_updated(instance_id: String, tile_id: String)
 signal construction_cancelled(instance_id: String, tile_id: String)
 
 const BuildingNaming := preload("res://scripts/building_naming.gd")
+const MiddlemanContract := preload("res://scripts/middleman_contract.gd")
+const MiddlemanLocations := preload("res://scripts/middleman_locations.gd")
+const MiddlemanService := preload("res://scripts/middleman_service.gd")
 const STATUS_UNDER_CONSTRUCTION := "under_construction"
 const STATUS_AWAITING_MATERIALS := "awaiting_materials"
 
@@ -129,7 +132,12 @@ func market_purchase_value(building_id: String) -> float:
 func materials_ledger(building_id: String, tile_id: String) -> Dictionary:
 	var rows: Array = []
 	var subtotal := 0.0
-	var same_tile_only := MatchState.construct_material_source == "same_tile"
+	var source := MatchState.pending_build_material_source if MatchState.pending_build_material_source != "" else MatchState.construct_material_source
+	if source == "ask" or source == "": source = "middleman"
+	if source == "middleman" and str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1": source = "market"
+	if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1" and source in ["same_tile", "any_tile"] and not ResearchState.open_logistics_contracts_available(): source = "middleman"
+	var same_tile_only := source == "same_tile"
+	var middleman_source := source == "middleman"
 	var reservations: Array = []
 	var requirements := requirements_for(building_id)
 	for good_id in requirements:
@@ -147,7 +155,7 @@ func materials_ledger(building_id: String, tile_id: String) -> Dictionary:
 				short = gap
 			else:
 				market_qty = gap
-				var quote := _market_gap_quote(tile_id, str(good_id), gap, reservations)
+				var quote := _middleman_gap_quote(tile_id, str(good_id), gap) if middleman_source else _market_gap_quote(tile_id, str(good_id), gap, reservations)
 				reservations.append(_quote_reservation(quote, str(good_id), gap))
 				market_cost = float(quote.get("cost", 0.0))
 				market_turns = int(quote.get("turns", 0))
@@ -164,6 +172,20 @@ func materials_ledger(building_id: String, tile_id: String) -> Dictionary:
 		})
 		subtotal += market_cost
 	return {"rows": rows, "subtotal": subtotal}
+
+
+## Construction kits bought through the intermediary are delivered directly to the
+## project on the next turn.  There is no port shipment or tile route to wait for;
+## the quoted amount is the ordinary buy price plus the location-aware intermediary fee.
+func _middleman_gap_quote(tile_id: String, good_id: String, qty: int) -> Dictionary:
+	var prices := MiddlemanService.prices()
+	var coefficient := MiddlemanLocations.coefficient(tile_id)
+	var quote := MiddlemanContract.quote("buy", [{"good": good_id, "quantity": qty}], prices, coefficient, MiddlemanService.goods())
+	if bool(quote.get("ok", false)):
+		return {"cost": float(quote.get("cash_out", 0.0)), "turns": 1, "transport_cost": float(quote.get("fee", 0.0))}
+	var unit_price := MarketState.get_buy_price(good_id)
+	if unit_price <= 0.0: unit_price = Catalog.get_base_price(good_id)
+	return {"cost": float(qty) * unit_price, "turns": 1, "transport_cost": 0.0}
 
 
 ## Reference estimate for buying `need` units of one good at today's buy price —
@@ -285,6 +307,20 @@ func estimate_market_cost(tile_id: String, building_id: String) -> float:
 	return total
 
 
+func estimate_middleman_cost(tile_id: String, building_id: String) -> float:
+	var missing: Dictionary = check_tile(tile_id, building_id).get("missing", {})
+	var total := 0.0
+	var free_remaining := MatchState.middleman_free_units
+	for good_id in missing:
+		var qty := int(missing[good_id])
+		var quote := _middleman_gap_quote(tile_id, str(good_id), qty)
+		var free := mini(qty, free_remaining)
+		free_remaining -= free
+		var unit_cost := float(quote.get("cost", 0.0)) / float(maxi(1, qty))
+		total += unit_cost * float(qty - free)
+	return total
+
+
 # Begin a project whose materials aren't all on the tile: order the shortfall from the market
 # (tagged to this project) and reserve the site. The caller has already deducted the build
 # cost and confirmed affordability. The project sits in awaiting_materials until claim_materials
@@ -326,6 +362,57 @@ func start_awaiting_market(building_id: String, recipe_id: String, tile_id: Stri
 		"startup_half_capacity": MatchState.construct_start_half_capacity and recipe_id != "",
 		"output_destination": output_destination,
 	}
+	construction_projects[instance_id]["name"] = BuildingNaming.label_for_tile(tile_id, instance_id, building_id, recipe_id)
+	materials_ordered.emit(instance_id, tile_id)
+	return instance_id
+
+
+## Start a construction project with a private intermediary delivery.  The paid kit is
+## held against the project rather than placed in the shared warehouse, so it cannot be
+## consumed by another building while the build waits.  It is claimed at the next
+## PROCESS phase, making this materially faster than a port shipment while preserving
+## the existing awaiting-materials lifecycle and cancellation/refund behaviour.
+func start_awaiting_middleman(building_id: String, recipe_id: String, tile_id: String, build_cost: float = 0.0) -> String:
+	var reqs: Dictionary = requirements_for(building_id)
+	var missing: Dictionary = check_tile(tile_id, building_id).get("missing", {})
+	var material_cost := estimate_middleman_cost(tile_id, building_id)
+	if MatchState.money + 0.0001 < material_cost and not TurnManager.is_resolving:
+		return ""
+	if material_cost > 0.0:
+		MatchState.add_money(-material_cost)
+	var free_remaining := MatchState.middleman_free_units
+	for good_id in missing:
+		var qty := int(missing[good_id])
+		var free := mini(qty, free_remaining)
+		free_remaining -= free
+		MatchState.consume_middleman_free_units(free)
+		ResearchState.note_middleman_shipment(str(good_id), qty)
+	var building: Dictionary = Catalog.get_building(building_id)
+	var duration: int = MatchState.effective_build_duration(building_id)
+	var instance_id: String = BuildingState.reserve_instance_id(building_id)
+	var output_destination := MatchState.construct_output_destination
+	for good_id in reqs:
+		var on_tile_part: int = int(reqs[good_id]) - int(missing.get(good_id, 0))
+		if on_tile_part > 0:
+			Stockpile.consume(tile_id, str(good_id), on_tile_part)
+	construction_projects[instance_id] = {
+			"instance_id": instance_id,
+			"building_id": building_id,
+			"recipe_id": recipe_id,
+			"tile_id": tile_id,
+			"status": STATUS_AWAITING_MATERIALS,
+			"required_materials": reqs,
+			"missing_materials": missing.duplicate(),
+			"private_materials": missing.duplicate(),
+			"turns_remaining": duration,
+			"construction_duration": duration,
+			"reserved_space": float(building.get("tile_size_used", 1)),
+			"source": {"kind": "middleman", "turns": 1},
+			"build_cost": build_cost,
+			"material_cost": material_cost,
+			"startup_half_capacity": MatchState.construct_start_half_capacity and recipe_id != "",
+			"output_destination": output_destination,
+		}
 	construction_projects[instance_id]["name"] = BuildingNaming.label_for_tile(tile_id, instance_id, building_id, recipe_id)
 	materials_ordered.emit(instance_id, tile_id)
 	return instance_id
@@ -464,16 +551,26 @@ func claim_materials() -> void:
 			continue
 		var tile_id: String = str(project.get("tile_id", ""))
 		var missing: Dictionary = project["missing_materials"]
+		var private_materials: Dictionary = project.get("private_materials", {})
 		var changed: bool = false
 		for good_id in missing.keys():
-			var need: int = int(missing[good_id])
-			var take: int = Stockpile.consume(tile_id, good_id, need)  # consume returns amount taken
+			var original_need: int = int(missing[good_id])
+			var need: int = original_need
+			var private_take: int = mini(int(private_materials.get(good_id, 0)), need)
+			if private_take > 0:
+				private_materials[good_id] = int(private_materials.get(good_id, 0)) - private_take
+				if int(private_materials.get(good_id, 0)) <= 0: private_materials.erase(good_id)
+				need -= private_take
+				changed = true
+			var take: int = Stockpile.consume(tile_id, good_id, need) if need > 0 else 0  # consume returns amount taken
+			take += private_take
 			if take > 0:
 				changed = true
-				if take >= need:
+				if take >= original_need:
 					missing.erase(good_id)
 				else:
-					missing[good_id] = need - take
+					missing[good_id] = original_need - take
+		project["private_materials"] = private_materials
 		if missing.is_empty():
 			project["status"] = STATUS_UNDER_CONSTRUCTION
 			project["turns_remaining"] = int(project.get("construction_duration", 0))
@@ -608,6 +705,13 @@ func _complete_build(building_id: String, recipe_id: String, tile_id: String, in
 		BuildingState.buildings[completed_id]["startup_half_capacity"] = true
 	var destination := output_destination if output_destination in ["market", "same_tile"] else MatchState.construct_output_destination
 	var recipe := Catalog.get_recipe(recipe_id)
+	# In a middleman campaign, leave tradeable outputs without a generic route
+	# until the service enrollment below. The per-good intermediary mode is the
+	# authoritative destination; writing the construction fallback first makes a
+	# later license/contract unlock appear to have changed the building to a tile
+	# stockpile. A route explicitly chosen while the project was pending still wins
+	# through has_output_destination().
+	var middleman_default := MiddlemanService.default_for(recipe_id, tile_id)
 	for output in recipe.get("outputs", []):
 		var good_id := str(output.get("good_id", ""))
 		if good_id == "":
@@ -620,11 +724,13 @@ func _complete_build(building_id: String, recipe_id: String, tile_id: String, in
 		# what made the e2e motor chain never route steel to its assembly tile).
 		if MatchState.has_output_destination(completed_id, good_id):
 			continue
+		if middleman_default and MiddlemanService.material_tradeable(good_id, "output"):
+			continue
 		if destination == "same_tile":
 			MatchState.set_output_stockpile_destination(completed_id, tile_id, good_id)
 		else:
 			MatchState.route_output_to_market(completed_id, good_id)
-	preload("res://scripts/middleman_service.gd").enroll_completed(completed_id)
+	MiddlemanService.enroll_completed(completed_id)
 	return completed_id
 
 

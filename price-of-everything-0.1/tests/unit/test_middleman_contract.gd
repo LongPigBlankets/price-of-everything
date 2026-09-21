@@ -20,14 +20,14 @@ func _test_quote_uses_actual_market_prices_and_does_not_trade() -> void:
 	_check(buy.ok and sell.ok,"both ordinary market sides can be quoted")
 	_check(absf(buy.goods_value - 32.0*(MarketState.get_buy_price("g_006")+MarketState.get_buy_price("g_007")))<0.000001,"goods purchases match market API prices")
 	_check(absf(sell.goods_value-33.0*p.g_008.sale)<0.000001,"sale uses ordinary sale API including its modifier context")
-	var expected: float = 32*(.005*p.g_006.reference+.075)+32*(.005*p.g_007.reference+.075)
+	var expected: float = 32*(.005*p.g_006.reference+.12)+32*(.005*p.g_007.reference+.12)
 	_check(absf(buy.fee-expected)<0.000001,"fee excludes buying markup, includes full reference price")
 	_check(state==JSON.stringify([MatchState.money,Stockpile.export_state(),MarketState.export_state(),LoanState.export_state(),TransportState.export_fields()]),"quote has no cash, stock, volume, debt or shipment side effects")
 	p.g_006.reference = 12.0
 	p.g_006.buy = 12.6
 	p.g_006.sale = 12.3
 	var changed := Contract.quote("buy",[{"good":"g_006","quantity":2}],p,1.5)
-	_check(absf(changed.goods_value-25.2)<0.000001 and absf(changed.fee-.27)<0.000001,"changed market snapshot affects goods and fee separately")
+	_check(absf(changed.goods_value-25.2)<0.000001 and absf(changed.fee-.36)<0.000001,"changed market snapshot affects goods and fee separately")
 
 func _test_split_order_and_zero_quantity_are_fee_invariant() -> void:
 	var p := prices()

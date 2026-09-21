@@ -1,5 +1,6 @@
 extends Node
-## Sequential mini missions: a short, concrete goal for the moment a start (or the tutorial)
+const MiddlemanService := preload("res://scripts/middleman_service.gd")
+## Modular mini missions: a short, concrete goal for the moment a start (or the tutorial)
 ## stops telling the player what to do.
 ##
 ## THREE CHAINS, AND THEY DO NOT SHARE A SHAPE.
@@ -30,6 +31,47 @@ extends Node
 const MISSION_KINDS := {
 	"integrate": 4, "monetise": 3, "steel": 2,
 }
+
+# Missions are exposed as two independent trees.  The older chain API below remains in place
+# for save compatibility and reward evaluation; these definitions are the presentation and
+# progression contract used by the mission panel.  A start tree can therefore run beside the
+# shared logistics tree without forcing every start into the same linear sequence.
+const GENERIC_TREE_ID := "logistics"
+const TREE_DEFINITIONS := {
+	"logistics": {
+		"title": "Logistics",
+		"subtitle": "Open the routes that let your business trade on its own terms.",
+		"nodes": [
+			{"id": "middleman_contracts", "parent": "", "title": "Open Logistics Contracts",
+				"subtitle": "Ship at least 300 units of three goods through the Logistics Intermediary.",
+				"reward": "Unlock tile-stockpile routes", "research": "Open Logistics Contracts"},
+			{"id": "tile_stockpile", "parent": "middleman_contracts", "title": "Use a tile stockpile",
+				"subtitle": "Move one input or output to a tile stockpile and complete a production cycle.",
+				"reward": "+5% output for 20 turns", "requires": ["middleman_contracts"]},
+			{"id": "global_license", "parent": "", "title": "Secure the Import/Export License",
+				"subtitle": "Reach £50 profit, then accept the government’s £150 license decision.",
+				"reward": "Unlock global-market buying and selling", "research": "Government Import/Export License"},
+			{"id": "global_surplus", "parent": "tile_stockpile", "parents": ["tile_stockpile", "global_license"],
+				"title": "Sell surplus to the global market",
+				"subtitle": "Route a tile surplus to the global market and complete a sale.",
+				"reward": "+2% sale price for 10 turns", "requires": ["tile_stockpile", "global_license"]},
+		],
+	},
+	"magnate": {
+		"title": "Metal Magnate",
+		"subtitle": "Build a reliable domestic metals chain.",
+		"nodes": [
+			{"id": "steel", "parent": "", "title": "Produce Steel",
+				"subtitle": "Smelt your own ingots into steel.", "kind": "steel"},
+			{"id": "deposits", "parent": "steel", "title": "Secure lasting deposits",
+				"subtitle": "Put coal and iron on deposits that never run out.", "kind": "deposits"},
+		],
+	},
+}
+
+const GENERIC_SALE_REWARD_ID := "mini_quest_global_surplus_sale_price"
+const GENERIC_SALE_REWARD_PCT := 2.0
+const GENERIC_SALE_REWARD_TURNS := 10
 
 # ── Chain definitions ────────────────────────────────────────────────────────
 
@@ -133,6 +175,8 @@ signal mission_completed(kind: String, mission_title: String, reward: String)
 var chain := ""
 var done: Dictionary = {}      # mission kind -> Array[bool]
 var granted: Dictionary = {}   # mission kind -> bool
+var generic_done: Dictionary = {}
+var generic_granted: Dictionary = {}
 ## good_id of the product picked to sell the surplus on as. "" until they pick one.
 var monetised_good := ""
 ## Does the deposits mission include "supply coal to your steel building"? -1 until the mission
@@ -165,8 +209,36 @@ func _on_state_reset() -> void:
 	chain = ""
 	done = {}
 	granted = {}
+	generic_done = {}
+	generic_granted = {}
 	monetised_good = ""
 	deposits_coal_step = -1
+	quest_changed.emit()
+
+
+## Mission progress is match state, not profile state.  Older saves simply omit this block and
+## start with a clean tree; the definition itself remains code-owned so renamed nodes cannot
+## inject arbitrary rewards from a save file.
+func export_fields() -> Dictionary:
+	return {
+		"chain": chain,
+		"done": done.duplicate(true),
+		"granted": granted.duplicate(true),
+		"generic_done": generic_done.duplicate(true),
+		"generic_granted": generic_granted.duplicate(true),
+		"monetised_good": monetised_good,
+		"deposits_coal_step": deposits_coal_step,
+	}
+
+
+func import_fields(fields: Dictionary) -> void:
+	chain = str(fields.get("chain", ""))
+	done = (fields.get("done", {}) as Dictionary).duplicate(true)
+	granted = (fields.get("granted", {}) as Dictionary).duplicate(true)
+	generic_done = (fields.get("generic_done", {}) as Dictionary).duplicate(true)
+	generic_granted = (fields.get("generic_granted", {}) as Dictionary).duplicate(true)
+	monetised_good = str(fields.get("monetised_good", ""))
+	deposits_coal_step = int(fields.get("deposits_coal_step", -1))
 	quest_changed.emit()
 
 
@@ -199,7 +271,151 @@ func is_available() -> bool:
 	# produced yet) and is filled in later by _on_turn_processed.
 	if chain == "":
 		chain = _pick_chain({})
-	return chain != ""
+	# The generic branch is part of every campaign. It remains visible while its unlocks are
+	# locked, so a normal start never loses the mission affordance before its first shipment.
+	return true
+
+
+## Presentation model for the modular mission panel.  Every node carries a derived state:
+## "complete", "active", or "locked".  The returned dictionaries are copies so the panel can
+## annotate/layout them without mutating mission state.
+func mission_trees() -> Array:
+	if not is_available():
+		return []
+	var out: Array = []
+	# Show the generic branch first on every campaign, including as a locked branch for starts
+	# that have not opted into the intermediary ruleset yet. This keeps the shared progression
+	# visible and genuinely parallel to any start-specific branch.
+	out.append(_tree_view(GENERIC_TREE_ID))
+	if chain == "magnate":
+		out.append(_tree_view("magnate"))
+	elif chain == "glass":
+		out.append(_tree_view("glass"))
+	elif chain == "aluminium":
+		out.append(_tree_view("aluminium"))
+	return out
+
+
+func _has_named_start() -> bool:
+	return _effective_start_id() != ""
+
+
+func _effective_start_id() -> String:
+	var start_id := str(MatchState.ruleset.get("start_id", "")).strip_edges()
+	if start_id != "":
+		return start_id
+	# Directly authored starts predate the New Game override and only carry scenario_name.
+	# Treat that field as the same stable start identity for mission selection.
+	return str(MatchState.scenario_name).strip_edges()
+
+
+func tree_definition(tree_id: String) -> Dictionary:
+	return (TREE_DEFINITIONS.get(tree_id, {}) as Dictionary).duplicate(true)
+
+
+func _tree_view(tree_id: String) -> Dictionary:
+	var definition := tree_definition(tree_id)
+	if definition.is_empty() and CHAINS.has(tree_id):
+		definition = {"id": tree_id, "title": str((CHAINS[tree_id] as Dictionary).get("title", tree_id.capitalize())),
+			"subtitle": str((CHAINS[tree_id] as Dictionary).get("subtitle", "")), "nodes": []}
+		var previous := ""
+		for raw_kind: Variant in (CHAINS[tree_id] as Dictionary).get("missions", []) as Array:
+			var kind := str(raw_kind)
+			definition.nodes.append({"id": kind, "parent": previous, "title": title(kind), "subtitle": subtitle(kind), "reward": reward_text(kind), "kind": kind})
+			previous = kind
+	var nodes: Array = []
+	for raw: Variant in definition.get("nodes", []) as Array:
+		var node: Dictionary = (raw as Dictionary).duplicate(true)
+		node["state"] = _tree_node_state(tree_id, node)
+		node["depth"] = _tree_node_depth(tree_id, str(node.get("id", "")))
+		if str(node.get("kind", "")) != "":
+			node["steps"] = steps(str(node.kind))
+			node["step_done"] = _step_values(str(node.kind))
+		nodes.append(node)
+	definition["id"] = tree_id
+	definition["nodes"] = nodes
+	return definition
+
+
+func _tree_node_depth(tree_id: String, node_id: String) -> int:
+	var definition := TREE_DEFINITIONS.get(tree_id, {}) as Dictionary
+	var depth := 0
+	var parent := ""
+	for raw: Variant in definition.get("nodes", []) as Array:
+		var node := raw as Dictionary
+		if str(node.get("id", "")) == node_id:
+			parent = str(node.get("parent", ""))
+			break
+	while parent != "" and depth < 8:
+		depth += 1
+		var current_parent := parent
+		parent = ""
+		for raw: Variant in definition.get("nodes", []) as Array:
+			var node := raw as Dictionary
+			if str(node.get("id", "")) == current_parent:
+				parent = str(node.get("parent", ""))
+				break
+	return depth
+
+
+func _tree_node_state(tree_id: String, node: Dictionary) -> String:
+	var node_id := str(node.get("id", ""))
+	if tree_id == GENERIC_TREE_ID:
+		match node_id:
+			"middleman_contracts":
+				return "complete" if ResearchState.open_logistics_contracts_available() else ("active" if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1" else "locked")
+			"tile_stockpile":
+				if _has_tile_stockpile_route(): return "complete"
+				return "active" if ResearchState.open_logistics_contracts_available() else "locked"
+			"global_license":
+				return "complete" if ResearchState.global_trade_license_available() else ("active" if ResearchState.global_trade_license_unlocked() else "locked")
+			"global_surplus":
+				if bool(generic_done.get("global_surplus", false)): return "complete"
+				return "active" if ResearchState.global_trade_license_available() and _has_tile_stockpile_route() else "locked"
+	if tree_id == "magnate":
+		var kind := str(node.get("kind", node_id))
+		if _all_done(kind): return "complete"
+		var definition := TREE_DEFINITIONS.get(tree_id, {}) as Dictionary
+		var parent := str(node.get("parent", ""))
+		if parent != "":
+			for raw: Variant in definition.get("nodes", []) as Array:
+				if str((raw as Dictionary).get("id", "")) == parent and not _all_done(str((raw as Dictionary).get("kind", parent))):
+					return "locked"
+		return "active"
+	# Existing non-magnate start chains still render as a separate branch. Their old mission
+	# rows remain the authoritative state; this fallback keeps the migration incremental.
+	var kind_fallback := str(node.get("kind", node_id))
+	return "complete" if _all_done(kind_fallback) else "active"
+
+
+func _step_values(kind: String) -> Array:
+	var values: Array = []
+	var slots := _slots(kind)
+	for value: Variant in slots:
+		values.append(bool(value))
+	return values
+
+
+func _has_tile_stockpile_route() -> bool:
+	for iid: Variant in BuildingState.buildings:
+		var id := str(iid)
+		if not BuildingState.is_player_owned(BuildingState.buildings[iid] as Dictionary):
+			continue
+		var recipe := Catalog.get_recipe(str((BuildingState.buildings[iid] as Dictionary).get("recipe_id", "")))
+		for input: Variant in recipe.get("inputs", []) as Array:
+			var gid := str((input as Dictionary).get("good_id", ""))
+			if gid != "" and MiddlemanService.enabled(id) and MiddlemanService.mode_for(id, "input", gid) == "managed": return true
+		for output: Variant in recipe.get("outputs", []) as Array:
+			var gid := str((output as Dictionary).get("good_id", ""))
+			if gid != "" and MatchState.get_output_stockpile_destination(id, gid) != "": return true
+	return false
+
+
+func _has_market_surplus_route() -> bool:
+	for tile: Variant in MatchState.get_sell_surplus_tiles():
+		if MatchState.get_sell_surplus_destination(str(tile)) == "market":
+			return true
+	return false
 
 
 func spec() -> Dictionary:
@@ -216,7 +432,14 @@ func active_mission() -> String:
 	for kind in list:
 		if not _all_done(str(kind)):
 			return str(kind)
-	return str(list[list.size() - 1]) if not list.is_empty() else ""
+	if not list.is_empty():
+		return str(list[list.size() - 1])
+	var trees := mission_trees()
+	if not trees.is_empty():
+		for node: Variant in (trees[0] as Dictionary).get("nodes", []) as Array:
+			if str((node as Dictionary).get("state", "locked")) != "complete":
+				return str((node as Dictionary).get("id", ""))
+	return ""
 
 
 ## The five text accessors below default to the ACTIVE mission — which is what the module and
@@ -225,6 +448,8 @@ func active_mission() -> String:
 func title(kind := "") -> String:
 	if kind == "":
 		kind = active_mission()
+	if kind in ["middleman_contracts", "tile_stockpile", "global_license", "global_surplus"]:
+		return str(_generic_node(kind).get("title", ""))
 	if kind == "monetise":
 		return MONETISE_TITLE
 	if MISSION_TEXT.has(kind):
@@ -235,6 +460,8 @@ func title(kind := "") -> String:
 func subtitle(kind := "") -> String:
 	if kind == "":
 		kind = active_mission()
+	if kind in ["middleman_contracts", "tile_stockpile", "global_license", "global_surplus"]:
+		return str(_generic_node(kind).get("subtitle", ""))
 	if _all_done(kind):
 		return "Complete — %s" % reward_text(kind)
 	if kind == "monetise":
@@ -247,6 +474,8 @@ func subtitle(kind := "") -> String:
 func steps(kind := "") -> Array:
 	if kind == "":
 		kind = active_mission()
+	if kind in ["middleman_contracts", "tile_stockpile", "global_license", "global_surplus"]:
+		return [subtitle(kind)]
 	if kind == "monetise":
 		return [
 			"Figure out what else can use %s" % _display(_surplus_id()),
@@ -268,6 +497,8 @@ func step_done(i: int, kind := "") -> bool:
 func reward_text(kind := "") -> String:
 	if kind == "":
 		kind = active_mission()
+	if kind in ["middleman_contracts", "tile_stockpile", "global_license", "global_surplus"]:
+		return str(_generic_node(kind).get("reward", ""))
 	if kind == "monetise":
 		var what := _display(monetised_good) if monetised_good != "" else "the new good"
 		return "%d%% increased output of %s for %d turns" % [int(MONETISE_PCT), what, MONETISE_TURNS]
@@ -279,11 +510,21 @@ func reward_text(kind := "") -> String:
 func hint(kind := "") -> String:
 	if kind == "":
 		kind = active_mission()
+	if kind in ["middleman_contracts", "tile_stockpile", "global_license", "global_surplus"]:
+		return "Follow the Logistics tree to unlock the next route."
 	if kind == "monetise":
 		return "If unsure, check the Goods Graph for %s." % _display(_surplus_id())
 	if MISSION_TEXT.has(kind):
 		return str(MISSION_TEXT[kind].hint)
 	return str(spec().get("hint", ""))
+
+
+func _generic_node(node_id: String) -> Dictionary:
+	for raw: Variant in (TREE_DEFINITIONS[GENERIC_TREE_ID] as Dictionary).get("nodes", []) as Array:
+		var node := raw as Dictionary
+		if str(node.get("id", "")) == node_id:
+			return node
+	return {}
 
 
 func is_mission_complete(kind: String) -> bool:
@@ -303,9 +544,11 @@ func _on_turn_processed(summary: Dictionary) -> void:
 	var produced: Dictionary = summary.get("produced", {})
 	var consumed: Dictionary = summary.get("consumed", {})
 	var sold: Dictionary = summary.get("sold", {})
+	_eval_generic(summary)
 	if chain == "":
 		chain = _pick_chain(produced)
 		if chain == "":
+			quest_changed.emit()
 			return
 	for kind in missions():
 		var k := str(kind)
@@ -322,6 +565,48 @@ func _on_turn_processed(summary: Dictionary) -> void:
 			_grant(k)
 			_announce(k)
 	quest_changed.emit()
+
+
+func _eval_generic(summary: Dictionary) -> void:
+	if not is_available() and str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1":
+		return
+	if ResearchState.open_logistics_contracts_available():
+		generic_done["middleman_contracts"] = true
+	if _has_tile_stockpile_route():
+		generic_done["tile_stockpile"] = true
+	if ResearchState.global_trade_license_available():
+		generic_done["global_license"] = true
+	var sold: Dictionary = summary.get("sold", {})
+	var had_sale := false
+	for value: Variant in sold.values():
+		if value is Dictionary and int((value as Dictionary).get("qty", 0)) > 0:
+			had_sale = true
+		elif value is int or value is float:
+			had_sale = had_sale or float(value) > 0.0
+	if bool(generic_done.get("tile_stockpile", false)) and bool(generic_done.get("global_license", false)) \
+		and _has_market_surplus_route() and had_sale:
+		generic_done["global_surplus"] = true
+	for node_id: String in ["middleman_contracts", "tile_stockpile", "global_license", "global_surplus"]:
+		if bool(generic_done.get(node_id, false)) and not bool(generic_granted.get(node_id, false)):
+			generic_granted[node_id] = true
+			_grant_generic(node_id)
+			_announce_generic(node_id)
+
+
+func _grant_generic(node_id: String) -> void:
+	if node_id == "global_surplus":
+		_add(GENERIC_SALE_REWARD_ID, {
+			"domain": "market_price", "target": "*", "pct": GENERIC_SALE_REWARD_PCT,
+			"duration_turns": GENERIC_SALE_REWARD_TURNS, "label": "Global surplus sale",
+			"source": "quest:global_surplus"})
+
+
+func _announce_generic(node_id: String) -> void:
+	var node := _generic_node(node_id)
+	var mission_title := str(node.get("title", node_id))
+	var reward := str(node.get("reward", ""))
+	mission_completed.emit(node_id, mission_title, reward)
+	MatchState.request_toast("Mission complete: %s\nReward: %s" % [mission_title, reward], "success")
 
 
 func _eval_integrate(produced: Dictionary, consumed: Dictionary) -> void:
@@ -587,7 +872,7 @@ func _previous(kind: String) -> String:
 ## check comes first and needs no production, which is why a START_CHAINS start resolves the
 ## instant the match loads rather than after a turn.
 func _pick_chain(produced: Dictionary) -> String:
-	var start := str(MatchState.ruleset.get("start_id", ""))
+	var start := _effective_start_id()
 	if START_CHAINS.has(start):
 		return str(START_CHAINS[start])
 	var best := ""

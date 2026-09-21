@@ -6,10 +6,9 @@
   "ruleset": {
     "name": "standard",
     "start_id": "pepper_valley_motors",
-    "tutorial_enabled": true,
+    "tutorial_enabled": false,
     "logistics_model": "middleman_v1",
-    "middleman_new_buildings": true,
-    "tutorial_track": "middleman"
+    "middleman_new_buildings": true
   },
   "money": 1500,
   "loans": [],

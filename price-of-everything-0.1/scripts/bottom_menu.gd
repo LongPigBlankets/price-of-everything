@@ -125,6 +125,11 @@ func _ready() -> void:
 	%TechButton.pressed.connect(_on_research_pressed)
 	%PeopleButton.pressed.connect(_on_people_pressed)
 	%EmpireButton.pressed.connect(_on_empire_pressed)
+	# Menu buttons are mouse controls. Leaving one focused makes the next Space key
+	# activate that button in the GUI layer, so Space appears to close one panel and
+	# reopen it on the following turn instead of consistently advancing the turn.
+	for menu_button in [%ConstructButton, %ResourcesButton, %BuildingsButton, %MarketButton, %PoliticsButton, %TechButton, %PeopleButton, %EmpireButton]:
+		(menu_button as Button).focus_mode = Control.FOCUS_NONE
 	# (Bottom-menu click cues are auto-wired by Audio, which gives %BottomMenu
 	# children the menu cue — see Audio._sound_for_button.)
 	money_panel.take_loan_dialog = take_loan_dialog

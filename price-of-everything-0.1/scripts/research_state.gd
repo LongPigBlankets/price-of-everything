@@ -15,6 +15,30 @@ extends Node
 
 ## The research title that opens the rest of the council (data/research_unlocks.csv).
 const SEATS_UNLOCK_TITLE := "Executive Search"
+const OPEN_LOGISTICS_CONTRACTS_TITLE := "Open Logistics Contracts"
+const INFRASTRUCTURE_TENDERING_TITLE := "Infrastructure Tendering"
+const GLOBAL_TRADE_LICENSE_TITLE := "Government Import/Export License"
+
+func open_logistics_contracts_available() -> bool:
+	return is_unlocked(OPEN_LOGISTICS_CONTRACTS_TITLE)
+
+func infrastructure_tendering_available() -> bool:
+	return is_unlocked(INFRASTRUCTURE_TENDERING_TITLE)
+
+func global_trade_license_available() -> bool:
+	return is_unlocked(GLOBAL_TRADE_LICENSE_TITLE) and _global_trade_license_paid
+
+## The research node is awarded before the government notice is understood.  Keep
+## those states separate so the £150 decision has a real gameplay effect: direct
+## global-market buying and selling stay closed until the player accepts the fee.
+func global_trade_license_unlocked() -> bool:
+	return is_unlocked(GLOBAL_TRADE_LICENSE_TITLE)
+
+var _global_trade_license_paid: bool = false
+
+func activate_global_trade_license() -> void:
+	_global_trade_license_paid = true
+	_mark_research_progress_dirty()
 
 # Legacy research rows use a mix of internal names, display names and names of
 # the process/research concept that represents a building group. Resolve those
@@ -90,6 +114,10 @@ var _research_progress_last_turn: int = -1
 # turn" — the Just-in-Time Logistics unlock condition. Updated by Production at
 # output flush; tiles that miss the bar in a turn drop out (streak resets). Saved.
 var stockpile_feed_streaks: Dictionary = {}
+## Lifetime units moved through the Logistics Intermediary, tracked per good.  The
+## Open Logistics Contracts condition is deliberately breadth-sensitive: three goods
+## must each reach the threshold, rather than one bulk commodity doing all the work.
+var _middleman_shipments_by_good: Dictionary = {}
 var _unlock_defs: Array = []   # [{research_node_id, title, action, object, qty, prereqs, description}]
 var _node_id_by_title: Dictionary = {}   # lazy title -> research_node_id (see research_node_id_for_title)
 var _title_by_node_id: Dictionary = {}   # lazy research_node_id -> title (see research_title_for_node_id)
@@ -123,6 +151,8 @@ func reset() -> void:
 	_research_progress_dirty = true
 	_research_progress_last_turn = -1
 	stockpile_feed_streaks.clear()
+	_middleman_shipments_by_good.clear()
+	_global_trade_license_paid = false
 
 
 ## Saved under MatchState's "match" section (keys unchanged from before the extraction).
@@ -137,6 +167,8 @@ func export_fields() -> Dictionary:
 		"infrastructure_usage_last_turn": _infrastructure_usage_last_turn.duplicate(true),
 		"profitable_run_streaks": _profitable_run_streaks.duplicate(true),
 		"stockpile_feed_streaks": stockpile_feed_streaks.duplicate(true),
+		"middleman_shipments_by_good": _middleman_shipments_by_good.duplicate(true),
+		"global_trade_license_paid": _global_trade_license_paid,
 	}
 
 
@@ -158,6 +190,15 @@ func import_fields(d: Dictionary) -> void:
 	_research_progress_dirty = true
 	_research_progress_last_turn = -1
 	stockpile_feed_streaks = (d.get("stockpile_feed_streaks", {}) as Dictionary).duplicate(true)
+	_middleman_shipments_by_good = (d.get("middleman_shipments_by_good", {}) as Dictionary).duplicate(true)
+	_global_trade_license_paid = bool(d.get("global_trade_license_paid", false))
+
+
+func note_middleman_shipment(good_id: String, qty: int) -> void:
+	if good_id == "" or qty <= 0:
+		return
+	_middleman_shipments_by_good[good_id] = int(_middleman_shipments_by_good.get(good_id, 0)) + qty
+	_mark_research_progress_dirty()
 
 
 ## Lifetime seaport export ledger, fed by MatchState.commit_sea_shipping. Kept apart from
@@ -484,6 +525,9 @@ func unlock_condition_text(title: String) -> String:
 		"Run Recipe": return "Operate %d building%s using a %s recipe" % [qty, "" if qty == 1 else "s", object_name]
 		"Survey": return "Survey %d %s" % [qty, object_name]
 		"Stockpile filled": return "Supply one stockpile from %s for %d consecutive turns" % [object_name, qty]
+		"Ship Through Logistics Intermediary": return "Ship at least %d units of at least %s with a Logistics Intermediary" % [qty, unit]
+		"Produce Distinct": return "Produce at least %d different goods" % qty
+		"Profit": return "Reach £%d profit" % qty
 		"Sustain": return "Maintain %s for %d consecutive turns" % [object_name, qty]
 		"Use Infrastructure":
 			var use_turns := _leading_int(unit.get_slice("for", 1), 5) if "for" in unit else 0
@@ -614,6 +658,20 @@ func _live_condition_met(d: Dictionary) -> bool:
 				return MarketState.lifetime_sold_total() >= need
 			var sell_good := _research_good_id(obj)
 			return sell_good != "" and MarketState.lifetime_sold(sell_good) >= need
+		"Ship Through Logistics Intermediary":
+			var threshold_goods := 0
+			for shipped in _middleman_shipments_by_good.values():
+				if int(shipped) >= need:
+					threshold_goods += 1
+			return threshold_goods >= maxi(1, _leading_int(str(d.get("unit", "")), 1))
+		"Produce Distinct":
+			var distinct_goods := 0
+			for good in Catalog.all_goods():
+				if Production.lifetime_total(str(good.get("id", ""))) > 0:
+					distinct_goods += 1
+			return distinct_goods >= need
+		"Profit":
+			return float(Production.last_turn_summary.get("pre_tax_profit", 0.0)) >= float(need)
 		"Sell Through Ports":
 			return _port_sale_total >= need
 		"Sell Through Every Port":
@@ -964,6 +1022,8 @@ func _research_condition_issue(d: Dictionary) -> String:
 	var action := str(d.get("action", ""))
 	var obj := str(d.get("object", ""))
 	if action == "Placeholder":
+		return ""
+	if action in ["Ship Through Logistics Intermediary", "Produce Distinct", "Profit"]:
 		return ""
 	if action == "All Of":
 		# Every ";"-separated clause must itself pass the audit.

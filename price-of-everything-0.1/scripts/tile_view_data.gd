@@ -1,6 +1,7 @@
 extends RefCounted
 const BuildingNaming := preload("res://scripts/building_naming.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
+const Middleman := preload("res://scripts/middleman_service.gd")
 
 
 ## Room a building actually occupies, INCLUDING its level. A levelled-up building is bigger
@@ -419,6 +420,11 @@ static func _output_route_label(instance_id: String, tile_id: String, recipe: Di
 		return "→ grid"
 	var label := ""
 	var dest_tile := ""
+	# A per-good intermediary mode is a private endpoint. It must win over the
+	# global STOCKPILE_ALL fallback, which is only a display default for unrouted
+	# physical output.
+	if Middleman.buys_output(instance_id, good_id):
+		return "→ logistics intermediary"
 	if MatchState.is_output_market(instance_id, good_id):
 		label = "market"
 		dest_tile = TransportService.nearest_port_tile(tile_id)
@@ -1040,6 +1046,8 @@ static func _destination_text(building: Dictionary, good_id: String) -> String:
 	if Catalog.get_internal_name(good_id) == "power":
 		return "grid"
 	var inst_id := str(building.get("instance_id", ""))
+	if Middleman.buys_output(inst_id, good_id):
+		return "logistics intermediary"
 	if MatchState.is_output_market(inst_id, good_id):
 		return "market"
 	var explicit := MatchState.get_output_stockpile_destination(inst_id, good_id)

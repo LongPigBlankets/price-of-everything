@@ -10,7 +10,8 @@
 #     "SectionRuled" — Plex SemiBold 15, uppercase — pairs with ruled_section_head()
 #     "BuildingName" — Barlow Cond. SemiBold 22
 #     "Body"         — Plex Medium 14 (default for stats / labels)
-#     "Caption"      — Plex 12 muted (tiny metadata)
+#     "Smallest"     — Plex Medium 14 (minimum readable panel text)
+#     "Caption"      — Plex Medium 14 (compact metadata)
 #     "Numeric"      — Plex SemiBold 16 (numbers / %)
 #
 #   PanelContainer:
@@ -80,7 +81,9 @@ const SP := {"XS": 4, "SM": 8, "MD": 12, "LG": 20, "XL": 32, "XXL": 48}
 # ── Font sizes ─────────────────────────────────────────────────────────────
 const FS := {
 	"H1": 32, "SECTION": 22, "BUILDING": 22,
-	"BODY": 14, "CAPTION": 14, "NUMERIC": 16,   # CAPTION was 13 — bumped +1 for legibility
+	# Smallest readable text size. Body and Caption intentionally share this
+	# baseline so compact panels do not introduce a second, harder-to-read scale.
+	"SMALLEST": 14, "BODY": 14, "CAPTION": 14, "NUMERIC": 16,
 	"BUTTON": 17,
 }
 
@@ -163,6 +166,7 @@ func _build_theme() -> Theme:
 	# standing rule already forbids that. Nothing in the UI uses PLEX Regular now: the
 	# ladder is MEDIUM for body and caption, SEMIBOLD for emphasis and every numeral.
 	_label_var(t, fonts, "Caption",      "PLEX_MED",    FS["CAPTION"],  PALETTE["TEXT"])
+	_label_var(t, fonts, "Smallest",     "PLEX_MED",    FS["SMALLEST"], PALETTE["TEXT"])
 	_label_var(t, fonts, "Numeric",      "PLEX_SEMI",   FS["NUMERIC"],  PALETTE["TEXT"])
 	# What a mission pays out. Brass and semibold, so the one line on a quest card that is a
 	# REWARD rather than an instruction reads as one at a glance.

@@ -125,11 +125,9 @@ const DECISION_DEFINITIONS := {
 				"effects": [
 					{"kind": "seat_founder", "seat": "coo"},
 					{"kind": "freight_credit", "units": 1000},
-					{"kind": "modifier", "domain": "transport_cost", "pct": -20.0,
-						"label": "Andrew Keeler: −20% transport costs"},
 				],
 				"advocate_seat": "coo",
-				"stance": "I can reduce your transport costs."},
+				"stance": "I can cover the first thousand domestic freight units."},
 		],
 	},
 	# The other end of the founder-advisor arc, drawn by _retire_founder when his tenure runs
@@ -149,6 +147,19 @@ const DECISION_DEFINITIONS := {
 			{"id": "understood", "label": "Thank him, and see him out",
 				"effects": [{"kind": "none",
 					"describe": "His seat is vacant. His advisor benefits have ended."}]},
+		],
+	},
+	"government_import_export_license": {
+		"title": "Government Import/Export License",
+		"headline": "The government has finally delivered the license.",
+		"body": "Our people have been applying for a license for years and finally, the government has delivered. Let's hope we're never stuck in that bureaucratic mess again. This is the final step for the Import/Export License that will secure our business' rights to buy and sell directly from the global market. This is our chance to become what we always wanted to be: a real player. It will cost us 150 but it's absolutely worth it.",
+		"scope": "company", "category": "governance", "priority": PRIORITY_STORY,
+		"target_selector": "company", "once": true, "cooldown_turns": 9999, "weight": 0.0,
+		"default_choice": "understood",
+		"choices": [
+			{"id": "understood", "label": "Understand",
+				"effects": [{"kind": "cash", "amount": -150.0}, {"kind": "global_trade_license"}],
+				"stance": "Direct global-market trading is now available."}
 		],
 	},
 	"planning_pushback": {
@@ -447,12 +458,17 @@ func _auto_select_recording_choices() -> void:
 
 func _ready() -> void:
 	pending_changed.connect(_auto_select_recording_choices)
+	ResearchState.unlock_granted.connect(_on_research_unlock_granted)
 	# Headless runs (unit suite, e2e harness) keep decisions off so the balance
 	# failure set never shifts under them; tests enable explicitly.
 	enabled = DisplayServer.get_name() != "headless"
 	_reseed(int(MatchState.match_rng_seed))
 	await get_tree().process_frame
 	MatchState.state_reset.connect(reset)
+
+func _on_research_unlock_granted(title: String, _description: String, _via_condition: bool) -> void:
+	if title == "Government Import/Export License" and enabled and not _fired_once.has("government_import_export_license"):
+		force_draw("government_import_export_license")
 
 ## Wired centrally by TurnManager._wire_sim_listeners, AFTER Modifiers' pruning.
 func _on_phase_started(phase: int) -> void:
@@ -1189,6 +1205,10 @@ func _execute_effects(effects: Array, target: Dictionary) -> void:
 				LoanState.take_founder_loan(float(eff.get("amount", 0.0)), float(eff.get("rate", 0.05)))
 			"freight_credit":
 				TransportState.add_freight_credit(int(eff.get("units", 0)))
+			"middleman_credit":
+				MatchState.add_middleman_free_units(int(eff.get("units", 0)))
+			"global_trade_license":
+				ResearchState.activate_global_trade_license()
 			"distressed_program":
 				SolvencyState.accept_distressed_program()
 			"none":
@@ -1357,6 +1377,10 @@ func _describe_effects(effects: Array, target: Dictionary) -> String:
 					float(eff.get("amount", 0.0)), float(eff.get("rate", 0.0)) * 100.0])
 			"freight_credit":
 				parts.append("%d units of pre-paid domestic freight" % int(eff.get("units", 0)))
+			"middleman_credit":
+				parts.append("%d construction-material units free through the Logistics Intermediary" % int(eff.get("units", 0)))
+			"global_trade_license":
+				parts.append("direct global-market trading is enabled")
 			"agenda_tag":
 				pass   # advisor sentiment ripples are shown via loyalty, not here
 			"schedule_event":

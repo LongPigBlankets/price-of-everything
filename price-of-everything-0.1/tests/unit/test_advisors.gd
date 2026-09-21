@@ -855,6 +855,8 @@ func _test_founder_advisor() -> void:
 	_check(AdvisorState.founder_leaves_turn == 3 + AdvisorState.FOUNDER_TENURE_TURNS,
 		"founder: his tenure runs %d turns" % AdvisorState.FOUNDER_TENURE_TURNS)
 	_check(not AdvisorState.founder_tenure_expired(), "founder: the tenure is live at turn 3")
+	_check(is_equal_approx(float(Modifiers.resolve_pct("transport_cost", "g_001", {}).get("net", 0.0)), -20.0),
+		"founder: Andrew's COO transport discount is active for inland routes")
 	_check(AdvisorState.payrolled_advisor_count() == 0
 		and is_zero_approx(AdvisorState.advisor_payroll_per_turn(1000.0)),
 		"founder: Andrew's promised pro-bono tenure contributes £0 to payroll")
@@ -871,6 +873,8 @@ func _test_founder_advisor() -> void:
 	AdvisorState.release_founder()
 	_check(AdvisorState.get_advisor_in_seat("coo") == "",
 		"founder: he vacates and the post opens")
+	_check(is_zero_approx(float(Modifiers.resolve_pct("transport_cost", "g_001", {}).get("net", 0.0))),
+		"founder: the transport discount ends with his tenure")
 	_check(AdvisorState.assign_advisor_to_seat("coo", "vera"),
 		"founder: a real hire can take the chair afterwards")
 

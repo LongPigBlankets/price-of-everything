@@ -1130,6 +1130,7 @@ func _refresh_transport() -> void:
 func _build_rankings() -> void:
 	var mod := _ModuleBtn.new(self)
 	mod.name = "RankingsModule"
+	mod.visible = CompanyRankings.available()
 	mod.tooltip_text = "Company rankings — league position and the goods you lead"
 	mod.custom_minimum_size = Vector2(0, MOD_H)
 	var row := _module_row(mod)
@@ -1160,6 +1161,13 @@ func _build_rankings() -> void:
 
 func _refresh_rankings() -> void:
 	if _rankings_head == null:
+		return
+	var available := CompanyRankings.available()
+	if _rankings_btn != null:
+		_rankings_btn.visible = available
+	if not available:
+		if _fly_open_id == "rankings":
+			_close_fly()
 		return
 	var rows: Array[Dictionary] = CompanyRankings.standings()
 	for row: Dictionary in rows:
@@ -1746,10 +1754,10 @@ func _on_research_toast_pressed(panel: PanelContainer, tech: String) -> void:
 
 # ── 5 · Council: seated portraits with loyalty rings + number chips ─────────────
 
-## The post-tutorial mini quest (scripts/mini_quest.gd). Sits immediately right of the updates
+## The modular mission tree (scripts/mini_quest.gd). Sits immediately right of the updates
 ## notch: the hbox separation is 10, which is the offset asked for, so it needs no spacer.
-## Hidden until MiniQuest says there is a quest — that wants a finished tutorial AND a chain the
-## player has actually gone into.
+## Hidden only while the explicit tutorial coach owns the screen; the generic branch is available
+## from the opening campaign turn even when its first unlock is still locked.
 func _build_quest() -> void:
 	var mod := _ModuleBtn.new(self)
 	mod.name = "QuestModule"
@@ -1803,7 +1811,7 @@ func _build_quest() -> void:
 	MiniQuest.quest_changed.connect(_refresh_quest)
 	MiniQuest.mission_completed.connect(_on_quest_mission_completed)
 	# Refresh when the match snapshot lands: that is the first moment the ruleset (and its
-	# start_id) exists, and is_available() resolves a start-derived chain from it. Connecting
+	# start_id) exists, and is_available() resolves the campaign mission surface from it. Connecting
 	# HERE — on the bar, not only in MiniQuest — sidesteps a boot race: match_loaded fires during
 	# world build, after this bar's _ready, whereas MiniQuest is a deferred autoload that on a
 	# fast boot can still be wiring up. Without it the module first appeared on turn 2, because
@@ -2306,13 +2314,13 @@ func _build_menu() -> void:
 
 # ── Flyouts (Treasury · Council · Victory), anchored under their modules ────────
 
-## The quest panel: the four steps with their ticks, the reward, and where to look if lost.
+## The quest panel: two independent mission trees, their rewards, and where to look if lost.
 ## No heading — at 120 px a title would spend a third of the panel repeating the module the
 ## player just clicked.
 ## ── The mission flyout ───────────────────────────────────────────────────────
 ##
-## An ACCORDION of every mission in the chain, not just the live one. One section open at a
-## time; opening one closes the rest.
+## The shared Logistics tree and the selected start tree stay visible together. Brass connectors
+## make the parent/child sequence explicit without hiding completed branches.
 ##
 ## WIDTH IS THE MODULE'S, not the text's: measuring its own longest line is correct in
 ## isolation and visibly misaligned in place — the panel hangs off
@@ -2392,25 +2400,93 @@ func _fly_quest(vb: VBoxContainer) -> void:
 	col.add_theme_constant_override("separation", 6)
 	pad.add_child(col)
 	_quest_sections = {}
-	var list: Array = MiniQuest.missions()
-	if _quest_open == "" and not list.is_empty():
-		_quest_open = MiniQuest.active_mission()
 	var inner: int = width - QUEST_FLY_PAD - QUEST_FLY_BORDER
-	var all_done := not list.is_empty()
-	for kind_variant: Variant in list:
-		var kind := str(kind_variant)
-		if not MiniQuest.is_mission_complete(kind):
-			all_done = false
-		var section := _quest_section(kind, inner)
-		_quest_sections[kind] = section
-		col.add_child(section)
-	# The chain has an end, and the panel should say so rather than just showing a column of
-	# ticks and leaving the player to work out there is nothing left.
-	if all_done:
-		var done_row := _mini("All missions completed!", C_BRIGHT, 13)
-		done_row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		done_row.custom_minimum_size = Vector2(inner, 0)
-		col.add_child(done_row)
+	var trees: Array = MiniQuest.mission_trees()
+	for i in trees.size():
+		if i > 0:
+			col.add_child(DS.section_rule())
+		col.add_child(_mission_tree_card(trees[i] as Dictionary, inner))
+	if trees.is_empty():
+		var empty := _mini("No missions available yet.", C_TEXT, DS.FS.BODY)
+		empty.custom_minimum_size = Vector2(inner, 0)
+		col.add_child(empty)
+
+
+## A compact tree rather than an accordion: the shared Logistics branch and the start branch
+## remain visible together, with brass pipe connectors showing their parent/child order.
+func _mission_tree_card(tree: Dictionary, inner: int) -> Control:
+	var card := VBoxContainer.new()
+	card.custom_minimum_size = Vector2(inner, 0)
+	card.add_theme_constant_override("separation", 5)
+	var head := _quest_label(str(tree.get("title", "Missions")), DS.PALETTE.BRASS, 16, false)
+	head.theme_type_variation = "SectionRuled"
+	card.add_child(head)
+	var subtitle := _quest_label(str(tree.get("subtitle", "")), C_TEXT, 12, true)
+	card.add_child(subtitle)
+	var nodes: Array = tree.get("nodes", []) as Array
+	for i in nodes.size():
+		var node := (nodes[i] as Dictionary).duplicate(true)
+		node["last_sibling"] = _mission_tree_is_last_sibling(nodes, i)
+		node["has_children"] = _mission_tree_has_children(nodes, i)
+		card.add_child(_mission_tree_node(node))
+	return card
+
+
+func _mission_tree_is_last_sibling(nodes: Array, index: int) -> bool:
+	var node := nodes[index] as Dictionary
+	var depth := int(node.get("depth", 0))
+	if depth <= 0: return true
+	var parent := str(node.get("parent", ""))
+	for j in range(index + 1, nodes.size()):
+		var later := nodes[j] as Dictionary
+		if int(later.get("depth", 0)) < depth: break
+		if int(later.get("depth", 0)) == depth and str(later.get("parent", "")) == parent:
+			return false
+	return true
+
+
+func _mission_tree_has_children(nodes: Array, index: int) -> bool:
+	var node := nodes[index] as Dictionary
+	var node_id := str(node.get("id", ""))
+	for j in range(index + 1, nodes.size()):
+		var later := nodes[j] as Dictionary
+		if int(later.get("depth", 0)) <= int(node.get("depth", 0)): break
+		if str(later.get("parent", "")) == node_id: return true
+	return false
+
+
+func _mission_tree_node(node: Dictionary) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var depth := int(node.get("depth", 0))
+	# Draw a continuous brass pipe from each parent through its child rows. The old text-only
+	# elbows were technically hierarchical but read as a list once the labels wrapped.
+	var pipe := _MissionTreePipe.new()
+	pipe.depth = depth
+	pipe.last_sibling = bool(node.get("last_sibling", true))
+	pipe.has_children = bool(node.get("has_children", false))
+	pipe.custom_minimum_size = Vector2(34.0 + float(maxi(0, depth - 1)) * 15.0, 0)
+	pipe.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	row.add_child(pipe)
+	var status := str(node.get("state", "locked"))
+	var marker := Label.new()
+	marker.text = "✓" if status == "complete" else ("•" if status == "active" else "○")
+	marker.theme_type_variation = "Caption"
+	marker.add_theme_color_override("font_color", DS.PALETTE.BRASS if status != "locked" else C_TEXT)
+	row.add_child(marker)
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 1)
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var title := _quest_label(str(node.get("title", "")), C_TEXT, QUEST_STEP_PT, true)
+	if status == "complete": title.add_theme_color_override("font_color", DS.PALETTE.BRASS)
+	body.add_child(title)
+	var detail := _quest_label(str(node.get("subtitle", "")), C_TEXT, QUEST_HINT_PT, true)
+	body.add_child(detail)
+	var reward := _quest_label("Reward: %s" % str(node.get("reward", "")), DS.PALETTE.BRASS, QUEST_HINT_PT, true)
+	body.add_child(reward)
+	row.add_child(body)
+	return row
 
 
 ## One accordion section: its header always, its steps and reward only while it is the open one.
@@ -2597,6 +2673,15 @@ func _finish_celebration(finished_kind: String) -> void:
 	_quest_celebrating_kind = ""
 	var list: Array = MiniQuest.missions()
 	var idx: int = list.find(finished_kind)
+	# Generic-tree nodes are independent of the legacy linear chain, so they do not have a
+	# positional successor in `missions()`.  Refresh the module and leave the tree open rather
+	# than treating the generic completion as the end of the start mission.
+	if idx < 0:
+		_quest_open = ""
+		_refresh_quest()
+		if _quest_text_col != null and is_instance_valid(_quest_text_col):
+			_quest_text_col.modulate.a = 1.0
+		return
 	var next := str(list[idx + 1]) if idx >= 0 and idx + 1 < list.size() else ""
 	_quest_open = next
 	var v31: bool = UiPrefs.use_topbar_v3_1
@@ -2695,6 +2780,29 @@ class _QuestSection extends PanelContainer:
 			pressed.emit()
 
 
+## Thin brass connectors for the mission graph. Parent rows draw down to their children; child
+## rows draw in from above and continue down when another sibling follows.
+class _MissionTreePipe extends Control:
+	var depth := 0
+	var last_sibling := true
+	var has_children := false
+	const PIPE := Color("#d9a83d")
+
+	func _draw() -> void:
+		var x := 13.0 + float(maxi(0, depth - 1)) * 15.0
+		var mid := size.y * 0.5
+		if depth <= 0:
+			draw_circle(Vector2(x, mid), 3.0, PIPE)
+			if has_children:
+				draw_line(Vector2(x, mid), Vector2(x, size.y), PIPE, 1.2, true)
+			return
+		# The incoming segment joins the parent's outgoing line.
+		draw_line(Vector2(x, 0.0), Vector2(x, mid), PIPE, 1.2, true)
+		draw_line(Vector2(x, mid), Vector2(x + 12.0, mid), PIPE, 1.2, true)
+		if not last_sibling:
+			draw_line(Vector2(x, mid), Vector2(x, size.y), PIPE, 1.2, true)
+
+
 ## A checkmark that DRAWS itself over `progress` 0→1, so the completion sequence has a tick
 ## being drawn rather than a glyph that blinks into existence. Two strokes: the short one takes
 ## the first third, the long one the rest.
@@ -2760,6 +2868,8 @@ class _FlyScrim extends Control:
 
 
 func _toggle_fly(id: String) -> void:
+	if id == "rankings" and not CompanyRankings.available():
+		return
 	if _fly_open_id == id:
 		_close_fly()
 	else:
@@ -2796,6 +2906,8 @@ func _close_fly() -> void:
 		(_power_btn as _ModuleBtn).active = false
 
 func _open_fly(id: String) -> void:
+	if id == "rankings" and not CompanyRankings.available():
+		return
 	if id == "treasury" and _fly_open_id != id:
 		TelemetryState.track_interaction("money_panel_opened", "treasury")
 	_close_fly()
@@ -2829,9 +2941,10 @@ func _open_fly(id: String) -> void:
 			_fly_panel.theme = DS.theme
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = Color("#0d1e31")
-		sb.border_color = C_ACTIVE_BORDER
+		# Mission cards use the DS brass pipe rim; the other flyouts retain their active blue rim.
+		sb.border_color = DS.PALETTE.BRASS if id == "quest" else C_ACTIVE_BORDER
 		sb.set_border_width_all(1)
-		sb.set_corner_radius_all(12)
+		sb.set_corner_radius_all(10 if id == "quest" else 12)
 		sb.shadow_color = Color(0, 0, 0, 0.55)
 		sb.shadow_size = 18
 		_fly_panel.add_theme_stylebox_override("panel", sb)
@@ -3944,11 +4057,15 @@ func _money_anomalies(current: Dictionary, s: Dictionary) -> Array:
 
 	# Each running-cost line is judged against its OWN baseline, so a labour jump is not
 	# hidden by a quiet turn for inputs. One generic sentence covers them all.
+	# A profitable company can quite reasonably have a running-cost spike while it is
+	# scaling. Use the same operating profit figure shown by the production ledger so
+	# the warning only calls out abnormal spending on turns that are not clearing £5.
+	var profit_per_turn := float(s.get("pre_tax_profit", float(s.get("money_in", 0.0)) - float(s.get("money_out", 0.0))))
 	for line: String in ANOMALY_COST_LINES:
 		var base := _anomaly_baseline(line)
 		if base <= 0.0 or float(current.get(line, 0.0)) < base * ANOMALY_SPIKE_RATIO:
 			continue
-		if not _anomaly_ready("spend"):
+		if profit_per_turn >= 5.0 or not _anomaly_ready("spend"):
 			break
 		hits.append({"id": "spend", "word": "spending", "tone": "bad",
 			"text": "We're spending abnormal amounts of money: %s due to running costs for %s." % [

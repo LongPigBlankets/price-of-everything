@@ -15,7 +15,7 @@ func _test_global_location_coefficients() -> void:
 func _test_new_tariffs_and_power_exclusion() -> void:
 	setup()
 	var snapshot := Service.prices()
-	for item in [["solid_light", "cpu", 0.02], ["safe_liquid", "pure_water", 0.05], ["hazard_liquid", "chlorine", 0.1], ["gas", "oxygen", 0.125]]:
+	for item in [["solid_light", "cpu", 0.025], ["safe_liquid", "pure_water", 0.08], ["hazard_liquid", "chlorine", 0.15], ["gas", "oxygen", 0.2]]:
 		var gid := str(Catalog.get_good_by_internal_name(str(item[1])).id)
 		var quote := Service.Contract.quote("buy", [{"good":gid,"quantity":10}], snapshot, 1.5, Service.goods())
 		_check(quote.ok and absf(float(quote.fee)-10*(0.005*float(snapshot[gid].reference)+float(item[2])*1.5)) < 0.000001, "new cargo tariff: "+str(item[0]))

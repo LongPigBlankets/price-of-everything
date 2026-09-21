@@ -22,6 +22,7 @@ const STARTING_SEATS: Array[String] = ["cfo", "coo"]
 const BASE_SEATS: Array[String] = ["cfo", "coo", "technical_director", "chief_markets"]
 const FOUNDER_ADVISOR_ID := "andrew"
 const FOUNDER_TENURE_TURNS := 30
+const FOUNDER_COO_TRANSPORT_COST_PCT := -20.0
 const MAX_ADVISOR_SLOTS_DEFAULT := 2
 const MAX_ADVISOR_SLOTS_CAP := 5            # spec §4.1 hard ceiling
 const PROFIT_MILESTONES := [50, 100, 150, 200, 300, 400, 500, 750, 1000]
@@ -643,7 +644,15 @@ func advisor_seat_effect_list(advisor_id: String, seat_id: String) -> Array:
 		var pct: float = float(eff.get("base_pct", 0.0)) * mult
 		if pct != 0.0:
 			out.append({"domain": str(eff.get("domain", "")), "pct": pct})
+	# Andrew's COO tenure carries the founder-specific freight deal. Keep it out of the
+	# generic COO kit: ordinary COOs do not receive this signing benefit.
+	if _founder_coo_transport_active(advisor_id, seat_id):
+		out.append({"domain": "transport_cost", "pct": FOUNDER_COO_TRANSPORT_COST_PCT * mult})
 	return out
+
+func _founder_coo_transport_active(advisor_id: String, seat_id: String) -> bool:
+	return advisor_id == FOUNDER_ADVISOR_ID and seat_id == "coo" \
+		and founder_seat == "coo" and not founder_tenure_expired()
 
 ## A deliberately simple, legible cash snapshot for the council UI: value only the
 ## POSITIVE seat effects against the last completed turn's matching ledger line. It
@@ -739,6 +748,14 @@ func reconcile_advisor_modifiers() -> void:
 				"domain": str(eff.get("domain", "")),
 				"pct": pct,
 				"label": "%s: %s (tier %d)" % [seat_name, advisor_id, tier],
+				"source": "advisor_seat",
+			})
+		if _founder_coo_transport_active(advisor_id, str(seat_id)):
+			Modifiers.add({
+				"id": "advisor_seat_%s_founder_transport_cost" % seat_id,
+				"domain": "transport_cost",
+				"pct": FOUNDER_COO_TRANSPORT_COST_PCT * tier_mult,
+				"label": "%s: %s (founder freight deal)" % [seat_name, advisor_id],
 				"source": "advisor_seat",
 			})
 	LabourState._revoke_unavailable_workforce_policies()

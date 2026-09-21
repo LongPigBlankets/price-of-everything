@@ -12,6 +12,10 @@ var last_turn_summary: Dictionary = {}
 var missing_by_building: Dictionary = {}  # instance_id -> Array of missing inputs
 var blocked_reason_by_building: Dictionary = {}  # instance_id -> {code, message}
 var last_turn_run: Dictionary = {}  # instance_id -> true (set of buildings that ran)
+## Consecutive turns where a stockpile-only input was missing and no matching good
+## was produced or delivered to the consumer tile. Used by the building diagnostic
+## to distinguish a one-turn timing gap from a genuinely dry stockpile route.
+var stockpile_input_gap_streak_by_building: Dictionary = {}  # "instance|good" -> turns
 var produced_by_building: Dictionary = {}  # instance_id -> good_id/internal_name -> lifetime qty
 var full_output_streak_by_building: Dictionary = {}  # instance_id -> consecutive turns at full output
 # Per-building lifetime P&L, instance_id -> {value, inputs, power, labour, maint, turns}.
@@ -122,6 +126,7 @@ func import_state(d: Dictionary) -> void:
 	missing_by_building.clear()
 	blocked_reason_by_building.clear()
 	last_turn_run.clear()
+	stockpile_input_gap_streak_by_building.clear()
 	_just_constructed_this_turn.clear()
 	_warning_buy_preview_cache.clear()
 
@@ -244,6 +249,7 @@ func _process_production() -> void:
 	# Aggregates (preserved for compatibility)
 	"money_in": 0.0,
 	"money_out": 0.0,
+	"pre_tax_profit": 0.0,
 	"fake_money": 0.0,   # cheat-added cash, reported as its own category
 	# Power-specific
 	"power_supply": 0,
@@ -518,6 +524,9 @@ func _process_production() -> void:
 	TurnProfiler.section_begin("buy_market_inputs")
 	_buy_market_inputs(all_buildings, summary)
 	TurnProfiler.section_end("buy_market_inputs")
+	# Evaluate this after same-tile outputs and recurring deliveries have been flushed, so
+	# a producer that supplied the tile this turn resets the dry-stockpile streak.
+	_update_stockpile_input_gap_streaks(all_buildings)
 
 	# === SELL PHASE (when production defaults to market) ===
 	TurnProfiler.section_begin("sell_phase")
@@ -559,7 +568,10 @@ func _process_production() -> void:
 			if surplus_qty > 0:
 				surplus[good_id] = surplus_qty
 		if not surplus.is_empty():
-			_sell_stockpile_totals(str(tile_id), surplus, summary, true)
+			if MatchState.get_sell_surplus_destination(str(tile_id)) == "middleman":
+				Middleman.sell_surplus(str(tile_id), surplus, summary)
+			else:
+				_sell_stockpile_totals(str(tile_id), surplus, summary, true)
 	TurnProfiler.section_end("sell_phase")
 
 	# === COSTS PHASE ===
@@ -646,6 +658,7 @@ func _process_production() -> void:
 	TurnProfiler.section_begin("tax_dividends")
 	var revenue: float = summary.goods_sales_revenue + summary.power_sales_revenue
 	var pre_tax_profit: float = _apply_tax_and_dividends(summary)
+	summary["pre_tax_profit"] = pre_tax_profit
 	var profit_sharing: float = _apply_profit_sharing(summary, pre_tax_profit)
 	TurnProfiler.section_end("tax_dividends")
 
@@ -749,7 +762,38 @@ func _process_production() -> void:
 					_in_transit_dbg[mg] = int(_in_transit_dbg.get(mg, 0)) + int(s.get("qty", 0))
 		print("[Production] In transit (pending shipments): ", _in_transit_dbg)
 
-	
+func stockpile_input_gap_streak(instance_id: String, good_id: String) -> int:
+	return int(stockpile_input_gap_streak_by_building.get(instance_id + "|" + good_id, 0))
+
+func _update_stockpile_input_gap_streaks(all_buildings: Array) -> void:
+	var seen: Dictionary = {}
+	for building: Dictionary in all_buildings:
+		var iid := str(building.get("instance_id", ""))
+		var tile_id := str(building.get("tile_id", ""))
+		var recipe: Dictionary = Catalog.get_recipe(str(building.get("recipe_id", "")))
+		for input: Dictionary in recipe.get("inputs", []):
+			var gid := str(input.get("good_id", ""))
+			if iid == "" or gid == "" or not MatchState.is_input_tile_only(iid, gid):
+				continue
+			var key := iid + "|" + gid
+			seen[key] = true
+			var missing_now := false
+			for missing: Dictionary in (missing_by_building.get(iid, []) as Array):
+				if str(missing.get("good_id", "")) == gid:
+					missing_now = true
+					break
+			var produced_here := int((_same_tile_supply.get(tile_id, {}) as Dictionary).get(gid, 0))
+			var delivered_here := float(((_inbound_delivery_this_turn.get(tile_id, {}) as Dictionary).get(gid, {}) as Dictionary).get("qty", 0.0))
+			var own_delivered_here := int((_own_delivery_this_turn.get(tile_id, {}) as Dictionary).get(gid, 0))
+			var dry_this_turn := produced_here <= 0 and delivered_here <= 0.0 and own_delivered_here <= 0
+			if missing_now and Stockpile.get_at_tile(tile_id, gid) <= 0 and dry_this_turn:
+				stockpile_input_gap_streak_by_building[key] = int(stockpile_input_gap_streak_by_building.get(key, 0)) + 1
+			else:
+				stockpile_input_gap_streak_by_building[key] = 0
+	for key in stockpile_input_gap_streak_by_building.keys():
+		if not seen.has(key):
+			stockpile_input_gap_streak_by_building.erase(key)
+
 
 # --- Helpers ---
 
@@ -1120,6 +1164,11 @@ func _offer_special_order_overflow(shipment: Dictionary, sale_record: Dictionary
 	})
 
 func _sell_output_to_market(building: Dictionary, good: Dictionary, qty: int, summary: Dictionary) -> void:
+	if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1" and not ResearchState.global_trade_license_available():
+		var stored := Stockpile.add(str(building.get("tile_id", "")), str(good.get("id", "")), qty)
+		if stored < qty:
+			push_warning("[Production] Global trade is unlicensed; only stored %d/%d output units" % [stored, qty])
+		return
 	# Output destined for the market goes through MarketState.execute_sale:
 	#   - skip_consume: the goods never landed in the stockpile — they're being
 	#     dispatched straight from production output,
@@ -1385,6 +1434,8 @@ func _transport_route(source_tile: String, destination_tile, good_id: String = "
 	return TransportService.route(source_tile, destination_tile, good_id)
 
 func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit_toast: bool) -> Dictionary:
+	if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1" and not ResearchState.global_trade_license_available():
+		return {"tile_id": "" if coord == null else str(coord), "items": [], "total_qty": 0, "total_revenue": 0.0}
 	var source_tile := "" if coord == null else str(coord)
 	var sale_record := {
 		"tile_id": source_tile,
@@ -2250,8 +2301,10 @@ func _can_run_recipe(building: Dictionary, recipe: Dictionary, service_preflight
 	# Check inputs (the JIT direct feed counts — it's real goods staged for this tile)
 	for input in inputs:
 		var have: int = Stockpile.get_at_tile(tile_id, input.good_id) + _feed_available(tile_id, str(input.good_id))
-		if Middleman.supplies_good(str(building.instance_id), str(input.good_id)) or (service_preflight and Middleman.material_tradeable(str(input.good_id), "input")):
+		if Middleman.supplies_good(str(building.instance_id), str(input.good_id)):
 			have = _scaled_input_qty(input,building) if service_preflight else int(Middleman.entry(str(building.instance_id)).get("inputs",{}).get(str(input.good_id),0))
+		elif service_preflight and not Middleman.enabled(str(building.instance_id)) and Middleman.material_tradeable(str(input.good_id), "input"):
+			have = _scaled_input_qty(input,building)
 		var need := _scaled_input_qty(input, building)
 		if have < need:
 			missing.append({
@@ -2547,6 +2600,7 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 	# Memoise (port, lead) per tile+good for this turn. Lead can be good-specific
 	# because seaport coverage and infra eligibility affect the actual buy quote.
 	var market_lead_cache: Dictionary = {}
+	var global_trade_available := str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1" or ResearchState.global_trade_license_available()
 	# Collect per-BUILDING demand per tile, in deterministic encounter order. Orders
 	# are still netted per (tile, good) against the shared stock + inbound (computing
 	# an order per building would let the first one's order zero out the rest), but
@@ -2557,7 +2611,6 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 	# {tile_id -> Array[{instance_id, building_id, inputs: {good_id -> need/turn}}]}
 	var demand_by_tile: Dictionary = {}
 	for building in all_buildings:
-		if Middleman.uses_inputs(str(building.instance_id)): continue
 		var recipe: Dictionary = Catalog.get_recipe(building.recipe_id)
 		if recipe.is_empty():
 			continue
@@ -2574,6 +2627,10 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 		var entry := {"instance_id": instance_id, "building_id": str(building.get("building_id", "")), "inputs": {}}
 		for input in inputs:
 			var good_id := str(input.good_id)
+			if Middleman.supplies_good(instance_id, good_id):
+				continue
+			if not global_trade_available:
+				continue  # Global purchasing is a licensed route in the middleman ruleset.
 			if MatchState.is_input_tile_only(instance_id, good_id):
 				if _input_source_exhausted_for(building, input):
 					MatchState.set_input_tile_only(instance_id, good_id, false)

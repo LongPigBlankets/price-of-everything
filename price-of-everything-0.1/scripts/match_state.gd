@@ -63,6 +63,7 @@ var input_tile_only: Dictionary = {}  # "instance_id|good_id" -> true (tile stoc
 var pending_output_stockpile_selection: Dictionary = {}
 var queued_stockpile_market_sales: Dictionary = {}  # tile_id -> true
 var sell_surplus_tiles: Dictionary = {}              # tile_id -> true (master: auto-sell ALL surplus goods)
+var surplus_destinations: Dictionary = {}             # tile_id -> market | middleman | none
 var auto_sell_goods: Dictionary = {}                 # tile_id -> { good_id -> true } (per-good auto-sell overrides)
 var auto_sell_keep: Dictionary = {}                  # tile_id -> { good_id -> units always left on the tile ("sell all except X") }
 const IMPACT_ANY := -1                               # auto-sell tolerance sentinel: no per-turn volume cap
@@ -124,9 +125,9 @@ var construct_start_half_capacity: bool = false
 var construct_auto_buy_land: bool = true
 ## Last public-road expansion batch applied; persisted so loading cannot repeat a batch.
 var public_roads_last_turn: int = 0
-# Defaults captured by constructions when they are started. "ask" preserves the
-# existing delivery prompt; the other modes choose a source automatically.
-var construct_material_source: String = "market"
+# Defaults captured by constructions when they are started. Construction kits use the
+# local Logistics Intermediary until the player unlocks other supply routes.
+var construct_material_source: String = "middleman"
 ## A one-build override picked from the confirm panel's materials accordion (which retired the old
 ## "construction materials missing" modal). NOT saved: it applies to the next build attempt only and
 ## clears once consumed. Empty = fall back to the standing construct_material_source setting.
@@ -791,9 +792,30 @@ func cheat_unlock_advisors() -> void:
 
 # --- Reset (useful for new game / testing) ---
 var middleman_service: Dictionary = {}
+## Andrew Keeler's COO signing gift: construction-material units whose goods value
+## and intermediary fee are waived. It is a finite company pool, persisted with the
+## match and consumed only by intermediary-sourced construction kits.
+var middleman_free_units: int = 0
+
+func add_middleman_free_units(units: int) -> void:
+	if units > 0:
+		middleman_free_units += units
+
+func consume_middleman_free_units(units: int) -> int:
+	if units <= 0 or middleman_free_units <= 0:
+		return 0
+	var used := mini(units, middleman_free_units)
+	middleman_free_units -= used
+	return used
+
+func peek_middleman_free_units(units: int) -> int:
+	if units <= 0 or middleman_free_units <= 0:
+		return 0
+	return mini(units, middleman_free_units)
 
 func reset() -> void:
 	middleman_service.clear()
+	middleman_free_units = 0
 	preload("res://scripts/cash_commitments.gd").reset()
 	money = 1000
 	hidden_buildings_unlocked = false
@@ -802,7 +824,7 @@ func reset() -> void:
 	construct_start_half_capacity = false
 	construct_auto_buy_land = true
 	public_roads_last_turn = 0
-	construct_material_source = "ask"
+	construct_material_source = "middleman"
 	construct_output_destination = "market"
 	power_priority_coal_gas = "self"
 	power_priority_wind_solar = "grid"
@@ -814,6 +836,7 @@ func reset() -> void:
 	pending_output_stockpile_selection.clear()
 	queued_stockpile_market_sales.clear()
 	sell_surplus_tiles.clear()
+	surplus_destinations.clear()
 	auto_sell_goods.clear()
 	auto_sell_keep.clear()
 	auto_sell_impact.clear()
@@ -876,6 +899,7 @@ func export_state() -> Dictionary:
 		"money": money,
 		"ruleset": ruleset.duplicate(true),
 		"middleman_service": middleman_service.duplicate(true),
+		"middleman_free_units": middleman_free_units,
 		"scenario_name": scenario_name,
 		"cheats_used": cheats_used,
 		"construct_start_half_capacity": construct_start_half_capacity,
@@ -903,6 +927,7 @@ func export_state() -> Dictionary:
 		"recurring_bulk_sells": recurring_bulk_sells.duplicate(true),
 		"recurring_buys": recurring_buys.duplicate(true),
 		"sell_surplus_tiles": sell_surplus_tiles.duplicate(true),
+		"surplus_destinations": surplus_destinations.duplicate(true),
 		"auto_sell_goods": auto_sell_goods.duplicate(true),
 		"auto_sell_keep": auto_sell_keep.duplicate(true),
 		"auto_sell_impact": auto_sell_impact.duplicate(true),
@@ -924,10 +949,15 @@ func export_state() -> Dictionary:
 	d.merge(TransportState.export_fields())
 	d.merge(Power.export_fields())
 	d.merge(BuildingState.export_fields())
+	# Modular mission progress is match-scoped.  The autoload is registered after MatchState,
+	# but export/import happen after the scene has finished booting, so this remains a tolerant
+	# additive block for older saves.
+	d["mini_quest"] = MiniQuest.export_fields()
 	return d
 
 func import_state(d: Dictionary) -> void:
 	middleman_service = (d.get("middleman_service", {}) as Dictionary).duplicate(true)
+	middleman_free_units = int(d.get("middleman_free_units", 0))
 	# Silent full overwrite of every exported field — SaveLoad emits the refresh
 	# signals once after every system has imported. Missing keys fall back to the
 	# new-game default, so older/partial snapshots (and Phase 3 start configs) load.
@@ -944,7 +974,7 @@ func import_state(d: Dictionary) -> void:
 	# Additive key: saves written before this setting existed use automatic land buying.
 	set_construct_auto_buy_land(bool(d.get("construct_auto_buy_land", true)), false)
 	public_roads_last_turn = int(d.get("public_roads_last_turn", 0))
-	set_construct_material_source(str(d.get("construct_material_source", "ask")), false)
+	set_construct_material_source(str(d.get("construct_material_source", "middleman")), false)
 	set_construct_output_destination(str(d.get("construct_output_destination", "market")), false)
 	# Additive key: saves written before this setting existed default to the same
 	# intermittency-avoiding defaults a fresh match starts with.
@@ -974,6 +1004,7 @@ func import_state(d: Dictionary) -> void:
 	recurring_bulk_sells = (d.get("recurring_bulk_sells", []) as Array).duplicate(true)
 	recurring_buys = (d.get("recurring_buys", []) as Array).duplicate(true)
 	sell_surplus_tiles = (d.get("sell_surplus_tiles", {}) as Dictionary).duplicate(true)
+	surplus_destinations = (d.get("surplus_destinations", {}) as Dictionary).duplicate(true)
 	auto_sell_goods = (d.get("auto_sell_goods", {}) as Dictionary).duplicate(true)
 	auto_sell_keep = (d.get("auto_sell_keep", {}) as Dictionary).duplicate(true)
 	auto_sell_impact = (d.get("auto_sell_impact", {}) as Dictionary).duplicate(true)
@@ -991,6 +1022,7 @@ func import_state(d: Dictionary) -> void:
 	# saves always carry the key and overwrite as usual.
 	deposit_remaining = (d.get("deposit_remaining", deposit_remaining) as Dictionary).duplicate(true)
 	ResearchState.import_fields(d)
+	MiniQuest.import_fields((d.get("mini_quest", {}) as Dictionary).duplicate(true))
 	# Derived state: the tile index is rebuilt, never saved; caches invalidate.
 	BuildingState._rebuild_tile_index()
 	_surveyable_dirty = true
@@ -1020,20 +1052,20 @@ func set_construct_auto_buy_land(enabled: bool, emit_change: bool = true) -> voi
 
 
 ## The material source the NEXT build attempt should use: the one-build accordion override if the
-## player picked one, else the standing setting. Legacy "ask" resolves to "market" — the modal is
+## player picked one, else the standing setting. Legacy "ask" resolves to "middleman" — the modal is
 ## retired, so a build never blocks waiting for a choice (the accordion is where the choice is made
 ## now). Clears the one-build override so it applies exactly once.
 func consume_build_material_source() -> String:
 	var src := pending_build_material_source if pending_build_material_source != "" else construct_material_source
 	pending_build_material_source = ""
 	if src == "ask" or src == "":
-		src = "market"
+		src = "middleman"
 	return src
 
 func set_construct_material_source(value: String, emit_change: bool = true) -> void:
 	var resolved := value.to_lower().strip_edges()
-	if resolved not in ["ask", "market", "same_tile", "any_tile"]:
-		resolved = "market"
+	if resolved not in ["ask", "middleman", "market", "same_tile", "any_tile"]:
+		resolved = "middleman"
 	if construct_material_source == resolved:
 		return
 	construct_material_source = resolved
@@ -1862,8 +1894,10 @@ func get_tile_sales(tile_id: String) -> Dictionary:
 
 
 func enable_sell_surplus(tile_id: String) -> void:
-	if tile_id == "" or sell_surplus_tiles.has(tile_id):
+	if tile_id == "":
 		return
+	if not surplus_destinations.has(tile_id) or str(surplus_destinations.get(tile_id, "")) == "none": surplus_destinations[tile_id] = "market"
+	if sell_surplus_tiles.has(tile_id): return
 	sell_surplus_tiles[tile_id] = true
 	sell_surplus_changed.emit(tile_id)
 
@@ -1871,10 +1905,25 @@ func disable_sell_surplus(tile_id: String) -> void:
 	if tile_id == "" or not sell_surplus_tiles.has(tile_id):
 		return
 	sell_surplus_tiles.erase(tile_id)
+	surplus_destinations[tile_id] = "none"
 	sell_surplus_changed.emit(tile_id)
 
 func is_sell_surplus_enabled(tile_id: String) -> bool:
 	return sell_surplus_tiles.has(tile_id)
+
+func get_sell_surplus_destination(tile_id: String) -> String:
+	var destination := str(surplus_destinations.get(tile_id, ""))
+	if destination in ["market", "middleman", "none"]: return destination
+	return "market" if sell_surplus_tiles.has(tile_id) else "none"
+
+func set_sell_surplus_destination(tile_id: String, destination: String) -> void:
+	if tile_id == "" or destination not in ["market", "middleman", "none"]: return
+	surplus_destinations[tile_id] = destination
+	if destination == "none":
+		sell_surplus_tiles.erase(tile_id)
+	else:
+		sell_surplus_tiles[tile_id] = true
+	sell_surplus_changed.emit(tile_id)
 
 func get_sell_surplus_tiles() -> Array:
 	return sell_surplus_tiles.keys()

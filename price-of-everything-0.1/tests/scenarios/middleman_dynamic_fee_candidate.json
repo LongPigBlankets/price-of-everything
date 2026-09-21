@@ -1,11 +1,14 @@
 {
-  "status": "Implemented for the phase-1 Pepper Valley motor prototype; broader goods/city rollout deferred. Replaces historical fixed-fee and 0.4% profiles.",
+  "status": "Current live tariff schedule for all six transport classes and eligible material trades. Replaces historical fixed-fee and 0.4% profiles.",
   "ad_valorem": 0.005,
   "weight_rates": {
-    "solid_heavy": 0.05,
-    "ultra_heavy": 0.5
+    "solid_light": 0.025,
+    "solid_heavy": 0.08,
+    "ultra_heavy": 0.6,
+    "safe_liquid": 0.08,
+    "hazard_liquid": 0.15,
+    "gas": 0.2
   },
-  "other_weight_rates": "not yet selected; do not infer production defaults from this two-class benchmark",
   "location_coefficients": {
     "large_city_near_port": 1.05,
     "medium_city_4_or_more_urban_tiles": 1.25,
@@ -17,7 +20,7 @@
   "formula": "quantity * (ad_valorem * market_reference_price + weight_rate * location_coefficient)",
   "scope": "independent building purchases and sales; storage included; no local transfers",
   "large_city_and_near_port_definition": "requires explicit authored eligibility",
-  "benchmark_report": "reports/balance/middleman_dynamic_fee_2026-09-19_av0.005_heavy0.05_ultra0.5.json",
+  "benchmark_report": "docs/reviews/pepper-three-chain-integrated-vs-middleman-2026-09-20.md",
   "historical_ad_valorem": 0.004,
   "runtime_price_basis": "Confirmed: snapshot MarketState.get_price including market impact/carbon, before buy markup; goods use ordinary get_buy_price/get_sale_price. Float ledger, UI rounding only.",
   "prototype_scope": {
@@ -31,6 +34,6 @@
       "g_008": 33
     },
     "grid_power": 30,
-    "other_classes": "unsupported until rates and eligibility are explicitly defined"
+    "other_classes": "all six catalogue transport classes have explicit rates"
   }
 }

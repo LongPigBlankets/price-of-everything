@@ -569,6 +569,16 @@ func on_building_placed(tile_id: String, building_id: String, _recipe_id: String
 	# been run once, offline. Anything the bake does NOT hold falls through and is laid out
 	# live against it, so an edited start list costs one building, not the whole map.
 	if claim_baked_placement(instance_id, building_id, tile_id):
+		# Baked layouts carry the geometry, but ownership belongs to the live simulation.
+		# The start pass can claim a baked NPC footprint after its BuildingState entry exists;
+		# refresh the ownership flag here so a stale/default bake never paints a rival lot as ours.
+		if _placement_index.has(instance_id):
+			var baked_placement: Dictionary = _placements[_placement_index[instance_id]]
+			baked_placement["is_npc"] = not BuildingState.is_player_owned(
+				BuildingState.get_building(instance_id))
+			_mark_subcomp_dirty(tile_id)
+		if not _bulk:
+			queue_redraw()
 		return
 	# The bake may hold this id for a DIFFERENT building or tile: instance ids are minted
 	# per match by a counter, so they collide across start configs (the magnate's second

@@ -12,7 +12,7 @@ The machine-readable authority is [middleman_phase0_contract.json](../tests/scen
 
 Each building independently buys and sells through the market. No same-tile sharing, netting, shared hidden warehouse or physical provider shipment is created. The inclusive service fee covers transport and operating storage; goods and factory costs remain separate.
 
-For each traded unit, charge `0.005 × reference price + class rate × location coefficient`. Heavy solids cost £0.05 and ultra-heavy £0.50 before the location factor. Pepper Valley uses the explicitly authored factor 1.5. Prototype eligibility is steel, copper wiring and motors only. Other goods and unauthored locations must report an unsupported reason, never silently receive free service.
+For each traded unit, charge `0.005 × reference price + class rate × location coefficient`. The current class rates are £0.025 light solid, £0.08 solid-heavy, £0.60 ultra-heavy, £0.08 safe liquid, £0.15 hazardous liquid and £0.20 gas before the location factor. Pepper Valley uses the explicitly authored factor 1.5. Prototype eligibility is steel, copper wiring and motors only. Other goods and unauthored locations must report an unsupported reason, never silently receive free service.
 
 Snapshot `MarketState.get_price()` including current impact/carbon as the fee reference, before purchase markup. Purchase and sale goods prices come from the ordinary `get_buy_price()` and `get_sale_price()` APIs. Capture all prices before service trades mutate market volume. Canonicalize quantities by good and retain float ledger precision; rounding is for display only.
 
@@ -55,7 +55,7 @@ The [holding fixture](../tests/scenarios/middleman_phase0_holding_fixture.json) 
 Run `python3 tools/run_middleman_phase0.py --full` from the project directory. The runner checks baseline SHA256s, the complete unit suite and real road, three-owned-rail and five-factory baseline replays. Without `--full` it runs the focused contract suite. The full suite writes temporary save fixtures through Godot's normal test paths and therefore needs access to those directories.
 
 - [Baseline manifest](../tests/scenarios/middleman_phase0_baseline_manifest.json): retained direct-run snapshots and goods/recipe catalogue hashes. Phase 0 does not rebalance them.
-- [Reference fixture](../tests/snapshots/middleman_phase0_reference_v1.json): controlled motor buy/sell quotes and expected cash trace. Input fee £5.93664; output fee £26.5724415; total £32.5090815. Its startup reserve uses a steady-state mean operating cost, not a measured actual turn-one minimum.
+- [Reference fixture](../tests/snapshots/middleman_phase0_reference_v1.json): controlled motor buy/sell quotes and expected cash trace under the current schedule. Input fee £8.81664; output fee £31.5224415; total £40.3390815. Its startup reserve uses a steady-state mean operating cost, not a measured actual turn-one minimum.
 - `tests/unit/test_middleman_contract.gd`: 48 focused checks across eight tests for purity, pricing, split invariance, complete-batch funding, minimum loan, private-input reuse, identity and fixture consistency.
 - Existing save tests cover actual legacy migration and whole-save round trips. Proposed private payload serialization alone does not prove runtime settlement idempotency.
 

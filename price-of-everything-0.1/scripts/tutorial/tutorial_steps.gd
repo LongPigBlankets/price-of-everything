@@ -970,7 +970,7 @@ static func steps() -> Array:
 			"id": "sell_windows",
 			"chapter": "Integration · Margin",
 			"title": "Turn windows into cash",
-			"body": "Your new building takes a few turns to construct, and until it helps your margin stays small. To sell finished windows, switch on 'Sell all Surplus every turn' on the factory tile. Each turn it ships them to market, turning them into cash while you integrate.",
+			"body": "Your new building takes a few turns to construct, and until it helps your margin stays small. To sell finished windows, choose 'Sell to global market' in the surplus destination on the factory tile. Each turn it ships them to market, turning them into cash while you integrate.",
 			"setup": [ { "action": "focus_tile_stock", "tile": WINDOW_TILE } ],
 			"spotlight": { "kind": "node_name", "ref": "SellSurplusToggle" },
 			"lock_panel": true,

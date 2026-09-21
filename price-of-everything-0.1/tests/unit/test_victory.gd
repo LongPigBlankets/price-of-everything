@@ -20,6 +20,12 @@ func _a_good_in_tier(tier: String) -> String:
 	return ""
 
 func _test_company_rankings() -> void:
+	var saved_turn := TurnManager.current_turn
+	TurnManager.current_turn = CompanyRankings.REVEAL_TURN - 1
+	_check(not CompanyRankings.available(), "company rankings: hidden before the turn-ten government announcement")
+	TurnManager.current_turn = CompanyRankings.REVEAL_TURN
+	_check(CompanyRankings.available(), "company rankings: available from the reveal turn")
+	TurnManager.current_turn = saved_turn
 	var history: Array[float] = [80.0, 95.0, 120.0, 140.0, 160.0]
 	var first: Array[Dictionary] = CompanyRankings.standings_for(24680, 50, history)
 	var second: Array[Dictionary] = CompanyRankings.standings_for(24680, 50, history)

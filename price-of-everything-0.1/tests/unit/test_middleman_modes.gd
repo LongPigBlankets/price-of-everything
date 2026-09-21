@@ -1,6 +1,20 @@
 extends "res://tests/unit/test_middleman_service.gd"
 const Graph := preload("res://scripts/empire_graph.gd")
 
+func _test_per_good_input_route_mixes_private_and_market_pipeline() -> void:
+	var iid := str(setup()[0])
+	_check(Service.set_good_mode(iid, "input", "g_006", "managed").ok, "switch one input to managed")
+	Stockpile.add("tile_5_4", "g_006", 32)
+	MatchState.set_input_tile_only(iid, "g_006", true)
+	var before := MatchState.money
+	Production._process_production()
+	var s := Production.last_turn_summary
+	_check(not Service.supplies_good(iid, "g_006") and Service.supplies_good(iid, "g_007"), "per-good input modes remain independent")
+	_check(int(s.purchased.get("g_007", 0)) == 32 and int(s.purchased.get("g_006", 0)) == 0, "only the intermediary-selected input is privately purchased")
+	_check(int(s.sold.get("g_008", {}).get("qty", 0)) == 33, "mixed input routes still complete the batch")
+	_check(absf(MatchState.money - before - Production.cash_change_of(s)) < 0.0001, "per-good route cash reconciles")
+	cleanup()
+
 func _test_managed_inputs_middleman_output() -> void:
 	var iid := str(setup()[0])
 	_check(Service.set_mode(iid,"input","managed").ok,"switch only inputs to managed")
@@ -70,8 +84,8 @@ func _test_colocated_furnace_feeds_managed_motor() -> void:
 	Service.set_mode(furnace,"output","managed")
 	Production._process_production()
 	var s := Production.last_turn_summary
-	_check(int(s.produced.get("g_006",0))==44 and int(s.sold.get("g_008",{}).get("qty",0))==33,"ordinary bounded cascade integrates same-tile steel and motors")
-	_check(Stockpile.get_at_tile("tile_5_4","g_006")==44,"new furnace output is retained for the next operating cycle")
+	_check(int(s.produced.get("g_006",0))==49 and int(s.sold.get("g_008",{}).get("qty",0))==33,"ordinary bounded cascade integrates same-tile steel and motors")
+	_check(Stockpile.get_at_tile("tile_5_4","g_006")==49,"new furnace output is retained for the next operating cycle")
 	_check(int(s.purchased.get("g_006",0))==0,"integrated motor never buys duplicate middleman steel")
 	var before := Stockpile.get_at_tile("tile_5_4","g_006")
 	Production._process_production()

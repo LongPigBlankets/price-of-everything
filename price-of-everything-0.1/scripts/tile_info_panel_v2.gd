@@ -356,20 +356,6 @@ func _build_header() -> HBoxContainer:
 	_title_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE  # let the header get the drag
 	header.add_child(_title_label)
-	var logistics := Button.new()
-	logistics.name = "TileLogisticsButton"
-	logistics.custom_minimum_size = Vector2(44,40)
-	logistics.draw.connect(func() -> void:
-		var center := logistics.size*0.5
-		var polygon := PackedVector2Array()
-		for index in 6:
-			var angle := TAU*float(index)/6.0
-			polygon.append(center+Vector2(cos(angle),sin(angle))*18.0)
-		logistics.draw_colored_polygon(polygon,Color(0.91,0.77,0.44))
-		logistics.draw_texture_rect(preload("res://assets/icons/research/glyph/lorry.png"),Rect2(center-Vector2(13,13),Vector2(26,26)),false))
-	logistics.tooltip_text = "Tile logistics and warehousing"
-	logistics.pressed.connect(_open_tile_logistics)
-	header.add_child(logistics)
 	var close_button := Button.new()
 	close_button.text = "✕"
 	close_button.focus_mode = Control.FOCUS_NONE
@@ -1500,9 +1486,12 @@ func _build_bl_pane(pane: VBoxContainer) -> void:
 		pane.add_child(_make_buildings_header("NPC Buildings", "(%d)" % npc_rows.size(), false))
 		_add_grouped_building_cards(pane, npc_rows)
 
-	# Infrastructure gets its own section: a grid of dialled add/built slots.
-	pane.add_child(_make_section_title("Infrastructure", "transit / capacity", "ok"))
-	pane.add_child(_make_infra_grid())
+	# Infrastructure is a tendered capability. Before Infrastructure Tendering is
+	# unlocked the tile view omits this section entirely, so the player is not shown
+	# controls that the progression has not granted yet.
+	if ResearchState.is_unlocked("Infrastructure Tendering"):
+		pane.add_child(_make_section_title("Infrastructure", "transit / capacity", "ok"))
+		pane.add_child(_make_infra_grid())
 
 # A seaport (b_004) on this tile is shown as a special building pinned to the top of the
 # Buildings tab: click it to open its detail panel; if an NPC owns it, a Buy button transfers
@@ -1982,7 +1971,7 @@ func _build_stock_pane(pane: VBoxContainer) -> void:
 	var service = preload("res://scripts/middleman_service.gd")
 	var logistics: Dictionary = service.tile_sides(_current_tile_id)
 	if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1" and (not logistics.input.is_empty() or not logistics.output.is_empty()):
-		if logistics.physical:
+		if logistics.physical and ResearchState.open_logistics_contracts_available():
 			var manage := Button.new()
 			manage.name = "ManageTileLogistics"
 			manage.text = "Manage Logistics"
@@ -2036,7 +2025,7 @@ func _build_stock_pane(pane: VBoxContainer) -> void:
 	if jit_fed > 0:
 		var jit_line := Label.new()
 		jit_line.text = "JIT: %d units fed building-to-building this turn — no warehouse space used" % jit_fed
-		jit_line.theme_type_variation = &"Caption"
+		jit_line.theme_type_variation = &"Smallest"
 		jit_line.add_theme_color_override("font_color", DS.PALETTE.OK)
 		pane.add_child(jit_line)
 	var stock := TileViewData.stockpile_summary(_current_tile_id)
@@ -2046,7 +2035,7 @@ func _build_stock_pane(pane: VBoxContainer) -> void:
 
 	# Whole-tile "Sell all Surplus" — applies to every good, so it sits under the
 	# chart, outside the per-good "select a good" flow.
-	pane.add_child(_make_sell_surplus_toggle())
+	pane.add_child(_make_surplus_destination_select())
 
 	if _stock_sel.is_empty():
 		pane.add_child(_make_muted_label("Select a good above to move or sell it"))
@@ -2231,8 +2220,35 @@ func _commit_warehouse_upgrade(source: String) -> void:
 		MatchState.request_toast("Warehouse expansion failed: %s" % str(res.get("reason", "unknown")), "warning")
 	_refresh_pane("stock")
 
-# Whole-tile "Sell all Surplus" toggle. Enabling it (unless suppressed) opens a
-# confirmation dialog first; the box only commits once the player confirms.
+# Whole-tile surplus destination. This is deliberately separate from per-good
+# stockpile moves: it controls the standing destination for goods left after
+# this tile's production commitments are reserved.
+func _make_surplus_destination_select() -> Control:
+	var row := HBoxContainer.new()
+	row.name = "SurplusDestination"
+	row.add_theme_constant_override("separation", DS.SP["SM"])
+	var label := Label.new()
+	label.text = "Surplus destination"
+	label.theme_type_variation = &"Smallest"
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(label)
+	var select := OptionButton.new()
+	select.name = "SellSurplusToggle" # tutorial spotlight target retained for the selector
+	select.custom_minimum_size = Vector2(230, 0)
+	select.add_theme_font_size_override("font_size", DS.FS["SMALLEST"])
+	select.add_item("Don't sell surplus")
+	select.add_item("Sell to global market")
+	select.add_item("Sell to Local Logistics Intermediary")
+	var destination := MatchState.get_sell_surplus_destination(_current_tile_id)
+	select.selected = {"none":0, "market":1, "middleman":2}.get(destination, 0)
+	select.item_selected.connect(func(index: int) -> void:
+		var value: String = ["none", "market", "middleman"][index]
+		MatchState.set_sell_surplus_destination(_current_tile_id, value)
+		_refresh_active_pane())
+	row.add_child(select)
+	return row
+
 func _make_sell_surplus_toggle() -> CheckBox:
 	var tile_id_now := _current_tile_id
 	var toggle := CheckBox.new()
@@ -2691,7 +2707,7 @@ func _make_stock_chart(goods: Array, pct_text: String, status: String) -> Contro
 	head.add_child(title)
 	var pct := Label.new()
 	pct.text = pct_text
-	pct.theme_type_variation = &"Caption"
+	pct.theme_type_variation = &"Smallest"
 	pct.add_theme_color_override("font_color", _status_color(status) if status != "ok" else DS.PALETTE.TEXT_DIM)
 	pct.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(pct)
@@ -2769,8 +2785,7 @@ func _make_stock_bar(name: String, good_id: String, qty: int, max_qty: int, colo
 
 	var value := Label.new()
 	value.text = str(qty)
-	value.theme_type_variation = &"Caption"
-	value.add_theme_font_size_override("font_size", 11)
+	value.theme_type_variation = &"Smallest"
 	value.add_theme_color_override("font_color", DS.PALETTE.ACCENT if selected else DS.PALETTE.TEXT)
 	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	value.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -2824,8 +2839,7 @@ func _make_stock_bar(name: String, good_id: String, qty: int, max_qty: int, colo
 	var label := Label.new()
 	label.text = name
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	label.theme_type_variation = &"Caption"
-	label.add_theme_font_size_override("font_size", 9)
+	label.theme_type_variation = &"Smallest"
 	label.add_theme_color_override("font_color", DS.PALETTE.BG_PANEL if selected else DS.PALETTE.TEXT_MUTED)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM

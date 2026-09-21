@@ -34,11 +34,15 @@ static func level_stats(key: String, level: int) -> Dictionary:
 			"cost": "No per-unit transmission charge",
 		}
 	var mode := key
-	var range := 0
-	match key:
-		"roads": range = 2
-		"rail": range = 4
-		"pipes", "reinf_pipes": range = 2
+	# Keep the building details and construction panels on the same range table as the
+	# router.  This used to be hard-coded to the level-1 values, so every accordion row
+	# displayed 2 road / 4 rail / 2 pipe tiles even though the simulation used the level-
+	# specific 2-3-5, 4-6-9 and 2-3-5 ranges.
+	var range := EconomyConfig.infra_range_for_level(mode, level)
+	if range <= 0:
+		# Preserve the CSV fallback for a future levelled mode that has not yet been added
+		# to EconomyConfig.INFRA_RANGE_BY_LEVEL.
+		range = Catalog.infra_range(mode)
 	var capacity: float = TransportService.link_capacity(mode, level)
 	var cost := "£0.02–£0.06 / unit / turn"
 	if key == "rail":

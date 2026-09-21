@@ -914,7 +914,9 @@ func _on_start_pressed() -> void:
 			# falls back to, so only the demo has to say anything.
 			"policy_timeline": _policy_timeline,
 			"victory_set": _victory_set,
-			"tutorial_enabled": _tutorial_on or _start_id == "pepper_valley_motors",
+			# Starts are campaign starts, not tutorial tracks. The optional tutorial is only
+			# enabled when the player explicitly selects it in the tutorial flow.
+			"tutorial_enabled": _tutorial_on,
 			# Advanced Settings: force every land tile surveyed at game start (this
 			# overrides whatever the difficulty's survey config would otherwise do).
 			"survey_all_tiles": _survey_all,

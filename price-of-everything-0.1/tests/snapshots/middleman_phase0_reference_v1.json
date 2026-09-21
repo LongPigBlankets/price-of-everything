@@ -31,22 +31,22 @@
   "running_reserve": 70.5689624574075,
   "expected": {
     "input_goods": 238.69440000000003,
-    "input_fee": 5.936640000000001,
-    "input_cash_out": 244.63104000000004,
+    "input_fee": 8.816640000000001,
+    "input_cash_out": 247.51104000000004,
     "running_reserve": 70.5689624574075,
-    "required_starting_funding": 315.20000245740755,
+    "required_starting_funding": 318.08000245740755,
     "sales_gross": 364.4883,
-    "output_fee": 26.5724415,
-    "sales_net": 337.91585849999996,
-    "total_middleman_fee": 32.5090815,
-    "contribution": 22.715856042592463
+    "output_fee": 31.5224415,
+    "sales_net": 332.96585849999996,
+    "total_middleman_fee": 40.3390815,
+    "contribution": 14.885856042592463
   },
   "funding_trace": {
     "opening_cash": 1000,
     "loan_draw": 0,
-    "after_acquisition": 755.3689599999999,
-    "after_sale": 1093.2848184999998,
-    "closing_after_operating_costs": 1022.7158560425926
+    "after_acquisition": 752.4889599999999,
+    "after_sale": 1085.4548184999998,
+    "closing_after_operating_costs": 1014.8858560425926
   },
   "failure_trace": {
     "before_purchase_failure": {
@@ -55,7 +55,7 @@
       "market_volume": {}
     },
     "after_purchase_failure": {
-      "cash_delta": -244.63104000000004,
+      "cash_delta": -247.51104000000004,
       "private_inputs": {
         "g_006": 32,
         "g_007": 32
