@@ -59,7 +59,9 @@ const ALT_MENU_ICONS := {
 	"ResourcesButton": "goods",
 	"BuildingsButton": "building_ledger",
 	"MapmodesButton": "mapmodes",
-	"MarketButton": "market",
+	# The original market artwork contains a complete disc, ring and radial bevel.
+	# The bottom button supplies those surfaces itself, so use the separated object layer.
+	"MarketButton": "market_object",
 	"PoliticsButton": "politics",
 	"TechButton": "research",
 	"PeopleButton": "people",
@@ -282,15 +284,15 @@ func _apply_alt_button_style(button_name: String) -> void:
 		return
 	var bg := Color(ALT_COLORS[button_name][0])
 	var fg := Color(ALT_COLORS[button_name][1])
-	# Every button takes the same path — no per-button inset, no clipping: each PNG carries
-	# the shared disc and emboss.
+	# The button owns the disc, ring and emboss. Icon PNGs are object layers only.
 	button.add_theme_stylebox_override("normal", _make_alt_button_style(fg, bg))
 	button.add_theme_stylebox_override("hover", _make_alt_button_style(fg, bg))
 	button.add_theme_stylebox_override("pressed", _make_alt_button_style(fg, bg.darkened(0.08)))
 	button.add_theme_stylebox_override("focus", _make_alt_button_style(fg, bg))
 	# Per-button glow texture: an inside-out radial (bright centre → fades to the
-	# ring) with the object cut out, so only the background glows on hover.
-	_ensure_alt_glow(button, Color(bg.lightened(0.3), 0.55), "res://assets/icons/ui_icons/alt/_glow_%s.png" % _icon_key_for_button(button_name))
+	# ring). It contains no icon geometry; the icon remains a separate object layer.
+	var glow_key := "market_clean" if button_name == "MarketButton" else _icon_key_for_button(button_name)
+	_ensure_alt_glow(button, Color(bg.lightened(0.3), 0.55), "res://assets/icons/ui_icons/alt/_glow_%s.png" % glow_key)
 
 func _on_empire_button_icon_changed(_use_badge: bool) -> void:
 	var icon_key := _icon_key_for_button("EmpireButton")

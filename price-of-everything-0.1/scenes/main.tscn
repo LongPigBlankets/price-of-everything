@@ -36,7 +36,7 @@
 [ext_resource type="Texture2D" uid="uid://d1lmys435ch0a" path="res://assets/icons/ui_icons/alt/goods.png" id="21_resources"]
 [ext_resource type="Texture2D" uid="uid://crxtm6pik44sq" path="res://assets/icons/ui_icons/alt/building_ledger.png" id="22_buildings"]
 [ext_resource type="Texture2D" uid="uid://5cvd52kds2t5" path="res://assets/icons/ui_icons/alt/mapmodes.png" id="23_map_overlays"]
-[ext_resource type="Texture2D" uid="uid://vjiucfnmdck0" path="res://assets/icons/ui_icons/alt/market.png" id="24_markets"]
+[ext_resource type="Texture2D" uid="uid://caygtn6wbwy7k" path="res://assets/icons/ui_icons/alt/market_object.png" id="24_markets"]
 [ext_resource type="Texture2D" uid="uid://biflc0dg1i8py" path="res://assets/icons/ui_icons/alt/politics.png" id="25_politics"]
 [ext_resource type="Texture2D" uid="uid://e6f2x50swlb1" path="res://assets/icons/ui_icons/alt/research.png" id="26_tech"]
 [ext_resource type="Script" path="res://scripts/toast_manager.gd" id="27_toast"]
