@@ -8,6 +8,7 @@ const TAGS := {
 	"_test_cost_save_isolation": ["finance", "save_load"],
 	"_test_save_load_roundtrip": ["finance", "save_load", "special_orders", "stockpile"],
 	"_test_start_config_applies_on_scene_ready": ["finance", "save_load", "stockpile"],
+	"_test_start_land_capacity": ["construction", "save_load"],
 	"_test_save_version_migration": ["save_load", "special_orders"],
 	"_test_save_load_ui": ["save_load", "ui"],
 }
@@ -307,6 +308,61 @@ func _test_start_config_applies_on_scene_ready() -> void:
 		"start: CSV deposit yields survive (no deposit data in the config)")
 	inst.queue_free()
 	await get_tree().process_frame
+
+# Every authored start must leave enough of each tile's terrain ceiling for the NPC
+# buildings that are seeded there. This scans the start directory rather than a fixed
+# allow-list, so a newly added start gets this guard automatically.
+func _test_start_land_capacity() -> void:
+	var dir := DirAccess.open("res://data/starts")
+	_check(dir != null, "start land capacity: starts directory opens")
+	if dir == null:
+		return
+	var files: Array[String] = []
+	dir.list_dir_begin()
+	var entry_name := dir.get_next()
+	while entry_name != "":
+		if not dir.current_is_dir() and entry_name.ends_with(".json") and not entry_name.begins_with("_") and entry_name != "index.json":
+			files.append(entry_name)
+		entry_name = dir.get_next()
+	dir.list_dir_end()
+	files.sort()
+	for filename in files:
+		var path := "res://data/starts/%s" % filename
+		var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+		if not (parsed is Dictionary) or not bool((parsed as Dictionary).get("start", false)):
+			continue
+		var cfg := parsed as Dictionary
+		for raw_tile in (cfg.get("land", {}) as Dictionary):
+			var tile_id := str(raw_tile)
+			var authored_npc := _authored_npc_footprint(tile_id, cfg)
+			var ceiling := float(BuildingState.max_tile_land(tile_id)) - authored_npc
+			var owned := float((cfg.get("land", {}) as Dictionary)[raw_tile])
+			_check(owned <= ceiling + 0.001,
+				"start land capacity: %s %s owns %.0f <= %.0f after NPC footprint %.0f" % [filename, tile_id, owned, ceiling, authored_npc])
+
+
+func _authored_npc_footprint(tile_id: String, cfg: Dictionary) -> float:
+	var total := 0.0
+	for entry in StartBuildings.entries():
+		if str(entry.get("tile", "")) == tile_id:
+			total += _authored_building_footprint(str(entry.get("building", "")))
+	for _port in Catalog.all_ports():
+		if str(_port.get("tile_id", "")) == tile_id:
+			total += _authored_building_footprint("b_004")
+	# Ruins are part of every non-tutorial fresh board when the hidden building is available.
+	# The authored starts with land on this tile have ample room either way; including it
+	# keeps the check conservative when a later start claims the ruin tile.
+	if tile_id == "tile_23_16" and MatchState.is_building_available("b_031"):
+		total += _authored_building_footprint("b_031")
+	for entry in cfg.get("buildings", []):
+		if str(entry.get("tile_id", "")) == tile_id and str(entry.get("owner", MatchState.LOCAL_PLAYER)) != MatchState.LOCAL_PLAYER:
+			total += _authored_building_footprint(str(entry.get("building_id", "")), clampi(int(entry.get("level", 1)), 1, BuildingLevels.MAX_LEVEL))
+	return total
+
+
+func _authored_building_footprint(building_id: String, level: int = 1) -> float:
+	var data := Catalog.get_building(building_id)
+	return float(data.get("tile_size_used", 1.0)) * BuildingLevels.mult("size", level)
 
 # Phase 4: a v1 save (no ruleset) steps up the migration ladder on load and
 # arrives with the standard ruleset filled in.

@@ -62,6 +62,9 @@ const NEAR_FULL := 0.95
 const TREND_TURNS := 3
 
 var _global_logistics: VBoxContainer
+var _settings_layer: Control
+var _settings_card: PanelContainer
+var _settings_button: Button
 var _stock_list: VBoxContainer
 var _infra_list: VBoxContainer
 var _transit_list: VBoxContainer
@@ -105,9 +108,12 @@ func _ready() -> void:
 
 
 func open() -> void:
+	if _settings_layer != null:
+		_settings_layer.visible = false
 	_refresh()
 	visible = true
 	_centre()
+	_layout_settings_card()
 	move_to_front()
 	PanelStack.push(self)
 
@@ -119,6 +125,8 @@ func _centre() -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_VISIBILITY_CHANGED and not visible:
+		if _settings_layer != null:
+			_settings_layer.visible = false
 		PanelStack.remove(self)
 
 
@@ -161,7 +169,7 @@ func _build() -> void:
 	_global_logistics = VBoxContainer.new()
 	_global_logistics.add_theme_constant_override("separation", 6)
 	_global_logistics.custom_minimum_size = Vector2(0, 138)
-	root.add_child(_global_logistics)
+	_build_settings_overlay()
 
 
 func _header() -> Control:
@@ -177,12 +185,90 @@ func _header() -> Control:
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(spacer)
+	_settings_button = Button.new()
+	_settings_button.name = "LogisticsSettings"
+	_settings_button.text = "Logistics Settings"
+	_settings_button.theme_type_variation = "Primary"
+	_settings_button.custom_minimum_size = Vector2(190, 38)
+	_settings_button.focus_mode = Control.FOCUS_NONE
+	_settings_button.pressed.connect(_toggle_settings)
+	row.add_child(_settings_button)
 	var close := Button.new()
 	close.text = "✕"
 	close.focus_mode = Control.FOCUS_NONE
-	close.pressed.connect(hide)
+	close.pressed.connect(func() -> void:
+		if _settings_layer != null:
+			_settings_layer.visible = false
+		hide())
 	row.add_child(close)
 	return row
+
+
+func _build_settings_overlay() -> void:
+	_settings_layer = Control.new()
+	_settings_layer.name = "LogisticsSettingsOverlay"
+	_settings_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_settings_layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	_settings_layer.visible = false
+	add_child(_settings_layer)
+
+	_settings_card = PanelContainer.new()
+	_settings_card.name = "LogisticsSettingsCard"
+	_settings_card.theme_type_variation = "Card"
+	var base_sb := get_theme_stylebox("panel")
+	if base_sb is StyleBoxFlat:
+		var sb := (base_sb as StyleBoxFlat).duplicate() as StyleBoxFlat
+		sb.set_border_width_all(0)
+		sb.set_content_margin_all(0)
+		_settings_card.add_theme_stylebox_override("panel", sb)
+	_settings_layer.add_child(_settings_card)
+
+	var margin := MarginContainer.new()
+	for m in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+		margin.add_theme_constant_override(m, FRAME_INSET)
+	_settings_card.add_child(margin)
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", DS.SP.SM)
+	margin.add_child(body)
+	var heading := HBoxContainer.new()
+	heading.add_theme_constant_override("separation", DS.SP.SM)
+	body.add_child(heading)
+	var title := Label.new()
+	title.theme_type_variation = "Section"
+	title.add_theme_font_size_override("font_size", DS.FS.BODY + 6)
+	title.text = "Logistics Settings"
+	heading.add_child(title)
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	heading.add_child(gap)
+	var dismiss := Button.new()
+	dismiss.text = "✕"
+	dismiss.focus_mode = Control.FOCUS_NONE
+	dismiss.pressed.connect(func() -> void: _settings_layer.visible = false)
+	heading.add_child(dismiss)
+	body.add_child(_global_logistics)
+	_settings_card.add_child(preload("res://scripts/brass_pipe_frame.gd").new())
+	_settings_layer.resized.connect(_layout_settings_card)
+	call_deferred("_layout_settings_card")
+
+
+func _layout_settings_card() -> void:
+	if _settings_layer == null or _settings_card == null:
+		return
+	var available := _settings_layer.size
+	var target := Vector2(minf(760.0, maxf(0.0, available.x - 52.0)), minf(300.0, maxf(0.0, available.y - 80.0)))
+	_settings_card.size = target
+	_settings_card.position = ((available - target) * 0.5).floor()
+
+
+func _toggle_settings() -> void:
+	if _settings_layer == null:
+		return
+	_settings_layer.visible = not _settings_layer.visible
+	if _settings_layer.visible:
+		_refresh()
+		_layout_settings_card()
+		_settings_layer.move_to_front()
 
 
 ## One titled, scrolling column. The subtitle is the sort order, and it rides on the

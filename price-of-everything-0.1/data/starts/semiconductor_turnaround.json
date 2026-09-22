@@ -9,6 +9,6 @@
 		{ "building_id": "b_010", "recipe_id": "r_123", "tile_id": "tile_23_8", "level": 2 }
 	],
 	"land": {
-		"tile_23_8": 120
+		"tile_23_8": 86
 	}
 }

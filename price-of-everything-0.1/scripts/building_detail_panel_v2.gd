@@ -2287,12 +2287,30 @@ func _logistics_side_control(building: Dictionary, recipe: Dictionary, side: Str
 		else: _open_output_sheet(building, recipe)
 	if not active or not manage_unlocked:
 		return _route_card("Inputs" if side == "input" else "Outputs", _input_summary(building, recipe) if side == "input" else _output_summary(building, recipe), open, INPUT_ICON if side == "input" else OUTPUT_ICON)
+	var card := PanelContainer.new()
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var st := StyleBoxFlat.new()
+	st.bg_color = DS.PALETTE["BG_CARD"]
+	st.border_color = DS.PALETTE["BORDER_SOFT"]
+	st.set_border_width_all(1)
+	st.set_corner_radius_all(10)
+	st.set_content_margin_all(10)
+	card.add_theme_stylebox_override("panel", st)
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 10)
+	card.add_child(body)
+	var side_icon := _off_white_icon_rect(INPUT_ICON if side == "input" else OUTPUT_ICON, Vector2(44, 68))
+	side_icon.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.add_child(side_icon)
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 4)
+	body.add_child(col)
 	var heading := HBoxContainer.new()
 	heading.add_theme_constant_override("separation", 6)
 	col.add_child(heading)
-	heading.add_child(_off_white_icon_rect(INPUT_ICON if side == "input" else OUTPUT_ICON, Vector2(22, 22)))
 	var label := Label.new()
 	label.text = "INPUTS" if side == "input" else "OUTPUTS"
 	label.theme_type_variation = "Caption"
@@ -2301,17 +2319,16 @@ func _logistics_side_control(building: Dictionary, recipe: Dictionary, side: Str
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
 	col.add_child(row)
-	var icon := _off_white_icon_rect(ROUTE_MIDDLEMAN_ICON, Vector2(26, 26))
-	icon.custom_minimum_size = Vector2(26, 26)
-	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	row.add_child(icon)
+	var route_icon := _off_white_icon_rect(ROUTE_MIDDLEMAN_ICON, Vector2(26, 26))
+	route_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(route_icon)
 	var button := Button.new()
 	button.name = "ManageInputLogistics" if side == "input" else "ManageOutputLogistics"
 	button.text = "Manage Logistics"
 	button.add_theme_font_size_override("font_size", 14)
 	button.pressed.connect(open)
 	row.add_child(button)
-	return col
+	return card
 
 func _input_summary(building: Dictionary, recipe: Dictionary) -> String:
 	var service = preload("res://scripts/middleman_service.gd")
@@ -2390,14 +2407,22 @@ func _route_card(label: String, value: String, on_press: Callable, icon_texture:
 	card.gui_input.connect(func(e: InputEvent) -> void:
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 			on_press.call())
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 10)
+	card.add_child(body)
+	var side_icon: TextureRect = null
+	if icon_texture != null:
+		side_icon = _off_white_icon_rect(icon_texture, Vector2(44, 68))
+		side_icon.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		body.add_child(side_icon)
 	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 1)
-	card.add_child(vb)
+	vb.add_theme_constant_override("separation", 2)
+	vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vb.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.add_child(vb)
 	var heading := HBoxContainer.new()
 	heading.add_theme_constant_override("separation", 6)
 	vb.add_child(heading)
-	if icon_texture != null:
-		heading.add_child(_off_white_icon_rect(icon_texture, Vector2(22, 22)))
 	var l := Label.new()
 	l.theme_type_variation = "Caption"
 	l.text = label.to_upper()
@@ -2473,7 +2498,7 @@ func _input_route_choices(building: Dictionary, gid: String, _slot: String, mark
 	choices.append({
 		"source": "market",
 		"title": "Global market",
-		"detail": "Buy through the nearest port when the tile's available goods are short." if market_available else "Global trade license required.",
+		"detail": "Buy through the nearest port when the tile's available goods are short." if market_available else "[Requires Government Import/Export License]",
 		"enabled": market_available,
 	})
 	var service = preload("res://scripts/middleman_service.gd")
@@ -2757,20 +2782,21 @@ func _add_output_good_options(vb: VBoxContainer, building: Dictionary, recipe: D
 	# Selecting Market / Tile re-renders the sheet in place; shipping to another tile
 	# opens the map picker.
 	var market_available := str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1" or ResearchState.global_trade_license_available()
-	if market_available:
-		row.add_child(_logistics_route_option(building, "output", "Global market", "Sell at market price via the nearest port.", is_market, func() -> void:
-			MatchState.route_output_to_market(iid, good_id)
-			_queue_refresh()
-			_open_output_sheet(building, recipe), good_id))
-	if ResearchState.open_logistics_contracts_available():
-		row.add_child(_logistics_route_option(building, "output", "Tile stockpile", "Store the output on this tile for later use.", on_tile, func() -> void:
-			MatchState.set_output_stockpile_destination(iid, tile_id, good_id)
-			_queue_refresh()
-			_open_output_sheet(building, recipe)
-			preload("res://scripts/stockpile_route_prompt.gd").offer(get_parent(), tile_id, good_id), good_id))
-		row.add_child(_logistics_route_option(building, "output", "Ship to another tile", "Pick a tile on the shipping map to feed a downstream building you own.", other, func() -> void:
-			MatchState.begin_output_stockpile_selection(iid, good_id, true)
-			_close_sheet(), good_id))
+	var market_detail := "Sell at market price via the nearest port." if market_available else "[Requires Government Import/Export License]"
+	row.add_child(_logistics_route_option(building, "output", "Global market", market_detail, is_market, func() -> void:
+		MatchState.route_output_to_market(iid, good_id)
+		_queue_refresh()
+		_open_output_sheet(building, recipe), good_id, market_available))
+	var stockpile_available := ResearchState.open_logistics_contracts_available()
+	var stockpile_detail := "Store the output on this tile for later use." if stockpile_available else "[Requires Open Logistics Contracts]"
+	row.add_child(_logistics_route_option(building, "output", "Tile stockpile", stockpile_detail, on_tile, func() -> void:
+		MatchState.set_output_stockpile_destination(iid, tile_id, good_id)
+		_queue_refresh()
+		_open_output_sheet(building, recipe)
+		preload("res://scripts/stockpile_route_prompt.gd").offer(get_parent(), tile_id, good_id), good_id, stockpile_available))
+	row.add_child(_logistics_route_option(building, "output", "Ship to another tile", "Pick a tile on the shipping map to feed a downstream building you own." if stockpile_available else "[Requires Open Logistics Contracts]", other, func() -> void:
+		MatchState.begin_output_stockpile_selection(iid, good_id, true)
+		_close_sheet(), good_id, stockpile_available))
 	chooser.add_child(row)
 	group.add_child(chooser)
 	group.add_child(_output_route_details_section(building, good_id, output_qty, intermediary, is_market, on_tile, other))
@@ -2882,7 +2908,9 @@ func _dest_option(title: String, detail: String, active: bool, on_press: Callabl
 	st.set_content_margin_all(5)
 	card.add_theme_stylebox_override("panel", st)
 	card.tooltip_text = "%s\n%s" % [title, detail] if detail != "" else title
-	card.mouse_filter = Control.MOUSE_FILTER_STOP if enabled else Control.MOUSE_FILTER_IGNORE
+	# Locked routes still need to receive hover so their tooltip can explain the
+	# missing research. The click handler below remains gated by `enabled`.
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
 	card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if enabled else Control.CURSOR_ARROW
 	card.gui_input.connect(func(e: InputEvent) -> void:
 		if enabled and e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
@@ -3128,10 +3156,15 @@ func _add_logistics_options(vb: VBoxContainer, building: Dictionary, side: Strin
 	var active: bool = service.side_all_middleman(iid, side)
 	row.add_child(_dest_option("All %s — Logistics Intermediary" % ("inputs" if side == "input" else "outputs"), "Buys inputs privately for this building." if side == "input" else "Buys this building's production. Transport and storage are included.",active,func() -> void: _request_logistics_mode(building,side,"middleman")))
 	var market_available := str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1" or ResearchState.global_trade_license_available()
+	var stockpile_available := ResearchState.open_logistics_contracts_available()
 	if market_available:
-		row.add_child(_dest_option("All %s — Global market" % ("inputs" if side == "input" else "outputs"), "Use the ordinary market route for every tradeable good on this side.", _all_managed_source(building, side, "market"), func() -> void: _request_all_managed_source(building, side, "market")))
-	if ResearchState.open_logistics_contracts_available():
-		row.add_child(_dest_option("All %s — Tile stockpile" % ("inputs" if side == "input" else "outputs"), "Use this building's tile stockpile for every tradeable good on this side.", _all_managed_source(building, side, "tile"), func() -> void: _request_all_managed_source(building, side, "tile")))
+		row.add_child(_dest_option("All %s — Global market" % ("inputs" if side == "input" else "outputs"), "Use the ordinary market route for every tradeable good on this side.", _all_managed_source(building, side, "market"), func() -> void: _request_all_managed_source(building, side, "market"), true))
+	else:
+		row.add_child(_dest_option("All %s — Global market" % ("inputs" if side == "input" else "outputs"), "[Requires Government Import/Export License]", false, func() -> void: pass, false))
+	if stockpile_available:
+		row.add_child(_dest_option("All %s — Tile stockpile" % ("inputs" if side == "input" else "outputs"), "Use this building's tile stockpile for every tradeable good on this side.", _all_managed_source(building, side, "tile"), func() -> void: _request_all_managed_source(building, side, "tile"), true))
+	else:
+		row.add_child(_dest_option("All %s — Tile stockpile" % ("inputs" if side == "input" else "outputs"), "[Requires Open Logistics Contracts]", false, func() -> void: pass, false))
 	vb.add_child(row)
 	vb.add_child(HSeparator.new())
 
@@ -3193,12 +3226,13 @@ func _apply_all_managed_source(building: Dictionary, side: String, source: Strin
 	else: _open_output_sheet(building, recipe)
 	return true
 
-func _logistics_route_option(building: Dictionary, side: String, title: String, detail: String, active: bool, on_press: Callable, good_id: String = "") -> Control:
+func _logistics_route_option(building: Dictionary, side: String, title: String, detail: String, active: bool, on_press: Callable, good_id: String = "", enabled: bool = true) -> Control:
 	var service = preload("res://scripts/middleman_service.gd")
 	var intermediary: bool = service.supplies_good(str(building.instance_id), good_id) if side == "input" and good_id != "" else (service.buys_output(str(building.instance_id), good_id) if side == "output" and good_id != "" else service.side_all_middleman(str(building.instance_id), side))
-	return _dest_option(title, detail, active and not intermediary, func() -> void:
+	var action := func() -> void:
 		if intermediary: _request_logistics_mode(building, side, "managed", on_press, good_id)
-		else: on_press.call())
+		else: on_press.call()
+	return _dest_option(title, detail, active and not intermediary, action, enabled)
 
 func _request_logistics_mode(building: Dictionary, side: String, mode: String, after_change: Callable = Callable(), good_id: String = "") -> void:
 	var service = preload("res://scripts/middleman_service.gd")
