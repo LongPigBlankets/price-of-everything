@@ -19,6 +19,8 @@ const InfrastructureInfo := preload("res://scripts/infrastructure_info.gd")
 const ROUTE_STOCKPILE_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_stockpile.png")
 const ROUTE_MARKET_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_port.png")
 const ROUTE_MIDDLEMAN_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_lorry.png")
+const INPUT_ICON: Texture2D = preload("res://assets/icons/ui_icons/construction_materials.png")
+const OUTPUT_ICON: Texture2D = preload("res://assets/icons/research/glyph/output.png")
 
 
 
@@ -2284,29 +2286,24 @@ func _logistics_side_control(building: Dictionary, recipe: Dictionary, side: Str
 		if side == "input": _open_input_sources_sheet(building, recipe)
 		else: _open_output_sheet(building, recipe)
 	if not active or not manage_unlocked:
-		return _route_card("Inputs" if side == "input" else "Outputs", _input_summary(building, recipe) if side == "input" else _output_summary(building, recipe), open)
+		return _route_card("Inputs" if side == "input" else "Outputs", _input_summary(building, recipe) if side == "input" else _output_summary(building, recipe), open, INPUT_ICON if side == "input" else OUTPUT_ICON)
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var heading := HBoxContainer.new()
+	heading.add_theme_constant_override("separation", 6)
+	col.add_child(heading)
+	heading.add_child(_off_white_icon_rect(INPUT_ICON if side == "input" else OUTPUT_ICON, Vector2(22, 22)))
 	var label := Label.new()
 	label.text = "INPUTS" if side == "input" else "OUTPUTS"
 	label.theme_type_variation = "Caption"
 	label.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
-	col.add_child(label)
+	heading.add_child(label)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
 	col.add_child(row)
-	var icon := TextureRect.new()
-	icon.texture = preload("res://assets/icons/research/glyph/lorry.png")
+	var icon := _off_white_icon_rect(ROUTE_MIDDLEMAN_ICON, Vector2(26, 26))
 	icon.custom_minimum_size = Vector2(26, 26)
-	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var shader := Shader.new()
-	shader.code = "shader_type canvas_item; uniform vec4 ink : source_color; void fragment(){ COLOR = vec4(ink.rgb, texture(TEXTURE, UV).a * ink.a); }"
-	var material := ShaderMaterial.new()
-	material.shader = shader
-	material.set_shader_parameter("ink", CREAM)
-	icon.material = material
 	row.add_child(icon)
 	var button := Button.new()
 	button.name = "ManageInputLogistics" if side == "input" else "ManageOutputLogistics"
@@ -2378,7 +2375,7 @@ func _output_summary(building: Dictionary, recipe: Dictionary) -> String:
 
 # A clickable routing card (LABEL kicker + value + chevron) → opens a sheet. A PanelContainer,
 # because Buttons don't size to child containers (the DS clickable-card pattern).
-func _route_card(label: String, value: String, on_press: Callable) -> Control:
+func _route_card(label: String, value: String, on_press: Callable, icon_texture: Texture2D = null) -> Control:
 	var card := PanelContainer.new()
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var st := StyleBoxFlat.new()
@@ -2396,11 +2393,16 @@ func _route_card(label: String, value: String, on_press: Callable) -> Control:
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 1)
 	card.add_child(vb)
+	var heading := HBoxContainer.new()
+	heading.add_theme_constant_override("separation", 6)
+	vb.add_child(heading)
+	if icon_texture != null:
+		heading.add_child(_off_white_icon_rect(icon_texture, Vector2(22, 22)))
 	var l := Label.new()
 	l.theme_type_variation = "Caption"
 	l.text = label.to_upper()
 	l.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
-	vb.add_child(l)
+	heading.add_child(l)
 	var vrow := HBoxContainer.new()
 	vrow.add_theme_constant_override("separation", DS.SP["SM"])
 	vb.add_child(vrow)
@@ -2415,6 +2417,20 @@ func _route_card(label: String, value: String, on_press: Callable) -> Control:
 	chev.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
 	vrow.add_child(chev)
 	return card
+
+func _off_white_icon_rect(texture: Texture2D, size: Vector2) -> TextureRect:
+	var icon := TextureRect.new()
+	icon.texture = texture
+	icon.custom_minimum_size = size
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	var shader := Shader.new()
+	shader.code = "shader_type canvas_item; uniform vec4 ink : source_color; void fragment(){ COLOR = vec4(ink.rgb, texture(TEXTURE, UV).a * ink.a); }"
+	var material := ShaderMaterial.new()
+	material.shader = shader
+	material.set_shader_parameter("ink", CREAM)
+	icon.material = material
+	return icon
 
 func _open_input_sources_sheet(building: Dictionary, recipe: Dictionary) -> void:
 	var iid := str(building.get("instance_id", ""))
@@ -3081,8 +3097,8 @@ func _open_logistics_sheet(building: Dictionary) -> void:
 		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		note.text = "Choose inputs and outputs independently. Manage logistics uses generic carriers for physical deliveries. Middleman goods stay private to this building; retained goods use your tile storage."
 		vb.add_child(note)
-		vb.add_child(_route_card("Inputs",_input_summary(building,recipe),func() -> void: _open_input_sources_sheet(building,recipe)))
-		vb.add_child(_route_card("Outputs",_output_summary(building,recipe),func() -> void: _open_output_sheet(building,recipe)))
+		vb.add_child(_route_card("Inputs",_input_summary(building,recipe),func() -> void: _open_input_sources_sheet(building,recipe), INPUT_ICON))
+		vb.add_child(_route_card("Outputs",_output_summary(building,recipe),func() -> void: _open_output_sheet(building,recipe), OUTPUT_ICON))
 		var service = preload("res://scripts/middleman_service.gd")
 		var iid := str(building.instance_id)
 		if service.enabled(iid):

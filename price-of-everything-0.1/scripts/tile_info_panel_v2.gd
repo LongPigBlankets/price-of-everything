@@ -2301,15 +2301,17 @@ func _make_tile_logistics_choice_row(side: String, logistics: Dictionary) -> HBo
 
 func _make_route_choice_button(text: String, texture: Texture2D, selected: bool, tooltip: String) -> Button:
 	var button := Button.new()
-	button.text = text
+	button.text = ""
 	button.icon = _off_white_route_icon(texture)
-	button.tooltip_text = tooltip
+	button.tooltip_text = "%s\n%s" % [text, tooltip] if tooltip != "" else text
 	button.focus_mode = Control.FOCUS_NONE
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	button.custom_minimum_size = Vector2(0, 46)
-	button.add_theme_constant_override("icon_max_width", 24)
-	button.add_theme_font_size_override("font_size", 11)
+	button.custom_minimum_size = Vector2(58, 52)
+	button.expand_icon = true
+	button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	button.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
+	button.add_theme_constant_override("icon_max_width", 34)
 	button.add_theme_color_override("font_color", DS.PALETTE.ACCENT)
 	button.add_theme_color_override("font_hover_color", DS.PALETTE.ACCENT)
 	button.add_theme_color_override("font_pressed_color", DS.PALETTE.ACCENT)

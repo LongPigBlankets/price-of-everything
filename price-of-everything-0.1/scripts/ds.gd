@@ -200,6 +200,14 @@ func _build_theme() -> Theme:
 	t.set_stylebox("panel", "CoachCard",
 		_stylebox(PALETTE["BG_PANEL"], PALETTE["BORDER_STRONG"], 12, 2, 24, 20))
 
+	# Tooltips are the only place where the labels for icon-only logistics controls
+	# are shown. Keep them readable against the game background rather than letting
+	# the platform default light tooltip compete with the navy panels.
+	t.set_stylebox("panel", "TooltipPanel",
+		_stylebox(Color("#00101A"), PALETTE["BORDER_SOFT"], 6, 1, 10, 8))
+	t.set_color("font_color", "TooltipLabel", PALETTE["TEXT"])
+	t.set_font_size("font_size", "TooltipLabel", FS["CAPTION"])
+
 	# ── Button base (secondary / steel blue) ──────────────────────────
 	# The generated texture adds a pale top glint and darker lower bevel so the
 	# buttons sit closer to the chunky upgrade-button reference.
