@@ -102,6 +102,6 @@ func _test_input_route_primary_and_fallback_persist() -> void:
 	_check(str(route.get("primary", "")) == "stockpile" and str(route.get("fallback", "")) == "market", "input route stores both slots")
 	_check(not MatchState.is_input_tile_only(iid, "g_006"), "market fallback keeps market top-up enabled")
 	var cleared := Service.set_input_route(iid, "g_006", "fallback", "")
-	_check(bool(cleared.get("ok", false)), "fallback can be cleared")
-	_check(MatchState.is_input_tile_only(iid, "g_006"), "clearing market fallback makes the physical route tile-only")
+	_check(bool(cleared.get("ok", false)) and str(Service.input_source_route(iid, "g_006").get("fallback", "")) == "middleman", "a cleared fallback returns to the intermediary, never none")
+	_check(MatchState.is_input_tile_only(iid, "g_006"), "removing the market fallback stops market top-up")
 	cleanup()

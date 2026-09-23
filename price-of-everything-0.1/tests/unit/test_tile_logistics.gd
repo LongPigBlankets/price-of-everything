@@ -78,8 +78,10 @@ func _test_ledger_routes_track_each_side_and_split_destinations() -> void:
 	_check(Routes.endpoints(b, "output")[0].label=="Global Market", "market output has port endpoint")
 	Service.set_mode(iid, "input", "managed")
 	Service.set_input_source(iid, "g_006", "tile_5_4")
+	Service.set_input_route(iid, "g_007", "primary", "market")
 	var routes := Routes.endpoints(b, "input")
 	_check(routes.any(func(r: Dictionary)->bool: return r.icon=="stockpile") and routes.any(func(r: Dictionary)->bool: return r.icon=="port"), "mixed managed inputs show stockpile and global market")
+	_check(routes.any(func(r: Dictionary)->bool: return r.icon=="middleman"), "an intermediary fallback appears as an input endpoint")
 	cleanup()
 
 func _test_grid_and_recipe_less_buildings_do_not_force_stockpile() -> void:

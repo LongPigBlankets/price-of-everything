@@ -80,8 +80,10 @@ static func set_mode(iid: String, side: String, mode: String, validate_only: boo
 	if current_all: return {"ok":true}
 	var key := "inputs" if side == "input" else "outputs"
 	var held: Dictionary = e.get(key,{})
+	var opening: Dictionary = e.get("opening_inputs", {}) if side == "input" else {}
 	var total := 0
 	for qty in held.values(): total += int(qty)
+	for qty in opening.values(): total += int(qty)
 	if mode == "managed" and Stockpile.get_free_capacity(str(b.tile_id)) < total:
 		return {"ok":false,"reason":"Not enough tile storage for the paid goods. Free capacity first."}
 	if validate_only: return {"ok":true}
@@ -93,6 +95,8 @@ static func set_mode(iid: String, side: String, mode: String, validate_only: boo
 	if mode == "managed":
 		for gid in held: Stockpile.add(str(b.tile_id),str(gid),int(held[gid]))
 		held.clear()
+		for gid in opening: Stockpile.add(str(b.tile_id),str(gid),int(opening[gid]))
+		opening.clear()
 		if side == "input": e["holding_receipts"]=[]
 		# Start retaining output when taking control: never silently sell it.
 		if side == "output":
@@ -104,7 +108,9 @@ static func set_mode(iid: String, side: String, mode: String, validate_only: boo
 	e[side+"_mode"]=mode
 	e.turn=-1
 	e.state="idle"
-	if not uses_inputs(iid) and not uses_outputs(iid):
+	if side == "input" and mode == "managed":
+		for gid in tradeable_goods: _default_managed_route(b, str(gid))
+	if not _uses_service(iid) and not has_assets(iid):
 		MatchState.middleman_service.buildings.erase(iid)
 	TransportState.transport_shipments_changed.emit()
 	return {"ok":true}
@@ -134,8 +140,10 @@ static func set_good_mode(iid: String, side: String, gid: String, mode: String, 
 	if current == mode: return {"ok":true}
 	var key := "inputs" if side == "input" else "outputs"
 	var held: Dictionary = e.get(key, {})
+	var opening: Dictionary = e.get("opening_inputs", {}) if side == "input" else {}
 	var qty := int(held.get(gid, 0))
-	if mode == "managed" and Stockpile.get_free_capacity(str(b.tile_id)) < qty:
+	var opening_qty := int(opening.get(gid, 0))
+	if mode == "managed" and Stockpile.get_free_capacity(str(b.tile_id)) < qty + opening_qty:
 		return {"ok":false,"reason":"Not enough tile storage for the paid goods. Free capacity first."}
 	if validate_only: return {"ok":true}
 	if e.is_empty():
@@ -147,6 +155,9 @@ static func set_good_mode(iid: String, side: String, gid: String, mode: String, 
 		if qty > 0:
 			Stockpile.add(str(b.tile_id), gid, qty)
 			held.erase(gid)
+		if opening_qty > 0:
+			Stockpile.add(str(b.tile_id), gid, opening_qty)
+			opening.erase(gid)
 		if side == "input": e["holding_receipts"]=[]
 		else: MatchState.set_output_stockpile_destination(iid, str(b.tile_id), gid)
 	var modes: Dictionary = e.get(mode_key, {})
@@ -157,7 +168,11 @@ static func set_good_mode(iid: String, side: String, gid: String, mode: String, 
 	e[side+"_mode"] = "middleman" if all_middleman else ("managed" if all_managed else "middleman")
 	e.turn=-1
 	e.state="idle"
-	if not uses_inputs(iid) and not uses_outputs(iid) and not has_assets(iid):
+	if side == "input" and mode == "managed":
+		_default_managed_route(b, gid)
+	# Keep the entry while any good still uses the service, as its route or as its
+	# fallback, or while it holds paid goods: erasing it would silently reset them.
+	if not _uses_service(iid) and not has_assets(iid):
 		MatchState.middleman_service.buildings.erase(iid)
 	TransportState.transport_shipments_changed.emit()
 	return {"ok":true}
@@ -167,10 +182,107 @@ static func entry(iid: String) -> Dictionary:
 
 static func has_assets(iid: String) -> bool:
 	var e := entry(iid)
-	for key in ["inputs", "outputs"]:
+	for key in ["inputs", "outputs", "bridge", "opening_inputs"]:
 		for qty in e.get(key, {}).values():
 			if int(qty) > 0: return true
 	return false
+
+## True while any good on the building uses the intermediary, as its route or as an
+## input's fallback.
+static func _uses_service(iid: String) -> bool:
+	for side in ["input", "output"]:
+		for item: Dictionary in _side_items(iid, side):
+			var gid := str(item.get("good_id", ""))
+			if material_tradeable(gid, side) and mode_for(iid, side, gid) == "middleman": return true
+	for item: Dictionary in _side_items(iid, "input"):
+		if bridges_good(iid, str(item.get("good_id", ""))): return true
+	return false
+
+static func _ensure_entry(b: Dictionary) -> Dictionary:
+	var iid := str(b.get("instance_id", ""))
+	if enabled(iid): return entry(iid)
+	if MatchState.middleman_service.is_empty():
+		MatchState.middleman_service={"schema":1,"match_id":str(Time.get_unix_time_from_system())+":"+str(Time.get_ticks_usec()),"buildings":{}}
+	var e := {"coefficient":coefficient(b),"recipe_id":str(b.recipe_id),"inputs":{},"outputs":{},"bridge":{},"turn":-1,"state":"idle","receipts":{},"input_mode":"managed","output_mode":"managed","input_modes":{},"output_modes":{}}
+	MatchState.middleman_service.buildings[iid]=e
+	return e
+
+## An input taken in-house keeps the intermediary as its fallback unless the player has
+## already chosen a route for it: tile stock first, the intermediary buys any shortfall.
+static func _default_managed_route(b: Dictionary, gid: String) -> void:
+	if not material_tradeable(gid, "input"): return
+	var routes: Dictionary = b.get("logistics_input_routes", {})
+	if routes.has(gid): return
+	routes[gid] = {"primary":"stockpile", "fallback":"middleman"}
+	b["logistics_input_routes"] = routes
+	MatchState.set_input_tile_only(str(b.get("instance_id", "")), gid, true)
+
+## The FALLBACK route: the intermediary buys this managed input's shortfall.
+static func bridges_good(iid: String, gid: String) -> bool:
+	if supplies_good(iid, gid) or not material_tradeable(gid, "input"): return false
+	if not eligible(BuildingState.get_building(iid)): return false
+	return str(input_source_route(iid, gid).get("fallback", "")) == "middleman"
+
+static func bridge_held(iid: String, gid: String) -> int:
+	return int((entry(iid).get("bridge", {}) as Dictionary).get(gid, 0))
+
+## Production takes bridged units first. Returns how many of qty came from them.
+static func consume_bridge(iid: String, gid: String, qty: int) -> int:
+	var e := entry(iid)
+	if e.is_empty() or qty <= 0: return 0
+	var held: Dictionary = e.get("bridge", {})
+	var take := mini(qty, int(held.get(gid, 0)))
+	if take <= 0: return 0
+	held[gid] = int(held[gid]) - take
+	if int(held[gid]) <= 0: held.erase(gid)
+	e["bridge"] = held
+	return take
+
+## Size the intermediary's purchase for every input whose fallback is the intermediary.
+## Tile stock is shared, so predict each consumer's draw in production order: an earlier
+## building's claim is not available to a later one. Same-turn output from other
+## factories is not counted; it only reaches the stockpile at the end of the turn.
+static func _plan_bridges(buildings: Array) -> Dictionary:
+	var result := {}
+	if str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1": return result
+	var claimed := {}
+	for b: Dictionary in buildings:
+		var iid := str(b.instance_id)
+		if BuildingWorks.is_building_paused(iid) or BuildingWorks.is_retooling(iid) or BuildingWorks.is_demolishing(iid): continue
+		var recipe: Dictionary = Catalog.get_recipe(str(b.recipe_id))
+		if recipe.is_empty() or not bool(Production._can_run_recipe(b, recipe, true).can_run): continue
+		var tile := str(b.tile_id)
+		for input: Dictionary in recipe.get("inputs", []):
+			var gid := str(input.good_id)
+			if supplies_good(iid, gid): continue
+			var need: int = Production._scaled_input_qty(input, b)
+			var key := tile + "|" + gid
+			var available := maxi(0, Stockpile.get_at_tile(tile, gid) - int(claimed.get(key, 0)))
+			if not bridges_good(iid, gid):
+				claimed[key] = int(claimed.get(key, 0)) + mini(need, available)
+				continue
+			var from_tile := maxi(0, need - bridge_held(iid, gid))
+			var take := mini(from_tile, available)
+			claimed[key] = int(claimed.get(key, 0)) + take
+			if from_tile - take > 0:
+				if not result.has(iid): result[iid] = {}
+				result[iid][gid] = from_tile - take
+	return result
+
+## Buildings whose private purchase for this turn is missing, or whose output still
+## waits to be sold, must not run.
+static func blocks_production(iid: String) -> bool:
+	if not enabled(iid): return false
+	var e := entry(iid)
+	if not (e.get("outputs", {}) as Dictionary).is_empty(): return true
+	var buys_inputs := _side_items(iid, "input").any(func(item: Dictionary) -> bool: return supplies_good(iid, str(item.get("good_id", ""))))
+	return buys_inputs and not ready(iid)
+
+## The reason a fallback purchase was refused this turn, for diagnostics.
+static func bridge_rejection(iid: String) -> String:
+	var e := entry(iid)
+	if int(e.get("turn", -1)) != TurnManager.current_turn: return ""
+	return str(e.get("bridge_reason", ""))
 
 static func enable(iid: String) -> Dictionary:
 	if TurnManager.current_phase != TurnManager.Phase.DECIDE: return {"ok":false,"reason":"Enable service in DECIDE."}
@@ -201,7 +313,8 @@ static func prices() -> Dictionary:
 	return result
 
 static func prepare(buildings: Array, summary: Dictionary) -> void:
-	if MatchState.middleman_service.is_empty(): return
+	var bridges := _plan_bridges(buildings)
+	if MatchState.middleman_service.is_empty() and bridges.is_empty(): return
 	var snapshot := prices()
 	var protected := MatchState.unpaid_purchase_total()
 	for row: Dictionary in preload("res://scripts/cash_commitments.gd").payments():
@@ -220,7 +333,10 @@ static func prepare(buildings: Array, summary: Dictionary) -> void:
 		return str(a.instance_id)<str(b.instance_id) if ai==bi else ai<bi)
 	for b: Dictionary in ordered:
 		var iid := str(b.instance_id)
-		if not enabled(iid): continue
+		var bridge: Dictionary = bridges.get(iid, {})
+		if not enabled(iid):
+			if bridge.is_empty(): continue
+			_ensure_entry(b)
 		var e := entry(iid)
 		if int(e.turn) == TurnManager.current_turn: continue
 		e.coefficient = coefficient(b)
@@ -230,6 +346,8 @@ static func prepare(buildings: Array, summary: Dictionary) -> void:
 		e.prices = snapshot.duplicate(true)
 		e.state = "rejected_before_supply"
 		e.reason = ""
+		e.bridge_reason = ""
+		e.bridge_bought = {}
 		if not (e.outputs as Dictionary).is_empty():
 			e.state = "blocked_with_private_output"
 			continue
@@ -237,7 +355,7 @@ static func prepare(buildings: Array, summary: Dictionary) -> void:
 			e.reason = "Building paused or recipe changed."
 			continue
 		var recipe: Dictionary = Catalog.get_recipe(str(b.recipe_id))
-		if not uses_inputs(iid) and not _side_items(iid, "input").any(func(item: Dictionary) -> bool: return supplies_good(iid, str(item.get("good_id", "")))):
+		if not uses_inputs(iid) and bridge.is_empty() and not _side_items(iid, "input").any(func(item: Dictionary) -> bool: return supplies_good(iid, str(item.get("good_id", "")))):
 			e.state = "supplied"
 			continue
 		var check: Dictionary = Production._can_run_recipe(b, recipe, true)
@@ -247,11 +365,15 @@ static func prepare(buildings: Array, summary: Dictionary) -> void:
 		var required := {}
 		for input: Dictionary in recipe.get("inputs", []):
 			if supplies_good(iid, str(input.good_id)): required[str(input.good_id)] = Production._scaled_input_qty(input,b)
+		_draw_opening_reserve(e, required)
 		var banned := false
 		for gid in required:
 			if int(required[gid]) > int(e.inputs.get(gid,0)) and PolicyState.import_banned(str(gid),TurnManager.current_turn): banned = true
+		for gid in bridge:
+			if PolicyState.import_banned(str(gid),TurnManager.current_turn): banned = true
 		if banned:
 			e.reason = "Input imports prohibited."
+			if not bridge.is_empty(): e.bridge_reason = e.reason
 			continue
 		var draw: int = Production._effective_energy_req(b,recipe)
 		var tile := str(b.tile_id)
@@ -262,16 +384,24 @@ static func prepare(buildings: Array, summary: Dictionary) -> void:
 		var running := draw * power_rate
 		for input: Dictionary in recipe.get("inputs", []):
 			running += PolicyState.carbon_charge(str(input.good_id), Production._scaled_input_qty(input,b), TurnManager.current_turn)
-		var plan := Contract.plan_batch(required,e.inputs,snapshot,float(e.coefficient),{
+		# Fallback purchases join the same batch: fully funded before production, or none.
+		var plan_required := required.duplicate()
+		var plan_held := (e.inputs as Dictionary).duplicate()
+		for gid in bridge:
+			plan_required[gid] = int(bridge[gid])
+			plan_held[gid] = 0
+		var plan := Contract.plan_batch(plan_required,plan_held,snapshot,float(e.coefficient),{
 			"cash":MatchState.money,"credit_available":maxf(0.0,LoanState.available_capacity()),
 			"commitments":protected+reserved_power,"running_reserve":running,"minimum_loan":EconomyConfig.LOAN_MINIMUM,
 			"building_credit_tab":MatchState.building_tabs.has(iid)},true,goods())
 		if not bool(plan.ok):
 			e.reason = str(plan.reason)
+			if not bridge.is_empty(): e.bridge_reason = "Fallback purchase refused: " + str(plan.reason).replace("_", " ")
 			continue
 		if float(plan.funding_draw) > 0.0:
 			if not LoanState.take_loan(float(plan.funding_draw)):
 				e.reason = "Funding unavailable."
+				if not bridge.is_empty(): e.bridge_reason = "Fallback purchase refused: funding unavailable."
 				continue
 			summary["middleman_financing"] = float(summary.get("middleman_financing",0.0))+float(plan.funding_draw)
 		reserved_power += running
@@ -283,8 +413,13 @@ static func prepare(buildings: Array, summary: Dictionary) -> void:
 		fee(summary,float(q.fee))
 		for item: Dictionary in q.items:
 			var gid := str(item.good)
+			if int(item.quantity) <= 0: continue
 			ResearchState.note_middleman_shipment(gid, int(item.quantity))
-			e.inputs[gid] = int(e.inputs.get(gid,0))+int(item.quantity)
+			if bridge.has(gid):
+				if not e.has("bridge"): e["bridge"] = {}
+				e.bridge[gid] = int(e.bridge.get(gid,0))+int(item.quantity)
+			else:
+				e.inputs[gid] = int(e.inputs.get(gid,0))+int(item.quantity)
 			MarketState.record_market_buy_volume(gid,int(item.quantity))
 			summary.purchased[gid] = int(summary.purchased.get(gid,0))+int(item.quantity)
 			summary.purchased_cost[gid] = float(summary.purchased_cost.get(gid,0.0))+float(item.goods_value)
@@ -293,9 +428,24 @@ static func prepare(buildings: Array, summary: Dictionary) -> void:
 		if not e.has("holding_receipts"): e.holding_receipts = []
 		if not q.items.is_empty(): e.holding_receipts.append({"operation_id":str(e.operation_id),"purchase":q.duplicate(true)})
 		e.required = required
+		e.bridge_bought = bridge.duplicate()
 		e.receipts.purchase = q.duplicate(true)
 		e.receipts.input_fee = float(q.fee)
 		e.state = "supplied"
+
+## An existing business's opening reserve (see SaveLoad.expand_start_config) tops the held
+## inputs up to this cycle's requirement, never beyond it.
+static func _draw_opening_reserve(e: Dictionary, required: Dictionary) -> void:
+	var opening: Dictionary = e.get("opening_inputs", {})
+	if opening.is_empty(): return
+	if not e.has("inputs"): e["inputs"] = {}
+	for gid in required:
+		var take := mini(int(opening.get(gid, 0)), int(required[gid]) - int(e.inputs.get(gid, 0)))
+		if take <= 0: continue
+		e.inputs[gid] = int(e.inputs.get(gid, 0)) + take
+		opening[gid] = int(opening[gid]) - take
+		if int(opening[gid]) <= 0: opening.erase(gid)
+	if opening.is_empty(): e.erase("opening_inputs")
 
 static func ready(iid: String) -> bool:
 	var e := entry(iid)
@@ -407,14 +557,15 @@ static func release_to_stock(iid: String) -> Dictionary:
 	if e.is_empty() or b.is_empty(): return {"ok":false,"reason":"No service building."}
 	var goods := {}
 	var total := 0
-	for key in ["inputs","outputs"]:
-		for gid in e[key]:
+	for key in ["inputs","outputs","opening_inputs"]:
+		for gid in e.get(key, {}):
 			goods[gid] = int(goods.get(gid,0))+int(e[key][gid])
 			total += int(e[key][gid])
 	if Stockpile.get_free_capacity(str(b.tile_id)) < total: return {"ok":false,"reason":"Insufficient owned storage."}
 	for gid in goods: Stockpile.add(str(b.tile_id),str(gid),int(goods[gid]))
 	e.inputs.clear()
 	e.outputs.clear()
+	e.erase("opening_inputs")
 	e["holding_receipts"] = []
 	return {"ok":true}
 
@@ -434,7 +585,7 @@ static func preview_building(b: Dictionary) -> Dictionary:
 	var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id","")))
 	if not recipe_side(recipe, "input") and not recipe_side(recipe, "output"):
 		return {"ok":false,"reason":"No tradeable material service for this recipe."}
-	var e := entry(iid)
+	var e := entry(iid).duplicate(true)
 	var input_service := recipe_side(recipe, "input") and (not enabled(iid) or uses_inputs(iid) or (recipe.get("inputs", []) as Array).any(func(item: Dictionary) -> bool: return supplies_good(iid, str(item.get("good_id", "")))))
 	var output_service := recipe_side(recipe, "output") and (not enabled(iid) or uses_outputs(iid) or (recipe.get("outputs", []) as Array).any(func(item: Dictionary) -> bool: return buys_output(iid, str(item.get("good_id", "")))))
 	var factor := coefficient(b)
@@ -442,6 +593,9 @@ static func preview_building(b: Dictionary) -> Dictionary:
 	var required := {}
 	for input: Dictionary in recipe.get("inputs",[]):
 		if material_tradeable(str(input.good_id), "input") and (not enabled(iid) or supplies_good(iid, str(input.good_id))): required[str(input.good_id)] = Production._scaled_input_qty(input,b)
+	if not e.is_empty():
+		_draw_opening_reserve(e, required)
+		held = e.get("inputs", {})
 	var snapshot := prices()
 	var lines := []
 	for gid in required: lines.append({"good":gid,"quantity":maxi(0,int(required[gid])-int(held.get(gid,0)))})
@@ -576,16 +730,25 @@ static func input_source_route(iid: String, gid: String) -> Dictionary:
 		return {"primary":"stockpile", "fallback":"market"}
 	var routes: Dictionary = b.get("logistics_input_routes", {})
 	var saved: Dictionary = routes.get(gid, {})
+	var route := {}
 	if not saved.is_empty() and (str(saved.get("primary", "")) != "middleman" or supplies_good(iid, gid)):
-		return {"primary":str(saved.get("primary", "stockpile")), "fallback":str(saved.get("fallback", ""))}
-	if supplies_good(iid, gid):
+		route = {"primary":str(saved.get("primary", "stockpile")), "fallback":str(saved.get("fallback", ""))}
+	elif supplies_good(iid, gid):
 		return {"primary":"middleman", "fallback":""}
-	var source := str((b.get("logistics_input_sources", {}) as Dictionary).get(gid, ""))
-	if source == "" or source == "auto" or source == "market":
-		return {"primary":"stockpile", "fallback":"market"}
-	if source == str(b.get("tile_id", "")):
-		return {"primary":"stockpile", "fallback":""}
-	return {"primary":"tile:" + source, "fallback":""}
+	else:
+		var source := str((b.get("logistics_input_sources", {}) as Dictionary).get(gid, ""))
+		if source == "" or source == "auto" or source == "market":
+			route = {"primary":"stockpile", "fallback":"market"}
+		elif source == str(b.get("tile_id", "")):
+			route = {"primary":"stockpile", "fallback":""}
+		else:
+			route = {"primary":"tile:" + source, "fallback":""}
+	# Where the intermediary operates, every physical route has a fallback: without an
+	# explicit choice it is the intermediary, never a silent "none".
+	if str(route.get("fallback", "")) == "" and str(route.get("primary", "")) != "middleman" \
+			and eligible(b) and material_tradeable(gid, "input"):
+		route["fallback"] = "middleman"
+	return route
 
 static func input_route_source_label(source: String, building: Dictionary = {}) -> String:
 	if source == "middleman": return "Logistics Intermediary"
@@ -605,6 +768,8 @@ static func set_input_route(iid: String, gid: String, slot: String, source: Stri
 	var route := input_source_route(iid, gid)
 	if slot == "primary" and source == "":
 		return {"ok":false, "reason":"A primary source is required."}
+	if slot == "fallback" and source == "" and eligible(b) and material_tradeable(gid, "input"):
+		source = "middleman"
 	if slot == "fallback" and source == str(route.get("primary", "")):
 		return {"ok":false, "reason":"Fallback must differ from the primary source."}
 	if source.begins_with("tile:"):
@@ -613,6 +778,9 @@ static func set_input_route(iid: String, gid: String, slot: String, source: Stri
 			return {"ok":false, "reason":"Choose a real stockpile endpoint."}
 	var next := route.duplicate()
 	next[slot] = source
+	if str(next.get("fallback", "")) == "" and str(next.get("primary", "")) != "middleman" \
+			and eligible(b) and material_tradeable(gid, "input"):
+		next["fallback"] = "middleman"
 	if slot == "primary" and source == "middleman":
 		var managed := set_good_mode(iid, "input", gid, "middleman")
 		if not bool(managed.get("ok", false)): return managed
@@ -625,9 +793,9 @@ static func set_input_route(iid: String, gid: String, slot: String, source: Stri
 	routes[gid] = next
 	b["logistics_input_routes"] = routes
 	# Keep the existing recurring-order and market-pipeline machinery authoritative.
-	# A physical primary is allowed to fall back to market; without that fallback it
-	# remains tile-only.  Other fallback types are represented for the UI and future
-	# physical-source arbitration, but do not silently create duplicate deliveries.
+	# A market fallback keeps market top-up orders on; any other fallback leaves the
+	# route tile-only. An intermediary fallback buys the shortfall at production time
+	# (see _plan_bridges), so it never creates a second physical delivery.
 	if source != "middleman" and slot == "primary":
 		var physical := source
 		if physical == "stockpile": physical = str(b.get("tile_id", ""))
