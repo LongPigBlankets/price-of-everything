@@ -210,10 +210,8 @@
    210
   ],
   "cap": 15,
-  "grip": [
-   82.5,
-   127.5
-  ]
+  "period": 7.5,
+  "repeat_from": 75
  },
  "seam_edge": {
   "size": [
@@ -638,14 +636,26 @@
    760,
    300
   ],
-  "margin": 14,
+  "margin": 3,
   "corner": 44,
-  "field_inset": 20
+  "field_inset": 21
  },
  "recipe_grunge": {
   "size": [
    900,
    450
+  ]
+ },
+ "key_pin": {
+  "size": [
+   96,
+   96
+  ],
+  "rect": [
+   16,
+   16,
+   64,
+   64
   ]
  }
 }

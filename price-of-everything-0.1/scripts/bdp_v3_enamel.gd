@@ -1,8 +1,10 @@
 extends Control
-## Building Detail v3: the recipe diagram's vitreous enamel sign, behind the diagram's icons. The plate
-## (res://assets/ui/bdp_v3/recipe_enamel.png, rendered by tools/button_mockup/cluster.html?export) has a
-## navy rolled edge, a navy band and pinstripe, and a few chips at its corners; it is drawn as a 9-slice
-## over this control's rect, its shadow reaching past it. The grunge on the field (recipe_grunge.png) is
+## Building Detail v3: the recipe diagram's vitreous enamel sign, set into the panel behind the diagram's
+## icons. The render (res://assets/ui/bdp_v3/recipe_enamel.png, from
+## tools/button_mockup/cluster.html?export) is the recess's cut, a steel chamfer down to the enamel,
+## and the enamel: a cream rim in the cut's shadow, a navy band and pinstripe, and a few chips at its
+## corners. It is drawn as a 9-slice with the cut on this control's rect. The grunge on the field
+## (recipe_grunge.png) is
 ## a layer of its own, and a shader fades it out round every watched control (the goods icons and the
 ## arrow), so the wear only sits in the space between them; it gathers towards the band.
 ##
@@ -14,11 +16,11 @@ const PLATE: Texture2D = preload("res://assets/ui/bdp_v3/recipe_enamel.png")
 const GRUNGE: Texture2D = preload("res://assets/ui/bdp_v3/recipe_grunge.png")
 const CAPTURE_SCALE := 1.875
 const TEXELS_PER_PIXEL := 2.0
-## From layout.json (recipe_enamel), in layout pixels: the render's room round the plate for its
-## shadow, the 9-slice corner, and how far in from the plate's edge the field starts.
-const MARGIN := 14.0
+## From layout.json (recipe_enamel), in layout pixels: the render's room outside the cut, the 9-slice
+## corner, and how far in from the cut the field starts.
+const MARGIN := 3.0
 const CORNER := 44.0
-const FIELD_INSET := 20.0
+const FIELD_INSET := 21.0
 ## Clear space round each watched control before the grunge comes back, and how softly it does.
 const HOLE_PAD := 6.0
 const HOLE_SOFT := 10.0

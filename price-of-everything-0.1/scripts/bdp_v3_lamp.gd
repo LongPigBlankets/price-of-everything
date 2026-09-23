@@ -34,9 +34,7 @@ func _init() -> void:
 	_glow.name = "Glow"
 	_glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_glow.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var add := CanvasItemMaterial.new()
-	add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
-	_glow.material = add
+	_glow.material = load("res://scripts/bdp_v3_light.gd").glow_material()   # additive, unshaded by the panel's lamp
 	_glow.draw.connect(_draw_glow)
 	add_child(_glow)
 

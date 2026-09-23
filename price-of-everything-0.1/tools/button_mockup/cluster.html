@@ -790,16 +790,15 @@ function pilotLamp(colour, lit) {
 
 /**
  * The scrollbar. The rail is a narrow steel strip screwed to the backing at both ends, with a slot down
- * its middle; the slider is a cream plastic cap (the controls' plastic) riding in the slot, with a
- * ribbed grip in its middle. The game draws both as a vertical three-slice (scripts/bdp_v3_scroll.gd):
- * the ends keep their size and the length between them stretches. So everything between the ends is
- * the same all the way along: the rail's steel is brushed along its length, and the slider is plain
- * except for the grip, which the game draws at its own size. All sizes are layout pixels, multiples of
- * 15 (= 16 texture pixels, 8 logical pixels) where the game slices them.
+ * its middle; the slider is a rubber grip riding in the slot. The game draws both in three pieces
+ * (scripts/bdp_v3_scroll.gd): the ends keep their size, the rail's length between them stretches (its
+ * steel is brushed along its length, so it is the same all the way down) and the slider's repeats its
+ * diagonal ridges. All sizes are layout pixels, multiples of 7.5 (= 8 texture pixels, 4 logical pixels)
+ * where the game cuts them.
  */
 const RAIL = { W: 30, H: 240, strip: 22, slot: 8, slotEnd: 26, screwY: 15, cap: 30, travelInset: 22.5 };
 const STRIP_TOP = 5.5;   // 1.5 depth + 2 × 2 bevel
-const THUMB = { W: 30, H: 210, base: 16, margin: 6, cap: 15, grip: [82.5, 127.5] };
+const THUMB = { W: 30, H: 210, base: 16, margin: 6, cap: 15, period: 7.5 };
 const RAIL_SIDE = new THREE.MeshStandardMaterial({ color: 0x9ea2a6, metalness: 1, roughness: 0.42, envMap: studioEnv, envMapIntensity: 0.9 });
 function railMaterial(w, h) {
   const slot = { x: (w - RAIL.slot) / 2, y: RAIL.slotEnd - 4, w: RAIL.slot, h: h - 2 * (RAIL.slotEnd - 4) };   // face coords
@@ -845,30 +844,28 @@ function scrollRail() {
   g.add(shadowCatcher(W, H, W / 2, H / 2));
   return g;
 }
-/** The slider in a THUMB.W × THUMB.H frame, standing on the rail, with its shadow on the rail's steel. */
+/**
+ * The slider in a THUMB.W × THUMB.H frame, standing on the rail, with its shadow on the rail's steel: a
+ * medium-dark grey rubber grip with diagonal ridges moulded across it between plain rounded ends. The
+ * ridges repeat every THUMB.period down the grip, starting at THUMB.cap, so the game repeats them to any
+ * length (it takes its repeat from the middle of the grip, where every period has ridges above and
+ * below it).
+ */
 function scrollThumb() {
-  const { W, H } = THUMB, S = 3, bw = THUMB.base, bh = H - 2 * THUMB.margin;
+  const { W, H, cap, period } = THUMB, S = 2.5, bw = THUMB.base, bh = H - 2 * THUMB.margin;
   const cw = bw - 2 * S, ch = bh - 2 * S, g = new THREE.Group();
-  const [g0, g1] = THUMB.grip.map((y) => y - THUMB.margin - S);   // grip rows on the top face
-  const face = canvas2d(cw, ch, (c) => {
-    c.fillStyle = OFF_WHITE_CSS; c.fillRect(0, 0, cw, ch);
-    const side = c.createLinearGradient(0, 0, cw, 0);
-    side.addColorStop(0, 'rgba(255,255,255,0.16)'); side.addColorStop(0.5, 'rgba(255,255,255,0)'); side.addColorStop(1, 'rgba(96,82,56,0.14)');
-    c.fillStyle = side; c.fillRect(0, 0, cw, ch);
-    for (const [y, dir] of [[0, 1], [ch, -1]]) {                            // handling grime at the ends
-      const grd = c.createLinearGradient(0, y, 0, y + dir * 7); grd.addColorStop(0, 'rgba(92,78,54,0.22)'); grd.addColorStop(1, 'rgba(92,78,54,0)');
-      c.fillStyle = grd; c.fillRect(0, Math.min(y, y + dir * 7), cw, 7);
+  const rubber = new THREE.MeshPhysicalMaterial({ color: 0x55595f, roughness: 0.78, sheen: 0.6, sheenColor: new THREE.Color(0x80868e), sheenRoughness: 0.5, envMap: studioEnv, envMapIntensity: 0.5 });
+  const body = new THREE.Mesh(extrude(rrShape(cw, ch, 3.5), 1.5, 2.5, S, 2), rubber);
+  body.castShadow = body.receiveShadow = true; body.position.set(W / 2, STRIP_TOP, H / 2); g.add(body);
+  // The ridges: diagonal bands raised on the grip's top, in a box from THUMB.cap to H - THUMB.cap.
+  const rh = H - 2 * cap, width = period * 0.5;
+  const ridges = relief(cw, rh, (c) => {
+    c.fillStyle = '#fff';
+    for (let y0 = -Math.ceil(cw / period) * period - period; y0 < rh + period; y0 += period) {
+      c.beginPath(); c.moveTo(0, y0); c.lineTo(cw, y0 + cw); c.lineTo(cw, y0 + cw + width); c.lineTo(0, y0 + width); c.closePath(); c.fill();
     }
-    // The grip: grooves across the cap, each shaded on its upper edge and lit on its lower one.
-    for (let y = g0 + 3.5; y < g1 - 2; y += 4) {
-      c.fillStyle = 'rgba(84,70,48,0.5)'; c.fillRect(1.2, y, cw - 2.4, 1.3);
-      c.fillStyle = 'rgba(255,255,255,0.55)'; c.fillRect(1.2, y + 1.3, cw - 2.4, 0.8);
-    }
-  });
-  const top = new THREE.MeshPhysicalMaterial({ map: faceTexture(face, cw, ch), ...KNOB_PLASTIC });
-  const skirt = new THREE.MeshPhysicalMaterial({ color: OFF_WHITE, roughness: 0.66, clearcoat: 0.1, clearcoatRoughness: 0.5 });
-  const cap = new THREE.Mesh(extrude(rrShape(cw, ch, 3), 1.5, 3.5, S, 1), [top, skirt]);
-  cap.castShadow = cap.receiveShadow = true; cap.position.set(W / 2, STRIP_TOP, H / 2); g.add(cap);
+  }, rubber, { height: 1.4, soften: 0.5, faceGrade: false });
+  ridges.position.set(W / 2, STRIP_TOP + 1.5 + 2 * 2.5 + 0.05, H / 2); g.add(ridges);
   g.add(shadowCatcher(W, H, W / 2, H / 2, STRIP_TOP + 0.05, 0.45));
   return g;
 }
@@ -917,38 +914,42 @@ function paintSeamShade(g) {
 }
 
 /**
- * The recipe diagram as a vitreous enamel sign: a pressed steel plate with a rolled edge, fired in
- * cream enamel, with a navy border band and pinstripe (the diagram's old navy outline) and a navy rolled
- * edge, glossy under a clear glaze. A few chips at its corners show the dark steel under the enamel, with
- * rust at their edges. The game draws the plate as a 9-slice (scripts/bdp_v3_enamel.gd), so the band,
- * stripe and field are the same all along between the corners, and all the wear is in the corners.
- * The grunge on the field is a separate layer (recipeGrunge): the game fades it out round every goods
- * icon and the arrow, so it only sits in the space between them, and thickens it towards the edge.
- * ENAMEL.M is the render's room round the plate for its shadow.
+ * The recipe diagram as a vitreous enamel sign set into the panel: a cream enamel plate with a thin cream
+ * rim, a navy border band and a pinstripe (the diagram's old outline), glossy under a clear glaze, sunk
+ * below the backing's surface. The recess's cut edge is a steel chamfer: dark along the top and left where it faces away from
+ * the light, lit along the bottom and right; it throws its shadow onto the rim, and the enamel is shaded
+ * in from the edge. Nothing of the
+ * backing's surface is drawn (the recess's top is invisible), so the real backing meets the cut. A few
+ * chips at the corners show the dark steel under the enamel, with rust at their edges. The game draws it
+ * as a 9-slice (scripts/bdp_v3_enamel.gd), so the band, stripe, field and edge shading are the same all
+ * along between the corners, where all the wear is. The grunge on the field is a separate layer
+ * (recipeGrunge). ENAMEL.out is the cut's inset from the render's edge; the game lines the cut up with
+ * the diagram's rect.
  */
-const ENAMEL = { W: 760, H: 300, M: 14, corner: 44, band: 11, gap: 5, stripe: 2, radius: 12 };
+const ENAMEL = { W: 760, H: 300, out: 3, chamfer: 2.5, corner: 44, rim: 5, band: 7, gap: 5, stripe: 2, radius: 12 };
 const ENAMEL_CREAM = '#feedc3', ENAMEL_NAVY = 0x0a2140;
 function enamelFace(w, h) {
   return canvas2d(w, h, (g) => {
     g.fillStyle = ENAMEL_CREAM; g.fillRect(0, 0, w, h);
-    const { band, gap, stripe, radius } = ENAMEL, navy = '#' + new THREE.Color(ENAMEL_NAVY).getHexString();
-    // A soft sheen on the glaze from the top-left, and the field sinking a little into the band.
+    const { rim, band, gap, stripe, radius, chamfer } = ENAMEL, navy = '#' + new THREE.Color(ENAMEL_NAVY).getHexString();
+    // A soft sheen on the glaze from the top-left.
     const sheen = g.createLinearGradient(0, 0, w * 0.5, h * 1.2);
-    sheen.addColorStop(0, 'rgba(255,255,255,0.22)'); sheen.addColorStop(0.45, 'rgba(255,255,255,0)');
+    sheen.addColorStop(0, 'rgba(255,255,255,0.2)'); sheen.addColorStop(0.45, 'rgba(255,255,255,0)');
     g.fillStyle = sheen; g.fillRect(0, 0, w, h);
-    g.strokeStyle = navy; g.lineWidth = band * 2; g.beginPath(); g.roundRect(0, 0, w, h, radius); g.stroke();
-    // The band's inner edge: lit along the top and left, shaded along the bottom and right.
-    g.save(); g.filter = 'blur(0.6px)'; g.lineWidth = 1.2;
-    g.strokeStyle = 'rgba(160,190,230,0.55)'; g.beginPath(); g.moveTo(band + 0.6, h - band - radius); g.lineTo(band + 0.6, band + 0.6); g.lineTo(w - band - radius, band + 0.6); g.stroke();
-    g.strokeStyle = 'rgba(40,30,16,0.28)'; g.beginPath(); g.moveTo(w - band - 0.6, band + radius); g.lineTo(w - band - 0.6, h - band - 0.6); g.lineTo(band + radius, h - band - 0.6); g.stroke();
-    g.restore();
-    const si = band + gap + stripe / 2;
+    const bi = rim + band / 2;
+    g.strokeStyle = navy; g.lineWidth = band; g.beginPath(); g.roundRect(bi, bi, w - 2 * bi, h - 2 * bi, Math.max(2, radius - bi)); g.stroke();
+    const si = rim + band + gap + stripe / 2;
     g.lineWidth = stripe; g.beginPath(); g.roundRect(si, si, w - 2 * si, h - 2 * si, Math.max(2, radius - si)); g.stroke();
+    // Shade in from the recess's edge: deeper under the top and left, where the cut's wall stands over it.
+    for (const [x0, y0, x1, y1, a] of [[0, chamfer, 0, chamfer + 10, 0.5], [chamfer, 0, chamfer + 10, 0, 0.44], [0, h - chamfer, 0, h - chamfer - 6, 0.18], [w - chamfer, 0, w - chamfer - 6, 0, 0.16]]) {
+      const grd = g.createLinearGradient(x0, y0, x1, y1); grd.addColorStop(0, `rgba(4,8,14,${a})`); grd.addColorStop(1, 'rgba(4,8,14,0)');
+      g.fillStyle = grd; g.fillRect(0, 0, w, h);
+    }
     // Chips at the corners: dark steel through the enamel, a rust halo, and the enamel's pale broken edge.
     for (const [cx, cy, sx, sy] of [[0, 0, 1, 1], [w, 0, -1, 1], [0, h, 1, -1], [w, h, -1, -1]]) {
       const count = 1 + Math.floor(rand() * 3);
       for (let i = 0; i < count; i++) {
-        const x = cx + sx * (3 + rand() * 30), y = cy + sy * (3 + rand() * (i ? 30 : 12)), r = 1.4 + rand() * 3.2;
+        const x = cx + sx * (6 + rand() * 30), y = cy + sy * (6 + rand() * (i ? 30 : 12)), r = 1.6 + rand() * 3.4;
         const pts = Array.from({ length: 9 }, (_, k) => { const a = k / 9 * Math.PI * 2, q = r * (0.55 + rand() * 0.6); return [x + Math.cos(a) * q, y + Math.sin(a) * q]; });
         const path = () => { g.beginPath(); pts.forEach(([px, py], k) => (k ? g.lineTo(px, py) : g.moveTo(px, py))); g.closePath(); };
         g.save(); g.filter = 'blur(1.2px)'; g.fillStyle = 'rgba(128,72,30,0.45)'; g.translate(x, y); g.scale(1.6, 1.6); g.translate(-x, -y); path(); g.fill(); g.restore();
@@ -958,47 +959,77 @@ function enamelFace(w, h) {
     }
   });
 }
-/** The plate in an ENAMEL.W × ENAMEL.H frame, with its shadow on the backing. */
+/** The sign in an ENAMEL.W × ENAMEL.H frame: the enamel at the bottom of the recess and the recess's cut. */
 function enamelPlate() {
-  const { W, H, M, radius } = ENAMEL, pw = W - 2 * M, ph = H - 2 * M, g = new THREE.Group();
+  const { W, H, out, chamfer, radius } = ENAMEL, pw = W - 2 * out, ph = H - 2 * out, g = new THREE.Group();
   const top = new THREE.MeshPhysicalMaterial({ map: faceTexture(enamelFace(pw, ph), pw, ph), roughness: 0.34, clearcoat: 0.8, clearcoatRoughness: 0.14, envMap: studioEnv, envMapIntensity: 0.28 });
-  const edge = new THREE.MeshPhysicalMaterial({ color: ENAMEL_NAVY, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1, envMap: studioEnv, envMapIntensity: 0.7 });
-  const plate = new THREE.Mesh(extrude(rrShape(pw - 4, ph - 4, radius - 2), 1.5, 2, 2, 5), [top, edge]);
-  plate.castShadow = plate.receiveShadow = true; plate.position.set(W / 2, 0, H / 2); g.add(plate);
-  g.add(shadowCatcher(W, H, W / 2, H / 2));
+  const plate = new THREE.Mesh(extrude(rrShape(pw, ph, radius), 0.5), [top, top]);
+  plate.receiveShadow = true; plate.position.set(W / 2, 0, H / 2); g.add(plate);
+  // The backing round the recess: its top is not drawn (the game's backing is already there) but it
+  // casts its shadow, and its cut edge is a chamfer down to the enamel.
+  const ring = rrShape(W + 80, H + 80, 20); ring.holes.push(rr(new THREE.Path(), pw, ph, radius));
+  const unseen = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+  // Satin rather than mirror steel, so the wall's faces take the light by which way they face.
+  const cut = new THREE.MeshStandardMaterial({ color: 0x7c838c, metalness: 0.35, roughness: 0.55, envMap: studioEnv, envMapIntensity: 0.5 });
+  const wall = new THREE.Mesh(extrude(ring, 3, 2.5, chamfer, 3), [unseen, cut]);
+  wall.castShadow = true; wall.position.set(W / 2, 0.6, H / 2); g.add(wall);
   return g;
 }
 /**
- * The grunge on the enamel's field, transparent, RECIPE_GRUNGE.W × RECIPE_GRUNGE.H: faint grime blotches,
- * dust specks, hairline crazing in the glaze and a few small scuffs, all darker than the cream (a light
- * mark on light enamel reads as a smudge). It is subtle on purpose; the game thickens it towards the
- * plate's edge and clears it round the icons.
+ * The grunge on the enamel's field, transparent, RECIPE_GRUNGE.W × RECIPE_GRUNGE.H, anchored at the
+ * field's top-left: uneven yellowing of the glaze, grime blotches, dust specks, hairline crazing, a few
+ * scuffs and two cracks running in from the field's top edge (one near the left, one about half way
+ * across, where the diagram has no icons). Everything is darker or warmer than the cream; a light mark
+ * on light enamel reads as a smudge. The game thickens it towards the plate's edge and clears it round
+ * the icons.
  */
 const RECIPE_GRUNGE = { W: 900, H: 450 };
 function recipeGrunge(g) {
   const { W, H } = RECIPE_GRUNGE;
-  for (let i = 0; i < 45; i++) {                                           // faint grime blotches
-    const x = rand() * W, y = rand() * H, r = 8 + rand() * 38;
+  for (let i = 0; i < 26; i++) {                                           // yellowing of the glaze
+    const x = rand() * W, y = rand() * H, r = 40 + rand() * 130;
     const grd = g.createRadialGradient(x, y, 0, x, y, r);
-    grd.addColorStop(0, `rgba(96,76,44,${0.03 + rand() * 0.05})`); grd.addColorStop(1, 'rgba(96,76,44,0)');
+    grd.addColorStop(0, `rgba(206,158,52,${0.09 + rand() * 0.1})`); grd.addColorStop(1, 'rgba(206,158,52,0)');
     g.fillStyle = grd; g.fillRect(x - r, y - r, 2 * r, 2 * r);
   }
-  for (let i = 0; i < 2200; i++) {                                         // dust specks
-    g.fillStyle = `rgba(58,46,30,${0.08 + rand() * 0.2})`;
-    g.fillRect(rand() * W, rand() * H, 0.4 + rand() * 0.9, 0.4 + rand() * 0.9);
+  for (let i = 0; i < 55; i++) {                                           // grime blotches
+    const x = rand() * W, y = rand() * H, r = 8 + rand() * 42;
+    const grd = g.createRadialGradient(x, y, 0, x, y, r);
+    grd.addColorStop(0, `rgba(90,70,40,${0.05 + rand() * 0.08})`); grd.addColorStop(1, 'rgba(90,70,40,0)');
+    g.fillStyle = grd; g.fillRect(x - r, y - r, 2 * r, 2 * r);
   }
-  g.lineWidth = 0.45;                                                      // crazing in the glaze
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0; i < 3000; i++) {                                         // dust specks
+    g.fillStyle = `rgba(58,46,30,${0.12 + rand() * 0.22})`;
+    g.fillRect(rand() * W, rand() * H, 0.4 + rand() * 1, 0.4 + rand() * 1);
+  }
+  g.lineWidth = 0.5;                                                       // crazing in the glaze
+  for (let i = 0; i < 40; i++) {
     let x = rand() * W, y = rand() * H, a = rand() * Math.PI * 2;
-    g.strokeStyle = `rgba(80,64,40,${0.08 + rand() * 0.1})`; g.beginPath(); g.moveTo(x, y);
+    g.strokeStyle = `rgba(78,60,36,${0.14 + rand() * 0.14})`; g.beginPath(); g.moveTo(x, y);
     for (let k = 0, n = 3 + Math.floor(rand() * 6); k < n; k++) { a += (rand() - 0.5) * 1.4; const l = 4 + rand() * 14; x += Math.cos(a) * l; y += Math.sin(a) * l; g.lineTo(x, y); }
     g.stroke();
   }
   for (let i = 0; i < 18; i++) {                                           // scuffs
     const x = rand() * W, y = rand() * H, a = rand() * Math.PI, l = 6 + rand() * 20;
-    g.strokeStyle = `rgba(70,56,36,${0.08 + rand() * 0.1})`; g.lineWidth = 0.6 + rand() * 0.8;
+    g.strokeStyle = `rgba(70,56,36,${0.1 + rand() * 0.12})`; g.lineWidth = 0.6 + rand() * 0.8;
     g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
   }
+  // Two cracks from the top edge: a jagged dark line, the enamel's broken edge lit along it, a branch,
+  // and a small flake lost where each starts.
+  const crack = (x, heading, length) => {
+    const pts = [[x, 0]]; let a = heading, px = x, py = 0;
+    while (py < length) { a += (rand() - 0.5) * 0.9; a = Math.min(Math.max(a, 0.45), 2.7); const l = 3 + rand() * 6; px += Math.cos(a) * l; py += Math.sin(a) * l; pts.push([px, py]); }
+    const line = (p, dx, dy) => { g.beginPath(); p.forEach(([qx, qy], k) => (k ? g.lineTo(qx + dx, qy + dy) : g.moveTo(qx + dx, qy + dy))); g.stroke(); };
+    g.lineJoin = 'round';
+    g.strokeStyle = 'rgba(255,248,226,0.55)'; g.lineWidth = 0.7; line(pts, 0.8, 0.8);
+    g.strokeStyle = 'rgba(38,28,16,0.8)'; g.lineWidth = 1.1; line(pts, 0, 0);
+    const k0 = Math.floor(pts.length * 0.45), branch = [pts[k0]]; let bx = pts[k0][0], by = pts[k0][1], ba = heading + (rand() < 0.5 ? -0.8 : 0.8);
+    for (let k = 0; k < 4; k++) { ba += (rand() - 0.5) * 0.7; bx += Math.cos(ba) * (3 + rand() * 5); by += Math.sin(ba) * (3 + rand() * 5); branch.push([bx, by]); }
+    g.strokeStyle = 'rgba(38,28,16,0.6)'; g.lineWidth = 0.8; line(branch, 0, 0);
+    g.fillStyle = 'rgba(42,36,30,0.85)'; g.beginPath(); g.ellipse(x, 1.5, 3.2, 2, 0, 0, Math.PI * 2); g.fill();
+  };
+  crack(58, 1.1, 58);
+  crack(500, 1.75, 44);
 }
 
 /**
@@ -1158,6 +1189,7 @@ if (EXPORT) exportLayers();
  * seam_edge: the non-slip edge over the seam between the header and the scrolling body.
  * title_glyphs, title_glyph_shadows: the title's raised letters and their shadows, an atlas.
  * recipe_enamel, recipe_grunge: the recipe diagram's enamel plate and the grunge over its field.
+ * key_pin (+ _pressed): the Location keycap, a map pin.
  * layout.json: frame sizes and every key's rect and top face, in capture pixels.
  * ?export&only=lamp,scroll renders just the named sets (see `want` below).
  */
@@ -1167,7 +1199,7 @@ async function exportLayers() {
   renderer.setPixelRatio(1); renderer.setClearColor(0x000000, 0);
   // ?export&only=lamp,scroll renders just those sets and merges their entries into the existing
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
-  // lamp, scroll, seam, title, enamel.
+  // lamp, scroll, seam, title, enamel, pin.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -1366,6 +1398,24 @@ async function exportLayers() {
     layout['key_' + name] = { size: [S + 2 * M, S + 2 * M], rect: [M, M, S, S] };
   }
 
+  // --- the Location key: a small keycap like Close, with a navy map pin (a round head with a hole, on a
+  // point), and the shadow it casts on the panel.
+  if (want('pin')) await withSeed(406, async () => {
+    const S = 64, M = 16, group = new THREE.Group();
+    const k = keycap(S, S, 6, (g, a, b) => {
+      const cx = a * 0.5, cy = b * 0.4, r = a * 0.19, s = Math.sin(0.64), c = Math.cos(0.64);
+      g.fillStyle = NAVY;
+      g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.arc(cx, cy, r * 0.42, 0, Math.PI * 2, true); g.fill('evenodd');
+      g.beginPath(); g.moveTo(cx - r * c, cy + r * s); g.lineTo(cx + r * c, cy + r * s); g.lineTo(cx, cy + r * 2.3); g.closePath(); g.fill();
+    });
+    k.position.set(M + S / 2, 0, M + S / 2); group.add(k);
+    const catcher = new THREE.Mesh(new THREE.PlaneGeometry(S + 2 * M, S + 2 * M).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ opacity: 0.5 }));
+    catcher.position.set(M + S / 2, 0.05, M + S / 2); catcher.receiveShadow = true; group.add(catcher);
+    const ss = stage([0, 0, S + 2 * M, S + 2 * M], [group]);
+    await post('key_pin', ss.grab()); await pressed(k, 'key_pin_pressed', ss);
+    layout.key_pin = { size: [S + 2 * M, S + 2 * M], rect: [M, M, S, S] };
+  });
+
   // --- the status lamp: lit green, amber or red, or off, each with the shadow it casts on the backing,
   // and each lit colour's glow (drawn additively). Lit by the house light, like everything after it.
   if (want('lamp')) await withSeed(401, async () => {
@@ -1393,7 +1443,7 @@ async function exportLayers() {
     await post('scroll_rail', stage([0, 0, RAIL.W, RAIL.H], [scrollRail()], { light: 'house' }).grab());
     await post('scroll_thumb', stage([0, 0, THUMB.W, THUMB.H], [scrollThumb()], { light: 'house' }).grab());
     layout.scroll_rail = { size: [RAIL.W, RAIL.H], cap: RAIL.cap, travel_inset: RAIL.travelInset };
-    layout.scroll_thumb = { size: [THUMB.W, THUMB.H], cap: THUMB.cap, grip: THUMB.grip };
+    layout.scroll_thumb = { size: [THUMB.W, THUMB.H], cap: THUMB.cap, period: THUMB.period, repeat_from: THUMB.cap + 8 * THUMB.period };
   });
 
   // --- the seam's non-slip edge: the rubber strip and its screws with its shadow, over the shade it
@@ -1408,8 +1458,8 @@ async function exportLayers() {
   if (want('enamel')) await withSeed(405, async () => {
     await post('recipe_enamel', stage([0, 0, ENAMEL.W, ENAMEL.H], [enamelPlate()], { light: 'house' }).grab());
     await post('recipe_grunge', frame2d(RECIPE_GRUNGE.W, RECIPE_GRUNGE.H, recipeGrunge));
-    layout.recipe_enamel = { size: [ENAMEL.W, ENAMEL.H], margin: ENAMEL.M, corner: ENAMEL.corner,
-      field_inset: ENAMEL.band + ENAMEL.gap + ENAMEL.stripe + 2 };
+    layout.recipe_enamel = { size: [ENAMEL.W, ENAMEL.H], margin: ENAMEL.out, corner: ENAMEL.corner,
+      field_inset: ENAMEL.rim + ENAMEL.band + ENAMEL.gap + ENAMEL.stripe + 2 };
     layout.recipe_grunge = { size: [RECIPE_GRUNGE.W, RECIPE_GRUNGE.H] };
   });
 

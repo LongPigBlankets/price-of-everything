@@ -1,6 +1,6 @@
 extends Node2D
 ## Building Detail v3 (`toggle bdp v3`) screenshots, each cropped to the panel: its top with the
-## status lamp, the lamp in each state, the body scrolled partway and to the end (the scrollbar's
+## status lamp (and again without the lamp's overlay, and without the lamp at all), the lamp in each state, the body scrolled partway and to the end (the scrollbar's
 ## slider along its rail), and the recipe sheet's scrollbar. Places a motor factory (r_009) with its
 ## inputs in stock on tile_5_10, so the panel is long enough to scroll.
 ##   Godot --path . res://tools/bdp_v3_shot.tscn --quit-after 3000 -- --no-telemetry
@@ -33,6 +33,19 @@ func _ready() -> void:
 	await _settle(24)
 	var panel = _wm.building_panel_v2
 	_save(panel, "top")
+	# The same view without the lamp's overlay, to measure what the overlay does (the ratio of the two).
+	panel._shade.visible = false
+	await _settle(3)
+	_save(panel, "top_unshaded")
+	# And with the text's give-back off too: the panel as it would be with no lamp at all.
+	for n in panel._margin.find_children("*", "Label", true, false):
+		(n as CanvasItem).material = null
+	await _settle(3)
+	_save(panel, "top_unlit")
+	panel._apply_v3_text_light()
+	print("[BDP_V3_SHOT] viewport %s, panel %s" % [get_viewport().get_visible_rect().size, panel.get_global_rect()])
+	panel._shade.visible = true
+	await _settle(3)
 
 	for st in [["Running", "ok"], ["Starting", "warn"], ["Stalled", "bad"], ["NPC-owned", "info"]]:
 		panel._set_badge({"label": st[0], "tone": st[1]})

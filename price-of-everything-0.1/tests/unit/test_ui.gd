@@ -648,21 +648,30 @@ func _test_bdp_v3_rules() -> void:
 		and Lamp.colour_for("info") == "off" and Lamp.colour_for("") == "off",
 		"bdp v3: the status lamp is green for ok, amber for warn, red for bad and off otherwise")
 	var Scroll = load("res://scripts/bdp_v3_scroll.gd")
-	var thumb: StyleBox = Scroll.make(Scroll.THUMB, Scroll.THUMB_CAP, Scroll.THUMB_GRIP)
+	var thumb: StyleBox = Scroll.make(Scroll.THUMB, Scroll.THUMB_CAP, Scroll.THUMB_PERIOD, Scroll.THUMB_REPEAT_FROM)
 	var sum := func(parts: Array) -> float:
 		var total := 0.0
 		for p: Array in parts:
 			total += float(p[2])
 		return total
-	var tall: Array = thumb.slices(200.0)
-	var grip_px: float = (Scroll.THUMB_GRIP.y - Scroll.THUMB_GRIP.x) / 1.875
-	_check(tall.size() == 5 and is_equal_approx(float(tall[2][2]), grip_px) and is_equal_approx(sum.call(tall), 200.0)
+	var tall: Array = thumb.slices(203.0)
+	var period_px: float = Scroll.THUMB_PERIOD / 1.875
+	var whole := true
+	for i in range(1, tall.size() - 1):
+		var periods: float = (float(tall[i][1]) - float(tall[i][0])) / (Scroll.THUMB_PERIOD * 2.0 / 1.875)
+		whole = whole and is_equal_approx(periods, roundf(periods))
+	var fill: float = sum.call(tall) - 2.0 * Scroll.THUMB_CAP / 1.875
+	_check(is_equal_approx(sum.call(tall), 203.0) and whole and absf(fill / (roundf(fill / period_px) * period_px) - 1.0) < 0.05
 		and is_equal_approx(float(tall[0][2]), Scroll.THUMB_CAP / 1.875),
-		"bdp v3: a long slider keeps its ends and grip at their size and stretches the plain lengths")
-	var short: Array = thumb.slices(30.0)
-	_check(short.size() == 3 and is_equal_approx(sum.call(short), 30.0), "bdp v3: a slider too short for its grip leaves it out")
+		"bdp v3: a long slider keeps its ends and fills its length with whole periods of ridges")
 	var tiny: Array = thumb.slices(10.0)
 	_check(is_equal_approx(float(tiny[0][2]), 5.0) and is_equal_approx(sum.call(tiny), 10.0), "bdp v3: a very short slider halves its ends")
+	var Light = load("res://scripts/bdp_v3_light.gd")
+	var screen := Vector2(1920, 1080)
+	_check(Light.light_at(Vector2(0.05, 0.05), screen) > Light.light_at(Vector2(0.75, 0.15), screen)
+		and Light.light_at(Vector2(0.75, 0.15), screen) > Light.light_at(Vector2(0.95, 0.9), screen)
+		and is_equal_approx(Light.light_at(Vector2(1.0, 1.0), screen), Light.DARKEST),
+		"bdp v3: the lamp over the panel is brightest at the screen's top-left and darkest at its far corner")
 	var Seam = load("res://scripts/bdp_v3_seam.gd")
 	var seam_parts: Array = Seam.slices(430.0)
 	_check(seam_parts.size() == 3 and is_equal_approx(float(seam_parts[0][3]), Seam.CAP / 1.875)
@@ -734,8 +743,20 @@ func _test_bdp_v3_panel() -> void:
 		var content_w: float = body.get_child(0).get_combined_minimum_size().x
 		var old_w := 20.0 + content_w
 		var new_w := bst.content_margin_left + bst.content_margin_right + content_w
-		_check(head.size == Vector2(35, 58) and is_equal_approx(body.size.y, 41.0) and absf(new_w / old_w - 0.9) < 0.02,
-			"bdp v3: the recipe arrow's head is 25%% larger (35 x 58) and its body 10%% smaller round the same content (%.0f -> %.0f px)" % [old_w, new_w])
+		_check(head.size == Vector2(35, 58) and is_equal_approx(body.size.y, 41.0) and absf(new_w / old_w - 0.9) < 0.02
+			and bst.corner_radius_top_left == 0 and bst.corner_radius_bottom_left == 0,
+			"bdp v3: the recipe arrow's head is 25%% larger (35 x 58) and its square body 10%% smaller round the same content (%.0f -> %.0f px)" % [old_w, new_w])
+	_check(panel._pin_key.visible and not panel._subtitle_label.visible and panel._pin_key.tooltip_text.contains("(5, 10)"),
+		"bdp v3: the Location key under Close replaces the level and location line (%s)" % panel._pin_key.tooltip_text)
+	var focused: Array = []
+	var on_focus := func(id: String) -> void: focused.append(id)
+	MatchState.focus_building_requested.connect(on_focus)
+	panel._pin_key.pressed.emit()
+	MatchState.focus_building_requested.disconnect(on_focus)
+	_check(focused == [iid], "bdp v3: the Location key asks the map to show the building")
+	var body_label: Label = panel._body.find_children("*", "Label", true, false)[0]
+	_check(panel._shade.visible and body_label.material == load("res://scripts/bdp_v3_light.gd").text_material(),
+		"bdp v3: the lamp's overlay covers the panel and the text takes some of its light back")
 	var Seam = load("res://scripts/bdp_v3_seam.gd")
 	_check(panel._seam.visible and is_equal_approx(panel._scroll.offset_top, Seam.strip_height())
 		and panel._seam.get_index() > panel._scroll.get_index() and panel._seam.get_parent() == panel._scroll.get_parent(),
@@ -808,8 +829,10 @@ func _test_bdp_v3_panel() -> void:
 	_check(panel._badge.visible and not panel._status_v3.visible and not Scroll.is_applied(panel._scroll)
 		and not panel._seam.visible and is_equal_approx(panel._scroll.offset_top, 0.0)
 		and panel._title_label.visible and not panel._title_v3.visible
-		and panel.find_child("BdpV3Enamel", true, false) == null,
-		"bdp v3: switching it off brings back the plain title, the badge, the plain scrollbar, the unedged body and the plain diagram")
+		and panel.find_child("BdpV3Enamel", true, false) == null
+		and panel._subtitle_label.visible and not panel._pin_key.visible and not panel._shade.visible
+		and panel._body.find_children("*", "Label", true, false)[0].material == null,
+		"bdp v3: switching it off brings back the plain title, the badge and location line, the plain scrollbar, the unedged body, the plain diagram and unshaded text")
 	panel.queue_free()
 	BuildingState.buildings.erase(iid)
 	UiPrefs.set_use_bdp_v3(was)

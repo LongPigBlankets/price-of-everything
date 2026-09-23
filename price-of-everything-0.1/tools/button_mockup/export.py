@@ -4,7 +4,7 @@
 Run this from the Godot project root, then open http://127.0.0.1:8771/cluster.html?export in a
 browser. The page renders every layer of the v3 panel parts and posts them here; they are written
 into assets/ui/bdp_v3/ with layout.json. The tab title changes to "export done" when it has finished.
-Add &only=lamp,scroll (any of block, footer, backing, section, keys, lamp, scroll, seam, title, enamel) to render just
+Add &only=lamp,scroll (any of block, footer, backing, section, keys, lamp, scroll, seam, title, enamel, pin) to render just
 those sets; the page then reads the current layout.json from here and updates only their entries.
 An optional argument sets the port (default 8771).
 """

@@ -1,6 +1,7 @@
 extends TextureButton
-## Building Detail v3: a small cream keycap with a navy glyph (Close ✕, Back ‹), with the shadow it
-## casts on the panel baked around it (layers from tools/button_mockup/cluster.html?export).
+## Building Detail v3: a small cream keycap with a navy glyph (Close ✕, Back ‹, Location's map pin),
+## with the shadow it casts on the panel baked around it (layers from
+## tools/button_mockup/cluster.html?export).
 ## The texture is 96 layout pixels square with the key in its middle 64; it draws at logical size.
 
 const CAPTURE_SCALE := 1.875
@@ -21,5 +22,5 @@ static func make(glyph: String) -> TextureButton:
 	b.size_flags_horizontal = Control.SIZE_SHRINK_END
 	b.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
 	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	b.tooltip_text = "Close" if glyph == "close" else "Back"
+	b.tooltip_text = str({"close": "Close", "back": "Back", "pin": "Location"}.get(glyph, ""))
 	return b

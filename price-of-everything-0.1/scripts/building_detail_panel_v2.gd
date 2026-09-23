@@ -25,6 +25,7 @@ const BdpV3Scroll := preload("res://scripts/bdp_v3_scroll.gd")
 const BdpV3Seam := preload("res://scripts/bdp_v3_seam.gd")
 const BdpV3Title := preload("res://scripts/bdp_v3_title.gd")
 const BdpV3Enamel := preload("res://scripts/bdp_v3_enamel.gd")
+const BdpV3Light := preload("res://scripts/bdp_v3_light.gd")
 const BdpV3Nine := preload("res://scripts/bdp_v3_nine.gd")
 const BdpV3Section := preload("res://scripts/bdp_v3_section.gd")
 ## v3 frames these sections (heading and content together); the value names the frame, so sections
@@ -48,6 +49,8 @@ const TOP_BAR_CLEARANCE := 114.0   # clears the top bar AND the briefing notch h
 const BOTTOM_CLEARANCE := 110.0  # fallback: keep clear of the bottom menu when no tile panel to match
 const PANEL_WIDTH := 460.0
 const CONTENT_MARGIN := 26
+## The backing's rounded corner, in pixels (panel_backing: 4 + 16 layout pixels).
+const BACKING_CORNER := 10.5
 
 # Empire-view click (world_map sets this before show_building): dock at the tile view
 # panel's spot instead of the default edge position — in that view there IS no tile panel,
@@ -81,6 +84,8 @@ var _status_lamp: BdpV3Lamp = null
 var _status_v3_label: Label = null
 var _body: VBoxContainer = null
 var _scroll: ScrollContainer = null
+# The header and body (everything under v3's lamp but the backing).
+var _margin: MarginContainer = null
 # v3's non-slip edge over the seam between the header and the scrolling body.
 var _seam: Control = null
 var _dragging := false
@@ -99,6 +104,10 @@ var _sheet: Control = null
 # Header close control: the v2 button, and the v3 keycap shown instead while `toggle bdp v3` is on.
 var _close_button: Button = null
 var _close_key: TextureButton = null
+# v3's Location keycap under the close key: pans the map to the building.
+var _pin_key: TextureButton = null
+# v3's lamp over the whole panel (a multiply overlay; see bdp_v3_light.gd).
+var _shade: Control = null
 # v2's brass pipe border, and v3's backing plate (dark navy-grey steel in a brass trim) drawn behind
 # everything instead.
 var _pipe_frame: Control = null
@@ -128,11 +137,21 @@ func _build_shell() -> void:
 	for side in ["left", "right", "top", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, CONTENT_MARGIN)   # clear the brass frame
 	add_child(margin)
+	_margin = margin
 	_pipe_frame = preload("res://scripts/brass_pipe_frame.gd").new()
 	add_child(_pipe_frame)   # brass frame, drawn on top
 	_backing = BdpV3Nine.make("panel_backing", 64.0)
 	add_child(_backing)
 	move_child(_backing, 0)   # behind the content
+	# Over the backing and content, under the action sheets (added later).
+	_shade = Control.new()
+	_shade.name = "BdpV3Shade"
+	_shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_shade.material = BdpV3Light.shade_material()
+	_shade.draw.connect(func() -> void: _shade.draw_rect(Rect2(Vector2.ZERO, _shade.size), Color.WHITE))
+	_shade.resized.connect(func() -> void: (_shade.material as ShaderMaterial).set_shader_parameter("rect_size", _shade.size))
+	(_shade.material as ShaderMaterial).set_shader_parameter("corner", BACKING_CORNER)
+	add_child(_shade)
 
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", DS.SP["SM"])
@@ -155,9 +174,17 @@ func _build_shell() -> void:
 	_close_button.custom_minimum_size = Vector2(32, 32)
 	_close_button.pressed.connect(_hide_panel)
 	header.add_child(_close_button)
+	# v3's keys: Close, and Location in the row just below it.
+	var keys := VBoxContainer.new()
+	keys.add_theme_constant_override("separation", -12)   # the keys' renders carry room for their shadows
+	keys.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	header.add_child(keys)
 	_close_key = BdpV3Key.make("close")
 	_close_key.pressed.connect(_hide_panel)
-	header.add_child(_close_key)
+	keys.add_child(_close_key)
+	_pin_key = BdpV3Key.make("pin")
+	_pin_key.pressed.connect(_on_pin_pressed)
+	keys.add_child(_pin_key)
 
 	var meta := HBoxContainer.new()
 	meta.add_theme_constant_override("separation", DS.SP["SM"])
@@ -253,6 +280,7 @@ func _apply_refresh() -> void:
 	if not live.is_empty():
 		_current_building = live
 	_rebuild(_current_building)
+	_apply_v3_text_light()
 	_resize_body()  # content height may have changed; keep the current (possibly dragged) position
 
 func _on_visibility_changed() -> void:
@@ -266,6 +294,7 @@ func show_building(building: Dictionary) -> void:
 	_current_building = building
 	_dirty = false
 	_rebuild(building)
+	_apply_v3_text_light()
 	visible = true
 	PanelStack.push(self)
 	_size_and_position()
@@ -297,6 +326,7 @@ func _rebuild(building: Dictionary) -> void:
 		display_level = BuildingWorks.infra_tile_level(building)
 	_subtitle_label.text = "Level %d · %s" % [
 		display_level, Catalog.tile_label(_tile) if _tile != "" else "—"]
+	_pin_key.tooltip_text = "Show on the map · %s" % (Catalog.tile_label(_tile) if _tile != "" else "—")
 
 	# construction site → materials checklist + countdown only
 	var constr := BuildingReadout.construction(building)
@@ -1490,22 +1520,46 @@ func _on_bdp_v3_changed(_enabled: bool) -> void:
 	_queue_refresh()
 
 
-## The parts of the shell that v3 swaps: the title, the close key, the status lamp, the backing, the
-## scrollbar and the seam edge.
+## The parts of the shell that v3 swaps: the title, the close and Location keys, the status lamp (in
+## place of the level and location line), the backing, the scrollbar, the seam edge and the lamp over
+## the panel.
 func _apply_v3_chrome() -> void:
 	var v3 := UiPrefs.use_bdp_v3
 	_close_button.visible = not v3
 	_close_key.visible = v3
+	_pin_key.visible = v3
+	_shade.visible = v3
 	_apply_v3_title()
+	_apply_v3_text_light()
 	_badge.visible = not v3
 	_status_v3.visible = v3
-	# The lamp row is taller than the badge; v2 keeps its top-aligned subtitle exactly.
-	_subtitle_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER if v3 else VERTICAL_ALIGNMENT_TOP
+	# v3 drops the level and location line: the Location key carries the place.
+	_subtitle_label.visible = not v3
 	_pipe_frame.visible = not v3
 	_backing.visible = v3
 	BdpV3Scroll.apply(_scroll, v3)
 	_seam.visible = v3
 	_scroll.offset_top = BdpV3Seam.strip_height() if v3 else 0.0
+
+
+## The Location key: the map pans to the building (and the tile's panel opens), or, for a building site
+## not yet on the books, to its tile.
+func _on_pin_pressed() -> void:
+	var iid := str(_current_building.get("instance_id", ""))
+	if iid != "" and not BuildingState.get_building(iid).is_empty():
+		MatchState.focus_building_requested.emit(iid)
+		return
+	var cam := get_viewport().get_camera_2d()
+	if cam != null and cam.has_method("pan_to_tile"):
+		cam.pan_to_tile(str(_current_building.get("tile_id", "")))
+
+
+## Under v3's lamp, the panel's text takes back part of the darkening round it (bdp_v3_light.gd); the
+## action sheets sit above the lamp, so their text is left alone. Runs after every rebuild.
+func _apply_v3_text_light() -> void:
+	var m: Material = BdpV3Light.text_material() if UiPrefs.use_bdp_v3 else null
+	for n in _margin.find_children("*", "Label", true, false) + _margin.find_children("*", "RichTextLabel", true, false):
+		(n as CanvasItem).material = m
 
 
 ## v3's raised title in place of the label, unless the title has a character its letters lack.
@@ -1682,7 +1736,12 @@ class _ArrowHead extends Control:
 	func _ready() -> void:
 		resized.connect(queue_redraw)
 	func _draw() -> void:
-		draw_colored_polygon(PackedVector2Array([Vector2(0, 0), Vector2(size.x, size.y * 0.5), Vector2(0, size.y)]), col)
+		var pts := PackedVector2Array([Vector2(0, 0), Vector2(size.x, size.y * 0.5), Vector2(0, size.y)])
+		draw_colored_polygon(pts, col)
+		# A filled polygon has hard, stepped edges; a thin smoothed line round it softens them.
+		var outline := pts.duplicate()
+		outline.append(pts[0])
+		draw_polyline(outline, col, 1.0, true)
 
 # A thin navy outline rectangle inset from the card edge (the recipe card's inner border).
 class _InsetOutline extends Control:
@@ -1996,9 +2055,10 @@ func _qty_pill(qty: int, base_qty: int = -1, _mod_pct: int = 0) -> Control:
 	return pill
 
 # Navy filled arrow: a rounded-left body carrying the power label + bolt, then a triangle head.
-## The recipe arrow: a navy body holding the power draw, and a head. The body is 10% smaller than it
-## was (46 px tall, with 12 + 8 px of side padding round the number and bolt, which keep their size),
-## and the head 25% larger than it was (28 × 46), so it flares past the body.
+## The recipe arrow: a square-cornered navy body holding the power draw, and a head with smoothed
+## edges. The body is 10% smaller than it was (46 px tall, with 12 + 8 px of side padding round the
+## number and bolt, which keep their size), and the head 25% larger than it was (28 × 46), so it flares
+## past the body.
 const ARROW_BODY_H := 41
 const ARROW_OLD_SIDE_PAD := 20.0
 const ARROW_HEAD := Vector2(35, 58)
@@ -2014,9 +2074,7 @@ func _recipe_arrow(power_in: int) -> Control:
 	body.custom_minimum_size = Vector2(0, body_h)
 	body.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var bst := StyleBoxFlat.new()
-	bst.bg_color = CREAM_INK
-	bst.corner_radius_top_left = 5
-	bst.corner_radius_bottom_left = 5
+	bst.bg_color = CREAM_INK   # square corners
 	bst.content_margin_top = 4
 	bst.content_margin_bottom = 4
 	body.add_theme_stylebox_override("panel", bst)

@@ -7,9 +7,10 @@ Building Detail v3 dresses the building detail panel as a physical control panel
 - Each section of the panel sits in a steel frame.
 - The panel's backing is dark navy-grey steel inside a brass trim.
 - The title is set in raised white letters, like the INPUTS / OUTPUTS lettering on the control plate.
-- The recipe diagram sits on a cream vitreous enamel sign, with a little grunge in the space between its icons.
-- The building's status is a pilot lamp, lit green, amber or red, beside its name.
-- The scrollbar is a steel rail screwed to the backing, with a cream slider riding in its slot.
+- The recipe diagram sits on a cream vitreous enamel sign set into the panel, aged and cracked in the space between its icons.
+- The building's status is a pilot lamp, lit green, amber or red, under its name. A Location keycap under Close takes the place of the level and location line.
+- The scrollbar is a steel rail screwed to the backing, with a grey rubber grip riding in its slot.
+- A lamp at the top-left of the screen lights the whole panel, so it falls away evenly from top-left to bottom-right and follows the content as it scrolls.
 - A near-black rubber non-slip edge runs across the seam between the fixed header and the scrolling body, which slides out from under it.
 
 It is behind the debug-terminal cheat `toggle bdp v3`. The cheat is off by default, lasts for the session only, and re-renders the open panel. With it off, the panel is v2 exactly.
@@ -36,7 +37,8 @@ Nothing here is drawn by hand in Godot. Every plate, frame, screw and button is 
 | `scripts/bdp_v3_seam.gd` | The non-slip edge over the seam between the header and the body. |
 | `scripts/bdp_v3_title.gd` | The title in raised letters, set from the letter atlas. |
 | `scripts/bdp_v3_enamel.gd` | The recipe diagram's enamel sign, and the shader that keeps its grunge clear of the icons. |
-| `tools/bdp_v3_shot.tscn` | Screenshots of the panel in v3 (top, lamp states, scrolled, slider tints, a sheet). |
+| `scripts/bdp_v3_light.gd` | The lamp over the panel: the overlay's shader and the text's and glows' give-back. |
+| `tools/bdp_v3_shot.tscn` | Screenshots of the panel in v3 (top, with and without the lamp, lamp states, scrolled, slider tints, a sheet). |
 | `scripts/building_detail_panel_v2.gd` | Switches between v2 and v3 (`UiPrefs.use_bdp_v3`), builds the v3 parts and frames the sections. |
 | `tests/unit/test_ui.gd` | `_test_bdp_v3_rules` and `_test_bdp_v3_panel`. |
 
@@ -172,9 +174,9 @@ Each state renders in a 112 px frame with the lamp in the middle and its shadow 
 ## The scrollbar
 
 - **Rail** (`scrollRail`): a steel strip 22 px wide in a 30 × 240 frame, screwed to the backing at both ends, with an 8 px slot down its middle over a dark floor. The steel is brushed along the strip's length (`railMaterial`): each column is one shade, and the rubbed edge is an unbroken line.
-- **Slider** (`scrollThumb`): a cream plastic cap 16 px wide on a chamfered skirt, in a 30 × 210 frame, standing on the rail, with its shadow on the rail. Its top is plain except for a ribbed grip in the middle: grooves shaded on their upper edge and lit on their lower one.
+- **Slider** (`scrollThumb`): a medium-dark grey rubber grip (`#55595F`, with a soft sheen) 16 px wide on a chamfered edge, in a 30 × 210 frame, standing on the rail, with its shadow on the rail. Diagonal ridges 1.4 px high are moulded across it every 7.5 px between plain rounded ends.
 
-The game stretches both to the scroll area and to the slider's length, so everything between their ends is the same all the way along. `bdp_v3_scroll.gd` draws each as a vertical three-slice. The ends keep their size (30 px of rail, 15 px of slider), and the slider's grip keeps its size in the middle while there is room for it; a slider too short for the grip is drawn plain. It draws the slices itself, because Godot's `StyleBoxTexture` draws one texture pixel per screen pixel and these renders are at two per logical pixel.
+`bdp_v3_scroll.gd` draws each in three pieces: the ends keep their size (30 px of rail, 15 px of slider) and the length between them is filled. The rail's is stretched, which its steel allows, being brushed along its length. The slider's diagonal ridges would change angle if stretched, so its length is filled with whole periods of them, taken from the middle of the grip where every period has ridges on both sides, each squeezed or eased a little so a whole number fits. It draws the pieces itself, because Godot's `StyleBoxTexture` draws one texture pixel per screen pixel and these renders are at two per logical pixel.
 
 `BdpV3Scroll.apply(scroll, on)` puts the rail and slider on a `ScrollContainer`'s vertical bar (`scroll`, `scroll_focus`, `grabber`, `grabber_highlight`, `grabber_pressed`), so scrolling, dragging and paging stay Godot's own. The bar is 16 px wide. The slider stops 12 px short of the rail's ends, clear of the screws. Under the pointer it is drawn 7% brighter, and 7% darker while held.
 
@@ -191,13 +193,14 @@ The panel puts the scroll area in a plain `Control` (`BodyWell`) with the edge a
 
 ## The recipe diagram
 
-The diagram of the building's recipe sits on a vitreous enamel sign (`enamelPlate`):
+The diagram of the building's recipe sits on a vitreous enamel sign set into the panel (`enamelPlate`):
 
-- **Plate:** pressed steel with a rolled edge, 760 × 300 in its render with 14 px round it for its shadow. The rolled edge and an 11 px border band are navy enamel (`#0A2140`), with a cream gap and a 2 px navy pinstripe inside the band (the diagram's old outline). The field is the diagram's cream (`#FEEDC3`) under a clear glaze, with a soft sheen from the top-left, and the band's inner edge is lit along the top and left.
+- **Recess:** the sign is sunk below the backing's surface. The cut is a satin steel chamfer, dark along the top and left where it faces away from the light and lit along the bottom and right, and it throws its shadow onto the enamel. The backing's own surface round the cut isn't drawn (it is in the render only to cast that shadow), so the game's backing meets the cut. The render is 760 × 300 with the cut 3 px in from its edge; the game lines the cut up with the diagram's rect.
+- **Enamel:** a thin cream rim (shaded in from the cut, deepest under the top and left), a 7 px navy band (`#0A2140`), a cream gap and a 2 px navy pinstripe (the diagram's old outline), and the diagram's cream field (`#FEEDC3`) under a clear glaze with a soft sheen from the top-left.
 - **Chips:** one to three at each corner, showing dark steel under the enamel with rust round them and the enamel's pale broken edge.
-- **Grunge** (`recipeGrunge`, its own 900 × 450 layer): faint grime blotches, dust specks, hairline crazing in the glaze and a few scuffs, all darker than the cream.
+- **Grunge** (`recipeGrunge`, its own 900 × 450 layer): uneven yellowing of the glaze, grime blotches, dust specks, hairline crazing, a few scuffs, and two cracks running in from the field's top edge, one near the left and one about half way across where the diagram has no icons. Each crack is a jagged dark line with the enamel's broken edge lit beside it, a branch, and a small flake lost where it starts. Everything is darker or warmer than the cream; a light mark on light enamel reads as a smudge.
 
-In the game, `bdp_v3_enamel.gd` draws the plate as a 9-slice with 44 px corners. Everything between the corners (band, pinstripe, field and sheen) is smooth, so it can stretch; all the wear is in the corners. It lays the grunge over the field through a small shader:
+In the game, `bdp_v3_enamel.gd` draws the sign as a 9-slice with 44 px corners. Everything between the corners (cut, rim, band, pinstripe, field and sheen) is smooth, so it can stretch; all the wear is in the corners. It lays the grunge over the field through a small shader:
 
 - The grunge is anchored at the field's top-left, at two texture pixels per logical pixel, so it isn't stretched. It repeats if a field is ever larger than the layer.
 - It is fully clear within 6 px of every goods icon and the arrow and fades back in over the next 10 px. The panel hands the sign those controls (`watch`), and the sign re-reads where they are each frame while it is visible, passing them to the shader only when they move.
@@ -205,7 +208,7 @@ In the game, `bdp_v3_enamel.gd` draws the plate as a 9-slice with 44 px corners.
 
 In v3 the diagram's flat cream background and inset outline give way to the sign.
 
-The arrow between the inputs and the output is shared with v2: its head is 35 × 58 px and flares past the body, and the body is 41 px tall with side padding that makes it 10% narrower than it was round the same number and bolt.
+The arrow between the inputs and the output is shared with v2. Its head is 35 × 58 px, flares past the body and has smoothed edges (a thin antialiased line traced round the filled triangle). The body has square corners and is 41 px tall, with side padding that makes it 10% narrower than it was round the same number and bolt.
 
 ## The title
 
@@ -218,6 +221,18 @@ The title has the effects of the INPUTS / OUTPUTS lettering on the control plate
 The font stays the title's own: Bebas Neue at 32 px (60 layout px). Titles change with the building, so each letter is rendered on its own into an atlas (`titleAtlas`, `title_glyphs` and `title_glyph_shadows`, 1400 × 184). Each letter sits in a cell with 10 px of room round it for its shadow, and every cell has the same baseline. `layout.json` lists each cell as `[x, y, w, h, pen x]`. The page loads the game's copy of the font from `export.py`, so the letters match the game's spacing. `relief(..., { faceGrade: false })` leaves the faces ungraded in the atlas.
 
 In the game, `bdp_v3_title.gd` shapes and wraps the title with Godot's text server in the same font, size and wrapping as the plain label, and places each letter's render on its pen position. It draws every shadow first, then the faces, each shaded for where its middle falls in the block of lines. The atlas covers A–Z, 0–9 and common punctuation, which is every character in the building and recipe names (a test checks this). A title with any other character keeps the plain label.
+
+## The lamp over the panel
+
+The panel is lit by a lamp at the top-left of the screen (`bdp_v3_light.gd`). The further a point is from it, the darker, falling evenly from full light a quarter of the screen's diagonal away to 0.7 at 90% of it. The panel usually sits a third of the diagonal or so from the lamp, so it takes a gentle, even fall from its top-left to its bottom-right wherever it is. With the panel beside the tile panel on a 1920-wide screen, that is about 0.97 at its top-left to 0.81 at its bottom-right.
+
+- **One overlay:** a single `Control` over the backing and all of the content, under the action sheets, draws the lamp's light as a multiply (`render_mode blend_mul`). Each pixel works it out from its own place on the screen (`SCREEN_UV`), so scrolled content is lit by where it is now and the whole panel changes as it is dragged, with nothing to update on a scroll. The overlay leaves the panel's rounded corners alone, so the map behind them isn't darkened.
+- **Text:** the panel's labels share one material that takes back half of the darkening round them (`TEXT_GIVE_BACK`), without lighting them past their own colour. At the panel's bottom, where the steel and the navy cards fall to 0.84, the text only falls to 0.91. The action sheets sit above the overlay, so their text is left alone.
+- **Glows:** the arrow's, the footer's and the status lamp's glows take all of it back, since they give off their own light.
+
+It is one draw for the overlay and one shared material for the text, so the panel draws in as few batches as before. `tools/bdp_v3_shot.tscn` saves the panel with the lamp, without its overlay, and with no lamp at all, so its effect can be measured pixel by pixel.
+
+The older plates (the block, the footer, the section frames and the backing) still carry the per-part lamp and grade they were rendered with, so the overlay's even fall sits on top of their own.
 
 ## Exporting the layers
 
@@ -235,13 +250,13 @@ Then open `http://127.0.0.1:8771/cluster.html?export` in a browser. It works hea
 
 The tab title becomes "export done". Every layer of a set shares one frame, so the game stacks them without offsets.
 
-To render some sets only, add `&only=` and a comma-separated list of `block`, `footer`, `backing`, `section`, `keys`, `lamp`, `scroll`, `seam`, `title` and `enamel`, for example `cluster.html?export&only=lamp,scroll`. The other layers are left as they are, and the page reads the current `layout.json` from the server and updates only those sets' entries. `export.py` takes an optional port (`python3 tools/button_mockup/export.py 8779`); use a port of your own when another export may be running.
+To render some sets only, add `&only=` and a comma-separated list of `block`, `footer`, `backing`, `section`, `keys`, `pin`, `lamp`, `scroll`, `seam`, `title` and `enamel`, for example `cluster.html?export&only=lamp,scroll`. The other layers are left as they are, and the page reads the current `layout.json` from the server and updates only those sets' entries. `export.py` takes an optional port (`python3 tools/button_mockup/export.py 8779`); use a port of your own when another export may be running.
 
 | Set | Layers |
 | --- | --- |
 | Control block (863 × 379) | `block_plate`; `block_icon_input`, `_output`, `_recipe`; `block_kicker_input`, `_output`; `block_lorry_input`, `_output`; `block_arrow`, `block_arrow_lit`; `block_shadow_<part>` for each raised part; `block_glow_arrow` (additive); `block_key_<inputs, outputs, upgrade, recipe>` and `_pressed` |
 | Footer (863 × 214: 150 of plate, 64 of headroom above) | `footer_plate`; `footer_glow` (additive); `guard_<sell, demolish>`, `_pressed`, `_cover`, `_cover_open` |
-| Small keys (96 × 96, key in the middle 64) | `key_close`, `key_back`, and `_pressed` |
+| Small keys (96 × 96, key in the middle 64) | `key_close`, `key_back`, `key_pin` (its own set, `pin`), and `_pressed` |
 | Section frame (596 × 396) | `section_frame` |
 | Backing (940 × 1640) | `panel_backing` |
 | Status lamp (112 × 112, bezel 44 in the middle) | `lamp_<green, amber, red, off>`; `lamp_glow_<green, amber, red>` (additive) |
@@ -268,7 +283,7 @@ After an export, reimport with `Godot --headless --path . --import`. A new layer
   - "Upgrade to Lv N" / "+X% Output". The arrow is lit when the upgrade can start: not upgrading, not at the top level, research met. Otherwise its tooltip names the missing research.
   - "Change recipes (N)" / "M better for <good>". M counts the recipes that earn more per turn than the current one by `BuildingReadout.economics`; the good's name is cut to 10 characters plus "...".
 - **`bdp_v3_footer.gd`:** the first click lifts a cover, the second presses and emits, and an untouched lifted cover drops after 4 s.
-- **Panel:** `building_detail_panel_v2.gd` builds these in place of the v2 controls when `UiPrefs.use_bdp_v3` is on. The keys open the same sheets as v2. It then moves each section's heading and content into a `bdp_v3_section` frame (`V3_FRAMED_SECTIONS`; Modifiers and Economics share one). It shows the backing and hides the brass pipe border, and swaps Close and Back for keycaps. `_apply_v3_chrome` swaps the title label for the raised title (`_apply_v3_title`), the status badge for the lamp, puts the rail and slider on the panel's scrollbar (each action sheet's scrollbar gets them too) and shows the seam edge, starting the body at its lip.
+- **Panel:** `building_detail_panel_v2.gd` builds these in place of the v2 controls when `UiPrefs.use_bdp_v3` is on. The keys open the same sheets as v2. It then moves each section's heading and content into a `bdp_v3_section` frame (`V3_FRAMED_SECTIONS`; Modifiers and Economics share one). It shows the backing and hides the brass pipe border, and swaps Close and Back for keycaps. `_apply_v3_chrome` swaps the title label for the raised title (`_apply_v3_title`), the level and location line for the Location key under Close (it pans the map to the building, and its tooltip names the place), the status badge for the lamp, shows the lamp's overlay and gives the text its material, puts the rail and slider on the panel's scrollbar (each action sheet's scrollbar gets them too) and shows the seam edge, starting the body at its lip.
 
 ## Adding another control
 
