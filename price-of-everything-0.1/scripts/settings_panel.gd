@@ -4,8 +4,8 @@ class_name SettingsPanel
 ## Graphics / Controls. Audio has Master / Music / SFX volume sliders (0–100);
 ## Graphics has a window-resolution dropdown persisted via PlayerProfile; Controls
 ## lists the whole scheme, read-only for the demo except the map-mode hotkeys, which
-## ship unbound for the player to set. All three commit on Apply; Gameplay is still a
-## placeholder.
+## ship unbound for the player to set. Gameplay holds a dummy seven-position "Test
+## setting" on the rotary knob, kept for the session only. All commit on Apply.
 ##
 ## Opened from the main menu (`SettingsPanel.open(self)`) and the in-game pause
 ## menu (`SettingsPanel.open(get_parent())`). Built per open and freed on hide, so
@@ -16,6 +16,10 @@ const PANEL_BLACK := Color(0.03, 0.03, 0.045)
 const OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
 const MenuChrome := preload("res://scripts/menu_chrome.gd")
 const Keybinds := preload("res://scripts/keybinds.gd")
+const RotarySelector := preload("res://scripts/rotary_selector.gd")
+
+## Dummy Gameplay setting (1–7) that exercises the rotary knob. Session-only: not saved.
+static var test_setting: int = 1
 
 # Selectable window resolutions offered on the Graphics tab.
 const RESOLUTIONS: Array[Vector2i] = [Vector2i(1920, 1080), Vector2i(2560, 1440), Vector2i(3440, 1440)]
@@ -24,6 +28,7 @@ var _sliders: Dictionary = {}   # bus StringName -> HSlider
 var _resolution_option: OptionButton
 var _fullscreen_check: CheckBox
 var _screen_option: OptionButton   # only built when more than one monitor is present
+var _test_knob: Control            # rotary_selector.gd, staged until Apply
 
 
 static func open(parent: Node) -> SettingsPanel:
@@ -148,7 +153,29 @@ func _make_slider_row(bus: StringName, label_text: String) -> Control:
 
 
 func _build_gameplay_tab() -> Control:
-	return _build_placeholder_tab("Gameplay")
+	var tab := MarginContainer.new()
+	tab.name = "Gameplay"
+	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+		tab.add_theme_constant_override(side, 24)
+
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 16)
+	col.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	tab.add_child(col)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	var name_label := Label.new()
+	name_label.text = "Test setting"
+	name_label.theme_type_variation = &"Body"
+	name_label.custom_minimum_size = Vector2(140, 0)
+	name_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(name_label)
+	_test_knob = RotarySelector.new()
+	_test_knob.set_value_no_signal(test_setting)
+	row.add_child(_test_knob)
+	col.add_child(row)
+	return tab
 
 
 func _build_graphics_tab() -> Control:
@@ -247,15 +274,6 @@ func _current_resolution_index() -> int:
 			return i
 	return 0
 
-
-func _build_placeholder_tab(tab_name: String) -> Control:
-	var center := CenterContainer.new()
-	center.name = tab_name
-	var label := Label.new()
-	label.text = "Coming soon"
-	label.theme_type_variation = &"Caption"
-	center.add_child(label)
-	return center
 
 
 
@@ -488,6 +506,8 @@ func _make_button(text: String, primary: bool, handler: Callable) -> Button:
 
 
 func _on_apply_pressed() -> void:
+	if _test_knob != null:
+		test_setting = int(_test_knob.value)
 	# Controls: the staged map-mode hotkeys. Fixed bindings are read-only in the demo, so
 	# there is nothing else here to write.
 	Keybinds.set_mapmode_bindings(_pending_binds)
