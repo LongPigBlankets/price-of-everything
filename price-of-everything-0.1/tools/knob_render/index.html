@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Selector Knob</title>
+<style>
+  :root { --bg: #eceef0; --ink: #6b7075; }
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
+  canvas { display: block; touch-action: none; }
+  .hint {
+    position: fixed; left: 0; right: 0; bottom: 18px; text-align: center;
+    font: 500 12px/1 ui-sans-serif, system-ui, -apple-system, sans-serif;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--ink); opacity: .7;
+    pointer-events: none;
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div class="hint">Drag the knob · ← →</div>
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+// ---------- renderer / scene ----------
+// ?export renders the seven detent frames as transparent PNGs and posts them to export.py.
+const PARAMS = new URLSearchParams(location.search);
+const EXPORT = PARAMS.has('export');
+// The game's look is the worn one: scuffed, slightly yellowed plastic and a dark grey rim.
+// ?variant=clean renders the glossy white knob with a bright chrome ring instead.
+const WORN = PARAMS.get('variant') !== 'clean';
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: EXPORT });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap; // honours shadow.radius -> soft edges
+document.body.appendChild(renderer.domElement);
+
+const BG = 0xeceef0;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(BG);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.32;
+
+const camera = new THREE.PerspectiveCamera(20, 1, 0.1, 100);
+const LOOK = new THREE.Vector3(0, 0, 0.05);
+camera.position.set(0, 11, 2.4);
+camera.lookAt(LOOK);
+
+// ---------- lights ----------
+// Key light from the upper left: the fin throws its shadow across the lower-right of the dish.
+const key = new THREE.DirectionalLight(0xffffff, 3.2);
+key.position.set(-3.0, 5.0, -3.0);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+Object.assign(key.shadow.camera, { left: -2.4, right: 2.4, top: 2.4, bottom: -2.4, near: 1, far: 16 });
+key.shadow.radius = 7;
+key.shadow.bias = -0.0005;
+key.shadow.normalBias = 0.015;
+scene.add(key);
+scene.add(new THREE.HemisphereLight(0xffffff, 0xc9ced4, 0.34));
+
+// ---------- ground: flat unlit colour, icon decal, shadow catcher ----------
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(40, 40).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: BG, toneMapped: false })
+);
+scene.add(ground);
+if (EXPORT) { ground.visible = false; scene.background = null; }
+
+const shadowCatcher = new THREE.Mesh(
+  new THREE.PlaneGeometry(40, 40).rotateX(-Math.PI / 2),
+  new THREE.ShadowMaterial({ color: 0x1b2430, opacity: 0.15, depthWrite: false })
+);
+shadowCatcher.position.y = 0.002;
+shadowCatcher.receiveShadow = true;
+scene.add(shadowCatcher);
+
+// Soft contact/ambient-occlusion blob under the knob.
+{
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(128, 128, 60, 128, 128, 128);
+  grd.addColorStop(0, 'rgba(20,28,38,0.38)');
+  grd.addColorStop(0.55, 'rgba(20,28,38,0.1)');
+  grd.addColorStop(1, 'rgba(20,28,38,0)');
+  g.fillStyle = grd; g.fillRect(0, 0, 256, 256);
+  const blob = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.7, 2.7).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, toneMapped: false })
+  );
+  blob.position.set(0.06, 0.001, 0.1);
+  scene.add(blob);
+}
+
+// ---------- detents ----------
+const DETENTS = [180, 150, 120, 90, 60, 30, 0]; // 9 o'clock -> 3 o'clock
+
+// ---------- materials ----------
+// Worn variant. Real wear on a plastic knob is not an all-over pattern: grime packs into the
+// corners (where the grip meets the dish, and round the dish edge), the open faces pick up
+// fine scuffs that dull the gloss, and the plastic yellows slightly. Two sets of maps:
+// - the dish gets its own un-tiled maps in knob-local space (uv = x, z mapped to 0..1), so
+//   grime can follow the grip and the rim and turns with the knob;
+// - the grip gets tiled micro-scratches only.
+const HALF_GRIP = 0.23;   // grip half-width incl. bevel, for the grime band at its base
+const mulberry = (seed) => () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+function canvasPair(n, colourFill, roughFill) {
+  const make = (fill) => {
+    const c = document.createElement('canvas'); c.width = c.height = n;
+    const g = c.getContext('2d'); g.fillStyle = fill; g.fillRect(0, 0, n, n);
+    return [c, g];
+  };
+  return [make(colourFill), make(roughFill)];
+}
+function scratches(cx, rx, n, count, rand, ox = [0], oy = [0]) {
+  for (let i = 0; i < count; i++) {
+    const x = rand() * n, y = rand() * n, ang = rand() * Math.PI, len = 4 + rand() * 26;
+    const dx = Math.cos(ang) * len, dy = Math.sin(ang) * len, a = 0.04 + rand() * 0.06, w = 0.5 + rand() * 0.8;
+    for (const px of ox) for (const py of oy) {
+      cx.strokeStyle = `rgba(100,94,84,${a})`; cx.lineWidth = w;
+      cx.beginPath(); cx.moveTo(x + px, y + py); cx.lineTo(x + px + dx, y + py + dy); cx.stroke();
+      rx.strokeStyle = `rgba(225,225,225,${a * 7})`; rx.lineWidth = w + 0.5;
+      rx.beginPath(); rx.moveTo(x + px, y + py); rx.lineTo(x + px + dx, y + py + dy); rx.stroke();
+    }
+  }
+}
+function toTexture(c, srgb, wrap) {
+  const t = new THREE.CanvasTexture(c);
+  if (wrap) t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+function gripWear() {
+  const N = 512, rand = mulberry(11), T = [-N, 0, N];
+  const [[cc, cx], [rc, rx]] = canvasPair(N, '#ffffff', 'rgb(112,112,112)');
+  scratches(cx, rx, N, 90, rand, T, T);
+  return { map: toTexture(cc, true, true), roughnessMap: toTexture(rc, false, true) };
+}
+
+function dishWear() {
+  const N = 1024, rand = mulberry(29);
+  const [[cc, cx], [rc, rx]] = canvasPair(N, '#ffffff', 'rgb(112,112,112)');
+  const P = (x, z) => [(x + 1) / 2 * N, (1 - z) / 2 * N];   // knob-local -> canvas px
+  const U = N / 2;                                          // px per unit
+  const [ox, oy] = P(0, 0);
+  // Grime round the dish edge, where it rolls down into the recess.
+  for (const [ctx, rgb, peak] of [[cx, '100,90,74', 0.5], [rx, '190,190,190', 0.85]]) {
+    const g = ctx.createRadialGradient(ox, oy, 0.78 * U, ox, oy, 0.97 * U);
+    g.addColorStop(0, `rgba(${rgb},0)`); g.addColorStop(1, `rgba(${rgb},${peak})`);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, N, N);
+  }
+  // Grime along both long sides and both ends of the grip, softened with a blur.
+  for (const [ctx, rgb, peak] of [[cx, '92,82,66', 0.55], [rx, '195,195,195', 0.85]]) {
+    ctx.save();
+    ctx.filter = `blur(${0.03 * U}px)`;
+    ctx.strokeStyle = `rgba(${rgb},${peak})`;
+    ctx.lineWidth = 0.16 * U;
+    const [x0, z0] = P(-0.95, HALF_GRIP), [x1, z1] = P(0.95, -HALF_GRIP);
+    ctx.strokeRect(x0, z0, x1 - x0, z1 - z0);
+    ctx.restore();
+  }
+  // A few faint larger smudges on the open face, kept low so it reads as dull, not dirty.
+  for (let i = 0; i < 26; i++) {
+    const r = (0.1 + rand() * 0.2) * U, x = rand() * N, y = rand() * N, a = 0.02 + rand() * 0.03;
+    const g = cx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(120,110,92,${a})`); g.addColorStop(1, 'rgba(120,110,92,0)');
+    cx.fillStyle = g; cx.fillRect(x - r, y - r, 2 * r, 2 * r);
+  }
+  scratches(cx, rx, N, 260, rand);
+  return { map: toTexture(cc, true, false), roughnessMap: toTexture(rc, false, false) };
+}
+
+const WORN_PLASTIC = { color: 0xe4e0d7, roughness: 0.62, clearcoat: 0.18, clearcoatRoughness: 0.42, side: THREE.DoubleSide };
+const plastic = new THREE.MeshPhysicalMaterial(WORN ? { ...WORN_PLASTIC, ...gripWear() } : {
+  color: 0xe4e5e6, roughness: 0.34, clearcoat: 0.4, clearcoatRoughness: 0.22,
+  side: THREE.DoubleSide,
+});
+const dishPlastic = WORN ? new THREE.MeshPhysicalMaterial({ ...WORN_PLASTIC, ...dishWear() }) : plastic;
+// Chrome reflects a bright studio (pale sky, soft floor, a few softbox strips) instead of the dim room.
+const studioEnv = (() => {
+  const studio = new THREE.Scene();
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(10, 64, 32), new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true }));
+  const pos = dome.geometry.attributes.position, cols = [];
+  const top = new THREE.Color(0xffffff), bottom = new THREE.Color(0x8a9097), c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) { c.lerpColors(bottom, top, THREE.MathUtils.smoothstep(pos.getY(i) / 10, -0.6, 0.5)); cols.push(c.r, c.g, c.b); }
+  dome.geometry.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+  studio.add(dome);
+  const strip = (w, h, x, y, z, k) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(k, k, k), side: THREE.DoubleSide }));
+    m.position.set(x, y, z); m.lookAt(0, 0, 0); studio.add(m);
+  };
+  strip(6, 2, -5, 6, -5, 4); strip(2, 8, 7, 3, 2, 2.2); strip(8, 1.2, 0, 2, 8, 1.6); strip(3, 3, 0, 9, 0, 3);
+  return pmrem.fromScene(studio, 0.02).texture;
+})();
+const chrome = new THREE.MeshPhysicalMaterial(WORN ? {
+  color: 0x8b8b8b, metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 0.9, side: THREE.DoubleSide,
+} : {
+  color: 0xf2f4f6, metalness: 1, roughness: 0.12, envMap: studioEnv, envMapIntensity: 1.0, side: THREE.DoubleSide,
+});
+const redPaint = new THREE.MeshPhysicalMaterial({ color: 0xd3242a, roughness: 0.4, clearcoat: 0.5 });
+const gapMat = new THREE.MeshStandardMaterial({ color: 0x25282b, roughness: 0.85 });
+
+const smooth = (pts, n = 96) => new THREE.SplineCurve(pts.map(([x, y]) => new THREE.Vector2(x, y))).getPoints(n);
+const shadowed = (m) => (m.castShadow = m.receiveShadow = true, m);
+
+// ---------- bezel: thin metal ring (static) ----------
+// A raised collar: its rounded lip stands above everything plastic, so the dish and grip read
+// as sitting down inside it, and the lip throws a shadow into the well.
+const ring = shadowed(new THREE.Mesh(new THREE.LatheGeometry(smooth([
+  [1.075, 0.0], [1.075, 0.2], [1.074, 0.34], [1.066, 0.4], [1.05, 0.435], [1.02, 0.45],
+  [0.995, 0.444], [0.977, 0.42], [0.967, 0.37], [0.964, 0.2], [0.964, 0.0],
+]), 192), chrome));
+scene.add(ring);
+
+// Dark recess between bezel and dish.
+const gap = new THREE.Mesh(new THREE.RingGeometry(0.9, 0.966, 128).rotateX(-Math.PI / 2), gapMat);
+gap.position.y = 0.01; gap.receiveShadow = true;
+scene.add(gap);
+
+// ---------- rotating plastic knob ----------
+const knob = new THREE.Group();
+scene.add(knob);
+
+// Dish: shallow concave face with a rolled rim dropping into the recess. Its UVs are
+// replaced with a top-down projection of knob-local x/z onto 0..1, because the lathe's polar
+// UVs pinch at the centre, and the worn variant paints grime at exact knob-local places.
+const dishGeo = new THREE.LatheGeometry(smooth([
+  [0.948, 0.0], [0.952, 0.05], [0.94, 0.095], [0.905, 0.118], [0.75, 0.116],
+  [0.45, 0.104], [0.2, 0.098], [0.0, 0.096],
+]), 192);
+{
+  const pos = dishGeo.attributes.position, uv = dishGeo.attributes.uv;
+  for (let i = 0; i < pos.count; i++) uv.setXY(i, (pos.getX(i) + 1) / 2, (pos.getZ(i) + 1) / 2);   // flipY: canvas top row is v = 1
+}
+knob.add(shadowed(new THREE.Mesh(dishGeo, dishPlastic)));
+
+// Grip fin: flat-sided cross-section with rounded top edges, extruded along the pointer axis.
+const FIN_BASE = 0.08, FIN_H = 0.27, HW = 0.2, CR = 0.07;   // grip top stays just under the bezel lip
+const finShape = new THREE.Shape();
+finShape.moveTo(-HW, 0);
+finShape.lineTo(HW, 0);
+finShape.lineTo(HW, FIN_H - CR);
+finShape.quadraticCurveTo(HW, FIN_H, HW - CR, FIN_H);
+finShape.lineTo(-HW + CR, FIN_H);
+finShape.quadraticCurveTo(-HW, FIN_H, -HW, FIN_H - CR);
+finShape.closePath();
+
+const BT = 0.06, BS = 0.03, BACK = -0.9, TIP = 0.9;
+const finGeo = new THREE.ExtrudeGeometry(finShape, {
+  depth: TIP - BACK - 2 * BT, bevelEnabled: true, bevelThickness: BT, bevelSize: BS,
+  bevelSegments: 8, curveSegments: 16,
+});
+finGeo.rotateY(Math.PI / 2);                // extrusion axis Z -> knob +X (pointer)
+finGeo.translate(BACK + BT, FIN_BASE, 0);
+finGeo.computeVertexNormals();
+knob.add(shadowed(new THREE.Mesh(finGeo, plastic)));
+
+// Red indicator dot on the fin top, near the pointer end.
+const FIN_TOP = FIN_BASE + FIN_H + BS;
+const dot = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.048, 0.006, 40), redPaint);
+dot.position.set(0.7, FIN_TOP + 0.001, 0);
+dot.receiveShadow = true;
+knob.add(dot);
+
+// ---------- interaction ----------
+let angle = 180, target = 180, dragging = false, dragStart = 0, knobStart = 0;
+const MIN = 0, MAX = 180;
+
+const nearestDetent = (deg) => DETENTS.reduce((b, d) => Math.abs(d - deg) < Math.abs(b - deg) ? d : b);
+
+function toScreen(v) {
+  const p = v.clone().project(camera), r = renderer.domElement.getBoundingClientRect();
+  return { x: (p.x + 1) / 2 * r.width, y: (1 - p.y) / 2 * r.height };
+}
+const screenAngle = (e, c) => THREE.MathUtils.radToDeg(Math.atan2(-(e.clientY - c.y), e.clientX - c.x));
+
+const el = renderer.domElement;
+el.addEventListener('pointerdown', (e) => {
+  const c = toScreen(new THREE.Vector3(0, 0.2, 0));
+  const edge = toScreen(new THREE.Vector3(1.1, 0.2, 0));
+  if (Math.hypot(e.clientX - c.x, e.clientY - c.y) < edge.x - c.x) {
+    dragging = true; dragStart = screenAngle(e, c); knobStart = target;
+    el.setPointerCapture(e.pointerId); el.style.cursor = 'grabbing';
+  }
+});
+el.addEventListener('pointermove', (e) => {
+  const c = toScreen(new THREE.Vector3(0, 0.2, 0));
+  if (dragging) {
+    let delta = screenAngle(e, c) - dragStart;
+    delta = ((delta + 540) % 360) - 180;
+    target = THREE.MathUtils.clamp(knobStart + delta, MIN, MAX);
+  } else {
+    const edge = toScreen(new THREE.Vector3(1.1, 0.2, 0));
+    el.style.cursor = Math.hypot(e.clientX - c.x, e.clientY - c.y) < edge.x - c.x ? 'grab' : 'default';
+  }
+});
+const release = () => {
+  if (!dragging) return;
+  dragging = false; el.style.cursor = 'grab';
+  target = nearestDetent(target);
+};
+el.addEventListener('pointerup', release);
+el.addEventListener('pointercancel', release);
+addEventListener('keydown', (e) => {
+  const i = DETENTS.indexOf(nearestDetent(target));
+  const j = e.key === 'ArrowLeft' ? i - 1 : e.key === 'ArrowRight' ? i + 1 : i;
+  target = DETENTS[THREE.MathUtils.clamp(j, 0, DETENTS.length - 1)];
+});
+
+// ---------- sizing: keep the knob framed at any aspect ----------
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  const dist = camera.position.distanceTo(LOOK);
+  const halfH = Math.max(1.75, 1.75 / camera.aspect);
+  camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(halfH / dist));
+  camera.updateProjectionMatrix();
+}
+if (EXPORT) {
+  document.querySelector('.hint').remove();
+  exportFrames();
+} else {
+  addEventListener('resize', resize);
+  resize();
+}
+
+async function exportFrames() {
+  const SIZE = 512;
+  renderer.setPixelRatio(1);
+  renderer.setSize(SIZE, SIZE);
+  camera.aspect = 1;
+  camera.position.set(0, 11, 2.4);
+  camera.lookAt(0, 0, 0.05);
+  camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(1.7 / camera.position.distanceTo(new THREE.Vector3(0, 0, 0.05))));
+  camera.updateProjectionMatrix();
+  for (const [i, deg] of DETENTS.entries()) {
+    knob.rotation.y = THREE.MathUtils.degToRad(deg);
+    renderer.render(scene, camera);
+    const png = await new Promise((r) => el.toBlob(r, 'image/png'));
+    await fetch(`/frames/${WORN ? '' : 'clean/'}knob_${i}.png`, { method: 'POST', body: png });
+  }
+  document.title = 'export done';
+}
+
+// ---------- loop ----------
+const clock = new THREE.Clock();
+if (!EXPORT) renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  angle = dragging ? target : THREE.MathUtils.damp(angle, target, 14, dt);
+  knob.rotation.y = THREE.MathUtils.degToRad(angle);
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
