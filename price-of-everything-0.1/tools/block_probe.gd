@@ -35,7 +35,7 @@ func _ready() -> void:
 	var coord: Vector2i = terrain.id_to_coord(tid)
 	var via: Dictionary = {}
 	for i in 20:
-		var iid := MatchState.add_building("b_007", "", tid, "player", "probe_%d" % i)
+		var iid := BuildingState.add_building("b_007", "", tid, "player", "probe_%d" % i)
 		bv.call("on_building_placed", tid, "b_007", "", str(iid), coord)
 	var tmpl2: Dictionary = (bv.get("_tile_block_templates") as Dictionary).get(tid, {})
 	var claimed := 0

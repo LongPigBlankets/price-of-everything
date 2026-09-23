@@ -37,11 +37,11 @@ func run_case(recipe: String, start_turn: int, coastal_stock: bool = false) -> D
 	Production.import_state({})
 	Modifiers.import_state({})
 	DecisionState.enabled = false
-	MatchState.debug_turn_logs_enabled = false
+	UiPrefs.debug_turn_logs_enabled = false
 	MatchState.ruleset["tutorial_enabled"] = true
-	MatchState._unlock_defs.clear()
+	ResearchState._unlock_defs.clear()
 	MatchState.money = 100000.0
-	MatchState.seaport_auto_subscribe = false
+	TransportState.seaport_auto_subscribe = false
 	_map = Fixture.DataMap.new()
 	add_child(_map)
 	_map.add_to_group("hex_map")
@@ -49,10 +49,10 @@ func run_case(recipe: String, start_turn: int, coastal_stock: bool = false) -> D
 	install_infra("tile_5_10", "reinf_pipes", false)
 	if recipe == "r_232":
 		install_infra(SITE, "reinf_pipes", true)
-	var factory := MatchState.add_building("b_007", "r_056", SITE)
+	var factory := BuildingState.add_building("b_007", "r_056", SITE)
 	var furnace := ""
 	if recipe != "":
-		furnace = MatchState.add_building("b_002", recipe, SITE)
+		furnace = BuildingState.add_building("b_002", recipe, SITE)
 		MatchState.set_output_stockpile_destination(furnace, SITE, str(Catalog.get_good_by_internal_name("aluminium").id))
 	MatchState.enable_sell_surplus(SITE)
 	if coastal_stock:
@@ -76,7 +76,7 @@ func run_case(recipe: String, start_turn: int, coastal_stock: bool = false) -> D
 	print("[aluminium audit] ", recipe, " ", JSON.stringify(totals))
 	_map.queue_free()
 	await get_tree().process_frame
-	return {"coastal_stock": coastal_stock, "start_turn": start_turn, "recipe": recipe, "totals": totals, "rows": rows, "buildings": MatchState.buildings.duplicate(true)}
+	return {"coastal_stock": coastal_stock, "start_turn": start_turn, "recipe": recipe, "totals": totals, "rows": rows, "buildings": BuildingState.buildings.duplicate(true)}
 
 func install_infra(tile_id: String, infra: String, owned: bool) -> void:
 	Catalog.add_tile_infrastructure(tile_id, infra)
@@ -86,4 +86,4 @@ func install_infra(tile_id: String, infra: String, owned: bool) -> void:
 		present.append(infra)
 	tile["infrastructure_present"] = present
 	if owned:
-		MatchState.add_building(str(Catalog.get_building_by_internal_name(infra).id), "", tile_id)
+		BuildingState.add_building(str(Catalog.get_building_by_internal_name(infra).id), "", tile_id)

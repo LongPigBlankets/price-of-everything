@@ -45,7 +45,7 @@ func arm() -> void:
 	if armed or _is_headless() or _tee == null:
 		return
 	armed = true
-	MatchState.debug_turn_logs_enabled = true
+	UiPrefs.debug_turn_logs_enabled = true
 	_tee.buffer.append("=== Carbon and Capital session log — armed %s ===\n"
 		% Time.get_datetime_string_from_system())
 	_tee.capturing = true

@@ -22,9 +22,9 @@ func _ready() -> void:
 
 	# Buildings on the right tiles + routing.
 	var by_tile := {}
-	for iid in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[iid]
-		if MatchState.is_player_owned(b):
+	for iid in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[iid]
+		if BuildingState.is_player_owned(b):
 			by_tile[str(b.get("tile_id", ""))] = {"iid": iid, "bid": str(b.get("building_id", "")), "rid": str(b.get("recipe_id", ""))}
 	print("[CHK] coal mine @tile_6_8: ", by_tile.get("tile_6_8"))
 	print("[CHK] iron mine @tile_7_10: ", by_tile.get("tile_7_10"))

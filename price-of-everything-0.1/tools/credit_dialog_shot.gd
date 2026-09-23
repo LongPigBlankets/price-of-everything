@@ -7,10 +7,10 @@ var _frame := 0
 func _ready() -> void:
 	get_window().size = Vector2i(720, 520)
 	MatchState.reset()
-	MatchState.recruited_advisor_ids = ["alexandra"]
-	MatchState.permanent_advisor_ids = ["alexandra"]
-	MatchState.assign_advisor_to_seat("chief_investment", "alexandra")
-	MatchState.advisors_changed.emit()
+	AdvisorState.recruited_advisor_ids = ["alexandra"]
+	AdvisorState.permanent_advisor_ids = ["alexandra"]
+	AdvisorState.assign_advisor_to_seat("chief_investment", "alexandra")
+	AdvisorState.advisors_changed.emit()
 
 	var layer := CanvasLayer.new()
 	add_child(layer)

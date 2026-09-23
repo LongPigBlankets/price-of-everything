@@ -156,7 +156,7 @@ func _process(_d: float) -> void:
 	_endf.append(float(_t_sig - prev_last) / 1000.0)
 	_coro.append(float(_t_first - _t_sig) / 1000.0)
 	_nodes.append(float(now - _t_first) / 1000.0)
-	_bldg.append(MatchState.buildings.size())
+	_bldg.append(BuildingState.buildings.size())
 	_draws.append(int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)))
 
 	if now - _sec_start >= 1000000:

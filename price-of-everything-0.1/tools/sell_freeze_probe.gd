@@ -17,7 +17,7 @@ func _ready() -> void:
 		var seed_tiles := ["tile_5_9", "tile_5_10", "tile_6_9", "tile_6_10", "tile_7_9",
 			"tile_7_10", "tile_4_9", "tile_8_10"]
 		for i in seed_tiles.size():
-			MatchState.add_building("b_001", "r_001", str(seed_tiles[i]), "player_1",
+			BuildingState.add_building("b_001", "r_001", str(seed_tiles[i]), "player_1",
 				"probe_%d" % i, false)
 	var tile := _a_player_tile()
 	if tile == "":
@@ -145,18 +145,18 @@ func _time(label: String, body: Callable, clear_cache: bool = false) -> void:
 
 
 func _a_player_tile() -> String:
-	for iid in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[iid]
-		if MatchState.is_player_owned(b):
+	for iid in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[iid]
+		if BuildingState.is_player_owned(b):
 			return str(b.get("tile_id", ""))
 	return ""
 
 
 func _player_tiles() -> Array:
 	var seen: Dictionary = {}
-	for iid in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[iid]
-		if MatchState.is_player_owned(b):
+	for iid in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[iid]
+		if BuildingState.is_player_owned(b):
 			seen[str(b.get("tile_id", ""))] = true
 	return seen.keys()
 

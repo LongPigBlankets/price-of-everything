@@ -17,20 +17,20 @@ func _ready() -> void:
 
 	# A real rail building (b_019, per the infra-upgrade test suite) so the panel takes
 	# the actual is_infra branch, not a synthetic tile-view stand-in.
-	var iid: String = MatchState.add_building("b_019", "", "tile_9_9", "player_1", "shot_infra_rail")
+	var iid: String = BuildingState.add_building("b_019", "", "tile_9_9", "player_1", "shot_infra_rail")
 
 	# Two shipments transiting tile_9_9 on rail: a plain single-good haul (coal, tier-0 —
 	# clean, no penalty) AND a multi-good sale shipment (coal + iron ore) loaded heavily
 	# enough on the SAME link to push it into congestion, so the shot proves both the
 	# per-good split AND a non-zero Penalties column in one panel.
-	MatchState.pending_transport_shipments.clear()
-	MatchState.pending_transport_shipments.append({
+	TransportState.pending_transport_shipments.clear()
+	TransportState.pending_transport_shipments.append({
 		"good_id": "g_001", "qty": 120, "turns_remaining": 2,
 		"tile_distance": 1, "transport_turns": 1,
 		"tiles": ["tile_9_8", "tile_9_9"],
 		"legs": [{"mode": "rail", "from": "tile_9_8", "to": "tile_9_9"}],
 	})
-	MatchState.pending_transport_shipments.append({
+	TransportState.pending_transport_shipments.append({
 		"is_sale": true, "turns_remaining": 2,
 		"tile_distance": 1, "transport_turns": 1,
 		"tiles": ["tile_9_9", "tile_9_10"],
@@ -40,10 +40,10 @@ func _ready() -> void:
 			{"good_id": "g_002", "qty": 300, "revenue": 3600.0},
 		], "total_qty": 1000, "total_revenue": 10600.0},
 	})
-	MatchState.update_transport_congestion()
-	print("[breakdown_shot] rail L1 cap=", MatchState.tile_mode_capacity("rail", 1),
-		" tier=", MatchState.route_congestion_tier({"tiles": ["tile_9_9", "tile_9_10"], "legs": [{"mode": "rail", "from": "tile_9_9", "to": "tile_9_10"}]}))
-	var rows := MatchState.tile_good_breakdown("tile_9_9", "rail")
+	TransportState.update_transport_congestion()
+	print("[breakdown_shot] rail L1 cap=", TransportState.tile_mode_capacity("rail", 1),
+		" tier=", TransportState.route_congestion_tier({"tiles": ["tile_9_9", "tile_9_10"], "legs": [{"mode": "rail", "from": "tile_9_9", "to": "tile_9_10"}]}))
+	var rows := TransportState.tile_good_breakdown("tile_9_9", "rail")
 	for r in rows:
 		print("[breakdown_shot] row good=", r.get("good_id", ""), " qty=", r.get("qty", 0),
 			" cost=", r.get("cost", 0.0), " penalty=", r.get("penalty", 0.0))
@@ -55,7 +55,7 @@ func _ready() -> void:
 	# WorldMap, not a container holding one (topbar_v31_shot.gd's game.get_node("UILayer/…")
 	# confirms this same layout: UILayer is one of game's own direct children).
 	var panel: Control = game.building_panel_v2
-	panel.show_building(MatchState.get_building(iid))
+	panel.show_building(BuildingState.get_building(iid))
 	await _settle(10)
 	if panel.find_child("InfraBreakdownCard", true, false) == null:
 		print("[breakdown_shot] WARNING: InfraBreakdownCard not found — did tile_good_breakdown come back empty?")

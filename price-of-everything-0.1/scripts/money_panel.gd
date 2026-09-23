@@ -2,6 +2,8 @@ extends PanelContainer
 
 const LoanRowScene: PackedScene = preload("res://scenes/loan_row.tscn")
 const UIHelpers := preload("res://scripts/ui_helpers.gd")
+var _upcoming_link: LinkButton
+var _upcoming_view: VBoxContainer
 const HEADER_HEIGHT := 40.0
 
 @onready var title_label: Label = $MarginContainer/ModalLayout/HeaderRow/TitleLabel
@@ -66,6 +68,8 @@ var _proj_goods_purchased_value: Label
 var _warehousing_value: Label
 var _advisor_value: Label
 var _building_tab_value: Label
+var _credit_repaid_value: Label
+var _credit_loan_value: Label
 var _proj_warehousing_value: Label
 var _profit_sharing_value: Label
 var _proj_profit_sharing_value: Label
@@ -96,12 +100,12 @@ const CHART_PANEL_SIZE := Vector2(820, 840)   # wider and taller: the legend is 
 const PANEL_SCREEN_MARGIN := 90.0
 # Floor for the Balance tab on a short screen: below this the sheet is all scrollbar.
 const MIN_BALANCE_PANEL_HEIGHT := 360.0
-## The balance sheet reads at 18, not the theme's 14 (owner 2026-08-24). It is a document —
-## the one screen in the game a player scans line by line — and it was set at the size the
-## rest of the UI uses for captions.
+## The balance sheet reads at 18, not the theme's 14. It is a document —
+## the one screen in the game a player scans line by line — not a caption.
 const BALANCE_ROW_FONT := 18
 const BALANCE_HEADER_FONT := 22
 const TRANSPORT_BREAKDOWN_ROWS := [
+	["middleman", "Middleman fee (transport and storage)"],
 	["port_inbound", "Port Charges — Imports"],
 	["port_outbound", "Port Charges — Exports"],
 	["nothing", "No infrastructure"],
@@ -119,9 +123,9 @@ var _chart_history: Array = []   # ring buffer of the last CHART_MAX_TURNS turn 
 var _chart_mode: String = "revenue"
 
 # Refreshes are coalesced (notification_bell pattern): money_changed alone fires
-# once per building payment during PROCESS, and each used to rebuild the whole
-# loans list — hundreds of teardown/instantiate cycles per turn, even hidden.
-# Signals now set a dirty flag and defer ONE full refresh; while hidden the
+# once per building payment during PROCESS — rebuilding the loans list on each would be
+# hundreds of teardown/instantiate cycles per turn, even hidden.
+# Signals set a dirty flag and defer ONE full refresh; while hidden the
 # panel stays dirty and refreshes once on show.
 var _refresh_queued := false
 var _dirty := false
@@ -133,7 +137,7 @@ var _dirty := false
 ## whose content differs in height then take different shares, so the gaps between them
 ## came out uneven and drifted again whenever a row was added or removed. Natural height
 ## plus the VBox separation gives one gap, the same everywhere.
-## REVENUE and OPERATING COSTS fold (owner 2026-08-24). The sheet runs past the bottom of a
+## REVENUE and OPERATING COSTS fold. The sheet runs past the bottom of a
 ## 1080p screen with everything open, and a player checking their profit line should not have
 ## to scroll past fourteen cost rows to reach it. The header becomes a caret + title that
 ## toggles every row under it; the totals stay with their own section, so a folded section
@@ -344,6 +348,16 @@ func _insert_finance_row(section: VBoxContainer, after_node_name: String, label_
 	return value_label
 
 func _ready() -> void:
+	_build_upcoming_tab()
+	_upcoming_link = preload("res://scripts/cash_commitments_view.gd").make_link(func() -> void: open_tab("Upcoming"))
+	_balance_content.add_child(_upcoming_link)
+	_balance_content.move_child(_upcoming_link, 0)
+	TurnManager.turn_resolution_completed.connect(_queue_refresh)
+	Stockpile.stockpile_changed.connect(_queue_refresh)
+	MatchState.recurring_orders_changed.connect(_queue_refresh)
+	TransportState.transport_shipments_changed.connect(_queue_refresh)
+	MatchState.output_stockpile_destination_changed.connect(func(_i: String, _t: String, _g: String) -> void: _queue_refresh())
+	BuildingWorks.building_paused_changed.connect(_queue_refresh)
 	_transport_value = _insert_transport_accordion(_costs_section, "PowerPurchaseRow")
 	_proj_transport_value = _insert_cost_row(_proj_costs_section, "Proj_PowerPurchaseRow", "Transport")
 	_goods_purchased_value = _insert_cost_row(_costs_section, "PowerPurchaseRow", "Goods purchased")
@@ -368,6 +382,10 @@ func _ready() -> void:
 	_proj_green_subsidy_value = _insert_finance_row(proj_revenue_section, "Proj_PowerSalesRow", "Green subsidy", "+£0.00")
 	var projection_content := $MarginContainer/ModalLayout/TabContainer/Budget/MarginContainer/BudgetContent/ScrollContainer/ProjectionContent as VBoxContainer
 	_profit_sharing_value = _insert_finance_row(_balance_content, "DividendsRow", "Profit Sharing", "-£0.00")
+	_credit_repaid_value = _insert_finance_row(_balance_content, _profit_sharing_value.get_parent().name, "Building credit repaid", "-£0.00")
+	_credit_repaid_value.name = "BuildingCreditRepaidValue"
+	_credit_loan_value = _insert_finance_row(_balance_content, _credit_repaid_value.get_parent().name, "Operating loan proceeds", "+£0.00")
+	_credit_loan_value.name = "BuildingCreditLoanValue"
 	_proj_profit_sharing_value = _insert_finance_row(projection_content, "Proj_DividendsRow", "Profit Sharing", "-£0.00")
 	# After every row exists, not before: both passes walk the finished sheet.
 	_normalise_balance_rows()
@@ -399,14 +417,14 @@ func _ready() -> void:
 	labour_high_button.pressed.connect(_on_labour_pressed.bind(1.2))
 	_refresh_labour_buttons()
 
-	MatchState.labour_multiplier_changed.connect(_on_labour_multiplier_changed)
-	MatchState.workforce_policies_changed.connect(_queue_refresh)
+	LabourState.labour_multiplier_changed.connect(_on_labour_multiplier_changed)
+	LabourState.workforce_policies_changed.connect(_queue_refresh)
 	MarketState.prices_updated.connect(_queue_refresh)
 	_refresh_balance_sheet()
 	_refresh_projection()
 
-	MatchState.building_added.connect(_on_buildings_changed)
-	MatchState.building_removed.connect(_on_buildings_changed)
+	BuildingState.building_added.connect(_on_buildings_changed)
+	BuildingState.building_removed.connect(_on_buildings_changed)
 	visibility_changed.connect(_on_panel_visibility_changed)
 
 	_chart_revenue_button.pressed.connect(_on_chart_mode_pressed.bind("revenue"))
@@ -420,8 +438,8 @@ func _ready() -> void:
 	add_child(preload("res://scripts/brass_pipe_frame.gd").new())   # brass frame, drawn on top
 
 # The Treasury mini-panel owns the compact cash snapshot. Keep the detailed
-# Balance, Loans, and Charts views here; Stats and Budget are no longer exposed
-# as tabs, while their nodes stay alive for save-compatible calculations.
+# Balance, Loans, and Charts views here; Stats and Budget are not exposed
+# as tabs, but their nodes stay alive for save-compatible calculations.
 func _hide_redundant_tabs() -> void:
 	for tab_name in ["Stats", "Budget"]:
 		for index in _tab_container.get_tab_count():
@@ -497,6 +515,9 @@ func _apply_refresh() -> void:
 	_refresh_chart()
 	_refresh_sales()
 	_refresh_purchases()
+	_refresh_upcoming()
+	if not TurnManager.is_resolving:
+		preload("res://scripts/cash_commitments_view.gd").update_link(_upcoming_link, preload("res://scripts/cash_commitments.gd").snapshot())
 
 func _on_panel_visibility_changed() -> void:
 	if not visible:
@@ -555,7 +576,7 @@ func _on_buildings_changed(_arg = null) -> void:
 
 # ── The balance sheet's arithmetic, as pure functions of the turn summary ───────────────────
 # Static and summary-only so the test suite can hold the bottom line against the top bar's
-# money_in − money_out without instantiating the panel. They diverged silently twice: advisor
+# Production.cash_change_of without instantiating the panel. They diverged silently twice: advisor
 # salaries were charged to cash with no row here at all, and building-tab deferrals were shown
 # as a debt total while the deferred running costs were still charged as if paid. Any new cash
 # movement in production.gd needs a line here, or the two numbers part again.
@@ -571,12 +592,12 @@ static func operating_costs_of(s: Dictionary) -> float:
 		+ float(s.get("warehousing_paid", 0.0)) + float(s.get("carbon_tax_paid", 0.0)) \
 		- float(s.get("building_tab_carried", 0.0))
 
-## MUST equal money_in − money_out for the same turn — that is what the row promises and what
-## the top bar and the Treasury mini-panel both show.
+## Must equal Production.cash_change_of: operating flows plus credit financing movements.
 static func net_cash_of(s: Dictionary) -> float:
 	return total_revenue_of(s) - operating_costs_of(s) - float(s.get("interest_paid", 0.0)) \
 		- float(s.get("taxes_paid", 0.0)) - float(s.get("dividends_paid", 0.0)) \
-		- float(s.get("profit_sharing_paid", 0.0))
+		- float(s.get("profit_sharing_paid", 0.0)) - float(s.get("building_credit_repaid", 0.0)) \
+		+ float(s.get("building_credit_loan_received", 0.0)) + float(s.get("middleman_financing", 0.0))
 
 
 func _refresh_balance_sheet() -> void:
@@ -652,8 +673,12 @@ func _render_balance_sheet(summary: Dictionary) -> void:
 	
 	dividends_value.text = "-£%.2f" % dividends
 	_profit_sharing_value.text = "-£%.2f" % profit_sharing
+	_credit_repaid_value.text = "-£%.2f" % float(summary.get("building_credit_repaid", 0.0))
+	_credit_loan_value.text = "+£%.2f" % (float(summary.get("building_credit_loan_received", 0.0)) + float(summary.get("middleman_financing", 0.0)))
+	_credit_loan_value.get_parent().visible = (float(summary.get("building_credit_loan_received", 0.0)) + float(summary.get("middleman_financing", 0.0))) > 0.0
 	
 	net_cashflow_value.text = _format_signed(net_cashflow)
+	net_cashflow_value.get_parent().tooltip_text = "Cash movement from the last production settlement, including building-credit repayments and operating loan proceeds. Player purchases, loans taken between turns and later events are separate."
 	_color_for_value(net_cashflow_value, net_cashflow)
 
 	# Per-building-type breakdown tooltips.
@@ -767,15 +792,14 @@ func _color_for_value(label: Label, amount: float) -> void:
 		label.add_theme_color_override("font_color", Color.WHITE)  # neutral
 
 func _on_labour_pressed(value: float) -> void:
-	MatchState.set_labour_multiplier(value)
+	LabourState.set_labour_multiplier(value)
 	
 func _on_labour_multiplier_changed(_value: float) -> void:
 	_refresh_labour_buttons()
 	_refresh_projection()
 
 func _refresh_labour_buttons() -> void:
-	# Set the button toggle state to match current labour_multiplier
-	var v: float = MatchState.labour_multiplier
+	var v: float = LabourState.labour_multiplier
 	labour_low_button.button_pressed = absf(v - 0.8) < 0.001
 	labour_normal_button.button_pressed = (v == 1.00)
 	labour_high_button.button_pressed = absf(v - 1.2) < 0.001
@@ -837,15 +861,15 @@ func _project_next_turn() -> Dictionary:
 	var building_ids_to_consider: Array
 	if Production.last_turn_run.is_empty():
 		# Game hasn't run a turn yet — fall back to all buildings (optimistic projection)
-		building_ids_to_consider = MatchState.buildings.keys()
+		building_ids_to_consider = BuildingState.buildings.keys()
 	else:
 		building_ids_to_consider = Production.last_turn_run.keys()
 	
 	for inst_id in building_ids_to_consider:
-		var building: Dictionary = MatchState.buildings.get(inst_id, {})
+		var building: Dictionary = BuildingState.buildings.get(inst_id, {})
 		if building.is_empty():
 			continue
-		if not MatchState.is_player_owned(building):
+		if not BuildingState.is_player_owned(building):
 			continue  # don't project costs for NPC-owned infrastructure
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
 		if recipe.is_empty():
@@ -853,7 +877,7 @@ func _project_next_turn() -> Dictionary:
 		
 		# Output revenue
 		var output_name: String = recipe.get("output_name", "")
-		var output_qty: int = int(round(float(recipe.get("output_qty", 0)) * MatchState.workforce_output_multiplier()))
+		var output_qty: int = int(round(float(recipe.get("output_qty", 0)) * LabourState.workforce_output_multiplier()))
 		if output_name == "power":
 			power_supply += output_qty
 			# Green generation qualifies for the subsidy (mirrors Production._power_quality).
@@ -925,7 +949,7 @@ func _project_next_turn() -> Dictionary:
 	var dividend_base := maxf(posttax, 0.0)
 	var dividends: float = minf(dividend_base, dividend_base * EconomyConfig.DIVIDEND_RATE)
 	var profit_sharing := 0.0
-	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
+	if LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
 		profit_sharing = maxf(0.0, posttax - dividends) * 0.05
 	var net_cashflow: float = posttax - dividends - profit_sharing
 	
@@ -968,7 +992,7 @@ func _calculate_projected_labour_cost(building: Dictionary) -> float:
 	)
 	# Labour slider + workforce policies apply additively to the 100% base (matches
 	# Production._calculate_labour_cost; no compounding).
-	return base_cost * MatchState.labour_policy_factor()
+	return base_cost * LabourState.labour_policy_factor()
 
 func _projected_transport_cost(building: Dictionary, recipe: Dictionary) -> float:
 	var instance_id: String = building.get("instance_id", "")
@@ -1003,6 +1027,7 @@ func _recipe_output_items(recipe: Dictionary) -> Array:
 # --- Charts tab ---
 
 func _on_tab_changed(idx: int) -> void:
+	_refresh_upcoming()
 	_apply_tab_size(idx)
 	if _tab_container.get_tab_title(idx) == "Charts":
 		_refresh_chart()
@@ -1012,7 +1037,7 @@ func _apply_tab_size(idx: int) -> void:
 	# every other tab uses the compact panel size.
 	custom_minimum_size = Vector2.ZERO
 	match _tab_container.get_tab_title(idx):
-		"Charts":
+		"Charts", "Upcoming":
 			# Capped to the screen like the Balance tab — a fixed height taller than the
 			# viewport puts the legend's buttons under the bottom dock.
 			var avail: float = get_viewport_rect().size.y - global_position.y - PANEL_SCREEN_MARGIN
@@ -1023,8 +1048,8 @@ func _apply_tab_size(idx: int) -> void:
 			size = DEFAULT_PANEL_SIZE
 
 
-## Behind BalanceScroll the sheet no longer pushes the panel taller — which is the point, it was
-## 1117 px on a 1080p screen — but it means nothing else asks for height either, so the panel has
+## Behind BalanceScroll the sheet does not push the panel taller (unscrolled it would be
+## ~1117 px on a 1080p screen) — but it means nothing else asks for height either, so the panel has
 ## to work it out: as tall as the sheet wants, capped to what fits below its top edge. Whatever
 ## does not fit scrolls. get_combined_minimum_size() here is the panel WITHOUT the sheet (a
 ## ScrollContainer's minimum is zero), i.e. header + tab bar + margins.
@@ -1150,7 +1175,7 @@ func _breakdown_row(gid: String, label: String, qty: int, amount: float, max_amo
 	row.add_theme_constant_override("separation", 8)
 	if gid != "":
 		# Frameless and bigger: at 30 px the metal bevel took most of the cell and the good
-		# itself was a few pixels of art. Cream plate, rounded, 40 px (owner 2026-08-23).
+		# itself was a few pixels of art. Cream plate, rounded, 40 px.
 		var icon := UIHelpers.make_plain_good_icon(gid, Catalog.get_internal_name(gid), BREAKDOWN_ICON)
 		icon.custom_minimum_size = Vector2(BREAKDOWN_ICON, BREAKDOWN_ICON)
 		row.add_child(icon)
@@ -1336,3 +1361,21 @@ func _gui_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion and _dragging:
 		global_position = get_global_mouse_position() + _drag_offset
 		accept_event()
+
+func _build_upcoming_tab() -> void:
+	var scroll := ScrollContainer.new()
+	scroll.name = "Upcoming"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_tab_container.add_child(scroll)
+	var margin := MarginContainer.new()
+	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 14)
+	scroll.add_child(margin)
+	_upcoming_view = preload("res://scripts/cash_commitments_view.gd").new()
+	_upcoming_view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	margin.add_child(_upcoming_view)
+
+func _refresh_upcoming() -> void:
+	if is_instance_valid(_upcoming_view) and visible and not TurnManager.is_resolving and _tab_container.get_tab_title(_tab_container.current_tab) == "Upcoming":
+		_upcoming_view.refresh()

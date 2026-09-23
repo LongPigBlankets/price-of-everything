@@ -91,7 +91,7 @@ func _initialize() -> void:
 	await process_frame
 	await process_frame
 
-	print("[sim] placed %d buildings on %s" % [MatchState.buildings.size(), TILE])
+	print("[sim] placed %d buildings on %s" % [BuildingState.buildings.size(), TILE])
 
 	# Run the turns. commit_turn() drives PROCESS..RECEIVE then advances the turn.
 	for t in range(TURNS):
@@ -119,14 +119,14 @@ func _install_hexmap_stub() -> void:
 func _place_chain() -> void:
 	# Default sell_mode is STOCKPILE_ALL: outputs land on the building's own tile,
 	# so same-tile consumers can read them the next turn. Keep it that way.
-	MatchState.add_building("b_001", "r_001", TILE)               # coal mine
-	MatchState.add_building("b_001", "r_002", TILE)               # iron mine 1
-	MatchState.add_building("b_001", "r_002", TILE)               # iron mine 2
-	MatchState.add_building("b_002", "r_005", TILE)               # iron furnace (pig iron)
-	MatchState.add_building("b_002", "r_003", TILE)               # steel furnace
-	_copper_furnace_inst = MatchState.add_building("b_002", "r_007", TILE)  # copper furnace (starved)
-	MatchState.add_building("b_007", "r_008", TILE)               # copper-wiring factory
-	MatchState.add_building("b_007", "r_009", TILE)               # motor factory (capstone)
+	BuildingState.add_building("b_001", "r_001", TILE)               # coal mine
+	BuildingState.add_building("b_001", "r_002", TILE)               # iron mine 1
+	BuildingState.add_building("b_001", "r_002", TILE)               # iron mine 2
+	BuildingState.add_building("b_002", "r_005", TILE)               # iron furnace (pig iron)
+	BuildingState.add_building("b_002", "r_003", TILE)               # steel furnace
+	_copper_furnace_inst = BuildingState.add_building("b_002", "r_007", TILE)  # copper furnace (starved)
+	BuildingState.add_building("b_007", "r_008", TILE)               # copper-wiring factory
+	BuildingState.add_building("b_007", "r_009", TILE)               # motor factory (capstone)
 
 
 # === Per-turn observation ===

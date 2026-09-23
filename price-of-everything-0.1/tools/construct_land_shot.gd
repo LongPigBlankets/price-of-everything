@@ -28,7 +28,7 @@ func _ready() -> void:
 			break
 
 	# A · plenty of land — the quiet one-line state.
-	MatchState.tile_land_owned[tile] = 90
+	BuildingState.tile_land_owned[tile] = 90
 	_open(panel, building, recipe, tile)
 	await _settle(16)
 	print("[LAND] roomy: units=%s cost=%s wanted=%s" % [
@@ -37,7 +37,7 @@ func _ready() -> void:
 	get_viewport().get_texture().get_image().save_png("user://poe_construct_land_ok.png")
 
 	# B · not enough land — the tickbox, ticked, with the price.
-	MatchState.tile_land_owned[tile] = 5
+	BuildingState.tile_land_owned[tile] = 5
 	_open(panel, building, recipe, tile)
 	await _settle(16)
 	print("[LAND] short: units=%s cost=%s wanted=%s total=%s" % [

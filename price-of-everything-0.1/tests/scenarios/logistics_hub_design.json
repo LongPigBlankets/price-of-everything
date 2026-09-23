@@ -1,0 +1,60 @@
+{
+  "status": "selected design, not implemented gameplay",
+  "source": "docs/logistics-hub-design.md",
+  "coverage": "hub tile plus six adjacent tiles, connected and eligible movement only",
+  "consolidation": [
+    "available_tile",
+    "available_turn",
+    "compatible_equipment",
+    "shared_directed_next_edge"
+  ],
+  "ignore_for_consolidation": [
+    "original_source",
+    "original_departure_turn",
+    "building_id",
+    "API_split"
+  ],
+  "operating_recipes": {
+    "diesel": {
+      "hydraulic_components": 2,
+      "tyres": 4,
+      "fuels": 6
+    },
+    "lithium_electric": {
+      "hydraulic_components": 2,
+      "tyres": 4,
+      "lithium_battery": 1
+    },
+    "sodium_electric": {
+      "hydraulic_components": 2,
+      "tyres": 4,
+      "sodium_battery": 1
+    }
+  },
+  "lc_per_recipe": {
+    "road": 125,
+    "rail_l1": 125,
+    "rail_l2": 300
+  },
+  "capacity_applies_to": "actual hub-operated leg, not external carrier mode",
+  "consumption": "accumulated usage/service credit, with whole goods purchased or consumed as needed; idle zero; exact draw/reserve/failure schema before hub implementation",
+  "legacy_rounding": "minimum one per positive good per active turn is historical and incompatible with selected efficiency outcome",
+  "vehicle_installed_lc_per_turn": 10,
+  "weighted_payload_per_load": {
+    "value": 100,
+    "status": "provisional calibration"
+  },
+  "lc_weights": {
+    "solid_light": 1,
+    "solid_heavy": 2,
+    "ultra_heavy": 5,
+    "liquid": 2,
+    "safe_liquid": 2,
+    "hazard_liquid": 4,
+    "gas": 3
+  },
+  "selected_recipe": "original inputs; differentiated recipes remain historical trials",
+  "objective": "L2 total hub operating profit greater than L1 at best reachable handoff",
+  "evidence": "reports/balance/pepper_hub_factorial_2026-09-19.json",
+  "not_required_for_middleman_phase_0": true
+}

@@ -40,3 +40,12 @@ assert.equal(sheets.runs.rows.length, runsBefore);
 assert.equal(ctx.doPost({postData:{contents:JSON.stringify({...feedback, feedback_id:'f2', rating:'invalid'})}}), 'bad feedback');
 assert.equal(sheets.feedback.rows.length, 2);
 console.log('Feedback tests passed: storage, deduplication, literal free text, validation, separate from runs.');
+
+// The client fix still sends the existing run.start field: no receiver deployment needed.
+for (const start of ['tutorial', 'metal_magnate', 'glass_merchant']) {
+ const earlyExit = {...payload, run_id: 'label-' + start, run: {start}, turns: [], events: []};
+ assert.equal(ctx.doPost({postData:{contents:JSON.stringify(earlyExit)}}), 'ok');
+ const row = sheets.runs.rows.at(-1);
+ assert.equal(row[sheets.runs.rows[0].indexOf('start')], start);
+}
+console.log('Start-label compatibility passed: existing receiver stores all three starts with no turn rows.');

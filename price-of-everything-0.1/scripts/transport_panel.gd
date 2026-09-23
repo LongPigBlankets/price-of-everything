@@ -1,12 +1,13 @@
 extends PanelContainer
 ## Transport panel — the logistics dashboard behind the top bar's Transport module.
 ##
-## Three columns, each answering a question the player could not previously ask:
+## Three columns, each answering one question:
 ##   Stockpiles       — which tiles are about to run out of room, and how soon
 ##   Infrastructure   — which links are over capacity, how often, and what it has cost
 ##   Units in transit — what is actually moving, and when it lands
 ##
-## Everything here is a READ. The sim already knew all of it: freight has always
+## The dashboard reads existing simulation state; its footer applies bulk logistics choices.
+## The sim already knew all of it: freight has always
 ## carried its route and its arrival turn, tiles have always had a fill level — it
 ## simply had nowhere to be seen. The only genuinely new state is HISTORY (Stockpile's
 ## fill ring, MatchState's per-link over-capacity ring), because a trend and an ETA
@@ -19,6 +20,11 @@ const InfraIcons := preload("res://scripts/infra_icons.gd")
 const BuildingIcon := preload("res://scripts/building_icon.gd")
 ## The tile view's building card, shared so the two lists look like one game.
 const BrushedCard := preload("res://scripts/brushed_card.gd")
+const ROUTE_STOCKPILE_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_stockpile.png")
+const ROUTE_MARKET_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_port.png")
+const ROUTE_MIDDLEMAN_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_lorry.png")
+const INPUT_ICON: Texture2D = preload("res://assets/icons/ui_icons/construction_materials.png")
+const OUTPUT_ICON: Texture2D = preload("res://assets/icons/research/glyph/output.png")
 
 const PANEL_WIDTH := 1220.0     # +40 over the original, 20 a side, for the infra cards
 const PANEL_HEIGHT := 620.0
@@ -55,6 +61,10 @@ const NEAR_FULL := 0.95
 ## Fill trend and the turns-until-full estimate look back this many turns (spec §3.2).
 const TREND_TURNS := 3
 
+var _global_logistics: VBoxContainer
+var _settings_layer: Control
+var _settings_card: PanelContainer
+var _settings_button: Button
 var _stock_list: VBoxContainer
 var _infra_list: VBoxContainer
 var _transit_list: VBoxContainer
@@ -62,6 +72,7 @@ var _dragging := false
 var _drag_offset := Vector2.ZERO
 var _refresh_queued := false
 var _infra_enabled: Dictionary = {}      # mode -> bool, driven by the filter chips
+var _route_icon_cache: Dictionary = {}
 
 
 func _ready() -> void:
@@ -89,14 +100,20 @@ func _ready() -> void:
 	# fires per transaction during PROCESS — hundreds of times in one burst — and each
 	# would otherwise tear down and rebuild all three columns.
 	Stockpile.stockpile_changed.connect(_refresh_if_visible)
-	MatchState.transport_shipments_changed.connect(_refresh_if_visible)
+	TransportState.transport_shipments_changed.connect(_refresh_if_visible)
 	TurnManager.turn_resolution_completed.connect(_refresh_if_visible)
+	BuildingState.building_added.connect(_refresh_if_visible)
+	BuildingState.building_removed.connect(_refresh_if_visible)
+	BuildingState.building_owner_changed.connect(_refresh_if_visible)
 
 
 func open() -> void:
+	if _settings_layer != null:
+		_settings_layer.visible = false
 	_refresh()
 	visible = true
 	_centre()
+	_layout_settings_card()
 	move_to_front()
 	PanelStack.push(self)
 
@@ -108,6 +125,8 @@ func _centre() -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_VISIBILITY_CHANGED and not visible:
+		if _settings_layer != null:
+			_settings_layer.visible = false
 		PanelStack.remove(self)
 
 
@@ -147,6 +166,10 @@ func _build() -> void:
 	_stock_list = _column(columns, "Stockpiles", "Fullest first")
 	_infra_list = _column(columns, "Infrastructure", "Most congested first", _infra_filter_bar())
 	_transit_list = _column(columns, "Units in transit", "Largest shipment first")
+	_global_logistics = VBoxContainer.new()
+	_global_logistics.add_theme_constant_override("separation", 6)
+	_global_logistics.custom_minimum_size = Vector2(0, 138)
+	_build_settings_overlay()
 
 
 func _header() -> Control:
@@ -162,12 +185,90 @@ func _header() -> Control:
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(spacer)
+	_settings_button = Button.new()
+	_settings_button.name = "LogisticsSettings"
+	_settings_button.text = "Logistics Settings"
+	_settings_button.theme_type_variation = "Primary"
+	_settings_button.custom_minimum_size = Vector2(190, 38)
+	_settings_button.focus_mode = Control.FOCUS_NONE
+	_settings_button.pressed.connect(_toggle_settings)
+	row.add_child(_settings_button)
 	var close := Button.new()
 	close.text = "✕"
 	close.focus_mode = Control.FOCUS_NONE
-	close.pressed.connect(hide)
+	close.pressed.connect(func() -> void:
+		if _settings_layer != null:
+			_settings_layer.visible = false
+		hide())
 	row.add_child(close)
 	return row
+
+
+func _build_settings_overlay() -> void:
+	_settings_layer = Control.new()
+	_settings_layer.name = "LogisticsSettingsOverlay"
+	_settings_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_settings_layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	_settings_layer.visible = false
+	add_child(_settings_layer)
+
+	_settings_card = PanelContainer.new()
+	_settings_card.name = "LogisticsSettingsCard"
+	_settings_card.theme_type_variation = "Card"
+	var base_sb := get_theme_stylebox("panel")
+	if base_sb is StyleBoxFlat:
+		var sb := (base_sb as StyleBoxFlat).duplicate() as StyleBoxFlat
+		sb.set_border_width_all(0)
+		sb.set_content_margin_all(0)
+		_settings_card.add_theme_stylebox_override("panel", sb)
+	_settings_layer.add_child(_settings_card)
+
+	var margin := MarginContainer.new()
+	for m in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+		margin.add_theme_constant_override(m, FRAME_INSET)
+	_settings_card.add_child(margin)
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", DS.SP.SM)
+	margin.add_child(body)
+	var heading := HBoxContainer.new()
+	heading.add_theme_constant_override("separation", DS.SP.SM)
+	body.add_child(heading)
+	var title := Label.new()
+	title.theme_type_variation = "Section"
+	title.add_theme_font_size_override("font_size", DS.FS.BODY + 6)
+	title.text = "Logistics Settings"
+	heading.add_child(title)
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	heading.add_child(gap)
+	var dismiss := Button.new()
+	dismiss.text = "✕"
+	dismiss.focus_mode = Control.FOCUS_NONE
+	dismiss.pressed.connect(func() -> void: _settings_layer.visible = false)
+	heading.add_child(dismiss)
+	body.add_child(_global_logistics)
+	_settings_card.add_child(preload("res://scripts/brass_pipe_frame.gd").new())
+	_settings_layer.resized.connect(_layout_settings_card)
+	call_deferred("_layout_settings_card")
+
+
+func _layout_settings_card() -> void:
+	if _settings_layer == null or _settings_card == null:
+		return
+	var available := _settings_layer.size
+	var target := Vector2(minf(760.0, maxf(0.0, available.x - 52.0)), minf(300.0, maxf(0.0, available.y - 80.0)))
+	_settings_card.size = target
+	_settings_card.position = ((available - target) * 0.5).floor()
+
+
+func _toggle_settings() -> void:
+	if _settings_layer == null:
+		return
+	_settings_layer.visible = not _settings_layer.visible
+	if _settings_layer.visible:
+		_refresh()
+		_layout_settings_card()
+		_settings_layer.move_to_front()
 
 
 ## One titled, scrolling column. The subtitle is the sort order, and it rides on the
@@ -263,6 +364,7 @@ func _refresh() -> void:
 	_build_stockpiles()
 	_build_infra()
 	_build_transit()
+	_build_global_logistics()
 	_fit_height()
 
 
@@ -286,6 +388,7 @@ func _fit_height() -> void:
 
 func _build_stockpiles() -> void:
 	_clear(_stock_list)
+	_build_logistics_overview(_stock_list)
 	var rows: Array = []
 	for tile_key in Stockpile.tiles_with_stock():
 		var tile_id := str(tile_key)
@@ -452,15 +555,15 @@ func _build_infra() -> void:
 	var links: Array = []
 	var hidden := 0
 	var present_modes := {}
-	for link_v in MatchState.active_links():
+	for link_v in TransportState.active_links():
 		var link: Dictionary = link_v
 		present_modes[str(link.mode)] = true
 		if bool(_infra_enabled.get(str(link.mode), true)):
 			links.append(link)
 		else:
 			hidden += 1
-	# Enabled filters with nothing "above 0%" this turn — named explicitly (owner,
-	# 27 Aug) rather than the column just quietly having no rows for that mode,
+	# Enabled filters with nothing "above 0%" this turn — named explicitly
+	# rather than the column just quietly having no rows for that mode,
 	# which otherwise reads identically to a broken filter. Cables especially: it
 	# carries power, not freight, so it's ALWAYS in this list when enabled —
 	# INFRA_FILTERS' own comment already flags that as by design, not a bug.
@@ -535,13 +638,13 @@ func _infra_row(link: Dictionary) -> Control:
 	var gap := Control.new()
 	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bottom.add_child(gap)
-	var over_turns := MatchState.link_turns_over(str(link.key))
-	bottom.add_child(_label("at cap %d of last %d" % [over_turns, MatchState.LINK_HISTORY_TURNS],
+	var over_turns := TransportState.link_turns_over(str(link.key))
+	bottom.add_child(_label("at cap %d of last %d" % [over_turns, TransportState.LINK_HISTORY_TURNS],
 		DS.FS.CAPTION - 1, DS.PALETTE.WARN if over_turns > 0 else DS.PALETTE.TEXT))
 
 	# Shown only once congestion has actually cost money — a £0 line on every clear
 	# link would bury the ones that are really billing.
-	var paid := MatchState.link_congestion_paid(str(link.key))
+	var paid := TransportState.link_congestion_paid(str(link.key))
 	if paid > 0.0:
 		col.add_child(_label("congestion has added £%s so far" % _money(paid),
 			DS.FS.CAPTION - 1, DS.PALETTE.DANGER))
@@ -561,7 +664,7 @@ func _open_infra_building(tile_id: String, mode: String) -> void:
 	# not build — the map ships with infrastructure, and rivals build their own — and the
 	# row is about the LINK the player's freight is crossing, whoever owns it. Filtering
 	# to player-owned buildings sent exactly those rows to the tile view instead.
-	for b in MatchState.buildings.values():
+	for b in BuildingState.buildings.values():
 		if not (b is Dictionary):
 			continue
 		var building: Dictionary = b
@@ -605,15 +708,14 @@ func _infra_icon(mode: String) -> Control:
 	# CLEANED, not the raw source: the raw building PNGs carry an opaque navy block, which on a
 	# card of its own navy read as a slightly-wrong square behind every icon. And on the SAME
 	# cream chip the goods in this panel wear — pipes and reinforced pipes were the only art
-	# here sitting bare on the navy, so they read as a different class of thing (owner, 25 Aug).
+	# here sitting bare on the navy, so they read as a different class of thing.
 	var texture: Texture2D = BuildingIcon.clean_texture(str(building.get("id", "")), key)
 	var chip := UIHelpers.make_plain_texture_icon(texture, INFRA_ICON)
 	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	return chip
 
 
-## The filter chips above the infrastructure list — single-select (owner, 27 Aug: "only
-## allow one to be selected at a time"), via a shared ButtonGroup so the engine itself
+## The filter chips above the infrastructure list — single-select, via a shared ButtonGroup so the engine itself
 ## handles the exclusivity: clicking the already-selected chip does nothing rather than
 ## clearing it (ButtonGroup.allow_unpress defaults false) — there is always exactly one
 ## filter active, never zero. Roads starts selected, so the column opens already showing
@@ -658,7 +760,7 @@ func _infra_filter_bar() -> Control:
 func _build_transit() -> void:
 	_clear(_transit_list)
 	var rows: Array = []
-	for s in MatchState.pending_transport_shipments:
+	for s in TransportState.pending_transport_shipments:
 		var ship: Dictionary = s
 		var manifest := _manifest(ship)
 		var units := 0
@@ -798,3 +900,234 @@ func _gui_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion and _dragging:
 		global_position = get_global_mouse_position() + _drag_offset
 		accept_event()
+
+func _build_logistics_overview(list: VBoxContainer) -> void:
+	if str(MatchState.ruleset.get("logistics_model","")) != "middleman_v1": return
+	var service = preload("res://scripts/middleman_service.gd")
+	list.add_child(_label("Building logistics"))
+	for b: Dictionary in BuildingState.buildings.values():
+		if not service.eligible(b): continue
+		var iid := str(b.instance_id)
+		var button := Button.new()
+		button.text = "%s · In: %s / Out: %s" % [Catalog.get_building_display_name(str(b.building_id)),"Intermediary" if service.uses_inputs(iid) else "Managed","Intermediary" if service.uses_outputs(iid) else "Managed"]
+		button.tooltip_text = "Open building details to change logistics. Managed deliveries use generic carriers."
+		button.pressed.connect(func() -> void:
+			hide()
+			MatchState.focus_building_requested.emit(iid))
+		list.add_child(button)
+
+func _build_global_logistics() -> void:
+	_clear(_global_logistics)
+	_global_logistics.visible = str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1"
+	# The company-wide settings only exist in Logistics Intermediary games.
+	if _settings_button != null:
+		_settings_button.visible = _global_logistics.visible
+	if not _global_logistics.visible:
+		if _settings_layer != null:
+			_settings_layer.visible = false
+		return
+	var title := _label("All Buildings in the company", DS.FS.BODY + 4, DS.PALETTE.ACCENT)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_global_logistics.add_child(title)
+	var columns := HBoxContainer.new()
+	columns.add_theme_constant_override("separation", DS.SP.MD)
+	columns.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_global_logistics.add_child(columns)
+	columns.add_child(_global_logistics_side("input"))
+	columns.add_child(_global_logistics_side("output"))
+
+
+func _global_logistics_side(side: String) -> Control:
+	var service = preload("res://scripts/middleman_service.gd")
+	var state: Dictionary = service.global_side(side)
+	var title := "Inputs" if side == "input" else "Outputs"
+	var column := VBoxContainer.new()
+	column.name = "GlobalLogistics%s" % title
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	column.add_theme_constant_override("separation", 5)
+	var heading := HBoxContainer.new()
+	heading.alignment = BoxContainer.ALIGNMENT_CENTER
+	heading.add_theme_constant_override("separation", 6)
+	heading.add_child(_global_logistics_section_icon(side))
+	var label := _label(title, DS.FS.BODY, DS.PALETTE.TEXT)
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	heading.add_child(label)
+	column.add_child(heading)
+	var row := HBoxContainer.new()
+	row.name = "Choices"
+	row.add_theme_constant_override("separation", 6)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var choices := [
+		{"id":"middleman", "label":"Logistics Intermediary", "icon":ROUTE_MIDDLEMAN_ICON, "tip":"Use the Logistics Intermediary for all %s." % title.to_lower()},
+		{"id":"market", "label":"Sell to market", "icon":ROUTE_MARKET_ICON, "tip":("Buy all inputs from the Global Market via a port." if side == "input" else "Sell all outputs to the Global Market via a port.")},
+		{"id":"stockpile", "label":"Tile stockpile", "icon":ROUTE_STOCKPILE_ICON, "tip":("Draw all inputs from each building's tile stockpile." if side == "input" else "Retain all outputs in each building's tile stockpile.")},
+	]
+	for choice: Dictionary in choices:
+		var destination := str(choice.id)
+		var button := _global_logistics_choice_button(destination, side, state, str(choice.label), choice.icon as Texture2D, str(choice.tip))
+		button.name = destination.capitalize()
+		if state.ids.is_empty():
+			button.disabled = true
+		elif destination == "market" and not ResearchState.global_trade_license_available():
+			button.disabled = true
+			button.tooltip_text = "Government Import/Export License required to use the Global Market."
+		elif destination == "stockpile" and not ResearchState.open_logistics_contracts_available():
+			button.disabled = true
+			button.tooltip_text = "Open Logistics Contracts research required to use tile stockpiles here."
+		if not button.disabled:
+			button.pressed.connect(func() -> void: _request_global_logistics(side, destination))
+		row.add_child(button)
+	column.add_child(row)
+	return column
+
+
+func _global_logistics_section_icon(side: String) -> TextureRect:
+	var icon := TextureRect.new()
+	icon.custom_minimum_size = Vector2(24, 24)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.texture = _off_white_route_icon(INPUT_ICON if side == "input" else OUTPUT_ICON)
+	icon.tooltip_text = "Inputs" if side == "input" else "Outputs"
+	return icon
+
+
+func _global_logistics_choice_button(destination: String, side: String, state: Dictionary, text: String, texture: Texture2D, tip: String) -> Button:
+	var button := Button.new()
+	button.text = ""
+	button.icon = _off_white_route_icon(texture)
+	button.tooltip_text = "%s\n%s" % [text, tip] if tip != "" else text
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.custom_minimum_size = Vector2(58, 52)
+	button.expand_icon = true
+	button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	button.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
+	button.add_theme_constant_override("icon_max_width", 34)
+	button.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+	button.add_theme_color_override("font_hover_color", DS.PALETTE.TEXT)
+	button.add_theme_color_override("font_pressed_color", DS.PALETTE.TEXT)
+	var active := _global_logistics_choice_active(destination, side, state.ids as Array)
+	button.add_theme_stylebox_override("normal", _global_logistics_button_style(active, false))
+	button.add_theme_stylebox_override("hover", _global_logistics_button_style(active, true))
+	button.add_theme_stylebox_override("pressed", _global_logistics_button_style(true, true))
+	button.add_theme_stylebox_override("disabled", _global_logistics_button_style(false, false))
+	return button
+
+
+func _global_logistics_button_style(selected: bool, hovered: bool) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = DS.PALETTE.BG_HIGHLIGHT if hovered else DS.PALETTE.BG_INSET
+	style.border_color = DS.PALETTE.ACCENT if selected else DS.PALETTE.BORDER_SOFT
+	style.set_border_width_all(2 if selected else 1)
+	style.set_corner_radius_all(7)
+	style.set_content_margin_all(6)
+	return style
+
+
+func _global_logistics_choice_active(destination: String, side: String, ids: Array) -> bool:
+	if ids.is_empty(): return false
+	var service = preload("res://scripts/middleman_service.gd")
+	if destination == "middleman":
+		return ids.all(func(iid: String) -> bool: return service.side_all_middleman(iid, side))
+	for iid: String in ids:
+		for item: Dictionary in service._side_items(iid, side):
+			var gid := str(item.get("good_id", ""))
+			if not service.material_tradeable(gid, side): continue
+			if side == "input":
+				var route := service.input_source_route(iid, gid)
+				if destination == "market" and str(route.get("primary", "")) != "market": return false
+				if destination == "stockpile" and (str(route.get("primary", "")) != "stockpile" or str(route.get("fallback", "")) != "middleman"): return false
+			else:
+				var output_tile := MatchState.get_output_stockpile_destination(iid, gid)
+				if destination == "market" and not MatchState.is_output_market(iid, gid): return false
+				if destination == "stockpile" and output_tile != str(BuildingState.get_building(iid).get("tile_id", "")): return false
+	return true
+
+
+func _request_global_logistics(side: String, destination: String) -> void:
+	var action := func() -> bool: return _apply_global_logistics(side, destination)
+	var mode := "middleman" if destination == "middleman" else "managed"
+	preload("res://scripts/logistics_confirmation.gd").request(self, mode, action, _refresh)
+
+
+func _apply_global_logistics(side: String, destination: String) -> bool:
+	var service = preload("res://scripts/middleman_service.gd")
+	var state: Dictionary = service.global_side(side)
+	var ids: Array = state.ids as Array
+	if ids.is_empty(): return false
+	var broad_mode := "middleman" if destination == "middleman" else "managed"
+	var result: Dictionary = service.set_modes(ids, side, broad_mode)
+	if not bool(result.get("ok", false)):
+		MatchState.request_toast(str(result.get("reason", "Unable to change company logistics.")), "warning")
+		return false
+	if destination == "middleman":
+		_refresh()
+		return true
+	for iid: String in ids:
+		for item: Dictionary in service._side_items(iid, side):
+			var gid := str(item.get("good_id", ""))
+			if not service.material_tradeable(gid, side): continue
+			if side == "input":
+				var source := "market" if destination == "market" else "stockpile"
+				var primary := service.set_input_route(iid, gid, "primary", source)
+				if not bool(primary.get("ok", false)):
+					MatchState.request_toast(str(primary.get("reason", "Unable to set company input source.")), "warning")
+					return false
+				var fallback := service.set_input_route(iid, gid, "fallback", "middleman")
+				if not bool(fallback.get("ok", false)):
+					MatchState.request_toast(str(fallback.get("reason", "Unable to set company input fallback.")), "warning")
+					return false
+			else:
+				if destination == "market":
+					MatchState.route_output_to_market(iid, gid)
+				else:
+					MatchState.set_output_stockpile_destination(iid, str(BuildingState.get_building(iid).get("tile_id", "")), gid)
+	_refresh()
+	return true
+
+func _global_source_icon(intermediary: bool) -> TextureRect:
+	var icon := TextureRect.new()
+	icon.custom_minimum_size = Vector2(30, 30)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.tooltip_text = "Logistics Intermediary" if intermediary else "Your own source"
+	if intermediary:
+		icon.texture = preload("res://assets/icons/research/glyph/lorry.png")
+		var shader := Shader.new()
+		shader.code = "shader_type canvas_item; void fragment(){ COLOR = vec4(0.94, 0.89, 0.76, texture(TEXTURE, UV).a); }"
+		var ink := ShaderMaterial.new()
+		ink.shader = shader
+		icon.material = ink
+	else: icon.texture = BuildingIcon.clean_texture("b_004", "port")
+	return icon
+
+
+func _off_white_route_icon(texture: Texture2D) -> Texture2D:
+	if texture == null:
+		return texture
+	var key := texture.resource_path
+	if key == "":
+		return texture
+	if _route_icon_cache.has(key):
+		return _route_icon_cache[key] as Texture2D
+	var image := texture.get_image()
+	if image == null:
+		return texture
+	image = image.duplicate()
+	if image.is_compressed():
+		image.decompress()
+	image.convert(Image.FORMAT_RGBA8)
+	image.clear_mipmaps()
+	var data := image.get_data()
+	var cream := Color(0.995234, 0.930806, 0.763265, 1.0)
+	for offset in range(0, data.size(), 4):
+		if data[offset + 3] > 0:
+			data[offset] = int(round(cream.r * 255.0))
+			data[offset + 1] = int(round(cream.g * 255.0))
+			data[offset + 2] = int(round(cream.b * 255.0))
+	var recoloured := Image.create_from_data(image.get_width(), image.get_height(), false, Image.FORMAT_RGBA8, data)
+	recoloured.generate_mipmaps()
+	var result := ImageTexture.create_from_image(recoloured)
+	_route_icon_cache[key] = result
+	return result

@@ -19,8 +19,8 @@ func _ready() -> void:
 		g.append(g[0] if not g.is_empty() else "")
 
 	# Recurring moves: one two-good route, one single-good route.
-	MatchState.add_recurring_move("tile_10_2", "tile_12_2", {g[0]: 50, g[1]: 30})
-	MatchState.add_recurring_move("tile_11_3", "tile_13_3", {g[2]: 10})
+	TransportState.add_recurring_move("tile_10_2", "tile_12_2", {g[0]: 50, g[1]: 30})
+	TransportState.add_recurring_move("tile_11_3", "tile_13_3", {g[2]: 10})
 	# Recurring sells: one three-good sell (renders 2 icons + "+1"), one single.
 	MatchState.add_recurring_sell("tile_12_2", {g[3]: 20, g[4]: 15, g[5]: 5})
 	MatchState.add_recurring_sell("tile_9_5", {g[0]: 8})

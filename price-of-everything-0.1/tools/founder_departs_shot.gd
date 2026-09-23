@@ -26,10 +26,10 @@ func _ready() -> void:
 	print("[founder_shot] offer at turn %d -> resolve('coo'): '%s'" % [
 		TurnManager.current_turn, DecisionState.resolve("coo", offer_uid)])
 	print("[founder_shot] seated: seat=%s leaves_turn=%d" % [
-		MatchState.founder_seat, MatchState.founder_leaves_turn])
+		AdvisorState.founder_seat, AdvisorState.founder_leaves_turn])
 
 	# Stand on his last turn so this commit retires him during NARRATIVE.
-	TurnManager.current_turn = MatchState.founder_leaves_turn
+	TurnManager.current_turn = AdvisorState.founder_leaves_turn
 	TurnBriefing.collapse()
 	await _settle(10)
 
@@ -39,7 +39,7 @@ func _ready() -> void:
 	await _settle(30)
 
 	print("[founder_shot] turn=%d seat_now='%s' pending=%s expanded=%s" % [
-		TurnManager.current_turn, MatchState.founder_seat, str(_pending_ids()),
+		TurnManager.current_turn, AdvisorState.founder_seat, str(_pending_ids()),
 		str(TurnBriefing.expanded)])
 	await _shot("res://founder_departs_shot.png")
 

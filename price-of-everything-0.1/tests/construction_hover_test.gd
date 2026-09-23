@@ -30,7 +30,7 @@ func _ready() -> void:
 	camera.set("edge_pan_enabled", false)
 	camera.set_process(false)
 	var panel = world.get_node("UILayer/HUD").construct_panel_v2
-	MatchState.set_use_construct_panel_v3(true)
+	UiPrefs.set_use_construct_panel_v3(true)
 	panel.open_browser()
 	panel._on_recipe_pressed("b_002", "r_005")
 	await settle()
@@ -82,7 +82,7 @@ func _ready() -> void:
 	check(payback != null and payback.get_theme_font_size("font_size") == 20, "Payback is prominent")
 	for label in timeline.get_children():
 		check(not label.text.contains("£"), "Forecast avoids money amounts")
-	MatchState.advisor_seats = {"cfo": "vera"}
+	AdvisorState.advisor_seats = {"cfo": "vera"}
 	MatchState.set_construct_credit_default("slices")
 	await settle()
 	timeline = hover.card.find_child("RevenueTimeline", true, false)

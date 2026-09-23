@@ -136,7 +136,7 @@ func _rebuild_graph() -> void:
 		return
 	# Sprite view drops the hex-field backdrop entirely — sprites on plain black.
 	if _bg != null:
-		_bg.visible = not MatchState.use_empire_sprite_view
+		_bg.visible = not UiPrefs.use_empire_sprite_view
 	var terrain := get_tree().get_first_node_in_group("hex_map")
 	# One shared setup (EmpireGraph.populate): build, solve the supply-chain columns, drop the
 	# ports into their row and mirror the Market hub above. The end screen calls the same thing.

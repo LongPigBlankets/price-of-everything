@@ -352,6 +352,10 @@ static func steps() -> Array:
 			"setup": [
 				{ "action": "handoff_from_capital_lesson" },
 				{ "action": "close_building_detail" },
+				{
+					"action": "flash_tiles", "tiles": [WINDOW_TILE], "delay": 5.0,
+					"color": "white", "pulse_count": 10, "pulse_seconds": 0.7,
+				},
 			],
 			"spotlight": { "kind": "none", "ref": "" },
 			"no_dim": true,
@@ -725,7 +729,7 @@ static func steps() -> Array:
 			"chapter": "Integration",
 			"title": "Buy the land to build on",
 			"body": "One more thing before you build: every building needs land YOU own. Your factory came with its own plot, but a furnace or Furnace needs room of its own. On the factory tile's land rail, click Buy Land and buy at least %d. Land is cheap (£%d per %d units), and the bracket on the size chart shows what you own." % [
-				_land_lesson_shortfall(), int(MatchState.LAND_PATCH_COST), MatchState.LAND_PATCH_SIZE],
+				_land_lesson_shortfall(), int(BuildingState.LAND_PATCH_COST), BuildingState.LAND_PATCH_SIZE],
 			"setup": [
 				{ "action": "close_building_detail" },
 				{ "action": "focus_tile", "tile": WINDOW_TILE },
@@ -966,7 +970,7 @@ static func steps() -> Array:
 			"id": "sell_windows",
 			"chapter": "Integration · Margin",
 			"title": "Turn windows into cash",
-			"body": "Your new building takes a few turns to construct, and until it helps your margin stays small. To sell finished windows, switch on 'Sell all Surplus every turn' on the factory tile. Each turn it ships them to market, turning them into cash while you integrate.",
+			"body": "Your new building takes a few turns to construct, and until it helps your margin stays small. To sell finished windows, choose 'Sell to global market' in the surplus destination on the factory tile. Each turn it ships them to market, turning them into cash while you integrate.",
 			"setup": [ { "action": "focus_tile_stock", "tile": WINDOW_TILE } ],
 			"spotlight": { "kind": "node_name", "ref": "SellSurplusToggle" },
 			"lock_panel": true,
@@ -1287,11 +1291,11 @@ static func _build_confirm_cost(building_id: String) -> int:
 ## The live asking price shown beside the tutorial's NPC window factory. The price includes
 ## two turns of recipe inputs, so Step 17 must quote the same helper as the market's Buy button.
 static func _window_factory_purchase_price() -> int:
-	for instance_id in MatchState.tile_buildings.get(WINDOW_TILE, []):
-		var building: Dictionary = MatchState.get_building(str(instance_id))
+	for instance_id in BuildingState.tile_buildings.get(WINDOW_TILE, []):
+		var building: Dictionary = BuildingState.get_building(str(instance_id))
 		if str(building.get("building_id", "")) == "b_007" \
 				and str(building.get("recipe_id", "")) == "r_056" \
-				and not MatchState.is_player_owned(building):
+				and not BuildingState.is_player_owned(building):
 			return MatchState.building_purchase_price(building)
 	# Headless authoring/tests may inspect steps without loading the tutorial start. Keep a
 	# deterministic fallback; the real tutorial always resolves the placed instance above.
@@ -1334,7 +1338,7 @@ static func _footprint(building_id: String) -> int:
 ## factory tile (window factory + cable + furnace/Furnace + reinforced pipe),
 ## rounded up to whole patches. Footprint rebalances move the wall automatically.
 static func _land_lesson_target() -> int:
-	var patch := MatchState.LAND_PATCH_SIZE
+	var patch := BuildingState.LAND_PATCH_SIZE
 	var needed := _footprint("b_007") + _footprint("b_006") + _footprint("b_002") + _footprint("b_018")
 	return ceili(float(needed) / float(patch)) * patch
 
@@ -1342,7 +1346,7 @@ static func _land_lesson_target() -> int:
 ## seeded plot (data/starts/tutorial.json) minus the factory footprint granted by
 ## the purchase — rounded up to a whole patch (the shop sells in patches).
 static func _land_lesson_shortfall() -> int:
-	var patch := MatchState.LAND_PATCH_SIZE
+	var patch := BuildingState.LAND_PATCH_SIZE
 	var owned_by_then := TUTORIAL_SEED_LAND + _footprint("b_007")
 	var shortfall := maxi(0, _land_lesson_target() - owned_by_then)
 	return maxi(patch, ceili(float(shortfall) / float(patch)) * patch)

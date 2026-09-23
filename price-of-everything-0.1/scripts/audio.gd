@@ -77,14 +77,13 @@ const BUS_MASTER := &"Master"
 const BUS_MUSIC := &"Music"
 const BUS_SFX := &"SFX"
 
-# Headroom cap per bus (owner 2026-08-19): the 0-100 Settings slider maps to 0-CAP of the
-# bus's LINEAR volume, so the whole slider range now sits at/under what used to be its 40%
-# point. Master is untouched; music and cues top out at 40% of full at the slider's max.
+# Headroom cap per bus: the 0-100 Settings slider maps to 0-CAP of the bus's LINEAR
+# volume. Master is untouched; music and cues top out at 40% of full at the slider's max.
 const BUS_MAX_SCALE := {&"Master": 1.0, &"Music": 0.4, &"SFX": 0.4}
 
 # Music playlist — five PLACEHOLDER tracks (stereo Ogg Vorbis; licensing pending,
 # see memory: music-licensing) that play in sequence with MUSIC_GAP seconds of
-# silence between them, looping. The `swap song` cheat jumps to the next.
+# silence between them, looping. `swap_song` jumps to the next.
 const MUSIC_TRACKS: Array[AudioStream] = [
 	preload("res://assets/audio/music/pizzicato.ogg"),
 	preload("res://assets/audio/music/modern_epic_violin.ogg"),
@@ -149,7 +148,7 @@ func _ready() -> void:
 	for b in get_tree().root.find_children("*", "Button", true, false):
 		_wire_button(b)
 	Production.turn_processed.connect(_on_turn_processed)        # profitable turn → cash register
-	MatchState.unlock_granted.connect(_on_unlock_granted)        # tech unlocked → gears
+	ResearchState.unlock_granted.connect(_on_unlock_granted)        # tech unlocked → gears
 	TurnManager.turn_resolution_completed.connect(turn_ready)    # back to DECIDE → slot lever
 
 
@@ -226,7 +225,7 @@ func play_music() -> void:
 	_play_track()
 
 
-## Cheat (`swap song`): jump straight to the next track. Returns its display name.
+## Jump straight to the next track. Returns its display name.
 func swap_song() -> String:
 	_track_idx = (_track_idx + 1) % MUSIC_TRACKS.size()
 	_play_track()

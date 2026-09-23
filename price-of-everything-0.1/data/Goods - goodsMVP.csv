@@ -40,7 +40,7 @@ g_038,glass,Glass,construction,solid_heavy,2,1,vehicle,finished,0.0005,2.7808,TR
 g_039,windows,Windows,construction,solid_heavy,1,1,vehicle,intermediate,0.002,15.2147,TRUE,TRUE,0,no,0,intermediate
 g_040,sulphur,Sulphur,chems,solid_heavy,1,1,vehicle,raw,0.005,1.4083,TRUE,TRUE,0,no,0,raw
 g_041,cpu,CPU,electronics,solid_light,1,1,vehicle,finished,0.0005,110.12,TRUE,TRUE,0,no,0,apex
-g_042,computer,Computer,electronics,solid_light,1,1,vehicle,finished,0.0005,90.3998,TRUE,TRUE,0,no,0,apex
+g_042,computer,Computer,electronics,solid_light,1,1,vehicle,finished,0.0005,98.5358,TRUE,TRUE,0,no,0,apex
 g_043,circuit_board,Circuit Board,electronics,solid_light,1,1,vehicle,intermediate,0.001,21.0104,TRUE,TRUE,0,no,0,intermediate
 g_044,tyres,Tyres,vehicles,solid_heavy,1,1,vehicle,intermediate,0.001,6.4164,TRUE,TRUE,0,no,0,intermediate
 g_045,car_body,Car Body,vehicles,ultra_heavy,1,1,vehicle,intermediate,0.001,13.4924,TRUE,TRUE,0,no,0,finished
@@ -51,14 +51,14 @@ g_049,high_grade_silicon,High Grade Silicon,electronics,solid_heavy,1,1,vehicle,
 g_050,lithium_ore,Lithium Ore,metals,solid_heavy,1,1,vehicle,raw,0.005,4.1951,TRUE,TRUE,0,no,0,raw
 g_051,lithium_carbonate,Lithium Carbonate,chems,solid_heavy,1,1,vehicle,intermediate,0.002,13.4745,TRUE,TRUE,0,no,0,processed
 g_052,large_engine,Large Engine,vehicles,ultra_heavy,1,1,vehicle,intermediate,0.001,54.4058,TRUE,TRUE,0,no,0,finished
-g_053,wind_turbine,Wind Turbine,energy,ultra_heavy,1,1,vehicle,finished,0.0005,119.192,TRUE,TRUE,0,no,0,finished
-g_054,solar_panel,Solar Panel,energy,solid_heavy,1,1,vehicle,finished,0.0005,44.5997,TRUE,TRUE,0,no,0,finished
-g_055,heavy_vehicle,Heavy Vehicle,vehicles,ultra_heavy,1,1,vehicle,finished,0.0005,292.485,TRUE,TRUE,0,no,0,apex
-g_056,ice_car,Diesel Car,vehicles,ultra_heavy,1,1,vehicle,finished,0.0005,123.897,TRUE,TRUE,0,no,0,apex
-g_057,ev_car,Electric Car,vehicles,ultra_heavy,1,1,vehicle,finished,0.0005,267.722,TRUE,TRUE,0,no,0,apex
+g_053,wind_turbine,Wind Turbine,energy,ultra_heavy,1,1,vehicle,finished,0.0005,129.9193,TRUE,TRUE,0,no,0,finished
+g_054,solar_panel,Solar Panel,energy,solid_heavy,1,1,vehicle,finished,0.0005,48.6137,TRUE,TRUE,0,no,0,finished
+g_055,heavy_vehicle,Heavy Vehicle,vehicles,ultra_heavy,1,1,vehicle,finished,0.0005,318.8087,TRUE,TRUE,0,no,0,apex
+g_056,ice_car,Diesel Car,vehicles,ultra_heavy,1,1,vehicle,finished,0.0005,135.0477,TRUE,TRUE,0,no,0,apex
+g_057,ev_car,Electric Car,vehicles,ultra_heavy,1,1,vehicle,finished,0.0005,291.8170,TRUE,TRUE,0,no,0,apex
 g_058,fibreglass,Fibreglass,construction,solid_light,1,1,vehicle,intermediate,0.001,19.3521,TRUE,TRUE,0,no,0,intermediate
 g_059,lithium_battery,Lithium Ion Battery,energy,solid_heavy,1,1,vehicle,finished,0.0005,50.5901,TRUE,TRUE,0,no,0,finished
-g_060,sodium_battery,Sodium Ion Battery,energy,solid_heavy,1,1,vehicle,finished,0.0005,22.7411,TRUE,TRUE,0,no,0,finished
+g_060,sodium_battery,Sodium Ion Battery,energy,solid_heavy,1,1,vehicle,finished,0.0005,25.0152,TRUE,TRUE,0,no,0,finished
 g_061,iron_battery,Iron Air Battery,energy,solid_heavy,1,1,vehicle,finished,0.0005,13.75,TRUE,TRUE,0,no,0,finished
 g_062,biomass,Biomass,agribio,solid_heavy,1,1,vehicle,raw,0.005,2.4998,TRUE,TRUE,0,no,0,raw
 g_063,waste_water,Waste Water,waste,safe_liquid,,,,waste,0,0.11,FALSE,FALSE,0,no,0,raw

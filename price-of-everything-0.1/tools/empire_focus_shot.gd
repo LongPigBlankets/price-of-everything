@@ -37,8 +37,8 @@ func _ready() -> void:
 		return
 
 	# RESTING first: this is the ONLY state that should still show the gold port badge.
-	print("BADGE-FLAG: show_port_badge=", MatchState.show_port_badge,
-		"  sprite_view=", MatchState.use_empire_sprite_view)
+	print("BADGE-FLAG: show_port_badge=", UiPrefs.show_port_badge,
+		"  sprite_view=", UiPrefs.use_empire_sprite_view)
 	# A zero-size badge can never raise a tooltip, so assert it has a real rect and the text.
 	for pan in (gw.get("_panels") as Array):
 		var bctrl = (pan["ctrl"] as Node).get("_badge")
@@ -128,7 +128,7 @@ func _ready() -> void:
 ## Same seeding as empire_shot.gd: real tiles, valid recipes, mixed levels, so edges actually form.
 func _seed_empire() -> void:
 	var tiles: Array = []
-	for b in MatchState.buildings.values():
+	for b in BuildingState.buildings.values():
 		var t := str(b.get("tile_id", ""))
 		if t != "" and not tiles.has(t):
 			tiles.append(t)
@@ -149,9 +149,9 @@ func _seed_empire() -> void:
 		var rid := str((recs[0] as Dictionary).get("recipe_id", ""))
 		var tid: String = tiles[(k * 3) % tiles.size()]
 		var iid := "emp_%d" % k
-		MatchState.add_building(bid, rid, tid, "player_1", iid)
-		if MatchState.buildings.has(iid):
-			MatchState.buildings[iid]["level"] = levels[k]
+		BuildingState.add_building(bid, rid, tid, "player_1", iid)
+		if BuildingState.buildings.has(iid):
+			BuildingState.buildings[iid]["level"] = levels[k]
 		placed += 1
 	print("seeded ", placed, " player buildings across ", tiles.size(), " candidate tiles")
 

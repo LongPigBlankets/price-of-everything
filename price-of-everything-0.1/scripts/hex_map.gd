@@ -153,9 +153,9 @@ func _clear_category_overlays() -> void:
 			layer.visible = false
 
 func _tile_consumes_good(tile_id: String, good_id: String) -> bool:
-	var instance_ids: Array = MatchState.tile_buildings.get(tile_id, [])
+	var instance_ids: Array = BuildingState.tile_buildings.get(tile_id, [])
 	for instance_id in instance_ids:
-		var building: Dictionary = MatchState.buildings.get(instance_id, {})
+		var building: Dictionary = BuildingState.buildings.get(instance_id, {})
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
 		var inputs: Array = recipe.get("inputs", [])
 		for inp in inputs:
@@ -164,7 +164,7 @@ func _tile_consumes_good(tile_id: String, good_id: String) -> bool:
 	return false
 
 func _tile_has_buildings(tile_id: String) -> bool:
-	return MatchState.tile_buildings.get(tile_id, []).size() > 0
+	return BuildingState.tile_buildings.get(tile_id, []).size() > 0
 
 func _process(_delta: float) -> void:
 	# Track the hovered tile whenever a selection is active (so the logistics

@@ -1,0 +1,33 @@
+{
+  "status": "hub modelling scenario only; no live hub implementation",
+  "middleman": {
+    "ad_valorem": 0.005,
+    "solid_heavy": 0.05,
+    "ultra_heavy": 0.5,
+    "density": 1.5,
+    "motor_fee": 32.5090815,
+    "furnace_fee": 8.3901745
+  },
+  "coverage": "Hub serves factories on its own and adjacent tiles; their connected external routes may extend to the port.",
+  "capacity": "one vehicle per directed adjacent-tile movement per turn for a pooled load; 100-unit payload is a separate sensitivity",
+  "vehicles": "heavy_vehicle (g_055), installed up front",
+  "recipes_per_active_hub_per_turn": {
+    "diesel": {
+      "hydraulic_components": 2,
+      "tyres": 4,
+      "fuels": 6
+    },
+    "lithium": {
+      "hydraulic_components": 2,
+      "tyres": 4,
+      "lithium_battery": 1
+    },
+    "sodium": {
+      "hydraulic_components": 2,
+      "tyres": 4,
+      "sodium_battery": 1
+    }
+  },
+  "storage_and_ports": "separate owned-logistics costs remain; middleman fee only on hub input procurement",
+  "report": "reports/balance/logistics_hub_trial_2026-09-19.json"
+}

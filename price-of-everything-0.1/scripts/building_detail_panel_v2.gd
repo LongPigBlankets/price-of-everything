@@ -1,14 +1,13 @@
 extends PanelContainer
 const EffectEmblem := preload("res://scripts/effect_emblem.gd")
-## Building Detail v2 — the redesigned, scenario-adaptive detail panel (Phase 1).
-## Code-instantiated by world_map. THE building detail panel: the classic v1 panel it was
-## written to replace was deleted on 2026-08-28, along with the `swap bdp` seam.
+## Building Detail — the scenario-adaptive detail panel.
+## Code-instantiated by world_map. THE building detail panel.
 ## Renders a shared, UI-agnostic readout (building_readout.gd): header + status badge → adaptive
 ## recipe/flow strip (frameless good icons in independent input/output grids) → always-open
 ## diagnostics checklist → emphasised per-output cost-to-produce → economics → inbound shipments →
 ## routing (with the map-highlight signal) → labour. Live via coalesced refresh. Upgrade/recipe/
 ## sell/demolish sheets, banners and battery/infra/port variants land in later phases.
-## See docs/building-detail-v2-plan.md. Mirrors the tile_info_panel v1→v2 swap.
+## See docs/building-detail-v2-plan.md.
 
 const BuildingReadout := preload("res://scripts/building_readout.gd")
 const BuildingStatus := preload("res://scripts/building_status.gd")
@@ -17,10 +16,17 @@ const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const BuyDialog := preload("res://scripts/buy_building_dialog.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const InfrastructureInfo := preload("res://scripts/infrastructure_info.gd")
+const ROUTE_STOCKPILE_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_stockpile.png")
+const ROUTE_MARKET_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_port.png")
+const ROUTE_MIDDLEMAN_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_lorry.png")
+const INPUT_ICON: Texture2D = preload("res://assets/icons/ui_icons/construction_materials.png")
+const OUTPUT_ICON: Texture2D = preload("res://assets/icons/research/glyph/output.png")
+
+
 
 const HEADER_HEIGHT := 44.0
 const PANEL_EDGE_MARGIN := 20.0
-const TOP_BAR_CLEARANCE := 114.0   # clears the top bar AND the briefing notch hang + shadow (owner 2026-07-11)
+const TOP_BAR_CLEARANCE := 114.0   # clears the top bar AND the briefing notch hang + shadow
 const BOTTOM_CLEARANCE := 110.0  # fallback: keep clear of the bottom menu when no tile panel to match
 const PANEL_WIDTH := 460.0
 
@@ -172,7 +178,7 @@ func _apply_refresh() -> void:
 		return  # hidden: stay dirty, catch up on show
 	_dirty = false
 	var iid := str(_current_building.get("instance_id", ""))
-	var live: Dictionary = MatchState.get_building(iid) if iid != "" else {}
+	var live: Dictionary = BuildingState.get_building(iid) if iid != "" else {}
 	if not live.is_empty():
 		_current_building = live
 	_rebuild(_current_building)
@@ -214,8 +220,8 @@ func _rebuild(building: Dictionary) -> void:
 	# "tile_5_9" at the player instead of "Stoneshore Fields - (5, 9)".
 	var _tile := str(building.get("tile_id", ""))
 	var display_level := int(building.get("level", 1))
-	if MatchState.INFRA_UPGRADABLE.has(str(building_data.get("internal_name", ""))):
-		display_level = MatchState.infra_tile_level(building)
+	if BuildingWorks.INFRA_UPGRADABLE.has(str(building_data.get("internal_name", ""))):
+		display_level = BuildingWorks.infra_tile_level(building)
 	_subtitle_label.text = "Level %d · %s" % [
 		display_level, Catalog.tile_label(_tile) if _tile != "" else "—"]
 
@@ -247,7 +253,7 @@ func _rebuild(building: Dictionary) -> void:
 		_body.add_child(_build_infra_card())
 		# Levellable infra (roads/rails/pipes/reinf_pipes/cables) gets the same Upgrade
 		# button as production buildings — it opens the cash-only upgrade sheet.
-		if MatchState.INFRA_UPGRADABLE.has(str(building_data.get("internal_name", ""))):
+		if BuildingWorks.INFRA_UPGRADABLE.has(str(building_data.get("internal_name", ""))):
 			_body.add_child(_build_primary_actions(building, building_data))
 	elif BuildingReadout.is_recipe_kind(kind) and (not (fl.get("output", {}) as Dictionary).is_empty() or not (fl.get("inputs", []) as Array).is_empty()):
 		_body.add_child(_build_recipe_strip(fl))
@@ -255,8 +261,8 @@ func _rebuild(building: Dictionary) -> void:
 	# primary actions (upgrade · change recipe) + routing (input sources · output destination),
 	# both right under the recipe strip; routing opens action sheets.
 	if BuildingReadout.is_recipe_kind(kind) and not is_infra:
-		_body.add_child(_build_primary_actions(building, building_data))
 		_body.add_child(_build_routing_buttons(building, recipe))
+		_body.add_child(_build_primary_actions(building, building_data))
 
 	_body.add_child(_make_section("Diagnostics", "always shown"))
 	_body.add_child(_build_diagnostics(BuildingReadout.diagnostics(building, recipe, building_data, is_infra)))
@@ -268,7 +274,7 @@ func _rebuild(building: Dictionary) -> void:
 			_body.add_child(_make_section("Cost to produce"))
 			_body.add_child(_build_cost_to_produce(cost_rows))
 
-	# Modifiers (owner 2026-07-10): everything currently bending this building's
+	# Modifiers: everything currently bending this building's
 	# numbers, in an accordion whose chevroned section header expands on click.
 	if not is_infra and kind != "battery":
 		_add_modifiers_accordion(building, recipe)
@@ -380,7 +386,7 @@ func _fmt_int(n: int) -> String:
 	return ("-" if n < 0 else "") + out
 
 func _open_buy_dialog(iid: String, building_name: String, price: int) -> void:
-	var building: Dictionary = MatchState.get_building(iid)
+	var building: Dictionary = BuildingState.get_building(iid)
 	if Tutorial.port_purchase_disabled(str(building.get("building_id", ""))):
 		return
 	if _buy_layer == null or not is_instance_valid(_buy_layer):
@@ -398,15 +404,15 @@ func _on_buy_confirmed(_dont_ask: bool) -> void:
 	var iid := str(_pending_buy.get("iid", ""))
 	var building_name := str(_pending_buy.get("name", ""))
 	var price := int(_pending_buy.get("price", 0))
-	var building: Dictionary = MatchState.get_building(iid)
+	var building: Dictionary = BuildingState.get_building(iid)
 	if Tutorial.port_purchase_disabled(str(building.get("building_id", ""))):
 		return
-	if iid == "" or not MatchState.buildings.has(iid):
+	if iid == "" or not BuildingState.buildings.has(iid):
 		return
 	if not MatchState.deduct_money(float(price)):
 		MatchState.build_rejected_no_funds.emit("Not enough money to buy %s — need £%d, you have £%.0f" % [building_name, price, MatchState.money])
 		return
-	MatchState.set_building_owner(iid, MatchState.LOCAL_PLAYER)
+	BuildingState.set_building_owner(iid, MatchState.LOCAL_PLAYER)
 	MatchState.request_toast("Purchased %s for £%d" % [building_name, price], "success")
 	Audio.transaction()
 	# building_owner_changed → coalesced refresh re-reads the now-owned building → full panel.
@@ -484,6 +490,7 @@ func _render_construction(building: Dictionary, recipe: Dictionary, constr: Dict
 
 	var cancel := Button.new()
 	cancel.text = "Cancel construction"
+	cancel.tooltip_text = "Before End Turn, also refunds and cancels reserved material orders. Dispatched materials remain yours."
 	cancel.custom_minimum_size = Vector2(0, 44)
 	var iid := str(building.get("instance_id", ""))
 	cancel.pressed.connect(func() -> void:
@@ -506,8 +513,8 @@ func _build_storage_card(building: Dictionary) -> PanelContainer:
 	card.add_child(vb)
 	var head := Label.new()
 	head.add_theme_color_override("font_color", CREAM_INK)
-	# "36 / 2000" was cells over MEGAWATTS — a count divided by a capacity (owner 2026-08-01).
-	# The pair that shares a unit is power stabilised vs the tile's firming capacity.
+	# The pair that shares a unit is power stabilised vs the tile's firming capacity — never
+	# cells over MEGAWATTS, a count divided by a capacity.
 	head.text = "Power stabilised — %d / %d MW" % [int(b.get("firming_cap", 0)), int(b.get("slots", 0))]
 	vb.add_child(head)
 	var note := Label.new()
@@ -550,8 +557,8 @@ func _open_battery_source_sheet(building: Dictionary, recipe: Dictionary) -> voi
 			var gid := str(Catalog.get_good_by_internal_name(str(internal)).get("id", ""))
 			if gid == "":
 				continue
-			var unlocked := MatchState.battery_type_loadable(gid)
-			var fill := MatchState.battery_cells_to_fill(tile, gid, str(building.get("instance_id", "")))
+			var unlocked := Power.battery_type_loadable(gid)
+			var fill := Power.battery_cells_to_fill(tile, gid, str(building.get("instance_id", "")))
 			var stock := Stockpile.get_at_tile(tile, gid)
 			var loadable := mini(fill, stock)
 			var subtitle := ""
@@ -568,7 +575,7 @@ func _open_battery_source_sheet(building: Dictionary, recipe: Dictionary) -> voi
 				btn_text = "Load %d" % loadable
 				enabled = loadable > 0
 			vb.add_child(_battery_type_row(gid, str(internal), subtitle, btn_text, enabled, func() -> void:
-				var n := MatchState.load_battery_cells(tile, gid, loadable)
+				var n := Power.load_battery_cells(tile, gid, loadable)
 				MatchState.request_toast(("Loaded %d %s cells" % [n, Catalog.get_display_name(gid)]) if n > 0 else "Nothing available to load", "success" if n > 0 else "warning")
 				_queue_refresh()
 				_open_battery_source_sheet(building, recipe))))
@@ -586,8 +593,8 @@ func _open_battery_order_sheet(building: Dictionary, recipe: Dictionary) -> void
 			var gid := str(Catalog.get_good_by_internal_name(str(internal)).get("id", ""))
 			if gid == "":
 				continue
-			var unlocked := MatchState.battery_type_loadable(gid)
-			var fill := MatchState.battery_cells_to_fill(tile, gid, str(building.get("instance_id", "")))
+			var unlocked := Power.battery_type_loadable(gid)
+			var fill := Power.battery_cells_to_fill(tile, gid, str(building.get("instance_id", "")))
 			var subtitle := ""
 			var btn_text := ""
 			var enabled := false
@@ -598,13 +605,13 @@ func _open_battery_order_sheet(building: Dictionary, recipe: Dictionary) -> void
 				subtitle = "Housing full"
 				btn_text = "Full"
 			else:
-				var quote := TransportService.quote_market_buy(tile, gid, fill, MatchState.seaport_would_cover(gid))
+				var quote := TransportService.quote_market_buy(tile, gid, fill, TransportState.seaport_would_cover(gid))
 				var cost := float(quote.get("cost", 0.0))
 				subtitle = ("fills %d cells · £%.2f" % [fill, cost]) if not quote.is_empty() else "no market route to this tile"
 				btn_text = "Order %d" % fill
 				enabled = not quote.is_empty()
 			vb.add_child(_battery_type_row(gid, str(internal), subtitle, btn_text, enabled, func() -> void:
-				var r := MatchState.order_battery_fill_market(tile, gid, fill)
+				var r := Power.order_battery_fill_market(tile, gid, fill)
 				if bool(r.get("ok", false)):
 					var t := int(r.get("turns", 1))
 					MatchState.request_toast("Ordered %d cells — £%.2f, arriving in %d turn%s" % [fill, float(r.get("cost", 0.0)), t, "" if t == 1 else "s"], "success")
@@ -709,7 +716,7 @@ func _infrastructure_level_accordion(key: String, level: int) -> VBoxContainer:
 ## empty check here rather than a separate mode allow-list to keep in sync with it.
 func _build_infra_breakdown(building: Dictionary, building_data: Dictionary) -> Control:
 	var mode := InfrastructureInfo.key_for(building_data)
-	var rows := MatchState.tile_good_breakdown(str(building.get("tile_id", "")), mode)
+	var rows := TransportState.tile_good_breakdown(str(building.get("tile_id", "")), mode)
 	if rows.is_empty():
 		return null
 	var card := _make_card()
@@ -780,12 +787,12 @@ func _build_port_card(building: Dictionary) -> PanelContainer:
 	sub.text = "Inputs arrive from, and outputs ship to, the world market through this port. Sea freight is booked under Transport."
 	vb.add_child(sub)
 	var tile := str(building.get("tile_id", ""))
-	var sea := MatchState.seaport_shipping_summary(tile)
+	var sea := TransportState.seaport_shipping_summary(tile)
 	var owned := bool(sea.get("owned", false))
 	var growth := float(sea.get("growth", 1.0))
 	var rate_pct := float(sea.get("insurance_rate", 0.0)) * 100.0 * growth
 	# Three sections, ordered by what each is WORTH to the player rather than by what is
-	# easiest to explain (owner, 25 Aug). What you are paying right now comes first, the goods
+	# easiest to explain. What you are paying right now comes first, the goods
 	# that actually moved this turn second, and the rate card — reference you read once — last.
 	# Eleven metrics one separation apart read as a single undifferentiated wall; the air
 	# between the sections is what does the separating, so the rows inside one stay tight.
@@ -812,7 +819,7 @@ func _build_port_card(building: Dictionary) -> PanelContainer:
 			vb.add_child(_port_activity_row(row, used_by_class))
 
 	_port_section(vb, "THE RATE CARD", false)
-	if MatchState.keeps_introductory_port_rate():
+	if TransportState.keeps_introductory_port_rate():
 		vb.add_child(_port_metric("Ad valorem · all turns", "0.5% of market buy value"))
 	else:
 		vb.add_child(_port_metric("Ad valorem · turns 1–30", "0.5% of market buy value"))
@@ -907,7 +914,7 @@ func _add_port_throughput_rows(vb: VBoxContainer, live: bool) -> void:
 		vb.add_child(_port_metric("Throughput: " + str(spec[1]), _fmt_int(capacity) + " units / turn"))
 
 func sea_port_cap(good_id: String) -> int:
-	return MatchState.seaport_throughput_cap(good_id)
+	return TransportState.seaport_throughput_cap(good_id)
 
 # --- primary actions (upgrade · change recipe) ---------------------------------------------
 
@@ -918,14 +925,14 @@ func _build_primary_actions(building: Dictionary, _building_data: Dictionary) ->
 	var lvl := int(building.get("level", 1))
 	# Infra levels live on the TILE (the instance copy can lag) — label from the truth.
 	var b_internal := str(Catalog.get_building(str(building.get("building_id", ""))).get("internal_name", ""))
-	if MatchState.INFRA_UPGRADABLE.has(b_internal):
-		lvl = MatchState.infra_tile_level(building)
+	if BuildingWorks.INFRA_UPGRADABLE.has(b_internal):
+		lvl = BuildingWorks.infra_tile_level(building)
 
 	var up := Button.new()
 	up.name = "UpgradeButton"
 	up.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	up.custom_minimum_size = Vector2(0, 40)
-	var upgrade_progress := MatchState.upgrade_progress_snapshot(iid)
+	var upgrade_progress := BuildingWorks.upgrade_progress_snapshot(iid)
 	if not upgrade_progress.is_empty():
 		up.text = "Upgrading…"
 		up.disabled = true
@@ -945,8 +952,8 @@ func _build_primary_actions(building: Dictionary, _building_data: Dictionary) ->
 		rc.name = "ChangeRecipeButton"   # stable target for the tutorial coach spotlight
 		rc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		rc.custom_minimum_size = Vector2(0, 40)
-		if MatchState.is_retooling(iid):
-			var t := MatchState.retrofit_turns_remaining(iid)
+		if BuildingWorks.is_retooling(iid):
+			var t := BuildingWorks.retrofit_turns_remaining(iid)
 			rc.text = "Retooling — %d turn%s" % [t, "" if t == 1 else "s"]
 		else:
 			rc.text = "Change recipe (%d)" % alt_count
@@ -957,11 +964,9 @@ func _build_primary_actions(building: Dictionary, _building_data: Dictionary) ->
 # In-panel upgrade action sheet — the upgrade_dialog.gd content (level stat deltas, material
 # sourcing modes) rendered as one of the BDP's own sheets. Driven by MatchState.preview_upgrade /
 # start_upgrade / cancel_upgrade.
-## The material upgrade opens THE SHARED DIALOG (scripts/upgrade_dialog.gd), which is what
-## the v1 panel has always done. This panel grew its own in-sheet copy of the same screen, and
-## the two then drifted: every improvement made to the dialog -- the cream material chips, the
-## "use materials on tile" CTA, the trimmed copy -- landed in a screen the default panel never
-## opened, which is why the owner saw none of it (2026-08-28). One screen, one implementation.
+## The material upgrade opens THE SHARED DIALOG (scripts/upgrade_dialog.gd). An in-sheet
+## copy of the same screen drifts from the dialog as soon as either is improved. One screen,
+## one implementation.
 ##
 ## The full-height action sheet stays for the CASH-ONLY INFRASTRUCTURE upgrade and for the
 ## already-upgrading countdown, which the dialog does not model; those are genuinely different
@@ -969,7 +974,7 @@ func _build_primary_actions(building: Dictionary, _building_data: Dictionary) ->
 ## its buttons: a sheet fills the panel by design, and a card sizes to its content.
 func _open_upgrade_sheet(building: Dictionary) -> void:
 	var iid := str(building.get("instance_id", ""))
-	var preview: Dictionary = MatchState.preview_upgrade(iid)
+	var preview: Dictionary = BuildingWorks.preview_upgrade(iid)
 	if bool(preview.get("ok", false)) and not bool(preview.get("at_max", false)) \
 			and not bool(preview.get("infra", false)) \
 			and not bool(preview.get("already_upgrading", false)):
@@ -977,7 +982,7 @@ func _open_upgrade_sheet(building: Dictionary) -> void:
 		_upgrade_dialog.call("open", iid)
 		return
 	_open_sheet("Upgrade", func(vb: VBoxContainer) -> void:
-		var pv := MatchState.preview_upgrade(iid)
+		var pv := BuildingWorks.preview_upgrade(iid)
 		if pv.is_empty() or not bool(pv.get("ok", false)):
 			var msg := Label.new()
 			msg.theme_type_variation = "Body"
@@ -1001,8 +1006,8 @@ func _open_upgrade_sheet(building: Dictionary) -> void:
 		# Already upgrading → countdown + cancel only.
 		if bool(pv.get("already_upgrading", false)):
 			var left := int(pv.get("pending_turns_left", 0))
-			var awaiting := str(pv.get("pending_status", "")) == MatchState.UPGRADE_STATUS_AWAITING
-			var progress := MatchState.upgrade_progress_snapshot(iid)
+			var awaiting := str(pv.get("pending_status", "")) == BuildingWorks.UPGRADE_STATUS_AWAITING
+			var progress := BuildingWorks.upgrade_progress_snapshot(iid)
 			var note := Label.new()
 			note.theme_type_variation = "Body"
 			note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1018,7 +1023,7 @@ func _open_upgrade_sheet(building: Dictionary) -> void:
 			cancel.text = "Cancel upgrade"
 			cancel.custom_minimum_size = Vector2(0, 40)
 			cancel.pressed.connect(func() -> void:
-				MatchState.cancel_upgrade(iid)
+				BuildingWorks.cancel_upgrade(iid)
 				MatchState.request_toast("Upgrade cancelled — %s." % ("cash refunded" if is_infra_pending else "materials returned to the tile"), "caution")
 				_close_sheet()
 				_queue_refresh())
@@ -1041,7 +1046,7 @@ func _open_upgrade_sheet(building: Dictionary) -> void:
 				pay.text = "Upgrade to Lv %d — £%d (not enough money)" % [target, int(cost)]
 				pay.disabled = true
 			pay.pressed.connect(func() -> void:
-				var res := MatchState.start_upgrade(iid)
+				var res := BuildingWorks.start_upgrade(iid)
 				if bool(res.get("ok", false)):
 					MatchState.request_toast("Upgrade started — level %d in %d turns" % [target, duration], "success")
 					_close_sheet()
@@ -1092,7 +1097,7 @@ func _open_upgrade_sheet(building: Dictionary) -> void:
 		# Blockers
 		if bool(pv.get("research_locked", false)):
 			# The tech name is a link into the Research tree — it is the most actionable thing
-			# on this sheet, and used to be flat text the player had to go and find by hand.
+			# on this sheet, so it is not flat text the player has to go and find by hand.
 			vb.add_child(UIHelpers.make_research_requirement_link(
 				str(pv.get("research_gate", "")), DS.PALETTE["DANGER"]))
 		if not bool(pv.get("fits", true)):
@@ -1141,9 +1146,9 @@ func _open_upgrade_sheet(building: Dictionary) -> void:
 				vb.add_child(tr))
 
 func _commit_upgrade(iid: String, mode: String, duration: int) -> void:
-	var res := MatchState.start_upgrade(iid, mode)
+	var res := BuildingWorks.start_upgrade(iid, mode)
 	if bool(res.get("ok", false)):
-		var awaiting := str(res.get("status", "")) == MatchState.UPGRADE_STATUS_AWAITING
+		var awaiting := str(res.get("status", "")) == BuildingWorks.UPGRADE_STATUS_AWAITING
 		MatchState.request_toast(("Upgrade queued — sourcing materials, then %d turns." % duration) if awaiting else ("Upgrade started — ready in %d turns." % duration), "success")
 		_close_sheet()
 		_queue_refresh()
@@ -1151,7 +1156,7 @@ func _commit_upgrade(iid: String, mode: String, duration: int) -> void:
 		MatchState.request_toast(str(res.get("reason", "Cannot upgrade.")), "warning")
 
 ## Good-icon size on the upgrade sheet. Frameless: the metal bevel ate a 52 px cell and
-## left the good barely readable (owner 2026-08-23).
+## left the good barely readable.
 const UPGRADE_MAT_ICON := 56
 
 # A material cell for the upgrade sheet: plain good icon (need pill) + have/need caption.
@@ -1223,6 +1228,14 @@ func _ensure_upgrade_dialog() -> void:
 
 
 func _open_sheet(title: String, populate: Callable, extra_width: float = 0.0) -> void:
+	var restore_scroll := 0
+	var preserve_scroll := false
+	if _sheet != null and is_instance_valid(_sheet):
+		var old_title := _sheet.get_node_or_null("SheetMargin/SheetVBox/SheetHeader/SheetTitle") as Label
+		var old_scroll := _sheet.get_node_or_null("SheetMargin/SheetVBox/ActionSheetScroll") as ScrollContainer
+		if old_title != null and old_scroll != null and old_title.text == title:
+			restore_scroll = old_scroll.scroll_vertical
+			preserve_scroll = true
 	_close_sheet()
 	_sheet_extra_width = extra_width
 	if extra_width > 0.0:
@@ -1236,13 +1249,16 @@ func _open_sheet(title: String, populate: Callable, extra_width: float = 0.0) ->
 	sheet.add_theme_stylebox_override("panel", st)
 	sheet.mouse_filter = Control.MOUSE_FILTER_STOP
 	var margin := MarginContainer.new()
+	margin.name = "SheetMargin"
 	for side in ["left", "right", "top", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, DS.SP["MD"])
 	sheet.add_child(margin)
 	var vb := VBoxContainer.new()
+	vb.name = "SheetVBox"
 	vb.add_theme_constant_override("separation", DS.SP["SM"])
 	margin.add_child(vb)
 	var header := HBoxContainer.new()
+	header.name = "SheetHeader"
 	header.add_theme_constant_override("separation", DS.SP["SM"])
 	vb.add_child(header)
 	var back := Button.new()
@@ -1251,12 +1267,14 @@ func _open_sheet(title: String, populate: Callable, extra_width: float = 0.0) ->
 	back.pressed.connect(_close_sheet)
 	header.add_child(back)
 	var tl := Label.new()
+	tl.name = "SheetTitle"
 	tl.theme_type_variation = "BuildingName"
 	tl.text = title
 	tl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(tl)
 	vb.add_child(HSeparator.new())
 	var scroll := ScrollContainer.new()
+	scroll.name = "ActionSheetScroll"
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vb.add_child(scroll)
@@ -1267,6 +1285,8 @@ func _open_sheet(title: String, populate: Callable, extra_width: float = 0.0) ->
 	populate.call(body)
 	add_child(sheet)  # stacks over the panel's content (later child draws on top)
 	_sheet = sheet
+	if preserve_scroll:
+		scroll.set_deferred("scroll_vertical", restore_scroll)
 
 func _close_sheet() -> void:
 	if _sheet != null and is_instance_valid(_sheet):
@@ -1284,8 +1304,8 @@ func _open_recipe_sheet(building: Dictionary) -> void:
 	var building_id := str(building.get("building_id", ""))
 	var current := str(building.get("recipe_id", ""))
 	var populate := func(vb: VBoxContainer) -> void:
-		if MatchState.is_retooling(iid):
-			var t := MatchState.retrofit_turns_remaining(iid)
+		if BuildingWorks.is_retooling(iid):
+			var t := BuildingWorks.retrofit_turns_remaining(iid)
 			var note := Label.new()
 			note.theme_type_variation = "Body"
 			note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1295,12 +1315,12 @@ func _open_recipe_sheet(building: Dictionary) -> void:
 			cancel.text = "Cancel retooling"
 			cancel.custom_minimum_size = Vector2(0, 40)
 			cancel.pressed.connect(func() -> void:
-				MatchState.cancel_retrofit(iid)
+				BuildingWorks.cancel_retrofit(iid)
 				_close_sheet()
 				_queue_refresh())
 			vb.add_child(cancel)
 			return
-		var tier := MatchState.retrofit_cost_tier()
+		var tier := BuildingWorks.retrofit_cost_tier()
 		var info := Label.new()
 		info.theme_type_variation = "Caption"
 		info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1359,7 +1379,7 @@ func _recipe_choice_row(iid: String, recipe: Dictionary, is_current: bool) -> Co
 	return card
 
 func _apply_retrofit(iid: String, recipe: Dictionary) -> void:
-	var res := MatchState.start_retrofit(iid, str(recipe.get("recipe_id", "")))
+	var res := BuildingWorks.start_retrofit(iid, str(recipe.get("recipe_id", "")))
 	if not bool(res.get("ok", false)):
 		MatchState.request_toast(str(res.get("reason", "Could not retool.")), "warning")
 	else:
@@ -1371,10 +1391,10 @@ func _apply_retrofit(iid: String, recipe: Dictionary) -> void:
 
 func _build_sell_demolish_row(building: Dictionary, building_data: Dictionary) -> Control:
 	var iid := str(building.get("instance_id", ""))
-	if MatchState.is_demolishing(iid):
+	if BuildingWorks.is_demolishing(iid):
 		var col := VBoxContainer.new()
 		col.add_theme_constant_override("separation", DS.SP["SM"])
-		var t := MatchState.demolish_turns_remaining(iid)
+		var t := BuildingWorks.demolish_turns_remaining(iid)
 		var note := Label.new()
 		note.theme_type_variation = "Body"
 		note.add_theme_color_override("font_color", DS.PALETTE["DANGER"])
@@ -1384,7 +1404,7 @@ func _build_sell_demolish_row(building: Dictionary, building_data: Dictionary) -
 		cancel.text = "Cancel demolition"
 		cancel.custom_minimum_size = Vector2(0, 40)
 		cancel.pressed.connect(func() -> void:
-			MatchState.cancel_demolish(iid)
+			BuildingWorks.cancel_demolish(iid)
 			_queue_refresh())
 		col.add_child(cancel)
 		return col
@@ -1463,18 +1483,93 @@ class _InsetOutline extends Control:
 	func _draw() -> void:
 		draw_rect(Rect2(inset, inset, size.x - inset * 2.0, size.y - inset * 2.0), col, false, 1.5)
 
-# A radio dot (ring + filled centre when on) for the destination option cards.
-class _RadioDot extends Control:
-	var on := false
-	var col := Color(0.65, 0.78, 0.83)
+# Compact route glyph used by the input/output selector cards. The hex outline gives
+# stockpile routes a tile identity; the second outline marks a stockpile on another tile.
+class _RouteIcon extends Control:
+	var kind := "stockpile"
+	var active := false
+	var accent := Color(0.78, 0.64, 0.30)
+
 	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
 		resized.connect(queue_redraw)
+
+	func _hex_points(center: Vector2, radius: float) -> PackedVector2Array:
+		var points := PackedVector2Array()
+		for i in 6:
+			var angle := -PI * 0.5 + float(i) * TAU / 6.0
+			points.append(center + Vector2(cos(angle), sin(angle)) * radius)
+		return points
+
+	func _closed(points: PackedVector2Array) -> PackedVector2Array:
+		var closed := points.duplicate()
+		if not points.is_empty():
+			closed.append(points[0])
+		return closed
+
+	func _texture_for_kind() -> Texture2D:
+		if kind == "market": return ROUTE_MARKET_ICON
+		if kind == "middleman": return ROUTE_MIDDLEMAN_ICON
+		return ROUTE_STOCKPILE_ICON
+
 	func _draw() -> void:
-		var ctr := size * 0.5
-		var r := minf(size.x, size.y) * 0.5 - 1.0
-		draw_arc(ctr, r, 0.0, TAU, 24, Color(col.r, col.g, col.b, 1.0 if on else 0.5), 2.0, true)
-		if on:
-			draw_circle(ctr, r * 0.5, col)
+		var ink := accent if active else Color(0.56, 0.61, 0.63, 0.92)
+		var fill := Color(0.15, 0.19, 0.21, 0.22) if active else Color(0.08, 0.11, 0.13, 0.12)
+		var center := size * 0.5
+		# A tile stockpile carries the hex identity. Market and intermediary routes are
+		# service endpoints, so their icons stand alone in the same off-white treatment
+		# used by the other UI glyphs.
+		var is_stockpile := kind == "stockpile" or kind == "remote_stockpile"
+		var radius := minf(size.x, size.y) * (0.50 if is_stockpile else 0.38)
+		# A remote stockpile is a route between two tiles. Draw two separate tile
+		# hexes with a small arrow between their centres, rather than stacking the
+		# hexes (which made this look like a single oversized stockpile).
+		if kind == "remote_stockpile":
+			var remote_radius := minf(size.x, size.y) * 0.27
+			var from := Vector2(size.x * 0.23, size.y * 0.5)
+			var to := Vector2(size.x * 0.77, size.y * 0.5)
+			for tile_center in [from, to]:
+				var tile_hex := _hex_points(tile_center, remote_radius)
+				draw_colored_polygon(tile_hex, fill)
+				draw_polyline(_closed(tile_hex), ink, 1.7, true)
+			var direction := (to - from).normalized()
+			var arrow_start := from + direction * remote_radius * 1.05
+			var arrow_end := to - direction * remote_radius * 1.05
+			draw_line(arrow_start, arrow_end, ink, 2.0, true)
+			var perpendicular := Vector2(-direction.y, direction.x)
+			var arrow_head := PackedVector2Array([
+				arrow_end,
+				arrow_end - direction * 7.0 + perpendicular * 4.0,
+				arrow_end - direction * 7.0 - perpendicular * 4.0,
+			])
+			draw_colored_polygon(arrow_head, ink)
+			var texture := _texture_for_kind()
+			if texture != null:
+				var texture_size := texture.get_size()
+				var max_side := remote_radius * 1.25
+				var scale := minf(max_side / maxf(1.0, texture_size.x), max_side / maxf(1.0, texture_size.y))
+				var draw_size := texture_size * scale
+				draw_texture_rect(texture, Rect2(to - draw_size * 0.5, draw_size), false, CREAM)
+			return
+		if is_stockpile:
+			var hex := _hex_points(center, radius)
+			draw_colored_polygon(hex, fill)
+			draw_polyline(_closed(hex), ink, 2.0 if active else 1.5, true)
+		if kind == "none":
+			if not is_stockpile:
+				center = size * 0.5
+			draw_line(center + Vector2(-radius * 0.65, radius * 0.65), center + Vector2(radius * 0.65, -radius * 0.65), Color(0.75, 0.38, 0.34), 2.5, true)
+			return
+		var texture := _texture_for_kind()
+		if texture != null:
+			var max_side := minf(size.x, size.y) * (0.72 if is_stockpile else 0.86)
+			var texture_size := texture.get_size()
+			var scale := minf(max_side / maxf(1.0, texture_size.x), max_side / maxf(1.0, texture_size.y))
+			var draw_size := texture_size * scale
+			var rect := Rect2(center - draw_size * 0.5, draw_size)
+			# Route assets are white alpha masks. Tinting the mask keeps the port and
+			# lorry glyphs consistently off-white without bringing their source plates in.
+			draw_texture_rect(texture, rect, false, CREAM)
 
 func _build_recipe_strip(flow: Dictionary) -> PanelContainer:
 	var card := PanelContainer.new()
@@ -1518,7 +1613,7 @@ func _build_recipe_strip(flow: Dictionary) -> PanelContainer:
 	row.add_child(_recipe_arrow(int(flow.get("power_in", 0))))
 
 	# outputs — one hero icon, or a grid when the recipe has CO-PRODUCTS (chlor-alkali yields
-	# chlorine + sodium hydroxide + hydrogen; only the chlorine used to be drawn). The pill on
+	# chlorine + sodium hydroxide + hydrogen). The pill on
 	# each carries the base→modified delta.
 	var outputs: Array = flow.get("outputs", [])
 	if outputs.is_empty() and not (flow.get("output", {}) as Dictionary).is_empty():
@@ -1577,8 +1672,8 @@ func _recipe_icon(good_id: String, internal: String, qty: int, size: int, bleed:
 	slot.clip_contents = false
 	if good_id != "":
 		slot.tooltip_text = Catalog.get_display_name(good_id)  # hover shows the good's name
-	# Power drawn AS A GOOD uses its isometric goods icon, matching the empire plates
-	# (owner 2026-08-29); the flat lightning stays on the arrow's energy badge only.
+	# Power drawn AS A GOOD uses its isometric goods icon, matching the empire plates;
+	# the flat lightning stays on the arrow's energy badge only.
 	var tex: Texture2D = GoodIcons.texture_for_size(good_id, internal, float(size))
 	if tex != null:
 		var tr := TextureRect.new()
@@ -1622,7 +1717,7 @@ func _good_icon_pill(good_id: String, internal: String, qty: int, size: int, bas
 	# already looking at what this building eats and makes, and 'how else is that made'
 	# is the next question. ALWAYS, not the deferring form — a recipe card is itself
 	# clickable, so the polite version handed every one of these clicks to the card and the
-	# graph never opened (owner 2026-08-25).
+	# graph never opens.
 	UIHelpers.link_good_icon_to_encyclopedia(holder, good_id)
 	return holder
 
@@ -1730,7 +1825,7 @@ var _diagnostics_open := false
 
 # --- diagnostics ---------------------------------------------------------------------------
 
-## The checklist, folded to one line when there is nothing wrong (owner 2026-08-25).
+## The checklist, folded to one line when there is nothing wrong.
 ## A building that is running fine still spent six rows saying so, above the numbers the
 ## player opened the panel for. Nothing is hidden — the fold opens — but "all green" is a
 ## one-line answer and it should take one line.
@@ -1880,7 +1975,7 @@ func _build_cost_to_produce(rows: Array) -> PanelContainer:
 ## The sign convention each category reads by. Output and workforce are EARNINGS, so more is
 ## better. Power draw and maintenance are COSTS, so less is better and a negative there is
 ## green, not red — a research node that cuts a furnace's draw by 10% was being painted as
-## damage (owner, 25 Aug).
+## damage.
 const MOD_CATEGORIES: Array = [
 	{"cat": "Output", "good_up": true},
 	{"cat": "Workforce", "good_up": true},
@@ -1892,9 +1987,9 @@ const MOD_CATEGORIES: Array = [
 ## and maintenance — behind a chevroned section header that expands on click (collapsed by
 ## default).
 ##
-## Collapsed, the header carries the ONE number worth a glance: the net effect on OUTPUT. It
-## used to read "3 active", which counted power and maintenance modifiers into a figure the
-## player reads as production, and told them nothing about which way any of it went.
+## Collapsed, the header carries the ONE number worth a glance: the net effect on OUTPUT. A
+## bare count like "3 active" would fold power and maintenance modifiers into a figure the
+## player reads as production, and say nothing about which way any of it went.
 ##
 ## Expanded, only the per-category summaries carry colour. Painting all fourteen individual
 ## rows green and red made a wall of traffic lights out of what is really four numbers.
@@ -2033,10 +2128,14 @@ func _build_economics(econ: Dictionary) -> PanelContainer:
 	if units_out > 0:
 		var output_values: Array = econ.get("output_values", [])
 		var selling_count := int(econ.get("selling_output_count", 0))
-		var tag := "(sold)" if selling_count == output_values.size() else ("(part sold)" if selling_count > 0 else "(if sold)")
+		var tag := "(sold)" if bool(econ.get("middleman",false)) or selling_count == output_values.size() else ("(part sold)" if selling_count > 0 else "(if sold)")
 		vb.add_child(_metric("Output value %s" % tag, "+£%.2f" % float(econ.get("output_value", 0.0)), DS.PALETTE["OK"], false))
 		var tc := float(econ.get("transport_cost", 0.0))
-		vb.add_child(_metric("Transport cost", ("−£%.2f" % tc) if tc > 0.0 else "£0.00", DS.PALETTE["DANGER"] if tc > 0.0 else DS.PALETTE["TEXT_MUTED"], false))
+		if tc > 0.0:
+			vb.add_child(_metric("Transport cost", "−£%.2f" % tc, DS.PALETTE["DANGER"], false))
+	var intermediary_fee := float(econ.get("logistics_intermediary_fee", econ.get("middleman_fee", 0.0)))
+	if intermediary_fee > 0.0:
+		vb.add_child(_metric("Logistics Intermediary Fee", "−£%.2f" % intermediary_fee, DS.PALETTE["DANGER"], false))
 	var input_cost := float(econ.get("input_cost", 0.0))
 	if input_cost > 0.0:
 		vb.add_child(_metric("Inputs / turn", "−£%.2f" % input_cost, DS.PALETTE["DANGER"], false))
@@ -2052,7 +2151,7 @@ func _build_economics(econ: Dictionary) -> PanelContainer:
 	# the tile, so they get a line here rather than living only in the sim.
 	var iid_econ := str(_current_building.get("instance_id", ""))
 	# The REPAYMENT, not the outstanding tab: what it takes a turn and how many turns are
-	# left to run (owner, 2026-09-03). The total is still there to read — it is this figure
+	# left to run. The total is still there to read — it is this figure
 	# times the turns — but the per-turn cost is what a player plans around.
 	# Financing this building carries per turn: the deferred build-cost tab AND any construction
 	# loan taken to build it (tag_last_loan_building tied it to this instance). Both are shown in
@@ -2170,13 +2269,72 @@ func _build_routing_buttons(building: Dictionary, recipe: Dictionary) -> HBoxCon
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", DS.SP["SM"])
 	if not (recipe.get("inputs", []) as Array).is_empty():
-		row.add_child(_route_card("Input sources", _input_summary(building, recipe), func() -> void: _open_input_sources_sheet(building, recipe)))
-	var out_card := _route_card("Output destination", _output_summary(building, recipe), func() -> void: _open_output_sheet(building, recipe))
+		row.add_child(_logistics_side_control(building, recipe, "input"))
+	var out_card := _logistics_side_control(building, recipe, "output")
 	out_card.name = "OutputDestCard"   # tutorial spotlight target
 	row.add_child(out_card)
 	return row
 
+func _logistics_side_control(building: Dictionary, recipe: Dictionary, side: String) -> Control:
+	var service = preload("res://scripts/middleman_service.gd")
+	var active: bool = service.side_all_middleman(str(building.instance_id), side)
+	# Until Open Logistics Contracts is unlocked, keep the original Inputs / Outputs
+	# route cards as the primary actions. The Manage Logistics CTA is only meaningful
+	# once the alternative route choices can actually be opened.
+	var manage_unlocked := service.eligible(building) and ResearchState.open_logistics_contracts_available()
+	var open := func() -> void:
+		if side == "input": _open_input_sources_sheet(building, recipe)
+		else: _open_output_sheet(building, recipe)
+	if not active or not manage_unlocked:
+		return _route_card("Inputs" if side == "input" else "Outputs", _input_summary(building, recipe) if side == "input" else _output_summary(building, recipe), open, INPUT_ICON if side == "input" else OUTPUT_ICON)
+	var card := PanelContainer.new()
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var st := StyleBoxFlat.new()
+	st.bg_color = DS.PALETTE["BG_CARD"]
+	st.border_color = DS.PALETTE["BORDER_SOFT"]
+	st.set_border_width_all(1)
+	st.set_corner_radius_all(10)
+	st.set_content_margin_all(10)
+	card.add_theme_stylebox_override("panel", st)
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 10)
+	card.add_child(body)
+	var side_icon := _off_white_icon_rect(INPUT_ICON if side == "input" else OUTPUT_ICON, Vector2(44, 68))
+	side_icon.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.add_child(side_icon)
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 4)
+	body.add_child(col)
+	var heading := HBoxContainer.new()
+	heading.add_theme_constant_override("separation", 6)
+	col.add_child(heading)
+	var label := Label.new()
+	label.text = "INPUTS" if side == "input" else "OUTPUTS"
+	label.theme_type_variation = "Caption"
+	label.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
+	heading.add_child(label)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	col.add_child(row)
+	var route_icon := _off_white_icon_rect(ROUTE_MIDDLEMAN_ICON, Vector2(26, 26))
+	route_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(route_icon)
+	var button := Button.new()
+	button.name = "ManageInputLogistics" if side == "input" else "ManageOutputLogistics"
+	button.text = "Manage Logistics"
+	button.add_theme_font_size_override("font_size", 14)
+	button.pressed.connect(open)
+	row.add_child(button)
+	return card
+
 func _input_summary(building: Dictionary, recipe: Dictionary) -> String:
+	var service = preload("res://scripts/middleman_service.gd")
+	var iid := str(building.instance_id)
+	if service.side_all_middleman(iid, "input"): return "Logistics intermediary"
+	if service.enabled(iid) and (recipe.get("inputs", []) as Array).any(func(item: Dictionary) -> bool: return service.supplies_good(iid, str(item.get("good_id", "")))): return "Mixed logistics"
 	var names: Array = []
 	for s in BuildingReadout.input_sources(building, recipe):
 		var nm := str(s.get("building_name", ""))
@@ -2185,6 +2343,11 @@ func _input_summary(building: Dictionary, recipe: Dictionary) -> String:
 	return ", ".join(names) if not names.is_empty() else "Market / unlinked"
 
 func _output_summary(building: Dictionary, recipe: Dictionary) -> String:
+	if str(recipe.get("output_name", "")) == "power": return "Electricity grid"
+	var service = preload("res://scripts/middleman_service.gd")
+	var iid_for_output := str(building.instance_id)
+	if service.side_all_middleman(iid_for_output, "output"): return "Logistics intermediary"
+	if service.enabled(iid_for_output) and (recipe.get("outputs", []) as Array).any(func(item: Dictionary) -> bool: return service.buys_output(iid_for_output, str(item.get("good_id", "")))): return "Mixed logistics"
 	var iid := str(building.get("instance_id", ""))
 	var gid := BuildingStatus.primary_output_good_id(recipe)
 	var split := MatchState.get_output_split_destinations(iid, gid)
@@ -2229,7 +2392,7 @@ func _output_summary(building: Dictionary, recipe: Dictionary) -> String:
 
 # A clickable routing card (LABEL kicker + value + chevron) → opens a sheet. A PanelContainer,
 # because Buttons don't size to child containers (the DS clickable-card pattern).
-func _route_card(label: String, value: String, on_press: Callable) -> Control:
+func _route_card(label: String, value: String, on_press: Callable, icon_texture: Texture2D = null) -> Control:
 	var card := PanelContainer.new()
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var st := StyleBoxFlat.new()
@@ -2244,14 +2407,27 @@ func _route_card(label: String, value: String, on_press: Callable) -> Control:
 	card.gui_input.connect(func(e: InputEvent) -> void:
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 			on_press.call())
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 10)
+	card.add_child(body)
+	var side_icon: TextureRect = null
+	if icon_texture != null:
+		side_icon = _off_white_icon_rect(icon_texture, Vector2(44, 68))
+		side_icon.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		body.add_child(side_icon)
 	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 1)
-	card.add_child(vb)
+	vb.add_theme_constant_override("separation", 2)
+	vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vb.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.add_child(vb)
+	var heading := HBoxContainer.new()
+	heading.add_theme_constant_override("separation", 6)
+	vb.add_child(heading)
 	var l := Label.new()
 	l.theme_type_variation = "Caption"
 	l.text = label.to_upper()
 	l.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
-	vb.add_child(l)
+	heading.add_child(l)
 	var vrow := HBoxContainer.new()
 	vrow.add_theme_constant_override("separation", DS.SP["SM"])
 	vb.add_child(vrow)
@@ -2267,14 +2443,24 @@ func _route_card(label: String, value: String, on_press: Callable) -> Control:
 	vrow.add_child(chev)
 	return card
 
+func _off_white_icon_rect(texture: Texture2D, size: Vector2) -> TextureRect:
+	var icon := TextureRect.new()
+	icon.texture = texture
+	icon.custom_minimum_size = size
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	var shader := Shader.new()
+	shader.code = "shader_type canvas_item; uniform vec4 ink : source_color; void fragment(){ COLOR = vec4(ink.rgb, texture(TEXTURE, UV).a * ink.a); }"
+	var material := ShaderMaterial.new()
+	material.shader = shader
+	material.set_shader_parameter("ink", CREAM)
+	icon.material = material
+	return icon
+
 func _open_input_sources_sheet(building: Dictionary, recipe: Dictionary) -> void:
 	var iid := str(building.get("instance_id", ""))
 	_open_sheet("Input sources", func(vb: VBoxContainer) -> void:
-		var note := Label.new()
-		note.theme_type_variation = "Caption"
-		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		note.text = "Choose where each input is drawn from — auto-routed from a linked producer on your network (falling back to the market), or restricted to this tile's stockpile only."
-		vb.add_child(note)
+		_add_logistics_options(vb,building,"input")
 		# Group linked producers by input good so each good gets its own section.
 		var producers: Dictionary = {}
 		for s in BuildingReadout.input_sources(building, recipe):
@@ -2283,89 +2469,200 @@ func _open_input_sources_sheet(building: Dictionary, recipe: Dictionary) -> void
 				producers[g] = []
 			producers[g].append(s)
 		var inputs: Array = recipe.get("inputs", [])
+		var market_available := str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1" or ResearchState.global_trade_license_available()
 		for ii in inputs.size():
 			var inp: Dictionary = inputs[ii]
 			var gid := str(inp.get("good_id", ""))
 			var internal := str(inp.get("internal_name", ""))
-			var nm := BuildingStatus.good_display_from_internal(internal)
 			if ii > 0:
 				vb.add_child(HSeparator.new())
-			# per-good section header (icon + name + qty/turn)
-			var head := HBoxContainer.new()
-			head.add_theme_constant_override("separation", DS.SP["SM"])
-			head.add_child(_good_icon_pill(gid, internal, int(inp.get("qty", 0)), MARKET_ICON))
-			var hcol := VBoxContainer.new()
-			hcol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			hcol.add_theme_constant_override("separation", 0)
-			hcol.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			head.add_child(hcol)
-			var name_l := Label.new()
-			name_l.theme_type_variation = "BuildingName"
-			name_l.text = nm
-			hcol.add_child(name_l)
-			var qty_l := Label.new()
-			qty_l.theme_type_variation = "Caption"
-			qty_l.text = "%d / turn" % int(inp.get("qty", 0))
-			hcol.add_child(qty_l)
-			vb.add_child(head)
-			# editable source toggle — auto-route vs tile-only
-			var tile_only := MatchState.is_input_tile_only(iid, gid)
-			vb.add_child(_dest_option("Auto-route", "Draw from a linked producer on your network, or buy from the market.", not tile_only, func() -> void:
-				MatchState.set_input_tile_only(iid, gid, false)
-				_queue_refresh()
-				_open_input_sources_sheet(building, recipe)))
-			vb.add_child(_dest_option("Tile stockpile only", "Only consume this input from this tile's stockpile.", tile_only, func() -> void:
-				MatchState.set_input_tile_only(iid, gid, true)
-				_queue_refresh()
-				_open_input_sources_sheet(building, recipe)))
-			# linked producers feeding this good (Go To), if any
+			# Each material has independent primary/fallback slots. Physical routes retain
+			# the existing stockpile-first/market-top-up behaviour once goods reach this tile.
+			var route: Dictionary = preload("res://scripts/middleman_service.gd").input_source_route(iid, gid)
+			# An untouched route starts with the intermediary as its visible fallback. Keep
+			# the legacy market pipeline underneath until the player commits a route choice.
+			var saved_routes: Dictionary = building.get("logistics_input_routes", {})
+			if not saved_routes.has(gid):
+				route["fallback"] = "middleman"
 			var srcs: Array = producers.get(gid, [])
-			if not srcs.is_empty():
-				var sh := Label.new()
-				sh.theme_type_variation = "Caption"
-				sh.text = "SUPPLIED BY"
-				sh.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
-				vb.add_child(sh)
-				for s in srcs:
-					vb.add_child(_consumer_row(str(s.get("building_name", "")), str(s.get("instance_id", ""))))
-			elif not tile_only:
-				var mkt := Label.new()
-				mkt.theme_type_variation = "Caption"
-				mkt.text = "No linked producer — bought from the market."
-				mkt.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
-				vb.add_child(mkt))
+			_add_input_good_group(vb, building, recipe, gid, internal, int(inp.get("qty", 0)), route, market_available, srcs)
+	)
+
+func _input_route_choices(building: Dictionary, gid: String, _slot: String, market_available: bool) -> Array:
+	var choices: Array = []
+	choices.append({
+		"source": "stockpile",
+		"title": "This tile's stockpile",
+		"detail": "Consume from the stockpile on the building's tile."
+	})
+	choices.append({
+		"source": "market",
+		"title": "Global market",
+		"detail": "Buy through the nearest port when the tile's available goods are short." if market_available else "[Requires Government Import/Export License]",
+		"enabled": market_available,
+	})
+	var service = preload("res://scripts/middleman_service.gd")
+	var middleman_available := service.material_tradeable(gid, "input") and service.eligible(building)
+	choices.append({
+		"source": "middleman",
+		"title": "Logistics Intermediary",
+		"detail": "Use the private carrier service for this input. It is an exclusive private route." if middleman_available else "Logistics Intermediary unavailable for this input.",
+		"enabled": middleman_available,
+	})
+	return choices
+
+func _add_input_good_group(vb: VBoxContainer, building: Dictionary, recipe: Dictionary, gid: String, internal: String, qty: int, route: Dictionary, market_available: bool, producers: Array) -> void:
+	var group := VBoxContainer.new()
+	group.add_theme_constant_override("separation", 6)
+	var chooser := HBoxContainer.new()
+	chooser.alignment = BoxContainer.ALIGNMENT_CENTER
+	chooser.add_theme_constant_override("separation", 10)
+	var good_icon := _good_icon_pill(gid, internal, qty, 92)
+	good_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	chooser.add_child(good_icon)
+	var slot_col := VBoxContainer.new()
+	slot_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slot_col.alignment = BoxContainer.ALIGNMENT_CENTER
+	slot_col.add_theme_constant_override("separation", 6)
+	slot_col.add_child(_input_route_slot_row(building, recipe, gid, route, market_available, "primary"))
+	slot_col.add_child(_input_route_slot_row(building, recipe, gid, route, market_available, "fallback"))
+	chooser.add_child(slot_col)
+	group.add_child(chooser)
+	group.add_child(_route_details_section(building, gid, qty, route, producers))
+	vb.add_child(group)
+
+func _input_route_slot_row(building: Dictionary, recipe: Dictionary, gid: String, route: Dictionary, market_available: bool, slot: String) -> Control:
+	var iid := str(building.get("instance_id", ""))
+	var slot_box := VBoxContainer.new()
+	slot_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	slot_box.add_theme_constant_override("separation", 2)
+	var slot_label := Label.new()
+	slot_label.theme_type_variation = "Caption"
+	slot_label.text = "PRIMARY" if slot == "primary" else "FALLBACK"
+	slot_label.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
+	slot_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	slot_box.add_child(slot_label)
+	var centered := CenterContainer.new()
+	centered.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	var selected_source := str(route.get(slot, ""))
+	# Every material always has a fallback route. Until the player explicitly changes
+	# it, the fallback row defaults visually to the Logistics Intermediary.
+	if slot == "fallback" and selected_source == "":
+		selected_source = "middleman"
+	for choice: Dictionary in _input_route_choices(building, gid, slot, market_available):
+		var source := str(choice.get("source", ""))
+		var title := str(choice.get("title", ""))
+		var detail := str(choice.get("detail", ""))
+		var enabled := bool(choice.get("enabled", true))
+		var selected := selected_source == source or (source == "stockpile" and selected_source.begins_with("tile:"))
+		row.add_child(_dest_option(title, detail, selected, func() -> void:
+			var result := preload("res://scripts/middleman_service.gd").set_input_route(iid, gid, slot, source)
+			if not bool(result.get("ok", false)):
+				MatchState.request_toast(str(result.get("reason", "Unable to change input source.")), "warning")
+			_queue_refresh()
+			_open_input_sources_sheet(building, recipe), enabled))
+	centered.add_child(row)
+	slot_box.add_child(centered)
+	return slot_box
+
+func _route_details_section(building: Dictionary, gid: String, qty: int, route: Dictionary, producers: Array = []) -> Control:
+	var panel := PanelContainer.new()
+	var st := StyleBoxFlat.new()
+	st.bg_color = DS.PALETTE["BG_INSET"]
+	st.border_color = Color(DS.PALETTE["BORDER_SOFT"].r, DS.PALETTE["BORDER_SOFT"].g, DS.PALETTE["BORDER_SOFT"].b, 0.45)
+	st.set_border_width_all(1)
+	st.set_corner_radius_all(7)
+	st.set_content_margin_all(7)
+	panel.add_theme_stylebox_override("panel", st)
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 3)
+	panel.add_child(body)
+	var toggle := Button.new()
+	toggle.flat = true
+	toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	toggle.text = "Route details [-]"
+	toggle.toggle_mode = true
+	toggle.set_pressed_no_signal(true)
+	toggle.custom_minimum_size = Vector2(0, 28)
+	toggle.focus_mode = Control.FOCUS_NONE
+	toggle.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	toggle.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
+	body.add_child(toggle)
+	var rows := VBoxContainer.new()
+	rows.add_theme_constant_override("separation", 2)
+	body.add_child(rows)
+	var primary := Label.new()
+	primary.theme_type_variation = "Caption"
+	primary.text = _route_detail_line(building, gid, qty, str(route.get("primary", "")), "PRIMARY")
+	primary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rows.add_child(primary)
+	var fallback := Label.new()
+	fallback.theme_type_variation = "Caption"
+	fallback.text = _route_detail_line(building, gid, qty, str(route.get("fallback", "")), "FALLBACK")
+	fallback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rows.add_child(fallback)
+	if not producers.is_empty():
+		var supplied := Label.new()
+		supplied.theme_type_variation = "Caption"
+		supplied.text = "Supplied by:"
+		supplied.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
+		rows.add_child(supplied)
+		for source: Dictionary in producers:
+			rows.add_child(_consumer_row(str(source.get("building_name", "")), str(source.get("instance_id", ""))))
+	rows.visible = true
+	toggle.toggled.connect(func(open: bool) -> void:
+		rows.visible = open
+		toggle.text = "Route details [-]" if open else "Route details [+]")
+	return panel
+
+func _route_detail_line(building: Dictionary, gid: String, qty: int, source: String, slot: String) -> String:
+	var good_name := Catalog.get_display_name(gid)
+	if slot == "FALLBACK" and source == "":
+		source = "middleman"
+	if source == "":
+		return "%s: none" % slot.capitalize()
+	return "%d %s/turn from %s" % [qty, good_name, _route_source_description(building, gid, source)]
+
+func _route_source_description(building: Dictionary, _gid: String, source: String) -> String:
+	var tile_id := str(building.get("tile_id", ""))
+	if source == "stockpile":
+		return Catalog.tile_label(tile_id)
+	if source == "market":
+		var port := TransportService.nearest_port_tile(tile_id)
+		return "Global Market via %s" % (Catalog.tile_label(port) if port != "" else "nearest port")
+	if source == "middleman":
+		return "Logistics Intermediary"
+	if source.begins_with("tile:"):
+		return Catalog.tile_label(source.trim_prefix("tile:"))
+	return source
 
 func _open_output_sheet(building: Dictionary, recipe: Dictionary) -> void:
+	if str(recipe.get("output_name", "")) == "power":
+		_open_sheet("Electricity output", func(vb: VBoxContainer) -> void:
+			var note := Label.new()
+			note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			note.text = "Electricity uses your power network and the grid. It is not stored in the tile stockpile or traded through the Logistics Intermediary. Existing power-priority settings determine local use and grid sales."
+			vb.add_child(note))
+		return
 	var iid := str(building.get("instance_id", ""))
-	var tile_id := str(building.get("tile_id", ""))
 	var good_id := BuildingStatus.primary_output_good_id(recipe)
 	_open_sheet("Output destination", func(vb: VBoxContainer) -> void:
+		# Keep output routing independent from inputs. The all-output shortcuts stay
+		# at the top even when this recipe has only one tradeable output.
+		_add_logistics_options(vb,building,"output")
+		for output: Dictionary in recipe.get("outputs", []):
+			var output_gid := str(output.get("good_id", ""))
+			if not preload("res://scripts/middleman_service.gd").material_tradeable(output_gid, "output"):
+				continue
+			if output_gid != good_id:
+				vb.add_child(HSeparator.new())
+			_add_output_good_options(vb, building, recipe, output_gid)
 		if good_id == "":
 			return
 		var split := MatchState.get_output_split_destinations(iid, good_id)
-		var cur_dest := MatchState.get_output_stockpile_destination(iid, good_id)
-		var is_market := MatchState.is_output_market(iid, good_id)
-		var on_tile := cur_dest != "" and cur_dest == tile_id
-		var other := split.size() >= 2 or (cur_dest != "" and cur_dest != tile_id)
-		if not is_market and not on_tile and not other:  # no explicit route → the global sell mode
-			if MatchState.sell_mode == MatchState.SellMode.STOCKPILE_ALL:
-				on_tile = true
-			else:
-				is_market = true
-		# Selecting Market / Tile re-renders the sheet in place (keeps it open); only
-		# "ship to another tile" hides the panel so the player can pick a map tile.
-		vb.add_child(_dest_option("Global market", "Sell at market price via the nearest port.", is_market, func() -> void:
-			MatchState.route_output_to_market(iid, good_id)
-			_queue_refresh()
-			_open_output_sheet(building, recipe)))
-		vb.add_child(_dest_option("Tile stockpile", "Store the output on this tile for later use.", on_tile, func() -> void:
-			MatchState.set_output_stockpile_destination(iid, tile_id, good_id)
-			_queue_refresh()
-			_open_output_sheet(building, recipe)))
-		vb.add_child(_dest_option("Ship to another tile", "Pick a tile on the shipping map to feed a downstream building you own.", other, func() -> void:
-			MatchState.begin_output_stockpile_selection(iid, good_id, true)
-			_close_sheet()))
-		if split.size() >= 2:
+		if split.size() >= 2 and not preload("res://scripts/middleman_service.gd").uses_outputs(iid):
 			vb.add_child(HSeparator.new())
 			var split_head := Label.new()
 			split_head.theme_type_variation = "Caption"
@@ -2437,6 +2734,124 @@ func _open_output_sheet(building: Dictionary, recipe: Dictionary) -> void:
 			for c in consumers:
 				vb.add_child(_consumer_row(str(c.get("name", "")), str(c.get("instance_id", "")))))
 
+func _add_output_good_options(vb: VBoxContainer, building: Dictionary, recipe: Dictionary, good_id: String) -> void:
+	var iid := str(building.get("instance_id", ""))
+	var tile_id := str(building.get("tile_id", ""))
+	var service = preload("res://scripts/middleman_service.gd")
+	var split := MatchState.get_output_split_destinations(iid, good_id)
+	var cur_dest := MatchState.get_output_stockpile_destination(iid, good_id)
+	var is_market := MatchState.is_output_market(iid, good_id)
+	var on_tile := cur_dest != "" and cur_dest == tile_id
+	var other := split.size() >= 2 or (cur_dest != "" and cur_dest != tile_id)
+	var intermediary := service.buys_output(iid, good_id)
+	if intermediary:
+		# The service owns this good's destination. Do not let the global
+		# STOCKPILE_ALL fallback paint it as a tile route after a license or
+		# contract becomes available.
+		is_market = false
+		on_tile = false
+		other = false
+	elif not is_market and not on_tile and not other:
+		if MatchState.sell_mode == MatchState.SellMode.STOCKPILE_ALL: on_tile = true
+		else: is_market = true
+	var output_internal := ""
+	var output_qty := 0
+	for output: Dictionary in recipe.get("outputs", []):
+		if str(output.get("good_id", "")) == good_id:
+			output_internal = str(output.get("internal_name", ""))
+			output_qty = int(output.get("qty", 0))
+			break
+	var group := VBoxContainer.new()
+	group.add_theme_constant_override("separation", 6)
+	var chooser := HBoxContainer.new()
+	chooser.alignment = BoxContainer.ALIGNMENT_CENTER
+	chooser.add_theme_constant_override("separation", 10)
+	var good_icon := _good_icon_pill(good_id, output_internal, output_qty, 92)
+	good_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	chooser.add_child(good_icon)
+	var row := HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 8)
+	row.add_theme_constant_override("v_separation", 8)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.alignment = FlowContainer.ALIGNMENT_CENTER
+	# Only buildings the intermediary can serve (Logistics Intermediary games) offer it.
+	if service.eligible(building):
+		row.add_child(_dest_option("Logistics Intermediary", "Sell this output privately, including transport and storage.", service.buys_output(iid, good_id), func() -> void:
+			var result := service.set_good_mode(iid, "output", good_id, "middleman")
+			if not bool(result.get("ok", false)): MatchState.request_toast(str(result.get("reason", "Unable to change output destination.")), "warning")
+			_queue_refresh()
+			_open_output_sheet(building, recipe)))
+	# Selecting Market / Tile re-renders the sheet in place; shipping to another tile
+	# opens the map picker.
+	var market_available := str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1" or ResearchState.global_trade_license_available()
+	var market_detail := "Sell at market price via the nearest port." if market_available else "[Requires Government Import/Export License]"
+	row.add_child(_logistics_route_option(building, "output", "Global market", market_detail, is_market, func() -> void:
+		MatchState.route_output_to_market(iid, good_id)
+		_queue_refresh()
+		_open_output_sheet(building, recipe), good_id, market_available))
+	var stockpile_available := ResearchState.open_logistics_contracts_available()
+	var stockpile_detail := "Store the output on this tile for later use." if stockpile_available else "[Requires Open Logistics Contracts]"
+	row.add_child(_logistics_route_option(building, "output", "Tile stockpile", stockpile_detail, on_tile, func() -> void:
+		MatchState.set_output_stockpile_destination(iid, tile_id, good_id)
+		_queue_refresh()
+		_open_output_sheet(building, recipe)
+		preload("res://scripts/stockpile_route_prompt.gd").offer(get_parent(), tile_id, good_id), good_id, stockpile_available))
+	row.add_child(_logistics_route_option(building, "output", "Ship to another tile", "Pick a tile on the shipping map to feed a downstream building you own." if stockpile_available else "[Requires Open Logistics Contracts]", other, func() -> void:
+		MatchState.begin_output_stockpile_selection(iid, good_id, true)
+		_close_sheet(), good_id, stockpile_available))
+	chooser.add_child(row)
+	group.add_child(chooser)
+	group.add_child(_output_route_details_section(building, good_id, output_qty, intermediary, is_market, on_tile, other))
+	vb.add_child(group)
+
+func _output_route_details_section(building: Dictionary, gid: String, qty: int, intermediary: bool, is_market: bool, on_tile: bool, other: bool) -> Control:
+	var panel := PanelContainer.new()
+	var st := StyleBoxFlat.new()
+	st.bg_color = DS.PALETTE["BG_INSET"]
+	st.border_color = Color(DS.PALETTE["BORDER_SOFT"].r, DS.PALETTE["BORDER_SOFT"].g, DS.PALETTE["BORDER_SOFT"].b, 0.45)
+	st.set_border_width_all(1)
+	st.set_corner_radius_all(7)
+	st.set_content_margin_all(7)
+	panel.add_theme_stylebox_override("panel", st)
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 3)
+	panel.add_child(body)
+	var toggle := Button.new()
+	toggle.flat = true
+	toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	toggle.text = "Route details [-]"
+	toggle.toggle_mode = true
+	toggle.set_pressed_no_signal(true)
+	toggle.custom_minimum_size = Vector2(0, 28)
+	toggle.focus_mode = Control.FOCUS_NONE
+	toggle.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	toggle.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
+	body.add_child(toggle)
+	var rows := VBoxContainer.new()
+	rows.add_theme_constant_override("separation", 2)
+	body.add_child(rows)
+	var line := Label.new()
+	line.theme_type_variation = "Caption"
+	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var good_name := Catalog.get_display_name(gid)
+	if intermediary:
+		line.text = "%d %s/turn to Logistics Intermediary" % [qty, good_name]
+	elif is_market:
+		var port := TransportService.nearest_port_tile(str(building.get("tile_id", "")))
+		line.text = "%d %s/turn to Global Market via %s" % [qty, good_name, Catalog.tile_label(port) if port != "" else "nearest port"]
+	elif on_tile:
+		line.text = "%d %s/turn to %s" % [qty, good_name, Catalog.tile_label(str(building.get("tile_id", "")))]
+	elif other:
+		line.text = "%d %s/turn to selected stockpile route(s)" % [qty, good_name]
+	else:
+		line.text = "%d %s/turn — no destination selected" % [qty, good_name]
+	rows.add_child(line)
+	rows.visible = true
+	toggle.toggled.connect(func(open: bool) -> void:
+		rows.visible = open
+		toggle.text = "Route details [-]" if open else "Route details [+]")
+	return panel
+
 # A read-only destination summary card (name + freight/turns detail) for the output sheet.
 func _dest_summary_row(name_txt: String, detail: String) -> Control:
 	var card := _make_card()
@@ -2479,47 +2894,52 @@ func _consumer_row(name_txt: String, target_iid: String) -> Control:
 		hb.add_child(go)
 	return card
 
-# A radio-style destination option card (dot filled when active).
-func _dest_option(title: String, detail: String, active: bool, on_press: Callable) -> Control:
+# An icon-only destination option card. The full name and routing detail live in the
+# tooltip so several choices can sit side by side without repeating prose under each one.
+func _dest_option(title: String, detail: String, active: bool, on_press: Callable, enabled: bool = true) -> Control:
 	var accent: Color = DS.PALETTE["ACCENT"]
 	var card := PanelContainer.new()
+	# Icon-only cards carry their title in the node name so tutorial spotlights and
+	# harnesses can target a specific route, e.g. RouteOption_ShipToAnotherTile.
+	card.name = ("RouteOption_" + title.to_pascal_case()).validate_node_name()
+	card.custom_minimum_size = Vector2(78, 78)
+	card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	card.modulate = Color(1, 1, 1, 0.42) if not enabled else Color.WHITE
 	var st := StyleBoxFlat.new()
 	st.bg_color = DS.PALETTE["BG_HIGHLIGHT"] if active else DS.PALETTE["BG_CARD"]
 	st.border_color = accent if active else DS.PALETTE["BORDER_SOFT"]
 	st.set_border_width_all(1)
 	st.set_corner_radius_all(10)
-	st.set_content_margin_all(11)
+	st.set_content_margin_all(5)
 	card.add_theme_stylebox_override("panel", st)
+	card.tooltip_text = "%s\n%s" % [title, detail] if detail != "" else title
+	# Locked routes still need to receive hover so their tooltip can explain the
+	# missing research. The click handler below remains gated by `enabled`.
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
-	card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if enabled else Control.CURSOR_ARROW
 	card.gui_input.connect(func(e: InputEvent) -> void:
-		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+		if enabled and e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 			# The callback can hide this sheet and expose the map during this event.
 			card.accept_event()
 			on_press.call())
-	var hb := HBoxContainer.new()
-	hb.add_theme_constant_override("separation", DS.SP["SM"])
-	card.add_child(hb)
-	var dot := _RadioDot.new()
-	dot.on = active
-	dot.col = accent
-	dot.custom_minimum_size = Vector2(18, 18)
-	dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	hb.add_child(dot)
-	var col := VBoxContainer.new()
-	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col.add_theme_constant_override("separation", 1)
-	hb.add_child(col)
-	var t := Label.new()
-	t.theme_type_variation = "Body"
-	t.text = title
-	col.add_child(t)
-	var d := Label.new()
-	d.theme_type_variation = "Caption"
-	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	d.text = detail
-	col.add_child(d)
+	var icon := _RouteIcon.new()
+	icon.kind = _route_kind_for_title(title)
+	icon.active = active
+	icon.accent = accent
+	icon.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	icon.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	card.add_child(icon)
 	return card
+
+func _route_kind_for_title(title: String) -> String:
+	var t := title.to_lower()
+	if t.contains("intermediary"):
+		return "middleman"
+	if t.contains("market"):
+		return "market"
+	if t.contains("another tile") or t.begins_with("stockpile:"):
+		return "remote_stockpile"
+	return "stockpile"
 
 # --- labour (headcount, not per turn — the wage is the per-turn figure) ---------------------
 
@@ -2702,3 +3122,137 @@ func _gui_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion and _dragging:
 		global_position = get_global_mouse_position() + _drag_offset
 		accept_event()
+
+func _open_logistics_sheet(building: Dictionary) -> void:
+	var recipe := Catalog.get_recipe(str(building.recipe_id))
+	_open_sheet("Building logistics",func(vb: VBoxContainer) -> void:
+		var note := Label.new()
+		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		note.text = "Choose inputs and outputs independently. Manage logistics uses generic carriers for physical deliveries. Middleman goods stay private to this building; retained goods use your tile storage."
+		vb.add_child(note)
+		vb.add_child(_route_card("Inputs",_input_summary(building,recipe),func() -> void: _open_input_sources_sheet(building,recipe), INPUT_ICON))
+		vb.add_child(_route_card("Outputs",_output_summary(building,recipe),func() -> void: _open_output_sheet(building,recipe), OUTPUT_ICON))
+		var service = preload("res://scripts/middleman_service.gd")
+		var iid := str(building.instance_id)
+		if service.enabled(iid):
+			var p: Dictionary = service.preview(iid)
+			for pair in [["Intermediary input purchases",float(p.buy.goods_value)],["Intermediary sale value",float(p.sale.goods_value)],["Upfront service + factory cash",float(p.upfront)],["Protected commitments",float(p.protected_commitments)],["Loan needed",float(p.funding_draw)]]:
+				vb.add_child(_metric(str(pair[0]),"£%.2f" % float(pair[1]),DS.PALETTE["TEXT"],false))
+			var status := Label.new()
+			status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			status.text = str(p.reason)+" Estimates use current prices. Managed purchases and deliveries are billed separately; future sales cannot fund inputs."
+			vb.add_child(status)
+			for side in ["inputs","outputs"]:
+				for gid in p[side]:
+					vb.add_child(_metric("Private %s: %s" % [side,Catalog.get_display_name(str(gid))],str(p[side][gid]),DS.PALETTE["TEXT"],false)))
+
+func _add_logistics_options(vb: VBoxContainer, building: Dictionary, side: String) -> void:
+	var service = preload("res://scripts/middleman_service.gd")
+	if not service.eligible(building) or not service.recipe_side(Catalog.get_recipe(str(building.recipe_id)), side): return
+	var iid := str(building.instance_id)
+	var heading := Label.new()
+	heading.theme_type_variation = "Caption"
+	heading.text = "ALL INPUTS" if side == "input" else "ALL OUTPUTS"
+	heading.add_theme_color_override("font_color", DS.PALETTE["TEXT_DIM"])
+	vb.add_child(heading)
+	var row := HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 8)
+	row.add_theme_constant_override("v_separation", 8)
+	var active: bool = service.side_all_middleman(iid, side)
+	row.add_child(_dest_option("All %s — Logistics Intermediary" % ("inputs" if side == "input" else "outputs"), "Buys inputs privately for this building." if side == "input" else "Buys this building's production. Transport and storage are included.",active,func() -> void: _request_logistics_mode(building,side,"middleman")))
+	var market_available := str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1" or ResearchState.global_trade_license_available()
+	var stockpile_available := ResearchState.open_logistics_contracts_available()
+	if market_available:
+		row.add_child(_dest_option("All %s — Global market" % ("inputs" if side == "input" else "outputs"), "Use the ordinary market route for every tradeable good on this side.", _all_managed_source(building, side, "market"), func() -> void: _request_all_managed_source(building, side, "market"), true))
+	else:
+		row.add_child(_dest_option("All %s — Global market" % ("inputs" if side == "input" else "outputs"), "[Requires Government Import/Export License]", false, func() -> void: pass, false))
+	if stockpile_available:
+		row.add_child(_dest_option("All %s — Tile stockpile" % ("inputs" if side == "input" else "outputs"), "Use this building's tile stockpile for every tradeable good on this side.", _all_managed_source(building, side, "tile"), func() -> void: _request_all_managed_source(building, side, "tile"), true))
+	else:
+		row.add_child(_dest_option("All %s — Tile stockpile" % ("inputs" if side == "input" else "outputs"), "[Requires Open Logistics Contracts]", false, func() -> void: pass, false))
+	vb.add_child(row)
+	vb.add_child(HSeparator.new())
+
+func _all_managed_source(building: Dictionary, side: String, source: String) -> bool:
+	var iid := str(building.get("instance_id", ""))
+	var service = preload("res://scripts/middleman_service.gd")
+	var items: Array = service._side_items(iid, side).filter(func(item: Dictionary) -> bool: return service.material_tradeable(str(item.get("good_id", "")), side))
+	if items.is_empty(): return false
+	for item: Dictionary in items:
+		var gid := str(item.get("good_id", ""))
+		if side == "input":
+			if service.supplies_good(iid, gid): return false
+			if source == "tile" and not MatchState.is_input_tile_only(iid, gid): return false
+			if source == "market" and MatchState.is_input_tile_only(iid, gid): return false
+		else:
+			if service.buys_output(iid, gid): return false
+			var output_tile := MatchState.get_output_stockpile_destination(iid, gid)
+			var default_market := output_tile == "" and MatchState.get_output_split_destinations(iid, gid).is_empty() and MatchState.sell_mode != MatchState.SellMode.STOCKPILE_ALL
+			var default_tile := output_tile == "" and MatchState.get_output_split_destinations(iid, gid).is_empty() and MatchState.sell_mode == MatchState.SellMode.STOCKPILE_ALL
+			if source == "market" and not MatchState.is_output_market(iid, gid) and not default_market: return false
+			if source == "tile" and output_tile != str(building.get("tile_id", "")) and not default_tile: return false
+	return true
+
+func _request_all_managed_source(building: Dictionary, side: String, source: String) -> void:
+	var service = preload("res://scripts/middleman_service.gd")
+	var action := func() -> bool: return _apply_all_managed_source(building, side, source)
+	if service.side_all_middleman(str(building.get("instance_id", "")), side):
+		preload("res://scripts/logistics_confirmation.gd").request(self, "managed", action)
+	else:
+		action.call()
+
+func _apply_all_managed_source(building: Dictionary, side: String, source: String) -> bool:
+	var iid := str(building.get("instance_id", ""))
+	var service = preload("res://scripts/middleman_service.gd")
+	var result := service.set_mode(iid, side, "managed")
+	if not bool(result.get("ok", false)):
+		MatchState.request_toast(str(result.get("reason", "Unable to change logistics source.")), "warning")
+		return false
+	var recipe := Catalog.get_recipe(str(building.get("recipe_id", "")))
+	for item: Dictionary in recipe.get("inputs" if side == "input" else "outputs", []):
+		var gid := str(item.get("good_id", ""))
+		if not service.material_tradeable(gid, side): continue
+		if side == "input":
+			var chosen := "market" if source == "market" else "stockpile"
+			var route_result := service.set_input_route(iid, gid, "primary", chosen)
+			if not bool(route_result.get("ok", false)):
+				MatchState.request_toast(str(route_result.get("reason", "Unable to change input source.")), "warning")
+				return false
+			var clear_result := service.set_input_route(iid, gid, "fallback", "")
+			if not bool(clear_result.get("ok", false)):
+				MatchState.request_toast(str(clear_result.get("reason", "Unable to clear input fallback.")), "warning")
+				return false
+		elif source == "market":
+			MatchState.route_output_to_market(iid, gid)
+		else:
+			MatchState.set_output_stockpile_destination(iid, str(building.get("tile_id", "")), gid)
+	_queue_refresh()
+	if side == "input": _open_input_sources_sheet(building, recipe)
+	else: _open_output_sheet(building, recipe)
+	return true
+
+func _logistics_route_option(building: Dictionary, side: String, title: String, detail: String, active: bool, on_press: Callable, good_id: String = "", enabled: bool = true) -> Control:
+	var service = preload("res://scripts/middleman_service.gd")
+	var intermediary: bool = service.supplies_good(str(building.instance_id), good_id) if side == "input" and good_id != "" else (service.buys_output(str(building.instance_id), good_id) if side == "output" and good_id != "" else service.side_all_middleman(str(building.instance_id), side))
+	var action := func() -> void:
+		if intermediary: _request_logistics_mode(building, side, "managed", on_press, good_id)
+		else: on_press.call()
+	return _dest_option(title, detail, active and not intermediary, action, enabled)
+
+func _request_logistics_mode(building: Dictionary, side: String, mode: String, after_change: Callable = Callable(), good_id: String = "") -> void:
+	var service = preload("res://scripts/middleman_service.gd")
+	var active: bool = service.supplies_good(str(building.instance_id), good_id) if side == "input" and good_id != "" else (service.buys_output(str(building.instance_id), good_id) if side == "output" and good_id != "" else service.side_all_middleman(str(building.instance_id), side))
+	if (mode == "middleman") == active: return
+	var apply := func() -> bool:
+		var result: Dictionary = service.set_good_mode(str(building.instance_id), side, good_id, mode) if good_id != "" else service.set_mode(str(building.instance_id), side, mode)
+		if not bool(result.ok):
+			MatchState.request_toast(str(result.reason), "warning")
+			return false
+		_queue_refresh()
+		if after_change.is_valid(): after_change.call()
+		else:
+			var recipe := Catalog.get_recipe(str(building.recipe_id))
+			if side == "input": _open_input_sources_sheet(building, recipe)
+			else: _open_output_sheet(building, recipe)
+		return true
+	preload("res://scripts/logistics_confirmation.gd").request(self, mode, apply)

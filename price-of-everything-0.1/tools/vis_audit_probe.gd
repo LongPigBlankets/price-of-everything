@@ -27,7 +27,7 @@ func _ready() -> void:
 	var hijacked: Dictionary = bv.get("_hijacked_masses")
 	print("[VIS] start=%s  total placements=%d  hijack claims=%d" % [start_id, placements.size(), hijacked.size()])
 	for tile_id in TILES:
-		var sim: Array = MatchState.get_buildings_on_tile(tile_id)
+		var sim: Array = BuildingState.get_buildings_on_tile(tile_id)
 		var drawn := 0
 		var worn := 0
 		var rows: Array = []

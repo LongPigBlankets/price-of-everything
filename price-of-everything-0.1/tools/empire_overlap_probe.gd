@@ -32,7 +32,7 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 
-	print("DEFAULT use_empire_sprite_view=", MatchState.use_empire_sprite_view)
+	print("DEFAULT use_empire_sprite_view=", UiPrefs.use_empire_sprite_view)
 
 	# CONSTRUCTION: start two projects and confirm they join the graph as edge-less nodes
 	# wearing the construction sprite, each placed in the sector of its nearest port.
@@ -305,7 +305,7 @@ func _report_crossings(gw: Node) -> void:
 	# Only edges actually DRAWN at rest. With the port badge on, sell lines are focus-only, so
 	# counting them would measure a picture nobody sees.
 	var grps: Array = [{"a": gw.get("_edges"), "k": "input"}, {"a": gw.get("_market_edges"), "k": "buy"}]
-	if not MatchState.show_port_badge:
+	if not UiPrefs.show_port_badge:
 		grps.append({"a": gw.get("_sell_edges"), "k": "sell"})
 	for grp in grps:
 		for e in (grp["a"] as Array):
@@ -449,7 +449,7 @@ func _seg_cross(a: Vector2, b: Vector2, c: Vector2, d: Vector2) -> bool:
 ## flow restores it before committing any turns.
 func _seed_construction() -> void:
 	var tiles: Array = []
-	for b in MatchState.buildings.values():
+	for b in BuildingState.buildings.values():
 		var t := str(b.get("tile_id", ""))
 		if t != "" and not tiles.has(t):
 			tiles.append(t)
@@ -583,7 +583,7 @@ func _report_site_focus(gw: Node, ev: Node) -> void:
 
 func _seed() -> void:
 	var tiles: Array = []
-	for b in MatchState.buildings.values():
+	for b in BuildingState.buildings.values():
 		var t := str(b.get("tile_id", ""))
 		if t != "" and not tiles.has(t):
 			tiles.append(t)
@@ -603,9 +603,9 @@ func _seed() -> void:
 			continue
 		var rid := str((recs[0] as Dictionary).get("recipe_id", ""))
 		var iid := "ovl_%d" % k
-		MatchState.add_building(bids[k], rid, tiles[(k * 3) % tiles.size()], "player_1", iid)
-		if MatchState.buildings.has(iid):
-			MatchState.buildings[iid]["level"] = levels[k]
+		BuildingState.add_building(bids[k], rid, tiles[(k * 3) % tiles.size()], "player_1", iid)
+		if BuildingState.buildings.has(iid):
+			BuildingState.buildings[iid]["level"] = levels[k]
 	print("seeded ", bids.size(), " buildings")
 
 

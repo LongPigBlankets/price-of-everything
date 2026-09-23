@@ -59,7 +59,9 @@ const ALT_MENU_ICONS := {
 	"ResourcesButton": "goods",
 	"BuildingsButton": "building_ledger",
 	"MapmodesButton": "mapmodes",
-	"MarketButton": "market",
+	# The original market artwork contains a complete disc, ring and radial bevel.
+	# The bottom button supplies those surfaces itself, so use the separated object layer.
+	"MarketButton": "market_object",
 	"PoliticsButton": "politics",
 	"TechButton": "research",
 	"PeopleButton": "people",
@@ -113,8 +115,8 @@ func _ready() -> void:
 	construct_panel_v2 = load("res://scripts/construct_panel_v2.gd").new()
 	construct_panel.get_parent().add_child(construct_panel_v2)
 	construct_panel_v2.hide()
-	MatchState.construct_panel_v2_changed.connect(_on_construct_panel_v2_changed)
-	MatchState.empire_button_icon_changed.connect(_on_empire_button_icon_changed)
+	UiPrefs.construct_panel_v2_changed.connect(_on_construct_panel_v2_changed)
+	UiPrefs.empire_button_icon_changed.connect(_on_empire_button_icon_changed)
 	_apply_menu_icons()
 	%ConstructButton.pressed.connect(_on_construct_pressed)
 	%ResourcesButton.pressed.connect(_on_resources_pressed)
@@ -125,13 +127,17 @@ func _ready() -> void:
 	%TechButton.pressed.connect(_on_research_pressed)
 	%PeopleButton.pressed.connect(_on_people_pressed)
 	%EmpireButton.pressed.connect(_on_empire_pressed)
+	# Menu buttons are mouse controls. Leaving one focused makes the next Space key
+	# activate that button in the GUI layer, so Space appears to close one panel and
+	# reopen it on the following turn instead of consistently advancing the turn.
+	for menu_button in [%ConstructButton, %ResourcesButton, %BuildingsButton, %MarketButton, %PoliticsButton, %TechButton, %PeopleButton, %EmpireButton]:
+		(menu_button as Button).focus_mode = Control.FOCUS_NONE
 	# (Bottom-menu click cues are auto-wired by Audio, which gives %BottomMenu
 	# children the menu cue — see Audio._sound_for_button.)
 	money_panel.take_loan_dialog = take_loan_dialog
 	take_loan_dialog.loan_confirmed.connect(_on_loan_confirmed)
 	take_loan_dialog.hide()
 
-	# All panels start hidden
 	construct_panel.hide()
 	construct_panel_v2.hide()
 	resource_panel.hide()
@@ -255,7 +261,7 @@ func _apply_menu_icons() -> void:
 		_apply_alt_button_style(button_name)
 
 func _icon_key_for_button(button_name: String) -> String:
-	if button_name == "EmpireButton" and MatchState.use_empire_button_badge:
+	if button_name == "EmpireButton" and UiPrefs.use_empire_button_badge:
 		return EMPIRE_BUTTON_BADGE_ICON
 	return ALT_MENU_ICONS.get(button_name, "")
 
@@ -278,16 +284,15 @@ func _apply_alt_button_style(button_name: String) -> void:
 		return
 	var bg := Color(ALT_COLORS[button_name][0])
 	var fg := Color(ALT_COLORS[button_name][1])
-	# Every button takes the same path now — no per-button inset, no clipping. The Empire
-	# artwork used to need both because it was drawn as child TextureRects rather than as the
-	# button's icon; its PNG now carries the shared disc and emboss like all the others.
+	# The button owns the disc, ring and emboss. Icon PNGs are object layers only.
 	button.add_theme_stylebox_override("normal", _make_alt_button_style(fg, bg))
 	button.add_theme_stylebox_override("hover", _make_alt_button_style(fg, bg))
 	button.add_theme_stylebox_override("pressed", _make_alt_button_style(fg, bg.darkened(0.08)))
 	button.add_theme_stylebox_override("focus", _make_alt_button_style(fg, bg))
 	# Per-button glow texture: an inside-out radial (bright centre → fades to the
-	# ring) with the object cut out, so only the background glows on hover.
-	_ensure_alt_glow(button, Color(bg.lightened(0.3), 0.55), "res://assets/icons/ui_icons/alt/_glow_%s.png" % _icon_key_for_button(button_name))
+	# ring). It contains no icon geometry; the icon remains a separate object layer.
+	var glow_key := "market_clean" if button_name == "MarketButton" else _icon_key_for_button(button_name)
+	_ensure_alt_glow(button, Color(bg.lightened(0.3), 0.55), "res://assets/icons/ui_icons/alt/_glow_%s.png" % glow_key)
 
 func _on_empire_button_icon_changed(_use_badge: bool) -> void:
 	var icon_key := _icon_key_for_button("EmpireButton")
@@ -457,7 +462,7 @@ func _on_construct_pressed() -> void:
 		_set_panel_visible(panel, true)
 
 func _active_construct_panel() -> PanelContainer:
-	if MatchState.use_construct_panel_v2 and is_instance_valid(construct_panel_v2):
+	if UiPrefs.use_construct_panel_v2 and is_instance_valid(construct_panel_v2):
 		return construct_panel_v2
 	return construct_panel
 
@@ -592,7 +597,7 @@ func _on_victory_widget_clicked() -> void:
 
 ## Does crossing the win bar END the run, or only bank the win?
 ##
-## The campaign ends on the win (owner 2026-07-11). The DEMO does not: its bar is flat at
+## The campaign ends on the win. The DEMO does not: its bar is flat at
 ## 2,500 from turn 1, so a good player clears it around turn 40 — before the election, the
 ## carbon levy and the green subsidy, which are the whole reason the demo exists. Ending
 ## there would show a player none of it. The demo always plays its 100 turns, and the

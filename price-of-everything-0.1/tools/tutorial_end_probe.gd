@@ -63,9 +63,9 @@ func _nearest_infinite(from_tile: String, token: String) -> String:
 func _expand_depleting_deposits(turn: int) -> void:
 	if not _expand_deposits:
 		return
-	for iid in MatchState.buildings.keys():
-		var inst: Dictionary = MatchState.buildings[iid]
-		if not MatchState.is_player_owned(inst):
+	for iid in BuildingState.buildings.keys():
+		var inst: Dictionary = BuildingState.buildings[iid]
+		if not BuildingState.is_player_owned(inst):
 			continue
 		var tid := str(inst.get("tile_id", ""))
 		var recipe: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))
@@ -87,8 +87,8 @@ func _expand_depleting_deposits(turn: int) -> void:
 					% [turn, token, int(100.0 * rem / float(_deposit_start[key])), token])
 				_expanded[key] = true
 				continue
-			MatchState.purchase_tile_land(target, 1)
-			var new_id := MatchState.add_building(str(inst.get("building_id", "")),
+			BuildingState.purchase_tile_land(target, 1)
+			var new_id := BuildingState.add_building(str(inst.get("building_id", "")),
 				str(inst.get("recipe_id", "")), target, "player_1")
 			# Route the replacement to wherever the original was shipping, per output good,
 			# or it mines into a warehouse nobody draws from.
@@ -115,8 +115,8 @@ func _apply_level_schedule(turn: int) -> void:
 		return
 	_levels_applied[target] = true
 	var n := 0
-	for iid in MatchState.buildings.keys():
-		var inst: Dictionary = MatchState.buildings[iid]
+	for iid in BuildingState.buildings.keys():
+		var inst: Dictionary = BuildingState.buildings[iid]
 		if str(inst.get("owner", "")) != "player_1":
 			continue
 		if int(inst.get("level", 1)) < target:
@@ -159,9 +159,9 @@ func _run() -> void:
 		MatchState.enable_sell_surplus(str(t))
 	print("=== TUTORIAL-END PROBE  variant=%s  tile=%s  sell-surplus ON  start money=%.0f ===" % [
 		_variant, TILE, MatchState.money])
-	for iid in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[iid]
-		if MatchState.is_player_owned(inst):
+	for iid in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[iid]
+		if BuildingState.is_player_owned(inst):
 			print("  seeded: %s / %s on %s" % [inst.get("building_id"), inst.get("recipe_id"), inst.get("tile_id")])
 	var prev: float = MatchState.money
 	for t in range(1, TURNS + 1):
@@ -218,9 +218,9 @@ func _deep_report(t: int, s: Dictionary) -> void:
 		print("     price %s (%s) = %.3f (base %.3f)" % [
 			gid, Catalog.get_internal_name(gid), MarketState.get_price(gid),
 			float(Catalog.get_good(gid).get("base_price", 0.0))])
-	for iid in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[iid]
-		if not MatchState.is_player_owned(inst):
+	for iid in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[iid]
+		if not BuildingState.is_player_owned(inst):
 			continue
 		var rid := str(inst.get("recipe_id", ""))
 		var rec: Dictionary = Catalog.get_recipe(rid)
@@ -234,9 +234,9 @@ func _deep_report(t: int, s: Dictionary) -> void:
 
 
 func _becon(rid: String) -> float:
-	for iid in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[iid]
-		if str(inst.get("recipe_id", "")) == rid and MatchState.is_player_owned(inst):
+	for iid in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[iid]
+		if str(inst.get("recipe_id", "")) == rid and BuildingState.is_player_owned(inst):
 			var rec: Dictionary = Catalog.get_recipe(rid)
 			var bd: Dictionary = Catalog.get_building(str(inst.get("building_id", "")))
 			return float(BuildingReadout.economics(inst, rec, bd).get("net", 0.0))
@@ -252,9 +252,9 @@ func _report_expansion() -> void:
 			print("  nothing fell to %d%% — no expansion was needed" % int(EXPAND_AT_FRACTION * 100.0))
 		for line in _expand_log:
 			print("  " + line)
-		for iid in MatchState.buildings.keys():
-			var inst2: Dictionary = MatchState.buildings[iid]
-			if not MatchState.is_player_owned(inst2):
+		for iid in BuildingState.buildings.keys():
+			var inst2: Dictionary = BuildingState.buildings[iid]
+			if not BuildingState.is_player_owned(inst2):
 				continue
 			var t2 := str(inst2.get("tile_id", ""))
 			for tok2 in ["coal", "iron_ore", "copper_ore"]:
@@ -264,9 +264,9 @@ func _report_expansion() -> void:
 
 
 func _becon_other() -> float:
-	for iid in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[iid]
-		if str(inst.get("recipe_id", "")) != "r_056" and MatchState.is_player_owned(inst):
+	for iid in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[iid]
+		if str(inst.get("recipe_id", "")) != "r_056" and BuildingState.is_player_owned(inst):
 			var rec: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))
 			var bd: Dictionary = Catalog.get_building(str(inst.get("building_id", "")))
 			return float(BuildingReadout.economics(inst, rec, bd).get("net", 0.0))

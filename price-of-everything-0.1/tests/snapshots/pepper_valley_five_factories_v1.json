@@ -1,0 +1,2595 @@
+{
+  "expected_inputs": {
+    "g_001": 40,
+    "g_002": 40,
+    "g_003": 36
+  },
+  "expected_production": {
+    "g_004": 70,
+    "g_005": 25,
+    "g_006": 44,
+    "g_007": 33,
+    "g_008": 33
+  },
+  "expected_sales": {
+    "g_004": 33,
+    "g_006": 12,
+    "g_007": 1,
+    "g_008": 33
+  },
+  "failures": [],
+  "layout": [
+    {
+      "building": "b_002",
+      "output_stockpile": "tile_5_4",
+      "recipe": "r_003",
+      "tile": "tile_5_4"
+    },
+    {
+      "building": "b_007",
+      "output_stockpile": "tile_5_4",
+      "recipe": "r_008",
+      "tile": "tile_5_4"
+    },
+    {
+      "building": "b_002",
+      "output_stockpile": "tile_5_4",
+      "recipe": "r_007",
+      "tile": "tile_6_4"
+    },
+    {
+      "building": "b_002",
+      "output_stockpile": "tile_5_4",
+      "recipe": "r_005",
+      "tile": "tile_6_4"
+    }
+  ],
+  "routes": {
+    "internal": {
+      "delayed": false,
+      "legs": [
+        {
+          "from": "tile_6_4",
+          "mode": "roads",
+          "to": "tile_5_4"
+        }
+      ],
+      "path": [
+        "tile_6_4",
+        "tile_5_4"
+      ],
+      "reachable": true,
+      "tile_distance": 1,
+      "tiles": [
+        "tile_6_4",
+        "tile_5_4"
+      ],
+      "turns": 1
+    },
+    "sell": {
+      "covered_all": false,
+      "port": "tile_5_10",
+      "route": {
+        "delayed": true,
+        "legs": [
+          {
+            "from": "tile_5_4",
+            "mode": "roads",
+            "to": "tile_6_5"
+          },
+          {
+            "from": "tile_6_5",
+            "mode": "roads",
+            "to": "tile_7_7"
+          },
+          {
+            "from": "tile_7_7",
+            "mode": "roads",
+            "to": "tile_7_9"
+          },
+          {
+            "from": "tile_7_9",
+            "mode": "roads",
+            "to": "tile_5_10"
+          }
+        ],
+        "path": [
+          "tile_5_4",
+          "tile_6_5",
+          "tile_7_7",
+          "tile_7_9",
+          "tile_5_10"
+        ],
+        "reachable": true,
+        "tile_distance": 6,
+        "tiles": [
+          "tile_5_4",
+          "tile_6_4",
+          "tile_6_5",
+          "tile_7_6",
+          "tile_7_7",
+          "tile_7_8",
+          "tile_7_9",
+          "tile_6_9",
+          "tile_5_10"
+        ],
+        "turns": 4
+      },
+      "transport_cost": 30.4329912,
+      "turns": 4
+    },
+    "tile_5_4": {
+      "g_001": {
+        "cost": 0.75770145,
+        "covered": false,
+        "goods_cost": 0.601335,
+        "port": "tile_5_10",
+        "qty": 1,
+        "route": {
+          "delayed": true,
+          "legs": [
+            {
+              "from": "tile_5_10",
+              "mode": "roads",
+              "to": "tile_5_8"
+            },
+            {
+              "from": "tile_5_8",
+              "mode": "roads",
+              "to": "tile_7_7"
+            },
+            {
+              "from": "tile_7_7",
+              "mode": "roads",
+              "to": "tile_6_5"
+            },
+            {
+              "from": "tile_6_5",
+              "mode": "roads",
+              "to": "tile_5_4"
+            }
+          ],
+          "path": [
+            "tile_5_10",
+            "tile_5_8",
+            "tile_7_7",
+            "tile_6_5",
+            "tile_5_4"
+          ],
+          "reachable": true,
+          "tile_distance": 6,
+          "tiles": [
+            "tile_5_10",
+            "tile_5_9",
+            "tile_5_8",
+            "tile_6_7",
+            "tile_7_7",
+            "tile_7_6",
+            "tile_6_5",
+            "tile_6_4",
+            "tile_5_4"
+          ],
+          "turns": 4
+        },
+        "route_transport_breakdown": {
+          "roads": 0.1383264
+        },
+        "sea_transport": {
+          "at_cap": false,
+          "base_fee": 0.0,
+          "capacity": 1500,
+          "good_id": "g_001",
+          "growth": 1.0,
+          "insurance_fee": 0.01804005,
+          "owned": false,
+          "port": "tile_5_10",
+          "projected_usage": 1,
+          "qty": 1,
+          "surcharge": 1.0,
+          "total": 0.01804005,
+          "transport_class": "solid_heavy",
+          "used_before": 0
+        },
+        "sea_transport_cost": 0.01804005,
+        "transport_cost": 0.15636645,
+        "turns": 4
+      },
+      "g_002": {
+        "cost": 1.0675885,
+        "covered": false,
+        "goods_cost": 0.89355,
+        "port": "tile_5_10",
+        "qty": 1,
+        "route": {
+          "delayed": true,
+          "legs": [
+            {
+              "from": "tile_5_10",
+              "mode": "roads",
+              "to": "tile_5_8"
+            },
+            {
+              "from": "tile_5_8",
+              "mode": "roads",
+              "to": "tile_7_7"
+            },
+            {
+              "from": "tile_7_7",
+              "mode": "roads",
+              "to": "tile_6_5"
+            },
+            {
+              "from": "tile_6_5",
+              "mode": "roads",
+              "to": "tile_5_4"
+            }
+          ],
+          "path": [
+            "tile_5_10",
+            "tile_5_8",
+            "tile_7_7",
+            "tile_6_5",
+            "tile_5_4"
+          ],
+          "reachable": true,
+          "tile_distance": 6,
+          "tiles": [
+            "tile_5_10",
+            "tile_5_9",
+            "tile_5_8",
+            "tile_6_7",
+            "tile_7_7",
+            "tile_7_6",
+            "tile_6_5",
+            "tile_6_4",
+            "tile_5_4"
+          ],
+          "turns": 4
+        },
+        "route_transport_breakdown": {
+          "roads": 0.147232
+        },
+        "sea_transport": {
+          "at_cap": false,
+          "base_fee": 0.0,
+          "capacity": 1500,
+          "good_id": "g_002",
+          "growth": 1.0,
+          "insurance_fee": 0.0268065,
+          "owned": false,
+          "port": "tile_5_10",
+          "projected_usage": 1,
+          "qty": 1,
+          "surcharge": 1.0,
+          "total": 0.0268065,
+          "transport_class": "solid_heavy",
+          "used_before": 0
+        },
+        "sea_transport_cost": 0.0268065,
+        "transport_cost": 0.1740385,
+        "turns": 4
+      },
+      "g_003": {
+        "cost": 1.1713667,
+        "covered": false,
+        "goods_cost": 0.99141,
+        "port": "tile_5_10",
+        "qty": 1,
+        "route": {
+          "delayed": true,
+          "legs": [
+            {
+              "from": "tile_5_10",
+              "mode": "roads",
+              "to": "tile_5_8"
+            },
+            {
+              "from": "tile_5_8",
+              "mode": "roads",
+              "to": "tile_7_7"
+            },
+            {
+              "from": "tile_7_7",
+              "mode": "roads",
+              "to": "tile_6_5"
+            },
+            {
+              "from": "tile_6_5",
+              "mode": "roads",
+              "to": "tile_5_4"
+            }
+          ],
+          "path": [
+            "tile_5_10",
+            "tile_5_8",
+            "tile_7_7",
+            "tile_6_5",
+            "tile_5_4"
+          ],
+          "reachable": true,
+          "tile_distance": 6,
+          "tiles": [
+            "tile_5_10",
+            "tile_5_9",
+            "tile_5_8",
+            "tile_6_7",
+            "tile_7_7",
+            "tile_7_6",
+            "tile_6_5",
+            "tile_6_4",
+            "tile_5_4"
+          ],
+          "turns": 4
+        },
+        "route_transport_breakdown": {
+          "roads": 0.1502144
+        },
+        "sea_transport": {
+          "at_cap": false,
+          "base_fee": 0.0,
+          "capacity": 1500,
+          "good_id": "g_003",
+          "growth": 1.0,
+          "insurance_fee": 0.0297423,
+          "owned": false,
+          "port": "tile_5_10",
+          "projected_usage": 1,
+          "qty": 1,
+          "surcharge": 1.0,
+          "total": 0.0297423,
+          "transport_class": "solid_heavy",
+          "used_before": 0
+        },
+        "sea_transport_cost": 0.0297423,
+        "transport_cost": 0.1799567,
+        "turns": 4
+      }
+    },
+    "tile_6_4": {
+      "g_001": {
+        "cost": 0.75770145,
+        "covered": false,
+        "goods_cost": 0.601335,
+        "port": "tile_5_10",
+        "qty": 1,
+        "route": {
+          "delayed": true,
+          "legs": [
+            {
+              "from": "tile_5_10",
+              "mode": "roads",
+              "to": "tile_5_9"
+            },
+            {
+              "from": "tile_5_9",
+              "mode": "roads",
+              "to": "tile_6_7"
+            },
+            {
+              "from": "tile_6_7",
+              "mode": "roads",
+              "to": "tile_7_6"
+            },
+            {
+              "from": "tile_7_6",
+              "mode": "roads",
+              "to": "tile_6_4"
+            }
+          ],
+          "path": [
+            "tile_5_10",
+            "tile_5_9",
+            "tile_6_7",
+            "tile_7_6",
+            "tile_6_4"
+          ],
+          "reachable": true,
+          "tile_distance": 6,
+          "tiles": [
+            "tile_5_10",
+            "tile_5_9",
+            "tile_5_8",
+            "tile_6_7",
+            "tile_7_7",
+            "tile_7_6",
+            "tile_6_5",
+            "tile_6_4"
+          ],
+          "turns": 4
+        },
+        "route_transport_breakdown": {
+          "roads": 0.1383264
+        },
+        "sea_transport": {
+          "at_cap": false,
+          "base_fee": 0.0,
+          "capacity": 1500,
+          "good_id": "g_001",
+          "growth": 1.0,
+          "insurance_fee": 0.01804005,
+          "owned": false,
+          "port": "tile_5_10",
+          "projected_usage": 1,
+          "qty": 1,
+          "surcharge": 1.0,
+          "total": 0.01804005,
+          "transport_class": "solid_heavy",
+          "used_before": 0
+        },
+        "sea_transport_cost": 0.01804005,
+        "transport_cost": 0.15636645,
+        "turns": 4
+      },
+      "g_002": {
+        "cost": 1.0675885,
+        "covered": false,
+        "goods_cost": 0.89355,
+        "port": "tile_5_10",
+        "qty": 1,
+        "route": {
+          "delayed": true,
+          "legs": [
+            {
+              "from": "tile_5_10",
+              "mode": "roads",
+              "to": "tile_5_9"
+            },
+            {
+              "from": "tile_5_9",
+              "mode": "roads",
+              "to": "tile_6_7"
+            },
+            {
+              "from": "tile_6_7",
+              "mode": "roads",
+              "to": "tile_7_6"
+            },
+            {
+              "from": "tile_7_6",
+              "mode": "roads",
+              "to": "tile_6_4"
+            }
+          ],
+          "path": [
+            "tile_5_10",
+            "tile_5_9",
+            "tile_6_7",
+            "tile_7_6",
+            "tile_6_4"
+          ],
+          "reachable": true,
+          "tile_distance": 6,
+          "tiles": [
+            "tile_5_10",
+            "tile_5_9",
+            "tile_5_8",
+            "tile_6_7",
+            "tile_7_7",
+            "tile_7_6",
+            "tile_6_5",
+            "tile_6_4"
+          ],
+          "turns": 4
+        },
+        "route_transport_breakdown": {
+          "roads": 0.147232
+        },
+        "sea_transport": {
+          "at_cap": false,
+          "base_fee": 0.0,
+          "capacity": 1500,
+          "good_id": "g_002",
+          "growth": 1.0,
+          "insurance_fee": 0.0268065,
+          "owned": false,
+          "port": "tile_5_10",
+          "projected_usage": 1,
+          "qty": 1,
+          "surcharge": 1.0,
+          "total": 0.0268065,
+          "transport_class": "solid_heavy",
+          "used_before": 0
+        },
+        "sea_transport_cost": 0.0268065,
+        "transport_cost": 0.1740385,
+        "turns": 4
+      },
+      "g_003": {
+        "cost": 1.1713667,
+        "covered": false,
+        "goods_cost": 0.99141,
+        "port": "tile_5_10",
+        "qty": 1,
+        "route": {
+          "delayed": true,
+          "legs": [
+            {
+              "from": "tile_5_10",
+              "mode": "roads",
+              "to": "tile_5_9"
+            },
+            {
+              "from": "tile_5_9",
+              "mode": "roads",
+              "to": "tile_6_7"
+            },
+            {
+              "from": "tile_6_7",
+              "mode": "roads",
+              "to": "tile_7_6"
+            },
+            {
+              "from": "tile_7_6",
+              "mode": "roads",
+              "to": "tile_6_4"
+            }
+          ],
+          "path": [
+            "tile_5_10",
+            "tile_5_9",
+            "tile_6_7",
+            "tile_7_6",
+            "tile_6_4"
+          ],
+          "reachable": true,
+          "tile_distance": 6,
+          "tiles": [
+            "tile_5_10",
+            "tile_5_9",
+            "tile_5_8",
+            "tile_6_7",
+            "tile_7_7",
+            "tile_7_6",
+            "tile_6_5",
+            "tile_6_4"
+          ],
+          "turns": 4
+        },
+        "route_transport_breakdown": {
+          "roads": 0.1502144
+        },
+        "sea_transport": {
+          "at_cap": false,
+          "base_fee": 0.0,
+          "capacity": 1500,
+          "good_id": "g_003",
+          "growth": 1.0,
+          "insurance_fee": 0.0297423,
+          "owned": false,
+          "port": "tile_5_10",
+          "projected_usage": 1,
+          "qty": 1,
+          "surcharge": 1.0,
+          "total": 0.0297423,
+          "transport_class": "solid_heavy",
+          "used_before": 0
+        },
+        "sea_transport_cost": 0.0297423,
+        "transport_cost": 0.1799567,
+        "turns": 4
+      }
+    }
+  },
+  "sample": [
+    {
+      "contribution": 54.6925470065247,
+      "factory_costs": 215.100038442547,
+      "regular": true,
+      "stock": {
+        "tile_5_4": {
+          "g_001": 20,
+          "g_004": 37,
+          "g_006": 32,
+          "g_007": 32
+        },
+        "tile_6_4": {
+          "g_001": 20,
+          "g_002": 40,
+          "g_003": 36
+        }
+      },
+      "summary": {
+        "advisor_paid": 0.0,
+        "building_credit_loan_received": 0.0,
+        "building_credit_repaid": 0.0,
+        "building_tab_carried": 0.0,
+        "carbon_tax_paid": 0.0,
+        "consumed": {
+          "g_001": 40,
+          "g_002": 40,
+          "g_003": 36,
+          "g_004": 37,
+          "g_005": 25,
+          "g_006": 32,
+          "g_007": 32,
+          "power": 530
+        },
+        "deposits_running_out": [],
+        "dividends_paid": 5.55080752104397,
+        "fake_money": 0.0,
+        "goods_purchased_by_type": {
+          "b_002": {
+            "amount": 95.48616,
+            "count": 0
+          }
+        },
+        "goods_purchased_cost": 95.48616,
+        "goods_sales_revenue": 439.9089,
+        "green_subsidy_received": 0.0,
+        "grid_bought": 530,
+        "grid_sold": 0,
+        "input_orders_capped": [],
+        "input_orders_short": [],
+        "input_splices": [],
+        "interest_paid": 0.0,
+        "labour_by_type": {
+          "b_002": {
+            "amount": 26.5789134858285,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 94.9211249567188,
+            "count": 2
+          }
+        },
+        "labour_paid": 121.500038442547,
+        "maintenance_by_type": {
+          "b_002": {
+            "amount": 9.0,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 21.0,
+            "count": 2
+          }
+        },
+        "maintenance_paid": 30.0,
+        "money_in": 439.9089,
+        "money_out": 397.705669915824,
+        "power_demand": 530,
+        "power_demand_by_type": {
+          "b_002": {
+            "amount": 420.0,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 110.0,
+            "count": 2
+          }
+        },
+        "power_purchase_by_type": {
+          "b_002": {
+            "amount": 50.4,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 13.2,
+            "count": 2
+          }
+        },
+        "power_purchase_cost": 63.6,
+        "power_sales_revenue": 0.0,
+        "power_supply": 0,
+        "power_supply_by_quality": {
+          "green_intermittent": 0,
+          "green_steady": 0,
+          "grey": 0
+        },
+        "power_supply_by_type": {},
+        "prepaid_construction_arrived": 0.0,
+        "produced": {
+          "g_004": 70,
+          "g_005": 25,
+          "g_006": 44,
+          "g_007": 33,
+          "g_008": 33
+        },
+        "profit_sharing_paid": 0.0,
+        "purchased": {
+          "g_001": 40,
+          "g_002": 40,
+          "g_003": 36
+        },
+        "purchased_cost": {
+          "g_001": 24.0534,
+          "g_002": 35.742,
+          "g_003": 35.69076
+        },
+        "sold": {
+          "g_004": {
+            "qty": 33,
+            "revenue": 42.2697
+          },
+          "g_006": {
+            "qty": 12,
+            "revenue": 28.4148
+          },
+          "g_007": {
+            "qty": 1,
+            "revenue": 4.7361
+          },
+          "g_008": {
+            "qty": 33,
+            "revenue": 364.4883
+          }
+        },
+        "starved": [],
+        "storage_overcommitted": [],
+        "taxes_paid": 6.93850940130496,
+        "tile_consumed": {
+          "tile_5_4": {
+            "g_001": 20,
+            "g_004": 37,
+            "g_005": 25,
+            "g_006": 32,
+            "g_007": 32
+          },
+          "tile_6_4": {
+            "g_001": 20,
+            "g_002": 40,
+            "g_003": 36
+          }
+        },
+        "tile_supplied": {
+          "tile_5_4": {
+            "g_004": 70,
+            "g_005": 25,
+            "g_006": 44,
+            "g_007": 33
+          }
+        },
+        "transport_breakdown": {
+          "port_fees": 0.0,
+          "port_inbound": 2.96656859558777,
+          "port_insurance": 11.9377689095527,
+          "port_outbound": 2.47018544578745,
+          "roads": 51.4529896
+        },
+        "transport_paid": 68.8275125509279,
+        "warehousing_paid": 5.802642
+      },
+      "transit": {
+        "g_001true": 160,
+        "g_002true": 160,
+        "g_003true": 144,
+        "g_004false": 70,
+        "g_005false": 25,
+        "sale:g_004": 132,
+        "sale:g_006": 48,
+        "sale:g_007": 4,
+        "sale:g_008": 132,
+        "salefalse": 0
+      },
+      "turn": 40
+    },
+    {
+      "contribution": 54.5574105023031,
+      "factory_costs": 215.217800423818,
+      "regular": true,
+      "stock": {
+        "tile_5_4": {
+          "g_001": 20,
+          "g_004": 37,
+          "g_006": 32,
+          "g_007": 32
+        },
+        "tile_6_4": {
+          "g_001": 20,
+          "g_002": 40,
+          "g_003": 36
+        }
+      },
+      "summary": {
+        "advisor_paid": 0.0,
+        "building_credit_loan_received": 0.0,
+        "building_credit_repaid": 0.0,
+        "building_tab_carried": 0.0,
+        "carbon_tax_paid": 0.0,
+        "consumed": {
+          "g_001": 40,
+          "g_002": 40,
+          "g_003": 36,
+          "g_004": 37,
+          "g_005": 25,
+          "g_006": 32,
+          "g_007": 32,
+          "power": 530
+        },
+        "deposits_running_out": [],
+        "dividends_paid": 5.52918568036851,
+        "fake_money": 0.0,
+        "goods_purchased_by_type": {
+          "b_002": {
+            "amount": 95.48616,
+            "count": 0
+          }
+        },
+        "goods_purchased_cost": 95.48616,
+        "goods_sales_revenue": 439.9089,
+        "green_subsidy_received": 0.0,
+        "grid_bought": 530,
+        "grid_sold": 0,
+        "input_orders_capped": [],
+        "input_orders_short": [],
+        "input_splices": [],
+        "interest_paid": 0.0,
+        "labour_by_type": {
+          "b_002": {
+            "amount": 26.6053815839806,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 95.0124188398374,
+            "count": 2
+          }
+        },
+        "labour_paid": 121.617800423818,
+        "maintenance_by_type": {
+          "b_002": {
+            "amount": 9.0,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 21.0,
+            "count": 2
+          }
+        },
+        "maintenance_paid": 30.0,
+        "money_in": 439.9089,
+        "money_out": 397.792157278526,
+        "power_demand": 530,
+        "power_demand_by_type": {
+          "b_002": {
+            "amount": 420.0,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 110.0,
+            "count": 2
+          }
+        },
+        "power_purchase_by_type": {
+          "b_002": {
+            "amount": 50.4,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 13.2,
+            "count": 2
+          }
+        },
+        "power_purchase_cost": 63.6,
+        "power_sales_revenue": 0.0,
+        "power_supply": 0,
+        "power_supply_by_quality": {
+          "green_intermittent": 0,
+          "green_steady": 0,
+          "grey": 0
+        },
+        "power_supply_by_type": {},
+        "prepaid_construction_arrived": 0.0,
+        "produced": {
+          "g_004": 70,
+          "g_005": 25,
+          "g_006": 44,
+          "g_007": 33,
+          "g_008": 33
+        },
+        "profit_sharing_paid": 0.0,
+        "purchased": {
+          "g_001": 40,
+          "g_002": 40,
+          "g_003": 36
+        },
+        "purchased_cost": {
+          "g_001": 24.0534,
+          "g_002": 35.742,
+          "g_003": 35.69076
+        },
+        "sold": {
+          "g_004": {
+            "qty": 33,
+            "revenue": 42.2697
+          },
+          "g_006": {
+            "qty": 12,
+            "revenue": 28.4148
+          },
+          "g_007": {
+            "qty": 1,
+            "revenue": 4.7361
+          },
+          "g_008": {
+            "qty": 33,
+            "revenue": 364.4883
+          }
+        },
+        "starved": [],
+        "storage_overcommitted": [],
+        "taxes_paid": 6.91148210046064,
+        "tile_consumed": {
+          "tile_5_4": {
+            "g_001": 20,
+            "g_004": 37,
+            "g_005": 25,
+            "g_006": 32,
+            "g_007": 32
+          },
+          "tile_6_4": {
+            "g_001": 20,
+            "g_002": 40,
+            "g_003": 36
+          }
+        },
+        "tile_supplied": {
+          "tile_5_4": {
+            "g_004": 70,
+            "g_005": 25,
+            "g_006": 44,
+            "g_007": 33
+          }
+        },
+        "transport_breakdown": {
+          "port_fees": 0.0,
+          "port_inbound": 2.96953516418336,
+          "port_insurance": 11.9497066784622,
+          "port_outbound": 2.47265563123324,
+          "roads": 51.4529896
+        },
+        "transport_paid": 68.8448870738788,
+        "warehousing_paid": 5.802642
+      },
+      "transit": {
+        "g_001true": 160,
+        "g_002true": 160,
+        "g_003true": 144,
+        "g_004false": 70,
+        "g_005false": 25,
+        "sale:g_004": 132,
+        "sale:g_006": 48,
+        "sale:g_007": 4,
+        "sale:g_008": 132,
+        "salefalse": 0
+      },
+      "turn": 41
+    },
+    {
+      "contribution": 54.4221108576217,
+      "factory_costs": 215.335708171026,
+      "regular": true,
+      "stock": {
+        "tile_5_4": {
+          "g_001": 20,
+          "g_004": 37,
+          "g_006": 32,
+          "g_007": 32
+        },
+        "tile_6_4": {
+          "g_001": 20,
+          "g_002": 40,
+          "g_003": 36
+        }
+      },
+      "summary": {
+        "advisor_paid": 0.0,
+        "building_credit_loan_received": 0.0,
+        "building_credit_repaid": 0.0,
+        "building_tab_carried": 0.0,
+        "carbon_tax_paid": 0.0,
+        "consumed": {
+          "g_001": 40,
+          "g_002": 40,
+          "g_003": 36,
+          "g_004": 37,
+          "g_005": 25,
+          "g_006": 32,
+          "g_007": 32,
+          "power": 530
+        },
+        "deposits_running_out": [],
+        "dividends_paid": 5.50753773721949,
+        "fake_money": 0.0,
+        "goods_purchased_by_type": {
+          "b_002": {
+            "amount": 95.48616,
+            "count": 0
+          }
+        },
+        "goods_purchased_cost": 95.48616,
+        "goods_sales_revenue": 439.9089,
+        "green_subsidy_received": 0.0,
+        "grid_bought": 530,
+        "grid_sold": 0,
+        "input_orders_capped": [],
+        "input_orders_short": [],
+        "input_splices": [],
+        "interest_paid": 0.0,
+        "labour_by_type": {
+          "b_002": {
+            "amount": 26.6318834891262,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 95.1038246818993,
+            "count": 2
+          }
+        },
+        "labour_paid": 121.735708171026,
+        "maintenance_by_type": {
+          "b_002": {
+            "amount": 9.0,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 21.0,
+            "count": 2
+          }
+        },
+        "maintenance_paid": 30.0,
+        "money_in": 439.9089,
+        "money_out": 397.878749051122,
+        "power_demand": 530,
+        "power_demand_by_type": {
+          "b_002": {
+            "amount": 420.0,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 110.0,
+            "count": 2
+          }
+        },
+        "power_purchase_by_type": {
+          "b_002": {
+            "amount": 50.4,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 13.2,
+            "count": 2
+          }
+        },
+        "power_purchase_cost": 63.6,
+        "power_sales_revenue": 0.0,
+        "power_supply": 0,
+        "power_supply_by_quality": {
+          "green_intermittent": 0,
+          "green_steady": 0,
+          "grey": 0
+        },
+        "power_supply_by_type": {},
+        "prepaid_construction_arrived": 0.0,
+        "produced": {
+          "g_004": 70,
+          "g_005": 25,
+          "g_006": 44,
+          "g_007": 33,
+          "g_008": 33
+        },
+        "profit_sharing_paid": 0.0,
+        "purchased": {
+          "g_001": 40,
+          "g_002": 40,
+          "g_003": 36
+        },
+        "purchased_cost": {
+          "g_001": 24.0534,
+          "g_002": 35.742,
+          "g_003": 35.69076
+        },
+        "sold": {
+          "g_004": {
+            "qty": 33,
+            "revenue": 42.2697
+          },
+          "g_006": {
+            "qty": 12,
+            "revenue": 28.4148
+          },
+          "g_007": {
+            "qty": 1,
+            "revenue": 4.7361
+          },
+          "g_008": {
+            "qty": 33,
+            "revenue": 364.4883
+          }
+        },
+        "starved": [],
+        "storage_overcommitted": [],
+        "taxes_paid": 6.88442217152436,
+        "tile_consumed": {
+          "tile_5_4": {
+            "g_001": 20,
+            "g_004": 37,
+            "g_005": 25,
+            "g_006": 32,
+            "g_007": 32
+          },
+          "tile_6_4": {
+            "g_001": 20,
+            "g_002": 40,
+            "g_003": 36
+          }
+        },
+        "tile_supplied": {
+          "tile_5_4": {
+            "g_004": 70,
+            "g_005": 25,
+            "g_006": 44,
+            "g_007": 33
+          }
+        },
+        "transport_breakdown": {
+          "port_fees": 0.0,
+          "port_inbound": 2.97250469934754,
+          "port_insurance": 11.9616563851407,
+          "port_outbound": 2.47512828686447,
+          "roads": 51.4529896
+        },
+        "transport_paid": 68.8622789713527,
+        "warehousing_paid": 5.802642
+      },
+      "transit": {
+        "g_001true": 160,
+        "g_002true": 160,
+        "g_003true": 144,
+        "g_004false": 70,
+        "g_005false": 25,
+        "sale:g_004": 132,
+        "sale:g_006": 48,
+        "sale:g_007": 4,
+        "sale:g_008": 132,
+        "salefalse": 0
+      },
+      "turn": 42
+    },
+    {
+      "contribution": 54.2866478355924,
+      "factory_costs": 215.453761903683,
+      "regular": true,
+      "stock": {
+        "tile_5_4": {
+          "g_001": 20,
+          "g_004": 37,
+          "g_006": 32,
+          "g_007": 32
+        },
+        "tile_6_4": {
+          "g_001": 20,
+          "g_002": 40,
+          "g_003": 36
+        }
+      },
+      "summary": {
+        "advisor_paid": 0.0,
+        "building_credit_loan_received": 0.0,
+        "building_credit_repaid": 0.0,
+        "building_tab_carried": 0.0,
+        "carbon_tax_paid": 0.0,
+        "consumed": {
+          "g_001": 40,
+          "g_002": 40,
+          "g_003": 36,
+          "g_004": 37,
+          "g_005": 25,
+          "g_006": 32,
+          "g_007": 32,
+          "power": 530
+        },
+        "deposits_running_out": [],
+        "dividends_paid": 5.48586365369479,
+        "fake_money": 0.0,
+        "goods_purchased_by_type": {
+          "b_002": {
+            "amount": 95.48616,
+            "count": 0
+          }
+        },
+        "goods_purchased_cost": 95.48616,
+        "goods_sales_revenue": 439.9089,
+        "green_subsidy_received": 0.0,
+        "grid_bought": 530,
+        "grid_sold": 0,
+        "input_orders_capped": [],
+        "input_orders_short": [],
+        "input_splices": [],
+        "interest_paid": 0.0,
+        "labour_by_type": {
+          "b_002": {
+            "amount": 26.6584192535302,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 95.1953426501533,
+            "count": 2
+          }
+        },
+        "labour_paid": 121.853761903684,
+        "maintenance_by_type": {
+          "b_002": {
+            "amount": 9.0,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 21.0,
+            "count": 2
+          }
+        },
+        "maintenance_paid": 30.0,
+        "money_in": 439.9089,
+        "money_out": 397.965445385221,
+        "power_demand": 530,
+        "power_demand_by_type": {
+          "b_002": {
+            "amount": 420.0,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 110.0,
+            "count": 2
+          }
+        },
+        "power_purchase_by_type": {
+          "b_002": {
+            "amount": 50.4,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 13.2,
+            "count": 2
+          }
+        },
+        "power_purchase_cost": 63.6,
+        "power_sales_revenue": 0.0,
+        "power_supply": 0,
+        "power_supply_by_quality": {
+          "green_intermittent": 0,
+          "green_steady": 0,
+          "grey": 0
+        },
+        "power_supply_by_type": {},
+        "prepaid_construction_arrived": 0.0,
+        "produced": {
+          "g_004": 70,
+          "g_005": 25,
+          "g_006": 44,
+          "g_007": 33,
+          "g_008": 33
+        },
+        "profit_sharing_paid": 0.0,
+        "purchased": {
+          "g_001": 40,
+          "g_002": 40,
+          "g_003": 36
+        },
+        "purchased_cost": {
+          "g_001": 24.0534,
+          "g_002": 35.742,
+          "g_003": 35.69076
+        },
+        "sold": {
+          "g_004": {
+            "qty": 33,
+            "revenue": 42.2697
+          },
+          "g_006": {
+            "qty": 12,
+            "revenue": 28.4148
+          },
+          "g_007": {
+            "qty": 1,
+            "revenue": 4.7361
+          },
+          "g_008": {
+            "qty": 33,
+            "revenue": 364.4883
+          }
+        },
+        "starved": [],
+        "storage_overcommitted": [],
+        "taxes_paid": 6.85732956711848,
+        "tile_consumed": {
+          "tile_5_4": {
+            "g_001": 20,
+            "g_004": 37,
+            "g_005": 25,
+            "g_006": 32,
+            "g_007": 32
+          },
+          "tile_6_4": {
+            "g_001": 20,
+            "g_002": 40,
+            "g_003": 36
+          }
+        },
+        "tile_supplied": {
+          "tile_5_4": {
+            "g_004": 70,
+            "g_005": 25,
+            "g_006": 44,
+            "g_007": 33
+          }
+        },
+        "transport_breakdown": {
+          "port_fees": 0.0,
+          "port_inbound": 2.97547720404689,
+          "port_insurance": 11.9736180415258,
+          "port_outbound": 2.47760341515134,
+          "roads": 51.4529896
+        },
+        "transport_paid": 68.8796882607241,
+        "warehousing_paid": 5.802642
+      },
+      "transit": {
+        "g_001true": 160,
+        "g_002true": 160,
+        "g_003true": 144,
+        "g_004false": 70,
+        "g_005false": 25,
+        "sale:g_004": 132,
+        "sale:g_006": 48,
+        "sale:g_007": 4,
+        "sale:g_008": 132,
+        "salefalse": 0
+      },
+      "turn": 43
+    },
+    {
+      "contribution": 54.1510211989333,
+      "factory_costs": 215.571961841682,
+      "regular": true,
+      "stock": {
+        "tile_5_4": {
+          "g_001": 20,
+          "g_004": 37,
+          "g_006": 32,
+          "g_007": 32
+        },
+        "tile_6_4": {
+          "g_001": 20,
+          "g_002": 40,
+          "g_003": 36
+        }
+      },
+      "summary": {
+        "advisor_paid": 0.0,
+        "building_credit_loan_received": 0.0,
+        "building_credit_repaid": 0.0,
+        "building_tab_carried": 0.0,
+        "carbon_tax_paid": 0.0,
+        "consumed": {
+          "g_001": 40,
+          "g_002": 40,
+          "g_003": 36,
+          "g_004": 37,
+          "g_005": 25,
+          "g_006": 32,
+          "g_007": 32,
+          "power": 530
+        },
+        "deposits_running_out": [],
+        "dividends_paid": 5.46416339182935,
+        "fake_money": 0.0,
+        "goods_purchased_by_type": {
+          "b_002": {
+            "amount": 95.48616,
+            "count": 0
+          }
+        },
+        "goods_purchased_cost": 95.48616,
+        "goods_sales_revenue": 439.9089,
+        "green_subsidy_received": 0.0,
+        "grid_bought": 530,
+        "grid_sold": 0,
+        "input_orders_capped": [],
+        "input_orders_short": [],
+        "input_splices": [],
+        "interest_paid": 0.0,
+        "labour_by_type": {
+          "b_002": {
+            "amount": 26.6849889295489,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 95.286972912133,
+            "count": 2
+          }
+        },
+        "labour_paid": 121.971961841682,
+        "maintenance_by_type": {
+          "b_002": {
+            "amount": 9.0,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 21.0,
+            "count": 2
+          }
+        },
+        "maintenance_paid": 30.0,
+        "money_in": 439.9089,
+        "money_out": 398.052246432683,
+        "power_demand": 530,
+        "power_demand_by_type": {
+          "b_002": {
+            "amount": 420.0,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 110.0,
+            "count": 2
+          }
+        },
+        "power_purchase_by_type": {
+          "b_002": {
+            "amount": 50.4,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 13.2,
+            "count": 2
+          }
+        },
+        "power_purchase_cost": 63.6,
+        "power_sales_revenue": 0.0,
+        "power_supply": 0,
+        "power_supply_by_quality": {
+          "green_intermittent": 0,
+          "green_steady": 0,
+          "grey": 0
+        },
+        "power_supply_by_type": {},
+        "prepaid_construction_arrived": 0.0,
+        "produced": {
+          "g_004": 70,
+          "g_005": 25,
+          "g_006": 44,
+          "g_007": 33,
+          "g_008": 33
+        },
+        "profit_sharing_paid": 0.0,
+        "purchased": {
+          "g_001": 40,
+          "g_002": 40,
+          "g_003": 36
+        },
+        "purchased_cost": {
+          "g_001": 24.0534,
+          "g_002": 35.742,
+          "g_003": 35.69076
+        },
+        "sold": {
+          "g_004": {
+            "qty": 33,
+            "revenue": 42.2697
+          },
+          "g_006": {
+            "qty": 12,
+            "revenue": 28.4148
+          },
+          "g_007": {
+            "qty": 1,
+            "revenue": 4.7361
+          },
+          "g_008": {
+            "qty": 33,
+            "revenue": 364.4883
+          }
+        },
+        "starved": [],
+        "storage_overcommitted": [],
+        "taxes_paid": 6.83020423978669,
+        "tile_consumed": {
+          "tile_5_4": {
+            "g_001": 20,
+            "g_004": 37,
+            "g_005": 25,
+            "g_006": 32,
+            "g_007": 32
+          },
+          "tile_6_4": {
+            "g_001": 20,
+            "g_002": 40,
+            "g_003": 36
+          }
+        },
+        "tile_supplied": {
+          "tile_5_4": {
+            "g_004": 70,
+            "g_005": 25,
+            "g_006": 44,
+            "g_007": 33
+          }
+        },
+        "transport_breakdown": {
+          "port_fees": 0.0,
+          "port_inbound": 2.97845268125093,
+          "port_insurance": 11.9855916595674,
+          "port_outbound": 2.48008101856649,
+          "roads": 51.4529896
+        },
+        "transport_paid": 68.8971149593848,
+        "warehousing_paid": 5.802642
+      },
+      "transit": {
+        "g_001true": 160,
+        "g_002true": 160,
+        "g_003true": 144,
+        "g_004false": 70,
+        "g_005false": 25,
+        "sale:g_004": 132,
+        "sale:g_006": 48,
+        "sale:g_007": 4,
+        "sale:g_008": 132,
+        "salefalse": 0
+      },
+      "turn": 44
+    },
+    {
+      "contribution": 54.0152307099689,
+      "factory_costs": 215.690308205287,
+      "regular": true,
+      "stock": {
+        "tile_5_4": {
+          "g_001": 20,
+          "g_004": 37,
+          "g_006": 32,
+          "g_007": 32
+        },
+        "tile_6_4": {
+          "g_001": 20,
+          "g_002": 40,
+          "g_003": 36
+        }
+      },
+      "summary": {
+        "advisor_paid": 0.0,
+        "building_credit_loan_received": 0.0,
+        "building_credit_repaid": 0.0,
+        "building_tab_carried": 0.0,
+        "carbon_tax_paid": 0.0,
+        "consumed": {
+          "g_001": 40,
+          "g_002": 40,
+          "g_003": 36,
+          "g_004": 37,
+          "g_005": 25,
+          "g_006": 32,
+          "g_007": 32,
+          "power": 530
+        },
+        "deposits_running_out": [],
+        "dividends_paid": 5.44243691359502,
+        "fake_money": 0.0,
+        "goods_purchased_by_type": {
+          "b_002": {
+            "amount": 95.48616,
+            "count": 0
+          }
+        },
+        "goods_purchased_cost": 95.48616,
+        "goods_sales_revenue": 439.9089,
+        "green_subsidy_received": 0.0,
+        "grid_bought": 530,
+        "grid_sold": 0,
+        "input_orders_capped": [],
+        "input_orders_short": [],
+        "input_splices": [],
+        "interest_paid": 0.0,
+        "labour_by_type": {
+          "b_002": {
+            "amount": 26.7115925696296,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 95.3787156356573,
+            "count": 2
+          }
+        },
+        "labour_paid": 122.090308205287,
+        "maintenance_by_type": {
+          "b_002": {
+            "amount": 9.0,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 21.0,
+            "count": 2
+          }
+        },
+        "maintenance_paid": 30.0,
+        "money_in": 439.9089,
+        "money_out": 398.13915234562,
+        "power_demand": 530,
+        "power_demand_by_type": {
+          "b_002": {
+            "amount": 420.0,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 110.0,
+            "count": 2
+          }
+        },
+        "power_purchase_by_type": {
+          "b_002": {
+            "amount": 50.4,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 13.2,
+            "count": 2
+          }
+        },
+        "power_purchase_cost": 63.6,
+        "power_sales_revenue": 0.0,
+        "power_supply": 0,
+        "power_supply_by_quality": {
+          "green_intermittent": 0,
+          "green_steady": 0,
+          "grey": 0
+        },
+        "power_supply_by_type": {},
+        "prepaid_construction_arrived": 0.0,
+        "produced": {
+          "g_004": 70,
+          "g_005": 25,
+          "g_006": 44,
+          "g_007": 33,
+          "g_008": 33
+        },
+        "profit_sharing_paid": 0.0,
+        "purchased": {
+          "g_001": 40,
+          "g_002": 40,
+          "g_003": 36
+        },
+        "purchased_cost": {
+          "g_001": 24.0534,
+          "g_002": 35.742,
+          "g_003": 35.69076
+        },
+        "sold": {
+          "g_004": {
+            "qty": 33,
+            "revenue": 42.2697
+          },
+          "g_006": {
+            "qty": 12,
+            "revenue": 28.4148
+          },
+          "g_007": {
+            "qty": 1,
+            "revenue": 4.7361
+          },
+          "g_008": {
+            "qty": 33,
+            "revenue": 364.4883
+          }
+        },
+        "starved": [],
+        "storage_overcommitted": [],
+        "taxes_paid": 6.80304614199378,
+        "tile_consumed": {
+          "tile_5_4": {
+            "g_001": 20,
+            "g_004": 37,
+            "g_005": 25,
+            "g_006": 32,
+            "g_007": 32
+          },
+          "tile_6_4": {
+            "g_001": 20,
+            "g_002": 40,
+            "g_003": 36
+          }
+        },
+        "tile_supplied": {
+          "tile_5_4": {
+            "g_004": 70,
+            "g_005": 25,
+            "g_006": 44,
+            "g_007": 33
+          }
+        },
+        "transport_breakdown": {
+          "port_fees": 0.0,
+          "port_inbound": 2.98143113393218,
+          "port_insurance": 11.9975772512269,
+          "port_outbound": 2.48256109958505,
+          "roads": 51.4529896
+        },
+        "transport_paid": 68.9145590847442,
+        "warehousing_paid": 5.802642
+      },
+      "transit": {
+        "g_001true": 160,
+        "g_002true": 160,
+        "g_003true": 144,
+        "g_004false": 70,
+        "g_005false": 25,
+        "sale:g_004": 132,
+        "sale:g_006": 48,
+        "sale:g_007": 4,
+        "sale:g_008": 132,
+        "salefalse": 0
+      },
+      "turn": 45
+    },
+    {
+      "contribution": 53.8792761306288,
+      "factory_costs": 215.808801215142,
+      "regular": true,
+      "stock": {
+        "tile_5_4": {
+          "g_001": 20,
+          "g_004": 37,
+          "g_006": 32,
+          "g_007": 32
+        },
+        "tile_6_4": {
+          "g_001": 20,
+          "g_002": 40,
+          "g_003": 36
+        }
+      },
+      "summary": {
+        "advisor_paid": 0.0,
+        "building_credit_loan_received": 0.0,
+        "building_credit_repaid": 0.0,
+        "building_tab_carried": 0.0,
+        "carbon_tax_paid": 0.0,
+        "consumed": {
+          "g_001": 40,
+          "g_002": 40,
+          "g_003": 36,
+          "g_004": 37,
+          "g_005": 25,
+          "g_006": 32,
+          "g_007": 32,
+          "power": 530
+        },
+        "deposits_running_out": [],
+        "dividends_paid": 5.42068418090062,
+        "fake_money": 0.0,
+        "goods_purchased_by_type": {
+          "b_002": {
+            "amount": 95.48616,
+            "count": 0
+          }
+        },
+        "goods_purchased_cost": 95.48616,
+        "goods_sales_revenue": 439.9089,
+        "green_subsidy_received": 0.0,
+        "grid_bought": 530,
+        "grid_sold": 0,
+        "input_orders_capped": [],
+        "input_orders_short": [],
+        "input_splices": [],
+        "interest_paid": 0.0,
+        "labour_by_type": {
+          "b_002": {
+            "amount": 26.738230226311,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 95.4705709888313,
+            "count": 2
+          }
+        },
+        "labour_paid": 122.208801215142,
+        "maintenance_by_type": {
+          "b_002": {
+            "amount": 9.0,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 21.0,
+            "count": 2
+          }
+        },
+        "maintenance_paid": 30.0,
+        "money_in": 439.9089,
+        "money_out": 398.226163276398,
+        "power_demand": 530,
+        "power_demand_by_type": {
+          "b_002": {
+            "amount": 420.0,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 110.0,
+            "count": 2
+          }
+        },
+        "power_purchase_by_type": {
+          "b_002": {
+            "amount": 50.4,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 13.2,
+            "count": 2
+          }
+        },
+        "power_purchase_cost": 63.6,
+        "power_sales_revenue": 0.0,
+        "power_supply": 0,
+        "power_supply_by_quality": {
+          "green_intermittent": 0,
+          "green_steady": 0,
+          "grey": 0
+        },
+        "power_supply_by_type": {},
+        "prepaid_construction_arrived": 0.0,
+        "produced": {
+          "g_004": 70,
+          "g_005": 25,
+          "g_006": 44,
+          "g_007": 33,
+          "g_008": 33
+        },
+        "profit_sharing_paid": 0.0,
+        "purchased": {
+          "g_001": 40,
+          "g_002": 40,
+          "g_003": 36
+        },
+        "purchased_cost": {
+          "g_001": 24.0534,
+          "g_002": 35.742,
+          "g_003": 35.69076
+        },
+        "sold": {
+          "g_004": {
+            "qty": 33,
+            "revenue": 42.2697
+          },
+          "g_006": {
+            "qty": 12,
+            "revenue": 28.4148
+          },
+          "g_007": {
+            "qty": 1,
+            "revenue": 4.7361
+          },
+          "g_008": {
+            "qty": 33,
+            "revenue": 364.4883
+          }
+        },
+        "starved": [],
+        "storage_overcommitted": [],
+        "taxes_paid": 6.77585522612577,
+        "tile_consumed": {
+          "tile_5_4": {
+            "g_001": 20,
+            "g_004": 37,
+            "g_005": 25,
+            "g_006": 32,
+            "g_007": 32
+          },
+          "tile_6_4": {
+            "g_001": 20,
+            "g_002": 40,
+            "g_003": 36
+          }
+        },
+        "tile_supplied": {
+          "tile_5_4": {
+            "g_004": 70,
+            "g_005": 25,
+            "g_006": 44,
+            "g_007": 33
+          }
+        },
+        "transport_breakdown": {
+          "port_fees": 0.0,
+          "port_inbound": 2.98441256506612,
+          "port_insurance": 12.0095748284782,
+          "port_outbound": 2.48504366068464,
+          "roads": 51.4529896
+        },
+        "transport_paid": 68.9320206542289,
+        "warehousing_paid": 5.802642
+      },
+      "transit": {
+        "g_001true": 160,
+        "g_002true": 160,
+        "g_003true": 144,
+        "g_004false": 70,
+        "g_005false": 25,
+        "sale:g_004": 132,
+        "sale:g_006": 48,
+        "sale:g_007": 4,
+        "sale:g_008": 132,
+        "salefalse": 0
+      },
+      "turn": 46
+    },
+    {
+      "contribution": 53.7431572224474,
+      "factory_costs": 215.927441092269,
+      "regular": true,
+      "stock": {
+        "tile_5_4": {
+          "g_001": 20,
+          "g_004": 37,
+          "g_006": 32,
+          "g_007": 32
+        },
+        "tile_6_4": {
+          "g_001": 20,
+          "g_002": 40,
+          "g_003": 36
+        }
+      },
+      "summary": {
+        "advisor_paid": 0.0,
+        "building_credit_loan_received": 0.0,
+        "building_credit_repaid": 0.0,
+        "building_tab_carried": 0.0,
+        "carbon_tax_paid": 0.0,
+        "consumed": {
+          "g_001": 40,
+          "g_002": 40,
+          "g_003": 36,
+          "g_004": 37,
+          "g_005": 25,
+          "g_006": 32,
+          "g_007": 32,
+          "power": 530
+        },
+        "deposits_running_out": [],
+        "dividends_paid": 5.39890515559159,
+        "fake_money": 0.0,
+        "goods_purchased_by_type": {
+          "b_002": {
+            "amount": 95.48616,
+            "count": 0
+          }
+        },
+        "goods_purchased_cost": 95.48616,
+        "goods_sales_revenue": 439.9089,
+        "green_subsidy_received": 0.0,
+        "grid_bought": 530,
+        "grid_sold": 0,
+        "input_orders_capped": [],
+        "input_orders_short": [],
+        "input_splices": [],
+        "interest_paid": 0.0,
+        "labour_by_type": {
+          "b_002": {
+            "amount": 26.7649019522235,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 95.5625391400459,
+            "count": 2
+          }
+        },
+        "labour_paid": 122.327441092269,
+        "maintenance_by_type": {
+          "b_002": {
+            "amount": 9.0,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 21.0,
+            "count": 2
+          }
+        },
+        "maintenance_paid": 30.0,
+        "money_in": 439.9089,
+        "money_out": 398.313279377634,
+        "power_demand": 530,
+        "power_demand_by_type": {
+          "b_002": {
+            "amount": 420.0,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 110.0,
+            "count": 2
+          }
+        },
+        "power_purchase_by_type": {
+          "b_002": {
+            "amount": 50.4,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 13.2,
+            "count": 2
+          }
+        },
+        "power_purchase_cost": 63.6,
+        "power_sales_revenue": 0.0,
+        "power_supply": 0,
+        "power_supply_by_quality": {
+          "green_intermittent": 0,
+          "green_steady": 0,
+          "grey": 0
+        },
+        "power_supply_by_type": {},
+        "prepaid_construction_arrived": 0.0,
+        "produced": {
+          "g_004": 70,
+          "g_005": 25,
+          "g_006": 44,
+          "g_007": 33,
+          "g_008": 33
+        },
+        "profit_sharing_paid": 0.0,
+        "purchased": {
+          "g_001": 40,
+          "g_002": 40,
+          "g_003": 36
+        },
+        "purchased_cost": {
+          "g_001": 24.0534,
+          "g_002": 35.742,
+          "g_003": 35.69076
+        },
+        "sold": {
+          "g_004": {
+            "qty": 33,
+            "revenue": 42.2697
+          },
+          "g_006": {
+            "qty": 12,
+            "revenue": 28.4148
+          },
+          "g_007": {
+            "qty": 1,
+            "revenue": 4.7361
+          },
+          "g_008": {
+            "qty": 33,
+            "revenue": 364.4883
+          }
+        },
+        "starved": [],
+        "storage_overcommitted": [],
+        "taxes_paid": 6.74863144448949,
+        "tile_consumed": {
+          "tile_5_4": {
+            "g_001": 20,
+            "g_004": 37,
+            "g_005": 25,
+            "g_006": 32,
+            "g_007": 32
+          },
+          "tile_6_4": {
+            "g_001": 20,
+            "g_002": 40,
+            "g_003": 36
+          }
+        },
+        "tile_supplied": {
+          "tile_5_4": {
+            "g_004": 70,
+            "g_005": 25,
+            "g_006": 44,
+            "g_007": 33
+          }
+        },
+        "transport_breakdown": {
+          "port_fees": 0.0,
+          "port_inbound": 2.98739697763118,
+          "port_insurance": 12.0215844033066,
+          "port_outbound": 2.48752870434532,
+          "roads": 51.4529896
+        },
+        "transport_paid": 68.9494996852831,
+        "warehousing_paid": 5.802642
+      },
+      "transit": {
+        "g_001true": 160,
+        "g_002true": 160,
+        "g_003true": 144,
+        "g_004false": 70,
+        "g_005false": 25,
+        "sale:g_004": 132,
+        "sale:g_006": 48,
+        "sale:g_007": 4,
+        "sale:g_008": 132,
+        "salefalse": 0
+      },
+      "turn": 47
+    },
+    {
+      "contribution": 53.6068737465629,
+      "factory_costs": 216.046228058069,
+      "regular": true,
+      "stock": {
+        "tile_5_4": {
+          "g_001": 20,
+          "g_004": 37,
+          "g_006": 32,
+          "g_007": 32
+        },
+        "tile_6_4": {
+          "g_001": 20,
+          "g_002": 40,
+          "g_003": 36
+        }
+      },
+      "summary": {
+        "advisor_paid": 0.0,
+        "building_credit_loan_received": 0.0,
+        "building_credit_repaid": 0.0,
+        "building_tab_carried": 0.0,
+        "carbon_tax_paid": 0.0,
+        "consumed": {
+          "g_001": 40,
+          "g_002": 40,
+          "g_003": 36,
+          "g_004": 37,
+          "g_005": 25,
+          "g_006": 32,
+          "g_007": 32,
+          "power": 530
+        },
+        "deposits_running_out": [],
+        "dividends_paid": 5.37709979945006,
+        "fake_money": 0.0,
+        "goods_purchased_by_type": {
+          "b_002": {
+            "amount": 95.48616,
+            "count": 0
+          }
+        },
+        "goods_purchased_cost": 95.48616,
+        "goods_sales_revenue": 439.9089,
+        "green_subsidy_received": 0.0,
+        "grid_bought": 530,
+        "grid_sold": 0,
+        "input_orders_capped": [],
+        "input_orders_short": [],
+        "input_splices": [],
+        "interest_paid": 0.0,
+        "labour_by_type": {
+          "b_002": {
+            "amount": 26.7916078000893,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 95.6546202579794,
+            "count": 2
+          }
+        },
+        "labour_paid": 122.446228058069,
+        "maintenance_by_type": {
+          "b_002": {
+            "amount": 9.0,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 21.0,
+            "count": 2
+          }
+        },
+        "maintenance_paid": 30.0,
+        "money_in": 439.9089,
+        "money_out": 398.4005008022,
+        "power_demand": 530,
+        "power_demand_by_type": {
+          "b_002": {
+            "amount": 420.0,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 110.0,
+            "count": 2
+          }
+        },
+        "power_purchase_by_type": {
+          "b_002": {
+            "amount": 50.4,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 13.2,
+            "count": 2
+          }
+        },
+        "power_purchase_cost": 63.6,
+        "power_sales_revenue": 0.0,
+        "power_supply": 0,
+        "power_supply_by_quality": {
+          "green_intermittent": 0,
+          "green_steady": 0,
+          "grey": 0
+        },
+        "power_supply_by_type": {},
+        "prepaid_construction_arrived": 0.0,
+        "produced": {
+          "g_004": 70,
+          "g_005": 25,
+          "g_006": 44,
+          "g_007": 33,
+          "g_008": 33
+        },
+        "profit_sharing_paid": 0.0,
+        "purchased": {
+          "g_001": 40,
+          "g_002": 40,
+          "g_003": 36
+        },
+        "purchased_cost": {
+          "g_001": 24.0534,
+          "g_002": 35.742,
+          "g_003": 35.69076
+        },
+        "sold": {
+          "g_004": {
+            "qty": 33,
+            "revenue": 42.2697
+          },
+          "g_006": {
+            "qty": 12,
+            "revenue": 28.4148
+          },
+          "g_007": {
+            "qty": 1,
+            "revenue": 4.7361
+          },
+          "g_008": {
+            "qty": 33,
+            "revenue": 364.4883
+          }
+        },
+        "starved": [],
+        "storage_overcommitted": [],
+        "taxes_paid": 6.72137474931258,
+        "tile_consumed": {
+          "tile_5_4": {
+            "g_001": 20,
+            "g_004": 37,
+            "g_005": 25,
+            "g_006": 32,
+            "g_007": 32
+          },
+          "tile_6_4": {
+            "g_001": 20,
+            "g_002": 40,
+            "g_003": 36
+          }
+        },
+        "tile_supplied": {
+          "tile_5_4": {
+            "g_004": 70,
+            "g_005": 25,
+            "g_006": 44,
+            "g_007": 33
+          }
+        },
+        "transport_breakdown": {
+          "port_fees": 0.0,
+          "port_inbound": 2.99038437460881,
+          "port_insurance": 12.0336059877099,
+          "port_outbound": 2.49001623304967,
+          "roads": 51.4529896
+        },
+        "transport_paid": 68.9669961953684,
+        "warehousing_paid": 5.802642
+      },
+      "transit": {
+        "g_001true": 160,
+        "g_002true": 160,
+        "g_003true": 144,
+        "g_004false": 70,
+        "g_005false": 25,
+        "sale:g_004": 132,
+        "sale:g_006": 48,
+        "sale:g_007": 4,
+        "sale:g_008": 132,
+        "salefalse": 0
+      },
+      "turn": 48
+    },
+    {
+      "contribution": 53.4704254637166,
+      "factory_costs": 216.16516233432,
+      "regular": true,
+      "stock": {
+        "tile_5_4": {
+          "g_001": 20,
+          "g_004": 37,
+          "g_006": 32,
+          "g_007": 32
+        },
+        "tile_6_4": {
+          "g_001": 20,
+          "g_002": 40,
+          "g_003": 36
+        }
+      },
+      "summary": {
+        "advisor_paid": 0.0,
+        "building_credit_loan_received": 0.0,
+        "building_credit_repaid": 0.0,
+        "building_tab_carried": 0.0,
+        "carbon_tax_paid": 0.0,
+        "consumed": {
+          "g_001": 40,
+          "g_002": 40,
+          "g_003": 36,
+          "g_004": 37,
+          "g_005": 25,
+          "g_006": 32,
+          "g_007": 32,
+          "power": 530
+        },
+        "deposits_running_out": [],
+        "dividends_paid": 5.35526807419466,
+        "fake_money": 0.0,
+        "goods_purchased_by_type": {
+          "b_002": {
+            "amount": 95.48616,
+            "count": 0
+          }
+        },
+        "goods_purchased_cost": 95.48616,
+        "goods_sales_revenue": 439.9089,
+        "green_subsidy_received": 0.0,
+        "grid_bought": 530,
+        "grid_sold": 0,
+        "input_orders_capped": [],
+        "input_orders_short": [],
+        "input_splices": [],
+        "interest_paid": 0.0,
+        "labour_by_type": {
+          "b_002": {
+            "amount": 26.8183478227223,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 95.7468145115974,
+            "count": 2
+          }
+        },
+        "labour_paid": 122.56516233432,
+        "maintenance_by_type": {
+          "b_002": {
+            "amount": 9.0,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 21.0,
+            "count": 2
+          }
+        },
+        "maintenance_paid": 30.0,
+        "money_in": 439.9089,
+        "money_out": 398.487827703221,
+        "power_demand": 530,
+        "power_demand_by_type": {
+          "b_002": {
+            "amount": 420.0,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 110.0,
+            "count": 2
+          }
+        },
+        "power_purchase_by_type": {
+          "b_002": {
+            "amount": 50.4,
+            "count": 3
+          },
+          "b_007": {
+            "amount": 13.2,
+            "count": 2
+          }
+        },
+        "power_purchase_cost": 63.6,
+        "power_sales_revenue": 0.0,
+        "power_supply": 0,
+        "power_supply_by_quality": {
+          "green_intermittent": 0,
+          "green_steady": 0,
+          "grey": 0
+        },
+        "power_supply_by_type": {},
+        "prepaid_construction_arrived": 0.0,
+        "produced": {
+          "g_004": 70,
+          "g_005": 25,
+          "g_006": 44,
+          "g_007": 33,
+          "g_008": 33
+        },
+        "profit_sharing_paid": 0.0,
+        "purchased": {
+          "g_001": 40,
+          "g_002": 40,
+          "g_003": 36
+        },
+        "purchased_cost": {
+          "g_001": 24.0534,
+          "g_002": 35.742,
+          "g_003": 35.69076
+        },
+        "sold": {
+          "g_004": {
+            "qty": 33,
+            "revenue": 42.2697
+          },
+          "g_006": {
+            "qty": 12,
+            "revenue": 28.4148
+          },
+          "g_007": {
+            "qty": 1,
+            "revenue": 4.7361
+          },
+          "g_008": {
+            "qty": 33,
+            "revenue": 364.4883
+          }
+        },
+        "starved": [],
+        "storage_overcommitted": [],
+        "taxes_paid": 6.69408509274332,
+        "tile_consumed": {
+          "tile_5_4": {
+            "g_001": 20,
+            "g_004": 37,
+            "g_005": 25,
+            "g_006": 32,
+            "g_007": 32
+          },
+          "tile_6_4": {
+            "g_001": 20,
+            "g_002": 40,
+            "g_003": 36
+          }
+        },
+        "tile_supplied": {
+          "tile_5_4": {
+            "g_004": 70,
+            "g_005": 25,
+            "g_006": 44,
+            "g_007": 33
+          }
+        },
+        "transport_breakdown": {
+          "port_fees": 0.0,
+          "port_inbound": 2.99337475898342,
+          "port_insurance": 12.0456395936977,
+          "port_outbound": 2.49250624928272,
+          "roads": 51.4529896
+        },
+        "transport_paid": 68.9845102019638,
+        "warehousing_paid": 5.802642
+      },
+      "transit": {
+        "g_001true": 160,
+        "g_002true": 160,
+        "g_003true": 144,
+        "g_004false": 70,
+        "g_005false": 25,
+        "sale:g_004": 132,
+        "sale:g_006": 48,
+        "sale:g_007": 4,
+        "sale:g_008": 132,
+        "salefalse": 0
+      },
+      "turn": 49
+    }
+  ],
+  "settled_links": [
+    {
+      "cap": 300.0,
+      "flow": 290.0,
+      "key": "tile_6_4|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.966666666666667,
+      "tile_id": "tile_6_4"
+    },
+    {
+      "cap": 300.0,
+      "flow": 195.0,
+      "key": "tile_5_10|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.65,
+      "tile_id": "tile_5_10"
+    },
+    {
+      "cap": 300.0,
+      "flow": 195.0,
+      "key": "tile_6_5|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.65,
+      "tile_id": "tile_6_5"
+    },
+    {
+      "cap": 300.0,
+      "flow": 195.0,
+      "key": "tile_7_6|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.65,
+      "tile_id": "tile_7_6"
+    },
+    {
+      "cap": 300.0,
+      "flow": 195.0,
+      "key": "tile_7_7|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.65,
+      "tile_id": "tile_7_7"
+    },
+    {
+      "cap": 300.0,
+      "flow": 194.0,
+      "key": "tile_5_4|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.646666666666667,
+      "tile_id": "tile_5_4"
+    },
+    {
+      "cap": 300.0,
+      "flow": 116.0,
+      "key": "tile_6_7|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.386666666666667,
+      "tile_id": "tile_6_7"
+    },
+    {
+      "cap": 300.0,
+      "flow": 116.0,
+      "key": "tile_5_8|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.386666666666667,
+      "tile_id": "tile_5_8"
+    },
+    {
+      "cap": 300.0,
+      "flow": 116.0,
+      "key": "tile_5_9|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.386666666666667,
+      "tile_id": "tile_5_9"
+    },
+    {
+      "cap": 300.0,
+      "flow": 79.0,
+      "key": "tile_6_9|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.263333333333333,
+      "tile_id": "tile_6_9"
+    },
+    {
+      "cap": 300.0,
+      "flow": 79.0,
+      "key": "tile_7_8|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.263333333333333,
+      "tile_id": "tile_7_8"
+    },
+    {
+      "cap": 300.0,
+      "flow": 79.0,
+      "key": "tile_7_9|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.263333333333333,
+      "tile_id": "tile_7_9"
+    }
+  ]
+}

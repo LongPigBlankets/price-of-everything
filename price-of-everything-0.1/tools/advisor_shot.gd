@@ -11,11 +11,11 @@ func _ready() -> void:
 	get_window().size = Vector2i(1280, 900)
 	MatchState.reset()
 	TurnManager.current_turn = 5
-	MatchState.recruited_advisor_ids = ["vera", "tom", "rufus"]
-	MatchState.permanent_advisor_ids = []
-	MatchState.hire_advisor("vera")
-	MatchState.assign_advisor_to_seat("cfo", "vera")
-	MatchState.advisors_changed.emit()
+	AdvisorState.recruited_advisor_ids = ["vera", "tom", "rufus"]
+	AdvisorState.permanent_advisor_ids = []
+	AdvisorState.hire_advisor("vera")
+	AdvisorState.assign_advisor_to_seat("cfo", "vera")
+	AdvisorState.advisors_changed.emit()
 
 	var layer := CanvasLayer.new()
 	add_child(layer)

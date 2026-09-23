@@ -8,7 +8,7 @@ static func capture(cash_before: float, instance_id: String = "") -> Dictionary:
 	var expenses := float(summary.get("money_out", 0.0))
 	var delta := MatchState.money - cash_before
 	var output_costs: Dictionary = {}
-	var building: Dictionary = MatchState.get_building(instance_id)
+	var building: Dictionary = BuildingState.get_building(instance_id)
 	var recipe: Dictionary = Catalog.get_recipe(str(building.get("recipe_id", "")))
 	for output: Dictionary in recipe.get("outputs", []):
 		var gid := str(output.get("good_id", ""))
@@ -25,5 +25,5 @@ static func capture(cash_before: float, instance_id: String = "") -> Dictionary:
 		"building_output_unit_costs": output_costs,
 		"building_carbon_tax": float(Production.carbon_tax_by_building.get(instance_id, 0.0)),
 		"stockpile": Stockpile.export_state(),
-		"shipments": MatchState.get_pending_transport_shipments(),
+		"shipments": TransportState.get_pending_transport_shipments(),
 	}

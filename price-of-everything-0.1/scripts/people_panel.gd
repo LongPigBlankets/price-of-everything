@@ -69,20 +69,20 @@ func _ready() -> void:
 	theme_type_variation = &"PanelContainer"
 	add_theme_stylebox_override("panel", preload("res://scripts/pipe_frame.gd").dark_brown_stylebox(8.0))
 	_build_panel()
-	MatchState.labour_multiplier_changed.connect(func(_value: float): _refresh_labour())
-	MatchState.workforce_policies_changed.connect(_refresh_policy_buttons)
-	MatchState.workforce_policies_changed.connect(_refresh_labour_indicator)
-	MatchState.advisors_changed.connect(_rebuild_policy_rows)   # re-gate HR-locked policies
+	LabourState.labour_multiplier_changed.connect(func(_value: float): _refresh_labour())
+	LabourState.workforce_policies_changed.connect(_refresh_policy_buttons)
+	LabourState.workforce_policies_changed.connect(_refresh_labour_indicator)
+	AdvisorState.advisors_changed.connect(_rebuild_policy_rows)   # re-gate HR-locked policies
 	TurnManager.turn_resolution_completed.connect(_refresh_labour_indicator)
 	TurnManager.turn_resolution_completed.connect(_refresh_advisors_tab)
-	if not MatchState.advisors_changed.is_connected(_on_advisors_changed):
-		MatchState.advisors_changed.connect(_on_advisors_changed)
-	if not MatchState.advisor_acquired.is_connected(_on_advisor_acquired):
-		MatchState.advisor_acquired.connect(_on_advisor_acquired)
-	if not MatchState.advisor_loyalty_changed.is_connected(_on_advisor_loyalty_changed):
-		MatchState.advisor_loyalty_changed.connect(_on_advisor_loyalty_changed)
-	if not MatchState.advisor_mission_state_changed.is_connected(_on_advisor_mission_state_changed):
-		MatchState.advisor_mission_state_changed.connect(_on_advisor_mission_state_changed)
+	if not AdvisorState.advisors_changed.is_connected(_on_advisors_changed):
+		AdvisorState.advisors_changed.connect(_on_advisors_changed)
+	if not AdvisorState.advisor_acquired.is_connected(_on_advisor_acquired):
+		AdvisorState.advisor_acquired.connect(_on_advisor_acquired)
+	if not AdvisorState.advisor_loyalty_changed.is_connected(_on_advisor_loyalty_changed):
+		AdvisorState.advisor_loyalty_changed.connect(_on_advisor_loyalty_changed)
+	if not AdvisorState.advisor_mission_state_changed.is_connected(_on_advisor_mission_state_changed):
+		AdvisorState.advisor_mission_state_changed.connect(_on_advisor_mission_state_changed)
 	visibility_changed.connect(_on_visibility_changed)
 
 func _build_panel() -> void:
@@ -310,13 +310,13 @@ func _add_labour_button(parent: HBoxContainer, multiplier: float, text: String) 
 	_labour_buttons[multiplier] = button
 
 func _on_labour_button_pressed(multiplier: float) -> void:
-	MatchState.set_labour_multiplier(multiplier)
+	LabourState.set_labour_multiplier(multiplier)
 	_refresh_labour()
 
 func _refresh_labour() -> void:
 	if _labour_effects == null:
 		return
-	var selected := _nearest_labour_choice(MatchState.labour_multiplier)
+	var selected := _nearest_labour_choice(LabourState.labour_multiplier)
 	for key in _labour_buttons.keys():
 		var button: Button = _labour_buttons[key]
 		button.set_pressed_no_signal(absf(float(key) - selected) < 0.001)
@@ -385,62 +385,62 @@ func _policy_definitions() -> Array:
 	var end := third * 3
 	return [
 		{
-			"id": MatchState.WORKFORCE_POLICY_GENEROUS_PENSIONS,
+			"id": LabourState.WORKFORCE_POLICY_GENEROUS_PENSIONS,
 			"name": "Generous Pensions",
 			"cost": "Labour costs +0.1%%/turn for turns 1-%d, +0.25%%/turn for %d-%d, then +0.4%%/turn to turn %d." % [third, third + 1, second, end],
 			"benefit": "Output +0.05%/turn while active, max +5%; decays 0.1%/turn when removed.",
 		},
 		{
-			"id": MatchState.WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE,
+			"id": LabourState.WORKFORCE_POLICY_EXTENDED_ANNUAL_LEAVE,
 			"name": "Extended Annual Leave",
 			"cost": "Output -5% every 10th turn.",
 			"benefit": "Labour costs -0.1%/turn while active, max -5%; decays 0.25%/turn when removed.",
 		},
 		{
-			"id": MatchState.WORKFORCE_POLICY_GENEROUS_PARENTAL_LEAVE,
+			"id": LabourState.WORKFORCE_POLICY_GENEROUS_PARENTAL_LEAVE,
 			"name": "Generous Parental Leave",
 			"cost": "Output -5% for 10 turns every other 10 turns.",
 			"benefit": "Labour costs -0.1%/turn while active, max -5%; decays 0.25%/turn when removed.",
 		},
 		{
-			"id": MatchState.WORKFORCE_POLICY_STRICT_SAFETY,
+			"id": LabourState.WORKFORCE_POLICY_STRICT_SAFETY,
 			"name": "Strict Safety Procedures",
 			"cost": "Output -10%.",
 			"benefit": "Labour costs -0.5%/turn while active, max -15%.",
 		},
 		{
-			"id": MatchState.WORKFORCE_POLICY_STANDARD_SAFETY,
+			"id": LabourState.WORKFORCE_POLICY_STANDARD_SAFETY,
 			"name": "Standard Safety Procedures",
 			"cost": "No output change.",
 			"benefit": "No labour cost change.",
 		},
 		{
-			"id": MatchState.WORKFORCE_POLICY_LAX_SAFETY,
+			"id": LabourState.WORKFORCE_POLICY_LAX_SAFETY,
 			"name": "Lax Safety Procedures",
 			"cost": "Labour +0.5%/turn (max +15%) and maintenance +5%/turn while active, up to +100%.",
 			"benefit": "Output +5%.",
 		},
 		{
-			"id": MatchState.WORKFORCE_POLICY_ANNUAL_BONUS,
+			"id": LabourState.WORKFORCE_POLICY_ANNUAL_BONUS,
 			"name": "Annual Bonus",
 			"cost": "Labour costs +5%.",
 			"benefit": "Output +20% every 10th turn.",
 		},
 		{
-			"id": MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE,
+			"id": LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE,
 			"name": "Annual Profit Share",
 			"cost": "Pay 5% of post-tax, post-dividend profit to workers.",
 			"benefit": "Output +10%.",
 		},
 		{
-			"id": MatchState.WORKFORCE_POLICY_LONG_TENURE,
+			"id": LabourState.WORKFORCE_POLICY_LONG_TENURE,
 			"name": "Long Tenure Awards",
 			"cost": "Labour costs +10% one turn every 10th turn (the awards payout).",
 			"benefit": "Labour costs -0.1%/turn while active, max -10%.",
 			"requires": "Requires an HR Director advisor.",
 		},
 		{
-			"id": MatchState.WORKFORCE_POLICY_STOCK_OPTIONS,
+			"id": LabourState.WORKFORCE_POLICY_STOCK_OPTIONS,
 			"name": "Stock Options",
 			"cost": "Dividends grow +0.05%/turn, up to +10% (30% of profit max).",
 			"benefit": "Output +0.1%/turn while active, max +5%.",
@@ -449,7 +449,7 @@ func _policy_definitions() -> Array:
 	]
 
 func _policy_game_third_turns() -> int:
-	return MatchState.workforce_policy_game_third_turns()
+	return LabourState.workforce_policy_game_third_turns()
 
 func _policy_row(policy: Dictionary) -> Control:
 	var panel := PanelContainer.new()
@@ -478,10 +478,10 @@ func _policy_name_row(policy: Dictionary) -> Control:
 	row.add_theme_constant_override("separation", 8)
 
 	var policy_id := str(policy.get("id", ""))
-	var available: bool = MatchState.is_workforce_policy_available(policy_id)
+	var available: bool = LabourState.is_workforce_policy_available(policy_id)
 
 	var checkbox := UIHelpers.make_custom_checkbox()
-	checkbox.button_pressed = MatchState.is_workforce_policy_enabled(policy_id)
+	checkbox.button_pressed = LabourState.is_workforce_policy_enabled(policy_id)
 	checkbox.disabled = not available
 	checkbox.toggled.connect(_on_policy_toggled.bind(policy_id))
 	row.add_child(checkbox)
@@ -524,7 +524,7 @@ func _policy_text_row(row_name: String, text: String, accent: Color) -> Control:
 	return row
 
 func _on_policy_toggled(pressed: bool, policy_id: String) -> void:
-	MatchState.set_workforce_policy_enabled(policy_id, pressed)
+	LabourState.set_workforce_policy_enabled(policy_id, pressed)
 
 # Rebuild every policy row (called on advisor seat changes so HR-gated policies
 # lock/unlock live).
@@ -541,7 +541,7 @@ func _refresh_policy_buttons() -> void:
 	for policy_id in _policy_buttons:
 		var checkbox: CheckBox = _policy_buttons[policy_id]
 		if is_instance_valid(checkbox):
-			checkbox.set_pressed_no_signal(MatchState.is_workforce_policy_enabled(str(policy_id)))
+			checkbox.set_pressed_no_signal(LabourState.is_workforce_policy_enabled(str(policy_id)))
 
 func _build_advisors_tab() -> Control:
 	# Role-first council view (scripts/advisor_council_tab.gd): pick the seat,
@@ -570,8 +570,8 @@ func _on_advisor_mission_state_changed(advisor_id: String) -> void:
 		_refresh_advisor_missions_detail(advisor_id)
 
 func _sync_advisor_lists() -> void:
-	_permanent_advisors = MatchState.permanent_advisors()
-	_available_advisors = MatchState.available_advisors()
+	_permanent_advisors = AdvisorState.permanent_advisors()
+	_available_advisors = AdvisorState.available_advisors()
 
 func _refresh_advisors_tab() -> void:
 	if not is_instance_valid(_advisors_root):
@@ -613,8 +613,8 @@ func _advisor_profit_track() -> Control:
 	root.add_theme_constant_override("separation", 4)
 	margin.add_child(root)
 
-	var peak: float = MatchState.peak_profit_per_turn
-	var next_m: int = MatchState.next_advisor_milestone()
+	var peak: float = AdvisorState.peak_profit_per_turn
+	var next_m: int = AdvisorState.next_advisor_milestone()
 
 	var header := HBoxContainer.new()
 	root.add_child(header)
@@ -628,7 +628,7 @@ func _advisor_profit_track() -> Control:
 	bar.show_percentage = false
 	if next_m > 0:
 		var prev := 0
-		for mm in MatchState.PROFIT_MILESTONES:
+		for mm in AdvisorState.PROFIT_MILESTONES:
 			if int(mm) < next_m:
 				prev = int(mm)
 		bar.min_value = float(prev)
@@ -756,11 +756,11 @@ func _open_advisor_modifiers_panel() -> void:
 func _refresh_advisor_payroll_label() -> void:
 	if not is_instance_valid(_advisor_payroll_label):
 		return
-	var count := MatchState.permanent_advisor_ids.size()
-	var unpaid := count - MatchState.payrolled_advisor_count()
-	var payroll := MatchState.advisor_payroll_per_turn()
+	var count := AdvisorState.permanent_advisor_ids.size()
+	var unpaid := count - AdvisorState.payrolled_advisor_count()
+	var payroll := AdvisorState.advisor_payroll_per_turn()
 	var unpaid_note := " · %d unpaid" % unpaid if unpaid > 0 else ""
-	_advisor_payroll_label.text = "%d / %d advisor%s%s · £%.2f/turn" % [count, MatchState.max_advisor_slots, ("" if count == 1 else "s"), unpaid_note, payroll]
+	_advisor_payroll_label.text = "%d / %d advisor%s%s · £%.2f/turn" % [count, AdvisorState.max_advisor_slots, ("" if count == 1 else "s"), unpaid_note, payroll]
 
 func _add_advisor_section(parent: VBoxContainer, title_text: String, advisors: Array, permanent: bool) -> Control:
 	var section := VBoxContainer.new()
@@ -775,7 +775,7 @@ func _add_advisor_section(parent: VBoxContainer, title_text: String, advisors: A
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var header_text := title_text
 	if permanent:
-		header_text = "%s  (%d / %d)" % [title_text, MatchState.permanent_advisor_ids.size(), MatchState.max_advisor_slots]
+		header_text = "%s  (%d / %d)" % [title_text, AdvisorState.permanent_advisor_ids.size(), AdvisorState.max_advisor_slots]
 	section.add_child(_advisor_section_header(header_text, scroll))
 	section.add_child(scroll)
 
@@ -789,7 +789,7 @@ func _add_advisor_section(parent: VBoxContainer, title_text: String, advisors: A
 		if advisor is Dictionary:
 			row.add_child(_advisor_card(advisor, permanent, false))
 			shown += 1
-	if permanent and MatchState.permanent_advisor_ids.size() < MatchState.max_advisor_slots:
+	if permanent and AdvisorState.permanent_advisor_ids.size() < AdvisorState.max_advisor_slots:
 		row.add_child(_advisor_card({}, true, true))   # "+" hidden once at the cap
 	elif not permanent and shown == 0:
 		row.add_child(_empty_advisor_pool_card())
@@ -808,7 +808,7 @@ func _advisor_card(advisor: Dictionary, permanent: bool, add_slot: bool) -> Cont
 	elif permanent and not add_slot:
 		card.gui_input.connect(_on_advisor_card_input.bind(advisor))
 	elif not add_slot:
-		if MatchState.is_fired(str(advisor.get("id", ""))):
+		if AdvisorState.is_fired(str(advisor.get("id", ""))):
 			card.modulate = Color(1, 1, 1, 0.45)   # dismissed: greyed, opens a read-only profile
 		card.gui_input.connect(_on_available_advisor_card_input.bind(advisor))
 
@@ -843,7 +843,7 @@ func _advisor_card(advisor: Dictionary, permanent: bool, add_slot: bool) -> Cont
 	if not permanent and not add_slot:
 		root.add_child(_card_pentagon(advisor))
 		var aid := str(advisor.get("id", ""))
-		if MatchState.is_fired(aid):
+		if AdvisorState.is_fired(aid):
 			var cd := _label(_fire_cooldown_text(aid), "Caption")
 			cd.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			cd.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -862,7 +862,7 @@ func _advisor_card(advisor: Dictionary, permanent: bool, add_slot: bool) -> Cont
 
 	if not add_slot and preload("res://scripts/debug_terminal.gd").demo_is_unlocked():
 		# Hired advisors show live loyalty (-10..+10); the pool/detail use the static value.
-		var loyalty_val: int = int(round(MatchState.advisor_loyalty_value(str(advisor.get("id", ""))))) if permanent else int(advisor.get("happiness", 0))
+		var loyalty_val: int = int(round(AdvisorState.advisor_loyalty_value(str(advisor.get("id", ""))))) if permanent else int(advisor.get("happiness", 0))
 		root.add_child(_happiness_row(loyalty_val))
 
 	var bonus := _label("Open slot" if add_slot else str(advisor.get("bonus", "")), "Caption")
@@ -887,7 +887,7 @@ func _advisor_card(advisor: Dictionary, permanent: bool, add_slot: bool) -> Cont
 	rec_margin.add_theme_constant_override("margin_bottom", 8)
 	rec.add_child(rec_margin)
 	var rec_text := _slot_recommendation(permanent) if add_slot else str(advisor.get("recommendation", ""))
-	if not add_slot and MatchState.is_fired(str(advisor.get("id", ""))):
+	if not add_slot and AdvisorState.is_fired(str(advisor.get("id", ""))):
 		rec_text = _fire_cooldown_text(str(advisor.get("id", "")))
 	var rec_label := _label(rec_text, "Caption")
 	rec_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -897,7 +897,7 @@ func _advisor_card(advisor: Dictionary, permanent: bool, add_slot: bool) -> Cont
 
 # Small unlabelled stat pentagon for an advisor card (reuses the detail-panel draw).
 func _card_pentagon(advisor: Dictionary) -> Control:
-	var stats := MatchState._roster_entry(str(advisor.get("id", "")))
+	var stats := AdvisorState._roster_entry(str(advisor.get("id", "")))
 	var radar := Control.new()
 	radar.custom_minimum_size = Vector2(0, 104)
 	radar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -908,11 +908,11 @@ func _card_pentagon(advisor: Dictionary) -> Control:
 # and any seats where they'd be a malus (tier 1). Bad is empty when every stat is >= 2.
 func _advisor_role_fit(advisor_id: String) -> Dictionary:
 	var rows: Array = []
-	for seat_id in MatchState.SEAT_DEFINITIONS:
-		if not MatchState.is_seat_available(str(seat_id)):
+	for seat_id in AdvisorState.SEAT_DEFINITIONS:
+		if not AdvisorState.is_seat_available(str(seat_id)):
 			continue  # locked seats stay hidden until `unlock advisors`
-		var seat: Dictionary = MatchState.SEAT_DEFINITIONS[seat_id]
-		rows.append({"name": str(seat.get("seat_name", seat_id)), "tier": MatchState.advisor_seat_tier(advisor_id, str(seat_id))})
+		var seat: Dictionary = AdvisorState.SEAT_DEFINITIONS[seat_id]
+		rows.append({"name": str(seat.get("seat_name", seat_id)), "tier": AdvisorState.advisor_seat_tier(advisor_id, str(seat_id))})
 	rows.sort_custom(func(a, b): return int(a["tier"]) > int(b["tier"]))
 	var great: Array = []
 	var bad: Array = []
@@ -946,7 +946,7 @@ const _IMPACT_LABELS := {
 # seat they best demonstrate — plus their trait bonuses beneath.
 func _advisor_impact_block(advisor: Dictionary) -> Control:
 	var advisor_id := str(advisor.get("id", ""))
-	var seat_id := MatchState.advisor_best_effect_seat(advisor_id)
+	var seat_id := AdvisorState.advisor_best_effect_seat(advisor_id)
 	var panel := PanelContainer.new()
 	panel.theme_type_variation = &"Inset"
 	var margin := MarginContainer.new()
@@ -957,9 +957,9 @@ func _advisor_impact_block(advisor: Dictionary) -> Control:
 	root.add_theme_constant_override("separation", 4)
 	margin.add_child(root)
 
-	var rows: Array = MatchState.advisor_seat_effect_list(advisor_id, seat_id)
+	var rows: Array = AdvisorState.advisor_seat_effect_list(advisor_id, seat_id)
 	if seat_id != "" and not rows.is_empty():
-		var seat_name := str(MatchState.SEAT_DEFINITIONS.get(seat_id, {}).get("seat_name", seat_id))
+		var seat_name := str(AdvisorState.SEAT_DEFINITIONS.get(seat_id, {}).get("seat_name", seat_id))
 		root.add_child(_label("As %s:" % seat_name, "Caption"))
 	for r in rows:
 		root.add_child(_impact_row(str(r["domain"]), float(r["pct"])))
@@ -1047,9 +1047,9 @@ func _slot_recommendation(permanent: bool) -> String:
 func _advisor_assigned_role_label(advisor_id: String) -> String:
 	if advisor_id == "":
 		return ""
-	for seat_id in MatchState.advisor_seats.keys():
-		if str(MatchState.advisor_seats[seat_id]) == advisor_id:
-			var seat: Dictionary = MatchState.SEAT_DEFINITIONS.get(str(seat_id), {})
+	for seat_id in AdvisorState.advisor_seats.keys():
+		if str(AdvisorState.advisor_seats[seat_id]) == advisor_id:
+			var seat: Dictionary = AdvisorState.SEAT_DEFINITIONS.get(str(seat_id), {})
 			return str(seat.get("seat_name", seat_id))
 	return ""
 
@@ -1147,8 +1147,8 @@ func _build_advisor_detail(advisor: Dictionary) -> void:
 	var advisor_id := str(advisor.get("id", ""))
 	_advisor_detail_advisor_id = advisor_id
 	_advisor_missions_content = null
-	var is_hired: bool = MatchState.permanent_advisor_ids.has(advisor_id)
-	var is_fired: bool = MatchState.is_fired(advisor_id)
+	var is_hired: bool = AdvisorState.permanent_advisor_ids.has(advisor_id)
+	var is_fired: bool = AdvisorState.is_fired(advisor_id)
 
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 12)
@@ -1190,7 +1190,7 @@ func _build_advisor_detail(advisor: Dictionary) -> void:
 
 	if is_fired:
 		_advisor_detail_body.add_child(_label("On leave — dismissed advisor returns to the pool in %d turn%s." % [
-			MatchState.fire_cooldown_remaining(advisor_id), "" if MatchState.fire_cooldown_remaining(advisor_id) == 1 else "s"], "Caption"))
+			AdvisorState.fire_cooldown_remaining(advisor_id), "" if AdvisorState.fire_cooldown_remaining(advisor_id) == 1 else "s"], "Caption"))
 
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 16)
@@ -1231,12 +1231,12 @@ func _refresh_advisor_missions_detail(advisor_id: String) -> void:
 	if advisor_id == "" or not is_instance_valid(_advisor_missions_content):
 		return
 	_clear_children(_advisor_missions_content)
-	var fresh := MatchState.get_advisor(advisor_id)
+	var fresh := AdvisorState.get_advisor(advisor_id)
 	if fresh.is_empty():
 		return
 	_advisor_missions_content.add_child(_quest_diagram(
 		fresh.get("missions", fresh.get("quests", [])),
-		MatchState.advisor_loyalty_value(advisor_id)))
+		AdvisorState.advisor_loyalty_value(advisor_id)))
 
 # A titled section that folds away when its header is tapped.
 func _collapsible(title_text: String, content: Control, start_open: bool = true) -> Control:
@@ -1259,7 +1259,7 @@ func _collapsible(title_text: String, content: Control, start_open: bool = true)
 	return box
 
 func _fire_cooldown_text(advisor_id: String) -> String:
-	var n := MatchState.fire_cooldown_remaining(advisor_id)
+	var n := AdvisorState.fire_cooldown_remaining(advisor_id)
 	return "Re-hireable in %d turn%s" % [n, "" if n == 1 else "s"]
 
 # Bottom CTA: Confirm Hire for an available advisor, Fire Advisor for an employed
@@ -1275,7 +1275,7 @@ func _advisor_detail_footer(advisor: Dictionary, is_hired: bool, is_fired: bool)
 		btn.text = "Fire Advisor"
 		btn.add_theme_color_override("font_color", Color(0.86, 0.28, 0.24))
 		btn.pressed.connect(_on_fire_advisor_pressed.bind(advisor))
-	elif MatchState.permanent_advisor_ids.size() >= MatchState.max_advisor_slots:
+	elif AdvisorState.permanent_advisor_ids.size() >= AdvisorState.max_advisor_slots:
 		btn.text = "No free advisor slot"
 		btn.disabled = true
 	else:
@@ -1284,7 +1284,7 @@ func _advisor_detail_footer(advisor: Dictionary, is_hired: bool, is_fired: bool)
 	return btn
 
 func _on_confirm_hire_pressed(advisor: Dictionary) -> void:
-	if MatchState.hire_advisor(str(advisor.get("id", ""))):
+	if AdvisorState.hire_advisor(str(advisor.get("id", ""))):
 		_close_advisor_detail()
 		_available_pool_open = true
 		_refresh_advisors_tab()
@@ -1292,11 +1292,11 @@ func _on_confirm_hire_pressed(advisor: Dictionary) -> void:
 func _on_fire_advisor_pressed(advisor: Dictionary) -> void:
 	var dialog := ConfirmationDialog.new()
 	dialog.title = "Fire Advisor"
-	dialog.dialog_text = "Dismiss %s?\nThis frees their seat. They will sit out %d turns before they can be re-hired." % [str(advisor.get("name", "this advisor")), MatchState.FIRE_COOLDOWN_TURNS]
+	dialog.dialog_text = "Dismiss %s?\nThis frees their seat. They will sit out %d turns before they can be re-hired." % [str(advisor.get("name", "this advisor")), AdvisorState.FIRE_COOLDOWN_TURNS]
 	dialog.ok_button_text = "Fire"
 	add_child(dialog)
 	dialog.confirmed.connect(func() -> void:
-		MatchState.fire_advisor(str(advisor.get("id", "")))
+		AdvisorState.fire_advisor(str(advisor.get("id", "")))
 		dialog.queue_free()
 		if is_instance_valid(_advisor_detail_panel) and _advisor_detail_panel.visible:
 			_build_advisor_detail(advisor)   # re-render greyed, footer now "Dismissed"
@@ -1306,7 +1306,7 @@ func _on_fire_advisor_pressed(advisor: Dictionary) -> void:
 
 func _stat_pentagon(advisor: Dictionary) -> Control:
 	var advisor_id := str(advisor.get("id", ""))
-	var stats := MatchState._roster_entry(advisor_id)
+	var stats := AdvisorState._roster_entry(advisor_id)
 	var col := VBoxContainer.new()
 	col.name = "StatPentagon"
 	col.add_theme_constant_override("separation", 4)
@@ -1379,22 +1379,22 @@ func _on_discipline_label(disc: String, advisor_id: String) -> void:
 		_shown_discipline = ""   # tap again to collapse
 		return
 	_shown_discipline = disc
-	var a := MatchState._roster_entry(advisor_id)
+	var a := AdvisorState._roster_entry(advisor_id)
 	var stat := int(a.get(disc, 1))
 	var tier_word: String = ["-", "malus", "modest", "strong"][clampi(stat, 0, 3)]
 	_discipline_info_section.add_child(_label(str(_DISCIPLINE_NAMES.get(disc, disc)), "Section"))
 	_discipline_info_section.add_child(_wrapped(str(_DISCIPLINE_GIVES.get(disc, "")), "Caption"))
 	_discipline_info_section.add_child(_wrapped("This advisor: %s  (%d / 3)" % [tier_word, stat], "Body"))
 	var seat_names: Array = []
-	for seat_id in MatchState.SEAT_DEFINITIONS:
-		if not MatchState.is_seat_available(str(seat_id)):
+	for seat_id in AdvisorState.SEAT_DEFINITIONS:
+		if not AdvisorState.is_seat_available(str(seat_id)):
 			continue  # locked seats stay hidden until `unlock advisors`
-		var seat: Dictionary = MatchState.SEAT_DEFINITIONS[seat_id]
+		var seat: Dictionary = AdvisorState.SEAT_DEFINITIONS[seat_id]
 		if str(seat.get("governs", "")) == disc or (seat.get("flexible", []) as Array).has(disc):
 			seat_names.append(str(seat.get("seat_name", seat_id)))
 	if not seat_names.is_empty():
 		_discipline_info_section.add_child(_wrapped("Seats: " + ", ".join(seat_names), "Caption"))
-	var bonuses: Array = MatchState.get_advisor(advisor_id).get("bonuses", [])
+	var bonuses: Array = AdvisorState.get_advisor(advisor_id).get("bonuses", [])
 	if not bonuses.is_empty():
 		_discipline_info_section.add_child(_label("Bonuses", "Caption"))
 		for b in bonuses:
@@ -1409,7 +1409,7 @@ func _wrapped(text: String, variation: String) -> Label:
 # Seat picker: one row per seat with this advisor's governing tier + assign/unassign.
 func _seat_assignment_section(advisor: Dictionary, with_header: bool = true) -> Control:
 	var advisor_id := str(advisor.get("id", ""))
-	var hired: bool = MatchState.permanent_advisor_ids.has(advisor_id)
+	var hired: bool = AdvisorState.permanent_advisor_ids.has(advisor_id)
 	var panel := PanelContainer.new()
 	panel.theme_type_variation = &"Inset"
 	panel.name = "SeatAssignmentSection"
@@ -1421,32 +1421,32 @@ func _seat_assignment_section(advisor: Dictionary, with_header: bool = true) -> 
 	root.add_theme_constant_override("separation", 4)
 	margin.add_child(root)
 	if with_header:
-		root.add_child(_label("Seats  (%d / %d filled)" % [MatchState.advisor_seats.size(), MatchState.max_advisor_slots], "Section"))
+		root.add_child(_label("Seats  (%d / %d filled)" % [AdvisorState.advisor_seats.size(), AdvisorState.max_advisor_slots], "Section"))
 	else:
-		root.add_child(_label("%d / %d seats filled" % [MatchState.advisor_seats.size(), MatchState.max_advisor_slots], "Caption"))
+		root.add_child(_label("%d / %d seats filled" % [AdvisorState.advisor_seats.size(), AdvisorState.max_advisor_slots], "Caption"))
 	if not hired:
 		root.add_child(_label("Hire this advisor to assign a seat.", "Caption"))
-	for seat_id in MatchState.SEAT_DEFINITIONS:
-		if not MatchState.is_seat_available(str(seat_id)):
+	for seat_id in AdvisorState.SEAT_DEFINITIONS:
+		if not AdvisorState.is_seat_available(str(seat_id)):
 			continue  # locked seats stay hidden until `unlock advisors`
 		root.add_child(_seat_row(str(seat_id), advisor_id, hired))
 	return panel
 
 func _seat_row(seat_id: String, advisor_id: String, hired: bool) -> Control:
-	var seat: Dictionary = MatchState.SEAT_DEFINITIONS[seat_id]
+	var seat: Dictionary = AdvisorState.SEAT_DEFINITIONS[seat_id]
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
-	var occupant := MatchState.get_advisor_in_seat(seat_id)
+	var occupant := AdvisorState.get_advisor_in_seat(seat_id)
 	var here: bool = occupant == advisor_id
-	var tier: int = MatchState.advisor_seat_tier(advisor_id, seat_id)
+	var tier: int = AdvisorState.advisor_seat_tier(advisor_id, seat_id)
 	var tier_word: String = ["-", "malus", "modest", "strong"][clampi(tier, 0, 3)]
 	var name_text := str(seat.get("seat_name", seat_id))
 	if occupant != "" and not here:
-		name_text += " · " + str(MatchState.get_advisor(occupant).get("name", occupant))
+		name_text += " · " + str(AdvisorState.get_advisor(occupant).get("name", occupant))
 	var name_lbl := _label(name_text, "Body")
 	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(name_lbl)
-	var disc := MatchState.advisor_seat_governing_discipline(advisor_id, seat_id)
+	var disc := AdvisorState.advisor_seat_governing_discipline(advisor_id, seat_id)
 	var preview := _label("%s %s" % [disc.to_upper(), tier_word], "Caption")
 	preview.custom_minimum_size = Vector2(108, 0)
 	preview.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -1458,27 +1458,27 @@ func _seat_row(seat_id: String, advisor_id: String, hired: bool) -> Control:
 		btn.pressed.connect(_on_seat_unassign.bind(seat_id, advisor_id))
 	else:
 		btn.text = "Assign"
-		var slot_full: bool = not MatchState.advisor_seats.has(seat_id) and MatchState.advisor_seats.size() >= MatchState.max_advisor_slots
+		var slot_full: bool = not AdvisorState.advisor_seats.has(seat_id) and AdvisorState.advisor_seats.size() >= AdvisorState.max_advisor_slots
 		btn.disabled = (not hired) or slot_full
 		btn.pressed.connect(_on_seat_assign.bind(seat_id, advisor_id))
 	row.add_child(btn)
 	return row
 
 func _on_seat_assign(seat_id: String, advisor_id: String) -> void:
-	if MatchState.assign_advisor_to_seat(seat_id, advisor_id):
+	if AdvisorState.assign_advisor_to_seat(seat_id, advisor_id):
 		_reopen_advisor_detail(advisor_id)
 
 func _on_seat_unassign(seat_id: String, advisor_id: String) -> void:
-	if MatchState.unassign_seat(seat_id):
+	if AdvisorState.unassign_seat(seat_id):
 		_reopen_advisor_detail(advisor_id)
 
 func _reopen_advisor_detail(advisor_id: String) -> void:
-	var a := MatchState.get_advisor(advisor_id)
+	var a := AdvisorState.get_advisor(advisor_id)
 	if not a.is_empty() and is_instance_valid(_advisor_detail_panel):
 		_build_advisor_detail(a)
 
 func _on_advisor_acquired(advisor_id: String) -> void:
-	var a := MatchState.get_advisor(advisor_id)
+	var a := AdvisorState.get_advisor(advisor_id)
 	MatchState.request_toast("New advisor: %s" % str(a.get("name", advisor_id)), "success")
 
 func _detail_block(title_text: String, body_text: String) -> Control:
@@ -1519,7 +1519,7 @@ func _agenda_block(advisor: Dictionary) -> Control:
 		fl.add_theme_color_override("font_color", DS.PALETTE["TEXT_MUTED"])
 		root.add_child(fl)
 
-	var rows: Array = MatchState.advisor_agenda_rows(str(advisor.get("id", "")))
+	var rows: Array = AdvisorState.advisor_agenda_rows(str(advisor.get("id", "")))
 	var likes := rows.filter(func(r): return bool(r.get("benefit", false)))
 	var dislikes := rows.filter(func(r): return not bool(r.get("benefit", false)))
 	if not likes.is_empty():
@@ -1811,13 +1811,13 @@ func _mission_milestone_label(index: int, quest: Dictionary) -> String:
 	var roman := str(quest.get("roman", ["I", "II", "III", "IV", "V"][clampi(index, 0, 4)]))
 	if index < MISSION_TRACK_THRESHOLDS.size() - 1:
 		return "%s\n%d" % [roman, int(MISSION_TRACK_THRESHOLDS[index])]
-	return "%s\n%d+ %dt" % [roman, int(MatchState.MISSION5_LOYALTY), int(MatchState.MISSION5_STREAK_TURNS)]
+	return "%s\n%d+ %dt" % [roman, int(AdvisorState.MISSION5_LOYALTY), int(AdvisorState.MISSION5_STREAK_TURNS)]
 
 func _mission_v_requirement(quest_list: Array) -> String:
 	var quest := _mission_quest_at(quest_list, 4)
 	var req := str(quest.get("req_text", "")).strip_edges()
 	if req == "":
-		req = "loyalty %d+ for %d turns" % [int(MatchState.MISSION5_LOYALTY), int(MatchState.MISSION5_STREAK_TURNS)]
+		req = "loyalty %d+ for %d turns" % [int(AdvisorState.MISSION5_LOYALTY), int(AdvisorState.MISSION5_STREAK_TURNS)]
 	return "V: %s" % req
 
 func _mission_style(state: String, base_color: Variant) -> StyleBoxFlat:

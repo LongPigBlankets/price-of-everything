@@ -24,9 +24,9 @@ func _ready() -> void:
 		push_error("[LOAN] no detail panel"); get_tree().quit(1); return
 	# A player building to hang the tab on.
 	var target: Dictionary = {}
-	for iid in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[iid]
-		if MatchState.is_player_owned(b) and str(b.get("recipe_id", "")) != "":
+	for iid in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[iid]
+		if BuildingState.is_player_owned(b) and str(b.get("recipe_id", "")) != "":
 			target = b
 			break
 	if target.is_empty():

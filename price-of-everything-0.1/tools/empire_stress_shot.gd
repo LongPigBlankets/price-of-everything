@@ -24,7 +24,7 @@ func _ready() -> void:
 		push_error("EmpireView not found")
 		get_tree().quit(1)
 		return
-	MatchState.use_empire_sprite_view = true
+	UiPrefs.use_empire_sprite_view = true
 	ev.call("toggle")
 	await _settle(24)
 
@@ -70,7 +70,7 @@ func _ready() -> void:
 
 func _seed() -> void:
 	var tiles: Array = []
-	for b in MatchState.buildings.values():
+	for b in BuildingState.buildings.values():
 		var t := str(b.get("tile_id", ""))
 		if t != "" and not tiles.has(t):
 			tiles.append(t)
@@ -83,9 +83,9 @@ func _seed() -> void:
 			continue
 		var rid := str((recs[0] as Dictionary).get("recipe_id", ""))
 		var iid := "stress_%d" % k
-		MatchState.add_building(bid, rid, tiles[(k * 7) % tiles.size()], "player_1", iid)
-		if MatchState.buildings.has(iid):
-			MatchState.buildings[iid]["level"] = (k % 3) + 1
+		BuildingState.add_building(bid, rid, tiles[(k * 7) % tiles.size()], "player_1", iid)
+		if BuildingState.buildings.has(iid):
+			BuildingState.buildings[iid]["level"] = (k % 3) + 1
 			placed += 1
 	print("seeded ", placed, "/", COUNT, " stress buildings")
 

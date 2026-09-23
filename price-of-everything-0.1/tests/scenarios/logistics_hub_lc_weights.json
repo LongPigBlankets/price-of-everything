@@ -1,0 +1,143 @@
+{
+  "version": 3,
+  "status": "historical hub trial inputs and controls; selected design is logistics_hub_design.json",
+  "progression": [
+    "middleman",
+    "generic_carrier",
+    "self_owned_logistics_hub"
+  ],
+  "minimum_efficient_scale": "intentional; small businesses should not need to own a hub",
+  "lc_per_vehicle_per_turn": 10,
+  "lc_per_recipe_working_calibration": 125,
+  "lc_weights": {
+    "solid_light": 1,
+    "solid_heavy": 2,
+    "ultra_heavy": 5,
+    "safe_liquid": 2,
+    "liquid": 2,
+    "hazard_liquid": 4,
+    "gas": 3
+  },
+  "scope": "Hub-covered directed edge loads, consolidated at each meeting tile and availability turn, independent of shipment origin and initial departure time; existing route eligibility and travel times retained.",
+  "rounding": "Selected design accumulates usage/service credit across turns; legacy_rounding_control preserves old trial semantics.",
+  "price_weights": "separate from middleman tariff; do not reuse LC weights for money charges",
+  "default_consolidation": {
+    "status": "user-approved default behaviour",
+    "group_by": [
+      "current_tile",
+      "availability_turn",
+      "directed_next_edge",
+      "compatible_equipment"
+    ],
+    "ignore": [
+      "original_origin",
+      "original_departure_turn",
+      "building_order_id"
+    ],
+    "repack_at_covered_meeting_tiles": true,
+    "extra_waiting_turns": 0,
+    "preserve_travel_time": true,
+    "preserve_goods_unit_congestion": true
+  },
+  "payload_working_assumption": {
+    "weighted_units_per_load": 100,
+    "lc_per_load_edge": 1,
+    "status": "provisional numerical calibration, not an approved gameplay constant",
+    "weight_applied_once": true,
+    "equipment_pools_in_benchmark": {
+      "dry_bulk": [
+        "coal",
+        "iron_ore",
+        "copper_ore"
+      ],
+      "general_dry": [
+        "iron",
+        "copper",
+        "steel",
+        "copper_wiring",
+        "motors"
+      ]
+    },
+    "other_cargo": "Liquid, hazardous and gas compatibility requires explicit equipment rules; LC weights alone do not imply compatibility."
+  },
+  "progression_targets": {
+    "status": "user-selected design targets; overlapping ranges depend on integration and colocation, not hard building-count gates",
+    "middleman": {
+      "buildings": [
+        1,
+        3
+      ],
+      "intent": "best early option"
+    },
+    "generic_carrier": {
+      "buildings": [
+        3,
+        12
+      ],
+      "intent": "best through intermediate scale, depending on integration/completeness/colocation"
+    },
+    "owned_hub": {
+      "buildings_min": 9,
+      "adjacent_production_tiles": [
+        3,
+        4
+      ],
+      "intent": "begin to pay off with substantial traffic between covered production tiles"
+    }
+  },
+  "differentiated_input_trial": {
+    "status": "candidate tested; accumulated-use rule not yet adopted as gameplay default",
+    "relative_rates": {
+      "fuels": 1,
+      "tyres": 0.5,
+      "hydraulic_components": 0.25,
+      "battery_or_specialist": 0.125
+    },
+    "fuel_per_125_lc": 6,
+    "profiles_per_125_lc": {
+      "diesel": {
+        "fuels": 6,
+        "tyres": 3,
+        "hydraulic_components": 1.5
+      },
+      "lithium_electric": {
+        "lithium_battery": 0.75,
+        "tyres": 3,
+        "hydraulic_components": 1.5
+      },
+      "sodium_electric": {
+        "sodium_battery": 0.75,
+        "tyres": 3,
+        "hydraulic_components": 1.5
+      }
+    },
+    "battery_replaces_fuel": true,
+    "report": "reports/balance/pepper_hub_differentiated_inputs_2026-09-19.json"
+  },
+  "modal_efficiency_trial": {
+    "status": "alternative candidate; not adopted",
+    "road_lc_per_recipe": 125,
+    "rail_lc_per_recipe": 300,
+    "recipe": "original 2 hydraulic components + 4 tyres + 6 fuel",
+    "apply_to": "actual hub-operated movement mode, not external carrier mode",
+    "mixed_mode_scale": "road_LC/125 + rail_LC/300",
+    "rounding_constraint": "Per-turn minimum-one masks efficiency at current benchmark scale. Average savings require accumulated consumption or another explicit revision.",
+    "report": "reports/balance/pepper_hub_modal_efficiency_2026-09-19.json"
+  },
+  "optimisation_target": {
+    "objective": "L2 handoff should earn more total hub operating profit than L1, each choosing its best reachable handoff",
+    "status": "user-selected objective",
+    "factorial_report": "reports/balance/pepper_hub_factorial_2026-09-19.json"
+  },
+  "level_specific_efficiency_trial": {
+    "status": "additional candidate, not adopted",
+    "road_lc_per_recipe": 125,
+    "rail_l1_lc_per_recipe": 125,
+    "rail_l2_lc_per_recipe": 300,
+    "original_inputs_delta_l2_minus_l1": 2.9391540380000265,
+    "differentiated_inputs_delta_l2_minus_l1": 1.265451822000017,
+    "requires": "accumulated input usage instead of per-turn minimum-one"
+  },
+  "selected_design": "tests/scenarios/logistics_hub_design.json",
+  "legacy_rounding_control": "per hub per turn, half-up, minimum one per positive input; idle zero"
+}

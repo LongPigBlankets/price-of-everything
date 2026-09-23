@@ -123,15 +123,15 @@ func set_warehouse_level(coord, level: int) -> void:
 func _warehouse_level() -> int:
 	var lvl := 1
 	for title in EconomyConfig.WAREHOUSE_UPGRADE_RESEARCH:
-		if MatchState.is_unlocked(str(title)):
+		if ResearchState.is_unlocked(str(title)):
 			lvl += 1
 	return mini(lvl, EconomyConfig.WAREHOUSE_STORAGE_CAP.size())
 
 func _storage_boost_for(coord) -> int:
 	var tile_id := str(coord)
 	var boost := 0
-	for instance_id in MatchState.tile_buildings.get(tile_id, []):
-		var inst: Dictionary = MatchState.get_building(instance_id)
+	for instance_id in BuildingState.tile_buildings.get(tile_id, []):
+		var inst: Dictionary = BuildingState.get_building(instance_id)
 		var bd: Dictionary = Catalog.get_building(str(inst.get("building_id", "")))
 		boost += int(bd.get("storage_boost", 0))
 	return boost

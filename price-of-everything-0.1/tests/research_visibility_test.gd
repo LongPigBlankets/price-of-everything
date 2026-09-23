@@ -16,8 +16,8 @@ func _ready() -> void:
 		for exact in ["", title]:
 			panel.set("_search_exact_title", exact)
 			check(panel.call("_category_unlocks", "Extraction").is_empty(), "Hidden demo search: " + title + " exact=" + exact)
-		MatchState.grant_unlock(title)
-		check(not MatchState.is_unlocked(title), "Hidden grant: " + title)
+		ResearchState.grant_unlock(title)
+		check(not ResearchState.is_unlocked(title), "Hidden grant: " + title)
 	for row in rows:
 		var title: String = row.title
 		if row.category == "Recycling" or row.research_node_id in ["research_people_008", "research_people_009", "research_people_010", "research_people_011"]:
@@ -25,11 +25,11 @@ func _ready() -> void:
 			for exact in ["", title]:
 				panel.set("_search_exact_title", exact)
 				check(panel.call("_category_unlocks", "Extraction").is_empty(), "Flagged search: " + title)
-			check(not MatchState.is_node_available(title), "Flagged availability: " + title)
-			MatchState.grant_unlock(title)
-			check(not MatchState.is_unlocked(title), "Flagged grant: " + title)
+			check(not ResearchState.is_node_available(title), "Flagged availability: " + title)
+			ResearchState.grant_unlock(title)
+			check(not ResearchState.is_unlocked(title), "Flagged grant: " + title)
 	MatchState.recycling_unlocked = true
-	MatchState.advisors_unlocked = true
+	AdvisorState.advisors_unlocked = true
 	for row in rows:
 		panel.set("_search_query", row.title)
 		panel.set("_search_exact_title", row.title)
@@ -39,16 +39,16 @@ func _ready() -> void:
 		counts[row.category] = int(counts.get(row.category, 0)) + 1
 	check(counts.get("Manufacturing") == 21 and counts.get("Vehicle Production") == 19, "Manufacturing / vehicle split")
 	check(counts.get("Combustion Power") == 10 and counts.get("Renewable Power") == 31, "Power split")
-	check(MatchState.get_unlock_def("Precision Machining").category == "Vehicle Production", "Gameplay uses new category")
-	check(not MatchState.is_tier_available("Vehicle Production", "II"), "Vehicle tier II initially locked")
-	MatchState.grant_unlock("Precision Machining")
-	check(MatchState.is_tier_available("Vehicle Production", "II"), "Vehicle tier II opens at the configured one-node threshold")
-	check(not MatchState.is_tier_available("Manufacturing", "II"), "Vehicle progress does not open manufacturing")
+	check(ResearchState.get_unlock_def("Precision Machining").category == "Vehicle Production", "Gameplay uses new category")
+	check(not ResearchState.is_tier_available("Vehicle Production", "II"), "Vehicle tier II initially locked")
+	ResearchState.grant_unlock("Precision Machining")
+	check(ResearchState.is_tier_available("Vehicle Production", "II"), "Vehicle tier II opens at the configured one-node threshold")
+	check(not ResearchState.is_tier_available("Manufacturing", "II"), "Vehicle progress does not open manufacturing")
 	for row in rows:
 		var parts: PackedStringArray = panel.call("_requirement_details", row).split("\n")
 		check(parts.size() >= 2 and parts[parts.size()-2].begins_with("Prerequisites:") and parts[parts.size()-1].begins_with("Tier "), "Separate requirements: " + row.title)
 	for row in rows:
-		if not MatchState.is_research_visible(row): continue
+		if not ResearchState.is_research_visible(row): continue
 		var spec: Dictionary = panel.call("_presentation", row)
 		check(not spec.is_empty() and not spec.get("effects", []).is_empty(), "Icon and effects: " + row.title)
 		for effect in spec.get("effects", []):
@@ -86,32 +86,32 @@ func _ready() -> void:
 	MatchState.reset()
 	Production.full_output_streak_by_building.clear()
 	CostSolver.last_result = {"per_building": {}, "per_good": {}}
-	var definition: Dictionary = MatchState.get_unlock_def("Pulverised Carbon Injection")
-	check(MatchState.unlock_condition_text("Pulverised Carbon Injection") == "Run 10 buildings with steelmaking recipes profitably", "Carbon Injection wording")
+	var definition: Dictionary = ResearchState.get_unlock_def("Pulverised Carbon Injection")
+	check(ResearchState.unlock_condition_text("Pulverised Carbon Injection") == "Run 10 buildings with steelmaking recipes profitably", "Carbon Injection wording")
 	check(definition.action == "Run Recipe Profitable" and definition.qty == 10, "Carbon Injection uses recipe profitability gate")
 	for i in 10:
 		var iid := "steel_profit_" + str(i)
-		MatchState.buildings[iid] = {"instance_id": iid, "building_id": "b_002", "recipe_id": "r_003", "owner": MatchState.LOCAL_PLAYER}
+		BuildingState.buildings[iid] = {"instance_id": iid, "building_id": "b_002", "recipe_id": "r_003", "owner": MatchState.LOCAL_PLAYER}
 		Production.full_output_streak_by_building[iid] = 1
 		CostSolver.last_result.per_building[iid] = {"unit_cost": 0.0, "output_good_id": "g_006"}
 		if i == 8:
-			check(not MatchState._live_condition_met(definition), "Nine profitable steelmaking buildings do not unlock")
-	check(MatchState._live_condition_met(definition), "Ten profitable steelmaking buildings meet the condition")
+			check(not ResearchState._live_condition_met(definition), "Nine profitable steelmaking buildings do not unlock")
+	check(ResearchState._live_condition_met(definition), "Ten profitable steelmaking buildings meet the condition")
 	var last := "steel_profit_9"
 	CostSolver.last_result.per_building[last].unit_cost = MarketState.get_price("g_006") + 1.0
-	check(not MatchState._live_condition_met(definition), "Loss-making steel plant does not count")
+	check(not ResearchState._live_condition_met(definition), "Loss-making steel plant does not count")
 	CostSolver.last_result.per_building[last].unit_cost = 0.0
-	MatchState.buildings[last].recipe_id = "r_001"
-	check(not MatchState._live_condition_met(definition), "Other profitable recipes do not count")
-	MatchState.buildings[last].recipe_id = "r_003"
-	MatchState.buildings[last].owner = "npc"
-	check(not MatchState._live_condition_met(definition), "NPC steelmaking does not count")
-	MatchState.buildings[last].owner = MatchState.LOCAL_PLAYER
-	MatchState.paused_buildings[last] = true
-	check(not MatchState._live_condition_met(definition), "Paused steelmaking does not count")
-	MatchState.paused_buildings.clear()
+	BuildingState.buildings[last].recipe_id = "r_001"
+	check(not ResearchState._live_condition_met(definition), "Other profitable recipes do not count")
+	BuildingState.buildings[last].recipe_id = "r_003"
+	BuildingState.buildings[last].owner = "npc"
+	check(not ResearchState._live_condition_met(definition), "NPC steelmaking does not count")
+	BuildingState.buildings[last].owner = MatchState.LOCAL_PLAYER
+	BuildingWorks.paused_buildings[last] = true
+	check(not ResearchState._live_condition_met(definition), "Paused steelmaking does not count")
+	BuildingWorks.paused_buildings.clear()
 	Production.full_output_streak_by_building[last] = 0
-	check(not MatchState._live_condition_met(definition), "A steel recipe assigned to an idle plant does not count")
+	check(not ResearchState._live_condition_met(definition), "A steel recipe assigned to an idle plant does not count")
 	panel.free()
 	print("RESEARCH FAILURES: ", failures)
 	get_tree().quit(1 if failures else 0)

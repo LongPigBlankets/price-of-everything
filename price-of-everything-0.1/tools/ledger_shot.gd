@@ -24,8 +24,8 @@ func _ready() -> void:
 	]
 	var ids: Array = []
 	for s in specs:
-		var id: String = MatchState.add_building(str(s[0]), str(s[1]), str(s[3]), MatchState.LOCAL_PLAYER, "")
-		MatchState.buildings[id]["level"] = int(s[2])
+		var id: String = BuildingState.add_building(str(s[0]), str(s[1]), str(s[3]), MatchState.LOCAL_PLAYER, "")
+		BuildingState.buildings[id]["level"] = int(s[2])
 		ids.append(id)
 
 	# Run one production pass (mines without a deposit will starve — that's fine), then

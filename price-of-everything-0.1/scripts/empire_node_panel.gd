@@ -53,7 +53,7 @@ var _sprite_boost := 1.0
 
 ## Build the panel from a node dict (see empire_graph.gd). Sizes everything by the building's level.
 ## Two styles: CLASSIC — the whole Control is the metal plate (title, icon pair, RAG).
-## SPRITE VIEW (`swap empire view sprite`, sprited buildings only) — a SPRITE_PX 2.5D sprite
+## SPRITE VIEW (MatchState.use_empire_sprite_view, sprited buildings only) — a SPRITE_PX 2.5D sprite
 ## floats above with the plate attached to its bottom; the plate keeps title/good-icon/RAG but
 ## drops the building icon (the sprite replaced it). Unsprited buildings always use CLASSIC.
 func setup(node: Dictionary) -> void:
@@ -64,17 +64,16 @@ func setup(node: Dictionary) -> void:
 	# whole 400px sprite box, which would size the caption plate off the sprite.
 	var plate_sz: Vector2 = (node.get("plate_half", node["half"]) as Vector2) * 2.0
 	var sprite_tex = node.get("sprite")
-	var sprite_mode: bool = MatchState.use_empire_sprite_view and sprite_tex != null
+	var sprite_mode: bool = UiPrefs.use_empire_sprite_view and sprite_tex != null
 	var total := plate_sz
 	var full_sz: Vector2 = (node.get("full_half", node["half"]) as Vector2) * 2.0
 	_full_rect = Rect2()
 	if sprite_mode:
 		# Plates stay at L1 size in sprite view: the sprite carries the building's scale (and
-		# the L-tag names the level), so level-scaling the caption plate too made the row of
-		# captions ragged. `plate_half` is ALREADY the L1 plate here, so no /cs rescale — that
-		# only existed to undo the level-scaling that used to be baked into `half`.
+		# the L-tag names the level), so level-scaling the caption plate too makes the row of
+		# captions ragged. `plate_half` is ALREADY the L1 plate here, so no /cs rescale.
 		cs = 1.0
-		# The panel reserves the FULL card under the sprite (owner 2026-09-10); the compact
+		# The panel reserves the FULL card under the sprite; the compact
 		# plate sits at the top of that reserve and the hover card fills it exactly.
 		total = Vector2(maxf(full_sz.x, SPRITE_PX), SPRITE_PX + full_sz.y)
 		_full_rect = Rect2(Vector2((total.x - full_sz.x) / 2.0, SPRITE_PX), full_sz)
@@ -105,7 +104,7 @@ func setup(node: Dictionary) -> void:
 
 	# The big free-floating sprite, top-centred, with the plate attached beneath it. The
 	# sprite, its effects and its badge live under one root that the world scales past the
-	# furniture cap (owner 2026-09-10: zooming further grows the sprite, never the card),
+	# furniture cap (zooming further grows the sprite, never the card),
 	# pivoting on the sprite's bottom-centre so it stays seated on its plate.
 	_sprite_root = Control.new()
 	_sprite_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -134,7 +133,7 @@ func setup(node: Dictionary) -> void:
 		# the opaque building, and the router now refuses to cross that (see `sprite_rect`).
 		_sprite_root.add_child(spr)
 
-		# CHIMNEY SMOKE / STEAM + FURNACE FLICKER over the sprite (owner, 2026-09-10). A site
+		# CHIMNEY SMOKE / STEAM + FURNACE FLICKER over the sprite. A site
 		# has no chimney yet and no fire, so nothing is added while under construction. Sits
 		# after the sprite so it draws over it, before the badge so the badge stays on top.
 		if not bool(node.get("under_construction", false)):
@@ -156,7 +155,7 @@ func setup(node: Dictionary) -> void:
 		# AFTER the sprite so it sits on top of it: a Control's own _draw() renders beneath
 		# its children, so drawing this in the panel would put it under the building.
 		var badge_icon = node.get("port_badge")
-		if badge_icon != null and MatchState.show_port_badge:
+		if badge_icon != null and UiPrefs.show_port_badge:
 			var bh: float = sqrt(_BADGE_AREA_FRAC * SPRITE_PX * SPRITE_PX / 3.0)
 			# Anchored to the sprite's own CONTENT box, not the 400px frame: the frame's
 			# bottom-right corner is transparent margin on most sprites, and a badge floating
@@ -165,7 +164,7 @@ func setup(node: Dictionary) -> void:
 			var sr: Rect2 = node.get("sprite_rect", Rect2())
 			if sr.size.x > 0.0:
 				content = Rect2(sr.position + total * 0.5, sr.size)
-			# The badge sits AT the sprite's bottom-right corner, not inside it (owner 2026-08-01):
+			# The badge sits AT the sprite's bottom-right corner, not inside it:
 			# its centre goes just below and right of the content's corner, so only its top-left
 			# quadrant lands on the building instead of most of the hex sitting on it. Clamped to
 			# the sprite box, because sprites differ hugely in how much of their frame they fill
@@ -181,14 +180,14 @@ func setup(node: Dictionary) -> void:
 			_badge = badge
 
 	if sprite_mode:
-		# COMPACT plate at rest (owner 2026-09-10): the building glyph and the output good,
+		# COMPACT plate at rest: the building glyph and the output good,
 		# nothing else. The FULL card — name, figures, level tag — is an overlay that appears on
 		# hover, top-aligned with the plate and raised above its neighbours, and takes no
 		# layout space (the panel's size is the compact one).
 		_build_content(self, _plate_rect, cs, node, true)
 		_full = Control.new()
 		_full.visible = false
-		# The card never takes the pointer (owner 2026-09-10: a card that catches the mouse
+		# The card never takes the pointer (a card that catches the mouse
 		# flickers between the two states as it appears under it). The PANEL's rect — sprite
 		# plus the full-card reserve — is the hover area, and the card only shows inside it.
 		_full.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -258,8 +257,7 @@ func _build_content(host: Control, rect: Rect2, cs: float, node: Dictionary, com
 	icons.add_theme_constant_override("separation", int(round(10.0 * cs)))
 	icons.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vb.add_child(icons)
-	# The glyph stays on the plate even in sprite view (owner 2026-08-01). It used to be dropped
-	# on the theory that the sprite replaced it — but the sprite and the glyph are the same
+	# The glyph stays on the plate even in sprite view: the sprite and the glyph are the same
 	# building at two zoom levels, and this plate is the ONE place they appear together, which is
 	# what teaches the player to read the glyph alone in the tile panel and the build menu. It
 	# also stops sprited and unsprited cards diverging into two different card designs.
@@ -273,11 +271,10 @@ func _build_content(host: Control, rect: Rect2, cs: float, node: Dictionary, com
 		return
 
 	# The two FIGURES sit inline, right of the good icon: cost per unit (with its share of
-	# the market price) over the net output modifier. The four colour indicators that used
-	# to run under the icons are gone (owner 2026-08-24) — four squares on every plate in
-	# the empire read as decoration at a glance and as a puzzle up close, and the same
-	# diagnosis is one click away in the building's own panel, spelled out in words.
-	# Their tooltips came with them: both figures still hover exactly as they did.
+	# the market price) over the net output modifier. No colour indicators under the icons —
+	# four squares on every plate in the empire read as decoration at a glance and as a puzzle
+	# up close, and the same diagnosis is one click away in the building's own panel, spelled
+	# out in words. Both figures carry the tooltips.
 	var rag: Array = node.get("rag", [])
 	if rag.size() >= 6:
 		var stats := VBoxContainer.new()
@@ -494,8 +491,8 @@ func _grad_colors(pts: PackedVector2Array, light: Color, dark: Color) -> PackedC
 ## Hides the port badge while THIS building's own sell line is drawn directly (it is the
 ## one being focused) — the badge's whole point is standing in for "ships to market, and
 ## where" when nothing more precise is on screen; once the real line (with its own good-icon
-## chip) is showing, the badge just expands the same relationship a second time (owner, 27
-## Aug). No-op for a panel with no badge at all. Called every frame from
+## chip) is showing, the badge just expands the same relationship a second time. No-op for
+## a panel with no badge at all. Called every frame from
 ## empire_graph_world.gd's _reposition_panels, alongside the panel's own fade/visibility.
 ## Past the furniture cap the world grows the sprite alone: `k` = zoom / cap, about the
 ## sprite's bottom-centre. 1.0 = the plain layout.

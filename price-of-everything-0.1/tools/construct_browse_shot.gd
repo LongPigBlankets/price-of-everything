@@ -67,7 +67,7 @@ func _ready() -> void:
 	await _shot(OUT_DIR + "construct_settings_toggle.png")
 
 	# Flip it on and confirm the SAME recipe now renders the full diagram instead.
-	MatchState.set_construct_expanded_recipe_mode(true)
+	UiPrefs.set_construct_expanded_recipe_mode(true)
 	panel._view = panel.View.BROWSE
 	# Set directly rather than _on_building_pressed("b_007") again — that TOGGLES,
 	# and b_007 is already expanded from earlier in this script, so a second call
@@ -89,13 +89,13 @@ func _ready() -> void:
 		else:
 			print("[browse_shot] WARNING: RecipeDiagramCard not found with expanded mode on")
 	await _shot(OUT_DIR + "construct_browse_expanded_on.png")
-	MatchState.set_construct_expanded_recipe_mode(false)
+	UiPrefs.set_construct_expanded_recipe_mode(false)
 
 	# Also check the CONFIRM screen's own (full-size, 62px-cell) use of the same
 	# diagram builder with the same 5-input recipe — the new honest-width report
 	# is shared code, so a many-input recipe needs checking there too now, not
 	# just in the compact recipe-card reuse this ask was actually about.
-	MatchState.set_use_construct_panel_v3(true)
+	UiPrefs.set_use_construct_panel_v3(true)
 	panel._locked_tile_id = "tile_5_10"
 	panel._on_recipe_pressed("b_007", "r_033")
 	await _settle(12)

@@ -38,10 +38,10 @@ func _run() -> void:
 		cam.set("edge_pan_enabled", false)
 	MatchState.money = 100000.0
 	# Own the window factory (the glass consumer) + build a player glass furnace.
-	for iid in MatchState.tile_buildings.get(FACTORY_TILE, []):
-		if str(MatchState.get_building(str(iid)).get("building_id", "")) == "b_007":
-			MatchState.set_building_owner(str(iid), MatchState.LOCAL_PLAYER)
-	var furnace_iid := MatchState.add_building("b_002", "r_053", FURNACE_TILE)
+	for iid in BuildingState.tile_buildings.get(FACTORY_TILE, []):
+		if str(BuildingState.get_building(str(iid)).get("building_id", "")) == "b_007":
+			BuildingState.set_building_owner(str(iid), MatchState.LOCAL_PLAYER)
+	var furnace_iid := BuildingState.add_building("b_002", "r_053", FURNACE_TILE)
 	var glass_gid := ""
 	for o in Catalog.get_recipe("r_053").get("outputs", []):
 		glass_gid = str((o as Dictionary).get("good_id", ""))

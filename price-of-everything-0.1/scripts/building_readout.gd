@@ -1,7 +1,8 @@
 extends RefCounted
-## Shared, UI-agnostic READOUT of a building for the redesigned (v2) detail panel.
+const Middleman := preload("res://scripts/middleman_service.gd")
+## Shared, UI-agnostic READOUT of a building for the building detail panel.
 ## Aggregates the existing single-source-of-truth helpers (BuildingStatus, CostSolver,
-## Modifiers, Catalog, EconomyConfig, MatchState) into plain data the panel renders — so v2
+## Modifiers, Catalog, EconomyConfig, MatchState) into plain data the panel renders — so the panel
 ## never re-derives balance-sensitive numbers. All functions are STATIC and read-only against
 ## the sim (architecture rule 5). Preloaded (no class_name) so it resolves in headless runs.
 ##
@@ -52,6 +53,10 @@ static func run_state(building: Dictionary, recipe: Dictionary, is_infrastructur
 	if BuildingStatus.power_status_color(building, recipe, is_infrastructure) == BuildingStatus.STATUS_RED:
 		return "stalled"
 	var iid := str(building.get("instance_id", ""))
+	if Middleman.uses_inputs(iid):
+		var p := Middleman.preview(iid)
+		if not bool(p.get("can_run",false)): return "stalled"
+		return "running" if Production.last_turn_run.has(iid) else "restarting"
 	if iid != "" and Production.last_turn_run.has(iid):
 		return "running"
 	if (recipe.get("inputs", []) as Array).is_empty():
@@ -107,8 +112,8 @@ static func flow(building: Dictionary, recipe: Dictionary) -> Dictionary:
 			"internal": str(inp.get("internal_name", "")),
 			"qty": int(inp.get("qty", 0)),
 		})
-	# ALL outputs, not just the first: chlor-alkali makes chlorine, sodium hydroxide AND hydrogen,
-	# and the recipe card showed only the chlorine (owner 2026-08-01). The engine's effective-qty
+	# ALL outputs, not just the first: chlor-alkali makes chlorine, sodium hydroxide AND hydrogen.
+	# The engine's effective-qty
 	# helper is defined for the recipe's PRIMARY output, so the co-products are scaled by the same
 	# ratio the primary was — one modifier applies to the whole batch, not per good.
 	var out_items := BuildingStatus.flow_output_items(recipe)
@@ -145,13 +150,22 @@ static func flow(building: Dictionary, recipe: Dictionary) -> Dictionary:
 # --- Economics (real cash flows + the cost-to-produce RAG) ---------------------------------
 
 static func economics(building: Dictionary, recipe: Dictionary, building_data: Dictionary) -> Dictionary:
+	if Middleman.fully_managed(str(building.get("instance_id",""))):
+		var p := Middleman.preview(str(building.instance_id))
+		if bool(p.ok):
+			var output_units := 0
+			for item: Dictionary in p.sale.items: output_units += int(item.quantity)
+			return {"middleman":true,"value":float(building_data.get("base_price",0.0)),"output_value":float(p.sale.goods_value),
+				"output_values":[],"sells":true,"selling_output_count":1,"units_out":output_units,"sale_price":0.0,
+				"transport_cost":0.0,"middleman_fee":float(p.fee),"logistics_intermediary_fee":float(p.fee),"input_cost":float(p.buy.goods_value),"maintenance":float(p.maintenance),
+				"labour_cost":float(p.labour),"power_cost":float(p.power),"warehousing_cost":0.0,"carbon_tax":float(p.carbon_tax),
+				"running_cost":float(p.buy.goods_value)+float(p.fee)+float(p.maintenance)+float(p.labour)+float(p.power)+float(p.carbon_tax),"net":float(p.net)}
 	# Maintenance, labour and power are priced through production.gd's OWN per-turn helpers — the
 	# exact functions that move the cash each turn — so the panel reflects real building
 	# performance: grown wages (not base rates), level multipliers, and every active modifier
 	# (research building_power/maintenance/labour_headcount, workforce policies, Lax Safety upkeep).
-	# The forecast already prices through these same helpers; the BDP now agrees with it and with
-	# the engine. (Earlier this line used base wages and a base maintenance figure, so a running
-	# building's net read rosier than the money it actually moved — owner report 2026-09-05.)
+	# The forecast prices through these same helpers, so the BDP agrees with it and with
+	# the engine.
 	var maint := Production._calculate_maintenance_cost(building)
 	var lab_cost := Production._calculate_labour_cost(building, recipe)
 	# Power leg: the grid-price value of the energy actually drawn this turn (post power modifiers,
@@ -190,8 +204,7 @@ static func economics(building: Dictionary, recipe: Dictionary, building_data: D
 	# what it cost to PRODUCE (the CostSolver's imputed per-good cost, resolved over the chain), but
 	# an input the building has no own source for is BOUGHT on the market — so it costs the retail
 	# BUY price (sale price + the ~5% bid-ask markup), not the sell price. Valuing bought inputs at
-	# the sell price understated running cost by that markup and made the per-turn net read rosier
-	# than the money that actually moves (owner report 2026-09-05). get_good_unit_cost returns −1
+	# the sell price would understate running cost by that markup. get_good_unit_cost returns −1
 	# for a good no player building makes, which is exactly the "bought from market" case.
 	var input_cost := 0.0
 	for inp in recipe.get("inputs", []):
@@ -230,7 +243,22 @@ static func economics(building: Dictionary, recipe: Dictionary, building_data: D
 	for inp in recipe.get("inputs", []):
 		carbon_tax += PolicyState.carbon_charge(str(inp.get("good_id", "")),
 			Production._scaled_input_qty(inp, building), levy_turn)
-	var running := maint + lab_cost + power_cost + input_cost + transport_cost + warehousing + carbon_tax
+	var service_fee := 0.0
+	var iid := str(building.get("instance_id",""))
+	if Middleman.enabled(iid):
+		var quote := Middleman.preview(iid)
+		service_fee = float(quote.fee)
+		if Middleman.uses_inputs(iid): input_cost = float(quote.buy.goods_value)
+		if str(recipe.get("output_name", "")) == "power":
+			output_value = float(quote.grid_value)
+			sells = true
+			transport_cost = 0.0
+		if Middleman.uses_outputs(iid):
+			output_value = float(quote.sale.goods_value)
+			sells = true
+			selling_outputs = output_values.size()
+			transport_cost = 0.0
+	var running := service_fee + maint + lab_cost + power_cost + input_cost + transport_cost + warehousing + carbon_tax
 	var pc := BuildingStatus.produce_cost_status(building)
 	return {
 		"value": float(building_data.get("base_price", 0.0)),   # asset value (build/buy price), not per-turn
@@ -240,6 +268,8 @@ static func economics(building: Dictionary, recipe: Dictionary, building_data: D
 		"selling_output_count": selling_outputs,
 		"units_out": units_out,
 		"sale_price": price,
+		"middleman_fee": service_fee,
+		"logistics_intermediary_fee": service_fee,
 		"transport_cost": transport_cost,
 		"input_cost": input_cost,
 		"maintenance": maint,
@@ -263,6 +293,10 @@ static func _output_disposition(building: Dictionary, recipe: Dictionary, output
 	var src := str(building.get("tile_id", ""))
 	if gid == "":
 		return {"mode": "held", "sell_tile": src, "good_id": ""}
+	# The per-good intermediary owns this output privately. Do not let the
+	# global sell mode reinterpret it as a same-tile stockpile or market sale.
+	if Middleman.buys_output(iid, gid):
+		return {"mode": "held", "sell_tile": "", "good_id": gid}
 	if MatchState.is_output_market(iid, gid):
 		return {"mode": "market", "sell_tile": src, "good_id": gid}
 	var dest := MatchState.get_output_stockpile_destination(iid, gid)
@@ -284,7 +318,7 @@ static func labour(building_data: Dictionary, recipe: Dictionary = {}) -> Dictio
 	var unskilled := int(source.get("labour_unskilled_required", 0))
 	var skilled := int(source.get("labour_skilled_required", 0))
 	var highly := int(source.get("labour_h_skilled_required", 0))
-	var factor := MatchState.labour_policy_factor()
+	var factor := LabourState.labour_policy_factor()
 	var cost := (float(unskilled) * EconomyConfig.LABOUR_UNSKILLED_RATE
 		+ float(skilled) * EconomyConfig.LABOUR_SKILLED_RATE
 		+ float(highly) * EconomyConfig.LABOUR_HIGH_SKILLED_RATE) * factor
@@ -326,9 +360,13 @@ static func power_state_text(state: String) -> String:
 static func diagnostics(building: Dictionary, recipe: Dictionary, building_data: Dictionary, is_infrastructure: bool) -> Array:
 	var rows: Array = []
 	var iid := str(building.get("instance_id", ""))
+	if Middleman.uses_inputs(iid):
+		var p := Middleman.preview(iid)
+		return [_row("ok" if bool(p.get("can_run",false)) else "warn","truck","Middleman service",str(p.get("reason","Unavailable")))]
 	var exhausted := BuildingStatus.recipe_deposit_exhausted(building, recipe)
 	var ran := iid != "" and Production.last_turn_run.has(iid)
 	var missing := iid != "" and Production.missing_by_building.has(iid)
+	var stockpile_gap_detail := _stockpile_input_gap_detail(building, recipe)
 	var power_c := BuildingStatus.power_status_color(building, recipe, is_infrastructure)
 	var input_c := BuildingStatus.input_status_color(building, recipe, is_infrastructure)
 	var produces_power := str(recipe.get("output_name", "")) == "power"
@@ -340,7 +378,7 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 	var has_all := has_inputs and has_all_inputs(building, recipe)
 	var inbound_case := rs == "restarting" and has_inputs and not has_all
 	var tile_id := str(building.get("tile_id", ""))
-	var upgrade_progress := MatchState.upgrade_progress_snapshot(iid)
+	var upgrade_progress := BuildingWorks.upgrade_progress_snapshot(iid)
 	var upgrade_blocked := bool(upgrade_progress.get("blocked", false))
 	var upgrade_fault_label := "Cannot deliver upgrade materials"
 	# A power PRODUCER whose "missing" entry is power = the cable export cap blocked its
@@ -356,8 +394,8 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 		rows.append(_row("bad", "warn", "Deposit exhausted", "The deposit is exhausted. This building cannot produce with its current recipe."))
 	elif not _deposit_runway(iid).is_empty():
 		# AMBER: the deposit is nearly gone. Warned rather than faulted — the mine is still
-		# producing normally today. Exhaustion used to arrive with no notice at all: the
-		# input bill simply doubled as the chain began buying what it had been mining.
+		# producing normally today. Without it exhaustion arrives with no notice at all: the
+		# input bill simply doubles as the chain begins buying what it had been mining.
 		var dr: Dictionary = _deposit_runway(iid)
 		rows.append(_row_good("warn", "warn", str(dr.get("good_id", "")),
 			"Deposit running out",
@@ -367,9 +405,9 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 				int(dr.get("remaining", 0)), int(dr.get("per_turn", 0))]))
 	elif grid_blocked:
 		# AMBER, and checked BEFORE "restarting": a capped plant reports run_state
-		# "restarting" (its power "input" is unmet), so it used to show a cheerful
-		# "Starting — production begins next turn" forever while it was actually
-		# throttled by the tile's cable capacity and would never start.
+		# "restarting" (its power "input" is unmet), so checked the other way round it shows
+		# a cheerful "Starting — production begins next turn" forever while actually
+		# throttled by the tile's cable capacity, never starting.
 		rows.append(_row("warn", "bolt", "Power output capped", _cable_cap_detail(building, recipe, tile_id)))
 	elif rs == "restarting":
 		if inbound_case:
@@ -380,9 +418,9 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 	elif needs_power and power_c == BuildingStatus.STATUS_RED:
 		rows.append(_row("bad", "warn", "Critical fault", "This building doesn't have power. It can't run."))
 	elif has_inputs and input_c == BuildingStatus.STATUS_RED:
-		rows.append(_row("bad", "warn", "Cannot run", "Not enough inputs to run the recipe this turn."))
+		rows.append(_row("bad", "warn", "Cannot run", stockpile_gap_detail if stockpile_gap_detail != "" else "Not enough inputs to run the recipe this turn."))
 	elif missing:
-		rows.append(_row("bad", "warn", "Critical fault", "Missing required inputs — the recipe could not run this turn."))
+		rows.append(_row("bad", "warn", "Critical fault", stockpile_gap_detail if stockpile_gap_detail != "" else "Missing required inputs — the recipe could not run this turn."))
 	elif upgrade_blocked:
 		rows.append(_row("bad", "box", upgrade_fault_label, str(upgrade_progress.get("error", "The upgrade is unable to continue."))))
 	else:
@@ -423,7 +461,7 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 			rows.append(_row("ok", "box", "Inputs in stock" if rs == "restarting" else "Receiving inputs",
 				"All inputs are in stock, ready for the next run." if rs == "restarting" else "All inputs were in stock this turn."))
 		elif input_c == BuildingStatus.STATUS_RED:
-			rows.append(_row("bad", "box", "Starved of inputs", _missing_inputs_detail(building, recipe)))
+			rows.append(_row("bad", "box", "Starved of inputs", stockpile_gap_detail if stockpile_gap_detail != "" else _missing_inputs_detail(building, recipe)))
 		else:
 			rows.append(_row("warn", "box", "Inputs idle", "Inputs are present but the building did not run this turn."))
 
@@ -440,7 +478,7 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 			var wh_used := Stockpile.get_used_capacity(tile_id)
 			if wh_cap > 0 and wh_used >= wh_cap:
 				var inbound := 0
-				for s in MatchState.get_inbound_transport_shipments(tile_id):
+				for s in TransportState.get_inbound_transport_shipments(tile_id):
 					inbound += int(s.get("qty", 0))
 				var detail := "The tile's warehouse is full (%d/%d) — arriving inputs can't unload." % [wh_used, wh_cap]
 				if inbound > 0:
@@ -486,7 +524,9 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 			rows.append(_row(reach_tone, "truck", "Output destination %s" % reach, "%d turn%s to %s." % [turns, "" if turns == 1 else "s", dest_name]))
 			var per_unit := cost / float(qty)
 			var band := "cheap" if per_unit < 0.15 else ("average" if per_unit < 0.4 else "expensive")
-			var band_tone := "ok" if per_unit < 0.15 else ("warn" if per_unit < 0.4 else "bad")
+			# Expensive freight needs attention, but it is still a viable route. Reserve
+			# red for a route that cannot reach the destination at all.
+			var band_tone := "ok" if per_unit < 0.15 else "warn"
 			rows.append(_row(band_tone, "truck", "Transport to destination is %s" % band, "£%s / unit shipped · £%.2f / turn." % [_num(per_unit), cost]))
 
 	# 5) cost to produce vs market (the engine's profitability signal)
@@ -523,7 +563,7 @@ static func _intermittency_row(building: Dictionary, recipe: Dictionary, is_infr
 		var out := BuildingStatus.effective_power_output(building, recipe)  # green_intermittent
 		if out <= 0:
 			return {}
-		var cap := MatchState.tile_firming_cap(str(building.get("tile_id", "")))
+		var cap := Power.tile_firming_cap(str(building.get("tile_id", "")))
 		if cap >= out:
 			return _row("ok", "bolt", "Firmed green generation", "A battery on this tile firms this renewable output — steady supply, safe from intermittency.")
 		if cap <= 0:
@@ -623,7 +663,7 @@ static func _fluid_input_transport_problems(building: Dictionary, recipe: Dictio
 			if routes.is_empty():
 				continue
 		else:
-			var quote := TransportService.quote_market_buy(tile, gid, 1, MatchState.seaport_would_cover(gid))
+			var quote := TransportService.quote_market_buy(tile, gid, 1, TransportState.seaport_would_cover(gid))
 			if not quote.is_empty():
 				routes.append(quote.get("route", {}))
 
@@ -696,7 +736,7 @@ static func _cable_cap_detail(building: Dictionary, recipe: Dictionary, tile_id:
 static func _missing_inputs_detail(building: Dictionary, recipe: Dictionary) -> String:
 	# "have" counts what is ON THE TILE plus what is IN TRANSIT and will be pulled in next turn --
 	# so a timing gap reads as "18 on tile +88 arriving", not a bare shortage. Kept even when the
-	# inbound overshoots the requirement (owner: still count if there is more than needed).
+	# inbound overshoots the requirement.
 	var short: Array = []
 	for s in shipments(building, recipe):
 		var stored := int(s.get("stored", 0))
@@ -711,6 +751,22 @@ static func _missing_inputs_detail(building: Dictionary, recipe: Dictionary) -> 
 		else:
 			short.append("%s %d/%d" % [str(s.get("name", "")), stored, need])
 	return ("Short: " + ", ".join(short)) if not short.is_empty() else "Missing required inputs."
+
+static func _stockpile_input_gap_detail(building: Dictionary, recipe: Dictionary) -> String:
+	var iid := str(building.get("instance_id", ""))
+	var tile_id := str(building.get("tile_id", ""))
+	if iid == "" or tile_id == "":
+		return ""
+	for input: Dictionary in recipe.get("inputs", []):
+		var gid := str(input.get("good_id", ""))
+		if gid == "" or not MatchState.is_input_tile_only(iid, gid):
+			continue
+		if Production.stockpile_input_gap_streak(iid, gid) < 2:
+			continue
+		if Stockpile.get_at_tile(tile_id, gid) > 0:
+			continue
+		return "This building draws from the tile stockpile but no %s has been produced or delivered here in a while." % Catalog.get_display_name(gid)
+	return ""
 
 # "Steel from Furnace · Coal from market" — where each input is sourced (linked supplier vs market).
 static func _input_sourcing_text(building: Dictionary, recipe: Dictionary) -> String:
@@ -798,7 +854,7 @@ static func shipments(building: Dictionary, recipe: Dictionary) -> Array:
 		var inbound := 0
 		var next_turns := -1
 		var from_tiles: Array = []
-		for s in MatchState.get_inbound_transport_shipments(tile_id, gid):
+		for s in TransportState.get_inbound_transport_shipments(tile_id, gid):
 			inbound += int(s.get("qty", 0))
 			var t := int(s.get("turns_remaining", 0))
 			if next_turns < 0 or t < next_turns:
@@ -826,6 +882,7 @@ static func input_sources(building: Dictionary, recipe: Dictionary) -> Array:
 	var iid := str(building.get("instance_id", ""))
 	var tile_id := str(building.get("tile_id", ""))
 	for inp in recipe.get("inputs", []):
+		if Middleman.supplies_good(iid, str(inp.get("good_id", ""))): continue
 		for producer in _producers_for_input(inp, iid, tile_id):
 			var prod_data := Catalog.get_building(str(producer.get("building_id", "")))
 			rows.append({
@@ -844,6 +901,10 @@ static func output_consumers(building: Dictionary, recipe: Dictionary) -> Array:
 	var iid := str(building.get("instance_id", ""))
 	if out_gid == "":
 		return []
+	# The per-good mode is authoritative. A mixed service contract can sell one
+	# output privately while another output remains a physical stockpile route.
+	# The old side-wide check hid all consumers in that case.
+	if Middleman.buys_output(iid, out_gid): return []
 	var destinations := MatchState.get_output_split_destinations(iid, out_gid)
 	if destinations.is_empty():
 		var single := MatchState.get_output_stockpile_destination(iid, out_gid)
@@ -862,10 +923,11 @@ static func output_consumers(building: Dictionary, recipe: Dictionary) -> Array:
 		var tile := str((destination as Dictionary).get("tile_id", ""))
 		if tile != "" and not destination_tiles.has(tile):
 			destination_tiles.append(tile)
-	for b in MatchState.buildings.values():
+	for b in BuildingState.buildings.values():
 		if str(b.get("instance_id", "")) == iid or not destination_tiles.has(str(b.get("tile_id", ""))):
 			continue
-		if not MatchState.is_player_owned(b):
+		if Middleman.uses_inputs(str(b.get("instance_id",""))): continue
+		if not BuildingState.is_player_owned(b):
 			continue
 		var r := Catalog.get_recipe(str(b.get("recipe_id", "")))
 		for inp in r.get("inputs", []):
@@ -880,10 +942,15 @@ static func output_consumers(building: Dictionary, recipe: Dictionary) -> Array:
 	return rows
 
 static func output_route(building: Dictionary, recipe: Dictionary) -> Dictionary:
-	var source_tile := str(building.get("tile_id", ""))
-	var gid := BuildingStatus.primary_output_good_id(recipe)
-	var qty := BuildingStatus.primary_output_qty(recipe)
 	var iid := str(building.get("instance_id", ""))
+	var gid := BuildingStatus.primary_output_good_id(recipe)
+	# Do this before consulting the legacy/default sell mode. An active
+	# intermediary has no shared-tile destination, even when STOCKPILE_ALL is the
+	# global fallback for buildings that have no explicit route.
+	if Middleman.buys_output(iid, gid):
+		return {"destination":"Middleman","target":"","has_market":true,"cost":0.0,"turns":0}
+	var source_tile := str(building.get("tile_id", ""))
+	var qty := BuildingStatus.primary_output_qty(recipe)
 	var dest_tile := MatchState.get_output_stockpile_destination(iid, gid)
 	var target := ""
 	var destination := ""
@@ -917,6 +984,8 @@ static func output_route(building: Dictionary, recipe: Dictionary) -> Dictionary
 	return {"destination": destination, "cost": cost, "turns": turns, "reachable": reachable, "has_market": has_market, "target": target}
 
 static func connections(building: Dictionary, recipe: Dictionary) -> Dictionary:
+	if Middleman.fully_managed(str(building.get("instance_id",""))):
+		return {"origin":str(building.get("tile_id","")),"input_tiles":[],"output_tiles":[],"has_market":false}
 	var origin := str(building.get("tile_id", ""))
 	var iid := str(building.get("instance_id", ""))
 	var input_tiles: Array = []
@@ -932,6 +1001,8 @@ static func connections(building: Dictionary, recipe: Dictionary) -> Dictionary:
 			gid = str(Catalog.get_good_by_internal_name(str(o.get("internal_name", ""))).get("id", ""))
 		if gid == "":
 			continue
+		if Middleman.buys_output(iid, gid):
+			continue
 		var split := MatchState.get_output_split_destinations(iid, gid)
 		if not split.is_empty():
 			for destination in split:
@@ -946,11 +1017,64 @@ static func connections(building: Dictionary, recipe: Dictionary) -> Dictionary:
 				has_market = true
 	return {"origin": origin, "input_tiles": input_tiles, "output_tiles": output_tiles, "has_market": has_market}
 
+## Tiles that are real stockpile endpoints for this input good.
+##
+## This intentionally does not enumerate every owned tile or every tile in a
+## shipment's route geometry. A tile is offered only when the good is already
+## stored there, is scheduled to arrive there, or a player producer is actually
+## configured to leave it there. Transit/path tiles therefore never appear as
+## selectable sources.
+static func stockpile_source_tiles(building: Dictionary, good_id: String) -> Array:
+	var current_tile := str(building.get("tile_id", ""))
+	var candidates: Dictionary = {}
+	for tile_value in Stockpile.tiles_with_stock():
+		var tile := str(tile_value)
+		if tile == "" or tile == current_tile or not tile.begins_with("tile_"):
+			continue
+		if Stockpile.get_at_tile(tile, good_id) > 0:
+			candidates[tile] = true
+	# An inbound shipment's destination is a genuine future stockpile endpoint;
+	# its path and intermediate tiles are deliberately ignored.
+	for shipment: Dictionary in TransportState.pending_transport_shipments:
+		if str(shipment.get("good_id", "")) != good_id:
+			continue
+		var destination := str(shipment.get("destination_tile", ""))
+		if destination != "" and destination != current_tile and destination.begins_with("tile_"):
+			candidates[destination] = true
+	# Include a remote producer only when its output endpoint resolves to that
+	# tile. Middleman output is private and is not a shared stockpile source.
+	for producer: Dictionary in BuildingState.buildings.values():
+		if not BuildingState.is_player_owned(producer):
+			continue
+		var producer_tile := str(producer.get("tile_id", ""))
+		if producer_tile == "" or producer_tile == current_tile:
+			continue
+		var recipe := Catalog.get_recipe(str(producer.get("recipe_id", "")))
+		for output in BuildingStatus.flow_output_items(recipe):
+			if not _good_matches_input(output, good_id, str(Catalog.get_good(good_id).get("internal_name", ""))):
+				continue
+			var producer_iid := str(producer.get("instance_id", ""))
+			if Middleman.buys_output(producer_iid, good_id):
+				continue
+			if _routes_to_tile(producer, output, producer_tile):
+				candidates[producer_tile] = true
+			for destination in MatchState.get_output_split_destinations(producer_iid, good_id):
+				var destination_tile := str((destination as Dictionary).get("tile_id", ""))
+				if destination_tile != "" and destination_tile != current_tile and destination_tile.begins_with("tile_"):
+					candidates[destination_tile] = true
+			var single_destination := MatchState.get_output_stockpile_destination(producer_iid, good_id)
+			if single_destination != "" and single_destination != current_tile and single_destination.begins_with("tile_"):
+				candidates[single_destination] = true
+			break
+	var result: Array = candidates.keys()
+	result.sort()
+	return result
+
 static func _producers_for_input(inp: Dictionary, current_iid: String, current_tile: String) -> Array:
 	var producers: Array = []
 	var in_gid := str(inp.get("good_id", ""))
 	var in_internal := str(inp.get("internal_name", ""))
-	for b in MatchState.buildings.values():
+	for b in BuildingState.buildings.values():
 		if str(b.get("instance_id", "")) == current_iid:
 			continue
 		var r := Catalog.get_recipe(str(b.get("recipe_id", "")))
@@ -970,7 +1094,7 @@ static func _good_matches_input(output: Dictionary, in_gid: String, in_internal:
 # Authoritative live owner (never trust a possibly-stale passed-in dict).
 static func owner_info(building: Dictionary) -> Dictionary:
 	var iid := str(building.get("instance_id", ""))
-	var live: Dictionary = MatchState.get_building(iid) if iid != "" else {}
+	var live: Dictionary = BuildingState.get_building(iid) if iid != "" else {}
 	var owner := str(live.get("owner", building.get("owner", MatchState.LOCAL_PLAYER)))
 	var is_npc := owner != MatchState.LOCAL_PLAYER and owner != "tile_data"
 	return {
@@ -1046,7 +1170,7 @@ static func construction_diagnostics(constr: Dictionary) -> Array:
 		var reinforced := Catalog.get_transport_class(gid) == "hazard_liquid"
 		var pipe_name := "Reinforced Pipeline" if reinforced else "Pipeline"
 		var pipe_phrase := "a reinforced pipeline" if reinforced else "a pipeline"
-		var quote := TransportService.quote_market_buy(tile, gid, 1, MatchState.seaport_would_cover(gid))
+		var quote := TransportService.quote_market_buy(tile, gid, 1, TransportState.seaport_would_cover(gid))
 		if quote.is_empty():
 			rows.append(_row_good("bad", "pipe", gid, "No transport route to deliver %s" % nm,
 				"%s cannot reach this site. Connect it to the market port by road, rail or %s, or the build cannot finish." % [nm, pipe_phrase]))
@@ -1059,12 +1183,13 @@ static func construction_diagnostics(constr: Dictionary) -> Array:
 static func battery(building: Dictionary) -> Dictionary:
 	var tile_id := str(building.get("tile_id", ""))
 	return {
-		"loaded": MatchState.tile_battery_cells_loaded(tile_id),
-		"slots": MatchState.tile_battery_slots(tile_id),
-		"firming_cap": MatchState.tile_firming_cap(tile_id),
+		"loaded": Power.tile_battery_cells_loaded(tile_id),
+		"slots": Power.tile_battery_slots(tile_id),
+		"firming_cap": Power.tile_firming_cap(tile_id),
 	}
 
 static func _routes_to_tile(producer: Dictionary, output: Dictionary, tile_id: String) -> bool:
+	if Middleman.buys_output(str(producer.get("instance_id","")), str(output.get("good_id", ""))): return false
 	if tile_id == "":
 		return false
 	var gid := str(output.get("good_id", ""))
@@ -1082,7 +1207,7 @@ static func _routes_to_tile(producer: Dictionary, output: Dictionary, tile_id: S
 	# Same-tile producer whose output lands in the SHARED tile stockpile (an iron-ingot furnace
 	# feeding a steel furnace on the same tile): default STOCKPILE_ALL, unrouted, not sold to market.
 	if str(producer.get("tile_id", "")) == tile_id \
-			and MatchState.is_player_owned(producer) \
+			and BuildingState.is_player_owned(producer) \
 			and not MatchState.is_output_market(piid, gid) \
 			and MatchState.get_output_stockpile_destination(piid, gid) == "" \
 			and MatchState.sell_mode == MatchState.SellMode.STOCKPILE_ALL:

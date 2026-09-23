@@ -47,6 +47,39 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 		"tile_id": tile_id, "level": 1,
 	}
 
+	if preload("res://scripts/middleman_service.gd").default_for(recipe_id,tile_id):
+		var p := preload("res://scripts/middleman_service.gd").preview_building(probe)
+		var duration := maxi(1,MatchState.effective_build_duration(building_id))
+		var materials := Construction.materials_ledger(building_id,tile_id)
+		var lead := 0
+		var missing := false
+		for row: Dictionary in materials.rows:
+			lead = maxi(lead,int(row.market_turns))
+			missing = missing or int(row.short)>0
+		# The intermediary is a one-turn private delivery.  The ledger's quote is
+		# already the site-specific material subtotal, so the forecast must use it
+		# instead of the old port/market estimate for the construction outlay.
+		var material_source := MatchState.pending_build_material_source if MatchState.pending_build_material_source != "" else MatchState.construct_material_source
+		if material_source == "ask" or material_source == "": material_source = "middleman"
+		if material_source == "middleman" and str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1": material_source = "market"
+		if material_source == "middleman" and missing: lead = 1
+		var first_sale := duration+lead
+		out.cash_needed = float(p.upfront)
+		out.steady_net = float(p.net)
+		out.capex = float(materials.subtotal)
+		out.capex_total = maxf(0.0,float(building_def.get("base_price",0.0)))+float(materials.subtotal)
+		out.build_turns = duration
+		out.first_selling_turn = first_sale
+		out.sale_delay = 0
+		out.payback_turn = payback_turn(float(out.capex_total),float(p.upfront),float(p.net),first_sale)
+		out.no_supply = missing or not bool(p.feasible)
+		out["middleman"] = true
+		out.phases = [{"kind":PHASE_BUILDING,"label":"Construction materials use the Logistics Intermediary" if material_source == "middleman" else "Construction materials use normal delivery","range":"Until materials arrive and construction finishes","per_turn":0.0,"turns":first_sale},
+			{"kind":PHASE_SELLING,"label":"Middleman: buy, produce and sell","range":"Each operating turn after completion","per_turn":float(p.net),"turns":-1}]
+		out.breakdown={"revenue":float(p.sale.goods_value)+float(p.grid_value),"inputs":float(p.buy.goods_value),"inbound_freight":float(p.buy.fee),"outbound_freight":float(p.sale.fee),"port_fee":0.0,"power":float(p.power),"carbon_tax":float(p.carbon_tax),"labour":float(p.labour),"maintenance":float(p.maintenance),"warehousing":0.0,"idle_standing":float(p.labour)+float(p.maintenance),"startup_inventory":float(p.buy.cash_out),"middleman_fee":float(p.fee)}
+		out.financing = {} # Middleman funding uses explicit company loans, never building tabs.
+		return out
+
 	# --- Outputs: what it sells, what the freight and port cost to sell it ---------------
 	var outputs := {}          # good_id -> qty
 	var revenue: float = 0.0
@@ -79,7 +112,7 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 			# Port charging is ad valorem on the value crossing the quay, so it scales with
 			# what the building actually sells and steps up at SEAPORT_AD_VALOREM_STEP_TURN.
 			# Owned ports charge half. (The flat per-good fee is retired — §4.2b.)
-			port_fee = revenue * MatchState.seaport_insurance_rate(str(sell_quote.get("port", "")))
+			port_fee = revenue * TransportState.seaport_insurance_rate(str(sell_quote.get("port", "")))
 
 	# --- Inputs: delivered cost (goods + inbound freight), and whether they can arrive ---
 	# An input the player already produces is NOT bought at retail. Charging the market buy
@@ -155,7 +188,7 @@ static func project(building_id: String, recipe_id: String, tile_id: String) -> 
 	var maintenance := Production._calculate_maintenance_cost(probe)
 
 	# Standing costs are owed the moment the building exists, running or not.
-	var standing: float = labour * MatchState.idle_labour_pay_share + maintenance
+	var standing: float = labour * LabourState.idle_labour_pay_share + maintenance
 	# A producing turn also dispatches output and pays its freight immediately.
 	var producing_cost: float = labour + maintenance + input_cost + inbound_freight + power_cost + warehousing + outbound_freight
 	# Port fees are withheld when the sale settles.
@@ -266,9 +299,9 @@ static func _own_source_tile(tile_id: String, good_id: String) -> String:
 	# turn on the very tile the forecast called a market buy).
 	var best := ""
 	var best_turns := 1 << 30
-	for iid in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[iid]
-		if not MatchState.is_player_owned(b) or not _recipe_makes(str(b.get("recipe_id", "")), good_id):
+	for iid in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[iid]
+		if not BuildingState.is_player_owned(b) or not _recipe_makes(str(b.get("recipe_id", "")), good_id):
 			continue
 		var src := str(b.get("tile_id", ""))
 		if src == tile_id:
@@ -318,7 +351,7 @@ static func _permanent_output_qty(recipe_id: String, good_id: String, good_inter
 		"good_internal": good_internal,
 	}
 	var q := int(round(Modifiers.apply_permanent("recipe_output", recipe_id, float(base_qty), ctx)))
-	q = int(round(float(q) * MatchState.workforce_output_multiplier()))
+	q = int(round(float(q) * LabourState.workforce_output_multiplier()))
 	return maxi(0, q)
 
 
@@ -332,9 +365,9 @@ static func _empire_surplus(good_id: String) -> int:
 		return 0
 	var produced: int = 0
 	var consumed: int = 0
-	for iid in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[iid]
-		if not MatchState.is_player_owned(b):
+	for iid in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[iid]
+		if not BuildingState.is_player_owned(b):
 			continue
 		var rcp: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
 		if rcp.is_empty():
@@ -372,12 +405,12 @@ static func marginal_power_cost(tile_id: String, demand: int) -> float:
 	var generated := 0
 	var consumed := 0
 	var generation_by_tile: Dictionary = {}
-	var ids: Array = MatchState.buildings.keys()
+	var ids: Array = BuildingState.buildings.keys()
 	ids.sort()
 	for iid in ids:
-		var b: Dictionary = MatchState.buildings[iid]
+		var b: Dictionary = BuildingState.buildings[iid]
 		var tile := str(b.get("tile_id", ""))
-		if not MatchState.is_player_owned(b) or MatchState.is_building_paused(str(iid)) or MatchState.is_retooling(str(iid)):
+		if not BuildingState.is_player_owned(b) or BuildingWorks.is_building_paused(str(iid)) or BuildingWorks.is_retooling(str(iid)):
 			continue
 		if not cabled.is_empty() and not network.has(tile):
 			continue

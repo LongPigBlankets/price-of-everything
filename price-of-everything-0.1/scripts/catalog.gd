@@ -26,7 +26,7 @@ const BUILDING_ALIAS := {
 # Recipes in active repair stay loadable for old saves, but must not be suggested by
 # construction, special orders, the goods graph, or the encyclopedia.
 const HIDDEN_RECIPE_IDS := {
-	"r_078": true,  # Methane Pyrolysis — no methane in the demo (owner 2026-09-06)
+	"r_078": true,  # Methane Pyrolysis — no methane in the demo
 }
 
 # --- Goods storage ---
@@ -85,7 +85,7 @@ const ROUTE_MAP_H := 20
 # Maintenance is taken from the CSV as written. There used to be a x2 knob here, applied on
 # top of a CSV whose values had ALSO been doubled, so every building silently paid four times
 # its design figure — a mine costed at 2 was charged 8. Removed rather than set to 1.0: a
-# second place to double a number is what caused it (owner ruling, 2026-07-29).
+# second place to double a number is what caused it.
 
 func _ready() -> void:
 	_load_goods()
@@ -113,7 +113,7 @@ func _on_output_destination_changed(instance_id: String, tile_id: String, good_i
 	var ms := get_node_or_null("/root/MatchState")
 	if ms == null:
 		return
-	var building: Dictionary = ms.buildings.get(instance_id, {})
+	var building: Dictionary = BuildingState.get_building(instance_id)
 	var source: String = str(building.get("tile_id", ""))
 	if source == "":
 		return
@@ -801,7 +801,7 @@ func _load_recipes() -> void:
 ## Derived from the BASE (ungated) route, and the dirtiest one where a good has several. That
 ## is deliberate: it prices a good "as if produced the conventional way", so unlocking a clean
 ## recipe does not silently cheapen everyone else's market price. Handling the case where a
-## player actually holds a hydrocarbon-free route is a later pass (owner, 2026-07-28).
+## player actually holds a hydrocarbon-free route is a later pass.
 var _embodied_carbon: Dictionary = {}   # good_id -> float
 
 func _compute_embodied_carbon() -> void:
@@ -1027,7 +1027,7 @@ func get_recipes_for_building(building_id: String) -> Array:
 		if is_recipe_prohibited(r):
 			continue
 		var req: String = str(r.get("tech_unlock_req", ""))
-		if req == "" or MatchState.is_unlocked(req):
+		if req == "" or ResearchState.is_unlocked(req):
 			out.append(_recipe_for_demo(r))
 	return out
 
@@ -1071,7 +1071,7 @@ var _base_output_cache: Dictionary = {}  # good_id -> int (recipes are fixed at 
 ## get_recipes_for_building already uses. The price-impact thresholds are multiples of this
 ## (see EconomyConfig.price_impact_rate). 0 = no producer at all, so no price impact.
 ##
-## Tech-gated recipes are excluded (owner 2026-08-29). Taking the max across EVERY recipe
+## Tech-gated recipes are excluded. Taking the max across EVERY recipe
 ## measured the player against a capability they may not have: steel read 54/turn from
 ## Electric Arc Steelmaking, which sits behind research_metal_004, when the Steelmaking
 ## recipe they actually start with makes 44 — so the market tolerated a quarter more steel

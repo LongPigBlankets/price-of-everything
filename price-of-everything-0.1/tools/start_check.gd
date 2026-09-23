@@ -24,13 +24,13 @@ func _check(name: String) -> void:
 	add_child(main)
 	await _settle(150)   # world builds progressively, then apply_pending runs
 	var got := 0
-	for iid in MatchState.buildings:
-		if MatchState.is_player_owned(MatchState.buildings[iid]):
+	for iid in BuildingState.buildings:
+		if BuildingState.is_player_owned(BuildingState.buildings[iid]):
 			got += 1
 	var levels: Array = []
-	for iid in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[iid]
-		if MatchState.is_player_owned(b) and int(b.get("level", 1)) > 1:
+	for iid in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[iid]
+		if BuildingState.is_player_owned(b) and int(b.get("level", 1)) > 1:
 			levels.append("%s L%d" % [str(b.get("building_id", "")), int(b.get("level", 1))])
 	print("START %-26s want=%d placed=%d money=%s levels=%s" % [name, want, got, str(MatchState.money), str(levels)])
 	main.queue_free()

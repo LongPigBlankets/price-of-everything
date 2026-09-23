@@ -29,14 +29,16 @@ signal close_requested
 # key → VM field; label; column width (px); text alignment; sortable?
 const COLUMNS := [
 	{"key": "bicon",   "label": "",         "w": 86.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": false},  # == BICON_CELL_W
-	{"key": "name",    "label": "Building", "w": 196.0, "align": HORIZONTAL_ALIGNMENT_LEFT,   "sort": true},
-	{"key": "tile",    "label": "Tile",     "w": 90.0,  "align": HORIZONTAL_ALIGNMENT_LEFT,   "sort": true},
-	{"key": "output",  "label": "Output",   "w": 76.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
-	{"key": "power",   "label": "Power",    "w": 110.0, "align": HORIZONTAL_ALIGNMENT_LEFT,   "sort": true},
-	{"key": "status",  "label": "Status",   "w": 90.0,  "align": HORIZONTAL_ALIGNMENT_LEFT,   "sort": true},
-	{"key": "cost",    "label": "Cost/u",   "w": 82.0,  "align": HORIZONTAL_ALIGNMENT_RIGHT,  "sort": true},
-	{"key": "net",     "label": "Net/t",    "w": 92.0,  "align": HORIZONTAL_ALIGNMENT_RIGHT,  "sort": true},
-	{"key": "land",    "label": "Land",     "w": 50.0,  "align": HORIZONTAL_ALIGNMENT_RIGHT,  "sort": true},
+	{"key": "name",    "label": "Building", "w": 196.0, "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
+	{"key": "tile",    "label": "Tile",     "w": 90.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
+	{"key": "output",  "label": "Produces",   "w": 76.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
+	{"key": "logistics_inputs", "label": "Inputs", "w": 80.0, "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": false},
+	{"key": "logistics_outputs", "label": "Outputs", "w": 80.0, "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": false},
+	{"key": "power",   "label": "Power",    "w": 110.0, "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
+	{"key": "status",  "label": "Status",   "w": 90.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
+	{"key": "cost",    "label": "Cost/u",   "w": 82.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
+	{"key": "net",     "label": "Net/t",    "w": 92.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
+	{"key": "land",    "label": "Land",     "w": 50.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": true},
 	{"key": "upgrade", "label": "Upg",      "w": 52.0,  "align": HORIZONTAL_ALIGNMENT_CENTER, "sort": false},
 ]
 
@@ -82,18 +84,20 @@ func _ready() -> void:
 	# Refresh wiring: structural changes + per-turn. The status/power/cost columns are
 	# recomputed on every rebuild, and turn_resolution_completed fires once per turn — so
 	# the power column is rechecked every turn against the latest production/cabling state.
-	MatchState.building_added.connect(func(_i: Dictionary) -> void: _request_refresh())
-	MatchState.building_removed.connect(func(_i: String) -> void: _request_refresh())
+	BuildingState.building_added.connect(func(_i: Dictionary) -> void: _request_refresh())
+	BuildingState.building_removed.connect(func(_i: String) -> void: _request_refresh())
 	# A bought NPC building becomes player-owned → it should appear in the ledger right away.
-	MatchState.building_owner_changed.connect(func(_i: String) -> void: _request_refresh())
-	MatchState.building_upgraded.connect(func(_i: String, _l: int) -> void: _request_refresh())
-	MatchState.building_upgrade_started.connect(func(_i: String, _l: int) -> void: _request_refresh())
-	MatchState.building_upgrade_progress.connect(func(_i: String) -> void: _request_refresh())
-	MatchState.building_upgrade_cancelled.connect(func(_i: String) -> void: _request_refresh())
-	MatchState.workforce_policies_changed.connect(_request_refresh)
+	BuildingState.building_owner_changed.connect(func(_i: String) -> void: _request_refresh())
+	BuildingWorks.building_upgraded.connect(func(_i: String, _l: int) -> void: _request_refresh())
+	BuildingWorks.building_upgrade_started.connect(func(_i: String, _l: int) -> void: _request_refresh())
+	BuildingWorks.building_upgrade_progress.connect(func(_i: String) -> void: _request_refresh())
+	BuildingWorks.building_upgrade_cancelled.connect(func(_i: String) -> void: _request_refresh())
+	LabourState.workforce_policies_changed.connect(_request_refresh)
 	TurnManager.turn_resolution_completed.connect(_request_refresh)
 	Construction.construction_completed.connect(func(_i: String, _t: String) -> void: _request_refresh())
 	Construction.construction_cancelled.connect(func(_i: String, _t: String) -> void: _request_refresh())
+	MatchState.output_stockpile_destination_changed.connect(func(_i: String, _t: String, _g: String) -> void: _request_refresh())
+	TransportState.transport_shipments_changed.connect(_request_refresh)
 	visibility_changed.connect(_on_visibility_changed)
 
 	call_deferred("_center_on_screen")
@@ -400,9 +404,9 @@ func _render() -> void:
 
 func _collect_vms() -> Array:
 	var out: Array = []
-	for instance_id in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[instance_id]
-		if not MatchState.is_player_owned(b):
+	for instance_id in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[instance_id]
+		if not BuildingState.is_player_owned(b):
 			continue
 		out.append(_row_vm(b))
 	return out
@@ -545,6 +549,8 @@ func _build_cell(col: Dictionary, vm: Dictionary) -> Control:
 	var key: String = str(col.key)
 	var w: float = float(col.w)
 	var align: int = int(col.align)
+	if key in ["logistics_inputs", "logistics_outputs"]:
+		return _logistics_cell(vm, "input" if key == "logistics_inputs" else "output", w)
 	if key == "bicon":
 		return _bicon_cell(vm)
 	if key == "output":
@@ -734,3 +740,56 @@ func _on_header_gui_input(event: InputEvent) -> void:
 			_dragging = false
 	elif event is InputEventMouseMotion and _dragging:
 		position = _drag_panel_start + (get_global_mouse_position() - _drag_mouse_start)
+
+func _logistics_cell(vm: Dictionary, side: String, width: float) -> Control:
+	var cell := VBoxContainer.new()
+	cell.custom_minimum_size.x = width
+	cell.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var routes: Array = preload("res://scripts/logistics_routes_view.gd").endpoints(BuildingState.get_building(str(vm.instance_id)), side)
+	if routes.is_empty():
+		cell.add_child(_text_cell("—", width, HORIZONTAL_ALIGNMENT_CENTER))
+		return cell
+	# Two icons per line keep multi-good routes within their column.
+	var row: HBoxContainer
+	for index in range(routes.size()):
+		if index % 2 == 0:
+			row = HBoxContainer.new()
+			row.alignment = BoxContainer.ALIGNMENT_CENTER
+			cell.add_child(row)
+		var route: Dictionary = routes[index]
+		var button := Button.new()
+		button.name = "Logistics"+side.capitalize()+str(index)
+		button.custom_minimum_size = Vector2(34, 34)
+		button.tooltip_text = str(route.label)
+		button.mouse_filter = Control.MOUSE_FILTER_STOP
+		button.flat = true
+		row.add_child(button)
+		var icon := TextureRect.new()
+		icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		icon.offset_left = 4
+		icon.offset_top = 4
+		icon.offset_right = -4
+		icon.offset_bottom = -4
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		match str(route.icon):
+			"middleman":
+				icon.texture = preload("res://assets/icons/research/glyph/lorry.png")
+				var shader := Shader.new()
+				shader.code = "shader_type canvas_item; void fragment(){ COLOR = vec4(0.94, 0.89, 0.76, texture(TEXTURE, UV).a); }"
+				var ink := ShaderMaterial.new()
+				ink.shader = shader
+				icon.material = ink
+			"port": icon.texture = BuildingIcon.clean_texture("b_004", "port")
+			"stockpile": icon.texture = preload("res://assets/icons/ui_icons/warehouse.png")
+			"grid":
+				button.text = "⚡"
+			_:
+				var data := Catalog.get_building(str(route.icon))
+				icon.texture = BuildingIcon.clean_texture(str(route.icon), str(data.get("internal_name", "")))
+		button.add_child(icon)
+		button.pressed.connect(func() -> void:
+			close_requested.emit()
+			MatchState.building_logistics_requested.emit(str(vm.instance_id)))
+	return cell

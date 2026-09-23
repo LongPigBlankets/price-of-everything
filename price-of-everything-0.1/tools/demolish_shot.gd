@@ -35,7 +35,7 @@ func _ready() -> void:
 	for spec in [[str(picked[0]), "b_014", "r_090"], [str(picked[1]), "b_002", "r_005"]]:
 		var tid := str(spec[0])
 		var coord: Vector2i = terrain.call("id_to_coord", tid)
-		var iid: String = MatchState.add_building(str(spec[1]), str(spec[2]), tid, MatchState.LOCAL_PLAYER, "")
+		var iid: String = BuildingState.add_building(str(spec[1]), str(spec[2]), tid, MatchState.LOCAL_PLAYER, "")
 		game.call("emit_signal", "building_placed", tid, str(spec[1]), str(spec[2]), iid, coord)
 		made.append({"iid": iid, "tile": tid, "bid": str(spec[1]), "coord": coord})
 	await _settle(30)
@@ -60,14 +60,14 @@ func _ready() -> void:
 
 	# Demolish through the player's own route: queue, then let the job finish.
 	for m in made:
-		MatchState.start_demolish(str((m as Dictionary)["iid"]))
-	for _t in MatchState.DEMOLISH_TURNS:
-		MatchState.tick_demolish()
+		BuildingWorks.start_demolish(str((m as Dictionary)["iid"]))
+	for _t in BuildingWorks.DEMOLISH_TURNS:
+		BuildingWorks.tick_demolish()
 	await _settle(30)
 	for m in made:
 		print("[DEM] after  %s drawn=%s exists=%s" % [(m as Dictionary)["bid"],
 			str(bv.call("has_placement", str((m as Dictionary)["iid"]))),
-			str(MatchState.buildings.has(str((m as Dictionary)["iid"])))])
+			str(BuildingState.buildings.has(str((m as Dictionary)["iid"])))])
 	_shot("/tmp/poe_dem_after.png")
 	get_tree().quit(0)
 

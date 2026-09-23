@@ -4,8 +4,8 @@
 [ext_resource type="Texture2D" uid="uid://crxtm6pik44sq" path="res://assets/icons/ui_icons/alt/building_ledger.png" id="2"]
 
 [node name="BuildingLedgerPanel" type="PanelContainer"]
-custom_minimum_size = Vector2(1140, 860)
-offset_right = 1140.0
+custom_minimum_size = Vector2(1316, 860)
+offset_right = 1316.0
 offset_bottom = 860.0
 script = ExtResource("1")
 

@@ -96,13 +96,13 @@ var failure_log: Array = []
 
 func _ready() -> void:
 	Construction.construction_completed.connect(_on_construction_completed)
-	MatchState.building_added.connect(_on_building_added)
-	MatchState.building_removed.connect(_on_building_removed)
+	BuildingState.building_added.connect(_on_building_added)
+	BuildingState.building_removed.connect(_on_building_removed)
 
 # ----------------------------------------------------------------- enqueue
 
 func _on_construction_completed(instance_id: String, tile_id: String) -> void:
-	var building_id := str(MatchState.get_building(instance_id).get("building_id", ""))
+	var building_id := str(BuildingState.get_building(instance_id).get("building_id", ""))
 	var internal := str(Catalog.get_building(building_id).get("internal_name", ""))
 	if internal == "roads":
 		add_roads_for_tile(tile_id)
@@ -1122,8 +1122,8 @@ func refresh_forest_occupancy() -> void:
 	TileOccupancy.clear_dynamic("forests")
 	var centers: Array = []
 	var forests: Array = []   # [instance_id, tile_id, coord, tile_center]
-	for instance_id in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[instance_id]
+	for instance_id in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[instance_id]
 		if not ForestFootprint.is_forest(str(b.get("building_id", ""))):
 			continue
 		var coord: Vector2i = terrain.id_to_coord(str(b.get("tile_id", "")))

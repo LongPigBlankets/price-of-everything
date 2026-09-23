@@ -1,0 +1,444 @@
+{
+  "comparison": "Pepper Valley Motors: public road versus owned L1 rail versus middleman reference",
+  "middleman_status": "reference calculation, not simulated",
+  "rail": {
+    "first_production_turn": 3,
+    "first_receipt_turn": 5,
+    "means": {
+      "congestion": -8.88178419700125e-16,
+      "direct_logistics": 50.4070850496831,
+      "direct_operating_contribution": -28.3174475070906,
+      "factory_costs": 70.5689624574075,
+      "factory_labour": 56.4689624574075,
+      "factory_maintenance": 10.5,
+      "factory_power": 3.6,
+      "freight_ad_valorem": 5.132154,
+      "freight_weight_distance": 3.72,
+      "goods_purchases": 238.6944,
+      "goods_receipts": 331.353,
+      "infrastructure_labour": 0.0,
+      "infrastructure_maintenance": 21.0,
+      "middleman_batch_funding_reference": 248.6944,
+      "middleman_fee_reference": 20.0,
+      "middleman_operating_contribution_reference": 2.08963754259253,
+      "other_transport_fees": 1.06581410364015e-15,
+      "port_export_ad_valorem": 10.9014839762426,
+      "port_flat_fee": 0.0,
+      "port_import_ad_valorem": 7.46413507344054,
+      "sample_first_turn": 40,
+      "sample_last_turn": 49,
+      "transport": 27.2177730496831,
+      "warehousing": 2.189312
+    },
+    "owned_rail_tiles": [
+      "tile_5_4",
+      "tile_5_5",
+      "tile_5_6",
+      "tile_5_7",
+      "tile_5_8",
+      "tile_5_9",
+      "tile_5_10"
+    ],
+    "route_quotes_at_start": {
+      "buy:g_006": {
+        "cost": 81.5254296,
+        "covered": false,
+        "goods_cost": 79.56144,
+        "port": "tile_5_10",
+        "qty": 32,
+        "route": {
+          "delayed": true,
+          "legs": [
+            {
+              "from": "tile_5_10",
+              "mode": "rail",
+              "to": "tile_5_8"
+            },
+            {
+              "from": "tile_5_8",
+              "mode": "rail",
+              "to": "tile_5_4"
+            }
+          ],
+          "path": [
+            "tile_5_10",
+            "tile_5_8",
+            "tile_5_4"
+          ],
+          "reachable": true,
+          "tile_distance": 6,
+          "tiles": [
+            "tile_5_10",
+            "tile_5_9",
+            "tile_5_8",
+            "tile_5_7",
+            "tile_5_6",
+            "tile_5_5",
+            "tile_5_4"
+          ],
+          "turns": 2
+        },
+        "route_transport_breakdown": {
+          "rail": 1.5661824
+        },
+        "sea_transport": {
+          "at_cap": false,
+          "base_fee": 0.0,
+          "capacity": 1500,
+          "good_id": "g_006",
+          "growth": 1.0,
+          "insurance_fee": 0.3978072,
+          "owned": false,
+          "port": "tile_5_10",
+          "projected_usage": 32,
+          "qty": 32,
+          "surcharge": 1.0,
+          "total": 0.3978072,
+          "transport_class": "solid_heavy",
+          "used_before": 0
+        },
+        "sea_transport_cost": 0.3978072,
+        "transport_cost": 1.9639896,
+        "turns": 2
+      },
+      "buy:g_007": {
+        "cost": 162.1010664,
+        "covered": false,
+        "goods_cost": 159.13296,
+        "port": "tile_5_10",
+        "qty": 32,
+        "route": {
+          "delayed": true,
+          "legs": [
+            {
+              "from": "tile_5_10",
+              "mode": "rail",
+              "to": "tile_5_8"
+            },
+            {
+              "from": "tile_5_8",
+              "mode": "rail",
+              "to": "tile_5_4"
+            }
+          ],
+          "path": [
+            "tile_5_10",
+            "tile_5_8",
+            "tile_5_4"
+          ],
+          "reachable": true,
+          "tile_distance": 6,
+          "tiles": [
+            "tile_5_10",
+            "tile_5_9",
+            "tile_5_8",
+            "tile_5_7",
+            "tile_5_6",
+            "tile_5_5",
+            "tile_5_4"
+          ],
+          "turns": 2
+        },
+        "route_transport_breakdown": {
+          "rail": 2.1724416
+        },
+        "sea_transport": {
+          "at_cap": false,
+          "base_fee": 0.0,
+          "capacity": 1500,
+          "good_id": "g_007",
+          "growth": 1.0,
+          "insurance_fee": 0.7956648,
+          "owned": false,
+          "port": "tile_5_10",
+          "projected_usage": 32,
+          "qty": 32,
+          "surcharge": 1.0,
+          "total": 0.7956648,
+          "transport_class": "solid_heavy",
+          "used_before": 0
+        },
+        "sea_transport_cost": 0.7956648,
+        "transport_cost": 2.9681064,
+        "turns": 2
+      },
+      "sell": {
+        "covered_all": false,
+        "port": "tile_5_10",
+        "route": {
+          "delayed": true,
+          "legs": [
+            {
+              "from": "tile_5_4",
+              "mode": "rail",
+              "to": "tile_5_6"
+            },
+            {
+              "from": "tile_5_6",
+              "mode": "rail",
+              "to": "tile_5_10"
+            }
+          ],
+          "path": [
+            "tile_5_4",
+            "tile_5_6",
+            "tile_5_10"
+          ],
+          "reachable": true,
+          "tile_distance": 6,
+          "tiles": [
+            "tile_5_4",
+            "tile_5_5",
+            "tile_5_6",
+            "tile_5_7",
+            "tile_5_8",
+            "tile_5_9",
+            "tile_5_10"
+          ],
+          "turns": 2
+        },
+        "transport_cost": 5.11353,
+        "turns": 2
+      }
+    }
+  },
+  "rail_setup": "seven completed player-owned L1 rail tiles; capital and construction excluded",
+  "roads": {
+    "first_production_turn": 5,
+    "first_receipt_turn": 9,
+    "means": {
+      "congestion": 35.408616,
+      "direct_logistics": 91.3572571421222,
+      "direct_operating_contribution": -69.2676195995297,
+      "factory_costs": 70.5689624574075,
+      "factory_labour": 56.4689624574075,
+      "factory_maintenance": 10.5,
+      "factory_power": 3.6,
+      "freight_ad_valorem": 20.528616,
+      "freight_weight_distance": 14.88,
+      "goods_purchases": 238.6944,
+      "goods_receipts": 331.353,
+      "infrastructure_labour": 0.0,
+      "infrastructure_maintenance": 0.0,
+      "middleman_batch_funding_reference": 248.6944,
+      "middleman_fee_reference": 20.0,
+      "middleman_operating_contribution_reference": 2.08963754259253,
+      "other_transport_fees": 1.06581410364015e-14,
+      "port_export_ad_valorem": 10.9014839762426,
+      "port_flat_fee": 0.0,
+      "port_import_ad_valorem": 7.44922916587961,
+      "sample_first_turn": 40,
+      "sample_last_turn": 49,
+      "transport": 89.1679451421222,
+      "warehousing": 2.189312
+    },
+    "route_quotes_at_start": {
+      "buy:g_006": {
+        "cost": 86.2239768,
+        "covered": false,
+        "goods_cost": 79.56144,
+        "port": "tile_5_10",
+        "qty": 32,
+        "route": {
+          "delayed": true,
+          "legs": [
+            {
+              "from": "tile_5_10",
+              "mode": "roads",
+              "to": "tile_5_8"
+            },
+            {
+              "from": "tile_5_8",
+              "mode": "roads",
+              "to": "tile_7_7"
+            },
+            {
+              "from": "tile_7_7",
+              "mode": "roads",
+              "to": "tile_6_5"
+            },
+            {
+              "from": "tile_6_5",
+              "mode": "roads",
+              "to": "tile_5_4"
+            }
+          ],
+          "path": [
+            "tile_5_10",
+            "tile_5_8",
+            "tile_7_7",
+            "tile_6_5",
+            "tile_5_4"
+          ],
+          "reachable": true,
+          "tile_distance": 6,
+          "tiles": [
+            "tile_5_10",
+            "tile_5_9",
+            "tile_5_8",
+            "tile_6_7",
+            "tile_7_7",
+            "tile_7_6",
+            "tile_6_5",
+            "tile_6_4",
+            "tile_5_4"
+          ],
+          "turns": 4
+        },
+        "route_transport_breakdown": {
+          "roads": 6.2647296
+        },
+        "sea_transport": {
+          "at_cap": false,
+          "base_fee": 0.0,
+          "capacity": 1500,
+          "good_id": "g_006",
+          "growth": 1.0,
+          "insurance_fee": 0.3978072,
+          "owned": false,
+          "port": "tile_5_10",
+          "projected_usage": 32,
+          "qty": 32,
+          "surcharge": 1.0,
+          "total": 0.3978072,
+          "transport_class": "solid_heavy",
+          "used_before": 0
+        },
+        "sea_transport_cost": 0.3978072,
+        "transport_cost": 6.6625368,
+        "turns": 4
+      },
+      "buy:g_007": {
+        "cost": 168.6183912,
+        "covered": false,
+        "goods_cost": 159.13296,
+        "port": "tile_5_10",
+        "qty": 32,
+        "route": {
+          "delayed": true,
+          "legs": [
+            {
+              "from": "tile_5_10",
+              "mode": "roads",
+              "to": "tile_5_8"
+            },
+            {
+              "from": "tile_5_8",
+              "mode": "roads",
+              "to": "tile_7_7"
+            },
+            {
+              "from": "tile_7_7",
+              "mode": "roads",
+              "to": "tile_6_5"
+            },
+            {
+              "from": "tile_6_5",
+              "mode": "roads",
+              "to": "tile_5_4"
+            }
+          ],
+          "path": [
+            "tile_5_10",
+            "tile_5_8",
+            "tile_7_7",
+            "tile_6_5",
+            "tile_5_4"
+          ],
+          "reachable": true,
+          "tile_distance": 6,
+          "tiles": [
+            "tile_5_10",
+            "tile_5_9",
+            "tile_5_8",
+            "tile_6_7",
+            "tile_7_7",
+            "tile_7_6",
+            "tile_6_5",
+            "tile_6_4",
+            "tile_5_4"
+          ],
+          "turns": 4
+        },
+        "route_transport_breakdown": {
+          "roads": 8.6897664
+        },
+        "sea_transport": {
+          "at_cap": false,
+          "base_fee": 0.0,
+          "capacity": 1500,
+          "good_id": "g_007",
+          "growth": 1.0,
+          "insurance_fee": 0.7956648,
+          "owned": false,
+          "port": "tile_5_10",
+          "projected_usage": 32,
+          "qty": 32,
+          "surcharge": 1.0,
+          "total": 0.7956648,
+          "transport_class": "solid_heavy",
+          "used_before": 0
+        },
+        "sea_transport_cost": 0.7956648,
+        "transport_cost": 9.4854312,
+        "turns": 4
+      },
+      "sell": {
+        "covered_all": false,
+        "port": "tile_5_10",
+        "route": {
+          "delayed": true,
+          "legs": [
+            {
+              "from": "tile_5_4",
+              "mode": "roads",
+              "to": "tile_6_5"
+            },
+            {
+              "from": "tile_6_5",
+              "mode": "roads",
+              "to": "tile_7_7"
+            },
+            {
+              "from": "tile_7_7",
+              "mode": "roads",
+              "to": "tile_7_9"
+            },
+            {
+              "from": "tile_7_9",
+              "mode": "roads",
+              "to": "tile_5_10"
+            }
+          ],
+          "path": [
+            "tile_5_4",
+            "tile_6_5",
+            "tile_7_7",
+            "tile_7_9",
+            "tile_5_10"
+          ],
+          "reachable": true,
+          "tile_distance": 6,
+          "tiles": [
+            "tile_5_4",
+            "tile_6_4",
+            "tile_6_5",
+            "tile_7_6",
+            "tile_7_7",
+            "tile_7_8",
+            "tile_7_9",
+            "tile_6_9",
+            "tile_5_10"
+          ],
+          "turns": 4
+        },
+        "transport_cost": 20.45412,
+        "turns": 4
+      }
+    }
+  },
+  "sample_turns": [
+    40,
+    49
+  ]
+}

@@ -25,8 +25,8 @@ func _ready() -> void:
 
 	var failures := 0
 	var by_tile: Dictionary = {}
-	for iid in MatchState.buildings:
-		var building: Dictionary = MatchState.buildings[iid]
+	for iid in BuildingState.buildings:
+		var building: Dictionary = BuildingState.buildings[iid]
 		var building_id := str(building.get("building_id", ""))
 		if building_id != NEW_GROWTH and building_id != OLD_GROWTH:
 			continue
@@ -78,22 +78,22 @@ func _ready() -> void:
 	print("[FOREST] felling %s (%s) on %s, canopy %s"
 		% [iid, str(subject["building"]), tile_id, str(areas)])
 
-	MatchState.set_building_owner(iid, MatchState.LOCAL_PLAYER)
-	var started: Dictionary = MatchState.start_demolish(iid)
+	BuildingState.set_building_owner(iid, MatchState.LOCAL_PLAYER)
+	var started: Dictionary = BuildingWorks.start_demolish(iid)
 	if not bool(started.get("ok", false)):
 		print("[FOREST] FAILED: a bought wood refused to demolish — %s" % str(started.get("reason", "")))
 		get_tree().quit(1)
 		return
-	MatchState.tick_demolish()
+	BuildingWorks.tick_demolish()
 	for _i in 10:
 		await get_tree().process_frame
 
-	if MatchState.buildings.has(iid):
+	if BuildingState.buildings.has(iid):
 		print("[FOREST] FAILED: the building is still standing after demolition")
 		failures += 1
 	var left: Array = []
-	for other in MatchState.tile_buildings.get(tile_id, []):
-		var building_id := str(MatchState.get_building(str(other)).get("building_id", ""))
+	for other in BuildingState.tile_buildings.get(tile_id, []):
+		var building_id := str(BuildingState.get_building(str(other)).get("building_id", ""))
 		if building_id == NEW_GROWTH or building_id == OLD_GROWTH:
 			left.append("%s (%s)" % [str(other), building_id])
 	if not left.is_empty():
@@ -124,8 +124,8 @@ func _pick_authored_wood(world: Node) -> Dictionary:
 	tiles.sort()   # deterministic subject across runs
 	for tile_value in tiles:
 		var tile_id := str(tile_value)
-		for iid in MatchState.tile_buildings.get(tile_id, []):
-			var building: Dictionary = MatchState.get_building(str(iid))
+		for iid in BuildingState.tile_buildings.get(tile_id, []):
+			var building: Dictionary = BuildingState.get_building(str(iid))
 			var building_id := str(building.get("building_id", ""))
 			if building_id != NEW_GROWTH and building_id != OLD_GROWTH:
 				continue

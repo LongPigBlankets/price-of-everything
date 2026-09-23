@@ -52,23 +52,23 @@ func _ready() -> void:
 	MatchState.money = 100000.0
 	# Tile 0: untouched. 1: a quarter owned. 2: half owned with buildings on it.
 	# 3: the whole tile owned.
-	MatchState.purchase_tile_land(str(picks[1].id), 5)     # 5 patches = 50 of 200 units
-	MatchState.purchase_tile_land(str(picks[2].id), 10)
-	MatchState.purchase_tile_land(str(picks[3].id), 20)
+	BuildingState.purchase_tile_land(str(picks[1].id), 5)     # 5 patches = 50 of 200 units
+	BuildingState.purchase_tile_land(str(picks[2].id), 10)
+	BuildingState.purchase_tile_land(str(picks[3].id), 20)
 	if build_id != "":
 		for _n in range(3):
-			MatchState.add_building(build_id, "", str(picks[2].id))
+			BuildingState.add_building(build_id, "", str(picks[2].id))
 		# Tile 3 is fully owned and built out to 150 of its 200 units: enough estate to fill the
 		# left column and spill halfway up the right, which is what the half-width split exists
 		# for. (add_building here bypasses the land gate a real build goes through, so keep the
 		# figure under the tile's owned land or the display clamps to full.)
 		for _n in range(5):
-			MatchState.add_building(build_id, "", str(picks[3].id))
+			BuildingState.add_building(build_id, "", str(picks[3].id))
 	for p in picks:
 		var tid: String = str(p.id)
 		print("[OWN_MM] %s owned=%d/%d built=%.0f" % [
-			tid, MatchState.get_tile_land_owned(tid), MatchState.MAX_TILE_LAND,
-			MatchState.get_tile_player_space_used(tid)])
+			tid, BuildingState.get_tile_land_owned(tid), BuildingState.MAX_TILE_LAND,
+			BuildingState.get_tile_player_space_used(tid)])
 
 	# Placing buildings pops "Built Mine" toasts that sit over the legend. They are the game
 	# reacting correctly to the setup; just clear them.

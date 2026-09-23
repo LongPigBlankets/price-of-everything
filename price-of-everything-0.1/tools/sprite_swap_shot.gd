@@ -32,7 +32,7 @@ func _ready() -> void:
 	_shot("/tmp/poe_sprites_off.png")
 
 	# The cheat path: flip the flag, live-refresh (what debug_terminal does).
-	var on: bool = MatchState.toggle_use_empire_sprite_view()
+	var on: bool = UiPrefs.toggle_use_empire_sprite_view()
 	ev.call("refresh_graph")
 	await _settle(16)
 	print("SWAP : use_empire_sprite_view=", on)
@@ -62,7 +62,7 @@ func _ready() -> void:
 	_shot("/tmp/poe_click_bdp.png")
 
 	# Second use switches back.
-	var off: bool = MatchState.toggle_use_empire_sprite_view()
+	var off: bool = UiPrefs.toggle_use_empire_sprite_view()
 	ev.call("refresh_graph")
 	await _settle(16)
 	print("SWAP2: use_empire_sprite_view=", off)
@@ -77,7 +77,7 @@ func _ready() -> void:
 ## seeded so placement is valid.
 func _seed() -> void:
 	var tiles: Array = []
-	for b in MatchState.buildings.values():
+	for b in BuildingState.buildings.values():
 		var t := str(b.get("tile_id", ""))
 		if t != "" and not tiles.has(t):
 			tiles.append(t)
@@ -91,9 +91,9 @@ func _seed() -> void:
 			continue
 		var rid := str((recs[0] as Dictionary).get("recipe_id", ""))
 		var iid := "spr_%d" % k
-		MatchState.add_building(bids[k], rid, tiles[(k * 3) % tiles.size()], "player_1", iid)
-		if MatchState.buildings.has(iid):
-			MatchState.buildings[iid]["level"] = levels[k]
+		BuildingState.add_building(bids[k], rid, tiles[(k * 3) % tiles.size()], "player_1", iid)
+		if BuildingState.buildings.has(iid):
+			BuildingState.buildings[iid]["level"] = levels[k]
 	print("seeded ", bids.size(), " buildings for the sprite-swap shot")
 
 

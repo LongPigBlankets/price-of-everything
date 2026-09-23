@@ -15,7 +15,7 @@ func _ready() -> void:
 	await _settle(36)
 
 	var tiles: Array = []
-	for b in MatchState.buildings.values():
+	for b in BuildingState.buildings.values():
 		var t := str(b.get("tile_id", ""))
 		if t != "" and not tiles.has(t):
 			tiles.append(t)
@@ -25,7 +25,7 @@ func _ready() -> void:
 		var recs: Array = Catalog.get_recipes_for_building(bids[i])
 		if recs.is_empty():
 			continue
-		MatchState.add_building(bids[i], str((recs[0] as Dictionary).get("recipe_id", "")),
+		BuildingState.add_building(bids[i], str((recs[0] as Dictionary).get("recipe_id", "")),
 			tiles[(i * 3) % tiles.size()], MatchState.LOCAL_PLAYER, "endshot_%d" % i)
 	await _settle(6)
 

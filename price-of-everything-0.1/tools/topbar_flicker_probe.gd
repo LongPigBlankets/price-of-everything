@@ -12,8 +12,8 @@ func _ready() -> void:
 	add_child(game)
 	await _settle(36)
 	# Seat an advisor so the council strip has something to rebuild.
-	MatchState.permanent_advisor_ids = ["vera", "tom"]
-	MatchState.advisor_seats = {"cfo": "vera", "coo": "tom"}
+	AdvisorState.permanent_advisor_ids = ["vera", "tom"]
+	AdvisorState.advisor_seats = {"cfo": "vera", "coo": "tom"}
 	var bar := _find(game, "top_bar.gd")
 	if bar == null:
 		push_error("top bar not found"); get_tree().quit(1); return

@@ -30,7 +30,8 @@ in panel code except for the per-instance colour/size tweaks the variations do n
 
 ## Verification
 
-`docs/` holds the specs; `tools/run_tests.py` runs the suite.
+`docs/` holds the specs; `tools/run_tests.py` runs the suite (`--tags <feature>` for one
+feature, `--list` to see files/tests/tags; layout and tag rules in `tests/README.md`).
 
 **Parse-check before you trust a green suite.**
 

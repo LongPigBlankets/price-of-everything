@@ -19,13 +19,13 @@ func _ready() -> void:
 	# Seat a tenured board so all three union_demands advocates speak, and run the
 	# cash low so the mediator choice (£40) shows the distress-loan note.
 	for aid: String in ["vera", "tom", "eleanor"]:
-		if not MatchState.permanent_advisor_ids.has(aid):
-			MatchState.permanent_advisor_ids.append(aid)
-		if not MatchState.recruited_advisor_ids.has(aid):
-			MatchState.recruited_advisor_ids.append(aid)
-		MatchState.advisor_hired_turn[aid] = int(TurnManager.current_turn) - 5
-		MatchState.advisor_loyalty[aid] = 0.0
-	MatchState.advisor_seats = {"cfo": "vera", "coo": "tom", "hr_director": "eleanor"}
+		if not AdvisorState.permanent_advisor_ids.has(aid):
+			AdvisorState.permanent_advisor_ids.append(aid)
+		if not AdvisorState.recruited_advisor_ids.has(aid):
+			AdvisorState.recruited_advisor_ids.append(aid)
+		AdvisorState.advisor_hired_turn[aid] = int(TurnManager.current_turn) - 5
+		AdvisorState.advisor_loyalty[aid] = 0.0
+	AdvisorState.advisor_seats = {"cfo": "vera", "coo": "tom", "hr_director": "eleanor"}
 	MatchState.money = 25.0
 	MatchState.money_changed.emit(MatchState.money)
 

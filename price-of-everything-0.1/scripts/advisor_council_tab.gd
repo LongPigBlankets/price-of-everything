@@ -54,8 +54,8 @@ func _ready() -> void:
 	_root.add_theme_constant_override("separation", 14)
 	_root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(_root)
-	MatchState.advisors_changed.connect(_queue_refresh)
-	MatchState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _queue_refresh())
+	AdvisorState.advisors_changed.connect(_queue_refresh)
+	AdvisorState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _queue_refresh())
 	visibility_changed.connect(_queue_refresh)   # catch up when the tab is shown
 	# The tutorial advances from bonus inspection to hiring asynchronously. Rebuild the
 	# candidate footer when that happens, so its confirmation button becomes available.
@@ -88,26 +88,26 @@ func _loyalty_tone(v: float) -> Dictionary:
 	return {"color": _BAD, "label": "Disloyal"}
 
 func _loyalty_frac(v: float) -> float:
-	return clampf((v - MatchState.LOYALTY_MIN) / (MatchState.LOYALTY_MAX - MatchState.LOYALTY_MIN), 0.0, 1.0)
+	return clampf((v - AdvisorState.LOYALTY_MIN) / (AdvisorState.LOYALTY_MAX - AdvisorState.LOYALTY_MIN), 0.0, 1.0)
 
 func _seat_color(seat_id: String) -> Color:
-	var governs := str((MatchState.SEAT_DEFINITIONS.get(seat_id, {}) as Dictionary).get("governs", ""))
+	var governs := str((AdvisorState.SEAT_DEFINITIONS.get(seat_id, {}) as Dictionary).get("governs", ""))
 	return _DISC_COLORS.get(governs, Color("#B9C4D2"))
 
 func _seat_name(seat_id: String) -> String:
-	return str((MatchState.SEAT_DEFINITIONS.get(seat_id, {}) as Dictionary).get("seat_name", seat_id))
+	return str((AdvisorState.SEAT_DEFINITIONS.get(seat_id, {}) as Dictionary).get("seat_name", seat_id))
 
 func _seated_ids() -> Array:
-	return MatchState.advisor_seats.values()
+	return AdvisorState.advisor_seats.values()
 
 ## Candidates the picker offers: benched employees first (already on payroll),
 ## then recruited-but-unhired advisors.
 func _picker_candidates() -> Array:
 	var out: Array = []
-	for a in MatchState.permanent_advisors():
+	for a in AdvisorState.permanent_advisors():
 		if not _seated_ids().has(str(a.get("id", ""))):
 			out.append(a)
-	out.append_array(MatchState.available_advisors())
+	out.append_array(AdvisorState.available_advisors())
 	return out
 
 # ── rebuild ─────────────────────────────────────────────────────────────────
@@ -122,11 +122,11 @@ func _rebuild() -> void:
 
 # ── ROSTER: the seat grid ───────────────────────────────────────────────────
 func _build_roster() -> void:
-	var seated := MatchState.advisor_seats.size()
-	var cap := MatchState.max_advisor_slots
+	var seated := AdvisorState.advisor_seats.size()
+	var cap := AdvisorState.max_advisor_slots
 	var avg := 0.0
 	for aid in _seated_ids():
-		avg += MatchState.advisor_loyalty_value(str(aid))
+		avg += AdvisorState.advisor_loyalty_value(str(aid))
 	avg = avg / float(seated) if seated > 0 else 0.0
 	var tone := _loyalty_tone(avg)
 
@@ -168,11 +168,11 @@ func _build_roster() -> void:
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_root.add_child(grid)
 	var at_cap := seated >= cap
-	for seat_id in MatchState.SEAT_DEFINITIONS:
+	for seat_id in AdvisorState.SEAT_DEFINITIONS:
 		var sid := str(seat_id)
-		var aid := MatchState.get_advisor_in_seat(sid)
+		var aid := AdvisorState.get_advisor_in_seat(sid)
 		# Locked, empty seats are hidden until `unlock advisors` (a seated advisor still shows).
-		if aid == "" and not MatchState.is_seat_available(sid):
+		if aid == "" and not AdvisorState.is_seat_available(sid):
 			continue
 		if aid != "":
 			grid.add_child(_filled_seat_card(sid, aid))
@@ -180,8 +180,8 @@ func _build_roster() -> void:
 			grid.add_child(_empty_seat_card(sid, at_cap))
 
 func _filled_seat_card(seat_id: String, advisor_id: String) -> Control:
-	var adv := MatchState.get_advisor(advisor_id)
-	var loyalty := MatchState.advisor_loyalty_value(advisor_id)
+	var adv := AdvisorState.get_advisor(advisor_id)
+	var loyalty := AdvisorState.advisor_loyalty_value(advisor_id)
 	var tone := _loyalty_tone(loyalty)
 	var scol := _seat_color(seat_id)
 
@@ -215,22 +215,22 @@ func _filled_seat_card(seat_id: String, advisor_id: String) -> Control:
 	var frow := HBoxContainer.new()
 	frow.add_theme_constant_override("separation", 10)
 	col.add_child(frow)
-	var effects: Array = MatchState.advisor_seat_effect_list(advisor_id, seat_id)
+	var effects: Array = AdvisorState.advisor_seat_effect_list(advisor_id, seat_id)
 	frow.add_child(_dim_label(_effect_text(effects[0]) if not effects.is_empty() else "no seat effects", 11))
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	frow.add_child(spacer)
-	frow.add_child(_tone_label("★".repeat(MatchState.advisor_star_by_id(advisor_id)), _WARN, 12))
+	frow.add_child(_tone_label("★".repeat(AdvisorState.advisor_star_by_id(advisor_id)), _WARN, 12))
 	col.add_child(_financial_preview(advisor_id, seat_id, true))
 	return btn
 
 func _empty_seat_card(seat_id: String, locked: bool) -> Control:
 	var scol := _seat_color(seat_id)
-	var seat: Dictionary = MatchState.SEAT_DEFINITIONS.get(seat_id, {})
+	var seat: Dictionary = AdvisorState.SEAT_DEFINITIONS.get(seat_id, {})
 	var btn := _card_button(true, scol if not locked else Color("#3A4654"))
 	btn.disabled = locked
 	if locked:
-		btn.tooltip_text = "Seat cap reached (%d). More seats unlock as your company grows." % MatchState.max_advisor_slots
+		btn.tooltip_text = "Seat cap reached (%d). More seats unlock as your company grows." % AdvisorState.max_advisor_slots
 	else:
 		btn.pressed.connect(func() -> void: _set_view({"mode": "picker", "hire_seat": seat_id, "back": "roster"}))
 	var col := VBoxContainer.new()
@@ -292,7 +292,7 @@ func _build_picker() -> void:
 
 func _candidate_card(adv: Dictionary) -> Control:
 	var aid := str(adv.get("id", ""))
-	var employed := MatchState.permanent_advisor_ids.has(aid)
+	var employed := AdvisorState.permanent_advisor_ids.has(aid)
 	var btn := _card_button()
 	btn.pressed.connect(func() -> void:
 		_set_view({"mode": "detail", "sel_id": aid, "hire_seat": _view.get("hire_seat", ""), "back": "picker"}))
@@ -313,12 +313,12 @@ func _candidate_card(adv: Dictionary) -> Control:
 	var fee := VBoxContainer.new()
 	fee.add_theme_constant_override("separation", 0)
 	head.add_child(fee)
-	var fee_text := ("unpaid" if not MatchState.advisor_is_payrolled(aid) else "on payroll") \
+	var fee_text := ("unpaid" if not AdvisorState.advisor_is_payrolled(aid) else "on payroll") \
 		if employed else "£%.1f/turn" % _salary(aid)
 	var fee_v := _tone_label(fee_text, _WARN, 14)
 	fee_v.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	fee.add_child(fee_v)
-	var fee_c := _dim_label("family friend" if employed and not MatchState.advisor_is_payrolled(aid) else ("benched" if employed else "salary"), 10)
+	var fee_c := _dim_label("family friend" if employed and not AdvisorState.advisor_is_payrolled(aid) else ("benched" if employed else "salary"), 10)
 	fee_c.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	fee.add_child(fee_c)
 
@@ -343,15 +343,15 @@ func _candidate_card(adv: Dictionary) -> Control:
 # ── DETAIL: one advisor, seated or candidate ────────────────────────────────
 func _build_detail() -> void:
 	var aid := str(_view.get("sel_id", ""))
-	var adv := MatchState.get_advisor(aid)
+	var adv := AdvisorState.get_advisor(aid)
 	if adv.is_empty():
 		_set_view({"mode": "roster"})
 		return
 	var seated_seat := ""
-	for sid in MatchState.advisor_seats:
-		if str(MatchState.advisor_seats[sid]) == aid:
+	for sid in AdvisorState.advisor_seats:
+		if str(AdvisorState.advisor_seats[sid]) == aid:
 			seated_seat = str(sid)
-	var employed := MatchState.permanent_advisor_ids.has(aid)
+	var employed := AdvisorState.permanent_advisor_ids.has(aid)
 	_root.add_child(_back_row("", ""))
 
 	# Header.
@@ -364,20 +364,20 @@ func _build_detail() -> void:
 	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(names)
 	names.add_child(_title_label(str(adv.get("name", aid)), 26))
-	names.add_child(_dim_label("★".repeat(MatchState.advisor_star_by_id(aid)), 13))
+	names.add_child(_dim_label("★".repeat(AdvisorState.advisor_star_by_id(aid)), 13))
 	if seated_seat != "":
 		head.add_child(_role_chip(seated_seat, _seat_color(seated_seat)))
 	else:
 		var fee := VBoxContainer.new()
 		head.add_child(fee)
-		var fee_text := ("unpaid" if not MatchState.advisor_is_payrolled(aid) else "on payroll") \
+		var fee_text := ("unpaid" if not AdvisorState.advisor_is_payrolled(aid) else "on payroll") \
 			if employed else "£%.1f/turn" % _salary(aid)
 		fee.add_child(_tone_label(fee_text, _WARN, 17))
-		fee.add_child(_dim_label("family friend" if employed and not MatchState.advisor_is_payrolled(aid) else ("benched" if employed else "salary"), 11))
+		fee.add_child(_dim_label("family friend" if employed and not AdvisorState.advisor_is_payrolled(aid) else ("benched" if employed else "salary"), 11))
 
 	# Loyalty and its missions are available after unlock demo.
 	if employed and preload("res://scripts/debug_terminal.gd").demo_is_unlocked():
-		var loyalty := MatchState.advisor_loyalty_value(aid)
+		var loyalty := AdvisorState.advisor_loyalty_value(aid)
 		var tone := _loyalty_tone(loyalty)
 		var strip := _card_panel()
 		var lrow := HBoxContainer.new()
@@ -398,9 +398,9 @@ func _build_detail() -> void:
 		mcol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		lrow.add_child(mcol)
 		mcol.add_child(_sec_label("MISSIONS"))
-		var done := MatchState.advisor_missions_done(aid)
+		var done := AdvisorState.advisor_missions_done(aid)
 		mcol.add_child(_dim_label("%d / 5 complete" % done, 13))
-		var rewards: Array = MatchState.advisor_mission_reward_labels(aid)
+		var rewards: Array = AdvisorState.advisor_mission_reward_labels(aid)
 		if done < rewards.size():
 			mcol.add_child(_dim_label("Next: %s" % str(rewards[done]), 11))
 		_root.add_child(strip)
@@ -439,7 +439,7 @@ func _build_detail() -> void:
 	# A seated advisor shows their current effects. Candidate/reassignment profiles
 	# stay blank until the player explicitly chooses a position above.
 	var focus_seat := seated_seat if not choosing_position else str(_view.get("selected_seat", ""))
-	if focus_seat != "" and not MatchState.is_seat_available(focus_seat):
+	if focus_seat != "" and not AdvisorState.is_seat_available(focus_seat):
 		focus_seat = ""
 	var bonus_title := Label.new()
 	bonus_title.add_theme_font_size_override("font_size", 20)
@@ -470,7 +470,7 @@ func _build_detail() -> void:
 	var acol := VBoxContainer.new()
 	acol.add_theme_constant_override("separation", 7)
 	agenda_box.add_child(acol)
-	for r in MatchState.advisor_agenda_rows(aid):
+	for r in AdvisorState.advisor_agenda_rows(aid):
 		var rowd: Dictionary = r
 		var benefit := bool(rowd.get("benefit", false))
 		var arow := HBoxContainer.new()
@@ -494,10 +494,10 @@ func _build_detail() -> void:
 		var on_reassign := func() -> void:
 			_set_view({"mode": "detail", "sel_id": aid, "reassign": true, "back": _view.get("back", "roster")})
 		var on_unseat := func() -> void:
-			MatchState.unassign_seat(seated_seat)
+			AdvisorState.unassign_seat(seated_seat)
 			_set_view({"mode": "roster"})
 		var on_dismiss := func() -> void:
-			MatchState.fire_advisor(aid)
+			AdvisorState.fire_advisor(aid)
 			_set_view({"mode": "roster"})
 		foot.add_child(_action_btn("Reassign seat", on_reassign))
 		foot.add_child(_action_btn("Unseat (keep on payroll)", on_unseat))
@@ -536,7 +536,7 @@ func _financial_preview(advisor_id: String, seat_id: String, compact: bool = fal
 	box.name = "AdvisorFinancialPreview"
 	box.add_theme_constant_override("separation", 2)
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var bonus := MatchState.advisor_bonus_preview_per_turn(advisor_id, seat_id)
+	var bonus := AdvisorState.advisor_bonus_preview_per_turn(advisor_id, seat_id)
 	var salary := _salary(advisor_id)
 	var font_size := 11 if compact else 13
 	var bonus_label := _tone_label("Preview bonuses: £%.2f per turn" % bonus, _GOOD, font_size)
@@ -560,7 +560,7 @@ func _financial_preview(advisor_id: String, seat_id: String, compact: bool = fal
 func _advisor_bonus_rows(advisor_id: String, seat_id: String) -> Array:
 	var rows: Array = []
 	if seat_id != "":
-		for eff in MatchState.advisor_seat_effect_list(advisor_id, seat_id):
+		for eff in AdvisorState.advisor_seat_effect_list(advisor_id, seat_id):
 			var pct := float(eff.get("pct", 0.0))
 			var domain := str(eff.get("domain", ""))
 			rows.append({
@@ -568,7 +568,7 @@ func _advisor_bonus_rows(advisor_id: String, seat_id: String) -> Array:
 				"effect": "%+.0f%%" % pct,
 				"good": _effect_is_beneficial(eff),
 			})
-	if advisor_id == MatchState.FOUNDER_ADVISOR_ID:
+	if advisor_id == AdvisorState.FOUNDER_ADVISOR_ID:
 		if seat_id == "cfo":
 			rows.append({"name": "Signing gift — a one-off loan on favourable terms",
 				"effect": "£200 at 5%", "good": true})
@@ -576,7 +576,7 @@ func _advisor_bonus_rows(advisor_id: String, seat_id: String) -> Array:
 			rows.append({"name": "Signing gift — pre-paid domestic freight, and cheaper haulage",
 				"effect": "1000 units · −20%", "good": true})
 		rows.append({"name": "Serves for nothing — no salary for his tenure",
-			"effect": "£0 for %d turns" % MatchState.FOUNDER_TENURE_TURNS, "good": true})
+			"effect": "£0 for %d turns" % AdvisorState.FOUNDER_TENURE_TURNS, "good": true})
 	return rows
 
 
@@ -587,21 +587,21 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 	var wrap := VBoxContainer.new()
 	wrap.add_theme_constant_override("separation", 8)
 	var open_seats: Array[String] = []
-	for sid in MatchState.SEAT_DEFINITIONS:
+	for sid in AdvisorState.SEAT_DEFINITIONS:
 		# Posts the company has not opened yet are not offered here either — the panel must
 		# not be a way around the gate the rest of the game enforces.
-		if not MatchState.is_seat_available(str(sid)):
+		if not AdvisorState.is_seat_available(str(sid)):
 			continue
 		# The family friend sits where he was asked to sit. He is a favour in one of two
 		# chairs, not a hire who can be moved around the org chart.
-		if advisor_id == MatchState.FOUNDER_ADVISOR_ID \
-				and not MatchState.STARTING_SEATS.has(str(sid)):
+		if advisor_id == AdvisorState.FOUNDER_ADVISOR_ID \
+				and not AdvisorState.STARTING_SEATS.has(str(sid)):
 			continue
-		var holder := MatchState.get_advisor_in_seat(str(sid))
+		var holder := AdvisorState.get_advisor_in_seat(str(sid))
 		if holder == "" or holder == advisor_id:
 			open_seats.append(str(sid))
-	var seated := MatchState.advisor_seats.size()
-	var can_take_new_seat := current_seat != "" or seated < MatchState.max_advisor_slots
+	var seated := AdvisorState.advisor_seats.size()
+	var can_take_new_seat := current_seat != "" or seated < AdvisorState.max_advisor_slots
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	wrap.add_child(row)
@@ -614,7 +614,7 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 		return wrap
 	row.add_child(_dim_label("Assign to", 12))
 	if not can_take_new_seat:
-		row.add_child(_tone_label("Council is full (%d/%d) — unseat someone first." % [seated, MatchState.max_advisor_slots], _BAD, 12))
+		row.add_child(_tone_label("Council is full (%d/%d) — unseat someone first." % [seated, AdvisorState.max_advisor_slots], _BAD, 12))
 		return wrap
 	var selected_seat := str(_view.get("selected_seat", ""))
 	if not open_seats.has(selected_seat):
@@ -639,7 +639,7 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 			next_view["selected_seat"] = sid
 			_set_view(next_view))
 		chip_holder.add_child(b)
-	var employed := MatchState.permanent_advisor_ids.has(advisor_id)
+	var employed := AdvisorState.permanent_advisor_ids.has(advisor_id)
 	var inspecting := _tutorial_bonus_inspection_required()
 	var comparing := inspecting or (typeof(Tutorial) != TYPE_NIL and Tutorial.is_active_step("advisors_hire"))
 	var worthwhile := selected_seat != "" and tutorial_candidate_worthwhile(advisor_id, selected_seat)
@@ -658,12 +658,12 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 			if Tutorial.is_active_step("advisors_inspect"):
 				Tutorial._advance()
 			return
-		if not MatchState.permanent_advisor_ids.has(advisor_id):
-			if not MatchState.hire_advisor(advisor_id):
+		if not AdvisorState.permanent_advisor_ids.has(advisor_id):
+			if not AdvisorState.hire_advisor(advisor_id):
 				MatchState.request_toast("Could not hire — council is full or they refuse to return.", "warning")
 				return
-		var who := str(MatchState.get_advisor(advisor_id).get("name", advisor_id))
-		if MatchState.assign_advisor_to_seat(selected_seat, advisor_id):
+		var who := str(AdvisorState.get_advisor(advisor_id).get("name", advisor_id))
+		if AdvisorState.assign_advisor_to_seat(selected_seat, advisor_id):
 			MatchState.request_toast("%s assigned as %s" % [who, _seat_name(selected_seat)], "success")
 		else:
 			# A refused assignment used to fall through silently and return to the roster, so
@@ -682,7 +682,7 @@ func _seat_choice_row(advisor_id: String, current_seat: String) -> Control:
 
 
 func tutorial_candidate_worthwhile(advisor_id: String, seat_id: String) -> bool:
-	return MatchState.advisor_bonus_preview_per_turn(advisor_id, seat_id) > _salary(advisor_id)
+	return AdvisorState.advisor_bonus_preview_per_turn(advisor_id, seat_id) > _salary(advisor_id)
 
 
 func _tutorial_bonus_inspection_required() -> bool:
@@ -921,26 +921,26 @@ func _action_btn(text: String, handler: Callable, tint: Color = Color("#DBE6F2")
 
 # ── data helpers ─────────────────────────────────────────────────────────────
 func _archetype(advisor_id: String) -> String:
-	var entry := MatchState._roster_entry(advisor_id)
+	var entry := AdvisorState._roster_entry(advisor_id)
 	return str((entry.get("traits", {}) as Dictionary).get("specialty_name", ""))
 
 ## What one more advisor costs per turn under the live model — a flat base that inflates at
 ## double the labour rate, plus 1% of company revenue each (EconomyConfig, owner 2026-08-01).
 ## Not the roster's old per-advisor `salary` field, which the model replaced.
 func _salary(advisor_id: String) -> float:
-	return MatchState.advisor_cost_for(advisor_id, MatchState.advisor_revenue_basis())
+	return AdvisorState.advisor_cost_for(advisor_id, AdvisorState.advisor_revenue_basis())
 
 
 ## The cost broken out, for the line that sits UNDER the hire button.
 func _cost_breakdown() -> String:
-	var rev := MatchState.advisor_revenue_basis()
-	var base := MatchState.advisor_cost_per_advisor(0.0)
+	var rev := AdvisorState.advisor_revenue_basis()
+	var base := AdvisorState.advisor_cost_per_advisor(0.0)
 	var share := rev * EconomyConfig.ADVISOR_REVENUE_SHARE
 	return "\u00a3%.1f/turn \u2014 \u00a3%.1f base + %.0f%% of revenue (\u00a3%.1f)" % [base + share, base, EconomyConfig.ADVISOR_REVENUE_SHARE * 100.0, share]
 
 ## [ [display_name, value 1-3, disc_key], ... ] sorted by value desc, top n.
 func _top_disciplines(advisor_id: String, n: int) -> Array:
-	var entry := MatchState._roster_entry(advisor_id)
+	var entry := AdvisorState._roster_entry(advisor_id)
 	var pairs: Array = []
 	for key in _DISC_NAMES:
 		pairs.append([str(_DISC_NAMES[key]), int(entry.get(key, 0)), str(key)])
@@ -958,4 +958,4 @@ func _effect_text(eff: Dictionary) -> String:
 ## Whether an effect helps the player (sign alone isn't enough: −10% labour
 ## cost is good, −10% throughput would be bad).
 func _effect_is_beneficial(eff: Dictionary) -> bool:
-	return MatchState.advisor_effect_is_beneficial(eff)
+	return AdvisorState.advisor_effect_is_beneficial(eff)

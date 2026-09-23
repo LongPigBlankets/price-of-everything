@@ -467,7 +467,7 @@ func _build_movements_tab(root: VBoxContainer) -> void:
 	oneoff_scroll.add_child(oneoff.root)
 	root.add_child(oneoff_scroll)
 	var refresh := func() -> void:
-		_populate_accordion(oneoff, "One-off", MatchState.get_oneoff_move_rows())
+		_populate_accordion(oneoff, "One-off", TransportState.get_oneoff_move_rows())
 	_ledger_refreshers.append(refresh)
 	refresh.call()
 
@@ -747,7 +747,7 @@ func _refresh_recurring_list(kind: String, list: VBoxContainer, good_opt: Option
 func _recurring_entries(kind: String) -> Array:
 	var out: Array = []
 	if kind == "moves":
-		for m in MatchState.recurring_moves:
+		for m in TransportState.recurring_moves:
 			out.append({"entry": m, "sub": "move",
 				"source": str(m.get("source", "")), "dest": str(m.get("dest", "")),
 				"goods": m.get("goods", {})})
@@ -877,7 +877,7 @@ func _cancel_recurring(sub: String, entry: Dictionary) -> void:
 	var ok := false
 	match sub:
 		"move":
-			ok = MatchState.remove_recurring_move(entry)
+			ok = TransportState.remove_recurring_move(entry)
 		"sell":
 			ok = MatchState.remove_recurring_sell(entry)
 		"bulk":

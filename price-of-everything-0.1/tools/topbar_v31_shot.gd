@@ -25,9 +25,9 @@ func _ready() -> void:
 
 	# Seat a council + give the mission module something to show, same seed the v2
 	# shot tool uses, so the two are visually comparable.
-	MatchState.advisor_seats = {"cfo": "vera", "coo": "gerald", "government_affairs": "rufus"}
-	MatchState.advisor_loyalty = {"vera": 7.2, "gerald": 1.5, "rufus": -5.0}
-	MatchState.advisors_changed.emit()
+	AdvisorState.advisor_seats = {"cfo": "vera", "coo": "gerald", "government_affairs": "rufus"}
+	AdvisorState.advisor_loyalty = {"vera": 7.2, "gerald": 1.5, "rufus": -5.0}
+	AdvisorState.advisors_changed.emit()
 	TurnManager.current_turn = 63
 	TurnManager.turn_advanced.emit(63)
 	Production.last_turn_summary = {"money_in": 900.0, "money_out": 400.0,
@@ -39,7 +39,7 @@ func _ready() -> void:
 	await _settle(10)
 	await _shot(OUT_DIR + "topbar_v31_classic.png")
 
-	MatchState.set_use_topbar_v3_1(true)
+	UiPrefs.set_use_topbar_v3_1(true)
 	await _settle(10)
 	await _shot(OUT_DIR + "topbar_v31_calm.png")
 
@@ -61,7 +61,7 @@ func _ready() -> void:
 	# (blinking amber — the blink phase itself is whatever it lands on for this frame),
 	# and drawing from the grid.
 	var iid := "probe_building"
-	MatchState.buildings[iid] = {"id": iid, "recipe_id": "", "owner": "player"}
+	BuildingState.buildings[iid] = {"id": iid, "recipe_id": "", "owner": "player"}
 	Production.missing_by_building[iid] = [{"good_id": "power", "amount": 5.0}]
 	Production._intermittency_by_building["probe_building_2"] = {"derate": 0.4}
 	Production.last_turn_summary = {"money_in": 300.0, "money_out": 900.0,

@@ -22,13 +22,13 @@ func _ready() -> void:
 	var terrain: Node = game.get_node("%TerrainLayer")
 	var steel_id := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
 	var wiring_id := str(Catalog.get_good_by_internal_name("copper_wiring").get("id", ""))
-	MatchState.add_building("b_007", "r_009", best, "player_1", "tvpshot_m1")
-	MatchState.add_building("b_007", "r_009", best, "player_1", "tvpshot_m2")
-	MatchState.add_building("b_007", "r_003", best, "player_1", "tvpshot_s1")
-	MatchState.add_building("b_025", "r_037", best, "player_1", "tvpshot_w1")
+	BuildingState.add_building("b_007", "r_009", best, "player_1", "tvpshot_m1")
+	BuildingState.add_building("b_007", "r_009", best, "player_1", "tvpshot_m2")
+	BuildingState.add_building("b_007", "r_003", best, "player_1", "tvpshot_s1")
+	BuildingState.add_building("b_025", "r_037", best, "player_1", "tvpshot_w1")
 	# NPC-owned buildings on the same tile → the "NPC Buildings" section + banner.
-	MatchState.add_building("b_002", "r_003", best, "npc_glass", "tvpshot_npc1")
-	MatchState.add_building("b_007", "r_009", best, "npc_glass", "tvpshot_npc2")
+	BuildingState.add_building("b_002", "r_003", best, "npc_glass", "tvpshot_npc1")
+	BuildingState.add_building("b_007", "r_009", best, "npc_glass", "tvpshot_npc2")
 	Stockpile.add(best, steel_id, 40)      # enough for ONE motor run — the other starves
 	Stockpile.add(best, wiring_id, 40)
 
@@ -39,7 +39,7 @@ func _ready() -> void:
 	for coord in terrain.tiles:
 		var td_probe: Dictionary = terrain.tiles[coord]
 		var tid := str(td_probe.get("id", ""))
-		if tid == "" or tid == best or not MatchState.get_buildings_on_tile(tid).is_empty():
+		if tid == "" or tid == best or not BuildingState.get_buildings_on_tile(tid).is_empty():
 			continue
 		if str(td_probe.get("type", "")).to_lower() in ["sea", "deep_sea"]:
 			continue
@@ -51,11 +51,11 @@ func _ready() -> void:
 			break
 	print("[tvp_shot] amber=%s red=%s" % [amber_tile, red_tile])
 	if amber_tile != "":
-		MatchState.add_building("b_007", "r_009", amber_tile, "player_1", "tvpshot_amber")
+		BuildingState.add_building("b_007", "r_009", amber_tile, "player_1", "tvpshot_amber")
 		Stockpile.add(amber_tile, steel_id, 40)
 		Stockpile.add(amber_tile, wiring_id, 40)
 	if red_tile != "":
-		MatchState.add_building("b_007", "r_009", red_tile, "player_1", "tvpshot_red")
+		BuildingState.add_building("b_007", "r_009", red_tile, "player_1", "tvpshot_red")
 		Stockpile.add(red_tile, steel_id, 40)
 		Stockpile.add(red_tile, wiring_id, 40)
 
@@ -69,7 +69,7 @@ func _ready() -> void:
 	await _settle(10)
 
 	# Placed AFTER the turns → no run record yet → the amber "Starting" pill.
-	MatchState.add_building("b_007", "r_033", best, "player_1", "tvpshot_fresh")
+	BuildingState.add_building("b_007", "r_033", best, "player_1", "tvpshot_fresh")
 
 	# Collapse the auto-expanded turn-summary ledger so it doesn't cover the TVP.
 	var dock := game.find_child("EndTurnDock", true, false)

@@ -20,7 +20,7 @@ python3 tools/run_tests.py
 ```
 - Custom zero-dependency harness (not GUT/gdUnit4): runs
   `res://tests/test_runner.tscn` headless; exit 0 = all pass, 1 = any fail.
-- Count as of 2026-07-05: **1165 passed, 0 failed**. The count grows; a *drop* in the
+- Count as of 2026-09-11: **3881 passed, 0 failed** (393 tests across 20 feature files). The count grows; a *drop* in the
   pass count without a matching test edit is a red flag.
 - Auto-locates the Godot binary (falls back to `$GODOT_BIN`); known-good local binary:
   `/Users/crisu/Desktop/Godot.app/Contents/MacOS/Godot` (4.6.2).
@@ -136,20 +136,30 @@ and prints its resolved settings first so a set of frames is self-describing.
 
 ## Adding a unit test
 
-1. Open `tests/test_runner.gd`; write `func _test_my_thing() -> void:` using the
-   `_check(condition, "message")` helper; register it in the call list near the top
-   (search the existing `_test_...()` invocations).
-2. **Restore global state you touch.** The suite shares autoload state across tests.
+The suite is split by feature: `tests/unit/test_<feature>.gd`, each extending
+`tests/test_base.gd`; `tests/test_runner.gd` discovers every `func _test_*()` in them.
+Full rules in `tests/README.md`. Short form:
+
+1. Open the feature's file (e.g. `tests/unit/test_market.gd`); write
+   `func _test_my_thing() -> void:` using the `_check(condition, "message")` helper. No
+   registration list — discovery picks it up.
+2. Tags: a test carries its file's `FEATURE` unless the file's `TAGS` map lists it; list every
+   feature a crossover test covers so `--tags` finds it from each side. An empty tag list is a
+   wildcard (runs under every filter) — that is what `test_smoke.gd` uses.
+3. **Restore global state you touch.** The suite shares autoload state across tests.
    Example of record: the price-impact test snapshots `MarketState.prices`, runs
    `tick_turn()` several times, then restores the snapshot and re-emits
-   `prices_updated` (see `_test_price_impact_thresholds`).
-3. Tests may drive phases directly via `TurnManager.phase_started.emit(...)` — that is
-   a supported contract (sim hooks stay connected to the signal).
-4. Good ids vs names: `"coal"` is an *internal name*; ids are `g_0xx`. Resolve via
+   `prices_updated` (see `_test_price_impact_thresholds`). After `TurnManager.commit_turn()`,
+   `await _await_turn_settled()` before restoring.
+4. Tests may drive phases directly via `TurnManager.phase_started.emit(...)` — that is a
+   supported contract (sim hooks stay connected to the signal).
+5. Good ids vs names: `"coal"` is an *internal name*; ids are `g_0xx`. Resolve via
    `Catalog.get_good_by_internal_name("coal").get("id")` — an id/name mixup produced a
    6-check false failure cascade once.
-5. Regression tests are named for their story, e.g.
+6. Regression tests are named for their story, e.g.
    `_test_construction_reorder_ignores_foreign_inbound`.
+7. Run just your feature while iterating: `python3 tools/run_tests.py --tags market`; run the
+   whole suite before declaring done.
 
 ## What the suite does NOT catch (know the blind spots)
 

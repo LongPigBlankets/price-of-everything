@@ -1,6 +1,6 @@
 extends RefCounted
 ## Stateless data layer for the Victory / Defeat end-of-game screen
-## (scripts/victory_end_screen.gd), ported from the owner's "Victory Screen.html"
+## (scripts/victory_end_screen.gd), ported from the "Victory Screen.html"
 ## design. Assembles ONE dict from the live autoloads — VictoryState (score, tracks,
 ## per-turn history), MatchState (buildings, tiles), Catalog (good names/icons) —
 ## exactly like tile_view_data.gd feeds the tile panel. UI is read-only against the sim.
@@ -8,8 +8,8 @@ extends RefCounted
 # tile_view_data owns the building-icon lookup (id_internal.png fallbacks).
 const TileViewData := preload("res://scripts/tile_view_data.gd")
 # The tile view's building-card glyph: keyed to transparency with the raised off-white
-# emboss baked in. The end screen's sprites are the SAME object as the cards' (owner
-# 2026-08-24), so a building looks like itself wherever it appears.
+# emboss baked in. The end screen's sprites are the SAME object as the cards', so a
+# building looks like itself wherever it appears.
 const KeyedBuildingIcon := preload("res://scripts/keyed_building_icon.gd")
 const GoodsFlowGraph := preload("res://scripts/goods_flow_graph.gd")
 const CHAIN_MAX := 14              # goods drawn in the supply-chain web
@@ -39,7 +39,7 @@ const DEMO_TRACKS: Array = [
 # Rank palette for the "biggest outputs" bars (rank 0 is drawn gold by the UI).
 const TOP_COLORS: Array = ["#e6b34a", "#8f9dae", "#a8b0bc", "#cdd2cb", "#7fd4e8", "#b9c4d2"]
 
-# ── The demo's endings (owner, 23 Aug) ─────────────────────────────────────────
+# ── The demo's endings ─────────────────────────────────────────────────────────
 #
 # A 100-turn run cannot earn the campaign's track-count titles — "The Magnate" for three
 # tracks assumes 300 turns of compounding — so the demo is named by what the run actually
@@ -52,7 +52,7 @@ const TOP_COLORS: Array = ["#e6b34a", "#8f9dae", "#a8b0bc", "#cdd2cb", "#7fd4e8"
 #   sequel              more than 500 points
 #   lukewarm            500 or fewer
 #
-# Copy is the owner's, verbatim. `result` is the verdict word for a run that did NOT cross
+# `result` is the verdict word for a run that did NOT cross
 # the win bar — crossing it makes any ending a victory.
 const DEMO_JACK_POINTS := 2000
 const DEMO_SEQUEL_POINTS := 500
@@ -120,7 +120,7 @@ static func demo_endings_apply() -> bool:
 
 ## Which ending a demo run earned. Precedence, not a score band lookup: the conditions
 ## overlap and the first match wins. A run with exactly DEMO_SEQUEL_POINTS is lukewarm —
-## the owner's rule is "more than 500" for the sequel and "less than 500" for the lukewarm
+## the rule is "more than 500" for the sequel and "less than 500" for the lukewarm
 ## one, and 500 itself has to fall on one side.
 static func demo_ending_id(secured: int, total: int, bankrupt: bool) -> String:
 	if bankrupt:
@@ -134,7 +134,7 @@ static func demo_ending_id(secured: int, total: int, bankrupt: bool) -> String:
 	return "lukewarm"
 
 
-## The one-line subhead. The ending's copy is the owner's and says nothing about numbers, so
+## The one-line subhead. The ending's copy says nothing about numbers, so
 ## this is where the run's actual figures go — the player should not have to read the score
 ## bar to find out what they finished on.
 static func _demo_epithet(id: String, secured: int, total: int, turn: int) -> String:
@@ -155,7 +155,7 @@ static func gather() -> Dictionary:
 	turn = clampi(turn, 1, vs.MAX_TURNS)
 	# Three outcomes, not two. Running out of turns having secured NO track is only a defeat if
 	# the company was also losing money; a business still in the black at the bell survived, and
-	# the screen says so in amber rather than calling in the receivers (owner 2026-08-01).
+	# the screen says so in amber rather than calling in the receivers.
 	# Net/turn comes from the same summary the top bar reads, so the verdict agrees with the
 	# figure the player was watching all game.
 	var result := "victory" if won else ("continuity" if _net_per_turn() > 0.0 else "defeat")
@@ -313,7 +313,7 @@ static func _track_sub(key: String, done: bool) -> String:
 	return ""
 
 # ── Narrative title / epithet / copy (generated from the actual result) ─────────
-# Victory names (owner 2026-07-11):
+# Victory names:
 #   5 tracks → The Full Ledger
 #   4 tracks → named by the one that got away (see _FOUR_TRACK_TITLES)
 #   3 tracks → The Magnate · 2 tracks → Visionary Industrialist
@@ -385,7 +385,6 @@ static func _copy(result: String, secured: int, turn: int, tracks: Array) -> Arr
 			names.append(str(t.name).to_lower())
 	var lead := "The books closed on turn %d." % turn
 	if result == "continuity":
-		# Owner's copy, verbatim (2026-08-01).
 		return ["You continued your predecessors' task and made this company survive through a lot of change. Although you never reached the crazy heights of success some thought you capable of, there is greatness in maintaining such a steady ship. Few businesses can claim to have survived this long or managed to avoid catastrophe like yours. Raise a glass. But make it a small one, we can't afford the fancy stuff."]
 	if result == "defeat":
 		return [
@@ -409,7 +408,7 @@ static func _join_names(names: Array) -> String:
 # ── Company highlights (the run's own artefacts, for the showcase row) ─────────
 # Superlatives drawn from ledgers the sim already keeps, display-ready, so the screen can
 # show THIS run's things — good icons, building art, an advisor portrait — rather than
-# abstract numbers alone (owner 2026-08-24).
+# abstract numbers alone.
 ## How many goods the "Most sold" plate ranks.
 const TOP_SOLD_SHOWN := 5
 
@@ -420,9 +419,9 @@ static func _company_highlights() -> Dictionary:
 		var q: int = int(vs.produced_by_good[gid])
 		if q > int(top_prod.qty):
 			top_prod = {"gid": str(gid), "qty": q, "qty_text": _num(q) + " units"}
-	# The top FIVE sold, ranked, not just the winner (owner, 25 Aug). One good said almost
-	# nothing about a run: a company that sold five things in quantity and one that sold one
-	# looked identical here. `top_sold` stays as the head of the list so nothing else that reads
+	# The top FIVE sold, ranked, not just the winner. One good alone says almost nothing about
+	# a run: a company that sold five things in quantity and one that sold one would look
+	# identical here. `top_sold` stays as the head of the list so nothing else that reads
 	# it has to change.
 	var sold_rank: Array = []
 	for g_variant in MatchState.visible_goods():
@@ -435,12 +434,12 @@ static func _company_highlights() -> Dictionary:
 	var top_sold: Dictionary = sold_rank[0] if not sold_rank.is_empty() 		else {"gid": "", "qty": 0, "qty_text": "—"}
 	# Most value created by one building: what it PUT INTO THE WORLD less what it cost to
 	# run — inputs at market, upkeep, labour, and its power at the grid price whatever
-	# supplied it (owner 2026-08-24: own generation is a sale foregone, not a freebie).
+	# supplied it (own generation is a sale foregone, not a freebie).
 	# Production keeps the row as it happens; nothing here is reconstructed after the fact.
 	var work := {}
 	var work_net := -INF
 	for iid in Production.lifetime_pl_by_building:
-		if not MatchState.buildings.has(str(iid)):
+		if not BuildingState.buildings.has(str(iid)):
 			continue
 		var pl: Dictionary = Production.lifetime_pl_by_building[iid]
 		var value := float(pl.get("value", 0.0))
@@ -453,7 +452,7 @@ static func _company_highlights() -> Dictionary:
 		var units := 0
 		for k in (Production.produced_by_building.get(str(iid), {}) as Dictionary).values():
 			units += int(k)
-		var b: Dictionary = MatchState.buildings[str(iid)]
+		var b: Dictionary = BuildingState.buildings[str(iid)]
 		var bd: Dictionary = Catalog.get_building(str(b.get("building_id", "")))
 		work = {"name": str(bd.get("display_name", "?")),
 			"value": "£%s net" % _num(int(round(net))),
@@ -465,18 +464,17 @@ static func _company_highlights() -> Dictionary:
 	# Longest-serving SEATED advisor, by hire turn; the tenure reads in company years.
 	var adv := {}
 	var earliest := 999999
-	for seat in MatchState.advisor_seats:
-		var aid := str(MatchState.advisor_seats[seat])
-		var t := int(MatchState.advisor_hired_turn.get(aid, 999998))
+	for seat in AdvisorState.advisor_seats:
+		var aid := str(AdvisorState.advisor_seats[seat])
+		var t := int(AdvisorState.advisor_hired_turn.get(aid, 999998))
 		if t < earliest:
 			earliest = t
-			var a: Dictionary = MatchState.get_advisor(aid)
+			var a: Dictionary = AdvisorState.get_advisor(aid)
 			adv = {"name": str(a.get("name", aid.capitalize())),
 				"portrait": str(a.get("portrait_path", "")),
 				"since_year": 1 + maxi(0, t - 1) / 12}
 	# The chain the run actually established, as a NETWORK rather than a row of five
-	# tiers (owner 2026-08-24: "use the focused view style — connect the different goods
-	# produced"). Take the goods graph's own web, keep only the goods this company ever
+	# tiers, in the focused view's style. Take the goods graph's own web, keep only the goods this company ever
 	# made, and keep the edges between survivors: what is left is the player's own corner
 	# of the flow chart, laid out in the same columns the Goods Graph uses.
 	var web: Dictionary = GoodsFlowGraph.build()
@@ -585,11 +583,10 @@ static func _charts() -> Dictionary:
 		})
 
 	# The estate's own emblem for the buildings chart: the type the player put up most of,
-	# stacked one sprite per N buildings rather than drawn as an abstract area (owner
-	# 2026-08-24: "a furnace or some other building the player built").
+	# stacked one sprite per N buildings rather than drawn as an abstract area.
 	var counts: Dictionary = {}
-	for inst in MatchState.buildings.values():
-		if not MatchState.is_player_owned(inst):
+	for inst in BuildingState.buildings.values():
+		if not BuildingState.is_player_owned(inst):
 			continue
 		var bid := str(inst.get("building_id", ""))
 		counts[bid] = int(counts.get(bid, 0)) + 1
@@ -674,8 +671,8 @@ static func _empire() -> Dictionary:
 	var furn_b := 0   # refinery + electrochemistry + water
 	var factories := 0
 	var port_tiles: Dictionary = {}
-	for inst in MatchState.buildings.values():
-		if not MatchState.is_player_owned(inst):
+	for inst in BuildingState.buildings.values():
+		if not BuildingState.is_player_owned(inst):
 			continue
 		var bd: Dictionary = Catalog.get_building(str(inst.get("building_id", "")))
 		var types: Array = bd.get("building_type", [])
@@ -698,8 +695,8 @@ static func _empire() -> Dictionary:
 # ── Helpers ────────────────────────────────────────────────────────────────────
 static func _widest_tiles() -> int:
 	var tiles: Dictionary = {}
-	for inst in MatchState.buildings.values():
-		if not MatchState.is_player_owned(inst):
+	for inst in BuildingState.buildings.values():
+		if not BuildingState.is_player_owned(inst):
 			continue
 		var b: Dictionary = Catalog.get_building(str(inst.get("building_id", "")))
 		if str(b.get("category", "")) == "infrastructure":

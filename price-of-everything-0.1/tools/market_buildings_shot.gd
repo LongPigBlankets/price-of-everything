@@ -12,8 +12,8 @@ func _ready() -> void:
 	await _settle(50)   # let the world boot + NPC start buildings seed synchronously
 
 	var npc := 0
-	for iid in MatchState.buildings:
-		if not MatchState.is_player_owned(MatchState.buildings[iid]):
+	for iid in BuildingState.buildings:
+		if not BuildingState.is_player_owned(BuildingState.buildings[iid]):
 			npc += 1
 	print("NPC buildings in world: ", npc)
 
@@ -91,10 +91,10 @@ func _ready() -> void:
 	var first_iid: String = str(tab._rows[0]["instance_id"]) if tab._rows.size() > 0 else ""
 	var first_price: int = int(tab._rows[0]["price"]) if tab._rows.size() > 0 else 0
 	var rows_before: int = tab._rows.size()
-	var before_owned: bool = first_iid != "" and MatchState.is_player_owned(MatchState.buildings[first_iid])
+	var before_owned: bool = first_iid != "" and BuildingState.is_player_owned(BuildingState.buildings[first_iid])
 	# Land grant: record the bought building's tile owned-land before/after.
-	var buy_tile: String = str(MatchState.buildings[first_iid].get("tile_id", "")) if first_iid != "" else ""
-	var land_before: int = MatchState.get_tile_land_owned(buy_tile) if buy_tile != "" else 0
+	var buy_tile: String = str(BuildingState.buildings[first_iid].get("tile_id", "")) if first_iid != "" else ""
+	var land_before: int = BuildingState.get_tile_land_owned(buy_tile) if buy_tile != "" else 0
 	var row0: Control = tab._rows[0]["control"]
 	var buy_btn: Button = null
 	for b in row0.find_children("*", "Button", true, false):
@@ -107,17 +107,17 @@ func _ready() -> void:
 		if confirm_btn != null:
 			confirm_btn.pressed.emit()
 			await _settle(10)
-		var now_owned: bool = MatchState.is_player_owned(MatchState.buildings[first_iid])
+		var now_owned: bool = BuildingState.is_player_owned(BuildingState.buildings[first_iid])
 		var charged: float = money_before - MatchState.money
 		print("BUY TEST: before_owned=%s now_owned=%s rows %d→%d price=£%d charged=£%.0f" % [
 			before_owned, now_owned, rows_before, tab._rows.size(), first_price, charged])
 		# Land grant under the building (footprint added once, capped at the tile max).
-		var bd: Dictionary = Catalog.get_building(str(MatchState.buildings[first_iid].get("building_id", "")))
+		var bd: Dictionary = Catalog.get_building(str(BuildingState.buildings[first_iid].get("building_id", "")))
 		var foot: int = int(ceil(float(bd.get("tile_size_used", 1))))  # L1 footprint
-		var land_after: int = MatchState.get_tile_land_owned(buy_tile)
+		var land_after: int = BuildingState.get_tile_land_owned(buy_tile)
 		# A second set_owner to the player must NOT grant again (no double count).
-		MatchState.set_building_owner(first_iid, MatchState.LOCAL_PLAYER)
-		var land_after2: int = MatchState.get_tile_land_owned(buy_tile)
+		BuildingState.set_building_owner(first_iid, MatchState.LOCAL_PLAYER)
+		var land_after2: int = BuildingState.get_tile_land_owned(buy_tile)
 		print("LAND TEST: tile=%s owned %d→%d (footprint=%d) no_double=%s" % [
 			buy_tile, land_before, land_after, foot, land_after2 == land_after])
 
@@ -136,7 +136,7 @@ func _ready() -> void:
 			if cb != null:
 				cb.pressed.emit()
 				await _settle(8)
-			var still_npc: bool = not MatchState.is_player_owned(MatchState.buildings[poor_iid])
+			var still_npc: bool = not BuildingState.is_player_owned(BuildingState.buildings[poor_iid])
 			# Red insufficient-money toast now lives in the bottom-left success stack with the others.
 			var stack: Control = game.get_node_or_null("UILayer/HUD/ToastLayer/SuccessStack")
 			var stack_x: float = stack.global_position.x if stack != null else -1.0

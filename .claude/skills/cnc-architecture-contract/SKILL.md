@@ -12,7 +12,7 @@ Violating one usually doesn't fail a test — it corrupts determinism, saves, or
 ## The seven invariants
 
 ### 1. The simulation lives OUTSIDE the scene tree
-Sim state = plain Dictionaries/Arrays owned by autoload singletons (`MatchState`,
+Sim state = plain Dictionaries/Arrays owned by autoload singletons (`MatchState`, `BuildingState`, `ResearchState`, `AdvisorState`, `BuildingWorks`, `LabourState`, `TransportState`, `Power`,
 `Production`, `MarketState`, `Stockpile`, `Construction`, `LoanState`, `Power`,
 `SpecialOrderState`, `Modifiers`, `VictoryState`, …). Buildings, goods, tiles, markets
 are **data, never Nodes**.
@@ -36,7 +36,7 @@ are **data, never Nodes**.
   saves and a useless balance harness.
 - Since 2026-07 the *intra-phase listener order* is also explicit:
   `TurnManager._wire_sim_listeners()` connects `phase_started` hooks in a fixed,
-  documented order (MatchState → Production → EventScheduler → Modifiers). It used to
+  documented order (LabourState → MatchState → ResearchState → Production → EventScheduler → Modifiers). It used to
   fall out of autoload registration + deferred-connect timing — an implicit race.
   **Never reorder that list** without checking the dependencies documented at the hook
   (battery fills must precede the production cascade; unlock checks precede event tick

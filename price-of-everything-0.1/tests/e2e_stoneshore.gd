@@ -264,8 +264,8 @@ func _print_profit_trajectory() -> void:
 		# scale with building level, so the receiving tile may simply have nowhere to put it.
 		print("  STOCKPILE / CAPACITY on the tiles that matter:")
 		var tiles_seen := {}
-		for iid in MatchState.buildings.keys():
-			var inst: Dictionary = MatchState.buildings[iid]
+		for iid in BuildingState.buildings.keys():
+			var inst: Dictionary = BuildingState.buildings[iid]
 			if str(inst.get("owner", "")) != "player_1":
 				continue
 			var tid := str(inst.get("tile_id", ""))
@@ -279,8 +279,8 @@ func _print_profit_trajectory() -> void:
 		# 1 — what the output multipliers actually evaluate to for a downstream building.
 		print("  OUTPUT MULTIPLIERS on a live building of each downstream recipe:")
 		for want in ["r_003", "r_005", "r_009"]:
-			for iid in MatchState.buildings.keys():
-				var inst: Dictionary = MatchState.buildings[iid]
+			for iid in BuildingState.buildings.keys():
+				var inst: Dictionary = BuildingState.buildings[iid]
 				if str(inst.get("recipe_id", "")) != want or str(inst.get("owner", "")) != "player_1":
 					continue
 				var lvl2 := int(inst.get("level", 1))
@@ -291,7 +291,7 @@ func _print_profit_trajectory() -> void:
 				var derate := float((Production._intermittency_by_building.get(str(iid), {}) as Dictionary).get("derate", 0.0))
 				print("    %-8s L%d  recipe_output x%.3f   level x%.2f   workforce x%.3f   startup x%.3f   intermittency -%.0f%%"
 					% [want, lvl2, modded / base, BuildingLevels.mult("output", lvl2),
-						MatchState.workforce_output_multiplier(),
+						LabourState.workforce_output_multiplier(),
 						MatchState.startup_capacity_multiplier(inst), derate * 100.0])
 				break
 	if _auto_infra:
@@ -305,8 +305,8 @@ func _print_profit_trajectory() -> void:
 	# none — infinite tiles must be counted separately, not added.
 	var dep_left := {}
 	var seen_tiles := {}
-	for iid in MatchState.buildings.keys():
-		var inst: Dictionary = MatchState.buildings[iid]
+	for iid in BuildingState.buildings.keys():
+		var inst: Dictionary = BuildingState.buildings[iid]
 		if str(inst.get("owner", "")) != "player_1":
 			continue
 		var tid := str(inst.get("tile_id", ""))
@@ -384,7 +384,7 @@ func _run() -> void:
 	await _advance_until_no_construction(14)
 	_check(Construction.construction_projects.is_empty(), "all scenario construction projects completed")
 	_load_battery_cells_from_config()   # a battery store has no cell slots until it is BUILT
-	_check(MatchState.buildings.size() >= 24, "scenario has a live multi-building industrial base")
+	_check(BuildingState.buildings.size() >= 24, "scenario has a live multi-building industrial base")
 
 	_cash_after_buildout = MatchState.money
 	# Right-sizing is the player's correction to a BUILT empire, not a rival bidder for
@@ -517,7 +517,7 @@ func _run_balance_v4() -> void:
 		# A populated authored start can satisfy scale/run conditions during snapshot
 		# import. Reapply those already-earned research effects after the baseline
 		# modifier scrub so the research-enabled player receives them on turn one.
-		Modifiers.reapply_unlock_modifiers(MatchState.unlocked_titles)
+		Modifiers.reapply_unlock_modifiers(ResearchState.unlocked_titles)
 	_register_existing_balance_buildings()
 	var expected_start_buildings := int(_scenario.get("balance_expected_start_buildings",
 		(_balance_start_config.get("buildings", []) as Array).size()))
@@ -624,8 +624,8 @@ func _run_balance_v4() -> void:
 			var target_level := int((integration_entry as Dictionary).get("level", 2))
 			if source_instance != "":
 				await _upgrade_to_level(source_instance, target_level)
-				if MatchState.buildings.has(source_instance) \
-						and int((MatchState.buildings[source_instance] as Dictionary).get("level", 1)) >= target_level:
+				if BuildingState.buildings.has(source_instance) \
+						and int((BuildingState.buildings[source_instance] as Dictionary).get("level", 1)) >= target_level:
 					_register_built(logical_id, source_instance)
 		else:
 			await _build_buildings_from_list([integration_entry])
@@ -692,7 +692,7 @@ func _run_balance_v4() -> void:
 
 	var all_assets_retained := true
 	for instance_id in _balance_built_ids:
-		if not MatchState.buildings.has(instance_id) or not MatchState.is_player_owned(MatchState.buildings[instance_id]):
+		if not BuildingState.buildings.has(instance_id) or not BuildingState.is_player_owned(BuildingState.buildings[instance_id]):
 			all_assets_retained = false
 			break
 	_check(all_assets_retained, "no constructed production building was sold or demolished")
@@ -746,7 +746,7 @@ func _validate_authored_balance_start() -> void:
 	for raw_tile_id in (_balance_start_config.get("land", {}) as Dictionary):
 		var tile_id := str(raw_tile_id)
 		var expected_land := int((_balance_start_config.get("land", {}) as Dictionary)[raw_tile_id])
-		_check(MatchState.get_tile_land_owned(tile_id) == expected_land,
+		_check(BuildingState.get_tile_land_owned(tile_id) == expected_land,
 			"authored start owns %d land on %s" % [expected_land, tile_id])
 	for raw_tile_id in (_balance_start_config.get("stockpile", {}) as Dictionary):
 		var tile_id := str(raw_tile_id)
@@ -783,10 +783,10 @@ func _validate_authored_balance_start() -> void:
 	for raw_entry in _balance_start_config.get("buildings", []):
 		var entry: Dictionary = raw_entry
 		var matching_instance := ""
-		for raw_instance_id in MatchState.buildings:
+		for raw_instance_id in BuildingState.buildings:
 			var instance_id := str(raw_instance_id)
-			var building: Dictionary = MatchState.buildings[instance_id]
-			if MatchState.is_player_owned(building) \
+			var building: Dictionary = BuildingState.buildings[instance_id]
+			if BuildingState.is_player_owned(building) \
 					and str(building.get("building_id", "")) == str(entry.get("building_id", "")) \
 					and str(building.get("recipe_id", "")) == str(entry.get("recipe_id", "")) \
 					and str(building.get("tile_id", "")) == str(entry.get("tile_id", "")):
@@ -799,7 +799,7 @@ func _validate_authored_balance_start() -> void:
 			])
 		if matching_instance == "":
 			continue
-		_check(int((MatchState.buildings[matching_instance] as Dictionary).get("level", 1)) \
+		_check(int((BuildingState.buildings[matching_instance] as Dictionary).get("level", 1)) \
 				== int(entry.get("level", 1)),
 			"authored start building preserves its opening level")
 		var output_to := str(entry.get("output_to", ""))
@@ -833,12 +833,12 @@ func _register_existing_balance_buildings() -> void:
 		var tile_id := str(entry.get("tile", entry.get("tile_id", "")))
 		var wanted := maxi(1, int(entry.get("count", 1)))
 		var matches: Array[String] = []
-		for raw_instance_id in MatchState.buildings:
+		for raw_instance_id in BuildingState.buildings:
 			var instance_id := str(raw_instance_id)
 			if claimed.has(instance_id):
 				continue
-			var building: Dictionary = MatchState.buildings[instance_id]
-			if MatchState.is_player_owned(building) \
+			var building: Dictionary = BuildingState.buildings[instance_id]
+			if BuildingState.is_player_owned(building) \
 					and str(building.get("building_id", "")) == building_id \
 					and str(building.get("recipe_id", "")) == recipe_id \
 					and str(building.get("tile_id", "")) == tile_id:
@@ -943,8 +943,8 @@ func _rightsize_tick() -> void:
 	var turn := int(TurnManager.current_turn)
 	var short_now := {}
 	for instance_id in Production.missing_by_building.keys():
-		var building: Dictionary = MatchState.buildings.get(str(instance_id), {})
-		if building.is_empty() or not MatchState.is_player_owned(building):
+		var building: Dictionary = BuildingState.buildings.get(str(instance_id), {})
+		if building.is_empty() or not BuildingState.is_player_owned(building):
 			continue
 		var missing: Variant = Production.missing_by_building.get(str(instance_id), [])
 		if not (missing is Array):
@@ -1052,7 +1052,7 @@ func _open_market_for(good_id: String, instance_ids: Array, turn: int) -> void:
 		var instance_id := str(raw_id)
 		if not MatchState.is_input_tile_only(instance_id, good_id):
 			continue    # already free to buy; the shortage is supply, not permission
-		var building: Dictionary = MatchState.buildings.get(instance_id, {})
+		var building: Dictionary = BuildingState.buildings.get(instance_id, {})
 		var tile_id := str(building.get("tile_id", ""))
 		if tile_id == "":
 			continue
@@ -1080,9 +1080,9 @@ func _open_market_for(good_id: String, instance_ids: Array, turn: int) -> void:
 ## exists yet. Both of those are causes that adding capacity cannot address.
 func _producers_are_running(good_id: String) -> bool:
 	var found_any := false
-	for instance_id in MatchState.buildings.keys():
-		var building: Dictionary = MatchState.buildings[instance_id]
-		if not MatchState.is_player_owned(building):
+	for instance_id in BuildingState.buildings.keys():
+		var building: Dictionary = BuildingState.buildings[instance_id]
+		if not BuildingState.is_player_owned(building):
 			continue
 		var recipe: Dictionary = Catalog.get_recipe(str(building.get("recipe_id", "")))
 		if recipe.is_empty():
@@ -1114,11 +1114,11 @@ func _upgrade_saturated_infrastructure() -> void:
 	if _rightsize_busy:
 		return
 	var turn := int(TurnManager.current_turn)
-	for instance_id in MatchState.buildings.keys():
+	for instance_id in BuildingState.buildings.keys():
 		if _infra_upgrade_log.size() >= INFRA_UPGRADE_MAX:
 			return
-		var inst: Dictionary = MatchState.buildings[instance_id]
-		if not MatchState.is_player_owned(inst):
+		var inst: Dictionary = BuildingState.buildings[instance_id]
+		if not BuildingState.is_player_owned(inst):
 			continue
 		var internal := str(Catalog.get_building(str(inst.get("building_id", ""))).get("internal_name", ""))
 		if not INFRA_UPGRADEABLE.has(internal):
@@ -1126,7 +1126,7 @@ func _upgrade_saturated_infrastructure() -> void:
 		var tile_id := str(inst.get("tile_id", ""))
 		if turn < int(_infra_upgrade_ready.get(str(instance_id), 0)):
 			continue
-		if MatchState.is_upgrading(str(instance_id)):
+		if BuildingWorks.is_upgrading(str(instance_id)):
 			continue
 		var capacity := 0.0
 		var usage := 0.0
@@ -1135,11 +1135,11 @@ func _upgrade_saturated_infrastructure() -> void:
 			usage = float(maxi(int(Power.tile_drawn.get(tile_id, 0)), int(Power.tile_produced.get(tile_id, 0))))
 		else:
 			var mode := "rail" if internal == "rails" else internal
-			capacity = MatchState.tile_mode_capacity(mode, MatchState._tile_infra_level(tile_id, mode))
-			usage = float(MatchState.tile_mode_flow(tile_id, mode))
+			capacity = TransportState.tile_mode_capacity(mode, TransportState._tile_infra_level(tile_id, mode))
+			usage = float(TransportState.tile_mode_flow(tile_id, mode))
 		if capacity <= 0.0 or usage < capacity * INFRA_UPGRADE_AT:
 			continue
-		var result: Dictionary = MatchState.start_upgrade(str(instance_id), "market")
+		var result: Dictionary = BuildingWorks.start_upgrade(str(instance_id), "market")
 		# Refusal is a legitimate outcome (already max level, or unaffordable): back off.
 		_infra_upgrade_ready[str(instance_id)] = turn + INFRA_UPGRADE_COOLDOWN
 		if not bool(result.get("ok", false)):
@@ -1163,8 +1163,8 @@ func _ensure_cabled_to_network(tile_id: String) -> void:
 	# Candidate anchors: anywhere the player already has a building, plus the scenario's
 	# own spine tiles. That is a small set and covers every tile actually in play.
 	var candidates := {}
-	for b in MatchState.buildings.values():
-		if MatchState.is_player_owned(b):
+	for b in BuildingState.buildings.values():
+		if BuildingState.is_player_owned(b):
 			candidates[str((b as Dictionary).get("tile_id", ""))] = true
 	for entry in _entry_by_output.values():
 		candidates[str((entry as Dictionary).get("tile", ""))] = true
@@ -1206,8 +1206,8 @@ func _ensure_cabled_to_network(tile_id: String) -> void:
 func _resolve_power_site() -> String:
 	# 1. The tile of a building actually reporting a power shortage.
 	for instance_id in Production.missing_by_building.keys():
-		var b: Dictionary = MatchState.buildings.get(str(instance_id), {})
-		if b.is_empty() or not MatchState.is_player_owned(b):
+		var b: Dictionary = BuildingState.buildings.get(str(instance_id), {})
+		if b.is_empty() or not BuildingState.is_player_owned(b):
 			continue
 		var missing: Variant = Production.missing_by_building.get(str(instance_id), [])
 		if not (missing is Array):
@@ -1257,8 +1257,8 @@ func _power_tick() -> void:
 	# bought off the national grid to cover the rest.
 	var deficit := int(summary.get("grid_bought", 0))
 	for instance_id in Production.missing_by_building.keys():
-		var b: Dictionary = MatchState.buildings.get(str(instance_id), {})
-		if b.is_empty() or not MatchState.is_player_owned(b):
+		var b: Dictionary = BuildingState.buildings.get(str(instance_id), {})
+		if b.is_empty() or not BuildingState.is_player_owned(b):
 			continue
 		var missing: Variant = Production.missing_by_building.get(str(instance_id), [])
 		if not (missing is Array):
@@ -1393,7 +1393,7 @@ func _logical_ids_built(logical_ids: Array) -> bool:
 	for logical_id in logical_ids:
 		var found := false
 		for instance_id in _instances_for(str(logical_id)):
-			if MatchState.buildings.has(str(instance_id)) and MatchState.is_player_owned(MatchState.buildings[str(instance_id)]):
+			if BuildingState.buildings.has(str(instance_id)) and BuildingState.is_player_owned(BuildingState.buildings[str(instance_id)]):
 				found = true
 				break
 		if not found:
@@ -1406,17 +1406,17 @@ func _logical_ids_built(logical_ids: Array) -> bool:
 # if the larger footprint needs it, and the building remains unavailable during
 # the real upgrade countdown.
 func _upgrade_to_level(instance_id: String, target_level: int) -> void:
-	while MatchState.buildings.has(instance_id) \
-			and int((MatchState.buildings[instance_id] as Dictionary).get("level", 1)) < target_level \
+	while BuildingState.buildings.has(instance_id) \
+			and int((BuildingState.buildings[instance_id] as Dictionary).get("level", 1)) < target_level \
 			and TurnManager.current_turn < _target_turn:
-		var preview: Dictionary = MatchState.preview_upgrade(instance_id)
+		var preview: Dictionary = BuildingWorks.preview_upgrade(instance_id)
 		_check(bool(preview.get("ok", false)) and not bool(preview.get("research_locked", false)),
 			"building upgrade is available and research-unlocked")
 		if not bool(preview.get("ok", false)) or bool(preview.get("research_locked", false)):
 			return
 		var land_cost := 0.0
 		if not bool(preview.get("fits", false)):
-			land_cost = MatchState.LAND_PATCH_COST
+			land_cost = BuildingState.LAND_PATCH_COST
 		var required := float(preview.get("market_cost", 0.0)) + land_cost
 		var funded := true
 		if _balance_mode and bool(_scenario.get("balance_prudent_expansion", true)):
@@ -1427,21 +1427,21 @@ func _upgrade_to_level(instance_id: String, target_level: int) -> void:
 			_check(true, "player skipped an unaffordable building upgrade")
 			return
 		if not bool(preview.get("fits", false)):
-			var tile_id := str((MatchState.buildings[instance_id] as Dictionary).get("tile_id", ""))
-			var bought := MatchState.purchase_tile_land(tile_id, 1)
+			var tile_id := str((BuildingState.buildings[instance_id] as Dictionary).get("tile_id", ""))
+			var bought := BuildingState.purchase_tile_land(tile_id, 1)
 			_check(bought, "upgrade footprint land purchase succeeded on %s" % tile_id)
 			if not bought:
 				return
-			preview = MatchState.preview_upgrade(instance_id)
-		var result: Dictionary = MatchState.start_upgrade(instance_id, "market")
+			preview = BuildingWorks.preview_upgrade(instance_id)
+		var result: Dictionary = BuildingWorks.start_upgrade(instance_id, "market")
 		_check(bool(result.get("ok", false)), "paid building upgrade entered the live queue")
 		if not bool(result.get("ok", false)):
 			return
 		var waited := 0
-		while MatchState.is_upgrading(instance_id) and waited < 16 and TurnManager.current_turn < _target_turn:
+		while BuildingWorks.is_upgrading(instance_id) and waited < 16 and TurnManager.current_turn < _target_turn:
 			await _advance_turns(1, "complete paid building upgrade")
 			waited += 1
-		_check(not MatchState.is_upgrading(instance_id), "building upgrade completed without cancellation")
+		_check(not BuildingWorks.is_upgrading(instance_id), "building upgrade completed without cancellation")
 
 
 func _buy_land_from_config() -> void:
@@ -1451,11 +1451,11 @@ func _buy_land_from_config() -> void:
 			continue
 		var tile_id := str(purchase.get("tile", ""))
 		var amount := int(purchase.get("amount", 0))
-		var before_owned := MatchState.get_tile_land_owned(tile_id)
+		var before_owned := BuildingState.get_tile_land_owned(tile_id)
 		var before_money := MatchState.money
-		var ok := MatchState.purchase_tile_land(tile_id, amount)
+		var ok := BuildingState.purchase_tile_land(tile_id, amount)
 		_check(ok, "land purchased for scenario on %s" % tile_id)
-		_check(MatchState.get_tile_land_owned(tile_id) > before_owned,
+		_check(BuildingState.get_tile_land_owned(tile_id) > before_owned,
 			"land ownership increased on %s" % tile_id)
 		_check(MatchState.money < before_money, "land purchase charged cash on %s" % tile_id)
 
@@ -1786,9 +1786,9 @@ func _check_ui_loaded() -> void:
 	_check((_main.get_node("%BottomMenu") as Control).visible, "bottom menu starts visible")
 	_check(not _construct_panel.visible, "construct panel starts hidden")
 	_check(not _money_panel.visible, "money panel starts hidden")
-	_check(MatchState.get_buildings_on_tile("tile_5_10").size() > 0, "NPC Stoneshore port placed")
-	_check(MatchState.get_buildings_on_tile("tile_11_17").size() > 0, "NPC Arin port placed")
-	_check(MatchState.get_buildings_on_tile("tile_24_7").size() > 0, "NPC Capital port placed")
+	_check(BuildingState.get_buildings_on_tile("tile_5_10").size() > 0, "NPC Stoneshore port placed")
+	_check(BuildingState.get_buildings_on_tile("tile_11_17").size() > 0, "NPC Arin port placed")
+	_check(BuildingState.get_buildings_on_tile("tile_24_7").size() > 0, "NPC Capital port placed")
 	_check(MatchState.is_tile_surveyed("tile_5_10"), "Stoneshore starts surveyed")
 	_check(MatchState.is_tile_surveyed("tile_11_17"), "Arin starts surveyed")
 	_check(MatchState.is_tile_surveyed("tile_24_7"), "Capital starts surveyed")
@@ -1947,7 +1947,7 @@ func _open_construct_panel_via_bottom_menu() -> void:
 	# true); v2 is built at runtime by BottomMenu with no %unique path, so it's found
 	# by script above. Fall back to v1 if the flag is ever flipped off.
 	var active_panel: Control = _construct_panel
-	if MatchState.use_construct_panel_v2 and _construct_panel_v2 != null:
+	if UiPrefs.use_construct_panel_v2 and _construct_panel_v2 != null:
 		active_panel = _construct_panel_v2
 	_check(active_panel != null and active_panel.visible, "construct panel opened from bottom menu")
 
@@ -2029,7 +2029,7 @@ func _build_building_via_build_mode(building_id: String, recipe_id: String, tile
 	# when it does not; the argument remains for scenario-call compatibility.
 	_ensure_land_for_build(building_id, tile_id)
 	var before_projects := _keys_dict(Construction.construction_projects)
-	var before_buildings := _keys_dict(MatchState.buildings)
+	var before_buildings := _keys_dict(BuildingState.buildings)
 	var money_before := MatchState.money
 	BuildMode.set("_last_attempt_ms", 0)
 	BuildMode.attempt_direct_build(building_id, recipe_id, tile_id)
@@ -2062,12 +2062,12 @@ func _ensure_balance_build_funding(building_id: String, tile_id: String) -> bool
 		return false
 	var building := Catalog.get_building(building_id)
 	var footprint := maxf(0.0, float(building.get("tile_size_used", 1.0)))
-	var needed_land := MatchState.get_tile_player_space_used(tile_id) + footprint \
-		- float(MatchState.get_tile_land_owned(tile_id))
-	if needed_land > float(MatchState.get_tile_land_units_available(tile_id)) + 0.001:
+	var needed_land := BuildingState.get_tile_player_space_used(tile_id) + footprint \
+		- float(BuildingState.get_tile_land_owned(tile_id))
+	if needed_land > float(BuildingState.get_tile_land_units_available(tile_id)) + 0.001:
 		return false
-	var land_cost := float(maxi(0, ceili(needed_land / float(MatchState.LAND_PATCH_SIZE)))) \
-		* MatchState.LAND_PATCH_COST
+	var land_cost := float(maxi(0, ceili(needed_land / float(BuildingState.LAND_PATCH_SIZE)))) \
+		* BuildingState.LAND_PATCH_COST
 	var material_cost := Construction.estimate_market_cost(tile_id, building_id)
 	if material_cost <= 0.0 and not Construction.requirements_for(building_id).is_empty():
 		material_cost = Construction.market_purchase_value(building_id) * 1.10
@@ -2193,12 +2193,12 @@ func _ensure_balance_cash(required: float) -> bool:
 # buy the patches the footprint needs — exactly what a player does from the TVP.
 func _ensure_land_for_build(building_id: String, tile_id: String) -> void:
 	var footprint := maxf(0.0, float(Catalog.get_building(building_id).get("tile_size_used", 1.0)))
-	var needed := MatchState.get_tile_player_space_used(tile_id) + footprint
-	var shortfall := needed - float(MatchState.get_tile_land_owned(tile_id))
+	var needed := BuildingState.get_tile_player_space_used(tile_id) + footprint
+	var shortfall := needed - float(BuildingState.get_tile_land_owned(tile_id))
 	if shortfall <= 0.0:
 		return
-	var patches := ceili(shortfall / float(MatchState.LAND_PATCH_SIZE))
-	var ok := MatchState.purchase_tile_land(tile_id, patches)
+	var patches := ceili(shortfall / float(BuildingState.LAND_PATCH_SIZE))
+	var ok := BuildingState.purchase_tile_land(tile_id, patches)
 	if _balance_mode:
 		_check(ok, "land purchase succeeded within tile capacity on %s" % tile_id)
 
@@ -2213,10 +2213,10 @@ func _find_new_project_or_building(before_projects: Dictionary, before_buildings
 				and str(project.get("recipe_id", "")) == recipe_id \
 				and str(project.get("tile_id", "")) == tile_id:
 			return str(instance_id)
-	for instance_id in MatchState.buildings.keys():
+	for instance_id in BuildingState.buildings.keys():
 		if before_buildings.has(instance_id):
 			continue
-		var building: Dictionary = MatchState.buildings[instance_id]
+		var building: Dictionary = BuildingState.buildings[instance_id]
 		if str(building.get("building_id", "")) == building_id \
 				and str(building.get("recipe_id", "")) == recipe_id \
 				and str(building.get("tile_id", "")) == tile_id:
@@ -2247,9 +2247,9 @@ func _reroute_outputs_to_local_consumers(reason: String = "") -> int:
 		return 0
 	var moved := 0
 	var considered := 0
-	for producer_id in MatchState.buildings.keys():
-		var producer: Dictionary = MatchState.buildings[producer_id]
-		if not MatchState.is_player_owned(producer):
+	for producer_id in BuildingState.buildings.keys():
+		var producer: Dictionary = BuildingState.buildings[producer_id]
+		if not BuildingState.is_player_owned(producer):
 			continue
 		var recipe: Dictionary = Catalog.get_recipe(str(producer.get("recipe_id", "")))
 		if recipe.is_empty():
@@ -2291,11 +2291,11 @@ func _nearest_local_consumer(from_tile: String, good_id: String, producer_id: St
 	var best_tile := ""
 	var best_distance := LOCAL_CONSUMER_RANGE + 1
 	var best_id := ""
-	for consumer_id in MatchState.buildings.keys():
+	for consumer_id in BuildingState.buildings.keys():
 		if str(consumer_id) == producer_id:
 			continue
-		var consumer: Dictionary = MatchState.buildings[consumer_id]
-		if not MatchState.is_player_owned(consumer):
+		var consumer: Dictionary = BuildingState.buildings[consumer_id]
+		if not BuildingState.is_player_owned(consumer):
 			continue
 		if not _recipe_consumes(str(consumer.get("recipe_id", "")), good_id):
 			continue
@@ -2349,7 +2349,7 @@ func _advance_until_no_construction(max_turns: int) -> void:
 	_check(turns < max_turns, "construction completed within %d turns" % max_turns)
 	for key in _built.keys():
 		var instance_id := str(_built[key])
-		_check(MatchState.buildings.has(instance_id), "completed building is live: %s" % str(key))
+		_check(BuildingState.buildings.has(instance_id), "completed building is live: %s" % str(key))
 
 
 func _run_to_target_turn(target_turn: int) -> void:
@@ -2399,8 +2399,8 @@ func _apply_level_schedule() -> void:
 	_levels_applied[target] = true
 	var n := 0
 	var tiles_touched := {}
-	for iid in MatchState.buildings.keys():
-		var inst: Dictionary = MatchState.buildings[iid]
+	for iid in BuildingState.buildings.keys():
+		var inst: Dictionary = BuildingState.buildings[iid]
 		if str(inst.get("owner", "")) != "player_1":
 			continue
 		if int(inst.get("level", 1)) >= target:
@@ -2472,7 +2472,7 @@ func _bump_infra(tile: Dictionary, tile_id: String, slot: String, to_level: int)
 func _auto_upgrade_infra() -> void:
 	if not _auto_infra:
 		return
-	var flow: Dictionary = MatchState.transport_link_flow()
+	var flow: Dictionary = TransportState.transport_link_flow()
 	var cap_cache := {}                       # "mode|level" -> capacity, per turn
 	var candidates := {}                      # tile_id -> {slot: used}
 	for key in flow.keys():
@@ -2519,7 +2519,7 @@ func _auto_upgrade_infra() -> void:
 				var mode := "rail" if str(slot) == "rails" else str(slot)
 				var ck := "%s|%d" % [mode, level]
 				if not cap_cache.has(ck):
-					cap_cache[ck] = MatchState.tile_mode_capacity(mode, level)
+					cap_cache[ck] = TransportState.tile_mode_capacity(mode, level)
 				cap = float(cap_cache[ck])
 			if cap <= 0.0:
 				continue
@@ -2549,8 +2549,8 @@ func _audit_buildings(turn: int) -> void:
 		return
 	_audited[turn] = true
 	var by_recipe := {}
-	for iid in MatchState.buildings.keys():
-		var inst: Dictionary = MatchState.buildings[iid]
+	for iid in BuildingState.buildings.keys():
+		var inst: Dictionary = BuildingState.buildings[iid]
 		if str(inst.get("owner", "")) != "player_1":
 			continue
 		var rid := str(inst.get("recipe_id", ""))
@@ -2588,8 +2588,8 @@ func _diagnose_window() -> void:
 	var starved_now := {}
 	for rec in (summary.get("starved", []) as Array):
 		starved_now[str((rec as Dictionary).get("instance_id", ""))] = true
-	for iid in MatchState.buildings.keys():
-		var inst: Dictionary = MatchState.buildings[iid]
+	for iid in BuildingState.buildings.keys():
+		var inst: Dictionary = BuildingState.buildings[iid]
 		if str(inst.get("owner", "")) != "player_1":
 			continue
 		var rid := str(inst.get("recipe_id", ""))
@@ -2604,7 +2604,7 @@ func _diagnose_window() -> void:
 	_diag_coal_made += int((summary.get("produced", {}) as Dictionary).get(coal_id, 0))
 	_diag_coal_sold += int((summary.get("sold", {}) as Dictionary).get(coal_id, 0))
 	# 4 — worst link utilisation across the capped modes.
-	var flow: Dictionary = MatchState.transport_link_flow()
+	var flow: Dictionary = TransportState.transport_link_flow()
 	for key in flow.keys():
 		var parts := str(key).split("|")
 		if parts.size() != 2:
@@ -2617,7 +2617,7 @@ func _diagnose_window() -> void:
 			var c0 = hm0.id_to_coord(str(parts[0]))
 			if (hm0.get("tiles") as Dictionary).has(c0):
 				lvl = int(((hm0.get("tiles") as Dictionary)[c0] as Dictionary).get("infrastructure_levels", {}).get(slot, 1))
-		var cap := MatchState.tile_mode_capacity(mode, lvl)
+		var cap := TransportState.tile_mode_capacity(mode, lvl)
 		if cap <= 0.0:
 			continue
 		var util := float(flow[key]) / cap
@@ -2631,14 +2631,14 @@ func _grant_tech_branches() -> void:
 	_techs_granted = true
 	var n := 0
 	var by_cat := {}
-	for d in MatchState._unlock_defs:
+	for d in ResearchState._unlock_defs:
 		var cat := str((d as Dictionary).get("category", ""))
 		if not TECH_CATEGORIES.has(cat):
 			continue
 		var title := str((d as Dictionary).get("title", ""))
-		if title == "" or MatchState.is_unlocked(title):
+		if title == "" or ResearchState.is_unlocked(title):
 			continue
-		MatchState.grant_unlock(title)
+		ResearchState.grant_unlock(title)
 		by_cat[cat] = int(by_cat.get(cat, 0)) + 1
 		n += 1
 	var line := "[techs] granted %d nodes:  " % n
@@ -2704,7 +2704,7 @@ func _capture_turn_metrics() -> void:
 
 func _capture_balance_turn(profit_post_tax: float, summary: Dictionary) -> void:
 	var turn := TurnManager.current_turn
-	for title in MatchState.unlocked_titles.keys():
+	for title in ResearchState.unlocked_titles.keys():
 		if not _balance_research_unlock_turns.has(str(title)):
 			_balance_research_unlock_turns[str(title)] = turn
 	# The baseline keeps unlock gates but excludes their economic modifiers.  The
@@ -2724,9 +2724,9 @@ func _capture_balance_turn(profit_post_tax: float, summary: Dictionary) -> void:
 		if int(_balance_thresholds[threshold]) < 0 and profit_post_tax > float(threshold):
 			_balance_thresholds[threshold] = turn
 	for instance_id in Production.last_turn_run.keys():
-		if not MatchState.buildings.has(str(instance_id)):
+		if not BuildingState.buildings.has(str(instance_id)):
 			continue
-		var recipe_id := str((MatchState.buildings[str(instance_id)] as Dictionary).get("recipe_id", ""))
+		var recipe_id := str((BuildingState.buildings[str(instance_id)] as Dictionary).get("recipe_id", ""))
 		if recipe_id in _scenario.get("target_recipe_ids", []) and not _balance_recipe_first_run.has(recipe_id):
 			_balance_recipe_first_run[recipe_id] = turn
 	if _balance_integration_turn > 0:
@@ -2771,17 +2771,17 @@ func _apply_balance_stock_controls() -> void:
 		var resume_below := maxi(0, int((entry as Dictionary).get("resume_below", 40)))
 		for raw_instance_id in _instances_for(str((entry as Dictionary).get("id", ""))):
 			var instance_id := str(raw_instance_id)
-			if not MatchState.buildings.has(instance_id):
+			if not BuildingState.buildings.has(instance_id):
 				continue
-			var tile_id := str((MatchState.buildings[instance_id] as Dictionary).get("tile_id", ""))
+			var tile_id := str((BuildingState.buildings[instance_id] as Dictionary).get("tile_id", ""))
 			var on_hand := Stockpile.get_at_tile(tile_id, good_id)
-			var paused := MatchState.is_building_paused(instance_id)
+			var paused := BuildingWorks.is_building_paused(instance_id)
 			if not paused and on_hand >= pause_above:
-				MatchState.set_building_paused(instance_id, true)
+				BuildingWorks.set_building_paused(instance_id, true)
 				_balance_metrics["stock_control_pauses"] = \
 					int(_balance_metrics.get("stock_control_pauses", 0)) + 1
 			elif paused and on_hand <= resume_below:
-				MatchState.set_building_paused(instance_id, false)
+				BuildingWorks.set_building_paused(instance_id, false)
 				_balance_metrics["stock_control_resumes"] = \
 					int(_balance_metrics.get("stock_control_resumes", 0)) + 1
 
@@ -2835,8 +2835,8 @@ func _check_economy_end_state() -> void:
 		"optimized motor chain increases cash after buildout (%.1f -> %.1f, %+.1f)"
 		% [_cash_after_buildout, MatchState.money, MatchState.money - _cash_after_buildout])
 	_check(MatchState.transaction_log.size() > 0, "transaction ledger populated")
-	_check(MatchState.move_log.size() > 0, "movement ledger populated")
-	_check(MatchState.get_pending_transport_shipments().size() >= 0, "pending transport can be queried")
+	_check(TransportState.move_log.size() > 0, "movement ledger populated")
+	_check(TransportState.get_pending_transport_shipments().size() >= 0, "pending transport can be queried")
 	_check(MatchState.money > EconomyConfig.BANKRUPTCY_FLOOR, "company remains above bankruptcy floor")
 	_check(LoanState.total_per_turn_payment() >= 0.0, "loan payment state remains queryable")
 	_check(MatchState.deposit_remaining_for("tile_22_3", "coal") == -1, "coal deposit is unbounded for turn-100 run")
@@ -2932,8 +2932,8 @@ func _write_latest_metrics() -> void:
 		"turn_max_ms": stats.get("max_ms", 0.0),
 		"slow_turn_threshold_ms": SLOW_TURN_THRESHOLD_MS,
 		"slow_turns": slow_turns,
-		"buildings": MatchState.buildings.size(),
-		"pending_shipments": MatchState.pending_transport_shipments.size(),
+		"buildings": BuildingState.buildings.size(),
+		"pending_shipments": TransportState.pending_transport_shipments.size(),
 		"money": MatchState.money,
 		"cash_before_runway": _cash_before_runway,
 		"cash_after_runway": _cash_after_runway,
@@ -3111,16 +3111,16 @@ func _total_units_sold() -> int:
 
 func _player_building_count() -> int:
 	var total := 0
-	for building in MatchState.buildings.values():
-		if MatchState.is_player_owned(building):
+	for building in BuildingState.buildings.values():
+		if BuildingState.is_player_owned(building):
 			total += 1
 	return total
 
 
 func _player_production_building_count() -> int:
 	var total := 0
-	for building in MatchState.buildings.values():
-		if not MatchState.is_player_owned(building):
+	for building in BuildingState.buildings.values():
+		if not BuildingState.is_player_owned(building):
 			continue
 		var data := Catalog.get_building(str(building.get("building_id", "")))
 		if str(data.get("category", "")) != "infrastructure":
@@ -3131,8 +3131,8 @@ func _player_production_building_count() -> int:
 func _player_power_building_count() -> int:
 	var power_good_id := _good_id("power")
 	var total := 0
-	for building in MatchState.buildings.values():
-		if not MatchState.is_player_owned(building):
+	for building in BuildingState.buildings.values():
+		if not BuildingState.is_player_owned(building):
 			continue
 		var recipe := Catalog.get_recipe(str(building.get("recipe_id", "")))
 		if Catalog.recipe_produces(recipe, power_good_id):
@@ -3194,9 +3194,9 @@ func _write_balance_metrics() -> void:
 		var rows: Array = []
 		for raw_instance_id in _instances_for(str(logical_id)):
 			var instance_id := str(raw_instance_id)
-			if not MatchState.buildings.has(instance_id):
+			if not BuildingState.buildings.has(instance_id):
 				continue
-			var building: Dictionary = MatchState.buildings[instance_id]
+			var building: Dictionary = BuildingState.buildings[instance_id]
 			rows.append({
 				"instance_id": instance_id,
 				"recipe_id": str(building.get("recipe_id", "")),
@@ -3278,9 +3278,9 @@ func _dump_chain_diagnostics() -> void:
 	var BuildingReadout := preload("res://scripts/building_readout.gd")
 	print("[E2E] --- chain diagnostics @ turn %d ---" % TurnManager.current_turn)
 	var rows: Array = []
-	for iid in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[iid]
-		if not MatchState.is_player_owned(inst):
+	for iid in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[iid]
+		if not BuildingState.is_player_owned(inst):
 			continue
 		var rid := str(inst.get("recipe_id", ""))
 		var rec: Dictionary = Catalog.get_recipe(rid)
@@ -3345,10 +3345,10 @@ func _dump_chain_diagnostics() -> void:
 ## legal cell type; Battery Storage accepts ANY ONE of its catalyst goods, not all three.
 func _apply_scenario_unlocks() -> void:
 	for title in _scenario.get("unlocks", []):
-		MatchState.unlocked_titles[str(title)] = true
-		_check(MatchState.unlocked_titles.has(str(title)), "scenario unlock granted: %s" % str(title))
+		ResearchState.unlocked_titles[str(title)] = true
+		_check(ResearchState.unlocked_titles.has(str(title)), "scenario unlock granted: %s" % str(title))
 	if not (_scenario.get("unlocks", []) as Array).is_empty():
-		Modifiers.reapply_unlock_modifiers(MatchState.unlocked_titles)
+		Modifiers.reapply_unlock_modifiers(ResearchState.unlocked_titles)
 
 
 ## Battery stores are inert until cells are loaded into their slots. JSON:
@@ -3363,7 +3363,7 @@ func _load_battery_cells_from_config() -> void:
 		if tile_id == "" or good_id == "" or qty <= 0:
 			continue
 		Stockpile.add(tile_id, good_id, qty)
-		var loaded := MatchState.load_battery_cells(tile_id, good_id, qty)
+		var loaded := Power.load_battery_cells(tile_id, good_id, qty)
 		_check(loaded > 0, "battery cells loaded on %s: %d x %s" % [tile_id, loaded, str((entry as Dictionary).get("good", ""))])
 
 
@@ -3401,8 +3401,8 @@ func _check_coal_prohibition_if_reached() -> void:
 	_check(illegal_orders == 0, "prohibition: no standing market order survives for a banned good")
 	# Every coal-producing building must be halted, not quietly still running.
 	var running_coal: int = 0
-	for iid in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[iid]
+	for iid in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[iid]
 		var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
 		if not recipe.is_empty() and Catalog.is_recipe_prohibited(recipe):
 			running_coal += 1

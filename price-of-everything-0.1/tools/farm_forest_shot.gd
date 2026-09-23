@@ -33,11 +33,11 @@ func _ready() -> void:
 	var coord: Vector2i = terrain.id_to_coord(tile_id)
 	# Two woods first, so the farm layout sees them as obstacles to nestle under.
 	for i in 2:
-		var fid: String = MatchState.add_building("b_016", "", tile_id, "npc", "forest_%d" % i)
+		var fid: String = BuildingState.add_building("b_016", "", tile_id, "npc", "forest_%d" % i)
 		if _fv.has_method("on_building_placed"):
 			_fv.on_building_placed(tile_id, "b_016", "", fid, coord)
 	for i in 8:
-		var iid: String = MatchState.add_building("b_014", "", tile_id, "npc", "shot_%d" % i)
+		var iid: String = BuildingState.add_building("b_014", "", tile_id, "npc", "shot_%d" % i)
 		_bv.on_building_placed(tile_id, "b_014", "", iid, coord)
 	_bv._rebuild_subcomponents(tile_id)
 

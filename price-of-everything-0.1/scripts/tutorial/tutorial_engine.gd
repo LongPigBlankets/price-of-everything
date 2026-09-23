@@ -33,6 +33,7 @@ const SETUP_STEPS_FROM_END := 2
 var hard_gate: bool = false  # true while a lock_panel step is up: Esc is swallowed (world_map)
 var _steps: Array = []
 var _index: int = -1
+var _entry_generation: int = 0 # Invalidates delayed cues on leaving/re-entering a step.
 var _coastal_delivery_finished: bool = false
 var _completion_ready_since_ms: int = -1
 var _entry_turn: int = 0     # turn number when the current step was entered (for turn-gated beats)
@@ -86,6 +87,8 @@ func _start() -> void:
 	# Reset any prior run (autoload persists across scene changes).
 	_teardown_overlay()
 	setup_reached = false
+	# Campaign starts no longer carry a separate five-step logistics coach. The tutorial
+	# remains an explicit, standalone flow and always uses its authored tutorial steps.
 	_steps = TutorialSteps.steps()
 	if _steps.is_empty():
 		return
@@ -109,12 +112,15 @@ func _start() -> void:
 
 
 func _enter(i: int) -> void:
+	_entry_generation += 1
 	# A held rail guide normally clears one tile at a time as the player builds. Also
 	# clear it when a debug jump or tutorial exit leaves the step early.
 	if _index >= 0 and _index < _steps.size() and i != _index:
 		var previous_id := str((_steps[_index] as Dictionary).get("id", ""))
 		if previous_id == "capital_rail_build":
 			_clear_held_route_highlight()
+		if previous_id == "goto_tile" and is_instance_valid(_route_highlight):
+			_route_highlight.clear()
 	_index = i
 	if _index < 0 or _index >= _steps.size():
 		_finish()
@@ -209,9 +215,9 @@ func _last_turn_profit_text() -> String:
 
 
 func _detect_integration_branch() -> String:
-	for iid in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[iid]
-		if not MatchState.is_player_owned(inst):
+	for iid in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[iid]
+		if not BuildingState.is_player_owned(inst):
 			continue
 		match str(inst.get("recipe_id", "")):
 			"r_054": return "glass"
@@ -259,6 +265,7 @@ func _index_of_id(id: String) -> int:
 
 
 func _finish() -> void:
+	_entry_generation += 1
 	active = false
 	hard_gate = false
 	_index = -1
@@ -286,9 +293,21 @@ func _complete_tutorial() -> void:
 
 # ── Setup dispatch (drives via existing sim intent signals / API) ────────────────────
 
+func _run_delayed_setup(action: Dictionary, generation: int) -> void:
+	await get_tree().create_timer(float(action.delay)).timeout
+	if not active or generation != _entry_generation:
+		return
+	var cue := action.duplicate(true)
+	cue.erase("delay")
+	_run_setup([cue])
+
+
 func _run_setup(actions: Array) -> void:
 	for a in actions:
 		if not (a is Dictionary):
+			continue
+		if float(a.get("delay", 0.0)) > 0.0:
+			_run_delayed_setup(a, _entry_generation)
 			continue
 		match str(a.get("action", "")):
 			"focus_tile":
@@ -304,8 +323,7 @@ func _run_setup(actions: Array) -> void:
 				if iid != "":
 					MatchState.focus_building_requested.emit(iid)
 			"focus_tile_stock":
-				# Open the tile panel on its Stock tab (so the Sell-Surplus toggle exists),
-				# and pre-skip the first-time confirm dialog so one click enables it.
+				# Open the tile panel on its Stock tab (so the surplus destination selector exists).
 				load("res://scripts/tile_info_panel_v2.gd").set("_skip_sell_surplus_confirm", true)
 				MatchState.focus_tile_requested.emit(str(a.get("tile", "")))
 				var tp := _find("TileInfoPanel")
@@ -497,13 +515,13 @@ func _on_tutorial_search_changed(_text: String) -> void:
 
 ## Resolve the player-owned building instance on a tile (for focus/spotlight setup).
 func _building_iid_on_tile(tile_id: String, building_id: String, player_only: bool = true) -> String:
-	for iid in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[iid]
+	for iid in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[iid]
 		if str(inst.get("tile_id", "")) != tile_id:
 			continue
 		if building_id != "" and str(inst.get("building_id", "")) != building_id:
 			continue
-		if not player_only or MatchState.is_player_owned(inst):
+		if not player_only or BuildingState.is_player_owned(inst):
 			return str(iid)
 	return ""
 
@@ -527,7 +545,7 @@ func _prepare_capital_motor_lesson() -> void:
 func _seed_motor_shipment(seed_id: String, turns: int) -> void:
 	if seed_id == "" or turns <= 0:
 		return
-	for shipment in MatchState.get_pending_transport_shipments():
+	for shipment in TransportState.get_pending_transport_shipments():
 		if str(shipment.get("tutorial_seed_id", "")) == seed_id:
 			return
 	var motor := Catalog.get_good_by_internal_name("motor")
@@ -558,7 +576,7 @@ func _seed_motor_shipment(seed_id: String, turns: int) -> void:
 		"total_revenue": unit_price * float(qty),
 		"transport_turns": turns,
 	}
-	MatchState.queue_transport_shipment({
+	TransportState.queue_transport_shipment({
 		"tutorial_seed": true,
 		"tutorial_seed_id": seed_id,
 		"is_sale": true,
@@ -599,7 +617,7 @@ func _clear_capital_motor_sale_shipments() -> void:
 		return
 	var remaining: Array = []
 	var removed := false
-	for raw_shipment in MatchState.pending_transport_shipments:
+	for raw_shipment in TransportState.pending_transport_shipments:
 		var shipment: Dictionary = raw_shipment
 		var is_capital_motor_sale := bool(shipment.get("is_sale", false)) \
 			and str(shipment.get("source_tile", "")) == TutorialSteps.MOTOR_TILE
@@ -613,16 +631,16 @@ func _clear_capital_motor_sale_shipments() -> void:
 			removed = true
 			continue
 		remaining.append(shipment)
-	MatchState.pending_transport_shipments = remaining
+	TransportState.pending_transport_shipments = remaining
 	if removed:
-		MatchState.transport_shipments_changed.emit()
+		TransportState.transport_shipments_changed.emit()
 
 
 func _route_building_outputs_to_market(tile_id: String, building_id: String) -> void:
 	var instance_id := _building_iid_on_tile(tile_id, building_id)
 	if instance_id == "":
 		return
-	var building: Dictionary = MatchState.get_building(instance_id)
+	var building: Dictionary = BuildingState.get_building(instance_id)
 	for output in Catalog.get_recipe(str(building.get("recipe_id", ""))).get("outputs", []):
 		var good_id := str((output as Dictionary).get("good_id", ""))
 		if good_id != "":
@@ -633,7 +651,7 @@ func _route_building_outputs_to_tile(tile_id: String, building_id: String, desti
 	var instance_id := _building_iid_on_tile(tile_id, building_id)
 	if instance_id == "" or destination == "":
 		return
-	var building: Dictionary = MatchState.get_building(instance_id)
+	var building: Dictionary = BuildingState.get_building(instance_id)
 	for output in Catalog.get_recipe(str(building.get("recipe_id", ""))).get("outputs", []):
 		var good_id := str((output as Dictionary).get("good_id", ""))
 		if good_id != "":
@@ -660,16 +678,16 @@ func _spawn_steel_demo() -> void:
 ## every road/rail instance on the opening board to the same neutral owner once built so
 ## the route remains available without distorting the later factory-profit lessons.
 func _transfer_capital_transport_infrastructure_to_general(instance_id: String = "") -> void:
-	var candidates: Array = [instance_id] if instance_id != "" else MatchState.buildings.keys()
+	var candidates: Array = [instance_id] if instance_id != "" else BuildingState.buildings.keys()
 	for raw_instance_id in candidates:
 		var iid := str(raw_instance_id)
-		var inst: Dictionary = MatchState.get_building(iid)
+		var inst: Dictionary = BuildingState.get_building(iid)
 		if inst.is_empty() or not TutorialSteps.CAPITAL_BOARD_TILES.has(str(inst.get("tile_id", ""))):
 			continue
 		var building_data: Dictionary = Catalog.get_building(str(inst.get("building_id", "")))
 		if str(building_data.get("internal_name", "")) not in ["roads", "rails"]:
 			continue
-		MatchState.set_building_owner(iid, "tile_data")
+		BuildingState.set_building_owner(iid, "tile_data")
 
 
 func _on_tutorial_construction_completed(instance_id: String, tile_id: String) -> void:
@@ -696,21 +714,21 @@ func _handoff_from_capital_lesson() -> void:
 			str((demo as Dictionary).get("tile", "")),
 			str((demo as Dictionary).get("building_id", "")))
 		if instance_id != "":
-			MatchState.set_building_owner(instance_id, MatchState.SOLD_TO_OWNER)
+			BuildingState.set_building_owner(instance_id, BuildingState.SOLD_TO_OWNER)
 
 	# Goods already dispatched by either demo would otherwise keep paying the player
 	# during the glass lesson even though the source factory no longer belongs to them.
 	var remaining_shipments: Array = []
 	var removed_shipment := false
-	for shipment in MatchState.pending_transport_shipments:
+	for shipment in TransportState.pending_transport_shipments:
 		var sale: Dictionary = shipment
 		if bool(sale.get("is_sale", false)) and str(sale.get("source_tile", "")) in demo_tiles:
 			removed_shipment = true
 			continue
 		remaining_shipments.append(shipment)
-	MatchState.pending_transport_shipments = remaining_shipments
+	TransportState.pending_transport_shipments = remaining_shipments
 	if removed_shipment:
-		MatchState.transport_shipments_changed.emit()
+		TransportState.transport_shipments_changed.emit()
 
 	# Transfer the demonstrations' remaining inventory with them and disarm any tile-level
 	# sale order that could independently turn that stock back into player revenue.
@@ -761,10 +779,10 @@ func _wire_signals() -> void:
 		return
 	_wired = true   # persists across tutorials; every wake signal just re-evaluates the step
 	var wake := func(_a = null, _b = null, _c = null, _d = null, _e = null) -> void: _maybe_advance()
-	MatchState.building_owner_changed.connect(wake)
-	MatchState.building_added.connect(wake)
+	BuildingState.building_owner_changed.connect(wake)
+	BuildingState.building_added.connect(wake)
 	MatchState.tile_survey_completed.connect(wake)
-	MatchState.transport_shipments_changed.connect(wake)
+	TransportState.transport_shipments_changed.connect(wake)
 	Construction.construction_started.connect(wake)
 	Construction.construction_completed.connect(_on_tutorial_construction_completed)
 	Construction.construction_completed.connect(wake)
@@ -1038,3 +1056,8 @@ func _on_overlay_choice(goto: String) -> void:
 func is_active_step(id: String) -> bool:
 	return active and _index >= 0 and _index < _steps.size() \
 		and str((_steps[_index] as Dictionary).get("id", "")) == id
+
+
+## How many countable steps the player has entered this run (the "Step N" display number).
+func steps_visited() -> int:
+	return _visited

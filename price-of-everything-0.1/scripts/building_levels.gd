@@ -63,7 +63,7 @@ const _RESEARCH_GATE := {
 	"high_tech_manufactory": {2: "300mm Wafer Lines", 3: "EUV Lithography"},
 	"chem_plant":            {2: "Larger Reactor Trains", 3: "Integrated Chemical Complexes"},
 	"electrolyser":          {2: "Membrane Electrolysers", 3: "Solid-Oxide Electrolysis"},
-	"petro_refinery":        {2: "Fluid Catalytic Cracking", 3: "Deep Conversion Units"},
+	"petro_refinery":        {2: "Hydrocracking Units", 3: "Deep Conversion Units"},
 	"desal":                 {2: "Reverse Osmosis Trains", 3: "Seawater RO Megaplants"},
 	"water_recycling":       {2: "Membrane Bioreactors", 3: "Closed-Loop Reclaim"},
 	"water_pump":            {3: "Extensive Drainage Systems"},

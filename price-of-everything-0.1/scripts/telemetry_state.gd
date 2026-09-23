@@ -38,7 +38,13 @@ const AppPaths := preload("res://scripts/app_paths.gd")
 
 const ENDPOINT_URL := "https://script.google.com/macros/s/AKfycbw8dUX-A_dSKmI2GB4_2AbRXbGnOKTbP8mpEa17t6wBBAg4Y0LcCnS_xJNH3EeNRwdr/exec"
 const TOKEN := "d299f45324f48cce4b9257789dfc493e172d5ac657ba1641"
-const SCHEMA_VERSION := 4  # v4: per-turn interaction counts and identified UI events
+const SCHEMA_VERSION := 5  # v5: tutorial_step + tutorial_visited in the run block
+## Whether the New Game and Tutorial screens offer the "send metrics" checkbox. The demo
+## ships with it HIDDEN so every run reports: an opt-out box left the developer unable to
+## tell whether anyone had opened the game at all. When hidden, consent is forced on and
+## any remembered opt-out in profile.json is cleared on the next start. Flip to true to
+## restore the visible opt-out (the rows and PlayerProfile plumbing are untouched).
+const SHOW_CONSENT_CHECKBOX := false
 const QUIT_UPLOAD_WINDOW_MSEC := 6000  # Apps Script round trips run 1.5-4 s
 const CHECKPOINT_EVERY := 10
 const COMPLETE_REASONS: Array[String] = ["victory", "turn_cap", "bankruptcy"]
@@ -104,6 +110,8 @@ var _building_names := {}     # building_id -> internal_name ("mine"), for the r
 var _run_start_id := ""
 var _run_cheats := false
 var _run_rescues := 0
+var _run_tutorial_step := ""     # last tutorial step id reached (latched on step_changed)
+var _run_tutorial_visited := 0   # countable steps entered (latched on step_changed)
 var _capture_max_usec := 0    # worst per-turn capture cost, for the perf gate
 
 
@@ -116,11 +124,16 @@ var _events: Array = []
 var _event_sequence: int = 0
 var _interaction_checkpoint_queued: bool = false
 
+## Capture only while the loaded match is alive. Finalization can happen after
+## state_reset has erased scenario_name, so envelopes must use this latched value.
+func _capture_start_id() -> void:
+	if _armed and not _finalized and _run_start_id == "":
+		_run_start_id = str(MatchState.scenario_name).strip_edges()
+
 func track_interaction(action: String, interface_name: String, target_id: String = "") -> void:
 	if not enabled or not _armed or _finalized or not _collect or action not in INTERACTION_COLUMNS:
 		return
-	if _run_start_id == "":
-		_run_start_id = str(MatchState.scenario_name)
+	_capture_start_id()
 	_run_cheats = _run_cheats or bool(MatchState.cheats_used)
 	_event_sequence += 1
 	_events.append({"event_id": "%s:%d" % [_session_id, _event_sequence],
@@ -189,6 +202,9 @@ func _watch_ui_node(node: Node) -> void:
 
 
 func _ready() -> void:
+	# Windowed capture/test harnesses opt out before any launch envelope is queued.
+	if OS.get_cmdline_user_args().has("--no-telemetry"):
+		return
 	# Headless (unit suite / e2e harness) is inert unless TELEMETRY_DEBUG=1
 	# forces it on — that override is how the phase-A verification runs work.
 	enabled = DisplayServer.get_name() != "headless" \
@@ -200,13 +216,48 @@ func _ready() -> void:
 	get_tree().set_auto_accept_quit(false)
 	_session_id = _uuid()
 	MatchState.state_reset.connect(_on_run_started)
+	SaveLoad.match_loaded.connect(_capture_start_id)
 	TurnManager.turn_resolution_completed.connect(_on_turn_completed)
 	VictoryState.victory_achieved.connect(_on_victory)
 	TurnManager.game_ended_signal.connect(_on_game_ended)
 	SolvencyState.bankruptcy_declared.connect(_on_bankruptcy)
 	print("[Telemetry] ready (phase A, session %s)" % _session_id.substr(0, 8))
+	_queue_launch()
 	_retry_outbox()
 	get_tree().node_added.connect(func(node: Node) -> void: _watch_ui_node_id.call_deferred(node.get_instance_id()))
+	_connect_tutorial.call_deferred()
+
+
+## One row per app start, spooled straight into the outbox so the _ready sweep uploads it
+## immediately and an offline launch still lands on a later boot. A player who opens the game
+## and never finishes a run produces no envelope at all, so without this they are invisible.
+## Deliberately outside the per-run consent: this fires before any run exists, so it honours
+## only the persistent opt-out, and only while that opt-out is actually reachable in the UI.
+func _queue_launch() -> void:
+	if SHOW_CONSENT_CHECKBOX and PlayerProfile.telemetry_opt_out:
+		return
+	var launch_id := _uuid()
+	_write_json(AppPaths.telemetry_outbox_dir().path_join("launch_%s.json" % launch_id), {
+		"token": TOKEN, "kind": "launch", "launch_id": launch_id,
+		"player_id": PlayerProfile.get_telemetry_player_id(),
+		"session_id": _session_id,
+		"client": {
+			"version": str(ProjectSettings.get_setting("application/config/version", "dev")),
+			"os": OS.get_name(),
+		},
+		"launched_at": int(Time.get_unix_time_from_system()),
+	})
+
+
+func _connect_tutorial() -> void:
+	Tutorial.step_changed.connect(_on_tutorial_step)
+
+
+func _on_tutorial_step(id: String) -> void:
+	if not _armed or _finalized or not _collect:
+		return
+	_run_tutorial_step = id
+	_run_tutorial_visited = Tutorial.steps_visited()
 
 
 func _notification(what: int) -> void:
@@ -246,6 +297,8 @@ func _on_run_started() -> void:
 	_run_start_id = ""
 	_run_cheats = false
 	_run_rescues = 0
+	_run_tutorial_step = ""
+	_run_tutorial_visited = 0
 	_ensure_tier_index()
 	_retry_outbox()
 
@@ -306,8 +359,7 @@ func _build_row(summary: Dictionary) -> Dictionary:
 			costs[COST_LINES[key]] = snappedf(amount, 0.01)
 	var empire := _empire_snapshot()
 	# Run-level facts, latched while the match is still alive (see _run_start_id).
-	if _run_start_id == "":
-		_run_start_id = str(MatchState.scenario_name)
+	_capture_start_id()
 	_run_cheats = _run_cheats or bool(MatchState.cheats_used)
 	_run_rescues = maxi(_run_rescues, SolvencyState.tutorial_rescues())
 	var row := {
@@ -345,10 +397,10 @@ func _playtime_s() -> int:
 	return _playtime_carried_s + int((Time.get_ticks_msec() - _run_started_msec) / 1000)
 
 
-## This turn's freight in TRANSPORT_LINES order, always seven values so the sheet column is
+## This turn's freight in TRANSPORT_LINES order, always six values so the sheet column is
 ## positional and safe to chart. Any freight the engine could not attribute to a mode (an
 ## in-flight shipment restored from an old save carries no breakdown) lands in roads, which is
-## where production.gd's tolerant reader puts it — the seven therefore sum to `transport`.
+## where production.gd's tolerant reader puts it — the six therefore sum to `transport`.
 func _transport_split(summary: Dictionary) -> Array:
 	var breakdown: Dictionary = summary.get("transport_breakdown", {})
 	var out: Array = []
@@ -367,8 +419,8 @@ func _empire_snapshot() -> Dictionary:
 	var ran: Dictionary = Production.last_turn_run
 	var missing: Dictionary = Production.missing_by_building
 	var blocked: Dictionary = Production.blocked_reason_by_building
-	for b in MatchState.buildings.values():
-		if not (b is Dictionary) or not MatchState.is_player_owned(b):
+	for b in BuildingState.buildings.values():
+		if not (b is Dictionary) or not BuildingState.is_player_owned(b):
 			continue
 		var bid := str(b.get("building_id", ""))
 		names.append("%s(l%d)" % [_building_names.get(bid, bid), int(b.get("level", 1))])
@@ -420,8 +472,10 @@ func _ensure_tier_index() -> void:
 func export_state() -> Dictionary:
 	if not enabled or not _armed:
 		return {}
+	_capture_start_id()
 	return {
 		"run_id": _run_id,
+		"start": _run_start_id,
 		"started_at": _run_started_unix,
 		"playtime_s": _playtime_s(),
 		"session": _session_ordinal,
@@ -433,7 +487,13 @@ func export_state() -> Dictionary:
 ## Runs AFTER state_reset has re-armed with a fresh identity; a saved run_id
 ## overrides it so the resumed run keeps its identity across sessions.
 func import_state(d: Dictionary) -> void:
-	if not enabled or str(d.get("run_id", "")) == "":
+	if not enabled:
+		return
+	# MatchState has already been imported. New starts have no telemetry block;
+	# older saves have no start field, so both recover it from the loaded scenario.
+	_run_start_id = str(d.get("start", "")).strip_edges()
+	_capture_start_id()
+	if str(d.get("run_id", "")) == "":
 		return
 	_run_id = str(d["run_id"])
 	_run_started_unix = int(d.get("started_at", _run_started_unix))
@@ -571,6 +631,8 @@ func _build_envelope(reason: String) -> Dictionary:
 			# on that path (a tutorial run reports "standard").
 			"start": _run_start_id,
 			"cheats_used": _run_cheats or bool(MatchState.cheats_used),
+			"tutorial_step": _run_tutorial_step,
+			"tutorial_visited": _run_tutorial_visited,
 		},
 		"end": {
 			"reason": reason,
@@ -619,7 +681,9 @@ func _watermark_of(body: String) -> int:
 	var parsed: Variant = JSON.parse_string(body)
 	if not (parsed is Dictionary) or str((parsed as Dictionary).get("run_id", "")) != _run_id:
 		return -1
-	if str((parsed as Dictionary).get("kind", "")) == "feedback":
+	# Anything carrying a `kind` (feedback, launch) is not a run envelope and must never move
+	# this run's watermark — only turn envelopes, which have no `kind`, may.
+	if str((parsed as Dictionary).get("kind", "")) != "":
 		return -1
 	var top := 0
 	for r in ((parsed as Dictionary).get("turns", []) as Array):
@@ -660,7 +724,11 @@ func _upload_file(path: String) -> void:
 	var http := HTTPRequest.new()
 	http.use_threads = true
 	http.timeout = 15.0
-	http.max_redirects = 8 if path.get_file().begins_with("feedback_") else 0
+	# Never let HTTPRequest follow the 302 itself. Apps Script parks every response body on a
+	# GET-ONLY googleusercontent URL, and Godot preserves the method across a redirect — so a
+	# followed POST arrives there as a POST and comes back 400. Feedback, which needs that body
+	# to confirm storage, re-fetches the Location with an explicit GET instead.
+	http.max_redirects = 0
 	add_child(http)
 	http.request_completed.connect(_on_upload_done.bind(http, path))
 	var err := http.request(ENDPOINT_URL, ["Content-Type: application/json"],
@@ -670,16 +738,34 @@ func _upload_file(path: String) -> void:
 		http.queue_free()
 
 
-func _on_upload_done(result: int, code: int, _headers: PackedStringArray,
-		_body: PackedByteArray, http: HTTPRequest, path: String) -> void:
+func _on_upload_done(result: int, code: int, headers: PackedStringArray,
+		body: PackedByteArray, http: HTTPRequest, path: String) -> void:
 	var delivered := int(_uploading.get(path, -1))
+	var feedback := path.get_file().begins_with("feedback_")
+	# Feedback is cleared only once the receiver confirms storage, and that confirmation sits
+	# behind the redirect. Go and read it; _confirm_feedback owns the entry from here.
+	if feedback and code == 302:
+		var parked := _redirect_target(headers)
+		if parked != "":
+			http.queue_free()
+			_confirm_feedback(parked, path)
+			return
 	_uploading.erase(path)
 	http.queue_free()
 	# With max_redirects = 0 the 302 arrives as RESULT_REDIRECT_LIMIT_REACHED,
 	# not RESULT_SUCCESS — the response code is the success signal.
-	var feedback := path.get_file().begins_with("feedback_")
-	var accepted := result == HTTPRequest.RESULT_SUCCESS and code == 200 and _body.get_string_from_utf8().strip_edges() == "feedback_ok"
-	if (accepted if feedback else (code == 302 or (result == HTTPRequest.RESULT_SUCCESS and code == 200))):
+	#
+	# MEASURED, and the reason a month of turn rows vanished: Apps Script answers a CLEAN return
+	# (whether "ok" or a rejection like "no") with a 302 that parks the body elsewhere, but a
+	# THROWN doPost with 200 and an HTML error page. Accepting a bare 200 therefore accepted
+	# precisely the failure case — so when a header change made sheetWithHeader_ throw, every
+	# envelope was deleted as delivered. Only a 302, or a 200 carrying a short plain-text reply,
+	# counts; an HTML body is a stack trace and the file must survive for the next boot.
+	var reply := body.get_string_from_utf8().strip_edges()
+	var plain_200 := result == HTTPRequest.RESULT_SUCCESS and code == 200 \
+			and not reply.begins_with("<") and reply.length() < 64
+	var accepted := plain_200 and reply == "feedback_ok"
+	if (accepted if feedback else (code == 302 or plain_200)):
 		DirAccess.remove_absolute(path)
 		if delivered > _delivered_through:
 			_delivered_through = delivered
@@ -692,6 +778,37 @@ func _on_upload_done(result: int, code: int, _headers: PackedStringArray,
 	else:
 		print("[Telemetry] upload failed for %s (result %d, http %d) — kept for next boot"
 				% [path.get_file(), result, code])
+
+
+## The Location of a 302, or "" when the response carries none.
+func _redirect_target(headers: PackedStringArray) -> String:
+	for h in headers:
+		if h.to_lower().begins_with("location:"):
+			return h.substr(h.find(":") + 1).strip_edges()
+	return ""
+
+
+## GET the URL the endpoint parked the response body on and clear the feedback file only if it
+## reads back "feedback_ok". Anything else leaves the file for the next boot, which is the whole
+## point of the confirmation — a feedback response is a one-off the player cannot be asked for twice.
+func _confirm_feedback(url: String, path: String) -> void:
+	var http := HTTPRequest.new()
+	http.use_threads = true
+	http.timeout = 15.0
+	add_child(http)
+	http.request_completed.connect(func(_r: int, code: int, _h: PackedStringArray,
+			body: PackedByteArray) -> void:
+		_uploading.erase(path)
+		http.queue_free()
+		if code == 200 and body.get_string_from_utf8().strip_edges() == "feedback_ok":
+			DirAccess.remove_absolute(path)
+			print("[Telemetry] uploaded %s (feedback stored)" % path.get_file())
+		else:
+			print("[Telemetry] feedback unconfirmed for %s (http %d) — kept for next boot"
+					% [path.get_file(), code]))
+	if http.request(url) != OK:
+		_uploading.erase(path)
+		http.queue_free()
 
 
 func _uuid() -> String:

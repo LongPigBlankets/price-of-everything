@@ -67,7 +67,7 @@ func _ready() -> void:
 	TurnManager.turn_resolution_completed.connect(_flush_sales)
 	MatchState.state_reset.connect(func() -> void: _pending_sales.clear())
 	_prev_money = MatchState.money
-	MatchState.building_added.connect(_on_building_added)
+	BuildingState.building_added.connect(_on_building_added)
 	Construction.construction_started.connect(_on_construction_started)
 	Construction.materials_ordered.connect(_on_materials_ordered)
 	Construction.construction_cancelled.connect(_on_construction_cancelled)
@@ -120,7 +120,7 @@ func _build_stacks() -> void:
 	add_child(_warning_stack)
 
 func _on_building_added(instance: Dictionary) -> void:
-	if not MatchState.is_player_owned(instance):
+	if not BuildingState.is_player_owned(instance):
 		return
 	# building_added now fires at completion (promotion), so this is the "built" toast.
 	var msg: String = _format_building_message(instance)
@@ -129,7 +129,7 @@ func _on_building_added(instance: Dictionary) -> void:
 func _on_materials_ordered(instance_id: String, tile_id: String) -> void:
 	var parts: Array = []
 	var max_turns: int = 0
-	for s in MatchState.get_inbound_transport_shipments(tile_id):
+	for s in TransportState.get_inbound_transport_shipments(tile_id):
 		if str(s.get("construction_instance_id", "")) != instance_id:
 			continue
 		parts.append("%d %s" % [int(s.get("qty", 0)), Catalog.get_display_name(str(s.get("good_id", "")))])

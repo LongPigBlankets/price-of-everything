@@ -24,8 +24,8 @@ func _process(delta: float) -> void:
 			var jump := _arg_index()
 			if jump > 0 and Tutorial.active:
 				# Simulate the buy so player-owned-building steps can open the BDP.
-				for iid in MatchState.buildings:
-					var inst: Dictionary = MatchState.buildings[iid]
+				for iid in BuildingState.buildings:
+					var inst: Dictionary = BuildingState.buildings[iid]
 					if str(inst.get("tile_id", "")) == "tile_5_9" and str(inst.get("building_id", "")) == "b_007":
 						inst["owner"] = MatchState.LOCAL_PLAYER
 				Tutorial._enter(jump)

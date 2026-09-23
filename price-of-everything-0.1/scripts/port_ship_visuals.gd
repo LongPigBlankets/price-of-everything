@@ -5,13 +5,11 @@ extends Node2D
 ## the layers carrying the map's static geometry repaint only when the view settles. Mounted
 ## just above `PortVisuals` so a hull reads as lying ALONGSIDE the quay rather than under it.
 ##
-## THE CYCLE (owner spec, 2026-08-27), 12.5 s end to end per ship:
+## THE CYCLE, 12.5 s end to end per ship:
 ##   in over 2.5 s  ->  alongside for 5 s  ->  out over 5 s
-## EVERY ship on the map is the same hull at the same size (owner, 2026-08-28). There used to
-## be two populations -- a permanent pair moored at each harbour, sized off its arms, and the
-## callers arriving off the sea lanes at a fixed length. They were different sizes and they
-## sat on top of each other at the quay. The moored pair is gone: a harbour's traffic is its
-## callers, and nothing else.
+## EVERY ship on the map is the same hull at the same size: a harbour's traffic is its
+## callers off the sea lanes, and nothing else -- no permanent moored pair sized off its arms,
+## which would differ in size from the callers and sit on top of them at the quay.
 
 const CanvasBatch := preload("res://scripts/canvas_batch.gd")
 const AuthoredSpecialShapes := preload("res://scripts/authored_special_shapes.gd")
@@ -21,14 +19,14 @@ const IN_TIME := 2.5
 const HOLD_TIME := 5.0
 const OUT_TIME := 5.0
 const CYCLE := IN_TIME + HOLD_TIME + OUT_TIME     # 12.5 s
-## ONE ship size everywhere, standardised at the larger of the two the map used to carry.
+## ONE ship size everywhere.
 const SHIP_LENGTH := 58.0
 ## Half-beam as a fraction of length. Slim, as asked.
 const BEAM_FRAC := 0.19
 ## How far out to sea a ship starts and ends its run, in ship lengths — far enough to be clear
 ## of the harbour mouth before it goes, rather than winking out over the water.
-## Extra clearance before a ship dares turn, in ship lengths on top of its own swept radius.
-## "Well clear of the docks" (owner, 2026-08-27).
+## Extra clearance before a ship dares turn, in ship lengths on top of its own swept radius,
+## so it turns well clear of the docks.
 const TURN_MARGIN := 0.55
 ## How much farther out a ship runs once it is round, in ship lengths.
 const AWAY_RUN := 2.4
@@ -51,7 +49,7 @@ const MIN_SHIP_PX := 6.0
 const TOPSIDE_PX := 17.0
 const CULL_MARGIN := 220.0
 
-## SEA LANES (owner, 2026-08-27). Coastal traffic crossing the south of the continent:
+## SEA LANES. Coastal traffic crossing the south of the continent:
 ## one stream enters mid-west and works round to the south-east, the other runs the reverse.
 ##
 ## The centreline is given in NORMALISED map coordinates (0..1 over the world bounds), traced
@@ -64,13 +62,13 @@ const LANE: Array[Vector2] = [
 	Vector2(0.026, 0.955), Vector2(0.10, 0.994), Vector2(0.45, 0.996),
 	Vector2(0.70, 0.992), Vector2(0.88, 0.975), Vector2(0.985, 0.950),
 ]
-## ...and then UP THE EAST COAST (owner, 2026-08-28: "need more ships on the east coast").
+## ...and then UP THE EAST COAST.
 ## That leg is not hand-traced. The eastern seaboard is a narrow strip of water -- in places a
 ## single grid column -- and tracing it off a 78-column ASCII map is how you get ships ashore.
 ## It is ROUTED instead, by the same sea path the port callers use, from the south-east end of
 ## the traced lane to a point off the north-east corner.
 const LANE_NORTH_EAST := Vector2(0.99, 0.10)
-## THE CHANNEL (owner, 2026-08-27). Traffic spreads across two tiles of sea: the water
+## THE CHANNEL. Traffic spreads across two tiles of sea: the water
 ## adjacent to the land plus one tile farther out. The LANE above is the INSHORE edge of that
 ## band -- it was validated hugging the coast -- and the channel extends OFFSHORE from it.
 ##
@@ -85,13 +83,12 @@ const CHANNEL := TILE_HEIGHT * CHANNEL_TILES
 const HALF_CHANNEL := CHANNEL * 0.5
 ## Keeps ships off the exact edges of their half.
 const SLOT_MARGIN := 30.0
-## Ships per direction (owner: 10-20 each way; at the top of the range now that the stream
-## also runs up the east coast, which is a good deal more water to cover).
+## Ships per direction. The stream also runs up the east coast, which is a good deal of
+## water to cover.
 const LANE_SHIPS := 20
 
-## A ship SLOWS TO A STOP over this, turns, and accelerates away over the same again (owner,
-## 2026-08-28). Ships used to change heading discontinuously at every polyline vertex, because
-## `_along` returned the segment's own angle: a corner was a frame, not a manoeuvre.
+## A ship SLOWS TO A STOP over this, turns, and accelerates away over the same again, so a
+## corner is a manoeuvre rather than a one-frame heading snap at a polyline vertex.
 const TURN_SEC := 1.0
 ## Below this much course change a corner is a lean, not a manoeuvre: the heading still blends
 ## rather than snapping, but the ship holds its speed. Without a threshold every stray vertex
@@ -108,10 +105,10 @@ const SEA_SPEED := 62.0
 ## frame costs one walk over a few segments and a lerp. Fifty callers are fifty lookups; the
 ## geometry is built once at load.
 ##
-## THE TIMETABLE (owner, 2026-08-28), by harbour tile. `every` is the interval between
+## THE TIMETABLE, by harbour tile. `every` is the interval between
 ## ARRIVALS AT THE PORT, counting both directions; `burst` ships arrive together `gap` apart.
-## Stoneshore Docks is authored rather than planned, which is why it had no harbour geometry
-## and so no ships at all -- "it looks like they never go there" was literally true.
+## Stoneshore Docks is authored rather than planned, so its berths come off the authored
+## quays (see `_ensure_authored_berths`) rather than a harbour plan.
 const PORT_SCHEDULE := {
 	"tile_24_7": {"every": 10.0, "burst": 1, "gap": 0.0},    # Capital Port
 	"tile_11_17": {"every": 15.0, "burst": 1, "gap": 0.0},   # Arin Estuary Docks
@@ -128,14 +125,13 @@ const MERGE_RUN := 2200.0
 ## How far each approach sits off the middle of its fairway, so inbound and outbound traffic
 ## pass each other rather than through each other.
 const FAIRWAY_OFFSET := 68.0
-## SEA ROUTING for the port spurs. A Bezier straight at the harbour cut corners across
-## headlands, so the run in is now A-STARRED over water (owner, 2026-08-27).
+## SEA ROUTING for the port spurs. A Bezier straight at the harbour would cut corners across
+## headlands, so the run in is A-STARRED over water.
 ## The grid is built from NAVGRID -- the baked terrain -- not from the tile map, and a cell
 ## counts as navigable only if it is water AND every probe a clearance away is water too, so
 ## a lane never shaves a shore.
 const SEA_CELL := 50.0
-## Minimum water between a hull and the beach (owner: at least 10 u). Probed in eight
-## directions, a shade over the asked-for distance.
+## Minimum water between a hull and the beach. Probed in eight directions.
 const SEA_CLEARANCE := 13.0
 ## The search gives a staircase; this shortcuts it back to long straight legs wherever the
 ## water allows, sampled at this spacing.
@@ -213,13 +209,13 @@ func _refresh() -> void:
 			var run := _seaward_run(plan.get(arm_key, []) as Array, seaward)
 			if run <= 1.0:
 				continue
-			# ONE size everywhere. The arm's own run still decides how far out is clear, but
-			# it no longer decides how big the ship is: a small harbour was getting visibly
-			# smaller ships than the stream sailing past it.
+			# ONE size everywhere. The arm's own run decides how far out is clear, not how big
+			# the ship is: sizing off the arm gives a small harbour visibly smaller ships than
+			# the stream sailing past it.
 			var length := SHIP_LENGTH
 			# HOW FAR OUT IS CLEAR. Measured, not guessed: the seaward-most point of EITHER arm,
 			# plus half the ship (its swept radius when it pivots) plus a margin. A ship turning
-			# any closer sweeps its own quay, which is exactly what the owner saw.
+			# any closer sweeps its own quay.
 			var arm_tip := -INF
 			for both_key in ["left_arm_polygons", "right_arm_polygons"]:
 				for poly_value in (plan.get(both_key, []) as Array):
@@ -247,8 +243,7 @@ func _refresh() -> void:
 ## Harbours the DESIGNER drew by hand get berths too.
 ##
 ## `PortVisuals` stands down for an authored port -- its dock is fabric, not a plan -- so those
-## tiles had no basin, no arms and therefore no ships. Stoneshore Docks is one, which is the
-## whole of "it looks like they never go there" (owner, 2026-08-28).
+## tiles have no basin and no arms. Stoneshore Docks is one.
 ##
 ## There is no planned geometry to measure, so the berths come off the AUTHORED QUAYS: the
 ## `port_role: quay` specials on the tile, of which the long thin ones are the piers. A ship
@@ -460,9 +455,9 @@ func _ensure_lanes() -> void:
 				# Staggered along the route as well as across it, so a half is not a rank of
 				# ships sailing abreast.
 				"start": float(k) / float(LANE_SHIPS),
-				# FIXED cargo per ship. This used to be derived from the distance travelled,
-				# which changes every frame -- so every hull in the stream strobed through the
-				# container palette. A ship's colours are a property of the ship.
+				# Cargo per ship is fixed, not derived from distance travelled: a per-frame value
+				# would strobe every hull through the container palette. A ship's colours are a
+				# property of the ship.
 				"seed": (direction * LANE_SHIPS + k) % 7,
 			})
 
@@ -1072,8 +1067,8 @@ func _visible_world_rect() -> Rect2:
 
 # ── Sea routing ────────────────────────────────────────────────────────────────────
 #
-# The port spurs used to be Bezier curves straight at the harbour, which cut corners across
-# headlands. They are now shortest paths over open water, built once at load.
+# The port spurs are shortest paths over open water, built once at load. A Bezier straight
+# at the harbour would cut corners across headlands.
 
 var _sea_navigable := PackedByteArray()
 var _sea_cols := 0

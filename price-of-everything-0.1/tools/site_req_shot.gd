@@ -34,7 +34,7 @@ func _ready() -> void:
 		print("[SITEREQ] ConstructPanelV2 not found — aborting")
 		get_tree().quit(1)
 		return
-	print("[SITEREQ] use_construct_panel_v2=%s" % str(MatchState.use_construct_panel_v2))
+	print("[SITEREQ] use_construct_panel_v2=%s" % str(UiPrefs.use_construct_panel_v2))
 
 	# 1) Tile-independent flow: requirements stated, no verdict, INPUT rows only.
 	_panel.open_browser()

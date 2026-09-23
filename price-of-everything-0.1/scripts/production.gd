@@ -12,6 +12,10 @@ var last_turn_summary: Dictionary = {}
 var missing_by_building: Dictionary = {}  # instance_id -> Array of missing inputs
 var blocked_reason_by_building: Dictionary = {}  # instance_id -> {code, message}
 var last_turn_run: Dictionary = {}  # instance_id -> true (set of buildings that ran)
+## Consecutive turns where a stockpile-only input was missing and no matching good
+## was produced or delivered to the consumer tile. Used by the building diagnostic
+## to distinguish a one-turn timing gap from a genuinely dry stockpile route.
+var stockpile_input_gap_streak_by_building: Dictionary = {}  # "instance|good" -> turns
 var produced_by_building: Dictionary = {}  # instance_id -> good_id/internal_name -> lifetime qty
 var full_output_streak_by_building: Dictionary = {}  # instance_id -> consecutive turns at full output
 # Per-building lifetime P&L, instance_id -> {value, inputs, power, labour, maint, turns}.
@@ -122,11 +126,12 @@ func import_state(d: Dictionary) -> void:
 	missing_by_building.clear()
 	blocked_reason_by_building.clear()
 	last_turn_run.clear()
+	stockpile_input_gap_streak_by_building.clear()
 	_just_constructed_this_turn.clear()
 	_warning_buy_preview_cache.clear()
 
 func _debug_logs_enabled() -> bool:
-	return bool(MatchState.debug_turn_logs_enabled)
+	return bool(UiPrefs.debug_turn_logs_enabled)
 
 func _ready() -> void:
 	# _on_phase_started is wired centrally by TurnManager._wire_sim_listeners so
@@ -140,7 +145,10 @@ func _on_phase_started(phase: int) -> void:
 	if phase == TurnManager.Phase.PROCESS:
 		_process_production()
 
+const Middleman := preload("res://scripts/middleman_service.gd")
+
 func _process_production() -> void:
+	preload("res://scripts/cash_commitments.gd").begin_turn()
 	var cash_before_process := MatchState.money
 	last_turn_run.clear()
 	missing_by_building.clear()
@@ -161,7 +169,7 @@ func _process_production() -> void:
 	TurnProfiler.section_begin("power_reset")
 	Power.reset_for_turn()
 	TurnProfiler.section_end("power_reset")
-	MatchState.tick_workforce_policies()
+	LabourState.tick_workforce_policies()
 
 	var summary := {
 	"produced": {},
@@ -241,6 +249,7 @@ func _process_production() -> void:
 	# Aggregates (preserved for compatibility)
 	"money_in": 0.0,
 	"money_out": 0.0,
+	"pre_tax_profit": 0.0,
 	"fake_money": 0.0,   # cheat-added cash, reported as its own category
 	# Power-specific
 	"power_supply": 0,
@@ -272,9 +281,9 @@ func _process_production() -> void:
 	# In-progress upgrades advance here too: awaiting projects claim freshly-arrived materials
 	# off the tile (before production can consume them) and ticked-down ones promote to the
 	# new level, so an upgrade that completes this turn produces at its new level immediately.
-	MatchState.tick_upgrades()
-	MatchState.tick_retrofits()   # recipe changes complete + swap in the new recipe
-	MatchState.tick_demolish()    # queued demolitions complete: refund materials + remove
+	BuildingWorks.tick_upgrades()
+	BuildingWorks.tick_retrofits()   # recipe changes complete + swap in the new recipe
+	BuildingWorks.tick_demolish()    # queued demolitions complete: refund materials + remove
 	TurnProfiler.section_end("construction")
 
 	# Only the player's buildings are simulated each turn. The pre-existing NPC
@@ -282,9 +291,12 @@ func _process_production() -> void:
 	# here keeps turn cost proportional to the player's empire, not the ~500 NPC
 	# buildings on the map. (Build the list once; every per-turn loop reuses it.)
 	var all_buildings: Array = []
-	for b in MatchState.buildings.values():
-		if MatchState.is_player_owned(b):
+	for b in BuildingState.buildings.values():
+		if BuildingState.is_player_owned(b):
 			all_buildings.append(b)
+	TurnProfiler.section_begin("middleman_supply")
+	Middleman.prepare(all_buildings, summary)
+	TurnProfiler.section_end("middleman_supply")
 	var has_run: Dictionary = {}
 
 	# === CASCADING PRODUCTION PHASE ===
@@ -299,13 +311,13 @@ func _process_production() -> void:
 				continue
 
 			# A building being retooled produces nothing until the recipe change lands.
-			if MatchState.is_retooling(instance_id):
+			if BuildingWorks.is_retooling(instance_id):
 				has_run[instance_id] = true
 				continue
 
 			# A paused building (player-stopped, e.g. via the supply-chain panel) is idle:
 			# no inputs consumed, no outputs, no labour/power draw this turn.
-			if MatchState.is_building_paused(instance_id):
+			if BuildingWorks.is_building_paused(instance_id):
 				has_run[instance_id] = true
 				continue
 
@@ -314,6 +326,9 @@ func _process_production() -> void:
 				has_run[instance_id] = true
 				continue
 			
+			if Middleman.enabled(instance_id) and (not Middleman.ready(instance_id) if Middleman.uses_inputs(instance_id) else not Middleman.entry(instance_id).get("outputs",{}).is_empty()):
+				blocked_reason_by_building[instance_id] = _run_warning("middleman", str(Middleman.entry(instance_id).get("reason", "Service batch unavailable.")))
+				continue
 			var check: Dictionary = _can_run_recipe(building, recipe)
 			if not check.can_run:
 				missing_by_building[instance_id] = check.missing
@@ -334,7 +349,7 @@ func _process_production() -> void:
 			if energy_req > 0:
 				Power.record_drawn(str(building.get("tile_id", "")), energy_req)
 				summary.consumed["power"] = summary.consumed.get("power", 0) + energy_req
-				if MatchState.is_player_owned(building):
+				if BuildingState.is_player_owned(building):
 					_accumulate_by_type(summary.power_demand_by_type, str(building.get("building_id", "")), float(energy_req))
 
 			# Route output: power goes to Power supply (per-tile, capped), else Stockpile
@@ -347,7 +362,7 @@ func _process_production() -> void:
 				var output_qty: int = Power.producible_amount(
 					str(building.get("tile_id", "")), _effective_power_output(building, recipe))
 				# Tag the actual (already cable-capped) generation by quality, and by
-				# supply-priority category (owner, 28 Aug: coal/gas vs wind/solar,
+				# supply-priority category (coal/gas vs wind/solar,
 				# defaulting respectively to self-serve vs sell-to-grid) — Power needs
 				# the grid_priority flag to settle correctly, and the derate allocator
 				# below needs the category to know whether this generation is even
@@ -389,6 +404,8 @@ func _process_production() -> void:
 
 			has_run[instance_id] = true
 			last_turn_run[instance_id] = true
+			if BuildingState.buildings.has(instance_id):
+				BuildingState.buildings[instance_id].erase("startup_inputs_pending")
 			# A new building stays in its selected half-capacity start until it has
 			# actually completed one operating turn; starvation does not consume it.
 			MatchState.consume_startup_capacity(instance_id)
@@ -405,6 +422,10 @@ func _process_production() -> void:
 		push_warning("[Production] Hit MAX_PRODUCTION_PASSES (%d). Possible cycle in recipes." % MAX_PRODUCTION_PASSES)
 	TurnProfiler.section_end("production_passes")
 	TurnProfiler.note_scale("production_passes", pass_count)
+
+	TurnProfiler.section_begin("middleman_settlement")
+	Middleman.settle(all_buildings, summary)
+	TurnProfiler.section_end("middleman_settlement")
 
 	# === STARVATION REPORTING ===
 	TurnProfiler.section_begin("starvation_report")
@@ -492,13 +513,20 @@ func _process_production() -> void:
 
 	# Recurring + scheduled (split) tile-to-tile moves fire here, on the merged stock.
 	TurnProfiler.section_begin("recurring_moves")
-	MatchState.run_recurring_and_scheduled_moves()
+	for move: Dictionary in MatchState.run_recurring_and_scheduled_moves():
+		var freight := float(move.get("cost",0.0))
+		summary.transport_paid += freight
+		summary.money_out += freight
+		_record_transport_breakdown(summary,move.get("transport_breakdown",{}),freight)
 	TurnProfiler.section_end("recurring_moves")
 
 	# Top up market-sourced building inputs (bought from the nearest port, arrive in N turns).
 	TurnProfiler.section_begin("buy_market_inputs")
 	_buy_market_inputs(all_buildings, summary)
 	TurnProfiler.section_end("buy_market_inputs")
+	# Evaluate this after same-tile outputs and recurring deliveries have been flushed, so
+	# a producer that supplied the tile this turn resets the dry-stockpile streak.
+	_update_stockpile_input_gap_streaks(all_buildings)
 
 	# === SELL PHASE (when production defaults to market) ===
 	TurnProfiler.section_begin("sell_phase")
@@ -540,7 +568,10 @@ func _process_production() -> void:
 			if surplus_qty > 0:
 				surplus[good_id] = surplus_qty
 		if not surplus.is_empty():
-			_sell_stockpile_totals(str(tile_id), surplus, summary, true)
+			if MatchState.get_sell_surplus_destination(str(tile_id)) == "middleman":
+				Middleman.sell_surplus(str(tile_id), surplus, summary)
+			else:
+				_sell_stockpile_totals(str(tile_id), surplus, summary, true)
 	TurnProfiler.section_end("sell_phase")
 
 	# === COSTS PHASE ===
@@ -553,12 +584,12 @@ func _process_production() -> void:
 		var active_recipe: Dictionary = Catalog.get_recipe(str(building.get("recipe_id", "")))
 		# A paused (mothballed) building keeps its upkeep but carries no workforce.
 		var iid_cost := str(building.get("instance_id", ""))
-		var labour: float = 0.0 if MatchState.is_building_paused(iid_cost) else _calculate_labour_cost(building, active_recipe)
+		var labour: float = 0.0 if BuildingWorks.is_building_paused(iid_cost) else _calculate_labour_cost(building, active_recipe)
 		# "Worker pay while not running": a building that produced NOTHING this turn pays its
 		# workforce at the policy rate. Keyed strictly on having run — a derated building did
 		# run, so it pays in full and its labour still reaches CostSolver at the true figure.
 		if labour > 0.0 and not bool(last_turn_run.get(iid_cost, false)):
-			labour *= MatchState.idle_labour_pay_share
+			labour *= LabourState.idle_labour_pay_share
 		var total_cost: float = maint + labour
 		MatchState.add_money(-total_cost)
 		summary.maintenance_paid += maint
@@ -614,9 +645,10 @@ func _process_production() -> void:
 	TurnProfiler.section_end("maintenance_labour")
 
 	TurnProfiler.section_begin("loan_payments")
-	var cash_before_tabs := MatchState.money
-	MatchState.tick_building_tabs()
-	var tab_repayments := cash_before_tabs - MatchState.money
+	var credit_movements := MatchState.tick_building_tabs()
+	var tab_repayments := float(credit_movements.repaid)
+	summary["building_credit_repaid"] = tab_repayments
+	summary["building_credit_loan_received"] = float(credit_movements.loan_received)
 	var loan_payment: float = LoanState.process_payments()
 	if loan_payment > 0:
 		summary.interest_paid = loan_payment
@@ -626,6 +658,7 @@ func _process_production() -> void:
 	TurnProfiler.section_begin("tax_dividends")
 	var revenue: float = summary.goods_sales_revenue + summary.power_sales_revenue
 	var pre_tax_profit: float = _apply_tax_and_dividends(summary)
+	summary["pre_tax_profit"] = pre_tax_profit
 	var profit_sharing: float = _apply_profit_sharing(summary, pre_tax_profit)
 	TurnProfiler.section_end("tax_dividends")
 
@@ -644,17 +677,31 @@ func _process_production() -> void:
 
 	TurnProfiler.section_begin("cost_solve")
 	# Attribute each tile's warehousing fee across the buildings that ran there, so
-	# imputed unit costs carry storage overheads (owner rebalance 2026-07-09).
+	# imputed unit costs carry storage overheads.
 	if not _warehousing_by_tile.is_empty():
 		var reports_per_tile: Dictionary = {}
 		for r in _building_turn_reports:
+			if Middleman.fully_managed(str(r.get("instance_id",""))): continue
 			var rt := str(r.get("tile_id", ""))
 			reports_per_tile[rt] = int(reports_per_tile.get(rt, 0)) + 1
 		for r2 in _building_turn_reports:
+			if Middleman.fully_managed(str(r2.get("instance_id",""))): continue
 			var rt2 := str(r2.get("tile_id", ""))
 			var fee: float = float(_warehousing_by_tile.get(rt2, 0.0))
 			r2["warehousing_cost"] = (fee / float(reports_per_tile[rt2])) if fee > 0.0 else 0.0
 	for report: Dictionary in _building_turn_reports:
+		if Middleman.enabled(str(report.get("instance_id",""))):
+			var service_entry := Middleman.entry(str(report.instance_id))
+			var material := 0.0
+			var input_fees := 0.0
+			for origin: Dictionary in service_entry.receipts.get("input_origins",[]):
+				material += float(origin.purchase.goods_value)
+				input_fees += float(origin.purchase.fee)
+			if Middleman.uses_inputs(str(report.instance_id)):
+				report["market_input_cost"] = material
+				report["inbound_transport"] = input_fees
+			report["inbound_transport"] = float(report.get("inbound_transport",0.0))+float(service_entry.receipts.get("output_fee",0.0))
+			if Middleman.fully_managed(str(report.instance_id)): report["warehousing_cost"] = 0.0
 		report["power_cost"] = Power.allocated_draw_cost(str(report.get("tile_id", "")), int(report.get("power_draw", 0)))
 	CostSolver.solve(_building_turn_reports)
 	TurnProfiler.section_end("cost_solve")
@@ -664,6 +711,7 @@ func _process_production() -> void:
 	# of money_in so it doesn't count toward advisor profit unlocks (it's a cheat).
 	summary["fake_money"] = MatchState.fake_money_this_turn
 	MatchState.fake_money_this_turn = 0.0
+	preload("res://scripts/cash_commitments.gd").finish_turn(summary, tab_repayments)
 	last_turn_summary = summary
 	_active_turn_summary = {}
 	summary.tile_supplied = _own_delivery_this_turn.duplicate(true)
@@ -679,7 +727,7 @@ func _process_production() -> void:
 		])
 		print("[Production] Turn summary: produced=%s consumed=%s sold=%s starved=%d net=£%.2f passes=%d" % [
 			summary.produced, summary.consumed, summary.sold, summary.starved.size(),
-			summary.money_in - summary.money_out, pass_count
+			cash_change_of(summary), pass_count
 		])
 		print("[Production] Cash breakdown: goods=£%.2f power_sold=£%.2f power_bought=£%.2f costs=£%.2f goods_bought=£%.2f loan_payments=£%.2f tax=£%.2f div=£%.2f profit_share=£%.2f operational_credit=£%.2f carbon_tax=£%.2f green_subsidy=£%.2f reported_net=£%.2f tab_repayments=£%.2f cash_delta=£%.2f" % [
 			summary.goods_sales_revenue,
@@ -694,7 +742,7 @@ func _process_production() -> void:
 			summary.building_tab_carried,
 			summary.carbon_tax_paid,
 			summary.green_subsidy_received,
-			summary.money_in - summary.money_out,
+			cash_change_of(summary),
 			tab_repayments,
 			MatchState.money - cash_before_process
 		])
@@ -703,7 +751,7 @@ func _process_production() -> void:
 		var _in_transit_dbg: Dictionary = {}
 		# Read-only summation — iterate the live list directly rather than paying for a
 		# deep copy of every shipment (with its path/tiles arrays) just to tally quantities.
-		for s in MatchState.pending_transport_shipments:
+		for s in TransportState.pending_transport_shipments:
 			if bool(s.get("is_sale", false)):
 				for it in s.get("sale_record", {}).get("items", []):
 					var sg := str(it.get("good_id", ""))
@@ -714,16 +762,55 @@ func _process_production() -> void:
 					_in_transit_dbg[mg] = int(_in_transit_dbg.get(mg, 0)) + int(s.get("qty", 0))
 		print("[Production] In transit (pending shipments): ", _in_transit_dbg)
 
-	
+func stockpile_input_gap_streak(instance_id: String, good_id: String) -> int:
+	return int(stockpile_input_gap_streak_by_building.get(instance_id + "|" + good_id, 0))
+
+func _update_stockpile_input_gap_streaks(all_buildings: Array) -> void:
+	var seen: Dictionary = {}
+	for building: Dictionary in all_buildings:
+		var iid := str(building.get("instance_id", ""))
+		var tile_id := str(building.get("tile_id", ""))
+		var recipe: Dictionary = Catalog.get_recipe(str(building.get("recipe_id", "")))
+		for input: Dictionary in recipe.get("inputs", []):
+			var gid := str(input.get("good_id", ""))
+			if iid == "" or gid == "" or not MatchState.is_input_tile_only(iid, gid):
+				continue
+			var key := iid + "|" + gid
+			seen[key] = true
+			var missing_now := false
+			for missing: Dictionary in (missing_by_building.get(iid, []) as Array):
+				if str(missing.get("good_id", "")) == gid:
+					missing_now = true
+					break
+			var produced_here := int((_same_tile_supply.get(tile_id, {}) as Dictionary).get(gid, 0))
+			var delivered_here := float(((_inbound_delivery_this_turn.get(tile_id, {}) as Dictionary).get(gid, {}) as Dictionary).get("qty", 0.0))
+			var own_delivered_here := int((_own_delivery_this_turn.get(tile_id, {}) as Dictionary).get(gid, 0))
+			var dry_this_turn := produced_here <= 0 and delivered_here <= 0.0 and own_delivered_here <= 0
+			if missing_now and Stockpile.get_at_tile(tile_id, gid) <= 0 and dry_this_turn:
+				stockpile_input_gap_streak_by_building[key] = int(stockpile_input_gap_streak_by_building.get(key, 0)) + 1
+			else:
+				stockpile_input_gap_streak_by_building[key] = 0
+	for key in stockpile_input_gap_streak_by_building.keys():
+		if not seen.has(key):
+			stockpile_input_gap_streak_by_building.erase(key)
+
 
 # --- Helpers ---
+
+## Cash reporting includes financing movements excluded from the established profit/tax
+## calculation. Keep money_in/money_out semantics unchanged for economic consumers.
+static func cash_change_of(summary: Dictionary) -> float:
+	return float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0)) \
+		- float(summary.get("building_credit_repaid", 0.0)) \
+		+ float(summary.get("building_credit_loan_received", 0.0)) \
+		+ float(summary.get("middleman_financing", 0.0))
 
 func _apply_advisor_costs(summary: Dictionary) -> float:
 	# Charge against THIS turn's revenue, not last turn's: the sell phase has already run by
 	# here, so the summary holds the real figure and the board is billed on what it actually
 	# helped earn. (The council panel quotes last turn's, since this turn's does not exist yet.)
 	var revenue := float(summary.get("goods_sales_revenue", 0.0)) + float(summary.get("power_sales_revenue", 0.0))
-	var payroll := MatchState.advisor_payroll_per_turn(revenue)
+	var payroll := AdvisorState.advisor_payroll_per_turn(revenue)
 	if payroll <= 0.0:
 		summary.advisor_paid = 0.0
 		return 0.0
@@ -759,7 +846,8 @@ func _apply_tax_and_dividends(summary: Dictionary) -> float:
 	# Use actual pre-tax cashflow, not just sales minus a narrow operating-cost
 	# subset. Market input buys are real expenses and must prevent loss-making turns
 	# from paying tax or dividends.
-	var pre_tax_profit := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0))
+	var pre_tax_profit := float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0)) \
+		- float(summary.get("prepaid_construction_arrived", 0.0))
 	# The first TAX_FREE_PROFIT_FLOOR of profit each turn is assessed at nothing, for tax
 	# and dividends alike. Only the slice above the floor is assessable.
 	var taxable_profit := maxf(0.0, pre_tax_profit - EconomyConfig.TAX_FREE_PROFIT_FLOOR)
@@ -796,7 +884,7 @@ func _apply_tax_and_dividends(summary: Dictionary) -> float:
 	# A CFO advisor can grant a partial dividend holiday via the "dividend_rate" domain;
 	# the Stock Options workforce policy adds to the base rate (both capped at 30% total).
 	var div_mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("dividend_rate", "*", {}).get("net", 0.0)) / 100.0)
-	var div_rate: float = minf(0.30, EconomyConfig.DIVIDEND_RATE * div_mult + MatchState.workforce_dividend_bonus())
+	var div_rate: float = minf(0.30, EconomyConfig.DIVIDEND_RATE * div_mult + LabourState.workforce_dividend_bonus())
 	var dividends: float = minf(post_tax_profit, post_tax_profit * div_rate)
 	if dividends > 0.0:
 		MatchState.add_money(-dividends)
@@ -807,9 +895,9 @@ func _apply_tax_and_dividends(summary: Dictionary) -> float:
 func _apply_profit_sharing(summary: Dictionary, pre_tax_profit: float) -> float:
 	summary.profit_sharing_paid = 0.0
 	var share_rate := 0.0
-	if MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
+	if LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_ANNUAL_PROFIT_SHARE):
 		share_rate = 0.05
-	elif MatchState.is_workforce_policy_enabled(MatchState.WORKFORCE_POLICY_PROFIT_SHARE_10):
+	elif LabourState.is_workforce_policy_enabled(LabourState.WORKFORCE_POLICY_PROFIT_SHARE_10):
 		share_rate = 0.10
 	if share_rate <= 0.0:
 		return 0.0
@@ -881,7 +969,7 @@ func _produce_outputs(building: Dictionary, recipe: Dictionary, summary: Diction
 		}
 		output_qty = int(round(Modifiers.apply("recipe_output", recipe_id, float(output_qty), mod_ctx)))
 		output_qty = int(round(float(output_qty) * BuildingLevels.mult("output", int(building.get("level", 1)))))
-		output_qty = int(round(float(output_qty) * MatchState.workforce_output_multiplier()))
+		output_qty = int(round(float(output_qty) * LabourState.workforce_output_multiplier()))
 		output_qty = int(round(float(output_qty) * MatchState.startup_capacity_multiplier(building)))
 		# Intermittency: derate output that relies on unfirmed intermittent green power
 		# (0 for grey/steady/no-power buildings; set by _compute_power_intermittency).
@@ -941,12 +1029,13 @@ func _recipe_deposit_token(recipe: Dictionary) -> String:
 	return ""
 
 func _process_transport_arrivals(summary: Dictionary) -> void:
+	TransportState.dispatch_construction_orders()
 	# Snapshot this turn's in-transit per-link flow (before shipments advance) so the
 	# next turn's transport costs carry the right congestion penalty.
-	MatchState.update_transport_congestion()
+	TransportState.update_transport_congestion()
 	# First, retry any shipments that arrived earlier at a then-full tile.
-	MatchState.retry_overflow_unload()
-	for shipment in MatchState.advance_transport_shipments():
+	TransportState.retry_overflow_unload()
+	for shipment in TransportState.advance_transport_shipments():
 		if shipment.get("is_sale", false):
 			_credit_arrived_sale(shipment, summary)
 			continue
@@ -963,6 +1052,7 @@ func _process_transport_arrivals(summary: Dictionary) -> void:
 		var purchase_cost: float = float(shipment.get("purchase_cost", 0.0))
 		if purchase_cost > 0.0:
 			MatchState.settle_arrived_purchase(purchase_cost)
+			preload("res://scripts/cash_commitments.gd").record_arrival(purchase_cost)
 			var goods_cost: float = float(shipment.get("purchase_goods_cost", purchase_cost))
 			var freight: float = purchase_cost - goods_cost
 			summary.goods_purchased_cost += goods_cost
@@ -971,17 +1061,19 @@ func _process_transport_arrivals(summary: Dictionary) -> void:
 			summary.money_out += purchase_cost
 			summary.purchased_cost[good_id] = float(summary.purchased_cost.get(good_id, 0.0)) + goods_cost
 			_accumulate_by_type(summary.goods_purchased_by_type, str(shipment.get("buy_building_id", "")), goods_cost, 0)
+		# Keep the existing arrival-date tax deduction, without reporting cash paid twice.
+		summary["prepaid_construction_arrived"] = float(summary.get("prepaid_construction_arrived", 0.0)) + float(shipment.get("construction_prepaid", 0.0)) if bool(shipment.get("is_purchase", false)) else float(summary.get("prepaid_construction_arrived", 0.0))
 		var added := Stockpile.add(destination_tile, good_id, qty)
 		var per_unit_transport: float = float(shipment.get("transport_cost", 0.0)) / float(qty)
 		_record_inbound_delivery(destination_tile, good_id, added, per_unit_transport)
 		# Nothing bought and nothing sold: this is one of the player's buildings shipping to
 		# another of their tiles, which is the only kind of arrival a mission may count.
-		if purchase_cost <= 0.0:
+		if purchase_cost <= 0.0 and not bool(shipment.get("is_purchase", false)):
 			_note_own_delivery(destination_tile, good_id, added)
 		if added < qty:
 			# Tile is full: hold the remainder instead of losing it. It waits on the
 			# tile and retries each turn until there's room (see retry_overflow_unload).
-			MatchState.hold_overflow_shipment({
+			TransportState.hold_overflow_shipment({
 				"source_tile": str(shipment.get("source_tile", "")),
 				"destination_tile": destination_tile,
 				"good_id": good_id,
@@ -1058,7 +1150,7 @@ func _add_paid_sale_item(sale_record: Dictionary, good_id: String, qty: int, rev
 func _offer_special_order_overflow(shipment: Dictionary, sale_record: Dictionary, good_id: String, qty: int, unit_revenue: float) -> void:
 	if good_id == "" or qty <= 0:
 		return
-	MatchState.offer_special_order_overflow({
+	TransportState.offer_special_order_overflow({
 		"order_id": str(shipment.get("special_order_id", "")),
 		"source_mode": str(shipment.get("special_order_source_mode", "")),
 		"source_tile": str(sale_record.get("tile_id", shipment.get("source_tile", ""))),
@@ -1072,6 +1164,11 @@ func _offer_special_order_overflow(shipment: Dictionary, sale_record: Dictionary
 	})
 
 func _sell_output_to_market(building: Dictionary, good: Dictionary, qty: int, summary: Dictionary) -> void:
+	if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1" and not ResearchState.global_trade_license_available():
+		var stored := Stockpile.add(str(building.get("tile_id", "")), str(good.get("id", "")), qty)
+		if stored < qty:
+			push_warning("[Production] Global trade is unlicensed; only stored %d/%d output units" % [stored, qty])
+		return
 	# Output destined for the market goes through MarketState.execute_sale:
 	#   - skip_consume: the goods never landed in the stockpile — they're being
 	#     dispatched straight from production output,
@@ -1111,6 +1208,9 @@ func _sell_output_to_market(building: Dictionary, good: Dictionary, qty: int, su
 			_add_summary_sale(summary, str(it.good_id), int(it.qty), float(it.revenue))
 
 func _dispatch_output_to_stockpile(building: Dictionary, good: Dictionary, qty: int, summary: Dictionary) -> void:
+	if Middleman.buys_output(str(building.instance_id), str(good.id)):
+		Middleman.produce(str(building.instance_id),str(good.id),qty)
+		return
 	var split := MatchState.get_output_split_destinations(str(building.get("instance_id", "")), good.id)
 	if split.size() >= 2:
 		var remaining := qty
@@ -1176,8 +1276,8 @@ func _dispatch_output_to_destination(building: Dictionary, good: Dictionary, qty
 
 	if int(route.turns) >= 1:
 		# Inter-tile: in transit, arrives route.turns turns later (a tile-to-tile move).
-		MatchState.log_move_shipment(str(building.get("tile_id", "")), str(stockpile_coord), good.id, qty, int(route.turns))
-		MatchState.queue_transport_shipment({
+		TransportState.log_move_shipment(str(building.get("tile_id", "")), str(stockpile_coord), good.id, qty, int(route.turns))
+		TransportState.queue_transport_shipment({
 			"source_tile": building.get("tile_id", ""),
 			"destination_tile": str(stockpile_coord),
 			"good_id": good.id,
@@ -1223,7 +1323,7 @@ func _flush_output_buffer() -> void:
 				var spilled: int = Stockpile.add(str(ft), str(fg), excess)
 				if spilled < excess:
 					# Warehouse full too — hold the remainder like any bounced arrival.
-					MatchState.hold_overflow_shipment({
+					TransportState.hold_overflow_shipment({
 						"source_tile": str(ft), "destination_tile": str(ft),
 						"good_id": str(fg), "qty": excess - spilled,
 					})
@@ -1233,7 +1333,7 @@ func _flush_output_buffer() -> void:
 					feed_tile.erase(fg)
 			if feed_tile.is_empty():
 				_direct_feed.erase(ft)
-	var jit_active := MatchState.is_unlocked(JIT_UNLOCK_TITLE)
+	var jit_active := ResearchState.is_unlocked(JIT_UNLOCK_TITLE)
 	var producers_by_tile: Dictionary = {}   # tile_id -> {instance_id: true}
 	for o in _output_buffer:
 		var qty: int = int(o.qty)
@@ -1276,17 +1376,18 @@ func _flush_output_buffer() -> void:
 	var fed_counts: Dictionary = {}
 	for pt in producers_by_tile:
 		fed_counts[pt] = (producers_by_tile[pt] as Dictionary).size()
-	MatchState.update_stockpile_feed_streaks(fed_counts)
+	ResearchState.update_stockpile_feed_streaks(fed_counts)
 
 ## One turn of the PLAYER's buildings' recipe inputs on a tile — the JIT feed target.
 ## (compute_committed_for_tile counts NPC buildings too; the feed must not.)
 func _player_committed_for_tile(tile_id: String) -> Dictionary:
 	var committed: Dictionary = {}
-	for building in MatchState.get_buildings_on_tile(tile_id):
-		if not MatchState.is_player_owned(building) or MatchState.is_building_paused(str(building.get("instance_id", ""))):
+	for building in BuildingState.get_buildings_on_tile(tile_id):
+		if not BuildingState.is_player_owned(building) or BuildingWorks.is_building_paused(str(building.get("instance_id", ""))):
 			continue
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
 		for input in recipe.get("inputs", []):
+			if Middleman.supplies_good(str(building.get("instance_id", "")), str(input.good_id)): continue
 			var good_id: String = input.get("good_id", "")
 			var qty: int = _scaled_input_qty(input, building)
 			if good_id != "" and qty > 0:
@@ -1317,6 +1418,8 @@ func get_jit_fed_for_tile(tile_id: String) -> int:
 	return int(_jit_fed_this_turn.get(tile_id, 0))
 
 func _output_stockpile_coord(building: Dictionary, good_id: String):
+	if not bool(Catalog.get_good(good_id).get("is_sellable", true)): return str(building.get("tile_id", ""))
+	if Middleman.buys_output(str(building.get("instance_id","")), good_id): return null
 	var instance_id: String = building.get("instance_id", "")
 	if MatchState.is_output_market(instance_id, good_id):
 		return null  # explicit per-building market route — sell to nearest port
@@ -1331,6 +1434,8 @@ func _transport_route(source_tile: String, destination_tile, good_id: String = "
 	return TransportService.route(source_tile, destination_tile, good_id)
 
 func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit_toast: bool) -> Dictionary:
+	if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1" and not ResearchState.global_trade_license_available():
+		return {"tile_id": "" if coord == null else str(coord), "items": [], "total_qty": 0, "total_revenue": 0.0}
 	var source_tile := "" if coord == null else str(coord)
 	var sale_record := {
 		"tile_id": source_tile,
@@ -1343,7 +1448,7 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 	var covered_goods: Dictionary = {}
 	for gid in totals.keys():
 		if int(totals[gid]) > 0:
-			covered_goods[str(gid)] = MatchState.seaport_covers(str(gid))
+			covered_goods[str(gid)] = TransportState.seaport_covers(str(gid))
 	var quote := TransportService.quote_market_sell(source_tile, totals, covered_goods)
 	if quote.is_empty():
 		return sale_record
@@ -1374,7 +1479,7 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 			_add_transport_breakdown(transport_breakdown, TransportService.transport_cost_breakdown_for_route(good_key, sold_qty, route))
 		# Every market sale crosses the sea leg. The subscription only waives the local
 		# inland route, never the port's handling and insurance charge.
-		var sea_charge := MatchState.commit_sea_shipping(port_tile, good_key, sold_qty, "sell")
+		var sea_charge := TransportState.commit_sea_shipping(port_tile, good_key, sold_qty, "sell")
 		transport_cost += float(sea_charge.get("total", 0.0))
 		# Export leg — the mirror of queue_buy's port_inbound. "sea" carries the ad valorem
 		# for both directions so the redesign's headline component stands alone.
@@ -1400,7 +1505,7 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		summary.money_out += transport_cost
 	if deferred and int(sale_record.total_qty) > 0:
 		# Goods are already consumed (in transit); cash lands when the port receives them.
-		MatchState.queue_transport_shipment({
+		TransportState.queue_transport_shipment({
 			"is_sale": true,
 			"source_tile": source_tile,
 			"destination_tile": port_tile,
@@ -1570,7 +1675,7 @@ func _capture_turn_report(building: Dictionary, recipe: Dictionary) -> void:
 	var recipe_id: String = str(recipe.get("recipe_id", ""))
 	var recipe_type: String = str(recipe.get("recipe_type", "")).to_lower()
 	var out_bid: String = str(building.get("building_id", ""))
-	var workforce_out_mult: float = MatchState.workforce_output_multiplier()
+	var workforce_out_mult: float = LabourState.workforce_output_multiplier()
 	var outputs_produced: Dictionary = {}
 	for output in _recipe_output_items(recipe):
 		var gid: String = output.get("good_id", "")
@@ -1652,8 +1757,8 @@ func _calculate_labour_cost(building: Dictionary, recipe: Dictionary = {}) -> fl
 	# While retooling, a building pays only a reduced fraction of its base labour and
 	# skips the usual modifier factor (spec §7.3).
 	var instance_id: String = str(building.get("instance_id", ""))
-	if MatchState.is_retooling(instance_id):
-		return _base_labour_cost(building, recipe) * MatchState.retooling_labour_fraction(instance_id)
+	if BuildingWorks.is_retooling(instance_id):
+		return _base_labour_cost(building, recipe) * BuildingWorks.retooling_labour_fraction(instance_id)
 	return _base_labour_cost(building, recipe) * labour_cost_factor(building)
 
 # Raw per-turn staffing cost for a building BEFORE any percentage labour modifiers:
@@ -1685,8 +1790,8 @@ func _base_labour_cost(building: Dictionary, recipe: Dictionary = {}) -> float:
 func labour_cost_factor(building: Dictionary, policy_delta_override: float = INF) -> float:
 	var bid: String = str(building.get("building_id", ""))
 	var headcount_delta: float = float(Modifiers.resolve_pct("labour_headcount", bid, {"building_id": bid, "instance_id": str(building.get("instance_id", ""))}).get("net", 0.0)) / 100.0
-	var slider_delta: float = MatchState.labour_multiplier - 1.0
-	var policy_delta: float = MatchState.workforce_labour_cost_delta() if is_inf(policy_delta_override) else policy_delta_override
+	var slider_delta: float = LabourState.labour_multiplier - 1.0
+	var policy_delta: float = LabourState.workforce_labour_cost_delta() if is_inf(policy_delta_override) else policy_delta_override
 	return maxf(EconomyConfig.LABOUR_FACTOR_MIN, 1.0 + headcount_delta + slider_delta + policy_delta)
 
 # Aggregate labour snapshot for the People panel's Labour indicator: current £/turn,
@@ -1699,12 +1804,12 @@ func labour_overview() -> Dictionary:
 	var next_turn := 0.0
 	var est_ten := 0.0
 	var at_floor := false
-	var slider_delta: float = MatchState.labour_multiplier - 1.0
-	var policy_now: float = MatchState.workforce_labour_cost_delta()
-	var policy_next: float = MatchState.projected_workforce_labour_delta(1)
-	var policy_ten: float = MatchState.projected_workforce_labour_delta(10)
-	for building in MatchState.buildings.values():
-		if not MatchState.is_player_owned(building):
+	var slider_delta: float = LabourState.labour_multiplier - 1.0
+	var policy_now: float = LabourState.workforce_labour_cost_delta()
+	var policy_next: float = LabourState.projected_workforce_labour_delta(1)
+	var policy_ten: float = LabourState.projected_workforce_labour_delta(10)
+	for building in BuildingState.buildings.values():
+		if not BuildingState.is_player_owned(building):
 			continue
 		var active_recipe: Dictionary = Catalog.get_recipe(str(building.get("recipe_id", "")))
 		var b_base: float = _base_labour_cost(building, active_recipe)
@@ -1745,7 +1850,7 @@ func _calculate_maintenance_cost(building: Dictionary) -> float:
 	var bid: String = str(building.get("building_id", ""))
 	var maint_cost := Modifiers.apply("maintenance", bid, maint_val, {"building_id": bid, "instance_id": str(building.get("instance_id", ""))})
 	# Empire-wide workforce penalty (Lax Safety neglect ramps upkeep up to +100%).
-	maint_cost *= MatchState.workforce_maintenance_multiplier()
+	maint_cost *= LabourState.workforce_maintenance_multiplier()
 	return maint_cost * BuildingLevels.mult("maint", int(building.get("level", 1)))
 
 # Power-consumption modifiers (Pulverised Carbon Injection, Scrap Preheating,
@@ -1779,7 +1884,7 @@ func _effective_power_output(building: Dictionary, recipe: Dictionary) -> int:
 	}
 	var eff := Modifiers.apply("recipe_output", rid, float(output_qty), mod_ctx)
 	eff *= colocated_battery_power_multiplier(building)
-	return int(round(eff * BuildingLevels.mult("output", int(building.get("level", 1))) * MatchState.workforce_output_multiplier() * MatchState.startup_capacity_multiplier(building)))
+	return int(round(eff * BuildingLevels.mult("output", int(building.get("level", 1))) * LabourState.workforce_output_multiplier() * MatchState.startup_capacity_multiplier(building)))
 
 # Wind/solar plants and the battery types (solar b_024 · onshore wind b_025 · offshore wind b_026;
 # electric battery b_028 · thermal battery b_029).
@@ -1793,9 +1898,9 @@ const _BATTERY_BUILDINGS := {"b_028": true, "b_029": true}
 func colocated_battery_power_multiplier(building: Dictionary) -> float:
 	if not _WIND_SOLAR_BUILDINGS.has(str(building.get("building_id", ""))):
 		return 1.0
-	if not MatchState.is_unlocked("Fast Response Storage"):
+	if not ResearchState.is_unlocked("Fast Response Storage"):
 		return 1.0
-	for other in MatchState.get_buildings_on_tile(str(building.get("tile_id", ""))):
+	for other in BuildingState.get_buildings_on_tile(str(building.get("tile_id", ""))):
 		if _BATTERY_BUILDINGS.has(str(other.get("building_id", ""))):
 			return 1.05
 	return 1.0
@@ -1807,7 +1912,7 @@ func colocated_battery_power_multiplier(building: Dictionary) -> float:
 ## outputs and tile size remain whole units. Returns
 ## {energy:float, labour:float, maintenance:float, size:float, inputs:[{name,good_id,qty}], outputs:[{name,good_id,qty}]}.
 func stats_at_level(instance_id: String, level: int) -> Dictionary:
-	var inst: Dictionary = MatchState.buildings.get(instance_id, {})
+	var inst: Dictionary = BuildingState.buildings.get(instance_id, {})
 	if inst.is_empty():
 		return {}
 	# A throwaway copy at the hypothetical level — the private cost/output helpers read building.level.
@@ -1847,7 +1952,7 @@ func stats_at_level(instance_id: String, level: int) -> Dictionary:
 				"good_id": str(good.id), "good_internal": oname,
 			}
 			var q := int(round(Modifiers.apply("recipe_output", rid, float(output.get("qty", 0)), ctx)))
-			out.outputs.append({"name": str(good.get("display_name", oname)), "good_id": str(good.id), "qty": int(round(float(q) * omul * MatchState.workforce_output_multiplier()))})
+			out.outputs.append({"name": str(good.get("display_name", oname)), "good_id": str(good.id), "qty": int(round(float(q) * omul * LabourState.workforce_output_multiplier()))})
 	return out
 
 # Float energy draw (no whole-unit rounding) — for the upgrade panel's cost rows. The live grid
@@ -1879,7 +1984,7 @@ func _power_quality(building: Dictionary, recipe: Dictionary) -> String:
 func _tile_storage_cap(tile_id: String) -> int:
 	# Deposit model: firming comes from the battery CELLS loaded into the tile's housing, not
 	# the housing alone (docs/battery-storage-spec.md). MatchState owns the slot + cell math.
-	return MatchState.tile_firming_cap(tile_id)
+	return Power.tile_firming_cap(tile_id)
 
 ## Intermittent green power made firm in the most recently resolved turn. This is
 ## the measurable output of the battery/intermittency system used by Flow Battery
@@ -1924,7 +2029,7 @@ func _compute_power_intermittency() -> void:
 		green_sources[tile] = (_green_supply_by_tile[tile] as Dictionary).duplicate()
 	var consumers := []
 	for iid in last_turn_run.keys():
-		var b: Dictionary = MatchState.buildings.get(iid, {})
+		var b: Dictionary = BuildingState.buildings.get(iid, {})
 		if b.is_empty():
 			continue
 		var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
@@ -2123,7 +2228,7 @@ func intermittency_derated_count() -> int:
 # {green_from:{iid->qty}, grey_from:{iid->qty}, grid:float}, or {} for non-consumers. This is
 # a per-building illustrative attribution (the grid is a single settled pool), not metered flow.
 func get_power_sources(instance_id: String) -> Dictionary:
-	var b: Dictionary = MatchState.buildings.get(instance_id, {})
+	var b: Dictionary = BuildingState.buildings.get(instance_id, {})
 	if b.is_empty():
 		return {}
 	var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
@@ -2185,7 +2290,7 @@ func _accumulate_by_type(target: Dictionary, building_id: String, amount: float,
 	entry["amount"] = float(entry.get("amount", 0.0)) + amount
 	target[building_id] = entry
 
-func _can_run_recipe(building: Dictionary, recipe: Dictionary) -> Dictionary:
+func _can_run_recipe(building: Dictionary, recipe: Dictionary, service_preflight: bool = false) -> Dictionary:
 	var inputs: Array = recipe.get("inputs", [])
 	var missing: Array = []
 	var tile_id: String = building.get("tile_id", "")
@@ -2196,6 +2301,10 @@ func _can_run_recipe(building: Dictionary, recipe: Dictionary) -> Dictionary:
 	# Check inputs (the JIT direct feed counts — it's real goods staged for this tile)
 	for input in inputs:
 		var have: int = Stockpile.get_at_tile(tile_id, input.good_id) + _feed_available(tile_id, str(input.good_id))
+		if Middleman.supplies_good(str(building.instance_id), str(input.good_id)):
+			have = _scaled_input_qty(input,building) if service_preflight else int(Middleman.entry(str(building.instance_id)).get("inputs",{}).get(str(input.good_id),0))
+		elif service_preflight and not Middleman.enabled(str(building.instance_id)) and Middleman.material_tradeable(str(input.good_id), "input"):
+			have = _scaled_input_qty(input,building)
 		var need := _scaled_input_qty(input, building)
 		if have < need:
 			missing.append({
@@ -2300,7 +2409,7 @@ func _has_waiting_overflow_input(tile_id: String, missing: Array) -> bool:
 			missing_goods[gid] = true
 	if missing_goods.is_empty():
 		return false
-	for shipment in MatchState.get_overflow_shipments_for_tile(tile_id):
+	for shipment in TransportState.get_overflow_shipments_for_tile(tile_id):
 		var gid := str((shipment as Dictionary).get("good_id", ""))
 		if int((shipment as Dictionary).get("qty", 0)) > 0 and missing_goods.has(gid):
 			return true
@@ -2357,15 +2466,15 @@ func _battery_storage_missing_reason(building: Dictionary, recipe: Dictionary = 
 	if str(building_data.get("category", "")) != "battery":
 		return {}
 	var tile_id := str(building.get("tile_id", ""))
-	if tile_id == "" or MatchState.tile_battery_slots(tile_id) <= 0:
+	if tile_id == "" or Power.tile_battery_slots(tile_id) <= 0:
 		return {}
 	var catalysts: Array = recipe.get("catalysts", []) as Array
 	if catalysts.is_empty():
 		# Legacy battery recipes accepted any loaded battery cell.
-		if MatchState.tile_battery_cells_loaded(tile_id) > 0:
+		if Power.tile_battery_cells_loaded(tile_id) > 0:
 			return {}
 	else:
-		var cells: Dictionary = MatchState.get_tile_battery_cells(tile_id)
+		var cells: Dictionary = Power.get_tile_battery_cells(tile_id)
 		for catalyst in catalysts:
 			if int(cells.get(str(catalyst.get("good_id", "")), 0)) > 0:
 				return {}
@@ -2385,9 +2494,10 @@ func _tile_only_input_needed(building: Dictionary, missing: Array) -> int:
 
 func compute_committed_for_tile(tile_id: String) -> Dictionary:
 	var committed: Dictionary = {}
-	for building in MatchState.get_buildings_on_tile(tile_id):
+	for building in BuildingState.get_buildings_on_tile(tile_id):
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
 		for input in recipe.get("inputs", []):
+			if Middleman.supplies_good(str(building.get("instance_id", "")), str(input.good_id)): continue
 			var good_id: String = input.get("good_id", "")
 			var qty: int = _scaled_input_qty(input, building)
 			if good_id != "" and qty > 0:
@@ -2400,17 +2510,18 @@ func compute_committed_for_tile(tile_id: String) -> Dictionary:
 ## committed inputs is NOT enough to protect: the pipeline deliberately keeps
 ## (lead+1) turns on remote tiles, and selling that buffer just makes the next
 ## buy phase re-purchase it at the ask + freight — a sell/re-buy churn loop that
-## starves the tile for a full transport lead (diagnosed 2026-07-09 on Arinnal).
+## starves the tile for a full transport lead.
 ## NPC buildings never consume player stock, so only player buildings reserve.
 func compute_sell_reserve_for_tile(tile_id: String) -> Dictionary:
 	# What the tile burns each turn. Nothing else is needed: neither what it makes nor where the
 	# inputs come from changes the answer any more (see the reserve note below).
 	var need_per_turn: Dictionary = {}    # good_id -> units consumed here each turn
-	for building in MatchState.get_buildings_on_tile(tile_id):
-		if not MatchState.is_player_owned(building):
+	for building in BuildingState.get_buildings_on_tile(tile_id):
+		if not BuildingState.is_player_owned(building):
 			continue
 		var recipe: Dictionary = Catalog.get_recipe(building.get("recipe_id", ""))
 		for input in recipe.get("inputs", []):
+			if Middleman.supplies_good(str(building.get("instance_id", "")), str(input.good_id)): continue
 			var good_id: String = input.get("good_id", "")
 			var qty: int = _scaled_input_qty(input, building)
 			if good_id == "" or qty <= 0:
@@ -2424,7 +2535,7 @@ func compute_sell_reserve_for_tile(tile_id: String) -> Dictionary:
 	# resupply lead here as well double-books it: _buy_market_inputs already sizes its orders
 	# against what is on hand AND what is already in transit, so the lead is bought for a second
 	# time and then never released. That is what kept a consumer burning 40 sitting on 80 (and,
-	# with the lead netted against inbound, on 49) when the owner had asked for 40 — twice.
+	# with the lead netted against inbound, on 49) when it needed 40 — the lead bought twice.
 	#
 	# The trade-off, stated: if a delivery slips a turn the building now runs short instead of
 	# eating into a hidden buffer. The buy pipeline, not the sell reserve, is where that belongs.
@@ -2448,15 +2559,15 @@ func _arrived_this_turn(tile_id: String, good_id: String) -> int:
 
 func _inbound_qty(tile_id: String, good_id: String) -> int:
 	var total := 0
-	for s in MatchState.get_inbound_transport_shipments(tile_id, good_id):
+	for s in TransportState.get_inbound_transport_shipments(tile_id, good_id):
 		if _shipment_reserved_outside_input_pipeline(s):
 			continue
 		total += int(s.get("qty", 0))
 	# Overflow-held goods have already arrived but couldn't unload (tile full); they
-	# sit at the tile and retry every turn. They MUST count as inbound — before
-	# 2026-07-09 they were invisible here, so the pipeline re-bought every bounced
+	# sit at the tile and retry every turn. They MUST count as inbound — if they
+	# are invisible here, the pipeline re-buys every bounced
 	# batch each lead-cycle, forever (the warehouse-cap money incinerator).
-	for r in MatchState.get_overflow_shipments_for_tile(tile_id):
+	for r in TransportState.get_overflow_shipments_for_tile(tile_id):
 		if str(r.get("good_id", "")) != good_id:
 			continue
 		if _shipment_reserved_outside_input_pipeline(r):
@@ -2471,7 +2582,7 @@ func _shipment_reserved_outside_input_pipeline(shipment: Dictionary) -> bool:
 ## Turns of locally-covered input to keep buffered against the intra-turn flush lag (see the
 ## safety-margin note in _buy_market_inputs). Default 1.0 — one turn bridges the one-turn lag
 ## between a same-tile producer's end-of-turn flush and its consumer's start-of-turn draw.
-## POE_INPUT_SAFETY_MARGIN overrides it (0 restores the pre-2026-09 behaviour) for A/B / rollback.
+## POE_INPUT_SAFETY_MARGIN overrides it (0 disables the margin) for A/B / rollback.
 const INPUT_SAFETY_MARGIN_TURNS_DEFAULT := 1.0
 var _safety_margin_cache: float = -1.0
 func _input_safety_margin_turns() -> float:
@@ -2489,13 +2600,14 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 	# Memoise (port, lead) per tile+good for this turn. Lead can be good-specific
 	# because seaport coverage and infra eligibility affect the actual buy quote.
 	var market_lead_cache: Dictionary = {}
+	var global_trade_available := str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1" or ResearchState.global_trade_license_available()
 	# Collect per-BUILDING demand per tile, in deterministic encounter order. Orders
 	# are still netted per (tile, good) against the shared stock + inbound (computing
 	# an order per building would let the first one's order zero out the rest), but
 	# they are ALLOCATED building by building: when the tile's storage can't hold
 	# every building's full (lead+1) buffer, the first buildings get their complete
 	# buffers and the tail gets nothing this turn — one fully-fed building beats ten
-	# at 10% (owner ruling 2026-07-09).
+	# at 10%.
 	# {tile_id -> Array[{instance_id, building_id, inputs: {good_id -> need/turn}}]}
 	var demand_by_tile: Dictionary = {}
 	for building in all_buildings:
@@ -2515,6 +2627,10 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 		var entry := {"instance_id": instance_id, "building_id": str(building.get("building_id", "")), "inputs": {}}
 		for input in inputs:
 			var good_id := str(input.good_id)
+			if Middleman.supplies_good(instance_id, good_id):
+				continue
+			if not global_trade_available:
+				continue  # Global purchasing is a licensed route in the middleman ruleset.
 			if MatchState.is_input_tile_only(instance_id, good_id):
 				if _input_source_exhausted_for(building, input):
 					MatchState.set_input_tile_only(instance_id, good_id, false)
@@ -2548,7 +2664,7 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 			var cache_key := "%s|%s" % [str(tile_id), str(good_id)]
 			var pl: Dictionary = market_lead_cache.get(cache_key, {})
 			if pl.is_empty():
-				var lead_quote := TransportService.quote_market_buy(str(tile_id), str(good_id), 1, MatchState.seaport_would_cover(str(good_id)))
+				var lead_quote := TransportService.quote_market_buy(str(tile_id), str(good_id), 1, TransportState.seaport_would_cover(str(good_id)))
 				pl = {
 					"port": str(lead_quote.get("port", "")),
 					"lead": maxi(1, int(lead_quote.get("turns", 1))),
@@ -2589,59 +2705,31 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 		# Storage budget: never order more than the tile can physically accept once
 		# everything already heading there (or bounced and waiting) has unloaded.
 		# Without this the pipeline happily orders 1000+ units of buffers against an
-		# 800-unit warehouse and the tile deadlocks (owner's turn-13..68 jam).
+		# 800-unit warehouse and the tile deadlocks.
 		# Construction/upgrade-reserved freight is excluded: projects claim it off the
 		# tile the moment it lands, so it passes through rather than occupying storage.
 		var inbound_all := 0
-		for s in MatchState.get_inbound_transport_shipments(str(tile_id)):
+		for s in TransportState.get_inbound_transport_shipments(str(tile_id)):
 			if bool(s.get("is_sale", false)) or _shipment_reserved_outside_input_pipeline(s):
 				continue
 			inbound_all += int(s.get("qty", 0))
 		var held_all := 0
-		for r in MatchState.get_overflow_shipments_for_tile(str(tile_id)):
+		for r in TransportState.get_overflow_shipments_for_tile(str(tile_id)):
 			if not _shipment_reserved_outside_input_pipeline(r):
 				held_all += int(r.get("qty", 0))
 		var budget: int = maxi(0, Stockpile.get_capacity(tile_id) - Stockpile.get_used_capacity(tile_id) - inbound_all - held_all)
 		# Building-first allocation: walk buildings in order; each claims local supply,
 		# then the shared pool, then orders the remainder while budget lasts.
-		var orders: Dictionary = {}   # good_id -> units to order this turn
-		var wanted: Dictionary = {}   # good_id -> units we WOULD order uncapped
-		for e2 in entries:
-			for good_id in (e2.inputs as Dictionary):
-				if str((leads[good_id] as Dictionary).get("port", "")) == "":
-					continue
-				var need: int = int(e2.inputs[good_id])
-				var covered_local: int = mini(need, int(local_pool.get(good_id, 0)))
-				local_pool[good_id] = int(local_pool.get(good_id, 0)) - covered_local
-				var want: int = (need - covered_local) * (int((leads[good_id] as Dictionary).get("lead", 1)) + 1)
-				# SAFETY MARGIN. Same-tile production lands at end of turn (flush_outputs), AFTER this
-				# consumer runs, so a SAME-TILE UNDER-SUPPLIED chain (local makes some but not all of the
-				# demand) starves on the intra-turn lag while the pipeline -- crediting that local output
-				# at full value -- buys too little. Keep ~1 turn of the locally-covered amount in the
-				# market pipeline to bridge it. Gated on `under_supplied`: a self-sufficient same-tile
-				# chain (local >= demand) never starves and needs no buffer; a cross-tile consumer has
-				# local_rate 0 so it already buys the full need. Measured +£21/turn (+30%) on the
-				# 2-desal/2-chem water chain, price impact <0.5%. POE_INPUT_SAFETY_MARGIN overrides the
-				# turn count (default 1) for A/B / rollback.
-				if covered_local > 0 and bool(under_supplied.get(good_id, false)):
-					want += int(ceil(float(covered_local) * _input_safety_margin_turns()))
-				var from_pool: int = mini(want, int(pool.get(good_id, 0)))
-				pool[good_id] = int(pool.get(good_id, 0)) - from_pool
-				var to_order: int = want - from_pool
-				if to_order <= 0:
-					continue
-				wanted[good_id] = int(wanted.get(good_id, 0)) + to_order
-				var placed: int = mini(to_order, budget)
-				budget -= placed
-				if placed > 0:
-					orders[good_id] = int(orders.get(good_id, 0)) + placed
+		var allocation := preload("res://scripts/input_order_planner.gd").allocate(entries, leads, local_pool, pool, under_supplied, budget, _input_safety_margin_turns(), true)
+		var orders: Dictionary = allocation.orders
+		var wanted: Dictionary = allocation.wanted
 		# Structural check: can this tile's warehouse hold the buildings' working set
 		# at all? Import buffers are (lead+1) turns of net need; locally-made
 		# intermediates and outputs each need ~2 turns of room between flush and
 		# consumption/sale. If the total beats capacity, the tile WILL jam sooner or
 		# later no matter how orders are throttled — surface it as a critical update.
 		var required := 0
-		var jit := MatchState.is_unlocked(JIT_UNLOCK_TITLE)
+		var jit := ResearchState.is_unlocked(JIT_UNLOCK_TITLE)
 		for good_id in goods_order:
 			var lr: int = int((_same_tile_supply.get(tile_id, {}) as Dictionary).get(good_id, 0))
 			var gross: int = int(total_need[good_id])
@@ -2652,7 +2740,7 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 				# — unless Just-in-Time Logistics feeds them building-to-building.
 				required += mini(lr, gross) * 2
 		for e5 in entries:
-			var out_building: Dictionary = MatchState.get_building(str(e5.instance_id))
+			var out_building: Dictionary = BuildingState.get_building(str(e5.instance_id))
 			var out_recipe: Dictionary = Catalog.get_recipe(str(out_building.get("recipe_id", "")))
 			for output in out_recipe.get("outputs", []):
 				if str(output.get("internal_name", "")) == "power":
@@ -2675,15 +2763,21 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 				})
 			var order: int = int(orders.get(good_id, 0))
 			if order > 0:
+				var startup_qty := 0
+				for iid: String in allocation.by_instance:
+					var source := BuildingState.get_building(iid)
+					if bool(source.get("startup_inputs_pending", false)) and not BuildingWorks.is_building_paused(iid):
+						startup_qty += int(allocation.by_instance[iid].get(good_id, 0))
 				var bought: Dictionary = MatchState.queue_buy(tile_id, good_id, order, true, {
 					"buy_kind": "input",
 					"auto_input_pipeline": true,
+					"startup_input_share": clampf(float(startup_qty) / float(order), 0.0, 1.0),
 					"buy_building_id": str(rep_building[good_id]),
 				})
 				var got: int = int(bought.get("qty", 0))
 				if got < order:
 					# Cash-clipped (partial) or cash-skipped (empty) order — the silent
-					# starvation path diagnosed 2026-07-09. Record it for the briefing.
+					# starvation path. Record it for the briefing.
 					summary.input_orders_short.append({
 						"tile_id": str(tile_id), "good_id": str(good_id),
 						"requested": order, "bought": got,
@@ -2725,11 +2819,12 @@ func _input_source_exhausted_for(building: Dictionary, input: Dictionary) -> boo
 		return false
 	var saw_exhausted_source := false
 	var saw_live_source := false
-	for producer in MatchState.buildings.values():
+	for producer in BuildingState.buildings.values():
 		if str(producer.get("instance_id", "")) == current_instance_id:
 			continue
-		if not MatchState.is_player_owned(producer):
+		if not BuildingState.is_player_owned(producer):
 			continue
+		if Middleman.buys_output(str(producer.get("instance_id","")), input_good_id): continue
 		var producer_recipe: Dictionary = Catalog.get_recipe(str(producer.get("recipe_id", "")))
 		if producer_recipe.is_empty():
 			continue
@@ -2761,16 +2856,19 @@ func _recipe_output_good_matching_input(recipe: Dictionary, input_good_id: Strin
 func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictionary) -> void:
 	var inputs: Array = recipe.get("inputs", [])
 	var tile_id: String = building.get("tile_id", "")
-	var player_owned := MatchState.is_player_owned(building)
+	var player_owned := BuildingState.is_player_owned(building)
 	var iid: String = str(building.get("instance_id", ""))
 	for input in inputs:
 		var qty := _scaled_input_qty(input, building)
 		# JIT feed first (goods staged building-to-building), warehouse for the rest.
-		var from_feed := _feed_consume(tile_id, str(input.good_id), qty)
-		if qty - from_feed > 0:
-			Stockpile.consume(tile_id, input.good_id, qty - from_feed)
-		if qty > 0:
-			MatchState.flag_agenda_event(MatchState.AGENDA_USED_STOCKPILE)
+		if Middleman.supplies_good(iid, str(input.good_id)):
+			Middleman.consume(iid,str(input.good_id),qty)
+		else:
+			var from_feed := _feed_consume(tile_id, str(input.good_id), qty)
+			if qty - from_feed > 0:
+				Stockpile.consume(tile_id, input.good_id, qty - from_feed)
+		if qty > 0 and not Middleman.supplies_good(iid, str(input.good_id)):
+			AdvisorState.flag_agenda_event(AdvisorState.AGENDA_USED_STOCKPILE)
 		summary.consumed[input.good_id] = summary.consumed.get(input.good_id, 0) + qty
 		# The same figure, kept per TILE. A building consumes from the tile it stands on, so
 		# this is as close to per-building use as the sim records, and it is what lets a

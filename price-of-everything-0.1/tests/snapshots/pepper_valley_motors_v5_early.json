@@ -1,0 +1,1247 @@
+{
+  "benchmark_id": "pepper_valley_motors",
+  "comparison_basis": "matched full batches at controlled goods prices; operating contribution before tax, financing and capital costs",
+  "congestion_accounting_version": 2,
+  "effective_outputs": {
+    "g_008": 33
+  },
+  "factory": {
+    "building_id": "b_007",
+    "instance_id": "inst_b_007_0003e9",
+    "level": 1,
+    "owner": "player_1",
+    "recipe_id": "r_009",
+    "tile_id": "tile_5_4"
+  },
+  "failures": [],
+  "first_production_turn": 5,
+  "first_receipt_turn": 9,
+  "first_regular_shipment_turn": 9,
+  "means": {
+    "congestion": -7.105427357601e-15,
+    "direct_logistics": 58.5099200576388,
+    "direct_operating_contribution": -1.6843919571196,
+    "factory_costs": 68.9683718994808,
+    "factory_labour": 54.8683718994808,
+    "factory_maintenance": 10.5,
+    "factory_power": 3.6,
+    "freight_ad_valorem": 21.854028,
+    "freight_weight_distance": 15.6,
+    "goods_purchases": 238.6944,
+    "goods_receipts": 364.4883,
+    "infrastructure_labour": 0.0,
+    "infrastructure_maintenance": 0.0,
+    "middleman_batch_funding_reference": 262.6944,
+    "middleman_fee_reference": 40.0,
+    "middleman_input_fee_reference": 16.0,
+    "middleman_operating_contribution_reference": 16.8255281005192,
+    "middleman_output_fee_reference": 16.0,
+    "middleman_warehousing_fee_reference": 8.0,
+    "other_transport_fees": 6.57252030578093e-15,
+    "port_export_ad_valorem": 11.6374005205883,
+    "port_flat_fee": 0.0,
+    "port_import_ad_valorem": 7.22917953705042,
+    "sample_first_turn": 10,
+    "sample_last_turn": 19,
+    "transport": 56.3206080576388,
+    "warehousing": 2.189312
+  },
+  "middleman_status": "reference arithmetic only; no middleman simulation executed",
+  "modifiers": {
+    "history": [],
+    "modifiers": {
+      "deposit_penalty_alloy_ore": {
+        "add": 0.0,
+        "added_turn": 1,
+        "domain": "recipe_output",
+        "expires_turn": 0,
+        "id": "deposit_penalty_alloy_ore",
+        "label": "Exhausted Alloy Metals Ore deposits",
+        "mult": 1.0,
+        "pct": -30.0,
+        "source": "deposit_penalty",
+        "target": "*",
+        "target_match": {
+          "good_internal": "alloy_ore"
+        }
+      },
+      "deposit_penalty_basic_salt": {
+        "add": 0.0,
+        "added_turn": 1,
+        "domain": "recipe_output",
+        "expires_turn": 0,
+        "id": "deposit_penalty_basic_salt",
+        "label": "Exhausted Basic Salt deposits",
+        "mult": 1.0,
+        "pct": -30.0,
+        "source": "deposit_penalty",
+        "target": "*",
+        "target_match": {
+          "good_internal": "basic_salt"
+        }
+      },
+      "deposit_penalty_bauxite_ore": {
+        "add": 0.0,
+        "added_turn": 1,
+        "domain": "recipe_output",
+        "expires_turn": 0,
+        "id": "deposit_penalty_bauxite_ore",
+        "label": "Exhausted Bauxite Ore deposits",
+        "mult": 1.0,
+        "pct": -15.0,
+        "source": "deposit_penalty",
+        "target": "*",
+        "target_match": {
+          "good_internal": "bauxite_ore"
+        }
+      },
+      "deposit_penalty_coal": {
+        "add": 0.0,
+        "added_turn": 1,
+        "domain": "recipe_output",
+        "expires_turn": 0,
+        "id": "deposit_penalty_coal",
+        "label": "Exhausted Coal deposits",
+        "mult": 1.0,
+        "pct": -30.0,
+        "source": "deposit_penalty",
+        "target": "*",
+        "target_match": {
+          "good_internal": "coal"
+        }
+      },
+      "deposit_penalty_copper_ore": {
+        "add": 0.0,
+        "added_turn": 1,
+        "domain": "recipe_output",
+        "expires_turn": 0,
+        "id": "deposit_penalty_copper_ore",
+        "label": "Exhausted Copper Ore deposits",
+        "mult": 1.0,
+        "pct": -30.0,
+        "source": "deposit_penalty",
+        "target": "*",
+        "target_match": {
+          "good_internal": "copper_ore"
+        }
+      },
+      "deposit_penalty_iron_ore": {
+        "add": 0.0,
+        "added_turn": 1,
+        "domain": "recipe_output",
+        "expires_turn": 0,
+        "id": "deposit_penalty_iron_ore",
+        "label": "Exhausted Iron Ore deposits",
+        "mult": 1.0,
+        "pct": -30.0,
+        "source": "deposit_penalty",
+        "target": "*",
+        "target_match": {
+          "good_internal": "iron_ore"
+        }
+      },
+      "deposit_penalty_limestone": {
+        "add": 0.0,
+        "added_turn": 1,
+        "domain": "recipe_output",
+        "expires_turn": 0,
+        "id": "deposit_penalty_limestone",
+        "label": "Exhausted Limestone deposits",
+        "mult": 1.0,
+        "pct": -30.0,
+        "source": "deposit_penalty",
+        "target": "*",
+        "target_match": {
+          "good_internal": "limestone"
+        }
+      },
+      "deposit_penalty_ree_ore": {
+        "add": 0.0,
+        "added_turn": 1,
+        "domain": "recipe_output",
+        "expires_turn": 0,
+        "id": "deposit_penalty_ree_ore",
+        "label": "Exhausted Rare Earth Ore deposits",
+        "mult": 1.0,
+        "pct": -30.0,
+        "source": "deposit_penalty",
+        "target": "*",
+        "target_match": {
+          "good_internal": "ree_ore"
+        }
+      },
+      "deposit_penalty_sand": {
+        "add": 0.0,
+        "added_turn": 1,
+        "domain": "recipe_output",
+        "expires_turn": 0,
+        "id": "deposit_penalty_sand",
+        "label": "Exhausted Sand deposits",
+        "mult": 1.0,
+        "pct": -30.0,
+        "source": "deposit_penalty",
+        "target": "*",
+        "target_match": {
+          "good_internal": "sand"
+        }
+      },
+      "deposit_penalty_sulphur": {
+        "add": 0.0,
+        "added_turn": 1,
+        "domain": "recipe_output",
+        "expires_turn": 0,
+        "id": "deposit_penalty_sulphur",
+        "label": "Exhausted Sulphur deposits",
+        "mult": 1.0,
+        "pct": -15.0,
+        "source": "deposit_penalty",
+        "target": "*",
+        "target_match": {
+          "good_internal": "sulphur"
+        }
+      }
+    },
+    "next_id": 1
+  },
+  "observed_run_cash_drawdown": 2050.89102202063,
+  "observed_startup_cash_drawdown": 2034.04710244942,
+  "owned_rail_tiles": [],
+  "rail_corridor_tiles": [],
+  "rail_variant": {},
+  "route_mode": "roads",
+  "route_quotes_at_start": {
+    "buy:g_006": {
+      "cost": 88.2130128,
+      "covered": false,
+      "goods_cost": 79.56144,
+      "port": "tile_5_10",
+      "qty": 32,
+      "route": {
+        "delayed": true,
+        "legs": [
+          {
+            "from": "tile_5_10",
+            "mode": "roads",
+            "to": "tile_5_8"
+          },
+          {
+            "from": "tile_5_8",
+            "mode": "roads",
+            "to": "tile_7_7"
+          },
+          {
+            "from": "tile_7_7",
+            "mode": "roads",
+            "to": "tile_6_5"
+          },
+          {
+            "from": "tile_6_5",
+            "mode": "roads",
+            "to": "tile_5_4"
+          }
+        ],
+        "path": [
+          "tile_5_10",
+          "tile_5_8",
+          "tile_7_7",
+          "tile_6_5",
+          "tile_5_4"
+        ],
+        "reachable": true,
+        "tile_distance": 6,
+        "tiles": [
+          "tile_5_10",
+          "tile_5_9",
+          "tile_5_8",
+          "tile_6_7",
+          "tile_7_7",
+          "tile_7_6",
+          "tile_6_5",
+          "tile_6_4",
+          "tile_5_4"
+        ],
+        "turns": 4
+      },
+      "route_transport_breakdown": {
+        "roads": 6.2647296
+      },
+      "sea_transport": {
+        "at_cap": false,
+        "base_fee": 0.0,
+        "capacity": 1500,
+        "good_id": "g_006",
+        "growth": 1.0,
+        "insurance_fee": 2.3868432,
+        "owned": false,
+        "port": "tile_5_10",
+        "projected_usage": 32,
+        "qty": 32,
+        "surcharge": 1.0,
+        "total": 2.3868432,
+        "transport_class": "solid_heavy",
+        "used_before": 0
+      },
+      "sea_transport_cost": 2.3868432,
+      "transport_cost": 8.6515728,
+      "turns": 4
+    },
+    "buy:g_007": {
+      "cost": 172.5967152,
+      "covered": false,
+      "goods_cost": 159.13296,
+      "port": "tile_5_10",
+      "qty": 32,
+      "route": {
+        "delayed": true,
+        "legs": [
+          {
+            "from": "tile_5_10",
+            "mode": "roads",
+            "to": "tile_5_8"
+          },
+          {
+            "from": "tile_5_8",
+            "mode": "roads",
+            "to": "tile_7_7"
+          },
+          {
+            "from": "tile_7_7",
+            "mode": "roads",
+            "to": "tile_6_5"
+          },
+          {
+            "from": "tile_6_5",
+            "mode": "roads",
+            "to": "tile_5_4"
+          }
+        ],
+        "path": [
+          "tile_5_10",
+          "tile_5_8",
+          "tile_7_7",
+          "tile_6_5",
+          "tile_5_4"
+        ],
+        "reachable": true,
+        "tile_distance": 6,
+        "tiles": [
+          "tile_5_10",
+          "tile_5_9",
+          "tile_5_8",
+          "tile_6_7",
+          "tile_7_7",
+          "tile_7_6",
+          "tile_6_5",
+          "tile_6_4",
+          "tile_5_4"
+        ],
+        "turns": 4
+      },
+      "route_transport_breakdown": {
+        "roads": 8.6897664
+      },
+      "sea_transport": {
+        "at_cap": false,
+        "base_fee": 0.0,
+        "capacity": 1500,
+        "good_id": "g_007",
+        "growth": 1.0,
+        "insurance_fee": 4.7739888,
+        "owned": false,
+        "port": "tile_5_10",
+        "projected_usage": 32,
+        "qty": 32,
+        "surcharge": 1.0,
+        "total": 4.7739888,
+        "transport_class": "solid_heavy",
+        "used_before": 0
+      },
+      "sea_transport_cost": 4.7739888,
+      "transport_cost": 13.4637552,
+      "turns": 4
+    },
+    "sell": {
+      "covered_all": false,
+      "port": "tile_5_10",
+      "route": {
+        "delayed": true,
+        "legs": [
+          {
+            "from": "tile_5_4",
+            "mode": "roads",
+            "to": "tile_6_5"
+          },
+          {
+            "from": "tile_6_5",
+            "mode": "roads",
+            "to": "tile_7_7"
+          },
+          {
+            "from": "tile_7_7",
+            "mode": "roads",
+            "to": "tile_7_9"
+          },
+          {
+            "from": "tile_7_9",
+            "mode": "roads",
+            "to": "tile_5_10"
+          }
+        ],
+        "path": [
+          "tile_5_4",
+          "tile_6_5",
+          "tile_7_7",
+          "tile_7_9",
+          "tile_5_10"
+        ],
+        "reachable": true,
+        "tile_distance": 6,
+        "tiles": [
+          "tile_5_4",
+          "tile_6_4",
+          "tile_6_5",
+          "tile_7_6",
+          "tile_7_7",
+          "tile_7_8",
+          "tile_7_9",
+          "tile_6_9",
+          "tile_5_10"
+        ],
+        "turns": 4
+      },
+      "transport_cost": 22.499532,
+      "turns": 4
+    }
+  },
+  "sample": [
+    {
+      "arrived_inputs": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "cash_change": -1.36430933400658,
+      "congestion": -7.105427357601e-15,
+      "direct_logistics": 58.4251760186305,
+      "direct_operating_contribution": -1.36430933400655,
+      "factory_costs": 68.733033315376,
+      "factory_labour": 54.6330333153761,
+      "factory_maintenance": 10.5,
+      "factory_power": 3.6,
+      "freight_ad_valorem": 21.854028,
+      "freight_weight_distance": 15.6,
+      "goods_purchases": 238.6944,
+      "goods_receipts": 364.4883,
+      "infrastructure_labour": 0.0,
+      "infrastructure_maintenance": 0.0,
+      "middleman_batch_funding_reference": 262.6944,
+      "middleman_fee_reference": 40.0,
+      "middleman_input_fee_reference": 16.0,
+      "middleman_operating_contribution_reference": 17.0608666846239,
+      "middleman_output_fee_reference": 16.0,
+      "middleman_warehousing_fee_reference": 8.0,
+      "ordered": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "other_transport_fees": 0.0,
+      "paid_sales": {
+        "g_008": {
+          "qty": 33,
+          "revenue": 364.4883
+        }
+      },
+      "port_export_ad_valorem": 11.5851281786663,
+      "port_flat_fee": 0.0,
+      "port_import_ad_valorem": 7.19670783996413,
+      "produced": {
+        "g_008": 33
+      },
+      "regular": true,
+      "stock": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "transit": {
+        "buy": {
+          "g_006": 128,
+          "g_007": 128
+        },
+        "sell": {
+          "g_008": 132
+        }
+      },
+      "transport": 56.2358640186305,
+      "transport_breakdown": {
+        "port_fees": 0.0,
+        "port_inbound": 7.19670783996413,
+        "port_insurance": 11.5851281786663,
+        "roads": 37.454028
+      },
+      "turn": 10,
+      "warehousing": 2.189312
+    },
+    {
+      "arrived_inputs": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "cash_change": -1.43521909763177,
+      "congestion": -7.105427357601e-15,
+      "direct_logistics": 58.4439578546491,
+      "direct_operating_contribution": -1.43521909763179,
+      "factory_costs": 68.7851612429827,
+      "factory_labour": 54.6851612429827,
+      "factory_maintenance": 10.5,
+      "factory_power": 3.6,
+      "freight_ad_valorem": 21.854028,
+      "freight_weight_distance": 15.6,
+      "goods_purchases": 238.6944,
+      "goods_receipts": 364.4883,
+      "infrastructure_labour": 0.0,
+      "infrastructure_maintenance": 0.0,
+      "middleman_batch_funding_reference": 262.6944,
+      "middleman_fee_reference": 40.0,
+      "middleman_input_fee_reference": 16.0,
+      "middleman_operating_contribution_reference": 17.0087387570173,
+      "middleman_output_fee_reference": 16.0,
+      "middleman_warehousing_fee_reference": 8.0,
+      "ordered": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "other_transport_fees": 1.77635683940025e-15,
+      "paid_sales": {
+        "g_008": {
+          "qty": 33,
+          "revenue": 364.4883
+        }
+      },
+      "port_export_ad_valorem": 11.596713306845,
+      "port_flat_fee": 0.0,
+      "port_import_ad_valorem": 7.20390454780409,
+      "produced": {
+        "g_008": 33
+      },
+      "regular": true,
+      "stock": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "transit": {
+        "buy": {
+          "g_006": 128,
+          "g_007": 128
+        },
+        "sell": {
+          "g_008": 132
+        }
+      },
+      "transport": 56.2546458546491,
+      "transport_breakdown": {
+        "port_fees": 0.0,
+        "port_inbound": 7.20390454780409,
+        "port_insurance": 11.596713306845,
+        "roads": 37.454028
+      },
+      "turn": 11,
+      "warehousing": 2.189312
+    },
+    {
+      "arrived_inputs": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "cash_change": -1.506211053865,
+      "congestion": -7.105427357601e-15,
+      "direct_logistics": 58.4627584725037,
+      "direct_operating_contribution": -1.50621105386499,
+      "factory_costs": 68.8373525813612,
+      "factory_labour": 54.7373525813612,
+      "factory_maintenance": 10.5,
+      "factory_power": 3.6,
+      "freight_ad_valorem": 21.854028,
+      "freight_weight_distance": 15.6,
+      "goods_purchases": 238.6944,
+      "goods_receipts": 364.4883,
+      "infrastructure_labour": 0.0,
+      "infrastructure_maintenance": 0.0,
+      "middleman_batch_funding_reference": 262.6944,
+      "middleman_fee_reference": 40.0,
+      "middleman_input_fee_reference": 16.0,
+      "middleman_operating_contribution_reference": 16.9565474186387,
+      "middleman_output_fee_reference": 16.0,
+      "middleman_warehousing_fee_reference": 8.0,
+      "ordered": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "other_transport_fees": 8.88178419700125e-15,
+      "paid_sales": {
+        "g_008": {
+          "qty": 33,
+          "revenue": 364.4883
+        }
+      },
+      "port_export_ad_valorem": 11.6083100201518,
+      "port_flat_fee": 0.0,
+      "port_import_ad_valorem": 7.21110845235189,
+      "produced": {
+        "g_008": 33
+      },
+      "regular": true,
+      "stock": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "transit": {
+        "buy": {
+          "g_006": 128,
+          "g_007": 128
+        },
+        "sell": {
+          "g_008": 132
+        }
+      },
+      "transport": 56.2734464725037,
+      "transport_breakdown": {
+        "port_fees": 0.0,
+        "port_inbound": 7.21110845235189,
+        "port_insurance": 11.6083100201518,
+        "roads": 37.454028
+      },
+      "turn": 12,
+      "warehousing": 2.189312
+    },
+    {
+      "arrived_inputs": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "cash_change": -1.57728531561099,
+      "congestion": -7.105427357601e-15,
+      "direct_logistics": 58.4815778909762,
+      "direct_operating_contribution": -1.57728531561102,
+      "factory_costs": 68.8896074246347,
+      "factory_labour": 54.7896074246347,
+      "factory_maintenance": 10.5,
+      "factory_power": 3.6,
+      "freight_ad_valorem": 21.854028,
+      "freight_weight_distance": 15.6,
+      "goods_purchases": 238.6944,
+      "goods_receipts": 364.4883,
+      "infrastructure_labour": 0.0,
+      "infrastructure_maintenance": 0.0,
+      "middleman_batch_funding_reference": 262.6944,
+      "middleman_fee_reference": 40.0,
+      "middleman_input_fee_reference": 16.0,
+      "middleman_operating_contribution_reference": 16.9042925753652,
+      "middleman_output_fee_reference": 16.0,
+      "middleman_warehousing_fee_reference": 8.0,
+      "ordered": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "other_transport_fees": 8.88178419700125e-15,
+      "paid_sales": {
+        "g_008": {
+          "qty": 33,
+          "revenue": 364.4883
+        }
+      },
+      "port_export_ad_valorem": 11.619918330172,
+      "port_flat_fee": 0.0,
+      "port_import_ad_valorem": 7.21831956080425,
+      "produced": {
+        "g_008": 33
+      },
+      "regular": true,
+      "stock": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "transit": {
+        "buy": {
+          "g_006": 128,
+          "g_007": 128
+        },
+        "sell": {
+          "g_008": 132
+        }
+      },
+      "transport": 56.2922658909762,
+      "transport_breakdown": {
+        "port_fees": 0.0,
+        "port_inbound": 7.21831956080425,
+        "port_insurance": 11.619918330172,
+        "roads": 37.454028
+      },
+      "turn": 13,
+      "warehousing": 2.189312
+    },
+    {
+      "arrived_inputs": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "cash_change": -1.64844199595314,
+      "congestion": -7.105427357601e-15,
+      "direct_logistics": 58.5004161288672,
+      "direct_operating_contribution": -1.6484419959531,
+      "factory_costs": 68.9419258670858,
+      "factory_labour": 54.8419258670858,
+      "factory_maintenance": 10.5,
+      "factory_power": 3.6,
+      "freight_ad_valorem": 21.854028,
+      "freight_weight_distance": 15.6,
+      "goods_purchases": 238.6944,
+      "goods_receipts": 364.4883,
+      "infrastructure_labour": 0.0,
+      "infrastructure_maintenance": 0.0,
+      "middleman_batch_funding_reference": 262.6944,
+      "middleman_fee_reference": 40.0,
+      "middleman_input_fee_reference": 16.0,
+      "middleman_operating_contribution_reference": 16.8519741329141,
+      "middleman_output_fee_reference": 16.0,
+      "middleman_warehousing_fee_reference": 8.0,
+      "ordered": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "other_transport_fees": 3.5527136788005e-15,
+      "paid_sales": {
+        "g_008": {
+          "qty": 33,
+          "revenue": 364.4883
+        }
+      },
+      "port_export_ad_valorem": 11.6315382485022,
+      "port_flat_fee": 0.0,
+      "port_import_ad_valorem": 7.22553788036505,
+      "produced": {
+        "g_008": 33
+      },
+      "regular": true,
+      "stock": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "transit": {
+        "buy": {
+          "g_006": 128,
+          "g_007": 128
+        },
+        "sell": {
+          "g_008": 132
+        }
+      },
+      "transport": 56.3111041288672,
+      "transport_breakdown": {
+        "port_fees": 0.0,
+        "port_inbound": 7.22553788036505,
+        "port_insurance": 11.6315382485022,
+        "roads": 37.454028
+      },
+      "turn": 14,
+      "warehousing": 2.189312
+    },
+    {
+      "arrived_inputs": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "cash_change": -1.71968120815313,
+      "congestion": -7.105427357601e-15,
+      "direct_logistics": 58.5192732049961,
+      "direct_operating_contribution": -1.71968120815316,
+      "factory_costs": 68.994308003157,
+      "factory_labour": 54.8943080031571,
+      "factory_maintenance": 10.5,
+      "factory_power": 3.6,
+      "freight_ad_valorem": 21.854028,
+      "freight_weight_distance": 15.6,
+      "goods_purchases": 238.6944,
+      "goods_receipts": 364.4883,
+      "infrastructure_labour": 0.0,
+      "infrastructure_maintenance": 0.0,
+      "middleman_batch_funding_reference": 262.6944,
+      "middleman_fee_reference": 40.0,
+      "middleman_input_fee_reference": 16.0,
+      "middleman_operating_contribution_reference": 16.7995919968429,
+      "middleman_output_fee_reference": 16.0,
+      "middleman_warehousing_fee_reference": 8.0,
+      "ordered": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "other_transport_fees": -1.77635683940025e-15,
+      "paid_sales": {
+        "g_008": {
+          "qty": 33,
+          "revenue": 364.4883
+        }
+      },
+      "port_export_ad_valorem": 11.6431697867507,
+      "port_flat_fee": 0.0,
+      "port_import_ad_valorem": 7.23276341824541,
+      "produced": {
+        "g_008": 33
+      },
+      "regular": true,
+      "stock": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "transit": {
+        "buy": {
+          "g_006": 128,
+          "g_007": 128
+        },
+        "sell": {
+          "g_008": 132
+        }
+      },
+      "transport": 56.3299612049961,
+      "transport_breakdown": {
+        "port_fees": 0.0,
+        "port_inbound": 7.23276341824541,
+        "port_insurance": 11.6431697867507,
+        "roads": 37.454028
+      },
+      "turn": 15,
+      "warehousing": 2.189312
+    },
+    {
+      "arrived_inputs": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "cash_change": -1.79100306565221,
+      "congestion": -7.105427357601e-15,
+      "direct_logistics": 58.5381491382011,
+      "direct_operating_contribution": -1.79100306565221,
+      "factory_costs": 69.0467539274511,
+      "factory_labour": 54.9467539274511,
+      "factory_maintenance": 10.5,
+      "factory_power": 3.6,
+      "freight_ad_valorem": 21.854028,
+      "freight_weight_distance": 15.6,
+      "goods_purchases": 238.6944,
+      "goods_receipts": 364.4883,
+      "infrastructure_labour": 0.0,
+      "infrastructure_maintenance": 0.0,
+      "middleman_batch_funding_reference": 262.6944,
+      "middleman_fee_reference": 40.0,
+      "middleman_input_fee_reference": 16.0,
+      "middleman_operating_contribution_reference": 16.7471460725489,
+      "middleman_output_fee_reference": 16.0,
+      "middleman_warehousing_fee_reference": 8.0,
+      "ordered": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "other_transport_fees": 1.4210854715202e-14,
+      "paid_sales": {
+        "g_008": {
+          "qty": 33,
+          "revenue": 364.4883
+        }
+      },
+      "port_export_ad_valorem": 11.6548129565374,
+      "port_flat_fee": 0.0,
+      "port_import_ad_valorem": 7.23999618166366,
+      "produced": {
+        "g_008": 33
+      },
+      "regular": true,
+      "stock": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "transit": {
+        "buy": {
+          "g_006": 128,
+          "g_007": 128
+        },
+        "sell": {
+          "g_008": 132
+        }
+      },
+      "transport": 56.3488371382011,
+      "transport_breakdown": {
+        "port_fees": 0.0,
+        "port_inbound": 7.23999618166366,
+        "port_insurance": 11.6548129565374,
+        "roads": 37.454028
+      },
+      "turn": 16,
+      "warehousing": 2.189312
+    },
+    {
+      "arrived_inputs": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "cash_change": -1.86240768207051,
+      "congestion": -7.105427357601e-15,
+      "direct_logistics": 58.5570439473393,
+      "direct_operating_contribution": -1.86240768207051,
+      "factory_costs": 69.0992637347312,
+      "factory_labour": 54.9992637347312,
+      "factory_maintenance": 10.5,
+      "factory_power": 3.6,
+      "freight_ad_valorem": 21.854028,
+      "freight_weight_distance": 15.6,
+      "goods_purchases": 238.6944,
+      "goods_receipts": 364.4883,
+      "infrastructure_labour": 0.0,
+      "infrastructure_maintenance": 0.0,
+      "middleman_batch_funding_reference": 262.6944,
+      "middleman_fee_reference": 40.0,
+      "middleman_input_fee_reference": 16.0,
+      "middleman_operating_contribution_reference": 16.6946362652688,
+      "middleman_output_fee_reference": 16.0,
+      "middleman_warehousing_fee_reference": 8.0,
+      "ordered": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "other_transport_fees": 1.77635683940025e-14,
+      "paid_sales": {
+        "g_008": {
+          "qty": 33,
+          "revenue": 364.4883
+        }
+      },
+      "port_export_ad_valorem": 11.6664677694939,
+      "port_flat_fee": 0.0,
+      "port_import_ad_valorem": 7.24723617784532,
+      "produced": {
+        "g_008": 33
+      },
+      "regular": true,
+      "stock": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "transit": {
+        "buy": {
+          "g_006": 128,
+          "g_007": 128
+        },
+        "sell": {
+          "g_008": 132
+        }
+      },
+      "transport": 56.3677319473393,
+      "transport_breakdown": {
+        "port_fees": 0.0,
+        "port_inbound": 7.24723617784532,
+        "port_insurance": 11.6664677694939,
+        "roads": 37.454028
+      },
+      "turn": 17,
+      "warehousing": 2.189312
+    },
+    {
+      "arrived_inputs": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "cash_change": -1.93389517120806,
+      "congestion": -7.105427357601e-15,
+      "direct_logistics": 58.5759576512866,
+      "direct_operating_contribution": -1.93389517120801,
+      "factory_costs": 69.1518375199213,
+      "factory_labour": 55.0518375199214,
+      "factory_maintenance": 10.5,
+      "factory_power": 3.6,
+      "freight_ad_valorem": 21.854028,
+      "freight_weight_distance": 15.6,
+      "goods_purchases": 238.6944,
+      "goods_receipts": 364.4883,
+      "infrastructure_labour": 0.0,
+      "infrastructure_maintenance": 0.0,
+      "middleman_batch_funding_reference": 262.6944,
+      "middleman_fee_reference": 40.0,
+      "middleman_input_fee_reference": 16.0,
+      "middleman_operating_contribution_reference": 16.6420624800786,
+      "middleman_output_fee_reference": 16.0,
+      "middleman_warehousing_fee_reference": 8.0,
+      "ordered": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "other_transport_fees": 1.59872115546023e-14,
+      "paid_sales": {
+        "g_008": {
+          "qty": 33,
+          "revenue": 364.4883
+        }
+      },
+      "port_export_ad_valorem": 11.6781342372634,
+      "port_flat_fee": 0.0,
+      "port_import_ad_valorem": 7.25448341402316,
+      "produced": {
+        "g_008": 33
+      },
+      "regular": true,
+      "stock": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "transit": {
+        "buy": {
+          "g_006": 128,
+          "g_007": 128
+        },
+        "sell": {
+          "g_008": 132
+        }
+      },
+      "transport": 56.3866456512866,
+      "transport_breakdown": {
+        "port_fees": 0.0,
+        "port_inbound": 7.25448341402316,
+        "port_insurance": 11.6781342372634,
+        "roads": 37.454028
+      },
+      "turn": 18,
+      "warehousing": 2.189312
+    },
+    {
+      "arrived_inputs": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "cash_change": -2.00546564704462,
+      "congestion": -7.105427357601e-15,
+      "direct_logistics": 58.5948902689379,
+      "direct_operating_contribution": -2.00546564704464,
+      "factory_costs": 69.2044753781067,
+      "factory_labour": 55.1044753781067,
+      "factory_maintenance": 10.5,
+      "factory_power": 3.6,
+      "freight_ad_valorem": 21.854028,
+      "freight_weight_distance": 15.6,
+      "goods_purchases": 238.6944,
+      "goods_receipts": 364.4883,
+      "infrastructure_labour": 0.0,
+      "infrastructure_maintenance": 0.0,
+      "middleman_batch_funding_reference": 262.6944,
+      "middleman_fee_reference": 40.0,
+      "middleman_input_fee_reference": 16.0,
+      "middleman_operating_contribution_reference": 16.5894246218932,
+      "middleman_output_fee_reference": 16.0,
+      "middleman_warehousing_fee_reference": 8.0,
+      "ordered": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "other_transport_fees": -3.5527136788005e-15,
+      "paid_sales": {
+        "g_008": {
+          "qty": 33,
+          "revenue": 364.4883
+        }
+      },
+      "port_export_ad_valorem": 11.6898123715007,
+      "port_flat_fee": 0.0,
+      "port_import_ad_valorem": 7.26173789743719,
+      "produced": {
+        "g_008": 33
+      },
+      "regular": true,
+      "stock": {
+        "g_006": 32,
+        "g_007": 32
+      },
+      "transit": {
+        "buy": {
+          "g_006": 128,
+          "g_007": 128
+        },
+        "sell": {
+          "g_008": 132
+        }
+      },
+      "transport": 56.4055782689379,
+      "transport_breakdown": {
+        "port_fees": 0.0,
+        "port_inbound": 7.26173789743719,
+        "port_insurance": 11.6898123715007,
+        "roads": 37.454028
+      },
+      "turn": 19,
+      "warehousing": 2.189312
+    }
+  ],
+  "settled_links": [
+    {
+      "cap": 300.0,
+      "flow": 97.0,
+      "key": "tile_5_10|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.323333333333333,
+      "tile_id": "tile_5_10"
+    },
+    {
+      "cap": 300.0,
+      "flow": 97.0,
+      "key": "tile_6_4|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.323333333333333,
+      "tile_id": "tile_6_4"
+    },
+    {
+      "cap": 300.0,
+      "flow": 97.0,
+      "key": "tile_5_4|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.323333333333333,
+      "tile_id": "tile_5_4"
+    },
+    {
+      "cap": 300.0,
+      "flow": 97.0,
+      "key": "tile_7_6|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.323333333333333,
+      "tile_id": "tile_7_6"
+    },
+    {
+      "cap": 300.0,
+      "flow": 97.0,
+      "key": "tile_6_5|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.323333333333333,
+      "tile_id": "tile_6_5"
+    },
+    {
+      "cap": 300.0,
+      "flow": 97.0,
+      "key": "tile_7_7|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.323333333333333,
+      "tile_id": "tile_7_7"
+    },
+    {
+      "cap": 300.0,
+      "flow": 64.0,
+      "key": "tile_6_7|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.213333333333333,
+      "tile_id": "tile_6_7"
+    },
+    {
+      "cap": 300.0,
+      "flow": 64.0,
+      "key": "tile_5_9|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.213333333333333,
+      "tile_id": "tile_5_9"
+    },
+    {
+      "cap": 300.0,
+      "flow": 64.0,
+      "key": "tile_5_8|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.213333333333333,
+      "tile_id": "tile_5_8"
+    },
+    {
+      "cap": 300.0,
+      "flow": 33.0,
+      "key": "tile_6_9|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.11,
+      "tile_id": "tile_6_9"
+    },
+    {
+      "cap": 300.0,
+      "flow": 33.0,
+      "key": "tile_7_8|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.11,
+      "tile_id": "tile_7_8"
+    },
+    {
+      "cap": 300.0,
+      "flow": 33.0,
+      "key": "tile_7_9|roads",
+      "level": 1,
+      "mode": "roads",
+      "ratio": 0.11,
+      "tile_id": "tile_7_9"
+    }
+  ],
+  "spec": {
+    "balance_preset": "targeted-output-gains-2026-09-19",
+    "benchmark_id": "pepper_valley_motors",
+    "building_id": "b_007",
+    "direct": {
+      "initial_shipments": "empty",
+      "initial_stock": "empty",
+      "required_land_mode": "roads",
+      "route": "existing_public_roads_to_catalog_selected_port",
+      "status": "real_simulation"
+    },
+    "energy_req": 30.0,
+    "inputs": {
+      "copper_wiring": 32.0,
+      "steel": 32.0
+    },
+    "level": 1.0,
+    "measurement": {
+      "consecutive_regular_turns": 10.0,
+      "disable_research_events_decisions_public_road_growth": true,
+      "max_turns": 80.0,
+      "minimum_sample_turn": 10,
+      "note": "Matched goods quantities, inputs and factory costs. Normal 3% port rate from turn one under middleman_v1, with existing fee growth. Middleman is reference arithmetic only.",
+      "prices": "reset_to_initial_catalogue_prices_each_turn_in_benchmark_only",
+      "steady_state": "full_production_orders_arrivals_and_paid_sales_each_turn_with_stable_stock_and_transit_quantities"
+    },
+    "middleman": {
+      "display": "Middleman fee with Inputs, Outputs and Warehousing breakdown items",
+      "distance_surcharge": 0.0,
+      "percentage_fee": 0.0,
+      "purchase_fee_per_factory_batch": 16.0,
+      "purchase_fee_scope": "whole_input_basket_not_per_good",
+      "sale_fee_per_factory_batch": 16.0,
+      "scaling": "fixed fees per factory cycle; output modifiers do not multiply fees",
+      "separate_logistics_charges": false,
+      "settlement": "same_turn_funded_inputs_then_production_then_sales",
+      "status": "reference_calculation_until_simulation_implemented",
+      "total_fee_per_full_cycle": 40.0,
+      "warehousing_fee_per_factory_cycle": 8.0,
+      "warehousing_fee_scope": "once per factory turn using provider storage, including operating buffer; not per good, direction or inventory unit",
+      "warehousing_funding": "reserve alongside input funding before production",
+      "zero_activity_fee": 0.0
+    },
+    "outputs": {
+      "motor": 33.0
+    },
+    "previous_contract": "res://tests/scenarios/pepper_valley_motors_fee40.json",
+    "recipe_id": "r_009",
+    "ruleset_overrides": {
+      "logistics_model": "middleman_v1"
+    },
+    "start_file": "res://data/starts/pepper_valley_motors.json",
+    "tile_id": "tile_5_4",
+    "tile_name": "Pepper Valley",
+    "version": 4.0
+  },
+  "stage": "early",
+  "starting_cash": 10000.0,
+  "version": 4.0
+}

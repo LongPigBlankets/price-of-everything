@@ -98,14 +98,14 @@ func _cable(tile: String) -> void:
 
 func _place(building_id: String, recipe_id: String, tile: String) -> String:
 	var size: float = float(Catalog.get_building(building_id).get("tile_size_used", 30.0))
-	var projected: float = MatchState.get_tile_space_used(tile) + size
+	var projected: float = BuildingState.get_tile_space_used(tile) + size
 	var owned: float = float(_land_owned.get(tile, FREE_LAND))
 	if projected > owned:
 		var patches: int = int(ceil((projected - owned) / LAND_PATCH))
 		MatchState.add_money(-float(patches) * LAND_PATCH_COST)
 		_land_owned[tile] = owned + float(patches) * LAND_PATCH
 	MatchState.add_money(-float(Catalog.get_building(building_id).get("base_price", 80.0)))
-	return MatchState.add_building(building_id, recipe_id, tile)
+	return BuildingState.add_building(building_id, recipe_id, tile)
 
 
 func _place_mine(tile: String) -> String:
@@ -152,7 +152,7 @@ func _initialize() -> void:
 	# DISABLE seaport subscriptions so sales route the full distance every turn (the point
 	# of the test). With it on, mines within 10 tiles of the port would ship in 1 covered
 	# turn with no routing, hiding the cost we are measuring.
-	MatchState.seaport_auto_subscribe = false
+	TransportState.seaport_auto_subscribe = false
 	MatchState.set_sell_mode(MatchState.SellMode.BUILDING_BY_BUILDING)
 	await process_frame
 	await process_frame
@@ -191,7 +191,7 @@ func _initialize() -> void:
 	await process_frame
 	await process_frame
 	print("[stress] setup: mines=%d road_tiles=%d cash=%.0f buildings=%d" % [
-		mine_count, _road_tiles.size(), MatchState.money, MatchState.buildings.size()])
+		mine_count, _road_tiles.size(), MatchState.money, BuildingState.buildings.size()])
 
 	# Mid-run build targets.
 	var targets: Array = []
@@ -236,7 +236,7 @@ func _initialize() -> void:
 			_build_turns[turn] = ms
 
 	print("[stress] mid-run builds: %d furnaces, road_tiles now=%d, buildings=%d" % [
-		build_idx, _road_tiles.size(), MatchState.buildings.size()])
+		build_idx, _road_tiles.size(), BuildingState.buildings.size()])
 	_report(mine_count)
 	print("==== DONE routing-stress ====\n")
 	quit(0)

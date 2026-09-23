@@ -14,13 +14,13 @@ func _ready() -> void:
 
 	# Seat a tenured board so advocates speak on the decision cards.
 	for aid: String in ["vera", "tom", "eleanor"]:
-		if not MatchState.permanent_advisor_ids.has(aid):
-			MatchState.permanent_advisor_ids.append(aid)
-		if not MatchState.recruited_advisor_ids.has(aid):
-			MatchState.recruited_advisor_ids.append(aid)
-		MatchState.advisor_hired_turn[aid] = int(TurnManager.current_turn) - 5
-		MatchState.advisor_loyalty[aid] = 0.0
-	MatchState.advisor_seats = {"cfo": "vera", "coo": "tom", "hr_director": "eleanor"}
+		if not AdvisorState.permanent_advisor_ids.has(aid):
+			AdvisorState.permanent_advisor_ids.append(aid)
+		if not AdvisorState.recruited_advisor_ids.has(aid):
+			AdvisorState.recruited_advisor_ids.append(aid)
+		AdvisorState.advisor_hired_turn[aid] = int(TurnManager.current_turn) - 5
+		AdvisorState.advisor_loyalty[aid] = 0.0
+	AdvisorState.advisor_seats = {"cfo": "vera", "coo": "tom", "hr_director": "eleanor"}
 
 	# Two queued decisions (the mini-menu case).
 	DecisionState.enabled = true
@@ -35,8 +35,8 @@ func _ready() -> void:
 
 	# Starved buildings for the Alerts section, then a bankruptcy-grade runway
 	# (money set AFTER the builds so their collateral doesn't lift it back out).
-	var s1 := MatchState.add_building("b_002", "r_003", "tile_6_9", MatchState.LOCAL_PLAYER)
-	var s2 := MatchState.add_building("b_002", "r_005", "tile_7_9", MatchState.LOCAL_PLAYER)
+	var s1 := BuildingState.add_building("b_002", "r_003", "tile_6_9", MatchState.LOCAL_PLAYER)
+	var s2 := BuildingState.add_building("b_002", "r_005", "tile_7_9", MatchState.LOCAL_PLAYER)
 	Production.missing_by_building = {
 		s1: [{"internal_name": "power"}],
 		s2: [{"internal_name": "iron_ore"}],

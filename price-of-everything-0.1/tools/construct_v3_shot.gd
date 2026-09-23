@@ -18,7 +18,7 @@ func _ready() -> void:
 	if cam != null:
 		cam.edge_pan_enabled = false
 
-	MatchState.set_use_construct_panel_v3(true)
+	UiPrefs.set_use_construct_panel_v3(true)
 
 	# bottom_menu.gd is attached to the HUD node itself, not to a node called BottomMenu.
 	var menu = _wm.get_node_or_null("UILayer/HUD")
@@ -36,7 +36,7 @@ func _ready() -> void:
 	await _settle(12)
 
 	print("[V3_SHOT] v3=%s view=%s money=%.2f" % [
-		str(MatchState.use_construct_panel_v3), str(panel._view), MatchState.money])
+		str(UiPrefs.use_construct_panel_v3), str(panel._view), MatchState.money])
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png("res://construct_v3_shot_top.png")
 	print("SAVED construct_v3_shot_top.png")

@@ -21,7 +21,7 @@ const DEFAULT_START := "res://data/starts/default.json"
 # demo_itch length are playable; everything else is greyed with a "Locked in the
 # Demo" tooltip. Flip DEMO_LOCK to false to restore the full menu after the demo.
 const DEMO_LOCK := true
-const DEMO_START_IDS: Array = ["metal_magnate", "glass_merchant"]   # the starts playable in the demo
+const DEMO_START_IDS: Array = ["metal_magnate", "glass_merchant", "pepper_valley_motors"]   # the starts playable in the demo
 const DEMO_DIFFICULTY_ID := "normal"
 ## The length a demo build is pinned to. Now the Itch.io demo itself: 100 turns with its
 ## own policy timeline, rather than a 300-turn campaign the player could never finish.
@@ -485,11 +485,14 @@ func _build_settings_columns(parent: Node) -> void:
 
 	# Telemetry consent (opt-out, docs/telemetry-spec.md §2): defaults to the player's
 	# remembered choice; consumed by main_menu on Start. OUTSIDE the accordion (always visible).
-	_send_metrics = not PlayerProfile.telemetry_opt_out
-	var consent := UIHelpers.make_telemetry_consent_row(_send_metrics)
-	(consent["checkbox"] as CheckBox).toggled.connect(
-			func(on: bool) -> void: _send_metrics = on)
-	parent.add_child(consent["row"])
+	if TelemetryState.SHOW_CONSENT_CHECKBOX:
+		_send_metrics = not PlayerProfile.telemetry_opt_out
+		var consent := UIHelpers.make_telemetry_consent_row(_send_metrics)
+		(consent["checkbox"] as CheckBox).toggled.connect(
+				func(on: bool) -> void: _send_metrics = on)
+		parent.add_child(consent["row"])
+	else:
+		_send_metrics = true   # demo: the row is hidden and every run reports
 
 
 ## Accordion header: a flat, left-aligned toggle in large Bebas Neue cream (the DS Title font),
@@ -606,7 +609,7 @@ func _populate_start_detail(start: Dictionary) -> void:
 	var profit := float(cfg.get("steady_profit_per_turn", _profit_estimate(cfg)))
 	var loss := profit < 0.0
 	var profit_txt := ("−£%s" % _fmt_money(absf(profit))) if loss else ("+£%s" % _fmt_money(profit))
-	fcol.add_child(_fin_row("Avg. profit / turn", profit_txt, Color(0.85, 0.36, 0.32) if loss else null))
+	fcol.add_child(_fin_row("Est. profit / turn" if str(cfg.get("name",""))=="pepper_valley_motors" else "Avg. profit / turn", profit_txt, Color(0.85, 0.36, 0.32) if loss else null))
 
 	# Column 3 — Company colour: the livery every building this company owns is painted in.
 	_start_detail_box.add_child(_colour_column())
@@ -911,6 +914,8 @@ func _on_start_pressed() -> void:
 			# falls back to, so only the demo has to say anything.
 			"policy_timeline": _policy_timeline,
 			"victory_set": _victory_set,
+			# Starts are campaign starts, not tutorial tracks. The optional tutorial is only
+			# enabled when the player explicitly selects it in the tutorial flow.
 			"tutorial_enabled": _tutorial_on,
 			# Advanced Settings: force every land tile surveyed at game start (this
 			# overrides whatever the difficulty's survey config would otherwise do).

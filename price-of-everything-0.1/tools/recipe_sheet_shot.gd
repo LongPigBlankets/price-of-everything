@@ -16,14 +16,14 @@ func _ready() -> void:
 		cam.edge_pan_enabled = false
 
 	MatchState.money = 5000.0
-	var iid: String = MatchState.add_building("b_007", "", "tile_9_9", "player_1", "shot_recipe_sheet")
+	var iid: String = BuildingState.add_building("b_007", "", "tile_9_9", "player_1", "shot_recipe_sheet")
 
 	var panel: Control = game.building_panel_v2
-	panel.show_building(MatchState.get_building(iid))
+	panel.show_building(BuildingState.get_building(iid))
 	await _settle(6)
 
 	print("[recipe_sheet_shot] panel size before sheet=", panel.size)
-	panel._open_recipe_sheet(MatchState.get_building(iid))
+	panel._open_recipe_sheet(BuildingState.get_building(iid))
 	await _settle(10)
 	print("[recipe_sheet_shot] panel size with sheet=", panel.size)
 	var sheet: Control = panel.find_child("ActionSheet", true, false)

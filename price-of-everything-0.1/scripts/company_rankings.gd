@@ -88,6 +88,10 @@ const INDEX_STRIDE := 10_000_000
 const TURN_STRIDE := 10_000
 const GOODS_INCREMENT_TURNS := 5
 const GOODS_INCREMENT_FACTORS: Array[float] = [0.0, 0.2, 0.5, 1.0]
+## The ranking table is a mid-game information surface. Keeping it hidden through the
+## opening turns gives the player time to learn production and cash flow before a cosmetic
+## league table asks them to compare themselves with rivals.
+const REVEAL_TURN := 10
 
 enum CyclePhase { GROW, DECAY, FLAT }
 
@@ -103,6 +107,7 @@ var _player_goods_produced: Dictionary = {}  # good_id -> last resolved turn qua
 ## VictoryState's revenue series is SALES revenue while the table ranks money in, so
 ## replaying standings_for() over it would draw a curve the player never saw.
 var player_rank_history: Array[int] = []
+var _announcement_fired: bool = false
 
 func _ready() -> void:
 	TurnManager.phase_started.connect(_on_phase_started)
@@ -112,14 +117,30 @@ func reset() -> void:
 	_player_revenue_history.clear()
 	_player_goods_produced.clear()
 	player_rank_history.clear()
+	_announcement_fired = false
 	rankings_updated.emit()
+
+func available() -> bool:
+	return int(TurnManager.current_turn) >= REVEAL_TURN
 
 func _on_phase_started(phase: int) -> void:
 	if phase != TurnManager.Phase.AI:
 		return
+	# Keep the hidden history complete so the end screen and any later unlock can
+	# show the whole campaign arc. Only the player-facing table is gated.
 	_record_player_revenue(float(Production.last_turn_summary.get("money_in", 0.0)))
 	_record_player_goods(Production.last_turn_summary.get("produced", {}))
 	_record_player_rank()
+	if available() and not _announcement_fired:
+		_announcement_fired = true
+		EventScheduler.emit_event({
+			"kind": "government_notice",
+			"severity": "info",
+			"title": "Government rankings announced",
+			"body": "The government has asked its statistics department to keep track of the biggest industrial players in Taralia. Company rankings are now available.",
+			"source": "government",
+			"persistent": true,
+		})
 	rankings_updated.emit()
 
 func _record_player_revenue(revenue: float) -> void:
@@ -490,9 +511,11 @@ func export_state() -> Dictionary:
 		"player_revenue_history": _player_revenue_history.duplicate(),
 		"player_goods_produced": _player_goods_produced.duplicate(),
 		"player_rank_history": player_rank_history.duplicate(),
+		"announcement_fired": _announcement_fired,
 	}
 
 func import_state(d: Dictionary) -> void:
+	_announcement_fired = bool(d.get("announcement_fired", false))
 	_player_revenue_history.clear()
 	var raw: Variant = d.get("player_revenue_history", [])
 	if raw is Array:

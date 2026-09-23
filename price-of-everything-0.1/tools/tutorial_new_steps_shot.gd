@@ -46,12 +46,12 @@ func _run() -> void:
 	var wm := get_tree().current_scene
 	# State the lessons assume: factory bought (land granted) + the power cable laid.
 	var fac_iid := ""
-	for iid in MatchState.tile_buildings.get(TILE, []):
-		if str(MatchState.get_building(str(iid)).get("building_id", "")) == "b_007":
+	for iid in BuildingState.tile_buildings.get(TILE, []):
+		if str(BuildingState.get_building(str(iid)).get("building_id", "")) == "b_007":
 			fac_iid = str(iid)
-	MatchState.set_building_owner(fac_iid, MatchState.LOCAL_PLAYER)
-	MatchState.add_building("b_006", "", TILE)
-	print("[SHOT] owned: ", MatchState.get_tile_land_owned(TILE))
+	BuildingState.set_building_owner(fac_iid, MatchState.LOCAL_PLAYER)
+	BuildingState.add_building("b_006", "", TILE)
+	print("[SHOT] owned: ", BuildingState.get_tile_land_owned(TILE))
 
 	# Let the tutorial's own boot (deferred; can re-enter the welcome step a frame
 	# after `active` flips true) fully land before jumping around the steps.

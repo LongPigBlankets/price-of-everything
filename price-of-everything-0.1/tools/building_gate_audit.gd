@@ -13,7 +13,7 @@ func _ready() -> void:
 	var tier_of: Dictionary = {}      # research title -> "I" / "II" / "III"
 	var cat_of: Dictionary = {}
 	var title_of: Dictionary = {}
-	for d_variant: Variant in MatchState._unlock_defs:
+	for d_variant: Variant in ResearchState._unlock_defs:
 		var d: Dictionary = d_variant
 		# Recipes name their gate by research_node_id, buildings by title (and one legacy
 		# short key, "hydro"), so index every handle a gate might use.

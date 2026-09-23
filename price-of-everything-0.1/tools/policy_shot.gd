@@ -20,8 +20,8 @@ func _ready() -> void:
 
 	# 1. BDP v2: a coal plant (b_003/r_004 burns 20 coal → £10 levy at P1) shows the line.
 	var wm: Node = game
-	var iid: String = MatchState.add_building("b_003", "r_004", "tile_5_10", "player_1", "polshot_1")
-	var building: Dictionary = MatchState.buildings[iid]
+	var iid: String = BuildingState.add_building("b_003", "r_004", "tile_5_10", "player_1", "polshot_1")
+	var building: Dictionary = BuildingState.buildings[iid]
 	wm._open_building_detail(building)
 	await _settle(20)
 	# Scroll the economics card (with the Carbon tax line) into view.

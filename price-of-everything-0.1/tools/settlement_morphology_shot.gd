@@ -128,7 +128,7 @@ func _write_metrics(path: String, dynamic_manifest: Dictionary = {}) -> String:
 			"nickname": str(tile_data.get("nickname", "")),
 			"has_river": bool(tile_data.get("has_river", false)),
 			"road_edges": RoadNetwork.instance().edges_on_tile(coord).size(),
-			"gameplay_buildings": MatchState.get_buildings_on_tile(tile_id).size(),
+			"gameplay_buildings": BuildingState.get_buildings_on_tile(tile_id).size(),
 		}
 	record.targets.capital = {
 		"tile_id": "tile_24_8",

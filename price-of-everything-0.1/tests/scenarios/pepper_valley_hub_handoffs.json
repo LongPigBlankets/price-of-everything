@@ -1,0 +1,28 @@
+{
+  "status": "arithmetic experiment, not implemented handoff or hub gameplay",
+  "contract": {
+    "coverage": "own tile plus adjacent tiles; edge is eligible only when both endpoints are covered; crossing edge goes to another covering hub or regular carrier",
+    "equipment": "ceil(covered shipment-hop workload / 10) installed heavy vehicles per hub; no sharing vehicles between hubs",
+    "shipment": "one canonical good/origin/destination batch per adjacent-tile hop; no per-unit charging; split calls must not inflate or reduce workloads",
+    "payload": "All benchmark batches are below 100 units. A proposed 100-unit payload cap would leave these fleet counts unchanged; large-batch handling remains a design requirement.",
+    "handoff": "player retains goods ownership; no new market trade, extra port fee or artificial wait; provider assignment cannot reset progress",
+    "carrier": "existing direct transport tariff, not building-only middleman service",
+    "running": "original full diesel recipe per active hub per turn; five-turn frequency and 100/125/160 LC recipe output are explicit separate sensitivities",
+    "partial_leg_billing": "Prorate existing leg charge by physical edges. Whole-leg-only savings also reported because the current game bills per leg, not per edge.",
+    "limitations": "No live routing, occupancy/returns, loading, capacity failure, hub building capex or overhead simulated. Hub supply bought from middleman. Full corridor placement is geometric, not buildability-validated."
+  },
+  "report": "reports/balance/logistics_hub_handoffs_2026-09-19.json",
+  "rounding_followup": {
+    "rule": "once per hub per turn, round each scaled recipe input half-up, minimum one for positive use, zero while idle",
+    "lc_per_recipe": 125,
+    "no_second_weight_multiplier_on_inputs": true,
+    "report": "reports/balance/hub_rounding_weight_v2_2026-09-19.json",
+    "weights_contract": "tests/scenarios/logistics_hub_lc_weights.json"
+  },
+  "progression": [
+    "middleman",
+    "generic_carrier",
+    "self_owned_logistics_hub"
+  ],
+  "small_hub_uneconomic": "intentional minimum-scale threshold"
+}

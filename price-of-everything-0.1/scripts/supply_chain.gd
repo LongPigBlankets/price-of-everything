@@ -14,14 +14,14 @@ const BuildingNaming := preload("res://scripts/building_naming.gd")
 ## { feeders: [row], dependents: [row], target_name: String }
 ## row = { iid, name, goods: [good_id], good_names: [String] }
 static func neighbours(target_iid: String) -> Dictionary:
-	var target: Dictionary = MatchState.get_building(target_iid)
+	var target: Dictionary = BuildingState.get_building(target_iid)
 	var recipe: Dictionary = Catalog.get_recipe(str(target.get("recipe_id", "")))
 	var target_inputs := _good_set(recipe.get("inputs", []))
 	var target_outputs := _good_set(recipe.get("outputs", []))
 	var feeders: Array = []
 	var dependents: Array = []
-	for b in MatchState.buildings.values():
-		if not MatchState.is_player_owned(b):
+	for b in BuildingState.buildings.values():
+		if not BuildingState.is_player_owned(b):
 			continue
 		var iid := str(b.get("instance_id", ""))
 		if iid == target_iid:
@@ -60,9 +60,9 @@ static func apply(feeders: Array, dependents: Array, modes: Dictionary) -> void:
 
 static func _apply_one(iid: String, mode: String, market_goods: Array) -> void:
 	if mode == "pause":
-		MatchState.set_building_paused(iid, true)
+		BuildingWorks.set_building_paused(iid, true)
 		return
-	MatchState.set_building_paused(iid, false)
+	BuildingWorks.set_building_paused(iid, false)
 	for gid in market_goods:
 		# Allow the market to fulfil what the target used to supply locally.
 		MatchState.set_input_tile_only(iid, str(gid), false)

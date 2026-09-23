@@ -8,6 +8,8 @@ extends Node
 ## scene-reload sequencing (main-menu Load Game) and on-map visual rebuild.
 
 const AppPaths := preload("res://scripts/app_paths.gd")
+const MiddlemanLocations := preload("res://scripts/middleman_locations.gd")
+const MiddlemanService := preload("res://scripts/middleman_service.gd")
 # Version history (migrations in _migrate): 1 = initial format; 2 = adds `ruleset`
 # (match.ruleset + meta.ruleset) so future rule variants can key off saves;
 # 3 = adds special order state; 4 = advisor seats/acquisition; 5 = structured
@@ -17,7 +19,9 @@ const AppPaths := preload("res://scripts/app_paths.gd")
 # 7 = cosmetic company-rankings player revenue history; 8 = last-turn player
 # goods quantities for the rankings' Goods tab; 9 = recorded market price history;
 # 10 = historical player unit costs alongside prices; 11 = saved cost results.
-const SAVE_VERSION := 11
+# 12 = private middleman service; 13 = independent input/output modes and managed source orders;
+# 14 = expanded material classes/sites; 15 = per-good middleman routes and tile surplus destinations.
+const SAVE_VERSION := 15
 const MAIN_SCENE := "res://scenes/main.tscn"
 const DEFAULT_START := "res://data/starts/default.json"
 const BuildingLevels := preload("res://scripts/building_levels.gd")   # start-building levels
@@ -120,15 +124,15 @@ func import_snapshot(snap: Dictionary) -> void:
 	# Advisor-seat modifiers are derived, not saved: re-register them AFTER
 	# Modifiers.import_state (which replaces the registry wholesale and would
 	# otherwise wipe an earlier reconcile). See advisor-system-spec.md §12.1.
-	MatchState.reconcile_advisor_modifiers()
+	AdvisorState.reconcile_advisor_modifiers()
 	# Permanent advisor-mission rewards (perm slices + capstones) are also derived from
 	# advisor_missions_completed, so re-apply them after the Modifiers registry reload.
-	MatchState.reapply_mission_modifiers()
+	AdvisorState.reapply_mission_modifiers()
 	# Scale/condition research unlocks (e.g. Operational Team Managers at 3 buildings)
 	# add their modifier when the unlock fires — but a start/save building import fires
 	# it BEFORE Modifiers.import_state above wipes the registry, and grant_unlock is
 	# one-shot so it never re-fires. Re-apply the permanent ones from unlocked_titles.
-	Modifiers.reapply_unlock_modifiers(MatchState.unlocked_titles)
+	Modifiers.reapply_unlock_modifiers(ResearchState.unlocked_titles)
 	# Missing "victory" key (old saves) -> import_state({}) leaves a fresh zero state.
 	VictoryState.import_state(snap.get("victory", {}))
 	# Additive key (tolerant reader): pre-feature saves seed the policy schedule fresh.
@@ -148,6 +152,7 @@ func import_snapshot(snap: Dictionary) -> void:
 		RoadNetwork.instance().import_state(roads.get("network", {}))
 	RoadWorks.import_state(roads.get("works", {}))
 	_emit_refresh()
+	preload("res://scripts/cash_commitments.gd").reset()
 	match_loaded.emit()
 
 # Imports run silently; the UI is told once, here, at the end. Per-building
@@ -157,8 +162,8 @@ func _emit_refresh() -> void:
 	MatchState.money_changed.emit(MatchState.money)
 	MatchState.surveyed_tiles_changed.emit()
 	MatchState.surveying_in_progress_changed.emit()
-	MatchState.transport_shipments_changed.emit()
-	MatchState.labour_multiplier_changed.emit(MatchState.labour_multiplier)
+	TransportState.transport_shipments_changed.emit()
+	LabourState.labour_multiplier_changed.emit(LabourState.labour_multiplier)
 	MatchState.sell_mode_changed.emit(MatchState.sell_mode)
 	MatchState.route_objective_changed.emit(MatchState.route_objective)
 	Stockpile.stockpile_changed.emit()
@@ -258,9 +263,9 @@ func apply_pending() -> bool:
 func _merge_npc_buildings(snap: Dictionary) -> void:
 	var match_d: Dictionary = snap.get("match", {})
 	var bld: Dictionary = match_d.get("buildings", {})
-	for instance_id in MatchState.buildings:
-		var inst: Dictionary = MatchState.buildings[instance_id]
-		if not MatchState.is_player_owned(inst):
+	for instance_id in BuildingState.buildings:
+		var inst: Dictionary = BuildingState.buildings[instance_id]
+		if not BuildingState.is_player_owned(inst):
 			bld[instance_id] = inst.duplicate(true)
 	match_d["buildings"] = bld
 	snap["match"] = match_d
@@ -307,6 +312,7 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 	# or "market"). Keyed by the instance_id we mint here, so it's robust to array
 	# reordering — no fragile predicted ids. Shape: instance_id -> {good_id -> dest}.
 	var output_routes: Dictionary = {}
+	var service_buildings: Dictionary = {}
 	var counter := START_COUNTER_BASE
 	for entry in cfg.get("buildings", []):
 		var building_id := str(entry.get("building_id", ""))
@@ -325,6 +331,8 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 			# Optional starting upgrade level (1..3); production reads building.level.
 			"level": clampi(int(entry.get("level", 1)), 1, BuildingLevels.MAX_LEVEL),
 		}
+		if str(entry.get("logistics_mode", "")) == "middleman" and tile_id == "tile_5_4" and recipe_id == "r_009":
+			service_buildings[instance_id] = {"coefficient":1.5,"recipe_id":recipe_id,"inputs":{},"outputs":{},"turn":-1,"state":"idle","receipts":{}}
 		var out_to := str(entry.get("output_to", ""))
 		if out_to != "":
 			var dest: String = MatchState.MARKET_DESTINATION if out_to == "market" else out_to
@@ -373,6 +381,25 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 	var override_rules: Dictionary = overrides.get("ruleset", {})
 	for k in override_rules:
 		ruleset[str(k)] = override_rules[k]
+	# Fresh middleman starts enrol every player-owned tradeable building unless the
+	# start explicitly opts out by omitting the new-building flag.  This keeps the
+	# service genuinely building-wide while preserving old saves' rule that a
+	# missing provider payload does not silently activate logistics on load.
+	if str(ruleset.get("logistics_model", "")) == "middleman_v1" and bool(ruleset.get("middleman_new_buildings", false)):
+		for iid in buildings:
+			var start_building: Dictionary = buildings[iid]
+			if str(start_building.get("owner", MatchState.LOCAL_PLAYER)) != MatchState.LOCAL_PLAYER:
+				continue
+			var recipe := Catalog.get_recipe(str(start_building.get("recipe_id", "")))
+			if not (MiddlemanService.recipe_side(recipe, "input") or MiddlemanService.recipe_side(recipe, "output")):
+				continue
+			service_buildings[iid] = {
+				"coefficient": MiddlemanLocations.coefficient(str(start_building.get("tile_id", ""))),
+				"recipe_id": str(start_building.get("recipe_id", "")), "inputs": {}, "outputs": {},
+				"turn": -1, "state": "idle", "receipts": {},
+				"input_mode": "middleman", "output_mode": "middleman",
+				"input_modes": {}, "output_modes": {},
+			}
 	return {
 		"save_version": SAVE_VERSION,
 		"start": true,
@@ -391,6 +418,7 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 			"scenario_name": str(cfg.get("name", "")),
 			"next_instance_counter": counter,
 			"buildings": buildings,
+			"middleman_service": {"schema":1,"match_id":str(Time.get_unix_time_from_system())+":"+str(Time.get_ticks_usec()),"buildings":service_buildings} if not service_buildings.is_empty() and str(ruleset.get("logistics_model","")) == "middleman_v1" else {},
 			"tile_land_owned": (cfg.get("land", {}) as Dictionary).duplicate(true),
 			"surveyed_tiles": surveyed,
 			"unlocked_titles": unlocked,
@@ -667,6 +695,29 @@ func _migrate(snap: Dictionary) -> Dictionary:
 				snap = _migrate_v9_to_v10(snap)
 			10:
 				snap = _migrate_v10_to_v11(snap)
+			11:
+				# Missing provider payload stays disabled, including port-only middleman_v1.
+				snap["save_version"] = 12
+			12:
+				# Old service buildings covered both sides. Missing service remains disabled.
+				for service: Dictionary in snap.get("match",{}).get("middleman_service",{}).get("buildings",{}).values():
+					if not service.has("input_mode"): service["input_mode"]="middleman"
+					if not service.has("output_mode"): service["output_mode"]="middleman"
+				snap["save_version"]=13
+			13:
+				# Expanded material classes/sites: old clients cannot safely execute these batches.
+				# No automatic enrollment or other-start policy changes.
+				snap["save_version"] = 14
+			14:
+				# Per-good route maps inherit each building's former side-wide choice.
+				var services: Dictionary = snap.get("match",{}).get("middleman_service",{}).get("buildings",{})
+				for service: Dictionary in services.values():
+					if not service.has("input_modes"): service["input_modes"] = {}
+					if not service.has("output_modes"): service["output_modes"] = {}
+					for gid in service.get("inputs", {}).keys(): service["input_modes"][str(gid)] = str(service.get("input_mode", "middleman"))
+					for gid in service.get("outputs", {}).keys(): service["output_modes"][str(gid)] = str(service.get("output_mode", "middleman"))
+				snap.get("match",{}).get("middleman_service",{})["buildings"] = services
+				snap["save_version"] = 15
 			_:
 				break
 		version += 1

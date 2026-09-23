@@ -23,22 +23,21 @@ const ANCHOR_PULL := 0.02                          # per-iter fraction pulling a
 # Layered (supply-chain) layout spacing. Generous so panels read as airy columns.
 const COL_SPACING := 470.0                         # legacy column pitch (kept for callers/tests)
 const ROW_GAP := 90.0                              # vertical gap between stacked nodes in a column
-# GUTTERS SIZED FROM DEMAND (owner 2026-09-10). The gap between two adjacent columns is not a
+# GUTTERS SIZED FROM DEMAND. The gap between two adjacent columns is not a
 # constant: it holds every line whose vertical run crosses it, a lane apart, plus the good-icon
 # chip those lines carry and a margin each side. A column pair with no lines keeps MIN_GUTTER;
 # six lanes get 6*LANE_PITCH + CHIP_W + 2*GUTTER_MARGIN. The row gap likewise grows by the
 # lower node's `top_extra` — how far its animated effects (a chimney plume) reach above its
 # box — so a plume never rises into the plate of the node above it.
 const LANE_PITCH := 84.0                           # lane-to-lane distance: DOUBLE the room a chip needs
-                                                   # (owner 2026-09-10: "double the room for each channel")
 const CHIP_W := 74.0                               # the edge good-icon chip (empire_graph_world._LANE_CHIP)
 const GUTTER_MARGIN := 24.0                        # clear space between a lane and the sprite beside it
-const MIN_GUTTER := 70.0                           # column gap with no lines at all (the old 470-400)
+const MIN_GUTTER := 70.0                           # column gap with no lines at all
 const COMP_GAP := 230.0                            # gap between separate chains / isolated nodes
 const FLOW_WIDTH := 3400.0                         # legacy wrap width (no-sector path only)
 const BARY_SWEEPS := 4                             # crossing-reduction passes
 
-# Port-sector layout (owner direction 2026-07-30): chains gather over the port they sell
+# Port-sector layout: chains gather over the port they sell
 # through, so a port's share of the row width GROWS with the empire that feeds it.
 const SECTOR_GAP := 340.0                          # horizontal gap between adjacent port sectors
 const SECTOR_FLOW_WIDTH := 1900.0                  # wrap a sector's chains past this width — keeps
@@ -50,14 +49,14 @@ const SITE_BAND_GAP := 200.0                       # clear band between the bloc
 const RoadHash := preload("res://scripts/road_hash.gd")
 
 
-# FLOW layout (owner 2026-09-10): buy ports in a column on the LEFT, an empty port gutter, the
+# FLOW layout: buy ports in a column on the LEFT, an empty port gutter, the
 # building columns (column 0 = extraction that takes nothing from the market), the sell ports
 # in a column on the RIGHT. Bands = one per sell port, stacked top to bottom in port order.
 const PORT_HALF := Vector2(86.0, 78.0)             # the port hex (= empire_graph.PORT_HALF)
-# MASS mode (owner 2026-09-10): past this many finished buildings the resting view is a grid
+# MASS mode: past this many finished buildings the resting view is a grid
 # of buildings with no lines; selecting one opens its whole chain as a flow chart.
 static var mass_threshold := 10
-## OPTION 2 (crossing study 2026-09-10): within a column, group buildings by the port they
+## PORT-ORDERED COLUMNS: within a column, group buildings by the port they
 ## sell through (and buy from) before the barycentre order, so a port's fan never crosses.
 static var opt_port_order := true
 ## Gutter demand counts CHANNELS, not lines, when the world merges lines: one trunk per
@@ -83,10 +82,10 @@ static func solve(nodes: Array, edges: Array, sell_edges: Array = [], ports: Arr
 	relax(nodes)
 
 
-## FLOW layout entry point (owner 2026-09-10): "buy ports on the left, then a column left empty,
+## FLOW layout entry point: buy ports on the left, then a column left empty,
 ## then the first building column — mines and extraction that require no inputs from the
 ## market — then other buildings and on the far right the sale ports. A port not in use for
-## buying or selling (checked independently) is not shown in that column."
+## buying or selling (checked independently) is not shown in that column.
 ##
 ## Columns are GLOBAL: every band shares the same column x positions, so the view reads as a
 ## grid and every vertical run has a gutter. A node's column is its longest-path layer, with
@@ -877,7 +876,7 @@ static func _layout_component(ids: Array, by_iid: Dictionary, in_e: Dictionary, 
 			_sort_by_bary(cols[col_keys[ci]], out_e, order)
 		_reindex(cols, col_keys, order)
 
-	# Tile clustering (owner direction 2026-07-30): within a column, buildings on the same
+	# Tile clustering: within a column, buildings on the same
 	# map tile become ADJACENT. Runs after the barycenter sweeps and preserves each tile
 	# group's mean crossing-minimized rank, so it trades a few crossings for co-located
 	# buildings reading as one site — not the whole ordering.

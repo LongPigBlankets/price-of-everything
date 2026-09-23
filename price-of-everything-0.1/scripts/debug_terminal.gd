@@ -207,11 +207,11 @@ func _run_command(text: String) -> String:
 			if parts[1].to_lower() == "demo":
 				_demo_unlocked = true
 				MatchState.hidden_buildings_enabled.emit()
-				MatchState.advisors_changed.emit()
+				AdvisorState.advisors_changed.emit()
 				DecisionState.pending_changed.emit()
 				return "Demo restrictions lifted: waste goods, recycling plants and recipes, advisor loyalty, advanced settings and all starts/difficulties/speeds. Reopen panels to refresh."
 			var title := " ".join(parts.slice(1))
-			MatchState.grant_unlock(title)
+			ResearchState.grant_unlock(title)
 			return "Unlocked '%s'." % title
 		"sellmode":
 			if parts.size() < 2:
@@ -232,11 +232,11 @@ func _run_command(text: String) -> String:
 			if parts.size() >= 2 and parts[1].to_lower() == "song":
 				return "Now playing: %s" % Audio.swap_song()
 			if parts.size() >= 2 and parts[1].to_lower() == "construct_panel":
-				MatchState.toggle_use_construct_panel_v2()
-				return "Construct panel → %s" % ("v2 (redesign)" if MatchState.use_construct_panel_v2 else "v1 (classic)")
+				UiPrefs.toggle_use_construct_panel_v2()
+				return "Construct panel → %s" % ("v2 (redesign)" if UiPrefs.use_construct_panel_v2 else "v1 (classic)")
 			if parts.size() >= 2 and parts[1].to_lower() == "construct_panel_v3":
-				MatchState.toggle_use_construct_panel_v3()
-				return "Construct panel v3 (confirm redesign) → %s" % ("ON" if MatchState.use_construct_panel_v3 else "OFF")
+				UiPrefs.toggle_use_construct_panel_v3()
+				return "Construct panel v3 (confirm redesign) → %s" % ("ON" if UiPrefs.use_construct_panel_v3 else "OFF")
 			if parts.size() >= 2 and parts[1].to_lower() == "loading_screen":
 				var legacy: bool = LoadPacing.toggle_legacy_load()
 				return "New-game load → %s  (takes effect on the next New Game)" % (
@@ -248,23 +248,23 @@ func _run_command(text: String) -> String:
 				var legacy_graph: bool = bool(view.call("toggle_legacy_goods_graph"))
 				return "Goods Graph → %s" % ("LEGACY arrows/no-swimlanes/fixed cards" if legacy_graph else "current swimlanes/focus")
 			if " ".join(parts.slice(1)).to_lower() == "empire button":
-				var badge_icon_on: bool = MatchState.toggle_use_empire_button_badge()
+				var badge_icon_on: bool = UiPrefs.toggle_use_empire_button_badge()
 				return "Empire button → %s" % ("badge-centre icon" if badge_icon_on else "bevelled skyline icon")
 			if " ".join(parts.slice(1)).to_lower() == "port badge":
-				var badge_on: bool = MatchState.toggle_show_port_badge()
+				var badge_on: bool = UiPrefs.toggle_show_port_badge()
 				var ev2 := get_tree().current_scene.find_child("EmpireView", true, false) if get_tree().current_scene != null else null
 				if ev2 != null:
 					ev2.call("refresh_graph")
 				return "Port marking → %s" % ("GOLD HEX badge on the sprite" if badge_on else "lines to the port row")
 			if " ".join(parts.slice(1)).to_lower() == "empire view sprite":
-				var sprite_view_on: bool = MatchState.toggle_use_empire_sprite_view()
+				var sprite_view_on: bool = UiPrefs.toggle_use_empire_sprite_view()
 				var empire := get_tree().current_scene.find_child("EmpireView", true, false) if get_tree().current_scene != null else null
 				if empire != null:
 					empire.call("refresh_graph")
 				return "Empire view → %s" % ("SPRITE style (big sprites, plates below, no backdrop)" if sprite_view_on else "classic cards")
 			if " ".join(parts.slice(1)).to_lower() == "topbar v3.1":
-				MatchState.toggle_use_topbar_v3_1()
-				return "Top bar → %s" % ("v3.1 (icon faces)" if MatchState.use_topbar_v3_1 else "classic")
+				UiPrefs.toggle_use_topbar_v3_1()
+				return "Top bar → %s" % ("v3.1 (icon faces)" if UiPrefs.use_topbar_v3_1 else "classic")
 			return "usage: swap song  |  swap bdp  |  swap construct_panel  |  swap construct_panel_v3  |  swap loading_screen  |  swap goods_graph  |  swap empire button  |  swap empire view sprite  |  swap port badge  |  swap topbar v3.1"
 		"survey":
 			if parts.size() >= 2 and parts[1].to_lower() == "limit":
@@ -305,7 +305,7 @@ func _run_command(text: String) -> String:
 			SolvencyState.force_bankruptcy()
 			return "Forced bankruptcy — game over."
 		"distressed":
-			if MatchState.get_advisor_in_seat("cfo") == "":
+			if AdvisorState.get_advisor_in_seat("cfo") == "":
 				return "The distressed program needs a seated CFO."
 			DecisionState.enabled = true
 			var d_err: String = DecisionState.force_draw("distressed_asset")
@@ -403,10 +403,10 @@ func _run_command(text: String) -> String:
 			if parts.size() < 3 or not parts[2].is_valid_float():
 				return "usage: loyalty <advisor_id> <delta>   (e.g. 'loyalty vera -10'; clamped -10..+10)"
 			var aid := parts[1].to_lower()
-			if MatchState._roster_entry(aid).is_empty():
+			if AdvisorState._roster_entry(aid).is_empty():
 				return "unknown advisor '%s'" % aid
-			MatchState.cheat_set_loyalty(aid, float(parts[2]))
-			return "%s loyalty now %.1f" % [aid, MatchState.advisor_loyalty_value(aid)]
+			AdvisorState.cheat_set_loyalty(aid, float(parts[2]))
+			return "%s loyalty now %.1f" % [aid, AdvisorState.advisor_loyalty_value(aid)]
 		"win":
 			# Grant a full victory track (1000 pts / secured). One of:
 			# greenest / logistics / richest / autarkic / widest, or 'all'.
@@ -524,7 +524,7 @@ func _roads_route(tile_a: String, tile_b: String) -> String:
 		result.expansions, elapsed, identity]
 
 func _toggle_debug_logs() -> String:
-	var enabled: bool = MatchState.toggle_debug_turn_logs()
+	var enabled: bool = UiPrefs.toggle_debug_turn_logs()
 	return "verbose turn logs → %s" % ("on" if enabled else "off")
 
 func _style_name() -> String:

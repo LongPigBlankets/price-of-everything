@@ -124,9 +124,9 @@ func _run() -> void:
 	Tutorial._active_board_tiles = Steps.BOARD_TILES.duplicate()
 	Tutorial._apply_board_bounds()
 	TurnManager.current_turn = 20
-	for iid in MatchState.tile_buildings.get(Steps.WINDOW_TILE, []):
-		if str(MatchState.get_building(str(iid)).get("building_id", "")) == "b_007":
-			MatchState.set_building_owner(str(iid), MatchState.LOCAL_PLAYER)
+	for iid in BuildingState.tile_buildings.get(Steps.WINDOW_TILE, []):
+		if str(BuildingState.get_building(str(iid)).get("building_id", "")) == "b_007":
+			BuildingState.set_building_owner(str(iid), MatchState.LOCAL_PLAYER)
 	# Exercise the real cable button: insufficient funds must not complete the step,
 	# while a successful materials order must advance without the retired sourcing dialog.
 	Tutorial._jump_to("lay_cable_factory")
@@ -180,10 +180,8 @@ func _run() -> void:
 	await settle()
 	await tap("OutputDestCard")
 	check(Tutorial.is_active_step("transport_redirect_pick"), "output sheet advances to destination selection")
-	var ship_card: Control = null
-	for label: Label in node_named("ActionSheet").find_children("*", "Label", true, false):
-		if label.text == "Ship to another tile":
-			ship_card = label.get_parent().get_parent().get_parent()
+	# Route choices are icon-only cards named after their title.
+	var ship_card := node_named("ActionSheet").find_child("RouteOption_ShipToAnotherTile", true, false) as Control
 	check(ship_card != null, "ship-to-tile choice exists")
 	if ship_card != null:
 		await click_at(ship_card.get_global_rect().get_center())
@@ -233,10 +231,7 @@ func _run() -> void:
 	await settle()
 	check(Tutorial.is_active_step("revenue_route_market"), "market lesson waits for the player to change the route")
 	await tap("OutputDestCard")
-	var market_card: Control = null
-	for label: Label in node_named("ActionSheet").find_children("*", "Label", true, false):
-		if label.text == "Global market":
-			market_card = label.get_parent().get_parent().get_parent()
+	var market_card := node_named("ActionSheet").find_child("RouteOption_GlobalMarket", true, false) as Control
 	check(market_card != null, "Global market option is available")
 	if market_card != null:
 		await click_at(market_card.get_global_rect().get_center())
@@ -303,7 +298,7 @@ func _run() -> void:
 	Tutorial._run_setup([{"action": "close_research"}])
 	# The branch smoke checks cancel their projects; complete the glass branch fixture
 	# before judging advisor value against the resulting operating business.
-	var furnace_id := MatchState.add_building("b_002", "r_054", Steps.GLASS_TILE)
+	var furnace_id := BuildingState.add_building("b_002", "r_054", Steps.GLASS_TILE)
 	var glass_id := str(Catalog.get_good_by_internal_name("glass").get("id", ""))
 	MatchState.set_output_stockpile_destination(furnace_id, Steps.WINDOW_TILE, glass_id)
 	get_tree().current_scene.tutorial_install_infrastructure([Steps.GLASS_TILE], "reinf_pipes")
@@ -330,9 +325,9 @@ func _run() -> void:
 		var best_net := -INF
 		for candidate: Dictionary in candidates:
 			var aid := str(candidate.get("id", ""))
-			for seat in MatchState.SEAT_DEFINITIONS:
-				if MatchState.is_seat_available(str(seat)):
-					var net: float = MatchState.advisor_bonus_preview_per_turn(aid, str(seat)) - council._salary(aid)
+			for seat in AdvisorState.SEAT_DEFINITIONS:
+				if AdvisorState.is_seat_available(str(seat)):
+					var net: float = AdvisorState.advisor_bonus_preview_per_turn(aid, str(seat)) - council._salary(aid)
 					if net > best_net:
 						best_net = net
 						chosen_id = aid
@@ -356,7 +351,7 @@ func _run() -> void:
 			check(Tutorial.is_active_step("advisors_hire"), "explicit candidate choice advances to hiring")
 			check(Tutorial._overlay._no_dim and not Tutorial._overlay._hole.has_area(), "hiring also leaves the whole screen undimmed")
 			await tap("AdvisorHireAssignButton")
-			check(MatchState.advisor_seats.get(chosen_seat, "") == chosen_id, "the chosen candidate is hired into the selected seat")
+			check(AdvisorState.advisor_seats.get(chosen_seat, "") == chosen_id, "the chosen candidate is hired into the selected seat")
 	Tutorial._jump_to("integration_done")
 	await settle()
 	check(Tutorial.setup_reached, "completion hook remains reachable")

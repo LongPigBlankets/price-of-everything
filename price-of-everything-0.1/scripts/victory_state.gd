@@ -19,7 +19,7 @@ extends Node
 # Saves round-trip via export_state()/import_state(); SaveLoad owns the snapshot.
 
 # ── Tunables — all victory balance lives here (spec §10) ───────────────────
-# The RISING WIN BAR (owner 2026-07-11): you start at 0 points and the points needed
+# The RISING WIN BAR: you start at 0 points and the points needed
 # to win climb from WIN_MIN_THRESHOLD (1 maxed track) at WIN_START_TURN to
 # WIN_MAX_THRESHOLD (4 maxed tracks) at MAX_TURNS — one extra required track per
 # WIN_STEP_TURNS. Milestones: turn 105 → 1 track, 170 → 2, 235 → 3, 300 → 4.
@@ -48,7 +48,7 @@ const AUTARKIC_CAP := 30
 # volume — a real, buy-nothing economy, not an idle one that trivially "buys nothing". Until
 # the player has produced this many units in total, the track contributes 0.
 const AUTARKIC_MIN_UNITS := 10000
-const LOGI_MIN_MOVES := 100  # moves THIS TURN before the track scores (per-turn, owner 2026-07-10)
+const LOGI_MIN_MOVES := 100  # moves THIS TURN before the track scores (per-turn)
 const LOGI_EFF_TURNS := 1
 const LOGI_FLOOR := 0.25
 const RICHEST_WINDOW := 5
@@ -81,7 +81,7 @@ const CAMPAIGN_TRACK_EXPLAIN := {
 	"greenest": "Green share of the power you generate — replace fossil plants with solar & wind. Counts once your network generates 5,000 MW and draws 1,000 MW per turn.",
 }
 
-# ── Demo victory set (owner, 23 Aug) ───────────────────────────────────────
+# ── Demo victory set ───────────────────────────────────────────────────────
 #
 # The campaign tracks are written for 300 turns: they measure sustained states — a buying
 # streak, a profit average, a green SHARE — that a 100-turn demo has no room to build. The
@@ -89,7 +89,7 @@ const CAMPAIGN_TRACK_EXPLAIN := {
 # player can see themselves doing.
 #
 # Each track still maxes at TRACK_MAX (1000), so the shapes downstream are unchanged and
-# the arithmetic the owner specified lands exactly on it:
+# the arithmetic lands exactly on it:
 #   crown     20 turns 1st x 50        = 1000  (or 40 x 25 2nd, or 100 x 10 3rd)
 #   tiers     5 tiers x 200 cap        = 1000
 #   distance  10 shipments x 100       = 1000
@@ -115,7 +115,7 @@ const DEMO_TRACK_EXPLAIN := {
 	"green_demo": "Wind and solar generated THIS TURN. It does not accumulate between turns — your best single turn is what stands, and 4,000 MW fills it.",
 	"estate": "Non-infrastructure buildings you own, up to 30, plus a bonus once 30 or more are running at once.",
 }
-## The demo's flat win bar: 2.5 maxed tracks, and it does not rise (owner). A 100-turn
+## The demo's flat win bar: 2.5 maxed tracks, and it does not rise. A 100-turn
 ## game has no room for a bar that climbs — the campaign's reaches 2 tracks only at turn
 ## 170, so a rising bar inside 100 turns would either never move or move meaninglessly.
 const DEMO_WIN_THRESHOLD := 2500
@@ -126,8 +126,8 @@ const DEMO_WIN_THRESHOLD := 2500
 ##   distance 10 hauls x 100           = 1000
 ##   green    4000 MW / 100 x 25       = 1000
 ##   estate   30 buildings x 30 + 100  = 1000
-## The numbers below are the owner's (23 Aug); the equalities above are pinned by the suite.
-## The Crown pays by PODIUM PLACE, not by first alone (owner, 25 Aug). Because the track
+## The equalities above are pinned by the suite.
+## The Crown pays by PODIUM PLACE, not by first alone. Because the track
 ## counts points rather than turns the three rates mix freely: 20 turns leading fills it,
 ## and so does 40 in second, 100 in third, or any combination that reaches DEMO_CROWN_TARGET.
 ## Fourth and below pay nothing, so slipping off the podium stops the clock rather than
@@ -231,7 +231,7 @@ func get_breakdown() -> Dictionary:
 func conditions_enabled() -> bool:
 	return not bool(MatchState.ruleset.get("tutorial_enabled", false))
 
-# Points needed to win at a given turn — the RISING BAR (owner 2026-07-11). Flat at
+# Points needed to win at a given turn — the RISING BAR. Flat at
 # WIN_MIN_THRESHOLD until WIN_START_TURN, then +WIN_STEP_POINTS per WIN_STEP_TURNS,
 # capped at WIN_MAX_THRESHOLD. Public for tests.
 func win_threshold_for_turn(turn: int) -> int:
@@ -489,8 +489,8 @@ func _richest_metric() -> float:
 # roads/rail/pipes/cables/ports drop out while power, battery and landfill all count.
 func _count_widest_tiles() -> int:
 	var tiles := {}
-	for inst in MatchState.buildings.values():
-		if not MatchState.is_player_owned(inst):
+	for inst in BuildingState.buildings.values():
+		if not BuildingState.is_player_owned(inst):
 			continue
 		var static_b: Dictionary = Catalog.get_building(str(inst.get("building_id", "")))
 		if str(static_b.get("category", "")) == "infrastructure":
@@ -537,8 +537,8 @@ func _demo_tiers_progress() -> float:
 func _demo_distance_progress() -> float:
 	return clampf(float(demo_long_hauls) / float(DEMO_LONG_HAULS), 0.0, 1.0)
 
-## Wind and solar generated THIS TURN. Deliberately not cumulative — the owner's rule is
-## that it does not stack between turns, so the standing score is the best single turn.
+## Wind and solar generated THIS TURN. Deliberately not cumulative — it does not stack
+## between turns, so the standing score is the best single turn.
 func _demo_green_progress() -> float:
 	return clampf(float(_greenest_stats().green) / DEMO_GREEN_TARGET, 0.0, 1.0)
 
@@ -559,9 +559,9 @@ func demo_estate_counts() -> Dictionary:
 	var running := 0
 	# Keyed walk, not .values(): last_turn_run is indexed by instance id, and the id a
 	# building is filed under is the one that answers "did this one run".
-	for iid in MatchState.buildings:
-		var building: Dictionary = MatchState.buildings[iid]
-		if not MatchState.is_player_owned(building):
+	for iid in BuildingState.buildings:
+		var building: Dictionary = BuildingState.buildings[iid]
+		if not BuildingState.is_player_owned(building):
 			continue
 		if _is_infrastructure(str(building.get("building_id", ""))):
 			continue
@@ -742,7 +742,7 @@ func _reset_fields() -> void:
 
 # Standing player-owned buildings (all categories) — the end screen's "buildings" series.
 func _count_player_buildings() -> int:
-	return MatchState.player_building_count()
+	return BuildingState.player_building_count()
 
 func _zero_categories() -> Dictionary:
 	var d := {}

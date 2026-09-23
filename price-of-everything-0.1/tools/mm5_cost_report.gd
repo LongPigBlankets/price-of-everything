@@ -21,9 +21,9 @@ func _ready() -> void:
 
 	# label player buildings
 	var labels := {}
-	for iid in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[iid]
-		if not MatchState.is_player_owned(b): continue
+	for iid in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[iid]
+		if not BuildingState.is_player_owned(b): continue
 		labels[iid] = "%s/%s@%s" % [str(b.get("building_id","")), str(b.get("recipe_id","")), str(b.get("tile_id",""))]
 
 	print("=== buildings ===")

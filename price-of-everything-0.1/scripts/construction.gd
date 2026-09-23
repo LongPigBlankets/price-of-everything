@@ -22,6 +22,9 @@ signal construction_materials_updated(instance_id: String, tile_id: String)
 signal construction_cancelled(instance_id: String, tile_id: String)
 
 const BuildingNaming := preload("res://scripts/building_naming.gd")
+const MiddlemanContract := preload("res://scripts/middleman_contract.gd")
+const MiddlemanLocations := preload("res://scripts/middleman_locations.gd")
+const MiddlemanService := preload("res://scripts/middleman_service.gd")
 const STATUS_UNDER_CONSTRUCTION := "under_construction"
 const STATUS_AWAITING_MATERIALS := "awaiting_materials"
 
@@ -129,7 +132,13 @@ func market_purchase_value(building_id: String) -> float:
 func materials_ledger(building_id: String, tile_id: String) -> Dictionary:
 	var rows: Array = []
 	var subtotal := 0.0
-	var same_tile_only := MatchState.construct_material_source == "same_tile"
+	var source := MatchState.pending_build_material_source if MatchState.pending_build_material_source != "" else MatchState.construct_material_source
+	if source == "ask" or source == "": source = "middleman"
+	if source == "middleman" and str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1": source = "market"
+	if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1" and source in ["same_tile", "any_tile"] and not ResearchState.open_logistics_contracts_available(): source = "middleman"
+	var same_tile_only := source == "same_tile"
+	var middleman_source := source == "middleman"
+	var reservations: Array = []
 	var requirements := requirements_for(building_id)
 	for good_id in requirements:
 		var need: int = int(requirements[good_id])
@@ -146,7 +155,8 @@ func materials_ledger(building_id: String, tile_id: String) -> Dictionary:
 				short = gap
 			else:
 				market_qty = gap
-				var quote := _market_gap_quote(tile_id, str(good_id), gap)
+				var quote := _middleman_gap_quote(tile_id, str(good_id), gap) if middleman_source else _market_gap_quote(tile_id, str(good_id), gap, reservations)
+				reservations.append(_quote_reservation(quote, str(good_id), gap))
 				market_cost = float(quote.get("cost", 0.0))
 				market_turns = int(quote.get("turns", 0))
 				transport_cost = float(quote.get("transport_cost", 0.0))
@@ -162,6 +172,20 @@ func materials_ledger(building_id: String, tile_id: String) -> Dictionary:
 		})
 		subtotal += market_cost
 	return {"rows": rows, "subtotal": subtotal}
+
+
+## Construction kits bought through the intermediary are delivered directly to the
+## project on the next turn.  There is no port shipment or tile route to wait for;
+## the quoted amount is the ordinary buy price plus the location-aware intermediary fee.
+func _middleman_gap_quote(tile_id: String, good_id: String, qty: int) -> Dictionary:
+	var prices := MiddlemanService.prices()
+	var coefficient := MiddlemanLocations.coefficient(tile_id)
+	var quote := MiddlemanContract.quote("buy", [{"good": good_id, "quantity": qty}], prices, coefficient, MiddlemanService.goods())
+	if bool(quote.get("ok", false)):
+		return {"cost": float(quote.get("cash_out", 0.0)), "turns": 1, "transport_cost": float(quote.get("fee", 0.0))}
+	var unit_price := MarketState.get_buy_price(good_id)
+	if unit_price <= 0.0: unit_price = Catalog.get_base_price(good_id)
+	return {"cost": float(qty) * unit_price, "turns": 1, "transport_cost": 0.0}
 
 
 ## Reference estimate for buying `need` units of one good at today's buy price —
@@ -195,17 +219,21 @@ func network_surplus_for_good(good_id: String, exclude_tile_id: String) -> int:
 ## Market quote for buying `qty` of one good for a build: {cost, turns}. Cost is
 ## the tile-aware buy preview (goods + freight) when a site is chosen, else the
 ## plain buy price with turns 0 (no route to quote a lead time from yet).
-func _market_gap_quote(tile_id: String, good_id: String, qty: int) -> Dictionary:
+func _market_gap_quote(tile_id: String, good_id: String, qty: int, reservations: Array = []) -> Dictionary:
 	if tile_id != "":
-		var preview: Dictionary = MatchState.preview_buy(tile_id, good_id, qty)
+		var preview: Dictionary = MatchState.preview_buy(tile_id, good_id, qty, reservations)
 		if not preview.is_empty():
-			return {"cost": float(preview.get("cost", 0.0)), "turns": int(preview.get("turns", 0)),
+			return {"port": str(preview.get("port", "")), "cost": float(preview.get("cost", 0.0)), "turns": int(preview.get("turns", 0)),
 				"transport_cost": float(preview.get("transport_cost", 0.0))}
 	var unit_price := MarketState.get_buy_price(good_id)
 	if unit_price <= 0.0:
 		unit_price = Catalog.get_base_price(good_id)
 	return {"cost": float(qty) * unit_price, "turns": 0}
 
+
+func _quote_reservation(quote: Dictionary, good: String, qty: int) -> Dictionary:
+	return {"source_tile": str(quote.get("port", "")), "good_id": good, "qty": qty,
+		"construction_order_pending": true, "is_purchase": true}
 
 # Whether the target tile holds every required material, and what's short.
 # Returns {satisfied: bool, missing: {good_id: qty_short}, required: {good_id: qty}}.
@@ -235,7 +263,7 @@ func start_on_tile(building_id: String, recipe_id: String, tile_id: String, buil
 
 	var building: Dictionary = Catalog.get_building(building_id)
 	var duration: int = MatchState.effective_build_duration(building_id)
-	var instance_id: String = MatchState.reserve_instance_id(building_id)
+	var instance_id: String = BuildingState.reserve_instance_id(building_id)
 
 	if duration <= 0:
 		# Degenerate (no construction time): complete at once, but still fire the lifecycle
@@ -271,9 +299,25 @@ func start_on_tile(building_id: String, recipe_id: String, tile_id: String, buil
 func estimate_market_cost(tile_id: String, building_id: String) -> float:
 	var missing: Dictionary = check_tile(tile_id, building_id).get("missing", {})
 	var total: float = 0.0
+	var reservations: Array = []
 	for good_id in missing:
-		var preview: Dictionary = MatchState.preview_buy(tile_id, good_id, int(missing[good_id]))
+		var preview: Dictionary = MatchState.preview_buy(tile_id, good_id, int(missing[good_id]), reservations)
+		reservations.append(_quote_reservation(preview, str(good_id), int(missing[good_id])))
 		total += float(preview.get("cost", 0.0))
+	return total
+
+
+func estimate_middleman_cost(tile_id: String, building_id: String) -> float:
+	var missing: Dictionary = check_tile(tile_id, building_id).get("missing", {})
+	var total := 0.0
+	var free_remaining := MatchState.middleman_free_units
+	for good_id in missing:
+		var qty := int(missing[good_id])
+		var quote := _middleman_gap_quote(tile_id, str(good_id), qty)
+		var free := mini(qty, free_remaining)
+		free_remaining -= free
+		var unit_cost := float(quote.get("cost", 0.0)) / float(maxi(1, qty))
+		total += unit_cost * float(qty - free)
 	return total
 
 
@@ -286,20 +330,21 @@ func start_awaiting_market(building_id: String, recipe_id: String, tile_id: Stri
 	var missing: Dictionary = check_tile(tile_id, building_id).get("missing", {})
 	var building: Dictionary = Catalog.get_building(building_id)
 	var duration: int = MatchState.effective_build_duration(building_id)
-	var instance_id: String = MatchState.reserve_instance_id(building_id)
+	var instance_id: String = BuildingState.reserve_instance_id(building_id)
 	var output_destination := MatchState.construct_output_destination
 
-	# Reserve the in-place portion of every material RIGHT NOW, so co-located production
-	# buildings can't consume it before claim_materials runs. Only the shortfall is then
-	# bought and remains to be claimed on arrival. (Previously the in-place goods were
-	# left on the tile to be claimed "next PROCESS", which let production eat them first
-	# and stalled the build.)
+	# Reserve all market orders before taking local stock. A failed quote rolls
+	# back only this project's reservations, so confirmation cannot partly spend.
+	for good_id in missing:
+		var bought := MatchState.queue_buy(tile_id, good_id, int(missing[good_id]), false,
+			{"construction_instance_id": instance_id, "reserve_construction": true})
+		if int(bought.get("qty", 0)) != int(missing[good_id]) and not TurnManager.is_resolving:
+			TransportState.cancel_construction_reservations(instance_id)
+			return ""
 	for good_id in reqs:
 		var on_tile_part: int = int(reqs[good_id]) - int(missing.get(good_id, 0))
 		if on_tile_part > 0:
 			Stockpile.consume(tile_id, good_id, on_tile_part)
-	for good_id in missing:
-		MatchState.queue_buy(tile_id, good_id, int(missing[good_id]), false, {"construction_instance_id": instance_id})
 
 	construction_projects[instance_id] = {
 		"instance_id": instance_id,
@@ -317,6 +362,57 @@ func start_awaiting_market(building_id: String, recipe_id: String, tile_id: Stri
 		"startup_half_capacity": MatchState.construct_start_half_capacity and recipe_id != "",
 		"output_destination": output_destination,
 	}
+	construction_projects[instance_id]["name"] = BuildingNaming.label_for_tile(tile_id, instance_id, building_id, recipe_id)
+	materials_ordered.emit(instance_id, tile_id)
+	return instance_id
+
+
+## Start a construction project with a private intermediary delivery.  The paid kit is
+## held against the project rather than placed in the shared warehouse, so it cannot be
+## consumed by another building while the build waits.  It is claimed at the next
+## PROCESS phase, making this materially faster than a port shipment while preserving
+## the existing awaiting-materials lifecycle and cancellation/refund behaviour.
+func start_awaiting_middleman(building_id: String, recipe_id: String, tile_id: String, build_cost: float = 0.0) -> String:
+	var reqs: Dictionary = requirements_for(building_id)
+	var missing: Dictionary = check_tile(tile_id, building_id).get("missing", {})
+	var material_cost := estimate_middleman_cost(tile_id, building_id)
+	if MatchState.money + 0.0001 < material_cost and not TurnManager.is_resolving:
+		return ""
+	if material_cost > 0.0:
+		MatchState.add_money(-material_cost)
+	var free_remaining := MatchState.middleman_free_units
+	for good_id in missing:
+		var qty := int(missing[good_id])
+		var free := mini(qty, free_remaining)
+		free_remaining -= free
+		MatchState.consume_middleman_free_units(free)
+		ResearchState.note_middleman_shipment(str(good_id), qty)
+	var building: Dictionary = Catalog.get_building(building_id)
+	var duration: int = MatchState.effective_build_duration(building_id)
+	var instance_id: String = BuildingState.reserve_instance_id(building_id)
+	var output_destination := MatchState.construct_output_destination
+	for good_id in reqs:
+		var on_tile_part: int = int(reqs[good_id]) - int(missing.get(good_id, 0))
+		if on_tile_part > 0:
+			Stockpile.consume(tile_id, str(good_id), on_tile_part)
+	construction_projects[instance_id] = {
+			"instance_id": instance_id,
+			"building_id": building_id,
+			"recipe_id": recipe_id,
+			"tile_id": tile_id,
+			"status": STATUS_AWAITING_MATERIALS,
+			"required_materials": reqs,
+			"missing_materials": missing.duplicate(),
+			"private_materials": missing.duplicate(),
+			"turns_remaining": duration,
+			"construction_duration": duration,
+			"reserved_space": float(building.get("tile_size_used", 1)),
+			"source": {"kind": "middleman", "turns": 1},
+			"build_cost": build_cost,
+			"material_cost": material_cost,
+			"startup_half_capacity": MatchState.construct_start_half_capacity and recipe_id != "",
+			"output_destination": output_destination,
+		}
 	construction_projects[instance_id]["name"] = BuildingNaming.label_for_tile(tile_id, instance_id, building_id, recipe_id)
 	materials_ordered.emit(instance_id, tile_id)
 	return instance_id
@@ -359,7 +455,7 @@ func start_awaiting_from_tile(building_id: String, recipe_id: String, dest_tile:
 	var missing: Dictionary = check_tile(dest_tile, building_id).get("missing", {})
 	var building: Dictionary = Catalog.get_building(building_id)
 	var duration: int = MatchState.effective_build_duration(building_id)
-	var instance_id: String = MatchState.reserve_instance_id(building_id)
+	var instance_id: String = BuildingState.reserve_instance_id(building_id)
 	var output_destination := MatchState.construct_output_destination
 
 	# Reserve the in-place portion now (see start_awaiting_market); only the shortfall is
@@ -368,7 +464,7 @@ func start_awaiting_from_tile(building_id: String, recipe_id: String, dest_tile:
 		var on_tile_part: int = int(reqs[good_id]) - int(missing.get(good_id, 0))
 		if on_tile_part > 0:
 			Stockpile.consume(dest_tile, good_id, on_tile_part)
-	MatchState.queue_move(source_tile, dest_tile, missing, false, {"construction_instance_id": instance_id})
+	TransportState.queue_move(source_tile, dest_tile, missing, false, {"construction_instance_id": instance_id, "reserve_construction": not TurnManager.is_resolving})
 
 	construction_projects[instance_id] = {
 		"instance_id": instance_id,
@@ -420,13 +516,13 @@ func reorder_market_materials() -> void:
 			# NOT pre-counted because claim_materials (which runs just before this)
 			# has already consumed everything available off the tile.
 			var inbound: int = 0
-			for shipment in MatchState.get_inbound_transport_shipments(tile_id, str(good_id)):
+			for shipment in TransportState.get_inbound_transport_shipments(tile_id, str(good_id)):
 				if str(shipment.get("construction_instance_id", "")) == instance_id:
 					inbound += int(shipment.get("qty", 0))
 			# Our freight that arrived at a full tile waits in overflow-hold — it is
 			# still ours and still coming; without counting it, a jammed tile makes
 			# this loop re-buy the same materials every lead-cycle.
-			for held in MatchState.get_overflow_shipments_for_tile(tile_id):
+			for held in TransportState.get_overflow_shipments_for_tile(tile_id):
 				if str(held.get("construction_instance_id", "")) == instance_id \
 						and str(held.get("good_id", "")) == str(good_id):
 					inbound += int(held.get("qty", 0))
@@ -455,16 +551,26 @@ func claim_materials() -> void:
 			continue
 		var tile_id: String = str(project.get("tile_id", ""))
 		var missing: Dictionary = project["missing_materials"]
+		var private_materials: Dictionary = project.get("private_materials", {})
 		var changed: bool = false
 		for good_id in missing.keys():
-			var need: int = int(missing[good_id])
-			var take: int = Stockpile.consume(tile_id, good_id, need)  # consume returns amount taken
+			var original_need: int = int(missing[good_id])
+			var need: int = original_need
+			var private_take: int = mini(int(private_materials.get(good_id, 0)), need)
+			if private_take > 0:
+				private_materials[good_id] = int(private_materials.get(good_id, 0)) - private_take
+				if int(private_materials.get(good_id, 0)) <= 0: private_materials.erase(good_id)
+				need -= private_take
+				changed = true
+			var take: int = Stockpile.consume(tile_id, good_id, need) if need > 0 else 0  # consume returns amount taken
+			take += private_take
 			if take > 0:
 				changed = true
-				if take >= need:
+				if take >= original_need:
 					missing.erase(good_id)
 				else:
-					missing[good_id] = need - take
+					missing[good_id] = original_need - take
+		project["private_materials"] = private_materials
 		if missing.is_empty():
 			project["status"] = STATUS_UNDER_CONSTRUCTION
 			project["turns_remaining"] = int(project.get("construction_duration", 0))
@@ -475,14 +581,15 @@ func claim_materials() -> void:
 
 # Cancel a project in either state. Refunds the full build cost, returns every material the
 # project has already secured to its tile, and frees the reserved space. Materials still in
-# transit are left to arrive as ordinary stockpile goods (with the project gone, claim_materials
-# ignores them) — no transport surgery, no goods refund. Returns true if a project was cancelled.
+# transit after End Turn are left to arrive as ordinary stock. Undispatched orders
+# are cancelled and their prepayments refunded. Returns true if a project was cancelled.
 func cancel(instance_id: String) -> bool:
 	if not construction_projects.has(instance_id):
 		return false
 	var project: Dictionary = construction_projects[instance_id]
 	var tile_id: String = str(project.get("tile_id", ""))
 
+	TransportState.cancel_construction_reservations(instance_id)
 	var refund: float = float(project.get("build_cost", 0.0))
 	if refund > 0.0:
 		MatchState.add_money(refund)
@@ -506,7 +613,7 @@ func cancel(instance_id: String) -> bool:
 # 0 means it's already there / arriving this turn. -1 means nothing inbound (unknown / on-tile).
 func material_arrival_eta(tile_id: String, good_id: String) -> int:
 	var best: int = -1
-	for shipment in MatchState.get_inbound_transport_shipments(tile_id, good_id):
+	for shipment in TransportState.get_inbound_transport_shipments(tile_id, good_id):
 		var turns: int = int(shipment.get("turns_remaining", 0))
 		if best < 0 or turns < best:
 			best = turns
@@ -543,7 +650,8 @@ func tick_turn() -> Array:
 		# offering the facility for a stretch of rail was simply wrong. Purchases never reach
 		# here at all (they are not construction projects); they get seeded stock instead.
 		if int(project["turns_remaining"]) == 1 and MatchState.can_open_building_tab() \
-				and not Catalog.get_recipe(str(project.get("recipe_id", ""))).get("inputs", []).is_empty():
+				and not Catalog.get_recipe(str(project.get("recipe_id", ""))).get("inputs", []).is_empty() \
+				and not preload("res://scripts/middleman_service.gd").default_for(str(project.get("recipe_id","")),str(project.get("tile_id",""))):
 			if MatchState.open_building_tab(str(instance_id)):
 				building_tab_opened.emit(str(instance_id))
 		if int(project["turns_remaining"]) <= 0:
@@ -580,7 +688,7 @@ func _promote(instance_id: String) -> void:
 	# Carry the real paid build cost (money, density-aware) + the consumed material kit
 	# onto the live instance, so MatchState.refund_cost can give an exact demolish refund.
 	# These ride in MatchState.buildings, so save/load persists them for free.
-	var inst: Dictionary = MatchState.buildings.get(instance_id, {})
+	var inst: Dictionary = BuildingState.buildings.get(instance_id, {})
 	if not inst.is_empty():
 		inst["build_cost"] = float(project.get("build_cost", 0.0))
 		inst["build_materials"] = (project.get("required_materials", {}) as Dictionary).duplicate()
@@ -589,11 +697,21 @@ func _promote(instance_id: String) -> void:
 
 # Promotion seam: turn a (pending) construction into a live building, reusing the stable id.
 func _complete_build(building_id: String, recipe_id: String, tile_id: String, instance_id: String, startup_half_capacity: bool = false, output_destination: String = "") -> String:
-	var completed_id := MatchState.add_building(building_id, recipe_id, tile_id, MatchState.LOCAL_PLAYER, instance_id)
-	if startup_half_capacity and MatchState.buildings.has(completed_id):
-		MatchState.buildings[completed_id]["startup_half_capacity"] = true
+	var completed_id := BuildingState.add_building(building_id, recipe_id, tile_id, MatchState.LOCAL_PLAYER, instance_id)
+	if BuildingState.buildings.has(completed_id):
+		# Optional saved planning marker; authored starting businesses default to online.
+		BuildingState.buildings[completed_id]["startup_inputs_pending"] = true
+	if startup_half_capacity and BuildingState.buildings.has(completed_id):
+		BuildingState.buildings[completed_id]["startup_half_capacity"] = true
 	var destination := output_destination if output_destination in ["market", "same_tile"] else MatchState.construct_output_destination
 	var recipe := Catalog.get_recipe(recipe_id)
+	# In a middleman campaign, leave tradeable outputs without a generic route
+	# until the service enrollment below. The per-good intermediary mode is the
+	# authoritative destination; writing the construction fallback first makes a
+	# later license/contract unlock appear to have changed the building to a tile
+	# stockpile. A route explicitly chosen while the project was pending still wins
+	# through has_output_destination().
+	var middleman_default := MiddlemanService.default_for(recipe_id, tile_id)
 	for output in recipe.get("outputs", []):
 		var good_id := str(output.get("good_id", ""))
 		if good_id == "":
@@ -606,10 +724,13 @@ func _complete_build(building_id: String, recipe_id: String, tile_id: String, in
 		# what made the e2e motor chain never route steel to its assembly tile).
 		if MatchState.has_output_destination(completed_id, good_id):
 			continue
+		if middleman_default and MiddlemanService.material_tradeable(good_id, "output"):
+			continue
 		if destination == "same_tile":
 			MatchState.set_output_stockpile_destination(completed_id, tile_id, good_id)
 		else:
 			MatchState.route_output_to_market(completed_id, good_id)
+	MiddlemanService.enroll_completed(completed_id)
 	return completed_id
 
 

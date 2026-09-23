@@ -228,11 +228,11 @@ func _build_row(r: Dictionary) -> Control:
 func _consumer_rows() -> Array:
 	var consumers: Array = []
 	var local_supply := 0
-	var iids: Array = MatchState.tile_buildings.get(_tile_id, []).duplicate()
+	var iids: Array = BuildingState.tile_buildings.get(_tile_id, []).duplicate()
 	iids.sort()
 	for iid in iids:
-		var inst: Dictionary = MatchState.buildings.get(str(iid), {})
-		if inst.is_empty() or not MatchState.is_player_owned(inst):
+		var inst: Dictionary = BuildingState.buildings.get(str(iid), {})
+		if inst.is_empty() or not BuildingState.is_player_owned(inst):
 			continue
 		var recipe: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))
 		if recipe.is_empty():

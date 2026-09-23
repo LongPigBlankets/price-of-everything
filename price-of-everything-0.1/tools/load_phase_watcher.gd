@@ -18,7 +18,7 @@ func _process(_d: float) -> void:
 	if now - _last_report >= 1000:
 		var window_frames := _frames - _frames_at_report
 		var avg_ms := float(now - _last_report) / maxf(1.0, float(window_frames))
-		var n_buildings := MatchState.buildings.size()
+		var n_buildings := BuildingState.buildings.size()
 		var n_edges := RoadNetwork.instance().edges.size()
 		print("PHASE t+%6d ms  frames=%5d  (win %3d f, avg %5.1f ms/f)  buildings=%4d  road_edges=%4d" %
 			[now - _t0, _frames, window_frames, avg_ms, n_buildings, n_edges])
@@ -67,13 +67,13 @@ func _process(_d: float) -> void:
 		if bv != null and bv.has_method("has_placement"):
 			var missing_by_bid: Dictionary = {}
 			var missing := 0
-			for iid in MatchState.buildings:
+			for iid in BuildingState.buildings:
 				if not bv.has_placement(str(iid)):
 					missing += 1
-					var bid := str(MatchState.buildings[iid].get("building_id", ""))
+					var bid := str(BuildingState.buildings[iid].get("building_id", ""))
 					missing_by_bid[bid] = int(missing_by_bid.get(bid, 0)) + 1
 			print("PHASE placements missing for %d/%d buildings, by id: %s" %
-				[missing, MatchState.buildings.size(), missing_by_bid])
+				[missing, BuildingState.buildings.size(), missing_by_bid])
 		get_tree().quit(0)
 
 const _GoodsFlowGraph := preload("res://scripts/goods_flow_graph.gd")

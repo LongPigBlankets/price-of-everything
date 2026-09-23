@@ -12,7 +12,7 @@ func _ready() -> void:
 		cam.edge_pan_enabled = false
 
 	var tile := "tile_5_10"
-	MatchState.add_building("b_001", "r_001", tile, "player_1", "tabs_probe", false)
+	BuildingState.add_building("b_001", "r_001", tile, "player_1", "tabs_probe", false)
 	Stockpile.add(tile, "g_001", 180)
 	await _settle(4)
 

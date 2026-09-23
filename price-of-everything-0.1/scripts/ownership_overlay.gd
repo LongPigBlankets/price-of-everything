@@ -60,9 +60,9 @@ func _ready() -> void:
 	MapMode.mode_cleared.connect(_deactivate)
 	# Coalesced (the notification-bell pattern): building_added fires in bursts during a
 	# build-out, and each one would otherwise re-walk every tile.
-	MatchState.building_added.connect(_queue_rebuild)
-	MatchState.building_removed.connect(_queue_rebuild)
-	MatchState.tile_land_owned_changed.connect(_queue_rebuild)
+	BuildingState.building_added.connect(_queue_rebuild)
+	BuildingState.building_removed.connect(_queue_rebuild)
+	BuildingState.tile_land_owned_changed.connect(_queue_rebuild)
 	Production.turn_processed.connect(_queue_rebuild)
 
 func _on_selections_changed(mode: int, _selections: Array) -> void:
@@ -103,19 +103,19 @@ func _rebuild() -> void:
 	_by_tile_id.clear()
 	if terrain_layer == null:
 		return
-	var chunks: int = MatchState.MAX_TILE_LAND / MatchState.LAND_PATCH_SIZE
-	var patch := float(MatchState.LAND_PATCH_SIZE)
+	var chunks: int = BuildingState.MAX_TILE_LAND / BuildingState.LAND_PATCH_SIZE
+	var patch := float(BuildingState.LAND_PATCH_SIZE)
 	for coord in terrain_layer.tiles:
 		var tile_data: Dictionary = terrain_layer.tiles[coord]
 		var tile_id := str(tile_data.get("id", ""))
 		var tile_type := str(tile_data.get("type", ""))
 		if tile_id == "" or tile_type == "sea" or tile_type == "deep_sea":
 			continue      # no land to own at sea
-		var owned := float(MatchState.get_tile_land_owned(tile_id))
+		var owned := float(BuildingState.get_tile_land_owned(tile_id))
 		# The player's ESTATE, which is what the game's own owned-land gate measures against:
 		# owned buildings plus construction and upgrade reservations. Land a build has already
 		# claimed is not free land, so showing it as empty would contradict the build dialog.
-		var built := MatchState.get_tile_player_space_used(tile_id)
+		var built := BuildingState.get_tile_player_space_used(tile_id)
 		# Ceil, not round: a part-used patch is a used patch, and the point of the mode is to
 		# see that a tile is touched at all. built <= owned always, so ceil keeps that order.
 		var bands := clampi(int(ceil(owned / patch)), 0, chunks)
@@ -132,8 +132,8 @@ func _rebuild() -> void:
 ## no building instance at all, and anything that does exist as one carries the category.
 func _building_count(tile_id: String, player_owned: bool) -> int:
 	var n := 0
-	for inst in MatchState.get_buildings_on_tile(tile_id):
-		if not (inst is Dictionary) or MatchState.is_player_owned(inst) != player_owned:
+	for inst in BuildingState.get_buildings_on_tile(tile_id):
+		if not (inst is Dictionary) or BuildingState.is_player_owned(inst) != player_owned:
 			continue
 		var bd: Dictionary = Catalog.get_building(str((inst as Dictionary).get("building_id", "")))
 		if str(bd.get("category", "")).to_lower() == "infrastructure":
@@ -148,11 +148,11 @@ func _build_hover_rows(tile_id: String) -> Array:
 		["Your buildings", str(_building_count(tile_id, true))],
 		["NPC buildings", str(_building_count(tile_id, false))],
 		["Land owned by you", "%d / %d" % [
-			MatchState.get_tile_land_owned(tile_id), MatchState.MAX_TILE_LAND]],
+			BuildingState.get_tile_land_owned(tile_id), BuildingState.MAX_TILE_LAND]],
 		# What is still PURCHASABLE: the cap less what you hold and less the land NPC buildings
 		# sit on, which is never for sale.
-		["Land left to buy", str(MatchState.get_tile_land_units_available(tile_id))],
-		["Your buildings occupy", str(int(round(MatchState.get_tile_player_space_used(tile_id))))],
+		["Land left to buy", str(BuildingState.get_tile_land_units_available(tile_id))],
+		["Your buildings occupy", str(int(round(BuildingState.get_tile_player_space_used(tile_id))))],
 	]
 
 # ── Hover ─────────────────────────────────────────────────────────────────────
@@ -296,7 +296,7 @@ func _ensure_chunks(tile_size: Vector2) -> void:
 	_band_polys.clear()
 	_half_polys.clear()
 	var hex := _hex_points(tile_size)
-	var count: int = MatchState.MAX_TILE_LAND / MatchState.LAND_PATCH_SIZE
+	var count: int = BuildingState.MAX_TILE_LAND / BuildingState.LAND_PATCH_SIZE
 	var step := tile_size.y / float(count)
 	var gap := step * CHUNK_GAP * 0.5
 	var wide := tile_size.x

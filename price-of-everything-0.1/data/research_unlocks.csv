@@ -246,4 +246,7 @@ research_logi_007,Logistics,research_logi_006,,,,II,Build,port,3,units,Automated
 research_logi_008,Logistics,,,,,I,Stockpile filled,by 7+ buildings,5,turns,Just-in-Time Logistics,depot,Unlock JIT delivery from building producing a good to building consuming a good within the same tile. Reduces strain on warehouses.
 research_logi_009,Logistics,research_logi_002,,,,III,Sell Through Ports Classes,solid_light|solid_heavy|ultra_heavy|safe_liquid|hazard_liquid|gas,1500,units each,Smart Shipping Contracts,contract,Increases port throughput by 25% permanently.
 research_logi_010,Logistics,research_logi_002,,,,III,Own Port At Level,ports,2,level,Port Network Acquisition,port,Reduces the port ad valorem fee by a further 20% permanently.
+research_logi_012,Logistics,,,,,I,Ship Through Logistics Intermediary,logistics_intermediary,300,3 goods,Open Logistics Contracts,contract,Allows changing input sources and output destinations to tile stockpiles. Enables the Manage Logistics controls on building details.
+research_logi_013,Logistics,,,,,I,Produce Distinct,goods,3,distinct goods,Infrastructure Tendering,road,Allows infrastructure to be built on any land tile.
+research_logi_014,Logistics,,,,,I,Profit,turn,50,profit,Government Import/Export License,license,Allows automatic input purchases and output sales through the global market. Unlocks the final government import/export license decision.
 research_biochem_010,Farming & Forestry,research_biochem_006,,,,III,Produce,biomass,300,units,Biomass Cracking,bio,Unlocks new recipes: Bio Ethylene and Bio-Graphitisation.

@@ -24,9 +24,9 @@ func _ready() -> void:
 	print("[CLUSTER] start: %s   cash on hand: £%d" % [start, int(round(MatchState.money))])
 	var buildings_total := 0.0
 	print("[CLUSTER] %-28s %-22s %8s" % ["BUILDING", "TILE", "VALUE"])
-	for iid in MatchState.buildings:
-		var b: Dictionary = MatchState.buildings[iid]
-		if not MatchState.is_player_owned(b):
+	for iid in BuildingState.buildings:
+		var b: Dictionary = BuildingState.buildings[iid]
+		if not BuildingState.is_player_owned(b):
 			continue
 		var price := float(BuildingPrice.sale_price(b))
 		buildings_total += price
@@ -39,9 +39,9 @@ func _ready() -> void:
 
 	# Land the start hands over, at what it would cost to buy.
 	var land_units := 0
-	for tile_id in MatchState.tile_land_owned:
-		land_units += int(MatchState.tile_land_owned[tile_id])
-	var land_value := ceilf(float(land_units) / float(MatchState.LAND_PATCH_SIZE)) * MatchState.LAND_PATCH_COST
+	for tile_id in BuildingState.tile_land_owned:
+		land_units += int(BuildingState.tile_land_owned[tile_id])
+	var land_value := ceilf(float(land_units) / float(BuildingState.LAND_PATCH_SIZE)) * BuildingState.LAND_PATCH_COST
 
 	# Stock on the tiles, at market.
 	var stock_value := 0.0

@@ -80,14 +80,16 @@ func _ready() -> void:
 ##   PROCESS:   MatchState (survey ticks + battery fills — battery firming
 ##              capacity must exist before the production cascade's
 ##              intermittency pass) → Production (the cascade).
-##   NARRATIVE: MatchState (unlock conditions over settled production)
+##   NARRATIVE: ResearchState (unlock conditions over settled production)
 ##              → EventScheduler (narrative events) → Modifiers (prune expired)
 ##              → DecisionState (draw the next decision AFTER pruning, so a fresh
 ##                decision's modifiers can't be pruned in the same phase).
 ## Never reorder this list without checking those dependencies.
 func _wire_sim_listeners() -> void:
 	var hooks: Array = [
+		Callable(LabourState, "_on_phase_started"),
 		Callable(MatchState, "_on_survey_phase_started"),
+		Callable(ResearchState, "_on_phase_started"),
 		Callable(Production, "_on_phase_started"),
 		Callable(EventScheduler, "_on_phase_started"),
 		Callable(Modifiers, "_on_phase_started"),

@@ -38,17 +38,17 @@ func _ready() -> void:
 		await get_tree().process_frame
 
 	if andrew != "":
-		MatchState.seat_founder(andrew)
+		AdvisorState.seat_founder(andrew)
 		if andrew == "cfo":
 			LoanState.take_founder_loan(200.0, 0.05)
 		else:
-			MatchState.add_freight_credit(1000)
+			TransportState.add_freight_credit(1000)
 			Modifiers.add({"id": "andrew_transport", "domain": "transport_cost", "pct": -20.0,
 				"label": "Andrew Keeler: -20% transport costs", "source": "advisor"})
 
 	print("[PROBE] start=%s turns=%d andrew=%s labour_mult=%.2f pressure=%.1f" % [
 		start_name, turns, andrew if andrew != "" else "none",
-		MatchState.labour_multiplier, MatchState.labour_output_pressure_pct])
+		LabourState.labour_multiplier, LabourState.labour_output_pressure_pct])
 	print("[PROBE] %4s %10s %9s %9s %9s %8s %8s %8s %8s %6s" % [
 		"turn", "money", "revenue", "profit", "transport", "inputs", "labour", "maint", "power", "bldgs"])
 
@@ -64,8 +64,8 @@ func _ready() -> void:
 			TurnManager.current_turn - 1, MatchState.money, revenue, profit,
 			float(s.get("transport_paid", 0.0)), float(s.get("goods_purchased_cost", 0.0)),
 			float(s.get("labour_paid", 0.0)), float(s.get("maintenance_paid", 0.0)),
-			float(s.get("power_purchase_cost", 0.0)), MatchState.player_building_count()])
+			float(s.get("power_purchase_cost", 0.0)), BuildingState.player_building_count()])
 
 	print("[PROBE] freight_credit_left=%d loans=%.2f" % [
-		MatchState.freight_credit_units, LoanState.total_outstanding()])
+		TransportState.freight_credit_units, LoanState.total_outstanding()])
 	get_tree().quit()

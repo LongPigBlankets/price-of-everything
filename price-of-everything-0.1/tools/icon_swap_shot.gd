@@ -15,7 +15,7 @@ func _ready() -> void:
 	for i in range(IDS.size()):
 		var recs: Array = Catalog.get_recipes_for_building(IDS[i])
 		var rid := str((recs[0] as Dictionary).get("recipe_id", "")) if not recs.is_empty() else ""
-		MatchState.add_building(IDS[i], rid, tile, MatchState.LOCAL_PLAYER, "iconshot_%d" % i)
+		BuildingState.add_building(IDS[i], rid, tile, MatchState.LOCAL_PLAYER, "iconshot_%d" % i)
 	await _settle(4)
 
 	var panel: Node = null

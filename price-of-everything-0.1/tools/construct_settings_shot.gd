@@ -14,9 +14,9 @@ func _ready() -> void:
 	if panel == null:
 		print("[CS_SHOT] construct panel missing"); get_tree().quit(1); return
 	await _shot(panel, "res://construct_settings_no_cfo.png", "no CFO")
-	MatchState.permanent_advisor_ids = ["vera"]
-	MatchState.all_seats_unlocked = true
-	MatchState.assign_advisor_to_seat("cfo", "vera")
+	AdvisorState.permanent_advisor_ids = ["vera"]
+	AdvisorState.all_seats_unlocked = true
+	AdvisorState.assign_advisor_to_seat("cfo", "vera")
 	await _shot(panel, "res://construct_settings_cfo.png", "CFO seated")
 	get_tree().quit()
 

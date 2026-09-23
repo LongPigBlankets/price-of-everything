@@ -1,0 +1,154 @@
+{
+  "contract_version": 1,
+  "status": "Phase-0 pure quote/budget contract; gameplay settlement is phase 1",
+  "tariff": {
+    "id": "middleman_dynamic_v1",
+    "ad_valorem": 0.005,
+    "class_rates": {
+      "solid_light": 0.025,
+      "solid_heavy": 0.08,
+      "ultra_heavy": 0.6,
+      "safe_liquid": 0.08,
+      "hazard_liquid": 0.15,
+      "gas": 0.2
+    },
+    "reference": "MarketState.get_price(good_id), including current market impact/carbon, before buy markup",
+    "buy": "MarketState.get_buy_price(good_id)",
+    "sell": "MarketState.get_sale_price(good_id, ordinary good context)",
+    "precision": "Existing float ledger; aggregate canonical sorted quantities, do not round money per good/call. Round for UI only; compare accounting within existing tolerances.",
+    "location_factors": [
+      1.05,
+      1.25,
+      1.5,
+      1.75,
+      2,
+      2.5
+    ],
+    "storage": "included; no additional fixed fee"
+  },
+  "prototype": {
+    "tile": "tile_5_4",
+    "coefficient": 1.5,
+    "goods": [
+      "g_006",
+      "g_007",
+      "g_008"
+    ],
+    "recipe": "r_009",
+    "required": {
+      "g_006": 32,
+      "g_007": 32
+    },
+    "output": {
+      "g_008": 33
+    },
+    "power": 30,
+    "eligibility": "Prototype explicitly authored Pepper Valley service; reject missing good/class/location/price rules without fallback. Special orders, player switching and building credit tabs deferred."
+  },
+  "funding": {
+    "confirmed_by_user": true,
+    "sources": [
+      "cash",
+      "explicit standard loan within available capacity"
+    ],
+    "anticipated_sales": false,
+    "loan_minimum": "EconomyConfig.LOAN_MINIMUM (currently20)",
+    "admission": "one complete feasible scaled recipe batch or zero; never partial purchases",
+    "priority": [
+      "settle arrived commitments and construction claims",
+      "reserve remaining due obligations and outstanding unpaid purchases once",
+      "stable building creation order, instance ID tie break",
+      "reserve accepted batch inputs, input fee, labour, maintenance and predicted grid expense"
+    ],
+    "new_loan_timing": "Use LoanState.take_loan before acquisition. Existing standard interest/grace/payment schedule and once-per-turn payment tick apply as for a loan taken in DECIDE; no extra grace or immediate nonstandard payment. Revalidate before draw; funding is not operating revenue.",
+    "building_tabs": "Explicitly reject in initial opt-in prototype; no simultaneous synthetic tab refund. Integrate later before onboarding uses tabs.",
+    "commitments": "Pass residual obligations, not already paid arrivals/construction; reserve outstanding unpaid purchases as existing headroom does. Do not include speculative future sales."
+  },
+  "holdings": {
+    "confirmed_by_user": true,
+    "owner": "player, private to immutable building instance and originating operation",
+    "scope": "one unfinished recipe cycle; no shared tile warehouse; power remains existing system",
+    "preflight_failure": "no purchase, fee, volume or loan",
+    "post_acquisition_failure": "retain actual paid goods and receipt; no automatic refund, second fee or duplicate buy",
+    "retry": "reuse building-private inputs and buy only complete affordable shortfall",
+    "recipe_change": "block change while holdings exist until player explicitly releases to owned stock or performs an ordinary priced sale; no free refund",
+    "disabled": "holdings persist, no new purchase; no repeated service charge for existing operating holding",
+    "removal": "block final removal until paid holdings/output disposition is explicit; never delete assets",
+    "output_failure": "retain at most one produced cycle privately; block further production until settled/released; no speculative accumulation"
+  },
+  "identity": {
+    "operation": "JSON tuple [persistent match ID, resolution turn, immutable building instance ID]",
+    "receipts": [
+      "operation + purchase",
+      "operation + input_fee",
+      "operation + consumed",
+      "operation + produced",
+      "operation + sale",
+      "operation + output_fee"
+    ],
+    "recipe_revision": "snapshotted payload, not new operation identity: changing it cannot enable a second cycle",
+    "replay": "same ID and payload returns prior settlement; conflicting payload rejects; quote refresh has no mutation"
+  },
+  "lifecycle": [
+    "planned",
+    "funded",
+    "supplied",
+    "consumed",
+    "produced",
+    "settled"
+  ],
+  "failure_states": [
+    "rejected_before_supply",
+    "blocked_with_private_inputs",
+    "blocked_with_private_output"
+  ],
+  "negative_net_sale": "Do not commit a negative-net auto-sale or silently dispose; retain bounded output and expose blocked reason. Future explicit disposal requires funding.",
+  "phases": {
+    "outer_unchanged": [
+      "DECIDE",
+      "PROCESS",
+      "SEND",
+      "AI",
+      "NARRATIVE",
+      "RECEIVE",
+      "turn_advanced",
+      "DECIDE",
+      "turn_resolution_completed"
+    ],
+    "process": [
+      "advance physical arrivals once; settle and claim construction",
+      "snapshot eligible building policies/prices and feasibility",
+      "admit complete batches; reserve obligations; explicitly draw permitted funding",
+      "acquire into building-private holdings and record each purchase/fee/volume once",
+      "existing bounded production/power cascade, each building at most once",
+      "settle actual building output and output fee; dispatch new physical movements without advance",
+      "expenses and existing loan/tab/tax/report sequence; one inclusive fee total"
+    ],
+    "no_reentry_after_sales": true,
+    "direct_mode": "preserve old replenishment for direct buildings only; provider holdings never enter shared same-turn direct-feed pools"
+  },
+  "save": {
+    "global_save_version_at_phase0": 11,
+    "phase0_changes_save_format": false,
+    "planned_owner": "MatchState serialized service state through existing SaveLoad path; no new competing shipment store",
+    "planned_key": "middleman_service",
+    "payload_schema": 1,
+    "save_boundary": "DECIDE only",
+    "missing_payload": "legacy/no active provider service, including old middleman_v1 port-only saves; flag alone does not auto-enable buildings",
+    "legacy_defaults": "missing logistics_model means legacy, no migration of stocks/shipments/warehouse entitlements",
+    "new_provider_game": "explicit service schema and building modes; persist price/tariff IDs, input/output holdings and settlement IDs",
+    "migration_gate": "Phase1 adds default/import/export and version handling once actual serialized fields exist"
+  },
+  "cash_invariant": "opening + goods receipts + financing - purchases - service fees - operating costs - finance outflows = closing",
+  "goods_invariant": "opening + acquisitions + production = consumption + explicit disposal + closing across private holdings, owned stock and transit",
+  "non_goals": [
+    "live settlement loop",
+    "hub gameplay",
+    "warehouse construction/migration",
+    "all-city/goods rollout",
+    "construction-service redesign",
+    "manual speculative trading",
+    "special orders",
+    "public tutorial conversion"
+  ]
+}

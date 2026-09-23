@@ -1,6 +1,6 @@
 extends Control
 ## Animated effects laid over a building SPRITE in the empire (supply-chain) view: chimney
-## smoke / steam plumes and a furnace fire flicker. Owner spec 2026-09-10 — the plumes are
+## smoke / steam plumes and a furnace fire flicker. The plumes are
 ## continuous, the plume asset is tied to a chimney ANCHOR and sized by that chimney's radius
 ## so it can be reused on any building, and there are two colourways: STEAM (light grey with
 ## white tinges) and SMOKE (medium grey with darker patches).
@@ -58,7 +58,7 @@ const ANCHORS := {
 		# down-left and the lorry sprite is mirrored); stop = the lorry's rear-bottom-centre
 		# when docked; crate_from/to = a crate's bottom-centre leaving the lorry / at the door.
 		# clip (L2/L3): the canopy's front-bottom edge — the door is painted only BELOW this
-		# line, since the canopy hides its top (owner: the opening clipped through the roof).
+		# line, since the canopy hides its top (otherwise the opening clips through the roof).
 		# Every number here was PROJECTED through the builder's camera (project_points.py) and
 		# mapped with the export's crop/scale/placement — not read off a grid.
 		1: {"stacks": [], "fires": [],
@@ -100,8 +100,8 @@ const ANCHORS := {
 		2: {"stacks": [{"x": 630, "y": 120, "r": 16, "kind": "steam"}, {"x": 700, "y": 135, "r": 16, "kind": "steam"}], "fires": []},
 		3: {"stacks": [{"x": 550, "y": 160, "r": 16, "kind": "steam"}, {"x": 630, "y": 200, "r": 16, "kind": "steam"}], "fires": []},
 	},
-	# chem_plant, electrolyser, assembly_plant: process vessels, NOT furnaces — no plume (owner
-	# 2026-09-10). The chem plant keeps no entry at all.
+	# chem_plant, electrolyser, assembly_plant: process vessels, NOT furnaces — no plume.
+	# The chem plant keeps no entry at all.
 	"assembly_plant": {
 		# arms: the robot-arm FRAMES (assets/fx/arms/assembly_plant_lvlN_p<lift>_c<carry>.png,
 		# render_arms.py: the arms alone with the rest of the plant as a holdout, mapped into
@@ -161,7 +161,7 @@ static func light_mask_for(internal_name: String, level: int) -> Texture2D:
 
 ## Plume model (the map's `smoke_visuals` numbers, in chimney radii). PUFFS overlapping
 ## puffs per stack, each living PERIOD seconds, staggered evenly — so a new puff is always
-## rising while the last is fading and the plume never breaks (owner: continuous).
+## rising while the last is fading and the plume never breaks.
 const PERIOD := 2.6
 const PUFFS := 3
 const START_SCALE := 1.3
@@ -170,12 +170,12 @@ const END_SCALE := 3.6
 ## north-east the way the map's smoke does (the sprites share the map's isometric).
 const DRIFT_R := 5.5
 ## The first puff is centred this many chimney radii ABOVE the anchor (the mouth), so the
-## plume appears out of the mouth rather than straddling it (owner: "starts a little low").
+## plume appears out of the mouth rather than straddling it.
 const PUFF_LIFT := 1.0
 const DRIFT_DIR := Vector2(0.28, -1.0)
 const SPIN := PI * 0.4
 
-## Two colourways (owner spec). Each puff is a base disc plus two smaller PATCHES offset
+## Two colourways. Each puff is a base disc plus two smaller PATCHES offset
 ## inside it: darker for smoke, white-tinged for steam.
 const SMOKE_BASE := Color(0.46, 0.45, 0.44)
 const SMOKE_PATCH := Color(0.30, 0.29, 0.29)
@@ -188,15 +188,15 @@ const PEAK_ALPHA := 0.92
 ##   pixels inside that box, read from a LIGHT MASK cut from the sprite (assets/fx/light/
 ##   <building>_lvl<N>.png, white with the orange pixels' alpha — `tools/…` recipe in memory).
 ##   So a doorway lights exactly its doorway shape, a window its pane, and the EAF crucible its
-##   molten surface with the three electrodes cut out (owner 2026-09-10: "the glow shows
-##   through the walls"; "light from the molten liquid only, partially blocked by the rods").
+##   molten surface with the three electrodes cut out — the light comes from the molten
+##   liquid only, partially blocked by the rods, never through the walls.
 ##     "breathe" — a doorway: brightness GROWS and RECEDES on two slow sines, never off.
 ##     "window"  — a small lit window: a FAINT flickering light.
 ##     "pane"    — a thick navy glazed window: some of the yellow light inside shows through,
 ##                 reduced (the mask holds these at half alpha) and slowly varying.
 ##     "arc"     — the crucible: a hot spot that SHIFTS about the surface (its own canvas item
 ##                 with a small additive shader) under an arc's irregular flicker.
-##   Chimney rings are lit in the art but are NOT light sources (owner) — not listed.
+##   Chimney rings are lit in the art but are NOT light sources — not listed.
 ##   ELLIPSE (`x,y,rx,ry`): a soft additive glow, used only under the refinery flame licks.
 const FIRE_CORE := Color(1.0, 0.72, 0.30)
 const FIRE_HALO := Color(1.0, 0.42, 0.10)
@@ -216,7 +216,7 @@ void fragment() {
 	COLOR = vec4(tint.rgb * g, m.a * tint.a);
 }
 """
-## LOADING BAY (owner 2026-09-10): the roller door rolls up, a lorry reverses to the dock with
+## LOADING BAY: the roller door rolls up, a lorry reverses to the dock with
 ## its rear lights flashing once a second, crates come out of it and slide into the bay, the
 ## door rolls down, and five seconds later the lorry leaves the way it came. Pieces come from
 ## `vehicle_builder.py` rendered with the building rig (93.09 raw px per world unit), so a
@@ -228,7 +228,7 @@ const BAY_FACTOR := 1.0301                 # the factory sprites' export factor
 const BAY_UNIT_PX := 93.09 * 0.8165 * BAY_FACTOR   # sprite px per world unit along a ground axis
 const LORRY_REAR := Vector2(28.3, 97.8)    # rear-bottom-centre, lorry texture px
 ## Rear lights are on the hidden (-X) face; only the one at the near (-Y) corner shows, as a
-## glow wrapping the corner — the far one would shine through the body (owner).
+## glow wrapping the corner — the far one would shine through the body.
 const LORRY_LIGHTS := [Vector2(12.7, 79.7)]
 const CRATE_FOOT := Vector2(27.8, 40.9)    # bottom-centre, crate texture px
 const BAY_PERIOD := 26.0
@@ -239,7 +239,7 @@ const DOOR_INTERIOR := Color(0.06, 0.08, 0.13)
 const DOOR_ROLL := Color(0.42, 0.46, 0.52)
 const LIGHT_RED := Color(1.0, 0.18, 0.10)
 
-## ROBOT ARMS (owner 2026-09-10): lower the arm, pick a carton off the belt, raise it, put it
+## ROBOT ARMS: lower the arm, pick a carton off the belt, raise it, put it
 ## down, loop. Four lift steps x empty/carrying = eight frames per level, cycled through
 ## `ARM_CYCLE` (frame index = lift*2 + carry) with a hold at each end of the stroke.
 const ARM_LIFTS := 4
@@ -251,7 +251,7 @@ static var _arm_frames: Dictionary = {}     # "assembly_plant_lvl2" -> [8 textur
 static var _arc_shader: Shader = null
 static var _light_masks: Dictionary = {}
 
-## FLAME LICKS (owner 2026-09-10: "actual fire in the style we've been using"). A fire anchor
+## FLAME LICKS. A fire anchor
 ## with `lick: h` also draws a Blender-authored flame — a cluster of inked tongues
 ## (`blender-assets/goods_icon_batch4_flames.py`, four seeds, 256 px) — h SPRITE px tall,
 ## rooted just below the glow's centre (`ry` * 0.7 down: the door sill, the heater tip). The
@@ -259,7 +259,7 @@ static var _light_masks: Dictionary = {}
 ## repeat and no cycle shows; height and width breathe on two sines; the whole thing leans
 ## `lean` degrees (screen-right positive, the refinery's wind) plus a small sway, and now and
 ## then it is mirrored. The additive glow stays underneath: it is what lights the sprite.
-## Only the refinery's fired heaters have licks (owner: no fires at furnace doorways).
+## Only the refinery's fired heaters have licks — no fires at furnace doorways.
 const FLAME_TEX: Array = [
 	preload("res://assets/fx/flames/flame_0.png"), preload("res://assets/fx/flames/flame_1.png"),
 	preload("res://assets/fx/flames/flame_2.png"), preload("res://assets/fx/flames/flame_3.png"),
@@ -267,7 +267,7 @@ const FLAME_TEX: Array = [
 const FLAME_TEX_BASE := 245.0 / 256.0   # the flame's root sits this far down its canvas
 const FLAME_FPS := 9.0
 
-## ELECTRICITY PULSES along the traced cables (owner, 2026-09-10): short bright charges
+## ELECTRICITY PULSES along the traced cables: short bright charges
 ## sliding along each catenary at a constant speed, sag and all — the polyline IS the cable
 ## the art draws, so a pulse follows its exact shape. Sizes are in SPRITE px and scale with
 ## the box like everything else here.
@@ -276,8 +276,8 @@ const PULSE_SPACING := 70.0       # between pulses along one cable
 const PULSE_LEN := 22.0
 const PULSE_TINT := Color(1.0, 0.92, 0.55)
 
-## Blender-authored puff sprites (owner 2026-09-10: the LOOK comes from Blender, the motion
-## stays here). Five seeds per colourway, house ink + halftone baked in, 256 px, mipmapped.
+## Blender-authored puff sprites: the LOOK comes from Blender, the motion
+## stays here. Five seeds per colourway, house ink + halftone baked in, 256 px, mipmapped.
 ## `blender-assets/goods_icon_batch3_fx.py` makes them.
 const PUFF_SMOKE_TEX: Array = [
 	preload("res://assets/fx/puffs/puff_smoke_0.png"), preload("res://assets/fx/puffs/puff_smoke_1.png"),
@@ -308,7 +308,7 @@ var _fire_layer: Control = null
 
 ## Same rule as the map's smoke layer: the recipe burns something the carbon levy bites.
 static func recipe_emits_carbon(instance_id: String) -> bool:
-	var inst: Dictionary = MatchState.get_building(instance_id)
+	var inst: Dictionary = BuildingState.get_building(instance_id)
 	if inst.is_empty():
 		return false
 	var recipe: Dictionary = Catalog.get_recipe(str(inst.get("recipe_id", "")))

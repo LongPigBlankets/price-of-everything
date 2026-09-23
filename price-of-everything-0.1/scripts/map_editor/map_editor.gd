@@ -67,11 +67,11 @@ const TOOL_SLOT := "slot"
 ## map — the same idiom the slot tool uses for its classes.
 const TOOL_TREE := "tree"
 ## The three, in cycle order. "mixed" is the only clump: a stand of identical trees reads as a
-## repeated stamp rather than as woodland (owner, 2026-08-28), so there is no small-clump or
+## repeated stamp rather than as woodland, so there is no small-clump or
 ## large-clump to choose by mistake.
 ## "forest" is the fourth: it plants a WOOD (an outline area of the current canopy type)
 ## rather than an individual tree. Cycling reaches it, and any of the number keys jumps
-## straight to it (owner 2026-08-29).
+## straight to it.
 const TREE_KINDS := ["small", "large", "mixed", "forest"]
 ## Canopy types, in the order the number keys select them. Read from the painter so the
 ## editor and the renderer can never disagree about what types exist.
@@ -188,7 +188,7 @@ var _grab_moved := false
 var _pending_hit: Dictionary = {}
 ## Which question the confirmation is currently asking.
 var _confirm_action := ""
-## Set while a drag is held with Ctrl/Cmd down. Snapping is OPT-IN (owner, 2026-08-16): a
+## Set while a drag is held with Ctrl/Cmd down. Snapping is OPT-IN: a
 ## drag places exactly where the pointer is unless the modifier asks for a kerb.
 var _snap_requested := false
 ## The records last moved, so the snap can act on them after the drag ends.
@@ -512,12 +512,12 @@ func _build_chrome() -> void:
 
 ## SOMETHING VISIBLE CHANGED — repaint the overlay and tell the fabric layers.
 ##
-## The preview layers used to call `queue_redraw()` from `_process`, i.e. they redrew the
-## WHOLE document every frame. That is affordable for a settlement and ruinous for a map:
-## with the stoneshore document open the editor was measured at over nine SECONDS a frame,
-## because every repaint re-scattered and re-drew the trees of all 148 woods (a wood is up to
-## 900 trees, and a tree is three draw calls). The game never did this — its own authored
-## layer repaints only when the view moves — so the cost lived entirely in the editor.
+## The preview layers must NOT call `queue_redraw()` from `_process`: that redraws the
+## WHOLE document every frame, which is affordable for a settlement and ruinous for a map —
+## with the stoneshore document open that is over nine SECONDS a frame, because every
+## repaint re-scatters and re-draws the trees of all 148 woods (a wood is up to 900 trees,
+## and a tree is three draw calls). The game's own authored layer repaints only when the
+## view moves.
 ##
 ## The stamp is the seam: every mutation, selection change and tool change already ended in a
 ## repaint call, so bumping a counter here means the layers can sleep until one arrives.
@@ -747,9 +747,8 @@ func _handle_key(event: InputEventKey) -> void:
 		KEY_R:
 			set_tool(TOOL_ROAD)
 		KEY_Y:
-			# Anchor moved off T (owner 2026-08-29): T had TWO branches in this match, and
-			# since the first wins, the tree tool below had been unreachable by keyboard
-			# since it was added. T is the tree/forest key; anchor is Y.
+			# T is the tree/forest key; anchor is Y. (A second T branch in this match would
+			# be unreachable, since the first wins.)
 			set_tool(TOOL_ANCHOR)
 		KEY_F:
 			set_tool(TOOL_TRACE)
@@ -828,7 +827,7 @@ func _handle_key(event: InputEventKey) -> void:
 		KEY_7:
 			_number_key(6, "")
 		KEY_ENTER, KEY_KP_ENTER:
-			# Enter is "done" (owner, 2026-08-18). Mid-draw it commits the thing being drawn
+			# Enter is "done". Mid-draw it commits the thing being drawn
 			# and STAYS on the tool, so the next primitive or field needs no re-pick; with
 			# nothing in progress it exits whatever mode is live back to Navigate.
 			if _tool == TOOL_SPECIAL and _special_kind == "poly" and not _poly_points.is_empty():
@@ -1296,10 +1295,9 @@ func _place_special(world: Vector2) -> void:
 
 ## RIGHT-PRESS: open shape mode on the shape under the pointer, or close it on empty ground.
 ##
-## Position and shape are separate gestures now (owner, 2026-08-17). They used to share the
-## left button, with the corner test running FIRST — so selecting a shape whose corner
-## happened to be near the pointer dragged that corner instead of the shape, which is most
-## selections on a small shape.
+## Position and shape are separate gestures. Sharing the left button, with the corner test
+## running FIRST, would make selecting a shape whose corner happens to be near the pointer
+## drag that corner instead of the shape — which is most selections on a small shape.
 func _shape_press(world: Vector2) -> void:
 	var hit := MapEditorSelection.at_point(_document.data(), world)
 	if hit.is_empty() or MapEditorSelection.corner_field(hit["record"] as Dictionary) == "":
@@ -1795,7 +1793,7 @@ func _number_key(variant_index: int, road_class: String) -> void:
 ## Plant a WOOD: an outline area of the current canopy type, plus the forest building that
 ## makes the tile actually wooded in the sim. The two are placed together on purpose — a wood
 ## the player can see but not harvest, or a forest building with no canopy drawn, are both
-## states the map should not be able to get into by hand (owner 2026-08-29).
+## states the map should not be able to get into by hand.
 func _place_forest(world: Vector2) -> void:
 	var settlement := _ensure_settlement()
 	_document.begin_edit("plant wood")
@@ -1891,9 +1889,8 @@ func pick_slot_class(value: String) -> void:
 ## Every slot as a world-space box, for the overlay and for the click test.
 ##
 ## Reads the document being EDITED, falling back to the saved one only while the editor holds
-## nothing — which is the state on a fresh boot with no document. There used to be a second
-## builder for the saved case; see the header of `map_editor_slot_boxes.gd` for what that
-## cost.
+## nothing — which is the state on a fresh boot with no document. One builder for both
+## cases; see the header of `map_editor_slot_boxes.gd` for what a second one costs.
 func document_slot_boxes() -> Array:
 	var live: Dictionary = _document.data().get("settlements", {})
 	var source: Dictionary = live if not live.is_empty() else AuthoredMap.settlements()
@@ -2108,7 +2105,7 @@ func current_tool() -> String:
 
 
 func set_tool(value: String) -> void:
-	# Picking any tool leaves shape mode — the owner's dismissal rule alongside a left click
+	# Picking any tool leaves shape mode — the dismissal rule alongside a left click
 	# on empty ground.
 	if value != _tool:
 		_leave_shape_mode()
@@ -2199,7 +2196,7 @@ func tile_report(tile_id: String) -> Dictionary:
 	if tile_id == "":
 		return {}
 	var terrain_name := Catalog.tile_type(tile_id)
-	var cap := MatchState.max_tile_land(tile_id)
+	var cap := BuildingState.max_tile_land(tile_id)
 	# Sea is not in the terrain cap table, so it falls through to the 200 default — a number
 	# that means nothing there. Offshore platforms and offshore wind farms DO stand on water,
 	# so it is not "unbuildable"; it is a different kind of tile, and the report says which
@@ -2549,7 +2546,7 @@ func _reload() -> void:
 	_refresh_status()
 
 
-## Leaving ALWAYS asks (owner, 2026-08-16). Escape is the same key that cancels a stroke and
+## Leaving ALWAYS asks. Escape is the same key that cancels a stroke and
 ## clears a selection, so it gets pressed often and by reflex; a confirmation is the only
 ## thing standing between that reflex and losing a session.
 func _leave() -> void:

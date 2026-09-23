@@ -391,7 +391,7 @@ func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary 
 	# Sea costs apply to every market sale. Manual sales keep their historical gross
 	# inland freight, but never avoid the port charge.
 	for it in items:
-		var sea_charge := MatchState.commit_sea_shipping(port, str(it.good_id), int(it.qty), "sell")
+		var sea_charge := TransportState.commit_sea_shipping(port, str(it.good_id), int(it.qty), "sell")
 		transport_cost += float(sea_charge.get("total", 0.0))
 		transport_breakdown["port_fees"] = float(transport_breakdown.get("port_fees", 0.0)) + float(sea_charge.get("base_fee", 0.0))
 		transport_breakdown["port_insurance"] = float(transport_breakdown.get("port_insurance", 0.0)) + float(sea_charge.get("insurance_fee", 0.0))
@@ -438,7 +438,7 @@ func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary 
 		if special_order_committed:
 			shipment["special_order_id"] = special_order_id
 			shipment["special_order_source_mode"] = special_order_source_mode
-		MatchState.queue_transport_shipment(shipment)
+		TransportState.queue_transport_shipment(shipment)
 	else:
 		if special_order_committed:
 			var paid_record := _settle_immediate_special_order_sale(sale_record, port, special_order_id, special_order_source_mode)
@@ -521,7 +521,7 @@ func _offer_immediate_special_order_overflow(
 ) -> void:
 	if good_id == "" or qty <= 0:
 		return
-	MatchState.offer_special_order_overflow({
+	TransportState.offer_special_order_overflow({
 		"order_id": order_id,
 		"source_mode": source_mode,
 		"source_tile": str(sale_record.get("tile_id", "")),

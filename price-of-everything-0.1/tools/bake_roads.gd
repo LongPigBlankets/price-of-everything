@@ -239,7 +239,7 @@ func _seed_start_forests() -> void:
 		var tile_id := str(tile_data.get("id", ""))
 		if tile_id == "":
 			continue
-		MatchState.add_building(OLD_GROWTH_BUILDING, "", tile_id, "tile_data",
+		BuildingState.add_building(OLD_GROWTH_BUILDING, "", tile_id, "tile_data",
 			"forest_%s_%s" % [OLD_GROWTH_BUILDING, tile_id], false)
 		seeded += 1
 	print("bake_roads: seeded %d deterministic game-start forests" % seeded)
@@ -253,9 +253,9 @@ func _seed_start_buildings() -> void:
 		var tile_id := str(entry.tile)
 		if terrain.id_to_coord(tile_id) == Vector2i(-1, -1):
 			continue
-		if MatchState.buildings.has(str(entry.instance_id)):
+		if BuildingState.buildings.has(str(entry.instance_id)):
 			continue
-		MatchState.add_building(str(entry.building), str(entry.recipe), tile_id,
+		BuildingState.add_building(str(entry.building), str(entry.recipe), tile_id,
 			str(entry.owner), str(entry.instance_id), false)
 		seeded += 1
 	print("bake_roads: seeded %d deterministic start buildings" % seeded)

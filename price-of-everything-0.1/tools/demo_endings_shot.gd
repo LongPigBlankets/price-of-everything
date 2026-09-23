@@ -106,19 +106,19 @@ func _ready() -> void:
 
 ## Seed one render: a small player estate, then the tracks this ending needs.
 func _seed(secured: Array, partial: Dictionary) -> void:
-	MatchState.buildings.clear()
-	MatchState.tile_buildings.clear()
+	BuildingState.buildings.clear()
+	BuildingState.tile_buildings.clear()
 	MatchState.money = 50000.0
 	var tiles := ["tile_5_9", "tile_5_10", "tile_6_9", "tile_6_10", "tile_7_9",
 		"tile_7_10", "tile_4_9", "tile_8_10"]
-	MatchState.add_building("b_001", "r_001", tiles[0], "player_1", "dshot_m1", false)
-	MatchState.add_building("b_001", "r_001", tiles[1], "player_1", "dshot_m2", false)
-	MatchState.add_building("b_002", "r_003", tiles[2], "player_1", "dshot_f1", false)
-	MatchState.add_building("b_002", "r_003", tiles[3], "player_1", "dshot_f2", false)
-	MatchState.add_building("b_007", "r_009", tiles[4], "player_1", "dshot_g1", false)
-	MatchState.add_building("b_007", "r_009", tiles[5], "player_1", "dshot_g2", false)
-	MatchState.add_building("b_007", "r_009", tiles[6], "player_1", "dshot_g3", false)
-	MatchState.add_building("b_004", "", tiles[7], "player_1", "dshot_p1", false)
+	BuildingState.add_building("b_001", "r_001", tiles[0], "player_1", "dshot_m1", false)
+	BuildingState.add_building("b_001", "r_001", tiles[1], "player_1", "dshot_m2", false)
+	BuildingState.add_building("b_002", "r_003", tiles[2], "player_1", "dshot_f1", false)
+	BuildingState.add_building("b_002", "r_003", tiles[3], "player_1", "dshot_f2", false)
+	BuildingState.add_building("b_007", "r_009", tiles[4], "player_1", "dshot_g1", false)
+	BuildingState.add_building("b_007", "r_009", tiles[5], "player_1", "dshot_g2", false)
+	BuildingState.add_building("b_007", "r_009", tiles[6], "player_1", "dshot_g3", false)
+	BuildingState.add_building("b_004", "", tiles[7], "player_1", "dshot_p1", false)
 
 	VictoryState.reset()
 	TurnManager.current_turn = 100
@@ -169,8 +169,8 @@ func _seed(secured: Array, partial: Dictionary) -> void:
 		"player_goods_produced": {"g_005": 9400, "g_004": 5200, "g_010": 3100, "g_002": 2400,
 			"g_008": 1800, "g_009": 900},
 		"player_rank_history": ranks.duplicate()})
-	MatchState.advisor_seats = {"seat_founder": "andrew"}
-	MatchState.advisor_hired_turn = {"andrew": 3}
+	AdvisorState.advisor_seats = {"seat_founder": "andrew"}
+	AdvisorState.advisor_hired_turn = {"andrew": 3}
 
 
 func _find_graph_worlds(n: Node, out: Array[Node]) -> void:

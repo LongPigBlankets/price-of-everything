@@ -299,13 +299,13 @@ func _quest_cases() -> void:
 
 	# Mission 2: r_029 Concrete Firing consumes silica and makes concrete.
 	var iid := "quest_probe_concrete"
-	MatchState.buildings[iid] = {"building_id": "b_002", "recipe_id": "r_029", "instance_id": iid, "tile_id": "tile_5_10"}
+	BuildingState.buildings[iid] = {"building_id": "b_002", "recipe_id": "r_029", "instance_id": iid, "tile_id": "tile_5_10"}
 	MiniQuest._on_turn_processed(_sum(
 		{"glass": 40, "silica": 20, "sand": 60, "concrete": 12}, {"silica": 12, "sand": 30}, {"concrete": 9}))
 	print("[QUEST] m2 done=%s picked=%s reward=%s" %
 		[str(MiniQuest.done.get("monetise")), Catalog.get_display_name(MiniQuest.monetised_good),
 		MiniQuest.reward_text()])
-	MatchState.buildings.erase(iid)
+	BuildingState.buildings.erase(iid)
 
 	# Aluminium mirror: chlorine + bauxite, both feeding the smelter.
 	MiniQuest._on_state_reset()
@@ -326,12 +326,12 @@ func _magnate_cases(bar: Node) -> void:
 	# and _producers_of scans all of them. Left alone, a REAL coal-burning furnace elsewhere on
 	# the map answered "does your steel plant need coal?" and the EAF case silently tested
 	# nothing. Swap in only the probes, then put the match back.
-	var saved_buildings: Dictionary = MatchState.buildings
+	var saved_buildings: Dictionary = BuildingState.buildings
 	var saved_routes: Dictionary = MatchState.output_stockpile_destinations
-	MatchState.buildings = {}
+	BuildingState.buildings = {}
 	MatchState.output_stockpile_destinations = {}
 	await _magnate_body(bar)
-	MatchState.buildings = saved_buildings
+	BuildingState.buildings = saved_buildings
 	MatchState.output_stockpile_destinations = saved_routes
 	MatchState.ruleset["start_id"] = ""
 
@@ -485,7 +485,7 @@ func _merge(a: Dictionary, b: Dictionary) -> Dictionary:
 
 func _probe(iid: String, building_id: String, recipe_id: String, tile_id: String,
 		owner: String = "player_1") -> void:
-	MatchState.buildings[iid] = {
+	BuildingState.buildings[iid] = {
 		"instance_id": iid, "building_id": building_id, "recipe_id": recipe_id,
 		"tile_id": tile_id, "owner": owner}
 
@@ -499,7 +499,7 @@ func _route(iid: String, good_internal: String, tile_id: String) -> void:
 
 func _clear_probes() -> void:
 	for iid in ["mq_ingots", "mq_steel", "mq_coal", "mq_coal2", "mq_iron"]:
-		MatchState.buildings.erase(iid)
+		BuildingState.buildings.erase(iid)
 		MatchState.output_stockpile_destinations.erase(iid)
 
 
