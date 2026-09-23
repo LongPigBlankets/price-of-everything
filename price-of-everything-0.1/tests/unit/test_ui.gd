@@ -643,6 +643,30 @@ func _test_bdp_v3_rules() -> void:
 		"bdp v3: better-recipe count is among the other recipes (%d)" % better)
 	BuildingState.buildings.erase(iid)
 
+	var Lamp = load("res://scripts/bdp_v3_lamp.gd")
+	_check(Lamp.colour_for("ok") == "green" and Lamp.colour_for("warn") == "amber" and Lamp.colour_for("bad") == "red"
+		and Lamp.colour_for("info") == "off" and Lamp.colour_for("") == "off",
+		"bdp v3: the status lamp is green for ok, amber for warn, red for bad and off otherwise")
+	var Scroll = load("res://scripts/bdp_v3_scroll.gd")
+	var thumb: StyleBox = Scroll.make(Scroll.THUMB, Scroll.THUMB_CAP, Scroll.THUMB_GRIP)
+	var sum := func(parts: Array) -> float:
+		var total := 0.0
+		for p: Array in parts:
+			total += float(p[2])
+		return total
+	var tall: Array = thumb.slices(200.0)
+	var grip_px: float = (Scroll.THUMB_GRIP.y - Scroll.THUMB_GRIP.x) / 1.875
+	_check(tall.size() == 5 and is_equal_approx(float(tall[2][2]), grip_px) and is_equal_approx(sum.call(tall), 200.0)
+		and is_equal_approx(float(tall[0][2]), Scroll.THUMB_CAP / 1.875),
+		"bdp v3: a long slider keeps its ends and grip at their size and stretches the plain lengths")
+	var short: Array = thumb.slices(30.0)
+	_check(short.size() == 3 and is_equal_approx(sum.call(short), 30.0), "bdp v3: a slider too short for its grip leaves it out")
+	var tiny: Array = thumb.slices(10.0)
+	_check(is_equal_approx(float(tiny[0][2]), 5.0) and is_equal_approx(sum.call(tiny), 10.0), "bdp v3: a very short slider halves its ends")
+	var rail: StyleBox = Scroll.make(Scroll.RAIL, Scroll.RAIL_CAP)
+	_check(rail.slices(400.0).size() == 3 and rail.get_minimum_size() == Vector2(16, 32),
+		"bdp v3: the rail is 16 px wide and keeps its ends (%s)" % str(rail.get_minimum_size()))
+
 
 func _test_bdp_v3_panel() -> void:
 	var was: bool = UiPrefs.use_bdp_v3
@@ -669,6 +693,15 @@ func _test_bdp_v3_panel() -> void:
 	_check(panel._close_key.visible and not panel._close_button.visible, "bdp v3: the close keycap replaces the X button")
 	_check(is_equal_approx(panel._close_key.size.x, panel._close_key.size.y), "bdp v3: the close key stays square (%s)" % str(panel._close_key.size))
 	_check(panel._backing.visible and not panel._pipe_frame.visible, "bdp v3: the backing plate replaces the pipe border")
+	var st: Dictionary = load("res://scripts/building_readout.gd").status(b, Catalog.get_recipe("r_009"), false)
+	var Lamp = load("res://scripts/bdp_v3_lamp.gd")
+	_check(panel._status_v3.visible and not panel._badge.visible and panel._status_v3_label.text == str(st.label)
+		and panel._status_lamp.colour == Lamp.colour_for(str(st.tone)),
+		"bdp v3: a lamp lit for the status replaces the badge (%s, %s)" % [str(st.label), panel._status_lamp.colour])
+	var Scroll = load("res://scripts/bdp_v3_scroll.gd")
+	var bar: VScrollBar = panel._scroll.get_v_scroll_bar()
+	_check(Scroll.is_applied(panel._scroll) and is_equal_approx(bar.get_combined_minimum_size().x, 16.0),
+		"bdp v3: the scrollbar is the steel rail with its slider, 16 px wide (%s)" % str(bar.get_combined_minimum_size()))
 	# Godot renames same-named siblings, so the frames are found by script rather than by name.
 	var section_script = load("res://scripts/bdp_v3_section.gd")
 	var frames: Array = panel.find_children("*", "MarginContainer", true, false).filter(func(n: Node) -> bool: return n.get_script() == section_script)
@@ -714,6 +747,8 @@ func _test_bdp_v3_panel() -> void:
 		await get_tree().process_frame
 		_check(panel._sheet != null and panel._sheet.find_child("BdpV3BackKey", true, false) != null,
 			"bdp v3: Outputs opens the output sheet, whose Back is a keycap")
+		var sheet_scroll := panel._sheet.find_child("ActionSheetScroll", true, false) as ScrollContainer
+		_check(sheet_scroll != null and Scroll.is_applied(sheet_scroll), "bdp v3: the sheets scroll on the steel rail too")
 		panel._close_sheet()
 		var r: Rect2 = block.key_rect("recipe")
 		var press := func(pressed: bool) -> void:
@@ -732,6 +767,8 @@ func _test_bdp_v3_panel() -> void:
 	await get_tree().process_frame
 	_check(panel.find_child("BdpV3Block", true, false) == null and panel.find_child("UpgradeButton", true, false) != null,
 		"bdp v3: switching it off brings the v2 controls straight back")
+	_check(panel._badge.visible and not panel._status_v3.visible and not Scroll.is_applied(panel._scroll),
+		"bdp v3: switching it off brings back the badge and the plain scrollbar")
 	panel.queue_free()
 	BuildingState.buildings.erase(iid)
 	UiPrefs.set_use_bdp_v3(was)

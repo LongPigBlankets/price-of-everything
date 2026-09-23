@@ -19,6 +19,9 @@ const InfrastructureInfo := preload("res://scripts/infrastructure_info.gd")
 const BdpV3Block := preload("res://scripts/bdp_v3_block.gd")
 const BdpV3Footer := preload("res://scripts/bdp_v3_footer.gd")
 const BdpV3Key := preload("res://scripts/bdp_v3_key.gd")
+const BdpV3Lamp := preload("res://scripts/bdp_v3_lamp.gd")
+const BdpV3Plate := preload("res://scripts/bdp_v3_plate.gd")
+const BdpV3Scroll := preload("res://scripts/bdp_v3_scroll.gd")
 const BdpV3Nine := preload("res://scripts/bdp_v3_nine.gd")
 const BdpV3Section := preload("res://scripts/bdp_v3_section.gd")
 ## v3 frames these sections (heading and content together); the value names the frame, so sections
@@ -66,6 +69,10 @@ var _title_label: Label = null
 var _subtitle_label: Label = null
 var _badge: PanelContainer = null
 var _badge_label: Label = null
+# v3 shows the status as a lamp and its label instead of the badge.
+var _status_v3: HBoxContainer = null
+var _status_lamp: BdpV3Lamp = null
+var _status_v3_label: Label = null
 var _body: VBoxContainer = null
 var _scroll: ScrollContainer = null
 var _dragging := false
@@ -140,7 +147,6 @@ func _build_shell() -> void:
 	_close_key = BdpV3Key.make("close")
 	_close_key.pressed.connect(_hide_panel)
 	header.add_child(_close_key)
-	_apply_v3_header()
 
 	var meta := HBoxContainer.new()
 	meta.add_theme_constant_override("separation", DS.SP["SM"])
@@ -150,6 +156,19 @@ func _build_shell() -> void:
 	_badge_label.theme_type_variation = "Caption"
 	_badge.add_child(_badge_label)
 	meta.add_child(_badge)
+	_status_v3 = HBoxContainer.new()
+	_status_v3.name = "BdpV3Status"
+	_status_v3.add_theme_constant_override("separation", 6)
+	_status_lamp = BdpV3Lamp.new()
+	_status_v3.add_child(_status_lamp)
+	_status_v3_label = Label.new()
+	_status_v3_label.uppercase = true
+	_status_v3_label.add_theme_font_override("font", BdpV3Plate.FONT_SEMI)
+	_status_v3_label.add_theme_font_size_override("font_size", 18)
+	_status_v3_label.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
+	_status_v3_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_status_v3.add_child(_status_v3_label)
+	meta.add_child(_status_v3)
 	_subtitle_label = Label.new()
 	_subtitle_label.theme_type_variation = "Caption"
 	_subtitle_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -163,6 +182,7 @@ func _build_shell() -> void:
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_body.add_theme_constant_override("separation", DS.SP["SM"])
 	_scroll.add_child(_body)
+	_apply_v3_chrome()
 
 # --- live refresh (coalesced) --------------------------------------------------------------
 
@@ -368,6 +388,8 @@ func _set_badge(st: Dictionary) -> void:
 	_badge.add_theme_stylebox_override("panel", style)
 	_badge_label.text = str(st.get("label", ""))
 	_badge_label.add_theme_color_override("font_color", c)
+	_status_lamp.set_tone(str(st.get("tone", "idle")))
+	_status_v3_label.text = str(st.get("label", ""))
 
 # --- NPC-owned body (recipe + big "Owned by [company]" + Buy; nothing else, no frost) ------
 
@@ -1322,6 +1344,8 @@ func _open_sheet(title: String, populate: Callable, extra_width: float = 0.0) ->
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vb.add_child(scroll)
+	if UiPrefs.use_bdp_v3:
+		BdpV3Scroll.apply(scroll, true)
 	var body := VBoxContainer.new()
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation", DS.SP["SM"])
@@ -1436,18 +1460,24 @@ func _apply_retrofit(iid: String, recipe: Dictionary) -> void:
 # --- Building Detail v3 (`toggle bdp v3`): the main controls on worn steel plates ----------------
 
 func _on_bdp_v3_changed(_enabled: bool) -> void:
-	_apply_v3_header()
+	_apply_v3_chrome()
 	_close_sheet()
 	_queue_refresh()
 
 
-func _apply_v3_header() -> void:
-	if _close_button != null:
-		_close_button.visible = not UiPrefs.use_bdp_v3
-		_close_key.visible = UiPrefs.use_bdp_v3
-	if _pipe_frame != null:
-		_pipe_frame.visible = not UiPrefs.use_bdp_v3
-		_backing.visible = UiPrefs.use_bdp_v3
+## The parts of the shell that v3 swaps: the close key, the status lamp, the backing and the
+## scrollbar.
+func _apply_v3_chrome() -> void:
+	var v3 := UiPrefs.use_bdp_v3
+	_close_button.visible = not v3
+	_close_key.visible = v3
+	_badge.visible = not v3
+	_status_v3.visible = v3
+	# The lamp row is taller than the badge; v2 keeps its top-aligned subtitle exactly.
+	_subtitle_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER if v3 else VERTICAL_ALIGNMENT_TOP
+	_pipe_frame.visible = not v3
+	_backing.visible = v3
+	BdpV3Scroll.apply(_scroll, v3)
 
 
 ## Moves each framed section (its heading and everything up to the next heading) into a steel

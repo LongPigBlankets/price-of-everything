@@ -188,5 +188,31 @@
    64,
    64
   ]
+ },
+ "status_lamp": {
+  "size": [
+   112,
+   112
+  ],
+  "bezel": 44
+ },
+ "scroll_rail": {
+  "size": [
+   30,
+   240
+  ],
+  "cap": 30,
+  "travel_inset": 22.5
+ },
+ "scroll_thumb": {
+  "size": [
+   30,
+   210
+  ],
+  "cap": 15,
+  "grip": [
+   82.5,
+   127.5
+  ]
  }
 }

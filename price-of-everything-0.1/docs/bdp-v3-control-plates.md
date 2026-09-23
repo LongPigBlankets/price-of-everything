@@ -6,6 +6,8 @@ Building Detail v3 dresses the building detail panel as a physical control panel
 - Sell building and Demolish are guarded buttons under hinged clear covers.
 - Each section of the panel sits in a steel frame.
 - The panel's backing is dark navy-grey steel inside a brass trim.
+- The building's status is a pilot lamp, lit green, amber or red, beside its name.
+- The scrollbar is a steel rail screwed to the backing, with a cream slider riding in its slot.
 
 It is behind the debug-terminal cheat `toggle bdp v3`. The cheat is off by default, lasts for the session only, and re-renders the open panel. With it off, the panel is v2 exactly.
 
@@ -26,6 +28,9 @@ Nothing here is drawn by hand in Godot. Every plate, frame, screw and button is 
 | `scripts/bdp_v3_key.gd` | The small Close and Back keycaps. |
 | `scripts/bdp_v3_nine.gd` | Draws a rendered plate as a 9-slice (the panel backing; the frames use its `paint()`). |
 | `scripts/bdp_v3_section.gd` | A section inside a steel frame. |
+| `scripts/bdp_v3_lamp.gd` | The status lamp: picks the lit colour for a status tone and draws its glow. |
+| `scripts/bdp_v3_scroll.gd` | The scrollbar's rail and slider, as `StyleBox`es on a `ScrollContainer`'s bar. |
+| `tools/bdp_v3_shot.tscn` | Screenshots of the panel in v3 (top, lamp states, scrolled, slider tints, a sheet). |
 | `scripts/building_detail_panel_v2.gd` | Switches between v2 and v3 (`UiPrefs.use_bdp_v3`), builds the v3 parts and frames the sections. |
 | `tests/unit/test_ui.gd` | `_test_bdp_v3_rules` and `_test_bdp_v3_panel`. |
 
@@ -38,6 +43,7 @@ All parts share one stage, so they read as one piece of hardware.
 - **Light:** one `SpotLight` above and beyond the frame's top-left corner (420 px left and up, 820 px high, intensity 8400, decay 1.1), plus a weak `HemisphereLight` (0.14) and the room environment at 0.16. The tall panel backing raises the lamp to 1900 px so its far end isn't lost in shadow.
   - The lamp's fall-off grades every part from light top-left to darker bottom-right, and its shadows fall to the bottom-right.
   - Metal takes its brightness mostly from reflections, which a lamp barely grades. So the plates also carry the same grade baked into their colour.
+- **House light:** the status lamp and the scrollbar are lit by a directional light instead (`houseLight`, `stage(..., { light: 'house' })`): from the upper left, 49.7° above the panel, strength 4, with no fall-off. It is the knob and gauge renderers' key light, and the angle the raised icons' painted shadows already assume (0.6 × height along each axis). A part lit by it looks the same wherever it sits and at any size, which the scrollbar needs because the game stretches it. Its strength matches the spotlight's at a small key, and its shadow map keeps the spotlight's softness.
 - **Export scale:** every layer is rendered at `E = 2 / 1.875` times layout size, which is **2 texture pixels per logical pixel**. Godot draws them at half their pixel size, so all bdp_v3 textures import **with mipmaps**.
 
 ## Materials
@@ -145,6 +151,27 @@ The arrow is a chiselled solid, built by hand in `chiselArrow`.
 - **Open state:** the cover swings 125° open (`COVER_OPEN`), so a lifted cover stands up over the plate's top edge. The footer's render reaches 64 px above the plate (`HEAD`) to hold it.
 - **Labels:** each button's name is raised white lettering on the steel beside it.
 
+## The status lamp
+
+`pilotLamp(colour, lit)` is a panel pilot lamp standing on the backing:
+
+- **Bezel:** a turned steel ring (`LatheGeometry`) rising from a thin flange to a rolled lip, 44 px across (`LAMP_R` 22).
+- **Gasket:** a dark ring between the lip and the lens.
+- **Lens:** a faceted jewel dome (12 × 4 flat-shaded facets, so each facet catches the light). Lit, it glows from a pale middle to its colour (`lensMaterial`); off, it is dark tinted glass.
+- **Colours** (`LAMP`): green `#4FDC86`; amber `#FFA412` and red `#E8281E`, the Sell and Demolish caps' colours.
+- **Glow:** a radial layer in the lamp's colour, drawn additively.
+
+Each state renders in a 112 px frame with the lamp in the middle and its shadow on the backing. In the game (`bdp_v3_lamp.gd`) the tone picks the colour: `ok` is green, `warn` amber, `bad` red, and any other tone (NPC-owned, for one) leaves the lamp off. The panel shows the lamp and the status in capitals (Barlow Condensed SemiBold 18, off-white) in place of v2's badge.
+
+## The scrollbar
+
+- **Rail** (`scrollRail`): a steel strip 22 px wide in a 30 × 240 frame, screwed to the backing at both ends, with an 8 px slot down its middle over a dark floor. The steel is brushed along the strip's length (`railMaterial`): each column is one shade, and the rubbed edge is an unbroken line.
+- **Slider** (`scrollThumb`): a cream plastic cap 16 px wide on a chamfered skirt, in a 30 × 210 frame, standing on the rail, with its shadow on the rail. Its top is plain except for a ribbed grip in the middle: grooves shaded on their upper edge and lit on their lower one.
+
+The game stretches both to the scroll area and to the slider's length, so everything between their ends is the same all the way along. `bdp_v3_scroll.gd` draws each as a vertical three-slice. The ends keep their size (30 px of rail, 15 px of slider), and the slider's grip keeps its size in the middle while there is room for it; a slider too short for the grip is drawn plain. It draws the slices itself, because Godot's `StyleBoxTexture` draws one texture pixel per screen pixel and these renders are at two per logical pixel.
+
+`BdpV3Scroll.apply(scroll, on)` puts the rail and slider on a `ScrollContainer`'s vertical bar (`scroll`, `scroll_focus`, `grabber`, `grabber_highlight`, `grabber_pressed`), so scrolling, dragging and paging stay Godot's own. The bar is 16 px wide. The slider stops 12 px short of the rail's ends, clear of the screws. Under the pointer it is drawn 7% brighter, and 7% darker while held.
+
 ## Exporting the layers
 
 Run from the Godot project root:
@@ -161,6 +188,8 @@ Then open `http://127.0.0.1:8771/cluster.html?export` in a browser. It works hea
 
 The tab title becomes "export done". Every layer of a set shares one frame, so the game stacks them without offsets.
 
+To render some sets only, add `&only=` and a comma-separated list of `block`, `footer`, `backing`, `section`, `keys`, `lamp` and `scroll`, for example `cluster.html?export&only=lamp,scroll`. The other layers are left as they are, and the page reads the current `layout.json` from the server and updates only those sets' entries. `export.py` takes an optional port (`python3 tools/button_mockup/export.py 8779`); use a port of your own when another export may be running.
+
 | Set | Layers |
 | --- | --- |
 | Control block (863 × 379) | `block_plate`; `block_icon_input`, `_output`, `_recipe`; `block_kicker_input`, `_output`; `block_lorry_input`, `_output`; `block_arrow`, `block_arrow_lit`; `block_shadow_<part>` for each raised part; `block_glow_arrow` (additive); `block_key_<inputs, outputs, upgrade, recipe>` and `_pressed` |
@@ -168,10 +197,12 @@ The tab title becomes "export done". Every layer of a set shares one frame, so t
 | Small keys (96 × 96, key in the middle 64) | `key_close`, `key_back`, and `_pressed` |
 | Section frame (596 × 396) | `section_frame` |
 | Backing (940 × 1640) | `panel_backing` |
+| Status lamp (112 × 112, bezel 44 in the middle) | `lamp_<green, amber, red, off>`; `lamp_glow_<green, amber, red>` (additive) |
+| Scrollbar | `scroll_rail` (30 × 240), `scroll_thumb` (30 × 210) |
 
-`layout.json` lists each set's size and every key's rect and top face, in layout pixels. The scripts carry these numbers as constants. After changing a layout, copy the new numbers from `layout.json` into `bdp_v3_block.gd`, `bdp_v3_footer.gd` or `bdp_v3_section.gd`.
+`layout.json` lists each set's size and every key's rect and top face, in layout pixels, plus the lamp's bezel and the scrollbar's end, grip and travel sizes. The scripts carry these numbers as constants. After changing a layout, copy the new numbers from `layout.json` into `bdp_v3_block.gd`, `bdp_v3_footer.gd`, `bdp_v3_section.gd`, `bdp_v3_lamp.gd` or `bdp_v3_scroll.gd`.
 
-After an export, reimport with `Godot --headless --path . --import`. A new layer's `.import` gets `mipmaps/generate=true`, then import again. The scene uses a seeded random number generator, but the seed advances as parts are built, so adding a part changes the scratches and wear on the parts built after it. Expect every layer to change slightly on each export.
+After an export, reimport with `Godot --headless --path . --import`. A new layer's `.import` gets `mipmaps/generate=true`, then import again. The scene uses a seeded random number generator, but the seed advances as parts are built, so adding a part changes the scratches and wear on the parts built after it. Expect every layer to change slightly on each export. The lamp and the scrollbar are built with seeds of their own (`withSeed`), so they come out the same whichever sets are exported with them. Put a new set after the existing ones and give it its own seed, so the layers already in the game don't change.
 
 ## How the game uses them
 
@@ -187,7 +218,7 @@ After an export, reimport with `Godot --headless --path . --import`. A new layer
   - "Upgrade to Lv N" / "+X% Output". The arrow is lit when the upgrade can start: not upgrading, not at the top level, research met. Otherwise its tooltip names the missing research.
   - "Change recipes (N)" / "M better for <good>". M counts the recipes that earn more per turn than the current one by `BuildingReadout.economics`; the good's name is cut to 10 characters plus "...".
 - **`bdp_v3_footer.gd`:** the first click lifts a cover, the second presses and emits, and an untouched lifted cover drops after 4 s.
-- **Panel:** `building_detail_panel_v2.gd` builds these in place of the v2 controls when `UiPrefs.use_bdp_v3` is on. The keys open the same sheets as v2. It then moves each section's heading and content into a `bdp_v3_section` frame (`V3_FRAMED_SECTIONS`; Modifiers and Economics share one). It shows the backing and hides the brass pipe border, and swaps Close and Back for keycaps.
+- **Panel:** `building_detail_panel_v2.gd` builds these in place of the v2 controls when `UiPrefs.use_bdp_v3` is on. The keys open the same sheets as v2. It then moves each section's heading and content into a `bdp_v3_section` frame (`V3_FRAMED_SECTIONS`; Modifiers and Economics share one). It shows the backing and hides the brass pipe border, and swaps Close and Back for keycaps. `_apply_v3_chrome` swaps the status badge for the lamp and puts the rail and slider on the panel's scrollbar; each action sheet's scrollbar gets them too.
 
 ## Adding another control
 
