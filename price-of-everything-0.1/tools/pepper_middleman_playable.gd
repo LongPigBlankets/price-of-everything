@@ -1,5 +1,6 @@
 extends Node
-## Live public-start acceptance: tutorial, actual construction, expansion and reload.
+## Live public-start acceptance: actual construction, expansion and reload. The start has
+## no coach introduction; its Logistics mission tree carries the progression instead.
 const Service := preload("res://scripts/middleman_service.gd")
 const Paths := preload("res://scripts/app_paths.gd")
 const OUT := "/tmp/pepper-middleman-p2"
@@ -24,10 +25,7 @@ func _ready() -> void:
 	get_tree().current_scene=world
 	for frame in 180: await get_tree().process_frame
 	TurnManager.fast_mode=true
-	check(Tutorial.active and str(Tutorial._steps[0].id)=="middleman_welcome","public start boots dedicated introduction")
-	Tutorial._on_overlay_advanced()
-	Tutorial._on_overlay_advanced()
-	check(Tutorial._index==2,"intro reaches first-turn action")
+	check(not Tutorial.active,"public start opens straight into play without a coach")
 	# No research or random decisions: retain changing market prices, ordinary
 	# construction delivery, expenses, solvency and actual turn execution.
 	for system in [ResearchState,EventScheduler,DecisionState]:
@@ -66,13 +64,6 @@ func _ready() -> void:
 		var s: Dictionary=Production.last_turn_summary.duplicate(true)
 		check(absf(MatchState.money-before-Production.cash_change_of(s))<0.0001,"cash reconciles turn %d"%turn)
 		check(MatchState.money>=0,"public business remains solvent turn %d"%turn)
-		if turn==1:
-			check(Tutorial._index==3,"actual first turn advances introduction")
-			var tutorial_cash:=MatchState.money
-			Tutorial._on_overlay_advanced()
-			Tutorial._on_overlay_advanced()
-			check(not Tutorial.active and bool(MatchState.middleman_service.get("intro_completed",false)),"introduction completes")
-			check(MatchState.money==tutorial_cash,"intro completion preserves business cash")
 		if second!="" and Service.enabled(second):
 			if completed_turn==0: completed_turn=turn
 			check(int(s.sold.get("g_008",{}).get("qty",0))==66,"both factories sell independent batches turn %d"%turn)
@@ -82,10 +73,10 @@ func _ready() -> void:
 			var snapshot:=SaveLoad.export_snapshot()
 			SaveLoad.import_snapshot(JSON.parse_string(JSON.stringify(snapshot)))
 			check(Service.enabled(second),"reload retains expanded service")
-			check(not Tutorial.active,"reload does not restart completed introduction")
+			check(not Tutorial.active,"reload does not start a coach")
 	check(completed_turn>0,"actual construction completed within acceptance horizon")
 	check(MarketState.get_price("g_008")!=initial_motor_price,"test used evolving market prices")
-	var report:={"status":"passed" if failures.is_empty() else "failed","failures":failures,"starting_cash":1500,"construction_cash_fee":fee,"second_factory_completed_turn":completed_turn,"execution":"50 real turns, evolving market prices; no research/random decisions; actual public start, tutorial, construction, cancellation and reload","rows":rows}
+	var report:={"status":"passed" if failures.is_empty() else "failed","failures":failures,"starting_cash":1500,"construction_cash_fee":fee,"second_factory_completed_turn":completed_turn,"execution":"50 real turns, evolving market prices; no research/random decisions; actual public start, construction, cancellation and reload","rows":rows}
 	DirAccess.make_dir_recursive_absolute(OUT)
 	var file:=FileAccess.open(OUT+"/report.json",FileAccess.WRITE)
 	file.store_string(JSON.stringify(report,"  "))

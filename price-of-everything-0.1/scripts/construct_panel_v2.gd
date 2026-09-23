@@ -840,7 +840,9 @@ func _render_settings() -> void:
 		{"id": "any_tile", "title": "Any tile with surplus", "detail": "Pulls spare goods network-wide"},
 	]:
 		var option_id := str(option.get("id", ""))
-		var selected := MatchState.construct_material_source == option_id
+		if option_id == "middleman" and not ResearchState.logistics_progression_active():
+			continue
+		var selected := _effective_material_source(MatchState.construct_material_source) == option_id
 		var radio_text := "●" if selected else "○"
 		var choice := _settings_choice_button(
 			"%s  %s\n    %s" % [radio_text, str(option.get("title", "")), str(option.get("detail", ""))],
@@ -1475,7 +1477,9 @@ func _render_confirm_v3() -> void:
 	if bool(_v3_forecast.get("middleman",false)):
 		var service_note := Label.new()
 		service_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		service_note.text = "After completion: middleman inputs and sales, with transport and operating storage included. Construction materials use the Logistics Intermediary and arrive on the next turn. Keep £%.2f for the first operating batch; anticipated sales cannot fund it." % float(_v3_forecast.cash_needed)
+		var materials_line := "Construction materials use the Logistics Intermediary and arrive on the next turn." \
+			if _current_material_source() == "middleman" else "Construction materials follow the source chosen below."
+		service_note.text = "After completion: middleman inputs and sales, with transport and operating storage included. %s Keep £%.2f for the first operating batch; anticipated sales cannot fund it." % [materials_line, float(_v3_forecast.cash_needed)]
 		_content.add_child(service_note)
 	if _locked_tile_id != "" and not (_v3_forecast.get("phases", []) as Array).is_empty():
 		if BuildForecastTable.show_balance_impact():
@@ -2193,7 +2197,16 @@ var _material_remember := true
 
 func _current_material_source() -> String:
 	var s := MatchState.pending_build_material_source if MatchState.pending_build_material_source != "" else MatchState.construct_material_source
-	return "middleman" if (s == "ask" or s == "") else s
+	return _effective_material_source(s)
+
+## Only Logistics Intermediary games have an intermediary. Elsewhere the "middleman"
+## default buys from the market, exactly as the build flow resolves it.
+func _effective_material_source(source: String) -> String:
+	if source == "ask" or source == "":
+		source = "middleman"
+	if source == "middleman" and not ResearchState.logistics_progression_active():
+		return "market"
+	return source
 
 func _material_source_short(id: String) -> String:
 	match id:
@@ -2239,6 +2252,8 @@ func _v3_materials_accordion() -> Control:
 		{"id": "any_tile", "label": "Any tile with surplus"},
 	]:
 		var oid := str(opt.get("id", ""))
+		if oid == "middleman" and not ResearchState.logistics_progression_active():
+			continue
 		var b := _settings_choice_button(str(opt.get("label", "")), cur == oid, group)
 		if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1":
 			if oid == "market" and not ResearchState.global_trade_license_available():
@@ -3375,7 +3390,7 @@ func _material_source_note() -> String:
 	# In the tile-locked flow the site is already known, so name it instead of
 	# "the tile you select next".
 	var where := Catalog.tile_label(_locked_tile_id) if _locked_tile_id != "" else "the tile you select next"
-	match MatchState.construct_material_source:
+	match _effective_material_source(MatchState.construct_material_source):
 		"middleman":
 			return "Materials will be bought through the Logistics Intermediary and delivered to %s on the next turn." % where
 		"market":

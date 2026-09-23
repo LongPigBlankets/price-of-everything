@@ -5,6 +5,11 @@ from pathlib import Path
 from run_tests import find_godot
 ROOT=Path(__file__).resolve().parents[1]
 OUT=Path('/tmp/middleman-phase0')
+def all_ran(text,test_file,minimum):
+    # Every test in the file ran ("N of N"), and the file still has at least the
+    # tests this gate was written against. New tests must not break the gate.
+    match=re.search(re.escape(test_file)+r' \((\d+) of (\d+) tests\)',text)
+    return bool(match) and match[1]==match[2] and int(match[1])>=minimum
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--full',action='store_true',help='Run the full unit suite and all three real baseline replays')
@@ -26,11 +31,11 @@ def main():
         match=re.search(r'==== (\d+) passed, (\d+) failed ====',text)
         if label.startswith('unit'):
             assert match and int(match[2])==0,f'Missing clean unit summary: {label}'
-            assert 'test_middleman_contract.gd (8 of 8 tests)' in text,'Phase-0 tests were not all discovered'
+            assert all_ran(text,'test_middleman_contract.gd',8),'Phase-0 tests were not all discovered'
             if args.phase1:
-                assert 'test_middleman_service.gd (6 of 6 tests)' in text,'Phase-1 integration tests were not all discovered'
+                assert all_ran(text,'test_middleman_service.gd',6),'Phase-1 integration tests were not all discovered'
         if args.phase2 and label.startswith('unit'):
-            assert 'test_middleman_presentation.gd (10 of 10 tests)' in text,'Phase-2 presentation tests were not all discovered'
+            assert all_ran(text,'test_middleman_presentation.gd',10),'Phase-2 presentation tests were not all discovered'
         result={'label':label,'log':str(OUT/f'{label}.log'),'passed_checks':int(match[1]) if match else None}
         runs.append(result);print(json.dumps(result),flush=True)
     unit_cmd=[find_godot(),'--headless','--path',str(ROOT),'--log-file',str(OUT/'godot_tests.log'),'res://tests/test_runner.tscn']

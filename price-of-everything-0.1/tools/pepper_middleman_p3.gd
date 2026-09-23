@@ -28,6 +28,11 @@ func _ready() -> void:
 	DecisionState.enabled=false
 	DecisionState.auto_resolve=true
 	SolvencyState.enabled=false
+	# The arrangements are compared with every route open, so grant the logistics
+	# progression research: tile-stockpile routes and the paid Import/Export License.
+	for title in [ResearchState.OPEN_LOGISTICS_CONTRACTS_TITLE, ResearchState.INFRASTRUCTURE_TENDERING_TITLE, ResearchState.GLOBAL_TRADE_LICENSE_TITLE]:
+		ResearchState.unlocked_titles[title]=true
+	ResearchState.activate_global_trade_license()
 	MatchState.money=100000.0
 	BuildingState.tile_land_owned["tile_6_4"]=200
 	Catalog.add_tile_infrastructure("tile_6_4","cables")

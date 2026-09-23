@@ -2836,7 +2836,7 @@ func _tile_produces_good(tile_data: Dictionary, internal_name: String) -> bool:
 	return false
 
 func _on_infrastructure_attempted(infra_type: String, tile_id: String) -> void:
-	if not ResearchState.is_unlocked("Infrastructure Tendering"):
+	if not ResearchState.infrastructure_tendering_available():
 		MatchState.request_toast("Infrastructure Tendering is required before building infrastructure.", "warning")
 		return
 	var coord := terrain_layer.id_to_coord(tile_id)
@@ -3038,7 +3038,10 @@ func _space_check_for_build(tile_id: String, building_id: String) -> Dictionary:
 	# take the building buys nothing. purchase_tile_land clamps to what's actually for sale
 	# and can grant a clipped sliver, so the gate below is re-evaluated on the real result
 	# rather than assumed to have succeeded.
-	var tendered_infrastructure := ResearchState.is_unlocked("Infrastructure Tendering") and _is_tile_infra_type(internal)
+	# Tendered infrastructure may cross land the player does not own. Only Logistics
+	# Intermediary games have the tendering research; elsewhere the land rule is unchanged.
+	var tendered_infrastructure := ResearchState.logistics_progression_active() \
+		and ResearchState.infrastructure_tendering_available() and _is_tile_infra_type(internal)
 	if projected_player > float(land_owned) and not tendered_infrastructure \
 			and (MatchState.construct_auto_buy_land or BuildMode.attempt_buy_land):
 		var shortfall := projected_player - float(land_owned)
@@ -3123,7 +3126,7 @@ func _apply_demo_infra_levels() -> void:
 		# Keep the router's mirrored level in sync with the map data.  Runtime
 		# upgrades go through BuildingWorks.set_tile_infra_level(), but these
 		# authored/demo levels are applied directly during scene setup.  Without
-		# this call Catalog.route() continued to use the level-1 range even while
+		# this call the router continued to use the level-1 range even while
 		# the map and infrastructure panel displayed a higher level.
 		Catalog.set_tile_infra_level(str(entry.tile), str(entry.infra), int(entry.level))
 

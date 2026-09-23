@@ -2774,11 +2774,13 @@ func _add_output_good_options(vb: VBoxContainer, building: Dictionary, recipe: D
 	row.add_theme_constant_override("v_separation", 8)
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.alignment = FlowContainer.ALIGNMENT_CENTER
-	row.add_child(_dest_option("Logistics Intermediary", "Sell this output privately, including transport and storage.", service.buys_output(iid, good_id), func() -> void:
-		var result := service.set_good_mode(iid, "output", good_id, "middleman")
-		if not bool(result.get("ok", false)): MatchState.request_toast(str(result.get("reason", "Unable to change output destination.")), "warning")
-		_queue_refresh()
-		_open_output_sheet(building, recipe)))
+	# Only buildings the intermediary can serve (Logistics Intermediary games) offer it.
+	if service.eligible(building):
+		row.add_child(_dest_option("Logistics Intermediary", "Sell this output privately, including transport and storage.", service.buys_output(iid, good_id), func() -> void:
+			var result := service.set_good_mode(iid, "output", good_id, "middleman")
+			if not bool(result.get("ok", false)): MatchState.request_toast(str(result.get("reason", "Unable to change output destination.")), "warning")
+			_queue_refresh()
+			_open_output_sheet(building, recipe)))
 	# Selecting Market / Tile re-renders the sheet in place; shipping to another tile
 	# opens the map picker.
 	var market_available := str(MatchState.ruleset.get("logistics_model", "")) != "middleman_v1" or ResearchState.global_trade_license_available()
@@ -2897,6 +2899,9 @@ func _consumer_row(name_txt: String, target_iid: String) -> Control:
 func _dest_option(title: String, detail: String, active: bool, on_press: Callable, enabled: bool = true) -> Control:
 	var accent: Color = DS.PALETTE["ACCENT"]
 	var card := PanelContainer.new()
+	# Icon-only cards carry their title in the node name so tutorial spotlights and
+	# harnesses can target a specific route, e.g. RouteOption_ShipToAnotherTile.
+	card.name = ("RouteOption_" + title.to_pascal_case()).validate_node_name()
 	card.custom_minimum_size = Vector2(78, 78)
 	card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	card.modulate = Color(1, 1, 1, 0.42) if not enabled else Color.WHITE

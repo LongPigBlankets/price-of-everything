@@ -919,7 +919,13 @@ func _build_logistics_overview(list: VBoxContainer) -> void:
 func _build_global_logistics() -> void:
 	_clear(_global_logistics)
 	_global_logistics.visible = str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1"
-	if not _global_logistics.visible: return
+	# The company-wide settings only exist in Logistics Intermediary games.
+	if _settings_button != null:
+		_settings_button.visible = _global_logistics.visible
+	if not _global_logistics.visible:
+		if _settings_layer != null:
+			_settings_layer.visible = false
+		return
 	var title := _label("All Buildings in the company", DS.FS.BODY + 4, DS.PALETTE.ACCENT)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_global_logistics.add_child(title)

@@ -811,13 +811,13 @@ func _test_market_prices_tab_impact_columns() -> void:
 
 ## Base output is the yardstick every price-impact threshold is a multiple of, so WHICH
 ## recipe defines it is load-bearing. It is the good's best BASE recipe — one with an empty
-## tech_unlock_req — not the best recipe in the game (owner 2026-08-29): steel read 54/turn
+## tech_unlock_req — not the best recipe in the game (owner 2026-08-29): steel read 60/turn
 ## off Electric Arc Steelmaking, behind research_metal_004, when the player starts with
-## Steelmaking at 44.
+## Steelmaking at 49.
 func _test_base_output_ignores_gated_recipes() -> void:
 	var steel := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
-	_check(Catalog.base_output_for_good(steel) == 44,
-		"base output: steel is 44 (Steelmaking), not 54 (Electric Arc, tech-gated)")
+	_check(Catalog.base_output_for_good(steel) == 49,
+		"base output: steel is 49 (Steelmaking), not 60 (Electric Arc, tech-gated)")
 
 	# The rule, stated generally: no good may take its base output from a gated recipe while
 	# an ungated one exists. This is what stops a future recipe silently moving a threshold.

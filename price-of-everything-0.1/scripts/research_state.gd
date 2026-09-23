@@ -18,15 +18,24 @@ const SEATS_UNLOCK_TITLE := "Executive Search"
 const OPEN_LOGISTICS_CONTRACTS_TITLE := "Open Logistics Contracts"
 const INFRASTRUCTURE_TENDERING_TITLE := "Infrastructure Tendering"
 const GLOBAL_TRADE_LICENSE_TITLE := "Government Import/Export License"
+## The three logistics progression rows. They only exist in Logistics Intermediary games:
+## elsewhere the capabilities they grant are available from the start, as before.
+const LOGISTICS_PROGRESSION_IDS := ["research_logi_012", "research_logi_013", "research_logi_014"]
+
+## True when the match uses the Logistics Intermediary ruleset, whose logistics
+## capabilities are earned through research instead of being available from turn one.
+func logistics_progression_active() -> bool:
+	return str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1"
 
 func open_logistics_contracts_available() -> bool:
-	return is_unlocked(OPEN_LOGISTICS_CONTRACTS_TITLE)
+	return not logistics_progression_active() or is_unlocked(OPEN_LOGISTICS_CONTRACTS_TITLE)
 
 func infrastructure_tendering_available() -> bool:
-	return is_unlocked(INFRASTRUCTURE_TENDERING_TITLE)
+	return not logistics_progression_active() or is_unlocked(INFRASTRUCTURE_TENDERING_TITLE)
 
 func global_trade_license_available() -> bool:
-	return is_unlocked(GLOBAL_TRADE_LICENSE_TITLE) and _global_trade_license_paid
+	return not logistics_progression_active() \
+		or (is_unlocked(GLOBAL_TRADE_LICENSE_TITLE) and _global_trade_license_paid)
 
 ## The research node is awarded before the government notice is understood.  Keep
 ## those states separate so the £150 decision has a real gameplay effect: direct
@@ -226,6 +235,8 @@ const HIDDEN_RESEARCH_IDS := {
 func is_research_visible(definition: Dictionary) -> bool:
 	var node_id := str(definition.get("research_node_id", ""))
 	if HIDDEN_RESEARCH_IDS.has(node_id):
+		return false
+	if LOGISTICS_PROGRESSION_IDS.has(node_id) and not logistics_progression_active():
 		return false
 	if str(definition.get("category", "")) == "Recycling" and not MatchState.is_recycling_available():
 		return false

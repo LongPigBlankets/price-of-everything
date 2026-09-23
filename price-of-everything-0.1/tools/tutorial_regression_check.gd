@@ -180,10 +180,8 @@ func _run() -> void:
 	await settle()
 	await tap("OutputDestCard")
 	check(Tutorial.is_active_step("transport_redirect_pick"), "output sheet advances to destination selection")
-	var ship_card: Control = null
-	for label: Label in node_named("ActionSheet").find_children("*", "Label", true, false):
-		if label.text == "Ship to another tile":
-			ship_card = label.get_parent().get_parent().get_parent()
+	# Route choices are icon-only cards named after their title.
+	var ship_card := node_named("ActionSheet").find_child("RouteOption_ShipToAnotherTile", true, false) as Control
 	check(ship_card != null, "ship-to-tile choice exists")
 	if ship_card != null:
 		await click_at(ship_card.get_global_rect().get_center())
@@ -233,10 +231,7 @@ func _run() -> void:
 	await settle()
 	check(Tutorial.is_active_step("revenue_route_market"), "market lesson waits for the player to change the route")
 	await tap("OutputDestCard")
-	var market_card: Control = null
-	for label: Label in node_named("ActionSheet").find_children("*", "Label", true, false):
-		if label.text == "Global market":
-			market_card = label.get_parent().get_parent().get_parent()
+	var market_card := node_named("ActionSheet").find_child("RouteOption_GlobalMarket", true, false) as Control
 	check(market_card != null, "Global market option is available")
 	if market_card != null:
 		await click_at(market_card.get_global_rect().get_center())

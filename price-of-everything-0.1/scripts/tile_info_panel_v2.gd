@@ -1493,10 +1493,10 @@ func _build_bl_pane(pane: VBoxContainer) -> void:
 		pane.add_child(_make_buildings_header("NPC Buildings", "(%d)" % npc_rows.size(), false))
 		_add_grouped_building_cards(pane, npc_rows)
 
-	# Infrastructure is a tendered capability. Before Infrastructure Tendering is
-	# unlocked the tile view omits this section entirely, so the player is not shown
-	# controls that the progression has not granted yet.
-	if ResearchState.is_unlocked("Infrastructure Tendering"):
+	# In Logistics Intermediary games infrastructure is a tendered capability. Until
+	# Infrastructure Tendering is unlocked the tile view omits this section entirely, so
+	# the player is not shown controls that the progression has not granted yet.
+	if ResearchState.infrastructure_tendering_available():
 		pane.add_child(_make_section_title("Infrastructure", "transit / capacity", "ok"))
 		pane.add_child(_make_infra_grid())
 
@@ -2224,11 +2224,15 @@ func _make_surplus_controls() -> Control:
 	]
 	for option: Dictionary in options:
 		var destination := str(option.id)
+		# Only Logistics Intermediary games have an intermediary to sell surplus to.
+		if destination == "middleman" and not ResearchState.logistics_progression_active():
+			continue
 		var button := _make_route_choice_button(str(option.label), option.icon as Texture2D, destination == selected, str(option.tip))
-		button.name = "Surplus_%s" % destination.capitalize()
+		# The market choice keeps the tutorial's "SellSurplusToggle" spotlight name.
+		button.name = "SellSurplusToggle" if destination == "market" else "Surplus_%s" % destination.capitalize()
 		if destination == "market" and not ResearchState.global_trade_license_available():
 			button.disabled = true
-			button.tooltip_text = "Global Trade License required to sell surplus through a port."
+			button.tooltip_text = "Government Import/Export License required to sell surplus through a port."
 		elif destination == "middleman" and not ResearchState.open_logistics_contracts_available():
 			button.disabled = true
 			button.tooltip_text = "Open Logistics Contracts research required."
