@@ -21,6 +21,17 @@ const FONT_SEMI: FontFile = preload("res://assets/fonts/BarlowCondensed-SemiBold
 ## Darkening while a key is held, on top of the pressed render.
 const PRESS_TINT := Color(0.93, 0.93, 0.93)
 
+const DIR := "res://assets/ui/bdp_v3/"
+static var _textures := {}
+
+
+## A layer of the v3 renders by name, loaded once.
+static func tex(layer: String) -> Texture2D:
+	if not _textures.has(layer):
+		_textures[layer] = load(DIR + layer + ".png")
+	return _textures[layer]
+
+
 ## The frame's size in layout pixels.
 var frame_size := Vector2.ONE
 var _back: Array[Texture2D] = []

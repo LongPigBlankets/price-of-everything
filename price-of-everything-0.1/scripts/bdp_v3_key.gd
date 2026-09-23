@@ -14,9 +14,12 @@ static func make(glyph: String) -> TextureButton:
 	b.texture_pressed = load("res://assets/ui/bdp_v3/key_%s_pressed.png" % glyph)
 	b.ignore_texture_size = true
 	b.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	b.stretch_mode = TextureButton.STRETCH_SCALE
 	var side := roundf(TEXTURE_SIDE / CAPTURE_SCALE)
 	b.custom_minimum_size = Vector2(side, side)
+	# Square at its own size: never stretched by a taller row (the header grows with a two-line title).
+	b.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	b.size_flags_horizontal = Control.SIZE_SHRINK_END
+	b.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
 	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	b.tooltip_text = "Close" if glyph == "close" else "Back"
 	return b

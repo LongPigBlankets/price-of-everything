@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dy71devl824fp"
-path="res://.godot/imported/footer_key_demolish.png-84baa69231dc6c353617148ac65c1ad6.ctex"
+uid="uid://dek5f2klo46lg"
+path="res://.godot/imported/footer_glow.png-4eb62be21a0ec4908aba7b908fe648b4.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/bdp_v3/footer_key_demolish.png"
-dest_files=["res://.godot/imported/footer_key_demolish.png-84baa69231dc6c353617148ac65c1ad6.ctex"]
+source_file="res://assets/ui/bdp_v3/footer_glow.png"
+dest_files=["res://.godot/imported/footer_glow.png-4eb62be21a0ec4908aba7b908fe648b4.ctex"]
 
 [params]
 

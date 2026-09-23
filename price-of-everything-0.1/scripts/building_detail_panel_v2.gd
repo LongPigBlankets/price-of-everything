@@ -19,6 +19,15 @@ const InfrastructureInfo := preload("res://scripts/infrastructure_info.gd")
 const BdpV3Block := preload("res://scripts/bdp_v3_block.gd")
 const BdpV3Footer := preload("res://scripts/bdp_v3_footer.gd")
 const BdpV3Key := preload("res://scripts/bdp_v3_key.gd")
+const BdpV3Nine := preload("res://scripts/bdp_v3_nine.gd")
+const BdpV3Section := preload("res://scripts/bdp_v3_section.gd")
+## v3 frames these sections (heading and content together); the value names the frame, so sections
+## sharing a name share one frame (Modifiers and Economics).
+const V3_FRAMED_SECTIONS := {
+	"Diagnostics": "diagnostics", "Cost to produce": "cost", "Modifiers": "money", "Economics · per turn": "money",
+	"Infrastructure": "infrastructure", "Breakdown": "breakdown", "Inbound shipments": "shipments",
+	"Labour on this building": "labour",
+}
 const ROUTE_STOCKPILE_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_stockpile.png")
 const ROUTE_MARKET_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_port.png")
 const ROUTE_MIDDLEMAN_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_lorry.png")
@@ -75,6 +84,9 @@ var _sheet: Control = null
 # Header close control: the v2 button, and the v3 keycap shown instead while `toggle bdp v3` is on.
 var _close_button: Button = null
 var _close_key: TextureButton = null
+# v2's brass pipe border, and v3's dark brass backing plate drawn behind everything instead.
+var _pipe_frame: Control = null
+var _brass_backing: Control = null
 
 func _ready() -> void:
 	if DS and DS.theme:
@@ -100,7 +112,11 @@ func _build_shell() -> void:
 	for side in ["left", "right", "top", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, 26)   # clear the brass frame
 	add_child(margin)
-	add_child(preload("res://scripts/brass_pipe_frame.gd").new())   # brass frame, drawn on top
+	_pipe_frame = preload("res://scripts/brass_pipe_frame.gd").new()
+	add_child(_pipe_frame)   # brass frame, drawn on top
+	_brass_backing = BdpV3Nine.make("panel_brass", 64.0)
+	add_child(_brass_backing)
+	move_child(_brass_backing, 0)   # behind the content
 
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", DS.SP["SM"])
@@ -321,10 +337,15 @@ func _rebuild(building: Dictionary) -> void:
 	_body.add_child(_build_labour(lab_readout))
 
 	# sell / demolish (player-owned; the early NPC/construction returns skip this)
+	var sell_row: Control
 	if UiPrefs.use_bdp_v3 and not BuildingWorks.is_demolishing(str(building.get("instance_id", ""))):
-		_body.add_child(_build_v3_footer(building))
+		sell_row = _build_v3_footer(building)
 	else:
-		_body.add_child(_build_sell_demolish_row(building, building_data))
+		sell_row = _build_sell_demolish_row(building, building_data)
+	sell_row.set_meta("v3_section_end", true)
+	_body.add_child(sell_row)
+	if UiPrefs.use_bdp_v3:
+		_v3_frame_sections()
 
 	# map highlight: light up supplier/consumer tiles for this building
 	var conn := BuildingReadout.connections(building, recipe)
@@ -1423,6 +1444,29 @@ func _apply_v3_header() -> void:
 	if _close_button != null:
 		_close_button.visible = not UiPrefs.use_bdp_v3
 		_close_key.visible = UiPrefs.use_bdp_v3
+	if _pipe_frame != null:
+		_pipe_frame.visible = not UiPrefs.use_bdp_v3
+		_brass_backing.visible = UiPrefs.use_bdp_v3
+
+
+## Moves each framed section (its heading and everything up to the next heading) into a steel
+## frame. Runs after a v3 rebuild; the footer and anything above the first framed heading stay put.
+func _v3_frame_sections() -> void:
+	var frame: Control = null
+	var frame_name := ""
+	for child in _body.get_children():
+		if child.has_meta("v3_section_end"):
+			frame = null
+			continue
+		var heading := str(child.get_meta("v3_section", ""))
+		if V3_FRAMED_SECTIONS.has(heading) and (frame == null or V3_FRAMED_SECTIONS[heading] != frame_name):
+			frame = BdpV3Section.new()
+			frame_name = V3_FRAMED_SECTIONS[heading]
+			_body.add_child(frame)
+			_body.move_child(frame, child.get_index())
+		if frame != null:
+			_body.remove_child(child)
+			frame.content.add_child(child)
 
 
 ## Inputs, Outputs, Upgrade and Change recipes as one control plate. The values are the ones the
@@ -2134,6 +2178,7 @@ func _add_modifiers_accordion(building: Dictionary, recipe: Dictionary) -> void:
 		right.text = "Output %s" % _mod_pct_text(out_pct)
 		right.add_theme_color_override("font_color", _mod_tone(out_pct, true))
 	header.add_child(right)
+	header.set_meta("v3_section", "Modifiers")
 	_body.add_child(header)
 
 	var card := _make_card()
@@ -3107,6 +3152,7 @@ func _labour_card(label: String, count: int, accent: Color) -> PanelContainer:
 
 func _make_section(text: String, right_text: String = "") -> Control:
 	var hb := HBoxContainer.new()
+	hb.set_meta("v3_section", text)
 	var s := Label.new()
 	s.theme_type_variation = "Section"
 	s.text = text

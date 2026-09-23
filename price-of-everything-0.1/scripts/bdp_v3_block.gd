@@ -11,7 +11,6 @@ extends "res://scripts/bdp_v3_plate.gd"
 
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const BuildingReadout := preload("res://scripts/building_readout.gd")
-const DIR := "res://assets/ui/bdp_v3/"
 ## The block's frame and its keys, in layout pixels (assets/ui/bdp_v3/layout.json).
 const FRAME := Vector2(863, 379)
 const KEYS := {
@@ -21,15 +20,6 @@ const KEYS := {
 	"recipe": [Rect2(563, 196, 280, 139), Rect2(578.6, 211.6, 248.8, 107.8)],
 }
 const ALWAYS_RAISED: Array[String] = ["icon_input", "icon_output", "kicker_input", "kicker_output", "icon_recipe"]
-
-static var _cache := {}
-
-
-static func tex(layer: String) -> Texture2D:
-	if not _cache.has(layer):
-		_cache[layer] = load(DIR + layer + ".png")
-	return _cache[layer]
-
 
 func _init() -> void:
 	super()

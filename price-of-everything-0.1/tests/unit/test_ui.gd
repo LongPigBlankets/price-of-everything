@@ -667,6 +667,48 @@ func _test_bdp_v3_panel() -> void:
 	_check(block != null and footer != null and panel.find_child("UpgradeButton", true, false) == null,
 		"bdp v3: the control block and footer replace the v2 route cards and buttons")
 	_check(panel._close_key.visible and not panel._close_button.visible, "bdp v3: the close keycap replaces the X button")
+	_check(is_equal_approx(panel._close_key.size.x, panel._close_key.size.y), "bdp v3: the close key stays square (%s)" % str(panel._close_key.size))
+	_check(panel._brass_backing.visible and not panel._pipe_frame.visible, "bdp v3: the brass backing plate replaces the pipe border")
+	# Godot renames same-named siblings, so the frames are found by script rather than by name.
+	var section_script = load("res://scripts/bdp_v3_section.gd")
+	var frames: Array = panel.find_children("*", "MarginContainer", true, false).filter(func(n: Node) -> bool: return n.get_script() == section_script)
+	var framed: Array = []
+	for f in frames:
+		for c in f.content.get_children():
+			if c.has_meta("v3_section"):
+				framed.append(str(c.get_meta("v3_section")))
+	_check(framed.has("Diagnostics") and framed.has("Labour on this building") and framed.has("Economics · per turn"),
+		"bdp v3: the sections sit in steel frames (%s)" % ", ".join(framed))
+	var money_frame: Control = null
+	for f in frames:
+		for c in f.content.get_children():
+			if str(c.get_meta("v3_section", "")) == "Economics · per turn":
+				money_frame = f
+	var shares := false
+	if money_frame != null:
+		for c in money_frame.content.get_children():
+			shares = shares or str(c.get_meta("v3_section", "")) == "Modifiers"
+	_check(shares, "bdp v3: Modifiers and Economics share one frame")
+	if footer != null:
+		var opened: Array = []
+		footer.key_pressed.connect(func(k: String) -> void: opened.append(k))
+		var click := func(key: String, pressed: bool) -> void:
+			var e := InputEventMouseButton.new()
+			e.button_index = MOUSE_BUTTON_LEFT
+			e.pressed = pressed
+			e.position = footer.key_rect(key).get_center()
+			footer._gui_input(e)
+		# Swap the review for a no-op so the click does not open the supply-chain panel.
+		for conn in footer.key_pressed.get_connections():
+			if conn.callable.get_object() == panel:
+				footer.key_pressed.disconnect(conn.callable)
+		click.call("demolish", true); click.call("demolish", false)
+		_check(footer.is_open("demolish") and opened.is_empty(), "bdp v3: the first click on Demolish only lifts its cover")
+		click.call("demolish", true); click.call("demolish", false)
+		_check(opened == ["demolish"] and not footer.is_open("demolish"), "bdp v3: the second click presses Demolish and the cover drops")
+		footer.lift("sell")
+		footer._process(footer.OPEN_SECONDS + 0.1)
+		_check(not footer.is_open("sell"), "bdp v3: an untouched lifted cover drops again")
 	if block != null:
 		block.key_pressed.emit("outputs")
 		await get_tree().process_frame

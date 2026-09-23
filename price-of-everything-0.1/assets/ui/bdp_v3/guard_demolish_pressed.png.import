@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://u7yl8lvulrf0"
-path="res://.godot/imported/footer_key_sell.png-3e3a444019d738a358d370e1fc85205b.ctex"
+uid="uid://bgtcnba5uncxo"
+path="res://.godot/imported/guard_demolish_pressed.png-bdb174548712e7038231a944ec431bff.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/bdp_v3/footer_key_sell.png"
-dest_files=["res://.godot/imported/footer_key_sell.png-3e3a444019d738a358d370e1fc85205b.ctex"]
+source_file="res://assets/ui/bdp_v3/guard_demolish_pressed.png"
+dest_files=["res://.godot/imported/guard_demolish_pressed.png-bdb174548712e7038231a944ec431bff.ctex"]
 
 [params]
 
