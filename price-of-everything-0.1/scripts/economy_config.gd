@@ -454,7 +454,7 @@ func good_value_basis(good_id: String) -> float:
 # lets debt service sit above pure interest without being unserviceable.
 const LOAN_BASE_CAPACITY: float = 50.0     # Floor on borrowing capacity (turn 1, no history)
 const LOAN_TERM_TURNS: int = 36            # How many turns of REPAYMENT (after the grace)
-const LOAN_INTEREST_RATE: float = 0.10     # 10% over total term (not per turn)
+const LOAN_INTEREST_RATE: float = 0.15     # 15% over total term (not per turn); research lowers it to 10%
 # Smallest loan the bank will write. The auto-bridge used to borrow the exact shortfall, so a
 # £1.36 gap became a £1.36 loan on a 36-turn book — 18 of them by turn 57 in a player log,
 # each carrying its own interest forever. A floor turns that into one loan with headroom.

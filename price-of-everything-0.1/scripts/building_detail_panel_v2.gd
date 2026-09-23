@@ -2334,6 +2334,14 @@ func _input_summary(building: Dictionary, recipe: Dictionary) -> String:
 	var service = preload("res://scripts/middleman_service.gd")
 	var iid := str(building.instance_id)
 	if service.side_all_middleman(iid, "input"): return "Logistics intermediary"
+	var handover_turns := -1
+	for item: Dictionary in recipe.get("inputs", []):
+		var gid := str(item.get("good_id", ""))
+		if service.in_handover(iid, gid):
+			var turns: int = service.handover_turns(iid, gid)
+			handover_turns = turns if handover_turns < 0 else mini(handover_turns, turns)
+	if handover_turns > 0:
+		return "Switching suppliers: first input from the market in %d turn%s" % [handover_turns, "" if handover_turns == 1 else "s"]
 	if service.enabled(iid) and (recipe.get("inputs", []) as Array).any(func(item: Dictionary) -> bool: return service.supplies_good(iid, str(item.get("good_id", "")))): return "Mixed logistics"
 	var names: Array = []
 	for s in BuildingReadout.input_sources(building, recipe):
@@ -2614,6 +2622,9 @@ func _route_details_section(building: Dictionary, gid: String, qty: int, route: 
 		fallback.text = _route_detail_line(building, gid, qty, str(route.get("fallback", "")), "FALLBACK")
 		fallback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		rows.add_child(fallback)
+	var handover := _handover_line(building, gid)
+	if handover != null:
+		rows.add_child(handover)
 	if not producers.is_empty():
 		var supplied := Label.new()
 		supplied.theme_type_variation = "Caption"
@@ -2627,6 +2638,21 @@ func _route_details_section(building: Dictionary, gid: String, qty: int, route: 
 		rows.visible = open
 		toggle.text = "Route details [-]" if open else "Route details [+]")
 	return panel
+
+## "Switching suppliers" while an input moves to the market and the intermediary still covers it.
+func _handover_line(building: Dictionary, gid: String) -> Label:
+	var service = preload("res://scripts/middleman_service.gd")
+	var iid := str(building.get("instance_id", ""))
+	if not service.in_handover(iid, gid):
+		return null
+	var turns: int = service.handover_turns(iid, gid)
+	var line := Label.new()
+	line.name = "SupplierHandover"
+	line.theme_type_variation = "Caption"
+	line.text = "Switching suppliers: first input from the market in %d turn%s" % [turns, "" if turns == 1 else "s"]
+	line.add_theme_color_override("font_color", DS.PALETTE["WARN"])
+	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	return line
 
 func _route_detail_line(building: Dictionary, gid: String, qty: int, source: String, slot: String) -> String:
 	var good_name := Catalog.get_display_name(gid)

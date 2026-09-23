@@ -3254,5 +3254,31 @@
     ],
     "subcategory": "Farming & Forestry",
     "order": 247
+  },
+  "research_markets_006": {
+    "kind": "system",
+    "base": "",
+    "glyph": "money",
+    "effects": [
+      [
+        "money",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Markets & planning",
+    "order": 61.5
+  },
+  "research_people_012": {
+    "kind": "system",
+    "base": "",
+    "glyph": "engineer",
+    "effects": [
+      [
+        "money",
+        "arrow_down"
+      ]
+    ],
+    "subcategory": "Advisor progression",
+    "order": 72.5
   }
 }

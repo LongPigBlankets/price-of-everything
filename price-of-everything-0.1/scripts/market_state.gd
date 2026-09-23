@@ -438,6 +438,7 @@ func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary 
 		if special_order_committed:
 			shipment["special_order_id"] = special_order_id
 			shipment["special_order_source_mode"] = special_order_source_mode
+		LoanState.advance_sale(shipment)
 		TransportState.queue_transport_shipment(shipment)
 	else:
 		if special_order_committed:

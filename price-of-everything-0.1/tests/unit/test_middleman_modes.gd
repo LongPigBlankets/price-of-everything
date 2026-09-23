@@ -205,3 +205,54 @@ func _test_same_turn_cancel_refunds_an_intermediary_kit() -> void:
 	_check(Construction.cancel(project), "the order can be cancelled before delivery")
 	_check(absf(MatchState.money - before) < 0.0001, "cancelling before delivery refunds the kit in full")
 	cleanup()
+
+func _test_handover_orders_one_batch_per_turn() -> void:
+	var planner := preload("res://scripts/input_order_planner.gd")
+	var leads := {"g_006": {"port": "tile_5_10", "lead": 4}}
+	var handover := {"instance_id": "a", "inputs": {"g_006": 32}, "handover": {"g_006": true}}
+	var buffered := {"instance_id": "a", "inputs": {"g_006": 32}}
+	var order := func(entry: Dictionary, pool: int) -> int:
+		return int(planner.allocate([entry], leads, {}, {"g_006": pool}, {}, 10000, 1.0).orders.get("g_006", 0))
+	_check(order.call(buffered, 0) == 160, "without an intermediary fallback the pipeline fills lead + 1 turns at once")
+	_check(order.call(handover, 0) == 32, "a supplier handover orders one batch on its first turn")
+	_check(order.call(handover, 96) == 32, "and one batch a turn while the road fills")
+	_check(order.call(handover, 128) == 0, "a full road orders nothing more")
+	_check(order.call(handover, 20) == 32, "a short road never catches up in a burst")
+
+func _test_supplier_handover_runs_until_the_first_market_delivery() -> void:
+	var iid := str(setup()[0])
+	_check(Service.set_good_mode(iid, "input", "g_006", "managed").ok, "take steel in-house")
+	_check(not Service.in_handover(iid, "g_006"), "a tile-stock route is not a supplier handover")
+	_check(Service.set_input_route(iid, "g_006", "primary", "market").ok, "buy steel at the global market")
+	_check(Service.in_handover(iid, "g_006"), "moving the primary to the market starts a handover")
+	_check(str(Service.input_source_route(iid, "g_006").fallback) == "middleman", "the intermediary stays the fallback")
+	TransportState.queue_transport_shipment({"is_purchase": true, "destination_tile": "tile_5_4", "good_id": "g_006", "qty": 32, "turns_remaining": 2, "purchase_cost": 0.0})
+	_check(Service.handover_turns(iid, "g_006") == 2, "the countdown reads the first market shipment on the road")
+	Production._process_production()
+	var s := Production.last_turn_summary
+	_check(int(s.purchased.get("g_006", 0)) == 32, "the intermediary supplies the batch while the market shipment travels")
+	_check(Service.in_handover(iid, "g_006"), "the handover lasts until a market delivery lands")
+	TurnManager.current_turn += 1
+	Production._process_production()
+	s = Production.last_turn_summary
+	_check(not Service.in_handover(iid, "g_006"), "the first market delivery completes the handover")
+	_check(int(s.purchased.get("g_006", 0)) == 0, "the market batch replaces the intermediary's")
+	_check(int(s.sold.get("g_008", {}).get("qty", 0)) == 33, "production carries on across the handover")
+	_check(Service.set_input_route(iid, "g_006", "primary", "stockpile").ok and not Service.in_handover(iid, "g_006"), "leaving the market ends any handover")
+	cleanup()
+
+func _test_transit_credit_turn_reconciles() -> void:
+	setup()
+	LoanState.transit_credit_balance = 0.0
+	var sale := {"is_sale": true, "source_tile": "tile_5_4", "destination_tile": "tile_5_4", "transport_turns": 2, "turns_remaining": 1,
+		"sale_record": {"tile_id": "tile_5_4", "items": [{"good_id": "g_008", "qty": 5, "revenue": 90.0}], "total_qty": 5, "total_revenue": 90.0}}
+	var before_advance := MatchState.money
+	_check(is_equal_approx(LoanState.advance_sale(sale), 90.0) and is_equal_approx(MatchState.money - before_advance, 90.0), "a port sale is paid when it leaves")
+	TransportState.queue_transport_shipment(sale)
+	var before := MatchState.money
+	Production._process_production()
+	var s := Production.last_turn_summary
+	_check(is_equal_approx(float(s.get("transit_credit_repaid", 0.0)), 90.0) and is_zero_approx(LoanState.transit_credit_balance), "the landed sale repays its advance")
+	_check(float(s.get("goods_sales_revenue", 0.0)) >= 90.0, "its revenue is recognised when it lands")
+	_check(absf(MatchState.money - before - Production.cash_change_of(s)) < 0.0001, "the turn's cash reconciles with the credit line")
+	cleanup()

@@ -37,7 +37,9 @@ func _on_amount_changed(value: float) -> void:
 
 func _refresh_preview(amount: float) -> void:
 	amount_label.text = "£%.0f" % amount
-	var total_repay: float = amount * (1.0 + LoanState.effective_loan_interest_rate())
+	# Interest runs for the grace turns too, exactly as LoanState._create_loan charges it.
+	var term := float(EconomyConfig.LOAN_TERM_TURNS)
+	var total_repay: float = amount * (1.0 + LoanState.effective_loan_interest_rate() * (term + float(EconomyConfig.LOAN_GRACE_TURNS)) / term)
 	var interest: float = total_repay - amount
 	var per_turn: float = total_repay / float(EconomyConfig.LOAN_TERM_TURNS)
 	total_repay_label.text = "Total to repay: £%.2f" % total_repay

@@ -186,12 +186,14 @@ static func snapshot() -> Dictionary:
 		var recipe := Catalog.get_recipe(str(b.get("recipe_id", "")))
 		if not _power_available(tile, recipe):
 			continue
-		var entry := {"instance_id": iid, "inputs": {}}
+		var entry := {"instance_id": iid, "inputs": {}, "handover": {}}
 		for item: Dictionary in recipe.get("inputs", []):
 			var gid := str(item.get("good_id", ""))
 			if MatchState.is_input_tile_only(iid, gid) and not Production._input_source_exhausted_for(b, item):
 				continue
 			entry.inputs[gid] = int(entry.inputs.get(gid, 0)) + Production._scaled_input_qty(item, b)
+			if preload("res://scripts/middleman_service.gd").bridges_good(iid, gid):
+				entry.handover[gid] = true
 			if (bool(b.get("forecast_new", false)) or bool(b.get("startup_inputs_pending", false)) or bool(b.get("forecast_retooled", false))) and not ran.has(iid) and not BuildingWorks.is_building_paused(iid):
 				new_inputs[iid] = true
 		if not demand.has(tile):

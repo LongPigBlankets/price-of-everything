@@ -597,7 +597,8 @@ static func net_cash_of(s: Dictionary) -> float:
 	return total_revenue_of(s) - operating_costs_of(s) - float(s.get("interest_paid", 0.0)) \
 		- float(s.get("taxes_paid", 0.0)) - float(s.get("dividends_paid", 0.0)) \
 		- float(s.get("profit_sharing_paid", 0.0)) - float(s.get("building_credit_repaid", 0.0)) \
-		+ float(s.get("building_credit_loan_received", 0.0)) + float(s.get("middleman_financing", 0.0))
+		+ float(s.get("building_credit_loan_received", 0.0)) + float(s.get("middleman_financing", 0.0)) \
+		+ float(s.get("transit_credit_drawn", 0.0)) - float(s.get("transit_credit_repaid", 0.0))
 
 
 func _refresh_balance_sheet() -> void:

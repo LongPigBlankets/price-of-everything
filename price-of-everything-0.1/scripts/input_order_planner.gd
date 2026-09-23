@@ -14,7 +14,15 @@ static func allocate(entries: Array, leads: Dictionary, supply: Dictionary, stoc
 			var need: int = int(e2.inputs[good_id])
 			var covered_local: int = mini(need, int(local_pool.get(good_id, 0)))
 			local_pool[good_id] = int(local_pool.get(good_id, 0)) - covered_local
-			var want: int = (need - covered_local) * (int((leads[good_id] as Dictionary).get("lead", 1)) + 1)
+			var net_need: int = need - covered_local
+			var lead: int = int((leads[good_id] as Dictionary).get("lead", 1))
+			# A HANDOVER good has the Logistics Intermediary as its fallback: the intermediary
+			# buys whatever the tile lacks at production time, so the market pipeline needs no
+			# safety buffer and never catches up in a burst. It keeps exactly `lead` turns on
+			# the road and adds at most one turn's need per turn, so switching supplier bills
+			# one batch per turn instead of the whole pipeline on the first arrival.
+			var handover: bool = bool((e2.get("handover", {}) as Dictionary).get(good_id, false))
+			var want: int = net_need * (lead if handover else lead + 1)
 			# SAFETY MARGIN. Same-tile production lands at end of turn (flush_outputs), AFTER this
 			# consumer runs, so a SAME-TILE UNDER-SUPPLIED chain (local makes some but not all of the
 			# demand) starves on the intra-turn lag while the pipeline -- crediting that local output
@@ -24,11 +32,13 @@ static func allocate(entries: Array, leads: Dictionary, supply: Dictionary, stoc
 			# local_rate 0 so it already buys the full need. Measured +£21/turn (+30%) on the
 			# 2-desal/2-chem water chain, price impact <0.5%. POE_INPUT_SAFETY_MARGIN overrides the
 			# turn count (default 1) for A/B / rollback.
-			if covered_local > 0 and bool(under_supplied.get(good_id, false)):
+			if covered_local > 0 and bool(under_supplied.get(good_id, false)) and not handover:
 				want += int(ceil(float(covered_local) * safety_margin))
 			var from_pool: int = mini(want, int(pool.get(good_id, 0)))
 			pool[good_id] = int(pool.get(good_id, 0)) - from_pool
 			var to_order: int = want - from_pool
+			if handover:
+				to_order = mini(to_order, net_need)
 			if to_order <= 0:
 				continue
 			wanted[good_id] = int(wanted.get(good_id, 0)) + to_order

@@ -790,6 +790,12 @@ static func set_input_route(iid: String, gid: String, slot: String, source: Stri
 	if not b.has("logistics_input_routes"):
 		b["logistics_input_routes"] = {}
 	var routes: Dictionary = b.get("logistics_input_routes", {})
+	# Moving the primary to the market starts a supplier handover: the intermediary fallback
+	# keeps the building supplied until the first market delivery lands (see end_handover).
+	var was_handover := bool((routes.get(gid, {}) as Dictionary).get("handover", false))
+	if str(next.get("primary", "")) == "market" and str(next.get("fallback", "")) == "middleman" \
+			and (str(route.get("primary", "")) != "market" or was_handover):
+		next["handover"] = true
 	routes[gid] = next
 	b["logistics_input_routes"] = routes
 	# Keep the existing recurring-order and market-pipeline machinery authoritative.
@@ -809,6 +815,33 @@ static func set_input_route(iid: String, gid: String, slot: String, source: Stri
 		var allow_market := str(next.get("fallback", "")) == "market" or str(next.get("primary", "")) == "market"
 		MatchState.set_input_tile_only(iid, gid, not allow_market)
 	return {"ok":true, "route":next}
+
+## True while this input's supplier is moving to the market and no market delivery has
+## reached the building's tile yet.
+static func in_handover(iid: String, gid: String) -> bool:
+	var routes: Dictionary = BuildingState.get_building(iid).get("logistics_input_routes", {})
+	return bool((routes.get(gid, {}) as Dictionary).get("handover", false)) and bridges_good(iid, gid)
+
+## Turns until the first market delivery of `gid` reaches the building. Before the first
+## order is placed (it is placed this turn), that is the quoted lead plus this turn.
+static func handover_turns(iid: String, gid: String) -> int:
+	var tile := str(BuildingState.get_building(iid).get("tile_id", ""))
+	var soonest := -1
+	for shipment: Dictionary in TransportState.get_inbound_transport_shipments(tile, gid):
+		if not bool(shipment.get("is_purchase", false)) or Production._shipment_reserved_outside_input_pipeline(shipment):
+			continue
+		var turns := int(shipment.get("turns_remaining", 0))
+		soonest = turns if soonest < 0 else mini(soonest, turns)
+	if soonest >= 0:
+		return maxi(1, soonest)
+	var quote := TransportService.quote_market_buy(tile, gid, 1, TransportState.seaport_would_cover(gid))
+	return maxi(1, int(quote.get("turns", 1))) + 1
+
+## A market delivery of `gid` landed on this tile: every handover waiting on it is complete.
+static func end_handover(tile_id: String, gid: String) -> void:
+	for b: Dictionary in BuildingState.get_buildings_on_tile(tile_id):
+		var route: Dictionary = (b.get("logistics_input_routes", {}) as Dictionary).get(gid, {})
+		route.erase("handover")
 
 static func managed_move_goods(move: Dictionary) -> Dictionary:
 	var iid := str(move.get("logistics_input_instance",""))
