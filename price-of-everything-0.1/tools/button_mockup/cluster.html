@@ -297,7 +297,7 @@ function paintPlastic(g, w, h) {
  * shades and that throws a shadow. Outside the mask the grid is cut away (alpha test), so only the
  * raised shape is drawn. Two vertices per capture px, so small counters and letter gaps survive.
  */
-function relief(w, h, draw, mat, { height = 10, soften = 1.3 } = {}) {
+function relief(w, h, draw, mat, { height = 10, soften = 1.3, faceGrade = true } = {}) {
   const nx = Math.max(8, Math.round(w / 0.5)), nz = Math.max(8, Math.round(h / 0.5));
   const sx = (nx + 1) / w;
   const sharp = document.createElement('canvas'); sharp.width = nx + 1; sharp.height = nz + 1;
@@ -315,7 +315,7 @@ function relief(w, h, draw, mat, { height = 10, soften = 1.3 } = {}) {
   const gg = grow.getContext('2d'); gg.fillStyle = '#000'; gg.fillRect(0, 0, nx + 1, nz + 1);
   gg.filter = `blur(${soften * 0.6 * sx}px) brightness(3)`; gg.drawImage(sharp, 0, 0);
   const m = mat.clone(); m.alphaMap = new THREE.CanvasTexture(grow); m.alphaTest = 0.5;
-  m.map = FACE_GRADE;
+  m.map = faceGrade ? FACE_GRADE : null;   // off where the game grades a whole run of reliefs itself
   // The drop shadow is baked into the plate (see plateMaterial), as on the bottom-bar icons: the
   // metal's brightness is mostly reflection, which a lamp shadow barely darkens.
   const mesh = new THREE.Mesh(geo, m); mesh.castShadow = false; mesh.receiveShadow = true;
@@ -873,16 +873,16 @@ function scrollThumb() {
   return g;
 }
 /**
- * The seam where the panel's scrolling body meets its fixed header: a dark rubber non-slip edge, like
- * the nosing on a stair tread, run across the panel from trim to trim and screwed at each end. Three
- * grooves run along its length and its front edge rolls down to the body, which slides under it. It
- * casts its shadow onto the body, and the body is shaded a little way out from under the lip. The
- * game draws it as a horizontal three-slice (scripts/bdp_v3_seam.gd): the ends, with the screws, keep
- * their size and the length between them stretches, so between the ends it is the same all along.
+ * The seam where the panel's scrolling body meets its fixed header: a near-black rubber non-slip edge,
+ * like the nosing on a stair tread, run across the panel from trim to trim. Three grooves run along its
+ * length and its front edge rolls down to the body, which slides under it. It casts its shadow onto the
+ * body, and the body is shaded a little way out from under the lip. The game draws it as a horizontal
+ * three-slice (scripts/bdp_v3_seam.gd): the ends keep their size and the length between them fits the
+ * panel, so between the ends it is the same all along.
  * In the SEAM.W × SEAM.H frame the strip runs from y = top to y = nose (its lip), and the body's shade
  * reaches the frame's foot.
  */
-const SEAM = { W: 900, H: 48, top: 6, nose: 26, cap: 45, screwX: 22 };
+const SEAM = { W: 900, H: 48, top: 6, nose: 26, cap: 45 };
 const SEAM_RUBBER_TOP = 5;   // the tread's height above the backing
 function seamStrip() {
   const { W, H, top, nose } = SEAM, T = SEAM_RUBBER_TOP, g = new THREE.Group();
@@ -899,9 +899,8 @@ function seamStrip() {
   geo.rotateY(Math.PI / 2); geo.translate(4, 0, 0);
   // Fine grit in the rubber's surface, so it reads as a non-slip tread rather than a smooth moulding.
   const grit = noiseTexture(90, 0, 10);
-  const rubber = new THREE.MeshPhysicalMaterial({ color: 0x2a2c30, roughness: 0.82, bumpMap: grit, bumpScale: 0.35, sheen: 0.6, sheenColor: new THREE.Color(0x60656c), sheenRoughness: 0.55, envMap: studioEnv, envMapIntensity: 0.5 });
+  const rubber = new THREE.MeshPhysicalMaterial({ color: 0x131416, roughness: 0.85, bumpMap: grit, bumpScale: 0.35, sheen: 0.45, sheenColor: new THREE.Color(0x3c4046), sheenRoughness: 0.6, envMap: studioEnv, envMapIntensity: 0.4 });
   const strip = new THREE.Mesh(geo, rubber); strip.castShadow = strip.receiveShadow = true; g.add(strip);
-  for (const x of [SEAM.screwX, W - SEAM.screwX]) { const sc = screw(4.5); sc.position.set(x, T + 0.2, (top + nose) / 2 - 2); g.add(sc); }
   g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.55));
   return g;
 }
@@ -911,6 +910,47 @@ function paintSeamShade(g) {
   grd.addColorStop(0, 'rgba(4,6,8,0.62)'); grd.addColorStop(0.18, 'rgba(4,6,8,0.34)');
   grd.addColorStop(0.55, 'rgba(4,6,8,0.1)'); grd.addColorStop(1, 'rgba(4,6,8,0)');
   g.fillStyle = grd; g.fillRect(4, nose - 2, W - 8, H - nose + 2);
+}
+
+/**
+ * The panel's title in raised white letters, with the effects of the INPUTS / OUTPUTS lettering on the
+ * control plate: the same white material raised 5 px on a softened flank, the same painted swept
+ * shadow and contact line, and faces graded from white at the top-left to warm grey at the bottom-right.
+ * Titles change with the building, so each letter is rendered on its own into an atlas, and the game
+ * sets them (scripts/bdp_v3_title.gd) with the font's own spacing, grading the faces across the whole
+ * title as the plate's lettering is graded across its word. The font is the game's title font, Bebas
+ * Neue at 32 px (60 layout px); export.py serves the game's copy, so the letters match its spacing.
+ */
+const TITLE = { size: 60, pad: 10, height: 5, soften: 0.7, atlasW: 1400 };
+const TITLE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\u2014\u2013-()+&/.,:;\'"%\u00a3$!?#*';
+const TITLE_FAMILY = '"BebasTitle", "Bebas Neue"';
+try { const face = new FontFace('BebasTitle', 'url(/fonts/BebasNeue-Regular.ttf)'); await face.load(); document.fonts.add(face); }
+catch (e) { console.warn('title font: falling back to the web Bebas Neue', e); }
+/** The plate lettering's white (see buildBlock). */
+const WHITE_LETTERS = new THREE.MeshPhysicalMaterial({ color: 0xf4f2ec, roughness: 0.45, clearcoat: 0.3, clearcoatRoughness: 0.3 });
+/** Draws one title letter with its pen at (ox, baseline). */
+const titleLetter = (ch, ox, baseline) => (g, col) => {
+  g.font = `${TITLE.size}px ${TITLE_FAMILY}`; g.fillStyle = col; g.textBaseline = 'alphabetic'; g.textAlign = 'left';
+  g.fillText(ch, ox, baseline);
+};
+/**
+ * The atlas's cells, in rows TITLE.atlasW wide: per letter [x, y, w, h, pen x in the cell], with every
+ * cell's baseline at `baseline`. Each cell holds the letter's ink with TITLE.pad round it, room for its
+ * shadow.
+ */
+function titleAtlas() {
+  const c = document.createElement('canvas').getContext('2d'); c.font = `${TITLE.size}px ${TITLE_FAMILY}`;
+  const fm = c.measureText('H'), asc = Math.ceil(fm.fontBoundingBoxAscent), desc = Math.ceil(fm.fontBoundingBoxDescent);
+  const h = asc + desc + 2 * TITLE.pad, baseline = TITLE.pad + asc, cells = {};
+  let x = 0, y = 0;
+  for (const ch of TITLE_CHARS) {
+    const m = c.measureText(ch), left = Math.max(0, Math.ceil(m.actualBoundingBoxLeft));
+    const w = left + Math.ceil(Math.max(m.width, m.actualBoundingBoxRight)) + 2 * TITLE.pad;
+    if (x + w > TITLE.atlasW) { x = 0; y += h; }
+    cells[ch] = [x, y, w, h, TITLE.pad + left];
+    x += w;
+  }
+  return { cells, baseline, W: TITLE.atlasW, H: y + h };
 }
 
 /** Runs `fn` with the random number generator at `s`, then puts it back, so a part's wear is the same
@@ -1027,6 +1067,7 @@ if (EXPORT) exportLayers();
  * lamp_*   the status lamp lit green / amber / red, and off; lamp_glow_*: each lit colour's glow.
  * scroll_rail, scroll_thumb: the scrollbar's rail and slider, each drawn as a vertical three-slice.
  * seam_edge: the non-slip edge over the seam between the header and the scrolling body.
+ * title_glyphs, title_glyph_shadows: the title's raised letters and their shadows, an atlas.
  * layout.json: frame sizes and every key's rect and top face, in capture pixels.
  * ?export&only=lamp,scroll renders just the named sets (see `want` below).
  */
@@ -1036,7 +1077,7 @@ async function exportLayers() {
   renderer.setPixelRatio(1); renderer.setClearColor(0x000000, 0);
   // ?export&only=lamp,scroll renders just those sets and merges their entries into the existing
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
-  // lamp, scroll, seam.
+  // lamp, scroll, seam, title.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -1271,6 +1312,21 @@ async function exportLayers() {
     const render = stage([0, 0, SEAM.W, SEAM.H], [seamStrip()], { light: 'house' }).grab();
     await post('seam_edge', frame2d(SEAM.W, SEAM.H, (g) => { paintSeamShade(g); g.drawImage(render, 0, 0, SEAM.W, SEAM.H); }));
     layout.seam_edge = { size: [SEAM.W, SEAM.H], cap: SEAM.cap, top: SEAM.top, nose: SEAM.nose };
+  });
+
+  // --- the title's letters: the raised white faces (ungraded; the game grades the whole title), and
+  // their swept shadows and contact lines, one atlas cell per letter (see titleAtlas).
+  if (want('title')) await withSeed(404, async () => {
+    const at = titleAtlas(), group = new THREE.Group();
+    for (const [ch, [x, y, w, h, ox]] of Object.entries(at.cells)) {
+      const letter = titleLetter(ch, ox, at.baseline);
+      const r = relief(w, h, (g) => letter(g, '#fff'), WHITE_LETTERS, { height: TITLE.height, soften: TITLE.soften, faceGrade: false });
+      r.position.set(x + w / 2, 0.3, y + h / 2); group.add(r);
+    }
+    await post('title_glyphs', stage([0, 0, at.W, at.H], [group], { light: 'house' }).grab());
+    const all = (g, col) => { for (const [ch, [x, y, , , ox]] of Object.entries(at.cells)) titleLetter(ch, x + ox, y + at.baseline)(g, col); };
+    await post('title_glyph_shadows', frame2d(at.W, at.H, (g) => drawIconShadows(g, at.W, at.H, [{ height: TITLE.height, draw: all }])));
+    layout.title_glyphs = { size: [at.W, at.H], font_size: TITLE.size, baseline: at.baseline, glyphs: at.cells };
   });
 
   await fetch('/layers/layout.json', { method: 'POST', body: JSON.stringify(layout, null, 1) });

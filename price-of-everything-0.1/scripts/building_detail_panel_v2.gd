@@ -23,6 +23,7 @@ const BdpV3Lamp := preload("res://scripts/bdp_v3_lamp.gd")
 const BdpV3Plate := preload("res://scripts/bdp_v3_plate.gd")
 const BdpV3Scroll := preload("res://scripts/bdp_v3_scroll.gd")
 const BdpV3Seam := preload("res://scripts/bdp_v3_seam.gd")
+const BdpV3Title := preload("res://scripts/bdp_v3_title.gd")
 const BdpV3Nine := preload("res://scripts/bdp_v3_nine.gd")
 const BdpV3Section := preload("res://scripts/bdp_v3_section.gd")
 ## v3 frames these sections (heading and content together); the value names the frame, so sections
@@ -68,6 +69,8 @@ signal building_connections_changed(origin_tile_id: String, input_tile_ids: Arra
 
 var _current_building: Dictionary = {}
 var _title_label: Label = null
+# v3 shows the title in raised white letters instead of the label (which keeps the text).
+var _title_v3: BdpV3Title = null
 var _subtitle_label: Label = null
 var _badge: PanelContainer = null
 var _badge_label: Label = null
@@ -143,6 +146,9 @@ func _build_shell() -> void:
 	_title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_title_label.custom_minimum_size = Vector2(PANEL_WIDTH - 2.0 * DS.SP["MD"] - 44.0, 0)
 	header.add_child(_title_label)
+	_title_v3 = BdpV3Title.new()
+	_title_v3.custom_minimum_size = Vector2(_title_label.custom_minimum_size.x, 0)
+	header.add_child(_title_v3)
 	_close_button = Button.new()
 	_close_button.text = "X"
 	_close_button.custom_minimum_size = Vector2(32, 32)
@@ -280,6 +286,8 @@ func _rebuild(building: Dictionary) -> void:
 	var display_name := str(building_data.get("display_name", building.get("building_id", "Building")))
 	var recipe_name := str(recipe.get("display_name", ""))
 	_title_label.text = display_name if recipe_name == "" else "%s — %s" % [display_name, recipe_name]
+	_title_v3.text = _title_label.text
+	_apply_v3_title()
 	# Catalog.tile_label, not the raw id: this was the one surface still printing
 	# "tile_5_9" at the player instead of "Stoneshore Fields - (5, 9)".
 	var _tile := str(building.get("tile_id", ""))
@@ -1481,12 +1489,13 @@ func _on_bdp_v3_changed(_enabled: bool) -> void:
 	_queue_refresh()
 
 
-## The parts of the shell that v3 swaps: the close key, the status lamp, the backing, the scrollbar
-## and the seam edge.
+## The parts of the shell that v3 swaps: the title, the close key, the status lamp, the backing, the
+## scrollbar and the seam edge.
 func _apply_v3_chrome() -> void:
 	var v3 := UiPrefs.use_bdp_v3
 	_close_button.visible = not v3
 	_close_key.visible = v3
+	_apply_v3_title()
 	_badge.visible = not v3
 	_status_v3.visible = v3
 	# The lamp row is taller than the badge; v2 keeps its top-aligned subtitle exactly.
@@ -1496,6 +1505,13 @@ func _apply_v3_chrome() -> void:
 	BdpV3Scroll.apply(_scroll, v3)
 	_seam.visible = v3
 	_scroll.offset_top = BdpV3Seam.strip_height() if v3 else 0.0
+
+
+## v3's raised title in place of the label, unless the title has a character its letters lack.
+func _apply_v3_title() -> void:
+	var raised := UiPrefs.use_bdp_v3 and BdpV3Title.can_show(_title_label.text)
+	_title_v3.visible = raised
+	_title_label.visible = not raised
 
 
 ## Moves each framed section (its heading and everything up to the next heading) into a steel

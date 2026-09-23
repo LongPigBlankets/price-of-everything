@@ -668,6 +668,16 @@ func _test_bdp_v3_rules() -> void:
 	_check(seam_parts.size() == 3 and is_equal_approx(float(seam_parts[0][3]), Seam.CAP / 1.875)
 		and is_equal_approx(float(seam_parts[2][3]), 430.0) and is_equal_approx(float(seam_parts[1][1]), Seam.EDGE.get_width() - float(seam_parts[1][0])),
 		"bdp v3: the seam edge keeps its screwed ends and fits its length between them")
+	var Title = load("res://scripts/bdp_v3_title.gd")
+	var missing: Array = []
+	for bd: Dictionary in Catalog.all_buildings():
+		if not Title.can_show(str(bd.get("display_name", "")) + " — "):
+			missing.append(str(bd.get("display_name", "")))
+	for rd: Dictionary in Catalog.all_recipes():
+		if not Title.can_show(str(rd.get("display_name", ""))):
+			missing.append(str(rd.get("display_name", "")))
+	_check(missing.is_empty(), "bdp v3: the raised title has a letter for every building and recipe name (missing in: %s)" % ", ".join(missing))
+	_check(not Title.can_show("Café"), "bdp v3: a title with a letter the atlas lacks is left to the plain label")
 	var rail: StyleBox = Scroll.make(Scroll.RAIL, Scroll.RAIL_CAP)
 	_check(rail.slices(400.0).size() == 3 and rail.get_minimum_size() == Vector2(16, 32),
 		"bdp v3: the rail is 16 px wide and keeps its ends (%s)" % str(rail.get_minimum_size()))
@@ -707,6 +717,9 @@ func _test_bdp_v3_panel() -> void:
 	var bar: VScrollBar = panel._scroll.get_v_scroll_bar()
 	_check(Scroll.is_applied(panel._scroll) and is_equal_approx(bar.get_combined_minimum_size().x, 16.0),
 		"bdp v3: the scrollbar is the steel rail with its slider, 16 px wide (%s)" % str(bar.get_combined_minimum_size()))
+	_check(panel._title_v3.visible and not panel._title_label.visible and panel._title_v3.text == panel._title_label.text.to_upper()
+		and panel._title_v3.letter_count() == panel._title_label.text.replace(" ", "").length(),
+		"bdp v3: the title is set in raised letters, one per character (%d)" % panel._title_v3.letter_count())
 	var Seam = load("res://scripts/bdp_v3_seam.gd")
 	_check(panel._seam.visible and is_equal_approx(panel._scroll.offset_top, Seam.strip_height())
 		and panel._seam.get_index() > panel._scroll.get_index() and panel._seam.get_parent() == panel._scroll.get_parent(),
@@ -777,8 +790,9 @@ func _test_bdp_v3_panel() -> void:
 	_check(panel.find_child("BdpV3Block", true, false) == null and panel.find_child("UpgradeButton", true, false) != null,
 		"bdp v3: switching it off brings the v2 controls straight back")
 	_check(panel._badge.visible and not panel._status_v3.visible and not Scroll.is_applied(panel._scroll)
-		and not panel._seam.visible and is_equal_approx(panel._scroll.offset_top, 0.0),
-		"bdp v3: switching it off brings back the badge, the plain scrollbar and the unedged body")
+		and not panel._seam.visible and is_equal_approx(panel._scroll.offset_top, 0.0)
+		and panel._title_label.visible and not panel._title_v3.visible,
+		"bdp v3: switching it off brings back the plain title, the badge, the plain scrollbar and the unedged body")
 	panel.queue_free()
 	BuildingState.buildings.erase(iid)
 	UiPrefs.set_use_bdp_v3(was)
