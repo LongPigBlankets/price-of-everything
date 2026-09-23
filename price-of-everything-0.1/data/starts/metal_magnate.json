@@ -2,14 +2,19 @@
 	"save_version": 2,
 	"start": true,
 	"name": "metal_magnate",
-	"ruleset": "standard",
+	"ruleset": {
+		"name": "standard",
+		"start_id": "metal_magnate",
+		"logistics_model": "middleman_v1",
+		"middleman_new_buildings": true
+	},
 	"money": 300,
-	"steady_profit_per_turn": 45,
+	"steady_profit_per_turn": 27,
 	"buildings": [
-		{ "building_id": "b_001", "recipe_id": "r_001", "tile_id": "tile_6_8", "output_to": "tile_5_10" },
-		{ "building_id": "b_001", "recipe_id": "r_002", "tile_id": "tile_7_10", "output_to": "tile_5_10" },
-		{ "building_id": "b_002", "recipe_id": "r_005", "tile_id": "tile_5_10", "output_to": "market" },
-		{ "building_id": "b_003", "recipe_id": "r_004", "tile_id": "tile_5_10" }
+		{ "building_id": "b_001", "recipe_id": "r_001", "tile_id": "tile_6_8", "output_to": "market" },
+		{ "building_id": "b_001", "recipe_id": "r_002", "tile_id": "tile_7_10", "output_to": "market" },
+		{ "building_id": "b_002", "recipe_id": "r_005", "tile_id": "tile_9_9", "output_to": "market" },
+		{ "building_id": "b_003", "recipe_id": "r_004", "tile_id": "tile_9_9" }
 	],
 	"labour": {
 		"multiplier": 1.2,
@@ -19,15 +24,12 @@
 	"land": {
 		"tile_6_8": 50,
 		"tile_7_10": 50,
-		"tile_5_10": 50
-	},
-	"stockpile": {
-		"tile_5_10": { "g_002": 120, "g_001": 120, "g_009": 120 }
+		"tile_9_9": 50
 	},
 	"infrastructure": {
 		"tile_6_8": { "present": [ "cables" ], "levels": { "cables": 1 } },
 		"tile_7_10": { "present": [ "cables" ], "levels": { "cables": 1 } },
-		"tile_5_10": { "present": [ "pipes", "cables" ], "levels": { "pipes": 1, "cables": 1 } }
+		"tile_9_9": { "present": [ "cables" ], "levels": { "cables": 1 } }
 	},
 	"modifiers": [
 		{

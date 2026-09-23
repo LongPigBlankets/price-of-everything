@@ -18,7 +18,7 @@
       "tier": "green",
       "good_id": "g_004",
       "good_internal": "iron_ingots",
-      "blurb": "Ore into iron, on Stoneshore's coast.",
+      "blurb": "Ore into iron, inland at Greyroad.",
       "description": "Your father swore there was truth in metal, then sold the mill before he could prove it. He left you the mines, the furnace, and a name that lifts every ingot you cast. Strike while the iron's hot."
     },
     {
@@ -28,8 +28,8 @@
       "tier": "green",
       "good_id": "g_038",
       "good_internal": "glass",
-      "blurb": "Sand into glass, on Vandel's doorstep.",
-      "description": "You borrowed heavy to turn Vandel's sand into glass, and fast. Now the debt's due, and glass and fortune crack the same way."
+      "blurb": "Sand into glass, at Ashmouth.",
+      "description": "You borrowed heavy to turn Ashmouth's sand into glass, and fast. Now the debt's due, and glass and fortune crack the same way."
     },
     {
       "id": "open_field",
