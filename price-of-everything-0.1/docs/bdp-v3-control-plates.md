@@ -7,6 +7,7 @@ Building Detail v3 dresses the building detail panel as a physical control panel
 - Each section of the panel sits in a steel frame.
 - The panel's backing is dark navy-grey steel inside a brass trim.
 - The title is set in raised white letters, like the INPUTS / OUTPUTS lettering on the control plate.
+- The recipe diagram sits on a cream vitreous enamel sign, with a little grunge in the space between its icons.
 - The building's status is a pilot lamp, lit green, amber or red, beside its name.
 - The scrollbar is a steel rail screwed to the backing, with a cream slider riding in its slot.
 - A near-black rubber non-slip edge runs across the seam between the fixed header and the scrolling body, which slides out from under it.
@@ -34,6 +35,7 @@ Nothing here is drawn by hand in Godot. Every plate, frame, screw and button is 
 | `scripts/bdp_v3_scroll.gd` | The scrollbar's rail and slider, as `StyleBox`es on a `ScrollContainer`'s bar. |
 | `scripts/bdp_v3_seam.gd` | The non-slip edge over the seam between the header and the body. |
 | `scripts/bdp_v3_title.gd` | The title in raised letters, set from the letter atlas. |
+| `scripts/bdp_v3_enamel.gd` | The recipe diagram's enamel sign, and the shader that keeps its grunge clear of the icons. |
 | `tools/bdp_v3_shot.tscn` | Screenshots of the panel in v3 (top, lamp states, scrolled, slider tints, a sheet). |
 | `scripts/building_detail_panel_v2.gd` | Switches between v2 and v3 (`UiPrefs.use_bdp_v3`), builds the v3 parts and frames the sections. |
 | `tests/unit/test_ui.gd` | `_test_bdp_v3_rules` and `_test_bdp_v3_panel`. |
@@ -47,7 +49,7 @@ All parts share one stage, so they read as one piece of hardware.
 - **Light:** one `SpotLight` above and beyond the frame's top-left corner (420 px left and up, 820 px high, intensity 8400, decay 1.1), plus a weak `HemisphereLight` (0.14) and the room environment at 0.16. The tall panel backing raises the lamp to 1900 px so its far end isn't lost in shadow.
   - The lamp's fall-off grades every part from light top-left to darker bottom-right, and its shadows fall to the bottom-right.
   - Metal takes its brightness mostly from reflections, which a lamp barely grades. So the plates also carry the same grade baked into their colour.
-- **House light:** the title's letters, the status lamp, the scrollbar and the seam edge are lit by a directional light instead (`houseLight`, `stage(..., { light: 'house' })`): from the upper left, 49.7° above the panel, strength 4, with no fall-off. It is the knob and gauge renderers' key light, and the angle the raised icons' painted shadows already assume (0.6 × height along each axis). A part lit by it looks the same wherever it sits and at any size, which the scrollbar needs because the game stretches it. Its strength matches the spotlight's at a small key, and its shadow map keeps the spotlight's softness.
+- **House light:** the title's letters, the recipe diagram's enamel sign, the status lamp, the scrollbar and the seam edge are lit by a directional light instead (`houseLight`, `stage(..., { light: 'house' })`): from the upper left, 49.7° above the panel, strength 4, with no fall-off. It is the knob and gauge renderers' key light, and the angle the raised icons' painted shadows already assume (0.6 × height along each axis). A part lit by it looks the same wherever it sits and at any size, which the scrollbar needs because the game stretches it. Its strength matches the spotlight's at a small key, and its shadow map keeps the spotlight's softness.
 - **Export scale:** every layer is rendered at `E = 2 / 1.875` times layout size, which is **2 texture pixels per logical pixel**. Godot draws them at half their pixel size, so all bdp_v3 textures import **with mipmaps**.
 
 ## Materials
@@ -180,12 +182,30 @@ The game stretches both to the scroll area and to the slider's length, so everyt
 
 `seamStrip()` is a near-black rubber edge like the nosing on a stair tread, run across the panel where the scrolling body meets the fixed header:
 
-- **Strip:** a cross-section extruded along the panel's length: a back edge on the backing, a tread 5 px high with three rounded grooves along its length, and a lip that rolls down to the body. The rubber is near-black (`#131416`), matt with a faint sheen, with a fine grit in its surface. It has no screws.
+- **Strip:** a cross-section extruded along the panel's length: a back edge on the backing, a corrugated tread with three rounded ridges along its length between valleys 3.2 px deep, 6 px apart, and a lip that the last ridge rolls down into, over the body. Each crest catches the light. The rubber is near-black (`#131416`), with a soft sheen on the crests and a fine grit in its surface. It has no screws.
 - **Shade:** the strip casts its shadow onto the body, and `paintSeamShade` darkens the body a little way out from under the lip, as if it slid out from beneath it.
 
 It renders in a 900 × 48 frame: the strip from y 6 (its back edge) to 26 (its lip), and the shade below it to the frame's foot. In the game, `bdp_v3_seam.gd` draws it as a horizontal three-slice. The 45 px ends keep their size, and the length between them fits the panel. The render is wider than the panel, so the middle is squeezed a little rather than stretched. The strip reaches out to the backing's trim at both sides and down over the top of the body.
 
 The panel puts the scroll area in a plain `Control` (`BodyWell`) with the edge added after it, so the edge draws over the body without a `z_index` and the action sheets still cover it. With v3 on, the body starts at the edge's lip (`_scroll.offset_top`).
+
+## The recipe diagram
+
+The diagram of the building's recipe sits on a vitreous enamel sign (`enamelPlate`):
+
+- **Plate:** pressed steel with a rolled edge, 760 × 300 in its render with 14 px round it for its shadow. The rolled edge and an 11 px border band are navy enamel (`#0A2140`), with a cream gap and a 2 px navy pinstripe inside the band (the diagram's old outline). The field is the diagram's cream (`#FEEDC3`) under a clear glaze, with a soft sheen from the top-left, and the band's inner edge is lit along the top and left.
+- **Chips:** one to three at each corner, showing dark steel under the enamel with rust round them and the enamel's pale broken edge.
+- **Grunge** (`recipeGrunge`, its own 900 × 450 layer): faint grime blotches, dust specks, hairline crazing in the glaze and a few scuffs, all darker than the cream.
+
+In the game, `bdp_v3_enamel.gd` draws the plate as a 9-slice with 44 px corners. Everything between the corners (band, pinstripe, field and sheen) is smooth, so it can stretch; all the wear is in the corners. It lays the grunge over the field through a small shader:
+
+- The grunge is anchored at the field's top-left, at two texture pixels per logical pixel, so it isn't stretched. It repeats if a field is ever larger than the layer.
+- It is fully clear within 6 px of every goods icon and the arrow and fades back in over the next 10 px. The panel hands the sign those controls (`watch`), and the sign re-reads where they are each frame while it is visible, passing them to the shader only when they move.
+- It thickens towards the band.
+
+In v3 the diagram's flat cream background and inset outline give way to the sign.
+
+The arrow between the inputs and the output is shared with v2: its head is 35 × 58 px and flares past the body, and the body is 41 px tall with side padding that makes it 10% narrower than it was round the same number and bolt.
 
 ## The title
 
@@ -215,7 +235,7 @@ Then open `http://127.0.0.1:8771/cluster.html?export` in a browser. It works hea
 
 The tab title becomes "export done". Every layer of a set shares one frame, so the game stacks them without offsets.
 
-To render some sets only, add `&only=` and a comma-separated list of `block`, `footer`, `backing`, `section`, `keys`, `lamp`, `scroll`, `seam` and `title`, for example `cluster.html?export&only=lamp,scroll`. The other layers are left as they are, and the page reads the current `layout.json` from the server and updates only those sets' entries. `export.py` takes an optional port (`python3 tools/button_mockup/export.py 8779`); use a port of your own when another export may be running.
+To render some sets only, add `&only=` and a comma-separated list of `block`, `footer`, `backing`, `section`, `keys`, `lamp`, `scroll`, `seam`, `title` and `enamel`, for example `cluster.html?export&only=lamp,scroll`. The other layers are left as they are, and the page reads the current `layout.json` from the server and updates only those sets' entries. `export.py` takes an optional port (`python3 tools/button_mockup/export.py 8779`); use a port of your own when another export may be running.
 
 | Set | Layers |
 | --- | --- |
@@ -228,10 +248,11 @@ To render some sets only, add `&only=` and a comma-separated list of `block`, `f
 | Scrollbar | `scroll_rail` (30 × 240), `scroll_thumb` (30 × 210) |
 | Seam edge (900 × 48) | `seam_edge` |
 | Title letters (1400 × 184) | `title_glyphs`, `title_glyph_shadows` |
+| Recipe diagram | `recipe_enamel` (760 × 300), `recipe_grunge` (900 × 450) |
 
 `layout.json` lists each set's size and every key's rect and top face, in layout pixels, plus the lamp's bezel, the scrollbar's end, grip and travel sizes, and the seam edge's ends, back edge and lip. The scripts carry these numbers as constants. After changing a layout, copy the new numbers from `layout.json` into `bdp_v3_block.gd`, `bdp_v3_footer.gd`, `bdp_v3_section.gd`, `bdp_v3_lamp.gd`, `bdp_v3_scroll.gd` or `bdp_v3_seam.gd`.
 
-After an export, reimport with `Godot --headless --path . --import`. A new layer's `.import` gets `mipmaps/generate=true`, then import again. The scene uses a seeded random number generator, but the seed advances as parts are built, so adding a part changes the scratches and wear on the parts built after it. Expect every layer to change slightly on each export. The lamp, the scrollbar, the seam edge and the title's letters are built with seeds of their own (`withSeed`), so they come out the same whichever sets are exported with them. Put a new set after the existing ones and give it its own seed, so the layers already in the game don't change.
+After an export, reimport with `Godot --headless --path . --import`. A new layer's `.import` gets `mipmaps/generate=true`, then import again. The scene uses a seeded random number generator, but the seed advances as parts are built, so adding a part changes the scratches and wear on the parts built after it. Expect every layer to change slightly on each export. The lamp, the scrollbar, the seam edge, the title's letters and the enamel sign are built with seeds of their own (`withSeed`), so they come out the same whichever sets are exported with them. Put a new set after the existing ones and give it its own seed, so the layers already in the game don't change.
 
 ## How the game uses them
 

@@ -632,5 +632,20 @@
     10
    ]
   }
+ },
+ "recipe_enamel": {
+  "size": [
+   760,
+   300
+  ],
+  "margin": 14,
+  "corner": 44,
+  "field_inset": 20
+ },
+ "recipe_grunge": {
+  "size": [
+   900,
+   450
+  ]
  }
 }

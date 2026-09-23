@@ -874,8 +874,9 @@ function scrollThumb() {
 }
 /**
  * The seam where the panel's scrolling body meets its fixed header: a near-black rubber non-slip edge,
- * like the nosing on a stair tread, run across the panel from trim to trim. Three grooves run along its
- * length and its front edge rolls down to the body, which slides under it. It casts its shadow onto the
+ * like the nosing on a stair tread, run across the panel from trim to trim. Its tread is corrugated:
+ * three rounded ridges run along its length between deep valleys, each crest catching the light, and
+ * the last one rolls down into the lip over the body, which slides under it. It casts its shadow onto the
  * body, and the body is shaded a little way out from under the lip. The game draws it as a horizontal
  * three-slice (scripts/bdp_v3_seam.gd): the ends keep their size and the length between them fits the
  * panel, so between the ends it is the same all along.
@@ -889,17 +890,20 @@ function seamStrip() {
   // The cross-section, depth z (down the screen) against height, drawn at shape x = -z so that turning
   // the extrusion onto the panel's length puts z down the screen.
   const s = new THREE.Shape(), P = (z, h) => [-z, h];
-  s.moveTo(...P(top, 0)); s.lineTo(...P(top, T - 1)); s.lineTo(...P(top + 1, T));
-  for (const gz of [top + 5, top + 9, top + 13]) {                     // three rounded grooves
-    s.lineTo(...P(gz - 1.1, T)); s.quadraticCurveTo(...P(gz, T - 2.6), ...P(gz + 1.1, T));
+  s.moveTo(...P(top, 0));
+  // The corrugation: from a valley at the back edge, 2.5 periods to the last crest, 6 px apart.
+  const z0 = top + 1, z1 = nose - 4, periods = 2.5, valley = T - 3.2, crest = T + 0.6;
+  for (let i = 0; i <= 80; i++) {
+    const z = z0 + (z1 - z0) * i / 80, k = 0.5 - 0.5 * Math.cos(2 * Math.PI * periods * i / 80);
+    s.lineTo(...P(z, valley + (crest - valley) * Math.pow(k, 0.6)));
   }
-  s.lineTo(...P(nose - 5, T)); s.quadraticCurveTo(...P(nose - 0.2, T - 0.2), ...P(nose, 0.4));   // the rolled lip
+  s.quadraticCurveTo(...P(nose - 0.2, crest - 0.2), ...P(nose, 0.4));   // the last ridge rolls into the lip
   s.lineTo(...P(nose, 0)); s.lineTo(...P(top, 0));
   const geo = new THREE.ExtrudeGeometry(s, { depth: W - 8, bevelEnabled: false, curveSegments: 8 });
   geo.rotateY(Math.PI / 2); geo.translate(4, 0, 0);
   // Fine grit in the rubber's surface, so it reads as a non-slip tread rather than a smooth moulding.
   const grit = noiseTexture(90, 0, 10);
-  const rubber = new THREE.MeshPhysicalMaterial({ color: 0x131416, roughness: 0.85, bumpMap: grit, bumpScale: 0.35, sheen: 0.45, sheenColor: new THREE.Color(0x3c4046), sheenRoughness: 0.6, envMap: studioEnv, envMapIntensity: 0.4 });
+  const rubber = new THREE.MeshPhysicalMaterial({ color: 0x131416, roughness: 0.72, bumpMap: grit, bumpScale: 0.3, sheen: 0.8, sheenColor: new THREE.Color(0x5a6068), sheenRoughness: 0.45, envMap: studioEnv, envMapIntensity: 0.65 });
   const strip = new THREE.Mesh(geo, rubber); strip.castShadow = strip.receiveShadow = true; g.add(strip);
   g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.55));
   return g;
@@ -910,6 +914,91 @@ function paintSeamShade(g) {
   grd.addColorStop(0, 'rgba(4,6,8,0.62)'); grd.addColorStop(0.18, 'rgba(4,6,8,0.34)');
   grd.addColorStop(0.55, 'rgba(4,6,8,0.1)'); grd.addColorStop(1, 'rgba(4,6,8,0)');
   g.fillStyle = grd; g.fillRect(4, nose - 2, W - 8, H - nose + 2);
+}
+
+/**
+ * The recipe diagram as a vitreous enamel sign: a pressed steel plate with a rolled edge, fired in
+ * cream enamel, with a navy border band and pinstripe (the diagram's old navy outline) and a navy rolled
+ * edge, glossy under a clear glaze. A few chips at its corners show the dark steel under the enamel, with
+ * rust at their edges. The game draws the plate as a 9-slice (scripts/bdp_v3_enamel.gd), so the band,
+ * stripe and field are the same all along between the corners, and all the wear is in the corners.
+ * The grunge on the field is a separate layer (recipeGrunge): the game fades it out round every goods
+ * icon and the arrow, so it only sits in the space between them, and thickens it towards the edge.
+ * ENAMEL.M is the render's room round the plate for its shadow.
+ */
+const ENAMEL = { W: 760, H: 300, M: 14, corner: 44, band: 11, gap: 5, stripe: 2, radius: 12 };
+const ENAMEL_CREAM = '#feedc3', ENAMEL_NAVY = 0x0a2140;
+function enamelFace(w, h) {
+  return canvas2d(w, h, (g) => {
+    g.fillStyle = ENAMEL_CREAM; g.fillRect(0, 0, w, h);
+    const { band, gap, stripe, radius } = ENAMEL, navy = '#' + new THREE.Color(ENAMEL_NAVY).getHexString();
+    // A soft sheen on the glaze from the top-left, and the field sinking a little into the band.
+    const sheen = g.createLinearGradient(0, 0, w * 0.5, h * 1.2);
+    sheen.addColorStop(0, 'rgba(255,255,255,0.22)'); sheen.addColorStop(0.45, 'rgba(255,255,255,0)');
+    g.fillStyle = sheen; g.fillRect(0, 0, w, h);
+    g.strokeStyle = navy; g.lineWidth = band * 2; g.beginPath(); g.roundRect(0, 0, w, h, radius); g.stroke();
+    // The band's inner edge: lit along the top and left, shaded along the bottom and right.
+    g.save(); g.filter = 'blur(0.6px)'; g.lineWidth = 1.2;
+    g.strokeStyle = 'rgba(160,190,230,0.55)'; g.beginPath(); g.moveTo(band + 0.6, h - band - radius); g.lineTo(band + 0.6, band + 0.6); g.lineTo(w - band - radius, band + 0.6); g.stroke();
+    g.strokeStyle = 'rgba(40,30,16,0.28)'; g.beginPath(); g.moveTo(w - band - 0.6, band + radius); g.lineTo(w - band - 0.6, h - band - 0.6); g.lineTo(band + radius, h - band - 0.6); g.stroke();
+    g.restore();
+    const si = band + gap + stripe / 2;
+    g.lineWidth = stripe; g.beginPath(); g.roundRect(si, si, w - 2 * si, h - 2 * si, Math.max(2, radius - si)); g.stroke();
+    // Chips at the corners: dark steel through the enamel, a rust halo, and the enamel's pale broken edge.
+    for (const [cx, cy, sx, sy] of [[0, 0, 1, 1], [w, 0, -1, 1], [0, h, 1, -1], [w, h, -1, -1]]) {
+      const count = 1 + Math.floor(rand() * 3);
+      for (let i = 0; i < count; i++) {
+        const x = cx + sx * (3 + rand() * 30), y = cy + sy * (3 + rand() * (i ? 30 : 12)), r = 1.4 + rand() * 3.2;
+        const pts = Array.from({ length: 9 }, (_, k) => { const a = k / 9 * Math.PI * 2, q = r * (0.55 + rand() * 0.6); return [x + Math.cos(a) * q, y + Math.sin(a) * q]; });
+        const path = () => { g.beginPath(); pts.forEach(([px, py], k) => (k ? g.lineTo(px, py) : g.moveTo(px, py))); g.closePath(); };
+        g.save(); g.filter = 'blur(1.2px)'; g.fillStyle = 'rgba(128,72,30,0.45)'; g.translate(x, y); g.scale(1.6, 1.6); g.translate(-x, -y); path(); g.fill(); g.restore();
+        path(); g.fillStyle = '#2a2521'; g.fill();
+        g.strokeStyle = 'rgba(255,250,236,0.55)'; g.lineWidth = 0.6; g.stroke();
+      }
+    }
+  });
+}
+/** The plate in an ENAMEL.W × ENAMEL.H frame, with its shadow on the backing. */
+function enamelPlate() {
+  const { W, H, M, radius } = ENAMEL, pw = W - 2 * M, ph = H - 2 * M, g = new THREE.Group();
+  const top = new THREE.MeshPhysicalMaterial({ map: faceTexture(enamelFace(pw, ph), pw, ph), roughness: 0.34, clearcoat: 0.8, clearcoatRoughness: 0.14, envMap: studioEnv, envMapIntensity: 0.28 });
+  const edge = new THREE.MeshPhysicalMaterial({ color: ENAMEL_NAVY, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1, envMap: studioEnv, envMapIntensity: 0.7 });
+  const plate = new THREE.Mesh(extrude(rrShape(pw - 4, ph - 4, radius - 2), 1.5, 2, 2, 5), [top, edge]);
+  plate.castShadow = plate.receiveShadow = true; plate.position.set(W / 2, 0, H / 2); g.add(plate);
+  g.add(shadowCatcher(W, H, W / 2, H / 2));
+  return g;
+}
+/**
+ * The grunge on the enamel's field, transparent, RECIPE_GRUNGE.W × RECIPE_GRUNGE.H: faint grime blotches,
+ * dust specks, hairline crazing in the glaze and a few small scuffs, all darker than the cream (a light
+ * mark on light enamel reads as a smudge). It is subtle on purpose; the game thickens it towards the
+ * plate's edge and clears it round the icons.
+ */
+const RECIPE_GRUNGE = { W: 900, H: 450 };
+function recipeGrunge(g) {
+  const { W, H } = RECIPE_GRUNGE;
+  for (let i = 0; i < 45; i++) {                                           // faint grime blotches
+    const x = rand() * W, y = rand() * H, r = 8 + rand() * 38;
+    const grd = g.createRadialGradient(x, y, 0, x, y, r);
+    grd.addColorStop(0, `rgba(96,76,44,${0.03 + rand() * 0.05})`); grd.addColorStop(1, 'rgba(96,76,44,0)');
+    g.fillStyle = grd; g.fillRect(x - r, y - r, 2 * r, 2 * r);
+  }
+  for (let i = 0; i < 2200; i++) {                                         // dust specks
+    g.fillStyle = `rgba(58,46,30,${0.08 + rand() * 0.2})`;
+    g.fillRect(rand() * W, rand() * H, 0.4 + rand() * 0.9, 0.4 + rand() * 0.9);
+  }
+  g.lineWidth = 0.45;                                                      // crazing in the glaze
+  for (let i = 0; i < 26; i++) {
+    let x = rand() * W, y = rand() * H, a = rand() * Math.PI * 2;
+    g.strokeStyle = `rgba(80,64,40,${0.08 + rand() * 0.1})`; g.beginPath(); g.moveTo(x, y);
+    for (let k = 0, n = 3 + Math.floor(rand() * 6); k < n; k++) { a += (rand() - 0.5) * 1.4; const l = 4 + rand() * 14; x += Math.cos(a) * l; y += Math.sin(a) * l; g.lineTo(x, y); }
+    g.stroke();
+  }
+  for (let i = 0; i < 18; i++) {                                           // scuffs
+    const x = rand() * W, y = rand() * H, a = rand() * Math.PI, l = 6 + rand() * 20;
+    g.strokeStyle = `rgba(70,56,36,${0.08 + rand() * 0.1})`; g.lineWidth = 0.6 + rand() * 0.8;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
+  }
 }
 
 /**
@@ -1068,6 +1157,7 @@ if (EXPORT) exportLayers();
  * scroll_rail, scroll_thumb: the scrollbar's rail and slider, each drawn as a vertical three-slice.
  * seam_edge: the non-slip edge over the seam between the header and the scrolling body.
  * title_glyphs, title_glyph_shadows: the title's raised letters and their shadows, an atlas.
+ * recipe_enamel, recipe_grunge: the recipe diagram's enamel plate and the grunge over its field.
  * layout.json: frame sizes and every key's rect and top face, in capture pixels.
  * ?export&only=lamp,scroll renders just the named sets (see `want` below).
  */
@@ -1077,7 +1167,7 @@ async function exportLayers() {
   renderer.setPixelRatio(1); renderer.setClearColor(0x000000, 0);
   // ?export&only=lamp,scroll renders just those sets and merges their entries into the existing
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
-  // lamp, scroll, seam, title.
+  // lamp, scroll, seam, title, enamel.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -1312,6 +1402,15 @@ async function exportLayers() {
     const render = stage([0, 0, SEAM.W, SEAM.H], [seamStrip()], { light: 'house' }).grab();
     await post('seam_edge', frame2d(SEAM.W, SEAM.H, (g) => { paintSeamShade(g); g.drawImage(render, 0, 0, SEAM.W, SEAM.H); }));
     layout.seam_edge = { size: [SEAM.W, SEAM.H], cap: SEAM.cap, top: SEAM.top, nose: SEAM.nose };
+  });
+
+  // --- the recipe diagram's enamel plate (a 9-slice) and the grunge the game lays over its field.
+  if (want('enamel')) await withSeed(405, async () => {
+    await post('recipe_enamel', stage([0, 0, ENAMEL.W, ENAMEL.H], [enamelPlate()], { light: 'house' }).grab());
+    await post('recipe_grunge', frame2d(RECIPE_GRUNGE.W, RECIPE_GRUNGE.H, recipeGrunge));
+    layout.recipe_enamel = { size: [ENAMEL.W, ENAMEL.H], margin: ENAMEL.M, corner: ENAMEL.corner,
+      field_inset: ENAMEL.band + ENAMEL.gap + ENAMEL.stripe + 2 };
+    layout.recipe_grunge = { size: [RECIPE_GRUNGE.W, RECIPE_GRUNGE.H] };
   });
 
   // --- the title's letters: the raised white faces (ungraded; the game grades the whole title), and

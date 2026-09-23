@@ -720,6 +720,22 @@ func _test_bdp_v3_panel() -> void:
 	_check(panel._title_v3.visible and not panel._title_label.visible and panel._title_v3.text == panel._title_label.text.to_upper()
 		and panel._title_v3.letter_count() == panel._title_label.text.replace(" ", "").length(),
 		"bdp v3: the title is set in raised letters, one per character (%d)" % panel._title_v3.letter_count())
+	var strip: Control = panel.find_child("BuildingRecipeStrip", true, false)
+	var enamel: Control = strip.find_child("BdpV3Enamel", false, false) if strip != null else null
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(enamel != null and enamel.hole_rects().size() == 4,
+		"bdp v3: the recipe diagram sits on an enamel sign, its grunge kept clear of the 3 icons and the arrow (%d)" % (enamel.hole_rects().size() if enamel != null else -1))
+	var arrow: Control = strip.find_child("RecipeArrow", true, false) if strip != null else null
+	if arrow != null:
+		var body: PanelContainer = arrow.get_node("ArrowBody")
+		var head: Control = arrow.get_node("ArrowHead")
+		var bst: StyleBoxFlat = body.get_theme_stylebox("panel")
+		var content_w: float = body.get_child(0).get_combined_minimum_size().x
+		var old_w := 20.0 + content_w
+		var new_w := bst.content_margin_left + bst.content_margin_right + content_w
+		_check(head.size == Vector2(35, 58) and is_equal_approx(body.size.y, 41.0) and absf(new_w / old_w - 0.9) < 0.02,
+			"bdp v3: the recipe arrow's head is 25%% larger (35 x 58) and its body 10%% smaller round the same content (%.0f -> %.0f px)" % [old_w, new_w])
 	var Seam = load("res://scripts/bdp_v3_seam.gd")
 	_check(panel._seam.visible and is_equal_approx(panel._scroll.offset_top, Seam.strip_height())
 		and panel._seam.get_index() > panel._scroll.get_index() and panel._seam.get_parent() == panel._scroll.get_parent(),
@@ -791,8 +807,9 @@ func _test_bdp_v3_panel() -> void:
 		"bdp v3: switching it off brings the v2 controls straight back")
 	_check(panel._badge.visible and not panel._status_v3.visible and not Scroll.is_applied(panel._scroll)
 		and not panel._seam.visible and is_equal_approx(panel._scroll.offset_top, 0.0)
-		and panel._title_label.visible and not panel._title_v3.visible,
-		"bdp v3: switching it off brings back the plain title, the badge, the plain scrollbar and the unedged body")
+		and panel._title_label.visible and not panel._title_v3.visible
+		and panel.find_child("BdpV3Enamel", true, false) == null,
+		"bdp v3: switching it off brings back the plain title, the badge, the plain scrollbar, the unedged body and the plain diagram")
 	panel.queue_free()
 	BuildingState.buildings.erase(iid)
 	UiPrefs.set_use_bdp_v3(was)

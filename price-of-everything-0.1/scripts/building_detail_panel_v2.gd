@@ -24,6 +24,7 @@ const BdpV3Plate := preload("res://scripts/bdp_v3_plate.gd")
 const BdpV3Scroll := preload("res://scripts/bdp_v3_scroll.gd")
 const BdpV3Seam := preload("res://scripts/bdp_v3_seam.gd")
 const BdpV3Title := preload("res://scripts/bdp_v3_title.gd")
+const BdpV3Enamel := preload("res://scripts/bdp_v3_enamel.gd")
 const BdpV3Nine := preload("res://scripts/bdp_v3_nine.gd")
 const BdpV3Section := preload("res://scripts/bdp_v3_section.gd")
 ## v3 frames these sections (heading and content together); the value names the frame, so sections
@@ -1783,18 +1784,27 @@ class _RouteIcon extends Control:
 func _build_recipe_strip(flow: Dictionary) -> PanelContainer:
 	var card := PanelContainer.new()
 	card.name = "BuildingRecipeStrip"
-	var style := StyleBoxFlat.new()
-	style.bg_color = CREAM
-	style.set_corner_radius_all(0)  # squared corners
-	style.set_content_margin_all(0)  # children fill the full card so the outline sits 4px from the edge
-	card.add_theme_stylebox_override("panel", style)
 	card.custom_minimum_size = Vector2(0, 156)  # consistent height for 1–4 input / output grids
-	# thin navy outline inset 4px from the actual card edge
-	var outline := _InsetOutline.new()
-	outline.col = CREAM_INK
-	outline.set_anchors_preset(Control.PRESET_FULL_RECT)
-	outline.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	card.add_child(outline)
+	# v3: an enamel sign behind the diagram, its grunge kept clear of the icons and arrow (watched below).
+	var enamel: BdpV3Enamel = null
+	if UiPrefs.use_bdp_v3:
+		var bare := StyleBoxEmpty.new()
+		bare.set_content_margin_all(0)
+		card.add_theme_stylebox_override("panel", bare)
+		enamel = BdpV3Enamel.new()
+		card.add_child(enamel)
+	else:
+		var style := StyleBoxFlat.new()
+		style.bg_color = CREAM
+		style.set_corner_radius_all(0)  # squared corners
+		style.set_content_margin_all(0)  # children fill the full card so the outline sits 4px from the edge
+		card.add_theme_stylebox_override("panel", style)
+		# thin navy outline inset 4px from the actual card edge
+		var outline := _InsetOutline.new()
+		outline.col = CREAM_INK
+		outline.set_anchors_preset(Control.PRESET_FULL_RECT)
+		outline.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card.add_child(outline)
 
 	card.clip_contents = false  # let big recipe icons bleed past the card edge
 	var pad := MarginContainer.new()
@@ -1819,7 +1829,8 @@ func _build_recipe_strip(flow: Dictionary) -> PanelContainer:
 		row.add_child(_recipe_side(inputs))
 
 	# navy filled arrow with the power draw on its body
-	row.add_child(_recipe_arrow(int(flow.get("power_in", 0))))
+	var arrow := _recipe_arrow(int(flow.get("power_in", 0)))
+	row.add_child(arrow)
 
 	# outputs — one hero icon, or a grid when the recipe has CO-PRODUCTS (chlor-alkali yields
 	# chlorine + sodium hydroxide + hydrogen). The pill on
@@ -1848,6 +1859,12 @@ func _build_recipe_strip(flow: Dictionary) -> PanelContainer:
 					58, 1, int((o as Dictionary).get("base_qty", -1)), mod_pct))
 			out_wrap.add_child(grid)
 		row.add_child(out_wrap)
+	if enamel != null:
+		var clear: Array[Control] = [arrow]
+		for n in card.find_children("*", "Control", true, false):
+			if n.has_meta("recipe_icon"):
+				clear.append(n)
+		enamel.watch(clear)
 	return card
 
 # One side of the recipe diagram (inputs): a single hero icon, or a centred 2×2 grid of smaller ones.
@@ -1875,6 +1892,7 @@ func _recipe_side(items: Array) -> Control:
 # larger on every side (clip off) so it overflows ~20% past the slot; qty pill on the bottom-right.
 func _recipe_icon(good_id: String, internal: String, qty: int, size: int, bleed: int, base_qty: int = -1, mod_pct: int = 0) -> Control:
 	var slot := Control.new()
+	slot.set_meta("recipe_icon", true)
 	slot.custom_minimum_size = Vector2(size, size)
 	slot.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	slot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -1978,20 +1996,27 @@ func _qty_pill(qty: int, base_qty: int = -1, _mod_pct: int = 0) -> Control:
 	return pill
 
 # Navy filled arrow: a rounded-left body carrying the power label + bolt, then a triangle head.
+## The recipe arrow: a navy body holding the power draw, and a head. The body is 10% smaller than it
+## was (46 px tall, with 12 + 8 px of side padding round the number and bolt, which keep their size),
+## and the head 25% larger than it was (28 × 46), so it flares past the body.
+const ARROW_BODY_H := 41
+const ARROW_OLD_SIDE_PAD := 20.0
+const ARROW_HEAD := Vector2(35, 58)
+
 func _recipe_arrow(power_in: int) -> Control:
 	var arrow := HBoxContainer.new()
+	arrow.name = "RecipeArrow"
 	arrow.add_theme_constant_override("separation", 0)
 	arrow.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var body_h := 46
+	var body_h := ARROW_BODY_H
 	var body := PanelContainer.new()
+	body.name = "ArrowBody"
 	body.custom_minimum_size = Vector2(0, body_h)
 	body.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var bst := StyleBoxFlat.new()
 	bst.bg_color = CREAM_INK
-	bst.corner_radius_top_left = 6
-	bst.corner_radius_bottom_left = 6
-	bst.content_margin_left = 12
-	bst.content_margin_right = 8
+	bst.corner_radius_top_left = 5
+	bst.corner_radius_bottom_left = 5
 	bst.content_margin_top = 4
 	bst.content_margin_bottom = 4
 	body.add_theme_stylebox_override("panel", bst)
@@ -2020,13 +2045,28 @@ func _recipe_arrow(power_in: int) -> Control:
 		nop.theme_type_variation = "Caption"
 		nop.add_theme_color_override("font_color", Color(0.75, 0.82, 0.9))
 		hb.add_child(nop)
+	# Side padding for a body 10% narrower than the old one round the same content (split 12:8).
+	var content_w := _arrow_content_width(power_in)
+	var pad := maxf(4.0, 0.9 * (ARROW_OLD_SIDE_PAD + content_w) - content_w)
+	bst.content_margin_left = pad * 0.6
+	bst.content_margin_right = pad * 0.4
 	arrow.add_child(body)
 	var head := _ArrowHead.new()
+	head.name = "ArrowHead"
 	head.col = CREAM_INK
-	head.custom_minimum_size = Vector2(28, body_h)
+	head.custom_minimum_size = ARROW_HEAD
 	head.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	arrow.add_child(head)
 	return arrow
+
+## The width of what the arrow's body holds: the power draw and its bolt, or "no power".
+func _arrow_content_width(power_in: int) -> float:
+	if power_in > 0:
+		var f: Font = DS.theme.get_font("font", "Numeric") if DS and DS.theme else null
+		var w := f.get_string_size(str(power_in), HORIZONTAL_ALIGNMENT_LEFT, -1, 21).x if f != null else 12.0 * str(power_in).length()
+		return w + 5.0 + 18.0
+	var cf: Font = DS.theme.get_font("font", "Caption") if DS and DS.theme else null
+	return cf.get_string_size("no power", HORIZONTAL_ALIGNMENT_LEFT, -1, DS.FS["CAPTION"]).x if cf != null else 56.0
 
 ## Sticky across refreshes: a player who opened the checklist wants it to stay open while
 ## they watch the turn resolve, not to re-collapse under them every rebuild.
