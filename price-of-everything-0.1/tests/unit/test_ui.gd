@@ -598,3 +598,98 @@ func _test_settings_test_gauge() -> void:
 	led_option.item_selected.emit(3)
 	_check(gauge.led_mode == gauge.LedMode.RED, "test gauge: the LED menu sets the LED mode")
 	panel._on_back_pressed()
+
+
+# Building Detail v3 (`toggle bdp v3`): the approved control plates. The rules behind the keys'
+# text, when the upgrade arrow lights, the cheat, and that the panel swaps its controls and the
+# keys open the same sheets as v2.
+func _test_bdp_v3_rules() -> void:
+	var Block = load("res://scripts/bdp_v3_block.gd")
+	var Panel = load("res://scripts/building_detail_panel_v2.gd")
+	_check(Block.truncate10("Motor") == "Motor" and Block.truncate10("Heavy Vehicle") == "Heavy Vehi..."
+		and Block.truncate10("Aluminium1") == "Aluminium1",
+		"bdp v3: good names cut to ten characters plus ... from eleven on")
+	_check(Block.upgrade_detail(1) == "+100% Output" and Block.upgrade_detail(2) == "+75% Output",
+		"bdp v3: upgrade line is the next level's output gain (L1->2 +100%, L2->3 +75%)")
+	var one: Array = Block.value_lines("Market / unlinked")
+	var two: Array = Block.value_lines("Tile stockpile (same tile)")
+	var split: Array = Block.value_lines("Stoneshore: 20\nArin: 13\nCapital: 0")
+	_check(one.size() == 1 and two.size() == 2 and str(two[1].text) == "(same tile)"
+		and split.size() == 2 and str(split[1].text).ends_with("…"),
+		"bdp v3: value key splits a bracketed qualifier onto a second line and shortens longer splits")
+
+	var iid: String = BuildingState.add_building("b_007", "r_009", "tile_5_10", MatchState.LOCAL_PLAYER, "v3_rules")
+	var b: Dictionary = BuildingState.get_building(iid)
+	var internal := str(Catalog.get_building("b_007").get("internal_name", ""))
+	var gate: String = preload("res://scripts/building_levels.gd").research_gate(internal, 2)
+	_check(gate != "", "bdp v3: the factory's level-2 upgrade has a research gate to test (%s)" % gate)
+	var had := ResearchState.unlocked_titles.has(gate)
+	if gate != "":
+		ResearchState.unlocked_titles.erase(gate)
+		var locked: Dictionary = Panel.v3_upgrade_state(b)
+		_check(not bool(locked.upgrade_lit) and str(locked.upgrade_tooltip).contains(gate),
+			"bdp v3: upgrade arrow unlit, with the missing research in the tooltip, until %s is unlocked" % gate)
+		ResearchState.unlocked_titles[gate] = true
+	var open: Dictionary = Panel.v3_upgrade_state(b)
+	_check(bool(open.upgrade_lit) and str(open.upgrade_title) == "Upgrade to Lv 2" and str(open.upgrade_detail) == "+100% Output",
+		"bdp v3: upgrade arrow lit once the research is met")
+	var maxed := b.duplicate()
+	maxed["level"] = preload("res://scripts/building_levels.gd").MAX_LEVEL
+	_check(not bool(Panel.v3_upgrade_state(maxed).upgrade_lit), "bdp v3: no lit arrow at the maximum level")
+	if gate != "" and not had:
+		ResearchState.unlocked_titles.erase(gate)
+	var better: int = Block.better_recipe_count(b)
+	_check(better >= 0 and better < Catalog.get_recipes_for_building("b_007").size(),
+		"bdp v3: better-recipe count is among the other recipes (%d)" % better)
+	BuildingState.buildings.erase(iid)
+
+
+func _test_bdp_v3_panel() -> void:
+	var was: bool = UiPrefs.use_bdp_v3
+	UiPrefs.set_use_bdp_v3(false)
+	var terminal: Node = load("res://scripts/debug_terminal.gd").new()
+	add_child(terminal)
+	await get_tree().process_frame
+	terminal._cheats_unlocked = true
+	var reply: String = terminal._run_command("toggle bdp v3")
+	_check(UiPrefs.use_bdp_v3 and reply.contains("v3"), "bdp v3: `toggle bdp v3` switches the panel to v3 (%s)" % reply)
+	terminal.queue_free()
+
+	var iid: String = BuildingState.add_building("b_007", "r_009", "tile_5_10", MatchState.LOCAL_PLAYER, "v3_panel")
+	var b: Dictionary = BuildingState.get_building(iid)
+	var panel = load("res://scripts/building_detail_panel_v2.gd").new()
+	add_child(panel)
+	await get_tree().process_frame
+	panel.show_building(b)
+	await get_tree().process_frame
+	var block: Control = panel.find_child("BdpV3Block", true, false)
+	var footer: Control = panel.find_child("BdpV3Footer", true, false)
+	_check(block != null and footer != null and panel.find_child("UpgradeButton", true, false) == null,
+		"bdp v3: the control block and footer replace the v2 route cards and buttons")
+	_check(panel._close_key.visible and not panel._close_button.visible, "bdp v3: the close keycap replaces the X button")
+	if block != null:
+		block.key_pressed.emit("outputs")
+		await get_tree().process_frame
+		_check(panel._sheet != null and panel._sheet.find_child("BdpV3BackKey", true, false) != null,
+			"bdp v3: Outputs opens the output sheet, whose Back is a keycap")
+		panel._close_sheet()
+		var r: Rect2 = block.key_rect("recipe")
+		var press := func(pressed: bool) -> void:
+			var e := InputEventMouseButton.new()
+			e.button_index = MOUSE_BUTTON_LEFT
+			e.pressed = pressed
+			e.position = r.get_center()
+			block._gui_input(e)
+		press.call(true); press.call(false)
+		await get_tree().process_frame
+		_check(panel._sheet != null and str(panel._sheet.find_child("SheetTitle", true, false).text).to_lower().contains("recipe"),
+			"bdp v3: clicking the Change recipes key opens the recipe sheet")
+		panel._close_sheet()
+	UiPrefs.set_use_bdp_v3(false)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(panel.find_child("BdpV3Block", true, false) == null and panel.find_child("UpgradeButton", true, false) != null,
+		"bdp v3: switching it off brings the v2 controls straight back")
+	panel.queue_free()
+	BuildingState.buildings.erase(iid)
+	UiPrefs.set_use_bdp_v3(was)
