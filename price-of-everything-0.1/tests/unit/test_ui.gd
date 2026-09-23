@@ -500,3 +500,97 @@ func _test_settings_test_knob() -> void:
 	PlayerProfile.set_audio_levels(al_saved)
 	PlayerProfile.window_size = ws_saved
 	PlayerProfile.set_display(fs_saved, ws_saved, sc_saved)
+
+
+# Panel gauge (scripts/panel_gauge.gd): for a spread of zone splits and needle positions,
+# the LED shows the right colour, the needle points at the right angle and each zone band
+# covers exactly its share of the scale.
+const GAUGE_CASES := [
+	# value, green %, amber %, LED mode, flash -> zone, LED, flashes
+	[0.30, 37.5, 29.2, "AUTO", false, "green", "green", false],
+	[0.375, 37.5, 29.2, "AUTO", false, "green", "green", false],   # boundary belongs to the lower zone
+	[0.50, 37.5, 29.2, "AUTO", false, "amber", "amber", false],
+	[0.90, 37.5, 29.2, "AUTO", false, "red", "red", true],         # auto flashes in the red
+	[0.10, 0.0, 30.0, "AUTO", false, "amber", "amber", false],     # empty green is skipped
+	[0.00, 0.0, 0.0, "AUTO", false, "red", "red", true],           # all red
+	[0.99, 100.0, 0.0, "AUTO", false, "green", "green", false],    # all green
+	[0.95, 60.0, 60.0, "AUTO", false, "amber", "amber", false],    # amber clamped to the 40% left
+	[0.20, 50.0, 25.0, "RED", false, "green", "red", false],       # fixed colour ignores the zone
+	[0.80, 50.0, 25.0, "AMBER", true, "red", "amber", true],       # fixed colour, flashing on request
+	[0.80, 50.0, 25.0, "OFF", true, "red", "off", false],          # off never flashes
+]
+
+
+func _test_panel_gauge_rules() -> void:
+	var Gauge = load("res://scripts/panel_gauge.gd")
+	for c: Array in GAUGE_CASES:
+		var tag := "gauge v=%s g=%s a=%s %s" % [c[0], c[1], c[2], c[3]]
+		var mode: int = Gauge.LedMode[c[3]]
+		_check(Gauge.zone_at(c[0], c[1], c[2]) == c[5], tag + ": needle is in the " + str(c[5]) + " zone")
+		_check(Gauge.led_colour(mode, c[0], c[1], c[2]) == c[6], tag + ": LED is " + str(c[6]))
+		_check(Gauge.led_flashes(mode, c[4], c[0], c[1], c[2]) == c[7], tag + ": LED flashing is " + str(c[7]))
+	var b: Dictionary = Gauge.zone_bounds(60.0, 60.0)
+	_check(b.amber == Vector2(0.6, 1.0) and b.red.x == b.red.y, "gauge: amber clamps to what green leaves and red is empty")
+	for pair: Array in [[0.0, -150.0], [0.25, -75.0], [0.5, 0.0], [1.0, 150.0], [1.4, 150.0]]:
+		_check(is_equal_approx(rad_to_deg(Gauge.needle_rotation(pair[0])), pair[1]),
+			"gauge: value %s turns the needle %s° from 12 o'clock" % pair)
+
+
+func _test_panel_gauge_draws_cases() -> void:
+	var Gauge = load("res://scripts/panel_gauge.gd")
+	var gauge: Control = Gauge.new()
+	gauge.animate_needle = false
+	add_child(gauge)
+	await get_tree().process_frame
+	for c: Array in GAUGE_CASES:
+		var tag := "gauge v=%s g=%s a=%s %s" % [c[0], c[1], c[2], c[3]]
+		gauge.green_percent = c[1]
+		gauge.amber_percent = c[2]
+		gauge.led_mode = Gauge.LedMode[c[3]]
+		gauge.flash = c[4]
+		gauge.value = c[0]
+		gauge._time = 0.0          # the lit phase of a blink
+		gauge._refresh()
+		var expected: float = Gauge.needle_rotation(c[0])
+		_check(is_equal_approx(gauge._layers["needle"].rotation, expected)
+			and is_equal_approx(gauge._layers["needle_shadow"].rotation, expected),
+			tag + ": needle and its shadow drawn at the value's angle")
+		_check(gauge.shown_led() == c[6], tag + ": LED drawn " + str(c[6]))
+		_check(gauge._layers["led_glow"].visible == (c[6] != "off"), tag + ": LED glow only while lit")
+		var bounds: Dictionary = Gauge.zone_bounds(c[1], c[2])
+		var bands_ok := true
+		for zone: String in Gauge.ZONES:
+			var mat: ShaderMaterial = gauge._zone_materials[zone]
+			var want: Vector2 = bounds[zone]
+			bands_ok = bands_ok and is_equal_approx(mat.get_shader_parameter("from_v"), want.x) \
+				and is_equal_approx(mat.get_shader_parameter("to_v"), want.y) \
+				and gauge._layers["band_" + zone].visible == (want.y > want.x)
+		_check(bands_ok, tag + ": each zone band covers its share and empty zones are hidden")
+		if c[7]:
+			gauge._time = 0.5         # the dark phase of a blink
+			gauge._refresh()
+			_check(gauge.shown_led() == "off", tag + ": flashing LED goes dark between blinks")
+	gauge.queue_free()
+
+
+func _test_settings_test_gauge() -> void:
+	var panel := SettingsPanel.open(self)
+	await get_tree().process_frame
+	var gauge: Control = panel._test_gauge
+	_check(gauge != null and gauge.is_inside_tree(), "settings: Gameplay tab carries the test gauge")
+	# Drive the preview's own controls: rows are Needle, Green, Amber, Red, LED.
+	var controls: VBoxContainer = gauge.get_parent().get_child(2)
+	var slider := func(row: int) -> HSlider: return controls.get_child(row).get_child(1) as HSlider
+	var red_readout: Label = controls.get_child(3).get_child(1)
+	slider.call(0).value = 90.0
+	_check(is_equal_approx(gauge.value, 0.9), "test gauge: the Needle slider moves the needle")
+	slider.call(1).value = 80.0
+	_check(is_equal_approx(gauge.green_percent, 80.0) and is_equal_approx(gauge.amber_percent, 20.0) \
+		and is_equal_approx(slider.call(2).value, 20.0) and red_readout.text == "0%",
+		"test gauge: raising green pulls amber back so the three still add to 100")
+	slider.call(2).value = 5.0
+	_check(red_readout.text == "15%", "test gauge: red shows what green and amber leave")
+	var led_option: OptionButton = controls.get_child(4).get_child(1)
+	led_option.item_selected.emit(3)
+	_check(gauge.led_mode == gauge.LedMode.RED, "test gauge: the LED menu sets the LED mode")
+	panel._on_back_pressed()
