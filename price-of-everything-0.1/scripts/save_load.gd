@@ -296,6 +296,26 @@ func start_new_game(start_path: String = DEFAULT_START) -> String:
 		return "cannot open the map scene (%s)" % error_string(err)
 	return ""
 
+## A start with "opening_batches": N sets its buildings up as an existing business: each
+## intermediary building holds the inputs for its next batch and keeps N-1 further batches in
+## an opening reserve, so its first N turns run without a purchase, a fee or a loan, and
+## nothing appears in the tile stockpile. The held amount is one cycle exactly, because the
+## service never holds more than a building's next batch; the reserve tops it up each turn.
+func _first_batch_inputs(building: Dictionary) -> Dictionary:
+	var held := {}
+	for input: Dictionary in Catalog.get_recipe(str(building.get("recipe_id", ""))).get("inputs", []):
+		var gid := str(input.get("good_id", ""))
+		var qty: int = Production._scaled_input_qty(input, building)
+		if qty > 0 and MiddlemanService.material_tradeable(gid, "input"):
+			held[gid] = qty
+	return held
+
+func _opening_reserve(building: Dictionary, batches: int) -> Dictionary:
+	var reserve := _first_batch_inputs(building) if batches > 1 else {}
+	for gid in reserve:
+		reserve[gid] = int(reserve[gid]) * (batches - 1)
+	return reserve
+
 ## Expand the authoring shape (see data/starts/*.json) into a full snapshot.
 ## Anything omitted falls back to new-game defaults at import. Loans become
 ## outstanding debt WITHOUT disbursing principal — `money` is what you start with.
@@ -396,7 +416,10 @@ func expand_start_config(cfg: Dictionary, overrides: Dictionary = {}) -> Diction
 				continue
 			service_buildings[iid] = {
 				"coefficient": MiddlemanLocations.coefficient(str(start_building.get("tile_id", ""))),
-				"recipe_id": str(start_building.get("recipe_id", "")), "inputs": {}, "outputs": {},
+				"recipe_id": str(start_building.get("recipe_id", "")),
+				"inputs": _first_batch_inputs(start_building) if int(cfg.get("opening_batches", 0)) > 0 else {},
+				"opening_inputs": _opening_reserve(start_building, int(cfg.get("opening_batches", 0))),
+				"outputs": {},
 				"turn": -1, "state": "idle", "receipts": {},
 				"input_mode": "middleman", "output_mode": "middleman",
 				"input_modes": {}, "output_modes": {},

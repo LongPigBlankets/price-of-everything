@@ -8,8 +8,9 @@
 		"logistics_model": "middleman_v1",
 		"middleman_new_buildings": true
 	},
+	"opening_batches": 2,
 	"money": 200,
-	"steady_profit_per_turn": 52,
+	"steady_profit_per_turn": 55,
 	"loans": [ { "principal": 700 } ],
 	"buildings": [
 		{ "building_id": "b_001", "recipe_id": "r_018", "tile_id": "tile_19_15", "output_to": "market" },

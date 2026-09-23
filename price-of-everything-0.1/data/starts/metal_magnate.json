@@ -8,6 +8,7 @@
 		"logistics_model": "middleman_v1",
 		"middleman_new_buildings": true
 	},
+	"opening_batches": 2,
 	"money": 300,
 	"steady_profit_per_turn": 27,
 	"buildings": [

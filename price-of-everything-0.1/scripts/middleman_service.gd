@@ -80,8 +80,10 @@ static func set_mode(iid: String, side: String, mode: String, validate_only: boo
 	if current_all: return {"ok":true}
 	var key := "inputs" if side == "input" else "outputs"
 	var held: Dictionary = e.get(key,{})
+	var opening: Dictionary = e.get("opening_inputs", {}) if side == "input" else {}
 	var total := 0
 	for qty in held.values(): total += int(qty)
+	for qty in opening.values(): total += int(qty)
 	if mode == "managed" and Stockpile.get_free_capacity(str(b.tile_id)) < total:
 		return {"ok":false,"reason":"Not enough tile storage for the paid goods. Free capacity first."}
 	if validate_only: return {"ok":true}
@@ -93,6 +95,8 @@ static func set_mode(iid: String, side: String, mode: String, validate_only: boo
 	if mode == "managed":
 		for gid in held: Stockpile.add(str(b.tile_id),str(gid),int(held[gid]))
 		held.clear()
+		for gid in opening: Stockpile.add(str(b.tile_id),str(gid),int(opening[gid]))
+		opening.clear()
 		if side == "input": e["holding_receipts"]=[]
 		# Start retaining output when taking control: never silently sell it.
 		if side == "output":
@@ -136,8 +140,10 @@ static func set_good_mode(iid: String, side: String, gid: String, mode: String, 
 	if current == mode: return {"ok":true}
 	var key := "inputs" if side == "input" else "outputs"
 	var held: Dictionary = e.get(key, {})
+	var opening: Dictionary = e.get("opening_inputs", {}) if side == "input" else {}
 	var qty := int(held.get(gid, 0))
-	if mode == "managed" and Stockpile.get_free_capacity(str(b.tile_id)) < qty:
+	var opening_qty := int(opening.get(gid, 0))
+	if mode == "managed" and Stockpile.get_free_capacity(str(b.tile_id)) < qty + opening_qty:
 		return {"ok":false,"reason":"Not enough tile storage for the paid goods. Free capacity first."}
 	if validate_only: return {"ok":true}
 	if e.is_empty():
@@ -149,6 +155,9 @@ static func set_good_mode(iid: String, side: String, gid: String, mode: String, 
 		if qty > 0:
 			Stockpile.add(str(b.tile_id), gid, qty)
 			held.erase(gid)
+		if opening_qty > 0:
+			Stockpile.add(str(b.tile_id), gid, opening_qty)
+			opening.erase(gid)
 		if side == "input": e["holding_receipts"]=[]
 		else: MatchState.set_output_stockpile_destination(iid, str(b.tile_id), gid)
 	var modes: Dictionary = e.get(mode_key, {})
@@ -173,7 +182,7 @@ static func entry(iid: String) -> Dictionary:
 
 static func has_assets(iid: String) -> bool:
 	var e := entry(iid)
-	for key in ["inputs", "outputs", "bridge"]:
+	for key in ["inputs", "outputs", "bridge", "opening_inputs"]:
 		for qty in e.get(key, {}).values():
 			if int(qty) > 0: return true
 	return false
@@ -356,6 +365,7 @@ static func prepare(buildings: Array, summary: Dictionary) -> void:
 		var required := {}
 		for input: Dictionary in recipe.get("inputs", []):
 			if supplies_good(iid, str(input.good_id)): required[str(input.good_id)] = Production._scaled_input_qty(input,b)
+		_draw_opening_reserve(e, required)
 		var banned := false
 		for gid in required:
 			if int(required[gid]) > int(e.inputs.get(gid,0)) and PolicyState.import_banned(str(gid),TurnManager.current_turn): banned = true
@@ -422,6 +432,20 @@ static func prepare(buildings: Array, summary: Dictionary) -> void:
 		e.receipts.purchase = q.duplicate(true)
 		e.receipts.input_fee = float(q.fee)
 		e.state = "supplied"
+
+## An existing business's opening reserve (see SaveLoad.expand_start_config) tops the held
+## inputs up to this cycle's requirement, never beyond it.
+static func _draw_opening_reserve(e: Dictionary, required: Dictionary) -> void:
+	var opening: Dictionary = e.get("opening_inputs", {})
+	if opening.is_empty(): return
+	if not e.has("inputs"): e["inputs"] = {}
+	for gid in required:
+		var take := mini(int(opening.get(gid, 0)), int(required[gid]) - int(e.inputs.get(gid, 0)))
+		if take <= 0: continue
+		e.inputs[gid] = int(e.inputs.get(gid, 0)) + take
+		opening[gid] = int(opening[gid]) - take
+		if int(opening[gid]) <= 0: opening.erase(gid)
+	if opening.is_empty(): e.erase("opening_inputs")
 
 static func ready(iid: String) -> bool:
 	var e := entry(iid)
@@ -533,14 +557,15 @@ static func release_to_stock(iid: String) -> Dictionary:
 	if e.is_empty() or b.is_empty(): return {"ok":false,"reason":"No service building."}
 	var goods := {}
 	var total := 0
-	for key in ["inputs","outputs"]:
-		for gid in e[key]:
+	for key in ["inputs","outputs","opening_inputs"]:
+		for gid in e.get(key, {}):
 			goods[gid] = int(goods.get(gid,0))+int(e[key][gid])
 			total += int(e[key][gid])
 	if Stockpile.get_free_capacity(str(b.tile_id)) < total: return {"ok":false,"reason":"Insufficient owned storage."}
 	for gid in goods: Stockpile.add(str(b.tile_id),str(gid),int(goods[gid]))
 	e.inputs.clear()
 	e.outputs.clear()
+	e.erase("opening_inputs")
 	e["holding_receipts"] = []
 	return {"ok":true}
 
@@ -560,7 +585,7 @@ static func preview_building(b: Dictionary) -> Dictionary:
 	var recipe: Dictionary = Catalog.get_recipe(str(b.get("recipe_id","")))
 	if not recipe_side(recipe, "input") and not recipe_side(recipe, "output"):
 		return {"ok":false,"reason":"No tradeable material service for this recipe."}
-	var e := entry(iid)
+	var e := entry(iid).duplicate(true)
 	var input_service := recipe_side(recipe, "input") and (not enabled(iid) or uses_inputs(iid) or (recipe.get("inputs", []) as Array).any(func(item: Dictionary) -> bool: return supplies_good(iid, str(item.get("good_id", "")))))
 	var output_service := recipe_side(recipe, "output") and (not enabled(iid) or uses_outputs(iid) or (recipe.get("outputs", []) as Array).any(func(item: Dictionary) -> bool: return buys_output(iid, str(item.get("good_id", "")))))
 	var factor := coefficient(b)
@@ -568,6 +593,9 @@ static func preview_building(b: Dictionary) -> Dictionary:
 	var required := {}
 	for input: Dictionary in recipe.get("inputs",[]):
 		if material_tradeable(str(input.good_id), "input") and (not enabled(iid) or supplies_good(iid, str(input.good_id))): required[str(input.good_id)] = Production._scaled_input_qty(input,b)
+	if not e.is_empty():
+		_draw_opening_reserve(e, required)
+		held = e.get("inputs", {})
 	var snapshot := prices()
 	var lines := []
 	for gid in required: lines.append({"good":gid,"quantity":maxi(0,int(required[gid])-int(held.get(gid,0)))})
