@@ -872,6 +872,47 @@ function scrollThumb() {
   g.add(shadowCatcher(W, H, W / 2, H / 2, STRIP_TOP + 0.05, 0.45));
   return g;
 }
+/**
+ * The seam where the panel's scrolling body meets its fixed header: a dark rubber non-slip edge, like
+ * the nosing on a stair tread, run across the panel from trim to trim and screwed at each end. Three
+ * grooves run along its length and its front edge rolls down to the body, which slides under it. It
+ * casts its shadow onto the body, and the body is shaded a little way out from under the lip. The
+ * game draws it as a horizontal three-slice (scripts/bdp_v3_seam.gd): the ends, with the screws, keep
+ * their size and the length between them stretches, so between the ends it is the same all along.
+ * In the SEAM.W × SEAM.H frame the strip runs from y = top to y = nose (its lip), and the body's shade
+ * reaches the frame's foot.
+ */
+const SEAM = { W: 900, H: 48, top: 6, nose: 26, cap: 45, screwX: 22 };
+const SEAM_RUBBER_TOP = 5;   // the tread's height above the backing
+function seamStrip() {
+  const { W, H, top, nose } = SEAM, T = SEAM_RUBBER_TOP, g = new THREE.Group();
+  // The cross-section, depth z (down the screen) against height, drawn at shape x = -z so that turning
+  // the extrusion onto the panel's length puts z down the screen.
+  const s = new THREE.Shape(), P = (z, h) => [-z, h];
+  s.moveTo(...P(top, 0)); s.lineTo(...P(top, T - 1)); s.lineTo(...P(top + 1, T));
+  for (const gz of [top + 5, top + 9, top + 13]) {                     // three rounded grooves
+    s.lineTo(...P(gz - 1.1, T)); s.quadraticCurveTo(...P(gz, T - 2.6), ...P(gz + 1.1, T));
+  }
+  s.lineTo(...P(nose - 5, T)); s.quadraticCurveTo(...P(nose - 0.2, T - 0.2), ...P(nose, 0.4));   // the rolled lip
+  s.lineTo(...P(nose, 0)); s.lineTo(...P(top, 0));
+  const geo = new THREE.ExtrudeGeometry(s, { depth: W - 8, bevelEnabled: false, curveSegments: 8 });
+  geo.rotateY(Math.PI / 2); geo.translate(4, 0, 0);
+  // Fine grit in the rubber's surface, so it reads as a non-slip tread rather than a smooth moulding.
+  const grit = noiseTexture(90, 0, 10);
+  const rubber = new THREE.MeshPhysicalMaterial({ color: 0x2a2c30, roughness: 0.82, bumpMap: grit, bumpScale: 0.35, sheen: 0.6, sheenColor: new THREE.Color(0x60656c), sheenRoughness: 0.55, envMap: studioEnv, envMapIntensity: 0.5 });
+  const strip = new THREE.Mesh(geo, rubber); strip.castShadow = strip.receiveShadow = true; g.add(strip);
+  for (const x of [SEAM.screwX, W - SEAM.screwX]) { const sc = screw(4.5); sc.position.set(x, T + 0.2, (top + nose) / 2 - 2); g.add(sc); }
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.55));
+  return g;
+}
+/** The body's shade just under the lip, where it slides out from beneath the strip, in the seam's frame. */
+function paintSeamShade(g) {
+  const { W, H, nose } = SEAM, grd = g.createLinearGradient(0, nose - 2, 0, H);
+  grd.addColorStop(0, 'rgba(4,6,8,0.62)'); grd.addColorStop(0.18, 'rgba(4,6,8,0.34)');
+  grd.addColorStop(0.55, 'rgba(4,6,8,0.1)'); grd.addColorStop(1, 'rgba(4,6,8,0)');
+  g.fillStyle = grd; g.fillRect(4, nose - 2, W - 8, H - nose + 2);
+}
+
 /** Runs `fn` with the random number generator at `s`, then puts it back, so a part's wear is the same
  * whatever was built before it. */
 async function withSeed(s, fn) { const saved = seed; seed = s; try { return await fn(); } finally { seed = saved; } }
@@ -879,7 +920,7 @@ async function withSeed(s, fn) { const saved = seed; seed = s; try { return awai
 /** The study's view of the lamp in each state and the scrollbar, on the backing's navy-grey steel. */
 async function buildPartsView() {
   return withSeed(401, () => {
-    const W = 720, H = 300, scene = new THREE.Scene();
+    const W = 720, H = 400, scene = new THREE.Scene();
     scene.environment = roomEnv; scene.environmentIntensity = 0.16;
     const back = new THREE.Mesh(new THREE.PlaneGeometry(W, H).rotateX(-Math.PI / 2), plateMaterial(W, H, { icons: [], buttons: [], screws: [], base: NAVY_STEEL_CANVAS, rub: '120,136,160' }));
     back.position.set(W / 2, 0, H / 2); back.receiveShadow = true; scene.add(back);
@@ -890,6 +931,12 @@ async function buildPartsView() {
     const rail = scrollRail(); rail.position.set(560, 0, 30); scene.add(rail);
     const thumb = scrollThumb(); thumb.position.set(560, 0, 35); scene.add(thumb);
     const rail2 = scrollRail(); rail2.position.set(640, 0, 30); scene.add(rail2);
+    // The seam's edge across the lower part, over a stand-in for the body (a navy card) sliding under it.
+    const card = new THREE.Mesh(new THREE.PlaneGeometry(560, 80).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x06111e, toneMapped: false }));
+    card.position.set(330, 0.5, 350); scene.add(card);
+    const seam = seamStrip(); seam.scale.x = 640 / SEAM.W; seam.position.set(40, 0.6, 296); scene.add(seam);
+    const shade = new THREE.Mesh(new THREE.PlaneGeometry(640, SEAM.H).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(canvas2d(SEAM.W, SEAM.H, paintSeamShade)), transparent: true, depthWrite: false, toneMapped: false }));
+    shade.material.map.colorSpace = THREE.SRGBColorSpace; shade.position.set(40 + 320, 0.55, 296 + SEAM.H / 2); scene.add(shade);
     houseLight(scene, W / 2, H / 2);
     scene.add(new THREE.HemisphereLight(0xffffff, 0xb9c0c8, 0.14));
     const camera = new THREE.OrthographicCamera(-W / 2, W / 2, H / 2, -H / 2, 1, 5000);
@@ -925,7 +972,7 @@ for (const sec of EXPORT ? [] : SECTIONS) {
 }
 if (!EXPORT) {
   const el = document.createElement('section');
-  el.innerHTML = '<h2>Status lamp and scrollbar</h2><p>Lit by the house light: from the upper left, 49.7° high, with no fall-off. The lamp lit green, amber and red, and off; the scrollbar\'s rail with its slider, and a bare rail.</p>';
+  el.innerHTML = '<h2>Status lamp, scrollbar and seam edge</h2><p>Lit by the house light: from the upper left, 49.7° high, with no fall-off. The lamp lit green, amber and red, and off; the scrollbar\'s rail with its slider, and a bare rail; the non-slip edge over the seam, with a card sliding under it.</p>';
   const v = await buildPartsView();
   const fig = document.createElement('figure');
   fig.innerHTML = `<figcaption>Header lamp and scrollbar<span>on the backing's navy-grey steel</span></figcaption><div class="cell view" style="aspect-ratio:${v.size[0]} / ${v.size[1]}" role="img" aria-label="The status lamp in four states, and the scrollbar"></div>`;
@@ -979,6 +1026,7 @@ if (EXPORT) exportLayers();
  * key_close, key_back (+ _pressed): small keycaps with their glyphs, and the shadow they cast.
  * lamp_*   the status lamp lit green / amber / red, and off; lamp_glow_*: each lit colour's glow.
  * scroll_rail, scroll_thumb: the scrollbar's rail and slider, each drawn as a vertical three-slice.
+ * seam_edge: the non-slip edge over the seam between the header and the scrolling body.
  * layout.json: frame sizes and every key's rect and top face, in capture pixels.
  * ?export&only=lamp,scroll renders just the named sets (see `want` below).
  */
@@ -988,7 +1036,7 @@ async function exportLayers() {
   renderer.setPixelRatio(1); renderer.setClearColor(0x000000, 0);
   // ?export&only=lamp,scroll renders just those sets and merges their entries into the existing
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
-  // lamp, scroll.
+  // lamp, scroll, seam.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -1215,6 +1263,14 @@ async function exportLayers() {
     await post('scroll_thumb', stage([0, 0, THUMB.W, THUMB.H], [scrollThumb()], { light: 'house' }).grab());
     layout.scroll_rail = { size: [RAIL.W, RAIL.H], cap: RAIL.cap, travel_inset: RAIL.travelInset };
     layout.scroll_thumb = { size: [THUMB.W, THUMB.H], cap: THUMB.cap, grip: THUMB.grip };
+  });
+
+  // --- the seam's non-slip edge: the rubber strip and its screws with its shadow, over the shade it
+  // casts on the body below; a horizontal three-slice (see seamStrip).
+  if (want('seam')) await withSeed(403, async () => {
+    const render = stage([0, 0, SEAM.W, SEAM.H], [seamStrip()], { light: 'house' }).grab();
+    await post('seam_edge', frame2d(SEAM.W, SEAM.H, (g) => { paintSeamShade(g); g.drawImage(render, 0, 0, SEAM.W, SEAM.H); }));
+    layout.seam_edge = { size: [SEAM.W, SEAM.H], cap: SEAM.cap, top: SEAM.top, nose: SEAM.nose };
   });
 
   await fetch('/layers/layout.json', { method: 'POST', body: JSON.stringify(layout, null, 1) });

@@ -22,6 +22,7 @@ const BdpV3Key := preload("res://scripts/bdp_v3_key.gd")
 const BdpV3Lamp := preload("res://scripts/bdp_v3_lamp.gd")
 const BdpV3Plate := preload("res://scripts/bdp_v3_plate.gd")
 const BdpV3Scroll := preload("res://scripts/bdp_v3_scroll.gd")
+const BdpV3Seam := preload("res://scripts/bdp_v3_seam.gd")
 const BdpV3Nine := preload("res://scripts/bdp_v3_nine.gd")
 const BdpV3Section := preload("res://scripts/bdp_v3_section.gd")
 ## v3 frames these sections (heading and content together); the value names the frame, so sections
@@ -44,6 +45,7 @@ const PANEL_EDGE_MARGIN := 20.0
 const TOP_BAR_CLEARANCE := 114.0   # clears the top bar AND the briefing notch hang + shadow
 const BOTTOM_CLEARANCE := 110.0  # fallback: keep clear of the bottom menu when no tile panel to match
 const PANEL_WIDTH := 460.0
+const CONTENT_MARGIN := 26
 
 # Empire-view click (world_map sets this before show_building): dock at the tile view
 # panel's spot instead of the default edge position — in that view there IS no tile panel,
@@ -75,6 +77,8 @@ var _status_lamp: BdpV3Lamp = null
 var _status_v3_label: Label = null
 var _body: VBoxContainer = null
 var _scroll: ScrollContainer = null
+# v3's non-slip edge over the seam between the header and the scrolling body.
+var _seam: Control = null
 var _dragging := false
 var _drag_offset := Vector2.ZERO
 # coalesced-refresh state (house doctrine — one rebuild per frame max)
@@ -118,7 +122,7 @@ func _build_shell() -> void:
 
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 26)   # clear the brass frame
+		margin.add_theme_constant_override("margin_" + side, CONTENT_MARGIN)   # clear the brass frame
 	add_child(margin)
 	_pipe_frame = preload("res://scripts/brass_pipe_frame.gd").new()
 	add_child(_pipe_frame)   # brass frame, drawn on top
@@ -174,10 +178,22 @@ func _build_shell() -> void:
 	_subtitle_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	meta.add_child(_subtitle_label)
 
+	# The scroll area sits in a plain Control so that v3's seam edge, added after it, draws over the
+	# top of the body; with v3 on, the body starts at the edge's lip.
+	var well := Control.new()
+	well.name = "BodyWell"
+	well.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	outer.add_child(well)
 	_scroll = ScrollContainer.new()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	outer.add_child(_scroll)
+	_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	well.add_child(_scroll)
+	_seam = BdpV3Seam.new()
+	_seam.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	_seam.offset_bottom = BdpV3Seam.strip_height()
+	# Out to the backing's trim (4 + 22 layout pixels in from the panel's edge), less a hair.
+	_seam.outset = CONTENT_MARGIN - (4.0 + 22.0) / BdpV3Seam.CAPTURE_SCALE - 0.5
+	well.add_child(_seam)
 	_body = VBoxContainer.new()
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_body.add_theme_constant_override("separation", DS.SP["SM"])
@@ -1465,8 +1481,8 @@ func _on_bdp_v3_changed(_enabled: bool) -> void:
 	_queue_refresh()
 
 
-## The parts of the shell that v3 swaps: the close key, the status lamp, the backing and the
-## scrollbar.
+## The parts of the shell that v3 swaps: the close key, the status lamp, the backing, the scrollbar
+## and the seam edge.
 func _apply_v3_chrome() -> void:
 	var v3 := UiPrefs.use_bdp_v3
 	_close_button.visible = not v3
@@ -1478,6 +1494,8 @@ func _apply_v3_chrome() -> void:
 	_pipe_frame.visible = not v3
 	_backing.visible = v3
 	BdpV3Scroll.apply(_scroll, v3)
+	_seam.visible = v3
+	_scroll.offset_top = BdpV3Seam.strip_height() if v3 else 0.0
 
 
 ## Moves each framed section (its heading and everything up to the next heading) into a steel
