@@ -2,7 +2,7 @@ extends Control
 ## Building Detail v3: paints one of the rendered plates (res://assets/ui/bdp_v3/) as a 9-slice over
 ## this control's rect, so a fixed-size render fits any size: the corners keep their drawn size and
 ## the edges and middle stretch between them. The renders are at 2 texture pixels per logical pixel.
-## Used full-rect behind the panel for its brass backing; the section frames call paint() directly.
+## Used full-rect behind the panel for its backing plate; the section frames call paint() directly.
 
 const TEXELS_PER_PIXEL := 2.0
 

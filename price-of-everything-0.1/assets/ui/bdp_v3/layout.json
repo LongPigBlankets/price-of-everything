@@ -122,13 +122,18 @@
  "footer": {
   "size": [
    863,
-   204
+   214
   ],
+  "plate": [
+   863,
+   150
+  ],
+  "head": 64,
   "keys": {
    "sell": {
     "rect": [
      62,
-     68,
+     17,
      116,
      116
     ]
@@ -136,19 +141,20 @@
    "demolish": {
     "rect": [
      493.5,
-     68,
+     17,
      116,
      116
     ]
    }
   }
  },
- "panel_brass": {
+ "panel_backing": {
   "size": [
    940,
    1640
   ],
-  "corner": 60
+  "corner": 60,
+  "trim": 22
  },
  "section_frame": {
   "size": [

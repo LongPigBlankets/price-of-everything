@@ -668,7 +668,7 @@ func _test_bdp_v3_panel() -> void:
 		"bdp v3: the control block and footer replace the v2 route cards and buttons")
 	_check(panel._close_key.visible and not panel._close_button.visible, "bdp v3: the close keycap replaces the X button")
 	_check(is_equal_approx(panel._close_key.size.x, panel._close_key.size.y), "bdp v3: the close key stays square (%s)" % str(panel._close_key.size))
-	_check(panel._brass_backing.visible and not panel._pipe_frame.visible, "bdp v3: the brass backing plate replaces the pipe border")
+	_check(panel._backing.visible and not panel._pipe_frame.visible, "bdp v3: the backing plate replaces the pipe border")
 	# Godot renames same-named siblings, so the frames are found by script rather than by name.
 	var section_script = load("res://scripts/bdp_v3_section.gd")
 	var frames: Array = panel.find_children("*", "MarginContainer", true, false).filter(func(n: Node) -> bool: return n.get_script() == section_script)

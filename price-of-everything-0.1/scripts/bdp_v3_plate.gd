@@ -32,8 +32,11 @@ static func tex(layer: String) -> Texture2D:
 	return _textures[layer]
 
 
-## The frame's size in layout pixels.
+## The frame's size in layout pixels, where its top-left sits relative to this control (a frame can
+## reach beyond the control, e.g. above it), and the size of the control itself in layout pixels.
 var frame_size := Vector2.ONE
+var frame_offset := Vector2.ZERO
+var body_size := Vector2.ONE
 var _back: Array[Texture2D] = []
 var _front: Array[Texture2D] = []
 var _glow_texture: Texture2D = null
@@ -72,8 +75,10 @@ func _overlay(layer_name: String) -> Control:
 
 # --- setup (subclasses) ----------------------------------------------------------------------
 
-func set_frame(frame: Vector2) -> void:
+func set_frame(frame: Vector2, offset: Vector2 = Vector2.ZERO, body: Vector2 = Vector2.ZERO) -> void:
 	frame_size = frame
+	frame_offset = offset
+	body_size = body if body != Vector2.ZERO else frame
 	_update_min_height()
 
 
@@ -110,7 +115,7 @@ func key_rect(key: String) -> Rect2:
 # --- layout ----------------------------------------------------------------------------------
 
 func _scale() -> float:
-	return size.x / frame_size.x if frame_size.x > 0.0 and size.x > 0.0 else 1.0 / CAPTURE_SCALE
+	return size.x / body_size.x if body_size.x > 0.0 and size.x > 0.0 else 1.0 / CAPTURE_SCALE
 
 
 func _to_local(r: Rect2) -> Rect2:
@@ -119,8 +124,8 @@ func _to_local(r: Rect2) -> Rect2:
 
 
 func _update_min_height() -> void:
-	var w := size.x if size.x > 0.0 else frame_size.x / CAPTURE_SCALE
-	custom_minimum_size = Vector2(0.0, roundf(w * frame_size.y / frame_size.x))
+	var w := size.x if size.x > 0.0 else body_size.x / CAPTURE_SCALE
+	custom_minimum_size = Vector2(0.0, roundf(w * body_size.y / body_size.x))
 
 
 func _notification(what: int) -> void:
@@ -139,7 +144,7 @@ func _redraw() -> void:
 # --- drawing ---------------------------------------------------------------------------------
 
 func _frame_rect() -> Rect2:
-	return Rect2(Vector2.ZERO, frame_size * _scale())
+	return Rect2(frame_offset * _scale(), frame_size * _scale())
 
 
 func _draw() -> void:

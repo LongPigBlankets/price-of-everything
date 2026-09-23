@@ -162,6 +162,26 @@ const BRASS_CANVAS = (() => {
   g.globalCompositeOperation = 'multiply'; g.fillStyle = '#d2a85c'; g.fillRect(0, 0, c.width, c.height);
   return c;
 })();
+/** Dark grey steel with a navy tinge for the panel's backing: as lightly scratched as the brass. */
+const NAVY_STEEL_CANVAS = (() => {
+  const c = document.createElement('canvas'); c.width = PLATE_TEX.width; c.height = PLATE_TEX.height;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.filter = 'brightness(1.6) contrast(0.5) blur(7px) grayscale(1)'; g.drawImage(PLATE_TEX, 0, 0);
+  g.globalAlpha = 0.2; g.filter = 'brightness(1.6) contrast(0.5) grayscale(1)'; g.drawImage(PLATE_TEX, 0, 0);
+  g.globalAlpha = 1; g.filter = 'none';
+  g.globalCompositeOperation = 'multiply'; g.fillStyle = '#767d88'; g.fillRect(0, 0, c.width, c.height);
+  return c;
+})();
+/** Brass for trims: the backing brass, brighter. */
+const BRASS_TRIM_CANVAS = (() => {
+  const c = document.createElement('canvas'); c.width = PLATE_TEX.width; c.height = PLATE_TEX.height;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.filter = 'brightness(2.1) contrast(0.55) blur(5px)'; g.drawImage(PLATE_TEX, 0, 0);
+  g.globalAlpha = 0.2; g.filter = 'brightness(2.1) contrast(0.55)'; g.drawImage(PLATE_TEX, 0, 0);
+  g.globalAlpha = 1; g.filter = 'none';
+  g.globalCompositeOperation = 'multiply'; g.fillStyle = '#e0b460'; g.fillRect(0, 0, c.width, c.height);
+  return c;
+})();
 // The approved keycap reference's cream (its lit top face reads #E0D7C3), for keycaps and raised icons.
 const OFF_WHITE = 0xe9dfca, OFF_WHITE_CSS = '#e9dfca';
 const KNOB_PLASTIC = { roughness: 0.62, clearcoat: 0.18, clearcoatRoughness: 0.42 };
@@ -404,7 +424,7 @@ function guardButton(S, icon, colour) {
   // The cover: a clear lid with a rolled front lip and side cheeks, a steel hinge barrel and latch tab.
   const cover = new THREE.Group(); cover.position.set(0, 21, -S / 2 - 3); g.add(cover);
   const covW = S + 10, cov = S + 8;
-  const clear = new THREE.MeshPhysicalMaterial({ color: 0xe6eef4, roughness: 0.06, transparent: true, opacity: 0.18, envMap: studioEnv, envMapIntensity: 1.6, clearcoat: 1, depthWrite: false, side: THREE.DoubleSide });
+  const clear = new THREE.MeshPhysicalMaterial({ color: 0xe6eef4, roughness: 0.06, transparent: true, opacity: 0.08, envMap: studioEnv, envMapIntensity: 1.2, clearcoat: 1, depthWrite: false, side: THREE.DoubleSide });
   const rim = new THREE.MeshPhysicalMaterial({ color: 0xeef4f8, roughness: 0.1, transparent: true, opacity: 0.6, envMap: studioEnv, envMapIntensity: 1.8, clearcoat: 1, depthWrite: false });
   const plate = new THREE.Mesh(new THREE.BoxGeometry(covW, 2, cov), clear); plate.position.set(0, 0, cov / 2);
   const front = new THREE.Mesh(new THREE.BoxGeometry(covW, 10, 3), rim); front.position.set(0, -5, cov);
@@ -419,7 +439,7 @@ function guardButton(S, icon, colour) {
     c.fillStyle = gl; c.fillRect(0, 0, 256, 256);
   }, 1);
   const glare = new THREE.Mesh(new THREE.PlaneGeometry(covW - 8, cov - 8).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(glareC), transparent: true, opacity: 0.5, depthWrite: false, toneMapped: false }));
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(glareC), transparent: true, opacity: 0.32, depthWrite: false, toneMapped: false }));
   glare.position.set(0, 1.2, cov / 2);
   for (const m of [plate, front, sideL, sideR, glare]) m.renderOrder = 6;
   cover.add(plate, front, sideL, sideR, barrel, latch, glare);
@@ -850,7 +870,9 @@ async function exportLayers() {
 
   // --- Sell building / Demolish: guarded glowing buttons with white raised labels, on a footer plate
   {
-    const FW = st.W, FH = 204, S = 100, BY = 76, xs = { sell: 70, demolish: 70 + FW / 2 };
+    // The plate is FH tall with the buttons centred on it; the frame reaches HEAD above the plate so a
+    // lifted cover can stand up over the plate's top edge.
+    const FW = st.W, FH = 150, S = 100, BY = (FH - S) / 2, HEAD = 64, xs = { sell: 70, demolish: 70 + FW / 2 };
     const LABEL = { sell: 'Sell building', demolish: 'Demolish' }, COLOUR = { sell: 0xffa412, demolish: 0xe8281e };
     const ICONS = { sell: ICON.money, demolish: BULLDOZER };
     const group = new THREE.Group(), feat = { icons: [], buttons: [], screws: [] }, si = SCREW_INSET;
@@ -875,7 +897,7 @@ async function exportLayers() {
     const screws = feat.screws.map((sc) => { const m = screw(10); m.position.set(sc.x, PLATE_TOP + 0.5, sc.y); group.add(m); return m; });
     const catcher = new THREE.Mesh(new THREE.PlaneGeometry(FW, FH).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ opacity: 0.5 }));
     catcher.position.set(FW / 2, PLATE_TOP + 0.4, FH / 2); catcher.receiveShadow = true; group.add(catcher);
-    const sf = stage([0, 0, FW, FH], [group]);
+    const sf = stage([0, -HEAD, FW, FH], [group]);
     const labels = group.children.filter((c) => c.userData.label);
     const covers = Object.values(guards).map((gb) => gb.userData.cover);
     const setVisible = (pred) => { group.traverse((o) => { if (o !== group) o.visible = true; }); for (const c of group.children) c.visible = pred(c); };
@@ -896,7 +918,8 @@ async function exportLayers() {
       gb.userData.cover.rotation.x = -COVER_OPEN; await post(`guard_${name}_cover_open`, sf.grab()); gb.userData.cover.rotation.x = 0;
       gb.traverse((o) => { o.visible = true; });
     }
-    await post('footer_glow', frame2d(FW, FH, (g) => {
+    await post('footer_glow', frame2d(FW, FH + HEAD, (g) => {
+      g.translate(0, HEAD);
       for (const [name, x] of Object.entries(xs)) {
         const c = new THREE.Color(COLOUR[name]), cx = x + S / 2, cy = BY + S / 2, r = S * 1.1;
         const grd = g.createRadialGradient(cx, cy, 0, cx, cy, r);
@@ -905,21 +928,26 @@ async function exportLayers() {
         g.fillStyle = grd; g.fillRect(0, 0, FW, FH);
       }
     }));
-    layout.footer = { size: [FW, FH], keys: fl.keys };
+    layout.footer = { size: [FW, FH + HEAD], plate: [FW, FH], head: HEAD, keys: fl.keys };
   }
 
-  // --- the panel's backing: a dark brass plate, lightly worn, with a screw in each corner
+  // --- the panel's backing: dark navy-grey steel, lightly worn, inside a raised brass trim with screws
   {
-    const PW = 940, PH = 1640, group = new THREE.Group(), si = 26;
-    const feat = { icons: [], buttons: [], screws: [[si, si], [PW - si, si], [si, PH - si], [PW - si, PH - si]].map(([x, y]) => ({ x: x - 4, y: y - 4 })),
-      base: BRASS_CANVAS, rub: '246,222,160' };
-    const brassSide = new THREE.MeshStandardMaterial({ color: 0x8a6a36, metalness: 1, roughness: 0.45, envMap: studioEnv, envMapIntensity: 0.8 });
-    const plate = new THREE.Mesh(extrude(rrShape(PW - 8, PH - 8, 16), 4, 4.5, 3.6, 6), [plateMaterial(PW - 8, PH - 8, feat), brassSide]);
+    const PW = 940, PH = 1640, TRIM = 22, group = new THREE.Group(), si = 4 + TRIM / 2;
+    const face = { icons: [], buttons: [], screws: [], base: NAVY_STEEL_CANVAS, rub: '120,136,160' };
+    const steelSide = new THREE.MeshStandardMaterial({ color: 0x3a4250, metalness: 1, roughness: 0.45, envMap: studioEnv, envMapIntensity: 0.8 });
+    const plate = new THREE.Mesh(extrude(rrShape(PW - 8, PH - 8, 16), 4, 4.5, 3.6, 6), [plateMaterial(PW - 8, PH - 8, face), steelSide]);
     plate.receiveShadow = true; plate.position.set(PW / 2, 0, PH / 2); group.add(plate);
-    for (const [x, y] of [[si, si], [PW - si, si], [si, PH - si], [PW - si, PH - si]]) { const m = screw(10); m.position.set(x, PLATE_TOP + 0.5, y); group.add(m); }
+    const ring = rrShape(PW - 8, PH - 8, 16); ring.holes.push(rr(new THREE.Path(), PW - 8 - 2 * TRIM, PH - 8 - 2 * TRIM, 7));
+    const trimFeat = { icons: [], buttons: [], screws: [[si, si], [PW - si, si], [si, PH - si], [PW - si, PH - si]].map(([x, y]) => ({ x: x - 4, y: y - 4 })),
+      base: BRASS_TRIM_CANVAS, rub: '255,236,180' };
+    const brassSide = new THREE.MeshStandardMaterial({ color: 0xa8843f, metalness: 1, roughness: 0.4, envMap: studioEnv, envMapIntensity: 0.9 });
+    const trim = new THREE.Mesh(extrude(ring, 2.5, 3, 2.4, 5), [plateMaterial(PW - 8, PH - 8, trimFeat), brassSide]);
+    trim.castShadow = trim.receiveShadow = true; trim.position.set(PW / 2, PLATE_TOP - 1, PH / 2); group.add(trim);
+    for (const [x, y] of [[si, si], [PW - si, si], [si, PH - si], [PW - si, PH - si]]) { const m = screw(7.5); m.position.set(x, PLATE_TOP + 8, y); group.add(m); }
     const sb = stage([0, 0, PW, PH], [group], { lampHeight: 1900 });
-    await post('panel_brass', sb.grab());
-    layout.panel_brass = { size: [PW, PH], corner: 60 };
+    await post('panel_backing', sb.grab());
+    layout.panel_backing = { size: [PW, PH], corner: 60, trim: TRIM };
   }
 
   // --- a section frame: a narrow worn steel rim with a screw in each corner, drawn as a 9-slice

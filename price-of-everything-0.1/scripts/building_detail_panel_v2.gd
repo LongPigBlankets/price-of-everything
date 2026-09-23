@@ -84,9 +84,10 @@ var _sheet: Control = null
 # Header close control: the v2 button, and the v3 keycap shown instead while `toggle bdp v3` is on.
 var _close_button: Button = null
 var _close_key: TextureButton = null
-# v2's brass pipe border, and v3's dark brass backing plate drawn behind everything instead.
+# v2's brass pipe border, and v3's backing plate (dark navy-grey steel in a brass trim) drawn behind
+# everything instead.
 var _pipe_frame: Control = null
-var _brass_backing: Control = null
+var _backing: Control = null
 
 func _ready() -> void:
 	if DS and DS.theme:
@@ -114,9 +115,9 @@ func _build_shell() -> void:
 	add_child(margin)
 	_pipe_frame = preload("res://scripts/brass_pipe_frame.gd").new()
 	add_child(_pipe_frame)   # brass frame, drawn on top
-	_brass_backing = BdpV3Nine.make("panel_brass", 64.0)
-	add_child(_brass_backing)
-	move_child(_brass_backing, 0)   # behind the content
+	_backing = BdpV3Nine.make("panel_backing", 64.0)
+	add_child(_backing)
+	move_child(_backing, 0)   # behind the content
 
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", DS.SP["SM"])
@@ -1446,7 +1447,7 @@ func _apply_v3_header() -> void:
 		_close_key.visible = UiPrefs.use_bdp_v3
 	if _pipe_frame != null:
 		_pipe_frame.visible = not UiPrefs.use_bdp_v3
-		_brass_backing.visible = UiPrefs.use_bdp_v3
+		_backing.visible = UiPrefs.use_bdp_v3
 
 
 ## Moves each framed section (its heading and everything up to the next heading) into a steel

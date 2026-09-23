@@ -1,14 +1,16 @@
 extends "res://scripts/bdp_v3_plate.gd"
-## Building Detail v3: Sell building and Demolish as guarded buttons on a steel plate the width of the
-## control block. Each is a glowing cap (amber with coins, red with a bulldozer) under a hinged clear
-## cover, with its name in white raised letters beside it. The first click lifts the cover; the
-## second presses the button and opens the supply-chain review, as in v2. An untouched lifted cover
-## drops again after OPEN_SECONDS.
+## Building Detail v3: Sell building and Demolish as guarded buttons, centred on a steel plate the
+## width of the control block. Each is a glowing cap (amber with coins, red with a bulldozer) under a
+## hinged clear cover, with its name in white raised letters beside it. The first click lifts the
+## cover, which stands up over the plate's top edge; the second presses the button and opens the
+## supply-chain review, as in v2. An untouched lifted cover drops again after OPEN_SECONDS.
 
-const FRAME := Vector2(863, 204)
+## The plate, and the rendered frame, which reaches HEAD layout pixels above it for the lifted covers.
+const PLATE := Vector2(863, 150)
+const HEAD := 64.0
 const KEYS := {
-	"sell": Rect2(62, 68, 116, 116),
-	"demolish": Rect2(493.5, 68, 116, 116),
+	"sell": Rect2(62, 17, 116, 116),
+	"demolish": Rect2(493.5, 17, 116, 116),
 }
 const OPEN_SECONDS := 4.0
 
@@ -18,7 +20,7 @@ var _open := {}   # key -> seconds before its cover drops
 func _init() -> void:
 	super()
 	name = "BdpV3Footer"
-	set_frame(FRAME)
+	set_frame(PLATE + Vector2(0, HEAD), Vector2(0, -HEAD), PLATE)
 	set_layers([tex("footer_plate")], tex("footer_glow"), [])
 	for key in KEYS:
 		set_key(key, KEYS[key], KEYS[key], tex("guard_" + key), tex("guard_%s_pressed" % key), [], false, true,

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dl3pbpys6b3ee"
-path="res://.godot/imported/panel_brass.png-348b2ef767089ae78763f2a728b2169f.ctex"
+uid="uid://bb3sxp5qnj18d"
+path="res://.godot/imported/panel_backing.png-e275e5e992d3b19f80af768fa9d7596a.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/bdp_v3/panel_brass.png"
-dest_files=["res://.godot/imported/panel_brass.png-348b2ef767089ae78763f2a728b2169f.ctex"]
+source_file="res://assets/ui/bdp_v3/panel_backing.png"
+dest_files=["res://.godot/imported/panel_backing.png-e275e5e992d3b19f80af768fa9d7596a.ctex"]
 
 [params]
 
