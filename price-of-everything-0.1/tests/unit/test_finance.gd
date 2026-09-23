@@ -10,6 +10,7 @@ const TAGS := {
 	"_test_cost_report_credits_output_modifiers": ["finance", "production", "research"],
 	"_test_balance_sheet_reconciles_with_cash": ["finance", "production"],
 	"_test_transit_credit_line": ["finance", "middleman"],
+	"_test_transit_credit_books_the_sale_when_it_leaves": ["finance", "middleman"],
 	"_test_finance_research_lowers_the_loan_rate": ["finance", "research"],
 	"_test_finance_research_conditions": ["finance", "research"],
 }
@@ -390,7 +391,9 @@ func _test_transit_credit_line() -> void:
 	var saved := LoanState.export_state()
 	LoanState.import_state(JSON.parse_string(JSON.stringify(saved)))
 	_check(is_equal_approx(LoanState.transit_credit_balance, 120.0) and LoanState.transit_credit_enabled, "the balance and the switch survive a save")
-	_check(is_equal_approx(LoanState.settle_sale_advance(sale), 120.0) and is_zero_approx(LoanState.transit_credit_balance), "the shipment repays its own advance on arrival")
+	var before_arrival := MatchState.money
+	_check(is_equal_approx(LoanState.settle_sale_advance(sale), 120.0) and is_zero_approx(LoanState.transit_credit_balance), "the shipment clears its own advance on arrival")
+	_check(is_equal_approx(MatchState.money, before_arrival), "the buyer pays the bank: no cash moves on arrival")
 	var special := _transit_sale(50.0)
 	special["special_order_id"] = "so_1"
 	_check(is_zero_approx(LoanState.advance_sale(special)), "special orders are never advanced")
@@ -435,4 +438,31 @@ func _test_finance_research_conditions() -> void:
 	TurnManager.current_turn = 510
 	ResearchState._update_advisors_hired_streaks()
 	_check(not ResearchState._live_condition_met(governance) and ResearchState.advisors_hired_streak(2) == 0, "dropping to one advisor resets the streak")
+	SaveLoad.import_snapshot(backup)
+
+func _test_transit_credit_books_the_sale_when_it_leaves() -> void:
+	var backup := SaveLoad.export_snapshot().duplicate(true)
+	MatchState.ruleset["logistics_model"] = "middleman_v1"
+	LoanState.transit_credit_enabled = true
+	LoanState.transit_credit_balance = 0.0
+	Production.last_turn_summary = {"sold": {}, "goods_sales_revenue": 0.0, "money_in": 0.0}
+	var tile := "tile_9_9"
+	Stockpile.add(tile, "g_004", 20)
+	var before := MatchState.money
+	var sale := MatchState.queue_sell(tile, {"g_004": 20})
+	_check(bool(sale.get("deferred", false)), "a sale from an inland tile rides to the port")
+	var revenue := float(sale.get("revenue", 0.0))
+	_check(revenue > 0.0 and is_equal_approx(LoanState.transit_credit_balance, revenue), "the credit line pays the whole sale when it leaves")
+	_check(is_equal_approx(float(Production.last_turn_summary.get("goods_sales_revenue", 0.0)), revenue), "the sale is booked when it is paid, so profit, tax and dividends see it")
+	var shipment: Dictionary = {}
+	for s: Dictionary in TransportState.pending_transport_shipments:
+		if bool(s.get("is_sale", false)) and str(s.get("source_tile", "")) == tile:
+			shipment = s
+	_check(float(shipment.get("credit_advance", 0.0)) > 0.0, "the shipment carries its advance")
+	var arrival := {"sold": {}, "goods_sales_revenue": 0.0, "money_in": 0.0}
+	var at_arrival := MatchState.money
+	Production._credit_arrived_sale(shipment, arrival)
+	_check(is_equal_approx(MatchState.money, at_arrival) and is_zero_approx(float(arrival.goods_sales_revenue)), "landing books and pays nothing a second time")
+	_check(is_zero_approx(LoanState.transit_credit_balance), "landing clears the line")
+	_check(MatchState.money - before > 0.0, "the sale's cash arrived once, net of freight")
 	SaveLoad.import_snapshot(backup)

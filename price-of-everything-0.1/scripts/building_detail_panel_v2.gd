@@ -2537,10 +2537,33 @@ func _add_input_good_group(vb: VBoxContainer, building: Dictionary, recipe: Dict
 	# A fallback only applies to physical routes; the intermediary as primary buys it all.
 	if _input_has_fallback(building, route):
 		slot_col.add_child(_input_route_slot_row(building, recipe, gid, route, market_available, "fallback"))
+	elif preload("res://scripts/middleman_service.gd").eligible(building):
+		slot_col.add_child(_fallback_not_needed_note())
 	chooser.add_child(slot_col)
 	group.add_child(chooser)
 	group.add_child(_route_details_section(building, gid, qty, route, producers))
 	vb.add_child(group)
+
+## Where the fallback row would be: the intermediary as primary already buys the whole input.
+func _fallback_not_needed_note() -> Control:
+	var box := VBoxContainer.new()
+	box.name = "FallbackNotNeeded"
+	box.add_theme_constant_override("separation", 2)
+	var heading := Label.new()
+	heading.theme_type_variation = "Caption"
+	heading.text = "FALLBACK"
+	heading.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(heading)
+	var note := Label.new()
+	note.theme_type_variation = "Caption"
+	note.text = "Not needed: the Logistics Intermediary buys all of this input. Choose another primary to set a fallback."
+	note.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
+	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.custom_minimum_size = Vector2(260, 0)
+	box.add_child(note)
+	return box
 
 func _input_has_fallback(building: Dictionary, route: Dictionary) -> bool:
 	return preload("res://scripts/middleman_service.gd").eligible(building) and str(route.get("primary", "")) != "middleman"

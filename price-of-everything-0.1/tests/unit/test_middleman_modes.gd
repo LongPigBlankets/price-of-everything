@@ -226,6 +226,8 @@ func _test_supplier_handover_runs_until_the_first_market_delivery() -> void:
 	_check(Service.set_input_route(iid, "g_006", "primary", "market").ok, "buy steel at the global market")
 	_check(Service.in_handover(iid, "g_006"), "moving the primary to the market starts a handover")
 	_check(str(Service.input_source_route(iid, "g_006").fallback) == "middleman", "the intermediary stays the fallback")
+	_check(Service.set_input_route(iid, "g_006", "fallback", "stockpile").ok and not Service.in_handover(iid, "g_006"), "without the intermediary fallback nothing covers the wait")
+	_check(Service.set_input_route(iid, "g_006", "fallback", "middleman").ok and Service.in_handover(iid, "g_006"), "restoring the intermediary fallback resumes the handover")
 	TransportState.queue_transport_shipment({"is_purchase": true, "destination_tile": "tile_5_4", "good_id": "g_006", "qty": 32, "turns_remaining": 2, "purchase_cost": 0.0})
 	_check(Service.handover_turns(iid, "g_006") == 2, "the countdown reads the first market shipment on the road")
 	Production._process_production()
@@ -252,7 +254,7 @@ func _test_transit_credit_turn_reconciles() -> void:
 	var before := MatchState.money
 	Production._process_production()
 	var s := Production.last_turn_summary
-	_check(is_equal_approx(float(s.get("transit_credit_repaid", 0.0)), 90.0) and is_zero_approx(LoanState.transit_credit_balance), "the landed sale repays its advance")
-	_check(float(s.get("goods_sales_revenue", 0.0)) >= 90.0, "its revenue is recognised when it lands")
+	_check(is_zero_approx(LoanState.transit_credit_balance), "the landed sale clears the credit line")
+	_check(int(s.sold.get("g_008", {}).get("qty", 0)) == 33, "the advanced sale is not booked a second time when it lands")
 	_check(absf(MatchState.money - before - Production.cash_change_of(s)) < 0.0001, "the turn's cash reconciles with the credit line")
 	cleanup()

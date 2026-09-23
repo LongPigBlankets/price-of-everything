@@ -16,20 +16,16 @@ var last_payment_total: float = 0.0
 var _last_payments_turn: int = -1
 
 # Transit credit: in intermediary games a port sale is paid only when it reaches the port.
-# This line advances the sale's locked-in revenue when the goods leave, secured on the
-# cargo rather than on borrowing capacity. Each shipment repays its own advance when it
-# lands, and the balance on the road pays the standard rate spread over the loan term each
-# turn, so a faster route to the port costs less.
+# This line pays the sale's locked-in revenue when the goods leave, secured on the cargo
+# rather than on borrowing capacity. The sale is booked then, so profit, tax and dividends
+# see it that turn; when the goods land, the buyer's payment clears the balance. The
+# balance on the road pays the standard rate spread over the loan term each turn, so a
+# faster route to the port costs less.
 var transit_credit_enabled: bool = true
 var transit_credit_balance: float = 0.0
-# This turn's line movements, copied into the turn summary by Production.
-var transit_drawn_this_turn: float = 0.0
-var transit_repaid_this_turn: float = 0.0
 
 func _ready() -> void:
-	MatchState.state_reset.connect(func() -> void:
-		_last_payments_turn = -1
-		begin_turn())
+	MatchState.state_reset.connect(func() -> void: _last_payments_turn = -1)
 
 ## Absolute schedule from the saved amortisation amounts. No new save fields needed.
 ## current_turn names the next turn to resolve in DECIDE, not the last completed turn.
@@ -282,12 +278,9 @@ func set_transit_credit_enabled(enabled: bool) -> void:
 func transit_credit_rate_per_turn() -> float:
 	return effective_loan_interest_rate() / float(EconomyConfig.LOAN_TERM_TURNS)
 
-func begin_turn() -> void:
-	transit_drawn_this_turn = 0.0
-	transit_repaid_this_turn = 0.0
-
-## Advance a plain market sale shipment's revenue now. Special orders settle on delivery
-## terms of their own and are never advanced. Returns the amount advanced.
+## Pay a plain market sale shipment's revenue now; the caller books it as that turn's sale.
+## Special orders settle on delivery terms of their own and are never advanced. Returns
+## the amount advanced.
 func advance_sale(shipment: Dictionary) -> float:
 	if not transit_credit_available() or not transit_credit_enabled:
 		return 0.0
@@ -298,19 +291,17 @@ func advance_sale(shipment: Dictionary) -> float:
 		return 0.0
 	shipment["credit_advance"] = amount
 	transit_credit_balance += amount
-	transit_drawn_this_turn += amount
 	MatchState.add_money(amount)
 	loans_updated.emit()
 	return amount
 
-## The shipment reached its port and its revenue has been paid: repay its advance from it.
+## The shipment reached its port: the buyer's payment clears its advance. No cash moves and
+## nothing is booked, because the sale was paid and booked when the goods left.
 func settle_sale_advance(shipment: Dictionary) -> float:
 	var advance := float(shipment.get("credit_advance", 0.0))
 	if advance <= 0.0:
 		return 0.0
 	transit_credit_balance = maxf(0.0, transit_credit_balance - advance)
-	transit_repaid_this_turn += advance
-	MatchState.add_money(-advance)
 	loans_updated.emit()
 	return advance
 
@@ -459,7 +450,6 @@ func import_state(d: Dictionary) -> void:
 	var transit: Dictionary = d.get("transit_credit", {})
 	transit_credit_enabled = bool(transit.get("enabled", true))
 	transit_credit_balance = float(transit.get("balance", 0.0))
-	begin_turn()
 
 # === Helpers ===
 

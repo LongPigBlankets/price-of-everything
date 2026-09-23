@@ -792,9 +792,10 @@ static func set_input_route(iid: String, gid: String, slot: String, source: Stri
 	var routes: Dictionary = b.get("logistics_input_routes", {})
 	# Moving the primary to the market starts a supplier handover: the intermediary fallback
 	# keeps the building supplied until the first market delivery lands (see end_handover).
+	# Changing only the fallback keeps it; in_handover reports it while the fallback is the
+	# intermediary.
 	var was_handover := bool((routes.get(gid, {}) as Dictionary).get("handover", false))
-	if str(next.get("primary", "")) == "market" and str(next.get("fallback", "")) == "middleman" \
-			and (str(route.get("primary", "")) != "market" or was_handover):
+	if str(next.get("primary", "")) == "market" and (str(route.get("primary", "")) != "market" or was_handover):
 		next["handover"] = true
 	routes[gid] = next
 	b["logistics_input_routes"] = routes

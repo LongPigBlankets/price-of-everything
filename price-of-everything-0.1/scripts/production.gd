@@ -163,7 +163,6 @@ func _process_production() -> void:
 	_green_supply_by_tile.clear()  # _intermittency_by_* persist (they are last turn's)
 	_power_sources_by_tile.clear()
 	MatchState.reset_tile_sales_for_turn()  # per-turn sales figure, not accumulated
-	LoanState.begin_turn()
 	# Start this turn's storage high-water marks BEFORE transport_arrivals — arrivals are the
 	# spike the tile panel's utilisation row exists to show.
 	Stockpile.roll_turn_peaks()
@@ -659,8 +658,6 @@ func _process_production() -> void:
 	if loan_payment > 0:
 		summary.interest_paid = loan_payment
 		summary.money_out += loan_payment
-	summary["transit_credit_drawn"] = LoanState.transit_drawn_this_turn
-	summary["transit_credit_repaid"] = LoanState.transit_repaid_this_turn
 	var transit_interest: float = LoanState.charge_transit_interest()
 	summary["transit_credit_interest"] = transit_interest
 	if transit_interest > 0.0:
@@ -816,8 +813,7 @@ static func cash_change_of(summary: Dictionary) -> float:
 	return float(summary.get("money_in", 0.0)) - float(summary.get("money_out", 0.0)) \
 		- float(summary.get("building_credit_repaid", 0.0)) \
 		+ float(summary.get("building_credit_loan_received", 0.0)) \
-		+ float(summary.get("middleman_financing", 0.0)) \
-		+ float(summary.get("transit_credit_drawn", 0.0)) - float(summary.get("transit_credit_repaid", 0.0))
+		+ float(summary.get("middleman_financing", 0.0))
 
 func _apply_advisor_costs(summary: Dictionary) -> float:
 	# Charge against THIS turn's revenue, not last turn's: the sell phase has already run by
@@ -1101,8 +1097,9 @@ func _process_transport_arrivals(summary: Dictionary) -> void:
 func _credit_arrived_sale(shipment: Dictionary, summary: Dictionary) -> void:
 	# A sale shipment reached its port this turn — pay out the locked-in revenue.
 	var sale_record: Dictionary = shipment.get("sale_record", {})
-	# Revenue advanced on the transit credit line when the goods left repays that advance.
-	LoanState.settle_sale_advance(shipment)
+	# A sale the transit credit line paid when it left was booked then; landing only clears
+	# the line. The arrival is still reported below.
+	var advanced := LoanState.settle_sale_advance(shipment) > 0.0
 	var special_order_id := str(shipment.get("special_order_id", ""))
 	var paid_sale_record := {
 		"tile_id": str(sale_record.get("tile_id", "")),
@@ -1120,8 +1117,9 @@ func _credit_arrived_sale(shipment: Dictionary, summary: Dictionary) -> void:
 		var rev := float(item.get("revenue", 0.0))
 		if special_order_id == "":
 			if rev > 0.0:
-				MatchState.add_money(rev)
-				_add_summary_sale(summary, gid, qty, rev)
+				if not advanced:
+					MatchState.add_money(rev)
+					_add_summary_sale(summary, gid, qty, rev)
 				_add_paid_sale_item(paid_sale_record, gid, qty, rev)
 			continue
 
@@ -1220,8 +1218,9 @@ func _sell_output_to_market(building: Dictionary, good: Dictionary, qty: int, su
 		_record_transport_breakdown(summary, result.get("transport_breakdown", {}), transport_cost)
 		summary.money_out += transport_cost
 	# Deferred sales credit the summary on arrival via _process_transport_arrivals;
-	# immediate sales (no route, 0-turn) add to the summary here.
-	if not bool(result.get("deferred", false)):
+	# immediate sales (no route, 0-turn) and sales the transit credit line paid on
+	# dispatch add to the summary here.
+	if not bool(result.get("deferred", false)) or bool(result.get("advanced", false)):
 		for it in result.items:
 			_add_summary_sale(summary, str(it.good_id), int(it.qty), float(it.revenue))
 
@@ -1536,7 +1535,9 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 			"legs": route.get("legs", []),
 			"tiles": route.get("tiles", []),
 		}
-		LoanState.advance_sale(sale_shipment)
+		if LoanState.advance_sale(sale_shipment) > 0.0:
+			for item: Dictionary in sale_record.items:
+				_add_summary_sale(summary, str(item.good_id), int(item.qty), float(item.revenue))
 		TransportState.queue_transport_shipment(sale_shipment)
 	elif emit_toast and float(sale_record.total_revenue) > 0.0:
 		MatchState.emit_stockpile_market_sale_completed(sale_record)
