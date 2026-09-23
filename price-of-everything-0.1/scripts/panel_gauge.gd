@@ -5,8 +5,13 @@ extends Control
 ## from 7 o'clock, over the top, to 5 o'clock; the LED sits in the gap at the bottom.
 ##
 ## Layer order, bottom to top: base (bezel, blank dial, LED socket, drop shadow), the three
-## zone bands trimmed by a shader, the tick scale, the LED glow (additive, tinted) and lens,
-## the needle's shadow, the needle, and the glass glare (additive).
+## zone bands trimmed by a shader, the ticks and scale line, the LED glow (tinted, so it
+## colours the cream dial), the LED lens and the lit disc over it, the needle's shadow,
+## the needle, and the glass glare (additive).
+##
+## The ticks and scale line are drawn as vectors rather than a texture: a line a few pixels
+## wide in the 1024 px layer frame shrinks below a pixel at panel sizes and mipmapping
+## averages it into the cream, so it would read grey instead of black.
 ##
 ## Presentation only: it shows the values it is given and holds no game state.
 
@@ -24,7 +29,6 @@ const LAYER_BANDS := {
 	"amber": preload("res://assets/ui/gauge/gauge_band_amber.png"),
 	"red": preload("res://assets/ui/gauge/gauge_band_red.png"),
 }
-const LAYER_SCALE := preload("res://assets/ui/gauge/gauge_scale.png")
 const LAYER_NEEDLE := preload("res://assets/ui/gauge/gauge_needle.png")
 const LAYER_NEEDLE_SHADOW := preload("res://assets/ui/gauge/gauge_needle_shadow.png")
 const LAYER_LED := {
@@ -40,6 +44,20 @@ const LAYER_GLARE := preload("res://assets/ui/gauge/gauge_glare.png")
 ## frame (the key light's slant at blade height), as printed by the exporter.
 const LAYER_SIZE := 1024.0
 const NEEDLE_SHADOW_OFFSET := Vector2(24.97, 24.97)
+## Scale printing in layer-frame pixels (330.323 px per scene unit): tick circle radius, long
+## (ends and middle) and short tick lengths and widths, and the scale line's width. Each
+## width has a floor in screen pixels so the printing stays solid at small sizes.
+const SCALE_RADIUS := 277.47
+const TICK_LONG := Vector2(66.0, 7.0)      # length, width
+const TICK_SHORT := Vector2(46.0, 5.5)
+const SCALE_LINE_WIDTH := 5.0
+const MIN_TICK_WIDTH := 1.5
+const MIN_LINE_WIDTH := 1.3
+const SCALE_INK := Color("#1b1f23")
+## LED centre, and the radius of the lit disc drawn over the lens (slightly wider than the
+## 15.4 px lens, so no darker rim of the lens shows round it), in layer-frame pixels.
+const LED_CENTRE := Vector2(512.0, 716.8)
+const LED_CORE_RADIUS := 17.0
 ## The scale's sweep in degrees. The zone shader below hardcodes the same geometry: it starts
 ## at 240° (7 o'clock) and runs 300° clockwise.
 const SCALE_SWEEP_DEG := 300.0
@@ -104,8 +122,10 @@ void fragment() {
 var _shown_value := 0.0
 var _needle_velocity := 0.0
 var _time := 0.0
-var _layers := {}          # name -> TextureRect
+var _layers := {}          # name -> Control (a TextureRect, or drawn in code)
 var _zone_materials := {}  # zone -> ShaderMaterial
+var _core_texture: GradientTexture2D
+var _core_colour := Color.TRANSPARENT
 
 
 # --- Pure rules (static so tests can check them without a scene) -------------------------
@@ -163,9 +183,12 @@ func _ready() -> void:
 		mat.shader = shader
 		_zone_materials[zone] = mat
 		_add_layer("band_" + zone, LAYER_BANDS[zone]).material = mat
-	_add_layer("scale", LAYER_SCALE)
-	_add_layer("led_glow", LAYER_LED_GLOW).material = _additive()
+	var ticks := _add_control("scale")
+	ticks.draw.connect(_draw_scale.bind(ticks))
+	_add_layer("led_glow", LAYER_LED_GLOW)
 	_add_layer("led", LAYER_LED["off"])
+	var core := _add_control("led_core")
+	core.draw.connect(_draw_led_core.bind(core))
 	_add_layer("needle_shadow", LAYER_NEEDLE_SHADOW)
 	_add_layer("needle", LAYER_NEEDLE)
 	_add_layer("glare", LAYER_GLARE).material = _additive()
@@ -211,6 +234,61 @@ func _add_layer(layer_name: String, texture: Texture2D) -> TextureRect:
 	return rect
 
 
+## A plain full-frame Control for a layer drawn in code.
+func _add_control(layer_name: String) -> Control:
+	var c := Control.new()
+	c.name = layer_name
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(c)
+	_layers[layer_name] = c
+	return c
+
+
+func _draw_scale(canvas: Control) -> void:
+	var k := canvas.size.x / LAYER_SIZE
+	var centre := canvas.size * 0.5
+	var r := SCALE_RADIUS * k
+	for i in 11:
+		var a := deg_to_rad(240.0 - 30.0 * i)            # screen angle, anticlockwise from 3 o'clock
+		var dir := Vector2(cos(a), -sin(a))
+		var tick := TICK_LONG if i % 5 == 0 else TICK_SHORT
+		canvas.draw_line(centre + dir * r, centre + dir * (r - tick.x * k), SCALE_INK,
+			maxf(tick.y * k, MIN_TICK_WIDTH), true)
+	# Godot measures arc angles clockwise from 3 o'clock, so 7 o'clock is -240° and 5 o'clock 60°.
+	canvas.draw_arc(centre, r, deg_to_rad(-240.0), deg_to_rad(60.0), 128, SCALE_INK,
+		maxf(SCALE_LINE_WIDTH * k, MIN_LINE_WIDTH), true)
+
+
+## The lit LED: a disc in the LED's colour with a near-white centre, fading just past the
+## lens edge. Drawn opaque over the lens rather than added to it, so it reads as one glowing
+## dome at any size instead of a bright dot inside a darker ring.
+func _draw_led_core(canvas: Control) -> void:
+	if _core_texture == null:
+		return
+	var k := canvas.size.x / LAYER_SIZE
+	var radius := maxf(LED_CORE_RADIUS * k, 2.5)
+	canvas.draw_texture_rect(_core_texture, Rect2(LED_CENTRE * k - Vector2(radius, radius), Vector2(radius, radius) * 2.0), false)
+
+
+func _set_core_colour(colour: Color) -> void:
+	if _core_texture != null and _core_colour == colour:
+		return
+	_core_colour = colour
+	var grad := Gradient.new()
+	grad.offsets = PackedFloat32Array([0.0, 0.3, 0.8, 1.0])
+	grad.colors = PackedColorArray([colour.lerp(Color.WHITE, 0.7), colour.lerp(Color.WHITE, 0.25),
+		colour, Color(colour, 0.0)])
+	if _core_texture == null:
+		_core_texture = GradientTexture2D.new()
+		_core_texture.fill = GradientTexture2D.FILL_RADIAL
+		_core_texture.fill_from = Vector2(0.5, 0.5)
+		_core_texture.fill_to = Vector2(1.0, 0.5)
+		_core_texture.width = 64
+		_core_texture.height = 64
+	_core_texture.gradient = grad
+	(_layers["led_core"] as Control).queue_redraw()
+
+
 func _additive() -> CanvasItemMaterial:
 	var mat := CanvasItemMaterial.new()
 	mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
@@ -223,10 +301,11 @@ func _layout() -> void:
 	# Square, centred in whatever rect a container gives us.
 	var side := minf(size.x, size.y) if size.x > 0.0 and size.y > 0.0 else gauge_size
 	var origin := (size - Vector2(side, side)) * 0.5 if size.x > 0.0 else Vector2.ZERO
-	for rect: TextureRect in _layers.values():
+	for rect: Control in _layers.values():
 		rect.position = origin
 		rect.size = Vector2(side, side)
 		rect.pivot_offset = Vector2(side, side) * 0.5
+		rect.queue_redraw()
 	# The shadow turns about the point under the pivot, offset by the light's slant.
 	(_layers["needle_shadow"] as TextureRect).pivot_offset += NEEDLE_SHADOW_OFFSET * (side / LAYER_SIZE)
 
@@ -253,9 +332,12 @@ func _refresh() -> void:
 		lit = fposmod(_time * FLASH_HZ, 1.0) < FLASH_ON
 	(_layers["led"] as TextureRect).texture = LAYER_LED[colour if lit else "off"]
 	var glow := _layers["led_glow"] as TextureRect
+	var core := _layers["led_core"] as Control
 	glow.visible = lit
+	core.visible = lit
 	if lit:
 		glow.modulate = LED_COLOURS[colour]
+		_set_core_colour(LED_COLOURS[colour])
 
 
 ## The LED colour currently drawn ("off" while a flash is in its dark phase).

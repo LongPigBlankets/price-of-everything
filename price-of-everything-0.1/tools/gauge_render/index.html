@@ -457,12 +457,12 @@ if (!EXPORT) renderer.setAnimationLoop(() => {
 
 // ---------- export ----------
 // The game builds the gauge from stacked 1024 px layers (scripts/panel_gauge.gd), so the needle
-// can point anywhere and the zones can be any size. Rendered with a straight-down orthographic
+// can point anywhere and the zones can be any size. The ticks and scale line are not a layer:
+// the game draws them as vectors so they stay solid black at small sizes. Rendered with a straight-down orthographic
 // camera so a 2D rotation of the needle layer matches a real turn. All layers share one frame
 // centred on the pivot.
 //   gauge_base           bezel, blank dial, LED socket, drop shadow
 //   gauge_band_<zone>    that zone's colour across the whole sweep, lit; the game trims it
-//   gauge_scale          ticks and scale line
 //   gauge_needle         needle pointing at 12 o'clock
 //   gauge_needle_shadow  the needle's shadow on the dial for that pose
 //   gauge_led_<colour>   lit lens in green / amber / red, and gauge_led_off
@@ -523,7 +523,6 @@ async function exportLayers() {
   drawDial({ bands: 'none', scale: false }); show(...BASE);
   await post('gauge_base', grab());
   for (const zone of ['green', 'amber', 'red']) await masked(`gauge_band_${zone}`, { bands: zone, scale: false });
-  await masked('gauge_scale', { bands: 'none', scale: true });
 
   needle.rotation.y = Math.PI / 2;
   show(needle);

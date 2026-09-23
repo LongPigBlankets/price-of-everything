@@ -556,7 +556,11 @@ func _test_panel_gauge_draws_cases() -> void:
 			and is_equal_approx(gauge._layers["needle_shadow"].rotation, expected),
 			tag + ": needle and its shadow drawn at the value's angle")
 		_check(gauge.shown_led() == c[6], tag + ": LED drawn " + str(c[6]))
-		_check(gauge._layers["led_glow"].visible == (c[6] != "off"), tag + ": LED glow only while lit")
+		_check(gauge._layers["led_glow"].visible == (c[6] != "off") and gauge._layers["led_core"].visible == (c[6] != "off"),
+			tag + ": LED glow and lit disc only while lit")
+		if c[6] != "off":
+			var core_colour: Color = gauge._core_texture.gradient.colors[2]
+			_check(core_colour.is_equal_approx(Gauge.LED_COLOURS[c[6]]), tag + ": lit disc is " + str(c[6]))
 		var bounds: Dictionary = Gauge.zone_bounds(c[1], c[2])
 		var bands_ok := true
 		for zone: String in Gauge.ZONES:
