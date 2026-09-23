@@ -457,3 +457,46 @@ func _test_detail_panel_owner_resolution() -> void:
 		"detail owner: construction stub (not in store, no owner) -> player")
 	BuildingState.buildings.erase(npc_iid)
 	BuildingState.buildings.erase(player_iid)
+
+
+# The dummy Gameplay "Test setting": a seven-position rotary knob (scripts/rotary_selector.gd)
+# that is staged in the panel and only committed on Apply, like every other settings tab.
+func _test_settings_test_knob() -> void:
+	var RotarySelector = load("res://scripts/rotary_selector.gd")
+	var knob: Control = RotarySelector.new()
+	add_child(knob)
+	knob.value = 9
+	_check(knob.value == 7, "test knob: values above 7 clamp to 7")
+	knob.value = 0
+	_check(knob.value == 1, "test knob: values below 1 clamp to 1")
+	var c: Vector2 = knob._centre()
+	_check(knob._position_towards(c + Vector2(-50, 0)) == 1, "test knob: pointing at 9 o'clock is position 1")
+	_check(knob._position_towards(c + Vector2(0, -50)) == 4, "test knob: pointing at 12 o'clock is position 4")
+	_check(knob._position_towards(c + Vector2(50, 0)) == 7, "test knob: pointing at 3 o'clock is position 7")
+	_check(knob._position_towards(c + Vector2(-50, 40)) == 1, "test knob: below the knob on the left snaps to 1")
+	_check(knob._label_at(knob._label_position(5)) == 5, "test knob: clicking a number hits that number")
+	knob.queue_free()
+
+	# Apply also commits the other tabs through PlayerProfile, which persists to disk, so
+	# snapshot everything it writes and put it back afterwards.
+	var saved: int = SettingsPanel.test_setting
+	var fs_saved: bool = PlayerProfile.fullscreen
+	var ws_saved: Vector2i = PlayerProfile.window_size
+	var sc_saved: int = PlayerProfile.screen_index
+	var al_saved: Dictionary = PlayerProfile.audio_levels.duplicate()
+	var kb_saved: Dictionary = PlayerProfile.keybinds.duplicate()
+	SettingsPanel.test_setting = 2
+	var panel := SettingsPanel.open(self)
+	_check(panel._test_knob.value == 2, "test setting: the knob opens on the current value")
+	panel._test_knob.value = 6
+	panel._on_back_pressed()
+	_check(SettingsPanel.test_setting == 2, "test setting: Back discards the knob change")
+	panel = SettingsPanel.open(self)
+	panel._test_knob.value = 6
+	panel._on_apply_pressed()
+	_check(SettingsPanel.test_setting == 6, "test setting: Apply commits the knob position")
+	SettingsPanel.test_setting = saved
+	PlayerProfile.keybinds = kb_saved
+	PlayerProfile.set_audio_levels(al_saved)
+	PlayerProfile.window_size = ws_saved
+	PlayerProfile.set_display(fs_saved, ws_saved, sc_saved)
