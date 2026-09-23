@@ -87,7 +87,9 @@ document.getElementById('notes').textContent =
 
 // ---------- renderer: one canvas, one scissored viewport per view ----------
 const canvas = document.getElementById('gl');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+// ?export renders the block's layers for the game (see exportLayers) instead of the study page.
+const EXPORT = new URLSearchParams(location.search).has('export');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: EXPORT });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.toneMapping = THREE.NeutralToneMapping;
 renderer.shadowMap.enabled = true;
@@ -351,6 +353,31 @@ function pressable(group, part, depth) {
   group.userData.tick = (dt) => { t = Math.max(0, t - dt * 4); part.position.y = part.userData.y0 - depth * Math.sin(Math.min(t, 1) * Math.PI); };
 }
 
+/**
+ * Shadows of the raised icons and letters, drawn into a w×h canvas in the same coordinates as the
+ * icons' `draw`. A shape fixed to the plate casts its shadow from its foot, so the shadow is swept:
+ * the outline stacked from 0 to `len` px towards the bottom-right, darkest against the shape and
+ * fading towards the tip. It stays joined to every edge that faces away from the light, and falls
+ * into cut-outs (the factory windows, the gear's hole) from their top-left edges. A thin contact line
+ * all round seats the relief in the steel.
+ */
+function drawIconShadows(g, w, h, icons) {
+  for (const ic of icons) {
+    if (ic.shadow === false) continue;                                     // e.g. the lit arrow: glow only
+    const len = Math.max(3, Math.round(ic.height * 0.6));
+    const sweep = canvas2d(w, h, (tg) => {
+      for (let t = len; t >= 0; t -= 0.5) {
+        tg.save(); tg.globalAlpha = 0.25 + 0.75 * (1 - t / len); tg.translate(t, t); ic.draw(tg, '#050404'); tg.restore();
+      }
+    });
+    g.save(); g.filter = 'blur(2.4px)'; g.globalAlpha = 0.72; g.drawImage(sweep, 0, 0, w, h); g.restore();
+    if (ic.contact === false) continue;                                    // the arrow's bevel reaches the plate itself
+    g.save(); g.filter = 'blur(2px)'; g.globalAlpha = 0.38;
+    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) { g.save(); g.translate(dx * 1.3, dy * 1.3); ic.draw(g, '#050404'); g.restore(); }
+    g.restore();
+  }
+}
+
 // ---------- the backing plate ----------
 /**
  * The plate's top face, from the softened steel:
@@ -382,25 +409,7 @@ function plateMaterial(w, h, feat) {
     for (const b of feat.buttons) { g.fillStyle = 'rgba(10,9,8,0.3)'; g.beginPath(); g.roundRect(b.x - 6, b.y - 4, b.w + 12, b.h + 12, b.r + 6); g.fill(); }
     for (const s of feat.screws) { g.fillStyle = 'rgba(10,9,8,0.4)'; g.beginPath(); g.arc(s.x + 1.5, s.y + 2, 16, 0, Math.PI * 2); g.fill(); }
     g.restore();
-    // Shadows of the raised icons and letters. A shape fixed to the plate casts its shadow from its
-    // foot, so the shadow is swept: the outline stacked from 0 to `len` px towards the bottom-right,
-    // darkest against the shape and fading towards the tip. It stays joined to every edge that faces
-    // away from the light, and falls into cut-outs (the factory windows, the gear's hole) from their
-    // top-left edges. A thin contact line all round seats the relief in the steel.
-    for (const ic of feat.icons) {
-      if (ic.shadow === false) continue;                                     // e.g. the lit arrow: glow only
-      const len = Math.max(3, Math.round(ic.height * 0.6));
-      const sweep = canvas2d(w, h, (tg) => {
-        for (let t = len; t >= 0; t -= 0.5) {
-          tg.save(); tg.globalAlpha = 0.25 + 0.75 * (1 - t / len); tg.translate(t, t); ic.draw(tg, '#050404'); tg.restore();
-        }
-      });
-      g.save(); g.filter = 'blur(2.4px)'; g.globalAlpha = 0.72; g.drawImage(sweep, 0, 0, w, h); g.restore();
-      if (ic.contact === false) continue;                                    // the arrow's bevel reaches the plate itself
-      g.save(); g.filter = 'blur(2px)'; g.globalAlpha = 0.38;
-      for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) { g.save(); g.translate(dx * 1.3, dy * 1.3); ic.draw(g, '#050404'); g.restore(); }
-      g.restore();
-    }
+    if (feat.iconShadows !== false) drawIconShadows(g, w, h, feat.icons);
     for (const s of feat.screws) for (let i = 0; i < 5; i++) {              // screwdriver slips
       const a = rand() * Math.PI * 2, r0 = 12 + rand() * 6;
       g.strokeStyle = `rgba(230,233,238,${0.12 + rand() * 0.12})`; g.lineWidth = 0.7;
@@ -465,6 +474,7 @@ function keycap(w, h, r, paint) {
   const cap = new THREE.Mesh(extrude(rrShape(cw, ch, cr), 4, SKIRT_T, SKIRT_S, 1), [top, MAT.skirt]);
   cap.castShadow = cap.receiveShadow = true; cap.position.y = 1.5;
   g.add(mouldedFrame(cw + SKIRT_S * 2, ch + SKIRT_S * 2, cr + SKIRT_S), cap);
+  g.userData.cap = cap; g.userData.face = [cw, ch]; g.userData.w = w; g.userData.h = h;
   pressable(g, cap, 5);
   g.userData.hit = [cap]; g.userData.click = () => { if (!g.userData.disabled) g.userData.press(); };
   return g;
@@ -474,7 +484,13 @@ function keycap(w, h, r, paint) {
 const EXTRA = 70;   // the Upgrade / Change recipes row grows from one line to two
 const PLATE_FOOT = 24;   // the plate runs this much further down, so its bottom screws clear the buttons
 const SCREW_INSET = 32;  // screw centres from the plate's corners
-function buildBlock(sceneKey, researchMet) {
+/**
+ * opts (used by the export): intermediary - show the logistics lorries whatever the scene;
+ * blank - keycap tops without text (the game draws it); plateShadows - bake the icon shadows into
+ * the plate (off when they are exported as their own layers). Every top-level part carries
+ * userData.layer, and `layout` lists each keycap's rect and top face in plate-footprint pixels.
+ */
+function buildBlock(sceneKey, researchMet, opts = {}) {
   const S = DATA.scenes[sceneKey];
   const L = S.inputs, R = S.outputs, top = L[1];
   const row2Y = S.upgrade[1], row2H = S.upgrade[3] + EXTRA;
@@ -483,18 +499,28 @@ function buildBlock(sceneKey, researchMet) {
   const group = new THREE.Group(), buttons = [];
   const feat = { icons: [], buttons: [], screws: [] };
   const place = (obj, cx, cy, y = PLATE_TOP) => { obj.position.set(cx, y, cy); group.add(obj); return obj; };
-  const intermediary = sceneKey === 'intermediary';
+  const intermediary = opts.intermediary ?? sceneKey === 'intermediary';
+  const face = (paint) => (opts.blank ? () => {} : paint);
+  const layout = { keys: {}, icons: {} };
   const enamel = new THREE.MeshPhysicalMaterial({ color: OFF_WHITE, roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.3 });
   const whiteLetters = new THREE.MeshPhysicalMaterial({ color: 0xf4f2ec, roughness: 0.45, clearcoat: 0.3, clearcoatRoughness: 0.3 });
   const BW = 280;                     // every white button is this wide
   const raise = (mesh, cx, cy, draw, flags = {}) => {
     place(mesh, cx, cy, PLATE_TOP + 0.3);
+    mesh.userData.layer = flags.layer;
+    layout.icons[flags.layer] = [cx - x0 - mesh.userData.w / 2, cy - y0 - mesh.userData.h / 2, mesh.userData.w, mesh.userData.h];
     feat.icons.push({ ...flags, height: mesh.userData.relief, draw: (g, col) => { g.save(); g.translate(cx - x0 - mesh.userData.w / 2, cy - y0 - mesh.userData.h / 2); draw(g, col); g.restore(); } });
     return mesh;
   };
-  const iconAt = (img, cx, cy, w, h, mat = enamel, opt) => {
+  const iconAt = (img, cx, cy, w, h, mat = enamel, opt, layer) => {
     const m = iconRelief(img, w, h, mat, opt); m.userData.w = w; m.userData.h = h;
-    return raise(m, cx, cy, (g, col) => stamp(g, img, 0, 0, w, h, col));
+    return raise(m, cx, cy, (g, col) => stamp(g, img, 0, 0, w, h, col), { layer });
+  };
+  const key = (k, name, cx, cy) => {
+    k.userData.layer = 'key_' + name; place(k, cx, cy); buttons.push(k);
+    const [fw, fh] = k.userData.face, w = k.userData.w, h = k.userData.h;
+    layout.keys[name] = { rect: [cx - x0 - w / 2, cy - y0 - h / 2, w, h], face: [cx - x0 - fw / 2, cy - y0 - fh / 2, fw, fh] };
+    return k;
   };
 
   // Row 1: Inputs / Outputs. Icon raised on the metal, the kicker in raised white letters, then the button.
@@ -503,18 +529,18 @@ function buildBlock(sceneKey, researchMet) {
     const [cx, cy, cw, ch] = c;
     const bx = cx + cw - BW - 2, by = cy + 52;
     const iconW = Math.min(112, bx - cx - 22);
-    iconAt(ICON[side], cx + 6 + iconW / 2, cy + ch / 2 + 6, iconW, ch - 44);
+    iconAt(ICON[side], cx + 6 + iconW / 2, cy + ch / 2 + 6, iconW, ch - 44, enamel, undefined, 'icon_' + side);
     const kicker = side === 'input' ? 'INPUTS' : 'OUTPUTS';
     const kw = side === 'input' ? 118 : 144, kh = 34;
     const km = textRelief(kicker, kw, kh, 28, whiteLetters, { height: 5, soften: 0.7 }); km.userData.w = kw; km.userData.h = kh;
-    raise(km, bx + 8 + kw / 2, cy + 26, (g, col) => text(g, kicker, 2, kh / 2, kw - 4, 28, col, { weight: 700, family: '"IBM Plex Sans"' }));
-    if (intermediary) iconAt(ICON.lorry, bx + 8 + kw + 40, cy + 26, 58, 36, enamel, { height: 6, soften: 0.9 });
+    raise(km, bx + 8 + kw / 2, cy + 26, (g, col) => text(g, kicker, 2, kh / 2, kw - 4, 28, col, { weight: 700, family: '"IBM Plex Sans"' }), { layer: 'kicker_' + side });
+    if (intermediary) iconAt(ICON.lorry, bx + 8 + kw + 40, cy + 26, 58, 36, enamel, { height: 6, soften: 0.9 }, 'lorry_' + side);
     const value = intermediary ? 'Manage Logistics' : side === 'input' ? S.inputValue : S.outputValue;
     const lines = value.includes('(') ? [value.slice(0, value.indexOf('(')).trim(), value.slice(value.indexOf('('))] : [value];
-    buttons.push(place(keycap(BW, BH, 18, (g, a, b) => {
+    key(keycap(BW, BH, 18, face((g, a, b) => {
       lines.forEach((ln, i) => text(g, ln, 10, b * (lines.length > 1 ? 0.28 : 0.5) + i * b * 0.44, a - 38, b * (lines.length > 1 ? 0.44 : 0.52), NAVY));
       text(g, '›', a - 11, b / 2 - 2, 18, b * 0.62, NAVY, { align: 'center', weight: 600 });
-    }), bx + BW / 2, by + BH / 2));
+    })), side === 'input' ? 'inputs' : 'outputs', bx + BW / 2, by + BH / 2);
     feat.buttons.push({ x: bx - x0, y: by - y0, w: BW, h: BH, r: 18 });
   }
 
@@ -537,17 +563,17 @@ function buildBlock(sceneKey, researchMet) {
       // Stands on the plate's face: the base is the full outline.
       // Lit, the arrow only glows; unlit, it is embossed exactly like the other icons. Its shadow is
       // cut from the same outline as the solid, so it can only fall to the bottom-right.
-      ic = raise(arrow, icx, icy, (g, col) => drawArrow(g, iconW, ich, col), { shadow: !researchMet, contact: !researchMet });
+      ic = raise(arrow, icx, icy, (g, col) => drawArrow(g, iconW, ich, col), { shadow: !researchMet, contact: !researchMet, layer: researchMet ? 'arrow_lit' : 'arrow' });
     } else {
-      ic = iconAt(ICON[kind], icx, icy, iconW, ich, iconMat, { height: 11, soften: 1.5 });
+      ic = iconAt(ICON[kind], icx, icy, iconW, ich, iconMat, { height: 11, soften: 1.5 }, 'icon_recipe');
     }
-    if (kind === 'upgrade' && researchMet) { const glow = glowSprite(iconW * 2, iconW * 2, GREEN_GLOW, 0.45); glow.position.set(ic.position.x, PLATE_TOP + 10, ic.position.z); group.add(glow); }
-    const b = keycap(BW, b2h, 18, (g, a, bb) => {
+    if (kind === 'upgrade' && researchMet) { const glow = glowSprite(iconW * 2, iconW * 2, GREEN_GLOW, 0.45); glow.position.set(ic.position.x, PLATE_TOP + 10, ic.position.z); glow.userData.layer = 'glow_arrow'; group.add(glow); }
+    const b = keycap(BW, b2h, 18, face((g, a, bb) => {
       text(g, title, 10, bb * 0.34, a - 20, 40, NAVY);
       text(g, detail, 10, bb * 0.72, a - 20, 30, NAVY, { weight: 600 });
-    });
+    }));
     if (kind === 'upgrade') b.userData.disabled = !researchMet;
-    buttons.push(place(b, bx + BW / 2, by + b2h / 2));
+    key(b, kind, bx + BW / 2, by + b2h / 2);
     feat.buttons.push({ x: bx - x0, y: by - y0, w: BW, h: b2h, r: 18 });
   }
 
@@ -557,11 +583,11 @@ function buildBlock(sceneKey, researchMet) {
   // footprint (the lip flares 3.6 px), so plate-face features shift by 4 px.
   const shift = (f) => ({ icons: f.icons.map((i) => ({ ...i, draw: (g, col) => { g.save(); g.translate(-4, -4); i.draw(g, col); g.restore(); } })),
     buttons: f.buttons.map((b) => ({ ...b, x: b.x - 4, y: b.y - 4 })), screws: f.screws.map((q) => ({ x: q.x - 4, y: q.y - 4 })) });
-  const plate = new THREE.Mesh(extrude(rrShape(PW - 8, PH - 8, 12), 4, 4.5, 3.6, 6), [plateMaterial(PW - 8, PH - 8, shift(feat)), MAT.plateSide]);
-  plate.castShadow = plate.receiveShadow = true;
+  const plate = new THREE.Mesh(extrude(rrShape(PW - 8, PH - 8, 12), 4, 4.5, 3.6, 6), [plateMaterial(PW - 8, PH - 8, { ...shift(feat), iconShadows: opts.plateShadows !== false }), MAT.plateSide]);
+  plate.castShadow = plate.receiveShadow = true; plate.userData.layer = 'plate';
   plate.position.set(x0 + PW / 2, 0, y0 + PH / 2); group.add(plate);
-  for (const sc of feat.screws) { const m = screw(10); m.position.set(x0 + sc.x, PLATE_TOP + 0.5, y0 + sc.y); group.add(m); }
-  return { group, buttons, cutY: row2Y + S.upgrade[3] + 8, bounds: [x0, y0, x1, y1] };
+  for (const sc of feat.screws) { const m = screw(10); m.position.set(x0 + sc.x, PLATE_TOP + 0.5, y0 + sc.y); m.userData.layer = 'plate'; group.add(m); }
+  return { group, buttons, feat, layout, cutY: row2Y + S.upgrade[3] + 8, bounds: [x0, y0, x1, y1] };
 }
 
 function buildView(sceneKey, researchMet) {
@@ -603,7 +629,7 @@ const SECTIONS = [
 ];
 const views = [];
 const rowsEl = document.getElementById('rows');
-for (const sec of SECTIONS) {
+for (const sec of EXPORT ? [] : SECTIONS) {
   const el = document.createElement('section');
   el.innerHTML = `<h2>${sec.title}</h2><p>${sec.note}</p>`;
   const S = DATA.scenes[sec.key];
@@ -637,7 +663,7 @@ function resize() { renderer.setSize(innerWidth, innerHeight, false); }
 addEventListener('resize', resize); resize();
 
 const clock = new THREE.Clock();
-renderer.setAnimationLoop(() => {
+if (!EXPORT) renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
   renderer.setScissorTest(false); renderer.clear(); renderer.setScissorTest(true);
   for (const v of views) {
@@ -650,6 +676,138 @@ renderer.setAnimationLoop(() => {
   }
 });
 window.__views = views;   // for automated checks
+if (EXPORT) exportLayers();
+
+// ---------- export ----------
+/**
+ * Renders the layers the game stacks (scripts/bdp_v3_*.gd) and posts them to export.py, which writes
+ * them into assets/ui/bdp_v3/. Every layer of a set shares one frame, at 2x the game's logical pixels
+ * (the study's coordinates are Godot captures at 1.875x), so the game stacks them without offsets.
+ *
+ * block_*   the four-control block (market geometry). plate: plate, screws and the keycaps' cast
+ *           shadows; icon_* / kicker_* / lorry_* / arrow / arrow_lit: the raised parts alone;
+ *           shadow_*: each raised part's swept shadow; glow_arrow: the lit arrow's glow (drawn
+ *           additively); key_<slot> / key_<slot>_pressed: blank keycaps (the game draws the text).
+ * footer_*  Sell building / Demolish: plate, key_sell, key_demolish (+ _pressed).
+ * key_close, key_back (+ _pressed): small keycaps with their glyphs, and the shadow they cast.
+ * layout.json: frame sizes and every key's rect and top face, in capture pixels.
+ */
+async function exportLayers() {
+  document.querySelector('header').remove(); document.getElementById('notes').remove();
+  const E = 2 / 1.875;
+  renderer.setPixelRatio(1); renderer.setClearColor(0x000000, 0);
+  const layout = {};
+  const post = async (name, c) => {
+    const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+    await fetch(`/layers/${name}.png`, { method: 'POST', body: blob });
+  };
+  /** A scene lit like the study: the lamp above and beyond the frame's top-left, a little sky fill. */
+  const stage = ([x0, y0, x1, y1], parts) => {
+    const scene = new THREE.Scene(); scene.environment = roomEnv; scene.environmentIntensity = 0.16;
+    for (const p of parts) scene.add(p);
+    const lamp = new THREE.SpotLight(0xffffff, 8400, 0, Math.PI / 3, 0.5, 1.1);
+    lamp.position.set(x0 - 420, 820, y0 - 420); lamp.target.position.set((x0 + x1) / 2, 0, (y0 + y1) / 2);
+    lamp.castShadow = true; lamp.shadow.mapSize.set(2048, 2048);
+    lamp.shadow.camera.near = 300; lamp.shadow.camera.far = 3000;
+    lamp.shadow.radius = 3; lamp.shadow.bias = -0.0003; lamp.shadow.normalBias = 0.5;
+    scene.add(lamp, lamp.target, new THREE.HemisphereLight(0xffffff, 0xb9c0c8, 0.14));
+    const W = x1 - x0, H = y1 - y0;
+    const cam = new THREE.OrthographicCamera(-W / 2, W / 2, H / 2, -H / 2, 1, 5000);
+    cam.position.set(x0 + W / 2, 2000, y0 + H / 2); cam.up.set(0, 0, -1); cam.lookAt(x0 + W / 2, 0, y0 + H / 2);
+    const grab = () => {
+      renderer.setScissorTest(false);
+      renderer.setSize(Math.round(W * E), Math.round(H * E), false);
+      renderer.render(scene, cam);
+      const c = document.createElement('canvas'); c.width = Math.round(W * E); c.height = Math.round(H * E);
+      c.getContext('2d').drawImage(renderer.domElement, 0, 0); return c;
+    };
+    return { scene, grab, W, H };
+  };
+  const layerOf = (o) => o.userData.layer;
+  const showOnly = (groups, pred) => { for (const gr of groups) for (const ch of gr.children) ch.visible = pred(ch); };
+  /** Parts that cast into the render but draw nothing themselves (the keycaps over the plate). */
+  const ghost = (objs, on) => { for (const o of objs) o.traverse((m) => { if (!m.material) return; for (const mt of [].concat(m.material)) { mt.colorWrite = !on; mt.depthWrite = !on; } }); };
+  const pressed = async (k, name, st) => { const cap = k.userData.cap, y = cap.position.y; cap.position.y = y - 5; await post(name, st.grab()); cap.position.y = y; };
+
+  // --- the four-control block
+  const unlit = buildBlock('market', false, { intermediary: true, blank: true, plateShadows: false });
+  const lit = buildBlock('market', true, { intermediary: true, blank: true, plateShadows: false });
+  const [bx0, by0] = unlit.bounds;
+  const st = stage(unlit.bounds, [unlit.group, lit.group]);
+  const keys = unlit.group.children.filter((c) => String(layerOf(c)).startsWith('key_'));
+  showOnly([unlit.group, lit.group], (c) => false);
+  showOnly([unlit.group], (c) => layerOf(c) === 'plate' || keys.includes(c));
+  ghost(keys, true); await post('block_plate', st.grab()); ghost(keys, false);
+  for (const c of unlit.group.children) {
+    const l = layerOf(c); if (!l || l === 'plate' || l.startsWith('key_')) continue;
+    showOnly([unlit.group, lit.group], (x) => x === c); await post('block_' + l, st.grab());
+  }
+  for (const c of lit.group.children) if (layerOf(c) === 'arrow_lit') { showOnly([unlit.group, lit.group], (x) => x === c); await post('block_arrow_lit', st.grab()); }
+  for (const k of keys) {
+    showOnly([unlit.group, lit.group], (x) => x === k);
+    await post('block_' + layerOf(k), st.grab()); await pressed(k, 'block_' + layerOf(k) + '_pressed', st);
+  }
+  /** A 2D layer in exactly the rendered layers' pixel frame (round(W·E) × round(H·E)). */
+  const frame2d = (W, H, paint) => {
+    const c = document.createElement('canvas'); c.width = Math.round(W * E); c.height = Math.round(H * E);
+    const g = c.getContext('2d', { willReadFrequently: true }); g.scale(c.width / W, c.height / H); paint(g); return c;
+  };
+  const shadowFrame = (icons) => frame2d(st.W, st.H, (g) => drawIconShadows(g, st.W, st.H, icons));
+  for (const ic of unlit.feat.icons) await post('block_shadow_' + ic.layer.replace(/^(icon_|kicker_|lorry_)/, (m) => m), shadowFrame([ic]));
+  const arrowBox = lit.layout.icons.arrow_lit;
+  await post('block_glow_arrow', frame2d(st.W, st.H, (g) => {
+    const cx = arrowBox[0] + arrowBox[2] / 2, cy = arrowBox[1] + arrowBox[3] / 2, r = arrowBox[2];
+    const grd = g.createRadialGradient(cx, cy, 0, cx, cy, r);
+    grd.addColorStop(0, 'rgba(95,224,143,0.405)'); grd.addColorStop(0.45, 'rgba(95,224,143,0.135)'); grd.addColorStop(1, 'rgba(95,224,143,0)');
+    g.fillStyle = grd; g.fillRect(0, 0, st.W, st.H);
+  }));
+  layout.block = { size: [st.W, st.H], keys: unlit.layout.keys, icons: { ...unlit.layout.icons, arrow_lit: arrowBox } };
+
+  // --- Sell building / Demolish on a footer plate as wide as the block
+  {
+    const FW = st.W, KH = 86, FH = KH + 64, MX = 58, GAP = 22, KW = (FW - 2 * MX - GAP) / 2;
+    const group = new THREE.Group(), fx0 = 0, fy0 = 0;
+    const feat = { icons: [], buttons: [], screws: [] }, si = SCREW_INSET;
+    for (const [sx, sy] of [[si, si], [FW - si, si], [si, FH - si], [FW - si, FH - si]]) feat.screws.push({ x: sx, y: sy });
+    const keysF = {}, fl = { keys: {} };
+    for (const [name, x] of [['sell', MX], ['demolish', MX + KW + GAP]]) {
+      const k = keycap(KW, KH, 18, () => {}); k.userData.layer = 'key_' + name;
+      k.position.set(x + KW / 2, PLATE_TOP, 32 + KH / 2); group.add(k); keysF[name] = k;
+      feat.buttons.push({ x, y: 32, w: KW, h: KH, r: 18 });
+      const [fw, fh] = k.userData.face;
+      fl.keys[name] = { rect: [x, 32, KW, KH], face: [x + KW / 2 - fw / 2, 32 + KH / 2 - fh / 2, fw, fh] };
+    }
+    const shifted = { icons: [], buttons: feat.buttons.map((b) => ({ ...b, x: b.x - 4, y: b.y - 4 })), screws: feat.screws.map((q) => ({ x: q.x - 4, y: q.y - 4 })) };
+    const plate = new THREE.Mesh(extrude(rrShape(FW - 8, FH - 8, 12), 4, 4.5, 3.6, 6), [plateMaterial(FW - 8, FH - 8, shifted), MAT.plateSide]);
+    plate.castShadow = plate.receiveShadow = true; plate.userData.layer = 'plate'; plate.position.set(FW / 2, 0, FH / 2); group.add(plate);
+    for (const sc of feat.screws) { const m = screw(10); m.position.set(sc.x, PLATE_TOP + 0.5, sc.y); m.userData.layer = 'plate'; group.add(m); }
+    const sf = stage([fx0, fy0, FW, FH], [group]);
+    const ks = Object.values(keysF);
+    showOnly([group], (c) => layerOf(c) === 'plate' || ks.includes(c)); ghost(ks, true); await post('footer_plate', sf.grab()); ghost(ks, false);
+    for (const [name, k] of Object.entries(keysF)) { showOnly([group], (c) => c === k); await post('footer_key_' + name, sf.grab()); await pressed(k, 'footer_key_' + name + '_pressed', sf); }
+    layout.footer = { size: [FW, FH], keys: fl.keys };
+  }
+
+  // --- small keycaps: Close (✕) and Back (‹), on the panel's navy with their own shadow
+  for (const [name, glyph] of [['close', 'x'], ['back', 'chevron']]) {
+    const S = 64, M = 16, group = new THREE.Group();
+    const k = keycap(S, S, 12, (g, a, b) => {
+      g.strokeStyle = NAVY; g.lineWidth = a * 0.13; g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath();
+      if (glyph === 'x') { g.moveTo(a * 0.3, b * 0.3); g.lineTo(a * 0.7, b * 0.7); g.moveTo(a * 0.7, b * 0.3); g.lineTo(a * 0.3, b * 0.7); }
+      else { g.moveTo(a * 0.6, b * 0.26); g.lineTo(a * 0.36, b * 0.5); g.lineTo(a * 0.6, b * 0.74); }
+      g.stroke();
+    });
+    k.position.set(M + S / 2, 0, M + S / 2); group.add(k);
+    const catcher = new THREE.Mesh(new THREE.PlaneGeometry(S + 2 * M, S + 2 * M).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ opacity: 0.5 }));
+    catcher.position.set(M + S / 2, 0.05, M + S / 2); catcher.receiveShadow = true; group.add(catcher);
+    const ss = stage([0, 0, S + 2 * M, S + 2 * M], [group]);
+    await post('key_' + name, ss.grab()); await pressed(k, 'key_' + name + '_pressed', ss);
+    layout['key_' + name] = { size: [S + 2 * M, S + 2 * M], rect: [M, M, S, S] };
+  }
+
+  await fetch('/layers/layout.json', { method: 'POST', body: JSON.stringify(layout, null, 1) });
+  document.title = 'export done';
+}
 </script>
 </body>
 </html>
