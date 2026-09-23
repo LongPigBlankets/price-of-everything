@@ -5,7 +5,8 @@ class_name SettingsPanel
 ## Graphics has a window-resolution dropdown persisted via PlayerProfile; Controls
 ## lists the whole scheme, read-only for the demo except the map-mode hotkeys, which
 ## ship unbound for the player to set. Gameplay holds a dummy seven-position "Test
-## setting" on the rotary knob, kept for the session only. All commit on Apply.
+## setting" on the rotary knob, kept for the session only, and a "Test gauge" preview with
+## a control for each panel-gauge attribute. All but the preview commit on Apply.
 ##
 ## Opened from the main menu (`SettingsPanel.open(self)`) and the in-game pause
 ## menu (`SettingsPanel.open(get_parent())`). Built per open and freed on hide, so
@@ -17,6 +18,7 @@ const OFF_WHITE := Color(0.995234, 0.930806, 0.763265)
 const MenuChrome := preload("res://scripts/menu_chrome.gd")
 const Keybinds := preload("res://scripts/keybinds.gd")
 const RotarySelector := preload("res://scripts/rotary_selector.gd")
+const PanelGauge := preload("res://scripts/panel_gauge.gd")
 
 ## Dummy Gameplay setting (1–7) that exercises the rotary knob. Session-only: not saved.
 static var test_setting: int = 1
@@ -29,6 +31,7 @@ var _resolution_option: OptionButton
 var _fullscreen_check: CheckBox
 var _screen_option: OptionButton   # only built when more than one monitor is present
 var _test_knob: Control            # rotary_selector.gd, staged until Apply
+var _test_gauge: Control           # panel_gauge.gd, a live preview with its own controls
 
 
 static func open(parent: Node) -> SettingsPanel:
@@ -175,7 +178,117 @@ func _build_gameplay_tab() -> Control:
 	_test_knob.set_value_no_signal(test_setting)
 	row.add_child(_test_knob)
 	col.add_child(row)
+	col.add_child(_build_test_gauge_row())
 	return tab
+
+
+## A panel gauge with a control for each of its attributes. It is a live preview: nothing
+## here is staged, applied or saved.
+func _build_test_gauge_row() -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	var name_label := Label.new()
+	name_label.text = "Test gauge"
+	name_label.theme_type_variation = &"Body"
+	name_label.custom_minimum_size = Vector2(140, 0)
+	name_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(name_label)
+
+	_test_gauge = PanelGauge.new()
+	_test_gauge.gauge_size = 220.0
+	_test_gauge.value = 0.3
+	_test_gauge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(_test_gauge)
+
+	var controls := VBoxContainer.new()
+	controls.add_theme_constant_override("separation", 8)
+	controls.custom_minimum_size = Vector2(340, 0)
+	controls.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(controls)
+
+	var red_value := Label.new()
+	var show_red := func() -> void:
+		red_value.text = "%d%%" % roundi(100.0 - _test_gauge.green_percent - _test_gauge.amber_percent)
+	controls.add_child(_gauge_slider_row("Needle", _test_gauge.value * 100.0, "%d", func(v: float) -> void:
+		_test_gauge.value = v / 100.0))
+	# Built before the green row because the green row's callback needs its slider (lambdas
+	# capture locals by value, so it has to exist when that callback is created).
+	var amber_row := _gauge_slider_row("Amber", _test_gauge.amber_percent, "%d%%", func(v: float) -> void:
+		_test_gauge.amber_percent = minf(v, 100.0 - _test_gauge.green_percent)
+		show_red.call())
+	var amber_slider := amber_row.get_child(1) as HSlider
+	controls.add_child(_gauge_slider_row("Green", _test_gauge.green_percent, "%d%%", func(v: float) -> void:
+		_test_gauge.green_percent = v
+		# Amber can only fill what green leaves; pull it back so the three still add to 100.
+		if _test_gauge.green_percent + _test_gauge.amber_percent > 100.0:
+			amber_slider.value = 100.0 - _test_gauge.green_percent
+		show_red.call()))
+	controls.add_child(amber_row)
+
+	var red_row := HBoxContainer.new()
+	red_row.add_theme_constant_override("separation", 12)
+	var red_label := Label.new()
+	red_label.text = "Red"
+	red_label.theme_type_variation = &"Body"
+	red_label.custom_minimum_size = Vector2(70, 0)
+	red_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	red_row.add_child(red_label)
+	red_value.theme_type_variation = &"Numeric"
+	red_value.custom_minimum_size = Vector2(52, 0)
+	red_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	red_row.add_child(red_value)
+	controls.add_child(red_row)
+	show_red.call()
+
+	var led_row := HBoxContainer.new()
+	led_row.add_theme_constant_override("separation", 12)
+	var led_label := Label.new()
+	led_label.text = "LED"
+	led_label.theme_type_variation = &"Body"
+	led_label.custom_minimum_size = Vector2(70, 0)
+	led_row.add_child(led_label)
+	var led_option := OptionButton.new()
+	for item: String in ["Follows the needle's zone", "Green", "Amber", "Red", "Off"]:
+		led_option.add_item(item)
+	led_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	led_option.item_selected.connect(func(i: int) -> void:
+		_test_gauge.led_mode = i)
+	led_row.add_child(led_option)
+	var flash_check := CheckBox.new()
+	flash_check.text = "Flash"
+	flash_check.toggled.connect(func(on: bool) -> void:
+		_test_gauge.flash = on)
+	led_row.add_child(flash_check)
+	controls.add_child(led_row)
+	return row
+
+
+func _gauge_slider_row(label_text: String, initial: float, fmt: String, on_change: Callable) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	var label := Label.new()
+	label.text = label_text
+	label.theme_type_variation = &"Body"
+	label.custom_minimum_size = Vector2(70, 0)
+	row.add_child(label)
+	var slider := HSlider.new()
+	slider.min_value = 0.0
+	slider.max_value = 100.0
+	slider.step = 1.0
+	slider.value = initial
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(slider)
+	var readout := Label.new()
+	readout.theme_type_variation = &"Numeric"
+	readout.custom_minimum_size = Vector2(52, 0)
+	readout.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	readout.text = fmt % roundi(initial)
+	row.add_child(readout)
+	slider.value_changed.connect(func(v: float) -> void:
+		readout.text = fmt % roundi(v)
+		on_change.call(v))
+	return row
 
 
 func _build_graphics_tab() -> Control:
