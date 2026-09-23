@@ -20,8 +20,9 @@ const MiddlemanService := preload("res://scripts/middleman_service.gd")
 # goods quantities for the rankings' Goods tab; 9 = recorded market price history;
 # 10 = historical player unit costs alongside prices; 11 = saved cost results.
 # 12 = private middleman service; 13 = independent input/output modes and managed source orders;
-# 14 = expanded material classes/sites; 15 = per-good middleman routes and tile surplus destinations.
-const SAVE_VERSION := 15
+# 14 = expanded material classes/sites; 15 = per-good middleman routes and tile surplus destinations;
+# 16 = intermediary fallback purchases held privately per building ("bridge").
+const SAVE_VERSION := 16
 const MAIN_SCENE := "res://scenes/main.tscn"
 const DEFAULT_START := "res://data/starts/default.json"
 const BuildingLevels := preload("res://scripts/building_levels.gd")   # start-building levels
@@ -718,6 +719,10 @@ func _migrate(snap: Dictionary) -> Dictionary:
 					for gid in service.get("outputs", {}).keys(): service["output_modes"][str(gid)] = str(service.get("output_mode", "middleman"))
 				snap.get("match",{}).get("middleman_service",{})["buildings"] = services
 				snap["save_version"] = 15
+			15:
+				# Fallback purchases add an optional per-building "bridge" holding. Older
+				# saves have none; the bump stops older clients dropping those paid goods.
+				snap["save_version"] = 16
 			_:
 				break
 		version += 1

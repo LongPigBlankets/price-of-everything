@@ -326,13 +326,18 @@ func _process_production() -> void:
 				has_run[instance_id] = true
 				continue
 			
-			if Middleman.enabled(instance_id) and (not Middleman.ready(instance_id) if Middleman.uses_inputs(instance_id) else not Middleman.entry(instance_id).get("outputs",{}).is_empty()):
+			# Any intermediary-bought input needs this turn's funded purchase; retained
+			# output must be sold before another batch.
+			if Middleman.blocks_production(instance_id):
 				blocked_reason_by_building[instance_id] = _run_warning("middleman", str(Middleman.entry(instance_id).get("reason", "Service batch unavailable.")))
 				continue
 			var check: Dictionary = _can_run_recipe(building, recipe)
 			if not check.can_run:
 				missing_by_building[instance_id] = check.missing
 				var reason := _blocked_reason_for(building, recipe, check.missing)
+				var fallback_refused := Middleman.bridge_rejection(instance_id)
+				if fallback_refused != "":
+					reason = _run_warning("middleman", fallback_refused)
 				if reason.is_empty():
 					blocked_reason_by_building.erase(instance_id)
 				else:
@@ -2300,10 +2305,15 @@ func _can_run_recipe(building: Dictionary, recipe: Dictionary, service_preflight
 
 	# Check inputs (the JIT direct feed counts — it's real goods staged for this tile)
 	for input in inputs:
-		var have: int = Stockpile.get_at_tile(tile_id, input.good_id) + _feed_available(tile_id, str(input.good_id))
-		if Middleman.supplies_good(str(building.instance_id), str(input.good_id)):
-			have = _scaled_input_qty(input,building) if service_preflight else int(Middleman.entry(str(building.instance_id)).get("inputs",{}).get(str(input.good_id),0))
-		elif service_preflight and not Middleman.enabled(str(building.instance_id)) and Middleman.material_tradeable(str(input.good_id), "input"):
+		var iid := str(building.instance_id)
+		var have: int = Stockpile.get_at_tile(tile_id, input.good_id) + _feed_available(tile_id, str(input.good_id)) \
+			+ Middleman.bridge_held(iid, str(input.good_id))
+		if Middleman.supplies_good(iid, str(input.good_id)):
+			have = _scaled_input_qty(input,building) if service_preflight else int(Middleman.entry(iid).get("inputs",{}).get(str(input.good_id),0))
+		elif service_preflight and Middleman.bridges_good(iid, str(input.good_id)):
+			# The fallback route buys whatever the tile stock does not cover.
+			have = _scaled_input_qty(input,building)
+		elif service_preflight and not Middleman.enabled(iid) and Middleman.material_tradeable(str(input.good_id), "input"):
 			have = _scaled_input_qty(input,building)
 		var need := _scaled_input_qty(input, building)
 		if have < need:
@@ -2864,9 +2874,12 @@ func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictiona
 		if Middleman.supplies_good(iid, str(input.good_id)):
 			Middleman.consume(iid,str(input.good_id),qty)
 		else:
-			var from_feed := _feed_consume(tile_id, str(input.good_id), qty)
-			if qty - from_feed > 0:
-				Stockpile.consume(tile_id, input.good_id, qty - from_feed)
+			# Units the fallback bought for this building go first, then the JIT feed,
+			# then the tile stockpile.
+			var from_bridge := Middleman.consume_bridge(iid, str(input.good_id), qty)
+			var from_feed := _feed_consume(tile_id, str(input.good_id), qty - from_bridge)
+			if qty - from_bridge - from_feed > 0:
+				Stockpile.consume(tile_id, input.good_id, qty - from_bridge - from_feed)
 		if qty > 0 and not Middleman.supplies_good(iid, str(input.good_id)):
 			AdvisorState.flag_agenda_event(AdvisorState.AGENDA_USED_STOCKPILE)
 		summary.consumed[input.good_id] = summary.consumed.get(input.good_id, 0) + qty

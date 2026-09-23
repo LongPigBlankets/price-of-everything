@@ -2476,24 +2476,22 @@ func _open_input_sources_sheet(building: Dictionary, recipe: Dictionary) -> void
 			var internal := str(inp.get("internal_name", ""))
 			if ii > 0:
 				vb.add_child(HSeparator.new())
-			# Each material has independent primary/fallback slots. Physical routes retain
-			# the existing stockpile-first/market-top-up behaviour once goods reach this tile.
+			# Each material has independent primary/fallback slots, shown exactly as the
+			# simulation will run them: tile stock is always used first, and the fallback
+			# decides who covers any shortfall.
 			var route: Dictionary = preload("res://scripts/middleman_service.gd").input_source_route(iid, gid)
-			# An untouched route starts with the intermediary as its visible fallback. Keep
-			# the legacy market pipeline underneath until the player commits a route choice.
-			var saved_routes: Dictionary = building.get("logistics_input_routes", {})
-			if not saved_routes.has(gid):
-				route["fallback"] = "middleman"
 			var srcs: Array = producers.get(gid, [])
 			_add_input_good_group(vb, building, recipe, gid, internal, int(inp.get("qty", 0)), route, market_available, srcs)
 	)
 
-func _input_route_choices(building: Dictionary, gid: String, _slot: String, market_available: bool) -> Array:
+func _input_route_choices(building: Dictionary, gid: String, slot: String, market_available: bool) -> Array:
 	var choices: Array = []
+	var stockpile_available := ResearchState.open_logistics_contracts_available()
 	choices.append({
 		"source": "stockpile",
 		"title": "This tile's stockpile",
-		"detail": "Consume from the stockpile on the building's tile."
+		"detail": "Consume from the stockpile on the building's tile." if stockpile_available else "[Requires Open Logistics Contracts]",
+		"enabled": stockpile_available,
 	})
 	choices.append({
 		"source": "market",
@@ -2502,11 +2500,14 @@ func _input_route_choices(building: Dictionary, gid: String, _slot: String, mark
 		"enabled": market_available,
 	})
 	var service = preload("res://scripts/middleman_service.gd")
-	var middleman_available := service.material_tradeable(gid, "input") and service.eligible(building)
+	if not service.eligible(building):
+		return choices
+	var middleman_available := service.material_tradeable(gid, "input")
 	choices.append({
 		"source": "middleman",
 		"title": "Logistics Intermediary",
-		"detail": "Use the private carrier service for this input. It is an exclusive private route." if middleman_available else "Logistics Intermediary unavailable for this input.",
+		"detail": ("Buys this input for the building each turn; transport and storage are in its fee." if slot == "primary"
+			else "Buys only what the tile stock does not cover this turn; its fee applies to those units.") if middleman_available else "Logistics Intermediary unavailable for this input.",
 		"enabled": middleman_available,
 	})
 	return choices
@@ -2525,11 +2526,16 @@ func _add_input_good_group(vb: VBoxContainer, building: Dictionary, recipe: Dict
 	slot_col.alignment = BoxContainer.ALIGNMENT_CENTER
 	slot_col.add_theme_constant_override("separation", 6)
 	slot_col.add_child(_input_route_slot_row(building, recipe, gid, route, market_available, "primary"))
-	slot_col.add_child(_input_route_slot_row(building, recipe, gid, route, market_available, "fallback"))
+	# A fallback only applies to physical routes; the intermediary as primary buys it all.
+	if _input_has_fallback(building, route):
+		slot_col.add_child(_input_route_slot_row(building, recipe, gid, route, market_available, "fallback"))
 	chooser.add_child(slot_col)
 	group.add_child(chooser)
 	group.add_child(_route_details_section(building, gid, qty, route, producers))
 	vb.add_child(group)
+
+func _input_has_fallback(building: Dictionary, route: Dictionary) -> bool:
+	return preload("res://scripts/middleman_service.gd").eligible(building) and str(route.get("primary", "")) != "middleman"
 
 func _input_route_slot_row(building: Dictionary, recipe: Dictionary, gid: String, route: Dictionary, market_available: bool, slot: String) -> Control:
 	var iid := str(building.get("instance_id", ""))
@@ -2547,10 +2553,11 @@ func _input_route_slot_row(building: Dictionary, recipe: Dictionary, gid: String
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
 	var selected_source := str(route.get(slot, ""))
-	# Every material always has a fallback route. Until the player explicitly changes
-	# it, the fallback row defaults visually to the Logistics Intermediary.
-	if slot == "fallback" and selected_source == "":
-		selected_source = "middleman"
+	var service_game: bool = preload("res://scripts/middleman_service.gd").eligible(building)
+	# Without the intermediary there is no fallback row: "Global market" means tile stock
+	# first with market top-up, "This tile's stockpile" means tile stock only.
+	if not service_game and slot == "primary" and str(route.get("fallback", "")) == "market":
+		selected_source = "market"
 	for choice: Dictionary in _input_route_choices(building, gid, slot, market_available):
 		var source := str(choice.get("source", ""))
 		var title := str(choice.get("title", ""))
@@ -2558,7 +2565,10 @@ func _input_route_slot_row(building: Dictionary, recipe: Dictionary, gid: String
 		var enabled := bool(choice.get("enabled", true))
 		var selected := selected_source == source or (source == "stockpile" and selected_source.begins_with("tile:"))
 		row.add_child(_dest_option(title, detail, selected, func() -> void:
-			var result := preload("res://scripts/middleman_service.gd").set_input_route(iid, gid, slot, source)
+			var service = preload("res://scripts/middleman_service.gd")
+			var result: Dictionary = service.set_input_route(iid, gid, slot, source)
+			if bool(result.get("ok", false)) and not service_game and slot == "primary" and source == "stockpile":
+				result = service.set_input_route(iid, gid, "fallback", "")
 			if not bool(result.get("ok", false)):
 				MatchState.request_toast(str(result.get("reason", "Unable to change input source.")), "warning")
 			_queue_refresh()
@@ -2598,11 +2608,12 @@ func _route_details_section(building: Dictionary, gid: String, qty: int, route: 
 	primary.text = _route_detail_line(building, gid, qty, str(route.get("primary", "")), "PRIMARY")
 	primary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rows.add_child(primary)
-	var fallback := Label.new()
-	fallback.theme_type_variation = "Caption"
-	fallback.text = _route_detail_line(building, gid, qty, str(route.get("fallback", "")), "FALLBACK")
-	fallback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	rows.add_child(fallback)
+	if _input_has_fallback(building, route):
+		var fallback := Label.new()
+		fallback.theme_type_variation = "Caption"
+		fallback.text = _route_detail_line(building, gid, qty, str(route.get("fallback", "")), "FALLBACK")
+		fallback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		rows.add_child(fallback)
 	if not producers.is_empty():
 		var supplied := Label.new()
 		supplied.theme_type_variation = "Caption"
@@ -2619,10 +2630,10 @@ func _route_details_section(building: Dictionary, gid: String, qty: int, route: 
 
 func _route_detail_line(building: Dictionary, gid: String, qty: int, source: String, slot: String) -> String:
 	var good_name := Catalog.get_display_name(gid)
-	if slot == "FALLBACK" and source == "":
-		source = "middleman"
 	if source == "":
 		return "%s: none" % slot.capitalize()
+	if slot == "FALLBACK":
+		return "Fallback: any %s shortfall from %s" % [good_name, _route_source_description(building, gid, source)]
 	return "%d %s/turn from %s" % [qty, good_name, _route_source_description(building, gid, source)]
 
 func _route_source_description(building: Dictionary, _gid: String, source: String) -> String:
