@@ -10,8 +10,7 @@ The panel gauge is built from stacked image layers, not baked frames, so the nee
 | --- | --- |
 | `gauge_base` | Ring, blank dial, LED socket, drop shadow |
 | `gauge_band_green`, `_amber`, `_red` | That zone's colour across the whole scale, lit. The game trims each band to its share. |
-| `gauge_scale` | The 11 ticks and the scale line along their outer tips |
-| `gauge_led_glow` | White glow, drawn additively and tinted with the LED colour |
+| `gauge_led_glow` | White glow, tinted with the LED colour, so it colours the cream dial round the LED |
 | `gauge_led_green`, `_amber`, `_red`, `_off` | The LED lens |
 | `gauge_needle_shadow` | The needle's shadow, with the needle at 12 o'clock |
 | `gauge_needle` | The needle, pointing at 12 o'clock |
@@ -22,6 +21,11 @@ The needle's shadow sits 24.97 px right and down from the needle in this frame, 
 ## In the game
 
 `scripts/panel_gauge.gd` is a `Control` that stacks the layers. A small shader trims each band to its zone.
+
+Some parts are drawn in code rather than as images:
+
+- **Ticks and scale line:** vectors with a minimum on-screen width. As a texture, a line a few pixels wide in the 1024 px frame shrank below a pixel at panel sizes, and mipmapping blended it into the cream, so it read grey.
+- **Lit LED:** a disc over the lens in the LED's colour, near-white in the middle and fading just past the lens edge. The tinted glow is drawn with normal blending. Adding light over the near-white dial barely changed it, and the lens alone read as a flat dot or a ring.
 
 | Property | Meaning |
 | --- | --- |
