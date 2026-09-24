@@ -1,22 +1,34 @@
 extends Node2D
 ## Building Detail v3 (`toggle bdp v3`) screenshots, each cropped to the panel: its top with the
-## status lamp (and again without the lamp's overlay, and without the lamp at all), the lamp in each state, the body scrolled partway and to the end (the scrollbar's
-## slider along its rail), and the recipe sheet's scrollbar. Places a motor factory (r_009) with its
+## status lamp (and again without the lamp's overlay, and without the lamp at all), the cost gauges, the lamp in each state, the body scrolled partway and to the end (the scrollbar's
+## slider along its rail), and the recipe sheet sliding in and settled. Places a motor factory (r_009) with its
 ## inputs in stock on tile_5_10, so the panel is long enough to scroll.
 ##   Godot --path . res://tools/bdp_v3_shot.tscn --quit-after 3000 -- --no-telemetry
 ## Writes /tmp/poe_bdp_v3_*.png, or into $BDP_SHOT_DIR when it is set. tools/bdp_v3_compare.py checks
 ## them against the saved standard (artifacts/bdp_v3_standard/).
 
+## The game runs in a SubViewport of a fixed size, so every capture has the same pixels whatever the
+## display the window is on: LOGICAL at two pixels each.
+const LOGICAL := Vector2i(1920, 1200)
+
 var _wm
+var _vp: SubViewport
 
 
 func _ready() -> void:
 	UiPrefs.set_use_bdp_v3(true)
+	_vp = SubViewport.new()
+	_vp.size = LOGICAL * 2
+	_vp.size_2d_override = LOGICAL
+	_vp.size_2d_override_stretch = true
+	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	_vp.gui_embed_subwindows = true
+	add_child(_vp)
 	var packed := load("res://scenes/main.tscn") as PackedScene
 	_wm = packed.instantiate()
-	add_child(_wm)
+	_vp.add_child(_wm)
 	await _settle(140)
-	var cam := get_viewport().get_camera_2d()
+	var cam := _vp.get_camera_2d()
 	if cam != null:
 		cam.edge_pan_enabled = false
 
@@ -24,6 +36,12 @@ func _ready() -> void:
 	Stockpile.add("tile_5_10", str(Catalog.get_good_by_internal_name("steel").get("id", "")), 60)
 	Stockpile.add("tile_5_10", str(Catalog.get_good_by_internal_name("copper_wiring").get("id", "")), 64)
 	var building: Dictionary = BuildingState.get_building(iid)
+	# A cost-to-produce reading, as the cost solver would leave it: the motor under its market price,
+	# steel over it, so the gauges show two zones.
+	var motor := str(Catalog.get_good_by_internal_name("motor").get("id", ""))
+	var steel := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
+	CostSolver.last_result = {"per_building": {iid: {"output_good_id": motor, "unit_cost": Catalog.get_base_price(motor) * 0.72,
+		"output_costs": {motor: Catalog.get_base_price(motor) * 0.72, steel: Catalog.get_base_price(steel) * 1.28}}}, "per_good": {}}
 	# Open the tile view panel too, so the detail panel matches its height as it does in play.
 	var coord: Vector2i = _wm.terrain_layer.id_to_coord("tile_5_10")
 	var tile_data: Dictionary = _wm.terrain_layer.tiles.get(coord, {})
@@ -44,7 +62,7 @@ func _ready() -> void:
 	await _settle(3)
 	_save(panel, "top_unlit")
 	panel._apply_v3_text_light()
-	print("[BDP_V3_SHOT] viewport %s, panel %s" % [get_viewport().get_visible_rect().size, panel.get_global_rect()])
+	print("[BDP_V3_SHOT] viewport %s, panel %s" % [_vp.get_visible_rect().size, panel.get_global_rect()])
 	panel._shade.visible = true
 	await _settle(3)
 
@@ -55,6 +73,9 @@ func _ready() -> void:
 	panel._set_badge(load("res://scripts/building_readout.gd").status(building, Catalog.get_recipe("r_009"), false))
 
 	var bar: VScrollBar = panel._scroll.get_v_scroll_bar()
+	panel._scroll.scroll_vertical = int((bar.max_value - bar.page) * 0.3)
+	await _settle(6)
+	_save(panel, "cost")
 	panel._scroll.scroll_vertical = int((bar.max_value - bar.page) * 0.45)
 	await _settle(6)
 	_save(panel, "mid")
@@ -76,15 +97,17 @@ func _ready() -> void:
 	panel._scroll.scroll_vertical = 0
 
 	panel._open_recipe_sheet(building)
-	await _settle(10)
+	await _settle(4)
+	_save(panel, "sheet_sliding")
+	await get_tree().create_timer(0.5).timeout
 	_save(panel, "sheet")
 	panel._close_sheet()
 	get_tree().quit(0)
 
 
 func _save(panel: Control, tag: String) -> void:
-	var img := get_viewport().get_texture().get_image()
-	var k := img.get_width() / get_viewport().get_visible_rect().size.x
+	var img := _vp.get_texture().get_image()
+	var k := img.get_width() / _vp.get_visible_rect().size.x
 	var r := panel.get_global_rect().grow(6.0)
 	var crop := Rect2i(Vector2i(r.position * k), Vector2i(r.size * k)).intersection(Rect2i(Vector2i.ZERO, img.get_size()))
 	var path := _out_dir().path_join("poe_bdp_v3_%s.png" % tag)
@@ -93,8 +116,8 @@ func _save(panel: Control, tag: String) -> void:
 
 
 func _save_bar(bar: Control, tag: String) -> void:
-	var img := get_viewport().get_texture().get_image()
-	var k := img.get_width() / get_viewport().get_visible_rect().size.x
+	var img := _vp.get_texture().get_image()
+	var k := img.get_width() / _vp.get_visible_rect().size.x
 	var r := bar.get_global_rect().grow(4.0)
 	var crop := Rect2i(Vector2i(r.position * k), Vector2i(r.size * k)).intersection(Rect2i(Vector2i.ZERO, img.get_size()))
 	var path := _out_dir().path_join("poe_bdp_v3_%s.png" % tag)
