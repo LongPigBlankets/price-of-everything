@@ -139,6 +139,25 @@ function steelTexture(repeatPx) {
   t.repeat.set(1 / repeatPx, 1 / repeatPx); return t;
 }
 /**
+ * Draws the Sunburst texture into `g` through `filter` (a blur among it), blurred from a copy with the
+ * texture mirrored past each edge. A canvas blurred on its own fades at its edges, and the plates repeat
+ * these canvases mirrored, so the fade would show as a bright line across a large plate.
+ */
+let MIRROR_PADDED = null;
+const MIRROR_PAD = 32;
+function drawBlurred(g, filter) {
+  if (MIRROR_PADDED === null) {
+    const w = PLATE_TEX.width, h = PLATE_TEX.height, pad = MIRROR_PAD;
+    MIRROR_PADDED = document.createElement('canvas'); MIRROR_PADDED.width = w + 2 * pad; MIRROR_PADDED.height = h + 2 * pad;
+    const pg = MIRROR_PADDED.getContext('2d');
+    for (const i of [-1, 0, 1]) for (const j of [-1, 0, 1]) {
+      pg.save(); pg.translate(pad + (i ? (i + 1) * w : 0), pad + (j ? (j + 1) * h : 0)); pg.scale(i ? -1 : 1, j ? -1 : 1);
+      pg.drawImage(PLATE_TEX, 0, 0); pg.restore();
+    }
+  }
+  g.filter = filter; g.drawImage(MIRROR_PADDED, -MIRROR_PAD, -MIRROR_PAD);
+}
+/**
  * Softer, lighter steel from the Sunburst texture: brightened and flattened a little, and half of it
  * blended with a blurred copy, so the fine scratches recede and relief shading reads on top.
  */
@@ -146,7 +165,7 @@ STEEL_CANVAS = (() => {
   const c = document.createElement('canvas'); c.width = PLATE_TEX.width; c.height = PLATE_TEX.height;
   const g = c.getContext('2d', { willReadFrequently: true });
   g.filter = 'brightness(1.65) contrast(0.6) saturate(0.7)'; g.drawImage(PLATE_TEX, 0, 0);
-  g.globalAlpha = 0.72; g.filter = 'brightness(1.65) contrast(0.6) saturate(0.7) blur(4px)'; g.drawImage(PLATE_TEX, 0, 0);
+  g.globalAlpha = 0.72; drawBlurred(g, 'brightness(1.65) contrast(0.6) saturate(0.7) blur(4px)');
   return c;
 })();
 /**
@@ -156,7 +175,7 @@ STEEL_CANVAS = (() => {
 const BRASS_CANVAS = (() => {
   const c = document.createElement('canvas'); c.width = PLATE_TEX.width; c.height = PLATE_TEX.height;
   const g = c.getContext('2d', { willReadFrequently: true });
-  g.filter = 'brightness(1.5) contrast(0.5) blur(7px)'; g.drawImage(PLATE_TEX, 0, 0);
+  drawBlurred(g, 'brightness(1.5) contrast(0.5) blur(7px)');
   g.globalAlpha = 0.18; g.filter = 'brightness(1.5) contrast(0.5)'; g.drawImage(PLATE_TEX, 0, 0);
   g.globalAlpha = 1; g.filter = 'none';
   g.globalCompositeOperation = 'multiply'; g.fillStyle = '#d2a85c'; g.fillRect(0, 0, c.width, c.height);
@@ -166,7 +185,7 @@ const BRASS_CANVAS = (() => {
 const NAVY_STEEL_CANVAS = (() => {
   const c = document.createElement('canvas'); c.width = PLATE_TEX.width; c.height = PLATE_TEX.height;
   const g = c.getContext('2d', { willReadFrequently: true });
-  g.filter = 'brightness(1.6) contrast(0.5) blur(7px) grayscale(1)'; g.drawImage(PLATE_TEX, 0, 0);
+  drawBlurred(g, 'brightness(1.6) contrast(0.5) blur(7px) grayscale(1)');
   g.globalAlpha = 0.2; g.filter = 'brightness(1.6) contrast(0.5) grayscale(1)'; g.drawImage(PLATE_TEX, 0, 0);
   g.globalAlpha = 1; g.filter = 'none';
   g.globalCompositeOperation = 'multiply'; g.fillStyle = '#767d88'; g.fillRect(0, 0, c.width, c.height);
@@ -176,7 +195,7 @@ const NAVY_STEEL_CANVAS = (() => {
 const BRASS_TRIM_CANVAS = (() => {
   const c = document.createElement('canvas'); c.width = PLATE_TEX.width; c.height = PLATE_TEX.height;
   const g = c.getContext('2d', { willReadFrequently: true });
-  g.filter = 'brightness(2.1) contrast(0.55) blur(5px)'; g.drawImage(PLATE_TEX, 0, 0);
+  drawBlurred(g, 'brightness(2.1) contrast(0.55) blur(5px)');
   g.globalAlpha = 0.2; g.filter = 'brightness(2.1) contrast(0.55)'; g.drawImage(PLATE_TEX, 0, 0);
   g.globalAlpha = 1; g.filter = 'none';
   g.globalCompositeOperation = 'multiply'; g.fillStyle = '#ecc47a'; g.fillRect(0, 0, c.width, c.height);
@@ -1554,18 +1573,9 @@ function whiteSheet() {
  * are the size of every other plate's).
  */
 const DARK_STEEL_CANVAS = (() => {
-  // Blurred from a copy with mirrored texture past each edge, so the blur doesn't fade the edges: the
-  // plate repeats this canvas mirrored, and a faded edge would show as a bright line across it.
-  const w = PLATE_TEX.width, h = PLATE_TEX.height, pad = 32;
-  const padded = document.createElement('canvas'); padded.width = w + 2 * pad; padded.height = h + 2 * pad;
-  const pg = padded.getContext('2d');
-  for (const i of [-1, 0, 1]) for (const j of [-1, 0, 1]) {
-    pg.save(); pg.translate(pad + (i ? (i + 1) * w : 0), pad + (j ? (j + 1) * h : 0)); pg.scale(i ? -1 : 1, j ? -1 : 1);
-    pg.drawImage(PLATE_TEX, 0, 0); pg.restore();
-  }
-  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const c = document.createElement('canvas'); c.width = PLATE_TEX.width; c.height = PLATE_TEX.height;
   const g = c.getContext('2d', { willReadFrequently: true });
-  g.filter = 'brightness(1.6) contrast(0.5) blur(7px) grayscale(1)'; g.drawImage(padded, -pad, -pad);
+  drawBlurred(g, 'brightness(1.6) contrast(0.5) blur(7px) grayscale(1)');
   g.globalAlpha = 0.24; g.filter = 'brightness(1.6) contrast(0.55) grayscale(1)'; g.drawImage(PLATE_TEX, 0, 0);
   g.globalAlpha = 1; g.filter = 'none';
   g.globalCompositeOperation = 'multiply'; g.fillStyle = '#6c6e72'; g.fillRect(0, 0, c.width, c.height);

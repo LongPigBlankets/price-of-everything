@@ -2888,13 +2888,6 @@ func _v3_cost_gauges(card: PanelContainer, vb: VBoxContainer, rows: Array) -> vo
 	bare.set_content_margin_all(4)
 	card.add_theme_stylebox_override("panel", bare)
 	card.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	var gauges: Array[Control] = []
-	# Each gauge is set into the section's dark plate: the card draws the hole cut for it underneath.
-	card.draw.connect(func() -> void:
-		var side := V3_GAUGE_SOCKET.get_size() / 2.0 * (V3_GAUGE_SIZE / V3_GAUGE_SOCKET_AT)
-		for g in gauges:
-			var centre: Vector2 = card.get_global_transform().affine_inverse() * g.get_global_transform() * (g.size * 0.5)
-			card.draw_texture_rect(V3_GAUGE_SOCKET, Rect2(centre - side * 0.5, side), false))
 	for r: Dictionary in rows:
 		var line := HBoxContainer.new()
 		line.add_theme_constant_override("separation", DS.SP["SM"])
@@ -2929,8 +2922,13 @@ func _v3_cost_gauges(card: PanelContainer, vb: VBoxContainer, rows: Array) -> vo
 		holder.add_child(gauge)
 		gauge.position = -Vector2.ONE * V3_GAUGE_SIZE * V3_GAUGE_ROOM
 		line.add_child(holder)
-		gauges.append(gauge)
-		gauge.item_rect_changed.connect(card.queue_redraw)
+		# The gauge is set into the section's dark plate: its holder draws the hole cut for it underneath,
+		# in its own coordinates, so the hole can't be left behind when the rows move.
+		holder.draw.connect(func() -> void:
+			var side := V3_GAUGE_SOCKET.get_size() / 2.0 * (V3_GAUGE_SIZE / V3_GAUGE_SOCKET_AT)
+			var centre := gauge.position + gauge.size * 0.5
+			holder.draw_texture_rect(V3_GAUGE_SOCKET, Rect2(centre - side * 0.5, side), false))
+		gauge.item_rect_changed.connect(holder.queue_redraw)
 		var col := VBoxContainer.new()
 		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
