@@ -89,7 +89,7 @@ Each is a render set in `cluster.html` and a script in `scripts/`. Everything af
 In order of what a player sees most:
 
 1. **Section headings:** done, in raised lettering. **Diagnostics:** modules in a plastic case; the visual view behind the Visual / Text switch comes later.
-2. **Economics** and the **power line** in display windows. The row icons lose their bordered boxes and are printed on the glass; the Net row keeps its semantic colour.
+2. **Economics:** done, value added in production, transport and net value added on LED screens, the value bar and the transport lamps. The power line is left out.
 3. **Cost to produce:** done, a gauge per output.
 4. **Inbound shipments:** done, a six-good bay with the rolling door over the empty rows.
 5. **Labour and Wages:** done, a factory door per kind of worker and the cost and workers on drum counters.
@@ -207,6 +207,7 @@ Decided later on 24 September 2026:
 - Cost rows: the icon as tall as the gauge, no good name, no percentage; the unit cost on a mini screen in LED segments with a smaller /unit, and "Market price £Y" under it.
 - Close and Location are each a line of the title tall.
 - The power line is left out; the diagnostics say the same.
+- Economics · per turn is rebuilt on accurate figures (`building_economics.gd`, reusing the engine's quoting helpers): Value added in production, Transport costs (by how each side goes, the intermediary's fee where it trades), Net Value Added; a bar of where each £ goes, costs in shades of red and the net value added in green, icons over the slices; a lamp with its icon for each side's transport; "Inputs free" and "Output free to ship" flags; no section for a building with neither inputs nor outputs.
 
 Still open:
 

@@ -1302,5 +1302,20 @@
   "margin": 8,
   "rim": 7,
   "radius": 5
+ },
+ "econ_icons": {
+  "size": [
+   72,
+   72
+  ],
+  "icon": 52,
+  "names": [
+   "inputs",
+   "labour",
+   "upkeep",
+   "transport",
+   "value",
+   "outputs"
+  ]
  }
 }

@@ -1574,6 +1574,17 @@ function paintScreenGlass(g) {
 }
 
 /**
+ * The Economics section's raised icons, white on the metal like the control plate's INPUTS and OUTPUTS
+ * icons, each with its swept shadow: one over each slice of the value bar (inputs, labour, upkeep,
+ * transport, net value added) and one by each transport lamp (inputs, outputs). Raised from the game's
+ * own icons, which export.py serves under /icons/.
+ */
+const ECON_ICONS = { S: 72, icon: 52, height: 8, soften: 1.1, art: {
+  inputs: 'ui_icons/construction_materials.png', labour: 'research/glyph/engineer.png', upkeep: 'research/glyph/gears.png',
+  transport: 'research/glyph/lorry.png', value: 'research/glyph/money.png', outputs: 'research/glyph/output.png',
+} };
+
+/**
  * A weld bead along a rounded rectangle's edge (w × h, corner r, centred on the origin): a rounded ridge
  * of bronze filler, radius `rad`, rippled every 2.6 px as a bead laid in runs is, lying on the join.
  */
@@ -1733,6 +1744,7 @@ if (EXPORT) exportLayers();
  *           the thin frame round an icon set below it.
  * mod_icon, mod_icon_shadow: the Modifiers row's raised % sign and its swept shadow.
  * mini_screen, mini_screen_glass: the mini screen a figure shows on in LED segments, and its glass.
+ * econ_icon_<name> (+ _shadow): the Economics section's raised icons (ECON_ICONS).
  * layout.json: frame sizes and every key's rect and top face, in capture pixels.
  * ?export&only=lamp,scroll renders just the named sets (see `want` below).
  */
@@ -1743,7 +1755,7 @@ async function exportLayers() {
   // ?export&only=lamp,scroll renders just those sets and merges their entries into the existing
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
-  // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen.
+  // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -2133,6 +2145,20 @@ async function exportLayers() {
     await post('mini_screen', stage([0, 0, W, H], [miniScreen()]).grab());
     await post('mini_screen_glass', frame2d(W, H, paintScreenGlass));
     layout.mini_screen = { size: [W, H], margin: SCREEN.M, rim: SCREEN.rim, radius: SCREEN.r };
+  });
+
+  // --- the Economics section's raised icons (see ECON_ICONS) and their shadows.
+  if (want('econ')) await withSeed(421, async () => {
+    const { S, icon, height, soften, art } = ECON_ICONS, o = (S - icon) / 2;
+    const enamel = new THREE.MeshPhysicalMaterial({ color: OFF_WHITE, roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.3 });
+    for (const [name, file] of Object.entries(art)) {
+      const img = await loadImage('/icons/' + file);
+      const r = iconRelief(img, icon, icon, enamel, { height, soften });
+      r.position.set(S / 2, 0.3, S / 2);
+      await post('econ_icon_' + name, stage([0, 0, S, S], [r]).grab());
+      await post('econ_icon_' + name + '_shadow', frame2d(S, S, (g) => drawIconShadows(g, S, S, [{ height, draw: (tg, col) => stamp(tg, img, o, o, icon, icon, col) }])));
+    }
+    layout.econ_icons = { size: [S, S], icon, names: Object.keys(art) };
   });
 
   // --- the title's letters: the raised white faces (ungraded; the game grades the whole title), and

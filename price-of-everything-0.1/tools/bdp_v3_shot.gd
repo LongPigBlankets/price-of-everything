@@ -1,8 +1,9 @@
 extends Node2D
 ## Building Detail v3 (`toggle bdp v3`) screenshots, each cropped to the panel: its top with the
 ## status lamp (and again without the lamp's overlay, and without the lamp at all), the cost gauges, the lamp in each state, the body scrolled partway and to the end (the scrollbar's
-## slider along its rail), the recipe sheet sliding in and settled, the Modifiers open, and the shipments of recipes with
-## three or four inputs and with five or more. Places a motor factory (r_009) with its
+## slider along its rail), the recipe sheet sliding in and settled, the Modifiers open, the economics (the motor
+## factory's, a coal power plant's and a coal mine's), and the shipments of recipes with three or four inputs and
+## with five or more. Places a motor factory (r_009) with its
 ## inputs in stock on tile_5_10, so the panel is long enough to scroll.
 ##   Godot --path . res://tools/bdp_v3_shot.tscn --quit-after 3000 -- --no-telemetry
 ## Writes /tmp/poe_bdp_v3_*.png, or into $BDP_SHOT_DIR when it is set. tools/bdp_v3_compare.py checks
@@ -114,6 +115,23 @@ func _ready() -> void:
 		await _settle(6)
 		_save(panel, "modifiers")
 	panel._v3_modifiers_open = false
+
+	# The economics: the motor factory's, then a coal power plant's (output free to ship) and a coal
+	# mine's (inputs free).
+	var econ: Control = panel.find_child("EconomicsV3", true, false)
+	if econ != null:
+		panel._scroll.ensure_control_visible(econ)
+		await _settle(6)
+		_save(panel, "economics")
+	for pair in [["b_003", "r_004", "economics_power"], ["b_001", "r_001", "economics_mine"]]:
+		var iid_e: String = BuildingState.add_building(pair[0], pair[1], "tile_5_10", "player_1", "bdpv3shot_" + str(pair[2]))
+		_wm._open_building_detail(BuildingState.get_building(iid_e))
+		await _settle(20)
+		var card: Control = _wm.building_panel_v2.find_child("EconomicsV3", true, false)
+		if card != null:
+			_wm.building_panel_v2._scroll.ensure_control_visible(card)
+			await _settle(8)
+			_save(_wm.building_panel_v2, str(pair[2]))
 
 	# The shipments of a recipe with three or four inputs (the door down over the bay's empty top row) and
 	# of one with five or more (the door rolled up). The first input is stocked, so its lamp is green and

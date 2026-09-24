@@ -7,13 +7,15 @@ const Economics := preload("res://scripts/economics_snapshot.gd")
 const World := preload("res://scripts/world_map.gd")
 const Middleman := preload("res://scripts/middleman_service.gd")
 const Readout := preload("res://scripts/building_readout.gd")
+const BuildingEconomics := preload("res://scripts/building_economics.gd")
 var site := "tile_5_10"
 var logistics_mode := "market"
 var route_mode := ""
 var rail_owned_limit := 0
 var infra_level := 1
 ## --panel: also record, before each turn, what the Building Detail panel's Economics section says the
-## building will make that turn (BuildingReadout.economics), to compare with the cash that moves.
+## building will make that turn (BuildingReadout.economics, and v3's BuildingEconomics.per_turn under
+## value_added_v3), to compare with the cash that moves.
 var record_panel := false
 const SAMPLE_TURNS := 10
 const MAX_START_TURNS := 60
@@ -176,6 +178,7 @@ func _run(recipe_id: String) -> void:
 			var b: Dictionary = BuildingState.get_building(iid)
 			var r: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
 			panel = Readout.economics(b, r, Catalog.get_building(str(b.get("building_id", ""))))
+			panel["value_added_v3"] = BuildingEconomics.per_turn(b)
 		TurnManager.commit_turn()
 		await TurnManager.turn_resolution_completed
 		var row := Economics.capture(cash_before, iid)

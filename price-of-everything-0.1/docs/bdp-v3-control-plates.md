@@ -230,6 +230,20 @@ In the game, `bdp_v3_title.gd` shapes and wraps the title with Godot's text serv
 
 v3 leaves out v2's power line ("Draws X MW · ready to draw from the grid"): the diagnostics say the same.
 
+## Economics · per turn
+
+The figures come from `scripts/building_economics.gd` (`per_turn`), which quotes them with the engine's own helpers, the ones the turn's cash moves by, without booking anything: `TransportService.quote_market_buy` for bought inputs (goods at the buy price, inland freight and the port charge), `MarketState.sale_charges` for output sold straight to market, `Production.stock_sale_charges` for output sold from a stockpile, `TransportService.land_cost_after_credit` for output sent to another of the company's tiles, the logistics intermediary's quote where it trades a good, `Power.allocated_draw_cost` for power, and the engine's labour, maintenance, storage-share and carbon-levy helpers. Output that stays in stock is valued as if sold, with what shipping it to market would cost ("Output (if sold)"). Inputs the company makes itself and routes here are valued at what they would sell for and arrive with no transport cost here: freight between its own tiles is the sender's, as the engine charges it. Measured against a single motor factory's real cash over ten turns (`tools/recipe_profitability_case.gd --panel`), net value added came within £0.43 a turn beside the port (+£49.82 against +£49.39 before tax) and £0.02 inland (+£5.18 against +£5.20), where the old Net read +£52.96 and +£35.94.
+
+The section shows three rows, each figure on a mini screen in LED segments (`bdp_v3_led.gd`), green when it adds value and red when it takes it:
+
+- **Value added in production:** the output's value less inputs, labour and upkeep (maintenance, power, storage and the carbon levy), the parts listed under it.
+- **Transport costs:** bringing the inputs in and taking the output to market, by how each goes (road, rail, pipe, port, or the logistics intermediary), each side's total listed under it.
+- **Net Value Added:** the first less the second, before tax.
+
+Under them, the bar of where each £ of output goes (`bdp_v3_value_bar.gd`) on a mini screen: inputs, labour, upkeep and transport in shades of red, then the net value added in green, each as wide as its share; at a loss the costs run past a white mark at the output's value. Each slice has its raised icon above it (`econ_icon_<name>`: the INPUTS wheelbarrow, the engineer, gears, the lorry, coins); icons that crowd spread apart and a short line joins each to its slice. Hovering a slice names it with its £ and share.
+
+Then a lamp for each side's transport, with that side's icon (the plate's INPUTS and OUTPUTS icons): green while transport costs under 3% of the goods' value on that side, amber under 8%, red above (`BuildingEconomics.transport_tone`). A side that travels free is flagged and its lamp is off: "Inputs free" for a recipe with no inputs (mines, wind and solar, air separation), "Output free to ship" for output with no transport cost (a power plant's, which leaves by cable). A building with neither inputs nor outputs (a battery) shows no Economics section. The loan repayment and stored-goods rows follow, as in v2.
+
 ## Section headings
 
 Every section heading (Diagnostics, Cost to produce, Economics · per turn, Inbound shipments, Labour and Wages, and the rest) is lettered as INPUTS and OUTPUTS are on the control plate: IBM Plex Sans Bold at 28 layout px, raised in the plate lettering's white, 5 px high on a flank softened by 0.7 px, with the same swept shadow and contact line, the faces graded from white at the top-left to `#B8B0A0` across the heading. The letters are rendered one per cell into an atlas like the title's (`headingAtlas`, `heading_glyphs` and `heading_glyph_shadows`, 900 × 159, 8 px of room round each letter); `layout.json` lists each cell as `[x, y, w, h, pen x, advance]`, with a space's advance, and `bdp_v3_heading.gd` sets the letters along one line by those advances. The game has no Plex Bold, so the heading is set by the page's measurements rather than by Godot's text server. The atlas holds the title's characters and the middle dot; a heading with any other character keeps the plain label.
@@ -315,7 +329,7 @@ Then open `http://127.0.0.1:8771/cluster.html?export` in a browser. It works hea
 
 The tab title becomes "export done". Every layer of a set shares one frame, so the game stacks them without offsets.
 
-To render some sets only, add `&only=` and a comma-separated list of `block`, `footer`, `backing`, `section`, `keys`, `pin`, `lamp`, `scroll`, `seam`, `title`, `enamel`, `cable`, `counter`, `sheet`, `plastic`, `door`, `heading`, `module`, `toggle`, `ldoor`, `modkey`, `sheetw`, `darkplate`, `modicon` and `screen`, for example `cluster.html?export&only=lamp,scroll`. The other layers are left as they are, and the page reads the current `layout.json` from the server and updates only those sets' entries. `export.py` takes an optional port (`python3 tools/button_mockup/export.py 8779`); use a port of your own when another export may be running.
+To render some sets only, add `&only=` and a comma-separated list of `block`, `footer`, `backing`, `section`, `keys`, `pin`, `lamp`, `scroll`, `seam`, `title`, `enamel`, `cable`, `counter`, `sheet`, `plastic`, `door`, `heading`, `module`, `toggle`, `ldoor`, `modkey`, `sheetw`, `darkplate`, `modicon`, `screen` and `econ`, for example `cluster.html?export&only=lamp,scroll`. The other layers are left as they are, and the page reads the current `layout.json` from the server and updates only those sets' entries. `export.py` takes an optional port (`python3 tools/button_mockup/export.py 8779`); use a port of your own when another export may be running.
 
 | Set | Layers |
 | --- | --- |
@@ -339,6 +353,7 @@ To render some sets only, add `&only=` and a comma-separated list of `block`, `f
 | Labour and Wages' doors | `labour_door`, `labour_door_lit` (200 × 300) |
 | Modifiers | `key_modifiers` and `_pressed` (680 × 120: the key 648 × 88 inside, 64 px ends), `sheet_white` (600 × 400), `mod_icon` and `mod_icon_shadow` (110 × 110, the sign 80 in the middle) |
 | Mini screen | `mini_screen`, `mini_screen_glass` (200 × 80: 8 px margin, 7 px bezel, 5 px pane radius) |
+| Economics icons (72 × 72, the icon 52 in the middle) | `econ_icon_<inputs, labour, upkeep, transport, value, outputs>` and `_shadow`, raised from the game's icons, which `export.py` serves under `/icons/` |
 | Dark plate and set-in parts | `dark_plate` (900 × 1400, cropped, not sliced), `gauge_socket` (240 × 240: a 108 px hole, 6 px chamfer), `icon_well` (240 × 240: 12 px margin, 7 px rim, 10 px inner radius) |
 
 `layout.json` lists each set's size and every key's rect and top face, in layout pixels, plus the lamp's bezel, the scrollbar's end, grip and travel sizes, and the seam edge's ends, back edge and lip. The scripts carry these numbers as constants. After changing a layout, copy the new numbers from `layout.json` into `bdp_v3_block.gd`, `bdp_v3_footer.gd`, `bdp_v3_section.gd`, `bdp_v3_lamp.gd`, `bdp_v3_scroll.gd` or `bdp_v3_seam.gd`.

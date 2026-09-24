@@ -676,6 +676,42 @@ func _test_bdp_v3_rules() -> void:
 	_check(Led.cells_for("7.95") == [["7", true], ["9", false], ["5", false]] and Led.cells_for("123.40").size() == 5
 		and Led.cells_for("--.--") == [["-", false], ["-", true], ["-", false], ["-", false]],
 		"bdp v3: an LED figure takes a cell per digit, its point lit on the digit before it")
+	var Econ = load("res://scripts/building_economics.gd")
+	_check(Econ.transport_tone(1.0, 100.0) == "ok" and Econ.transport_tone(5.0, 100.0) == "warn" and Econ.transport_tone(9.0, 100.0) == "bad"
+		and Econ.transport_tone(1.0, 0.0) == "bad" and Econ.transport_tone(0.0, 0.0) == "ok",
+		"bdp v3: a transport lamp is green under 3% of its goods' value, amber under 8%, red above")
+	var Bar = load("res://scripts/bdp_v3_value_bar.gd")
+	var gain: Array = Bar.slices_for({"output_value": 100.0, "input_value": 50.0, "labour": 20.0, "upkeep": 10.0, "transport": 5.0, "net_value_added": 15.0})
+	var loss: Array = Bar.slices_for({"output_value": 100.0, "input_value": 80.0, "labour": 20.0, "upkeep": 10.0, "transport": 10.0, "net_value_added": -20.0})
+	_check(gain.size() == 5 and gain[-1].key == "value" and is_equal_approx(float(gain[-1].to), 1.0) and is_equal_approx(float(gain[0].to), 0.5)
+		and loss.size() == 4 and loss.all(func(x: Dictionary) -> bool: return x.key != "value") and is_equal_approx(float(loss[-1].to), 1.0),
+		"bdp v3: the value bar runs the costs then the net value added across the output's value, and the costs alone at a loss")
+	var econ_iids: Array = []
+	for pair in [["b_028", "r_225"], ["b_001", "r_001"], ["b_003", "r_004"], ["b_007", "r_009"]]:
+		econ_iids.append(BuildingState.add_building(pair[0], pair[1], "tile_5_10", MatchState.LOCAL_PLAYER, "v3_econ_" + pair[1]))
+	var battery: Dictionary = Econ.per_turn(BuildingState.get_building(econ_iids[0]))
+	var mine: Dictionary = Econ.per_turn(BuildingState.get_building(econ_iids[1]))
+	var plant_b: Dictionary = BuildingState.get_building(econ_iids[2])
+	var plant: Dictionary = Econ.per_turn(plant_b)
+	var motor_b: Dictionary = BuildingState.get_building(econ_iids[3])
+	for o: Dictionary in Catalog.get_recipe("r_009").get("outputs", []):
+		MatchState.route_output_to_market(econ_iids[3], str(o.get("good_id", "")))
+	var motor: Dictionary = Econ.per_turn(motor_b)
+	_check(not bool(battery.shown), "bdp v3: a building with neither inputs nor outputs (a battery) has no economics to show")
+	_check(bool(mine.shown) and bool(mine.inputs_free) and mine.lamp_in == "off" and not bool(mine.output_free_to_ship),
+		"bdp v3: a mine's inputs come free, and its output still pays to reach the market")
+	_check(bool(plant.output_free_to_ship) and plant.lamp_out == "off" and not bool(plant.inputs_free)
+		and is_equal_approx(float(plant.output_value), float(Production._effective_power_output(plant_b, Catalog.get_recipe("r_004"))) * Power.grid_export_price()),
+		"bdp v3: a power plant's output is free to ship, valued at what the grid pays (£%.2f)" % float(plant.output_value))
+	var port_charged := false
+	for m: Dictionary in motor.methods_out:
+		port_charged = port_charged or m.name == "Port"
+	_check(bool(motor.sold) and float(motor.transport_out) > 0.0 and port_charged
+		and is_equal_approx(float(motor.net_value_added), float(motor.value_added) - float(motor.transport))
+		and is_equal_approx(float(motor.value_added), float(motor.output_value) - float(motor.input_value) - float(motor.labour) - float(motor.upkeep)),
+		"bdp v3: a factory selling to market pays the port on its output, and its net value added is value added less transport (£%.2f)" % float(motor.net_value_added))
+	for e_iid in econ_iids:
+		BuildingState.buildings.erase(e_iid)
 	var Panel2 = load("res://scripts/building_detail_panel_v2.gd")
 	var cheap: Dictionary = Panel2.v3_cost_gauge_reading(8.0, 10.0)
 	var dear: Dictionary = Panel2.v3_cost_gauge_reading(30.0, 10.0)
@@ -858,6 +894,14 @@ func _test_bdp_v3_panel() -> void:
 		"bdp v3: the cost icon, frame and all, is as tall as the gauge's bezel (%.1f px)" % icon_h)
 	_check(panel.find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.text.contains("ready to draw from the grid") and l.is_visible_in_tree()).is_empty(),
 		"bdp v3: the power line is left out, the diagnostics say the same")
+	var econ_card: Control = panel.find_child("EconomicsV3", true, false)
+	var econ_leds: Array = econ_card.find_children("BdpV3Led*", "", true, false) if econ_card != null else []
+	var econ_bar: Control = econ_card.find_child("BdpV3ValueBar", true, false) if econ_card != null else null
+	var econ_lamps: Array = econ_card.find_children("TransportLamp", "", true, false) if econ_card != null else []
+	_check(econ_card != null and econ_card.find_child("ValueAdded", true, false) != null
+		and econ_card.find_child("Transport", true, false) != null and econ_card.find_child("NetValueAdded", true, false) != null
+		and econ_leds.size() == 3 and econ_bar != null and econ_bar.slice_keys().size() >= 4 and econ_lamps.size() == 2,
+		"bdp v3: economics shows value added in production, transport costs and net value added on LED screens, the value bar and two transport lamps (%d LEDs, %d lamps)" % [econ_leds.size(), econ_lamps.size()])
 	var line_h: float = load("res://scripts/bdp_v3_title.gd").line_height()
 	var key_px: float = panel._close_key.size.y * load("res://scripts/bdp_v3_key.gd").KEY_SIDE / load("res://scripts/bdp_v3_key.gd").TEXTURE_SIDE
 	_check(absf(key_px - line_h) < 1.5 and absf((panel._pin_key.position.y - panel._close_key.position.y) - load("res://scripts/bdp_v3_title.gd").line_pitch()) < 1.5,

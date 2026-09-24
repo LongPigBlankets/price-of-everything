@@ -37,6 +37,8 @@ const BdpV3Door := preload("res://scripts/bdp_v3_door.gd")
 const BdpV3LabourDoor := preload("res://scripts/bdp_v3_labour_door.gd")
 const BdpV3ModKey := preload("res://scripts/bdp_v3_mod_key.gd")
 const BdpV3Led := preload("res://scripts/bdp_v3_led.gd")
+const BuildingEconomics := preload("res://scripts/building_economics.gd")
+const BdpV3ValueBar := preload("res://scripts/bdp_v3_value_bar.gd")
 ## v3 frames these sections (heading and content together); the value names the frame, so sections
 ## sharing a name share one frame (Modifiers and Economics).
 const V3_FRAMED_SECTIONS := {
@@ -413,8 +415,16 @@ func _rebuild(building: Dictionary) -> void:
 	if not is_infra and kind != "battery":
 		_add_modifiers_accordion(building, recipe)
 
-	_body.add_child(_make_section("Economics · per turn"))
-	_body.add_child(_build_economics(BuildingReadout.economics(building, recipe, building_data)))
+	if UiPrefs.use_bdp_v3:
+		# v3: value added in production, transport, and what is left; nothing for a building with
+		# neither inputs nor outputs (a battery), whose running costs are no measure beside a producer's.
+		var econ := BuildingEconomics.per_turn(building)
+		if bool(econ.get("shown", false)):
+			_body.add_child(_make_section("Economics · per turn"))
+			_body.add_child(_build_economics_v3(econ))
+	else:
+		_body.add_child(_make_section("Economics · per turn"))
+		_body.add_child(_build_economics(BuildingReadout.economics(building, recipe, building_data)))
 	if is_infra:
 		_body.add_child(_make_section("Infrastructure"))
 		_body.add_child(_build_infrastructure_details(building_data))
@@ -2888,8 +2898,22 @@ func _build_economics(econ: Dictionary) -> PanelContainer:
 	var warehousing := float(econ.get("warehousing_cost", 0.0))
 	if warehousing > 0.0:
 		vb.add_child(_metric("Warehousing / turn", "−£%.2f" % warehousing, DS.PALETTE["DANGER"], false))
-	# Carried costs and held stock: both are money or goods the player owns but cannot see on
-	# the tile, so they get a line here rather than living only in the sim.
+	var financing_per_turn := _add_carried_rows(vb)
+	# Carbon levy on this recipe's taxed inputs (only shown once the policy is in force).
+	var carbon_tax := float(econ.get("carbon_tax", 0.0))
+	if carbon_tax > 0.0:
+		vb.add_child(_metric("Carbon tax / turn", "−£%.2f" % carbon_tax, DS.PALETTE["DANGER"], false))
+	vb.add_child(HSeparator.new())
+	# Operations net (output − running costs) minus this building's own build financing, so the
+	# bottom line reflects the cash it actually contributes while its construction debt is live.
+	var net := float(econ.get("net", 0.0)) - financing_per_turn
+	vb.add_child(_metric("Net / turn", "%s£%.2f" % ["+" if net >= 0.0 else "−", absf(net)], DS.PALETTE["OK"] if net >= 0.0 else DS.PALETTE["DANGER"], true))
+	return card
+
+## Carried costs and held stock, both money or goods the player owns but cannot see on the tile, so they
+## get a line in the economics rather than living only in the sim: this building's loan repayment and
+## what is stored for it. Returns the repayment per turn.
+func _add_carried_rows(vb: VBoxContainer) -> float:
 	var iid_econ := str(_current_building.get("instance_id", ""))
 	# The REPAYMENT, not the outstanding tab: what it takes a turn and how many turns are
 	# left to run. The total is still there to read — it is this figure
@@ -2914,16 +2938,118 @@ func _build_economics(econ: Dictionary) -> PanelContainer:
 	var held := MatchState.ghost_holding_units(iid_econ)
 	if held > 0:
 		vb.add_child(_metric("Stored for this building", "%d units" % held, DS.PALETTE["TEXT_MUTED"], false))
-	# Carbon levy on this recipe's taxed inputs (only shown once the policy is in force).
-	var carbon_tax := float(econ.get("carbon_tax", 0.0))
-	if carbon_tax > 0.0:
-		vb.add_child(_metric("Carbon tax / turn", "−£%.2f" % carbon_tax, DS.PALETTE["DANGER"], false))
-	vb.add_child(HSeparator.new())
-	# Operations net (output − running costs) minus this building's own build financing, so the
-	# bottom line reflects the cash it actually contributes while its construction debt is live.
-	var net := float(econ.get("net", 0.0)) - financing_per_turn
-	vb.add_child(_metric("Net / turn", "%s£%.2f" % ["+" if net >= 0.0 else "−", absf(net)], DS.PALETTE["OK"] if net >= 0.0 else DS.PALETTE["DANGER"], true))
+	return financing_per_turn
+
+## v3's economics (BuildingEconomics.per_turn), on the frame's steel:
+##   Value added in production   its output less inputs, labour and upkeep, the parts listed under it;
+##   Transport costs             bringing its inputs in and taking its output to market, by how each goes;
+##   Net Value Added             the first less the second;
+## each figure on a mini screen in LED segments; then the bar of where each £ of output goes; then a lamp
+## for each side's transport, with its icon, lit by transport's share of that side's goods (or flagged
+## free: a mine's inputs, a power plant's output). Loan repayments and stored goods follow, as in v2.
+const V3_ECON_ICON_PX := 30.0
+
+func _build_economics_v3(econ: Dictionary) -> PanelContainer:
+	var card := _make_card()
+	card.name = "EconomicsV3"
+	var bare := StyleBoxEmpty.new()
+	bare.set_content_margin_all(4)
+	card.add_theme_stylebox_override("panel", bare)
+	var vb := card.get_child(0) as VBoxContainer
+	vb.add_theme_constant_override("separation", DS.SP["MD"])
+	var output_label := "Output" if bool(econ.get("sold", true)) else "Output (if sold)"
+	var parts := PackedStringArray(["%s %s" % [output_label, _money(float(econ.output_value))]])
+	if not bool(econ.get("inputs_free", false)):
+		parts.append("Inputs %s" % _money(float(econ.input_value)))
+	parts.append("Labour %s" % _money(float(econ.labour)))
+	parts.append("Upkeep %s" % _money(float(econ.upkeep)))
+	vb.add_child(_v3_econ_row("ValueAdded", "Value added in production", " − ".join(parts), float(econ.value_added)))
+	var sides := PackedStringArray()
+	for side in [["In", "methods_in", "transport_in"], ["Out", "methods_out", "transport_out"]]:
+		var methods: Array = econ.get(side[1], [])
+		if methods.is_empty():
+			continue
+		sides.append("%s: %s" % [side[0], " · ".join(methods.map(func(m: Dictionary) -> String: return "%s %s" % [m.name, _money(float(m.cost))]))])
+	vb.add_child(_v3_econ_row("Transport", "Transport costs", " — ".join(sides) if not sides.is_empty() else "None", -float(econ.transport)))
+	vb.add_child(_v3_econ_row("NetValueAdded", "Net Value Added", "Before tax", float(econ.net_value_added), true))
+	var bar: Control = BdpV3ValueBar.new()
+	bar.set_values(econ)
+	vb.add_child(bar)
+	var lamps := HBoxContainer.new()
+	lamps.name = "TransportLamps"
+	lamps.add_theme_constant_override("separation", DS.SP["MD"])
+	vb.add_child(lamps)
+	lamps.add_child(_v3_transport_lamp("inputs", str(econ.lamp_in), float(econ.transport_in),
+		"Inputs free" if bool(econ.inputs_free) else ""))
+	lamps.add_child(_v3_transport_lamp("outputs", str(econ.lamp_out), float(econ.transport_out),
+		"Output free to ship" if bool(econ.output_free_to_ship) else ""))
+	_add_carried_rows(vb)
 	return card
+
+## One of v3's economics rows: its name and the parts that make it, and the figure on an LED screen, green
+## when it adds value and red when it takes it.
+func _v3_econ_row(node_name: String, title: String, detail: String, figure: float, strong: bool = false) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.name = node_name
+	row.add_theme_constant_override("separation", DS.SP["SM"])
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	col.add_theme_constant_override("separation", 0)
+	row.add_child(col)
+	var t := Label.new()
+	t.theme_type_variation = "Body"
+	t.text = title
+	if strong:
+		t.add_theme_font_size_override("font_size", 17)
+	col.add_child(t)
+	var d := Label.new()
+	d.theme_type_variation = "Caption"
+	d.text = detail
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(d)
+	var led: Control = BdpV3Led.new()
+	led.set_figure("%.2f" % figure, DS.PALETTE["OK"] if figure >= 0.0 else DS.PALETTE["DANGER"])
+	row.add_child(led)
+	return row
+
+## A transport lamp: the side's raised icon, its lamp, and what its transport costs a turn, or a flag
+## when that side travels free.
+func _v3_transport_lamp(side: String, tone: String, cost: float, free_flag: String) -> HBoxContainer:
+	var hb := HBoxContainer.new()
+	hb.name = "Lamp" + side.capitalize()
+	hb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hb.add_theme_constant_override("separation", 6)
+	var icon := Control.new()
+	icon.name = "Icon"
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	icon.custom_minimum_size = Vector2.ONE * V3_ECON_ICON_PX
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var face: Texture2D = load("res://assets/ui/bdp_v3/econ_icon_%s.png" % side)
+	var shadow: Texture2D = load("res://assets/ui/bdp_v3/econ_icon_%s_shadow.png" % side)
+	icon.draw.connect(func() -> void:
+		icon.draw_texture_rect(shadow, Rect2(Vector2.ZERO, icon.size), false)
+		icon.draw_texture_rect(face, Rect2(Vector2.ZERO, icon.size), false))
+	hb.add_child(icon)
+	var lamp := BdpV3Lamp.new()
+	lamp.name = "TransportLamp"
+	lamp.lamp_scale = V3_DIAG_LAMP_SCALE
+	lamp.set_tone(tone)
+	hb.add_child(lamp)
+	var col := VBoxContainer.new()
+	col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	col.add_theme_constant_override("separation", 0)
+	hb.add_child(col)
+	col.add_child(_v3_metal_label("%s transport" % side.capitalize(), HORIZONTAL_ALIGNMENT_LEFT))
+	var value := Label.new()
+	value.theme_type_variation = "Caption"
+	value.text = free_flag if free_flag != "" else "%s a turn" % _money(cost)
+	col.add_child(value)
+	return hb
+
+static func _money(v: float) -> String:
+	return "%s£%.2f" % ["−" if v < 0.0 else "", absf(v)]
 
 func _metric(key: String, value: String, value_color: Color, strong: bool) -> HBoxContainer:
 	var hb := HBoxContainer.new()
@@ -3028,22 +3154,6 @@ static func v3_stock_tone(stored: int, need: int, inbound: int, on_intermediary:
 		return "ok"
 	return "warn" if inbound > 0 or on_intermediary else "bad"
 
-## How a building gets an input: the logistics intermediary, its own tile's stockpile, a transfer from
-## another tile, or the global market.
-static func v3_input_supply(building: Dictionary, recipe: Dictionary, gid: String, inbound_from: String) -> String:
-	var iid := str(building.get("instance_id", ""))
-	if preload("res://scripts/middleman_service.gd").supplies_good(iid, gid):
-		return "Logistics intermediary"
-	var tile := str(building.get("tile_id", ""))
-	var other_tile := inbound_from != ""
-	for src: Dictionary in BuildingReadout.input_sources(building, recipe):
-		if str(src.get("good_id", "")) != gid:
-			continue
-		if str(src.get("tile_id", "")) == tile:
-			return "From the tile stockpile"
-		other_tile = true
-	return "Tile-to-tile transfer" if other_tile else "Global market"
-
 func _build_shipments_v3(ships: Array) -> PanelContainer:
 	var card := _make_card()
 	card.name = "ShipmentsV3"
@@ -3083,7 +3193,7 @@ func _v3_ship_row(goods: Array) -> HBoxContainer:
 		var stored := int(s.get("stored", 0))
 		var need := int(s.get("need", 0))
 		var inbound := int(s.get("inbound", 0))
-		var supply := v3_input_supply(_current_building, recipe, gid, str(s.get("from", "")))
+		var supply := BuildingEconomics.input_supply(_current_building, recipe, gid, str(s.get("from", "")))
 		var icon := _good_icon_pill(gid, str(s.get("internal", "")), need, V3_SHIP_ICON, -1, 0, true)
 		icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		_v3_set_in_well(icon)
