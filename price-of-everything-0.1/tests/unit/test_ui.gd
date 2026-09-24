@@ -1194,9 +1194,13 @@ func _test_topbar_ds2_strip() -> void:
 		"top bar ds2: each lamp is Building Detail's pilot lamp, following its state (%d lamps, lit %s, off %s)" % [pairs.size(), lit_colour, off_colour])
 	var quest: Control = bar.get("_quest_btn")
 	if quest != null and quest.visible:
-		var right_edge: float = bar.get("_ds2_quest_right")
-		_check(absf(quest.get_global_rect().end.x - right_edge) <= 1.0,
-			"top bar ds2: the mission stands against the left pipes, opening to the left (right %.1f, want %.1f, x %.1f w %.1f)" % [quest.get_global_rect().end.x, right_edge, quest.position.x, quest.size.x])
+		var area: Vector2 = bar.get("_ds2_quest_area")
+		var r: Rect2 = quest.get_global_rect()
+		var qicon: Control = bar.get("_quest_icon")
+		var text_col: Control = bar.get("_quest_text_col")
+		_check(absf(r.position.x - area.x) <= 1.0 and r.end.x <= area.y + 1.0
+			and (not text_col.is_visible_in_tree() or qicon.get_global_rect().end.x <= text_col.get_global_rect().position.x + 1.0),
+			"top bar ds2: the mission keeps to its section, icon first and its text to the right (%s in %s)" % [r, area])
 	var shade: Node2D = bar.get_node_or_null("Ds2Shade")
 	_check(shade != null and shade.visible and bar.get_child(bar.get_child_count() - 1) == shade,
 		"top bar ds2: the lamp's shade is over the strip, drawn last")

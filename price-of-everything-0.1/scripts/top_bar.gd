@@ -158,7 +158,7 @@ var _victory_meters: HBoxContainer
 var _quest_btn: Control
 var _quest_title: Label
 var _quest_sub: Label
-var _quest_text_box: MarginContainer   # the text's margin: room for the icon at its right in DS2
+var _quest_text_box: MarginContainer   # the text's margin: room for the icon at its left in DS2
 var _quest_text_col: VBoxContainer
 var _quest_icon: Control   # v3.1
 var _quest_shown_before := false    # v3.1 — has the module ever appeared this session
@@ -1274,7 +1274,7 @@ func _build_quest() -> void:
 	pad.add_theme_constant_override("margin_bottom", 6)
 	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	mod.add_child(pad)
-	# The text sits in its own margin so DS2 can keep the icon showing at the right, the text to its left.
+	# The text sits in its own margin so DS2 can keep the icon showing at the left, the text to its right.
 	_quest_text_box = MarginContainer.new()
 	_quest_text_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pad.add_child(_quest_text_box)
@@ -1311,10 +1311,14 @@ func _build_quest() -> void:
 	mod.top_level = true
 	add_child(mod)
 	_quest_btn = mod
-	# DS2 anchors the mission's right edge against the pipes, so its width tweens open to the left.
+	# DS2 keeps the mission inside its own section, between the works and the left pipes, even while
+	# its width tweens.
 	mod.resized.connect(func() -> void:
-		if UiPrefs.use_topbar_ds2 and _ds2_quest_right > 0.0:
-			mod.position.x = roundf(_ds2_quest_right - mod.size.x))
+		if UiPrefs.use_topbar_ds2 and _ds2_quest_area.y > _ds2_quest_area.x:
+			mod.position.x = roundf(_ds2_quest_area.x)
+			var room := _ds2_quest_area.y - _ds2_quest_area.x
+			if mod.size.x > room + 0.5:
+				mod.size.x = room)
 	mod.visible = false
 	MiniQuest.quest_changed.connect(_refresh_quest)
 	MiniQuest.mission_completed.connect(_on_quest_mission_completed)
@@ -1352,22 +1356,25 @@ const QUEST_ICON_MODULE_W := 120.0
 func _place_quest() -> void:
 	if _quest_btn == null or not is_instance_valid(_quest_btn) or not _quest_btn.visible:
 		return
-	if UiPrefs.use_topbar_ds2 and _ds2_left_gap != null:
-		# DS2: the mission's right edge stands against the left pipes, even while its width tweens.
-		var dividers := _ds2_divider_xs()
-		_ds2_quest_right = maxf(dividers[0] + global_position.x - DS2_PIPES_ROOM, _ds2_left_gap.global_position.x + 8.0 + _quest_btn.size.x)
-		_quest_btn.position.x = roundf(_ds2_quest_right - _quest_btn.size.x)
+	var ds2: bool = UiPrefs.use_topbar_ds2 and _ds2_left_gap != null
+	if ds2:
+		# DS2: the mission keeps to its own section, between the works and the left pipes.
+		_ds2_quest_area = _ds2_quest_span()
+		_quest_btn.position.x = roundf(_ds2_quest_area.x)
 	if _quest_v31_animating:
 		return   # a width tween owns .size right now (see _quest_v31_collapse_to_icon)
 	var want_size := _quest_btn.get_combined_minimum_size()
 	if UiPrefs.use_topbar_v3_1 and not _quest_v31_wide:
 		want_size.x = maxf(want_size.x, QUEST_ICON_MODULE_W)
+	if ds2:
+		if _quest_v31_wide:
+			want_size.x = _ds2_quest_text_width()
+		want_size.x = minf(want_size.x, _ds2_quest_area.y - _ds2_quest_area.x)
 	_quest_btn.size = want_size
 	# DS2 gives the centre to the money, so the mission sits after the works on the left.
 	var quest_x := roundf((get_viewport_rect().size.x - QUEST_ICON_MODULE_W) * 0.5)
-	if UiPrefs.use_topbar_ds2 and _ds2_left_gap != null:
-		# Outside the left pipes, up against them, never before the works end.
-		quest_x = roundf(maxf(_ds2_left_gap.global_position.x + 8.0, _ds2_quest_right - want_size.x))
+	if ds2:
+		quest_x = roundf(_ds2_quest_area.x)
 	_quest_btn.position = Vector2(quest_x,
 		maxf(0.0, roundf((size.y - EDGE_H - want_size.y) * 0.5)))
 
@@ -1440,8 +1447,8 @@ var _ds2_faces: Array[Array] = []
 var _ds2_freight_wraps: Array[Control] = []
 ## [StatusLed, its Building Detail pilot lamp] per lamp on the bar.
 var _ds2_lamps: Array[Array] = []
-## The mission's right edge in DS2 (against the left pipes), where its width tweens open from.
-var _ds2_quest_right := 0.0
+## The mission's section in DS2, as [left, right] screen x: from the works' end to the left pipes.
+var _ds2_quest_area := Vector2.ZERO
 ## The printed £, the LED screen (in a holder sized to its scale) and the printed K / M after it.
 var _ds2_cash: HBoxContainer
 var _ds2_cash_led: Control
@@ -1520,18 +1527,39 @@ func _ds2_apply() -> void:
 		(pair[1] as Control).visible = on
 		led.self_modulate.a = 0.0 if on else 1.0
 		led.queue_redraw()
-	# The mission: its icon at the right, the text opening to its left.
+	# The mission: its icon at the left, the text opening to its right, cut short with an ellipsis where
+	# its section ends (the tooltip has it in full).
 	if _quest_icon != null:
-		_quest_icon.size_flags_horizontal = Control.SIZE_SHRINK_END if on else Control.SIZE_SHRINK_CENTER
-		_quest_text_box.add_theme_constant_override("margin_right", int(_quest_icon.get_combined_minimum_size().x + 10.0) if on else 0)
+		_quest_icon.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN if on else Control.SIZE_SHRINK_CENTER
+		_quest_text_box.add_theme_constant_override("margin_left", int(_quest_icon.get_combined_minimum_size().x + 10.0) if on else 0)
 		for label: Label in [_quest_title, _quest_sub]:
-			label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if on else HORIZONTAL_ALIGNMENT_LEFT
+			label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS if on else TextServer.OVERRUN_NO_TRIMMING
 		if on and _quest_v31_wide:
 			_quest_icon.visible = true
 	_refresh_treasury()
 	queue_redraw()
 	_ds2_queue_centre()
 	_place_quest.call_deferred()
+
+
+## The mission's section in DS2, as [left, right] screen x: from the works' end to the left pipes.
+func _ds2_quest_span() -> Vector2:
+	var left := _ds2_left_gap.global_position.x + 8.0
+	var transport := _hbox_child("TransportModule") as Control
+	if transport != null and transport.visible:
+		left = transport.get_global_rect().end.x + DS2_PIPES_ROOM
+	var right := _ds2_divider_xs()[0] + global_position.x - DS2_PIPES_ROOM
+	return Vector2(left, maxf(left, right))
+
+
+## The mission's full width with its text showing: the icon, the gap, the longer line, the padding. The
+## labels trim in DS2, so their own minimum sizes no longer say how long the text is.
+func _ds2_quest_text_width() -> float:
+	var w := 0.0
+	for label: Label in [_quest_title, _quest_sub]:
+		var font := label.get_theme_font("font")
+		w = maxf(w, font.get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, label.get_theme_font_size("font_size")).x)
+	return ceilf(w + _quest_text_box.get_theme_constant("margin_left") + 24.0 + 2.0)
 
 
 ## A pilot lamp inside a StatusLed, following it: lit in its colour's tone, off when it is off or blinked
@@ -1693,6 +1721,8 @@ func _quest_v31_reveal_then_collapse() -> void:
 	_quest_text_col.modulate.a = 1.0
 	_quest_v31_wide = true
 	var want: float = _quest_text_box.get_combined_minimum_size().x + 24.0   # pad's L/R margins
+	if UiPrefs.use_topbar_ds2 and _ds2_quest_area.y > _ds2_quest_area.x:
+		want = minf(_ds2_quest_text_width(), _ds2_quest_area.y - _ds2_quest_area.x)
 	if _quest_width_anim != null and _quest_width_anim.is_valid():
 		_quest_width_anim.kill()
 	_quest_v31_animating = true
