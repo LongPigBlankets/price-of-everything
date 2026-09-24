@@ -76,7 +76,7 @@ All DS2 art is 3D-rendered in one three.js page, `tools/button_mockup/cluster.ht
   - `pilotLamp`, `guardButton`, `counterHousing`, `miniScreen`, `iconWell`, `gaugeSocket`;
   - `diagModule`, `cableRun`, `cableTap`, `toggleSlot`/`toggleKnob`, `rollingDoor`, `labourDoor`;
   - `sheetPlate`, `whiteSheet`, `plasticPlate`, `darkPlate`, `enamelPlate`.
-- **Seeds:** `withSeed(n, fn)` gives each set its own random sequence, so exporting one set never changes another's wear. A new set gets a new seed after the last one used (423, `emblem`).
+- **Seeds:** `withSeed(n, fn)` gives each set its own random sequence, so exporting one set never changes another's wear. A new set gets a new seed after the last one used (429, `barsheet`).
 
 ### 3.2 The export
 
@@ -96,6 +96,7 @@ python3 tools/button_mockup/export.py 8779        # a private port: 8771 may be 
 | 501–505 | `block`, `footer`, `backing`, `section`, `keys` |
 | 401–411 | `lamp`, `scroll`, `seam`, `title`, `enamel`, `pin`, `cable`, `counter`, `sheet`, `plastic`, `door` |
 | 412–423 | `heading`, `module`, `toggle`, `ldoor`, `modkey`, `sheetw`, `darkplate`, `modicon`, `screen`, `econ`, `diagicon`, `emblem` |
+| 424–429 | the top bar: `bar` (the strip: navy steel, a steel H-beam along its foot), `barconcrete` (the slab behind the money, between two pillars), 426 unused (retired), `barpipes` (the silver pipe pair: `bar_pipes_left`, `_right`, `_run`), `baricon` (the bar's raised icons, `bar_icon_<name>` + `_shadow`), `barsheet` (the flyout sheet in the bar's navy steel, no trim) |
 
 Then import:
 
@@ -383,3 +384,41 @@ Each of these cost time once.
 - **Width creep:** see §7.12.
 - **An autowrapping label with `clip_text` asks for no height.** In a container it gets 1 px and shows nothing, though its text is set. Leave `clip_text` off and cap the lines with `max_lines_visible` (the readout's detail).
 - **Timing:** tweens need frames. A test waits with `await get_tree().create_timer(t).timeout` before checking a slid position.
+- **The export server may be another agent's on ANY port**, not only 8771: an agent left one on 8779. Before exporting, `lsof -iTCP:<port> -sTCP:LISTEN` and check the server's working directory (`lsof -a -p <pid> -d cwd`) is your checkout; otherwise the page served is theirs and your export writes into their tree.
+- **A CanvasLayer child does not inherit the DS theme.** A readout or sheet on the top bar's flyout layer rendered its `Caption` text in the engine's default font (Open Sans). Give such a control `theme = DS.theme`.
+- **A shadow map loses the far end of a long render.** The bar's 7200 layout px strip only cast shadow over part of its length. Paint a long straight shadow in 2D (`frame2d`) under the render instead.
+- **Set a TextureRect's `expand_mode` before its `size`.** Until it is IGNORE_SIZE, the texture's own size is the minimum, and a size set first is clamped back up to it.
+- **Emitting `gui_input` does not run a control's `_gui_input`.** The engine calls the virtual directly; a test that emits the signal never reaches the handler. Call `control.call("_gui_input", event)`.
+- **Long pieces placed by layout, not baked.** Anything that must line up with modules whose width changes (the concrete behind the money, the pipe risers) is its own render, drawn by the game at the module's position; the strip under it is cropped, never stretched.
+
+---
+
+## 13. The method, as used on the top bar
+
+The top bar was the second surface moved to DS2 (`docs/top-bar-ds2-plan.md` records every step). What it added to the kit, and the way of working that got it there, so the next panel starts from both.
+
+**The loop.**
+
+1. **Plan and inventory first.** A plan document with the measured state (captures, a tree dump, footprints of every icon), the goals, the options with a recommendation, and the owner's open decisions numbered in one place. The owner answers there; each answer is written back next to its question.
+2. **Behind a flag.** `UiPrefs.use_topbar_ds2` and the cheat `toggle topbar ds2`. With the flag off the old surface is exactly as it was, and a test switches it off and checks that. The end-to-end harness takes `--topbar-ds2` so the whole flow runs on the new look too.
+3. **One owner-sized step at a time.** Build, capture, show the owner the captures, take the correction, commit. Material, trim, pipes, plates and wording each changed several times; small steps kept every change cheap to undo. Variants the owner has not chosen are rendered side by side on the real surface (the three strip materials), never described.
+4. **Captures from the real HUD** in fixed SubViewports at two pixels a logical pixel: `tools/topbar_ds2_shot.tscn` (three screen sizes, calm, crisis, long numbers, hover, mission, flyout) and `tools/topbar_ds2_gallery.tscn` (every hover readout and every flyout or panel, after a few turns of a busy tile). Crops of the relevant area are what the owner sees; whole screens only for layout.
+5. **Measure, do not guess.** Icon sizes from alpha footprints (`tools/ui_plan_shot.tscn`), text sizes and fonts from the live tree (`tools/topbar_font_audit.tscn`), pipe depth from the render's alpha. Each measurement answered an owner's question with numbers.
+6. **Numbers and wording from one place.** A module's lamp and its hover readout read the same `{tone, name, detail}` from one helper (`scripts/top_bar_status.gd`); the owner's wording goes into that helper, so the lamp and the words cannot disagree.
+
+**What the kit gained.**
+
+| Addition | Where | Use |
+|---|---|---|
+| `BdpV3Section` style `"slab"` | `bdp_v3_section.gd` | the dark metal plate on its own, no steel rim: a thin dark edge, a soft shadow, the silver screw set in near each corner (the Treasury sheet's three plates) |
+| `BdpV3ModKey.centred` | `bdp_v3_mod_key.gd` | a key that names an action prints its label centred |
+| `BdpV3Readout.show_check(..., tone = "")` | `bdp_v3_readout.gd` | an empty tone shows no lamp: a readout that names something rather than judges it |
+| Keycap buttons | `top_bar.gd` `_ds2_key_button` | a real `Button` (named, pressable by tests and the tutorial) with the wide key drawn inside it, pressing while held |
+| Money screen with printed £ | `top_bar.gd` `_ds2_money_screen`, `scripts/ds2/money_figure.gd` | a column of screens padded to one width; the bar's cash uses the owner's five-cell rule (£999.99, £9999, £15.6K, £1.01M, the K or M printed after) |
+| Raised icons for any art | render set `baricon` | the game's icons keyed (`keyOpaque` for baked standalone icons, `keyCream` for building icons) and raised as Building Detail's are, then fitted by the render's own art |
+| Status lamps mirrored | `top_bar.gd` `_ds2_add_lamp` | an existing `StatusLed` carries a pilot lamp that follows its state, so the code that lights it is untouched |
+
+**Text standard** (measured and agreed with the owner): body text 14 px IBM Plex Sans Medium (semibold for a row's own title), metal-label captions 15 px Barlow Condensed SemiBold, the printed £ 18 px; a compact strip such as the bar may go smaller but never under 12 px. Text on light concrete or white plastic uses DS2's inks for light surfaces (#1d6b3a, #7a4a00, #8f1f19) with a faint light shadow, not the white-on-dark outline.
+
+**Surfaces.** The bar and its sheets are the same navy steel as Building Detail's backing, without the brass trim (the owner removed it from the bar); dark gunmetal plates sit inside it as Building Detail's Cost plates do.
+
