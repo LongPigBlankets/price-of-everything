@@ -1446,9 +1446,9 @@ const Section := preload("res://scripts/bdp_v3_section.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
 ## The flyouts that are DS2 steel sheets; the others keep their card until they are decided.
 const DS2_SHEET_FLYOUTS := ["treasury", "power"]
-## Building Detail's action sheet: a worn steel plate (set `sheet`), nine-sliced. From layout.json in
-## layout px: the render's shadow room and its corner.
-const DS2_SHEET: Texture2D = preload("res://assets/ui/bdp_v3/sheet_plate.png")
+## The sheet: Building Detail's action sheet shape in the bar's own weathered navy steel, no trim (set
+## `barsheet`), nine-sliced. From layout.json in layout px: the render's shadow room and its corner.
+const DS2_SHEET: Texture2D = preload("res://assets/ui/bdp_v3/bar_sheet.png")
 const DS2_SHEET_MARGIN := 10.0
 const DS2_SHEET_CORNER := 60.0
 const DS2_SHEET_PAD := 16

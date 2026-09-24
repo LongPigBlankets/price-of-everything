@@ -1449,5 +1449,13 @@
    "roads",
    "port"
   ]
+ },
+ "bar_sheet": {
+  "size": [
+   820,
+   1600
+  ],
+  "margin": 10,
+  "corner": 60
  }
 }

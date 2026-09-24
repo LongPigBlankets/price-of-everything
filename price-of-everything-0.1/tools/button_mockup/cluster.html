@@ -2184,7 +2184,7 @@ async function exportLayers() {
   // ?export&only=lamp,scroll renders just those sets and merges their entries into the existing
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
-  // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon.
+  // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon, barsheet.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -2689,6 +2689,19 @@ async function exportLayers() {
   if (want('sheet')) await withSeed(409, async () => {
     await post('sheet_plate', stage([0, 0, SHEET.W, SHEET.H], [sheetPlate()]).grab());
     layout.sheet_plate = { size: [SHEET.W, SHEET.H], margin: SHEET.M, corner: 60 };
+  });
+
+  // --- the top bar's sheets (its Treasury and Power flyouts): the action sheet's shape, in the bar's own
+  // weathered navy steel, with no trim, so a flyout is the same metal as the bar it drops from.
+  if (want('barsheet')) await withSeed(429, async () => {
+    const { W, H, M } = SHEET, g = new THREE.Group(), pw = W - 2 * M, ph = H - 2 * M;
+    const steelSide = new THREE.MeshStandardMaterial({ color: 0x3a4250, metalness: 1, roughness: 0.45, envMap: studioEnv, envMapIntensity: 0.8 });
+    const plate = new THREE.Mesh(extrude(rrShape(pw, ph, 12), 4, 4.5, 3.6, 6),
+      [plateMaterial(pw, ph, { icons: [], buttons: [], screws: [], base: NAVY_STEEL_CANVAS, rub: '120,136,160' }), steelSide]);
+    plate.castShadow = plate.receiveShadow = true; plate.position.set(W / 2, 0, H / 2); g.add(plate);
+    g.add(shadowCatcher(W, H, W / 2, H / 2));
+    await post('bar_sheet', stage([0, 0, W, H], [g]).grab());
+    layout.bar_sheet = { size: [W, H], margin: M, corner: 60 };
   });
 
   // --- the diagnostics' plastic plate and its silver screws, and the shipments' rolling door.
