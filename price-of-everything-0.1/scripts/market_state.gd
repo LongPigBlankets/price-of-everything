@@ -320,6 +320,31 @@ func _tick_impact(good_id: String) -> void:
 #
 # Returns {} if nothing was sold, otherwise a dict with the original sale_record,
 # plus `transport_cost`, `deferred`, `turns`, `port`, `total_qty`, `total_revenue`.
+## What a market sale of `items` ([{good_id, qty}]) through `port`, along `route`, costs the seller to
+## ship: the inland freight when the seller pays it, and the port charge on every item, which no market
+## sale avoids (manual sales keep their historical gross inland freight). `commit` books the port's use
+## for the turn, as a real sale does; a quote (the detail panel's) leaves it untouched.
+## Returns {transport_cost, transport_breakdown: {mode: cost, port_fees, port_insurance}}.
+func sale_charges(port: String, route: Dictionary, items: Array, seller_pays_freight: bool, commit: bool) -> Dictionary:
+	var transport_cost := 0.0
+	var transport_breakdown: Dictionary = {}
+	if seller_pays_freight:
+		for it in items:
+			var good_id := str(it.good_id)
+			var qty := int(it.qty)
+			transport_cost += TransportService.transport_cost_for_route(good_id, qty, route)
+			var route_breakdown := TransportService.transport_cost_breakdown_for_route(good_id, qty, route)
+			for mode in route_breakdown:
+				transport_breakdown[mode] = float(transport_breakdown.get(mode, 0.0)) + float(route_breakdown[mode])
+	for it in items:
+		var sea_charge := TransportState.commit_sea_shipping(port, str(it.good_id), int(it.qty), "sell") if commit \
+			else TransportState.preview_sea_shipping(port, str(it.good_id), int(it.qty))
+		transport_cost += float(sea_charge.get("total", 0.0))
+		transport_breakdown["port_fees"] = float(transport_breakdown.get("port_fees", 0.0)) + float(sea_charge.get("base_fee", 0.0))
+		transport_breakdown["port_insurance"] = float(transport_breakdown.get("port_insurance", 0.0)) + float(sea_charge.get("insurance_fee", 0.0))
+	return {"transport_cost": transport_cost, "transport_breakdown": transport_breakdown}
+
+
 func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary = {}) -> Dictionary:
 	if source_tile == "" or goods_qtys.is_empty():
 		return {}
@@ -378,23 +403,9 @@ func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary 
 	# is a separate path that emits its own "sale" event.) Sales never break Autarky.
 	MatchState.goods_movement_recorded.emit("sale", "", turns)
 
-	var transport_cost := 0.0
-	var transport_breakdown: Dictionary = {}
-	if pay_transport_from_seller:
-		for it in items:
-			var good_id := str(it.good_id)
-			var qty := int(it.qty)
-			transport_cost += TransportService.transport_cost_for_route(good_id, qty, route)
-			var route_breakdown := TransportService.transport_cost_breakdown_for_route(good_id, qty, route)
-			for mode in route_breakdown:
-				transport_breakdown[mode] = float(transport_breakdown.get(mode, 0.0)) + float(route_breakdown[mode])
-	# Sea costs apply to every market sale. Manual sales keep their historical gross
-	# inland freight, but never avoid the port charge.
-	for it in items:
-		var sea_charge := TransportState.commit_sea_shipping(port, str(it.good_id), int(it.qty), "sell")
-		transport_cost += float(sea_charge.get("total", 0.0))
-		transport_breakdown["port_fees"] = float(transport_breakdown.get("port_fees", 0.0)) + float(sea_charge.get("base_fee", 0.0))
-		transport_breakdown["port_insurance"] = float(transport_breakdown.get("port_insurance", 0.0)) + float(sea_charge.get("insurance_fee", 0.0))
+	var charges := sale_charges(port, route, items, pay_transport_from_seller, true)
+	var transport_cost: float = charges.transport_cost
+	var transport_breakdown: Dictionary = charges.transport_breakdown
 	if transport_cost > 0.0:
 		MatchState.add_money(-transport_cost)
 

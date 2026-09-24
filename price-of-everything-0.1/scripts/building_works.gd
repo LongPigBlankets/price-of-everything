@@ -101,13 +101,13 @@ func _fits_reason(tile_id: String, delta: float, fits_physical: bool, fits_owned
 	if not fits_physical:
 		var free := float(BuildingState.max_tile_land(tile_id)) - BuildingState.get_tile_space_used(tile_id)
 		return ("The larger building needs %s more space than this tile has. It grows by %s, and only %s is free of the tile's %s."
-			% [_land(delta - free), _land(delta), _land(free), _land(float(BuildingState.max_tile_land(tile_id)))])
+			% [land_text(delta - free), land_text(delta), land_text(free), land_text(float(BuildingState.max_tile_land(tile_id)))])
 	var free_owned := BuildingState.get_tile_land_owned(tile_id) - BuildingState.get_tile_player_space_used(tile_id)
 	return ("You do not own enough of this tile. The upgrade needs %s and only %s of your %s is free — buy land to make room."
-		% [_land(delta), _land(free_owned), _land(BuildingState.get_tile_land_owned(tile_id))])
+		% [land_text(delta), land_text(free_owned), land_text(BuildingState.get_tile_land_owned(tile_id))])
 
 ## Land figures read as whole units unless the fraction matters.
-func _land(v: float) -> String:
+func land_text(v: float) -> String:
 	return str(int(round(v))) if absf(v - round(v)) < 0.05 else "%.1f" % v
 
 func _upgrade_size_delta(building_id: String, from_level: int, target: int) -> float:

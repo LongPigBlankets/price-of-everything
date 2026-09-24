@@ -3,6 +3,8 @@ extends Control
 const Emblem := preload("res://scripts/effect_emblem.gd")
 var good_id := ""
 var texture_source: TextureRect
+## Lines shown under the good's name in the hover, above the encyclopedia link (none by default).
+var detail_lines := PackedStringArray()
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
@@ -18,9 +20,9 @@ func _get_tooltip(_at_position: Vector2) -> String:
 	return Catalog.get_display_name(id) if id != "" else ""
 
 func _make_custom_tooltip(for_text: String) -> Object:
-	return make_tooltip(for_text)
+	return make_tooltip(for_text, detail_lines)
 
-static func make_tooltip(good_name: String) -> Control:
+static func make_tooltip(good_name: String, details: PackedStringArray = PackedStringArray()) -> Control:
 	var panel := PanelContainer.new()
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color("#051a2e")
@@ -36,6 +38,8 @@ static func make_tooltip(good_name: String) -> Control:
 	col.add_theme_constant_override("separation", 4)
 	panel.add_child(col)
 	col.add_child(_label(good_name))
+	for line in details:
+		col.add_child(_label(line))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 4)
 	col.add_child(row)

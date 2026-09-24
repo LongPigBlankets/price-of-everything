@@ -175,8 +175,8 @@ touching the player's buildings.
   essentially unchanged — no per-recipe rebalance forced.
 - The macro squeeze moves wholly onto the carbon levy, port fees and input
   premia. Check the raw-materials rule still holds (raw-only play must never test
-  profitable — the flat £5/good/turn port fee is the lever, and it bites harder
-  when raw prices no longer sag on their own).
+  profitable — freight and the ad valorem port charge are the lever; see
+  goods-balancing.md §1.5).
 - Stockpiling/warehousing gets stronger the moment prices can sit still or rise;
   re-check storage-fee economics.
 - Victory tracks priced in £ (rising bar) are worth a sanity pass against the
