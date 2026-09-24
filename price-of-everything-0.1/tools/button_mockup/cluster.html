@@ -139,6 +139,25 @@ function steelTexture(repeatPx) {
   t.repeat.set(1 / repeatPx, 1 / repeatPx); return t;
 }
 /**
+ * Draws the Sunburst texture into `g` through `filter` (a blur among it), blurred from a copy with the
+ * texture mirrored past each edge. A canvas blurred on its own fades at its edges, and the plates repeat
+ * these canvases mirrored, so the fade would show as a bright line across a large plate.
+ */
+let MIRROR_PADDED = null;
+const MIRROR_PAD = 32;
+function drawBlurred(g, filter) {
+  if (MIRROR_PADDED === null) {
+    const w = PLATE_TEX.width, h = PLATE_TEX.height, pad = MIRROR_PAD;
+    MIRROR_PADDED = document.createElement('canvas'); MIRROR_PADDED.width = w + 2 * pad; MIRROR_PADDED.height = h + 2 * pad;
+    const pg = MIRROR_PADDED.getContext('2d');
+    for (const i of [-1, 0, 1]) for (const j of [-1, 0, 1]) {
+      pg.save(); pg.translate(pad + (i ? (i + 1) * w : 0), pad + (j ? (j + 1) * h : 0)); pg.scale(i ? -1 : 1, j ? -1 : 1);
+      pg.drawImage(PLATE_TEX, 0, 0); pg.restore();
+    }
+  }
+  g.filter = filter; g.drawImage(MIRROR_PADDED, -MIRROR_PAD, -MIRROR_PAD);
+}
+/**
  * Softer, lighter steel from the Sunburst texture: brightened and flattened a little, and half of it
  * blended with a blurred copy, so the fine scratches recede and relief shading reads on top.
  */
@@ -146,7 +165,7 @@ STEEL_CANVAS = (() => {
   const c = document.createElement('canvas'); c.width = PLATE_TEX.width; c.height = PLATE_TEX.height;
   const g = c.getContext('2d', { willReadFrequently: true });
   g.filter = 'brightness(1.65) contrast(0.6) saturate(0.7)'; g.drawImage(PLATE_TEX, 0, 0);
-  g.globalAlpha = 0.72; g.filter = 'brightness(1.65) contrast(0.6) saturate(0.7) blur(4px)'; g.drawImage(PLATE_TEX, 0, 0);
+  g.globalAlpha = 0.72; drawBlurred(g, 'brightness(1.65) contrast(0.6) saturate(0.7) blur(4px)');
   return c;
 })();
 /**
@@ -156,7 +175,7 @@ STEEL_CANVAS = (() => {
 const BRASS_CANVAS = (() => {
   const c = document.createElement('canvas'); c.width = PLATE_TEX.width; c.height = PLATE_TEX.height;
   const g = c.getContext('2d', { willReadFrequently: true });
-  g.filter = 'brightness(1.5) contrast(0.5) blur(7px)'; g.drawImage(PLATE_TEX, 0, 0);
+  drawBlurred(g, 'brightness(1.5) contrast(0.5) blur(7px)');
   g.globalAlpha = 0.18; g.filter = 'brightness(1.5) contrast(0.5)'; g.drawImage(PLATE_TEX, 0, 0);
   g.globalAlpha = 1; g.filter = 'none';
   g.globalCompositeOperation = 'multiply'; g.fillStyle = '#d2a85c'; g.fillRect(0, 0, c.width, c.height);
@@ -166,7 +185,7 @@ const BRASS_CANVAS = (() => {
 const NAVY_STEEL_CANVAS = (() => {
   const c = document.createElement('canvas'); c.width = PLATE_TEX.width; c.height = PLATE_TEX.height;
   const g = c.getContext('2d', { willReadFrequently: true });
-  g.filter = 'brightness(1.6) contrast(0.5) blur(7px) grayscale(1)'; g.drawImage(PLATE_TEX, 0, 0);
+  drawBlurred(g, 'brightness(1.6) contrast(0.5) blur(7px) grayscale(1)');
   g.globalAlpha = 0.2; g.filter = 'brightness(1.6) contrast(0.5) grayscale(1)'; g.drawImage(PLATE_TEX, 0, 0);
   g.globalAlpha = 1; g.filter = 'none';
   g.globalCompositeOperation = 'multiply'; g.fillStyle = '#767d88'; g.fillRect(0, 0, c.width, c.height);
@@ -176,10 +195,10 @@ const NAVY_STEEL_CANVAS = (() => {
 const BRASS_TRIM_CANVAS = (() => {
   const c = document.createElement('canvas'); c.width = PLATE_TEX.width; c.height = PLATE_TEX.height;
   const g = c.getContext('2d', { willReadFrequently: true });
-  g.filter = 'brightness(2.1) contrast(0.55) blur(5px)'; g.drawImage(PLATE_TEX, 0, 0);
+  drawBlurred(g, 'brightness(2.1) contrast(0.55) blur(5px)');
   g.globalAlpha = 0.2; g.filter = 'brightness(2.1) contrast(0.55)'; g.drawImage(PLATE_TEX, 0, 0);
   g.globalAlpha = 1; g.filter = 'none';
-  g.globalCompositeOperation = 'multiply'; g.fillStyle = '#e0b460'; g.fillRect(0, 0, c.width, c.height);
+  g.globalCompositeOperation = 'multiply'; g.fillStyle = '#ecc47a'; g.fillRect(0, 0, c.width, c.height);
   return c;
 })();
 // The approved keycap reference's cream (its lit top face reads #E0D7C3), for keycaps and raised icons.
@@ -297,7 +316,7 @@ function paintPlastic(g, w, h) {
  * shades and that throws a shadow. Outside the mask the grid is cut away (alpha test), so only the
  * raised shape is drawn. Two vertices per capture px, so small counters and letter gaps survive.
  */
-function relief(w, h, draw, mat, { height = 10, soften = 1.3 } = {}) {
+function relief(w, h, draw, mat, { height = 10, soften = 1.3, faceGrade = true } = {}) {
   const nx = Math.max(8, Math.round(w / 0.5)), nz = Math.max(8, Math.round(h / 0.5));
   const sx = (nx + 1) / w;
   const sharp = document.createElement('canvas'); sharp.width = nx + 1; sharp.height = nz + 1;
@@ -315,7 +334,7 @@ function relief(w, h, draw, mat, { height = 10, soften = 1.3 } = {}) {
   const gg = grow.getContext('2d'); gg.fillStyle = '#000'; gg.fillRect(0, 0, nx + 1, nz + 1);
   gg.filter = `blur(${soften * 0.6 * sx}px) brightness(3)`; gg.drawImage(sharp, 0, 0);
   const m = mat.clone(); m.alphaMap = new THREE.CanvasTexture(grow); m.alphaTest = 0.5;
-  m.map = FACE_GRADE;
+  m.map = faceGrade ? FACE_GRADE : null;   // off where the game grades a whole run of reliefs itself
   // The drop shadow is baked into the plate (see plateMaterial), as on the bottom-bar icons: the
   // metal's brightness is mostly reflection, which a lamp shadow barely darkens.
   const mesh = new THREE.Mesh(geo, m); mesh.castShadow = false; mesh.receiveShadow = true;
@@ -483,15 +502,35 @@ function drawIconShadows(g, w, h, icons) {
 /**
  * The plate's top face, from the softened steel:
  * colour - the steel, grime into the edges and round the screws, buttons and raised icons; the rubbed
- *          Sunburst edge (dark band inside, a broken bright line along the lip, rust flecks);
+ *          Sunburst edge (dark band inside, a broken bright line along the lip, flecks along it);
  * rough  - from the steel's brightness: bright scratches smoother, dark grime duller (gently);
  * bump   - a light high-pass of the steel, so only the larger scratches catch the light.
+ * Every plate takes the texture at the same scale (STEEL_SCALE), so its scratches are the same size
+ * on every part; a plate larger than the texture repeats it, mirrored. The flecks along the lip are
+ * so many per 100 px of edge (feat.flecks, as rust by default), so a small plate and a large one wear
+ * alike. No light is baked in: the house light shades the shape, and the game's lamp over the panel
+ * sets how bright each place is. feat.paint(g, w, h), when given, paints last (a weld's heat tint).
  */
+const STEEL_SCALE = 1.45;                  // texture px per plate px, on every plate
+const FLECKS_PER_100PX = 2.45;             // along the lip, per 100 px of edge
+const RUST = (r) => `rgba(${150 + r() * 40},${80 + r() * 30},${30 + r() * 20},${0.3 + r() * 0.4})`;
+function steelWindow(src, w, h) {
+  const k = STEEL_SCALE, sw = w * k, sh = h * k;
+  if (sw <= src.width && sh <= src.height) {
+    const sx = (src.width - sw) / 2, sy = (src.height - sh) * 0.35;
+    return canvas2d(w, h, (g) => g.drawImage(src, sx, sy, sw, sh, 0, 0, w, h));
+  }
+  const tw = src.width / k, th = src.height / k;                          // the texture's size on the plate
+  return canvas2d(w, h, (g) => {
+    for (let j = 0; j * th < h; j++) for (let i = 0; i * tw < w; i++) {
+      g.save(); g.translate(i * tw + (i % 2 ? tw : 0), j * th + (j % 2 ? th : 0)); g.scale(i % 2 ? -1 : 1, j % 2 ? -1 : 1);
+      g.drawImage(src, 0, 0, tw, th); g.restore();
+    }
+  });
+}
 function plateMaterial(w, h, feat) {
   const src = feat.base ?? STEEL_CANVAS, rub = feat.rub ?? '236,239,244';
-  const k = Math.min(src.width / w, src.height / h, 1.45);                 // texture px per plate px
-  const sw = w * k, sh = h * k, sx = (src.width - sw) / 2, sy = (src.height - sh) * 0.35;
-  const base = canvas2d(w, h, (g) => g.drawImage(src, sx, sy, sw, sh, 0, 0, w, h));
+  const base = steelWindow(src, w, h);
   const px = base.width * base.height, bd = base.getContext('2d').getImageData(0, 0, base.width, base.height).data;
   const L = new Float32Array(px); let mean = 0;
   for (let i = 0; i < px; i++) { L[i] = (0.2126 * bd[i * 4] + 0.7152 * bd[i * 4 + 1] + 0.0722 * bd[i * 4 + 2]) / 255; mean += L[i]; }
@@ -502,11 +541,6 @@ function plateMaterial(w, h, feat) {
       const grd = g.createLinearGradient(x0, y0, x1, y1); grd.addColorStop(0, `rgba(10,9,8,${a})`); grd.addColorStop(1, 'rgba(10,9,8,0)');
       g.fillStyle = grd; g.fillRect(0, 0, w, h);
     }
-    // The lamp's grade, baked in: lighter towards the top-left, darker towards the bottom-right.
-    const grade = g.createLinearGradient(0, 0, w, h * 1.6);
-    grade.addColorStop(0, 'rgba(255,255,255,0.22)'); grade.addColorStop(0.35, 'rgba(255,255,255,0)');
-    grade.addColorStop(0.55, 'rgba(0,0,0,0)'); grade.addColorStop(1, 'rgba(0,0,0,0.42)');
-    g.fillStyle = grade; g.fillRect(0, 0, w, h);
     g.save(); g.filter = 'blur(6px)';
     for (const b of feat.buttons) { g.fillStyle = 'rgba(10,9,8,0.3)'; g.beginPath(); g.roundRect(b.x - 6, b.y - 4, b.w + 12, b.h + 12, b.r + 6); g.fill(); }
     for (const s of feat.screws) { g.fillStyle = 'rgba(10,9,8,0.4)'; g.beginPath(); g.arc(s.x + 1.5, s.y + 2, 16, 0, Math.PI * 2); g.fill(); }
@@ -529,13 +563,15 @@ function plateMaterial(w, h, feat) {
       }
     };
     edge(14, 4, w - 14, 4, 0.65); edge(4, 14, 4, h - 14, 0.55); edge(14, h - 4, w - 14, h - 4, 0.3); edge(w - 4, 14, w - 4, h - 14, 0.3);
-    for (let i = 0; i < 60; i++) {                                           // rust flecks along the lip
+    const flecks = Math.round(FLECKS_PER_100PX * 2 * (w + h) / 100), fleck = feat.flecks ?? RUST;
+    for (let i = 0; i < flecks; i++) {                                       // flecks along the lip
       const side = Math.floor(rand() * 4), t = rand();
       const x = side === 0 || side === 1 ? 10 + t * (w - 20) : side === 2 ? 5 + rand() * 10 : w - 5 - rand() * 10;
       const y = side === 2 || side === 3 ? 10 + t * (h - 20) : side === 0 ? 5 + rand() * 10 : h - 5 - rand() * 10;
-      g.fillStyle = `rgba(${150 + rand() * 40},${80 + rand() * 30},${30 + rand() * 20},${0.3 + rand() * 0.4})`;
+      g.fillStyle = fleck(rand);
       g.fillRect(x, y, 0.8 + rand() * 2.2, 0.6 + rand() * 1.4);
     }
+    feat.paint?.(g, w, h);
   });
   const rough = canvas2d(w, h, (g) => {
     const img = g.createImageData(base.width, base.height);
@@ -709,19 +745,1332 @@ function buildView(sceneKey, researchMet) {
   const catcher = new THREE.Mesh(new THREE.PlaneGeometry(W, H).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ opacity: 0.5 }));
   catcher.position.set(W / 2, 0.05, H / 2); catcher.receiveShadow = true; scene.add(catcher);
   scene.add(block.group);
-  // A lamp above and beyond the block's top-left corner. Its distance falloff and the lower angle it
-  // meets the far corner at grade the block from bright top-left to darker bottom-right, and its
-  // shadows fall away to the bottom-right, lengthening across the block. A little sky fill only.
+  // The house light, as the export uses: from the upper left, with no fall-off (the game's lamp over the
+  // panel sets how bright each place is), and a little sky fill.
   const [bx0, by0, bx1, by1] = block.bounds;
-  const lamp = new THREE.SpotLight(0xffffff, 8400, 0, Math.PI / 3, 0.5, 1.1);
-  lamp.position.set(bx0 - 420, 820, by0 - 420); lamp.target.position.set((bx0 + bx1) / 2, 0, (by0 + by1) / 2);
-  lamp.castShadow = true; lamp.shadow.mapSize.set(2048, 2048);
-  lamp.shadow.camera.near = 300; lamp.shadow.camera.far = 3000;
-  lamp.shadow.radius = 3; lamp.shadow.bias = -0.0003; lamp.shadow.normalBias = 0.5;
-  scene.add(lamp, lamp.target, new THREE.HemisphereLight(0xffffff, 0xb9c0c8, 0.14));
+  houseLight(scene, (bx0 + bx1) / 2, (by0 + by1) / 2);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xb9c0c8, 0.14));
   const camera = new THREE.OrthographicCamera(-W / 2, W / 2, H / 2, -H / 2, 1, 5000);
   camera.position.set(W / 2, 2000, H / 2); camera.up.set(0, 0, -1); camera.lookAt(W / 2, 0, H / 2);
   return { scene, camera, buttons: block.buttons, size: [W, H] };
+}
+
+// ---------- the house light, and the status lamp and scrollbar it lights ----------
+/**
+ * The house key light: from the upper left, 49.7° above the panel, with no fall-off. It is the knob and
+ * gauge renderers' key light (tools/knob_render, tools/gauge_render) and the angle the raised icons'
+ * painted shadows assume (0.6 × height along each axis). A part lit by it looks the same wherever it
+ * sits and at any size, so its renders can be stretched. Its strength is the spotlight's at a small
+ * key (8400 / 1054^1.1), and its shadow map keeps the spotlight's softness.
+ */
+const HOUSE_DIR = new THREE.Vector3(-3, 5, -3).normalize();
+const HOUSE_INTENSITY = 4;
+function houseLight(scene, cx, cz) {
+  const key = new THREE.DirectionalLight(0xffffff, HOUSE_INTENSITY);
+  key.position.set(cx, 0, cz).addScaledVector(HOUSE_DIR, 1500); key.target.position.set(cx, 0, cz);
+  key.castShadow = true; key.shadow.mapSize.set(2048, 2048);
+  Object.assign(key.shadow.camera, { left: -1700, right: 1700, top: 1700, bottom: -1700, near: 10, far: 4000 });
+  key.shadow.camera.updateProjectionMatrix();
+  key.shadow.radius = 3; key.shadow.bias = -0.0003; key.shadow.normalBias = 0.5;
+  scene.add(key, key.target);
+  return key;
+}
+/** A plane that shows only the shadows cast on it, w × h, centred at (cx, cz), at height y. */
+function shadowCatcher(w, h, cx, cz, y = 0.05, opacity = 0.5) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ opacity }));
+  m.position.set(cx, y, cz); m.receiveShadow = true; return m;
+}
+
+/** The status lamp's colours: the Sell and Demolish caps' amber and red, and a lamp green. */
+const LAMP = { green: 0x4fdc86, amber: 0xffa412, red: 0xe8281e };
+const LAMP_R = 22;   // bezel radius
+const LAMP_FRAME = 112;   // the render: the lamp in the middle, room round it for its shadow and glow
+/** Turned steel for the lamp's bezel. Made on first use, inside a part's seed (see withSeed). */
+let bezelSteel = null;
+const BEZEL_STEEL = () => bezelSteel ??= new THREE.MeshStandardMaterial({ color: 0xa4a9af, map: noiseTexture(30, 50, 24), metalness: 1, roughness: 0.4, envMap: studioEnv, envMapIntensity: 0.8, side: THREE.DoubleSide });
+/** A jewel lens: dark tinted glass when off; lit, it glows from a near-white middle to its colour. */
+function lensMaterial(colour, lit) {
+  const c = new THREE.Color(colour ?? 0x4a4e52);
+  const glass = { roughness: 0.14, clearcoat: 1, clearcoatRoughness: 0.08, envMap: studioEnv, flatShading: true };
+  if (!lit) return new THREE.MeshPhysicalMaterial({ color: c.clone().multiplyScalar(0.3), envMapIntensity: 1.1, ...glass });
+  // The dome's v runs from its crown (1) to its rim (0); a canvas texture's top row is v = 1.
+  const hot = canvas2d(4, 64, (g) => {
+    const grd = g.createLinearGradient(0, 0, 0, 64), white = new THREE.Color(0xffffff);
+    grd.addColorStop(0, '#' + c.clone().lerp(white, 0.7).getHexString()); grd.addColorStop(0.18, '#' + c.clone().lerp(white, 0.22).getHexString());
+    grd.addColorStop(0.5, '#' + c.getHexString()); grd.addColorStop(1, '#' + c.clone().multiplyScalar(0.5).getHexString());
+    g.fillStyle = grd; g.fillRect(0, 0, 4, 64);
+  }, 1);
+  const map = new THREE.CanvasTexture(hot); map.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.MeshPhysicalMaterial({ color: c.clone().multiplyScalar(0.5), emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.85, envMapIntensity: 0.6, ...glass });
+}
+/**
+ * A panel pilot lamp standing on the backing: a turned steel bezel rising from a thin flange to a
+ * rolled lip, a dark gasket, and a faceted jewel lens whose facets each catch the light. Lit, the lens
+ * glows `colour`; off (colour null or lit false), it is dark tinted glass.
+ */
+function pilotLamp(colour, lit) {
+  const g = new THREE.Group(), R = LAMP_R;
+  const profile = [[R, 0], [R, 1.6], [R - 1.2, 2.6], [R - 2.4, 6.2], [R - 4, 8.8], [R - 6, 9.8], [R - 8, 9.4], [R - 9, 7.8], [R - 9.4, 6.2]];
+  const bezel = new THREE.Mesh(new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r, y)), 72), BEZEL_STEEL());
+  bezel.castShadow = bezel.receiveShadow = true; g.add(bezel);
+  const gasket = new THREE.Mesh(new THREE.RingGeometry(R - 10.2, R - 9.2, 48).rotateX(-Math.PI / 2), MAT.gap); gasket.position.y = 6.3; g.add(gasket);
+  const LR = R - 9.6, lensGeo = new THREE.SphereGeometry(LR, 12, 4, 0, Math.PI * 2, 0, Math.PI / 2); lensGeo.scale(1, 0.6, 1);
+  const lens = new THREE.Mesh(lensGeo, lensMaterial(colour, lit && colour != null)); lens.position.y = 6.2; lens.receiveShadow = true; g.add(lens);
+  return g;
+}
+
+/**
+ * The scrollbar. The rail is a narrow steel strip screwed to the backing at both ends, with a slot down
+ * its middle; the slider is a rubber grip riding in the slot. The game draws both in three pieces
+ * (scripts/bdp_v3_scroll.gd): the ends keep their size, the rail's length between them stretches (its
+ * steel is brushed along its length, so it is the same all the way down) and the slider's repeats its
+ * diagonal ridges. All sizes are layout pixels, multiples of 7.5 (= 8 texture pixels, 4 logical pixels)
+ * where the game cuts them.
+ */
+const RAIL = { W: 30, H: 240, strip: 22, slot: 8, slotEnd: 26, screwY: 15, cap: 30, travelInset: 22.5 };
+const STRIP_TOP = 5.5;   // 1.5 depth + 2 × 2 bevel
+const THUMB = { W: 30, H: 210, base: 16, margin: 6, cap: 15, period: 7.5 };
+const RAIL_SIDE = new THREE.MeshStandardMaterial({ color: 0x9ea2a6, metalness: 1, roughness: 0.42, envMap: studioEnv, envMapIntensity: 0.9 });
+function railMaterial(w, h) {
+  const slot = { x: (w - RAIL.slot) / 2, y: RAIL.slotEnd - 4, w: RAIL.slot, h: h - 2 * (RAIL.slotEnd - 4) };   // face coords
+  const screws = [RAIL.screwY - 4, h - (RAIL.screwY - 4)];
+  // Brushing along the length: each column one shade, so the steel is the same all the way down.
+  const streaks = canvas2d(w, h, (g) => {
+    g.fillStyle = '#8f959b'; g.fillRect(0, 0, w, h);
+    for (let x = 0; x < w; x += 0.5) { const d = (rand() - 0.5) * 34; g.fillStyle = `rgba(${d > 0 ? '255,255,255' : '0,0,0'},${Math.abs(d) / 255 * 2.2})`; g.fillRect(x, 0, 0.5, h); }
+    for (let i = 0; i < 6; i++) { const x = 2 + rand() * (w - 4); g.fillStyle = `rgba(255,255,255,${0.08 + rand() * 0.1})`; g.fillRect(x, 0, 0.5, h); }
+  });
+  const colour = canvas2d(w, h, (g) => {
+    g.drawImage(streaks, 0, 0, w, h);
+    // Grime into the slot's edges and round the screws, and the rubbed edge: dark just inside the lip,
+    // a bright line along it, strongest on the left where the light catches it. Unbroken, so it stretches.
+    g.save(); g.filter = 'blur(1.6px)'; g.strokeStyle = 'rgba(12,10,8,0.45)'; g.lineWidth = 2.4;
+    g.beginPath(); g.roundRect(slot.x - 1, slot.y - 1, slot.w + 2, slot.h + 2, slot.w / 2 + 1); g.stroke();
+    g.strokeStyle = 'rgba(0,0,0,0.3)'; g.lineWidth = 3; g.beginPath(); g.roundRect(2.5, 2.5, w - 5, h - 5, w / 2 - 2.5); g.stroke();
+    for (const y of screws) { g.fillStyle = 'rgba(10,9,8,0.35)'; g.beginPath(); g.arc(w / 2 + 1, y + 1.5, 8, 0, Math.PI * 2); g.fill(); }
+    g.restore();
+    for (const y of screws) for (let i = 0; i < 3; i++) {                  // screwdriver slips
+      const a = rand() * Math.PI * 2; g.strokeStyle = `rgba(230,233,238,${0.14 + rand() * 0.12})`; g.lineWidth = 0.6;
+      g.beginPath(); g.arc(w / 2, y, 6.5 + rand() * 2, a, a + 0.4 + rand() * 0.5); g.stroke();
+    }
+    g.lineWidth = 1.1; g.strokeStyle = 'rgba(236,239,244,0.38)';
+    g.beginPath(); g.moveTo(1.4, h - w / 2); g.lineTo(1.4, w / 2); g.arc(w / 2, w / 2, w / 2 - 1.4, Math.PI, Math.PI * 1.5); g.stroke();
+    g.strokeStyle = 'rgba(236,239,244,0.2)'; g.beginPath(); g.moveTo(w - 1.4, w / 2); g.lineTo(w - 1.4, h - w / 2); g.stroke();
+  });
+  return new THREE.MeshStandardMaterial({
+    map: faceTexture(colour, w, h), bumpMap: faceTexture(streaks, w, h, false), bumpScale: 0.5,
+    metalness: 1, roughness: 0.58, envMap: studioEnv, envMapIntensity: 0.6,
+  });
+}
+/** The rail in a RAIL.W × RAIL.H frame (top-left at the origin), with its shadow on the backing. */
+function scrollRail() {
+  const { W, H } = RAIL, sw = RAIL.strip, sh = H - 8, g = new THREE.Group();
+  const shape = rrShape(sw, sh, sw / 2);
+  shape.holes.push(rr(new THREE.Path(), RAIL.slot, H - 2 * RAIL.slotEnd, RAIL.slot / 2));
+  const strip = new THREE.Mesh(extrude(shape, 1.5, 2, 1.6, 4), [railMaterial(sw, sh), RAIL_SIDE]);
+  strip.castShadow = strip.receiveShadow = true; strip.position.set(W / 2, 0, H / 2); g.add(strip);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(RAIL.slot + 2, H - 2 * RAIL.slotEnd + 2).rotateX(-Math.PI / 2), MAT.gap);
+  floor.position.set(W / 2, 0.3, H / 2); floor.receiveShadow = true; g.add(floor);
+  for (const y of [RAIL.screwY, H - RAIL.screwY]) { const s = screw(4.5); s.position.set(W / 2, STRIP_TOP + 0.3, y); g.add(s); }
+  g.add(shadowCatcher(W, H, W / 2, H / 2));
+  return g;
+}
+/**
+ * The slider in a THUMB.W × THUMB.H frame, standing on the rail, with its shadow on the rail's steel: a
+ * medium-dark grey rubber grip with diagonal ridges moulded across it between plain rounded ends. The
+ * ridges repeat every THUMB.period down the grip, starting at THUMB.cap, so the game repeats them to any
+ * length (it takes its repeat from the middle of the grip, where every period has ridges above and
+ * below it).
+ */
+function scrollThumb() {
+  const { W, H, cap, period } = THUMB, S = 2.5, bw = THUMB.base, bh = H - 2 * THUMB.margin;
+  const cw = bw - 2 * S, ch = bh - 2 * S, g = new THREE.Group();
+  const rubber = new THREE.MeshPhysicalMaterial({ color: 0x55595f, roughness: 0.78, sheen: 0.6, sheenColor: new THREE.Color(0x80868e), sheenRoughness: 0.5, envMap: studioEnv, envMapIntensity: 0.5 });
+  const body = new THREE.Mesh(extrude(rrShape(cw, ch, 3.5), 1.5, 2.5, S, 2), rubber);
+  body.castShadow = body.receiveShadow = true; body.position.set(W / 2, STRIP_TOP, H / 2); g.add(body);
+  // The ridges: diagonal bands raised on the grip's top, in a box from THUMB.cap to H - THUMB.cap.
+  const rh = H - 2 * cap, width = period * 0.5;
+  const ridges = relief(cw, rh, (c) => {
+    c.fillStyle = '#fff';
+    for (let y0 = -Math.ceil(cw / period) * period - period; y0 < rh + period; y0 += period) {
+      c.beginPath(); c.moveTo(0, y0); c.lineTo(cw, y0 + cw); c.lineTo(cw, y0 + cw + width); c.lineTo(0, y0 + width); c.closePath(); c.fill();
+    }
+  }, rubber, { height: 1.4, soften: 0.5, faceGrade: false });
+  ridges.position.set(W / 2, STRIP_TOP + 1.5 + 2 * 2.5 + 0.05, H / 2); g.add(ridges);
+  g.add(shadowCatcher(W, H, W / 2, H / 2, STRIP_TOP + 0.05, 0.45));
+  return g;
+}
+/**
+ * The seam where the panel's scrolling body meets its fixed header: a near-black rubber non-slip edge,
+ * like the nosing on a stair tread, run across the panel from trim to trim. Its tread is corrugated:
+ * three rounded ridges run along its length between deep valleys, each crest catching the light, and
+ * the last one rolls down into the lip over the body, which slides under it. It casts its shadow onto the
+ * body, and the body is shaded a little way out from under the lip. The game draws it as a horizontal
+ * three-slice (scripts/bdp_v3_seam.gd): the ends keep their size and the length between them fits the
+ * panel, so between the ends it is the same all along.
+ * In the SEAM.W × SEAM.H frame the strip runs from y = top to y = nose (its lip), and the body's shade
+ * reaches the frame's foot.
+ */
+const SEAM = { W: 900, H: 48, top: 6, nose: 26, cap: 45 };
+const SEAM_RUBBER_TOP = 5;   // the tread's height above the backing
+function seamStrip() {
+  const { W, H, top, nose } = SEAM, T = SEAM_RUBBER_TOP, g = new THREE.Group();
+  // The cross-section, depth z (down the screen) against height, drawn at shape x = -z so that turning
+  // the extrusion onto the panel's length puts z down the screen.
+  const s = new THREE.Shape(), P = (z, h) => [-z, h];
+  s.moveTo(...P(top, 0));
+  // The corrugation: from a valley at the back edge, 2.5 periods to the last crest, 6 px apart.
+  const z0 = top + 1, z1 = nose - 4, periods = 2.5, valley = T - 3.2, crest = T + 0.6;
+  for (let i = 0; i <= 80; i++) {
+    const z = z0 + (z1 - z0) * i / 80, k = 0.5 - 0.5 * Math.cos(2 * Math.PI * periods * i / 80);
+    s.lineTo(...P(z, valley + (crest - valley) * Math.pow(k, 0.6)));
+  }
+  s.quadraticCurveTo(...P(nose - 0.2, crest - 0.2), ...P(nose, 0.4));   // the last ridge rolls into the lip
+  s.lineTo(...P(nose, 0)); s.lineTo(...P(top, 0));
+  const geo = new THREE.ExtrudeGeometry(s, { depth: W - 8, bevelEnabled: false, curveSegments: 8 });
+  geo.rotateY(Math.PI / 2); geo.translate(4, 0, 0);
+  // Fine grit in the rubber's surface, so it reads as a non-slip tread rather than a smooth moulding.
+  const grit = noiseTexture(90, 0, 10);
+  const rubber = new THREE.MeshPhysicalMaterial({ color: 0x131416, roughness: 0.72, bumpMap: grit, bumpScale: 0.3, sheen: 0.8, sheenColor: new THREE.Color(0x5a6068), sheenRoughness: 0.45, envMap: studioEnv, envMapIntensity: 0.65 });
+  const strip = new THREE.Mesh(geo, rubber); strip.castShadow = strip.receiveShadow = true; g.add(strip);
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.55));
+  return g;
+}
+/** The body's shade just under the lip, where it slides out from beneath the strip, in the seam's frame. */
+function paintSeamShade(g) {
+  const { W, H, nose } = SEAM, grd = g.createLinearGradient(0, nose - 2, 0, H);
+  grd.addColorStop(0, 'rgba(4,6,8,0.62)'); grd.addColorStop(0.18, 'rgba(4,6,8,0.34)');
+  grd.addColorStop(0.55, 'rgba(4,6,8,0.1)'); grd.addColorStop(1, 'rgba(4,6,8,0)');
+  g.fillStyle = grd; g.fillRect(4, nose - 2, W - 8, H - nose + 2);
+}
+
+/**
+ * The recipe diagram as a vitreous enamel sign set into the panel: a cream enamel plate with a thin cream
+ * rim, a navy border band and a pinstripe (the diagram's old outline), glossy under a clear glaze, sunk
+ * below the backing's surface. The recess's cut edge is a steel chamfer: dark along the top and left where it faces away from
+ * the light, lit along the bottom and right; it throws its shadow onto the rim, and the enamel is shaded
+ * in from the edge. Nothing of the
+ * backing's surface is drawn (the recess's top is invisible), so the real backing meets the cut. A few
+ * chips at the corners show the dark steel under the enamel, with rust at their edges. The game draws it
+ * as a 9-slice (scripts/bdp_v3_enamel.gd), so the band, stripe, field and edge shading are the same all
+ * along between the corners, where all the wear is. The grunge on the field is a separate layer
+ * (recipeGrunge). ENAMEL.out is the cut's inset from the render's edge; the game lines the cut up with
+ * the diagram's rect.
+ */
+const ENAMEL = { W: 760, H: 300, out: 3, chamfer: 2.5, corner: 44, rim: 5, band: 7, gap: 5, stripe: 2, radius: 12 };
+const ENAMEL_CREAM = '#feedc3', ENAMEL_NAVY = 0x0a2140;
+function enamelFace(w, h) {
+  return canvas2d(w, h, (g) => {
+    g.fillStyle = ENAMEL_CREAM; g.fillRect(0, 0, w, h);
+    const { rim, band, gap, stripe, radius, chamfer } = ENAMEL, navy = '#' + new THREE.Color(ENAMEL_NAVY).getHexString();
+    // A soft sheen on the glaze from the top-left.
+    const sheen = g.createLinearGradient(0, 0, w * 0.5, h * 1.2);
+    sheen.addColorStop(0, 'rgba(255,255,255,0.2)'); sheen.addColorStop(0.45, 'rgba(255,255,255,0)');
+    g.fillStyle = sheen; g.fillRect(0, 0, w, h);
+    const bi = rim + band / 2;
+    g.strokeStyle = navy; g.lineWidth = band; g.beginPath(); g.roundRect(bi, bi, w - 2 * bi, h - 2 * bi, Math.max(2, radius - bi)); g.stroke();
+    const si = rim + band + gap + stripe / 2;
+    g.lineWidth = stripe; g.beginPath(); g.roundRect(si, si, w - 2 * si, h - 2 * si, Math.max(2, radius - si)); g.stroke();
+    // Shade in from the recess's edge: deeper under the top and left, where the cut's wall stands over it.
+    for (const [x0, y0, x1, y1, a] of [[0, chamfer, 0, chamfer + 10, 0.5], [chamfer, 0, chamfer + 10, 0, 0.44], [0, h - chamfer, 0, h - chamfer - 6, 0.18], [w - chamfer, 0, w - chamfer - 6, 0, 0.16]]) {
+      const grd = g.createLinearGradient(x0, y0, x1, y1); grd.addColorStop(0, `rgba(4,8,14,${a})`); grd.addColorStop(1, 'rgba(4,8,14,0)');
+      g.fillStyle = grd; g.fillRect(0, 0, w, h);
+    }
+    // Chips at the corners: dark steel through the enamel, a rust halo, and the enamel's pale broken edge.
+    for (const [cx, cy, sx, sy] of [[0, 0, 1, 1], [w, 0, -1, 1], [0, h, 1, -1], [w, h, -1, -1]]) {
+      const count = 1 + Math.floor(rand() * 3);
+      for (let i = 0; i < count; i++) {
+        const x = cx + sx * (6 + rand() * 30), y = cy + sy * (6 + rand() * (i ? 30 : 12)), r = 1.6 + rand() * 3.4;
+        const pts = Array.from({ length: 9 }, (_, k) => { const a = k / 9 * Math.PI * 2, q = r * (0.55 + rand() * 0.6); return [x + Math.cos(a) * q, y + Math.sin(a) * q]; });
+        const path = () => { g.beginPath(); pts.forEach(([px, py], k) => (k ? g.lineTo(px, py) : g.moveTo(px, py))); g.closePath(); };
+        g.save(); g.filter = 'blur(1.2px)'; g.fillStyle = 'rgba(128,72,30,0.45)'; g.translate(x, y); g.scale(1.6, 1.6); g.translate(-x, -y); path(); g.fill(); g.restore();
+        path(); g.fillStyle = '#2a2521'; g.fill();
+        g.strokeStyle = 'rgba(255,250,236,0.55)'; g.lineWidth = 0.6; g.stroke();
+      }
+    }
+  });
+}
+/** The sign in an ENAMEL.W × ENAMEL.H frame: the enamel at the bottom of the recess and the recess's cut. */
+function enamelPlate() {
+  const { W, H, out, chamfer, radius } = ENAMEL, pw = W - 2 * out, ph = H - 2 * out, g = new THREE.Group();
+  const top = new THREE.MeshPhysicalMaterial({ map: faceTexture(enamelFace(pw, ph), pw, ph), roughness: 0.34, clearcoat: 0.8, clearcoatRoughness: 0.14, envMap: studioEnv, envMapIntensity: 0.28 });
+  const plate = new THREE.Mesh(extrude(rrShape(pw, ph, radius), 0.5), [top, top]);
+  plate.receiveShadow = true; plate.position.set(W / 2, 0, H / 2); g.add(plate);
+  // The backing round the recess: its top is not drawn (the game's backing is already there) but it
+  // casts its shadow, and its cut edge is a chamfer down to the enamel.
+  const ring = rrShape(W + 80, H + 80, 20); ring.holes.push(rr(new THREE.Path(), pw, ph, radius));
+  const unseen = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+  // Satin rather than mirror steel, so the wall's faces take the light by which way they face.
+  const cut = new THREE.MeshStandardMaterial({ color: 0x7c838c, metalness: 0.35, roughness: 0.55, envMap: studioEnv, envMapIntensity: 0.5 });
+  const wall = new THREE.Mesh(extrude(ring, 3, 2.5, chamfer, 3), [unseen, cut]);
+  wall.castShadow = true; wall.position.set(W / 2, 0.6, H / 2); g.add(wall);
+  return g;
+}
+/**
+ * The grunge on the enamel's field, transparent, RECIPE_GRUNGE.W × RECIPE_GRUNGE.H, anchored at the
+ * field's top-left: uneven yellowing of the glaze, grime blotches, dust specks, hairline crazing, a few
+ * scuffs and two cracks running in from the field's top edge (one near the left, one about half way
+ * across, where the diagram has no icons). Everything is darker or warmer than the cream; a light mark
+ * on light enamel reads as a smudge. The game thickens it towards the plate's edge and clears it round
+ * the icons.
+ */
+const RECIPE_GRUNGE = { W: 900, H: 450 };
+function recipeGrunge(g) {
+  const { W, H } = RECIPE_GRUNGE;
+  for (let i = 0; i < 26; i++) {                                           // yellowing of the glaze
+    const x = rand() * W, y = rand() * H, r = 40 + rand() * 130;
+    const grd = g.createRadialGradient(x, y, 0, x, y, r);
+    grd.addColorStop(0, `rgba(206,158,52,${0.09 + rand() * 0.1})`); grd.addColorStop(1, 'rgba(206,158,52,0)');
+    g.fillStyle = grd; g.fillRect(x - r, y - r, 2 * r, 2 * r);
+  }
+  for (let i = 0; i < 55; i++) {                                           // grime blotches
+    const x = rand() * W, y = rand() * H, r = 8 + rand() * 42;
+    const grd = g.createRadialGradient(x, y, 0, x, y, r);
+    grd.addColorStop(0, `rgba(90,70,40,${0.05 + rand() * 0.08})`); grd.addColorStop(1, 'rgba(90,70,40,0)');
+    g.fillStyle = grd; g.fillRect(x - r, y - r, 2 * r, 2 * r);
+  }
+  for (let i = 0; i < 3000; i++) {                                         // dust specks
+    g.fillStyle = `rgba(58,46,30,${0.12 + rand() * 0.22})`;
+    g.fillRect(rand() * W, rand() * H, 0.4 + rand() * 1, 0.4 + rand() * 1);
+  }
+  g.lineWidth = 0.5;                                                       // crazing in the glaze
+  for (let i = 0; i < 40; i++) {
+    let x = rand() * W, y = rand() * H, a = rand() * Math.PI * 2;
+    g.strokeStyle = `rgba(78,60,36,${0.14 + rand() * 0.14})`; g.beginPath(); g.moveTo(x, y);
+    for (let k = 0, n = 3 + Math.floor(rand() * 6); k < n; k++) { a += (rand() - 0.5) * 1.4; const l = 4 + rand() * 14; x += Math.cos(a) * l; y += Math.sin(a) * l; g.lineTo(x, y); }
+    g.stroke();
+  }
+  for (let i = 0; i < 18; i++) {                                           // scuffs
+    const x = rand() * W, y = rand() * H, a = rand() * Math.PI, l = 6 + rand() * 20;
+    g.strokeStyle = `rgba(70,56,36,${0.1 + rand() * 0.12})`; g.lineWidth = 0.6 + rand() * 0.8;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
+  }
+  // Two cracks from the top edge: a jagged dark line, the enamel's broken edge lit along it, a branch,
+  // and a small flake lost where each starts.
+  const crack = (x, heading, length) => {
+    const pts = [[x, 0]]; let a = heading, px = x, py = 0;
+    while (py < length) { a += (rand() - 0.5) * 0.9; a = Math.min(Math.max(a, 0.45), 2.7); const l = 3 + rand() * 6; px += Math.cos(a) * l; py += Math.sin(a) * l; pts.push([px, py]); }
+    const line = (p, dx, dy) => { g.beginPath(); p.forEach(([qx, qy], k) => (k ? g.lineTo(qx + dx, qy + dy) : g.moveTo(qx + dx, qy + dy))); g.stroke(); };
+    g.lineJoin = 'round';
+    g.strokeStyle = 'rgba(255,248,226,0.55)'; g.lineWidth = 0.7; line(pts, 0.8, 0.8);
+    g.strokeStyle = 'rgba(38,28,16,0.8)'; g.lineWidth = 1.1; line(pts, 0, 0);
+    const k0 = Math.floor(pts.length * 0.45), branch = [pts[k0]]; let bx = pts[k0][0], by = pts[k0][1], ba = heading + (rand() < 0.5 ? -0.8 : 0.8);
+    for (let k = 0; k < 4; k++) { ba += (rand() - 0.5) * 0.7; bx += Math.cos(ba) * (3 + rand() * 5); by += Math.sin(ba) * (3 + rand() * 5); branch.push([bx, by]); }
+    g.strokeStyle = 'rgba(38,28,16,0.6)'; g.lineWidth = 0.8; line(branch, 0, 0);
+    g.fillStyle = 'rgba(42,36,30,0.85)'; g.beginPath(); g.ellipse(x, 1.5, 3.2, 2, 0, 0, Math.PI * 2); g.fill();
+  };
+  crack(58, 1.1, 58);
+  crack(500, 1.75, 44);
+}
+
+/**
+ * The panel's title in raised white letters, with the effects of the INPUTS / OUTPUTS lettering on the
+ * control plate: the same white material raised 5 px on a softened flank, the same painted swept
+ * shadow and contact line, and faces graded from white at the top-left to warm grey at the bottom-right.
+ * Titles change with the building, so each letter is rendered on its own into an atlas, and the game
+ * sets them (scripts/bdp_v3_title.gd) with the font's own spacing, grading the faces across the whole
+ * title as the plate's lettering is graded across its word. The font is the game's title font, Bebas
+ * Neue at 32 px (60 layout px); export.py serves the game's copy, so the letters match its spacing.
+ */
+const TITLE = { size: 60, pad: 10, height: 5, soften: 0.7, atlasW: 1400 };
+const TITLE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\u2014\u2013-()+&/.,:;\'"%\u00a3$!?#*';
+const TITLE_FAMILY = '"BebasTitle", "Bebas Neue"';
+try { const face = new FontFace('BebasTitle', 'url(/fonts/BebasNeue-Regular.ttf)'); await face.load(); document.fonts.add(face); }
+catch (e) { console.warn('title font: falling back to the web Bebas Neue', e); }
+/** The plate lettering's white (see buildBlock). */
+const WHITE_LETTERS = new THREE.MeshPhysicalMaterial({ color: 0xf4f2ec, roughness: 0.45, clearcoat: 0.3, clearcoatRoughness: 0.3 });
+/** Draws one title letter with its pen at (ox, baseline). */
+const titleLetter = (ch, ox, baseline) => (g, col) => {
+  g.font = `${TITLE.size}px ${TITLE_FAMILY}`; g.fillStyle = col; g.textBaseline = 'alphabetic'; g.textAlign = 'left';
+  g.fillText(ch, ox, baseline);
+};
+/**
+ * The atlas's cells, in rows TITLE.atlasW wide: per letter [x, y, w, h, pen x in the cell], with every
+ * cell's baseline at `baseline`. Each cell holds the letter's ink with TITLE.pad round it, room for its
+ * shadow.
+ */
+function titleAtlas() {
+  const c = document.createElement('canvas').getContext('2d'); c.font = `${TITLE.size}px ${TITLE_FAMILY}`;
+  const fm = c.measureText('H'), asc = Math.ceil(fm.fontBoundingBoxAscent), desc = Math.ceil(fm.fontBoundingBoxDescent);
+  const h = asc + desc + 2 * TITLE.pad, baseline = TITLE.pad + asc, cells = {};
+  let x = 0, y = 0;
+  for (const ch of TITLE_CHARS) {
+    const m = c.measureText(ch), left = Math.max(0, Math.ceil(m.actualBoundingBoxLeft));
+    const w = left + Math.ceil(Math.max(m.width, m.actualBoundingBoxRight)) + 2 * TITLE.pad;
+    if (x + w > TITLE.atlasW) { x = 0; y += h; }
+    cells[ch] = [x, y, w, h, TITLE.pad + left];
+    x += w;
+  }
+  return { cells, baseline, W: TITLE.atlasW, H: y + h };
+}
+
+/**
+ * The cable down the diagnostics' lights: black rubber insulation with a yellow tracer stripe along its
+ * top, lying on the steel between a steel cable gland at each end, with its shadow on the steel. The game
+ * draws it as a vertical three-slice (scripts/bdp_v3_cable.gd): the glands keep their size and the cable
+ * between them stretches, which it can, being the same all along. CABLE.x is the cable's centre in the
+ * CABLE.W × CABLE.H frame.
+ */
+const CABLE = { W: 32, H: 240, r: 6.5, cap: 30, x: 13 };
+function cableRun() {
+  const { W, H, r, cap, x } = CABLE, g = new THREE.Group();
+  // The insulation's colour round its circumference: u = 0.5 faces up, so the stripe sits just towards
+  // the light.
+  const skin = canvas2d(64, 4, (c) => { c.fillStyle = '#1c1e21'; c.fillRect(0, 0, 64, 4); c.fillStyle = '#e9b81a'; c.fillRect(28, 0, 4, 4); }, 1);
+  const map = new THREE.CanvasTexture(skin); map.colorSpace = THREE.SRGBColorSpace;
+  // Near-black, with one crisp glossy highlight along its top: black rubber that reads as round against
+  // the dark steel, rather than a grey that sinks into it.
+  const insulation = new THREE.MeshPhysicalMaterial({ map, roughness: 0.62, clearcoat: 1, clearcoatRoughness: 0.18, envMap: studioEnv, envMapIntensity: 0.45 });
+  const ends = [cap - 13, H - cap + 13], len = ends[1] - ends[0];
+  const cable = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 40, 1, true).rotateX(Math.PI / 2), insulation);
+  cable.position.set(x, r + 0.4, H / 2); cable.castShadow = cable.receiveShadow = true; g.add(cable);
+  for (const z of ends) {                                                  // a gland: hex body and a domed cap
+    const hex = new THREE.Mesh(new THREE.CylinderGeometry(9, 9.3, 3.5, 6), MAT.screw); hex.position.set(x, 1.75, z);
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(7.2, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), MAT.screw); dome.scale.y = 1.2; dome.position.set(x, 3.5, z);
+    for (const m of [hex, dome]) { m.castShadow = m.receiveShadow = true; g.add(m); }
+  }
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.65));
+  return g;
+}
+
+/**
+ * The drum counter: a gunmetal housing with a window cut along it, and black drums side by side in the
+ * window, their curve catching the light across the middle. The game prints the digits on the drums live
+ * (scripts/bdp_v3_counter.gd), so it can roll them, then lays counter_glass over them: the drums' curve
+ * shading away top and bottom, the window lip's shadow and a faint glare. Both renders are horizontal
+ * three-slices: the ends keep their size and the game repeats the middle cell once per digit.
+ * COUNTER.cells cells are rendered; the repeat is taken from the middle one.
+ */
+const COUNTER = { cap: 18, cell: 30, H: 52, cells: 5, win: [9, 43], drumR: 26 };
+function counterHousing() {
+  const { cap, cell, H, cells, win, drumR } = COUNTER, W = 2 * cap + cells * cell, g = new THREE.Group();
+  const wy = (win[0] + win[1]) / 2, wh = win[1] - win[0];
+  const shape = rrShape(W - 4, H - 4, 8); shape.holes.push(rr(new THREE.Path(), W - 2 * cap + 8, wh, 3, 0, wy - H / 2));
+  const housing = new THREE.Mesh(extrude(shape, 2, 2, 1.6, 3), MAT.frame);
+  housing.castShadow = housing.receiveShadow = true; housing.position.set(W / 2, 2, H / 2); g.add(housing);
+  const drum = new THREE.MeshStandardMaterial({ color: 0x151618, roughness: 0.45, metalness: 0.2, envMap: studioEnv, envMapIntensity: 0.6 });
+  for (let i = 0; i < cells; i++) {                                        // drums, axis across the counter
+    const d = new THREE.Mesh(new THREE.CylinderGeometry(drumR, drumR, cell - 2.4, 48, 1).rotateZ(Math.PI / 2), drum);
+    d.position.set(cap + i * cell + cell / 2, 4.6 - drumR, wy); d.receiveShadow = true; g.add(d);
+  }
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W - 2 * cap + 8, wh).rotateX(-Math.PI / 2), MAT.gap);
+  floor.position.set(W / 2, -2, wy); g.add(floor);
+  g.add(shadowCatcher(W, H, W / 2, H / 2));
+  return { group: g, W };
+}
+/** The layer over the digits: the drums' curve shading, the window lip's shadow, a faint glare. */
+function paintCounterGlass(g, W) {
+  const { cap, win } = COUNTER, x0 = cap - 4, x1 = W - cap + 4, [y0, y1] = win, h = y1 - y0;
+  const curve = g.createLinearGradient(0, y0, 0, y1);
+  curve.addColorStop(0, 'rgba(0,0,0,0.78)'); curve.addColorStop(0.28, 'rgba(0,0,0,0.12)'); curve.addColorStop(0.55, 'rgba(0,0,0,0)');
+  curve.addColorStop(0.78, 'rgba(0,0,0,0.18)'); curve.addColorStop(1, 'rgba(0,0,0,0.82)');
+  g.fillStyle = curve; g.fillRect(x0, y0, x1 - x0, h);
+  const lip = g.createLinearGradient(0, y0, 0, y0 + 6); lip.addColorStop(0, 'rgba(0,0,0,0.55)'); lip.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = lip; g.fillRect(x0, y0, x1 - x0, 6);
+  const glare = g.createLinearGradient(0, y0 + h * 0.18, 0, y0 + h * 0.34);
+  glare.addColorStop(0, 'rgba(255,255,255,0)'); glare.addColorStop(0.5, 'rgba(255,255,255,0.1)'); glare.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = glare; g.fillRect(x0, y0, x1 - x0, h);
+}
+
+/**
+ * The action sheets' plate: a worn steel plate, like the control plates, that slides in over the panel's
+ * body inside the brass trim. No screws. The game draws it as a 9-slice (scripts/building_detail_panel_v2.gd,
+ * _open_sheet) under the lamp over the panel.
+ */
+const SHEET = { W: 820, H: 1600, M: 10 };
+function sheetPlate() {
+  const { W, H, M } = SHEET, g = new THREE.Group(), pw = W - 2 * M, ph = H - 2 * M;
+  const plate = new THREE.Mesh(extrude(rrShape(pw, ph, 12), 4, 4.5, 3.6, 6), [plateMaterial(pw, ph, { icons: [], buttons: [], screws: [] }), MAT.plateSide]);
+  plate.castShadow = plate.receiveShadow = true; plate.position.set(W / 2, 0, H / 2); g.add(plate);
+  g.add(shadowCatcher(W, H, W / 2, H / 2));
+  return g;
+}
+
+/**
+ * The diagnostics' dark plastic plate: a moulded black plastic panel with a rounded, lightly glossy edge
+ * and a faint moulded grain, over the section it fills, with its shadow. No screws in the render: the
+ * game sets silver screws along its top and sides (screw_silver), spaced to its size. A 9-slice.
+ */
+const PLASTIC = { W: 600, H: 400, M: 14, radius: 12 };
+function plasticPlate() {
+  const { W, H, M, radius } = PLASTIC, pw = W - 2 * M, ph = H - 2 * M, g = new THREE.Group();
+  const grain = canvas2d(pw, ph, (c) => {
+    c.fillStyle = '#0e0f11'; c.fillRect(0, 0, pw, ph);
+    for (let i = 0; i < 1400; i++) { c.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '0,0,0'},${0.02 + rand() * 0.03})`; c.fillRect(rand() * pw, rand() * ph, 1 + rand() * 2, 1 + rand() * 2); }
+    const edge = c.createLinearGradient(0, 0, 0, 14); edge.addColorStop(0, 'rgba(255,255,255,0.05)'); edge.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = edge; c.fillRect(0, 0, pw, 14);
+  });
+  const face = new THREE.MeshPhysicalMaterial({ map: faceTexture(grain, pw, ph), roughness: 0.6, clearcoat: 0.3, clearcoatRoughness: 0.45, envMap: studioEnv, envMapIntensity: 0.35 });
+  const side = new THREE.MeshPhysicalMaterial({ color: 0x121315, roughness: 0.4, clearcoat: 0.5, clearcoatRoughness: 0.3, envMap: studioEnv, envMapIntensity: 0.7 });
+  const plate = new THREE.Mesh(extrude(rrShape(pw, ph, radius), 3, 3, 2.6, 5), [face, side]);
+  plate.castShadow = plate.receiveShadow = true; plate.position.set(W / 2, 0, H / 2); g.add(plate);
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.55));
+  return g;
+}
+/** A silver cross-head screw for the plastic plate, in a SILVER_SCREW.S frame, with its shadow. */
+const SILVER_SCREW = { S: 30, r: 7 };
+function silverScrew() {
+  const { S, r } = SILVER_SCREW, g = new THREE.Group();
+  const chrome = new THREE.MeshStandardMaterial({ color: 0xb4b9c0, metalness: 1, roughness: 0.32, envMap: studioEnv, envMapIntensity: 0.95 });
+  const head = new THREE.Mesh(new THREE.SphereGeometry(r, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2), chrome);
+  head.scale.y = 0.45; head.castShadow = true; head.position.set(S / 2, 0, S / 2); g.add(head);
+  for (const a of [0, Math.PI / 2]) {                                      // the cross
+    const slot = new THREE.Mesh(new THREE.BoxGeometry(r * 1.15, r * 0.3, r * 0.17), MAT.slot);
+    slot.rotation.y = a + 0.35; slot.position.set(S / 2, r * 0.38, S / 2); g.add(slot);
+  }
+  g.add(shadowCatcher(S, S, S / 2, S / 2, 0.05, 0.55));
+  return g;
+}
+
+/**
+ * The inbound shipments' rolling door, slid up: a roller housing across the top, corrugated slats painted a
+ * dark industrial grey (so white lettering reads on them) below it, a bottom bar with a rubber seal, and a steel guide channel down each side. The game
+ * draws it as the section's backdrop (scripts/bdp_v3_door.gd): the sides and the housing and bar keep
+ * their size, the width between the guides stretches (the slats are the same all along) and the slats
+ * repeat down to the height the door must reach. DOOR.period is a slat's pitch; the slats run from
+ * DOOR.top to DOOR.H - DOOR.bottom, a whole number of pitches.
+ */
+const DOOR = { W: 760, H: 310, side: 16, top: 44, bottom: 26, period: 12 };
+function rollingDoor() {
+  const { W, H, side, top, bottom, period } = DOOR, g = new THREE.Group();
+  const galv = new THREE.MeshStandardMaterial({ color: 0x626970, metalness: 0.65, roughness: 0.5, envMap: studioEnv, envMapIntensity: 0.55 });
+  const painted = new THREE.MeshStandardMaterial({ color: 0x434950, metalness: 0.6, roughness: 0.5, envMap: studioEnv, envMapIntensity: 0.6 });
+  // Slats: a corrugated cross-section (depth down the screen against height) extruded across the door.
+  const s = new THREE.Shape(), P = (z, h) => [-z, h], z0 = top, z1 = H - bottom;
+  s.moveTo(...P(z0, 0));
+  for (let z = z0; z < z1 - 0.01; z += period) {
+    s.lineTo(...P(z, 1.2)); s.quadraticCurveTo(...P(z + period * 0.45, 5.2), ...P(z + period - 1.2, 1.6));
+    s.lineTo(...P(z + period - 0.6, 0.6)); s.lineTo(...P(z + period, 1.2));
+  }
+  s.lineTo(...P(z1, 0)); s.lineTo(...P(z0, 0));
+  const slatGeo = new THREE.ExtrudeGeometry(s, { depth: W - 2 * side + 8, bevelEnabled: false, curveSegments: 6 });
+  slatGeo.rotateY(Math.PI / 2); slatGeo.translate(side - 4, 0, 0);
+  const slats = new THREE.Mesh(slatGeo, galv); slats.castShadow = slats.receiveShadow = true; g.add(slats);
+  // The roller housing across the top, a rounded box.
+  const housing = new THREE.Mesh(extrude(rrShape(W - 4, top - 4, 6), 6, 2.5, 2, 3), painted);
+  housing.castShadow = housing.receiveShadow = true; housing.position.set(W / 2, 1, top / 2); g.add(housing);
+  // The bottom bar and its rubber seal.
+  const bar = new THREE.Mesh(extrude(rrShape(W - 2 * side + 6, bottom - 8, 2), 4, 1.5, 1.2, 2), painted);
+  bar.castShadow = bar.receiveShadow = true; bar.position.set(W / 2, 0, H - bottom / 2 - 3); g.add(bar);
+  const seal = new THREE.Mesh(new THREE.BoxGeometry(W - 2 * side + 6, 3, 5), MAT.gap); seal.position.set(W / 2, 1.5, H - 4); g.add(seal);
+  // The guide channels down each side.
+  for (const x of [side / 2, W - side / 2]) {
+    const guide = new THREE.Mesh(extrude(rrShape(side - 2, H - top + 2, 2), 7, 1.2, 1, 2), painted);
+    guide.castShadow = guide.receiveShadow = true; guide.position.set(x, 0, top + (H - top) / 2 - 1); g.add(guide);
+  }
+  g.add(shadowCatcher(W, H, W / 2, H / 2));
+  return g;
+}
+
+/**
+ * The section headings' letters, in the INPUTS / OUTPUTS lettering: IBM Plex Sans Bold at 28 layout px,
+ * the same white letters raised on the same softened flank, with the same swept shadow and contact line.
+ * As for the title, each letter is rendered on its own into an atlas cell; a cell also records the
+ * letter's advance, and the game (scripts/bdp_v3_heading.gd) sets the letters along a line by them.
+ */
+const HEADING = { size: 28, pad: 8, atlasW: 900, weight: 700, family: '"IBM Plex Sans"' };
+const HEADING_CHARS = TITLE_CHARS + '·';
+const headingLetter = (ch, ox, baseline) => (g, col) => {
+  g.font = `${HEADING.weight} ${HEADING.size}px ${HEADING.family}`; g.fillStyle = col; g.textBaseline = 'alphabetic'; g.textAlign = 'left';
+  g.fillText(ch, ox, baseline);
+};
+/** Cells as titleAtlas's, per letter [x, y, w, h, pen x in the cell, advance]; `space` is a space's advance. */
+function headingAtlas() {
+  const c = document.createElement('canvas').getContext('2d'); c.font = `${HEADING.weight} ${HEADING.size}px ${HEADING.family}`;
+  const fm = c.measureText('H'), asc = Math.ceil(fm.fontBoundingBoxAscent), desc = Math.ceil(fm.fontBoundingBoxDescent);
+  const h = asc + desc + 2 * HEADING.pad, baseline = HEADING.pad + asc, cells = {};
+  let x = 0, y = 0;
+  for (const ch of HEADING_CHARS) {
+    const m = c.measureText(ch), left = Math.max(0, Math.ceil(m.actualBoundingBoxLeft));
+    const w = left + Math.ceil(Math.max(m.width, m.actualBoundingBoxRight)) + 2 * HEADING.pad;
+    if (x + w > HEADING.atlasW) { x = 0; y += h; }
+    cells[ch] = [x, y, w, h, HEADING.pad + left, m.width];
+    x += w;
+  }
+  return { cells, baseline, space: c.measureText(' ').width, W: HEADING.atlasW, H: y + h };
+}
+
+/** Black moulded plastic with a faint grain, as the diagnostics' case (plasticPlate) is made of. */
+function blackPlasticFace(w, h, colour, highlight = 0.05) {
+  return canvas2d(w, h, (c) => {
+    c.fillStyle = colour; c.fillRect(0, 0, w, h);
+    for (let i = 0; i < w * h / 170; i++) { c.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '0,0,0'},${0.02 + rand() * 0.03})`; c.fillRect(rand() * w, rand() * h, 1 + rand() * 2, 1 + rand() * 2); }
+    const edge = c.createLinearGradient(0, 0, 0, 10); edge.addColorStop(0, `rgba(255,255,255,${highlight})`); edge.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = edge; c.fillRect(0, 0, w, 10);
+  });
+}
+const BLACK_PLASTIC_SIDE = () => new THREE.MeshPhysicalMaterial({ color: 0x15171a, roughness: 0.4, clearcoat: 0.5, clearcoatRoughness: 0.3, envMap: studioEnv, envMapIntensity: 0.7 });
+
+/**
+ * A diagnostics module: one check's own instrument, a slightly raised black plastic panel a shade
+ * lighter than the case it sits in, with a rounded glossy edge and its shadow on the case. A 9-slice.
+ */
+const MODULE = { W: 600, H: 120, M: 10, radius: 7 };
+function diagModule() {
+  const { W, H, M, radius } = MODULE, pw = W - 2 * M, ph = H - 2 * M, g = new THREE.Group();
+  const face = new THREE.MeshPhysicalMaterial({ map: faceTexture(blackPlasticFace(pw, ph, '#1a1c20', 0.07), pw, ph), roughness: 0.55, clearcoat: 0.35, clearcoatRoughness: 0.4, envMap: studioEnv, envMapIntensity: 0.4 });
+  const plate = new THREE.Mesh(extrude(rrShape(pw, ph, radius), 2.5, 2.2, 1.8, 4), [face, BLACK_PLASTIC_SIDE()]);
+  plate.castShadow = plate.receiveShadow = true; plate.position.set(W / 2, 0, H / 2); g.add(plate);
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.7));
+  return g;
+}
+
+/**
+ * Where a module takes its feed from the diagnostics' cable: a moulded black junction box clamped over
+ * the cable (TAP.x, as CABLE.x), a short branch of the same black-and-yellow cable, and a steel gland
+ * where it enters the module's end (at TAP.plug), with their shadows.
+ */
+const TAP = { W: 96, H: 44, x: 13, plug: 78, r: 4.8 };
+function cableTap() {
+  const { W, H, x, plug, r } = TAP, g = new THREE.Group(), cz = H / 2;
+  const skin = canvas2d(64, 4, (c) => { c.fillStyle = '#1c1e21'; c.fillRect(0, 0, 64, 4); c.fillStyle = '#e9b81a'; c.fillRect(15, 0, 4, 4); }, 1);
+  const map = new THREE.CanvasTexture(skin); map.colorSpace = THREE.SRGBColorSpace;
+  const insulation = new THREE.MeshPhysicalMaterial({ map, roughness: 0.62, clearcoat: 1, clearcoatRoughness: 0.18, envMap: studioEnv, envMapIntensity: 0.45 });
+  const len = plug - 8 - x;
+  const branch = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 36, 1, true).rotateZ(Math.PI / 2), insulation);
+  branch.position.set(x + len / 2, r + 0.4, cz); branch.castShadow = branch.receiveShadow = true; g.add(branch);
+  const box = new THREE.Mesh(extrude(rrShape(24, 28, 5), 12, 1.6, 1.3, 3), [new THREE.MeshPhysicalMaterial({ map: faceTexture(blackPlasticFace(24, 28, '#1b1d21', 0.08), 24, 28), roughness: 0.5, clearcoat: 0.4, clearcoatRoughness: 0.35, envMap: studioEnv, envMapIntensity: 0.5 }), BLACK_PLASTIC_SIDE()]);
+  box.castShadow = box.receiveShadow = true; box.position.set(x, 0, cz); g.add(box);
+  const sc = screw(3.2); sc.position.set(x, 15.2, cz); g.add(sc);
+  // The gland: a tapered boot round the cable, then a hex nut against the module's end.
+  const boot = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.6, r + 2.2, 8, 24).rotateZ(Math.PI / 2), MAT.screw);
+  boot.position.set(plug - 8, r + 0.4, cz);
+  const nut = new THREE.Mesh(new THREE.CylinderGeometry(7.2, 7.2, 5, 6).rotateZ(Math.PI / 2), MAT.screw);
+  nut.position.set(plug - 1.5, r + 0.4, cz);
+  for (const m of [boot, nut]) { m.castShadow = m.receiveShadow = true; g.add(m); }
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.65));
+  return g;
+}
+
+/**
+ * The diagnostics' Visual / Text switch: a slot moulded into the case (a raised black rim round a dark
+ * floor), and its slider, an off-white ridged thumb, rendered apart so the game can slide it.
+ */
+const TOGGLE = { W: 96, H: 44, slotW: 62, slotH: 18, knob: 44, knobW: 26, knobH: 24 };
+function toggleSlot() {
+  const { W, H, slotW, slotH } = TOGGLE, g = new THREE.Group();
+  const rim = rrShape(slotW + 12, slotH + 12, 11); rim.holes.push(rr(new THREE.Path(), slotW, slotH, 8));
+  const face = new THREE.MeshPhysicalMaterial({ map: faceTexture(blackPlasticFace(slotW + 12, slotH + 12, '#1a1c20', 0.08), slotW + 12, slotH + 12), roughness: 0.5, clearcoat: 0.4, clearcoatRoughness: 0.35, envMap: studioEnv, envMapIntensity: 0.5 });
+  const bezel = new THREE.Mesh(extrude(rim, 2, 1.4, 1.1, 3), [face, BLACK_PLASTIC_SIDE()]);
+  bezel.castShadow = bezel.receiveShadow = true; bezel.position.set(W / 2, 0, H / 2); g.add(bezel);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(slotW, slotH).rotateX(-Math.PI / 2), MAT.gap);
+  floor.position.set(W / 2, 0.2, H / 2); floor.receiveShadow = true; g.add(floor);
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.6));
+  return g;
+}
+function toggleKnob() {
+  const { knob, knobW, knobH } = TOGGLE, g = new THREE.Group(), c0 = knob / 2;
+  const top = new THREE.MeshPhysicalMaterial({ map: faceTexture(canvas2d(knobW, knobH, (c) => paintPlastic(c, knobW, knobH)), knobW, knobH), ...KNOB_PLASTIC });
+  const body = new THREE.Mesh(extrude(rrShape(knobW, knobH, 5), 6, 2.2, 1.8, 3), [top, MAT.skirt]);
+  body.castShadow = body.receiveShadow = true; body.position.set(c0, 0.5, c0); g.add(body);
+  for (const dx of [-6.5, 0, 6.5]) {                                       // grip ridges across the thumb
+    const ridge = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, knobH - 8, 12).rotateX(Math.PI / 2), MAT.plastic);
+    ridge.position.set(c0 + dx, 10.6, c0); ridge.castShadow = ridge.receiveShadow = true; g.add(ridge);
+  }
+  g.add(shadowCatcher(knob, knob, c0, c0, 0.05, 0.6));
+  return g;
+}
+
+/**
+ * A factory door for Labour and Wages, one per kind of worker: a painted steel leaf in a dark steel jamb,
+ * a small wired-glass window near its top (dark, or lit warm from inside when that kind of worker is
+ * employed), a lever handle, and a brushed steel kick plate across its foot, where the game engraves the
+ * headcount. LDOOR.plate is the kick plate's rect in the frame.
+ */
+const LDOOR = { W: 200, H: 300, M: 10, jamb: 11 };
+function labourDoorGeometry() {
+  const { W, H, M, jamb } = LDOOR, lx = M + jamb + 2, ly = M + jamb + 2, lw = W - 2 * lx, lh = H - M - 3 - ly;
+  const plate = [lx + 7, ly + lh - 7 - lh * 0.24, lw - 14, lh * 0.24];
+  const win = [lx + lw * 0.26, ly + lh * 0.09, lw * 0.48, lh * 0.2];
+  return { lx, ly, lw, lh, plate, win };
+}
+/** Weathered paint for a door leaf or jamb (w × h): mottling, grime running down from the top, dirt
+ * gathering at the foot, chips through to primer and rust (thicker along the edges and low down), and
+ * scuffs. Returns the colour, and a bump map where the chips are cut into the paint. `wear` scales it. */
+function weatheredPaint(w, h, base, { wear = 1, grip = null, hinges = [] } = {}) {
+  const chips = [];
+  const colour = canvas2d(w, h, (c) => {
+    c.fillStyle = base; c.fillRect(0, 0, w, h);
+    for (let i = 0; i < 46 * wear; i++) {                                  // broad mottling
+      const x = rand() * w, y = rand() * h, r = 8 + rand() * 30, dark = rand() < 0.55;
+      const grd = c.createRadialGradient(x, y, 0, x, y, r);
+      grd.addColorStop(0, dark ? `rgba(12,16,18,${0.05 + rand() * 0.05})` : `rgba(210,220,222,${0.03 + rand() * 0.04})`);
+      grd.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = grd; c.fillRect(x - r, y - r, 2 * r, 2 * r);
+    }
+    for (let i = 0; i < 34 * wear; i++) {                                  // grime run down from the top
+      const x = rand() * w, y0 = rand() * h * 0.5, len = 20 + rand() * h * 0.6, wd = 0.8 + rand() * 2.4;
+      const grd = c.createLinearGradient(0, y0, 0, y0 + len);
+      grd.addColorStop(0, `rgba(20,22,20,${0.06 + rand() * 0.07})`); grd.addColorStop(1, 'rgba(20,22,20,0)');
+      c.fillStyle = grd; c.fillRect(x, y0, wd, len);
+    }
+    const foot = c.createLinearGradient(0, h * 0.55, 0, h);                 // dirt at the foot
+    foot.addColorStop(0, 'rgba(40,32,22,0)'); foot.addColorStop(1, `rgba(40,32,22,${0.42 * wear})`);
+    c.fillStyle = foot; c.fillRect(0, h * 0.55, w, h * 0.45);
+    if (grip) {                                                            // hands round the handle
+      const [gx, gy] = grip, grd = c.createRadialGradient(gx, gy, 0, gx, gy, 24);
+      grd.addColorStop(0, 'rgba(18,20,22,0.34)'); grd.addColorStop(1, 'rgba(18,20,22,0)');
+      c.fillStyle = grd; c.fillRect(gx - 24, gy - 24, 48, 48);
+    }
+    for (const hy of hinges) {                                             // rust run down from the hinges
+      const grd = c.createLinearGradient(0, hy, 0, hy + 26);
+      grd.addColorStop(0, 'rgba(120,58,24,0.55)'); grd.addColorStop(1, 'rgba(120,58,24,0)');
+      c.fillStyle = grd; c.fillRect(1, hy, 3 + rand() * 2, 26);
+    }
+    // Chips, as many as the surface is large: mostly along the edges and down at the foot, where
+    // boots, trolleys and the frame catch it; grey primer showing, rusted at the heart of the larger ones.
+    const chipCount = Math.round(28 * wear * (w * h) / 40000 + 10 * wear * (w + h) / 400);
+    for (let i = 0; i < chipCount; i++) {
+      const edge = rand() < 0.7;
+      const x = edge ? (rand() < 0.5 ? rand() * 5 : w - rand() * 5) : rand() * w;
+      const y = edge ? rand() * h : h * (0.6 + rand() * 0.4);
+      const r = 0.5 + rand() * (edge ? 1.8 : 1.3), pts = [];
+      for (let k = 0; k < 7; k++) { const a = k / 7 * Math.PI * 2, rr = r * (0.55 + rand() * 0.6); pts.push([x + Math.cos(a) * rr, y + Math.sin(a) * rr * 0.8]); }
+      chips.push(pts);
+      c.fillStyle = `rgba(${128 + rand() * 20},${132 + rand() * 18},${128 + rand() * 16},0.6)`;
+      c.beginPath(); pts.forEach(([px, py], k) => (k ? c.lineTo(px, py) : c.moveTo(px, py))); c.closePath(); c.fill();
+      if (r > 1.2 && rand() < 0.5) { c.fillStyle = `rgba(${86 + rand() * 24},${42 + rand() * 14},${20 + rand() * 8},0.75)`; c.beginPath(); c.arc(x, y, r * 0.5, 0, Math.PI * 2); c.fill(); }
+    }
+    for (let i = 0; i < 90 * wear; i++) {                                  // scuffs, most of them low
+      const x = rand() * w, y = h * (rand() < 0.7 ? 0.62 + rand() * 0.38 : rand()), a = (rand() - 0.5) * 0.9, l = 3 + rand() * 12;
+      c.strokeStyle = rand() < 0.6 ? `rgba(196,200,198,${0.08 + rand() * 0.14})` : `rgba(10,10,10,${0.1 + rand() * 0.14})`;
+      c.lineWidth = 0.5 + rand() * 0.5; c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); c.stroke();
+    }
+    const lock = c.createLinearGradient(w - 8, 0, w, 0);                   // the lock edge rubbed bright
+    lock.addColorStop(0, 'rgba(200,205,205,0)'); lock.addColorStop(1, 'rgba(200,205,205,0.14)');
+    c.fillStyle = lock; c.fillRect(w - 8, h * 0.3, 8, h * 0.4);
+  });
+  const bump = canvas2d(w, h, (c) => {
+    c.fillStyle = '#808080'; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#4a4a4a';
+    for (const pts of chips) { c.beginPath(); pts.forEach(([px, py], k) => (k ? c.lineTo(px, py) : c.moveTo(px, py))); c.closePath(); c.fill(); }
+  });
+  return { colour, bump };
+}
+
+/** Diamond tread plate for a threshold (w × h): raised lozenges on worn steel. */
+function treadPlate(w, h) {
+  return canvas2d(w, h, (c) => {
+    c.fillStyle = '#7c8185'; c.fillRect(0, 0, w, h);
+    for (let y = 1; y < h; y += 3.2) for (let x = (Math.round(y / 3.2) % 2) * 3; x < w; x += 6) {
+      c.fillStyle = 'rgba(220,224,226,0.55)'; c.beginPath(); c.ellipse(x, y, 1.9, 0.7, 0.6, 0, Math.PI * 2); c.fill();
+    }
+    const dirt = c.createLinearGradient(0, 0, w, 0); dirt.addColorStop(0, 'rgba(40,32,22,0.35)'); dirt.addColorStop(0.5, 'rgba(40,32,22,0.1)'); dirt.addColorStop(1, 'rgba(40,32,22,0.35)');
+    c.fillStyle = dirt; c.fillRect(0, 0, w, h);
+  });
+}
+
+function labourDoor(lit) {
+  const { W, H, M, jamb } = LDOOR, { lx, ly, lw, lh, plate, win } = labourDoorGeometry(), g = new THREE.Group();
+  const at = (m, x, z, y = 0) => { m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; g.add(m); return m; };
+  const [wx, wy, ww, wh] = win, [px, py, pw, ph] = plate;
+  const hingeYs = [ly + lh * 0.1, ly + lh * 0.5, ly + lh * 0.88];
+  const hx = lx + lw - 16, hz = ly + lh * 0.5;
+  // The jamb: a steel channel down each side and across the head, painted darker and as worn, with a
+  // tread-plate threshold at the foot.
+  const jambPaint = weatheredPaint(jamb, H - 2 * M, '#343a40', { wear: 0.5 });
+  const jambMat = new THREE.MeshStandardMaterial({ map: faceTexture(jambPaint.colour, jamb, H - 2 * M), bumpMap: faceTexture(jambPaint.bump, jamb, H - 2 * M, false), bumpScale: 0.6, metalness: 0.55, roughness: 0.55, envMap: studioEnv, envMapIntensity: 0.6 });
+  const headPaint = weatheredPaint(W - 2 * M, jamb, '#343a40', { wear: 0.4 });
+  const headMat = new THREE.MeshStandardMaterial({ map: faceTexture(headPaint.colour, W - 2 * M, jamb), metalness: 0.55, roughness: 0.55, envMap: studioEnv, envMapIntensity: 0.6 });
+  at(new THREE.Mesh(extrude(rrShape(jamb, H - 2 * M, 2), 7, 1.2, 1, 2), jambMat), M + jamb / 2, H / 2);
+  at(new THREE.Mesh(extrude(rrShape(jamb, H - 2 * M, 2), 7, 1.2, 1, 2), jambMat), W - M - jamb / 2, H / 2);
+  at(new THREE.Mesh(extrude(rrShape(W - 2 * M, jamb, 2), 7.5, 1.2, 1, 2), headMat), W / 2, M + jamb / 2);
+  const tw = W - 2 * M - 2 * jamb, tread = new THREE.MeshStandardMaterial({ map: faceTexture(treadPlate(tw, 5), tw, 5), metalness: 0.85, roughness: 0.45, envMap: studioEnv, envMapIntensity: 0.8 });
+  at(new THREE.Mesh(extrude(rrShape(tw, 5, 1), 1.5, 0.8, 0.6, 2), [tread, MAT.screw]), W / 2, H - M - 2.5);
+  // The leaf: weathered paint over steel, the window cut through it, a pressed panel below the window.
+  const paint = weatheredPaint(lw, lh, '#4b5f68', { grip: [hx - lx, hz - ly], hinges: hingeYs.map((y) => y - ly + 8) });
+  const leafShape = rrShape(lw, lh, 2);
+  leafShape.holes.push(rr(new THREE.Path(), ww, wh, 2, wx + ww / 2 - (lx + lw / 2), -(wy + wh / 2 - (ly + lh / 2))));
+  const leafMat = new THREE.MeshStandardMaterial({ map: faceTexture(paint.colour, lw, lh), bumpMap: faceTexture(paint.bump, lw, lh, false), bumpScale: 0.8, metalness: 0.4, roughness: 0.6, envMap: studioEnv, envMapIntensity: 0.5 });
+  at(new THREE.Mesh(extrude(leafShape, 3, 1, 0.8, 2), [leafMat, jambMat]), lx + lw / 2, ly + lh / 2);
+  const panelTop = wy + wh + 12, panelBottom = py - 10, pnl = rrShape(lw - 22, panelBottom - panelTop, 3);
+  pnl.holes.push(rr(new THREE.Path(), lw - 28, panelBottom - panelTop - 6, 2));
+  at(new THREE.Mesh(extrude(pnl, 0.6, 0.5, 0.4, 2), leafMat), lx + lw / 2, (panelTop + panelBottom) / 2, 4.2);
+  // Three barrel hinges on the hinge side, and a door closer across the head.
+  const hingeMat = new THREE.MeshStandardMaterial({ color: 0x5b5a57, map: noiseTexture(30, 40, 30), metalness: 0.8, roughness: 0.5, envMap: studioEnv, envMapIntensity: 0.7 });
+  for (const y of hingeYs) {
+    at(new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 17, 16).rotateX(Math.PI / 2), hingeMat), lx - 0.5, y + 8, 4);
+    at(new THREE.Mesh(extrude(rrShape(7, 15, 1), 0.5, 0.4, 0.3, 1), hingeMat), lx + 4, y + 8, 4.8);
+  }
+  const closer = new THREE.MeshStandardMaterial({ color: 0x6f757b, map: noiseTexture(30, 60, 30), metalness: 0.8, roughness: 0.45, envMap: studioEnv, envMapIntensity: 0.7 });
+  at(new THREE.Mesh(extrude(rrShape(36, 8, 2.5), 5, 1.4, 1.1, 3), closer), lx + 26, ly + 7, 5);
+  at(new THREE.Mesh(extrude(rrShape(30, 2.4, 1), 1.2, 0.5, 0.4, 2), closer), lx + 52, ly + 3, 9.5);
+  // The window: grimy wired glass set back in a steel bead screwed at its corners.
+  const glass = canvas2d(ww, wh, (c) => {
+    if (lit) {
+      const warm = c.createRadialGradient(ww * 0.45, wh * 0.55, 0, ww / 2, wh / 2, Math.max(ww, wh) * 0.75);
+      warm.addColorStop(0, '#ffe2a6'); warm.addColorStop(0.55, '#f0b765'); warm.addColorStop(1, '#b8792f');
+      c.fillStyle = warm;
+    } else {
+      const dark = c.createLinearGradient(0, 0, ww, wh); dark.addColorStop(0, '#1d272e'); dark.addColorStop(1, '#0a0f13');
+      c.fillStyle = dark;
+    }
+    c.fillRect(0, 0, ww, wh);
+    c.strokeStyle = lit ? 'rgba(70,44,16,0.45)' : 'rgba(190,200,210,0.22)'; c.lineWidth = 0.6;
+    for (let d = -wh; d < ww + wh; d += 6) { c.beginPath(); c.moveTo(d, 0); c.lineTo(d + wh, wh); c.moveTo(d + wh, 0); c.lineTo(d, wh); c.stroke(); }
+    for (let i = 0; i < 9; i++) {                                          // smudges and grime in the corners
+      const x = rand() * ww, y = rand() * wh, r = 3 + rand() * 9, grd = c.createRadialGradient(x, y, 0, x, y, r);
+      grd.addColorStop(0, lit ? 'rgba(80,50,20,0.18)' : 'rgba(150,160,160,0.08)'); grd.addColorStop(1, 'rgba(0,0,0,0)');
+      c.fillStyle = grd; c.fillRect(x - r, y - r, 2 * r, 2 * r);
+    }
+    const rim = c.createRadialGradient(ww / 2, wh / 2, Math.min(ww, wh) * 0.3, ww / 2, wh / 2, Math.max(ww, wh) * 0.7);
+    rim.addColorStop(0, 'rgba(30,26,20,0)'); rim.addColorStop(1, 'rgba(30,26,20,0.35)');
+    c.fillStyle = rim; c.fillRect(0, 0, ww, wh);
+    const glare = c.createLinearGradient(0, 0, ww, wh);
+    glare.addColorStop(0.2, 'rgba(255,255,255,0)'); glare.addColorStop(0.32, `rgba(255,255,255,${lit ? 0.16 : 0.1})`); glare.addColorStop(0.44, 'rgba(255,255,255,0)');
+    c.fillStyle = glare; c.fillRect(0, 0, ww, wh);
+  });
+  const glassMat = lit
+    ? new THREE.MeshBasicMaterial({ map: faceTexture(glass, ww, wh), toneMapped: false })
+    : new THREE.MeshPhysicalMaterial({ map: faceTexture(glass, ww, wh), roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.15, envMap: studioEnv, envMapIntensity: 0.55 });
+  const pane = new THREE.Mesh(extrude(rrShape(ww, wh, 1), 0.2), glassMat); pane.receiveShadow = true; pane.position.set(wx + ww / 2, 1.2, wy + wh / 2); g.add(pane);
+  const bead = rrShape(ww + 8, wh + 8, 3); bead.holes.push(rr(new THREE.Path(), ww - 1, wh - 1, 1));
+  at(new THREE.Mesh(extrude(bead, 1.5, 0.9, 0.7, 2), hingeMat), wx + ww / 2, wy + wh / 2, 3.8);
+  for (const [sx, sy] of [[wx - 1.5, wy - 1.5], [wx + ww + 1.5, wy - 1.5], [wx - 1.5, wy + wh + 1.5], [wx + ww + 1.5, wy + wh + 1.5]]) { const sc = screw(1.6); sc.position.set(sx, 7.4, sy); g.add(sc); }
+  // The handle: a worn chrome rose and a lever towards the hinge side.
+  const chrome = new THREE.MeshStandardMaterial({ color: 0x8e9398, map: noiseTexture(34, 70, 30), metalness: 1, roughness: 0.42, envMap: studioEnv, envMapIntensity: 0.7 });
+  at(new THREE.Mesh(new THREE.CylinderGeometry(6.5, 6.8, 2.2, 28), chrome), hx, hz, 5);
+  at(new THREE.Mesh(extrude(rrShape(30, 5.5, 2.6), 2.8, 1.2, 1, 3), chrome), hx - 13, hz, 6);
+  // The kick plate: brushed steel, scuffed by boots, screwed at its corners.
+  const brushed = canvas2d(pw, ph, (c) => {
+    c.fillStyle = '#a3a9ae'; c.fillRect(0, 0, pw, ph);
+    for (let i = 0; i < ph * 7; i++) { const y = rand() * ph; c.strokeStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '60,66,72'},${0.05 + rand() * 0.1})`; c.lineWidth = 0.5; c.beginPath(); c.moveTo(rand() * pw * 0.3, y); c.lineTo(pw * (0.5 + rand() * 0.5), y); c.stroke(); }
+    for (let i = 0; i < 26; i++) { const x = rand() * pw, y = ph * (0.3 + rand() * 0.7); c.strokeStyle = `rgba(30,30,28,${0.12 + rand() * 0.18})`; c.lineWidth = 0.6 + rand() * 0.8; c.beginPath(); c.moveTo(x, y); c.lineTo(x + 4 + rand() * 14, y + (rand() - 0.5) * 4); c.stroke(); }
+    const dirt = c.createLinearGradient(0, ph * 0.3, 0, ph); dirt.addColorStop(0, 'rgba(50,40,28,0)'); dirt.addColorStop(1, 'rgba(50,40,28,0.42)');
+    c.fillStyle = dirt; c.fillRect(0, 0, pw, ph);
+  });
+  const kick = new THREE.MeshStandardMaterial({ map: faceTexture(brushed, pw, ph), metalness: 0.9, roughness: 0.38, envMap: studioEnv, envMapIntensity: 0.8 });
+  at(new THREE.Mesh(extrude(rrShape(pw, ph, 2), 0.6, 0.6, 0.5, 2), [kick, MAT.screw]), px + pw / 2, py + ph / 2, 4);
+  for (const [sx, sy] of [[px + 5, py + 5], [px + pw - 5, py + 5], [px + 5, py + ph - 5], [px + pw - 5, py + ph - 5]]) { const sc = screw(2.4); sc.position.set(sx, 5.4, sy); g.add(sc); }
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.6));
+  return g;
+}
+
+/**
+ * The Modifiers key: an off-white keycap like Inputs' and Outputs', but a wide one, blank (the game prints
+ * the % sign and the text on it). The game draws it as a horizontal three-slice: MODKEY.cap at each end
+ * keeps its size and the middle stretches.
+ */
+const MODKEY = { W: 680, H: 120, M: 16, cap: 64 };
+
+/**
+ * The white plastic sheet the Modifiers open onto: the keycaps' off-white plastic as a thin moulded plate
+ * with a rounded edge, and its shadow. A 9-slice.
+ */
+const WSHEET = { W: 600, H: 400, M: 14, radius: 12 };
+function whiteSheet() {
+  const { W, H, M, radius } = WSHEET, pw = W - 2 * M, ph = H - 2 * M, g = new THREE.Group();
+  const top = new THREE.MeshPhysicalMaterial({ map: faceTexture(canvas2d(pw, ph, (c) => paintPlastic(c, pw, ph)), pw, ph), ...KNOB_PLASTIC });
+  const plate = new THREE.Mesh(extrude(rrShape(pw, ph, radius), 3, 2.6, 2.2, 5), [top, MAT.skirt]);
+  plate.castShadow = plate.receiveShadow = true; plate.position.set(W / 2, 0, H / 2); g.add(plate);
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.6));
+  return g;
+}
+
+/**
+ * Dark metal for a section's own plate (Cost to produce, Inbound shipments): the backing's steel taken
+ * down to a blackened gunmetal. The plate fills the frame's inside, its edges under the rim, so the
+ * render is one large plain face that the game crops from its middle (no stretching, so its scratches
+ * are the size of every other plate's).
+ */
+const DARK_STEEL_CANVAS = (() => {
+  const c = document.createElement('canvas'); c.width = PLATE_TEX.width; c.height = PLATE_TEX.height;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  drawBlurred(g, 'brightness(1.6) contrast(0.5) blur(7px) grayscale(1)');
+  g.globalAlpha = 0.24; g.filter = 'brightness(1.6) contrast(0.55) grayscale(1)'; g.drawImage(PLATE_TEX, 0, 0);
+  g.globalAlpha = 1; g.filter = 'none';
+  g.globalCompositeOperation = 'multiply'; g.fillStyle = '#6c6e72'; g.fillRect(0, 0, c.width, c.height);
+  return c;
+})();
+const DARK_PLATE = { W: 900, H: 1400 };
+function darkPlate() {
+  const { W, H } = DARK_PLATE, g = new THREE.Group();
+  // An extruded face, not a plane: the plate textures map by shape pixels (faceTexture).
+  const face = new THREE.Mesh(extrude(rrShape(W, H, 2), 2),
+    [plateMaterial(W, H, { icons: [], buttons: [], screws: [], base: DARK_STEEL_CANVAS, rub: '130,138,150' }), MAT.plateSide]);
+  face.receiveShadow = true; face.position.set(W / 2, 0, H / 2); g.add(face);
+  return g;
+}
+
+/**
+ * The hole a gauge is set into in a dark plate: a chamfered cut through the plate, bright where it
+ * faces the light, and the dark cavity below, a little wider than the gauge's bezel so a thin gap shows
+ * round it. Transparent beyond the cut, so the plate shows through.
+ */
+const SOCKET = { S: 240, hole: 108, chamfer: 6, depth: 4 };
+function gaugeSocket() {
+  const { S, hole, chamfer, depth } = SOCKET, g = new THREE.Group(), c = S / 2;
+  const cut = new THREE.MeshStandardMaterial({ color: 0x70767e, map: noiseTexture(20, 40, 60), metalness: 1, roughness: 0.38, envMap: studioEnv, envMapIntensity: 0.9, side: THREE.BackSide });
+  const cone = new THREE.Mesh(new THREE.CylinderGeometry(hole + chamfer, hole, depth, 120, 1, true), cut);
+  cone.position.set(c, -depth / 2, c); cone.receiveShadow = true; g.add(cone);
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(hole, 120).rotateX(-Math.PI / 2), MAT.gap);
+  floor.position.set(c, -depth, c); g.add(floor);
+  return g;
+}
+
+/**
+ * A thin metal frame round a good's icon, the icon set below it: a narrow ring of the keycaps' bezel
+ * metal, its shadow on the plate outside, and inside the frame's shadow and a soft shade along the
+ * opening's edge, deepest at the top-left, falling onto the icon. Transparent in the opening, so the
+ * game draws it over the icon. A 9-slice.
+ */
+const WELL = { W: 240, H: 240, M: 12, rim: 7, r: 10 };
+function iconWell() {
+  const { W, H, M, rim, r } = WELL, g = new THREE.Group(), ow = W - 2 * M, oh = H - 2 * M;
+  const shape = rrShape(ow, oh, r + rim); shape.holes.push(rr(new THREE.Path(), ow - 2 * rim, oh - 2 * rim, r));
+  const frame = new THREE.Mesh(extrude(shape, 3, 1.2, 0.9, 3), MAT.frame);
+  frame.castShadow = frame.receiveShadow = true; frame.position.set(W / 2, 0, H / 2); g.add(frame);
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.6));
+  return g;
+}
+function paintWellShade(g) {
+  const { W, H, M, rim, r } = WELL, x0 = M + rim, y0 = M + rim, iw = W - 2 * x0, ih = H - 2 * y0;
+  g.save(); g.beginPath(); g.roundRect(x0, y0, iw, ih, r); g.clip();
+  g.filter = 'blur(2.5px)';
+  g.lineWidth = 5; g.strokeStyle = 'rgba(0,0,0,0.3)'; g.beginPath(); g.roundRect(x0, y0, iw, ih, r); g.stroke();
+  g.lineWidth = 7; g.strokeStyle = 'rgba(0,0,0,0.38)'; g.beginPath(); g.roundRect(x0 + 3, y0 + 3, iw, ih, r); g.stroke();
+  g.restore();
+}
+
+/** The Modifiers row's icon: a % sign, two rings and a slash, raised white on the metal like Inputs'. */
+const MODICON = { S: 110, icon: 80 };
+function drawPercent(g, w, h, col) {
+  const s = Math.min(w, h);
+  g.save(); g.translate((w - s) / 2, (h - s) / 2); g.strokeStyle = col; g.lineCap = 'round';
+  g.lineWidth = s * 0.13; g.beginPath(); g.moveTo(s * 0.22, s * 0.86); g.lineTo(s * 0.78, s * 0.14); g.stroke();
+  g.lineWidth = s * 0.1;
+  for (const [cx, cy] of [[0.26, 0.26], [0.74, 0.74]]) { g.beginPath(); g.arc(s * cx, s * cy, s * 0.14, 0, Math.PI * 2); g.stroke(); }
+  g.restore();
+}
+
+/**
+ * A mini screen for a figure in LED segments, as on a digital clock: a gunmetal bezel round a recessed
+ * pane of dark glass (mini_screen), and the glass over the segments (mini_screen_glass): the bezel's
+ * shadow along the pane's top and left edges and a faint glare. The game lights the segments between
+ * the two. Both 9-slices.
+ */
+const SCREEN = { W: 200, H: 80, M: 8, rim: 7, r: 5 };
+function miniScreen() {
+  const { W, H, M, rim, r } = SCREEN, g = new THREE.Group(), ow = W - 2 * M, oh = H - 2 * M;
+  const shape = rrShape(ow, oh, r + rim); shape.holes.push(rr(new THREE.Path(), ow - 2 * rim, oh - 2 * rim, r));
+  const bezel = new THREE.Mesh(extrude(shape, 2.5, 1.2, 1, 3), MAT.frame);
+  bezel.castShadow = bezel.receiveShadow = true; bezel.position.set(W / 2, 0, H / 2); g.add(bezel);
+  const glass = new THREE.MeshPhysicalMaterial({ color: 0x0a0d0c, roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.1, envMap: studioEnv, envMapIntensity: 0.35 });
+  const pane = new THREE.Mesh(new THREE.PlaneGeometry(ow - 2 * rim + 2, oh - 2 * rim + 2).rotateX(-Math.PI / 2), glass);
+  pane.receiveShadow = true; pane.position.set(W / 2, 0.3, H / 2); g.add(pane);
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.6));
+  return g;
+}
+function paintScreenGlass(g) {
+  const { W, H, M, rim, r } = SCREEN, x0 = M + rim, y0 = M + rim, iw = W - 2 * x0, ih = H - 2 * y0;
+  g.save(); g.beginPath(); g.roundRect(x0, y0, iw, ih, r); g.clip();
+  const top = g.createLinearGradient(0, y0, 0, y0 + 7); top.addColorStop(0, 'rgba(0,0,0,0.6)'); top.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = top; g.fillRect(x0, y0, iw, 7);
+  const left = g.createLinearGradient(x0, 0, x0 + 5, 0); left.addColorStop(0, 'rgba(0,0,0,0.45)'); left.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = left; g.fillRect(x0, y0, 5, ih);
+  const glare = g.createLinearGradient(x0, y0, x0 + iw * 0.5, y0 + ih);
+  glare.addColorStop(0.3, 'rgba(255,255,255,0)'); glare.addColorStop(0.45, 'rgba(255,255,255,0.07)'); glare.addColorStop(0.6, 'rgba(255,255,255,0)');
+  g.fillStyle = glare; g.fillRect(x0, y0, iw, ih);
+  g.restore();
+}
+
+/**
+ * The Economics section's raised icons, white on the metal like the control plate's INPUTS and OUTPUTS
+ * icons, each with its swept shadow: one over each slice of the value bar (inputs, labour, upkeep,
+ * transport, net value added) and one by each transport lamp (inputs, outputs). Raised from the game's
+ * own icons, which export.py serves under /icons/.
+ */
+const ECON_ICONS = { S: 72, icon: 52, height: 8, soften: 1.1, art: {
+  inputs: 'ui_icons/construction_materials.png', labour: 'research/glyph/engineer.png', upkeep: 'research/glyph/gears.png',
+  transport: 'research/glyph/lorry.png', value: 'research/glyph/money.png', outputs: 'research/glyph/output.png',
+} };
+
+/**
+ * The diagnostics' visual view's raised icons, one per check, raised as the Economics icons are but
+ * larger: the art fills `icon` layout px, 112 texels, a 56 px icon at two texels a pixel. They are the
+ * game's building icons, cream art on navy, so the cream is keyed out as the mask and trimmed to the art
+ * (keyCream); one with `alpha` is already clear round its art, so its alpha is the mask, trimmed
+ * (trimAlpha). An icon with `make` is drawn here instead (batteryArt).
+ */
+const DIAG_ICONS = { S: 133, icon: 105, height: 12, soften: 1.5, art: {
+  power_supply: { file: 'buildings/b_003_power_plant.png' },
+  intermittency: { make: () => batteryArt() },
+  cable: { file: 'buildings/b_006_cables.png' },
+  carbon: { make: () => carbonArt() },
+  works: { make: () => worksArt() },
+  route: { make: () => routeArt() },
+  transit: { make: () => transitArt() },
+  freight: { make: () => freightArt() },
+  warehouse: { make: () => warehouseArt() },
+  source: { file: 'ui_icons/construction_materials.png', alpha: true },
+  stock: { make: () => stockArt() },
+  upstream: { make: () => upstreamArt() },
+  deposit: { make: () => depositArt() },
+  port: { make: () => portArt() },
+  glut: { make: () => glutArt() },
+  unsold: { make: () => unsoldArt() },
+} };
+
+/** Port charge drawn as a mask to raise: a solid anchor, its ring's eye, stock, shank and flukes. 100 × 100 units. */
+function portArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    g.fillStyle = '#fff'; g.strokeStyle = '#fff';
+    g.beginPath(); g.arc(50, 13, 10, 0, Math.PI * 2); g.fill();                        // the ring
+    g.beginPath(); g.roundRect(26, 28, 48, 9, 3); g.fill();                            // the stock
+    g.fillRect(45, 20, 10, 66);                                                        // the shank
+    g.lineWidth = 10; g.lineCap = 'butt';
+    g.beginPath(); g.arc(50, 56, 34, Math.PI * 0.12, Math.PI * 0.88); g.stroke();       // the arms
+    for (const side of [-1, 1]) {                                                      // the flukes
+      const x = 50 + side * 34 * Math.cos(Math.PI * 0.12), y = 56 + 34 * Math.sin(Math.PI * 0.12);
+      g.beginPath(); g.moveTo(x - side * 9, y + 2); g.lineTo(x + side * 7, y - 16); g.lineTo(x + side * 9, y + 4); g.closePath(); g.fill();
+    }
+    g.globalCompositeOperation = 'destination-out';
+    g.beginPath(); g.arc(50, 13, 4.5, 0, Math.PI * 2); g.fill();                       // the ring's eye
+  }, 1);
+}
+
+/** Sale price and glut drawn as a mask to raise: a solid coin with a £ cut through it and a bold arrow falling beside it. 100 × 100 units. */
+function glutArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    g.fillStyle = '#fff';
+    g.beginPath(); g.arc(30, 54, 28, 0, Math.PI * 2); g.fill();                        // the coin
+    g.fillRect(75, 10, 16, 46);                                                        // the arrow's shaft, clear of it
+    g.beginPath(); g.moveTo(64, 54); g.lineTo(102, 54); g.lineTo(83, 88); g.closePath(); g.fill();
+    g.globalCompositeOperation = 'destination-out';
+    g.font = 'bold 40px Helvetica, Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('£', 30, 56);
+  }, 1);
+}
+
+/** Unsold stock drawn as a mask to raise: four solid boxes, each taped over its top, stacked on a pallet. 100 × 100 units. */
+function unsoldArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    g.fillStyle = '#fff';
+    g.fillRect(2, 80, 96, 7);                                                          // the pallet's deck
+    for (const x of [2, 43, 84]) g.fillRect(x, 87, 14, 9);                             // its blocks
+    for (const [x, y] of [[6, 46], [52, 46], [6, 10], [52, 10]]) {                     // the boxes
+      g.globalCompositeOperation = 'source-over';
+      g.beginPath(); g.roundRect(x, y, 42, 31, 2); g.fill();
+      g.globalCompositeOperation = 'destination-out';
+      g.fillRect(x + 18, y, 6, 11);                                                    // its tape
+    }
+  }, 1);
+}
+
+/**
+ * Building Detail's header emblem: each building's icon raised in polished metal (the silver screws'
+ * chrome), keyed from its cream art on navy (keyCream), with its swept shadow. The art fills `icon`
+ * layout px, 126 texels, an emblem two title lines tall (63 px) at two texels a pixel. One per building
+ * icon in assets/icons/buildings/, named by its building id: bld_emblem_<b_007>.
+ */
+const BLD_EMBLEMS = { S: 142, icon: 118, height: 11, soften: 1.6, files: ['b_001_mine.png','b_002_furnace.png','b_003_power_plant.png','b_004_port.png','b_005_roads.png','b_006_cables.png','b_007_industrial_factory.png','b_008_eaf.png','b_009_assembly_plant.png','b_010_high_tech_manufactory.png','b_011_petro_refinery.png','b_012_chem_plant.png','b_013_poly_plant.png','b_014_farm.png','b_015_new_forest.png','b_016_old_forest.png','b_017_pipes.png','b_018_reinf_pipes.png','b_019_rails.png','b_020_electrolyser.png','b_021_desal.png','b_022_water_recycling.png','b_023_landfill.png','b_024_solar_farm.png','b_025_onshore_wind_farm.png','b_026_offshore_wind_farm.png','b_027_hydro_power_plant.png','b_028_battery.png','b_030_consumer_factory.png','b_031_ruins.png','b_032_oil_well.png','b_033_offshore_oil_platform.png','b_034_fracking_oil_well.png','b_035_airport.png','b_036_recycling_plant.png','b_037_water_pump.png'] };
+
+/** An icon's own alpha as the mask, cropped to the art's bounds. */
+function trimAlpha(img) {
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
+  const p = g.getImageData(0, 0, c.width, c.height).data;
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let i = 3; i < p.length; i += 4) {
+    if (p[i] > 127) {
+      const k = (i - 3) / 4, x = k % c.width, y = (k - x) / c.width;
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+    }
+  }
+  const t = document.createElement('canvas'); t.width = x1 - x0 + 1; t.height = y1 - y0 + 1;
+  t.getContext('2d').drawImage(c, x0, y0, t.width, t.height, 0, 0, t.width, t.height);
+  return t;
+}
+
+/** Stock cover drawn as a mask to raise: three solid crates stacked two and one, each with a cut X brace. 100 × 100 units. */
+function stockArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    for (const [x, y] of [[4, 54], [52, 54], [28, 8]]) {
+      g.globalCompositeOperation = 'source-over'; g.fillStyle = '#fff';
+      g.beginPath(); g.roundRect(x, y, 44, 42, 3); g.fill();
+      g.globalCompositeOperation = 'destination-out'; g.strokeStyle = '#000'; g.lineWidth = 5; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(x + 10, y + 10); g.lineTo(x + 34, y + 32); g.moveTo(x + 34, y + 10); g.lineTo(x + 10, y + 32); g.stroke();   // its brace
+    }
+  }, 1);
+}
+
+/**
+ * A light icon on a translucent button as a mask to raise: only its solid, light pixels (the button
+ * round it is see-through), cropped to the art's bounds.
+ */
+function keyOpaque(img) {
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height), p = d.data;
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let i = 0; i < p.length; i += 4) {
+    const light = (0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2]) / 255;
+    const a = THREE.MathUtils.smoothstep(p[i + 3], 180, 235) * THREE.MathUtils.smoothstep(light, 0.6, 0.75);
+    p[i] = p[i + 1] = p[i + 2] = 255; p[i + 3] = Math.round(a * 255);
+    if (a > 0.5) {
+      const k = i / 4, x = k % c.width, y = (k - x) / c.width;
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+    }
+  }
+  g.putImageData(d, 0, 0);
+  const t = document.createElement('canvas'); t.width = x1 - x0 + 1; t.height = y1 - y0 + 1;
+  t.getContext('2d').drawImage(c, x0, y0, t.width, t.height, 0, 0, t.width, t.height);
+  return t;
+}
+
+/**
+ * Upstream health as a mask to raise: the Building Ledger's factory (its button icon, keyed by
+ * keyOpaque) with a bold arrow leaving it to the right, a little clear of its wall. 142 × 100 units.
+ */
+async function upstreamArt(k = 4) {
+  const factory = keyOpaque(await loadImage('/icons/ui_icons/alt/building_ledger.png'));
+  return canvas2d(142 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    const s = 96 / Math.max(factory.width, factory.height);
+    g.drawImage(factory, 0, 100 - factory.height * s, factory.width * s, factory.height * s);
+    g.fillStyle = '#fff';
+    g.fillRect(101, 62, 18, 21);                                                       // the arrow's shaft
+    g.beginPath(); g.moveTo(114, 42); g.lineTo(142, 72.5); g.lineTo(114, 103); g.closePath(); g.fill();
+  }, 1);
+}
+
+/**
+ * Deposit left drawn as a mask to raise: a solid pickaxe, its head a crescent across the top of the
+ * handle, arched above and near flat beneath, meeting in a point at each end. 100 × 100 units.
+ */
+function depositArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    g.fillStyle = '#fff'; g.strokeStyle = '#fff';
+    g.translate(50, 56); g.rotate(-0.5);
+    g.beginPath(); g.roundRect(-8, -34, 16, 82, 8); g.fill();                          // the handle
+    // The head: the outer arc over the top, then back along a much flatter arc through both tips, set so
+    // the crescent is T units deep at its middle.
+    const c1 = 10, R1 = 50, a0 = Math.PI * 1.2, a1 = Math.PI * 1.8, T = 19;
+    const x0 = R1 * Math.cos(a0), y0 = c1 + R1 * Math.sin(a0), top = c1 - R1 + T, d = y0 - top;
+    const R2 = (x0 * x0 + d * d) / (2 * d), c2 = top + R2;
+    g.beginPath(); g.arc(0, c1, R1, a0, a1);
+    g.arc(0, c2, R2, Math.atan2(y0 - c2, -x0), Math.atan2(y0 - c2, x0), true); g.closePath(); g.fill();
+    g.beginPath(); g.roundRect(-12, -44, 24, 18, 4); g.fill();                         // where head meets handle
+  }, 1);
+}
+
+/** A route drawn as a mask to raise: a thick S-shaped track ending in an arrowhead. 100 × 100 units. */
+function routeArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    g.strokeStyle = '#fff'; g.fillStyle = '#fff'; g.lineWidth = 13; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(18, 86); g.bezierCurveTo(70, 86, 74, 56, 50, 50); g.bezierCurveTo(26, 44, 30, 18, 64, 18); g.stroke();
+    g.beginPath(); g.moveTo(62, 2); g.lineTo(94, 18); g.lineTo(62, 34); g.closePath(); g.fill();   // the arrowhead
+  }, 1);
+}
+
+/** Transit time drawn as a mask to raise: a solid clock face and winder, its hands and hour marks cut. 100 × 100 units. */
+function transitArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    g.fillStyle = '#fff'; g.strokeStyle = '#fff';
+    g.beginPath(); g.arc(50, 56, 40, 0, Math.PI * 2); g.fill();                        // the face
+    g.beginPath(); g.roundRect(41, 4, 18, 9, 2); g.fill(); g.fillRect(46, 12, 8, 6);   // the winder
+    g.globalCompositeOperation = 'destination-out';
+    g.lineCap = 'round';
+    g.lineWidth = 7; g.beginPath(); g.moveTo(50, 56); g.lineTo(50, 30); g.stroke();    // the hands
+    g.lineWidth = 6; g.beginPath(); g.moveTo(50, 56); g.lineTo(69, 66); g.stroke();
+    for (const [x, y, w, h] of [[47, 20, 6, 8], [47, 84, 6, 8], [14, 53, 8, 6], [78, 53, 8, 6]]) g.fillRect(x, y, w, h);   // the hour marks
+  }, 1);
+}
+
+/**
+ * Freight cost drawn as a mask to raise: a solid lorry, its cab window cut and its wheels stood clear of
+ * the body, with a coin in front of its load, a £ cut through the coin. 100 × 100 units.
+ */
+function freightArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    g.fillStyle = '#fff';
+    g.beginPath(); g.roundRect(4, 36, 58, 38, 4); g.fill();                            // the load
+    g.beginPath(); g.moveTo(65, 46); g.lineTo(80, 46); g.lineTo(94, 60); g.lineTo(94, 76); g.lineTo(65, 76); g.closePath(); g.fill();   // the cab
+    g.fillRect(4, 72, 90, 5);                                                          // the chassis
+    const cut = (fn) => { g.globalCompositeOperation = 'destination-out'; fn(); g.globalCompositeOperation = 'source-over'; };
+    cut(() => { g.beginPath(); g.moveTo(70, 50); g.lineTo(79, 50); g.lineTo(87, 60); g.lineTo(70, 60); g.closePath(); g.fill(); });   // its window
+    for (const x of [22, 77]) {                                                        // the wheels
+      cut(() => { g.beginPath(); g.arc(x, 84, 14, 0, Math.PI * 2); g.fill(); });
+      g.beginPath(); g.arc(x, 84, 10, 0, Math.PI * 2); g.fill();
+      cut(() => { g.beginPath(); g.arc(x, 84, 3.5, 0, Math.PI * 2); g.fill(); });
+    }
+    cut(() => { g.beginPath(); g.arc(30, 30, 23, 0, Math.PI * 2); g.fill(); });        // the coin, stood clear of the load
+    g.beginPath(); g.arc(30, 30, 19, 0, Math.PI * 2); g.fill();
+    cut(() => { g.font = 'bold 27px Helvetica, Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('£', 30, 31); });
+  }, 1);
+}
+
+/** Warehouse room drawn as a mask to raise: a solid shed with a gable vent and a roller door of slats. 100 × 100 units. */
+function warehouseArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    g.fillStyle = '#fff';
+    g.beginPath(); g.moveTo(4, 42); g.lineTo(50, 10); g.lineTo(96, 42); g.lineTo(96, 94); g.lineTo(4, 94); g.closePath(); g.fill();
+    g.globalCompositeOperation = 'destination-out';
+    g.fillRect(40, 30, 20, 7);                                                         // the vent
+    g.fillRect(24, 52, 52, 42);                                                        // the doorway
+    g.globalCompositeOperation = 'source-over';
+    for (let y = 56; y < 92; y += 9) g.fillRect(28, y, 44, 5);                          // the door's slats
+  }, 1);
+}
+
+/**
+ * The carbon levy drawn as a mask to raise: a solid chimney on a footing under a billowing cloud of
+ * smoke, a bold £ cut through the cloud. Laid out in a 100 × 100 unit box (`k` px a unit).
+ */
+function carbonArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    g.fillStyle = '#fff';
+    g.fillRect(6, 91, 50, 7);                                                          // the footing
+    g.beginPath(); g.moveTo(16, 92); g.lineTo(40, 92); g.lineTo(37, 50); g.lineTo(21, 50); g.closePath(); g.fill();   // the chimney
+    g.fillRect(18, 45, 22, 7);                                                         // its lip
+    g.beginPath();                                                                     // the smoke
+    for (const [x, y, r] of [[36, 34, 12], [52, 24, 16], [72, 26, 15], [86, 40, 11], [66, 42, 14], [48, 42, 11]]) {
+      g.moveTo(x + r, y); g.arc(x, y, r, 0, Math.PI * 2);
+    }
+    g.fill();
+    g.globalCompositeOperation = 'destination-out';
+    g.font = 'bold 32px Helvetica, Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('£', 64, 35);
+  }, 1);
+}
+
+/**
+ * Works under way drawn as a mask to raise: a hammer crossed over a spanner, both solid, the spanner's
+ * open jaw cut. Laid out in a 100 × 100 unit box (`k` px a unit), crossed at (50, 52).
+ */
+function worksArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    g.fillStyle = '#fff';
+    g.save(); g.translate(50, 52); g.rotate(Math.PI * 40 / 180);                        // the spanner, jaw to the top right
+    g.beginPath(); g.roundRect(-5.5, -22, 11, 64, 5.5); g.fill();
+    g.beginPath(); g.arc(0, -30, 15, 0, Math.PI * 2); g.fill();
+    g.globalCompositeOperation = 'destination-out';
+    g.fillRect(-6.5, -48, 13, 20);                                                     // its open jaw
+    g.restore();
+    g.save(); g.translate(50, 52); g.rotate(-Math.PI * 40 / 180);                       // the hammer, head to the top left
+    g.beginPath(); g.roundRect(-5, -26, 10, 68, 5); g.fill();
+    g.beginPath(); g.roundRect(-22, -42, 40, 17, 3); g.fill();
+    g.restore();
+  }, 1);
+}
+
+/**
+ * A battery drawn as a mask to raise, mostly solid: a round-cornered body with two terminal posts on
+ * top, a thick outline groove just inside its edge, and a bold plus, minus and lightning bolt cut through
+ * it. Nothing round it: the outside is empty. Laid out in a 100 × 78 unit box (`k` px a unit); every
+ * cut and the rim outside the groove is 6 units, and the marks stand 7 apart, so each stays open once
+ * raised at 40 px.
+ */
+function batteryArt(k = 4) {
+  return canvas2d(100 * k, 78 * k, (g) => {
+    g.scale(k, k);
+    g.fillStyle = '#fff';
+    g.beginPath(); g.roundRect(0, 18, 100, 60, 8); g.fill();                         // the body
+    g.beginPath(); g.roundRect(14, 9, 17, 11, 2); g.roundRect(69, 9, 17, 11, 2); g.fill();   // the terminal posts
+    g.globalCompositeOperation = 'destination-out';
+    g.lineWidth = 6; g.beginPath(); g.roundRect(9, 27, 82, 42, 4); g.stroke();         // the outline groove
+    g.fillRect(18, 45, 18, 6); g.fillRect(24, 39, 6, 18);                              // plus
+    g.fillRect(64, 45, 18, 6);                                                         // minus
+    g.beginPath();                                                                     // the bolt
+    for (const [x, y] of [[51, 34], [43, 50], [49, 50], [46, 62], [57, 45], [51, 45], [57, 34]]) g.lineTo(x, y);
+    g.closePath(); g.fill();
+  }, 1);
+}
+
+/**
+ * A navy-backed icon's cream art as a mask to raise: each pixel white, as opaque as it is light (the
+ * navy clear, the cream solid), cropped to the art's bounds so the art fills whatever box it is fitted to.
+ */
+function keyCream(img) {
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height), p = d.data;
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let i = 0; i < p.length; i += 4) {
+    const light = (0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2]) / 255;
+    const a = THREE.MathUtils.smoothstep(light, 0.35, 0.7) * p[i + 3] / 255;
+    p[i] = p[i + 1] = p[i + 2] = 255; p[i + 3] = Math.round(a * 255);
+    if (a > 0.5) {
+      const k = i / 4, x = k % c.width, y = (k - x) / c.width;
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+    }
+  }
+  g.putImageData(d, 0, 0);
+  const t = document.createElement('canvas'); t.width = x1 - x0 + 1; t.height = y1 - y0 + 1;
+  t.getContext('2d').drawImage(c, x0, y0, t.width, t.height, 0, 0, t.width, t.height);
+  return t;
+}
+
+/**
+ * A weld bead along a rounded rectangle's edge (w × h, corner r, centred on the origin): a rounded ridge
+ * of bronze filler, radius `rad`, rippled every 2.6 px as a bead laid in runs is, lying on the join.
+ */
+function weldBead(w, h, r, rad) {
+  const path = rr(new THREE.Path(), w, h, r), pts = path.getSpacedPoints(Math.round((2 * (w + h)) / 0.8));
+  const seg = 10, pos = [], idx = [];
+  let run = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], q = pts[(i + 1) % pts.length];
+    if (i > 0) run += p.distanceTo(pts[i - 1]);
+    const t = new THREE.Vector2(q.x - p.x, q.y - p.y).normalize(), n = new THREE.Vector2(-t.y, t.x);
+    const ripple = 1 + 0.26 * Math.pow(Math.abs(Math.sin(Math.PI * run / 2.6)), 0.5);
+    for (let k = 0; k <= seg; k++) {                                       // half a tube, lying on the plate
+      const a = Math.PI * k / seg, rr0 = rad * ripple;
+      pos.push(p.x + n.x * Math.cos(a) * rr0, Math.sin(a) * rr0 * 0.8, -(p.y + n.y * Math.cos(a) * rr0));
+    }
+  }
+  const rows = pts.length;
+  for (let i = 0; i < rows; i++) for (let k = 0; k < seg; k++) {
+    const a = i * (seg + 1) + k, b = ((i + 1) % rows) * (seg + 1) + k;
+    idx.push(a, b, a + 1, b, b + 1, a + 1);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+  const bronze = new THREE.MeshStandardMaterial({ color: 0xb89058, metalness: 1, roughness: 0.4, envMap: studioEnv, envMapIntensity: 0.95, side: THREE.DoubleSide });
+  const m = new THREE.Mesh(geo, bronze); m.castShadow = m.receiveShadow = true;
+  return m;
+}
+
+/** Runs `fn` with the random number generator at `s`, then puts it back, so a part's wear is the same
+ * whatever was built before it. */
+async function withSeed(s, fn) { const saved = seed; seed = s; try { return await fn(); } finally { seed = saved; } }
+
+/** The study's view of the lamp in each state and the scrollbar, on the backing's navy-grey steel. */
+async function buildPartsView() {
+  return withSeed(401, () => {
+    const W = 720, H = 400, scene = new THREE.Scene();
+    scene.environment = roomEnv; scene.environmentIntensity = 0.16;
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(W, H).rotateX(-Math.PI / 2), plateMaterial(W, H, { icons: [], buttons: [], screws: [], base: NAVY_STEEL_CANVAS, rub: '120,136,160' }));
+    back.position.set(W / 2, 0, H / 2); back.receiveShadow = true; scene.add(back);
+    [['green', true], ['amber', true], ['red', true], ['off', false]].forEach(([name, lit], i) => {
+      const lamp = pilotLamp(LAMP[name] ?? null, lit); lamp.position.set(80 + i * 110, 0, 90); scene.add(lamp);
+      if (lit) { const glow = glowSprite(112, 112, new THREE.Color(LAMP[name]), 0.3); glow.position.set(80 + i * 110, 16, 90); scene.add(glow); }
+    });
+    const rail = scrollRail(); rail.position.set(560, 0, 30); scene.add(rail);
+    const thumb = scrollThumb(); thumb.position.set(560, 0, 35); scene.add(thumb);
+    const rail2 = scrollRail(); rail2.position.set(640, 0, 30); scene.add(rail2);
+    // The seam's edge across the lower part, over a stand-in for the body (a navy card) sliding under it.
+    const card = new THREE.Mesh(new THREE.PlaneGeometry(560, 80).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x06111e, toneMapped: false }));
+    card.position.set(330, 0.5, 350); scene.add(card);
+    const seam = seamStrip(); seam.scale.x = 640 / SEAM.W; seam.position.set(40, 0.6, 296); scene.add(seam);
+    const shade = new THREE.Mesh(new THREE.PlaneGeometry(640, SEAM.H).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(canvas2d(SEAM.W, SEAM.H, paintSeamShade)), transparent: true, depthWrite: false, toneMapped: false }));
+    shade.material.map.colorSpace = THREE.SRGBColorSpace; shade.position.set(40 + 320, 0.55, 296 + SEAM.H / 2); scene.add(shade);
+    houseLight(scene, W / 2, H / 2);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0xb9c0c8, 0.14));
+    const camera = new THREE.OrthographicCamera(-W / 2, W / 2, H / 2, -H / 2, 1, 5000);
+    camera.position.set(W / 2, 2000, H / 2); camera.up.set(0, 0, -1); camera.lookAt(W / 2, 0, H / 2);
+    return { scene, camera, buttons: [], size: [W, H] };
+  });
 }
 
 // ---------- page ----------
@@ -747,6 +2096,17 @@ for (const sec of EXPORT ? [] : SECTIONS) {
     v.el = fig.querySelector('.view');
     views.push(v); wireInput(v);
   }
+  rowsEl.appendChild(el);
+}
+if (!EXPORT) {
+  const el = document.createElement('section');
+  el.innerHTML = '<h2>Status lamp, scrollbar and seam edge</h2><p>Lit by the house light: from the upper left, 49.7° high, with no fall-off. The lamp lit green, amber and red, and off; the scrollbar\'s rail with its slider, and a bare rail; the non-slip edge over the seam, with a card sliding under it.</p>';
+  const v = await buildPartsView();
+  const fig = document.createElement('figure');
+  fig.innerHTML = `<figcaption>Header lamp and scrollbar<span>on the backing's navy-grey steel</span></figcaption><div class="cell view" style="aspect-ratio:${v.size[0]} / ${v.size[1]}" role="img" aria-label="The status lamp in four states, and the scrollbar"></div>`;
+  el.appendChild(fig);
+  v.el = fig.querySelector('.view');
+  views.push(v);
   rowsEl.appendChild(el);
 }
 
@@ -791,28 +2151,64 @@ if (EXPORT) exportLayers();
  *           shadow_*: each raised part's swept shadow; glow_arrow: the lit arrow's glow (drawn
  *           additively); key_<slot> / key_<slot>_pressed: blank keycaps (the game draws the text).
  * footer_*  Sell building / Demolish: plate, key_sell, key_demolish (+ _pressed).
- * key_close, key_back (+ _pressed): small keycaps with their glyphs, and the shadow they cast.
+ * key_close, key_back (+ _pressed): small keycaps with their glyphs, and the shadow they cast (SMALL_KEY).
+ * lamp_*   the status lamp lit green / amber / red, and off; lamp_glow_*: each lit colour's glow.
+ * scroll_rail, scroll_thumb: the scrollbar's rail and slider, each drawn as a vertical three-slice.
+ * seam_edge: the non-slip edge over the seam between the header and the scrolling body.
+ * title_glyphs, title_glyph_shadows: the title's raised letters and their shadows, an atlas.
+ * recipe_enamel, recipe_grunge: the recipe diagram's enamel plate and the grunge over its field.
+ * key_pin (+ _pressed): the Location keycap, a map pin.
+ * diag_cable, counter_housing, counter_glass, sheet_plate: the diagnostics' cable, the drum counter and
+ *           the action sheets' plate.
+ * diag_plastic, screw_silver, shipment_door: the diagnostics' plastic plate and its screws, and the
+ *           shipments' rolling door.
+ * heading_glyphs, heading_glyph_shadows: the section headings' raised letters and their shadows.
+ * diag_module, diag_tap, toggle_slot, toggle_knob: a diagnostics module, the cable's tap into one, and
+ *           the Visual / Text switch.
+ * labour_door, labour_door_lit: Labour and Wages' factory door, its window dark and lit.
+ * key_modifiers (+ _pressed), sheet_white: the Modifiers key and the white sheet it opens onto.
+ * dark_plate, gauge_socket, icon_well: a section's dark metal plate, the hole a gauge is set into, and
+ *           the thin frame round an icon set below it.
+ * mod_icon, mod_icon_shadow: the Modifiers row's raised % sign and its swept shadow.
+ * mini_screen, mini_screen_glass: the mini screen a figure shows on in LED segments, and its glass.
+ * econ_icon_<name> (+ _shadow): the Economics section's raised icons (ECON_ICONS).
+ * diag_icon_<name> (+ _shadow): the diagnostics' visual view's raised icons (DIAG_ICONS).
+ * bld_emblem_<building id> (+ _shadow): the header's metal building emblems (BLD_EMBLEMS).
  * layout.json: frame sizes and every key's rect and top face, in capture pixels.
+ * ?export&only=lamp,scroll renders just the named sets (see `want` below).
  */
 async function exportLayers() {
   document.querySelector('header').remove(); document.getElementById('notes').remove();
   const E = 2 / 1.875;
   renderer.setPixelRatio(1); renderer.setClearColor(0x000000, 0);
-  const layout = {};
+  // ?export&only=lamp,scroll renders just those sets and merges their entries into the existing
+  // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
+  // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
+  // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem.
+  const only = new URLSearchParams(location.search).get('only');
+  const want = (set) => !only || only.split(',').includes(set);
+  const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
   const post = async (name, c) => {
     const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
     await fetch(`/layers/${name}.png`, { method: 'POST', body: blob });
   };
-  /** A scene lit like the study: the lamp above and beyond the frame's top-left, a little sky fill. */
-  const stage = ([x0, y0, x1, y1], parts, { lampHeight = 820 } = {}) => {
+  /**
+   * A scene lit by the house light (see houseLight) and a little sky fill. light: 'lamp' puts back the
+   * old per-part spotlight above and beyond the frame's top-left; no set uses it now.
+   */
+  const stage = ([x0, y0, x1, y1], parts, { lampHeight = 820, light = 'house' } = {}) => {
     const scene = new THREE.Scene(); scene.environment = roomEnv; scene.environmentIntensity = 0.16;
     for (const p of parts) scene.add(p);
-    const lamp = new THREE.SpotLight(0xffffff, 8400, 0, Math.PI / 3, 0.5, 1.1);
-    lamp.position.set(x0 - 420, lampHeight, y0 - 420); lamp.target.position.set((x0 + x1) / 2, 0, (y0 + y1) / 2);
-    lamp.castShadow = true; lamp.shadow.mapSize.set(2048, 2048);
-    lamp.shadow.camera.near = 300; lamp.shadow.camera.far = 4000;
-    lamp.shadow.radius = 3; lamp.shadow.bias = -0.0003; lamp.shadow.normalBias = 0.5;
-    scene.add(lamp, lamp.target, new THREE.HemisphereLight(0xffffff, 0xb9c0c8, 0.14));
+    if (light === 'house') houseLight(scene, (x0 + x1) / 2, (y0 + y1) / 2);
+    else {
+      const lamp = new THREE.SpotLight(0xffffff, 8400, 0, Math.PI / 3, 0.5, 1.1);
+      lamp.position.set(x0 - 420, lampHeight, y0 - 420); lamp.target.position.set((x0 + x1) / 2, 0, (y0 + y1) / 2);
+      lamp.castShadow = true; lamp.shadow.mapSize.set(2048, 2048);
+      lamp.shadow.camera.near = 300; lamp.shadow.camera.far = 4000;
+      lamp.shadow.radius = 3; lamp.shadow.bias = -0.0003; lamp.shadow.normalBias = 0.5;
+      scene.add(lamp, lamp.target);
+    }
+    scene.add(new THREE.HemisphereLight(0xffffff, 0xb9c0c8, 0.14));
     const W = x1 - x0, H = y1 - y0;
     const cam = new THREE.OrthographicCamera(-W / 2, W / 2, H / 2, -H / 2, 1, 5000);
     cam.position.set(x0 + W / 2, 2000, y0 + H / 2); cam.up.set(0, 0, -1); cam.lookAt(x0 + W / 2, 0, y0 + H / 2);
@@ -834,7 +2230,15 @@ async function exportLayers() {
   } }); };
   const pressed = async (k, name, st) => { const cap = k.userData.cap, y = cap.position.y; cap.position.y = y - 5; await post(name, st.grab()); cap.position.y = y; };
 
+  /** A 2D layer in exactly the rendered layers' pixel frame (round(W·E) × round(H·E)). */
+  const frame2d = (W, H, paint) => {
+    const c = document.createElement('canvas'); c.width = Math.round(W * E); c.height = Math.round(H * E);
+    const g = c.getContext('2d', { willReadFrequently: true }); g.scale(c.width / W, c.height / H); paint(g); return c;
+  };
+
   // --- the four-control block
+  let blockWidth = 863;   // the footer is the block's width
+  if (want('block')) await withSeed(501, async () => {
   const unlit = buildBlock('market', false, { intermediary: true, blank: true, plateShadows: false });
   const lit = buildBlock('market', true, { intermediary: true, blank: true, plateShadows: false });
   const [bx0, by0] = unlit.bounds;
@@ -852,11 +2256,6 @@ async function exportLayers() {
     showOnly([unlit.group, lit.group], (x) => x === k);
     await post('block_' + layerOf(k), st.grab()); await pressed(k, 'block_' + layerOf(k) + '_pressed', st);
   }
-  /** A 2D layer in exactly the rendered layers' pixel frame (round(W·E) × round(H·E)). */
-  const frame2d = (W, H, paint) => {
-    const c = document.createElement('canvas'); c.width = Math.round(W * E); c.height = Math.round(H * E);
-    const g = c.getContext('2d', { willReadFrequently: true }); g.scale(c.width / W, c.height / H); paint(g); return c;
-  };
   const shadowFrame = (icons) => frame2d(st.W, st.H, (g) => drawIconShadows(g, st.W, st.H, icons));
   for (const ic of unlit.feat.icons) await post('block_shadow_' + ic.layer.replace(/^(icon_|kicker_|lorry_)/, (m) => m), shadowFrame([ic]));
   const arrowBox = lit.layout.icons.arrow_lit;
@@ -867,12 +2266,14 @@ async function exportLayers() {
     g.fillStyle = grd; g.fillRect(0, 0, st.W, st.H);
   }));
   layout.block = { size: [st.W, st.H], keys: unlit.layout.keys, icons: { ...unlit.layout.icons, arrow_lit: arrowBox } };
+  blockWidth = st.W;
+  });
 
   // --- Sell building / Demolish: guarded glowing buttons with white raised labels, on a footer plate
-  {
+  if (want('footer')) await withSeed(502, async () => {
     // The plate is FH tall with the buttons centred on it; the frame reaches HEAD above the plate so a
     // lifted cover can stand up over the plate's top edge.
-    const FW = st.W, FH = 150, S = 100, BY = (FH - S) / 2, HEAD = 64, xs = { sell: 70, demolish: 70 + FW / 2 };
+    const FW = blockWidth, FH = 150, S = 100, BY = (FH - S) / 2, HEAD = 64, xs = { sell: 70, demolish: 70 + FW / 2 };
     const LABEL = { sell: 'Sell building', demolish: 'Demolish' }, COLOUR = { sell: 0xffa412, demolish: 0xe8281e };
     const ICONS = { sell: ICON.money, demolish: BULLDOZER };
     const group = new THREE.Group(), feat = { icons: [], buttons: [], screws: [] }, si = SCREW_INSET;
@@ -929,30 +2330,46 @@ async function exportLayers() {
       }
     }));
     layout.footer = { size: [FW, FH + HEAD], plate: [FW, FH], head: HEAD, keys: fl.keys };
-  }
+  });
 
-  // --- the panel's backing: dark navy-grey steel, lightly worn, inside a raised brass trim with screws
-  {
-    const PW = 940, PH = 1640, TRIM = 22, group = new THREE.Group(), si = 4 + TRIM / 2;
-    const face = { icons: [], buttons: [], screws: [], base: NAVY_STEEL_CANVAS, rub: '120,136,160' };
+  // --- the panel's backing: dark navy-grey steel, lightly worn, inside a raised brass trim welded to it
+  if (want('backing')) await withSeed(503, async () => {
+    const PW = 940, PH = 1640, TRIM = 14, group = new THREE.Group();   // a narrow trim, clear of the scrollbar
+    const iw = PW - 8 - 2 * TRIM, ih = PH - 8 - 2 * TRIM, ir = 7;          // the trim's inner edge
+    const FOOT = 2.4;                                                        // the trim's bevel reaches this far in at its foot
+    // Heat tint from the weld: straw next to it, then brown, purple and blue, fading into each metal.
+    // Bands are strokes `d` in from the plate's edge (`inset` for the plate, 0 for the trim's own face).
+    const tint = (inset, bands) => (g, w, h) => {
+      g.save(); g.filter = 'blur(1.4px)';
+      for (const [d, colour, width] of bands) {
+        const at = inset + d;
+        g.strokeStyle = colour; g.lineWidth = width; g.beginPath();
+        g.roundRect(at, at, w - 2 * at, h - 2 * at, Math.max(2, ir - (at - TRIM))); g.stroke();
+      }
+      g.restore();
+    };
+    const face = { icons: [], buttons: [], screws: [], base: NAVY_STEEL_CANVAS, rub: '120,136,160',
+      paint: tint(TRIM, [[6, 'rgba(222,182,98,0.5)', 2.8], [8.5, 'rgba(170,100,58,0.38)', 2.6], [11, 'rgba(126,82,160,0.3)', 2.6], [13.6, 'rgba(72,108,184,0.24)', 2.8], [16.2, 'rgba(72,108,184,0.1)', 2.8]]) };
     const steelSide = new THREE.MeshStandardMaterial({ color: 0x3a4250, metalness: 1, roughness: 0.45, envMap: studioEnv, envMapIntensity: 0.8 });
     const plate = new THREE.Mesh(extrude(rrShape(PW - 8, PH - 8, 16), 4, 4.5, 3.6, 6), [plateMaterial(PW - 8, PH - 8, face), steelSide]);
     plate.receiveShadow = true; plate.position.set(PW / 2, 0, PH / 2); group.add(plate);
-    const ring = rrShape(PW - 8, PH - 8, 16); ring.holes.push(rr(new THREE.Path(), PW - 8 - 2 * TRIM, PH - 8 - 2 * TRIM, 7));
-    const trimFeat = { icons: [], buttons: [], screws: [[si, si], [PW - si, si], [si, PH - si], [PW - si, PH - si]].map(([x, y]) => ({ x: x - 4, y: y - 4 })),
-      base: BRASS_TRIM_CANVAS, rub: '255,236,180' };
+    const ring = rrShape(PW - 8, PH - 8, 16); ring.holes.push(rr(new THREE.Path(), iw, ih, ir));
+    const tarnish = (r) => `rgba(${60 + r() * 20},${44 + r() * 14},${18 + r() * 10},${0.25 + r() * 0.35})`;
+    const trimFeat = { icons: [], buttons: [], screws: [], base: BRASS_TRIM_CANVAS, rub: '255,236,180', flecks: tarnish,
+      paint: (g, w, h) => tint(0, [[TRIM - 1.5, 'rgba(92,60,24,0.5)', 2.6], [TRIM - 4, 'rgba(120,80,34,0.28)', 2.6]])(g, w, h) };
     const brassSide = new THREE.MeshStandardMaterial({ color: 0xa8843f, metalness: 1, roughness: 0.4, envMap: studioEnv, envMapIntensity: 0.9 });
     const trim = new THREE.Mesh(extrude(ring, 2.5, 3, 2.4, 5), [plateMaterial(PW - 8, PH - 8, trimFeat), brassSide]);
     trim.castShadow = trim.receiveShadow = true; trim.position.set(PW / 2, PLATE_TOP - 1, PH / 2); group.add(trim);
-    for (const [x, y] of [[si, si], [PW - si, si], [si, PH - si], [PW - si, PH - si]]) { const m = screw(7.5); m.position.set(x, PLATE_TOP + 8, y); group.add(m); }
-    const sb = stage([0, 0, PW, PH], [group], { lampHeight: 1900 });
-    await post('panel_backing', sb.grab());
+    const bead = weldBead(iw - 2 * FOOT, ih - 2 * FOOT, Math.max(2, ir - FOOT), 3.6);   // in the join at the trim's foot
+    bead.position.set(PW / 2, PLATE_TOP, PH / 2); group.add(bead);
+    await post('panel_backing', stage([0, 0, PW, PH], [group]).grab());
     layout.panel_backing = { size: [PW, PH], corner: 60, trim: TRIM };
-  }
+  });
 
   // --- a section frame: a narrow worn steel rim with a screw in each corner, drawn as a 9-slice
-  {
-    const M = 18, FW = 560, FH = 360, RIM = 22, group = new THREE.Group(), si = 13;
+  if (want('section')) await withSeed(504, async () => {
+    // The screws sit on the rim's centre line, in from its rounded corners, as they would be driven.
+    const M = 18, FW = 560, FH = 360, RIM = 26, group = new THREE.Group(), si = 4 + RIM / 2;
     const ring = rrShape(FW - 8, FH - 8, 14); ring.holes.push(rr(new THREE.Path(), FW - 8 - 2 * RIM, FH - 8 - 2 * RIM, 8));
     const feat = { icons: [], buttons: [], screws: [[si, si], [FW - si, si], [si, FH - si], [FW - si, FH - si]].map(([x, y]) => ({ x: x - 4, y: y - 4 })) };
     const rim = new THREE.Mesh(extrude(ring, 3, 3.5, 2.8, 5), [plateMaterial(FW - 8, FH - 8, feat), MAT.plateSide]);
@@ -963,11 +2380,14 @@ async function exportLayers() {
     const sfr = stage([0, 0, FW + 2 * M, FH + 2 * M], [group]);
     await post('section_frame', sfr.grab());
     layout.section_frame = { size: [FW + 2 * M, FH + 2 * M], outset: M, rim: RIM, corner: M + 44 };
-  }
+  });
 
-  // --- small keycaps: Close (✕) and Back (‹), on the panel's navy with their own shadow
-  for (const [name, glyph] of [['close', 'x'], ['back', 'chevron']]) {
-    const S = 64, M = 16, group = new THREE.Group();
+  // --- small keycaps: Close (✕) and Back (‹), on the panel's navy with their own shadow. SMALL_KEY is
+  // the key with its bezel, a line of the title tall (Bebas 32 px: 38.4 logical px, 72 layout px) with
+  // room to spare, so the game draws them down at that size rather than up.
+  const SMALL_KEY = 76;
+  if (want('keys')) await withSeed(505, async () => { for (const [name, glyph] of [['close', 'x'], ['back', 'chevron']]) {
+    const S = SMALL_KEY, M = 16, group = new THREE.Group();
     const k = keycap(S, S, 6, (g, a, b) => {
       g.strokeStyle = NAVY; g.lineWidth = a * 0.13; g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath();
       if (glyph === 'x') { g.moveTo(a * 0.3, b * 0.3); g.lineTo(a * 0.7, b * 0.7); g.moveTo(a * 0.7, b * 0.3); g.lineTo(a * 0.3, b * 0.7); }
@@ -980,7 +2400,241 @@ async function exportLayers() {
     const ss = stage([0, 0, S + 2 * M, S + 2 * M], [group]);
     await post('key_' + name, ss.grab()); await pressed(k, 'key_' + name + '_pressed', ss);
     layout['key_' + name] = { size: [S + 2 * M, S + 2 * M], rect: [M, M, S, S] };
+  } });
+
+  // --- the Location key: a small keycap like Close, with a navy map pin (a round head with a hole, on a
+  // point), and the shadow it casts on the panel.
+  if (want('pin')) await withSeed(406, async () => {
+    const S = SMALL_KEY, M = 16, group = new THREE.Group();
+    const k = keycap(S, S, 6, (g, a, b) => {
+      const cx = a * 0.5, cy = b * 0.4, r = a * 0.19, s = Math.sin(0.64), c = Math.cos(0.64);
+      g.fillStyle = NAVY;
+      g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.arc(cx, cy, r * 0.42, 0, Math.PI * 2, true); g.fill('evenodd');
+      g.beginPath(); g.moveTo(cx - r * c, cy + r * s); g.lineTo(cx + r * c, cy + r * s); g.lineTo(cx, cy + r * 2.3); g.closePath(); g.fill();
+    });
+    k.position.set(M + S / 2, 0, M + S / 2); group.add(k);
+    const catcher = new THREE.Mesh(new THREE.PlaneGeometry(S + 2 * M, S + 2 * M).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ opacity: 0.5 }));
+    catcher.position.set(M + S / 2, 0.05, M + S / 2); catcher.receiveShadow = true; group.add(catcher);
+    const ss = stage([0, 0, S + 2 * M, S + 2 * M], [group]);
+    await post('key_pin', ss.grab()); await pressed(k, 'key_pin_pressed', ss);
+    layout.key_pin = { size: [S + 2 * M, S + 2 * M], rect: [M, M, S, S] };
+  });
+
+  // --- the status lamp: lit green, amber or red, or off, each with the shadow it casts on the backing,
+  // and each lit colour's glow (drawn additively). Lit by the house light, like everything after it.
+  if (want('lamp')) await withSeed(401, async () => {
+    const LS = LAMP_FRAME, c0 = LS / 2;
+    for (const [name, lit] of [['green', true], ['amber', true], ['red', true], ['off', false]]) {
+      const group = new THREE.Group();
+      const lamp = pilotLamp(LAMP[name] ?? null, lit); lamp.position.set(c0, 0, c0); group.add(lamp);
+      group.add(shadowCatcher(LS, LS, c0, c0));
+      await post('lamp_' + name, stage([0, 0, LS, LS], [group], { light: 'house' }).grab());
+      if (!lit) continue;
+      const c = new THREE.Color(LAMP[name]), rgb = `${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)}`;
+      await post('lamp_glow_' + name, frame2d(LS, LS, (g) => {
+        const grd = g.createRadialGradient(c0, c0, 0, c0, c0, LS / 2);
+        grd.addColorStop(0, `rgba(${rgb},0.42)`); grd.addColorStop(0.22, `rgba(${rgb},0.22)`);
+        grd.addColorStop(0.5, `rgba(${rgb},0.07)`); grd.addColorStop(1, `rgba(${rgb},0)`);
+        g.fillStyle = grd; g.fillRect(0, 0, LS, LS);
+      }));
+    }
+    layout.status_lamp = { size: [LS, LS], bezel: 2 * LAMP_R };
+  });
+
+  // --- the scrollbar: the rail (strip, slot, screws and its shadow) and the slider (with its shadow on
+  // the rail), each a vertical three-slice; see scrollRail and scrollThumb.
+  if (want('scroll')) await withSeed(402, async () => {
+    await post('scroll_rail', stage([0, 0, RAIL.W, RAIL.H], [scrollRail()], { light: 'house' }).grab());
+    await post('scroll_thumb', stage([0, 0, THUMB.W, THUMB.H], [scrollThumb()], { light: 'house' }).grab());
+    layout.scroll_rail = { size: [RAIL.W, RAIL.H], cap: RAIL.cap, travel_inset: RAIL.travelInset };
+    layout.scroll_thumb = { size: [THUMB.W, THUMB.H], cap: THUMB.cap, period: THUMB.period, repeat_from: THUMB.cap + 8 * THUMB.period };
+  });
+
+  // --- the seam's non-slip edge: the rubber strip and its screws with its shadow, over the shade it
+  // casts on the body below; a horizontal three-slice (see seamStrip).
+  if (want('seam')) await withSeed(403, async () => {
+    const render = stage([0, 0, SEAM.W, SEAM.H], [seamStrip()], { light: 'house' }).grab();
+    await post('seam_edge', frame2d(SEAM.W, SEAM.H, (g) => { paintSeamShade(g); g.drawImage(render, 0, 0, SEAM.W, SEAM.H); }));
+    layout.seam_edge = { size: [SEAM.W, SEAM.H], cap: SEAM.cap, top: SEAM.top, nose: SEAM.nose };
+  });
+
+  // --- the recipe diagram's enamel plate (a 9-slice) and the grunge the game lays over its field.
+  if (want('enamel')) await withSeed(405, async () => {
+    await post('recipe_enamel', stage([0, 0, ENAMEL.W, ENAMEL.H], [enamelPlate()], { light: 'house' }).grab());
+    await post('recipe_grunge', frame2d(RECIPE_GRUNGE.W, RECIPE_GRUNGE.H, recipeGrunge));
+    layout.recipe_enamel = { size: [ENAMEL.W, ENAMEL.H], margin: ENAMEL.out, corner: ENAMEL.corner,
+      field_inset: ENAMEL.rim + ENAMEL.band + ENAMEL.gap + ENAMEL.stripe + 2 };
+    layout.recipe_grunge = { size: [RECIPE_GRUNGE.W, RECIPE_GRUNGE.H] };
+  });
+
+  // --- the diagnostics' cable, the drum counter (housing and glass) and the action sheets' plate.
+  if (want('cable')) await withSeed(407, async () => {
+    await post('diag_cable', stage([0, 0, CABLE.W, CABLE.H], [cableRun()]).grab());
+    layout.diag_cable = { size: [CABLE.W, CABLE.H], cap: CABLE.cap, x: CABLE.x };
+  });
+  if (want('counter')) await withSeed(408, async () => {
+    const { group, W } = counterHousing();
+    await post('counter_housing', stage([0, 0, W, COUNTER.H], [group]).grab());
+    await post('counter_glass', frame2d(W, COUNTER.H, (g) => paintCounterGlass(g, W)));
+    layout.counter = { size: [W, COUNTER.H], cap: COUNTER.cap, cell: COUNTER.cell, cells: COUNTER.cells, window: COUNTER.win,
+      repeat_from: COUNTER.cap + Math.floor(COUNTER.cells / 2) * COUNTER.cell };
+  });
+  if (want('sheet')) await withSeed(409, async () => {
+    await post('sheet_plate', stage([0, 0, SHEET.W, SHEET.H], [sheetPlate()]).grab());
+    layout.sheet_plate = { size: [SHEET.W, SHEET.H], margin: SHEET.M, corner: 60 };
+  });
+
+  // --- the diagnostics' plastic plate and its silver screws, and the shipments' rolling door.
+  if (want('plastic')) await withSeed(410, async () => {
+    await post('diag_plastic', stage([0, 0, PLASTIC.W, PLASTIC.H], [plasticPlate()]).grab());
+    await post('screw_silver', stage([0, 0, SILVER_SCREW.S, SILVER_SCREW.S], [silverScrew()]).grab());
+    layout.diag_plastic = { size: [PLASTIC.W, PLASTIC.H], margin: PLASTIC.M, corner: 40 };
+    layout.screw_silver = { size: [SILVER_SCREW.S, SILVER_SCREW.S], radius: SILVER_SCREW.r };
+  });
+  if (want('door')) await withSeed(411, async () => {
+    await post('shipment_door', stage([0, 0, DOOR.W, DOOR.H], [rollingDoor()]).grab());
+    layout.shipment_door = { size: [DOOR.W, DOOR.H], side: DOOR.side, top: DOOR.top, bottom: DOOR.bottom, period: DOOR.period };
+  });
+
+  // --- the section headings' letters (see headingAtlas), as the title's.
+  if (want('heading')) await withSeed(412, async () => {
+    const at = headingAtlas(), group = new THREE.Group();
+    for (const [ch, [x, y, w, h, ox]] of Object.entries(at.cells)) {
+      const letter = headingLetter(ch, ox, at.baseline);
+      const r = relief(w, h, (g) => letter(g, '#fff'), WHITE_LETTERS, { height: 5, soften: 0.7, faceGrade: false });
+      r.position.set(x + w / 2, 0.3, y + h / 2); group.add(r);
+    }
+    await post('heading_glyphs', stage([0, 0, at.W, at.H], [group]).grab());
+    const all = (g, col) => { for (const [ch, [x, y, , , ox]] of Object.entries(at.cells)) headingLetter(ch, x + ox, y + at.baseline)(g, col); };
+    await post('heading_glyph_shadows', frame2d(at.W, at.H, (g) => drawIconShadows(g, at.W, at.H, [{ height: 5, draw: all }])));
+    layout.heading_glyphs = { size: [at.W, at.H], font_size: HEADING.size, baseline: at.baseline, space: at.space, glyphs: at.cells };
+  });
+
+  // --- the diagnostics' modules, the cable's taps into them, and the Visual / Text switch.
+  if (want('module')) await withSeed(413, async () => {
+    await post('diag_module', stage([0, 0, MODULE.W, MODULE.H], [diagModule()]).grab());
+    await post('diag_tap', stage([0, 0, TAP.W, TAP.H], [cableTap()]).grab());
+    layout.diag_module = { size: [MODULE.W, MODULE.H], margin: MODULE.M, corner: MODULE.M + 16 };
+    layout.diag_tap = { size: [TAP.W, TAP.H], x: TAP.x, plug: TAP.plug };
+  });
+  if (want('toggle')) await withSeed(414, async () => {
+    await post('toggle_slot', stage([0, 0, TOGGLE.W, TOGGLE.H], [toggleSlot()]).grab());
+    await post('toggle_knob', stage([0, 0, TOGGLE.knob, TOGGLE.knob], [toggleKnob()]).grab());
+    layout.toggle = { size: [TOGGLE.W, TOGGLE.H], slot: [TOGGLE.slotW, TOGGLE.slotH], knob: TOGGLE.knob, knob_size: [TOGGLE.knobW, TOGGLE.knobH] };
+  });
+
+  // --- Labour and Wages' factory doors, the window dark and lit.
+  if (want('ldoor')) {
+    for (const [name, lit] of [['labour_door', false], ['labour_door_lit', true]]) await withSeed(415, async () => {
+      await post(name, stage([0, 0, LDOOR.W, LDOOR.H], [labourDoor(lit)]).grab());
+    });
+    const { plate, win } = labourDoorGeometry();
+    layout.labour_door = { size: [LDOOR.W, LDOOR.H], plate, window: win };
   }
+
+  // --- the Modifiers key (blank, and pressed) and the white plastic sheet it opens onto.
+  if (want('modkey')) await withSeed(416, async () => {
+    const { W, H, M } = MODKEY, group = new THREE.Group();
+    const k = keycap(W - 2 * M, H - 2 * M, 16, () => {});
+    k.position.set(W / 2, 0, H / 2); group.add(k, shadowCatcher(W, H, W / 2, H / 2));
+    const st = stage([0, 0, W, H], [group]);
+    await post('key_modifiers', st.grab()); await pressed(k, 'key_modifiers_pressed', st);
+    const [fw, fh] = k.userData.face;
+    layout.key_modifiers = { size: [W, H], cap: MODKEY.cap, rect: [M, M, W - 2 * M, H - 2 * M], face: [(W - fw) / 2, (H - fh) / 2, fw, fh] };
+  });
+  if (want('sheetw')) await withSeed(417, async () => {
+    await post('sheet_white', stage([0, 0, WSHEET.W, WSHEET.H], [whiteSheet()]).grab());
+    layout.sheet_white = { size: [WSHEET.W, WSHEET.H], margin: WSHEET.M, corner: WSHEET.M + 40 };
+  });
+
+  // --- the dark metal plate, the socket a gauge is set into, the frame round a set-in icon, and the
+  // Modifiers row's raised % sign and its shadow.
+  if (want('darkplate')) await withSeed(418, async () => {
+    await post('dark_plate', stage([0, 0, DARK_PLATE.W, DARK_PLATE.H], [darkPlate()]).grab());
+    await post('gauge_socket', stage([0, 0, SOCKET.S, SOCKET.S], [gaugeSocket()]).grab());
+    const well = stage([0, 0, WELL.W, WELL.H], [iconWell()]).grab();
+    await post('icon_well', frame2d(WELL.W, WELL.H, (g) => { g.drawImage(well, 0, 0, WELL.W, WELL.H); paintWellShade(g); }));
+    layout.dark_plate = { size: [DARK_PLATE.W, DARK_PLATE.H] };
+    layout.gauge_socket = { size: [SOCKET.S, SOCKET.S], hole: SOCKET.hole, chamfer: SOCKET.chamfer };
+    layout.icon_well = { size: [WELL.W, WELL.H], margin: WELL.M, rim: WELL.rim, radius: WELL.r };
+  });
+  if (want('modicon')) await withSeed(419, async () => {
+    const { S, icon } = MODICON, enamel = new THREE.MeshPhysicalMaterial({ color: OFF_WHITE, roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.3 });
+    const r = relief(icon, icon, (g, a, b) => drawPercent(g, a, b, '#fff'), enamel, { height: 10, soften: 1.3 });
+    r.position.set(S / 2, 0.3, S / 2);
+    await post('mod_icon', stage([0, 0, S, S], [r]).grab());
+    const o = (S - icon) / 2;
+    await post('mod_icon_shadow', frame2d(S, S, (g) => drawIconShadows(g, S, S, [{ height: 10, draw: (tg, col) => { tg.save(); tg.translate(o, o); drawPercent(tg, icon, icon, col); tg.restore(); } }])));
+    layout.mod_icon = { size: [S, S], icon };
+  });
+
+  // --- the mini screen a figure is shown on in LED segments.
+  if (want('screen')) await withSeed(420, async () => {
+    const { W, H } = SCREEN;
+    await post('mini_screen', stage([0, 0, W, H], [miniScreen()]).grab());
+    await post('mini_screen_glass', frame2d(W, H, paintScreenGlass));
+    layout.mini_screen = { size: [W, H], margin: SCREEN.M, rim: SCREEN.rim, radius: SCREEN.r };
+  });
+
+  // --- the Economics section's raised icons (see ECON_ICONS) and their shadows.
+  if (want('econ')) await withSeed(421, async () => {
+    const { S, icon, height, soften, art } = ECON_ICONS, o = (S - icon) / 2;
+    const enamel = new THREE.MeshPhysicalMaterial({ color: OFF_WHITE, roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.3 });
+    for (const [name, file] of Object.entries(art)) {
+      const img = await loadImage('/icons/' + file);
+      const r = iconRelief(img, icon, icon, enamel, { height, soften });
+      r.position.set(S / 2, 0.3, S / 2);
+      await post('econ_icon_' + name, stage([0, 0, S, S], [r]).grab());
+      await post('econ_icon_' + name + '_shadow', frame2d(S, S, (g) => drawIconShadows(g, S, S, [{ height, draw: (tg, col) => stamp(tg, img, o, o, icon, icon, col) }])));
+    }
+    layout.econ_icons = { size: [S, S], icon, names: Object.keys(art) };
+  });
+
+  // --- the diagnostics' visual view's raised icons (see DIAG_ICONS) and their shadows.
+  if (want('diagicon')) await withSeed(422, async () => {
+    const { S, icon, height, soften, art } = DIAG_ICONS, o = (S - icon) / 2;
+    const enamel = new THREE.MeshPhysicalMaterial({ color: OFF_WHITE, roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.3 });
+    for (const [name, { file, make, alpha }] of Object.entries(art)) {
+      const mask = make ? await make() : alpha ? trimAlpha(await loadImage('/icons/' + file)) : keyCream(await loadImage('/icons/' + file));
+      const r = iconRelief(mask, icon, icon, enamel, { height, soften });
+      r.position.set(S / 2, 0.3, S / 2);
+      await post('diag_icon_' + name, stage([0, 0, S, S], [r]).grab());
+      await post('diag_icon_' + name + '_shadow', frame2d(S, S, (g) => drawIconShadows(g, S, S, [{ height, draw: (tg, col) => stamp(tg, mask, o, o, icon, icon, col) }])));
+    }
+    layout.diag_icons = { size: [S, S], icon, names: Object.keys(art) };
+  });
+
+  // --- the header's building emblems in polished metal (see BLD_EMBLEMS) and their shadows.
+  if (want('emblem')) await withSeed(423, async () => {
+    const { S, icon, height, soften, files } = BLD_EMBLEMS, o = (S - icon) / 2;
+    const chrome = new THREE.MeshStandardMaterial({ color: 0xb4b9c0, metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 1.0 });
+    const ids = [];
+    for (const file of files) {
+      const id = file.match(/^(b_\d+)/)[1];
+      const mask = keyCream(await loadImage('/icons/buildings/' + file));
+      const r = relief(icon, icon, (g, a, b) => stamp(g, mask, 0, 0, a, b, '#fff'), chrome, { height, soften, faceGrade: false });
+      r.position.set(S / 2, 0.3, S / 2);
+      await post('bld_emblem_' + id, stage([0, 0, S, S], [r]).grab());
+      await post('bld_emblem_' + id + '_shadow', frame2d(S, S, (g) => drawIconShadows(g, S, S, [{ height, draw: (tg, col) => stamp(tg, mask, o, o, icon, icon, col) }])));
+      ids.push(id);
+    }
+    layout.bld_emblems = { size: [S, S], icon, ids };
+  });
+
+  // --- the title's letters: the raised white faces (ungraded; the game grades the whole title), and
+  // their swept shadows and contact lines, one atlas cell per letter (see titleAtlas).
+  if (want('title')) await withSeed(404, async () => {
+    const at = titleAtlas(), group = new THREE.Group();
+    for (const [ch, [x, y, w, h, ox]] of Object.entries(at.cells)) {
+      const letter = titleLetter(ch, ox, at.baseline);
+      const r = relief(w, h, (g) => letter(g, '#fff'), WHITE_LETTERS, { height: TITLE.height, soften: TITLE.soften, faceGrade: false });
+      r.position.set(x + w / 2, 0.3, y + h / 2); group.add(r);
+    }
+    await post('title_glyphs', stage([0, 0, at.W, at.H], [group], { light: 'house' }).grab());
+    const all = (g, col) => { for (const [ch, [x, y, , , ox]] of Object.entries(at.cells)) titleLetter(ch, x + ox, y + at.baseline)(g, col); };
+    await post('title_glyph_shadows', frame2d(at.W, at.H, (g) => drawIconShadows(g, at.W, at.H, [{ height: TITLE.height, draw: all }])));
+    layout.title_glyphs = { size: [at.W, at.H], font_size: TITLE.size, baseline: at.baseline, glyphs: at.cells };
+  });
 
   await fetch('/layers/layout.json', { method: 'POST', body: JSON.stringify(layout, null, 1) });
   document.title = 'export done';

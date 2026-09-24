@@ -304,6 +304,14 @@ func carbon_charge(good_id: String, qty: int, turn: int) -> float:
 		return 0.0
 	return float(qty) * mult * EconomyConfig.CO2_TAX_RATE * co2_tax_scale(turn)
 
+## £ carbon levy on one run of a building's recipe: its taxed inputs (coal, processed oil, ethylene…) at
+## the quantities a run of it draws, at the current policy phase. 0 before the levy is in force.
+func run_carbon_levy(building: Dictionary, recipe: Dictionary) -> float:
+	var levy := 0.0
+	for inp: Dictionary in recipe.get("inputs", []):
+		levy += carbon_charge(str(inp.get("good_id", "")), Production._scaled_input_qty(inp, building), TurnManager.current_turn)
+	return levy
+
 # --- Announcement seeding -------------------------------------------------------------
 
 func _on_state_reset() -> void:

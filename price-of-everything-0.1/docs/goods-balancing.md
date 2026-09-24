@@ -26,14 +26,14 @@ business at game start. Two forces do that work, and neither is a thin margin:
 
 - **Deposit penalties.** Common deposits start at **−30%** output, bauxite and sulphur at
   **−15%**. You extract less than the recipe nominally yields.
-- **A fixed, per-good cost of shipping.** `SEAPORT_BASE_FEE_PER_GOOD = 5.0` is a **flat**
-  charge per good per turn at a state port. It does not scale with cargo value, so a
-  heavy, low-value good has to move a lot of tonnage to clear it, while a lighter or
-  denser-value good clears it trivially.
+- **The cost of getting it to market.** Inland freight is charged per unit by weight class
+  (plus a small share of value), so a heavy, low-value good pays far more of its value to
+  move than a light, valuable one. Every market sale then pays the port charge, a share of
+  the goods' value (see §1.5), and a raw good's margin is too thin to carry both.
 
 To make extraction pay you must **internalise more of the cost** — feed the ore into your
-own smelter instead of selling it, own the port so the base fee goes to zero, or research
-the nodes that cut it. That is the intended lesson of the opening turns.
+own smelter instead of selling it, build next to the port, own the port (it halves the
+charge), or research the nodes that cut it. That is the intended lesson of the opening turns.
 
 > A raw-only position is a **bridge**, not a business: it converts a deposit into the cash
 > and credit that fund your first real chain. Tests must never assert profit on it — see
@@ -54,14 +54,13 @@ holds together without special-casing:
 | Lever | Cost if you *don't* integrate | Kept if you *do* |
 |---|---|---|
 | Market spread | You buy inputs at market price and sell output 5% under it | Internal transfers cross no spread |
-| Flat port fee | Every good shipped through a state port pays it, per turn | Internal moves never touch a port |
+| Port charge | Every market sale and purchase pays a share of the goods' value at the port | Internal moves never touch a port |
 | Transport | Every market leg is hauled and charged | Co-located or short-hauled stages cost less |
 | Deposit penalty | You sell reduced raw output at raw prices | You sell reduced raw output embedded in a finished good |
 | Glut | Dumping one raw good craters its own price | Value spread across several outputs moves no single price far |
 
-The **ad valorem** insurance component (`SEAPORT_INSURANCE_RATE = 0.0005`, halved again at
-an owned port) is deliberately **tiny** and is *not* one of these levers. Do not reason
-about it as a cost driver; the flat fee is the mechanism.
+The port charge is **ad valorem** (§1.5): it scales with what actually moves, so it holds
+its share of revenue as an empire grows and as prices fall.
 
 **Tech-gated recipes are rewards.** A recipe unlocked by research may be clearly
 profitable — that profit *is* the return on the tech investment.
@@ -79,13 +78,46 @@ until it means nothing.
 `_check_economy_end_state()`: last-10-turn post-tax profit positive, cumulative post-tax
 profit positive, and cash rising after buildout.
 
+
+### 1.5 Port charges
+
+Ports charge **ad valorem only** (`TransportState.preview_sea_shipping` / `commit_sea_shipping`,
+rates in `EconomyConfig`):
+
+- **What pays it:** every market sale (a building's output sold straight to market, surplus
+  auto-sold from a stockpile, a manual sale) and every market purchase (inputs, construction
+  materials). Moves between your own tiles and trades through the logistics intermediary
+  pay none; the intermediary's fee covers its logistics.
+- **The rate:** a share of the goods' value at the market **buy** price, for imports and
+  exports alike: **0.5%** until turn 30, **3%** from turn 31 (`SEAPORT_AD_VALOREM_EARLY`,
+  `_LATE`, `_STEP_TURN`). Under the Middleman ruleset it is 3% from the start; tutorial games
+  keep 0.5% throughout.
+- **Growth:** it rises 0.1% a turn, compounded from turn 1 (`SEAPORT_FEE_GROWTH_PER_TURN`).
+- **Owning the port** halves it (`OWNED_SEAPORT_AD_VALOREM_SHARE`). Research modifiers
+  (`port_ad_valorem_fee`) cut it further.
+- **Capacity:** a port handles 1,500 units of a transport class a turn (300 for hazardous
+  liquids, gases and ultra-heavy goods, `SEAPORT_THROUGHPUT_*`; `port_throughput` research
+  raises it). A shipment that takes a port to its cap pays **double**, the whole shipment.
+- **The flat per-good fee is retired:** `SEAPORT_BASE_FEE_PER_GOOD = 0.0`. It was charged once
+  per good per turn, so quantity shipped was effectively free and freight collapsed as an
+  empire grew. The mechanism is still there (once per good per port per turn, never at an
+  owned port) and evaluates to zero.
+- **Seaport subscriptions** (a subscribed good within `SEAPORT_RANGE_TILES`, 10, of the port)
+  waive the inland freight between the port and the tile and make the trip one turn; the
+  port charge is still paid.
+- **Timing:** a sale pays its freight and port charge when it is dispatched; a purchase is
+  quoted and paid when the goods arrive.
+
+Reports call the charge `port_insurance` (and `port_inbound` for purchases' freight); it is
+this charge, not an insurance bill on top of it.
+
 ---
 
 ## 2. Tiers
 
 | Tier | Standalone | Integrated | Examples |
 |---|---|---|---|
-| **Raw resource** | **not viable** — deposit penalty + flat port fee | pays once embedded in your own chain | ore/coal mines, crude oil, refined REE, lithium carbonate |
+| **Raw resource** | **not viable** — deposit penalty + freight and the port charge | pays once embedded in your own chain | ore/coal mines, crude oil, refined REE, lithium carbonate |
 | **Intermediate** | modestly profitable | materially better | ingots, steel, copper wiring, ethylene, silicon, alumina, pvc, hydrogen, concrete |
 | **Finished / apex** | modestly profitable | far better | motor, CPU, computer, ICE/EV car, heavy vehicle, batteries |
 | **Gated (reward)** | ≥ its base recipe | ≥ its base recipe | Basic Oxygen Steel, Magnetic Separation REE, Automated Heavy Vehicles, EV Assembly |
@@ -96,7 +128,7 @@ wiring).
 
 > **On numbers in this table.** Earlier revisions quoted per-recipe £/turn figures here.
 > They are omitted deliberately: they were design-model outputs from
-> `tools/band_breakdown.py`, which does not net the player-level seaport fee, so they read
+> `tools/band_breakdown.py`, which does not net the port charge, so they read
 > higher than a real position earns. Treat `reports/balance/band_breakdown.csv` as a
 > *relative* instrument — is this recipe in band, is the integrated pair ahead of the
 > standalone — rather than as a promise of a specific number. Quote it in balance

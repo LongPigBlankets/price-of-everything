@@ -64,7 +64,9 @@ static func primary_output_qty(recipe: Dictionary) -> int:
 # production.gd._produce_outputs: recipe_output modifiers, level OUTPUT_MULT, then
 # the workforce output multiplier.
 # Returns the per-turn output capacity (0 for power/infra or unknown goods).
-static func effective_output_qty(building: Dictionary, recipe: Dictionary) -> int:
+## `this_turn` also takes the startup ramp (a new building runs at part capacity) and the
+## derating of output that relies on unfirmed intermittent power, as the turn's production does.
+static func effective_output_qty(building: Dictionary, recipe: Dictionary, this_turn := false) -> int:
 	for output in flow_output_items(recipe):
 		var internal_name: String = str(output.get("internal_name", ""))
 		var base_qty: int = int(output.get("qty", 0))
@@ -85,6 +87,11 @@ static func effective_output_qty(building: Dictionary, recipe: Dictionary) -> in
 		var q: int = int(round(Modifiers.apply("recipe_output", recipe_id, float(base_qty), ctx)))
 		q = int(round(float(q) * BuildingLevels.mult("output", int(building.get("level", 1)))))
 		q = int(round(float(q) * LabourState.workforce_output_multiplier()))
+		if this_turn:
+			q = int(round(float(q) * MatchState.startup_capacity_multiplier(building)))
+			var derate := float((Production._intermittency_by_building.get(str(building.get("instance_id", "")), {}) as Dictionary).get("derate", 0.0))
+			if derate > 0.0:
+				q = int(round(float(q) * (1.0 - derate)))
 		return maxi(0, q)
 	return 0
 

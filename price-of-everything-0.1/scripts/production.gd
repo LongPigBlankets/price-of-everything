@@ -1450,6 +1450,25 @@ func _output_stockpile_coord(building: Dictionary, good_id: String):
 func _transport_route(source_tile: String, destination_tile, good_id: String = "") -> Dictionary:
 	return TransportService.route(source_tile, destination_tile, good_id)
 
+## What selling `qty` of a good out of a tile's stockpile costs to ship: the inland leg along `route` to
+## `port_tile`, after the founder freight credit (waived for a seaport-subscribed good within range), and
+## the port charge, which every market sale pays (a subscription never waives it). The export side's
+## port charge is booked on one line, port_outbound, the mirror of a purchase's port_inbound. `commit`
+## consumes the credit and books the port's use, as the sell phase does; a quote (the detail panel's)
+## leaves both untouched. Adds the pieces to `breakdown`; returns the total.
+func stock_sale_charges(port_tile: String, route: Dictionary, good_id: String, qty: int, inland_waived: bool, commit: bool, breakdown: Dictionary) -> float:
+	var cost := 0.0
+	if not inland_waived:
+		cost += TransportService.land_cost_after_credit(good_id, qty, route, commit)
+		_add_transport_breakdown(breakdown, TransportService.transport_cost_breakdown_for_route(good_id, qty, route))
+	var sea_charge := TransportState.commit_sea_shipping(port_tile, good_id, qty, "sell") if commit \
+		else TransportState.preview_sea_shipping(port_tile, good_id, qty)
+	cost += float(sea_charge.get("total", 0.0))
+	breakdown["port_outbound"] = float(breakdown.get("port_outbound", 0.0)) \
+		+ float(sea_charge.get("base_fee", 0.0)) + float(sea_charge.get("insurance_fee", 0.0))
+	return cost
+
+
 func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit_toast: bool) -> Dictionary:
 	if str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1" and not ResearchState.global_trade_license_available():
 		return {"tile_id": "" if coord == null else str(coord), "items": [], "total_qty": 0, "total_revenue": 0.0}
@@ -1491,18 +1510,8 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 			continue
 		MarketState.record_market_sale_volume(good_key, sold_qty)
 		var sold_revenue: float = float(sold_qty) * price
-		if not (in_port_range and bool(covered_goods.get(good_key, false))):
-			transport_cost += TransportService.land_cost_after_credit(good_key, sold_qty, route, true)
-			_add_transport_breakdown(transport_breakdown, TransportService.transport_cost_breakdown_for_route(good_key, sold_qty, route))
-		# Every market sale crosses the sea leg. The subscription only waives the local
-		# inland route, never the port's handling and insurance charge.
-		var sea_charge := TransportState.commit_sea_shipping(port_tile, good_key, sold_qty, "sell")
-		transport_cost += float(sea_charge.get("total", 0.0))
-		# Export leg — the mirror of queue_buy's port_inbound. "sea" carries the ad valorem
-		# for both directions so the redesign's headline component stands alone.
-		# Mirror of queue_buy's port_inbound: the whole export-side port charge on one line.
-		transport_breakdown["port_outbound"] = float(transport_breakdown.get("port_outbound", 0.0)) \
-			+ float(sea_charge.get("base_fee", 0.0)) + float(sea_charge.get("insurance_fee", 0.0))
+		transport_cost += stock_sale_charges(port_tile, route, good_key, sold_qty,
+			in_port_range and bool(covered_goods.get(good_key, false)), true, transport_breakdown)
 		sale_record.items.append({
 			"good_id": good_key,
 			"qty": sold_qty,

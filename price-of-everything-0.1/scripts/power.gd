@@ -224,10 +224,6 @@ func settle_grid_transactions() -> Dictionary:
 				grid_sold += sold
 			_mark_network_supply(comp, gen_self, dem)
 
-	# A COO advisor negotiates grid tariffs: cheaper imported power (grid_buy_price)
-	# and better-paid exports (grid_sell_price).
-	var buy_mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("grid_buy_price", "*", {}).get("net", 0.0)) / 100.0)
-	var sell_mult: float = maxf(0.0, 1.0 + float(Modifiers.resolve_pct("grid_sell_price", "*", {}).get("net", 0.0)) / 100.0)
 	return {
 		"supply": supply_this_turn,
 		"demand": demand_this_turn,
@@ -239,9 +235,8 @@ func settle_grid_transactions() -> Dictionary:
 		# burn coal in your own plant and pay the levy, or buy the identical MW at a flat rate
 		# and pay nothing. The grid is priced as if generated the conventional way, matching
 		# how every other good's embodied carbon is derived.
-		"grid_buy_cost": grid_bought * (EconomyConfig.GRID_BUY_PRICE * buy_mult
-			+ MarketState.carbon_component(Catalog.get_good_by_internal_name("power").get("id", ""))),
-		"grid_sell_revenue": grid_sold * EconomyConfig.GRID_SELL_PRICE * sell_mult,
+		"grid_buy_cost": grid_bought * grid_import_price(),
+		"grid_sell_revenue": grid_sold * grid_export_price(),
 	}
 
 ## True when this tile's power draw was fully covered by its own cable network's generation
@@ -258,11 +253,21 @@ func allocated_draw_cost(tile_id: String, amount: int) -> float:
 		return 0.0
 	var draw := int(tile_drawn.get(tile_id, 0))
 	var imported_share := float(_tile_grid_draw.get(tile_id, draw)) / float(draw) if draw > 0 else 1.0
+	return float(amount) * ((1.0 - imported_share) * grid_export_price() + imported_share * grid_import_price())
+
+
+## The grid's prices this turn, per unit of power. An import costs the tariff, after a COO advisor's
+## negotiation (grid_buy_price), plus the carbon generating it would have carried: without that the
+## grid would be the cleanest loophole on the board, the same MW at a flat rate and no levy. An
+## export fetches the grid's price, after negotiation (grid_sell_price).
+func grid_import_price() -> float:
 	var buy_mult := maxf(0.0, 1.0 + float(Modifiers.resolve_pct("grid_buy_price", "*", {}).get("net", 0.0)) / 100.0)
+	return EconomyConfig.GRID_BUY_PRICE * buy_mult + MarketState.carbon_component(str(Catalog.get_good_by_internal_name("power").get("id", "")))
+
+
+func grid_export_price() -> float:
 	var sell_mult := maxf(0.0, 1.0 + float(Modifiers.resolve_pct("grid_sell_price", "*", {}).get("net", 0.0)) / 100.0)
-	var carbon := MarketState.carbon_component(str(Catalog.get_good_by_internal_name("power").get("id", "")))
-	return float(amount) * ((1.0 - imported_share) * EconomyConfig.GRID_SELL_PRICE * sell_mult
-		+ imported_share * (EconomyConfig.GRID_BUY_PRICE * buy_mult + carbon))
+	return EconomyConfig.GRID_SELL_PRICE * sell_mult
 
 # --- Cable-network connectivity (physical adjacency) ---------------------------------------
 

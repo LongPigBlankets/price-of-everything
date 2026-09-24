@@ -4,6 +4,9 @@ extends "res://scripts/bdp_v3_plate.gd"
 ## hinged clear cover, with its name in white raised letters beside it. The first click lifts the
 ## cover, which stands up over the plate's top edge; the second presses the button and opens the
 ## supply-chain review, as in v2. An untouched lifted cover drops again after OPEN_SECONDS.
+## cover_changed tells the panel when a cover lifts or drops, so it can show what the button would do.
+
+signal cover_changed(key: String, open: bool)
 
 ## The plate, and the rendered frame, which reaches HEAD layout pixels above it for the lifted covers.
 const PLATE := Vector2(863, 150)
@@ -33,15 +36,21 @@ func is_open(key: String) -> bool:
 
 
 func lift(key: String) -> void:
+	var was_open := is_open(key)
 	_open[key] = OPEN_SECONDS
 	set_process(true)
 	_redraw()
+	if not was_open:
+		cover_changed.emit(key, true)
 
 
 func drop(key: String) -> void:
+	var was_open := is_open(key)
 	_open.erase(key)
 	set_process(not _open.is_empty())
 	_redraw()
+	if was_open:
+		cover_changed.emit(key, false)
 
 
 func _process(delta: float) -> void:

@@ -56,9 +56,8 @@ func _init() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_glow_layer = _overlay("Glow")
-	var add := CanvasItemMaterial.new()
-	add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
-	_glow_layer.material = add
+	# Additive, and giving back the darkening of the lamp over the panel: a glow gives off its own light.
+	_glow_layer.material = load("res://scripts/bdp_v3_light.gd").glow_material()
 	_glow_layer.draw.connect(_draw_glow)
 	_front_layer = _overlay("Front")
 	_front_layer.draw.connect(_draw_front)

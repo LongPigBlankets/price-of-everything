@@ -6,11 +6,17 @@ const Paths := preload("res://scripts/app_paths.gd")
 const Economics := preload("res://scripts/economics_snapshot.gd")
 const World := preload("res://scripts/world_map.gd")
 const Middleman := preload("res://scripts/middleman_service.gd")
+const Readout := preload("res://scripts/building_readout.gd")
+const BuildingEconomics := preload("res://scripts/building_economics.gd")
 var site := "tile_5_10"
 var logistics_mode := "market"
 var route_mode := ""
 var rail_owned_limit := 0
 var infra_level := 1
+## --panel: also record, before each turn, what the Building Detail panel's Economics section says the
+## building will make that turn (BuildingReadout.economics, and v3's BuildingEconomics.per_turn under
+## value_added_v3), to compare with the cash that moves.
+var record_panel := false
 const SAMPLE_TURNS := 10
 const MAX_START_TURNS := 60
 const INITIAL_EQUITY := 1000000.0
@@ -45,6 +51,8 @@ func _enter_tree() -> void:
 			rail_owned_limit = maxi(0, int(arg.trim_prefix("--rail-owned=")))
 		elif arg.begins_with("--infra-level="):
 			infra_level = clampi(int(arg.trim_prefix("--infra-level=")), 1, 3)
+		elif arg == "--panel":
+			record_panel = true
 	if rail_owned_limit == 0 and site == "tile_5_4" and route_mode == "rail":
 		rail_owned_limit = 3
 	Paths._base = _out_path.get_base_dir().path_join("runtime")
@@ -165,9 +173,17 @@ func _run(recipe_id: String) -> void:
 				MatchState.route_output_to_market(iid, str(output.get("good_id", "")))
 		var cash_before := MatchState.money
 		var turn := TurnManager.current_turn
+		var panel: Dictionary = {}
+		if record_panel and BuildingState.buildings.has(iid):
+			var b: Dictionary = BuildingState.get_building(iid)
+			var r: Dictionary = Catalog.get_recipe(str(b.get("recipe_id", "")))
+			panel = Readout.economics(b, r, Catalog.get_building(str(b.get("building_id", ""))))
+			panel["value_added_v3"] = BuildingEconomics.per_turn(b)
 		TurnManager.commit_turn()
 		await TurnManager.turn_resolution_completed
 		var row := Economics.capture(cash_before, iid)
+		if record_panel:
+			row["panel_economics"] = panel
 		row["turn"] = turn
 		row["ran"] = bool(Production.last_turn_run.get(iid, false))
 		row["blocked_reason"] = Production.blocked_reason_by_building.get(iid, {}).duplicate(true)

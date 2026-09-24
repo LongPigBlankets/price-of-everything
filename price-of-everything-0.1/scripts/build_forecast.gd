@@ -427,10 +427,7 @@ static func marginal_power_cost(tile_id: String, demand: int) -> float:
 		if category == "" or MatchState.power_priority_for(category) != "grid":
 			generated += qty
 	var own := mini(demand, maxi(0, generated - consumed))
-	var buy_mult := maxf(0.0, 1.0 + float(Modifiers.resolve_pct("grid_buy_price", "*", {}).get("net", 0.0)) / 100.0)
-	var sell_mult := maxf(0.0, 1.0 + float(Modifiers.resolve_pct("grid_sell_price", "*", {}).get("net", 0.0)) / 100.0)
-	var carbon := MarketState.carbon_component(str(Catalog.get_good_by_internal_name("power").get("id", "")))
-	return own * EconomyConfig.GRID_SELL_PRICE * sell_mult + (demand - own) * (EconomyConfig.GRID_BUY_PRICE * buy_mult + carbon)
+	return own * Power.grid_export_price() + (demand - own) * Power.grid_import_price()
 
 
 ## Production orders lead+1 runs of market inputs. One run is already in the
