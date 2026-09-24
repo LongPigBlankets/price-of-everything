@@ -1749,6 +1749,14 @@ function unsoldArt(k = 4) {
   }, 1);
 }
 
+/**
+ * Building Detail's header emblem: each building's icon raised in polished metal (the silver screws'
+ * chrome), keyed from its cream art on navy (keyCream), with its swept shadow. The art fills `icon`
+ * layout px, 126 texels, an emblem two title lines tall (63 px) at two texels a pixel. One per building
+ * icon in assets/icons/buildings/, named by its building id: bld_emblem_<b_007>.
+ */
+const BLD_EMBLEMS = { S: 142, icon: 118, height: 11, soften: 1.6, files: ['b_001_mine.png','b_002_furnace.png','b_003_power_plant.png','b_004_port.png','b_005_roads.png','b_006_cables.png','b_007_industrial_factory.png','b_008_eaf.png','b_009_assembly_plant.png','b_010_high_tech_manufactory.png','b_011_petro_refinery.png','b_012_chem_plant.png','b_013_poly_plant.png','b_014_farm.png','b_015_new_forest.png','b_016_old_forest.png','b_017_pipes.png','b_018_reinf_pipes.png','b_019_rails.png','b_020_electrolyser.png','b_021_desal.png','b_022_water_recycling.png','b_023_landfill.png','b_024_solar_farm.png','b_025_onshore_wind_farm.png','b_026_offshore_wind_farm.png','b_027_hydro_power_plant.png','b_028_battery.png','b_030_consumer_factory.png','b_031_ruins.png','b_032_oil_well.png','b_033_offshore_oil_platform.png','b_034_fracking_oil_well.png','b_035_airport.png','b_036_recycling_plant.png','b_037_water_pump.png'] };
+
 /** An icon's own alpha as the mask, cropped to the art's bounds. */
 function trimAlpha(img) {
   const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
@@ -2155,6 +2163,7 @@ if (EXPORT) exportLayers();
  * mini_screen, mini_screen_glass: the mini screen a figure shows on in LED segments, and its glass.
  * econ_icon_<name> (+ _shadow): the Economics section's raised icons (ECON_ICONS).
  * diag_icon_<name> (+ _shadow): the diagnostics' visual view's raised icons (DIAG_ICONS).
+ * bld_emblem_<building id> (+ _shadow): the header's metal building emblems (BLD_EMBLEMS).
  * layout.json: frame sizes and every key's rect and top face, in capture pixels.
  * ?export&only=lamp,scroll renders just the named sets (see `want` below).
  */
@@ -2165,7 +2174,7 @@ async function exportLayers() {
   // ?export&only=lamp,scroll renders just those sets and merges their entries into the existing
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
-  // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon.
+  // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -2583,6 +2592,23 @@ async function exportLayers() {
       await post('diag_icon_' + name + '_shadow', frame2d(S, S, (g) => drawIconShadows(g, S, S, [{ height, draw: (tg, col) => stamp(tg, mask, o, o, icon, icon, col) }])));
     }
     layout.diag_icons = { size: [S, S], icon, names: Object.keys(art) };
+  });
+
+  // --- the header's building emblems in polished metal (see BLD_EMBLEMS) and their shadows.
+  if (want('emblem')) await withSeed(423, async () => {
+    const { S, icon, height, soften, files } = BLD_EMBLEMS, o = (S - icon) / 2;
+    const chrome = new THREE.MeshStandardMaterial({ color: 0xb4b9c0, metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 1.0 });
+    const ids = [];
+    for (const file of files) {
+      const id = file.match(/^(b_\d+)/)[1];
+      const mask = keyCream(await loadImage('/icons/buildings/' + file));
+      const r = relief(icon, icon, (g, a, b) => stamp(g, mask, 0, 0, a, b, '#fff'), chrome, { height, soften, faceGrade: false });
+      r.position.set(S / 2, 0.3, S / 2);
+      await post('bld_emblem_' + id, stage([0, 0, S, S], [r]).grab());
+      await post('bld_emblem_' + id + '_shadow', frame2d(S, S, (g) => drawIconShadows(g, S, S, [{ height, draw: (tg, col) => stamp(tg, mask, o, o, icon, icon, col) }])));
+      ids.push(id);
+    }
+    layout.bld_emblems = { size: [S, S], icon, ids };
   });
 
   // --- the title's letters: the raised white faces (ungraded; the game grades the whole title), and

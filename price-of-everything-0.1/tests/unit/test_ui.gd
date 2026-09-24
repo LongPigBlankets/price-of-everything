@@ -943,6 +943,12 @@ func _test_bdp_v3_panel() -> void:
 	var key_px: float = panel._close_key.size.y * load("res://scripts/bdp_v3_key.gd").KEY_SIDE / load("res://scripts/bdp_v3_key.gd").TEXTURE_SIDE
 	_check(absf(key_px - line_h) < 1.5 and absf((panel._pin_key.position.y - panel._close_key.position.y) - load("res://scripts/bdp_v3_title.gd").line_pitch()) < 1.5,
 		"bdp v3: Close and Location are each a title line tall, one beside each line (%.1f px keys, lines %.1f)" % [key_px, line_h])
+	var Emblem = load("res://scripts/bdp_v3_emblem.gd")
+	var emblem: Control = panel._emblem_v3
+	_check(emblem.visible and emblem.face != null and is_equal_approx(emblem.size.y, Emblem.side())
+		and panel._title_v3._para.get_line_count() == 2 and absf(Emblem.side() - panel._title_v3.custom_minimum_size.y) < 1.0
+		and emblem.get_global_rect().position.x < panel._title_v3.get_global_rect().position.x,
+		"bdp v3: the building's metal emblem stands top left, as tall as the title's two lines beside it (%.0f px, title %.0f px)" % [Emblem.side(), panel._title_v3.custom_minimum_size.y])
 	var room: float = panel._scroll.size.x - panel._scroll.get_v_scroll_bar().size.x
 	_check(panel._body.get_combined_minimum_size().x <= room + 0.5,
 		"bdp v3: no section needs more width than the body has, which would push the scrollbar into the trim (%.0f of %.0f px)" % [panel._body.get_combined_minimum_size().x, room])
@@ -974,8 +980,12 @@ func _test_bdp_v3_panel() -> void:
 	if mod_sheet != null:
 		for l: Label in mod_sheet.find_children("*", "Label", true, false):
 			navy_ok = navy_ok and l.get_theme_color("font_color") in [load("res://scripts/bdp_v3_plate.gd").NAVY] + panel.V3_INK.values()
-	_check(mod_key != null and mod_key.openable and mod_key.open and mod_sheet != null and mod_sheet.visible and navy_ok,
-		"bdp v3: with a modifier, Modifiers opens on a white plastic sheet printed in navy, open to start with")
+	var closed_first: bool = mod_key != null and not mod_key.open and mod_sheet != null and not mod_sheet.visible
+	if mod_key != null:
+		mod_key.toggled.emit(true)
+	_check(closed_first and mod_key.openable and mod_sheet.visible and navy_ok,
+		"bdp v3: with a modifier, Modifiers starts closed and opens on a white plastic sheet printed in navy")
+	panel._v3_modifiers_open = false
 	Modifiers.remove(test_mod)
 	panel._rebuild(b)
 	await get_tree().process_frame
@@ -1125,22 +1135,32 @@ func _test_bdp_v3_diag_visual() -> void:
 	var counts: Array = columns.map(func(c: Node) -> int: return c.find_children("*", "Control", true, false).filter(is_indicator).size())
 	var titles: Array = columns.map(func(c: Node) -> String: return (c.find_children("*", "Label", true, false)[0] as Label).text)
 	var inds: Array = view.find_children("*", "Control", true, false).filter(is_indicator)
-	_check(view.visible and not text_card.visible and not toggle.right and titles == ["Inputs", "Inbound", "Power", "Plant", "Outputs"]
-		and counts == [4, 4, 3, 2, 5] and inds.all(func(n: Node) -> bool: return n.lamp != null and n.icon != null)
-		and not inds.any(func(n: Node) -> bool: return str(n.label).begins_with("Placeholder")),
-		"bdp v3 visual: thrown to Visual, the case shows five stage columns, inputs on the left, 18 checks each an icon over a lamp (%s)" % str(counts))
+	# Only the checks that apply show: the stages and counts the panel's own filtered lists give, in order.
+	var expected: Array = panel.v3_diag_visual_checks(b, Catalog.get_recipe("r_009"), false, load("res://scripts/building_economics.gd").per_turn(b))
+	var want_titles: Array = []
+	var want_counts: Array = []
+	for i in expected.size():
+		if not (expected[i] as Array).is_empty():
+			want_titles.append(str(panel.V3_DIAG_STAGES[i][0]))
+			want_counts.append((expected[i] as Array).size())
+	_check(view.visible and not text_card.visible and not toggle.right and titles == want_titles and counts == want_counts
+		and titles[0] == "Inputs" and inds.all(func(n: Node) -> bool: return n.lamp != null and n.icon != null and n.tone != "off"),
+		"bdp v3 visual: thrown to Visual, the case shows a column for each stage with checks that apply, inputs on the left (%s %s)" % [str(titles), str(counts)])
+	_check(not inds.any(func(n: Node) -> bool: return n.label == "Deposit left"),
+		"bdp v3 visual: a check that doesn't apply is left out, as the deposit for a factory")
+	var applies := func(list: Array) -> Array: return list.filter(func(c: Dictionary) -> bool: return str(c.tone) != "off")
 	var output_inds: Array = inds.filter(func(n: Node) -> bool: return n.stage == "Outputs")
-	var output_want: Array = load("res://scripts/building_readout.gd").output_checks(b, Catalog.get_recipe("r_009"), false)
+	var output_want: Array = applies.call(load("res://scripts/building_readout.gd").output_checks(b, Catalog.get_recipe("r_009"), false))
 	var output_got: Array = output_inds.map(func(n: Node) -> String: return "%s/%s" % [n.label, n.tone])
 	_check(output_got == output_want.map(func(c: Dictionary) -> String: return "%s/%s" % [c.label, c.tone])
 		and output_inds.all(func(n: Node) -> bool: return n.icon.resource_path.contains("diag_icon_") and n.lamps.size() == n.tones.size()),
 		"bdp v3 visual: Outputs shows reach, transit, freight, port charge and sales, each with an icon and a lamp per tone (%s)" % ", ".join(output_got))
 	var input_inds: Array = inds.filter(func(n: Node) -> bool: return n.stage == "Inputs")
-	var input_want: Array = load("res://scripts/building_readout.gd").input_checks(b, Catalog.get_recipe("r_009"), false)
+	var input_want: Array = applies.call(load("res://scripts/building_readout.gd").input_checks(b, Catalog.get_recipe("r_009"), false))
 	var input_got: Array = input_inds.map(func(n: Node) -> String: return "%s/%s" % [n.label, n.tone])
 	_check(input_got == input_want.map(func(c: Dictionary) -> String: return "%s/%s" % [c.label, c.tone])
 		and input_inds.all(func(n: Node) -> bool: return n.icon.resource_path.contains("diag_icon_")),
-		"bdp v3 visual: Inputs shows source, stock cover, upstream health and deposit left, each with its own icon (%s)" % ", ".join(input_got))
+		"bdp v3 visual: Inputs shows the input checks that apply, each with its own icon (%s)" % ", ".join(input_got))
 	var grids: Array = columns.map(func(c: Node) -> Node: return c.find_children("*", "GridContainer", true, false)[0])
 	var cell_h: float = inds[0].custom_minimum_size.y if not inds.is_empty() else 0.0
 	var five_rows: float = 5.0 * cell_h + 4.0 * 8.0
@@ -1149,24 +1169,24 @@ func _test_bdp_v3_diag_visual() -> void:
 		and grids.all(func(g: Node) -> bool: return g.columns == 1),
 		"bdp v3 visual: every column is one icon wide and five rows tall, whatever it holds (%.0f px)" % five_rows)
 	var inbound_inds: Array = inds.filter(func(n: Node) -> bool: return n.stage == "Inbound")
-	var inbound_want: Array = load("res://scripts/building_readout.gd").inbound_checks(b, Catalog.get_recipe("r_009"), false, load("res://scripts/building_economics.gd").per_turn(b))
+	var inbound_want: Array = applies.call(load("res://scripts/building_readout.gd").inbound_checks(b, Catalog.get_recipe("r_009"), false, load("res://scripts/building_economics.gd").per_turn(b)))
 	var inbound_got: Array = inbound_inds.map(func(n: Node) -> String: return "%s/%s" % [n.label, n.tone])
 	_check(inbound_got == inbound_want.map(func(c: Dictionary) -> String: return "%s/%s" % [c.label, c.tone])
 		and inbound_inds.all(func(n: Node) -> bool: return n.icon.resource_path.contains("diag_icon_")),
 		"bdp v3 visual: Inbound shows route and mode, warehouse room, transit time and freight cost, each with its own icon (%s)" % ", ".join(inbound_got))
 	var plant_inds: Array = inds.filter(func(n: Node) -> bool: return n.stage == "Plant")
-	var plant_want: Array = load("res://scripts/building_readout.gd").plant_checks(b, Catalog.get_recipe("r_009"), false, load("res://scripts/building_economics.gd").per_turn(b))
+	var plant_want: Array = applies.call(load("res://scripts/building_readout.gd").plant_checks(b, Catalog.get_recipe("r_009"), false, load("res://scripts/building_economics.gd").per_turn(b)))
 	var plant_got: Array = plant_inds.map(func(n: Node) -> String: return "%s/%s" % [n.label, n.tone])
 	_check(plant_got == plant_want.map(func(c: Dictionary) -> String: return "%s/%s" % [c.label, c.tone])
 		and plant_inds.all(func(n: Node) -> bool: return n.icon.resource_path.contains("diag_icon_")),
-		"bdp v3 visual: Plant shows the carbon levy and the works, each with its own icon (%s)" % ", ".join(plant_got))
+		"bdp v3 visual: Plant shows the plant checks that apply, each with its own icon (%s)" % ", ".join(plant_got))
 	# Power's three are the building's power checks, each with its own icon.
 	var power_inds: Array = inds.filter(func(n: Node) -> bool: return n.stage == "Power")
-	var want: Array = load("res://scripts/building_readout.gd").power_checks(b, Catalog.get_recipe("r_009"), false)
+	var want: Array = applies.call(load("res://scripts/building_readout.gd").power_checks(b, Catalog.get_recipe("r_009"), false))
 	var got: Array = power_inds.map(func(n: Node) -> String: return "%s/%s" % [n.label, n.tone])
 	var expect: Array = want.map(func(c: Dictionary) -> String: return "%s/%s" % [c.label, c.tone])
-	_check(got == expect and got.size() == 3 and power_inds.all(func(n: Node) -> bool: return n.icon.resource_path.contains("diag_icon_")),
-		"bdp v3 visual: Power shows the building's supply, intermittency and cable checks, each with its own icon (%s)" % ", ".join(got))
+	_check(got == expect and power_inds.all(func(n: Node) -> bool: return n.icon.resource_path.contains("diag_icon_")),
+		"bdp v3 visual: Power shows the power checks that apply, each with its own icon (%s)" % ", ".join(got))
 	# 40 px icons, 12 px apart in a two-wide column, each render scaled so its art fills the box.
 	var in_col: Array = columns[0].find_children("*", "Control", true, false).filter(is_indicator)
 	var art_px: float = 0.0

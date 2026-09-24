@@ -39,6 +39,7 @@ const BdpV3ModKey := preload("res://scripts/bdp_v3_mod_key.gd")
 const BdpV3Led := preload("res://scripts/bdp_v3_led.gd")
 const BdpV3Indicator := preload("res://scripts/bdp_v3_indicator.gd")
 const BdpV3Readout := preload("res://scripts/bdp_v3_readout.gd")
+const BdpV3Emblem := preload("res://scripts/bdp_v3_emblem.gd")
 const BuildingEconomics := preload("res://scripts/building_economics.gd")
 const BuildingPrice := preload("res://scripts/building_price.gd")
 const BdpV3ValueBar := preload("res://scripts/bdp_v3_value_bar.gd")
@@ -93,6 +94,8 @@ var _current_building: Dictionary = {}
 var _title_label: Label = null
 # v3 shows the title in raised white letters instead of the label (which keeps the text).
 var _title_v3: BdpV3Title = null
+## v3: the building's icon in polished metal, top left, two title lines tall.
+var _emblem_v3: Control = null
 var _subtitle_label: Label = null
 var _badge: PanelContainer = null
 var _badge_label: Label = null
@@ -178,6 +181,8 @@ func _build_shell() -> void:
 	var header := HBoxContainer.new()
 	header.add_theme_constant_override("separation", DS.SP["SM"])
 	outer.add_child(header)
+	_emblem_v3 = BdpV3Emblem.new()
+	header.add_child(_emblem_v3)
 	_title_label = Label.new()
 	_title_label.theme_type_variation = "Title"
 	_title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -185,7 +190,8 @@ func _build_shell() -> void:
 	_title_label.custom_minimum_size = Vector2(PANEL_WIDTH - 2.0 * DS.SP["MD"] - 44.0, 0)
 	header.add_child(_title_label)
 	_title_v3 = BdpV3Title.new()
-	_title_v3.custom_minimum_size = Vector2(_title_label.custom_minimum_size.x, 0)
+	# The emblem takes its side and a gap from the title's width.
+	_title_v3.custom_minimum_size = Vector2(_title_label.custom_minimum_size.x - BdpV3Emblem.side() - DS.SP["SM"], 0)
 	header.add_child(_title_v3)
 	_close_button = Button.new()
 	_close_button.text = "X"
@@ -348,6 +354,7 @@ func _rebuild(building: Dictionary) -> void:
 	var recipe_name := str(recipe.get("display_name", ""))
 	_title_label.text = display_name if recipe_name == "" else "%s — %s" % [display_name, recipe_name]
 	_title_v3.text = _title_label.text
+	_emblem_v3.visible = UiPrefs.use_bdp_v3 and _emblem_v3.set_building(str(building.get("building_id", "")))
 	_apply_v3_title()
 	# Catalog.tile_label, not the raw id: this was the one surface still printing
 	# "tile_5_9" at the player instead of "Stoneshore Fields - (5, 9)".
@@ -2535,7 +2542,9 @@ var _v3_diag_hot: Control = null
 
 
 ## The visual view's checks, a list per stage, each {stage, key, label, detail, tone}, from the building
-## (`econ` is its BuildingEconomics.per_turn).
+## (`econ` is its BuildingEconomics.per_turn). Only the checks that apply are kept: one unlit because it
+## has nothing to say about this building (a deposit for a factory, works when none are under way) is left
+## out, and a stage with none left is empty.
 static func v3_diag_visual_checks(building: Dictionary, recipe: Dictionary, is_infra: bool, econ: Dictionary = {}) -> Array:
 	var stages: Array = []
 	for entry: Array in V3_DIAG_STAGES:
@@ -2554,6 +2563,8 @@ static func v3_diag_visual_checks(building: Dictionary, recipe: Dictionary, is_i
 				wired = BuildingReadout.output_checks(building, recipe, is_infra)
 		var checks: Array = []
 		for c: Dictionary in wired:
+			if str(c.get("tone", "off")) == "off":
+				continue
 			var check := c.duplicate()
 			check["stage"] = stage
 			checks.append(check)
@@ -2567,8 +2578,8 @@ static func _v3_diag_icon(key: String) -> Array:
 	return [load(path), load(path.replace(".png", "_shadow.png"))]
 
 
-## v3: the visual view. Each stage is a raised module in the case, its name in metal letters over its
-## icons (one or two to a row, V3_DIAG_STAGES); the readout's slot is at the foot.
+## v3: the visual view. Each stage with checks that apply is a raised module in the case, its name in
+## metal letters over its icons (one to a row, V3_DIAG_STAGES); the readout's slot is at the foot.
 func _build_v3_diag_visual(building: Dictionary, recipe: Dictionary, is_infra: bool, econ: Dictionary = {}) -> VBoxContainer:
 	var view := VBoxContainer.new()
 	view.name = "DiagnosticsVisual"
@@ -2581,6 +2592,8 @@ func _build_v3_diag_visual(building: Dictionary, recipe: Dictionary, is_infra: b
 	var stage_checks: Array = v3_diag_visual_checks(building, recipe, is_infra, econ)
 	for s in stage_checks.size():
 		var checks: Array = stage_checks[s]
+		if checks.is_empty():
+			continue   # a stage with nothing that applies takes no column
 		var across := int(V3_DIAG_STAGES[s][1])
 		var column := _v3_diag_module()
 		column.name = "DiagColumn"
@@ -2597,7 +2610,7 @@ func _build_v3_diag_visual(building: Dictionary, recipe: Dictionary, is_infra: b
 		var vb := VBoxContainer.new()
 		vb.add_theme_constant_override("separation", 5)
 		column.add_child(vb)
-		var title := _v3_metal_label(str((checks[0] as Dictionary).get("stage", "")) if not checks.is_empty() else "", HORIZONTAL_ALIGNMENT_CENTER)
+		var title := _v3_metal_label(str(V3_DIAG_STAGES[s][0]), HORIZONTAL_ALIGNMENT_CENTER)
 		title.add_theme_font_size_override("font_size", 13)
 		vb.add_child(title)
 		var grid := GridContainer.new()
@@ -2631,7 +2644,10 @@ func _build_v3_diag_visual(building: Dictionary, recipe: Dictionary, is_infra: b
 	_v3_diag_hot = null
 	_v3_diag_first = indicators[0] if not indicators.is_empty() else null
 	_v3_diag_worst = _v3_worst_indicator(indicators)
-	_v3_show_in_readout(_v3_diag_worst)
+	if indicators.is_empty():
+		readout.show_check("", "Diagnostics", "Nothing to check for this building.", "off")
+	else:
+		_v3_show_in_readout(_v3_diag_worst)
 	return view
 
 
@@ -3102,7 +3118,8 @@ const V3_INK := {"ok": Color("#1d6b3a"), "warn": Color("#7a4a00"), "bad": Color(
 const V3_MOD_ICON: Texture2D = preload("res://assets/ui/bdp_v3/mod_icon.png")
 const V3_MOD_ICON_SHADOW: Texture2D = preload("res://assets/ui/bdp_v3/mod_icon_shadow.png")
 const V3_MOD_ICON_FRAME := 110.0
-var _v3_modifiers_open := true
+## Whether the Modifiers sheet is open: closed until the player opens it, then kept across rebuilds.
+var _v3_modifiers_open := false
 
 func _v3_modifiers(mod: Dictionary, total: int, by_cat: Dictionary) -> void:
 	var row := HBoxContainer.new()

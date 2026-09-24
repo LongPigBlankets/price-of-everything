@@ -57,10 +57,10 @@ var use_construct_panel_v3: bool = true
 # icon-faced redesign (baked standalone icons in assets/icons/ui_icons/standalone/)
 # is the normal default. Session-only, never persisted.
 var use_topbar_v3_1: bool = true
-# Debug-only: the Building Detail v3 look, where the main controls sit on worn steel plates as
-# cream keycaps with raised icons (assets/ui/bdp_v3/, rendered by tools/button_mockup). Off by
-# default while it is being evaluated. Session-only, never persisted.
-var use_bdp_v3: bool = false
+# The Building Detail v3 look, where the main controls sit on worn steel plates as cream keycaps
+# with raised icons (assets/ui/bdp_v3/, rendered by tools/button_mockup). The default; the debug
+# cheat `toggle bdp v3` switches back to v2. Session-only, never persisted.
+var use_bdp_v3: bool = true
 # Building Detail v3's diagnostics: the Visual view (true) or the Text rows. The player's choice on the
 # panel's switch, kept while the game runs (closing the panel or starting a match keeps it).
 var bdp_diag_visual: bool = false

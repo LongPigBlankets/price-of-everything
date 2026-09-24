@@ -399,3 +399,6 @@ After an export, reimport with `Godot --headless --path . --import`. A new layer
 
 
 The visual view's words (`building_readout.gd`, the visual checks) are short plain sentences: full stops and commas, no semicolons, dashes or hyphens, place names without their coordinates (`_place`), counts with thousands separated (`_fmt_count`), good names in sentence case. A check over several goods names them together when they share a finding, else names the worst and counts the rest by colour (`_combine_goods`). The readout's first line is "Stage: Check".
+
+
+Building Detail v3 is the default (`UiPrefs.use_bdp_v3`); the debug cheat `toggle bdp v3` switches back to v2. The header's first element is the building's emblem in polished metal (`BdpV3Emblem`), as tall as the title's two lines; the title is set at 24 px so every building and recipe name fits two lines beside it, and Close and Location, a title line tall each, are smaller with it. Modifiers starts closed. The Visual diagnostics show only the checks that apply: one that is unlit because it has nothing to say about this building (a deposit for a factory, works when none are under way, power for a building that uses none) is left out, and a stage with none left takes no column.

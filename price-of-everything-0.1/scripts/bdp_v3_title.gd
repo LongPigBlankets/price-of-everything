@@ -6,8 +6,9 @@ extends Control
 ## (res://assets/ui/bdp_v3/title_glyphs.png, and title_glyph_shadows.png for their shadows), whose cells
 ## are listed in layout.json.
 ##
-## The title is set in its own font at its own size (Bebas Neue, 32 px), shaped and wrapped by Godot
-## as the plain label would be, and each letter's render is placed on its pen position. The shadows
+## The title is set in its own font at its own size (Bebas Neue, 24 px, so the longest building and recipe
+## name fits two lines beside the header's emblem), shaped and wrapped by Godot as the plain label would be,
+## and each letter's render (made at 32 px, ATLAS_SIZE) is drawn scaled down on its pen position. The shadows
 ## are all drawn before the faces. The plate's lettering is graded across its whole word, so here the
 ## faces are graded across the whole title, one shade per letter. A title with a character the atlas
 ## lacks can't be shown (can_show), and the panel keeps its plain label for it.
@@ -17,7 +18,9 @@ const TEXELS_PER_PIXEL := 2.0
 const FACES: Texture2D = preload("res://assets/ui/bdp_v3/title_glyphs.png")
 const SHADOWS: Texture2D = preload("res://assets/ui/bdp_v3/title_glyph_shadows.png")
 const FONT: FontFile = preload("res://assets/fonts/BebasNeue-Regular.ttf")
-const FONT_SIZE := 32
+const FONT_SIZE := 24
+## The size the atlas's letters were rendered at.
+const ATLAS_SIZE := 32.0
 const LINE_SPACING := 3.0
 ## The face at the title's bottom-right; white at its top-left (cluster.html FACE_GRADE).
 const FACE_GRADE := Color("#b8b0a0")
@@ -39,6 +42,13 @@ static func line_height() -> float:
 
 static func line_pitch() -> float:
 	return line_height() + LINE_SPACING
+
+
+## The height the title takes set in two lines, as laid out: what the header's emblem matches.
+static func two_lines_height() -> float:
+	var p := TextParagraph.new()
+	p.add_string("A", FONT, FONT_SIZE)
+	return 2.0 * p.get_line_size(0).y + LINE_SPACING
 
 
 static func atlas() -> Dictionary:
@@ -93,7 +103,8 @@ func _lay_out() -> void:
 	_para.add_string(text, FONT, FONT_SIZE)
 	var at := atlas()
 	var glyphs: Dictionary = at.get("glyphs", {})
-	var cell_baseline := float(at.get("baseline", 0.0)) / CAPTURE_SCALE
+	var scale := float(FONT_SIZE) / ATLAS_SIZE
+	var cell_baseline := float(at.get("baseline", 0.0)) / CAPTURE_SCALE * scale
 	var k := TEXELS_PER_PIXEL / CAPTURE_SCALE
 	var ts := TextServerManager.get_primary_interface()
 	var placed: Array = []
@@ -108,8 +119,8 @@ func _lay_out() -> void:
 			if glyphs.has(ch):
 				var c: Array = glyphs[ch]
 				var src := Rect2(float(c[0]) * k, float(c[1]) * k, float(c[2]) * k, float(c[3]) * k)
-				var dst := Rect2(x + offset.x - float(c[4]) / CAPTURE_SCALE, baseline + offset.y - cell_baseline,
-					float(c[2]) / CAPTURE_SCALE, float(c[3]) / CAPTURE_SCALE)
+				var dst := Rect2(x + offset.x - float(c[4]) / CAPTURE_SCALE * scale, baseline + offset.y - cell_baseline,
+					float(c[2]) / CAPTURE_SCALE * scale, float(c[3]) / CAPTURE_SCALE * scale)
 				placed.append([src, dst, Vector2(x + float(gl.get("advance", 0.0)) * 0.5, baseline - FONT_SIZE * 0.35)])
 			x += float(gl.get("advance", 0.0))
 		block = Vector2(maxf(block.x, x), y + _para.get_line_size(i).y)

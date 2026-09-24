@@ -76,7 +76,7 @@ All DS2 art is 3D-rendered in one three.js page, `tools/button_mockup/cluster.ht
   - `pilotLamp`, `guardButton`, `counterHousing`, `miniScreen`, `iconWell`, `gaugeSocket`;
   - `diagModule`, `cableRun`, `cableTap`, `toggleSlot`/`toggleKnob`, `rollingDoor`, `labourDoor`;
   - `sheetPlate`, `whiteSheet`, `plasticPlate`, `darkPlate`, `enamelPlate`.
-- **Seeds:** `withSeed(n, fn)` gives each set its own random sequence, so exporting one set never changes another's wear. A new set gets a new seed after the last one used (422, `diagicon`).
+- **Seeds:** `withSeed(n, fn)` gives each set its own random sequence, so exporting one set never changes another's wear. A new set gets a new seed after the last one used (423, `emblem`).
 
 ### 3.2 The export
 
@@ -95,7 +95,7 @@ python3 tools/button_mockup/export.py 8779        # a private port: 8771 may be 
 |---|---|
 | 501–505 | `block`, `footer`, `backing`, `section`, `keys` |
 | 401–411 | `lamp`, `scroll`, `seam`, `title`, `enamel`, `pin`, `cable`, `counter`, `sheet`, `plastic`, `door` |
-| 412–422 | `heading`, `module`, `toggle`, `ldoor`, `modkey`, `sheetw`, `darkplate`, `modicon`, `screen`, `econ`, `diagicon` |
+| 412–423 | `heading`, `module`, `toggle`, `ldoor`, `modkey`, `sheetw`, `darkplate`, `modicon`, `screen`, `econ`, `diagicon`, `emblem` |
 
 Then import:
 
@@ -185,7 +185,8 @@ Each entry lists the look, its render set and layers, the Godot script and API, 
 
 | Component | Look | Render → layers | Godot | Rules |
 |---|---|---|---|---|
-| **Raised title** | Bebas Neue 32 px as white relief, graded across the title | `title` → `title_glyphs`, `title_glyph_shadows` (atlas) | `BdpV3Title`: `text`, `can_show()`, `line_height()`, `line_pitch()` | shaped and wrapped by Godot's text server in the same font |
+| **Raised title** | Bebas Neue 24 px as white relief, graded across the title | `title` → `title_glyphs`, `title_glyph_shadows` (atlas, rendered at 32 px and drawn scaled down) | `BdpV3Title`: `text`, `can_show()`, `line_height()`, `line_pitch()`, `two_lines_height()` | shaped and wrapped by Godot's text server in the same font; 24 px fits every building and recipe name in two lines beside the emblem |
+| **Building emblem** | the building's icon raised in polished metal (the silver screws' chrome), top left of the header, as tall as the title's two lines | `emblem` → `bld_emblem_<building id>` (+ `_shadow`), one per icon in assets/icons/buildings/ | `BdpV3Emblem`: `side()`, `has_emblem(id)`, `set_building(id)` | trimmed to its art like the diagnostics' icons |
 | **Raised heading** | IBM Plex Sans Bold 28 layout px as white relief, as INPUTS / OUTPUTS | `heading` → `heading_glyphs`, `heading_glyph_shadows` (atlas with advances) | `BdpV3Heading`: `text`, `can_show()`, `letter_count()` | laid out by the page's measured advances (the game has no Plex Bold); falls back to the plain label for missing characters |
 | **Metal label** | Barlow Condensed SemiBold capitals, off-white | — | `_v3_metal_label(text, align)` *(panel helper)* | small labels on steel |
 | **Embossed white** | `DS.PALETTE.TEXT` with a shadow (0, 0, 0, 0.9) offset 1, 1 | — | `_v3_emboss(label)` *(panel helper)* | any label on plastic or a busy surface |
