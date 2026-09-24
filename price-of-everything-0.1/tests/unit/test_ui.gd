@@ -765,6 +765,15 @@ func _test_updates_dock() -> void:
 		"updates dock: a new row slides the rows out, letting clicks through")
 	_check(not toasts._timer.is_stopped() and is_equal_approx(toasts._timer.wait_time, toasts.TOAST_DURATION),
 		"updates dock: the rows collapse TOAST_DURATION after the last one")
+	await get_tree().create_timer(0.3).timeout
+	await get_tree().process_frame
+	var sweeps := []
+	for r: Node in toasts.find_child("RowList", true, false).get_children():
+		if (r as Control).visible:
+			sweeps.append(snappedf(r.get_node("Countdown").remaining, 0.001))
+	_check(sweeps.size() == 4 and toasts.countdown() < 1.0 and toasts.countdown() > 0.8 \
+		and sweeps.count(sweeps[0]) == 4 and absf(sweeps[0] - toasts.countdown()) < 0.05,
+		"updates dock: every shown row carries the same countdown sweep, running down")
 	toasts._on_timer()
 	_check(not toasts.is_open() and toasts.unread("red") == 2, "updates dock: collapsing keeps the bells' counts")
 

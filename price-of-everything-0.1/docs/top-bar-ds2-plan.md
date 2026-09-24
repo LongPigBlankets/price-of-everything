@@ -123,6 +123,7 @@ A new DS2 component, built on existing patterns.
 - Each bell is a filter: clicking it opens the slide-out on that colour's rows only (green updates, amber notices, red warnings) and clears only its count. Clicking the same bell again closes it; clicking the dock between its icons shows every row.
 - The briefing notch and its bells are gone from the top bar. The mission module sits centred where the notch was. Research unlocks still reach the dock through the briefing's research event.
 - The auto bridge posts one red row. The top bar's loan notice stands down for it (`SolvencyState.bridging` is set while its loan is taken); the briefing keeps its info item, which only shows when the panel is open.
+- Every shown row carries the old toasts' countdown sweep again: a faint white band that shrinks to the left as the slide-out's time runs out, one edge across all the rows (full while the mouse holds it up).
 - The tutorial's screen tour labels the dock "Updates and decisions" instead of the notch.
 - Tests: `_test_updates_dock_filters_and_decisions` (`test_ui.gd`), the bridge flag in `_test_auto_bridge_loan` (`test_finance.gd`).
 

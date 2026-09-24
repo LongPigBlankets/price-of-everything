@@ -95,6 +95,28 @@ var _open := false
 var _all := false
 ## The mouse held the slide-out open; once it leaves, HOVER_GRACE runs before it closes.
 var _held := false
+
+
+## A faint white sweep across a row that shrinks to the left as the slide-out's time runs out.
+## Every shown row carries the same one, so a turn's rows visibly leave together.
+class RowCountdown extends Control:
+	var remaining: float = 1.0:
+		set(value):
+			if not is_equal_approx(value, remaining):
+				remaining = value
+				queue_redraw()
+	## The row's padding round this control, so the sweep spans the whole row inside its border.
+	var pad := Vector2.ZERO
+	func _draw() -> void:
+		if remaining <= 0.0:
+			return
+		var box := Rect2(-pad, size + pad * 2.0).grow(-1.0)
+		var right: float = box.position.x + box.size.x * remaining
+		var top := box.position.y
+		var bottom := box.end.y
+		var left := box.position.x
+		draw_polygon(PackedVector2Array([Vector2(left, top), Vector2(right, top), Vector2(right, bottom), Vector2(left, bottom)]),
+			PackedColorArray([Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.12), Color(1, 1, 1, 0.12), Color(1, 1, 1, 0.0)]))
 var _fit_queued := false
 var _dock_hover := false
 ## Arrival order across the kept rows; the oldest goes when HISTORY_MAX is reached, wherever
@@ -592,6 +614,11 @@ func _make_toast(message: String, toast_type: String, link: bool = false) -> Pan
 	sb.content_margin_bottom = 8
 	panel.add_theme_stylebox_override("panel", sb)
 
+	var countdown := RowCountdown.new()
+	countdown.name = "Countdown"
+	countdown.pad = Vector2(ROW_PAD_X, 8)
+	countdown.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(countdown)
 	var label := Label.new()
 	label.text = message
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -716,6 +743,24 @@ func _open_decisions() -> void:
 		return
 	var waiting: Array = TurnBriefing.unresolved_decisions()
 	TurnBriefing.expand(str((waiting[0] as Dictionary).get("id", "")) if not waiting.is_empty() else "")
+
+
+## How much of the slide-out's time is left, 0 to 1: full while the mouse holds it up.
+func countdown() -> float:
+	if not _open:
+		return 0.0
+	if _held or _timer.is_stopped() or _timer.wait_time <= 0.0:
+		return 1.0
+	return clampf(_timer.time_left / _timer.wait_time, 0.0, 1.0)
+
+
+func _process(_delta: float) -> void:
+	if not _open:
+		return
+	var left := countdown()
+	for row: Node in _rows.get_children():
+		if (row as Control).visible:
+			(row.get_node("Countdown") as RowCountdown).remaining = left
 
 
 func _on_timer() -> void:

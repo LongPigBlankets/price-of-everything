@@ -1,6 +1,6 @@
 extends Node2D
 ## Captures of the bottom-left updates dock (toast_manager.gd) in the real HUD, at 1920 × 1080 with
-## two pixels each: the empty dock, rows sliding out on their own, the dock after they collapse
+## two pixels each: the empty dock, rows sliding out on their own (and halfway through their countdown), the dock after they collapse
 ## (bells counting), the slide-out opened from the dock, the dock under an open Construct panel,
 ## a map legend stacked on top of it, and research unlocks and notices arriving through their
 ## real paths (the briefing's research event, the top bar's notice funnel), one bell's rows on
@@ -46,7 +46,9 @@ func _ready() -> void:
 	MatchState.request_toast("There is no more room on that tile. Demolish buildings to make room.", "error")
 	await _wait(0.45)
 	_save("peek")
-	await _wait(toasts.TOAST_DURATION + 0.6)
+	await _wait(toasts.TOAST_DURATION * 0.5)
+	_save("peek_half")
+	await _wait(toasts.TOAST_DURATION * 0.5 + 0.6)
 	_save("collapsed")
 
 	toasts.open_all()
