@@ -72,6 +72,8 @@ research_people_008,People & Management,,,,,II,Build,any,15,units,Third Advisor 
 research_people_009,People & Management,,,,,III,Build,any,100,units,Fourth Advisor Seat,team,Unlocks a 4th advisor seat once you own 100 buildings.
 research_people_010,People & Management,,,,,III,Sustain,1000+ profit/turn,3,turns,Fifth Advisor Seat,team,Unlocks a 5th advisor seat after 3 turns above 1000 profit/turn.
 research_people_011,People & Management,research_people_002,,,,II,Run Profitable,any,5,10 turns,Executive Search,search,Opens the remaining advisor posts for hire.
+research_markets_006,People & Management,,,,,I,Service Loans,revenue,5,% of revenue,Corporate Bonds,budget,Lowers the interest on new loans by 2.5 points of the 15% base rate permanently.
+research_people_012,People & Management,,,,,I,Keep Hired,2 advisors,10,turns,Basic Governance Principles,team,Lowers the interest on new loans by a further 2.5 points of the 15% base rate permanently. With Corporate Bonds new loans cost 10%.
 research_mining_006,Extraction,,,,,I,Run Profitable,mine,3,buildings,Regular Shaft Draining,+5%,Reduces Mine maintenance and labour by 5% permanently.
 research_mining_007,Extraction,,,,,I,Produce,ree_ore,500,units,Rare Earth Beneficiation,rare,Increases rare earth and alloy ore mining output by 15% permanently.
 research_mfg_006,Manufacturing,research_mfg_013,,,,II,Run L1,industrial_factory,3,20 turns,Conveyor Mass Assembly,level2,Unlocks upgrading Industrial Goods Factory to Level 2 for more output.

@@ -5,7 +5,11 @@ extends Node
 ##
 ## Usage (headless):
 ##   <godot> --headless --path . res://tools/start_soak.tscn -- --start=res://data/starts/metal_magnate.json [--turns=50]
-## Writes /tmp/start-soak/<start name>.json and prints START_SOAK <json>.
+##     [--switch-at=N --switch=inputs|outputs|all] [--cash=N]
+## --switch-at grants the Import/Export License before turn N and moves the chosen side of every
+## starting building from the intermediary to the global market, as a player would from the
+## building panel. --cash overrides the opening treasury.
+## Writes /tmp/start-soak/<start name>[-<switch>-t<N>].json and prints START_SOAK <json>.
 const Paths := preload("res://scripts/app_paths.gd")
 const Service := preload("res://scripts/middleman_service.gd")
 const OUT := "/tmp/start-soak"
@@ -31,6 +35,9 @@ func _enter_tree() -> void:
 func _ready() -> void:
 	var start_path := _arg("start", "res://data/starts/metal_magnate.json")
 	var turns := int(_arg("turns", "50"))
+	var switch_at := int(_arg("switch-at", "0"))
+	var switch_sides := _arg("switch", "all")
+	var cash_override := _arg("cash", "")
 	preload("res://tools/shot_harness.gd").arm_watchdog(self, 600.0)
 	AudioServer.set_bus_mute(0, true)
 	SaveLoad.autosave_enabled = false
@@ -46,6 +53,7 @@ func _ready() -> void:
 		if TurnManager.phase_started.is_connected(hook): TurnManager.phase_started.disconnect(hook)
 	DecisionState.enabled = false
 	DecisionState.auto_resolve = true
+	if cash_override != "": MatchState.money = float(cash_override)
 
 	var starting: Array = BuildingState.buildings.values().filter(func(b: Dictionary) -> bool: return BuildingState.is_player_owned(b))
 	var ids: Array = starting.map(func(b: Dictionary) -> String: return str(b.instance_id))
@@ -56,6 +64,7 @@ func _ready() -> void:
 	var rows: Array = []
 	var idle_turns := {}
 	for turn in range(1, turns + 1):
+		if turn == switch_at: _switch_to_market(ids, switch_sides)
 		var before := MatchState.money
 		TurnManager.commit_turn()
 		await TurnManager.turn_resolution_completed
@@ -79,6 +88,7 @@ func _ready() -> void:
 			"middleman_fee": float(s.get("middleman_fee", 0.0)),
 			"labour": float(s.get("labour_paid", 0.0)), "maintenance": float(s.get("maintenance_paid", 0.0)),
 			"power": float(s.get("power_purchase_cost", 0.0)), "warehousing": float(s.get("warehousing_paid", 0.0)),
+			"transport": float(s.get("transport_paid", 0.0)), "summary": s,
 			"produced": s.get("produced", {}), "idle": idle, "debt": debt,
 			"stock": Stockpile.get_all_totals(),
 		})
@@ -103,7 +113,7 @@ func _ready() -> void:
 		reasons[iid] = str(Production.blocked_reason_by_building.get(iid, ""))
 	var report := {
 		"status": "passed" if failures.is_empty() else "failed", "failures": failures,
-		"start": start_path, "turns": turns, "starting_cash": float(rows[0].cash) - float(rows[0].cash_change),
+		"start": start_path, "turns": turns, "switch_at": switch_at, "switch": switch_sides, "starting_cash": float(rows[0].cash) - float(rows[0].cash_change),
 		"buildings": ids.size(), "service_buildings": service_ids.size(), "coefficients": coefficients,
 		"idle_turns": idle_turns, "depleted": depleted, "last_blocked_reasons": reasons,
 		"steady_profit_turns_6_15": mean.call("pre_tax_profit", 6, 15),
@@ -114,7 +124,7 @@ func _ready() -> void:
 		"final_cash": float(rows[-1].cash), "final_debt": float(rows[-1].debt),
 		"rows": rows,
 	}
-	var name := start_path.get_file().get_basename()
+	var name := start_path.get_file().get_basename() + ("-%s-t%d" % [switch_sides, switch_at] if switch_at > 0 else "")
 	DirAccess.make_dir_recursive_absolute(OUT)
 	var file := FileAccess.open(OUT + "/" + name + ".json", FileAccess.WRITE)
 	file.store_string(JSON.stringify(report, "  "))
@@ -123,3 +133,21 @@ func _ready() -> void:
 	brief.erase("rows")
 	print("START_SOAK ", JSON.stringify(brief))
 	get_tree().quit(0 if failures.is_empty() else 1)
+
+func _switch_to_market(ids: Array, sides: String) -> void:
+	for title in [ResearchState.OPEN_LOGISTICS_CONTRACTS_TITLE, ResearchState.INFRASTRUCTURE_TENDERING_TITLE, ResearchState.GLOBAL_TRADE_LICENSE_TITLE]:
+		ResearchState.unlocked_titles[title] = true
+	ResearchState.activate_global_trade_license()
+	for iid: String in ids:
+		var recipe: Dictionary = Catalog.get_recipe(str(BuildingState.get_building(iid).recipe_id))
+		if sides in ["inputs", "all"] and Service.recipe_side(recipe, "input"):
+			check(bool(Service.set_mode(iid, "input", "managed").ok), "%s inputs taken in-house" % iid)
+			for item: Dictionary in recipe.get("inputs", []):
+				var gid := str(item.good_id)
+				if Service.material_tradeable(gid, "input"):
+					check(bool(Service.set_input_route(iid, gid, "primary", "market").ok), "%s buys %s at market" % [iid, gid])
+		if sides in ["outputs", "all"] and Service.recipe_side(recipe, "output"):
+			check(bool(Service.set_mode(iid, "output", "managed").ok), "%s outputs taken in-house" % iid)
+			for item: Dictionary in recipe.get("outputs", []):
+				if Service.material_tradeable(str(item.good_id), "output"):
+					MatchState.route_output_to_market(iid, str(item.good_id))

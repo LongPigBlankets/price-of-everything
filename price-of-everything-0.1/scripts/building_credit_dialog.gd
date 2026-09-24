@@ -48,7 +48,7 @@ func open(instance_id: String, building_name: String) -> void:
 	for child in _buttons.get_children():
 		child.queue_free()
 	_buttons.add_child(_cta("%d turns, no interest" % slices, "slices", true))
-	_buttons.add_child(_cta("%d turns, %.0f%% interest" % [loan_turns, rate_pct], "loan", false))
+	_buttons.add_child(_cta("%d turns, %s%% interest" % [loan_turns, String.num(rate_pct, 1)], "loan", false))
 	_buttons.add_child(_cta("Don't use", "none", false))
 
 	($MarginContainer/VBox/Title as Label).text = "Credit facility — %s" % building_name
