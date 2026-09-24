@@ -433,6 +433,7 @@ func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary 
 				special_order_committed = true
 
 	var deferred := port != "" and turns >= 1
+	var advanced := false
 	if deferred:
 		var shipment := {
 			"is_sale": true,
@@ -449,6 +450,7 @@ func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary 
 		if special_order_committed:
 			shipment["special_order_id"] = special_order_id
 			shipment["special_order_source_mode"] = special_order_source_mode
+		advanced = LoanState.advance_sale(shipment) > 0.0
 		TransportState.queue_transport_shipment(shipment)
 	else:
 		if special_order_committed:
@@ -475,6 +477,7 @@ func execute_sale(source_tile: String, goods_qtys: Dictionary, opts: Dictionary 
 		"transport_cost": transport_cost,
 		"transport_breakdown": transport_breakdown,
 		"deferred": deferred,
+		"advanced": advanced,
 		"turns": turns,
 		"port": port,
 		"special_order_id": special_order_id if special_order_committed else "",

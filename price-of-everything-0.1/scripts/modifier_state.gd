@@ -241,6 +241,9 @@ const UNLOCK_MODIFIERS := {
 	"research_logi_001": {"id": "rn_depot_scheduling", "domain": "road_rail_transport_cost", "pct": -10.0, "label": "Depot Scheduling: −10% road and rail transport cost", "source": "research_node"},
 	"research_logi_003": {"id": "rn_route_optimization", "domain": "transport_throughput", "target_match": {"mode": "roads"}, "pct": 25.0, "label": "Route Optimization: +25% road throughput", "source": "research_node"},
 	"research_logi_004": {"id": "rn_cold_chain_handling", "domain": "transport_cost", "pct": -5.0, "duration_turns": 20, "label": "Cold Chain Handling", "source": "research_node"},
+	# Each takes a sixth off the base loan rate: 15% -> 12.5% -> 10% with both.
+	"research_markets_006": {"id": "rn_corporate_bonds", "domain": "loan_interest", "pct": -100.0 / 6.0, "label": "Corporate Bonds: new loans 2.5 points cheaper", "source": "research_node"},
+	"research_people_012": {"id": "rn_governance_principles", "domain": "loan_interest", "pct": -100.0 / 6.0, "label": "Basic Governance Principles: new loans 2.5 points cheaper", "source": "research_node"},
 	"research_markets_001": {"id": "rn_spot_price_reporting", "domain": "special_order_premium", "pct": 25.0, "label": "Spot Price Reporting: +25% special-order premium", "source": "research_node"},
 	"research_markets_002": {"id": "rn_forward_contracts", "domain": "market_price", "pct": 5.0, "label": "Forward Contracts: +5% sale price on every good", "source": "research_node"},  # Forward Contracts (empire-wide, permanent)
 	"research_markets_003": {"id": "rn_risk_desk", "domain": "market_input_transport", "pct": -25.0, "label": "Risk Desk Procedures: −25% market-input shipping", "source": "research_node"},

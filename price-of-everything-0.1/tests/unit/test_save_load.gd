@@ -215,10 +215,11 @@ func _test_start_config_expansion() -> void:
 		"start config: building expanded with tile")
 	_check(str(buildings.keys()[0]).begins_with("inst_b_001_"), "start config: instance id assigned")
 	var loans: Array = (snap.get("loans", {}) as Dictionary).get("loans", [])
+	var owed := 150.0 * (1.0 + EconomyConfig.LOAN_INTEREST_RATE)
 	var loan_ok: bool = loans.size() == 1 \
-		and absf(float(loans[0].principal_remaining) - 165.0) < 0.001 \
-		and absf(float(loans[0].payment_per_turn) - 165.0 / float(EconomyConfig.LOAN_TERM_TURNS)) < 0.001
-	_check(loan_ok, "start config: loan amortised like take_loan (150 -> 165 owed)")
+		and absf(float(loans[0].principal_remaining) - owed) < 0.001 \
+		and absf(float(loans[0].payment_per_turn) - owed / float(EconomyConfig.LOAN_TERM_TURNS)) < 0.001
+	_check(loan_ok, "start config: loan amortised at the base rate (150 plus interest owed)")
 	var surveyed: Dictionary = match_d.get("surveyed_tiles", {})
 	_check(surveyed.has("tile_6_8") and surveyed.has("tile_5_10"),
 		"start config: owned-building tile + port tiles pre-surveyed")
@@ -290,7 +291,7 @@ func _test_start_config_applies_on_scene_ready() -> void:
 	add_child(inst)
 	await get_tree().process_frame
 	_check(absf(MatchState.money - 350.0) < 0.001, "start: money is the configured 350 (no loan cash)")
-	_check(absf(LoanState.total_outstanding() - 165.0) < 0.001, "start: debt outstanding 165")
+	_check(absf(LoanState.total_outstanding() - 150.0 * (1.0 + EconomyConfig.LOAN_INTEREST_RATE)) < 0.001, "start: debt outstanding is 150 plus base-rate interest")
 	var mines := 0
 	var npc := 0
 	for iid in BuildingState.buildings:

@@ -9,6 +9,10 @@ const TAGS := {
 	"_test_tax_free_profit_floor": ["finance", "production"],
 	"_test_cost_report_credits_output_modifiers": ["finance", "production", "research"],
 	"_test_balance_sheet_reconciles_with_cash": ["finance", "production"],
+	"_test_transit_credit_line": ["finance", "middleman"],
+	"_test_transit_credit_books_the_sale_when_it_leaves": ["finance", "middleman"],
+	"_test_finance_research_lowers_the_loan_rate": ["finance", "research"],
+	"_test_finance_research_conditions": ["finance", "research"],
 }
 
 func _test_transaction_ledger() -> void:
@@ -201,8 +205,8 @@ func _test_loan_minimum_and_grace() -> void:
 	_check(absf(float(l.payment_per_turn)) < 0.001, "grace: no payment due on the turn it is taken")
 	_check(int(l.turns_remaining) == EconomyConfig.LOAN_GRACE_TURNS + EconomyConfig.LOAN_TERM_TURNS,
 		"grace: loan runs %d turns in total" % (EconomyConfig.LOAN_GRACE_TURNS + EconomyConfig.LOAN_TERM_TURNS))
-	# Interest ACCRUES across the grace: forbearance, not a discount. A 12+36 loan at 10%
-	# repays 1 + 0.10 x 48/36 = 1.1333x, against 1.10x with no grace at all.
+	# Interest ACCRUES across the grace: forbearance, not a discount. A 12+36 loan at 15%
+	# repays 1 + 0.15 x 48/36 = 1.20x, against 1.15x with no grace at all.
 	var expected := float(l.principal_initial) * (1.0 + EconomyConfig.LOAN_INTEREST_RATE
 		* float(EconomyConfig.LOAN_GRACE_TURNS + EconomyConfig.LOAN_TERM_TURNS)
 		/ float(EconomyConfig.LOAN_TERM_TURNS))
@@ -368,3 +372,97 @@ func _test_auto_bridge_loan() -> void:
 	LoanState.loans = loans_before
 	LoanState._profit_history = profit_before
 	MatchState.money = money_before
+
+func _transit_sale(revenue: float) -> Dictionary:
+	return {"is_sale": true, "source_tile": "tile_6_8", "destination_tile": "tile_5_10", "transport_turns": 3, "turns_remaining": 3,
+		"sale_record": {"tile_id": "tile_6_8", "items": [{"good_id": "g_001", "qty": 10, "revenue": revenue}], "total_qty": 10, "total_revenue": revenue}}
+
+func _test_transit_credit_line() -> void:
+	var backup := SaveLoad.export_snapshot().duplicate(true)
+	MatchState.ruleset["logistics_model"] = "middleman_v1"
+	LoanState.transit_credit_enabled = true
+	LoanState.transit_credit_balance = 0.0
+	var before := MatchState.money
+	var sale := _transit_sale(120.0)
+	_check(is_equal_approx(LoanState.advance_sale(sale), 120.0), "a port sale is advanced its locked-in revenue")
+	_check(is_equal_approx(MatchState.money - before, 120.0) and is_equal_approx(LoanState.transit_credit_balance, 120.0), "cash lands when the goods leave and the balance carries the cargo")
+	var interest := LoanState.charge_transit_interest()
+	_check(is_equal_approx(interest, 120.0 * LoanState.effective_loan_interest_rate() / float(EconomyConfig.LOAN_TERM_TURNS)), "interest is the loan rate spread over the loan term, on the balance")
+	var saved := LoanState.export_state()
+	LoanState.import_state(JSON.parse_string(JSON.stringify(saved)))
+	_check(is_equal_approx(LoanState.transit_credit_balance, 120.0) and LoanState.transit_credit_enabled, "the balance and the switch survive a save")
+	var before_arrival := MatchState.money
+	_check(is_equal_approx(LoanState.settle_sale_advance(sale), 120.0) and is_zero_approx(LoanState.transit_credit_balance), "the shipment clears its own advance on arrival")
+	_check(is_equal_approx(MatchState.money, before_arrival), "the buyer pays the bank: no cash moves on arrival")
+	var special := _transit_sale(50.0)
+	special["special_order_id"] = "so_1"
+	_check(is_zero_approx(LoanState.advance_sale(special)), "special orders are never advanced")
+	LoanState.set_transit_credit_enabled(false)
+	_check(is_zero_approx(LoanState.advance_sale(_transit_sale(50.0))), "switched off, sales wait for the port")
+	LoanState.set_transit_credit_enabled(true)
+	MatchState.ruleset["logistics_model"] = ""
+	_check(is_zero_approx(LoanState.advance_sale(_transit_sale(50.0))), "games without the intermediary keep paying sales on arrival")
+	SaveLoad.import_snapshot(backup)
+
+func _test_finance_research_lowers_the_loan_rate() -> void:
+	var backup := SaveLoad.export_snapshot().duplicate(true)
+	Modifiers.reset()
+	_check(is_equal_approx(LoanState.effective_loan_interest_rate(), 0.15), "new loans start at 15%")
+	Modifiers.apply_unlock_modifier("Corporate Bonds")
+	_check(is_equal_approx(LoanState.effective_loan_interest_rate(), 0.125), "Corporate Bonds brings new loans to 12.5%")
+	Modifiers.apply_unlock_modifier("Basic Governance Principles")
+	_check(is_equal_approx(LoanState.effective_loan_interest_rate(), 0.10), "with Basic Governance Principles new loans cost 10%")
+	SaveLoad.import_snapshot(backup)
+
+func _test_finance_research_conditions() -> void:
+	var backup := SaveLoad.export_snapshot().duplicate(true)
+	var bonds := {"action": "Service Loans", "object": "revenue", "qty": 5, "unit": "% of revenue"}
+	Production.last_turn_summary = {"goods_sales_revenue": 100.0, "power_sales_revenue": 0.0, "interest_paid": 6.0}
+	_check(ResearchState._live_condition_met(bonds), "Corporate Bonds: loan payments above 5% of revenue")
+	Production.last_turn_summary = {"goods_sales_revenue": 100.0, "power_sales_revenue": 0.0, "interest_paid": 5.0}
+	_check(not ResearchState._live_condition_met(bonds), "exactly 5% does not qualify")
+	Production.last_turn_summary = {"goods_sales_revenue": 0.0, "power_sales_revenue": 0.0, "interest_paid": 50.0}
+	_check(not ResearchState._live_condition_met(bonds), "no revenue, no bond market")
+	var governance := {"action": "Keep Hired", "object": "2 advisors", "qty": 10, "unit": "turns"}
+	AdvisorState.permanent_advisor_ids = ["advisor_a", "advisor_b"]
+	ResearchState._advisors_hired_streaks.clear()
+	for turn in 9:
+		TurnManager.current_turn = 500 + turn
+		ResearchState._update_advisors_hired_streaks()
+	_check(not ResearchState._live_condition_met(governance), "nine turns with two advisors is not enough")
+	TurnManager.current_turn = 509
+	ResearchState._update_advisors_hired_streaks()
+	ResearchState._update_advisors_hired_streaks()
+	_check(ResearchState._live_condition_met(governance), "ten consecutive turns with two advisors hired qualifies, counted once per turn")
+	AdvisorState.permanent_advisor_ids = ["advisor_a"]
+	TurnManager.current_turn = 510
+	ResearchState._update_advisors_hired_streaks()
+	_check(not ResearchState._live_condition_met(governance) and ResearchState.advisors_hired_streak(2) == 0, "dropping to one advisor resets the streak")
+	SaveLoad.import_snapshot(backup)
+
+func _test_transit_credit_books_the_sale_when_it_leaves() -> void:
+	var backup := SaveLoad.export_snapshot().duplicate(true)
+	MatchState.ruleset["logistics_model"] = "middleman_v1"
+	LoanState.transit_credit_enabled = true
+	LoanState.transit_credit_balance = 0.0
+	Production.last_turn_summary = {"sold": {}, "goods_sales_revenue": 0.0, "money_in": 0.0}
+	var tile := "tile_9_9"
+	Stockpile.add(tile, "g_004", 20)
+	var before := MatchState.money
+	var sale := MatchState.queue_sell(tile, {"g_004": 20})
+	_check(bool(sale.get("deferred", false)), "a sale from an inland tile rides to the port")
+	var revenue := float(sale.get("revenue", 0.0))
+	_check(revenue > 0.0 and is_equal_approx(LoanState.transit_credit_balance, revenue), "the credit line pays the whole sale when it leaves")
+	_check(is_equal_approx(float(Production.last_turn_summary.get("goods_sales_revenue", 0.0)), revenue), "the sale is booked when it is paid, so profit, tax and dividends see it")
+	var shipment: Dictionary = {}
+	for s: Dictionary in TransportState.pending_transport_shipments:
+		if bool(s.get("is_sale", false)) and str(s.get("source_tile", "")) == tile:
+			shipment = s
+	_check(float(shipment.get("credit_advance", 0.0)) > 0.0, "the shipment carries its advance")
+	var arrival := {"sold": {}, "goods_sales_revenue": 0.0, "money_in": 0.0}
+	var at_arrival := MatchState.money
+	Production._credit_arrived_sale(shipment, arrival)
+	_check(is_equal_approx(MatchState.money, at_arrival) and is_zero_approx(float(arrival.goods_sales_revenue)), "landing books and pays nothing a second time")
+	_check(is_zero_approx(LoanState.transit_credit_balance), "landing clears the line")
+	_check(MatchState.money - before > 0.0, "the sale's cash arrived once, net of freight")
+	SaveLoad.import_snapshot(backup)

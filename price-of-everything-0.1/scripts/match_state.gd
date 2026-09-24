@@ -1866,6 +1866,9 @@ func queue_sell(source_tile: String, goods_qtys: Dictionary, log_oneoff: bool = 
 		var sale_record: Dictionary = result.get("sale_record", {})
 		record_tile_sale(source_tile, int(result.get("total_qty", 0)), float(result.get("total_revenue", 0.0)))
 		Production.record_external_goods_sale(sale_record)
+	elif bool(result.get("advanced", false)):
+		# Paid now by the transit credit line, so booked now; the port arrival is still reported later.
+		Production.record_external_goods_sale(result.get("sale_record", {}))
 	return {
 		"items": result.items,
 		"total_qty": result.total_qty,

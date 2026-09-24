@@ -15,6 +15,15 @@ var _next_loan_id: int = 1
 var last_payment_total: float = 0.0
 var _last_payments_turn: int = -1
 
+# Transit credit: in intermediary games a port sale is paid only when it reaches the port.
+# This line pays the sale's locked-in revenue when the goods leave, secured on the cargo
+# rather than on borrowing capacity. The sale is booked then, so profit, tax and dividends
+# see it that turn; when the goods land, the buyer's payment clears the balance. The
+# balance on the road pays the standard rate spread over the loan term each turn, so a
+# faster route to the port costs less.
+var transit_credit_enabled: bool = true
+var transit_credit_balance: float = 0.0
+
 func _ready() -> void:
 	MatchState.state_reset.connect(func() -> void: _last_payments_turn = -1)
 
@@ -135,7 +144,7 @@ func take_grace_loan(amount: float, grace_turns: int) -> bool:
 func _create_loan(amount: float, rate: float, term: int, grace: int = 0) -> bool:
 	# Interest is charged for the loan's whole LIFE, grace included, then amortised over the
 	# paying turns only. So grace defers the burden and enlarges it — it is forbearance, not a
-	# discount — and a 12+36 loan repays 1 + 0.10 x 48/36 = 1.133x rather than 1.10x.
+	# discount — and a 12+36 loan at 15% repays 1 + 0.15 x 48/36 = 1.20x rather than 1.15x.
 	var life: float = float(term + grace)
 	var total_repayment: float = amount * (1.0 + rate * life / float(term))
 	var per_turn: float = total_repayment / float(term)
@@ -255,6 +264,53 @@ func process_payments() -> float:
 		])
 	
 	return last_payment_total
+
+# === Transit credit ===
+
+func transit_credit_available() -> bool:
+	return str(MatchState.ruleset.get("logistics_model", "")) == "middleman_v1"
+
+func set_transit_credit_enabled(enabled: bool) -> void:
+	transit_credit_enabled = enabled
+	loans_updated.emit()
+
+## Per-turn interest on the balance: the standard rate over the standard loan term.
+func transit_credit_rate_per_turn() -> float:
+	return effective_loan_interest_rate() / float(EconomyConfig.LOAN_TERM_TURNS)
+
+## Pay a plain market sale shipment's revenue now; the caller books it as that turn's sale.
+## Special orders settle on delivery terms of their own and are never advanced. Returns
+## the amount advanced.
+func advance_sale(shipment: Dictionary) -> float:
+	if not transit_credit_available() or not transit_credit_enabled:
+		return 0.0
+	if str(shipment.get("special_order_id", "")) != "" or not bool(shipment.get("is_sale", false)):
+		return 0.0
+	var amount := float((shipment.get("sale_record", {}) as Dictionary).get("total_revenue", 0.0))
+	if amount <= 0.0:
+		return 0.0
+	shipment["credit_advance"] = amount
+	transit_credit_balance += amount
+	MatchState.add_money(amount)
+	loans_updated.emit()
+	return amount
+
+## The shipment reached its port: the buyer's payment clears its advance. No cash moves and
+## nothing is booked, because the sale was paid and booked when the goods left.
+func settle_sale_advance(shipment: Dictionary) -> float:
+	var advance := float(shipment.get("credit_advance", 0.0))
+	if advance <= 0.0:
+		return 0.0
+	transit_credit_balance = maxf(0.0, transit_credit_balance - advance)
+	loans_updated.emit()
+	return advance
+
+func charge_transit_interest() -> float:
+	var interest := transit_credit_balance * transit_credit_rate_per_turn()
+	if interest <= 0.0:
+		return 0.0
+	MatchState.add_money(-interest)
+	return interest
 
 # === Queries ===
 
@@ -380,6 +436,7 @@ func export_state() -> Dictionary:
 		# The rolling windows drive borrowing capacity, so they are part of the save.
 		"profit_history": _profit_history.duplicate(),
 		"revenue_history": _revenue_history.duplicate(),
+		"transit_credit": {"enabled": transit_credit_enabled, "balance": transit_credit_balance},
 	}
 
 func import_state(d: Dictionary) -> void:
@@ -390,6 +447,9 @@ func import_state(d: Dictionary) -> void:
 	_profit_history = (d.get("profit_history", []) as Array).duplicate()
 	_revenue_history = (d.get("revenue_history", []) as Array).duplicate()
 	last_payment_total = 0.0
+	var transit: Dictionary = d.get("transit_credit", {})
+	transit_credit_enabled = bool(transit.get("enabled", true))
+	transit_credit_balance = float(transit.get("balance", 0.0))
 
 # === Helpers ===
 

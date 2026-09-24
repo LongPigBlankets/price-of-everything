@@ -326,13 +326,18 @@ func _process_production() -> void:
 				has_run[instance_id] = true
 				continue
 			
-			if Middleman.enabled(instance_id) and (not Middleman.ready(instance_id) if Middleman.uses_inputs(instance_id) else not Middleman.entry(instance_id).get("outputs",{}).is_empty()):
+			# Any intermediary-bought input needs this turn's funded purchase; retained
+			# output must be sold before another batch.
+			if Middleman.blocks_production(instance_id):
 				blocked_reason_by_building[instance_id] = _run_warning("middleman", str(Middleman.entry(instance_id).get("reason", "Service batch unavailable.")))
 				continue
 			var check: Dictionary = _can_run_recipe(building, recipe)
 			if not check.can_run:
 				missing_by_building[instance_id] = check.missing
 				var reason := _blocked_reason_for(building, recipe, check.missing)
+				var fallback_refused := Middleman.bridge_rejection(instance_id)
+				if fallback_refused != "":
+					reason = _run_warning("middleman", fallback_refused)
 				if reason.is_empty():
 					blocked_reason_by_building.erase(instance_id)
 				else:
@@ -653,6 +658,11 @@ func _process_production() -> void:
 	if loan_payment > 0:
 		summary.interest_paid = loan_payment
 		summary.money_out += loan_payment
+	var transit_interest: float = LoanState.charge_transit_interest()
+	summary["transit_credit_interest"] = transit_interest
+	if transit_interest > 0.0:
+		summary.interest_paid = float(summary.get("interest_paid", 0.0)) + transit_interest
+		summary.money_out += transit_interest
 		# === TAX & DIVIDEND PHASE ===
 	TurnProfiler.section_end("loan_payments")
 	TurnProfiler.section_begin("tax_dividends")
@@ -1066,6 +1076,8 @@ func _process_transport_arrivals(summary: Dictionary) -> void:
 		var added := Stockpile.add(destination_tile, good_id, qty)
 		var per_unit_transport: float = float(shipment.get("transport_cost", 0.0)) / float(qty)
 		_record_inbound_delivery(destination_tile, good_id, added, per_unit_transport)
+		if bool(shipment.get("is_purchase", false)) and not _shipment_reserved_outside_input_pipeline(shipment):
+			Middleman.end_handover(destination_tile, good_id)
 		# Nothing bought and nothing sold: this is one of the player's buildings shipping to
 		# another of their tiles, which is the only kind of arrival a mission may count.
 		if purchase_cost <= 0.0 and not bool(shipment.get("is_purchase", false)):
@@ -1085,6 +1097,9 @@ func _process_transport_arrivals(summary: Dictionary) -> void:
 func _credit_arrived_sale(shipment: Dictionary, summary: Dictionary) -> void:
 	# A sale shipment reached its port this turn — pay out the locked-in revenue.
 	var sale_record: Dictionary = shipment.get("sale_record", {})
+	# A sale the transit credit line paid when it left was booked then; landing only clears
+	# the line. The arrival is still reported below.
+	var advanced := LoanState.settle_sale_advance(shipment) > 0.0
 	var special_order_id := str(shipment.get("special_order_id", ""))
 	var paid_sale_record := {
 		"tile_id": str(sale_record.get("tile_id", "")),
@@ -1102,8 +1117,9 @@ func _credit_arrived_sale(shipment: Dictionary, summary: Dictionary) -> void:
 		var rev := float(item.get("revenue", 0.0))
 		if special_order_id == "":
 			if rev > 0.0:
-				MatchState.add_money(rev)
-				_add_summary_sale(summary, gid, qty, rev)
+				if not advanced:
+					MatchState.add_money(rev)
+					_add_summary_sale(summary, gid, qty, rev)
 				_add_paid_sale_item(paid_sale_record, gid, qty, rev)
 			continue
 
@@ -1202,8 +1218,9 @@ func _sell_output_to_market(building: Dictionary, good: Dictionary, qty: int, su
 		_record_transport_breakdown(summary, result.get("transport_breakdown", {}), transport_cost)
 		summary.money_out += transport_cost
 	# Deferred sales credit the summary on arrival via _process_transport_arrivals;
-	# immediate sales (no route, 0-turn) add to the summary here.
-	if not bool(result.get("deferred", false)):
+	# immediate sales (no route, 0-turn) and sales the transit credit line paid on
+	# dispatch add to the summary here.
+	if not bool(result.get("deferred", false)) or bool(result.get("advanced", false)):
 		for it in result.items:
 			_add_summary_sale(summary, str(it.good_id), int(it.qty), float(it.revenue))
 
@@ -1513,8 +1530,9 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 		_record_transport_breakdown(summary, transport_breakdown, transport_cost)
 		summary.money_out += transport_cost
 	if deferred and int(sale_record.total_qty) > 0:
-		# Goods are already consumed (in transit); cash lands when the port receives them.
-		TransportState.queue_transport_shipment({
+		# Goods are already consumed (in transit); cash lands when the port receives them,
+		# or now when the transit credit line advances it.
+		var sale_shipment := {
 			"is_sale": true,
 			"source_tile": source_tile,
 			"destination_tile": port_tile,
@@ -1525,7 +1543,11 @@ func _sell_stockpile_totals(coord, totals: Dictionary, summary: Dictionary, emit
 			"path": route.get("path", []),
 			"legs": route.get("legs", []),
 			"tiles": route.get("tiles", []),
-		})
+		}
+		if LoanState.advance_sale(sale_shipment) > 0.0:
+			for item: Dictionary in sale_record.items:
+				_add_summary_sale(summary, str(item.good_id), int(item.qty), float(item.revenue))
+		TransportState.queue_transport_shipment(sale_shipment)
 	elif emit_toast and float(sale_record.total_revenue) > 0.0:
 		MatchState.emit_stockpile_market_sale_completed(sale_record)
 	# Victory feed: this bulk / auto-sell / queued-stockpile market sale is one goods
@@ -2309,10 +2331,15 @@ func _can_run_recipe(building: Dictionary, recipe: Dictionary, service_preflight
 
 	# Check inputs (the JIT direct feed counts — it's real goods staged for this tile)
 	for input in inputs:
-		var have: int = Stockpile.get_at_tile(tile_id, input.good_id) + _feed_available(tile_id, str(input.good_id))
-		if Middleman.supplies_good(str(building.instance_id), str(input.good_id)):
-			have = _scaled_input_qty(input,building) if service_preflight else int(Middleman.entry(str(building.instance_id)).get("inputs",{}).get(str(input.good_id),0))
-		elif service_preflight and not Middleman.enabled(str(building.instance_id)) and Middleman.material_tradeable(str(input.good_id), "input"):
+		var iid := str(building.instance_id)
+		var have: int = Stockpile.get_at_tile(tile_id, input.good_id) + _feed_available(tile_id, str(input.good_id)) \
+			+ Middleman.bridge_held(iid, str(input.good_id))
+		if Middleman.supplies_good(iid, str(input.good_id)):
+			have = _scaled_input_qty(input,building) if service_preflight else int(Middleman.entry(iid).get("inputs",{}).get(str(input.good_id),0))
+		elif service_preflight and Middleman.bridges_good(iid, str(input.good_id)):
+			# The fallback route buys whatever the tile stock does not cover.
+			have = _scaled_input_qty(input,building)
+		elif service_preflight and not Middleman.enabled(iid) and Middleman.material_tradeable(str(input.good_id), "input"):
 			have = _scaled_input_qty(input,building)
 		var need := _scaled_input_qty(input, building)
 		if have < need:
@@ -2633,7 +2660,7 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 		var needs_power: bool = energy_req > 0 or recipe.get("output_name", "") == "power"
 		if needs_power and not Power.is_supplied(tile_id, energy_req):
 			continue
-		var entry := {"instance_id": instance_id, "building_id": str(building.get("building_id", "")), "inputs": {}}
+		var entry := {"instance_id": instance_id, "building_id": str(building.get("building_id", "")), "inputs": {}, "handover": {}}
 		for input in inputs:
 			var good_id := str(input.good_id)
 			if Middleman.supplies_good(instance_id, good_id):
@@ -2649,6 +2676,8 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 			if need_per_turn <= 0:
 				continue
 			entry.inputs[good_id] = int(entry.inputs.get(good_id, 0)) + need_per_turn
+			if Middleman.bridges_good(instance_id, good_id):
+				entry.handover[good_id] = true
 		if not (entry.inputs as Dictionary).is_empty():
 			var tile_entries: Array = demand_by_tile.get(tile_id, [])
 			tile_entries.append(entry)
@@ -2739,11 +2768,16 @@ func _buy_market_inputs(all_buildings: Array, summary: Dictionary) -> void:
 		# later no matter how orders are throttled — surface it as a critical update.
 		var required := 0
 		var jit := ResearchState.is_unlocked(JIT_UNLOCK_TITLE)
+		var handover_goods: Dictionary = {}
+		for e6 in entries:
+			handover_goods.merge(e6.get("handover", {}))
 		for good_id in goods_order:
 			var lr: int = int((_same_tile_supply.get(tile_id, {}) as Dictionary).get(good_id, 0))
 			var gross: int = int(total_need[good_id])
 			if str((leads[good_id] as Dictionary).get("port", "")) != "":
-				required += maxi(0, gross - lr) * (int((leads[good_id] as Dictionary).get("lead", 1)) + 1)
+				# A handover good holds about one batch on the tile; the rest is on the road.
+				var turns_on_tile: int = 1 if handover_goods.has(good_id) else int((leads[good_id] as Dictionary).get("lead", 1)) + 1
+				required += maxi(0, gross - lr) * turns_on_tile
 			if not jit:
 				# Locally-made intermediates transit the warehouse (~2 turns of room)
 				# — unless Just-in-Time Logistics feeds them building-to-building.
@@ -2873,9 +2907,12 @@ func _consume_inputs(building: Dictionary, recipe: Dictionary, summary: Dictiona
 		if Middleman.supplies_good(iid, str(input.good_id)):
 			Middleman.consume(iid,str(input.good_id),qty)
 		else:
-			var from_feed := _feed_consume(tile_id, str(input.good_id), qty)
-			if qty - from_feed > 0:
-				Stockpile.consume(tile_id, input.good_id, qty - from_feed)
+			# Units the fallback bought for this building go first, then the JIT feed,
+			# then the tile stockpile.
+			var from_bridge := Middleman.consume_bridge(iid, str(input.good_id), qty)
+			var from_feed := _feed_consume(tile_id, str(input.good_id), qty - from_bridge)
+			if qty - from_bridge - from_feed > 0:
+				Stockpile.consume(tile_id, input.good_id, qty - from_bridge - from_feed)
 		if qty > 0 and not Middleman.supplies_good(iid, str(input.good_id)):
 			AdvisorState.flag_agenda_event(AdvisorState.AGENDA_USED_STOCKPILE)
 		summary.consumed[input.good_id] = summary.consumed.get(input.good_id, 0) + qty

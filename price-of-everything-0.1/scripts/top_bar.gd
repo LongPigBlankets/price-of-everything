@@ -3385,6 +3385,8 @@ func _fly_treasury(vb: VBoxContainer) -> void:
 	if LoanState.loans.is_empty():
 		loans.add_child(_mini("No loans outstanding.", C_BRIGHT, 11))
 	loans.add_child(_fly_row("Borrowing capacity left", _money_text(LoanState.available_capacity()), C_BRIGHT, C_BRIGHT))
+	if LoanState.transit_credit_available():
+		_add_transit_credit_rows(loans)
 	var actions := HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 8)
 	var take := _fly_btn("Take loan", true)
@@ -3403,6 +3405,22 @@ func _fly_treasury(vb: VBoxContainer) -> void:
 		_open_money_panel_tab("Charts"))
 	actions.add_child(charts)
 	loans.add_child(actions)
+
+## Port sales advanced when they leave: what is on the road, what it costs, and the switch.
+func _add_transit_credit_rows(parent: VBoxContainer) -> void:
+	var rate_pct := LoanState.transit_credit_rate_per_turn() * 100.0
+	var balance := LoanState.transit_credit_balance
+	parent.add_child(_fly_row("Transit credit on the road", "%s · %s/turn" % [_money_text(balance), _money_text(balance * rate_pct / 100.0)], C_BRIGHT, C_BRIGHT, "FlyRowTransitCredit"))
+	var toggle := _fly_btn("", false)
+	toggle.name = "FlyTransitCreditToggle"
+	toggle.tooltip_text = "Port sales are paid when the goods reach the port. With this on, the bank pays you when they leave and charges %.2f%% a turn on what is still on the road. Turn it off to wait for payment and save the interest." % rate_pct
+	var label_for := func() -> String:
+		return "Advance port sales: %s" % ("On" if LoanState.transit_credit_enabled else "Off")
+	toggle.text = label_for.call()
+	toggle.pressed.connect(func() -> void:
+		LoanState.set_transit_credit_enabled(not LoanState.transit_credit_enabled)
+		toggle.text = label_for.call())
+	parent.add_child(toggle)
 
 func _open_money_panel_tab(tab_name: String) -> void:
 	_close_fly()

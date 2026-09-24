@@ -113,3 +113,54 @@ func _test_live_mine_grid_and_nontradeable_coproduct() -> void:
 	_check(Service.enabled(farm), "expanded goods and building modes reload")
 	_check(Service.uses_inputs(plant) and not Service.uses_outputs(plant), "grid exclusion survives reload")
 	cleanup()
+
+func _test_demo_starts_open_with_two_batches_on_hand() -> void:
+	for start: String in ["metal_magnate", "glass_merchant"]:
+		var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/starts/%s.json" % start))
+		var snap := SaveLoad.expand_start_config(cfg)
+		var match_state: Dictionary = snap.get("match", {})
+		_check(str((match_state.get("ruleset", {}) as Dictionary).get("logistics_model", "")) == "middleman_v1", "%s is an intermediary game" % start)
+		var services: Dictionary = (match_state.get("middleman_service", {}) as Dictionary).get("buildings", {})
+		_check(services.size() == (cfg.get("buildings", []) as Array).size(), "%s enrols every starting building" % start)
+		var exact := true
+		for iid in services:
+			var recipe := Catalog.get_recipe(str(services[iid].recipe_id))
+			var held: Dictionary = services[iid].inputs
+			var reserve: Dictionary = services[iid].get("opening_inputs", {})
+			for input: Dictionary in recipe.get("inputs", []):
+				if Service.material_tradeable(str(input.good_id), "input") \
+						and (int(held.get(str(input.good_id), 0)) != int(input.qty) or int(reserve.get(str(input.good_id), 0)) != int(input.qty)):
+					exact = false
+			if (recipe.get("inputs", []) as Array).is_empty() and not (held.is_empty() and reserve.is_empty()):
+				exact = false
+		_check(exact, "%s holds one batch and reserves a second per building, none for mines" % start)
+		_check((cfg.get("stockpile", {}) as Dictionary).is_empty(), "%s has no tile stockpile to strand" % start)
+
+func _test_opening_reserve_runs_two_turns_then_buys() -> void:
+	var iid := str(setup()[0])
+	var e := Service.entry(iid)
+	e.inputs = {"g_006": 32, "g_007": 32}
+	e["opening_inputs"] = {"g_006": 32, "g_007": 32}
+	Production._process_production()
+	var s := Production.last_turn_summary
+	_check(s.purchased.is_empty() and int(s.sold.get("g_008", {}).get("qty", 0)) == 33, "turn one runs on the held batch without buying")
+	_check(int(Service.entry(iid).get("inputs", {}).get("g_006", 0)) == 0 and Service.has_assets(iid), "the reserve is still owned after turn one")
+	TurnManager.current_turn += 1
+	Production._process_production()
+	s = Production.last_turn_summary
+	_check(s.purchased.is_empty() and int(s.sold.get("g_008", {}).get("qty", 0)) == 33, "turn two draws the reserve instead of buying")
+	_check(not Service.entry(iid).has("opening_inputs"), "the reserve is used up after two batches")
+	TurnManager.current_turn += 1
+	Production._process_production()
+	s = Production.last_turn_summary
+	_check(int(s.purchased.get("g_006", 0)) == 32 and int(s.purchased.get("g_007", 0)) == 32, "turn three buys its batch as usual")
+	cleanup()
+
+func _test_opening_reserve_is_released_with_the_inputs() -> void:
+	var iid := str(setup()[0])
+	var e := Service.entry(iid)
+	e.inputs = {"g_006": 32, "g_007": 32}
+	e["opening_inputs"] = {"g_006": 32, "g_007": 32}
+	_check(Service.set_mode(iid, "input", "managed").ok, "take inputs in-house with a reserve on hand")
+	_check(Stockpile.get_at_tile("tile_5_4", "g_006") == 64 and Stockpile.get_at_tile("tile_5_4", "g_007") == 64, "held and reserved inputs both move to the tile stockpile")
+	cleanup()

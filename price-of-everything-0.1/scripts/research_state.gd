@@ -127,6 +127,10 @@ var stockpile_feed_streaks: Dictionary = {}
 ## Open Logistics Contracts condition is deliberately breadth-sensitive: three goods
 ## must each reach the threshold, rather than one bulk commodity doing all the work.
 var _middleman_shipments_by_good: Dictionary = {}
+## Consecutive turns with at least N advisors hired (N -> turns), for the governance gate.
+var _advisors_hired_streaks: Dictionary = {}
+const ADVISOR_STREAK_MAX_COUNT := 6
+var _advisors_hired_last_turn: int = -1
 var _unlock_defs: Array = []   # [{research_node_id, title, action, object, qty, prereqs, description}]
 var _node_id_by_title: Dictionary = {}   # lazy title -> research_node_id (see research_node_id_for_title)
 var _title_by_node_id: Dictionary = {}   # lazy research_node_id -> title (see research_title_for_node_id)
@@ -142,6 +146,7 @@ func _on_phase_started(phase: int) -> void:
 		# research pass reads the final production/sales/profitability state.  This
 		# deliberately replaces per-shipment and per-completion scans.
 		_update_profitable_run_streaks()
+		_update_advisors_hired_streaks()
 		_refresh_research_progress()
 
 
@@ -161,6 +166,8 @@ func reset() -> void:
 	_research_progress_last_turn = -1
 	stockpile_feed_streaks.clear()
 	_middleman_shipments_by_good.clear()
+	_advisors_hired_streaks.clear()
+	_advisors_hired_last_turn = -1
 	_global_trade_license_paid = false
 
 
@@ -177,6 +184,8 @@ func export_fields() -> Dictionary:
 		"profitable_run_streaks": _profitable_run_streaks.duplicate(true),
 		"stockpile_feed_streaks": stockpile_feed_streaks.duplicate(true),
 		"middleman_shipments_by_good": _middleman_shipments_by_good.duplicate(true),
+		"advisors_hired_streaks": _advisors_hired_streaks.duplicate(true),
+		"advisors_hired_last_turn": _advisors_hired_last_turn,
 		"global_trade_license_paid": _global_trade_license_paid,
 	}
 
@@ -200,8 +209,33 @@ func import_fields(d: Dictionary) -> void:
 	_research_progress_last_turn = -1
 	stockpile_feed_streaks = (d.get("stockpile_feed_streaks", {}) as Dictionary).duplicate(true)
 	_middleman_shipments_by_good = (d.get("middleman_shipments_by_good", {}) as Dictionary).duplicate(true)
+	_advisors_hired_streaks.clear()
+	var saved_streaks: Dictionary = d.get("advisors_hired_streaks", {})
+	for key in saved_streaks:
+		_advisors_hired_streaks[int(key)] = int(saved_streaks[key])
+	_advisors_hired_last_turn = int(d.get("advisors_hired_last_turn", -1))
 	_global_trade_license_paid = bool(d.get("global_trade_license_paid", false))
 
+
+## Once per resolved turn: extend the streak of every advisor count reached this turn and
+## reset the others. The founder is not a hire and does not count.
+func _update_advisors_hired_streaks() -> void:
+	var turn := TurnManager.current_turn
+	if turn == _advisors_hired_last_turn:
+		return
+	_advisors_hired_last_turn = turn
+	var hired := AdvisorState.payrolled_advisor_count()
+	for count in range(1, ADVISOR_STREAK_MAX_COUNT + 1):
+		_advisors_hired_streaks[count] = int(_advisors_hired_streaks.get(count, 0)) + 1 if hired >= count else 0
+
+func advisors_hired_streak(count: int) -> int:
+	return int(_advisors_hired_streaks.get(count, 0))
+
+## This turn's loan payments as a share of its sales revenue; 0 with no revenue.
+func loan_payment_share_of_revenue() -> float:
+	var s: Dictionary = Production.last_turn_summary
+	var revenue := float(s.get("goods_sales_revenue", 0.0)) + float(s.get("power_sales_revenue", 0.0))
+	return float(s.get("interest_paid", 0.0)) / revenue if revenue > 0.0 else 0.0
 
 func note_middleman_shipment(good_id: String, qty: int) -> void:
 	if good_id == "" or qty <= 0:
@@ -539,6 +573,8 @@ func unlock_condition_text(title: String) -> String:
 		"Ship Through Logistics Intermediary": return "Ship at least %d units of at least %s with a Logistics Intermediary" % [qty, unit]
 		"Produce Distinct": return "Produce at least %d different goods" % qty
 		"Profit": return "Reach £%d profit" % qty
+		"Service Loans": return "Pay loans worth more than %d%% of revenue in one turn" % qty
+		"Keep Hired": return "Keep %s hired for %d consecutive turns" % [object_name, qty]
 		"Sustain": return "Maintain %s for %d consecutive turns" % [object_name, qty]
 		"Use Infrastructure":
 			var use_turns := _leading_int(unit.get_slice("for", 1), 5) if "for" in unit else 0
@@ -683,6 +719,10 @@ func _live_condition_met(d: Dictionary) -> bool:
 			return distinct_goods >= need
 		"Profit":
 			return float(Production.last_turn_summary.get("pre_tax_profit", 0.0)) >= float(need)
+		"Service Loans":
+			return loan_payment_share_of_revenue() * 100.0 > float(need)
+		"Keep Hired":
+			return advisors_hired_streak(maxi(1, _leading_int(obj, 1))) >= need
 		"Sell Through Ports":
 			return _port_sale_total >= need
 		"Sell Through Every Port":
@@ -1034,8 +1074,10 @@ func _research_condition_issue(d: Dictionary) -> String:
 	var obj := str(d.get("object", ""))
 	if action == "Placeholder":
 		return ""
-	if action in ["Ship Through Logistics Intermediary", "Produce Distinct", "Profit"]:
+	if action in ["Ship Through Logistics Intermediary", "Produce Distinct", "Profit", "Service Loans"]:
 		return ""
+	if action == "Keep Hired":
+		return "" if _leading_int(obj, 0) > 0 else "unsupported advisor count"
 	if action == "All Of":
 		# Every ";"-separated clause must itself pass the audit.
 		var all_clauses := obj.split(";", false)

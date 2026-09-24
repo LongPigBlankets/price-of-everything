@@ -601,6 +601,12 @@ func cancel(instance_id: String) -> bool:
 		var secured: int = int(required[good_id]) - int(missing.get(good_id, 0))
 		if secured > 0:
 			Stockpile.add(tile_id, str(good_id), secured)
+	# An intermediary kit is paid when ordered and delivered at the next PROCESS. Until
+	# then nothing has arrived, so cancelling refunds the kit in full.
+	if not (project.get("private_materials", {}) as Dictionary).is_empty():
+		var kit_cost := float(project.get("material_cost", 0.0))
+		if kit_cost > 0.0:
+			MatchState.add_money(kit_cost)
 
 	construction_projects.erase(instance_id)
 	construction_cancelled.emit(instance_id, tile_id)
