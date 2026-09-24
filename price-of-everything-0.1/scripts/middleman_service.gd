@@ -258,10 +258,8 @@ static func prepare(buildings: Array, summary: Dictionary) -> void:
 		if int(reserved_draw.get(tile,0))+draw > Power.tile_power_cap(tile):
 			e.reason = "Insufficient cable capacity for another batch."
 			continue
-		var power_rate := EconomyConfig.GRID_BUY_PRICE * maxf(0.0,1.0+float(Modifiers.resolve_pct("grid_buy_price","*",{}).get("net",0.0))/100.0) + MarketState.carbon_component(str(Catalog.get_good_by_internal_name("power").get("id","")))
-		var running := draw * power_rate
-		for input: Dictionary in recipe.get("inputs", []):
-			running += PolicyState.carbon_charge(str(input.good_id), Production._scaled_input_qty(input,b), TurnManager.current_turn)
+		var power_rate := Power.grid_import_price()
+		var running := draw * power_rate + PolicyState.run_carbon_levy(b, recipe)
 		var plan := Contract.plan_batch(required,e.inputs,snapshot,float(e.coefficient),{
 			"cash":MatchState.money,"credit_available":maxf(0.0,LoanState.available_capacity()),
 			"commitments":protected+reserved_power,"running_reserve":running,"minimum_loan":EconomyConfig.LOAN_MINIMUM,
@@ -451,10 +449,7 @@ static func preview_building(b: Dictionary) -> Dictionary:
 		if not material_tradeable(str(output.good_id), "output") or (enabled(iid) and not buys_output(iid, str(output.good_id))): continue
 		var single := recipe.duplicate(true)
 		single.outputs = [output]
-		var qty: int = preload("res://scripts/building_status.gd").effective_output_qty(b,single)
-		qty = int(round(float(qty)*MatchState.startup_capacity_multiplier(b)))
-		var derate := float(Production._intermittency_by_building.get(iid,{}).get("derate",0.0))
-		qty = int(round(float(qty)*(1.0-derate)))
+		var qty: int = preload("res://scripts/building_status.gd").effective_output_qty(b,single,true)
 		output_lines.append({"good":str(output.good_id),"quantity":qty})
 	var selling_held := not (e.get("outputs",{}) as Dictionary).is_empty()
 	if selling_held:
@@ -463,13 +458,11 @@ static func preview_building(b: Dictionary) -> Dictionary:
 		buy = Contract.quote("buy",[],snapshot,factor,goods())
 	var sale := Contract.quote("sell",output_lines if output_service else [],snapshot,factor,goods())
 	if not bool(buy.ok) or not bool(sale.ok): return {"ok":false,"reason":"Unsupported service quote."}
-	var power := 0.0 if selling_held else Production._effective_energy_req(b,recipe)*(EconomyConfig.GRID_BUY_PRICE*maxf(0.0,1.0+float(Modifiers.resolve_pct("grid_buy_price","*",{}).get("net",0.0))/100.0)+MarketState.carbon_component(str(Catalog.get_good_by_internal_name("power").get("id",""))))
+	var power := 0.0 if selling_held else Production._effective_energy_req(b,recipe)*Power.grid_import_price()
 	var grid_value := 0.0
 	if str(recipe.get("output_name", "")) == "power":
-		grid_value = Production._effective_power_output(b, recipe) * EconomyConfig.GRID_SELL_PRICE * maxf(0.0, 1.0 + float(Modifiers.resolve_pct("grid_sell_price", "*", {}).get("net", 0.0))/100.0)
-	var carbon := 0.0
-	if not selling_held:
-		for input: Dictionary in recipe.get("inputs", []): carbon += PolicyState.carbon_charge(str(input.good_id), Production._scaled_input_qty(input,b), TurnManager.current_turn)
+		grid_value = Production._effective_power_output(b, recipe) * Power.grid_export_price()
+	var carbon := 0.0 if selling_held else PolicyState.run_carbon_levy(b, recipe)
 	var labour := 0.0 if BuildingWorks.is_building_paused(iid) else Production._calculate_labour_cost(b,recipe)
 	var maintenance: float = Production._calculate_maintenance_cost(b)
 	var reserve := MatchState.unpaid_purchase_total()

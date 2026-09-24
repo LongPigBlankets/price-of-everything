@@ -25,6 +25,11 @@ func import_state(state: Dictionary) -> void:
 func _debug_logs_enabled() -> bool:
 	return bool(UiPrefs.debug_turn_logs_enabled)
 
+## A building's share of its tile's storage fee last turn: each tile's charge is split between the
+## buildings that ran there. 0 until the first solve, or with nothing stored.
+func warehousing_share(instance_id: String) -> float:
+	return float((last_result.get("per_building", {}) as Dictionary).get(instance_id, {}).get("warehousing_cost", 0.0))
+
 func get_building_unit_cost(instance_id: String) -> float:
 	var bd: Dictionary = last_result.get("per_building", {}).get(instance_id, {})
 	return bd.get("unit_cost", -1.0)

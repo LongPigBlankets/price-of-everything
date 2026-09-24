@@ -104,7 +104,8 @@ static func status(building: Dictionary, recipe: Dictionary, is_infrastructure: 
 
 # --- Recipe flow (inputs → power → output, with modifier) ----------------------------------
 
-static func flow(building: Dictionary, recipe: Dictionary) -> Dictionary:
+## `this_turn` quantities include the startup ramp and intermittency derate (BuildingStatus.effective_output_qty).
+static func flow(building: Dictionary, recipe: Dictionary, this_turn := false) -> Dictionary:
 	var inputs: Array = []
 	for inp in recipe.get("inputs", []):
 		inputs.append({
@@ -122,7 +123,7 @@ static func flow(building: Dictionary, recipe: Dictionary) -> Dictionary:
 	if not out_items.is_empty():
 		var primary: Dictionary = out_items[0]
 		var primary_base := int(primary.get("qty", 0))
-		var eff := BuildingStatus.effective_output_qty(building, recipe)
+		var eff := BuildingStatus.effective_output_qty(building, recipe, this_turn)
 		if str(recipe.get("output_name", "")) == "power":
 			eff = BuildingStatus.effective_power_output(building, recipe)
 		var ratio := (float(eff) / float(primary_base)) if primary_base > 0 else 1.0
@@ -231,18 +232,10 @@ static func economics(building: Dictionary, recipe: Dictionary, building_data: D
 	var transport_cost := 0.0
 	if units_out > 0 and target != "" and target != own_tile and bool(route.get("reachable", true)):
 		transport_cost = float(BuildingStatus.route_summary(own_tile, target, out_gid, units_out).get("cost", 0.0))
-	# Storage overhead: this building's attributed share of its tile's actual
-	# warehousing fee last turn (CostSolver splits each tile's charge across the
-	# buildings that ran there). 0 until the first solve or when nothing is stored.
-	var wh_bd: Dictionary = CostSolver.last_result.get("per_building", {}).get(str(building.get("instance_id", "")), {})
-	var warehousing := float(wh_bd.get("warehousing_cost", 0.0))
-	# Carbon levy (live estimate at the CURRENT policy phase): the charge for this run's
-	# taxed inputs (coal / processed oil / ethylene …). 0 before the levy is in force.
-	var carbon_tax := 0.0
-	var levy_turn := int(TurnManager.current_turn)
-	for inp in recipe.get("inputs", []):
-		carbon_tax += PolicyState.carbon_charge(str(inp.get("good_id", "")),
-			Production._scaled_input_qty(inp, building), levy_turn)
+	# Storage overhead: this building's attributed share of its tile's actual warehousing fee last turn.
+	var warehousing := CostSolver.warehousing_share(str(building.get("instance_id", "")))
+	# Carbon levy (live estimate at the CURRENT policy phase) on this run's taxed inputs.
+	var carbon_tax := PolicyState.run_carbon_levy(building, recipe)
 	var service_fee := 0.0
 	var iid := str(building.get("instance_id",""))
 	if Middleman.enabled(iid):
