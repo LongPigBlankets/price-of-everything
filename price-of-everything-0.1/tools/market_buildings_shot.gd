@@ -137,16 +137,16 @@ func _ready() -> void:
 				cb.pressed.emit()
 				await _settle(8)
 			var still_npc: bool = not BuildingState.is_player_owned(BuildingState.buildings[poor_iid])
-			# Red insufficient-money toast now lives in the bottom-left success stack with the others.
-			var stack: Control = game.get_node_or_null("UILayer/HUD/ToastLayer/SuccessStack")
-			var stack_x: float = stack.global_position.x if stack != null else -1.0
+			# The red insufficient-money toast is a row in the bottom-left updates dock.
+			var toasts: Control = game.get_node_or_null("UILayer/HUD/ToastLayer")
+			var dock: Control = toasts.get_node_or_null("UpdatesDock") if toasts != null else null
+			var stack_x: float = dock.global_position.x if dock != null else -1.0
 			var red_toast := false
-			if stack != null:
-				for t in stack.get_children():
-					for lbl in t.find_children("*", "Label", true, false):
-						if str(lbl.text).begins_with("Not enough money to buy"):
-							red_toast = true
-			print("POOR TEST: still_npc=%s left_stack_x=%.0f red_toast_present=%s" % [still_npc, stack_x, red_toast])
+			if toasts != null:
+				for text: String in toasts.row_texts():
+					if text.begins_with("Not enough money to buy"):
+						red_toast = true
+			print("POOR TEST: still_npc=%s dock_x=%.0f red_toast_present=%s" % [still_npc, stack_x, red_toast])
 			_shot("/tmp/poe_buy_insufficient.png")
 
 	# Reactivity: open the building ledger; the just-bought building should be listed (player-owned).

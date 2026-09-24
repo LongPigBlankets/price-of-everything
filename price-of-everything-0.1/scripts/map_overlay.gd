@@ -44,7 +44,9 @@ const POWER_CIRCLE_RADIUS := 18.0
 const BUILD_TILE_VERTICAL_OFFSET := Vector2(0, -5)
 const TILE_MASK_ALPHA := 0.5
 const LEGEND_LEFT := 12.0
-const LEGEND_BOTTOM := 24.0
+const ToastManager := preload("res://scripts/toast_manager.gd")
+## Bottom-left legends stack on top of the updates dock.
+const LEGEND_BOTTOM := ToastManager.LEGEND_CLEARANCE
 const BUILD_RED := Color(0.45, 0.02, 0.02, TILE_MASK_ALPHA)
 const BUILD_DARK_GREEN := Color(0.02, 0.34, 0.12, TILE_MASK_ALPHA)
 const BUILD_LIGHT_GREEN := Color(0.45, 1.0, 0.48, TILE_MASK_ALPHA)

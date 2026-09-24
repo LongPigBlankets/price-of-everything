@@ -2,7 +2,9 @@ extends PanelContainer
 
 const LegendEntryScene: PackedScene = preload("res://scenes/legend_entry.tscn")
 const LEGEND_LEFT := 12.0
-const LEGEND_BOTTOM := 24.0
+const ToastManager := preload("res://scripts/toast_manager.gd")
+## Bottom-left legends stack on top of the updates dock.
+const LEGEND_BOTTOM := ToastManager.LEGEND_CLEARANCE
 const LEGEND_WIDTH := 240.0
 const LEGEND_HEIGHT := 190.0
 

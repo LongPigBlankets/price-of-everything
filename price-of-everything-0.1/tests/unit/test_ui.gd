@@ -735,3 +735,61 @@ func _test_bdp_v3_panel() -> void:
 	panel.queue_free()
 	BuildingState.buildings.erase(iid)
 	UiPrefs.set_use_bdp_v3(was)
+
+func _test_updates_dock() -> void:
+	# Every toast is a row in a slide-out over a 60 px bottom-left dock with three bells.
+	var toasts: Control = load("res://scripts/toast_manager.gd").new()
+	add_child(toasts)
+	await get_tree().process_frame
+	var dock: Control = toasts.find_child("UpdatesDock", true, false)
+	_check(dock != null and is_equal_approx(dock.size.y, 60.0), "updates dock: 60 px tall")
+	_check(dock != null and dock.get_global_rect().position.x < 40.0 \
+		and dock.get_global_rect().end.y > toasts.size.y - 40.0, "updates dock: in the bottom-left corner")
+	var bells_ok := true
+	for tone: String in ["green", "amber", "red"]:
+		bells_ok = bells_ok and toasts.find_child("Bell_%s" % tone, true, false) != null and toasts.unread(tone) == 0
+	_check(bells_ok, "updates dock: a green, an amber and a red bell, none counting yet")
+	_check(toasts.tone_of("success") == "green" and toasts.tone_of("info") == "green" \
+		and toasts.tone_of("caution") == "amber" and toasts.tone_of("warning") == "red" \
+		and toasts.tone_of("error") == "red", "updates dock: each toast type rings its bell")
+
+	toasts._on_toast_requested("Built a steel furnace", "success")
+	toasts._on_toast_requested("Local opposition to density", "caution")
+	toasts._on_toast_requested("Cash is in the red", "warning")
+	toasts._on_toast_requested("No route to market", "error")
+	_check(toasts.row_count() == 4, "updates dock: every toast becomes a row")
+	_check(toasts.unread("green") == 1 and toasts.unread("amber") == 1 and toasts.unread("red") == 2,
+		"updates dock: each bell counts its rows")
+	var rows: Control = toasts.find_child("Rows", true, false)
+	_check(toasts.is_open() and rows.mouse_filter == Control.MOUSE_FILTER_IGNORE,
+		"updates dock: a new row slides the rows out, letting clicks through")
+	_check(not toasts._timer.is_stopped() and is_equal_approx(toasts._timer.wait_time, toasts.TOAST_DURATION),
+		"updates dock: the rows collapse TOAST_DURATION after the last one")
+	toasts._on_timer()
+	_check(not toasts.is_open() and toasts.unread("red") == 2, "updates dock: collapsing keeps the bells' counts")
+
+	toasts.open_all()
+	_check(toasts.is_open() and rows.mouse_filter == Control.MOUSE_FILTER_STOP,
+		"updates dock: opened from the dock, the rows take the mouse")
+	_check(toasts.unread("green") + toasts.unread("amber") + toasts.unread("red") == 0,
+		"updates dock: opening from the dock clears the counts")
+	_check(toasts._dock_style.border_color == toasts.DOCK_BORDER_HOT, "updates dock: its rim lights while its slide-out is up")
+	var row_list: Node = toasts.find_child("RowList", true, false)
+	var shown := func() -> int:
+		return row_list.get_children().filter(func(r: Node) -> bool: return (r as Control).visible).size()
+	_check(shown.call() == 4, "updates dock: opened from the dock, every kept row shows")
+	toasts._on_timer()
+	_check(not toasts.is_open() and toasts._dock_style.border_color == toasts.DOCK_BORDER,
+		"updates dock: the dock's slide-out also closes when left alone, and its rim goes out")
+
+	toasts._on_toast_requested("Ordered 5 Steel", "success")
+	_check(toasts.is_open() and shown.call() == 1, "updates dock: opened by itself, only rows it hasn't shown")
+	for i in toasts.HISTORY_MAX + 5:
+		toasts.show_error("Refused %d" % i)
+	_check(toasts.row_count() == toasts.HISTORY_MAX, "updates dock: keeps the newest HISTORY_MAX rows")
+	_check(shown.call() == toasts.MAX_TOASTS, "updates dock: opened by itself, at most MAX_TOASTS rows")
+	_check(toasts.row_texts()[-1] == "Refused %d" % (toasts.HISTORY_MAX + 4), "updates dock: the newest row is last")
+	toasts.clear()
+	_check(toasts.row_count() == 0 and not toasts.is_open() and toasts.unread("red") == 0,
+		"updates dock: clearing empties the rows and the bells")
+	toasts.queue_free()
