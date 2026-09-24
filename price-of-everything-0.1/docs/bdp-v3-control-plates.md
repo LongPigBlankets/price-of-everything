@@ -1,5 +1,7 @@
 # Building Detail v3: control plates, frames, screws and buttons
 
+> The look this panel established is written up as a design system for other panels in `docs/ds2-theme.md`: its rules, pipeline, components, patterns, verification, traps, and the plan to extract a DS2 kit. Start there when moving another panel to it.
+
 Building Detail v3 dresses the building detail panel as a physical control panel:
 
 - The four main controls (Inputs, Outputs, Upgrade, Change recipes) sit on a worn steel plate as cream keycaps.
@@ -305,7 +307,7 @@ Since the re-render, no part carries a light of its own, so the overlay's even f
 
 ## Checking a change against the standard
 
-The approved look is kept as a standard (tag `bdp-v3-standard-2026-09-24-c`, with the economics rebuilt and the footer's outcomes; `-b` is the look before the economics work, and `bdp-v3-standard-2026-09-24` the first standard, before the re-render and the section work): `artifacts/bdp_v3_standard/` holds the views `tools/bdp_v3_shot.tscn` captures of it, and `metrics.json` the measurements taken from them. Every visual change is compared with it:
+The approved look is kept as a standard (tag `bdp-v3-standard-2026-09-24-d`, with the economics keys and nesting; `-c` has the economics rebuilt and the footer's outcomes, `-b` is the look before the economics work, and `bdp-v3-standard-2026-09-24` the first standard, before the re-render and the section work): `artifacts/bdp_v3_standard/` holds the views `tools/bdp_v3_shot.tscn` captures of it, and `metrics.json` the measurements taken from them. Every visual change is compared with it:
 
 ```sh
 BDP_SHOT_DIR=/tmp/bdp_now Godot --path . res://tools/bdp_v3_shot.tscn --quit-after 3600 -- --no-telemetry

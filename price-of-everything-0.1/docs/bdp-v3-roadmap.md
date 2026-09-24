@@ -217,3 +217,7 @@ Still open:
 
 - The diagnostics' visual view (behind the Visual / Text switch), deferred for now.
 - How dark the lamp over the panel falls. Since the re-render the lower panel is much lighter than in the standard, whose backing fell nearly to black; the overlay's darkest (0.7 now) sets it.
+
+## Next: the DS2 kit
+
+The look is written up as a design system in `docs/ds2-theme.md`. Its §10 plans moving the generic parts (surfaces, keys, lamps, LED screens, counters, lettering, wells, accordion rows, slide-outs, the lamp overlay and section framing) out of `building_detail_panel_v2.gd` and the `bdp_v3_*` scripts into a `scripts/ds2/` kit, one component at a time, each move checked at 0.0 against the standard before the next. Its §11 is the step-by-step for moving another panel to the look.
