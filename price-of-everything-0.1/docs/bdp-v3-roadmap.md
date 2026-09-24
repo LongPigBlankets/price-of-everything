@@ -15,7 +15,8 @@ This is the plan for bringing the rest of the building detail panel over to v3, 
 - the guarded Sell / Demolish footer
 - the scrollbar
 - the lamp over the panel
-- the diagnostics on the steel with a cable beside their lights
+- the diagnostics on dark plastic with silver screws, lamps on their rows, white embossed text and a cable beside the lamps
+- inbound shipments behind a rolling door, with a stock lamp and a supply hover on each good
 - cost to produce on gauges
 - labour's cost and workers on drum counters
 - the action sheets' sliding steel plate (their contents are still v2's)
@@ -88,7 +89,7 @@ In order of what a player sees most:
 1. **Section headings** in raised lettering. **Diagnostics** keep their layout for now (on the steel, with the cable); a broader redesign comes later.
 2. **Economics** and the **power line** in display windows. The row icons lose their bordered boxes and are printed on the glass; the Net row keeps its semantic colour.
 3. **Cost to produce:** done, a gauge per output.
-4. **Inbound shipments:** goods tags, with the stored / needed text on a display window.
+4. **Inbound shipments:** done, behind a rolling door with stock lamps and supply hovers.
 5. **Labour:** done, the headcounts printed on the steel and the cost and workers on drum counters.
 6. **Modifiers:** the accordion's header becomes a toggle switch.
 

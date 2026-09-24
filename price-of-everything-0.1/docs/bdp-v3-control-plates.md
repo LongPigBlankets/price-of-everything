@@ -99,17 +99,18 @@ Sizes and placement:
 
 - **Plates:** radius 10, 32 px in from each corner (`SCREW_INSET`), clear of the rounded corner and the rubbed lip.
 - **Section frames:** radius 6.5, in the middle of the rim.
-- **Backing:** radius 7.5, on the brass trim.
+- **Backing:** none; the brass trim is welded on.
+- **Diagnostics' plastic plate:** silver cross-head screws, set by the game along its top and down its sides.
 
 The plate paints grime round each screw and a few bright screwdriver slips. The block's plate runs 24 px further down than its buttons (`PLATE_FOOT`) so its bottom screws clear the lower keys.
 
 ## Frames
 
 - **Button bezels:** `mouldedFrame(w, h, r)` is a thin gunmetal ring that follows a button's outline: a 1.6 px gap, a 5 px rim, 6 px high, with a dark floor in the gap. Every keycap and guarded button sits in one, so the metal is moulded to the button's shape.
-- **Section frames:** a 22 px steel rim (the plate material on a ring with a rounded hole), a screw in each corner, and the rim's cast shadow, in a 596 × 396 px render with 18 px of shadow room round it.
+- **Section frames:** a 26 px steel rim (the plate material on a ring with a rounded hole), a screw in each corner set on the rim's centre line, in from its rounded corner as it would be driven, and the rim's cast shadow, in a 596 × 396 px render with 18 px of shadow room round it.
   - The game draws it as a 9-slice, which keeps the corners and screws at their size and stretches the edges (`bdp_v3_section.gd`).
   - A section's heading and content go inside, 8 px in from the rim.
-- **Backing trim:** a 22 px raised brass ring round the navy-grey backing plate, welded to it. There are no screws. A bronze weld bead runs in the join at the trim's foot (`weldBead`), a rounded ridge rippled every 2.6 px as a bead laid in runs is, and heat tint colours both metals beside it: straw, brown, purple and blue fading into the steel, and a darkening into the brass. It is drawn as a 9-slice (`bdp_v3_nine.gd`, 64-texel corners), behind the whole panel.
+- **Backing trim:** a 14 px raised brass ring round the navy-grey backing plate (narrow, so it stays clear of the scrollbar), welded to it. There are no screws. A bronze weld bead runs in the join at the trim's foot (`weldBead`), a rounded ridge rippled every 2.6 px as a bead laid in runs is, and heat tint colours both metals beside it: straw, brown, purple and blue fading into the steel, and a darkening into the brass. It is drawn as a 9-slice (`bdp_v3_nine.gd`, 64-texel corners), behind the whole panel.
 
 ## Buttons
 
@@ -226,17 +227,31 @@ In the game, `bdp_v3_title.gd` shapes and wraps the title with Godot's text serv
 
 ## Diagnostics
 
-In v3 the diagnostics' rows lie on the section frame's steel rather than on a navy card; their layout is v2's. A cable runs down beside their lights (`cableRun`, `bdp_v3_cable.gd`): black rubber insulation with a yellow tracer stripe, near-black with one crisp glossy highlight along its top so it reads as round against the dark steel, between a steel cable gland at each end. It is drawn as a vertical three-slice, the glands at their size and the cable stretched between them, down a 26 px gutter at the card's left.
+In v3 the diagnostics section is a moulded dark plastic plate (`plasticPlate`, `diag_plastic`, a 9-slice) instead of a steel frame, with silver cross-head screws (`screw_silver`) set along its top and down both sides, 9 px in from its edges and about 56 px apart, spaced evenly for its size (`bdp_v3_section.gd`, `style = "plastic"`). The rows keep v2's layout. Each is led by a lamp like the status lamp, at 72% of its size, lit for the row's tone; a row about a good shows the good's icon beside its lamp. All the section's text is white with a dark shadow down and to the right, so it stands off the plastic. A cable runs down beside the lamps (`cableRun`, `bdp_v3_cable.gd`): black rubber insulation with a yellow tracer stripe, near-black with one crisp glossy highlight along its top so it reads as round against the dark steel, between a steel cable gland at each end. It is drawn as a vertical three-slice, the glands at their size and the cable stretched between them, down a 26 px gutter at the card's left.
 
 ## Cost to produce
 
-Each output's cost is on a gauge (`scripts/panel_gauge.gd`, 92 px), on the frame's steel. The needle shows the unit cost as a share of the market price, on a scale running to twice it. The zones are the cost's RAG bands (green under 90%, amber to 110%, red over) and the LED follows the zone. An unknown cost leaves the needle down and the LED off. Beside the gauge are the good's name, the cost per unit in its RAG colour and the market line. The needle swings from where it last read when the panel rebuilds.
+Each output's cost is on a gauge (`scripts/panel_gauge.gd`, 128 px), on the frame's steel. The needle shows the unit cost as a share of the market price, on a scale running to twice it. The zones are the cost's RAG bands (green under 90%, amber to 110%, red over) and the LED follows the zone. An unknown cost leaves the needle down and the LED off. Beside the gauge are the good's name, the cost per unit in its RAG colour and the market line. The needle swings from where it last read when the panel rebuilds.
 
 ## Labour
 
 On the frame's steel: the three headcounts as numbers, each with its label printed under it in off-white capitals (Unskilled, Skilled, Highly skilled). Below them, the labour cost per turn and the number of workers are on drum counters (`bdp_v3_counter.gd`), each labelled beside it.
 
 A drum counter (`counterHousing`, `paintCounterGlass`) is a gunmetal housing with black drums in a window. The game prints the digits on the drums live (Barlow Condensed SemiBold), then lays `counter_glass` over them: the drums' curve shading away top and bottom, the window lip's shadow and a faint glare. Both renders are horizontal three-slices whose middle cell repeats once per drum. The cost has two drums after a printed decimal point. A counter has as many drums as its value needs (at least four for the cost and three for the workers), and when its value changes it rolls to it like an odometer, each drum turning only while the one below it passes from 9 to 0.
+
+## Inbound shipments
+
+The section's backdrop is a factory rolling door, slid up (`rollingDoor`, `shipment_door`, drawn by `bdp_v3_door.gd`): a roller housing across the top, corrugated slats painted a dark industrial grey, a bottom bar with a rubber seal, and a steel guide channel down each side. The guides, housing and bar keep their size, the width between the guides stretches, and whole slats repeat down to the height the door must reach. Below the door the bay is in its shadow for a little way.
+
+The goods sit two to a row: the first two in the bottom row, the next two in the row above, and so on. With one row the door is just a backing for the title; with more it comes down behind the upper rows (the frame draws it to just below them, `BdpV3Section.door_until`).
+
+Each good shows its icon, a lamp beside it, and "name — stored/needed stored" in white with a dark shadow. The lamp (`v3_stock_tone`) is:
+
+- green with enough in stock to run;
+- amber when short with something on its way: an inbound shipment, or the logistics intermediary;
+- red when short with nothing coming.
+
+Hovering the icon shows the good's name, what is stored, what a run needs, how it is supplied, and what is inbound (`v3_input_supply`: the logistics intermediary, the tile's own stockpile, a tile-to-tile transfer, or the global market), and clicking it still opens the encyclopedia. The hover is the shared good hover (`good_icon_hover.gd`) with `detail_lines` under the name.
 
 ## Action sheets
 
@@ -281,7 +296,7 @@ Then open `http://127.0.0.1:8771/cluster.html?export` in a browser. It works hea
 
 The tab title becomes "export done". Every layer of a set shares one frame, so the game stacks them without offsets.
 
-To render some sets only, add `&only=` and a comma-separated list of `block`, `footer`, `backing`, `section`, `keys`, `pin`, `lamp`, `scroll`, `seam`, `title`, `enamel`, `cable`, `counter` and `sheet`, for example `cluster.html?export&only=lamp,scroll`. The other layers are left as they are, and the page reads the current `layout.json` from the server and updates only those sets' entries. `export.py` takes an optional port (`python3 tools/button_mockup/export.py 8779`); use a port of your own when another export may be running.
+To render some sets only, add `&only=` and a comma-separated list of `block`, `footer`, `backing`, `section`, `keys`, `pin`, `lamp`, `scroll`, `seam`, `title`, `enamel`, `cable`, `counter`, `sheet`, `plastic` and `door`, for example `cluster.html?export&only=lamp,scroll`. The other layers are left as they are, and the page reads the current `layout.json` from the server and updates only those sets' entries. `export.py` takes an optional port (`python3 tools/button_mockup/export.py 8779`); use a port of your own when another export may be running.
 
 | Set | Layers |
 | --- | --- |
@@ -298,6 +313,8 @@ To render some sets only, add `&only=` and a comma-separated list of `block`, `f
 | Diagnostics' cable | `diag_cable` (32 × 240) |
 | Drum counter | `counter_housing`, `counter_glass` (186 × 52: two 18 px ends and five 30 px cells) |
 | Action sheets | `sheet_plate` (820 × 1600) |
+| Diagnostics' plate | `diag_plastic` (600 × 400), `screw_silver` (30 × 30) |
+| Inbound shipments' door | `shipment_door` (760 × 310: 16 px guides, a 44 px housing, 12 px slats, a 26 px bottom bar) |
 
 `layout.json` lists each set's size and every key's rect and top face, in layout pixels, plus the lamp's bezel, the scrollbar's end, grip and travel sizes, and the seam edge's ends, back edge and lip. The scripts carry these numbers as constants. After changing a layout, copy the new numbers from `layout.json` into `bdp_v3_block.gd`, `bdp_v3_footer.gd`, `bdp_v3_section.gd`, `bdp_v3_lamp.gd`, `bdp_v3_scroll.gd` or `bdp_v3_seam.gd`.
 

@@ -52,8 +52,10 @@ const TOP_BAR_CLEARANCE := 114.0   # clears the top bar AND the briefing notch h
 const BOTTOM_CLEARANCE := 110.0  # fallback: keep clear of the bottom menu when no tile panel to match
 const PANEL_WIDTH := 460.0
 const CONTENT_MARGIN := 26
-## The backing's rounded corner, in pixels (panel_backing: 4 + 16 layout pixels).
+## The backing's rounded corner, in pixels (panel_backing: 4 + 16 layout pixels), and its brass trim's
+## width in layout pixels (layout.json panel_backing).
 const BACKING_CORNER := 10.5
+const BACKING_TRIM := 14.0
 
 # Empire-view click (world_map sets this before show_building): dock at the tile view
 # panel's spot instead of the default edge position — in that view there IS no tile panel,
@@ -228,8 +230,8 @@ func _build_shell() -> void:
 	_seam = BdpV3Seam.new()
 	_seam.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	_seam.offset_bottom = BdpV3Seam.strip_height()
-	# Out to the backing's trim (4 + 22 layout pixels in from the panel's edge), less a hair.
-	_seam.outset = CONTENT_MARGIN - (4.0 + 22.0) / BdpV3Seam.CAPTURE_SCALE - 0.5
+	# Out to the backing's trim (4 layout pixels and the trim in from the panel's edge), less a hair.
+	_seam.outset = CONTENT_MARGIN - (4.0 + BACKING_TRIM) / BdpV3Seam.CAPTURE_SCALE - 0.5
 	well.add_child(_seam)
 	_body = VBoxContainer.new()
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1429,7 +1431,7 @@ func _open_sheet(title: String, populate: Callable, extra_width: float = 0.0) ->
 ## the brass trim. The sheet itself still covers the whole panel (and takes its clicks); inside it, a
 ## clip the trim's size holds a sliding layer with the plate and the sheet's content on it. Returns the
 ## sliding layer.
-const V3_SHEET_INSET := 14.0
+const V3_SHEET_INSET := (4.0 + BACKING_TRIM) / 1.875
 const V3_SHEET_PAD := 14
 const V3_SHEET_SLIDE_SECONDS := 0.26
 ## From layout.json (sheet_plate), in layout pixels: the render's room round the plate, and its corner.
@@ -1644,6 +1646,24 @@ func _v3_frame_sections() -> void:
 		if frame != null:
 			_body.remove_child(child)
 			frame.content.add_child(child)
+			if frame_name == "diagnostics":
+				frame.style = "plastic"
+			if child.has_meta("v3_door"):
+				# The door reaches down to the upper rows of goods, or with one row, just the title.
+				frame.door_until = child.get_meta("v3_door_until") if child.has_meta("v3_door_until") else frame.content.get_child(0)
+	# The diagnostics' plate is dark plastic, their text white and embossed on it.
+	for f in _body.get_children():
+		if f is BdpV3Section and f.style == "plastic":
+			for l in f.find_children("*", "Label", true, false):
+				_v3_emboss(l)
+
+
+## White lettering that stands up off dark plastic: a dark shadow down and to the right.
+func _v3_emboss(l: Label) -> void:
+	l.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
+	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+	l.add_theme_constant_override("shadow_offset_x", 1)
+	l.add_theme_constant_override("shadow_offset_y", 1)
 
 
 ## Inputs, Outputs, Upgrade and Change recipes as one control plate. The values are the ones the
@@ -2248,6 +2268,8 @@ func _build_diagnostics(rows: Array) -> PanelContainer:
 ## v3's diagnostics: the rows' left margin, and where the cable runs in it (from the card's left).
 const V3_DIAG_GUTTER := 26.0
 const V3_DIAG_CABLE_X := 10.0
+## The diagnostics' row lamps, as a share of the status lamp's size.
+const V3_DIAG_LAMP_SCALE := 0.72
 
 func _diag_head_text() -> String:
 	return ("⌄  All green" if _diagnostics_open else "›  All green")
@@ -2271,25 +2293,36 @@ func _diag_row(r: Dictionary, top_border: bool) -> Control:
 	wrap.add_child(hb)
 	var tone := str(r.get("tone", "info"))
 	var c := _tone_color(tone)
-	var chip := PanelContainer.new()
-	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var chip_style := StyleBoxFlat.new()
-	chip_style.bg_color = Color(c.r, c.g, c.b, 0.16)
-	chip_style.border_color = Color(c.r, c.g, c.b, 0.55)
-	chip_style.set_border_width_all(1)
-	chip_style.set_corner_radius_all(6)
-	chip_style.set_content_margin_all(3)
-	chip.add_theme_stylebox_override("panel", chip_style)
-	# A row about a specific commodity shows that good's icon instead of the tone dot.
-	var row_good := str(r.get("good_id", ""))
-	if row_good != "":
-		chip.add_child(UIHelpers.make_framed_good_icon(row_good, Catalog.get_internal_name(row_good), 18))
+	if UiPrefs.use_bdp_v3:
+		# v3: a lamp like the status lamp's, lit for the row's tone; a row about a good shows it too.
+		var lamp := BdpV3Lamp.new()
+		lamp.lamp_scale = V3_DIAG_LAMP_SCALE
+		lamp.set_tone(tone)
+		hb.add_child(lamp)
+		if str(r.get("good_id", "")) != "":
+			var good_icon := UIHelpers.make_framed_good_icon(str(r.get("good_id", "")), Catalog.get_internal_name(str(r.get("good_id", ""))), 18)
+			good_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			hb.add_child(good_icon)
 	else:
-		var dot := ColorRect.new()
-		dot.color = c
-		dot.custom_minimum_size = Vector2(12, 12)
-		chip.add_child(dot)
-	hb.add_child(chip)
+		var chip := PanelContainer.new()
+		chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var chip_style := StyleBoxFlat.new()
+		chip_style.bg_color = Color(c.r, c.g, c.b, 0.16)
+		chip_style.border_color = Color(c.r, c.g, c.b, 0.55)
+		chip_style.set_border_width_all(1)
+		chip_style.set_corner_radius_all(6)
+		chip_style.set_content_margin_all(3)
+		chip.add_theme_stylebox_override("panel", chip_style)
+		# A row about a specific commodity shows that good's icon instead of the tone dot.
+		var row_good := str(r.get("good_id", ""))
+		if row_good != "":
+			chip.add_child(UIHelpers.make_framed_good_icon(row_good, Catalog.get_internal_name(row_good), 18))
+		else:
+			var dot := ColorRect.new()
+			dot.color = c
+			dot.custom_minimum_size = Vector2(12, 12)
+			chip.add_child(dot)
+		hb.add_child(chip)
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	col.add_theme_constant_override("separation", 1)
@@ -2358,7 +2391,7 @@ func _build_cost_to_produce(rows: Array) -> PanelContainer:
 ## the market price, on a scale to twice it; the zones are the cost's RAG bands (green under 90%, amber
 ## to 110%, red over) and the LED follows the zone. An unknown cost leaves the needle down and the LED
 ## off. The needle swings from where it last read.
-const V3_GAUGE_SIZE := 92.0
+const V3_GAUGE_SIZE := 128.0
 const V3_GAUGE_SCALE_PCT := 200.0
 
 static func v3_cost_gauge_reading(unit_cost: float, market_price: float) -> Dictionary:
@@ -2661,6 +2694,8 @@ func _build_power_line(pw: Dictionary) -> PanelContainer:
 # --- inbound shipments ---------------------------------------------------------------------
 
 func _build_shipments(ships: Array) -> PanelContainer:
+	if UiPrefs.use_bdp_v3:
+		return _build_shipments_v3(ships)
 	var card := _make_card()
 	var vb := card.get_child(0) as VBoxContainer
 	vb.add_theme_constant_override("separation", DS.SP["MD"])
@@ -2704,6 +2739,106 @@ func _build_shipments(ships: Array) -> PanelContainer:
 			sub.text = "no inbound shipment scheduled"
 		col.add_child(sub)
 	return card
+
+## v3's inbound shipments, behind a rolling door slid up. The goods sit two to a row, the first two in
+## the bottom row and the rest in rows above it. With one row the door is just a backing for the title;
+## with more, it comes down behind the upper rows too (the frame draws it down to them). Each good has a
+## lamp beside it: green with enough in stock to run, amber when short with something on its way (an
+## inbound shipment or the logistics intermediary), red when short with nothing coming. Its hover gives
+## the good, what is stored, what a run needs and how it is supplied, and still opens the encyclopedia.
+const V3_SHIP_ICON := 64
+const V3_SHIP_LAMP_SCALE := 0.62
+
+static func v3_stock_tone(stored: int, need: int, inbound: int, on_intermediary: bool) -> String:
+	if stored >= need:
+		return "ok"
+	return "warn" if inbound > 0 or on_intermediary else "bad"
+
+## How a building gets an input: the logistics intermediary, its own tile's stockpile, a transfer from
+## another tile, or the global market.
+static func v3_input_supply(building: Dictionary, recipe: Dictionary, gid: String, inbound_from: String) -> String:
+	var iid := str(building.get("instance_id", ""))
+	if preload("res://scripts/middleman_service.gd").supplies_good(iid, gid):
+		return "Logistics intermediary"
+	var tile := str(building.get("tile_id", ""))
+	var other_tile := inbound_from != ""
+	for src: Dictionary in BuildingReadout.input_sources(building, recipe):
+		if str(src.get("good_id", "")) != gid:
+			continue
+		if str(src.get("tile_id", "")) == tile:
+			return "From the tile stockpile"
+		other_tile = true
+	return "Tile-to-tile transfer" if other_tile else "Global market"
+
+func _build_shipments_v3(ships: Array) -> PanelContainer:
+	var card := _make_card()
+	card.name = "ShipmentsV3"
+	var bare := StyleBoxEmpty.new()
+	bare.set_content_margin_all(4)
+	card.add_theme_stylebox_override("panel", bare)
+	var vb := card.get_child(0) as VBoxContainer
+	vb.add_theme_constant_override("separation", DS.SP["MD"])
+	var chunks: Array = []
+	for i in range(0, ships.size(), 2):
+		chunks.append(ships.slice(i, i + 2))
+	var upper := VBoxContainer.new()
+	upper.name = "UpperRows"
+	upper.add_theme_constant_override("separation", DS.SP["MD"])
+	for i in range(chunks.size() - 1, 0, -1):
+		upper.add_child(_v3_ship_row(chunks[i]))
+	if upper.get_child_count() > 0:
+		vb.add_child(upper)
+	else:
+		upper.free()
+		upper = null
+	if not chunks.is_empty():
+		vb.add_child(_v3_ship_row(chunks[0]))
+	card.set_meta("v3_door", true)
+	if upper != null:
+		card.set_meta("v3_door_until", upper)   # (a null meta would be removed, not stored)
+	return card
+
+func _v3_ship_row(goods: Array) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", DS.SP["MD"])
+	var recipe: Dictionary = Catalog.get_recipe(str(_current_building.get("recipe_id", "")))
+	for s: Dictionary in goods:
+		var cell := HBoxContainer.new()
+		cell.name = "ShipmentCell"
+		cell.set_meta("v3_shipment_cell", true)   # Godot renames same-named siblings; this survives it
+		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cell.add_theme_constant_override("separation", DS.SP["SM"])
+		row.add_child(cell)
+		var gid := str(s.get("good_id", ""))
+		var stored := int(s.get("stored", 0))
+		var need := int(s.get("need", 0))
+		var inbound := int(s.get("inbound", 0))
+		var supply := v3_input_supply(_current_building, recipe, gid, str(s.get("from", "")))
+		var icon := _good_icon_pill(gid, str(s.get("internal", "")), need, V3_SHIP_ICON)
+		icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var lines := PackedStringArray(["Stored: %d" % stored, "Needed to run: %d" % need, "Supplied by: %s" % supply])
+		if inbound > 0:
+			var eta := int(s.get("eta_turns", -1))
+			lines.append("Inbound: %d, %s" % [inbound, "next turn" if eta <= 1 else "in %d turns" % eta])
+		else:
+			lines.append("Nothing inbound")
+		icon.detail_lines = lines
+		cell.add_child(icon)
+		var lamp := BdpV3Lamp.new()
+		lamp.name = "StockLamp"
+		lamp.lamp_scale = V3_SHIP_LAMP_SCALE
+		lamp.set_tone(v3_stock_tone(stored, need, inbound, supply == "Logistics intermediary"))
+		lamp.tooltip_text = "Supplied by: %s" % supply
+		cell.add_child(lamp)
+		var label := Label.new()
+		label.theme_type_variation = "Body"
+		label.text = "%s — %d/%d stored" % [str(s.get("name", "")), stored, need]
+		_v3_emboss(label)   # white, standing off the door or the steel
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		cell.add_child(label)
+	return row
 
 # --- routing (read-only summary + map highlight) -------------------------------------------
 

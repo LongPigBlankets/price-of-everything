@@ -1168,6 +1168,82 @@ function sheetPlate() {
 }
 
 /**
+ * The diagnostics' dark plastic plate: a moulded black plastic panel with a rounded, lightly glossy edge
+ * and a faint moulded grain, over the section it fills, with its shadow. No screws in the render: the
+ * game sets silver screws along its top and sides (screw_silver), spaced to its size. A 9-slice.
+ */
+const PLASTIC = { W: 600, H: 400, M: 14, radius: 12 };
+function plasticPlate() {
+  const { W, H, M, radius } = PLASTIC, pw = W - 2 * M, ph = H - 2 * M, g = new THREE.Group();
+  const grain = canvas2d(pw, ph, (c) => {
+    c.fillStyle = '#0e0f11'; c.fillRect(0, 0, pw, ph);
+    for (let i = 0; i < 1400; i++) { c.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '0,0,0'},${0.02 + rand() * 0.03})`; c.fillRect(rand() * pw, rand() * ph, 1 + rand() * 2, 1 + rand() * 2); }
+    const edge = c.createLinearGradient(0, 0, 0, 14); edge.addColorStop(0, 'rgba(255,255,255,0.05)'); edge.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = edge; c.fillRect(0, 0, pw, 14);
+  });
+  const face = new THREE.MeshPhysicalMaterial({ map: faceTexture(grain, pw, ph), roughness: 0.6, clearcoat: 0.3, clearcoatRoughness: 0.45, envMap: studioEnv, envMapIntensity: 0.35 });
+  const side = new THREE.MeshPhysicalMaterial({ color: 0x121315, roughness: 0.4, clearcoat: 0.5, clearcoatRoughness: 0.3, envMap: studioEnv, envMapIntensity: 0.7 });
+  const plate = new THREE.Mesh(extrude(rrShape(pw, ph, radius), 3, 3, 2.6, 5), [face, side]);
+  plate.castShadow = plate.receiveShadow = true; plate.position.set(W / 2, 0, H / 2); g.add(plate);
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.55));
+  return g;
+}
+/** A silver cross-head screw for the plastic plate, in a SILVER_SCREW.S frame, with its shadow. */
+const SILVER_SCREW = { S: 30, r: 7 };
+function silverScrew() {
+  const { S, r } = SILVER_SCREW, g = new THREE.Group();
+  const chrome = new THREE.MeshStandardMaterial({ color: 0xb4b9c0, metalness: 1, roughness: 0.32, envMap: studioEnv, envMapIntensity: 0.95 });
+  const head = new THREE.Mesh(new THREE.SphereGeometry(r, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2), chrome);
+  head.scale.y = 0.45; head.castShadow = true; head.position.set(S / 2, 0, S / 2); g.add(head);
+  for (const a of [0, Math.PI / 2]) {                                      // the cross
+    const slot = new THREE.Mesh(new THREE.BoxGeometry(r * 1.15, r * 0.3, r * 0.17), MAT.slot);
+    slot.rotation.y = a + 0.35; slot.position.set(S / 2, r * 0.38, S / 2); g.add(slot);
+  }
+  g.add(shadowCatcher(S, S, S / 2, S / 2, 0.05, 0.55));
+  return g;
+}
+
+/**
+ * The inbound shipments' rolling door, slid up: a roller housing across the top, corrugated slats painted a
+ * dark industrial grey (so white lettering reads on them) below it, a bottom bar with a rubber seal, and a steel guide channel down each side. The game
+ * draws it as the section's backdrop (scripts/bdp_v3_door.gd): the sides and the housing and bar keep
+ * their size, the width between the guides stretches (the slats are the same all along) and the slats
+ * repeat down to the height the door must reach. DOOR.period is a slat's pitch; the slats run from
+ * DOOR.top to DOOR.H - DOOR.bottom, a whole number of pitches.
+ */
+const DOOR = { W: 760, H: 310, side: 16, top: 44, bottom: 26, period: 12 };
+function rollingDoor() {
+  const { W, H, side, top, bottom, period } = DOOR, g = new THREE.Group();
+  const galv = new THREE.MeshStandardMaterial({ color: 0x626970, metalness: 0.65, roughness: 0.5, envMap: studioEnv, envMapIntensity: 0.55 });
+  const painted = new THREE.MeshStandardMaterial({ color: 0x434950, metalness: 0.6, roughness: 0.5, envMap: studioEnv, envMapIntensity: 0.6 });
+  // Slats: a corrugated cross-section (depth down the screen against height) extruded across the door.
+  const s = new THREE.Shape(), P = (z, h) => [-z, h], z0 = top, z1 = H - bottom;
+  s.moveTo(...P(z0, 0));
+  for (let z = z0; z < z1 - 0.01; z += period) {
+    s.lineTo(...P(z, 1.2)); s.quadraticCurveTo(...P(z + period * 0.45, 5.2), ...P(z + period - 1.2, 1.6));
+    s.lineTo(...P(z + period - 0.6, 0.6)); s.lineTo(...P(z + period, 1.2));
+  }
+  s.lineTo(...P(z1, 0)); s.lineTo(...P(z0, 0));
+  const slatGeo = new THREE.ExtrudeGeometry(s, { depth: W - 2 * side + 8, bevelEnabled: false, curveSegments: 6 });
+  slatGeo.rotateY(Math.PI / 2); slatGeo.translate(side - 4, 0, 0);
+  const slats = new THREE.Mesh(slatGeo, galv); slats.castShadow = slats.receiveShadow = true; g.add(slats);
+  // The roller housing across the top, a rounded box.
+  const housing = new THREE.Mesh(extrude(rrShape(W - 4, top - 4, 6), 6, 2.5, 2, 3), painted);
+  housing.castShadow = housing.receiveShadow = true; housing.position.set(W / 2, 1, top / 2); g.add(housing);
+  // The bottom bar and its rubber seal.
+  const bar = new THREE.Mesh(extrude(rrShape(W - 2 * side + 6, bottom - 8, 2), 4, 1.5, 1.2, 2), painted);
+  bar.castShadow = bar.receiveShadow = true; bar.position.set(W / 2, 0, H - bottom / 2 - 3); g.add(bar);
+  const seal = new THREE.Mesh(new THREE.BoxGeometry(W - 2 * side + 6, 3, 5), MAT.gap); seal.position.set(W / 2, 1.5, H - 4); g.add(seal);
+  // The guide channels down each side.
+  for (const x of [side / 2, W - side / 2]) {
+    const guide = new THREE.Mesh(extrude(rrShape(side - 2, H - top + 2, 2), 7, 1.2, 1, 2), painted);
+    guide.castShadow = guide.receiveShadow = true; guide.position.set(x, 0, top + (H - top) / 2 - 1); g.add(guide);
+  }
+  g.add(shadowCatcher(W, H, W / 2, H / 2));
+  return g;
+}
+
+/**
  * A weld bead along a rounded rectangle's edge (w × h, corner r, centred on the origin): a rounded ridge
  * of bronze filler, radius `rad`, rippled every 2.6 px as a bead laid in runs is, lying on the join.
  */
@@ -1316,6 +1392,8 @@ if (EXPORT) exportLayers();
  * key_pin (+ _pressed): the Location keycap, a map pin.
  * diag_cable, counter_housing, counter_glass, sheet_plate: the diagnostics' cable, the drum counter and
  *           the action sheets' plate.
+ * diag_plastic, screw_silver, shipment_door: the diagnostics' plastic plate and its screws, and the
+ *           shipments' rolling door.
  * layout.json: frame sizes and every key's rect and top face, in capture pixels.
  * ?export&only=lamp,scroll renders just the named sets (see `want` below).
  */
@@ -1325,7 +1403,7 @@ async function exportLayers() {
   renderer.setPixelRatio(1); renderer.setClearColor(0x000000, 0);
   // ?export&only=lamp,scroll renders just those sets and merges their entries into the existing
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
-  // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet.
+  // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -1475,7 +1553,7 @@ async function exportLayers() {
 
   // --- the panel's backing: dark navy-grey steel, lightly worn, inside a raised brass trim welded to it
   if (want('backing')) await withSeed(503, async () => {
-    const PW = 940, PH = 1640, TRIM = 22, group = new THREE.Group();
+    const PW = 940, PH = 1640, TRIM = 14, group = new THREE.Group();   // a narrow trim, clear of the scrollbar
     const iw = PW - 8 - 2 * TRIM, ih = PH - 8 - 2 * TRIM, ir = 7;          // the trim's inner edge
     const FOOT = 2.4;                                                        // the trim's bevel reaches this far in at its foot
     // Heat tint from the weld: straw next to it, then brown, purple and blue, fading into each metal.
@@ -1509,7 +1587,8 @@ async function exportLayers() {
 
   // --- a section frame: a narrow worn steel rim with a screw in each corner, drawn as a 9-slice
   if (want('section')) await withSeed(504, async () => {
-    const M = 18, FW = 560, FH = 360, RIM = 22, group = new THREE.Group(), si = 13;
+    // The screws sit on the rim's centre line, in from its rounded corners, as they would be driven.
+    const M = 18, FW = 560, FH = 360, RIM = 26, group = new THREE.Group(), si = 4 + RIM / 2;
     const ring = rrShape(FW - 8, FH - 8, 14); ring.holes.push(rr(new THREE.Path(), FW - 8 - 2 * RIM, FH - 8 - 2 * RIM, 8));
     const feat = { icons: [], buttons: [], screws: [[si, si], [FW - si, si], [si, FH - si], [FW - si, FH - si]].map(([x, y]) => ({ x: x - 4, y: y - 4 })) };
     const rim = new THREE.Mesh(extrude(ring, 3, 3.5, 2.8, 5), [plateMaterial(FW - 8, FH - 8, feat), MAT.plateSide]);
@@ -1619,6 +1698,18 @@ async function exportLayers() {
   if (want('sheet')) await withSeed(409, async () => {
     await post('sheet_plate', stage([0, 0, SHEET.W, SHEET.H], [sheetPlate()]).grab());
     layout.sheet_plate = { size: [SHEET.W, SHEET.H], margin: SHEET.M, corner: 60 };
+  });
+
+  // --- the diagnostics' plastic plate and its silver screws, and the shipments' rolling door.
+  if (want('plastic')) await withSeed(410, async () => {
+    await post('diag_plastic', stage([0, 0, PLASTIC.W, PLASTIC.H], [plasticPlate()]).grab());
+    await post('screw_silver', stage([0, 0, SILVER_SCREW.S, SILVER_SCREW.S], [silverScrew()]).grab());
+    layout.diag_plastic = { size: [PLASTIC.W, PLASTIC.H], margin: PLASTIC.M, corner: 40 };
+    layout.screw_silver = { size: [SILVER_SCREW.S, SILVER_SCREW.S], radius: SILVER_SCREW.r };
+  });
+  if (want('door')) await withSeed(411, async () => {
+    await post('shipment_door', stage([0, 0, DOOR.W, DOOR.H], [rollingDoor()]).grab());
+    layout.shipment_door = { size: [DOOR.W, DOOR.H], side: DOOR.side, top: DOOR.top, bottom: DOOR.bottom, period: DOOR.period };
   });
 
   // --- the title's letters: the raised white faces (ungraded; the game grades the whole title), and

@@ -678,6 +678,24 @@ func _test_bdp_v3_rules() -> void:
 	var unknown: Dictionary = Panel2.v3_cost_gauge_reading(-1.0, 10.0)
 	_check(is_equal_approx(float(cheap.value), 0.4) and bool(cheap.known) and is_equal_approx(float(dear.value), 1.0) and not bool(unknown.known),
 		"bdp v3: the cost gauge reads unit cost as a share of twice the market price, and knows when the cost is unknown")
+	_check(Panel2.v3_stock_tone(40, 32, 0, false) == "ok" and Panel2.v3_stock_tone(32, 32, 0, false) == "ok"
+		and Panel2.v3_stock_tone(10, 32, 20, false) == "warn" and Panel2.v3_stock_tone(10, 32, 0, true) == "warn"
+		and Panel2.v3_stock_tone(10, 32, 0, false) == "bad",
+		"bdp v3: a shipment's lamp is green with enough to run, amber when short with something coming, red when short with nothing")
+	var Section = load("res://scripts/bdp_v3_section.gd")
+	var screws: PackedVector2Array = Section.screw_points(Vector2(400, 200))
+	var on_top := 0
+	for sp in screws:
+		if is_equal_approx(sp.y, Section.SCREW_INSET):
+			on_top += 1
+	_check(on_top >= 5 and screws.size() > on_top and screws[0] == Vector2(Section.SCREW_INSET, Section.SCREW_INSET),
+		"bdp v3: the plastic plate's screws run along its top and down its sides, spaced for its size (%d)" % screws.size())
+	var Door = load("res://scripts/bdp_v3_door.gd")
+	var door_rows: Array = Door.rows(90.0)
+	var door_h := 0.0
+	for dr: Array in door_rows:
+		door_h += float(dr[2])
+	_check(is_equal_approx(door_h, 90.0) and door_rows.size() >= 3, "bdp v3: the rolling door fills its height with whole slats between its housing and bar")
 	var Light = load("res://scripts/bdp_v3_light.gd")
 	var screen := Vector2(1920, 1080)
 	_check(Light.light_at(Vector2(0.05, 0.05), screen) > Light.light_at(Vector2(0.75, 0.15), screen)
@@ -770,8 +788,20 @@ func _test_bdp_v3_panel() -> void:
 	_check(panel._shade.visible and body_label.material == load("res://scripts/bdp_v3_light.gd").text_material(),
 		"bdp v3: the lamp's overlay covers the panel and the text takes some of its light back")
 	var diag: PanelContainer = panel.find_child("DiagnosticsCard", true, false)
-	_check(diag != null and diag.get_theme_stylebox("panel") is StyleBoxEmpty and diag.find_child("BdpV3Cable", false, false) != null,
-		"bdp v3: the diagnostics lie on the steel, with a cable down beside their lights")
+	var diag_frame: Node = diag.get_parent().get_parent() if diag != null else null
+	var lamps: Array = diag.find_children("BdpV3Lamp*", "", true, false) if diag != null else []
+	var diag_label: Label = diag.find_children("*", "Label", true, false)[0] if diag != null else null
+	_check(diag != null and diag.get_theme_stylebox("panel") is StyleBoxEmpty and diag.find_child("BdpV3Cable", false, false) != null
+		and diag_frame != null and diag_frame.get("style") == "plastic" and not lamps.is_empty()
+		and diag_label.get_theme_color("font_color") == DS.PALETTE["TEXT"],
+		"bdp v3: the diagnostics sit on dark plastic, their rows led by lamps, their text white, a cable beside the lamps (%d lamps)" % lamps.size())
+	var ships_card: Control = panel.find_child("ShipmentsV3", true, false)
+	var cells: Array = ships_card.find_children("*", "HBoxContainer", true, false).filter(func(n: Node) -> bool: return n.has_meta("v3_shipment_cell")) if ships_card != null else []
+	var stock_lamp: Node = cells[0].find_child("StockLamp", false, false) if not cells.is_empty() else null
+	var hover_icon: Node = cells[0].get_child(0) if not cells.is_empty() else null
+	_check(cells.size() == 2 and stock_lamp != null and stock_lamp.colour == "red" and hover_icon.get("detail_lines").size() >= 4
+		and ships_card.get_parent().get_parent().get("door_until") != null,   # card -> frame content -> frame
+		"bdp v3: inbound shipments sit under a rolling door, each good with a stock lamp and a hover of its supply (%d)" % cells.size())
 	var labour: Control = panel.find_child("LabourV3", true, false)
 	var counters: Array = labour.find_children("*", "Control", true, false).filter(func(n: Node) -> bool: return n.get_script() == load("res://scripts/bdp_v3_counter.gd")) if labour != null else []
 	_check(counters.size() == 2 and counters[0].decimals == 2 and counters[1].decimals == 0,

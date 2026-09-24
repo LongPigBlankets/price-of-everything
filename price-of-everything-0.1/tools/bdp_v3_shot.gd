@@ -1,7 +1,7 @@
 extends Node2D
 ## Building Detail v3 (`toggle bdp v3`) screenshots, each cropped to the panel: its top with the
 ## status lamp (and again without the lamp's overlay, and without the lamp at all), the cost gauges, the lamp in each state, the body scrolled partway and to the end (the scrollbar's
-## slider along its rail), and the recipe sheet sliding in and settled. Places a motor factory (r_009) with its
+## slider along its rail), the recipe sheet sliding in and settled, and the shipments of a recipe with many inputs. Places a motor factory (r_009) with its
 ## inputs in stock on tile_5_10, so the panel is long enough to scroll.
 ##   Godot --path . res://tools/bdp_v3_shot.tscn --quit-after 3000 -- --no-telemetry
 ## Writes /tmp/poe_bdp_v3_*.png, or into $BDP_SHOT_DIR when it is set. tools/bdp_v3_compare.py checks
@@ -102,6 +102,28 @@ func _ready() -> void:
 	await get_tree().create_timer(0.5).timeout
 	_save(panel, "sheet")
 	panel._close_sheet()
+
+	# A recipe with three or four inputs (four if there is one), so the shipments' door comes down behind
+	# an upper row of goods. The first input is stocked, so its lamp is green and the others red.
+	var four := ""
+	var most := 2
+	for r: Dictionary in Catalog.get_recipes_for_building("b_007"):
+		var n := (r.get("inputs", []) as Array).size()
+		if n > most and (most < 4 or n == 4):
+			four = str(r.get("recipe_id", ""))
+			most = n
+	print("[BDP_V3_SHOT] many-input recipe: %s (%d inputs)" % [four, most])
+	if four != "":
+		var iid4: String = BuildingState.add_building("b_007", four, "tile_5_10", "player_1", "bdpv3shot_four")
+		var first: Dictionary = (Catalog.get_recipe(four).get("inputs", []) as Array)[0]
+		Stockpile.add("tile_5_10", str(first.get("good_id", "")), int(first.get("qty", 0)) * 2)
+		_wm._open_building_detail(BuildingState.get_building(iid4))
+		await _settle(20)
+		var ships: Control = _wm.building_panel_v2.find_child("ShipmentsV3", true, false)
+		if ships != null:
+			_wm.building_panel_v2._scroll.ensure_control_visible(ships.get_parent().get_parent())
+			await _settle(8)
+			_save(_wm.building_panel_v2, "shipments_many")
 	get_tree().quit(0)
 
 

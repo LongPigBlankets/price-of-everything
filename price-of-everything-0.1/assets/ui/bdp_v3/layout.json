@@ -154,7 +154,7 @@
    1640
   ],
   "corner": 60,
-  "trim": 22
+  "trim": 14
  },
  "section_frame": {
   "size": [
@@ -162,7 +162,7 @@
    396
   ],
   "outset": 18,
-  "rim": 22,
+  "rim": 26,
   "corner": 62
  },
  "key_close": {
@@ -687,5 +687,30 @@
   ],
   "margin": 10,
   "corner": 60
+ },
+ "diag_plastic": {
+  "size": [
+   600,
+   400
+  ],
+  "margin": 14,
+  "corner": 40
+ },
+ "screw_silver": {
+  "size": [
+   30,
+   30
+  ],
+  "radius": 7
+ },
+ "shipment_door": {
+  "size": [
+   760,
+   310
+  ],
+  "side": 16,
+  "top": 44,
+  "bottom": 26,
+  "period": 12
  }
 }

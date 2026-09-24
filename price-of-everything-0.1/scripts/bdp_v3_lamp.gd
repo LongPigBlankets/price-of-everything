@@ -16,6 +16,13 @@ const BEZEL := 44.0
 const COLOURS := {"ok": "green", "good": "green", "warn": "amber", "bad": "red"}
 
 var colour := "off"
+## Drawn size, as a share of the header lamp's (the diagnostics' row lamps are smaller).
+var lamp_scale := 1.0:
+	set(v):
+		lamp_scale = v
+		var side := roundf(BEZEL / CAPTURE_SCALE * lamp_scale)
+		custom_minimum_size = Vector2(side, side)
+		queue_redraw()
 var _glow: Control
 
 
@@ -46,7 +53,7 @@ func set_tone(tone: String) -> void:
 
 
 func _frame_rect() -> Rect2:
-	var side := LAMP_FRAME / CAPTURE_SCALE
+	var side := LAMP_FRAME / CAPTURE_SCALE * lamp_scale
 	return Rect2((size - Vector2(side, side)) * 0.5, Vector2(side, side))
 
 
