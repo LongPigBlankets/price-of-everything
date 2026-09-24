@@ -1099,6 +1099,47 @@ func _test_bdp_v3_panel() -> void:
 	BuildingState.buildings.erase(iid)
 	UiPrefs.set_use_bdp_v3(was)
 
+func _test_money_figure_format() -> void:
+	# The owner's LED money rule: at most five cells, the point free, K/M/B printed after.
+	var Money := preload("res://scripts/ds2/money_figure.gd")
+	var cases := {
+		0.0: "£0.00", 5.5: "£5.50", 999.99: "£999.99", 999.996: "£1000", 5717.0: "£5717",
+		9999.4: "£9999", 10000.0: "£10.0K", 15600.0: "£15.6K", 999949.0: "£999.9K",
+		1010000.0: "£1.01M", 12345678.0: "£12.35M", 2500000000.0: "£2.50B",
+		-120.0: "-£120.0", -9999.0: "-£9999", -15600.0: "-£15.6K", -555.0: "-£555.0",
+	}
+	var wrong := PackedStringArray()
+	for v: float in cases:
+		var got: String = Money.text(v)
+		var figure: String = Money.led(v).figure
+		if got != cases[v] or Money.cells(figure) > Money.MAX_CELLS:
+			wrong.append("%s -> %s" % [v, got])
+	_check(wrong.is_empty(), "money figure: the owner's five-cell rule %s" % ", ".join(wrong))
+
+func _test_top_bar_icon_fit() -> void:
+	# Every icon on the bar is fitted by its drawn art to one cap height (or the width limit for
+	# a wide icon), centred in its box; only the tabled exceptions are drawn larger.
+	var Bar := preload("res://scripts/top_bar.gd")
+	var Ind := preload("res://scripts/bdp_v3_indicator.gd")
+	var ok := true
+	var bad := PackedStringArray()
+	for tex: Texture2D in [Bar.ICON_COIN, Bar.ICON_POWER, Bar.ICON_VICTORY, Bar.ICON_RANKINGS, Bar.ICON_QUEST,
+			Bar.ICON_COUNCIL, Bar.ICON_GOODS_GRAPH, Bar.ICON_ENCYCLOPEDIA, Bar.ICON_MENU, Bar.WAREHOUSE_ICON]:
+		var fit: Dictionary = Bar._icon_fit(tex)
+		var box: Vector2 = fit.box
+		var dest: Rect2 = fit.dest
+		var k: float = float(Bar.ICON_OPTICAL.get(tex.resource_path, 1.0))
+		var capped: bool = absf(box.y - Bar.ICON_CAP * k) <= 1.0 or absf(box.x - Bar.ICON_MAX_W * k) <= 1.0
+		var art: Rect2 = Ind.art_rect(tex)
+		var scale: float = dest.size.x / tex.get_size().x
+		var art_centre: Vector2 = dest.position + (art.position + art.size * 0.5) * scale
+		var centred: bool = art_centre.distance_to(box * 0.5) <= 1.0
+		if not (capped and centred and box.y <= Bar.MOD_H):
+			ok = false
+			bad.append("%s box=%s" % [tex.resource_path.get_file(), box])
+	_check(ok, "top bar: every icon's art fills the cap height or the width limit, centred in its box %s" % ", ".join(bad))
+	_check(Bar.BAR_H == 60.0 and Bar.MOD_H + 8.0 + Bar.EDGE_H <= Bar.BAR_H, "top bar: 60 px, its modules inside it")
+
 func _test_updates_dock() -> void:
 	# Every toast is a row in a slide-out over a 60 px bottom-left dock with three bells.
 	var toasts: Control = load("res://scripts/toast_manager.gd").new()

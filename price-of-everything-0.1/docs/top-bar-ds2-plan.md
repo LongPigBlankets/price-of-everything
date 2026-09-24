@@ -147,6 +147,8 @@ The full design, as planned:
 3. **Exceptions in one table.** An icon that reads light at the cap (the thin power bolt, the stroke-only sankey) gets an optical factor in one table in the component, with its reason. Nothing else sizes an icon.
 4. **Checked by a test.** The shot tool keeps the footprint probe from `tools/ui_plan_shot.gd`: every bar icon's drawn art is the cap height ± 1 px (or its tabled exception) and sits within ± 1 px of the midline band.
 
+**Built on today's bar (24 September, before DS2).** `top_bar.gd` `_v31_icon` fits every icon by its used rect (`BdpV3Indicator.art_rect`, shadow included) to `ICON_CAP` 34 px tall or `ICON_MAX_W` 42 px wide, centred in a box that centres on the module row. `ICON_OPTICAL` holds the exceptions: the power bolt ×1.08 and the sankey ×1.12 (thin strokes, the reason it was once given a 56 px box). The bar is 60 px (`BAR_H`, modules 45); it was 83. Measured with `tools/ui_plan_shot.tscn`: every icon draws 29 to 37 px tall with its midline at y 25 to 27, against 30 to 52 px and tops from 11 to 25 before. With the notch gone and the bar shorter, everything docked under it moved up from y 114 to 72 (the left-slot panels and the tile view at 36 in HUDContent, Building Detail's `TOP_BAR_CLEARANCE`, the coach's `top_safe`), keeping their bottoms, so each gains 42 px of height. Test: `_test_top_bar_icon_fit` (`test_ui.gd`).
+
 At a 26 px cap, the current art comes out as follows (art aspect from the PNGs' alpha): money 26 × 26, power 13 × 26, trophy 24 × 26, podium 26 × 26, warehouse 34 × 26, road 31 × 26, port 25 × 26, council 26 × 26, sankey 27 × 26, book 34 × 26, menu 36 × 25. Power is the one clear candidate for an optical factor.
 
 ## 6. Inventory: every element and its DS2 part
@@ -210,17 +212,17 @@ From `top_bar.gd`'s header and the v2/v3 builds:
 
 ## 10. Decisions for the owner
 
-1. **Updates**: C, a bottom-left dispatch (recommended); B, the bar's left edge; or A, keep the notch. *Started 24 September: the toasts are in a bottom-left container (§4); the rest has not moved.*
-2. **Money**: centre (recommended with C) or keep it at the left.
-3. **Mission**: to the dispatch as a pinned work order (recommended), or keep it on the bar as an icon that opens its flyout.
-4. **Height**: 52 px (recommended). Separately, a HUD-size setting (0.85 / 1.0 / 1.15, defaulting by physical screen size) is the thorough fix for large screens. None exists today (Settings offers only the monitor, fullscreen and three window sizes), and it scales every panel and the map with it, so it is a decision of its own.
+1. **Updates**: C, a bottom-left dispatch (recommended); B, the bar's left edge; or A, keep the notch. *Decided: C. Built so far: toasts, research, notices and decisions are in the bottom-left dock and the notch is gone (§4); the mission has not moved.*
+2. **Money**: centre (recommended with C) or keep it at the left. *Decided: centre.*
+3. **Mission**: to the dispatch as a pinned work order (recommended), or keep it on the bar as an icon that opens its flyout. *Decided: to the dock as a work order.*
+4. **Height**: 52 px (recommended). *Decided: about 60 px, keeping two lines for cash and net. Built on today's bar (§5).* Separately, a HUD-size setting (0.85 / 1.0 / 1.15, defaulting by physical screen size) is the thorough fix for large screens. None exists today (Settings offers only the monitor, fullscreen and three window sizes), and it scales every panel and the map with it, so it is a decision of its own.
 5. **Status modules**: raised icons with lamps that you click (recommended: lighter, matches today), or square keycaps with icons that latch down while their flyout is open (the BDP roadmap's option key).
 6. **Victory**: drum counter and "/1,000" on the bar (recommended), with the gauge in the flyout; or a small gauge on the bar (DS2 rule 5 prefers a gauge for a ratio, but a 26 px gauge won't read).
-7. **Money format**: LED digits have no comma. Whole pounds on a seven-digit screen (to £9,999,999), or a comma segment added to the LED render.
+7. **Money format**: LED digits have no comma. Whole pounds on a seven-digit screen (to £9,999,999), or a comma segment added to the LED render. *Decided: at most five characters on the screen. Two decimals below £1,000 (£999.99); whole pounds from £1,000 (£9999); from £10,000 in thousands with one decimal (£15.6K, up to £999.9K); from there in millions (£1.01M), and so on. The LED's point lights on the digit before it, so it takes no cell; the K or M is printed after the screen, as the £ is printed before it.*
 8. **Anomalies**: lamp on the module plus a slip in the dispatch (recommended), or popups under the module as now.
 9. **Trim**: brass along the foot, as the BDP backing (recommended), the current silver bezel, or the seam's rubber nosing.
 10. **The lamp overlay**: shared with the panels, the bar's right end falls to about 0.71 of the left's light (the screen lamp is at the top-left). Accept it (it is the left-to-right lighting asked for in July), or give the bar a gentler fall-off.
-11. **A fix before DS2**: the icon rule (§5, steps 2–4) doesn't need DS2. Fitting today's PNGs by their used rect (`Image.get_used_rect()`) to one cap height, centred on one midline, fixes the uneven icons on the shipping v3.1 bar in a small change, while the DS2 bar is built. Take it now, or wait for DS2.
+11. **A fix before DS2**: the icon rule (§5, steps 2–4) doesn't need DS2. Fitting today's PNGs by their used rect (`Image.get_used_rect()`) to one cap height, centred on one midline, fixes the uneven icons on the shipping v3.1 bar in a small change, while the DS2 bar is built. Take it now, or wait for DS2. *Decided: now, before DS2. Built (§5).*
 
 ## 11. Found while taking the inventory
 

@@ -665,7 +665,7 @@ func _reposition_card() -> void:
 	if _card == null:
 		return
 	var pad := 24.0
-	var top_safe := 110.0
+	var top_safe := 72.0
 	var bottom_safe := 125.0
 	# True content size: keep the 460 min width; height is the wrapped content height,
 	# clamped so a very long body can never exceed the screen.

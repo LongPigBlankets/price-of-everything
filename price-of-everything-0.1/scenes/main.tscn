@@ -327,14 +327,14 @@ horizontal_alignment = 1
 unique_name_in_owner = true
 layout_mode = 1
 offset_left = 16.0
-offset_top = 78.0
+offset_top = 36.0
 
 [node name="MapModesPanel" parent="UILayer/HUD/HUDContent" unique_id=2117327633 instance=ExtResource("10_jbj1t")]
 unique_name_in_owner = true
 layout_mode = 0
 anchors_preset = 0
 offset_left = 16.0
-offset_top = 78.0
+offset_top = 36.0
 
 [node name="GoodSelectPanel" type="PanelContainer" parent="UILayer/HUD/HUDContent"]
 unique_name_in_owner = true
@@ -342,7 +342,7 @@ visible = false
 layout_mode = 0
 anchors_preset = 0
 offset_left = 440.0
-offset_top = 78.0
+offset_top = 36.0
 offset_right = 820.0
 offset_bottom = 680.0
 theme_override_styles/panel = ExtResource("8_tipki")
@@ -524,7 +524,7 @@ anchors_preset = 0
 anchor_top = 0.0
 anchor_bottom = 0.0
 offset_left = 16.0
-offset_top = 78.0
+offset_top = 36.0
 offset_bottom = 640.0
 grow_vertical = 1
 
@@ -539,7 +539,7 @@ offset_bottom = -28.0
 unique_name_in_owner = true
 layout_mode = 0
 offset_left = 16.0
-offset_top = 78.0
+offset_top = 36.0
 offset_right = 479.0
 
 [node name="MoneyPanel" parent="UILayer/HUD/HUDContent" unique_id=1508307227 instance=ExtResource("18_0ld40")]
@@ -564,7 +564,7 @@ anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 10.0
-offset_top = 78.0
+offset_top = 36.0
 offset_right = -10.0
 offset_bottom = -130.0
 grow_horizontal = 2
@@ -580,7 +580,7 @@ anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 10.0
-offset_top = 78.0
+offset_top = 36.0
 offset_right = -10.0
 offset_bottom = -130.0
 grow_horizontal = 2

@@ -32,12 +32,12 @@ const BANKRUPTCY_IMMINENT_RUNWAY := 100.0
 const NEAR_FULL_FRACTION := 0.95
 
 # ── Prototype palette (top-bar local; the DS navy family, tuned per the design) ──
-# docs/top-bar-v3-spec.md §1.1: modules have no boxes, so the budget is 4 top + 50 module
-# + 4 bottom + the 7px bezel. Module chrome is flat; see _module_box.
+# Modules have no boxes, so the budget is 4 top + 45 module + 4 bottom + the 7px bezel.
+# Module chrome is flat; see _module_box.
 # content_margin_top/bottom in _style_bar reference BAR_H's own EDGE_H term, not a
 # literal number, so the bar grows around MOD_H without anything else changing.
-const BAR_H := 65.0
-const MOD_H := 50.0
+const BAR_H := 60.0
+const MOD_H := 45.0
 # v3.1 icon faces — Goods Graph / Encyclopedia / Mission / Power /
 # Victory / Rankings swap their text/vector-glyph faces for these baked standalone
 # icons: the bottom-menu button treatment (cream emboss + bevel + drop shadow) minus
@@ -50,10 +50,6 @@ const ICON_GOODS_GRAPH: Texture2D = preload("res://assets/icons/ui_icons/standal
 ## takes the cream tint, sheen and hover glow like every other control on the bar -- those
 ## are applied to a texture, and a glyph is not one.
 const ICON_MENU: Texture2D = preload("res://assets/icons/ui_icons/standalone/menu.png")
-## The sankey is all thin strokes and no solid mass, so at the shared 44 px it reads smaller
-## than the council table and the book either side of it. Drawn larger to weigh the same
-## -- the art is unchanged; only the box it is given is.
-const SANKEY_ICON_PX := 56.0
 const ICON_ENCYCLOPEDIA: Texture2D = preload("res://assets/icons/ui_icons/standalone/open-book.png")
 const ICON_QUEST: Texture2D = preload("res://assets/icons/ui_icons/standalone/target.png")
 const ICON_POWER: Texture2D = preload("res://assets/icons/ui_icons/standalone/power_icon.png")
@@ -69,10 +65,17 @@ const SPECULAR_TEX: Texture2D = preload("res://assets/icons/ui_icons/alt/_specul
 const GLOW_TEX: Texture2D = preload("res://assets/icons/ui_icons/standalone/_glow.png")
 const GLOW_SCALE := 2.0   # glow diameter relative to the icon's own px size
 const GLOW_TINT := Color(1.0, 0.92, 0.75, 0.6)
-# v3.1 icons: bottom-aligned in their row instead of centred — see _v31_icon — with a
-# fixed gap off the row's bottom edge.
-const V31_ICON_PX := 44.0
-const V31_ICON_BOTTOM_PAD := 8.0
+# Every icon on the bar is fitted by its drawn art, not its canvas: the art is ICON_CAP tall
+# (or ICON_MAX_W wide, for a wide icon), centred on the module row's midline. See _v31_icon.
+const ICON_CAP := 34.0
+const ICON_MAX_W := 42.0
+## Icons that read light at the cap, drawn larger by this factor. Nothing else sizes an icon.
+const ICON_OPTICAL := {
+	# A thin upright bolt: at the cap it is half as wide as its neighbours.
+	"res://assets/icons/ui_icons/standalone/power_icon.png": 1.08,
+	# All thin strokes and no solid mass: beside the council table and the book it reads small.
+	"res://assets/icons/ui_icons/standalone/sankey.png": 1.12,
+}
 # Metallic bottom bezel (the end-turn dock's machined-silver family), lit from the left.
 const EDGE_H := 7.0
 # Pixels the bar's ground is painted ABOVE its top edge, burying the sub-pixel seam
@@ -555,46 +558,35 @@ func _hbox() -> HBoxContainer:
 
 # ── v3.1 — shared icon-face helpers ────────────────────────────────────────────
 
-## A compact module-face icon. The baked standalone PNGs already carry their own
-## cream fill + bevel + drop shadow, so unlike _freight_cell this does NOT modulate
-## them — that would pull them off the building-icon off-white they were colour-
-## matched to.
-## A v3.1 module-face icon. Bottom-aligned within its row with a fixed gap off the
-## row's bottom edge rather than vertically centred: the texture is
-## pinned to a fixed-height TOP slice of a slightly taller wrapper, and the WRAPPER
-## is what bottom-aligns (SIZE_SHRINK_END) — so the icon's own bottom edge ends up
-## V31_ICON_BOTTOM_PAD above the row's. .modulate/.visible on the returned Control
-## reach the texture underneath (modulate cascades to children), so every existing
-## fade/tint/toggle call site keeps working unchanged even though this returns
-## the wrapper, not the TextureRect itself.
-## `hover_source` — pass the module button (or whatever Control raises the relevant
-## mouse_entered/exited) to get a soft diagonal sheen over the icon on hover: the
-## SAME _specular.png the bottom-menu buttons flash while lifted. Omit it for icons with no natural hover
-## owner to wire against.
-func _v31_icon(tex: Texture2D, hover_source: Control = null, px: float = V31_ICON_PX) -> Control:
+## A module-face icon, fitted by its art: the baked PNGs carry their own cream fill, bevel and
+## shadow, and their art fills their canvases unevenly, so the canvas is scaled until the art
+## (every pixel with any alpha, shadow included) is ICON_CAP tall, or ICON_MAX_W wide for a wide
+## icon, and centred in a box of exactly that size. The box centres on the module row, so every
+## icon on the bar shares one cap height and one midline. They are not modulated here: that
+## would pull them off the building-icon off-white they were colour-matched to.
+## .modulate/.visible on the returned Control reach the texture underneath.
+## `hover_source`: the Control whose mouse_entered/exited should light the icon with the
+## bottom menu's specular sheen and a soft glow behind it.
+func _v31_icon(tex: Texture2D, hover_source: Control = null) -> Control:
+	var fit := _icon_fit(tex)
+	var box: Vector2 = fit.box
 	var wrap := Control.new()
-	wrap.custom_minimum_size = Vector2(px, px + V31_ICON_BOTTOM_PAD)
-	wrap.size_flags_vertical = Control.SIZE_SHRINK_END
+	wrap.custom_minimum_size = box
+	wrap.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# Glow goes in BEHIND the icon (added first — Godot draws children in add
-	# order), centred on the icon's own centre (px/2, not the padded wrap's), sized
-	# larger so it radiates past the icon's edges instead of being cropped to it.
+	# Glow goes in BEHIND the icon (added first: children draw in add order).
 	var glow: TextureRect = null
 	if hover_source != null:
-		glow = _v31_glow(px)
+		glow = _v31_glow(box)
 		wrap.add_child(glow)
 	var icon := TextureRect.new()
 	icon.texture = tex
-	icon.anchor_left = 0.0
-	icon.anchor_right = 1.0
-	icon.anchor_top = 0.0
-	icon.anchor_bottom = 0.0
-	icon.offset_left = 0.0
-	icon.offset_right = 0.0
-	icon.offset_top = 0.0
-	icon.offset_bottom = px
+	# The expand mode first: until it is set, the texture's own size is the minimum size.
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.stretch_mode = TextureRect.STRETCH_SCALE
+	var dest: Rect2 = fit.dest
+	icon.position = dest.position
+	icon.size = dest.size
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	wrap.add_child(icon)
 	if hover_source != null:
@@ -610,24 +602,32 @@ func _v31_icon(tex: Texture2D, hover_source: Control = null, px: float = V31_ICO
 		hover_source.mouse_exited.connect(func() -> void: spec.visible = false; glow.visible = false)
 	return wrap
 
+
+## Where a bar icon's canvas is drawn so its art fills the cap: `box` is the art's size on the
+## bar, `dest` the whole canvas's rect inside that box.
+static func _icon_fit(tex: Texture2D) -> Dictionary:
+	var art: Rect2 = BdpV3Indicator.art_rect(tex)
+	var k: float = minf(ICON_CAP / art.size.y, ICON_MAX_W / art.size.x)
+	k *= float(ICON_OPTICAL.get(tex.resource_path, 1.0))
+	var box := (art.size * k).round()
+	var at := (box - art.size * k) * 0.5
+	return {"box": box, "dest": Rect2(at - art.position * k, tex.get_size() * k)}
+
 ## A radial glow (GLOW_TEX) centred on a px-tall icon slot, sized GLOW_SCALE larger
 ## than it so it radiates past the icon's own edges — the ADD-blend "glow behind
 ## the object" bottom_menu.gd's per-button glow does, generalised to a shared
 ## texture since these icons don't sit on a disc for a shape-cut glow to read
 ## against. Hidden by default; the caller wires .visible to hover.
-func _v31_glow(px: float) -> TextureRect:
+func _v31_glow(box: Vector2) -> TextureRect:
 	var glow := TextureRect.new()
 	glow.texture = GLOW_TEX
 	glow.modulate = GLOW_TINT
-	var gs := px * GLOW_SCALE
-	glow.anchor_left = 0.5
-	glow.anchor_right = 0.5
-	glow.anchor_top = 0.0
-	glow.anchor_bottom = 0.0
+	var gs := maxf(box.x, box.y) * GLOW_SCALE
+	glow.set_anchors_preset(Control.PRESET_CENTER)
 	glow.offset_left = -gs / 2.0
 	glow.offset_right = gs / 2.0
-	glow.offset_top = px / 2.0 - gs / 2.0
-	glow.offset_bottom = px / 2.0 + gs / 2.0
+	glow.offset_top = -gs / 2.0
+	glow.offset_bottom = gs / 2.0
 	glow.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	glow.stretch_mode = TextureRect.STRETCH_SCALE
 	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -863,11 +863,9 @@ func _victory_trending_up(bd: Dictionary) -> bool:
 ## off-white shapes on nothing. Roads and the port are building icons; the warehouse has
 ## no building behind it, so its cleaned PNG is checked in beside the other UI icons.
 const BuildingIcon := preload("res://scripts/building_icon.gd")
+## Measures an icon's drawn art (its used rect), cached per texture.
+const BdpV3Indicator := preload("res://scripts/bdp_v3_indicator.gd")
 const WAREHOUSE_ICON: Texture2D = preload("res://assets/icons/ui_icons/warehouse.png")
-## The same 44 px every other indicator on the bar uses, and placed through the same
-## `_v31_icon` wrap so these three sit on the module row's shared baseline instead of a
-## centre of their own.
-const FREIGHT_ICON_PX := V31_ICON_PX
 ## Gap between an icon and its own lamp, and between one pair and the next. The pair gap
 ## is the wider of the two on purpose: it is what makes three icon-and-lamp units read as
 ## three separate readouts rather than one row of six things.
@@ -883,12 +881,8 @@ func _infra_texture(internal_name: String) -> Texture2D:
 ## One freight icon with its lamp BESIDE it, as a single pair.
 ##
 ## The icon goes through `_v31_icon`, the same builder Power, Victory, Rankings and Council
-## use, so it is the same size, sits on the same baseline and catches the same hover sheen.
-## Built by hand at 38 px and shrink-centred, these three were the only icons on the bar
-## floating at a height of their own.
-##
-## The LED is nudged down by half the wrap's bottom pad so it stays level with the MIDDLE of
-## the icon rather than with the middle of the padded slot the icon hangs in.
+## use, so it is fitted to the same cap height, centred on the same midline and catches the
+## same hover sheen. The lamp centres on that midline too.
 func _freight_cell(texture: Texture2D, tip: String, hover_source: Control) -> Dictionary:
 	var pair := HBoxContainer.new()
 	pair.add_theme_constant_override("separation", FREIGHT_LED_GAP)
@@ -899,18 +893,13 @@ func _freight_cell(texture: Texture2D, tip: String, hover_source: Control) -> Di
 	# Rankings, Council) leads with its lamp, so these three do too.
 	var led := StatusLed.new()
 	var led_slot := Control.new()
-	led_slot.custom_minimum_size = Vector2(led.get_combined_minimum_size().x,
-		FREIGHT_ICON_PX + V31_ICON_BOTTOM_PAD)
-	led_slot.size_flags_vertical = Control.SIZE_SHRINK_END
+	led_slot.custom_minimum_size = led.get_combined_minimum_size()
+	led_slot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	led_slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# Level with the ICON's middle, not the padded slot's: the wrap hangs its art in the top
-	# `FREIGHT_ICON_PX` of a taller box, so a lamp centred on the box sits low.
-	led.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	led.offset_top = (FREIGHT_ICON_PX - led.get_combined_minimum_size().y) * 0.5
-	led.offset_bottom = led.offset_top + led.get_combined_minimum_size().y
+	led.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	led_slot.add_child(led)
 	pair.add_child(led_slot)
-	var icon := _v31_icon(texture, hover_source, FREIGHT_ICON_PX)
+	var icon := _v31_icon(texture, hover_source)
 	# The art is cream; the bar's other labels are the off-white, so match them.
 	icon.modulate = C_LABEL
 	pair.add_child(icon)
@@ -1628,7 +1617,7 @@ func _build_goods_graph() -> void:
 	mod.mouse_exited.connect(func() -> void:
 		icon.set_color(C_LABEL)
 		lbl.add_theme_color_override("font_color", C_LABEL))
-	var v31_icon := _v31_icon(ICON_GOODS_GRAPH, mod, SANKEY_ICON_PX)
+	var v31_icon := _v31_icon(ICON_GOODS_GRAPH, mod)
 	row.add_child(v31_icon)
 	_register_v31_pair(classic_row, v31_icon)
 	mod.pressed.connect(func() -> void:

@@ -60,7 +60,7 @@ const OUTPUT_ICON: Texture2D = preload("res://assets/icons/research/glyph/output
 
 const HEADER_HEIGHT := 44.0
 const PANEL_EDGE_MARGIN := 20.0
-const TOP_BAR_CLEARANCE := 114.0   # clears the top bar AND the briefing notch hang + shadow
+const TOP_BAR_CLEARANCE := 72.0   # clears the top bar and its shadow
 const BOTTOM_CLEARANCE := 110.0  # fallback: keep clear of the bottom menu when no tile panel to match
 const PANEL_WIDTH := 460.0
 const CONTENT_MARGIN := 26

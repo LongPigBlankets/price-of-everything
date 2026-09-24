@@ -356,7 +356,7 @@ func _ready() -> void:
 		theme = DS.theme
 	visible = false
 	offset_left = 16.0
-	offset_top = 78.0
+	offset_top = 36.0
 	offset_right = 576.0
 	offset_bottom = 958.0
 	custom_minimum_size = Vector2(510, 720)
