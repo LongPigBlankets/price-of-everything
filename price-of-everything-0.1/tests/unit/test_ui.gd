@@ -643,6 +643,140 @@ func _test_bdp_v3_rules() -> void:
 		"bdp v3: better-recipe count is among the other recipes (%d)" % better)
 	BuildingState.buildings.erase(iid)
 
+	var Lamp = load("res://scripts/bdp_v3_lamp.gd")
+	_check(Lamp.colour_for("ok") == "green" and Lamp.colour_for("warn") == "amber" and Lamp.colour_for("bad") == "red"
+		and Lamp.colour_for("info") == "off" and Lamp.colour_for("") == "off",
+		"bdp v3: the status lamp is green for ok, amber for warn, red for bad and off otherwise")
+	var Scroll = load("res://scripts/bdp_v3_scroll.gd")
+	var thumb: StyleBox = Scroll.make(Scroll.THUMB, Scroll.THUMB_CAP, Scroll.THUMB_PERIOD, Scroll.THUMB_REPEAT_FROM)
+	var sum := func(parts: Array) -> float:
+		var total := 0.0
+		for p: Array in parts:
+			total += float(p[2])
+		return total
+	var tall: Array = thumb.slices(203.0)
+	var period_px: float = Scroll.THUMB_PERIOD / 1.875
+	var whole := true
+	for i in range(1, tall.size() - 1):
+		var periods: float = (float(tall[i][1]) - float(tall[i][0])) / (Scroll.THUMB_PERIOD * 2.0 / 1.875)
+		whole = whole and is_equal_approx(periods, roundf(periods))
+	var fill: float = sum.call(tall) - 2.0 * Scroll.THUMB_CAP / 1.875
+	_check(is_equal_approx(sum.call(tall), 203.0) and whole and absf(fill / (roundf(fill / period_px) * period_px) - 1.0) < 0.05
+		and is_equal_approx(float(tall[0][2]), Scroll.THUMB_CAP / 1.875),
+		"bdp v3: a long slider keeps its ends and fills its length with whole periods of ridges")
+	var tiny: Array = thumb.slices(10.0)
+	_check(is_equal_approx(float(tiny[0][2]), 5.0) and is_equal_approx(sum.call(tiny), 10.0), "bdp v3: a very short slider halves its ends")
+	var Counter = load("res://scripts/bdp_v3_counter.gd")
+	_check(Counter.digits_for(54.17, 4, 2) == PackedInt32Array([5, 4, 1, 7]) and Counter.digits_for(10052, 5, 0) == PackedInt32Array([1, 0, 0, 5, 2])
+		and Counter.digits_for(7.5, 4, 2) == PackedInt32Array([0, 7, 5, 0]) and Counter.digits_for(123456, 3, 0) == PackedInt32Array([9, 9, 9]),
+		"bdp v3: a drum counter reads its value on its drums, leading zeros and all, and nines when it overflows")
+	_check(Counter.drums_for(54.17, 2, 4) == 4 and Counter.drums_for(1234.5, 2, 4) == 6 and Counter.drums_for(10052, 0, 3) == 5,
+		"bdp v3: a counter has as many drums as its value needs, and at least its minimum")
+	var Led = load("res://scripts/bdp_v3_led.gd")
+	_check(Led.cells_for("7.95") == [["7", true], ["9", false], ["5", false]] and Led.cells_for("123.40").size() == 5
+		and Led.cells_for("--.--") == [["-", false], ["-", true], ["-", false], ["-", false]],
+		"bdp v3: an LED figure takes a cell per digit, its point lit on the digit before it")
+	var Econ = load("res://scripts/building_economics.gd")
+	_check(Econ.transport_tone(1.0, 100.0) == "ok" and Econ.transport_tone(5.0, 100.0) == "warn" and Econ.transport_tone(9.0, 100.0) == "bad"
+		and Econ.transport_tone(1.0, 0.0) == "bad" and Econ.transport_tone(0.0, 0.0) == "ok",
+		"bdp v3: a transport lamp is green under 3% of its goods' value, amber under 8%, red above")
+	var Bar = load("res://scripts/bdp_v3_value_bar.gd")
+	var steel_id := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
+	var gain: Array = Bar.rows_for({"outputs": [{"good_id": steel_id, "value": 100.0}], "sold": false, "input_value": 50.0, "labour": 20.0, "upkeep": 10.0, "transport": 5.0})
+	var loss: Array = Bar.rows_for({"outputs": [{"good_id": steel_id, "value": 100.0}], "sold": true, "input_value": 80.0, "labour": 20.0, "upkeep": 10.0, "transport": 10.0})
+	_check(gain[0].label == "Revenue if sold" and is_equal_approx(float(gain[0].slices[-1].to), 1.0) and is_equal_approx(float(gain[1].slices[-1].to), 0.85)
+		and gain[1].slices.size() == 4 and loss[0].label == "Revenue" and is_equal_approx(float(loss[0].slices[-1].to), 100.0 / 120.0)
+		and is_equal_approx(float(loss[1].slices[-1].to), 1.0),
+		"bdp v3: revenue and costs are two bars on one scale, the larger of the two filling it")
+	var econ_iids: Array = []
+	for pair in [["b_028", "r_225"], ["b_001", "r_001"], ["b_003", "r_004"], ["b_007", "r_009"]]:
+		econ_iids.append(BuildingState.add_building(pair[0], pair[1], "tile_5_10", MatchState.LOCAL_PLAYER, "v3_econ_" + pair[1]))
+	var battery: Dictionary = Econ.per_turn(BuildingState.get_building(econ_iids[0]))
+	var mine: Dictionary = Econ.per_turn(BuildingState.get_building(econ_iids[1]))
+	var plant_b: Dictionary = BuildingState.get_building(econ_iids[2])
+	var plant: Dictionary = Econ.per_turn(plant_b)
+	var motor_b: Dictionary = BuildingState.get_building(econ_iids[3])
+	for o: Dictionary in Catalog.get_recipe("r_009").get("outputs", []):
+		MatchState.route_output_to_market(econ_iids[3], str(o.get("good_id", "")))
+	var motor: Dictionary = Econ.per_turn(motor_b)
+	_check(not bool(battery.shown), "bdp v3: a building with neither inputs nor outputs (a battery) has no economics to show")
+	_check(bool(mine.shown) and bool(mine.inputs_free) and mine.lamp_in == "off" and not bool(mine.output_free_to_ship),
+		"bdp v3: a mine's inputs come free, and its output still pays to reach the market")
+	_check(bool(plant.output_free_to_ship) and plant.lamp_out == "off" and not bool(plant.inputs_free)
+		and is_equal_approx(float(plant.output_value), float(Production._effective_power_output(plant_b, Catalog.get_recipe("r_004"))) * Power.grid_export_price()),
+		"bdp v3: a power plant's output is free to ship, valued at what the grid pays (£%.2f)" % float(plant.output_value))
+	var port_charged := false
+	for m: Dictionary in motor.methods_out:
+		port_charged = port_charged or m.name == "Port"
+	_check(bool(motor.sold) and float(motor.transport_out) > 0.0 and port_charged
+		and is_equal_approx(float(motor.net_value_added), float(motor.value_added) - float(motor.transport))
+		and is_equal_approx(float(motor.value_added), float(motor.output_value) - float(motor.input_value) - float(motor.labour) - float(motor.upkeep)),
+		"bdp v3: a factory selling to market pays the port on its output, and its net value added is value added less transport (£%.2f)" % float(motor.net_value_added))
+	var chlor_iid: String = BuildingState.add_building(str(Catalog.get_recipe("r_012").get("building_id", "")), "r_012", "tile_5_10", MatchState.LOCAL_PLAYER, "v3_econ_r_012")
+	econ_iids.append(chlor_iid)
+	var chlor: Dictionary = Econ.per_turn(BuildingState.get_building(chlor_iid))
+	var chlor_rows: Array = Bar.rows_for(chlor)
+	_check(chlor_rows[0].slices.size() == (Catalog.get_recipe("r_012").get("outputs", []) as Array).size(),
+		"bdp v3: the revenue bar has a slice for each good sold (%d for chlor-alkali)" % chlor_rows[0].slices.size())
+	for e_iid in econ_iids:
+		BuildingState.buildings.erase(e_iid)
+	var Panel2 = load("res://scripts/building_detail_panel_v2.gd")
+	var cheap: Dictionary = Panel2.v3_cost_gauge_reading(8.0, 10.0)
+	var dear: Dictionary = Panel2.v3_cost_gauge_reading(30.0, 10.0)
+	var unknown: Dictionary = Panel2.v3_cost_gauge_reading(-1.0, 10.0)
+	_check(is_equal_approx(float(cheap.value), 0.4) and bool(cheap.known) and is_equal_approx(float(dear.value), 1.0) and not bool(unknown.known),
+		"bdp v3: the cost gauge reads unit cost as a share of twice the market price, and knows when the cost is unknown")
+	_check(Panel2.v3_stock_tone(40, 32, 0, false) == "ok" and Panel2.v3_stock_tone(32, 32, 0, false) == "ok"
+		and Panel2.v3_stock_tone(10, 32, 20, false) == "warn" and Panel2.v3_stock_tone(10, 32, 0, true) == "warn"
+		and Panel2.v3_stock_tone(10, 32, 0, false) == "bad",
+		"bdp v3: a shipment's lamp is green with enough to run, amber when short with something coming, red when short with nothing")
+	var Section = load("res://scripts/bdp_v3_section.gd")
+	var screws: PackedVector2Array = Section.screw_points(Vector2(400, 300))
+	var on_top := 0
+	var on_bottom := 0
+	var on_left := 0
+	var on_right := 0
+	for sp in screws:
+		on_top += int(is_equal_approx(sp.y, Section.SCREW_INSET))
+		on_bottom += int(is_equal_approx(sp.y, 300.0 - Section.SCREW_INSET))
+		on_left += int(is_equal_approx(sp.x, Section.SCREW_INSET))
+		on_right += int(is_equal_approx(sp.x, 400.0 - Section.SCREW_INSET))
+	_check(on_top == 4 and on_bottom == 4 and on_left == 6 and on_right == 6 and screws.size() == 16,
+		"bdp v3: the plastic plate has four screws along its top and bottom and six down each side (%d)" % screws.size())
+	var Door = load("res://scripts/bdp_v3_door.gd")
+	var door_rows: Array = Door.rows(90.0)
+	var door_h := 0.0
+	for dr: Array in door_rows:
+		door_h += float(dr[2])
+	_check(is_equal_approx(door_h, 90.0) and door_rows.size() >= 3, "bdp v3: the rolling door fills its height with whole slats between its housing and bar")
+	_check(Panel2.v3_door_rows(1) == 2 and Panel2.v3_door_rows(2) == 2 and Panel2.v3_door_rows(3) == 1 and Panel2.v3_door_rows(4) == 1
+		and Panel2.v3_door_rows(5) == 0 and Panel2.v3_door_rows(6) == 0 and Panel2.v3_door_rows(8) == 0,
+		"bdp v3: the shipments' door covers the bay's two empty rows for 1-2 goods, one for 3-4, none for 5-6")
+	var Light = load("res://scripts/bdp_v3_light.gd")
+	var screen := Vector2(1920, 1080)
+	_check(Light.light_at(Vector2(0.05, 0.05), screen) > Light.light_at(Vector2(0.75, 0.15), screen)
+		and Light.light_at(Vector2(0.75, 0.15), screen) > Light.light_at(Vector2(0.95, 0.9), screen)
+		and is_equal_approx(Light.light_at(Vector2(1.0, 1.0), screen), Light.DARKEST),
+		"bdp v3: the lamp over the panel is brightest at the screen's top-left and darkest at its far corner")
+	var Seam = load("res://scripts/bdp_v3_seam.gd")
+	var seam_parts: Array = Seam.slices(430.0)
+	_check(seam_parts.size() == 3 and is_equal_approx(float(seam_parts[0][3]), Seam.CAP / 1.875)
+		and is_equal_approx(float(seam_parts[2][3]), 430.0) and is_equal_approx(float(seam_parts[1][1]), Seam.EDGE.get_width() - float(seam_parts[1][0])),
+		"bdp v3: the seam edge keeps its screwed ends and fits its length between them")
+	var Title = load("res://scripts/bdp_v3_title.gd")
+	var missing: Array = []
+	for bd: Dictionary in Catalog.all_buildings():
+		if not Title.can_show(str(bd.get("display_name", "")) + " — "):
+			missing.append(str(bd.get("display_name", "")))
+	for rd: Dictionary in Catalog.all_recipes():
+		if not Title.can_show(str(rd.get("display_name", ""))):
+			missing.append(str(rd.get("display_name", "")))
+	_check(missing.is_empty(), "bdp v3: the raised title has a letter for every building and recipe name (missing in: %s)" % ", ".join(missing))
+	_check(not Title.can_show("Café"), "bdp v3: a title with a letter the atlas lacks is left to the plain label")
+	var rail: StyleBox = Scroll.make(Scroll.RAIL, Scroll.RAIL_CAP)
+	_check(rail.slices(400.0).size() == 3 and rail.get_minimum_size() == Vector2(16, 32),
+		"bdp v3: the rail is 16 px wide and keeps its ends (%s)" % str(rail.get_minimum_size()))
+
 
 func _test_bdp_v3_panel() -> void:
 	var was: bool = UiPrefs.use_bdp_v3
@@ -657,6 +791,11 @@ func _test_bdp_v3_panel() -> void:
 
 	var iid: String = BuildingState.add_building("b_007", "r_009", "tile_5_10", MatchState.LOCAL_PLAYER, "v3_panel")
 	var b: Dictionary = BuildingState.get_building(iid)
+	# A cost-to-produce reading, as the cost solver would leave it, so the cost section is built.
+	var saved_cost: Dictionary = CostSolver.last_result
+	var motor := str(Catalog.get_good_by_internal_name("motor").get("id", ""))
+	CostSolver.last_result = {"per_building": {iid: {"output_good_id": motor, "unit_cost": Catalog.get_base_price(motor) * 0.72,
+		"output_costs": {motor: Catalog.get_base_price(motor) * 0.72}}}, "per_good": {}}
 	var panel = load("res://scripts/building_detail_panel_v2.gd").new()
 	add_child(panel)
 	await get_tree().process_frame
@@ -669,6 +808,184 @@ func _test_bdp_v3_panel() -> void:
 	_check(panel._close_key.visible and not panel._close_button.visible, "bdp v3: the close keycap replaces the X button")
 	_check(is_equal_approx(panel._close_key.size.x, panel._close_key.size.y), "bdp v3: the close key stays square (%s)" % str(panel._close_key.size))
 	_check(panel._backing.visible and not panel._pipe_frame.visible, "bdp v3: the backing plate replaces the pipe border")
+	var st: Dictionary = load("res://scripts/building_readout.gd").status(b, Catalog.get_recipe("r_009"), false)
+	var Lamp = load("res://scripts/bdp_v3_lamp.gd")
+	_check(panel._status_v3.visible and not panel._badge.visible and panel._status_v3_label.text == str(st.label)
+		and panel._status_lamp.colour == Lamp.colour_for(str(st.tone)),
+		"bdp v3: a lamp lit for the status replaces the badge (%s, %s)" % [str(st.label), panel._status_lamp.colour])
+	var Scroll = load("res://scripts/bdp_v3_scroll.gd")
+	var bar: VScrollBar = panel._scroll.get_v_scroll_bar()
+	_check(Scroll.is_applied(panel._scroll) and is_equal_approx(bar.get_combined_minimum_size().x, 16.0),
+		"bdp v3: the scrollbar is the steel rail with its slider, 16 px wide (%s)" % str(bar.get_combined_minimum_size()))
+	_check(panel._title_v3.visible and not panel._title_label.visible and panel._title_v3.text == panel._title_label.text.to_upper()
+		and panel._title_v3.letter_count() == panel._title_label.text.replace(" ", "").length(),
+		"bdp v3: the title is set in raised letters, one per character (%d)" % panel._title_v3.letter_count())
+	var strip: Control = panel.find_child("BuildingRecipeStrip", true, false)
+	var enamel: Control = strip.find_child("BdpV3Enamel", false, false) if strip != null else null
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(enamel != null and enamel.hole_rects().size() == 4,
+		"bdp v3: the recipe diagram sits on an enamel sign, its grunge kept clear of the 3 icons and the arrow (%d)" % (enamel.hole_rects().size() if enamel != null else -1))
+	var arrow: Control = strip.find_child("RecipeArrow", true, false) if strip != null else null
+	if arrow != null:
+		var body: PanelContainer = arrow.get_node("ArrowBody")
+		var head: Control = arrow.get_node("ArrowHead")
+		var bst: StyleBoxFlat = body.get_theme_stylebox("panel")
+		var content_w: float = body.get_child(0).get_combined_minimum_size().x
+		var old_w := 20.0 + content_w
+		var new_w := bst.content_margin_left + bst.content_margin_right + content_w
+		_check(head.size == Vector2(35, 58) and is_equal_approx(body.size.y, 41.0) and absf(new_w / old_w - 0.9) < 0.02
+			and bst.corner_radius_top_left == 0 and bst.corner_radius_bottom_left == 0,
+			"bdp v3: the recipe arrow's head is 25%% larger (35 x 58) and its square body 10%% smaller round the same content (%.0f -> %.0f px)" % [old_w, new_w])
+	_check(panel._pin_key.visible and not panel._subtitle_label.visible and panel._pin_key.tooltip_text.contains("(5, 10)"),
+		"bdp v3: the Location key under Close replaces the level and location line (%s)" % panel._pin_key.tooltip_text)
+	var focused: Array = []
+	var on_focus := func(id: String) -> void: focused.append(id)
+	MatchState.focus_building_requested.connect(on_focus)
+	panel._pin_key.pressed.emit()
+	MatchState.focus_building_requested.disconnect(on_focus)
+	_check(focused == [iid], "bdp v3: the Location key asks the map to show the building")
+	var body_label: Label = panel._body.find_children("*", "Label", true, false)[0]
+	_check(panel._shade.visible and body_label.material == load("res://scripts/bdp_v3_light.gd").text_material(),
+		"bdp v3: the lamp's overlay covers the panel and the text takes some of its light back")
+	var diag: PanelContainer = panel.find_child("DiagnosticsCard", true, false)
+	var diag_frame: Node = diag.get_parent().get_parent() if diag != null else null
+	var lamps: Array = diag.find_children("BdpV3Lamp*", "", true, false) if diag != null else []
+	var diag_label: Label = diag.find_children("*", "Label", true, false)[0] if diag != null else null
+	_check(diag != null and diag.get_theme_stylebox("panel") is StyleBoxEmpty and diag.find_child("BdpV3Cable", false, false) != null
+		and diag_frame != null and diag_frame.get("style") == "plastic" and not lamps.is_empty()
+		and diag_label.get_theme_color("font_color") == DS.PALETTE["TEXT"],
+		"bdp v3: the diagnostics sit on dark plastic, their rows led by lamps, their text white, a cable beside the lamps (%d lamps)" % lamps.size())
+	var modules: Array = diag.find_children("*", "PanelContainer", true, false).filter(func(n: Node) -> bool: return n.has_meta("v3_diag_module")) if diag != null else []
+	var cable: Node = diag.find_child("BdpV3Cable", false, false) if diag != null else null
+	_check(not modules.is_empty() and cable != null and cable.taps.size() == modules.size(),
+		"bdp v3: every diagnostics row is its own module, fed by a branch off the cable (%d modules)" % modules.size())
+	var diag_heading: Node = diag_frame.content.get_child(0) if diag_frame != null else null
+	var switch: Node = diag_heading.find_child("ViewSwitch", false, false) if diag_heading != null else null
+	var raised: Node = diag_heading.find_child("BdpV3Heading", false, false) if diag_heading != null else null
+	var shown_texts: Array = diag_heading.find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.visible).map(func(l: Label) -> String: return l.text) if diag_heading != null else []
+	_check(switch != null and switch.find_child("BdpV3Toggle", false, false) != null and switch.find_child("BdpV3Toggle", false, false).right
+		and not shown_texts.has("always shown") and switch.find_child("SwitchVisual", false, false) != null
+		and switch.find_child("SwitchVisual", false, false).text == "VISUAL" and switch.find_child("SwitchText", false, false) != null,
+		"bdp v3: the diagnostics heading has a Visual / Text switch set to Text, lettered as the headings, not 'always shown' (%s)" % ", ".join(shown_texts))
+	_check(raised != null and raised.letter_count() == "DIAGNOSTICS".length(),
+		"bdp v3: section headings are set in raised letters like INPUTS and OUTPUTS (%d)" % (raised.letter_count() if raised != null else -1))
+	var ships_card: Control = panel.find_child("ShipmentsV3", true, false)
+	var cells: Array = ships_card.find_children("*", "HBoxContainer", true, false).filter(func(n: Node) -> bool: return n.has_meta("v3_shipment_cell")) if ships_card != null else []
+	var stock_lamp: Node = cells[0].find_child("StockLamp", false, false) if not cells.is_empty() else null
+	var hover_icon: Node = cells[0].get_child(0) if not cells.is_empty() else null
+	var ship_door: Control = ships_card.find_child("ShipmentDoor", true, false) if ships_card != null else null
+	var ship_text: Array = ships_card.find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.text.contains("stored")) if ships_card != null else []
+	_check(cells.size() == 2 and stock_lamp != null and stock_lamp.colour == "red" and hover_icon.get("detail_lines").size() >= 4
+		and hover_icon.custom_minimum_size.x == panel.V3_SHIP_ICON and ship_text.is_empty()
+		and ship_door != null and is_equal_approx(ship_door.custom_minimum_size.y, ship_door.rolled_up_height() + 2.0 * (panel.V3_SHIP_ICON + panel.V3_SHIP_GAP)),
+		"bdp v3: inbound shipments show large icons and stock lamps, no text, with the door down over the two empty rows (%d)" % cells.size())
+	var pill: Control = hover_icon.get_child(hover_icon.get_child_count() - 1) if hover_icon != null else null
+	_check(hover_icon != null and hover_icon.find_child("IconWell", false, false) != null and pill != null
+		and pill.offset_right <= 0.0 and pill.offset_bottom <= 0.0 and ships_card.get_parent().get_parent().get("style") == "dark",
+		"bdp v3: shipment icons sit below thin metal frames on a dark plate, their quantity pills inside the icon")
+	var cost_card: Control = panel.find_child("CostToProduceCard", true, false)
+	var cost_gauges: Array = cost_card.find_children("CostGauge*", "", true, false) if cost_card != null else []
+	var cost_wells: Array = cost_card.find_children("IconWell", "", true, false) if cost_card != null else []
+	_check(cost_card != null and cost_card.get_parent().get_parent().get("style") == "dark" and not cost_gauges.is_empty()
+		and cost_wells.size() == cost_gauges.size(),
+		"bdp v3: cost to produce sits on its own dark plate, each gauge with its good's icon set in beside it (%d)" % cost_gauges.size())
+	var leds: Array = cost_card.find_children("BdpV3Led*", "", true, false) if cost_card != null else []
+	var cost_texts: Array = cost_card.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text) if cost_card != null else []
+	var motor_price := Catalog.get_base_price(motor) * 0.72
+	_check(leds.size() == cost_gauges.size() and leds[0].figure() == "%.2f" % motor_price
+		and cost_texts.any(func(t: String) -> bool: return t.begins_with("Market price £"))
+		and not cost_texts.any(func(t: String) -> bool: return t.contains("%") or t == Catalog.get_display_name(motor)),
+		"bdp v3: the unit cost shows on a mini screen in LED segments, with 'Market price' under it and no name or percentage (%s)" % ", ".join(cost_texts))
+	var icon_h: float = cost_wells[0].get_parent().size.y + 2.0 * 7.0 / 1.875 if not cost_wells.is_empty() else 0.0
+	_check(absf(icon_h - panel.V3_GAUGE_SIZE * panel.V3_GAUGE_BEZEL) < 1.5,
+		"bdp v3: the cost icon, frame and all, is as tall as the gauge's bezel (%.1f px)" % icon_h)
+	_check(panel.find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.text.contains("ready to draw from the grid") and l.is_visible_in_tree()).is_empty(),
+		"bdp v3: the power line is left out, the diagnostics say the same")
+	var econ_card: Control = panel.find_child("EconomicsV3", true, false)
+	var shown_leds := func() -> Array:
+		return econ_card.find_children("BdpV3Led*", "", true, false).filter(func(n: Control) -> bool: return n.is_visible_in_tree()) if econ_card != null else []
+	await get_tree().process_frame
+	var closed_leds: int = shown_leds.call().size()
+	var va_box: Control = econ_card.find_child("ValueAdded", true, false) if econ_card != null else null
+	var va_key: Control = va_box.find_child("BdpV3ModKey", true, false) if va_box != null else null
+	if va_key != null:
+		for down in [true, false]:
+			var click := InputEventMouseButton.new()
+			click.button_index = MOUSE_BUTTON_LEFT
+			click.pressed = down
+			click.position = va_key.size * 0.5
+			va_key._gui_input(click)
+	var open_leds: int = shown_leds.call().size()
+	var pounds: Array = econ_card.find_children("MoneyLed", "", true, false) if econ_card != null else []
+	var econ_bar: Control = econ_card.find_child("BdpV3ValueBar", true, false) if econ_card != null else null
+	var econ_lamps: Array = econ_card.find_children("TransportLamp", "", true, false) if econ_card != null else []
+	_check(econ_card != null and closed_leds == 3 and open_leds == 7 and pounds.size() >= 7 and va_key != null and va_key.open
+		and econ_card.find_child("Transport", true, false) != null and econ_card.find_child("NetValueAdded", true, false) != null,
+		"bdp v3: value added in production and transport open from worn white keys to show their parts, every figure an LED screen after a £ (%d shown closed, %d with value added open)" % [closed_leds, open_leds])
+	_check(econ_bar != null and econ_bar.row_label(0) == "Revenue if sold" and econ_bar.row_keys(0).size() >= 1
+		and econ_bar.row_keys(1).has("inputs") and econ_bar.row_keys(1).has("labour") and econ_lamps.size() == 2,
+		"bdp v3: revenue (if sold) and costs show as two bars, and each side's transport has a lamp (%s | %s)" % [econ_bar.row_keys(0) if econ_bar != null else [], econ_bar.row_keys(1) if econ_bar != null else []])
+	var t_box: Control = econ_card.find_child("Transport", true, false) if econ_card != null else null
+	var t_key: Control = t_box.get_node("Head").find_child("BdpV3ModKey", false, false) if t_box != null else null
+	if t_key != null:
+		t_key.toggled.emit(true)
+	var t_in: Control = t_box.find_child("TransportInputs", true, false) if t_box != null else null
+	var t_out: Control = t_box.find_child("TransportOutputs", true, false) if t_box != null else null
+	var in_key: Control = t_in.find_child("BdpV3ModKey", true, false) if t_in != null else null
+	var in_rows: Array = t_in.find_child("Parts", true, false).get_children().map(func(r: Node) -> String: return (r.get_child(0) as Label).text) if t_in != null else []
+	_check(t_in != null and t_out != null and in_key != null and is_equal_approx(in_key.key_scale, panel.V3_NESTED_KEY_SCALE)
+		and in_rows.has("Steel · Port") and in_rows.has("Copper Wiring · Port"),
+		"bdp v3: transport opens to inputs and outputs, each to its goods' freight and port charges (%s)" % ", ".join(in_rows))
+	if va_box != null:
+		panel._v3_econ_open.clear()
+	var line_h: float = load("res://scripts/bdp_v3_title.gd").line_height()
+	var key_px: float = panel._close_key.size.y * load("res://scripts/bdp_v3_key.gd").KEY_SIDE / load("res://scripts/bdp_v3_key.gd").TEXTURE_SIDE
+	_check(absf(key_px - line_h) < 1.5 and absf((panel._pin_key.position.y - panel._close_key.position.y) - load("res://scripts/bdp_v3_title.gd").line_pitch()) < 1.5,
+		"bdp v3: Close and Location are each a title line tall, one beside each line (%.1f px keys, lines %.1f)" % [key_px, line_h])
+	var room: float = panel._scroll.size.x - panel._scroll.get_v_scroll_bar().size.x
+	_check(panel._body.get_combined_minimum_size().x <= room + 0.5,
+		"bdp v3: no section needs more width than the body has, which would push the scrollbar into the trim (%.0f of %.0f px)" % [panel._body.get_combined_minimum_size().x, room])
+	var mod_row: Control = panel.find_child("ModifiersRow", true, false)
+	_check(mod_row != null and mod_row.find_child("ModifiersIcon", false, false) != null and mod_row.find_child("BdpV3Heading", true, false) != null
+		and mod_row.find_child("BdpV3ModKey", true, false) != null,
+		"bdp v3: Modifiers is laid out as Inputs: a raised % sign, the heading, and a key")
+	var labour: Control = panel.find_child("LabourV3", true, false)
+	var counters: Array = labour.find_children("*", "Control", true, false).filter(func(n: Node) -> bool: return n.get_script() == load("res://scripts/bdp_v3_counter.gd")) if labour != null else []
+	_check(counters.size() == 2 and counters[0].decimals == 2 and counters[1].decimals == 0,
+		"bdp v3: labour shows its cost and its workers on drum counters (%d)" % counters.size())
+	var labour_doors: Array = labour.find_children("*", "Control", true, false).filter(func(n: Node) -> bool: return n.get_script() == load("res://scripts/bdp_v3_labour_door.gd")) if labour != null else []
+	var head_total := 0
+	for d in labour_doors:
+		head_total += int(d.count)
+	_check(labour_doors.size() == 3 and head_total == int(BuildingReadout.labour(Catalog.get_building("b_007"), Catalog.get_recipe(str(BuildingState.buildings[iid].get("recipe_id", "")))).get("total", -1)),
+		"bdp v3: Labour and Wages has a factory door per kind of worker, its headcount on the kick plate (%d doors, %d workers)" % [labour_doors.size(), head_total])
+	mod_row = panel.find_child("ModifiersRow", true, false)
+	var mod_key: Control = mod_row.find_child("BdpV3ModKey", true, false) if mod_row != null else null
+	_check(mod_key != null and not mod_key.openable and mod_key.summary == "None" and panel.find_child("ModifiersSheet", true, false) == null,
+		"bdp v3: with no modifiers, Modifiers reads None and opens nothing")
+	var test_mod: String = Modifiers.add({"id": "bdp_v3_test_output", "domain": "recipe_output", "pct": 10.0, "label": "Test yield", "source": "test"})
+	panel._rebuild(b)
+	await get_tree().process_frame
+	mod_row = panel.find_child("ModifiersRow", true, false)
+	mod_key = mod_row.find_child("BdpV3ModKey", true, false) if mod_row != null else null
+	var mod_sheet: Control = panel.find_child("ModifiersSheet", true, false)
+	var navy_ok := mod_sheet != null
+	if mod_sheet != null:
+		for l: Label in mod_sheet.find_children("*", "Label", true, false):
+			navy_ok = navy_ok and l.get_theme_color("font_color") in [load("res://scripts/bdp_v3_plate.gd").NAVY] + panel.V3_INK.values()
+	_check(mod_key != null and mod_key.openable and mod_key.open and mod_sheet != null and mod_sheet.visible and navy_ok,
+		"bdp v3: with a modifier, Modifiers opens on a white plastic sheet printed in navy, open to start with")
+	Modifiers.remove(test_mod)
+	panel._rebuild(b)
+	await get_tree().process_frame
+	# The rebuilds replaced the body; the checks below use its new footer and control block.
+	footer = panel.find_child("BdpV3Footer", true, false)
+	block = panel.find_child("BdpV3Block", true, false)
+	var Seam = load("res://scripts/bdp_v3_seam.gd")
+	_check(panel._seam.visible and is_equal_approx(panel._scroll.offset_top, Seam.strip_height())
+		and panel._seam.get_index() > panel._scroll.get_index() and panel._seam.get_parent() == panel._scroll.get_parent(),
+		"bdp v3: the non-slip edge sits over the seam, drawn after the body, which starts at its lip")
 	# Godot renames same-named siblings, so the frames are found by script rather than by name.
 	var section_script = load("res://scripts/bdp_v3_section.gd")
 	var frames: Array = panel.find_children("*", "MarginContainer", true, false).filter(func(n: Node) -> bool: return n.get_script() == section_script)
@@ -677,7 +994,7 @@ func _test_bdp_v3_panel() -> void:
 		for c in f.content.get_children():
 			if c.has_meta("v3_section"):
 				framed.append(str(c.get_meta("v3_section")))
-	_check(framed.has("Diagnostics") and framed.has("Labour on this building") and framed.has("Economics · per turn"),
+	_check(framed.has("Diagnostics") and framed.has("Labour and Wages") and framed.has("Economics · per turn"),
 		"bdp v3: the sections sit in steel frames (%s)" % ", ".join(framed))
 	var money_frame: Control = null
 	for f in frames:
@@ -690,6 +1007,28 @@ func _test_bdp_v3_panel() -> void:
 			shares = shares or str(c.get_meta("v3_section", "")) == "Modifiers"
 	_check(shares, "bdp v3: Modifiers and Economics share one frame")
 	if footer != null:
+		var outcome_clip: Control = footer.find_child("FooterSlideout", false, false)
+		var sell_plate: Control = outcome_clip.find_child("SellOutcome", false, false) if outcome_clip != null else null
+		var demo_plate: Control = outcome_clip.find_child("DemolishOutcome", false, false) if outcome_clip != null else null
+		footer.lift("demolish")
+		await get_tree().create_timer(0.35).timeout
+		var refund: Dictionary = BuildingWorks.refund_cost(iid).get("materials", {})
+		var refund_icons: Array = demo_plate.find_child("RefundGoods", true, false).get_children() if demo_plate != null and demo_plate.find_child("RefundGoods", true, false) != null else []
+		var demo_texts: Array = demo_plate.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text) if demo_plate != null else []
+		_check(outcome_clip != null and outcome_clip.visible and demo_plate != null and absf(demo_plate.position.y) < 0.5
+			and demo_texts.has("%s land will be freed up" % BuildingWorks.land_text(BuildingState.space_used(b))) and refund_icons.size() == refund.size(),
+			"bdp v3: lifting Demolish's cover slides up the land it frees and its refund, a good icon each (%d)" % refund_icons.size())
+		footer.drop("demolish")
+		footer.lift("sell")
+		await get_tree().create_timer(0.35).timeout
+		var sell_led: Node = sell_plate.find_child("BdpV3Led", true, false) if sell_plate != null else null
+		var sell_texts: Array = sell_plate.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text) if sell_plate != null else []
+		_check(sell_plate != null and absf(sell_plate.position.y) < 0.5 and demo_plate.position.y > 1.0 and sell_texts.has("Building will become NPC")
+			and sell_led != null and sell_led.figure() == "%.2f" % float(load("res://scripts/building_price.gd").sale_price(b)),
+			"bdp v3: lifting Sell's cover slides up that the building becomes NPC and what it sells for")
+		footer.drop("sell")
+		await get_tree().create_timer(0.35).timeout
+		_check(not outcome_clip.visible, "bdp v3: the outcome slides away when the cover drops")
 		var opened: Array = []
 		footer.key_pressed.connect(func(k: String) -> void: opened.append(k))
 		var click := func(key: String, pressed: bool) -> void:
@@ -714,6 +1053,12 @@ func _test_bdp_v3_panel() -> void:
 		await get_tree().process_frame
 		_check(panel._sheet != null and panel._sheet.find_child("BdpV3BackKey", true, false) != null,
 			"bdp v3: Outputs opens the output sheet, whose Back is a keycap")
+		var sheet_scroll := panel._sheet.find_child("ActionSheetScroll", true, false) as ScrollContainer
+		_check(sheet_scroll != null and Scroll.is_applied(sheet_scroll), "bdp v3: the sheets scroll on the steel rail too")
+		var slide: Control = panel._sheet.find_child("SheetSlide", true, false)
+		_check(slide != null and slide.find_child("BdpV3SheetPlate", false, false) != null and slide.position.x > 0.0
+			and panel.get_child(panel.get_child_count() - 1) == panel._shade,
+			"bdp v3: a sheet is a steel plate that slides in, under the lamp (starting %.0f px along)" % (slide.position.x if slide != null else -1.0))
 		panel._close_sheet()
 		var r: Rect2 = block.key_rect("recipe")
 		var press := func(pressed: bool) -> void:
@@ -732,6 +1077,14 @@ func _test_bdp_v3_panel() -> void:
 	await get_tree().process_frame
 	_check(panel.find_child("BdpV3Block", true, false) == null and panel.find_child("UpgradeButton", true, false) != null,
 		"bdp v3: switching it off brings the v2 controls straight back")
+	_check(panel._badge.visible and not panel._status_v3.visible and not Scroll.is_applied(panel._scroll)
+		and not panel._seam.visible and is_equal_approx(panel._scroll.offset_top, 0.0)
+		and panel._title_label.visible and not panel._title_v3.visible
+		and panel.find_child("BdpV3Enamel", true, false) == null
+		and panel._subtitle_label.visible and not panel._pin_key.visible and not panel._shade.visible
+		and panel._body.find_children("*", "Label", true, false)[0].material == null,
+		"bdp v3: switching it off brings back the plain title, the badge and location line, the plain scrollbar, the unedged body, the plain diagram and unshaded text")
 	panel.queue_free()
+	CostSolver.last_result = saved_cost
 	BuildingState.buildings.erase(iid)
 	UiPrefs.set_use_bdp_v3(was)

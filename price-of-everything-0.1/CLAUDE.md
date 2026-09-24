@@ -28,6 +28,13 @@ Style through the `DS` autoload (`scripts/ds.gd`) — `theme_type_variation` of 
 "Section", "Body", "Numeric", "Card", "Outlined", "Inset". Avoid `add_theme_*_override`
 in panel code except for the per-instance colour/size tweaks the variations do not cover.
 
+## DS2, the worn-industrial look
+
+Panels moving to the skeuomorphic look (steel plates, keycaps, LED screens, lamps), first built on
+Building Detail v3 behind `toggle bdp v3`, follow `docs/ds2-theme.md`: its rules, the render → export →
+Godot pipeline, the component catalogue, the patterns, how to verify against the saved standard, the
+traps, and the plan for a shared DS2 kit. Read it before touching a v3 panel or starting another.
+
 ## Verification
 
 `docs/` holds the specs; `tools/run_tests.py` runs the suite (`--tags <feature>` for one

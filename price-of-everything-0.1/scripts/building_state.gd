@@ -272,13 +272,15 @@ func get_buildings_on_tile(tile_id: String) -> Array:
 			result.append(buildings[instance_id])
 	return result
 
+## The land a building stands on: its type's footprint, grown by its level (SIZE_MULT).
+func space_used(instance: Dictionary) -> float:
+	var building_data := Catalog.get_building(str(instance.get("building_id", "")))
+	return float(building_data.get("tile_size_used", 1.0)) * BuildingLevels.mult("size", int(instance.get("level", 1)))
+
 func get_tile_space_used(tile_id: String) -> float:
 	var total := 0.0
 	for instance in get_buildings_on_tile(tile_id):
-		var building_id: String = instance.get("building_id", "")
-		var building_data := Catalog.get_building(building_id)
-		# A levelled-up building takes more room (SIZE_MULT).
-		total += float(building_data.get("tile_size_used", 1.0)) * BuildingLevels.mult("size", int(instance.get("level", 1)))
+		total += space_used(instance)
 	# Pending construction projects reserve their footprint up front (Phase 1: none linger).
 	total += Construction.reserved_space_on_tile(tile_id)
 	# In-progress upgrades reserve the extra room the building is about to grow into.
@@ -293,8 +295,7 @@ func get_tile_npc_footprint(tile_id: String) -> float:
 	for instance in get_buildings_on_tile(tile_id):
 		if is_player_owned(instance):
 			continue
-		var building_data := Catalog.get_building(str(instance.get("building_id", "")))
-		total += float(building_data.get("tile_size_used", 1.0)) * BuildingLevels.mult("size", int(instance.get("level", 1)))
+		total += space_used(instance)
 	return total
 
 # Space the PLAYER's estate takes on the tile: owned buildings plus construction /

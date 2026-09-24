@@ -117,7 +117,8 @@ each branch is co-located on one tile and ships its `export_good` to another bra
 | `LABOUR_*_RATE` / `LABOUR_*_GROWTH` | see file | wage rates + per-turn wage inflation |
 | `TRANSPORT_COST_PER_UNIT_PER_TURN_BY_WEIGHT_CLASS` | 0.02 std / 0.03 solid-heavy & liquids / 0.06 ultra-heavy | per-unit-per-turn land transport |
 | `TRANSPORT_MODE_COST_MULT` | rail 0.5, roads/pipes 1.0 | per-mode multiplier on the class rate |
-| `SEAPORT_SUBSCRIPTION_COST_PER_GOOD` | 1.0 | flat £/turn per subscribed good (port shipping) |
+| `SEAPORT_AD_VALOREM_EARLY` / `_LATE` / `_STEP_TURN` | 0.005 / 0.03 / 31 | port charge on the value of every market sale and purchase: 0.5% to turn 30, 3% after (see docs/goods-balancing.md §1.5) |
+| `SEAPORT_BASE_FEE_PER_GOOD` / `SEAPORT_SUBSCRIPTION_COST_PER_GOOD` | 0.0 / 0.0 | retired flat port fee and subscription charge |
 | `SEAPORT_RANGE_TILES` | 10 | a port only services tiles within this range |
 | `GRID_BUY_PRICE` / `GRID_SELL_PRICE` | 1.0 / 0.6 | power bought from / sold to the grid |
 | `LOAN_BASE_CAPACITY` / `LOAN_TERM_TURNS` / `LOAN_INTEREST_RATE` | 50 / 36 / 0.10 | loan terms |

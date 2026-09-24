@@ -19,14 +19,33 @@ const InfrastructureInfo := preload("res://scripts/infrastructure_info.gd")
 const BdpV3Block := preload("res://scripts/bdp_v3_block.gd")
 const BdpV3Footer := preload("res://scripts/bdp_v3_footer.gd")
 const BdpV3Key := preload("res://scripts/bdp_v3_key.gd")
+const BdpV3Lamp := preload("res://scripts/bdp_v3_lamp.gd")
+const BdpV3Plate := preload("res://scripts/bdp_v3_plate.gd")
+const BdpV3Scroll := preload("res://scripts/bdp_v3_scroll.gd")
+const BdpV3Seam := preload("res://scripts/bdp_v3_seam.gd")
+const BdpV3Title := preload("res://scripts/bdp_v3_title.gd")
+const BdpV3Enamel := preload("res://scripts/bdp_v3_enamel.gd")
+const BdpV3Light := preload("res://scripts/bdp_v3_light.gd")
+const BdpV3Cable := preload("res://scripts/bdp_v3_cable.gd")
+const BdpV3Counter := preload("res://scripts/bdp_v3_counter.gd")
+const PanelGauge := preload("res://scripts/panel_gauge.gd")
 const BdpV3Nine := preload("res://scripts/bdp_v3_nine.gd")
 const BdpV3Section := preload("res://scripts/bdp_v3_section.gd")
+const BdpV3Heading := preload("res://scripts/bdp_v3_heading.gd")
+const BdpV3Toggle := preload("res://scripts/bdp_v3_toggle.gd")
+const BdpV3Door := preload("res://scripts/bdp_v3_door.gd")
+const BdpV3LabourDoor := preload("res://scripts/bdp_v3_labour_door.gd")
+const BdpV3ModKey := preload("res://scripts/bdp_v3_mod_key.gd")
+const BdpV3Led := preload("res://scripts/bdp_v3_led.gd")
+const BuildingEconomics := preload("res://scripts/building_economics.gd")
+const BuildingPrice := preload("res://scripts/building_price.gd")
+const BdpV3ValueBar := preload("res://scripts/bdp_v3_value_bar.gd")
 ## v3 frames these sections (heading and content together); the value names the frame, so sections
 ## sharing a name share one frame (Modifiers and Economics).
 const V3_FRAMED_SECTIONS := {
 	"Diagnostics": "diagnostics", "Cost to produce": "cost", "Modifiers": "money", "Economics · per turn": "money",
 	"Infrastructure": "infrastructure", "Breakdown": "breakdown", "Inbound shipments": "shipments",
-	"Labour on this building": "labour",
+	"Labour on this building": "labour", "Labour and Wages": "labour",
 }
 const ROUTE_STOCKPILE_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_stockpile.png")
 const ROUTE_MARKET_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_port.png")
@@ -41,6 +60,13 @@ const PANEL_EDGE_MARGIN := 20.0
 const TOP_BAR_CLEARANCE := 114.0   # clears the top bar AND the briefing notch hang + shadow
 const BOTTOM_CLEARANCE := 110.0  # fallback: keep clear of the bottom menu when no tile panel to match
 const PANEL_WIDTH := 460.0
+const CONTENT_MARGIN := 26
+## The width v3's header keeps for its keys.
+const V3_KEY_COLUMN := 96.0 / 1.875
+## The backing's rounded corner, in pixels (panel_backing: 4 + 16 layout pixels), and its brass trim's
+## width in layout pixels (layout.json panel_backing).
+const BACKING_CORNER := 10.5
+const BACKING_TRIM := 14.0
 
 # Empire-view click (world_map sets this before show_building): dock at the tile view
 # panel's spot instead of the default edge position — in that view there IS no tile panel,
@@ -63,11 +89,21 @@ signal building_connections_changed(origin_tile_id: String, input_tile_ids: Arra
 
 var _current_building: Dictionary = {}
 var _title_label: Label = null
+# v3 shows the title in raised white letters instead of the label (which keeps the text).
+var _title_v3: BdpV3Title = null
 var _subtitle_label: Label = null
 var _badge: PanelContainer = null
 var _badge_label: Label = null
+# v3 shows the status as a lamp and its label instead of the badge.
+var _status_v3: HBoxContainer = null
+var _status_lamp: BdpV3Lamp = null
+var _status_v3_label: Label = null
 var _body: VBoxContainer = null
 var _scroll: ScrollContainer = null
+# The header and body (everything under v3's lamp but the backing).
+var _margin: MarginContainer = null
+# v3's non-slip edge over the seam between the header and the scrolling body.
+var _seam: Control = null
 var _dragging := false
 var _drag_offset := Vector2.ZERO
 # coalesced-refresh state (house doctrine — one rebuild per frame max)
@@ -84,6 +120,10 @@ var _sheet: Control = null
 # Header close control: the v2 button, and the v3 keycap shown instead while `toggle bdp v3` is on.
 var _close_button: Button = null
 var _close_key: TextureButton = null
+# v3's Location keycap under the close key: pans the map to the building.
+var _pin_key: TextureButton = null
+# v3's lamp over the whole panel (a multiply overlay; see bdp_v3_light.gd).
+var _shade: Control = null
 # v2's brass pipe border, and v3's backing plate (dark navy-grey steel in a brass trim) drawn behind
 # everything instead.
 var _pipe_frame: Control = null
@@ -111,13 +151,23 @@ func _build_shell() -> void:
 
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 26)   # clear the brass frame
+		margin.add_theme_constant_override("margin_" + side, CONTENT_MARGIN)   # clear the brass frame
 	add_child(margin)
+	_margin = margin
 	_pipe_frame = preload("res://scripts/brass_pipe_frame.gd").new()
 	add_child(_pipe_frame)   # brass frame, drawn on top
 	_backing = BdpV3Nine.make("panel_backing", 64.0)
 	add_child(_backing)
 	move_child(_backing, 0)   # behind the content
+	# Over the backing and content, under the action sheets (added later).
+	_shade = Control.new()
+	_shade.name = "BdpV3Shade"
+	_shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_shade.material = BdpV3Light.shade_material()
+	_shade.draw.connect(func() -> void: _shade.draw_rect(Rect2(Vector2.ZERO, _shade.size), Color.WHITE))
+	_shade.resized.connect(func() -> void: (_shade.material as ShaderMaterial).set_shader_parameter("rect_size", _shade.size))
+	(_shade.material as ShaderMaterial).set_shader_parameter("corner", BACKING_CORNER)
+	add_child(_shade)
 
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", DS.SP["SM"])
@@ -132,15 +182,35 @@ func _build_shell() -> void:
 	_title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_title_label.custom_minimum_size = Vector2(PANEL_WIDTH - 2.0 * DS.SP["MD"] - 44.0, 0)
 	header.add_child(_title_label)
+	_title_v3 = BdpV3Title.new()
+	_title_v3.custom_minimum_size = Vector2(_title_label.custom_minimum_size.x, 0)
+	header.add_child(_title_v3)
 	_close_button = Button.new()
 	_close_button.text = "X"
 	_close_button.custom_minimum_size = Vector2(32, 32)
 	_close_button.pressed.connect(_hide_panel)
 	header.add_child(_close_button)
-	_close_key = BdpV3Key.make("close")
+	# v3's keys: Close beside the title's first line and Location beside its second, each a line tall.
+	# The keys' renders carry room round them for their shadows, so the controls overlap and sit a little
+	# above the title's top.
+	var line := BdpV3Title.line_height()
+	var key_side := roundf(BdpV3Key.control_side(line))
+	var key_lift := MarginContainer.new()
+	key_lift.name = "HeaderKeys"
+	key_lift.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	key_lift.add_theme_constant_override("margin_top", roundi((line - key_side) * 0.5))
+	# The header keeps the width it always had for the keys; the rest of a key's render is shadow room.
+	key_lift.add_theme_constant_override("margin_right", mini(0, roundi(V3_KEY_COLUMN - key_side)))
+	header.add_child(key_lift)
+	var keys := VBoxContainer.new()
+	keys.add_theme_constant_override("separation", roundi(BdpV3Title.line_pitch() - key_side))
+	key_lift.add_child(keys)
+	_close_key = BdpV3Key.make("close", line)
 	_close_key.pressed.connect(_hide_panel)
-	header.add_child(_close_key)
-	_apply_v3_header()
+	keys.add_child(_close_key)
+	_pin_key = BdpV3Key.make("pin", line)
+	_pin_key.pressed.connect(_on_pin_pressed)
+	keys.add_child(_pin_key)
 
 	var meta := HBoxContainer.new()
 	meta.add_theme_constant_override("separation", DS.SP["SM"])
@@ -150,19 +220,45 @@ func _build_shell() -> void:
 	_badge_label.theme_type_variation = "Caption"
 	_badge.add_child(_badge_label)
 	meta.add_child(_badge)
+	_status_v3 = HBoxContainer.new()
+	_status_v3.name = "BdpV3Status"
+	_status_v3.add_theme_constant_override("separation", 6)
+	_status_lamp = BdpV3Lamp.new()
+	_status_v3.add_child(_status_lamp)
+	_status_v3_label = Label.new()
+	_status_v3_label.uppercase = true
+	_status_v3_label.add_theme_font_override("font", BdpV3Plate.FONT_SEMI)
+	_status_v3_label.add_theme_font_size_override("font_size", 18)
+	_status_v3_label.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
+	_status_v3_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_status_v3.add_child(_status_v3_label)
+	meta.add_child(_status_v3)
 	_subtitle_label = Label.new()
 	_subtitle_label.theme_type_variation = "Caption"
 	_subtitle_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	meta.add_child(_subtitle_label)
 
+	# The scroll area sits in a plain Control so that v3's seam edge, added after it, draws over the
+	# top of the body; with v3 on, the body starts at the edge's lip.
+	var well := Control.new()
+	well.name = "BodyWell"
+	well.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	outer.add_child(well)
 	_scroll = ScrollContainer.new()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	outer.add_child(_scroll)
+	_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	well.add_child(_scroll)
+	_seam = BdpV3Seam.new()
+	_seam.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	_seam.offset_bottom = BdpV3Seam.strip_height()
+	# Out to the backing's trim (4 layout pixels and the trim in from the panel's edge), less a hair.
+	_seam.outset = CONTENT_MARGIN - (4.0 + BACKING_TRIM) / BdpV3Seam.CAPTURE_SCALE - 0.5
+	well.add_child(_seam)
 	_body = VBoxContainer.new()
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_body.add_theme_constant_override("separation", DS.SP["SM"])
 	_scroll.add_child(_body)
+	_apply_v3_chrome()
 
 # --- live refresh (coalesced) --------------------------------------------------------------
 
@@ -210,6 +306,7 @@ func _apply_refresh() -> void:
 	if not live.is_empty():
 		_current_building = live
 	_rebuild(_current_building)
+	_apply_v3_text_light()
 	_resize_body()  # content height may have changed; keep the current (possibly dragged) position
 
 func _on_visibility_changed() -> void:
@@ -223,6 +320,7 @@ func show_building(building: Dictionary) -> void:
 	_current_building = building
 	_dirty = false
 	_rebuild(building)
+	_apply_v3_text_light()
 	visible = true
 	PanelStack.push(self)
 	_size_and_position()
@@ -244,6 +342,8 @@ func _rebuild(building: Dictionary) -> void:
 	var display_name := str(building_data.get("display_name", building.get("building_id", "Building")))
 	var recipe_name := str(recipe.get("display_name", ""))
 	_title_label.text = display_name if recipe_name == "" else "%s — %s" % [display_name, recipe_name]
+	_title_v3.text = _title_label.text
+	_apply_v3_title()
 	# Catalog.tile_label, not the raw id: this was the one surface still printing
 	# "tile_5_9" at the player instead of "Stoneshore Fields - (5, 9)".
 	var _tile := str(building.get("tile_id", ""))
@@ -252,6 +352,7 @@ func _rebuild(building: Dictionary) -> void:
 		display_level = BuildingWorks.infra_tile_level(building)
 	_subtitle_label.text = "Level %d · %s" % [
 		display_level, Catalog.tile_label(_tile) if _tile != "" else "—"]
+	_pin_key.tooltip_text = "Show on the map · %s" % (Catalog.tile_label(_tile) if _tile != "" else "—")
 
 	# construction site → materials checklist + countdown only
 	var constr := BuildingReadout.construction(building)
@@ -295,7 +396,12 @@ func _rebuild(building: Dictionary) -> void:
 			_body.add_child(_build_routing_buttons(building, recipe))
 			_body.add_child(_build_primary_actions(building, building_data))
 
-	_body.add_child(_make_section("Diagnostics", "always shown"))
+	if UiPrefs.use_bdp_v3:
+		var diag_head := _make_section("Diagnostics")
+		diag_head.add_child(_v3_view_switch())
+		_body.add_child(diag_head)
+	else:
+		_body.add_child(_make_section("Diagnostics", "always shown"))
 	_body.add_child(_build_diagnostics(BuildingReadout.diagnostics(building, recipe, building_data, is_infra)))
 
 	# emphasised cost-to-produce (per output good, vs its market price)
@@ -310,8 +416,16 @@ func _rebuild(building: Dictionary) -> void:
 	if not is_infra and kind != "battery":
 		_add_modifiers_accordion(building, recipe)
 
-	_body.add_child(_make_section("Economics · per turn"))
-	_body.add_child(_build_economics(BuildingReadout.economics(building, recipe, building_data)))
+	if UiPrefs.use_bdp_v3:
+		# v3: value added in production, transport, and what is left; nothing for a building with
+		# neither inputs nor outputs (a battery), whose running costs are no measure beside a producer's.
+		var econ := BuildingEconomics.per_turn(building)
+		if bool(econ.get("shown", false)):
+			_body.add_child(_make_section("Economics · per turn"))
+			_body.add_child(_build_economics_v3(econ))
+	else:
+		_body.add_child(_make_section("Economics · per turn"))
+		_body.add_child(_build_economics(BuildingReadout.economics(building, recipe, building_data)))
 	if is_infra:
 		_body.add_child(_make_section("Infrastructure"))
 		_body.add_child(_build_infrastructure_details(building_data))
@@ -320,8 +434,9 @@ func _rebuild(building: Dictionary) -> void:
 			_body.add_child(_make_section("Breakdown"))
 			_body.add_child(breakdown)
 
+	# v3 leaves the power line out: the diagnostics say the same.
 	var pw := BuildingReadout.power(building, recipe)
-	if bool(pw.get("needs", false)):
+	if bool(pw.get("needs", false)) and not UiPrefs.use_bdp_v3:
 		_body.add_child(_build_power_line(pw))
 
 	# inbound shipments
@@ -330,7 +445,7 @@ func _rebuild(building: Dictionary) -> void:
 		_body.add_child(_make_section("Inbound shipments"))
 		_body.add_child(_build_shipments(ships))
 
-	_body.add_child(_make_section("Labour on this building"))
+	_body.add_child(_make_section("Labour and Wages" if UiPrefs.use_bdp_v3 else "Labour on this building"))
 	# Headcounts from the recipe/building; cost is the engine's actual grown-wage charge (level +
 	# labour modifiers included), the same figure the Economics card shows — not the base rate.
 	var lab_readout: Dictionary = BuildingReadout.labour(building_data, recipe)
@@ -368,6 +483,8 @@ func _set_badge(st: Dictionary) -> void:
 	_badge.add_theme_stylebox_override("panel", style)
 	_badge_label.text = str(st.get("label", ""))
 	_badge_label.add_theme_color_override("font_color", c)
+	_status_lamp.set_tone(str(st.get("tone", "idle")))
+	_status_v3_label.text = str(st.get("label", ""))
 
 # --- NPC-owned body (recipe + big "Owned by [company]" + Buy; nothing else, no frost) ------
 
@@ -1270,8 +1387,8 @@ func _open_sheet(title: String, populate: Callable, extra_width: float = 0.0) ->
 	var restore_scroll := 0
 	var preserve_scroll := false
 	if _sheet != null and is_instance_valid(_sheet):
-		var old_title := _sheet.get_node_or_null("SheetMargin/SheetVBox/SheetHeader/SheetTitle") as Label
-		var old_scroll := _sheet.get_node_or_null("SheetMargin/SheetVBox/ActionSheetScroll") as ScrollContainer
+		var old_title := _sheet.find_child("SheetTitle", true, false) as Label
+		var old_scroll := _sheet.find_child("ActionSheetScroll", true, false) as ScrollContainer
 		if old_title != null and old_scroll != null and old_title.text == title:
 			restore_scroll = old_scroll.scroll_vertical
 			preserve_scroll = true
@@ -1291,7 +1408,11 @@ func _open_sheet(title: String, populate: Callable, extra_width: float = 0.0) ->
 	margin.name = "SheetMargin"
 	for side in ["left", "right", "top", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, DS.SP["MD"])
-	sheet.add_child(margin)
+	var slide: Control = null
+	if UiPrefs.use_bdp_v3:
+		slide = _v3_sheet_plate(sheet, margin)
+	else:
+		sheet.add_child(margin)
 	var vb := VBoxContainer.new()
 	vb.name = "SheetVBox"
 	vb.add_theme_constant_override("separation", DS.SP["SM"])
@@ -1322,6 +1443,8 @@ func _open_sheet(title: String, populate: Callable, extra_width: float = 0.0) ->
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vb.add_child(scroll)
+	if UiPrefs.use_bdp_v3:
+		BdpV3Scroll.apply(scroll, true)
 	var body := VBoxContainer.new()
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation", DS.SP["SM"])
@@ -1331,6 +1454,52 @@ func _open_sheet(title: String, populate: Callable, extra_width: float = 0.0) ->
 	_sheet = sheet
 	if preserve_scroll:
 		scroll.set_deferred("scroll_vertical", restore_scroll)
+	if slide != null:
+		move_child(_shade, get_child_count() - 1)   # the plate is under the lamp too
+		_apply_v3_text_light()
+		if not preserve_scroll:   # a sheet rebuilt in place stays put
+			slide.position.x = size.x
+			slide.create_tween().tween_property(slide, "position:x", 0.0, V3_SHEET_SLIDE_SECONDS) \
+				.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+
+## v3: an action sheet is a worn steel plate that slides in from the right over the panel's body, inside
+## the brass trim. The sheet itself still covers the whole panel (and takes its clicks); inside it, a
+## clip the trim's size holds a sliding layer with the plate and the sheet's content on it. Returns the
+## sliding layer.
+const V3_SHEET_INSET := (4.0 + BACKING_TRIM) / 1.875
+const V3_SHEET_PAD := 14
+const V3_SHEET_SLIDE_SECONDS := 0.26
+## From layout.json (sheet_plate), in layout pixels: the render's room round the plate, and its corner.
+const V3_SHEET_PLATE_MARGIN := 10.0
+const V3_SHEET_PLATE_CORNER := 60.0
+
+func _v3_sheet_plate(sheet: PanelContainer, margin: MarginContainer) -> Control:
+	var bare := StyleBoxEmpty.new()
+	bare.set_content_margin_all(0)
+	sheet.add_theme_stylebox_override("panel", bare)
+	var clip := Control.new()
+	clip.name = "SheetClip"
+	clip.clip_contents = true
+	clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	sheet.add_child(clip)
+	var slide := Control.new()
+	slide.name = "SheetSlide"
+	slide.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slide.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	clip.add_child(slide)
+	var plate := BdpV3Nine.make("sheet_plate", (V3_SHEET_PLATE_MARGIN + V3_SHEET_PLATE_CORNER) * 2.0 / 1.875, V3_SHEET_PLATE_MARGIN / 1.875)
+	plate.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	slide.add_child(plate)
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, V3_SHEET_PAD)
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	slide.add_child(margin)
+	# The clip sits inside the trim; the sheet (a container) sizes it, so its offsets are set once the
+	# sheet is laid out.
+	sheet.resized.connect(func() -> void:
+		clip.position = Vector2(V3_SHEET_INSET, V3_SHEET_INSET)
+		clip.size = sheet.size - 2.0 * Vector2(V3_SHEET_INSET, V3_SHEET_INSET))
+	return slide
 
 func _close_sheet() -> void:
 	if _sheet != null and is_instance_valid(_sheet):
@@ -1436,18 +1605,62 @@ func _apply_retrofit(iid: String, recipe: Dictionary) -> void:
 # --- Building Detail v3 (`toggle bdp v3`): the main controls on worn steel plates ----------------
 
 func _on_bdp_v3_changed(_enabled: bool) -> void:
-	_apply_v3_header()
+	_apply_v3_chrome()
 	_close_sheet()
 	_queue_refresh()
 
 
-func _apply_v3_header() -> void:
-	if _close_button != null:
-		_close_button.visible = not UiPrefs.use_bdp_v3
-		_close_key.visible = UiPrefs.use_bdp_v3
-	if _pipe_frame != null:
-		_pipe_frame.visible = not UiPrefs.use_bdp_v3
-		_backing.visible = UiPrefs.use_bdp_v3
+## The parts of the shell that v3 swaps: the title, the close and Location keys, the status lamp (in
+## place of the level and location line), the backing, the scrollbar, the seam edge and the lamp over
+## the panel.
+func _apply_v3_chrome() -> void:
+	var v3 := UiPrefs.use_bdp_v3
+	_close_button.visible = not v3
+	_close_key.visible = v3
+	_pin_key.visible = v3
+	_shade.visible = v3
+	_apply_v3_title()
+	_apply_v3_text_light()
+	_badge.visible = not v3
+	_status_v3.visible = v3
+	# v3 drops the level and location line: the Location key carries the place.
+	_subtitle_label.visible = not v3
+	_pipe_frame.visible = not v3
+	_backing.visible = v3
+	BdpV3Scroll.apply(_scroll, v3)
+	_seam.visible = v3
+	_scroll.offset_top = BdpV3Seam.strip_height() if v3 else 0.0
+
+
+## The Location key: the map pans to the building (and the tile's panel opens), or, for a building site
+## not yet on the books, to its tile.
+func _on_pin_pressed() -> void:
+	var iid := str(_current_building.get("instance_id", ""))
+	if iid != "" and not BuildingState.get_building(iid).is_empty():
+		MatchState.focus_building_requested.emit(iid)
+		return
+	var cam := get_viewport().get_camera_2d()
+	if cam != null and cam.has_method("pan_to_tile"):
+		cam.pan_to_tile(str(_current_building.get("tile_id", "")))
+
+
+## Under v3's lamp, the panel's text takes back part of the darkening round it (bdp_v3_light.gd), the
+## action sheets' too (their plates sit under the lamp). Runs after every rebuild and sheet.
+func _apply_v3_text_light() -> void:
+	var m: Material = BdpV3Light.text_material() if UiPrefs.use_bdp_v3 else null
+	var roots: Array[Node] = [_margin]
+	if _sheet != null and is_instance_valid(_sheet):
+		roots.append(_sheet)
+	for root in roots:
+		for n in root.find_children("*", "Label", true, false) + root.find_children("*", "RichTextLabel", true, false):
+			(n as CanvasItem).material = m
+
+
+## v3's raised title in place of the label, unless the title has a character its letters lack.
+func _apply_v3_title() -> void:
+	var raised := UiPrefs.use_bdp_v3 and BdpV3Title.can_show(_title_label.text)
+	_title_v3.visible = raised
+	_title_label.visible = not raised
 
 
 ## Moves each framed section (its heading and everything up to the next heading) into a steel
@@ -1468,6 +1681,23 @@ func _v3_frame_sections() -> void:
 		if frame != null:
 			_body.remove_child(child)
 			frame.content.add_child(child)
+			if frame_name == "diagnostics":
+				frame.style = "plastic"
+			elif frame_name in ["cost", "shipments"]:
+				frame.style = "dark"
+	# The diagnostics' plate is dark plastic, their text white and embossed on it.
+	for f in _body.get_children():
+		if f is BdpV3Section and f.style == "plastic":
+			for l in f.find_children("*", "Label", true, false):
+				_v3_emboss(l)
+
+
+## White lettering that stands up off dark plastic: a dark shadow down and to the right.
+func _v3_emboss(l: Label) -> void:
+	l.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
+	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+	l.add_theme_constant_override("shadow_offset_x", 1)
+	l.add_theme_constant_override("shadow_offset_y", 1)
 
 
 ## Inputs, Outputs, Upgrade and Change recipes as one control plate. The values are the ones the
@@ -1531,7 +1761,109 @@ static func v3_upgrade_state(building: Dictionary) -> Dictionary:
 func _build_v3_footer(building: Dictionary) -> Control:
 	var footer: Control = BdpV3Footer.new()
 	footer.key_pressed.connect(func(key: String) -> void: _open_supply_chain(building, key))
+	# While a cover is lifted, a steel plate slides up from behind the footer with what pressing the
+	# button would do; it slides back when the cover drops or the button is pressed.
+	var clip := Control.new()
+	clip.name = "FooterSlideout"
+	clip.clip_contents = true
+	clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	clip.visible = false
+	footer.add_child(clip)
+	footer.move_child(clip, 0)   # under the footer's covers, which stand in front of it
+	var outs := {"sell": _v3_sell_outcome(building), "demolish": _v3_demolish_outcome(building)}
+	for key in outs:
+		# Laid out all along (a hidden container measures nothing), and parked below the strip until needed.
+		clip.add_child(outs[key])
+	footer.cover_changed.connect(func(key: String, open: bool) -> void:
+		if outs.has(key):
+			_v3_slide_outcome(footer, clip, outs[key], open))
 	return footer
+
+## How far in from the footer's sides the outcome plate sits, how long it takes to slide, the refund's
+## icons and how many to a row.
+const V3_OUTCOME_INSET := 18.0
+const V3_OUTCOME_SECONDS := 0.22
+const V3_REFUND_ICON := 50
+const V3_REFUND_COLUMNS := 5
+const V3_SHEET_TEXTURE: Texture2D = preload("res://assets/ui/bdp_v3/sheet_plate.png")
+
+## Slides `plate` up out of the footer (or back down behind it) inside `clip`, the strip above the footer
+## as tall as the plate; any other plate in it is parked below.
+func _v3_slide_outcome(footer: Control, clip: Control, plate: Control, open: bool) -> void:
+	var h := plate.get_combined_minimum_size().y
+	if open:
+		clip.position = Vector2(V3_OUTCOME_INSET, -h)
+		clip.size = Vector2(footer.size.x - 2.0 * V3_OUTCOME_INSET, h)
+		for other: Control in clip.get_children():
+			other.size = Vector2(clip.size.x, other.get_combined_minimum_size().y)
+			other.position = Vector2(0.0, clip.size.y + 8.0)
+		clip.visible = true
+	var tween := plate.create_tween()
+	tween.tween_property(plate, "position:y", 0.0 if open else clip.size.y + 8.0, V3_OUTCOME_SECONDS) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	if not open:
+		tween.tween_callback(func() -> void:
+			clip.visible = clip.get_children().any(func(c: Control) -> bool: return c.position.y < 1.0))
+
+## A steel outcome plate (the action sheets' plate) with rows on it.
+func _v3_outcome_plate(node_name: String) -> Array:
+	var plate := PanelContainer.new()
+	plate.name = node_name
+	plate.mouse_filter = Control.MOUSE_FILTER_PASS
+	plate.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	var pad := StyleBoxEmpty.new()
+	pad.set_content_margin_all(V3_SHEET_PAD)
+	plate.add_theme_stylebox_override("panel", pad)
+	plate.draw.connect(func() -> void:
+		BdpV3Nine.paint(plate, V3_SHEET_TEXTURE, Rect2(Vector2.ZERO, plate.size).grow(V3_SHEET_PLATE_MARGIN / 1.875),
+			(V3_SHEET_PLATE_MARGIN + V3_SHEET_PLATE_CORNER) * 2.0 / 1.875))
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", DS.SP["SM"])
+	plate.add_child(vb)
+	return [plate, vb]
+
+## What selling does: the building goes to an NPC operator, and the company is paid for it.
+func _v3_sell_outcome(building: Dictionary) -> Control:
+	var made := _v3_outcome_plate("SellOutcome")
+	var vb: VBoxContainer = made[1]
+	vb.add_child(_v3_outcome_line("Building will become NPC"))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", DS.SP["SM"])
+	var paid := _v3_outcome_line("You will receive")
+	paid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(paid)
+	row.add_child(_v3_money_led(float(BuildingPrice.sale_price(building)), DS.PALETTE["OK"]))
+	vb.add_child(row)
+	return made[0]
+
+## What demolishing does: the building's land comes free, and part of its construction kit comes back.
+func _v3_demolish_outcome(building: Dictionary) -> Control:
+	var made := _v3_outcome_plate("DemolishOutcome")
+	var vb: VBoxContainer = made[1]
+	vb.add_child(_v3_outcome_line("%s land will be freed up" % BuildingWorks.land_text(BuildingState.space_used(building))))
+	var materials: Dictionary = BuildingWorks.refund_cost(str(building.get("instance_id", ""))).get("materials", {})
+	vb.add_child(_v3_outcome_line("Refund:" if not materials.is_empty() else "Refund: nothing"))
+	if not materials.is_empty():
+		var goods := GridContainer.new()
+		goods.name = "RefundGoods"
+		goods.columns = V3_REFUND_COLUMNS
+		goods.add_theme_constant_override("h_separation", DS.SP["MD"])
+		goods.add_theme_constant_override("v_separation", DS.SP["MD"])
+		vb.add_child(goods)
+		for gid in materials:
+			var icon := _good_icon_pill(str(gid), Catalog.get_internal_name(str(gid)), int(materials[gid]), V3_REFUND_ICON, -1, 0, true)
+			_v3_set_in_well(icon)
+			goods.add_child(icon)
+	return made[0]
+
+## A line of an outcome plate: white, standing off the steel.
+func _v3_outcome_line(text: String) -> Label:
+	var l := Label.new()
+	l.theme_type_variation = "Body"
+	l.text = text
+	l.add_theme_font_size_override("font_size", 16)
+	_v3_emboss(l)
+	return l
 
 
 func _build_sell_demolish_row(building: Dictionary, building_data: Dictionary) -> Control:
@@ -1617,7 +1949,12 @@ class _ArrowHead extends Control:
 	func _ready() -> void:
 		resized.connect(queue_redraw)
 	func _draw() -> void:
-		draw_colored_polygon(PackedVector2Array([Vector2(0, 0), Vector2(size.x, size.y * 0.5), Vector2(0, size.y)]), col)
+		var pts := PackedVector2Array([Vector2(0, 0), Vector2(size.x, size.y * 0.5), Vector2(0, size.y)])
+		draw_colored_polygon(pts, col)
+		# A filled polygon has hard, stepped edges; a thin smoothed line round it softens them.
+		var outline := pts.duplicate()
+		outline.append(pts[0])
+		draw_polyline(outline, col, 1.0, true)
 
 # A thin navy outline rectangle inset from the card edge (the recipe card's inner border).
 class _InsetOutline extends Control:
@@ -1719,18 +2056,27 @@ class _RouteIcon extends Control:
 func _build_recipe_strip(flow: Dictionary) -> PanelContainer:
 	var card := PanelContainer.new()
 	card.name = "BuildingRecipeStrip"
-	var style := StyleBoxFlat.new()
-	style.bg_color = CREAM
-	style.set_corner_radius_all(0)  # squared corners
-	style.set_content_margin_all(0)  # children fill the full card so the outline sits 4px from the edge
-	card.add_theme_stylebox_override("panel", style)
 	card.custom_minimum_size = Vector2(0, 156)  # consistent height for 1–4 input / output grids
-	# thin navy outline inset 4px from the actual card edge
-	var outline := _InsetOutline.new()
-	outline.col = CREAM_INK
-	outline.set_anchors_preset(Control.PRESET_FULL_RECT)
-	outline.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	card.add_child(outline)
+	# v3: an enamel sign behind the diagram, its grunge kept clear of the icons and arrow (watched below).
+	var enamel: BdpV3Enamel = null
+	if UiPrefs.use_bdp_v3:
+		var bare := StyleBoxEmpty.new()
+		bare.set_content_margin_all(0)
+		card.add_theme_stylebox_override("panel", bare)
+		enamel = BdpV3Enamel.new()
+		card.add_child(enamel)
+	else:
+		var style := StyleBoxFlat.new()
+		style.bg_color = CREAM
+		style.set_corner_radius_all(0)  # squared corners
+		style.set_content_margin_all(0)  # children fill the full card so the outline sits 4px from the edge
+		card.add_theme_stylebox_override("panel", style)
+		# thin navy outline inset 4px from the actual card edge
+		var outline := _InsetOutline.new()
+		outline.col = CREAM_INK
+		outline.set_anchors_preset(Control.PRESET_FULL_RECT)
+		outline.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card.add_child(outline)
 
 	card.clip_contents = false  # let big recipe icons bleed past the card edge
 	var pad := MarginContainer.new()
@@ -1755,7 +2101,8 @@ func _build_recipe_strip(flow: Dictionary) -> PanelContainer:
 		row.add_child(_recipe_side(inputs))
 
 	# navy filled arrow with the power draw on its body
-	row.add_child(_recipe_arrow(int(flow.get("power_in", 0))))
+	var arrow := _recipe_arrow(int(flow.get("power_in", 0)))
+	row.add_child(arrow)
 
 	# outputs — one hero icon, or a grid when the recipe has CO-PRODUCTS (chlor-alkali yields
 	# chlorine + sodium hydroxide + hydrogen). The pill on
@@ -1784,6 +2131,12 @@ func _build_recipe_strip(flow: Dictionary) -> PanelContainer:
 					58, 1, int((o as Dictionary).get("base_qty", -1)), mod_pct))
 			out_wrap.add_child(grid)
 		row.add_child(out_wrap)
+	if enamel != null:
+		var clear: Array[Control] = [arrow]
+		for n in card.find_children("*", "Control", true, false):
+			if n.has_meta("recipe_icon"):
+				clear.append(n)
+		enamel.watch(clear)
 	return card
 
 # One side of the recipe diagram (inputs): a single hero icon, or a centred 2×2 grid of smaller ones.
@@ -1811,6 +2164,7 @@ func _recipe_side(items: Array) -> Control:
 # larger on every side (clip off) so it overflows ~20% past the slot; qty pill on the bottom-right.
 func _recipe_icon(good_id: String, internal: String, qty: int, size: int, bleed: int, base_qty: int = -1, mod_pct: int = 0) -> Control:
 	var slot := Control.new()
+	slot.set_meta("recipe_icon", true)
 	slot.custom_minimum_size = Vector2(size, size)
 	slot.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	slot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -1855,9 +2209,9 @@ func _plain_icon_pill(good_id: String, internal: String, qty: int, size: int) ->
 	UIHelpers.link_good_icon_to_encyclopedia(holder, good_id)
 	return holder
 
-func _good_icon_pill(good_id: String, internal: String, qty: int, size: int, base_qty: int = -1, mod_pct: int = 0) -> Control:
+func _good_icon_pill(good_id: String, internal: String, qty: int, size: int, base_qty: int = -1, mod_pct: int = 0, pill_inside := false) -> Control:
 	var holder := UIHelpers.make_plain_good_icon(good_id, internal, size)
-	holder.add_child(_qty_pill(qty, base_qty, mod_pct))
+	holder.add_child(_qty_pill(qty, base_qty, mod_pct, pill_inside))
 	# Every input and output on this panel is a way into the Goods Graph: the player is
 	# already looking at what this building eats and makes, and 'how else is that made'
 	# is the next question. ALWAYS, not the deferring form — a recipe card is itself
@@ -1866,13 +2220,16 @@ func _good_icon_pill(good_id: String, internal: String, qty: int, size: int, bas
 	UIHelpers.link_good_icon_to_encyclopedia(holder, good_id)
 	return holder
 
+const QTY_PILL_INSET := 5
+
 # Back-compat name used by construction / shipments / demolish — now the pill icon.
 func _flat_good_cell(good_id: String, internal: String, qty: int, size: int) -> Control:
 	return _good_icon_pill(good_id, internal, qty, size)
 
 # Navy qty pill overhanging an icon's bottom-right. With a modifier (base != qty) it shows the struck
 # base + effective and a green (positive) / red (negative) 2px outline; otherwise a plain pill.
-func _qty_pill(qty: int, base_qty: int = -1, _mod_pct: int = 0) -> Control:
+## `inside` keeps the pill within the icon's corner instead of overhanging it.
+func _qty_pill(qty: int, base_qty: int = -1, _mod_pct: int = 0, inside := false) -> Control:
 	# Outline colour follows the ACTUAL numbers shown (effective vs base), not a separate modifier
 	# figure that could disagree in sign — green when the effective output is higher, red when lower.
 	var has_delta := base_qty >= 0 and base_qty != qty
@@ -1883,10 +2240,11 @@ func _qty_pill(qty: int, base_qty: int = -1, _mod_pct: int = 0) -> Control:
 	pill.custom_minimum_size = Vector2(w, h)
 	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pill.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	pill.offset_left = -w + 8
-	pill.offset_top = -h + 8
-	pill.offset_right = 8
-	pill.offset_bottom = 8
+	var overhang := -QTY_PILL_INSET if inside else 8
+	pill.offset_left = -w + overhang
+	pill.offset_top = -h + overhang
+	pill.offset_right = overhang
+	pill.offset_bottom = overhang
 	var st := StyleBoxFlat.new()
 	st.bg_color = DS.PALETTE["BG_PANEL"]
 	st.set_corner_radius_all(int(h / 2.0))
@@ -1914,20 +2272,26 @@ func _qty_pill(qty: int, base_qty: int = -1, _mod_pct: int = 0) -> Control:
 	return pill
 
 # Navy filled arrow: a rounded-left body carrying the power label + bolt, then a triangle head.
+## The recipe arrow: a square-cornered navy body holding the power draw, and a head with smoothed
+## edges. The body is 10% smaller than it was (46 px tall, with 12 + 8 px of side padding round the
+## number and bolt, which keep their size), and the head 25% larger than it was (28 × 46), so it flares
+## past the body.
+const ARROW_BODY_H := 41
+const ARROW_OLD_SIDE_PAD := 20.0
+const ARROW_HEAD := Vector2(35, 58)
+
 func _recipe_arrow(power_in: int) -> Control:
 	var arrow := HBoxContainer.new()
+	arrow.name = "RecipeArrow"
 	arrow.add_theme_constant_override("separation", 0)
 	arrow.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var body_h := 46
+	var body_h := ARROW_BODY_H
 	var body := PanelContainer.new()
+	body.name = "ArrowBody"
 	body.custom_minimum_size = Vector2(0, body_h)
 	body.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var bst := StyleBoxFlat.new()
-	bst.bg_color = CREAM_INK
-	bst.corner_radius_top_left = 6
-	bst.corner_radius_bottom_left = 6
-	bst.content_margin_left = 12
-	bst.content_margin_right = 8
+	bst.bg_color = CREAM_INK   # square corners
 	bst.content_margin_top = 4
 	bst.content_margin_bottom = 4
 	body.add_theme_stylebox_override("panel", bst)
@@ -1956,17 +2320,34 @@ func _recipe_arrow(power_in: int) -> Control:
 		nop.theme_type_variation = "Caption"
 		nop.add_theme_color_override("font_color", Color(0.75, 0.82, 0.9))
 		hb.add_child(nop)
+	# Side padding for a body 10% narrower than the old one round the same content (split 12:8).
+	var content_w := _arrow_content_width(power_in)
+	var pad := maxf(4.0, 0.9 * (ARROW_OLD_SIDE_PAD + content_w) - content_w)
+	bst.content_margin_left = pad * 0.6
+	bst.content_margin_right = pad * 0.4
 	arrow.add_child(body)
 	var head := _ArrowHead.new()
+	head.name = "ArrowHead"
 	head.col = CREAM_INK
-	head.custom_minimum_size = Vector2(28, body_h)
+	head.custom_minimum_size = ARROW_HEAD
 	head.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	arrow.add_child(head)
 	return arrow
 
+## The width of what the arrow's body holds: the power draw and its bolt, or "no power".
+func _arrow_content_width(power_in: int) -> float:
+	if power_in > 0:
+		var f: Font = DS.theme.get_font("font", "Numeric") if DS and DS.theme else null
+		var w := f.get_string_size(str(power_in), HORIZONTAL_ALIGNMENT_LEFT, -1, 21).x if f != null else 12.0 * str(power_in).length()
+		return w + 5.0 + 18.0
+	var cf: Font = DS.theme.get_font("font", "Caption") if DS and DS.theme else null
+	return cf.get_string_size("no power", HORIZONTAL_ALIGNMENT_LEFT, -1, DS.FS["CAPTION"]).x if cf != null else 56.0
+
 ## Sticky across refreshes: a player who opened the checklist wants it to stay open while
 ## they watch the turn resolve, not to re-collapse under them every rebuild.
 var _diagnostics_open := false
+# v3's drum counters and cost gauges: what each last read, so the next rebuild rolls from it.
+var _v3_last_readings := {}
 
 # --- diagnostics ---------------------------------------------------------------------------
 
@@ -1979,21 +2360,43 @@ func _build_diagnostics(rows: Array) -> PanelContainer:
 	card.name = "DiagnosticsCard"   # stable target for the tutorial coach spotlight
 	var vb := card.get_child(0) as VBoxContainer
 	vb.add_theme_constant_override("separation", 0)
+	var cable: Control = null
+	if UiPrefs.use_bdp_v3:
+		# v3: each row is its own module set in the plastic case, fed by a branch off the cable that
+		# runs down the case's left side.
+		var bare := StyleBoxEmpty.new()
+		bare.content_margin_left = V3_DIAG_GUTTER
+		bare.content_margin_right = 2
+		bare.content_margin_top = 4
+		bare.content_margin_bottom = 4
+		card.add_theme_stylebox_override("panel", bare)
+		vb.add_theme_constant_override("separation", V3_DIAG_MODULE_GAP)
+		cable = BdpV3Cable.new()
+		cable.centre_x = V3_DIAG_CABLE_X - V3_DIAG_GUTTER
+		card.add_child(cable)
 	var all_ok := not rows.is_empty()
 	for r_variant: Variant in rows:
 		if str((r_variant as Dictionary).get("tone", "info")) not in ["ok", "good", "info"]:
 			all_ok = false
 			break
 	if not all_ok:
+		var modules: Array[Control] = []
 		for i in rows.size():
-			vb.add_child(_diag_row(rows[i], i > 0))
+			var row := _diag_row(rows[i], i > 0)
+			vb.add_child(row)
+			modules.append(row)
+		if cable != null:
+			cable.taps = modules
 		return card
 
 	var body := VBoxContainer.new()
-	body.add_theme_constant_override("separation", 0)
+	body.add_theme_constant_override("separation", V3_DIAG_MODULE_GAP if UiPrefs.use_bdp_v3 else 0)
 	body.visible = _diagnostics_open
+	var body_modules: Array[Control] = []
 	for i in rows.size():
-		body.add_child(_diag_row(rows[i], i > 0))
+		var row := _diag_row(rows[i], i > 0)
+		body.add_child(row)
+		body_modules.append(row)
 
 	var head := Button.new()
 	head.flat = true
@@ -2008,17 +2411,88 @@ func _build_diagnostics(rows: Array) -> PanelContainer:
 		_diagnostics_open = not _diagnostics_open
 		body.visible = _diagnostics_open
 		head.text = _diag_head_text())
-	vb.add_child(head)
+	if cable != null:
+		# v3: the folded line is a module too, with its lamp lit green.
+		var head_module := _v3_diag_module()
+		var hb := HBoxContainer.new()
+		hb.add_theme_constant_override("separation", DS.SP["SM"])
+		head_module.add_child(hb)
+		var lamp := BdpV3Lamp.new()
+		lamp.lamp_scale = V3_DIAG_LAMP_SCALE
+		lamp.set_tone("ok")
+		hb.add_child(lamp)
+		head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		hb.add_child(head)
+		vb.add_child(head_module)
+		body_modules.push_front(head_module)
+		cable.taps = body_modules
+	else:
+		vb.add_child(head)
 	vb.add_child(body)
 	return card
 
+
+## v3's diagnostics: where the cable runs (from the card's left), and the modules' left margin, a
+## branch's length to its right; the gap between modules.
+const V3_DIAG_CABLE_X := 10.0
+const V3_DIAG_GUTTER := V3_DIAG_CABLE_X + BdpV3Cable.TAP_LENGTH
+const V3_DIAG_MODULE_GAP := 8
+## The diagnostics' row lamps, as a share of the status lamp's size.
+const V3_DIAG_LAMP_SCALE := 0.72
+## The diagnostics' module plate (layout.json diag_module): its shadow room and 9-slice corner.
+const V3_DIAG_MODULE: Texture2D = preload("res://assets/ui/bdp_v3/diag_module.png")
+const V3_DIAG_MODULE_MARGIN := 10.0 / 1.875
+const V3_DIAG_MODULE_CORNER := 26.0 * 2.0 / 1.875
+
+## The Visual / Text switch's side, kept while the game runs. The visual view is still to come, so for
+## now the diagnostics show as text either way.
+static var _v3_diag_visual := false
+
+## v3: a raised module in the diagnostics' case, for one check.
+func _v3_diag_module() -> PanelContainer:
+	var module := PanelContainer.new()
+	module.name = "DiagModule"
+	module.set_meta("v3_diag_module", true)
+	var pad := StyleBoxEmpty.new()
+	pad.content_margin_left = 10
+	pad.content_margin_right = 10
+	pad.content_margin_top = 8
+	pad.content_margin_bottom = 8
+	module.add_theme_stylebox_override("panel", pad)
+	module.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	module.draw.connect(func() -> void:
+		BdpV3Nine.paint(module, V3_DIAG_MODULE, Rect2(Vector2.ZERO, module.size).grow(V3_DIAG_MODULE_MARGIN), V3_DIAG_MODULE_CORNER))
+	return module
+
+## v3: the diagnostics' Visual / Text switch, moulded into the case beside the heading, its two sides
+## named in the headings' raised letters.
+func _v3_view_switch() -> HBoxContainer:
+	var hb := HBoxContainer.new()
+	hb.name = "ViewSwitch"
+	hb.add_theme_constant_override("separation", 6)
+	hb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	for side in ["Visual", "", "Text"]:
+		if side == "":
+			var sw: Control = BdpV3Toggle.new()
+			sw.set_right(not _v3_diag_visual)
+			sw.toggled.connect(func(right: bool) -> void: _v3_diag_visual = not right)
+			hb.add_child(sw)
+		else:
+			var raised: Control = BdpV3Heading.new()
+			raised.name = "Switch" + side
+			raised.text = side
+			hb.add_child(raised)
+	return hb
 
 func _diag_head_text() -> String:
 	return ("⌄  All green" if _diagnostics_open else "›  All green")
 
 func _diag_row(r: Dictionary, top_border: bool) -> Control:
-	var wrap := PanelContainer.new()
-	if top_border:
+	var wrap: PanelContainer
+	if UiPrefs.use_bdp_v3:
+		wrap = _v3_diag_module()
+	elif top_border:
+		wrap = PanelContainer.new()
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = Color(0, 0, 0, 0)
 		sb.border_color = Color(DS.PALETTE["BORDER_SOFT"].r, DS.PALETTE["BORDER_SOFT"].g, DS.PALETTE["BORDER_SOFT"].b, 0.18)
@@ -2027,6 +2501,7 @@ func _diag_row(r: Dictionary, top_border: bool) -> Control:
 		sb.content_margin_bottom = 8
 		wrap.add_theme_stylebox_override("panel", sb)
 	else:
+		wrap = PanelContainer.new()
 		var sb2 := StyleBoxEmpty.new()
 		sb2.content_margin_bottom = 8
 		wrap.add_theme_stylebox_override("panel", sb2)
@@ -2035,25 +2510,36 @@ func _diag_row(r: Dictionary, top_border: bool) -> Control:
 	wrap.add_child(hb)
 	var tone := str(r.get("tone", "info"))
 	var c := _tone_color(tone)
-	var chip := PanelContainer.new()
-	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var chip_style := StyleBoxFlat.new()
-	chip_style.bg_color = Color(c.r, c.g, c.b, 0.16)
-	chip_style.border_color = Color(c.r, c.g, c.b, 0.55)
-	chip_style.set_border_width_all(1)
-	chip_style.set_corner_radius_all(6)
-	chip_style.set_content_margin_all(3)
-	chip.add_theme_stylebox_override("panel", chip_style)
-	# A row about a specific commodity shows that good's icon instead of the tone dot.
-	var row_good := str(r.get("good_id", ""))
-	if row_good != "":
-		chip.add_child(UIHelpers.make_framed_good_icon(row_good, Catalog.get_internal_name(row_good), 18))
+	if UiPrefs.use_bdp_v3:
+		# v3: a lamp like the status lamp's, lit for the row's tone; a row about a good shows it too.
+		var lamp := BdpV3Lamp.new()
+		lamp.lamp_scale = V3_DIAG_LAMP_SCALE
+		lamp.set_tone(tone)
+		hb.add_child(lamp)
+		if str(r.get("good_id", "")) != "":
+			var good_icon := UIHelpers.make_framed_good_icon(str(r.get("good_id", "")), Catalog.get_internal_name(str(r.get("good_id", ""))), 18)
+			good_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			hb.add_child(good_icon)
 	else:
-		var dot := ColorRect.new()
-		dot.color = c
-		dot.custom_minimum_size = Vector2(12, 12)
-		chip.add_child(dot)
-	hb.add_child(chip)
+		var chip := PanelContainer.new()
+		chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var chip_style := StyleBoxFlat.new()
+		chip_style.bg_color = Color(c.r, c.g, c.b, 0.16)
+		chip_style.border_color = Color(c.r, c.g, c.b, 0.55)
+		chip_style.set_border_width_all(1)
+		chip_style.set_corner_radius_all(6)
+		chip_style.set_content_margin_all(3)
+		chip.add_theme_stylebox_override("panel", chip_style)
+		# A row about a specific commodity shows that good's icon instead of the tone dot.
+		var row_good := str(r.get("good_id", ""))
+		if row_good != "":
+			chip.add_child(UIHelpers.make_framed_good_icon(row_good, Catalog.get_internal_name(row_good), 18))
+		else:
+			var dot := ColorRect.new()
+			dot.color = c
+			dot.custom_minimum_size = Vector2(12, 12)
+			chip.add_child(dot)
+		hb.add_child(chip)
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	col.add_theme_constant_override("separation", 1)
@@ -2067,7 +2553,8 @@ func _diag_row(r: Dictionary, top_border: bool) -> Control:
 	detail.theme_type_variation = "Caption"
 	detail.text = str(r.get("detail", ""))
 	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	detail.custom_minimum_size = Vector2(PANEL_WIDTH - 110.0, 0)
+	# v3's modules sit further in, past the cable's branches, so their text has less room.
+	detail.custom_minimum_size = Vector2(PANEL_WIDTH - (180.0 if UiPrefs.use_bdp_v3 else 110.0), 0)
 	col.add_child(detail)
 	return wrap
 
@@ -2078,6 +2565,9 @@ func _build_cost_to_produce(rows: Array) -> PanelContainer:
 	card.name = "CostToProduceCard"   # stable target for the tutorial coach spotlight
 	var vb := card.get_child(0) as VBoxContainer
 	vb.add_theme_constant_override("separation", DS.SP["SM"])
+	if UiPrefs.use_bdp_v3:
+		_v3_cost_gauges(card, vb, rows)
+		return card
 	for i in rows.size():
 		var r: Dictionary = rows[i]
 		if i > 0:
@@ -2114,6 +2604,132 @@ func _build_cost_to_produce(rows: Array) -> PanelContainer:
 		unit.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		line.add_child(unit)
 	return card
+
+## v3: each output's cost on a gauge set into the section's dark plate, the good's icon beside it. The
+## needle is the unit cost as a share of the market price, on a scale to twice it; the zones are the
+## cost's RAG bands (green under 90%, amber to 110%, red over) and the LED follows the zone. An unknown
+## cost leaves the needle down and the LED off. The needle swings from where it last read. To the right,
+## the unit cost on a mini screen in LED segments in its RAG colour, and the market price under it.
+const V3_GAUGE_SIZE := 160.0
+const V3_GAUGE_SCALE_PCT := 200.0
+## The gauge's bezel is this share of its render across, the room round it this share on each side;
+## its holder in the row is the share it keeps (the bezel and its shadow to the bottom-right).
+const V3_GAUGE_BEZEL := 709.0 / 1024.0
+const V3_GAUGE_ROOM := 150.0 / 1024.0
+const V3_GAUGE_HELD := 790.0 / 1024.0
+## The good's icon beside it is as tall as the bezel, frame and all.
+const V3_COST_ICON := int(V3_GAUGE_SIZE * V3_GAUGE_BEZEL - 2.0 * 7.0 / 1.875)
+## The hole a gauge is set into (layout.json gauge_socket), rendered for a gauge of this size.
+const V3_GAUGE_SOCKET: Texture2D = preload("res://assets/ui/bdp_v3/gauge_socket.png")
+const V3_GAUGE_SOCKET_AT := 160.0
+
+## The thin metal frame round a good's icon, the icon set below it (layout.json icon_well): how far the
+## render reaches beyond the opening, its 9-slice corner, and the opening's corner radius.
+const V3_WELL: Texture2D = preload("res://assets/ui/bdp_v3/icon_well.png")
+const V3_WELL_REACH := (12.0 + 7.0) / 1.875
+const V3_WELL_CORNER := (12.0 + 7.0 + 16.0) * 2.0 / 1.875
+const V3_WELL_RADIUS := 10.0 / 1.875
+
+## v3: sets a good's icon below a thin metal frame, its tile's corners following the frame's opening.
+## The frame goes over the art and under the quantity pill, if it has one.
+func _v3_set_in_well(icon: Control) -> void:
+	var tile := icon.get_child(0) as PanelContainer
+	if tile != null and tile.get_theme_stylebox("panel") is StyleBoxFlat:
+		var st := (tile.get_theme_stylebox("panel") as StyleBoxFlat).duplicate() as StyleBoxFlat
+		st.set_corner_radius_all(roundi(V3_WELL_RADIUS))
+		tile.add_theme_stylebox_override("panel", st)
+	var well := Control.new()
+	well.name = "IconWell"
+	well.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	well.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	well.set_anchors_preset(Control.PRESET_FULL_RECT)
+	well.draw.connect(func() -> void:
+		BdpV3Nine.paint(well, V3_WELL, Rect2(Vector2.ZERO, well.size).grow(V3_WELL_REACH), V3_WELL_CORNER))
+	well.resized.connect(well.queue_redraw)
+	icon.add_child(well)
+	icon.move_child(well, mini(2, icon.get_child_count() - 1))
+
+static func v3_cost_gauge_reading(unit_cost: float, market_price: float) -> Dictionary:
+	if unit_cost < 0.0 or market_price <= 0.0:
+		return {"value": 0.0, "known": false}
+	return {"value": clampf(unit_cost / market_price * 100.0 / V3_GAUGE_SCALE_PCT, 0.0, 1.0), "known": true}
+
+func _v3_cost_gauges(card: PanelContainer, vb: VBoxContainer, rows: Array) -> void:
+	var bare := StyleBoxEmpty.new()
+	bare.set_content_margin_all(4)
+	card.add_theme_stylebox_override("panel", bare)
+	card.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	var gauges: Array[Control] = []
+	# Each gauge is set into the section's dark plate: the card draws the hole cut for it underneath.
+	card.draw.connect(func() -> void:
+		var side := V3_GAUGE_SOCKET.get_size() / 2.0 * (V3_GAUGE_SIZE / V3_GAUGE_SOCKET_AT)
+		for g in gauges:
+			var centre: Vector2 = card.get_global_transform().affine_inverse() * g.get_global_transform() * (g.size * 0.5)
+			card.draw_texture_rect(V3_GAUGE_SOCKET, Rect2(centre - side * 0.5, side), false))
+	for r: Dictionary in rows:
+		var line := HBoxContainer.new()
+		line.add_theme_constant_override("separation", DS.SP["SM"])
+		vb.add_child(line)
+		var gid := str(r.get("good_id", ""))
+		var good_icon := UIHelpers.make_plain_good_icon(gid, Catalog.get_internal_name(gid), V3_COST_ICON)
+		UIHelpers.link_good_icon_to_encyclopedia(good_icon, gid)
+		_v3_set_in_well(good_icon)
+		line.add_child(good_icon)
+		var reading := v3_cost_gauge_reading(float(r.get("unit_cost", -1.0)), float(r.get("market_price", 0.0)))
+		var gauge: PanelGauge = PanelGauge.new()
+		gauge.name = "CostGauge"
+		gauge.gauge_size = V3_GAUGE_SIZE
+		gauge.green_percent = 90.0 / V3_GAUGE_SCALE_PCT * 100.0
+		gauge.amber_percent = 20.0 / V3_GAUGE_SCALE_PCT * 100.0
+		gauge.led_mode = PanelGauge.LedMode.AUTO if bool(reading.known) else PanelGauge.LedMode.OFF
+		var key := "cost:%s:%s" % [str(_current_building.get("instance_id", "")), str(r.get("name", ""))]
+		var target: float = reading.value
+		if _v3_last_readings.has(key):
+			gauge.value = float(_v3_last_readings[key])
+			gauge.ready.connect(func() -> void: gauge.value = target, CONNECT_ONE_SHOT)
+		else:
+			gauge.value = target
+		_v3_last_readings[key] = target
+		# The gauge's render has empty room round its bezel (and its shadow to the bottom-right); the row
+		# holds just the bezel and shadow, the gauge overhanging its holder by the rest.
+		var holder := Control.new()
+		holder.name = "GaugeHolder"
+		holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		holder.custom_minimum_size = Vector2.ONE * V3_GAUGE_SIZE * V3_GAUGE_HELD
+		holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		holder.add_child(gauge)
+		gauge.position = -Vector2.ONE * V3_GAUGE_SIZE * V3_GAUGE_ROOM
+		line.add_child(holder)
+		gauges.append(gauge)
+		gauge.item_rect_changed.connect(card.queue_redraw)
+		var col := VBoxContainer.new()
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		col.add_theme_constant_override("separation", 6)
+		line.add_child(col)
+		# The unit cost on a mini screen in LED segments, lit in its RAG colour, between £ and /unit.
+		var price := HBoxContainer.new()
+		price.name = "Price"
+		price.alignment = BoxContainer.ALIGNMENT_CENTER
+		price.add_theme_constant_override("separation", 4)
+		col.add_child(price)
+		var pound := _v3_metal_label("£", HORIZONTAL_ALIGNMENT_RIGHT)
+		pound.add_theme_font_size_override("font_size", 18)
+		price.add_child(pound)
+		var unit_cost := float(r.get("unit_cost", -1.0))
+		var led: Control = BdpV3Led.new()
+		led.set_figure("%.2f" % unit_cost if unit_cost >= 0.0 else "--.--", r.get("color", DS.PALETTE["TEXT"]))
+		price.add_child(led)
+		var per := _v3_metal_label("/unit", HORIZONTAL_ALIGNMENT_LEFT)
+		per.uppercase = false
+		per.add_theme_font_size_override("font_size", 13)
+		price.add_child(per)
+		var mkt := Label.new()
+		mkt.theme_type_variation = "Caption"
+		mkt.text = "Market price £%s" % BuildingStatus._fmt_upto2(float(r.get("market_price", 0.0)))
+		mkt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		mkt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		col.add_child(mkt)
 
 # --- modifiers (accordion above economics) --------------------------------------------------
 
@@ -2152,6 +2768,10 @@ func _add_modifiers_accordion(building: Dictionary, recipe: Dictionary) -> void:
 	for cat_key: Variant in by_cat:
 		total += (by_cat[cat_key] as Array).size()
 
+	if UiPrefs.use_bdp_v3:
+		_v3_modifiers(mod, total, by_cat)
+		return
+
 	# Section header doubling as the accordion trigger ("Section" is a Label
 	# variation, so a chevron Label + section Label in a clickable row).
 	var header := HBoxContainer.new()
@@ -2186,6 +2806,19 @@ func _add_modifiers_accordion(building: Dictionary, recipe: Dictionary) -> void:
 	card.visible = false
 	var vb := card.get_child(0) as VBoxContainer
 	vb.add_theme_constant_override("separation", 3)
+	_fill_modifiers(vb, total, by_cat)
+	_body.add_child(card)
+
+	header.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			header.accept_event()
+			card.visible = not card.visible
+			chevron.text = "▾" if card.visible else "▸")
+
+
+## The modifiers card's rows: each category's net figure, the only coloured one, and the modifiers that
+## make it up.
+func _fill_modifiers(vb: VBoxContainer, total: int, by_cat: Dictionary) -> void:
 	if total == 0:
 		var none := Label.new()
 		none.theme_type_variation = "Caption"
@@ -2241,14 +2874,101 @@ func _add_modifiers_accordion(building: Dictionary, recipe: Dictionary) -> void:
 			val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 			line.add_child(val)
 			vb.add_child(line)
-	_body.add_child(card)
 
-	header.gui_input.connect(func(e: InputEvent) -> void:
-		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-			header.accept_event()
-			card.visible = not card.visible
-			chevron.text = "▾" if card.visible else "▸")
 
+## v3's Modifiers, laid out as Inputs is on the control plate: a % sign raised white on the metal, the
+## heading in raised letters over an off-white key with the output modifier printed on it. With modifiers
+## active the key opens a white plastic sheet under the row, the rows printed on it in navy (the category
+## figures in darker greens and reds, to read on white); it starts open, latches down while open, and
+## stays as the player leaves it across rebuilds. With none the key reads None and opens nothing.
+const V3_SHEET_WHITE: Texture2D = preload("res://assets/ui/bdp_v3/sheet_white.png")
+const V3_SHEET_WHITE_MARGIN := 14.0 / 1.875
+const V3_SHEET_WHITE_CORNER := (14.0 + 40.0) * 2.0 / 1.875
+const V3_INK := {"ok": Color("#1d6b3a"), "warn": Color("#7a4a00"), "bad": Color("#8f1f19")}
+## The % sign and its swept shadow (layout.json mod_icon), in a frame this many layout pixels square.
+const V3_MOD_ICON: Texture2D = preload("res://assets/ui/bdp_v3/mod_icon.png")
+const V3_MOD_ICON_SHADOW: Texture2D = preload("res://assets/ui/bdp_v3/mod_icon_shadow.png")
+const V3_MOD_ICON_FRAME := 110.0
+var _v3_modifiers_open := true
+
+func _v3_modifiers(mod: Dictionary, total: int, by_cat: Dictionary) -> void:
+	var row := HBoxContainer.new()
+	row.name = "ModifiersRow"
+	row.set_meta("v3_section", "Modifiers")
+	row.add_theme_constant_override("separation", DS.SP["SM"])
+	var icon := Control.new()
+	icon.name = "ModifiersIcon"
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	icon.custom_minimum_size = Vector2.ONE * V3_MOD_ICON_FRAME / 1.875
+	icon.size_flags_vertical = Control.SIZE_SHRINK_END
+	icon.draw.connect(func() -> void:
+		icon.draw_texture_rect(V3_MOD_ICON_SHADOW, Rect2(Vector2.ZERO, icon.size), false)
+		icon.draw_texture_rect(V3_MOD_ICON, Rect2(Vector2.ZERO, icon.size), false))
+	row.add_child(icon)
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 4)
+	row.add_child(col)
+	var heading: Control = BdpV3Heading.new()
+	heading.text = "Modifiers"
+	col.add_child(heading)
+	var key: Control = BdpV3ModKey.new()
+	key.tooltip_text = "Everything bending this building's numbers"
+	col.add_child(key)
+	_body.add_child(row)
+	if total == 0:
+		key.summary = "None"
+		key.openable = false
+		_v3_money_gap()
+		return
+	var out_pct := float(mod.get("pct_f", float(mod.get("pct", 0))))
+	key.summary = "Output %s" % _mod_pct_text(out_pct)
+	key.summary_ink = _v3_ink(_mod_tone(out_pct, true))
+	key.set_open(_v3_modifiers_open)
+	var sheet := PanelContainer.new()
+	sheet.name = "ModifiersSheet"
+	sheet.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sheet.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	var pad := StyleBoxEmpty.new()
+	pad.content_margin_left = 14
+	pad.content_margin_right = 14
+	pad.content_margin_top = 10
+	pad.content_margin_bottom = 12
+	sheet.add_theme_stylebox_override("panel", pad)
+	sheet.draw.connect(func() -> void:
+		BdpV3Nine.paint(sheet, V3_SHEET_WHITE, Rect2(Vector2.ZERO, sheet.size).grow(V3_SHEET_WHITE_MARGIN), V3_SHEET_WHITE_CORNER))
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 3)
+	sheet.add_child(vb)
+	_fill_modifiers(vb, total, by_cat)
+	sheet.visible = _v3_modifiers_open
+	_body.add_child(sheet)
+	_v3_money_gap()
+	for l: Label in sheet.find_children("*", "Label", true, false):
+		l.add_theme_color_override("font_color", _v3_ink(l.get_theme_color("font_color")))
+	key.toggled.connect(func(open: bool) -> void:
+		_v3_modifiers_open = open
+		sheet.visible = open)
+
+## The space the money frame leaves after the modifiers.
+func _v3_money_gap() -> void:
+	var gap := Control.new()
+	gap.name = "ModifiersGap"
+	gap.custom_minimum_size = Vector2(0.0, V3_MONEY_GAP)
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_body.add_child(gap)
+
+## The ink for a colour the dark panel shows on white plastic: the semantic greens, ambers and reds
+## darkened to read on it, and everything else navy.
+static func _v3_ink(c: Color) -> Color:
+	if c.is_equal_approx(DS.PALETTE["OK"]):
+		return V3_INK["ok"]
+	if c.is_equal_approx(DS.PALETTE["WARN"]):
+		return V3_INK["warn"]
+	if c.is_equal_approx(DS.PALETTE["DANGER"]):
+		return V3_INK["bad"]
+	return BdpV3Plate.NAVY
 
 static func _mod_pct_text(pct: float) -> String:
 	return "%s%d%%" % ["+" if pct >= 0.0 else "−", absi(int(round(pct)))]
@@ -2293,8 +3013,22 @@ func _build_economics(econ: Dictionary) -> PanelContainer:
 	var warehousing := float(econ.get("warehousing_cost", 0.0))
 	if warehousing > 0.0:
 		vb.add_child(_metric("Warehousing / turn", "−£%.2f" % warehousing, DS.PALETTE["DANGER"], false))
-	# Carried costs and held stock: both are money or goods the player owns but cannot see on
-	# the tile, so they get a line here rather than living only in the sim.
+	var financing_per_turn := _add_carried_rows(vb)
+	# Carbon levy on this recipe's taxed inputs (only shown once the policy is in force).
+	var carbon_tax := float(econ.get("carbon_tax", 0.0))
+	if carbon_tax > 0.0:
+		vb.add_child(_metric("Carbon tax / turn", "−£%.2f" % carbon_tax, DS.PALETTE["DANGER"], false))
+	vb.add_child(HSeparator.new())
+	# Operations net (output − running costs) minus this building's own build financing, so the
+	# bottom line reflects the cash it actually contributes while its construction debt is live.
+	var net := float(econ.get("net", 0.0)) - financing_per_turn
+	vb.add_child(_metric("Net / turn", "%s£%.2f" % ["+" if net >= 0.0 else "−", absf(net)], DS.PALETTE["OK"] if net >= 0.0 else DS.PALETTE["DANGER"], true))
+	return card
+
+## Carried costs and held stock, both money or goods the player owns but cannot see on the tile, so they
+## get a line in the economics rather than living only in the sim: this building's loan repayment and
+## what is stored for it. Returns the repayment per turn.
+func _add_carried_rows(vb: VBoxContainer) -> float:
 	var iid_econ := str(_current_building.get("instance_id", ""))
 	# The REPAYMENT, not the outstanding tab: what it takes a turn and how many turns are
 	# left to run. The total is still there to read — it is this figure
@@ -2319,16 +3053,199 @@ func _build_economics(econ: Dictionary) -> PanelContainer:
 	var held := MatchState.ghost_holding_units(iid_econ)
 	if held > 0:
 		vb.add_child(_metric("Stored for this building", "%d units" % held, DS.PALETTE["TEXT_MUTED"], false))
-	# Carbon levy on this recipe's taxed inputs (only shown once the policy is in force).
-	var carbon_tax := float(econ.get("carbon_tax", 0.0))
-	if carbon_tax > 0.0:
-		vb.add_child(_metric("Carbon tax / turn", "−£%.2f" % carbon_tax, DS.PALETTE["DANGER"], false))
-	vb.add_child(HSeparator.new())
-	# Operations net (output − running costs) minus this building's own build financing, so the
-	# bottom line reflects the cash it actually contributes while its construction debt is live.
-	var net := float(econ.get("net", 0.0)) - financing_per_turn
-	vb.add_child(_metric("Net / turn", "%s£%.2f" % ["+" if net >= 0.0 else "−", absf(net)], DS.PALETTE["OK"] if net >= 0.0 else DS.PALETTE["DANGER"], true))
+	return financing_per_turn
+
+## v3's economics (BuildingEconomics.per_turn), on the frame's steel:
+##   Value added in production   its output less inputs, labour and upkeep; opens to show each;
+##   Transport costs             bringing its inputs in and taking its output to market; opens to show
+##                               each side's cost by how it goes;
+##   Net Value Added             the first less the second;
+## every figure on a mini screen in LED segments after a printed £ (results green, or red below zero;
+## costs red); then its revenue and its costs as two bars on one scale; then a lamp for each side's
+## transport, with its icon, lit by transport's share of that side's goods (or flagged free: a mine's
+## inputs, a power plant's output). Loan repayments and stored goods follow, as in v2.
+const V3_ECON_ICON_PX := 30.0
+const V3_ECON_INDENT := 22.0
+## A row nested in another opens from a smaller key.
+const V3_NESTED_KEY_SCALE := 0.8
+## The space the money frame leaves after the modifiers and after the economics.
+const V3_MONEY_GAP := 14.0
+## Which of v3's economics rows are open, kept across rebuilds.
+var _v3_econ_open := {}
+## The digits every economics screen shows while they are built, so they are one width and their £
+## signs line up.
+var _v3_led_digits := 0
+
+func _build_economics_v3(econ: Dictionary) -> PanelContainer:
+	var card := _make_card()
+	card.name = "EconomicsV3"
+	var bare := StyleBoxEmpty.new()
+	bare.set_content_margin_all(4)
+	bare.content_margin_bottom = 4 + V3_MONEY_GAP
+	card.add_theme_stylebox_override("panel", bare)
+	var vb := card.get_child(0) as VBoxContainer
+	vb.add_theme_constant_override("separation", DS.SP["MD"])
+	var ok: Color = DS.PALETTE["OK"]
+	var bad: Color = DS.PALETTE["DANGER"]
+	var made: Array = [["Output (if sold)" if not bool(econ.get("sold", true)) else "Output", float(econ.output_value), ok]]
+	if not bool(econ.get("inputs_free", false)):
+		made.append(["Inputs", float(econ.input_value), bad])
+	made.append(["Labour", float(econ.labour), bad])
+	made.append(["Upkeep", float(econ.upkeep), bad])
+	var va := float(econ.value_added)
+	# Transport opens to each side, and each side to its goods: every good's freight by how it goes,
+	# and its port charge, on their own rows.
+	var sides: Array = []
+	for side in [["Inputs", "inputs", "transport_in"], ["Outputs", "outputs", "transport_out"]]:
+		var goods: Array = []
+		for line: Dictionary in econ.get(side[1], []):
+			var gid := str(line.get("good_id", ""))
+			for m: Dictionary in BuildingEconomics.line_methods(line):
+				goods.append(["%s · %s" % ["Power" if gid == "power" else Catalog.get_display_name(gid), m.name], float(m.cost), bad])
+		if not goods.is_empty():
+			sides.append([side[0], "transport_" + side[1], float(econ[side[2]]), goods])
+	var transport := float(econ.transport)
+	var figures: Array = [va, transport, float(econ.net_value_added)]
+	for part: Array in made:
+		figures.append(float(part[1]))
+	for sd: Array in sides:
+		figures.append(float(sd[2]))
+		for part: Array in sd[3]:
+			figures.append(float(part[1]))
+	_v3_led_digits = 0
+	for f: float in figures:
+		_v3_led_digits = maxi(_v3_led_digits, BdpV3Led.cells_for("%.2f" % f).size())
+	var moved: Array = []
+	for sd: Array in sides:
+		moved.append(_v3_econ_accordion("Transport" + str(sd[0]), str(sd[1]), str(sd[0]), float(sd[2]), bad, sd[3], V3_NESTED_KEY_SCALE))
+	vb.add_child(_v3_econ_accordion("ValueAdded", "value_added", "Value added in production", va, ok if va >= 0.0 else bad, made))
+	vb.add_child(_v3_econ_accordion("Transport", "transport", "Transport costs", transport, bad if transport > 0.0 else ok, moved))
+	var nva := float(econ.net_value_added)
+	var net := _v3_econ_line("Net Value Added", nva, ok if nva >= 0.0 else bad, true)
+	net.name = "NetValueAdded"
+	net.tooltip_text = "Before tax"
+	vb.add_child(net)
+	var bar: Control = BdpV3ValueBar.new()
+	bar.set_values(econ)
+	vb.add_child(bar)
+	var lamps := HBoxContainer.new()
+	lamps.name = "TransportLamps"
+	lamps.add_theme_constant_override("separation", DS.SP["MD"])
+	vb.add_child(lamps)
+	lamps.add_child(_v3_transport_lamp("inputs", str(econ.lamp_in), float(econ.transport_in),
+		"Inputs free" if bool(econ.inputs_free) else ""))
+	lamps.add_child(_v3_transport_lamp("outputs", str(econ.lamp_out), float(econ.transport_out),
+		"Output free to ship" if bool(econ.output_free_to_ship) else ""))
+	_add_carried_rows(vb)
 	return card
+
+## One of v3's economics figures: its name, a printed £ and the figure on an LED screen in `colour`.
+func _v3_econ_line(title: String, figure: float, colour: Color, strong: bool = false) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", DS.SP["SM"])
+	var t := Label.new()
+	t.theme_type_variation = "Body" if strong else "Caption"
+	t.text = title
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if strong:
+		t.add_theme_font_size_override("font_size", 17)
+	row.add_child(t)
+	row.add_child(_v3_money_led(figure, colour, _v3_led_digits))
+	return row
+
+## A £ figure, as the cost to produce shows it: a printed £ and the figure on an LED screen, showing at
+## least `digits` digits (blank ones leading) so a column of them is one width.
+func _v3_money_led(figure: float, colour: Color, digits := 0) -> HBoxContainer:
+	var hb := HBoxContainer.new()
+	hb.name = "MoneyLed"
+	hb.add_theme_constant_override("separation", 4)
+	hb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var pound := _v3_metal_label("£", HORIZONTAL_ALIGNMENT_RIGHT)
+	pound.add_theme_font_size_override("font_size", 18)
+	hb.add_child(pound)
+	var led: Control = BdpV3Led.new()
+	var text := "%.2f" % figure
+	led.set_figure(" ".repeat(maxi(0, digits - BdpV3Led.cells_for(text).size())) + text, colour)
+	hb.add_child(led)
+	return hb
+
+## One of v3's economics rows that opens: a wide worn-white key with its name printed in navy and a
+## chevron (BdpV3ModKey, as Modifiers has), its figure on a screen beside it; the key latches down while
+## the row is open, showing the figures that make it, indented under it, each on its own screen. A part
+## is [name, figure, colour], or a row that opens in its turn (built by this, with a smaller key). With
+## nothing to show under it, it is a plain row.
+func _v3_econ_accordion(node_name: String, key: String, title: String, figure: float, colour: Color, parts: Array, key_scale := 1.0) -> VBoxContainer:
+	var box := VBoxContainer.new()
+	box.name = node_name
+	box.add_theme_constant_override("separation", DS.SP["SM"])
+	if parts.is_empty():
+		var plain := _v3_econ_line(title, figure, colour, true)
+		plain.name = "Head"
+		box.add_child(plain)
+		return box
+	var head := HBoxContainer.new()
+	head.name = "Head"
+	head.add_theme_constant_override("separation", DS.SP["MD"])
+	box.add_child(head)
+	var opener: Control = BdpV3ModKey.new()
+	opener.summary = title
+	opener.key_scale = key_scale
+	head.add_child(opener)
+	head.add_child(_v3_money_led(figure, colour, _v3_led_digits))
+	var nested := VBoxContainer.new()
+	nested.name = "Parts"
+	nested.add_theme_constant_override("separation", 4)
+	var indent := MarginContainer.new()
+	indent.add_theme_constant_override("margin_left", roundi(V3_ECON_INDENT))
+	indent.add_child(nested)
+	box.add_child(indent)
+	for p: Variant in parts:
+		nested.add_child(p if p is Control else _v3_econ_line(str(p[0]), float(p[1]), p[2]))
+	indent.visible = bool(_v3_econ_open.get(key, false))
+	opener.set_open(indent.visible)
+	opener.toggled.connect(func(open: bool) -> void:
+		indent.visible = open
+		_v3_econ_open[key] = open)
+	return box
+
+## A transport lamp: the side's raised icon, its lamp, and what its transport costs a turn, or a flag
+## when that side travels free.
+func _v3_transport_lamp(side: String, tone: String, cost: float, free_flag: String) -> HBoxContainer:
+	var hb := HBoxContainer.new()
+	hb.name = "Lamp" + side.capitalize()
+	hb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hb.add_theme_constant_override("separation", 6)
+	var icon := Control.new()
+	icon.name = "Icon"
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	icon.custom_minimum_size = Vector2.ONE * V3_ECON_ICON_PX
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var face: Texture2D = load("res://assets/ui/bdp_v3/econ_icon_%s.png" % side)
+	var shadow: Texture2D = load("res://assets/ui/bdp_v3/econ_icon_%s_shadow.png" % side)
+	icon.draw.connect(func() -> void:
+		icon.draw_texture_rect(shadow, Rect2(Vector2.ZERO, icon.size), false)
+		icon.draw_texture_rect(face, Rect2(Vector2.ZERO, icon.size), false))
+	hb.add_child(icon)
+	var lamp := BdpV3Lamp.new()
+	lamp.name = "TransportLamp"
+	lamp.lamp_scale = V3_DIAG_LAMP_SCALE
+	lamp.set_tone(tone)
+	hb.add_child(lamp)
+	var col := VBoxContainer.new()
+	col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	col.add_theme_constant_override("separation", 0)
+	hb.add_child(col)
+	col.add_child(_v3_metal_label("%s transport" % side.capitalize(), HORIZONTAL_ALIGNMENT_LEFT))
+	var value := Label.new()
+	value.theme_type_variation = "Caption"
+	value.text = free_flag if free_flag != "" else "%s a turn" % _money(cost)
+	col.add_child(value)
+	return hb
+
+static func _money(v: float) -> String:
+	return "%s£%.2f" % ["−" if v < 0.0 else "", absf(v)]
 
 func _metric(key: String, value: String, value_color: Color, strong: bool) -> HBoxContainer:
 	var hb := HBoxContainer.new()
@@ -2365,6 +3282,8 @@ func _build_power_line(pw: Dictionary) -> PanelContainer:
 # --- inbound shipments ---------------------------------------------------------------------
 
 func _build_shipments(ships: Array) -> PanelContainer:
+	if UiPrefs.use_bdp_v3:
+		return _build_shipments_v3(ships)
 	var card := _make_card()
 	var vb := card.get_child(0) as VBoxContainer
 	vb.add_theme_constant_override("separation", DS.SP["MD"])
@@ -2408,6 +3327,87 @@ func _build_shipments(ships: Array) -> PanelContainer:
 			sub.text = "no inbound shipment scheduled"
 		col.add_child(sub)
 	return card
+
+## v3's inbound shipments: a bay with room for six goods, two to a row, each good's icon and a lamp
+## beside it, and no text. The goods fill the bottom row first and the rows above it after; the bay's
+## rolling door comes down over the rows no good needs (two with one or two inputs, one with three or
+## four) and with every row in use it stays rolled up in its housing, so the bay is the same height
+## whatever the recipe. The lamp is green with enough in stock to run, amber when short with something on
+## its way (an inbound shipment or the logistics intermediary), red when short with nothing coming. Each
+## icon's hover gives the good, what is stored, what a run needs and how it is supplied, and still opens
+## the encyclopedia.
+const V3_SHIP_ICON := 96
+const V3_SHIP_ROWS := 3
+const V3_SHIP_GAP := 12
+const V3_SHIP_LAMP_SCALE := 0.62
+
+## How many of the bay's rows the door covers for `goods` goods.
+static func v3_door_rows(goods: int) -> int:
+	return maxi(0, V3_SHIP_ROWS - ceili(goods / 2.0))
+
+static func v3_stock_tone(stored: int, need: int, inbound: int, on_intermediary: bool) -> String:
+	if stored >= need:
+		return "ok"
+	return "warn" if inbound > 0 or on_intermediary else "bad"
+
+func _build_shipments_v3(ships: Array) -> PanelContainer:
+	var card := _make_card()
+	card.name = "ShipmentsV3"
+	var bare := StyleBoxEmpty.new()
+	bare.set_content_margin_all(4)
+	card.add_theme_stylebox_override("panel", bare)
+	var vb := card.get_child(0) as VBoxContainer
+	vb.add_theme_constant_override("separation", V3_SHIP_GAP)
+	var door: Control = BdpV3Door.new()
+	door.reach = BdpV3Section.PADDING + 4.0
+	door.custom_minimum_size.y = BdpV3Door.rolled_up_height() + v3_door_rows(ships.size()) * (V3_SHIP_ICON + V3_SHIP_GAP)
+	vb.add_child(door)
+	var chunks: Array = []
+	for i in range(0, ships.size(), 2):
+		chunks.append(ships.slice(i, i + 2))
+	for i in range(chunks.size() - 1, -1, -1):
+		vb.add_child(_v3_ship_row(chunks[i]))
+	return card
+
+func _v3_ship_row(goods: Array) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", DS.SP["MD"])
+	row.custom_minimum_size.y = V3_SHIP_ICON
+	var recipe: Dictionary = Catalog.get_recipe(str(_current_building.get("recipe_id", "")))
+	for i in 2:
+		var cell := HBoxContainer.new()
+		cell.name = "ShipmentCell"
+		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cell.alignment = BoxContainer.ALIGNMENT_CENTER
+		cell.add_theme_constant_override("separation", DS.SP["SM"])
+		row.add_child(cell)
+		if i >= goods.size():
+			continue   # an odd good out keeps its half of the row
+		cell.set_meta("v3_shipment_cell", true)   # Godot renames same-named siblings; this survives it
+		var s: Dictionary = goods[i]
+		var gid := str(s.get("good_id", ""))
+		var stored := int(s.get("stored", 0))
+		var need := int(s.get("need", 0))
+		var inbound := int(s.get("inbound", 0))
+		var supply := BuildingEconomics.input_supply(_current_building, recipe, gid, str(s.get("from", "")))
+		var icon := _good_icon_pill(gid, str(s.get("internal", "")), need, V3_SHIP_ICON, -1, 0, true)
+		icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		_v3_set_in_well(icon)
+		var lines := PackedStringArray(["Stored: %d" % stored, "Needed to run: %d" % need, "Supplied by: %s" % supply])
+		if inbound > 0:
+			var eta := int(s.get("eta_turns", -1))
+			lines.append("Inbound: %d, %s" % [inbound, "next turn" if eta <= 1 else "in %d turns" % eta])
+		else:
+			lines.append("Nothing inbound")
+		icon.detail_lines = lines
+		cell.add_child(icon)
+		var lamp := BdpV3Lamp.new()
+		lamp.name = "StockLamp"
+		lamp.lamp_scale = V3_SHIP_LAMP_SCALE
+		lamp.set_tone(v3_stock_tone(stored, need, inbound, supply == "Logistics intermediary"))
+		lamp.tooltip_text = "Supplied by: %s" % supply
+		cell.add_child(lamp)
+	return row
 
 # --- routing (read-only summary + map highlight) -------------------------------------------
 
@@ -3089,7 +4089,9 @@ func _route_kind_for_title(title: String) -> String:
 
 # --- labour (headcount, not per turn — the wage is the per-turn figure) ---------------------
 
-func _build_labour(lab: Dictionary) -> HBoxContainer:
+func _build_labour(lab: Dictionary) -> Container:
+	if UiPrefs.use_bdp_v3:
+		return _build_labour_v3(lab)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", DS.SP["SM"])
 	row.add_child(_labour_card("Unskilled", int(lab.get("unskilled", 0)), DS.PALETTE["TEXT_MUTED"]))
@@ -3122,6 +4124,65 @@ func _build_labour(lab: Dictionary) -> HBoxContainer:
 	cv.add_child(csub)
 	row.add_child(cost_card)
 	return row
+
+## v3's Labour and Wages, on the frame's steel: a factory door for each kind of worker, its name over
+## it and its headcount engraved on the kick plate, the window lit when any are employed; then the
+## labour cost and the number of workers on drum counters, each labelled beside it. The counters roll
+## from what they last read.
+func _build_labour_v3(lab: Dictionary) -> VBoxContainer:
+	var box := VBoxContainer.new()
+	box.name = "LabourV3"
+	box.add_theme_constant_override("separation", DS.SP["MD"])
+	var doors := HBoxContainer.new()
+	doors.name = "Doors"
+	doors.add_theme_constant_override("separation", DS.SP["SM"])
+	box.add_child(doors)
+	for pair in [["Unskilled", "unskilled"], ["Skilled", "skilled"], ["Highly skilled", "highly"]]:
+		var col := VBoxContainer.new()
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		col.add_theme_constant_override("separation", 2)
+		doors.add_child(col)
+		col.add_child(_v3_metal_label(pair[0], HORIZONTAL_ALIGNMENT_CENTER))
+		var door: Control = BdpV3LabourDoor.new()
+		door.count = int(lab.get(pair[1], 0))
+		col.add_child(door)
+	var meters := HBoxContainer.new()
+	meters.add_theme_constant_override("separation", DS.SP["SM"])
+	meters.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_child(meters)
+	var iid := str(_current_building.get("instance_id", ""))
+	var cost := float(lab.get("cost", 0.0))
+	var pound := _v3_metal_label("£", HORIZONTAL_ALIGNMENT_RIGHT)
+	pound.add_theme_font_size_override("font_size", 20)
+	meters.add_child(pound)
+	meters.add_child(_v3_counter("labour:%s:cost" % iid, cost, 2, BdpV3Counter.drums_for(cost, 2, 4)))
+	meters.add_child(_v3_metal_label("per turn", HORIZONTAL_ALIGNMENT_LEFT))
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(DS.SP["MD"], 0)
+	meters.add_child(gap)
+	var total := float(lab.get("total", 0))
+	meters.add_child(_v3_counter("labour:%s:workers" % iid, total, 0, BdpV3Counter.drums_for(total, 0, 3)))
+	meters.add_child(_v3_metal_label("workers", HORIZONTAL_ALIGNMENT_LEFT))
+	return box
+
+## A label printed on the steel: capitals, off-white, Barlow Condensed.
+func _v3_metal_label(text: String, align: HorizontalAlignment) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.uppercase = true
+	l.add_theme_font_override("font", BdpV3Plate.FONT_SEMI)
+	l.add_theme_font_size_override("font_size", 15)
+	l.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
+	l.horizontal_alignment = align
+	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return l
+
+func _v3_counter(key: String, v: float, decimal_count: int, drum_count: int) -> Control:
+	var counter: BdpV3Counter = BdpV3Counter.new()
+	counter.configure(drum_count, decimal_count)
+	counter.set_value(v, float(_v3_last_readings[key]) if _v3_last_readings.has(key) else NAN)
+	_v3_last_readings[key] = v
+	return counter
 
 func _labour_card(label: String, count: int, accent: Color) -> PanelContainer:
 	var card := PanelContainer.new()
@@ -3159,6 +4220,17 @@ func _make_section(text: String, right_text: String = "") -> Control:
 	s.text = text
 	s.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hb.add_child(s)
+	if UiPrefs.use_bdp_v3 and BdpV3Heading.can_show(text):
+		# v3: the heading in raised white letters, as INPUTS and OUTPUTS are on the control plate.
+		var raised: Control = BdpV3Heading.new()
+		raised.text = text
+		hb.add_child(raised)
+		hb.move_child(raised, 0)
+		var room := Control.new()
+		room.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		room.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		hb.add_child(room)
+		s.visible = false
 	if right_text != "":
 		var r := Label.new()
 		r.theme_type_variation = "Caption"
