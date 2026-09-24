@@ -1442,6 +1442,7 @@ const Heading := preload("res://scripts/bdp_v3_heading.gd")
 const SmallKey := preload("res://scripts/bdp_v3_key.gd")
 const ModKey := preload("res://scripts/bdp_v3_mod_key.gd")
 const Toggle := preload("res://scripts/bdp_v3_toggle.gd")
+const Section := preload("res://scripts/bdp_v3_section.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
 ## The flyouts that are DS2 steel sheets; the others keep their card until they are decided.
 const DS2_SHEET_FLYOUTS := ["treasury", "power"]
@@ -2925,7 +2926,7 @@ func _open_fly(id: String) -> void:
 		"treasury":
 			# This is the compact money mini-panel. Keep it distinct from the
 			# full Money panel, which the buttons below open.
-			_fly_panel.custom_minimum_size = Vector2(560 if ds2_sheet else 510, 0)
+			_fly_panel.custom_minimum_size = Vector2(600 if ds2_sheet else 510, 0)
 			if ds2_sheet:
 				vb.add_child(_ds2_sheet_head("Treasury"))
 				_ds2_fly_treasury(vb)
@@ -3619,13 +3620,28 @@ func _ds2_key_button(text: String, button_name: String) -> Button:
 	return b
 
 
-## The Treasury on its steel sheet: the same figures and actions as the flyout, on screens and keys.
+## A darker plate on the sheet for one group of figures: Building Detail's section frame in its dark style
+## (a worn steel rim with its screws round a dark metal plate, cropped, not stretched). Returns where its
+## rows go.
+func _ds2_sub_plate(parent: Control, plate_name: String) -> VBoxContainer:
+	var plate: MarginContainer = Section.new()
+	plate.name = plate_name
+	plate.set("style", "dark")
+	parent.add_child(plate)
+	var rows: VBoxContainer = plate.get("content")
+	rows.add_theme_constant_override("separation", 8)
+	return rows
+
+
+## The Treasury on its steel sheet: the same figures and actions as the flyout, on screens and keys, in
+## three darker plates (cash, the turn's money in and out, loans) with the actions below them.
 func _ds2_fly_treasury(vb: VBoxContainer) -> void:
 	var s: Dictionary = Production.last_turn_summary
 	var net := Production.cash_change_of(s)
-	var body := VBoxContainer.new()
-	body.add_theme_constant_override("separation", 8)
-	vb.add_child(body)
+	var sheet := VBoxContainer.new()
+	sheet.add_theme_constant_override("separation", 10)
+	vb.add_child(sheet)
+	var body := _ds2_sub_plate(sheet, "FlyPlateCash")
 	var runway := _runway_turns()
 	var main_figures := [MatchState.money, net, LoanState.available_capacity()]
 	var digits := 0
@@ -3646,6 +3662,7 @@ func _ds2_fly_treasury(vb: VBoxContainer) -> void:
 	preload("res://scripts/cash_commitments_view.gd").update_link(upcoming, preload("res://scripts/cash_commitments.gd").snapshot())
 	body.add_child(upcoming)
 	# Cash in and costs, side by side, on smaller screens.
+	body = _ds2_sub_plate(sheet, "FlyPlateTurn")
 	var revenue := [
 		["Goods sold", float(s.get("goods_sales_revenue", 0.0))],
 		["Power sold", float(s.get("power_sales_revenue", 0.0))],
@@ -3691,6 +3708,7 @@ func _ds2_fly_treasury(vb: VBoxContainer) -> void:
 		columns.add_child(column)
 	body.add_child(columns)
 	# Loans.
+	body = _ds2_sub_plate(sheet, "FlyPlateLoans")
 	body.add_child(_ds2_caption("Loans"))
 	for l in LoanState.loans:
 		var lrow := _ds2_money_row(LoanState.loan_label(l), float(l.get("principal_remaining", 0.0)), DS2_CASH_COLOUR, digits, "", DS2_SMALL_LED)
@@ -3716,7 +3734,7 @@ func _ds2_fly_treasury(vb: VBoxContainer) -> void:
 		var tab := str(spec[2])
 		key.pressed.connect(func() -> void: _open_money_panel_tab(tab))
 		actions.add_child(key)
-	body.add_child(actions)
+	sheet.add_child(actions)
 
 
 ## Power on its steel sheet: where each kind of generation's power goes, on Building Detail's slide

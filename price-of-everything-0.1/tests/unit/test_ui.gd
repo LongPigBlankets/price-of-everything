@@ -1260,7 +1260,8 @@ func _test_topbar_ds2_strip() -> void:
 	await get_tree().process_frame
 	var fly: Control = bar.get("_fly_panel")
 	var names_ok := fly != null and fly.name == "Flyout_treasury"
-	for n: String in ["FlyRowCash", "FlyRowNet", "FlyTakeLoanButton", "FlyBalanceButton", "FlyChartsButton", "FlyUpcomingButton"]:
+	for n: String in ["FlyRowCash", "FlyRowNet", "FlyTakeLoanButton", "FlyBalanceButton", "FlyChartsButton", "FlyUpcomingButton",
+			"FlyPlateCash", "FlyPlateTurn", "FlyPlateLoans"]:
 		names_ok = names_ok and fly.find_child(n, true, false) != null
 	_check(names_ok and fly.find_child("FlyTakeLoanButton", true, false) is Button and fly.find_child("BdpV3ModKey", true, false) != null,
 		"top bar ds2: the Treasury sheet keeps its named rows and buttons, the buttons on keycaps")
