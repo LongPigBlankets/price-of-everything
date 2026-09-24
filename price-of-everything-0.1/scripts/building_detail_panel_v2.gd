@@ -2351,22 +2351,24 @@ func _v3_diag_module() -> PanelContainer:
 		BdpV3Nine.paint(module, V3_DIAG_MODULE, Rect2(Vector2.ZERO, module.size).grow(V3_DIAG_MODULE_MARGIN), V3_DIAG_MODULE_CORNER))
 	return module
 
-## v3: the diagnostics' Visual / Text switch, moulded into the case beside the heading.
+## v3: the diagnostics' Visual / Text switch, moulded into the case beside the heading, its two sides
+## named in the headings' raised letters.
 func _v3_view_switch() -> HBoxContainer:
 	var hb := HBoxContainer.new()
 	hb.name = "ViewSwitch"
 	hb.add_theme_constant_override("separation", 6)
 	hb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	for pair in [["Visual", HORIZONTAL_ALIGNMENT_RIGHT], [null, 0], ["Text", HORIZONTAL_ALIGNMENT_LEFT]]:
-		if pair[0] == null:
+	for side in ["Visual", "", "Text"]:
+		if side == "":
 			var sw: Control = BdpV3Toggle.new()
 			sw.set_right(not _v3_diag_visual)
 			sw.toggled.connect(func(right: bool) -> void: _v3_diag_visual = not right)
 			hb.add_child(sw)
 		else:
-			var l := _v3_metal_label(str(pair[0]), pair[1])
-			l.add_theme_font_size_override("font_size", 13)
-			hb.add_child(l)
+			var raised: Control = BdpV3Heading.new()
+			raised.name = "Switch" + side
+			raised.text = side
+			hb.add_child(raised)
 	return hb
 
 func _diag_head_text() -> String:

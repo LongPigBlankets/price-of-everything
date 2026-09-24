@@ -821,8 +821,9 @@ func _test_bdp_v3_panel() -> void:
 	var raised: Node = diag_heading.find_child("BdpV3Heading", false, false) if diag_heading != null else null
 	var shown_texts: Array = diag_heading.find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.visible).map(func(l: Label) -> String: return l.text) if diag_heading != null else []
 	_check(switch != null and switch.find_child("BdpV3Toggle", false, false) != null and switch.find_child("BdpV3Toggle", false, false).right
-		and not shown_texts.has("always shown") and shown_texts.has("Visual") and shown_texts.has("Text"),
-		"bdp v3: the diagnostics heading has a Visual / Text switch set to Text, not 'always shown' (%s)" % ", ".join(shown_texts))
+		and not shown_texts.has("always shown") and switch.find_child("SwitchVisual", false, false) != null
+		and switch.find_child("SwitchVisual", false, false).text == "VISUAL" and switch.find_child("SwitchText", false, false) != null,
+		"bdp v3: the diagnostics heading has a Visual / Text switch set to Text, lettered as the headings, not 'always shown' (%s)" % ", ".join(shown_texts))
 	_check(raised != null and raised.letter_count() == "DIAGNOSTICS".length(),
 		"bdp v3: section headings are set in raised letters like INPUTS and OUTPUTS (%d)" % (raised.letter_count() if raised != null else -1))
 	var ships_card: Control = panel.find_child("ShipmentsV3", true, false)
