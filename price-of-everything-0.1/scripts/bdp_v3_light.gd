@@ -62,6 +62,7 @@ void fragment() {
 static var _shade: ShaderMaterial
 static var _text: ShaderMaterial
 static var _glow: ShaderMaterial
+static var _emissive: ShaderMaterial
 
 
 static func _material(code: String) -> ShaderMaterial:
@@ -89,6 +90,15 @@ static func text_material() -> ShaderMaterial:
 		_text = _material(_GIVE_BACK)
 		_text.set_shader_parameter("give_back", TEXT_GIVE_BACK)
 	return _text
+
+
+## Shared by what gives its own light, drawn normally (LED segments): all of the overlay's shade is given
+## back, so the lamp doesn't dim it.
+static func emissive_material() -> ShaderMaterial:
+	if _emissive == null:
+		_emissive = _material(_GIVE_BACK)
+		_emissive.set_shader_parameter("give_back", 1.0)
+	return _emissive
 
 
 ## Shared by the glows (drawn additively).

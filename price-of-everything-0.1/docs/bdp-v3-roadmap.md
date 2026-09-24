@@ -204,6 +204,9 @@ Decided later on 24 September 2026:
 - Modifiers become a white keycap with a % sign, opening a white plastic sheet with navy text.
 - Cost to produce gets its own dark metal plate with the gauges set into it, and each gauge the good's icon to its left, set below a thin metal frame. Inbound shipments get the same plate and frames, their quantity pills inside the icons.
 - Modifiers follow the Inputs row: the % sign raised white on the metal, the text on a raised white keycap that opens the sheet.
+- Cost rows: the icon as tall as the gauge, no good name, no percentage; the unit cost on a mini screen in LED segments with a smaller /unit, and "Market price £Y" under it.
+- Close and Location are each a line of the title tall.
+- The power line is left out; the diagnostics say the same.
 
 Still open:
 

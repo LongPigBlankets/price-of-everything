@@ -32,6 +32,15 @@ var _para := TextParagraph.new()
 var _letters: Array = []
 
 
+## A line of the title: its height, and the distance from one line to the next.
+static func line_height() -> float:
+	return FONT.get_height(FONT_SIZE)
+
+
+static func line_pitch() -> float:
+	return line_height() + LINE_SPACING
+
+
 static func atlas() -> Dictionary:
 	if _atlas.is_empty():
 		var f := FileAccess.open(LAYOUT_PATH, FileAccess.READ)

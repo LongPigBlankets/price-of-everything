@@ -36,6 +36,7 @@ const BdpV3Toggle := preload("res://scripts/bdp_v3_toggle.gd")
 const BdpV3Door := preload("res://scripts/bdp_v3_door.gd")
 const BdpV3LabourDoor := preload("res://scripts/bdp_v3_labour_door.gd")
 const BdpV3ModKey := preload("res://scripts/bdp_v3_mod_key.gd")
+const BdpV3Led := preload("res://scripts/bdp_v3_led.gd")
 ## v3 frames these sections (heading and content together); the value names the frame, so sections
 ## sharing a name share one frame (Modifiers and Economics).
 const V3_FRAMED_SECTIONS := {
@@ -57,6 +58,8 @@ const TOP_BAR_CLEARANCE := 114.0   # clears the top bar AND the briefing notch h
 const BOTTOM_CLEARANCE := 110.0  # fallback: keep clear of the bottom menu when no tile panel to match
 const PANEL_WIDTH := 460.0
 const CONTENT_MARGIN := 26
+## The width v3's header keeps for its keys.
+const V3_KEY_COLUMN := 96.0 / 1.875
 ## The backing's rounded corner, in pixels (panel_backing: 4 + 16 layout pixels), and its brass trim's
 ## width in layout pixels (layout.json panel_backing).
 const BACKING_CORNER := 10.5
@@ -184,15 +187,25 @@ func _build_shell() -> void:
 	_close_button.custom_minimum_size = Vector2(32, 32)
 	_close_button.pressed.connect(_hide_panel)
 	header.add_child(_close_button)
-	# v3's keys: Close, and Location in the row just below it.
+	# v3's keys: Close beside the title's first line and Location beside its second, each a line tall.
+	# The keys' renders carry room round them for their shadows, so the controls overlap and sit a little
+	# above the title's top.
+	var line := BdpV3Title.line_height()
+	var key_side := roundf(BdpV3Key.control_side(line))
+	var key_lift := MarginContainer.new()
+	key_lift.name = "HeaderKeys"
+	key_lift.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	key_lift.add_theme_constant_override("margin_top", roundi((line - key_side) * 0.5))
+	# The header keeps the width it always had for the keys; the rest of a key's render is shadow room.
+	key_lift.add_theme_constant_override("margin_right", mini(0, roundi(V3_KEY_COLUMN - key_side)))
+	header.add_child(key_lift)
 	var keys := VBoxContainer.new()
-	keys.add_theme_constant_override("separation", -12)   # the keys' renders carry room for their shadows
-	keys.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	header.add_child(keys)
-	_close_key = BdpV3Key.make("close")
+	keys.add_theme_constant_override("separation", roundi(BdpV3Title.line_pitch() - key_side))
+	key_lift.add_child(keys)
+	_close_key = BdpV3Key.make("close", line)
 	_close_key.pressed.connect(_hide_panel)
 	keys.add_child(_close_key)
-	_pin_key = BdpV3Key.make("pin")
+	_pin_key = BdpV3Key.make("pin", line)
 	_pin_key.pressed.connect(_on_pin_pressed)
 	keys.add_child(_pin_key)
 
@@ -410,8 +423,9 @@ func _rebuild(building: Dictionary) -> void:
 			_body.add_child(_make_section("Breakdown"))
 			_body.add_child(breakdown)
 
+	# v3 leaves the power line out: the diagnostics say the same.
 	var pw := BuildingReadout.power(building, recipe)
-	if bool(pw.get("needs", false)):
+	if bool(pw.get("needs", false)) and not UiPrefs.use_bdp_v3:
 		_body.add_child(_build_power_line(pw))
 
 	# inbound shipments
@@ -2476,13 +2490,20 @@ func _build_cost_to_produce(rows: Array) -> PanelContainer:
 		line.add_child(unit)
 	return card
 
-## v3: each output's cost on a gauge, on the frame's steel. The needle is the unit cost as a share of
-## the market price, on a scale to twice it; the zones are the cost's RAG bands (green under 90%, amber
-## to 110%, red over) and the LED follows the zone. An unknown cost leaves the needle down and the LED
-## off. The needle swings from where it last read. The figures sit centred in the room right of the gauge.
+## v3: each output's cost on a gauge set into the section's dark plate, the good's icon beside it. The
+## needle is the unit cost as a share of the market price, on a scale to twice it; the zones are the
+## cost's RAG bands (green under 90%, amber to 110%, red over) and the LED follows the zone. An unknown
+## cost leaves the needle down and the LED off. The needle swings from where it last read. To the right,
+## the unit cost on a mini screen in LED segments in its RAG colour, and the market price under it.
 const V3_GAUGE_SIZE := 160.0
 const V3_GAUGE_SCALE_PCT := 200.0
-const V3_COST_ICON := 56
+## The gauge's bezel is this share of its render across, the room round it this share on each side;
+## its holder in the row is the share it keeps (the bezel and its shadow to the bottom-right).
+const V3_GAUGE_BEZEL := 709.0 / 1024.0
+const V3_GAUGE_ROOM := 150.0 / 1024.0
+const V3_GAUGE_HELD := 790.0 / 1024.0
+## The good's icon beside it is as tall as the bezel, frame and all.
+const V3_COST_ICON := int(V3_GAUGE_SIZE * V3_GAUGE_BEZEL - 2.0 * 7.0 / 1.875)
 ## The hole a gauge is set into (layout.json gauge_socket), rendered for a gauge of this size.
 const V3_GAUGE_SOCKET: Texture2D = preload("res://assets/ui/bdp_v3/gauge_socket.png")
 const V3_GAUGE_SOCKET_AT := 160.0
@@ -2554,31 +2575,46 @@ func _v3_cost_gauges(card: PanelContainer, vb: VBoxContainer, rows: Array) -> vo
 		else:
 			gauge.value = target
 		_v3_last_readings[key] = target
-		line.add_child(gauge)
+		# The gauge's render has empty room round its bezel (and its shadow to the bottom-right); the row
+		# holds just the bezel and shadow, the gauge overhanging its holder by the rest.
+		var holder := Control.new()
+		holder.name = "GaugeHolder"
+		holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		holder.custom_minimum_size = Vector2.ONE * V3_GAUGE_SIZE * V3_GAUGE_HELD
+		holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		holder.add_child(gauge)
+		gauge.position = -Vector2.ONE * V3_GAUGE_SIZE * V3_GAUGE_ROOM
+		line.add_child(holder)
 		gauges.append(gauge)
 		gauge.item_rect_changed.connect(card.queue_redraw)
 		var col := VBoxContainer.new()
 		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		col.add_theme_constant_override("separation", 0)
+		col.add_theme_constant_override("separation", 6)
 		line.add_child(col)
-		var name_l := Label.new()
-		name_l.theme_type_variation = "Body"
-		name_l.text = str(r.get("name", ""))
-		col.add_child(name_l)
-		var big := Label.new()
-		big.theme_type_variation = "Numeric"
-		big.add_theme_font_size_override("font_size", 28)
-		big.add_theme_color_override("font_color", r.get("color", DS.PALETTE["TEXT"]))
-		big.text = "£%s /unit" % BuildingStatus._fmt_upto2(float(r.get("unit_cost", 0.0)))
-		col.add_child(big)
+		# The unit cost on a mini screen in LED segments, lit in its RAG colour, between £ and /unit.
+		var price := HBoxContainer.new()
+		price.name = "Price"
+		price.alignment = BoxContainer.ALIGNMENT_CENTER
+		price.add_theme_constant_override("separation", 4)
+		col.add_child(price)
+		var pound := _v3_metal_label("£", HORIZONTAL_ALIGNMENT_RIGHT)
+		pound.add_theme_font_size_override("font_size", 18)
+		price.add_child(pound)
+		var unit_cost := float(r.get("unit_cost", -1.0))
+		var led: Control = BdpV3Led.new()
+		led.set_figure("%.2f" % unit_cost if unit_cost >= 0.0 else "--.--", r.get("color", DS.PALETTE["TEXT"]))
+		price.add_child(led)
+		var per := _v3_metal_label("/unit", HORIZONTAL_ALIGNMENT_LEFT)
+		per.uppercase = false
+		per.add_theme_font_size_override("font_size", 13)
+		price.add_child(per)
 		var mkt := Label.new()
 		mkt.theme_type_variation = "Caption"
-		var pct := int(r.get("pct", 0))
-		mkt.text = "market £%s · %s%d%%" % [BuildingStatus._fmt_upto2(float(r.get("market_price", 0.0))), "+" if pct > 0 else "", pct]
+		mkt.text = "Market price £%s" % BuildingStatus._fmt_upto2(float(r.get("market_price", 0.0)))
+		mkt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		mkt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		col.add_child(mkt)
-		for l: Label in [name_l, big, mkt]:
-			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 # --- modifiers (accordion above economics) --------------------------------------------------
 

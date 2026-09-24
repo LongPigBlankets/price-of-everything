@@ -672,6 +672,10 @@ func _test_bdp_v3_rules() -> void:
 		"bdp v3: a drum counter reads its value on its drums, leading zeros and all, and nines when it overflows")
 	_check(Counter.drums_for(54.17, 2, 4) == 4 and Counter.drums_for(1234.5, 2, 4) == 6 and Counter.drums_for(10052, 0, 3) == 5,
 		"bdp v3: a counter has as many drums as its value needs, and at least its minimum")
+	var Led = load("res://scripts/bdp_v3_led.gd")
+	_check(Led.cells_for("7.95") == [["7", true], ["9", false], ["5", false]] and Led.cells_for("123.40").size() == 5
+		and Led.cells_for("--.--") == [["-", false], ["-", true], ["-", false], ["-", false]],
+		"bdp v3: an LED figure takes a cell per digit, its point lit on the digit before it")
 	var Panel2 = load("res://scripts/building_detail_panel_v2.gd")
 	var cheap: Dictionary = Panel2.v3_cost_gauge_reading(8.0, 10.0)
 	var dear: Dictionary = Panel2.v3_cost_gauge_reading(30.0, 10.0)
@@ -841,6 +845,22 @@ func _test_bdp_v3_panel() -> void:
 	_check(cost_card != null and cost_card.get_parent().get_parent().get("style") == "dark" and not cost_gauges.is_empty()
 		and cost_wells.size() == cost_gauges.size(),
 		"bdp v3: cost to produce sits on its own dark plate, each gauge with its good's icon set in beside it (%d)" % cost_gauges.size())
+	var leds: Array = cost_card.find_children("BdpV3Led*", "", true, false) if cost_card != null else []
+	var cost_texts: Array = cost_card.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text) if cost_card != null else []
+	var motor_price := Catalog.get_base_price(motor) * 0.72
+	_check(leds.size() == cost_gauges.size() and leds[0].figure() == "%.2f" % motor_price
+		and cost_texts.any(func(t: String) -> bool: return t.begins_with("Market price £"))
+		and not cost_texts.any(func(t: String) -> bool: return t.contains("%") or t == Catalog.get_display_name(motor)),
+		"bdp v3: the unit cost shows on a mini screen in LED segments, with 'Market price' under it and no name or percentage (%s)" % ", ".join(cost_texts))
+	var icon_h: float = cost_wells[0].get_parent().size.y + 2.0 * 7.0 / 1.875 if not cost_wells.is_empty() else 0.0
+	_check(absf(icon_h - panel.V3_GAUGE_SIZE * panel.V3_GAUGE_BEZEL) < 1.5,
+		"bdp v3: the cost icon, frame and all, is as tall as the gauge's bezel (%.1f px)" % icon_h)
+	_check(panel.find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.text.contains("ready to draw from the grid") and l.is_visible_in_tree()).is_empty(),
+		"bdp v3: the power line is left out, the diagnostics say the same")
+	var line_h: float = load("res://scripts/bdp_v3_title.gd").line_height()
+	var key_px: float = panel._close_key.size.y * load("res://scripts/bdp_v3_key.gd").KEY_SIDE / load("res://scripts/bdp_v3_key.gd").TEXTURE_SIDE
+	_check(absf(key_px - line_h) < 1.5 and absf((panel._pin_key.position.y - panel._close_key.position.y) - load("res://scripts/bdp_v3_title.gd").line_pitch()) < 1.5,
+		"bdp v3: Close and Location are each a title line tall, one beside each line (%.1f px keys, lines %.1f)" % [key_px, line_h])
 	var room: float = panel._scroll.size.x - panel._scroll.get_v_scroll_bar().size.x
 	_check(panel._body.get_combined_minimum_size().x <= room + 0.5,
 		"bdp v3: no section needs more width than the body has, which would push the scrollbar into the trim (%.0f of %.0f px)" % [panel._body.get_combined_minimum_size().x, room])

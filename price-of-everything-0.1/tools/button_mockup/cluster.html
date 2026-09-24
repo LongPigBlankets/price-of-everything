@@ -1543,6 +1543,37 @@ function drawPercent(g, w, h, col) {
 }
 
 /**
+ * A mini screen for a figure in LED segments, as on a digital clock: a gunmetal bezel round a recessed
+ * pane of dark glass (mini_screen), and the glass over the segments (mini_screen_glass): the bezel's
+ * shadow along the pane's top and left edges and a faint glare. The game lights the segments between
+ * the two. Both 9-slices.
+ */
+const SCREEN = { W: 200, H: 80, M: 8, rim: 7, r: 5 };
+function miniScreen() {
+  const { W, H, M, rim, r } = SCREEN, g = new THREE.Group(), ow = W - 2 * M, oh = H - 2 * M;
+  const shape = rrShape(ow, oh, r + rim); shape.holes.push(rr(new THREE.Path(), ow - 2 * rim, oh - 2 * rim, r));
+  const bezel = new THREE.Mesh(extrude(shape, 2.5, 1.2, 1, 3), MAT.frame);
+  bezel.castShadow = bezel.receiveShadow = true; bezel.position.set(W / 2, 0, H / 2); g.add(bezel);
+  const glass = new THREE.MeshPhysicalMaterial({ color: 0x0a0d0c, roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.1, envMap: studioEnv, envMapIntensity: 0.35 });
+  const pane = new THREE.Mesh(new THREE.PlaneGeometry(ow - 2 * rim + 2, oh - 2 * rim + 2).rotateX(-Math.PI / 2), glass);
+  pane.receiveShadow = true; pane.position.set(W / 2, 0.3, H / 2); g.add(pane);
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.6));
+  return g;
+}
+function paintScreenGlass(g) {
+  const { W, H, M, rim, r } = SCREEN, x0 = M + rim, y0 = M + rim, iw = W - 2 * x0, ih = H - 2 * y0;
+  g.save(); g.beginPath(); g.roundRect(x0, y0, iw, ih, r); g.clip();
+  const top = g.createLinearGradient(0, y0, 0, y0 + 7); top.addColorStop(0, 'rgba(0,0,0,0.6)'); top.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = top; g.fillRect(x0, y0, iw, 7);
+  const left = g.createLinearGradient(x0, 0, x0 + 5, 0); left.addColorStop(0, 'rgba(0,0,0,0.45)'); left.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = left; g.fillRect(x0, y0, 5, ih);
+  const glare = g.createLinearGradient(x0, y0, x0 + iw * 0.5, y0 + ih);
+  glare.addColorStop(0.3, 'rgba(255,255,255,0)'); glare.addColorStop(0.45, 'rgba(255,255,255,0.07)'); glare.addColorStop(0.6, 'rgba(255,255,255,0)');
+  g.fillStyle = glare; g.fillRect(x0, y0, iw, ih);
+  g.restore();
+}
+
+/**
  * A weld bead along a rounded rectangle's edge (w × h, corner r, centred on the origin): a rounded ridge
  * of bronze filler, radius `rad`, rippled every 2.6 px as a bead laid in runs is, lying on the join.
  */
@@ -1682,7 +1713,7 @@ if (EXPORT) exportLayers();
  *           shadow_*: each raised part's swept shadow; glow_arrow: the lit arrow's glow (drawn
  *           additively); key_<slot> / key_<slot>_pressed: blank keycaps (the game draws the text).
  * footer_*  Sell building / Demolish: plate, key_sell, key_demolish (+ _pressed).
- * key_close, key_back (+ _pressed): small keycaps with their glyphs, and the shadow they cast.
+ * key_close, key_back (+ _pressed): small keycaps with their glyphs, and the shadow they cast (SMALL_KEY).
  * lamp_*   the status lamp lit green / amber / red, and off; lamp_glow_*: each lit colour's glow.
  * scroll_rail, scroll_thumb: the scrollbar's rail and slider, each drawn as a vertical three-slice.
  * seam_edge: the non-slip edge over the seam between the header and the scrolling body.
@@ -1701,6 +1732,7 @@ if (EXPORT) exportLayers();
  * dark_plate, gauge_socket, icon_well: a section's dark metal plate, the hole a gauge is set into, and
  *           the thin frame round an icon set below it.
  * mod_icon, mod_icon_shadow: the Modifiers row's raised % sign and its swept shadow.
+ * mini_screen, mini_screen_glass: the mini screen a figure shows on in LED segments, and its glass.
  * layout.json: frame sizes and every key's rect and top face, in capture pixels.
  * ?export&only=lamp,scroll renders just the named sets (see `want` below).
  */
@@ -1711,7 +1743,7 @@ async function exportLayers() {
   // ?export&only=lamp,scroll renders just those sets and merges their entries into the existing
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
-  // toggle, ldoor, modkey, sheetw, darkplate, modicon.
+  // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -1909,9 +1941,12 @@ async function exportLayers() {
     layout.section_frame = { size: [FW + 2 * M, FH + 2 * M], outset: M, rim: RIM, corner: M + 44 };
   });
 
-  // --- small keycaps: Close (✕) and Back (‹), on the panel's navy with their own shadow
+  // --- small keycaps: Close (✕) and Back (‹), on the panel's navy with their own shadow. SMALL_KEY is
+  // the key with its bezel, a line of the title tall (Bebas 32 px: 38.4 logical px, 72 layout px) with
+  // room to spare, so the game draws them down at that size rather than up.
+  const SMALL_KEY = 76;
   if (want('keys')) await withSeed(505, async () => { for (const [name, glyph] of [['close', 'x'], ['back', 'chevron']]) {
-    const S = 64, M = 16, group = new THREE.Group();
+    const S = SMALL_KEY, M = 16, group = new THREE.Group();
     const k = keycap(S, S, 6, (g, a, b) => {
       g.strokeStyle = NAVY; g.lineWidth = a * 0.13; g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath();
       if (glyph === 'x') { g.moveTo(a * 0.3, b * 0.3); g.lineTo(a * 0.7, b * 0.7); g.moveTo(a * 0.7, b * 0.3); g.lineTo(a * 0.3, b * 0.7); }
@@ -1929,7 +1964,7 @@ async function exportLayers() {
   // --- the Location key: a small keycap like Close, with a navy map pin (a round head with a hole, on a
   // point), and the shadow it casts on the panel.
   if (want('pin')) await withSeed(406, async () => {
-    const S = 64, M = 16, group = new THREE.Group();
+    const S = SMALL_KEY, M = 16, group = new THREE.Group();
     const k = keycap(S, S, 6, (g, a, b) => {
       const cx = a * 0.5, cy = b * 0.4, r = a * 0.19, s = Math.sin(0.64), c = Math.cos(0.64);
       g.fillStyle = NAVY;
@@ -2090,6 +2125,14 @@ async function exportLayers() {
     const o = (S - icon) / 2;
     await post('mod_icon_shadow', frame2d(S, S, (g) => drawIconShadows(g, S, S, [{ height: 10, draw: (tg, col) => { tg.save(); tg.translate(o, o); drawPercent(tg, icon, icon, col); tg.restore(); } }])));
     layout.mod_icon = { size: [S, S], icon };
+  });
+
+  // --- the mini screen a figure is shown on in LED segments.
+  if (want('screen')) await withSeed(420, async () => {
+    const { W, H } = SCREEN;
+    await post('mini_screen', stage([0, 0, W, H], [miniScreen()]).grab());
+    await post('mini_screen_glass', frame2d(W, H, paintScreenGlass));
+    layout.mini_screen = { size: [W, H], margin: SCREEN.M, rim: SCREEN.rim, radius: SCREEN.r };
   });
 
   // --- the title's letters: the raised white faces (ungraded; the game grades the whole title), and

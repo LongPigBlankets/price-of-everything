@@ -121,6 +121,7 @@ The plate paints grime round each screw and a few bright screwdriver slips. The 
 - **Face:** `paint` draws on the top face. In the export the faces are blank, because the game draws the text live.
 - **Pressed state:** the cap lowered 5 px.
 - **The four main keys:** 280 px wide (`BW`). Inputs and Outputs are 104 px tall. Upgrade and Change recipes are two lines tall; their row grows by 70 px (`EXTRA`).
+- **Close, Location and Back:** small square keys, `SMALL_KEY` (76 px, bezel and all) in a 108 px frame for their shadow. The header draws Close and Location each a line of the title tall (`BdpV3Title.line_height()`), Close beside the first line and Location beside the second (`line_pitch()` apart); the header keeps the width it always had for them. Back in the action sheets keeps its old size (`BdpV3Key.DEFAULT_KEY_PX`).
 
 ### Raised icons and lettering
 
@@ -225,6 +226,10 @@ The font stays the title's own: Bebas Neue at 32 px (60 layout px). Titles chang
 
 In the game, `bdp_v3_title.gd` shapes and wraps the title with Godot's text server in the same font, size and wrapping as the plain label, and places each letter's render on its pen position. It draws every shadow first, then the faces, each shaded for where its middle falls in the block of lines. The atlas covers A–Z, 0–9 and common punctuation, which is every character in the building and recipe names (a test checks this). A title with any other character keeps the plain label.
 
+## Power
+
+v3 leaves out v2's power line ("Draws X MW · ready to draw from the grid"): the diagnostics say the same.
+
 ## Section headings
 
 Every section heading (Diagnostics, Cost to produce, Economics · per turn, Inbound shipments, Labour and Wages, and the rest) is lettered as INPUTS and OUTPUTS are on the control plate: IBM Plex Sans Bold at 28 layout px, raised in the plate lettering's white, 5 px high on a flank softened by 0.7 px, with the same swept shadow and contact line, the faces graded from white at the top-left to `#B8B0A0` across the heading. The letters are rendered one per cell into an atlas like the title's (`headingAtlas`, `heading_glyphs` and `heading_glyph_shadows`, 900 × 159, 8 px of room round each letter); `layout.json` lists each cell as `[x, y, w, h, pen x, advance]`, with a space's advance, and `bdp_v3_heading.gd` sets the letters along one line by those advances. The game has no Plex Bold, so the heading is set by the page's measurements rather than by Godot's text server. The atlas holds the title's characters and the middle dot; a heading with any other character keeps the plain label.
@@ -239,7 +244,9 @@ A cable runs down the case's left side (`cableRun`, `bdp_v3_cable.gd`): black ru
 
 ## Cost to produce
 
-The section has its own dark metal plate (`darkPlate`, `dark_plate`, `bdp_v3_section.gd` `style = "dark"`): the backing's steel taken down to a blackened gunmetal, filling the frame's inside with its edges under the rim. The render is one large plain face (900 × 1400) that the game crops from its middle rather than stretching, so its scratches are the size of every other plate's; its steel is blurred from a mirror-padded copy so the mirrored repeat shows no seam. Each output's cost is on a gauge (`scripts/panel_gauge.gd`, 160 px) set into the plate: the card draws the hole cut for it underneath (`gaugeSocket`, `gauge_socket`), a chamfered cut a little wider than the bezel over a dark cavity, so a thin gap shows round the gauge. To the gauge's left is the good's icon (56 px), set below a thin metal frame (`iconWell`, `icon_well`, a 9-slice drawn over the icon and under any quantity pill): a narrow ring of the keycaps' bezel metal, its shadow on the plate outside, and inside its shadow and a soft shade along the opening, deepest at the top-left, falling onto the icon. The icon's tile takes the opening's corner radius. The needle shows the unit cost as a share of the market price, on a scale running to twice it. The zones are the cost's RAG bands (green under 90%, amber to 110%, red over) and the LED follows the zone. An unknown cost leaves the needle down and the LED off. The good's name, the cost per unit in its RAG colour (28 px) and the market line sit centred in the room to the right of the gauge. The needle swings from where it last read when the panel rebuilds.
+The section has its own dark metal plate (`darkPlate`, `dark_plate`, `bdp_v3_section.gd` `style = "dark"`): the backing's steel taken down to a blackened gunmetal, filling the frame's inside with its edges under the rim. The render is one large plain face (900 × 1400) that the game crops from its middle rather than stretching, so its scratches are the size of every other plate's; its steel is blurred from a mirror-padded copy so the mirrored repeat shows no seam. Each output's cost is on a gauge (`scripts/panel_gauge.gd`, 160 px) set into the plate: the card draws the hole cut for it underneath (`gaugeSocket`, `gauge_socket`), a chamfered cut a little wider than the bezel over a dark cavity, so a thin gap shows round the gauge. To the gauge's left is the good's icon, as tall as the gauge's bezel frame and all, set below a thin metal frame (`iconWell`, `icon_well`, a 9-slice drawn over the icon and under any quantity pill): a narrow ring of the keycaps' bezel metal, its shadow on the plate outside, and inside its shadow and a soft shade along the opening, deepest at the top-left, falling onto the icon. The icon's tile takes the opening's corner radius. The row holds only the gauge's bezel and its shadow; the render's empty room round the bezel overhangs its holder.
+
+To the right, the unit cost on a mini screen in LED segments as on a digital clock (`miniScreen`, `mini_screen` and `mini_screen_glass`, `bdp_v3_led.gd`): a gunmetal bezel round a recessed pane of dark glass, the digits' seven segments and point lit in the cost's RAG colour over the unlit segments, faint, with the glass's shadow and glare over them, between a printed £ and a small /unit. The segments carry their own light, so the lamp over the panel doesn't dim them (`BdpV3Light.emissive_material()`). An unknown cost reads --.--. Under it, "Market price £Y". The good's name and the percentage against the market are left out.
 
 ## Modifiers
 
@@ -308,13 +315,13 @@ Then open `http://127.0.0.1:8771/cluster.html?export` in a browser. It works hea
 
 The tab title becomes "export done". Every layer of a set shares one frame, so the game stacks them without offsets.
 
-To render some sets only, add `&only=` and a comma-separated list of `block`, `footer`, `backing`, `section`, `keys`, `pin`, `lamp`, `scroll`, `seam`, `title`, `enamel`, `cable`, `counter`, `sheet`, `plastic`, `door`, `heading`, `module`, `toggle`, `ldoor`, `modkey`, `sheetw`, `darkplate` and `modicon`, for example `cluster.html?export&only=lamp,scroll`. The other layers are left as they are, and the page reads the current `layout.json` from the server and updates only those sets' entries. `export.py` takes an optional port (`python3 tools/button_mockup/export.py 8779`); use a port of your own when another export may be running.
+To render some sets only, add `&only=` and a comma-separated list of `block`, `footer`, `backing`, `section`, `keys`, `pin`, `lamp`, `scroll`, `seam`, `title`, `enamel`, `cable`, `counter`, `sheet`, `plastic`, `door`, `heading`, `module`, `toggle`, `ldoor`, `modkey`, `sheetw`, `darkplate`, `modicon` and `screen`, for example `cluster.html?export&only=lamp,scroll`. The other layers are left as they are, and the page reads the current `layout.json` from the server and updates only those sets' entries. `export.py` takes an optional port (`python3 tools/button_mockup/export.py 8779`); use a port of your own when another export may be running.
 
 | Set | Layers |
 | --- | --- |
 | Control block (863 × 379) | `block_plate`; `block_icon_input`, `_output`, `_recipe`; `block_kicker_input`, `_output`; `block_lorry_input`, `_output`; `block_arrow`, `block_arrow_lit`; `block_shadow_<part>` for each raised part; `block_glow_arrow` (additive); `block_key_<inputs, outputs, upgrade, recipe>` and `_pressed` |
 | Footer (863 × 214: 150 of plate, 64 of headroom above) | `footer_plate`; `footer_glow` (additive); `guard_<sell, demolish>`, `_pressed`, `_cover`, `_cover_open` |
-| Small keys (96 × 96, key in the middle 64) | `key_close`, `key_back`, `key_pin` (its own set, `pin`), and `_pressed` |
+| Small keys (108 × 108, key in the middle 76) | `key_close`, `key_back`, `key_pin` (its own set, `pin`), and `_pressed` |
 | Section frame (596 × 396) | `section_frame` |
 | Backing (940 × 1640) | `panel_backing` |
 | Status lamp (112 × 112, bezel 44 in the middle) | `lamp_<green, amber, red, off>`; `lamp_glow_<green, amber, red>` (additive) |
@@ -331,6 +338,7 @@ To render some sets only, add `&only=` and a comma-separated list of `block`, `f
 | Diagnostics' modules and switch | `diag_module` (600 × 120), `diag_tap` (96 × 44: junction at x 13, the module's end at x 78), `toggle_slot` (96 × 44), `toggle_knob` (44 × 44) |
 | Labour and Wages' doors | `labour_door`, `labour_door_lit` (200 × 300) |
 | Modifiers | `key_modifiers` and `_pressed` (680 × 120: the key 648 × 88 inside, 64 px ends), `sheet_white` (600 × 400), `mod_icon` and `mod_icon_shadow` (110 × 110, the sign 80 in the middle) |
+| Mini screen | `mini_screen`, `mini_screen_glass` (200 × 80: 8 px margin, 7 px bezel, 5 px pane radius) |
 | Dark plate and set-in parts | `dark_plate` (900 × 1400, cropped, not sliced), `gauge_socket` (240 × 240: a 108 px hole, 6 px chamfer), `icon_well` (240 × 240: 12 px margin, 7 px rim, 10 px inner radius) |
 
 `layout.json` lists each set's size and every key's rect and top face, in layout pixels, plus the lamp's bezel, the scrollbar's end, grip and travel sizes, and the seam edge's ends, back edge and lip. The scripts carry these numbers as constants. After changing a layout, copy the new numbers from `layout.json` into `bdp_v3_block.gd`, `bdp_v3_footer.gd`, `bdp_v3_section.gd`, `bdp_v3_lamp.gd`, `bdp_v3_scroll.gd` or `bdp_v3_seam.gd`.
