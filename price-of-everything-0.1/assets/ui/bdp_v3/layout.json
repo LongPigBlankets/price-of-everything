@@ -1317,5 +1317,30 @@
    "value",
    "outputs"
   ]
+ },
+ "diag_icons": {
+  "size": [
+   133,
+   133
+  ],
+  "icon": 105,
+  "names": [
+   "power_supply",
+   "intermittency",
+   "cable",
+   "carbon",
+   "works",
+   "route",
+   "transit",
+   "freight",
+   "warehouse",
+   "source",
+   "stock",
+   "upstream",
+   "deposit",
+   "port",
+   "glut",
+   "unsold"
+  ]
  }
 }

@@ -185,11 +185,69 @@ func _ready() -> void:
 			_wm.building_panel_v2._scroll.ensure_control_visible(ships.get_parent().get_parent())
 			await _settle(8)
 			_save(_wm.building_panel_v2, str(pair[1]))
+
+	# The diagnostics thrown to Visual: the whole view in sight, one icon hovered, the case's foot below
+	# the fold with the readout risen onto the scroll area's edge, and a plant that sells three goods.
+	_wm._open_building_detail(building)
+	await _settle(20)
+	panel = _wm.building_panel_v2
+	var toggle: Control = panel.find_child("ViewSwitch", true, false).find_child("BdpV3Toggle", false, false)
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	toggle._gui_input(click)
+	await _settle(8)
+	var view: Control = panel.find_child("DiagnosticsVisual", true, false)
+	if view != null:
+		panel._scroll.ensure_control_visible(view.get_parent().get_parent())
+		await _settle(6)
+		_save(panel, "diag_visual")
+		for ind: Node in view.find_children("*", "Control", true, false).filter(func(n: Node) -> bool: return n.get_script() == load("res://scripts/bdp_v3_indicator.gd")):
+			print("[BDP_V3_SHOT] check %s · %s [%s] %s" % [ind.stage, ind.label, ind.tone, ind.detail])
+		var hovered: Array = view.find_children("*", "Control", true, false).filter(func(n: Node) -> bool: return n.get_script() == load("res://scripts/bdp_v3_indicator.gd"))
+		var cable: Array = hovered.filter(func(n: Node) -> bool: return n.label == "Cable capacity")
+		if not cable.is_empty():
+			cable[0].mouse_entered.emit()
+			await _settle(3)
+			_save(panel, "diag_visual_hover")
+			cable[0].mouse_exited.emit()
+		# On this screen the whole case fits at the top, so the panel is made shorter, as on a smaller
+		# screen, until the case's foot is 110 px below the fold.
+		var slot: Control = view.find_child("DiagReadoutSlot", true, false)
+		panel._scroll.scroll_vertical = 0
+		await _settle(4)
+		var below: float = slot.get_global_rect().end.y - panel._scroll.get_global_rect().end.y
+		var full_h: float = panel.size.y
+		var h: float = full_h - (110.0 - below)
+		panel.custom_minimum_size.y = h
+		panel.size.y = h
+		await _settle(6)
+		_save(panel, "diag_visual_sticky")
+		panel.custom_minimum_size.y = full_h
+		panel.size.y = full_h
+	# A chlor-alkali plant's, which sells three goods: its Outputs icons carry a lamp per tone among them.
+	# Four turns of its chlorine wait unsold, so Sales shows amber beside the other two goods' green.
+	var multi := BuildingState.add_building(str(Catalog.get_recipe("r_012").get("building_id", "")), "r_012", "tile_5_10", "player_1", "bdpv3shot_diag_multi")
+	var chlorine := _primary_output(Catalog.get_recipe("r_012"))
+	Stockpile.add("tile_5_10", chlorine, 4 * _output_qty(Catalog.get_recipe("r_012"), chlorine))
+	_wm._open_building_detail(BuildingState.get_building(multi))
+	await _settle(20)
+	panel = _wm.building_panel_v2
+	var multi_view: Control = panel.find_child("DiagnosticsVisual", true, false)
+	if multi_view != null:
+		panel._scroll.ensure_control_visible(multi_view.get_parent().get_parent())
+		await _settle(6)
+		_save(panel, "diag_visual_multi")
+		for ind: Node in multi_view.find_children("*", "Control", true, false).filter(func(n: Node) -> bool: return n.get_script() == load("res://scripts/bdp_v3_indicator.gd") and n.stage == "Outputs"):
+			print("[BDP_V3_SHOT] multi %s [%s] %s" % [ind.label, ",".join(ind.tones), ind.detail])
+	toggle = panel.find_child("ViewSwitch", true, false).find_child("BdpV3Toggle", false, false)
+	toggle._gui_input(click)
+	await _settle(4)
 	get_tree().quit(0)
 
 
 func _save(panel: Control, tag: String) -> void:
-	var img := _vp.get_texture().get_image()
+	var img := _grab()
 	var k := img.get_width() / _vp.get_visible_rect().size.x
 	var r := panel.get_global_rect().grow(6.0)
 	var crop := Rect2i(Vector2i(r.position * k), Vector2i(r.size * k)).intersection(Rect2i(Vector2i.ZERO, img.get_size()))
@@ -199,13 +257,32 @@ func _save(panel: Control, tag: String) -> void:
 
 
 func _save_bar(bar: Control, tag: String) -> void:
-	var img := _vp.get_texture().get_image()
+	var img := _grab()
 	var k := img.get_width() / _vp.get_visible_rect().size.x
 	var r := bar.get_global_rect().grow(4.0)
 	var crop := Rect2i(Vector2i(r.position * k), Vector2i(r.size * k)).intersection(Rect2i(Vector2i.ZERO, img.get_size()))
 	var path := _out_dir().path_join("poe_bdp_v3_%s.png" % tag)
 	img.get_region(crop).save_png(path)
 	print("[BDP_V3_SHOT] saved %s" % path)
+
+
+## The SubViewport's current picture. Drawn here, not taken from the last frame: macOS stops the game
+## drawing while no window can be seen (the screen locked or asleep), though the run goes on, so a
+## capture would repeat the last frame drawn.
+func _grab() -> Image:
+	RenderingServer.force_draw(false)
+	return _vp.get_texture().get_image()
+
+
+func _primary_output(recipe: Dictionary) -> String:
+	return load("res://scripts/building_status.gd").primary_output_good_id(recipe)
+
+
+func _output_qty(recipe: Dictionary, gid: String) -> int:
+	for o: Dictionary in load("res://scripts/building_status.gd").flow_output_items(recipe):
+		if str(o.get("good_id", "")) == gid:
+			return int(o.get("qty", 0))
+	return 0
 
 
 func _out_dir() -> String:

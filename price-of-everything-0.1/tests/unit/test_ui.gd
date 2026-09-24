@@ -1088,3 +1088,454 @@ func _test_bdp_v3_panel() -> void:
 	CostSolver.last_result = saved_cost
 	BuildingState.buildings.erase(iid)
 	UiPrefs.set_use_bdp_v3(was)
+
+
+func _test_bdp_v3_diag_visual() -> void:
+	# The diagnostics' Visual / Text switch: the visual view's stage columns of icons over lamps, the readout
+	# that names the icon under the pointer (else the worst check), and the readout kept in sight when the
+	# case's foot is below the fold.
+	var was: bool = UiPrefs.use_bdp_v3
+	UiPrefs.set_use_bdp_v3(true)
+	var iid: String = BuildingState.add_building("b_007", "r_009", "tile_5_10", MatchState.LOCAL_PLAYER, "v3_diag_visual")
+	var b: Dictionary = BuildingState.get_building(iid)
+	var panel = load("res://scripts/building_detail_panel_v2.gd").new()
+	add_child(panel)
+	await get_tree().process_frame
+	panel.show_building(b)
+	await get_tree().process_frame
+	var Indicator = load("res://scripts/bdp_v3_indicator.gd")
+	var find_view := func() -> Array:
+		return [panel.find_child("DiagnosticsCard", true, false), panel.find_child("DiagnosticsVisual", true, false),
+			panel.find_child("ViewSwitch", true, false).find_child("BdpV3Toggle", false, false)]
+	var found: Array = find_view.call()
+	var text_card: Control = found[0]
+	var view: Control = found[1]
+	var toggle: Control = found[2]
+	_check(text_card != null and view != null and toggle != null and text_card.visible and not view.visible
+		and view.get_parent() == text_card.get_parent() and toggle.right,
+		"bdp v3 visual: the visual view is built in the diagnostics case beside the text, hidden while the switch is on Text")
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	toggle._gui_input(click)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var columns: Array = view.find_children("*", "PanelContainer", true, false).filter(func(n: Node) -> bool: return n.has_meta("v3_diag_column"))
+	var is_indicator := func(n: Node) -> bool: return n.get_script() == Indicator
+	var counts: Array = columns.map(func(c: Node) -> int: return c.find_children("*", "Control", true, false).filter(is_indicator).size())
+	var titles: Array = columns.map(func(c: Node) -> String: return (c.find_children("*", "Label", true, false)[0] as Label).text)
+	var inds: Array = view.find_children("*", "Control", true, false).filter(is_indicator)
+	_check(view.visible and not text_card.visible and not toggle.right and titles == ["Inputs", "Inbound", "Power", "Plant", "Outputs"]
+		and counts == [4, 4, 3, 2, 5] and inds.all(func(n: Node) -> bool: return n.lamp != null and n.icon != null)
+		and not inds.any(func(n: Node) -> bool: return str(n.label).begins_with("Placeholder")),
+		"bdp v3 visual: thrown to Visual, the case shows five stage columns, inputs on the left, 18 checks each an icon over a lamp (%s)" % str(counts))
+	var output_inds: Array = inds.filter(func(n: Node) -> bool: return n.stage == "Outputs")
+	var output_want: Array = load("res://scripts/building_readout.gd").output_checks(b, Catalog.get_recipe("r_009"), false)
+	var output_got: Array = output_inds.map(func(n: Node) -> String: return "%s/%s" % [n.label, n.tone])
+	_check(output_got == output_want.map(func(c: Dictionary) -> String: return "%s/%s" % [c.label, c.tone])
+		and output_inds.all(func(n: Node) -> bool: return n.icon.resource_path.contains("diag_icon_") and n.lamps.size() == n.tones.size()),
+		"bdp v3 visual: Outputs shows reach, transit, freight, port charge and sales, each with an icon and a lamp per tone (%s)" % ", ".join(output_got))
+	var input_inds: Array = inds.filter(func(n: Node) -> bool: return n.stage == "Inputs")
+	var input_want: Array = load("res://scripts/building_readout.gd").input_checks(b, Catalog.get_recipe("r_009"), false)
+	var input_got: Array = input_inds.map(func(n: Node) -> String: return "%s/%s" % [n.label, n.tone])
+	_check(input_got == input_want.map(func(c: Dictionary) -> String: return "%s/%s" % [c.label, c.tone])
+		and input_inds.all(func(n: Node) -> bool: return n.icon.resource_path.contains("diag_icon_")),
+		"bdp v3 visual: Inputs shows source, stock cover, upstream health and deposit left, each with its own icon (%s)" % ", ".join(input_got))
+	var grids: Array = columns.map(func(c: Node) -> Node: return c.find_children("*", "GridContainer", true, false)[0])
+	var cell_h: float = inds[0].custom_minimum_size.y if not inds.is_empty() else 0.0
+	var five_rows: float = 5.0 * cell_h + 4.0 * 8.0
+	_check(grids.all(func(g: Node) -> bool: return is_equal_approx(g.size.y, five_rows))
+		and columns.all(func(c: Node) -> bool: return is_equal_approx(c.size.y, columns[0].size.y))
+		and grids.all(func(g: Node) -> bool: return g.columns == 1),
+		"bdp v3 visual: every column is one icon wide and five rows tall, whatever it holds (%.0f px)" % five_rows)
+	var inbound_inds: Array = inds.filter(func(n: Node) -> bool: return n.stage == "Inbound")
+	var inbound_want: Array = load("res://scripts/building_readout.gd").inbound_checks(b, Catalog.get_recipe("r_009"), false, load("res://scripts/building_economics.gd").per_turn(b))
+	var inbound_got: Array = inbound_inds.map(func(n: Node) -> String: return "%s/%s" % [n.label, n.tone])
+	_check(inbound_got == inbound_want.map(func(c: Dictionary) -> String: return "%s/%s" % [c.label, c.tone])
+		and inbound_inds.all(func(n: Node) -> bool: return n.icon.resource_path.contains("diag_icon_")),
+		"bdp v3 visual: Inbound shows route and mode, warehouse room, transit time and freight cost, each with its own icon (%s)" % ", ".join(inbound_got))
+	var plant_inds: Array = inds.filter(func(n: Node) -> bool: return n.stage == "Plant")
+	var plant_want: Array = load("res://scripts/building_readout.gd").plant_checks(b, Catalog.get_recipe("r_009"), false, load("res://scripts/building_economics.gd").per_turn(b))
+	var plant_got: Array = plant_inds.map(func(n: Node) -> String: return "%s/%s" % [n.label, n.tone])
+	_check(plant_got == plant_want.map(func(c: Dictionary) -> String: return "%s/%s" % [c.label, c.tone])
+		and plant_inds.all(func(n: Node) -> bool: return n.icon.resource_path.contains("diag_icon_")),
+		"bdp v3 visual: Plant shows the carbon levy and the works, each with its own icon (%s)" % ", ".join(plant_got))
+	# Power's three are the building's power checks, each with its own icon.
+	var power_inds: Array = inds.filter(func(n: Node) -> bool: return n.stage == "Power")
+	var want: Array = load("res://scripts/building_readout.gd").power_checks(b, Catalog.get_recipe("r_009"), false)
+	var got: Array = power_inds.map(func(n: Node) -> String: return "%s/%s" % [n.label, n.tone])
+	var expect: Array = want.map(func(c: Dictionary) -> String: return "%s/%s" % [c.label, c.tone])
+	_check(got == expect and got.size() == 3 and power_inds.all(func(n: Node) -> bool: return n.icon.resource_path.contains("diag_icon_")),
+		"bdp v3 visual: Power shows the building's supply, intermittency and cable checks, each with its own icon (%s)" % ", ".join(got))
+	# 40 px icons, 12 px apart in a two-wide column, each render scaled so its art fills the box.
+	var in_col: Array = columns[0].find_children("*", "Control", true, false).filter(is_indicator)
+	var art_px: float = 0.0
+	if not power_inds.is_empty():
+		var p0: Control = power_inds[0]
+		var art: Rect2 = Indicator.art_rect(p0.icon)
+		art_px = maxf(art.size.x, art.size.y) * p0.art_dest().size.x / p0.icon.get_size().x
+	var col_pad: float = in_col[0].get_global_rect().position.x - columns[0].get_global_rect().position.x if not in_col.is_empty() else -1.0
+	var want_px: float = panel.V3_DIAG_ICON_PX
+	_check(not in_col.is_empty() and is_equal_approx(want_px, 56.0) and is_equal_approx(in_col[0].size.x, want_px) and col_pad >= 6.0 - 0.5 and absf(art_px - want_px) < 0.5,
+		"bdp v3 visual: icons are 56 px, at least 6 px in from their column's sides, their art trimmed to fill the box (%.1f px, %.1f in)" % [
+			in_col[0].size.x if not in_col.is_empty() else -1.0, col_pad])
+	var worst: Node = null
+	for want_tone in ["bad", "warn"]:
+		for n: Node in inds:
+			if worst == null and n.tone == want_tone:
+				worst = n
+	var worst_name: String = "%s: %s" % [worst.stage, worst.label] if worst != null else ""
+	var readout: Control = view.find_child("BdpV3Readout", true, false)
+	_check(readout != null and worst != null and readout.shown_name() == worst_name and readout._lamp.colour == load("res://scripts/bdp_v3_lamp.gd").colour_for(worst.tone),
+		"bdp v3 visual: with the pointer on no icon, the readout names the worst check, its lamp lit to match (%s)" % (readout.shown_name() if readout != null else "none"))
+	var first: Control = inds[0] if not inds.is_empty() else null
+	if first != null and readout != null:
+		first.mouse_entered.emit()
+		await get_tree().process_frame
+		var detail_label: Label = readout.find_child("ReadoutDetail", true, false)
+		_check(readout.shown_name() == "%s: %s" % [first.stage, first.label] and readout.shown_detail() == first.detail and first.hot
+			and readout._lamp.colour == load("res://scripts/bdp_v3_lamp.gd").colour_for(first.tone)
+			and detail_label.get_visible_line_count() >= 1 and detail_label.get_rect().end.y <= readout.find_child("ReadoutRow", true, false).size.y + 0.5,
+			"bdp v3 visual: hovering an icon names it and its finding in the readout, the finding in sight (%s, %d line)" % [readout.shown_name(), detail_label.get_visible_line_count()])
+		first.mouse_exited.emit()
+		await get_tree().create_timer(panel.V3_DIAG_READOUT_SETTLE + 0.1).timeout
+		_check(readout.shown_name() == worst_name and not first.hot,
+			"bdp v3 visual: leaving the icons, the readout goes back to the worst check (%s)" % readout.shown_name())
+	var room: float = panel._scroll.size.x - panel._scroll.get_v_scroll_bar().size.x
+	_check(panel._body.get_combined_minimum_size().x <= room + 0.5,
+		"bdp v3 visual: the columns need no more width than the body has (%.0f of %.0f px)" % [panel._body.get_combined_minimum_size().x, room])
+	if readout != null and first != null:
+		# Put the slot's foot 80 px below the scroll area's bottom edge: scroll down to it, or make the panel
+		# shorter when it is already in view at the top.
+		var slot: Control = readout.get_parent()
+		panel._scroll.scroll_vertical = 0
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var below: float = slot.get_global_rect().end.y - panel._scroll.get_global_rect().end.y
+		if below > 80.0:
+			panel._scroll.scroll_vertical = int(below - 80.0)
+		else:
+			var h: float = panel.size.y - (80.0 - below)
+			panel.custom_minimum_size.y = h
+			panel.size.y = h
+		for _i in 3:
+			await get_tree().process_frame
+		var edge: float = panel._scroll.get_global_rect().end.y
+		var rr: Rect2 = readout.get_global_rect()
+		_check(slot.get_global_rect().end.y > edge + 40.0 and absf(rr.end.y - edge) < 1.0 and rr.position.y >= first.get_global_rect().end.y,
+			"bdp v3 visual: with the case's foot below the fold, the readout rises onto the scroll area's bottom edge, clear of the first row (bottom %.0f, edge %.0f)" % [rr.end.y, edge])
+		panel._scroll.scroll_vertical += 200
+		for _i in 3:
+			await get_tree().process_frame
+		_check(is_equal_approx(readout.position.y, panel.V3_DIAG_READOUT_GAP),
+			"bdp v3 visual: with the case's foot in view, the readout sits back in its slot (%.1f)" % readout.position.y)
+	panel._rebuild(b)
+	await get_tree().process_frame
+	found = find_view.call()
+	_check(found[1] != null and found[1].visible and not found[0].visible and not found[2].right,
+		"bdp v3 visual: the switch's side is kept when the panel rebuilds")
+	# Closed, then opened on another building: the player's choice stays.
+	panel._hide_panel()
+	await get_tree().process_frame
+	var other_iid: String = BuildingState.add_building("b_007", "r_009", "tile_5_10", MatchState.LOCAL_PLAYER, "v3_diag_visual_other")
+	panel.show_building(BuildingState.get_building(other_iid))
+	await get_tree().process_frame
+	found = find_view.call()
+	_check(UiPrefs.bdp_diag_visual and found[1] != null and found[1].visible and not found[0].visible and not found[2].right,
+		"bdp v3 visual: closed and opened on another building, the panel still shows Visual")
+	# While a tutorial step spotlights the rows, which its words describe, the rows show.
+	var saved_tutorial := [Tutorial.active, Tutorial._index, Tutorial._steps]
+	Tutorial.active = true
+	Tutorial._steps = [{"id": "diag_test", "spotlight": {"kind": "node_name", "ref": "DiagnosticsCard"}}]
+	Tutorial._index = 0
+	var during_step: bool = panel._v3_diag_shows_visual()
+	Tutorial.active = saved_tutorial[0]
+	Tutorial._index = saved_tutorial[1]
+	Tutorial._steps = saved_tutorial[2]
+	_check(not during_step and panel._v3_diag_shows_visual(),
+		"bdp v3 visual: a tutorial step that spotlights the diagnostics' rows shows them; after it, Visual again")
+	found[2]._gui_input(click)
+	await get_tree().process_frame
+	_check(found[0].visible and not found[1].visible and found[2].right and not UiPrefs.bdp_diag_visual,
+		"bdp v3 visual: thrown back to Text, the rows come back")
+	panel.queue_free()
+	BuildingState.buildings.erase(other_iid)
+	BuildingState.buildings.erase(iid)
+	UiPrefs.set_use_bdp_v3(was)
+
+
+func _test_bdp_v3_power_checks() -> void:
+	# The diagnostics' visual Power checks: three for any building that uses or makes power, their tones
+	# agreeing with the text checklist's power rows; "off" for a building with no power at all.
+	var BR = load("res://scripts/building_readout.gd")
+	var iid: String = BuildingState.add_building("b_007", "r_009", "tile_5_10", MatchState.LOCAL_PLAYER, "v3_power_checks")
+	var b: Dictionary = BuildingState.get_building(iid)
+	var r: Dictionary = Catalog.get_recipe("r_009")
+	var checks: Array = BR.power_checks(b, r, false)
+	var keys: Array = checks.map(func(c: Dictionary) -> String: return str(c.key))
+	var rows: Array = BR.diagnostics(b, r, Catalog.get_building("b_007"), false)
+	var power_row: Dictionary = {}
+	for row: Dictionary in rows:
+		if str(row.get("ic", "")) == "bolt" and str(row.get("label", "")) in ["Unpowered", "Ready to draw power", "Powered"]:
+			power_row = row
+	_check(keys == ["power_supply", "intermittency", "cable"] and not power_row.is_empty()
+		and str(checks[0].tone) == str(power_row.get("tone", "")) and checks.all(func(c: Dictionary) -> bool: return str(c.detail) != "" and str(c.detail).length() <= 120),
+		"power checks: a factory drawing power gets supply, intermittency and cable checks, supply's tone the checklist's (%s vs %s: %s)" % [
+			checks[0].tone if not checks.is_empty() else "?", power_row.get("tone", "?"), ", ".join(checks.map(func(c: Dictionary) -> String: return "%s %s" % [c.key, c.tone]))])
+	var cap: int = Power.tile_power_cap("tile_5_10")
+	_check((cap <= 0 and str(checks[2].tone) == "bad" and str(checks[2].detail).contains("No cables"))
+		or (cap > 0 and str(checks[2].detail).contains("%d MW its cables carry" % cap)),
+		"power checks: cable capacity reads the tile's cable cap (%d MW: %s)" % [cap, checks[2].detail])
+	var plant_iid: String = BuildingState.add_building("b_003", "r_004", "tile_5_10", MatchState.LOCAL_PLAYER, "v3_power_checks_plant")
+	var plant: Array = BR.power_checks(BuildingState.get_building(plant_iid), Catalog.get_recipe("r_004"), false)
+	_check(str(plant[0].detail).begins_with("Makes ") and str(plant[1].tone) == "ok" and str(plant[1].detail).contains("Never intermittent"),
+		"power checks: a coal plant is its own source and never intermittent (%s / %s)" % [plant[0].detail, plant[1].detail])
+	var no_power: Array = BR.power_checks(b, r, true)
+	_check(no_power.size() == 3 and no_power.all(func(c: Dictionary) -> bool: return str(c.tone) == "off"),
+		"power checks: a building with no power gets all three checks unlit")
+	BuildingState.buildings.erase(iid)
+	BuildingState.buildings.erase(plant_iid)
+
+
+func _test_bdp_v3_plant_checks() -> void:
+	# The diagnostics' visual Plant checks: the carbon levy (none in force; paid; tipping the building
+	# into a loss) and works under way (none; retooling).
+	var BR = load("res://scripts/building_readout.gd")
+	var iid: String = BuildingState.add_building("b_003", "r_004", "tile_5_10", MatchState.LOCAL_PLAYER, "v3_plant_checks")
+	var b: Dictionary = BuildingState.get_building(iid)
+	var r: Dictionary = Catalog.get_recipe("r_004")
+	var was_turn: int = TurnManager.current_turn
+	TurnManager.current_turn = 1
+	var early: Array = BR.plant_checks(b, r, false)
+	_check(early.map(func(c: Dictionary) -> String: return str(c.key)) == ["carbon", "works"]
+		and str(early[0].tone) == "ok" and str(early[0].detail).contains("No carbon levy in force")
+		and str(early[1].tone) == "off",
+		"plant checks: before the levy a coal plant pays none, and with no works the works lamp is unlit (%s / %s)" % [early[0].detail, early[1].detail])
+	TurnManager.current_turn = PolicyState.beat("p1") + 1
+	var levy: float = PolicyState.run_carbon_levy(b, r)
+	var paying: Array = BR.plant_checks(b, r, false, {"net_value_added": levy + 5.0})
+	var tipped: Array = BR.plant_checks(b, r, false, {"net_value_added": -levy * 0.5})
+	var sunk: Array = BR.plant_checks(b, r, false, {"net_value_added": -levy * 2.0})
+	_check(levy > 0.0 and str(paying[0].tone) == "warn" and str(paying[0].detail).contains("£%.2f" % levy) and str(paying[0].detail).contains("coal")
+		and str(tipped[0].tone) == "bad" and str(tipped[0].detail).contains("into a loss")
+		and str(sunk[0].tone) == "warn",
+		"plant checks: with the levy in force a coal plant pays it (amber), red only when the levy alone turns profit into loss (£%.2f: %s)" % [levy, paying[0].detail])
+	TurnManager.current_turn = was_turn
+	BuildingWorks.pending_retrofits.append({"instance_id": iid, "turns_remaining": 2})
+	var retool: Dictionary = BR.plant_checks(b, r, false)[1]
+	BuildingWorks.pending_retrofits.pop_back()
+	_check(str(retool.tone) == "warn" and str(retool.detail).begins_with("Retooling. 2 turns left"),
+		"plant checks: a retooling building's works lamp is amber, with the turns left (%s)" % retool.detail)
+	BuildingState.buildings.erase(iid)
+
+
+func _test_bdp_v3_inbound_checks() -> void:
+	# The diagnostics' visual Inbound checks: their order, unlit for a building with no inputs, and each
+	# one's bands: a missing route, the warehouse full / nearly full / roomy, transit by the slowest
+	# input, and freight toned by the economics' input transport lamp.
+	var BR = load("res://scripts/building_readout.gd")
+	var tile := "tile_2_2"
+	var iid: String = BuildingState.add_building("b_007", "r_009", tile, MatchState.LOCAL_PLAYER, "v3_inbound_checks")
+	var b: Dictionary = BuildingState.get_building(iid)
+	var r: Dictionary = Catalog.get_recipe("r_009")
+	var checks: Array = BR.inbound_checks(b, r, false, load("res://scripts/building_economics.gd").per_turn(b))
+	_check(checks.map(func(c: Dictionary) -> String: return str(c.key)) == ["route", "warehouse", "transit", "freight"]
+		and checks.all(func(c: Dictionary) -> bool: return str(c.detail) != "" and str(c.detail).length() <= 120),
+		"inbound checks: a factory with inputs gets route, warehouse, transit and freight checks (%s)" % ", ".join(checks.map(func(c: Dictionary) -> String: return "%s %s" % [c.key, c.tone])))
+	var none: Array = BR.inbound_checks(b, {"inputs": []}, false)
+	_check(none.size() == 4 and none.all(func(c: Dictionary) -> bool: return str(c.tone) == "off"),
+		"inbound checks: a building that takes no inputs gets all four unlit")
+	var steel_id := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
+	var wire_id := str(Catalog.get_good_by_internal_name("copper_wiring").get("id", ""))
+	var by := func(gid: String, modes: Array, reachable: bool = true) -> Dictionary:
+		return {"good_id": gid, "name": "x", "reachable": reachable, "turns": 2, "from": "the market",
+			"route": {"legs": modes.map(func(m: String) -> Dictionary: return {"mode": m})}}
+	var blocked: Dictionary = BR._route_check(b, r, [by.call(steel_id, [], false)])
+	var roads: Dictionary = BR._route_check(b, r, [by.call(steel_id, ["roads"])])
+	var rails: Dictionary = BR._route_check(b, r, [by.call(steel_id, ["rail"])])
+	var both: Dictionary = BR._route_check(b, r, [by.call(steel_id, ["rail"]), by.call(wire_id, ["roads"])])
+	_check(str(blocked.tone) == "bad" and str(blocked.detail) == "No route in. Connect the tile by rail."
+		and str(roads.tone) == "warn" and str(roads.detail) == "Comes by road from the market. Rail would be cheaper."
+		and str(rails.tone) == "ok" and both.tones == ["warn", "ok"] and str(both.detail).begins_with("Copper wiring: Comes by road"),
+		"inbound checks: each input's route, a lamp each: red with no route, amber when rail or pipe would be cheaper (%s / %s)" % [roads.detail, both.detail])
+	var steel := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
+	var cap: int = Stockpile.get_capacity(tile)
+	var used0: int = Stockpile.get_used_capacity(tile)
+	var added: int = Stockpile.add(tile, steel, cap - used0)
+	var full: Dictionary = BR._warehouse_check(b, r)
+	Stockpile.consume(tile, steel, int(cap * 0.05))
+	var near: Dictionary = BR._warehouse_check(b, r)
+	Stockpile.consume(tile, steel, int(cap * 0.5))
+	var room: Dictionary = BR._warehouse_check(b, r)
+	Stockpile.consume(tile, steel, Stockpile.get_at_tile(tile, steel))
+	_check(cap > 0 and added > 0 and str(full.tone) in ["warn", "bad"] and str(full.detail).begins_with("Warehouse full")
+		and str(near.tone) == "warn" and str(near.detail).begins_with("Warehouse nearly full")
+		and str(room.tone) == "ok" and str(room.detail).contains("Room for deliveries"),
+		"inbound checks: warehouse room is amber or red when full, amber when nearly full, green with room (%s / %s / %s)" % [full.detail, near.detail, room.detail])
+	var near_t: Dictionary = BR._transit_check([{"name": "steel", "turns": 1, "from": "the market"}, {"name": "copper wiring", "turns": 0, "from": "this tile"}])
+	var mid_t: Dictionary = BR._transit_check([{"name": "steel", "turns": 3, "from": "the market"}, {"name": "copper wiring", "turns": 1, "from": "the market"}])
+	var far_t: Dictionary = BR._transit_check([{"name": "steel", "turns": 6, "from": "the market"}])
+	_check(str(near_t.tone) == "ok" and str(mid_t.tone) == "warn" and str(mid_t.detail) == "Slowest is steel, 3 turns from the market."
+		and str(far_t.tone) == "bad",
+		"inbound checks: transit is green within a turn, amber to four, red beyond, naming the slowest input (%s)" % mid_t.detail)
+	var freight: Dictionary = BR._freight_check({"shown": true, "transport_in": 5.0, "input_value": 100.0, "lamp_in": "warn"})
+	var free: Dictionary = BR._freight_check({"shown": true, "transport_in": 0.0, "input_value": 40.0, "inputs_free": false, "lamp_in": "ok"})
+	_check(str(freight.tone) == "warn" and str(freight.detail) == "£5.00 a turn to bring inputs in, 5% of their value."
+		and str(free.tone) == "ok",
+		"inbound checks: freight takes the economics' input transport lamp and gives the cost and its share (%s)" % freight.detail)
+	BuildingState.buildings.erase(iid)
+
+
+func _test_bdp_v3_input_checks() -> void:
+	# The diagnostics' visual Inputs checks: their order; stock cover from the tile's stock (the scarcest
+	# input, and short of one); a supplier of the company's own routed here; a mine's deposit; and all
+	# unlit but the deposit for a building that takes no inputs.
+	var BR = load("res://scripts/building_readout.gd")
+	var tile := "tile_2_2"
+	var iid: String = BuildingState.add_building("b_007", "r_009", tile, MatchState.LOCAL_PLAYER, "v3_input_checks")
+	var b: Dictionary = BuildingState.get_building(iid)
+	var r: Dictionary = Catalog.get_recipe("r_009")
+	var checks: Array = BR.input_checks(b, r, false)
+	_check(checks.map(func(c: Dictionary) -> String: return str(c.key)) == ["source", "stock", "upstream", "deposit"]
+		and str(checks[2].tone) == "off" and str(checks[3].tone) == "off" and str(checks[3].detail).begins_with("Not a mine")
+		and checks.all(func(c: Dictionary) -> bool: return str(c.detail) != "" and str(c.detail).length() <= 120),
+		"inputs checks: a factory gets source, stock, upstream and deposit; no own supplier and no deposit leave those unlit (%s)" % ", ".join(checks.map(func(c: Dictionary) -> String: return "%s %s" % [c.key, c.tone])))
+	var steel := str(Catalog.get_good_by_internal_name("steel").get("id", ""))
+	var wire := str(Catalog.get_good_by_internal_name("copper_wiring").get("id", ""))
+	Stockpile.add(tile, steel, 100)
+	Stockpile.add(tile, wire, 70)
+	var covered: Dictionary = BR._stock_check(b, r, false)
+	Stockpile.consume(tile, wire, 60)
+	var short: Dictionary = BR._stock_check(b, r, false)
+	Stockpile.consume(tile, steel, Stockpile.get_at_tile(tile, steel))
+	Stockpile.consume(tile, wire, Stockpile.get_at_tile(tile, wire))
+	_check(str(covered.tone) == "ok" and str(covered.detail) == "Stock covers 2 runs. Copper wiring runs short first."
+		and str(short.tone) in ["warn", "bad"] and str(short.detail).begins_with("Short of copper wiring for the next run. 10 of 32"),
+		"inputs checks: stock cover counts the runs the scarcest input covers, and names an input short for the next run (%s / %s)" % [covered.detail, short.detail])
+	var steel_recipes: Array = Catalog.recipes_producing(steel)
+	var mill_iid := ""
+	if not steel_recipes.is_empty():
+		var sr: Dictionary = steel_recipes[0]
+		mill_iid = BuildingState.add_building(str(sr.get("building_id", "")), str(sr.get("recipe_id", "")), "tile_3_2", MatchState.LOCAL_PLAYER, "v3_input_checks_mill")
+		MatchState.set_output_stockpile_destination(mill_iid, tile, steel)
+	var upstream: Dictionary = BR._upstream_check(b, r)
+	Stockpile.add(tile, steel, 100)
+	Stockpile.add(tile, wire, 100)
+	var sources: Dictionary = BR._source_check(b, r, false)
+	Stockpile.consume(tile, steel, Stockpile.get_at_tile(tile, steel))
+	Stockpile.consume(tile, wire, Stockpile.get_at_tile(tile, wire))
+	if mill_iid != "":
+		MatchState.clear_output_stockpile_destination(mill_iid, steel)
+		BuildingState.buildings.erase(mill_iid)
+	_check(mill_iid != "" and str(upstream.tone) != "off" and str(upstream.detail).contains("Your ") and str(upstream.detail).contains("steel"),
+		"inputs checks: a steel supplier of the company's own, routed here, is watched by upstream health (%s: %s)" % [upstream.tone, upstream.detail])
+	_check(sources.tones == ["warn", "ok"] and str(sources.detail) == "Copper wiring: Bought at the market. The rest: 1 green.",
+		"inputs checks: source has a lamp per input, green for steel from the company's own mill, amber for wiring bought (%s)" % sources.detail)
+	var mine_iid: String = BuildingState.add_building("b_001", "r_001", tile, MatchState.LOCAL_PLAYER, "v3_input_checks_mine")
+	var mine: Dictionary = BuildingState.get_building(mine_iid)
+	var mine_r: Dictionary = Catalog.get_recipe("r_001")
+	var mine_checks: Array = BR.input_checks(mine, mine_r, false)
+	Production.last_turn_summary["deposits_running_out"] = [{"instance_id": mine_iid, "remaining": 40, "per_turn": 10, "turns_left": 4}]
+	var running_out: Dictionary = BR._deposit_check(mine, mine_r)
+	Production.last_turn_summary["deposits_running_out"] = []
+	var has_token: bool = Production._recipe_deposit_token(mine_r) != ""
+	_check(has_token and str(mine_checks[3].tone) != "off" and str(running_out.tone) == "warn" and str(running_out.detail).begins_with("About 4 turns of")
+		and ((mine_r.get("inputs", []) as Array).size() > 0 or (str(mine_checks[0].tone) == "off" and str(mine_checks[1].tone) == "off")),
+		"inputs checks: a mine's deposit is read, amber with the turns left when running out (%s / %s)" % [mine_checks[3].detail, running_out.detail])
+	BuildingState.buildings.erase(mine_iid)
+	BuildingState.buildings.erase(iid)
+
+
+func _test_bdp_v3_output_checks() -> void:
+	# The diagnostics' visual Outputs checks, each over every good the recipe makes: their order; all
+	# unlit for a power plant; reach red with no route out, amber when a cheaper mode exists; transit and
+	# freight by the checklist's bands; the port by its traffic against its cap; sales as unsold stock when
+	# it piles up, else price against the glut; several goods combined into lamps by tone, worst first.
+	var BR = load("res://scripts/building_readout.gd")
+	var tile := "tile_2_2"
+	var iid: String = BuildingState.add_building("b_007", "r_009", tile, MatchState.LOCAL_PLAYER, "v3_output_checks")
+	var b: Dictionary = BuildingState.get_building(iid)
+	var r: Dictionary = Catalog.get_recipe("r_009")
+	var checks: Array = BR.output_checks(b, r, false)
+	_check(checks.map(func(c: Dictionary) -> String: return str(c.key)) == ["reach", "transit_out", "freight_out", "port", "sales"]
+		and checks.all(func(c: Dictionary) -> bool: return str(c.detail) != "" and (c.tones as Array).size() >= 1),
+		"outputs checks: a factory gets reach, transit, freight, port charge and sales, each with its lamps' tones (%s)" % ", ".join(checks.map(func(c: Dictionary) -> String: return "%s %s" % [c.key, c.tone])))
+	var plant_iid: String = BuildingState.add_building("b_003", "r_004", tile, MatchState.LOCAL_PLAYER, "v3_output_checks_plant")
+	var plant: Array = BR.output_checks(BuildingState.get_building(plant_iid), Catalog.get_recipe("r_004"), false)
+	BuildingState.buildings.erase(plant_iid)
+	_check(plant.size() == 5 and plant.all(func(c: Dictionary) -> bool: return str(c.tone) == "off") and str(plant[0].detail).contains("cable"),
+		"outputs checks: a power plant's goods checks are unlit, its power leaving by cable (%s)" % plant[0].detail)
+	var gid := BuildingStatus.primary_output_good_id(r)
+	var qty: int = BuildingStatus.primary_output_qty(r)
+	var g := {"gid": gid, "qty": qty, "name": "Motor"}
+	var none := {"reachable": false, "target": "tile_9_9", "turns": 0, "cost": 0.0, "destination": "Market (via Port)"}
+	var far := {"reachable": true, "target": "tile_9_9", "turns": 3, "cost": 16.0, "destination": "Market (via Port)"}
+	var freight: Dictionary = BR._freight_out_check(far, b, g)
+	var no_route: Dictionary = BR._reach_check(none, b, g)
+	var id_of := func(internal: String) -> String: return str(Catalog.get_good_by_internal_name(internal).get("id", ""))
+	var steel_id: String = id_of.call("steel")
+	var water_id: String = id_of.call("pure_water")
+	var chlorine_id: String = id_of.call("chlorine")
+	_check(str(no_route.tone) == "warn" and str(BR._transit_out_check(none, b, g).tone) == "bad"
+		and str(BR._transit_out_check(far, b, g).tone) == "warn"
+		and BR._cheaper_mode(steel_id, ["roads"]) == "rail" and BR._cheaper_mode(steel_id, ["rail"]) == "" and BR._cheaper_mode(steel_id, []) == "rail"
+		and BR._cheaper_mode(water_id, ["roads", "rail"]) == "pipes" and BR._cheaper_mode(water_id, ["reinf_pipes"]) == ""
+		and BR._cheaper_mode(chlorine_id, ["roads"]) == "reinf_pipes" and BR._cheaper_mode(chlorine_id, ["reinf_pipes"]) == ""
+		and str(freight.tone) == ("ok" if 16.0 / qty < 0.15 else "warn") and str(freight.detail).contains("a unit to ship"),
+		"outputs checks: reach is amber, never red, when a cheaper infrastructure suits the good (rail; pipeline; reinforced for hazards), and no route out makes transit red (%s)" % no_route.detail)
+	# The port: green with room, amber within 10% of its cap for the good's transport class, red at it.
+	var port_tile := "tile_5_10"
+	var sold_there := {"has_market": true, "target": port_tile, "reachable": true, "destination": "Market", "turns": 1, "cost": 0.0}
+	TransportState._ensure_sea_shipping_turn()
+	var saved_usage: Dictionary = TransportState._sea_port_usage_this_turn.duplicate(true)
+	var saved_charges: Dictionary = TransportState._sea_port_charges_this_turn.duplicate(true)
+	var kind := Catalog.get_transport_class(gid)
+	var cap: int = TransportState.seaport_throughput_cap(gid)
+	TransportState._sea_port_charges_this_turn[port_tile] = {gid: {"good_id": gid, "transport_class": kind, "at_cap": false}}
+	var port_at := func(share: float) -> Dictionary:
+		TransportState._sea_port_usage_this_turn[port_tile] = {kind: int(cap * share)}
+		return BR._port_check(b, sold_there, g)
+	var roomy: Dictionary = port_at.call(0.5)
+	var near: Dictionary = port_at.call(0.95)
+	var full: Dictionary = port_at.call(1.0)
+	TransportState._sea_port_usage_this_turn = saved_usage
+	TransportState._sea_port_charges_this_turn = saved_charges
+	_check(str(roomy.tone) == "ok" and str(near.tone) == "warn" and str(near.detail).contains("close to the cap")
+		and str(full.tone) == "bad" and str(full.detail).contains("pays double"),
+		"outputs checks: the port is green with room, amber within 10%% of its cap, red at it (%s)" % full.detail)
+	var saved_impact: float = MarketState.get_impact_pct(gid)
+	var route: Dictionary = BR.output_route(b, r)
+	MarketState.impact_pct[gid] = -12.0
+	var sunk: Dictionary = BR._sales_check(b, route, g)
+	MarketState.impact_pct[gid] = -7.0
+	var dipped: Dictionary = BR._sales_check(b, route, g)
+	MarketState.impact_pct[gid] = saved_impact
+	var stock_tile := tile if bool(route.get("has_market", false)) or str(route.get("target", "")) == "" else str(route.get("target", ""))
+	Stockpile.add(stock_tile, gid, qty * 4)
+	var piled: Dictionary = BR._sales_check(b, route, g)
+	Stockpile.add(stock_tile, gid, qty * 3)
+	var heaped: Dictionary = BR._sales_check(b, route, g)
+	Stockpile.consume(stock_tile, gid, Stockpile.get_at_tile(stock_tile, gid))
+	_check(str(sunk.tone) == "bad" and str(sunk.icon) == "glut" and str(sunk.detail).contains("12% under its base price") and str(dipped.tone) == "warn"
+		and str(piled.tone) == "warn" and str(piled.icon) == "unsold" and str(piled.detail).contains("%d waiting unsold" % (qty * 4))
+		and str(heaped.tone) == "bad" and str(heaped.detail).contains("7 turns of output"),
+		"outputs checks: sales is the glut (coin, amber 5%% under, red 10%%) while output sells, unsold stock (pallet, amber 3 turns, red 6) once it piles up (%s / %s)" % [sunk.detail, heaped.detail])
+	var combined: Dictionary = BR._combine_goods("reach", "Reach", [
+		{"tone": "ok", "name": "Chlorine", "detail": "Fine."}, {"tone": "bad", "name": "Hydrogen", "detail": "Can't reach the port."},
+		{"tone": "warn", "name": "Soda", "detail": "Dear."}, {"tone": "ok", "name": "Salt", "detail": "Fine."}])
+	_check(combined.tones == ["bad", "warn", "ok"] and str(combined.tone) == "bad"
+		and str(combined.detail) == "Hydrogen: Can't reach the port. The rest: 1 amber, 2 green.",
+		"outputs checks: several goods make one check, a lamp per tone worst first, the worst named (%s)" % combined.detail)
+	var alike: Dictionary = BR._combine_goods("route", "Route and mode", [
+		{"tone": "ok", "name": "steel", "detail": "Lands at the port on this tile."}, {"tone": "ok", "name": "copper wiring", "detail": "Lands at the port on this tile."}])
+	_check(alike.tones == ["ok"] and str(alike.detail) == "Steel and copper wiring: Lands at the port on this tile.",
+		"outputs checks: goods that share a finding are named together (%s)" % alike.detail)
+	var ind: Control = load("res://scripts/bdp_v3_indicator.gd").new()
+	add_child(ind)
+	ind.configure(40.0, 0.72)
+	ind.set_check({"stage": "Outputs", "label": "Reach", "tone": "bad", "tones": ["bad", "warn", "ok"], "detail": "x"}, null, null)
+	var colours: Array = ind.lamps.map(func(l: Node) -> String: return str(l.colour))
+	_check(colours == ["red", "amber", "green"] and ind.custom_minimum_size.x >= 3.0 * ind.lamp.custom_minimum_size.x,
+		"outputs checks: an indicator over three tones shows three lamps side by side, red, amber, green (%s)" % ", ".join(colours))
+	ind.queue_free()
+	BuildingState.buildings.erase(iid)

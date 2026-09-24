@@ -37,6 +37,8 @@ const BdpV3Door := preload("res://scripts/bdp_v3_door.gd")
 const BdpV3LabourDoor := preload("res://scripts/bdp_v3_labour_door.gd")
 const BdpV3ModKey := preload("res://scripts/bdp_v3_mod_key.gd")
 const BdpV3Led := preload("res://scripts/bdp_v3_led.gd")
+const BdpV3Indicator := preload("res://scripts/bdp_v3_indicator.gd")
+const BdpV3Readout := preload("res://scripts/bdp_v3_readout.gd")
 const BuildingEconomics := preload("res://scripts/building_economics.gd")
 const BuildingPrice := preload("res://scripts/building_price.gd")
 const BdpV3ValueBar := preload("res://scripts/bdp_v3_value_bar.gd")
@@ -258,6 +260,9 @@ func _build_shell() -> void:
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_body.add_theme_constant_override("separation", DS.SP["SM"])
 	_scroll.add_child(_body)
+	# The diagnostics' readout keeps in sight as the body scrolls or the panel changes height.
+	_body.item_rect_changed.connect(_v3_place_readout)
+	_scroll.resized.connect(_v3_place_readout)
 	_apply_v3_chrome()
 
 # --- live refresh (coalesced) --------------------------------------------------------------
@@ -402,7 +407,17 @@ func _rebuild(building: Dictionary) -> void:
 		_body.add_child(diag_head)
 	else:
 		_body.add_child(_make_section("Diagnostics", "always shown"))
-	_body.add_child(_build_diagnostics(BuildingReadout.diagnostics(building, recipe, building_data, is_infra)))
+	var diag_card := _build_diagnostics(BuildingReadout.diagnostics(building, recipe, building_data, is_infra))
+	_body.add_child(diag_card)
+	# v3's economics, quoted once: the visual diagnostics' carbon check reads it as well as the section.
+	var v3_econ: Dictionary = BuildingEconomics.per_turn(building) if UiPrefs.use_bdp_v3 else {}
+	if UiPrefs.use_bdp_v3:
+		# Both views are built; the switch shows one.
+		var diag_visual := _build_v3_diag_visual(building, recipe, is_infra, v3_econ)
+		_body.add_child(diag_visual)
+		_v3_diag_text_card = diag_card
+		_v3_diag_visual_view = diag_visual
+		_v3_show_diag_view()
 
 	# emphasised cost-to-produce (per output good, vs its market price)
 	if not is_infra and kind != "battery":
@@ -419,10 +434,9 @@ func _rebuild(building: Dictionary) -> void:
 	if UiPrefs.use_bdp_v3:
 		# v3: value added in production, transport, and what is left; nothing for a building with
 		# neither inputs nor outputs (a battery), whose running costs are no measure beside a producer's.
-		var econ := BuildingEconomics.per_turn(building)
-		if bool(econ.get("shown", false)):
+		if bool(v3_econ.get("shown", false)):
 			_body.add_child(_make_section("Economics · per turn"))
-			_body.add_child(_build_economics_v3(econ))
+			_body.add_child(_build_economics_v3(v3_econ))
 	else:
 		_body.add_child(_make_section("Economics · per turn"))
 		_body.add_child(_build_economics(BuildingReadout.economics(building, recipe, building_data)))
@@ -2444,9 +2458,10 @@ const V3_DIAG_MODULE: Texture2D = preload("res://assets/ui/bdp_v3/diag_module.pn
 const V3_DIAG_MODULE_MARGIN := 10.0 / 1.875
 const V3_DIAG_MODULE_CORNER := 26.0 * 2.0 / 1.875
 
-## The Visual / Text switch's side, kept while the game runs. The visual view is still to come, so for
-## now the diagnostics show as text either way.
-static var _v3_diag_visual := false
+## Whether the diagnostics show the Visual view: the player's choice on the switch (UiPrefs, kept while
+## the game runs), except while a tutorial step spotlights the rows, which its words describe.
+func _v3_diag_shows_visual() -> bool:
+	return UiPrefs.bdp_diag_visual and Tutorial.active_spotlight_ref() != "DiagnosticsCard"
 
 ## v3: a raised module in the diagnostics' case, for one check.
 func _v3_diag_module() -> PanelContainer:
@@ -2474,8 +2489,10 @@ func _v3_view_switch() -> HBoxContainer:
 	for side in ["Visual", "", "Text"]:
 		if side == "":
 			var sw: Control = BdpV3Toggle.new()
-			sw.set_right(not _v3_diag_visual)
-			sw.toggled.connect(func(right: bool) -> void: _v3_diag_visual = not right)
+			sw.set_right(not _v3_diag_shows_visual())
+			sw.toggled.connect(func(right: bool) -> void:
+				UiPrefs.set_bdp_diag_visual(not right)
+				_v3_show_diag_view())
 			hb.add_child(sw)
 		else:
 			var raised: Control = BdpV3Heading.new()
@@ -2483,6 +2500,202 @@ func _v3_view_switch() -> HBoxContainer:
 			raised.text = side
 			hb.add_child(raised)
 	return hb
+
+## v3's diagnostics as pictures: the chain left to right, a column a stage, each check a raised icon over
+## a lamp; hovering an icon names it in the readout at the foot. Each stage's checks come from
+## BuildingReadout (input_checks, inbound_checks, power_checks, plant_checks, output_checks). [stage,
+## icons to a row]; a column's share of the width follows its icons to a row.
+const V3_DIAG_STAGES := [["Inputs", 1], ["Inbound", 1], ["Power", 1], ["Plant", 1], ["Outputs", 1]]
+## Every column is this many rows of icons tall, whatever it holds (the most any stage has, Outputs'
+## five), so the columns stand level and a stage can gain checks without the case changing height.
+const V3_DIAG_ROWS := 5
+## The icons' side, and their lamps' size as a share of the status lamp's (the text rows' size).
+const V3_DIAG_ICON_PX := 56.0
+const V3_DIAG_ICON_LAMP_SCALE := 0.72
+## Each check's raised icon is res://assets/ui/bdp_v3/diag_icon_<key>.png and its shadow, or the one its
+## `icon` names (Sales shows the pallet for unsold stock, the coin for glut); an output check that mirrors
+## an inbound one shares its icon.
+const V3_DIAG_ICON_ALIAS := {"reach": "route", "transit_out": "transit", "freight_out": "freight"}
+const V3_DIAG_COLUMN_GAP := 6
+## A column's inside margin, left and right, and the gaps between its icons: 6 px either side of each icon.
+const V3_DIAG_COLUMN_PAD := 6
+const V3_DIAG_CELL_GAP := Vector2i(12, 8)
+## The gap above the readout, and the least gap between it and the first row when it rises.
+const V3_DIAG_READOUT_GAP := 8.0
+## After the pointer leaves an icon, how long the readout waits for it to reach another before it goes
+## back to the worst check, so crossing the gap between two icons doesn't flicker.
+const V3_DIAG_READOUT_SETTLE := 0.15
+
+var _v3_diag_text_card: Control = null
+var _v3_diag_visual_view: Control = null
+var _v3_diag_readout: Control = null
+var _v3_diag_first: Control = null
+var _v3_diag_worst: Control = null
+var _v3_diag_hot: Control = null
+
+
+## The visual view's checks, a list per stage, each {stage, key, label, detail, tone}, from the building
+## (`econ` is its BuildingEconomics.per_turn).
+static func v3_diag_visual_checks(building: Dictionary, recipe: Dictionary, is_infra: bool, econ: Dictionary = {}) -> Array:
+	var stages: Array = []
+	for entry: Array in V3_DIAG_STAGES:
+		var stage := str(entry[0])
+		var wired: Array = []
+		match stage:
+			"Inputs":
+				wired = BuildingReadout.input_checks(building, recipe, is_infra)
+			"Inbound":
+				wired = BuildingReadout.inbound_checks(building, recipe, is_infra, econ)
+			"Power":
+				wired = BuildingReadout.power_checks(building, recipe, is_infra)
+			"Plant":
+				wired = BuildingReadout.plant_checks(building, recipe, is_infra, econ)
+			"Outputs":
+				wired = BuildingReadout.output_checks(building, recipe, is_infra)
+		var checks: Array = []
+		for c: Dictionary in wired:
+			var check := c.duplicate()
+			check["stage"] = stage
+			checks.append(check)
+		stages.append(checks)
+	return stages
+
+
+## A check's raised icon and its shadow.
+static func _v3_diag_icon(key: String) -> Array:
+	var path := "res://assets/ui/bdp_v3/diag_icon_%s.png" % str(V3_DIAG_ICON_ALIAS.get(key, key))
+	return [load(path), load(path.replace(".png", "_shadow.png"))]
+
+
+## v3: the visual view. Each stage is a raised module in the case, its name in metal letters over its
+## icons (one or two to a row, V3_DIAG_STAGES); the readout's slot is at the foot.
+func _build_v3_diag_visual(building: Dictionary, recipe: Dictionary, is_infra: bool, econ: Dictionary = {}) -> VBoxContainer:
+	var view := VBoxContainer.new()
+	view.name = "DiagnosticsVisual"
+	view.add_theme_constant_override("separation", 0)
+	var columns := HBoxContainer.new()
+	columns.name = "DiagColumns"
+	columns.add_theme_constant_override("separation", V3_DIAG_COLUMN_GAP)
+	view.add_child(columns)
+	var indicators: Array[Control] = []
+	var stage_checks: Array = v3_diag_visual_checks(building, recipe, is_infra, econ)
+	for s in stage_checks.size():
+		var checks: Array = stage_checks[s]
+		var across := int(V3_DIAG_STAGES[s][1])
+		var column := _v3_diag_module()
+		column.name = "DiagColumn"
+		column.remove_meta("v3_diag_module")
+		column.set_meta("v3_diag_column", true)
+		column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		column.size_flags_stretch_ratio = across
+		var pad := column.get_theme_stylebox("panel") as StyleBoxEmpty
+		pad.content_margin_left = V3_DIAG_COLUMN_PAD
+		pad.content_margin_right = V3_DIAG_COLUMN_PAD
+		pad.content_margin_top = 6
+		pad.content_margin_bottom = 8
+		columns.add_child(column)
+		var vb := VBoxContainer.new()
+		vb.add_theme_constant_override("separation", 5)
+		column.add_child(vb)
+		var title := _v3_metal_label(str((checks[0] as Dictionary).get("stage", "")) if not checks.is_empty() else "", HORIZONTAL_ALIGNMENT_CENTER)
+		title.add_theme_font_size_override("font_size", 13)
+		vb.add_child(title)
+		var grid := GridContainer.new()
+		grid.columns = across
+		grid.add_theme_constant_override("h_separation", V3_DIAG_CELL_GAP.x)
+		grid.add_theme_constant_override("v_separation", V3_DIAG_CELL_GAP.y)
+		grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		vb.add_child(grid)
+		for check: Dictionary in checks:
+			var ind: Control = BdpV3Indicator.new()
+			ind.configure(V3_DIAG_ICON_PX, V3_DIAG_ICON_LAMP_SCALE)
+			var art: Array = _v3_diag_icon(str(check.get("icon", check.get("key", ""))))
+			ind.set_check(check, art[0], art[1])
+			ind.hovered.connect(_v3_on_indicator_hovered)
+			ind.unhovered.connect(_v3_on_indicator_unhovered)
+			grid.add_child(ind)
+			indicators.append(ind)
+		if grid.get_child_count() > 0:
+			var cell_h: float = (grid.get_child(0) as Control).custom_minimum_size.y
+			grid.custom_minimum_size.y = V3_DIAG_ROWS * cell_h + (V3_DIAG_ROWS - 1) * V3_DIAG_CELL_GAP.y
+	# The slot keeps the readout's room at the foot; the screen in it is placed by hand, so it can rise.
+	var slot := Control.new()
+	slot.name = "DiagReadoutSlot"
+	slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slot.custom_minimum_size = Vector2(0.0, V3_DIAG_READOUT_GAP + BdpV3Readout.HEIGHT)
+	view.add_child(slot)
+	var readout: Control = BdpV3Readout.new()
+	slot.add_child(readout)
+	slot.item_rect_changed.connect(_v3_place_readout)
+	_v3_diag_readout = readout
+	_v3_diag_hot = null
+	_v3_diag_first = indicators[0] if not indicators.is_empty() else null
+	_v3_diag_worst = _v3_worst_indicator(indicators)
+	_v3_show_in_readout(_v3_diag_worst)
+	return view
+
+
+## The check to show when the pointer is on none: the first red, else the first amber, else the first.
+static func _v3_worst_indicator(indicators: Array) -> Control:
+	for want in ["bad", "warn"]:
+		for ind: Control in indicators:
+			if ind.tone == want:
+				return ind
+	return indicators[0] if not indicators.is_empty() else null
+
+
+func _v3_show_in_readout(ind: Control) -> void:
+	if _v3_diag_readout == null or not is_instance_valid(_v3_diag_readout) or ind == null or not is_instance_valid(ind):
+		return
+	_v3_diag_readout.show_check(ind.stage, ind.label, ind.detail, ind.tone)
+
+
+func _v3_on_indicator_hovered(ind: Control) -> void:
+	_v3_diag_hot = ind
+	_v3_show_in_readout(ind)
+
+
+func _v3_on_indicator_unhovered(ind: Control) -> void:
+	if _v3_diag_hot == ind:
+		_v3_diag_hot = null
+	get_tree().create_timer(V3_DIAG_READOUT_SETTLE).timeout.connect(_v3_readout_settle)
+
+
+func _v3_readout_settle() -> void:
+	if _v3_diag_hot == null or not is_instance_valid(_v3_diag_hot):
+		_v3_show_in_readout(_v3_diag_worst)
+
+
+## v3: shows the diagnostics' view the switch is set to.
+func _v3_show_diag_view() -> void:
+	var visual := _v3_diag_shows_visual()
+	if _v3_diag_text_card != null and is_instance_valid(_v3_diag_text_card):
+		_v3_diag_text_card.visible = not visual
+	if _v3_diag_visual_view != null and is_instance_valid(_v3_diag_visual_view):
+		_v3_diag_visual_view.visible = visual
+	_v3_place_readout.call_deferred()
+
+
+## v3: keeps the diagnostics' readout in sight. It sits in its slot at the foot of the visual view; while
+## the slot is below the scroll area's bottom edge, the screen rises to sit on that edge, over the lower
+## icons, but never over the first row.
+func _v3_place_readout(_a: Variant = null) -> void:
+	var readout := _v3_diag_readout
+	if readout == null or not is_instance_valid(readout) or not readout.is_inside_tree() or _scroll == null:
+		return
+	var slot := readout.get_parent() as Control
+	var h: float = readout.custom_minimum_size.y
+	var top := V3_DIAG_READOUT_GAP
+	if slot.is_visible_in_tree():
+		var to_slot := slot.get_global_transform().affine_inverse()
+		var view_bottom: float = (to_slot * _scroll.get_global_rect().end).y
+		var highest := top
+		if _v3_diag_first != null and is_instance_valid(_v3_diag_first):
+			highest = minf(top, (to_slot * _v3_diag_first.get_global_rect().end).y + V3_DIAG_READOUT_GAP)
+		top = clampf(view_bottom - h, highest, top)
+	readout.position = Vector2(0.0, top)
+	readout.size = Vector2(slot.size.x, h)
+
 
 func _diag_head_text() -> String:
 	return ("⌄  All green" if _diagnostics_open else "›  All green")

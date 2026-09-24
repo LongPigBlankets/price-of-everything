@@ -16,7 +16,7 @@ This is the plan for bringing the rest of the building detail panel over to v3, 
 - the scrollbar
 - the lamp over the panel
 - the section headings in raised lettering, as INPUTS and OUTPUTS
-- the diagnostics in a dark plastic case with silver screws, each check a raised module fed off the cable, a Visual / Text switch (Text; the visual view is not built yet)
+- the diagnostics in a dark plastic case with silver screws, each check a raised module fed off the cable, a Visual / Text switch (Text by default; Visual shows the stage columns of checks)
 - inbound shipments in a six-good bay, large icons with stock lamps and supply hovers, the rolling door down over the empty rows
 - cost to produce on gauges
 - Labour and Wages: a factory door per kind of worker with the headcount on its kick plate, and the cost and workers on drum counters
@@ -88,7 +88,7 @@ Each is a render set in `cluster.html` and a script in `scripts/`. Everything af
 
 In order of what a player sees most:
 
-1. **Section headings:** done, in raised lettering. **Diagnostics:** modules in a plastic case; the visual view behind the Visual / Text switch comes later.
+1. **Section headings:** done, in raised lettering. **Diagnostics:** modules in a plastic case; the visual view behind the Visual / Text switch is built: five stage columns, inputs on the left, icons over lamps, and a readout at the foot that names the hovered check and keeps in sight.
 2. **Economics:** done, value added in production, transport and net value added on LED screens, the value bar and the transport lamps. The power line is left out.
 3. **Cost to produce:** done, a gauge per output.
 4. **Inbound shipments:** done, a six-good bay with the rolling door over the empty rows.
@@ -215,7 +215,7 @@ Decided later on 24 September 2026:
 
 Still open:
 
-- The diagnostics' visual view (behind the Visual / Text switch), deferred for now.
+- The diagnostics' visual view: built and wired. Five stage columns, one 56 px icon wide and five rows tall, a readout that keeps in sight, and 18 checks from `BuildingReadout`: Inputs (source, stock cover, upstream health, deposit left), Inbound (route and mode, warehouse room, transit time, freight cost), Power (supply, intermittency, cable capacity), Plant (carbon levy, works) and Outputs (reach as the cheapest suitable infrastructure, transit time, freight cost, port congestion, sales as unsold stock or glut), each Outputs check, Inputs' Source and Inbound's Route and mode over every good with a lamp per tone. The switch's side is kept in UiPrefs while the game runs; the words were reviewed for brevity and plain punctuation. Thresholds set by the owner: glut 5% / 10% under base, unsold 3 / 6 turns' output, cable and warehouse 90%, port within 10% of its cap.
 - How dark the lamp over the panel falls. Since the re-render the lower panel is much lighter than in the standard, whose backing fell nearly to black; the overlay's darkest (0.7 now) sets it.
 
 ## Next: the DS2 kit
