@@ -1,9 +1,10 @@
 extends Control
-## Building Detail v3: the Modifiers key, an off-white keycap like Inputs' and Outputs'
+## Building Detail v3: a wide key for a row that opens, a worn off-white keycap like Inputs' and Outputs'
 ## (res://assets/ui/bdp_v3/key_modifiers.png and _pressed, rendered blank by
-## tools/button_mockup/cluster.html?export and drawn as a horizontal three-slice), with the output
-## modifier (or None) printed on its top as Inputs' key prints its route, and a chevron at its right end.
-## It latches down while the modifiers are open.
+## tools/button_mockup/cluster.html?export and drawn as a horizontal three-slice), with its text printed
+## on its top in navy, as Inputs' key prints its route, and a chevron at its right end. It latches down
+## while what it opens is open. The Modifiers key prints the output modifier (or None); the economics'
+## rows print their names.
 
 signal toggled(open: bool)
 
@@ -22,7 +23,7 @@ const PRESS_TINT := Color(0.93, 0.93, 0.93)
 const NAVY := Color("#0b2340")
 
 var open := false
-## The output modifier printed on the right, and its ink.
+## The text printed on the key, and its ink.
 var summary := ""
 var summary_ink := NAVY
 var _held := false
@@ -34,7 +35,6 @@ func _init() -> void:
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	custom_minimum_size = Vector2(0.0, (HEIGHT - 2.0 * KEY_INSET) / CAPTURE_SCALE)
-	tooltip_text = "Everything bending this building's numbers"
 
 
 func set_open(value: bool) -> void:

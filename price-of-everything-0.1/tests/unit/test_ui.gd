@@ -908,18 +908,21 @@ func _test_bdp_v3_panel() -> void:
 	await get_tree().process_frame
 	var closed_leds: int = shown_leds.call().size()
 	var va_box: Control = econ_card.find_child("ValueAdded", true, false) if econ_card != null else null
-	if va_box != null:
-		var click := InputEventMouseButton.new()
-		click.button_index = MOUSE_BUTTON_LEFT
-		click.pressed = true
-		va_box.get_node("Head").gui_input.emit(click)
+	var va_key: Control = va_box.find_child("BdpV3ModKey", true, false) if va_box != null else null
+	if va_key != null:
+		for down in [true, false]:
+			var click := InputEventMouseButton.new()
+			click.button_index = MOUSE_BUTTON_LEFT
+			click.pressed = down
+			click.position = va_key.size * 0.5
+			va_key._gui_input(click)
 	var open_leds: int = shown_leds.call().size()
 	var pounds: Array = econ_card.find_children("MoneyLed", "", true, false) if econ_card != null else []
 	var econ_bar: Control = econ_card.find_child("BdpV3ValueBar", true, false) if econ_card != null else null
 	var econ_lamps: Array = econ_card.find_children("TransportLamp", "", true, false) if econ_card != null else []
-	_check(econ_card != null and closed_leds == 3 and open_leds == 7 and pounds.size() >= 7
+	_check(econ_card != null and closed_leds == 3 and open_leds == 7 and pounds.size() >= 7 and va_key != null and va_key.open
 		and econ_card.find_child("Transport", true, false) != null and econ_card.find_child("NetValueAdded", true, false) != null,
-		"bdp v3: value added in production and transport open to show their parts, every figure an LED screen after a £ (%d shown closed, %d with value added open)" % [closed_leds, open_leds])
+		"bdp v3: value added in production and transport open from worn white keys to show their parts, every figure an LED screen after a £ (%d shown closed, %d with value added open)" % [closed_leds, open_leds])
 	_check(econ_bar != null and econ_bar.row_label(0) == "Revenue if sold" and econ_bar.row_keys(0).size() >= 1
 		and econ_bar.row_keys(1).has("inputs") and econ_bar.row_keys(1).has("labour") and econ_lamps.size() == 2,
 		"bdp v3: revenue (if sold) and costs show as two bars, and each side's transport has a lamp (%s | %s)" % [econ_bar.row_keys(0) if econ_bar != null else [], econ_bar.row_keys(1) if econ_bar != null else []])

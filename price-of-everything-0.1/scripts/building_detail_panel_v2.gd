@@ -2914,6 +2914,7 @@ func _v3_modifiers(mod: Dictionary, total: int, by_cat: Dictionary) -> void:
 	heading.text = "Modifiers"
 	col.add_child(heading)
 	var key: Control = BdpV3ModKey.new()
+	key.tooltip_text = "Everything bending this building's numbers"
 	col.add_child(key)
 	if total == 0:
 		key.summary = "None"
@@ -3147,24 +3148,27 @@ func _v3_money_led(figure: float, colour: Color, digits := 0) -> HBoxContainer:
 	hb.add_child(led)
 	return hb
 
-## One of v3's economics rows that opens: a chevron, its name and its figure; open, the figures that make
-## it, indented under it, each on its own screen. With nothing to show under it, it doesn't open.
+## One of v3's economics rows that opens: a wide worn-white key with its name printed in navy and a
+## chevron (BdpV3ModKey, as Modifiers has), its figure on a screen beside it; the key latches down while
+## the row is open, showing the figures that make it, indented under it, each on its own screen. With
+## nothing to show under it, it is a plain row.
 func _v3_econ_accordion(node_name: String, key: String, title: String, figure: float, colour: Color, parts: Array) -> VBoxContainer:
 	var box := VBoxContainer.new()
 	box.name = node_name
 	box.add_theme_constant_override("separation", DS.SP["SM"])
-	var head := _v3_econ_line(title, figure, colour, true)
-	head.name = "Head"
-	box.add_child(head)
 	if parts.is_empty():
+		var plain := _v3_econ_line(title, figure, colour, true)
+		plain.name = "Head"
+		box.add_child(plain)
 		return box
-	var chevron := Control.new()
-	chevron.name = "Chevron"
-	chevron.custom_minimum_size = Vector2(14, 14)
-	chevron.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	chevron.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	head.add_child(chevron)
-	head.move_child(chevron, 0)
+	var head := HBoxContainer.new()
+	head.name = "Head"
+	head.add_theme_constant_override("separation", DS.SP["MD"])
+	box.add_child(head)
+	var opener: Control = BdpV3ModKey.new()
+	opener.summary = title
+	head.add_child(opener)
+	head.add_child(_v3_money_led(figure, colour, _v3_led_digits))
 	var nested := VBoxContainer.new()
 	nested.name = "Parts"
 	nested.add_theme_constant_override("separation", 4)
@@ -3175,20 +3179,10 @@ func _v3_econ_accordion(node_name: String, key: String, title: String, figure: f
 	for p: Array in parts:
 		nested.add_child(_v3_econ_line(str(p[0]), float(p[1]), p[2]))
 	indent.visible = bool(_v3_econ_open.get(key, false))
-	chevron.draw.connect(func() -> void:
-		var c := chevron.size * 0.5
-		var r := 4.0
-		var pts := PackedVector2Array([c + Vector2(-r, -r * 0.5), c + Vector2(0, r * 0.5), c + Vector2(r, -r * 0.5)]) if indent.visible \
-			else PackedVector2Array([c + Vector2(-r * 0.5, -r), c + Vector2(r * 0.5, 0), c + Vector2(-r * 0.5, r)])
-		chevron.draw_polyline(pts, DS.PALETTE["TEXT"], 2.0, true))
-	head.mouse_filter = Control.MOUSE_FILTER_STOP
-	head.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	head.gui_input.connect(func(e: InputEvent) -> void:
-		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-			head.accept_event()
-			indent.visible = not indent.visible
-			_v3_econ_open[key] = indent.visible
-			chevron.queue_redraw())
+	opener.set_open(indent.visible)
+	opener.toggled.connect(func(open: bool) -> void:
+		indent.visible = open
+		_v3_econ_open[key] = open)
 	return box
 
 ## A transport lamp: the side's raised icon, its lamp, and what its transport costs a turn, or a flag
