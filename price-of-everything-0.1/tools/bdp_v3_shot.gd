@@ -1,7 +1,8 @@
 extends Node2D
 ## Building Detail v3 (`toggle bdp v3`) screenshots, each cropped to the panel: its top with the
 ## status lamp (and again without the lamp's overlay, and without the lamp at all), the cost gauges, the lamp in each state, the body scrolled partway and to the end (the scrollbar's
-## slider along its rail), the recipe sheet sliding in and settled, and the shipments of a recipe with many inputs. Places a motor factory (r_009) with its
+## slider along its rail), the recipe sheet sliding in and settled, the Modifiers open, and the shipments of recipes with
+## three or four inputs and with five or more. Places a motor factory (r_009) with its
 ## inputs in stock on tile_5_10, so the panel is long enough to scroll.
 ##   Godot --path . res://tools/bdp_v3_shot.tscn --quit-after 3000 -- --no-telemetry
 ## Writes /tmp/poe_bdp_v3_*.png, or into $BDP_SHOT_DIR when it is set. tools/bdp_v3_compare.py checks
@@ -103,27 +104,42 @@ func _ready() -> void:
 	_save(panel, "sheet")
 	panel._close_sheet()
 
-	# A recipe with three or four inputs (four if there is one), so the shipments' door comes down behind
-	# an upper row of goods. The first input is stocked, so its lamp is green and the others red.
-	var four := ""
-	var most := 2
+	# The Modifiers key latched down, its white sheet open under it.
+	panel._v3_modifiers_open = true
+	panel._rebuild(building)
+	await _settle(8)
+	var mod_sheet: Control = panel.find_child("ModifiersSheet", true, false)
+	if mod_sheet != null:
+		panel._scroll.ensure_control_visible(mod_sheet)
+		await _settle(6)
+		_save(panel, "modifiers")
+	panel._v3_modifiers_open = false
+
+	# The shipments of a recipe with three or four inputs (the door down over the bay's empty top row) and
+	# of one with five or more (the door rolled up). The first input is stocked, so its lamp is green and
+	# the others red.
+	var some := ""
+	var many := ""
 	for r: Dictionary in Catalog.get_recipes_for_building("b_007"):
 		var n := (r.get("inputs", []) as Array).size()
-		if n > most and (most < 4 or n == 4):
-			four = str(r.get("recipe_id", ""))
-			most = n
-	print("[BDP_V3_SHOT] many-input recipe: %s (%d inputs)" % [four, most])
-	if four != "":
-		var iid4: String = BuildingState.add_building("b_007", four, "tile_5_10", "player_1", "bdpv3shot_four")
-		var first: Dictionary = (Catalog.get_recipe(four).get("inputs", []) as Array)[0]
+		if n >= 3 and n <= 4 and some == "":
+			some = str(r.get("recipe_id", ""))
+		elif n >= 5 and many == "":
+			many = str(r.get("recipe_id", ""))
+	print("[BDP_V3_SHOT] shipments recipes: %s (3-4 inputs), %s (5+ inputs)" % [some, many])
+	for pair in [[some, "shipments_some"], [many, "shipments_many"]]:
+		if str(pair[0]) == "":
+			continue
+		var iid_n: String = BuildingState.add_building("b_007", pair[0], "tile_5_10", "player_1", "bdpv3shot_" + str(pair[1]))
+		var first: Dictionary = (Catalog.get_recipe(pair[0]).get("inputs", []) as Array)[0]
 		Stockpile.add("tile_5_10", str(first.get("good_id", "")), int(first.get("qty", 0)) * 2)
-		_wm._open_building_detail(BuildingState.get_building(iid4))
+		_wm._open_building_detail(BuildingState.get_building(iid_n))
 		await _settle(20)
 		var ships: Control = _wm.building_panel_v2.find_child("ShipmentsV3", true, false)
 		if ships != null:
 			_wm.building_panel_v2._scroll.ensure_control_visible(ships.get_parent().get_parent())
 			await _settle(8)
-			_save(_wm.building_panel_v2, "shipments_many")
+			_save(_wm.building_panel_v2, str(pair[1]))
 	get_tree().quit(0)
 
 

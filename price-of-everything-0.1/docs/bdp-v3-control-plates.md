@@ -225,27 +225,39 @@ The font stays the title's own: Bebas Neue at 32 px (60 layout px). Titles chang
 
 In the game, `bdp_v3_title.gd` shapes and wraps the title with Godot's text server in the same font, size and wrapping as the plain label, and places each letter's render on its pen position. It draws every shadow first, then the faces, each shaded for where its middle falls in the block of lines. The atlas covers A–Z, 0–9 and common punctuation, which is every character in the building and recipe names (a test checks this). A title with any other character keeps the plain label.
 
+## Section headings
+
+Every section heading (Diagnostics, Cost to produce, Economics · per turn, Inbound shipments, Labour and Wages, and the rest) is lettered as INPUTS and OUTPUTS are on the control plate: IBM Plex Sans Bold at 28 layout px, raised in the plate lettering's white, 5 px high on a flank softened by 0.7 px, with the same swept shadow and contact line, the faces graded from white at the top-left to `#B8B0A0` across the heading. The letters are rendered one per cell into an atlas like the title's (`headingAtlas`, `heading_glyphs` and `heading_glyph_shadows`, 900 × 159, 8 px of room round each letter); `layout.json` lists each cell as `[x, y, w, h, pen x, advance]`, with a space's advance, and `bdp_v3_heading.gd` sets the letters along one line by those advances. The game has no Plex Bold, so the heading is set by the page's measurements rather than by Godot's text server. The atlas holds the title's characters and the middle dot; a heading with any other character keeps the plain label.
+
 ## Diagnostics
 
-In v3 the diagnostics section is a moulded dark plastic plate (`plasticPlate`, `diag_plastic`, a 9-slice) instead of a steel frame, with silver cross-head screws (`screw_silver`) set along its top and down both sides, 9 px in from its edges and about 56 px apart, spaced evenly for its size (`bdp_v3_section.gd`, `style = "plastic"`). The rows keep v2's layout. Each is led by a lamp like the status lamp, at 72% of its size, lit for the row's tone; a row about a good shows the good's icon beside its lamp. All the section's text is white with a dark shadow down and to the right, so it stands off the plastic. A cable runs down beside the lamps (`cableRun`, `bdp_v3_cable.gd`): black rubber insulation with a yellow tracer stripe, near-black with one crisp glossy highlight along its top so it reads as round against the dark steel, between a steel cable gland at each end. It is drawn as a vertical three-slice, the glands at their size and the cable stretched between them, down a 26 px gutter at the card's left.
+In v3 the diagnostics section is a moulded dark plastic case (`plasticPlate`, `diag_plastic`, a 9-slice) instead of a steel frame, with silver cross-head screws (`screw_silver`) round its edge, 9 px in: four along the top and four along the bottom, corner to corner, and six down each side, counting the corners (`bdp_v3_section.gd`, `style = "plastic"`, `screw_points`). The heading has a Visual / Text slide switch beside it (`toggleSlot`, `toggleKnob`, `bdp_v3_toggle.gd`): a slot moulded into the case and an off-white ridged thumb that slides across when clicked. It is set to Text and keeps its side while the game runs; the visual view is not built yet, so it changes nothing.
+
+Each check is its own module (`diagModule`, `diag_module`, a 9-slice): a slightly raised black plastic panel a shade lighter than the case, with a rounded glossy edge and its shadow on the case, 8 px apart. A module is led by a lamp like the status lamp, at 72% of its size, lit for the row's tone; a row about a good shows the good's icon beside its lamp. When every check is fine the list folds to one "All green" module with a green lamp, which opens the rest. All the section's text is white with a dark shadow down and to the right, so it stands off the plastic.
+
+A cable runs down the case's left side (`cableRun`, `bdp_v3_cable.gd`): black rubber insulation with a yellow tracer stripe, near-black with one crisp glossy highlight along its top so it reads as round, between a steel cable gland at each end, drawn as a vertical three-slice. Each module takes its feed from it (`cableTap`, `diag_tap`): a moulded junction box clamped over the cable, a short branch of the same cable, and a steel gland where it enters the module's end, at the height of the module's middle. The branch sets the modules' left margin (`BdpV3Cable.TAP_LENGTH` to the right of the cable).
 
 ## Cost to produce
 
-Each output's cost is on a gauge (`scripts/panel_gauge.gd`, 128 px), on the frame's steel. The needle shows the unit cost as a share of the market price, on a scale running to twice it. The zones are the cost's RAG bands (green under 90%, amber to 110%, red over) and the LED follows the zone. An unknown cost leaves the needle down and the LED off. Beside the gauge are the good's name, the cost per unit in its RAG colour and the market line. The needle swings from where it last read when the panel rebuilds.
+Each output's cost is on a gauge (`scripts/panel_gauge.gd`, 160 px), on the frame's steel. The needle shows the unit cost as a share of the market price, on a scale running to twice it. The zones are the cost's RAG bands (green under 90%, amber to 110%, red over) and the LED follows the zone. An unknown cost leaves the needle down and the LED off. The good's name, the cost per unit in its RAG colour (28 px) and the market line sit centred in the room to the right of the gauge. The needle swings from where it last read when the panel rebuilds.
 
-## Labour
+## Modifiers
 
-On the frame's steel: the three headcounts as numbers, each with its label printed under it in off-white capitals (Unskilled, Skilled, Highly skilled). Below them, the labour cost per turn and the number of workers are on drum counters (`bdp_v3_counter.gd`), each labelled beside it.
+Modifiers is a wide off-white keycap like Inputs' and Outputs' (`key_modifiers` and `_pressed`, rendered blank and drawn as a horizontal three-slice, `bdp_v3_mod_key.gd`), printed in navy: a % sign, MODIFIERS, the output modifier on the right (or None) and a chevron. Pressing it opens a white plastic sheet under it (`whiteSheet`, `sheet_white`, a 9-slice in the keycaps' plastic) with the same rows as v2 printed in navy; the category figures take darker greens, ambers and reds so they read on white (`V3_INK`). The key latches down while the sheet is open, and the sheet stays open across rebuilds. Modifiers and Economics share one steel frame.
+
+## Labour and Wages
+
+In v3 the section is called Labour and Wages. On the frame's steel, a factory door for each kind of worker (`labourDoor`, `labour_door` and `labour_door_lit`, 200 × 300, drawn 150 px tall by `bdp_v3_labour_door.gd`), its name printed over it in off-white capitals (Unskilled, Skilled, Highly skilled): a painted steel door in a dark steel jamb, a small wired-glass window near its top, a lever handle, and a brushed steel kick plate across its foot. The headcount is engraved on the kick plate in navy (Barlow Condensed Bold, with a light edge below and to the right). The window is lit warm from inside when any of that kind of worker are employed and dark when none are.
+
+Below the doors, the labour cost per turn and the number of workers are on drum counters (`bdp_v3_counter.gd`), each labelled beside it.
 
 A drum counter (`counterHousing`, `paintCounterGlass`) is a gunmetal housing with black drums in a window. The game prints the digits on the drums live (Barlow Condensed SemiBold), then lays `counter_glass` over them: the drums' curve shading away top and bottom, the window lip's shadow and a faint glare. Both renders are horizontal three-slices whose middle cell repeats once per drum. The cost has two drums after a printed decimal point. A counter has as many drums as its value needs (at least four for the cost and three for the workers), and when its value changes it rolls to it like an odometer, each drum turning only while the one below it passes from 9 to 0.
 
 ## Inbound shipments
 
-The section's backdrop is a factory rolling door, slid up (`rollingDoor`, `shipment_door`, drawn by `bdp_v3_door.gd`): a roller housing across the top, corrugated slats painted a dark industrial grey, a bottom bar with a rubber seal, and a steel guide channel down each side. The guides, housing and bar keep their size, the width between the guides stretches, and whole slats repeat down to the height the door must reach. Below the door the bay is in its shadow for a little way.
+The section is a bay with room for six goods, two to a row, and no text: each good is a large icon (96 px) with its lamp beside it. The goods fill the bottom row first and the rows above after it. The bay's rolling door (`rollingDoor`, `shipment_door`, drawn by `bdp_v3_door.gd`, a roller housing across the top, corrugated slats painted a dark industrial grey, a bottom bar with a rubber seal, and a steel guide channel down each side) comes down over the rows no good needs: two rows with one or two inputs, the top row with three or four (`v3_door_rows`). With every row in use the door is rolled up, the housing with the door's bottom bar tucked under it. So the bay is the same height whatever the recipe, and the door is never behind a good. The guides, housing and bar keep their size, the width between the guides stretches, and whole slats repeat down to the door's height. Below the door the bay is in its shadow for a little way.
 
-The goods sit two to a row: the first two in the bottom row, the next two in the row above, and so on. With one row the door is just a backing for the title; with more it comes down behind the upper rows (the frame draws it to just below them, `BdpV3Section.door_until`).
-
-Each good shows its icon, a lamp beside it, and "name — stored/needed stored" in white with a dark shadow. The lamp (`v3_stock_tone`) is:
+Each good's lamp (`v3_stock_tone`) is:
 
 - green with enough in stock to run;
 - amber when short with something on its way: an inbound shipment, or the logistics intermediary;
@@ -296,7 +308,7 @@ Then open `http://127.0.0.1:8771/cluster.html?export` in a browser. It works hea
 
 The tab title becomes "export done". Every layer of a set shares one frame, so the game stacks them without offsets.
 
-To render some sets only, add `&only=` and a comma-separated list of `block`, `footer`, `backing`, `section`, `keys`, `pin`, `lamp`, `scroll`, `seam`, `title`, `enamel`, `cable`, `counter`, `sheet`, `plastic` and `door`, for example `cluster.html?export&only=lamp,scroll`. The other layers are left as they are, and the page reads the current `layout.json` from the server and updates only those sets' entries. `export.py` takes an optional port (`python3 tools/button_mockup/export.py 8779`); use a port of your own when another export may be running.
+To render some sets only, add `&only=` and a comma-separated list of `block`, `footer`, `backing`, `section`, `keys`, `pin`, `lamp`, `scroll`, `seam`, `title`, `enamel`, `cable`, `counter`, `sheet`, `plastic`, `door`, `heading`, `module`, `toggle`, `ldoor`, `modkey` and `sheetw`, for example `cluster.html?export&only=lamp,scroll`. The other layers are left as they are, and the page reads the current `layout.json` from the server and updates only those sets' entries. `export.py` takes an optional port (`python3 tools/button_mockup/export.py 8779`); use a port of your own when another export may be running.
 
 | Set | Layers |
 | --- | --- |
@@ -315,6 +327,10 @@ To render some sets only, add `&only=` and a comma-separated list of `block`, `f
 | Action sheets | `sheet_plate` (820 × 1600) |
 | Diagnostics' plate | `diag_plastic` (600 × 400), `screw_silver` (30 × 30) |
 | Inbound shipments' door | `shipment_door` (760 × 310: 16 px guides, a 44 px housing, 12 px slats, a 26 px bottom bar) |
+| Section headings (900 × 159) | `heading_glyphs`, `heading_glyph_shadows` |
+| Diagnostics' modules and switch | `diag_module` (600 × 120), `diag_tap` (96 × 44: junction at x 13, the module's end at x 78), `toggle_slot` (96 × 44), `toggle_knob` (44 × 44) |
+| Labour and Wages' doors | `labour_door`, `labour_door_lit` (200 × 300) |
+| Modifiers | `key_modifiers` and `_pressed` (680 × 120: the key 648 × 88 inside, 64 px ends), `sheet_white` (600 × 400) |
 
 `layout.json` lists each set's size and every key's rect and top face, in layout pixels, plus the lamp's bezel, the scrollbar's end, grip and travel sizes, and the seam edge's ends, back edge and lip. The scripts carry these numbers as constants. After changing a layout, copy the new numbers from `layout.json` into `bdp_v3_block.gd`, `bdp_v3_footer.gd`, `bdp_v3_section.gd`, `bdp_v3_lamp.gd`, `bdp_v3_scroll.gd` or `bdp_v3_seam.gd`.
 

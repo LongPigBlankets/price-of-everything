@@ -15,10 +15,12 @@ This is the plan for bringing the rest of the building detail panel over to v3, 
 - the guarded Sell / Demolish footer
 - the scrollbar
 - the lamp over the panel
-- the diagnostics on dark plastic with silver screws, lamps on their rows, white embossed text and a cable beside the lamps
-- inbound shipments behind a rolling door, with a stock lamp and a supply hover on each good
+- the section headings in raised lettering, as INPUTS and OUTPUTS
+- the diagnostics in a dark plastic case with silver screws, each check a raised module fed off the cable, a Visual / Text switch (Text; the visual view is not built yet)
+- inbound shipments in a six-good bay, large icons with stock lamps and supply hovers, the rolling door down over the empty rows
 - cost to produce on gauges
-- labour's cost and workers on drum counters
+- Labour and Wages: a factory door per kind of worker with the headcount on its kick plate, and the cost and workers on drum counters
+- Modifiers as a white keycap opening a white plastic sheet
 - the action sheets' sliding steel plate (their contents are still v2's)
 
 **Still v2 inside the v3 panel.** The panel file still makes 25 plain `Button`s, and every card inside the frames is a flat design-system card.
@@ -86,12 +88,12 @@ Each is a render set in `cluster.html` and a script in `scripts/`. Everything af
 
 In order of what a player sees most:
 
-1. **Section headings** in raised lettering. **Diagnostics** keep their layout for now (on the steel, with the cable); a broader redesign comes later.
+1. **Section headings:** done, in raised lettering. **Diagnostics:** modules in a plastic case; the visual view behind the Visual / Text switch comes later.
 2. **Economics** and the **power line** in display windows. The row icons lose their bordered boxes and are printed on the glass; the Net row keeps its semantic colour.
 3. **Cost to produce:** done, a gauge per output.
-4. **Inbound shipments:** done, behind a rolling door with stock lamps and supply hovers.
-5. **Labour:** done, the headcounts printed on the steel and the cost and workers on drum counters.
-6. **Modifiers:** the accordion's header becomes a toggle switch.
+4. **Inbound shipments:** done, a six-good bay with the rolling door over the empty rows.
+5. **Labour and Wages:** done, a factory door per kind of worker and the cost and workers on drum counters.
+6. **Modifiers:** done, a white keycap and a white plastic sheet.
 
 ## Phase 3: the action sheets
 
@@ -192,7 +194,16 @@ Decided on 24 September 2026:
 - The action sheets become slide-in steel plates (done: the plate and the slide; their contents are still v2's).
 - Every change is compared against the standard (`artifacts/bdp_v3_standard/`, `tools/bdp_v3_compare.py`).
 
+Decided later on 24 September 2026:
+
+- Inbound shipments show no text: large icons fill the bay, which has room for six goods. The door comes down over the empty rows only (two with one or two inputs, one with three or four), never behind a good.
+- Labour becomes Labour and Wages, taller, with three factory doors: a small window at the top of each and a metal plate at the bottom with that kind of worker's headcount.
+- Section headings are lettered like INPUTS and OUTPUTS.
+- The diagnostics case has four screws along the top and the bottom and six down each side; each check is a raised module with the cable feeding into it. "Always shown" becomes a Visual / Text switch, set to Text; it does nothing until the visual view is built.
+- Cost gauges 25% larger (160 px), their figures moved right, centred in the room beside the gauge.
+- Modifiers become a white keycap with a % sign, opening a white plastic sheet with navy text.
+
 Still open:
 
-- The broader redesign of the diagnostics (an annunciator with lamps, or rows in a display window), deferred for now.
+- The diagnostics' visual view (behind the Visual / Text switch), deferred for now.
 - How dark the lamp over the panel falls. Since the re-render the lower panel is much lighter than in the standard, whose backing fell nearly to black; the overlay's darkest (0.7 now) sets it.

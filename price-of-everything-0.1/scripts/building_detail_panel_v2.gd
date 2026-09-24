@@ -31,12 +31,17 @@ const BdpV3Counter := preload("res://scripts/bdp_v3_counter.gd")
 const PanelGauge := preload("res://scripts/panel_gauge.gd")
 const BdpV3Nine := preload("res://scripts/bdp_v3_nine.gd")
 const BdpV3Section := preload("res://scripts/bdp_v3_section.gd")
+const BdpV3Heading := preload("res://scripts/bdp_v3_heading.gd")
+const BdpV3Toggle := preload("res://scripts/bdp_v3_toggle.gd")
+const BdpV3Door := preload("res://scripts/bdp_v3_door.gd")
+const BdpV3LabourDoor := preload("res://scripts/bdp_v3_labour_door.gd")
+const BdpV3ModKey := preload("res://scripts/bdp_v3_mod_key.gd")
 ## v3 frames these sections (heading and content together); the value names the frame, so sections
 ## sharing a name share one frame (Modifiers and Economics).
 const V3_FRAMED_SECTIONS := {
 	"Diagnostics": "diagnostics", "Cost to produce": "cost", "Modifiers": "money", "Economics · per turn": "money",
 	"Infrastructure": "infrastructure", "Breakdown": "breakdown", "Inbound shipments": "shipments",
-	"Labour on this building": "labour",
+	"Labour on this building": "labour", "Labour and Wages": "labour",
 }
 const ROUTE_STOCKPILE_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_stockpile.png")
 const ROUTE_MARKET_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_port.png")
@@ -375,7 +380,12 @@ func _rebuild(building: Dictionary) -> void:
 			_body.add_child(_build_routing_buttons(building, recipe))
 			_body.add_child(_build_primary_actions(building, building_data))
 
-	_body.add_child(_make_section("Diagnostics", "always shown"))
+	if UiPrefs.use_bdp_v3:
+		var diag_head := _make_section("Diagnostics")
+		diag_head.add_child(_v3_view_switch())
+		_body.add_child(diag_head)
+	else:
+		_body.add_child(_make_section("Diagnostics", "always shown"))
 	_body.add_child(_build_diagnostics(BuildingReadout.diagnostics(building, recipe, building_data, is_infra)))
 
 	# emphasised cost-to-produce (per output good, vs its market price)
@@ -410,7 +420,7 @@ func _rebuild(building: Dictionary) -> void:
 		_body.add_child(_make_section("Inbound shipments"))
 		_body.add_child(_build_shipments(ships))
 
-	_body.add_child(_make_section("Labour on this building"))
+	_body.add_child(_make_section("Labour and Wages" if UiPrefs.use_bdp_v3 else "Labour on this building"))
 	# Headcounts from the recipe/building; cost is the engine's actual grown-wage charge (level +
 	# labour modifiers included), the same figure the Economics card shows — not the base rate.
 	var lab_readout: Dictionary = BuildingReadout.labour(building_data, recipe)
@@ -1648,9 +1658,6 @@ func _v3_frame_sections() -> void:
 			frame.content.add_child(child)
 			if frame_name == "diagnostics":
 				frame.style = "plastic"
-			if child.has_meta("v3_door"):
-				# The door reaches down to the upper rows of goods, or with one row, just the title.
-				frame.door_until = child.get_meta("v3_door_until") if child.has_meta("v3_door_until") else frame.content.get_child(0)
 	# The diagnostics' plate is dark plastic, their text white and embossed on it.
 	for f in _body.get_children():
 		if f is BdpV3Section and f.style == "plastic":
@@ -2220,15 +2227,18 @@ func _build_diagnostics(rows: Array) -> PanelContainer:
 	card.name = "DiagnosticsCard"   # stable target for the tutorial coach spotlight
 	var vb := card.get_child(0) as VBoxContainer
 	vb.add_theme_constant_override("separation", 0)
+	var cable: Control = null
 	if UiPrefs.use_bdp_v3:
-		# v3: the rows lie on the frame's steel, with a cable run down beside their lights.
+		# v3: each row is its own module set in the plastic case, fed by a branch off the cable that
+		# runs down the case's left side.
 		var bare := StyleBoxEmpty.new()
 		bare.content_margin_left = V3_DIAG_GUTTER
-		bare.content_margin_right = 4
+		bare.content_margin_right = 2
 		bare.content_margin_top = 4
 		bare.content_margin_bottom = 4
 		card.add_theme_stylebox_override("panel", bare)
-		var cable := BdpV3Cable.new()
+		vb.add_theme_constant_override("separation", V3_DIAG_MODULE_GAP)
+		cable = BdpV3Cable.new()
 		cable.centre_x = V3_DIAG_CABLE_X - V3_DIAG_GUTTER
 		card.add_child(cable)
 	var all_ok := not rows.is_empty()
@@ -2237,15 +2247,23 @@ func _build_diagnostics(rows: Array) -> PanelContainer:
 			all_ok = false
 			break
 	if not all_ok:
+		var modules: Array[Control] = []
 		for i in rows.size():
-			vb.add_child(_diag_row(rows[i], i > 0))
+			var row := _diag_row(rows[i], i > 0)
+			vb.add_child(row)
+			modules.append(row)
+		if cable != null:
+			cable.taps = modules
 		return card
 
 	var body := VBoxContainer.new()
-	body.add_theme_constant_override("separation", 0)
+	body.add_theme_constant_override("separation", V3_DIAG_MODULE_GAP if UiPrefs.use_bdp_v3 else 0)
 	body.visible = _diagnostics_open
+	var body_modules: Array[Control] = []
 	for i in rows.size():
-		body.add_child(_diag_row(rows[i], i > 0))
+		var row := _diag_row(rows[i], i > 0)
+		body.add_child(row)
+		body_modules.append(row)
 
 	var head := Button.new()
 	head.flat = true
@@ -2260,23 +2278,86 @@ func _build_diagnostics(rows: Array) -> PanelContainer:
 		_diagnostics_open = not _diagnostics_open
 		body.visible = _diagnostics_open
 		head.text = _diag_head_text())
-	vb.add_child(head)
+	if cable != null:
+		# v3: the folded line is a module too, with its lamp lit green.
+		var head_module := _v3_diag_module()
+		var hb := HBoxContainer.new()
+		hb.add_theme_constant_override("separation", DS.SP["SM"])
+		head_module.add_child(hb)
+		var lamp := BdpV3Lamp.new()
+		lamp.lamp_scale = V3_DIAG_LAMP_SCALE
+		lamp.set_tone("ok")
+		hb.add_child(lamp)
+		head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		hb.add_child(head)
+		vb.add_child(head_module)
+		body_modules.push_front(head_module)
+		cable.taps = body_modules
+	else:
+		vb.add_child(head)
 	vb.add_child(body)
 	return card
 
 
-## v3's diagnostics: the rows' left margin, and where the cable runs in it (from the card's left).
-const V3_DIAG_GUTTER := 26.0
+## v3's diagnostics: where the cable runs (from the card's left), and the modules' left margin, a
+## branch's length to its right; the gap between modules.
 const V3_DIAG_CABLE_X := 10.0
+const V3_DIAG_GUTTER := V3_DIAG_CABLE_X + BdpV3Cable.TAP_LENGTH
+const V3_DIAG_MODULE_GAP := 8
 ## The diagnostics' row lamps, as a share of the status lamp's size.
 const V3_DIAG_LAMP_SCALE := 0.72
+## The diagnostics' module plate (layout.json diag_module): its shadow room and 9-slice corner.
+const V3_DIAG_MODULE: Texture2D = preload("res://assets/ui/bdp_v3/diag_module.png")
+const V3_DIAG_MODULE_MARGIN := 10.0 / 1.875
+const V3_DIAG_MODULE_CORNER := 26.0 * 2.0 / 1.875
+
+## The Visual / Text switch's side, kept while the game runs. The visual view is still to come, so for
+## now the diagnostics show as text either way.
+static var _v3_diag_visual := false
+
+## v3: a raised module in the diagnostics' case, for one check.
+func _v3_diag_module() -> PanelContainer:
+	var module := PanelContainer.new()
+	module.name = "DiagModule"
+	module.set_meta("v3_diag_module", true)
+	var pad := StyleBoxEmpty.new()
+	pad.content_margin_left = 10
+	pad.content_margin_right = 10
+	pad.content_margin_top = 8
+	pad.content_margin_bottom = 8
+	module.add_theme_stylebox_override("panel", pad)
+	module.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	module.draw.connect(func() -> void:
+		BdpV3Nine.paint(module, V3_DIAG_MODULE, Rect2(Vector2.ZERO, module.size).grow(V3_DIAG_MODULE_MARGIN), V3_DIAG_MODULE_CORNER))
+	return module
+
+## v3: the diagnostics' Visual / Text switch, moulded into the case beside the heading.
+func _v3_view_switch() -> HBoxContainer:
+	var hb := HBoxContainer.new()
+	hb.name = "ViewSwitch"
+	hb.add_theme_constant_override("separation", 6)
+	hb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	for pair in [["Visual", HORIZONTAL_ALIGNMENT_RIGHT], [null, 0], ["Text", HORIZONTAL_ALIGNMENT_LEFT]]:
+		if pair[0] == null:
+			var sw: Control = BdpV3Toggle.new()
+			sw.set_right(not _v3_diag_visual)
+			sw.toggled.connect(func(right: bool) -> void: _v3_diag_visual = not right)
+			hb.add_child(sw)
+		else:
+			var l := _v3_metal_label(str(pair[0]), pair[1])
+			l.add_theme_font_size_override("font_size", 13)
+			hb.add_child(l)
+	return hb
 
 func _diag_head_text() -> String:
 	return ("⌄  All green" if _diagnostics_open else "›  All green")
 
 func _diag_row(r: Dictionary, top_border: bool) -> Control:
-	var wrap := PanelContainer.new()
-	if top_border:
+	var wrap: PanelContainer
+	if UiPrefs.use_bdp_v3:
+		wrap = _v3_diag_module()
+	elif top_border:
+		wrap = PanelContainer.new()
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = Color(0, 0, 0, 0)
 		sb.border_color = Color(DS.PALETTE["BORDER_SOFT"].r, DS.PALETTE["BORDER_SOFT"].g, DS.PALETTE["BORDER_SOFT"].b, 0.18)
@@ -2285,6 +2366,7 @@ func _diag_row(r: Dictionary, top_border: bool) -> Control:
 		sb.content_margin_bottom = 8
 		wrap.add_theme_stylebox_override("panel", sb)
 	else:
+		wrap = PanelContainer.new()
 		var sb2 := StyleBoxEmpty.new()
 		sb2.content_margin_bottom = 8
 		wrap.add_theme_stylebox_override("panel", sb2)
@@ -2336,7 +2418,8 @@ func _diag_row(r: Dictionary, top_border: bool) -> Control:
 	detail.theme_type_variation = "Caption"
 	detail.text = str(r.get("detail", ""))
 	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	detail.custom_minimum_size = Vector2(PANEL_WIDTH - 110.0, 0)
+	# v3's modules sit further in, past the cable's branches, so their text has less room.
+	detail.custom_minimum_size = Vector2(PANEL_WIDTH - (180.0 if UiPrefs.use_bdp_v3 else 110.0), 0)
 	col.add_child(detail)
 	return wrap
 
@@ -2390,8 +2473,8 @@ func _build_cost_to_produce(rows: Array) -> PanelContainer:
 ## v3: each output's cost on a gauge, on the frame's steel. The needle is the unit cost as a share of
 ## the market price, on a scale to twice it; the zones are the cost's RAG bands (green under 90%, amber
 ## to 110%, red over) and the LED follows the zone. An unknown cost leaves the needle down and the LED
-## off. The needle swings from where it last read.
-const V3_GAUGE_SIZE := 128.0
+## off. The needle swings from where it last read. The figures sit centred in the room right of the gauge.
+const V3_GAUGE_SIZE := 160.0
 const V3_GAUGE_SCALE_PCT := 200.0
 
 static func v3_cost_gauge_reading(unit_cost: float, market_price: float) -> Dictionary:
@@ -2434,7 +2517,7 @@ func _v3_cost_gauges(card: PanelContainer, vb: VBoxContainer, rows: Array) -> vo
 		col.add_child(name_l)
 		var big := Label.new()
 		big.theme_type_variation = "Numeric"
-		big.add_theme_font_size_override("font_size", 24)
+		big.add_theme_font_size_override("font_size", 28)
 		big.add_theme_color_override("font_color", r.get("color", DS.PALETTE["TEXT"]))
 		big.text = "£%s /unit" % BuildingStatus._fmt_upto2(float(r.get("unit_cost", 0.0)))
 		col.add_child(big)
@@ -2443,6 +2526,8 @@ func _v3_cost_gauges(card: PanelContainer, vb: VBoxContainer, rows: Array) -> vo
 		var pct := int(r.get("pct", 0))
 		mkt.text = "market £%s · %s%d%%" % [BuildingStatus._fmt_upto2(float(r.get("market_price", 0.0))), "+" if pct > 0 else "", pct]
 		col.add_child(mkt)
+		for l: Label in [name_l, big, mkt]:
+			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 # --- modifiers (accordion above economics) --------------------------------------------------
 
@@ -2481,6 +2566,10 @@ func _add_modifiers_accordion(building: Dictionary, recipe: Dictionary) -> void:
 	for cat_key: Variant in by_cat:
 		total += (by_cat[cat_key] as Array).size()
 
+	if UiPrefs.use_bdp_v3:
+		_v3_modifiers(mod, total, by_cat)
+		return
+
 	# Section header doubling as the accordion trigger ("Section" is a Label
 	# variation, so a chevron Label + section Label in a clickable row).
 	var header := HBoxContainer.new()
@@ -2515,6 +2604,19 @@ func _add_modifiers_accordion(building: Dictionary, recipe: Dictionary) -> void:
 	card.visible = false
 	var vb := card.get_child(0) as VBoxContainer
 	vb.add_theme_constant_override("separation", 3)
+	_fill_modifiers(vb, total, by_cat)
+	_body.add_child(card)
+
+	header.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			header.accept_event()
+			card.visible = not card.visible
+			chevron.text = "▾" if card.visible else "▸")
+
+
+## The modifiers card's rows: each category's net figure, the only coloured one, and the modifiers that
+## make it up.
+func _fill_modifiers(vb: VBoxContainer, total: int, by_cat: Dictionary) -> void:
 	if total == 0:
 		var none := Label.new()
 		none.theme_type_variation = "Caption"
@@ -2570,14 +2672,62 @@ func _add_modifiers_accordion(building: Dictionary, recipe: Dictionary) -> void:
 			val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 			line.add_child(val)
 			vb.add_child(line)
-	_body.add_child(card)
 
-	header.gui_input.connect(func(e: InputEvent) -> void:
-		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-			header.accept_event()
-			card.visible = not card.visible
-			chevron.text = "▾" if card.visible else "▸")
 
+## v3's Modifiers: a wide off-white key with a % sign that opens a white plastic sheet under it, the
+## rows printed on it in navy (the category figures in darker greens and reds, to read on white). The
+## key latches down while the sheet is open, and it stays open across rebuilds.
+const V3_SHEET_WHITE: Texture2D = preload("res://assets/ui/bdp_v3/sheet_white.png")
+const V3_SHEET_WHITE_MARGIN := 14.0 / 1.875
+const V3_SHEET_WHITE_CORNER := (14.0 + 40.0) * 2.0 / 1.875
+const V3_INK := {"ok": Color("#1d6b3a"), "warn": Color("#7a4a00"), "bad": Color("#8f1f19")}
+var _v3_modifiers_open := false
+
+func _v3_modifiers(mod: Dictionary, total: int, by_cat: Dictionary) -> void:
+	var key: Control = BdpV3ModKey.new()
+	key.set_meta("v3_section", "Modifiers")
+	if total == 0:
+		key.summary = "None"
+	else:
+		var out_pct := float(mod.get("pct_f", float(mod.get("pct", 0))))
+		key.summary = "Output %s" % _mod_pct_text(out_pct)
+		key.summary_ink = _v3_ink(_mod_tone(out_pct, true))
+	key.set_open(_v3_modifiers_open)
+	_body.add_child(key)
+	var sheet := PanelContainer.new()
+	sheet.name = "ModifiersSheet"
+	sheet.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sheet.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	var pad := StyleBoxEmpty.new()
+	pad.content_margin_left = 14
+	pad.content_margin_right = 14
+	pad.content_margin_top = 10
+	pad.content_margin_bottom = 12
+	sheet.add_theme_stylebox_override("panel", pad)
+	sheet.draw.connect(func() -> void:
+		BdpV3Nine.paint(sheet, V3_SHEET_WHITE, Rect2(Vector2.ZERO, sheet.size).grow(V3_SHEET_WHITE_MARGIN), V3_SHEET_WHITE_CORNER))
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 3)
+	sheet.add_child(vb)
+	_fill_modifiers(vb, total, by_cat)
+	sheet.visible = _v3_modifiers_open
+	_body.add_child(sheet)
+	for l: Label in sheet.find_children("*", "Label", true, false):
+		l.add_theme_color_override("font_color", _v3_ink(l.get_theme_color("font_color")))
+	key.toggled.connect(func(open: bool) -> void:
+		_v3_modifiers_open = open
+		sheet.visible = open)
+
+## The ink for a colour the dark panel shows on white plastic: the semantic greens, ambers and reds
+## darkened to read on it, and everything else navy.
+static func _v3_ink(c: Color) -> Color:
+	if c.is_equal_approx(DS.PALETTE["OK"]):
+		return V3_INK["ok"]
+	if c.is_equal_approx(DS.PALETTE["WARN"]):
+		return V3_INK["warn"]
+	if c.is_equal_approx(DS.PALETTE["DANGER"]):
+		return V3_INK["bad"]
+	return BdpV3Plate.NAVY
 
 static func _mod_pct_text(pct: float) -> String:
 	return "%s%d%%" % ["+" if pct >= 0.0 else "−", absi(int(round(pct)))]
@@ -2740,14 +2890,22 @@ func _build_shipments(ships: Array) -> PanelContainer:
 		col.add_child(sub)
 	return card
 
-## v3's inbound shipments, behind a rolling door slid up. The goods sit two to a row, the first two in
-## the bottom row and the rest in rows above it. With one row the door is just a backing for the title;
-## with more, it comes down behind the upper rows too (the frame draws it down to them). Each good has a
-## lamp beside it: green with enough in stock to run, amber when short with something on its way (an
-## inbound shipment or the logistics intermediary), red when short with nothing coming. Its hover gives
-## the good, what is stored, what a run needs and how it is supplied, and still opens the encyclopedia.
-const V3_SHIP_ICON := 64
+## v3's inbound shipments: a bay with room for six goods, two to a row, each good's icon and a lamp
+## beside it, and no text. The goods fill the bottom row first and the rows above it after; the bay's
+## rolling door comes down over the rows no good needs (two with one or two inputs, one with three or
+## four) and with every row in use it stays rolled up in its housing, so the bay is the same height
+## whatever the recipe. The lamp is green with enough in stock to run, amber when short with something on
+## its way (an inbound shipment or the logistics intermediary), red when short with nothing coming. Each
+## icon's hover gives the good, what is stored, what a run needs and how it is supplied, and still opens
+## the encyclopedia.
+const V3_SHIP_ICON := 96
+const V3_SHIP_ROWS := 3
+const V3_SHIP_GAP := 12
 const V3_SHIP_LAMP_SCALE := 0.62
+
+## How many of the bay's rows the door covers for `goods` goods.
+static func v3_door_rows(goods: int) -> int:
+	return maxi(0, V3_SHIP_ROWS - ceili(goods / 2.0))
 
 static func v3_stock_tone(stored: int, need: int, inbound: int, on_intermediary: bool) -> String:
 	if stored >= need:
@@ -2777,38 +2935,34 @@ func _build_shipments_v3(ships: Array) -> PanelContainer:
 	bare.set_content_margin_all(4)
 	card.add_theme_stylebox_override("panel", bare)
 	var vb := card.get_child(0) as VBoxContainer
-	vb.add_theme_constant_override("separation", DS.SP["MD"])
+	vb.add_theme_constant_override("separation", V3_SHIP_GAP)
+	var door: Control = BdpV3Door.new()
+	door.reach = BdpV3Section.PADDING + 4.0
+	door.custom_minimum_size.y = BdpV3Door.rolled_up_height() + v3_door_rows(ships.size()) * (V3_SHIP_ICON + V3_SHIP_GAP)
+	vb.add_child(door)
 	var chunks: Array = []
 	for i in range(0, ships.size(), 2):
 		chunks.append(ships.slice(i, i + 2))
-	var upper := VBoxContainer.new()
-	upper.name = "UpperRows"
-	upper.add_theme_constant_override("separation", DS.SP["MD"])
-	for i in range(chunks.size() - 1, 0, -1):
-		upper.add_child(_v3_ship_row(chunks[i]))
-	if upper.get_child_count() > 0:
-		vb.add_child(upper)
-	else:
-		upper.free()
-		upper = null
-	if not chunks.is_empty():
-		vb.add_child(_v3_ship_row(chunks[0]))
-	card.set_meta("v3_door", true)
-	if upper != null:
-		card.set_meta("v3_door_until", upper)   # (a null meta would be removed, not stored)
+	for i in range(chunks.size() - 1, -1, -1):
+		vb.add_child(_v3_ship_row(chunks[i]))
 	return card
 
 func _v3_ship_row(goods: Array) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", DS.SP["MD"])
+	row.custom_minimum_size.y = V3_SHIP_ICON
 	var recipe: Dictionary = Catalog.get_recipe(str(_current_building.get("recipe_id", "")))
-	for s: Dictionary in goods:
+	for i in 2:
 		var cell := HBoxContainer.new()
 		cell.name = "ShipmentCell"
-		cell.set_meta("v3_shipment_cell", true)   # Godot renames same-named siblings; this survives it
 		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cell.alignment = BoxContainer.ALIGNMENT_CENTER
 		cell.add_theme_constant_override("separation", DS.SP["SM"])
 		row.add_child(cell)
+		if i >= goods.size():
+			continue   # an odd good out keeps its half of the row
+		cell.set_meta("v3_shipment_cell", true)   # Godot renames same-named siblings; this survives it
+		var s: Dictionary = goods[i]
 		var gid := str(s.get("good_id", ""))
 		var stored := int(s.get("stored", 0))
 		var need := int(s.get("need", 0))
@@ -2830,14 +2984,6 @@ func _v3_ship_row(goods: Array) -> HBoxContainer:
 		lamp.set_tone(v3_stock_tone(stored, need, inbound, supply == "Logistics intermediary"))
 		lamp.tooltip_text = "Supplied by: %s" % supply
 		cell.add_child(lamp)
-		var label := Label.new()
-		label.theme_type_variation = "Body"
-		label.text = "%s — %d/%d stored" % [str(s.get("name", "")), stored, need]
-		_v3_emboss(label)   # white, standing off the door or the steel
-		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		cell.add_child(label)
 	return row
 
 # --- routing (read-only summary + map highlight) -------------------------------------------
@@ -3556,28 +3702,27 @@ func _build_labour(lab: Dictionary) -> Container:
 	row.add_child(cost_card)
 	return row
 
-## v3's labour, on the frame's steel: the three headcounts as numbers with their labels printed under
-## them, then the labour cost and the number of workers on drum counters, each labelled beside it. The
-## counters roll from what they last read.
+## v3's Labour and Wages, on the frame's steel: a factory door for each kind of worker, its name over
+## it and its headcount engraved on the kick plate, the window lit when any are employed; then the
+## labour cost and the number of workers on drum counters, each labelled beside it. The counters roll
+## from what they last read.
 func _build_labour_v3(lab: Dictionary) -> VBoxContainer:
 	var box := VBoxContainer.new()
 	box.name = "LabourV3"
 	box.add_theme_constant_override("separation", DS.SP["MD"])
-	var heads := HBoxContainer.new()
-	heads.add_theme_constant_override("separation", DS.SP["SM"])
-	box.add_child(heads)
+	var doors := HBoxContainer.new()
+	doors.name = "Doors"
+	doors.add_theme_constant_override("separation", DS.SP["SM"])
+	box.add_child(doors)
 	for pair in [["Unskilled", "unskilled"], ["Skilled", "skilled"], ["Highly skilled", "highly"]]:
 		var col := VBoxContainer.new()
 		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		col.add_theme_constant_override("separation", 0)
-		heads.add_child(col)
-		var num := Label.new()
-		num.theme_type_variation = "Numeric"
-		num.add_theme_font_size_override("font_size", 20)
-		num.text = _fmt_int(int(lab.get(pair[1], 0)))
-		num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		col.add_child(num)
+		col.add_theme_constant_override("separation", 2)
+		doors.add_child(col)
 		col.add_child(_v3_metal_label(pair[0], HORIZONTAL_ALIGNMENT_CENTER))
+		var door: Control = BdpV3LabourDoor.new()
+		door.count = int(lab.get(pair[1], 0))
+		col.add_child(door)
 	var meters := HBoxContainer.new()
 	meters.add_theme_constant_override("separation", DS.SP["SM"])
 	meters.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -3652,6 +3797,17 @@ func _make_section(text: String, right_text: String = "") -> Control:
 	s.text = text
 	s.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hb.add_child(s)
+	if UiPrefs.use_bdp_v3 and BdpV3Heading.can_show(text):
+		# v3: the heading in raised white letters, as INPUTS and OUTPUTS are on the control plate.
+		var raised: Control = BdpV3Heading.new()
+		raised.text = text
+		hb.add_child(raised)
+		hb.move_child(raised, 0)
+		var room := Control.new()
+		room.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		room.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		hb.add_child(room)
+		s.visible = false
 	if right_text != "":
 		var r := Label.new()
 		r.theme_type_variation = "Caption"

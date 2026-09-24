@@ -1244,6 +1244,220 @@ function rollingDoor() {
 }
 
 /**
+ * The section headings' letters, in the INPUTS / OUTPUTS lettering: IBM Plex Sans Bold at 28 layout px,
+ * the same white letters raised on the same softened flank, with the same swept shadow and contact line.
+ * As for the title, each letter is rendered on its own into an atlas cell; a cell also records the
+ * letter's advance, and the game (scripts/bdp_v3_heading.gd) sets the letters along a line by them.
+ */
+const HEADING = { size: 28, pad: 8, atlasW: 900, weight: 700, family: '"IBM Plex Sans"' };
+const HEADING_CHARS = TITLE_CHARS + '·';
+const headingLetter = (ch, ox, baseline) => (g, col) => {
+  g.font = `${HEADING.weight} ${HEADING.size}px ${HEADING.family}`; g.fillStyle = col; g.textBaseline = 'alphabetic'; g.textAlign = 'left';
+  g.fillText(ch, ox, baseline);
+};
+/** Cells as titleAtlas's, per letter [x, y, w, h, pen x in the cell, advance]; `space` is a space's advance. */
+function headingAtlas() {
+  const c = document.createElement('canvas').getContext('2d'); c.font = `${HEADING.weight} ${HEADING.size}px ${HEADING.family}`;
+  const fm = c.measureText('H'), asc = Math.ceil(fm.fontBoundingBoxAscent), desc = Math.ceil(fm.fontBoundingBoxDescent);
+  const h = asc + desc + 2 * HEADING.pad, baseline = HEADING.pad + asc, cells = {};
+  let x = 0, y = 0;
+  for (const ch of HEADING_CHARS) {
+    const m = c.measureText(ch), left = Math.max(0, Math.ceil(m.actualBoundingBoxLeft));
+    const w = left + Math.ceil(Math.max(m.width, m.actualBoundingBoxRight)) + 2 * HEADING.pad;
+    if (x + w > HEADING.atlasW) { x = 0; y += h; }
+    cells[ch] = [x, y, w, h, HEADING.pad + left, m.width];
+    x += w;
+  }
+  return { cells, baseline, space: c.measureText(' ').width, W: HEADING.atlasW, H: y + h };
+}
+
+/** Black moulded plastic with a faint grain, as the diagnostics' case (plasticPlate) is made of. */
+function blackPlasticFace(w, h, colour, highlight = 0.05) {
+  return canvas2d(w, h, (c) => {
+    c.fillStyle = colour; c.fillRect(0, 0, w, h);
+    for (let i = 0; i < w * h / 170; i++) { c.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '0,0,0'},${0.02 + rand() * 0.03})`; c.fillRect(rand() * w, rand() * h, 1 + rand() * 2, 1 + rand() * 2); }
+    const edge = c.createLinearGradient(0, 0, 0, 10); edge.addColorStop(0, `rgba(255,255,255,${highlight})`); edge.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = edge; c.fillRect(0, 0, w, 10);
+  });
+}
+const BLACK_PLASTIC_SIDE = () => new THREE.MeshPhysicalMaterial({ color: 0x15171a, roughness: 0.4, clearcoat: 0.5, clearcoatRoughness: 0.3, envMap: studioEnv, envMapIntensity: 0.7 });
+
+/**
+ * A diagnostics module: one check's own instrument, a slightly raised black plastic panel a shade
+ * lighter than the case it sits in, with a rounded glossy edge and its shadow on the case. A 9-slice.
+ */
+const MODULE = { W: 600, H: 120, M: 10, radius: 7 };
+function diagModule() {
+  const { W, H, M, radius } = MODULE, pw = W - 2 * M, ph = H - 2 * M, g = new THREE.Group();
+  const face = new THREE.MeshPhysicalMaterial({ map: faceTexture(blackPlasticFace(pw, ph, '#1a1c20', 0.07), pw, ph), roughness: 0.55, clearcoat: 0.35, clearcoatRoughness: 0.4, envMap: studioEnv, envMapIntensity: 0.4 });
+  const plate = new THREE.Mesh(extrude(rrShape(pw, ph, radius), 2.5, 2.2, 1.8, 4), [face, BLACK_PLASTIC_SIDE()]);
+  plate.castShadow = plate.receiveShadow = true; plate.position.set(W / 2, 0, H / 2); g.add(plate);
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.7));
+  return g;
+}
+
+/**
+ * Where a module takes its feed from the diagnostics' cable: a moulded black junction box clamped over
+ * the cable (TAP.x, as CABLE.x), a short branch of the same black-and-yellow cable, and a steel gland
+ * where it enters the module's end (at TAP.plug), with their shadows.
+ */
+const TAP = { W: 96, H: 44, x: 13, plug: 78, r: 4.8 };
+function cableTap() {
+  const { W, H, x, plug, r } = TAP, g = new THREE.Group(), cz = H / 2;
+  const skin = canvas2d(64, 4, (c) => { c.fillStyle = '#1c1e21'; c.fillRect(0, 0, 64, 4); c.fillStyle = '#e9b81a'; c.fillRect(15, 0, 4, 4); }, 1);
+  const map = new THREE.CanvasTexture(skin); map.colorSpace = THREE.SRGBColorSpace;
+  const insulation = new THREE.MeshPhysicalMaterial({ map, roughness: 0.62, clearcoat: 1, clearcoatRoughness: 0.18, envMap: studioEnv, envMapIntensity: 0.45 });
+  const len = plug - 8 - x;
+  const branch = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 36, 1, true).rotateZ(Math.PI / 2), insulation);
+  branch.position.set(x + len / 2, r + 0.4, cz); branch.castShadow = branch.receiveShadow = true; g.add(branch);
+  const box = new THREE.Mesh(extrude(rrShape(24, 28, 5), 12, 1.6, 1.3, 3), [new THREE.MeshPhysicalMaterial({ map: faceTexture(blackPlasticFace(24, 28, '#1b1d21', 0.08), 24, 28), roughness: 0.5, clearcoat: 0.4, clearcoatRoughness: 0.35, envMap: studioEnv, envMapIntensity: 0.5 }), BLACK_PLASTIC_SIDE()]);
+  box.castShadow = box.receiveShadow = true; box.position.set(x, 0, cz); g.add(box);
+  const sc = screw(3.2); sc.position.set(x, 15.2, cz); g.add(sc);
+  // The gland: a tapered boot round the cable, then a hex nut against the module's end.
+  const boot = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.6, r + 2.2, 8, 24).rotateZ(Math.PI / 2), MAT.screw);
+  boot.position.set(plug - 8, r + 0.4, cz);
+  const nut = new THREE.Mesh(new THREE.CylinderGeometry(7.2, 7.2, 5, 6).rotateZ(Math.PI / 2), MAT.screw);
+  nut.position.set(plug - 1.5, r + 0.4, cz);
+  for (const m of [boot, nut]) { m.castShadow = m.receiveShadow = true; g.add(m); }
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.65));
+  return g;
+}
+
+/**
+ * The diagnostics' Visual / Text switch: a slot moulded into the case (a raised black rim round a dark
+ * floor), and its slider, an off-white ridged thumb, rendered apart so the game can slide it.
+ */
+const TOGGLE = { W: 96, H: 44, slotW: 62, slotH: 18, knob: 44, knobW: 26, knobH: 24 };
+function toggleSlot() {
+  const { W, H, slotW, slotH } = TOGGLE, g = new THREE.Group();
+  const rim = rrShape(slotW + 12, slotH + 12, 11); rim.holes.push(rr(new THREE.Path(), slotW, slotH, 8));
+  const face = new THREE.MeshPhysicalMaterial({ map: faceTexture(blackPlasticFace(slotW + 12, slotH + 12, '#1a1c20', 0.08), slotW + 12, slotH + 12), roughness: 0.5, clearcoat: 0.4, clearcoatRoughness: 0.35, envMap: studioEnv, envMapIntensity: 0.5 });
+  const bezel = new THREE.Mesh(extrude(rim, 2, 1.4, 1.1, 3), [face, BLACK_PLASTIC_SIDE()]);
+  bezel.castShadow = bezel.receiveShadow = true; bezel.position.set(W / 2, 0, H / 2); g.add(bezel);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(slotW, slotH).rotateX(-Math.PI / 2), MAT.gap);
+  floor.position.set(W / 2, 0.2, H / 2); floor.receiveShadow = true; g.add(floor);
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.6));
+  return g;
+}
+function toggleKnob() {
+  const { knob, knobW, knobH } = TOGGLE, g = new THREE.Group(), c0 = knob / 2;
+  const top = new THREE.MeshPhysicalMaterial({ map: faceTexture(canvas2d(knobW, knobH, (c) => paintPlastic(c, knobW, knobH)), knobW, knobH), ...KNOB_PLASTIC });
+  const body = new THREE.Mesh(extrude(rrShape(knobW, knobH, 5), 6, 2.2, 1.8, 3), [top, MAT.skirt]);
+  body.castShadow = body.receiveShadow = true; body.position.set(c0, 0.5, c0); g.add(body);
+  for (const dx of [-6.5, 0, 6.5]) {                                       // grip ridges across the thumb
+    const ridge = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, knobH - 8, 12).rotateX(Math.PI / 2), MAT.plastic);
+    ridge.position.set(c0 + dx, 10.6, c0); ridge.castShadow = ridge.receiveShadow = true; g.add(ridge);
+  }
+  g.add(shadowCatcher(knob, knob, c0, c0, 0.05, 0.6));
+  return g;
+}
+
+/**
+ * A factory door for Labour and Wages, one per kind of worker: a painted steel leaf in a dark steel jamb,
+ * a small wired-glass window near its top (dark, or lit warm from inside when that kind of worker is
+ * employed), a lever handle, and a brushed steel kick plate across its foot, where the game engraves the
+ * headcount. LDOOR.plate is the kick plate's rect in the frame.
+ */
+const LDOOR = { W: 200, H: 300, M: 10, jamb: 11 };
+function labourDoorGeometry() {
+  const { W, H, M, jamb } = LDOOR, lx = M + jamb + 2, ly = M + jamb + 2, lw = W - 2 * lx, lh = H - M - 3 - ly;
+  const plate = [lx + 7, ly + lh - 7 - lh * 0.24, lw - 14, lh * 0.24];
+  const win = [lx + lw * 0.26, ly + lh * 0.09, lw * 0.48, lh * 0.2];
+  return { lx, ly, lw, lh, plate, win };
+}
+function labourDoor(lit) {
+  const { W, H, M, jamb } = LDOOR, { lx, ly, lw, lh, plate, win } = labourDoorGeometry(), g = new THREE.Group();
+  const at = (m, x, z, y = 0) => { m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; g.add(m); return m; };
+  const jambMat = new THREE.MeshStandardMaterial({ color: 0x3a3f45, map: noiseTexture(18, 60, 120), metalness: 0.6, roughness: 0.5, envMap: studioEnv, envMapIntensity: 0.6 });
+  // The jamb: a steel channel down each side and across the head, and a threshold strip at the foot.
+  at(new THREE.Mesh(extrude(rrShape(jamb, H - 2 * M, 2), 7, 1.2, 1, 2), jambMat), M + jamb / 2, H / 2);
+  at(new THREE.Mesh(extrude(rrShape(jamb, H - 2 * M, 2), 7, 1.2, 1, 2), jambMat), W - M - jamb / 2, H / 2);
+  at(new THREE.Mesh(extrude(rrShape(W - 2 * M, jamb, 2), 7.5, 1.2, 1, 2), jambMat), W / 2, M + jamb / 2);
+  at(new THREE.Mesh(extrude(rrShape(W - 2 * M - 2 * jamb, 5, 1), 1.5, 0.8, 0.6, 2), MAT.screw), W / 2, H - M - 2.5);
+  // The leaf: painted steel, worn at its lock edge and scuffed near its foot; the window cut through it.
+  const paint = canvas2d(lw, lh, (c) => {
+    c.fillStyle = '#4b6470'; c.fillRect(0, 0, lw, lh);
+    for (let i = 0; i < lw * lh / 60; i++) { c.fillStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '10,16,20'},${0.015 + rand() * 0.03})`; c.fillRect(rand() * lw, rand() * lh, 1 + rand() * 3, 1 + rand() * 3); }
+    for (let i = 0; i < 26; i++) {                                         // scuffs, low down
+      const x = rand() * lw, y = lh * (0.55 + rand() * 0.2), a = rand() * Math.PI, l = 3 + rand() * 10;
+      c.strokeStyle = `rgba(200,205,208,${0.08 + rand() * 0.12})`; c.lineWidth = 0.7;
+      c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); c.stroke();
+    }
+    for (let i = 0; i < 18; i++) {                                         // paint rubbed off the lock edge
+      c.fillStyle = `rgba(150,156,160,${0.2 + rand() * 0.3})`; c.fillRect(lw - 2 - rand() * 4, lh * (0.35 + rand() * 0.3), 1 + rand() * 2, 2 + rand() * 6);
+    }
+    const shade = c.createLinearGradient(0, 0, lw, 0); shade.addColorStop(0, 'rgba(0,0,0,0.12)'); shade.addColorStop(0.15, 'rgba(0,0,0,0)');
+    c.fillStyle = shade; c.fillRect(0, 0, lw, lh);
+  });
+  const leafShape = rrShape(lw, lh, 2);
+  leafShape.holes.push(rr(new THREE.Path(), win[2], win[3], 2, win[0] + win[2] / 2 - (lx + lw / 2), -(win[1] + win[3] / 2 - (ly + lh / 2))));
+  const leafMat = new THREE.MeshStandardMaterial({ map: faceTexture(paint, lw, lh), metalness: 0.45, roughness: 0.55, envMap: studioEnv, envMapIntensity: 0.5 });
+  at(new THREE.Mesh(extrude(leafShape, 3, 1, 0.8, 2), [leafMat, jambMat]), lx + lw / 2, ly + lh / 2);
+  // The window: wired glass set back in a steel bead.
+  const [wx, wy, ww, wh] = win;
+  const glass = canvas2d(ww, wh, (c) => {
+    if (lit) {
+      const warm = c.createRadialGradient(ww * 0.45, wh * 0.55, 0, ww / 2, wh / 2, Math.max(ww, wh) * 0.75);
+      warm.addColorStop(0, '#ffe2a6'); warm.addColorStop(0.55, '#f0b765'); warm.addColorStop(1, '#b8792f');
+      c.fillStyle = warm;
+    } else {
+      const dark = c.createLinearGradient(0, 0, ww, wh); dark.addColorStop(0, '#1d272e'); dark.addColorStop(1, '#0a0f13');
+      c.fillStyle = dark;
+    }
+    c.fillRect(0, 0, ww, wh);
+    c.strokeStyle = lit ? 'rgba(70,44,16,0.45)' : 'rgba(190,200,210,0.22)'; c.lineWidth = 0.6;
+    for (let d = -wh; d < ww + wh; d += 6) { c.beginPath(); c.moveTo(d, 0); c.lineTo(d + wh, wh); c.moveTo(d + wh, 0); c.lineTo(d, wh); c.stroke(); }
+    const glare = c.createLinearGradient(0, 0, ww, wh);
+    glare.addColorStop(0.2, 'rgba(255,255,255,0)'); glare.addColorStop(0.32, `rgba(255,255,255,${lit ? 0.18 : 0.12})`); glare.addColorStop(0.44, 'rgba(255,255,255,0)');
+    c.fillStyle = glare; c.fillRect(0, 0, ww, wh);
+  });
+  const glassMat = lit
+    ? new THREE.MeshBasicMaterial({ map: faceTexture(glass, ww, wh), toneMapped: false })
+    : new THREE.MeshPhysicalMaterial({ map: faceTexture(glass, ww, wh), roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.1, envMap: studioEnv, envMapIntensity: 0.6 });
+  const pane = new THREE.Mesh(extrude(rrShape(ww, wh, 1), 0.2), glassMat); pane.receiveShadow = true; pane.position.set(wx + ww / 2, 1.2, wy + wh / 2); g.add(pane);
+  const bead = rrShape(ww + 7, wh + 7, 3); bead.holes.push(rr(new THREE.Path(), ww - 1, wh - 1, 1));
+  at(new THREE.Mesh(extrude(bead, 1.5, 0.9, 0.7, 2), MAT.screw), wx + ww / 2, wy + wh / 2, 3.8);
+  // The handle: a round rose and a lever towards the hinge side.
+  const chrome = new THREE.MeshStandardMaterial({ color: 0xc2c7cc, metalness: 1, roughness: 0.28, envMap: studioEnv, envMapIntensity: 1 });
+  const hx = lx + lw - 16, hz = ly + lh * 0.5;
+  at(new THREE.Mesh(new THREE.CylinderGeometry(6.5, 6.8, 2.2, 28), chrome), hx, hz, 5);
+  at(new THREE.Mesh(extrude(rrShape(30, 5.5, 2.6), 2.8, 1.2, 1, 3), chrome), hx - 13, hz, 6);
+  // The kick plate: brushed steel, screwed at its corners.
+  const [px, py, pw, ph] = plate;
+  const brushed = canvas2d(pw, ph, (c) => {
+    c.fillStyle = '#b9bfc5'; c.fillRect(0, 0, pw, ph);
+    for (let i = 0; i < ph * 7; i++) { const y = rand() * ph; c.strokeStyle = `rgba(${rand() < 0.5 ? '255,255,255' : '60,66,72'},${0.05 + rand() * 0.1})`; c.lineWidth = 0.5; c.beginPath(); c.moveTo(rand() * pw * 0.3, y); c.lineTo(pw * (0.5 + rand() * 0.5), y); c.stroke(); }
+    for (let i = 0; i < 10; i++) { const x = rand() * pw, y = rand() * ph; c.strokeStyle = 'rgba(40,44,48,0.18)'; c.lineWidth = 0.6; c.beginPath(); c.moveTo(x, y); c.lineTo(x + 4 + rand() * 8, y + (rand() - 0.5) * 3); c.stroke(); }
+  });
+  const kick = new THREE.MeshStandardMaterial({ map: faceTexture(brushed, pw, ph), metalness: 0.9, roughness: 0.36, envMap: studioEnv, envMapIntensity: 0.8 });
+  at(new THREE.Mesh(extrude(rrShape(pw, ph, 2), 0.6, 0.6, 0.5, 2), [kick, MAT.screw]), px + pw / 2, py + ph / 2, 4);
+  for (const [sx, sy] of [[px + 5, py + 5], [px + pw - 5, py + 5], [px + 5, py + ph - 5], [px + pw - 5, py + ph - 5]]) { const s = screw(2.4); s.position.set(sx, 5.4, sy); g.add(s); }
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.6));
+  return g;
+}
+
+/**
+ * The Modifiers key: an off-white keycap like Inputs' and Outputs', but a wide one, blank (the game prints
+ * the % sign and the text on it). The game draws it as a horizontal three-slice: MODKEY.cap at each end
+ * keeps its size and the middle stretches.
+ */
+const MODKEY = { W: 680, H: 120, M: 16, cap: 64 };
+
+/**
+ * The white plastic sheet the Modifiers open onto: the keycaps' off-white plastic as a thin moulded plate
+ * with a rounded edge, and its shadow. A 9-slice.
+ */
+const WSHEET = { W: 600, H: 400, M: 14, radius: 12 };
+function whiteSheet() {
+  const { W, H, M, radius } = WSHEET, pw = W - 2 * M, ph = H - 2 * M, g = new THREE.Group();
+  const top = new THREE.MeshPhysicalMaterial({ map: faceTexture(canvas2d(pw, ph, (c) => paintPlastic(c, pw, ph)), pw, ph), ...KNOB_PLASTIC });
+  const plate = new THREE.Mesh(extrude(rrShape(pw, ph, radius), 3, 2.6, 2.2, 5), [top, MAT.skirt]);
+  plate.castShadow = plate.receiveShadow = true; plate.position.set(W / 2, 0, H / 2); g.add(plate);
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.6));
+  return g;
+}
+
+/**
  * A weld bead along a rounded rectangle's edge (w × h, corner r, centred on the origin): a rounded ridge
  * of bronze filler, radius `rad`, rippled every 2.6 px as a bead laid in runs is, lying on the join.
  */
@@ -1394,6 +1608,11 @@ if (EXPORT) exportLayers();
  *           the action sheets' plate.
  * diag_plastic, screw_silver, shipment_door: the diagnostics' plastic plate and its screws, and the
  *           shipments' rolling door.
+ * heading_glyphs, heading_glyph_shadows: the section headings' raised letters and their shadows.
+ * diag_module, diag_tap, toggle_slot, toggle_knob: a diagnostics module, the cable's tap into one, and
+ *           the Visual / Text switch.
+ * labour_door, labour_door_lit: Labour and Wages' factory door, its window dark and lit.
+ * key_modifiers (+ _pressed), sheet_white: the Modifiers key and the white sheet it opens onto.
  * layout.json: frame sizes and every key's rect and top face, in capture pixels.
  * ?export&only=lamp,scroll renders just the named sets (see `want` below).
  */
@@ -1403,7 +1622,8 @@ async function exportLayers() {
   renderer.setPixelRatio(1); renderer.setClearColor(0x000000, 0);
   // ?export&only=lamp,scroll renders just those sets and merges their entries into the existing
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
-  // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door.
+  // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
+  // toggle, ldoor, modkey, sheetw.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -1710,6 +1930,57 @@ async function exportLayers() {
   if (want('door')) await withSeed(411, async () => {
     await post('shipment_door', stage([0, 0, DOOR.W, DOOR.H], [rollingDoor()]).grab());
     layout.shipment_door = { size: [DOOR.W, DOOR.H], side: DOOR.side, top: DOOR.top, bottom: DOOR.bottom, period: DOOR.period };
+  });
+
+  // --- the section headings' letters (see headingAtlas), as the title's.
+  if (want('heading')) await withSeed(412, async () => {
+    const at = headingAtlas(), group = new THREE.Group();
+    for (const [ch, [x, y, w, h, ox]] of Object.entries(at.cells)) {
+      const letter = headingLetter(ch, ox, at.baseline);
+      const r = relief(w, h, (g) => letter(g, '#fff'), WHITE_LETTERS, { height: 5, soften: 0.7, faceGrade: false });
+      r.position.set(x + w / 2, 0.3, y + h / 2); group.add(r);
+    }
+    await post('heading_glyphs', stage([0, 0, at.W, at.H], [group]).grab());
+    const all = (g, col) => { for (const [ch, [x, y, , , ox]] of Object.entries(at.cells)) headingLetter(ch, x + ox, y + at.baseline)(g, col); };
+    await post('heading_glyph_shadows', frame2d(at.W, at.H, (g) => drawIconShadows(g, at.W, at.H, [{ height: 5, draw: all }])));
+    layout.heading_glyphs = { size: [at.W, at.H], font_size: HEADING.size, baseline: at.baseline, space: at.space, glyphs: at.cells };
+  });
+
+  // --- the diagnostics' modules, the cable's taps into them, and the Visual / Text switch.
+  if (want('module')) await withSeed(413, async () => {
+    await post('diag_module', stage([0, 0, MODULE.W, MODULE.H], [diagModule()]).grab());
+    await post('diag_tap', stage([0, 0, TAP.W, TAP.H], [cableTap()]).grab());
+    layout.diag_module = { size: [MODULE.W, MODULE.H], margin: MODULE.M, corner: MODULE.M + 16 };
+    layout.diag_tap = { size: [TAP.W, TAP.H], x: TAP.x, plug: TAP.plug };
+  });
+  if (want('toggle')) await withSeed(414, async () => {
+    await post('toggle_slot', stage([0, 0, TOGGLE.W, TOGGLE.H], [toggleSlot()]).grab());
+    await post('toggle_knob', stage([0, 0, TOGGLE.knob, TOGGLE.knob], [toggleKnob()]).grab());
+    layout.toggle = { size: [TOGGLE.W, TOGGLE.H], slot: [TOGGLE.slotW, TOGGLE.slotH], knob: TOGGLE.knob, knob_size: [TOGGLE.knobW, TOGGLE.knobH] };
+  });
+
+  // --- Labour and Wages' factory doors, the window dark and lit.
+  if (want('ldoor')) {
+    for (const [name, lit] of [['labour_door', false], ['labour_door_lit', true]]) await withSeed(415, async () => {
+      await post(name, stage([0, 0, LDOOR.W, LDOOR.H], [labourDoor(lit)]).grab());
+    });
+    const { plate, win } = labourDoorGeometry();
+    layout.labour_door = { size: [LDOOR.W, LDOOR.H], plate, window: win };
+  }
+
+  // --- the Modifiers key (blank, and pressed) and the white plastic sheet it opens onto.
+  if (want('modkey')) await withSeed(416, async () => {
+    const { W, H, M } = MODKEY, group = new THREE.Group();
+    const k = keycap(W - 2 * M, H - 2 * M, 16, () => {});
+    k.position.set(W / 2, 0, H / 2); group.add(k, shadowCatcher(W, H, W / 2, H / 2));
+    const st = stage([0, 0, W, H], [group]);
+    await post('key_modifiers', st.grab()); await pressed(k, 'key_modifiers_pressed', st);
+    const [fw, fh] = k.userData.face;
+    layout.key_modifiers = { size: [W, H], cap: MODKEY.cap, rect: [M, M, W - 2 * M, H - 2 * M], face: [(W - fw) / 2, (H - fh) / 2, fw, fh] };
+  });
+  if (want('sheetw')) await withSeed(417, async () => {
+    await post('sheet_white', stage([0, 0, WSHEET.W, WSHEET.H], [whiteSheet()]).grab());
+    layout.sheet_white = { size: [WSHEET.W, WSHEET.H], margin: WSHEET.M, corner: WSHEET.M + 40 };
   });
 
   // --- the title's letters: the raised white faces (ungraded; the game grades the whole title), and

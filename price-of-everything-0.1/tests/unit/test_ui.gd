@@ -683,19 +683,27 @@ func _test_bdp_v3_rules() -> void:
 		and Panel2.v3_stock_tone(10, 32, 0, false) == "bad",
 		"bdp v3: a shipment's lamp is green with enough to run, amber when short with something coming, red when short with nothing")
 	var Section = load("res://scripts/bdp_v3_section.gd")
-	var screws: PackedVector2Array = Section.screw_points(Vector2(400, 200))
+	var screws: PackedVector2Array = Section.screw_points(Vector2(400, 300))
 	var on_top := 0
+	var on_bottom := 0
+	var on_left := 0
+	var on_right := 0
 	for sp in screws:
-		if is_equal_approx(sp.y, Section.SCREW_INSET):
-			on_top += 1
-	_check(on_top >= 5 and screws.size() > on_top and screws[0] == Vector2(Section.SCREW_INSET, Section.SCREW_INSET),
-		"bdp v3: the plastic plate's screws run along its top and down its sides, spaced for its size (%d)" % screws.size())
+		on_top += int(is_equal_approx(sp.y, Section.SCREW_INSET))
+		on_bottom += int(is_equal_approx(sp.y, 300.0 - Section.SCREW_INSET))
+		on_left += int(is_equal_approx(sp.x, Section.SCREW_INSET))
+		on_right += int(is_equal_approx(sp.x, 400.0 - Section.SCREW_INSET))
+	_check(on_top == 4 and on_bottom == 4 and on_left == 6 and on_right == 6 and screws.size() == 16,
+		"bdp v3: the plastic plate has four screws along its top and bottom and six down each side (%d)" % screws.size())
 	var Door = load("res://scripts/bdp_v3_door.gd")
 	var door_rows: Array = Door.rows(90.0)
 	var door_h := 0.0
 	for dr: Array in door_rows:
 		door_h += float(dr[2])
 	_check(is_equal_approx(door_h, 90.0) and door_rows.size() >= 3, "bdp v3: the rolling door fills its height with whole slats between its housing and bar")
+	_check(Panel2.v3_door_rows(1) == 2 and Panel2.v3_door_rows(2) == 2 and Panel2.v3_door_rows(3) == 1 and Panel2.v3_door_rows(4) == 1
+		and Panel2.v3_door_rows(5) == 0 and Panel2.v3_door_rows(6) == 0 and Panel2.v3_door_rows(8) == 0,
+		"bdp v3: the shipments' door covers the bay's two empty rows for 1-2 goods, one for 3-4, none for 5-6")
 	var Light = load("res://scripts/bdp_v3_light.gd")
 	var screen := Vector2(1920, 1080)
 	_check(Light.light_at(Vector2(0.05, 0.05), screen) > Light.light_at(Vector2(0.75, 0.15), screen)
@@ -795,17 +803,52 @@ func _test_bdp_v3_panel() -> void:
 		and diag_frame != null and diag_frame.get("style") == "plastic" and not lamps.is_empty()
 		and diag_label.get_theme_color("font_color") == DS.PALETTE["TEXT"],
 		"bdp v3: the diagnostics sit on dark plastic, their rows led by lamps, their text white, a cable beside the lamps (%d lamps)" % lamps.size())
+	var modules: Array = diag.find_children("*", "PanelContainer", true, false).filter(func(n: Node) -> bool: return n.has_meta("v3_diag_module")) if diag != null else []
+	var cable: Node = diag.find_child("BdpV3Cable", false, false) if diag != null else null
+	_check(not modules.is_empty() and cable != null and cable.taps.size() == modules.size(),
+		"bdp v3: every diagnostics row is its own module, fed by a branch off the cable (%d modules)" % modules.size())
+	var diag_heading: Node = diag_frame.content.get_child(0) if diag_frame != null else null
+	var switch: Node = diag_heading.find_child("ViewSwitch", false, false) if diag_heading != null else null
+	var raised: Node = diag_heading.find_child("BdpV3Heading", false, false) if diag_heading != null else null
+	var shown_texts: Array = diag_heading.find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.visible).map(func(l: Label) -> String: return l.text) if diag_heading != null else []
+	_check(switch != null and switch.find_child("BdpV3Toggle", false, false) != null and switch.find_child("BdpV3Toggle", false, false).right
+		and not shown_texts.has("always shown") and shown_texts.has("Visual") and shown_texts.has("Text"),
+		"bdp v3: the diagnostics heading has a Visual / Text switch set to Text, not 'always shown' (%s)" % ", ".join(shown_texts))
+	_check(raised != null and raised.letter_count() == "DIAGNOSTICS".length(),
+		"bdp v3: section headings are set in raised letters like INPUTS and OUTPUTS (%d)" % (raised.letter_count() if raised != null else -1))
 	var ships_card: Control = panel.find_child("ShipmentsV3", true, false)
 	var cells: Array = ships_card.find_children("*", "HBoxContainer", true, false).filter(func(n: Node) -> bool: return n.has_meta("v3_shipment_cell")) if ships_card != null else []
 	var stock_lamp: Node = cells[0].find_child("StockLamp", false, false) if not cells.is_empty() else null
 	var hover_icon: Node = cells[0].get_child(0) if not cells.is_empty() else null
+	var ship_door: Control = ships_card.find_child("ShipmentDoor", true, false) if ships_card != null else null
+	var ship_text: Array = ships_card.find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.text.contains("stored")) if ships_card != null else []
 	_check(cells.size() == 2 and stock_lamp != null and stock_lamp.colour == "red" and hover_icon.get("detail_lines").size() >= 4
-		and ships_card.get_parent().get_parent().get("door_until") != null,   # card -> frame content -> frame
-		"bdp v3: inbound shipments sit under a rolling door, each good with a stock lamp and a hover of its supply (%d)" % cells.size())
+		and hover_icon.custom_minimum_size.x == panel.V3_SHIP_ICON and ship_text.is_empty()
+		and ship_door != null and is_equal_approx(ship_door.custom_minimum_size.y, ship_door.rolled_up_height() + 2.0 * (panel.V3_SHIP_ICON + panel.V3_SHIP_GAP)),
+		"bdp v3: inbound shipments show large icons and stock lamps, no text, with the door down over the two empty rows (%d)" % cells.size())
 	var labour: Control = panel.find_child("LabourV3", true, false)
 	var counters: Array = labour.find_children("*", "Control", true, false).filter(func(n: Node) -> bool: return n.get_script() == load("res://scripts/bdp_v3_counter.gd")) if labour != null else []
 	_check(counters.size() == 2 and counters[0].decimals == 2 and counters[1].decimals == 0,
 		"bdp v3: labour shows its cost and its workers on drum counters (%d)" % counters.size())
+	var labour_doors: Array = labour.find_children("*", "Control", true, false).filter(func(n: Node) -> bool: return n.get_script() == load("res://scripts/bdp_v3_labour_door.gd")) if labour != null else []
+	var head_total := 0
+	for d in labour_doors:
+		head_total += int(d.count)
+	_check(labour_doors.size() == 3 and head_total == int(BuildingReadout.labour(Catalog.get_building("b_007"), Catalog.get_recipe(str(BuildingState.buildings[iid].get("recipe_id", "")))).get("total", -1)),
+		"bdp v3: Labour and Wages has a factory door per kind of worker, its headcount on the kick plate (%d doors, %d workers)" % [labour_doors.size(), head_total])
+	var mod_key: Control = panel.find_child("BdpV3ModKey", true, false)
+	var mod_sheet: Control = panel.find_child("ModifiersSheet", true, false)
+	var navy_ok := mod_sheet != null
+	if mod_sheet != null:
+		for l: Label in mod_sheet.find_children("*", "Label", true, false):
+			navy_ok = navy_ok and l.get_theme_color("font_color") in [load("res://scripts/bdp_v3_plate.gd").NAVY] + panel.V3_INK.values()
+	var was_open: bool = mod_sheet.visible if mod_sheet != null else true
+	if mod_key != null:
+		mod_key.toggled.emit(true)
+	_check(mod_key != null and not was_open and mod_sheet.visible and navy_ok,
+		"bdp v3: Modifiers is a white key that opens a white plastic sheet printed in navy")
+	if mod_key != null:
+		mod_key.toggled.emit(false)
 	var Seam = load("res://scripts/bdp_v3_seam.gd")
 	_check(panel._seam.visible and is_equal_approx(panel._scroll.offset_top, Seam.strip_height())
 		and panel._seam.get_index() > panel._scroll.get_index() and panel._seam.get_parent() == panel._scroll.get_parent(),
@@ -818,7 +861,7 @@ func _test_bdp_v3_panel() -> void:
 		for c in f.content.get_children():
 			if c.has_meta("v3_section"):
 				framed.append(str(c.get_meta("v3_section")))
-	_check(framed.has("Diagnostics") and framed.has("Labour on this building") and framed.has("Economics · per turn"),
+	_check(framed.has("Diagnostics") and framed.has("Labour and Wages") and framed.has("Economics · per turn"),
 		"bdp v3: the sections sit in steel frames (%s)" % ", ".join(framed))
 	var money_frame: Control = null
 	for f in frames:
