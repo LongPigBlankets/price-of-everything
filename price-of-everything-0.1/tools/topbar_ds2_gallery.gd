@@ -1,8 +1,8 @@
 extends Node2D
 ## Every hover state and every flyout of the DS2 top bar, in the real HUD at 1920 × 1080 (two pixels
 ## each), after three turns of a busy player tile so the modules have something to say: each module
-## hovered (its readout under the bar, Transport once per lamp), then each flyout open (Rankings on both
-## of its tabs).
+## hovered (its readout under the bar, Transport once per lamp), the Rankings panel on both of its tabs,
+## then each remaining flyout open (Treasury and Power as steel sheets, and the mission's).
 ##   Godot --path . res://tools/topbar_ds2_gallery.tscn --quit-after 20000 -- --no-telemetry
 ## Writes hover_<module>.png and flyout_<id>.png into $TOPBAR_GALLERY_DIR (or /tmp).
 
@@ -80,11 +80,22 @@ func _ready() -> void:
 			await _settle(4)
 	bar.set("ds2_readout_cell", "")
 
-	for id: String in ["treasury", "power", "victory", "rankings", "council", "quest"]:
-		var tabs: Array = ["revenue", "goods"] if id == "rankings" else [""]
+	# Rankings is a panel of its own on the DS2 bar: both of its tabs.
+	for tab: String in ["revenue", "goods"]:
+		bar.call("_set_rankings_tab", tab)
+		if not (bar.get("_rankings_panel") != null and (bar.get("_rankings_panel") as Control).visible):
+			bar.call("_module_pressed", "rankings")
+		await _settle(14)
+		var rp: Control = bar.get("_rankings_panel")
+		if rp != null and rp.visible:
+			_save(rp.get_global_rect().grow(24.0), "panel_rankings_%s" % tab)
+	bar.call("_close_rankings_panel")
+	await _settle(6)
+
+	# The flyouts that remain: the steel sheets (Treasury, Power) and the mission's.
+	for id: String in ["treasury", "power", "quest"]:
+		var tabs: Array = [""]
 		for tab: String in tabs:
-			if tab != "":
-				bar.set("_rankings_tab", tab)
 			bar.call("_toggle_fly", id)
 			await _settle(14)
 			var panel: Control = bar.get("_fly_panel")

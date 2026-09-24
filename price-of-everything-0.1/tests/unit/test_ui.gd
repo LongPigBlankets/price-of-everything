@@ -1255,6 +1255,50 @@ func _test_topbar_ds2_strip() -> void:
 	_check(vic != null and vic.visible and is_equal_approx(float(counter.get("value")), float(bd.get("total", 0)))
 		and str((bar.get("_ds2_victory_target") as Label).text).begins_with("/"),
 		"top bar ds2: the victory score on a drum counter, the target printed after it")
+	# Treasury and Power open as steel sheets; the Treasury keeps every node the tutorial and e2e use.
+	bar.call("_open_fly", "treasury")
+	await get_tree().process_frame
+	var fly: Control = bar.get("_fly_panel")
+	var names_ok := fly != null and fly.name == "Flyout_treasury"
+	for n: String in ["FlyRowCash", "FlyRowNet", "FlyTakeLoanButton", "FlyBalanceButton", "FlyChartsButton", "FlyUpcomingButton"]:
+		names_ok = names_ok and fly.find_child(n, true, false) != null
+	_check(names_ok and fly.find_child("FlyTakeLoanButton", true, false) is Button and fly.find_child("BdpV3ModKey", true, false) != null,
+		"top bar ds2: the Treasury sheet keeps its named rows and buttons, the buttons on keycaps")
+	bar.call("_close_fly")
+	bar.call("_open_fly", "power")
+	await get_tree().process_frame
+	fly = bar.get("_fly_panel")
+	var sw: Control = fly.find_child("FlyPrioritySwitch_coal_gas", true, false) if fly != null else null
+	var was_prio: String = MatchState.power_priority_coal_gas
+	if sw != null:
+		var click := InputEventMouseButton.new()
+		click.button_index = MOUSE_BUTTON_LEFT
+		click.pressed = true
+		sw.call("_gui_input", click)   # the engine calls the handler; the signal would not reach it
+	var flipped: String = MatchState.power_priority_coal_gas
+	MatchState.set_power_priority("coal_gas", was_prio)
+	bar.call("_close_fly")
+	_check(sw != null and flipped != was_prio, "top bar ds2: the Power sheet's switch sets where coal and gas power goes")
+	var turn_was: int = TurnManager.current_turn
+	TurnManager.current_turn = maxi(turn_was, int(CompanyRankings.REVEAL_TURN))
+	bar.call("_module_pressed", "rankings")
+	await get_tree().process_frame
+	var rp: Control = bar.get("_rankings_panel")
+	var rp_open: bool = rp != null and rp.visible and str(bar.get("_fly_open_id")) == ""
+	PanelStack.close_top()
+	_check(rp_open and not rp.visible, "top bar ds2: Rankings opens its own panel, and Esc closes it")
+	TurnManager.current_turn = turn_was
+	var opened := []
+	var on_victory := func() -> void: opened.append("victory")
+	var on_council := func() -> void: opened.append("council")
+	bar.connect("victory_widget_clicked", on_victory)
+	bar.connect("council_widget_clicked", on_council)
+	bar.call("_module_pressed", "victory")
+	bar.call("_module_pressed", "council")
+	bar.disconnect("victory_widget_clicked", on_victory)
+	bar.disconnect("council_widget_clicked", on_council)
+	_check(opened == ["victory", "council"] and str(bar.get("_fly_open_id")) == "",
+		"top bar ds2: Victory and Council open their full panels, no flyout")
 	var shade: Node2D = bar.get_node_or_null("Ds2Shade")
 	_check(shade != null and shade.visible and bar.get_child(bar.get_child_count() - 1) == shade,
 		"top bar ds2: the lamp's shade is over the strip, drawn last")

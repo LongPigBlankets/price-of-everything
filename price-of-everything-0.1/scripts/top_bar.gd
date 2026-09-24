@@ -878,7 +878,7 @@ func _build_victory() -> void:
 	# Text set on refresh (_victory_bar_tip) — at build time the ruleset has not landed yet,
 	# so the bar's shape is not yet known.
 	col.add_child(_victory_target)
-	mod.pressed.connect(func() -> void: _toggle_fly("victory"))
+	mod.pressed.connect(func() -> void: _module_pressed("victory"))
 	_hbox().add_child(mod)
 	_victory_btn = mod
 
@@ -1045,7 +1045,7 @@ func _build_rankings() -> void:
 	col.add_child(_rankings_head)
 	_rankings_sub = _mini("", DS.PALETTE.TEXT, 11)
 	col.add_child(_rankings_sub)
-	mod.pressed.connect(func() -> void: _toggle_fly("rankings"))
+	mod.pressed.connect(func() -> void: _module_pressed("rankings"))
 	_hbox().add_child(mod)
 	_rankings_btn = mod
 
@@ -1437,6 +1437,27 @@ const DS2_INK_BAD := Color("#8f1f19")
 const Led := preload("res://scripts/bdp_v3_led.gd")
 const Counter := preload("res://scripts/bdp_v3_counter.gd")
 const Readout := preload("res://scripts/bdp_v3_readout.gd")
+const Nine := preload("res://scripts/bdp_v3_nine.gd")
+const Heading := preload("res://scripts/bdp_v3_heading.gd")
+const SmallKey := preload("res://scripts/bdp_v3_key.gd")
+const ModKey := preload("res://scripts/bdp_v3_mod_key.gd")
+const Toggle := preload("res://scripts/bdp_v3_toggle.gd")
+const Plate := preload("res://scripts/bdp_v3_plate.gd")
+## The flyouts that are DS2 steel sheets; the others keep their card until they are decided.
+const DS2_SHEET_FLYOUTS := ["treasury", "power"]
+## Building Detail's action sheet: a worn steel plate (set `sheet`), nine-sliced. From layout.json in
+## layout px: the render's shadow room and its corner.
+const DS2_SHEET: Texture2D = preload("res://assets/ui/bdp_v3/sheet_plate.png")
+const DS2_SHEET_MARGIN := 10.0
+const DS2_SHEET_CORNER := 60.0
+const DS2_SHEET_PAD := 16
+const DS2_SHEET_DROP := 12.0
+const DS2_SHEET_SECONDS := 0.2
+## Figures on dark steel: DS2's OK and DANGER on dark.
+const DS2_LED_GOOD := Color("#5bd180")
+const DS2_LED_BAD := Color("#e66060")
+## The breakdown's screens, smaller than the main figures'.
+const DS2_SMALL_LED := 0.8
 ## The hover readout under the bar: its width and its gap below the bar.
 const DS2_READOUT_W := 360.0
 const DS2_READOUT_GAP := 8.0
@@ -1467,6 +1488,8 @@ var _ds2_readout: Control
 var _ds2_hover: Control = null
 ## The Treasury and Encyclopedia buttons' own tooltips, held while DS2's readout stands in for them.
 var _ds2_held_tips := {}
+## True while an open flyout is being rebuilt in place (a switch flipped), so it does not drop in again.
+var _fly_refreshing := false
 ## The printed £, the LED screen (in a holder sized to its scale) and the printed K / M after it.
 var _ds2_cash: HBoxContainer
 var _ds2_cash_led: Control
@@ -1563,6 +1586,8 @@ func _ds2_apply() -> void:
 		wrap.modulate = Color.WHITE if on else C_LABEL
 	if not on and _ds2_readout != null:
 		_ds2_readout.visible = false
+	if not on:
+		_close_rankings_panel()   # v3.1 shows Rankings as its flyout
 	for button: Button in [money_widget, _enc_button]:
 		if button == null:
 			continue
@@ -1912,7 +1937,7 @@ func _build_council() -> void:
 	_council_stack.add_theme_constant_override("separation", 6)
 	_council_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(_council_stack)
-	mod.pressed.connect(func() -> void: _toggle_fly("council"))
+	mod.pressed.connect(func() -> void: _module_pressed("council"))
 	_hbox().add_child(mod)
 	_council_btn = mod
 
@@ -2800,8 +2825,27 @@ func _refresh_open_fly() -> void:
 	if _fly_open_id == "" or _fly_panel == null or not is_instance_valid(_fly_panel):
 		return
 	var id := _fly_open_id
+	_fly_refreshing = true
 	_close_fly()
 	_open_fly(id)
+	_fly_refreshing = false
+
+
+## Victory and Council: on the DS2 bar they open their full panels (the flyouts only repeated them), and
+## Rankings opens its own panel; on v3.1 all three open their flyouts.
+func _module_pressed(id: String) -> void:
+	if UiPrefs.use_topbar_ds2:
+		_close_fly()
+		if _ds2_readout != null:
+			_ds2_readout.visible = false
+		if id == "victory":
+			victory_widget_clicked.emit()
+		elif id == "council":
+			council_widget_clicked.emit()
+		elif id == "rankings":
+			_toggle_rankings_panel()
+		return
+	_toggle_fly(id)
 
 
 func _close_fly() -> void:
@@ -2844,7 +2888,10 @@ func _open_fly(id: String) -> void:
 	_fly_scrim.visible = true
 	_fly_panel = PanelContainer.new()
 	_fly_panel.name = "Flyout_%s" % id   # stable target (tutorial spotlight / e2e)
-	if id == "rankings":
+	var ds2_sheet: bool = UiPrefs.use_topbar_ds2 and id in DS2_SHEET_FLYOUTS
+	if ds2_sheet:
+		_ds2_sheet_frame(_fly_panel)
+	elif id == "rankings":
 		# CanvasLayer children do not consistently inherit the viewport's theme.
 		# Assign it here so this expanded panel genuinely uses DS Card/Outlined styles.
 		_fly_panel.theme = DS.theme
@@ -2878,14 +2925,22 @@ func _open_fly(id: String) -> void:
 		"treasury":
 			# This is the compact money mini-panel. Keep it distinct from the
 			# full Money panel, which the buttons below open.
-			_fly_panel.custom_minimum_size = Vector2(510, 0)
-			vb.add_child(_fly_head("Treasury"))
-			_fly_treasury(vb)
+			_fly_panel.custom_minimum_size = Vector2(560 if ds2_sheet else 510, 0)
+			if ds2_sheet:
+				vb.add_child(_ds2_sheet_head("Treasury"))
+				_ds2_fly_treasury(vb)
+			else:
+				vb.add_child(_fly_head("Treasury"))
+				_fly_treasury(vb)
 			anchor = money_widget
 		"power":
-			_fly_panel.custom_minimum_size = Vector2(300, 0)
-			vb.add_child(_fly_head("Power"))
-			_fly_power(vb)
+			_fly_panel.custom_minimum_size = Vector2(380 if ds2_sheet else 300, 0)
+			if ds2_sheet:
+				vb.add_child(_ds2_sheet_head("Power"))
+				_ds2_fly_power(vb)
+			else:
+				vb.add_child(_fly_head("Power"))
+				_fly_power(vb)
 			anchor = _power_btn
 			(_power_btn as _ModuleBtn).active = true
 		"victory":
@@ -2932,8 +2987,17 @@ func _open_fly(id: String) -> void:
 			_fly_panel.size.y = minf(_fly_panel.size.y, max_h)
 		var vw := get_viewport().get_visible_rect().size.x
 		var x := 12.0 if id == "rankings" else anchor.global_position.x
+		if ds2_sheet:
+			x = anchor.get_global_rect().get_center().x - _fly_panel.size.x * 0.5   # under the module's middle
 		x = clampf(x, 8.0, vw - _fly_panel.size.x - 8.0)
 		_fly_panel.global_position = Vector2(x, BAR_H + 8.0)
+		if ds2_sheet and not _fly_refreshing:
+			# The sheet drops a little into place from under the bar.
+			_fly_panel.position.y -= DS2_SHEET_DROP
+			_fly_panel.modulate.a = 0.0
+			var t := _fly_panel.create_tween().set_parallel(true)
+			t.tween_property(_fly_panel, "position:y", _fly_panel.position.y + DS2_SHEET_DROP, DS2_SHEET_SECONDS).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+			t.tween_property(_fly_panel, "modulate:a", 1.0, DS2_SHEET_SECONDS * 0.7)
 	place.call_deferred()
 
 func _fly_head(title: String) -> Control:
@@ -3033,8 +3097,102 @@ func _set_rankings_tab(tab: String) -> void:
 	if tab == _rankings_tab:
 		return
 	_rankings_tab = tab
+	if _rankings_panel != null and is_instance_valid(_rankings_panel) and _rankings_panel.visible:
+		_fill_rankings_panel()
+		return
 	_close_fly()
 	_open_fly("rankings")
+
+
+# ── Rankings panel (DS2): the league as a panel of its own ─────────────────────
+
+## The Rankings panel: docked at the left under the bar, as the Market panel is, closing on Esc. It holds
+## the same two tables the flyout did (the builders are shared), in a panel sized to stop above the
+## bottom menu.
+var _rankings_panel: PanelContainer
+const RANKINGS_PANEL_W := 600.0
+## Room kept below the panel for the bottom menu.
+const RANKINGS_PANEL_BOTTOM := 120.0
+
+
+func _toggle_rankings_panel() -> void:
+	if _rankings_panel != null and is_instance_valid(_rankings_panel) and _rankings_panel.visible:
+		_close_rankings_panel()
+	else:
+		_open_rankings_panel()
+
+
+func _open_rankings_panel() -> void:
+	if not CompanyRankings.available():
+		return
+	_close_fly()
+	if _rankings_panel == null or not is_instance_valid(_rankings_panel):
+		_rankings_panel = PanelContainer.new()
+		_rankings_panel.name = "RankingsPanel"
+		_rankings_panel.theme = DS.theme
+		_rankings_panel.theme_type_variation = "Card"
+		_rankings_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+		var host: Control = get_parent().get_node_or_null("HUDContent") as Control
+		(host if host != null else get_parent()).add_child(_rankings_panel)
+		_rankings_panel.visibility_changed.connect(func() -> void:
+			if not _rankings_panel.visible:
+				PanelStack.remove(_rankings_panel)
+				if _rankings_btn != null:
+					(_rankings_btn as _ModuleBtn).active = false)
+	_fill_rankings_panel()
+	_rankings_panel.visible = true
+	(_rankings_btn as _ModuleBtn).active = true
+	PanelStack.push(_rankings_panel)
+
+
+func _close_rankings_panel() -> void:
+	if _rankings_panel != null and is_instance_valid(_rankings_panel):
+		_rankings_panel.visible = false
+
+
+## Builds the panel's content for the tab showing and fits it between the bar and the bottom menu.
+func _fill_rankings_panel() -> void:
+	for child: Node in _rankings_panel.get_children():
+		_rankings_panel.remove_child(child)
+		child.queue_free()
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 0)
+	_rankings_panel.add_child(vb)
+	var head := HBoxContainer.new()
+	var pad := MarginContainer.new()
+	for side: String in ["left", "right"]:
+		pad.add_theme_constant_override("margin_" + side, 14)
+	pad.add_theme_constant_override("margin_top", 10)
+	pad.add_child(head)
+	var title := Label.new()
+	title.theme_type_variation = "Title"
+	title.text = "Company rankings"
+	head.add_child(title)
+	head.add_child(_flex())
+	var close := Button.new()
+	close.name = "RankingsCloseButton"
+	close.text = "✕"
+	close.focus_mode = Control.FOCUS_NONE
+	close.pressed.connect(_close_rankings_panel)
+	head.add_child(close)
+	vb.add_child(pad)
+	_fly_scroll = null
+	_fly_rankings(vb)
+	var scroll := _fly_scroll
+	_fly_scroll = null
+	var place := func() -> void:
+		if _rankings_panel == null or not is_instance_valid(_rankings_panel):
+			return
+		var vh: float = get_viewport().get_visible_rect().size.y
+		var top: float = BAR_H + 12.0
+		var room: float = vh - top - RANKINGS_PANEL_BOTTOM
+		_rankings_panel.custom_minimum_size = Vector2(RANKINGS_PANEL_W, 0)
+		_rankings_panel.size = _rankings_panel.get_combined_minimum_size()
+		if _rankings_panel.size.y > room and scroll != null and is_instance_valid(scroll):
+			scroll.custom_minimum_size.y = maxf(FLY_LIST_MIN_H * 0.5, scroll.custom_minimum_size.y - (_rankings_panel.size.y - room))
+			_rankings_panel.size = _rankings_panel.get_combined_minimum_size()
+		_rankings_panel.global_position = Vector2(16.0, top)
+	place.call_deferred()
 
 ## How tall a rankings list may be before it scrolls: everything between the bar and the bottom
 ## of the screen, less this panel's own chrome (title, tabs, column headings) and a margin.
@@ -3082,7 +3240,7 @@ func _fly_revenue_rankings(vb: VBoxContainer) -> void:
 	var inner := _fly_pad(vb, 5)
 	var hint := Label.new()
 	hint.theme_type_variation = "Caption"
-	hint.text = "TOTAL REVENUE · LAST 5-TURN AVERAGE"
+	hint.text = "REVENUE LAST TURN AND OVER THE LAST 5 TURNS"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	inner.add_child(hint)
 	var header := HBoxContainer.new()
@@ -3126,7 +3284,7 @@ func _fly_goods_rankings(vb: VBoxContainer) -> void:
 	hint_pad.add_theme_constant_override("margin_bottom", 8)
 	var hint := Label.new()
 	hint.theme_type_variation = "Caption"
-	hint.text = "TOP 3 PRODUCERS + YOUR LAST-TURN OUTPUT · APEX GOODS ARE PLAYER-ONLY"
+	hint.text = "THE TOP 3 PRODUCERS OF EACH GOOD AND YOUR OUTPUT LAST TURN. ONLY YOU MAKE APEX GOODS."
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint_pad.add_child(hint)
 	vb.add_child(hint_pad)
@@ -3342,6 +3500,267 @@ func _add_transit_credit_rows(parent: VBoxContainer) -> void:
 		LoanState.set_transit_credit_enabled(not LoanState.transit_credit_enabled)
 		toggle.text = label_for.call())
 	parent.add_child(toggle)
+
+# ── DS2 flyout sheets (Treasury, Power) ─────────────────────────────────────────
+
+## A flyout as Building Detail's steel sheet: the plate painted behind its content, the content inset
+## inside the plate's trim.
+func _ds2_sheet_frame(panel: PanelContainer) -> void:
+	var bare := StyleBoxEmpty.new()
+	bare.set_content_margin_all(DS2_SHEET_PAD)
+	panel.add_theme_stylebox_override("panel", bare)
+	panel.theme = DS.theme
+	panel.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	panel.draw.connect(func() -> void:
+		Nine.paint(panel, DS2_SHEET, Rect2(Vector2.ZERO, panel.size).grow(DS2_SHEET_MARGIN / 1.875),
+			(DS2_SHEET_MARGIN + DS2_SHEET_CORNER) * 2.0 / 1.875))
+
+
+## The sheet's head: its name in raised lettering and Building Detail's close key.
+func _ds2_sheet_head(title: String) -> Control:
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	if Heading.can_show(title.to_upper()):
+		var h: Control = Heading.new()
+		h.set("text", title.to_upper())
+		head.add_child(h)
+	else:
+		head.add_child(_ds2_text(title.to_upper(), 16))
+	head.add_child(_flex())
+	var close: TextureButton = SmallKey.make("close", 26.0)
+	close.name = "FlyCloseKey"
+	close.pressed.connect(_close_fly)
+	head.add_child(close)
+	var wrap := VBoxContainer.new()
+	wrap.add_theme_constant_override("separation", 8)
+	wrap.add_child(head)
+	return wrap
+
+
+## White text on the steel with the embossed shadow (DS2 rule 3).
+func _ds2_text(text: String, font_px: int = 13) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", font_px)
+	l.add_theme_color_override("font_color", DS.PALETTE.TEXT)
+	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+	l.add_theme_constant_override("shadow_offset_x", 1)
+	l.add_theme_constant_override("shadow_offset_y", 1)
+	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return l
+
+
+## A small caption in the metal-label capitals.
+func _ds2_caption(text: String) -> Label:
+	var l := _ds2_text(text.to_upper(), 14)
+	l.add_theme_font_override("font", Plate.FONT_SEMI)
+	return l
+
+
+## A money figure: the £ printed, the figure on an LED screen padded to `digits` cells so a column's
+## screens are one width. Shown at `k` of full size.
+func _ds2_money_screen(amount: float, colour: Color, digits: int, k: float = 1.0) -> Control:
+	var hb := HBoxContainer.new()
+	hb.name = "MoneyLed"
+	hb.add_theme_constant_override("separation", 3)
+	hb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var pound := _ds2_caption("£")
+	pound.add_theme_font_size_override("font_size", roundi(17 * k))
+	hb.add_child(pound)
+	var figure := "%.2f" % amount
+	var led: Control = Led.new()
+	led.call("set_figure", " ".repeat(maxi(0, digits - Led.cells_for(figure).size())) + figure, colour)
+	if is_equal_approx(k, 1.0):
+		hb.add_child(led)
+	else:
+		var holder := Control.new()
+		holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		led.scale = Vector2.ONE * k
+		holder.add_child(led)
+		holder.custom_minimum_size = (led.get_combined_minimum_size() * k).ceil()
+		led.size = led.get_combined_minimum_size()
+		hb.add_child(holder)
+	return hb
+
+
+## A named row on the sheet: its label at the left, its figure's screen at the right.
+func _ds2_money_row(label: String, amount: float, colour: Color, digits: int, row_name: String = "", k: float = 1.0) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	if row_name != "":
+		row.name = row_name
+	row.add_theme_constant_override("separation", 8)
+	var l := _ds2_text(label, 13 if k < 1.0 else 14)
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	row.add_child(l)
+	row.add_child(_ds2_money_screen(amount, colour, digits, k))
+	return row
+
+
+## A keycap on the sheet that is a real Button (the tutorial and the e2e press these by name): Building
+## Detail's wide worn key, its label printed on it, pressing down while held.
+func _ds2_key_button(text: String, button_name: String) -> Button:
+	var b := Button.new()
+	b.name = button_name
+	b.flat = true
+	b.focus_mode = Control.FOCUS_NONE
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	var key: Control = ModKey.new()
+	key.set("openable", false)
+	key.set("summary", text)
+	key.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	key.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	b.add_child(key)
+	b.custom_minimum_size = Vector2(0, key.custom_minimum_size.y)
+	b.button_down.connect(func() -> void: key.call("set_open", true))
+	b.button_up.connect(func() -> void: key.call("set_open", false))
+	return b
+
+
+## The Treasury on its steel sheet: the same figures and actions as the flyout, on screens and keys.
+func _ds2_fly_treasury(vb: VBoxContainer) -> void:
+	var s: Dictionary = Production.last_turn_summary
+	var net := Production.cash_change_of(s)
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 8)
+	vb.add_child(body)
+	var runway := _runway_turns()
+	var main_figures := [MatchState.money, net, LoanState.available_capacity()]
+	var digits := 0
+	for f: float in main_figures:
+		digits = maxi(digits, Led.cells_for("%.2f" % f).size())
+	body.add_child(_ds2_money_row("Cash on hand", MatchState.money, DS2_CASH_RED if MatchState.money < 0.0 else DS2_CASH_COLOUR, digits, "FlyRowCash"))
+	body.add_child(_ds2_money_row("Cash change last turn", net, DS2_LED_GOOD if net >= 0.0 else DS2_LED_BAD, digits, "FlyRowNet"))
+	if runway > 0:
+		var rw := HBoxContainer.new()
+		rw.name = "FlyRowRunway"
+		var rl := _ds2_text("Runway at current burn", 14)
+		rl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		rw.add_child(rl)
+		rw.add_child(_ds2_text("About %d turns" % runway, 14))
+		body.add_child(rw)
+	var upcoming := preload("res://scripts/cash_commitments_view.gd").make_link(func() -> void: _open_money_panel_tab("Upcoming"))
+	upcoming.name = "FlyUpcomingButton"
+	preload("res://scripts/cash_commitments_view.gd").update_link(upcoming, preload("res://scripts/cash_commitments.gd").snapshot())
+	body.add_child(upcoming)
+	# Cash in and costs, side by side, on smaller screens.
+	var revenue := [
+		["Goods sold", float(s.get("goods_sales_revenue", 0.0))],
+		["Power sold", float(s.get("power_sales_revenue", 0.0))],
+		["Green subsidy", float(s.get("green_subsidy_received", 0.0))],
+		["Put on building credit", float(s.get("building_tab_carried", 0.0))],
+		["Loan proceeds from building credit", float(s.get("building_credit_loan_received", 0.0))],
+		["Middleman operating loan", float(s.get("middleman_financing", 0.0))],
+	]
+	var costs := [
+		["Operating costs", float(s.get("maintenance_paid", 0.0)) + float(s.get("labour_paid", 0.0)) + float(s.get("advisor_paid", 0.0))],
+		["Building credit repaid", float(s.get("building_credit_repaid", 0.0))],
+		["Power bought", float(s.get("power_purchase_cost", 0.0))],
+		["Transport costs", float(s.get("transport_paid", 0.0))],
+		["Goods purchased", float(s.get("goods_purchased_cost", 0.0))],
+		["Warehousing", float(s.get("warehousing_paid", 0.0))],
+		["Loan repayments", float(s.get("interest_paid", 0.0))],
+		["Taxes and dividends", float(s.get("taxes_paid", 0.0)) + float(s.get("dividends_paid", 0.0))],
+		["Carbon tax", float(s.get("carbon_tax_paid", 0.0))],
+		["Profit sharing", float(s.get("profit_sharing_paid", 0.0))],
+	]
+	var small := 0
+	for entry: Array in revenue + costs:
+		if float(entry[1]) > 0.005:
+			small = maxi(small, Led.cells_for("%.2f" % float(entry[1])).size())
+	var columns := HBoxContainer.new()
+	columns.add_theme_constant_override("separation", 16)
+	for spec: Array in [["Cash in & credits", revenue, DS2_LED_GOOD], ["Costs", costs, DS2_LED_BAD]]:
+		var column := VBoxContainer.new()
+		column.name = "%sColumn" % str(spec[0])
+		column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		column.add_theme_constant_override("separation", 4)
+		column.add_child(_ds2_caption(str(spec[0]).replace("&", "and")))
+		var any := false
+		for entry: Array in spec[1]:
+			if float(entry[1]) <= 0.005:
+				continue
+			any = true
+			var row := _ds2_money_row(str(entry[0]), float(entry[1]), spec[2], small, "", DS2_SMALL_LED)
+			row.set_meta("cash_amount", float(entry[1]) if spec[2] == DS2_LED_GOOD else -float(entry[1]))
+			column.add_child(row)
+		if not any:
+			column.add_child(_ds2_text("None last turn", 12))
+		columns.add_child(column)
+	body.add_child(columns)
+	# Loans.
+	body.add_child(_ds2_caption("Loans"))
+	for l in LoanState.loans:
+		var lrow := _ds2_money_row(LoanState.loan_label(l), float(l.get("principal_remaining", 0.0)), DS2_CASH_COLOUR, digits, "", DS2_SMALL_LED)
+		body.add_child(lrow)
+		body.add_child(_ds2_text(LoanState.repayment_label(l), 12))
+	if LoanState.loans.is_empty():
+		body.add_child(_ds2_text("No loans outstanding.", 13))
+	body.add_child(_ds2_money_row("Loan capacity", LoanState.available_capacity(), DS2_CASH_COLOUR, digits, "FlyRowLoanCapacity"))
+	if LoanState.transit_credit_available():
+		var rate_pct := LoanState.transit_credit_rate_per_turn() * 100.0
+		var tcrow := _ds2_money_row("Transit credit on the road", LoanState.transit_credit_balance, DS2_CASH_COLOUR, digits, "FlyRowTransitCredit", DS2_SMALL_LED)
+		body.add_child(tcrow)
+		var toggle := _ds2_key_button("Advance port sales: %s" % ("On" if LoanState.transit_credit_enabled else "Off"), "FlyTransitCreditToggle")
+		toggle.tooltip_text = "Port sales are paid when the goods reach the port. With this on, the bank pays you when they leave and charges %.2f%% a turn on what is still on the road. Turn it off to wait for payment and save the interest." % rate_pct
+		toggle.pressed.connect(func() -> void:
+			LoanState.set_transit_credit_enabled(not LoanState.transit_credit_enabled)
+			_refresh_open_fly())
+		body.add_child(toggle)
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 10)
+	for spec: Array in [["Take loan", "FlyTakeLoanButton", "Loans"], ["Balance", "FlyBalanceButton", "Balance"], ["Charts", "FlyChartsButton", "Charts"]]:
+		var key := _ds2_key_button(str(spec[0]), str(spec[1]))
+		var tab := str(spec[2])
+		key.pressed.connect(func() -> void: _open_money_panel_tab(tab))
+		actions.add_child(key)
+	body.add_child(actions)
+
+
+## Power on its steel sheet: where each kind of generation's power goes, on Building Detail's slide
+## switches (Grid at the left, your buildings at the right), and a key for the power map.
+func _ds2_fly_power(vb: VBoxContainer) -> void:
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 10)
+	vb.add_child(body)
+	for spec: Array in [
+			["coal_gas", "Coal and gas", MatchState.power_priority_coal_gas,
+				"Your coal and gas plants run first. The grid only covers what they cannot.",
+				"Your coal and gas output is sold to the grid. Your buildings buy grid power instead."],
+			["wind_solar", "Wind and solar", MatchState.power_priority_wind_solar,
+				"Your wind and solar run first. Buildings can be cut short when it is not generating.",
+				"Your wind and solar output is sold to the grid. Your buildings draw steady grid power instead."]]:
+		var kind: String = spec[0]
+		var own: bool = str(spec[2]) == "self"
+		var block := VBoxContainer.new()
+		block.name = "FlyPriority_%s" % kind
+		block.add_theme_constant_override("separation", 4)
+		block.add_child(_ds2_text(str(spec[1]), 15))
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		row.add_child(_ds2_caption("Grid"))
+		var sw: Control = Toggle.new()
+		sw.name = "FlyPrioritySwitch_%s" % kind
+		sw.call("set_right", own)
+		sw.connect("toggled", func(right: bool) -> void:
+			MatchState.set_power_priority(kind, "self" if right else "grid")
+			_refresh_open_fly())
+		row.add_child(sw)
+		row.add_child(_ds2_caption("Your buildings"))
+		block.add_child(row)
+		var detail := _ds2_text(str(spec[3]) if own else str(spec[4]), 12)
+		detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		detail.custom_minimum_size.x = 320
+		block.add_child(detail)
+		body.add_child(block)
+	var map_key := _ds2_key_button("Power balance map", "FlyPowerMapButton")
+	map_key.pressed.connect(func() -> void:
+		_close_fly()
+		_on_power_pressed())
+	body.add_child(map_key)
+
 
 func _open_money_panel_tab(tab_name: String) -> void:
 	_close_fly()
