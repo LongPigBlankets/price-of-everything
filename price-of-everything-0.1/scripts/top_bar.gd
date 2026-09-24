@@ -1339,7 +1339,9 @@ func _place_quest() -> void:
 	if UiPrefs.use_topbar_ds2 and _ds2_left_gap != null:
 		# Up against the concrete's left edge, never over it, never before the works end.
 		var slab_left := money_widget.get_global_rect().get_center().x - DS2_CONCRETE.get_width() / DS2_TEXELS * 0.5
-		quest_x = roundf(maxf(_ds2_left_gap.global_position.x + 8.0, slab_left - 12.0 - want_size.x))
+		var dividers := _ds2_divider_xs()
+		var after_works: float = (dividers[0] + DS2_PIPES_ROOM) if not dividers.is_empty() else _ds2_left_gap.global_position.x + 8.0
+		quest_x = roundf(maxf(after_works, slab_left - 12.0 - want_size.x))
 	_quest_btn.position = Vector2(quest_x,
 		maxf(0.0, roundf((size.y - EDGE_H - want_size.y) * 0.5)))
 
@@ -1353,9 +1355,18 @@ const Ds2Light := preload("res://scripts/bdp_v3_light.gd")
 ## two texels a pixel, so its scratches keep their size on any screen.
 const DS2_STRIP: Texture2D = preload("res://assets/ui/bdp_v3/bar_strip.png")
 const DS2_TEXELS := 2.0
-## The concrete slab behind the money (set `barconcrete`): its top off the screen, its foot on the beam,
-## its shadow on the steel round it. Drawn centred on the money over the strip.
+## The concrete behind the money (set `barconcrete`): a clean light grey slab between two pillars, its top
+## off the screen, its foot on the beam, its shadow on the steel round it. Drawn centred on the money.
 const DS2_CONCRETE: Texture2D = preload("res://assets/ui/bdp_v3/bar_concrete.png")
+## Dark iron pipes rising out of the beam that the money's coin sits on (set `barcoinpipes`).
+const DS2_COIN_PIPES: Texture2D = preload("res://assets/ui/bdp_v3/bar_coin_pipes.png")
+## A pair of silver pipes rising out of the beam and off the screen: the divider after the works and the
+## one between the money and Victory (set `barpipes`).
+const DS2_PIPES: Texture2D = preload("res://assets/ui/bdp_v3/bar_pipes.png")
+## Room between a divider's middle and the module before it.
+const DS2_PIPES_ROOM := 24.0
+## The outline and shadow that keep a figure standing out on the light concrete.
+const DS2_INK_OUTLINE := Color(0.03, 0.05, 0.08, 0.7)
 ## The dark copy under each icon: its offset (away from the lamp) and its tint.
 const DS2_ICON_LIFT := Vector2(1.5, 2.0)
 const DS2_ICON_LIFT_TINT := Color(0.01, 0.02, 0.04, 0.6)
@@ -1416,6 +1427,8 @@ func _ds2_apply() -> void:
 		sb.shadow_size = 0 if on else 8   # the strip's render carries its own shadow
 	_ds2_shade.visible = on
 	_ds2_left_gap.visible = on
+	for label: Label in [_net_label, _runway_label]:
+		_ds2_ink(label, on)
 	var hbox := _hbox()
 	if on:
 		var order: Array[Node] = [_hbox_child("PowerModule"), _hbox_child("TransportModule"), _ds2_left_gap,
@@ -1470,6 +1483,20 @@ func _ds2_centre_money() -> void:
 	queue_redraw()   # the concrete follows the money
 
 
+## Where the silver dividers stand, in the bar's x: after the works (before the mission), and between the
+## concrete and Victory.
+func _ds2_divider_xs() -> Array[float]:
+	var out: Array[float] = []
+	var transport := _hbox_child("TransportModule") as Control
+	if transport != null and transport.visible:
+		out.append(roundf(transport.get_global_rect().end.x - global_position.x + DS2_PIPES_ROOM))
+	var victory := _hbox_child("VictoryModule") as Control
+	if victory != null and victory.visible:
+		var slab_right := money_widget.get_global_rect().get_center().x + DS2_CONCRETE.get_width() / DS2_TEXELS * 0.5
+		out.append(roundf((slab_right + victory.get_global_rect().position.x) * 0.5 - global_position.x))
+	return out
+
+
 func _ds2_draw_strip() -> void:
 	var strip: Texture2D = DS2_STRIP
 	var tex := strip.get_size()
@@ -1484,6 +1511,17 @@ func _ds2_draw_strip() -> void:
 	draw_texture_rect(DS2_CONCRETE, Rect2(slab_x, 0, slab.x, slab.y), false)
 	draw_texture_rect_region(DS2_CONCRETE, Rect2(slab_x, -TOP_BLEED, slab.x, TOP_BLEED),
 		Rect2(0, 0, DS2_CONCRETE.get_width(), TOP_BLEED * DS2_TEXELS))
+	# The dividers, their pipes running on above the bar.
+	var pipes := DS2_PIPES.get_size() / DS2_TEXELS
+	for centre: float in _ds2_divider_xs():
+		var px := centre - pipes.x * 0.5
+		draw_texture_rect(DS2_PIPES, Rect2(px, 0, pipes.x, pipes.y), false)
+		draw_texture_rect_region(DS2_PIPES, Rect2(px, -TOP_BLEED, pipes.x, TOP_BLEED), Rect2(0, 0, DS2_PIPES.get_width(), TOP_BLEED * DS2_TEXELS))
+	# The coin's pipes, under the coin.
+	if _money_coin_icon != null and _money_coin_icon.visible:
+		var stand := DS2_COIN_PIPES.get_size() / DS2_TEXELS
+		var cx := roundf(_money_coin_icon.get_global_rect().get_center().x - global_position.x)
+		draw_texture_rect(DS2_COIN_PIPES, Rect2(cx - stand.x * 0.5, 0, stand.x, stand.y), false)
 
 
 ## Text and visibility both come from MiniQuest; the bar never decides either for itself.
@@ -3323,13 +3361,27 @@ func _ds2_print(text: String, font_px: int) -> Label:
 	l.text = text
 	l.add_theme_font_size_override("font_size", font_px)
 	l.add_theme_color_override("font_color", DS2_CASH_COLOUR)
-	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
-	l.add_theme_constant_override("shadow_offset_x", 1)
-	l.add_theme_constant_override("shadow_offset_y", 1)
+	_ds2_ink(l, true)
 	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return l
+
+
+## A dark outline and a shadow down and to the right, so a figure stands out on the light concrete; off
+## again for v3.1.
+func _ds2_ink(label: Label, on: bool) -> void:
+	if on:
+		label.add_theme_color_override("font_outline_color", DS2_INK_OUTLINE)
+		label.add_theme_constant_override("outline_size", 2)
+		label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+		label.add_theme_constant_override("shadow_offset_x", 1)
+		label.add_theme_constant_override("shadow_offset_y", 2)
+	else:
+		for key: String in ["font_outline_color", "font_shadow_color"]:
+			label.remove_theme_color_override(key)
+		for key: String in ["outline_size", "shadow_offset_x", "shadow_offset_y"]:
+			label.remove_theme_constant_override(key)
 
 
 ## The cash on the LED screen, always five cells (blank ones unlit) so the screen never changes width.

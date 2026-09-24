@@ -1399,13 +1399,28 @@
  },
  "bar_concrete": {
   "size": [
-   572,
+   636,
    127.5
   ],
-  "outset": 16,
+  "outset": 18,
+  "pillar": 34,
   "slab": [
-   540,
+   600,
    96.5
   ]
+ },
+ "bar_coin_pipes": {
+  "size": [
+   96,
+   127.5
+  ],
+  "centre": 48
+ },
+ "bar_pipes": {
+  "size": [
+   72,
+   127.5
+  ],
+  "centre": 36
  }
 }

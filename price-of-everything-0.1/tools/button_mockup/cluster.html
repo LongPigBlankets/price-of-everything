@@ -2184,7 +2184,7 @@ async function exportLayers() {
   // ?export&only=lamp,scroll renders just those sets and merges their entries into the existing
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
-  // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete.
+  // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barcoinpipes, barpipes.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -2414,59 +2414,87 @@ async function exportLayers() {
     }));
     layout.bar_strip = { size: [W, H + SHADOW], height: H, beam: BEAM, shadow: SHADOW };
   });
-  /** Cast concrete, weathered: grey with aggregate showing, bugholes, soft mottling, form-tie holes with rust
-   * run down from them, and chips along its edges. Painted in the slab's own pixels. */
-  const concreteCanvas = (w, h, ties) => canvas2d(w, h, (g) => {
-    g.fillStyle = '#44423f'; g.fillRect(0, 0, w, h);
-    g.save(); g.filter = 'blur(14px)';
-    for (let i = 0; i < Math.round(w * h / 1400); i++) {
-      g.fillStyle = `rgba(${rand() > 0.5 ? '235,230,220' : '20,18,16'},${0.025 + rand() * 0.035})`;
-      g.beginPath(); g.ellipse(rand() * w, rand() * h, 12 + rand() * 40, 8 + rand() * 26, rand() * Math.PI, 0, Math.PI * 2); g.fill();
+  /** Clean light grey concrete: a fine even grain, the faintest cloud in the cast, a rare small bughole. */
+  const concreteCanvas = (w, h, base) => canvas2d(w, h, (g) => {
+    g.fillStyle = base; g.fillRect(0, 0, w, h);
+    g.save(); g.filter = 'blur(16px)';
+    for (let i = 0; i < Math.round(w * h / 2400); i++) {
+      g.fillStyle = `rgba(${rand() > 0.5 ? '255,255,252' : '60,58,54'},${0.02 + rand() * 0.025})`;
+      g.beginPath(); g.ellipse(rand() * w, rand() * h, 14 + rand() * 40, 10 + rand() * 24, rand() * Math.PI, 0, Math.PI * 2); g.fill();
     }
     g.restore();
-    for (let i = 0; i < Math.round(w * h / 9); i++) {                     // fine grain and aggregate
-      const light = rand() > 0.5, big = rand() < 0.08;
-      g.fillStyle = `rgba(${light ? '214,208,196' : '28,26,24'},${0.05 + rand() * (big ? 0.16 : 0.1)})`;
-      const sz = big ? 0.9 + rand() * 1.5 : 0.35 + rand() * 0.5;
-      g.fillRect(rand() * w, rand() * h, sz, sz * (0.6 + rand() * 0.8));
+    for (let i = 0; i < Math.round(w * h / 10); i++) {
+      g.fillStyle = `rgba(${rand() > 0.5 ? '255,255,250' : '70,68,64'},${0.03 + rand() * 0.05})`;
+      const sz = 0.35 + rand() * 0.5; g.fillRect(rand() * w, rand() * h, sz, sz);
     }
-    for (let i = 0; i < Math.round(w * h / 900); i++) {                   // bugholes: a dark pit, a lit lower lip
-      const x = rand() * w, y = rand() * h, r = 0.4 + rand() * 1.1;
-      g.fillStyle = 'rgba(14,13,12,0.55)'; g.beginPath(); g.ellipse(x, y, r, r * 0.8, 0, 0, Math.PI * 2); g.fill();
-      g.strokeStyle = 'rgba(210,204,192,0.18)'; g.lineWidth = 0.5; g.beginPath(); g.arc(x, y + 0.3, r, 0.2, Math.PI - 0.2); g.stroke();
-    }
-    for (const [x, y] of ties) {                                           // form ties, with rust run beneath
-      const run = g.createLinearGradient(0, y, 0, y + 26 + rand() * 20);
-      run.addColorStop(0, 'rgba(126,64,26,0.34)'); run.addColorStop(1, 'rgba(126,64,26,0)');
-      g.save(); g.filter = 'blur(1.2px)'; g.fillStyle = run; g.fillRect(x - 2.2, y, 4.4, 48); g.restore();
-      g.fillStyle = 'rgba(30,27,24,0.9)'; g.beginPath(); g.arc(x, y, 3.2, 0, Math.PI * 2); g.fill();
-      g.strokeStyle = 'rgba(190,184,172,0.35)'; g.lineWidth = 0.9; g.beginPath(); g.arc(x, y, 4.4, 0, Math.PI * 2); g.stroke();
-      g.fillStyle = 'rgba(110,62,30,0.8)'; g.beginPath(); g.arc(x, y, 1.4, 0, Math.PI * 2); g.fill();
-    }
-    for (let i = 0; i < Math.round((w + h) / 9); i++) {                   // chips along the edges
-      const side = Math.floor(rand() * 3), t = rand();
-      const x = side === 0 ? 4 + rand() * 6 : side === 1 ? w - 4 - rand() * 6 : 8 + t * (w - 16);
-      const y = side === 2 ? h - 4 - rand() * 6 : 8 + t * (h - 16);
-      g.fillStyle = `rgba(172,166,154,${0.25 + rand() * 0.35})`;
-      g.beginPath(); g.ellipse(x, y, 0.8 + rand() * 2.2, 0.6 + rand() * 1.6, rand() * Math.PI, 0, Math.PI * 2); g.fill();
+    for (let i = 0; i < Math.round(w * h / 5000); i++) {
+      const x = rand() * w, y = rand() * h, r = 0.4 + rand() * 0.7;
+      g.fillStyle = 'rgba(80,77,72,0.4)'; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
     }
   });
-  // The concrete slab behind the money: cast in, its top off the screen, standing a little proud of the
-  // steel, its foot on the beam; it throws its shadow on the steel down and to the right.
+  const concreteMaterial = (w, h, base) => new THREE.MeshStandardMaterial({
+    map: faceTexture(concreteCanvas(w, h, base), w, h), roughness: 0.9, metalness: 0, envMap: roomEnv, envMapIntensity: 0.25 });
+  const concreteSide = new THREE.MeshStandardMaterial({ color: 0x9c9a95, roughness: 0.95, metalness: 0 });
+  /** A shadow catcher over the steel only (above the beam); the strip is drawn under these pieces. */
+  const steelCatcher = (W, join, opacity = 0.55) => {
+    const c = new THREE.Mesh(new THREE.PlaneGeometry(W, join).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ opacity }));
+    c.position.set(W / 2, PLATE_TOP - 1.5, join / 2); c.receiveShadow = true; return c;
+  };
+  // The concrete behind the money: a clean light grey slab, its top off the screen, its foot on the beam,
+  // framed by a pillar on each side standing proud of it. It throws its shadow on the steel.
   if (want('barconcrete')) await withSeed(425, async () => {
-    const { H, BEAM, BLEED } = BAR, CW = 540, M = 16, join = H - BEAM, group = new THREE.Group();
+    const { H, BEAM, BLEED } = BAR, CW = 600, PIL = 34, M = 18, join = H - BEAM, group = new THREE.Group();
     const CH = join + BLEED - 1;
-    const ties = [[34, BLEED + 22], [CW - 34, BLEED + 22], [34, BLEED + join - 20], [CW - 34, BLEED + join - 20]];
-    const concrete = new THREE.MeshStandardMaterial({ map: faceTexture(concreteCanvas(CW, CH, ties), CW, CH), roughness: 0.93, metalness: 0,
-      envMap: roomEnv, envMapIntensity: 0.2 });
-    const concreteSide = new THREE.MeshStandardMaterial({ color: 0x55534f, roughness: 0.95, metalness: 0 });
-    const slab = new THREE.Mesh(extrude(rrShape(CW, CH, 3), 5, 2.2, 1.8, 3), [concrete, concreteSide]);
+    const slab = new THREE.Mesh(extrude(rrShape(CW - 2 * PIL + 8, CH, 2), 3, 1.4, 1.2, 2),
+      [concreteMaterial(CW - 2 * PIL + 8, CH, '#b7b5b0'), concreteSide]);
     slab.castShadow = slab.receiveShadow = true; slab.position.set(M + CW / 2, PLATE_TOP - 1, -BLEED + CH / 2); group.add(slab);
-    // Catch its shadow on the steel either side (the strip is drawn under it), not on the beam.
-    const catcher = new THREE.Mesh(new THREE.PlaneGeometry(CW + 2 * M, join).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ opacity: 0.6 }));
-    catcher.position.set(M + CW / 2, PLATE_TOP - 1.5, join / 2); catcher.receiveShadow = true; group.add(catcher);
+    for (const x of [M + PIL / 2, M + CW - PIL / 2]) {                    // the pillars, chamfered, proud of the slab
+      const pillar = new THREE.Mesh(extrude(rrShape(PIL, CH + 2, 3), 9, 2.6, 2.2, 3), [concreteMaterial(PIL, CH + 2, '#adaba6'), concreteSide]);
+      pillar.castShadow = pillar.receiveShadow = true; pillar.position.set(x, PLATE_TOP - 1, -BLEED + CH / 2 + 1); group.add(pillar);
+    }
+    group.add(steelCatcher(CW + 2 * M, join, 0.6));
     await post('bar_concrete', stage([0, 0, CW + 2 * M, H + BAR.SHADOW], [group]).grab());
-    layout.bar_concrete = { size: [CW + 2 * M, H + BAR.SHADOW], outset: M, slab: [CW, join] };
+    layout.bar_concrete = { size: [CW + 2 * M, H + BAR.SHADOW], outset: M, pillar: PIL, slab: [CW, join] };
+  });
+  /** A straight pipe up the bar (x across, from y0 down to y1 in the bar's frame), at its radius above the map plane. */
+  const upPipe = (x, y0, y1, r, mat) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, y1 - y0, 28).rotateX(Math.PI / 2), mat);
+    m.position.set(x, PLATE_TOP + r + 1, (y0 + y1) / 2); m.castShadow = m.receiveShadow = true; return m;
+  };
+  /** A collar round a pipe where it leaves the beam (or a clamp), `len` along the pipe. */
+  const collar = (x, y, r, len, mat) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 28).rotateX(Math.PI / 2), mat);
+    m.position.set(x, PLATE_TOP + r - 0.6, y); m.castShadow = m.receiveShadow = true; return m;
+  };
+  const silverPipe = new THREE.MeshStandardMaterial({ color: 0xb3bac2, map: noiseTexture(8, 20, 60), metalness: 1, roughness: 0.16, envMap: studioEnv, envMapIntensity: 1.05 });
+  const ironPipe = new THREE.MeshStandardMaterial({ color: 0x40444b, map: noiseTexture(22, 50, 40), metalness: 1, roughness: 0.46, envMap: studioEnv, envMapIntensity: 0.65 });
+  const collarSteel = new THREE.MeshStandardMaterial({ color: 0x8e949b, map: noiseTexture(18, 60, 40), metalness: 1, roughness: 0.36, envMap: studioEnv, envMapIntensity: 0.85 });
+  // Dark iron pipes rising out of the beam that the money's coin sits on (the coin covers their tops).
+  if (want('barcoinpipes')) await withSeed(426, async () => {
+    const { H, BEAM } = BAR, join = H - BEAM, W = 96, group = new THREE.Group(), r = 5.2;
+    for (const [dx, top] of [[-17, 44], [0, 38], [17, 44]]) {
+      group.add(upPipe(W / 2 + dx, top, join + 2, r, ironPipe));
+      group.add(collar(W / 2 + dx, join - 1, r + 1.8, 5, collarSteel));
+    }
+    group.add(steelCatcher(W, join, 0.5));
+    await post('bar_coin_pipes', stage([0, 0, W, H + BAR.SHADOW], [group]).grab());
+    layout.bar_coin_pipes = { size: [W, H + BAR.SHADOW], centre: W / 2 };
+  });
+  // A pair of gleaming silver pipes rising out of the beam and running up off the screen, clamped together
+  // part way up: the divider between groups of modules.
+  if (want('barpipes')) await withSeed(427, async () => {
+    const { H, BEAM, BLEED } = BAR, join = H - BEAM, W = 72, group = new THREE.Group(), r = 5.6, gap = 7;
+    for (const d of [-1, 1]) {
+      const x = W / 2 + d * (r + gap / 2);
+      group.add(upPipe(x, -BLEED, join + 2, r, silverPipe));
+      group.add(collar(x, join - 1, r + 1.8, 5, collarSteel));
+    }
+    const strap = new THREE.Mesh(new THREE.BoxGeometry(4 * r + gap + 8, 2.4, 7), collarSteel);
+    strap.position.set(W / 2, PLATE_TOP + 2 * r + 2.4, 34); strap.castShadow = true; group.add(strap);
+    for (const d of [-1, 1]) { const b = screw(2.2); b.position.set(W / 2 + d * (2 * r + gap / 2 + 1.5), PLATE_TOP + 2 * r + 3.6, 34); group.add(b); }
+    group.add(steelCatcher(W, join, 0.55));
+    await post('bar_pipes', stage([0, 0, W, H + BAR.SHADOW], [group]).grab());
+    layout.bar_pipes = { size: [W, H + BAR.SHADOW], centre: W / 2 };
   });
 
   // --- a section frame: a narrow worn steel rim with a screw in each corner, drawn as a 9-slice
