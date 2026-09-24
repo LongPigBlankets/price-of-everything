@@ -1117,6 +1117,46 @@ func _test_topbar_ds2_flag() -> void:
 	term.free()
 	UiPrefs.set_use_topbar_ds2(was)
 
+func _test_topbar_ds2_strip() -> void:
+	# The DS2 strip: the money on the screen's centre line, the works to its left, the office to its
+	# right, the lamp over the strip; switched off, the bar is v3.1 exactly.
+	var was: bool = UiPrefs.use_topbar_ds2
+	UiPrefs.set_use_topbar_ds2(false)
+	var inst: Node = (load("res://scenes/main.tscn") as PackedScene).instantiate()
+	add_child(inst)
+	for _i in 4:
+		await get_tree().process_frame
+	var bar: Control = inst.get_node("UILayer/HUD/TopBar")
+	var hbox: HBoxContainer = bar.get_node("MarginContainer/HBoxContainer")
+	var names := func() -> PackedStringArray:
+		var out := PackedStringArray()
+		for c: Node in hbox.get_children():
+			if (c as Control).visible:
+				out.append(str(c.name))
+		return out
+	var v31_names: PackedStringArray = names.call()
+	UiPrefs.set_use_topbar_ds2(true)
+	for _i in 6:
+		await get_tree().process_frame
+	var money: Control = bar.get_node("MarginContainer/HBoxContainer/MoneyWidget")
+	var centre: float = money.get_global_rect().get_center().x
+	var screen_mid: float = bar.get_viewport_rect().size.x * 0.5
+	_check(absf(centre - screen_mid) <= 1.0, "top bar ds2: the money sits on the screen's centre line (%.1f vs %.1f)" % [centre, screen_mid])
+	var order: PackedStringArray = names.call()
+	_check(order.find("PowerModule") < order.find("MoneyWidget") and order.find("TransportModule") < order.find("MoneyWidget")
+		and order.find("VictoryModule") > order.find("MoneyWidget") and order.find("CouncilModule") > order.find("MoneyWidget"),
+		"top bar ds2: the works to the money's left, victory and the office to its right")
+	var shade: Node2D = bar.get_node_or_null("Ds2Shade")
+	_check(shade != null and shade.visible and bar.get_child(bar.get_child_count() - 1) == shade,
+		"top bar ds2: the lamp's shade is over the strip, drawn last")
+	UiPrefs.set_use_topbar_ds2(false)
+	for _i in 4:
+		await get_tree().process_frame
+	_check(names.call() == v31_names and not shade.visible, "top bar ds2: switched off, the v3.1 order and look come back")
+	inst.queue_free()
+	await get_tree().process_frame
+	UiPrefs.set_use_topbar_ds2(was)
+
 func _test_money_figure_format() -> void:
 	# The owner's LED money rule: at most five cells, the point free, K/M/B printed after.
 	var Money := preload("res://scripts/ds2/money_figure.gd")

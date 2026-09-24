@@ -240,6 +240,7 @@ func _ready() -> void:
 	_build_menu()
 	_build_fly_layer()
 	_add_bankruptcy_warning()
+	_ds2_setup()
 
 	MatchState.money_changed.connect(_on_money_changed)
 	MatchState.state_reset.connect(_stockpile_guidance.reset)
@@ -256,6 +257,7 @@ func _ready() -> void:
 	MatchState.build_rejected_no_funds.connect(_on_build_rejected_no_funds)
 	MatchState.cfo_tax_credit_filed.connect(_on_cfo_tax_credit_filed)
 	UiPrefs.topbar_v3_1_changed.connect(_on_topbar_v3_1_changed)
+	UiPrefs.topbar_ds2_changed.connect(func(_on: bool) -> void: _ds2_apply())
 	AdvisorState.advisors_changed.connect(_queue_refresh)
 	AdvisorState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _queue_refresh())
 	Production.turn_processed.connect(func(_s: Dictionary) -> void: _queue_refresh())
@@ -317,6 +319,9 @@ func _silver_at(canvas_x: float) -> Color:
 	return SILVER_LT.lerp(SILVER_DK, clampf(canvas_x / vw, 0.0, 1.0))
 
 func _draw() -> void:
+	if UiPrefs.use_topbar_ds2:
+		_ds2_draw_strip()
+		return
 	var w := size.x
 	var y1 := size.y
 	var y0 := y1 - EDGE_H
@@ -1298,9 +1303,120 @@ func _place_quest() -> void:
 	if UiPrefs.use_topbar_v3_1 and not _quest_v31_wide:
 		want_size.x = maxf(want_size.x, QUEST_ICON_MODULE_W)
 	_quest_btn.size = want_size
-	_quest_btn.position = Vector2(
-		roundf((get_viewport_rect().size.x - QUEST_ICON_MODULE_W) * 0.5),
+	# DS2 gives the centre to the money, so the mission sits after the works on the left.
+	var quest_x := roundf((get_viewport_rect().size.x - QUEST_ICON_MODULE_W) * 0.5)
+	if UiPrefs.use_topbar_ds2 and _ds2_left_gap != null:
+		quest_x = roundf(_ds2_left_gap.global_position.x + 8.0)
+	_quest_btn.position = Vector2(quest_x,
 		maxf(0.0, roundf((size.y - EDGE_H - want_size.y) * 0.5)))
+
+
+# ── DS2 (docs/top-bar-ds2-plan.md), behind UiPrefs.use_topbar_ds2 ─────────────────
+# With the flag off none of this draws and the modules keep the v3.1 order.
+
+const Ds2Light := preload("res://scripts/bdp_v3_light.gd")
+## The strip: the backing's navy steel, a brass trim along its foot and its shadow on the map, rendered
+## 3840 logical px wide (tools/button_mockup/cluster.html, set `bar`) and cropped from the middle at
+## two texels a pixel, so its scratches keep their size on any screen.
+const DS2_STRIP: Texture2D = preload("res://assets/ui/bdp_v3/bar_strip.png")
+const DS2_TEXELS := 2.0
+
+## The lamp over the strip (a Node2D, so the bar's container doesn't lay it out); drawn last.
+var _ds2_shade: Node2D
+## Space before the money, sized so the money sits on the screen's centre line.
+var _ds2_left_gap: Control
+var _ds2_flex: Control
+var _v31_order: Array[Node] = []
+
+
+func _ds2_setup() -> void:
+	var hbox := _hbox()
+	_v31_order.assign(hbox.get_children())
+	for child: Node in _v31_order:
+		if child.get_class() == "Control" and (child as Control).size_flags_horizontal & Control.SIZE_EXPAND:
+			_ds2_flex = child as Control
+			break
+	_ds2_left_gap = Control.new()
+	_ds2_left_gap.name = "Ds2CentreGap"
+	_ds2_left_gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ds2_left_gap.visible = false
+	hbox.add_child(_ds2_left_gap)
+	_ds2_shade = Node2D.new()
+	_ds2_shade.name = "Ds2Shade"
+	_ds2_shade.material = Ds2Light.shade_material()
+	_ds2_shade.visible = false
+	_ds2_shade.draw.connect(func() -> void: _ds2_shade.draw_rect(Rect2(0, -TOP_BLEED, size.x, size.y + TOP_BLEED), Color.WHITE))
+	add_child(_ds2_shade)
+	resized.connect(func() -> void:
+		(_ds2_shade.material as ShaderMaterial).set_shader_parameter("rect_size", size)
+		_ds2_shade.queue_redraw())
+	hbox.resized.connect(_ds2_queue_centre)
+	money_widget.resized.connect(_ds2_queue_centre)
+	hbox.sort_children.connect(_ds2_queue_centre)
+	_ds2_apply()
+
+
+func _ds2_apply() -> void:
+	var on: bool = UiPrefs.use_topbar_ds2
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS if on else CanvasItem.TEXTURE_FILTER_PARENT_NODE
+	var sb := get_theme_stylebox("panel") as StyleBoxFlat
+	if sb != null:
+		sb.shadow_size = 0 if on else 8   # the strip's render carries its own shadow
+	_ds2_shade.visible = on
+	_ds2_left_gap.visible = on
+	var hbox := _hbox()
+	if on:
+		var order: Array[Node] = [_hbox_child("PowerModule"), _hbox_child("TransportModule"), _ds2_left_gap,
+			money_widget, _ds2_flex, _hbox_child("VictoryModule"), _hbox_child("RankingsModule")]
+		for child: Node in _v31_order.slice(_v31_order.find(_ds2_flex) + 1):
+			if not order.has(child):
+				order.append(child)
+		var at := 0
+		for child: Node in order:
+			if child != null:
+				hbox.move_child(child, at)
+				at += 1
+	else:
+		for i in _v31_order.size():
+			hbox.move_child(_v31_order[i], i)
+		hbox.move_child(_ds2_left_gap, hbox.get_child_count() - 1)
+	var text_light: Material = Ds2Light.text_material() if on else null
+	for label: Node in find_children("*", "Label", true, false):
+		(label as Label).material = text_light
+	queue_redraw()
+	_ds2_queue_centre()
+	_place_quest.call_deferred()
+
+
+func _hbox_child(node_name: String) -> Node:
+	return _hbox().get_node_or_null(node_name)
+
+
+func _ds2_queue_centre() -> void:
+	if UiPrefs.use_topbar_ds2:
+		_ds2_centre_money.call_deferred()
+
+
+## Sizes the gap before the money so the money's middle is the screen's middle.
+func _ds2_centre_money() -> void:
+	if not UiPrefs.use_topbar_ds2 or _ds2_left_gap == null:
+		return
+	var hbox := _hbox()
+	var sep := float(hbox.get_theme_constant("separation"))
+	var centre := get_viewport_rect().size.x * 0.5 - hbox.global_position.x
+	var want := maxf(0.0, roundf(centre - money_widget.size.x * 0.5 - sep - _ds2_left_gap.position.x))
+	if absf(_ds2_left_gap.custom_minimum_size.x - want) > 0.5:
+		_ds2_left_gap.custom_minimum_size.x = want
+	_place_quest()
+
+
+func _ds2_draw_strip() -> void:
+	var tex := DS2_STRIP.get_size()
+	var src_w := minf(size.x * DS2_TEXELS, tex.x)
+	var src_x := (tex.x - src_w) * 0.5
+	draw_texture_rect_region(DS2_STRIP, Rect2(0, 0, size.x, tex.y / DS2_TEXELS), Rect2(src_x, 0, src_w, tex.y))
+	# The few pixels above the bar (see TOP_BLEED): the strip's top rows again.
+	draw_texture_rect_region(DS2_STRIP, Rect2(0, -TOP_BLEED, size.x, TOP_BLEED), Rect2(src_x, 0, src_w, TOP_BLEED * DS2_TEXELS))
 
 
 ## Text and visibility both come from MiniQuest; the bar never decides either for itself.

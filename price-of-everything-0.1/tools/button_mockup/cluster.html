@@ -2184,7 +2184,7 @@ async function exportLayers() {
   // ?export&only=lamp,scroll renders just those sets and merges their entries into the existing
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
-  // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem.
+  // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -2364,6 +2364,47 @@ async function exportLayers() {
     bead.position.set(PW / 2, PLATE_TOP, PH / 2); group.add(bead);
     await post('panel_backing', stage([0, 0, PW, PH], [group]).grab());
     layout.panel_backing = { size: [PW, PH], corner: 60, trim: TRIM };
+  });
+
+  // --- the top bar's strip: the backing's navy steel running off the screen's top and both sides, a
+  // brass trim welded along its foot, and the shadow it throws on the map. Rendered as wide as a 32:9
+  // screen is at 1080 tall (3840 logical px), so the game crops it from the middle and never stretches it.
+  if (want('bar')) await withSeed(424, async () => {
+    const W = 7200, H = 112.5, TRIM = 14, SHADOW = 15, BLEED = 40, group = new THREE.Group();
+    const join = H - TRIM;                                                  // the trim's top edge, where the weld runs
+    const heat = (g, w, h) => {                                             // the weld's heat tint, in bands above the join
+      g.save(); g.filter = 'blur(1.4px)';
+      for (const [d, colour, width] of [[3, 'rgba(222,182,98,0.45)', 2.8], [5.5, 'rgba(170,100,58,0.34)', 2.6], [8, 'rgba(126,82,160,0.26)', 2.6], [10.6, 'rgba(72,108,184,0.2)', 2.8], [13.2, 'rgba(72,108,184,0.08)', 2.8]]) {
+        const y = BLEED + join - d;
+        g.strokeStyle = colour; g.lineWidth = width; g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
+      }
+      g.restore();
+    };
+    // The plate reaches past the frame on three sides, so its rubbed edges are off the screen.
+    const PW = W + 2 * BLEED, PH = join + BLEED + 6;
+    const face = { icons: [], buttons: [], screws: [], base: NAVY_STEEL_CANVAS, rub: '120,136,160', paint: heat };
+    const steelSide = new THREE.MeshStandardMaterial({ color: 0x3a4250, metalness: 1, roughness: 0.45, envMap: studioEnv, envMapIntensity: 0.8 });
+    const plate = new THREE.Mesh(extrude(rrShape(PW, PH, 16), 4, 4.5, 3.6, 6), [plateMaterial(PW, PH, face), steelSide]);
+    plate.receiveShadow = true; plate.position.set(W / 2, 0, -BLEED + PH / 2); group.add(plate);
+    // The trim: a long brass bar laid over the plate's foot, its ends off the screen.
+    const tarnish = (r) => `rgba(${60 + r() * 20},${44 + r() * 14},${18 + r() * 10},${0.25 + r() * 0.35})`;
+    const TW = W + 2 * BLEED;
+    const trimFeat = { icons: [], buttons: [], screws: [], base: BRASS_TRIM_CANVAS, rub: '255,236,180', flecks: tarnish };
+    const brassSide = new THREE.MeshStandardMaterial({ color: 0xa8843f, metalness: 1, roughness: 0.4, envMap: studioEnv, envMapIntensity: 0.9 });
+    const trim = new THREE.Mesh(extrude(rrShape(TW, TRIM, 3), 2.5, 3, 2.4, 5), [plateMaterial(TW, TRIM, trimFeat), brassSide]);
+    trim.castShadow = trim.receiveShadow = true; trim.position.set(W / 2, PLATE_TOP - 1, join + TRIM / 2); group.add(trim);
+    const bead = weldBead(TW, 0.2, 0.1, 3.2);                               // in the join along the trim's top
+    bead.position.set(W / 2, PLATE_TOP, join + 1.2); group.add(bead);
+    // The shadow on the map below: one straight band, painted, since a shadow map this long loses
+    // its far end. A dark contact line under the trim, then a soft fall away from the house light.
+    const strip = stage([0, 0, W, H + SHADOW], [group]).grab();
+    await post('bar_strip', frame2d(W, H + SHADOW, (g) => {
+      const fall = g.createLinearGradient(0, H, 0, H + SHADOW);
+      fall.addColorStop(0, 'rgba(4,6,10,0.62)'); fall.addColorStop(0.25, 'rgba(4,6,10,0.34)'); fall.addColorStop(1, 'rgba(4,6,10,0)');
+      g.fillStyle = fall; g.fillRect(0, H, W, SHADOW);
+      g.drawImage(strip, 0, 0, W, H + SHADOW);
+    }));
+    layout.bar_strip = { size: [W, H + SHADOW], height: H, trim: TRIM, shadow: SHADOW };
   });
 
   // --- a section frame: a narrow worn steel rim with a screw in each corner, drawn as a 9-slice
