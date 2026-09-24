@@ -1099,6 +1099,24 @@ func _test_bdp_v3_panel() -> void:
 	BuildingState.buildings.erase(iid)
 	UiPrefs.set_use_bdp_v3(was)
 
+func _test_topbar_ds2_flag() -> void:
+	# The DS2 bar is built behind a session flag, off by default, switched by the debug cheat.
+	var was: bool = UiPrefs.use_topbar_ds2
+	UiPrefs.set_use_topbar_ds2(false)
+	var seen := []
+	var on_change := func(on: bool) -> void: seen.append(on)
+	UiPrefs.topbar_ds2_changed.connect(on_change)
+	var term: Node = load("res://scripts/debug_terminal.gd").new()
+	term.set("_cheats_unlocked", true)
+	var reply: String = str(term.call("_run_command", "toggle topbar ds2"))
+	_check(UiPrefs.use_topbar_ds2 and seen == [true] and reply.contains("DS2"),
+		"top bar ds2: the cheat switches the DS2 bar on and says so")
+	UiPrefs.toggle_use_topbar_ds2()
+	_check(not UiPrefs.use_topbar_ds2 and seen == [true, false], "top bar ds2: and off again")
+	UiPrefs.topbar_ds2_changed.disconnect(on_change)
+	term.free()
+	UiPrefs.set_use_topbar_ds2(was)
+
 func _test_money_figure_format() -> void:
 	# The owner's LED money rule: at most five cells, the point free, K/M/B printed after.
 	var Money := preload("res://scripts/ds2/money_figure.gd")

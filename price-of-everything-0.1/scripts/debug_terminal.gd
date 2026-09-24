@@ -350,6 +350,9 @@ func _run_command(text: String) -> String:
 		"toggle":
 			if parts.size() >= 2 and parts[1].to_lower() == "logs":
 				return _toggle_debug_logs()
+			if " ".join(parts.slice(1)).to_lower() == "topbar ds2":
+				UiPrefs.toggle_use_topbar_ds2()
+				return "Top bar → %s" % ("DS2 (steel strip)" if UiPrefs.use_topbar_ds2 else "v3.1")
 			if " ".join(parts.slice(1)).to_lower() == "bdp v3":
 				UiPrefs.toggle_use_bdp_v3()
 				return "Building detail → %s" % ("v3 (control plates)" if UiPrefs.use_bdp_v3 else "v2")
@@ -380,7 +383,7 @@ func _run_command(text: String) -> String:
 			if parts.size() >= 2 and parts[1].to_lower() == "midcentury":
 				MapStyle.set_midcentury(not MapStyle.is_midcentury())
 				return "map style → %s" % _style_name()
-			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate | midcentury | bdp v3"
+			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate | midcentury | bdp v3 | topbar ds2"
 		"anim":
 			# Cheat: cycle the Empire-view hex-field animation (1->2->3->4->1), or set it with `anim <n>`.
 			var bg := get_tree().get_first_node_in_group("empire_hex_bg")

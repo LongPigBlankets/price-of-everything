@@ -23,6 +23,8 @@ signal topbar_v3_1_changed(enabled: bool)
 # The Building Detail v3 dev-toggle flipped (skeuomorphic control plates);
 # the detail panel re-renders. Session-only.
 signal bdp_v3_changed(enabled: bool)
+## The DS2 top bar (docs/top-bar-ds2-plan.md) switched on or off.
+signal topbar_ds2_changed(enabled: bool)
 signal empire_button_icon_changed(use_badge: bool)
 
 # Debug-only: verbose per-turn production / CostSolver logs. Off by default because
@@ -61,6 +63,10 @@ var use_topbar_v3_1: bool = true
 # with raised icons (assets/ui/bdp_v3/, rendered by tools/button_mockup). The default; the debug
 # cheat `toggle bdp v3` switches back to v2. Session-only, never persisted.
 var use_bdp_v3: bool = true
+# The DS2 top bar: a worn steel strip with LED money and lamps (docs/top-bar-ds2-plan.md), built
+# phase by phase. Off by default; the debug cheat `toggle topbar ds2` switches it. With it off the
+# bar is v3.1 exactly. Session-only, never persisted.
+var use_topbar_ds2: bool = false
 # Building Detail v3's diagnostics: the Visual view (true) or the Text rows. The player's choice on the
 # panel's switch, kept while the game runs (closing the panel or starting a match keeps it).
 var bdp_diag_visual: bool = false
@@ -143,6 +149,16 @@ func set_use_bdp_v3(enabled: bool) -> bool:
 
 func toggle_use_bdp_v3() -> bool:
 	return set_use_bdp_v3(not use_bdp_v3)
+
+func set_use_topbar_ds2(enabled: bool) -> bool:
+	if enabled == use_topbar_ds2:
+		return use_topbar_ds2
+	use_topbar_ds2 = enabled
+	topbar_ds2_changed.emit(use_topbar_ds2)
+	return use_topbar_ds2
+
+func toggle_use_topbar_ds2() -> bool:
+	return set_use_topbar_ds2(not use_topbar_ds2)
 
 func set_bdp_diag_visual(visual: bool) -> void:
 	bdp_diag_visual = visual

@@ -195,6 +195,8 @@ Each phase is one branch-sized change with its renders, scripts, tests and captu
 | **4. The dispatch** | The plate, slips, mission work order; toasts, research banners, anomalies and the bells re-routed; the notch and the bottom-centre warning stack retired; tutorial anchors moved. | L | owner: option C, anomalies, mission |
 | **5. Flyouts** | Each flyout on a sliding steel sheet, content moved to the kit. | L | |
 
+**Phase 0 built (24 September).** `UiPrefs.use_topbar_ds2` (off by default, session only) and its signal `topbar_ds2_changed`; the cheat `toggle topbar ds2`; `tools/topbar_ds2_shot.tscn`, which renders the real HUD at 1920 × 1080, 2520 × 1080 and 1920 × 1200 (two pixels each) and saves, for v3.1 and DS2, the bar calm, in crisis, with long numbers, with Power hovered and with the Treasury flyout open (`$TOPBAR_SHOT_DIR`). The kit components stay where BDP v3 has them (`scripts/bdp_v3_*.gd`) and the bar preloads them by path; moving them into `scripts/ds2/` is left for when a third panel needs them, since each move must hold the BDP v3 comparison at 0.0. The owner's money rule is `scripts/ds2/money_figure.gd`.
+
 Each closes with the ladder in `ds2-theme.md` §9: parse check, the bar's tests (check counts, not only failures), the full suite with a grep for `SCRIPT ERROR`, the captures, the compare against the standard, and the e2e leg: the e2e harness drives the Treasury by node path, so a top-bar change runs e2e even when it looks UI-only.
 
 ## 9. Contracts to keep
