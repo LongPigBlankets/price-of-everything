@@ -584,6 +584,19 @@ func _v31_icon(tex: Texture2D, hover_source: Control = null) -> Control:
 	if hover_source != null:
 		glow = _v31_glow(box)
 		wrap.add_child(glow)
+	# DS2: a soft dark copy under the icon lifts it off the glossy sheet (shown by _ds2_apply).
+	var lift := TextureRect.new()
+	lift.name = "Ds2Lift"
+	lift.texture = tex
+	lift.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	lift.stretch_mode = TextureRect.STRETCH_SCALE
+	lift.position = (fit.dest as Rect2).position + DS2_ICON_LIFT
+	lift.size = (fit.dest as Rect2).size
+	lift.modulate = DS2_ICON_LIFT_TINT
+	lift.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lift.visible = false
+	wrap.add_child(lift)
+	_ds2_lifts.append(lift)
 	var icon := TextureRect.new()
 	icon.texture = tex
 	# The expand mode first: until it is set, the texture's own size is the minimum size.
@@ -594,6 +607,7 @@ func _v31_icon(tex: Texture2D, hover_source: Control = null) -> Control:
 	icon.size = dest.size
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	wrap.add_child(icon)
+	_ds2_icons.append(icon)
 	if hover_source != null:
 		var spec := TextureRect.new()
 		spec.texture = SPECULAR_TEX
@@ -704,6 +718,23 @@ func _build_treasury() -> void:
 	_cash_label.add_theme_font_size_override("font_size", 20)
 	_cash_label.add_theme_color_override("font_color", C_BRIGHT)
 	col.add_child(_cash_label)
+	# DS2: the cash on an LED screen, the £ printed before it and a K or M after it (_refresh_treasury).
+	_ds2_cash = HBoxContainer.new()
+	_ds2_cash.name = "Ds2Cash"
+	_ds2_cash.add_theme_constant_override("separation", 4)
+	_ds2_cash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ds2_cash.visible = false
+	_ds2_cash.add_child(_ds2_print("£", 20))
+	_ds2_cash_holder = Control.new()
+	_ds2_cash_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ds2_cash_led = Led.new()
+	_ds2_cash_led.scale = Vector2.ONE * DS2_CASH_SCALE
+	_ds2_cash_holder.add_child(_ds2_cash_led)
+	_ds2_cash.add_child(_ds2_cash_holder)
+	_ds2_cash_suffix = _ds2_print("", 18)
+	_ds2_cash.add_child(_ds2_cash_suffix)
+	col.add_child(_ds2_cash)
+	col.move_child(_ds2_cash, _cash_label.get_index())
 	var sub := HBoxContainer.new()
 	sub.add_theme_constant_override("separation", 6)
 	sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1306,7 +1337,9 @@ func _place_quest() -> void:
 	# DS2 gives the centre to the money, so the mission sits after the works on the left.
 	var quest_x := roundf((get_viewport_rect().size.x - QUEST_ICON_MODULE_W) * 0.5)
 	if UiPrefs.use_topbar_ds2 and _ds2_left_gap != null:
-		quest_x = roundf(_ds2_left_gap.global_position.x + 8.0)
+		# Up against the concrete's left edge, never over it, never before the works end.
+		var slab_left := money_widget.get_global_rect().get_center().x - DS2_CONCRETE.get_width() / DS2_TEXELS * 0.5
+		quest_x = roundf(maxf(_ds2_left_gap.global_position.x + 8.0, slab_left - 12.0 - want_size.x))
 	_quest_btn.position = Vector2(quest_x,
 		maxf(0.0, roundf((size.y - EDGE_H - want_size.y) * 0.5)))
 
@@ -1315,11 +1348,23 @@ func _place_quest() -> void:
 # With the flag off none of this draws and the modules keep the v3.1 order.
 
 const Ds2Light := preload("res://scripts/bdp_v3_light.gd")
-## The strip: the backing's navy steel, a brass trim along its foot and its shadow on the map, rendered
+## The strip: the backing's weathered navy steel, a riveted steel beam along its foot and its shadow on the map, rendered
 ## 3840 logical px wide (tools/button_mockup/cluster.html, set `bar`) and cropped from the middle at
 ## two texels a pixel, so its scratches keep their size on any screen.
 const DS2_STRIP: Texture2D = preload("res://assets/ui/bdp_v3/bar_strip.png")
 const DS2_TEXELS := 2.0
+## The concrete slab behind the money (set `barconcrete`): its top off the screen, its foot on the beam,
+## its shadow on the steel round it. Drawn centred on the money over the strip.
+const DS2_CONCRETE: Texture2D = preload("res://assets/ui/bdp_v3/bar_concrete.png")
+## The dark copy under each icon: its offset (away from the lamp) and its tint.
+const DS2_ICON_LIFT := Vector2(1.5, 2.0)
+const DS2_ICON_LIFT_TINT := Color(0.01, 0.02, 0.04, 0.6)
+## Cash on an LED screen: the screen's scale on the bar (a full-size screen is taller than a module with
+## the net line under it), its cells (scripts/ds2/money_figure.gd), and the figure's colour.
+const DS2_CASH_SCALE := 0.75
+const DS2_CASH_COLOUR := Color("#f4f6fa")
+const Led := preload("res://scripts/bdp_v3_led.gd")
+const MoneyFigure := preload("res://scripts/ds2/money_figure.gd")
 
 ## The lamp over the strip (a Node2D, so the bar's container doesn't lay it out); drawn last.
 var _ds2_shade: Node2D
@@ -1327,6 +1372,13 @@ var _ds2_shade: Node2D
 var _ds2_left_gap: Control
 var _ds2_flex: Control
 var _v31_order: Array[Node] = []
+var _ds2_lifts: Array[TextureRect] = []
+var _ds2_icons: Array[TextureRect] = []
+## The printed £, the LED screen (in a holder sized to its scale) and the printed K / M after it.
+var _ds2_cash: HBoxContainer
+var _ds2_cash_led: Control
+var _ds2_cash_holder: Control
+var _ds2_cash_suffix: Label
 
 
 func _ds2_setup() -> void:
@@ -1383,6 +1435,13 @@ func _ds2_apply() -> void:
 	var text_light: Material = Ds2Light.text_material() if on else null
 	for label: Node in find_children("*", "Label", true, false):
 		(label as Label).material = text_light
+	# The icons keep their cream under the lamp (it gives all of its shade back) and stand on a lift.
+	var icon_light: Material = Ds2Light.emissive_material() if on else null
+	for icon: TextureRect in _ds2_icons:
+		icon.material = icon_light
+	for lift: TextureRect in _ds2_lifts:
+		lift.visible = on
+	_refresh_treasury()
 	queue_redraw()
 	_ds2_queue_centre()
 	_place_quest.call_deferred()
@@ -1408,15 +1467,23 @@ func _ds2_centre_money() -> void:
 	if absf(_ds2_left_gap.custom_minimum_size.x - want) > 0.5:
 		_ds2_left_gap.custom_minimum_size.x = want
 	_place_quest()
+	queue_redraw()   # the concrete follows the money
 
 
 func _ds2_draw_strip() -> void:
-	var tex := DS2_STRIP.get_size()
+	var strip: Texture2D = DS2_STRIP
+	var tex := strip.get_size()
 	var src_w := minf(size.x * DS2_TEXELS, tex.x)
 	var src_x := (tex.x - src_w) * 0.5
-	draw_texture_rect_region(DS2_STRIP, Rect2(0, 0, size.x, tex.y / DS2_TEXELS), Rect2(src_x, 0, src_w, tex.y))
+	draw_texture_rect_region(strip, Rect2(0, 0, size.x, tex.y / DS2_TEXELS), Rect2(src_x, 0, src_w, tex.y))
 	# The few pixels above the bar (see TOP_BLEED): the strip's top rows again.
-	draw_texture_rect_region(DS2_STRIP, Rect2(0, -TOP_BLEED, size.x, TOP_BLEED), Rect2(src_x, 0, src_w, TOP_BLEED * DS2_TEXELS))
+	draw_texture_rect_region(strip, Rect2(0, -TOP_BLEED, size.x, TOP_BLEED), Rect2(src_x, 0, src_w, TOP_BLEED * DS2_TEXELS))
+	# The concrete behind the money, on the money's centre line, with its top rows carried above the bar too.
+	var slab := DS2_CONCRETE.get_size() / DS2_TEXELS
+	var slab_x := roundf(money_widget.get_global_rect().get_center().x - global_position.x - slab.x * 0.5)
+	draw_texture_rect(DS2_CONCRETE, Rect2(slab_x, 0, slab.x, slab.y), false)
+	draw_texture_rect_region(DS2_CONCRETE, Rect2(slab_x, -TOP_BLEED, slab.x, TOP_BLEED),
+		Rect2(0, 0, DS2_CONCRETE.get_width(), TOP_BLEED * DS2_TEXELS))
 
 
 ## Text and visibility both come from MiniQuest; the bar never decides either for itself.
@@ -3249,7 +3316,44 @@ func _apply_refresh() -> void:
 	if _upcoming_notice_dirty and not TurnManager.is_resolving and not Tutorial.active:
 		_refresh_money_notices()
 
+## A figure printed on the strip beside a screen (the £ before the cash, its K or M after): white with a
+## dark shadow down and to the right, standing off the lacquer.
+func _ds2_print(text: String, font_px: int) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", font_px)
+	l.add_theme_color_override("font_color", DS2_CASH_COLOUR)
+	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+	l.add_theme_constant_override("shadow_offset_x", 1)
+	l.add_theme_constant_override("shadow_offset_y", 1)
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return l
+
+
+## The cash on the LED screen, always five cells (blank ones unlit) so the screen never changes width.
+func _ds2_refresh_cash(colour: Color = DS2_CASH_COLOUR) -> void:
+	var parts: Dictionary = MoneyFigure.led(MatchState.money)
+	var figure: String = parts.figure
+	figure = " ".repeat(maxi(0, MoneyFigure.MAX_CELLS - MoneyFigure.cells(figure))) + figure
+	_ds2_cash_led.call("set_figure", figure, colour)
+	var full := Vector2(MoneyFigure.MAX_CELLS * Led.CELL.x + (MoneyFigure.MAX_CELLS - 1) * Led.GAP + Led.POINT_ROOM, Led.CELL.y) \
+		+ 2.0 * Led.PAD + Vector2.ONE * 2.0 * Led.RIM / Led.CAPTURE_SCALE
+	_ds2_cash_led.custom_minimum_size = full
+	_ds2_cash_led.size = full
+	_ds2_cash_holder.custom_minimum_size = (full * DS2_CASH_SCALE).round()
+	_ds2_cash_suffix.text = str(parts.suffix)
+	_ds2_cash_suffix.visible = str(parts.suffix) != ""
+	_ds2_cash_led.tooltip_text = _money_text(MatchState.money)
+
+
 func _refresh_treasury() -> void:
+	var ds2: bool = UiPrefs.use_topbar_ds2
+	_cash_label.visible = not ds2
+	_ds2_cash.visible = ds2
+	if ds2:
+		_ds2_refresh_cash()
 	_cash_label.text = _money_text(MatchState.money)
 	if not _flashing:
 		_cash_label.add_theme_color_override("font_color", _base_money_color())
@@ -3389,6 +3493,8 @@ func _base_money_color() -> Color:
 
 func _set_money_color(c: Color) -> void:
 	_cash_label.add_theme_color_override("font_color", c)
+	if UiPrefs.use_topbar_ds2:
+		_ds2_refresh_cash(DS2_CASH_COLOUR if c == _base_money_color() else c)
 
 func flash_red() -> void:
 	if _flashing:

@@ -1146,13 +1146,29 @@ func _test_topbar_ds2_strip() -> void:
 	_check(order.find("PowerModule") < order.find("MoneyWidget") and order.find("TransportModule") < order.find("MoneyWidget")
 		and order.find("VictoryModule") > order.find("MoneyWidget") and order.find("CouncilModule") > order.find("MoneyWidget"),
 		"top bar ds2: the works to the money's left, victory and the office to its right")
+	var cash: Control = money.find_child("Ds2Cash", true, false)
+	var money_was: float = MatchState.money
+	MatchState.money = 15600.0
+	bar.call("_refresh_treasury")
+	var led: Control = cash.get_child(1).get_child(0) if cash != null else null
+	var printed := PackedStringArray()
+	if cash != null:
+		for c: Node in cash.get_children():
+			if c is Label and (c as Label).visible:
+				printed.append((c as Label).text)
+	_check(cash != null and cash.visible and led != null and str(led.call("figure")).strip_edges() == "15.6"
+		and printed == PackedStringArray(["£", "K"]),
+		"top bar ds2: the cash on an LED screen, the £ printed before it and the K after it (%s)" % [printed])
+	MatchState.money = money_was
+	bar.call("_refresh_treasury")
 	var shade: Node2D = bar.get_node_or_null("Ds2Shade")
 	_check(shade != null and shade.visible and bar.get_child(bar.get_child_count() - 1) == shade,
 		"top bar ds2: the lamp's shade is over the strip, drawn last")
 	UiPrefs.set_use_topbar_ds2(false)
 	for _i in 4:
 		await get_tree().process_frame
-	_check(names.call() == v31_names and not shade.visible, "top bar ds2: switched off, the v3.1 order and look come back")
+	_check(names.call() == v31_names and not shade.visible and not cash.visible,
+		"top bar ds2: switched off, the v3.1 order and look come back")
 	inst.queue_free()
 	await get_tree().process_frame
 	UiPrefs.set_use_topbar_ds2(was)
