@@ -712,6 +712,12 @@ func _test_bdp_v3_rules() -> void:
 		and is_equal_approx(float(motor.net_value_added), float(motor.value_added) - float(motor.transport))
 		and is_equal_approx(float(motor.value_added), float(motor.output_value) - float(motor.input_value) - float(motor.labour) - float(motor.upkeep)),
 		"bdp v3: a factory selling to market pays the port on its output, and its net value added is value added less transport (£%.2f)" % float(motor.net_value_added))
+	var chlor_iid: String = BuildingState.add_building(str(Catalog.get_recipe("r_012").get("building_id", "")), "r_012", "tile_5_10", MatchState.LOCAL_PLAYER, "v3_econ_r_012")
+	econ_iids.append(chlor_iid)
+	var chlor: Dictionary = Econ.per_turn(BuildingState.get_building(chlor_iid))
+	var chlor_rows: Array = Bar.rows_for(chlor)
+	_check(chlor_rows[0].slices.size() == (Catalog.get_recipe("r_012").get("outputs", []) as Array).size(),
+		"bdp v3: the revenue bar has a slice for each good sold (%d for chlor-alkali)" % chlor_rows[0].slices.size())
 	for e_iid in econ_iids:
 		BuildingState.buildings.erase(e_iid)
 	var Panel2 = load("res://scripts/building_detail_panel_v2.gd")
@@ -978,6 +984,28 @@ func _test_bdp_v3_panel() -> void:
 			shares = shares or str(c.get_meta("v3_section", "")) == "Modifiers"
 	_check(shares, "bdp v3: Modifiers and Economics share one frame")
 	if footer != null:
+		var outcome_clip: Control = footer.find_child("FooterSlideout", false, false)
+		var sell_plate: Control = outcome_clip.find_child("SellOutcome", false, false) if outcome_clip != null else null
+		var demo_plate: Control = outcome_clip.find_child("DemolishOutcome", false, false) if outcome_clip != null else null
+		footer.lift("demolish")
+		await get_tree().create_timer(0.35).timeout
+		var refund: Dictionary = BuildingWorks.refund_cost(iid).get("materials", {})
+		var refund_icons: Array = demo_plate.find_child("RefundGoods", true, false).get_children() if demo_plate != null and demo_plate.find_child("RefundGoods", true, false) != null else []
+		var demo_texts: Array = demo_plate.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text) if demo_plate != null else []
+		_check(outcome_clip != null and outcome_clip.visible and demo_plate != null and absf(demo_plate.position.y) < 0.5
+			and demo_texts.has("%s land will be freed up" % BuildingWorks.land_text(BuildingState.space_used(b))) and refund_icons.size() == refund.size(),
+			"bdp v3: lifting Demolish's cover slides up the land it frees and its refund, a good icon each (%d)" % refund_icons.size())
+		footer.drop("demolish")
+		footer.lift("sell")
+		await get_tree().create_timer(0.35).timeout
+		var sell_led: Node = sell_plate.find_child("BdpV3Led", true, false) if sell_plate != null else null
+		var sell_texts: Array = sell_plate.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text) if sell_plate != null else []
+		_check(sell_plate != null and absf(sell_plate.position.y) < 0.5 and demo_plate.position.y > 1.0 and sell_texts.has("Building will become NPC")
+			and sell_led != null and sell_led.figure() == "%.2f" % float(load("res://scripts/building_price.gd").sale_price(b)),
+			"bdp v3: lifting Sell's cover slides up that the building becomes NPC and what it sells for")
+		footer.drop("sell")
+		await get_tree().create_timer(0.35).timeout
+		_check(not outcome_clip.visible, "bdp v3: the outcome slides away when the cover drops")
 		var opened: Array = []
 		footer.key_pressed.connect(func(k: String) -> void: opened.append(k))
 		var click := func(key: String, pressed: bool) -> void:

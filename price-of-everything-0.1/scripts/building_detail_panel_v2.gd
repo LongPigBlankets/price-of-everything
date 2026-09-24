@@ -38,6 +38,7 @@ const BdpV3LabourDoor := preload("res://scripts/bdp_v3_labour_door.gd")
 const BdpV3ModKey := preload("res://scripts/bdp_v3_mod_key.gd")
 const BdpV3Led := preload("res://scripts/bdp_v3_led.gd")
 const BuildingEconomics := preload("res://scripts/building_economics.gd")
+const BuildingPrice := preload("res://scripts/building_price.gd")
 const BdpV3ValueBar := preload("res://scripts/bdp_v3_value_bar.gd")
 ## v3 frames these sections (heading and content together); the value names the frame, so sections
 ## sharing a name share one frame (Modifiers and Economics).
@@ -1760,7 +1761,109 @@ static func v3_upgrade_state(building: Dictionary) -> Dictionary:
 func _build_v3_footer(building: Dictionary) -> Control:
 	var footer: Control = BdpV3Footer.new()
 	footer.key_pressed.connect(func(key: String) -> void: _open_supply_chain(building, key))
+	# While a cover is lifted, a steel plate slides up from behind the footer with what pressing the
+	# button would do; it slides back when the cover drops or the button is pressed.
+	var clip := Control.new()
+	clip.name = "FooterSlideout"
+	clip.clip_contents = true
+	clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	clip.visible = false
+	footer.add_child(clip)
+	footer.move_child(clip, 0)   # under the footer's covers, which stand in front of it
+	var outs := {"sell": _v3_sell_outcome(building), "demolish": _v3_demolish_outcome(building)}
+	for key in outs:
+		# Laid out all along (a hidden container measures nothing), and parked below the strip until needed.
+		clip.add_child(outs[key])
+	footer.cover_changed.connect(func(key: String, open: bool) -> void:
+		if outs.has(key):
+			_v3_slide_outcome(footer, clip, outs[key], open))
 	return footer
+
+## How far in from the footer's sides the outcome plate sits, how long it takes to slide, the refund's
+## icons and how many to a row.
+const V3_OUTCOME_INSET := 18.0
+const V3_OUTCOME_SECONDS := 0.22
+const V3_REFUND_ICON := 50
+const V3_REFUND_COLUMNS := 5
+const V3_SHEET_TEXTURE: Texture2D = preload("res://assets/ui/bdp_v3/sheet_plate.png")
+
+## Slides `plate` up out of the footer (or back down behind it) inside `clip`, the strip above the footer
+## as tall as the plate; any other plate in it is parked below.
+func _v3_slide_outcome(footer: Control, clip: Control, plate: Control, open: bool) -> void:
+	var h := plate.get_combined_minimum_size().y
+	if open:
+		clip.position = Vector2(V3_OUTCOME_INSET, -h)
+		clip.size = Vector2(footer.size.x - 2.0 * V3_OUTCOME_INSET, h)
+		for other: Control in clip.get_children():
+			other.size = Vector2(clip.size.x, other.get_combined_minimum_size().y)
+			other.position = Vector2(0.0, clip.size.y + 8.0)
+		clip.visible = true
+	var tween := plate.create_tween()
+	tween.tween_property(plate, "position:y", 0.0 if open else clip.size.y + 8.0, V3_OUTCOME_SECONDS) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	if not open:
+		tween.tween_callback(func() -> void:
+			clip.visible = clip.get_children().any(func(c: Control) -> bool: return c.position.y < 1.0))
+
+## A steel outcome plate (the action sheets' plate) with rows on it.
+func _v3_outcome_plate(node_name: String) -> Array:
+	var plate := PanelContainer.new()
+	plate.name = node_name
+	plate.mouse_filter = Control.MOUSE_FILTER_PASS
+	plate.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	var pad := StyleBoxEmpty.new()
+	pad.set_content_margin_all(V3_SHEET_PAD)
+	plate.add_theme_stylebox_override("panel", pad)
+	plate.draw.connect(func() -> void:
+		BdpV3Nine.paint(plate, V3_SHEET_TEXTURE, Rect2(Vector2.ZERO, plate.size).grow(V3_SHEET_PLATE_MARGIN / 1.875),
+			(V3_SHEET_PLATE_MARGIN + V3_SHEET_PLATE_CORNER) * 2.0 / 1.875))
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", DS.SP["SM"])
+	plate.add_child(vb)
+	return [plate, vb]
+
+## What selling does: the building goes to an NPC operator, and the company is paid for it.
+func _v3_sell_outcome(building: Dictionary) -> Control:
+	var made := _v3_outcome_plate("SellOutcome")
+	var vb: VBoxContainer = made[1]
+	vb.add_child(_v3_outcome_line("Building will become NPC"))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", DS.SP["SM"])
+	var paid := _v3_outcome_line("You will receive")
+	paid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(paid)
+	row.add_child(_v3_money_led(float(BuildingPrice.sale_price(building)), DS.PALETTE["OK"]))
+	vb.add_child(row)
+	return made[0]
+
+## What demolishing does: the building's land comes free, and part of its construction kit comes back.
+func _v3_demolish_outcome(building: Dictionary) -> Control:
+	var made := _v3_outcome_plate("DemolishOutcome")
+	var vb: VBoxContainer = made[1]
+	vb.add_child(_v3_outcome_line("%s land will be freed up" % BuildingWorks.land_text(BuildingState.space_used(building))))
+	var materials: Dictionary = BuildingWorks.refund_cost(str(building.get("instance_id", ""))).get("materials", {})
+	vb.add_child(_v3_outcome_line("Refund:" if not materials.is_empty() else "Refund: nothing"))
+	if not materials.is_empty():
+		var goods := GridContainer.new()
+		goods.name = "RefundGoods"
+		goods.columns = V3_REFUND_COLUMNS
+		goods.add_theme_constant_override("h_separation", DS.SP["MD"])
+		goods.add_theme_constant_override("v_separation", DS.SP["MD"])
+		vb.add_child(goods)
+		for gid in materials:
+			var icon := _good_icon_pill(str(gid), Catalog.get_internal_name(str(gid)), int(materials[gid]), V3_REFUND_ICON, -1, 0, true)
+			_v3_set_in_well(icon)
+			goods.add_child(icon)
+	return made[0]
+
+## A line of an outcome plate: white, standing off the steel.
+func _v3_outcome_line(text: String) -> Label:
+	var l := Label.new()
+	l.theme_type_variation = "Body"
+	l.text = text
+	l.add_theme_font_size_override("font_size", 16)
+	_v3_emboss(l)
+	return l
 
 
 func _build_sell_demolish_row(building: Dictionary, building_data: Dictionary) -> Control:
@@ -2960,7 +3063,8 @@ const V3_ECON_INDENT := 22.0
 const V3_MONEY_GAP := 14.0
 ## Which of v3's economics rows are open, kept across rebuilds.
 var _v3_econ_open := {}
-## The digits every economics screen shows, so they are one width and their £ signs line up.
+## The digits every economics screen shows while they are built, so they are one width and their £
+## signs line up.
 var _v3_led_digits := 0
 
 func _build_economics_v3(econ: Dictionary) -> PanelContainer:
@@ -3024,11 +3128,12 @@ func _v3_econ_line(title: String, figure: float, colour: Color, strong: bool = f
 	if strong:
 		t.add_theme_font_size_override("font_size", 17)
 	row.add_child(t)
-	row.add_child(_v3_money_led(figure, colour))
+	row.add_child(_v3_money_led(figure, colour, _v3_led_digits))
 	return row
 
-## A £ figure, as the cost to produce shows it: a printed £ and the figure on an LED screen.
-func _v3_money_led(figure: float, colour: Color) -> HBoxContainer:
+## A £ figure, as the cost to produce shows it: a printed £ and the figure on an LED screen, showing at
+## least `digits` digits (blank ones leading) so a column of them is one width.
+func _v3_money_led(figure: float, colour: Color, digits := 0) -> HBoxContainer:
 	var hb := HBoxContainer.new()
 	hb.name = "MoneyLed"
 	hb.add_theme_constant_override("separation", 4)
@@ -3038,7 +3143,7 @@ func _v3_money_led(figure: float, colour: Color) -> HBoxContainer:
 	hb.add_child(pound)
 	var led: Control = BdpV3Led.new()
 	var text := "%.2f" % figure
-	led.set_figure(" ".repeat(maxi(0, _v3_led_digits - BdpV3Led.cells_for(text).size())) + text, colour)
+	led.set_figure(" ".repeat(maxi(0, digits - BdpV3Led.cells_for(text).size())) + text, colour)
 	hb.add_child(led)
 	return hb
 

@@ -1,10 +1,10 @@
 extends Control
 ## Building Detail v3: a building's revenue and its costs as two bars on the same scale, each on a mini
 ## screen (res://assets/ui/bdp_v3/mini_screen.png and its glass, 9-slices), so the gap between their ends
-## is what it adds. The revenue bar (if sold, when the output stays in stock) has a slice for each output
-## in shades of green, the good's icon above it; the cost bar has inputs, labour, upkeep and transport in
-## shades of red, each with its raised icon above it (econ_icon_<key>.png and its shadow, rendered by
-## tools/button_mockup/cluster.html?export). Where narrow slices crowd their icons together, the icons
+## is what it adds. The revenue bar (if sold, when the output stays in stock) has a slice for each good it
+## sells in shades of green, the good's icon above it on a small rounded tile; the cost bar has inputs,
+## labour, upkeep and transport in shades of red, each with its raised icon above it (econ_icon_<key>.png
+## and its shadow, rendered by tools/button_mockup/cluster.html?export). Where narrow slices crowd their icons together, the icons
 ## spread apart and a short line joins each to its slice; a faint mark on the cost bar shows where the
 ## revenue ends. The slices carry their own light, like the LED figures, so the lamp over the panel doesn't
 ## dim them. Hovering a slice or its icon names it, with its £ and its share of the revenue.
@@ -13,6 +13,7 @@ const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const Light := preload("res://scripts/bdp_v3_light.gd")
 const Plate := preload("res://scripts/bdp_v3_plate.gd")
 const GoodIcons := preload("res://scripts/good_icons.gd")
+const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const SCREEN: Texture2D = preload("res://assets/ui/bdp_v3/mini_screen.png")
 const GLASS: Texture2D = preload("res://assets/ui/bdp_v3/mini_screen_glass.png")
 const CAPTURE_SCALE := 1.875
@@ -45,6 +46,7 @@ var _rows: Array = []
 var _revenue := 0.0
 var _revenue_end := 0.0
 var _layer: Control
+var _tile := StyleBoxFlat.new()
 
 
 func _init() -> void:
@@ -53,6 +55,11 @@ func _init() -> void:
 	size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	custom_minimum_size = Vector2(0.0, 2.0 * _row_h() + ROW_GAP)
 	mouse_filter = Control.MOUSE_FILTER_PASS
+	_tile.bg_color = UIHelpers.PILL_PAPER
+	_tile.set_corner_radius_all(6)
+	_tile.shadow_color = Color(0, 0, 0, 0.45)
+	_tile.shadow_size = 3
+	_tile.shadow_offset = Vector2(1.5, 1.5)
 	_layer = Control.new()
 	_layer.name = "Slices"
 	_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -219,8 +226,11 @@ func _draw() -> void:
 			var rect := Rect2(cx - ICON_PX * 0.5, top, ICON_PX, ICON_PX)
 			if s.get("shadow") != null:
 				draw_texture_rect(s.shadow, rect, false)
+			else:
+				# A good's own icon sits on a small rounded tile, as good icons do elsewhere.
+				_tile.draw(get_canvas_item(), rect.grow(-1.0))
 			if s.get("icon") != null:
-				draw_texture_rect(s.icon, rect.grow(-2.0) if s.get("shadow") == null else rect, false)
+				draw_texture_rect(s.icon, rect.grow(-4.0) if s.get("shadow") == null else rect, false)
 
 
 func _draw_slices() -> void:
