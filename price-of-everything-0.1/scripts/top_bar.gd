@@ -38,13 +38,6 @@ const NEAR_FULL_FRACTION := 0.95
 # literal number, so the bar grows around MOD_H without anything else changing.
 const BAR_H := 65.0
 const MOD_H := 50.0
-# Briefing notch: taller than the bar, hanging below it as a two-row centre notch.
-# Derived from BAR_H rather than fixed, so a shorter bar cannot leave a notch nearly as
-# deep as the bar is tall. NOTCH_DROP also clears the 60px research badge plus its margins.
-const NOTCH_DROP := 33.0
-const NOTCH_H := BAR_H + NOTCH_DROP
-const NOTCH_MIN_W := 300.0
-const NOTCH_RADIUS := 16.0
 # v3.1 icon faces — Goods Graph / Encyclopedia / Mission / Power /
 # Victory / Rankings swap their text/vector-glyph faces for these baked standalone
 # icons: the bottom-menu button treatment (cream emboss + bevel + drop shadow) minus
@@ -66,7 +59,6 @@ const ICON_QUEST: Texture2D = preload("res://assets/icons/ui_icons/standalone/ta
 const ICON_POWER: Texture2D = preload("res://assets/icons/ui_icons/standalone/power_icon.png")
 const ICON_VICTORY: Texture2D = preload("res://assets/icons/ui_icons/standalone/trophy.png")
 const ICON_RANKINGS: Texture2D = preload("res://assets/icons/ui_icons/standalone/podium.png")
-const ICON_BRIEFING_BELL: Texture2D = preload("res://assets/icons/ui_icons/standalone/bell.png")
 const ICON_COUNCIL: Texture2D = preload("res://assets/icons/ui_icons/standalone/board-of-directors.png")
 const ICON_COIN: Texture2D = preload("res://assets/icons/ui_icons/standalone/coin.png")
 const SPECULAR_TEX: Texture2D = preload("res://assets/icons/ui_icons/alt/_specular.png")
@@ -81,15 +73,6 @@ const GLOW_TINT := Color(1.0, 0.92, 0.75, 0.6)
 # fixed gap off the row's bottom edge.
 const V31_ICON_PX := 44.0
 const V31_ICON_BOTTOM_PAD := 8.0
-# The two Briefing bells: bigger than the module icons so they read at a glance.
-const BELL_PX := 52.5
-# v3.1: the notch hugs just the bells instead of the classic text's much wider
-# NOTCH_MIN_W floor — see _recenter_notch.
-const NOTCH_V31_SIDE_PAD := 24.0
-# v3.1 notice pills (Briefing): shaped like UIHelpers.make_quantity_pill but with their
-# own colour pair per pill — that helper's fixed navy/cream doesn't cover this split.
-const PILL_RED_BG := Color("#F2A99C")   # light red — decisions (critical/unskippable)
-const PILL_WHITE_BG := Color("#FFFFFF")  # updates (research unlocks etc.)
 # Metallic bottom bezel (the end-turn dock's machined-silver family), lit from the left.
 const EDGE_H := 7.0
 # Pixels the bar's ground is painted ABOVE its top edge, burying the sub-pixel seam
@@ -194,9 +177,6 @@ var _rankings_head: Label
 var _rankings_sub: Label
 var _rankings_icon: Control   # v3.1
 
-# Briefing notch (top_level: centred on the viewport, hangs below the bar)
-var _briefing_btn: Control
-var _briefing_glyph: Control   # _BellIcon (vector — the font has no bell glyph)
 ## Tech names already posted to the updates dock THIS MATCH -- deliberately not this turn.
 ## Each is its own row there ("Unlocked: <name>"): a single "N research unlocked" line for
 ## several techs landing on one turn would name none of them.
@@ -208,12 +188,6 @@ var _briefing_glyph: Control   # _BellIcon (vector — the font has no bell glyp
 ## later. A tech unlocks once, so the set only ever
 ## needs emptying when a new match starts.
 var _research_toasted: Dictionary = {}
-var _briefing_head: Label
-var _briefing_sub: Label
-var _briefing_dot: Panel
-var _briefing_icon_v31: HBoxContainer   # v3.1 — the two bells, replaces the head/sub text
-var _briefing_decision_pill_slot: Control   # v3.1 — full-rect over the decisions bell
-var _briefing_update_pill_slot: Control     # v3.1 — full-rect over the updates bell
 
 # Council module
 var _council_btn: Control
@@ -256,7 +230,6 @@ func _ready() -> void:
 	_build_victory()
 	_build_transport()
 	_build_rankings()
-	_build_briefing()
 	_build_quest()
 	_build_council()
 	_build_goods_graph()
@@ -291,11 +264,10 @@ func _ready() -> void:
 	TurnManager.turn_resolution_completed.connect(_on_turn_resolved_anomalies)
 	VictoryState.score_changed.connect(func(_t: int, _b: Dictionary) -> void: _queue_refresh())
 	TurnBriefing.items_changed.connect(_queue_refresh)
-	# The briefing notch replaces the collapsed strip.
+	# Decisions and updates live in the bottom-left updates dock, not in a strip.
 	TurnBriefing.strip_enabled = false
 	get_tree().root.child_entered_tree.connect(_on_notice_root_child_entered)
 	call_deferred("_refresh_notices_after_loading")
-	get_viewport().size_changed.connect(_recenter_notch)
 	resized.connect(queue_redraw)   # the metallic edge spans the live width
 	_queue_refresh()
 
@@ -664,92 +636,6 @@ func _v31_glow(px: float) -> TextureRect:
 	glow.material = mat
 	glow.visible = false
 	return glow
-
-## A small clipped bell (a bare TextureRect.size under a non-Container parent keeps
-## reverting to the bell's native crop, hence the clip) PLUS a full-rect sibling
-## "pill_slot" a caller can anchor a corner badge to —
-## a generalised corner-badge shape so _refresh_briefing can rebuild the count pill
-## (see _overhang_bottom_right/_notice_pill) without touching the bell underneath it.
-## `hover_source` — see _v31_icon's own doc — usually the notch, so both bells catch
-## the light together on hover.
-func _bell_unit(hover_source: Control = null) -> Dictionary:
-	var holder := Control.new()
-	holder.custom_minimum_size = Vector2(BELL_PX, BELL_PX)
-	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# Glow is a sibling of `clip`, NOT inside it — clip_contents would crop the
-	# glow to the bell's own square instead of letting it radiate past it. Added
-	# first so it still draws behind the bell.
-	var glow: TextureRect = null
-	if hover_source != null:
-		glow = _v31_glow(BELL_PX)
-		holder.add_child(glow)
-	var clip := Control.new()
-	clip.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	clip.clip_contents = true
-	clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	holder.add_child(clip)
-	var tex := TextureRect.new()
-	tex.texture = ICON_BRIEFING_BELL
-	tex.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	clip.add_child(tex)
-	if hover_source != null:
-		var spec := TextureRect.new()
-		spec.texture = SPECULAR_TEX
-		spec.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		spec.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		spec.stretch_mode = TextureRect.STRETCH_SCALE
-		spec.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		spec.visible = false
-		clip.add_child(spec)
-		hover_source.mouse_entered.connect(func() -> void: spec.visible = true; glow.visible = true)
-		hover_source.mouse_exited.connect(func() -> void: spec.visible = false; glow.visible = false)
-	var pill_slot := Control.new()
-	pill_slot.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	pill_slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	holder.add_child(pill_slot)
-	return {"root": holder, "pill_slot": pill_slot}
-
-## Anchors `pill` to `host`'s bottom-right corner, overhanging by (pill size − inset) —
-## same technique as UIHelpers.make_overlaid_quantity_pill, just for a pill built with
-## our own colours (_notice_pill) instead of that helper's fixed navy/cream.
-func _overhang_bottom_right(pill: Control, host: Control, inset: float = 4.0) -> void:
-	pill.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	var w: float = pill.custom_minimum_size.x
-	var h: float = pill.custom_minimum_size.y
-	pill.offset_left = -w + inset
-	pill.offset_top = -h + inset
-	pill.offset_right = inset
-	pill.offset_bottom = inset
-	host.add_child(pill)
-
-## A small count pill, shaped like UIHelpers.make_quantity_pill (rounded oval capsule,
-## sized to its text, centred label) but with its own colour pair — Briefing's decisions/
-## updates split needs colours outside that helper's fixed navy-bg/cream-text. Deliberately
-## smaller than make_quantity_pill's own default — that read too tall for a corner badge
-## this small.
-func _notice_pill(text: String, bg: Color, fg: Color) -> PanelContainer:
-	var height := 16
-	var width: int = maxi(20, text.length() * 8 + 12)
-	var pill := PanelContainer.new()
-	pill.custom_minimum_size = Vector2(width, height)
-	# IGNORE still shows tooltip_text (see _freight_cell's identical pair.tooltip_text
-	# + MOUSE_FILTER_IGNORE) while leaving clicks to fall through to the notch button.
-	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = bg
-	sb.set_corner_radius_all(int(height / 2.0))
-	pill.add_theme_stylebox_override("panel", sb)
-	var lbl := _mini(text, fg, 13)
-	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	pill.add_child(lbl)
-	return pill
 
 ## Registers a [classic, v3.1] face pair for a module with no refresh cycle of its own
 ## (Goods Graph, Encyclopedia) and applies the current look immediately.
@@ -1311,273 +1197,24 @@ func _thousands(n: int) -> String:
 	return ("-" if n < 0 else "") + out
 
 
-# ── 4 · Briefing NOTCH: a two-row centre notch taller than the bar itself ──────
-# top_level (containers skip it — same trick as the bankruptcy strip), centred on
-# the viewport, hanging NOTCH_H − BAR_H below the bar. Click toggles the hub.
-
-## Vector bell (dome, flared skirt, clapper, crown loop — notification_bell's
-## fallback shape; the bundled font renders the bell codepoint as tofu).
-class _BellIcon extends Control:
-	var color := Color("#cdd9e6")
-	func _init() -> void:
-		custom_minimum_size = Vector2(24, 26)
-		size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-	func set_color(c: Color) -> void:
-		color = c
-		queue_redraw()
-	func _draw() -> void:
-		var centre := size * 0.5
-		var w := size.x * 0.78
-		var h := size.y * 0.78
-		var cx := centre.x
-		var top := centre.y - h * 0.5
-		var bot := centre.y + h * 0.36
-		var body := PackedVector2Array([
-			Vector2(cx - w * 0.20, top), Vector2(cx + w * 0.20, top),
-			Vector2(cx + w * 0.42, top + h * 0.45), Vector2(cx + w * 0.55, bot),
-			Vector2(cx - w * 0.55, bot), Vector2(cx - w * 0.42, top + h * 0.45),
-		])
-		draw_colored_polygon(body, color)
-		draw_rect(Rect2(Vector2(cx - w * 0.55, bot), Vector2(w * 1.10, 1.8)), color)
-		draw_circle(Vector2(cx, bot + 3.6), 2.1, color)
-		draw_arc(Vector2(cx, top - 1.8), 2.0, 0.0, TAU, 12, color, 1.6, true)
-
-class _NotchBtn extends PanelContainer:
-	signal pressed
-	var warn := false:
-		set(v):
-			warn = v
-			_restyle()
-	var active := false:
-		set(v):
-			active = v
-			_restyle()
-	var _hover := false
-	var _bar: Node
-	func _init(bar: Node) -> void:
-		_bar = bar
-		top_level = true
-		mouse_filter = Control.MOUSE_FILTER_STOP
-		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		mouse_entered.connect(func() -> void: _hover = true; _restyle())
-		mouse_exited.connect(func() -> void: _hover = false; _restyle())
-		resized.connect(queue_redraw)
-		_restyle()
-	func _restyle() -> void:
-		var sb := StyleBoxFlat.new()
-		# Match the bar's ground where the notch meets it: the bar is a gradient now, so a
-		# flat fill read as a darker slab bolted on. Sampled at the notch's own centre, the
-		# notch simply looks like the bar bulging downward.
-		sb.bg_color = _bar.C_ACTIVE_BG if (active or _hover) else _bar.bar_ground_at(
-			global_position.x + size.x * 0.5)
-		if warn:
-			sb.bg_color = (sb.bg_color as Color).lerp(Color(0.32, 0.07, 0.05), 0.30)
-		sb.corner_radius_bottom_left = int(_bar.NOTCH_RADIUS)
-		sb.corner_radius_bottom_right = int(_bar.NOTCH_RADIUS)
-		sb.content_margin_left = 26
-		sb.content_margin_right = 26
-		sb.content_margin_top = 12
-		sb.content_margin_bottom = 14
-		sb.shadow_color = Color(0, 0, 0, 0.35)
-		sb.shadow_size = 8
-		sb.shadow_offset = Vector2(0, 4)
-		add_theme_stylebox_override("panel", sb)
-		queue_redraw()
-	func _gui_input(e: InputEvent) -> void:
-		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-			accept_event()
-			pressed.emit()
-	func _draw() -> void:
-		# Metallic rim wrapping the notch's left/bottom/right — continues the bar's
-		# silver bottom edge, sampling the same left→right lighting at each point.
-		var r: float = _bar.NOTCH_RADIUS
-		var w := size.x
-		var h := size.y - 1.0
-		var pts := PackedVector2Array()
-		pts.append(Vector2(1.0, 0.0))
-		pts.append(Vector2(1.0, h - r))
-		for i in range(1, 7):
-			var a := PI - (PI * 0.5) * float(i) / 6.0    # left → bottom
-			pts.append(Vector2(r, h - r) + Vector2(cos(a), sin(a)) * (r - 1.0))
-		pts.append(Vector2(w - r, h))
-		for i in range(1, 7):
-			var a := PI * 0.5 - (PI * 0.5) * float(i) / 6.0   # bottom → right
-			pts.append(Vector2(w - r, h - r) + Vector2(cos(a), sin(a)) * (r - 1.0))
-		pts.append(Vector2(w - 1.0, 0.0))
-		var cols := PackedColorArray()
-		var warn_tint := Color("#b0574a")
-		for p in pts:
-			var c: Color = _bar._silver_at(global_position.x + p.x)
-			cols.append(c.lerp(warn_tint, 0.55) if warn else c)
-		draw_polyline_colors(pts, cols, 2.5, true)
-
-func _build_briefing() -> void:
-	var notch := _NotchBtn.new(self)
-	notch.name = "BriefingModule"
-	notch.tooltip_text = "Turn briefing"
-	notch.custom_minimum_size = Vector2(NOTCH_MIN_W, NOTCH_H)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 14)
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	notch.add_child(row)
-	var glyph_holder := Control.new()
-	glyph_holder.custom_minimum_size = Vector2(28, 28)
-	glyph_holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	glyph_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_briefing_glyph = _BellIcon.new()
-	_briefing_glyph.position = Vector2(1, 1)
-	_briefing_glyph.size = Vector2(24, 26)
-	glyph_holder.add_child(_briefing_glyph)
-	_briefing_dot = Panel.new()
-	_briefing_dot.custom_minimum_size = Vector2(9, 9)
-	_briefing_dot.position = Vector2(21, 0)
-	var dsb := StyleBoxFlat.new()
-	dsb.bg_color = C_RED
-	dsb.set_corner_radius_all(5)
-	_briefing_dot.add_theme_stylebox_override("panel", dsb)
-	_briefing_dot.visible = false
-	glyph_holder.add_child(_briefing_dot)
-	row.add_child(glyph_holder)
-	var col := VBoxContainer.new()
-	col.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_theme_constant_override("separation", 3)
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(col)
-	_briefing_head = _mini("Briefing", C_BRIGHT, 18)
-	col.add_child(_briefing_head)
-	_briefing_sub = _mini("0 updates", C_TEXT, 14)
-	col.add_child(_briefing_sub)
-	# v3.1: TWO bells — one for decisions, one for updates — each with its own count
-	# pill overhanging its bottom-right corner (same corner-badge technique as
-	# _research_pill on _research_badge above, and UIHelpers.make_overlaid_quantity_pill
-	# elsewhere). Replaces the head/sub text entirely; each pill is rebuilt on refresh,
-	# same idiom as _victory_meters/_council_stack.
-	_briefing_icon_v31 = HBoxContainer.new()
-	_briefing_icon_v31.add_theme_constant_override("separation", 10)
-	_briefing_icon_v31.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_briefing_icon_v31.visible = false
-	# top_level + manually centred on the notch's own midline, in _place_briefing_bells
-	# — as an ordinary `row` child it would centre as a GROUP together with
-	# the research badge, so the bells would shift right whenever the badge
-	# showed. Independent placement keeps them on the notch's axis regardless.
-	_briefing_icon_v31.top_level = true
-	var decision_bell := _bell_unit(notch)
-	_briefing_icon_v31.add_child(decision_bell.root)
-	_briefing_decision_pill_slot = decision_bell.pill_slot
-	var update_bell := _bell_unit(notch)
-	_briefing_icon_v31.add_child(update_bell.root)
-	_briefing_update_pill_slot = update_bell.pill_slot
-	notch.add_child(_briefing_icon_v31)
-	notch.pressed.connect(func() -> void:
-		_close_fly()
-		if TurnBriefing.expanded:
-			TurnBriefing.collapse()
-		else:
-			TurnBriefing.expand())
-	add_child(notch)
-	_briefing_btn = notch
-
-func _recenter_notch() -> void:
-	if _briefing_btn == null or not is_instance_valid(_briefing_btn):
-		return
-	var vw := get_viewport_rect().size.x
-	# v3.1: `row` has nothing left to show at all — the bells are top_level, so they
-	# don't feed row's content width — so the classic text's much wider NOTCH_MIN_W floor
-	# would leave the bells looking lost in a wide box. Hug the bells instead.
-	#
-	# custom_minimum_size was set ONCE at build time to NOTCH_MIN_W (_build_briefing),
-	# and get_combined_minimum_size() always returns at least custom_minimum_size —
-	# so reading it BEFORE overriding that here always floored min_size.x at the
-	# classic 300, silently no-opping any narrower v3.1 floor_w below. Override
-	# custom_minimum_size.x first so the read afterwards actually reflects it.
-	var floor_w := NOTCH_MIN_W
-	if UiPrefs.use_topbar_v3_1 and _briefing_icon_v31 != null and is_instance_valid(_briefing_icon_v31):
-		floor_w = _briefing_icon_v31.get_combined_minimum_size().x + NOTCH_V31_SIDE_PAD * 2.0
-	_briefing_btn.custom_minimum_size.x = floor_w
-	# maxf against the (now correctly floored) min_size still lets real content — the
-	# classic text — widen the notch past floor_w when shown.
-	var min_size := _briefing_btn.get_combined_minimum_size()
-	_briefing_btn.size = Vector2(maxf(min_size.x, floor_w), NOTCH_H)
-	_briefing_btn.position = Vector2(roundf((vw - _briefing_btn.size.x) * 0.5), 0.0)
-	_place_quest()
-	_place_briefing_bells()
-	queue_redraw()
-
-## v3.1: keeps the two bells centred on the notch's own midline — see the top_level
-## comment where _briefing_icon_v31 is built.
-func _place_briefing_bells() -> void:
-	if _briefing_icon_v31 == null or not is_instance_valid(_briefing_icon_v31):
-		return
-	if _briefing_btn == null or not is_instance_valid(_briefing_btn):
-		return
-	var want := _briefing_icon_v31.get_combined_minimum_size()
-	_briefing_icon_v31.size = want
-	_briefing_icon_v31.position = Vector2(
-		_briefing_btn.position.x + (_briefing_btn.size.x - want.x) * 0.5,
-		_briefing_btn.position.y + (_briefing_btn.size.y - want.y) * 0.5)
-
+## Posts each research unlock to the updates dock the first time it appears -- TurnBriefing can
+## rebuild its items more than once as unlocks land, and keeps each for two turns.
 func _refresh_briefing() -> void:
-	var decisions := 0
-	var updates := 0
-	var research_count := 0
-	var research_agg: Dictionary = {}
+	var dock := _updates_dock()
 	for it in TurnBriefing.items():
-		if str(it.get("kind", "")) == "decision":
-			decisions += 1
-		else:
-			updates += 1
-		if str(it.get("event_kind", "")) == "research_unlocked":
-			research_count += int(it.get("magnitude", 1))   # aggregated item carries the count
-			research_agg = it
-	# Post an unlock only the first time it appears -- TurnBriefing can rebuild its items more
-	# than once as unlocks land, and keeps each for two turns.
-	if research_count > 0:
-		var dock := _updates_dock()
-		for entry in (research_agg.get("research", []) as Array):
+		if str(it.get("event_kind", "")) != "research_unlocked":
+			continue
+		for entry in (it.get("research", []) as Array):
 			var tech := str((entry as Dictionary).get("name", ""))
 			if tech != "" and not _research_toasted.has(tech):
 				_research_toasted[tech] = true
 				if dock != null:
 					dock.push_research(tech)
-	var hot := decisions > 0
-	(_briefing_btn as _NotchBtn).warn = hot
-	(_briefing_btn as _NotchBtn).active = TurnBriefing.expanded
-	(_briefing_glyph as _BellIcon).set_color(C_RED if hot else C_TEXT)
-	_briefing_head.text = ("%d decision%s to make" % [decisions, "" if decisions == 1 else "s"]) if hot else "Briefing"
-	_briefing_head.add_theme_color_override("font_color", Color("#f0a496") if hot else C_BRIGHT)
-	_briefing_sub.text = "%d update%s" % [updates, "" if updates == 1 else "s"]
-	_briefing_sub.add_theme_color_override("font_color", C_TEXT)
-	var v31: bool = UiPrefs.use_topbar_v3_1
-	_briefing_dot.visible = decisions + updates > 0 and not v31
-	var dsb := _briefing_dot.get_theme_stylebox("panel") as StyleBoxFlat
-	if dsb != null:
-		dsb.bg_color = C_RED if hot else C_AMBER
-	_briefing_glyph.visible = not v31
-	_briefing_icon_v31.visible = v31
-	(_briefing_head.get_parent() as Control).visible = not v31
-	if v31:
-		# v3.1: no "Briefing"/"update" words — two bells instead, each carrying its own
-		# count badge: light-red/black for decisions (critical/unskippable — the same
-		# count the classic head goes red for), white/black for updates (tech unlocks
-		# etc.). Rebuilt each refresh like _victory_meters/_council_stack — clearing
-		# just the pill_slot, never the bell itself.
-		_clear_now(_briefing_decision_pill_slot)
-		var decision_pill := _notice_pill(str(decisions), PILL_RED_BG, Color.BLACK)
-		decision_pill.tooltip_text = "Decisions to make"
-		_overhang_bottom_right(decision_pill, _briefing_decision_pill_slot)
-		_clear_now(_briefing_update_pill_slot)
-		var update_pill := _notice_pill(str(updates), PILL_WHITE_BG, Color.BLACK)
-		update_pill.tooltip_text = "Updates"
-		_overhang_bottom_right(update_pill, _briefing_update_pill_slot)
-	call_deferred("_recenter_notch")
 
 
 # ── 5 · Council: seated portraits with loyalty rings + number chips ─────────────
 
-## The modular mission tree (scripts/mini_quest.gd). Sits immediately right of the updates
-## notch: the hbox separation is 10, which is the offset asked for, so it needs no spacer.
+## The modular mission tree (scripts/mini_quest.gd). Sits in the middle of the bar.
 ## Hidden only while the explicit tutorial coach owns the screen; the generic branch is available
 ## from the opening campaign turn even when its first unlock is still locked.
 func _build_quest() -> void:
@@ -1622,7 +1259,7 @@ func _build_quest() -> void:
 	_quest_icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	pad.add_child(_quest_icon)
 	mod.pressed.connect(func() -> void: _toggle_fly("quest"))
-	# TOP-LEVEL, like the briefing notch and the bankruptcy strip. The bar is a PanelContainer:
+	# TOP-LEVEL, like the bankruptcy strip. The bar is a PanelContainer:
 	# an ordinary child is both stretched to fill it AND counted in its minimum size, and measured
 	# that took the bar from 64 px tall to 67. Containers skip a top_level child, which fixes the
 	# growth and removes any need to re-place it after every sort.
@@ -1655,23 +1292,16 @@ func _on_quest_mission_completed(kind: String, _mission_title: String, _reward: 
 	_celebrate_mission(kind)
 
 
-## Ten pixels off the notch's right edge, vertically centred in the bar proper (the notch hangs
-## below it; the quest does not). Re-run whenever the notch moves or the label changes, since
-## both change the rect this is measured against.
-const QUEST_GAP := 10.0
-
 ## v3.1: the module's fixed resting width while showing icon-only. Wider than
 ## the icon+padding would size to on their own (~68 px) — see _build_quest's SHRINK_CENTER note.
 const QUEST_ICON_MODULE_W := 120.0
 
-## Both this and the notch are top_level, so their positions live in the same space and the
-## container will not touch either. Centred in what the bar actually DRAWS — its live height
+## Its resting icon module is centred on the bar, so a wider reveal grows to the right; top_level,
+## so the container will not touch it. Centred vertically in what the bar actually DRAWS — its live height
 ## less the metallic bezel along the bottom — rather than in BAR_H, which is the offset the bar
 ## is anchored by and is smaller than the height its styleboxes give it (53 vs a measured 64).
 func _place_quest() -> void:
 	if _quest_btn == null or not is_instance_valid(_quest_btn) or not _quest_btn.visible:
-		return
-	if _briefing_btn == null or not is_instance_valid(_briefing_btn):
 		return
 	if _quest_v31_animating:
 		return   # a width tween owns .size right now (see _quest_v31_collapse_to_icon)
@@ -1680,7 +1310,7 @@ func _place_quest() -> void:
 		want_size.x = maxf(want_size.x, QUEST_ICON_MODULE_W)
 	_quest_btn.size = want_size
 	_quest_btn.position = Vector2(
-		_briefing_btn.position.x + _briefing_btn.size.x + QUEST_GAP,
+		roundf((get_viewport_rect().size.x - QUEST_ICON_MODULE_W) * 0.5),
 		maxf(0.0, roundf((size.y - EDGE_H - want_size.y) * 0.5)))
 
 
@@ -1788,8 +1418,8 @@ func _quest_v31_collapse_to_icon() -> void:
 
 
 func _build_council() -> void:
-	# Everything from Council rightwards is anchored to the far right edge (the
-	# briefing notch is out of the flow, so this is the row's only expander).
+	# Everything from Council rightwards is anchored to the far right edge (the mission is
+	# out of the flow, so this is the row's only expander).
 	_hbox().add_child(_flex())
 	var mod := _ModuleBtn.new(self)
 	mod.name = "CouncilModule"
@@ -3724,9 +3354,12 @@ var _intermittency_taught := false
 
 
 func _on_loan_taken(loan: Dictionary) -> void:
-	# Every path lands here — the silent auto-bridge as much as a deliberate draw, and
-	# spread financing too (48 turns = 12 grace + 36 repaying IS a loan at
-	# standard interest). Cleared once the turn's popups have been evaluated.
+	# A deliberate draw and spread financing (48 turns = 12 grace + 36 repaying IS a loan at
+	# standard interest) land here. The auto-bridge does too, but it posts its own red row
+	# with the borrowing room left, so it adds no second notice. Cleared once the turn's
+	# notices have been evaluated.
+	if SolvencyState.bridging:
+		return
 	_loan_taken_this_turn += float(loan.get("amount", 0.0))
 
 

@@ -794,6 +794,84 @@ func _test_updates_dock() -> void:
 		"updates dock: clearing empties the rows and the bells")
 	toasts.queue_free()
 
+func _test_updates_dock_filters_and_decisions() -> void:
+	# A bell opens the slide-out on its own rows; the pen counts decisions and opens the briefing.
+	var toasts: Control = load("res://scripts/toast_manager.gd").new()
+	add_child(toasts)
+	await get_tree().process_frame
+	var rows: Node = toasts.find_child("RowList", true, false)
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	var shown := func() -> PackedStringArray:
+		var out := PackedStringArray()
+		for r: Node in rows.get_children():
+			if (r as Control).visible:
+				out.append(str(r.get_meta("toast_message", "")))
+		return out
+	var pen: Control = toasts.find_child("Decisions", true, false)
+	var icons: Array = pen.get_parent().get_children() if pen != null else []
+	_check(pen != null and icons.find(pen) == 0 and icons.size() == 4,
+		"updates dock: a pen sits before the three bells")
+
+	toasts._on_toast_requested("Built a steel furnace", "success")
+	toasts._on_toast_requested("Local opposition to density", "caution")
+	toasts._on_toast_requested("Cash is in the red", "warning")
+	toasts._on_toast_requested("No route to market", "error")
+	toasts.collapse(false)
+	toasts.find_child("Bell_red", true, false).gui_input.emit(click)
+	_check(toasts.is_open() and toasts.filter() == "red" \
+		and shown.call() == PackedStringArray(["Cash is in the red", "No route to market"]),
+		"updates dock: clicking the red bell shows only the red rows")
+	_check(toasts.unread("red") == 0 and toasts.unread("green") == 1 and toasts.unread("amber") == 1,
+		"updates dock: a bell clears only its own count")
+	toasts.find_child("Bell_amber", true, false).gui_input.emit(click)
+	_check(toasts.is_open() and shown.call() == PackedStringArray(["Local opposition to density"]),
+		"updates dock: another bell switches the rows to its colour")
+	toasts.find_child("Bell_amber", true, false).gui_input.emit(click)
+	_check(not toasts.is_open() and toasts.filter() == "", "updates dock: the same bell again closes the rows")
+	toasts.find_child("UpdatesDock", true, false).gui_input.emit(click)
+	_check(shown.call().size() == 4, "updates dock: clicking the dock between its icons shows every row")
+	toasts.collapse(false)
+	toasts.clear()
+	toasts.open_all("green")
+	var empty: Label = null
+	for l: Node in toasts.find_children("*", "Label", true, false):
+		if (l as Label).text.begins_with("No ") and (l as Label).visible:
+			empty = l
+	_check(empty != null and empty.text == "No updates yet", "updates dock: an empty bell says it has nothing yet")
+	toasts.collapse(false)
+
+	var items_before: Array = TurnBriefing._items
+	var expanded_before: bool = TurnBriefing.expanded
+	TurnBriefing._items = [
+		{"id": "dec:1", "kind": "decision", "section": "decisions"},
+		{"id": "dec:2", "kind": "decision", "section": "decisions"},
+		{"id": "ev:9", "kind": "event", "section": "info"},
+	]
+	TurnBriefing.items_changed.emit()
+	var pill: Control = pen.find_child("Count", true, false)
+	_check(toasts.decisions() == 2 and pill != null and pill.visible and (pill.get_child(0) as Label).text == "2",
+		"updates dock: the pen counts the decisions waiting")
+	TurnBriefing.expanded = false
+	var opened := [""]
+	var saved_hide: bool = DecisionState.hide_updates
+	DecisionState.hide_updates = false
+	var on_expand := func(is_open: bool) -> void: opened[0] = "open" if is_open else "closed"
+	TurnBriefing.expanded_changed.connect(on_expand)
+	toasts.open_all()
+	pen.gui_input.emit(click)
+	_check(opened[0] == "open" and TurnBriefing.expanded and not toasts.is_open(),
+		"updates dock: the pen opens the briefing on its decisions and puts the rows away")
+	pen.gui_input.emit(click)
+	_check(opened[0] == "closed" and not TurnBriefing.expanded, "updates dock: the pen again closes the briefing")
+	TurnBriefing.expanded_changed.disconnect(on_expand)
+	DecisionState.hide_updates = saved_hide
+	TurnBriefing._items = items_before
+	TurnBriefing.expanded = expanded_before
+	TurnBriefing.items_changed.emit()
+	toasts.queue_free()
+
 func _test_updates_dock_research_and_notices() -> void:
 	# Research unlocks sit above the other rows as green links; notices are amber and keyed.
 	var toasts: Control = load("res://scripts/toast_manager.gd").new()

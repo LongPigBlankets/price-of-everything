@@ -267,9 +267,8 @@ func _quest_cases() -> void:
 	var bar: Node = _find_topbar(_wm)
 	if bar != null:
 		var qb = bar.get("_quest_btn")
-		var bb = bar.get("_briefing_btn")
-		print("[QUEST] module pos=%s | notch right edge=%.0f (want pos.x = edge + 10)" %
-			[str(qb.position), bb.position.x + bb.size.x])
+		print("[QUEST] module pos=%s | centred at x=%.0f of %.0f" %
+			[str(qb.position), qb.position.x + qb.size.x * 0.5, bar.get_viewport_rect().size.x])
 	await _shoot_module("res://quest_module.png")
 
 	# Does finishing a mission actually SAY anything? Both channels, since a toast with no

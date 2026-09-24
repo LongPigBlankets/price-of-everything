@@ -366,8 +366,17 @@ func _test_auto_bridge_loan() -> void:
 	LoanState.loans = []
 	MatchState.money = -30.0
 	var n := LoanState.loans.size()
+	var enabled_before := SolvencyState.enabled
+	SolvencyState.enabled = true
+	var flagged := []
+	var on_loan := func(_loan: Dictionary) -> void: flagged.append(SolvencyState.bridging)
+	LoanState.loan_taken.connect(on_loan)
 	SolvencyState._auto_bridge_negative_cash()
+	LoanState.loan_taken.disconnect(on_loan)
+	SolvencyState.enabled = enabled_before
 	_check(LoanState.loans.size() == n + 1, "auto-bridge: takes a loan when in the red")
+	_check(flagged == [true] and not SolvencyState.bridging,
+		"auto-bridge: its loan is flagged as a bridge while it is taken, so the loan notice stands down")
 	_check(MatchState.money >= -0.001, "auto-bridge: lifts the balance to ~£0 when capacity covers it")
 	LoanState.loans = loans_before
 	LoanState._profit_history = profit_before

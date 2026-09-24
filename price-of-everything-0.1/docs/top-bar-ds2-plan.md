@@ -1,6 +1,6 @@
 # Top Bar DS2: a thin instrument strip, and one place for what happened
 
-Status: PLAN, 24 September 2026. The updates dock (§4) is partly built: the toasts, research unlocks and notices are in it. The owner's decisions are listed in §10.
+Status: PLAN, 24 September 2026. The updates dock (§4) is partly built: the toasts, research unlocks, notices and decisions are in it, and the notch is gone. The owner's decisions are listed in §10.
 
 Read with:
 
@@ -117,7 +117,16 @@ A new DS2 component, built on existing patterns.
 - The notices (a loan, a big payment, abnormal spending, transport, next turn's bill, power going dark, intermittency, grid draw, stock building up on a tile) are amber rows. Each is keyed by its notice and the turn, so next turn's bill, re-evaluated as orders change, keeps one row, is replaced when its figure changes, and is withdrawn when it no longer holds. Next turn's bill opens the Money panel's Upcoming tab; stock building up opens that tile's stockpile on the good. Their rules (thresholds, cooldowns, at most two money notices a turn, none in the tutorial or before turn 2) are unchanged. The cards under the modules, their scrim and `anomaly_popup.gd` are gone.
 - A link row takes its own click, even when the slide-out lets clicks through, and ends in a chevron.
 
-Not yet moved into it: the mission and the briefing bells (the notch stays until they are). It keeps today's DS look, not DS2.
+**Third step built (same day).** The decisions moved in and the notch went:
+
+- A fountain pen (`assets/icons/ui_icons/standalone/fountain_pen.png`, baked by `tools/bake_pen_icon.py` in the bell's cream) sits before the bells and counts the decisions waiting in the turn briefing, on a salmon pill. It pulses when one arrives and when End Turn is refused for one. Clicking it opens the Turn Briefing panel on the first decision; clicking again closes it.
+- Each bell is a filter: clicking it opens the slide-out on that colour's rows only (green updates, amber notices, red warnings) and clears only its count. Clicking the same bell again closes it; clicking the dock between its icons shows every row.
+- The briefing notch and its bells are gone from the top bar. The mission module sits centred where the notch was. Research unlocks still reach the dock through the briefing's research event.
+- The auto bridge posts one red row. The top bar's loan notice stands down for it (`SolvencyState.bridging` is set while its loan is taken); the briefing keeps its info item, which only shows when the panel is open.
+- The tutorial's screen tour labels the dock "Updates and decisions" instead of the notch.
+- Tests: `_test_updates_dock_filters_and_decisions` (`test_ui.gd`), the bridge flag in `_test_auto_bridge_loan` (`test_finance.gd`).
+
+Not yet moved into it: the mission. It keeps today's DS look, not DS2.
 
 The full design, as planned:
 

@@ -3,7 +3,8 @@ extends Node2D
 ## two pixels each: the empty dock, rows sliding out on their own, the dock after they collapse
 ## (bells counting), the slide-out opened from the dock, the dock under an open Construct panel,
 ## a map legend stacked on top of it, and research unlocks and notices arriving through their
-## real paths (the briefing's research event, the top bar's notice funnel).
+## real paths (the briefing's research event, the top bar's notice funnel), one bell's rows on
+## their own, and the pen counting a decision.
 ##   Godot --path . res://tools/updates_dock_shot.tscn --quit-after 6000 -- --no-telemetry
 ## Writes updates_dock_*.png into $UPDATES_SHOT_DIR (or /tmp).
 
@@ -87,6 +88,17 @@ func _ready() -> void:
 	print("[UPDATES_DOCK_SHOT] rows: %s" % [toasts.row_texts()])
 	await _wait(toasts.TOAST_DURATION + 0.6)
 	_save("research_collapsed")
+
+	toasts.open_all("amber")
+	await _wait(0.45)
+	_save("filter_amber")
+	toasts.collapse()
+	await _wait(0.45)
+	TurnBriefing._items.append({"id": "dec:shot", "kind": "decision", "section": "decisions"})
+	TurnBriefing.items_changed.emit()
+	await _wait(0.45)
+	_save("pen_waiting")
+	print("[UPDATES_DOCK_SHOT] decisions=%d" % toasts.decisions())
 	print("[UPDATES_DOCK_SHOT] done")
 	get_tree().quit(0)
 

@@ -7,10 +7,12 @@ extends Control
 ## toasts it replaces, a slide-out that opened by itself takes no clicks: the map and the
 ## panels under it (the Construct panel reaches down to the dock) keep theirs.
 ##
-## The dock carries three bells, green, amber and red, each counting the rows of its colour
-## that arrived since the player last opened the slide-out from the dock. Clicking the dock
-## opens the slide-out on every row kept; that one takes the mouse, scrolls, and stays up
-## while the mouse is over it. Clicking the dock again closes it.
+## The dock carries a fountain pen and three bells. The pen counts the decisions waiting and
+## opens the turn briefing on them. The bells, green, amber and red, each count the rows of
+## their colour that arrived since the player last looked at them; clicking a bell opens the
+## slide-out on that colour's kept rows only (clicking the dock between them opens every row).
+## A slide-out opened from the dock takes the mouse, scrolls, and stays up while the mouse is
+## over it. Clicking the same place again closes it.
 ##
 ## Besides the toasts, the top bar posts its research unlocks (green, above every other row)
 ## and its notices (amber). A row can be a link: it stays clickable even while the slide-out
@@ -43,6 +45,11 @@ const LINK_CHEVRON_W := 20.0
 const BELL_PX := 40.0
 const BELL_GAP := 18.0
 const BELL_ICON: Texture2D = preload("res://assets/icons/ui_icons/standalone/bell.png")
+const PEN_ICON: Texture2D = preload("res://assets/icons/ui_icons/standalone/fountain_pen.png")
+## The pen's count pill: the briefing's colour for decisions.
+const PEN_PILL := Color("#F2A99C")
+## What each bell's rows are called, in tooltips and the empty slide-out.
+const TONE_KIND := {"green": "updates", "amber": "notices", "red": "warnings"}
 const TONES := ["green", "amber", "red"]
 ## The row look each bell's rows take.
 const TONE_STYLE := {"green": "success", "amber": "caution", "red": "warning"}
@@ -72,6 +79,10 @@ var _prev_money: float = 0.0
 var _dock: PanelContainer
 var _dock_style: StyleBoxFlat
 var _bells := {}            # tone -> {"root", "clip", "tex", "pill", "count"}
+var _pen := {}              # the decisions cell, the same shape as a bell's
+var _decisions := 0
+## The bell whose rows a slide-out opened from the dock shows; "" for every row.
+var _filter := ""
 var _clip: Control          # clips the slide-out, so it rises out of the dock
 var _panel: PanelContainer
 var _scroll: ScrollContainer
@@ -114,6 +125,11 @@ func _ready() -> void:
 	MatchState.stockpile_market_sale_completed.connect(_on_stockpile_market_sale_completed)
 	MatchState.toast_requested.connect(_on_toast_requested)
 	MatchState.build_rejected_no_funds.connect(_on_build_rejected_no_funds)
+	TurnBriefing.items_changed.connect(_refresh_pen)
+	# End Turn refused because a decision is waiting: the briefing opens, and the pen says why.
+	TurnManager.commit_blocked_by_decisions.connect(func() -> void:
+		if not _pen.is_empty():
+			_pulse(_pen))
 
 
 ## The bell a toast type rings: warnings and errors red, cautions amber, the rest green.
@@ -202,9 +218,17 @@ func unread(tone: String) -> int:
 			n += 1
 	return n
 
-## Opens the slide-out on every kept row, as clicking the dock does.
-func open_all() -> void:
-	_open_slide(true)
+## Opens the slide-out on every kept row (as clicking the dock between its icons does), or on
+## one bell's rows (as clicking that bell does).
+func open_all(tone: String = "") -> void:
+	_open_slide(true, tone)
+
+## The bell the open slide-out is showing, "" for every row.
+func filter() -> String:
+	return _filter
+
+func decisions() -> int:
+	return _decisions
 
 ## Closes the slide-out into the dock. The rows it showed stop counting as new.
 func collapse(animate: bool = true) -> void:
@@ -216,6 +240,7 @@ func collapse(animate: bool = true) -> void:
 		return
 	_open = false
 	_all = false
+	_filter = ""
 	_set_interactive(false)
 	_update_dock_rim()
 	if animate:
@@ -327,15 +352,20 @@ func _build_ui() -> void:
 		_update_dock_rim())
 	add_child(_dock)
 
-	var bells := HBoxContainer.new()
-	bells.add_theme_constant_override("separation", int(BELL_GAP))
-	bells.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_dock.add_child(bells)
+	var icons := HBoxContainer.new()
+	icons.add_theme_constant_override("separation", int(BELL_GAP))
+	icons.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_dock.add_child(icons)
+	_pen = _make_icon("Decisions", PEN_ICON, PEN_PILL)
+	_pen.root.gui_input.connect(_on_icon_input.bind("pen"))
+	icons.add_child(_pen.root)
 	for tone: String in TONES:
-		var bell := _make_bell(tone)
-		bells.add_child(bell.root)
+		var bell := _make_icon("Bell_%s" % tone, BELL_ICON, Color.WHITE)
+		bell.root.gui_input.connect(_on_icon_input.bind(tone))
+		icons.add_child(bell.root)
 		_bells[tone] = bell
 	_refresh_bells()
+	_refresh_pen()
 
 	_timer = Timer.new()
 	_timer.one_shot = true
@@ -344,14 +374,14 @@ func _build_ui() -> void:
 	_queue_fit()
 
 
-## A bell as the briefing notch draws it (the same art, clipped so the TextureRect keeps its
-## box), tinted to its tone, with a count pill on its bottom-right corner.
-func _make_bell(tone: String) -> Dictionary:
+## An icon cell: the art (clipped so the TextureRect keeps its box) with a count pill on its
+## bottom-right corner. A bell is tinted to its tone; the pen keeps its cream.
+func _make_icon(node_name: String, texture: Texture2D, pill_colour: Color) -> Dictionary:
 	var holder := Control.new()
-	holder.name = "Bell_%s" % tone
+	holder.name = node_name
 	holder.custom_minimum_size = Vector2(BELL_PX, BELL_PX)
-	# PASS: the tooltip shows, and the click still reaches the dock.
-	holder.mouse_filter = Control.MOUSE_FILTER_PASS
+	holder.mouse_filter = Control.MOUSE_FILTER_STOP
+	holder.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	var clip := Control.new()
 	clip.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	clip.clip_contents = true
@@ -359,7 +389,7 @@ func _make_bell(tone: String) -> Dictionary:
 	clip.pivot_offset = Vector2(BELL_PX, BELL_PX) * 0.5
 	holder.add_child(clip)
 	var tex := TextureRect.new()
-	tex.texture = BELL_ICON
+	tex.texture = texture
 	tex.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -369,7 +399,7 @@ func _make_bell(tone: String) -> Dictionary:
 	pill.name = "Count"
 	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color.WHITE
+	sb.bg_color = pill_colour
 	sb.set_corner_radius_all(8)
 	pill.add_theme_stylebox_override("panel", sb)
 	var count := Label.new()
@@ -391,30 +421,44 @@ func _refresh_bells(pulse_tone: String = "") -> void:
 		if bell.is_empty():
 			continue
 		var n: int = unread(tone)
-		var colour := tone_colour(tone)
-		(bell.tex as TextureRect).modulate = colour if n > 0 else Color(colour, 0.4)
-		var pill: PanelContainer = bell.pill
-		pill.visible = n > 0
-		var text := str(n) if n < 100 else "99+"
-		(bell.count as Label).text = text
-		var w: float = maxf(20.0, text.length() * 8.0 + 12.0)
-		pill.custom_minimum_size = Vector2(w, 16)
-		pill.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-		pill.offset_left = -w + 4.0
-		pill.offset_top = -16.0 + 4.0
-		pill.offset_right = 4.0
-		pill.offset_bottom = 4.0
-		(bell.root as Control).tooltip_text = _bell_tooltip(tone, n)
-		if tone == pulse_tone:
-			var clip: Control = bell.clip
-			var t := clip.create_tween()
-			t.tween_property(clip, "scale", Vector2(1.18, 1.18), 0.12)
-			t.tween_property(clip, "scale", Vector2.ONE, 0.18)
+		var kind: String = TONE_KIND[tone]
+		_paint_icon(bell, n, tone_colour(tone), "No new %s" % kind if n == 0 else "%d new %s" % [n, kind], tone == pulse_tone)
 
 
-func _bell_tooltip(tone: String, n: int) -> String:
-	var kind: String = {"green": "updates", "amber": "cautions", "red": "warnings"}[tone]
-	return "No new %s" % kind if n == 0 else "%d new %s" % [n, kind]
+## The pen counts the decisions waiting in the turn briefing.
+func _refresh_pen() -> void:
+	if _pen.is_empty():
+		return
+	var n: int = TurnBriefing.unresolved_decisions().size()
+	var more := n > _decisions
+	_decisions = n
+	var tip := "No decisions to make" if n == 0 else "%d decision%s to make" % [n, "" if n == 1 else "s"]
+	_paint_icon(_pen, n, Color.WHITE, tip, more)
+
+
+func _paint_icon(cell: Dictionary, n: int, colour: Color, tooltip: String, pulse: bool) -> void:
+	(cell.tex as TextureRect).modulate = colour if n > 0 else Color(colour, 0.4)
+	var pill: PanelContainer = cell.pill
+	pill.visible = n > 0
+	var text := str(n) if n < 100 else "99+"
+	(cell.count as Label).text = text
+	var w: float = maxf(20.0, text.length() * 8.0 + 12.0)
+	pill.custom_minimum_size = Vector2(w, 16)
+	pill.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	pill.offset_left = -w + 4.0
+	pill.offset_top = -16.0 + 4.0
+	pill.offset_right = 4.0
+	pill.offset_bottom = 4.0
+	(cell.root as Control).tooltip_text = tooltip
+	if pulse:
+		_pulse(cell)
+
+
+func _pulse(cell: Dictionary) -> void:
+	var clip: Control = cell.clip
+	var t := clip.create_tween()
+	t.tween_property(clip, "scale", Vector2(1.18, 1.18), 0.12)
+	t.tween_property(clip, "scale", Vector2.ONE, 0.18)
 
 
 ## The dock's rim lights while the mouse is on it, and while the slide-out it opened is up.
@@ -590,8 +634,10 @@ func _apply_row_visibility() -> int:
 	var shown := 0
 	if _all:
 		for row: Node in rows:
-			(row as Control).visible = true
-		shown = rows.size()
+			var show: bool = _filter == "" or str(row.get_meta("tone", "")) == _filter
+			(row as Control).visible = show
+			if show:
+				shown += 1
 	else:
 		for row: Node in rows:
 			var show: bool = row.get_meta("fresh", false) and row.get_meta("priority", false) and shown < MAX_TOASTS
@@ -605,17 +651,20 @@ func _apply_row_visibility() -> int:
 			row.visible = bool(row.get_meta("fresh", false)) and shown < MAX_TOASTS
 			if row.visible:
 				shown += 1
-	_empty.visible = _all and rows.is_empty()
+	_empty.visible = _all and shown == 0
+	_empty.text = "No %s yet" % (TONE_KIND[_filter] if _filter != "" else "updates")
 	_queue_fit()
 	return shown
 
 
-func _open_slide(all_rows: bool) -> void:
+func _open_slide(all_rows: bool, tone: String = "") -> void:
 	_all = all_rows
+	_filter = tone if all_rows else ""
 	_set_interactive(all_rows)
 	if all_rows:
 		for row: Node in _rows.get_children():
-			row.set_meta("unread", false)
+			if _filter == "" or str(row.get_meta("tone", "")) == _filter:
+				row.set_meta("unread", false)
 		_refresh_bells()
 	if _apply_row_visibility() == 0 and not all_rows:
 		return
@@ -635,10 +684,38 @@ func _on_dock_input(event: InputEvent) -> void:
 	if mb == null or not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
 		return
 	_dock.accept_event()
-	if _open and _all:
+	_toggle_rows("")
+
+
+## Clicking an icon: the pen opens the turn briefing on its decisions; a bell shows its rows.
+func _on_icon_input(event: InputEvent, key: String) -> void:
+	var mb := event as InputEventMouseButton
+	if mb == null or not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
+		return
+	var cell: Dictionary = _pen if key == "pen" else _bells[key]
+	(cell.root as Control).accept_event()
+	if key == "pen":
+		_open_decisions()
+	else:
+		_toggle_rows(key)
+
+
+## Opens the slide-out on `tone`'s rows ("" for every row), or closes it when it already shows them.
+func _toggle_rows(tone: String) -> void:
+	if _open and _all and _filter == tone:
 		collapse()
 	else:
-		_open_slide(true)
+		_open_slide(true, tone)
+
+
+## Opens the turn briefing on the first decision waiting; the pen closes it again.
+func _open_decisions() -> void:
+	collapse()
+	if TurnBriefing.expanded:
+		TurnBriefing.collapse()
+		return
+	var waiting: Array = TurnBriefing.unresolved_decisions()
+	TurnBriefing.expand(str((waiting[0] as Dictionary).get("id", "")) if not waiting.is_empty() else "")
 
 
 func _on_timer() -> void:
