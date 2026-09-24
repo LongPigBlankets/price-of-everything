@@ -4,7 +4,8 @@ extends Node2D
 ## slider along its rail), and the recipe sheet's scrollbar. Places a motor factory (r_009) with its
 ## inputs in stock on tile_5_10, so the panel is long enough to scroll.
 ##   Godot --path . res://tools/bdp_v3_shot.tscn --quit-after 3000 -- --no-telemetry
-## Writes /tmp/poe_bdp_v3_*.png.
+## Writes /tmp/poe_bdp_v3_*.png, or into $BDP_SHOT_DIR when it is set. tools/bdp_v3_compare.py checks
+## them against the saved standard (artifacts/bdp_v3_standard/).
 
 var _wm
 
@@ -86,7 +87,7 @@ func _save(panel: Control, tag: String) -> void:
 	var k := img.get_width() / get_viewport().get_visible_rect().size.x
 	var r := panel.get_global_rect().grow(6.0)
 	var crop := Rect2i(Vector2i(r.position * k), Vector2i(r.size * k)).intersection(Rect2i(Vector2i.ZERO, img.get_size()))
-	var path := "/tmp/poe_bdp_v3_%s.png" % tag
+	var path := _out_dir().path_join("poe_bdp_v3_%s.png" % tag)
 	img.get_region(crop).save_png(path)
 	print("[BDP_V3_SHOT] saved %s" % path)
 
@@ -96,9 +97,14 @@ func _save_bar(bar: Control, tag: String) -> void:
 	var k := img.get_width() / get_viewport().get_visible_rect().size.x
 	var r := bar.get_global_rect().grow(4.0)
 	var crop := Rect2i(Vector2i(r.position * k), Vector2i(r.size * k)).intersection(Rect2i(Vector2i.ZERO, img.get_size()))
-	var path := "/tmp/poe_bdp_v3_%s.png" % tag
+	var path := _out_dir().path_join("poe_bdp_v3_%s.png" % tag)
 	img.get_region(crop).save_png(path)
 	print("[BDP_V3_SHOT] saved %s" % path)
+
+
+func _out_dir() -> String:
+	var dir := OS.get_environment("BDP_SHOT_DIR")
+	return dir if dir != "" else "/tmp"
 
 
 func _settle(n: int) -> void:
