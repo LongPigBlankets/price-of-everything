@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dtf4exww82i3j"
-path="res://.godot/imported/bar_pipes.png-61350ef13960d26858218b2335e19944.ctex"
+uid="uid://dq0j1i8rpco54"
+path="res://.godot/imported/bar_icon_port_shadow.png-60376e2d95185887812e34e71502c050.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/bdp_v3/bar_pipes.png"
-dest_files=["res://.godot/imported/bar_pipes.png-61350ef13960d26858218b2335e19944.ctex"]
+source_file="res://assets/ui/bdp_v3/bar_icon_port_shadow.png"
+dest_files=["res://.godot/imported/bar_icon_port_shadow.png-60376e2d95185887812e34e71502c050.ctex"]
 
 [params]
 

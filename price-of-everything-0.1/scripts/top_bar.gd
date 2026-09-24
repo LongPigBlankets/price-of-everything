@@ -584,19 +584,6 @@ func _v31_icon(tex: Texture2D, hover_source: Control = null) -> Control:
 	if hover_source != null:
 		glow = _v31_glow(box)
 		wrap.add_child(glow)
-	# DS2: a soft dark copy under the icon lifts it off the glossy sheet (shown by _ds2_apply).
-	var lift := TextureRect.new()
-	lift.name = "Ds2Lift"
-	lift.texture = tex
-	lift.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	lift.stretch_mode = TextureRect.STRETCH_SCALE
-	lift.position = (fit.dest as Rect2).position + DS2_ICON_LIFT
-	lift.size = (fit.dest as Rect2).size
-	lift.modulate = DS2_ICON_LIFT_TINT
-	lift.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	lift.visible = false
-	wrap.add_child(lift)
-	_ds2_lifts.append(lift)
 	var icon := TextureRect.new()
 	icon.texture = tex
 	# The expand mode first: until it is set, the texture's own size is the minimum size.
@@ -607,7 +594,7 @@ func _v31_icon(tex: Texture2D, hover_source: Control = null) -> Control:
 	icon.size = dest.size
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	wrap.add_child(icon)
-	_ds2_icons.append(icon)
+	_ds2_add_face(wrap, icon, tex, box)
 	if hover_source != null:
 		var spec := TextureRect.new()
 		spec.texture = SPECULAR_TEX
@@ -620,6 +607,33 @@ func _v31_icon(tex: Texture2D, hover_source: Control = null) -> Control:
 		hover_source.mouse_entered.connect(func() -> void: spec.visible = true; glow.visible = true)
 		hover_source.mouse_exited.connect(func() -> void: spec.visible = false; glow.visible = false)
 	return wrap
+
+
+## DS2: the raised face and its shadow for a bar icon, fitted by the face's own art into the icon's box, hidden
+## until _ds2_apply shows them in place of the v3.1 art.
+func _ds2_add_face(wrap: Control, icon: TextureRect, tex: Texture2D, box: Vector2) -> void:
+	var face_name: String = DS2_BAR_ICONS.get(tex.resource_path, "")
+	if face_name == "":
+		return
+	var face: Texture2D = load("res://assets/ui/bdp_v3/bar_icon_%s.png" % face_name)
+	var shadow: Texture2D = load("res://assets/ui/bdp_v3/bar_icon_%s_shadow.png" % face_name)
+	var art: Rect2 = BdpV3Indicator.art_rect(face)
+	var k: float = minf(box.x / art.size.x, box.y / art.size.y)
+	var at := (box - art.size * k) * 0.5 - art.position * k
+	var rects: Array[TextureRect] = []
+	for t: Texture2D in [shadow, face]:
+		var r := TextureRect.new()
+		r.name = "Ds2Shadow" if t == shadow else "Ds2Face"
+		r.texture = t
+		r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		r.stretch_mode = TextureRect.STRETCH_SCALE
+		r.position = at
+		r.size = face.get_size() * k
+		r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		r.visible = false
+		wrap.add_child(r)
+		rects.append(r)
+	_ds2_faces.append([icon, rects[1], rects[0]])
 
 
 ## Where a bar icon's canvas is drawn so its art fills the cap: `box` is the art's size on the
@@ -936,8 +950,9 @@ func _freight_cell(texture: Texture2D, tip: String, hover_source: Control) -> Di
 	led_slot.add_child(led)
 	pair.add_child(led_slot)
 	var icon := _v31_icon(texture, hover_source)
-	# The art is cream; the bar's other labels are the off-white, so match them.
+	# The art is cream; the bar's other labels are the off-white, so match them (DS2 keeps the cream).
 	icon.modulate = C_LABEL
+	_ds2_freight_wraps.append(icon)
 	pair.add_child(icon)
 	return {"root": pair, "led": led, "led_slot": led_slot}
 
@@ -1360,16 +1375,35 @@ const DS2_TEXELS := 2.0
 const DS2_CONCRETE: Texture2D = preload("res://assets/ui/bdp_v3/bar_concrete.png")
 ## Dark iron pipes rising out of the beam that the money's coin sits on (set `barcoinpipes`).
 const DS2_COIN_PIPES: Texture2D = preload("res://assets/ui/bdp_v3/bar_coin_pipes.png")
-## A pair of silver pipes rising out of the beam and off the screen: the divider after the works and the
-## one between the money and Victory (set `barpipes`).
-const DS2_PIPES: Texture2D = preload("res://assets/ui/bdp_v3/bar_pipes.png")
+## The silver pipe pair (set `barpipes`): down off the screen at the divider after the works, over the
+## beam, along beneath the bar, and back up at the divider between the money and Victory. Three pieces:
+## the two risers (each lit from the top left, not mirrored) and the run, cropped to the gap between them.
+## The axes are the pair's middle in each riser, from layout.json in layout px.
+const DS2_PIPES_LEFT: Texture2D = preload("res://assets/ui/bdp_v3/bar_pipes_left.png")
+const DS2_PIPES_RIGHT: Texture2D = preload("res://assets/ui/bdp_v3/bar_pipes_right.png")
+const DS2_PIPES_RUN: Texture2D = preload("res://assets/ui/bdp_v3/bar_pipes_run.png")
+const DS2_PIPES_LEFT_AXIS := 20.7 / 1.875
+const DS2_PIPES_RIGHT_AXIS := 43.1 / 1.875
 ## Room between a divider's middle and the module before it.
 const DS2_PIPES_ROOM := 24.0
+## The bar's icons raised as Building Detail's are (set `baricon`): res://assets/ui/bdp_v3/bar_icon_<name>.png
+## and its _shadow, by the art they replace.
+const DS2_BAR_ICONS := {
+	"res://assets/icons/ui_icons/standalone/coin.png": "coin",
+	"res://assets/icons/ui_icons/standalone/power_icon.png": "power",
+	"res://assets/icons/ui_icons/standalone/trophy.png": "trophy",
+	"res://assets/icons/ui_icons/standalone/podium.png": "podium",
+	"res://assets/icons/ui_icons/standalone/target.png": "target",
+	"res://assets/icons/ui_icons/standalone/board-of-directors.png": "council",
+	"res://assets/icons/ui_icons/standalone/sankey.png": "sankey",
+	"res://assets/icons/ui_icons/standalone/open-book.png": "book",
+	"res://assets/icons/ui_icons/standalone/menu.png": "menu",
+	"res://assets/icons/ui_icons/warehouse.png": "warehouse",
+	"res://assets/icons/buildings/cleaned/b_005.png": "roads",
+	"res://assets/icons/buildings/cleaned/b_004.png": "port",
+}
 ## The outline and shadow that keep a figure standing out on the light concrete.
-const DS2_INK_OUTLINE := Color(0.03, 0.05, 0.08, 0.7)
-## The dark copy under each icon: its offset (away from the lamp) and its tint.
-const DS2_ICON_LIFT := Vector2(1.5, 2.0)
-const DS2_ICON_LIFT_TINT := Color(0.01, 0.02, 0.04, 0.6)
+const DS2_INK_OUTLINE := Color(0.03, 0.05, 0.08, 0.5)
 ## Cash on an LED screen: the screen's scale on the bar (a full-size screen is taller than a module with
 ## the net line under it), its cells (scripts/ds2/money_figure.gd), and the figure's colour.
 const DS2_CASH_SCALE := 0.75
@@ -1383,8 +1417,10 @@ var _ds2_shade: Node2D
 var _ds2_left_gap: Control
 var _ds2_flex: Control
 var _v31_order: Array[Node] = []
-var _ds2_lifts: Array[TextureRect] = []
-var _ds2_icons: Array[TextureRect] = []
+## [v3.1 icon, DS2 raised face, its shadow] per bar icon that has a raised render.
+var _ds2_faces: Array[Array] = []
+## The freight cells' wraps, tinted off-white in v3.1 and left cream in DS2.
+var _ds2_freight_wraps: Array[Control] = []
 ## The printed £, the LED screen (in a holder sized to its scale) and the printed K / M after it.
 var _ds2_cash: HBoxContainer
 var _ds2_cash_led: Control
@@ -1448,12 +1484,13 @@ func _ds2_apply() -> void:
 	var text_light: Material = Ds2Light.text_material() if on else null
 	for label: Node in find_children("*", "Label", true, false):
 		(label as Label).material = text_light
-	# The icons keep their cream under the lamp (it gives all of its shade back) and stand on a lift.
-	var icon_light: Material = Ds2Light.emissive_material() if on else null
-	for icon: TextureRect in _ds2_icons:
-		icon.material = icon_light
-	for lift: TextureRect in _ds2_lifts:
-		lift.visible = on
+	# The icons: raised cream enamel with its swept shadow, as on Building Detail.
+	for trio: Array in _ds2_faces:
+		(trio[0] as Control).visible = not on
+		(trio[1] as Control).visible = on
+		(trio[2] as Control).visible = on
+	for wrap: Control in _ds2_freight_wraps:
+		wrap.modulate = Color.WHITE if on else C_LABEL
 	_refresh_treasury()
 	queue_redraw()
 	_ds2_queue_centre()
@@ -1483,18 +1520,18 @@ func _ds2_centre_money() -> void:
 	queue_redraw()   # the concrete follows the money
 
 
-## Where the silver dividers stand, in the bar's x: after the works (before the mission), and between the
-## concrete and Victory.
+## Where the silver pipes rise, in the bar's x: one after the works (before the mission), one between the
+## concrete and Victory, the same distance either side of the money so the run beneath is centred on it.
 func _ds2_divider_xs() -> Array[float]:
-	var out: Array[float] = []
 	var transport := _hbox_child("TransportModule") as Control
-	if transport != null and transport.visible:
-		out.append(roundf(transport.get_global_rect().end.x - global_position.x + DS2_PIPES_ROOM))
 	var victory := _hbox_child("VictoryModule") as Control
-	if victory != null and victory.visible:
-		var slab_right := money_widget.get_global_rect().get_center().x + DS2_CONCRETE.get_width() / DS2_TEXELS * 0.5
-		out.append(roundf((slab_right + victory.get_global_rect().position.x) * 0.5 - global_position.x))
-	return out
+	if transport == null or victory == null or not transport.visible or not victory.visible:
+		return []
+	var c := money_widget.get_global_rect().get_center().x
+	var room_left := c - transport.get_global_rect().end.x - DS2_PIPES_ROOM
+	var room_right := victory.get_global_rect().position.x - DS2_PIPES_ROOM - c
+	var d := maxf(minf(room_left, room_right), DS2_CONCRETE.get_width() / DS2_TEXELS * 0.5 + DS2_PIPES_ROOM)
+	return [roundf(c - d - global_position.x), roundf(c + d - global_position.x)]
 
 
 func _ds2_draw_strip() -> void:
@@ -1511,12 +1548,25 @@ func _ds2_draw_strip() -> void:
 	draw_texture_rect(DS2_CONCRETE, Rect2(slab_x, 0, slab.x, slab.y), false)
 	draw_texture_rect_region(DS2_CONCRETE, Rect2(slab_x, -TOP_BLEED, slab.x, TOP_BLEED),
 		Rect2(0, 0, DS2_CONCRETE.get_width(), TOP_BLEED * DS2_TEXELS))
-	# The dividers, their pipes running on above the bar.
-	var pipes := DS2_PIPES.get_size() / DS2_TEXELS
-	for centre: float in _ds2_divider_xs():
-		var px := centre - pipes.x * 0.5
-		draw_texture_rect(DS2_PIPES, Rect2(px, 0, pipes.x, pipes.y), false)
-		draw_texture_rect_region(DS2_PIPES, Rect2(px, -TOP_BLEED, pipes.x, TOP_BLEED), Rect2(0, 0, DS2_PIPES.get_width(), TOP_BLEED * DS2_TEXELS))
+	# The silver pipes: down at one divider, along beneath the bar, back up at the other.
+	var dividers := _ds2_divider_xs()
+	if dividers.size() == 2:
+		var left := DS2_PIPES_LEFT.get_size() / DS2_TEXELS
+		var right := DS2_PIPES_RIGHT.get_size() / DS2_TEXELS
+		var lx := dividers[0] - DS2_PIPES_LEFT_AXIS
+		var rx := dividers[1] - DS2_PIPES_RIGHT_AXIS
+		var run_from := lx + left.x
+		var run_w := rx - run_from
+		if run_w > 0.0:
+			var run_tex := DS2_PIPES_RUN.get_size()
+			var run_src_x := (run_tex.x - run_w * DS2_TEXELS) * 0.5
+			draw_texture_rect_region(DS2_PIPES_RUN, Rect2(run_from, 0, run_w, run_tex.y / DS2_TEXELS), Rect2(run_src_x, 0, run_w * DS2_TEXELS, run_tex.y))
+		for piece: Array in [[DS2_PIPES_LEFT, lx, left], [DS2_PIPES_RIGHT, rx, right]]:
+			var tex_p: Texture2D = piece[0]
+			var at: float = piece[1]
+			var sz: Vector2 = piece[2]
+			draw_texture_rect(tex_p, Rect2(at, 0, sz.x, sz.y), false)
+			draw_texture_rect_region(tex_p, Rect2(at, -TOP_BLEED, sz.x, TOP_BLEED), Rect2(0, 0, tex_p.get_width(), TOP_BLEED * DS2_TEXELS))
 	# The coin's pipes, under the coin.
 	if _money_coin_icon != null and _money_coin_icon.visible:
 		var stand := DS2_COIN_PIPES.get_size() / DS2_TEXELS
@@ -3373,14 +3423,15 @@ func _ds2_print(text: String, font_px: int) -> Label:
 func _ds2_ink(label: Label, on: bool) -> void:
 	if on:
 		label.add_theme_color_override("font_outline_color", DS2_INK_OUTLINE)
-		label.add_theme_constant_override("outline_size", 2)
-		label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+		label.add_theme_constant_override("outline_size", 1)
+		label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.55))
+		label.add_theme_constant_override("shadow_outline_size", 5)
 		label.add_theme_constant_override("shadow_offset_x", 1)
 		label.add_theme_constant_override("shadow_offset_y", 2)
 	else:
 		for key: String in ["font_outline_color", "font_shadow_color"]:
 			label.remove_theme_color_override(key)
-		for key: String in ["outline_size", "shadow_offset_x", "shadow_offset_y"]:
+		for key: String in ["outline_size", "shadow_outline_size", "shadow_offset_x", "shadow_offset_y"]:
 			label.remove_theme_constant_override(key)
 
 

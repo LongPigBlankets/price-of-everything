@@ -1394,7 +1394,7 @@
    127.5
   ],
   "height": 112.5,
-  "beam": 16,
+  "beam": 18,
   "shadow": 15
  },
  "bar_concrete": {
@@ -1406,7 +1406,7 @@
   "pillar": 34,
   "slab": [
    600,
-   96.5
+   94.5
   ]
  },
  "bar_coin_pipes": {
@@ -1416,11 +1416,45 @@
   ],
   "centre": 48
  },
- "bar_pipes": {
+ "bar_pipes_left": {
   "size": [
-   72,
-   127.5
+   64,
+   148
   ],
-  "centre": 36
+  "axis": 20.7
+ },
+ "bar_pipes_right": {
+  "size": [
+   64,
+   148
+  ],
+  "axis": 43.1
+ },
+ "bar_pipes_run": {
+  "size": [
+   7200,
+   148
+  ]
+ },
+ "bar_icons": {
+  "size": [
+   110,
+   110
+  ],
+  "icon": 86,
+  "names": [
+   "coin",
+   "power",
+   "trophy",
+   "podium",
+   "target",
+   "council",
+   "sankey",
+   "book",
+   "menu",
+   "warehouse",
+   "roads",
+   "port"
+  ]
  }
 }
