@@ -221,6 +221,12 @@ static func _intermediary_item(side: Dictionary, gid: String) -> Dictionary:
 	return {}
 
 
+## What one good's transport costs by how it goes (Road, Rail, Pipe, Port, the logistics intermediary),
+## most first: [{name, cost}].
+static func line_methods(line: Dictionary) -> Array:
+	return _methods([line])
+
+
 ## The ways a side's goods travel, named once each, in the order they cost most.
 static func _methods(lines: Array) -> Array:
 	var by_name := {}

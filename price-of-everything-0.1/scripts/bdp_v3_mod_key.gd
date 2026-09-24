@@ -4,7 +4,8 @@ extends Control
 ## tools/button_mockup/cluster.html?export and drawn as a horizontal three-slice), with its text printed
 ## on its top in navy, as Inputs' key prints its route, and a chevron at its right end. It latches down
 ## while what it opens is open. The Modifiers key prints the output modifier (or None); the economics'
-## rows print their names.
+## rows print their names. With nothing to open (`openable` false) it has no chevron and doesn't press.
+## `key_scale` draws a smaller key, the whole keycap and its print scaled alike, for a row nested in another.
 
 signal toggled(open: bool)
 
@@ -26,6 +27,16 @@ var open := false
 ## The text printed on the key, and its ink.
 var summary := ""
 var summary_ink := NAVY
+var openable := true:
+	set(v):
+		openable = v
+		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if v else Control.CURSOR_ARROW
+		queue_redraw()
+var key_scale := 1.0:
+	set(v):
+		key_scale = v
+		custom_minimum_size = Vector2(0.0, (HEIGHT - 2.0 * KEY_INSET) / CAPTURE_SCALE * v)
+		queue_redraw()
 var _held := false
 
 
@@ -44,7 +55,7 @@ func set_open(value: bool) -> void:
 
 func _gui_input(event: InputEvent) -> void:
 	var mb := event as InputEventMouseButton
-	if mb == null or mb.button_index != MOUSE_BUTTON_LEFT:
+	if mb == null or mb.button_index != MOUSE_BUTTON_LEFT or not openable:
 		return
 	accept_event()
 	if mb.pressed:
@@ -69,9 +80,10 @@ func _draw() -> void:
 	var down := open or _held
 	var tex := PRESSED if down else NORMAL
 	# The render reaches KEY_INSET beyond the keycap on every side (its bezel's shadow).
-	var out := KEY_INSET / CAPTURE_SCALE
+	var k := key_scale
+	var out := KEY_INSET / CAPTURE_SCALE * k
 	var dest := Rect2(-out, -out, size.x + 2.0 * out, size.y + 2.0 * out)
-	var cap_px := CAP / CAPTURE_SCALE
+	var cap_px := CAP / CAPTURE_SCALE * k
 	var cap_tx := CAP * TEXELS_PER_PIXEL / CAPTURE_SCALE
 	var tw := float(tex.get_width())
 	var th := float(tex.get_height())
@@ -82,17 +94,19 @@ func _draw() -> void:
 	draw_texture_rect_region(tex, Rect2(dest.end.x - cap_px, dest.position.y, cap_px, dest.size.y), Rect2(tw - cap_tx, 0, cap_tx, th), tint)
 	# The print on the flat top: the summary from its left, the chevron at its right end, pointing down
 	# while open.
-	var face := Rect2(Vector2.ZERO, size).grow(-FACE_INSET / CAPTURE_SCALE)
+	var face := Rect2(Vector2.ZERO, size).grow(-FACE_INSET / CAPTURE_SCALE * k)
 	var mid := face.get_center().y
 	var bold: Font = Plate.FONT_BOLD
 	if summary != "":
-		var fs := Plate._fit(bold, summary, 22, face.size.x - 34.0)
-		draw_string(bold, Vector2(face.position.x + 6.0, _baseline(bold, fs, mid)), summary, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, summary_ink)
-	var cx := face.end.x - 12.0
-	var c := 5.0
+		var fs := Plate._fit(bold, summary, roundi(22 * k), face.size.x - (34.0 if openable else 12.0) * k)
+		draw_string(bold, Vector2(face.position.x + 6.0 * k, _baseline(bold, fs, mid)), summary, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, summary_ink)
+	if not openable:
+		return
+	var cx := face.end.x - 12.0 * k
+	var c := 5.0 * k
 	var pts := PackedVector2Array([Vector2(cx - c, mid - c * 0.5), Vector2(cx, mid + c * 0.5), Vector2(cx + c, mid - c * 0.5)]) if open \
 		else PackedVector2Array([Vector2(cx - c * 0.5, mid - c), Vector2(cx + c * 0.5, mid), Vector2(cx - c * 0.5, mid + c)])
-	draw_polyline(pts, NAVY, 2.4, true)
+	draw_polyline(pts, NAVY, 2.4 * k, true)
 
 
 static func _baseline(font: Font, font_size: int, mid: float) -> float:

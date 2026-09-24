@@ -926,6 +926,17 @@ func _test_bdp_v3_panel() -> void:
 	_check(econ_bar != null and econ_bar.row_label(0) == "Revenue if sold" and econ_bar.row_keys(0).size() >= 1
 		and econ_bar.row_keys(1).has("inputs") and econ_bar.row_keys(1).has("labour") and econ_lamps.size() == 2,
 		"bdp v3: revenue (if sold) and costs show as two bars, and each side's transport has a lamp (%s | %s)" % [econ_bar.row_keys(0) if econ_bar != null else [], econ_bar.row_keys(1) if econ_bar != null else []])
+	var t_box: Control = econ_card.find_child("Transport", true, false) if econ_card != null else null
+	var t_key: Control = t_box.get_node("Head").find_child("BdpV3ModKey", false, false) if t_box != null else null
+	if t_key != null:
+		t_key.toggled.emit(true)
+	var t_in: Control = t_box.find_child("TransportInputs", true, false) if t_box != null else null
+	var t_out: Control = t_box.find_child("TransportOutputs", true, false) if t_box != null else null
+	var in_key: Control = t_in.find_child("BdpV3ModKey", true, false) if t_in != null else null
+	var in_rows: Array = t_in.find_child("Parts", true, false).get_children().map(func(r: Node) -> String: return (r.get_child(0) as Label).text) if t_in != null else []
+	_check(t_in != null and t_out != null and in_key != null and is_equal_approx(in_key.key_scale, panel.V3_NESTED_KEY_SCALE)
+		and in_rows.has("Steel · Port") and in_rows.has("Copper Wiring · Port"),
+		"bdp v3: transport opens to inputs and outputs, each to its goods' freight and port charges (%s)" % ", ".join(in_rows))
 	if va_box != null:
 		panel._v3_econ_open.clear()
 	var line_h: float = load("res://scripts/bdp_v3_title.gd").line_height()
@@ -949,19 +960,28 @@ func _test_bdp_v3_panel() -> void:
 		head_total += int(d.count)
 	_check(labour_doors.size() == 3 and head_total == int(BuildingReadout.labour(Catalog.get_building("b_007"), Catalog.get_recipe(str(BuildingState.buildings[iid].get("recipe_id", "")))).get("total", -1)),
 		"bdp v3: Labour and Wages has a factory door per kind of worker, its headcount on the kick plate (%d doors, %d workers)" % [labour_doors.size(), head_total])
-	var mod_key: Control = panel.find_child("BdpV3ModKey", true, false)
+	mod_row = panel.find_child("ModifiersRow", true, false)
+	var mod_key: Control = mod_row.find_child("BdpV3ModKey", true, false) if mod_row != null else null
+	_check(mod_key != null and not mod_key.openable and mod_key.summary == "None" and panel.find_child("ModifiersSheet", true, false) == null,
+		"bdp v3: with no modifiers, Modifiers reads None and opens nothing")
+	var test_mod: String = Modifiers.add({"id": "bdp_v3_test_output", "domain": "recipe_output", "pct": 10.0, "label": "Test yield", "source": "test"})
+	panel._rebuild(b)
+	await get_tree().process_frame
+	mod_row = panel.find_child("ModifiersRow", true, false)
+	mod_key = mod_row.find_child("BdpV3ModKey", true, false) if mod_row != null else null
 	var mod_sheet: Control = panel.find_child("ModifiersSheet", true, false)
 	var navy_ok := mod_sheet != null
 	if mod_sheet != null:
 		for l: Label in mod_sheet.find_children("*", "Label", true, false):
 			navy_ok = navy_ok and l.get_theme_color("font_color") in [load("res://scripts/bdp_v3_plate.gd").NAVY] + panel.V3_INK.values()
-	var was_open: bool = mod_sheet.visible if mod_sheet != null else true
-	if mod_key != null:
-		mod_key.toggled.emit(true)
-	_check(mod_key != null and not was_open and mod_sheet.visible and navy_ok,
-		"bdp v3: Modifiers is a white key that opens a white plastic sheet printed in navy")
-	if mod_key != null:
-		mod_key.toggled.emit(false)
+	_check(mod_key != null and mod_key.openable and mod_key.open and mod_sheet != null and mod_sheet.visible and navy_ok,
+		"bdp v3: with a modifier, Modifiers opens on a white plastic sheet printed in navy, open to start with")
+	Modifiers.remove(test_mod)
+	panel._rebuild(b)
+	await get_tree().process_frame
+	# The rebuilds replaced the body; the checks below use its new footer and control block.
+	footer = panel.find_child("BdpV3Footer", true, false)
+	block = panel.find_child("BdpV3Block", true, false)
 	var Seam = load("res://scripts/bdp_v3_seam.gd")
 	_check(panel._seam.visible and is_equal_approx(panel._scroll.offset_top, Seam.strip_height())
 		and panel._seam.get_index() > panel._scroll.get_index() and panel._seam.get_parent() == panel._scroll.get_parent(),

@@ -117,6 +117,8 @@ func _ready() -> void:
 	panel._close_sheet()
 
 	# The Modifiers key latched down, its white sheet open under it.
+	# (a modifier for it to show: with none, Modifiers reads None and opens nothing)
+	var shot_mod: String = Modifiers.add({"id": "bdp_v3_shot_output", "domain": "recipe_output", "pct": 10.0, "label": "Lean Manufacturing", "source": "research"})
 	panel._v3_modifiers_open = true
 	panel._rebuild(building)
 	await _settle(8)
@@ -125,7 +127,9 @@ func _ready() -> void:
 		panel._scroll.ensure_control_visible(mod_sheet)
 		await _settle(6)
 		_save(panel, "modifiers")
-	panel._v3_modifiers_open = false
+	Modifiers.remove(shot_mod)
+	panel._rebuild(building)
+	await _settle(4)
 
 	# The economics: the motor factory's, then a coal power plant's (output free to ship) and a coal
 	# mine's (inputs free).
@@ -135,7 +139,7 @@ func _ready() -> void:
 		await _settle(6)
 		_save(panel, "economics")
 		# ...and with value added in production and transport costs open.
-		panel._v3_econ_open = {"value_added": true, "transport": true}
+		panel._v3_econ_open = {"value_added": true, "transport": true, "transport_inputs": true, "transport_outputs": true}
 		panel._rebuild(building)
 		await _settle(8)
 		econ = panel.find_child("EconomicsV3", true, false)

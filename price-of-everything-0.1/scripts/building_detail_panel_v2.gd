@@ -2877,10 +2877,10 @@ func _fill_modifiers(vb: VBoxContainer, total: int, by_cat: Dictionary) -> void:
 
 
 ## v3's Modifiers, laid out as Inputs is on the control plate: a % sign raised white on the metal, the
-## heading in raised letters over an off-white key with the output modifier (or None) printed on it.
-## The key opens a white plastic sheet under the row, the rows printed on it in navy (the category
-## figures in darker greens and reds, to read on white). It latches down while the sheet is open, and
-## the sheet stays open across rebuilds.
+## heading in raised letters over an off-white key with the output modifier printed on it. With modifiers
+## active the key opens a white plastic sheet under the row, the rows printed on it in navy (the category
+## figures in darker greens and reds, to read on white); it starts open, latches down while open, and
+## stays as the player leaves it across rebuilds. With none the key reads None and opens nothing.
 const V3_SHEET_WHITE: Texture2D = preload("res://assets/ui/bdp_v3/sheet_white.png")
 const V3_SHEET_WHITE_MARGIN := 14.0 / 1.875
 const V3_SHEET_WHITE_CORNER := (14.0 + 40.0) * 2.0 / 1.875
@@ -2889,7 +2889,7 @@ const V3_INK := {"ok": Color("#1d6b3a"), "warn": Color("#7a4a00"), "bad": Color(
 const V3_MOD_ICON: Texture2D = preload("res://assets/ui/bdp_v3/mod_icon.png")
 const V3_MOD_ICON_SHADOW: Texture2D = preload("res://assets/ui/bdp_v3/mod_icon_shadow.png")
 const V3_MOD_ICON_FRAME := 110.0
-var _v3_modifiers_open := false
+var _v3_modifiers_open := true
 
 func _v3_modifiers(mod: Dictionary, total: int, by_cat: Dictionary) -> void:
 	var row := HBoxContainer.new()
@@ -2916,14 +2916,16 @@ func _v3_modifiers(mod: Dictionary, total: int, by_cat: Dictionary) -> void:
 	var key: Control = BdpV3ModKey.new()
 	key.tooltip_text = "Everything bending this building's numbers"
 	col.add_child(key)
+	_body.add_child(row)
 	if total == 0:
 		key.summary = "None"
-	else:
-		var out_pct := float(mod.get("pct_f", float(mod.get("pct", 0))))
-		key.summary = "Output %s" % _mod_pct_text(out_pct)
-		key.summary_ink = _v3_ink(_mod_tone(out_pct, true))
+		key.openable = false
+		_v3_money_gap()
+		return
+	var out_pct := float(mod.get("pct_f", float(mod.get("pct", 0))))
+	key.summary = "Output %s" % _mod_pct_text(out_pct)
+	key.summary_ink = _v3_ink(_mod_tone(out_pct, true))
 	key.set_open(_v3_modifiers_open)
-	_body.add_child(row)
 	var sheet := PanelContainer.new()
 	sheet.name = "ModifiersSheet"
 	sheet.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -2942,16 +2944,20 @@ func _v3_modifiers(mod: Dictionary, total: int, by_cat: Dictionary) -> void:
 	_fill_modifiers(vb, total, by_cat)
 	sheet.visible = _v3_modifiers_open
 	_body.add_child(sheet)
-	var gap := Control.new()
-	gap.name = "ModifiersGap"
-	gap.custom_minimum_size = Vector2(0.0, V3_MONEY_GAP)
-	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_body.add_child(gap)
+	_v3_money_gap()
 	for l: Label in sheet.find_children("*", "Label", true, false):
 		l.add_theme_color_override("font_color", _v3_ink(l.get_theme_color("font_color")))
 	key.toggled.connect(func(open: bool) -> void:
 		_v3_modifiers_open = open
 		sheet.visible = open)
+
+## The space the money frame leaves after the modifiers.
+func _v3_money_gap() -> void:
+	var gap := Control.new()
+	gap.name = "ModifiersGap"
+	gap.custom_minimum_size = Vector2(0.0, V3_MONEY_GAP)
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_body.add_child(gap)
 
 ## The ink for a colour the dark panel shows on white plastic: the semantic greens, ambers and reds
 ## darkened to read on it, and everything else navy.
@@ -3060,6 +3066,8 @@ func _add_carried_rows(vb: VBoxContainer) -> float:
 ## inputs, a power plant's output). Loan repayments and stored goods follow, as in v2.
 const V3_ECON_ICON_PX := 30.0
 const V3_ECON_INDENT := 22.0
+## A row nested in another opens from a smaller key.
+const V3_NESTED_KEY_SCALE := 0.8
 ## The space the money frame leaves after the modifiers and after the economics.
 const V3_MONEY_GAP := 14.0
 ## Which of v3's economics rows are open, kept across rebuilds.
@@ -3085,17 +3093,31 @@ func _build_economics_v3(econ: Dictionary) -> PanelContainer:
 	made.append(["Labour", float(econ.labour), bad])
 	made.append(["Upkeep", float(econ.upkeep), bad])
 	var va := float(econ.value_added)
-	var moved: Array = []
-	for side in [["Inputs", "methods_in"], ["Outputs", "methods_out"]]:
-		for m: Dictionary in econ.get(side[1], []):
-			moved.append(["%s · %s" % [side[0], m.name], float(m.cost), bad])
+	# Transport opens to each side, and each side to its goods: every good's freight by how it goes,
+	# and its port charge, on their own rows.
+	var sides: Array = []
+	for side in [["Inputs", "inputs", "transport_in"], ["Outputs", "outputs", "transport_out"]]:
+		var goods: Array = []
+		for line: Dictionary in econ.get(side[1], []):
+			var gid := str(line.get("good_id", ""))
+			for m: Dictionary in BuildingEconomics.line_methods(line):
+				goods.append(["%s · %s" % ["Power" if gid == "power" else Catalog.get_display_name(gid), m.name], float(m.cost), bad])
+		if not goods.is_empty():
+			sides.append([side[0], "transport_" + side[1], float(econ[side[2]]), goods])
 	var transport := float(econ.transport)
 	var figures: Array = [va, transport, float(econ.net_value_added)]
-	for part: Array in made + moved:
+	for part: Array in made:
 		figures.append(float(part[1]))
+	for sd: Array in sides:
+		figures.append(float(sd[2]))
+		for part: Array in sd[3]:
+			figures.append(float(part[1]))
 	_v3_led_digits = 0
 	for f: float in figures:
 		_v3_led_digits = maxi(_v3_led_digits, BdpV3Led.cells_for("%.2f" % f).size())
+	var moved: Array = []
+	for sd: Array in sides:
+		moved.append(_v3_econ_accordion("Transport" + str(sd[0]), str(sd[1]), str(sd[0]), float(sd[2]), bad, sd[3], V3_NESTED_KEY_SCALE))
 	vb.add_child(_v3_econ_accordion("ValueAdded", "value_added", "Value added in production", va, ok if va >= 0.0 else bad, made))
 	vb.add_child(_v3_econ_accordion("Transport", "transport", "Transport costs", transport, bad if transport > 0.0 else ok, moved))
 	var nva := float(econ.net_value_added)
@@ -3150,9 +3172,10 @@ func _v3_money_led(figure: float, colour: Color, digits := 0) -> HBoxContainer:
 
 ## One of v3's economics rows that opens: a wide worn-white key with its name printed in navy and a
 ## chevron (BdpV3ModKey, as Modifiers has), its figure on a screen beside it; the key latches down while
-## the row is open, showing the figures that make it, indented under it, each on its own screen. With
+## the row is open, showing the figures that make it, indented under it, each on its own screen. A part
+## is [name, figure, colour], or a row that opens in its turn (built by this, with a smaller key). With
 ## nothing to show under it, it is a plain row.
-func _v3_econ_accordion(node_name: String, key: String, title: String, figure: float, colour: Color, parts: Array) -> VBoxContainer:
+func _v3_econ_accordion(node_name: String, key: String, title: String, figure: float, colour: Color, parts: Array, key_scale := 1.0) -> VBoxContainer:
 	var box := VBoxContainer.new()
 	box.name = node_name
 	box.add_theme_constant_override("separation", DS.SP["SM"])
@@ -3167,6 +3190,7 @@ func _v3_econ_accordion(node_name: String, key: String, title: String, figure: f
 	box.add_child(head)
 	var opener: Control = BdpV3ModKey.new()
 	opener.summary = title
+	opener.key_scale = key_scale
 	head.add_child(opener)
 	head.add_child(_v3_money_led(figure, colour, _v3_led_digits))
 	var nested := VBoxContainer.new()
@@ -3176,8 +3200,8 @@ func _v3_econ_accordion(node_name: String, key: String, title: String, figure: f
 	indent.add_theme_constant_override("margin_left", roundi(V3_ECON_INDENT))
 	indent.add_child(nested)
 	box.add_child(indent)
-	for p: Array in parts:
-		nested.add_child(_v3_econ_line(str(p[0]), float(p[1]), p[2]))
+	for p: Variant in parts:
+		nested.add_child(p if p is Control else _v3_econ_line(str(p[0]), float(p[1]), p[2]))
 	indent.visible = bool(_v3_econ_open.get(key, false))
 	opener.set_open(indent.visible)
 	opener.toggled.connect(func(open: bool) -> void:
