@@ -158,6 +158,7 @@ var _victory_meters: HBoxContainer
 var _quest_btn: Control
 var _quest_title: Label
 var _quest_sub: Label
+var _quest_text_box: MarginContainer   # the text's margin: room for the icon at its right in DS2
 var _quest_text_col: VBoxContainer
 var _quest_icon: Control   # v3.1
 var _quest_shown_before := false    # v3.1 — has the module ever appeared this session
@@ -1273,11 +1274,15 @@ func _build_quest() -> void:
 	pad.add_theme_constant_override("margin_bottom", 6)
 	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	mod.add_child(pad)
+	# The text sits in its own margin so DS2 can keep the icon showing at the right, the text to its left.
+	_quest_text_box = MarginContainer.new()
+	_quest_text_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pad.add_child(_quest_text_box)
 	var col := VBoxContainer.new()
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.add_theme_constant_override("separation", 2)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	pad.add_child(col)
+	_quest_text_box.add_child(col)
 	_quest_title = _mini("", C_CREAM, 13)
 	col.add_child(_quest_title)
 	_quest_sub = _mini("", C_TEXT, 11)
@@ -1306,6 +1311,10 @@ func _build_quest() -> void:
 	mod.top_level = true
 	add_child(mod)
 	_quest_btn = mod
+	# DS2 anchors the mission's right edge against the pipes, so its width tweens open to the left.
+	mod.resized.connect(func() -> void:
+		if UiPrefs.use_topbar_ds2 and _ds2_quest_right > 0.0:
+			mod.position.x = roundf(_ds2_quest_right - mod.size.x))
 	mod.visible = false
 	MiniQuest.quest_changed.connect(_refresh_quest)
 	MiniQuest.mission_completed.connect(_on_quest_mission_completed)
@@ -1343,6 +1352,11 @@ const QUEST_ICON_MODULE_W := 120.0
 func _place_quest() -> void:
 	if _quest_btn == null or not is_instance_valid(_quest_btn) or not _quest_btn.visible:
 		return
+	if UiPrefs.use_topbar_ds2 and _ds2_left_gap != null:
+		# DS2: the mission's right edge stands against the left pipes, even while its width tweens.
+		var dividers := _ds2_divider_xs()
+		_ds2_quest_right = maxf(dividers[0] + global_position.x - DS2_PIPES_ROOM, _ds2_left_gap.global_position.x + 8.0 + _quest_btn.size.x)
+		_quest_btn.position.x = roundf(_ds2_quest_right - _quest_btn.size.x)
 	if _quest_v31_animating:
 		return   # a width tween owns .size right now (see _quest_v31_collapse_to_icon)
 	var want_size := _quest_btn.get_combined_minimum_size()
@@ -1353,8 +1367,7 @@ func _place_quest() -> void:
 	var quest_x := roundf((get_viewport_rect().size.x - QUEST_ICON_MODULE_W) * 0.5)
 	if UiPrefs.use_topbar_ds2 and _ds2_left_gap != null:
 		# Outside the left pipes, up against them, never before the works end.
-		var dividers := _ds2_divider_xs()
-		quest_x = roundf(maxf(_ds2_left_gap.global_position.x + 8.0, dividers[0] + global_position.x - DS2_PIPES_ROOM - want_size.x))
+		quest_x = roundf(maxf(_ds2_left_gap.global_position.x + 8.0, _ds2_quest_right - want_size.x))
 	_quest_btn.position = Vector2(quest_x,
 		maxf(0.0, roundf((size.y - EDGE_H - want_size.y) * 0.5)))
 
@@ -1410,6 +1423,9 @@ const DS2_CASH_SCALE := 0.75
 const DS2_CASH_COLOUR := Color("#f4f6fa")
 const DS2_CASH_RED := Color("#e66060")   # DS2 DANGER on dark: the cash below zero
 const Led := preload("res://scripts/bdp_v3_led.gd")
+## The bar's lamps in DS2: Building Detail's pilot lamp, at its diagnostics rows' scale.
+const Ds2Lamp := preload("res://scripts/bdp_v3_lamp.gd")
+const DS2_LAMP_SCALE := 0.72
 const MoneyFigure := preload("res://scripts/ds2/money_figure.gd")
 
 ## The lamp over the strip (a Node2D, so the bar's container doesn't lay it out); drawn last.
@@ -1422,6 +1438,10 @@ var _v31_order: Array[Node] = []
 var _ds2_faces: Array[Array] = []
 ## The freight cells' wraps, tinted off-white in v3.1 and left cream in DS2.
 var _ds2_freight_wraps: Array[Control] = []
+## [StatusLed, its Building Detail pilot lamp] per lamp on the bar.
+var _ds2_lamps: Array[Array] = []
+## The mission's right edge in DS2 (against the left pipes), where its width tweens open from.
+var _ds2_quest_right := 0.0
 ## The printed £, the LED screen (in a holder sized to its scale) and the printed K / M after it.
 var _ds2_cash: HBoxContainer
 var _ds2_cash_led: Control
@@ -1450,6 +1470,9 @@ func _ds2_setup() -> void:
 	resized.connect(func() -> void:
 		(_ds2_shade.material as ShaderMaterial).set_shader_parameter("rect_size", size)
 		_ds2_shade.queue_redraw())
+	for node: Node in find_children("*", "Control", true, false):
+		if node is StatusLed:
+			_ds2_add_lamp(node as StatusLed)
 	hbox.resized.connect(_ds2_queue_centre)
 	money_widget.resized.connect(_ds2_queue_centre)
 	hbox.sort_children.connect(_ds2_queue_centre)
@@ -1492,10 +1515,52 @@ func _ds2_apply() -> void:
 		(trio[2] as Control).visible = on
 	for wrap: Control in _ds2_freight_wraps:
 		wrap.modulate = Color.WHITE if on else C_LABEL
+	for pair: Array in _ds2_lamps:
+		var led := pair[0] as StatusLed
+		(pair[1] as Control).visible = on
+		led.self_modulate.a = 0.0 if on else 1.0
+		led.queue_redraw()
+	# The mission: its icon at the right, the text opening to its left.
+	if _quest_icon != null:
+		_quest_icon.size_flags_horizontal = Control.SIZE_SHRINK_END if on else Control.SIZE_SHRINK_CENTER
+		_quest_text_box.add_theme_constant_override("margin_right", int(_quest_icon.get_combined_minimum_size().x + 10.0) if on else 0)
+		for label: Label in [_quest_title, _quest_sub]:
+			label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if on else HORIZONTAL_ALIGNMENT_LEFT
+		if on and _quest_v31_wide:
+			_quest_icon.visible = true
 	_refresh_treasury()
 	queue_redraw()
 	_ds2_queue_centre()
 	_place_quest.call_deferred()
+
+
+## A pilot lamp inside a StatusLed, following it: lit in its colour's tone, off when it is off or blinked
+## off. The StatusLed stops drawing in DS2 (self_modulate) and the lamp shows; its visibility, lit state,
+## colour and blink stay with the code that already sets them.
+func _ds2_add_lamp(led: StatusLed) -> void:
+	var lamp: Control = Ds2Lamp.new()
+	lamp.lamp_scale = DS2_LAMP_SCALE
+	lamp.visible = false
+	led.add_child(lamp)
+	var place := func() -> void:
+		lamp.size = lamp.custom_minimum_size
+		lamp.position = ((led.size - lamp.size) * 0.5).round()
+	led.resized.connect(place)
+	place.call()
+	led.draw.connect(func() -> void:
+		if lamp.visible:
+			lamp.call("set_tone", _ds2_lamp_tone(led)))
+	_ds2_lamps.append([led, lamp])
+
+
+## A StatusLed's state as a pilot lamp's tone, by the hue of its colour.
+static func _ds2_lamp_tone(led: StatusLed) -> String:
+	if not led.lit or (led.blink and not bool(led.get("_blink_on"))):
+		return "off"
+	var h := led.color.h
+	if h < 0.07 or h > 0.93:
+		return "bad"
+	return "warn" if h < 0.2 else "ok"
 
 
 func _hbox_child(node_name: String) -> Node:
@@ -1622,12 +1687,12 @@ func _quest_v31_reveal_then_collapse() -> void:
 	if _quest_btn == null or not is_instance_valid(_quest_btn):
 		return
 	var mod := _quest_btn as _ModuleBtn
-	_quest_icon.visible = false
+	_quest_icon.visible = UiPrefs.use_topbar_ds2   # DS2 keeps the icon, the text opening to its left
 	_quest_icon.modulate = Color.WHITE
 	_quest_text_col.visible = true
 	_quest_text_col.modulate.a = 1.0
 	_quest_v31_wide = true
-	var want: float = _quest_text_col.get_combined_minimum_size().x + 24.0   # pad's L/R margins
+	var want: float = _quest_text_box.get_combined_minimum_size().x + 24.0   # pad's L/R margins
 	if _quest_width_anim != null and _quest_width_anim.is_valid():
 		_quest_width_anim.kill()
 	_quest_v31_animating = true

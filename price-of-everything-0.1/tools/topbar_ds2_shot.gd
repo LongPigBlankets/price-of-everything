@@ -3,7 +3,7 @@ extends Node2D
 ## SubViewports at two pixels per logical pixel so captures match whatever display runs them:
 ## 1920 × 1080, 2520 × 1080 (ultrawide) and 1920 × 1200. For each size and each look (v3.1, and DS2
 ## via UiPrefs.use_topbar_ds2): the bar calm, in crisis (cash below zero after a loss), with long
-## numbers, with the Power module hovered, and with the Treasury flyout open.
+## numbers, with the Power module hovered, with the mission's text open, and with the Treasury flyout open.
 ##   Godot --path . res://tools/topbar_ds2_shot.tscn --quit-after 12000 -- --no-telemetry
 ## Writes topbar_<look>_<size>_<view>.png into $TOPBAR_SHOT_DIR (or /tmp).
 
@@ -68,6 +68,12 @@ func _views(bar: Control, tag: String) -> void:
 		await _settle(6)
 		_save(tag + "_hover", BAR_CROP)
 		power.mouse_exited.emit()
+	# The mission opening its text (it folds back to the icon on its own after a few seconds).
+	var quest: Control = bar.get("_quest_btn")
+	if quest != null and quest.visible:
+		bar.call("_quest_v31_reveal_then_collapse")
+		await get_tree().create_timer(0.9).timeout
+		_save(tag + "_mission", BAR_CROP)
 	bar.call("_toggle_fly", "treasury")
 	await _settle(12)
 	_save(tag + "_treasury", FLYOUT_CROP)

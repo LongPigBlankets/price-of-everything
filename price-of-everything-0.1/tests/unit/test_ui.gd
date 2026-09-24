@@ -1169,13 +1169,42 @@ func _test_topbar_ds2_strip() -> void:
 	_check(coin != null and not coin.visible, "top bar ds2: no coin beside the cash, the £ and the screen say what it is")
 	MatchState.money = money_was
 	bar.call("_refresh_treasury")
+	var pairs: Array = bar.get("_ds2_lamps")
+	var power_led = bar.get("_power_led")
+	var power_lamp: Control = null
+	for pair: Array in pairs:
+		if pair[0] == power_led:
+			power_lamp = pair[1]
+	var power_was: bool = power_led.lit
+	var power_colour: Color = power_led.color
+	var power_blink: bool = power_led.blink
+	power_led.blink = false
+	power_led.color = Color("#e2604a")
+	power_led.lit = true
+	await get_tree().process_frame
+	var lit_colour := str(power_lamp.get("colour")) if power_lamp != null else ""
+	power_led.lit = false
+	await get_tree().process_frame
+	var off_colour := str(power_lamp.get("colour")) if power_lamp != null else ""
+	power_led.lit = power_was
+	power_led.color = power_colour
+	power_led.blink = power_blink
+	_check(pairs.size() >= 7 and power_lamp != null and power_lamp.visible and power_led.self_modulate.a == 0.0
+		and lit_colour == "red" and off_colour == "off",
+		"top bar ds2: each lamp is Building Detail's pilot lamp, following its state (%d lamps, lit %s, off %s)" % [pairs.size(), lit_colour, off_colour])
+	var quest: Control = bar.get("_quest_btn")
+	if quest != null and quest.visible:
+		var right_edge: float = bar.get("_ds2_quest_right")
+		_check(absf(quest.get_global_rect().end.x - right_edge) <= 1.0,
+			"top bar ds2: the mission stands against the left pipes, opening to the left (right %.1f, want %.1f, x %.1f w %.1f)" % [quest.get_global_rect().end.x, right_edge, quest.position.x, quest.size.x])
 	var shade: Node2D = bar.get_node_or_null("Ds2Shade")
 	_check(shade != null and shade.visible and bar.get_child(bar.get_child_count() - 1) == shade,
 		"top bar ds2: the lamp's shade is over the strip, drawn last")
 	UiPrefs.set_use_topbar_ds2(false)
 	for _i in 4:
 		await get_tree().process_frame
-	_check(names.call() == v31_names and not shade.visible and not cash.visible,
+	_check(names.call() == v31_names and not shade.visible and not cash.visible
+		and power_lamp != null and not power_lamp.visible and power_led.self_modulate.a == 1.0,
 		"top bar ds2: switched off, the v3.1 order and look come back")
 	inst.queue_free()
 	await get_tree().process_frame
