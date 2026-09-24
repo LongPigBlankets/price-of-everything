@@ -1748,10 +1748,7 @@ func _on_go_to_tile_stockpile(tile_id: String) -> void:
 	if td.is_empty():
 		return
 	_last_selected_tile = td
-	info_panel._active_tab = "stock"
-	info_panel.show_tile(td)
-	# show_tile resets to the Buildings tab, so ask for Stockpile again afterwards.
-	info_panel._select_tab("stock")
+	info_panel.show_tile(td, "stock")
 
 ## Deep-link target for notifications etc: centre the camera on the tile and
 ## open its panel. Emitted via MatchState.focus_tile_requested.

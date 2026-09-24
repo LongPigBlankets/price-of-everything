@@ -528,14 +528,20 @@ func _select_tab(tab_id: String) -> void:
 # ─────────────────────────────────────────────────────────────────────────────
 # Public entry point
 # ─────────────────────────────────────────────────────────────────────────────
-func show_tile(tile_data: Dictionary) -> void:
+
+## Whether the tile is yours to run: you own land on it, or have goods stored there.
+static func player_present_on_tile(tile_id: String) -> bool:
+	return BuildingState.get_tile_land_owned(tile_id) > 0 or Stockpile.get_used_capacity(tile_id) > 0
+## Opens a tile's panel on `tab` ("bl" Buildings, "power", "goods", "stock"): a new tile opens on Buildings, a
+## deep link names the tab it points at.
+func show_tile(tile_data: Dictionary, tab: String = "bl") -> void:
 	_close_goods_drawer()
 	_stock_sel.clear()
 	_stock_dest = ""
 	_current_tile_data = tile_data
 	_current_tile_id = str(tile_data.get("id", ""))
 	Audio.tile_ambience(str(tile_data.get("type", "")))  # looping terrain ambience while this panel is open
-	_active_tab = "bl"  # always land on the Buildings tab when a new tile is selected
+	_active_tab = tab if _panes.has(tab) else "bl"
 	_warehouse_expand = false
 	_refresh_banner(tile_data)
 	_refresh_land_rail()
@@ -1983,9 +1989,14 @@ func _build_stock_pane(pane: VBoxContainer) -> void:
 	# The two controls at the top of this pane are deliberately independent from the
 	# goods chart below: surplus is a tile-wide standing order, while Manage Logistics
 	# changes the input/output policy for every eligible building on this tile.
+	# Surplus, logistics and the warehouse's expansion are yours to set only where you own land or
+	# have goods; on anyone else's tile the pane reports and offers nothing.
+	var present := player_present_on_tile(_current_tile_id)
+	has_logistics = has_logistics and present
 	if has_logistics and _stock_manage_expanded:
 		pane.add_child(_make_stockpile_back_button())
-	pane.add_child(_make_surplus_controls())
+	if present:
+		pane.add_child(_make_surplus_controls())
 	if has_logistics:
 		if _stock_manage_expanded:
 			pane.add_child(_make_tile_logistics_controls(logistics))
@@ -2102,7 +2113,7 @@ func _make_warehouse_section() -> Control:
 		done.theme_type_variation = &"Caption"
 		done.add_theme_color_override("font_color", DS.PALETTE.TEXT_MUTED)
 		return done
-	if not _warehouse_expand:
+	if not _warehouse_expand or not player_present_on_tile(_current_tile_id):
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
 		var lvl := Label.new()
@@ -2110,6 +2121,8 @@ func _make_warehouse_section() -> Control:
 		lvl.theme_type_variation = &"Body"
 		lvl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(lvl)
+		if not player_present_on_tile(_current_tile_id):
+			return row
 		var expand_btn := _make_action_button("Expand to L%d (%d)" % [int(quote.get("next_level", 2)), int(quote.get("next_cap", 0))])
 		expand_btn.pressed.connect(func() -> void:
 			_warehouse_expand = true

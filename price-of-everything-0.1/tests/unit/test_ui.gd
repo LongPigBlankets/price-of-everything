@@ -256,6 +256,44 @@ func _test_grid_selection_follows_panel() -> void:
 	terrain.queue_free()
 	await get_tree().process_frame
 
+func _test_tile_view_numbers_and_links() -> void:
+	# The tile view's Goods and Power are the engine's figures for your buildings only; a link opens the
+	# tab it names; the stock controls are yours only where you own land or goods.
+	MatchState.reset()
+	Stockpile.clear_all()
+	var TVD := preload("res://scripts/tile_view_data.gd")
+	var Econ := preload("res://scripts/building_economics.gd")
+	var tile := "tile_5_10"
+	var mine := BuildingState.add_building("b_007", "r_009", tile, MatchState.LOCAL_PLAYER, "tvn_mine")
+	BuildingState.add_building("b_007", "r_009", tile, "npc_glass", "tvn_npc")
+	var prod: Dictionary = TVD.production_summary(tile)
+	var want: float = float(Econ.per_turn(BuildingState.get_building(mine)).get("net_value_added", 0.0))
+	_check(is_equal_approx(float(prod.net_value), want),
+		"tile view: Goods' net value is your buildings' net value added, as Building Detail quotes it (%.2f vs %.2f)" % [float(prod.net_value), want])
+	var produced_was: Dictionary = Power.tile_produced
+	var drawn_was: Dictionary = Power.tile_drawn
+	Power.tile_produced = {tile: 40}
+	Power.tile_drawn = {tile: 28}
+	var pw: Dictionary = TVD.power_summary(tile)
+	Power.tile_produced = produced_was
+	Power.tile_drawn = drawn_was
+	_check(int(pw.produced) == 40 and int(pw.consumed) == 28 and int(pw.net) == 12,
+		"tile view: Power reads the engine's per-tile MW")
+	var Panel := load("res://scripts/tile_info_panel_v2.gd")
+	_check(not Panel.player_present_on_tile("tile_0_0") and (Panel.player_present_on_tile(tile) == (BuildingState.get_tile_land_owned(tile) > 0 or Stockpile.get_used_capacity(tile) > 0)),
+		"tile view: the stock controls are yours only where you own land or have goods")
+	var panel: Control = Panel.new()
+	add_child(panel)
+	await get_tree().process_frame
+	panel.show_tile({"id": tile}, "stock")
+	var landed := str(panel.get("_active_tab"))
+	panel.show_tile({"id": tile})
+	_check(landed == "stock" and str(panel.get("_active_tab")) == "bl",
+		"tile view: a link opens the tab it names; a new tile opens on Buildings")
+	panel.queue_free()
+	BuildingState.buildings.erase(mine)
+	BuildingState.buildings.erase("tvn_npc")
+
 func _test_tile_view_player_building_filter() -> void:
 	MatchState.reset()
 	Stockpile.clear_all()
