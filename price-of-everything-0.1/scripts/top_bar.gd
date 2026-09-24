@@ -601,7 +601,7 @@ func _v31_icon(tex: Texture2D, hover_source: Control = null) -> Control:
 	icon.size = dest.size
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	wrap.add_child(icon)
-	_ds2_add_face(wrap, icon, tex, box)
+	_ds2_add_face(wrap, icon, tex, box, hover_source)
 	if hover_source != null:
 		var spec := TextureRect.new()
 		spec.texture = SPECULAR_TEX
@@ -618,7 +618,7 @@ func _v31_icon(tex: Texture2D, hover_source: Control = null) -> Control:
 
 ## DS2: the raised face and its shadow for a bar icon, fitted by the face's own art into the icon's box, hidden
 ## until _ds2_apply shows them in place of the v3.1 art.
-func _ds2_add_face(wrap: Control, icon: TextureRect, tex: Texture2D, box: Vector2) -> void:
+func _ds2_add_face(wrap: Control, icon: TextureRect, tex: Texture2D, box: Vector2, hover_source: Control = null) -> void:
 	var face_name: String = DS2_BAR_ICONS.get(tex.resource_path, "")
 	if face_name == "":
 		return
@@ -641,6 +641,11 @@ func _ds2_add_face(wrap: Control, icon: TextureRect, tex: Texture2D, box: Vector
 		wrap.add_child(r)
 		rects.append(r)
 	_ds2_faces.append([icon, rects[1], rects[0]])
+	# Hovered, the raised face brightens, as a Building Detail indicator does.
+	if hover_source != null:
+		var face_rect := rects[1]
+		hover_source.mouse_entered.connect(func() -> void: face_rect.modulate = BdpV3Indicator.HOT_MODULATE)
+		hover_source.mouse_exited.connect(func() -> void: face_rect.modulate = Color.WHITE)
 
 
 ## Where a bar icon's canvas is drawn so its art fills the cap: `box` is the art's size on the
@@ -1424,6 +1429,10 @@ const DS2_INK_OUTLINE := Color(0.03, 0.05, 0.08, 0.5)
 const DS2_CASH_SCALE := 0.75
 const DS2_CASH_COLOUR := Color("#f4f6fa")
 const DS2_CASH_RED := Color("#e66060")   # DS2 DANGER on dark: the cash below zero
+## The profit line and the runway, printed on the light concrete: DS2's inks for light surfaces (the ones
+## Building Detail uses on white plastic), darker than the bar's green and red so they hold their contrast.
+const DS2_INK_GOOD := Color("#1d6b3a")
+const DS2_INK_BAD := Color("#8f1f19")
 const Led := preload("res://scripts/bdp_v3_led.gd")
 const Counter := preload("res://scripts/bdp_v3_counter.gd")
 const Readout := preload("res://scripts/bdp_v3_readout.gd")
@@ -1449,6 +1458,9 @@ var _ds2_freight_wraps: Array[Control] = []
 var _ds2_lamps: Array[Array] = []
 ## The mission's section in DS2, as [left, right] screen x: from the works' end to the left pipes.
 var _ds2_quest_area := Vector2.ZERO
+## For tools and tests: the Transport lamp the readout reads ("storage", "links", "freight"), in place of
+## the one under the pointer. Empty in play.
+var ds2_readout_cell := ""
 ## DS2: the readout under the bar and the module it is reading.
 var _ds2_readout: Control
 var _ds2_hover: Control = null
@@ -1521,7 +1533,7 @@ func _ds2_apply() -> void:
 	_ds2_shade.visible = on
 	_ds2_left_gap.visible = on
 	for label: Label in [_net_label, _runway_label]:
-		_ds2_ink(label, on)
+		_ds2_print_on_concrete(label, on)
 	var hbox := _hbox()
 	if on:
 		var order: Array[Node] = [_hbox_child("PowerModule"), _hbox_child("TransportModule"), _ds2_left_gap,
@@ -1625,6 +1637,8 @@ func _ds2_readout_content(mod: Control) -> Dictionary:
 				var slot := (pair[1] as Control).get_parent() as Control
 				if slot != null and mouse >= slot.get_global_rect().position.x - 4.0:
 					cell = str(pair[0])
+			if ds2_readout_cell != "":
+				cell = ds2_readout_cell
 			var st: Dictionary = t[cell]
 			return {"stage": "Transport", "name": st.name, "detail": st.detail, "tone": st.tone}
 		"VictoryModule":
@@ -3614,6 +3628,16 @@ func _ds2_print(text: String, font_px: int) -> Label:
 	return l
 
 
+## Dark ink printed on the light concrete: no outline, a faint light shadow below so it reads as printed
+## into the surface. Off again for v3.1.
+func _ds2_print_on_concrete(label: Label, on: bool) -> void:
+	_ds2_ink(label, false)
+	if on:
+		label.add_theme_color_override("font_shadow_color", Color(1, 1, 1, 0.35))
+		label.add_theme_constant_override("shadow_offset_x", 0)
+		label.add_theme_constant_override("shadow_offset_y", 1)
+
+
 ## A dark outline and a shadow down and to the right, so a figure stands out on the light concrete; off
 ## again for v3.1.
 func _ds2_ink(label: Label, on: bool) -> void:
@@ -3662,7 +3686,10 @@ func _refresh_treasury() -> void:
 	var net := Production.cash_change_of(s)
 	_net_label.text = ("+" if net >= 0.0 else "−") + _money_text(absf(net)) + " last turn"
 	_net_label.tooltip_text = "Last production settlement, including building-credit repayments and conversion loan proceeds. Purchases and borrowing between turns and later events are separate."
-	_net_label.add_theme_color_override("font_color", C_GOOD if net >= 0.0 else C_BAD)
+	var ds2_ink: bool = UiPrefs.use_topbar_ds2
+	_net_label.add_theme_color_override("font_color", (DS2_INK_GOOD if net >= 0.0 else DS2_INK_BAD) if ds2_ink
+		else (C_GOOD if net >= 0.0 else C_BAD))
+	_runway_label.add_theme_color_override("font_color", DS2_INK_BAD if ds2_ink else C_RED)
 	# LED: overdrawn AND still losing money. Either alone is survivable — a negative
 	# balance with a profitable turn is climbing out, and a loss with cash in hand is
 	# affordable. Together they are the shape that ends runs (spec §1.3).
