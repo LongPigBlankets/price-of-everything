@@ -1263,5 +1263,35 @@
   ],
   "margin": 14,
   "corner": 54
+ },
+ "dark_plate": {
+  "size": [
+   900,
+   1400
+  ]
+ },
+ "gauge_socket": {
+  "size": [
+   240,
+   240
+  ],
+  "hole": 108,
+  "chamfer": 6
+ },
+ "icon_well": {
+  "size": [
+   240,
+   240
+  ],
+  "margin": 12,
+  "rim": 7,
+  "radius": 10
+ },
+ "mod_icon": {
+  "size": [
+   110,
+   110
+  ],
+  "icon": 80
  }
 }

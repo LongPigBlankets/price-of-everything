@@ -202,6 +202,8 @@ Decided later on 24 September 2026:
 - The diagnostics case has four screws along the top and the bottom and six down each side; each check is a raised module with the cable feeding into it. "Always shown" becomes a Visual / Text switch, set to Text; it does nothing until the visual view is built.
 - Cost gauges 25% larger (160 px), their figures moved right, centred in the room beside the gauge.
 - Modifiers become a white keycap with a % sign, opening a white plastic sheet with navy text.
+- Cost to produce gets its own dark metal plate with the gauges set into it, and each gauge the good's icon to its left, set below a thin metal frame. Inbound shipments get the same plate and frames, their quantity pills inside the icons.
+- Modifiers follow the Inputs row: the % sign raised white on the metal, the text on a raised white keycap that opens the sheet.
 
 Still open:
 

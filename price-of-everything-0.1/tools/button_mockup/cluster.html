@@ -1458,6 +1458,91 @@ function whiteSheet() {
 }
 
 /**
+ * Dark metal for a section's own plate (Cost to produce, Inbound shipments): the backing's steel taken
+ * down to a blackened gunmetal. The plate fills the frame's inside, its edges under the rim, so the
+ * render is one large plain face that the game crops from its middle (no stretching, so its scratches
+ * are the size of every other plate's).
+ */
+const DARK_STEEL_CANVAS = (() => {
+  // Blurred from a copy with mirrored texture past each edge, so the blur doesn't fade the edges: the
+  // plate repeats this canvas mirrored, and a faded edge would show as a bright line across it.
+  const w = PLATE_TEX.width, h = PLATE_TEX.height, pad = 32;
+  const padded = document.createElement('canvas'); padded.width = w + 2 * pad; padded.height = h + 2 * pad;
+  const pg = padded.getContext('2d');
+  for (const i of [-1, 0, 1]) for (const j of [-1, 0, 1]) {
+    pg.save(); pg.translate(pad + (i ? (i + 1) * w : 0), pad + (j ? (j + 1) * h : 0)); pg.scale(i ? -1 : 1, j ? -1 : 1);
+    pg.drawImage(PLATE_TEX, 0, 0); pg.restore();
+  }
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.filter = 'brightness(1.6) contrast(0.5) blur(7px) grayscale(1)'; g.drawImage(padded, -pad, -pad);
+  g.globalAlpha = 0.24; g.filter = 'brightness(1.6) contrast(0.55) grayscale(1)'; g.drawImage(PLATE_TEX, 0, 0);
+  g.globalAlpha = 1; g.filter = 'none';
+  g.globalCompositeOperation = 'multiply'; g.fillStyle = '#6c6e72'; g.fillRect(0, 0, c.width, c.height);
+  return c;
+})();
+const DARK_PLATE = { W: 900, H: 1400 };
+function darkPlate() {
+  const { W, H } = DARK_PLATE, g = new THREE.Group();
+  // An extruded face, not a plane: the plate textures map by shape pixels (faceTexture).
+  const face = new THREE.Mesh(extrude(rrShape(W, H, 2), 2),
+    [plateMaterial(W, H, { icons: [], buttons: [], screws: [], base: DARK_STEEL_CANVAS, rub: '130,138,150' }), MAT.plateSide]);
+  face.receiveShadow = true; face.position.set(W / 2, 0, H / 2); g.add(face);
+  return g;
+}
+
+/**
+ * The hole a gauge is set into in a dark plate: a chamfered cut through the plate, bright where it
+ * faces the light, and the dark cavity below, a little wider than the gauge's bezel so a thin gap shows
+ * round it. Transparent beyond the cut, so the plate shows through.
+ */
+const SOCKET = { S: 240, hole: 108, chamfer: 6, depth: 4 };
+function gaugeSocket() {
+  const { S, hole, chamfer, depth } = SOCKET, g = new THREE.Group(), c = S / 2;
+  const cut = new THREE.MeshStandardMaterial({ color: 0x70767e, map: noiseTexture(20, 40, 60), metalness: 1, roughness: 0.38, envMap: studioEnv, envMapIntensity: 0.9, side: THREE.BackSide });
+  const cone = new THREE.Mesh(new THREE.CylinderGeometry(hole + chamfer, hole, depth, 120, 1, true), cut);
+  cone.position.set(c, -depth / 2, c); cone.receiveShadow = true; g.add(cone);
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(hole, 120).rotateX(-Math.PI / 2), MAT.gap);
+  floor.position.set(c, -depth, c); g.add(floor);
+  return g;
+}
+
+/**
+ * A thin metal frame round a good's icon, the icon set below it: a narrow ring of the keycaps' bezel
+ * metal, its shadow on the plate outside, and inside the frame's shadow and a soft shade along the
+ * opening's edge, deepest at the top-left, falling onto the icon. Transparent in the opening, so the
+ * game draws it over the icon. A 9-slice.
+ */
+const WELL = { W: 240, H: 240, M: 12, rim: 7, r: 10 };
+function iconWell() {
+  const { W, H, M, rim, r } = WELL, g = new THREE.Group(), ow = W - 2 * M, oh = H - 2 * M;
+  const shape = rrShape(ow, oh, r + rim); shape.holes.push(rr(new THREE.Path(), ow - 2 * rim, oh - 2 * rim, r));
+  const frame = new THREE.Mesh(extrude(shape, 3, 1.2, 0.9, 3), MAT.frame);
+  frame.castShadow = frame.receiveShadow = true; frame.position.set(W / 2, 0, H / 2); g.add(frame);
+  g.add(shadowCatcher(W, H, W / 2, H / 2, 0.05, 0.6));
+  return g;
+}
+function paintWellShade(g) {
+  const { W, H, M, rim, r } = WELL, x0 = M + rim, y0 = M + rim, iw = W - 2 * x0, ih = H - 2 * y0;
+  g.save(); g.beginPath(); g.roundRect(x0, y0, iw, ih, r); g.clip();
+  g.filter = 'blur(2.5px)';
+  g.lineWidth = 5; g.strokeStyle = 'rgba(0,0,0,0.3)'; g.beginPath(); g.roundRect(x0, y0, iw, ih, r); g.stroke();
+  g.lineWidth = 7; g.strokeStyle = 'rgba(0,0,0,0.38)'; g.beginPath(); g.roundRect(x0 + 3, y0 + 3, iw, ih, r); g.stroke();
+  g.restore();
+}
+
+/** The Modifiers row's icon: a % sign, two rings and a slash, raised white on the metal like Inputs'. */
+const MODICON = { S: 110, icon: 80 };
+function drawPercent(g, w, h, col) {
+  const s = Math.min(w, h);
+  g.save(); g.translate((w - s) / 2, (h - s) / 2); g.strokeStyle = col; g.lineCap = 'round';
+  g.lineWidth = s * 0.13; g.beginPath(); g.moveTo(s * 0.22, s * 0.86); g.lineTo(s * 0.78, s * 0.14); g.stroke();
+  g.lineWidth = s * 0.1;
+  for (const [cx, cy] of [[0.26, 0.26], [0.74, 0.74]]) { g.beginPath(); g.arc(s * cx, s * cy, s * 0.14, 0, Math.PI * 2); g.stroke(); }
+  g.restore();
+}
+
+/**
  * A weld bead along a rounded rectangle's edge (w × h, corner r, centred on the origin): a rounded ridge
  * of bronze filler, radius `rad`, rippled every 2.6 px as a bead laid in runs is, lying on the join.
  */
@@ -1613,6 +1698,9 @@ if (EXPORT) exportLayers();
  *           the Visual / Text switch.
  * labour_door, labour_door_lit: Labour and Wages' factory door, its window dark and lit.
  * key_modifiers (+ _pressed), sheet_white: the Modifiers key and the white sheet it opens onto.
+ * dark_plate, gauge_socket, icon_well: a section's dark metal plate, the hole a gauge is set into, and
+ *           the thin frame round an icon set below it.
+ * mod_icon, mod_icon_shadow: the Modifiers row's raised % sign and its swept shadow.
  * layout.json: frame sizes and every key's rect and top face, in capture pixels.
  * ?export&only=lamp,scroll renders just the named sets (see `want` below).
  */
@@ -1623,7 +1711,7 @@ async function exportLayers() {
   // ?export&only=lamp,scroll renders just those sets and merges their entries into the existing
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
-  // toggle, ldoor, modkey, sheetw.
+  // toggle, ldoor, modkey, sheetw, darkplate, modicon.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -1981,6 +2069,27 @@ async function exportLayers() {
   if (want('sheetw')) await withSeed(417, async () => {
     await post('sheet_white', stage([0, 0, WSHEET.W, WSHEET.H], [whiteSheet()]).grab());
     layout.sheet_white = { size: [WSHEET.W, WSHEET.H], margin: WSHEET.M, corner: WSHEET.M + 40 };
+  });
+
+  // --- the dark metal plate, the socket a gauge is set into, the frame round a set-in icon, and the
+  // Modifiers row's raised % sign and its shadow.
+  if (want('darkplate')) await withSeed(418, async () => {
+    await post('dark_plate', stage([0, 0, DARK_PLATE.W, DARK_PLATE.H], [darkPlate()]).grab());
+    await post('gauge_socket', stage([0, 0, SOCKET.S, SOCKET.S], [gaugeSocket()]).grab());
+    const well = stage([0, 0, WELL.W, WELL.H], [iconWell()]).grab();
+    await post('icon_well', frame2d(WELL.W, WELL.H, (g) => { g.drawImage(well, 0, 0, WELL.W, WELL.H); paintWellShade(g); }));
+    layout.dark_plate = { size: [DARK_PLATE.W, DARK_PLATE.H] };
+    layout.gauge_socket = { size: [SOCKET.S, SOCKET.S], hole: SOCKET.hole, chamfer: SOCKET.chamfer };
+    layout.icon_well = { size: [WELL.W, WELL.H], margin: WELL.M, rim: WELL.rim, radius: WELL.r };
+  });
+  if (want('modicon')) await withSeed(419, async () => {
+    const { S, icon } = MODICON, enamel = new THREE.MeshPhysicalMaterial({ color: OFF_WHITE, roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.3 });
+    const r = relief(icon, icon, (g, a, b) => drawPercent(g, a, b, '#fff'), enamel, { height: 10, soften: 1.3 });
+    r.position.set(S / 2, 0.3, S / 2);
+    await post('mod_icon', stage([0, 0, S, S], [r]).grab());
+    const o = (S - icon) / 2;
+    await post('mod_icon_shadow', frame2d(S, S, (g) => drawIconShadows(g, S, S, [{ height: 10, draw: (tg, col) => { tg.save(); tg.translate(o, o); drawPercent(tg, icon, icon, col); tg.restore(); } }])));
+    layout.mod_icon = { size: [S, S], icon };
   });
 
   // --- the title's letters: the raised white faces (ungraded; the game grades the whole title), and

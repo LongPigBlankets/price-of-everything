@@ -1,9 +1,9 @@
 extends Control
-## Building Detail v3: the Modifiers key, a wide off-white keycap like Inputs' and Outputs'
+## Building Detail v3: the Modifiers key, an off-white keycap like Inputs' and Outputs'
 ## (res://assets/ui/bdp_v3/key_modifiers.png and _pressed, rendered blank by
-## tools/button_mockup/cluster.html?export and drawn as a horizontal three-slice), with a navy % sign,
-## the word Modifiers, the output modifier on the right and a chevron printed on its top. It latches
-## down while the modifiers are open.
+## tools/button_mockup/cluster.html?export and drawn as a horizontal three-slice), with the output
+## modifier (or None) printed on its top as Inputs' key prints its route, and a chevron at its right end.
+## It latches down while the modifiers are open.
 
 signal toggled(open: bool)
 
@@ -80,25 +80,19 @@ func _draw() -> void:
 	draw_texture_rect_region(tex, Rect2(dest.position.x + cap_px, dest.position.y, dest.size.x - 2.0 * cap_px, dest.size.y),
 		Rect2(cap_tx, 0, tw - 2.0 * cap_tx, th), tint)
 	draw_texture_rect_region(tex, Rect2(dest.end.x - cap_px, dest.position.y, cap_px, dest.size.y), Rect2(tw - cap_tx, 0, cap_tx, th), tint)
-	# The print on the flat top.
+	# The print on the flat top: the summary from its left, the chevron at its right end, pointing down
+	# while open.
 	var face := Rect2(Vector2.ZERO, size).grow(-FACE_INSET / CAPTURE_SCALE)
 	var mid := face.get_center().y
 	var bold: Font = Plate.FONT_BOLD
-	var pct_size := 26
-	var x := face.position.x + 6.0
-	draw_string(bold, Vector2(x, _baseline(bold, pct_size, mid)), "%", HORIZONTAL_ALIGNMENT_LEFT, -1, pct_size, NAVY)
-	x += bold.get_string_size("%", HORIZONTAL_ALIGNMENT_LEFT, -1, pct_size).x + 10.0
-	draw_string(bold, Vector2(x, _baseline(bold, 20, mid)), "MODIFIERS", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, NAVY)
-	# The chevron at the right end points down while open, and the summary sits to its left.
+	if summary != "":
+		var fs := Plate._fit(bold, summary, 22, face.size.x - 34.0)
+		draw_string(bold, Vector2(face.position.x + 6.0, _baseline(bold, fs, mid)), summary, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, summary_ink)
 	var cx := face.end.x - 12.0
 	var c := 5.0
 	var pts := PackedVector2Array([Vector2(cx - c, mid - c * 0.5), Vector2(cx, mid + c * 0.5), Vector2(cx + c, mid - c * 0.5)]) if open \
 		else PackedVector2Array([Vector2(cx - c * 0.5, mid - c), Vector2(cx + c * 0.5, mid), Vector2(cx - c * 0.5, mid + c)])
 	draw_polyline(pts, NAVY, 2.4, true)
-	if summary != "":
-		var semi: Font = Plate.FONT_SEMI
-		var w := semi.get_string_size(summary, HORIZONTAL_ALIGNMENT_LEFT, -1, 19).x
-		draw_string(semi, Vector2(cx - 16.0 - w, _baseline(semi, 19, mid)), summary, HORIZONTAL_ALIGNMENT_LEFT, -1, 19, summary_ink)
 
 
 static func _baseline(font: Font, font_size: int, mid: float) -> float:

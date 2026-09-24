@@ -743,6 +743,11 @@ func _test_bdp_v3_panel() -> void:
 
 	var iid: String = BuildingState.add_building("b_007", "r_009", "tile_5_10", MatchState.LOCAL_PLAYER, "v3_panel")
 	var b: Dictionary = BuildingState.get_building(iid)
+	# A cost-to-produce reading, as the cost solver would leave it, so the cost section is built.
+	var saved_cost: Dictionary = CostSolver.last_result
+	var motor := str(Catalog.get_good_by_internal_name("motor").get("id", ""))
+	CostSolver.last_result = {"per_building": {iid: {"output_good_id": motor, "unit_cost": Catalog.get_base_price(motor) * 0.72,
+		"output_costs": {motor: Catalog.get_base_price(motor) * 0.72}}}, "per_good": {}}
 	var panel = load("res://scripts/building_detail_panel_v2.gd").new()
 	add_child(panel)
 	await get_tree().process_frame
@@ -826,6 +831,23 @@ func _test_bdp_v3_panel() -> void:
 		and hover_icon.custom_minimum_size.x == panel.V3_SHIP_ICON and ship_text.is_empty()
 		and ship_door != null and is_equal_approx(ship_door.custom_minimum_size.y, ship_door.rolled_up_height() + 2.0 * (panel.V3_SHIP_ICON + panel.V3_SHIP_GAP)),
 		"bdp v3: inbound shipments show large icons and stock lamps, no text, with the door down over the two empty rows (%d)" % cells.size())
+	var pill: Control = hover_icon.get_child(hover_icon.get_child_count() - 1) if hover_icon != null else null
+	_check(hover_icon != null and hover_icon.find_child("IconWell", false, false) != null and pill != null
+		and pill.offset_right <= 0.0 and pill.offset_bottom <= 0.0 and ships_card.get_parent().get_parent().get("style") == "dark",
+		"bdp v3: shipment icons sit below thin metal frames on a dark plate, their quantity pills inside the icon")
+	var cost_card: Control = panel.find_child("CostToProduceCard", true, false)
+	var cost_gauges: Array = cost_card.find_children("CostGauge*", "", true, false) if cost_card != null else []
+	var cost_wells: Array = cost_card.find_children("IconWell", "", true, false) if cost_card != null else []
+	_check(cost_card != null and cost_card.get_parent().get_parent().get("style") == "dark" and not cost_gauges.is_empty()
+		and cost_wells.size() == cost_gauges.size(),
+		"bdp v3: cost to produce sits on its own dark plate, each gauge with its good's icon set in beside it (%d)" % cost_gauges.size())
+	var room: float = panel._scroll.size.x - panel._scroll.get_v_scroll_bar().size.x
+	_check(panel._body.get_combined_minimum_size().x <= room + 0.5,
+		"bdp v3: no section needs more width than the body has, which would push the scrollbar into the trim (%.0f of %.0f px)" % [panel._body.get_combined_minimum_size().x, room])
+	var mod_row: Control = panel.find_child("ModifiersRow", true, false)
+	_check(mod_row != null and mod_row.find_child("ModifiersIcon", false, false) != null and mod_row.find_child("BdpV3Heading", true, false) != null
+		and mod_row.find_child("BdpV3ModKey", true, false) != null,
+		"bdp v3: Modifiers is laid out as Inputs: a raised % sign, the heading, and a key")
 	var labour: Control = panel.find_child("LabourV3", true, false)
 	var counters: Array = labour.find_children("*", "Control", true, false).filter(func(n: Node) -> bool: return n.get_script() == load("res://scripts/bdp_v3_counter.gd")) if labour != null else []
 	_check(counters.size() == 2 and counters[0].decimals == 2 and counters[1].decimals == 0,
@@ -930,5 +952,6 @@ func _test_bdp_v3_panel() -> void:
 		and panel._body.find_children("*", "Label", true, false)[0].material == null,
 		"bdp v3: switching it off brings back the plain title, the badge and location line, the plain scrollbar, the unedged body, the plain diagram and unshaded text")
 	panel.queue_free()
+	CostSolver.last_result = saved_cost
 	BuildingState.buildings.erase(iid)
 	UiPrefs.set_use_bdp_v3(was)

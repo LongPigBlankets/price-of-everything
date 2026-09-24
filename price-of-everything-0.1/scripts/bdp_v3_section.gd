@@ -6,12 +6,17 @@ extends MarginContainer
 ##
 ## `style` "plastic" draws a dark moulded plastic plate over the whole section instead (diag_plastic.png,
 ## also a 9-slice), with silver screws (screw_silver.png) round its edge: four along the top and four
-## along the bottom, six down each side (counting the corners).
+## along the bottom, six down each side (counting the corners). `style` "dark" keeps the steel frame and
+## fills its inside with a dark metal plate (dark_plate.png), its edges under the rim, cropped from the
+## render's middle at the render's scale rather than stretched, so its scratches are the size of every
+## other plate's.
 
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const FRAME: Texture2D = preload("res://assets/ui/bdp_v3/section_frame.png")
 const PLASTIC: Texture2D = preload("res://assets/ui/bdp_v3/diag_plastic.png")
 const SCREW: Texture2D = preload("res://assets/ui/bdp_v3/screw_silver.png")
+const DARK: Texture2D = preload("res://assets/ui/bdp_v3/dark_plate.png")
+const TEXELS_PER_PIXEL := 2.0
 const CAPTURE_SCALE := 1.875
 ## The render's layout: shadow room around the rim and the rim's width (layout pixels at the capture
 ## scale 1.875), and the 9-slice corner in texture pixels (2 per logical pixel).
@@ -74,4 +79,12 @@ func _draw() -> void:
 		for p in screw_points(size):
 			draw_texture_rect(SCREW, Rect2(p - s * 0.5, s), false)
 		return
+	if style == "dark":
+		var inside := Rect2(Vector2.ZERO, size).grow(-RIM * 0.5)
+		var tex := DARK.get_size()
+		var want := inside.size * TEXELS_PER_PIXEL
+		if want.x <= tex.x and want.y <= tex.y:
+			draw_texture_rect_region(DARK, inside, Rect2((tex - want) * 0.5, want))
+		else:
+			draw_texture_rect(DARK, inside, false)
 	Nine.paint(self, FRAME, Rect2(Vector2.ZERO, size).grow(OUTSET), CORNER_TEXELS)

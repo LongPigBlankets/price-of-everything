@@ -1658,6 +1658,8 @@ func _v3_frame_sections() -> void:
 			frame.content.add_child(child)
 			if frame_name == "diagnostics":
 				frame.style = "plastic"
+			elif frame_name in ["cost", "shipments"]:
+				frame.style = "dark"
 	# The diagnostics' plate is dark plastic, their text white and embossed on it.
 	for f in _body.get_children():
 		if f is BdpV3Section and f.style == "plastic":
@@ -2080,9 +2082,9 @@ func _plain_icon_pill(good_id: String, internal: String, qty: int, size: int) ->
 	UIHelpers.link_good_icon_to_encyclopedia(holder, good_id)
 	return holder
 
-func _good_icon_pill(good_id: String, internal: String, qty: int, size: int, base_qty: int = -1, mod_pct: int = 0) -> Control:
+func _good_icon_pill(good_id: String, internal: String, qty: int, size: int, base_qty: int = -1, mod_pct: int = 0, pill_inside := false) -> Control:
 	var holder := UIHelpers.make_plain_good_icon(good_id, internal, size)
-	holder.add_child(_qty_pill(qty, base_qty, mod_pct))
+	holder.add_child(_qty_pill(qty, base_qty, mod_pct, pill_inside))
 	# Every input and output on this panel is a way into the Goods Graph: the player is
 	# already looking at what this building eats and makes, and 'how else is that made'
 	# is the next question. ALWAYS, not the deferring form — a recipe card is itself
@@ -2091,13 +2093,16 @@ func _good_icon_pill(good_id: String, internal: String, qty: int, size: int, bas
 	UIHelpers.link_good_icon_to_encyclopedia(holder, good_id)
 	return holder
 
+const QTY_PILL_INSET := 5
+
 # Back-compat name used by construction / shipments / demolish — now the pill icon.
 func _flat_good_cell(good_id: String, internal: String, qty: int, size: int) -> Control:
 	return _good_icon_pill(good_id, internal, qty, size)
 
 # Navy qty pill overhanging an icon's bottom-right. With a modifier (base != qty) it shows the struck
 # base + effective and a green (positive) / red (negative) 2px outline; otherwise a plain pill.
-func _qty_pill(qty: int, base_qty: int = -1, _mod_pct: int = 0) -> Control:
+## `inside` keeps the pill within the icon's corner instead of overhanging it.
+func _qty_pill(qty: int, base_qty: int = -1, _mod_pct: int = 0, inside := false) -> Control:
 	# Outline colour follows the ACTUAL numbers shown (effective vs base), not a separate modifier
 	# figure that could disagree in sign — green when the effective output is higher, red when lower.
 	var has_delta := base_qty >= 0 and base_qty != qty
@@ -2108,10 +2113,11 @@ func _qty_pill(qty: int, base_qty: int = -1, _mod_pct: int = 0) -> Control:
 	pill.custom_minimum_size = Vector2(w, h)
 	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pill.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	pill.offset_left = -w + 8
-	pill.offset_top = -h + 8
-	pill.offset_right = 8
-	pill.offset_bottom = 8
+	var overhang := -QTY_PILL_INSET if inside else 8
+	pill.offset_left = -w + overhang
+	pill.offset_top = -h + overhang
+	pill.offset_right = overhang
+	pill.offset_bottom = overhang
 	var st := StyleBoxFlat.new()
 	st.bg_color = DS.PALETTE["BG_PANEL"]
 	st.set_corner_radius_all(int(h / 2.0))
@@ -2476,6 +2482,36 @@ func _build_cost_to_produce(rows: Array) -> PanelContainer:
 ## off. The needle swings from where it last read. The figures sit centred in the room right of the gauge.
 const V3_GAUGE_SIZE := 160.0
 const V3_GAUGE_SCALE_PCT := 200.0
+const V3_COST_ICON := 56
+## The hole a gauge is set into (layout.json gauge_socket), rendered for a gauge of this size.
+const V3_GAUGE_SOCKET: Texture2D = preload("res://assets/ui/bdp_v3/gauge_socket.png")
+const V3_GAUGE_SOCKET_AT := 160.0
+
+## The thin metal frame round a good's icon, the icon set below it (layout.json icon_well): how far the
+## render reaches beyond the opening, its 9-slice corner, and the opening's corner radius.
+const V3_WELL: Texture2D = preload("res://assets/ui/bdp_v3/icon_well.png")
+const V3_WELL_REACH := (12.0 + 7.0) / 1.875
+const V3_WELL_CORNER := (12.0 + 7.0 + 16.0) * 2.0 / 1.875
+const V3_WELL_RADIUS := 10.0 / 1.875
+
+## v3: sets a good's icon below a thin metal frame, its tile's corners following the frame's opening.
+## The frame goes over the art and under the quantity pill, if it has one.
+func _v3_set_in_well(icon: Control) -> void:
+	var tile := icon.get_child(0) as PanelContainer
+	if tile != null and tile.get_theme_stylebox("panel") is StyleBoxFlat:
+		var st := (tile.get_theme_stylebox("panel") as StyleBoxFlat).duplicate() as StyleBoxFlat
+		st.set_corner_radius_all(roundi(V3_WELL_RADIUS))
+		tile.add_theme_stylebox_override("panel", st)
+	var well := Control.new()
+	well.name = "IconWell"
+	well.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	well.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	well.set_anchors_preset(Control.PRESET_FULL_RECT)
+	well.draw.connect(func() -> void:
+		BdpV3Nine.paint(well, V3_WELL, Rect2(Vector2.ZERO, well.size).grow(V3_WELL_REACH), V3_WELL_CORNER))
+	well.resized.connect(well.queue_redraw)
+	icon.add_child(well)
+	icon.move_child(well, mini(2, icon.get_child_count() - 1))
 
 static func v3_cost_gauge_reading(unit_cost: float, market_price: float) -> Dictionary:
 	if unit_cost < 0.0 or market_price <= 0.0:
@@ -2486,10 +2522,23 @@ func _v3_cost_gauges(card: PanelContainer, vb: VBoxContainer, rows: Array) -> vo
 	var bare := StyleBoxEmpty.new()
 	bare.set_content_margin_all(4)
 	card.add_theme_stylebox_override("panel", bare)
+	card.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	var gauges: Array[Control] = []
+	# Each gauge is set into the section's dark plate: the card draws the hole cut for it underneath.
+	card.draw.connect(func() -> void:
+		var side := V3_GAUGE_SOCKET.get_size() / 2.0 * (V3_GAUGE_SIZE / V3_GAUGE_SOCKET_AT)
+		for g in gauges:
+			var centre: Vector2 = card.get_global_transform().affine_inverse() * g.get_global_transform() * (g.size * 0.5)
+			card.draw_texture_rect(V3_GAUGE_SOCKET, Rect2(centre - side * 0.5, side), false))
 	for r: Dictionary in rows:
 		var line := HBoxContainer.new()
-		line.add_theme_constant_override("separation", DS.SP["MD"])
+		line.add_theme_constant_override("separation", DS.SP["SM"])
 		vb.add_child(line)
+		var gid := str(r.get("good_id", ""))
+		var good_icon := UIHelpers.make_plain_good_icon(gid, Catalog.get_internal_name(gid), V3_COST_ICON)
+		UIHelpers.link_good_icon_to_encyclopedia(good_icon, gid)
+		_v3_set_in_well(good_icon)
+		line.add_child(good_icon)
 		var reading := v3_cost_gauge_reading(float(r.get("unit_cost", -1.0)), float(r.get("market_price", 0.0)))
 		var gauge: PanelGauge = PanelGauge.new()
 		gauge.name = "CostGauge"
@@ -2506,6 +2555,8 @@ func _v3_cost_gauges(card: PanelContainer, vb: VBoxContainer, rows: Array) -> vo
 			gauge.value = target
 		_v3_last_readings[key] = target
 		line.add_child(gauge)
+		gauges.append(gauge)
+		gauge.item_rect_changed.connect(card.queue_redraw)
 		var col := VBoxContainer.new()
 		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -2674,18 +2725,45 @@ func _fill_modifiers(vb: VBoxContainer, total: int, by_cat: Dictionary) -> void:
 			vb.add_child(line)
 
 
-## v3's Modifiers: a wide off-white key with a % sign that opens a white plastic sheet under it, the
-## rows printed on it in navy (the category figures in darker greens and reds, to read on white). The
-## key latches down while the sheet is open, and it stays open across rebuilds.
+## v3's Modifiers, laid out as Inputs is on the control plate: a % sign raised white on the metal, the
+## heading in raised letters over an off-white key with the output modifier (or None) printed on it.
+## The key opens a white plastic sheet under the row, the rows printed on it in navy (the category
+## figures in darker greens and reds, to read on white). It latches down while the sheet is open, and
+## the sheet stays open across rebuilds.
 const V3_SHEET_WHITE: Texture2D = preload("res://assets/ui/bdp_v3/sheet_white.png")
 const V3_SHEET_WHITE_MARGIN := 14.0 / 1.875
 const V3_SHEET_WHITE_CORNER := (14.0 + 40.0) * 2.0 / 1.875
 const V3_INK := {"ok": Color("#1d6b3a"), "warn": Color("#7a4a00"), "bad": Color("#8f1f19")}
+## The % sign and its swept shadow (layout.json mod_icon), in a frame this many layout pixels square.
+const V3_MOD_ICON: Texture2D = preload("res://assets/ui/bdp_v3/mod_icon.png")
+const V3_MOD_ICON_SHADOW: Texture2D = preload("res://assets/ui/bdp_v3/mod_icon_shadow.png")
+const V3_MOD_ICON_FRAME := 110.0
 var _v3_modifiers_open := false
 
 func _v3_modifiers(mod: Dictionary, total: int, by_cat: Dictionary) -> void:
+	var row := HBoxContainer.new()
+	row.name = "ModifiersRow"
+	row.set_meta("v3_section", "Modifiers")
+	row.add_theme_constant_override("separation", DS.SP["SM"])
+	var icon := Control.new()
+	icon.name = "ModifiersIcon"
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	icon.custom_minimum_size = Vector2.ONE * V3_MOD_ICON_FRAME / 1.875
+	icon.size_flags_vertical = Control.SIZE_SHRINK_END
+	icon.draw.connect(func() -> void:
+		icon.draw_texture_rect(V3_MOD_ICON_SHADOW, Rect2(Vector2.ZERO, icon.size), false)
+		icon.draw_texture_rect(V3_MOD_ICON, Rect2(Vector2.ZERO, icon.size), false))
+	row.add_child(icon)
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 4)
+	row.add_child(col)
+	var heading: Control = BdpV3Heading.new()
+	heading.text = "Modifiers"
+	col.add_child(heading)
 	var key: Control = BdpV3ModKey.new()
-	key.set_meta("v3_section", "Modifiers")
+	col.add_child(key)
 	if total == 0:
 		key.summary = "None"
 	else:
@@ -2693,7 +2771,7 @@ func _v3_modifiers(mod: Dictionary, total: int, by_cat: Dictionary) -> void:
 		key.summary = "Output %s" % _mod_pct_text(out_pct)
 		key.summary_ink = _v3_ink(_mod_tone(out_pct, true))
 	key.set_open(_v3_modifiers_open)
-	_body.add_child(key)
+	_body.add_child(row)
 	var sheet := PanelContainer.new()
 	sheet.name = "ModifiersSheet"
 	sheet.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -2968,8 +3046,9 @@ func _v3_ship_row(goods: Array) -> HBoxContainer:
 		var need := int(s.get("need", 0))
 		var inbound := int(s.get("inbound", 0))
 		var supply := v3_input_supply(_current_building, recipe, gid, str(s.get("from", "")))
-		var icon := _good_icon_pill(gid, str(s.get("internal", "")), need, V3_SHIP_ICON)
+		var icon := _good_icon_pill(gid, str(s.get("internal", "")), need, V3_SHIP_ICON, -1, 0, true)
 		icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		_v3_set_in_well(icon)
 		var lines := PackedStringArray(["Stored: %d" % stored, "Needed to run: %d" % need, "Supplied by: %s" % supply])
 		if inbound > 0:
 			var eta := int(s.get("eta_turns", -1))
