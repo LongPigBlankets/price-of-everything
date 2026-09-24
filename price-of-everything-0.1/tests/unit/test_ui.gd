@@ -1132,8 +1132,8 @@ func _test_top_bar_status() -> void:
 	_check(Status.power().tone == "ok" and Status.power().name == "Self sufficient", "top bar status: own generation only is self sufficient")
 	Production.last_turn_summary = {"power_supply": 40, "grid_bought": 12}
 	var grid: Dictionary = Status.power()
-	_check(grid.tone == "warn" and not bool(grid.blink) and str(grid.detail).contains("12 MW bought"),
-		"top bar status: buying from the grid is amber, with the MW in the detail")
+	_check(grid.tone == "warn" and not bool(grid.blink) and grid.detail == "You generated 40 MW. 12 MW came from the national grid.",
+		"top bar status: buying from the grid is amber: you generated X, Y came from the national grid")
 	Production._intermittency_by_building = {"x": {"derate": 0.3}}
 	var inter: Dictionary = Status.power()
 	_check(inter.tone == "warn" and bool(inter.blink) and inter.name == "Intermittent supply",
@@ -1144,6 +1144,9 @@ func _test_top_bar_status() -> void:
 		"top bar status: freight stuck on arrival lights the freight lamp")
 	TransportState.overflow_shipments = []
 	_check(Status.transport().freight.tone == "ok", "top bar status: with nothing stuck the freight lamp is off")
+	var links_was: Array = TransportState.congested_links()
+	_check(Status.transport().links.detail == ("All shipments are working as expected." if links_was.is_empty() else Status.transport().links.detail),
+		"top bar status: links in order read 'All shipments are working as expected.'")
 	for st: Dictionary in [grid, inter, t.storage, t.links, t.freight]:
 		var copy := str(st.name) + " " + str(st.detail)
 		_check(not copy.contains(" - ") and not copy.contains(";") and not copy.contains("—"), "top bar status: plain copy (%s)" % copy)

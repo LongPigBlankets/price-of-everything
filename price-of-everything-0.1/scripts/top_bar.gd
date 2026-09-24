@@ -1002,9 +1002,10 @@ func _refresh_transport() -> void:
 	# count this replaced read '0 units → market' in any game shipping tile-to-tile, which is most of
 	# them, so the module spent the early game reporting nothing at all. The port lamp watches
 	# freight stuck on arrival, the one thing that can go wrong after a shipment set off.
-	(_store_led as StatusLed).lit = TopBarStatus.lit(status.storage)
-	(_road_led as StatusLed).lit = TopBarStatus.lit(status.links)
-	(_port_led as StatusLed).lit = TopBarStatus.lit(status.freight)
+	for pair: Array in [[_store_led, status.storage], [_road_led, status.links], [_port_led, status.freight]]:
+		var led := pair[0] as StatusLed
+		led.color = C_AMBER if str((pair[1] as Dictionary).tone) == "warn" else C_RED
+		led.lit = TopBarStatus.lit(pair[1])
 	_transport_btn.tooltip_text = "Transport — %d tile%s at 95%%+ storage (%d refusing), %d link%s over capacity, %s unit%s riding to market" % [
 		int(t.full), "" if int(t.full) == 1 else "s", int(t.rejecting),
 		int(t.over), "" if int(t.over) == 1 else "s",
@@ -1613,7 +1614,8 @@ func _ds2_show_readout() -> void:
 
 
 ## What a module's readout says: {stage, name, detail, tone}. Power and Transport come from TopBarStatus,
-## as their lamps do; Transport reads the lamp under the pointer.
+## as their lamps do; Transport reads the lamp under the pointer. An empty tone shows no lamp (the modules
+## that open a view rather than report a state).
 func _ds2_readout_content(mod: Control) -> Dictionary:
 	match str(mod.name):
 		"MoneyWidget":
@@ -1623,7 +1625,7 @@ func _ds2_readout_content(mod: Control) -> Dictionary:
 			if runway > 0:
 				detail += " About %d turns before cash and borrowing run out." % runway
 			else:
-				detail += " Borrowing room %s." % _money_text(LoanState.available_capacity())
+				detail += " Loan capacity %s." % _money_text(LoanState.available_capacity())
 			var tone := "bad" if (_treasury_led as StatusLed).lit else ("warn" if net < 0.0 else "ok")
 			return {"stage": "Treasury", "name": "%s cash" % _money_text(MatchState.money), "detail": detail, "tone": tone}
 		"PowerModule":
@@ -1643,24 +1645,21 @@ func _ds2_readout_content(mod: Control) -> Dictionary:
 			return {"stage": "Transport", "name": st.name, "detail": st.detail, "tone": st.tone}
 		"VictoryModule":
 			var bd: Dictionary = VictoryState.get_breakdown()
-			var max_turns := int(bd.get("max_turns", 300))
-			var rises: bool = VictoryState.win_threshold_for_turn(1) != VictoryState.win_threshold_for_turn(max_turns)
 			return {"stage": "Victory", "name": "%s of %s points" % [_thousands(int(bd.get("total", 0))), _thousands(int(bd.get("win_threshold", 0)))],
-				"detail": ("The points needed to win rise over the game, from 1 track at turn %d to 4 by turn %d." % [VictoryState.WIN_START_TURN, max_turns]) if rises
-					else "Reach the target on any turn to win.",
+				"detail": "To win, score as many points as you can across the five tracks.",
 				"tone": "ok" if _victory_trending_up(bd) else "off"}
 		"RankingsModule":
 			return {"stage": "Rankings", "name": _rankings_head.text if _rankings_head != null else "",
-				"detail": "Your place in the company league, and the goods you lead.", "tone": "off"}
+				"detail": "How you rank compared to your competitors in revenue and goods production.", "tone": "off"}
 		"CouncilModule":
-			return {"stage": "Council", "name": _council_status.text if _council_status != null else "Your advisers",
-				"detail": "Your advisers, their seats and their loyalty.", "tone": "off"}
+			return {"stage": "Council", "name": _council_status.text if _council_status != null else "Your advisors",
+				"detail": "Your advisors, their seats and their loyalty.", "tone": "off"}
 		"GoodsGraphModule":
-			return {"stage": "", "name": "Goods Graph (G)", "detail": "How every good is made and what it goes into.", "tone": "off"}
+			return {"stage": "", "name": "Goods Graph (G)", "detail": "How every good is made and what it goes into.", "tone": ""}
 		"EncyclopediaButton":
-			return {"stage": "", "name": "Encyclopedia (X)", "detail": "Every good, building and recipe.", "tone": "off"}
+			return {"stage": "", "name": "Encyclopedia (X)", "detail": "Every good, building and recipe.", "tone": ""}
 		"MenuModule":
-			return {"stage": "", "name": "Menu", "detail": "Save, load, settings and quit.", "tone": "off"}
+			return {"stage": "", "name": "Menu", "detail": "Save, load, settings and quit.", "tone": ""}
 	return {"stage": "", "name": str(mod.name), "detail": "", "tone": "off"}
 
 

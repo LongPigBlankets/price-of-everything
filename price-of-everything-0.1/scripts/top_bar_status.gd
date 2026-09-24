@@ -37,19 +37,19 @@ static func power_stats() -> Dictionary:
 ## steady amber (buying from the grid) beats green. `blink` is true for the intermittency case.
 static func power() -> Dictionary:
 	var p := power_stats()
-	var made := "%d MW made" % int(p.self_gen)
-	var bought := "%d MW bought from the national grid" % int(p.grid_draw)
+	var made := "You generated %d MW." % int(p.self_gen)
+	var bought := ("%d MW came from the national grid." % int(p.grid_draw)) if int(p.grid_draw) > 0 else "None came from the national grid."
 	var out := {"stats": p, "blink": false}
 	if int(p.unpowered) > 0:
 		out.merge({"tone": "bad", "name": "Buildings without power",
 			"detail": "%s without power last turn. Build cables or generation on their tiles." % _count(int(p.unpowered), "building")})
 	elif int(p.derated) > 0:
 		out.merge({"tone": "warn", "name": "Intermittent supply", "blink": true,
-			"detail": "%s ran short when the wind or sun dropped. %s." % [_count(int(p.derated), "building"), made]}, true)
+			"detail": "%s %s %s ran short when the wind or sun dropped." % [made, bought, _count(int(p.derated), "building")]}, true)
 	elif int(p.grid_draw) > 0:
-		out.merge({"tone": "warn", "name": "Drawing from the grid", "detail": "%s. %s." % [made, bought]})
+		out.merge({"tone": "warn", "name": "Drawing from the grid", "detail": "%s %s" % [made, bought]})
 	elif int(p.self_gen) > 0:
-		out.merge({"tone": "ok", "name": "Self sufficient", "detail": "%s. Nothing bought from the grid." % made})
+		out.merge({"tone": "ok", "name": "Self sufficient", "detail": "%s %s" % [made, bought]})
 	else:
 		out.merge({"tone": "off", "name": "No power in use", "detail": "No building makes or draws power yet."})
 	return out
@@ -80,7 +80,8 @@ static func transport_stats() -> Dictionary:
 
 
 ## The Transport module's three lamps, each owning one failure: storage (tiles refusing goods, or more
-## than one nearly full), links (more than three over capacity) and freight (shipments stuck on arrival).
+## than one nearly full), links (amber for up to three over capacity, red beyond) and freight (shipments
+## stuck on arrival).
 static func transport() -> Dictionary:
 	var t := transport_stats()
 	var storage: Dictionary
@@ -94,16 +95,17 @@ static func transport() -> Dictionary:
 			"detail": ("%s at 95%% of storage or more." % _count(int(t.full), "tile")) if int(t.full) > 0 else "Every tile has room."}
 	var links: Dictionary
 	if int(t.over) > 3:
-		links = {"tone": "bad", "name": "Links over capacity", "detail": "%s carrying more than they can." % _count(int(t.over), "link")}
+		links = {"tone": "bad", "name": "Links backlogged", "detail": "Transport is backlogged and we're paying overages."}
+	elif int(t.over) > 0:
+		links = {"tone": "warn", "name": "Links near capacity", "detail": "Some tiles are approaching capacity."}
 	else:
-		links = {"tone": "ok", "name": "Links",
-			"detail": ("%s over capacity." % _count(int(t.over), "link")) if int(t.over) > 0 else "No link over capacity."}
+		links = {"tone": "ok", "name": "Links", "detail": "All shipments are working as expected."}
 	var freight: Dictionary
 	if int(t.stuck) > 0:
 		freight = {"tone": "bad", "name": "Freight stuck", "detail": "%s arrived with nowhere to unload." % _count(int(t.stuck), "shipment")}
 	else:
 		freight = {"tone": "ok", "name": "Freight",
-			"detail": ("%s riding to market." % _count(int(t.to_market), "unit")) if int(t.to_market) > 0 else "Nothing riding to market."}
+			"detail": "Lots of shipments, nothing to worry about." if int(t.to_market) > 0 else "Nothing shipping to market."}
 	return {"stats": t, "storage": storage, "links": links, "freight": freight}
 
 
