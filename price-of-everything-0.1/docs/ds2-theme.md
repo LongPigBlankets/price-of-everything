@@ -76,7 +76,7 @@ All DS2 art is 3D-rendered in one three.js page, `tools/button_mockup/cluster.ht
   - `pilotLamp`, `guardButton`, `counterHousing`, `miniScreen`, `iconWell`, `gaugeSocket`;
   - `diagModule`, `cableRun`, `cableTap`, `toggleSlot`/`toggleKnob`, `rollingDoor`, `labourDoor`;
   - `sheetPlate`, `whiteSheet`, `plasticPlate`, `darkPlate`, `enamelPlate`.
-- **Seeds:** `withSeed(n, fn)` gives each set its own random sequence, so exporting one set never changes another's wear. A new set gets a new seed after the last one used (421, `econ`).
+- **Seeds:** `withSeed(n, fn)` gives each set its own random sequence, so exporting one set never changes another's wear. A new set gets a new seed after the last one used (422, `diagicon`).
 
 ### 3.2 The export
 
@@ -95,7 +95,7 @@ python3 tools/button_mockup/export.py 8779        # a private port: 8771 may be 
 |---|---|
 | 501–505 | `block`, `footer`, `backing`, `section`, `keys` |
 | 401–411 | `lamp`, `scroll`, `seam`, `title`, `enamel`, `pin`, `cable`, `counter`, `sheet`, `plastic`, `door` |
-| 412–421 | `heading`, `module`, `toggle`, `ldoor`, `modkey`, `sheetw`, `darkplate`, `modicon`, `screen`, `econ` |
+| 412–422 | `heading`, `module`, `toggle`, `ldoor`, `modkey`, `sheetw`, `darkplate`, `modicon`, `screen`, `econ`, `diagicon` |
 
 Then import:
 
@@ -163,7 +163,7 @@ Each entry lists the look, its render set and layers, the Godot script and API, 
 | **Wide key** | a worn cream keycap, 3-sliced across; text printed navy, a chevron, latching down while open | `modkey` → `key_modifiers`, `_pressed` | `BdpV3ModKey`: `summary`, `summary_ink`, `openable` (no chevron, no press), `key_scale` (smaller, uniformly), `set_open()`, signal `toggled(open)` | Modifiers; the economics rows that open |
 | **Small key** | a square cream keycap with a navy glyph (✕, ‹, map pin), its shadow baked | `keys`, `pin` → `key_close`, `key_back`, `key_pin` (+ `_pressed`), 76 px key in a 108 frame | `BdpV3Key.make(glyph, key_px)`, `control_side(key_px)` | Close and Location (one title line tall), Back on sheets |
 | **Guarded button** | a glowing plastic cap under a hinged clear cover: the first click lifts the cover, the second presses; an untouched cover drops after 4 s | `footer` → `footer_*`, `guard_*` | `BdpV3Footer`: `lift`, `drop`, `is_open`, signals `key_pressed(key)`, `cover_changed(key, open)` | Sell building, Demolish |
-| **Slide switch** | a slot moulded into the case, an off-white ridged thumb that slides | `toggle` → `toggle_slot`, `toggle_knob` | `BdpV3Toggle`: `right`, `set_right()`, signal `toggled(right)` | Diagnostics' Visual / Text (does nothing yet) |
+| **Slide switch** | a slot moulded into the case, an off-white ridged thumb that slides | `toggle` → `toggle_slot`, `toggle_knob` | `BdpV3Toggle`: `right`, `set_right()`, signal `toggled(right)` | Diagnostics' Visual / Text: shows one view, the other kept built and hidden |
 | **Scrollbar** | a steel rail screwed to the backing, a rubber grip with diagonal ridges | `scroll` → `scroll_rail`, `scroll_thumb` | `BdpV3Scroll.apply(scroll, on)`, `is_applied()` | the panel's and each sheet's scroll |
 | **Seam edge** | a dark ribbed rubber nosing where the fixed header meets the scrolling body | `seam` → `seam_edge` | `BdpV3Seam` (`strip_height()`) | under the header |
 
@@ -177,6 +177,8 @@ Each entry lists the look, its render set and layers, the Godot script and API, 
 | **Drum counter** | a gunmetal housing, black drums; digits printed live and rolling like an odometer | `counter` → `counter_housing`, `counter_glass` | `BdpV3Counter`: `configure(drums, decimals)`, `set_value(v, from)`, `digits_for`, `drums_for` | labour cost and workers |
 | **Gauge set in a plate** | the panel gauge (bezel, zones, needle, LED) in a chamfered hole cut in the dark plate | `darkplate` → `gauge_socket`; gauge layers in `assets/ui/gauge/` | `PanelGauge` (`scripts/panel_gauge.gd`) held in a trimmed holder; the card paints the socket under it | cost to produce |
 | **Value bars** | revenue and costs as two bars on one scale on mini screens; revenue a green slice per good (the good's icon on a rounded tile above), costs in four reds (raised icons above); icons spread and joined by leader lines; a dashed mark at the revenue's end | `econ` → `econ_icon_*` (+ `_shadow`) | `BdpV3ValueBar`: `set_values(econ)`, `rows_for(econ)`, `row_keys(row)`, `row_label(row)`, `icon_centres(row)` | economics |
+| **Indicator** | a raised cream icon and its shadow with a pilot lamp under it; the render scaled so its art, not its frame, fills the icon's box, standing on the lamp; hovered, the icon brightens | `diagicon` → `diag_icon_<key>` (+ `_shadow`) | `BdpV3Indicator`: `configure(px, lamp_scale)`, `set_check(check, face, shadow)` with `{stage, label, detail, tone}`, `art_rect(tex)`, `art_dest()`, `hot`, signals `hovered(ind)` / `unhovered(ind)` | the diagnostics' visual view: 40 px icons, lamps 0.72 |
+| **Readout** | a dark glass screen in the LED screens' gunmetal bezel, a lamp, a name line ("Stage: Check") and up to two lines of detail in white | reuses `mini_screen`, `mini_screen_glass` | `BdpV3Readout`: `show_check(stage, name, detail, tone)`, `shown_name()`, `shown_detail()`, `HEIGHT` | the diagnostics' visual view |
 | **Transport lamp** | a raised side icon, a lamp by transport's share of that side's goods (green < 3%, amber < 8%, red above), the cost or a "free" flag | reuses the lamp and `econ_icon_inputs`/`_outputs` | `_v3_transport_lamp(...)` *(panel helper)*; `BuildingEconomics.transport_tone` | economics |
 
 ### 5.4 Lettering
@@ -193,7 +195,7 @@ Each entry lists the look, its render set and layers, the Godot script and API, 
 
 | Component | Look | Render → layers | Godot |
 |---|---|---|---|
-| **Raised relief icon** | a game icon's mask raised in cream enamel with a swept shadow, graded top-left to bottom-right | `econ` (`ECON_ICONS`), `modicon`, the block's icons; source PNGs served from `/icons/` | draw shadow then face at the same rect |
+| **Raised relief icon** | a game icon's mask raised in cream enamel with a swept shadow, graded top-left to bottom-right | `econ` (`ECON_ICONS`), `diagicon` (`DIAG_ICONS`), `modicon`, the block's icons; source PNGs served from `/icons/`. A building icon is cream art on navy: `keyCream` keys its cream out as the mask and crops to the art. An icon no game icon suits is drawn as a mask canvas (`batteryArt`, `carbonArt`, `worksArt`, `routeArt`, `transitArt`, `freightArt`, `warehouseArt`, `stockArt`, `upstreamArt`, `depositArt`); an icon already clear round its art keeps its alpha as the mask (`trimAlpha`), and a light icon on a translucent button keeps only its solid light pixels (`keyOpaque`) and goes through the same steps | draw shadow then face at the same rect |
 | **Icon set in a well** | a thin gunmetal frame over a good's cream tile, its shadow falling onto the icon (the icon lower than the metal), the tile's corners matching the opening | `darkplate` → `icon_well` | `_v3_set_in_well(icon)` *(panel helper)*: over the art, under the pill |
 | **Quantity pill inside** | the navy pill kept within the icon's corner | — | `_good_icon_pill(..., pill_inside = true)`, `QTY_PILL_INSET` 5 |
 | **Good tile** | a small rounded cream square behind a good icon with a soft shadow | — | `StyleBoxFlat` in `UIHelpers.PILL_PAPER` (value bar) |
@@ -253,7 +255,8 @@ These are the ways components are combined. Reuse the pattern, not only the part
 8. **Lamps for tone.** Map a tone (`ok`/`warn`/`bad`/`info`) to a `BdpV3Lamp` beside the thing it judges. Scale 0.62–0.72 in rows. The rule that sets the tone lives with the data (`v3_stock_tone`, `BuildingEconomics.transport_tone`), not in the drawing.
 9. **Bays and fills.** A space sized for the maximum, with the unused part covered by something physical (the rolling door over empty rows), keeps a section's height constant whatever the content.
 10. **Connections drawn.** Where parts are fed by something (modules by the cable), draw the feed: a trunk and a tap per part, placed at each part's middle, redrawn when the parts move (`item_rect_changed`).
-11. **Width discipline.** No section's minimum width may exceed the body's width (the scroll's width less its bar). A wider child silently widens the ScrollContainer and shoves the rail into the trim. Autowrapping labels need a minimum width, and it must fit. A test asserts `_body.get_combined_minimum_size().x <= scroll width − bar`.
+11. **A readout that keeps in sight.** Where hovering parts of a section shows their details in one place at its foot (the diagnostics' readout), the place must not scroll out of sight while the parts are in view. The section keeps a fixed-height slot at its foot, a plain `Control` so its child can be placed by hand. While the slot is below the scroll area's bottom edge, the screen in it rises to sit on that edge, over the lower parts, but never over the first row. With nothing hovered it shows the worst part. It is placed on the body's `item_rect_changed` (the body moves as it scrolls), the scroll's `resized` and the slot's `item_rect_changed` (`_v3_place_readout`). It stays inside the scroll's clip and draws over the parts by sibling order.
+12. **Width discipline.** No section's minimum width may exceed the body's width (the scroll's width less its bar). A wider child silently widens the ScrollContainer and shoves the rail into the trim. Autowrapping labels need a minimum width, and it must fit. A test asserts `_body.get_combined_minimum_size().x <= scroll width − bar`.
 
 ---
 
@@ -308,7 +311,8 @@ Run these in order; each catches what the previous one can't.
    BDP_SHOT_DIR=<dir> "$GODOT" --path . res://tools/bdp_v3_shot.tscn --quit-after 4000 -- --no-telemetry
    ```
    - It renders in a fixed 1920 × 1200 SubViewport at 2×, so captures are identical whatever display it runs on. The `--no-telemetry` user arg keeps the windowed run off the live telemetry sheet.
-   - Its views are: top (lit, unshaded, unlit), the lamp in each tone, cost, mid, bottom, the Sell and Demolish outcomes, the thumb states, the sheet sliding and settled, Modifiers open, the economics (closed, open, a power plant, a mine, a chlor-alkali plant) and shipments (3–4 and 5+ inputs).
+   - Its views are: top (lit, unshaded, unlit), the lamp in each tone, cost, mid, bottom, the Sell and Demolish outcomes, the thumb states, the sheet sliding and settled, Modifiers open, the economics (closed, open, a power plant, a mine, a chlor-alkali plant), shipments (3–4 and 5+ inputs) and the diagnostics' visual view (in full, one icon hovered, and the panel made shorter so the readout rises).
+   - Two views move with time and differ a little run to run: the sheet sliding (caught mid-slide) and Modifiers open (the steel gauge's lamp blinks in the red zone).
 5. **Compare with the standard:**
    ```sh
    python3 tools/bdp_v3_compare.py --current <dir> --out <cmp dir>
@@ -371,8 +375,9 @@ Each of these cost time once.
 - **A `PlaneGeometry` with a plate material renders flat.** `faceTexture` expects UVs in shape pixels. Use `extrude(rrShape(...))`.
 - **A canvas blurred with `filter: blur()` fades its edges.** When `steelWindow` repeats it mirrored, the fade shows as a bright seam. Mirror-pad before blurring (`DARK_STEEL_CANVAS`). The backing and the action sheets' steel still carry such a seam, a known issue not yet fixed.
 - **Scaling a render up blurs it.** Re-render at the size it draws.
-- **Captures can freeze** if the window is hidden or the Mac idles mid-run. Every later view repeats one frame. Check that two views differ, and rerun.
+- **Captures can freeze** if the window is hidden or the screen locks or sleeps mid-run: macOS stops the game drawing while no window can be seen, though the run goes on, so every later view repeats one frame. The shot tool now forces a draw before each capture (`_grab`: `RenderingServer.force_draw(false)`). A new capture tool must do the same. Still check that two views differ.
 - **The export server on 8771 may be another agent's.** Its posts would write into their checkout. Use your own port.
 - **`z_index` pokes through sheets and other panels.** Layer by sibling order.
-- **Width creep:** see §7.11.
+- **Width creep:** see §7.12.
+- **An autowrapping label with `clip_text` asks for no height.** In a container it gets 1 px and shows nothing, though its text is set. Leave `clip_text` off and cap the lines with `max_lines_visible` (the readout's detail).
 - **Timing:** tweens need frames. A test waits with `await get_tree().create_timer(t).timeout` before checking a slid position.

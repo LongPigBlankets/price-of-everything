@@ -376,11 +376,7 @@ static func diagnostics(building: Dictionary, recipe: Dictionary, building_data:
 	var upgrade_fault_label := "Cannot deliver upgrade materials"
 	# A power PRODUCER whose "missing" entry is power = the cable export cap blocked its
 	# dispatch (production._can_run_recipe's can_produce branch) — not an input problem.
-	var grid_blocked := false
-	if produces_power and iid != "":
-		for m in (Production.missing_by_building.get(iid, []) as Array):
-			if str(m.get("good_id", "")) == "power":
-				grid_blocked = true
+	var grid_blocked := produces_power and _power_output_capped(iid)
 
 	# 1) critical fault / restarting / all-clear
 	if exhausted:
@@ -582,6 +578,749 @@ static func _intermittency_row(building: Dictionary, recipe: Dictionary, is_infr
 	if demand > 0.0 and unfirmed >= demand - 0.001:
 		return _row("bad", "bolt", "Intermittent power — derated", "All its power is unfirmed renewable — output cut up to %d%% during lulls. Add battery firming or a steady/grey source." % derate)
 	return _row("warn", "bolt", "Partly intermittent — derated", "Some power is unfirmed renewable — output cut up to %d%% during lulls. Firm it with a battery or add steady power." % derate)
+
+## True when a power plant's output was held back by its tile's cable export cap last turn: its
+## "missing" entry is power (production._can_run_recipe's can_produce branch).
+static func _power_output_capped(iid: String) -> bool:
+	if iid == "":
+		return false
+	for m in (Production.missing_by_building.get(iid, []) as Array):
+		if str(m.get("good_id", "")) == "power":
+			return true
+	return false
+
+## True when a building's draw didn't fit under its tile's cable import cap last turn: its "missing"
+## power entry has the cap as what it had (no cables at all leave it at 0).
+static func _power_draw_capped(iid: String) -> bool:
+	if iid == "":
+		return false
+	for m in (Production.missing_by_building.get(iid, []) as Array):
+		if str(m.get("good_id", "")) == "power" and int(m.get("have", 0)) > 0:
+			return true
+	return false
+
+# --- Visual diagnostics: what every stage shares ---------------------------------------------
+# The diagnostics' visual view asks for each stage's checks, each {key, label, tone, detail}, and for a
+# check over several goods also `tones` (a lamp each, worst first) and sometimes `icon`. Tones come from
+# the same helpers as the checklist's rows, so the two views agree. Details are short plain sentences,
+# for the readout's two lines.
+
+const _TONE_ORDER := ["bad", "warn", "ok"]
+const _TONE_WORDS := {"bad": "red", "warn": "amber", "ok": "green", "off": "unlit"}
+## How a route's modes are named.
+const MODE_NAMES := {"roads": "road", "rail": "rail", "pipes": "pipeline", "reinf_pipes": "reinforced pipeline"}
+
+static func _check(key: String, label: String, tone: String, detail: String) -> Dictionary:
+	return {"key": key, "label": label, "tone": tone, "detail": detail}
+
+## A check about one good: `_check` and the good's name.
+static func _good_check(g: Dictionary, key: String, label: String, tone: String, detail: String) -> Dictionary:
+	var c := _check(key, label, tone, detail)
+	c["name"] = str(g.get("name", ""))
+	return c
+
+## One check over several goods: its lamps the distinct tones among them, worst first (at most red,
+## amber and green; unlit only when every one is), its tone and icon the worst good's, and its detail
+## the worst good's. With several goods it names them all when they share the detail, else it names
+## the worst and counts the rest by colour.
+static func _combine_goods(key: String, label: String, per_good: Array) -> Dictionary:
+	if per_good.is_empty():
+		return _check(key, label, "off", "Nothing to check.")
+	var tones: Array = []
+	for t in _TONE_ORDER:
+		for c: Dictionary in per_good:
+			if str(c.get("tone", "")) == t and not tones.has(t):
+				tones.append(t)
+	if tones.is_empty():
+		tones = ["off"]
+	var rank := func(c: Dictionary) -> int:
+		var i := _TONE_ORDER.find(str(c.get("tone", "")))
+		return i if i >= 0 else _TONE_ORDER.size()
+	var worst: Dictionary = per_good[0]
+	for c: Dictionary in per_good:
+		if int(rank.call(c)) < int(rank.call(worst)):
+			worst = c
+	var detail := str(worst.get("detail", ""))
+	if per_good.size() > 1 and per_good.all(func(c: Dictionary) -> bool: return str(c.get("detail", "")) == detail):
+		detail = "%s: %s" % [_sentence_start(_and_list(per_good.map(func(c: Dictionary) -> String: return str(c.get("name", ""))))), detail]
+	elif per_good.size() > 1:
+		var rest := {}
+		for c: Dictionary in per_good:
+			if c != worst:
+				var w := str(_TONE_WORDS.get(str(c.get("tone", "")), "unlit"))
+				rest[w] = int(rest.get(w, 0)) + 1
+		var parts: Array = []
+		for w in ["red", "amber", "green", "unlit"]:
+			if rest.has(w):
+				parts.append("%d %s" % [int(rest[w]), w])
+		detail = "%s: %s The rest: %s." % [_sentence_start(str(worst.get("name", ""))), detail, ", ".join(parts)]
+	var out := _check(key, label, tones[0], detail)
+	out["tones"] = tones
+	if worst.has("icon"):
+		out["icon"] = worst["icon"]
+	return out
+
+## A phrase with its first letter capitalised, to start a sentence.
+static func _sentence_start(text: String) -> String:
+	return text.substr(0, 1).to_upper() + text.substr(1) if text != "" else text
+
+## "a", "a and b", "a, b and c".
+static func _and_list(items: Array) -> String:
+	if items.size() <= 1:
+		return "".join(items)
+	return ", ".join(items.slice(0, items.size() - 1)) + " and " + str(items[-1])
+
+## A place as the readout names it: the tile's name, or its coordinates when it has none.
+static func _place(tile_id: String) -> String:
+	var n := Catalog.tile_name(tile_id)
+	return n if n != "" else Catalog.tile_label(tile_id)
+
+## The modes a route's legs use, in the order they come.
+static func _route_modes(route: Dictionary) -> Array:
+	var modes: Array = []
+	for leg: Dictionary in route.get("legs", []):
+		var m := str(leg.get("mode", ""))
+		if MODE_NAMES.has(m) and not modes.has(m):
+			modes.append(m)
+	return modes
+
+## The cheapest kind of infrastructure that suits a good (rail for a solid; pipeline for a fluid, the
+## reinforced one where only that will carry it), when its route in `modes` isn't all on it: "" when it
+## is, or when nothing cheaper suits it. No cost is worked out: the kinds are ranked by how they charge.
+static func _cheaper_mode(gid: String, modes: Array) -> String:
+	var allowed: Array = Catalog._modes_for_good(gid)
+	var cheapest: Array = []
+	if Catalog.requires_pipeline(gid):
+		cheapest = ["pipes", "reinf_pipes"].filter(func(m: String) -> bool: return allowed.has(m))
+	elif allowed.has("rail"):
+		cheapest = ["rail"]
+	if cheapest.is_empty():
+		return ""
+	if modes.is_empty() or modes.any(func(m: String) -> bool: return not cheapest.has(m)):
+		return str(cheapest[0])
+	return ""
+
+## How a good travels, as a per-good check: amber when a cheaper kind of infrastructure suits it, green
+## when it already goes on the cheapest. `verb` and `where` make the sentence ("Comes", " from the market").
+static func _mode_check(g: Dictionary, key: String, label: String, modes: Array, verb: String, where: String) -> Dictionary:
+	var by := ("by " + _and_list(modes.map(func(m: String) -> String: return str(MODE_NAMES[m])))) if not modes.is_empty() else "across open country"
+	var cheaper := _cheaper_mode(str(g.get("gid", "")), modes)
+	if cheaper != "":
+		return _good_check(g, key, label, "warn", "%s %s%s. %s would be cheaper." % [verb, by, where, str(MODE_NAMES[cheaper]).capitalize()])
+	return _good_check(g, key, label, "ok", "%s %s%s, the cheapest way that suits it." % [verb, by, where])
+
+## The kind of route to build for a good that has none: the cheapest that suits it.
+static func _route_to_build(gid: String) -> String:
+	return str(MODE_NAMES.get(_cheaper_mode(gid, []), "road, rail or pipe"))
+
+# --- Power checks (the diagnostics' visual view) ---------------------------------------------
+# Three checks: where the building's power comes from, whether it is exposed to intermittent green power,
+# and whether its tile's cables carry what it draws or makes. A building that neither uses nor makes
+# power has all three unlit.
+
+## Cable load at or above this share of the tile's cap reads amber: little room left.
+const CABLE_NEAR_FULL := 0.9
+
+static func power_checks(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Array:
+	var produces_power := str(recipe.get("output_name", "")) == "power"
+	var draw := BuildingStatus.effective_energy_req(building, recipe)
+	if is_infrastructure or (not produces_power and draw <= 0):
+		var none := "Uses no power and makes none."
+		return [_check("power_supply", "Power supply", "off", none), _check("intermittency", "Intermittency", "off", none),
+			_check("cable", "Cable capacity", "off", none)]
+	return [_supply_check(building, recipe, produces_power), _intermittency_check(building, recipe, produces_power),
+		_cable_check(building, recipe, produces_power, draw)]
+
+static func _supply_check(building: Dictionary, recipe: Dictionary, produces_power: bool) -> Dictionary:
+	if produces_power:
+		var out := BuildingStatus.effective_power_output(building, recipe)
+		if _power_output_capped(str(building.get("instance_id", ""))):
+			return _check("power_supply", "Power supply", "warn", "Makes up to %d MW a turn, but its cables cannot carry it all." % out)
+		return _check("power_supply", "Power supply", "ok", "Makes %d MW a turn." % out)
+	var pw := power(building, recipe)
+	var amt := int(pw.get("amount", 0))
+	match str(pw.get("state", "none")):
+		"own":
+			return _check("power_supply", "Power supply", "ok", "%d MW from your own generation." % amt)
+		"grid":
+			return _check("power_supply", "Power supply", "warn", "%d MW bought from the national grid." % amt)
+		"ready":
+			return _check("power_supply", "Power supply", "warn", "Needs %d MW. It will draw from the national grid once it runs." % amt)
+		_:
+			return _check("power_supply", "Power supply", "bad", "Needs %d MW and has no power connection. Build cables on this tile." % amt)
+
+## The checklist's intermittency row (its tone), said briefly.
+const _INTERMITTENCY_SHORT := {
+	"Steady green power": "Hydro or biomass. Never intermittent.",
+	"Firmed green generation": "Renewable output, fully firmed by batteries on this tile.",
+	"Intermittent generation": "Renewable output with no firming. Buildings using it lose output when wind or sun drops. Load battery cells.",
+	"Partly firmed generation": "Renewable output, only partly firmed by batteries.",
+	"Follows intermittent power": "Runs on unfirmed wind and solar with no loss of output.",
+	"Safe from intermittency": "Its green power is firmed or steady. No loss of output.",
+	"Intermittent power — derated": "Runs on unfirmed renewable power. Output falls by up to %d%% in lulls. Add batteries or steady power.",
+	"Partly intermittent — derated": "Partly runs on unfirmed renewable power. Output falls by up to %d%% in lulls. Add batteries.",
+}
+
+static func _intermittency_check(building: Dictionary, recipe: Dictionary, produces_power: bool) -> Dictionary:
+	var row := _intermittency_row(building, recipe, false)
+	if row.is_empty():
+		if produces_power:
+			if _power_quality_of(building, recipe) == "grey":
+				return _check("intermittency", "Intermittency", "ok", "Coal, gas or oil generation. Never intermittent.")
+			return _check("intermittency", "Intermittency", "off", "Not generating this turn.")
+		if Production.last_turn_run.has(str(building.get("instance_id", ""))):
+			return _check("intermittency", "Intermittency", "ok", "Draws only coal, gas or oil power. Never intermittent.")
+		return _check("intermittency", "Intermittency", "off", "Has not drawn power yet.")
+	var detail := str(_INTERMITTENCY_SHORT.get(str(row.get("label", "")), row.get("detail", "")))
+	if detail.contains("%d"):
+		var im := Production.get_building_intermittency(str(building.get("instance_id", "")))
+		detail = detail % maxi(1, int(round(float(im.get("derate", 0.0)) * 100.0)))
+	return _check("intermittency", "Intermittency", str(row.get("tone", "info")), detail)
+
+static func _cable_check(building: Dictionary, recipe: Dictionary, produces_power: bool, draw: int) -> Dictionary:
+	var tile_id := str(building.get("tile_id", ""))
+	var iid := str(building.get("instance_id", ""))
+	var cap := Power.tile_power_cap(tile_id)
+	if cap <= 0:
+		return _check("cable", "Cable capacity", "bad", "No cables on this tile. Power cannot reach it or leave it.")
+	var more := " The cables are at their top level." if Power.cable_level_is_max(tile_id) else " Upgrade the cables for more."
+	if produces_power:
+		var made := int(Power.tile_produced.get(tile_id, 0))
+		if _power_output_capped(iid):
+			return _check("cable", "Cable capacity", "warn", "Cables full. %s of %s MW leave this tile and this plant's %s MW cannot.%s" % [
+				_fmt_count(made), _fmt_count(cap), _fmt_count(BuildingStatus.effective_power_output(building, recipe)), more])
+		var near := float(made) >= CABLE_NEAR_FULL * float(cap)
+		return _check("cable", "Cable capacity", "warn" if near else "ok", "This tile sends out %s of the %s MW its cables carry.%s" % [
+			_fmt_count(made), _fmt_count(cap), more if near else ""])
+	if draw > cap:
+		return _check("cable", "Cable capacity", "bad", "Needs %s MW. The cables here carry at most %s MW.%s" % [_fmt_count(draw), _fmt_count(cap), more])
+	if _power_draw_capped(iid):
+		return _check("cable", "Cable capacity", "bad", "Cables full. The tile can draw %s MW, not enough for this building's %s MW as well.%s" % [_fmt_count(cap), _fmt_count(draw), more])
+	var drawn := int(Power.tile_drawn.get(tile_id, 0))
+	var near_in := float(drawn) >= CABLE_NEAR_FULL * float(cap)
+	return _check("cable", "Cable capacity", "warn" if near_in else "ok", "Needs %s MW. The tile draws %s of the %s MW its cables carry.%s" % [
+		_fmt_count(draw), _fmt_count(drawn), _fmt_count(cap), more if near_in else ""])
+
+# --- Input checks (the diagnostics' visual view) ---------------------------------------------
+# Four checks: where each input comes from (a lamp for each), how long the stock on the tile lasts,
+# whether the company's own supplying buildings are running, and, for a mine, how much of its deposit
+# is left. A building that takes no inputs has the first three unlit; one that mines nothing, the last.
+
+static func input_checks(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Array:
+	var deposit := _deposit_check(building, recipe)
+	if is_infrastructure or (recipe.get("inputs", []) as Array).is_empty():
+		var none := "Takes no inputs."
+		return [_check("source", "Source", "off", none), _check("stock", "Stock cover", "off", none),
+			_check("upstream", "Upstream health", "off", none), deposit]
+	return [_source_check(building, recipe, is_infrastructure), _stock_check(building, recipe, is_infrastructure),
+		_upstream_check(building, recipe), deposit]
+
+## Each input's source, a lamp for each: green from the company's own buildings or the intermediary,
+## amber bought at the market, red when not enough reaches it to run (the checklist's starved signal).
+static func _source_check(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Dictionary:
+	var iid := str(building.get("instance_id", ""))
+	var ran := iid != "" and Production.last_turn_run.has(iid)
+	var row := _input_sourcing_row(building, recipe, ran, BuildingStatus.input_status_color(building, recipe, is_infrastructure),
+		run_state(building, recipe, is_infrastructure))
+	var tone := str(row.get("tone", "info"))
+	if tone == "info":
+		return _check("source", "Source", "off", "Nothing sourced yet.")
+	var linked := {}
+	for src: Dictionary in input_sources(building, recipe):
+		linked[str(src.get("good_id", ""))] = true
+	var short := {}
+	if tone == "bad":
+		for sh: Dictionary in shipments(building, recipe):
+			if int(sh.get("stored", 0)) < int(sh.get("need", 0)):
+				short[str(sh.get("good_id", ""))] = true
+	var per: Array = []
+	for inp: Dictionary in recipe.get("inputs", []):
+		var gid := str(inp.get("good_id", ""))
+		var g := {"gid": gid, "name": Catalog.get_display_name(gid).to_lower()}
+		if short.has(gid):
+			per.append(_good_check(g, "source", "Source", "bad", "Not enough reaches it to run."))
+		elif Middleman.supplies_good(iid, gid):
+			per.append(_good_check(g, "source", "Source", "ok", "Brought by the logistics intermediary."))
+		elif linked.has(gid):
+			per.append(_good_check(g, "source", "Source", "ok", "From your own buildings."))
+		else:
+			per.append(_good_check(g, "source", "Source", "warn", "Bought at the market."))
+	return _combine_goods("source", "Source", per)
+
+static func _stock_check(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Dictionary:
+	var short_none: Array = []
+	var short_arriving: Array = []
+	var cover := -1
+	var scarcest: Dictionary = {}
+	var counted := 0
+	for sh: Dictionary in shipments(building, recipe):
+		var need := int(sh.get("need", 0))
+		if need <= 0:
+			continue
+		counted += 1
+		var stored := int(sh.get("stored", 0))
+		var inbound := int(sh.get("inbound", 0))
+		if stored < need:
+			if inbound > 0 and stored + inbound >= need:
+				short_arriving.append(sh)
+			else:
+				short_none.append(sh)
+			continue
+		var runs := stored / need
+		if cover < 0 or runs < cover:
+			cover = runs
+			scarcest = sh
+	if counted == 0:
+		return _check("stock", "Stock cover", "off", "Uses up none of its inputs.")
+	if not short_none.is_empty():
+		var s0: Dictionary = short_none[0]
+		var starved := BuildingStatus.input_status_color(building, recipe, is_infrastructure) == BuildingStatus.STATUS_RED \
+			and run_state(building, recipe, is_infrastructure) != "restarting"
+		var coming := int(s0.get("inbound", 0))
+		return _check("stock", "Stock cover", "bad" if starved else "warn", "Short of %s for the next run. %d of %d on the tile, %s." % [
+			str(s0.get("name", "")).to_lower(), int(s0.get("stored", 0)), int(s0.get("need", 0)),
+			"%d more on the way" % coming if coming > 0 else "none on the way"])
+	if not short_arriving.is_empty():
+		var a: Dictionary = short_arriving[0]
+		var eta := int(a.get("eta_turns", -1))
+		return _check("stock", "Stock cover", "warn", "Short of %s on the tile. %d arrive %s." % [
+			str(a.get("name", "")).to_lower(), int(a.get("inbound", 0)), "next turn" if eta <= 1 else "in %d turns" % eta])
+	var name := str(scarcest.get("name", ""))
+	var runs_txt := "%d run%s" % [cover, "" if cover == 1 else "s"]
+	var eta_s := int(scarcest.get("eta_turns", -1))
+	if int(scarcest.get("inbound", 0)) > 0 and eta_s > cover:
+		return _check("stock", "Stock cover", "warn", "Its %s covers %s. The next delivery lands in %d turns." % [name.to_lower(), runs_txt, eta_s])
+	if counted == 1:
+		return _check("stock", "Stock cover", "ok", "Stock covers %s." % runs_txt)
+	return _check("stock", "Stock cover", "ok", "Stock covers %s. %s runs short first." % [runs_txt, _sentence_start(name.to_lower())])
+
+static func _upstream_check(building: Dictionary, recipe: Dictionary) -> Dictionary:
+	var iid := str(building.get("instance_id", ""))
+	var tile := str(building.get("tile_id", ""))
+	var rank := {"ok": 0, "good": 0, "warn": 1, "bad": 2}
+	var found := 0
+	var worst_rank := -1
+	var worst := ""
+	for inp: Dictionary in recipe.get("inputs", []):
+		if Middleman.supplies_good(iid, str(inp.get("good_id", ""))):
+			continue
+		for producer: Dictionary in _producers_for_input(inp, iid, tile):
+			if not BuildingState.is_player_owned(producer):
+				continue
+			found += 1
+			var pdata := Catalog.get_building(str(producer.get("building_id", "")))
+			var st := status(producer, Catalog.get_recipe(str(producer.get("recipe_id", ""))), str(pdata.get("category", "")).to_lower() == "infrastructure")
+			var r := int(rank.get(str(st.get("tone", "ok")), 0))
+			if r > worst_rank:
+				worst_rank = r
+				worst = "Your %s at %s, making %s, is %s." % [str(pdata.get("display_name", "supplier")).to_lower(),
+					_place(str(producer.get("tile_id", ""))), Catalog.get_display_name(str(inp.get("good_id", ""))).to_lower(),
+					str(st.get("label", "")).to_lower()]
+	if found == 0:
+		return _check("upstream", "Upstream health", "off", "Every input is bought. No supplier of yours to watch.")
+	if worst_rank <= 0:
+		return _check("upstream", "Upstream health", "ok", "Your %d supplier%s %s running." % [found, "" if found == 1 else "s", "is" if found == 1 else "are"])
+	return _check("upstream", "Upstream health", "warn" if worst_rank == 1 else "bad", worst)
+
+static func _deposit_check(building: Dictionary, recipe: Dictionary) -> Dictionary:
+	var token := Production._recipe_deposit_token(recipe)
+	if token == "":
+		return _check("deposit", "Deposit left", "off", "Not a mine.")
+	var tile := str(building.get("tile_id", ""))
+	var name := token.replace("_", " ")
+	if BuildingStatus.recipe_deposit_exhausted(building, recipe) or MatchState.deposit_depleted(tile, token):
+		return _check("deposit", "Deposit left", "bad", "The %s deposit is exhausted. This recipe cannot produce here any more." % name)
+	var runway := _deposit_runway(str(building.get("instance_id", "")))
+	if not runway.is_empty():
+		var t := int(runway.get("turns_left", 0))
+		return _check("deposit", "Deposit left", "warn", "About %d turn%s of %s left, %d at %d a turn. Build a replacement mine elsewhere." % [
+			t, "" if t == 1 else "s", name, int(runway.get("remaining", 0)), int(runway.get("per_turn", 0))])
+	var remaining := MatchState.deposit_remaining_for(tile, token)
+	if remaining < 0:
+		return _check("deposit", "Deposit left", "ok", "The %s deposit never runs out." % name)
+	var per_turn := maxi(1, BuildingStatus.primary_output_qty(recipe))
+	return _check("deposit", "Deposit left", "ok", "About %d turns of %s left, %d in the ground." % [remaining / per_turn, name, remaining])
+
+# --- Inbound checks (the diagnostics' visual view) -------------------------------------------
+# Four checks: how each input travels in (a lamp for each: red with no route, amber when a cheaper kind
+# of infrastructure suits it), whether the tile's warehouse has room to unload, how long inputs take to
+# arrive, and what bringing them in costs. `econ` is BuildingEconomics.per_turn(building): freight's tone
+# is its input transport lamp. A building that takes no inputs has all four unlit.
+
+## Warehouse use at or above this share of its capacity reads amber: little room left to unload.
+const WAREHOUSE_NEAR_FULL := 0.9
+
+static func inbound_checks(building: Dictionary, recipe: Dictionary, is_infrastructure: bool, econ: Dictionary = {}) -> Array:
+	if is_infrastructure or (recipe.get("inputs", []) as Array).is_empty():
+		var none := "Takes no inputs."
+		return [_check("route", "Route and mode", "off", none), _check("warehouse", "Warehouse room", "off", none),
+			_check("transit", "Transit time", "off", none), _check("freight", "Freight cost", "off", none)]
+	var routes := _input_routes(building, recipe)
+	return [_route_check(building, recipe, routes), _warehouse_check(building, recipe), _transit_check(routes), _freight_check(econ)]
+
+## How each input reaches the building: [{good_id, name, turns (-1 when unknown), reachable, from,
+## route}]. An input from the company's own buildings takes its nearest producer's route; one bought
+## takes the market's quote; one the logistics intermediary brings has no route of its own.
+static func _input_routes(building: Dictionary, recipe: Dictionary) -> Array:
+	var tile := str(building.get("tile_id", ""))
+	var iid := str(building.get("instance_id", ""))
+	var out: Array = []
+	for inp: Dictionary in recipe.get("inputs", []):
+		var gid := str(inp.get("good_id", ""))
+		if gid == "":
+			continue
+		var row := {"good_id": gid, "name": Catalog.get_display_name(gid).to_lower(), "turns": -1, "reachable": true, "from": "", "route": {}}
+		if Middleman.supplies_good(iid, gid):
+			row["from"] = "the logistics intermediary"
+		elif MatchState.is_input_tile_only(iid, gid):
+			row["from"] = "your own buildings"
+			for producer: Dictionary in _producers_for_input(inp, iid, tile):
+				var src := str(producer.get("tile_id", ""))
+				var t := 0
+				var r := {}
+				if src != tile:
+					r = TransportService.route(src, tile, gid)
+					t = int(r.get("turns", 0)) if TransportService.route_is_reachable(r) else -1
+				if t >= 0 and (int(row["turns"]) < 0 or t < int(row["turns"])):
+					row["turns"] = t
+					row["route"] = r
+					row["from"] = "this tile" if t == 0 else _place(src)
+		else:
+			row["from"] = "the market"
+			var q := TransportService.quote_market_buy(tile, gid, maxi(1, int(inp.get("qty", 1))), TransportState.seaport_would_cover(gid))
+			if q.is_empty():
+				row["reachable"] = false
+			else:
+				row["turns"] = int(q.get("turns", 0))
+				row["route"] = q.get("route", {})
+		out.append(row)
+	return out
+
+## How each input travels in, a lamp for each: red with no route in, amber when a cheaper kind of
+## infrastructure suits it, green when it already comes the cheapest way or needs no travel.
+static func _route_check(building: Dictionary, recipe: Dictionary, routes: Array, _econ: Dictionary = {}) -> Dictionary:
+	var blocked := {}
+	for f: Dictionary in _fluid_input_transport_problems(building, recipe):
+		if bool(f.get("blocked", false)):
+			blocked[str(f.get("good_id", ""))] = true
+	var per: Array = []
+	for r: Dictionary in routes:
+		var gid := str(r.get("good_id", ""))
+		var g := {"gid": gid, "name": Catalog.get_display_name(gid).to_lower() if gid != "" else str(r.get("name", ""))}
+		var from := str(r.get("from", ""))
+		var modes := _route_modes(r.get("route", {}))
+		if from == "the logistics intermediary":
+			per.append(_good_check(g, "route", "Route and mode", "ok", "Brought by the logistics intermediary."))
+		elif not bool(r.get("reachable", true)) or blocked.has(gid):
+			per.append(_good_check(g, "route", "Route and mode", "bad", "No route in. Connect the tile by %s." % _route_to_build(gid)))
+		elif from == "this tile":
+			per.append(_good_check(g, "route", "Route and mode", "ok", "Made on this tile."))
+		elif int(r.get("turns", -1)) < 0:
+			per.append(_good_check(g, "route", "Route and mode", "ok", "Drawn from this tile's stockpile."))
+		elif modes.is_empty() and int(r.get("turns", 0)) == 0:
+			per.append(_good_check(g, "route", "Route and mode", "ok", "Lands at the port on this tile."))
+		else:
+			per.append(_mode_check(g, "route", "Route and mode", modes, "Comes", " from %s" % from))
+	return _combine_goods("route", "Route and mode", per)
+
+static func _warehouse_check(building: Dictionary, recipe: Dictionary) -> Dictionary:
+	var tile := str(building.get("tile_id", ""))
+	var cap := Stockpile.get_capacity(tile)
+	var used := Stockpile.get_used_capacity(tile)
+	if cap <= 0:
+		return _check("warehouse", "Warehouse room", "off", "No warehouse on this tile.")
+	if used >= cap:
+		var inbound := 0
+		for sh: Dictionary in TransportState.get_inbound_transport_shipments(tile):
+			inbound += int(sh.get("qty", 0))
+		var starved := BuildingStatus.input_status_color(building, recipe, false) == BuildingStatus.STATUS_RED
+		var waiting := " %d unit%s wait in transit." % [inbound, "" if inbound == 1 else "s"] if inbound > 0 else ""
+		return _check("warehouse", "Warehouse room", "bad" if starved else "warn",
+			"Warehouse full, %s of %s. Arriving inputs cannot unload.%s" % [_fmt_count(used), _fmt_count(cap), waiting])
+	if float(used) >= WAREHOUSE_NEAR_FULL * float(cap):
+		return _check("warehouse", "Warehouse room", "warn", "Warehouse nearly full, %s of %s used." % [_fmt_count(used), _fmt_count(cap)])
+	return _check("warehouse", "Warehouse room", "ok", "Warehouse holds %s of %s. Room for deliveries." % [_fmt_count(used), _fmt_count(cap)])
+
+static func _transit_check(routes: Array) -> Dictionary:
+	var worst: Dictionary = {}
+	var via_intermediary := false
+	for r: Dictionary in routes:
+		if str(r.get("from", "")) == "the logistics intermediary":
+			via_intermediary = true
+		if int(r.get("turns", -1)) >= 0 and (worst.is_empty() or int(r.turns) > int(worst.turns)):
+			worst = r
+	if worst.is_empty():
+		if via_intermediary:
+			return _check("transit", "Transit time", "ok", "The logistics intermediary delivers its inputs.")
+		return _check("transit", "Transit time", "off", "No route in yet.")
+	var t := int(worst.turns)
+	if t == 0 and routes.all(func(r: Dictionary) -> bool: return str(r.get("from", "")) == "this tile"):
+		return _check("transit", "Transit time", "ok", "Every input is made on this tile.")
+	if t == 0:
+		return _check("transit", "Transit time", "ok", "Inputs arrive the turn they are bought.")
+	if t <= 1:
+		return _check("transit", "Transit time", "ok", "Inputs arrive within a turn.")
+	return _check("transit", "Transit time", "warn" if t <= 4 else "bad", "Slowest is %s, %d turns from %s." % [str(worst.name), t, str(worst.from)])
+
+static func _freight_check(econ: Dictionary) -> Dictionary:
+	if not bool(econ.get("shown", false)):
+		return _check("freight", "Freight cost", "off", "No figures yet.")
+	var cost := float(econ.get("transport_in", 0.0))
+	var value := float(econ.get("input_value", 0.0))
+	if bool(econ.get("inputs_free", false)) or cost <= 0.0:
+		return _check("freight", "Freight cost", "ok", "Bringing its inputs in costs nothing.")
+	var share := cost / value * 100.0 if value > 0.0 else 100.0
+	return _check("freight", "Freight cost", str(econ.get("lamp_in", "ok")), "£%.2f a turn to bring inputs in, %d%% of their value." % [cost, roundi(share)])
+
+# --- Output checks (the diagnostics' visual view) --------------------------------------------
+# Five checks, each over every good the recipe makes, a lamp for each tone among them: how each travels
+# (amber when a cheaper kind of infrastructure suits it, never red), how long it takes (red when it cannot
+# reach its destination), what shipping it costs a unit, how close the port it sells through is to its
+# throughput cap, and how it sells (stock piling up unsold, or else its price against the glut the
+# company's own selling makes). Transit and freight use the checklist's output rows' bands. A building
+# that makes no goods to ship (a power plant, a battery, infrastructure) has all five unlit.
+
+## Output stock of at least this many turns' output reads amber: it is piling up. Red from the second.
+const UNSOLD_TURNS_AMBER := 3
+const UNSOLD_TURNS_RED := 6
+## Port traffic from this share of the port's cap for the good's transport class reads amber: the next
+## shipments may take it to the cap, where a shipment pays double.
+const PORT_NEAR_CAP := 0.9
+## How the readout names each transport class.
+const TRANSPORT_CLASS_NAMES := {"solid_light": "light solids", "solid_heavy": "heavy solids", "ultra_heavy": "ultra heavy solids",
+	"safe_liquid": "safe liquids", "hazard_liquid": "hazardous liquids", "gas": "gases"}
+## A sale price this many points or more under its impact free base reads red.
+const GLUT_RED_PCT := -10.0
+## And amber from this far under it, or whenever the company's selling is pushing it down.
+const GLUT_AMBER_PCT := -5.0
+
+static func output_checks(building: Dictionary, recipe: Dictionary, is_infrastructure: bool) -> Array:
+	var produces_power := str(recipe.get("output_name", "")) == "power"
+	var goods: Array = []
+	if not produces_power:
+		for o: Dictionary in BuildingStatus.flow_output_items(recipe):
+			var gid := str(o.get("good_id", ""))
+			if gid == "":
+				gid = str(Catalog.get_good_by_internal_name(str(o.get("internal_name", ""))).get("id", ""))
+			if gid != "":
+				goods.append({"gid": gid, "qty": maxi(1, int(o.get("qty", 1))), "name": Catalog.get_display_name(gid).to_lower()})
+	var keys := [["reach", "Reach"], ["transit_out", "Transit time"], ["freight_out", "Freight cost"], ["port", "Port charge"], ["sales", "Sales"]]
+	if is_infrastructure or goods.is_empty():
+		var none := "Its power leaves by cable. See Power." if produces_power else "Makes no goods to ship."
+		return keys.map(func(k: Array) -> Dictionary: return _check(str(k[0]), str(k[1]), "off", none))
+	var per: Array = [[], [], [], [], []]
+	for g: Dictionary in goods:
+		var route := output_route(building, recipe, str(g.gid))
+		per[0].append(_reach_check(route, building, g))
+		per[1].append(_transit_out_check(route, building, g))
+		per[2].append(_freight_out_check(route, building, g))
+		per[3].append(_port_check(building, route, g))
+		per[4].append(_sales_check(building, route, g))
+	var out: Array = []
+	for i in keys.size():
+		out.append(_combine_goods(str(keys[i][0]), str(keys[i][1]), per[i]))
+	return out
+
+## How an output route stands: "intermediary", "unreachable", "local" (it stays on this tile, or has
+## no port to go to), or "shipped".
+static func _output_leg(route: Dictionary, building: Dictionary) -> String:
+	if str(route.get("destination", "")) == "Middleman":
+		return "intermediary"
+	if not bool(route.get("reachable", true)):
+		return "unreachable"
+	var target := str(route.get("target", ""))
+	if target == "" or target == str(building.get("tile_id", "")):
+		return "local"
+	return "shipped"
+
+## Where an output route goes, as the readout says it: "the market through Stoneshore Docks".
+static func _destination(route: Dictionary) -> String:
+	var target := str(route.get("target", ""))
+	if str(route.get("destination", "")).begins_with("Special Order"):
+		return "a special order"
+	if bool(route.get("has_market", false)):
+		return "the market through %s" % _place(target) if target != "" else "the market"
+	return _place(target) if target != "" else "its destination"
+
+static func _reach_check(route: Dictionary, building: Dictionary, g: Dictionary) -> Dictionary:
+	var gid := str(g.get("gid", ""))
+	match _output_leg(route, building):
+		"intermediary":
+			return _good_check(g, "reach", "Reach", "ok", "The logistics intermediary collects it.")
+		"unreachable":
+			return _good_check(g, "reach", "Reach", "warn", "Cannot reach %s. Build a %s route out." % [_destination(route), _route_to_build(gid)])
+		"local":
+			return _good_check(g, "reach", "Reach", "ok", "Goes to this tile's stockpile. Nothing to ship." if str(route.get("target", "")) != "" else "Goes to the market.")
+	var r := TransportService.route(str(building.get("tile_id", "")), str(route.get("target", "")), gid)
+	return _mode_check(g, "reach", "Reach", _route_modes(r), "Goes", " to %s" % _destination(route))
+
+static func _transit_out_check(route: Dictionary, building: Dictionary, g: Dictionary) -> Dictionary:
+	match _output_leg(route, building):
+		"intermediary":
+			return _good_check(g, "transit_out", "Transit time", "ok", "The logistics intermediary collects it.")
+		"unreachable":
+			return _good_check(g, "transit_out", "Transit time", "bad", "No route to %s. Never arrives." % _destination(route))
+		"local":
+			return _good_check(g, "transit_out", "Transit time", "ok", "No travel. Goes to this tile's stockpile.")
+	var t := int(route.get("turns", 0))
+	return _good_check(g, "transit_out", "Transit time", "ok" if t <= 1 else ("warn" if t <= 4 else "bad"),
+		"%d turn%s to %s." % [t, "" if t == 1 else "s", _destination(route)])
+
+static func _freight_out_check(route: Dictionary, building: Dictionary, g: Dictionary) -> Dictionary:
+	match _output_leg(route, building):
+		"intermediary":
+			return _good_check(g, "freight_out", "Freight cost", "ok", "The logistics intermediary's fee covers it. See Economics.")
+		"unreachable":
+			return _good_check(g, "freight_out", "Freight cost", "off", "No route out, so no freight.")
+		"local":
+			return _good_check(g, "freight_out", "Freight cost", "ok", "No freight. Goes to this tile's stockpile.")
+	var cost := float(route.get("cost", 0.0))
+	var per_unit := cost / float(maxi(1, int(g.get("qty", 1))))
+	var band := "Cheap" if per_unit < 0.15 else ("Average" if per_unit < 0.4 else "Expensive")
+	return _good_check(g, "freight_out", "Freight cost", "ok" if per_unit < 0.15 else "warn", "£%s a unit to ship, £%.2f a turn. %s." % [_num(per_unit), cost, band])
+
+## The port its outputs are sold through: the port a market route goes to, or the one nearest the
+## stockpile they go to, which sells its surplus. "" when they pass no port.
+static func _output_port(building: Dictionary, route: Dictionary) -> String:
+	if _output_leg(route, building) == "intermediary":
+		return ""
+	if bool(route.get("has_market", false)):
+		return str(route.get("target", ""))
+	var lands := str(route.get("target", ""))
+	return TransportService.nearest_port_tile(lands if lands != "" else str(building.get("tile_id", "")))
+
+static func _port_check(building: Dictionary, route: Dictionary, g: Dictionary) -> Dictionary:
+	var port := _output_port(building, route)
+	if port == "":
+		var why := "The logistics intermediary ships it. No port charge." if _output_leg(route, building) == "intermediary" else "Passes no port."
+		return _good_check(g, "port", "Port charge", "ok", why)
+	var gid := str(g.get("gid", ""))
+	var kind := Catalog.get_transport_class(gid)
+	var kind_name := str(TRANSPORT_CLASS_NAMES.get(kind, kind.replace("_", " ")))
+	var cap := TransportState.seaport_throughput_cap(gid)
+	var summary := TransportState.seaport_shipping_summary(port)
+	var used := int((summary.get("usage", {}) as Dictionary).get(kind, 0))
+	var hit := used >= cap
+	for row: Dictionary in summary.get("rows", []):
+		if str(row.get("transport_class", "")) == kind and bool(row.get("at_cap", false)):
+			hit = true
+	var where := _place(port)
+	if hit:
+		return _good_check(g, "port", "Port charge", "bad", "%s handled %s of %s %s this turn. At the cap a shipment pays double." % [where, _fmt_count(used), _fmt_count(cap), kind_name])
+	if float(used) >= PORT_NEAR_CAP * float(cap):
+		return _good_check(g, "port", "Port charge", "warn", "%s handled %s of %s %s this turn, close to the cap. At the cap a shipment pays double." % [where, _fmt_count(used), _fmt_count(cap), kind_name])
+	var owned := bool(summary.get("owned", false))
+	return _good_check(g, "port", "Port charge", "ok", "%s handled %s of %s %s this turn. Charge %.1f%%.%s" % [
+		where, _fmt_count(used), _fmt_count(cap), kind_name, float(summary.get("insurance_rate", 0.0)) * float(summary.get("growth", 1.0)) * 100.0,
+		" The port is yours." if owned else " Owning the port halves it."])
+
+## A count with thousands separated: 1500 becomes "1,500".
+static func _fmt_count(n: int) -> String:
+	var s := str(absi(n))
+	var out := ""
+	while s.length() > 3:
+		out = "," + s.substr(s.length() - 3) + out
+		s = s.substr(0, s.length() - 3)
+	return ("-" if n < 0 else "") + s + out
+
+## How a good sells: stock piling up unsold when it is (the pallet icon), else its price against the glut
+## the company's own selling makes (the coin icon). Only one of the two applies at a time.
+static func _sales_check(building: Dictionary, route: Dictionary, g: Dictionary) -> Dictionary:
+	var unsold := _unsold_check(building, route, g)
+	if str(unsold.get("tone", "")) in ["warn", "bad"]:
+		unsold["icon"] = "unsold"
+		return unsold
+	var glut := _glut_check(building, g)
+	glut["icon"] = "glut"
+	return glut
+
+static func _glut_check(building: Dictionary, g: Dictionary) -> Dictionary:
+	var gid := str(g.get("gid", ""))
+	if Middleman.buys_output(str(building.get("instance_id", "")), gid):
+		return _good_check(g, "sales", "Sales", "ok", "The logistics intermediary buys it at a contract price.")
+	var impact := MarketState.get_impact_pct(gid)
+	var th := MarketState.impact_thresholds(gid)
+	var net := MarketState.rolling_net_volume(gid)
+	var falling := 0.0
+	for i in th.size():
+		if net > float(th[i]) and i < EconomyConfig.PRICE_IMPACT_LADDER.size():
+			falling = float(EconomyConfig.PRICE_IMPACT_LADDER[i][1])
+	var where := "at its base price"
+	if impact < -0.5:
+		where = "%d%% under its base price" % roundi(-impact)
+	elif impact > 0.5:
+		where = "%d%% over its base price" % roundi(impact)
+	var detail := "Sells at £%.2f, %s." % [MarketState.get_price(gid), where]
+	if falling > 0.0:
+		detail += " Your own selling pushes it down %.1f points a turn." % falling
+	var tone := "ok"
+	if impact <= GLUT_RED_PCT:
+		tone = "bad"
+	elif falling > 0.0 or impact <= GLUT_AMBER_PCT:
+		tone = "warn"
+	return _good_check(g, "sales", "Sales", tone, detail)
+
+static func _unsold_check(building: Dictionary, route: Dictionary, g: Dictionary) -> Dictionary:
+	var gid := str(g.get("gid", ""))
+	var tile := str(building.get("tile_id", ""))
+	var where := tile
+	if not bool(route.get("has_market", false)) and str(route.get("target", "")) != "":
+		where = str(route.get("target", ""))
+	var stock := Stockpile.get_at_tile(where, gid)
+	if stock <= 0:
+		return _good_check(g, "sales", "Sales", "ok", "Nothing waiting. Moves on as it is made.")
+	var place := "on this tile" if where == tile else "at %s" % _place(where)
+	var turns := stock / maxi(1, int(g.get("qty", 1)))
+	if turns >= UNSOLD_TURNS_RED:
+		return _good_check(g, "sales", "Sales", "bad", "%d waiting unsold %s, %d turns of output." % [stock, place, turns])
+	if turns >= UNSOLD_TURNS_AMBER:
+		return _good_check(g, "sales", "Sales", "warn", "%d waiting unsold %s, %d turns of output." % [stock, place, turns])
+	return _good_check(g, "sales", "Sales", "ok", "%d waiting %s." % [stock, place])
+
+# --- Plant checks (the diagnostics' visual view) ---------------------------------------------
+# Two checks: the carbon levy the building pays, and works under way on it (an upgrade, a retool or its
+# demolition). `econ` is BuildingEconomics.per_turn(building), when the caller has it: it tells a levy
+# that tips the building into a loss from one it can carry.
+
+static func plant_checks(building: Dictionary, recipe: Dictionary, is_infrastructure: bool, econ: Dictionary = {}) -> Array:
+	return [_carbon_check(building, recipe, is_infrastructure, econ), _works_check(building)]
+
+static func _carbon_check(building: Dictionary, recipe: Dictionary, is_infrastructure: bool, econ: Dictionary) -> Dictionary:
+	if is_infrastructure:
+		return _check("carbon", "Carbon levy", "off", "Infrastructure pays no carbon levy.")
+	if PolicyState.co2_tax_scale(TurnManager.current_turn) <= 0.0:
+		return _check("carbon", "Carbon levy", "ok", "No carbon levy in force.")
+	var levy := PolicyState.run_carbon_levy(building, recipe)
+	if levy <= 0.0:
+		return _check("carbon", "Carbon levy", "ok", "Burns nothing the carbon levy taxes.")
+	var taxed: Array = []
+	for inp: Dictionary in recipe.get("inputs", []):
+		var gid := str(inp.get("good_id", ""))
+		if float(Catalog.get_good(gid).get("co2_tax_multiplier", 0.0)) > 0.0:
+			taxed.append(Catalog.get_display_name(gid).to_lower())
+	var on := " on its %s" % _and_list(taxed) if not taxed.is_empty() else ""
+	var net := float(econ.get("net_value_added", NAN))
+	if not is_nan(net) and net < 0.0 and net + levy >= 0.0:
+		return _check("carbon", "Carbon levy", "bad", "Pays £%.2f a turn in carbon levy%s. That turns a profit into a loss of £%.2f." % [levy, on, -net])
+	return _check("carbon", "Carbon levy", "warn", "Pays £%.2f a turn in carbon levy%s." % [levy, on])
+
+static func _works_check(building: Dictionary) -> Dictionary:
+	var iid := str(building.get("instance_id", ""))
+	if BuildingWorks.is_demolishing(iid):
+		var d := BuildingWorks.demolish_turns_remaining(iid)
+		return _check("works", "Upgrade and retool works", "warn", "Being demolished. %d turn%s left." % [d, "" if d == 1 else "s"])
+	if BuildingWorks.is_retooling(iid):
+		var r := BuildingWorks.retrofit_turns_remaining(iid)
+		return _check("works", "Upgrade and retool works", "warn", "Retooling. %d turn%s left, and it makes nothing until then." % [r, "" if r == 1 else "s"])
+	var snap := BuildingWorks.upgrade_progress_snapshot(iid)
+	if not snap.is_empty():
+		var target := int(BuildingWorks.pending_upgrade(iid).get("target_level", int(building.get("level", 1)) + 1))
+		if bool(snap.get("blocked", false)):
+			return _check("works", "Upgrade and retool works", "bad", "Upgrade to Lv %d has stalled. %s" % [target, str(snap.get("error", ""))])
+		var eta := int(snap.get("estimated_turns", -1))
+		var when := "About %d turn%s to go." % [eta, "" if eta == 1 else "s"] if eta >= 0 else "Under way."
+		return _check("works", "Upgrade and retool works", "warn", "Upgrading to Lv %d. %s" % [target, when])
+	return _check("works", "Upgrade and retool works", "off", "No works under way.")
 
 # green_intermittent (solar/wind) / green_steady (hydro/biomass fuel) / grey — mirrors Production._power_quality.
 static func _power_quality_of(building: Dictionary, recipe: Dictionary) -> String:
@@ -934,9 +1673,11 @@ static func output_consumers(building: Dictionary, recipe: Dictionary) -> Array:
 				break
 	return rows
 
-static func output_route(building: Dictionary, recipe: Dictionary) -> Dictionary:
+## Where one of the building's outputs goes (the primary output when `good_id` is ""): {destination,
+## cost and turns for its quantity a run, reachable, has_market, target}.
+static func output_route(building: Dictionary, recipe: Dictionary, good_id: String = "") -> Dictionary:
 	var iid := str(building.get("instance_id", ""))
-	var gid := BuildingStatus.primary_output_good_id(recipe)
+	var gid := good_id if good_id != "" else BuildingStatus.primary_output_good_id(recipe)
 	# Do this before consulting the legacy/default sell mode. An active
 	# intermediary has no shared-tile destination, even when STOCKPILE_ALL is the
 	# global fallback for buildings that have no explicit route.
@@ -944,6 +1685,9 @@ static func output_route(building: Dictionary, recipe: Dictionary) -> Dictionary
 		return {"destination":"Middleman","target":"","has_market":true,"cost":0.0,"turns":0}
 	var source_tile := str(building.get("tile_id", ""))
 	var qty := BuildingStatus.primary_output_qty(recipe)
+	for o: Dictionary in BuildingStatus.flow_output_items(recipe):
+		if str(o.get("good_id", "")) == gid:
+			qty = maxi(1, int(o.get("qty", qty)))
 	var dest_tile := MatchState.get_output_stockpile_destination(iid, gid)
 	var target := ""
 	var destination := ""

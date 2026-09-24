@@ -1675,6 +1675,325 @@ const ECON_ICONS = { S: 72, icon: 52, height: 8, soften: 1.1, art: {
 } };
 
 /**
+ * The diagnostics' visual view's raised icons, one per check, raised as the Economics icons are but
+ * larger: the art fills `icon` layout px, 112 texels, a 56 px icon at two texels a pixel. They are the
+ * game's building icons, cream art on navy, so the cream is keyed out as the mask and trimmed to the art
+ * (keyCream); one with `alpha` is already clear round its art, so its alpha is the mask, trimmed
+ * (trimAlpha). An icon with `make` is drawn here instead (batteryArt).
+ */
+const DIAG_ICONS = { S: 133, icon: 105, height: 12, soften: 1.5, art: {
+  power_supply: { file: 'buildings/b_003_power_plant.png' },
+  intermittency: { make: () => batteryArt() },
+  cable: { file: 'buildings/b_006_cables.png' },
+  carbon: { make: () => carbonArt() },
+  works: { make: () => worksArt() },
+  route: { make: () => routeArt() },
+  transit: { make: () => transitArt() },
+  freight: { make: () => freightArt() },
+  warehouse: { make: () => warehouseArt() },
+  source: { file: 'ui_icons/construction_materials.png', alpha: true },
+  stock: { make: () => stockArt() },
+  upstream: { make: () => upstreamArt() },
+  deposit: { make: () => depositArt() },
+  port: { make: () => portArt() },
+  glut: { make: () => glutArt() },
+  unsold: { make: () => unsoldArt() },
+} };
+
+/** Port charge drawn as a mask to raise: a solid anchor, its ring's eye, stock, shank and flukes. 100 × 100 units. */
+function portArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    g.fillStyle = '#fff'; g.strokeStyle = '#fff';
+    g.beginPath(); g.arc(50, 13, 10, 0, Math.PI * 2); g.fill();                        // the ring
+    g.beginPath(); g.roundRect(26, 28, 48, 9, 3); g.fill();                            // the stock
+    g.fillRect(45, 20, 10, 66);                                                        // the shank
+    g.lineWidth = 10; g.lineCap = 'butt';
+    g.beginPath(); g.arc(50, 56, 34, Math.PI * 0.12, Math.PI * 0.88); g.stroke();       // the arms
+    for (const side of [-1, 1]) {                                                      // the flukes
+      const x = 50 + side * 34 * Math.cos(Math.PI * 0.12), y = 56 + 34 * Math.sin(Math.PI * 0.12);
+      g.beginPath(); g.moveTo(x - side * 9, y + 2); g.lineTo(x + side * 7, y - 16); g.lineTo(x + side * 9, y + 4); g.closePath(); g.fill();
+    }
+    g.globalCompositeOperation = 'destination-out';
+    g.beginPath(); g.arc(50, 13, 4.5, 0, Math.PI * 2); g.fill();                       // the ring's eye
+  }, 1);
+}
+
+/** Sale price and glut drawn as a mask to raise: a solid coin with a £ cut through it and a bold arrow falling beside it. 100 × 100 units. */
+function glutArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    g.fillStyle = '#fff';
+    g.beginPath(); g.arc(30, 54, 28, 0, Math.PI * 2); g.fill();                        // the coin
+    g.fillRect(75, 10, 16, 46);                                                        // the arrow's shaft, clear of it
+    g.beginPath(); g.moveTo(64, 54); g.lineTo(102, 54); g.lineTo(83, 88); g.closePath(); g.fill();
+    g.globalCompositeOperation = 'destination-out';
+    g.font = 'bold 40px Helvetica, Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('£', 30, 56);
+  }, 1);
+}
+
+/** Unsold stock drawn as a mask to raise: four solid boxes, each taped over its top, stacked on a pallet. 100 × 100 units. */
+function unsoldArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    g.fillStyle = '#fff';
+    g.fillRect(2, 80, 96, 7);                                                          // the pallet's deck
+    for (const x of [2, 43, 84]) g.fillRect(x, 87, 14, 9);                             // its blocks
+    for (const [x, y] of [[6, 46], [52, 46], [6, 10], [52, 10]]) {                     // the boxes
+      g.globalCompositeOperation = 'source-over';
+      g.beginPath(); g.roundRect(x, y, 42, 31, 2); g.fill();
+      g.globalCompositeOperation = 'destination-out';
+      g.fillRect(x + 18, y, 6, 11);                                                    // its tape
+    }
+  }, 1);
+}
+
+/** An icon's own alpha as the mask, cropped to the art's bounds. */
+function trimAlpha(img) {
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
+  const p = g.getImageData(0, 0, c.width, c.height).data;
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let i = 3; i < p.length; i += 4) {
+    if (p[i] > 127) {
+      const k = (i - 3) / 4, x = k % c.width, y = (k - x) / c.width;
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+    }
+  }
+  const t = document.createElement('canvas'); t.width = x1 - x0 + 1; t.height = y1 - y0 + 1;
+  t.getContext('2d').drawImage(c, x0, y0, t.width, t.height, 0, 0, t.width, t.height);
+  return t;
+}
+
+/** Stock cover drawn as a mask to raise: three solid crates stacked two and one, each with a cut X brace. 100 × 100 units. */
+function stockArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    for (const [x, y] of [[4, 54], [52, 54], [28, 8]]) {
+      g.globalCompositeOperation = 'source-over'; g.fillStyle = '#fff';
+      g.beginPath(); g.roundRect(x, y, 44, 42, 3); g.fill();
+      g.globalCompositeOperation = 'destination-out'; g.strokeStyle = '#000'; g.lineWidth = 5; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(x + 10, y + 10); g.lineTo(x + 34, y + 32); g.moveTo(x + 34, y + 10); g.lineTo(x + 10, y + 32); g.stroke();   // its brace
+    }
+  }, 1);
+}
+
+/**
+ * A light icon on a translucent button as a mask to raise: only its solid, light pixels (the button
+ * round it is see-through), cropped to the art's bounds.
+ */
+function keyOpaque(img) {
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height), p = d.data;
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let i = 0; i < p.length; i += 4) {
+    const light = (0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2]) / 255;
+    const a = THREE.MathUtils.smoothstep(p[i + 3], 180, 235) * THREE.MathUtils.smoothstep(light, 0.6, 0.75);
+    p[i] = p[i + 1] = p[i + 2] = 255; p[i + 3] = Math.round(a * 255);
+    if (a > 0.5) {
+      const k = i / 4, x = k % c.width, y = (k - x) / c.width;
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+    }
+  }
+  g.putImageData(d, 0, 0);
+  const t = document.createElement('canvas'); t.width = x1 - x0 + 1; t.height = y1 - y0 + 1;
+  t.getContext('2d').drawImage(c, x0, y0, t.width, t.height, 0, 0, t.width, t.height);
+  return t;
+}
+
+/**
+ * Upstream health as a mask to raise: the Building Ledger's factory (its button icon, keyed by
+ * keyOpaque) with a bold arrow leaving it to the right, a little clear of its wall. 142 × 100 units.
+ */
+async function upstreamArt(k = 4) {
+  const factory = keyOpaque(await loadImage('/icons/ui_icons/alt/building_ledger.png'));
+  return canvas2d(142 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    const s = 96 / Math.max(factory.width, factory.height);
+    g.drawImage(factory, 0, 100 - factory.height * s, factory.width * s, factory.height * s);
+    g.fillStyle = '#fff';
+    g.fillRect(101, 62, 18, 21);                                                       // the arrow's shaft
+    g.beginPath(); g.moveTo(114, 42); g.lineTo(142, 72.5); g.lineTo(114, 103); g.closePath(); g.fill();
+  }, 1);
+}
+
+/**
+ * Deposit left drawn as a mask to raise: a solid pickaxe, its head a crescent across the top of the
+ * handle, arched above and near flat beneath, meeting in a point at each end. 100 × 100 units.
+ */
+function depositArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    g.fillStyle = '#fff'; g.strokeStyle = '#fff';
+    g.translate(50, 56); g.rotate(-0.5);
+    g.beginPath(); g.roundRect(-8, -34, 16, 82, 8); g.fill();                          // the handle
+    // The head: the outer arc over the top, then back along a much flatter arc through both tips, set so
+    // the crescent is T units deep at its middle.
+    const c1 = 10, R1 = 50, a0 = Math.PI * 1.2, a1 = Math.PI * 1.8, T = 19;
+    const x0 = R1 * Math.cos(a0), y0 = c1 + R1 * Math.sin(a0), top = c1 - R1 + T, d = y0 - top;
+    const R2 = (x0 * x0 + d * d) / (2 * d), c2 = top + R2;
+    g.beginPath(); g.arc(0, c1, R1, a0, a1);
+    g.arc(0, c2, R2, Math.atan2(y0 - c2, -x0), Math.atan2(y0 - c2, x0), true); g.closePath(); g.fill();
+    g.beginPath(); g.roundRect(-12, -44, 24, 18, 4); g.fill();                         // where head meets handle
+  }, 1);
+}
+
+/** A route drawn as a mask to raise: a thick S-shaped track ending in an arrowhead. 100 × 100 units. */
+function routeArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    g.strokeStyle = '#fff'; g.fillStyle = '#fff'; g.lineWidth = 13; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(18, 86); g.bezierCurveTo(70, 86, 74, 56, 50, 50); g.bezierCurveTo(26, 44, 30, 18, 64, 18); g.stroke();
+    g.beginPath(); g.moveTo(62, 2); g.lineTo(94, 18); g.lineTo(62, 34); g.closePath(); g.fill();   // the arrowhead
+  }, 1);
+}
+
+/** Transit time drawn as a mask to raise: a solid clock face and winder, its hands and hour marks cut. 100 × 100 units. */
+function transitArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    g.fillStyle = '#fff'; g.strokeStyle = '#fff';
+    g.beginPath(); g.arc(50, 56, 40, 0, Math.PI * 2); g.fill();                        // the face
+    g.beginPath(); g.roundRect(41, 4, 18, 9, 2); g.fill(); g.fillRect(46, 12, 8, 6);   // the winder
+    g.globalCompositeOperation = 'destination-out';
+    g.lineCap = 'round';
+    g.lineWidth = 7; g.beginPath(); g.moveTo(50, 56); g.lineTo(50, 30); g.stroke();    // the hands
+    g.lineWidth = 6; g.beginPath(); g.moveTo(50, 56); g.lineTo(69, 66); g.stroke();
+    for (const [x, y, w, h] of [[47, 20, 6, 8], [47, 84, 6, 8], [14, 53, 8, 6], [78, 53, 8, 6]]) g.fillRect(x, y, w, h);   // the hour marks
+  }, 1);
+}
+
+/**
+ * Freight cost drawn as a mask to raise: a solid lorry, its cab window cut and its wheels stood clear of
+ * the body, with a coin in front of its load, a £ cut through the coin. 100 × 100 units.
+ */
+function freightArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    g.fillStyle = '#fff';
+    g.beginPath(); g.roundRect(4, 36, 58, 38, 4); g.fill();                            // the load
+    g.beginPath(); g.moveTo(65, 46); g.lineTo(80, 46); g.lineTo(94, 60); g.lineTo(94, 76); g.lineTo(65, 76); g.closePath(); g.fill();   // the cab
+    g.fillRect(4, 72, 90, 5);                                                          // the chassis
+    const cut = (fn) => { g.globalCompositeOperation = 'destination-out'; fn(); g.globalCompositeOperation = 'source-over'; };
+    cut(() => { g.beginPath(); g.moveTo(70, 50); g.lineTo(79, 50); g.lineTo(87, 60); g.lineTo(70, 60); g.closePath(); g.fill(); });   // its window
+    for (const x of [22, 77]) {                                                        // the wheels
+      cut(() => { g.beginPath(); g.arc(x, 84, 14, 0, Math.PI * 2); g.fill(); });
+      g.beginPath(); g.arc(x, 84, 10, 0, Math.PI * 2); g.fill();
+      cut(() => { g.beginPath(); g.arc(x, 84, 3.5, 0, Math.PI * 2); g.fill(); });
+    }
+    cut(() => { g.beginPath(); g.arc(30, 30, 23, 0, Math.PI * 2); g.fill(); });        // the coin, stood clear of the load
+    g.beginPath(); g.arc(30, 30, 19, 0, Math.PI * 2); g.fill();
+    cut(() => { g.font = 'bold 27px Helvetica, Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('£', 30, 31); });
+  }, 1);
+}
+
+/** Warehouse room drawn as a mask to raise: a solid shed with a gable vent and a roller door of slats. 100 × 100 units. */
+function warehouseArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    g.fillStyle = '#fff';
+    g.beginPath(); g.moveTo(4, 42); g.lineTo(50, 10); g.lineTo(96, 42); g.lineTo(96, 94); g.lineTo(4, 94); g.closePath(); g.fill();
+    g.globalCompositeOperation = 'destination-out';
+    g.fillRect(40, 30, 20, 7);                                                         // the vent
+    g.fillRect(24, 52, 52, 42);                                                        // the doorway
+    g.globalCompositeOperation = 'source-over';
+    for (let y = 56; y < 92; y += 9) g.fillRect(28, y, 44, 5);                          // the door's slats
+  }, 1);
+}
+
+/**
+ * The carbon levy drawn as a mask to raise: a solid chimney on a footing under a billowing cloud of
+ * smoke, a bold £ cut through the cloud. Laid out in a 100 × 100 unit box (`k` px a unit).
+ */
+function carbonArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    g.fillStyle = '#fff';
+    g.fillRect(6, 91, 50, 7);                                                          // the footing
+    g.beginPath(); g.moveTo(16, 92); g.lineTo(40, 92); g.lineTo(37, 50); g.lineTo(21, 50); g.closePath(); g.fill();   // the chimney
+    g.fillRect(18, 45, 22, 7);                                                         // its lip
+    g.beginPath();                                                                     // the smoke
+    for (const [x, y, r] of [[36, 34, 12], [52, 24, 16], [72, 26, 15], [86, 40, 11], [66, 42, 14], [48, 42, 11]]) {
+      g.moveTo(x + r, y); g.arc(x, y, r, 0, Math.PI * 2);
+    }
+    g.fill();
+    g.globalCompositeOperation = 'destination-out';
+    g.font = 'bold 32px Helvetica, Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('£', 64, 35);
+  }, 1);
+}
+
+/**
+ * Works under way drawn as a mask to raise: a hammer crossed over a spanner, both solid, the spanner's
+ * open jaw cut. Laid out in a 100 × 100 unit box (`k` px a unit), crossed at (50, 52).
+ */
+function worksArt(k = 4) {
+  return canvas2d(100 * k, 100 * k, (g) => {
+    g.scale(k, k);
+    g.fillStyle = '#fff';
+    g.save(); g.translate(50, 52); g.rotate(Math.PI * 40 / 180);                        // the spanner, jaw to the top right
+    g.beginPath(); g.roundRect(-5.5, -22, 11, 64, 5.5); g.fill();
+    g.beginPath(); g.arc(0, -30, 15, 0, Math.PI * 2); g.fill();
+    g.globalCompositeOperation = 'destination-out';
+    g.fillRect(-6.5, -48, 13, 20);                                                     // its open jaw
+    g.restore();
+    g.save(); g.translate(50, 52); g.rotate(-Math.PI * 40 / 180);                       // the hammer, head to the top left
+    g.beginPath(); g.roundRect(-5, -26, 10, 68, 5); g.fill();
+    g.beginPath(); g.roundRect(-22, -42, 40, 17, 3); g.fill();
+    g.restore();
+  }, 1);
+}
+
+/**
+ * A battery drawn as a mask to raise, mostly solid: a round-cornered body with two terminal posts on
+ * top, a thick outline groove just inside its edge, and a bold plus, minus and lightning bolt cut through
+ * it. Nothing round it: the outside is empty. Laid out in a 100 × 78 unit box (`k` px a unit); every
+ * cut and the rim outside the groove is 6 units, and the marks stand 7 apart, so each stays open once
+ * raised at 40 px.
+ */
+function batteryArt(k = 4) {
+  return canvas2d(100 * k, 78 * k, (g) => {
+    g.scale(k, k);
+    g.fillStyle = '#fff';
+    g.beginPath(); g.roundRect(0, 18, 100, 60, 8); g.fill();                         // the body
+    g.beginPath(); g.roundRect(14, 9, 17, 11, 2); g.roundRect(69, 9, 17, 11, 2); g.fill();   // the terminal posts
+    g.globalCompositeOperation = 'destination-out';
+    g.lineWidth = 6; g.beginPath(); g.roundRect(9, 27, 82, 42, 4); g.stroke();         // the outline groove
+    g.fillRect(18, 45, 18, 6); g.fillRect(24, 39, 6, 18);                              // plus
+    g.fillRect(64, 45, 18, 6);                                                         // minus
+    g.beginPath();                                                                     // the bolt
+    for (const [x, y] of [[51, 34], [43, 50], [49, 50], [46, 62], [57, 45], [51, 45], [57, 34]]) g.lineTo(x, y);
+    g.closePath(); g.fill();
+  }, 1);
+}
+
+/**
+ * A navy-backed icon's cream art as a mask to raise: each pixel white, as opaque as it is light (the
+ * navy clear, the cream solid), cropped to the art's bounds so the art fills whatever box it is fitted to.
+ */
+function keyCream(img) {
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height), p = d.data;
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let i = 0; i < p.length; i += 4) {
+    const light = (0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2]) / 255;
+    const a = THREE.MathUtils.smoothstep(light, 0.35, 0.7) * p[i + 3] / 255;
+    p[i] = p[i + 1] = p[i + 2] = 255; p[i + 3] = Math.round(a * 255);
+    if (a > 0.5) {
+      const k = i / 4, x = k % c.width, y = (k - x) / c.width;
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+    }
+  }
+  g.putImageData(d, 0, 0);
+  const t = document.createElement('canvas'); t.width = x1 - x0 + 1; t.height = y1 - y0 + 1;
+  t.getContext('2d').drawImage(c, x0, y0, t.width, t.height, 0, 0, t.width, t.height);
+  return t;
+}
+
+/**
  * A weld bead along a rounded rectangle's edge (w × h, corner r, centred on the origin): a rounded ridge
  * of bronze filler, radius `rad`, rippled every 2.6 px as a bead laid in runs is, lying on the join.
  */
@@ -1835,6 +2154,7 @@ if (EXPORT) exportLayers();
  * mod_icon, mod_icon_shadow: the Modifiers row's raised % sign and its swept shadow.
  * mini_screen, mini_screen_glass: the mini screen a figure shows on in LED segments, and its glass.
  * econ_icon_<name> (+ _shadow): the Economics section's raised icons (ECON_ICONS).
+ * diag_icon_<name> (+ _shadow): the diagnostics' visual view's raised icons (DIAG_ICONS).
  * layout.json: frame sizes and every key's rect and top face, in capture pixels.
  * ?export&only=lamp,scroll renders just the named sets (see `want` below).
  */
@@ -1845,7 +2165,7 @@ async function exportLayers() {
   // ?export&only=lamp,scroll renders just those sets and merges their entries into the existing
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
-  // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ.
+  // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -2249,6 +2569,20 @@ async function exportLayers() {
       await post('econ_icon_' + name + '_shadow', frame2d(S, S, (g) => drawIconShadows(g, S, S, [{ height, draw: (tg, col) => stamp(tg, img, o, o, icon, icon, col) }])));
     }
     layout.econ_icons = { size: [S, S], icon, names: Object.keys(art) };
+  });
+
+  // --- the diagnostics' visual view's raised icons (see DIAG_ICONS) and their shadows.
+  if (want('diagicon')) await withSeed(422, async () => {
+    const { S, icon, height, soften, art } = DIAG_ICONS, o = (S - icon) / 2;
+    const enamel = new THREE.MeshPhysicalMaterial({ color: OFF_WHITE, roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.3 });
+    for (const [name, { file, make, alpha }] of Object.entries(art)) {
+      const mask = make ? await make() : alpha ? trimAlpha(await loadImage('/icons/' + file)) : keyCream(await loadImage('/icons/' + file));
+      const r = iconRelief(mask, icon, icon, enamel, { height, soften });
+      r.position.set(S / 2, 0.3, S / 2);
+      await post('diag_icon_' + name, stage([0, 0, S, S], [r]).grab());
+      await post('diag_icon_' + name + '_shadow', frame2d(S, S, (g) => drawIconShadows(g, S, S, [{ height, draw: (tg, col) => stamp(tg, mask, o, o, icon, icon, col) }])));
+    }
+    layout.diag_icons = { size: [S, S], icon, names: Object.keys(art) };
   });
 
   // --- the title's letters: the raised white faces (ungraded; the game grades the whole title), and

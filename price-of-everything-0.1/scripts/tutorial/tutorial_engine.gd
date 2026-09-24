@@ -1058,6 +1058,15 @@ func is_active_step(id: String) -> bool:
 		and str((_steps[_index] as Dictionary).get("id", "")) == id
 
 
+## What the current step spotlights by node name ("" when the tutorial is off or the step points at
+## nothing by name), so a panel can show the part a step is talking about.
+func active_spotlight_ref() -> String:
+	if not active or _index < 0 or _index >= _steps.size():
+		return ""
+	var spot: Dictionary = (_steps[_index] as Dictionary).get("spotlight", {})
+	return str(spot.get("ref", "")) if str(spot.get("kind", "")) == "node_name" else ""
+
+
 ## How many countable steps the player has entered this run (the "Step N" display number).
 func steps_visited() -> int:
 	return _visited
