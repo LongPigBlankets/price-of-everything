@@ -1,8 +1,8 @@
 # Tile View: how it is used, what it holds, and a DS2 arrangement
 
-Status: REVIEW and PLAN, 24 September 2026. Nothing is built. The owner's decisions are listed in §8.
+Status: PLAN, revised 24 September 2026 after the top bar. The owner has decided §8 (answers written beside each). Built: §6's figures (yours only, from the engine), links that open their tab, and the stock controls shown only where you own land or have goods (Phase 1 in part, commit 1680e87b). The concept for the look is §9; nothing of it is built yet.
 
-Read with `docs/ds2-theme.md` (on branch `claude/bdp-v3-visual-diagnostics` until it merges), `docs/bdp-v3-roadmap.md` and `docs/top-bar-ds2-plan.md`: a 52 px bar with no notch gives this panel back about 46 px at its top.
+Read with `docs/ds2-theme.md` (now on main; §13 is the method as used on the top bar), `docs/bdp-v3-roadmap.md` and `docs/top-bar-ds2-plan.md`. The bar is 60 px with no notch and the panels under it start at y 72 instead of 114, so this panel has already gained 42 px at its top.
 
 Captures are in `artifacts/ui_ds2_plan/` (`tile_bl`, `tile_power`, `tile_prod`, `tile_stock`, an empty unsurveyed tile, an NPC tile, and the whole screen with the building detail docked beside the panel), made by `tools/ui_plan_shot.tscn` on a fixed 1920 × 1080 viewport at two pixels per logical pixel. `tile_view_arrangement.png` sets today's Buildings tab beside the proposed arrangement.
 
@@ -172,12 +172,38 @@ Each closes with the ladder in `ds2-theme.md` §9 and keeps these contracts:
 
 ## 8. Decisions for the owner
 
-1. **Tabs**: five summary keys over a scrolling body (recommended), or one long scrolling panel of framed sections like the building detail.
-2. **Transport** as a fifth key (recommended), or infrastructure stays at the foot of Buildings.
-3. **The photo**: drop it (recommended), keep it as a thumbnail in the status line, or keep it as is.
-4. **Power catalogue**: one Build power key into Construct, locked to the tile and filtered to power (recommended; Construct's `open_for_tile` needs a filter argument), or keep it in the tab.
-5. **Other companies' buildings folded** to one line by default (recommended). You asked for the "Show your buildings only" checkbox in July; folding makes it redundant. Keep it or retire it.
-6. **Goods and power figures**: yours only, at this turn's output (recommended; it can ship ahead of the restyle), or keep counting everyone's.
-7. **Which tab opens**: Buildings for a new tile and the linked tab for a deep link (recommended), or the last tab used.
-8. **Tiles you don't own**: hide warehouse, surplus and logistics controls until you own land there (recommended), or keep them everywhere, as today.
-9. **Coordinates**: hover only (recommended) or in the title.
+1. **Tabs**: five summary keys over a scrolling body (recommended), or one long scrolling panel of framed sections like the building detail. *Decided: five keys.*
+2. **Transport** as a fifth key (recommended), or infrastructure stays at the foot of Buildings. *Decided: a fifth key.*
+3. **The photo**: drop it (recommended), keep it as a thumbnail in the status line, or keep it as is. *Decided: drop it.*
+4. **Power catalogue**: one Build power key into Construct, locked to the tile and filtered to power (recommended; Construct's `open_for_tile` needs a filter argument), or keep it in the tab. *Decided: one Build power key.*
+5. **Other companies' buildings folded** to one line by default (recommended). You asked for the "Show your buildings only" checkbox in July; folding makes it redundant. Keep it or retire it. *Decided: fold, and retire the checkbox.*
+6. **Goods and power figures**: yours only, at this turn's output (recommended; it can ship ahead of the restyle), or keep counting everyone's. *Decided: yours only. Built.*
+7. **Which tab opens**: Buildings for a new tile and the linked tab for a deep link (recommended), or the last tab used. *Taken as recommended. Built (`show_tile(tile, tab)`).*
+8. **Tiles you don't own**: hide warehouse, surplus and logistics controls until you own land there (recommended), or keep them everywhere, as today. *Decided: hide them unless you own land or have goods on the tile. Built.*
+9. **Coordinates**: hover only (recommended) or in the title. *Decided: hover only.*
+10. **The frame** (new): *Decided: a brushed stainless steel backing plate with a black pipe running round its edge, some metal and plastic parts, cables joining building cards of the same group, and a rotary knob wherever a choice has three to seven options (the tile-wide routing, for one). The owner asked for a concept in Building Detail's spirit; it is §9.*
+
+## 9. The concept: the site's control cabinet
+
+Building Detail reached for the plant's own equipment: control plates with keycaps, a diagnostics case with a cable feeding each module, a rolling door over an empty bay, factory doors with the headcount on the kick plate, LED screens and drum counters for the money. The tile view is one step out: not a machine but the site it stands on. So the panel is **the site's control cabinet**: a stainless door on the switchgear that runs the whole plot.
+
+| Part | Metaphor | What it is on screen |
+|---|---|---|
+| **Frame** | a cabinet door in brushed stainless, a black iron pipe run round its edge as a guard rail, bending at the corners, with flanged joints at the seams | the backing (a new render: brushed grain along its length, the same house light), the pipe drawn round it as the bar's pipes are |
+| **Name** | an engraved nameplate riveted to the door: the site's name cut into black enamel, filled white | the title; the coordinates on hover |
+| **Status line** | equipment tags hung on the door: terrain, survey (a lamp), deposits (the goods' raised icons), seaport (the anchor) | one row of small riveted tags |
+| **Land** | a sight gauge: a long glass window in a black plastic case, the plot behind it in segments by building, the land you own marked on the glass as a painted scale | the land strip; Buy Land and Survey as keycaps beside it |
+| **The five keys** | the latching selector keys of old control desks (and radios): a row of cream keys on a black plastic key bed, the chosen one staying down, each with a pilot lamp and a small LED window above | Buildings, Power, Goods, Stock, Transport |
+| **Buildings** | the site's equipment racked in a dark tray: each building a black plastic module with its raised icon, lamp and output in a well; buildings of the same group fed by one cable with a tap into each, as the diagnostics' modules are | the cards; other companies behind a wide key that opens their drawer |
+| **Stock** | the yard: goods racked in a bay (the shipments' bay and its rolling door), the fill on a tank's sight gauge; the tile's routing on a **rotary selector** (keep, intermediary, port) with its positions engraved round it on the stainless | the Stock tab |
+| **Transport** | the site's services on a strip of indicators: a raised icon over a lamp for each infrastructure (cables, roads, pipes, rail), its level on a small drum, a small key to add | the Transport tab |
+| **Power** | a meter panel: made, drawn and net on LED screens, batteries as a bank with its charge, one key into Construct for power | the Power tab |
+| **Goods** | the output bay: each good in a well with its quantity on a drum, net value added on a screen | the Goods tab |
+| **Spending** | the guarded buttons of Building Detail's footer: lift the cover, then press | Buy Land, Expand, buying the port |
+
+**The rotary selector** is the new control: a black bakelite knob with a white pointer line, turning in click steps between three and seven positions engraved round it on the plate. It stands in for any choice of three to seven options that today is a row of buttons or a dropdown: the tile-wide routing first, then any other such choice found in the inventory.
+
+**Ink.** Stainless is light: print on it is navy (engraved and paint-filled), as DS2 rule 3 says; the dark parts (plastic, modules, the key bed) carry white. The text sizes are the ones agreed on the top bar (body 14, captions 15).
+
+**Phases, revised.** Phase 0 (the flag `use_tvp_ds2`, the cheat, a shot tool on the gallery pattern, telemetry counters) is next; Phase 1's numbers and links are done in part (group lamps from the diagnostics roll-up, open groups kept open across refreshes and the missing refresh signals remain); the renders come as studies first (stainless, the pipe frame, the knob, the key bed, a cabled pair of modules) for the owner to react to before any part goes into the panel.
+
