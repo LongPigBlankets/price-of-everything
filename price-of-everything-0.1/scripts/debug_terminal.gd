@@ -350,6 +350,9 @@ func _run_command(text: String) -> String:
 		"toggle":
 			if parts.size() >= 2 and parts[1].to_lower() == "logs":
 				return _toggle_debug_logs()
+			if " ".join(parts.slice(1)).to_lower() == "bdp v3":
+				UiPrefs.toggle_use_bdp_v3()
+				return "Building detail → %s" % ("v3 (control plates)" if UiPrefs.use_bdp_v3 else "v2")
 			if parts.size() >= 2 and parts[1].to_lower() in ["roads", "roadsv2"]:
 				# Phase-5 cutover: roads-v2 is the only system. This just shows/hides
 				# the road VISUALS — the network/logic runs regardless.
@@ -377,7 +380,7 @@ func _run_command(text: String) -> String:
 			if parts.size() >= 2 and parts[1].to_lower() == "midcentury":
 				MapStyle.set_midcentury(not MapStyle.is_midcentury())
 				return "map style → %s" % _style_name()
-			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate | midcentury"
+			return "usage: toggle logs | heightmap | roads | roadocc | ink | plate | midcentury | bdp v3"
 		"anim":
 			# Cheat: cycle the Empire-view hex-field animation (1->2->3->4->1), or set it with `anim <n>`.
 			var bg := get_tree().get_first_node_in_group("empire_hex_bg")

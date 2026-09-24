@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel Gauge</title>
+<style>
+  :root { --bg: #eceef0; --ink: #6b7075; }
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
+  canvas { display: block; touch-action: none; }
+  .hint {
+    position: fixed; left: 0; right: 0; bottom: 18px; text-align: center;
+    font: 500 12px/1 ui-sans-serif, system-ui, -apple-system, sans-serif;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--ink); opacity: .7;
+    pointer-events: none;
+  }
+  .panel {
+    position: fixed; top: 16px; right: 16px; width: 220px; padding: 14px 16px;
+    background: rgba(255,255,255,0.82); border: 1px solid rgba(0,0,0,0.08); border-radius: 10px;
+    font: 500 12px/1.2 ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2b2f33;
+    display: grid; gap: 10px;
+  }
+  .panel label { display: grid; gap: 4px; }
+  .panel .row { display: flex; justify-content: space-between; }
+  .panel output { font-variant-numeric: tabular-nums; color: var(--ink); }
+  .panel input[type=range], .panel select { width: 100%; }
+  @media (max-width: 560px) { .panel { left: 16px; right: 16px; width: auto; } }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div class="hint">Drag the dial or scroll to move the needle · L switches the LED off / on</div>
+<form class="panel" id="panel" autocomplete="off">
+  <label><span class="row">Needle <output id="o-needle"></output></span><input id="needle" type="range" min="0" max="100" step="1"></label>
+  <label><span class="row">Green <output id="o-green"></output></span><input id="green" type="range" min="0" max="100" step="1"></label>
+  <label><span class="row">Amber <output id="o-amber"></output></span><input id="amber" type="range" min="0" max="100" step="1"></label>
+  <label><span class="row">Red <output id="o-red"></output></span></label>
+  <label>LED
+    <select id="led">
+      <option value="auto">Follows the needle's zone</option>
+      <option value="green">Green</option>
+      <option value="amber">Amber</option>
+      <option value="red">Red</option>
+      <option value="off">Off</option>
+    </select>
+  </label>
+  <label class="row"><span>Flash</span><input id="flash" type="checkbox"></label>
+</form>
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+// Same stage as tools/knob_render: camera, top-left key light, raised dark grey bezel and
+// slightly aged finish, so the gauge and the knob read as one control family.
+// World axes: +X screen right, -Z screen up, +Y towards the camera.
+
+// ---------- renderer / scene ----------
+// ?export renders the layers the game stacks (see exportLayers at the end) and posts them to
+// export.py, which writes them into assets/ui/gauge/.
+const EXPORT = new URLSearchParams(location.search).has('export');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: EXPORT });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const BG = 0xeceef0;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(BG);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.32;
+
+const camera = new THREE.PerspectiveCamera(20, 1, 0.1, 100);
+const LOOK = new THREE.Vector3(0, 0, 0.05);
+camera.position.set(0, 11, 2.4);
+camera.lookAt(LOOK);
+
+// ---------- lights ----------
+const key = new THREE.DirectionalLight(0xffffff, 3.2);
+key.position.set(-3.0, 5.0, -3.0);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+Object.assign(key.shadow.camera, { left: -2.4, right: 2.4, top: 2.4, bottom: -2.4, near: 1, far: 16 });
+key.shadow.radius = 5;
+key.shadow.bias = -0.0005;
+key.shadow.normalBias = 0.012;
+scene.add(key);
+scene.add(new THREE.HemisphereLight(0xffffff, 0xc9ced4, 0.34));
+
+// ---------- ground: flat unlit colour + shadow catcher + contact blob ----------
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: BG, toneMapped: false }));
+scene.add(ground);
+const shadowCatcher = new THREE.Mesh(new THREE.PlaneGeometry(40, 40).rotateX(-Math.PI / 2),
+  new THREE.ShadowMaterial({ color: 0x1b2430, opacity: 0.15, depthWrite: false }));
+shadowCatcher.position.y = 0.002;
+shadowCatcher.receiveShadow = true;
+scene.add(shadowCatcher);
+let blob;
+{
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(128, 128, 60, 128, 128, 128);
+  grd.addColorStop(0, 'rgba(20,28,38,0.38)');
+  grd.addColorStop(0.55, 'rgba(20,28,38,0.1)');
+  grd.addColorStop(1, 'rgba(20,28,38,0)');
+  g.fillStyle = grd; g.fillRect(0, 0, 256, 256);
+  blob = new THREE.Mesh(new THREE.PlaneGeometry(2.7, 2.7).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, toneMapped: false }));
+  blob.position.set(0.06, 0.001, 0.1);
+  scene.add(blob);
+}
+
+// ---------- shared helpers ----------
+const smooth = (pts, n = 96) => new THREE.SplineCurve(pts.map(([x, y]) => new THREE.Vector2(x, y))).getPoints(n);
+const shadowed = (m) => (m.castShadow = m.receiveShadow = true, m);
+const rad = THREE.MathUtils.degToRad;
+
+// Metal reflects a bright studio rather than the dim room environment.
+const studioEnv = (() => {
+  const studio = new THREE.Scene();
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(10, 64, 32), new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true }));
+  const pos = dome.geometry.attributes.position, cols = [];
+  const top = new THREE.Color(0xffffff), bottom = new THREE.Color(0x8a9097), c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) { c.lerpColors(bottom, top, THREE.MathUtils.smoothstep(pos.getY(i) / 10, -0.6, 0.5)); cols.push(c.r, c.g, c.b); }
+  dome.geometry.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+  studio.add(dome);
+  const strip = (w, h, x, y, z, k) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(k, k, k), side: THREE.DoubleSide }));
+    m.position.set(x, y, z); m.lookAt(0, 0, 0); studio.add(m);
+  };
+  strip(6, 2, -5, 6, -5, 4); strip(2, 8, 7, 3, 2, 2.2); strip(8, 1.2, 0, 2, 8, 1.6); strip(3, 3, 0, 9, 0, 3);
+  return pmrem.fromScene(studio, 0.02).texture;
+})();
+
+// ---------- materials ----------
+const metal = new THREE.MeshPhysicalMaterial({ color: 0x8b8b8b, metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 0.9, side: THREE.DoubleSide });
+const brass = new THREE.MeshPhysicalMaterial({ color: 0xb8913e, metalness: 1, roughness: 0.32, envMap: studioEnv, envMapIntensity: 0.9 });
+const needleBlack = new THREE.MeshPhysicalMaterial({ color: 0x15171a, roughness: 0.42, clearcoat: 0.35, clearcoatRoughness: 0.3 });
+const gapMat = new THREE.MeshStandardMaterial({ color: 0x25282b, roughness: 0.85 });
+const seatMat = new THREE.MeshStandardMaterial({ color: 0x1c1e21, roughness: 0.6, metalness: 0.2 });
+
+// ---------- bezel (identical to the knob's) ----------
+const bezel = shadowed(new THREE.Mesh(new THREE.LatheGeometry(smooth([
+  [1.075, 0.0], [1.075, 0.2], [1.074, 0.34], [1.066, 0.4], [1.05, 0.435], [1.02, 0.45],
+  [0.995, 0.444], [0.977, 0.42], [0.967, 0.37], [0.964, 0.2], [0.964, 0.0],
+]), 192), metal));
+scene.add(bezel);
+const gap = new THREE.Mesh(new THREE.RingGeometry(0.9, 0.966, 128).rotateX(-Math.PI / 2), gapMat);
+gap.position.y = 0.01; gap.receiveShadow = true;
+scene.add(gap);
+
+// ---------- configuration ----------
+// The gauge's attributes, all settable from the URL as well as the panel, e.g.
+//   index.html?needle=72&green=50&amber=30&led=amber&flash=1
+//   needle  0–100, position on the scale
+//   green   0–100, % of the scale that is green (from the start)
+//   amber   0–100, % that is amber after it; red takes the rest
+//   led     auto (colour of the zone the needle is in) | green | amber | red | off
+//   flash   1 to flash the LED; in auto mode it always flashes in the red zone
+const PARAMS = new URLSearchParams(location.search);
+const num = (k, d) => { const v = parseFloat(PARAMS.get(k)); return Number.isFinite(v) ? v : d; };
+const config = {
+  needle: THREE.MathUtils.clamp(num('needle', 30), 0, 100),
+  green: THREE.MathUtils.clamp(num('green', 37.5), 0, 100),
+  amber: 0,
+  led: ['auto', 'green', 'amber', 'red', 'off'].includes(PARAMS.get('led')) ? PARAMS.get('led') : 'auto',
+  flash: PARAMS.get('flash') === '1',
+};
+config.amber = THREE.MathUtils.clamp(num('amber', 29.2), 0, 100 - config.green);
+const LED_COLOURS = { green: 0x2fe46c, amber: 0xffb21f, red: 0xff3b2f };
+const BAND_COLOURS = { green: '#4f9a66', amber: '#d6a74e', red: '#b84b4b' };
+/** Green, amber and red as fractions of the scale, each with the value its zone ends at. */
+function zones() {
+  const g = config.green / 100, a = config.amber / 100;
+  return [
+    { name: 'green', from: 0, upTo: g },
+    { name: 'amber', from: g, upTo: g + a },
+    { name: 'red', from: g + a, upTo: 1 },
+  ];
+}
+
+// ---------- dial ----------
+// The scale sweeps 300° clockwise from 7 o'clock, over the top, to 5 o'clock: green, then
+// amber, then red. The LED sits in the gap it leaves at the bottom. The printing is a
+// texture on the dial so it takes the light, the needle's shadow and the bezel's shadow
+// like the enamel it imitates; it is redrawn whenever the zone sizes change.
+const SCALE_FROM = rad(240), SCALE_TO = rad(-60);
+const valueAngle = (v) => SCALE_FROM + (SCALE_TO - SCALE_FROM) * v;
+const DIAL_R = 0.93, DIAL_Y = 0.08;
+const LED_POS = new THREE.Vector3(0, 0, 0.62);
+
+const dialCanvas = document.createElement('canvas');
+dialCanvas.width = dialCanvas.height = 2048;
+const dialMap = new THREE.CanvasTexture(dialCanvas);
+dialMap.colorSpace = THREE.SRGBColorSpace;
+dialMap.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+/**
+ * Paints the dial. `bands` is 'zones' (the configured split), 'none', or one zone name painted
+ * across the whole sweep (an export layer); `scale` adds the ticks and scale line. With
+ * `mask` it paints only white-on-black coverage for an export layer's alpha.
+ */
+function drawDial({ bands = 'zones', scale = true, mask = false } = {}) {
+  const c = dialCanvas, N = c.width;
+  const g = c.getContext('2d');
+  const C = N / 2, U = N / 2 / DIAL_R;                   // canvas px per world unit
+  const at = (a, r) => [C + Math.cos(a) * r * U, C - Math.sin(a) * r * U];
+  if (mask) {
+    g.fillStyle = '#000'; g.fillRect(0, 0, N, N);
+  } else {
+    // Cream enamel, a touch darker and warmer towards the rim where grime settles.
+    g.fillStyle = '#f0e8d4'; g.fillRect(0, 0, N, N);
+    const edge = g.createRadialGradient(C, C, 0.62 * DIAL_R * U, C, C, DIAL_R * U);
+    edge.addColorStop(0, 'rgba(112,98,72,0)'); edge.addColorStop(1, 'rgba(112,98,72,0.28)');
+    g.fillStyle = edge; g.fillRect(0, 0, N, N);
+  }
+  // Threshold bands, from 0.495 in towards the pivot out to the scale line at 0.84.
+  const SCALE_R = 0.84, bandIn = 0.495;
+  const painted = bands === 'zones' ? zones() : bands === 'none' ? [] : [{ name: bands, from: 0, upTo: 1 }];
+  for (const z of painted) {
+    if (z.upTo - z.from <= 0) continue;
+    g.beginPath();
+    g.strokeStyle = mask ? '#fff' : BAND_COLOURS[z.name]; g.lineWidth = (SCALE_R - bandIn) * U; g.lineCap = 'butt';
+    // Canvas angles run clockwise from 3 o'clock, so negate the screen angle.
+    g.arc(C, C, (SCALE_R + bandIn) / 2 * U, -valueAngle(z.from), -valueAngle(z.upTo), false);
+    g.stroke();
+  }
+  if (mask && !scale) { dialMap.needsUpdate = true; return; }
+  if (mask) { g.fillStyle = '#000'; g.fillRect(0, 0, N, N); }
+  if (!scale) { finishDial(g, N, C, U); return; }
+  // Major ticks only: one per tenth of the scale, the ends and midpoint a little longer.
+  g.strokeStyle = mask ? '#fff' : '#23292e'; g.lineCap = 'round';
+  for (let i = 0; i <= 10; i++) {
+    const a = valueAngle(i / 10);
+    const long = i % 5 === 0;
+    const r1 = SCALE_R - (long ? 0.2 : 0.14);
+    g.lineWidth = (long ? 0.018 : 0.013) * U;
+    g.beginPath(); g.moveTo(...at(a, SCALE_R)); g.lineTo(...at(a, r1)); g.stroke();
+  }
+  // Scale line joining the outer tips of the ticks.
+  g.lineWidth = 0.013 * U; g.lineCap = 'butt';
+  g.beginPath(); g.arc(C, C, SCALE_R * U, -SCALE_FROM, -SCALE_TO, false); g.stroke();
+  if (mask) { dialMap.needsUpdate = true; return; }
+  finishDial(g, N, C, U);
+}
+
+function finishDial(g, N, C, U) {
+  // A dark seat ring printed round the LED socket.
+  const [lx, ly] = [C + LED_POS.x * U, C + LED_POS.z * U];
+  g.beginPath(); g.fillStyle = 'rgba(35,41,46,0.18)'; g.arc(lx, ly, 0.079 * U, 0, Math.PI * 2); g.fill();
+  // Fine scuffs.
+  let seed = 41;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 160; i++) {
+    const x = rand() * N, y = rand() * N, a = rand() * Math.PI, len = (0.01 + rand() * 0.05) * U;
+    g.strokeStyle = `rgba(90,80,64,${0.03 + rand() * 0.05})`; g.lineWidth = 1 + rand() * 1.5;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len); g.stroke();
+  }
+  dialMap.needsUpdate = true;
+}
+drawDial();
+
+// CircleGeometry lies in XY with uv = (x, y) / r mapped to 0..1; laid flat, +Y becomes -Z
+// (screen up), which matches the canvas' top row thanks to flipY.
+const dial = new THREE.Mesh(new THREE.CircleGeometry(DIAL_R, 160).rotateX(-Math.PI / 2),
+  new THREE.MeshPhysicalMaterial({ map: dialMap, roughness: 0.55, clearcoat: 0.15, clearcoatRoughness: 0.4 }));
+dial.position.y = DIAL_Y;
+dial.receiveShadow = true;
+scene.add(dial);
+// Rolled collar from the dial's edge down into the recess.
+const collar = shadowed(new THREE.Mesh(new THREE.LatheGeometry(smooth([
+  [0.948, 0.0], [0.952, 0.04], [0.945, 0.07], [0.93, DIAL_Y + 0.001],
+]), 160), new THREE.MeshPhysicalMaterial({ color: 0xd9d0bb, roughness: 0.6, side: THREE.DoubleSide })));
+scene.add(collar);
+
+// ---------- needle ----------
+// Tapered blade with a short counterweight tail, raised clear of the dial so it throws a
+// soft shadow down-right. Local +X points along the blade; rotation.y = screen angle.
+const needle = new THREE.Group();
+{
+  const s = new THREE.Shape();
+  s.moveTo(-0.2, -0.032);
+  s.lineTo(0.0, -0.028);
+  s.lineTo(0.76, -0.007);
+  s.lineTo(0.8, 0.0);
+  s.lineTo(0.76, 0.007);
+  s.lineTo(0.0, 0.028);
+  s.lineTo(-0.2, 0.032);
+  s.quadraticCurveTo(-0.24, 0.0, -0.2, -0.032);
+  const geo = new THREE.ExtrudeGeometry(s, { depth: 0.012, bevelEnabled: true, bevelThickness: 0.006, bevelSize: 0.004, bevelSegments: 3, curveSegments: 12 });
+  geo.rotateX(-Math.PI / 2);                  // shape XY -> XZ, extrusion up the +Y axis
+  const blade = shadowed(new THREE.Mesh(geo, needleBlack));
+  blade.position.y = 0.2;
+  needle.add(blade);
+}
+needle.add(shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.08, 0.05, 48), brass)).translateY(0.24));
+needle.add(shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.02, 32), needleBlack)).translateY(0.272));
+// Spindle down to the dial.
+needle.add(shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.14, 16), brass)).translateY(DIAL_Y + 0.07));
+scene.add(needle);
+
+// ---------- LED ----------
+// A recessed black seat, a domed lens that glows, an additive halo, and a small point light
+// that spills its colour on to the dial.
+const led = new THREE.Group();
+led.position.copy(LED_POS);
+scene.add(led);
+const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.064, 0.068, 0.03, 48), seatMat);
+seat.position.set(LED_POS.x, DIAL_Y + 0.015, LED_POS.z); seat.receiveShadow = true;
+scene.add(seat);
+const lensMat = new THREE.MeshPhysicalMaterial({ color: 0x2fe46c, emissive: 0x2fe46c, emissiveIntensity: 2.2, roughness: 0.12, clearcoat: 0.8, clearcoatRoughness: 0.05 });
+const lens = new THREE.Mesh(new THREE.SphereGeometry(0.0465, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2), lensMat);
+lens.scale.y = 0.7;
+lens.position.y = DIAL_Y + 0.03;
+led.add(lens);
+const haloTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grd.addColorStop(0, 'rgba(255,255,255,0.85)');
+  grd.addColorStop(0.25, 'rgba(255,255,255,0.4)');
+  grd.addColorStop(0.6, 'rgba(255,255,255,0.08)');
+  grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd; g.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+})();
+const haloMat = new THREE.MeshBasicMaterial({ map: haloTex, color: 0x2fe46c, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+const halo = new THREE.Mesh(new THREE.PlaneGeometry(0.315, 0.315).rotateX(-Math.PI / 2), haloMat);
+halo.position.y = DIAL_Y + 0.07;
+led.add(halo);
+const ledLight = new THREE.PointLight(0x2fe46c, 0.45, 0.7, 2);
+ledLight.position.y = DIAL_Y + 0.12;
+led.add(ledLight);
+
+// ---------- glass ----------
+// A thin pane just under the bezel lip: faint reflections from the studio plus a soft
+// printed glare across the top-left, so the dial reads as behind glass without hiding it.
+const glareCanvas = document.createElement('canvas');
+let glass, glare;
+{
+  glass = new THREE.Mesh(new THREE.CircleGeometry(0.965, 128).rotateX(-Math.PI / 2),
+    new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.04, metalness: 0, envMap: studioEnv, envMapIntensity: 1.2,
+      transparent: true, opacity: 0.08, depthWrite: false }));
+  glass.position.y = 0.4;
+  scene.add(glass);
+  const c = glareCanvas; c.width = c.height = 512;
+  const g = c.getContext('2d');
+  // A soft, blurred band across the upper left; no hard edge anywhere.
+  g.filter = 'blur(28px)';
+  const grd = g.createLinearGradient(90, 90, 300, 300);
+  grd.addColorStop(0, 'rgba(255,255,255,0.05)');
+  grd.addColorStop(0.4, 'rgba(255,255,255,0.5)');
+  grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd;
+  g.beginPath(); g.ellipse(190, 190, 230, 80, -Math.PI / 4, 0, Math.PI * 2); g.fill();
+  glare = new THREE.Mesh(new THREE.CircleGeometry(0.955, 128).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+  glare.position.y = 0.401;
+  scene.add(glare);
+}
+
+// ---------- state ----------
+let value = config.needle / 100, target = value, velocity = 0, dragging = false;
+const zoneOf = (v) => zones().find((z) => v <= z.upTo && z.upTo > z.from) ?? zones()[2];
+const ledColour = new THREE.Color();
+const LED_DARK = new THREE.Color(0x3a3d3a);
+
+// ---------- panel ----------
+const $ = (id) => document.getElementById(id);
+function syncPanel() {
+  $('needle').value = config.needle; $('o-needle').value = Math.round(config.needle);
+  $('green').value = config.green; $('o-green').value = `${Math.round(config.green)}%`;
+  $('amber').value = config.amber; $('o-amber').value = `${Math.round(config.amber)}%`;
+  $('o-red').value = `${Math.round(100 - config.green - config.amber)}%`;
+  $('led').value = config.led; $('flash').checked = config.flash;
+}
+$('panel').addEventListener('input', (e) => {
+  const id = e.target.id;
+  if (id === 'needle') target = (config.needle = +e.target.value) / 100;
+  if (id === 'green') { config.green = +e.target.value; config.amber = Math.min(config.amber, 100 - config.green); drawDial(); }
+  if (id === 'amber') { config.amber = Math.min(+e.target.value, 100 - config.green); drawDial(); }
+  if (id === 'led') config.led = e.target.value;
+  if (id === 'flash') config.flash = e.target.checked;
+  syncPanel();
+});
+syncPanel();
+
+// ---------- interaction ----------
+const el = renderer.domElement;
+function toScreen(v) {
+  const p = v.clone().project(camera), r = el.getBoundingClientRect();
+  return { x: (p.x + 1) / 2 * r.width, y: (1 - p.y) / 2 * r.height };
+}
+function valueTowards(e) {
+  const c = toScreen(new THREE.Vector3(0, DIAL_Y, 0));
+  let a = Math.atan2(-(e.clientY - c.y), e.clientX - c.x);
+  if (a < -Math.PI / 2) a += Math.PI * 2;            // split the bottom gap at 6 o'clock: left pins to 0, right to 1
+  return THREE.MathUtils.clamp((a - SCALE_FROM) / (SCALE_TO - SCALE_FROM), 0, 1);
+}
+const setTarget = (v) => { target = THREE.MathUtils.clamp(v, 0, 1); config.needle = target * 100; syncPanel(); };
+el.addEventListener('pointerdown', (e) => { dragging = true; setTarget(valueTowards(e)); el.setPointerCapture(e.pointerId); });
+el.addEventListener('pointermove', (e) => { if (dragging) setTarget(valueTowards(e)); });
+el.addEventListener('pointerup', () => { dragging = false; });
+el.addEventListener('wheel', (e) => { e.preventDefault(); setTarget(target - e.deltaY * 0.0015); }, { passive: false });
+addEventListener('keydown', (e) => {
+  if (e.target.closest?.('.panel')) return;
+  if (e.key === 'l' || e.key === 'L') { config.led = config.led === 'off' ? 'auto' : 'off'; syncPanel(); }
+  if (e.key === 'ArrowRight') setTarget(target + 0.05);
+  if (e.key === 'ArrowLeft') setTarget(target - 0.05);
+});
+
+function resize() {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  const halfH = Math.max(1.75, 1.75 / camera.aspect);
+  camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(halfH / camera.position.distanceTo(LOOK)));
+  camera.updateProjectionMatrix();
+}
+if (!EXPORT) {
+  addEventListener('resize', resize);
+  resize();
+}
+
+// ---------- loop ----------
+const clock = new THREE.Clock();
+if (!EXPORT) renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
+  // Lightly damped spring: the needle overshoots a touch and settles, like a real movement.
+  velocity += ((target - value) * 180 - velocity * 16) * dt;
+  value += velocity * dt;
+  needle.rotation.y = valueAngle(THREE.MathUtils.clamp(value, -0.02, 1.02));
+
+  // LED: a fixed colour, or in auto the colour of the needle's zone (flashing in the red).
+  const zone = zoneOf(THREE.MathUtils.clamp(value, 0, 1)).name;
+  const colourName = config.led === 'auto' ? zone : config.led;
+  const flashing = config.flash || (config.led === 'auto' && zone === 'red');
+  const lit = colourName !== 'off' && (!flashing || Math.sin(t * Math.PI * 3) > -0.2);
+  ledColour.setHex(LED_COLOURS[colourName] ?? LED_COLOURS.green);
+  lensMat.color.copy(lit ? ledColour : LED_DARK);
+  lensMat.emissive.copy(ledColour);
+  lensMat.emissiveIntensity = lit ? 2.2 : 0;
+  haloMat.color.copy(ledColour);
+  haloMat.opacity = lit ? 0.9 : 0;
+  ledLight.color.copy(ledColour);
+  ledLight.intensity = lit ? 0.45 : 0;
+
+  renderer.render(scene, camera);
+});
+
+// ---------- export ----------
+// The game builds the gauge from stacked 1024 px layers (scripts/panel_gauge.gd), so the needle
+// can point anywhere and the zones can be any size. The ticks and scale line are not a layer:
+// the game draws them as vectors so they stay solid black at small sizes. Rendered with a straight-down orthographic
+// camera so a 2D rotation of the needle layer matches a real turn. All layers share one frame
+// centred on the pivot.
+//   gauge_base           bezel, blank dial, LED socket, drop shadow
+//   gauge_band_<zone>    that zone's colour across the whole sweep, lit; the game trims it
+//   gauge_needle         needle pointing at 12 o'clock
+//   gauge_needle_shadow  the needle's shadow on the dial for that pose
+//   gauge_led_<colour>   lit lens in green / amber / red, and gauge_led_off
+//   gauge_led_glow       white glow for the lit LED, drawn additively and tinted
+//   gauge_glare          white glass glare, drawn additively
+if (EXPORT) {
+  document.querySelector('.hint').remove();
+  $('panel').remove();
+  exportLayers();
+}
+
+async function exportLayers() {
+  const SIZE = 1024, HALF = 1.55, PPU = SIZE / (2 * HALF);
+  renderer.setPixelRatio(1);
+  renderer.setSize(SIZE, SIZE);
+  const cam = new THREE.OrthographicCamera(-HALF, HALF, HALF, -HALF, 0.1, 50);
+  cam.position.set(0, 10, 0); cam.up.set(0, 0, -1); cam.lookAt(0, 0, 0);
+  scene.background = null;
+  ground.visible = false;
+
+  const needleCatcher = new THREE.Mesh(new THREE.PlaneGeometry(4, 4).rotateX(-Math.PI / 2),
+    new THREE.ShadowMaterial({ color: 0x1b1d20, opacity: 0.35, depthWrite: false }));
+  needleCatcher.position.y = DIAL_Y + 0.002;
+  needleCatcher.receiveShadow = true;
+  scene.add(needleCatcher);
+
+  const parts = [bezel, gap, dial, collar, seat, needle, led, glass, glare, shadowCatcher, blob, needleCatcher];
+  const show = (...on) => parts.forEach((p) => { p.visible = on.includes(p); });
+  const BASE = [bezel, gap, dial, collar, seat, shadowCatcher, blob];
+  const litDial = dial.material, maskDial = new THREE.MeshBasicMaterial({ map: dialMap, toneMapped: false });
+  ledLight.intensity = 0;
+  halo.visible = false;
+
+  const grab = () => {
+    renderer.render(scene, cam);
+    const c = document.createElement('canvas'); c.width = c.height = SIZE;
+    c.getContext('2d').drawImage(renderer.domElement, 0, 0);
+    return c;
+  };
+  const withMask = (lit, mask) => {
+    const g = lit.getContext('2d'), img = g.getImageData(0, 0, SIZE, SIZE);
+    const m = mask.getContext('2d').getImageData(0, 0, SIZE, SIZE).data;
+    for (let i = 0; i < m.length; i += 4) img.data[i + 3] = Math.round(img.data[i + 3] * m[i] / 255);
+    g.putImageData(img, 0, 0);
+    return lit;
+  };
+  const post = async (name, canvas) => {
+    const png = await new Promise((r) => canvas.toBlob(r, 'image/png'));
+    await fetch(`/layers/${name}.png`, { method: 'POST', body: png });
+  };
+  const masked = async (name, opts) => {
+    drawDial(opts); show(...BASE); const lit = grab();
+    drawDial({ ...opts, mask: true }); dial.material = maskDial; show(dial); const mask = grab();
+    dial.material = litDial;
+    await post(name, withMask(lit, mask));
+  };
+
+  drawDial({ bands: 'none', scale: false }); show(...BASE);
+  await post('gauge_base', grab());
+  for (const zone of ['green', 'amber', 'red']) await masked(`gauge_band_${zone}`, { bands: zone, scale: false });
+
+  needle.rotation.y = Math.PI / 2;
+  show(needle);
+  await post('gauge_needle', grab());
+  // Shadow only: the needle still casts into the shadow map but draws no colour.
+  for (const m of [needleBlack, brass]) { m.colorWrite = false; m.depthWrite = false; }
+  show(needle, needleCatcher);
+  await post('gauge_needle_shadow', grab());
+  for (const m of [needleBlack, brass]) { m.colorWrite = true; m.depthWrite = true; }
+
+  show(led);
+  for (const name of ['green', 'amber', 'red', 'off']) {
+    const lit = name !== 'off';
+    lensMat.color.set(lit ? LED_COLOURS[name] : LED_DARK);
+    lensMat.emissive.set(lit ? LED_COLOURS[name] : 0x000000);
+    lensMat.emissiveIntensity = lit ? 2.2 : 0;
+    await post(`gauge_led_${name}`, grab());
+  }
+
+  // Glow: the lens halo plus the softer spill the LED's light throws on the dial.
+  const flat = () => { const c = document.createElement('canvas'); c.width = c.height = SIZE; return c; };
+  const glow = flat(), gg = glow.getContext('2d');
+  const lx = SIZE / 2 + LED_POS.x * PPU, ly = SIZE / 2 + LED_POS.z * PPU;
+  for (const [r, a] of [[0.42, 0.28], [0.16, 0.8]]) {
+    const grd = gg.createRadialGradient(lx, ly, 0, lx, ly, r * PPU);
+    grd.addColorStop(0, `rgba(255,255,255,${a})`); grd.addColorStop(0.35, `rgba(255,255,255,${a * 0.45})`); grd.addColorStop(1, 'rgba(255,255,255,0)');
+    gg.fillStyle = grd; gg.fillRect(0, 0, SIZE, SIZE);
+  }
+  await post('gauge_led_glow', glow);
+
+  const glareOut = flat(), go = glareOut.getContext('2d'), gr = 0.955 * PPU;
+  go.globalAlpha = glare.material.opacity;
+  go.beginPath(); go.arc(SIZE / 2, SIZE / 2, gr, 0, Math.PI * 2); go.clip();
+  go.drawImage(glareCanvas, SIZE / 2 - gr, SIZE / 2 - gr, 2 * gr, 2 * gr);
+  await post('gauge_glare', glareOut);
+
+  // The needle's shadow sits offset from the needle by the key light's slant, at blade height.
+  const L = key.position.clone().normalize(), h = 0.206 - DIAL_Y;
+  const offset = [-L.x / L.y * h * PPU, -L.z / L.y * h * PPU].map((v) => +v.toFixed(2));
+  document.title = `export done ${JSON.stringify({ size: SIZE, ppu: +PPU.toFixed(3), shadowOffset: offset })}`;
+}
+</script>
+</body>
+</html>

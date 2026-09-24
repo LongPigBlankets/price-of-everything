@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Industrial controls — Three.js authoring</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #03111d; }
+    #stage { position: relative; width: 1200px; height: 720px; margin: 0 auto; }
+    canvas { display: block; width: 1200px; height: 720px; }
+    .title, .subtitle, .card-title, .card-note, .footer { position: absolute; pointer-events: none; font-family: Arial, sans-serif; }
+    .title { left: 54px; top: 34px; color: #f7e7c5; font-size: 30px; font-weight: 700; letter-spacing: 1px; }
+    .subtitle { left: 56px; top: 76px; color: #b8c7d4; font-size: 14px; }
+    .card-title { top: 136px; color: #f7e7c5; font-size: 20px; font-weight: 700; letter-spacing: .5px; }
+    .card-note { top: 165px; color: #b8c7d4; font-size: 13px; }
+    .left { left: 74px; } .right { left: 674px; }
+    .footer { left: 56px; bottom: 18px; color: #8fa4b0; font-size: 12px; }
+    #status { position: absolute; left: 56px; bottom: 42px; color: #e35353; font: 12px monospace; max-width: 1080px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <div class="title">INDUSTRIAL CONTROL AUTHORING</div>
+    <div class="subtitle">Three.js material and lighting study · recessed steel bezels · top-left key light</div>
+    <div class="card-title left">ROTARY SWITCH</div>
+    <div class="card-note left">Molded plastic selector seated inside a machined metal bezel</div>
+    <div class="card-title right">INDUSTRIAL GAUGE</div>
+    <div class="card-note right">Recessed dial, threshold bands, raised black needle</div>
+    <div class="footer">Authoring pass only — no Godot export or runtime wiring yet.</div>
+    <div id="status">Loading Three.js authoring scene…</div>
+  </div>
+
+  <script>
+    window.statusEl = document.getElementById('status');
+    window.addEventListener('error', (event) => {
+      window.statusEl.textContent = 'Three.js error: ' + (event.error?.message || event.message || 'unknown error');
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+      window.statusEl.textContent = 'Three.js promise error: ' + (event.reason?.message || event.reason || 'unknown error');
+    });
+    window.setTimeout(() => {
+      if (!window.renderReady) window.statusEl.textContent = 'Three.js did not finish rendering. Check the local module or WebGL support.';
+    }, 2500);
+  </script>
+
+  <script type="module">
+    import * as THREE from './three.module.js';
+    const status = window.statusEl;
+
+    const W = 1200, H = 720;
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x03111d);
+
+    const camera = new THREE.OrthographicCamera(-8.3, 8.3, 5.0, -5.0, 0.1, 100);
+    camera.position.set(0, 0, 16);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance', failIfMajorPerformanceCaveat: false });
+    renderer.setSize(W, H, false);
+    renderer.setPixelRatio(1.5);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.28;
+    document.getElementById('stage').prepend(renderer.domElement);
+
+    const panel = new THREE.Mesh(
+      new THREE.PlaneGeometry(16.5, 9.6),
+      new THREE.MeshStandardMaterial({ color: 0x092234, roughness: 0.82, metalness: 0.05 })
+    );
+    panel.position.z = -0.45;
+    // Keep raised parts from throwing a stray shadow beyond their bezel onto
+    // the backing panel. Individual dial faces still receive the local
+    // needle and pivot shadows below.
+    panel.receiveShadow = false;
+    scene.add(panel);
+
+    const ambient = new THREE.HemisphereLight(0xdce8e8, 0x18232a, 1.75);
+    scene.add(ambient);
+    const key = new THREE.DirectionalLight(0xfff5df, 2.65);
+    key.position.set(-5.5, 7.5, 9);
+    key.castShadow = true;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.camera.left = -8;
+    key.shadow.camera.right = 8;
+    key.shadow.camera.top = 6;
+    key.shadow.camera.bottom = -6;
+    key.shadow.camera.near = 1;
+    key.shadow.camera.far = 30;
+    key.shadow.radius = 7;
+    scene.add(key);
+    const fill = new THREE.DirectionalLight(0x8fb2c0, 0.9);
+    fill.position.set(6, -3, 8);
+    scene.add(fill);
+
+    const steel = new THREE.MeshPhysicalMaterial({
+      color: 0xc4cccd, metalness: 0.94, roughness: 0.30,
+      clearcoat: 0.22, clearcoatRoughness: 0.20
+    });
+    const steelDark = new THREE.MeshPhysicalMaterial({
+      color: 0x7c878a, metalness: 0.88, roughness: 0.36,
+      clearcoat: 0.12, clearcoatRoughness: 0.22
+    });
+    const groove = new THREE.MeshStandardMaterial({ color: 0x080d11, roughness: 0.48, metalness: 0.25 });
+    const black = new THREE.MeshPhysicalMaterial({ color: 0x030506, metalness: 0.72, roughness: 0.27, clearcoat: 0.3 });
+    const brass = new THREE.MeshPhysicalMaterial({ color: 0xc99d3f, metalness: 0.82, roughness: 0.26 });
+    const plastic = new THREE.MeshPhysicalMaterial({
+      color: 0xd7dde0, metalness: 0.04, roughness: 0.24,
+      clearcoat: 0.72, clearcoatRoughness: 0.11
+    });
+    const plasticDark = new THREE.MeshPhysicalMaterial({ color: 0x27333a, metalness: 0.05, roughness: 0.3, clearcoat: 0.5 });
+
+    function cylinder(radius, depth, material, z, segments = 128) {
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, depth, segments), material);
+      mesh.rotation.x = Math.PI / 2;
+      mesh.position.z = z;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      return mesh;
+    }
+
+    function ring(outer, inner, depth, material, z, bevel = 0.05) {
+      const shape = new THREE.Shape();
+      shape.absarc(0, 0, outer, 0, Math.PI * 2, false);
+      const hole = new THREE.Path();
+      hole.absarc(0, 0, inner, 0, Math.PI * 2, true);
+      shape.holes.push(hole);
+      const geo = new THREE.ExtrudeGeometry(shape, {
+        depth, bevelEnabled: true, bevelSegments: 5,
+        bevelSize: bevel, bevelThickness: bevel * 0.7,
+        curveSegments: 128
+      });
+      geo.translate(0, 0, z - depth / 2);
+      const mesh = new THREE.Mesh(geo, material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      return mesh;
+    }
+
+    function roundedRectShape(width, height, radius) {
+      const x = -width / 2, y = -height / 2, w = width, h = height, r = radius;
+      const s = new THREE.Shape();
+      s.moveTo(x + r, y); s.lineTo(x + w - r, y);
+      s.quadraticCurveTo(x + w, y, x + w, y + r);
+      s.lineTo(x + w, y + h - r); s.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      s.lineTo(x + r, y + h); s.quadraticCurveTo(x, y + h, x, y + h - r);
+      s.lineTo(x, y + r); s.quadraticCurveTo(x, y, x + r, y);
+      return s;
+    }
+
+    function taperedNeedleShape(length, baseWidth, tipWidth) {
+      const s = new THREE.Shape();
+      s.moveTo(-baseWidth / 2, 0);
+      s.lineTo(baseWidth / 2, 0);
+      s.lineTo(tipWidth / 2, length - 0.12);
+      s.lineTo(0, length);
+      s.lineTo(-tipWidth / 2, length - 0.12);
+      s.closePath();
+      return s;
+    }
+
+    function extrudedShape(shape, depth, material, z, bevel = 0.04) {
+      const geo = new THREE.ExtrudeGeometry(shape, {
+        depth, bevelEnabled: true, bevelSegments: 4,
+        bevelSize: bevel, bevelThickness: bevel,
+        curveSegments: 32
+      });
+      geo.translate(0, 0, z - depth / 2);
+      const mesh = new THREE.Mesh(geo, material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      return mesh;
+    }
+
+    function createBezel() {
+      const group = new THREE.Group();
+      const backing = cylinder(2.42, 0.18, steelDark, 0.02);
+      backing.castShadow = false;
+      group.add(backing);
+      // One continuous silver bezel. Its outer diameter stays at the earlier
+      // scale while the wider dial below makes the visible metal band thinner.
+      const bezel = ring(2.36, 2.14, 0.28, steel, 0.24, 0.045);
+      bezel.castShadow = false;
+      group.add(bezel);
+      // A single dark recessed well gives the bezel its inner line without
+      // introducing a second visible bezel ring.
+      const cavity = cylinder(2.12, 0.08, groove, 0.04);
+      cavity.castShadow = false;
+      group.add(cavity);
+      return group;
+    }
+
+    function addArc(parent, radius, start, end, color, z, tube = 0.055) {
+      // The threshold scale is a flat, unlit overlay on the dial face. It is
+      // intentionally not another raised 3D object in the bezel.
+      const steps = 96;
+      const vertices = [];
+      const indices = [];
+      for (let i = 0; i <= steps; i++) {
+        const a = start + (end - start) * i / steps;
+        const c = Math.cos(a), s = Math.sin(a);
+        vertices.push((radius - tube) * c, (radius - tube) * s, z,
+                      (radius + tube) * c, (radius + tube) * s, z);
+        if (i < steps) {
+          const n = i * 2;
+          indices.push(n, n + 1, n + 2, n + 1, n + 3, n + 2);
+        }
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      geometry.setIndex(indices);
+      const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+        color, toneMapped: false, side: THREE.DoubleSide
+      }));
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      parent.add(mesh);
+      return mesh;
+    }
+
+    function addTicks(parent, radius, start, end) {
+      const tickMat = new THREE.MeshBasicMaterial({ color: 0x243139, toneMapped: false });
+      for (let i = 0; i <= 10; i++) {
+        const a = start + (end - start) * i / 10;
+        const major = i % 5 === 0;
+        const length = major ? 0.36 : 0.25;
+        const r = radius - length / 2;
+        const tick = new THREE.Mesh(new THREE.BoxGeometry(0.035, length, 0.035), tickMat);
+        tick.position.set(Math.cos(a) * r, Math.sin(a) * r, 0.47);
+        tick.rotation.z = a - Math.PI / 2;
+        tick.castShadow = false;
+        tick.receiveShadow = false;
+        parent.add(tick);
+      }
+    }
+
+    function createSwitch() {
+      const group = createBezel();
+      const face = cylinder(2.02, 0.12, plastic, 0.20);
+      face.castShadow = false;
+      face.receiveShadow = true;
+      group.add(face);
+      const lever = extrudedShape(roundedRectShape(0.70, 3.92, 0.14), 0.20, plastic, 0.52, 0.045);
+      lever.position.y = 0;
+      group.add(lever);
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.15, 0.14), plasticDark);
+      foot.position.set(0, -1.84, 0.67);
+      foot.castShadow = true;
+      group.add(foot);
+      const dot = cylinder(0.115, 0.035, new THREE.MeshStandardMaterial({ color: 0xc64a48, roughness: 0.32 }), 0.67, 32);
+      dot.position.y = 1.30;
+      group.add(dot);
+      group.position.x = -3.75;
+      return group;
+    }
+
+    function createGauge() {
+      const group = createBezel();
+      const face = cylinder(2.02, 0.12, new THREE.MeshPhysicalMaterial({
+        color: 0xf1e7ce, metalness: 0.02, roughness: 0.46, clearcoat: 0.16
+      }), 0.18);
+      face.castShadow = false;
+      face.receiveShadow = true;
+      group.add(face);
+      // The scale sits across the upper half of the cream dial, like a real
+      // panel gauge. It is a flat graphic layer with no shadow or shading.
+      const start = THREE.MathUtils.degToRad(150);
+      const end = THREE.MathUtils.degToRad(30);
+      addArc(group, 1.72, start, THREE.MathUtils.degToRad(105), 0x4e9a67, 0.46, 0.13);
+      addArc(group, 1.72, THREE.MathUtils.degToRad(105), THREE.MathUtils.degToRad(70), 0xd6a74e, 0.46, 0.13);
+      addArc(group, 1.72, THREE.MathUtils.degToRad(70), end, 0xb84b4b, 0.46, 0.13);
+      addTicks(group, 1.88, start, end);
+      const needle = extrudedShape(taperedNeedleShape(1.82, 0.17, 0.028), 0.12, black, 0.53, 0.018);
+      needle.rotation.z = THREE.MathUtils.degToRad(42);
+      group.add(needle);
+      const pivot = cylinder(0.16, 0.12, brass, 0.62, 48);
+      group.add(pivot);
+      const pivotCap = cylinder(0.09, 0.14, groove, 0.69, 48);
+      group.add(pivotCap);
+      // A transparent front pane sits above the dial artwork and hardware,
+      // while remaining inside the bezel so the face reads as recessed.
+      const glass = cylinder(2.045, 0.035, new THREE.MeshPhysicalMaterial({
+        color: 0xdcebea, metalness: 0.03, roughness: 0.08,
+        transmission: 0.28, thickness: 0.06, ior: 1.45,
+        transparent: true, opacity: 0.30,
+        clearcoat: 0.78, clearcoatRoughness: 0.05,
+        depthWrite: false
+      }), 0.82, 128);
+      glass.castShadow = false;
+      glass.receiveShadow = false;
+      group.add(glass);
+      // Small status LED at the bottom of the dial: a recessed seat, an
+      // emissive face, and a restrained halo so it reads as illuminated.
+      const ledSeat = ring(0.14, 0.090, 0.035, groove, 0.50, 0.01);
+      ledSeat.position.y = -1.06;
+      ledSeat.castShadow = false;
+      ledSeat.receiveShadow = false;
+      group.add(ledSeat);
+      // A radial halo keeps the LED from reading as a flat painted circle.
+      // The point light below supplies the actual green spill on the dial.
+      const glowCanvas = document.createElement('canvas');
+      glowCanvas.width = glowCanvas.height = 128;
+      const glowContext = glowCanvas.getContext('2d');
+      const glowGradient = glowContext.createRadialGradient(64, 64, 0, 64, 64, 64);
+      glowGradient.addColorStop(0, 'rgba(118, 255, 166, 0.78)');
+      glowGradient.addColorStop(0.22, 'rgba(57, 242, 119, 0.42)');
+      glowGradient.addColorStop(0.58, 'rgba(57, 242, 119, 0.10)');
+      glowGradient.addColorStop(1, 'rgba(57, 242, 119, 0)');
+      glowContext.fillStyle = glowGradient;
+      glowContext.fillRect(0, 0, 128, 128);
+      const glowTexture = new THREE.CanvasTexture(glowCanvas);
+      glowTexture.colorSpace = THREE.SRGBColorSpace;
+      const ledGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: glowTexture, transparent: true, opacity: 0.92,
+        depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false
+      }));
+      ledGlow.position.set(0, -1.06, 0.53);
+      ledGlow.scale.set(0.58, 0.58, 1);
+      ledGlow.castShadow = false;
+      ledGlow.receiveShadow = false;
+      group.add(ledGlow);
+      const ledMaterial = new THREE.MeshPhysicalMaterial({
+        color: 0x27e96f, emissive: 0x16e85f, emissiveIntensity: 3.6,
+        metalness: 0.02, roughness: 0.14, clearcoat: 0.68
+      });
+      const led = new THREE.Mesh(new THREE.SphereGeometry(0.085, 48, 24), ledMaterial);
+      led.scale.z = 0.55;
+      led.position.z = 0.56;
+      led.position.y = -1.06;
+      led.castShadow = false;
+      led.receiveShadow = false;
+      group.add(led);
+      const ledLight = new THREE.PointLight(0x39f277, 1.40, 1.45, 2);
+      ledLight.position.set(0, -1.06, 0.72);
+      group.add(ledLight);
+      group.position.x = 3.75;
+      return group;
+    }
+
+    const switchGroup = createSwitch();
+    const gaugeGroup = createGauge();
+    scene.add(switchGroup, gaugeGroup);
+
+    // A very small amount of bevel and shadow geometry is intentional: it lets
+    // the top-left light describe the metal instead of relying on painted lines.
+    renderer.render(scene, camera);
+    window.renderReady = true;
+    status.textContent = 'Three.js scene rendered · review pass only';
+    status.style.color = '#8fa4b0';
+  </script>
+</body>
+</html>

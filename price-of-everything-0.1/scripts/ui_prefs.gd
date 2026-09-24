@@ -20,6 +20,9 @@ signal construct_panel_v3_changed(enabled: bool)
 # The top-bar icon redesign dev-toggle flipped; top_bar.gd
 # re-renders the affected modules so the gated visuals apply immediately. Session-only.
 signal topbar_v3_1_changed(enabled: bool)
+# The Building Detail v3 dev-toggle flipped (skeuomorphic control plates);
+# the detail panel re-renders. Session-only.
+signal bdp_v3_changed(enabled: bool)
 signal empire_button_icon_changed(use_badge: bool)
 
 # Debug-only: verbose per-turn production / CostSolver logs. Off by default because
@@ -54,6 +57,10 @@ var use_construct_panel_v3: bool = true
 # icon-faced redesign (baked standalone icons in assets/icons/ui_icons/standalone/)
 # is the normal default. Session-only, never persisted.
 var use_topbar_v3_1: bool = true
+# Debug-only: the Building Detail v3 look, where the main controls sit on worn steel plates as
+# cream keycaps with raised icons (assets/ui/bdp_v3/, rendered by tools/button_mockup). Off by
+# default while it is being evaluated. Session-only, never persisted.
+var use_bdp_v3: bool = false
 # Construct V2 defaults. They are match settings rather than panel-local state so
 # a construction captures the current choices when it begins, including after a
 # save/load. The legacy cost-display field remains load-compatible but is no
@@ -123,6 +130,16 @@ func set_use_topbar_v3_1(enabled: bool) -> bool:
 
 func toggle_use_topbar_v3_1() -> bool:
 	return set_use_topbar_v3_1(not use_topbar_v3_1)
+
+func set_use_bdp_v3(enabled: bool) -> bool:
+	if enabled == use_bdp_v3:
+		return use_bdp_v3
+	use_bdp_v3 = enabled
+	bdp_v3_changed.emit(use_bdp_v3)
+	return use_bdp_v3
+
+func toggle_use_bdp_v3() -> bool:
+	return set_use_bdp_v3(not use_bdp_v3)
 
 func set_construct_cost_display(value: String, emit_change: bool = true) -> void:
 	var resolved := value.to_lower()

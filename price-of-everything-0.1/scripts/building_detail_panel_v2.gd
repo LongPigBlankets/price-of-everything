@@ -16,6 +16,18 @@ const UIHelpers := preload("res://scripts/ui_helpers.gd")
 const BuyDialog := preload("res://scripts/buy_building_dialog.gd")
 const BuildingLevels := preload("res://scripts/building_levels.gd")
 const InfrastructureInfo := preload("res://scripts/infrastructure_info.gd")
+const BdpV3Block := preload("res://scripts/bdp_v3_block.gd")
+const BdpV3Footer := preload("res://scripts/bdp_v3_footer.gd")
+const BdpV3Key := preload("res://scripts/bdp_v3_key.gd")
+const BdpV3Nine := preload("res://scripts/bdp_v3_nine.gd")
+const BdpV3Section := preload("res://scripts/bdp_v3_section.gd")
+## v3 frames these sections (heading and content together); the value names the frame, so sections
+## sharing a name share one frame (Modifiers and Economics).
+const V3_FRAMED_SECTIONS := {
+	"Diagnostics": "diagnostics", "Cost to produce": "cost", "Modifiers": "money", "Economics · per turn": "money",
+	"Infrastructure": "infrastructure", "Breakdown": "breakdown", "Inbound shipments": "shipments",
+	"Labour on this building": "labour",
+}
 const ROUTE_STOCKPILE_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_stockpile.png")
 const ROUTE_MARKET_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_port.png")
 const ROUTE_MIDDLEMAN_ICON: Texture2D = preload("res://assets/icons/ui_icons/route_lorry.png")
@@ -69,6 +81,13 @@ var _pending_buy: Dictionary = {}
 var _upgrade_dialog: Control = null
 var _upgrade_dialog_layer: CanvasLayer = null
 var _sheet: Control = null
+# Header close control: the v2 button, and the v3 keycap shown instead while `toggle bdp v3` is on.
+var _close_button: Button = null
+var _close_key: TextureButton = null
+# v2's brass pipe border, and v3's backing plate (dark navy-grey steel in a brass trim) drawn behind
+# everything instead.
+var _pipe_frame: Control = null
+var _backing: Control = null
 
 func _ready() -> void:
 	if DS and DS.theme:
@@ -77,6 +96,7 @@ func _ready() -> void:
 	_build_shell()
 	_wire_live_refresh()
 	visibility_changed.connect(_on_visibility_changed)
+	UiPrefs.bdp_v3_changed.connect(_on_bdp_v3_changed)
 
 # --- shell ---------------------------------------------------------------------------------
 
@@ -93,7 +113,11 @@ func _build_shell() -> void:
 	for side in ["left", "right", "top", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, 26)   # clear the brass frame
 	add_child(margin)
-	add_child(preload("res://scripts/brass_pipe_frame.gd").new())   # brass frame, drawn on top
+	_pipe_frame = preload("res://scripts/brass_pipe_frame.gd").new()
+	add_child(_pipe_frame)   # brass frame, drawn on top
+	_backing = BdpV3Nine.make("panel_backing", 64.0)
+	add_child(_backing)
+	move_child(_backing, 0)   # behind the content
 
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", DS.SP["SM"])
@@ -108,11 +132,15 @@ func _build_shell() -> void:
 	_title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_title_label.custom_minimum_size = Vector2(PANEL_WIDTH - 2.0 * DS.SP["MD"] - 44.0, 0)
 	header.add_child(_title_label)
-	var close_button := Button.new()
-	close_button.text = "X"
-	close_button.custom_minimum_size = Vector2(32, 32)
-	close_button.pressed.connect(_hide_panel)
-	header.add_child(close_button)
+	_close_button = Button.new()
+	_close_button.text = "X"
+	_close_button.custom_minimum_size = Vector2(32, 32)
+	_close_button.pressed.connect(_hide_panel)
+	header.add_child(_close_button)
+	_close_key = BdpV3Key.make("close")
+	_close_key.pressed.connect(_hide_panel)
+	header.add_child(_close_key)
+	_apply_v3_header()
 
 	var meta := HBoxContainer.new()
 	meta.add_theme_constant_override("separation", DS.SP["SM"])
@@ -261,8 +289,11 @@ func _rebuild(building: Dictionary) -> void:
 	# primary actions (upgrade · change recipe) + routing (input sources · output destination),
 	# both right under the recipe strip; routing opens action sheets.
 	if BuildingReadout.is_recipe_kind(kind) and not is_infra:
-		_body.add_child(_build_routing_buttons(building, recipe))
-		_body.add_child(_build_primary_actions(building, building_data))
+		if UiPrefs.use_bdp_v3:
+			_body.add_child(_build_v3_block(building, recipe))
+		else:
+			_body.add_child(_build_routing_buttons(building, recipe))
+			_body.add_child(_build_primary_actions(building, building_data))
 
 	_body.add_child(_make_section("Diagnostics", "always shown"))
 	_body.add_child(_build_diagnostics(BuildingReadout.diagnostics(building, recipe, building_data, is_infra)))
@@ -307,7 +338,15 @@ func _rebuild(building: Dictionary) -> void:
 	_body.add_child(_build_labour(lab_readout))
 
 	# sell / demolish (player-owned; the early NPC/construction returns skip this)
-	_body.add_child(_build_sell_demolish_row(building, building_data))
+	var sell_row: Control
+	if UiPrefs.use_bdp_v3 and not BuildingWorks.is_demolishing(str(building.get("instance_id", ""))):
+		sell_row = _build_v3_footer(building)
+	else:
+		sell_row = _build_sell_demolish_row(building, building_data)
+	sell_row.set_meta("v3_section_end", true)
+	_body.add_child(sell_row)
+	if UiPrefs.use_bdp_v3:
+		_v3_frame_sections()
 
 	# map highlight: light up supplier/consumer tiles for this building
 	var conn := BuildingReadout.connections(building, recipe)
@@ -1261,11 +1300,16 @@ func _open_sheet(title: String, populate: Callable, extra_width: float = 0.0) ->
 	header.name = "SheetHeader"
 	header.add_theme_constant_override("separation", DS.SP["SM"])
 	vb.add_child(header)
-	var back := Button.new()
-	back.text = "‹"
-	back.custom_minimum_size = Vector2(36, 32)
-	back.pressed.connect(_close_sheet)
-	header.add_child(back)
+	if UiPrefs.use_bdp_v3:
+		var back_key := BdpV3Key.make("back")
+		back_key.pressed.connect(_close_sheet)
+		header.add_child(back_key)
+	else:
+		var back := Button.new()
+		back.text = "‹"
+		back.custom_minimum_size = Vector2(36, 32)
+		back.pressed.connect(_close_sheet)
+		header.add_child(back)
 	var tl := Label.new()
 	tl.name = "SheetTitle"
 	tl.theme_type_variation = "BuildingName"
@@ -1388,6 +1432,107 @@ func _apply_retrofit(iid: String, recipe: Dictionary) -> void:
 	_queue_refresh()
 
 # --- sell / demolish -----------------------------------------------------------------------
+
+# --- Building Detail v3 (`toggle bdp v3`): the main controls on worn steel plates ----------------
+
+func _on_bdp_v3_changed(_enabled: bool) -> void:
+	_apply_v3_header()
+	_close_sheet()
+	_queue_refresh()
+
+
+func _apply_v3_header() -> void:
+	if _close_button != null:
+		_close_button.visible = not UiPrefs.use_bdp_v3
+		_close_key.visible = UiPrefs.use_bdp_v3
+	if _pipe_frame != null:
+		_pipe_frame.visible = not UiPrefs.use_bdp_v3
+		_backing.visible = UiPrefs.use_bdp_v3
+
+
+## Moves each framed section (its heading and everything up to the next heading) into a steel
+## frame. Runs after a v3 rebuild; the footer and anything above the first framed heading stay put.
+func _v3_frame_sections() -> void:
+	var frame: Control = null
+	var frame_name := ""
+	for child in _body.get_children():
+		if child.has_meta("v3_section_end"):
+			frame = null
+			continue
+		var heading := str(child.get_meta("v3_section", ""))
+		if V3_FRAMED_SECTIONS.has(heading) and (frame == null or V3_FRAMED_SECTIONS[heading] != frame_name):
+			frame = BdpV3Section.new()
+			frame_name = V3_FRAMED_SECTIONS[heading]
+			_body.add_child(frame)
+			_body.move_child(frame, child.get_index())
+		if frame != null:
+			_body.remove_child(child)
+			frame.content.add_child(child)
+
+
+## Inputs, Outputs, Upgrade and Change recipes as one control plate. The values are the ones the
+## v2 cards and buttons show; the keys open the same sheets.
+func _build_v3_block(building: Dictionary, recipe: Dictionary) -> Control:
+	var service = preload("res://scripts/middleman_service.gd")
+	var iid := str(building.get("instance_id", ""))
+	var building_id := str(building.get("building_id", ""))
+	var manage_unlocked: bool = service.eligible(building) and ResearchState.open_logistics_contracts_available()
+	var state := {
+		"input_value": _input_summary(building, recipe),
+		"output_value": _output_summary(building, recipe),
+		"input_managed": manage_unlocked and service.side_all_middleman(iid, "input"),
+		"output_managed": manage_unlocked and service.side_all_middleman(iid, "output"),
+	}
+	state.merge(v3_upgrade_state(building))
+	var alt_count := maxi(0, Catalog.get_recipes_for_building(building_id).size() - 1)
+	if BuildingWorks.is_retooling(iid):
+		var t := BuildingWorks.retrofit_turns_remaining(iid)
+		state["recipe_title"] = "Retooling — %d turn%s" % [t, "" if t == 1 else "s"]
+		state["recipe_detail"] = ""
+		state["recipe_enabled"] = true
+	else:
+		state["recipe_title"] = "Change recipes (%d)" % alt_count
+		state["recipe_detail"] = "%d better for %s" % [BdpV3Block.better_recipe_count(building),
+			BdpV3Block.truncate10(BdpV3Block.main_output_name(recipe))] if alt_count > 0 else "No other recipes"
+		state["recipe_enabled"] = alt_count > 0
+	var block: Control = BdpV3Block.new()
+	block.configure(state)
+	block.key_pressed.connect(_on_v3_key.bind(building, recipe))
+	return block
+
+
+func _on_v3_key(key: String, building: Dictionary, recipe: Dictionary) -> void:
+	match key:
+		"inputs": _open_input_sources_sheet(building, recipe)
+		"outputs": _open_output_sheet(building, recipe)
+		"upgrade": _open_upgrade_sheet(building)
+		"recipe": _open_recipe_sheet(building)
+
+
+## The Upgrade key: its two lines, whether the arrow is lit (the upgrade can start: not already
+## upgrading, not at the top level, its research unlocked) and, when it is not, why.
+static func v3_upgrade_state(building: Dictionary) -> Dictionary:
+	var iid := str(building.get("instance_id", ""))
+	var level := int(building.get("level", 1))
+	var progress := BuildingWorks.upgrade_progress_snapshot(iid)
+	if not progress.is_empty():
+		return {"upgrade_title": "Upgrading…", "upgrade_detail": "", "upgrade_lit": false,
+			"upgrade_tooltip": str(progress.get("tooltip", "Upgrade in progress."))}
+	if level >= BuildingLevels.MAX_LEVEL:
+		return {"upgrade_title": "Max level (L%d)" % level, "upgrade_detail": "", "upgrade_lit": false,
+			"upgrade_tooltip": "Already at the maximum level."}
+	var internal := str(Catalog.get_building(str(building.get("building_id", ""))).get("internal_name", ""))
+	var gate := BuildingLevels.research_gate(internal, level + 1)
+	var met := gate == "" or ResearchState.is_unlocked(gate)
+	return {"upgrade_title": "Upgrade to Lv %d" % (level + 1), "upgrade_detail": BdpV3Block.upgrade_detail(level),
+		"upgrade_lit": met, "upgrade_tooltip": "" if met else "Requires research: %s" % gate}
+
+
+func _build_v3_footer(building: Dictionary) -> Control:
+	var footer: Control = BdpV3Footer.new()
+	footer.key_pressed.connect(func(key: String) -> void: _open_supply_chain(building, key))
+	return footer
+
 
 func _build_sell_demolish_row(building: Dictionary, building_data: Dictionary) -> Control:
 	var iid := str(building.get("instance_id", ""))
@@ -2034,6 +2179,7 @@ func _add_modifiers_accordion(building: Dictionary, recipe: Dictionary) -> void:
 		right.text = "Output %s" % _mod_pct_text(out_pct)
 		right.add_theme_color_override("font_color", _mod_tone(out_pct, true))
 	header.add_child(right)
+	header.set_meta("v3_section", "Modifiers")
 	_body.add_child(header)
 
 	var card := _make_card()
@@ -3018,6 +3164,7 @@ func _labour_card(label: String, count: int, accent: Color) -> PanelContainer:
 
 func _make_section(text: String, right_text: String = "") -> Control:
 	var hb := HBoxContainer.new()
+	hb.set_meta("v3_section", text)
 	var s := Label.new()
 	s.theme_type_variation = "Section"
 	s.text = text

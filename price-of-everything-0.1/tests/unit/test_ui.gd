@@ -457,3 +457,281 @@ func _test_detail_panel_owner_resolution() -> void:
 		"detail owner: construction stub (not in store, no owner) -> player")
 	BuildingState.buildings.erase(npc_iid)
 	BuildingState.buildings.erase(player_iid)
+
+
+# The dummy Gameplay "Test setting": a seven-position rotary knob (scripts/rotary_selector.gd)
+# that is staged in the panel and only committed on Apply, like every other settings tab.
+func _test_settings_test_knob() -> void:
+	var RotarySelector = load("res://scripts/rotary_selector.gd")
+	var knob: Control = RotarySelector.new()
+	add_child(knob)
+	knob.value = 9
+	_check(knob.value == 7, "test knob: values above 7 clamp to 7")
+	knob.value = 0
+	_check(knob.value == 1, "test knob: values below 1 clamp to 1")
+	var c: Vector2 = knob._centre()
+	_check(knob._position_towards(c + Vector2(-50, 0)) == 1, "test knob: pointing at 9 o'clock is position 1")
+	_check(knob._position_towards(c + Vector2(0, -50)) == 4, "test knob: pointing at 12 o'clock is position 4")
+	_check(knob._position_towards(c + Vector2(50, 0)) == 7, "test knob: pointing at 3 o'clock is position 7")
+	_check(knob._position_towards(c + Vector2(-50, 40)) == 1, "test knob: below the knob on the left snaps to 1")
+	_check(knob._label_at(knob._label_position(5)) == 5, "test knob: clicking a number hits that number")
+	knob.queue_free()
+
+	# Apply also commits the other tabs through PlayerProfile, which persists to disk, so
+	# snapshot everything it writes and put it back afterwards.
+	var saved: int = SettingsPanel.test_setting
+	var fs_saved: bool = PlayerProfile.fullscreen
+	var ws_saved: Vector2i = PlayerProfile.window_size
+	var sc_saved: int = PlayerProfile.screen_index
+	var al_saved: Dictionary = PlayerProfile.audio_levels.duplicate()
+	var kb_saved: Dictionary = PlayerProfile.keybinds.duplicate()
+	SettingsPanel.test_setting = 2
+	var panel := SettingsPanel.open(self)
+	_check(panel._test_knob.value == 2, "test setting: the knob opens on the current value")
+	panel._test_knob.value = 6
+	panel._on_back_pressed()
+	_check(SettingsPanel.test_setting == 2, "test setting: Back discards the knob change")
+	panel = SettingsPanel.open(self)
+	panel._test_knob.value = 6
+	panel._on_apply_pressed()
+	_check(SettingsPanel.test_setting == 6, "test setting: Apply commits the knob position")
+	SettingsPanel.test_setting = saved
+	PlayerProfile.keybinds = kb_saved
+	PlayerProfile.set_audio_levels(al_saved)
+	PlayerProfile.window_size = ws_saved
+	PlayerProfile.set_display(fs_saved, ws_saved, sc_saved)
+
+
+# Panel gauge (scripts/panel_gauge.gd): for a spread of zone splits and needle positions,
+# the LED shows the right colour, the needle points at the right angle and each zone band
+# covers exactly its share of the scale.
+const GAUGE_CASES := [
+	# value, green %, amber %, LED mode, flash -> zone, LED, flashes
+	[0.30, 37.5, 29.2, "AUTO", false, "green", "green", false],
+	[0.375, 37.5, 29.2, "AUTO", false, "green", "green", false],   # boundary belongs to the lower zone
+	[0.50, 37.5, 29.2, "AUTO", false, "amber", "amber", false],
+	[0.90, 37.5, 29.2, "AUTO", false, "red", "red", true],         # auto flashes in the red
+	[0.10, 0.0, 30.0, "AUTO", false, "amber", "amber", false],     # empty green is skipped
+	[0.00, 0.0, 0.0, "AUTO", false, "red", "red", true],           # all red
+	[0.99, 100.0, 0.0, "AUTO", false, "green", "green", false],    # all green
+	[0.95, 60.0, 60.0, "AUTO", false, "amber", "amber", false],    # amber clamped to the 40% left
+	[0.20, 50.0, 25.0, "RED", false, "green", "red", false],       # fixed colour ignores the zone
+	[0.80, 50.0, 25.0, "AMBER", true, "red", "amber", true],       # fixed colour, flashing on request
+	[0.80, 50.0, 25.0, "OFF", true, "red", "off", false],          # off never flashes
+]
+
+
+func _test_panel_gauge_rules() -> void:
+	var Gauge = load("res://scripts/panel_gauge.gd")
+	for c: Array in GAUGE_CASES:
+		var tag := "gauge v=%s g=%s a=%s %s" % [c[0], c[1], c[2], c[3]]
+		var mode: int = Gauge.LedMode[c[3]]
+		_check(Gauge.zone_at(c[0], c[1], c[2]) == c[5], tag + ": needle is in the " + str(c[5]) + " zone")
+		_check(Gauge.led_colour(mode, c[0], c[1], c[2]) == c[6], tag + ": LED is " + str(c[6]))
+		_check(Gauge.led_flashes(mode, c[4], c[0], c[1], c[2]) == c[7], tag + ": LED flashing is " + str(c[7]))
+	var b: Dictionary = Gauge.zone_bounds(60.0, 60.0)
+	_check(b.amber == Vector2(0.6, 1.0) and b.red.x == b.red.y, "gauge: amber clamps to what green leaves and red is empty")
+	for pair: Array in [[0.0, -150.0], [0.25, -75.0], [0.5, 0.0], [1.0, 150.0], [1.4, 150.0]]:
+		_check(is_equal_approx(rad_to_deg(Gauge.needle_rotation(pair[0])), pair[1]),
+			"gauge: value %s turns the needle %s° from 12 o'clock" % pair)
+
+
+func _test_panel_gauge_draws_cases() -> void:
+	var Gauge = load("res://scripts/panel_gauge.gd")
+	var gauge: Control = Gauge.new()
+	gauge.animate_needle = false
+	add_child(gauge)
+	await get_tree().process_frame
+	for c: Array in GAUGE_CASES:
+		var tag := "gauge v=%s g=%s a=%s %s" % [c[0], c[1], c[2], c[3]]
+		gauge.green_percent = c[1]
+		gauge.amber_percent = c[2]
+		gauge.led_mode = Gauge.LedMode[c[3]]
+		gauge.flash = c[4]
+		gauge.value = c[0]
+		gauge._time = 0.0          # the lit phase of a blink
+		gauge._refresh()
+		var expected: float = Gauge.needle_rotation(c[0])
+		_check(is_equal_approx(gauge._layers["needle"].rotation, expected)
+			and is_equal_approx(gauge._layers["needle_shadow"].rotation, expected),
+			tag + ": needle and its shadow drawn at the value's angle")
+		_check(gauge.shown_led() == c[6], tag + ": LED drawn " + str(c[6]))
+		_check(gauge._layers["led_glow"].visible == (c[6] != "off") and gauge._layers["led_core"].visible == (c[6] != "off"),
+			tag + ": LED glow and lit disc only while lit")
+		if c[6] != "off":
+			var core_colour: Color = gauge._core_texture.gradient.colors[2]
+			_check(core_colour.is_equal_approx(Gauge.LED_COLOURS[c[6]]), tag + ": lit disc is " + str(c[6]))
+		var bounds: Dictionary = Gauge.zone_bounds(c[1], c[2])
+		var bands_ok := true
+		for zone: String in Gauge.ZONES:
+			var mat: ShaderMaterial = gauge._zone_materials[zone]
+			var want: Vector2 = bounds[zone]
+			bands_ok = bands_ok and is_equal_approx(mat.get_shader_parameter("from_v"), want.x) \
+				and is_equal_approx(mat.get_shader_parameter("to_v"), want.y) \
+				and gauge._layers["band_" + zone].visible == (want.y > want.x)
+		_check(bands_ok, tag + ": each zone band covers its share and empty zones are hidden")
+		if c[7]:
+			gauge._time = 0.5         # the dark phase of a blink
+			gauge._refresh()
+			_check(gauge.shown_led() == "off", tag + ": flashing LED goes dark between blinks")
+	gauge.queue_free()
+
+
+func _test_settings_test_gauge() -> void:
+	var panel := SettingsPanel.open(self)
+	await get_tree().process_frame
+	var gauge: Control = panel._test_gauge
+	_check(gauge != null and gauge.is_inside_tree(), "settings: Gameplay tab carries the test gauge")
+	# Drive the preview's own controls: rows are Needle, Green, Amber, Red, LED.
+	var controls: VBoxContainer = gauge.get_parent().get_child(2)
+	var slider := func(row: int) -> HSlider: return controls.get_child(row).get_child(1) as HSlider
+	var red_readout: Label = controls.get_child(3).get_child(1)
+	slider.call(0).value = 90.0
+	_check(is_equal_approx(gauge.value, 0.9), "test gauge: the Needle slider moves the needle")
+	slider.call(1).value = 80.0
+	_check(is_equal_approx(gauge.green_percent, 80.0) and is_equal_approx(gauge.amber_percent, 20.0) \
+		and is_equal_approx(slider.call(2).value, 20.0) and red_readout.text == "0%",
+		"test gauge: raising green pulls amber back so the three still add to 100")
+	slider.call(2).value = 5.0
+	_check(red_readout.text == "15%", "test gauge: red shows what green and amber leave")
+	var led_option: OptionButton = controls.get_child(4).get_child(1)
+	led_option.item_selected.emit(3)
+	_check(gauge.led_mode == gauge.LedMode.RED, "test gauge: the LED menu sets the LED mode")
+	panel._on_back_pressed()
+
+
+# Building Detail v3 (`toggle bdp v3`): the approved control plates. The rules behind the keys'
+# text, when the upgrade arrow lights, the cheat, and that the panel swaps its controls and the
+# keys open the same sheets as v2.
+func _test_bdp_v3_rules() -> void:
+	var Block = load("res://scripts/bdp_v3_block.gd")
+	var Panel = load("res://scripts/building_detail_panel_v2.gd")
+	_check(Block.truncate10("Motor") == "Motor" and Block.truncate10("Heavy Vehicle") == "Heavy Vehi..."
+		and Block.truncate10("Aluminium1") == "Aluminium1",
+		"bdp v3: good names cut to ten characters plus ... from eleven on")
+	_check(Block.upgrade_detail(1) == "+100% Output" and Block.upgrade_detail(2) == "+75% Output",
+		"bdp v3: upgrade line is the next level's output gain (L1->2 +100%, L2->3 +75%)")
+	var one: Array = Block.value_lines("Market / unlinked")
+	var two: Array = Block.value_lines("Tile stockpile (same tile)")
+	var split: Array = Block.value_lines("Stoneshore: 20\nArin: 13\nCapital: 0")
+	_check(one.size() == 1 and two.size() == 2 and str(two[1].text) == "(same tile)"
+		and split.size() == 2 and str(split[1].text).ends_with("…"),
+		"bdp v3: value key splits a bracketed qualifier onto a second line and shortens longer splits")
+
+	var iid: String = BuildingState.add_building("b_007", "r_009", "tile_5_10", MatchState.LOCAL_PLAYER, "v3_rules")
+	var b: Dictionary = BuildingState.get_building(iid)
+	var internal := str(Catalog.get_building("b_007").get("internal_name", ""))
+	var gate: String = preload("res://scripts/building_levels.gd").research_gate(internal, 2)
+	_check(gate != "", "bdp v3: the factory's level-2 upgrade has a research gate to test (%s)" % gate)
+	var had := ResearchState.unlocked_titles.has(gate)
+	if gate != "":
+		ResearchState.unlocked_titles.erase(gate)
+		var locked: Dictionary = Panel.v3_upgrade_state(b)
+		_check(not bool(locked.upgrade_lit) and str(locked.upgrade_tooltip).contains(gate),
+			"bdp v3: upgrade arrow unlit, with the missing research in the tooltip, until %s is unlocked" % gate)
+		ResearchState.unlocked_titles[gate] = true
+	var open: Dictionary = Panel.v3_upgrade_state(b)
+	_check(bool(open.upgrade_lit) and str(open.upgrade_title) == "Upgrade to Lv 2" and str(open.upgrade_detail) == "+100% Output",
+		"bdp v3: upgrade arrow lit once the research is met")
+	var maxed := b.duplicate()
+	maxed["level"] = preload("res://scripts/building_levels.gd").MAX_LEVEL
+	_check(not bool(Panel.v3_upgrade_state(maxed).upgrade_lit), "bdp v3: no lit arrow at the maximum level")
+	if gate != "" and not had:
+		ResearchState.unlocked_titles.erase(gate)
+	var better: int = Block.better_recipe_count(b)
+	_check(better >= 0 and better < Catalog.get_recipes_for_building("b_007").size(),
+		"bdp v3: better-recipe count is among the other recipes (%d)" % better)
+	BuildingState.buildings.erase(iid)
+
+
+func _test_bdp_v3_panel() -> void:
+	var was: bool = UiPrefs.use_bdp_v3
+	UiPrefs.set_use_bdp_v3(false)
+	var terminal: Node = load("res://scripts/debug_terminal.gd").new()
+	add_child(terminal)
+	await get_tree().process_frame
+	terminal._cheats_unlocked = true
+	var reply: String = terminal._run_command("toggle bdp v3")
+	_check(UiPrefs.use_bdp_v3 and reply.contains("v3"), "bdp v3: `toggle bdp v3` switches the panel to v3 (%s)" % reply)
+	terminal.queue_free()
+
+	var iid: String = BuildingState.add_building("b_007", "r_009", "tile_5_10", MatchState.LOCAL_PLAYER, "v3_panel")
+	var b: Dictionary = BuildingState.get_building(iid)
+	var panel = load("res://scripts/building_detail_panel_v2.gd").new()
+	add_child(panel)
+	await get_tree().process_frame
+	panel.show_building(b)
+	await get_tree().process_frame
+	var block: Control = panel.find_child("BdpV3Block", true, false)
+	var footer: Control = panel.find_child("BdpV3Footer", true, false)
+	_check(block != null and footer != null and panel.find_child("UpgradeButton", true, false) == null,
+		"bdp v3: the control block and footer replace the v2 route cards and buttons")
+	_check(panel._close_key.visible and not panel._close_button.visible, "bdp v3: the close keycap replaces the X button")
+	_check(is_equal_approx(panel._close_key.size.x, panel._close_key.size.y), "bdp v3: the close key stays square (%s)" % str(panel._close_key.size))
+	_check(panel._backing.visible and not panel._pipe_frame.visible, "bdp v3: the backing plate replaces the pipe border")
+	# Godot renames same-named siblings, so the frames are found by script rather than by name.
+	var section_script = load("res://scripts/bdp_v3_section.gd")
+	var frames: Array = panel.find_children("*", "MarginContainer", true, false).filter(func(n: Node) -> bool: return n.get_script() == section_script)
+	var framed: Array = []
+	for f in frames:
+		for c in f.content.get_children():
+			if c.has_meta("v3_section"):
+				framed.append(str(c.get_meta("v3_section")))
+	_check(framed.has("Diagnostics") and framed.has("Labour on this building") and framed.has("Economics · per turn"),
+		"bdp v3: the sections sit in steel frames (%s)" % ", ".join(framed))
+	var money_frame: Control = null
+	for f in frames:
+		for c in f.content.get_children():
+			if str(c.get_meta("v3_section", "")) == "Economics · per turn":
+				money_frame = f
+	var shares := false
+	if money_frame != null:
+		for c in money_frame.content.get_children():
+			shares = shares or str(c.get_meta("v3_section", "")) == "Modifiers"
+	_check(shares, "bdp v3: Modifiers and Economics share one frame")
+	if footer != null:
+		var opened: Array = []
+		footer.key_pressed.connect(func(k: String) -> void: opened.append(k))
+		var click := func(key: String, pressed: bool) -> void:
+			var e := InputEventMouseButton.new()
+			e.button_index = MOUSE_BUTTON_LEFT
+			e.pressed = pressed
+			e.position = footer.key_rect(key).get_center()
+			footer._gui_input(e)
+		# Swap the review for a no-op so the click does not open the supply-chain panel.
+		for conn in footer.key_pressed.get_connections():
+			if conn.callable.get_object() == panel:
+				footer.key_pressed.disconnect(conn.callable)
+		click.call("demolish", true); click.call("demolish", false)
+		_check(footer.is_open("demolish") and opened.is_empty(), "bdp v3: the first click on Demolish only lifts its cover")
+		click.call("demolish", true); click.call("demolish", false)
+		_check(opened == ["demolish"] and not footer.is_open("demolish"), "bdp v3: the second click presses Demolish and the cover drops")
+		footer.lift("sell")
+		footer._process(footer.OPEN_SECONDS + 0.1)
+		_check(not footer.is_open("sell"), "bdp v3: an untouched lifted cover drops again")
+	if block != null:
+		block.key_pressed.emit("outputs")
+		await get_tree().process_frame
+		_check(panel._sheet != null and panel._sheet.find_child("BdpV3BackKey", true, false) != null,
+			"bdp v3: Outputs opens the output sheet, whose Back is a keycap")
+		panel._close_sheet()
+		var r: Rect2 = block.key_rect("recipe")
+		var press := func(pressed: bool) -> void:
+			var e := InputEventMouseButton.new()
+			e.button_index = MOUSE_BUTTON_LEFT
+			e.pressed = pressed
+			e.position = r.get_center()
+			block._gui_input(e)
+		press.call(true); press.call(false)
+		await get_tree().process_frame
+		_check(panel._sheet != null and str(panel._sheet.find_child("SheetTitle", true, false).text).to_lower().contains("recipe"),
+			"bdp v3: clicking the Change recipes key opens the recipe sheet")
+		panel._close_sheet()
+	UiPrefs.set_use_bdp_v3(false)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(panel.find_child("BdpV3Block", true, false) == null and panel.find_child("UpgradeButton", true, false) != null,
+		"bdp v3: switching it off brings the v2 controls straight back")
+	panel.queue_free()
+	BuildingState.buildings.erase(iid)
+	UiPrefs.set_use_bdp_v3(was)

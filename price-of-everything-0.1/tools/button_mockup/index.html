@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel Button Study</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050a11; --panel: #0b1622; --line: #1f3246; --text: #e8eef7; --muted: #a9bcd2;
+    --cream: #feedc3; --brass: #d9b24c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 "IBM Plex Sans", system-ui, sans-serif; }
+  header { max-width: 1240px; margin: 0 auto; padding: 32px 16px 8px; }
+  h1 { font: 44px/1 "Bebas Neue", sans-serif; letter-spacing: .02em; color: var(--cream); margin: 0 0 8px; }
+  h2 { font: 600 24px/1.1 "Barlow Condensed", sans-serif; color: var(--cream); margin: 0; letter-spacing: .02em; }
+  p { margin: 0 0 12px; color: var(--muted); max-width: 820px; }
+  .keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px 20px; margin: 18px 0 8px; }
+  .key { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .key b { color: var(--cream); font: 600 18px "Barlow Condensed", sans-serif; letter-spacing: .02em; }
+  .key ul { margin: 6px 0 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
+  main { max-width: 1240px; margin: 0 auto; padding: 8px 16px 64px; }
+  section { margin-top: 36px; }
+  section > p { margin-top: 4px; }
+  .row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 12px; }
+  figure { margin: 0; }
+  figcaption { font: 600 16px "Barlow Condensed", sans-serif; color: var(--cream); letter-spacing: .03em; margin-bottom: 6px; text-transform: uppercase; }
+  figcaption span { color: var(--muted); font: 400 13px "IBM Plex Sans", sans-serif; text-transform: none; letter-spacing: 0; margin-left: 6px; }
+  .cell { width: 100%; aspect-ratio: 939 / 1631; border-radius: 6px; overflow: hidden; background: #02060b; position: relative; }
+  .cell img { width: 100%; height: 100%; display: block; }
+  .cell.view { cursor: default; touch-action: manipulation; }
+  #gl { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 10px; }
+  @media (max-width: 760px) {
+    .row { grid-template-columns: minmax(0, 1fr); }
+    h1 { font-size: 36px; }
+  }
+</style>
+<script src="panel_data.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<header>
+  <h1>Building details panel: button study</h1>
+  <p>The left column is the panel exactly as the game draws it now (Godot captures). The other two columns show the same capture with its interactive controls replaced by 3D models of the approved button types. They're lit from the upper left like the knob and gauge. Every replacement button responds to clicks.</p>
+  <div class="keys">
+    <div class="key"><b>Recommended mapping</b>
+      <ul>
+        <li>Housed button: the main money-spending action (Upgrade)</li>
+        <li>Keycap: secondary actions (Change recipe)</li>
+        <li>Guarded button: irreversible actions (Sell, Demolish); click once to lift the cover, again to press</li>
+        <li>Embossed steel: close ✕ and back ‹</li>
+        <li>Annunciators: route choices; lit green = selected, amber = fallback, dark = locked</li>
+        <li>Selector plate (concept, not yet approved): Inputs / Outputs</li>
+      </ul>
+    </div>
+    <div class="key"><b>Alternative mapping</b>
+      <ul>
+        <li>Lit annunciator for Upgrade (lit = available)</li>
+        <li>Keycaps for everything else, including close, back and the Inputs / Outputs cards</li>
+        <li>Guarded button only on Demolish</li>
+        <li>Route choices as square keycaps: the selected one latches down and lights its lamp</li>
+      </ul>
+    </div>
+  </div>
+</header>
+<main id="rows"></main>
+<canvas id="gl"></canvas>
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const DATA = window.PANEL_DATA;
+const [W, H] = DATA.size;           // panel capture size in pixels (Godot at 1.875x)
+const ROWS = [
+  { tag: 'top', title: 'Main view', note: 'Close, the Inputs / Outputs cards, Upgrade and Change recipe.' },
+  { tag: 'bottom', title: 'Bottom of the panel', note: 'Sell building and Demolish, currently styled like any other button.' },
+  { tag: 'output', title: 'Output destination sheet', note: 'Back, and the icon-only route choices (global market, tile stockpile, ship to another tile).' },
+  { tag: 'input', title: 'Input sources sheet', note: 'Back, and primary / fallback route choices per input; the logistics intermediary is locked.' },
+];
+
+await Promise.all([
+  document.fonts.load('600 40px "Barlow Condensed"'),
+  document.fonts.load('700 40px "Barlow Condensed"'),
+  document.fonts.load('500 30px "IBM Plex Sans"'),
+]);
+const images = {};
+await Promise.all(Object.entries(DATA.views).map(([tag, v]) => new Promise((res) => {
+  const img = new Image(); img.onload = () => res(); img.src = v.image; images[tag] = img;
+})));
+
+// ---------- renderer (one canvas, one scissored viewport per panel) ----------
+const canvas = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.setClearColor(0x000000, 0);
+const pmrem = new THREE.PMREMGenerator(renderer);
+const roomEnv = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+const studioEnv = (() => {
+  const studio = new THREE.Scene();
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(10, 48, 24), new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true }));
+  const pos = dome.geometry.attributes.position, cols = [], c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) { c.lerpColors(new THREE.Color(0x8a9097), new THREE.Color(0xffffff), THREE.MathUtils.smoothstep(pos.getY(i) / 10, -0.6, 0.5)); cols.push(c.r, c.g, c.b); }
+  dome.geometry.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+  studio.add(dome);
+  const strip = (w, h, x, y, z, k) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(k, k, k), side: THREE.DoubleSide })); m.position.set(x, y, z); m.lookAt(0, 0, 0); studio.add(m); };
+  strip(6, 2, -5, 6, -5, 4); strip(2, 8, 7, 3, 2, 2.2); strip(8, 1.2, 0, 2, 8, 1.6); strip(3, 3, 0, 9, 0, 3);
+  return pmrem.fromScene(studio, 0.02).texture;
+})();
+
+// ---------- shared textures and materials ----------
+let seed = 7;
+const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+function noiseTexture(base, amp, scratches) {
+  const N = 256, c = document.createElement('canvas'); c.width = c.height = N;
+  const g = c.getContext('2d'); g.fillStyle = base; g.fillRect(0, 0, N, N);
+  const img = g.getImageData(0, 0, N, N);
+  for (let i = 0; i < img.data.length; i += 4) { const d = (rand() - 0.5) * amp; img.data[i] += d; img.data[i + 1] += d; img.data[i + 2] += d; }
+  g.putImageData(img, 0, 0);
+  for (let i = 0; i < scratches; i++) {
+    const x = rand() * N, y = rand() * N, a = rand() * Math.PI, l = 4 + rand() * 18;
+    g.strokeStyle = `rgba(${rand() > 0.5 ? '255,255,255' : '0,0,0'},${0.05 + rand() * 0.08})`; g.lineWidth = 0.6;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
+  t.repeat.set(1 / 180, 1 / 180);                      // extrude UVs are in pixels
+  return t;
+}
+const MAT = {
+  cream: new THREE.MeshPhysicalMaterial({ color: 0xe6dfcc, map: noiseTexture('#ffffff', 14, 60), roughness: 0.55, clearcoat: 0.18, clearcoatRoughness: 0.4 }),
+  creamDim: new THREE.MeshPhysicalMaterial({ color: 0x9e988a, map: noiseTexture('#ffffff', 14, 60), roughness: 0.6 }),
+  gunmetal: new THREE.MeshStandardMaterial({ color: 0x5b5f64, map: noiseTexture('#ffffff', 30, 120), metalness: 1, roughness: 0.42, envMap: studioEnv, envMapIntensity: 0.9 }),
+  castIron: new THREE.MeshStandardMaterial({ color: 0x5c6064, map: noiseTexture('#ffffff', 40, 160), metalness: 0.75, roughness: 0.62, envMap: studioEnv, envMapIntensity: 0.8 }),
+  steel: new THREE.MeshStandardMaterial({ color: 0xaab0b6, map: noiseTexture('#ffffff', 18, 200), metalness: 1, roughness: 0.3, envMap: studioEnv, envMapIntensity: 1.0 }),
+  steelDish: new THREE.MeshStandardMaterial({ color: 0x6f757c, map: noiseTexture('#ffffff', 18, 200), metalness: 1, roughness: 0.38, envMap: studioEnv, envMapIntensity: 0.8, side: THREE.DoubleSide }),
+  steelRelief: new THREE.MeshStandardMaterial({ color: 0xd4d9de, metalness: 1, roughness: 0.22, envMap: studioEnv, envMapIntensity: 1.25 }),
+  screw: new THREE.MeshStandardMaterial({ color: 0x8a8e93, metalness: 1, roughness: 0.35, envMap: studioEnv }),
+  slot: new THREE.MeshStandardMaterial({ color: 0x17191c, roughness: 0.8 }),
+  recess: new THREE.MeshStandardMaterial({ color: 0x101316, roughness: 0.9 }),
+  frost: new THREE.MeshPhysicalMaterial({ color: 0xd8d2c2, roughness: 0.4, transmission: 0, clearcoat: 0.3 }),
+  clear: new THREE.MeshPhysicalMaterial({ color: 0xdfe9f0, roughness: 0.06, metalness: 0, transparent: true, opacity: 0.16, envMap: studioEnv, envMapIntensity: 1.6, clearcoat: 1, depthWrite: false, side: THREE.DoubleSide }),
+  clearRim: new THREE.MeshPhysicalMaterial({ color: 0xe8f0f6, roughness: 0.1, metalness: 0, transparent: true, opacity: 0.55, envMap: studioEnv, envMapIntensity: 1.8, clearcoat: 1, depthWrite: false }),
+};
+const INK = '#1d2227', CREAM_INK = '#f3ead2';
+const LAMP = { green: 0x33e070, amber: 0xffb020, red: 0xff3b2f };
+
+// ---------- geometry helpers (build in XY, extrude along +Z, lay flat so +Y is up) ----------
+function rr(path, w, h, r, cx = 0, cy = 0) {
+  r = Math.min(r, w / 2, h / 2);
+  const x = cx - w / 2, y = cy - h / 2;
+  path.moveTo(x + r, y); path.lineTo(x + w - r, y); path.quadraticCurveTo(x + w, y, x + w, y + r);
+  path.lineTo(x + w, y + h - r); path.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  path.lineTo(x + r, y + h); path.quadraticCurveTo(x, y + h, x, y + h - r);
+  path.lineTo(x, y + r); path.quadraticCurveTo(x, y, x + r, y);
+  return path;
+}
+const rrShape = (w, h, r) => rr(new THREE.Shape(), w, h, r);
+/** Extrudes a shape upward; bottom at y = 0, top face = the shape itself (bevel widens the body). */
+function extrude(shape, depth, bevel = 0, segs = 3) {
+  const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel * 0.8, bevelSegments: segs, curveSegments: 10 });
+  g.rotateX(-Math.PI / 2);
+  g.translate(0, bevel, 0);
+  return g;
+}
+/** A top-face texture spanning a w×h shape (extrude cap UVs are shape pixels). */
+function capTexture(w, h, paint) {
+  const s = 2, c = document.createElement('canvas'); c.width = Math.ceil(w * s); c.height = Math.ceil(h * s);
+  const g = c.getContext('2d'); g.scale(s, s); paint(g, w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  t.repeat.set(1 / w, 1 / h); t.offset.set(0.5, 0.5); t.anisotropy = 8;
+  return t;
+}
+function screw(r) {
+  const g = new THREE.Group();
+  const head = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), MAT.screw);
+  head.scale.y = 0.45; head.castShadow = true; g.add(head);
+  const slot = new THREE.Mesh(new THREE.BoxGeometry(r * 1.7, r * 0.3, r * 0.3), MAT.slot);
+  slot.position.y = r * 0.42; slot.rotation.y = rand() * Math.PI; g.add(slot);
+  return g;
+}
+function frame(ow, oh, orad, iw, ih, irad, depth, mat, bevel = 1.5) {
+  const s = rrShape(ow, oh, orad); s.holes.push(rr(new THREE.Path(), iw, ih, irad));
+  const m = new THREE.Mesh(extrude(s, depth, bevel), mat); m.castShadow = m.receiveShadow = true; return m;
+}
+function recessFloor(w, h) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h).rotateX(-Math.PI / 2), MAT.recess);
+  m.position.y = 0.4; m.receiveShadow = true; return m;
+}
+function glowSprite(w, h, colour, opacity) {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d'); const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grd.addColorStop(0, 'rgba(255,255,255,0.9)'); grd.addColorStop(0.45, 'rgba(255,255,255,0.35)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd; g.fillRect(0, 0, 128, 128);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), color: colour, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+  m.renderOrder = 5; return m;
+}
+
+// ---------- 2D painting helpers ----------
+function paintCream(g, w, h, dim = false) {
+  g.fillStyle = dim ? '#a8a292' : '#ece5d3'; g.fillRect(0, 0, w, h);
+  const v = g.createRadialGradient(w * 0.35, h * 0.3, 0, w / 2, h / 2, Math.max(w, h) * 0.75);
+  v.addColorStop(0, 'rgba(255,255,255,0.12)'); v.addColorStop(1, 'rgba(90,76,50,0.16)');
+  g.fillStyle = v; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < w * h / 900; i++) {
+    const x = rand() * w, y = rand() * h, a = rand() * Math.PI, l = 3 + rand() * 12;
+    g.strokeStyle = `rgba(90,80,60,${0.05 + rand() * 0.07})`; g.lineWidth = 0.6;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
+  }
+}
+function fitFont(g, text, maxW, size, weight = 600, family = '"Barlow Condensed"') {
+  let s = size;
+  do { g.font = `${weight} ${s}px ${family}`; s -= 1; } while (g.measureText(text).width > maxW && s > 8);
+  return s + 1;
+}
+function text(g, str, x, y, maxW, size, colour, align = 'center', weight = 600, family = '"Barlow Condensed"') {
+  fitFont(g, str, maxW, size, weight, family);
+  g.fillStyle = colour; g.textAlign = align; g.textBaseline = 'middle'; g.fillText(str, x, y);
+}
+/** A white-on-transparent mask of the bright glyph inside a rect of a capture. */
+function glyphMask(img, rect, inset = 14) {
+  const [x, y, w, h] = rect, sx = x + inset, sy = y + inset, sw = w - inset * 2, sh = h - inset * 2;
+  const c = document.createElement('canvas'); c.width = Math.round(sw); c.height = Math.round(sh);
+  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  const d = g.getImageData(0, 0, c.width, c.height), L = [];
+  for (let i = 0; i < d.data.length; i += 4) L.push((0.2126 * d.data[i] + 0.7152 * d.data[i + 1] + 0.0722 * d.data[i + 2]) / 255);
+  const sorted = [...L].sort((a, b) => a - b), lo = sorted[Math.floor(L.length * 0.35)], hi = sorted[Math.floor(L.length * 0.995)];
+  for (let i = 0; i < L.length; i++) {
+    const a = THREE.MathUtils.clamp((L[i] - lo) / Math.max(hi - lo, 0.05), 0, 1);
+    d.data[i * 4] = d.data[i * 4 + 1] = d.data[i * 4 + 2] = 255; d.data[i * 4 + 3] = Math.round(THREE.MathUtils.smoothstep(a, 0.25, 0.75) * 255);
+  }
+  g.putImageData(d, 0, 0);
+  return c;
+}
+function drawMask(g, mask, x, y, w, h, colour, alpha = 1) {
+  const c = document.createElement('canvas'); c.width = mask.width; c.height = mask.height;
+  const cg = c.getContext('2d'); cg.drawImage(mask, 0, 0); cg.globalCompositeOperation = 'source-in';
+  cg.fillStyle = colour; cg.fillRect(0, 0, c.width, c.height);
+  const k = Math.min(w / mask.width, h / mask.height), dw = mask.width * k, dh = mask.height * k;
+  g.save(); g.globalAlpha = alpha; g.drawImage(c, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh); g.restore();
+}
+
+// ---------- button models ----------
+// Every model is a Group centred on its control's rect, with userData.hit (meshes to ray-test)
+// and userData.click / userData.tick for behaviour.
+function pressable(group, cap, depth = 5) {
+  let t = 0, latched = false;
+  group.userData.press = () => { t = 1; };
+  group.userData.latch = (on) => { latched = on; };
+  group.userData.tick = (dt) => {
+    t = Math.max(0, t - dt * 4);
+    const d = latched ? depth : depth * Math.sin(Math.min(t, 1) * Math.PI);
+    cap.position.y = cap.userData.y0 - d;
+  };
+}
+
+function keycap(w, h, paint, { dim = false } = {}) {
+  const g = new THREE.Group(), t = 7, skirt = Math.min(9, h * 0.11);
+  g.add(frame(w, h, 10, w - t * 2, h - t * 2, 7, 6, MAT.gunmetal));
+  g.add(recessFloor(w - t * 2, h - t * 2));
+  const cw = w - t * 2 - skirt * 2 - 5, ch = h - t * 2 - skirt * 2 - 5;
+  const top = new THREE.MeshPhysicalMaterial({ map: capTexture(cw, ch, (c, cw2, ch2) => { paintCream(c, cw2, ch2, dim); paint(c, cw2, ch2); }), roughness: 0.55, clearcoat: 0.18, clearcoatRoughness: 0.4 });
+  const cap = new THREE.Mesh(extrude(rrShape(cw, ch, 6), 5, skirt, 4), [top, dim ? MAT.creamDim : MAT.cream]);
+  cap.castShadow = cap.receiveShadow = true; cap.position.y = cap.userData.y0 = 2;
+  g.add(cap);
+  pressable(g, cap, 4);
+  g.userData.hit = [cap]; g.userData.click = () => g.userData.press();
+  return g;
+}
+
+function housed(w, h, label) {
+  const g = new THREE.Group(), ow = w + 14, oh = h + 14, iw = w - 40, ih = h - 26;
+  g.add(frame(ow, oh, 12, iw, ih, 8, 14, MAT.castIron, 3));
+  g.add(recessFloor(iw, ih));
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const s = screw(6); s.position.set(sx * (ow / 2 - 11), 19.5, sz * (oh / 2 - 9.5)); g.add(s);
+  }
+  const cw = iw - 10, ch = ih - 10;
+  const top = new THREE.MeshPhysicalMaterial({ map: capTexture(cw, ch, (c, a, b) => { paintCream(c, a, b); text(c, label, a / 2, b / 2 + 1, a - 20, b * 0.74, INK, 'center', 700); }), roughness: 0.55, clearcoat: 0.2, clearcoatRoughness: 0.45 });
+  const cap = new THREE.Mesh(extrude(rrShape(cw, ch, 6), 9, 3), [top, MAT.cream]);
+  cap.castShadow = cap.receiveShadow = true; cap.position.y = cap.userData.y0 = 4;
+  g.add(cap);
+  pressable(g, cap, 5);
+  g.userData.hit = [cap]; g.userData.click = () => g.userData.press();
+  return g;
+}
+
+function embossed(d, icon) {
+  const g = new THREE.Group(), R = d / 2;
+  const ring = new THREE.Mesh(new THREE.LatheGeometry([
+    new THREE.Vector2(R, 0), new THREE.Vector2(R, 5), new THREE.Vector2(R - 1.5, 8.5), new THREE.Vector2(R - 4, 9), new THREE.Vector2(R - 6.5, 6.5), new THREE.Vector2(R - 7, 1),
+  ], 64), MAT.steel);
+  ring.material = MAT.steel.clone(); ring.material.side = THREE.DoubleSide;
+  ring.castShadow = ring.receiveShadow = true; g.add(ring);
+  const r = R - 8;
+  const cap = new THREE.Group();
+  const dish = new THREE.Mesh(new THREE.LatheGeometry([
+    new THREE.Vector2(0, 4), new THREE.Vector2(r * 0.55, 4.4), new THREE.Vector2(r * 0.88, 6), new THREE.Vector2(r, 7.2), new THREE.Vector2(r, 1),
+  ].reverse(), 64), MAT.steelDish);
+  dish.castShadow = dish.receiveShadow = true; cap.add(dish);
+  const bar = (len, th, angle, cx, cz) => {
+    const m = new THREE.Mesh(extrude(rrShape(len, th, th / 2), 3, 2.2, 3), MAT.steelRelief);
+    m.castShadow = m.receiveShadow = true; m.rotation.y = angle; m.position.set(cx, 4.6, cz); cap.add(m);
+  };
+  const L = d * 0.44, th = d * 0.14;
+  if (icon === 'close') { bar(L, th, Math.PI / 4, 0, 0); bar(L, th, -Math.PI / 4, 0, 0); }
+  if (icon === 'back') {
+    const a = rad(42), vx = -d * 0.12;
+    bar(L * 0.8, th, a, vx + Math.cos(a) * L * 0.4, -Math.sin(a) * L * 0.4);
+    bar(L * 0.8, th, -a, vx + Math.cos(a) * L * 0.4, Math.sin(a) * L * 0.4);
+  }
+  cap.userData.y0 = 0;
+  g.add(cap);
+  pressable(g, cap, 2.5);
+  g.userData.hit = [dish, ring]; g.userData.click = () => g.userData.press();
+  return g;
+}
+const rad = THREE.MathUtils.degToRad;
+
+/** Frosted backlit tile in a screwed bezel. `paint(g, w, h, state)` draws the face content. */
+function annunciator(w, h, paint, { colour = 'green', state = 'lit' } = {}) {
+  const g = new THREE.Group(), t = 8;
+  g.add(frame(w, h, 8, w - t * 2, h - t * 2, 5, 6, MAT.gunmetal));
+  g.add(recessFloor(w - t * 2, h - t * 2));
+  if (w >= 70 && h >= 70) for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const s = screw(4); s.position.set(sx * (w / 2 - 6), 7.5, sz * (h / 2 - 6)); g.add(s);
+  }
+  const tw = w - t * 2 - 4, th = h - t * 2 - 4;
+  const faceMat = new THREE.MeshStandardMaterial({ roughness: 0.35, emissive: 0xffffff });
+  const tile = new THREE.Mesh(extrude(rrShape(tw, th, 5), 2.5, 1.5), [faceMat, MAT.frost]);
+  tile.receiveShadow = true; tile.position.y = tile.userData.y0 = 1.5;
+  g.add(tile);
+  const glow = glowSprite(w * 1.9, h * 1.9, LAMP[colour], 0.5); glow.position.y = 9; g.add(glow);
+  const set = (st, col = colour) => {
+    colour = col; state = st;
+    const lit = st === 'lit';
+    faceMat.map?.dispose();
+    faceMat.map = capTexture(tw, th, (c, a, b) => {
+      if (lit) {
+        const base = new THREE.Color(LAMP[col]);
+        const grd = c.createRadialGradient(a / 2, b / 2, 0, a / 2, b / 2, Math.max(a, b) * 0.62);
+        grd.addColorStop(0, '#' + base.clone().lerp(new THREE.Color(0xffffff), 0.55).getHexString());
+        grd.addColorStop(1, '#' + base.clone().multiplyScalar(0.8).getHexString());
+        c.fillStyle = grd;
+      } else {
+        const grd = c.createLinearGradient(0, 0, a, b);
+        grd.addColorStop(0, st === 'locked' ? '#7c786d' : '#dcd6c6'); grd.addColorStop(1, st === 'locked' ? '#5f5c54' : '#b7b1a1');
+        c.fillStyle = grd;
+      }
+      c.fillRect(0, 0, a, b);
+      paint(c, a, b, st);
+    });
+    faceMat.emissiveMap = faceMat.map;
+    faceMat.emissiveIntensity = lit ? 1.05 : 0;
+    faceMat.needsUpdate = true;
+    glow.material.color.setHex(LAMP[col]);
+    glow.visible = lit;
+  };
+  set(state, colour);
+  pressable(g, tile, 1.5);
+  g.userData.setState = set;
+  g.userData.state = () => state;
+  g.userData.hit = [tile];
+  return g;
+}
+
+function guarded(w, h, label, { danger = false } = {}) {
+  const g = new THREE.Group(), t = 9;
+  g.add(frame(w, h, 9, w - t * 2, h - t * 2, 6, 7, MAT.gunmetal));
+  g.add(recessFloor(w - t * 2, h - t * 2));
+  for (const [sx, sz] of [[-1, 1], [1, 1]]) { const s = screw(4.5); s.position.set(sx * (w / 2 - 6.5), 8.5, sz * (h / 2 - 6)); g.add(s); }
+  const cw = w - t * 2 - 12, ch = h - t * 2 - 12;
+  const top = new THREE.MeshPhysicalMaterial({ map: capTexture(cw, ch, (c, a, b) => {
+    paintCream(c, a, b);
+    if (danger) { c.fillStyle = 'rgba(176,40,34,0.9)'; c.fillRect(0, b - 6, a, 6); c.fillRect(0, 0, a, 6); }
+    text(c, label, a / 2, b / 2 + 1, a - 24, b * 0.7, danger ? '#8f1f19' : INK, 'center', 700);
+  }), roughness: 0.55, clearcoat: 0.2, clearcoatRoughness: 0.45 });
+  const cap = new THREE.Mesh(extrude(rrShape(cw, ch, 5), 4, 4.5), [top, MAT.cream]);
+  cap.castShadow = cap.receiveShadow = true; cap.position.y = cap.userData.y0 = 1;
+  g.add(cap);
+  // Hinged clear cover, pivoting on a barrel along the top edge.
+  const hinge = new THREE.Group(); hinge.position.set(0, 17, -h / 2 + 4); g.add(hinge);
+  const cov = h - 9, covW = w - 8;
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(covW, 2, cov), MAT.clear); plate.position.set(0, 0, cov / 2); plate.renderOrder = 6;
+  const front = new THREE.Mesh(new THREE.BoxGeometry(covW, 9, 3), MAT.clearRim); front.position.set(0, -4.5, cov); front.renderOrder = 6;
+  const sideL = new THREE.Mesh(new THREE.BoxGeometry(3, 9, cov), MAT.clearRim); sideL.position.set(-covW / 2, -4.5, cov / 2); sideL.renderOrder = 6;
+  const sideR = sideL.clone(); sideR.position.x = covW / 2;
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, covW * 0.55, 20).rotateZ(Math.PI / 2), MAT.gunmetal); barrel.castShadow = true;
+  const latch = new THREE.Mesh(new THREE.BoxGeometry(Math.min(34, covW * 0.3), 3, 9), MAT.gunmetal); latch.position.set(0, 1.5, cov + 1); latch.castShadow = true;
+  // A soft diagonal glare printed on the pane so the cover reads as glass-like plastic.
+  const glareC = document.createElement('canvas'); glareC.width = 256; glareC.height = 128;
+  const gg = glareC.getContext('2d'); gg.filter = 'blur(6px)';
+  const gl = gg.createLinearGradient(0, 0, 256, 128);
+  gl.addColorStop(0.15, 'rgba(255,255,255,0)'); gl.addColorStop(0.3, 'rgba(255,255,255,0.8)'); gl.addColorStop(0.42, 'rgba(255,255,255,0.1)');
+  gl.addColorStop(0.55, 'rgba(255,255,255,0)'); gl.addColorStop(0.62, 'rgba(255,255,255,0.45)'); gl.addColorStop(0.7, 'rgba(255,255,255,0)');
+  gg.fillStyle = gl; gg.fillRect(0, 0, 256, 128);
+  const glare = new THREE.Mesh(new THREE.PlaneGeometry(covW - 6, cov - 6).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(glareC), transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+  glare.position.set(0, 1.2, cov / 2); glare.renderOrder = 7;
+  hinge.add(plate, front, sideL, sideR, barrel, latch, glare);
+  let open = 0, target = 0, closeAt = 0;
+  pressable(g, cap, 4);
+  const basePressTick = g.userData.tick;
+  g.userData.tick = (dt, now) => {
+    basePressTick(dt);
+    if (closeAt && now > closeAt) { target = 0; closeAt = 0; }
+    open += (target - open) * Math.min(1, dt * 9);
+    hinge.rotation.x = -rad(112) * open;
+  };
+  g.userData.hit = [plate, cap, latch];
+  g.userData.click = (now) => {
+    if (target === 0) { target = 1; return; }          // first click lifts the cover
+    g.userData.press(); closeAt = now + 0.9;            // second click presses, then the cover drops
+  };
+  return g;
+}
+
+/** Selector plate (concept A): steel nameplate, cream value window, chevron keycap. */
+function selectorPlate(w, h, iconMask, kicker, valueLines) {
+  const g = new THREE.Group();
+  const winL = -w / 2 + 108, winR = w / 2 - 82, winT = -h / 2 + 64, winB = h / 2 - 20;
+  const winW = winR - winL, winH = winB - winT, winCx = (winL + winR) / 2, winCz = (winT + winB) / 2;
+  const keyS = 58, keyCx = w / 2 - 46, keyCz = winCz;
+  const s = rrShape(w, h, 12);
+  s.holes.push(rr(new THREE.Path(), winW, winH, 6, winCx, -winCz));
+  s.holes.push(rr(new THREE.Path(), keyS + 8, keyS + 8, 8, keyCx, -keyCz));
+  const plateTop = new THREE.MeshStandardMaterial({ map: capTexture(w, h, (c, a, b) => {
+    c.fillStyle = '#5b5f64'; c.fillRect(0, 0, a, b);
+    const n = c.createLinearGradient(0, 0, a, b); n.addColorStop(0, 'rgba(255,255,255,0.10)'); n.addColorStop(1, 'rgba(0,0,0,0.18)');
+    c.fillStyle = n; c.fillRect(0, 0, a, b);
+    for (let i = 0; i < 160; i++) { const x = rand() * a, y = rand() * b; c.fillStyle = `rgba(${rand() > 0.5 ? 255 : 0},${rand() > 0.5 ? 255 : 0},${rand() > 0.5 ? 255 : 0},0.06)`; c.fillRect(x, y, 1.2, 1.2); }
+    drawMask(c, iconMask, 16, b / 2 - 34, 78, 68, CREAM_INK, 0.95);
+    text(c, kicker, winL + a / 2, winT + b / 2 - 22, winW, 26, CREAM_INK, 'left', 600, '"IBM Plex Sans"');
+  }), metalness: 1, roughness: 0.42, envMap: studioEnv, envMapIntensity: 0.9 });
+  const plate = new THREE.Mesh(extrude(s, 8, 2), [plateTop, MAT.gunmetal]);
+  plate.castShadow = plate.receiveShadow = true; g.add(plate);
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const sc = screw(5); sc.position.set(sx * (w / 2 - 10), 12, sz * (h / 2 - 10)); g.add(sc); }
+  const floor = recessFloor(winW, winH); floor.position.set(winCx, 0.4, winCz); g.add(floor);
+  const cardTop = new THREE.MeshPhysicalMaterial({ map: capTexture(winW - 8, winH - 8, (c, a, b) => {
+    paintCream(c, a, b);
+    const n = valueLines.length, size = n > 1 ? b * 0.34 : b * 0.46;
+    valueLines.forEach((ln, i) => text(c, ln, 14, b / 2 + (i - (n - 1) / 2) * size * 1.08, a - 24, size, INK, 'left', 600));
+  }), roughness: 0.5, clearcoat: 0.25, clearcoatRoughness: 0.35 });
+  const card = new THREE.Mesh(extrude(rrShape(winW - 8, winH - 8, 4), 2, 1), [cardTop, MAT.cream]);
+  card.position.set(winCx, 1, winCz); card.receiveShadow = true; g.add(card);
+  const kfloor = recessFloor(keyS + 8, keyS + 8); kfloor.position.set(keyCx, 0.4, keyCz); g.add(kfloor);
+  const keyTop = new THREE.MeshPhysicalMaterial({ map: capTexture(keyS - 14, keyS - 14, (c, a, b) => {
+    paintCream(c, a, b); c.strokeStyle = INK; c.lineWidth = 5; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.beginPath(); c.moveTo(a * 0.28, b * 0.38); c.lineTo(a * 0.5, b * 0.62); c.lineTo(a * 0.72, b * 0.38); c.stroke();
+  }), roughness: 0.55, clearcoat: 0.2, clearcoatRoughness: 0.45 });
+  const key = new THREE.Mesh(extrude(rrShape(keyS - 14, keyS - 14, 6), 5, 6, 4), [keyTop, MAT.cream]);
+  key.castShadow = key.receiveShadow = true; key.position.set(keyCx, 3, keyCz); key.userData.y0 = 3;
+  g.add(key);
+  pressable(g, key, 4);
+  g.userData.hit = [plate, card, key]; g.userData.click = () => g.userData.press();
+  return g;
+}
+
+// ---------- per-control content ----------
+/** Route-card label "INPUTS / Market / unlinked / ›" -> ["INPUTS", "Market / unlinked"]. */
+const cardText = (label) => {
+  const parts = label.split(' / ').map((s) => s.trim()).filter((s) => s && s !== '›');
+  return [parts[0], parts.slice(1).join(' / ')];
+};
+function routeCardPainter(img, rect, label, ink) {
+  const [kicker, value] = cardText(label);
+  const mask = glyphMask(img, [rect[0], rect[1], rect[2] * 0.3, rect[3]], 14);
+  return (c, a, b) => {
+    drawMask(c, mask, 8, b * 0.18, b * 0.62, b * 0.64, ink);
+    text(c, kicker, b * 0.72, b * 0.3, a - b * 0.9, b * 0.2, ink, 'left', 500, '"IBM Plex Sans"');
+    const lines = value.includes('(') ? [value.slice(0, value.indexOf('(')).trim(), value.slice(value.indexOf('('))] : [value];
+    lines.forEach((ln, i) => text(c, ln, b * 0.72, b * 0.56 + i * b * 0.24, a - b * 0.95, b * 0.24, ink, 'left', 600));
+    text(c, '›', a - 16, b / 2, 20, b * 0.34, ink, 'center', 600);
+  };
+}
+function routeValueLines(label) {
+  const v = cardText(label)[1];
+  return v.includes('(') ? [v.slice(0, v.indexOf('(')).trim(), v.slice(v.indexOf('('))] : [v];
+}
+
+// Which route-option rows are fallbacks: on the input sheet they alternate primary / fallback in threes.
+function optionRoles(items, tag) {
+  const opts = items.filter((i) => i.kind === 'route_option');
+  return opts.map((o, i) => ({ item: o, row: Math.floor(i / 3), fallback: tag === 'input' && Math.floor(i / 3) % 2 === 1 }));
+}
+
+const VARIANTS = {
+  recommended(item, tag, img, role) {
+    const [x, y, w, h] = item.rect, L = item.label;
+    if (L === 'X') return embossed(Math.min(w, h, 92), 'close');
+    if (L === '‹') return embossed(Math.min(w, h), 'back');
+    if (item.kind === 'clickable_card') {
+      const mask = glyphMask(img, [x, y, w * 0.3, h], 14);
+      return selectorPlate(w, h, mask, cardText(L)[0], routeValueLines(L));
+    }
+    if (L.startsWith('Upgrade')) return housed(w, h, L);
+    if (L.startsWith('Change recipe')) return keycap(w, h, (c, a, b) => text(c, L, a / 2, b / 2 + 1, a - 20, b * 0.74, INK, 'center', 700));
+    if (L === 'Sell building') return guarded(w, h, L);
+    if (L === 'Demolish') return guarded(w, h, L, { danger: true });
+    if (item.kind === 'route_option') {
+      const mask = glyphMask(img, item.rect, 16);
+      const locked = L.includes('|locked'), active = L.includes('|active');
+      const colour = role.fallback ? 'amber' : 'green';
+      const a = annunciator(w, h, (c, aw, ah, st) => drawMask(c, mask, aw * 0.12, ah * 0.12, aw * 0.76, ah * 0.76, st === 'lit' ? 'rgba(24,20,14,0.88)' : 'rgba(34,32,28,0.8)', st === 'locked' ? 0.45 : 1),
+        { colour, state: locked ? (active ? 'lit' : 'locked') : active ? 'lit' : 'unlit' });
+      a.userData.row = role.row; a.userData.locked = locked; a.userData.colour = colour;
+      a.userData.click = () => selectInRow(a);
+      return a;
+    }
+    return null;
+  },
+  alternative(item, tag, img, role) {
+    const [x, y, w, h] = item.rect, L = item.label;
+    if (L === 'X' || L === '‹') {
+      const s = Math.min(w, h, 92), glyph = L === 'X' ? '✕' : '‹';
+      return keycap(s, s, (c, a, b) => text(c, glyph, a / 2, b / 2 + (L === '‹' ? -2 : 1), a, b * 0.8, INK, 'center', 600, '"IBM Plex Sans"'));
+    }
+    if (item.kind === 'clickable_card') return keycap(w, h, routeCardPainter(img, item.rect, L, INK));
+    if (L.startsWith('Upgrade')) {
+      const a = annunciator(w, h, (c, aw, ah, st) => text(c, L, aw / 2, ah / 2 + 1, aw - 24, ah * 0.62, st === 'lit' ? 'rgba(14,32,18,0.92)' : INK, 'center', 700), { colour: 'green', state: 'lit' });
+      a.userData.click = () => a.userData.press();
+      return a;
+    }
+    if (L.startsWith('Change recipe') || L === 'Sell building') return keycap(w, h, (c, a, b) => text(c, L, a / 2, b / 2 + 1, a - 20, b * 0.74, INK, 'center', 700));
+    if (L === 'Demolish') return guarded(w, h, L, { danger: true });
+    if (item.kind === 'route_option') {
+      const mask = glyphMask(img, item.rect, 16);
+      const locked = L.includes('|locked'), active = L.includes('|active');
+      const k = keycap(w, h, (c, a, b) => drawMask(c, mask, a * 0.1, b * 0.1, a * 0.8, b * 0.8, INK, locked ? 0.4 : 1), { dim: locked });
+      const colour = role.fallback ? 'amber' : 'green';
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(5, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x2a2c2a, emissive: LAMP[colour], emissiveIntensity: 0, roughness: 0.2 }));
+      lamp.position.set(w / 2 - 3.5, 6, -h / 2 + 3.5);
+      const glow = glowSprite(46, 46, LAMP[colour], 0.7); glow.position.set(w / 2 - 3.5, 9, -h / 2 + 3.5);
+      k.add(lamp, glow);
+      k.userData.row = role.row; k.userData.locked = locked;
+      k.userData.setState = (st) => {
+        const on = st === 'lit';
+        k.userData.latch(on); lamp.material.emissiveIntensity = on ? 2.2 : 0; lamp.material.color.setHex(on ? LAMP[colour] : 0x2a2c2a); glow.visible = on;
+        k.userData.st = st;
+      };
+      k.userData.state = () => k.userData.st;
+      k.userData.setState(active ? 'lit' : locked ? 'locked' : 'unlit');
+      k.userData.click = () => selectInRow(k);
+      return k;
+    }
+    return null;
+  },
+};
+
+// Selecting a route option lights it and puts out the others in its row; locked ones refuse.
+function selectInRow(btn) {
+  if (btn.userData.locked) return;
+  btn.userData.press?.();
+  for (const other of btn.parent.children) {
+    if (other.userData.row !== btn.userData.row || !other.userData.setState) continue;
+    if (other === btn) other.userData.setState('lit');
+    else if (!other.userData.locked) other.userData.setState('unlit');
+  }
+}
+
+// ---------- scenes ----------
+function panelTexture(tag, replaced) {
+  const img = images[tag], c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
+  const sample = (x, y) => { const d = g.getImageData(Math.round(THREE.MathUtils.clamp(x, 0, W - 1)), Math.round(THREE.MathUtils.clamp(y, 0, H - 1)), 1, 1).data; return [d[0], d[1], d[2]]; };
+  for (const it of replaced) {
+    const [x, y, w, h] = it.rect;
+    // The panel background round the control: the darkest of four points just outside it.
+    const pts = [sample(x - 6, y + h / 2), sample(x + w + 6, y + h / 2), sample(x + w / 2, y - 6), sample(x + w / 2, y + h + 6)];
+    const bg = pts.sort((a, b) => (a[0] + a[1] + a[2]) - (b[0] + b[1] + b[2]))[0];
+    g.fillStyle = `rgb(${bg[0]},${bg[1]},${bg[2]})`;
+    g.beginPath(); g.roundRect(x - 3, y - 3, w + 6, h + 6, 12); g.fill();
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return t;
+}
+
+function buildView(tag, variant) {
+  const scene = new THREE.Scene();
+  scene.environment = roomEnv; scene.environmentIntensity = 0.35;
+  const view = DATA.views[tag], img = images[tag];
+  const items = view.items.filter((i) => !((tag === 'output' || tag === 'input') && i.label === 'X'));
+  const roles = new Map(optionRoles(items, tag).map((r) => [r.item, r]));
+  const buttons = [], replaced = [];
+  for (const it of items) {
+    const b = VARIANTS[variant](it, tag, img, roles.get(it) ?? { row: -1, fallback: false });
+    if (!b) continue;
+    const [x, y, w, h] = it.rect;
+    b.position.set(x + w / 2, 0, y + h / 2);
+    buttons.push(b); replaced.push(it);
+  }
+  const panel = new THREE.Mesh(new THREE.PlaneGeometry(W, H).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ map: panelTexture(tag, replaced), toneMapped: false }));
+  panel.position.set(W / 2, 0, H / 2);
+  scene.add(panel);
+  const catcher = new THREE.Mesh(new THREE.PlaneGeometry(W, H).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ opacity: 0.55 }));
+  catcher.position.set(W / 2, 0.05, H / 2); catcher.receiveShadow = true;
+  scene.add(catcher);
+  const holder = new THREE.Group(); scene.add(holder);
+  for (const b of buttons) holder.add(b);
+
+  const key = new THREE.DirectionalLight(0xffffff, 2.7);
+  key.position.set(W / 2 - 900, 1500, H / 2 - 900); key.target.position.set(W / 2, 0, H / 2);
+  key.castShadow = true; key.shadow.mapSize.set(2048, 2048);
+  Object.assign(key.shadow.camera, { left: -1150, right: 1150, top: 1150, bottom: -1150, near: 200, far: 4000 });
+  key.shadow.radius = 4; key.shadow.bias = -0.0004; key.shadow.normalBias = 0.6;
+  scene.add(key, key.target, new THREE.HemisphereLight(0xffffff, 0xb9c2cc, 0.55));
+
+  const camera = new THREE.OrthographicCamera(-W / 2, W / 2, H / 2, -H / 2, 1, 5000);
+  camera.position.set(W / 2, 2000, H / 2); camera.up.set(0, 0, -1); camera.lookAt(W / 2, 0, H / 2);
+  return { scene, camera, buttons };
+}
+
+// ---------- page ----------
+const rowsEl = document.getElementById('rows');
+const views = [];
+for (const row of ROWS) {
+  const sec = document.createElement('section');
+  sec.innerHTML = `<h2>${row.title}</h2><p>${row.note}</p><div class="row"></div>`;
+  const grid = sec.querySelector('.row');
+  const cur = document.createElement('figure');
+  cur.innerHTML = `<figcaption>Current<span>as drawn in the game</span></figcaption><div class="cell"><img alt="${row.title}, current game panel"></div>`;
+  cur.querySelector('img').src = DATA.views[row.tag].image;
+  grid.appendChild(cur);
+  for (const [variant, caption, sub] of [['recommended', 'Recommended', 'approved types + selector plate'], ['alternative', 'Alternative', 'keycap-led']]) {
+    const fig = document.createElement('figure');
+    fig.innerHTML = `<figcaption>${caption}<span>${sub}</span></figcaption><div class="cell view" role="img" aria-label="${row.title}, ${caption.toLowerCase()} buttons"></div>`;
+    grid.appendChild(fig);
+    const el = fig.querySelector('.view');
+    const v = { el, ...buildView(row.tag, variant) };
+    views.push(v);
+    wireInput(v);
+  }
+  rowsEl.appendChild(sec);
+}
+const hint = document.createElement('p'); hint.className = 'hint';
+hint.textContent = 'Click the buttons: keys press, route choices light up (locked ones refuse), guarded buttons lift their cover first.';
+rowsEl.appendChild(hint);
+
+function hitButton(v, e) {
+  const r = v.el.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  const ray = new THREE.Raycaster(); ray.setFromCamera(ndc, v.camera);
+  for (const b of v.buttons) if (ray.intersectObjects(b.userData.hit ?? [], true).length) return b;
+  return null;
+}
+function wireInput(v) {
+  v.el.addEventListener('pointermove', (e) => { v.el.style.cursor = hitButton(v, e) ? 'pointer' : 'default'; });
+  v.el.addEventListener('click', (e) => { const b = hitButton(v, e); if (b) b.userData.click?.(clock.elapsedTime); });
+}
+
+function resize() { renderer.setSize(innerWidth, innerHeight, false); }
+addEventListener('resize', resize);
+resize();
+
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05), now = clock.elapsedTime;
+  renderer.setScissorTest(false);
+  renderer.clear();
+  renderer.setScissorTest(true);
+  for (const v of views) {
+    const r = v.el.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth) continue;
+    for (const b of v.buttons) b.userData.tick?.(dt, now);
+    const y = innerHeight - r.bottom;
+    renderer.setViewport(r.left, y, r.width, r.height);
+    renderer.setScissor(r.left, y, r.width, r.height);
+    renderer.render(v.scene, v.camera);
+  }
+});
+</script>
+</body>
+</html>
