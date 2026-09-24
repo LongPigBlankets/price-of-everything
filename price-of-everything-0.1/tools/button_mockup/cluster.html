@@ -2473,7 +2473,7 @@ async function exportLayers() {
   // bar and runs along beneath it to the other divider, where it turns and goes back up. Three pieces the
   // game places: the left riser, the right riser (each lit by the house light, not mirrored) and the run
   // between them (croppable like the strip), hung from the beam by brackets.
-  const PAIR = { r: 4.6, gap: 3, bend: 7, top: 30 };                      // top: where the pair's clamp sits
+  const PAIR = { r: 3.66, gap: 1.1, bend: 7, top: 30 };                   // top: where the pair's clamp sits
   PAIR.pitch = 2 * PAIR.r + PAIR.gap;
   PAIR.yu = BAR.H + PAIR.r + 1.5; PAIR.yl = PAIR.yu + PAIR.pitch;          // the run's upper and lower pipes
   PAIR.HP = Math.ceil(PAIR.yl + PAIR.r + 12);                             // the pieces' frame height

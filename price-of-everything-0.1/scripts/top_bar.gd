@@ -168,6 +168,9 @@ var _quest_width_anim: Tween
 var _victory_score: Label
 var _victory_target: Label   # "/ N" — the rising win threshold for the current turn
 var _victory_ratio: Label    # v3.1 — replaces the meters + two-line score/target
+var _ds2_victory: HBoxContainer   # DS2: the score's drum counter and the printed target
+var _ds2_victory_counter: Control
+var _ds2_victory_target: Label
 
 # Transport module (v3)
 var _transport_btn: Control
@@ -388,6 +391,9 @@ func _mini(text: String, color: Color, size: int = 10) -> Label:
 ## emits "pressed" and swaps active/warn chrome. Buttons can't hold containers.
 class _ModuleBtn extends PanelContainer:
 	signal pressed
+	## DS2's readout under the bar says what the tooltip would, so the tooltip stands down there.
+	func _get_tooltip(_at: Vector2) -> String:
+		return "" if UiPrefs.use_topbar_ds2 else tooltip_text
 	var warn := false:
 		set(v):
 			warn = v
@@ -811,24 +817,7 @@ func _on_power_pressed() -> void:
 	MapMode.set_sentinel_mode(MapMode.Mode.POWER_BALANCE, MapMode.POWER_SENTINEL)
 
 func _power_stats() -> Dictionary:
-	var s: Dictionary = Production.last_turn_summary
-	var unpowered := 0
-	for iid in Production.missing_by_building:
-		var b: Dictionary = BuildingState.buildings.get(iid, {})
-		if b.is_empty() or not BuildingState.is_player_owned(b):
-			continue
-		var recipe := Catalog.get_recipe(str(b.get("recipe_id", "")))
-		if str(recipe.get("output_name", "")) == "power":
-			continue   # a producer's "power" entry is the cable-cap marker, not starvation
-		for m in (Production.missing_by_building[iid] as Array):
-			if str(m.get("good_id", "")) == "power":
-				unpowered += 1
-				break
-	return {
-		"self_gen": int(s.get("power_supply", 0)),
-		"grid_draw": int(s.get("grid_bought", 0)),
-		"unpowered": unpowered,
-	}
+	return TopBarStatus.power_stats()
 
 
 # ── 3 · Victory: five mini track meters + score ─────────────────────────────────
@@ -851,6 +840,18 @@ func _build_victory() -> void:
 	_victory_ratio = _mini("", C_CREAM, 15)
 	_victory_ratio.visible = false
 	row.add_child(_victory_ratio)
+	# DS2: the score on a drum counter, the target printed after it ("/1,000").
+	_ds2_victory = HBoxContainer.new()
+	_ds2_victory.name = "Ds2Victory"
+	_ds2_victory.add_theme_constant_override("separation", 4)
+	_ds2_victory.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ds2_victory.visible = false
+	_ds2_victory_counter = Counter.new()
+	_ds2_victory_counter.call("configure", 4, 0)
+	_ds2_victory.add_child(_ds2_victory_counter)
+	_ds2_victory_target = _mini("", C_TEXT, 15)
+	_ds2_victory.add_child(_ds2_victory_target)
+	row.add_child(_ds2_victory)
 	_victory_meters = HBoxContainer.new()
 	_victory_meters.add_theme_constant_override("separation", 6)
 	_victory_meters.alignment = BoxContainer.ALIGNMENT_END
@@ -914,6 +915,8 @@ func _victory_trending_up(bd: Dictionary) -> bool:
 ## off-white shapes on nothing. Roads and the port are building icons; the warehouse has
 ## no building behind it, so its cleaned PNG is checked in beside the other UI icons.
 const BuildingIcon := preload("res://scripts/building_icon.gd")
+## The Power and Transport modules' judgements, shared by their lamps and the DS2 hover readouts.
+const TopBarStatus := preload("res://scripts/top_bar_status.gd")
 ## Measures an icon's drawn art (its used rect), cached per texture.
 const BdpV3Indicator := preload("res://scripts/bdp_v3_indicator.gd")
 const WAREHOUSE_ICON: Texture2D = preload("res://assets/icons/ui_icons/warehouse.png")
@@ -983,39 +986,20 @@ func _build_transport() -> void:
 ## count of tile-links running over capacity, and tiles at/near their storage cap.
 ## Every figure is derived from state the sim already keeps — nothing new is simulated.
 func _transport_stats() -> Dictionary:
-	var to_market := 0
-	for s in TransportState.pending_transport_shipments:
-		var ship: Dictionary = s
-		if not bool(ship.get("is_sale", false)):
-			continue
-		for it in (ship.get("sale_record", {}) as Dictionary).get("items", []):
-			to_market += int((it as Dictionary).get("qty", 0))
-	var over := TransportState.congested_links().size()
-	var full := 0
-	var rejecting := 0
-	for tile_key in Stockpile.tiles_with_stock():
-		var cap := float(Stockpile.get_capacity(tile_key))
-		if cap <= 0.0:
-			continue
-		if float(Stockpile.get_used_capacity(tile_key)) / cap >= NEAR_FULL_FRACTION:
-			full += 1
-		if Stockpile.get_refused(tile_key) > 0:
-			rejecting += 1
-	return {"to_market": to_market, "over": over, "full": full, "rejecting": rejecting}
+	return TopBarStatus.transport_stats()
 
 func _refresh_transport() -> void:
 	if _transport_btn == null:
 		return
-	var t := _transport_stats()
-	# Each lamp owns one failure. Splitting them is the point: the single count this
-	# replaced read '0 units → market' in any game shipping tile-to-tile, which is most of
-	# them, so the module spent the early game reporting nothing at all.
-	(_store_led as StatusLed).lit = int(t.rejecting) > 0 or int(t.full) > 1
-	(_road_led as StatusLed).lit = int(t.over) > 3
-	# Freight that arrived somewhere with no room and is stuck waiting for space. It is the
-	# one thing that can go wrong with a shipment AFTER it set off, so it is what the port
-	# lamp watches rather than the healthy count of goods in motion.
-	(_port_led as StatusLed).lit = TransportState.overflow_shipments.size() > 0
+	var status := TopBarStatus.transport()
+	var t: Dictionary = status.stats
+	# Each lamp owns one failure (TopBarStatus.transport). Splitting them is the point: the single
+	# count this replaced read '0 units → market' in any game shipping tile-to-tile, which is most of
+	# them, so the module spent the early game reporting nothing at all. The port lamp watches
+	# freight stuck on arrival, the one thing that can go wrong after a shipment set off.
+	(_store_led as StatusLed).lit = TopBarStatus.lit(status.storage)
+	(_road_led as StatusLed).lit = TopBarStatus.lit(status.links)
+	(_port_led as StatusLed).lit = TopBarStatus.lit(status.freight)
 	_transport_btn.tooltip_text = "Transport — %d tile%s at 95%%+ storage (%d refusing), %d link%s over capacity, %s unit%s riding to market" % [
 		int(t.full), "" if int(t.full) == 1 else "s", int(t.rejecting),
 		int(t.over), "" if int(t.over) == 1 else "s",
@@ -1199,12 +1183,23 @@ func _refresh_victory() -> void:
 	_victory_icon.visible = v31
 	_victory_meters.visible = not v31
 	(_victory_score.get_parent() as Control).visible = not v31
-	_victory_ratio.visible = v31
+	var ds2: bool = UiPrefs.use_topbar_ds2
+	_victory_ratio.visible = v31 and not ds2
+	_ds2_victory.visible = ds2
 	if v31:
 		_victory_ratio.text = "%s/%s" % [_thousands(total), _thousands(int(bd.get("win_threshold", 4000)))]
 		_victory_ratio.tooltip_text = _victory_bar_tip(bd)
+	if ds2:
+		var drums: int = Counter.drums_for(float(total), 0, 4)
+		if int(_ds2_victory_counter.get("drums")) != drums:
+			_ds2_victory_counter.call("configure", drums, 0)
+		var shown: float = float(_ds2_victory_counter.get("value"))
+		_ds2_victory_counter.call("set_value", float(total), shown)
+		_ds2_victory_target.text = "/%s" % _thousands(int(bd.get("win_threshold", 4000)))
 	if _victory_led != null:
 		_victory_led.visible = v31
+		# Green: more than half the tracks rising. (It was never given a colour and lit red.)
+		(_victory_led as StatusLed).color = C_GOOD
 		(_victory_led as StatusLed).lit = _victory_trending_up(bd)
 
 ## What the win bar does, in one line. A campaign bar climbs with the turn; the demo's is
@@ -1398,8 +1393,8 @@ const DS2_CONCRETE: Texture2D = preload("res://assets/ui/bdp_v3/bar_concrete.png
 const DS2_PIPES_LEFT: Texture2D = preload("res://assets/ui/bdp_v3/bar_pipes_left.png")
 const DS2_PIPES_RIGHT: Texture2D = preload("res://assets/ui/bdp_v3/bar_pipes_right.png")
 const DS2_PIPES_RUN: Texture2D = preload("res://assets/ui/bdp_v3/bar_pipes_run.png")
-const DS2_PIPES_LEFT_AXIS := 20.7 / 1.875
-const DS2_PIPES_RIGHT_AXIS := 43.1 / 1.875
+const DS2_PIPES_LEFT_AXIS := 17.87 / 1.875
+const DS2_PIPES_RIGHT_AXIS := 41.21 / 1.875
 ## Room between a divider's middle and the module beside it.
 const DS2_PIPES_ROOM := 24.0
 ## Half the concrete slab's width, pillars included (layout.json: slab 600 layout px), and how far the pipes'
@@ -1430,6 +1425,11 @@ const DS2_CASH_SCALE := 0.75
 const DS2_CASH_COLOUR := Color("#f4f6fa")
 const DS2_CASH_RED := Color("#e66060")   # DS2 DANGER on dark: the cash below zero
 const Led := preload("res://scripts/bdp_v3_led.gd")
+const Counter := preload("res://scripts/bdp_v3_counter.gd")
+const Readout := preload("res://scripts/bdp_v3_readout.gd")
+## The hover readout under the bar: its width and its gap below the bar.
+const DS2_READOUT_W := 360.0
+const DS2_READOUT_GAP := 8.0
 ## The bar's lamps in DS2: Building Detail's pilot lamp, at its diagnostics rows' scale.
 const Ds2Lamp := preload("res://scripts/bdp_v3_lamp.gd")
 const DS2_LAMP_SCALE := 0.72
@@ -1449,6 +1449,11 @@ var _ds2_freight_wraps: Array[Control] = []
 var _ds2_lamps: Array[Array] = []
 ## The mission's section in DS2, as [left, right] screen x: from the works' end to the left pipes.
 var _ds2_quest_area := Vector2.ZERO
+## DS2: the readout under the bar and the module it is reading.
+var _ds2_readout: Control
+var _ds2_hover: Control = null
+## The Treasury and Encyclopedia buttons' own tooltips, held while DS2's readout stands in for them.
+var _ds2_held_tips := {}
 ## The printed £, the LED screen (in a holder sized to its scale) and the printed K / M after it.
 var _ds2_cash: HBoxContainer
 var _ds2_cash_led: Control
@@ -1480,6 +1485,27 @@ func _ds2_setup() -> void:
 	for node: Node in find_children("*", "Control", true, false):
 		if node is StatusLed:
 			_ds2_add_lamp(node as StatusLed)
+	_ds2_readout = Readout.new()
+	_ds2_readout.name = "Ds2Readout"
+	_ds2_readout.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ds2_readout.visible = false
+	_fly_layer.add_child(_ds2_readout)
+	for mod_name: String in DS2_READOUT_MODULES:
+		var mod := _hbox_child(mod_name) as Control
+		if mod == null:
+			continue
+		mod.mouse_entered.connect(func() -> void:
+			_ds2_hover = mod
+			_ds2_show_readout())
+		mod.mouse_exited.connect(func() -> void:
+			if _ds2_hover == mod:
+				_ds2_hover = null
+				_ds2_readout.visible = false)
+		if mod_name == "TransportModule":
+			# One readout per lamp: the cell under the pointer.
+			mod.gui_input.connect(func(e: InputEvent) -> void:
+				if e is InputEventMouseMotion and _ds2_hover == mod:
+					_ds2_show_readout())
 	hbox.resized.connect(_ds2_queue_centre)
 	money_widget.resized.connect(_ds2_queue_centre)
 	hbox.sort_children.connect(_ds2_queue_centre)
@@ -1522,6 +1548,17 @@ func _ds2_apply() -> void:
 		(trio[2] as Control).visible = on
 	for wrap: Control in _ds2_freight_wraps:
 		wrap.modulate = Color.WHITE if on else C_LABEL
+	if not on and _ds2_readout != null:
+		_ds2_readout.visible = false
+	for button: Button in [money_widget, _enc_button]:
+		if button == null:
+			continue
+		if on and not _ds2_held_tips.has(button):
+			_ds2_held_tips[button] = button.tooltip_text
+			button.tooltip_text = ""
+		elif not on and _ds2_held_tips.has(button):
+			button.tooltip_text = str(_ds2_held_tips[button])
+			_ds2_held_tips.erase(button)
 	for pair: Array in _ds2_lamps:
 		var led := pair[0] as StatusLed
 		(pair[1] as Control).visible = on
@@ -1537,9 +1574,80 @@ func _ds2_apply() -> void:
 		if on and _quest_v31_wide:
 			_quest_icon.visible = true
 	_refresh_treasury()
+	_queue_refresh()   # Victory's counter and the other modules' DS2 faces
 	queue_redraw()
 	_ds2_queue_centre()
 	_place_quest.call_deferred()
+
+
+## The modules that show a readout when hovered in DS2.
+const DS2_READOUT_MODULES := ["MoneyWidget", "PowerModule", "TransportModule", "VictoryModule", "RankingsModule",
+	"CouncilModule", "GoodsGraphModule", "EncyclopediaButton", "MenuModule"]
+
+
+## Shows the hovered module's readout under the bar, centred on the module and kept on the screen.
+func _ds2_show_readout() -> void:
+	if not UiPrefs.use_topbar_ds2 or _ds2_hover == null or _fly_open_id != "":
+		_ds2_readout.visible = false
+		return
+	var r := _ds2_readout_content(_ds2_hover)
+	_ds2_readout.call("show_check", str(r.stage), str(r.name), str(r.detail), str(r.tone))
+	var at := _ds2_hover.get_global_rect()
+	var vw := get_viewport_rect().size.x
+	_ds2_readout.size = Vector2(DS2_READOUT_W, Readout.HEIGHT)
+	_ds2_readout.position = Vector2(clampf(at.get_center().x - DS2_READOUT_W * 0.5, 12.0, vw - DS2_READOUT_W - 12.0),
+		BAR_H + DS2_READOUT_GAP)
+	_ds2_readout.visible = true
+
+
+## What a module's readout says: {stage, name, detail, tone}. Power and Transport come from TopBarStatus,
+## as their lamps do; Transport reads the lamp under the pointer.
+func _ds2_readout_content(mod: Control) -> Dictionary:
+	match str(mod.name):
+		"MoneyWidget":
+			var net := Production.cash_change_of(Production.last_turn_summary)
+			var runway := _runway_turns()
+			var detail := "%s%s last turn." % ["+" if net >= 0.0 else "−", _money_text(absf(net))]
+			if runway > 0:
+				detail += " About %d turns before cash and borrowing run out." % runway
+			else:
+				detail += " Borrowing room %s." % _money_text(LoanState.available_capacity())
+			var tone := "bad" if (_treasury_led as StatusLed).lit else ("warn" if net < 0.0 else "ok")
+			return {"stage": "Treasury", "name": "%s cash" % _money_text(MatchState.money), "detail": detail, "tone": tone}
+		"PowerModule":
+			var p := TopBarStatus.power()
+			return {"stage": "Power", "name": p.name, "detail": p.detail, "tone": p.tone}
+		"TransportModule":
+			var t := TopBarStatus.transport()
+			var cell := "storage"
+			var mouse := get_global_mouse_position().x
+			for pair: Array in [["links", _road_led], ["freight", _port_led]]:
+				var slot := (pair[1] as Control).get_parent() as Control
+				if slot != null and mouse >= slot.get_global_rect().position.x - 4.0:
+					cell = str(pair[0])
+			var st: Dictionary = t[cell]
+			return {"stage": "Transport", "name": st.name, "detail": st.detail, "tone": st.tone}
+		"VictoryModule":
+			var bd: Dictionary = VictoryState.get_breakdown()
+			var max_turns := int(bd.get("max_turns", 300))
+			var rises: bool = VictoryState.win_threshold_for_turn(1) != VictoryState.win_threshold_for_turn(max_turns)
+			return {"stage": "Victory", "name": "%s of %s points" % [_thousands(int(bd.get("total", 0))), _thousands(int(bd.get("win_threshold", 0)))],
+				"detail": ("The points needed to win rise over the game, from 1 track at turn %d to 4 by turn %d." % [VictoryState.WIN_START_TURN, max_turns]) if rises
+					else "Reach the target on any turn to win.",
+				"tone": "ok" if _victory_trending_up(bd) else "off"}
+		"RankingsModule":
+			return {"stage": "Rankings", "name": _rankings_head.text if _rankings_head != null else "",
+				"detail": "Your place in the company league, and the goods you lead.", "tone": "off"}
+		"CouncilModule":
+			return {"stage": "Council", "name": _council_status.text if _council_status != null else "Your advisers",
+				"detail": "Your advisers, their seats and their loyalty.", "tone": "off"}
+		"GoodsGraphModule":
+			return {"stage": "", "name": "Goods Graph (G)", "detail": "How every good is made and what it goes into.", "tone": "off"}
+		"EncyclopediaButton":
+			return {"stage": "", "name": "Encyclopedia (X)", "detail": "Every good, building and recipe.", "tone": "off"}
+		"MenuModule":
+			return {"stage": "", "name": "Menu", "detail": "Save, load, settings and quit.", "tone": "off"}
+	return {"stage": "", "name": str(mod.name), "detail": "", "tone": "off"}
 
 
 ## The mission's section in DS2, as [left, right] screen x: from the works' end to the left pipes.
@@ -2706,6 +2814,8 @@ func _close_fly() -> void:
 func _open_fly(id: String) -> void:
 	if id == "rankings" and not CompanyRankings.available():
 		return
+	if _ds2_readout != null:
+		_ds2_readout.visible = false   # the flyout says more than the readout
 	if id == "treasury" and _fly_open_id != id:
 		TelemetryState.track_interaction("money_panel_opened", "treasury")
 	_close_fly()
@@ -3569,11 +3679,12 @@ func _refresh_treasury() -> void:
 	money_widget.custom_minimum_size = Vector2(_money_inner.get_combined_minimum_size().x + 26.0, MOD_H)
 
 func _refresh_power() -> void:
-	var p := _power_stats()
+	var status := TopBarStatus.power()
+	var p: Dictionary = status.stats
 	var s: Dictionary = Production.last_turn_summary
 	var starved: bool = int(p.unpowered) > 0
 	var gridding: bool = not starved and int(p.grid_draw) > 0
-	var derated: bool = Production.intermittency_derated_count() > 0
+	var derated: bool = int(p.derated) > 0
 	var c := C_RED if starved else (C_AMBER if gridding else C_GOOD)
 	(_power_btn as _ModuleBtn).warn = starved
 	var v31: bool = UiPrefs.use_topbar_v3_1
@@ -3586,20 +3697,11 @@ func _refresh_power() -> void:
 		# by intermittency (independent of whether the empire is also grid-buying),
 		# red when a building has no power at all. Red beats blink beats steady beats
 		# green — this supersedes the classic LED's own narrower (grid-draw AND
-		# losing money) condition below.
-		led.blink = false
-		if starved:
-			led.color = C_RED
-			led.lit = true
-		elif derated:
-			led.color = C_AMBER
-			led.lit = true
-			led.blink = true
-		elif gridding:
-			led.color = C_AMBER
-			led.lit = true
-		else:
-			led.lit = false
+		# losing money) condition below. TopBarStatus.power judges it, so the lamp and the
+		# DS2 hover readout say the same thing.
+		led.blink = bool(status.blink)
+		led.color = C_RED if str(status.tone) == "bad" else C_AMBER
+		led.lit = TopBarStatus.lit(status)
 	else:
 		# Classic: buildings actually derated by intermittency, or the player buying
 		# grid power while losing money. The second lights the lamp HERE and not on the

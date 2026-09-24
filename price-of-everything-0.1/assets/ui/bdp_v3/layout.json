@@ -1411,22 +1411,22 @@
  },
  "bar_pipes_left": {
   "size": [
-   64,
-   148
+   60,
+   142
   ],
-  "axis": 20.7
+  "axis": 17.869999999999997
  },
  "bar_pipes_right": {
   "size": [
-   64,
-   148
+   60,
+   142
   ],
-  "axis": 43.1
+  "axis": 41.21
  },
  "bar_pipes_run": {
   "size": [
    7200,
-   148
+   142
   ]
  },
  "bar_icons": {

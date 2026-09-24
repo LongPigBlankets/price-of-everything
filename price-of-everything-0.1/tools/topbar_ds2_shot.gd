@@ -11,6 +11,7 @@ const SIZES := [Vector2i(1920, 1080), Vector2i(2520, 1080), Vector2i(1920, 1200)
 ## How much of the screen's top each view keeps, in logical px: the bar alone, or the flyout under it.
 const BAR_CROP := 96.0
 const FLYOUT_CROP := 520.0
+const HOVER_CROP := 170.0
 
 var _vp: SubViewport
 var _wm
@@ -62,12 +63,15 @@ func _views(bar: Control, tag: String) -> void:
 	await _settle(8)
 	_save(tag + "_long", BAR_CROP)
 	_money(5717.0, -555.0)
-	var power: Control = bar.find_child("PowerModule", true, false)
-	if power != null:
-		power.mouse_entered.emit()
+	# Hovered modules: the v3.1 hover sheen, and in DS2 the readout under the bar.
+	for mod_name: String in ["PowerModule", "MoneyWidget", "VictoryModule", "TransportModule"]:
+		var mod: Control = bar.find_child(mod_name, true, false)
+		if mod == null:
+			continue
+		mod.mouse_entered.emit()
 		await _settle(6)
-		_save(tag + "_hover", BAR_CROP)
-		power.mouse_exited.emit()
+		_save("%s_hover_%s" % [tag, mod_name.trim_suffix("Module").to_lower()], HOVER_CROP)
+		mod.mouse_exited.emit()
 	# The mission opening its text (it folds back to the icon on its own after a few seconds).
 	var quest: Control = bar.get("_quest_btn")
 	if quest != null and quest.visible:

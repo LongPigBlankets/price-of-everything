@@ -408,7 +408,13 @@ func _parse_cmdline_args() -> void:
 	#   <name> <turn>   e.g. open_field_1 60
 	#   <name>          scenario name, default turn
 	#   <turn>          (back-compat) turn only, default scenario
+	#   --topbar-ds2    anywhere: with the DS2 top bar
 	var args := OS.get_cmdline_user_args()
+	# `--topbar-ds2` anywhere: run with the DS2 top bar, which keeps the MoneyWidget path the loan
+	# flow presses.
+	if args.has("--topbar-ds2"):
+		UiPrefs.set_use_topbar_ds2(true)
+		args.remove_at(args.find("--topbar-ds2"))
 	_scenario_name = DEFAULT_SCENARIO
 	_target_turn = DEFAULT_TARGET_TURN
 	if args.is_empty():

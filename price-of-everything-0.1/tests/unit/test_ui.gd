@@ -1117,6 +1117,41 @@ func _test_topbar_ds2_flag() -> void:
 	term.free()
 	UiPrefs.set_use_topbar_ds2(was)
 
+func _test_top_bar_status() -> void:
+	# Power and Transport are judged once (TopBarStatus): the lamps light from the tone the readout shows.
+	var Status := preload("res://scripts/top_bar_status.gd")
+	var summary_was: Dictionary = Production.last_turn_summary
+	var missing_was: Dictionary = Production.missing_by_building
+	var inter_was: Dictionary = Production._intermittency_by_building
+	var stuck_was: Array = TransportState.overflow_shipments
+	Production.missing_by_building = {}
+	Production._intermittency_by_building = {}
+	Production.last_turn_summary = {}
+	_check(Status.power().tone == "off" and not Status.lit(Status.power()), "top bar status: no power made or drawn, the lamp stays off")
+	Production.last_turn_summary = {"power_supply": 40}
+	_check(Status.power().tone == "ok" and Status.power().name == "Self sufficient", "top bar status: own generation only is self sufficient")
+	Production.last_turn_summary = {"power_supply": 40, "grid_bought": 12}
+	var grid: Dictionary = Status.power()
+	_check(grid.tone == "warn" and not bool(grid.blink) and str(grid.detail).contains("12 MW bought"),
+		"top bar status: buying from the grid is amber, with the MW in the detail")
+	Production._intermittency_by_building = {"x": {"derate": 0.3}}
+	var inter: Dictionary = Status.power()
+	_check(inter.tone == "warn" and bool(inter.blink) and inter.name == "Intermittent supply",
+		"top bar status: intermittency cutting buildings short blinks amber")
+	TransportState.overflow_shipments = [{}]
+	var t: Dictionary = Status.transport()
+	_check(t.freight.tone == "bad" and Status.lit(t.freight) and str(t.freight.detail).begins_with("1 shipment "),
+		"top bar status: freight stuck on arrival lights the freight lamp")
+	TransportState.overflow_shipments = []
+	_check(Status.transport().freight.tone == "ok", "top bar status: with nothing stuck the freight lamp is off")
+	for st: Dictionary in [grid, inter, t.storage, t.links, t.freight]:
+		var copy := str(st.name) + " " + str(st.detail)
+		_check(not copy.contains(" - ") and not copy.contains(";") and not copy.contains("—"), "top bar status: plain copy (%s)" % copy)
+	Production.last_turn_summary = summary_was
+	Production.missing_by_building = missing_was
+	Production._intermittency_by_building = inter_was
+	TransportState.overflow_shipments = stuck_was
+
 func _test_topbar_ds2_strip() -> void:
 	# The DS2 strip: the money on the screen's centre line, the works to its left, the office to its
 	# right, the lamp over the strip; switched off, the bar is v3.1 exactly.
@@ -1201,6 +1236,22 @@ func _test_topbar_ds2_strip() -> void:
 		_check(absf(r.position.x - area.x) <= 1.0 and r.end.x <= area.y + 1.0
 			and (not text_col.is_visible_in_tree() or qicon.get_global_rect().end.x <= text_col.get_global_rect().position.x + 1.0),
 			"top bar ds2: the mission keeps to its section, icon first and its text to the right (%s in %s)" % [r, area])
+	var power_mod: Control = hbox.get_node("PowerModule")
+	power_mod.mouse_entered.emit()
+	var readout: Control = bar.get("_ds2_readout")
+	var want_power: Dictionary = preload("res://scripts/top_bar_status.gd").power()
+	_check(readout != null and readout.visible and str(readout.call("shown_name")) == "Power: %s" % want_power.name
+		and str(readout.call("shown_detail")) == str(want_power.detail) and readout.position.y >= bar.BAR_H,
+		"top bar ds2: hovering Power shows its readout under the bar, from the same status as its lamp")
+	_check(power_mod.call("_get_tooltip", Vector2.ZERO) == "", "top bar ds2: the tooltip stands down for the readout")
+	power_mod.mouse_exited.emit()
+	_check(not readout.visible, "top bar ds2: the readout goes when the pointer leaves")
+	var vic: Control = bar.get("_ds2_victory")
+	var counter: Control = bar.get("_ds2_victory_counter")
+	var bd: Dictionary = VictoryState.get_breakdown()
+	_check(vic != null and vic.visible and is_equal_approx(float(counter.get("value")), float(bd.get("total", 0)))
+		and str((bar.get("_ds2_victory_target") as Label).text).begins_with("/"),
+		"top bar ds2: the victory score on a drum counter, the target printed after it")
 	var shade: Node2D = bar.get_node_or_null("Ds2Shade")
 	_check(shade != null and shade.visible and bar.get_child(bar.get_child_count() - 1) == shade,
 		"top bar ds2: the lamp's shade is over the strip, drawn last")
