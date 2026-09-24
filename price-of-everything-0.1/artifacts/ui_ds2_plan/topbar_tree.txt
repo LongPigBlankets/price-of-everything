@@ -1,0 +1,190 @@
+viewport (1920.0, 1080.0), bar [P: (0.0, 0.0), S: (1920.0, 83.0)]
+TopBar [PanelContainer] script=res://scripts/top_bar.gd rect=[P: (0.0, 0.0), S: (1920.0, 83.0)] vis=true
+  MarginContainer [MarginContainer] rect=[P: (12.0, 4.0), S: (1896.0, 68.0)] vis=true
+    HBoxContainer [HBoxContainer] rect=[P: (12.0, 4.0), S: (1896.0, 68.0)] vis=true
+      MoneyWidget [Button] rect=[P: (12.0, 4.0), S: (198.0, 68.0)] vis=true btn_text=""
+        @HBoxContainer@1375 [HBoxContainer] rect=[P: (24.0, 4.0), S: (174.0, 68.0)] vis=true
+          @Control@1376 [Control] script=res://scripts/status_led.gd rect=[P: (25.0, 30.0), S: (16.0, 16.0)] vis=true
+          @Label@1377 [Label] rect=[P: (50.0, 23.0), S: (12.0, 30.0)] vis=false text="£" font=21
+          @Control@1381 [Control] rect=[P: (51.0, 20.0), S: (44.0, 52.0)] vis=true
+            @TextureRect@1378 [TextureRect] rect=[P: (29.0, -2.0), S: (88.0, 88.0)] vis=false tex=res://assets/icons/ui_icons/standalone/_glow.png (160.0, 160.0) expand=1 stretch=0
+            @TextureRect@1379 [TextureRect] rect=[P: (51.0, 20.0), S: (44.0, 44.0)] vis=true tex=res://assets/icons/ui_icons/standalone/coin.png (512.0, 512.0) expand=1 stretch=5
+              @TextureRect@1380 [TextureRect] rect=[P: (51.0, 20.0), S: (44.0, 44.0)] vis=false tex=res://assets/icons/ui_icons/alt/_specular.png (256.0, 256.0) expand=1 stretch=0
+          @VBoxContainer@1382 [VBoxContainer] rect=[P: (105.0, 4.0), S: (92.0, 68.0)] vis=true
+            @Label@1383 [Label] rect=[P: (105.0, 15.0), S: (92.0, 27.0)] vis=true text="£5,717" font=20
+            @HBoxContainer@1384 [HBoxContainer] rect=[P: (105.0, 43.0), S: (92.0, 18.0)] vis=true
+              @Label@1385 [Label] rect=[P: (105.0, 43.0), S: (92.0, 18.0)] vis=true text="−£555 last turn" font=13
+              @Label@1386 [Label] rect=[P: (215.0, 44.0), S: (52.0, 16.0)] vis=false text="≈7 TURNS" font=11
+      PowerModule [PanelContainer] script=():<GDScript#-9223371565968652237> rect=[P: (220.0, 4.0), S: (89.0, 68.0)] vis=true
+        @HBoxContainer@1387 [HBoxContainer] rect=[P: (230.0, 6.0), S: (69.0, 64.0)] vis=true
+          @Control@1388 [Control] script=res://scripts/status_led.gd rect=[P: (230.0, 30.0), S: (16.0, 16.0)] vis=true
+          @Label@1389 [Label] rect=[P: (255.0, 24.0), S: (22.0, 27.0)] vis=false text="⚡" font=19
+          @Control@1393 [Control] rect=[P: (255.0, 18.0), S: (44.0, 52.0)] vis=true
+            @TextureRect@1390 [TextureRect] rect=[P: (233.0, -4.0), S: (88.0, 88.0)] vis=false tex=res://assets/icons/ui_icons/standalone/_glow.png (160.0, 160.0) expand=1 stretch=0
+            @TextureRect@1391 [TextureRect] rect=[P: (255.0, 18.0), S: (44.0, 44.0)] vis=true tex=res://assets/icons/ui_icons/standalone/power_icon.png (420.0, 661.0) expand=1 stretch=5
+              @TextureRect@1392 [TextureRect] rect=[P: (255.0, 18.0), S: (44.0, 44.0)] vis=false tex=res://assets/icons/ui_icons/alt/_specular.png (256.0, 256.0) expand=1 stretch=0
+          @VBoxContainer@1394 [VBoxContainer] rect=[P: (339.0, 6.0), S: (79.0, 64.0)] vis=false
+            @Label@1395 [Label] rect=[P: (339.0, 17.0), S: (79.0, 22.0)] vis=false text="Grid −200" font=15
+            @Label@1396 [Label] rect=[P: (339.0, 41.0), S: (79.0, 17.0)] vis=false text="all buildings powered" font=12
+      VictoryModule [PanelContainer] script=():<GDScript#-9223371565968652237> rect=[P: (319.0, 4.0), S: (154.0, 68.0)] vis=true
+        @HBoxContainer@1397 [HBoxContainer] rect=[P: (329.0, 6.0), S: (134.0, 64.0)] vis=true
+          @Control@1398 [Control] script=res://scripts/status_led.gd rect=[P: (329.0, 30.0), S: (16.0, 16.0)] vis=true
+          @Label@1399 [Label] rect=[P: (329.0, 26.0), S: (16.0, 23.0)] vis=false text="★" font=16
+          @Control@1403 [Control] rect=[P: (354.0, 18.0), S: (44.0, 52.0)] vis=true
+            @TextureRect@1400 [TextureRect] rect=[P: (332.0, -4.0), S: (88.0, 88.0)] vis=false tex=res://assets/icons/ui_icons/standalone/_glow.png (160.0, 160.0) expand=1 stretch=0
+            @TextureRect@1401 [TextureRect] rect=[P: (354.0, 18.0), S: (44.0, 44.0)] vis=true tex=res://assets/icons/ui_icons/standalone/trophy.png (507.0, 512.0) expand=1 stretch=5
+              @TextureRect@1402 [TextureRect] rect=[P: (354.0, 18.0), S: (44.0, 44.0)] vis=false tex=res://assets/icons/ui_icons/alt/_specular.png (256.0, 256.0) expand=1 stretch=0
+          @Label@1404 [Label] rect=[P: (407.0, 27.0), S: (56.0, 21.0)] vis=true text="0/1,000" font=15
+          @HBoxContainer@1405 [HBoxContainer] rect=[P: (354.0, 6.0), S: (99.0, 64.0)] vis=false
+            @VBoxContainer@2059 [VBoxContainer] rect=[P: (354.0, 6.0), S: (15.0, 45.0)] vis=false
+              @Panel@2057 [Panel] rect=[P: (354.0, 6.0), S: (15.0, 30.0)] vis=false
+                @Panel@2056 [Panel] rect=[P: (355.0, 36.0), S: (13.0, 0.0)] vis=false
+              @Label@2058 [Label] rect=[P: (354.0, 6.0), S: (6.0, 13.0)] vis=false text="A" font=9
+            @VBoxContainer@2063 [VBoxContainer] rect=[P: (354.0, 6.0), S: (15.0, 45.0)] vis=false
+              @Panel@2061 [Panel] rect=[P: (354.0, 6.0), S: (15.0, 30.0)] vis=false
+                @Panel@2060 [Panel] rect=[P: (355.0, 36.0), S: (13.0, 0.0)] vis=false
+              @Label@2062 [Label] rect=[P: (354.0, 6.0), S: (5.0, 13.0)] vis=false text="L" font=9
+            @VBoxContainer@2067 [VBoxContainer] rect=[P: (354.0, 6.0), S: (15.0, 45.0)] vis=false
+              @Panel@2065 [Panel] rect=[P: (354.0, 6.0), S: (15.0, 30.0)] vis=false
+                @Panel@2064 [Panel] rect=[P: (355.0, 36.0), S: (13.0, 0.0)] vis=false
+              @Label@2066 [Label] rect=[P: (354.0, 6.0), S: (6.0, 13.0)] vis=false text="R" font=9
+            @VBoxContainer@2071 [VBoxContainer] rect=[P: (354.0, 6.0), S: (15.0, 45.0)] vis=false
+              @Panel@2069 [Panel] rect=[P: (354.0, 6.0), S: (15.0, 30.0)] vis=false
+                @Panel@2068 [Panel] rect=[P: (355.0, 36.0), S: (13.0, 0.0)] vis=false
+              @Label@2070 [Label] rect=[P: (354.0, 6.0), S: (9.0, 13.0)] vis=false text="W" font=9
+            @VBoxContainer@2075 [VBoxContainer] rect=[P: (354.0, 6.0), S: (15.0, 45.0)] vis=false
+              @Panel@2073 [Panel] rect=[P: (354.0, 6.0), S: (15.0, 30.0)] vis=false
+                @Panel@2072 [Panel] rect=[P: (355.0, 36.0), S: (13.0, 0.0)] vis=false
+              @Label@2074 [Label] rect=[P: (354.0, 6.0), S: (7.0, 13.0)] vis=false text="G" font=9
+          @VBoxContainer@1406 [VBoxContainer] rect=[P: (363.0, 6.0), S: (110.0, 64.0)] vis=false
+            @Label@1407 [Label] rect=[P: (363.0, 18.0), S: (110.0, 22.0)] vis=false text="0 Victory Points" font=15
+            @Label@1408 [Label] rect=[P: (363.0, 42.0), S: (76.0, 16.0)] vis=false text="of 1,000 to win" font=11
+      TransportModule [PanelContainer] script=():<GDScript#-9223371565968652237> rect=[P: (483.0, 4.0), S: (244.0, 68.0)] vis=true
+        @HBoxContainer@1409 [HBoxContainer] rect=[P: (493.0, 6.0), S: (224.0, 64.0)] vis=true
+          @HBoxContainer@1428 [HBoxContainer] rect=[P: (493.0, 6.0), S: (64.0, 64.0)] vis=true
+            @Control@1411 [Control] rect=[P: (493.0, 18.0), S: (16.0, 52.0)] vis=true
+              @Control@1410 [Control] script=res://scripts/status_led.gd rect=[P: (493.0, 32.0), S: (16.0, 16.0)] vis=true
+            @Control@1415 [Control] rect=[P: (513.0, 18.0), S: (44.0, 52.0)] vis=true
+              @TextureRect@1412 [TextureRect] rect=[P: (491.0, -4.0), S: (88.0, 88.0)] vis=false tex=res://assets/icons/ui_icons/standalone/_glow.png (160.0, 160.0) expand=1 stretch=0
+              @TextureRect@1413 [TextureRect] rect=[P: (513.0, 18.0), S: (44.0, 44.0)] vis=true tex=res://assets/icons/ui_icons/warehouse.png (347.0, 347.0) expand=1 stretch=5
+                @TextureRect@1414 [TextureRect] rect=[P: (513.0, 18.0), S: (44.0, 44.0)] vis=false tex=res://assets/icons/ui_icons/alt/_specular.png (256.0, 256.0) expand=1 stretch=0
+          @HBoxContainer@1429 [HBoxContainer] rect=[P: (573.0, 6.0), S: (64.0, 64.0)] vis=true
+            @Control@1417 [Control] rect=[P: (573.0, 18.0), S: (16.0, 52.0)] vis=true
+              @Control@1416 [Control] script=res://scripts/status_led.gd rect=[P: (573.0, 32.0), S: (16.0, 16.0)] vis=true
+            @Control@1421 [Control] rect=[P: (593.0, 18.0), S: (44.0, 52.0)] vis=true
+              @TextureRect@1418 [TextureRect] rect=[P: (571.0, -4.0), S: (88.0, 88.0)] vis=false tex=res://assets/icons/ui_icons/standalone/_glow.png (160.0, 160.0) expand=1 stretch=0
+              @TextureRect@1419 [TextureRect] rect=[P: (593.0, 18.0), S: (44.0, 44.0)] vis=true tex=res://assets/icons/buildings/cleaned/b_005.png (876.0, 876.0) expand=1 stretch=5
+                @TextureRect@1420 [TextureRect] rect=[P: (593.0, 18.0), S: (44.0, 44.0)] vis=false tex=res://assets/icons/ui_icons/alt/_specular.png (256.0, 256.0) expand=1 stretch=0
+          @HBoxContainer@1430 [HBoxContainer] rect=[P: (653.0, 6.0), S: (64.0, 64.0)] vis=true
+            @Control@1423 [Control] rect=[P: (653.0, 18.0), S: (16.0, 52.0)] vis=true
+              @Control@1422 [Control] script=res://scripts/status_led.gd rect=[P: (653.0, 32.0), S: (16.0, 16.0)] vis=true
+            @Control@1427 [Control] rect=[P: (673.0, 18.0), S: (44.0, 52.0)] vis=true
+              @TextureRect@1424 [TextureRect] rect=[P: (651.0, -4.0), S: (88.0, 88.0)] vis=false tex=res://assets/icons/ui_icons/standalone/_glow.png (160.0, 160.0) expand=1 stretch=0
+              @TextureRect@1425 [TextureRect] rect=[P: (673.0, 18.0), S: (44.0, 44.0)] vis=true tex=res://assets/icons/buildings/cleaned/b_004.png (716.0, 716.0) expand=1 stretch=5
+                @TextureRect@1426 [TextureRect] rect=[P: (673.0, 18.0), S: (44.0, 44.0)] vis=false tex=res://assets/icons/ui_icons/alt/_specular.png (256.0, 256.0) expand=1 stretch=0
+      RankingsModule [PanelContainer] script=():<GDScript#-9223371565968652237> rect=[P: (12.0, 4.0), S: (97.0, 50.0)] vis=false
+        @HBoxContainer@1431 [HBoxContainer] rect=[P: (12.0, 4.0), S: (77.0, 38.0)] vis=false
+          @Control@1432 [Control] script=res://scripts/status_led.gd rect=[P: (12.0, 4.0), S: (16.0, 16.0)] vis=false
+          @Control@1436 [Control] rect=[P: (12.0, 4.0), S: (44.0, 52.0)] vis=false
+            @TextureRect@1433 [TextureRect] rect=[P: (-10.0, -18.0), S: (88.0, 88.0)] vis=false tex=res://assets/icons/ui_icons/standalone/_glow.png (160.0, 160.0) expand=1 stretch=0
+            @TextureRect@1434 [TextureRect] rect=[P: (12.0, 4.0), S: (44.0, 44.0)] vis=false tex=res://assets/icons/ui_icons/standalone/podium.png (512.0, 512.0) expand=1 stretch=5
+              @TextureRect@1435 [TextureRect] rect=[P: (12.0, 4.0), S: (44.0, 44.0)] vis=false tex=res://assets/icons/ui_icons/alt/_specular.png (256.0, 256.0) expand=1 stretch=0
+          @VBoxContainer@1437 [VBoxContainer] rect=[P: (12.0, 4.0), S: (77.0, 38.0)] vis=false
+            @Label@1438 [Label] rect=[P: (12.0, 4.0), S: (77.0, 20.0)] vis=false text="10TH OF 10" font=14
+            @Label@1439 [Label] rect=[P: (12.0, 4.0), S: (1.0, 16.0)] vis=false text="" font=11
+      @Control@1468 [Control] rect=[P: (737.0, 4.0), S: (743.0, 68.0)] vis=true
+      CouncilModule [PanelContainer] script=():<GDScript#-9223371565968652237> rect=[P: (1490.0, 4.0), S: (64.0, 68.0)] vis=true
+        @HBoxContainer@1469 [HBoxContainer] rect=[P: (1500.0, 6.0), S: (44.0, 64.0)] vis=true
+          @Control@1470 [Control] script=res://scripts/status_led.gd rect=[P: (1500.0, 6.0), S: (16.0, 16.0)] vis=false
+          @Control@1474 [Control] rect=[P: (1500.0, 18.0), S: (44.0, 52.0)] vis=true
+            @TextureRect@1471 [TextureRect] rect=[P: (1478.0, -4.0), S: (88.0, 88.0)] vis=false tex=res://assets/icons/ui_icons/standalone/_glow.png (160.0, 160.0) expand=1 stretch=0
+            @TextureRect@1472 [TextureRect] rect=[P: (1500.0, 18.0), S: (44.0, 44.0)] vis=true tex=res://assets/icons/ui_icons/standalone/board-of-directors.png (512.0, 512.0) expand=1 stretch=5
+              @TextureRect@1473 [TextureRect] rect=[P: (1500.0, 18.0), S: (44.0, 44.0)] vis=false tex=res://assets/icons/ui_icons/alt/_specular.png (256.0, 256.0) expand=1 stretch=0
+          @VBoxContainer@1475 [VBoxContainer] rect=[P: (1500.0, 6.0), S: (77.0, 64.0)] vis=false
+            @Label@1476 [Label] rect=[P: (1500.0, 21.0), S: (45.0, 14.0)] vis=false text="COUNCIL" font=10
+            @Label@1477 [Label] rect=[P: (1500.0, 38.0), S: (48.0, 17.0)] vis=false text="1 seated" font=12
+          @HBoxContainer@1478 [HBoxContainer] rect=[P: (1554.0, 6.0), S: (0.0, 64.0)] vis=false
+            @Control@2083 [Control] rect=[P: (1554.0, 6.0), S: (40.0, 40.0)] vis=false
+              @Control@2080 [Control] script=():<GDScript#-9223371565918320586> rect=[P: (1554.0, 6.0), S: (36.0, 36.0)] vis=false
+              @PanelContainer@2082 [PanelContainer] rect=[P: (1578.0, 34.0), S: (17.0, 15.0)] vis=false
+                @Label@2081 [Label] rect=[P: (1578.0, 34.0), S: (11.0, 13.0)] vis=false text="+0" font=9
+      GoodsGraphModule [PanelContainer] script=():<GDScript#-9223371565968652237> rect=[P: (1564.0, 4.0), S: (76.0, 68.0)] vis=true
+        @HBoxContainer@1479 [HBoxContainer] rect=[P: (1574.0, 6.0), S: (56.0, 64.0)] vis=true
+          @HBoxContainer@1480 [HBoxContainer] rect=[P: (1574.0, 6.0), S: (123.0, 18.0)] vis=false
+            @Control@1481 [Control] script=():<GDScript#-9223371565901543369> rect=[P: (1574.0, 6.0), S: (19.0, 16.0)] vis=false
+            @Label@1482 [Label] rect=[P: (1574.0, 6.0), S: (95.0, 18.0)] vis=false text="GOODS GRAPH" font=13
+          @Control@1486 [Control] rect=[P: (1574.0, 6.0), S: (56.0, 64.0)] vis=true
+            @TextureRect@1483 [TextureRect] rect=[P: (1546.0, -22.0), S: (112.0, 112.0)] vis=false tex=res://assets/icons/ui_icons/standalone/_glow.png (160.0, 160.0) expand=1 stretch=0
+            @TextureRect@1484 [TextureRect] rect=[P: (1574.0, 6.0), S: (56.0, 56.0)] vis=true tex=res://assets/icons/ui_icons/standalone/sankey.png (400.0, 390.0) expand=1 stretch=5
+              @TextureRect@1485 [TextureRect] rect=[P: (1574.0, 6.0), S: (56.0, 56.0)] vis=false tex=res://assets/icons/ui_icons/alt/_specular.png (256.0, 256.0) expand=1 stretch=0
+      EncyclopediaButton [Button] rect=[P: (1650.0, 4.0), S: (72.0, 68.0)] vis=true btn_text=""
+        @HBoxContainer@1487 [HBoxContainer] rect=[P: (1650.0, 4.0), S: (124.0, 68.0)] vis=false
+          @Control@1488 [Control] script=():<GDScript#-9223371565884766152> rect=[P: (1650.0, 4.0), S: (19.0, 16.0)] vis=false
+          @Label@1489 [Label] rect=[P: (1650.0, 4.0), S: (97.0, 18.0)] vis=false text="ENCYCLOPEDIA" font=13
+        @HBoxContainer@1490 [HBoxContainer] rect=[P: (1650.0, 4.0), S: (72.0, 68.0)] vis=true
+          @Control@1494 [Control] rect=[P: (1664.0, 20.0), S: (44.0, 52.0)] vis=true
+            @TextureRect@1491 [TextureRect] rect=[P: (1642.0, -2.0), S: (88.0, 88.0)] vis=false tex=res://assets/icons/ui_icons/standalone/_glow.png (160.0, 160.0) expand=1 stretch=0
+            @TextureRect@1492 [TextureRect] rect=[P: (1664.0, 20.0), S: (44.0, 44.0)] vis=true tex=res://assets/icons/ui_icons/standalone/open-book.png (512.0, 474.0) expand=1 stretch=5
+              @TextureRect@1493 [TextureRect] rect=[P: (1664.0, 20.0), S: (44.0, 44.0)] vis=false tex=res://assets/icons/ui_icons/alt/_specular.png (256.0, 256.0) expand=1 stretch=0
+      @Panel@1495 [Panel] rect=[P: (1732.0, 18.0), S: (1.0, 40.0)] vis=true
+      @VBoxContainer@1496 [VBoxContainer] rect=[P: (1743.0, 4.0), S: (91.0, 68.0)] vis=true
+        TurnCounter [Label] rect=[P: (1743.0, 17.0), S: (91.0, 22.0)] vis=true text="Turn 4 / 300" font=16
+        @Label@1497 [Label] rect=[P: (1743.0, 41.0), S: (91.0, 17.0)] vis=true text="April Year 1" font=12
+      MenuModule [PanelContainer] script=():<GDScript#-9223371565968652237> rect=[P: (1844.0, 4.0), S: (64.0, 68.0)] vis=true
+        @HBoxContainer@1498 [HBoxContainer] rect=[P: (1854.0, 6.0), S: (44.0, 64.0)] vis=true
+          @Control@1502 [Control] rect=[P: (1854.0, 18.0), S: (44.0, 52.0)] vis=true
+            @TextureRect@1499 [TextureRect] rect=[P: (1832.0, -4.0), S: (88.0, 88.0)] vis=false tex=res://assets/icons/ui_icons/standalone/_glow.png (160.0, 160.0) expand=1 stretch=0
+            @TextureRect@1500 [TextureRect] rect=[P: (1854.0, 18.0), S: (44.0, 44.0)] vis=true tex=res://assets/icons/ui_icons/standalone/menu.png (512.0, 356.0) expand=1 stretch=5
+              @TextureRect@1501 [TextureRect] rect=[P: (1854.0, 18.0), S: (44.0, 44.0)] vis=false tex=res://assets/icons/ui_icons/alt/_specular.png (256.0, 256.0) expand=1 stretch=0
+  EncyclopediaHitBox [Control] rect=[P: (0.0, 0.0), S: (0.0, 0.0)] vis=false
+  BriefingModule [PanelContainer] script=():<GDScript#-9223371565935097803> rect=[P: (879.0, 0.0), S: (162.0, 98.0)] vis=true
+    @HBoxContainer@1440 [HBoxContainer] rect=[P: (905.0, 12.0), S: (110.0, 72.0)] vis=true
+      @Control@1443 [Control] rect=[P: (946.0, 34.0), S: (28.0, 28.0)] vis=true
+        @Control@1441 [Control] script=():<GDScript#-9223371565951875020> rect=[P: (947.0, 35.0), S: (24.0, 26.0)] vis=false
+        @Panel@1442 [Panel] rect=[P: (967.0, 34.0), S: (9.0, 9.0)] vis=false
+      @VBoxContainer@1444 [VBoxContainer] rect=[P: (1016.0, 12.0), S: (68.0, 72.0)] vis=false
+        @Label@1445 [Label] rect=[P: (1016.0, 23.0), S: (68.0, 26.0)] vis=false text="Briefing" font=18
+        @Label@1446 [Label] rect=[P: (1016.0, 52.0), S: (68.0, 20.0)] vis=false text="2 updates" font=14
+    @HBoxContainer@1459 [HBoxContainer] rect=[P: (903.0, 23.0), S: (114.0, 52.0)] vis=true
+      @Control@1452 [Control] rect=[P: (903.0, 23.0), S: (52.5, 52.5)] vis=true
+        @TextureRect@1447 [TextureRect] rect=[P: (876.75, -3.25), S: (105.0, 105.0)] vis=false tex=res://assets/icons/ui_icons/standalone/_glow.png (160.0, 160.0) expand=1 stretch=0
+        @Control@1448 [Control] rect=[P: (903.0, 23.0), S: (52.5, 52.5)] vis=true
+          @TextureRect@1449 [TextureRect] rect=[P: (903.0, 23.0), S: (52.5, 52.5)] vis=true tex=res://assets/icons/ui_icons/standalone/bell.png (498.0, 512.0) expand=1 stretch=5
+          @TextureRect@1450 [TextureRect] rect=[P: (903.0, 23.0), S: (52.5, 52.5)] vis=false tex=res://assets/icons/ui_icons/alt/_specular.png (256.0, 256.0) expand=1 stretch=0
+        @Control@1451 [Control] rect=[P: (903.0, 23.0), S: (52.5, 52.5)] vis=true
+          @PanelContainer@2077 [PanelContainer] rect=[P: (939.5, 63.5), S: (20.0, 18.0)] vis=true
+            @Label@2076 [Label] rect=[P: (939.5, 63.5), S: (20.0, 18.0)] vis=true text="0" font=13
+      @Control@1458 [Control] rect=[P: (965.0, 23.0), S: (52.5, 52.5)] vis=true
+        @TextureRect@1453 [TextureRect] rect=[P: (938.75, -3.25), S: (105.0, 105.0)] vis=false tex=res://assets/icons/ui_icons/standalone/_glow.png (160.0, 160.0) expand=1 stretch=0
+        @Control@1454 [Control] rect=[P: (965.0, 23.0), S: (52.5, 52.5)] vis=true
+          @TextureRect@1455 [TextureRect] rect=[P: (965.0, 23.0), S: (52.5, 52.5)] vis=true tex=res://assets/icons/ui_icons/standalone/bell.png (498.0, 512.0) expand=1 stretch=5
+          @TextureRect@1456 [TextureRect] rect=[P: (965.0, 23.0), S: (52.5, 52.5)] vis=false tex=res://assets/icons/ui_icons/alt/_specular.png (256.0, 256.0) expand=1 stretch=0
+        @Control@1457 [Control] rect=[P: (965.0, 23.0), S: (52.5, 52.5)] vis=true
+          @PanelContainer@2079 [PanelContainer] rect=[P: (1001.5, 63.5), S: (20.0, 18.0)] vis=true
+            @Label@2078 [Label] rect=[P: (1001.5, 63.5), S: (20.0, 18.0)] vis=true text="2" font=13
+  QuestModule [PanelContainer] script=():<GDScript#-9223371565968652237> rect=[P: (1051.0, 12.0), S: (398.0, 52.0)] vis=true
+    @MarginContainer@1460 [MarginContainer] rect=[P: (1061.0, 14.0), S: (378.0, 48.0)] vis=true
+      @VBoxContainer@1461 [VBoxContainer] rect=[P: (1073.0, 20.0), S: (354.0, 36.0)] vis=true
+        @Label@1462 [Label] rect=[P: (1073.0, 20.0), S: (354.0, 18.0)] vis=true text="Secure the Import/Export License" font=13
+        @Label@1463 [Label] rect=[P: (1073.0, 40.0), S: (354.0, 16.0)] vis=true text="Reach £50 profit, then accept the government’s £150 license decision." font=11
+      @Control@1467 [Control] rect=[P: (1061.0, 14.0), S: (44.0, 52.0)] vis=false
+        @TextureRect@1464 [TextureRect] rect=[P: (1039.0, -8.0), S: (88.0, 88.0)] vis=false tex=res://assets/icons/ui_icons/standalone/_glow.png (160.0, 160.0) expand=1 stretch=0
+        @TextureRect@1465 [TextureRect] rect=[P: (1061.0, 14.0), S: (44.0, 44.0)] vis=false tex=res://assets/icons/ui_icons/standalone/target.png (505.0, 504.0) expand=1 stretch=5
+          @TextureRect@1466 [TextureRect] rect=[P: (1061.0, 14.0), S: (44.0, 44.0)] vis=false tex=res://assets/icons/ui_icons/alt/_specular.png (256.0, 256.0) expand=1 stretch=0
+  @CanvasLayer@1503 [CanvasLayer]
+    @Control@1875 [Control] script=():<GDScript#-9223371565817657284> rect=[P: (0.0, 0.0), S: (1920.0, 1080.0)] vis=false
+    @Control@1504 [Control] script=():<GDScript#-9223371565817657284> rect=[P: (0.0, 0.0), S: (1920.0, 1080.0)] vis=false
+  @PanelContainer@1506 [PanelContainer] rect=[P: (0.0, 0.0), S: (1.0, 20.0)] vis=false
+    @Label@1505 [Label] rect=[P: (0.0, 0.0), S: (1.0, 16.0)] vis=false text="Bankruptcy imminent" font=11
+  ResearchToast [PanelContainer] rect=[P: (870.0, 106.0), S: (180.0, 61.0)] vis=true
+    @VBoxContainer@1860 [VBoxContainer] rect=[P: (882.0, 118.0), S: (156.0, 37.0)] vis=true
+      @Label@1861 [Label] rect=[P: (882.0, 118.0), S: (156.0, 16.0)] vis=true text="New research unlocked:" font=11
+      @Label@1862 [Label] rect=[P: (882.0, 136.0), S: (156.0, 19.0)] vis=true text="Interchangeable Tooling" font=14
+  @PanelContainer@1866 [PanelContainer] rect=[P: (858.0, 173.0), S: (204.0, 61.0)] vis=true
+    @VBoxContainer@1863 [VBoxContainer] rect=[P: (870.0, 185.0), S: (180.0, 37.0)] vis=true
+      @Label@1864 [Label] rect=[P: (870.0, 185.0), S: (180.0, 16.0)] vis=true text="New research unlocked:" font=11
+      @Label@1865 [Label] rect=[P: (870.0, 203.0), S: (180.0, 19.0)] vis=true text="Operational Team Managers" font=14
+  @PanelContainer@1870 [PanelContainer] rect=[P: (869.0, 240.0), S: (183.0, 61.0)] vis=true
+    @VBoxContainer@1867 [VBoxContainer] rect=[P: (881.0, 252.0), S: (159.0, 37.0)] vis=true
+      @Label@1868 [Label] rect=[P: (881.0, 252.0), S: (159.0, 16.0)] vis=true text="New research unlocked:" font=11
+      @Label@1869 [Label] rect=[P: (881.0, 270.0), S: (159.0, 19.0)] vis=true text="High-Volume Press Lines" font=14
