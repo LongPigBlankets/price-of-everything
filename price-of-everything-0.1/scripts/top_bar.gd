@@ -3611,6 +3611,7 @@ func _ds2_key_button(text: String, button_name: String) -> Button:
 	var key: Control = ModKey.new()
 	key.set("openable", false)
 	key.set("summary", text)
+	key.set("centred", true)
 	key.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	key.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	b.add_child(key)
@@ -3620,13 +3621,13 @@ func _ds2_key_button(text: String, button_name: String) -> Button:
 	return b
 
 
-## A darker plate on the sheet for one group of figures: Building Detail's section frame in its dark style
-## (a worn steel rim with its screws round a dark metal plate, cropped, not stretched). Returns where its
-## rows go.
+## A darker plate on the sheet for one group of figures: Building Detail's dark metal plate on its own
+## (BdpV3Section "slab": cropped, not stretched, no steel rim), with Building Detail's silver screws set in
+## near its corners. Returns where its rows go.
 func _ds2_sub_plate(parent: Control, plate_name: String) -> VBoxContainer:
 	var plate: MarginContainer = Section.new()
 	plate.name = plate_name
-	plate.set("style", "dark")
+	plate.set("style", "slab")
 	parent.add_child(plate)
 	var rows: VBoxContainer = plate.get("content")
 	rows.add_theme_constant_override("separation", 8)

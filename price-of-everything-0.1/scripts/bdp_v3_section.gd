@@ -9,7 +9,8 @@ extends MarginContainer
 ## along the bottom, six down each side (counting the corners). `style` "dark" keeps the steel frame and
 ## fills its inside with a dark metal plate (dark_plate.png), its edges under the rim, cropped from the
 ## render's middle at the render's scale rather than stretched, so its scratches are the size of every
-## other plate's.
+## other plate's. `style` "slab" is that dark metal plate on its own, with no steel frame: a thin dark edge,
+## a soft shadow under it, and Building Detail's silver screw set in near each corner.
 
 const Nine := preload("res://scripts/bdp_v3_nine.gd")
 const FRAME: Texture2D = preload("res://assets/ui/bdp_v3/section_frame.png")
@@ -36,7 +37,14 @@ var content: VBoxContainer
 var style := "steel":
 	set(v):
 		style = v
+		var m := roundi(SLAB_PAD if v == "slab" else RIM + PADDING)
+		for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+			add_theme_constant_override(side, m)
 		queue_redraw()
+## The slab: its content's inset (clear of the corner screws), how far in its screws sit, and its shadow.
+const SLAB_PAD := 16.0
+const SLAB_SCREW_INSET := 11.0
+const SLAB_SHADOW := Vector2(1.5, 2.5)
 
 
 ## Where the plastic plate's silver screws go, for a `plate_size`-pixel plate: evenly along the top and
@@ -77,6 +85,23 @@ func _draw() -> void:
 		Nine.paint(self, PLASTIC, Rect2(Vector2.ZERO, size).grow(PLASTIC_MARGIN), PLASTIC_CORNER_TEXELS)
 		var s := SCREW.get_size() / 2.0
 		for p in screw_points(size):
+			draw_texture_rect(SCREW, Rect2(p - s * 0.5, s), false)
+		return
+	if style == "slab":
+		var plate := Rect2(Vector2.ZERO, size)
+		draw_rect(plate.grow(1.5), Color(0, 0, 0, 0.18))
+		draw_rect(Rect2(plate.position + SLAB_SHADOW, plate.size), Color(0, 0, 0, 0.42))
+		var tex := DARK.get_size()
+		var want := plate.size * TEXELS_PER_PIXEL
+		if want.x <= tex.x and want.y <= tex.y:
+			draw_texture_rect_region(DARK, plate, Rect2((tex - want) * 0.5, want))
+		else:
+			draw_texture_rect(DARK, plate, false)
+		draw_rect(plate.grow(-0.5), Color(0, 0, 0, 0.55), false, 1.0)
+		var s := SCREW.get_size() / 2.0
+		var lo := Vector2(SLAB_SCREW_INSET, SLAB_SCREW_INSET)
+		var hi := size - lo
+		for p in [lo, Vector2(hi.x, lo.y), Vector2(lo.x, hi.y), hi]:
 			draw_texture_rect(SCREW, Rect2(p - s * 0.5, s), false)
 		return
 	if style == "dark":
