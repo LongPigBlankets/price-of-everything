@@ -2,7 +2,8 @@ extends Node2D
 ## Captures of the bottom-left updates dock (toast_manager.gd) in the real HUD, at 1920 × 1080 with
 ## two pixels each: the empty dock, rows sliding out on their own, the dock after they collapse
 ## (bells counting), the slide-out opened from the dock, the dock under an open Construct panel,
-## and a map legend stacked on top of it.
+## a map legend stacked on top of it, and research unlocks and notices arriving through their
+## real paths (the briefing's research event, the top bar's notice funnel).
 ##   Godot --path . res://tools/updates_dock_shot.tscn --quit-after 6000 -- --no-telemetry
 ## Writes updates_dock_*.png into $UPDATES_SHOT_DIR (or /tmp).
 
@@ -67,8 +68,41 @@ func _ready() -> void:
 	await _settle(30)
 	_save("with_legend")
 	MapMode.clear_all()
+
+	toasts.clear()
+	TurnManager.current_turn = 12
+	TurnManager.turn_advanced.emit(12)
+	await _settle(20)
+	MatchState.request_toast("Ordered 14 Steel, 14 Cement — arriving in 2 turns", "success")
+	for tech: String in ["Interchangeable Tooling", "Operational Team Managers", "High-Volume Press Lines"]:
+		_unlock(tech)
+	await _settle(30)
+	var bar: Node = _wm.get_node("UILayer/HUD/TopBar")
+	bar.call("_post_notices", [
+		{"id": "loan", "tone": "bad", "text": "We've taken a £500 loan to cover this turn's bills."},
+		{"id": "grid", "tone": "bad", "text": "We're drawing power from the grid for now, but this is becoming expensive."},
+	])
+	await _wait(0.45)
+	_save("research_and_notices")
+	print("[UPDATES_DOCK_SHOT] rows: %s" % [toasts.row_texts()])
+	await _wait(toasts.TOAST_DURATION + 0.6)
+	_save("research_collapsed")
 	print("[UPDATES_DOCK_SHOT] done")
 	get_tree().quit(0)
+
+
+## A research unlock as the game announces it: TurnBriefing picks the event up, and the top bar
+## posts it to the dock.
+func _unlock(research_name: String) -> void:
+	EventScheduler.emit_event({
+		"kind": "research_unlocked", "severity": "info",
+		"title": "Research unlocked — %s" % research_name,
+		"research_name": research_name,
+		"research_reward": "A new recipe route is available.",
+		"research_condition": "",
+		"body": "", "source": "test",
+		"persistent": false, "auto_dismiss_turns": 3,
+	})
 
 
 func _save(tag: String) -> void:

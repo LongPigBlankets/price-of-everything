@@ -1,6 +1,6 @@
 # Top Bar DS2: a thin instrument strip, and one place for what happened
 
-Status: PLAN, 24 September 2026. Nothing is built. The owner's decisions are listed in §10.
+Status: PLAN, 24 September 2026. The updates dock (§4) is partly built: the toasts, research unlocks and notices are in it. The owner's decisions are listed in §10.
 
 Read with:
 
@@ -111,7 +111,13 @@ A new DS2 component, built on existing patterns.
 - The bottom-centre warning stack is gone; every toast is in the dock. The map's bottom-left legends now sit on top of the dock (`LEGEND_CLEARANCE`).
 - Tests: `_test_updates_dock` (`tests/unit/test_ui.gd`); captures: `tools/updates_dock_shot.tscn`.
 
-Not yet moved into it: the research banners, the anomaly cards, the mission and the briefing bells (the notch stays until they are). It keeps today's DS look, not DS2.
+**Second step built (same day).** The research unlocks and the notices moved in too:
+
+- Each research unlock is a green row reading "Unlocked: <name>", above every other row (in the order they came), and a link: clicking it opens the Research panel on that technology. The flyouts under the notch are gone. The top bar still decides what to post (once per technology per match).
+- The notices (a loan, a big payment, abnormal spending, transport, next turn's bill, power going dark, intermittency, grid draw, stock building up on a tile) are amber rows. Each is keyed by its notice and the turn, so next turn's bill, re-evaluated as orders change, keeps one row, is replaced when its figure changes, and is withdrawn when it no longer holds. Next turn's bill opens the Money panel's Upcoming tab; stock building up opens that tile's stockpile on the good. Their rules (thresholds, cooldowns, at most two money notices a turn, none in the tutorial or before turn 2) are unchanged. The cards under the modules, their scrim and `anomaly_popup.gd` are gone.
+- A link row takes its own click, even when the slide-out lets clicks through, and ends in a chevron.
+
+Not yet moved into it: the mission and the briefing bells (the notch stays until they are). It keeps today's DS look, not DS2.
 
 The full design, as planned:
 

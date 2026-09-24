@@ -45,21 +45,6 @@ const NOTCH_DROP := 33.0
 const NOTCH_H := BAR_H + NOTCH_DROP
 const NOTCH_MIN_W := 300.0
 const NOTCH_RADIUS := 16.0
-# Research-unlock toast timing: a small banner slides down under the notch, holds, then fades.
-const RESEARCH_TOAST_GAP := 8.0
-## Between one flyout and the next in the stack.
-const RESEARCH_TOAST_STACK_GAP := 6.0
-## How far behind the one above each flyout slides in.
-const RESEARCH_TOAST_CASCADE_SEC := 0.12
-## The most flyouts on screen at once; beyond it the rest become one "+N more" rather than a
-## curtain over the map.
-const RESEARCH_TOAST_MAX := 4
-## The overflow flyout's placeholder name; its label is rewritten with the running count, so
-## the text itself is never what identifies it.
-const RESEARCH_OVERFLOW_TECH := "__overflow__"
-const RESEARCH_TOAST_SLIDE_SEC := 0.35
-const RESEARCH_TOAST_HOLD_SEC := 5.0
-const RESEARCH_TOAST_FADE_OUT_SEC := 0.3
 # v3.1 icon faces — Goods Graph / Encyclopedia / Mission / Power /
 # Victory / Rankings swap their text/vector-glyph faces for these baked standalone
 # icons: the bottom-menu button treatment (cream emboss + bevel + drop shadow) minus
@@ -212,12 +197,9 @@ var _rankings_icon: Control   # v3.1
 # Briefing notch (top_level: centred on the viewport, hangs below the bar)
 var _briefing_btn: Control
 var _briefing_glyph: Control   # _BellIcon (vector — the font has no bell glyph)
-# Research-unlock toast: a small two-row banner that slides down under the notch.
-## ONE FLYOUT PER UNLOCK, stacked. A single "N research unlocked" banner for several techs
-## landing on one turn would name none of them and make the player open the briefing to
-## find out what they had got.
-var _research_toasts: Array[PanelContainer] = []
-## Tech names already toasted THIS MATCH -- deliberately not this turn.
+## Tech names already posted to the updates dock THIS MATCH -- deliberately not this turn.
+## Each is its own row there ("Unlocked: <name>"): a single "N research unlocked" line for
+## several techs landing on one turn would name none of them.
 ##
 ## Two things make it a match-long gate. TurnBriefing rebuilds its items several times as
 ## unlocks land, so it has to be per tech rather than a count. And its window is
@@ -226,12 +208,6 @@ var _research_toasts: Array[PanelContainer] = []
 ## later. A tech unlocks once, so the set only ever
 ## needs emptying when a new match starts.
 var _research_toasted: Dictionary = {}
-## The single "+N more this turn" flyout, and its running total. It is UPDATED rather than
-## re-created: TurnBriefing refreshes once per unlock as they land, so building a new one per
-## refresh stacked several "+N more" panels on top of each other.
-var _research_overflow: PanelContainer = null
-var _research_overflow_label: Label = null
-var _research_overflow_n := 0
 var _briefing_head: Label
 var _briefing_sub: Label
 var _briefing_dot: Panel
@@ -308,11 +284,8 @@ func _ready() -> void:
 	AdvisorState.advisor_loyalty_changed.connect(func(_id: String, _v: float) -> void: _queue_refresh())
 	Production.turn_processed.connect(func(_s: Dictionary) -> void: _queue_refresh())
 	CompanyRankings.rankings_updated.connect(_queue_refresh)
-	# The research gate is NOT reset here -- see _research_toasted. Only the overflow tally is,
-	# since "+N more this turn" is a statement about one turn.
-	TurnManager.turn_advanced.connect(func(_t: int) -> void:
-		_research_overflow_n = 0
-		_queue_refresh())
+	# The research gate is NOT reset here -- see _research_toasted.
+	TurnManager.turn_advanced.connect(func(_t: int) -> void: _queue_refresh())
 	LoanState.loans_updated.connect(_queue_refresh)
 	LoanState.loan_taken.connect(_on_loan_taken)
 	TurnManager.turn_resolution_completed.connect(_on_turn_resolved_anomalies)
@@ -1530,7 +1503,6 @@ func _recenter_notch() -> void:
 	_briefing_btn.position = Vector2(roundf((vw - _briefing_btn.size.x) * 0.5), 0.0)
 	_place_quest()
 	_place_briefing_bells()
-	_position_research_toasts()
 	queue_redraw()
 
 ## v3.1: keeps the two bells centred on the notch's own midline — see the top_level
@@ -1559,18 +1531,16 @@ func _refresh_briefing() -> void:
 		if str(it.get("event_kind", "")) == "research_unlocked":
 			research_count += int(it.get("magnitude", 1))   # aggregated item carries the count
 			research_agg = it
-	# Pop a fresh toast only when the aggregate grows past what was already toasted this turn —
-	# TurnBriefing can rebuild its items more than once as unlocks land, and this must not
-	# re-pop for unlocks it has already shown.
+	# Post an unlock only the first time it appears -- TurnBriefing can rebuild its items more
+	# than once as unlocks land, and keeps each for two turns.
 	if research_count > 0:
-		var fresh: Array[String] = []
+		var dock := _updates_dock()
 		for entry in (research_agg.get("research", []) as Array):
 			var tech := str((entry as Dictionary).get("name", ""))
 			if tech != "" and not _research_toasted.has(tech):
 				_research_toasted[tech] = true
-				fresh.append(tech)
-		if not fresh.is_empty():
-			_pop_research_toasts(fresh)
+				if dock != null:
+					dock.push_research(tech)
 	var hot := decisions > 0
 	(_briefing_btn as _NotchBtn).warn = hot
 	(_briefing_btn as _NotchBtn).active = TurnBriefing.expanded
@@ -1602,154 +1572,6 @@ func _refresh_briefing() -> void:
 		update_pill.tooltip_text = "Updates"
 		_overhang_bottom_right(update_pill, _briefing_update_pill_slot)
 	call_deferred("_recenter_notch")
-
-
-# ── 4b · Research-unlock flyouts: one per tech, stacked under the notch ────────
-
-## One flyout. `top_level` (like the quest module and the notch's own bells) so its position
-## is independent of container layout; DS.theme is assigned directly because a top_level
-## Control does not reliably inherit the viewport's theme (see _open_fly's note on the same
-## gap for the quest/rankings flyouts).
-func _build_research_toast(tech: String) -> PanelContainer:
-	var panel := PanelContainer.new()
-	panel.name = "ResearchToast"
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color("#0d1e31")
-	sb.border_color = C_ACTIVE_BORDER
-	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(10)
-	sb.set_content_margin_all(12)
-	sb.shadow_color = Color(0, 0, 0, 0.55)
-	sb.shadow_size = 14
-	panel.add_theme_stylebox_override("panel", sb)
-	panel.theme = DS.theme
-	panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	panel.top_level = true
-	panel.modulate.a = 0.0
-	panel.gui_input.connect(func(e: InputEvent) -> void:
-		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-			panel.accept_event()
-			_on_research_toast_pressed(panel, tech))
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 2)
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_child(col)
-	# The lead-in is smaller rather than greyer: on this navy a dimmer tone would be the
-	# contrast rule's grey-on-navy, so SIZE marks it as secondary (CLAUDE.md).
-	col.add_child(_mini("New research unlocked:", C_TEXT, 11))
-	var name_label := _mini(tech, C_BRIGHT, 14)
-	col.add_child(name_label)
-	if tech == RESEARCH_OVERFLOW_TECH:
-		_research_overflow_label = name_label
-	add_child(panel)
-	return panel
-
-
-## Lay the stack out under the notch: the first just below it, each
-## next one below the one before it. Sized to content every time — the names vary, so the
-## flyouts' widths do.
-func _position_research_toasts() -> void:
-	if _briefing_btn == null or not is_instance_valid(_briefing_btn):
-		return
-	var y := _briefing_btn.position.y + _briefing_btn.size.y + RESEARCH_TOAST_GAP
-	for panel_value in _research_toasts:
-		var panel: PanelContainer = panel_value
-		if panel == null or not is_instance_valid(panel):
-			continue
-		var want := panel.get_combined_minimum_size()
-		panel.size = want
-		panel.position = Vector2(
-			roundf(_briefing_btn.position.x + (_briefing_btn.size.x - want.x) * 0.5), y)
-		y += want.y + RESEARCH_TOAST_STACK_GAP
-
-
-## Pop one flyout per newly unlocked tech, cascading down the stack.
-##
-## Capped at RESEARCH_TOAST_MAX with a "+N more" flyout on the end: a turn that unlocks eight
-## techs would otherwise curtain the map, and the briefing already lists them all.
-func _pop_research_toasts(names: Array) -> void:
-	var fresh: Array[PanelContainer] = []
-	var shown := 0
-	# The cap is on what is ON SCREEN, not on this pop. Flyouts hold for five seconds, so a
-	# second turn's unlocks can arrive while the first turn's are still up; capping per pop
-	# let the stack grow past the limit it exists to enforce.
-	var room: int = maxi(RESEARCH_TOAST_MAX - _research_toasts.size(), 0)
-	for tech in names:
-		if shown >= room:
-			break
-		shown += 1
-		var panel := _build_research_toast(str(tech))
-		_research_toasts.append(panel)
-		fresh.append(panel)
-	var overflow: int = names.size() - shown
-	if overflow > 0:
-		_research_overflow_n += overflow
-		if _research_overflow == null or not is_instance_valid(_research_overflow):
-			_research_overflow = _build_research_toast(RESEARCH_OVERFLOW_TECH)
-			_research_toasts.append(_research_overflow)
-			fresh.append(_research_overflow)
-		if _research_overflow_label != null and is_instance_valid(_research_overflow_label):
-			_research_overflow_label.text = "+%d more this turn" % _research_overflow_n
-	_position_research_toasts.call_deferred()
-	# Each slides in a beat after the one above, so the stack reads as arriving rather than
-	# appearing. The animation is PER PANEL and nothing is shared, so one dismissing early
-	# cannot disturb the others — which is what a single shared Tween did.
-	for i in fresh.size():
-		_animate_research_toast(fresh[i], float(i) * RESEARCH_TOAST_CASCADE_SEC)
-
-
-func _animate_research_toast(panel: PanelContainer, delay: float) -> void:
-	if panel == null or not is_instance_valid(panel):
-		return
-	await get_tree().process_frame   # let _position_research_toasts settle the resting y
-	if not is_instance_valid(panel):
-		return
-	var settled_y := panel.position.y
-	panel.position.y = settled_y - 10.0
-	panel.modulate.a = 0.0
-	var anim := create_tween()
-	if delay > 0.0:
-		anim.tween_interval(delay)
-	anim.set_parallel(true)
-	anim.tween_property(panel, "modulate:a", 1.0, RESEARCH_TOAST_SLIDE_SEC)
-	anim.tween_property(panel, "position:y", settled_y, RESEARCH_TOAST_SLIDE_SEC)
-	anim.set_parallel(false)
-	anim.tween_interval(RESEARCH_TOAST_HOLD_SEC)
-	anim.tween_callback(func() -> void: _dismiss_research_toast(panel))
-
-
-## Fade one flyout out and drop it. The others keep their places: they pop within a second of
-## each other and hold the same time, so they expire together, and re-flowing a stack that is
-## about to vanish would only make it jump.
-func _dismiss_research_toast(panel: PanelContainer) -> void:
-	if panel == null or not is_instance_valid(panel):
-		return
-	var fade := create_tween()
-	fade.tween_property(panel, "modulate:a", 0.0, RESEARCH_TOAST_FADE_OUT_SEC)
-	if panel == _research_overflow:
-		_research_overflow = null
-		_research_overflow_label = null
-		_research_overflow_n = 0
-	fade.tween_callback(func() -> void:
-		_research_toasts.erase(panel)
-		if is_instance_valid(panel):
-			panel.queue_free())
-
-
-## Click a flyout → search the research panel for THAT tech
-## (MatchState.research_search_requested, the same signal
-## UIHelpers.make_research_requirement_link uses, so this needs no reference to wherever the
-## research panel actually lives). The "+N more" flyout has no single tech to jump to, so it
-## opens the turn briefing, which lists every unlock.
-func _on_research_toast_pressed(panel: PanelContainer, tech: String) -> void:
-	_dismiss_research_toast(panel)
-	if tech == RESEARCH_OVERFLOW_TECH:
-		if TurnBriefing.expanded:
-			TurnBriefing.collapse()
-		TurnBriefing.expand()
-		return
-	MatchState.research_search_requested.emit(tech)
 
 
 # ── 5 · Council: seated portraits with loyalty rings + number chips ─────────────
@@ -3849,14 +3671,14 @@ func flash_red() -> void:
 	)
 
 
-# ── Anomaly popups (spec §4) ───────────────────────────────────────────────────
+# ── Notices (spec §4) ──────────────────────────────────────────────────────────
 #
 # A playtester finished a 118-turn run without ever understanding why her balance
 # swung, and read a +£2,500 turn as arbitrary. It was not: a batch of sale shipments
 # landed at once, on top of an auto-bridge loan she never noticed being taken, with
 # tax and dividends skimmed in the same turn. Every figure was already on screen
-# somewhere — none of it was ever ATTRIBUTED. These cards attribute it, in one
-# sentence, under the module the money actually moved through.
+# somewhere — none of it was ever ATTRIBUTED. These notices attribute it, one sentence
+# each, as amber rows in the updates dock (_post_notices).
 #
 # Thresholds are ratios against the previous THREE resolved turns, so a steadily
 # growing empire never trips them — only a turn that breaks its own recent pattern.
@@ -3872,9 +3694,8 @@ const ANOMALY_POWER_RATIO := 0.8
 const ANOMALY_DEMAND_RATIO := 1.2
 ## Turns before the same trigger may fire again, so a long plateau does not nag.
 const ANOMALY_COOLDOWN := 5
-## At most two money cards at once, this far apart.
+## At most two money notices a turn.
 const ANOMALY_MAX_STACK := 2
-const ANOMALY_STACK_GAP := 15.0
 ## Priority when more than ANOMALY_MAX_STACK money triggers fire in one turn.
 const ANOMALY_MONEY_ORDER: Array[String] = ["upcoming", "loan", "spend", "transport", "payment"]
 ## Running-cost lines the spend trigger watches, each against its OWN baseline, mapped
@@ -3886,7 +3707,6 @@ const ANOMALY_COST_LINES := {
 	"power_purchase_cost": "power_purchase_by_type",
 }
 
-const AnomalyPopup := preload("res://scripts/anomaly_popup.gd")
 const StockpileGuidance := preload("res://scripts/stockpile_guidance.gd")
 var _stockpile_guidance := StockpileGuidance.new()
 
@@ -3894,8 +3714,6 @@ var _stockpile_guidance := StockpileGuidance.new()
 # turn, newest last, at most ANOMALY_BASELINE_TURNS long.
 var _anomaly_history: Array[Dictionary] = []
 var _anomaly_cooldown := {}          # trigger id -> turn it last fired
-var _anomaly_cards: Array = []       # live popups, money and power together
-var _anomaly_scrim: Control = null
 var _loan_taken_this_turn := 0.0
 var _money_notice_hits: Array = []
 var _upcoming_notice_dirty := true
@@ -3927,7 +3745,7 @@ func _on_turn_resolved_anomalies() -> void:
 			var message := "%s accumulating at %s (+%d/turn). Open stockpile to move or sell." % [Catalog.get_display_name(good), Catalog.tile_label(tile), roundi(float(hit.growth))]
 			if MatchState.should_auto_sell_good(tile, good):
 				message = "%s accumulating at %s despite surplus selling. Open stockpile to check sales." % [Catalog.get_display_name(good), Catalog.tile_label(tile)]
-			_show_anomaly_stack([{"text": message, "word": "accumulating", "tone": "warn", "stock_tile": tile, "stock_good": good}], _transport_btn)
+			_post_notices([{"text": message, "word": "accumulating", "tone": "warn", "stock_tile": tile, "stock_good": good}])
 	_anomaly_history.append(current)
 	if _anomaly_history.size() > ANOMALY_BASELINE_TURNS:
 		_anomaly_history = _anomaly_history.slice(_anomaly_history.size() - ANOMALY_BASELINE_TURNS)
@@ -3963,7 +3781,6 @@ func _anomaly_ready(id: String) -> bool:
 
 
 func _evaluate_anomalies(current: Dictionary, s: Dictionary) -> void:
-	_clear_anomaly_cards()
 	if Tutorial.active:
 		return
 	_money_notice_hits = _money_anomalies(current, s)
@@ -3972,7 +3789,7 @@ func _evaluate_anomalies(current: Dictionary, s: Dictionary) -> void:
 	var power := _power_anomalies(current)
 	if not power.is_empty():
 		_anomaly_cooldown[str(power[0].id)] = int(TurnManager.current_turn)
-		_show_anomaly_stack([power[0]], _power_btn)
+		_post_notices([power[0]])
 
 
 func _queue_upcoming_notice(_a: Variant = null, _b: Variant = null, _c: Variant = null) -> void:
@@ -3982,7 +3799,6 @@ func _queue_upcoming_notice(_a: Variant = null, _b: Variant = null, _c: Variant 
 func _reset_upcoming_notice() -> void:
 	_upcoming_notice_stamp = ""
 	_money_notice_hits.clear()
-	_clear_anomaly_cards()
 	_queue_upcoming_notice()
 
 
@@ -4008,7 +3824,6 @@ func _notices_can_show() -> bool:
 
 func _on_notice_root_child_entered(node: Node) -> void:
 	if node is LoadingScreen:
-		_clear_anomaly_cards()
 		_upcoming_notice_stamp = ""
 		node.tree_exited.connect(_queue_upcoming_notice)
 
@@ -4023,14 +3838,13 @@ func _refresh_notices_after_loading() -> void:
 
 func _refresh_money_notices(force: bool = false) -> void:
 	if not _notices_can_show():
-		_clear_anomaly_cards()
 		return
 	_upcoming_notice_dirty = false
 	var forecast := preload("res://scripts/cash_commitments.gd")
 	var costs := forecast.attention_costs(forecast.snapshot(), forecast.last_comparison)
 	var stamp := str(TurnManager.current_turn) + "|" + JSON.stringify(costs)
 	if not force and stamp == _upcoming_notice_stamp:
-		return # A dismissed notice stays dismissed until the turn or its costs change.
+		return # Nothing to post again until the turn or its costs change.
 	_upcoming_notice_stamp = stamp
 	var hits := _money_notice_hits.duplicate()
 	# Apply the notice threshold to the actual bill, before rounding its buffer.
@@ -4043,10 +3857,6 @@ func _refresh_money_notices(force: bool = false) -> void:
 				break
 		hits.append({"id": "upcoming", "text": "%s coming next turn.\nRecommended buffer: %s" % [bill, amount], "word": amount, "tone": "warn", "upcoming": true})
 
-	for card in _anomaly_cards.duplicate():
-		if is_instance_valid(card) and bool(card.get_meta("money_notice", false)):
-			_anomaly_cards.erase(card)
-			card.queue_free()
 	var chosen: Array = []
 	for id: String in ANOMALY_MONEY_ORDER:
 		for hit: Dictionary in hits:
@@ -4054,9 +3864,12 @@ func _refresh_money_notices(force: bool = false) -> void:
 				chosen.append(hit)
 				if id != "upcoming":
 					_anomaly_cooldown[id] = int(TurnManager.current_turn)
-	_show_anomaly_stack(chosen, money_widget)
-	if _anomaly_cards.is_empty() and is_instance_valid(_anomaly_scrim):
-		_anomaly_scrim.hide()
+	_post_notices(chosen)
+	# The upcoming bill is advice while it holds; once it doesn't, its row for this turn goes.
+	if not chosen.any(func(hit: Dictionary) -> bool: return str(hit.id) == "upcoming"):
+		var dock := _updates_dock()
+		if dock != null:
+			dock.remove_row("notice:upcoming:%d" % int(TurnManager.current_turn))
 
 
 ## Money triggers that fired this turn, unordered. Each is {id, text}.
@@ -4189,72 +4002,44 @@ func _power_anomalies(current: Dictionary) -> Array:
 	return hits
 
 
-# ── Anomaly presentation ──────────────────────────────────────────────────────
+# ── Notices in the updates dock ────────────────────────────────────────────────
 
-func _show_anomaly_stack(hits: Array, anchor: Control) -> void:
-	if hits.is_empty() or anchor == null or DisplayServer.get_name() == "headless" or not _notices_can_show():
+## The bottom-left updates dock (scripts/toast_manager.gd), the bar's sibling in the HUD.
+func _updates_dock() -> Control:
+	var parent := get_parent()
+	return parent.get_node_or_null("ToastLayer") as Control if parent != null else null
+
+
+## Posts notices to the updates dock as amber rows. Each row is keyed by its notice and the
+## turn, so a notice re-evaluated through a turn (the upcoming bill) keeps one row.
+func _post_notices(hits: Array) -> void:
+	if hits.is_empty() or DisplayServer.get_name() == "headless" or not _notices_can_show():
 		return
-	_ensure_anomaly_scrim()
-	var offset := 0.0
+	var dock := _updates_dock()
+	if dock == null:
+		return
 	for hit: Dictionary in hits:
-		var card := AnomalyPopup.new()
-		_fly_layer.add_child(card)
-		card.set_meta("money_notice", anchor == money_widget)
-		card.set_meta("notice_id", str(hit.get("id", "")))
-		# Width first: the stack offset below is measured off the card's wrapped height,
-		# which is only correct once the width its text wraps at is settled.
-		card.horizontal_overhang = 10.0 if bool(hit.get("upcoming", false)) else 0.0
-		card.set_width(anchor.get_global_rect().size.x + card.horizontal_overhang * 2.0)
-		if bool(hit.get("upcoming", false)):
-			card.name = "UpcomingCostsNotice"
-			card.set_action("Review upcoming payments", func() -> void:
-				_clear_anomaly_cards()
-				_open_money_panel_tab("Upcoming"))
-		card.tooltip_text = str(hit.text)
-		card.set_message(str(hit.text), str(hit.get("word", "")), str(hit.get("tone", "warn")), not bool(hit.get("upcoming", false)))
-		if bool(hit.get("upcoming", false)):
-			card.fit_message_lines(str(hit.text))
-		if hit.has("stock_tile"):
-			card.tooltip_text = str(hit.text)
-			card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-			var stock_tile := str(hit.stock_tile)
-			var stock_good := str(hit.stock_good)
-			card.gui_input.connect(func(event: InputEvent) -> void:
-				if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-					card.accept_event()
-					_clear_anomaly_cards()
-					MatchState.tile_stockpile_requested.emit(stock_tile)
-					for panel in get_tree().get_nodes_in_group("tile_view_panel"):
-						if panel.has_method("select_stock_good") and str(panel.get("_current_tile_id")) == stock_tile:
-							panel.call("select_stock_good", stock_good))
-		_anomaly_cards.append(card)
-		# Placed after layout: the card has no height until its wrapped label is measured.
-		card.call_deferred("place_under", anchor, offset)
-		offset += card.get_combined_minimum_size().y + ANOMALY_STACK_GAP
-	_anomaly_scrim.visible = true
+		dock.push_notice(_notice_key(hit), str(hit.text), _notice_action(hit))
 
 
-## Full-screen catcher: a click anywhere outside the cards dismisses them all. The cards
-## sit ABOVE it and stop their own clicks, so reading one can never dismiss it.
-func _ensure_anomaly_scrim() -> void:
-	if _anomaly_scrim != null and is_instance_valid(_anomaly_scrim):
-		return
-	_anomaly_scrim = _FlyScrim.new()
-	_anomaly_scrim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_anomaly_scrim.mouse_filter = Control.MOUSE_FILTER_STOP
-	_anomaly_scrim.visible = false
-	_anomaly_scrim.gui_input.connect(func(e: InputEvent) -> void:
-		if e is InputEventMouseButton and e.pressed:
-			_anomaly_scrim.accept_event()
-			_clear_anomaly_cards())
-	_fly_layer.add_child(_anomaly_scrim)
-	_fly_layer.move_child(_anomaly_scrim, 0)
+func _notice_key(hit: Dictionary) -> String:
+	var turn := int(TurnManager.current_turn)
+	if hit.has("stock_tile"):
+		return "stock:%s:%s:%d" % [str(hit.stock_tile), str(hit.stock_good), turn]
+	return "%s:%d" % [str(hit.get("id", "")), turn]
 
 
-func _clear_anomaly_cards() -> void:
-	for card in _anomaly_cards:
-		if is_instance_valid(card):
-			card.queue_free()
-	_anomaly_cards.clear()
-	if _anomaly_scrim != null and is_instance_valid(_anomaly_scrim):
-		_anomaly_scrim.visible = false
+## What clicking a notice's row does: the upcoming bill opens the Money panel's Upcoming tab,
+## stock building up opens that tile's stockpile on the good. Other notices are not links.
+func _notice_action(hit: Dictionary) -> Callable:
+	if bool(hit.get("upcoming", false)):
+		return func() -> void: _open_money_panel_tab("Upcoming")
+	if hit.has("stock_tile"):
+		var stock_tile := str(hit.stock_tile)
+		var stock_good := str(hit.stock_good)
+		return func() -> void:
+			MatchState.tile_stockpile_requested.emit(stock_tile)
+			for panel in get_tree().get_nodes_in_group("tile_view_panel"):
+				if panel.has_method("select_stock_good") and str(panel.get("_current_tile_id")) == stock_tile:
+					panel.call("select_stock_good", stock_good)
+	return Callable()

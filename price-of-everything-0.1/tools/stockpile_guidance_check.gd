@@ -87,14 +87,20 @@ func _ready() -> void:
 	check(preload("res://scripts/stockpile_route_prompt.gd")._dont_show_again and not MatchState.should_auto_sell_good(tile, "g_005"), "keep-stock also remembers the checkbox without enabling sales")
 	var top: Node = world.find_child("TopBar", true, false)
 	if top == null:
-		top = find_method(world, "_show_anomaly_stack")
+		top = find_method(world, "_post_notices")
 	var hit := {"text": "Copper ingots accumulating at Stoneshore (+19/turn). Open stockpile to move or sell.", "word": "accumulating", "tone": "warn", "stock_tile": tile, "stock_good": "g_005"}
-	top._show_anomaly_stack([hit], top.get("_transport_btn"))
+	# Notices only show from the second turn.
+	TurnManager.current_turn = maxi(2, int(TurnManager.current_turn))
+	top._post_notices([hit])
 	await settle(8)
 	snap("accumulation-notice.png")
-	var cards: Array = top.get("_anomaly_cards")
-	check(not cards.is_empty(), "notice uses existing anomaly-card presentation")
-	(cards.back() as Control).gui_input.emit(click)
+	var notice_row: Control = null
+	for row: Node in world.get_node("UILayer/HUD/ToastLayer").find_child("RowList", true, false).get_children():
+		if str(row.get_meta("toast_message", "")) == str(hit.text):
+			notice_row = row
+	check(notice_row != null and str(notice_row.get_meta("tone", "")) == "amber", "notice arrives as an amber row in the updates dock")
+	if notice_row != null:
+		notice_row.gui_input.emit(click)
 	await settle(6)
 	check(str(panel.get("_stock_sel").get("good_id", "")) == "g_005", "notice opens exact tile and selects its good")
 	check(str(panel.get("_active_tab")) == "stock", "notice lands on Stockpile tab")

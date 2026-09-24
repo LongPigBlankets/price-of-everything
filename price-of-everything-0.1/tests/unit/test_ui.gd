@@ -793,3 +793,66 @@ func _test_updates_dock() -> void:
 	_check(toasts.row_count() == 0 and not toasts.is_open() and toasts.unread("red") == 0,
 		"updates dock: clearing empties the rows and the bells")
 	toasts.queue_free()
+
+func _test_updates_dock_research_and_notices() -> void:
+	# Research unlocks sit above the other rows as green links; notices are amber and keyed.
+	var toasts: Control = load("res://scripts/toast_manager.gd").new()
+	add_child(toasts)
+	await get_tree().process_frame
+	var rows: Node = toasts.find_child("RowList", true, false)
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+
+	toasts._on_toast_requested("Built a steel furnace", "success")
+	toasts.push_research("Interchangeable Tooling")
+	toasts.push_research("Operational Team Managers")
+	var texts: PackedStringArray = toasts.row_texts()
+	_check(texts.size() == 3 and texts[0] == "Unlocked: Interchangeable Tooling" \
+		and texts[1] == "Unlocked: Operational Team Managers" and texts[2] == "Built a steel furnace",
+		"updates dock: unlocks read 'Unlocked: <name>' and sit above the other rows, in the order they came")
+	_check(toasts.unread("green") == 3, "updates dock: unlocks ring the green bell")
+	var research_row: Control = rows.get_child(0)
+	_check(research_row.mouse_filter == Control.MOUSE_FILTER_STOP and toasts.find_child("Rows", true, false).mouse_filter == Control.MOUSE_FILTER_IGNORE,
+		"updates dock: an unlock's row takes its click while the rest lets clicks through")
+	var searched := [""]
+	var on_search := func(tech: String) -> void: searched[0] = tech
+	MatchState.research_search_requested.connect(on_search)
+	research_row.gui_input.emit(click)
+	MatchState.research_search_requested.disconnect(on_search)
+	_check(searched[0] == "Interchangeable Tooling" and not toasts.is_open(),
+		"updates dock: clicking an unlock opens the Research panel on it and puts the rows away")
+	toasts.push_research("Interchangeable Tooling")
+	_check(toasts.row_count() == 3, "updates dock: the same unlock twice keeps one row")
+
+	for i in toasts.MAX_TOASTS + 2:
+		toasts.show_caution("Caution %d" % i)
+	toasts.push_research("High-Volume Press Lines")
+	var shown: Array = rows.get_children().filter(func(r: Node) -> bool: return (r as Control).visible)
+	_check(shown.size() == toasts.MAX_TOASTS and str(shown[0].get_meta("toast_message", "")) == "Unlocked: High-Volume Press Lines",
+		"updates dock: an unlock shows first even when more rows arrived than fit")
+	toasts.collapse(false)
+
+	var turn_key := "upcoming:7"
+	toasts.push_notice(turn_key, "Input bill coming next turn.\nRecommended buffer: £150")
+	_check(toasts.has_row("notice:" + turn_key) and toasts.unread("amber") == toasts.MAX_TOASTS + 3,
+		"updates dock: a notice is an amber row under its key")
+	var count: int = toasts.row_count()
+	toasts.push_notice(turn_key, "Input bill coming next turn.\nRecommended buffer: £150")
+	_check(toasts.row_count() == count, "updates dock: the same notice again adds nothing")
+	toasts.push_notice(turn_key, "Input bill coming next turn.\nRecommended buffer: £200")
+	_check(toasts.row_count() == count and toasts.unread("amber") == toasts.MAX_TOASTS + 3 \
+		and toasts.row_texts()[-1].ends_with("£200"), "updates dock: a changed notice replaces its row")
+	toasts.remove_row("notice:" + turn_key)
+	_check(not toasts.has_row("notice:" + turn_key) and toasts.row_count() == count - 1,
+		"updates dock: a notice that no longer holds can be withdrawn")
+	var ran := [false]
+	toasts.push_notice("stock:tile_5_10:g_005:7", "Copper accumulating at Stoneshore (+19/turn).", func() -> void: ran[0] = true)
+	var notice_row: Control = null
+	for r: Node in rows.get_children():
+		if str(r.get_meta("key", "")) == "notice:stock:tile_5_10:g_005:7":
+			notice_row = r
+	if notice_row != null:
+		notice_row.gui_input.emit(click)
+	_check(notice_row != null and ran[0], "updates dock: a notice's link runs when its row is clicked")
+	toasts.queue_free()

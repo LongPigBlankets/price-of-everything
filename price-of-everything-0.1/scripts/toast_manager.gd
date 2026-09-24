@@ -11,6 +11,11 @@ extends Control
 ## that arrived since the player last opened the slide-out from the dock. Clicking the dock
 ## opens the slide-out on every row kept; that one takes the mouse, scrolls, and stays up
 ## while the mouse is over it. Clicking the dock again closes it.
+##
+## Besides the toasts, the top bar posts its research unlocks (green, above every other row)
+## and its notices (amber). A row can be a link: it stays clickable even while the slide-out
+## lets clicks through. A row can carry a key: posting the same key again replaces it, so a
+## notice that is re-evaluated through a turn keeps one row.
 
 ## Rows the slide-out shows when it opens by itself: the newest that haven't been shown.
 const MAX_TOASTS := 6
@@ -33,10 +38,14 @@ const SLIDE_MAX_SHARE := 0.6
 const PANEL_PAD := 8.0
 const ROW_PAD_X := 14.0
 const SCROLLBAR_ROOM := 12.0
+## Room a link row keeps at its right for its chevron.
+const LINK_CHEVRON_W := 20.0
 const BELL_PX := 40.0
 const BELL_GAP := 18.0
 const BELL_ICON: Texture2D = preload("res://assets/icons/ui_icons/standalone/bell.png")
 const TONES := ["green", "amber", "red"]
+## The row look each bell's rows take.
+const TONE_STYLE := {"green": "success", "amber": "caution", "red": "warning"}
 const NAVY_PRINT := Color("#0b2340")
 const DOCK_BG := Color(0.015, 0.045, 0.075, 0.96)
 const DOCK_BORDER := Color("#2f5578")
@@ -77,7 +86,9 @@ var _all := false
 var _held := false
 var _fit_queued := false
 var _dock_hover := false
-var _unread := {"green": 0, "amber": 0, "red": 0}
+## Arrival order across the kept rows; the oldest goes when HISTORY_MAX is reached, wherever
+## priority has put it in the list.
+var _seq := 0
 
 
 func _ready() -> void:
@@ -138,6 +149,38 @@ func show_blocked(message: String) -> void:
 func show_caution(message: String) -> void:
 	_push_toast(message, TOAST_CAUTION)
 
+## Posts a row. `tone` picks its bell ("green", "amber" or "red"). `key` names it: posting
+## the same key again replaces the row, and does nothing when the text is unchanged.
+## `on_click` makes the row a link. `priority` keeps it above the other rows.
+func push_row(message: String, tone: String, key: String = "", on_click: Callable = Callable(), priority: bool = false) -> void:
+	if not _can_post():
+		return
+	_add_row(message, tone, str(TONE_STYLE.get(tone, TOAST_SUCCESS)), key, on_click, priority)
+
+## A research unlock: a green row above the others, "Unlocked: <name>", that opens the
+## Research panel on it.
+func push_research(tech: String) -> void:
+	push_row("Unlocked: %s" % tech, "green", "research:%s" % tech,
+		func() -> void: MatchState.research_search_requested.emit(tech), true)
+
+## A notice (the top bar's attribution of a turn: a loan, a spike, power, stock building up):
+## an amber row. `key` is the notice's own; the same key within a turn keeps one row.
+func push_notice(key: String, message: String, on_click: Callable = Callable()) -> void:
+	push_row(message, "amber", "notice:%s" % key, on_click)
+
+func has_row(key: String) -> bool:
+	return _row_with_key(key) != null
+
+## Drops the row with this key, if one is kept.
+func remove_row(key: String) -> void:
+	var row := _row_with_key(key)
+	if row == null:
+		return
+	_rows.remove_child(row)
+	row.queue_free()
+	_refresh_bells()
+	_after_rows_changed()
+
 func is_open() -> bool:
 	return _open
 
@@ -153,7 +196,11 @@ func row_texts() -> PackedStringArray:
 
 ## Rows of a tone that arrived since the slide-out was last opened from the dock.
 func unread(tone: String) -> int:
-	return int(_unread.get(tone, 0))
+	var n := 0
+	for row: Node in _rows.get_children():
+		if row.get_meta("unread", false) and str(row.get_meta("tone", "")) == tone:
+			n += 1
+	return n
 
 ## Opens the slide-out on every kept row, as clicking the dock does.
 func open_all() -> void:
@@ -184,8 +231,6 @@ func clear() -> void:
 	for row: Node in _rows.get_children():
 		_rows.remove_child(row)
 		row.queue_free()
-	for tone: String in TONES:
-		_unread[tone] = 0
 	_refresh_bells()
 	_queue_fit()
 
@@ -345,7 +390,7 @@ func _refresh_bells(pulse_tone: String = "") -> void:
 		var bell: Dictionary = _bells.get(tone, {})
 		if bell.is_empty():
 			continue
-		var n: int = int(_unread[tone])
+		var n: int = unread(tone)
 		var colour := tone_colour(tone)
 		(bell.tex as TextureRect).modulate = colour if n > 0 else Color(colour, 0.4)
 		var pill: PanelContainer = bell.pill
@@ -391,33 +436,65 @@ func _apply_hidden(hidden: bool) -> void:
 
 # ── Rows ──────────────────────────────────────────────────────────────────────
 
-func _push_toast(message: String, toast_type: String) -> void:
+func _can_post() -> bool:
 	if DecisionState.hide_updates:
-		return
+		return false
 	# Nothing that fires while the world is still building behind the loading screen
 	# is player-initiated: it is the match-start seeding (NPC ports, start companies,
 	# their material orders).
-	if LoadPacing.is_background_build() and not LoadPacing.legacy_load:
+	return not (LoadPacing.is_background_build() and not LoadPacing.legacy_load)
+
+
+func _push_toast(message: String, toast_type: String) -> void:
+	if not _can_post():
 		return
 	if toast_type == TOAST_CAUTION:
 		for existing: Node in _rows.get_children():
 			if existing.get_meta("fresh", false) and str(existing.get_meta("toast_message", "")) == message:
 				return
-	var tone := tone_of(toast_type)
-	var row: PanelContainer = _make_toast(message, toast_type)
+	_add_row(message, tone_of(toast_type), toast_type, "", Callable(), false)
+
+
+func _add_row(message: String, tone: String, style_type: String, key: String, on_click: Callable, priority: bool) -> void:
+	if key != "":
+		var existing := _row_with_key(key)
+		if existing != null:
+			if str(existing.get_meta("toast_message", "")) == message:
+				return
+			_rows.remove_child(existing)
+			existing.queue_free()
+	var row: PanelContainer = _make_toast(message, style_type, on_click.is_valid())
 	row.set_meta("toast_message", message)
 	row.set_meta("tone", tone)
 	row.set_meta("fresh", true)
+	row.set_meta("unread", true)
+	row.set_meta("priority", priority)
+	_seq += 1
+	row.set_meta("seq", _seq)
+	if key != "":
+		row.set_meta("key", key)
+	if on_click.is_valid():
+		row.set_meta("on_click", on_click)
+		row.gui_input.connect(_on_row_input.bind(row))
 	_rows.add_child(row)
+	if priority:
+		# Above every other row, after the priority rows already there.
+		var at := 0
+		for other: Node in _rows.get_children():
+			if other != row and other.get_meta("priority", false):
+				at = other.get_index() + 1
+		_rows.move_child(row, at)
 	# Detach before queue_free: queue_free is deferred, so it doesn't lower the child count.
 	while _rows.get_child_count() > HISTORY_MAX:
-		var oldest: Node = _rows.get_child(0)
+		var oldest: Node = null
+		for other: Node in _rows.get_children():
+			if oldest == null or int(other.get_meta("seq", 0)) < int(oldest.get_meta("seq", 0)):
+				oldest = other
 		_rows.remove_child(oldest)
 		oldest.queue_free()
-	_unread[tone] = int(_unread[tone]) + 1
 	_refresh_bells(tone)
 	if _open:
-		_apply_row_visibility()
+		_after_rows_changed()
 		_scroll_to_newest.call_deferred()
 		_held = false
 		_timer.start(TOAST_DURATION)
@@ -425,9 +502,39 @@ func _push_toast(message: String, toast_type: String) -> void:
 		_open_slide(false)
 
 
-func _make_toast(message: String, toast_type: String) -> PanelContainer:
+func _row_with_key(key: String) -> Control:
+	if key == "":
+		return null
+	for row: Node in _rows.get_children():
+		if str(row.get_meta("key", "")) == key:
+			return row as Control
+	return null
+
+
+## Re-shows the rows after some were added or dropped; a slide-out left with nothing to show
+## goes back into the dock.
+func _after_rows_changed() -> void:
+	if _apply_row_visibility() == 0 and _open and not _all:
+		collapse(false)
+
+
+func _on_row_input(event: InputEvent, row: Control) -> void:
+	var mb := event as InputEventMouseButton
+	if mb == null or not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
+		return
+	row.accept_event()
+	var action: Callable = row.get_meta("on_click", Callable())
+	collapse()
+	if action.is_valid():
+		action.call()
+
+
+## A row. A link row takes its own clicks (and a pointing hand) and ends in a chevron.
+func _make_toast(message: String, toast_type: String, link: bool = false) -> PanelContainer:
 	var panel := PanelContainer.new()
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP if link else Control.MOUSE_FILTER_IGNORE
+	if link:
+		panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	panel.size_flags_horizontal = Control.SIZE_FILL
 
 	var sb := StyleBoxFlat.new()
@@ -453,35 +560,65 @@ func _make_toast(message: String, toast_type: String) -> PanelContainer:
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.add_theme_color_override("font_color", _toast_text_color(toast_type))
 	label.add_theme_font_size_override("font_size", 15)
-	panel.add_child(label)
+	if not link:
+		panel.add_child(label)
+		return panel
+	label.custom_minimum_size.x -= LINK_CHEVRON_W
+	var line := HBoxContainer.new()
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_theme_constant_override("separation", 6)
+	line.add_child(label)
+	var chevron := Label.new()
+	chevron.text = "›"
+	chevron.custom_minimum_size.x = LINK_CHEVRON_W - 6.0
+	chevron.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	chevron.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	chevron.size_flags_vertical = Control.SIZE_FILL
+	chevron.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chevron.add_theme_color_override("font_color", _toast_text_color(toast_type))
+	chevron.add_theme_font_size_override("font_size", 22)
+	line.add_child(chevron)
+	panel.add_child(line)
 	return panel
 
 
-## Opened by itself the slide-out shows the newest rows it hasn't shown yet, at most
-## MAX_TOASTS; opened from the dock it shows every kept row.
-func _apply_row_visibility() -> void:
+## Opened by itself the slide-out shows the rows it hasn't shown yet, at most MAX_TOASTS:
+## the priority rows first, then the newest others. Opened from the dock it shows every kept
+## row. Returns how many rows show.
+func _apply_row_visibility() -> int:
 	var rows := _rows.get_children()
 	var shown := 0
-	for i in range(rows.size() - 1, -1, -1):
-		var row: Control = rows[i]
-		if _all:
-			row.visible = true
-		else:
+	if _all:
+		for row: Node in rows:
+			(row as Control).visible = true
+		shown = rows.size()
+	else:
+		for row: Node in rows:
+			var show: bool = row.get_meta("fresh", false) and row.get_meta("priority", false) and shown < MAX_TOASTS
+			(row as Control).visible = show
+			if show:
+				shown += 1
+		for i in range(rows.size() - 1, -1, -1):
+			var row: Control = rows[i]
+			if row.get_meta("priority", false):
+				continue
 			row.visible = bool(row.get_meta("fresh", false)) and shown < MAX_TOASTS
-		if row.visible:
-			shown += 1
+			if row.visible:
+				shown += 1
 	_empty.visible = _all and rows.is_empty()
 	_queue_fit()
+	return shown
 
 
 func _open_slide(all_rows: bool) -> void:
 	_all = all_rows
 	_set_interactive(all_rows)
 	if all_rows:
-		for tone: String in TONES:
-			_unread[tone] = 0
+		for row: Node in _rows.get_children():
+			row.set_meta("unread", false)
 		_refresh_bells()
-	_apply_row_visibility()
+	if _apply_row_visibility() == 0 and not all_rows:
+		return
 	_fit()
 	if not _open:
 		_open = true
@@ -507,7 +644,7 @@ func _on_dock_input(event: InputEvent) -> void:
 func _on_timer() -> void:
 	if not _open:
 		return
-	if _all and _panel.get_global_rect().has_point(get_global_mouse_position()):
+	if _hovered():
 		_held = true
 		_timer.start(0.5)
 		return
@@ -516,6 +653,19 @@ func _on_timer() -> void:
 		_timer.start(HOVER_GRACE)
 		return
 	collapse()
+
+
+## The mouse holds the slide-out up: anywhere on it once it was opened from the dock, only on a
+## link row while it lets clicks through (so reaching for a link doesn't lose it).
+func _hovered() -> bool:
+	var mouse := get_global_mouse_position()
+	if _all:
+		return _panel.get_global_rect().has_point(mouse)
+	for row: Node in _rows.get_children():
+		var c := row as Control
+		if c.visible and c.has_meta("on_click") and c.get_global_rect().has_point(mouse):
+			return true
+	return false
 
 
 func _tween_panel_to(y: float) -> void:

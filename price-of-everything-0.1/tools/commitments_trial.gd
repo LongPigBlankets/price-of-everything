@@ -72,7 +72,7 @@ func _ready() -> void:
 		var initial_bar: Node = world.get_node("UILayer/HUD/TopBar")
 		initial_bar._refresh_money_notices(true)
 		await settle(4)
-		check(initial_bar.find_child("UpcomingCostsNotice", true, false) == null, "zero extra costs do not create a top-bar warning")
+		check(not world.get_node("UILayer/HUD/ToastLayer").has_row("notice:upcoming:%d" % int(TurnManager.current_turn)), "zero extra costs do not create an upcoming-bill notice")
 	for index in 6:
 		if index == 2:
 			# Additional scenario: existing shipment bills, a standing order, and a build
@@ -100,25 +100,29 @@ func _ready() -> void:
 			notices._money_notice_hits = [{"id": "loan", "text": "Lower-priority loan notice.", "tone": "warn"}, {"id": "spend", "text": "Lower-priority spending notice.", "tone": "warn"}]
 			notices._refresh_money_notices(true)
 			await settle(8)
-			var priority: Array = []
-			for popup in notices._anomaly_cards:
-				if bool(popup.get_meta("money_notice", false)):
-					priority.append(popup)
-			check(priority.size() == 2 and str(priority[0].get_meta("notice_id")) == "upcoming", "upcoming commitments take first priority within the notice cap")
-			if not priority.is_empty():
-				check(absf(priority[0].get_global_rect().size.x - notices.money_widget.get_global_rect().size.x - 20.0) < 1.0, "notice extends ten pixels either side of money section")
-				check("coming next turn." in priority[0]._body.text, "notice identifies next-turn bill")
-				check(("£%d" % Forecast.recommended_buffer(float(Forecast.next_turn_costs(Forecast.snapshot()).total))) in priority[0]._body.text, "notice buffer rounds shared panel total upward")
+			var dock: Node = world.get_node("UILayer/HUD/ToastLayer")
+			var turn := int(TurnManager.current_turn)
+			check(dock.has_row("notice:upcoming:%d" % turn) and dock.has_row("notice:loan:%d" % turn) and not dock.has_row("notice:spend:%d" % turn),
+				"upcoming commitments take first priority within the notice cap")
+			var upcoming_row: Control = null
+			for row: Node in dock.find_child("RowList", true, false).get_children():
+				if str(row.get_meta("key", "")) == "notice:upcoming:%d" % turn:
+					upcoming_row = row
+			if upcoming_row != null:
+				var text := str(upcoming_row.get_meta("toast_message", ""))
+				check("coming next turn." in text, "notice identifies next-turn bill")
+				check(("£%d" % Forecast.recommended_buffer(float(Forecast.next_turn_costs(Forecast.snapshot()).total))) in text, "notice buffer rounds shared panel total upward")
 			snap("upcoming-notice.png")
-			if not priority.is_empty():
-				var action := priority[0].find_child("NoticeAction", true, false) as Button
-				check(action != null and action.theme_type_variation == "Primary", "upcoming notice has a prominent primary caret")
-				if action != null:
-					action.pressed.emit()
-					await settle(6)
-					check(money.visible and money.get_node("MarginContainer/ModalLayout/TabContainer").get_current_tab_control().name == "Upcoming", "notice CTA opens Upcoming")
+			if upcoming_row != null:
+				var press := InputEventMouseButton.new()
+				press.button_index = MOUSE_BUTTON_LEFT
+				press.pressed = true
+				upcoming_row.gui_input.emit(press)
+				await settle(6)
+				check(money.visible and money.get_node("MarginContainer/ModalLayout/TabContainer").get_current_tab_control().name == "Upcoming", "the notice's row opens Upcoming")
+			var rows_before: int = dock.row_count()
 			notices._refresh_money_notices()
-			check(notices._anomaly_cards.is_empty(), "dismissed notice does not immediately reappear for unchanged costs")
+			check(dock.row_count() == rows_before, "unchanged costs post no new notice")
 			money.open_tab("Balance")
 			money.show()
 			money._queue_refresh()
@@ -178,7 +182,7 @@ func _ready() -> void:
 			bar._close_fly()
 			money.show()
 	if shots:
-		world.get_node("UILayer/HUD/TopBar")._clear_anomaly_cards()
+		world.get_node("UILayer/HUD/ToastLayer").collapse(false)
 		money.open_tab("Upcoming")
 		money._queue_refresh()
 		await settle(12)
