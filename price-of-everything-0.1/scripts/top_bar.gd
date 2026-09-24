@@ -750,7 +750,7 @@ func _build_treasury() -> void:
 	_ds2_cash.add_theme_constant_override("separation", 4)
 	_ds2_cash.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ds2_cash.visible = false
-	_ds2_cash.add_child(_ds2_print("£", 20))
+	_ds2_cash.add_child(_ds2_print("£", DS2_POUND_PX))
 	_ds2_cash_holder = Control.new()
 	_ds2_cash_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ds2_cash_led = Led.new()
@@ -1459,6 +1459,13 @@ const DS2_LED_GOOD := Color("#5bd180")
 const DS2_LED_BAD := Color("#e66060")
 ## The breakdown's screens, smaller than the main figures'.
 const DS2_SMALL_LED := 0.8
+## The text sizes, Building Detail's: body text 14 px (IBM Plex Sans), metal-label captions 15 px (Barlow
+## Condensed) and the printed £ 18 px. The bar itself keeps its compact sizes with DS2_BAR_MIN_PX as the floor.
+const DS2_BODY_PX := 14
+const DS2_CAPTION_PX := 15
+const DS2_POUND_PX := 18
+const DS2_BAR_MIN_PX := 12
+const DS2_BODY_BOLD: FontFile = preload("res://assets/fonts/IBMPlexSans-SemiBold.ttf")
 ## The hover readout under the bar: its width and its gap below the bar.
 const DS2_READOUT_W := 360.0
 const DS2_READOUT_GAP := 8.0
@@ -1524,6 +1531,9 @@ func _ds2_setup() -> void:
 			_ds2_add_lamp(node as StatusLed)
 	_ds2_readout = Readout.new()
 	_ds2_readout.name = "Ds2Readout"
+	# On a CanvasLayer the DS theme is not inherited: without it the detail line's Caption style fell back to
+	# the engine's font. With it, the readout reads as Building Detail's does (Plex, 14 px).
+	_ds2_readout.theme = DS.theme
 	_ds2_readout.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ds2_readout.visible = false
 	_fly_layer.add_child(_ds2_readout)
@@ -1559,6 +1569,14 @@ func _ds2_apply() -> void:
 	_ds2_left_gap.visible = on
 	for label: Label in [_net_label, _runway_label]:
 		_ds2_print_on_concrete(label, on)
+	# The bar's floor: nothing under DS2_BAR_MIN_PX (v3.1 keeps its 11 px lines).
+	var small: Array[Label] = [_quest_sub, _runway_label]
+	if _bankruptcy_strip != null:
+		for l: Node in _bankruptcy_strip.find_children("*", "Label", true, false):
+			small.append(l as Label)
+	for label: Label in small:
+		if label != null:
+			label.add_theme_font_size_override("font_size", DS2_BAR_MIN_PX if on else 11)
 	var hbox := _hbox()
 	if on:
 		var order: Array[Node] = [_hbox_child("PowerModule"), _hbox_child("TransportModule"), _ds2_left_gap,
@@ -3554,7 +3572,7 @@ func _ds2_text(text: String, font_px: int = 13) -> Label:
 
 ## A small caption in the metal-label capitals.
 func _ds2_caption(text: String) -> Label:
-	var l := _ds2_text(text.to_upper(), 14)
+	var l := _ds2_text(text.to_upper(), DS2_CAPTION_PX)
 	l.add_theme_font_override("font", Plate.FONT_SEMI)
 	return l
 
@@ -3567,7 +3585,7 @@ func _ds2_money_screen(amount: float, colour: Color, digits: int, k: float = 1.0
 	hb.add_theme_constant_override("separation", 3)
 	hb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var pound := _ds2_caption("£")
-	pound.add_theme_font_size_override("font_size", roundi(17 * k))
+	pound.add_theme_font_size_override("font_size", roundi(DS2_POUND_PX * k))
 	hb.add_child(pound)
 	var figure := "%.2f" % amount
 	var led: Control = Led.new()
@@ -3591,7 +3609,7 @@ func _ds2_money_row(label: String, amount: float, colour: Color, digits: int, ro
 	if row_name != "":
 		row.name = row_name
 	row.add_theme_constant_override("separation", 8)
-	var l := _ds2_text(label, 13 if k < 1.0 else 14)
+	var l := _ds2_text(label, DS2_BODY_PX)
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	row.add_child(l)
@@ -3653,10 +3671,10 @@ func _ds2_fly_treasury(vb: VBoxContainer) -> void:
 	if runway > 0:
 		var rw := HBoxContainer.new()
 		rw.name = "FlyRowRunway"
-		var rl := _ds2_text("Runway at current burn", 14)
+		var rl := _ds2_text("Runway at current burn", DS2_BODY_PX)
 		rl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		rw.add_child(rl)
-		rw.add_child(_ds2_text("About %d turns" % runway, 14))
+		rw.add_child(_ds2_text("About %d turns" % runway, DS2_BODY_PX))
 		body.add_child(rw)
 	var upcoming := preload("res://scripts/cash_commitments_view.gd").make_link(func() -> void: _open_money_panel_tab("Upcoming"))
 	upcoming.name = "FlyUpcomingButton"
@@ -3705,7 +3723,7 @@ func _ds2_fly_treasury(vb: VBoxContainer) -> void:
 			row.set_meta("cash_amount", float(entry[1]) if spec[2] == DS2_LED_GOOD else -float(entry[1]))
 			column.add_child(row)
 		if not any:
-			column.add_child(_ds2_text("None last turn", 12))
+			column.add_child(_ds2_text("None last turn", DS2_BODY_PX))
 		columns.add_child(column)
 	body.add_child(columns)
 	# Loans.
@@ -3714,9 +3732,9 @@ func _ds2_fly_treasury(vb: VBoxContainer) -> void:
 	for l in LoanState.loans:
 		var lrow := _ds2_money_row(LoanState.loan_label(l), float(l.get("principal_remaining", 0.0)), DS2_CASH_COLOUR, digits, "", DS2_SMALL_LED)
 		body.add_child(lrow)
-		body.add_child(_ds2_text(LoanState.repayment_label(l), 12))
+		body.add_child(_ds2_text(LoanState.repayment_label(l), DS2_BODY_PX))
 	if LoanState.loans.is_empty():
-		body.add_child(_ds2_text("No loans outstanding.", 13))
+		body.add_child(_ds2_text("No loans outstanding.", DS2_BODY_PX))
 	body.add_child(_ds2_money_row("Loan capacity", LoanState.available_capacity(), DS2_CASH_COLOUR, digits, "FlyRowLoanCapacity"))
 	if LoanState.transit_credit_available():
 		var rate_pct := LoanState.transit_credit_rate_per_turn() * 100.0
@@ -3756,7 +3774,9 @@ func _ds2_fly_power(vb: VBoxContainer) -> void:
 		var block := VBoxContainer.new()
 		block.name = "FlyPriority_%s" % kind
 		block.add_theme_constant_override("separation", 4)
-		block.add_child(_ds2_text(str(spec[1]), 15))
+		var title := _ds2_text(str(spec[1]), DS2_BODY_PX)
+		title.add_theme_font_override("font", DS2_BODY_BOLD)
+		block.add_child(title)
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
 		row.add_child(_ds2_caption("Grid"))
@@ -3769,7 +3789,7 @@ func _ds2_fly_power(vb: VBoxContainer) -> void:
 		row.add_child(sw)
 		row.add_child(_ds2_caption("Your buildings"))
 		block.add_child(row)
-		var detail := _ds2_text(str(spec[3]) if own else str(spec[4]), 12)
+		var detail := _ds2_text(str(spec[3]) if own else str(spec[4]), DS2_BODY_PX)
 		detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		detail.custom_minimum_size.x = 320
 		block.add_child(detail)
