@@ -1352,11 +1352,9 @@ func _place_quest() -> void:
 	# DS2 gives the centre to the money, so the mission sits after the works on the left.
 	var quest_x := roundf((get_viewport_rect().size.x - QUEST_ICON_MODULE_W) * 0.5)
 	if UiPrefs.use_topbar_ds2 and _ds2_left_gap != null:
-		# Up against the concrete's left edge, never over it, never before the works end.
-		var slab_left := money_widget.get_global_rect().get_center().x - DS2_CONCRETE.get_width() / DS2_TEXELS * 0.5
+		# Outside the left pipes, up against them, never before the works end.
 		var dividers := _ds2_divider_xs()
-		var after_works: float = (dividers[0] + DS2_PIPES_ROOM) if not dividers.is_empty() else _ds2_left_gap.global_position.x + 8.0
-		quest_x = roundf(maxf(after_works, slab_left - 12.0 - want_size.x))
+		quest_x = roundf(maxf(_ds2_left_gap.global_position.x + 8.0, dividers[0] + global_position.x - DS2_PIPES_ROOM - want_size.x))
 	_quest_btn.position = Vector2(quest_x,
 		maxf(0.0, roundf((size.y - EDGE_H - want_size.y) * 0.5)))
 
@@ -1373,8 +1371,6 @@ const DS2_TEXELS := 2.0
 ## The concrete behind the money (set `barconcrete`): a clean light grey slab between two pillars, its top
 ## off the screen, its foot on the beam, its shadow on the steel round it. Drawn centred on the money.
 const DS2_CONCRETE: Texture2D = preload("res://assets/ui/bdp_v3/bar_concrete.png")
-## Dark iron pipes rising out of the beam that the money's coin sits on (set `barcoinpipes`).
-const DS2_COIN_PIPES: Texture2D = preload("res://assets/ui/bdp_v3/bar_coin_pipes.png")
 ## The silver pipe pair (set `barpipes`): down off the screen at the divider after the works, over the
 ## beam, along beneath the bar, and back up at the divider between the money and Victory. Three pieces:
 ## the two risers (each lit from the top left, not mirrored) and the run, cropped to the gap between them.
@@ -1384,8 +1380,12 @@ const DS2_PIPES_RIGHT: Texture2D = preload("res://assets/ui/bdp_v3/bar_pipes_rig
 const DS2_PIPES_RUN: Texture2D = preload("res://assets/ui/bdp_v3/bar_pipes_run.png")
 const DS2_PIPES_LEFT_AXIS := 20.7 / 1.875
 const DS2_PIPES_RIGHT_AXIS := 43.1 / 1.875
-## Room between a divider's middle and the module before it.
+## Room between a divider's middle and the module beside it.
 const DS2_PIPES_ROOM := 24.0
+## Half the concrete slab's width, pillars included (layout.json: slab 600 layout px), and how far the pipes'
+## middle stands off its side.
+const DS2_SLAB_HALF := 600.0 / 1.875 * 0.5
+const DS2_PIPES_OFF_SLAB := 17.0
 ## The bar's icons raised as Building Detail's are (set `baricon`): res://assets/ui/bdp_v3/bar_icon_<name>.png
 ## and its _shadow, by the art they replace.
 const DS2_BAR_ICONS := {
@@ -1408,6 +1408,7 @@ const DS2_INK_OUTLINE := Color(0.03, 0.05, 0.08, 0.5)
 ## the net line under it), its cells (scripts/ds2/money_figure.gd), and the figure's colour.
 const DS2_CASH_SCALE := 0.75
 const DS2_CASH_COLOUR := Color("#f4f6fa")
+const DS2_CASH_RED := Color("#e66060")   # DS2 DANGER on dark: the cash below zero
 const Led := preload("res://scripts/bdp_v3_led.gd")
 const MoneyFigure := preload("res://scripts/ds2/money_figure.gd")
 
@@ -1520,17 +1521,11 @@ func _ds2_centre_money() -> void:
 	queue_redraw()   # the concrete follows the money
 
 
-## Where the silver pipes rise, in the bar's x: one after the works (before the mission), one between the
-## concrete and Victory, the same distance either side of the money so the run beneath is centred on it.
+## Where the silver pipes rise, in the bar's x: just off each side of the concrete, so the run beneath is
+## centred on the money. The mission sits outside the left pair, Victory outside the right.
 func _ds2_divider_xs() -> Array[float]:
-	var transport := _hbox_child("TransportModule") as Control
-	var victory := _hbox_child("VictoryModule") as Control
-	if transport == null or victory == null or not transport.visible or not victory.visible:
-		return []
 	var c := money_widget.get_global_rect().get_center().x
-	var room_left := c - transport.get_global_rect().end.x - DS2_PIPES_ROOM
-	var room_right := victory.get_global_rect().position.x - DS2_PIPES_ROOM - c
-	var d := maxf(minf(room_left, room_right), DS2_CONCRETE.get_width() / DS2_TEXELS * 0.5 + DS2_PIPES_ROOM)
+	var d := DS2_SLAB_HALF + DS2_PIPES_OFF_SLAB
 	return [roundf(c - d - global_position.x), roundf(c + d - global_position.x)]
 
 
@@ -1567,11 +1562,7 @@ func _ds2_draw_strip() -> void:
 			var sz: Vector2 = piece[2]
 			draw_texture_rect(tex_p, Rect2(at, 0, sz.x, sz.y), false)
 			draw_texture_rect_region(tex_p, Rect2(at, -TOP_BLEED, sz.x, TOP_BLEED), Rect2(0, 0, tex_p.get_width(), TOP_BLEED * DS2_TEXELS))
-	# The coin's pipes, under the coin.
-	if _money_coin_icon != null and _money_coin_icon.visible:
-		var stand := DS2_COIN_PIPES.get_size() / DS2_TEXELS
-		var cx := roundf(_money_coin_icon.get_global_rect().get_center().x - global_position.x)
-		draw_texture_rect(DS2_COIN_PIPES, Rect2(cx - stand.x * 0.5, 0, stand.x, stand.y), false)
+
 
 
 ## Text and visibility both come from MiniQuest; the bar never decides either for itself.
@@ -3424,10 +3415,10 @@ func _ds2_ink(label: Label, on: bool) -> void:
 	if on:
 		label.add_theme_color_override("font_outline_color", DS2_INK_OUTLINE)
 		label.add_theme_constant_override("outline_size", 1)
-		label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.55))
-		label.add_theme_constant_override("shadow_outline_size", 5)
+		label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.5))
+		label.add_theme_constant_override("shadow_outline_size", 2)
 		label.add_theme_constant_override("shadow_offset_x", 1)
-		label.add_theme_constant_override("shadow_offset_y", 2)
+		label.add_theme_constant_override("shadow_offset_y", 1)
 	else:
 		for key: String in ["font_outline_color", "font_shadow_color"]:
 			label.remove_theme_color_override(key)
@@ -3436,7 +3427,9 @@ func _ds2_ink(label: Label, on: bool) -> void:
 
 
 ## The cash on the LED screen, always five cells (blank ones unlit) so the screen never changes width.
-func _ds2_refresh_cash(colour: Color = DS2_CASH_COLOUR) -> void:
+func _ds2_refresh_cash(colour: Color = Color(0, 0, 0, 0)) -> void:
+	if colour.a == 0.0:
+		colour = DS2_CASH_RED if MatchState.money < 0.0 else DS2_CASH_COLOUR
 	var parts: Dictionary = MoneyFigure.led(MatchState.money)
 	var figure: String = parts.figure
 	figure = " ".repeat(maxi(0, MoneyFigure.MAX_CELLS - MoneyFigure.cells(figure))) + figure
@@ -3470,8 +3463,9 @@ func _refresh_treasury() -> void:
 	# affordable. Together they are the shape that ends runs (spec §1.3).
 	(_treasury_led as StatusLed).lit = MatchState.money < 0.0 and net < 0.0
 	var v31: bool = UiPrefs.use_topbar_v3_1
-	_money_glyph.visible = not v31
-	_money_coin_icon.visible = v31
+	_money_glyph.visible = not v31 and not ds2
+	# DS2: the printed £ and the screen say what the figure is; no coin.
+	_money_coin_icon.visible = v31 and not ds2
 	var runway := _runway_turns()
 	_runway_label.visible = runway > 0
 	if runway > 0:
@@ -3597,7 +3591,7 @@ func _base_money_color() -> Color:
 func _set_money_color(c: Color) -> void:
 	_cash_label.add_theme_color_override("font_color", c)
 	if UiPrefs.use_topbar_ds2:
-		_ds2_refresh_cash(DS2_CASH_COLOUR if c == _base_money_color() else c)
+		_ds2_refresh_cash(Color(0, 0, 0, 0) if c == _base_money_color() else c)
 
 func flash_red() -> void:
 	if _flashing:

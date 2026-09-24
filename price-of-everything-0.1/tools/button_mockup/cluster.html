@@ -2184,7 +2184,7 @@ async function exportLayers() {
   // ?export&only=lamp,scroll renders just those sets and merges their entries into the existing
   // layout.json; the other layers are left as they are. Sets: block, footer, backing, section, keys,
   // lamp, scroll, seam, title, enamel, pin, cable, counter, sheet, plastic, door, heading, module,
-  // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barcoinpipes, barpipes, baricon.
+  // toggle, ldoor, modkey, sheetw, darkplate, modicon, screen, econ, diagicon, emblem, bar, barconcrete, barpipes, baricon.
   const only = new URLSearchParams(location.search).get('only');
   const want = (set) => !only || only.split(',').includes(set);
   const layout = only ? await fetch('/layers/layout.json').then((r) => (r.ok ? r.json() : {})) : {};
@@ -2468,21 +2468,7 @@ async function exportLayers() {
     m.position.set(x, PLATE_TOP + r - 0.6, y); m.castShadow = m.receiveShadow = true; return m;
   };
   const silverPipe = new THREE.MeshStandardMaterial({ color: 0xb3bac2, map: noiseTexture(8, 20, 60), metalness: 1, roughness: 0.16, envMap: studioEnv, envMapIntensity: 1.05 });
-  const ironPipe = new THREE.MeshStandardMaterial({ color: 0x40444b, map: noiseTexture(22, 50, 40), metalness: 1, roughness: 0.46, envMap: studioEnv, envMapIntensity: 0.65 });
   const collarSteel = new THREE.MeshStandardMaterial({ color: 0x8e949b, map: noiseTexture(18, 60, 40), metalness: 1, roughness: 0.36, envMap: studioEnv, envMapIntensity: 0.85 });
-  // Thick dark iron pipes rising out of the beam side by side, filling the space behind the money's coin
-  // (which sits on them), each capped with a collar.
-  if (want('barcoinpipes')) await withSeed(426, async () => {
-    const { H, BEAM } = BAR, join = H - BEAM, W = 96, group = new THREE.Group(), r = 10.5;
-    for (const [dx, top] of [[-2 * r, 24], [0, 18], [2 * r, 24]]) {
-      group.add(upPipe(W / 2 + dx, top + 3, join + 2, r, ironPipe));
-      group.add(collar(W / 2 + dx, join - 1, r + 1.4, 5, collarSteel));
-      group.add(collar(W / 2 + dx, top + 2, r + 1.2, 4, collarSteel));
-    }
-    group.add(steelCatcher(W, join, 0.5));
-    await post('bar_coin_pipes', stage([0, 0, W, H + BAR.SHADOW], [group]).grab());
-    layout.bar_coin_pipes = { size: [W, H + BAR.SHADOW], centre: W / 2 };
-  });
   // The silver pipe pair: it comes down off the screen at one divider, passes over the beam, turns under the
   // bar and runs along beneath it to the other divider, where it turns and goes back up. Three pieces the
   // game places: the left riser, the right riser (each lit by the house light, not mirrored) and the run

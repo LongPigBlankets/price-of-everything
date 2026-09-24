@@ -1159,6 +1159,14 @@ func _test_topbar_ds2_strip() -> void:
 	_check(cash != null and cash.visible and led != null and str(led.call("figure")).strip_edges() == "15.6"
 		and printed == PackedStringArray(["£", "K"]),
 		"top bar ds2: the cash on an LED screen, the £ printed before it and the K after it (%s)" % [printed])
+	var white: Color = led.get("colour") if led != null else Color.BLACK
+	MatchState.money = -1284.0
+	bar.call("_refresh_treasury")
+	var red: Color = led.get("colour") if led != null else Color.BLACK
+	_check(red.r > red.g + 0.2 and white.r > 0.9 and white.g > 0.9,
+		"top bar ds2: the cash is white, and red below zero")
+	var coin: Control = bar.get("_money_coin_icon")
+	_check(coin != null and not coin.visible, "top bar ds2: no coin beside the cash, the £ and the screen say what it is")
 	MatchState.money = money_was
 	bar.call("_refresh_treasury")
 	var shade: Node2D = bar.get_node_or_null("Ds2Shade")
