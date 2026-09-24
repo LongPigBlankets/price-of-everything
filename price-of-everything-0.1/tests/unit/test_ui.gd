@@ -666,6 +666,18 @@ func _test_bdp_v3_rules() -> void:
 		"bdp v3: a long slider keeps its ends and fills its length with whole periods of ridges")
 	var tiny: Array = thumb.slices(10.0)
 	_check(is_equal_approx(float(tiny[0][2]), 5.0) and is_equal_approx(sum.call(tiny), 10.0), "bdp v3: a very short slider halves its ends")
+	var Counter = load("res://scripts/bdp_v3_counter.gd")
+	_check(Counter.digits_for(54.17, 4, 2) == PackedInt32Array([5, 4, 1, 7]) and Counter.digits_for(10052, 5, 0) == PackedInt32Array([1, 0, 0, 5, 2])
+		and Counter.digits_for(7.5, 4, 2) == PackedInt32Array([0, 7, 5, 0]) and Counter.digits_for(123456, 3, 0) == PackedInt32Array([9, 9, 9]),
+		"bdp v3: a drum counter reads its value on its drums, leading zeros and all, and nines when it overflows")
+	_check(Counter.drums_for(54.17, 2, 4) == 4 and Counter.drums_for(1234.5, 2, 4) == 6 and Counter.drums_for(10052, 0, 3) == 5,
+		"bdp v3: a counter has as many drums as its value needs, and at least its minimum")
+	var Panel2 = load("res://scripts/building_detail_panel_v2.gd")
+	var cheap: Dictionary = Panel2.v3_cost_gauge_reading(8.0, 10.0)
+	var dear: Dictionary = Panel2.v3_cost_gauge_reading(30.0, 10.0)
+	var unknown: Dictionary = Panel2.v3_cost_gauge_reading(-1.0, 10.0)
+	_check(is_equal_approx(float(cheap.value), 0.4) and bool(cheap.known) and is_equal_approx(float(dear.value), 1.0) and not bool(unknown.known),
+		"bdp v3: the cost gauge reads unit cost as a share of twice the market price, and knows when the cost is unknown")
 	var Light = load("res://scripts/bdp_v3_light.gd")
 	var screen := Vector2(1920, 1080)
 	_check(Light.light_at(Vector2(0.05, 0.05), screen) > Light.light_at(Vector2(0.75, 0.15), screen)
@@ -757,6 +769,13 @@ func _test_bdp_v3_panel() -> void:
 	var body_label: Label = panel._body.find_children("*", "Label", true, false)[0]
 	_check(panel._shade.visible and body_label.material == load("res://scripts/bdp_v3_light.gd").text_material(),
 		"bdp v3: the lamp's overlay covers the panel and the text takes some of its light back")
+	var diag: PanelContainer = panel.find_child("DiagnosticsCard", true, false)
+	_check(diag != null and diag.get_theme_stylebox("panel") is StyleBoxEmpty and diag.find_child("BdpV3Cable", false, false) != null,
+		"bdp v3: the diagnostics lie on the steel, with a cable down beside their lights")
+	var labour: Control = panel.find_child("LabourV3", true, false)
+	var counters: Array = labour.find_children("*", "Control", true, false).filter(func(n: Node) -> bool: return n.get_script() == load("res://scripts/bdp_v3_counter.gd")) if labour != null else []
+	_check(counters.size() == 2 and counters[0].decimals == 2 and counters[1].decimals == 0,
+		"bdp v3: labour shows its cost and its workers on drum counters (%d)" % counters.size())
 	var Seam = load("res://scripts/bdp_v3_seam.gd")
 	_check(panel._seam.visible and is_equal_approx(panel._scroll.offset_top, Seam.strip_height())
 		and panel._seam.get_index() > panel._scroll.get_index() and panel._seam.get_parent() == panel._scroll.get_parent(),
@@ -808,6 +827,10 @@ func _test_bdp_v3_panel() -> void:
 			"bdp v3: Outputs opens the output sheet, whose Back is a keycap")
 		var sheet_scroll := panel._sheet.find_child("ActionSheetScroll", true, false) as ScrollContainer
 		_check(sheet_scroll != null and Scroll.is_applied(sheet_scroll), "bdp v3: the sheets scroll on the steel rail too")
+		var slide: Control = panel._sheet.find_child("SheetSlide", true, false)
+		_check(slide != null and slide.find_child("BdpV3SheetPlate", false, false) != null and slide.position.x > 0.0
+			and panel.get_child(panel.get_child_count() - 1) == panel._shade,
+			"bdp v3: a sheet is a steel plate that slides in, under the lamp (starting %.0f px along)" % (slide.position.x if slide != null else -1.0))
 		panel._close_sheet()
 		var r: Rect2 = block.key_rect("recipe")
 		var press := func(pressed: bool) -> void:

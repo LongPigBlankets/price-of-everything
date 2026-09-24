@@ -657,5 +657,35 @@
    64,
    64
   ]
+ },
+ "diag_cable": {
+  "size": [
+   32,
+   240
+  ],
+  "cap": 30,
+  "x": 13
+ },
+ "counter": {
+  "size": [
+   186,
+   52
+  ],
+  "cap": 18,
+  "cell": 30,
+  "cells": 5,
+  "window": [
+   9,
+   43
+  ],
+  "repeat_from": 78
+ },
+ "sheet_plate": {
+  "size": [
+   820,
+   1600
+  ],
+  "margin": 10,
+  "corner": 60
  }
 }

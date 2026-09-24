@@ -26,6 +26,9 @@ const BdpV3Seam := preload("res://scripts/bdp_v3_seam.gd")
 const BdpV3Title := preload("res://scripts/bdp_v3_title.gd")
 const BdpV3Enamel := preload("res://scripts/bdp_v3_enamel.gd")
 const BdpV3Light := preload("res://scripts/bdp_v3_light.gd")
+const BdpV3Cable := preload("res://scripts/bdp_v3_cable.gd")
+const BdpV3Counter := preload("res://scripts/bdp_v3_counter.gd")
+const PanelGauge := preload("res://scripts/panel_gauge.gd")
 const BdpV3Nine := preload("res://scripts/bdp_v3_nine.gd")
 const BdpV3Section := preload("res://scripts/bdp_v3_section.gd")
 ## v3 frames these sections (heading and content together); the value names the frame, so sections
@@ -1347,8 +1350,8 @@ func _open_sheet(title: String, populate: Callable, extra_width: float = 0.0) ->
 	var restore_scroll := 0
 	var preserve_scroll := false
 	if _sheet != null and is_instance_valid(_sheet):
-		var old_title := _sheet.get_node_or_null("SheetMargin/SheetVBox/SheetHeader/SheetTitle") as Label
-		var old_scroll := _sheet.get_node_or_null("SheetMargin/SheetVBox/ActionSheetScroll") as ScrollContainer
+		var old_title := _sheet.find_child("SheetTitle", true, false) as Label
+		var old_scroll := _sheet.find_child("ActionSheetScroll", true, false) as ScrollContainer
 		if old_title != null and old_scroll != null and old_title.text == title:
 			restore_scroll = old_scroll.scroll_vertical
 			preserve_scroll = true
@@ -1368,7 +1371,11 @@ func _open_sheet(title: String, populate: Callable, extra_width: float = 0.0) ->
 	margin.name = "SheetMargin"
 	for side in ["left", "right", "top", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, DS.SP["MD"])
-	sheet.add_child(margin)
+	var slide: Control = null
+	if UiPrefs.use_bdp_v3:
+		slide = _v3_sheet_plate(sheet, margin)
+	else:
+		sheet.add_child(margin)
 	var vb := VBoxContainer.new()
 	vb.name = "SheetVBox"
 	vb.add_theme_constant_override("separation", DS.SP["SM"])
@@ -1410,6 +1417,52 @@ func _open_sheet(title: String, populate: Callable, extra_width: float = 0.0) ->
 	_sheet = sheet
 	if preserve_scroll:
 		scroll.set_deferred("scroll_vertical", restore_scroll)
+	if slide != null:
+		move_child(_shade, get_child_count() - 1)   # the plate is under the lamp too
+		_apply_v3_text_light()
+		if not preserve_scroll:   # a sheet rebuilt in place stays put
+			slide.position.x = size.x
+			slide.create_tween().tween_property(slide, "position:x", 0.0, V3_SHEET_SLIDE_SECONDS) \
+				.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+
+## v3: an action sheet is a worn steel plate that slides in from the right over the panel's body, inside
+## the brass trim. The sheet itself still covers the whole panel (and takes its clicks); inside it, a
+## clip the trim's size holds a sliding layer with the plate and the sheet's content on it. Returns the
+## sliding layer.
+const V3_SHEET_INSET := 14.0
+const V3_SHEET_PAD := 14
+const V3_SHEET_SLIDE_SECONDS := 0.26
+## From layout.json (sheet_plate), in layout pixels: the render's room round the plate, and its corner.
+const V3_SHEET_PLATE_MARGIN := 10.0
+const V3_SHEET_PLATE_CORNER := 60.0
+
+func _v3_sheet_plate(sheet: PanelContainer, margin: MarginContainer) -> Control:
+	var bare := StyleBoxEmpty.new()
+	bare.set_content_margin_all(0)
+	sheet.add_theme_stylebox_override("panel", bare)
+	var clip := Control.new()
+	clip.name = "SheetClip"
+	clip.clip_contents = true
+	clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	sheet.add_child(clip)
+	var slide := Control.new()
+	slide.name = "SheetSlide"
+	slide.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slide.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	clip.add_child(slide)
+	var plate := BdpV3Nine.make("sheet_plate", (V3_SHEET_PLATE_MARGIN + V3_SHEET_PLATE_CORNER) * 2.0 / 1.875, V3_SHEET_PLATE_MARGIN / 1.875)
+	plate.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	slide.add_child(plate)
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, V3_SHEET_PAD)
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	slide.add_child(margin)
+	# The clip sits inside the trim; the sheet (a container) sizes it, so its offsets are set once the
+	# sheet is laid out.
+	sheet.resized.connect(func() -> void:
+		clip.position = Vector2(V3_SHEET_INSET, V3_SHEET_INSET)
+		clip.size = sheet.size - 2.0 * Vector2(V3_SHEET_INSET, V3_SHEET_INSET))
+	return slide
 
 func _close_sheet() -> void:
 	if _sheet != null and is_instance_valid(_sheet):
@@ -1554,12 +1607,16 @@ func _on_pin_pressed() -> void:
 		cam.pan_to_tile(str(_current_building.get("tile_id", "")))
 
 
-## Under v3's lamp, the panel's text takes back part of the darkening round it (bdp_v3_light.gd); the
-## action sheets sit above the lamp, so their text is left alone. Runs after every rebuild.
+## Under v3's lamp, the panel's text takes back part of the darkening round it (bdp_v3_light.gd), the
+## action sheets' too (their plates sit under the lamp). Runs after every rebuild and sheet.
 func _apply_v3_text_light() -> void:
 	var m: Material = BdpV3Light.text_material() if UiPrefs.use_bdp_v3 else null
-	for n in _margin.find_children("*", "Label", true, false) + _margin.find_children("*", "RichTextLabel", true, false):
-		(n as CanvasItem).material = m
+	var roots: Array[Node] = [_margin]
+	if _sheet != null and is_instance_valid(_sheet):
+		roots.append(_sheet)
+	for root in roots:
+		for n in root.find_children("*", "Label", true, false) + root.find_children("*", "RichTextLabel", true, false):
+			(n as CanvasItem).material = m
 
 
 ## v3's raised title in place of the label, unless the title has a character its letters lack.
@@ -2129,6 +2186,8 @@ func _arrow_content_width(power_in: int) -> float:
 ## Sticky across refreshes: a player who opened the checklist wants it to stay open while
 ## they watch the turn resolve, not to re-collapse under them every rebuild.
 var _diagnostics_open := false
+# v3's drum counters and cost gauges: what each last read, so the next rebuild rolls from it.
+var _v3_last_readings := {}
 
 # --- diagnostics ---------------------------------------------------------------------------
 
@@ -2141,6 +2200,17 @@ func _build_diagnostics(rows: Array) -> PanelContainer:
 	card.name = "DiagnosticsCard"   # stable target for the tutorial coach spotlight
 	var vb := card.get_child(0) as VBoxContainer
 	vb.add_theme_constant_override("separation", 0)
+	if UiPrefs.use_bdp_v3:
+		# v3: the rows lie on the frame's steel, with a cable run down beside their lights.
+		var bare := StyleBoxEmpty.new()
+		bare.content_margin_left = V3_DIAG_GUTTER
+		bare.content_margin_right = 4
+		bare.content_margin_top = 4
+		bare.content_margin_bottom = 4
+		card.add_theme_stylebox_override("panel", bare)
+		var cable := BdpV3Cable.new()
+		cable.centre_x = V3_DIAG_CABLE_X - V3_DIAG_GUTTER
+		card.add_child(cable)
 	var all_ok := not rows.is_empty()
 	for r_variant: Variant in rows:
 		if str((r_variant as Dictionary).get("tone", "info")) not in ["ok", "good", "info"]:
@@ -2174,6 +2244,10 @@ func _build_diagnostics(rows: Array) -> PanelContainer:
 	vb.add_child(body)
 	return card
 
+
+## v3's diagnostics: the rows' left margin, and where the cable runs in it (from the card's left).
+const V3_DIAG_GUTTER := 26.0
+const V3_DIAG_CABLE_X := 10.0
 
 func _diag_head_text() -> String:
 	return ("⌄  All green" if _diagnostics_open else "›  All green")
@@ -2240,6 +2314,9 @@ func _build_cost_to_produce(rows: Array) -> PanelContainer:
 	card.name = "CostToProduceCard"   # stable target for the tutorial coach spotlight
 	var vb := card.get_child(0) as VBoxContainer
 	vb.add_theme_constant_override("separation", DS.SP["SM"])
+	if UiPrefs.use_bdp_v3:
+		_v3_cost_gauges(card, vb, rows)
+		return card
 	for i in rows.size():
 		var r: Dictionary = rows[i]
 		if i > 0:
@@ -2276,6 +2353,63 @@ func _build_cost_to_produce(rows: Array) -> PanelContainer:
 		unit.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		line.add_child(unit)
 	return card
+
+## v3: each output's cost on a gauge, on the frame's steel. The needle is the unit cost as a share of
+## the market price, on a scale to twice it; the zones are the cost's RAG bands (green under 90%, amber
+## to 110%, red over) and the LED follows the zone. An unknown cost leaves the needle down and the LED
+## off. The needle swings from where it last read.
+const V3_GAUGE_SIZE := 92.0
+const V3_GAUGE_SCALE_PCT := 200.0
+
+static func v3_cost_gauge_reading(unit_cost: float, market_price: float) -> Dictionary:
+	if unit_cost < 0.0 or market_price <= 0.0:
+		return {"value": 0.0, "known": false}
+	return {"value": clampf(unit_cost / market_price * 100.0 / V3_GAUGE_SCALE_PCT, 0.0, 1.0), "known": true}
+
+func _v3_cost_gauges(card: PanelContainer, vb: VBoxContainer, rows: Array) -> void:
+	var bare := StyleBoxEmpty.new()
+	bare.set_content_margin_all(4)
+	card.add_theme_stylebox_override("panel", bare)
+	for r: Dictionary in rows:
+		var line := HBoxContainer.new()
+		line.add_theme_constant_override("separation", DS.SP["MD"])
+		vb.add_child(line)
+		var reading := v3_cost_gauge_reading(float(r.get("unit_cost", -1.0)), float(r.get("market_price", 0.0)))
+		var gauge: PanelGauge = PanelGauge.new()
+		gauge.name = "CostGauge"
+		gauge.gauge_size = V3_GAUGE_SIZE
+		gauge.green_percent = 90.0 / V3_GAUGE_SCALE_PCT * 100.0
+		gauge.amber_percent = 20.0 / V3_GAUGE_SCALE_PCT * 100.0
+		gauge.led_mode = PanelGauge.LedMode.AUTO if bool(reading.known) else PanelGauge.LedMode.OFF
+		var key := "cost:%s:%s" % [str(_current_building.get("instance_id", "")), str(r.get("name", ""))]
+		var target: float = reading.value
+		if _v3_last_readings.has(key):
+			gauge.value = float(_v3_last_readings[key])
+			gauge.ready.connect(func() -> void: gauge.value = target, CONNECT_ONE_SHOT)
+		else:
+			gauge.value = target
+		_v3_last_readings[key] = target
+		line.add_child(gauge)
+		var col := VBoxContainer.new()
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		col.add_theme_constant_override("separation", 0)
+		line.add_child(col)
+		var name_l := Label.new()
+		name_l.theme_type_variation = "Body"
+		name_l.text = str(r.get("name", ""))
+		col.add_child(name_l)
+		var big := Label.new()
+		big.theme_type_variation = "Numeric"
+		big.add_theme_font_size_override("font_size", 24)
+		big.add_theme_color_override("font_color", r.get("color", DS.PALETTE["TEXT"]))
+		big.text = "£%s /unit" % BuildingStatus._fmt_upto2(float(r.get("unit_cost", 0.0)))
+		col.add_child(big)
+		var mkt := Label.new()
+		mkt.theme_type_variation = "Caption"
+		var pct := int(r.get("pct", 0))
+		mkt.text = "market £%s · %s%d%%" % [BuildingStatus._fmt_upto2(float(r.get("market_price", 0.0))), "+" if pct > 0 else "", pct]
+		col.add_child(mkt)
 
 # --- modifiers (accordion above economics) --------------------------------------------------
 
@@ -3251,7 +3385,9 @@ func _route_kind_for_title(title: String) -> String:
 
 # --- labour (headcount, not per turn — the wage is the per-turn figure) ---------------------
 
-func _build_labour(lab: Dictionary) -> HBoxContainer:
+func _build_labour(lab: Dictionary) -> Container:
+	if UiPrefs.use_bdp_v3:
+		return _build_labour_v3(lab)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", DS.SP["SM"])
 	row.add_child(_labour_card("Unskilled", int(lab.get("unskilled", 0)), DS.PALETTE["TEXT_MUTED"]))
@@ -3284,6 +3420,66 @@ func _build_labour(lab: Dictionary) -> HBoxContainer:
 	cv.add_child(csub)
 	row.add_child(cost_card)
 	return row
+
+## v3's labour, on the frame's steel: the three headcounts as numbers with their labels printed under
+## them, then the labour cost and the number of workers on drum counters, each labelled beside it. The
+## counters roll from what they last read.
+func _build_labour_v3(lab: Dictionary) -> VBoxContainer:
+	var box := VBoxContainer.new()
+	box.name = "LabourV3"
+	box.add_theme_constant_override("separation", DS.SP["MD"])
+	var heads := HBoxContainer.new()
+	heads.add_theme_constant_override("separation", DS.SP["SM"])
+	box.add_child(heads)
+	for pair in [["Unskilled", "unskilled"], ["Skilled", "skilled"], ["Highly skilled", "highly"]]:
+		var col := VBoxContainer.new()
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		col.add_theme_constant_override("separation", 0)
+		heads.add_child(col)
+		var num := Label.new()
+		num.theme_type_variation = "Numeric"
+		num.add_theme_font_size_override("font_size", 20)
+		num.text = _fmt_int(int(lab.get(pair[1], 0)))
+		num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(num)
+		col.add_child(_v3_metal_label(pair[0], HORIZONTAL_ALIGNMENT_CENTER))
+	var meters := HBoxContainer.new()
+	meters.add_theme_constant_override("separation", DS.SP["SM"])
+	meters.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_child(meters)
+	var iid := str(_current_building.get("instance_id", ""))
+	var cost := float(lab.get("cost", 0.0))
+	var pound := _v3_metal_label("£", HORIZONTAL_ALIGNMENT_RIGHT)
+	pound.add_theme_font_size_override("font_size", 20)
+	meters.add_child(pound)
+	meters.add_child(_v3_counter("labour:%s:cost" % iid, cost, 2, BdpV3Counter.drums_for(cost, 2, 4)))
+	meters.add_child(_v3_metal_label("per turn", HORIZONTAL_ALIGNMENT_LEFT))
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(DS.SP["MD"], 0)
+	meters.add_child(gap)
+	var total := float(lab.get("total", 0))
+	meters.add_child(_v3_counter("labour:%s:workers" % iid, total, 0, BdpV3Counter.drums_for(total, 0, 3)))
+	meters.add_child(_v3_metal_label("workers", HORIZONTAL_ALIGNMENT_LEFT))
+	return box
+
+## A label printed on the steel: capitals, off-white, Barlow Condensed.
+func _v3_metal_label(text: String, align: HorizontalAlignment) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.uppercase = true
+	l.add_theme_font_override("font", BdpV3Plate.FONT_SEMI)
+	l.add_theme_font_size_override("font_size", 15)
+	l.add_theme_color_override("font_color", DS.PALETTE["TEXT"])
+	l.horizontal_alignment = align
+	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return l
+
+func _v3_counter(key: String, v: float, decimal_count: int, drum_count: int) -> Control:
+	var counter: BdpV3Counter = BdpV3Counter.new()
+	counter.configure(drum_count, decimal_count)
+	counter.set_value(v, float(_v3_last_readings[key]) if _v3_last_readings.has(key) else NAN)
+	_v3_last_readings[key] = v
+	return counter
 
 func _labour_card(label: String, count: int, accent: Color) -> PanelContainer:
 	var card := PanelContainer.new()

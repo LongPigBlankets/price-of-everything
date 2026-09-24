@@ -15,6 +15,10 @@ This is the plan for bringing the rest of the building detail panel over to v3, 
 - the guarded Sell / Demolish footer
 - the scrollbar
 - the lamp over the panel
+- the diagnostics on the steel with a cable beside their lights
+- cost to produce on gauges
+- labour's cost and workers on drum counters
+- the action sheets' sliding steel plate (their contents are still v2's)
 
 **Still v2 inside the v3 panel.** The panel file still makes 25 plain `Button`s, and every card inside the frames is a flat design-system card.
 
@@ -51,7 +55,13 @@ This is the plan for bringing the rest of the building detail panel over to v3, 
 ## Phase 0: the groundwork (before any new part)
 
 1. **Wear kit.** The standard for wear in the second half of this document, built into `cluster.html` as shared functions and material presets.
-2. **Re-render the older parts with the kit.** That is the block, footer, section frames, backing, and the Close / Back / Location keys. They move to the house light, drop their baked per-part lamp and grade (the overlay now supplies the fall-off), and get their own seeds. Every older layer will change a little, so the owner approves the new renders before they go in.
+2. **Re-render the older parts.** Done on 24 September 2026, with the owner's approval. The block, footer, section frames, backing, and the Close / Back / Location keys:
+   - moved to the house light;
+   - dropped their baked per-part lamp and grade (the overlay supplies the fall-off);
+   - take the steel at one scratch scale, with rust flecks by edge length;
+   - have their own seeds.
+
+   The backing's brass lost its screws and is welded on. The rest of the wear kit is still to build.
 3. **Read layout.json at runtime.** Today most scripts carry the render's numbers as constants copied by hand. Only the title reads `layout.json`. Move the other v3 scripts to a shared reader, so a re-export can't leave a script out of date.
 4. **Coverage test.** A test walks the v3 panel for a factory, an NPC building, a construction site, a battery, a port and an infrastructure piece. It counts the plain `Button`s and flat design-system cards left in each. The count only goes down; it is how this plan's progress is tracked.
 
@@ -68,23 +78,23 @@ Each is a render set in `cluster.html` and a script in `scripts/`. Everything af
 | **Goods tag** | A small enamel tag for a good's icon and quantity, the sign's enamel at tag size. | `enamelPlate` | Shipments, upgrade materials, construction materials, the recipe sheet |
 | **Raised lettering** | The title's letter atlas, in the section-heading font and the sheet-title font. | `titleAtlas` at other sizes and fonts | Section headings, sheet titles, the Owned By plaque |
 | **Toggle switch** | A bat-handle toggle on a small plate, up or down. | New | Modifiers accordion, the diagnostics fold |
-| **Drum counter** | An odometer window. The drums and window are rendered; the digits are live. | New (window from the display window) | Labour counts |
-| **Gauge** | The existing `panel_gauge`, re-rendered top-down under the house light (it is lit and tilted differently today). | `tools/gauge_render` | Cost to produce |
+| **Drum counter** | Built: `bdp_v3_counter.gd`. An odometer window; the drums and window are rendered, the digits are live and roll. | `counterHousing` | Labour cost and workers |
+| **Gauge** | Built into cost to produce: the existing `panel_gauge`. Its export already looks straight down with the house light's direction; only its light strengths differ from the panel's (key 3.2, fill 0.34, environment 0.32), which the wear kit should bring in line. | `tools/gauge_render` | Cost to produce |
 
 ## Phase 2: the main panel
 
 In order of what a player sees most:
 
-1. **Section headings** in raised lettering, and **Diagnostics** as an annunciator: rows in a display window, each led by an indicator lamp; the fold becomes a toggle switch.
+1. **Section headings** in raised lettering. **Diagnostics** keep their layout for now (on the steel, with the cable); a broader redesign comes later.
 2. **Economics** and the **power line** in display windows. The row icons lose their bordered boxes and are printed on the glass; the Net row keeps its semantic colour.
-3. **Cost to produce** as a gauge per output: the needle is unit cost against market price, the zones are the RAG thresholds, and the LED follows the zone.
+3. **Cost to produce:** done, a gauge per output.
 4. **Inbound shipments:** goods tags, with the stored / needed text on a display window.
-5. **Labour:** drum counters for the three headcounts, and the cost on a small brass plaque.
+5. **Labour:** done, the headcounts printed on the steel and the cost and workers on drum counters.
 6. **Modifiers:** the accordion's header becomes a toggle switch.
 
 ## Phase 3: the action sheets
 
-A sheet slides over the panel. It becomes a drawer plate of the backing's steel, sliding in under the seam edge. It keeps its Back key, gets a raised title, and scrolls on the rail.
+A sheet is now a worn steel plate that slides in over the panel's body inside the trim, under the lamp. It keeps its Back key and scrolls on the rail; next it gets a raised title, and its contents move to the components:
 
 - **Input sources / output destination:** the route choices become option keys (the chosen one latched, its lamp lit). "Route details" becomes a small keycap, and the lists become display windows with Go To keycaps.
 - **Upgrade:** capacity and per-turn figures in display windows, materials as goods tags, and Pay / Start as keycaps. A step that spends money gets the guarded button.
@@ -172,8 +182,16 @@ A single wear kit in `cluster.html` that every part uses, with no one-off number
 
 ## Decisions for the owner
 
-- Approve the re-rendered older parts (Phase 0). The block's approved look will shift: its baked lamp gives way to the overlay's even fall, and its scratch scale and rust density become the standard's.
-- Diagnostics as an annunciator with lamps, or keep its rows as text with lamps only.
-- Labour as drum counters, or plain numbers in a display window.
-- Cost to produce as a gauge per output, or one gauge for the main output.
-- Whether the sheets become drawer plates, or stay flat panels with v3 controls on them.
+Decided on 24 September 2026:
+
+- The older parts are re-rendered (done).
+- Cost to produce: a gauge per output (done).
+- Diagnostics keep their layout for now, on the steel, with a black cable with a yellow stripe down beside the lights (done).
+- Labour: drum counters for the labour cost and the number of workers only, and clear labels on the metal (done).
+- The action sheets become slide-in steel plates (done: the plate and the slide; their contents are still v2's).
+- Every change is compared against the standard (`artifacts/bdp_v3_standard/`, `tools/bdp_v3_compare.py`).
+
+Still open:
+
+- The broader redesign of the diagnostics (an annunciator with lamps, or rows in a display window), deferred for now.
+- How dark the lamp over the panel falls. Since the re-render the lower panel is much lighter than in the standard, whose backing fell nearly to black; the overlay's darkest (0.7 now) sets it.

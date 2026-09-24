@@ -48,10 +48,10 @@ All parts share one stage, so they read as one piece of hardware.
 
 - **Camera:** orthographic, straight down. Flat layers then stack in 2D without any perspective mismatch.
 - **Coordinates:** layout pixels are the Godot capture pixels. The captures were taken at 1.875 times logical size, so a 280 px key is about 149 logical px wide.
-- **Light:** one `SpotLight` above and beyond the frame's top-left corner (420 px left and up, 820 px high, intensity 8400, decay 1.1), plus a weak `HemisphereLight` (0.14) and the room environment at 0.16. The tall panel backing raises the lamp to 1900 px so its far end isn't lost in shadow.
-  - The lamp's fall-off grades every part from light top-left to darker bottom-right, and its shadows fall to the bottom-right.
-  - Metal takes its brightness mostly from reflections, which a lamp barely grades. So the plates also carry the same grade baked into their colour.
-- **House light:** the title's letters, the recipe diagram's enamel sign, the status lamp, the scrollbar and the seam edge are lit by a directional light instead (`houseLight`, `stage(..., { light: 'house' })`): from the upper left, 49.7° above the panel, strength 4, with no fall-off. It is the knob and gauge renderers' key light, and the angle the raised icons' painted shadows already assume (0.6 × height along each axis). A part lit by it looks the same wherever it sits and at any size, which the scrollbar needs because the game stretches it. Its strength matches the spotlight's at a small key, and its shadow map keeps the spotlight's softness.
+- **Light:** every part is lit by the house light (`houseLight`), plus a weak `HemisphereLight` (0.14) and the room environment at 0.16. The house light is a directional light from the upper left, 49.7° above the panel, strength 4, with no fall-off. It is the knob and gauge renderers' key light, and the angle the raised icons' painted shadows assume (0.6 × height along each axis).
+  - A part lit by it looks the same wherever it sits and at any size, so renders can be stretched and repeated, and the parts all agree.
+  - It shades the parts' shape only. How bright each place on the panel is comes from the game's lamp over the panel (see below), so no part carries a light of its own in its colour.
+  - `stage(..., { light: 'lamp' })` still gives the old per-part spotlight (above and beyond the frame's top-left corner), but no set uses it. Every part used it until the re-render of 24 September 2026, when each part graded itself from bright at its own top-left to dark at its own bottom-right.
 - **Export scale:** every layer is rendered at `E = 2 / 1.875` times layout size, which is **2 texture pixels per logical pixel**. Godot draws them at half their pixel size, so all bdp_v3 textures import **with mipmaps**.
 
 ## Materials
@@ -60,10 +60,12 @@ All parts share one stage, so they read as one piece of hardware.
 | --- | --- |
 | Worn steel (plates, frames) | The Sunburst worn-steel texture (`cluster_data.js` → `plateTexture`), brightened, flattened and mostly blended with a blurred copy, so fine scratches recede and relief reads on top (`STEEL_CANVAS`). |
 | Navy-grey steel (panel backing) | The same texture heavily blurred, only 20% of the sharp scratches kept, greyscaled and multiplied by `#767D88` (`NAVY_STEEL_CANVAS`). |
-| Brass (trim) | The same texture blurred, brightened and multiplied by `#E0B460` (`BRASS_TRIM_CANVAS`). |
+| Brass (trim) | The same texture blurred, brightened and multiplied by `#ECC47A` (`BRASS_TRIM_CANVAS`). |
 | Gunmetal (button bezels) | The raw Sunburst texture on a dark metal material (`MAT.frame`). |
 | Cream plastic (keycaps, raised icons) | `#E9DFCA`, the approved keycap reference's cream, roughness 0.62 with a light clear coat. Key tops get faint wear and grime towards their corners (`paintPlastic`). |
 | Navy text | `#0B2340`, Barlow Condensed Bold / SemiBold. |
+
+Every plate takes the steel texture at the same scale, 1.45 texture pixels per layout pixel (`STEEL_SCALE`), so its scratches are the same size on every part. A plate larger than the texture at that scale repeats it, mirrored (`steelWindow`); the backing and its trim do. Before the re-render a plate took the texture at whatever scale fitted it, so the backing's scratches were 2.3 times the block's.
 
 The Sunburst texture was generated once for this work, from a brief asking for a flat, evenly lit, edge-to-edge worn steel surface. The brief and the original image are in Project Rebirth's `.asset-image/factory-buttons/`, which is not tracked in git. The texture itself is kept in `cluster_data.js`.
 
@@ -72,14 +74,14 @@ The Sunburst texture was generated once for this work, from a brief asking for a
 A plate is a rounded rectangle extruded 4 px with a 4.5 px bevel (3.6 px flare, 6 segments). This gives it a rounded, rubbed lip; its face is `PLATE_TOP` = 13 px above the ground. `plateMaterial(w, h, feat)` paints four maps onto the face:
 
 - **Colour:**
-  - a window of the steel texture;
+  - a window of the steel texture, at the one scale;
   - grime settling into the edges, heaviest along the bottom;
-  - the lamp's baked grade;
   - soft grime round every button (`feat.buttons`) and screw (`feat.screws`);
   - the swept shadows of the raised icons (see Buttons);
   - screwdriver-slip arcs round each screw;
   - the rubbed edge: a dark band just inside the lip, then a broken bright line along it, strongest on the top and left where the light catches it;
-  - rust flecks along the lip.
+  - flecks along the lip, 2.45 per 100 px of edge (`FLECKS_PER_100PX`), so a small plate and a large one wear alike: rust on steel, tarnish on the brass (`feat.flecks`);
+  - anything `feat.paint(g, w, h)` adds last (the weld's heat tint).
 - **Roughness:** from the texture's brightness. Bright scratches are smoother and dark grime is duller.
 - **Bump:** a high-pass of the texture, so only the larger scratches catch the light.
 - **Options:** `feat.base` swaps the texture (the backing uses the navy-grey steel and the trim uses brass), and `feat.rub` sets the rubbed-edge colour.
@@ -107,7 +109,7 @@ The plate paints grime round each screw and a few bright screwdriver slips. The 
 - **Section frames:** a 22 px steel rim (the plate material on a ring with a rounded hole), a screw in each corner, and the rim's cast shadow, in a 596 × 396 px render with 18 px of shadow room round it.
   - The game draws it as a 9-slice, which keeps the corners and screws at their size and stretches the edges (`bdp_v3_section.gd`).
   - A section's heading and content go inside, 8 px in from the rim.
-- **Backing trim:** a 22 px raised brass ring round the navy-grey backing plate, carrying the corner screws. It is also drawn as a 9-slice (`bdp_v3_nine.gd`, 64-texel corners), behind the whole panel.
+- **Backing trim:** a 22 px raised brass ring round the navy-grey backing plate, welded to it. There are no screws. A bronze weld bead runs in the join at the trim's foot (`weldBead`), a rounded ridge rippled every 2.6 px as a bead laid in runs is, and heat tint colours both metals beside it: straw, brown, purple and blue fading into the steel, and a darkening into the brass. It is drawn as a 9-slice (`bdp_v3_nine.gd`, 64-texel corners), behind the whole panel.
 
 ## Buttons
 
@@ -222,6 +224,24 @@ The font stays the title's own: Bebas Neue at 32 px (60 layout px). Titles chang
 
 In the game, `bdp_v3_title.gd` shapes and wraps the title with Godot's text server in the same font, size and wrapping as the plain label, and places each letter's render on its pen position. It draws every shadow first, then the faces, each shaded for where its middle falls in the block of lines. The atlas covers A–Z, 0–9 and common punctuation, which is every character in the building and recipe names (a test checks this). A title with any other character keeps the plain label.
 
+## Diagnostics
+
+In v3 the diagnostics' rows lie on the section frame's steel rather than on a navy card; their layout is v2's. A cable runs down beside their lights (`cableRun`, `bdp_v3_cable.gd`): black rubber insulation with a yellow tracer stripe, near-black with one crisp glossy highlight along its top so it reads as round against the dark steel, between a steel cable gland at each end. It is drawn as a vertical three-slice, the glands at their size and the cable stretched between them, down a 26 px gutter at the card's left.
+
+## Cost to produce
+
+Each output's cost is on a gauge (`scripts/panel_gauge.gd`, 92 px), on the frame's steel. The needle shows the unit cost as a share of the market price, on a scale running to twice it. The zones are the cost's RAG bands (green under 90%, amber to 110%, red over) and the LED follows the zone. An unknown cost leaves the needle down and the LED off. Beside the gauge are the good's name, the cost per unit in its RAG colour and the market line. The needle swings from where it last read when the panel rebuilds.
+
+## Labour
+
+On the frame's steel: the three headcounts as numbers, each with its label printed under it in off-white capitals (Unskilled, Skilled, Highly skilled). Below them, the labour cost per turn and the number of workers are on drum counters (`bdp_v3_counter.gd`), each labelled beside it.
+
+A drum counter (`counterHousing`, `paintCounterGlass`) is a gunmetal housing with black drums in a window. The game prints the digits on the drums live (Barlow Condensed SemiBold), then lays `counter_glass` over them: the drums' curve shading away top and bottom, the window lip's shadow and a faint glare. Both renders are horizontal three-slices whose middle cell repeats once per drum. The cost has two drums after a printed decimal point. A counter has as many drums as its value needs (at least four for the cost and three for the workers), and when its value changes it rolls to it like an odometer, each drum turning only while the one below it passes from 9 to 0.
+
+## Action sheets
+
+An action sheet is a worn steel plate (`sheetPlate`, no screws) that slides in from the right over the panel's body, inside the brass trim, in 0.26 s. A sheet rebuilt in place stays put. The sheet still covers the whole panel and takes its clicks; inside it, a clip the trim's size holds a sliding layer with the plate (a 9-slice) and the sheet's content. The plate sits under the lamp over the panel, and the sheet's text takes back its share of the darkening, like the panel's.
+
 ## The lamp over the panel
 
 The panel is lit by a lamp at the top-left of the screen (`bdp_v3_light.gd`). The further a point is from it, the darker, falling evenly from full light a quarter of the screen's diagonal away to 0.7 at 90% of it. The panel usually sits a third of the diagonal or so from the lamp, so it takes a gentle, even fall from its top-left to its bottom-right wherever it is. With the panel beside the tile panel on a 1920-wide screen, that is about 0.97 at its top-left to 0.81 at its bottom-right.
@@ -232,7 +252,18 @@ The panel is lit by a lamp at the top-left of the screen (`bdp_v3_light.gd`). Th
 
 It is one draw for the overlay and one shared material for the text, so the panel draws in as few batches as before. `tools/bdp_v3_shot.tscn` saves the panel with the lamp, without its overlay, and with no lamp at all, so its effect can be measured pixel by pixel.
 
-The older plates (the block, the footer, the section frames and the backing) still carry the per-part lamp and grade they were rendered with, so the overlay's even fall sits on top of their own.
+Since the re-render, no part carries a light of its own, so the overlay's even fall is the only one: down the panel's left edge the steel now holds between 84 and 96, where before the re-render it fell from 119 to 22.
+
+## Checking a change against the standard
+
+The approved look is kept as a standard (tag `bdp-v3-standard-2026-09-24`): `artifacts/bdp_v3_standard/` holds the views `tools/bdp_v3_shot.tscn` captures of it, and `metrics.json` the measurements taken from them. Every visual change is compared with it:
+
+```sh
+BDP_SHOT_DIR=/tmp/bdp_now Godot --path . res://tools/bdp_v3_shot.tscn --quit-after 3600 -- --no-telemetry
+python3 tools/bdp_v3_compare.py --current /tmp/bdp_now
+```
+
+The shot tool runs the game in a SubViewport of 1920 × 1200 logical pixels at two pixels each, so its captures have the same pixels whatever display the window is on, and two captures of the same panel match exactly. The compare tool reports, view by view, how much of the panel changed and by how much, compares the lamp's light over the panel and the steel's brightness down its edges, and writes standard | current | difference images and a contact sheet. `--save` makes a set of captures the new standard, once a change is approved.
 
 ## Exporting the layers
 
@@ -250,7 +281,7 @@ Then open `http://127.0.0.1:8771/cluster.html?export` in a browser. It works hea
 
 The tab title becomes "export done". Every layer of a set shares one frame, so the game stacks them without offsets.
 
-To render some sets only, add `&only=` and a comma-separated list of `block`, `footer`, `backing`, `section`, `keys`, `pin`, `lamp`, `scroll`, `seam`, `title` and `enamel`, for example `cluster.html?export&only=lamp,scroll`. The other layers are left as they are, and the page reads the current `layout.json` from the server and updates only those sets' entries. `export.py` takes an optional port (`python3 tools/button_mockup/export.py 8779`); use a port of your own when another export may be running.
+To render some sets only, add `&only=` and a comma-separated list of `block`, `footer`, `backing`, `section`, `keys`, `pin`, `lamp`, `scroll`, `seam`, `title`, `enamel`, `cable`, `counter` and `sheet`, for example `cluster.html?export&only=lamp,scroll`. The other layers are left as they are, and the page reads the current `layout.json` from the server and updates only those sets' entries. `export.py` takes an optional port (`python3 tools/button_mockup/export.py 8779`); use a port of your own when another export may be running.
 
 | Set | Layers |
 | --- | --- |
@@ -264,10 +295,13 @@ To render some sets only, add `&only=` and a comma-separated list of `block`, `f
 | Seam edge (900 × 48) | `seam_edge` |
 | Title letters (1400 × 184) | `title_glyphs`, `title_glyph_shadows` |
 | Recipe diagram | `recipe_enamel` (760 × 300), `recipe_grunge` (900 × 450) |
+| Diagnostics' cable | `diag_cable` (32 × 240) |
+| Drum counter | `counter_housing`, `counter_glass` (186 × 52: two 18 px ends and five 30 px cells) |
+| Action sheets | `sheet_plate` (820 × 1600) |
 
 `layout.json` lists each set's size and every key's rect and top face, in layout pixels, plus the lamp's bezel, the scrollbar's end, grip and travel sizes, and the seam edge's ends, back edge and lip. The scripts carry these numbers as constants. After changing a layout, copy the new numbers from `layout.json` into `bdp_v3_block.gd`, `bdp_v3_footer.gd`, `bdp_v3_section.gd`, `bdp_v3_lamp.gd`, `bdp_v3_scroll.gd` or `bdp_v3_seam.gd`.
 
-After an export, reimport with `Godot --headless --path . --import`. A new layer's `.import` gets `mipmaps/generate=true`, then import again. The scene uses a seeded random number generator, but the seed advances as parts are built, so adding a part changes the scratches and wear on the parts built after it. Expect every layer to change slightly on each export. The lamp, the scrollbar, the seam edge, the title's letters and the enamel sign are built with seeds of their own (`withSeed`), so they come out the same whichever sets are exported with them. Put a new set after the existing ones and give it its own seed, so the layers already in the game don't change.
+After an export, reimport with `Godot --headless --path . --import`. A new layer's `.import` gets `mipmaps/generate=true`, then import again. The scene uses a seeded random number generator, but the seed advances as parts are built, so adding a part changes the scratches and wear on the parts built after it. Expect every layer to change slightly on each export. Every set is built with a seed of its own (`withSeed`), so they come out the same whichever sets are exported with them. Put a new set after the existing ones and give it its own seed, so the layers already in the game don't change.
 
 ## How the game uses them
 
